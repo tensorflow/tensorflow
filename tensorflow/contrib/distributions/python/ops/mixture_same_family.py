@@ -20,7 +20,7 @@ from __future__ import print_function
 
 import numpy as np
 
-from tensorflow.python.framework import dtypes
+from tensorflow.contrib.distributions.python.ops import distribution_util as distribution_utils
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
@@ -28,6 +28,7 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops.distributions import distribution
 from tensorflow.python.ops.distributions import util as distribution_util
+from tensorflow.python.util import deprecation
 
 
 class MixtureSameFamily(distribution.Distribution):
@@ -43,7 +44,8 @@ class MixtureSameFamily(distribution.Distribution):
   #### Examples
 
   ```python
-  tfd = tf.contrib.distributions
+  import tensorflow_probability as tfp
+  tfd = tfp.distributions
 
   ### Create a mixture of two scalar Gaussians:
 
@@ -95,6 +97,14 @@ class MixtureSameFamily(distribution.Distribution):
 
   """
 
+  @deprecation.deprecated(
+      "2018-10-01",
+      "The TensorFlow Distributions library has moved to "
+      "TensorFlow Probability "
+      "(https://github.com/tensorflow/probability). You "
+      "should update all references to use `tfp.distributions` "
+      "instead of `tf.contrib.distributions`.",
+      warn_once=True)
   def __init__(self,
                mixture_distribution,
                components_distribution,
@@ -104,12 +114,12 @@ class MixtureSameFamily(distribution.Distribution):
     """Construct a `MixtureSameFamily` distribution.
 
     Args:
-      mixture_distribution: `tf.distributions.Categorical`-like instance.
+      mixture_distribution: `tfp.distributions.Categorical`-like instance.
         Manages the probability of selecting components. The number of
         categories must match the rightmost batch dimension of the
         `components_distribution`. Must have either scalar `batch_shape` or
         `batch_shape` matching `components_distribution.batch_shape[:-1]`.
-      components_distribution: `tf.distributions.Distribution`-like instance.
+      components_distribution: `tfp.distributions.Distribution`-like instance.
         Right-most batch dimension indexes components.
       validate_args: Python `bool`, default `False`. When `True` distribution
         parameters are checked for validity despite possibly degrading runtime
@@ -130,8 +140,8 @@ class MixtureSameFamily(distribution.Distribution):
       ValueError: if `mixture_distribution` categories does not equal
         `components_distribution` rightmost batch shape.
     """
-    parameters = locals()
-    with ops.name_scope(name):
+    parameters = dict(locals())
+    with ops.name_scope(name) as name:
       self._mixture_distribution = mixture_distribution
       self._components_distribution = components_distribution
       self._runtime_assertions = []
@@ -239,7 +249,9 @@ class MixtureSameFamily(distribution.Distribution):
           depth=self._num_components,                        # == k
           on_value=np.ones([], dtype=npdt),
           off_value=np.zeros([], dtype=npdt))                # [n, B, k]
-      mask = self._pad_mix_dims(mask)                        # [n, B, k, [1]*e]
+      mask = distribution_utils.pad_mixture_dimensions(
+          mask, self, self.mixture_distribution,
+          self._event_shape().ndims)                         # [n, B, k, [1]*e]
       return math_ops.reduce_sum(
           x * mask, axis=-1 - self._event_ndims)             # [n, B, E]
 
@@ -248,14 +260,15 @@ class MixtureSameFamily(distribution.Distribution):
       x = self._pad_sample_dims(x)
       log_prob_x = self.components_distribution.log_prob(x)  # [S, B, k]
       log_mix_prob = nn_ops.log_softmax(
-          self.mixture_distribution.logits, dim=-1)          # [B, k]
+          self.mixture_distribution.logits, axis=-1)         # [B, k]
       return math_ops.reduce_logsumexp(
           log_prob_x + log_mix_prob, axis=-1)                # [S, B]
 
   def _mean(self):
     with ops.control_dependencies(self._runtime_assertions):
-      probs = self._pad_mix_dims(
-          self.mixture_distribution.probs)                   # [B, k, [1]*e]
+      probs = distribution_utils.pad_mixture_dimensions(
+          self.mixture_distribution.probs, self, self.mixture_distribution,
+          self._event_shape().ndims)                         # [B, k, [1]*e]
       return math_ops.reduce_sum(
           probs * self.components_distribution.mean(),
           axis=-1 - self._event_ndims)                       # [B, E]
@@ -264,15 +277,16 @@ class MixtureSameFamily(distribution.Distribution):
     x = self._pad_sample_dims(x)
     log_cdf_x = self.components_distribution.log_cdf(x)      # [S, B, k]
     log_mix_prob = nn_ops.log_softmax(
-        self.mixture_distribution.logits, dim=-1)            # [B, k]
+        self.mixture_distribution.logits, axis=-1)           # [B, k]
     return math_ops.reduce_logsumexp(
         log_cdf_x + log_mix_prob, axis=-1)                   # [S, B]
 
   def _variance(self):
     with ops.control_dependencies(self._runtime_assertions):
       # Law of total variance: Var(Y) = E[Var(Y|X)] + Var(E[Y|X])
-      probs = self._pad_mix_dims(
-          self.mixture_distribution.probs)                   # [B, k, [1]*e]
+      probs = distribution_utils.pad_mixture_dimensions(
+          self.mixture_distribution.probs, self, self.mixture_distribution,
+          self._event_shape().ndims)                         # [B, k, [1]*e]
       mean_cond_var = math_ops.reduce_sum(
           probs * self.components_distribution.variance(),
           axis=-1 - self._event_ndims)                       # [B, E]
@@ -291,8 +305,12 @@ class MixtureSameFamily(distribution.Distribution):
 
     with ops.control_dependencies(self._runtime_assertions):
       # Law of total variance: Var(Y) = E[Var(Y|X)] + Var(E[Y|X])
-      probs = self._pad_mix_dims(self._pad_mix_dims(
-          self.mixture_distribution.probs))                  # [B, k, 1, 1]
+      probs = distribution_utils.pad_mixture_dimensions(
+          distribution_utils.pad_mixture_dimensions(
+              self.mixture_distribution.probs, self, self.mixture_distribution,
+              self._event_shape().ndims),
+          self, self.mixture_distribution,
+          self._event_shape().ndims)                         # [B, k, 1, 1]
       mean_cond_var = math_ops.reduce_sum(
           probs * self.components_distribution.covariance(),
           axis=-3)                                           # [B, e, e]
@@ -312,28 +330,15 @@ class MixtureSameFamily(distribution.Distribution):
           shape[:d], [1], shape[d:]], axis=0))
       return x
 
-  def _pad_mix_dims(self, x):
-    with ops.name_scope("pad_mix_dims", values=[x]):
-      def _get_ndims(d):
-        if d.batch_shape.ndims is not None:
-          return d.batch_shape.ndims
-        return array_ops.shape(d.batch_shape_tensor())[0]
-      dist_batch_ndims = _get_ndims(self)
-      cat_batch_ndims = _get_ndims(self.mixture_distribution)
-      pad_ndims = distribution_util.pick_vector(
-          self.mixture_distribution.is_scalar_batch(),
-          [dist_batch_ndims],
-          [dist_batch_ndims - cat_batch_ndims])[0]
-      s = array_ops.shape(x)
-      x = array_ops.reshape(x, shape=array_ops.concat([
-          s[:-1],
-          array_ops.ones([pad_ndims], dtype=dtypes.int32),
-          s[-1:],
-          array_ops.ones([self._event_ndims], dtype=dtypes.int32),
-      ], axis=0))
-      return x
 
-
+@deprecation.deprecated(
+    "2018-10-01",
+    "The TensorFlow Distributions library has moved to "
+    "TensorFlow Probability "
+    "(https://github.com/tensorflow/probability). You "
+    "should update all references to use `tfp.distributions` "
+    "instead of `tf.contrib.distributions`.",
+    warn_once=True)
 def _outer_squared_difference(x, y):
   """Convenience function analogous to tf.squared_difference."""
   z = x - y

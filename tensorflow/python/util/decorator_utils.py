@@ -82,7 +82,7 @@ def add_notice_to_docstring(
     lines = _normalize_docstring(doc).splitlines()
     lines[0] += ' ' + suffix_str
 
-  notice = [''] + notice + [instructions]
+  notice = [''] + notice + ([instructions] if instructions else [])
 
   if len(lines) > 1:
     # Make sure that we keep our distance from the main body

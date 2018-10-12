@@ -42,7 +42,7 @@ typedef Eigen::ThreadPoolDevice CPUDevice;
 typedef Eigen::GpuDevice GPUDevice;
 #ifdef TENSORFLOW_USE_SYCL
 typedef Eigen::SyclDevice SYCLDevice;
-#endif // TENSORFLOW_USE_SYCL
+#endif  // TENSORFLOW_USE_SYCL
 
 class Stack : public ResourceBase {
  public:
@@ -131,10 +131,8 @@ class Stack : public ResourceBase {
 };
 
 Status GetStack(OpKernelContext* ctx, Stack** stack) {
-  string key;
   if (ctx->input_dtype(0) == DT_RESOURCE) {
-    auto resource = ctx->input(0).flat<ResourceHandle>()(0);
-    key = resource.name();
+    return LookupResource(ctx, HandleFromInput(ctx, 0), stack);
   } else {
     Tensor Tstack_handle = ctx->mutable_input(0, false);
     if (Tstack_handle.NumElements() != 2) {
@@ -144,18 +142,18 @@ Status GetStack(OpKernelContext* ctx, Stack** stack) {
     }
     const string& container = Tstack_handle.flat<string>()(0);
     const string& stack_name = Tstack_handle.flat<string>()(1);
-    key = strings::StrCat(container, stack_name);
+    string key = strings::StrCat(container, stack_name);
+    ResourceMgr* rm = ctx->resource_manager();
+    if (rm == nullptr) {
+      return errors::Internal("No resource manager.");
+    }
+    auto* step_container = ctx->step_container();
+    if (step_container == nullptr) {
+      return errors::Internal("No step container.");
+    }
+    TF_RETURN_IF_ERROR(rm->Lookup(step_container->name(), key, stack));
+    return Status::OK();
   }
-  ResourceMgr* rm = ctx->resource_manager();
-  if (rm == nullptr) {
-    return errors::Internal("No resource manager.");
-  }
-  auto* step_container = ctx->step_container();
-  if (step_container == nullptr) {
-    return errors::Internal("No step container.");
-  }
-  TF_RETURN_IF_ERROR(rm->Lookup(step_container->name(), key, stack));
-  return Status::OK();
 }
 
 std::atomic<int64> Stack::stack_counter{0};
@@ -242,7 +240,7 @@ REGISTER_KERNEL_BUILDER(Name("StackV2")
                             .HostMemory("max_size")
                             .HostMemory("handle"),
                         StackOp);
-#endif // TENSORFLOW_USE_SYCL
+#endif  // TENSORFLOW_USE_SYCL
 
 template <typename Device>
 class StackPushOp : public AsyncOpKernel {
@@ -274,11 +272,11 @@ class StackPushOp : public AsyncOpKernel {
     static constexpr int kCopyThreshold = 2048;
     static constexpr double kOccupancy = 0.7;
     if (swap_memory_ && !alloc_attrs.on_host() &&
-        ( std::is_same<Device, GPUDevice>::value
+        (std::is_same<Device, GPUDevice>::value
 #ifdef TENSORFLOW_USE_SYCL
-          || std::is_same<Device, SYCLDevice>::value
-#endif // TENSORFLOW_USE_SYCL
-        ) &&
+         || std::is_same<Device, SYCLDevice>::value
+#endif  // TENSORFLOW_USE_SYCL
+         ) &&
         tensor.TotalBytes() > kCopyThreshold && stack->IsUsefulToSwap(tensor)) {
       DeviceContext* device_ctxt = ctx->op_device_context();
       auto device = static_cast<tensorflow::Device*>(ctx->device());
@@ -391,7 +389,7 @@ REGISTER_SYCL_HOST_KERNEL(int32);
 REGISTER_SYCL_HOST_KERNEL(bool);
 #undef REGISTER_SYCL_KERNEL
 #undef REGISTER_SYCL_HOST_KERNEL
-#endif // TENSORFLOW_USE_SYCL
+#endif  // TENSORFLOW_USE_SYCL
 
 class StackPopOp : public AsyncOpKernel {
  public:
@@ -498,7 +496,7 @@ REGISTER_SYCL_HOST_KERNEL(bool);
 
 #undef REGISTER_SYCL_KERNEL
 #undef REGISTER_SYCL_HOST_KERNEL
-#endif // TENSORFLOW_USE_SYCL
+#endif  // TENSORFLOW_USE_SYCL
 
 class StackCloseOp : public OpKernel {
  public:
@@ -526,6 +524,6 @@ REGISTER_KERNEL_BUILDER(
 REGISTER_KERNEL_BUILDER(
     Name("StackCloseV2").Device(DEVICE_SYCL).HostMemory("handle"),
     StackCloseOp);
-#endif // TENSORFLOW_USE_SYCL
+#endif  // TENSORFLOW_USE_SYCL
 
 }  // namespace tensorflow

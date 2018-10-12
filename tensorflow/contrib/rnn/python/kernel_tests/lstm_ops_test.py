@@ -49,11 +49,12 @@ def blocks_match(sess, use_peephole):
     inp = ops.convert_to_tensor(
         np.random.randn(batch_size, input_size), dtype=dtypes.float32)
     inputs.append(inp)
+  stacked_inputs = array_ops.stack(inputs)
 
   initializer = init_ops.random_uniform_initializer(-0.01, 0.01, seed=19890212)
 
   with variable_scope.variable_scope("test", initializer=initializer):
-    # magic naming so that the cells pick up these variables and resuse them
+    # magic naming so that the cells pick up these variables and reuse them
     if use_peephole:
       wci = variable_scope.get_variable(
           "rnn/lstm_cell/w_i_diag", shape=[cell_size], dtype=dtypes.float32)
@@ -71,23 +72,6 @@ def blocks_match(sess, use_peephole):
         shape=[cell_size * 4],
         dtype=dtypes.float32,
         initializer=init_ops.zeros_initializer())
-
-    if use_peephole:
-      wci_block = variable_scope.get_variable(
-          "rnn/lstm_cell/lstm_block_wrapper/w_i_diag",
-          initializer=wci.initialized_value())
-      wcf_block = variable_scope.get_variable(
-          "rnn/lstm_cell/lstm_block_wrapper/w_f_diag",
-          initializer=wcf.initialized_value())
-      wco_block = variable_scope.get_variable(
-          "rnn/lstm_cell/lstm_block_wrapper/w_o_diag",
-          initializer=wco.initialized_value())
-    w_block = variable_scope.get_variable(
-        "rnn/lstm_cell/lstm_block_wrapper/kernel",
-        initializer=w.initialized_value())
-    b_block = variable_scope.get_variable(
-        "rnn/lstm_cell/lstm_block_wrapper/bias",
-        initializer=b.initialized_value())
 
     basic_cell = rnn_cell.LSTMCell(
         cell_size, use_peepholes=use_peephole, state_is_tuple=True, reuse=True)
@@ -113,11 +97,11 @@ def blocks_match(sess, use_peephole):
           b,
           cell_clip=0)
 
-    with variable_scope.variable_scope("rnn/lstm_cell", reuse=True):
-      fused_cell = lstm_ops.LSTMBlockFusedCell(
-          cell_size, cell_clip=0, use_peephole=use_peephole)
-      fused_outputs_op, fused_state_op = fused_cell(
-          inputs, dtype=dtypes.float32)
+    fused_cell = lstm_ops.LSTMBlockFusedCell(
+        cell_size, cell_clip=0, use_peephole=use_peephole, reuse=True,
+        name="rnn/lstm_cell")
+    fused_outputs_op, fused_state_op = fused_cell(
+        stacked_inputs, dtype=dtypes.float32)
 
     sess.run([variables.global_variables_initializer()])
     basic_outputs, basic_state = sess.run([basic_outputs_op, basic_state_op[0]])
@@ -131,9 +115,9 @@ def blocks_match(sess, use_peephole):
     block_grads = sess.run(gradients_impl.gradients(block_outputs_op, inputs))
     block_wgrads = sess.run(gradients_impl.gradients(block_outputs_op, xs))
 
-    xs = [w_block, b_block]
+    xs = [w, b]
     if use_peephole:
-      xs += [wci_block, wcf_block, wco_block]
+      xs += [wci, wcf, wco]
     fused_outputs, fused_state = sess.run([fused_outputs_op, fused_state_op[0]])
     fused_grads = sess.run(gradients_impl.gradients(fused_outputs_op, inputs))
     fused_wgrads = sess.run(gradients_impl.gradients(fused_outputs_op, xs))
@@ -146,7 +130,7 @@ def blocks_match(sess, use_peephole):
 class LSTMBlockCellTest(test.TestCase):
 
   def testNoneDimsWithDynamicRNN(self):
-    with self.test_session(use_gpu=True, graph=ops.Graph()) as sess:
+    with self.session(use_gpu=True, graph=ops.Graph()) as sess:
       batch_size = 4
       num_steps = 5
       input_dim = 6
@@ -163,7 +147,7 @@ class LSTMBlockCellTest(test.TestCase):
       sess.run(output, feed)
 
   def testLSTMBlockCell(self):
-    with self.test_session(use_gpu=True, graph=ops.Graph()) as sess:
+    with self.session(use_gpu=True, graph=ops.Graph()) as sess:
       with variable_scope.variable_scope(
           "root", initializer=init_ops.constant_initializer(0.5)):
         x = array_ops.zeros([1, 2])
@@ -191,7 +175,7 @@ class LSTMBlockCellTest(test.TestCase):
         self.assertAllClose(res[4], [[0.24024698, 0.24024698]])
 
   def testCompatibleNames(self):
-    with self.test_session(use_gpu=True, graph=ops.Graph()):
+    with self.session(use_gpu=True, graph=ops.Graph()):
       cell = rnn_cell.LSTMCell(10)
       pcell = rnn_cell.LSTMCell(10, use_peepholes=True)
       inputs = [array_ops.zeros([4, 5])] * 6
@@ -202,7 +186,7 @@ class LSTMBlockCellTest(test.TestCase):
           for v in variables.trainable_variables()
       }
 
-    with self.test_session(use_gpu=True, graph=ops.Graph()):
+    with self.session(use_gpu=True, graph=ops.Graph()):
       cell = lstm_ops.LSTMBlockCell(10)
       pcell = lstm_ops.LSTMBlockCell(10, use_peephole=True)
       inputs = [array_ops.zeros([4, 5])] * 6
@@ -213,10 +197,10 @@ class LSTMBlockCellTest(test.TestCase):
           for v in variables.trainable_variables()
       }
 
-    with self.test_session(use_gpu=True, graph=ops.Graph()):
+    with self.session(use_gpu=True, graph=ops.Graph()):
       cell = lstm_ops.LSTMBlockFusedCell(10)
       pcell = lstm_ops.LSTMBlockFusedCell(10, use_peephole=True)
-      inputs = [array_ops.zeros([4, 5])] * 6
+      inputs = array_ops.stack([array_ops.zeros([4, 5])] * 6)
       cell(inputs, dtype=dtypes.float32, scope="basic/lstm_cell")
       pcell(inputs, dtype=dtypes.float32, scope="peephole/lstm_cell")
       fused_names = {
@@ -228,7 +212,7 @@ class LSTMBlockCellTest(test.TestCase):
     self.assertEqual(basic_names, fused_names)
 
   def testLSTMBasicToBlockCell(self):
-    with self.test_session(use_gpu=True) as sess:
+    with self.session(use_gpu=True) as sess:
       x = array_ops.zeros([1, 2])
       x_values = np.random.randn(1, 2)
 
@@ -278,7 +262,7 @@ class LSTMBlockCellTest(test.TestCase):
         self.assertAllClose(basic, block)
 
   def testLSTMBasicToBlockCellPeeping(self):
-    with self.test_session(use_gpu=True) as sess:
+    with self.session(use_gpu=True) as sess:
       x = array_ops.zeros([1, 2])
       x_values = np.random.randn(1, 2)
 
@@ -331,7 +315,7 @@ class LSTMBlockCellTest(test.TestCase):
         self.assertAllClose(basic, block)
 
   def testLSTMBasicToBlock(self):
-    with self.test_session(use_gpu=True) as sess:
+    with self.session(use_gpu=True) as sess:
       (basic_state, fused_state, basic_outputs, block_outputs, fused_outputs,
        basic_grads, block_grads, fused_grads, basic_wgrads, block_wgrads,
        fused_wgrads) = blocks_match(
@@ -349,7 +333,7 @@ class LSTMBlockCellTest(test.TestCase):
         self.assertAllClose(basic, fused, rtol=1e-6, atol=1e-6)
 
   def testLSTMBasicToBlockPeeping(self):
-    with self.test_session(use_gpu=True) as sess:
+    with self.session(use_gpu=True) as sess:
       (basic_state, fused_state, basic_outputs, block_outputs, fused_outputs,
        basic_grads, block_grads, fused_grads, basic_wgrads, block_wgrads,
        fused_wgrads) = blocks_match(
@@ -368,7 +352,7 @@ class LSTMBlockCellTest(test.TestCase):
 
   def testLSTMFusedSequenceLengths(self):
     """Verify proper support for sequence lengths in LSTMBlockFusedCell."""
-    with self.test_session(use_gpu=True) as sess:
+    with self.session(use_gpu=True) as sess:
       batch_size = 3
       input_size = 4
       cell_size = 5
@@ -380,13 +364,13 @@ class LSTMBlockCellTest(test.TestCase):
             np.random.randn(batch_size, input_size), dtype=dtypes.float32)
         inputs.append(inp)
       seq_lengths = constant_op.constant([3, 4, 5])
+      cell_inputs = array_ops.stack(inputs)
 
       initializer = init_ops.random_uniform_initializer(
           -0.01, 0.01, seed=19890213)
 
-      with variable_scope.variable_scope(
-          "lstm_block_wrapper", initializer=initializer):
-        # magic naming so that the cells pick up these variables and resuse them
+      with variable_scope.variable_scope("lstm_cell", initializer=initializer):
+        # magic naming so that the cells pick up these variables and reuse them
         variable_scope.get_variable(
             "kernel",
             shape=[input_size + cell_size, cell_size * 4],
@@ -398,13 +382,12 @@ class LSTMBlockCellTest(test.TestCase):
             dtype=dtypes.float32,
             initializer=init_ops.zeros_initializer())
 
-      with variable_scope.variable_scope(
-          variable_scope.get_variable_scope(), reuse=True):
-        cell = lstm_ops.LSTMBlockFusedCell(
-            cell_size, cell_clip=0, use_peephole=False)
+      cell = lstm_ops.LSTMBlockFusedCell(
+          cell_size, cell_clip=0, use_peephole=False, reuse=True,
+          name="lstm_cell")
 
-        fused_outputs_op, fused_state_op = cell(
-            inputs, dtype=dtypes.float32, sequence_length=seq_lengths)
+      fused_outputs_op, fused_state_op = cell(
+          cell_inputs, dtype=dtypes.float32, sequence_length=seq_lengths)
 
       cell_vars = [
           v for v in variables.trainable_variables()
@@ -420,7 +403,7 @@ class LSTMBlockCellTest(test.TestCase):
         for i, inp in enumerate(inputs):
           lengths = [int(i < l) for l in seq_lengths.eval()]
           output, state = cell(
-              [inp],
+              array_ops.expand_dims(inp, 0),
               initial_state=state,
               dtype=dtypes.float32,
               sequence_length=lengths)

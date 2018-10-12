@@ -17,8 +17,8 @@ limitations under the License.
 
 #include <utility>
 
-#include "grpc++/generic/generic_stub.h"
-#include "grpc++/grpc++.h"
+#include "grpcpp/generic/generic_stub.h"
+#include "grpcpp/grpcpp.h"
 
 #include "tensorflow/core/common_runtime/process_util.h"
 #include "tensorflow/core/distributed_runtime/rpc/grpc_client_cq_tag.h"
@@ -54,8 +54,12 @@ class GrpcRemoteWorker : public WorkerInterface {
         cleanupgraph_(Method(GrpcWorkerMethod::kCleanupGraph)),
         cleanupall_(Method(GrpcWorkerMethod::kCleanupAll)),
         recvtensor_(Method(GrpcWorkerMethod::kRecvTensor)),
+        recvbuf_(Method(GrpcWorkerMethod::kRecvBuf)),
         logging_(Method(GrpcWorkerMethod::kLogging)),
         tracing_(Method(GrpcWorkerMethod::kTracing)),
+        completegroup_(Method(GrpcWorkerMethod::kCompleteGroup)),
+        instancesource_(Method(GrpcWorkerMethod::kCompleteInstance)),
+        getstepsequence_(Method(GrpcWorkerMethod::kGetStepSequence)),
         logger_(logger) {}
 
   ~GrpcRemoteWorker() override {}
@@ -72,10 +76,12 @@ class GrpcRemoteWorker : public WorkerInterface {
     IssueRequest(request, response, createworkersession_, std::move(done));
   }
 
-  void DeleteWorkerSessionAsync(const DeleteWorkerSessionRequest* request,
+  void DeleteWorkerSessionAsync(CallOptions* call_opts,
+                                const DeleteWorkerSessionRequest* request,
                                 DeleteWorkerSessionResponse* response,
                                 StatusCallback done) override {
-    IssueRequest(request, response, deleteworkersession_, std::move(done));
+    IssueRequest(request, response, deleteworkersession_, std::move(done),
+                 call_opts);
   }
 
   void RegisterGraphAsync(const RegisterGraphRequest* request,
@@ -111,6 +117,32 @@ class GrpcRemoteWorker : public WorkerInterface {
                        CleanupAllResponse* response,
                        StatusCallback done) override {
     IssueRequest(request, response, cleanupall_, std::move(done));
+  }
+
+  void RecvBufAsync(CallOptions* call_opts, const RecvBufRequest* request,
+                    RecvBufResponse* response, StatusCallback done) override {
+    IssueRequest(request, response, recvbuf_, std::move(done), call_opts);
+  }
+
+  void CompleteGroupAsync(CallOptions* call_opts,
+                          const CompleteGroupRequest* request,
+                          CompleteGroupResponse* response,
+                          StatusCallback done) override {
+    IssueRequest(request, response, completegroup_, std::move(done), call_opts);
+  }
+
+  void CompleteInstanceAsync(CallOptions* call_opts,
+                             const CompleteInstanceRequest* request,
+                             CompleteInstanceResponse* response,
+                             StatusCallback done) override {
+    IssueRequest(request, response, instancesource_, std::move(done),
+                 call_opts);
+  }
+
+  void GetStepSequenceAsync(const GetStepSequenceRequest* request,
+                            GetStepSequenceResponse* response,
+                            StatusCallback done) override {
+    IssueRequest(request, response, getstepsequence_, std::move(done));
   }
 
   void RecvTensorAsync(CallOptions* call_opts, const RecvTensorRequest* request,
@@ -213,8 +245,12 @@ class GrpcRemoteWorker : public WorkerInterface {
   const ::grpc::string cleanupgraph_;
   const ::grpc::string cleanupall_;
   const ::grpc::string recvtensor_;
+  const ::grpc::string recvbuf_;
   const ::grpc::string logging_;
   const ::grpc::string tracing_;
+  const ::grpc::string completegroup_;
+  const ::grpc::string instancesource_;
+  const ::grpc::string getstepsequence_;
 
   // Support for logging.
   WorkerCacheLogger* logger_;

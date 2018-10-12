@@ -37,6 +37,7 @@ class BaseSplitHandler(object):
                gradient_shape,
                hessian_shape,
                multiclass_strategy,
+               loss_uses_sum_reduction=False,
                name=None):
     """Constructor for BaseSplitHandler.
 
@@ -51,6 +52,8 @@ class BaseSplitHandler(object):
       gradient_shape: A TensorShape, containing shape of gradients.
       hessian_shape: A TensorShape, containing shape of hessians.
       multiclass_strategy: Strategy describing how to treat multiclass problems.
+      loss_uses_sum_reduction: A scalar boolean tensor that specifies whether
+          SUM or MEAN reduction was used for the loss.
       name: An optional handler name.
     """
     self._l1_regularization = l1_regularization
@@ -62,6 +65,7 @@ class BaseSplitHandler(object):
     self._multiclass_strategy = multiclass_strategy
     self._hessian_shape = hessian_shape
     self._gradient_shape = gradient_shape
+    self._loss_uses_sum_reduction = loss_uses_sum_reduction
 
   def scheduled_reads(self):
     """Returns the list of `ScheduledOp`s required for update_stats."""
@@ -126,6 +130,10 @@ class BaseSplitHandler(object):
         self: scheduled_updates
     }, stamp_token, None)
     return control_flow_ops.group(update_1, *update_2[self])
+
+  @abc.abstractmethod
+  def reset(self, stamp_token, next_stamp_token):
+    """Resets the state maintained by the handler."""
 
   @abc.abstractmethod
   def make_splits(self, stamp_token, next_stamp_token, class_id):

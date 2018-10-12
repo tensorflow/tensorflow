@@ -24,6 +24,7 @@ from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops.distributions import bijector
+from tensorflow.python.util import deprecation
 
 __all__ = [
     "Gumbel",
@@ -45,10 +46,17 @@ class Gumbel(bijector.Bijector):
   ```
   """
 
+  @deprecation.deprecated(
+      "2018-10-01",
+      "The TensorFlow Distributions library has moved to "
+      "TensorFlow Probability "
+      "(https://github.com/tensorflow/probability). You "
+      "should update all references to use `tfp.distributions` "
+      "instead of `tf.contrib.distributions`.",
+      warn_once=True)
   def __init__(self,
                loc=0.,
                scale=1.,
-               event_ndims=0,
                validate_args=False,
                name="gumbel"):
     """Instantiates the `Gumbel` bijector.
@@ -60,8 +68,6 @@ class Gumbel(bijector.Bijector):
       scale: Positive Float-like `Tensor` that is the same dtype and is
         broadcastable with `loc`.
         This is `scale` in `Y = g(X) = exp(-exp(-(X - loc) / scale))`.
-      event_ndims: Python scalar indicating the number of dimensions associated
-        with a particular draw from the distribution.
       validate_args: Python `bool` indicating whether arguments should be
         checked for correctness.
       name: Python `str` name given to ops managed by this object.
@@ -80,7 +86,9 @@ class Gumbel(bijector.Bijector):
         ], self._scale)
 
     super(Gumbel, self).__init__(
-        event_ndims=event_ndims, validate_args=validate_args, name=name)
+        validate_args=validate_args,
+        forward_min_event_ndims=0,
+        name=name)
 
   @property
   def loc(self):
@@ -102,15 +110,11 @@ class Gumbel(bijector.Bijector):
 
   def _inverse_log_det_jacobian(self, y):
     y = self._maybe_assert_valid_y(y)
-    event_dims = self._event_dims_tensor(y)
-    return math_ops.reduce_sum(
-        math_ops.log(self.scale / (-math_ops.log(y) * y)), axis=event_dims)
+    return math_ops.log(self.scale / (-math_ops.log(y) * y))
 
   def _forward_log_det_jacobian(self, x):
-    event_dims = self._event_dims_tensor(x)
     z = (x - self.loc) / self.scale
-    return math_ops.reduce_sum(
-        -z - math_ops.exp(-z) - math_ops.log(self.scale), axis=event_dims)
+    return -z - math_ops.exp(-z) - math_ops.log(self.scale)
 
   def _maybe_assert_valid_y(self, y):
     if not self.validate_args:

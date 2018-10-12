@@ -13,6 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+%include "tensorflow/python/platform/base.i"
+
 %ignore "";
 
 %rename("%s") TFE_NewContext;
@@ -20,27 +22,52 @@ limitations under the License.
 %rename("%s") TFE_ContextListDevices;
 %rename("%s") TFE_ContextAddFunction;
 %rename("%s") TFE_ContextAddFunctionDef;
+%rename("%s") TFE_ContextEnableRunMetadata;
+%rename("%s") TFE_ContextDisableRunMetadata;
+%rename("%s") TFE_ContextExportRunMetadata;
+%rename("%s") TFE_ContextClearCaches;
+%rename("%s") TFE_ContextGetDevicePlacementPolicy;
+%rename("%s") TFE_ContextSetThreadLocalDevicePlacementPolicy;
+%rename("%s") TFE_ContextSetAsyncForThread;
+%rename("%s") TFE_ContextSetServerDef;
+%rename("%s") TFE_ContextAsyncWait;
+%rename("%s") TFE_ContextAsyncClearError;
 %rename("%s") TFE_OpNameGetAttrType;
 %rename("%s") TFE_Py_InitEagerTensor;
+%rename("%s") TFE_Py_SetEagerTensorProfiler;
 %rename("%s") TFE_Py_RegisterExceptionClass;
+%rename("%s") TFE_Py_RegisterGradientFunction;
+%rename("%s") TFE_Py_RegisterFallbackExceptionClass;
+%rename("%s") TFE_Py_RegisterResourceVariableType;
 %rename("%s") TFE_Py_Execute;
+%rename("%s") TFE_Py_FastPathExecute;
+%rename("%s") TFE_Py_RecordGradient;
 %rename("%s") TFE_Py_UID;
-%rename("%s") TFE_Py_TapeStackPushNew;
-%rename("%s") TFE_Py_TapeStackPush;
-%rename("%s") TFE_Py_TapeStackPop;
-%rename("%s") TFE_Py_TapeStackIsEmpty;
-%rename("%s") TFE_Py_TapeStackShouldRecord;
-%rename("%s") TFE_Py_TapeStackWatch;
-%rename("%s") TFE_Py_TapeStackDeleteTrace;
-%rename("%s") TFE_Py_TapeStackRecordOperation;
-%rename("%s") TFE_Py_TapeStackWatchVariable;
+%rename("%s") TFE_Py_TapeSetNew;
+%rename("%s") TFE_Py_TapeSetAdd;
+%rename("%s") TFE_Py_TapeSetRemove;
+%rename("%s") TFE_Py_TapeSetStopOnThread;
+%rename("%s") TFE_Py_TapeSetRestartOnThread;
+%rename("%s") TFE_Py_TapeSetIsEmpty;
+%rename("%s") TFE_Py_TapeSetShouldRecord;
+%rename("%s") TFE_Py_TapeSetDeleteTrace;
+%rename("%s") TFE_Py_TapeSetRecordOperation;
 %rename("%s") TFE_Py_TapeGradient;
+%rename("%s") TFE_Py_TapeVariableAccessed;
+%rename("%s") TFE_Py_TapeWatch;
+%rename("%s") TFE_Py_TapeWatchVariable;
 %rename("%s") TFE_Py_TapeWatchedVariables;
 %rename("%s") TFE_NewContextOptions;
 %rename("%s") TFE_ContextOptionsSetConfig;
 %rename("%s") TFE_ContextOptionsSetDevicePlacementPolicy;
+%rename("%s") TFE_ContextOptionsSetAsync;
 %rename("%s") TFE_DeleteContextOptions;
 %rename("%s") TFE_Py_TensorShapeSlice;
+%rename("%s") TFE_Py_TensorShapeOnDevice;
+%rename("%s") TFE_ContextStartStep;
+%rename("%s") TFE_ContextEndStep;
+%rename("%s") TFE_Py_RegisterVSpace;
+%rename("%s") TFE_Py_EncodeArg;
 
 %{
 #include "tensorflow/python/eager/pywrap_tfe.h"
@@ -81,20 +108,29 @@ limitations under the License.
   }
 }
 
+// For const parameters in a function, SWIG pretty much ignores the const.
+// See: http://www.swig.org/Doc2.0/SWIG.html#SWIG_nn13
+// Hence the 'const_cast'.
 %typemap(in) const char* serialized_function_def {
-  $1 = TFE_GetPythonString($input);
+  $1 = const_cast<char*>(TFE_GetPythonString($input));
 }
 
+// For const parameters in a function, SWIG pretty much ignores the const.
+// See: http://www.swig.org/Doc2.0/SWIG.html#SWIG_nn13
+// Hence the 'const_cast'.
 %typemap(in) const char* device_name {
   if ($input == Py_None) {
     $1 = nullptr;
   } else {
-    $1 = TFE_GetPythonString($input);
+    $1 = const_cast<char*>(TFE_GetPythonString($input));
   }
 }
 
+// For const parameters in a function, SWIG pretty much ignores the const.
+// See: http://www.swig.org/Doc2.0/SWIG.html#SWIG_nn13
+// Hence the 'const_cast'.
 %typemap(in) const char* op_name {
-  $1 = TFE_GetPythonString($input);
+  $1 = const_cast<char*>(TFE_GetPythonString($input));
 }
 
 %typemap(in) (TFE_Context*) {
@@ -102,9 +138,9 @@ limitations under the License.
 
 }
 %typemap(out) (TFE_Context*) {
-  if ($1 == nullptr) {
-    SWIG_fail;
-  } else {
+  // When the TFE_Context* returned is a nullptr, we expect the status is not
+  // OK. This will raise an error (happens in another typemap).
+  if ($1 != nullptr) {
     $result = PyCapsule_New($1, nullptr, TFE_DeleteContextCapsule);
   }
 }
@@ -113,6 +149,7 @@ limitations under the License.
 %rename("%s") TFE_DEVICE_PLACEMENT_EXPLICIT;
 %rename("%s") TFE_DEVICE_PLACEMENT_WARN;
 %rename("%s") TFE_DEVICE_PLACEMENT_SILENT;
+%rename("%s") TFE_DEVICE_PLACEMENT_SILENT_FOR_INT32;
 
 %include "tensorflow/c/eager/c_api.h"
 
@@ -133,9 +170,12 @@ limitations under the License.
       if (EagerTensor_CheckExact(elem)) {
         (*$1)[i] = EagerTensor_Handle(elem);
       } else {
-        SWIG_exception_fail(SWIG_TypeError,
-                            "provided list of inputs contains objects other "
-                            "than 'EagerTensor'");
+        SWIG_exception_fail(
+            SWIG_TypeError,
+            tensorflow::strings::StrCat(
+                "provided list of inputs contains objects other "
+                "than 'EagerTensor'. Item ",
+                i, " is ", elem->ob_type->tp_name).c_str());
       }
     }
   }
@@ -149,8 +189,11 @@ limitations under the License.
                         "outputs of the operation)");
   }
   $1 = &temp;
-  $1->resize(PyInt_AsLong($input), nullptr);
-} 
+  long sz = PyInt_AsLong($input);
+  if (sz > 0) {
+    $1->resize(PyInt_AsLong($input), nullptr);
+  }
+}
 
 // Create new Status object.
 %typemap(in, numinputs=0) TF_Status *out_status {
@@ -166,6 +209,7 @@ limitations under the License.
     SWIG_fail;
   } else {
     int num_outputs = $1->size();
+    Py_CLEAR($result);
     $result = PyList_New(num_outputs);
     for (int i = 0; i < num_outputs; ++i) {
       PyObject *output;
@@ -175,9 +219,13 @@ limitations under the License.
   }
 }
 
+// SWIG usually unwraps the tuple that the native Python/C interface generates.
+// Since we wanted to have a function with a variable length of arguments, we
+// used the native Python/C interface directly (which by default supports
+// passing all arguments as a tuple).
+%native(TFE_Py_FastPathExecute) TFE_Py_FastPathExecute_C;
 
 %include "tensorflow/python/eager/pywrap_tfe.h"
-
 
 // Clear all typemaps.
 %typemap(out) TF_DataType;

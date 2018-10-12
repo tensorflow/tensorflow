@@ -60,7 +60,7 @@ def clip_covariance(
   # TODO(allenl): Smarter scaling here so that correlations are preserved when
   # fiddling with diagonal elements.
   diagonal = array_ops.matrix_diag_part(covariance_matrix)
-  maximum = math_ops.reduce_max(diagonal, axis=-1, keep_dims=True)
+  maximum = math_ops.reduce_max(diagonal, axis=-1, keepdims=True)
   new_diagonal = gen_math_ops.maximum(
       diagonal, maximum / maximum_variance_ratio)
   return array_ops.matrix_set_diag(
@@ -185,7 +185,7 @@ def batch_matrix_pow(matrices, powers):
                     { matmul(A, power(matmul(A, A), (p - 1) / 2)) for odd p
       power(A, 0) = I
 
-    The power(A, 0) = I case is handeled by starting with accumulator set to the
+    The power(A, 0) = I case is handled by starting with accumulator set to the
     identity matrix; matrices with zero residual powers are passed through
     unchanged.
 
@@ -543,20 +543,25 @@ class TupleOfTensorsLookup(lookup.LookupInterface):
   overhead.
   """
 
-  def __init__(
-      self, key_dtype, default_values, empty_key, name, checkpoint=True):
+  def __init__(self,
+               key_dtype,
+               default_values,
+               empty_key,
+               deleted_key,
+               name,
+               checkpoint=True):
     default_values_flat = nest.flatten(default_values)
-    self._hash_tables = nest.pack_sequence_as(
-        default_values,
-        [TensorValuedMutableDenseHashTable(
+    self._hash_tables = nest.pack_sequence_as(default_values, [
+        TensorValuedMutableDenseHashTable(
             key_dtype=key_dtype,
             value_dtype=default_value.dtype.base_dtype,
             default_value=default_value,
             empty_key=empty_key,
+            deleted_key=deleted_key,
             name=name + "_{}".format(table_number),
             checkpoint=checkpoint)
-         for table_number, default_value
-         in enumerate(default_values_flat)])
+        for table_number, default_value in enumerate(default_values_flat)
+    ])
     self._name = name
 
   def lookup(self, keys):
@@ -896,8 +901,8 @@ class InputStatisticsFromMiniBatch(object):
           statistics.total_observation_count,
           math_ops.cast(
               gen_math_ops.round(
-                  math_ops.cast(auxiliary_variables.max_time_seen -
-                                statistics.start_time + 1, self._dtype) /
+                  math_ops.cast(max_time_seen_assign -
+                                start_time_update + 1, self._dtype) /
                   inter_observation_duration_estimate), dtypes.int64))
       per_chunk_stat_updates = control_flow_ops.group(
           overall_feature_mean_update, overall_feature_var_update,

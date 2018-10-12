@@ -24,16 +24,11 @@ class CholeskyOp : public XlaOpKernel {
  public:
   explicit CholeskyOp(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {}
   void Compile(XlaOpKernelContext* ctx) override {
-    auto result = Cholesky(ctx->builder(), ctx->Input(0));
-    if (!result.ok()) {
-      ctx->SetStatus(result.status());
-      return;
-    }
-    ctx->SetOutput(0, result.ValueOrDie());
+    ctx->SetOutput(0, Cholesky(ctx->Input(0)));
   }
 };
 
-REGISTER_XLA_OP(Name("Cholesky"), CholeskyOp);
+REGISTER_XLA_OP(Name("Cholesky").TypeConstraint("T", kFloatTypes), CholeskyOp);
 
 }  // namespace
 }  // namespace tensorflow

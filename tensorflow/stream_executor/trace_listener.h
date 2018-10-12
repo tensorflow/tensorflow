@@ -23,8 +23,7 @@ limitations under the License.
 #include "tensorflow/stream_executor/launch_dim.h"
 #include "tensorflow/stream_executor/lib/status.h"
 
-namespace perftools {
-namespace gputools {
+namespace stream_executor {
 
 class Stream;
 
@@ -65,10 +64,10 @@ class TraceListener {
                                             const port::Status* result) {}
 
   virtual void BlockHostUntilDoneBegin(int64 correlation_id, Stream* stream) {}
-  virtual void BlockHostUntilDoneComplete(int64 correlation_id, bool result) {}
+  virtual void BlockHostUntilDoneComplete(int64 correlation_id,
+                                          const port::Status* result) {}
 };
 
-}  // namespace gputools
-}  // namespace perftools
+}  // namespace stream_executor
 
 #endif  // TENSORFLOW_STREAM_EXECUTOR_TRACE_LISTENER_H_

@@ -34,6 +34,7 @@ limitations under the License.
 #include "tensorflow/core/util/use_cudnn.h"
 
 #if GOOGLE_CUDA
+#include "cuda/include/cudnn.h"
 #include "tensorflow/core/kernels/conv_ops_gpu.h"
 #include "tensorflow/core/platform/stream_executor.h"
 #include "tensorflow/core/util/activation_mode.h"
@@ -110,8 +111,8 @@ class FusedConv2DBiasActivationOp : public OpKernel {
         context,
         (GetTensorDim(strides, data_format_, 'N') == 1 &&
          GetTensorDim(strides, data_format_, 'C') == 1),
-        errors::InvalidArgument("Convolutional strides are not supported in "
-                                "the batch or depth dimensions."));
+        errors::Unimplemented("Convolutional strides are not supported in "
+                              "the batch and depth dimensions."));
 
     // Assuming qint8 <--> NCHW_VECT_C, OIHW_VECT_I (int8x4) here.
     constexpr bool is_int8x4 = std::is_same<T, qint8>::value;
@@ -134,9 +135,12 @@ class FusedConv2DBiasActivationOp : public OpKernel {
                    context->GetAttr("activation_mode", &activation_mode_str));
     OP_REQUIRES_OK(context, GetActivationModeFromString(activation_mode_str,
                                                         &activation_mode_));
-    OP_REQUIRES(context, activation_mode_ == ActivationMode::RELU,
-                errors::InvalidArgument("Current implementation only supports "
-                                        "RELU as the activation function."));
+    OP_REQUIRES(context,
+                activation_mode_ == ActivationMode::RELU ||
+                    activation_mode_ == ActivationMode::NONE,
+                errors::InvalidArgument(
+                    "Current implementation only supports RELU or NONE "
+                    "as the activation function."));
     cudnn_use_autotune_ = CudnnUseAutotune();
   }
 
@@ -170,7 +174,7 @@ class FusedConv2DBiasActivationOp : public OpKernel {
 
     // Input bias is a 1-D tensor, with size matching output depth.
     const Tensor& bias = context->input(kBias);
-    OP_REQUIRES_OK(context, CheckShape(bias, "conv_input"));
+    OP_REQUIRES_OK(context, CheckShape(bias, "bias"));
 
     const Tensor& conv_input_scale_tensor = context->input(kConvInputScale);
     const Tensor& side_input_scale_tensor = context->input(kSideInputScale);
@@ -246,7 +250,7 @@ class FusedConv2DBiasActivationOp : public OpKernel {
 };
 
 #if GOOGLE_CUDA
-namespace dnn = ::perftools::gputools::dnn;
+namespace dnn = se::dnn;
 
 // A dummy type to group forward convolution autotune results together.
 struct ConvBiasActivationAutoTuneGroup {
@@ -278,6 +282,28 @@ Status TransformNHWCToNCHW(OpKernelContext* ctx, const Tensor& nhwc_tensor,
   return Status::OK();
 }
 
+// Adjusts padding so cudnn supports it. Sets `adjusted_padding` to be the
+// adjusted padding, and `extra_padding_before` and `extra_padding_after` to be
+// the extra padding that FusedConv needs to apply before calling cudnn.
+void AdjustPaddingForCudnn(int padding, bool is_int8x4, int filter_size,
+                           int* adjusted_padding, int* extra_padding_before,
+                           int* extra_padding_after) {
+#if CUDNN_VERSION < 7000
+  if (is_int8x4 && filter_size >= 6) {
+    // TODO(b/70795525): Remove after NVIDIA fixes this bug with int8 fused
+    // convolution. I don't know cuDNN7 still has the bug, so enable this
+    // workaround for cuDNN6 or older.
+    *adjusted_padding = 0;
+    *extra_padding_before = padding / 2;
+    *extra_padding_after = padding - *extra_padding_before;
+    return;
+  }
+#endif
+  *adjusted_padding = padding / 2 * 2;
+  *extra_padding_before = 0;
+  *extra_padding_after = padding % 2;
+}
+
 template <typename T, typename BiasType, typename ScaleType>
 void LaunchFusedConv2DBiasActivationOp<GPUDevice, T, BiasType, ScaleType>::
     launch(OpKernelContext* ctx, bool cudnn_use_autotune,
@@ -303,7 +329,7 @@ void LaunchFusedConv2DBiasActivationOp<GPUDevice, T, BiasType, ScaleType>::
     stream->parent()->GetDeviceDescription().cuda_compute_capability(&cc_major,
                                                                      &cc_minor);
     OP_REQUIRES(
-        ctx, cc_major >= 6 && cc_minor >= 1,
+        ctx, ((cc_major == 6 && cc_minor >= 1) || cc_major > 6),
         errors::Unimplemented(
             "FusedConv2DBiasActivation for int8 is only supported on GPUs with "
             "compute capability 6.1 or later."));
@@ -338,12 +364,21 @@ void LaunchFusedConv2DBiasActivationOp<GPUDevice, T, BiasType, ScaleType>::
         0, (output_rows - 1) * row_stride + filter_rows - conv_input_rows);
     padding_cols = std::max<int>(
         0, (output_cols - 1) * col_stride + filter_cols - conv_input_cols);
-    const int padding_rows_parity = padding_rows & 1;
-    const int padding_cols_parity = padding_cols & 1;
-    if ((padding_rows_parity | padding_cols_parity) != 0) {
+    int extra_top_padding = 0;
+    int extra_bottom_padding = 0;
+    int extra_left_padding = 0;
+    int extra_right_padding = 0;
+    AdjustPaddingForCudnn(padding_rows, is_int8x4, filter_rows, &padding_rows,
+                          &extra_top_padding, &extra_bottom_padding);
+    AdjustPaddingForCudnn(padding_cols, is_int8x4, filter_cols, &padding_cols,
+                          &extra_left_padding, &extra_right_padding);
+    if (extra_top_padding != 0 || extra_bottom_padding != 0 ||
+        extra_left_padding != 0 || extra_right_padding != 0) {
       Tensor transformed_input;
-      const int new_conv_input_rows = conv_input_rows + padding_rows_parity;
-      const int new_conv_input_cols = conv_input_cols + padding_cols_parity;
+      const int new_conv_input_rows =
+          conv_input_rows + extra_top_padding + extra_bottom_padding;
+      const int new_conv_input_cols =
+          conv_input_cols + extra_left_padding + extra_right_padding;
 
       using VectT = typename Int8x4ToInt32<typename RawType<T>::type>::type;
       auto pad_data_format = is_int8x4 ? FORMAT_NCHW : data_format;
@@ -361,8 +396,9 @@ void LaunchFusedConv2DBiasActivationOp<GPUDevice, T, BiasType, ScaleType>::
           maybe_padded_conv_input.reinterpret_last_dimension<VectT, 4>());
 
       functor::PadInput<GPUDevice, VectT, int, 4>()(
-          ctx->eigen_device<GPUDevice>(), conv_input_eigen_tensor, {{0, 0}},
-          {{padding_rows_parity, padding_cols_parity}},
+          ctx->eigen_device<GPUDevice>(), conv_input_eigen_tensor,
+          {{extra_top_padding, extra_left_padding}},
+          {{extra_bottom_padding, extra_right_padding}},
           padded_conv_input_eigen_tensor, pad_data_format);
 
       conv_input = &maybe_padded_conv_input;
@@ -407,6 +443,8 @@ void LaunchFusedConv2DBiasActivationOp<GPUDevice, T, BiasType, ScaleType>::
                                          : dnn::DataLayout::kBatchDepthYX;
   constexpr auto filter_layout = is_int8x4 ? dnn::FilterLayout::kOutputInputYX4
                                            : dnn::FilterLayout::kOutputInputYX;
+  constexpr auto compute_data_format =
+      is_int8x4 ? FORMAT_NCHW_VECT_C : FORMAT_NCHW;
 
   dnn::BatchDescriptor conv_input_desc;
   conv_input_desc.set_count(batch_size)
@@ -439,6 +477,8 @@ void LaunchFusedConv2DBiasActivationOp<GPUDevice, T, BiasType, ScaleType>::
       .set_feature_map_count(output_depth)
       .set_layout(data_layout);
   dnn::ConvolutionDescriptor conv_desc;
+  CHECK_EQ(0, padding_rows % 2);
+  CHECK_EQ(0, padding_cols % 2);
   conv_desc.set_vertical_filter_stride(row_stride)
       .set_horizontal_filter_stride(col_stride)
       .set_zero_padding_height(padding_rows / 2)
@@ -457,7 +497,8 @@ void LaunchFusedConv2DBiasActivationOp<GPUDevice, T, BiasType, ScaleType>::
                                 FORMAT_OIHW, filter_param.shape(), FORMAT_HWIO),
                             &maybe_transformed_filter));
     functor::TransformFilter<GPUDevice, T, int, 4>()(
-        ctx->eigen_device<GPUDevice>(), To32Bit(filter_param.tensor<T, 4>()),
+        ctx->eigen_device<GPUDevice>(), FORMAT_OIHW,
+        To32Bit(filter_param.tensor<T, 4>()),
         To32Bit(maybe_transformed_filter.tensor<T, 4>()));
     filter = &maybe_transformed_filter;
   }
@@ -491,6 +532,7 @@ void LaunchFusedConv2DBiasActivationOp<GPUDevice, T, BiasType, ScaleType>::
       batch_size,
       conv_input_depth,
       {{conv_input_rows, conv_input_cols}},
+      compute_data_format,
       output_depth,
       {{filter_rows, filter_cols}},
       // TODO(yangzihao): Add support for arbitrary dilations for fused conv.
@@ -503,12 +545,25 @@ void LaunchFusedConv2DBiasActivationOp<GPUDevice, T, BiasType, ScaleType>::
       activation_mode,
   };
 
+  dnn::ActivationMode dnn_activation_mode;
+  switch (activation_mode) {
+    case ActivationMode::NONE:
+      dnn_activation_mode = dnn::ActivationMode::kNone;
+      break;
+    case ActivationMode::RELU:
+      dnn_activation_mode = dnn::ActivationMode::kRelu;
+      break;
+    default:
+      LOG(FATAL) << "Activation mode " << activation_mode << " not supported";
+  }
+
   dnn::AlgorithmConfig algorithm_config;
   if (cudnn_use_autotune && !AutoTuneConvBiasActivation::GetInstance()->Find(
                                 fused_conv_parameters, &algorithm_config)) {
     std::vector<dnn::AlgorithmDesc> algorithms;
     CHECK(stream->parent()->GetConvolveAlgorithms(
-        fused_conv_parameters.ShouldIncludeWinogradNonfusedAlgo<T>(),
+        fused_conv_parameters.ShouldIncludeWinogradNonfusedAlgo<T>(
+            stream->parent()),
         &algorithms));
     dnn::ProfileResult best_result;
     dnn::ProfileResult best_result_no_scratch;
@@ -522,10 +577,9 @@ void LaunchFusedConv2DBiasActivationOp<GPUDevice, T, BiasType, ScaleType>::
               ->ThenFusedConvolveWithAlgorithm(
                   conv_input_desc, conv_input_ptr, conv_input_scale,
                   filter_desc, filter_ptr, conv_desc, side_input_ptr,
-                  side_input_scale, bias_desc, bias_ptr,
-                  dnn::ActivationMode::kRelu, output_desc, &output_ptr,
-                  &scratch_allocator, dnn::AlgorithmConfig(profile_algorithm),
-                  &profile_result)
+                  side_input_scale, bias_desc, bias_ptr, dnn_activation_mode,
+                  output_desc, &output_ptr, &scratch_allocator,
+                  dnn::AlgorithmConfig(profile_algorithm), &profile_result)
               .ok();
       if (cudnn_launch_status) {
         if (profile_result.is_valid()) {
@@ -561,7 +615,7 @@ void LaunchFusedConv2DBiasActivationOp<GPUDevice, T, BiasType, ScaleType>::
           ->ThenFusedConvolveWithAlgorithm(
               conv_input_desc, conv_input_ptr, conv_input_scale, filter_desc,
               filter_ptr, conv_desc, side_input_ptr, side_input_scale,
-              bias_desc, bias_ptr, dnn::ActivationMode::kRelu, output_desc,
+              bias_desc, bias_ptr, dnn_activation_mode, output_desc,
               &output_ptr, &scratch_allocator, algorithm_config,
               /*output_profile_result=*/nullptr)
           .ok();

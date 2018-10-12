@@ -103,11 +103,11 @@ class ResolveSvdfTest : public ::testing::Test {
     // Add the float vector as an attribute to the node.
     (*node->mutable_attr())["dtype"].set_type(tensorflow::DT_FLOAT);
     tensorflow::TensorProto* allocated_tensor = new tensorflow::TensorProto;
-    tensorflow::TensorShapeProto* allocated_tesnor_shape =
+    tensorflow::TensorShapeProto* allocated_tensor_shape =
         new tensorflow::TensorShapeProto;
-    auto tensor_shape_dim0 = allocated_tesnor_shape->add_dim();
+    auto tensor_shape_dim0 = allocated_tensor_shape->add_dim();
     tensor_shape_dim0->set_size(values.size());
-    allocated_tensor->set_allocated_tensor_shape(allocated_tesnor_shape);
+    allocated_tensor->set_allocated_tensor_shape(allocated_tensor_shape);
     allocated_tensor->set_tensor_content(
         string(reinterpret_cast<const char*>(values.data()),
                values.size() * sizeof(float)));
@@ -122,11 +122,11 @@ class ResolveSvdfTest : public ::testing::Test {
     // Add the float vector as an attribute to the node.
     (*node->mutable_attr())["dtype"].set_type(tensorflow::DT_INT32);
     tensorflow::TensorProto* allocated_tensor = new tensorflow::TensorProto;
-    tensorflow::TensorShapeProto* allocated_tesnor_shape =
+    tensorflow::TensorShapeProto* allocated_tensor_shape =
         new tensorflow::TensorShapeProto;
-    auto tensor_shape_dim0 = allocated_tesnor_shape->add_dim();
+    auto tensor_shape_dim0 = allocated_tensor_shape->add_dim();
     tensor_shape_dim0->set_size(values.size());
-    allocated_tensor->set_allocated_tensor_shape(allocated_tesnor_shape);
+    allocated_tensor->set_allocated_tensor_shape(allocated_tensor_shape);
     allocated_tensor->set_tensor_content(
         string(reinterpret_cast<const char*>(values.data()),
                values.size() * sizeof(int)));

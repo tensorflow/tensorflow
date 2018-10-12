@@ -18,7 +18,6 @@ limitations under the License.
 #include <memory>
 #include <queue>
 #include <set>
-#include <string>
 #include <utility>
 #include <vector>
 
@@ -32,9 +31,10 @@ limitations under the License.
 #include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/lib/hash/hash.h"
 #include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/util/util.h"
 
-#include "tensorflow/core/graph/mkl_tfconversion_pass.h"
 #include "tensorflow/core/graph/mkl_graph_util.h"
+#include "tensorflow/core/graph/mkl_tfconversion_pass.h"
 
 namespace tensorflow {
 
@@ -134,7 +134,9 @@ class MklToTfConversionPass : public GraphOptimizationPass {
 // complete picture of inputs and outputs of the nodes in the graphs.
 const OptimizationPassRegistry::Grouping kMklTfConvPassGroup =
     OptimizationPassRegistry::POST_PARTITIONING;
+#ifdef ENABLE_MKL
 REGISTER_OPTIMIZATION(kMklTfConvPassGroup, 2, MklToTfConversionPass);
+#endif  // ENABLE_MKL
 
 Status MklToTfConversionPass::InsertConversionNodeOnEdge(
     std::unique_ptr<Graph>* g, Edge* e) {
@@ -152,12 +154,12 @@ Status MklToTfConversionPass::InsertConversionNodeOnEdge(
   string data_format;
 
   TF_CHECK_OK(GetNodeAttr(src->def(), "T", &src_datatype));
-  bool dst_dtype_found = GetNodeAttr(dst->def(), "T", &dst_datatype) ==
-                          Status::OK();
+  bool dst_dtype_found =
+      GetNodeAttr(dst->def(), "T", &dst_datatype) == Status::OK();
   // We compare source and destination datatypes only when both are found.
   if (dst_dtype_found && (src_datatype != dst_datatype)) {
-    string err_msg = "T attribute of " + src->name() + " and " +
-                      dst->name() + " do not match. Will not insert" +
+    string err_msg = "T attribute of " + src->name() + " and " + dst->name() +
+                     " do not match. Will not insert" +
                      " MklToTf node in such case.";
     return Status(error::Code::INVALID_ARGUMENT, err_msg.c_str());
   }
@@ -176,7 +178,11 @@ Status MklToTfConversionPass::InsertConversionNodeOnEdge(
           .Finalize(&**g, &conversion_node));
 
   CHECK_NOTNULL(conversion_node);
-  if (GetNodeAttr(src->def(), "data_format", &data_format) == Status::OK()) {
+  // TODO(Intel-tf) MklToTf accepts only NHWC or NCHW, but doesn't seem to be
+  // using data_format. This code might be redundant.
+  if (GetNodeAttr(src->def(), "data_format", &data_format) == Status::OK() &&
+      (data_format == ToString(FORMAT_NHWC) ||
+       data_format == ToString(FORMAT_NCHW))) {
     conversion_node->AddAttr("data_format", data_format);
   }
 
@@ -222,7 +228,7 @@ Status MklToTfConversionPass::InsertInputConversionNode(
            BaseType(n->input_type(0)));
 
   // Check ordering of edges
-  for (uint i = 0; i < 4; i++) {
+  for (uint32 i = 0; i < 4; i++) {
     CHECK_EQ((edges[i]->dst_input() == i), true);
   }
 
@@ -255,9 +261,13 @@ Status MklToTfConversionPass::InsertInputConversionNode(
     }
   }
 
+  // TODO(Intel-tf) MklInputConversion accepts only NHWC or NCHW, but doesn't
+  // seem to be using data_format. This code might be redundant.
   string data_format;
   if (GetNodeAttr(edges[0]->src()->def(), "data_format", &data_format) ==
-      Status::OK()) {
+          Status::OK() &&
+      (data_format == ToString(FORMAT_NHWC) ||
+       data_format == ToString(FORMAT_NCHW))) {
     conversion_node->AddAttr("data_format", data_format);
   }
 
@@ -325,12 +335,12 @@ bool MklToTfConversionPass::RunPass(std::unique_ptr<Graph>* g) {
     // may not be Mkl node.
     DataType src_datatype;
     DataType dst_datatype;
-    bool src_is_mkl_op = (GetNodeAttr(src->def(), "T", &src_datatype) ==
-                            Status::OK() &&
-                          IsMklSupportedOp(src->type_string(), src_datatype));
-    bool dst_is_mkl_op = (GetNodeAttr(dst->def(), "T", &dst_datatype) ==
-                            Status::OK() &&
-                          IsMklSupportedOp(dst->type_string(), dst_datatype));
+    bool src_is_mkl_op =
+        (GetNodeAttr(src->def(), "T", &src_datatype) == Status::OK() &&
+         IsMklSupportedOp(src->type_string(), src_datatype));
+    bool dst_is_mkl_op =
+        (GetNodeAttr(dst->def(), "T", &dst_datatype) == Status::OK() &&
+         IsMklSupportedOp(dst->type_string(), dst_datatype));
 
     // Check if src with is Mkl-compliant, while dst is not Mkl-compliant.
     if (src_is_mkl_op && !dst_is_mkl_op) {
@@ -413,6 +423,10 @@ bool InsertMklToTfConversionNodes(std::unique_ptr<Graph>* g) {
 
 Status MklToTfConversionPass::Run(const GraphOptimizationPassOptions& options) {
   if (options.graph == nullptr && options.partition_graphs == nullptr) {
+    return Status::OK();
+  }
+  if (DisableMKL()) {
+    VLOG(2) << "TF-MKL: Disabling MKL";
     return Status::OK();
   }
 

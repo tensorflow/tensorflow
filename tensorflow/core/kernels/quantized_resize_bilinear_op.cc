@@ -697,8 +697,8 @@ class QuantizedResizeBilinearOp : public OpKernel {
     // Return if the output is empty.
     if (st.output->NumElements() == 0) return;
 
-    typename TTypes<T, 4>::ConstTensor image_data = input.tensor<T, 4>();
-    typename TTypes<T, 4>::Tensor output_data = st.output->tensor<T, 4>();
+    typename TTypes<T, 4>::ConstTensor image_data(input.tensor<T, 4>());
+    typename TTypes<T, 4>::Tensor output_data(st.output->tensor<T, 4>());
 
     ResizeBilinear<T>(image_data, st.height_scale, st.width_scale, in_min,
                       in_max, &output_data);

@@ -72,9 +72,9 @@ Status AddForwardLoopCounter(WhileContext* while_ctx, const Scope& scope,
   };
 
   // Body function that adds one to input.
-  BodyGraphBuilderFn body_fn = [while_ctx](const Scope& scope,
-                                           const std::vector<Output>& inputs,
-                                           std::vector<Output>* outputs) {
+  BodyGraphBuilderFn body_fn = [](const Scope& scope,
+                                  const std::vector<Output>& inputs,
+                                  std::vector<Output>* outputs) {
     DCHECK_EQ(inputs.size(), 1);
     outputs->emplace_back(ops::Add(scope, inputs[0], 1));
     return scope.status();

@@ -24,6 +24,7 @@ from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.client import session
 from tensorflow.python.client import timeline
 from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import test_util
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variables
@@ -155,14 +156,13 @@ class TimelineTest(test.TestCase):
     ctf = step_analysis.chrome_trace.format_to_string()
     self._validateTrace(ctf)
     maximums = step_analysis.allocator_maximums
-    self.assertTrue('cpu' in maximums)
+    cpuname = 'mklcpu' if test_util.IsMklEnabled() else 'cpu'
+    self.assertTrue(cpuname in maximums)
     cpu_max = maximums[
-        'cuda_host_bfc'] if 'cuda_host_bfc' in maximums else maximums['cpu']
+        'cuda_host_bfc'] if 'cuda_host_bfc' in maximums else maximums[cpuname]
     # At least num1 + num2, both float32s (4 bytes each)
-    self.assertGreater(cpu_max.num_bytes, 8)
+    self.assertGreaterEqual(cpu_max.num_bytes, 8)
     self.assertGreater(cpu_max.timestamp, 0)
-    self.assertTrue('num1' in cpu_max.tensors or 'num1/read' in cpu_max.tensors)
-    self.assertTrue('num2' in cpu_max.tensors or 'num2/read' in cpu_max.tensors)
 
   def testManyCPUs(self):
     run_options = config_pb2.RunOptions(

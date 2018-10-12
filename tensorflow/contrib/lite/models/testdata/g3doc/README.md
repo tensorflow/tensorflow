@@ -53,7 +53,7 @@ with the corresponding parameters as shown in the figure.
 ### Automatic Speech Recognizer (ASR) Acoustic Model (AM)
 
 The acoustic model for automatic speech recognition is the neural network model
-for matching phonemes to the input autio features. It generates posterior
+for matching phonemes to the input audio features. It generates posterior
 probabilities of phonemes from speech frontend features (log-mel filterbanks).
 It has an input size of 320 (float), an output size of 42 (float), five LSTM
 layers and one fully connected layers with a Softmax activation function, with
@@ -68,12 +68,26 @@ for predicting the probability of a word given previous words in a sentence.
 It generates posterior probabilities of the next word based from a sequence of
 words. The words are encoded as indices in a fixed size dictionary.
 The model has two inputs both of size one (integer): the current word index and
-next word index, an output size of one (float): the log probability. It consits
+next word index, an output size of one (float): the log probability. It consists
 of three embedding layer, three LSTM layers, followed by a multiplication, a
 fully connected layers and an addition.
 The corresponding parameters as shown in the figure.
 
 ![asr_lm_model](asr_lm.svg "ASR LM model")
+
+### Endpointer Model
+
+The endpointer model is the neural network model for predicting end of speech
+in an utterance. More precisely, it generates posterior probabilities of various
+events that allow detection of speech start and end events.
+It has an input size of 40 (float) which are speech frontend features
+(log-mel filterbanks), and an output size of four corresponding to:
+speech, intermediate non-speech, initial non-speech, and final non-speech.
+The model consists of a convolutional layer, followed by a fully-connected
+layer, two LSTM layers, and two additional fully-connected layers.
+The corresponding parameters as shown in the figure.
+![endpointer_model](endpointer.svg "Endpointer model")
+
 
 ## Speech models test input/output generation
 
@@ -113,7 +127,13 @@ test](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/contrib/li
 test](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/contrib/lite/models/speech_tts_model_test.cc)
 
 [ASR AM model
-test](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/contrib/lite/models/speech_terse_am_model_test.cc)
+test](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/contrib/lite/models/speech_asr_am_model_test.cc)
+
+[ASR LM model
+test](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/contrib/lite/models/speech_asr_lm_model_test.cc)
+
+[Endpointer model
+test](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/contrib/lite/models/speech_endpointer_model_test.cc)
 
 ## Android Support
 The models have been tested on Android phones, using the following tests:

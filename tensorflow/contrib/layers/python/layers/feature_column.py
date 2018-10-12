@@ -48,7 +48,7 @@ you should choose depends on (1) the feature type and (2) the model type.
    recommended.
 
      embedded_dept_column = embedding_column(
-       sparse_column_with_keys("department", ["math", "philosphy", ...]),
+       sparse_column_with_keys("department", ["math", "philosophy", ...]),
        dimension=10)
 
 * Wide (aka linear) models (`LinearClassifier`, `LinearRegressor`).
@@ -154,6 +154,11 @@ from tensorflow.python.ops import string_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import deprecation
+from tensorflow.python.util import nest
+
+
+# Imports the core `InputLayer` symbol in contrib during development.
+InputLayer = fc_core.InputLayer  # pylint: disable=invalid-name
 
 
 class _LinearEmbeddingLookupArguments(
@@ -550,27 +555,69 @@ def sparse_column_with_integerized_feature(column_name,
 class _SparseColumnHashed(_SparseColumn):
   """See `sparse_column_with_hash_bucket`."""
 
+  def __new__(cls,
+              column_name,
+              is_integerized=False,
+              bucket_size=None,
+              lookup_config=None,
+              combiner="sum",
+              dtype=dtypes.string,
+              hash_keys=None):
+    if hash_keys is not None:
+      if not isinstance(hash_keys, list) or not hash_keys:
+        raise ValueError("hash_keys must be a non-empty list.")
+      if (any([not isinstance(key_pair, list) for key_pair in hash_keys]) or
+          any([len(key_pair) != 2 for key_pair in hash_keys]) or
+          any([not isinstance(key, int) for key in nest.flatten(hash_keys)])):
+        raise ValueError(
+            "Each element of hash_keys must be a pair of integers.")
+    obj = super(_SparseColumnHashed, cls).__new__(
+        cls,
+        column_name,
+        is_integerized=is_integerized,
+        bucket_size=bucket_size,
+        lookup_config=lookup_config,
+        combiner=combiner,
+        dtype=dtype)
+    obj.hash_keys = hash_keys
+    return obj
+
   def _do_transform(self, input_tensor):
     if self.dtype.is_integer:
       sparse_values = string_ops.as_string(input_tensor.values)
     else:
       sparse_values = input_tensor.values
 
-    sparse_id_values = string_ops.string_to_hash_bucket_fast(
-        sparse_values, self.bucket_size, name="lookup")
-    return sparse_tensor_py.SparseTensor(input_tensor.indices, sparse_id_values,
-                                         input_tensor.dense_shape)
+    if self.hash_keys:
+      result = []
+      for key in self.hash_keys:
+        sparse_id_values = string_ops.string_to_hash_bucket_strong(
+            sparse_values, self.bucket_size, key)
+        result.append(
+            sparse_tensor_py.SparseTensor(input_tensor.indices,
+                                          sparse_id_values,
+                                          input_tensor.dense_shape))
+      return sparse_ops.sparse_concat(axis=1, sp_inputs=result, name="lookup")
+    else:
+      sparse_id_values = string_ops.string_to_hash_bucket_fast(
+          sparse_values, self.bucket_size, name="lookup")
+      return sparse_tensor_py.SparseTensor(
+          input_tensor.indices, sparse_id_values, input_tensor.dense_shape)
 
 
 def sparse_column_with_hash_bucket(column_name,
                                    hash_bucket_size,
                                    combiner="sum",
-                                   dtype=dtypes.string):
+                                   dtype=dtypes.string,
+                                   hash_keys=None):
   """Creates a _SparseColumn with hashed bucket configuration.
 
   Use this when your sparse features are in string or integer format, but you
   don't have a vocab file that maps each value to an integer ID.
   output_id = Hash(input_feature_string) % bucket_size
+
+  When hash_keys is set, multiple integer IDs would be created with each key
+  pair in the `hash_keys`. This is useful to reduce the collision of hashed ids.
 
   Args:
     column_name: A string defining sparse column name.
@@ -584,6 +631,9 @@ def sparse_column_with_hash_bucket(column_name,
         * "sqrtn": do l2 normalization on features in the column
       For more information: `tf.embedding_lookup_sparse`.
     dtype: The type of features. Only string and integer types are supported.
+    hash_keys: The hash keys to use. It is a list of lists of two uint64s. If
+      None, simple and fast hashing algorithm is used. Otherwise, multiple
+      strong hash ids would be produced with each two unit64s in this argument.
 
   Returns:
     A _SparseColumn with hashed bucket configuration
@@ -596,7 +646,8 @@ def sparse_column_with_hash_bucket(column_name,
       column_name,
       bucket_size=hash_bucket_size,
       combiner=combiner,
-      dtype=dtype)
+      dtype=dtype,
+      hash_keys=hash_keys)
 
 
 class _SparseColumnKeys(_SparseColumn):
@@ -747,6 +798,10 @@ class _WeightedSparseColumn(
     config.update(
         {self.weight_column_name: parsing_ops.VarLenFeature(self.dtype)})
     return config
+
+  @property
+  def lookup_config(self):
+    return self.sparse_id_column.lookup_config
 
   @property
   def key(self):
@@ -942,9 +997,14 @@ class _OneHotColumn(
       # Remove (?, -1) index
       weighted_column = sparse_ops.sparse_slice(
           weighted_column,
-          [0, 0],
+          array_ops.zeros_like(weighted_column.dense_shape),
           weighted_column.dense_shape)
-      return sparse_ops.sparse_tensor_to_dense(weighted_column)
+      dense_tensor = sparse_ops.sparse_tensor_to_dense(weighted_column)
+      batch_shape = array_ops.shape(dense_tensor)[:-1]
+      dense_tensor_shape = array_ops.concat(
+          [batch_shape, [self.length]], axis=0)
+      dense_tensor = array_ops.reshape(dense_tensor, dense_tensor_shape)
+      return dense_tensor
 
     dense_id_tensor = sparse_ops.sparse_tensor_to_dense(sparse_id_column,
                                                         default_value=-1)
@@ -1040,9 +1100,9 @@ class _EmbeddingColumn(
       raise ValueError("Must specify both `ckpt_to_load_from` and "
                        "`tensor_name_in_ckpt` or none of them.")
     if initializer is None:
-      logging.warn("The default stddev value of initializer will change from "
-                   "\"1/sqrt(vocab_size)\" to \"1/sqrt(dimension)\" after "
-                   "2017/02/25.")
+      logging.warn("The default stddev value of initializer was changed from "
+                   "\"1/sqrt(vocab_size)\" to \"1/sqrt(dimension)\" in core "
+                   "implementation (tf.feature_column.embedding_column).")
       stddev = 1 / math.sqrt(sparse_id_column.length)
       initializer = init_ops.truncated_normal_initializer(
           mean=0.0, stddev=stddev)
@@ -1441,8 +1501,6 @@ class _ScatteredEmbeddingColumn(
       raise ValueError("initializer must be callable if specified. "
                        "column_name: {}".format(column_name))
     if initializer is None:
-      logging.warn("The default stddev value of initializer will change from "
-                   "\"0.1\" to \"1/sqrt(dimension)\" after 2017/02/25.")
       stddev = 0.1
       initializer = init_ops.truncated_normal_initializer(
           mean=0.0, stddev=stddev)

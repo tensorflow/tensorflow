@@ -17,6 +17,7 @@ limitations under the License.
 
 #define EIGEN_USE_THREADS
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "tensorflow/core/lib/core/blocking_counter.h"
 #include "tensorflow/core/platform/context.h"
 #include "tensorflow/core/platform/denormal.h"
 #include "tensorflow/core/platform/logging.h"
@@ -59,27 +60,24 @@ struct EigenEnvironment {
 
   Task CreateTask(std::function<void()> f) {
     uint64 id = 0;
-    if (port::Tracing::IsActive()) {
-      id = port::Tracing::UniqueId();
-      port::Tracing::RecordEvent(port::Tracing::EventCategory::kScheduleClosure,
-                                 id);
+    if (tracing::EventCollector::IsEnabled()) {
+      id = tracing::GetUniqueArg();
+      tracing::RecordEvent(tracing::EventCategory::kScheduleClosure, id);
     }
     return Task{
         std::unique_ptr<TaskImpl>(new TaskImpl{
-            std::move(f), Context(ContextKind::kThread), id,
+            std::move(f),
+            Context(ContextKind::kThread),
+            id,
         }),
     };
   }
 
   void ExecuteTask(const Task& t) {
     WithContext wc(t.f->context);
-    if (t.f->trace_id != 0) {
-      port::Tracing::ScopedActivity region(
-          port::Tracing::EventCategory::kRunClosure, t.f->trace_id);
-      t.f->f();
-    } else {
-      t.f->f();
-    }
+    tracing::ScopedRegion region(tracing::EventCategory::kRunClosure,
+                                 t.f->trace_id);
+    t.f->f();
   }
 };
 
@@ -121,6 +119,54 @@ ThreadPool::~ThreadPool() {}
 void ThreadPool::Schedule(std::function<void()> fn) {
   CHECK(fn != nullptr);
   impl_->Schedule(std::move(fn));
+}
+
+int ThreadPool::NumShardsUsedByTransformRangeConcurrently(
+    const int64 block_size, const int64 total) {
+  if (block_size <= 0 || total <= 1 || total <= block_size ||
+      NumThreads() == 1) {
+    return 1;
+  }
+  return (total + block_size - 1) / block_size;
+}
+
+// This functionality is similar to parallelFor, except that reasoning about
+// the number of shards used is significantly easier.
+void ThreadPool::TransformRangeConcurrently(
+    const int64 block_size, const int64 total,
+    const std::function<void(int64, int64)>& fn) {
+  const int num_shards_used =
+      NumShardsUsedByTransformRangeConcurrently(block_size, total);
+  if (num_shards_used == 1) {
+    fn(0, total);
+    return;
+  }
+
+  // Adapted from Eigen's parallelFor implementation.
+  BlockingCounter counter(num_shards_used);
+  std::function<void(int64, int64)> handle_range =
+      [=, &handle_range, &counter, &fn](int64 first, int64 last) {
+        while (last - first > block_size) {
+          // Find something near the midpoint which is a multiple of block size.
+          const int64 mid = first + ((last - first) / 2 + block_size - 1) /
+                                        block_size * block_size;
+          Schedule([=, &handle_range]() { handle_range(mid, last); });
+          last = mid;
+        }
+        // Single block or less, execute directly.
+        fn(first, last);
+        counter.DecrementCount();  // The shard is done.
+      };
+  if (num_shards_used <= NumThreads()) {
+    // Avoid a thread hop by running the root of the tree and one block on the
+    // main thread.
+    handle_range(0, total);
+  } else {
+    // Execute the root in the thread pool to avoid running work on more than
+    // numThreads() threads.
+    Schedule([=, &handle_range]() { handle_range(0, total); });
+  }
+  counter.Wait();
 }
 
 void ThreadPool::ParallelFor(int64 total, int64 cost_per_unit,

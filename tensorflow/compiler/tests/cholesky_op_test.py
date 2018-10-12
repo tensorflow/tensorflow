@@ -18,12 +18,10 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import unittest
-
 import numpy as np
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
-from tensorflow.compiler.tests.xla_test import XLATestCase
+from tensorflow.compiler.tests import xla_test
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.ops import array_ops
@@ -32,7 +30,14 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import test
 
 
-class CholeskyOpTest(XLATestCase):
+class CholeskyOpTest(xla_test.XLATestCase):
+
+  # Cholesky defined for float64, float32, complex64, complex128
+  # (https://www.tensorflow.org/api_docs/python/tf/cholesky)
+  @property
+  def float_types(self):
+    return set(super(CholeskyOpTest, self).float_types).intersection(
+        (np.float64, np.float32, np.complex64, np.complex128))
 
   def _verifyCholeskyBase(self, sess, placeholder, x, chol, verification, atol):
     chol_np, verification_np = sess.run([chol, verification], {placeholder: x})
@@ -49,7 +54,7 @@ class CholeskyOpTest(XLATestCase):
 
   def _verifyCholesky(self, x, atol=1e-6):
     # Verify that LL^T == x.
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       placeholder = array_ops.placeholder(
           dtypes.as_dtype(x.dtype), shape=x.shape)
       with self.test_scope():
@@ -96,9 +101,8 @@ class CholeskyOpTest(XLATestCase):
       with self.assertRaises(ValueError):
         linalg_ops.cholesky(tensor3)
 
-  @unittest.skip("Test is slow")
-  def testLarge(self):
-    n = 200
+  def testLarge2000x2000(self):
+    n = 2000
     shape = (n, n)
     data = np.ones(shape).astype(np.float32) / (2.0 * n) + np.diag(
         np.ones(n).astype(np.float32))
@@ -120,7 +124,6 @@ class CholeskyOpTest(XLATestCase):
       v = np.exp(-np.log(condition_number) * np.linspace(0, size, size) / size)
       matrix = np.dot(np.dot(w, np.diag(v)), w.T).astype(dtype)
       self._verifyCholesky(matrix, atol=1e-4)
-
 
 if __name__ == "__main__":
   test.main()

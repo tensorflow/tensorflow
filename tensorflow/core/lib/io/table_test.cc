@@ -98,7 +98,7 @@ class StringSink : public WritableFile {
   Status Flush() override { return Status::OK(); }
   Status Sync() override { return Status::OK(); }
 
-  Status Append(const StringPiece& data) override {
+  Status Append(StringPiece data) override {
     contents_.append(data.data(), data.size());
     return Status::OK();
   }
@@ -147,7 +147,7 @@ class Constructor {
   virtual ~Constructor() {}
 
   void Add(const string& key, const StringPiece& value) {
-    data_[key] = value.ToString();
+    data_[key] = string(value);
   }
 
   // Finish constructing the data structure with all the keys that have
@@ -188,7 +188,7 @@ class BlockConstructor : public Constructor {
       builder.Add(it->first, it->second);
     }
     // Open the block
-    data_ = builder.Finish().ToString();
+    data_ = string(builder.Finish());
     BlockContents contents;
     contents.data = data_;
     contents.cachable = false;
@@ -515,7 +515,7 @@ TEST_F(Harness, Randomized) {
       for (int e = 0; e < num_entries; e++) {
         string v;
         Add(test::RandomKey(&rnd, rnd.Skewed(4)),
-            test::RandomString(&rnd, rnd.Skewed(5), &v).ToString());
+            string(test::RandomString(&rnd, rnd.Skewed(5), &v)));
       }
       Test(&rnd);
     }

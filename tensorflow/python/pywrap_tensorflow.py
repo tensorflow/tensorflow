@@ -60,6 +60,7 @@ try:
   from tensorflow.python.pywrap_tensorflow_internal import __git_version__
   from tensorflow.python.pywrap_tensorflow_internal import __compiler_version__
   from tensorflow.python.pywrap_tensorflow_internal import __cxx11_abi_flag__
+  from tensorflow.python.pywrap_tensorflow_internal import __monolithic_build__
 
   if _use_dlopen_global_flags:
     pywrap_dlopen_global_flags.reset_dlopen_flags()
@@ -67,7 +68,7 @@ try:
     sys.setdlopenflags(_default_dlopen_flags)
 except ImportError:
   msg = """%s\n\nFailed to load the native TensorFlow runtime.\n
-See https://www.tensorflow.org/install/install_sources#common_installation_problems\n
+See https://www.tensorflow.org/install/errors\n
 for some common reasons and solutions.  Include the entire stack trace
 above this error message when asking for help.""" % traceback.format_exc()
   raise ImportError(msg)

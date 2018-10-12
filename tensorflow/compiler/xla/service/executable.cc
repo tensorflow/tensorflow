@@ -15,65 +15,154 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/executable.h"
 
+#include "absl/memory/memory.h"
+#include "absl/strings/str_format.h"
 #include "tensorflow/compiler/xla/legacy_flags/debug_options_flags.h"
 #include "tensorflow/compiler/xla/service/hlo_graph_dumper.h"
 #include "tensorflow/compiler/xla/status.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/core/lib/hash/hash.h"
 #include "tensorflow/core/lib/io/path.h"
-#include "tensorflow/core/lib/strings/stringprintf.h"
+#include "tensorflow/core/lib/strings/proto_serialization.h"
 #include "tensorflow/core/platform/env.h"
+
 
 namespace xla {
 
-StatusOr<std::vector<perftools::gputools::DeviceMemoryBase>>
-Executable::ExecuteOnStreams(
-    tensorflow::gtl::ArraySlice<const ServiceExecutableRunOptions> run_options,
-    tensorflow::gtl::ArraySlice<
-        tensorflow::gtl::ArraySlice<perftools::gputools::DeviceMemoryBase>>
-        arguments) {
+StatusOr<std::vector<ScopedShapedBuffer>> Executable::ExecuteOnStreams(
+    absl::Span<const ServiceExecutableRunOptions> run_options,
+    absl::Span<const absl::Span<const ShapedBuffer* const>> arguments) {
   TF_RET_CHECK(run_options.size() == arguments.size());
 
+  std::vector<ScopedShapedBuffer> return_values;
+  return_values.reserve(run_options.size());
+
   if (run_options.size() == 1) {
-    TF_ASSIGN_OR_RETURN(auto result,
+    TF_ASSIGN_OR_RETURN(auto rv,
                         ExecuteOnStream(&run_options[0], arguments[0],
                                         /*hlo_execution_profile=*/nullptr));
-    return std::vector<perftools::gputools::DeviceMemoryBase>({result});
+    return_values.push_back(std::move(rv));
+    return std::move(return_values);
   }
 
-  std::vector<perftools::gputools::DeviceMemoryBase> return_values(
-      run_options.size());
   for (size_t i = 0; i < run_options.size(); ++i) {
     // We cannot BlockHostUntilDone() on the already-launched executions in case
     // of error, since if the executions communicate, the initially launched
     // executions may never complete if not all executions are running.
-    TF_ASSIGN_OR_RETURN(return_values[i],
+    TF_ASSIGN_OR_RETURN(auto rv,
                         ExecuteAsyncOnStream(&run_options[i], arguments[i]));
+    return_values.push_back(std::move(rv));
   }
   for (const auto& options : run_options) {
     TF_RET_CHECK(options.stream() != nullptr);
-    options.stream()->BlockHostUntilDone();
+    TF_RETURN_IF_ERROR(options.stream()->BlockHostUntilDone());
   }
-  return return_values;
+  return std::move(return_values);
 }
 
-Status Executable::DumpSessionModule() {
-  TF_RET_CHECK(dumping());
+StatusOr<ScopedShapedBuffer> Executable::ExecuteOnStreamWrapper(
+    const ServiceExecutableRunOptions* run_options, ExecutionProfile* profile,
+    absl::Span<const ShapedBuffer* const> arguments) {
+  se::Stream* stream = run_options->stream();
+  std::unique_ptr<se::Timer> timer;
+  if (profile != nullptr) {
+    timer.reset(new se::Timer(stream->parent()));
+    stream->InitTimer(timer.get()).ThenStartTimer(timer.get());
+  }
+
+  VLOG(1) << "enqueueing executable on stream...";
+  // If the profiling flag isn't enabled, we pass nullptr as the profile to
+  // indicate profiling is not requested.
+  std::unique_ptr<HloExecutionProfile> profile_ptr =
+      module_config().debug_options().xla_hlo_profile() &&
+              hlo_profiling_enabled()
+          ? absl::make_unique<HloExecutionProfile>(&hlo_profile_printer_data(),
+                                                   &hlo_profile_index_map())
+          : nullptr;
+
+  StatusOr<ScopedShapedBuffer> return_value =
+      ExecuteOnStream(run_options, arguments, profile_ptr.get());
+  if (!return_value.status().ok()) {
+    if (profile != nullptr) {
+      // Ensure the ThenStartTimer call has completed before we destroy timer.
+      // We already have a failure status to return, so just log this if it
+      // fails.
+      Status status = stream->BlockHostUntilDone();
+      if (!status.ok()) {
+        LOG(ERROR) << "Failed to BlockHostUntilDone: " << status;
+      }
+    }
+    return return_value.status();
+  }
+
+  if (profile != nullptr) {
+    VLOG(1) << "enqueueing 'stop timer' and blocking host until done...";
+    stream->ThenStopTimer(timer.get());
+    TF_RETURN_IF_ERROR(stream->BlockHostUntilDone());
+    VLOG(1) << "done with block-host-until-done";
+
+    // Merge in run-time profile information from execution_profile.
+    //
+    // TODO(b/71713097): This is buggy -- even though the mutex takes care of
+    // C++ level races, some other concurrent ExecuteOnStreamWrapper call could
+    // have rewritten the execution_profile before we get to it.
+    profile->MergeFrom(execution_profile());
+
+    // Overall execution time (in nanoseconds) from the executor timer.
+    if (stream->ok()) {
+      // Don't read timer->Nanoseconds() if the stream isn't OK -- that's
+      // illegal.
+      profile->set_compute_and_transfer_time_ns(timer->Nanoseconds());
+    }
+
+    // TODO(b/28123297): On GPU we end up including transfer time in
+    // the compute time this way. Instead, we should get the correct
+    // value by measuring it. Setting the field here at least lets
+    // benchmarks provide *some* value for GPU computations.
+    //
+    // TODO(b/28447609): The value in compute_and_transfer_time_ns is actually
+    // the compute time without the transfer time, so this way we get the
+    // correct compute time. We should instead have the correct value for
+    // compute_and_transfer_time and set compute_time to the compute time.
+    if (profile->compute_time_ns() == 0) {
+      profile->set_compute_time_ns(profile->compute_and_transfer_time_ns());
+    }
+
+    const int64 executable_size_in_bytes = SizeInBytes();
+    if (executable_size_in_bytes != 0) {
+      profile->set_executable_size_in_bytes(executable_size_in_bytes);
+    }
+  }
+
+  if (profile_ptr != nullptr) {
+    XLA_LOG_LINES(
+        tensorflow::INFO,
+        profile_ptr->ToString(stream->parent()->GetDeviceDescription()));
+    hlo_graph_dumper::MaybeDumpHloModule(module(), "Service::Execute",
+                                         profile_ptr.get());
+  }
+
+  return return_value;
+}
+
+int64 Executable::SizeInBytes() { return -1; }
+
+Status Executable::DumpHloSnapshot() {
+  TF_RET_CHECK(dumping_snapshot());
+  TF_RET_CHECK(hlo_snapshot_->has_hlo() &&
+               hlo_snapshot_->hlo().has_hlo_module());
   const string& directory_path =
       module_config().debug_options().xla_dump_executions_to();
-  VersionedComputationHandle versioned_handle = entry_computation_handle();
-  // This filename does not include the version number because the computation
-  // is only ever executed at one version.
-  string filename = tensorflow::strings::Printf(
-      "computation_%lld__%s__execution_%lld", versioned_handle.handle.handle(),
-      session_module_->entry().name().c_str(), ++execution_count_);
-  return Executable::DumpToDirectory(directory_path, filename,
-                                     *session_module_);
+  const auto& module = hlo_snapshot_->hlo().hlo_module();
+  string filename =
+      absl::StrFormat("computation_%d__%s__execution_%d", module.id(),
+                      module.entry_computation_name(), ++execution_count_);
+  return Executable::DumpToDirectory(directory_path, filename, *hlo_snapshot_);
 }
 
 /* static */ Status Executable::DumpToDirectory(
     const string& directory_path, string filename,
-    const SessionModule& session_module) {
+    const HloSnapshot& hlo_session) {
   tensorflow::Env* env = tensorflow::Env::Default();
   if (!env->IsDirectory(directory_path).ok()) {
     // NB! CreateDir does not work reliably with multiple XLA threads -- two
@@ -86,7 +175,7 @@ Status Executable::DumpSessionModule() {
   string file_path = tensorflow::io::JoinPath(directory_path, filename);
   string result;
   TF_RET_CHECK(
-      tensorflow::SerializeToStringDeterministic(session_module, &result));
+      tensorflow::SerializeToStringDeterministic(hlo_session, &result));
   return tensorflow::WriteStringToFile(tensorflow::Env::Default(), file_path,
                                        result);
 }

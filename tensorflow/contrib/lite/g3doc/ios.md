@@ -1,4 +1,10 @@
-# TensorFlow Lite for iOS
+
+# Build TensorFlow Lite for iOS
+
+This document describes how to build TensorFlow Lite iOS library. If you just
+want to use it, the easiest way is using the TensorFlow Lite CocoaPod releases.
+See [TensorFlow Lite iOS Demo](demo_ios.md) for examples.
+
 
 ## Building
 
@@ -22,11 +28,20 @@ Then install
 brew install automake
 brew install libtool
 ```
+If you get an error where either automake or libtool install but do not link correctly, you'll first need to:
+```bash
+sudo chown -R $(whoami) /usr/local/*
+```
+Then follow the instructions to perform the linking:
+```bash
+brew link automake
+brew link libtool
+```
 
 Then you need to run a shell script to download the dependencies you need:
 
 ```bash
-tensorflow/contrib/lite/download_dependencies.sh
+tensorflow/contrib/lite/tools/make/download_dependencies.sh
 ```
 
 This will fetch copies of libraries and data from the web and install them in
@@ -36,14 +51,18 @@ With all of the dependencies set up, you can now build the library for all five
 supported architectures on iOS:
 
 ```bash
-tensorflow/contrib/lite/build_ios_universal_lib.sh
+tensorflow/contrib/lite/tools/make/build_ios_universal_lib.sh
 ```
 
 Under the hood this uses a makefile in `tensorflow/contrib/lite` to build the
 different versions of the library, followed by a call to `lipo` to bundle them
 into a universal file containing armv7, armv7s, arm64, i386, and x86_64
 architectures. The resulting library is in
-`tensorflow/contrib/lite/gen/lib/libtensorflow-lite.a`.
+`tensorflow/contrib/lite/tools/make/gen/lib/libtensorflow-lite.a`.
+
+If you get an error such as `no such file or directory: 'x86_64'` when running 
+`build_ios_universal_lib.sh`: open Xcode > Preferences > Locations, and ensure 
+a value is selected in the "Command Line Tools" dropdown.
 
 ## Using in your own application
 

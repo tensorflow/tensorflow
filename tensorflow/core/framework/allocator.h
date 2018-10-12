@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_FRAMEWORK_ALLOCATOR_H_
-#define TENSORFLOW_FRAMEWORK_ALLOCATOR_H_
+#ifndef TENSORFLOW_CORE_FRAMEWORK_ALLOCATOR_H_
+#define TENSORFLOW_CORE_FRAMEWORK_ALLOCATOR_H_
 
 #include <stdlib.h>
 
@@ -23,11 +23,13 @@ limitations under the License.
 #include "tensorflow/core/framework/numeric_types.h"
 #include "tensorflow/core/framework/resource_handle.h"
 #include "tensorflow/core/framework/type_traits.h"
-#include "tensorflow/core/framework/variant.h"
 #include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
+
+class Variant;
 
 // Attributes for a single allocation call. Different calls to the same
 // allocator could potentially have different allocation attributes.
@@ -67,13 +69,8 @@ struct AllocatorStats {
 // device memory.
 class Allocator {
  public:
-#ifdef EIGEN_VECTORIZE_AVX512
   // Align to 64 byte boundary.
   static constexpr size_t kAllocatorAlignment = 64;
-#else
-  // Align to 32 byte boundary.
-  static constexpr size_t kAllocatorAlignment = 32;
-#endif
 
   virtual ~Allocator();
 
@@ -156,7 +153,7 @@ class Allocator {
   //
   // REQUIRES: 'ptr!=nullptr' and points to a buffer previously
   // allocated by this allocator.
-  virtual size_t RequestedSize(void* ptr) {
+  virtual size_t RequestedSize(const void* ptr) {
     CHECK(false) << "allocator doesn't track sizes";
     return size_t(0);
   }
@@ -169,7 +166,7 @@ class Allocator {
   //
   // REQUIRES: 'ptr!=nullptr' and points to a buffer previously
   // allocated by this allocator.
-  virtual size_t AllocatedSize(void* ptr) { return RequestedSize(ptr); }
+  virtual size_t AllocatedSize(const void* ptr) { return RequestedSize(ptr); }
 
   // Returns either 0 or an identifier assigned to the buffer at 'ptr'
   // when the buffer was returned by AllocateRaw. If non-zero, the
@@ -180,7 +177,7 @@ class Allocator {
   //
   // REQUIRES: 'ptr!=nullptr' and points to a buffer previously
   // allocated by this allocator.
-  virtual int64 AllocationId(void* ptr) { return 0; }
+  virtual int64 AllocationId(const void* ptr) { return 0; }
 
   // Returns the allocated size of the buffer at 'ptr' if known,
   // otherwise returns 0. This method can be called when
@@ -188,7 +185,7 @@ class Allocator {
   //
   // REQUIRES: 'ptr!=nullptr' and points to a buffer previously
   // allocated by this allocator.
-  virtual size_t AllocatedSizeSlow(void* ptr) {
+  virtual size_t AllocatedSizeSlow(const void* ptr) {
     if (TracksAllocationSizes()) {
       return AllocatedSize(ptr);
     }
@@ -197,6 +194,9 @@ class Allocator {
 
   // Fills in 'stats' with statistics collected by this allocator.
   virtual void GetStats(AllocatorStats* stats) { stats->Clear(); }
+
+  // Clears the internal stats except for the `in_use` field.
+  virtual void ClearStats() {}
 
  private:
   // No constructors or destructors are run for simple types
@@ -230,13 +230,9 @@ class Allocator {
     for (size_t i = 0; i < n; ++p, ++i) p->~ResourceHandle();
   }
 
-  virtual void RunVariantCtor(Variant* p, size_t n) {
-    for (size_t i = 0; i < n; ++p, ++i) new (p) Variant();
-  }
+  virtual void RunVariantCtor(Variant* p, size_t n);
 
-  virtual void RunVariantDtor(Variant* p, size_t n) {
-    for (size_t i = 0; i < n; ++p, ++i) p->~Variant();
-  }
+  virtual void RunVariantDtor(Variant* p, size_t n);
 
   // TODO(jeff): Maybe provide some interface to give info about
   // current allocation state (total number of bytes available for
@@ -309,17 +305,19 @@ class AllocatorWrapper : public Allocator {
     return wrapped_->TracksAllocationSizes();
   }
 
-  size_t RequestedSize(void* ptr) override {
+  size_t RequestedSize(const void* ptr) override {
     return wrapped_->RequestedSize(ptr);
   }
 
-  size_t AllocatedSize(void* ptr) override {
+  size_t AllocatedSize(const void* ptr) override {
     return wrapped_->AllocatedSize(ptr);
   }
 
-  int64 AllocationId(void* ptr) override { return wrapped_->AllocationId(ptr); }
+  int64 AllocationId(const void* ptr) override {
+    return wrapped_->AllocationId(ptr);
+  }
 
-  size_t AllocatedSizeSlow(void* ptr) override {
+  size_t AllocatedSizeSlow(const void* ptr) override {
     return wrapped_->AllocatedSizeSlow(ptr);
   }
 
@@ -354,7 +352,12 @@ struct AllocatorAttributes {
   bool nic_compatible() const { return value & (0x1 << 1); }
   void set_gpu_compatible(bool v) { value |= (static_cast<int>(v) << 2); }
   bool gpu_compatible() const { return value & (0x1 << 2); }
-  void Merge(AllocatorAttributes other) { value |= other.value; }
+  void Merge(AllocatorAttributes other) {
+    value |= other.value;
+    scope_id = (scope_id > 0 && other.scope_id == 0)
+                   ? scope_id
+                   : ((scope_id == 0) ? other.scope_id : 0);
+  }
   // Returns true if the fields set in *this is a subset of or equal to
   // those set in other.
   bool IsEqualOrLessRestrictiveThan(const AllocatorAttributes& other) const {
@@ -366,29 +369,57 @@ struct AllocatorAttributes {
   // upper 8 bits in device-specific ways, and ops implemented for those
   // devices are responsible for setting those 8 bits appropriately.
   uint32 value = 0;
+  // EXPERIMENTAL: If this is greater than zero, then allocation is delegated to
+  // a named special-purpose allocator on the same device.
+  int32 scope_id = 0;
 };
 
-// Returns a trivial implementation of Allocator which uses the system
-// default malloc. The returned allocator is a process singleton.
+// Returns a trivial implementation of Allocator, which is a process singleton.
+// Access through this function is only intended for use in tests and auxiliary
+// processing.  Performance sensitive uses should always obtain allocators from
+// ProcessState.
 Allocator* cpu_allocator();
 
-// If 'enable' is true, the process-wide cpu allocator collects
+// If 'enable' is true, the default CPU allocator implementation will collect
 // AllocatorStats. By default, it's disabled.
 void EnableCPUAllocatorStats(bool enable);
 
-// If 'enable' is true, the process-wide cpu allocator collects full
-// statistics. By default, it's disabled.
+// If 'enable' is true, the default CPU allocator implementation will collect
+// full statistics. By default, it's disabled.
 void EnableCPUAllocatorFullStats(bool enable);
 
-// Abstract interface of an object that does the underlying suballoc/free of
-// memory for a higher-level allocator.
+// An object that does the underlying suballoc/free of memory for a higher-level
+// allocator.  The expectation is that the higher-level allocator is doing some
+// kind of cache or pool management so that it will call SubAllocator::Alloc and
+// Free relatively infrequently, compared to the number of times its own
+// AllocateRaw and Free methods are called.
 class SubAllocator {
  public:
+  // Visitor gets called with a pointer to a memory area and its
+  // size in bytes.  The index value will be numa_node for a CPU
+  // allocator and GPU id for a GPU allocator.
+  typedef std::function<void(void*, int index, size_t)> Visitor;
+
+  SubAllocator(const std::vector<Visitor>& alloc_visitors,
+               const std::vector<Visitor>& free_visitors);
+
   virtual ~SubAllocator() {}
   virtual void* Alloc(size_t alignment, size_t num_bytes) = 0;
   virtual void Free(void* ptr, size_t num_bytes) = 0;
+
+ protected:
+  // Implementation of Alloc() method must call this on newly allocated
+  // value.
+  void VisitAlloc(void* ptr, int index, size_t num_bytes);
+
+  // Implementation of Free() method must call this on value to be
+  // freed immediately before deallocation.
+  void VisitFree(void* ptr, int index, size_t num_bytes);
+
+  const std::vector<Visitor> alloc_visitors_;
+  const std::vector<Visitor> free_visitors_;
 };
 
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_FRAMEWORK_ALLOCATOR_H_
+#endif  // TENSORFLOW_CORE_FRAMEWORK_ALLOCATOR_H_

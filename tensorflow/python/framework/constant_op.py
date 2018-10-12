@@ -14,25 +14,7 @@
 # ==============================================================================
 """Operations that generate constants.
 
-See the @{$python/constant_op$constants guide}.
-
-@@zeros
-@@zeros_like
-@@ones
-@@ones_like
-@@fill
-@@constant
-@@linspace
-@@range
-@@random_normal
-@@truncated_normal
-@@random_uniform
-@@random_shuffle
-@@random_crop
-@@multinomial
-@@random_gamma
-@@random_poisson
-@@set_random_seed
+See the [constants guide](https://tensorflow.org/api_guides/python/constant_op).
 """
 
 # Must be separate from array_ops to avoid a cyclic dependency.
@@ -45,12 +27,14 @@ import numpy as np
 import six
 
 from tensorflow.core.framework import attr_value_pb2
+from tensorflow.core.framework import types_pb2
 from tensorflow.python.eager import context
 from tensorflow.python.eager import execute
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
+from tensorflow.python.util.tf_export import tf_export
 
 
 def _eager_reshape(tensor, shape, ctx):
@@ -58,7 +42,6 @@ def _eager_reshape(tensor, shape, ctx):
   attr_t = tensor._datatype_enum()  # pylint: disable=protected-access
   attr_tshape, (shape,) = execute.args_to_matching_eager(
       [shape], ctx, dtypes.int32)
-  attr_tshape = attr_tshape
   inputs_flat = [tensor, shape]
   attrs = ("T", attr_t, "Tshape", attr_tshape)
   result, = execute.execute(
@@ -71,7 +54,7 @@ def _eager_fill(dims, value, ctx):
   attr_t = value.dtype.as_datatype_enum
   dims = convert_to_eager_tensor(dims, ctx, dtypes.int32)
   inputs_flat = [dims, value]
-  attrs = ("T", attr_t)
+  attrs = ("T", attr_t, "index_type", types_pb2.DT_INT32)
   result, = execute.execute(
       b"Fill", 1, inputs=inputs_flat, attrs=attrs, ctx=ctx)
   return result
@@ -122,7 +105,8 @@ def convert_to_eager_tensor(value, ctx, dtype=None):
     scalar_cache = ctx.scalar_cache()
     tensor = scalar_cache.get(cache_key, None)
     if tensor is not None:
-      return tensor
+      return ops.EagerTensor(
+          value, context=handle, device=device, dtype=dtype, other_value=tensor)
     t = ops.EagerTensor(value, context=handle, device=device, dtype=dtype)
     scalar_cache[cache_key] = t
     return t
@@ -130,6 +114,7 @@ def convert_to_eager_tensor(value, ctx, dtype=None):
     return ops.EagerTensor(value, context=handle, device=device, dtype=dtype)
 
 
+@tf_export("constant")
 def constant(value, dtype=None, shape=None, name="Const", verify_shape=False):
   """Creates a constant tensor.
 
@@ -161,6 +146,17 @@ def constant(value, dtype=None, shape=None, name="Const", verify_shape=False):
                                                [-1. -1. -1.]]
   ```
 
+  `tf.constant` differs from `tf.fill` in a few ways:
+
+  *   `tf.constant` supports arbitrary constants, not just uniform scalar
+      Tensors like `tf.fill`.
+  *   `tf.constant` creates a `Const` node in the computation graph with the
+      exact value at graph construction time. On the other hand, `tf.fill`
+      creates an Op in the graph that is expanded at runtime.
+  *   Because `tf.constant` only embeds constant values in the graph, it does
+      not support dynamic shapes based on other runtime Tensors, whereas
+      `tf.fill` does.
+
   Args:
     value:          A constant value (or list) of output type `dtype`.
 
@@ -179,7 +175,7 @@ def constant(value, dtype=None, shape=None, name="Const", verify_shape=False):
     TypeError: if shape is incorrectly specified or unsupported.
   """
   ctx = context.context()
-  if not ctx.in_graph_mode():
+  if ctx.executing_eagerly():
     t = convert_to_eager_tensor(value, ctx, dtype)
     if shape is None:
       return t

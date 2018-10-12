@@ -26,7 +26,7 @@ import sys
 
 from google.protobuf import text_format
 
-from tensorflow.contrib import receptive_field
+from tensorflow.contrib.receptive_field import receptive_field_api as receptive_field
 from tensorflow.core.framework import graph_pb2
 from tensorflow.python.platform import app
 from tensorflow.python.platform import gfile

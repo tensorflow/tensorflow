@@ -18,7 +18,7 @@ limitations under the License.
 
 #include <memory>
 
-#include "tensorflow/compiler/xla/literal_util.h"
+#include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
@@ -41,8 +41,7 @@ class PackedLiteralReader {
   //
   // Layout is optional. If it is not provided, no layout is set on the literal
   // that is produced.
-  StatusOr<std::unique_ptr<Literal>> Read(const Shape& shape,
-                                          const Layout* layout = nullptr);
+  StatusOr<Literal> Read(const Shape& shape, const Layout* layout = nullptr);
 
   // Returns whether the input file has been fully exhausted; i.e. all available
   // packed literals have been read and we're at the end of the file.

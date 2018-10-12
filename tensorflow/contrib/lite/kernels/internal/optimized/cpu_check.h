@@ -12,8 +12,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef TENSORFLOW_CONTRIB_LITE_KERNELS_INTERNAL_OPTIMIZED_CPU_CHECK_
-#define TENSORFLOW_CONTRIB_LITE_KERNELS_INTERNAL_OPTIMIZED_CPU_CHECK_
+#ifndef TENSORFLOW_CONTRIB_LITE_KERNELS_INTERNAL_OPTIMIZED_CPU_CHECK_H_
+#define TENSORFLOW_CONTRIB_LITE_KERNELS_INTERNAL_OPTIMIZED_CPU_CHECK_H_
 
 namespace tflite {
 
@@ -34,17 +34,13 @@ inline bool TestCPUFeatureNeon() {
 #endif  // __aarch64__
 }
 
-#elif __ARM_NEON
+#elif defined USE_NEON || defined __ARM_NEON
 
-inline bool TestCPUFeatureNeon() {
-  return true;
-}
+inline bool TestCPUFeatureNeon() { return true; }
 
 #else
 
-inline bool TestCPUFeatureNeon() {
-  return false;
-}
+inline bool TestCPUFeatureNeon() { return false; }
 
 #endif
 
@@ -62,4 +58,4 @@ inline bool TestCPUFeatureNeon() {
                        : Portable##funcname(__VA_ARGS__)
 #endif
 
-#endif  // TENSORFLOW_CONTRIB_LITE_KERNELS_INTERNAL_OPTIMIZED_CPU_CHECK_
+#endif  // TENSORFLOW_CONTRIB_LITE_KERNELS_INTERNAL_OPTIMIZED_CPU_CHECK_H_

@@ -130,6 +130,107 @@ adb shell '/data/local/tmp/benchmark \
 
 For more details, see the [benchmark documentation](../../tools/benchmark).
 
+## CUDA support for Tegra devices running Android (Nvidia Shield TV, etc)
+
+With the release of TF 1.6 and JetPack for Android 3.2 (currently pending), you can now build a version of TensorFlow for compatible devices according to the following instructions which will receive the full benefits of GPU acceleration.
+
+#### Environment setup:
+
+First, download and install JetPack for Android version 3.2 or greater from [Nvidia](https://developers.nvidia.com). Note that as of the TF 1.6 release the JetPack for Android 3.2 release is still pending, and regular JetPack for L4T will not work.
+
+```bash
+git clone https://github.com/tensorflow/tensorflow.git
+cd tensorflow
+JETPACK=$HOME/JetPack_Android_3.2
+TEGRA_LIBS="$JETPACK/cuDNN/aarch64/cuda/lib64/libcudnn.so  $JETPACK/cuda-9.0/extras/CUPTI/lib64/libcupti.so $JETPACK/cuda/targets/aarch64-linux-androideabi/lib64/libcufft.so"
+```
+
+#### Building all CUDA-enabled native binaries:
+This will build CUDA-enabled versions of libtensorflow_inference.so and the benchmark binary. (libtensorflow_demo.so will also be built incidentally, but it does not support CUDA)
+
+```bash
+NDK_ROOT=$JETPACK/android-ndk-r13b
+CC_PREFIX=ccache tensorflow/contrib/makefile/build_all_android.sh -s tensorflow/contrib/makefile/sub_makefiles/android/Makefile.in -t "libtensorflow_inference.so libtensorflow_demo.so all" -a tegra
+```
+(add -T on subsequent builds to skip protobuf downloading/building)
+
+
+#### Testing the CUDA-enabled benchmark via adb:
+Build binaries first as above, then run:
+
+```bash
+adb shell mkdir -p /data/local/tmp/lib64
+adb push $TEGRA_LIBS /data/local/tmp/lib64
+adb push tensorflow/contrib/makefile/gen/bin/android_arm64-v8a/benchmark /data/local/tmp
+wget  https://ci.tensorflow.org/view/Nightly/job/nightly-android/lastSuccessfulBuild/artifact/out/tensorflow_demo.apk
+unzip tensorflow_demo.apk -d /tmp/tensorflow_demo
+adb push /tmp/tensorflow_demo/assets/*.pb /data/local/tmp
+adb shell "LD_LIBRARY_PATH=/data/local/tmp/lib64 /data/local/tmp/benchmark --graph=/data/local/tmp/tensorflow_inception_graph.pb"
+```
+
+#### Building the CUDA-enabled TensorFlow AAR with Bazel:
+Build the native binaries first as above. Then, build the aar and package the native libs by executing the following:
+```bash
+mkdir -p /tmp/tf/jni/arm64-v8a
+cp tensorflow/contrib/makefile/gen/lib/android_tegra/libtensorflow_*.so /tmp/tf/jni/arm64-v8a/
+cp $TEGRA_LIBS /tmp/tf/jni/arm64-v8a
+bazel build //tensorflow/contrib/android:android_tensorflow_inference_java.aar
+cp bazel-bin/tensorflow/contrib/android/android_tensorflow_inference_java.aar /tmp/tf/tensorflow.aar
+cd /tmp/tf
+chmod +w tensorflow.aar
+zip -ur tensorflow.aar $(find jni -name *.so)
+```
+
+#### Building the CUDA-enabled TensorFlow Android demo with Bazel:
+Build binaries first as above, then edit tensorflow/examples/android/BUILD and replace: 
+```
+    srcs = [
+       ":libtensorflow_demo.so",
+       "//tensorflow/contrib/android:libtensorflow_inference.so",
+    ],
+```
+with:
+```
+srcs = glob(["libs/arm64-v8a/*.so"]),
+```
+
+If you are building for Android TV (Shield TV devices), replace "portrait" with "landscape" for android:screenOrientation in all four activities in tensorflow/examples/android/AndroidManifest.xml
+
+Then run:
+```bash
+# Create dir for native libs
+mkdir -p tensorflow/examples/android/libs/arm64-v8a
+
+# Copy JetPack libs
+cp $TEGRA_LIBS  tensorflow/examples/android/libs/arm64-v8a
+
+# Copy native TensorFlow libraries
+cp tensorflow/contrib/makefile/gen/lib/android_arm64-v8a/libtensorflow_*.so tensorflow/examples/android/libs/arm64-v8a/
+
+# Build APK
+bazel build -c opt --fat_apk_cpu=arm64-v8a tensorflow/android:tensorflow_demo
+
+# Install
+adb install -r -f bazel-bin/tensorflow/examples/android/tensorflow_demo.apk 
+```
+
+#### Building the CUDA-enabled Android demo with gradle/Android Studio:
+
+Add tensorflow/examples/android as an Android project in Android Studio as normal.
+
+Edit build.gradle and:
+* set nativeBuildSystem = 'makefile'
+* set cpuType = 'arm64-v8a'
+* in "buildNativeMake", replace cpuType with 'tegra' (optional speedups like -T and ccache also work) 
+* set the environment "NDK_ROOT" var to $JETPACK/android-ndk-r13b
+
+Click "build apk" to build.
+
+Install:
+```bash
+adb install -r -f tensorflow/examples/android/gradleBuild/outputs/apk/debug/android-debug.apk
+```
+
 ## iOS
 
 _Note: To use this library in an iOS application, see related instructions in
@@ -261,6 +362,14 @@ section of the build settings to pull in the global constructors that are used
 to register ops and kernels.
 
 #### Optimization
+
+The `build_all_ios.sh` script can take optional command-line arguments to
+selectively register only for the operators used in your graph.
+
+```bash
+tensorflow/contrib/makefile/build_all_ios.sh -a arm64 -g $HOME/graphs/inception/tensorflow_inception_graph.pb
+```
+Please note this is an aggressive optimization of the operators and the resulting library may not work with other graphs but will reduce the size of the final library.
 
 The `compile_ios_tensorflow.sh` script can take optional command-line arguments.
 The first argument will be passed as a C++ optimization flag and defaults to

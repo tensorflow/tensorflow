@@ -19,6 +19,7 @@ form square matrices, with the same constraints as the single matrix
 SelfAdjointEig.
 
 The result is a [..., M+1, M] matrix with [..., 0,:] containing the
-eigenvalues, and subsequent [...,1:, :] containing the eigenvectors.
+eigenvalues, and subsequent [...,1:, :] containing the eigenvectors. The eigenvalues
+are sorted in non-decreasing order.
 END
 }

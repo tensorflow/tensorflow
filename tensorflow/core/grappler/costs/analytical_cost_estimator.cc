@@ -18,6 +18,7 @@ limitations under the License.
 #include <limits>
 #include <unordered_map>
 
+#include "tensorflow/core/framework/tensor.pb.h"  // NOLINT
 #include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/graph/types.h"
 #include "tensorflow/core/grappler/costs/graph_properties.h"
@@ -34,13 +35,15 @@ AnalyticalCostEstimator::AnalyticalCostEstimator(Cluster* cluster,
                                                  bool use_static_shapes)
     : cluster_(cluster),
       node_estimator_(new OpLevelCostEstimator()),
+      node_manager_(VirtualScheduler::ReadyNodeManagerFactory("FirstReady")),
       use_static_shapes_(use_static_shapes) {}
 
 AnalyticalCostEstimator::AnalyticalCostEstimator(
     Cluster* cluster, OpLevelCostEstimator* node_estimator,
-    bool use_static_shapes)
+    ReadyNodeManager* node_manager, bool use_static_shapes)
     : cluster_(cluster),
       node_estimator_(node_estimator),
+      node_manager_(node_manager),
       use_static_shapes_(use_static_shapes) {}
 
 Status AnalyticalCostEstimator::Initialize(const GrapplerItem& item) {
@@ -61,7 +64,9 @@ Status AnalyticalCostEstimator::PredictCosts(const GraphDef& optimized_graph,
     }
   }
   std::vector<string> inaccurate_nodes;
-  VirtualScheduler scheduler(&item, use_static_shapes_, cluster_);
+  int nodes_executed = 0;
+  VirtualScheduler scheduler(&item, use_static_shapes_, cluster_,
+                             node_manager_.get());
   auto status = scheduler.Init();
   if (!status.ok()) {
     costs->execution_time = Costs::Duration::max();
@@ -70,6 +75,7 @@ Status AnalyticalCostEstimator::PredictCosts(const GraphDef& optimized_graph,
 
   Costs node_costs;
   do {
+    ++nodes_executed;
     OpContext op_context = scheduler.GetCurrNode();
     const string& op_name = op_context.name;
 
@@ -93,6 +99,7 @@ Status AnalyticalCostEstimator::PredictCosts(const GraphDef& optimized_graph,
           node_costs.compute_time.asMicroSeconds().count());
       cost_node->set_memory_time(
           node_costs.memory_time.asMicroSeconds().count());
+      cost_node->set_inaccurate(node_costs.inaccurate);
       for (const auto& output : op_context.op_info.outputs()) {
         auto output_info = cost_node->add_output_info();
         output_info->set_dtype(output.dtype());
@@ -104,8 +111,7 @@ Status AnalyticalCostEstimator::PredictCosts(const GraphDef& optimized_graph,
 
   RunMetadata run_metadata;
   *costs = scheduler.Summary(&run_metadata);
-  VLOG(1) << inaccurate_nodes.size() << " out of "
-          << optimized_graph.node_size()
+  VLOG(1) << inaccurate_nodes.size() << " out of " << nodes_executed
           << " nodes have inaccurate time estimation";
   if (VLOG_IS_ON(3)) {
     for (const auto& node : inaccurate_nodes) {

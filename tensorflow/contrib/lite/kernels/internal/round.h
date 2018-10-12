@@ -12,8 +12,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef THIRD_PARTY_TENSORFLOW_CONTRIB_LITE_KERNELS_INTERNAL_ROUND_H_
-#define THIRD_PARTY_TENSORFLOW_CONTRIB_LITE_KERNELS_INTERNAL_ROUND_H_
+#ifndef TENSORFLOW_CONTRIB_LITE_KERNELS_INTERNAL_ROUND_H_
+#define TENSORFLOW_CONTRIB_LITE_KERNELS_INTERNAL_ROUND_H_
 
 #include <cmath>
 
@@ -36,4 +36,4 @@ inline T TfLiteRound(const T x) {
 
 }  // namespace tflite
 
-#endif  // THIRD_PARTY_TENSORFLOW_CONTRIB_LITE_KERNELS_INTERNAL_ROUND_H_
+#endif  // TENSORFLOW_CONTRIB_LITE_KERNELS_INTERNAL_ROUND_H_

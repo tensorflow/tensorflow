@@ -26,6 +26,7 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops.distributions import exponential
 from tensorflow.python.ops.distributions import transformed_distribution
 from tensorflow.python.ops.linalg import linalg
+from tensorflow.python.util import deprecation
 
 __all__ = ["VectorExponentialLinearOperator"]
 
@@ -107,7 +108,8 @@ class VectorExponentialLinearOperator(
   #### Examples
 
   ```python
-  tfd = tf.contrib.distributions
+  import tensorflow_probability as tfp
+  tfd = tfp.distributions
 
   # Initialize a single 2-variate VectorExponential, supported on
   # {(x, y) in R^2 : x > 0, y > 0}.
@@ -138,6 +140,14 @@ class VectorExponentialLinearOperator(
 
   """
 
+  @deprecation.deprecated(
+      "2018-10-01",
+      "The TensorFlow Distributions library has moved to "
+      "TensorFlow Probability "
+      "(https://github.com/tensorflow/probability). You "
+      "should update all references to use `tfp.distributions` "
+      "instead of `tf.contrib.distributions`.",
+      warn_once=True)
   def __init__(self,
                loc=None,
                scale=None,
@@ -175,13 +185,13 @@ class VectorExponentialLinearOperator(
       ValueError: if `scale` is unspecified.
       TypeError: if not `scale.dtype.is_floating`
     """
-    parameters = locals()
+    parameters = dict(locals())
     if scale is None:
       raise ValueError("Missing required `scale` parameter.")
     if not scale.dtype.is_floating:
       raise TypeError("`scale` parameter must have floating-point dtype.")
 
-    with ops.name_scope(name, values=[loc] + scale.graph_parents):
+    with ops.name_scope(name, values=[loc] + scale.graph_parents) as name:
       # Since expand_dims doesn't preserve constant-ness, we obtain the
       # non-dynamic value if possible.
       loc = ops.convert_to_tensor(loc, name="loc") if loc is not None else loc

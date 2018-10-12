@@ -33,7 +33,7 @@ from tensorflow.python.ops import gradient_checker
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import variables
-from tensorflow.python.ops.gen_array_ops import _broadcast_gradient_args
+from tensorflow.python.ops.gen_array_ops import broadcast_gradient_args
 from tensorflow.python.platform import test
 
 
@@ -157,7 +157,7 @@ class BroadcastSimpleTest(test.TestCase):
 
   def _GetGradientArgs(self, xs, ys):
     with self.test_session(use_gpu=True) as sess:
-      return sess.run(_broadcast_gradient_args(xs, ys))
+      return sess.run(broadcast_gradient_args(xs, ys))
 
   def testBroadcast(self):
     r0, r1 = self._GetGradientArgs([2, 3, 5], [1])
@@ -174,7 +174,7 @@ class BroadcastSimpleTest(test.TestCase):
                         numeric_gradient_type=None):
     z = np_func(x, y)
     zs = list(z.shape)
-    with self.test_session():
+    with self.cached_session():
       inx = ops.convert_to_tensor(x)
       iny = ops.convert_to_tensor(y)
       if x.dtype in (np.float32, np.float64):
@@ -195,7 +195,7 @@ class BroadcastSimpleTest(test.TestCase):
                         numeric_gradient_type=None):
     z = np_func(x, y)
     zs = list(z.shape)
-    with self.test_session():
+    with self.cached_session():
       inx = ops.convert_to_tensor(x)
       iny = ops.convert_to_tensor(y)
       if x.dtype in (np.float32, np.float64):
@@ -260,7 +260,7 @@ class GpuMultiSessionMemoryTest(test_util.TensorFlowTestCase):
     threads = []
     results = []
     for _ in xrange(n_threads):
-      session = self.test_session(graph=ops.Graph(), use_gpu=True)
+      session = self.session(graph=ops.Graph(), use_gpu=True)
       results.append(set())
       args = (session, results[-1])
       threads.append(threading.Thread(target=self._run_session, args=args))

@@ -12,7 +12,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Wrapper for a Session-like object that handles threads and recovery.
+"""Wrapper for a Session-like object that handles threads and recovery (deprecated).
+
+These are deprecated aliases for classes and functions in `tf.train`. Please use
+those directly.
 
 Based on an original design of Illia Polosukhin.
 """

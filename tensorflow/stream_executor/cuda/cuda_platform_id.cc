@@ -15,12 +15,10 @@ limitations under the License.
 
 #include "tensorflow/stream_executor/cuda/cuda_platform_id.h"
 
-namespace perftools {
-namespace gputools {
+namespace stream_executor {
 namespace cuda {
 
 PLATFORM_DEFINE_ID(kCudaPlatformId);
 
 }  // namespace cuda
-}  // namespace gputools
-}  // namespace perftools
+}  // namespace stream_executor

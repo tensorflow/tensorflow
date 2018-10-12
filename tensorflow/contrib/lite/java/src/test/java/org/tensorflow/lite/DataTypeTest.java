@@ -26,9 +26,16 @@ public final class DataTypeTest {
 
   @Test
   public void testElemByteSize() {
-    assertThat(DataType.FLOAT32.elemByteSize()).isEqualTo(4);
-    assertThat(DataType.INT32.elemByteSize()).isEqualTo(4);
-    assertThat(DataType.UINT8.elemByteSize()).isEqualTo(1);
-    assertThat(DataType.INT64.elemByteSize()).isEqualTo(8);
+    assertThat(DataType.FLOAT32.byteSize()).isEqualTo(4);
+    assertThat(DataType.INT32.byteSize()).isEqualTo(4);
+    assertThat(DataType.UINT8.byteSize()).isEqualTo(1);
+    assertThat(DataType.INT64.byteSize()).isEqualTo(8);
+  }
+
+  @Test
+  public void testConversion() {
+    for (DataType dataType : DataType.values()) {
+      assertThat(DataType.fromC(dataType.c())).isEqualTo(dataType);
+    }
   }
 }

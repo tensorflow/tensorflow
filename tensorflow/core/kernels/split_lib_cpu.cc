@@ -24,12 +24,12 @@ limitations under the License.
 namespace tensorflow {
 namespace functor {
 
-template <typename T>
-void Split<Eigen::ThreadPoolDevice, T>::operator()(
-    const Eigen::ThreadPoolDevice& d, typename TTypes<T, 3>::Tensor output,
-    typename TTypes<T, 3>::ConstTensor input,
-    const Eigen::DSizes<Eigen::DenseIndex, 3>& slice_indices,
-    const Eigen::DSizes<Eigen::DenseIndex, 3>& slice_sizes) {
+template <typename T, int NDims>
+void Split<Eigen::ThreadPoolDevice, T, NDims>::operator()(
+    const Eigen::ThreadPoolDevice& d, typename TTypes<T, NDims>::Tensor output,
+    typename TTypes<T, NDims>::ConstTensor input,
+    const Eigen::DSizes<Eigen::DenseIndex, NDims>& slice_indices,
+    const Eigen::DSizes<Eigen::DenseIndex, NDims>& slice_sizes) {
   if (output.size() < 131072) {
     output = input.slice(slice_indices, slice_sizes);
   } else {
@@ -37,26 +37,29 @@ void Split<Eigen::ThreadPoolDevice, T>::operator()(
   }
 }
 
-#define DEFINE_CPU_KERNELS(T) template struct Split<Eigen::ThreadPoolDevice, T>;
+#define DEFINE_CPU_KERNELS(T)                           \
+  template struct Split<Eigen::ThreadPoolDevice, T, 2>; \
+  template struct Split<Eigen::ThreadPoolDevice, T, 3>;
 
 TF_CALL_ALL_TYPES(DEFINE_CPU_KERNELS)
 DEFINE_CPU_KERNELS(quint8)
-DEFINE_CPU_KERNELS(bfloat16)
 
 #ifdef TENSORFLOW_USE_SYCL
-template <typename T>
-void Split<Eigen::SyclDevice, T>::operator()(
-    const Eigen::SyclDevice& d, typename TTypes<T, 3>::Tensor output,
-    typename TTypes<T, 3>::ConstTensor input,
-    const Eigen::DSizes<Eigen::DenseIndex, 3>& slice_indices,
-    const Eigen::DSizes<Eigen::DenseIndex, 3>& slice_sizes) {
-    output.device(d) = input.slice(slice_indices, slice_sizes);
+template <typename T, int NDims>
+void Split<Eigen::SyclDevice, T, NDims>::operator()(
+    const Eigen::SyclDevice& d, typename TTypes<T, NDims>::Tensor output,
+    typename TTypes<T, NDims>::ConstTensor input,
+    const Eigen::DSizes<Eigen::DenseIndex, NDims>& slice_indices,
+    const Eigen::DSizes<Eigen::DenseIndex, NDims>& slice_sizes) {
+  output.device(d) = input.slice(slice_indices, slice_sizes);
 }
 
-#define DEFINE_SYCL_KERNELS(T) template struct Split<Eigen::SyclDevice, T>;
+#define DEFINE_SYCL_KERNELS(T)                    \
+  template struct Split<Eigen::SyclDevice, T, 2>; \
+  template struct Split<Eigen::SyclDevice, T, 3>;
 
 TF_CALL_GPU_NUMBER_TYPES_NO_HALF(DEFINE_SYCL_KERNELS);
-#endif // TENSORFLOW_USE_SYCL
+#endif  // TENSORFLOW_USE_SYCL
 
 }  // namespace functor
 }  // namespace tensorflow

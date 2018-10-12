@@ -47,7 +47,7 @@ def _recursive_apply(tensors, apply_fn):
   tensors_type = type(tensors)
   if tensors_type is ops.Tensor:
     return apply_fn(tensors)
-  elif tensors_type is variables.Variable:
+  elif isinstance(tensors, variables.Variable):
     return apply_fn(tensors.value())
   elif isinstance(tensors, (list, tuple)):
     tensors = [_recursive_apply(t, apply_fn) for t in tensors]
@@ -137,11 +137,13 @@ def _subscribe_new(tensor, side_effects, control_cache):
     # are subscribed at the same time, we remove the control dependency from
     # the original op only once and we add the dependencies to all the
     # new identities.
+    new_control_inputs = consumer_op.control_inputs
+    if tensor.op in new_control_inputs:
+      new_control_inputs.remove(tensor.op)
+    new_control_inputs.append(out.op)
     # pylint: disable=protected-access
-    if tensor.op in consumer_op._control_inputs:
-      consumer_op._control_inputs.remove(tensor.op)
-    consumer_op._control_inputs.append(out.op)
-    consumer_op._recompute_node_def()
+    consumer_op._remove_all_control_inputs()
+    consumer_op._add_control_inputs(new_control_inputs)
     # pylint: enable=protected-access
   return out
 
@@ -167,12 +169,8 @@ def _subscribe_extend(tensor, side_effects):
     for s in side_effects:
       outs += s(source_tensor)
 
-  for out in outs:
-    out_type = type(out)
-    if out_type is ops.Tensor:
-      out = out.op
-    tensor.op._control_inputs.append(out)  # pylint: disable=protected-access
-  tensor.op._recompute_node_def()  # pylint: disable=protected-access
+  out_ops = [out.op if isinstance(out, ops.Tensor) else out for out in outs]
+  tensor.op._add_control_inputs(out_ops)  # pylint: disable=protected-access
 
   return tensor
 

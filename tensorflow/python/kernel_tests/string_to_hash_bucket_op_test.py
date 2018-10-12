@@ -27,7 +27,7 @@ from tensorflow.python.platform import test
 class StringToHashBucketOpTest(test.TestCase):
 
   def testStringToOneHashBucketFast(self):
-    with self.test_session():
+    with self.cached_session():
       input_string = array_ops.placeholder(dtypes.string)
       output = string_ops.string_to_hash_bucket_fast(input_string, 1)
       result = output.eval(feed_dict={input_string: ['a', 'b', 'c']})
@@ -35,7 +35,7 @@ class StringToHashBucketOpTest(test.TestCase):
       self.assertAllEqual([0, 0, 0], result)
 
   def testStringToHashBucketsFast(self):
-    with self.test_session():
+    with self.cached_session():
       input_string = array_ops.placeholder(dtypes.string)
       output = string_ops.string_to_hash_bucket_fast(input_string, 10)
       result = output.eval(feed_dict={input_string: ['a', 'b', 'c', 'd']})
@@ -47,7 +47,7 @@ class StringToHashBucketOpTest(test.TestCase):
       self.assertAllEqual([9, 2, 2, 5], result)
 
   def testStringToOneHashBucketLegacyHash(self):
-    with self.test_session():
+    with self.cached_session():
       input_string = array_ops.placeholder(dtypes.string)
       output = string_ops.string_to_hash_bucket(input_string, 1)
       result = output.eval(feed_dict={input_string: ['a', 'b', 'c']})
@@ -55,7 +55,7 @@ class StringToHashBucketOpTest(test.TestCase):
       self.assertAllEqual([0, 0, 0], result)
 
   def testStringToHashBucketsLegacyHash(self):
-    with self.test_session():
+    with self.cached_session():
       input_string = array_ops.placeholder(dtypes.string)
       output = string_ops.string_to_hash_bucket(input_string, 10)
       result = output.eval(feed_dict={input_string: ['a', 'b', 'c']})
@@ -66,14 +66,14 @@ class StringToHashBucketOpTest(test.TestCase):
       self.assertAllEqual([8, 0, 7], result)
 
   def testStringToOneHashBucketStrongOneHashBucket(self):
-    with self.test_session():
+    with self.cached_session():
       input_string = constant_op.constant(['a', 'b', 'c'])
       output = string_ops.string_to_hash_bucket_strong(
           input_string, 1, key=[123, 345])
       self.assertAllEqual([0, 0, 0], output.eval())
 
   def testStringToHashBucketsStrong(self):
-    with self.test_session():
+    with self.cached_session():
       input_string = constant_op.constant(['a', 'b', 'c'])
       output = string_ops.string_to_hash_bucket_strong(
           input_string, 10, key=[98765, 132])
@@ -84,7 +84,7 @@ class StringToHashBucketOpTest(test.TestCase):
       self.assertAllEqual([4, 2, 8], output.eval())
 
   def testStringToHashBucketsStrongInvalidKey(self):
-    with self.test_session():
+    with self.cached_session():
       input_string = constant_op.constant(['a', 'b', 'c'])
       with self.assertRaisesOpError('Key must have 2 elements'):
         string_ops.string_to_hash_bucket_strong(

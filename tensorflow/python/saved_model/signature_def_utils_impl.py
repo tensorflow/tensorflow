@@ -21,13 +21,17 @@ from __future__ import print_function
 
 from tensorflow.core.framework import types_pb2
 from tensorflow.core.protobuf import meta_graph_pb2
-from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
-from tensorflow.python.framework import tensor_shape
 from tensorflow.python.saved_model import signature_constants
 from tensorflow.python.saved_model import utils
+from tensorflow.python.util import deprecation
+from tensorflow.python.util.tf_export import tf_export
 
 
+@tf_export('saved_model.build_signature_def',
+           'saved_model.signature_def_utils.build_signature_def')
+@deprecation.deprecated_endpoints(
+    'saved_model.signature_def_utils.build_signature_def')
 def build_signature_def(inputs=None, outputs=None, method_name=None):
   """Utility function to build a SignatureDef protocol buffer.
 
@@ -53,6 +57,10 @@ def build_signature_def(inputs=None, outputs=None, method_name=None):
   return signature_def
 
 
+@tf_export('saved_model.regression_signature_def',
+           'saved_model.signature_def_utils.regression_signature_def')
+@deprecation.deprecated_endpoints(
+    'saved_model.signature_def_utils.regression_signature_def')
 def regression_signature_def(examples, predictions):
   """Creates regression signature from given examples and predictions.
 
@@ -94,6 +102,10 @@ def regression_signature_def(examples, predictions):
   return signature_def
 
 
+@tf_export('saved_model.classification_signature_def',
+           'saved_model.signature_def_utils.classification_signature_def')
+@deprecation.deprecated_endpoints(
+    'saved_model.signature_def_utils.classification_signature_def')
 def classification_signature_def(examples, classes, scores):
   """Creates classification signature from given examples and predictions.
 
@@ -146,6 +158,10 @@ def classification_signature_def(examples, classes, scores):
   return signature_def
 
 
+@tf_export('saved_model.predict_signature_def',
+           'saved_model.signature_def_utils.predict_signature_def')
+@deprecation.deprecated_endpoints(
+    'saved_model.signature_def_utils.predict_signature_def')
 def predict_signature_def(inputs, outputs):
   """Creates prediction signature from given inputs and outputs.
 
@@ -180,6 +196,66 @@ def predict_signature_def(inputs, outputs):
   return signature_def
 
 
+def supervised_train_signature_def(
+    inputs, loss, predictions=None, metrics=None):
+  return _supervised_signature_def(
+      signature_constants.SUPERVISED_TRAIN_METHOD_NAME, inputs, loss=loss,
+      predictions=predictions, metrics=metrics)
+
+
+def supervised_eval_signature_def(
+    inputs, loss, predictions=None, metrics=None):
+  return _supervised_signature_def(
+      signature_constants.SUPERVISED_EVAL_METHOD_NAME, inputs, loss=loss,
+      predictions=predictions, metrics=metrics)
+
+
+def _supervised_signature_def(
+    method_name, inputs, loss=None, predictions=None,
+    metrics=None):
+  """Creates a signature for training and eval data.
+
+  This function produces signatures that describe the inputs and outputs
+  of a supervised process, such as training or evaluation, that
+  results in loss, metrics, and the like. Note that this function only requires
+  inputs to be not None.
+
+  Args:
+    method_name: Method name of the SignatureDef as a string.
+    inputs: dict of string to `Tensor`.
+    loss: dict of string to `Tensor` representing computed loss.
+    predictions: dict of string to `Tensor` representing the output predictions.
+    metrics: dict of string to `Tensor` representing metric ops.
+
+  Returns:
+    A train- or eval-flavored signature_def.
+
+  Raises:
+    ValueError: If inputs or outputs is `None`.
+  """
+  if inputs is None or not inputs:
+    raise ValueError('{} inputs cannot be None or empty.'.format(method_name))
+
+  signature_inputs = {key: utils.build_tensor_info(tensor)
+                      for key, tensor in inputs.items()}
+
+  signature_outputs = {}
+  for output_set in (loss, predictions, metrics):
+    if output_set is not None:
+      sig_out = {key: utils.build_tensor_info(tensor)
+                 for key, tensor in output_set.items()}
+      signature_outputs.update(sig_out)
+
+  signature_def = build_signature_def(
+      signature_inputs, signature_outputs, method_name)
+
+  return signature_def
+
+
+@tf_export('saved_model.is_valid_signature',
+           'saved_model.signature_def_utils.is_valid_signature')
+@deprecation.deprecated_endpoints(
+    'saved_model.signature_def_utils.is_valid_signature')
 def is_valid_signature(signature_def):
   """Determine whether a SignatureDef can be served by TensorFlow Serving."""
   if signature_def is None:
@@ -253,81 +329,3 @@ def _is_valid_classification_signature(signature_def):
     return False
 
   return True
-
-
-def _get_shapes_from_tensor_info_dict(tensor_info_dict):
-  """Returns a map of keys to TensorShape objects.
-
-  Args:
-    tensor_info_dict: map with TensorInfo proto as values.
-
-  Returns:
-    Map with corresponding TensorShape objects as values.
-  """
-  return {
-      key: tensor_shape.TensorShape(tensor_info.tensor_shape)
-      for key, tensor_info in tensor_info_dict.items()
-  }
-
-
-def _get_types_from_tensor_info_dict(tensor_info_dict):
-  """Returns a map of keys to DType objects.
-
-  Args:
-    tensor_info_dict: map with TensorInfo proto as values.
-
-  Returns:
-    Map with corresponding DType objects as values.
-  """
-  return {
-      key: dtypes.DType(tensor_info.dtype)
-      for key, tensor_info in tensor_info_dict.items()
-  }
-
-
-def get_signature_def_input_shapes(signature):
-  """Returns map of parameter names to their shapes.
-
-  Args:
-    signature: SignatureDef proto.
-
-  Returns:
-    Map from string to TensorShape objects.
-  """
-  return _get_shapes_from_tensor_info_dict(signature.inputs)
-
-
-def get_signature_def_input_types(signature):
-  """Returns map of output names to their types.
-
-  Args:
-    signature: SignatureDef proto.
-
-  Returns:
-    Map from string to DType objects.
-  """
-  return _get_types_from_tensor_info_dict(signature.inputs)
-
-
-def get_signature_def_output_shapes(signature):
-  """Returns map of output names to their shapes.
-
-  Args:
-    signature: SignatureDef proto.
-
-  Returns:
-    Map from string to TensorShape objects.
-  """
-  return _get_shapes_from_tensor_info_dict(signature.outputs)
-
-
-def get_signature_def_output_types(signature):
-  """Returns map of output names to their types.
-
-  Args:
-    signature: SignatureDef proto.
-
-  Returns:
-    Map from string to DType objects.
-  """
-  return _get_types_from_tensor_info_dict(signature.outputs)

@@ -1,4 +1,4 @@
-# Copyright 2016 The TensorFlow Authors. All Rights Reserved.
+# Copyright 2018 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -18,8 +18,29 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.python.keras._impl.keras.estimator import model_to_estimator
+from tensorflow.python.util.tf_export import tf_export
 
-del absolute_import
-del division
-del print_function
+# Keras has undeclared dependency on tensorflow/estimator:estimator_py.
+# As long as you depend //third_party/py/tensorflow:tensorflow target
+# everything will work as normal.
+
+try:
+  from tensorflow.python.estimator import keras as keras_lib  # pylint: disable=g-import-not-at-top
+  model_to_estimator = tf_export('keras.estimator.model_to_estimator')(
+      keras_lib.model_to_estimator)
+except Exception:  # pylint: disable=broad-except
+
+  # pylint: disable=unused-argument
+  def stub_model_to_estimator(keras_model=None,
+                              keras_model_path=None,
+                              custom_objects=None,
+                              model_dir=None,
+                              config=None):
+    raise NotImplementedError(
+        'tf.keras.estimator.model_to_estimator function not available in your '
+        'installation.')
+  # pylint: enable=unused-argument
+
+  model_to_estimator = tf_export('keras.estimator.model_to_estimator')(
+      stub_model_to_estimator)
+

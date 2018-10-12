@@ -116,7 +116,7 @@ a different `feature_bagging_fraction * num_features` sized subset of the
 input features.  Defaults to 1.0 (no feature bagging).
 
 * `base_random_seed`.  By default (`base_random_seed = 0`), the random number
-generator for each tree is seeded by the current time (in microseconds) when
+generator for each tree is seeded by a 64-bit random value when
 each tree is first created.  Using a non-zero value causes tree training to
 be deterministic, in that the i-th tree's random number generator is seeded
 with the value `base_random_seed + i`.

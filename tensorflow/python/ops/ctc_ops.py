@@ -25,9 +25,11 @@ from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_ctc_ops
 from tensorflow.python.ops.nn_grad import _BroadcastMul
+from tensorflow.python.util.tf_export import tf_export
 
 
 # pylint: disable=protected-access, invalid-name
+@tf_export("nn.ctc_loss")
 def ctc_loss(labels, inputs, sequence_length,
              preprocess_collapse_repeated=False,
              ctc_merge_repeated=True,
@@ -146,7 +148,7 @@ def ctc_loss(labels, inputs, sequence_length,
   if not time_major:
     inputs = array_ops.transpose(inputs, [1, 0, 2])  # (B,T,N) => (T,B,N)
 
-  loss, _ = gen_ctc_ops._ctc_loss(
+  loss, _ = gen_ctc_ops.ctc_loss(
       inputs,
       labels.indices,
       labels.values,
@@ -185,6 +187,7 @@ def _CTCLossGrad(op, grad_loss, _):
   return [_BroadcastMul(grad_loss, grad_without_gradient), None, None, None]
 
 
+@tf_export("nn.ctc_greedy_decoder")
 def ctc_greedy_decoder(inputs, sequence_length, merge_repeated=True):
   """Performs greedy decoding on the logits given in input (best path).
 
@@ -215,19 +218,20 @@ def ctc_greedy_decoder(inputs, sequence_length, merge_repeated=True):
         The rows store: `[batch, time]`.
       `decoded.values`: Values vector, size `(total_decoded_outputs)`.
         The vector stores the decoded classes.
-      `decoded.shape`: Shape vector, size `(2)`.
+      `decoded.dense_shape`: Shape vector, size `(2)`.
         The shape values are: `[batch_size, max_decoded_length]`
     neg_sum_logits: A `float` matrix `(batch_size x 1)` containing, for the
         sequence found, the negative of the sum of the greatest logit at each
         timeframe.
   """
-  outputs = gen_ctc_ops._ctc_greedy_decoder(
+  outputs = gen_ctc_ops.ctc_greedy_decoder(
       inputs, sequence_length, merge_repeated=merge_repeated)
   (decoded_ix, decoded_val, decoded_shape, log_probabilities) = outputs
   return ([sparse_tensor.SparseTensor(decoded_ix, decoded_val, decoded_shape)],
           log_probabilities)
 
 
+@tf_export(v1=["nn.ctc_beam_search_decoder"])
 def ctc_beam_search_decoder(inputs, sequence_length, beam_width=100,
                             top_paths=1, merge_repeated=True):
   """Performs beam search decoding on the logits given in input.
@@ -238,11 +242,11 @@ def ctc_beam_search_decoder(inputs, sequence_length, beam_width=100,
 
   If `merge_repeated` is `True`, merge repeated classes in the output beams.
   This means that if consecutive entries in a beam are the same,
-  only the first of these is emitted.  That is, when the top path
-  is `A B B B B`, the return value is:
+  only the first of these is emitted.  That is, when the sequence is
+  `A B B * B * B` (where '*' is the blank label), the return value is:
 
     * `A B` if `merge_repeated = True`.
-    * `A B B B B` if `merge_repeated = False`.
+    * `A B B B` if `merge_repeated = False`.
 
   Args:
     inputs: 3-D `float` `Tensor`, size
@@ -261,14 +265,14 @@ def ctc_beam_search_decoder(inputs, sequence_length, beam_width=100,
         The rows store: [batch, time].
       `decoded[j].values`: Values vector, size `(total_decoded_outputs[j])`.
         The vector stores the decoded classes for beam j.
-      `decoded[j].shape`: Shape vector, size `(2)`.
+      `decoded[j].dense_shape`: Shape vector, size `(2)`.
         The shape values are: `[batch_size, max_decoded_length[j]]`.
     log_probability: A `float` matrix `(batch_size x top_paths)` containing
         sequence log-probabilities.
   """
 
   decoded_ixs, decoded_vals, decoded_shapes, log_probabilities = (
-      gen_ctc_ops._ctc_beam_search_decoder(
+      gen_ctc_ops.ctc_beam_search_decoder(
           inputs, sequence_length, beam_width=beam_width, top_paths=top_paths,
           merge_repeated=merge_repeated))
 
@@ -276,6 +280,44 @@ def ctc_beam_search_decoder(inputs, sequence_length, beam_width=100,
       [sparse_tensor.SparseTensor(ix, val, shape) for (ix, val, shape)
        in zip(decoded_ixs, decoded_vals, decoded_shapes)],
       log_probabilities)
+
+
+@tf_export("nn.ctc_beam_search_decoder", v1=["nn.ctc_beam_search_decoder_v2"])
+def ctc_beam_search_decoder_v2(inputs, sequence_length, beam_width=100,
+                               top_paths=1):
+  """Performs beam search decoding on the logits given in input.
+
+  **Note** The `ctc_greedy_decoder` is a special case of the
+  `ctc_beam_search_decoder` with `top_paths=1` and `beam_width=1` (but
+  that decoder is faster for this special case).
+
+  Args:
+    inputs: 3-D `float` `Tensor`, size
+      `[max_time, batch_size, num_classes]`.  The logits.
+    sequence_length: 1-D `int32` vector containing sequence lengths,
+      having size `[batch_size]`.
+    beam_width: An int scalar >= 0 (beam search beam width).
+    top_paths: An int scalar >= 0, <= beam_width (controls output size).
+
+  Returns:
+    A tuple `(decoded, log_probabilities)` where
+    decoded: A list of length top_paths, where `decoded[j]`
+      is a `SparseTensor` containing the decoded outputs:
+      `decoded[j].indices`: Indices matrix `[total_decoded_outputs[j], 2]`;
+        The rows store: `[batch, time]`.
+      `decoded[j].values`: Values vector, size `[total_decoded_outputs[j]]`.
+        The vector stores the decoded classes for beam `j`.
+      `decoded[j].dense_shape`: Shape vector, size `(2)`.
+        The shape values are: `[batch_size, max_decoded_length[j]]`.
+    log_probability: A `float` matrix `[batch_size, top_paths]` containing
+        sequence log-probabilities.
+  """
+
+  # Note, merge_repeated is an invalid optimization that is removed from the
+  # public API: it returns low probability paths.
+  return ctc_beam_search_decoder(inputs, sequence_length=sequence_length,
+                                 beam_width=beam_width, top_paths=top_paths,
+                                 merge_repeated=False)
 
 
 ops.NotDifferentiable("CTCGreedyDecoder")

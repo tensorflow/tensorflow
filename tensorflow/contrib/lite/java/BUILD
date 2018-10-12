@@ -1,53 +1,87 @@
 # Description:
 # TensorFlow Lite Java API.
 
-package(default_visibility = ["//visibility:private"])
+package(default_visibility = [
+    "//tensorflow/contrib/lite/java/ovic:__pkg__",
+])
 
 licenses(["notice"])  # Apache 2.0
 
 load("//tensorflow/java:build_defs.bzl", "JAVACOPTS")
 load("//tensorflow/contrib/lite:build_def.bzl", "tflite_jni_binary")
+load("//tensorflow/contrib/lite/java:aar_with_jni.bzl", "aar_with_jni")
+
+JAVA_SRCS = glob([
+    "src/main/java/org/tensorflow/lite/*.java",
+])
+
+# Building tensorflow-lite.aar including 4 variants of .so
+# To build an aar for release, run below command:
+# bazel build --cxxopt='--std=c++11' -c opt --fat_apk_cpu=x86,x86_64,arm64-v8a,armeabi-v7a \
+# tensorflow/contrib/lite/java:tensorflow-lite
+aar_with_jni(
+    name = "tensorflow-lite",
+    android_library = ":tensorflowlite",
+)
+
+# EXPERIMENTAL: AAR target that supports TensorFlow op execution with TFLite.
+aar_with_jni(
+    name = "tensorflow-lite-flex",
+    android_library = ":tensorflowlite_flex",
+)
 
 android_library(
     name = "tensorflowlite",
-    srcs = glob(
-        [
-            "src/main/java/org/tensorflow/lite/*.java",
-        ],
-    ),
+    srcs = JAVA_SRCS,
+    manifest = "AndroidManifest.xml",
     visibility = ["//visibility:public"],
     deps = [
-        ":tflite_runtime",
-        "@javax_validation",
+        ":tensorflowlite_native",
+        "@org_checkerframework_qual",
+    ],
+)
+
+# EXPERIMENTAL: Android target that supports TensorFlow op execution with TFLite.
+android_library(
+    name = "tensorflowlite_flex",
+    srcs = JAVA_SRCS,
+    manifest = "AndroidManifest.xml",
+    visibility = ["//visibility:public"],
+    deps = [
+        ":tensorflowlite_native_flex",
+        "@org_checkerframework_qual",
     ],
 )
 
 android_library(
     name = "tensorflowlite_java",
-    srcs = glob(
-        [
-            "src/main/java/org/tensorflow/lite/*.java",
-        ],
-    ),
+    srcs = JAVA_SRCS,
     visibility = ["//visibility:public"],
     deps = [
-        "@javax_validation",
+        "@org_checkerframework_qual",
     ],
 )
 
 java_library(
     name = "tensorflowlitelib",
-    srcs = glob(
-        [
-            "src/main/java/org/tensorflow/lite/*.java",
-        ],
-    ),
+    srcs = JAVA_SRCS,
     javacopts = JAVACOPTS,
     visibility = ["//visibility:public"],
     deps = [
         ":libtensorflowlite_jni.so",
-        "//tensorflow/contrib/lite/java/src/main/native",
-        "@javax_validation",
+        "@org_checkerframework_qual",
+    ],
+)
+
+# EXPERIMENTAL: Java target that supports TensorFlow op execution with TFLite.
+java_library(
+    name = "tensorflowlitelib_flex",
+    srcs = JAVA_SRCS,
+    javacopts = JAVACOPTS,
+    visibility = ["//visibility:public"],
+    deps = [
+        ":libtensorflowlite_flex_jni.so",
+        "@org_checkerframework_qual",
     ],
 )
 
@@ -56,9 +90,9 @@ java_test(
     size = "small",
     srcs = ["src/test/java/org/tensorflow/lite/TensorFlowLiteTest.java"],
     javacopts = JAVACOPTS,
+    tags = ["no_oss"],
     test_class = "org.tensorflow.lite.TensorFlowLiteTest",
     deps = [
-        ":libtensorflowlite_jni.so",
         ":tensorflowlitelib",
         "@com_google_truth",
         "@junit",
@@ -70,9 +104,9 @@ java_test(
     size = "small",
     srcs = ["src/test/java/org/tensorflow/lite/DataTypeTest.java"],
     javacopts = JAVACOPTS,
+    tags = ["no_oss"],
     test_class = "org.tensorflow.lite.DataTypeTest",
     deps = [
-        ":libtensorflowlite_jni.so",
         ":tensorflowlitelib",
         "@com_google_truth",
         "@junit",
@@ -89,12 +123,52 @@ java_test(
         "src/testdata/int64.bin",
         "src/testdata/invalid_model.bin",
         "src/testdata/uint8.bin",
+        "src/testdata/with_custom_op.lite",
     ],
     javacopts = JAVACOPTS,
+    tags = ["no_oss"],
     test_class = "org.tensorflow.lite.NativeInterpreterWrapperTest",
     deps = [
-        ":libtensorflowlite_jni.so",
         ":tensorflowlitelib",
+        "@com_google_truth",
+        "@junit",
+    ],
+)
+
+# TODO: generate large models at runtime, instead of storing them.
+java_test(
+    name = "InterpreterTest",
+    size = "small",
+    srcs = ["src/test/java/org/tensorflow/lite/InterpreterTest.java"],
+    data = [
+        "src/testdata/add.bin",
+        "src/testdata/mobilenet.tflite.bin",
+        "//tensorflow/contrib/lite:testdata/multi_add_flex.bin",
+    ],
+    javacopts = JAVACOPTS,
+    tags = ["no_oss"],
+    test_class = "org.tensorflow.lite.InterpreterTest",
+    visibility = ["//visibility:private"],
+    deps = [
+        ":tensorflowlitelib",
+        "@com_google_truth",
+        "@junit",
+    ],
+)
+
+java_test(
+    name = "InterpreterFlexTest",
+    size = "small",
+    srcs = ["src/test/java/org/tensorflow/lite/InterpreterFlexTest.java"],
+    data = [
+        "//tensorflow/contrib/lite:testdata/multi_add_flex.bin",
+    ],
+    javacopts = JAVACOPTS,
+    tags = ["no_oss"],
+    test_class = "org.tensorflow.lite.InterpreterFlexTest",
+    visibility = ["//visibility:private"],
+    deps = [
+        ":tensorflowlitelib_flex",
         "@com_google_truth",
         "@junit",
     ],
@@ -108,6 +182,7 @@ java_test(
         "src/testdata/add.bin",
     ],
     javacopts = JAVACOPTS,
+    tags = ["no_oss"],
     test_class = "org.tensorflow.lite.TensorTest",
     deps = [
         ":tensorflowlitelib",
@@ -125,8 +200,14 @@ filegroup(
 )
 
 cc_library(
-    name = "tflite_runtime",
+    name = "tensorflowlite_native",
     srcs = ["libtensorflowlite_jni.so"],
+    visibility = ["//visibility:public"],
+)
+
+cc_library(
+    name = "tensorflowlite_native_flex",
+    srcs = ["libtensorflowlite_flex_jni.so"],
     visibility = ["//visibility:public"],
 )
 
@@ -137,14 +218,11 @@ tflite_jni_binary(
     ],
 )
 
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-        ],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
+# EXPERIMENTAL: Native target that supports TensorFlow op execution with TFLite.
+tflite_jni_binary(
+    name = "libtensorflowlite_flex_jni.so",
+    deps = [
+        "//tensorflow/contrib/lite/delegates/flex:delegate",
+        "//tensorflow/contrib/lite/java/src/main/native",
+    ],
 )

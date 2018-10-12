@@ -36,9 +36,8 @@ out the metrics values to stdout:
 
   # Choose the metrics to compute:
   names_to_values, names_to_updates = tf.contrib.metrics.aggregate_metric_map({
-      "accuracy": tf.contrib.metrics.streaming_accuracy(predictions, labels),
-      "mse": tf.contrib.metrics.streaming_mean_squared_error(
-        predictions, labels),
+      "accuracy": tf.metrics.accuracy(labels, predictions),
+      "mse": tf.metrics.mean_squared_error(labels, predictions),
   })
 
   # Define the summaries to write:
@@ -81,9 +80,8 @@ more summaries and call the evaluate_repeatedly method:
 
   # Choose the metrics to compute:
   names_to_values, names_to_updates = tf.contrib.metrics.aggregate_metric_map({
-      "accuracy": tf.contrib.metrics.streaming_accuracy(predictions, labels),
-      "mse": tf.contrib.metrics.streaming_mean_squared_error(
-          predictions, labels),
+      "accuracy": tf.metrics.accuracy(labels, predictions),
+      "mse": tf.metrics.mean_squared_error(labels, predictions),
   })
 
   # Define the summaries to write:
@@ -140,14 +138,13 @@ from __future__ import print_function
 
 import time
 
-from tensorflow.contrib.framework.python.ops import variables
 from tensorflow.python.ops import state_ops
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.summary import summary
 from tensorflow.python.training import basic_session_run_hooks
+from tensorflow.python.training import checkpoint_management
 from tensorflow.python.training import evaluation
 from tensorflow.python.training import monitored_session
-from tensorflow.python.training import saver as tf_saver
 from tensorflow.python.training import session_run_hook
 from tensorflow.python.training import training_util
 
@@ -192,7 +189,7 @@ def wait_for_new_checkpoint(checkpoint_dir,
   logging.info('Waiting for new checkpoint at %s', checkpoint_dir)
   stop_time = time.time() + timeout if timeout is not None else None
   while True:
-    checkpoint_path = tf_saver.latest_checkpoint(checkpoint_dir)
+    checkpoint_path = checkpoint_management.latest_checkpoint(checkpoint_dir)
     if checkpoint_path is None or checkpoint_path == last_checkpoint:
       if stop_time is not None and time.time() + seconds_to_sleep > stop_time:
         return None
@@ -299,18 +296,21 @@ class SummaryAtEndHook(session_run_hook.SessionRunHook):
 
   def begin(self):
     if self._replace_summary_op:
+      # This can still remain None if there are no summaries.
       self._summary_op = summary.merge_all()
-    self._global_step = variables.get_or_create_global_step()
+    self._global_step = training_util.get_or_create_global_step()
 
   def after_create_session(self, session, coord):
     if self._summary_writer is None and self._log_dir:
       self._summary_writer = summary.FileWriterCache.get(self._log_dir)
 
   def end(self, session):
-    global_step = training_util.global_step(session, self._global_step)
-    summary_str = session.run(self._summary_op, self._feed_dict)
+    if self._summary_op is not None:
+      global_step = training_util.global_step(session, self._global_step)
+      summary_str = session.run(self._summary_op, self._feed_dict)
+      if self._summary_writer:
+        self._summary_writer.add_summary(summary_str, global_step)
     if self._summary_writer:
-      self._summary_writer.add_summary(summary_str, global_step)
       self._summary_writer.flush()
 
 

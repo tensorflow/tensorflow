@@ -44,6 +44,10 @@ def main(_):
   sess.run(tf.global_variables_initializer())
 
   # Wrap the TensorFlow Session object for debugging.
+  if FLAGS.debug and FLAGS.tensorboard_debug_address:
+    raise ValueError(
+        "The --debug and --tensorboard_debug_address flags are mutually "
+        "exclusive.")
   if FLAGS.debug:
     sess = tf_debug.LocalCLIDebugWrapperSession(sess)
 
@@ -52,6 +56,9 @@ def main(_):
 
     sess.add_tensor_filter("has_inf_or_nan", tf_debug.has_inf_or_nan)
     sess.add_tensor_filter("has_negative", has_negative)
+  elif FLAGS.tensorboard_debug_address:
+    sess = tf_debug.TensorBoardDebugWrapperSession(
+        sess, FLAGS.tensorboard_debug_address)
 
   print("Fibonacci number at position %d:\n%s" %
         (FLAGS.length, sess.run(n1)))
@@ -82,7 +89,15 @@ if __name__ == "__main__":
       "--debug",
       dest="debug",
       action="store_true",
-      help="Use TensorFlow Debugger (tfdbg).")
+      help="Use TensorFlow Debugger (tfdbg). Mutually exclusive with the "
+      "--tensorboard_debug_address flag.")
+  parser.add_argument(
+      "--tensorboard_debug_address",
+      type=str,
+      default=None,
+      help="Connect to the TensorBoard Debugger Plugin backend specified by "
+      "the gRPC address (e.g., localhost:1234). Mutually exclusive with the "
+      "--debug flag.")
 
   FLAGS, unparsed = parser.parse_known_args()
   tf.app.run(main=main, argv=[sys.argv[0]] + unparsed)

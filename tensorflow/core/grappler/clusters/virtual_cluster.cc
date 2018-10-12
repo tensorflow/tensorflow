@@ -17,6 +17,7 @@ limitations under the License.
 #include "tensorflow/core/framework/cost_graph.pb.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/grappler/clusters/utils.h"
 #include "tensorflow/core/grappler/costs/op_level_cost_estimator.h"
 #include "tensorflow/core/grappler/costs/virtual_scheduler.h"
 
@@ -25,16 +26,31 @@ namespace grappler {
 
 VirtualCluster::VirtualCluster(
     const std::unordered_map<string, DeviceProperties>& devices)
-    : Cluster(0), node_estimator_(new OpLevelCostEstimator()) {
+    : Cluster(0),
+      node_estimator_(new OpLevelCostEstimator()),
+      node_manager_(new FirstReadyManager()) {
   devices_ = devices;
 }
 
 VirtualCluster::VirtualCluster(
     const std::unordered_map<string, DeviceProperties>& devices,
-    OpLevelCostEstimator* node_estimator)
-    : Cluster(0), node_estimator_(node_estimator) {
+    OpLevelCostEstimator* node_estimator, ReadyNodeManager* node_manager)
+    : Cluster(0), node_estimator_(node_estimator), node_manager_(node_manager) {
   devices_ = devices;
 }
+
+VirtualCluster::VirtualCluster(const DeviceSet* device_set)
+    : VirtualCluster(std::unordered_map<string, DeviceProperties>()) {
+  device_set_ = device_set;
+  for (const auto& device : device_set_->devices()) {
+    DeviceProperties props = GetDeviceInfo(device->parsed_name());
+    if (props.type() == "UNKNOWN") continue;
+    auto attrs = device->attributes();
+    props.set_memory_size(attrs.memory_limit());
+    devices_[device->name()] = props;
+  }
+}
+
 VirtualCluster::~VirtualCluster() {}
 
 Status VirtualCluster::Provision() { return Status::OK(); }
@@ -54,7 +70,7 @@ Status VirtualCluster::Run(const GraphDef& graph,
   item.graph = graph;
   item.feed = feed;
   item.fetch = fetch;
-  VirtualScheduler scheduler(&item, true, this);
+  VirtualScheduler scheduler(&item, true, this, node_manager_.get());
   TF_RETURN_IF_ERROR(scheduler.Init());
 
   if (metadata) {
@@ -64,6 +80,7 @@ Status VirtualCluster::Run(const GraphDef& graph,
   }
 
   Costs node_costs;
+  int node_id = 0;
   do {
     OpContext op_context = scheduler.GetCurrNode();
     node_costs = node_estimator_->PredictCosts(op_context);
@@ -71,6 +88,7 @@ Status VirtualCluster::Run(const GraphDef& graph,
       CostGraphDef::Node* cost_node =
           metadata->mutable_cost_graph()->add_node();
       const string& op_name = op_context.name;
+      cost_node->set_id(node_id++);
       cost_node->set_name(op_name);
       cost_node->set_device(op_context.device_name);
       cost_node->set_compute_cost(
@@ -96,6 +114,33 @@ Status VirtualCluster::Run(const GraphDef& graph,
   if (metadata) {
     scheduler.Summary(metadata);
   }
+
+  const std::unordered_map<string, DeviceProperties>& device = GetDevices();
+  std::unordered_map<string, int64> peak_mem_usage =
+      scheduler.GetPeakMemoryUsage();
+  for (const auto& mem_usage : peak_mem_usage) {
+    const string& device_name = mem_usage.first;
+    auto it = device.find(device_name);
+    if (it == device.end()) {
+      // It's probably the fake send/recv device. Eventually we'll need to
+      // remove this fake device to ensure proper memory accounting for
+      // multi-device settings.
+      continue;
+    }
+    const DeviceProperties& dev = it->second;
+    if (dev.memory_size() <= 0) {
+      // Available device memory unknown
+      continue;
+    }
+    int64 peak_mem = mem_usage.second;
+    if (peak_mem >= dev.memory_size()) {
+      return errors::ResourceExhausted(
+          "Graph requires ", peak_mem, " bytes of memory on device ",
+          device_name, " to run ", " but device only has ", dev.memory_size(),
+          " available.");
+    }
+  }
+
   return Status::OK();
 }
 

@@ -12,8 +12,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef THIRD_PARTY_TENSORFLOW_CONTRIB_LITE_KERNELS_INTERNAL_OPTIMIZED_DEPTHWISECONV_FLOAT_H_
-#define THIRD_PARTY_TENSORFLOW_CONTRIB_LITE_KERNELS_INTERNAL_OPTIMIZED_DEPTHWISECONV_FLOAT_H_
+#ifndef TENSORFLOW_CONTRIB_LITE_KERNELS_INTERNAL_OPTIMIZED_DEPTHWISECONV_FLOAT_H_
+#define TENSORFLOW_CONTRIB_LITE_KERNELS_INTERNAL_OPTIMIZED_DEPTHWISECONV_FLOAT_H_
 
 #include "public/gemmlowp.h"
 #include "tensorflow/contrib/lite/kernels/internal/common.h"
@@ -311,6 +311,9 @@ struct FloatDepthwiseConvKernel<true, 0, 8> {
   }
 };
 
+// Note this implementation is very slow for input_depths < 8
+// (e.g. comparable to reference implementation) see, specializations for
+// input_depth=3 below.
 template <>
 struct FloatDepthwiseConvKernel<true, 0, 2> {
   static void Run(int num_output_pixels, int input_depth, int depth_multiplier,
@@ -418,6 +421,74 @@ struct FloatDepthwiseConvKernel<true, 0, 2> {
 };
 
 template <>
+struct FloatDepthwiseConvKernel<true, 3, 2> {
+  static void Run(int num_output_pixels, int input_depth, int depth_multiplier,
+                  const float* input_ptr, int input_ptr_increment,
+                  const float* filter_ptr, float* acc_buffer_ptr) {
+    // Load the filters
+    float32x2_t filter[3];
+    for (int i = 0; i < 3; i++) {
+      filter[i] = vld1_f32(filter_ptr + 2 * i);
+    }
+    // Handle one output pixel at a time.
+    for (int outp = 0; outp < num_output_pixels; outp++) {
+      const float32x2_t input01 = vld1_f32(input_ptr);
+      const float32x2_t input2 = vld1_dup_f32(input_ptr + 2);
+      // Load the accumulators from acc_buffer
+      float32x2_t acc[3];
+      for (int i = 0; i < 3; i++) {
+        acc[i] = vld1_f32(acc_buffer_ptr + 2 * i);
+      }
+      // Multiply-accumulate for each input channel there 2 outputs
+      acc[0] = vmla_lane_f32(acc[0], filter[0], input01, 0);
+      acc[1] = vmla_lane_f32(acc[1], filter[1], input01, 1);
+      acc[2] = vmla_lane_f32(acc[2], filter[2], input2, 0);
+      // Store the accumulators back to acc_buffer
+      for (int i = 0; i < 3; i++) {
+        vst1_f32(acc_buffer_ptr + 2 * i, acc[i]);
+      }
+      acc_buffer_ptr += 6;
+      input_ptr += input_ptr_increment;
+    }
+  }
+};
+
+template <>
+struct FloatDepthwiseConvKernel<true, 3, 4> {
+  static void Run(int num_output_pixels, int input_depth, int depth_multiplier,
+                  const float* input_ptr, int input_ptr_increment,
+                  const float* filter_ptr, float* acc_buffer_ptr) {
+    // Load the filters
+    float32x4_t filter[3];
+    for (int i = 0; i < 3; i++) {
+      filter[i] = vld1q_f32(filter_ptr + 4 * i);
+    }
+    // Handle one output pixel at a time.
+    for (int outp = 0; outp < num_output_pixels; outp++) {
+      // NOTE: we only want 3 values, so we read it as two ops where
+      // the second op just duplicates the lane
+      const float32x2_t input01 = vld1_f32(input_ptr);
+      const float32x2_t input2 = vld1_dup_f32(input_ptr + 2);
+      // Load the accumulators from acc_buffer
+      float32x4_t acc[3];
+      for (int i = 0; i < 3; i++) {
+        acc[i] = vld1q_f32(acc_buffer_ptr + 4 * i);
+      }
+      // Multiply-accumulate all outputs.
+      acc[0] = vmlaq_lane_f32(acc[0], filter[0], input01, 0);
+      acc[1] = vmlaq_lane_f32(acc[1], filter[1], input01, 1);
+      acc[2] = vmlaq_lane_f32(acc[2], filter[2], input2, 0);
+      // Store the accumulators back to acc_buffer
+      for (int i = 0; i < 3; i++) {
+        vst1q_f32(acc_buffer_ptr + 4 * i, acc[i]);
+      }
+      acc_buffer_ptr += 12;
+      input_ptr += input_ptr_increment;
+    }
+  }
+};
+
+template <>
 struct FloatDepthwiseConvKernel<true, 1, 8> {
   static void Run(int num_output_pixels, int input_depth, int depth_multiplier,
                   const float* input_ptr, int input_ptr_increment,
@@ -498,6 +569,46 @@ struct FloatDepthwiseConvKernel<true, 1, 32> {
       vst1q_f32(acc_buffer_ptr + 4 * 6, acc_6);
       vst1q_f32(acc_buffer_ptr + 4 * 7, acc_7);
       acc_buffer_ptr += 32;
+    }
+  }
+};
+
+template <>
+struct FloatDepthwiseConvKernel<true, 1, 20> {
+  static void Run(int num_output_pixels, int input_depth, int depth_multiplier,
+                  const float* input_ptr, int input_ptr_increment,
+                  const float* filter_ptr, float* acc_buffer_ptr) {
+    // Load the filters
+    float32x4_t filter_0 = vld1q_f32(filter_ptr + 4 * 0);
+    float32x4_t filter_1 = vld1q_f32(filter_ptr + 4 * 1);
+    float32x4_t filter_2 = vld1q_f32(filter_ptr + 4 * 2);
+    float32x4_t filter_3 = vld1q_f32(filter_ptr + 4 * 3);
+    float32x4_t filter_4 = vld1q_f32(filter_ptr + 4 * 4);
+
+    // Handle one output pixel at a time.
+    for (int outp = 0; outp < num_output_pixels; outp++) {
+      // Load the inputs
+      const float input_val = *input_ptr;
+      input_ptr += input_ptr_increment;
+      // Load the accumulators from acc_buffer
+      float32x4_t acc_0 = vld1q_f32(acc_buffer_ptr + 4 * 0);
+      float32x4_t acc_1 = vld1q_f32(acc_buffer_ptr + 4 * 1);
+      float32x4_t acc_2 = vld1q_f32(acc_buffer_ptr + 4 * 2);
+      float32x4_t acc_3 = vld1q_f32(acc_buffer_ptr + 4 * 3);
+      float32x4_t acc_4 = vld1q_f32(acc_buffer_ptr + 4 * 4);
+      // Multiply-accumulate
+      acc_0 = vmlaq_n_f32(acc_0, filter_0, input_val);
+      acc_1 = vmlaq_n_f32(acc_1, filter_1, input_val);
+      acc_2 = vmlaq_n_f32(acc_2, filter_2, input_val);
+      acc_3 = vmlaq_n_f32(acc_3, filter_3, input_val);
+      acc_4 = vmlaq_n_f32(acc_4, filter_4, input_val);
+      // Store the accumulators back to acc_buffer
+      vst1q_f32(acc_buffer_ptr + 4 * 0, acc_0);
+      vst1q_f32(acc_buffer_ptr + 4 * 1, acc_1);
+      vst1q_f32(acc_buffer_ptr + 4 * 2, acc_2);
+      vst1q_f32(acc_buffer_ptr + 4 * 3, acc_3);
+      vst1q_f32(acc_buffer_ptr + 4 * 4, acc_4);
+      acc_buffer_ptr += 20;
     }
   }
 };
@@ -650,7 +761,8 @@ struct FloatDepthwiseConvKernel<true, 4, 1> {
 // Accumulates the effect of one row of the filter, on a segment of one row
 // of the output, accessing the corresponding one row of the input.
 template <bool kAllowStrided, int kFixedInputDepth, int kFixedDepthMultiplier>
-void FloatDepthwiseConvAccumRow(int stride, int input_depth, int input_width,
+void FloatDepthwiseConvAccumRow(int stride, int dilation_factor,
+                                int input_depth, int input_width,
                                 const float* input_data, int pad_width,
                                 int depth_multiplier, int filter_width,
                                 const float* filter_data,
@@ -724,10 +836,10 @@ void FloatDepthwiseConvAccumRow(int stride, int input_depth, int input_width,
 
 // generic fallback of FloatDepthwiseConvAccumRow, portable, non-templatized.
 inline void FloatDepthwiseConvAccumRowGeneric(
-    int stride, int input_depth, int input_width, const float* input_data,
-    int pad_width, int depth_multiplier, int filter_width,
-    const float* filter_data, int out_x_buffer_start, int out_x_buffer_end,
-    int output_depth, float* acc_buffer) {
+    int stride, int dilation_factor, int input_depth, int input_width,
+    const float* input_data, int pad_width, int depth_multiplier,
+    int filter_width, const float* filter_data, int out_x_buffer_start,
+    int out_x_buffer_end, int output_depth, float* acc_buffer) {
   gemmlowp::ScopedProfilingLabel label("DepthwiseConvAccumRowGeneric (slow)");
 #ifdef TFLITE_PREVENT_SLOW_GENERIC_DEPTHWISECONV_FALLBACK
 #ifndef ALLOW_SLOW_GENERIC_DEPTHWISECONV_FALLBACK
@@ -749,6 +861,7 @@ inline void FloatDepthwiseConvAccumRowGeneric(
       << "* stride = " << stride << "\n"
       << "* input_depth = " << input_depth << "\n"
       << "* depth_multiplier = " << depth_multiplier << "\n"
+      << "* dilation_factor = " << dilation_factor << "\n"
       << "*\n"
       << "* Please do not hesitate to contact benoitjacob@ with this\n"
       << "* information.\n"
@@ -758,14 +871,17 @@ inline void FloatDepthwiseConvAccumRowGeneric(
   const float* filter_base_ptr = filter_data;
   for (int filter_x = 0; filter_x < filter_width; ++filter_x) {
     const int out_x_loop_start = std::max(
-        out_x_buffer_start, (pad_width - filter_x + stride - 1) / stride);
-    const int out_x_loop_end =
-        std::min(out_x_buffer_end,
-                 (pad_width + input_width - filter_x + stride - 1) / stride);
+        out_x_buffer_start,
+        (pad_width - dilation_factor * filter_x + stride - 1) / stride);
+    const int out_x_loop_end = std::min(
+        out_x_buffer_end,
+        (pad_width + input_width - dilation_factor * filter_x + stride - 1) /
+            stride);
 
     float* acc_buffer_ptr =
         acc_buffer + (out_x_loop_start - out_x_buffer_start) * output_depth;
-    const int in_x_origin = (out_x_loop_start * stride) - pad_width + filter_x;
+    const int in_x_origin =
+        (out_x_loop_start * stride) - pad_width + dilation_factor * filter_x;
     const float* input_ptr = input_data + in_x_origin * input_depth;
     const int input_ptr_increment = (stride - 1) * input_depth;
     for (int out_x = out_x_loop_start; out_x < out_x_loop_end; out_x++) {
@@ -796,25 +912,37 @@ inline void DepthwiseConvInitAccBuffer(int num_output_pixels, int output_depth,
   }
 }
 
-inline void DepthwiseConv(const float* input_data, const Dims<4>& input_dims,
-                          const float* filter_data, const Dims<4>& filter_dims,
-                          const float* bias_data, const Dims<4>& bias_dims,
-                          int stride_width, int stride_height, int pad_width,
-                          int pad_height, int depth_multiplier,
-                          float output_activation_min,
-                          float output_activation_max, float* output_data,
-                          const Dims<4>& output_dims) {
+inline void DepthwiseConv(
+    const DepthwiseParams& params, const RuntimeShape& input_shape,
+    const float* input_data, const RuntimeShape& filter_shape,
+    const float* filter_data, const RuntimeShape& bias_shape,
+    const float* bias_data, const RuntimeShape& output_shape,
+    float* output_data) {
   gemmlowp::ScopedProfilingLabel label("DepthwiseConv");
-  const int batches = MatchingArraySize(input_dims, 3, output_dims, 3);
-  const int output_depth = MatchingArraySize(filter_dims, 0, output_dims, 0);
-  const int input_height = ArraySize(input_dims, 2);
-  const int input_width = ArraySize(input_dims, 1);
-  const int input_depth = ArraySize(input_dims, 0);
-  const int filter_height = ArraySize(filter_dims, 2);
-  const int filter_width = ArraySize(filter_dims, 1);
-  const int output_height = ArraySize(output_dims, 2);
-  const int output_width = ArraySize(output_dims, 1);
-  TFLITE_DCHECK(output_depth == input_depth * depth_multiplier);
+  const int stride_width = params.stride_width;
+  const int stride_height = params.stride_height;
+  const int pad_width = params.padding_values.width;
+  const int pad_height = params.padding_values.height;
+  const int depth_multiplier = params.depth_multiplier;
+  const float output_activation_min = params.float_activation_min;
+  const float output_activation_max = params.float_activation_max;
+  const int dilation_width_factor = params.dilation_width_factor;
+  const int dilation_height_factor = params.dilation_height_factor;
+  TFLITE_DCHECK_EQ(input_shape.DimensionsCount(), 4);
+  TFLITE_DCHECK_EQ(filter_shape.DimensionsCount(), 4);
+  TFLITE_DCHECK_EQ(output_shape.DimensionsCount(), 4);
+
+  const int batches = MatchingDim(input_shape, 0, output_shape, 0);
+  const int output_depth = MatchingDim(filter_shape, 3, output_shape, 3);
+  const int input_height = input_shape.Dims(1);
+  const int input_width = input_shape.Dims(2);
+  const int input_depth = input_shape.Dims(3);
+  const int filter_height = filter_shape.Dims(1);
+  const int filter_width = filter_shape.Dims(2);
+  const int output_height = output_shape.Dims(1);
+  const int output_width = output_shape.Dims(2);
+  TFLITE_DCHECK_EQ(output_depth, input_depth * depth_multiplier);
+  TFLITE_DCHECK_EQ(bias_shape.FlatSize(), output_depth);
 
   static const int kAccBufferMaxSize = 2048;
   float acc_buffer[kAccBufferMaxSize];
@@ -835,7 +963,8 @@ inline void DepthwiseConv(const float* input_data, const Dims<4>& input_dims,
                                         FIXED_DEPTH_MULTIPLIER)           \
   if (!row_accum_func && (stride_width == 1 || ALLOW_STRIDED) &&          \
       (input_depth == FIXED_INPUT_DEPTH || FIXED_INPUT_DEPTH == 0) &&     \
-      depth_multiplier == FIXED_DEPTH_MULTIPLIER) {                       \
+      depth_multiplier == FIXED_DEPTH_MULTIPLIER &&                       \
+      dilation_height_factor == 1 && dilation_width_factor == 1) {        \
     row_accum_func =                                                      \
         FloatDepthwiseConvAccumRow<ALLOW_STRIDED, FIXED_INPUT_DEPTH,      \
                                    FIXED_DEPTH_MULTIPLIER>;               \
@@ -855,8 +984,11 @@ inline void DepthwiseConv(const float* input_data, const Dims<4>& input_dims,
 
   TFMINI_USE_DEPTHWISECONV_KERNEL(true, 8, 1)
   TFMINI_USE_DEPTHWISECONV_KERNEL(true, 1, 8)
+  TFMINI_USE_DEPTHWISECONV_KERNEL(true, 1, 20)
   TFMINI_USE_DEPTHWISECONV_KERNEL(true, 1, 32)
   TFMINI_USE_DEPTHWISECONV_KERNEL(true, 2, 1)
+  TFMINI_USE_DEPTHWISECONV_KERNEL(true, 3, 2)
+  TFMINI_USE_DEPTHWISECONV_KERNEL(true, 3, 4)
   TFMINI_USE_DEPTHWISECONV_KERNEL(true, 4, 1)
 
   // Finally, the kernels allowing a variable input depth,
@@ -876,14 +1008,22 @@ inline void DepthwiseConv(const float* input_data, const Dims<4>& input_dims,
     row_accum_func = FloatDepthwiseConvAccumRowGeneric;
   }
 
+  const int input_height_stride = input_shape.Dims(3) * input_shape.Dims(2);
+  const int input_batch_stride = input_height_stride * input_shape.Dims(1);
+  const int filter_height_stride = filter_shape.Dims(3) * filter_shape.Dims(2);
+
   // Now that we have determined row_accum_func, we can start work.
   float* output_ptr = output_data;
   for (int b = 0; b < batches; ++b) {
     for (int out_y = 0; out_y < output_height; ++out_y) {
       const int in_y_origin = (out_y * stride_height) - pad_height;
-      const int filter_y_start = std::max(0, -in_y_origin);
+      const int filter_y_start =
+          std::max(0, (-in_y_origin + dilation_height_factor - 1) /
+                          dilation_height_factor);
       const int filter_y_end =
-          std::min(filter_height, input_height - in_y_origin);
+          std::min(filter_height,
+                   (input_height - in_y_origin + dilation_height_factor - 1) /
+                       dilation_height_factor);
       for (int out_x_buffer_start = 0; out_x_buffer_start < output_width;
            out_x_buffer_start += kOutputPixelsInAccBuffer) {
         const int out_x_buffer_end = std::min(
@@ -899,14 +1039,13 @@ inline void DepthwiseConv(const float* input_data, const Dims<4>& input_dims,
         // Accumulation loop. Most of the time should be spent in here.
         for (int filter_y = filter_y_start; filter_y < filter_y_end;
              ++filter_y) {
-          const int in_y = in_y_origin + filter_y;
-          row_accum_func(stride_width, input_depth, input_width,
-                         input_data + in_y * input_dims.strides[2] +
-                             b * input_dims.strides[3],
-                         pad_width, depth_multiplier, filter_width,
-                         filter_data + filter_y * filter_dims.strides[2],
-                         out_x_buffer_start, out_x_buffer_end, output_depth,
-                         acc_buffer);
+          const int in_y = in_y_origin + dilation_height_factor * filter_y;
+          row_accum_func(
+              stride_width, dilation_width_factor, input_depth, input_width,
+              input_data + in_y * input_height_stride + b * input_batch_stride,
+              pad_width, depth_multiplier, filter_width,
+              filter_data + filter_y * filter_height_stride, out_x_buffer_start,
+              out_x_buffer_end, output_depth, acc_buffer);
         }
         // Finished accumulating. Now store to destination.
         const int num_output_values = output_depth * num_output_pixels;
@@ -919,11 +1058,11 @@ inline void DepthwiseConv(const float* input_data, const Dims<4>& input_dims,
           for (int k = 0; k < 4; k++) {
             acc[k] = vld1q_f32(acc_buffer + i + 4 * k);
           }
-            for (int k = 0; k < 4; k++) {
-              acc[k] = vmaxq_f32(
-                  vdupq_n_f32(output_activation_min),
-                  vminq_f32(vdupq_n_f32(output_activation_max), acc[k]));
-            }
+          for (int k = 0; k < 4; k++) {
+            acc[k] = vmaxq_f32(
+                vdupq_n_f32(output_activation_min),
+                vminq_f32(vdupq_n_f32(output_activation_max), acc[k]));
+          }
           for (int k = 0; k < 4; k++) {
             vst1q_f32(output_ptr + 4 * k, acc[k]);
           }
@@ -953,35 +1092,7 @@ inline void DepthwiseConv(const float* input_data, const Dims<4>& input_dims,
   }
 }
 
-// legacy, for compatibility with old checked-in code
-template <FusedActivationFunctionType Ac>
-void DepthwiseConv(const float* input_data, const Dims<4>& input_dims,
-                   const float* filter_data, const Dims<4>& filter_dims,
-                   const float* bias_data, const Dims<4>& bias_dims,
-                   int stride_width, int stride_height, int pad_width,
-                   int pad_height, int depth_multiplier, float* output_data,
-                   const Dims<4>& output_dims) {
-  float output_activation_min, output_activation_max;
-  GetActivationMinMax(Ac, &output_activation_min, &output_activation_max);
-  DepthwiseConv(input_data, input_dims, filter_data, filter_dims, bias_data,
-                bias_dims, stride_width, stride_height, pad_width, pad_height,
-                depth_multiplier, output_activation_min, output_activation_max,
-                output_data, output_dims);
-}
-
-// legacy, for compatibility with old checked-in code
-template <FusedActivationFunctionType Ac>
-void DepthwiseConv(const float* input_data, const Dims<4>& input_dims,
-                   const float* filter_data, const Dims<4>& filter_dims,
-                   const float* bias_data, const Dims<4>& bias_dims, int stride,
-                   int pad_width, int pad_height, int depth_multiplier,
-                   float* output_data, const Dims<4>& output_dims) {
-  DepthwiseConv<Ac>(input_data, input_dims, filter_data, filter_dims, bias_data,
-                    bias_dims, stride, stride, pad_width, pad_height,
-                    depth_multiplier, output_data, output_dims);
-}
-
 }  // namespace optimized_ops
 }  // namespace tflite
 
-#endif  // THIRD_PARTY_TENSORFLOW_CONTRIB_LITE_KERNELS_INTERNAL_OPTIMIZED_DEPTHWISECONV_FLOAT_H_
+#endif  // TENSORFLOW_CONTRIB_LITE_KERNELS_INTERNAL_OPTIMIZED_DEPTHWISECONV_FLOAT_H_

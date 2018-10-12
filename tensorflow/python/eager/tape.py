@@ -21,6 +21,15 @@ from __future__ import print_function
 import contextlib
 
 from tensorflow.python import pywrap_tensorflow
+from tensorflow.python.util.lazy_loader import LazyLoader
+
+# There is a circular dependency between this, ops.py, and
+# distribution_strategy_context.
+# TODO(b/117329403): Remove this circular dependency.
+distribution_strategy_context = LazyLoader(
+    "distribute_lib", globals(),
+    "tensorflow.python.training."
+    "distribution_strategy_context")
 
 
 class Tape(object):
@@ -33,62 +42,79 @@ class Tape(object):
     return pywrap_tensorflow.TFE_Py_TapeWatchedVariables(self._tape)
 
 
-def push_new_tape(persistent=False):
+def push_new_tape(persistent=False, watch_accessed_variables=True):
   """Pushes a new tape onto the tape stack."""
-  pywrap_tensorflow.TFE_Py_TapeStackPushNew(persistent)
+  tape = pywrap_tensorflow.TFE_Py_TapeSetNew(persistent,
+                                             watch_accessed_variables)
+  return Tape(tape)
 
 
-def watch(tensor):
-  """Marks this tensor to be watched by all tapes in the stack.
-
-  Args:
-    tensor: tensor to be watched.
-  """
-  pywrap_tensorflow.TFE_Py_TapeStackWatch(tensor)
+def push_tape(tape):
+  """Pushes an existing tape onto the tape stack."""
+  pywrap_tensorflow.TFE_Py_TapeSetAdd(tape._tape)  # pylint: disable=protected-access
 
 
-def watch_variable(variable):
-  """Marks this variable to be watched by all tapes in the stack.
+def watch(tape, tensor):
+  """Marks this tensor to be watched by the given tape."""
+  pywrap_tensorflow.TFE_Py_TapeWatch(tape._tape, tensor)  # pylint: disable=protected-access
+
+
+def watch_variable(tape, variable):
+  """Marks this variable to be watched by the given tape."""
+  strategy = distribution_strategy_context.get_distribution_strategy()
+  if distribution_strategy_context.get_tower_context():
+    variables = [strategy.value_container(variable)]
+  else:
+    variables = strategy.unwrap(variable)
+  for var in variables:
+    pywrap_tensorflow.TFE_Py_TapeWatchVariable(tape._tape, var)  # pylint: disable=protected-access
+
+
+def variable_accessed(variable):
+  """Notifies all tapes in the stack that a variable has been accessed.
 
   Args:
     variable: variable to be watched.
   """
-  pywrap_tensorflow.TFE_Py_TapeStackWatchVariable(variable)
+  strategy = distribution_strategy_context.get_distribution_strategy()
+  if distribution_strategy_context.get_tower_context():
+    variables = [strategy.value_container(variable)]
+  else:
+    variables = strategy.unwrap(variable)
+  for var in variables:
+    pywrap_tensorflow.TFE_Py_TapeVariableAccessed(var)
 
 
-def pop_tape():
+def pop_tape(tape):
   """Pops the top tape in the stack, if any."""
-  return Tape(pywrap_tensorflow.TFE_Py_TapeStackPop())
+  pywrap_tensorflow.TFE_Py_TapeSetRemove(tape._tape)  # pylint: disable=protected-access
 
 
 @contextlib.contextmanager
 def stop_recording():
-  stack = []
-  while not pywrap_tensorflow.TFE_Py_TapeStackIsEmpty():
-    stack.append(pop_tape()._tape)  # pylint: disable=protected-access
   try:
+    pywrap_tensorflow.TFE_Py_TapeSetStopOnThread()
     yield
   finally:
-    for tape in reversed(stack):
-      pywrap_tensorflow.TFE_Py_TapeStackPush(tape)
+    pywrap_tensorflow.TFE_Py_TapeSetRestartOnThread()
 
 
 def should_record(tensors):
   """Returns true if any tape in the stack watches any of these tensors."""
-  return pywrap_tensorflow.TFE_Py_TapeStackShouldRecord(tensors)
+  return pywrap_tensorflow.TFE_Py_TapeSetShouldRecord(tensors)
 
 
 def record_operation(op_type, output_tensors, input_tensors, backward_function):
   """Records the operation on all tapes in the stack."""
-  pywrap_tensorflow.TFE_Py_TapeStackRecordOperation(
+  pywrap_tensorflow.TFE_Py_TapeSetRecordOperation(
       op_type, output_tensors, input_tensors, backward_function)
 
 
 def delete_trace(tensor_id):
   """Deletes traces for this Tensor from all tapes in the stack."""
-  pywrap_tensorflow.TFE_Py_TapeStackDeleteTrace(tensor_id)
+  pywrap_tensorflow.TFE_Py_TapeSetDeleteTrace(tensor_id)
 
 
 def could_possibly_record():
   """Returns True if any tape is active."""
-  return not pywrap_tensorflow.TFE_Py_TapeStackIsEmpty()
+  return not pywrap_tensorflow.TFE_Py_TapeSetIsEmpty()

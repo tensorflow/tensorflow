@@ -13,7 +13,7 @@
 # limitations under the License.
 # ==============================================================================
 
-"""sklearn cross-support."""
+"""sklearn cross-support (deprecated)."""
 
 from __future__ import absolute_import
 from __future__ import division
@@ -131,6 +131,8 @@ class _TransformerMixin():
 
 class NotFittedError(ValueError, AttributeError):
   """Exception class to raise if estimator is used before fitting.
+
+  USE OF THIS EXCEPTION IS DEPRECATED.
 
   This class inherits from both ValueError and AttributeError to help with
   exception handling and backward compatibility.

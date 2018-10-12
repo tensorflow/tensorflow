@@ -19,13 +19,12 @@ limitations under the License.
 #include <sys/mman.h>
 #include <sys/stat.h>
 #include <sys/types.h>
-#include <unistd.h>
-#include <string>
 
 #include "tensorflow/contrib/lite/model.h"
 
 #include <gtest/gtest.h>
-#include "tensorflow/contrib/lite/error_reporter.h"
+#include "tensorflow/contrib/lite/core/api/error_reporter.h"
+#include "tensorflow/contrib/lite/kernels/register.h"
 #include "tensorflow/contrib/lite/testing/util.h"
 
 // Comparison for TfLiteRegistration. Since TfLiteRegistration is a C object,
@@ -56,11 +55,12 @@ class TrivialResolver : public OpResolver {
   explicit TrivialResolver(TfLiteRegistration* constant_return = nullptr)
       : constant_return_(constant_return) {}
   // Find the op registration of a custom operator by op name.
-  TfLiteRegistration* FindOp(tflite::BuiltinOperator op) const override {
+  const TfLiteRegistration* FindOp(tflite::BuiltinOperator op,
+                                   int version) const override {
     return constant_return_;
   }
   // Find the op registration of a custom operator by op name.
-  TfLiteRegistration* FindOp(const char* op) const override {
+  const TfLiteRegistration* FindOp(const char* op, int version) const override {
     return constant_return_;
   }
 
@@ -194,6 +194,27 @@ TEST(BasicFlatBufferModel, TestModelInInterpreter) {
   }
 }
 
+// Test that loading a model with TensorFlow ops fails when the flex delegate is
+// not linked into the target.
+TEST(FlexModel, FailureWithoutFlexDelegate) {
+  auto model = FlatBufferModel::BuildFromFile(
+      "tensorflow/contrib/lite/testdata/multi_add_flex.bin");
+  ASSERT_TRUE(model);
+
+  // Note that creation will succeed when using the BuiltinOpResolver, but
+  // unless the appropriate delegate is linked into the target or the client
+  // explicitly installs the delegate, execution will fail.
+  std::unique_ptr<Interpreter> interpreter;
+  ASSERT_EQ(InterpreterBuilder(*model,
+                               ops::builtin::BuiltinOpResolver{})(&interpreter),
+            kTfLiteOk);
+  ASSERT_TRUE(interpreter);
+
+  // As the flex ops weren't resolved implicitly by the flex delegate, runtime
+  // allocation and execution will fail.
+  ASSERT_EQ(interpreter->AllocateTensors(), kTfLiteError);
+}
+
 // This tests on a flatbuffer that defines a shape of 2 to be a memory mapped
 // buffer. But the buffer is provided to be only 1 element.
 TEST(BasicFlatBufferModel, TestBrokenMmap) {
@@ -210,13 +231,37 @@ TEST(BasicFlatBufferModel, TestNullModel) {
   ASSERT_EQ(interpreter.get(), nullptr);
 }
 
-struct TestErrorReporter : public ErrorReporter {
-  int Report(const char* format, va_list args) override {
-    calls++;
-    return 0;
+// Mocks the verifier by setting the result in ctor.
+class FakeVerifier : public tflite::TfLiteVerifier {
+ public:
+  explicit FakeVerifier(bool result) : result_(result) {}
+  bool Verify(const char* data, int length,
+              tflite::ErrorReporter* reporter) override {
+    return result_;
   }
-  int calls = 0;
+
+ private:
+  bool result_;
 };
+
+TEST(BasicFlatBufferModel, TestWithTrueVerifier) {
+  FakeVerifier verifier(true);
+  ASSERT_TRUE(FlatBufferModel::VerifyAndBuildFromFile(
+      "tensorflow/contrib/lite/testdata/test_model.bin",
+      &verifier));
+}
+
+TEST(BasicFlatBufferModel, TestWithFalseVerifier) {
+  FakeVerifier verifier(false);
+  ASSERT_FALSE(FlatBufferModel::VerifyAndBuildFromFile(
+      "tensorflow/contrib/lite/testdata/test_model.bin",
+      &verifier));
+}
+
+TEST(BasicFlatBufferModel, TestWithNullVerifier) {
+  ASSERT_TRUE(FlatBufferModel::VerifyAndBuildFromFile(
+      "tensorflow/contrib/lite/testdata/test_model.bin", nullptr));
+}
 
 // This makes sure the ErrorReporter is marshalled from FlatBufferModel to
 // the Interpreter.
@@ -231,7 +276,7 @@ TEST(BasicFlatBufferModel, TestCustomErrorReporter) {
   TrivialResolver resolver;
   InterpreterBuilder(*model, resolver)(&interpreter);
   ASSERT_NE(interpreter->Invoke(), kTfLiteOk);
-  ASSERT_EQ(reporter.calls, 1);
+  ASSERT_EQ(reporter.num_calls(), 1);
 }
 
 // This makes sure the ErrorReporter is marshalled from FlatBufferModel to
@@ -247,12 +292,26 @@ TEST(BasicFlatBufferModel, TestNullErrorReporter) {
   ASSERT_NE(interpreter->Invoke(), kTfLiteOk);
 }
 
-// Test what happens if we cannot bind any of the ops.
-TEST(BasicFlatBufferModel, TestBuildModelFromCorruptedData) {
-  std::string corrupted_data = "123";
-  auto model = FlatBufferModel::BuildFromBuffer(corrupted_data.c_str(),
-                                                corrupted_data.length());
-  ASSERT_FALSE(model);
+// Test that loading model directly from a Model flatbuffer works.
+TEST(BasicFlatBufferModel, TestBuildFromModel) {
+  TestErrorReporter reporter;
+  FileCopyAllocation model_allocation(
+      "tensorflow/contrib/lite/testdata/test_model.bin", &reporter);
+  ASSERT_TRUE(model_allocation.valid());
+  ::flatbuffers::Verifier verifier(
+      reinterpret_cast<const uint8_t*>(model_allocation.base()),
+      model_allocation.bytes());
+  ASSERT_TRUE(VerifyModelBuffer(verifier));
+  const Model* model_fb = ::tflite::GetModel(model_allocation.base());
+
+  auto model = FlatBufferModel::BuildFromModel(model_fb);
+  ASSERT_TRUE(model);
+
+  std::unique_ptr<Interpreter> interpreter;
+  ASSERT_EQ(
+      InterpreterBuilder(*model, TrivialResolver(&dummy_reg))(&interpreter),
+      kTfLiteOk);
+  ASSERT_NE(interpreter, nullptr);
 }
 
 // TODO(aselle): Add tests for serialization of builtin op data types.

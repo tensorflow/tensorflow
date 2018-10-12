@@ -22,6 +22,62 @@ from __future__ import print_function
 from tensorflow.python.platform import test
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import deprecation
+from tensorflow.python.util import tf_inspect
+
+
+class DeprecatedAliasTest(test.TestCase):
+
+  @test.mock.patch.object(logging, "warning", autospec=True)
+  def test_function_alias(self, mock_warning):
+    deprecated_func = deprecation.deprecated_alias("deprecated.func",
+                                                   "real.func",
+                                                   logging.error)
+
+    logging.error("fake error logged")
+    self.assertEqual(0, mock_warning.call_count)
+    deprecated_func("FAKE ERROR!")
+    self.assertEqual(1, mock_warning.call_count)
+    # Make sure the error points to the right file.
+    self.assertRegexpMatches(mock_warning.call_args[0][1],
+                             r"deprecation_test\.py:")
+    deprecated_func("ANOTHER FAKE ERROR!")
+    self.assertEqual(1, mock_warning.call_count)
+
+  @test.mock.patch.object(logging, "warning", autospec=True)
+  def test_class_alias(self, mock_warning):
+    class MyClass(object):
+      """My docstring."""
+
+      init_args = []
+
+      def __init__(self, arg):
+        MyClass.init_args.append(arg)
+
+    deprecated_cls = deprecation.deprecated_alias("deprecated.cls",
+                                                  "real.cls",
+                                                  MyClass)
+
+    print(deprecated_cls.__name__)
+    print(deprecated_cls.__module__)
+    print(deprecated_cls.__doc__)
+
+    MyClass("test")
+    self.assertEqual(0, mock_warning.call_count)
+    deprecated_cls("deprecated")
+    self.assertEqual(1, mock_warning.call_count)
+    # Make sure the error points to the right file.
+    self.assertRegexpMatches(mock_warning.call_args[0][1],
+                             r"deprecation_test\.py:")
+    deprecated_cls("deprecated again")
+    self.assertEqual(1, mock_warning.call_count)
+
+    self.assertEqual(["test", "deprecated", "deprecated again"],
+                     MyClass.init_args)
+
+    # Check __init__ signature matches for doc generation.
+    self.assertEqual(
+        tf_inspect.getfullargspec(MyClass.__init__),
+        tf_inspect.getfullargspec(deprecated_cls.__init__))
 
 
 class DeprecationTest(test.TestCase):
@@ -877,6 +933,28 @@ class DeprecationArgumentsTest(test.TestCase):
       right: second arg
     """
     self.assertEqual(new_docs, new_docs_ref)
+
+
+class DeprecatedEndpointsTest(test.TestCase):
+
+  def testSingleDeprecatedEndpoint(self):
+    @deprecation.deprecated_endpoints("foo1")
+    def foo():
+      pass
+    self.assertEqual(("foo1",), foo._tf_deprecated_api_names)
+
+  def testMultipleDeprecatedEndpoint(self):
+    @deprecation.deprecated_endpoints("foo1", "foo2")
+    def foo():
+      pass
+    self.assertEqual(("foo1", "foo2"), foo._tf_deprecated_api_names)
+
+  def testCannotSetDeprecatedEndpointsTwice(self):
+    with self.assertRaises(deprecation.DeprecatedNamesAlreadySet):
+      @deprecation.deprecated_endpoints("foo1")
+      @deprecation.deprecated_endpoints("foo2")
+      def foo():  # pylint: disable=unused-variable
+        pass
 
 
 if __name__ == "__main__":

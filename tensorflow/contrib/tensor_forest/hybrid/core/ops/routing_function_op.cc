@@ -90,46 +90,43 @@ class RoutingFunction : public OpKernel {
     const Tensor& tree_biases_tensor = context->input(2);
 
     if (input_data.shape().dim_size(0) > 0) {
-      OP_REQUIRES(context, input_data.shape().dims() == 2,
-                  errors::InvalidArgument(
-                      "input_data should be two-dimensional"));
+      OP_REQUIRES(
+          context, input_data.shape().dims() == 2,
+          errors::InvalidArgument("input_data should be two-dimensional"));
     }
 
     // Check tensor bounds.
     if (!CheckTensorBounds(context, input_data)) return;
 
-    const int32 num_data = static_cast<int32>(
-        input_data.shape().dim_size(0));
-    const int32 num_features = static_cast<int32>(
-        input_data.shape().dim_size(1));
+    const int32 num_data = static_cast<int32>(input_data.shape().dim_size(0));
+    const int32 num_features =
+        static_cast<int32>(input_data.shape().dim_size(1));
 
     Tensor* output_probabilities = nullptr;
     TensorShape output_shape;
     output_shape.AddDim(num_data);
     output_shape.AddDim(max_nodes_);
 
-    OP_REQUIRES_OK(context,
-                   context->allocate_output(0, output_shape,
-                                            &output_probabilities));
+    OP_REQUIRES_OK(context, context->allocate_output(0, output_shape,
+                                                     &output_probabilities));
 
     auto out_probs = output_probabilities->tensor<float, 2>();
     const auto tree_biases = tree_biases_tensor.tensor<float, 1>();
 
     // Iteratively compute the probability of reaching each leaf.
     for (int i = 0; i < num_data; i++) {
-      const Tensor point = input_data.Slice(i, i+1);
+      const Tensor point = input_data.Slice(i, i + 1);
 
       out_probs(i, 0) = 1.0;
 
       for (int j = 0; j < max_nodes_ / 2; j++) {
-        int32 left_child = 2*j + 1;
+        int32 left_child = 2 * j + 1;
         int32 right_child = left_child + 1;
 
         float prob = out_probs(i, j);
-        float left_prob = LeftProbability(point,
-                                          tree_parameters_tensor.Slice(j, j+1),
-                                          tree_biases(j),
-                                          num_features);
+        float left_prob =
+            LeftProbability(point, tree_parameters_tensor.Slice(j, j + 1),
+                            tree_biases(j), num_features);
 
         out_probs(i, left_child) = prob * left_prob;
         out_probs(i, right_child) = prob * (1.0 - left_prob);

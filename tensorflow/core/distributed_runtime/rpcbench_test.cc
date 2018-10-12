@@ -184,8 +184,8 @@ static void BM_Helper(int iters, int width, int num_stages, int tensor_size,
 
   testing::SetLabel(
       strings::StrCat(def.node_size(), " nodes; ",
-             use_multiple_devices ? "Multi device" : "Single device",
-             "; tensor bytes/send: ", tensor_size * sizeof(float)));
+                      use_multiple_devices ? "Multi device" : "Single device",
+                      "; tensor bytes/send: ", tensor_size * sizeof(float)));
 
   std::vector<Tensor> outputs;
 

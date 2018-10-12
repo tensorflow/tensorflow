@@ -24,27 +24,50 @@ limitations under the License.
 
 namespace toco {
 
-bool ConvertPureConvToDepthwise::Run(Model* model, std::size_t op_index) {
+::tensorflow::Status ConvertPureConvToDepthwise::Run(Model* model,
+                                                     std::size_t op_index,
+                                                     bool* modified) {
+  *modified = false;
   auto conv_it = model->operators.begin() + op_index;
   if (conv_it->get()->type != OperatorType::kConv) {
-    return false;
+    return ::tensorflow::Status::OK();
   }
   const auto* conv_op = static_cast<ConvOperator*>(conv_it->get());
   if (conv_op->stride_width != conv_op->stride_height) {
-    return false;
+    return ::tensorflow::Status::OK();
   }
-  auto& weights_array = model->GetArray(conv_op->inputs[1]);
-  if (!weights_array.buffer) {
-    // Yield until the weights are resolved as a constant array.
-    return false;
+  if ((conv_op->dilation_width_factor != 1) ||
+      (conv_op->dilation_height_factor != 1)) {
+    // Depthwise conv does not support dilation
+    return ::tensorflow::Status::OK();
   }
-  if (weights_array.data_type != ArrayDataType::kFloat) {
-    return false;
+  auto& input_array = model->GetArray(conv_op->inputs[0]);
+  if (!input_array.has_shape()) {
+    // Shapes not propagated yet
+    return ::tensorflow::Status::OK();
   }
-  if (weights_array.shape().dims(3) != 1) {
+  if (input_array.shape().dims(3) != 1) {
     // Not a pure convolution: Conv does accumulation across the depth
     // dimension.
-    return false;
+    return ::tensorflow::Status::OK();
+  }
+
+  const auto& weights_name = conv_op->inputs[1];
+  if (CountOpsWithInput(*model, weights_name) > 1) {
+    // TODO(yunluli): Come up with a way to do the weights shuffling only once.
+    AddMessageF(
+        "Not changing %s to DepthwiseConv because the weights is consumed by "
+        "another op.",
+        LogName(*conv_op));
+    return ::tensorflow::Status::OK();
+  }
+  auto& weights_array = model->GetArray(weights_name);
+  if (!weights_array.buffer) {
+    // Yield until the weights are resolved as a constant array.
+    return ::tensorflow::Status::OK();
+  }
+  if (weights_array.data_type != ArrayDataType::kFloat) {
+    return ::tensorflow::Status::OK();
   }
   // At this point we know we have a pure conv. Rewrite it as DepthwiseConv.
   AddMessageF(
@@ -58,7 +81,7 @@ bool ConvertPureConvToDepthwise::Run(Model* model, std::size_t op_index) {
   depthwiseconv_op->outputs = {conv_op->outputs[0]};
   if (conv_op->outputs.size() > 1) {
     // delete the im2col array.
-    model->arrays.erase(conv_op->outputs[1]);
+    model->EraseArray(conv_op->outputs[1]);
   }
   depthwiseconv_op->fused_activation_function =
       conv_op->fused_activation_function;
@@ -92,7 +115,8 @@ bool ConvertPureConvToDepthwise::Run(Model* model, std::size_t op_index) {
   }
   *weights_array.mutable_shape()->mutable_dims() = {1, width, height, depth};
   weights_buffer.data = depthwise_conv_weights_data;
-  return true;
+  *modified = true;
+  return ::tensorflow::Status::OK();
 }
 
 }  // namespace toco

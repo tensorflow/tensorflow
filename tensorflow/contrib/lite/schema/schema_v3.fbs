@@ -53,7 +53,7 @@ table Tensor {
   type:TensorType;
   // An index that refers to the buffers table at the root of the model. Or,
   // if there is no data buffer associated (i.e. intermediate results), then
-  // this is 0 (which refers to an always existant empty buffer).
+  // this is 0 (which refers to an always existent empty buffer).
   //
   // The data_buffer itself is an opaque container, with the assumption that the
   // target device is little-endian. In addition, all builtin operators assume
@@ -64,7 +64,7 @@ table Tensor {
   quantization:QuantizationParameters;  // Optional.
 }
 
-// A list of builtin operators. Builtin operators a slighlty faster than custom
+// A list of builtin operators. Builtin operators are slightly faster than custom
 // ones, but not by much. Moreover, while custom operators accept an opaque
 // object containing configuration parameters, builtins have a predetermined
 // set of acceptable options.

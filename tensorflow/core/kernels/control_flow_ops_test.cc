@@ -91,6 +91,7 @@ class KilledBySignal {
  public:
   explicit KilledBySignal(int signum) : signum_(signum) {}
   bool operator()(int exit_status) const { return exit_status == signum_; }
+
  private:
   const int signum_;
 };

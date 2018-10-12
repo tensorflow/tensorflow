@@ -40,7 +40,7 @@ class ShapeLayout {
   // Assigns the layouts in this ShapeLayout to the Layout fields of the given
   // shape. 'to_shape' and the shape of the ShapeLayout object must be
   // compatible.
-  tensorflow::Status AssignLayoutToShape(Shape* to_shape) const;
+  Status AssignLayoutToShape(Shape* to_shape) const;
 
   // Returns true if the Layouts in this ShapeLayout match the layouts in the
   // given shape. Returns false otherwise. If the given shape is not compatible
@@ -48,9 +48,8 @@ class ShapeLayout {
   bool MatchesLayoutInShape(const Shape& shape) const;
 
   // Copies the layout from the given shape into this ShapeLayout. 'other_shape'
-  // must be compatible with the ShapeLayout's shape, and 'other_shape' must
-  // have a layout (LayoutUtil::HasLayout).
-  tensorflow::Status CopyLayoutFromShape(const Shape& other_shape);
+  // must be compatible with the ShapeLayout's shape.
+  Status CopyLayoutFromShape(const Shape& other_shape);
 
   // Clears (Layout::Clear) all the Layouts stored in this object.
   void Clear();
@@ -72,6 +71,10 @@ class ShapeLayout {
   // Resets the layout on the shape to the provided layout. Shape must not be a
   // tuple.
   void ResetLayout(const Layout& layout);
+
+  // Resets the layout on the shape at the provided ShapeIndex to the provided
+  // layout. Shape must be a tuple.
+  void ResetLayout(const Layout& layout, ShapeIndexView shape_index);
 
   // Returns a string representation of this object.
   string ToString() const { return ShapeUtil::HumanStringWithLayout(shape_); }

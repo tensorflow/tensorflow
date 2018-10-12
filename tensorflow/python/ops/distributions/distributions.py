@@ -17,49 +17,24 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.python.util import deprecation
 
-# pylint: disable=wildcard-import,unused-import
-from tensorflow.python.ops.distributions import bijectors
-from tensorflow.python.ops.distributions.bernoulli import Bernoulli
-from tensorflow.python.ops.distributions.beta import Beta
-from tensorflow.python.ops.distributions.categorical import Categorical
-from tensorflow.python.ops.distributions.dirichlet import Dirichlet
-from tensorflow.python.ops.distributions.dirichlet_multinomial import DirichletMultinomial
-from tensorflow.python.ops.distributions.distribution import *
-from tensorflow.python.ops.distributions.exponential import Exponential
-from tensorflow.python.ops.distributions.gamma import Gamma
-from tensorflow.python.ops.distributions.kullback_leibler import *
-from tensorflow.python.ops.distributions.laplace import Laplace
-from tensorflow.python.ops.distributions.multinomial import Multinomial
-from tensorflow.python.ops.distributions.normal import Normal
-from tensorflow.python.ops.distributions.student_t import StudentT
-from tensorflow.python.ops.distributions.uniform import Uniform
+
+# pylint: disable=wildcard-import,unused-import,g-import-not-at-top
+with deprecation.silence():
+  from tensorflow.python.ops.distributions.bernoulli import Bernoulli
+  from tensorflow.python.ops.distributions.beta import Beta
+  from tensorflow.python.ops.distributions.categorical import Categorical
+  from tensorflow.python.ops.distributions.dirichlet import Dirichlet
+  from tensorflow.python.ops.distributions.dirichlet_multinomial import DirichletMultinomial
+  from tensorflow.python.ops.distributions.distribution import *
+  from tensorflow.python.ops.distributions.exponential import Exponential
+  from tensorflow.python.ops.distributions.gamma import Gamma
+  from tensorflow.python.ops.distributions.kullback_leibler import *
+  from tensorflow.python.ops.distributions.laplace import Laplace
+  from tensorflow.python.ops.distributions.multinomial import Multinomial
+  from tensorflow.python.ops.distributions.normal import Normal
+  from tensorflow.python.ops.distributions.student_t import StudentT
+  from tensorflow.python.ops.distributions.uniform import Uniform
 # pylint: enable=wildcard-import,unused-import
-
-from tensorflow.python.util.all_util import remove_undocumented
-
-
-_allowed_symbols = [
-    "bijectors",
-    "Bernoulli",
-    "Beta",
-    "Categorical",
-    "DirichletMultinomial",
-    "Dirichlet",
-    "Distribution",
-    "ReparameterizationType",
-    "FULLY_REPARAMETERIZED",
-    "NOT_REPARAMETERIZED",
-    "Exponential",
-    "Gamma",
-    "RegisterKL",
-    "kl_divergence",
-    "Laplace",
-    "Multinomial",
-    "Normal",
-    "StudentT",
-    "Uniform",
-]
-
-
-remove_undocumented(__name__, _allowed_symbols)
+del deprecation

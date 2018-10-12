@@ -5,7 +5,7 @@ option cc_enable_arenas = true;
 option java_outer_classname = "StepStatsProtos";
 option java_multiple_files = true;
 option java_package = "org.tensorflow.framework";
-
+option go_package = "github.com/tensorflow/tensorflow/tensorflow/go/core/framework";
 import "tensorflow/core/framework/allocation_description.proto";
 import "tensorflow/core/framework/tensor_description.proto";
 
@@ -40,12 +40,13 @@ message NodeOutput {
 
 // For memory tracking.
 message MemoryStats {
-  int64 host_temp_memory_size = 1;
-  int64 device_temp_memory_size = 2;
-  int64 host_persistent_memory_size = 3;
-  int64 device_persistent_memory_size = 4;
-  repeated int64 host_persistent_tensor_alloc_ids = 5;
-  repeated int64 device_persistent_tensor_alloc_ids = 6;
+  int64 temp_memory_size = 1;
+  int64 persistent_memory_size = 3;
+  repeated int64 persistent_tensor_alloc_ids = 5;
+
+  int64 device_temp_memory_size = 2 [deprecated = true];
+  int64 device_persistent_memory_size = 4 [deprecated = true];
+  repeated int64 device_persistent_tensor_alloc_ids = 6 [deprecated = true];
 }
 
 // Time/size stats recorded for a single execution of a graph node.
@@ -66,6 +67,11 @@ message NodeExecStats {
   uint32 thread_id = 10;
   repeated AllocationDescription referenced_tensor = 11;
   MemoryStats memory_stats = 12;
+  int64 all_start_nanos = 13;
+  int64 op_start_rel_nanos = 14;
+  int64 op_end_rel_nanos = 15;
+  int64 all_end_rel_nanos = 16;
+  int64 scheduled_nanos = 17;
 };
 
 message DeviceStepStats {

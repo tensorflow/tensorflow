@@ -15,57 +15,68 @@ limitations under the License.
 
 #include "tensorflow/compiler/tf2xla/literal_util.h"
 
+#include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/core/framework/numeric_types.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
 #include "tensorflow/core/platform/test.h"
 
 namespace tensorflow {
+namespace {
 
 TEST(LiteralUtil, LiteralToHostTensor) {
   // int64 literal can only be converted to an int64 host tensor.
-  {
-    std::vector<int64> int64_values = {1, 2, 3};
-    std::unique_ptr<xla::Literal> int64_values_literal =
-        xla::Literal::CreateR1(gtl::ArraySlice<int64>(int64_values));
-    Tensor host_tensor;
-    EXPECT_EQ("Cannot convert literal of type S64 to tensor of type int32",
-              LiteralToHostTensor(*int64_values_literal, DT_INT32, &host_tensor)
-                  .error_message());
-    EXPECT_EQ(
-        "Cannot convert literal of type S64 to tensor of type qint32",
-        LiteralToHostTensor(*int64_values_literal, DT_QINT32, &host_tensor)
-            .error_message());
-    EXPECT_TRUE(
-        LiteralToHostTensor(*int64_values_literal, DT_INT64, &host_tensor)
-            .ok());
-    test::ExpectTensorEqual<int64>(host_tensor,
-                                   test::AsTensor<int64>(int64_values));
-  }
-
-  {
-    // Repeat tests with int32.
-    Tensor host_tensor;
-    std::vector<int32> int32_values = {10, 11};
-    std::unique_ptr<xla::Literal> int32_values_literal =
-        xla::Literal::CreateR1(gtl::ArraySlice<int32>(int32_values));
-    EXPECT_TRUE(
-        LiteralToHostTensor(*int32_values_literal, DT_INT32, &host_tensor)
-            .ok());
-    test::ExpectTensorEqual<int32>(host_tensor,
-                                   test::AsTensor<int32>(int32_values));
-
-    EXPECT_TRUE(
-        LiteralToHostTensor(*int32_values_literal, DT_QINT32, &host_tensor)
-            .ok());
-    std::vector<qint32> qint32_values = {10, 11};
-    test::ExpectTensorEqual<qint32>(host_tensor,
-                                    test::AsTensor<qint32>(qint32_values));
-
-    EXPECT_EQ("Cannot convert literal of type S32 to tensor of type int64",
-              LiteralToHostTensor(*int32_values_literal, DT_INT64, &host_tensor)
-                  .error_message());
-  }
+  std::vector<int64> int64_values = {1, 2, 3};
+  xla::Literal int64_values_literal =
+      xla::LiteralUtil::CreateR1(absl::Span<const int64>(int64_values));
+  Tensor host_tensor;
+  EXPECT_EQ("Cannot convert literal of type S64 to tensor of type int32",
+            LiteralToHostTensor(int64_values_literal, DT_INT32, &host_tensor)
+                .error_message());
+  EXPECT_EQ("Cannot convert literal of type S64 to tensor of type qint32",
+            LiteralToHostTensor(int64_values_literal, DT_QINT32, &host_tensor)
+                .error_message());
+  EXPECT_TRUE(
+      LiteralToHostTensor(int64_values_literal, DT_INT64, &host_tensor).ok());
+  test::ExpectTensorEqual<int64>(host_tensor,
+                                 test::AsTensor<int64>(int64_values));
 }
 
+template <class T>
+using LiteralUtilTest = ::testing::Test;
+using Types =
+    ::testing::Types<std::pair<int8, qint8>, std::pair<uint8, quint8>,
+                     std::pair<int16, qint16>, std::pair<uint16, quint16>,
+                     std::pair<int32, qint32>>;
+
+TYPED_TEST_CASE(LiteralUtilTest, Types);
+
+TYPED_TEST(LiteralUtilTest, LiteralToQuantizedHostTensor) {
+  using int_type = typename TypeParam::first_type;
+  using qint_type = typename TypeParam::second_type;
+
+  Tensor host_tensor;
+  std::vector<int_type> int_values = {10, 11};
+  xla::Literal int_values_literal =
+      xla::LiteralUtil::CreateR1(absl::Span<const int_type>(int_values));
+  EXPECT_TRUE(LiteralToHostTensor(int_values_literal,
+                                  DataTypeToEnum<int_type>::value, &host_tensor)
+                  .ok());
+  test::ExpectTensorEqual<int_type>(host_tensor,
+                                    test::AsTensor<int_type>(int_values));
+
+  EXPECT_TRUE(LiteralToHostTensor(int_values_literal,
+                                  DataTypeToEnum<qint_type>::value,
+                                  &host_tensor)
+                  .ok());
+  std::vector<qint_type> qint_values = {10, 11};
+  test::ExpectTensorEqual<qint_type>(host_tensor,
+                                     test::AsTensor<qint_type>(qint_values));
+
+  EXPECT_EQ(
+      error::INVALID_ARGUMENT,
+      LiteralToHostTensor(int_values_literal, DT_INT64, &host_tensor).code());
+}
+
+}  // namespace
 }  // namespace tensorflow

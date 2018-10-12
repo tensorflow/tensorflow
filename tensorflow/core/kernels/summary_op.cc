@@ -41,11 +41,12 @@ class SummaryScalarOp : public OpKernel {
     const Tensor& values = c->input(1);
 
     OP_REQUIRES(
-        c, tags.IsSameSize(values) ||
-               (IsLegacyScalar(tags.shape()) && IsLegacyScalar(values.shape())),
-        errors::InvalidArgument("tags and values not the same shape: ",
-                                tags.shape().DebugString(), " != ",
-                                values.shape().DebugString(), SingleTag(tags)));
+        c,
+        tags.IsSameSize(values) ||
+            (IsLegacyScalar(tags.shape()) && IsLegacyScalar(values.shape())),
+        errors::InvalidArgument(
+            "tags and values not the same shape: ", tags.shape().DebugString(),
+            " != ", values.shape().DebugString(), SingleTag(tags)));
     auto Ttags = tags.flat<string>();
     auto Tvalues = values.flat<T>();
     Summary s;

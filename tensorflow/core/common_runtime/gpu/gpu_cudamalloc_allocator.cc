@@ -20,17 +20,18 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/gpu/gpu_cudamalloc_allocator.h"
 
+#include "tensorflow/core/common_runtime/gpu/gpu_id.h"
+#include "tensorflow/core/common_runtime/gpu/gpu_id_utils.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_init.h"
 #include "tensorflow/core/platform/stream_executor.h"
 
-namespace gpu = ::perftools::gputools;
-
 namespace tensorflow {
 
-GPUcudaMallocAllocator::GPUcudaMallocAllocator(VisitableAllocator* allocator,
-                                               int device_id)
+GPUcudaMallocAllocator::GPUcudaMallocAllocator(Allocator* allocator,
+                                               PlatformGpuId platform_gpu_id)
     : base_allocator_(allocator) {
-  stream_exec_ = GPUMachineManager()->ExecutorForDevice(device_id).ValueOrDie();
+  stream_exec_ =
+      GpuIdUtil::ExecutorForPlatformGpuId(platform_gpu_id).ValueOrDie();
 }
 
 GPUcudaMallocAllocator::~GPUcudaMallocAllocator() { delete base_allocator_; }
@@ -38,7 +39,7 @@ GPUcudaMallocAllocator::~GPUcudaMallocAllocator() { delete base_allocator_; }
 void* GPUcudaMallocAllocator::AllocateRaw(size_t alignment, size_t num_bytes) {
 #ifdef GOOGLE_CUDA
   // allocate with cudaMalloc
-  gpu::cuda::ScopedActivateExecutorContext scoped_activation{stream_exec_};
+  se::cuda::ScopedActivateExecutorContext scoped_activation{stream_exec_};
   CUdeviceptr rv = 0;
   CUresult res = cuMemAlloc(&rv, num_bytes);
   if (res != CUDA_SUCCESS) {
@@ -58,14 +59,6 @@ void GPUcudaMallocAllocator::DeallocateRaw(void* ptr) {
     LOG(ERROR) << "cuMemFree failed to free " << ptr;
   }
 #endif  // GOOGLE_CUDA
-}
-
-void GPUcudaMallocAllocator::AddAllocVisitor(Visitor visitor) {
-  return base_allocator_->AddAllocVisitor(visitor);
-}
-
-void GPUcudaMallocAllocator::AddFreeVisitor(Visitor visitor) {
-  return base_allocator_->AddFreeVisitor(visitor);
 }
 
 bool GPUcudaMallocAllocator::TracksAllocationSizes() { return false; }

@@ -25,8 +25,11 @@ class MetricKeys(object):
   """Metric key strings."""
   LOSS = model_fn.LOSS_METRIC_KEY
   LOSS_MEAN = model_fn.AVERAGE_LOSS_METRIC_KEY
+  LOSS_REGULARIZATION = 'regularization_loss'
 
   ACCURACY = 'accuracy'
+  PRECISION = 'precision'
+  RECALL = 'recall'
   # This is the best the model could do by always predicting one class.
   # Should be < ACCURACY in a trained model.
   ACCURACY_BASELINE = 'accuracy_baseline'
@@ -39,3 +42,13 @@ class MetricKeys(object):
   ACCURACY_AT_THRESHOLD = 'accuracy/positive_threshold_%g'
   PRECISION_AT_THRESHOLD = 'precision/positive_threshold_%g'
   RECALL_AT_THRESHOLD = 'recall/positive_threshold_%g'
+
+  # The following require a class id applied.
+  PROBABILITY_MEAN_AT_CLASS = 'probability_mean/class%d'
+  AUC_AT_CLASS = 'auc/class%d'
+  AUC_PR_AT_CLASS = 'auc_precision_recall/class%d'
+
+  # The following require a class name applied.
+  PROBABILITY_MEAN_AT_NAME = 'probability_mean/%s'
+  AUC_AT_NAME = 'auc/%s'
+  AUC_PR_AT_NAME = 'auc_precision_recall/%s'

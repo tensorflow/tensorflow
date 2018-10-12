@@ -24,7 +24,7 @@ namespace tensorflow {
 
 void OpsTestBase::SetDevice(const DeviceType& device_type,
                             std::unique_ptr<Device> device) {
-  CHECK(device_.get()) << "No device provided";
+  CHECK(device_) << "No device provided";
   device_type_ = device_type;
   device_ = std::move(device);
 #ifdef GOOGLE_CUDA

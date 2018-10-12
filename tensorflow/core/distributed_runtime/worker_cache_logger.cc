@@ -97,9 +97,8 @@ void WorkerCacheLogger::RecordDataTransfer(int64 step_id, int64 start_usecs,
                                            const string& tensor_name,
                                            const string& src_device,
                                            const string& dst_device,
-                                           int64 bytes,
-                                           const string& details,
-                                           const string& transfer_method_name){
+                                           int64 bytes, const string& details,
+                                           const string& transfer_method_name) {
   NodeExecStats* ns = new NodeExecStats;
   ns->set_node_name(transfer_method_name);
   if (details.empty()) {

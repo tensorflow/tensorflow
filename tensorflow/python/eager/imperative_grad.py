@@ -21,16 +21,14 @@ from __future__ import print_function
 import collections
 
 from tensorflow.python import pywrap_tensorflow
-from tensorflow.python.framework import errors
 
 
-VSpace = collections.namedtuple(
-    "VSpace",
-    ["aggregate_fn", "num_elements_fn", "tensor_id", "zeros", "ones"])
+VSpace = collections.namedtuple("VSpace", [
+    "aggregate_fn", "num_elements_fn", "zeros_fn", "ones_fn", "graph_shape_fn"
+])
 
 
 def imperative_grad(
-    vspace,
     tape,
     target,
     sources,
@@ -42,7 +40,6 @@ def imperative_grad(
   gradients for all sources.
 
   Args:
-   vspace: the vector space in which to differentiate.
    tape: the gradient tape which stores the trace.
    target: either a Tensor or list of Tensors to be differentiated.
    sources: list of Tensors for which we want gradients
@@ -54,12 +51,9 @@ def imperative_grad(
 
   Raises:
     RuntimeError: if something goes wrong.
-    ValueError: if there is no sequence of differentiable operations connecting
-     a source and any target Tensor. This can happen either if the target is
-     not computed based on the source, if the tracing was set up incorrectly,
-     or if only non-differentiable functions of the source were used in the
-     computation of target.
   """
-  with errors.raise_exception_on_not_ok_status() as status:
-    return pywrap_tensorflow.TFE_Py_TapeGradient(
-        tape._tape, vspace, target, sources, output_gradients, status)  # pylint: disable=protected-access
+  return pywrap_tensorflow.TFE_Py_TapeGradient(
+      tape._tape,  # pylint: disable=protected-access
+      target,
+      sources,
+      output_gradients)

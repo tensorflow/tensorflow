@@ -18,6 +18,7 @@ limitations under the License.
 #include "tensorflow/core/framework/node_def_builder.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/kernels/ops_testutil.h"
+#include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/test_benchmark.h"
 
@@ -80,7 +81,7 @@ class ResizeBicubicOpTest : public OpsTestBase {
 
   // Used in the baseline implementation
   inline int64 Bound(int64 val, int64 limit) {
-    return std::min(limit - 1ll, std::max(0ll, val));
+    return std::min(limit - 1ll, std::max(int64{0}, val));
   }
 
   // Used in the baseline implementation
@@ -218,9 +219,8 @@ TEST_F(ResizeBicubicOpTest, TestBicubic2x2To0x0) {
   AddInputFromArray<int32>(TensorShape({2}), {0, 0});
 
   Status s = RunOpKernel();
-  EXPECT_TRUE(
-      StringPiece(s.ToString())
-          .contains("Invalid argument: output dimensions must be positive"))
+  EXPECT_TRUE(str_util::StrContains(
+      s.ToString(), "Invalid argument: output dimensions must be positive"))
       << s;
 }
 
@@ -286,13 +286,14 @@ BM_ResizeBicubicDev(32, 128, 3);
 BM_ResizeBicubicDev(32, 512, 3);
 BM_ResizeBicubicDev(32, 1024, 3);
 
-#define BM_ResizeBicubicExpand(BATCH, SIZE, CHANNELS)                          \
-  static void BM_ResizeBicubicExpand##_##BATCH##_##SIZE##_##CHANNELS(int iters) { \
-    testing::ItemsProcessed(static_cast<int64>(iters) * BATCH * SIZE * SIZE *  \
-                            CHANNELS * 8 * 8);                                 \
-    test::Benchmark("cpu", ResizeBicubic(BATCH, SIZE, CHANNELS, 8, 8))         \
-        .Run(iters);                                                           \
-  }                                                                            \
+#define BM_ResizeBicubicExpand(BATCH, SIZE, CHANNELS)                         \
+  static void BM_ResizeBicubicExpand##_##BATCH##_##SIZE##_##CHANNELS(         \
+      int iters) {                                                            \
+    testing::ItemsProcessed(static_cast<int64>(iters) * BATCH * SIZE * SIZE * \
+                            CHANNELS * 8 * 8);                                \
+    test::Benchmark("cpu", ResizeBicubic(BATCH, SIZE, CHANNELS, 8, 8))        \
+        .Run(iters);                                                          \
+  }                                                                           \
   BENCHMARK(BM_ResizeBicubicExpand##_##BATCH##_##SIZE##_##CHANNELS);
 
 BM_ResizeBicubicExpand(12, 48, 1);

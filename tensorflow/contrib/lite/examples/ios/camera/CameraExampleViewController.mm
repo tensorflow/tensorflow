@@ -26,7 +26,7 @@
 #include "tensorflow/contrib/lite/kernels/register.h"
 #include "tensorflow/contrib/lite/model.h"
 #include "tensorflow/contrib/lite/string_util.h"
-#include "tensorflow/contrib/lite/tools/mutable_op_resolver.h"
+#include "tensorflow/contrib/lite/op_resolver.h"
 
 #define LOG(x) std::cerr
 
@@ -225,14 +225,8 @@ static void GetTopN(const uint8_t* prediction, const int prediction_size, const 
   assert(pixelBuffer != NULL);
 
   OSType sourcePixelFormat = CVPixelBufferGetPixelFormatType(pixelBuffer);
-  int doReverseChannels;
-  if (kCVPixelFormatType_32ARGB == sourcePixelFormat) {
-    doReverseChannels = 1;
-  } else if (kCVPixelFormatType_32BGRA == sourcePixelFormat) {
-    doReverseChannels = 0;
-  } else {
-    assert(false);  // Unknown source format
-  }
+  assert(sourcePixelFormat == kCVPixelFormatType_32ARGB ||
+         sourcePixelFormat == kCVPixelFormatType_32BGRA);
 
   const int sourceRowBytes = (int)CVPixelBufferGetBytesPerRow(pixelBuffer);
   const int image_width = (int)CVPixelBufferGetWidth(pixelBuffer);
@@ -321,7 +315,7 @@ static void GetTopN(const uint8_t* prediction, const int prediction_size, const 
   labelLayers = [[NSMutableArray alloc] init];
   oldPredictionValues = [[NSMutableDictionary alloc] init];
 
-  NSString* graph_path = FilePathForResourceName(model_file_name, @"tflite");
+  NSString* graph_path = FilePathForResourceName(model_file_name, model_file_type);
   model = tflite::FlatBufferModel::BuildFromFile([graph_path UTF8String]);
   if (!model) {
     LOG(FATAL) << "Failed to mmap model " << graph_path;

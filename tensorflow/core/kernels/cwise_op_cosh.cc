@@ -16,20 +16,18 @@ limitations under the License.
 #include "tensorflow/core/kernels/cwise_ops_common.h"
 
 namespace tensorflow {
-REGISTER4(UnaryOp, CPU, "Cosh", functor::cosh, float, double,
-          complex64, complex128);
+REGISTER4(UnaryOp, CPU, "Cosh", functor::cosh, float, double, complex64,
+          complex128);
 
 #if TENSORFLOW_USE_SYCL
-#define REGISTER_SYCL_KERNEL(TYPE)                                    \
-  REGISTER_KERNEL_BUILDER(                                            \
-                          Name("Cosh")                                \
-                          .Device(DEVICE_SYCL)                        \
-                          .TypeConstraint<TYPE>("T"),                 \
-                          UnaryOp<SYCLDevice, functor::cosh<TYPE>>);
+#define REGISTER_SYCL_KERNEL(TYPE)                                \
+  REGISTER_KERNEL_BUILDER(                                        \
+      Name("Cosh").Device(DEVICE_SYCL).TypeConstraint<TYPE>("T"), \
+      UnaryOp<SYCLDevice, functor::cosh<TYPE>>);
 REGISTER_SYCL_KERNEL(float);
 REGISTER_SYCL_KERNEL(double);
 #undef REGISTER_SYCL_KERNEL
-#endif // TENSORFLOW_USE_SYCL
+#endif  // TENSORFLOW_USE_SYCL
 
 #if GOOGLE_CUDA
 REGISTER2(UnaryOp, GPU, "Cosh", functor::cosh, float, double);

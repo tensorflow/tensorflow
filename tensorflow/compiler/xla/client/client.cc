@@ -18,14 +18,15 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include "absl/memory/memory.h"
+#include "absl/strings/str_cat.h"
+#include "tensorflow/compiler/xla/client/xla_computation.h"
 #include "tensorflow/compiler/xla/execution_options_util.h"
 #include "tensorflow/compiler/xla/legacy_flags/debug_options_flags.h"
-#include "tensorflow/compiler/xla/literal_util.h"
-#include "tensorflow/compiler/xla/ptr_util.h"
+#include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/types.h"
@@ -36,8 +37,8 @@ Client::Client(ServiceInterface* stub) : stub_(stub) {}
 
 Client::~Client() = default;
 
-StatusOr<std::unique_ptr<Literal>> Client::Transfer(
-    const GlobalData& data, const Shape* shape_with_layout) {
+StatusOr<Literal> Client::Transfer(const GlobalData& data,
+                                   const Shape* shape_with_layout) {
   TransferToClientRequest request;
   *request.mutable_data() = data.handle();
   if (shape_with_layout != nullptr) {
@@ -60,11 +61,11 @@ StatusOr<std::unique_ptr<Literal>> Client::Transfer(
         "server provided response without a literal in "
         "TransferToClient request");
   }
-  return MakeUnique<Literal>(response.literal());
+  return Literal::CreateFromProto(*response.mutable_literal());
 }
 
 StatusOr<std::unique_ptr<GlobalData>> Client::TransferToServer(
-    const Literal& literal, const DeviceHandle* device_handle) {
+    const LiteralSlice& literal, const DeviceHandle* device_handle) {
   TransferToServerRequest request;
   *request.mutable_literal() = literal.ToProto();
   if (device_handle) {
@@ -88,10 +89,10 @@ StatusOr<std::unique_ptr<GlobalData>> Client::TransferToServer(
         "TransferToServer request");
   }
 
-  return MakeUnique<GlobalData>(stub_, response.data());
+  return absl::make_unique<GlobalData>(stub_, response.data());
 }
 
-Status Client::TransferToInfeed(const Literal& literal, int64 replica_id,
+Status Client::TransferToInfeed(const LiteralSlice& literal, int64 replica_id,
                                 const DeviceHandle* device_handle) {
   TransferToInfeedRequest request;
   *request.mutable_literal() = literal.ToProto();
@@ -113,7 +114,7 @@ Status Client::TransferToInfeed(const Literal& literal, int64 replica_id,
   return Status::OK();
 }
 
-StatusOr<std::unique_ptr<Literal>> Client::TransferFromOutfeed(
+StatusOr<Literal> Client::TransferFromOutfeed(
     const Shape* shape_with_layout, int64 replica_id,
     const DeviceHandle* device_handle) {
   TransferFromOutfeedRequest request;
@@ -142,7 +143,7 @@ StatusOr<std::unique_ptr<Literal>> Client::TransferFromOutfeed(
         "TransferToClient request");
   }
 
-  return MakeUnique<Literal>(response.literal());
+  return Literal::CreateFromProto(response.literal());
 }
 
 Status Client::ResetDevice() {
@@ -161,9 +162,8 @@ Status Client::ResetDevice() {
   return Status::OK();
 }
 
-StatusOr<std::unique_ptr<Literal>> Client::ExecuteAndTransfer(
-    const Computation& computation,
-    tensorflow::gtl::ArraySlice<GlobalData*> arguments,
+StatusOr<Literal> Client::ExecuteAndTransfer(
+    const XlaComputation& computation, absl::Span<GlobalData* const> arguments,
     const ExecutionOptions* execution_options,
     ExecutionProfile* execution_profile) {
   TF_ASSIGN_OR_RETURN(
@@ -177,27 +177,45 @@ StatusOr<std::unique_ptr<Literal>> Client::ExecuteAndTransfer(
   return Transfer(*data, shape_with_output_layout);
 }
 
-StatusOr<Computation> Client::LoadSnapshot(const SessionModule& module) {
-  LoadComputationSnapshotRequest request;
-  *request.mutable_module() = module;
-  LoadComputationSnapshotResponse response;
+StatusOr<Literal> Client::ComputeConstant(const XlaComputation& computation,
+                                          const Layout* output_layout) const {
+  ComputeConstantGraphRequest request;
+  *request.mutable_computation() = computation.proto();
+  if (output_layout != nullptr) {
+    *request.mutable_output_layout() = *output_layout;
+  }
 
-  Status s = stub_->LoadComputationSnapshot(&request, &response);
+  ComputeConstantResponse response;
+
+  VLOG(2) << "making compute-constant-graph request";
+  Status s = stub_->ComputeConstantGraph(&request, &response);
+  VLOG(2) << "done with request";
+
   if (!s.ok()) {
     return s;
   }
 
-  VLOG(1) << "load snapshot response: " << response.ShortDebugString();
-  return Computation(stub_, response.computation());
+  VLOG(3) << "ComputeConstant: {" << response.DebugString() << "}";
+
+  if (!response.has_literal()) {
+    return InternalError(
+        "no computed literal in the provided response in ComputeConstantGraph "
+        "request");
+  }
+  return Literal::CreateFromProto(response.literal());
+}
+
+StatusOr<XlaComputation> Client::LoadSnapshot(const HloSnapshot& module) {
+  TF_RET_CHECK(module.has_hlo() && module.hlo().has_hlo_module());
+  return XlaComputation(module.hlo().hlo_module());
 }
 
 StatusOr<std::unique_ptr<GlobalData>> Client::Execute(
-    const Computation& computation,
-    tensorflow::gtl::ArraySlice<GlobalData*> arguments,
+    const XlaComputation& computation, absl::Span<GlobalData* const> arguments,
     const ExecutionOptions* execution_options,
     ExecutionProfile* execution_profile) {
-  ExecuteRequest request;
-  *request.mutable_computation() = computation.handle();
+  ExecuteGraphRequest request;
+  *request.mutable_computation() = computation.proto();
 
   if (execution_options == nullptr) {
     *request.mutable_execution_options() = CreateDefaultExecutionOptions();
@@ -211,7 +229,7 @@ StatusOr<std::unique_ptr<GlobalData>> Client::Execute(
 
   ExecuteResponse response;
   VLOG(1) << "making execute request: " << request.ShortDebugString();
-  Status s = stub_->Execute(&request, &response);
+  Status s = stub_->ExecuteGraph(&request, &response);
   VLOG(1) << "done with request";
 
   if (!s.ok()) {
@@ -228,16 +246,16 @@ StatusOr<std::unique_ptr<GlobalData>> Client::Execute(
     }
   }
 
-  return MakeUnique<GlobalData>(stub_, response.output());
+  return absl::make_unique<GlobalData>(stub_, response.output());
 }
 
 StatusOr<std::vector<std::unique_ptr<GlobalData>>> Client::ExecuteParallel(
-    tensorflow::gtl::ArraySlice<ComputationInstance> computations) {
-  ExecuteParallelRequest request;
+    absl::Span<const XlaComputationInstance> computations) {
+  ExecuteGraphParallelRequest request;
 
-  for (const ComputationInstance& computation : computations) {
-    ExecuteRequest single_request;
-    *single_request.mutable_computation() = computation.computation.handle();
+  for (const XlaComputationInstance& computation : computations) {
+    ExecuteGraphRequest single_request;
+    *single_request.mutable_computation() = computation.computation.proto();
     for (GlobalData* argument : computation.arguments) {
       *single_request.add_arguments() = argument->handle();
     }
@@ -246,8 +264,9 @@ StatusOr<std::vector<std::unique_ptr<GlobalData>>> Client::ExecuteParallel(
   }
 
   ExecuteParallelResponse response;
-  VLOG(1) << "making execute-parallel request: " << request.ShortDebugString();
-  tensorflow::Status s = stub_->ExecuteParallel(&request, &response);
+  VLOG(1) << "making execute-graph-parallel request: "
+          << request.ShortDebugString();
+  Status s = stub_->ExecuteGraphParallel(&request, &response);
   VLOG(1) << "done with request";
 
   if (!s.ok()) {
@@ -257,7 +276,7 @@ StatusOr<std::vector<std::unique_ptr<GlobalData>>> Client::ExecuteParallel(
   std::vector<std::unique_ptr<GlobalData>> outputs;
   for (size_t i = 0; i < computations.size(); ++i) {
     outputs.push_back(
-        MakeUnique<GlobalData>(stub_, response.responses(i).output()));
+        absl::make_unique<GlobalData>(stub_, response.responses(i).output()));
     if (computations[i].execution_profile != nullptr) {
       *computations[i].execution_profile = response.responses(i).profile();
     }
@@ -276,7 +295,7 @@ StatusOr<std::vector<DeviceHandle>> Client::GetDeviceHandles(
 
   GetDeviceHandlesResponse response;
   VLOG(1) << "making get device request: " << request.ShortDebugString();
-  tensorflow::Status s = stub_->GetDeviceHandles(&request, &response);
+  Status s = stub_->GetDeviceHandles(&request, &response);
   VLOG(1) << "done with request";
 
   if (!s.ok()) {
@@ -319,20 +338,23 @@ StatusOr<std::vector<std::unique_ptr<GlobalData>>> Client::DeconstructTuple(
 
   std::vector<std::unique_ptr<GlobalData>> handles;
   for (auto& handle : response.element_handles()) {
-    handles.push_back(MakeUnique<GlobalData>(stub_, handle));
+    handles.push_back(absl::make_unique<GlobalData>(stub_, handle));
   }
   return std::move(handles);
 }
 
 StatusOr<ComputationStats> Client::GetComputationStats(
-    const Computation& computation, const DebugOptions& debug_options) const {
-  ComputationStatsRequest request;
-  *request.mutable_computation() = computation.handle();
+    const XlaComputation& computation,
+    const DebugOptions& debug_options) const {
+  ComputationGraphStatsRequest request;
+
+  // TODO(b/74197823): Find a way to avoid the copy of the hlo proto.
+  *request.mutable_computation() = computation.proto();
   *request.mutable_debug_options() = debug_options;
   ComputationStatsResponse response;
 
-  VLOG(1) << "making computation stats request";
-  Status s = stub_->GetComputationStats(&request, &response);
+  VLOG(1) << "making computation graph stats request";
+  Status s = stub_->GetComputationGraphStats(&request, &response);
   VLOG(1) << "done with request";
 
   if (!s.ok()) {
@@ -343,20 +365,9 @@ StatusOr<ComputationStats> Client::GetComputationStats(
 }
 
 StatusOr<std::unique_ptr<ProgramShape>> Client::GetComputationShape(
-    const Computation& computation) {
-  GetComputationShapeRequest request;
-  *request.mutable_computation() = computation.handle();
-  GetComputationShapeResponse response;
-
-  VLOG(1) << "making get-computation-shape request";
-  Status s = stub_->GetComputationShape(&request, &response);
-  VLOG(1) << "done with request";
-
-  if (!s.ok()) {
-    return s;
-  }
-
-  return WrapUnique(response.release_program_shape());
+    const XlaComputation& computation) {
+  TF_ASSIGN_OR_RETURN(const auto& result, computation.GetProgramShape());
+  return absl::make_unique<ProgramShape>(result);
 }
 
 StatusOr<Shape> Client::GetShape(const GlobalData& data) {
@@ -376,7 +387,7 @@ StatusOr<Shape> Client::GetShape(const GlobalData& data) {
 }
 
 StatusOr<string> Client::ExecutionStatsAsString(
-    const Computation& computation, const ExecutionProfile& profile) {
+    const XlaComputation& computation, const ExecutionProfile& profile) {
   TF_ASSIGN_OR_RETURN(
       auto computation_stats,
       GetComputationStats(computation,
@@ -387,7 +398,7 @@ StatusOr<string> Client::ExecutionStatsAsString(
     int64 nanoseconds = profile.compute_time_ns();
     int64 cycle_count = profile.compute_cycle_count();
     double gflops = total_flops / nanoseconds;
-    return tensorflow::strings::StrCat(
+    return absl::StrCat(
         "[Execution Statistics] flop count: ", computation_stats.flop_count(),
         ", transcendental count: ", computation_stats.transcendental_count(),
         ", compute execution time: ", nanoseconds, " nsec",
@@ -397,8 +408,10 @@ StatusOr<string> Client::ExecutionStatsAsString(
   return string("[Execution Statistics] not available.");
 }
 
-StatusOr<ChannelHandle> Client::CreateChannelHandle() {
+StatusOr<ChannelHandle> Client::CreateChannelHandleByType(
+    ChannelHandle::ChannelType type) {
   CreateChannelHandleRequest request;
+  request.set_channel_type(type);
   CreateChannelHandleResponse response;
 
   VLOG(1) << "making create channel handle request";
@@ -410,6 +423,18 @@ StatusOr<ChannelHandle> Client::CreateChannelHandle() {
   }
 
   return response.channel();
+}
+
+StatusOr<ChannelHandle> Client::CreateChannelHandle() {
+  return CreateChannelHandleByType(ChannelHandle::DEVICE_TO_DEVICE);
+}
+
+StatusOr<ChannelHandle> Client::CreateHostToDeviceChannelHandle() {
+  return CreateChannelHandleByType(ChannelHandle::HOST_TO_DEVICE);
+}
+
+StatusOr<ChannelHandle> Client::CreateDeviceToHostChannelHandle() {
+  return CreateChannelHandleByType(ChannelHandle::DEVICE_TO_HOST);
 }
 
 }  // namespace xla

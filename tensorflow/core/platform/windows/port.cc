@@ -13,10 +13,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifdef TENSORFLOW_USE_JEMALLOC
-#include "jemalloc/jemalloc.h"
-#endif
-
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -25,6 +21,7 @@ limitations under the License.
 #endif
 
 #include <Windows.h>
+#include <shlwapi.h>
 
 #include "tensorflow/core/platform/cpu_info.h"
 #include "tensorflow/core/platform/demangle.h"
@@ -32,6 +29,7 @@ limitations under the License.
 #include "tensorflow/core/platform/init_main.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/mem.h"
+#include "tensorflow/core/platform/numa.h"
 #include "tensorflow/core/platform/snappy.h"
 #include "tensorflow/core/platform/types.h"
 
@@ -56,56 +54,36 @@ int NumSchedulableCPUs() {
   return system_info.dwNumberOfProcessors;
 }
 
+bool NUMAEnabled() {
+  // Not yet implemented: coming soon.
+  return false;
+}
+
+int NUMANumNodes() { return 1; }
+
+void NUMASetThreadNodeAffinity(int node) {}
+
+int NUMAGetThreadNodeAffinity() { return kNUMANoAffinity; }
+
 void* AlignedMalloc(size_t size, int minimum_alignment) {
-#ifdef TENSORFLOW_USE_JEMALLOC
-  void* ptr = NULL;
-  // posix_memalign requires that the requested alignment be at least
-  // sizeof(void*). In this case, fall back on malloc which should return
-  // memory aligned to at least the size of a pointer.
-  const int required_alignment = sizeof(void*);
-  if (minimum_alignment < required_alignment) return Malloc(size);
-  int err = jemalloc_posix_memalign(&ptr, minimum_alignment, size);
-  if (err != 0) {
-    return NULL;
-  } else {
-    return ptr;
-  }
-#else
   return _aligned_malloc(size, minimum_alignment);
-#endif
 }
 
-void AlignedFree(void* aligned_memory) {
-#ifdef TENSORFLOW_USE_JEMALLOC
-  jemalloc_free(aligned_memory);
-#else
-  _aligned_free(aligned_memory);
-#endif
+void AlignedFree(void* aligned_memory) { _aligned_free(aligned_memory); }
+
+void* Malloc(size_t size) { return malloc(size); }
+
+void* Realloc(void* ptr, size_t size) { return realloc(ptr, size); }
+
+void Free(void* ptr) { return free(ptr); }
+
+void* NUMAMalloc(int node, size_t size, int minimum_alignment) {
+  return AlignedMalloc(size, minimum_alignment);
 }
 
-void* Malloc(size_t size) {
-#ifdef TENSORFLOW_USE_JEMALLOC
-  return jemalloc_malloc(size);
-#else
-  return malloc(size);
-#endif
-}
+void NUMAFree(void* ptr, size_t size) { Free(ptr); }
 
-void* Realloc(void* ptr, size_t size) {
-#ifdef TENSORFLOW_USE_JEMALLOC
-  return jemalloc_realloc(ptr, size);
-#else
-  return realloc(ptr, size);
-#endif
-}
-
-void Free(void* ptr) {
-#ifdef TENSORFLOW_USE_JEMALLOC
-  return jemalloc_free(ptr);
-#else
-  return free(ptr);
-#endif
-}
+int NUMAGetMemAffinity(const void* addr) { return kNUMANoAffinity; }
 
 void MallocExtension_ReleaseToSystem(std::size_t num_bytes) {
   // No-op.
@@ -149,8 +127,30 @@ bool Snappy_Uncompress(const char* input, size_t length, char* output) {
 string Demangle(const char* mangled) { return mangled; }
 
 double NominalCPUFrequency() {
-  // TODO(yuefengz): implement it for this platform.
+  DWORD data;
+  DWORD data_size = sizeof(data);
+  #pragma comment(lib, "shlwapi.lib")  // For SHGetValue().
+  if (SUCCEEDED(
+          SHGetValueA(HKEY_LOCAL_MACHINE,
+                      "HARDWARE\\DESCRIPTION\\System\\CentralProcessor\\0",
+                      "~MHz", nullptr, &data, &data_size))) {
+    return data * 1e6;  // Value is MHz.
+  }
   return 1.0;
+}
+
+int64 AvailableRam() {
+  MEMORYSTATUSEX statex;
+  statex.dwLength = sizeof(statex);
+  if (GlobalMemoryStatusEx(&statex)) {
+    return statex.ullAvailPhys;
+  }
+  return INT64_MAX;
+}
+
+int NumHyperthreadsPerCore() {
+  static const int ht_per_core = tensorflow::port::CPUIDNumSMT();
+  return (ht_per_core > 0) ? ht_per_core : 1;
 }
 
 }  // namespace port

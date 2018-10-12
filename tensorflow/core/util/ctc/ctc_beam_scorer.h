@@ -12,6 +12,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+// LINT.IfChange
 
 // Collection of scoring classes that can be extended and provided to the
 // CTCBeamSearchDecoder to incorporate additional scoring logic (such as a
@@ -73,3 +74,4 @@ class BaseBeamScorer {
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_CORE_UTIL_CTC_CTC_BEAM_SCORER_H_
+// LINT.ThenChange(//tensorflow/contrib/lite/experimental/kernels/ctc_beam_scorer.h)

@@ -18,15 +18,13 @@ limitations under the License.
 
 #include "tensorflow/core/lib/strings/stringprintf.h"
 
-namespace perftools {
-namespace gputools {
+namespace stream_executor {
 namespace port {
 
 using tensorflow::strings::Printf;
 using tensorflow::strings::Appendf;
 
 }  // namespace port
-}  // namespace gputools
-}  // namespace perftools
+}  // namespace stream_executor
 
 #endif  // TENSORFLOW_STREAM_EXECUTOR_LIB_STRINGPRINTF_H_

@@ -16,10 +16,10 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_LLVM_IR_TUPLE_OPS_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_LLVM_IR_TUPLE_OPS_H_
 
+#include "absl/types/span.h"
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/Value.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/ir_array.h"
-#include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/platform/types.h"
 
 // Utilities for emitting LLVM IR related to HLO tuples.
@@ -59,15 +59,19 @@ namespace llvm_ir {
 // of the address from the corresponding element in either
 // tuple_on_true or tuple_on_false:
 //   output[i] = pred ? tuple_on_true[i] : tuple_on_false[i]
-void EmitTupleSelect(IrArray select, IrArray pred, llvm::Value* on_true,
-                     llvm::Value* on_false, llvm::IRBuilder<>* ir_builder,
-                     llvm::Module* module);
+void EmitTupleSelect(const IrArray& select, const IrArray& pred,
+                     llvm::Value* on_true, llvm::Value* on_false,
+                     llvm::IRBuilder<>* b, llvm::Module* module);
 
 // A tuple is an array of pointers, one for each operand. Each pointer points to
 // the output buffer of its corresponding operand.
-void EmitTuple(IrArray tuple,
-               tensorflow::gtl::ArraySlice<llvm::Value*> operands,
-               llvm::IRBuilder<>* ir_builder, llvm::Module* module);
+void EmitTuple(const IrArray& tuple, absl::Span<llvm::Value* const> operands,
+               llvm::IRBuilder<>* b, llvm::Module* module);
+
+// Similar to EmitTuple above, except that the output buffers are provided in
+// the form of IrArray.
+void EmitTuple(const IrArray& tuple, absl::Span<const IrArray> buffers,
+               llvm::IRBuilder<>* b, llvm::Module* module);
 
 // A tuple is an array of pointers, one for each operand. Each pointer points to
 // the output buffer of its corresponding operand. A GetTupleElement instruction
@@ -75,8 +79,7 @@ void EmitTuple(IrArray tuple,
 // Returns an llvm value representing a pointer to the tuple element buffer.
 llvm::Value* EmitGetTupleElement(const Shape& target_shape, int64 index,
                                  int alignment, llvm::Value* operand,
-                                 llvm::IRBuilder<>* ir_builder,
-                                 llvm::Module* module);
+                                 llvm::IRBuilder<>* b, llvm::Module* module);
 }  // namespace llvm_ir
 }  // namespace xla
 

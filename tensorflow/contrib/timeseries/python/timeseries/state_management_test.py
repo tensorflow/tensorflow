@@ -78,7 +78,7 @@ class StubTimeSeriesModel(model.TimeSeriesModel):
     batch_end_values = array_ops.squeeze(
         array_ops.slice(values, [0, array_ops.shape(times)[1] - 1, 0],
                         [-1, 1, -1]),
-        squeeze_dims=[1, 2])
+        axis=[1, 2])
     # A pretty odd but easy to think about loss: L1 loss on the batch end
     # values.
     loss = math_ops.reduce_sum(
@@ -127,7 +127,7 @@ class ChainingStateManagerTest(test.TestCase):
     chainer.initialize_graph(model=stub_model)
     model_outputs = chainer.define_loss(
         model=stub_model, features=features, mode=estimator_lib.ModeKeys.TRAIN)
-    with self.test_session() as session:
+    with self.cached_session() as session:
       variables.global_variables_initializer().run()
       coordinator = coordinator_lib.Coordinator()
       queue_runner_impl.start_queue_runners(session, coord=coordinator)
@@ -178,7 +178,7 @@ class ChainingStateManagerTest(test.TestCase):
     result_model_outputs = chainer.define_loss(
         model=stub_model, features=result_input_fn()[0],
         mode=estimator_lib.ModeKeys.TRAIN)
-    with self.test_session() as session:
+    with self.cached_session() as session:
       variables.global_variables_initializer().run()
       coordinator = coordinator_lib.Coordinator()
       queue_runner_impl.start_queue_runners(session, coord=coordinator)
@@ -221,7 +221,7 @@ class ChainingStateManagerTest(test.TestCase):
     chainer.initialize_graph(model=stub_model)
     model_outputs = chainer.define_loss(
         model=stub_model, features=features, mode=estimator_lib.ModeKeys.TRAIN)
-    with self.test_session() as session:
+    with self.cached_session() as session:
       variables.global_variables_initializer().run()
       coordinator = coordinator_lib.Coordinator()
       queue_runner_impl.start_queue_runners(session, coord=coordinator)

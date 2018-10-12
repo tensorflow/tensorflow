@@ -21,7 +21,7 @@ from __future__ import print_function
 import numpy as np
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
-from tensorflow.compiler.tests.xla_test import XLATestCase
+from tensorflow.compiler.tests import xla_test
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.ops import array_ops
@@ -33,10 +33,10 @@ from tensorflow.python.platform import googletest
 
 # Test cloned from
 # tensorflow/python/kernel_tests/conv3d_backprop_filter_v2_grad_test.py
-class Conv3DBackpropFilterV2GradTest(XLATestCase):
+class Conv3DBackpropFilterV2GradTest(xla_test.XLATestCase):
 
   def testGradient(self):
-    with self.test_session(), self.test_scope():
+    with self.cached_session(), self.test_scope():
       for padding in ["SAME", "VALID"]:
         for stride in [1, 2]:
           np.random.seed(1)
@@ -66,10 +66,10 @@ class Conv3DBackpropFilterV2GradTest(XLATestCase):
 
 
 # Test cloned from tensorflow/python/kernel_tests/conv3d_transpose_test.py
-class Conv3DTransposeTest(XLATestCase):
+class Conv3DTransposeTest(xla_test.XLATestCase):
 
   def testConv3DTransposeSingleStride(self):
-    with self.test_session(), self.test_scope():
+    with self.cached_session(), self.test_scope():
       strides = [1, 1, 1, 1, 1]
 
       # Input, output: [batch, depth, height, width, channel]
@@ -119,7 +119,7 @@ class Conv3DTransposeTest(XLATestCase):
                 self.assertAllClose(target, value[n, d, h, w, k])
 
   def testConv3DTransposeSame(self):
-    with self.test_session(), self.test_scope():
+    with self.cached_session(), self.test_scope():
       strides = [1, 2, 2, 2, 1]
 
       # Input, output: [batch, depth, height, width, depth]
@@ -157,7 +157,7 @@ class Conv3DTransposeTest(XLATestCase):
                 self.assertAllClose(target, value[n, d, h, w, k])
 
   def testConv3DTransposeValid(self):
-    with self.test_session(), self.test_scope():
+    with self.cached_session(), self.test_scope():
       strides = [1, 2, 2, 2, 1]
 
       # Input, output: [batch, depth, height, width, depth]
@@ -217,7 +217,7 @@ class Conv3DTransposeTest(XLATestCase):
     np.random.seed(1)  # Make it reproducible.
     x_val = np.random.random_sample(x_shape).astype(np.float64)
     f_val = np.random.random_sample(f_shape).astype(np.float64)
-    with self.test_session(), self.test_scope():
+    with self.cached_session(), self.test_scope():
       x = constant_op.constant(x_val, name="x", dtype=dtypes.float32)
       f = constant_op.constant(f_val, name="f", dtype=dtypes.float32)
       output = nn_ops.conv3d_transpose(

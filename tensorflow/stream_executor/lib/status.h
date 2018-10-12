@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-// IWYU pragma: private, include "perftools/gputools/executor/stream_executor.h"
+// IWYU pragma: private, include "third_party/tensorflow/stream_executor/stream_executor.h"
 
 #ifndef TENSORFLOW_STREAM_EXECUTOR_LIB_STATUS_H_
 #define TENSORFLOW_STREAM_EXECUTOR_LIB_STATUS_H_
@@ -23,15 +23,14 @@ limitations under the License.
 #include "tensorflow/stream_executor/lib/stringpiece.h"
 #include "tensorflow/stream_executor/platform/logging.h"
 
-namespace perftools {
-namespace gputools {
+namespace stream_executor {
 namespace port {
 
 using Status = tensorflow::Status;
 
 #define SE_CHECK_OK(val) TF_CHECK_OK(val)
 #define SE_ASSERT_OK(val) \
-  ASSERT_EQ(::perftools::gputools::port::Status::OK(), (val))
+  ASSERT_EQ(::stream_executor::port::Status::OK(), (val))
 
 // Define some canonical error helpers.
 inline Status UnimplementedError(StringPiece message) {
@@ -45,6 +44,16 @@ inline Status FailedPreconditionError(StringPiece message) {
 }
 
 }  // namespace port
+}  // namespace stream_executor
+
+namespace perftools {
+namespace gputools {
+
+// Temporarily pull stream_executor into perftools::gputools while we migrate
+// code to the new namespace.  TODO(b/77980417): Remove this once we've
+// completed the migration.
+using namespace stream_executor;  // NOLINT[build/namespaces]
+
 }  // namespace gputools
 }  // namespace perftools
 

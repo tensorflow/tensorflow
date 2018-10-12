@@ -64,14 +64,11 @@ def _hertz_to_mel(frequencies_hertz, name=None):
         1.0 + (frequencies_hertz / _MEL_BREAK_FREQUENCY_HERTZ))
 
 
-def _validate_arguments(num_mel_bins, num_spectrogram_bins, sample_rate,
+def _validate_arguments(num_mel_bins, sample_rate,
                         lower_edge_hertz, upper_edge_hertz, dtype):
   """Checks the inputs to linear_to_mel_weight_matrix."""
   if num_mel_bins <= 0:
     raise ValueError('num_mel_bins must be positive. Got: %s' % num_mel_bins)
-  if num_spectrogram_bins <= 0:
-    raise ValueError('num_spectrogram_bins must be positive. Got: %s' %
-                     num_spectrogram_bins)
   if sample_rate <= 0.0:
     raise ValueError('sample_rate must be positive. Got: %s' % sample_rate)
   if lower_edge_hertz < 0.0:
@@ -80,6 +77,10 @@ def _validate_arguments(num_mel_bins, num_spectrogram_bins, sample_rate,
   if lower_edge_hertz >= upper_edge_hertz:
     raise ValueError('lower_edge_hertz %.1f >= upper_edge_hertz %.1f' %
                      (lower_edge_hertz, upper_edge_hertz))
+  if upper_edge_hertz > sample_rate / 2:
+    raise ValueError('upper_edge_hertz must not be larger than the Nyquist '
+                     'frequency (sample_rate / 2). Got: %s for sample_rate: %s'
+                     % (upper_edge_hertz, sample_rate))
   if not dtype.is_floating:
     raise ValueError('dtype must be a floating point type. Got: %s' % dtype)
 
@@ -107,7 +108,7 @@ def linear_to_mel_weight_matrix(num_mel_bins=20,
       # `M` has shape [frames, num_mel_bins]
       M = tf.matmul(S, A)
 
-  The matrix can be used with @{tf.tensordot} to convert an arbitrary rank
+  The matrix can be used with `tf.tensordot` to convert an arbitrary rank
   `Tensor` of linear-scale spectral bins into the mel scale.
 
       # S has shape [..., num_spectrogram_bins].
@@ -118,9 +119,9 @@ def linear_to_mel_weight_matrix(num_mel_bins=20,
 
   Args:
     num_mel_bins: Python int. How many bands in the resulting mel spectrum.
-    num_spectrogram_bins: Python int. How many bins there are in the source
-      spectrogram data, which is understood to be `fft_size // 2 + 1`, i.e. the
-      spectrogram only contains the nonredundant FFT bins.
+    num_spectrogram_bins: An integer `Tensor`. How many bins there are in the
+      source spectrogram data, which is understood to be `fft_size // 2 + 1`,
+      i.e. the spectrogram only contains the nonredundant FFT bins.
     sample_rate: Python float. Samples per second of the input signal used to
       create the spectrogram. We need this to figure out the actual frequencies
       for each spectrogram bin, which dictates how they are mapped into the mel
@@ -138,31 +139,33 @@ def linear_to_mel_weight_matrix(num_mel_bins=20,
 
   Raises:
     ValueError: If num_mel_bins/num_spectrogram_bins/sample_rate are not
-      positive, lower_edge_hertz is negative, or frequency edges are incorrectly
-      ordered.
+      positive, lower_edge_hertz is negative, frequency edges are incorrectly
+      ordered, or upper_edge_hertz is larger than the Nyquist frequency.
 
   [mel]: https://en.wikipedia.org/wiki/Mel_scale
   """
   with ops.name_scope(name, 'linear_to_mel_weight_matrix') as name:
-    _validate_arguments(num_mel_bins, num_spectrogram_bins, sample_rate,
+    # Note: As num_spectrogram_bins is passed to `math_ops.linspace`
+    # and the validation is already done in linspace (both in shape function
+    # and in kernel), there is no need to validate num_spectrogram_bins here.
+    _validate_arguments(num_mel_bins, sample_rate,
                         lower_edge_hertz, upper_edge_hertz, dtype)
 
-    # To preserve accuracy, we compute the matrix at float64 precision and then
-    # cast to `dtype` at the end. This function can be constant folded by graph
-    # optimization since there are no Tensor inputs.
+    # This function can be constant folded by graph optimization since there are
+    # no Tensor inputs.
     sample_rate = ops.convert_to_tensor(
-        sample_rate, dtypes.float64, name='sample_rate')
+        sample_rate, dtype, name='sample_rate')
     lower_edge_hertz = ops.convert_to_tensor(
-        lower_edge_hertz, dtypes.float64, name='lower_edge_hertz')
+        lower_edge_hertz, dtype, name='lower_edge_hertz')
     upper_edge_hertz = ops.convert_to_tensor(
-        upper_edge_hertz, dtypes.float64, name='upper_edge_hertz')
-    zero_float64 = ops.convert_to_tensor(0.0, dtypes.float64)
+        upper_edge_hertz, dtype, name='upper_edge_hertz')
+    zero = ops.convert_to_tensor(0.0, dtype)
 
     # HTK excludes the spectrogram DC bin.
     bands_to_zero = 1
     nyquist_hertz = sample_rate / 2.0
     linear_frequencies = math_ops.linspace(
-        zero_float64, nyquist_hertz, num_spectrogram_bins)[bands_to_zero:]
+        zero, nyquist_hertz, num_spectrogram_bins)[bands_to_zero:]
     spectrogram_bins_mel = array_ops.expand_dims(
         _hertz_to_mel(linear_frequencies), 1)
 
@@ -189,11 +192,8 @@ def linear_to_mel_weight_matrix(num_mel_bins=20,
 
     # Intersect the line segments with each other and zero.
     mel_weights_matrix = math_ops.maximum(
-        zero_float64, math_ops.minimum(lower_slopes, upper_slopes))
+        zero, math_ops.minimum(lower_slopes, upper_slopes))
 
     # Re-add the zeroed lower bins we sliced out above.
-    mel_weights_matrix = array_ops.pad(
-        mel_weights_matrix, [[bands_to_zero, 0], [0, 0]])
-
-    # Cast to the desired type.
-    return math_ops.cast(mel_weights_matrix, dtype, name=name)
+    return array_ops.pad(
+        mel_weights_matrix, [[bands_to_zero, 0], [0, 0]], name=name)

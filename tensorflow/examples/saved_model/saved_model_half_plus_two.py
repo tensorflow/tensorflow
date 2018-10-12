@@ -33,6 +33,13 @@ where `a`, `b` and `c` are variables with `a=0.5` and `b=2` and `c=3`.
 
 Output from this program is typically used to exercise SavedModel load and
 execution code.
+
+To create a CPU model:
+  bazel run -c opt saved_half_plus_two -- --device=cpu
+
+To create GPU model:
+  bazel run --config=cuda -c opt saved_half_plus_two -- \
+  --device=gpu
 """
 
 from __future__ import absolute_import
@@ -105,42 +112,52 @@ def _build_classification_signature(input_tensor, scores_tensor):
 
 def _generate_saved_model_for_half_plus_two(export_dir,
                                             as_text=False,
-                                            use_main_op=False):
+                                            use_main_op=False,
+                                            device_type="cpu"):
   """Generates SavedModel for half plus two.
 
   Args:
     export_dir: The directory to which the SavedModel should be written.
     as_text: Writes the SavedModel protocol buffer in text format to disk.
     use_main_op: Whether to supply a main op during SavedModel build time.
+    device_name: Device to force ops to run on.
   """
   builder = tf.saved_model.builder.SavedModelBuilder(export_dir)
 
-  with tf.Session(graph=tf.Graph()) as sess:
-    # Set up the model parameters as variables to exercise variable loading
-    # functionality upon restore.
-    a = tf.Variable(0.5, name="a")
-    b = tf.Variable(2.0, name="b")
-    c = tf.Variable(3.0, name="c")
+  device_name = "/cpu:0"
+  if device_type == "gpu":
+    device_name = "/gpu:0"
 
-    # Create a placeholder for serialized tensorflow.Example messages to be fed.
-    serialized_tf_example = tf.placeholder(tf.string, name="tf_example")
+  with tf.Session(
+      graph=tf.Graph(),
+      config=tf.ConfigProto(log_device_placement=True)) as sess:
+    with tf.device(device_name):
+      # Set up the model parameters as variables to exercise variable loading
+      # functionality upon restore.
+      a = tf.Variable(0.5, name="a")
+      b = tf.Variable(2.0, name="b")
+      c = tf.Variable(3.0, name="c")
 
-    # Parse the tensorflow.Example looking for a feature named "x" with a single
-    # floating point value.
-    feature_configs = {
-        "x": tf.FixedLenFeature(
-            [1], dtype=tf.float32),
-        "x2": tf.FixedLenFeature(
-            [1], dtype=tf.float32, default_value=[0.0])
-    }
-    tf_example = tf.parse_example(serialized_tf_example, feature_configs)
-    # Use tf.identity() to assign name
-    x = tf.identity(tf_example["x"], name="x")
-    y = tf.add(tf.multiply(a, x), b, name="y")
-    y2 = tf.add(tf.multiply(a, x), c, name="y2")
+      # Create a placeholder for serialized tensorflow.Example messages to be
+      # fed.
+      serialized_tf_example = tf.placeholder(tf.string, name="tf_example")
 
-    x2 = tf.identity(tf_example["x2"], name="x2")
-    y3 = tf.add(tf.multiply(a, x2), c, name="y3")
+      # Parse the tensorflow.Example looking for a feature named "x" with a
+      # single floating point value.
+      feature_configs = {
+          "x": tf.FixedLenFeature([1], dtype=tf.float32),
+          "x2": tf.FixedLenFeature([1], dtype=tf.float32, default_value=[0.0])
+      }
+      # parse_example only works on CPU
+      with tf.device("/cpu:0"):
+        tf_example = tf.parse_example(serialized_tf_example, feature_configs)
+      # Use tf.identity() to assign name
+      x = tf.identity(tf_example["x"], name="x")
+      y = tf.add(tf.multiply(a, x), b, name="y")
+      y2 = tf.add(tf.multiply(a, x), c, name="y2")
+
+      x2 = tf.identity(tf_example["x2"], name="x2")
+      y3 = tf.add(tf.multiply(a, x2), c, name="y3")
 
     # Create an assets file that can be saved and restored as part of the
     # SavedModel.
@@ -185,20 +202,7 @@ def _generate_saved_model_for_half_plus_two(export_dir,
     }
     # Initialize all variables and then save the SavedModel.
     sess.run(tf.global_variables_initializer())
-    signature_def_map = {
-        "regress_x_to_y":
-            _build_regression_signature(serialized_tf_example, y),
-        "regress_x_to_y2":
-            _build_regression_signature(serialized_tf_example, y2),
-        "regress_x2_to_y3":
-            _build_regression_signature(x2, y3),
-        "classify_x_to_y":
-            _build_classification_signature(serialized_tf_example, y),
-        "classify_x2_to_y3":
-            _build_classification_signature(x2, y3),
-        tf.saved_model.signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY:
-            predict_signature_def
-    }
+
     if use_main_op:
       builder.add_meta_graph_and_variables(
           sess, [tf.saved_model.tag_constants.SERVING],
@@ -212,19 +216,30 @@ def _generate_saved_model_for_half_plus_two(export_dir,
           signature_def_map=signature_def_map,
           assets_collection=tf.get_collection(tf.GraphKeys.ASSET_FILEPATHS),
           legacy_init_op=tf.group(assign_filename_op))
-    builder.save(as_text)
+  builder.save(as_text)
 
 
 def main(_):
-  _generate_saved_model_for_half_plus_two(FLAGS.output_dir)
-  print("SavedModel generated at: %s" % FLAGS.output_dir)
-
-  _generate_saved_model_for_half_plus_two(FLAGS.output_dir_pbtxt, as_text=True)
-  print("SavedModel generated at: %s" % FLAGS.output_dir_pbtxt)
+  _generate_saved_model_for_half_plus_two(
+      FLAGS.output_dir, device_type=FLAGS.device)
+  print("SavedModel generated for %(device)s at: %(dir)s" % {
+      "device": FLAGS.device,
+      "dir": FLAGS.output_dir
+  })
 
   _generate_saved_model_for_half_plus_two(
-      FLAGS.output_dir_main_op, use_main_op=True)
-  print("SavedModel generated at: %s" % FLAGS.output_dir_main_op)
+      FLAGS.output_dir_pbtxt, as_text=True, device_type=FLAGS.device)
+  print("SavedModel generated for %(device)s at: %(dir)s" % {
+      "device": FLAGS.device,
+      "dir": FLAGS.output_dir_pbtxt
+  })
+
+  _generate_saved_model_for_half_plus_two(
+      FLAGS.output_dir_main_op, use_main_op=True, device_type=FLAGS.device)
+  print("SavedModel generated for %(device)s at: %(dir)s " % {
+      "device": FLAGS.device,
+      "dir": FLAGS.output_dir_main_op
+  })
 
 
 if __name__ == "__main__":
@@ -244,5 +259,10 @@ if __name__ == "__main__":
       type=str,
       default="/tmp/saved_model_half_plus_two_main_op",
       help="Directory where to output the SavedModel with a main op.")
+  parser.add_argument(
+      "--device",
+      type=str,
+      default="cpu",
+      help="Force model to run on 'cpu' or 'gpu'")
   FLAGS, unparsed = parser.parse_known_args()
   tf.app.run(main=main, argv=[sys.argv[0]] + unparsed)

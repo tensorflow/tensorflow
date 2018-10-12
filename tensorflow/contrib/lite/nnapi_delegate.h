@@ -12,16 +12,17 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef THIRD_PARTY_TENSORFLOW_CONTRIB_LITE_NNAPI_DELEGATE_H_
-#define THIRD_PARTY_TENSORFLOW_CONTRIB_LITE_NNAPI_DELEGATE_H_
+#ifndef TENSORFLOW_CONTRIB_LITE_NNAPI_DELEGATE_H_
+#define TENSORFLOW_CONTRIB_LITE_NNAPI_DELEGATE_H_
 
 #include "tensorflow/contrib/lite/allocation.h"
-#include "tensorflow/contrib/lite/context.h"
-#include "tensorflow/contrib/lite/error_reporter.h"
+#include "tensorflow/contrib/lite/c/c_api_internal.h"
+#include "tensorflow/contrib/lite/core/api/error_reporter.h"
 #include "tensorflow/contrib/lite/interpreter.h"
-#include "tensorflow/contrib/lite/nnapi/NeuralNetworksShim.h"
 
-class ANeuralNetworsModel;
+class ANeuralNetworksModel;
+class ANeuralNetworksMemory;
+class ANeuralNetworksCompilation;
 
 namespace tflite {
 
@@ -54,13 +55,26 @@ class NNAPIDelegate {
   // Run
   TfLiteStatus Invoke(Interpreter* interpreter);
 
+  // Whether the current platform supports NNAPI delegation.
+  static bool IsSupported();
+
  private:
   // The NN API model handle
   ANeuralNetworksModel* nn_model_ = nullptr;
   // The NN API compilation handle
   ANeuralNetworksCompilation* nn_compiled_model_ = nullptr;
+  // Model status
+  TfLiteStatus model_status_ = kTfLiteOk;
+
+  // List of state tensors for LSTM, RNN, SVDF.
+  // NN API does not allow ops to maintain states across multiple
+  // invocations. We need to manually create state input tensors from
+  // corresponding state output tensors of TFLite operations, and map them
+  // correctly.
+  std::vector<int> model_states_inputs_;   // holds NNAPI operand ids
+  std::vector<int> model_states_outputs_;  // holds TFLite tensor ids
 };
 
 }  // namespace tflite
 
-#endif  // THIRD_PARTY_TENSORFLOW_CONTRIB_LITE_NNAPI_DELEGATE_H_
+#endif  // TENSORFLOW_CONTRIB_LITE_NNAPI_DELEGATE_H_

@@ -31,6 +31,7 @@ from tensorflow.python.ops import nn
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops.distributions import distribution
 from tensorflow.python.ops.distributions import util as distribution_util
+from tensorflow.python.util import deprecation
 
 
 class Geometric(distribution.Distribution):
@@ -55,6 +56,14 @@ class Geometric(distribution.Distribution):
 
   """
 
+  @deprecation.deprecated(
+      "2018-10-01",
+      "The TensorFlow Distributions library has moved to "
+      "TensorFlow Probability "
+      "(https://github.com/tensorflow/probability). You "
+      "should update all references to use `tfp.distributions` "
+      "instead of `tf.contrib.distributions`.",
+      warn_once=True)
   def __init__(self,
                logits=None,
                probs=None,
@@ -85,8 +94,8 @@ class Geometric(distribution.Distribution):
       name: Python `str` name prefixed to Ops created by this class.
     """
 
-    parameters = locals()
-    with ops.name_scope(name, values=[logits, probs]):
+    parameters = dict(locals())
+    with ops.name_scope(name, values=[logits, probs]) as name:
       self._logits, self._probs = distribution_util.get_logits_and_probs(
           logits, probs, validate_args=validate_args, name=name)
 

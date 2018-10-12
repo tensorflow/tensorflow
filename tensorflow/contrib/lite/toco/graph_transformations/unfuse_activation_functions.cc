@@ -25,13 +25,16 @@ limitations under the License.
 
 namespace toco {
 
-bool UnfuseActivationFunctions::Run(Model* model, std::size_t op_index) {
+::tensorflow::Status UnfuseActivationFunctions::Run(Model* model,
+                                                    std::size_t op_index,
+                                                    bool* modified) {
+  *modified = false;
   const auto it = model->operators.begin() + op_index;
   auto* op = it->get();
 
   // If a conv operation has an im2col array, yield: it should be dropped first.
   if ((op->type == OperatorType::kConv) && (op->outputs.size() == 2)) {
-    return false;
+    return ::tensorflow::Status::OK();
   }
 
   Operator* ac_op = nullptr;
@@ -46,7 +49,7 @@ bool UnfuseActivationFunctions::Run(Model* model, std::size_t op_index) {
       ac_op = new Relu1Operator;
       break;
     default:
-      return false;
+      return ::tensorflow::Status::OK();
   }
 
   // At this point we know that the op has a fused activation function. At the
@@ -63,11 +66,19 @@ bool UnfuseActivationFunctions::Run(Model* model, std::size_t op_index) {
   ac_op->outputs = op->outputs;
   const string& tmp_array_name =
       AvailableArrayName(*model, op->outputs[0] + "_unfused");
-  CHECK(!model->arrays.count(tmp_array_name));
-  model->GetOrCreateArray(tmp_array_name);
+  CHECK(!model->HasArray(tmp_array_name));
+
+  const auto& output_array = model->GetArray(op->outputs[0]);
+  auto& tmp_array = model->GetOrCreateArray(tmp_array_name);
+  if (output_array.quantization_params) {
+    tmp_array.GetOrCreateQuantizationParams() =
+        output_array.GetQuantizationParams();
+  }
+
   ac_op->inputs = {tmp_array_name};
   op->outputs = {tmp_array_name};
-  return true;
+  *modified = true;
+  return ::tensorflow::Status::OK();
 }
 
 }  // namespace toco

@@ -19,6 +19,10 @@
 @@MaxBytesInUse
 """
 
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import print_function
+
 from tensorflow.contrib.memory_stats.python.ops.memory_stats_ops import BytesInUse
 from tensorflow.contrib.memory_stats.python.ops.memory_stats_ops import BytesLimit
 from tensorflow.contrib.memory_stats.python.ops.memory_stats_ops import MaxBytesInUse

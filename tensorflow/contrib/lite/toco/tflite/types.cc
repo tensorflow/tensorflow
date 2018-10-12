@@ -13,12 +13,39 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 #include "tensorflow/contrib/lite/toco/tflite/types.h"
+#include "tensorflow/contrib/lite/string_util.h"
 
 namespace toco {
 
 namespace tflite {
 
 namespace {
+
+DataBuffer::FlatBufferOffset CopyStringToBuffer(
+    const Array& array, flatbuffers::FlatBufferBuilder* builder) {
+  const auto& src_data = array.GetBuffer<ArrayDataType::kString>().data;
+  ::tflite::DynamicBuffer dyn_buffer;
+  for (const string& str : src_data) {
+    dyn_buffer.AddString(str.c_str(), str.length());
+  }
+  char* tensor_buffer;
+  int bytes = dyn_buffer.WriteToBuffer(&tensor_buffer);
+  std::vector<uint8_t> dst_data(bytes);
+  memcpy(dst_data.data(), tensor_buffer, bytes);
+  free(tensor_buffer);
+  return builder->CreateVector(dst_data.data(), bytes);
+}
+
+// vector<bool> may be implemented using a bit-set, so we can't just
+// reinterpret_cast, accesing it data as vector<bool> and let flatbuffer
+// CreateVector handle it.
+// Background: https://isocpp.org/blog/2012/11/on-vectorbool
+DataBuffer::FlatBufferOffset CopyBoolToBuffer(
+    const Array& array, flatbuffers::FlatBufferBuilder* builder) {
+  const auto& src_data = array.GetBuffer<ArrayDataType::kBool>().data;
+  return builder->CreateVector(src_data);
+}
+
 template <ArrayDataType T>
 DataBuffer::FlatBufferOffset CopyBuffer(
     const Array& array, flatbuffers::FlatBufferBuilder* builder) {
@@ -27,6 +54,18 @@ DataBuffer::FlatBufferOffset CopyBuffer(
   const uint8_t* dst_data = reinterpret_cast<const uint8_t*>(src_data.data());
   auto size = src_data.size() * sizeof(NativeT);
   return builder->CreateVector(dst_data, size);
+}
+
+void CopyStringFromBuffer(const ::tflite::Buffer& buffer, Array* array) {
+  auto* src_data = reinterpret_cast<const char*>(buffer.data()->data());
+  std::vector<string>* dst_data =
+      &array->GetMutableBuffer<ArrayDataType::kString>().data;
+  int32_t num_strings = ::tflite::GetStringCount(src_data);
+  for (int i = 0; i < num_strings; i++) {
+    ::tflite::StringRef str_ref = ::tflite::GetString(src_data, i);
+    string this_str(str_ref.str, str_ref.len);
+    dst_data->push_back(this_str);
+  }
 }
 
 template <ArrayDataType T>
@@ -49,10 +88,20 @@ void CopyBuffer(const ::tflite::Buffer& buffer, Array* array) {
   switch (array_data_type) {
     case ArrayDataType::kFloat:
       return ::tflite::TensorType_FLOAT32;
+    case ArrayDataType::kInt16:
+      return ::tflite::TensorType_INT16;
     case ArrayDataType::kInt32:
       return ::tflite::TensorType_INT32;
+    case ArrayDataType::kInt64:
+      return ::tflite::TensorType_INT64;
     case ArrayDataType::kUint8:
       return ::tflite::TensorType_UINT8;
+    case ArrayDataType::kString:
+      return ::tflite::TensorType_STRING;
+    case ArrayDataType::kBool:
+      return ::tflite::TensorType_BOOL;
+    case ArrayDataType::kComplex64:
+      return ::tflite::TensorType_COMPLEX64;
     default:
       // FLOAT32 is filled for unknown data types.
       // TODO(ycling): Implement type inference in TF Lite interpreter.
@@ -64,10 +113,20 @@ ArrayDataType DataType::Deserialize(int tensor_type) {
   switch (::tflite::TensorType(tensor_type)) {
     case ::tflite::TensorType_FLOAT32:
       return ArrayDataType::kFloat;
+    case ::tflite::TensorType_INT16:
+      return ArrayDataType::kInt16;
     case ::tflite::TensorType_INT32:
       return ArrayDataType::kInt32;
+    case ::tflite::TensorType_INT64:
+      return ArrayDataType::kInt64;
+    case ::tflite::TensorType_STRING:
+      return ArrayDataType::kString;
     case ::tflite::TensorType_UINT8:
       return ArrayDataType::kUint8;
+    case ::tflite::TensorType_BOOL:
+      return ArrayDataType::kBool;
+    case ::tflite::TensorType_COMPLEX64:
+      return ArrayDataType::kComplex64;
     default:
       LOG(FATAL) << "Unhandled tensor type '" << tensor_type << "'.";
   }
@@ -80,10 +139,20 @@ flatbuffers::Offset<flatbuffers::Vector<uint8_t>> DataBuffer::Serialize(
   switch (array.data_type) {
     case ArrayDataType::kFloat:
       return CopyBuffer<ArrayDataType::kFloat>(array, builder);
+    case ArrayDataType::kInt16:
+      return CopyBuffer<ArrayDataType::kInt16>(array, builder);
     case ArrayDataType::kInt32:
       return CopyBuffer<ArrayDataType::kInt32>(array, builder);
+    case ArrayDataType::kInt64:
+      return CopyBuffer<ArrayDataType::kInt64>(array, builder);
+    case ArrayDataType::kString:
+      return CopyStringToBuffer(array, builder);
     case ArrayDataType::kUint8:
       return CopyBuffer<ArrayDataType::kUint8>(array, builder);
+    case ArrayDataType::kBool:
+      return CopyBoolToBuffer(array, builder);
+    case ArrayDataType::kComplex64:
+      return CopyBuffer<ArrayDataType::kComplex64>(array, builder);
     default:
       LOG(FATAL) << "Unhandled array data type.";
   }
@@ -97,10 +166,20 @@ void DataBuffer::Deserialize(const ::tflite::Tensor& tensor,
   switch (tensor.type()) {
     case ::tflite::TensorType_FLOAT32:
       return CopyBuffer<ArrayDataType::kFloat>(buffer, array);
+    case ::tflite::TensorType_INT16:
+      return CopyBuffer<ArrayDataType::kInt16>(buffer, array);
     case ::tflite::TensorType_INT32:
       return CopyBuffer<ArrayDataType::kInt32>(buffer, array);
+    case ::tflite::TensorType_INT64:
+      return CopyBuffer<ArrayDataType::kInt64>(buffer, array);
+    case ::tflite::TensorType_STRING:
+      return CopyStringFromBuffer(buffer, array);
     case ::tflite::TensorType_UINT8:
       return CopyBuffer<ArrayDataType::kUint8>(buffer, array);
+    case ::tflite::TensorType_BOOL:
+      return CopyBuffer<ArrayDataType::kBool>(buffer, array);
+    case ::tflite::TensorType_COMPLEX64:
+      return CopyBuffer<ArrayDataType::kComplex64>(buffer, array);
     default:
       LOG(FATAL) << "Unhandled tensor type.";
   }
@@ -138,7 +217,7 @@ PaddingType Padding::Deserialize(int padding) {
     case FusedActivationFunctionType::kRelu6:
       return ::tflite::ActivationFunctionType_RELU6;
     case FusedActivationFunctionType::kRelu1:
-      return ::tflite::ActivationFunctionType_RELU1;
+      return ::tflite::ActivationFunctionType_RELU_N1_TO_1;
     default:
       LOG(FATAL) << "Unhandled fused activation function type.";
   }
@@ -153,7 +232,7 @@ FusedActivationFunctionType ActivationFunction::Deserialize(
       return FusedActivationFunctionType::kRelu;
     case ::tflite::ActivationFunctionType_RELU6:
       return FusedActivationFunctionType::kRelu6;
-    case ::tflite::ActivationFunctionType_RELU1:
+    case ::tflite::ActivationFunctionType_RELU_N1_TO_1:
       return FusedActivationFunctionType::kRelu1;
     default:
       LOG(FATAL) << "Unhandled fused activation function type.";

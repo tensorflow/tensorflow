@@ -15,12 +15,7 @@ limitations under the License.
 
 #include "tensorflow/stream_executor/stream_executor_internal.h"
 
-#include "tensorflow/stream_executor/lib/error.h"
-#include "tensorflow/stream_executor/lib/statusor.h"
-#include "tensorflow/stream_executor/lib/stringprintf.h"
-
-namespace perftools {
-namespace gputools {
+namespace stream_executor {
 namespace internal {
 
 // -- CUDA
@@ -41,21 +36,17 @@ StreamExecutorFactory* MakeOpenCLExecutorImplementation() {
 
 StreamExecutorFactory MakeHostExecutorImplementation;
 
-// TODO(b/70298427) There are two similar methods:
-//   bool BlockHostUntilDone(Stream*);
-//   Status BlockHostUntilDoneWithStatus(Stream*);
-//
-// The intention is to replace all implementations of the bool version with the
-// Status version.  In the meantime, just implement one in terms of the other.
-port::Status StreamExecutorInterface::BlockHostUntilDoneWithStatus(
-    Stream* stream) {
-  if (!BlockHostUntilDone(stream)) {
-    return port::Status(port::error::INTERNAL,
-                        "Failed to block host until done.");
-  }
-  return port::Status::OK();
+// TODO(b/112125301): Consolodate this down to one implementation of
+// HostCallback, taking a callback that returns a Status.
+bool StreamExecutorInterface::HostCallback(
+    Stream* stream, std::function<port::Status()> callback) {
+  return HostCallback(stream, [callback]() {
+    port::Status s = callback();
+    if (!s.ok()) {
+      LOG(WARNING) << "HostCallback failed: " << s;
+    }
+  });
 }
 
 }  // namespace internal
-}  // namespace gputools
-}  // namespace perftools
+}  // namespace stream_executor

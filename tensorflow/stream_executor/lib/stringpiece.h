@@ -16,17 +16,14 @@ limitations under the License.
 #ifndef TENSORFLOW_STREAM_EXECUTOR_LIB_STRINGPIECE_H_
 #define TENSORFLOW_STREAM_EXECUTOR_LIB_STRINGPIECE_H_
 
-#include "tensorflow/core/lib/core/stringpiece.h"
-#include "tensorflow/stream_executor/platform/port.h"
+#include "absl/strings/string_view.h"
 
-namespace perftools {
-namespace gputools {
+namespace stream_executor {
 namespace port {
 
-using tensorflow::StringPiece;
+using StringPiece = absl::string_view;
 
 }  // namespace port
-}  // namespace gputools
-}  // namespace perftools
+}  // namespace stream_executor
 
 #endif  // TENSORFLOW_STREAM_EXECUTOR_LIB_STRINGPIECE_H_

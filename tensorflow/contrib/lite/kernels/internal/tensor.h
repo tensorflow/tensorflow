@@ -12,76 +12,103 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef THIRD_PARTY_TENSORFLOW_CONTRIB_LITE_KERNELS_INTERNAL_TENSOR_H_
-#define THIRD_PARTY_TENSORFLOW_CONTRIB_LITE_KERNELS_INTERNAL_TENSOR_H_
+#ifndef TENSORFLOW_CONTRIB_LITE_KERNELS_INTERNAL_TENSOR_H_
+#define TENSORFLOW_CONTRIB_LITE_KERNELS_INTERNAL_TENSOR_H_
 
+#include <complex>
 #include <vector>
-#include "tensorflow/contrib/lite/context.h"
+#include "tensorflow/contrib/lite/c/c_api_internal.h"
+#include "tensorflow/contrib/lite/kernels/internal/tensor_ctypes.h"
 #include "tensorflow/contrib/lite/kernels/internal/types.h"
 
 namespace tflite {
 
+template <>
+inline std::complex<float>* GetTensorData(TfLiteTensor* tensor) {
+  return tensor != nullptr
+             ? reinterpret_cast<std::complex<float>*>(tensor->data.c64)
+             : nullptr;
+}
+
+template <>
+inline const std::complex<float>* GetTensorData(const TfLiteTensor* tensor) {
+  return tensor != nullptr
+             ? reinterpret_cast<const std::complex<float>*>(tensor->data.c64)
+             : nullptr;
+}
+
+inline RuntimeShape GetTensorShape(std::vector<int32_t> data) {
+  return RuntimeShape(data.size(), data.data());
+}
+
+// A list of tensors in a format that can be used by kernels like split and
+// concatenation.
 template <typename T>
-inline T* GetTensorData(TfLiteTensor* tensor);
+class VectorOfTensors {
+ public:
+  // Build with the tensors in 'tensor_list'.
+  VectorOfTensors(const TfLiteContext& context,
+                  const TfLiteIntArray& tensor_list) {
+    int num_tensors = tensor_list.size;
 
-template <>
-inline float* GetTensorData(TfLiteTensor* tensor) {
-  return tensor != nullptr ? tensor->data.f : nullptr;
-}
+    all_data_.reserve(num_tensors);
+    all_shape_.reserve(num_tensors);
+    all_shape_ptr_.reserve(num_tensors);
 
-template <>
-inline uint8_t* GetTensorData(TfLiteTensor* tensor) {
-  return tensor != nullptr ? tensor->data.uint8 : nullptr;
-}
+    for (int i = 0; i < num_tensors; ++i) {
+      TfLiteTensor* t = &context.tensors[tensor_list.data[i]];
+      all_data_.push_back(GetTensorData<T>(t));
+      all_shape_.push_back(GetTensorShape(t));
+    }
 
-template <>
-inline int32_t* GetTensorData(TfLiteTensor* tensor) {
-  return tensor != nullptr ? tensor->data.i32 : nullptr;
-}
-
-template <>
-inline int64_t* GetTensorData(TfLiteTensor* tensor) {
-  return tensor != nullptr ? reinterpret_cast<int64_t*>(tensor->data.raw)
-                           : nullptr;
-}
-
-inline int RemapDim(int max_dimensions, int d) {
-  return max_dimensions - d - 1;
-}
-
-// TODO(ahentz): the implementations in kernels/internal/ take a Dims<4> object
-// even if the original tensors were not 4D. We should consider rewriting them
-// to take a more generic 'shape' object.
-inline Dims<4> GetTensorDims(const int data[], const int size) {
-  Dims<4> d;
-  for (int i = 0; i < 4; ++i) {
-    int src = size - i - 1;
-    if (src >= 0) {
-      d.sizes[i] = data[src];
-    } else {
-      d.sizes[i] = 1;
+    // Taking the pointer from inside a std::vector is only OK if the vector is
+    // never modified, so we populate all_shape in the previous loop and then we
+    // are free to grab iterators here.
+    for (int i = 0; i < num_tensors; ++i) {
+      all_shape_ptr_.push_back(&all_shape_[i]);
     }
   }
-  d.strides[0] = 1;
-  for (int i = 1; i < 4; i++) {
-    d.strides[i] = d.strides[i - 1] * d.sizes[i - 1];
+  // Return a pointer to the data pointers of all tensors in the list. For
+  // example:
+  //   float* const* f = v.data();
+  //   f[0][1] is the second element of the first tensor.
+  T* const* data() const { return all_data_.data(); }
+
+  // Return a pointer the shape pointers of all tensors in the list. For
+  // example:
+  //   const RuntimeShape* const* d = v.dims();
+  //   dims[1] are the dimensions of the second tensor in the list.
+  const RuntimeShape* const* shapes() const { return all_shape_ptr_.data(); }
+
+ private:
+  std::vector<T*> all_data_;
+  std::vector<RuntimeShape> all_shape_;
+  std::vector<RuntimeShape*> all_shape_ptr_;
+};
+
+// A list of quantized tensors in a format that can be used by kernels like
+// split and concatenation.
+class VectorOfQuantizedTensors : public VectorOfTensors<uint8> {
+ public:
+  // Build with the tensors in 'tensor_list'.
+  VectorOfQuantizedTensors(const TfLiteContext& context,
+                           const TfLiteIntArray& tensor_list)
+      : VectorOfTensors<uint8>(context, tensor_list) {
+    for (int i = 0; i < tensor_list.size; ++i) {
+      TfLiteTensor* t = &context.tensors[tensor_list.data[i]];
+      zero_point_.push_back(t->params.zero_point);
+      scale_.push_back(t->params.scale);
+    }
   }
-  return d;
-}
 
-inline Dims<4> GetTensorDims(std::vector<int32_t> data) {
-  return GetTensorDims(data.data(), data.size());
-}
+  const float* scale() const { return scale_.data(); }
+  const int32* zero_point() const { return zero_point_.data(); }
 
-inline Dims<4> GetTensorDims(const TfLiteTensor* tensor) {
-  if (tensor == nullptr) {
-    return Dims<4>();
-  }
-
-  auto* dims = tensor->dims;
-  return GetTensorDims(dims->data, dims->size);
-}
+ private:
+  std::vector<int32> zero_point_;
+  std::vector<float> scale_;
+};
 
 }  // namespace tflite
 
-#endif  // THIRD_PARTY_TENSORFLOW_CONTRIB_LITE_KERNELS_INTERNAL_TENSOR_H_
+#endif  // TENSORFLOW_CONTRIB_LITE_KERNELS_INTERNAL_TENSOR_H_

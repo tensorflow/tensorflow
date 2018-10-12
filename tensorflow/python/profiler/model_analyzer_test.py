@@ -26,12 +26,17 @@ import re
 import numpy as np
 
 from tensorflow.core.profiler import profile_pb2
+from tensorflow.core.profiler import tfprof_log_pb2
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.core.protobuf import rewriter_config_pb2
 from tensorflow.python.client import session
+from tensorflow.python.eager import context
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import gradients
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import gfile
@@ -47,13 +52,19 @@ builder = option_builder.ProfileOptionBuilder
 
 class PrintModelAnalysisTest(test.TestCase):
 
+  def _no_rewrite_session_config(self):
+    rewriter_config = rewriter_config_pb2.RewriterConfig(
+        pin_to_host_optimization=rewriter_config_pb2.RewriterConfig.OFF)
+    graph_options = config_pb2.GraphOptions(rewrite_options=rewriter_config)
+    return config_pb2.ConfigProto(graph_options=graph_options)
+
   def testDumpToFile(self):
     ops.reset_default_graph()
     outfile = os.path.join(test.get_temp_dir(), 'dump')
     opts = builder(builder.trainable_variables_parameter()
                   ).with_file_output(outfile).build()
 
-    with session.Session() as sess:
+    with session.Session(config=self._no_rewrite_session_config()) as sess:
       _ = lib.BuildSmallModel()
       model_analyzer.profile(sess.graph, options=opts)
 
@@ -63,7 +74,7 @@ class PrintModelAnalysisTest(test.TestCase):
                          '  DW (3x3x3x6, 162/162 params)\n'
                          '  DW2 (2x2x6x12, 288/288 params)\n'
                          '  ScalarW (1, 1/1 params)\n',
-                         f.read())
+                         lib.CheckAndRemoveDoc(f.read()))
 
   def testSelectEverythingDetail(self):
     ops.reset_default_graph()
@@ -78,7 +89,8 @@ class PrintModelAnalysisTest(test.TestCase):
     with profile_context.ProfileContext(test.get_temp_dir(),
                                         trace_steps=[],
                                         dump_steps=[]) as pctx:
-      with session.Session() as sess, ops.device(dev):
+      with session.Session(
+          config=self._no_rewrite_session_config()) as sess, ops.device(dev):
         x = lib.BuildSmallModel()
 
         sess.run(variables.global_variables_initializer())
@@ -90,7 +102,7 @@ class PrintModelAnalysisTest(test.TestCase):
 
         with gfile.Open(outfile, 'r') as f:
           # pylint: disable=line-too-long
-          dump_str = f.read()
+          dump_str = lib.CheckAndRemoveDoc(f.read())
           outputs = dump_str.split('\n')
 
           self.assertEqual(outputs[0],
@@ -101,7 +113,7 @@ class PrintModelAnalysisTest(test.TestCase):
               # Make sure time is profiled.
               gap = 1 if test.is_gpu_available() else 2
               for i in range(3, 6, gap):
-                mat = re.search('(.*)[um]s/(.*)[um]s', metrics[i])
+                mat = re.search('(.*)(?:us|ms|sec)/(.*)(?:us|ms|sec)', metrics[i])
                 self.assertGreater(float(mat.group(1)), 0.0)
                 self.assertGreater(float(mat.group(2)), 0.0)
               # Make sure device is profiled.
@@ -133,7 +145,7 @@ class PrintModelAnalysisTest(test.TestCase):
     with lib.ProfilerFromFile(profile_file) as profiler:
       profiler.profile_name_scope(options=opts)
       with gfile.Open(outfile, 'r') as f:
-        self.assertEqual(dump_str, f.read())
+        self.assertEqual(dump_str, lib.CheckAndRemoveDoc(f.read()))
 
   def testSelectEverything(self):
     ops.reset_default_graph()
@@ -144,11 +156,8 @@ class PrintModelAnalysisTest(test.TestCase):
             .select(['params', 'float_ops', 'occurrence', 'device', 'op_types',
                      'input_shapes']).build())
 
-    rewriter_config = rewriter_config_pb2.RewriterConfig(
-        disable_model_pruning=True)
-    graph_options = config_pb2.GraphOptions(rewrite_options=rewriter_config)
-    config = config_pb2.ConfigProto(graph_options=graph_options)
-    with session.Session(config=config) as sess, ops.device('/device:CPU:0'):
+    with session.Session(config=self._no_rewrite_session_config()
+                        ) as sess, ops.device('/device:CPU:0'):
       x = lib.BuildSmallModel()
 
       sess.run(variables.global_variables_initializer())
@@ -160,13 +169,6 @@ class PrintModelAnalysisTest(test.TestCase):
 
       model_analyzer.profile(
           sess.graph, run_meta, options=opts)
-
-      with gfile.Open(outfile, 'r') as f:
-        # pylint: disable=line-too-long
-        self.assertEqual(
-            'node name | # parameters | # float_ops | assigned devices | op types | op count (run|defined) | input shapes\n_TFProfRoot (--/451 params, --/11.34k flops, _kTFScopeParent, --/8|--/36, )\n  Conv2D (0/0 params, 5.83k/5.83k flops, /job:localhost/replica:0/task:0/device:cpu:0, /job:localhost/replica:0/task:0/device:cpu:0|Conv2D, 1/1|1/1, 0:2x6x6x3|1:3x3x3x6)\n  Conv2D_1 (0/0 params, 4.61k/4.61k flops, /job:localhost/replica:0/task:0/device:cpu:0, /job:localhost/replica:0/task:0/device:cpu:0|Conv2D, 1/1|1/1, 0:2x3x3x6|1:2x2x6x12)\n  DW (3x3x3x6, 162/162 params, 0/324 flops, /job:localhost/replica:0/task:0/device:cpu:0, /job:localhost/replica:0/task:0/device:cpu:0|VariableV2|_trainable_variables, 1/2|1/10, )\n    DW/Assign (0/0 params, 0/0 flops, Assign, 0/0|1/1, 0:3x3x3x6|1:3x3x3x6)\n    DW/Initializer (0/0 params, 0/324 flops, _kTFScopeParent, 0/0|1/7, )\n      DW/Initializer/random_normal (0/0 params, 162/324 flops, Add, 0/0|1/6, 0:3x3x3x6|1:1)\n        DW/Initializer/random_normal/RandomStandardNormal (0/0 params, 0/0 flops, RandomStandardNormal, 0/0|1/1, 0:4)\n        DW/Initializer/random_normal/mean (0/0 params, 0/0 flops, Const, 0/0|1/1, )\n        DW/Initializer/random_normal/mul (0/0 params, 162/162 flops, Mul, 0/0|1/1, 0:3x3x3x6|1:1)\n        DW/Initializer/random_normal/shape (0/0 params, 0/0 flops, Const, 0/0|1/1, )\n        DW/Initializer/random_normal/stddev (0/0 params, 0/0 flops, Const, 0/0|1/1, )\n    DW/read (0/0 params, 0/0 flops, /job:localhost/replica:0/task:0/device:cpu:0, /job:localhost/replica:0/task:0/device:cpu:0|Identity, 1/1|1/1, 0:3x3x3x6)\n  DW2 (2x2x6x12, 288/288 params, 0/576 flops, /job:localhost/replica:0/task:0/device:cpu:0, /job:localhost/replica:0/task:0/device:cpu:0|VariableV2|_trainable_variables, 1/2|1/10, )\n    DW2/Assign (0/0 params, 0/0 flops, Assign, 0/0|1/1, 0:2x2x6x12|1:2x2x6x12)\n    DW2/Initializer (0/0 params, 0/576 flops, _kTFScopeParent, 0/0|1/7, )\n      DW2/Initializer/random_normal (0/0 params, 288/576 flops, Add, 0/0|1/6, 0:2x2x6x12|1:1)\n        DW2/Initializer/random_normal/RandomStandardNormal (0/0 params, 0/0 flops, RandomStandardNormal, 0/0|1/1, 0:4)\n        DW2/Initializer/random_normal/mean (0/0 params, 0/0 flops, Const, 0/0|1/1, )\n        DW2/Initializer/random_normal/mul (0/0 params, 288/288 flops, Mul, 0/0|1/1, 0:2x2x6x12|1:1)\n        DW2/Initializer/random_normal/shape (0/0 params, 0/0 flops, Const, 0/0|1/1, )\n        DW2/Initializer/random_normal/stddev (0/0 params, 0/0 flops, Const, 0/0|1/1, )\n    DW2/read (0/0 params, 0/0 flops, /job:localhost/replica:0/task:0/device:cpu:0, /job:localhost/replica:0/task:0/device:cpu:0|Identity, 1/1|1/1, 0:2x2x6x12)\n  ScalarW (1, 1/1 params, 0/2 flops, VariableV2|_trainable_variables, 0/0|1/10, )\n    ScalarW/Assign (0/0 params, 0/0 flops, Assign, 0/0|1/1, 0:1|1:1)\n    ScalarW/Initializer (0/0 params, 0/2 flops, _kTFScopeParent, 0/0|1/7, )\n      ScalarW/Initializer/random_normal (0/0 params, 1/2 flops, Add, 0/0|1/6, 0:1|1:1)\n        ScalarW/Initializer/random_normal/RandomStandardNormal (0/0 params, 0/0 flops, RandomStandardNormal, 0/0|1/1, 0:0)\n        ScalarW/Initializer/random_normal/mean (0/0 params, 0/0 flops, Const, 0/0|1/1, )\n        ScalarW/Initializer/random_normal/mul (0/0 params, 1/1 flops, Mul, 0/0|1/1, 0:1|1:1)\n        ScalarW/Initializer/random_normal/shape (0/0 params, 0/0 flops, Const, 0/0|1/1, )\n        ScalarW/Initializer/random_normal/stddev (0/0 params, 0/0 flops, Const, 0/0|1/1, )\n    ScalarW/read (0/0 params, 0/0 flops, Identity, 0/0|1/1, 0:1)\n  _retval_Conv2D_1_0_0 (0/0 params, 0/0 flops, /job:localhost/replica:0/task:0/device:cpu:0, /job:localhost/replica:0/task:0/device:cpu:0|_retval_Conv2D_1_0_0, 1/1|1/1, )\n  init (0/0 params, 0/0 flops, NoOp, 0/0|1/1, 0:1|1:3x3x3x6|2:2x2x6x12)\n  zeros (0/0 params, 0/0 flops, /job:localhost/replica:0/task:0/device:cpu:0, /job:localhost/replica:0/task:0/device:cpu:0|Const, 1/1|1/1, )\n',
-            f.read())
-        # pylint: enable=line-too-long
 
   def testSimpleCodeView(self):
     ops.reset_default_graph()
@@ -181,7 +183,7 @@ class PrintModelAnalysisTest(test.TestCase):
             .select(['bytes', 'params', 'float_ops', 'num_hidden_ops', 'device',
                      'input_shapes']).build())
 
-    with session.Session() as sess:
+    with session.Session(config=self._no_rewrite_session_config()) as sess:
       x = lib.BuildSmallModel()
 
       sess.run(variables.global_variables_initializer())
@@ -198,7 +200,7 @@ class PrintModelAnalysisTest(test.TestCase):
         # pylint: disable=line-too-long
         self.assertEqual(
             'node name | requested bytes | # parameters | # float_ops | assigned devices | in',
-            f.read()[0:80])
+            lib.CheckAndRemoveDoc(f.read())[0:80])
         # pylint: enable=line-too-long
 
   def testComplexCodeView(self):
@@ -215,7 +217,7 @@ class PrintModelAnalysisTest(test.TestCase):
     with profile_context.ProfileContext(test.get_temp_dir(),
                                         trace_steps=[],
                                         dump_steps=[]) as pctx:
-      with session.Session() as sess:
+      with session.Session(config=self._no_rewrite_session_config()) as sess:
         x = lib.BuildFullModel()
 
         sess.run(variables.global_variables_initializer())
@@ -226,13 +228,20 @@ class PrintModelAnalysisTest(test.TestCase):
         # pylint: disable=line-too-long
         with gfile.Open(outfile, 'r') as f:
           lines = f.read().split('\n')
+          self.assertGreater(len(lines), 5)
           result = '\n'.join([l[:min(len(l), 80)] for l in lines])
-          self.assertEqual(compat.as_bytes('node name | # parameters | # float_ops\n_TFProfRoot (--/2.84k params, --/168.85k flops)\n  model_analyzer_testlib.py:63:BuildFullModel (0/1.80k params, 0/45.37k flops)\n    model_analyzer_testlib.py:40:BuildSmallModel (0/0 params, 0/0 flops)\n    model_analyzer_testlib.py:44:BuildSmallModel (0/4 params, 0/8 flops)\n    model_analyzer_testlib.py:48:BuildSmallModel (0/648 params, 0/1.30k flops)\n    model_analyzer_testlib.py:49:BuildSmallModel (0/0 params, 0/23.33k flops)\n    model_analyzer_testlib.py:53:BuildSmallModel (0/1.15k params, 0/2.30k flops)\n    model_analyzer_testlib.py:54:BuildSmallModel (0/0 params, 0/18.43k flops)\n  model_analyzer_testlib.py:63:BuildFullModel (gradient) (0/0 params, 0/67.39k f\n    model_analyzer_testlib.py:49:BuildSmallModel (gradient) (0/0 params, 0/46.66\n    model_analyzer_testlib.py:54:BuildSmallModel (gradient) (0/0 params, 0/20.74\n  model_analyzer_testlib.py:67:BuildFullModel (0/1.04k params, 0/18.57k flops)\n  model_analyzer_testlib.py:67:BuildFullModel (gradient) (0/0 params, 0/37.00k f\n  model_analyzer_testlib.py:69:BuildFullModel (0/0 params, 0/0 flops)\n  model_analyzer_testlib.py:70:BuildFullModel (0/0 params, 0/258 flops)\n  model_analyzer_testlib.py:70:BuildFullModel (gradient) (0/0 params, 0/129 flop\n  model_analyzer_testlib.py:72:BuildFullModel (0/0 params, 0/141 flops)\n'),
-                           compat.as_bytes(result))
+          self.assertTrue(
+              compat.as_text(lib.CheckAndRemoveDoc(result))
+              .startswith('node name | # parameters | # float_ops'))
 
         self.assertLess(0, tfprof_node.total_exec_micros)
         self.assertEqual(2844, tfprof_node.total_parameters)
-        self.assertEqual(168854, tfprof_node.total_float_ops)
+        #The graph is modifed when MKL is enabled,total_float_ops will
+        #be different
+        if test_util.IsMklEnabled():
+          self.assertLess(101600, tfprof_node.total_float_ops)
+        else:
+          self.assertLess(145660, tfprof_node.total_float_ops)
         self.assertEqual(8, len(tfprof_node.children))
         self.assertEqual('_TFProfRoot', tfprof_node.name)
         self.assertEqual(
@@ -269,7 +278,7 @@ class PrintModelAnalysisTest(test.TestCase):
             .account_displayed_op_only(False)
             .select(['bytes', 'params', 'float_ops', 'device']).build())
 
-    with session.Session() as sess:
+    with session.Session(config=self._no_rewrite_session_config()) as sess:
       x = lib.BuildSmallModel()
 
       sess.run(variables.global_variables_initializer())
@@ -297,7 +306,7 @@ class PrintModelAnalysisTest(test.TestCase):
             .with_timeline_output(outfile)
             .with_accounted_types(['.*']).build())
 
-    with session.Session() as sess:
+    with session.Session(config=self._no_rewrite_session_config()) as sess:
       x = lib.BuildFullModel()
 
       sess.run(variables.global_variables_initializer())
@@ -333,7 +342,7 @@ class PrintModelAnalysisTest(test.TestCase):
                      'peak_bytes', 'residual_bytes',
                      'output_bytes', 'occurrence', 'input_shapes']).build())
 
-    with session.Session() as sess:
+    with session.Session(config=self._no_rewrite_session_config()) as sess:
       x = lib.BuildFullModel()
 
       sess.run(variables.global_variables_initializer())
@@ -350,7 +359,8 @@ class PrintModelAnalysisTest(test.TestCase):
         # pylint: disable=line-too-long
         self.assertEqual(
             'nodename|requestedbytes|peakbytes|residualbytes|outputbytes|totalexecutiontime|acceleratorexecutiontime|cpuexecutiontime|#parameters|opoccurrence(run|defined)|inputshapes',
-            f.read().replace('\t', '').replace(' ', '')[0:170])
+            lib.CheckAndRemoveDoc(f.read()).replace('\t',
+                                                    '').replace(' ', '')[0:170])
         # pylint: enable=line-too-long
 
       total_children = 0
@@ -373,13 +383,12 @@ class PrintModelAnalysisTest(test.TestCase):
         self.assertLessEqual(len(tfprof_node.graph_nodes), last_occurrence)
         last_occurrence = len(tfprof_node.graph_nodes)
 
-      self.assertEqual(total_children, 15)
       self.assertGreater(input_shapes, 0)
 
   def testAdvisor(self):
     ops.reset_default_graph()
 
-    with session.Session() as sess:
+    with session.Session(config=self._no_rewrite_session_config()) as sess:
       x = lib.BuildFullModel()
 
       sess.run(variables.global_variables_initializer())
@@ -412,7 +421,7 @@ class PrintModelAnalysisTest(test.TestCase):
             .with_node_names(trim_name_regexes=['ops.py.*'])
             .with_pprof_output(outfile).build())
 
-    with session.Session() as sess:
+    with session.Session(config=self._no_rewrite_session_config()) as sess:
       x = lib.BuildFullModel()
 
       sess.run(variables.global_variables_initializer())
@@ -479,7 +488,7 @@ class PrintModelAnalysisTest(test.TestCase):
           self.assertGreaterEqual(n.output_bytes, mob)
         check_min(n.children, mm, mam, mcm, mb, mpb, mrb, mob)
 
-    with session.Session() as sess:
+    with session.Session(config=self._no_rewrite_session_config()) as sess:
       x = lib.BuildSmallModel()
       sess.run(variables.global_variables_initializer())
       run_meta = config_pb2.RunMetadata()
@@ -544,7 +553,7 @@ class PrintModelAnalysisTest(test.TestCase):
         for attr in not_selected:
           self.assertFalse(s.find(attr) > 0, s)
 
-    with session.Session() as sess:
+    with session.Session(config=self._no_rewrite_session_config()) as sess:
       x = lib.BuildSmallModel()
       sess.run(variables.global_variables_initializer())
       run_meta = config_pb2.RunMetadata()
@@ -577,7 +586,7 @@ class PrintModelAnalysisTest(test.TestCase):
 
   def _trainLoop(self, train_op, train_steps, time_dir, time_step,
                  memory_dir, memory_step, profile_dir, dump_step):
-    with session.Session() as sess:
+    with session.Session(config=self._no_rewrite_session_config()) as sess:
       sess.run(variables.global_variables_initializer())
       # start from 1 because variable_initializer took one step.
       for i in range(1, train_steps + 1):
@@ -650,7 +659,7 @@ class PrintModelAnalysisTest(test.TestCase):
       c = a * b
 
     try:
-      with session.Session() as sess:
+      with session.Session(config=self._no_rewrite_session_config()) as sess:
         sess.run(c, options=config_pb2.RunOptions(
             report_tensor_allocations_upon_oom=True))
     except Exception as e:  # pylint: disable=broad-except
@@ -702,8 +711,10 @@ class PrintModelAnalysisTest(test.TestCase):
     a = array_ops.constant(np.ones((100, 100)))
     b = array_ops.constant(np.ones((100, 100)))
     c = a * b
+    config = config_pb2.ConfigProto()
+    config.graph_options.rewrite_options.min_graph_nodes = -1
 
-    with session.Session() as sess:
+    with session.Session(config=config) as sess:
       run_options = config_pb2.RunOptions(
           trace_level=config_pb2.RunOptions.FULL_TRACE)
       run_metadata = config_pb2.RunMetadata()
@@ -729,6 +740,68 @@ class PrintModelAnalysisTest(test.TestCase):
       self.assertEqual(n.peak_bytes, n2.peak_bytes)
       self.assertEqual(n.output_bytes, n2.output_bytes)
       self.assertEqual(n.residual_bytes, n2.residual_bytes)
+
+  def testTraceLoopBytes(self):
+    if not test.is_gpu_available(): return
+    ops.reset_default_graph()
+    steps = 100
+
+    with ops.device('/gpu:0'):
+      x = array_ops.ones((100, 100), dtype=dtypes.float32)
+      n = array_ops.constant(steps, dtype=dtypes.int32)
+      x1 = array_ops.ones((100, 100))
+
+      x *= x1
+      def loop_body(i, x):
+        x *= x
+        return i + 1, x
+
+      _, y = control_flow_ops.while_loop(
+          lambda i, x: i < n, loop_body,
+          [array_ops.constant(0), x])
+
+    grad = gradients.gradients(y, [x1])
+
+    with session.Session(config=self._no_rewrite_session_config()) as sess:
+      run_options = config_pb2.RunOptions(
+          trace_level=config_pb2.RunOptions.FULL_TRACE)
+      run_metadata = config_pb2.RunMetadata()
+      sess.run(grad, options=run_options, run_metadata=run_metadata)
+
+      options = option_builder.ProfileOptionBuilder.time_and_memory()
+      options['min_bytes'] = 0
+      options['min_micros'] = 0
+      options['select'] = ('bytes', 'peak_bytes', 'output_bytes',
+                           'residual_bytes')
+      options['output'] = 'none'
+      ret_pb = model_analyzer.profile(
+          sess.graph, run_meta=run_metadata, cmd='scope', options=options)
+      self.assertGreater(ret_pb.total_requested_bytes, 1000000)
+
+  def testEager(self):
+    ops.reset_default_graph()
+    with context.eager_mode():
+      outfile = os.path.join(test.get_temp_dir(), 'dump')
+      opts = builder(
+          builder.time_and_memory()).with_file_output(outfile).build()
+      context.enable_run_metadata()
+      lib.BuildSmallModel()
+
+      profiler = model_analyzer.Profiler()
+      profiler.add_step(0, context.export_run_metadata())
+      context.disable_run_metadata()
+      profiler.profile_operations(opts)
+      with gfile.Open(outfile, 'r') as f:
+        out_str = f.read()
+        self.assertTrue('Conv2D' in out_str)
+        self.assertTrue('VarHandleOp' in out_str)
+
+      with gfile.Open('/tmp/eager_profile', 'wb') as f:
+        profile_pb = tfprof_log_pb2.ProfileProto()
+        profile_pb.ParseFromString(profiler.serialize_to_string())
+        profile_pb_str = '%s' % profile_pb
+        self.assertTrue('Conv2D' in profile_pb_str)
+        self.assertTrue('VarHandleOp' in profile_pb_str)
 
 
 if __name__ == '__main__':

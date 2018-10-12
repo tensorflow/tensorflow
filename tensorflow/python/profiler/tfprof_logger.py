@@ -25,10 +25,12 @@ import sys
 
 import six
 from tensorflow.core.profiler import tfprof_log_pb2
+from tensorflow.python.eager import context
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.platform import gfile
 from tensorflow.python.profiler.internal import flops_registry  # pylint: disable=unused-import
+from tensorflow.python.util.tf_export import tf_export
 
 TRAINABLE_VARIABLES = '_trainable_variables'
 REGISTERED_FLOP_STATS = 'flops'
@@ -144,7 +146,8 @@ def merge_default_with_oplog(graph, op_log=None, run_meta=None,
   """Merge the tfprof default extra info with caller's op_log.
 
   Args:
-    graph: tf.Graph.
+    graph: tf.Graph. If None and eager execution is not enabled, use
+        default graph.
     op_log: OpLogProto proto.
     run_meta: RunMetadata proto used to complete shape information.
     add_trace: Whether to add op trace information.
@@ -153,7 +156,13 @@ def merge_default_with_oplog(graph, op_log=None, run_meta=None,
   Returns:
     tmp_op_log: Merged OpLogProto proto.
   """
+  if not graph and not context.executing_eagerly():
+    graph = ops.get_default_graph()
+
   tmp_op_log = tfprof_log_pb2.OpLogProto()
+  if not graph:
+    return tmp_op_log
+
   logged_ops, string_to_id = _get_logged_ops(
       graph, run_meta, add_trace=add_trace, add_trainable_var=add_trainable_var)
 
@@ -179,6 +188,7 @@ def merge_default_with_oplog(graph, op_log=None, run_meta=None,
   return tmp_op_log
 
 
+@tf_export('profiler.write_op_log')
 def write_op_log(graph, log_dir, op_log=None, run_meta=None, add_trace=True):
   """Log provided 'op_log', and add additional model information below.
 
@@ -190,7 +200,8 @@ def write_op_log(graph, log_dir, op_log=None, run_meta=None, add_trace=True):
     information with best effort.
 
   Args:
-    graph: tf.Graph.
+    graph: tf.Graph. If None and eager execution is not enabled, use
+        default graph.
     log_dir: directory to write the log file.
     op_log: (Optional) OpLogProto proto to be written. If not provided, an new
         one is created.
@@ -199,6 +210,8 @@ def write_op_log(graph, log_dir, op_log=None, run_meta=None, add_trace=True):
     add_trace: Whether to add python code trace information.
         Used to support "code" view.
   """
+  if not graph and not context.executing_eagerly():
+    graph = ops.get_default_graph()
   op_log = merge_default_with_oplog(graph, op_log, run_meta, add_trace)
 
   with gfile.Open(os.path.join(log_dir, 'tfprof_log'), 'w') as log:

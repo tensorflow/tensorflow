@@ -47,9 +47,9 @@ Json::Value ChromeTraceFormatter::CreateEvent(const string& ph,
   event["ph"] = Json::Value(ph);
   event["cat"] = Json::Value(category);
   event["name"] = Json::Value(name);
-  event["pid"] = Json::Value(pid);
-  event["tid"] = Json::Value(tid);
-  event["ts"] = Json::Value(ts);
+  event["pid"] = Json::Int64(pid);
+  event["tid"] = Json::Int64(tid);
+  event["ts"] = Json::Int64(ts);
   return event;
 }
 
@@ -57,7 +57,7 @@ void ChromeTraceFormatter::EmitPID(const string& name, int64 pid) {
   Json::Value event(Json::objectValue);
   event["name"] = Json::Value("process_name");
   event["ph"] = Json::Value("M");
-  event["pid"] = Json::Value(pid);
+  event["pid"] = Json::Int64(pid);
   Json::Value args(Json::objectValue);
   args["name"] = Json::Value(name);
   event["args"] = args;
@@ -68,7 +68,7 @@ void ChromeTraceFormatter::EmitRegion(int64 ts, int64 duration, int64 pid,
                                       int64 tid, const string& category,
                                       const string& name, Json::Value args) {
   Json::Value event = CreateEvent("X", category, name, pid, tid, ts);
-  event["dur"] = Json::Value(duration);
+  event["dur"] = Json::Int64(duration);
   event["args"] = std::move(args);
   metadata_.push_back(event);
 }
@@ -76,14 +76,14 @@ void ChromeTraceFormatter::EmitRegion(int64 ts, int64 duration, int64 pid,
 void ChromeTraceFormatter::EmitFlowStart(const string& name, int64 ts,
                                          int64 pid, int64 tid, int64 flow_id) {
   Json::Value event = CreateEvent("s", "DataFlow", name, pid, tid, ts);
-  event["id"] = flow_id;
+  event["id"] = Json::Int64(flow_id);
   events_.push_back(event);
 }
 
 void ChromeTraceFormatter::EmitFlowEnd(const string& name, int64 ts, int64 pid,
                                        int64 tid, int64 flow_id) {
   Json::Value event = CreateEvent("t", "DataFlow", name, pid, tid, ts);
-  event["id"] = flow_id;
+  event["id"] = Json::Int64(flow_id);
   events_.push_back(event);
 }
 
@@ -93,7 +93,7 @@ void ChromeTraceFormatter::EmitCounter(
     const std::map<int64, std::vector<string>>& tensor_mem) {
   Json::Value event = CreateEvent("C", category, "Allocated Bytes", pid, 0, ts);
   Json::Value args(Json::objectValue);
-  args["Allocator Bytes in Use"] = Json::Value(bytes);
+  args["Allocator Bytes in Use"] = Json::Int64(bytes);
   event["args"] = args;
   events_.push_back(event);
 
@@ -153,10 +153,8 @@ void MemoryTracker::TrackNode(int64 step, const GraphNode* node) {
 
   std::map<int64, int64> allocs;
   for (const auto& alloc : node->node->allocations(step)) {
-    for (const auto& r : alloc.allocation_records()) {
-      allocs[r.alloc_micros()] += r.alloc_bytes();
-      dev.tracked_allocations[r.alloc_micros()] += r.alloc_bytes();
-    }
+    allocs[alloc.alloc_micros()] += alloc.alloc_bytes();
+    dev.tracked_allocations[alloc.alloc_micros()] += alloc.alloc_bytes();
   }
   dev.tracked_allocations[0] += node->node->accelerator_persistent_bytes();
   allocs[0] += node->node->accelerator_persistent_bytes();
@@ -167,9 +165,9 @@ void MemoryTracker::TrackNode(int64 step, const GraphNode* node) {
     last += it->second;
     aggregate_allocs[it->first] = last;
   }
-  int64 end_micros = node->node->lastest_schedule_end_micros(step);
-  if (end_micros > 0 && node->node->allocator_bytes_in_use(step) > 0) {
-    dev.allocations[end_micros] = node->node->allocator_bytes_in_use(step);
+  for (const auto& bytes_in_use : node->node->allocator_bytes_in_use(step)) {
+    if (bytes_in_use.first <= 0) continue;
+    dev.allocations[bytes_in_use.first] = bytes_in_use.second;
   }
 }
 
@@ -265,6 +263,10 @@ void Timeline::GenerateGraphTimeline(const std::vector<GraphNode*>& gnodes) {
     }
   }
   for (const auto& dev : mem_tracker_.devices()) {
+    if (IsPlacedOnCPU(dev.first)) {
+      // TODO(xpan): Maybe also support CPU allocator memory tracking.
+      continue;
+    }
     int64 pid = AllocatePID();
     chrome_formatter_.EmitPID(GetMemoryLaneName(dev.first), pid);
     int64 pid2 = AllocatePID();

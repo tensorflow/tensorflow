@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/core/kernels/hexagon/hexagon_control_wrapper.h"
 
+#include "tensorflow/core/framework/graph_transfer_info.pb.h"
+#include "tensorflow/core/framework/remote_fused_graph_execute_info.pb.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/kernels/hexagon/hexagon_ops_definitions.h"
 #include "tensorflow/core/kernels/hexagon/soc_interface.h"
@@ -54,9 +56,9 @@ static uint8* FindAlignedPointer(uint8* ptr) {
   return data_ptr;
 }
 
-/* static */ GraphTransferInfo::NodeInfo* HexagonControlWrapper::FindNodeInfo(
+/* static */ GraphTransferNodeInfo* HexagonControlWrapper::FindNodeInfo(
     const string& name, GraphTransferInfo* graph_transfer_info) {
-  for (GraphTransferInfo::NodeInfo& node_info :
+  for (GraphTransferNodeInfo& node_info :
        *graph_transfer_info->mutable_node_info()) {
     if (node_info.name() == name) {
       return &node_info;
@@ -138,9 +140,9 @@ bool HexagonControlWrapper::SetupGraph() {
       graph_transferer_.GetMutableGraphTransferInfo();
 
   // Overwrite op type of input nodes for hexagon
-  for (const GraphTransferInfo::GraphInputNodeInfo& graph_input :
+  for (const GraphTransferGraphInputNodeInfo& graph_input :
        graph_transfer_info.graph_input_node_info()) {
-    GraphTransferInfo::NodeInfo* node_info =
+    GraphTransferNodeInfo* node_info =
         FindNodeInfo(graph_input.name(), &graph_transfer_info);
     CHECK_NE(node_info, nullptr);
   }
@@ -148,13 +150,13 @@ bool HexagonControlWrapper::SetupGraph() {
   // Generate a new output node which is connected to graph output node
   // TODO(satok): Support multiple output nodes
   CHECK_EQ(graph_transfer_info.graph_output_node_info_size(), 1);
-  for (const GraphTransferInfo::GraphOutputNodeInfo& graph_output :
+  for (const GraphTransferGraphOutputNodeInfo& graph_output :
        graph_transfer_info.graph_output_node_info()) {
     const int new_output_node_id = graph_transfer_info.node_info_size() +
                                    graph_transfer_info.const_node_info_size() +
                                    2 /* offset for ids */;
     // Register a new output node
-    GraphTransferInfo::NodeInfo& new_output_node_info =
+    GraphTransferNodeInfo& new_output_node_info =
         *graph_transfer_info.add_node_info();
     new_output_node_info.set_name(OUTPUT_OP_NAME);
     new_output_node_info.set_node_id(new_output_node_id);
@@ -166,17 +168,16 @@ bool HexagonControlWrapper::SetupGraph() {
     new_output_node_info.set_output_count(0);
 
     const TensorId tid = ParseTensorName(graph_output.name());
-    const string node_name = tid.first.ToString();
+    const string node_name(tid.first);
     const int port = tid.second;
     // Register node input for the new output node
-    const GraphTransferInfo::NodeInfo* node_info =
+    const GraphTransferNodeInfo* node_info =
         FindNodeInfo(node_name, &graph_transfer_info);
     CHECK_NE(node_info, nullptr);
-    GraphTransferInfo::NodeInputInfo& node_input_info =
+    GraphTransferNodeInputInfo& node_input_info =
         *graph_transfer_info.add_node_input_info();
     node_input_info.set_node_id(new_output_node_id);
-    GraphTransferInfo::NodeInput& node_input =
-        *node_input_info.add_node_input();
+    GraphTransferNodeInput& node_input = *node_input_info.add_node_input();
     node_input.set_node_id(node_info->node_id());
     node_input.set_output_port(port);
   }
@@ -189,12 +190,12 @@ bool HexagonControlWrapper::SetupGraph() {
 
   int inputs_count = 0;
   int outputs_count = 0;
-  for (const GraphTransferInfo::NodeInputInfo& input_params :
+  for (const GraphTransferNodeInputInfo& input_params :
        graph_transfer_info.node_input_info()) {
     inputs_count += input_params.node_input_size();
   }
 
-  for (const GraphTransferInfo::NodeOutputInfo& output_params :
+  for (const GraphTransferNodeOutputInfo& output_params :
        graph_transfer_info.node_output_info()) {
     outputs_count += output_params.max_byte_size_size();
   }
@@ -204,15 +205,14 @@ bool HexagonControlWrapper::SetupGraph() {
 
   // Construct node input parameters
   std::unordered_map<int, std::tuple<void*, int>> inputs_map;
-  for (const GraphTransferInfo::NodeInputInfo& input_params :
+  for (const GraphTransferNodeInputInfo& input_params :
        graph_transfer_info.node_input_info()) {
     const int count = input_params.node_input_size();
     CHECK(count <= MAX_IN_OUT_COUNT);
     int node_ids[MAX_IN_OUT_COUNT];
     int ports[MAX_IN_OUT_COUNT];
     for (int i = 0; i < count; ++i) {
-      const GraphTransferInfo::NodeInput& node_input =
-          input_params.node_input(i);
+      const GraphTransferNodeInput& node_input = input_params.node_input(i);
       node_ids[i] = node_input.node_id() + NODE_ID_OFFSET;
       ports[i] = node_input.output_port();
     }
@@ -224,7 +224,7 @@ bool HexagonControlWrapper::SetupGraph() {
 
   // Construct node output parameters
   std::unordered_map<int, std::tuple<void*, int>> outputs_map;
-  for (const GraphTransferInfo::NodeOutputInfo& output_params :
+  for (const GraphTransferNodeOutputInfo& output_params :
        graph_transfer_info.node_output_info()) {
     const int count = output_params.max_byte_size_size();
     CHECK(count <= MAX_IN_OUT_COUNT);
@@ -244,7 +244,7 @@ bool HexagonControlWrapper::SetupGraph() {
 
   // Initialize graph
   // 1. Setup const nodes
-  for (const GraphTransferInfo::ConstNodeInfo& params :
+  for (const GraphTransferConstNodeInfo& params :
        graph_transfer_info.const_node_info()) {
     const int node_id = params.node_id();
     // TODO(satok): Stop assuming shape size is 4.
@@ -267,8 +267,7 @@ bool HexagonControlWrapper::SetupGraph() {
   }
 
   // 2. Setup op nodes
-  for (const GraphTransferInfo::NodeInfo& params :
-       graph_transfer_info.node_info()) {
+  for (const GraphTransferNodeInfo& params : graph_transfer_info.node_info()) {
     const int node_id = params.node_id();
     const int op_id = params.soc_op_id();
     CHECK(inputs_map.count(node_id) == 1);

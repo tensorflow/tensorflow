@@ -21,17 +21,18 @@ from __future__ import print_function
 from tensorflow.contrib.ffmpeg.ops import gen_decode_audio_op_py
 from tensorflow.contrib.ffmpeg.ops import gen_decode_video_op_py
 from tensorflow.contrib.ffmpeg.ops import gen_encode_audio_op_py
-from tensorflow.contrib.ffmpeg.ops import gen_decode_video_op_py
 from tensorflow.contrib.util import loader
 from tensorflow.python.framework import ops
 from tensorflow.python.platform import resource_loader
+from tensorflow.python.util.deprecation import deprecated
 
 _ffmpeg_so = loader.load_op_library(
     resource_loader.get_path_to_datafile('ffmpeg.so'))
 
 
+@deprecated('2018-09-04', 'This will be deleted and should not be used.')
 def decode_audio(contents, file_format=None, samples_per_second=None,
-                 channel_count=None):
+                 channel_count=None, stream=None):
   """Create an op that decodes the contents of an audio file.
 
   Note that ffmpeg is free to select the "best" audio track from an mp4.
@@ -51,6 +52,9 @@ def decode_audio(contents, file_format=None, samples_per_second=None,
         `contents` have more than this number, then some channels will
         be merged or dropped. If `contents` has fewer than this, then
         additional channels will be created from the existing ones.
+    stream: A string specifying which stream from the content file
+        should be decoded, e.g., '0' means the 0-th stream.
+        The default value is '' which leaves the decision to ffmpeg.
 
   Returns:
     A rank-2 tensor that has time along dimension 0 and channels along
@@ -61,12 +65,13 @@ def decode_audio(contents, file_format=None, samples_per_second=None,
   """
   return gen_decode_audio_op_py.decode_audio_v2(
       contents, file_format=file_format, samples_per_second=samples_per_second,
-      channel_count=channel_count)
+      channel_count=channel_count, stream=stream)
 
 
 ops.NotDifferentiable('DecodeAudio')
 
 
+@deprecated('2018-09-04', 'This will be deleted and should not be used.')
 def encode_audio(audio, file_format=None, samples_per_second=None):
   """Creates an op that encodes an audio file using sampled audio from a tensor.
 
@@ -93,6 +98,7 @@ def encode_audio(audio, file_format=None, samples_per_second=None):
 ops.NotDifferentiable('EncodeAudio')
 
 
+@deprecated('2018-09-04', 'This will be deleted and should not be used.')
 def decode_video(contents):
   """Create an op that decodes the contents of a video file.
 

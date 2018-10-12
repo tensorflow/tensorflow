@@ -51,7 +51,8 @@ void LogDumpGraphDef(int log_level, const string& message,
 BEGIN DUMP OF TENSORFLOW GRAPHDEF (%s)
 There are %d nodes.
 There are %zu different op types:
-)MSG", message, tf_graph.node_size(), ops.size());
+)MSG",
+                      message, tf_graph.node_size(), ops.size());
   for (const auto& op : ops) {
     toco::port::AppendF(&dump, "  %s\n", op);
   }
@@ -63,7 +64,8 @@ PROTO DUMP
 BEGIN NODE: name = %s
   op = %s
   inputs = [
-)MSG", node.name(), node.op());
+)MSG",
+                        node.name(), node.op());
     for (const auto& input : node.input()) {
       toco::port::AppendF(&dump, "    %s\n", input);
     }

@@ -118,6 +118,20 @@ class PosixEnv : public Env {
                                const string& version) override {
     return tensorflow::internal::FormatLibraryFileName(name, version);
   }
+
+  string GetRunfilesDir() override {
+    string bin_path = this->GetExecutablePath();
+    string runfiles_path = bin_path + ".runfiles/org_tensorflow";
+    Status s = this->IsDirectory(runfiles_path);
+    if (!s.ok()) {
+      return runfiles_path;
+    } else {
+      return bin_path.substr(0, bin_path.find_last_of("/\\"));
+    }
+  }
+
+ private:
+  void GetLocalTempDirectories(std::vector<string>* list) override;
 };
 
 }  // namespace
@@ -131,20 +145,24 @@ Env* Env::Default() {
 }
 #endif
 
-void Env::GetLocalTempDirectories(std::vector<string>* list) {
+void PosixEnv::GetLocalTempDirectories(std::vector<string>* list) {
   list->clear();
   // Directories, in order of preference. If we find a dir that
   // exists, we stop adding other less-preferred dirs
   const char* candidates[] = {
-      // Non-null only during unittest/regtest
-      getenv("TEST_TMPDIR"),
+    // Non-null only during unittest/regtest
+    getenv("TEST_TMPDIR"),
 
-      // Explicitly-supplied temp dirs
-      getenv("TMPDIR"),
-      getenv("TMP"),
+    // Explicitly-supplied temp dirs
+    getenv("TMPDIR"),
+    getenv("TMP"),
 
-      // If all else fails
-      "/tmp",
+#if defined(__ANDROID__)
+    "/data/local/tmp",
+#endif
+
+    // If all else fails
+    "/tmp",
   };
 
   for (const char* d : candidates) {

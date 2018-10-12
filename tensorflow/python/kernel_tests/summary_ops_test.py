@@ -34,7 +34,7 @@ class SummaryOpsTest(test.TestCase):
     return summ
 
   def testScalarSummary(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       const = constant_op.constant([10.0, 20.0])
       summ = logging_ops.scalar_summary(["c1", "c2"], const, name="mysumm")
       value = sess.run(summ)
@@ -45,7 +45,7 @@ class SummaryOpsTest(test.TestCase):
       """, self._AsSummary(value))
 
   def testScalarSummaryDefaultName(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       const = constant_op.constant([10.0, 20.0])
       summ = logging_ops.scalar_summary(["c1", "c2"], const)
       value = sess.run(summ)
@@ -56,7 +56,7 @@ class SummaryOpsTest(test.TestCase):
       """, self._AsSummary(value))
 
   def testMergeSummary(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       const = constant_op.constant(10.0)
       summ1 = summary.histogram("h", const)
       summ2 = logging_ops.scalar_summary("c", const)

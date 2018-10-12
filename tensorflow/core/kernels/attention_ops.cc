@@ -52,8 +52,9 @@ class ExtractGlimpseOp : public OpKernel {
     const int64 batch_size = input_shape.dim_size(0);
 
     const Tensor& window_size = context->input(1);
-    OP_REQUIRES(context, (window_size.shape().dims() == 1) &&
-                             window_size.shape().dim_size(0) == 2,
+    OP_REQUIRES(context,
+                (window_size.shape().dims() == 1) &&
+                    window_size.shape().dim_size(0) == 2,
                 errors::InvalidArgument(
                     "input must be a vector of size 2 (height, width)",
                     window_size.shape().DebugString()));

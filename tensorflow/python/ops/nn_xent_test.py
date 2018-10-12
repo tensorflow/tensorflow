@@ -54,7 +54,7 @@ class SigmoidCrossEntropyWithLogitsTest(test.TestCase):
     return logits, targets, losses
 
   def testConstructionNamed(self):
-    with self.test_session():
+    with self.cached_session():
       logits, targets, _ = self._Inputs()
       loss = nn_impl.sigmoid_cross_entropy_with_logits(
           labels=targets, logits=logits, name="mylogistic")
@@ -84,7 +84,7 @@ class SigmoidCrossEntropyWithLogitsTest(test.TestCase):
 
   def testGradient(self):
     sizes = [4, 2]
-    with self.test_session():
+    with self.cached_session():
       logits, targets, _ = self._Inputs(sizes=sizes)
       loss = nn_impl.sigmoid_cross_entropy_with_logits(
           labels=targets, logits=logits)
@@ -93,7 +93,7 @@ class SigmoidCrossEntropyWithLogitsTest(test.TestCase):
     self.assertLess(err, 1e-7)
 
   def testGradientAtZero(self):
-    with self.test_session():
+    with self.cached_session():
       logits = constant_op.constant([0.0, 0.0], dtype=dtypes.float64)
       targets = constant_op.constant([0.0, 1.0], dtype=dtypes.float64)
       loss = nn_impl.sigmoid_cross_entropy_with_logits(
@@ -130,7 +130,7 @@ class WeightedCrossEntropyTest(test.TestCase):
     return logits, targets, q, losses
 
   def testConstructionNamed(self):
-    with self.test_session():
+    with self.cached_session():
       logits, targets, pos_weight, _ = self._Inputs()
       loss = nn_impl.weighted_cross_entropy_with_logits(
           targets=targets, logits=logits, pos_weight=pos_weight, name="mybce")
@@ -159,7 +159,7 @@ class WeightedCrossEntropyTest(test.TestCase):
 
   def testGradient(self):
     sizes = [4, 2]
-    with self.test_session():
+    with self.cached_session():
       logits, targets, pos_weight, _ = self._Inputs(sizes=sizes)
       loss = nn_impl.weighted_cross_entropy_with_logits(
           targets=targets, logits=logits, pos_weight=pos_weight)

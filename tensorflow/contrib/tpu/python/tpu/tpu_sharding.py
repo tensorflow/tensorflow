@@ -244,7 +244,8 @@ class ShardingPolicy(object):
               str(shapes), self.number_of_shards))
     unsharded_shapes = [self._unshard_shape(s) for s in shapes]
     for i in xrange(self.number_of_shards - 1):
-      if unsharded_shapes[i] != unsharded_shapes[self.number_of_shards - 1]:
+      if not unsharded_shapes[i].is_compatible_with(
+          unsharded_shapes[self.number_of_shards - 1]):
         raise ValueError(
             "sharded shapes %s are not consistent shards of a full shape "
             "sharded %d ways along dimension %d" % (

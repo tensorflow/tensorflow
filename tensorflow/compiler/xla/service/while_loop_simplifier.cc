@@ -14,33 +14,17 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/compiler/xla/service/while_loop_simplifier.h"
+#include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/str_join.h"
+#include "absl/types/optional.h"
 #include "tensorflow/compiler/xla/service/call_inliner.h"
-#include "tensorflow/compiler/xla/service/hlo_evaluator.h"
-#include "tensorflow/core/lib/gtl/optional.h"
-#include "tensorflow/core/lib/strings/str_util.h"
-#include "tensorflow/core/lib/strings/strcat.h"
+#include "tensorflow/compiler/xla/service/while_loop_analysis.h"
 
 namespace xla {
 
-using tensorflow::gtl::nullopt;
-using tensorflow::gtl::optional;
-
-// Finds and returns the non-constant operand in instr.
-//
-// CHECK-fails if instr doesn't have exactly one unique non-constant operand.
-static const HloInstruction* NonConstantOperand(const HloInstruction* instr) {
-  const HloInstruction* result = nullptr;
-  for (const HloInstruction* operand : instr->operands()) {
-    if (!operand->IsConstant()) {
-      if (result != nullptr) {
-        CHECK_EQ(result, operand);
-      }
-      result = operand;
-    }
-  }
-  CHECK_NE(result, nullptr);
-  return result;
-}
+using absl::optional;
 
 // Determines whether the given instruction is a send/recv node, or has a
 // subcomputation which contains a send/recv node.
@@ -69,211 +53,6 @@ static bool IsOrContainsSendOrRecv(const HloInstruction* instr) {
     }
   }
   return false;
-}
-
-// If all of instr's operands are either constants or have the form
-//   get-tuple-element(gte_operand, N)
-// for the same value N, returns N.  Otherwise, returns nullopt.
-static optional<int64> GetGTEOperandIndex(const HloInstruction* instr,
-                                          const HloInstruction* gte_operand) {
-  VLOG(2) << "GetGTEOperandIndex(" << instr->ToString() << ", "
-          << gte_operand->ToString() << ")";
-  optional<int64> tuple_idx;
-  for (const HloInstruction* operand : instr->operands()) {
-    if (operand->IsConstant()) {
-      continue;
-    }
-    if (operand->opcode() != HloOpcode::kGetTupleElement) {
-      VLOG(2) << "instr uses something other than gte(gte_operand): "
-              << operand->ToString();
-      return nullopt;
-    }
-    if (operand->operand(0) != gte_operand) {
-      VLOG(2) << "instr has gte whose operand is not gte_operand: "
-              << operand->ToString();
-      return nullopt;
-    }
-    if (tuple_idx && tuple_idx != operand->tuple_index()) {
-      VLOG(2) << "instr has operands with conflicting gte indices, "
-              << *tuple_idx << " vs " << operand->tuple_index();
-      return nullopt;
-    }
-
-    tuple_idx = operand->tuple_index();
-  }
-  return tuple_idx;
-}
-
-// Tries to get the tuple index of the induction variable of a while loop.
-//
-// Checks that the loop condition and root both plumb the induction variable
-// through the same tuple index, and that they both apply exactly one op to the
-// induction variable before  deciding whether to do another loop iteration (in
-// the loop condition's case) or packing the induction variable into the result
-// tuple (in the loop body's case).
-//
-// Specifically, checks that the loop condition has structure
-//
-//   root = op(constants, get-tuple-elem(param0, N), constants)
-//
-// and the loop body has the structure
-//
-//   inc = op(constants, get-tuple-elem(param0, N), constants)
-//   root = tuple(..., inc, ...)  // inc is N'th operand of tuple().
-//
-// If so, returns N.  Otherwise, returns nullopt.
-static optional<int64> GetLoopInductionVarTupleIdx(
-    const HloInstruction* while_op) {
-  CHECK_EQ(while_op->opcode(), HloOpcode::kWhile);
-  VLOG(2) << "Finding induction variable for loop "
-          << while_op->ToShortString();
-
-  // The while_cond computation should have the form
-  //
-  //   while_cond_root =
-  //       op(constants, get-tuple-elem(while_cond_param, N), constants).
-  //
-  // If it does, set indvar_tuple_idx to N.
-  auto* while_cond = while_op->while_condition();
-  auto* while_cond_root = while_cond->root_instruction();
-  auto* while_cond_param = while_cond->parameter_instruction(0);
-  optional<int64> indvar_tuple_idx =
-      GetGTEOperandIndex(while_cond_root, while_cond_param);
-  if (!indvar_tuple_idx) {
-    VLOG(2) << "Induction variable not found in loop condition: "
-            << while_cond->root_instruction()->ToString();
-    return nullopt;
-  }
-
-  // The while_body computation should have the form
-  //
-  //   while_body_inc =
-  //       op(constants, get-tuple-elem(while_body_param, N), constants)
-  //   while_body_root = tuple(..., while_body_inc, ...)
-  //
-  // where while_body_inc is operand N of while_body_root.
-  auto* while_body = while_op->while_body();
-  auto* while_body_root = while_body->root_instruction();
-  if (while_body_root->opcode() != HloOpcode::kTuple) {
-    VLOG(2) << "While body's root is not a tuple instruction: "
-            << while_body_root->ToString();
-    return nullopt;
-  }
-
-  auto* while_body_inc = while_body_root->operand(*indvar_tuple_idx);
-  auto* while_body_param = while_body->parameter_instruction(0);
-  optional<int64> while_body_indvar_tuple_idx =
-      GetGTEOperandIndex(while_body_inc, while_body_param);
-  if (!while_body_indvar_tuple_idx) {
-    VLOG(2)
-        << "Induction variable not found in while body increment instruction: "
-        << while_body_inc->ToString();
-    return nullopt;
-  }
-  if (while_body_indvar_tuple_idx != indvar_tuple_idx) {
-    VLOG(2) << "Tuple index of induction variable does not match between loop "
-               "condition ("
-            << *indvar_tuple_idx << ") and while body ("
-            << *while_body_indvar_tuple_idx << ")";
-    return nullopt;
-  }
-
-  // Finally, check that the while loop's initial value is a tuple with enough
-  // elements.
-  auto* while_init = while_op->operand(0);
-  if (while_init->opcode() != HloOpcode::kTuple) {
-    VLOG(2) << "While init expected to be a tuple: " << while_init->ToString();
-    return nullopt;
-  }
-
-  VLOG(2) << "Induction variable's tuple index: " << *indvar_tuple_idx;
-  return indvar_tuple_idx;
-}
-
-// Tries to determine the number of times the given loop executes.  Currently
-// simply returns 0, 1, or "can't tell" (nullopt).
-static optional<int64> GetLoopTripCount(HloInstruction* while_op) {
-  CHECK_EQ(while_op->opcode(), HloOpcode::kWhile);
-  VLOG(2) << "Getting trip count for loop " << while_op->ToString();
-
-  // The loop's induction variable is found at
-  //
-  //   get-tuple-elem(comp->parameter_instruction(0), *indvar_tuple_idx),
-  //
-  // where comp is while_op->while_body() or while_op->while_condition().
-  optional<int64> indvar_tuple_idx = GetLoopInductionVarTupleIdx(while_op);
-  if (!indvar_tuple_idx) {
-    return nullopt;
-  }
-
-  VLOG(2) << "Induction variable is at index " << *indvar_tuple_idx
-          << " in input tuple.";
-
-  // Now that we know the index of the induction variable, we can we can try to
-  // compute how many times the loop executes.  Start by computing the induction
-  // variable's initial value.
-  HloEvaluator evaluator;
-  auto* while_init = while_op->mutable_operand(0);
-  auto* indvar_init = while_init->mutable_operand(*indvar_tuple_idx);
-  StatusOr<std::unique_ptr<Literal>> indvar_init_result =
-      evaluator.Evaluate(indvar_init);
-  if (!indvar_init_result.ok()) {
-    VLOG(2) << "Couldn't evaluate induction variable init: "
-            << indvar_init_result.status();
-    return nullopt;
-  }
-
-  // Evaluates the while loop's condition, returning either "true" (continue
-  // looping), "false" (stop looping), or nullopt (can't evaluate).
-  auto evaluate_while_cond = [&](const Literal& indvar) -> optional<bool> {
-    auto* while_cond = while_op->while_condition();
-    auto* while_cond_root = while_cond->root_instruction();
-    auto* while_cond_indvar = NonConstantOperand(while_cond_root);
-    StatusOr<std::unique_ptr<Literal>> result =
-        evaluator.EvaluateWithSubstitutions(while_cond_root,
-                                            {{while_cond_indvar, &indvar}});
-    if (!result.ok()) {
-      VLOG(2) << "Couldn't evaluate while cond: " << result.status();
-      return nullopt;
-    }
-    return result.ValueOrDie()->GetArraySlice<bool>() ==
-           tensorflow::gtl::ArraySlice<bool>{true};
-  };
-
-  // The initial value of the induction variable.
-  const Literal& indvar_iter0_val = *indvar_init_result.ValueOrDie();
-
-  // Evaluate whether the while condition is true when seeded with
-  // indvar_iter0_val.
-  optional<bool> while_cond_iter0_val = evaluate_while_cond(indvar_iter0_val);
-  if (while_cond_iter0_val == false) {
-    VLOG(2) << "Loop has static trip count of 0.";
-    return 0;
-  }
-
-  // Calculate the value of the induction variable after one iteration of the
-  // loop, and check whether the while condition is true with this new value.
-  auto* while_body = while_op->while_body();
-  auto* while_body_indvar_update =
-      while_body->root_instruction()->operand(*indvar_tuple_idx);
-  auto* while_body_indvar = NonConstantOperand(while_body_indvar_update);
-  StatusOr<std::unique_ptr<Literal>> indvar_iter1_result =
-      evaluator.EvaluateWithSubstitutions(
-          while_body_indvar_update, {{while_body_indvar, &indvar_iter0_val}});
-  if (!indvar_iter1_result.ok()) {
-    VLOG(2) << "Couldn't evaluate induction variable update: "
-            << indvar_iter1_result.status();
-    return nullopt;
-  }
-  const Literal& indvar_iter1_val = *indvar_iter1_result.ValueOrDie();
-  optional<bool> while_cond_iter1_val = evaluate_while_cond(indvar_iter1_val);
-  if (while_cond_iter1_val == false) {
-    VLOG(2) << "Determined that loop has static trip count of 1.";
-    return 1;
-  }
-
-  VLOG(2) << "Loop has unknown trip count >= 1.";
-  return nullopt;
 }
 
 // Tries to remove elements in a while loop's tuple that aren't used within the
@@ -306,6 +85,13 @@ static StatusOr<bool> TryRemoveDeadWhileParams(HloInstruction* while_op) {
     return false;
   }
 
+  if (while_body_root->opcode() != HloOpcode::kTuple) {
+    VLOG(2) << "While body's root is not a tuple(...) instruction.";
+    return false;
+  }
+
+  auto print_no_metadata = HloPrintOptions().set_print_metadata(false);
+
   // Bail if param0 of while_cond or while_body has users which aren't of type
   // get-tuple-element.
   for (const HloInstruction* instr : {while_body->parameter_instruction(0),
@@ -313,9 +99,10 @@ static StatusOr<bool> TryRemoveDeadWhileParams(HloInstruction* while_op) {
     for (const HloInstruction* user : instr->users()) {
       if (user->opcode() != HloOpcode::kGetTupleElement) {
         VLOG(2) << "Cowardly refusing to analyze while loop with "
-                << instr->ToStringNoMetadata()
-                << " used by non-GTE instruction " << user->ToStringNoMetadata()
-                << " in computation " << instr->parent()->name();
+                << instr->ToString(print_no_metadata)
+                << " used by non-GTE instruction "
+                << user->ToString(print_no_metadata) << " in computation "
+                << instr->parent()->name();
         return false;
       }
     }
@@ -328,7 +115,7 @@ static StatusOr<bool> TryRemoveDeadWhileParams(HloInstruction* while_op) {
     return false;
   }
 
-  tensorflow::gtl::FlatSet<int64> used_tuple_indices;
+  absl::flat_hash_set<int64> used_tuple_indices;
   for (HloComputation* comp : {while_body, while_cond}) {
     // The HLO verifier ensures that while_input's shape matches while_init's
     // shape, which we verified above is a tuple.
@@ -351,7 +138,7 @@ static StatusOr<bool> TryRemoveDeadWhileParams(HloInstruction* while_op) {
 
       used_tuple_indices.insert(user->tuple_index());
       if (used_tuple_indices.size() == tuple_size) {
-        VLOG(2) << "Loop " << while_op->ToStringNoMetadata()
+        VLOG(2) << "Loop " << while_op->ToString(print_no_metadata)
                 << " uses all of its inputs; no simplification possible.";
         return false;
       }
@@ -375,7 +162,7 @@ static StatusOr<bool> TryRemoveDeadWhileParams(HloInstruction* while_op) {
       used_tuple_indices.insert(i);
 
       if (used_tuple_indices.size() == tuple_size) {
-        VLOG(2) << "Loop " << while_op->ToStringNoMetadata()
+        VLOG(2) << "Loop " << while_op->ToString(print_no_metadata)
                 << " uses all of its inputs; no simplification possible.";
         return false;
       }
@@ -387,14 +174,15 @@ static StatusOr<bool> TryRemoveDeadWhileParams(HloInstruction* while_op) {
   CHECK_LT(used_tuple_indices.size(), tuple_size);
 
   VLOG(1) << "Eliminating " << tuple_size - used_tuple_indices.size()
-          << " elements from tuple of " << while_op->ToStringNoMetadata();
+          << " elements from tuple of "
+          << while_op->ToString(print_no_metadata);
 
   // Build up maps from the old/new to the new/old tuple indices.
   std::vector<int64> new_to_old_tuple_idx(used_tuple_indices.begin(),
                                           used_tuple_indices.end());
   std::sort(new_to_old_tuple_idx.begin(), new_to_old_tuple_idx.end());
 
-  tensorflow::gtl::FlatMap<int64, int64> old_to_new_tuple_idx;
+  absl::flat_hash_map<int64, int64> old_to_new_tuple_idx;
   for (int64 new_idx = 0; new_idx < new_to_old_tuple_idx.size(); ++new_idx) {
     int64 old_idx = new_to_old_tuple_idx[new_idx];
     old_to_new_tuple_idx[old_idx] = new_idx;
@@ -431,7 +219,7 @@ static StatusOr<bool> TryRemoveDeadWhileParams(HloInstruction* while_op) {
         continue;
       }
       CHECK_EQ(user->opcode(), HloOpcode::kGetTupleElement)
-          << user->ToStringNoMetadata();
+          << user->ToString(print_no_metadata);
 
       int64 old_idx = user->tuple_index();
       auto new_idx_iter = old_to_new_tuple_idx.find(old_idx);
@@ -446,15 +234,14 @@ static StatusOr<bool> TryRemoveDeadWhileParams(HloInstruction* while_op) {
         CHECK(user->user_count() == 0 ||
               user->user_count() == 1 &&
                   user->users().front() == while_body_root)
-            << "Instruction " << user->ToStringNoMetadata()
+            << "Instruction " << user->ToString(print_no_metadata)
             << " should be unused (except by root of while body), but has "
                "users: {"
-            << tensorflow::str_util::Join(
-                   user->users(), ", ",
-                   [](string* out, const HloInstruction* instr) {
-                     tensorflow::strings::StrAppend(
-                         out, instr->ToStringNoMetadata());
-                   })
+            << absl::StrJoin(user->users(), ", ",
+                             [&](string* out, const HloInstruction* instr) {
+                               absl::StrAppend(
+                                   out, instr->ToString(print_no_metadata));
+                             })
             << "}";
 
         replacements.emplace(user, nullptr);
@@ -466,7 +253,7 @@ static StatusOr<bool> TryRemoveDeadWhileParams(HloInstruction* while_op) {
   // Create the new while condition, body, and init value.
   std::unique_ptr<HloComputation> new_while_cond =
       while_cond->CloneWithReplacements(
-          make_while_computation_replacements(while_cond));
+          make_while_computation_replacements(while_cond), /*extras=*/{});
 
   std::unordered_map<const HloInstruction*, std::unique_ptr<HloInstruction>>
       while_body_replacements = make_while_computation_replacements(while_body);
@@ -479,7 +266,8 @@ static StatusOr<bool> TryRemoveDeadWhileParams(HloInstruction* while_op) {
   while_body_replacements.emplace(
       while_body_root, HloInstruction::CreateTuple(new_while_body_root_elems));
   std::unique_ptr<HloComputation> new_while_body =
-      while_body->CloneWithReplacements(std::move(while_body_replacements));
+      while_body->CloneWithReplacements(std::move(while_body_replacements),
+                                        /*extras=*/{});
 
   // Add a new while_init instruction that repackages the old while_init
   // instruction's elements.  We rely on the AlgebraicSimplifier and DCE to
@@ -555,9 +343,11 @@ static StatusOr<bool> TryRemoveWhileLoop(HloInstruction* while_op) {
   //
   // This is not a fundamental limitation.  The control operands can be moved
   // onto the new HLOs after simplification, and any side-effecting ops inside
-  // the loop aren't removed, just cloned and added back to the loop.
-  // Nevertheless our infrastructure sees loop simplification as removal of
-  // these nodes and currently doesn't allow it.
+  // the loop aren't removed, just cloned and added back to the loop.  But
+  // moving an op out of the loop also removes implicit control dependencies
+  // between the op and the ops outside the loop, so we'd have to add those back
+  // for things like infeed/outfeed.  It gets complicated.  So for now we just
+  // avoid it.
   if (!while_op->parent()->IsRemovable(while_op) || while_op->HasSideEffect()) {
     VLOG(2) << "Not attempting to remove while loop it is not removable: "
             << while_op->ToShortString();
@@ -565,7 +355,9 @@ static StatusOr<bool> TryRemoveWhileLoop(HloInstruction* while_op) {
   }
 
   // Remove while loops with static trip count of 0.
-  optional<int64> trip_count = GetLoopTripCount(while_op);
+  optional<int64> trip_count =
+      ComputeWhileLoopTripCount(while_op,
+                                /*max_value_returned=*/1);
   if (trip_count && *trip_count == 0) {
     // The loop never executes, so the value of the loop is the value of its
     // "init" operand.
@@ -586,10 +378,84 @@ static StatusOr<bool> TryRemoveWhileLoop(HloInstruction* while_op) {
     auto call_op = computation->AddInstruction(HloInstruction::CreateCall(
         while_op->shape(), while_op->operands(), while_op->while_body()));
     TF_RETURN_IF_ERROR(computation->ReplaceInstruction(while_op, call_op));
-    TF_RETURN_IF_ERROR(CallInliner::Inline(call_op));
+    TF_ASSIGN_OR_RETURN(auto inlined_instructions_map,
+                        CallInliner::Inline(call_op));
+    (void)inlined_instructions_map;
     return true;
   }
   return false;
+}
+
+static StatusOr<bool> TryPropagateConstant(HloInstruction* while_op) {
+  auto while_init = while_op->operand(0);
+  if (while_init->opcode() != HloOpcode::kTuple) {
+    return false;
+  }
+
+  auto while_body = while_op->while_body();
+  auto while_body_root = while_body->root_instruction();
+  if (while_body_root->opcode() != HloOpcode::kTuple) {
+    return false;
+  }
+
+  auto while_body_param = while_body->parameter_instruction(0);
+  const HloInstruction::InstructionVector& root_operands =
+      while_body_root->operands();
+
+  // Find the loop invariant tuple elements with scalar constant init value and
+  // build a map from the tuple element index to the constant value. Limit this
+  // to scalar constant values because propagating array constants can regress
+  // performance by forcing us to copy constants.
+  absl::flat_hash_map<int, const HloInstruction*> index_to_constant;
+  for (int i = 0; i < root_operands.size(); i++) {
+    HloInstruction* instr = root_operands[i];
+    if (instr->opcode() == HloOpcode::kGetTupleElement &&
+        instr->tuple_index() == i && instr->operand(0) == while_body_param &&
+        ShapeUtil::IsScalar(instr->shape())) {
+      auto tuple_element = while_init->operand(i);
+      if (tuple_element->IsConstant()) {
+        VLOG(3) << "Found loop invariant tuple element " << i << " "
+                << tuple_element->ToString();
+        index_to_constant[i] = tuple_element;
+      }
+    }
+  }
+
+  if (index_to_constant.empty()) {
+    return false;
+  }
+
+  // Replace the use of each constant tuple element in the loop_condition and
+  // loop_body with the corresponding constant value.
+  auto propagate_constant = [&](HloComputation* computation) -> StatusOr<bool> {
+    HloInstruction* param = computation->parameter_instruction(0);
+    bool changed = false;
+    for (auto instr : param->users()) {
+      // Since only a while-loop with a tuple result reaches here, we can safely
+      // assume that `param` is a tuple and the first operand of the
+      // GetTupleElement instruction is a use of `param`.
+      if (instr->opcode() == HloOpcode::kGetTupleElement) {
+        VLOG(3) << "tuple index " << instr->tuple_index() << " "
+                << instr->ToString();
+        auto iter = index_to_constant.find(instr->tuple_index());
+        if (iter != index_to_constant.end()) {
+          const HloInstruction* hlo_constant = (*iter).second;
+          VLOG(3) << "Replace use of " << instr->ToString() << " with "
+                  << hlo_constant->ToString();
+          TF_RETURN_IF_ERROR(instr->ReplaceAllUsesWith(
+              computation->AddInstruction(hlo_constant->Clone())));
+          changed = true;
+        }
+      }
+    }
+    return changed;
+  };
+
+  TF_ASSIGN_OR_RETURN(bool changed_cond,
+                      propagate_constant(while_op->while_condition()));
+  TF_ASSIGN_OR_RETURN(bool changed_body, propagate_constant(while_body));
+
+  return changed_cond || changed_body;
 }
 
 StatusOr<bool> WhileLoopSimplifier::Run(HloModule* module) {
@@ -622,7 +488,11 @@ StatusOr<bool> WhileLoopSimplifier::Run(HloModule* module) {
       continue;
     }
 
-    StatusOr<bool> result = TryRemoveWhileLoop(while_op);
+    StatusOr<bool> result = TryPropagateConstant(while_op);
+    TF_RETURN_IF_ERROR(result.status());
+    changed |= result.ValueOrDie();
+
+    result = TryRemoveWhileLoop(while_op);
     TF_RETURN_IF_ERROR(result.status());
     if (result.ValueOrDie()) {
       changed = true;

@@ -5,7 +5,7 @@ option cc_enable_arenas = true;
 option java_outer_classname = "CostGraphProtos";
 option java_multiple_files = true;
 option java_package = "org.tensorflow.framework";
-
+option go_package = "github.com/tensorflow/tensorflow/tensorflow/go/core/framework";
 import "tensorflow/core/framework/tensor_shape.proto";
 import "tensorflow/core/framework/types.proto";
 
@@ -45,10 +45,12 @@ message CostGraphDef {
     // Temporary memory used by this node.
     int64 temporary_memory_size = 6;
 
-    int64 host_temp_memory_size = 10;
-    int64 device_temp_memory_size = 11;
-    int64 host_persistent_memory_size = 12;
-    int64 device_persistent_memory_size = 16;
+    // Persistent memory used by this node.
+    int64 persistent_memory_size = 12;
+
+    int64 host_temp_memory_size = 10 [deprecated = true];
+    int64 device_temp_memory_size = 11 [deprecated = true];
+    int64 device_persistent_memory_size = 16 [deprecated = true];
 
     // Estimate of the computational cost of this node, in microseconds.
     int64 compute_cost = 9;
@@ -67,6 +69,9 @@ message CostGraphDef {
 
     // Ids of the control inputs for this node.
     repeated int32 control_input = 8;
+
+    // Are the costs inaccurate?
+    bool inaccurate = 17;
   }
   repeated Node node = 1;
 }

@@ -12,8 +12,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef THIRD_PARTY_TENSORFLOW_CONTRIB_LITE_TOCO_RUNTIME_COMMON_H_
-#define THIRD_PARTY_TENSORFLOW_CONTRIB_LITE_TOCO_RUNTIME_COMMON_H_
+#ifndef TENSORFLOW_CONTRIB_LITE_TOCO_RUNTIME_COMMON_H_
+#define TENSORFLOW_CONTRIB_LITE_TOCO_RUNTIME_COMMON_H_
 
 #ifndef ALLOW_SLOW_GENERIC_DEPTHWISECONV_FALLBACK
 #ifdef GEMMLOWP_ALLOW_SLOW_SCALAR_FALLBACK
@@ -23,4 +23,4 @@ limitations under the License.
 
 #include "tensorflow/contrib/lite/kernels/internal/common.h"
 
-#endif  // THIRD_PARTY_TENSORFLOW_CONTRIB_LITE_TOCO_RUNTIME_COMMON_H_
+#endif  // TENSORFLOW_CONTRIB_LITE_TOCO_RUNTIME_COMMON_H_

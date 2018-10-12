@@ -21,18 +21,23 @@ limitations under the License.
 
 #include <algorithm>
 #include <string>
+#include <type_traits>
 #include <vector>
 
+#include "absl/algorithm/container.h"
+#include "absl/container/inlined_vector.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/str_format.h"
+#include "absl/strings/string_view.h"
+#include "absl/types/span.h"
 #include "tensorflow/compiler/xla/status.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
+#include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
-#include "tensorflow/core/lib/core/stringpiece.h"
-#include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/lib/math/math_util.h"
 #include "tensorflow/core/lib/strings/numbers.h"
-#include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/protobuf.h"
@@ -40,12 +45,19 @@ limitations under the License.
 
 namespace xla {
 
+// Logs the provided status message with a backtrace.
+//
+// For use by Status-factories, logs a backtrace at the point where the status
+// is created, such that we can use --vmodule=util=1 to see all status
+// creation backtraces.
+Status WithLogBacktrace(const Status& status);
+
 // Ranks greater than 8 are very rare, so use InlinedVector<int64, 8> to store
 // the bounds and indices. And for the rare cases of ranks greater than 8,
 // the InlinedVector will just behave like an std::vector<> and allocate the
 // memory to store its values.
 static constexpr int kInlineRank = 8;
-using DimensionVector = tensorflow::gtl::InlinedVector<int64, kInlineRank>;
+using DimensionVector = absl::InlinedVector<int64, kInlineRank>;
 
 // RAII timer that logs with a given label the wall clock time duration in human
 // readable form. This differs from base's ElapsedTimer primarily in that it
@@ -89,65 +101,63 @@ struct ScopedLoggingTimer {
   uint64 start_micros;
 };
 
-// Given a vector<T>, returns a MutableArraySlice<char> that points at its
+// Given a vector<T>, returns a Span<char> that points at its
 // internals.
 //
 // Warning: if the vector is updated its storage pointer may change, so use this
 // with caution (ideally in limited scopes with temporary lifetimes).
 template <typename T>
-tensorflow::gtl::MutableArraySlice<uint8> MutableByteSlice(std::vector<T>* v) {
-  return tensorflow::gtl::MutableArraySlice<uint8>(
-      reinterpret_cast<uint8*>(v->data()), v->size() * sizeof(T));
+absl::Span<uint8> MutableByteSlice(std::vector<T>* v) {
+  return absl::Span<uint8>(reinterpret_cast<uint8*>(v->data()),
+                           v->size() * sizeof(T));
 }
 
 // Turns an immutable slice of type T into an immutable slice of bytes with the
 // same byte size.
 template <typename T>
-tensorflow::gtl::ArraySlice<uint8> CastToByteSlice(
-    tensorflow::gtl::ArraySlice<T> slice) {
-  return tensorflow::gtl::ArraySlice<uint8>(
-      reinterpret_cast<const uint8*>(slice.data()), slice.size() * sizeof(T));
+absl::Span<const uint8> CastToByteSlice(absl::Span<const T> slice) {
+  return absl::Span<const uint8>(reinterpret_cast<const uint8*>(slice.data()),
+                                 slice.size() * sizeof(T));
 }
 
 // Casts a byte slice to a non-byte type T, checking that the original slice
 // length is a multiple of sizeof(T).
 template <typename T>
-tensorflow::gtl::ArraySlice<T> CastByteSlice(
-    tensorflow::gtl::ArraySlice<uint8> slice) {
+absl::Span<const T> CastByteSlice(absl::Span<const uint8> slice) {
   CHECK_EQ(0, slice.size() % sizeof(T));
-  return tensorflow::gtl::ArraySlice<T>(
-      reinterpret_cast<const T*>(slice.data()), slice.size() / sizeof(T));
+  return absl::Span<const T>(reinterpret_cast<const T*>(slice.data()),
+                             slice.size() / sizeof(T));
 }
 
 // Convenience function to force a vector to convert to an immutable slice.
 template <typename T>
-tensorflow::gtl::ArraySlice<T> AsSlice(const std::vector<T>& v) {
-  return tensorflow::gtl::ArraySlice<T>(v);
+absl::Span<const T> AsSlice(const std::vector<T>& v) {
+  return absl::Span<const T>(v);
 }
 
-// Converts a mutable vector pointer into a MutableArraySlice of the same
+// Converts a mutable vector pointer into a Span of the same
 // type.
 template <typename T>
-tensorflow::gtl::MutableArraySlice<T> AsMutableSlice(std::vector<T>* v) {
-  return tensorflow::gtl::MutableArraySlice<T>(v->data(), v->size());
+absl::Span<T> AsMutableSlice(std::vector<T>* v) {
+  return absl::Span<T>(v->data(), v->size());
 }
 
 // xla::int64 is not the same type as tensorflow::protobuf_int64 in open-source.
 // Wrapper function that gives an int64 array slice view of a repeated int64
 // protobuf field.
-static inline tensorflow::gtl::ArraySlice<int64> AsInt64Slice(
+static inline absl::Span<const int64> AsInt64Slice(
     const tensorflow::protobuf::RepeatedField<tensorflow::protobuf_int64>& v) {
-  tensorflow::gtl::ArraySlice<tensorflow::protobuf_int64> slice(v);
-  return tensorflow::gtl::ArraySlice<int64>(
-      reinterpret_cast<const int64*>(slice.data()), slice.size());
+  absl::Span<const tensorflow::protobuf_int64> slice(v);
+  return absl::Span<const int64>(reinterpret_cast<const int64*>(slice.data()),
+                                 slice.size());
 }
 
 // As above, but for uint64 types.
-static inline tensorflow::gtl::ArraySlice<uint64> AsUInt64Slice(
+static inline absl::Span<const uint64> AsUInt64Slice(
     const tensorflow::protobuf::RepeatedField<tensorflow::protobuf_uint64>& v) {
-  tensorflow::gtl::ArraySlice<tensorflow::protobuf_uint64> slice(v);
-  return tensorflow::gtl::ArraySlice<uint64>(
-      reinterpret_cast<const uint64*>(slice.data()), slice.size());
+  absl::Span<const tensorflow::protobuf_uint64> slice(v);
+  return absl::Span<const uint64>(reinterpret_cast<const uint64*>(slice.data()),
+                                  slice.size());
 }
 
 // Compares two containers for equality. Returns true iff the two containers
@@ -163,7 +173,7 @@ template <typename Container1T,
           typename ElementType = typename Container1T::value_type>
 bool ContainersEqual(const Container1T& c1,
                      std::initializer_list<ElementType> il) {
-  tensorflow::gtl::ArraySlice<ElementType> c2{il};
+  absl::Span<const ElementType> c2{il};
   return ContainersEqual(c1, c2);
 }
 
@@ -181,9 +191,9 @@ bool ContainersEqual(const Container1T& c1, const Container2T& c2,
 // source and destination. The source starting index is src_base, while the
 // destination one is dest_base.
 template <typename D, typename S>
-void StridedCopy(tensorflow::gtl::MutableArraySlice<D> dest, int64 dest_base,
-                 int64 dest_stride, tensorflow::gtl::ArraySlice<S> src,
-                 int64 src_base, int64 src_stride, int64 count) {
+void StridedCopy(absl::Span<D> dest, int64 dest_base, int64 dest_stride,
+                 absl::Span<const S> src, int64 src_base, int64 src_stride,
+                 int64 count) {
   for (; count > 0; --count, dest_base += dest_stride, src_base += src_stride) {
     dest[dest_base] = static_cast<D>(src[src_base]);
   }
@@ -192,20 +202,77 @@ void StridedCopy(tensorflow::gtl::MutableArraySlice<D> dest, int64 dest_base,
 // Adds some context information to the error message in a
 // Status.  This is useful as Statuses are
 // propagated upwards.
-Status AddStatus(Status prior, tensorflow::StringPiece context);
-Status AppendStatus(Status prior, tensorflow::StringPiece context);
+Status AddStatus(Status prior, absl::string_view context);
+Status AppendStatus(Status prior, absl::string_view context);
 
-// Status error shorthands -- printfs the arguments to be
-// used as an error message and returns a status in the canonical
-// error space.
-Status InvalidArgument(const char* format, ...) TF_PRINTF_ATTRIBUTE(1, 2);
-Status Unimplemented(const char* format, ...) TF_PRINTF_ATTRIBUTE(1, 2);
-Status InternalError(const char* format, ...) TF_PRINTF_ATTRIBUTE(1, 2);
-Status FailedPrecondition(const char* format, ...) TF_PRINTF_ATTRIBUTE(1, 2);
-Status Cancelled(const char* format, ...) TF_PRINTF_ATTRIBUTE(1, 2);
-Status ResourceExhausted(const char* format, ...) TF_PRINTF_ATTRIBUTE(1, 2);
-Status NotFound(const char* format, ...) TF_PRINTF_ATTRIBUTE(1, 2);
-Status Unavailable(const char* format, ...) TF_PRINTF_ATTRIBUTE(1, 2);
+// Status error shorthands -- StrFormat's the arguments to be used as an error
+// message and returns a status in the canonical error space.
+template <typename... Args>
+Status InvalidArgument(const absl::FormatSpec<Args...>& format,
+                       const Args&... args) {
+  return WithLogBacktrace(
+      tensorflow::errors::InvalidArgument(absl::StrFormat(format, args...)));
+}
+template <typename... Args>
+Status Unimplemented(const absl::FormatSpec<Args...>& format,
+                     const Args&... args) {
+  return WithLogBacktrace(
+      tensorflow::errors::Unimplemented(absl::StrFormat(format, args...)));
+}
+template <typename... Args>
+Status InternalError(const absl::FormatSpec<Args...>& format,
+                     const Args&... args) {
+  return WithLogBacktrace(
+      tensorflow::errors::Internal(absl::StrFormat(format, args...)));
+}
+template <typename... Args>
+Status FailedPrecondition(const absl::FormatSpec<Args...>& format,
+                          const Args&... args) {
+  return WithLogBacktrace(
+      tensorflow::errors::FailedPrecondition(absl::StrFormat(format, args...)));
+}
+template <typename... Args>
+Status Cancelled(const absl::FormatSpec<Args...>& format, const Args&... args) {
+  return WithLogBacktrace(
+      tensorflow::errors::Cancelled(absl::StrFormat(format, args...)));
+}
+template <typename... Args>
+Status ResourceExhausted(const absl::FormatSpec<Args...>& format,
+                         const Args&... args) {
+  return WithLogBacktrace(
+      tensorflow::errors::ResourceExhausted(absl::StrFormat(format, args...)));
+}
+template <typename... Args>
+Status NotFound(const absl::FormatSpec<Args...>& format, const Args&... args) {
+  return WithLogBacktrace(
+      tensorflow::errors::NotFound(absl::StrFormat(format, args...)));
+}
+template <typename... Args>
+Status Unavailable(const absl::FormatSpec<Args...>& format,
+                   const Args&... args) {
+  return WithLogBacktrace(
+      tensorflow::errors::Unavailable(absl::StrFormat(format, args...)));
+}
+
+template <typename... Args>
+Status InvalidArgumentStrCat(Args&&... concat) {
+  return InvalidArgument("%s", absl::StrCat(std::forward<Args>(concat)...));
+}
+
+template <typename... Args>
+Status UnimplementedStrCat(Args&&... concat) {
+  return Unimplemented("%s", absl::StrCat(std::forward<Args>(concat)...));
+}
+
+template <typename... Args>
+Status InternalErrorStrCat(Args&&... concat) {
+  return InternalError("%s", absl::StrCat(std::forward<Args>(concat)...));
+}
+
+template <typename... Args>
+Status ResourceExhaustedStrCat(Args&&... concat) {
+  return ResourceExhausted("%s", absl::StrCat(std::forward<Args>(concat)...));
+}
 
 // Splits the lines of the original, replaces leading whitespace with the prefix
 // given by "indentation", and returns the string joined by newlines again. As a
@@ -213,11 +280,10 @@ Status Unavailable(const char* format, ...) TF_PRINTF_ATTRIBUTE(1, 2);
 //
 // Note: even different amounts of leading whitespace on different lines will be
 // uniformly replaced with "indentation".
-string Reindent(tensorflow::StringPiece original,
-                tensorflow::StringPiece indentation);
+string Reindent(absl::string_view original, absl::string_view indentation);
 
 // Checks whether permutation is a permutation of the [0, rank) integer range.
-bool IsPermutation(tensorflow::gtl::ArraySlice<int64> permutation, int64 rank);
+bool IsPermutation(absl::Span<const int64> permutation, int64 rank);
 
 // Applies `permutation` on `input` and returns the permuted array.
 // For each i, output[permutation[i]] = input[i].
@@ -225,10 +291,11 @@ bool IsPermutation(tensorflow::gtl::ArraySlice<int64> permutation, int64 rank);
 // Precondition:
 // 1. `permutation` is a permutation of 0..permutation.size()-1.
 // 2. permutation.size() == input.size().
-template <template <typename...> class C, typename T>
-std::vector<T> Permute(tensorflow::gtl::ArraySlice<int64> permutation,
-                       C<T> input) {
-  tensorflow::gtl::ArraySlice<T> data(input);
+template <typename Container>
+std::vector<typename Container::value_type> Permute(
+    absl::Span<const int64> permutation, const Container& input) {
+  using T = typename Container::value_type;
+  absl::Span<const T> data(input);
   CHECK(IsPermutation(permutation, data.size()));
   std::vector<T> output(data.size());
   for (size_t i = 0; i < permutation.size(); ++i) {
@@ -237,24 +304,16 @@ std::vector<T> Permute(tensorflow::gtl::ArraySlice<int64> permutation,
   return output;
 }
 
-// Override of the above that works around compile failures with gcc 7.1.1.
-// For details see https://github.com/tensorflow/tensorflow/issues/10843
-template <typename T>
-std::vector<T> Permute(tensorflow::gtl::ArraySlice<int64> permutation,
-                       const std::vector<T>& input) {
-  return Permute<std::vector, T>(permutation, input);
-}
-
 // Inverts a permutation, i.e., output_permutation[input_permutation[i]] = i.
 std::vector<int64> InversePermutation(
-    tensorflow::gtl::ArraySlice<int64> input_permutation);
+    absl::Span<const int64> input_permutation);
 
 // Composes two permutations: output[i] = p1[p2[i]].
-std::vector<int64> ComposePermutations(tensorflow::gtl::ArraySlice<int64> p1,
-                                       tensorflow::gtl::ArraySlice<int64> p2);
+std::vector<int64> ComposePermutations(absl::Span<const int64> p1,
+                                       absl::Span<const int64> p2);
 
 // Returns true iff permutation == {0, 1, 2, ...}.
-bool IsIdentityPermutation(tensorflow::gtl::ArraySlice<int64> permutation);
+bool IsIdentityPermutation(absl::Span<const int64> permutation);
 
 template <typename Container>
 int64 PositionInContainer(const Container& container, int64 value) {
@@ -273,7 +332,7 @@ string CommaSeparatedString(const Container& c, const char* prefix = "",
   string comma_separated = prefix;
   const char* separator = "";
   for (const auto& entry : c) {
-    tensorflow::strings::StrAppend(&comma_separated, separator, entry);
+    absl::StrAppend(&comma_separated, separator, entry);
     separator = ", ";
   }
   comma_separated += suffix;
@@ -308,7 +367,7 @@ PaddingConfig MakeNoPaddingConfig(int64 rank);
 // Returns a PaddingConfig object where 'padding' contains
 // (low edge padding, high edge padding) pairs for each dimension.
 PaddingConfig MakeEdgePaddingConfig(
-    tensorflow::gtl::ArraySlice<std::pair<int64, int64>> padding);
+    absl::Span<const std::pair<int64, int64>> padding);
 
 // Returns true if the padding configuration has at least one dimension with
 // non-zero interior padding.
@@ -329,7 +388,7 @@ T CeilOfRatio(T dividend, T divisor) {
 }
 
 // Rounds the value up to a multiple of the divisor by first calling CeilOfRatio
-// then multiplying by the divisor. For example: RoundUpToMultiple(13, 8) => 16
+// then multiplying by the divisor. For example: RoundUpToNearest(13, 8) => 16
 template <typename T>
 T RoundUpToNearest(T value, T divisor) {
   return CeilOfRatio(value, divisor) * divisor;
@@ -337,7 +396,7 @@ T RoundUpToNearest(T value, T divisor) {
 
 // Rounds the value down to a multiple of the divisor by first calling
 // FloorOfRatio then multiplying by the divisor. For example:
-// RoundUpToMultiple(13, 8) => 8
+// RoundDownToNearest(13, 8) => 8
 template <typename T>
 T RoundDownToNearest(T value, T divisor) {
   return FloorOfRatio(value, divisor) * divisor;
@@ -355,8 +414,7 @@ string HumanReadableNumTranscendentalOps(double trops, double nanoseconds);
 
 // Split the text into multiple lines and log each line with the given
 // severity, filename, and line number.
-void LogLines(int sev, tensorflow::StringPiece text, const char* fname,
-              int lineno);
+void LogLines(int sev, absl::string_view text, const char* fname, int lineno);
 
 template <typename T>
 inline bool IsPowerOfTwo(T x) {
@@ -376,7 +434,7 @@ std::unique_ptr<Derived> unique_ptr_static_cast(std::unique_ptr<Base> ptr) {
   return std::unique_ptr<Derived>(static_cast<Derived*>(ptr.release()));
 }
 
-int64 Product(tensorflow::gtl::ArraySlice<int64> xs);
+int64 Product(absl::Span<const int64> xs);
 
 // Returns the start indices of consecutive non-overlapping subsequences of `a`
 // and `b` with the same product, i.e. `(i, j)` so
@@ -389,12 +447,57 @@ int64 Product(tensorflow::gtl::ArraySlice<int64> xs);
 //
 // If the given shapes have non-zero size, returns the bounds of the shortest
 // possible such subsequences; else, returns `{(0, 0), (a.size, b.size)}`.
-std::vector<std::pair<int64, int64>> CommonFactors(
-    tensorflow::gtl::ArraySlice<int64> a, tensorflow::gtl::ArraySlice<int64> b);
+std::vector<std::pair<int64, int64>> CommonFactors(absl::Span<const int64> a,
+                                                   absl::Span<const int64> b);
 
 // Removes illegal characters from filenames.
 string SanitizeFileName(string file_name);
 
+template <typename C, typename Value>
+int64 FindIndex(const C& c, Value&& value) {
+  auto it = absl::c_find(c, std::forward<Value>(value));
+  return std::distance(c.begin(), it);
+}
+
+template <typename C, typename Value>
+void InsertAt(C* c, int64 index, Value&& value) {
+  c->insert(c->begin() + index, std::forward<Value>(value));
+}
+
+template <typename C>
+void EraseAt(C* c, int64 index) {
+  c->erase(c->begin() + index);
+}
+
+template <typename T>
+std::vector<T> ArraySliceToVector(absl::Span<const T> slice) {
+  return std::vector<T>(slice.begin(), slice.end());
+}
+
+template <typename T, size_t N>
+std::vector<T> InlinedVectorToVector(
+    const absl::InlinedVector<T, N>& inlined_vector) {
+  return std::vector<T>(inlined_vector.begin(), inlined_vector.end());
+}
+
+// Returns true if `x` fits in 32-bits.
+template <typename T>
+bool IsInt32(T x) {
+  // Following conversion rules: "the value is unchanged if it can be
+  // represented in the destination type (and bit-field width); otherwise, the
+  // value is implementation-defined."
+  return static_cast<int32>(x) == x;
+}
+
+template <typename T>
+Status EraseElementFromVector(std::vector<T>* container, const T& value) {
+  // absl::c_find returns a const_iterator which does not seem to work on
+  // gcc 4.8.4, and this breaks the ubuntu/xla_gpu build bot.
+  auto it = std::find(container->begin(), container->end(), value);
+  TF_RET_CHECK(it != container->end());
+  container->erase(it);
+  return Status::OK();
+}
 }  // namespace xla
 
 #define XLA_LOG_LINES(SEV, STRING) \

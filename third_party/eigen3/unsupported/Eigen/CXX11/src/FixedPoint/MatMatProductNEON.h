@@ -8,9 +8,8 @@
 // Public License v. 2.0. If a copy of the MPL was not distributed
 // with this file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-#ifndef EIGEN_CXX11_FIXED_POINT_MAT_MAT_PRODUCT_NEON_H
-#define EIGEN_CXX11_FIXED_POINT_MAT_MAT_PRODUCT_NEON_H
-
+#ifndef CXX11_SRC_FIXEDPOINT_MATMATPRODUCTNEON_H_
+#define CXX11_SRC_FIXEDPOINT_MATMATPRODUCTNEON_H_
 
 namespace Eigen {
 namespace internal {
@@ -90,6 +89,4 @@ void gebp_kernel<QInt8, QUInt8, Index, DataMapper, mr, nr, ConjugateLhs, Conjuga
 }  // namespace internal
 }  // namespace Eigen
 
-
-
-#endif  // EIGEN_CXX11_FIXED_POINT_MAT_MAT_PRODUCT_NEON_H
+#endif  // CXX11_SRC_FIXEDPOINT_MATMATPRODUCTNEON_H_

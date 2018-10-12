@@ -94,7 +94,7 @@ class ReshapeTest(test.TestCase):
   def testFloatReshapeGradThreeDimensions(self):
     x = np.arange(1., 25.).reshape([2, 3, 4]).astype(np.float32)
     s = list(np.shape(x))
-    with self.test_session():
+    with self.cached_session():
       input_tensor = constant_op.constant(x)
       reshape_out = array_ops.reshape(input_tensor, [1, 8, 3])
       err = gradient_checker.compute_gradient_error(

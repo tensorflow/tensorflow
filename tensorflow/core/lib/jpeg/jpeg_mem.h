@@ -18,8 +18,8 @@ limitations under the License.
 // (data array and size fields).
 // Direct manipulation of JPEG strings are supplied: Flip, Rotate, Crop..
 
-#ifndef TENSORFLOW_LIB_JPEG_JPEG_MEM_H_
-#define TENSORFLOW_LIB_JPEG_JPEG_MEM_H_
+#ifndef TENSORFLOW_CORE_LIB_JPEG_JPEG_MEM_H_
+#define TENSORFLOW_CORE_LIB_JPEG_JPEG_MEM_H_
 
 #include <functional>
 #include <string>
@@ -159,4 +159,4 @@ bool Compress(const void* srcdata, int width, int height,
 }  // namespace jpeg
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_LIB_JPEG_JPEG_MEM_H_
+#endif  // TENSORFLOW_CORE_LIB_JPEG_JPEG_MEM_H_

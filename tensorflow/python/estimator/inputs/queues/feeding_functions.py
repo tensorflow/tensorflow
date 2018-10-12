@@ -47,13 +47,12 @@ except ImportError:
 
 
 def _fill_array(arr, seq, fillvalue=0):
-  """
-  Recursively fills padded arr with elements from seq.
-  If length of seq is less than arr padded length, fillvalue used.
+  """Recursively fills padded arr with elements from seq.
 
+  If length of seq is less than arr padded length, fillvalue used.
   Args:
     arr: Padded tensor of shape [batch_size, ..., max_padded_dim_len].
-    seq: Non-padded list of data sampels of shape
+    seq: Non-padded list of data samples of shape
       [batch_size, ..., padded_dim(None)]
     fillvalue: Default fillvalue to use.
   """
@@ -84,28 +83,30 @@ def _pad_if_needed(batch_key_item, fillvalue=0):
   Raises:
     ValueError if data samples have different shapes (except last padded dim).
   """
-  shapes = [seq.shape[:-1] if len(seq.shape) > 0 else -1
-            for seq in batch_key_item]
+  shapes = [
+      seq.shape[:-1] if len(seq.shape) > 0 else -1 for seq in batch_key_item
+  ]
   if not all(shapes[0] == x for x in shapes):
     raise ValueError("Array shapes must match.")
 
-  last_length = [seq.shape[-1] if len(seq.shape) > 0 else 0
-                 for seq in batch_key_item]
+  last_length = [
+      seq.shape[-1] if len(seq.shape) > 0 else 0 for seq in batch_key_item
+  ]
   if all([x == last_length[0] for x in last_length]):
     return batch_key_item
 
   batch_size = len(batch_key_item)
   max_sequence_length = max(last_length)
   result_batch = np.zeros(
-    shape=[batch_size] + list(shapes[0]) + [max_sequence_length],
-    dtype=batch_key_item[0].dtype)
+      shape=[batch_size] + list(shapes[0]) + [max_sequence_length],
+      dtype=batch_key_item[0].dtype)
   _fill_array(result_batch, batch_key_item, fillvalue)
   return result_batch
 
 
-def _get_integer_indices_for_next_batch(
-    batch_indices_start, batch_size, epoch_end, array_length,
-    current_epoch, total_epochs):
+def _get_integer_indices_for_next_batch(batch_indices_start, batch_size,
+                                        epoch_end, array_length, current_epoch,
+                                        total_epochs):
   """Returns the integer indices for next batch.
 
   If total epochs is not None and current epoch is the final epoch, the end
@@ -135,8 +136,9 @@ def _get_integer_indices_for_next_batch(
                                  "Already emitted %s epochs." % current_epoch)
 
   batch_indices_end = batch_indices_start + batch_size
-  batch_indices = [j % array_length for j in
-                   range(batch_indices_start, batch_indices_end)]
+  batch_indices = [
+      j % array_length for j in range(batch_indices_start, batch_indices_end)
+  ]
   epoch_end_indices = [i for i, x in enumerate(batch_indices) if x == epoch_end]
   current_epoch += len(epoch_end_indices)
 
@@ -248,7 +250,7 @@ class _PandasFeedFn(object):
                num_epochs=None):
     if len(placeholders) != len(dataframe.columns) + 1:
       raise ValueError("Expected {} placeholders; got {}.".format(
-          len(dataframe.columns), len(placeholders)))
+          len(dataframe.columns) + 1, len(placeholders)))
     self._index_placeholder = placeholders[0]
     self._col_placeholders = placeholders[1:]
     self._dataframe = dataframe
@@ -320,16 +322,20 @@ class _GeneratorFeedFn(object):
           raise KeyError("key mismatch between dicts emitted by GenFun "
                          "Expected {} keys; got {}".format(
                              self._keys, data_row.keys()))
-        list_dict.setdefault(self._col_placeholders[index],
-                             list()).append(data_row[key])
+        list_dict.setdefault(self._col_placeholders[index], list()).append(
+            data_row[key])
         list_dict_size += 1
 
     if self._pad_value is not None:
-      feed_dict = {key: np.asarray(_pad_if_needed(item, self._pad_value))
-                   for key, item in list(list_dict.items())}
+      feed_dict = {
+          key: np.asarray(_pad_if_needed(item, self._pad_value))
+          for key, item in list(list_dict.items())
+      }
     else:
-      feed_dict = {key: np.asarray(item)
-                   for key, item in list(list_dict.items())}
+      feed_dict = {
+          key: np.asarray(item)
+          for key, item in list(list_dict.items())
+      }
     return feed_dict
 
 
@@ -382,9 +388,8 @@ def _enqueue_data(data,
       queue_shapes = [(), data.shape[1:]]
       get_feed_fn = _ArrayFeedFn
     elif isinstance(data, collections.OrderedDict):
-      types = [dtypes.int64] + [
-          dtypes.as_dtype(col.dtype) for col in data.values()
-      ]
+      types = [dtypes.int64
+              ] + [dtypes.as_dtype(col.dtype) for col in data.values()]
       queue_shapes = [()] + [col.shape[1:] for col in data.values()]
       get_feed_fn = _OrderedDictNumpyFeedFn
     elif isinstance(data, tp.FunctionType):
@@ -447,11 +452,11 @@ def _enqueue_data(data,
           seed=seed)
     elif pad_data:
       min_after_dequeue = 0  # just for the summary text
-      queue_shapes = list(map(
-        lambda x: tuple(list(x[:-1]) + [None]) if len(x) > 0 else x,
-        queue_shapes))
+      queue_shapes = list(
+          map(lambda x: tuple(list(x[:-1]) + [None]) if len(x) > 0 else x,
+              queue_shapes))
       queue = data_flow_ops.PaddingFIFOQueue(
-        capacity, dtypes=types, shapes=queue_shapes)
+          capacity, dtypes=types, shapes=queue_shapes)
     else:
       min_after_dequeue = 0  # just for the summary text
       queue = data_flow_ops.FIFOQueue(
@@ -470,31 +475,35 @@ def _enqueue_data(data,
 
       if not pad_data:
         feed_fns.append(
-          get_feed_fn(
-              placeholders,
-              data,
-              enqueue_size,
-              random_start=shuffle,
-              seed=seed_i,
-              num_epochs=num_epochs))
+            get_feed_fn(
+                placeholders,
+                data,
+                enqueue_size,
+                random_start=shuffle,
+                seed=seed_i,
+                num_epochs=num_epochs))
       else:
         feed_fns.append(
-          get_feed_fn(
-              placeholders,
-              data,
-              enqueue_size,
-              random_start=shuffle,
-              seed=seed_i,
-              num_epochs=num_epochs,
-              pad_value=pad_value))
+            get_feed_fn(
+                placeholders,
+                data,
+                enqueue_size,
+                random_start=shuffle,
+                seed=seed_i,
+                num_epochs=num_epochs,
+                pad_value=pad_value))
 
     runner = fqr._FeedingQueueRunner(  # pylint: disable=protected-access
-        queue=queue, enqueue_ops=enqueue_ops, feed_fns=feed_fns)
+        queue=queue,
+        enqueue_ops=enqueue_ops,
+        feed_fns=feed_fns)
     queue_runner.add_queue_runner(runner)
 
-    full = (math_ops.cast(
-        math_ops.maximum(0, queue.size() - min_after_dequeue),
-        dtypes.float32) * (1. / (capacity - min_after_dequeue)))
+    full = (
+        math_ops.cast(
+            math_ops.maximum(0,
+                             queue.size() - min_after_dequeue), dtypes.float32)
+        * (1. / (capacity - min_after_dequeue)))
     # Note that name contains a '/' at the end so we intentionally do not place
     # a '/' after %s below.
     summary_name = ("queue/%sfraction_over_%d_of_%d_full" %

@@ -17,17 +17,39 @@ limitations under the License.
 
 #include <vector>
 
+#include "absl/strings/str_cat.h"
 #include "tensorflow/compiler/xla/types.h"
-#include "tensorflow/core/lib/strings/str_util.h"
-#include "tensorflow/core/lib/strings/strcat.h"
-#include "tensorflow/core/lib/strings/stringprintf.h"
+#include "tensorflow/compiler/xla/xla_data.pb.h"
+#include "tensorflow/core/platform/logging.h"
 
 namespace xla {
 namespace window_util {
 
+Window MakeWindow(absl::Span<const int64> sizes) {
+  Window window;
+  for (int64 size : sizes) {
+    auto* dimension = window.add_dimensions();
+    dimension->set_size(size);
+    dimension->set_stride(1);
+    dimension->set_base_dilation(1);
+    dimension->set_window_dilation(1);
+  }
+  return window;
+}
+
+PaddingConfig MakeSymmetricPadding(absl::Span<const int64> sizes) {
+  PaddingConfig config;
+  for (int64 size : sizes) {
+    auto* dimension = config.add_dimensions();
+    dimension->set_edge_padding_low(size);
+    dimension->set_edge_padding_high(size);
+  }
+  return config;
+}
+
 /* static */ string ToString(const WindowDimension& dim) {
-  using tensorflow::strings::StrAppend;
-  using tensorflow::strings::StrCat;
+  using absl::StrAppend;
+  using absl::StrCat;
   string str = StrCat("(size=", dim.size());
   if (dim.stride() != 1) {
     StrAppend(&str, ",stride=", dim.stride());
@@ -52,8 +74,8 @@ namespace window_util {
 }
 
 string ToString(const Window& window) {
-  using tensorflow::strings::StrAppend;
-  using tensorflow::strings::StrCat;
+  using absl::StrAppend;
+  using absl::StrCat;
 
   string str;
   const auto add_field =
@@ -88,6 +110,11 @@ string ToString(const Window& window) {
       return StrCat(dim.window_dilation());
     });
   }
+  if (HasWindowReversal(window)) {
+    add_field(" rhs_reversal", [](const WindowDimension& dim) {
+      return StrCat(dim.window_reversal() ? 1 : 0);
+    });
+  }
   return str;
 }
 
@@ -109,10 +136,18 @@ bool HasPadding(const Window& window) {
   return false;
 }
 
-bool HasEvenPadding(const Window& window) {
+bool HasSymmetricPadding(const Window& window) {
   return std::all_of(window.dimensions().begin(), window.dimensions().end(),
                      [](const WindowDimension& dim) {
                        return dim.padding_low() == dim.padding_high();
+                     });
+}
+
+bool HasSymmetricPadding(const PaddingConfig& padding_config) {
+  return std::all_of(padding_config.dimensions().begin(),
+                     padding_config.dimensions().end(),
+                     [](const PaddingConfig::PaddingConfigDimension& dim) {
+                       return dim.edge_padding_low() == dim.edge_padding_high();
                      });
 }
 
@@ -141,13 +176,31 @@ bool HasWindowDilation(const Window& window) {
   return false;
 }
 
+bool HasWindowReversal(const Window& window) {
+  for (const auto& dim : window.dimensions()) {
+    if (dim.window_reversal()) {
+      return true;
+    }
+  }
+  return false;
+}
+
 bool HasDilation(const Window& window) {
   return HasBaseDilation(window) || HasWindowDilation(window);
+}
+
+bool IsInactiveWindowDimension(const Window& window, int64 logical_dim) {
+  const WindowDimension& window_dim = window.dimensions(logical_dim);
+  return window_dim.size() == 1 && window_dim.stride() == 1 &&
+         window_dim.padding_low() == 0 && window_dim.padding_high() == 0;
 }
 
 int64 DilatedBound(int64 bound, int64 dilation) {
   CHECK_GE(bound, 0);
   CHECK_GE(dilation, 1);
+  if (bound == 0) {
+    return 0;
+  }
 
   // Suppose the array has three entries 123 and the dilation factor is 4. Then
   // the dilated array has 9 entries 1xxx2xxx3. Here, each original entry except
@@ -161,7 +214,7 @@ int64 StridedBound(int64 bound, int64 window_size, int64 stride) {
   CHECK_GE(bound, 0);
   CHECK_GE(stride, 1);
 
-  if (window_size > bound) {
+  if (bound == 0 || window_size > bound) {
     return 0;
   }
 

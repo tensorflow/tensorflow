@@ -16,10 +16,10 @@ limitations under the License.
 #include "tensorflow/core/kernels/cwise_ops_common.h"
 
 namespace tensorflow {
-REGISTER5(BinaryOp, CPU, "Add", functor::add, float, Eigen::half, double, int32,
-          int64);
-REGISTER5(BinaryOp, CPU, "AddV2", functor::add, float, Eigen::half, double,
-          int32, int64);
+REGISTER6(BinaryOp, CPU, "Add", functor::add, float, Eigen::half, double, int32,
+          int64, bfloat16);
+REGISTER6(BinaryOp, CPU, "AddV2", functor::add, float, Eigen::half, double,
+          int32, int64, bfloat16);
 
 #if GOOGLE_CUDA
 REGISTER3(BinaryOp, GPU, "Add", functor::add, float, Eigen::half, double);
@@ -44,7 +44,6 @@ REGISTER_KERNEL_BUILDER(Name("AddV2")
                         BinaryOp<CPUDevice, functor::add<int32>>);
 #endif
 
-
 #if TENSORFLOW_USE_SYCL
 #define REGISTER_KERNEL(type)                          \
   REGISTER(BinaryOp, SYCL, "Add", functor::add, type); \
@@ -66,5 +65,5 @@ REGISTER_KERNEL_BUILDER(Name("AddV2")
                             .HostMemory("z")
                             .TypeConstraint<int32>("T"),
                         BinaryOp<CPUDevice, functor::add<int32>>);
-#endif // TENSORFLOW_USE_SYCL
+#endif  // TENSORFLOW_USE_SYCL
 }  // namespace tensorflow

@@ -130,6 +130,8 @@ TEST_F(S3FileSystemTest, NewReadOnlyMemoryRegionFromFile) {
 
 TEST_F(S3FileSystemTest, FileExists) {
   const string fname = TmpDir("FileExists");
+  // Ensure the file doesn't yet exist.
+  TF_ASSERT_OK(s3fs.DeleteFile(fname));
   EXPECT_EQ(error::Code::NOT_FOUND, s3fs.FileExists(fname).code());
   TF_ASSERT_OK(WriteString(fname, "test"));
   TF_EXPECT_OK(s3fs.FileExists(fname));

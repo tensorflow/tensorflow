@@ -15,7 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/defuser.h"
 
-#include "tensorflow/compiler/xla/literal_util.h"
+#include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/service/hlo_matchers.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/tests/hlo_verified_test_base.h"
@@ -124,7 +124,7 @@ TEST_F(DefuserTest, NonTrivialFusionInstruction) {
   auto div = builder.AddInstruction(
       HloInstruction::CreateBinary(shape_, HloOpcode::kDivide, mul, param3));
   auto constant = builder.AddInstruction(HloInstruction::CreateConstant(
-      Literal::CreateR2<float>({{1.0, 2.0}, {3.0, 4.0}})));
+      LiteralUtil::CreateR2<float>({{1.0, 2.0}, {3.0, 4.0}})));
   auto add2 = builder.AddInstruction(
       HloInstruction::CreateBinary(shape_, HloOpcode::kAdd, constant, div));
 
@@ -162,7 +162,7 @@ TEST_F(DefuserTest, MultipleFusionInstructions) {
   auto div = builder.AddInstruction(
       HloInstruction::CreateBinary(shape_, HloOpcode::kDivide, mul, param3));
   auto constant = builder.AddInstruction(HloInstruction::CreateConstant(
-      Literal::CreateR2<float>({{1.0, 2.0}, {3.0, 4.0}})));
+      LiteralUtil::CreateR2<float>({{1.0, 2.0}, {3.0, 4.0}})));
   auto add2 = builder.AddInstruction(
       HloInstruction::CreateBinary(shape_, HloOpcode::kAdd, constant, div));
 

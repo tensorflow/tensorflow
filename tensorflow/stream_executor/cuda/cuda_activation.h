@@ -25,8 +25,7 @@ limitations under the License.
 
 #include "tensorflow/stream_executor/platform/port.h"
 
-namespace perftools {
-namespace gputools {
+namespace stream_executor {
 
 class StreamExecutor;
 
@@ -45,10 +44,11 @@ class ScopedActivateExecutorContext {
   // fatal failure if it is not CUDA inside.
   explicit ScopedActivateExecutorContext(StreamExecutor* stream_exec);
 
+  ScopedActivateExecutorContext(ScopedActivateExecutorContext&& other);
+
   ~ScopedActivateExecutorContext();
 
  private:
-
   // The cuda.h-using datatype that we wrap.
   ScopedActivateContext* driver_scoped_activate_context_;
 
@@ -56,7 +56,6 @@ class ScopedActivateExecutorContext {
 };
 
 }  // namespace cuda
-}  // namespace gputools
-}  // namespace perftools
+}  // namespace stream_executor
 
 #endif  // TENSORFLOW_STREAM_EXECUTOR_CUDA_CUDA_ACTIVATION_H_

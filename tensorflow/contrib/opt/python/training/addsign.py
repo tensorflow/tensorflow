@@ -30,8 +30,8 @@ from tensorflow.python.training import training_ops
 class AddSignOptimizer(optimizer.Optimizer):
   """Optimizer that implements the AddSign update.
 
-  See  Neural Optimizer Search with Reinforcement Learning
-  [Bello et al., ICML2017].
+  See [Bello et al., ICML2017],
+  [Neural Optimizer Search with RL](https://arxiv.org/abs/1709.07417).
   """
 
   def __init__(self,
@@ -45,6 +45,7 @@ class AddSignOptimizer(optimizer.Optimizer):
 
     Initialization:
 
+    ```
     m_0 <- 0 (Initialize initial 1st moment vector)
     t <- 0 (Initialize timestep)
     ```
@@ -54,7 +55,7 @@ class AddSignOptimizer(optimizer.Optimizer):
     ```
     t <- t + 1
     m_t <- beta1 * m_{t-1} + (1 - beta1) * g
-    sign_decay <- sign_decay(t)
+    sign_decay <- sign_decay_fn(t)
     update <- (alpha + sign_decay * sign(g) *sign(m)) * g
     variable <- variable - lr_t * update
     ```
@@ -70,11 +71,9 @@ class AddSignOptimizer(optimizer.Optimizer):
       learning_rate: learning_rate used when taking a step.
       alpha: alpha used in optimizer.
       beta: decay used for computing the moving average m.
-      sign_decay_fn: decay function applied to the sign(g*m) quantity.
-          Takes global_step as an argument and returns the quantity to multiply
-          the sign(g*m) by.
-        compute (1.0 + alpha * decay * sign(g) * sign(m)) * m.
-      use_locking: If True use locks for update operations.
+      sign_decay_fn: decay function applied to the sign(g) sign(m) quantity.
+          Takes global_step as an argument. See sign_decay.py for some examples.
+      use_locking: If True, use locks for update operations.
       name: Optional name for the operations created when applying gradients.
         Defaults to "AddSignOptimizer".
     """

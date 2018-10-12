@@ -20,24 +20,4 @@ from __future__ import print_function
 
 # pylint: disable=unused-import,line-too-long,wildcard-import
 from tensorflow.python.feature_column.feature_column import *
-
-from tensorflow.python.util.all_util import remove_undocumented
 # pylint: enable=unused-import,line-too-long
-
-_allowed_symbols = [
-    'input_layer',
-    'linear_model',
-    'make_parse_example_spec',
-    'embedding_column',
-    'crossed_column',
-    'numeric_column',
-    'bucketized_column',
-    'categorical_column_with_hash_bucket',
-    'categorical_column_with_vocabulary_file',
-    'categorical_column_with_vocabulary_list',
-    'categorical_column_with_identity',
-    'weighted_categorical_column',
-    'indicator_column',
-]
-
-remove_undocumented(__name__, allowed_exception_list=_allowed_symbols)

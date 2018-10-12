@@ -19,6 +19,11 @@ set -e
 go get github.com/golang/protobuf/proto
 go get github.com/golang/protobuf/protoc-gen-go
 
+if [ -z "${GOPATH}" ]
+then
+  GOPATH=$(go env GOPATH)
+fi
+
 cd $(dirname $0)
 for g in $(echo "${GOPATH//:/ }"); do
     TF_DIR="${g}/src/github.com/tensorflow/tensorflow"

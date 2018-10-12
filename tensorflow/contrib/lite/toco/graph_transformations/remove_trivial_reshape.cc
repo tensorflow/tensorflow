@@ -30,7 +30,7 @@ namespace {
 
 bool IsReshapeTrivial(const Model& model, const Operator& op,
                       RemoveTrivialReshape* transformation) {
-  CHECK(op.type == OperatorType::kTensorFlowReshape);
+  CHECK(op.type == OperatorType::kReshape);
 
   // One way in which a reshape can be trivial is if its
   // output shape is == its input shape
@@ -41,8 +41,8 @@ bool IsReshapeTrivial(const Model& model, const Operator& op,
         ShapesAgreeUpToExtending(input_array.shape(), output_array.shape())) {
       transformation->AddMessageF(
           "%s is trivial because its input and output shapes are equal up to "
-          "extending "
-          "by 1's, and we are told to aggressively discard such Reshape ops.",
+          "extending by 1's, and we are told to aggressively discard such "
+          "Reshape ops.",
           LogName(op));
       return true;
     }
@@ -58,11 +58,20 @@ bool IsReshapeTrivial(const Model& model, const Operator& op,
   // is only consumed by another reshape.
   if (CountOpsWithInput(model, op.outputs[0]) == 1) {
     const auto* next_op = GetOpWithInput(model, op.outputs[0]);
-    if (next_op->type == OperatorType::kTensorFlowReshape) {
+    if (next_op->type == OperatorType::kReshape) {
+      if (!IsDiscardableArray(model, next_op->outputs[0])) {
+        // If the |next_op| output is used as a model output we need to preserve
+        // its shape.
+        transformation->AddMessageF(
+            "%s cannot be merged into following reshape %s as it is "
+            "non-discardable and must keep the specified shape",
+            LogName(op), LogName(*next_op));
+        return false;
+      }
       transformation->AddMessageF(
           "%s is trivial because its output is only consumed by another "
-          "Reshape op",
-          LogName(op));
+          "Reshape op %s",
+          LogName(op), LogName(*next_op));
       return true;
     }
   }
@@ -72,21 +81,26 @@ bool IsReshapeTrivial(const Model& model, const Operator& op,
 
 }  // namespace
 
-bool RemoveTrivialReshape::Run(Model* model, std::size_t op_index) {
+::tensorflow::Status RemoveTrivialReshape::Run(Model* model,
+                                               std::size_t op_index,
+                                               bool* modified) {
+  *modified = false;
   const auto reshape_it = model->operators.begin() + op_index;
   auto* reshape_op = reshape_it->get();
-  if (reshape_op->type != OperatorType::kTensorFlowReshape) {
-    return false;
+  if (reshape_op->type != OperatorType::kReshape) {
+    return ::tensorflow::Status::OK();
   }
 
   if (!IsReshapeTrivial(*model, *reshape_op, this)) {
-    return false;
+    AddMessageF("%s is not trivial", LogName(*reshape_op));
+    return ::tensorflow::Status::OK();
   }
 
   AddMessageF("Removing trivial %s", LogName(*reshape_op));
 
   CHECK_EQ(reshape_op->inputs.size(), 2);
-  return RemoveTrivialPassthroughOp(this, model, op_index);
+  *modified = RemoveTrivialPassthroughOp(this, model, op_index);
+  return ::tensorflow::Status::OK();
 }
 
 }  // namespace toco

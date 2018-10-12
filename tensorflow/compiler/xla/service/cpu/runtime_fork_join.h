@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef THIRD_PARTY_TENSORFLOW_COMPILER_XLA_SERVICE_CPU_RUNTIME_FORK_JOIN_H_
-#define THIRD_PARTY_TENSORFLOW_COMPILER_XLA_SERVICE_CPU_RUNTIME_FORK_JOIN_H_
+#ifndef TENSORFLOW_COMPILER_XLA_SERVICE_CPU_RUNTIME_FORK_JOIN_H_
+#define TENSORFLOW_COMPILER_XLA_SERVICE_CPU_RUNTIME_FORK_JOIN_H_
 
 #include "tensorflow/core/platform/types.h"
 
@@ -24,10 +24,10 @@ extern "C" {
 // threads before returning. See comments in runtime_fork_join.cc for details.
 extern void __xla_cpu_runtime_ParallelForkJoin(
     void* result_ptr, const void* run_options_ptr, const void** params,
-    void** temps, tensorflow::uint64* prof_counters,
+    void** buffer_table, tensorflow::uint64* prof_counters,
     tensorflow::int32 num_partitions, tensorflow::int64* partitions,
     tensorflow::int32 num_partitioned_dims, void* function_ptr);
 
 }  // extern "C"
 
-#endif  // THIRD_PARTY_TENSORFLOW_COMPILER_XLA_SERVICE_CPU_RUNTIME_FORK_JOIN_H_
+#endif  // TENSORFLOW_COMPILER_XLA_SERVICE_CPU_RUNTIME_FORK_JOIN_H_

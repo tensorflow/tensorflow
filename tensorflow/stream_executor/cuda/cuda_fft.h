@@ -26,8 +26,7 @@ limitations under the License.
 #include "tensorflow/stream_executor/plugin_registry.h"
 #include "tensorflow/stream_executor/scratch_allocator.h"
 
-namespace perftools {
-namespace gputools {
+namespace stream_executor {
 
 class Stream;
 
@@ -50,6 +49,7 @@ class CUDAFftPlan : public fft::Plan {
         plan_(-1),
         fft_type_(fft::Type::kInvalid),
         scratch_(nullptr),
+        scratch_size_bytes_(0),
         is_initialized_(false) {}
   ~CUDAFftPlan() override;
 
@@ -76,6 +76,9 @@ class CUDAFftPlan : public fft::Plan {
                           uint64 *elem_count, fft::Type type,
                           ScratchAllocator *scratch_allocator);
 
+  port::Status UpdateScratchAllocator(Stream *stream,
+                                      ScratchAllocator *scratch_allocator);
+
  protected:
   bool IsInitialized() const { return is_initialized_; }
 
@@ -84,6 +87,7 @@ class CUDAFftPlan : public fft::Plan {
   cufftHandle plan_;
   fft::Type fft_type_;
   DeviceMemory<uint8> scratch_;
+  size_t scratch_size_bytes_;
   bool is_initialized_;
 };
 
@@ -128,7 +132,6 @@ class CUDAFft : public fft::FftSupport {
 };
 
 }  // namespace cuda
-}  // namespace gputools
-}  // namespace perftools
+}  // namespace stream_executor
 
 #endif  // TENSORFLOW_STREAM_EXECUTOR_CUDA_CUDA_FFT_H_

@@ -43,27 +43,35 @@ TEST_F(ExamplesIterableTest, Iterate) {
       test::AsTensor<int64>({0, 0, 2, 0, 3, 0, 4, 0}, {4, 2});
   auto sparse_float_values1 = test::AsTensor<float>({-3.0f, 0.0f, 5.0f, 0.0f});
   auto sparse_float_shape1 = TensorShape({8, 1});
-  sparse::SparseTensor sparse_float_tensor1(
-      sparse_float_indices1, sparse_float_values1, sparse_float_shape1);
+  sparse::SparseTensor sparse_float_tensor1;
+  TF_ASSERT_OK(
+      sparse::SparseTensor::Create(sparse_float_indices1, sparse_float_values1,
+                                   sparse_float_shape1, &sparse_float_tensor1));
   auto sparse_float_indices2 = test::AsTensor<int64>(
       {0, 1, 1, 0, 2, 1, 3, 0, 4, 1, 5, 0, 5, 1, 7, 0}, {8, 2});
   auto sparse_float_values2 =
       test::AsTensor<float>({1.f, 4.0f, 3.f, 7.0f, 4.3f, 9.0f, 0.8f, -4.0f});
   auto sparse_float_shape2 = TensorShape({8, 2});
-  sparse::SparseTensor sparse_float_tensor2(
-      sparse_float_indices2, sparse_float_values2, sparse_float_shape2);
+  sparse::SparseTensor sparse_float_tensor2;
+  TF_ASSERT_OK(
+      sparse::SparseTensor::Create(sparse_float_indices2, sparse_float_values2,
+                                   sparse_float_shape2, &sparse_float_tensor2));
   auto sparse_int_indices1 =
       test::AsTensor<int64>({0, 0, 0, 1, 1, 0, 3, 0, 3, 1, 7, 0}, {6, 2});
   auto sparse_int_values1 = test::AsTensor<int64>({1, 8, 0, 2, 0, 5});
   auto sparse_int_shape1 = TensorShape({8, 2});
-  sparse::SparseTensor sparse_int_tensor1(
-      sparse_int_indices1, sparse_int_values1, sparse_int_shape1);
+  sparse::SparseTensor sparse_int_tensor1;
+  TF_ASSERT_OK(
+      sparse::SparseTensor::Create(sparse_int_indices1, sparse_int_values1,
+                                   sparse_int_shape1, &sparse_int_tensor1));
   auto sparse_int_indices2 =
       test::AsTensor<int64>({1, 0, 2, 0, 3, 0, 4, 0}, {4, 2});
   auto sparse_int_values2 = test::AsTensor<int64>({7, 13, 4, 0});
   auto sparse_int_shape2 = TensorShape({8, 1});
-  sparse::SparseTensor sparse_int_tensor2(
-      sparse_int_indices2, sparse_int_values2, sparse_int_shape2);
+  sparse::SparseTensor sparse_int_tensor2;
+  TF_ASSERT_OK(
+      sparse::SparseTensor::Create(sparse_int_indices2, sparse_int_values2,
+                                   sparse_int_shape2, &sparse_int_tensor2));
 
   auto validate_example_features = [](int64 example_idx,
                                       const Example& example) {

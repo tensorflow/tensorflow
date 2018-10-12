@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_FRAMEWORK_GRAPH_DEF_UTIL_H_
-#define TENSORFLOW_FRAMEWORK_GRAPH_DEF_UTIL_H_
+#ifndef TENSORFLOW_CORE_FRAMEWORK_GRAPH_DEF_UTIL_H_
+#define TENSORFLOW_CORE_FRAMEWORK_GRAPH_DEF_UTIL_H_
 
 #include <set>
 #include "tensorflow/core/framework/op.h"
@@ -55,6 +55,12 @@ Status ValidateExternalGraphDefSyntax(const GraphDef& graph_def);
 Status AddDefaultAttrsToGraphDef(GraphDef* graph_def,
                                  const OpRegistryInterface& op_registry,
                                  int node_offset);
+
+// Same as above, except for the fact that it skips nodes that aren't found in
+// op_registry if skip_unknown_ops is true.
+Status AddDefaultAttrsToGraphDef(GraphDef* graph_def,
+                                 const OpRegistryInterface& op_registry,
+                                 int node_offset, bool skip_unknown_ops);
 
 // Remove attrs from 'graph_def' that have the default value according
 // to 'producer_op_registry', but don't exist according to
@@ -112,4 +118,4 @@ Status StrippedOpListForGraph(const GraphDef& graph_def,
 
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_FRAMEWORK_GRAPH_DEF_UTIL_H_
+#endif  // TENSORFLOW_CORE_FRAMEWORK_GRAPH_DEF_UTIL_H_

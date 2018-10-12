@@ -165,7 +165,7 @@ tree_handle: The handle to the tree.
 leaf_ids: `leaf_ids[i]` is the leaf id for input i.
 input_labels: The training batch's labels as a 1 or 2-d tensor.
   'input_labels[i][j]' gives the j-th label/target for the i-th input.
-input_weights: The training batch's eample weights as a 1-d tensor.
+input_weights: The training batch's weights as a 1-d tensor.
   'input_weights[i]' gives the weight for the i-th input.
 )doc");
 
