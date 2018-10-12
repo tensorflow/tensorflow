@@ -17,9 +17,8 @@ limitations under the License.
 
 namespace xla {
 
-HloModuleGroup::HloModuleGroup(absl::string_view name,
-                               std::unique_ptr<HloModule> module)
-    : name_(name) {
+HloModuleGroup::HloModuleGroup(std::unique_ptr<HloModule> module)
+    : name_(module->name()) {
   push_back(std::move(module));
 }
 
