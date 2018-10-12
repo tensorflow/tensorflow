@@ -802,17 +802,17 @@ class Model(Network):
 
     # Validates `steps` argument right at the beginning since we use it to
     # construct the dataset object.
-    # TODO(anjalisridhar): This may not be a valid error since we now accept
-    # numpy array inputs. We still want to assert that we have a populated steps
-    # parameter.
-    if check_steps:
-      if steps is None:
-        raise ValueError('When using DistributionStrategy, '
-                         'you should specify the `{steps_name}` argument.'
-                         .format(steps_name=steps_name))
+    # TODO(anjalisridhar): Remove this check once we refactor the
+    # _standardize_user_data code path. This check is already present elsewhere
+    # in the codebase.
+    if check_steps and isinstance(x, dataset_ops.Dataset) and steps is None:
+      raise ValueError('When using Datasets as input, '
+                       'you should specify the `{steps_name}` argument.'
+                       .format(steps_name=steps_name))
 
     first_x_value = nest.flatten(x)[0]
     if isinstance(first_x_value, np.ndarray):
+      assert steps is not None
       x_shape = first_x_value.shape
       if batch_size is None:
         batch_size = distributed_training_utils.get_batch_size(
@@ -827,8 +827,11 @@ class Model(Network):
             self._distribution_strategy, y)
 
         x = dataset_ops.Dataset.from_tensor_slices((var_x, var_y))
-        # TODO(anjalisridhar): What should the buffer size be?
-        x = x.shuffle(10000)
+        # 1024 is a good buffer size since it is much larger than the average
+        # batch size provided by the user and provides sufficient randomness.
+        # One thing to keep in mind is the memory usage based on the size of
+        # each sample.
+        x = x.shuffle(1024)
         x = x.repeat()
         x = x.batch(batch_size, drop_remainder=drop_remainder)
         y = None
@@ -841,9 +844,6 @@ class Model(Network):
         x = x.repeat()
         x = x.batch(batch_size, drop_remainder=drop_remainder)
 
-    # TODO(anjalisridhar): Can we use the iterator and getnext op cache?
-    # We require users to pass Datasets since we distribute the dataset across
-    # multiple devices.
     assert isinstance(x, dataset_ops.Dataset)
 
     # TODO(anjalisridhar): We want distribute_dataset() to accept a Dataset or a
