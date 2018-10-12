@@ -293,6 +293,12 @@ public:
     setInsertionPoint(block, insertPoint);
   }
 
+  /// Create an ML function builder and set the insertion point to the start of
+  /// the function.
+  MLFuncBuilder(MLFunction *func) : Builder(func->getContext()) {
+    setInsertionPoint(func, func->begin());
+  }
+
   /// Reset the insertion point to no location.  Creating an operation without a
   /// set insertion point is an error, but this can still be useful when the
   /// current insertion point a builder refers to is being removed.

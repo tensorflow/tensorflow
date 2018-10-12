@@ -140,6 +140,11 @@ public:
   static void build(Builder *builder, OperationState *result, int64_t value,
                     unsigned width);
 
+  /// Build a constant int op producing an integer with the specified type,
+  /// which must be an integer type.
+  static void build(Builder *builder, OperationState *result, int64_t value,
+                    Type *type);
+
   int64_t getValue() const {
     return getAttrOfType<IntegerAttr>("value")->getValue();
   }

@@ -259,6 +259,14 @@ void ConstantIntOp::build(Builder *builder, OperationState *result,
                     builder->getIntegerType(width));
 }
 
+/// Build a constant int op producing an integer with the specified type,
+/// which must be an integer type.
+void ConstantIntOp::build(Builder *builder, OperationState *result,
+                          int64_t value, Type *type) {
+  assert(isa<IntegerType>(type) && "ConstantIntOp can only have integer type");
+  ConstantOp::build(builder, result, builder->getIntegerAttr(value), type);
+}
+
 /// ConstantIndexOp only matches values whose result type is Index.
 bool ConstantIndexOp::isClassFor(const Operation *op) {
   return ConstantOp::isClassFor(op) && op->getResult(0)->getType()->isIndex();

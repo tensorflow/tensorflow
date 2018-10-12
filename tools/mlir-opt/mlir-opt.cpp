@@ -66,6 +66,7 @@ static cl::opt<bool>
                       cl::init(false));
 
 enum Passes {
+  Canonicalize,
   ComposeAffineMaps,
   ConstantFold,
   ConvertToCFG,
@@ -80,25 +81,26 @@ enum Passes {
 
 static cl::list<Passes> passList(
     "", cl::desc("Compiler passes to run"),
-    cl::values(clEnumValN(ComposeAffineMaps, "compose-affine-maps",
-                          "Compose affine maps"),
-               clEnumValN(ConstantFold, "constant-fold",
-                          "Constant fold operations in functions"),
-               clEnumValN(ConvertToCFG, "convert-to-cfg",
-                          "Convert all ML functions in the module to CFG ones"),
-               clEnumValN(LoopUnroll, "loop-unroll", "Unroll loops"),
-               clEnumValN(LoopUnrollAndJam, "loop-unroll-jam",
-                          "Unroll and jam loops"),
-               clEnumValN(PipelineDataTransfer, "pipeline-data-transfer",
-                          "Pipeline non-blocking data transfers between"
-                          "explicitly managed levels of the memory hierarchy"),
-               clEnumValN(PrintCFGGraph, "print-cfg-graph",
-                          "Print CFG graph per function"),
-               clEnumValN(SimplifyAffineExpr, "simplify-affine-expr",
-                          "Simplify affine expressions"),
-               clEnumValN(TFRaiseControlFlow, "tf-raise-control-flow",
-                          "Dynamic TensorFlow Switch/Match nodes to a CFG"),
-               clEnumValN(XLALower, "xla-lower", "Lower to XLA dialect")));
+    cl::values(
+        clEnumValN(Canonicalize, "canonicalize", "Canonicalize operations"),
+        clEnumValN(ComposeAffineMaps, "compose-affine-maps",
+                   "Compose affine maps"),
+        clEnumValN(ConstantFold, "constant-fold",
+                   "Constant fold operations in functions"),
+        clEnumValN(ConvertToCFG, "convert-to-cfg",
+                   "Convert all ML functions in the module to CFG ones"),
+        clEnumValN(LoopUnroll, "loop-unroll", "Unroll loops"),
+        clEnumValN(LoopUnrollAndJam, "loop-unroll-jam", "Unroll and jam loops"),
+        clEnumValN(PipelineDataTransfer, "pipeline-data-transfer",
+                   "Pipeline non-blocking data transfers between"
+                   "explicitly managed levels of the memory hierarchy"),
+        clEnumValN(PrintCFGGraph, "print-cfg-graph",
+                   "Print CFG graph per function"),
+        clEnumValN(SimplifyAffineExpr, "simplify-affine-expr",
+                   "Simplify affine expressions"),
+        clEnumValN(TFRaiseControlFlow, "tf-raise-control-flow",
+                   "Dynamic TensorFlow Switch/Match nodes to a CFG"),
+        clEnumValN(XLALower, "xla-lower", "Lower to XLA dialect")));
 
 enum OptResult { OptSuccess, OptFailure };
 
@@ -174,6 +176,9 @@ static OptResult performActions(SourceMgr &sourceMgr, MLIRContext *context) {
     auto passKind = passList[i];
     Pass *pass = nullptr;
     switch (passKind) {
+    case Canonicalize:
+      pass = createCanonicalizerPass();
+      break;
     case ComposeAffineMaps:
       pass = createComposeAffineMapsPass();
       break;
