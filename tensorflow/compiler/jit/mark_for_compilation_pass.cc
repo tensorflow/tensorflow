@@ -21,6 +21,7 @@ limitations under the License.
 #include <unordered_map>
 #include <unordered_set>
 
+#include "absl/container/flat_hash_set.h"
 #include "tensorflow/compiler/jit/deadness_analysis.h"
 #include "tensorflow/compiler/jit/defs.h"
 #include "tensorflow/compiler/jit/graphcycles/graphcycles.h"
@@ -42,7 +43,6 @@ limitations under the License.
 #include "tensorflow/core/graph/control_flow.h"
 #include "tensorflow/core/kernels/bounds_check.h"
 #include "tensorflow/core/lib/gtl/cleanup.h"
-#include "tensorflow/core/lib/gtl/flatset.h"
 #include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/public/version.h"
 
@@ -371,7 +371,7 @@ bool IsXlaFusable(const NodeDef& node) {
 Status FindCompilationCandidates(
     const Graph& graph, FunctionLibraryDefinition* flib_def, Env* env,
     const std::function<bool(const Node*, const DeviceType&)>& is_compilable_fn,
-    OrderedNodeSet* candidates, gtl::FlatSet<Node*>* isolated_nodes) {
+    OrderedNodeSet* candidates, absl::flat_hash_set<Node*>* isolated_nodes) {
   OptimizerOptions opts;
   std::unique_ptr<ProcessFunctionLibraryRuntime> pflr(
       new ProcessFunctionLibraryRuntime(nullptr, env, TF_GRAPH_DEF_VERSION,
@@ -849,7 +849,7 @@ Status MarkForCompilationPass::RunImpl(
   Graph* graph = options.graph->get();
 
   OrderedNodeSet compilation_candidates;
-  gtl::FlatSet<Node*> isolated_nodes;
+  absl::flat_hash_set<Node*> isolated_nodes;
   TF_RETURN_IF_ERROR(FindCompilationCandidates(
       *graph, options.flib_def,
       (options.session_options != nullptr) ? options.session_options->env

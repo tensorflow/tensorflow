@@ -21,10 +21,10 @@ limitations under the License.
 #include <ostream>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
-#include "tensorflow/core/lib/gtl/flatset.h"
 
 namespace xla {
 
@@ -145,12 +145,12 @@ class CallGraphNode {
   // The computations called by this computation. The vector is used for a
   // stable ordering and the set enables fast membership testing.
   std::vector<HloComputation*> callees_;
-  tensorflow::gtl::FlatSet<HloComputation*> callee_set_;
+  absl::flat_hash_set<HloComputation*> callee_set_;
 
   // The computations which call this computation. The vector is used for a
   // stable ordering and the set enables fast membership testing.
   std::vector<HloComputation*> callers_;
-  tensorflow::gtl::FlatSet<HloComputation*> caller_set_;
+  absl::flat_hash_set<HloComputation*> caller_set_;
 
   // The call sites in this computation
   std::vector<CallSite> callsites_;
@@ -250,14 +250,14 @@ class CallGraph {
   // 'visited'.
   Status VisitNodesInternal(
       const VisitorFunction& visitor_func, const CallGraphNode& node,
-      tensorflow::gtl::FlatSet<const CallGraphNode*>* visited) const;
+      absl::flat_hash_set<const CallGraphNode*>* visited) const;
 
   // Recursive helper for computing whether 'a' dominates 'b' in the call
   // graph. 'b_ancestor' is the currently visited node (which starts at 'b'),
   // and 'visited' is the set of computations which have been visited.
   bool DominatesHelper(
       const HloComputation* a, const HloComputation* b,
-      tensorflow::gtl::FlatSet<const HloComputation*>* visited) const;
+      absl::flat_hash_set<const HloComputation*>* visited) const;
 
   // The HLO module represented by this call graph.
   const HloModule* module_ = nullptr;
