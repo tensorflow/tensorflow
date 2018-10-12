@@ -14,8 +14,8 @@ limitations under the License.
 ==============================================================================*/
 // Unit test for TFLite Bidirectional RNN op.
 
-#include <vector>
 #include <iomanip>
+#include <vector>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
@@ -884,6 +884,49 @@ TEST(BidirectionalRNNOpTest, BlackBoxTestMergeOutputs) {
               ElementsAreArray(ArrayFloatNear(merged_expected)));
 }
 
+// Same as BlackBox test, but input is reshuffled to time_major format.
+TEST(BidirectionalRNNOpTest, BlackBoxTestTimeMajorMergeOutputs) {
+  BidirectionalRNNOpModel rnn(/*batches=*/2, /*sequence_len=*/16,
+                              /*fw_units=*/16, /*bw_units=*/16,
+                              /*input_size=*/8, /*time_major=*/true,
+                              /*merge_outputs=*/true);
+  rnn.SetFwWeights(weights);
+  rnn.SetBwWeights(weights);
+  rnn.SetFwBias(biases);
+  rnn.SetBwBias(biases);
+  rnn.SetFwRecurrentWeights(recurrent_weights);
+  rnn.SetBwRecurrentWeights(recurrent_weights);
+
+  // Insert the inputs in time_major format. The batch_major format is:
+  // [b0t0, b0t1, ..., b0t15, b1t0, b1t1, ..., b1t15]. This is reshuffled as:
+  // [b0t0, b1t0, b0t1, b1t1, ..., b0t15, b1t15].
+  for (int i = 0; i < rnn.sequence_len(); i++) {
+    float* batch_start = rnn_input + i * rnn.input_size();
+    float* batch_end = batch_start + rnn.input_size();
+    // The two batches are identical.
+    rnn.SetInput(2 * i * rnn.input_size(), batch_start, batch_end);
+    rnn.SetInput((2 * i + 1) * rnn.input_size(), batch_start, batch_end);
+  }
+
+  rnn.Invoke();
+
+  std::vector<float> merged_expected;
+  for (int step = 0; step < rnn.sequence_len(); step++) {
+    for (int bid = 0; bid < rnn.num_batches(); bid++) {
+      merged_expected.insert(
+          merged_expected.end(),
+          rnn_golden_fw_output + rnn.num_fw_units() * step,
+          rnn_golden_fw_output + rnn.num_fw_units() * (step + 1));
+      merged_expected.insert(
+          merged_expected.end(),
+          rnn_golden_bw_output + rnn.num_bw_units() * step,
+          rnn_golden_bw_output + rnn.num_bw_units() * (step + 1));
+    }
+  }
+  EXPECT_THAT(rnn.GetFwOutput(),
+              ElementsAreArray(ArrayFloatNear(merged_expected)));
+}
+
 // Check that if the input sequence is reversed the outputs are the same just
 // forward and backward are swapped (and reversed).
 TEST(BidirectionalRNNOpTest, BlackBoxTestReverseInputs) {
@@ -954,8 +997,8 @@ TEST(BidirectionalRNNOpTest, EndToEndTest) {
       0.3492105,   0.56452453,   0.4389236,   -0.59929526, -0.19762468,
       -0.36868393, -0.13198286,  -0.53800809, -0.22850353};
 
-  std::initializer_list<float> dnn_biases = {
-    0.29177809, -0.98799044, 0.065919638, 0.68781924};
+  std::initializer_list<float> dnn_biases = {0.29177809, -0.98799044,
+                                             0.065919638, 0.68781924};
 
   rnn.SetFwWeights(weights);
   rnn.SetBwWeights(weights);
