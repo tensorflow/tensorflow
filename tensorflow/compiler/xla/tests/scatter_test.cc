@@ -129,8 +129,7 @@ ENTRY main {
   RunTest(hlo_text, &operand, &scatter_indices, &updates);
 }
 
-// TODO(b/117627031): fails on GPU on 2018-10-11.
-XLA_TEST_F(ScatterTest, DISABLED_ON_GPU(SimpleR4)) {
+XLA_TEST_F(ScatterTest, SimpleR4) {
   const char* hlo_text = R"(
 HloModule SimpleR4
 
