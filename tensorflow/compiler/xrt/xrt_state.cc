@@ -33,6 +33,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/lib/random/random.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/stream_executor/stream_executor.h"
 
@@ -42,12 +43,9 @@ namespace {
 
 const char* kTupleContainer = "tuples";
 
-// Counter used to assign unique handles.
-mutex _uid_mutex(tensorflow::LINKER_INITIALIZED);
-int64 _uid GUARDED_BY(_uid_mutex) = 0;
 int64 get_uid() {
-  mutex_lock l(_uid_mutex);
-  return _uid++;
+  uint64 unsigned_rand = random::New64() & INT64_MAX;
+  return static_cast<int64>(unsigned_rand);
 }
 
 Status AllocateScopedShapedBuffer(
