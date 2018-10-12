@@ -85,6 +85,22 @@ class CUDAExecutor : public internal::StreamExecutorInterface {
     return CUDADriver::UnifiedMemoryDeallocate(context_, location);
   }
 
+  void UnifiedMemoryAdvise(void* location, uint64 bytes, int advice) override {
+    return CUDADriver::UnifiedMemoryAdvise(context_, location, bytes,
+                                           CUmem_advise(advice), device_);
+  }
+
+  void UnifiedMemoryAdvise(void* location, uint64 bytes, int advice,
+                           int ordinal) override {
+    CUdevice device;
+    auto status = CUDADriver::GetDevice(ordinal, &device);
+    if (!status.ok()) {
+      //return status;
+    }
+    return CUDADriver::UnifiedMemoryAdvise(context_, location, bytes,
+                                           CUmem_advise(advice), device);
+  }
+
   // CUDA allocation/registration functions are necessary because the driver
   // internally sets up buffers for DMA operations (and page locks them).
   // There's no external interface for us to otherwise control these DMA

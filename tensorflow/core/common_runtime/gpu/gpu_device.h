@@ -197,7 +197,8 @@ class BaseGPUDeviceFactory : public DeviceFactory {
   Status CreateGPUDevice(const SessionOptions& options,
                          const string& name_prefix, TfGpuId tf_gpu_id,
                          int64 memory_limit, const DeviceLocality& dev_locality,
-                         std::vector<Device*>* devices);
+                         std::vector<Device*>* devices,
+                         const std::vector<CudaGpuId>& valid_cuda_gpu_ids);
 
   virtual BaseGPUDevice* CreateGPUDevice(const SessionOptions& options,
                                          const string& name, Bytes memory_limit,

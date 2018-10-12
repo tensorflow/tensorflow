@@ -84,7 +84,8 @@ GPUProcessState::~GPUProcessState() {
 
 Allocator* GPUProcessState::GetGPUAllocator(const GPUOptions& options,
                                             TfGpuId tf_gpu_id,
-                                            size_t total_bytes) {
+                                            size_t total_bytes,
+                                            const std::vector<CudaGpuId>& valid_cuda_gpu_ids) {
   CHECK(process_state_);
 #if GOOGLE_CUDA
   const string& allocator_type = options.allocator_type();
@@ -108,9 +109,9 @@ Allocator* GPUProcessState::GetGPUAllocator(const GPUOptions& options,
 
     CudaGpuId cuda_gpu_id;
     TF_CHECK_OK(GpuIdManager::TfToCudaGpuId(tf_gpu_id, &cuda_gpu_id));
-    gpu_allocator =
-        new GPUBFCAllocator(cuda_gpu_id, total_bytes, options,
-                            strings::StrCat("GPU_", tf_gpu_id.value(), "_bfc"));
+    gpu_allocator = new GPUBFCAllocator(
+        cuda_gpu_id, total_bytes, options,
+        strings::StrCat("GPU_", tf_gpu_id.value(), "_bfc"), valid_cuda_gpu_ids);
 
     // If true, checks for memory overwrites by writing
     // distinctive patterns on both ends of allocated memory.

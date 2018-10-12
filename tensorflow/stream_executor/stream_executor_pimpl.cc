@@ -512,7 +512,23 @@ void StreamExecutor::UnifiedMemoryDeallocate(void *location) {
   return implementation_->UnifiedMemoryDeallocate(location);
 }
 
-void *StreamExecutor::HostMemoryAllocate(uint64 size) {
+void StreamExecutor::UnifiedMemoryAdvise(void* location, uint64 bytes,
+                                         int advice) {
+  VLOG(1) << "Called StreamExecutor::UnifiedMemoryAdvise(location=" << location
+          << ")" << StackTraceIfVLOG10();
+
+  return implementation_->UnifiedMemoryAdvise(location, bytes, advice);
+}
+
+void StreamExecutor::UnifiedMemoryAdvise(void* location, uint64 bytes,
+                                         int advice, int ordinal) {
+  VLOG(1) << "Called StreamExecutor::UnifiedMemoryAdvise(location=" << location
+          << ")" << StackTraceIfVLOG10();
+
+  return implementation_->UnifiedMemoryAdvise(location, bytes, advice);
+}
+
+void* StreamExecutor::HostMemoryAllocate(uint64 size) {
   void *buffer = implementation_->HostMemoryAllocate(size);
   VLOG(1) << "Called StreamExecutor::HostMemoryAllocate(size=" << size
           << ") returns " << buffer << StackTraceIfVLOG10();
