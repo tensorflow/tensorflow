@@ -46,7 +46,7 @@ ENTRY %entry (x: f32[], y: f32[]) -> f32[] {
 )";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseHloString(text));
-  HloModuleGroup group(TestName(), std::move(module));
+  HloModuleGroup group(std::move(module));
 
   EXPECT_EQ(group.modules().size(), 1);
   EXPECT_THAT(
