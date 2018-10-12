@@ -606,8 +606,8 @@ class _ModelFnWrapper(object):
 def estimator_model_fn(target_model_fn=None):
   """estimator_model_fn decorates a model_fn to be compiled for execution.
 
-  Currently only it only works with `TPUEstimator`. If you need to use it with
-  base `Estimator`, please add `tf.enable_resource_variables()` at beginning of
+  Currently it only works with `TPUEstimator`. If you need to use it with base
+  `Estimator`, please add `tf.enable_resource_variables()` at the beginning of
   your program.
 
   Example 1, decorating model_fn:
