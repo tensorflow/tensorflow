@@ -831,7 +831,7 @@ class SaverTest(test.TestCase):
       orig_vals = sess.run(orig_vars)
 
     restore_graph = ops_lib.Graph()
-    with restore_graph.as_default(), self.test_session(
+    with restore_graph.as_default(), self.session(
         graph=restore_graph) as sess:
       restored_vars = _model()
       save = saver_module.Saver(max_to_keep=1)
@@ -3015,7 +3015,7 @@ class CheckpointableCompatibilityTests(test.TestCase):
           checkpoint_directory, "second"))
 
     restore_graph = ops_lib.Graph()
-    with restore_graph.as_default(), self.test_session(
+    with restore_graph.as_default(), self.session(
         graph=restore_graph) as sess:
       root = self._initialized_model()
       self._set_sentinels(root)

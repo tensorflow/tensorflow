@@ -36,7 +36,7 @@ class BuiltinFunctionsTest(converter_testing.TestCase):
       return len(a)
 
     with self.converted(test_fn, builtin_functions, {'len': len}) as result:
-      with self.test_session() as sess:
+      with self.session() as sess:
         p = array_ops.placeholder(dtype=dtypes.int32, shape=None)
         ops = result.test_fn(p)
         self.assertEqual(sess.run(ops, {p: [0, 0, 0]}), 3)
@@ -50,7 +50,7 @@ class BuiltinFunctionsTest(converter_testing.TestCase):
       return print(a)
 
     with self.converted(test_fn, builtin_functions, {'print': print}) as result:
-      with self.test_session() as sess:
+      with self.session() as sess:
         with self.assertPrints('a\n'):
           sess.run(result.test_fn('a'))
 
@@ -63,7 +63,7 @@ class BuiltinFunctionsTest(converter_testing.TestCase):
       return print(a, b, c)
 
     with self.converted(test_fn, builtin_functions, {'print': print}) as result:
-      with self.test_session() as sess:
+      with self.session() as sess:
         with self.assertPrints('a 1 [2, 3]\n'):
           sess.run(
               result.test_fn(

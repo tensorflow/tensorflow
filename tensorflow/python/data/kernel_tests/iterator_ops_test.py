@@ -573,7 +573,7 @@ class IteratorTest(test.TestCase):
           f=_remote_fn,
           target=target_placeholder)
 
-    with self.test_session(config=worker_config) as sess:
+    with self.session(config=worker_config) as sess:
       elem = sess.run(
           remote_op,
           feed_dict={

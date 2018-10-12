@@ -534,7 +534,7 @@ class CheckpointingTests(test.TestCase):
     num_training_steps = 10
     checkpoint_directory = self.get_temp_dir()
     for training_continuation in range(3):
-      with ops.Graph().as_default(), self.test_session(
+      with ops.Graph().as_default(), self.session(
           graph=ops.get_default_graph()), test_util.device(use_gpu=True):
         model = MyModel()
         optimizer = adam.AdamOptimizer(0.001)
@@ -621,7 +621,7 @@ class CheckpointingTests(test.TestCase):
     checkpoint_directory = self.get_temp_dir()
     checkpoint_prefix = os.path.join(checkpoint_directory, "ckpt")
     for training_continuation in range(3):
-      with ops.Graph().as_default(), self.test_session(
+      with ops.Graph().as_default(), self.session(
           graph=ops.get_default_graph()), test_util.device(use_gpu=True):
         model = MyModel()
         # Don't actually train so we can test variable values
@@ -1018,7 +1018,7 @@ class CheckpointingTests(test.TestCase):
     checkpoint_directory = self.get_temp_dir()
     checkpoint_prefix = os.path.join(checkpoint_directory, "ckpt")
     save_graph = ops.Graph()
-    with save_graph.as_default(), self.test_session(save_graph):
+    with save_graph.as_default(), self.session(save_graph):
       first = tracking.Checkpointable()
       first.var1 = variable_scope.get_variable(
           name="outside_var", initializer=0.)
@@ -1029,7 +1029,7 @@ class CheckpointingTests(test.TestCase):
       save_path = checkpointable_utils.CheckpointableSaver(first).save(
           checkpoint_prefix)
     restore_graph = ops.Graph()
-    with restore_graph.as_default(), self.test_session(restore_graph):
+    with restore_graph.as_default(), self.session(restore_graph):
       second = tracking.Checkpointable()
       second.var2 = variable_scope.get_variable(
           name="blah", initializer=0.)
@@ -1248,7 +1248,7 @@ class CheckpointingTests(test.TestCase):
     checkpoint_directory = self.get_temp_dir()
     checkpoint_prefix = os.path.join(checkpoint_directory, "ckpt")
     optimizer_only_prefix = os.path.join(checkpoint_directory, "opt")
-    with ops.Graph().as_default(), self.test_session(
+    with ops.Graph().as_default(), self.session(
         graph=ops.get_default_graph()), test_util.device(use_gpu=True):
       model = MyModel()
       optimizer = adam.AdamOptimizer(0.001)
@@ -1276,7 +1276,7 @@ class CheckpointingTests(test.TestCase):
       optimizer_save_path = optimizer_checkpoint.save(optimizer_only_prefix)
 
     # Restore into a graph with the optimizer
-    with ops.Graph().as_default(), self.test_session(
+    with ops.Graph().as_default(), self.session(
         graph=ops.get_default_graph()), test_util.device(use_gpu=True):
       model = MyModel()
       optimizer = adam.AdamOptimizer(0.001)
@@ -1299,7 +1299,7 @@ class CheckpointingTests(test.TestCase):
         status.assert_consumed()
 
     # Make sure initialization doesn't clobber later restores
-    with ops.Graph().as_default(), self.test_session(
+    with ops.Graph().as_default(), self.session(
         graph=ops.get_default_graph()), test_util.device(use_gpu=True):
       model = MyModel()
       optimizer = adam.AdamOptimizer(0.001, beta1=1.0)
@@ -1483,7 +1483,7 @@ class CheckpointCompatibilityTests(test.TestCase):
     checkpoint_prefix = os.path.join(checkpoint_directory, "ckpt")
     with context.graph_mode():
       save_graph = ops.Graph()
-      with save_graph.as_default(), self.test_session(
+      with save_graph.as_default(), self.session(
           graph=save_graph) as session:
         root = self._initialized_model()
         name_saver = saver_lib.Saver()
@@ -1539,7 +1539,7 @@ class CheckpointCompatibilityTests(test.TestCase):
     checkpoint_prefix = os.path.join(checkpoint_directory, "ckpt")
     with context.graph_mode():
       save_graph = ops.Graph()
-      with save_graph.as_default(), self.test_session(
+      with save_graph.as_default(), self.session(
           graph=save_graph) as session:
         root = self._initialized_model()
         save_path = root.save(session=session, file_prefix=checkpoint_prefix)
@@ -1557,7 +1557,7 @@ class CheckpointCompatibilityTests(test.TestCase):
       save_path = root.save(file_prefix=checkpoint_prefix)
     with context.graph_mode():
       save_graph = ops.Graph()
-      with save_graph.as_default(), self.test_session(
+      with save_graph.as_default(), self.session(
           graph=save_graph):
         root = self._initialized_model()
         self._set_sentinels(root)

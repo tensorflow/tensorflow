@@ -455,7 +455,7 @@ class FunctionTest(test.TestCase):
         _ = MyFn(100.0).eval()
 
   def testWhileLoopCallsFunc(self):
-    with self.test_session(use_gpu=True) as sess:
+    with self.session(use_gpu=True) as sess:
 
       @function.Defun(dtypes.float32)
       def Times2(x):
@@ -1077,7 +1077,7 @@ class FunctionTest(test.TestCase):
       self.assertNotEqual("GuaranteeConst", fifth.consumers()[0].node_def.op)
       return output
 
-    with self.test_session(use_gpu=False) as sess:
+    with self.session(use_gpu=False) as sess:
       sess.run(var.initializer)
       _ = sess.run(CapturesGuaranteedConst(), {also_not_const: 1.0})
 

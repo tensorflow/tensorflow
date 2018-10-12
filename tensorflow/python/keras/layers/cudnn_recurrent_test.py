@@ -36,7 +36,7 @@ class CuDNNTest(test.TestCase, parameterized.TestCase):
   @test_util.run_in_graph_and_eager_modes
   def test_cudnn_rnn_basics(self):
     if test.is_gpu_available(cuda_only=True):
-      with self.test_session(use_gpu=True):
+      with self.session(use_gpu=True):
         input_size = 10
         timesteps = 6
         units = 2
@@ -64,7 +64,7 @@ class CuDNNTest(test.TestCase, parameterized.TestCase):
   @test_util.run_in_graph_and_eager_modes
   def test_trainability(self):
     if test.is_gpu_available(cuda_only=True):
-      with self.test_session(use_gpu=True):
+      with self.session(use_gpu=True):
         input_size = 10
         units = 2
         for layer_class in [keras.layers.CuDNNGRU, keras.layers.CuDNNLSTM]:
@@ -88,7 +88,7 @@ class CuDNNTest(test.TestCase, parameterized.TestCase):
   )
   def test_regularizer(self, layer_class):
     if test.is_gpu_available(cuda_only=True):
-      with self.test_session(use_gpu=True):
+      with self.session(use_gpu=True):
         input_size = 10
         timesteps = 6
         units = 2
@@ -120,7 +120,7 @@ class CuDNNTest(test.TestCase, parameterized.TestCase):
   )
   def test_return_state(self, layer_class):
     if test.is_gpu_available(cuda_only=True):
-      with self.test_session(use_gpu=True):
+      with self.session(use_gpu=True):
         input_size = 10
         timesteps = 6
         units = 2
@@ -171,7 +171,7 @@ class CuDNNTest(test.TestCase, parameterized.TestCase):
   )
   def test_specify_initial_state_keras_tensor(self, layer_class):
     if test.is_gpu_available(cuda_only=True):
-      with self.test_session(use_gpu=True):
+      with self.session(use_gpu=True):
         input_size = 10
         timesteps = 6
         units = 2
@@ -203,7 +203,7 @@ class CuDNNTest(test.TestCase, parameterized.TestCase):
   )
   def test_statefulness(self, layer_class):
     if test.is_gpu_available(cuda_only=True):
-      with self.test_session(use_gpu=True):
+      with self.session(use_gpu=True):
         input_size = 10
         timesteps = 6
         units = 2
@@ -255,7 +255,7 @@ class CuDNNTest(test.TestCase, parameterized.TestCase):
                                              bidirectional, implementation,
                                              model_nest_level, model_type):
     if test.is_gpu_available(cuda_only=True):
-      with self.test_session(use_gpu=True):
+      with self.session(use_gpu=True):
         input_size = 10
         timesteps = 6
         input_shape = (timesteps, input_size)
@@ -335,7 +335,7 @@ class CuDNNTest(test.TestCase, parameterized.TestCase):
     # Similar test as test_load_weights_between_noncudnn_rnn() but has different
     # rank of input due to usage of TimeDistributed. Issue: #10356.
     if test.is_gpu_available(cuda_only=True):
-      with self.test_session(use_gpu=True):
+      with self.session(use_gpu=True):
         input_size = 10
         steps = 6
         timesteps = 6
@@ -377,7 +377,7 @@ class CuDNNTest(test.TestCase, parameterized.TestCase):
   @test_util.run_in_graph_and_eager_modes
   def test_cudnnrnn_bidirectional(self):
     if test.is_gpu_available(cuda_only=True):
-      with self.test_session(use_gpu=True):
+      with self.session(use_gpu=True):
         rnn = keras.layers.CuDNNGRU
         samples = 2
         dim = 2
@@ -441,7 +441,7 @@ class CuDNNTest(test.TestCase, parameterized.TestCase):
     Should fail fast with an exception.
     """
     if test.is_gpu_available(cuda_only=True):
-      with self.test_session(use_gpu=True):
+      with self.session(use_gpu=True):
         input_shape = (3, 5)
 
         def gru(cudnn=False, **kwargs):
