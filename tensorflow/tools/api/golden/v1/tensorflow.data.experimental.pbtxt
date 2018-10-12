@@ -1,6 +1,10 @@
 path: "tensorflow.data.experimental"
 tf_module {
   member {
+    name: "AUTOTUNE"
+    mtype: "<type \'int\'>"
+  }
+  member {
     name: "CheckpointInputPipelineHook"
     mtype: "<type \'type\'>"
   }

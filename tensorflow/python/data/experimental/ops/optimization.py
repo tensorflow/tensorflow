@@ -21,9 +21,12 @@ from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import gen_experimental_dataset_ops
+from tensorflow.python.util.tf_export import tf_export
+
 
 # A constant that can be used to enable auto-tuning.
 AUTOTUNE = -1
+tf_export("data.experimental.AUTOTUNE").export_constant(__name__, "AUTOTUNE")
 
 
 # TODO(jsimsa): Support RE matching for both individual transformation (e.g. to
