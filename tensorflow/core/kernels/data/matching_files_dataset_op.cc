@@ -260,14 +260,25 @@ class MatchingFilesDatasetOp : public DatasetOpKernel {
           Status s = fs->GetChildren(current_dir, &children);
           std::cout << "Children Num: " << children.size()
                     << "; Status: " << s.ToString()
-                    << "; Current dir: " << current_dir << std::endl;
+                    << "; Current dir: " << current_dir
+                    << "; FileExist status: "
+                    << fs->FileExists(current_dir).ToString() << std::endl;
           ret.Update(s);
 
-          // If GetChildren() fails, continue the next search.
-          if (ret.code() == error::NOT_FOUND) {
-            continue;
-          } else if (!ret.ok()) {
-            return ret;
+          // When the children is empty, 1) return the non-ok status immediately
+          // if it is not NOT_FOUND; 2) continue the search if the status is ok
+          // or NOT_FOUND;
+          if (children.empty()) {
+            if (ret.code() != error::NOT_FOUND || !ret.ok()) {
+              return ret;
+            } else {
+              // On some platforms, fs.GetChildren() return the OK status even
+              // if the path isn't found. fs->FileExists() is used to make
+              // different platforms return the same status when searching a
+              // non-existing path.
+              ret.Update(fs->FileExists(current_dir));
+              continue;
+            }
           }
 
           // children_dir_status holds is_dir status for children. It can have
