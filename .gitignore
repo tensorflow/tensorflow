@@ -2,6 +2,7 @@
 .ipynb_checkpoints
 node_modules
 /.tf_configure.bazelrc
+/.bazelrc
 /bazel-*
 /bazel_pip
 /tools/python_bin_path.sh

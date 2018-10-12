@@ -249,10 +249,10 @@ def reset_tf_configure_bazelrc():
   """Reset file that contains customized config settings."""
   open(_TF_BAZELRC, 'w').close()
   bazelrc_path = os.path.join(_TF_WORKSPACE_ROOT, '.bazelrc')
-
+  bazel_defaults_path = os.path.join(_TF_WORKSPACE_ROOT, 'bazel_defaults')
   data = []
-  if os.path.exists(bazelrc_path):
-    with open(bazelrc_path, 'r') as f:
+  if os.path.exists(bazel_defaults_path):
+    with open(bazel_defaults_path, 'r') as f:
       data = f.read().splitlines()
   with open(bazelrc_path, 'w') as f:
     for l in data:
