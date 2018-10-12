@@ -23,6 +23,7 @@ limitations under the License.
 #define EIGEN_USE_THREADS
 #include <algorithm>
 #include <vector>
+#include "mkldnn.hpp"
 #include "tensorflow/core/framework/numeric_op.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
@@ -41,8 +42,6 @@ limitations under the License.
 #include "tensorflow/core/util/tensor_format.h"
 #include "tensorflow/core/util/use_cudnn.h"
 #include "tensorflow/core/util/work_sharder.h"
-
-#include "mkldnn.hpp"
 
 using mkldnn::convolution_backward_data;
 using mkldnn::prop_kind;

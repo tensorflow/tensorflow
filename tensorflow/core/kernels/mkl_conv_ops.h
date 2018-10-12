@@ -20,6 +20,7 @@ limitations under the License.
 #include <vector>
 #include <memory>
 
+#include "mkldnn.hpp"
 #include "tensorflow/core/framework/numeric_op.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
@@ -38,12 +39,11 @@ limitations under the License.
 #include "tensorflow/core/util/mkl_util.h"
 #include "tensorflow/core/util/padding.h"
 #include "tensorflow/core/util/tensor_format.h"
-#include "mkldnn.hpp"
 
-using mkldnn::prop_kind;
-using mkldnn::stream;
 using mkldnn::convolution_direct;
 using mkldnn::convolution_forward;
+using mkldnn::prop_kind;
+using mkldnn::stream;
 
 namespace tensorflow {
 
