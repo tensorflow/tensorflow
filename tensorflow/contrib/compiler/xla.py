@@ -272,7 +272,7 @@ def _compile_internal(computation, inputs=None):
     raise TypeError(
         'Supplied computation cannot be called with the specified inputs. You '
         'specified %d inputs: %s, but the computation needs %s' %
-        (input_arity, str([i.name for i in inputs[0]]), arg_error))
+        (input_arity, str([i.name for i in inputs]), arg_error))
 
   cluster_name = ops.get_default_graph().unique_name('cluster')
   pivot = control_flow_ops.no_op(name=cluster_name + '/pivot')
