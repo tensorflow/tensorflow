@@ -7,13 +7,6 @@ licenses(["notice"])  # Apache 2.0
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 load("//tensorflow/contrib/lite:build_def.bzl", "tflite_copts", "gen_selected_ops")
 
-package_group(
-    name = "internal",
-    packages = [
-        "//tensorflow/contrib/lite/...",
-    ],
-)
-
 exports_files(glob([
     "testdata/*.bin",
     "testdata/*.pb",
@@ -39,6 +32,7 @@ config_setting(
 config_setting(
     name = "with_tflite_flex",
     define_values = {"with_tflite_flex": "true"},
+    visibility = ["//visibility:public"],
 )
 
 cc_library(
@@ -86,14 +80,12 @@ cc_library(
 cc_library(
     name = "graph_info",
     hdrs = ["graph_info.h"],
-    visibility = ["//visibility:private"],
     deps = ["//tensorflow/contrib/lite/c:c_api_internal"],
 )
 
 cc_library(
     name = "memory_planner",
     hdrs = ["memory_planner.h"],
-    visibility = ["//visibility:private"],
     deps = ["//tensorflow/contrib/lite/c:c_api_internal"],
 )
 
@@ -101,7 +93,6 @@ cc_library(
     name = "simple_memory_arena",
     srcs = ["simple_memory_arena.cc"],
     hdrs = ["simple_memory_arena.h"],
-    visibility = ["//visibility:private"],
     deps = ["//tensorflow/contrib/lite/c:c_api_internal"],
 )
 
@@ -332,7 +323,6 @@ cc_library(
     name = "util",
     srcs = ["util.cc"],
     hdrs = ["util.h"],
-    visibility = [":internal"],
     deps = [
         "//tensorflow/contrib/lite/c:c_api_internal",
     ],
