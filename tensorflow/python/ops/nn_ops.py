@@ -1678,11 +1678,16 @@ def _softmax(logits, compute_op, dim=-1, name=None):
   if is_last_dim:
     return compute_op(logits, name=name)
 
-  dim_val = tensor_util.constant_value(dim) if isinstance(dim, ops.Tensor) else dim
+  dim_val = dim
+  if isinstance(dim, ops.Tensor):
+    dim_val = tensor_util.constant_value(dim)
   if dim_val is not None and (dim_val < -shape.ndims or dim_val >= shape.ndims):
     raise errors_impl.InvalidArgumentError(
         None, None,
-        "Dimension (%d) must be in the range [%d, %d) where %d is the number of dimensions in the input." % (dim_val, -shape.ndims, shape.ndims, shape.ndims))
+        "Dimension (%d) must be in the range [%d, %d) where %d is the number of"
+        " dimensions in the input." %
+        (dim_val, -shape.ndims, shape.ndims, shape.ndims))
+
   # If dim is not the last dimension, we have to do a transpose so that we can
   # still perform softmax on its last dimension.
 
