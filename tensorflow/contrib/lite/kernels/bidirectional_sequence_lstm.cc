@@ -522,11 +522,11 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
 
   const TfLiteTensor* fw_input_to_input_weights =
       GetOptionalInputTensor(context, node, kFwInputToInputWeightsTensor);
-  if (has_aux_input) {
+  const bool fw_use_cifg = (fw_input_to_input_weights == nullptr);
+  if (has_aux_input && !fw_use_cifg) {
     TF_LITE_ENSURE_EQ(context, fw_aux_input_to_input_weights->dims->data[0],
                       fw_input_to_input_weights->dims->data[0]);
   }
-  const bool fw_use_cifg = (fw_input_to_input_weights == nullptr);
   TfLiteIntArray* fw_scratch_buffer_size = TfLiteIntArrayCreate(2);
   fw_scratch_buffer_size->data[0] = n_batch;
   if (fw_use_cifg) {
@@ -579,11 +579,11 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
 
   const TfLiteTensor* bw_input_to_input_weights =
       GetOptionalInputTensor(context, node, kBwInputToInputWeightsTensor);
-  if (has_aux_input) {
+  const bool bw_use_cifg = (bw_input_to_input_weights == nullptr);
+  if (has_aux_input && !bw_use_cifg) {
     TF_LITE_ENSURE_EQ(context, bw_aux_input_to_input_weights->dims->data[0],
                       bw_input_to_input_weights->dims->data[0]);
   }
-  const bool bw_use_cifg = (bw_input_to_input_weights == nullptr);
   TfLiteIntArray* bw_scratch_buffer_size = TfLiteIntArrayCreate(2);
   bw_scratch_buffer_size->data[0] = n_batch;
   if (bw_use_cifg) {
