@@ -149,8 +149,12 @@ BAZEL_TEST_FLAGS=""\
 "--test_env=TF_PER_DEVICE_MEMORY_LIMIT_MB=${TF_PER_DEVICE_MEMORY_LIMIT_MB}"
 BAZEL_BUILD_FLAGS="--keep_going"
 
-BAZEL_CMD="bazel test ${BAZEL_TEST_FLAGS}"
-BAZEL_BUILD_ONLY_CMD="bazel build ${BAZEL_BUILD_FLAGS}"
+# Explicitly set jdk8 since that's what's installed in our images. Note that
+# bazel 0.16 and higher defaults to jdk9, which causes failures. See b/117634064
+BAZEL_JAVA_FLAGS="--java_toolchain=@bazel_tools//tools/jdk:toolchain_hostjdk8"
+
+BAZEL_CMD="bazel test ${BAZEL_TEST_FLAGS} ${BAZEL_JAVA_FLAGS}"
+BAZEL_BUILD_ONLY_CMD="bazel build ${BAZEL_BUILD_FLAGS} ${BAZEL_JAVA_FLAGS}"
 BAZEL_CLEAN_CMD="bazel clean"
 
 PIP_CMD="${CI_BUILD_DIR}/builds/pip.sh"
