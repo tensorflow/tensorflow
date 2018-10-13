@@ -19,10 +19,10 @@ from __future__ import division
 from __future__ import print_function
 
 from abc import abstractmethod
-from contextlib import closing
 import hashlib
+from itertools import cycle
 import multiprocessing
-from multiprocessing.pool import ThreadPool
+from multiprocessing.managers import SyncManager, BaseProxy
 import os
 import random
 import shutil
@@ -30,9 +30,10 @@ import sys
 import tarfile
 import threading
 import time
+import traceback
+from uuid import uuid4
 import zipfile
 
-import numpy as np
 import six
 from six.moves.urllib.error import HTTPError
 from six.moves.urllib.error import URLError
@@ -41,7 +42,6 @@ from six.moves.urllib.request import urlopen
 from tensorflow.python.keras.utils.generic_utils import Progbar
 from tensorflow.python.util import tf_inspect
 from tensorflow.python.util.tf_export import tf_export
-
 
 try:
   import queue
@@ -416,35 +416,6 @@ def iter_sequence_infinite(seq):
     for item in seq:
       yield item
 
-
-# Global variables to be shared across processes
-_SHARED_SEQUENCES = {}
-# We use a Value to provide unique id to different processes.
-_SEQUENCE_COUNTER = None
-
-
-def init_pool(seqs):
-  global _SHARED_SEQUENCES
-  _SHARED_SEQUENCES = seqs
-
-
-def get_index(uid, i):
-  """Get the value from the Sequence `uid` at index `i`.
-
-  To allow multiple Sequences to be used at the same time, we use `uid` to
-  get a specific one. A single Sequence would cause the validation to
-  overwrite the training Sequence.
-
-  Arguments:
-      uid: int, Sequence identifier
-      i: index
-
-  Returns:
-      The value at index `i`.
-  """
-  return _SHARED_SEQUENCES[uid][i]
-
-
 @tf_export('keras.utils.SequenceEnqueuer')
 class SequenceEnqueuer(object):
   """Base class to enqueue inputs.
@@ -452,7 +423,7 @@ class SequenceEnqueuer(object):
   The task of an Enqueuer is to use parallelism to speed up preprocessing.
   This is done with processes or threads.
 
-  Example:
+  Examples:
 
   ```python
       enqueuer = SequenceEnqueuer(...)
@@ -467,221 +438,115 @@ class SequenceEnqueuer(object):
   The `enqueuer.get()` should be an infinite stream of datas.
   """
 
-  def __init__(self, sequence,
-               use_multiprocessing=False):
-    self.sequence = sequence
-    self.use_multiprocessing = use_multiprocessing
+  def __init__(self):
+    self._children = []
+    self._queue = None
+    self._stop_event = None
 
-    global _SEQUENCE_COUNTER
-    if _SEQUENCE_COUNTER is None:
-      try:
-        _SEQUENCE_COUNTER = multiprocessing.Value('i', 0)
-      except OSError:
-        # In this case the OS does not allow us to use
-        # multiprocessing. We resort to an int
-        # for enqueuer indexing.
-        _SEQUENCE_COUNTER = 0
-
-    if isinstance(_SEQUENCE_COUNTER, int):
-      self.uid = _SEQUENCE_COUNTER
-      _SEQUENCE_COUNTER += 1
-    else:
-      # Doing Multiprocessing.Value += x is not process-safe.
-      with _SEQUENCE_COUNTER.get_lock():
-        self.uid = _SEQUENCE_COUNTER.value
-        _SEQUENCE_COUNTER.value += 1
-
-    self.workers = 0
-    self.executor_fn = None
-    self.queue = None
-    self.run_thread = None
-    self.stop_signal = None
-
-  def is_running(self):
-    return self.stop_signal is not None and not self.stop_signal.is_set()
-
+  @abstractmethod
   def start(self, workers=1, max_queue_size=10):
-    """Starts the handler's workers.
+    """Starts the workers.
 
     Arguments:
-        workers: Number of workers.
+        workers: number of workers
         max_queue_size: queue size
-            (when full, workers could block on `put()`)
+            (when full, threads could block on `put()`).
     """
-    if self.use_multiprocessing:
-      self.executor_fn = self._get_executor_init(workers)
-    else:
-      # We do not need the init since it's threads.
-      self.executor_fn = lambda _: ThreadPool(workers)
-    self.workers = workers
-    self.queue = queue.Queue(max_queue_size)
-    self.stop_signal = threading.Event()
-    self.run_thread = threading.Thread(target=self._run)
-    self.run_thread.daemon = True
-    self.run_thread.start()
+    raise NotImplementedError
 
-  def _send_sequence(self):
-    """Sends current Iterable to all workers."""
-    # For new processes that may spawn
-    _SHARED_SEQUENCES[self.uid] = self.sequence
+  def is_running(self):
+    """Checks if background workers are still running
+
+    Returns:
+        True if workers are still running, False otherwise
+    """
+    return self._stop_event is not None and not self._stop_event.is_set()
+
+  def get(self):
+    """Creates a generator to extract data from the queue.
+
+    Skip the data if it is `None`.
+
+    Returns:
+        Generator yielding tuples `(inputs, targets)`
+            or `(inputs, targets, sample_weights)`.
+    """
+    while self.is_running():
+      if not self._queue.empty():
+        success, value = self._queue.get()
+        # Rethrow any exceptions found in the queue
+        if not success:
+          six.reraise(value.__class__, value, value.__traceback__)
+        # Yield regular values
+        if value is not None:
+          yield value
+      else:
+        all_finished = all([not child.is_alive() for child in self._children])
+        if all_finished and self._queue.empty():
+          return
+        time.sleep(self._wait_time)
+
+    # Make sure to rethrow the first exception in the queue, if any
+    while not self._queue.empty():
+      success, value = self._queue.get()
+      if not success:
+        six.reraise(value.__class__, value, value.__traceback__)
 
   def stop(self, timeout=None):
-    """Stops running threads and wait for them to exit, if necessary.
+    """Stops background workers and waits for them to exit, if necessary.
 
     Should be called by the same thread which called `start()`.
 
     Arguments:
-        timeout: maximum time to wait on `thread.join()`
+        timeout: maximum time to wait on `join()`
     """
-    self.stop_signal.set()
-    with self.queue.mutex:
-      self.queue.queue.clear()
-      self.queue.unfinished_tasks = 0
-      self.queue.not_full.notify()
-    self.run_thread.join(timeout)
-    _SHARED_SEQUENCES[self.uid] = None
+    if self.is_running():
+      # let the children know we're done
+      self._stop_event.set()
 
-  @abstractmethod
-  def _run(self):
-    """Submits request to the executor and queue the `Future` objects."""
-    raise NotImplementedError
+    for child in self._children:
+      while child.is_alive():
+        # drain any remaining messages, otherwise join will block
+        self._drain_queue()
+        time.sleep(self._wait_time)
+      child.join(timeout)
 
-  @abstractmethod
-  def _get_executor_init(self, workers):
-    """Gets the Pool initializer for multiprocessing.
+    self._children = []
+    self._queue = None
+    self._stop_event = None
 
-    Arguments:
-        workers: Number of workers.
+  def _drain_queue(self):
+    while not self._queue.empty():
+      success, value = self._queue.get()
+      if not success:
+        six.reraise(value.__class__, value, value.__traceback__)
 
-    Returns:
-        Function, a Function to initialize the pool
+class DelegateEnqueuer(object):
+  """Delegates SequenceEnqeurer operations to an underlying implementation"""
+
+  def __init__(self, instance):
+    """Arguments:
+        instance: An object that implements SequenceEnqueuer
+
+    See: MultiProcEnqueuer, ThreadedEnqueuer
     """
-    raise NotImplementedError
 
-  @abstractmethod
-  def get(self):
-    """Creates a generator to extract data from the queue.
+    self._instance = instance
 
-    Skip the data if it is `None`.
-    # Returns
-        Generator yielding tuples `(inputs, targets)`
-            or `(inputs, targets, sample_weights)`.
-    """
-    raise NotImplementedError
+  def start(self, *args):
+    self._instance.start(*args)
 
-
-@tf_export('keras.utils.OrderedEnqueuer')
-class OrderedEnqueuer(SequenceEnqueuer):
-  """Builds a Enqueuer from a Sequence.
-
-  Used in `fit_generator`, `evaluate_generator`, `predict_generator`.
-
-  Arguments:
-      sequence: A `tf.keras.utils.data_utils.Sequence` object.
-      use_multiprocessing: use multiprocessing if True, otherwise threading
-      shuffle: whether to shuffle the data at the beginning of each epoch
-  """
-
-  def __init__(self, sequence, use_multiprocessing=False, shuffle=False):
-    super(OrderedEnqueuer, self).__init__(sequence, use_multiprocessing)
-    self.shuffle = shuffle
-
-  def _get_executor_init(self, workers):
-    """Gets the Pool initializer for multiprocessing.
-
-    Arguments:
-        workers: Number of workers.
-
-    Returns:
-        Function, a Function to initialize the pool
-    """
-    def pool_fn(seqs):
-      return multiprocessing.Pool(workers,
-                                  initializer=init_pool_generator,
-                                  initargs=(seqs, self.random_seed))
-    return pool_fn
-
-  def _wait_queue(self):
-    """Wait for the queue to be empty."""
-    while True:
-      time.sleep(0.1)
-      if self.queue.unfinished_tasks == 0 or self.stop_signal.is_set():
-        return
-
-  def _run(self):
-    """Submits request to the executor and queue the `Future` objects."""
-    sequence = list(range(len(self.sequence)))
-    self._send_sequence()  # Share the initial sequence
-    while True:
-      if self.shuffle:
-        random.shuffle(sequence)
-
-      with closing(self.executor_fn(_SHARED_SEQUENCES)) as executor:
-        for i in sequence:
-          if self.stop_signal.is_set():
-            return
-          self.queue.put(
-              executor.apply_async(get_index, (self.uid, i)), block=True)
-
-        # Done with the current epoch, waiting for the final batches
-        self._wait_queue()
-
-        if self.stop_signal.is_set():
-          # We're done
-          return
-
-      # Call the internal on epoch end.
-      self.sequence.on_epoch_end()
-      self._send_sequence()  # Update the pool
+  def is_running(self):
+    return self._instance.is_running()
 
   def get(self):
-    """Creates a generator to extract data from the queue.
+    return self._instance.get()
 
-    Skip the data if it is `None`.
-
-    Yields:
-        The next element in the queue, i.e. a tuple
-        `(inputs, targets)` or
-        `(inputs, targets, sample_weights)`.
-    """
-    try:
-      while self.is_running():
-        inputs = self.queue.get(block=True).get()
-        self.queue.task_done()
-        if inputs is not None:
-          yield inputs
-    except Exception:  # pylint: disable=broad-except
-      self.stop()
-      six.reraise(*sys.exc_info())
-
-
-def init_pool_generator(gens, random_seed=None):
-  global _SHARED_SEQUENCES
-  _SHARED_SEQUENCES = gens
-
-  if random_seed is not None:
-    ident = multiprocessing.current_process().ident
-    np.random.seed(random_seed + ident)
-
-
-def next_sample(uid):
-  """Gets the next value from the generator `uid`.
-
-  To allow multiple generators to be used at the same time, we use `uid` to
-  get a specific one. A single generator would cause the validation to
-  overwrite the training generator.
-
-  Arguments:
-      uid: int, generator identifier
-
-  Returns:
-      The next value of generator `uid`.
-  """
-  return six.next(_SHARED_SEQUENCES[uid])
-
+  def stop(self):
+    self._instance.stop()
 
 @tf_export('keras.utils.GeneratorEnqueuer')
-class GeneratorEnqueuer(SequenceEnqueuer):
+class GeneratorEnqueuer(DelegateEnqueuer):
   """Builds a queue out of a data generator.
 
   The provided generator can be finite in which case the class will throw
@@ -692,76 +557,431 @@ class GeneratorEnqueuer(SequenceEnqueuer):
   Arguments:
       generator: a generator function which yields data
       use_multiprocessing: use multiprocessing if True, otherwise threading
-      wait_time: time to sleep in-between calls to `put()`
-      random_seed: Initial seed for workers,
-          will be incremented by one for each worker.
+      wait_time: time to sleep waiting for workers to generate data or exit
   """
 
-  def __init__(self, sequence,
-               use_multiprocessing=False,
-               random_seed=None):
-    super(GeneratorEnqueuer, self).__init__(sequence, use_multiprocessing)
-    self.random_seed = random_seed
+  def __init__(self, *args, **kwargs):
+    use_mp = kwargs.pop('use_multiprocessing')
+    if use_mp:
+      instance = MultiProcGeneratorEnqueuer(*args, **kwargs)
+    else:
+      instance = ThreadedGeneratorEnqueuer(*args, **kwargs)
 
-  def _get_executor_init(self, workers):
-    """Gets the Pool initializer for multiprocessing.
+    super(GeneratorEnqueuer, self).__init__(instance)
+
+@tf_export('keras.utils.OrderedEnqueuer')
+class OrderedEnqueuer(DelegateEnqueuer):
+  """Builds a Enqueuer from a Sequence.
+
+  Used in `fit_generator`, `evaluate_generator`, `predict_generator`.
+
+  Arguments:
+      sequence: A `keras.utils.data_utils.Sequence` object.
+      use_multiprocessing: use multiprocessing if True, otherwise threading
+      wait_time: time to sleep waiting for workers to generate data or exit
+      shuffle: whether to shuffle the data at the beginning of each epoch
+  """
+
+  def __init__(self, *args, **kwargs):
+    use_mp = kwargs.pop('use_multiprocessing')
+    if use_mp:
+      instance = MultiProcOrderedEnqueuer(*args, **kwargs)
+    else:
+      instance = ThreadedOrderedEnqueuer(*args, **kwargs)
+
+    super(OrderedEnqueuer, self).__init__(instance)
+
+class MultiProcEnqueuer(SequenceEnqueuer):
+  """Enqueuer that implements multiprocessed workers
+
+  Arguments:
+      manager: A `multiprocessing.Manager` instance. Used to synchronize
+          communication and state between processes
+      task: the `target` function processes should run
+      task_kwargs: arguments to pass to `task`
+      wait_time: time to sleep waiting for workers to generate data or exit
+  """
+  def __init__(self, manager, task, task_kwargs=None, wait_time=0.05):
+    if os.name == 'nt':
+      # On Windows, avoid **SYSTEMATIC** error in `multiprocessing`:
+      # `TypeError: can't pickle generator objects`
+      # => Suggest multithreading instead of multiprocessing on Windows
+      raise ValueError('Using a generator with `use_multiprocessing=True`'
+                       ' is not supported on Windows (no marshalling of'
+                       ' generators across process boundaries). Instead,'
+                       ' use single thread/process or multithreading.')
+
+    self._manager = manager
+    self._task = task
+    self._task_kwargs = task_kwargs if task_kwargs else {}
+    self._wait_time = wait_time
+
+    super(MultiProcEnqueuer, self).__init__()
+
+  def start(self, workers=1, max_queue_size=10):
+    """Starts the worker processes and initializes multiprocess synchronization
+    constructs
 
     Arguments:
-      workers: Number of works.
-
-    Returns:
-        A Function to initialize the pool
-    """
-    def pool_fn(seqs):
-      return multiprocessing.Pool(workers,
-                                  initializer=init_pool_generator,
-                                  initargs=(seqs, self.random_seed))
-    return pool_fn
-
-  def _run(self):
-    """Submits request to the executor and queue the `Future` objects."""
-    self._send_sequence()  # Share the initial generator
-    with closing(self.executor_fn(_SHARED_SEQUENCES)) as executor:
-      while True:
-        if self.stop_signal.is_set():
-          return
-        self.queue.put(
-            executor.apply_async(next_sample, (self.uid,)), block=True)
-
-  def get(self):
-    """Creates a generator to extract data from the queue.
-
-    Skip the data if it is `None`.
-
-    Yields:
-        The next element in the queue, i.e. a tuple
-        `(inputs, targets)` or
-        `(inputs, targets, sample_weights)`.
+        workers: number of processes
+        max_queue_size: queue size
+            (when full, processes could block on `put()`).
     """
     try:
-      while self.is_running():
-        inputs = self.queue.get(block=True).get()
-        self.queue.task_done()
-        if inputs is not None:
-          yield inputs
-    except StopIteration:
-      # Special case for finite generators
-      last_ones = []
-      while self.queue.qsize() > 0:
-        last_ones.append(self.queue.get(block=True))
-      # Wait for them to complete
-      for f in last_ones:
-        f.wait()
-      # Keep the good ones
-      last_ones = [future.get() for future in last_ones if future.successful()]
-      for inputs in last_ones:
-        if inputs is not None:
-          yield inputs
-    except Exception as e:  # pylint: disable=broad-except
+      self._stop_event = self._manager.Event()
+      self._queue = self._manager.Queue(maxsize=max_queue_size)
+
+      task = self._task
+      task_kwargs = self._task_kwargs
+
+      task_kwargs['lock'] = self._manager.Lock()
+      task_kwargs['stop_event'] = self._stop_event
+      task_kwargs['queue'] = self._queue
+
+      for _ in range(workers):
+        child = multiprocessing.Process(target=task, kwargs=task_kwargs)
+        child.daemon = True
+        self._children.append(child)
+        child.start()
+
+    except:
       self.stop()
-      if 'generator already executing' in str(e):
-        raise RuntimeError(
-            'Your generator is NOT thread-safe. '
-            'Keras requires a thread-safe generator when '
-            '`use_multiprocessing=False, workers > 1`. ')
-      six.reraise(*sys.exc_info())
+      raise
+
+  def stop(self, timeout=None):
+    """Stops background processes and shuts down the Process Manager
+
+    Arguments:
+        timeout: maximum time to wait on `join()`
+    """
+    super(MultiProcEnqueuer, self).stop(timeout)
+    self._manager.shutdown()
+
+class ThreadedEnqueuer(SequenceEnqueuer):
+  """Enqueuer that implements multithreaded workers
+
+  Arguments:
+      task: the `target` function threads should run
+      task_kwargs: arguments to pass to `task`
+      wait_time: time to sleep waiting for workers to generate data or exit
+  """
+  def __init__(self, task, task_kwargs=None, wait_time=0.05):
+    self._task = task
+    self._task_kwargs = task_kwargs if task_kwargs else {}
+    self._wait_time = wait_time
+
+    super(ThreadedEnqueuer, self).__init__()
+
+  def start(self, workers=1, max_queue_size=10):
+    """Starts the worker threads and initializes threading synchronization
+    constructs
+
+    Arguments:
+        workers: number of threads
+        max_queue_size: queue size
+            (when full, threads could block on `put()`).
+    """
+    try:
+      self._stop_event = threading.Event()
+      self._queue = queue.Queue(maxsize=max_queue_size)
+
+      task = self._task
+      task_kwargs = self._task_kwargs
+
+      task_kwargs['lock'] = threading.Lock()
+      task_kwargs['stop_event'] = self._stop_event
+      task_kwargs['queue'] = self._queue
+
+      for _ in range(workers):
+        child = threading.Thread(target=task, kwargs=task_kwargs)
+        self._children.append(child)
+        child.start()
+
+    except:
+      self.stop()
+      raise
+
+class GeneratorProxy(BaseProxy):
+  """`multiprocessing.Manager` Proxy class used to synchronize and dispatch
+      calls to the GeneratorEnqueuer data generator object across multiple
+      processes"""
+
+  _exposed_ = ('next', '__next__')
+
+  def __iter__(self):
+    return self
+
+  def next(self):
+    return self._callmethod('next')
+
+  def __next__(self):
+    return self._callmethod('__next__')
+
+class GeneratorManager(SyncManager):
+  """Manager wrapper used to register and share Proxy objects across processes
+  """
+  pass
+
+def _data_generator_task(**kwargs):
+  """Function used by both threaded and multiprocessed versions of
+      GeneratorEnqueuer to get data from a generator and send it to the parent
+      process via a synchronized queue
+  """
+  generator = kwargs['generator']
+  lock = kwargs['lock']
+  stop_event = kwargs['stop_event']
+  taskqueue = kwargs['queue']
+
+  while not stop_event.is_set():
+    try:
+      with lock:
+        generator_output = next(generator)
+      taskqueue.put((True, generator_output))
+    except StopIteration:
+      break
+    except Exception as e:  # pylint: disable=broad-except
+      # Can't pickle tracebacks.
+      # As a compromise, print the traceback and pickle None instead.
+      traceback.print_exc()
+      setattr(e, '__traceback__', None)
+      taskqueue.put((False, e))
+      stop_event.set()
+      break
+
+class MultiProcGeneratorEnqueuer(MultiProcEnqueuer):
+  """Multiprocessed version of GeneratorEnqueuer
+
+  Shares a data generator across N number of worker processes and coordinates
+  and synchronizes them to build a stream of datas
+
+  Arguments:
+      generator: a generator function which yields data
+      wait_time: time to sleep waiting for workers to generate data or exit
+  """
+
+  def __init__(self, generator, wait_time=0.05):
+    self._uid = str(uuid4())
+
+    # wrap generator with a function we can register with the manager proxy
+    # object. it needs a pre-primed generator funcion.
+    def g():
+      while True:
+        try:
+          yield next(generator)
+        except StopIteration:
+          return
+
+    # register the Proxy generator with the multiprocessing Manager to
+    # share across processes
+    self._generator_typeid = 'generator'+self._uid
+    GeneratorManager.register(
+        self._generator_typeid, g, proxytype=GeneratorProxy)
+
+    manager = GeneratorManager()
+
+    super(MultiProcGeneratorEnqueuer, self).__init__(
+        manager, _data_generator_task, wait_time=wait_time)
+
+  def start(self, workers=1, max_queue_size=10):
+    """Starts the Process Manager and intiailizes the Proxy generator"""
+    self._manager.start()
+
+    generator = getattr(self._manager, self._generator_typeid)()
+
+    self._task_kwargs = {
+        'generator': generator,
+    }
+
+    super(MultiProcGeneratorEnqueuer, self).start(
+        workers=workers, max_queue_size=max_queue_size)
+
+class ThreadedGeneratorEnqueuer(ThreadedEnqueuer):
+  """Multithreaded version of GeneratorEnqueuer
+
+  Shares a data generator across N number of worker threads and coordinates
+  and synchronizes them to build a stream of datas
+
+  Arguments:
+      generator: a generator function which yields data
+      wait_time: time to sleep waiting for workers to generate data or exit
+  """
+  def __init__(self, generator, wait_time=0.05):
+
+    task_kwargs = {
+        'generator': generator,
+    }
+
+    super(ThreadedGeneratorEnqueuer, self).__init__(
+        _data_generator_task, task_kwargs=task_kwargs, wait_time=wait_time)
+
+class SequenceWrapper(object):
+  """Holds the underlying sequence to be shared across OrderedEnqueur workers
+
+  Necessary because Manager Proxy classes cannot wrap instances, only classes
+      or functions
+  """
+  def __init__(self, sequence):
+    self._sequence = sequence
+
+  def __getitem__(self, item):
+    return self._sequence.__getitem__(item)
+
+  def __len__(self):
+    return self._sequence.__len__()
+
+  def on_epoch_end(self):
+    return self._sequence.on_epoch_end()
+
+class SequenceProxy(BaseProxy):
+  """`multiprocessing.Manager` Proxy class used to synchronize and dispatch
+      calls to the OrderedEnqueuer data sequence object across multiple
+      processes"""
+  _exposed_ = ['__getitem__', '__len__', 'on_epoch_end']
+
+  def __getitem__(self, item):
+    return self._callmethod('__getitem__', (item,))
+
+  def __len__(self):
+    return self._callmethod('__len__')
+
+  def on_epoch_end(self):
+    return self._callmethod('on_epoch_end')
+
+class SequenceManager(SyncManager):
+  """Manager wrapper used to register and share Proxy objects across processes
+  """
+  pass
+
+def seq_next_i(seq_order):
+  for i in cycle(seq_order):
+    yield i
+
+def _data_sequence_task(**kwargs):
+  """Function used by both threaded and multiprocessed versions of
+      OrderedEnqueuer to get data from a sequence and send it to the parent
+      process via a synchronized queue
+  """
+  counter = kwargs['counter']
+  lock = kwargs['lock']
+  next_i_gen = kwargs['next_i_gen']
+  sequence = kwargs['sequence']
+  stop_event = kwargs['stop_event']
+  taskqueue = kwargs['queue']
+
+  while not stop_event.is_set():
+    try:
+      with lock:
+        # put call to queue.put in critical
+        # section since we need to maintain order
+        i = next(next_i_gen)
+        seq_output = sequence[i]
+        taskqueue.put((True, seq_output))
+
+        counter.value += 1
+        if counter.value % len(sequence) == 0:
+          # saw every item in the sequence, end of epoch
+          counter.value = 0
+          sequence.on_epoch_end()
+    except Exception as e:  # pylint: disable=broad-except
+      # Can't pickle tracebacks.
+      # As a compromise, print the traceback and pickle None instead.
+      traceback.print_exc()
+      setattr(e, '__traceback__', None)
+      taskqueue.put((False, e))
+      stop_event.set()
+      break
+
+class MultiProcOrderedEnqueuer(MultiProcEnqueuer):
+  """Multiprocessed version of OrderedEnqueuer
+
+  Shares a data sequence across N number of worker processes and coordinates
+  and synchronizes them to build a stream of datas
+
+  Arguments:
+      sequence: A `tf.keras.utils.data_utils.Sequence` object.
+      wait_time: time to sleep waiting for workers to generate data or exit
+  """
+
+  def __init__(self, sequence, shuffle=False, wait_time=0.05):
+    self._sequence = sequence
+    self._shuffle = shuffle
+
+    self._seq_order = list(range(len(self._sequence)))
+    self._uid = str(uuid4())
+
+    # register the Manager Proxy classes used to share and synchronize access
+    # to the underlying sequence
+    self._sequence_typeid = 'sequence'+self._uid
+    SequenceManager.register(
+        self._sequence_typeid, SequenceWrapper, proxytype=SequenceProxy)
+
+    self._seq_next_i_typeid = 'seq_next_i'+self._uid
+    SequenceManager.register(
+        self._seq_next_i_typeid, seq_next_i, proxytype=GeneratorProxy)
+
+    manager = SequenceManager()
+
+    super(MultiProcOrderedEnqueuer, self).__init__(
+        manager, _data_sequence_task, wait_time=wait_time)
+
+  def start(self, workers=1, max_queue_size=10):
+    """Starts the Process Manager and intiailizes the Proxy sequence"""
+    if self._shuffle:
+      random.shuffle(self._seq_order)
+
+    manager = self._manager
+    manager.start()
+
+    # equivalent to self._manager.sequence<uuid>(self._sequence)
+    # creates and returns instances of the appropriate proxy classes
+    sequence = getattr(manager, self._sequence_typeid)(self._sequence)
+    next_i_gen = getattr(manager, self._seq_next_i_typeid)(self._seq_order)
+
+    self._task_kwargs = {
+        'counter': manager.Value('i', 0),
+        'next_i_gen': next_i_gen,
+        'sequence': sequence,
+    }
+
+    super(MultiProcOrderedEnqueuer, self).start(
+        workers=workers, max_queue_size=max_queue_size)
+
+class CounterWrapper(object):
+  """Simple wrapper around an integer counter to be used by threads
+
+  This is to provide a consistent counter interface to `_data_sequence_task`
+  """
+  def __init__(self):
+    self.value = 0
+
+class ThreadedOrderedEnqueuer(ThreadedEnqueuer):
+  """Multithreaded version of OrderedEnqueuer
+
+  Shares a data sequence across N number of worker threads and coordinates
+  and synchronizes them to build a stream of datas
+
+  Arguments:
+      sequence: A `tf.keras.utils.data_utils.Sequence` object.
+      wait_time: time to sleep waiting for workers to generate data or exit
+  """
+  def __init__(self, sequence, shuffle=False, wait_time=0.05):
+    self._sequence = sequence
+    self._shuffle = shuffle
+
+    self._seq_order = list(range(len(self._sequence)))
+
+    super(ThreadedOrderedEnqueuer, self).__init__(
+        _data_sequence_task, wait_time=wait_time)
+
+  def start(self, workers=1, max_queue_size=10):
+    if self._shuffle:
+      random.shuffle(self._seq_order)
+
+    self._task_kwargs = {
+        'counter': CounterWrapper(),
+        'next_i_gen': seq_next_i(self._seq_order),
+        'sequence': self._sequence,
+    }
+
+    super(ThreadedOrderedEnqueuer, self).start(
+        workers=workers, max_queue_size=max_queue_size)
