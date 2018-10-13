@@ -65,6 +65,9 @@ Status AllocateScopedShapedBuffer(
   // requests the host-shape sub-buffer at index i, that will correspond to the
   // right device-shape sub-buffer at the same index.
   xla::Shape on_device_shape = transfer_manager->HostShapeToDeviceShape(shape);
+  VLOG(3) << "Allocating literal buffer: host_shape="
+          << xla::ShapeUtil::HumanStringWithLayout(shape) << " device_shape="
+          << xla::ShapeUtil::HumanStringWithLayout(on_device_shape);
 
   // The ScopedShapedBuffer frees the buffers that have so far been allocated if
   // it goes out of scope. That's useful if we return early as the result of an

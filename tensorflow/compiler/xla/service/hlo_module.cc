@@ -246,17 +246,14 @@ HloModuleProto HloModule::ToProto() const {
   proto.set_entry_computation_id(entry_computation_->unique_id());
   for (const HloComputation* computation : MakeComputationPostOrder()) {
     HloComputationProto computation_proto = computation->ToProto();
-    if (computation->name() == entry_computation_->name()) {
-      *proto.mutable_program_shape() = computation_proto.program_shape();
-    }
     proto.add_computations()->Swap(&computation_proto);
   }
   if (has_schedule()) {
     *proto.mutable_schedule() = schedule().ToProto().ValueOrDie();
   }
-
+  *proto.mutable_host_program_shape() =
+      entry_computation_layout().ComputeProgramShape();
   *proto.mutable_input_output_alias() = input_output_alias_config().ToProto();
-
   return proto;
 }
 
@@ -268,9 +265,9 @@ StatusOr<std::unique_ptr<HloModule>> HloModule::CreateFromProto(
 
   // The ProgramShape in the passed in module config must match the shapes of
   // the entry parameters and root.
-  TF_RET_CHECK(proto.has_program_shape())
+  TF_RET_CHECK(proto.has_host_program_shape())
       << "No program shape found in the proto";
-  const auto& expected_program_shape = proto.program_shape();
+  const auto& expected_program_shape = proto.host_program_shape();
   TF_RET_CHECK(expected_program_shape.parameters_size() ==
                module_config.entry_computation_layout().parameter_count());
   for (int i = 0; i < expected_program_shape.parameters_size(); ++i) {
@@ -375,9 +372,9 @@ StatusOr<std::unique_ptr<HloModule>> HloModule::CreateFromProto(
 /* static */
 StatusOr<HloModuleConfig> HloModule::CreateModuleConfigFromProto(
     const HloModuleProto& module, const DebugOptions& debug_options) {
-  TF_RET_CHECK(module.has_program_shape())
+  TF_RET_CHECK(module.has_host_program_shape())
       << "No program shape found in the proto";
-  const auto& program_shape = module.program_shape();
+  const auto& program_shape = module.host_program_shape();
 
   HloModuleConfig module_config(program_shape);
   module_config.set_debug_options(debug_options);

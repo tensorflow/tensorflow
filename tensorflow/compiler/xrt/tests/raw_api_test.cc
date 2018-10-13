@@ -132,6 +132,16 @@ xla::XlaComputation AddAndScale() {
   return builder.Build().ValueOrDie();
 }
 
+xla::XlaComputation AddS64() {
+  xla::XlaBuilder builder("AddS64");
+  auto p0 = xla::Parameter(&builder, 0, xla::ShapeUtil::MakeShape(xla::S64, {}),
+                           "P0");
+  auto p1 = xla::Parameter(&builder, 1, xla::ShapeUtil::MakeShape(xla::S64, {}),
+                           "P1");
+  xla::Add(p0, p1);
+  return builder.Build().ValueOrDie();
+}
+
 xla::XlaComputation AddAndTuple() {
   xla::XlaBuilder builder("AddAndTuple");
   auto p0 = xla::Parameter(&builder, 0,
@@ -549,6 +559,60 @@ TEST(RawApiTest, LeakCompilationReference) {
   ClientSession session(root);
   std::vector<Tensor> outputs;
   TF_EXPECT_OK(session.Run({c_handle.handle}, &outputs));
+}
+
+TEST(RawApiTest, CompileAndExecuteWithS64Argument) {
+  xrt::XLAAllocation p0;
+  p0.set_device_ordinal(0);
+  *p0.mutable_value() = xla::LiteralUtil::CreateR0<int64>(11031965).ToProto();
+  xrt::XLAAllocation p1;
+  p1.set_device_ordinal(0);
+  *p1.mutable_value() = xla::LiteralUtil::CreateR0<int64>(4091934).ToProto();
+
+  xrt::XLAComputation c;
+  auto config = c.mutable_config();
+  auto shapes = config->mutable_program_shape();
+  *shapes->add_parameters() = xla::ShapeUtil::MakeShape(xla::S64, {});
+  *shapes->add_parameters() = xla::ShapeUtil::MakeShape(xla::S64, {});
+  *shapes->mutable_result() = xla::ShapeUtil::MakeShape(xla::S64, {});
+  StoreComputationSnapshot(AddS64(), c.mutable_hlo_snapshot());
+
+  xrt::XRTExecutionConfig e;
+  e.set_release_input_handles(true);
+  e.set_release_compilation_handle(true);
+
+  Scope root = Scope::NewRootScope().WithDevice(DeviceFromFlag());
+  auto e_config =
+      ops::Const(root.WithDevice("/device:CPU:0"), e.SerializeAsString());
+  auto computation =
+      ops::Const(root.WithDevice("/device:CPU:0"), c.SerializeAsString());
+  auto c_handle = ops::XRTCompile(root, computation);
+  auto p0_value =
+      ops::Const(root.WithDevice("/device:CPU:0"), p0.SerializeAsString());
+  auto p0_handle = ops::XRTAllocate(root, p0_value);
+  auto p1_value =
+      ops::Const(root.WithDevice("/device:CPU:0"), p1.SerializeAsString());
+  auto p1_handle = ops::XRTAllocate(root, p1_value);
+  auto result = ops::XRTExecute(root, c_handle.handle, e_config,
+                                {Output(p0_handle), Output(p1_handle)});
+  auto read_back = ops::XRTReadLiteralAndRelease(root, result);
+  TF_ASSERT_OK(root.status());
+
+  ClientSession session(root);
+  std::vector<Tensor> outputs;
+  TF_EXPECT_OK(session.Run({read_back, c_handle.program_shape}, &outputs));
+
+  xla::LiteralProto response;
+  EXPECT_TRUE(response.ParseFromString(outputs[0].scalar<string>()()));
+
+  auto expected = xla::LiteralUtil::CreateR0<int64>(15123899);
+  EXPECT_TRUE(CompareLiteralToLiteralProto(expected, response));
+
+  xla::ProgramShape program_shape;
+  EXPECT_TRUE(program_shape.ParseFromString(outputs[1].vec<string>()(0)));
+  EXPECT_EQ(program_shape.parameters_size(), 2);
+  EXPECT_TRUE(
+      xla::ShapeUtil::HasPrimitiveType(program_shape.result(), xla::S64));
 }
 
 }  // namespace

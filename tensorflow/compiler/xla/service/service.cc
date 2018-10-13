@@ -634,7 +634,7 @@ Status Service::ExecuteGraphParallel(const ExecuteGraphParallelRequest* arg,
         arg->requests(i).execution_options();
     const ExecuteGraphRequest& request = arg->requests(i);
     TF_RET_CHECK(request.has_computation()) << "computations may not be empty";
-    TF_RET_CHECK(request.computation().has_program_shape())
+    TF_RET_CHECK(request.computation().has_host_program_shape())
         << "programe shape may not be empty";
 
     // Get the executors.
@@ -651,7 +651,7 @@ Status Service::ExecuteGraphParallel(const ExecuteGraphParallelRequest* arg,
     // replica 0.
     TF_ASSIGN_OR_RETURN(
         std::unique_ptr<HloModuleConfig> module_config,
-        CreateModuleConfig(request.computation().program_shape(),
+        CreateModuleConfig(request.computation().host_program_shape(),
                            replicated_arguments.front(),
                            request.execution_options()));
     VLOG(3)
@@ -836,7 +836,7 @@ Status Service::ExecuteGraph(const ExecuteGraphRequest* arg,
   if (!arg->has_computation()) {
     return InvalidArgument("computations may not be empty");
   }
-  if (!arg->computation().has_program_shape()) {
+  if (!arg->computation().has_host_program_shape()) {
     return InvalidArgument("programe shape may not be empty");
   }
 
@@ -851,10 +851,11 @@ Status Service::ExecuteGraph(const ExecuteGraphRequest* arg,
       std::vector<std::vector<const ShapedBuffer*>> replicated_arguments,
       ResolveAndValidateArguments(arg->arguments(), replicas));
 
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<HloModuleConfig> module_config,
-                      CreateModuleConfig(arg->computation().program_shape(),
-                                         replicated_arguments.front(),
-                                         arg->execution_options()));
+  TF_ASSIGN_OR_RETURN(
+      std::unique_ptr<HloModuleConfig> module_config,
+      CreateModuleConfig(arg->computation().host_program_shape(),
+                         replicated_arguments.front(),
+                         arg->execution_options()));
 
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<Executable> executable,
@@ -1063,15 +1064,15 @@ Status Service::ComputeConstantGraph(const ComputeConstantGraphRequest* arg,
   if (!arg->has_computation()) {
     return InvalidArgument("computations may not be empty");
   }
-  if (!arg->computation().has_program_shape()) {
+  if (!arg->computation().has_host_program_shape()) {
     return InvalidArgument("program shape may not be empty");
   }
-  if (arg->computation().program_shape().parameters_size() != 0) {
+  if (arg->computation().host_program_shape().parameters_size() != 0) {
     return InvalidArgument(
         "constant computation may not depend on any parameters.");
   }
 
-  ProgramShape program_shape = arg->computation().program_shape();
+  ProgramShape program_shape = arg->computation().host_program_shape();
   TF_DCHECK_OK(ShapeUtil::ValidateShape(program_shape.result()));
   if (arg->has_output_layout()) {
     TF_RETURN_IF_ERROR(LayoutUtil::ValidateLayoutForShape(
@@ -1111,11 +1112,11 @@ Status Service::GetComputationGraphStats(
   if (!arg->has_computation()) {
     return InvalidArgument("Computations may not be empty.");
   }
-  if (!arg->computation().has_program_shape()) {
+  if (!arg->computation().has_host_program_shape()) {
     return InvalidArgument("Program shape may not be empty.");
   }
 
-  HloModuleConfig config(arg->computation().program_shape());
+  HloModuleConfig config(arg->computation().host_program_shape());
   config.set_debug_options(arg->debug_options());
   TF_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> module,
                       CreateModuleFromProto(arg->computation(), config));
