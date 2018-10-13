@@ -102,20 +102,34 @@ def toco_convert_protos(model_flags_str, toco_flags_str, input_data_str):
     return _toco_python.TocoConvert(
         model_flags_str, toco_flags_str, input_data_str)
 
-  with _tempfile.NamedTemporaryFile() as fp_toco, \
-           _tempfile.NamedTemporaryFile() as fp_model, \
-           _tempfile.NamedTemporaryFile() as fp_input, \
-           _tempfile.NamedTemporaryFile() as fp_output:
-    fp_model.write(model_flags_str)
-    fp_toco.write(toco_flags_str)
-    fp_input.write(input_data_str)
-    fp_model.flush()
-    fp_toco.flush()
-    fp_input.flush()
+  # Windows and TemporaryFile are not that useful together,
+  # since you cannot have two readers/writers. So we have to
+  # make the temporaries and close and delete them explicitly.
+  toco_filename, model_filename, input_filename, output_filename = (
+      None, None, None, None)
+  try:
+    # Build all input files
+    with _tempfile.NamedTemporaryFile(delete=False) as fp_toco, \
+             _tempfile.NamedTemporaryFile(delete=False) as fp_model, \
+             _tempfile.NamedTemporaryFile(delete=False) as fp_input:
+      toco_filename = fp_toco.name
+      input_filename = fp_input.name
+      model_filename = fp_model.name
+      fp_model.write(model_flags_str)
+      fp_toco.write(toco_flags_str)
+      fp_input.write(input_data_str)
+      fp_model.flush()
+      fp_toco.flush()
+      fp_input.flush()
 
+    # Reserve an output file
+    with _tempfile.NamedTemporaryFile(delete=False) as fp:
+      output_filename = fp.name
+
+    # Run
     cmd = [
-        _toco_from_proto_bin, fp_model.name, fp_toco.name, fp_input.name,
-        fp_output.name
+        _toco_from_proto_bin, model_filename, toco_filename, input_filename,
+        output_filename
     ]
     cmdline = " ".join(cmd)
     is_windows = _platform.system() == "Windows"
@@ -128,11 +142,19 @@ def toco_convert_protos(model_flags_str, toco_flags_str, input_data_str):
     stdout, stderr = proc.communicate()
     exitcode = proc.returncode
     if exitcode == 0:
-      stuff = fp_output.read()
-      return stuff
+      with open(output_filename, "rb") as fp:
+        return fp.read()
     else:
-      raise RuntimeError("TOCO failed see console for info.\n%s\n%s\n" %
-                         (stdout, stderr))
+      raise RuntimeError(
+          "TOCO failed see console for info.\n%s\n%s\n" % (stdout, stderr))
+  finally:
+    # Must manually cleanup files.
+    for filename in [
+        toco_filename, input_filename, model_filename, output_filename]:
+      try:
+        _os.unlink(filename)
+      except (OSError, TypeError):
+        pass
 
 
 def tensor_name(x):
