@@ -18,7 +18,9 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import os
 import sys
+import tempfile
 
 from tensorflow.python.eager import context
 from tensorflow.python.eager import function
@@ -34,7 +36,6 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import string_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
-
 
 class LoggingOpsTest(test.TestCase):
 
@@ -270,6 +271,30 @@ class PrintV2Test(test.TestCase):
         self.evaluate(print_op)
       expected = "[0 1 2 ... 7 8 9]"
       self.assertTrue((expected + "\n") in printed.contents())
+
+  @test_util.run_in_graph_and_eager_modes()
+  def testPrintTensorsToFile(self):
+    tmpfile_name = tempfile.mktemp(".printv2_test")
+    tensor_0 = math_ops.range(0, 10)
+    print_op_0 = logging_ops.print_v2(tensor_0,
+                                      output_stream="file://"+tmpfile_name)
+    self.evaluate(print_op_0)
+    tensor_1 = math_ops.range(11, 20)
+    print_op_1 = logging_ops.print_v2(tensor_1,
+                                      output_stream="file://"+tmpfile_name)
+    self.evaluate(print_op_1)
+    try:
+      f = open(tmpfile_name, "r")
+      line_0 = f.readline()
+      expected_0 = "[0 1 2 ... 7 8 9]"
+      self.assertTrue(expected_0 in line_0)
+      line_1 = f.readline()
+      expected_1 = "[11 12 13 ... 17 18 19]"
+      self.assertTrue(expected_1 in line_1)
+      f.close()
+      os.remove(tmpfile_name)
+    except IOError as e:
+      self.fail(e)
 
   @test_util.run_in_graph_and_eager_modes()
   def testInvalidOutputStreamRaisesError(self):
