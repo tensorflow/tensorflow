@@ -278,7 +278,7 @@ StatusOr<XlaComputation> XlaBuilder::Build(int64 root_id) {
   module->set_id(entry.id());
   module->set_entry_computation_name(entry.name());
   module->set_entry_computation_id(entry.id());
-  *module->mutable_program_shape() = entry.program_shape();
+  *module->mutable_host_program_shape() = entry.program_shape();
   for (auto& e : embedded_) {
     module->add_computations()->Swap(&e.second);
   }
@@ -2357,7 +2357,7 @@ StatusOr<XlaComputation> XlaBuilder::BuildConstantSubGraph(
   module->set_id(entry.id());
   module->set_entry_computation_name(entry.name());
   module->set_entry_computation_id(entry.id());
-  *module->mutable_program_shape() = *program_shape;
+  *module->mutable_host_program_shape() = *program_shape;
   for (auto& e : embedded_) {
     if (related_calls.find(e.second.id()) != related_calls.end()) {
       *module->add_computations() = e.second;
