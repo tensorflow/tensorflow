@@ -770,7 +770,9 @@ TfLiteStatus EvalFloat(
   float* aux_input_to_output_weights_ptr = nullptr;
   if (aux_input_size > 0) {
     aux_input_ptr = aux_input->data.f;
-    aux_input_to_input_weights_ptr = aux_input_to_input_weights->data.f;
+    if (!use_cifg) {
+      aux_input_to_input_weights_ptr = aux_input_to_input_weights->data.f;
+    }
     aux_input_to_forget_weights_ptr = aux_input_to_forget_weights->data.f;
     aux_input_to_cell_weights_ptr = aux_input_to_cell_weights->data.f;
     aux_input_to_output_weights_ptr = aux_input_to_output_weights->data.f;
@@ -966,15 +968,20 @@ TfLiteStatus EvalHybrid(
   float aux_input_to_output_weights_scale = 0.0f;
   if (aux_input_size > 0) {
     aux_input_ptr = aux_input->data.f;
-    aux_input_to_input_weights_ptr =
-        reinterpret_cast<int8_t*>(aux_input_to_input_weights->data.uint8);
+    if (!use_cifg) {
+      aux_input_to_input_weights_ptr =
+          reinterpret_cast<int8_t*>(aux_input_to_input_weights->data.uint8);
+    }
     aux_input_to_forget_weights_ptr =
         reinterpret_cast<int8_t*>(aux_input_to_forget_weights->data.uint8);
     aux_input_to_cell_weights_ptr =
         reinterpret_cast<int8_t*>(aux_input_to_cell_weights->data.uint8);
     aux_input_to_output_weights_ptr =
         reinterpret_cast<int8_t*>(aux_input_to_output_weights->data.uint8);
-    aux_input_to_input_weights_scale = aux_input_to_input_weights->params.scale;
+    if (!use_cifg) {
+      aux_input_to_input_weights_scale =
+          aux_input_to_input_weights->params.scale;
+    }
     aux_input_to_forget_weights_scale =
         aux_input_to_forget_weights->params.scale;
     aux_input_to_cell_weights_scale = aux_input_to_cell_weights->params.scale;
