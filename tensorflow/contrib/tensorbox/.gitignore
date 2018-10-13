@@ -1,0 +1,14 @@
+*.pyc
+data/*
+output/*
+*.swp
+*.so
+inception/*
+frozen_graphs/*
+graphs/*
+annos/*
+csv/*
+screens/*
+utils/stitch_wrapper.cpp
+utils/build/*
+*.swo
