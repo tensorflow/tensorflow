@@ -858,6 +858,22 @@ CUDADriver::ContextGetSharedMemConfig(CudaContext* context) {
   }
 }
 
+/* static */ void CUDADriver::UnifiedMemoryAdvise(CudaContext* context,
+                                                  void* location, uint64 bytes,
+                                                  CUmem_advise advice,
+                                                  CUdevice device) {
+  ScopedActivateContext activation(context);
+  CUdeviceptr pointer = port::bit_cast<CUdeviceptr>(location);
+  CUresult res = cuMemAdvise(pointer, bytes, advice, device);
+  if (res != CUDA_SUCCESS) {
+    LOG(ERROR) << "failed to advise unified memory at " << location
+               << "; result: " << ToString(res);
+  } else {
+    VLOG(2) << "advise unified memory at " << location << " for context "
+            << context;
+  }
+}
+
 /* static */ void *CUDADriver::HostAllocate(CudaContext *context,
                                             uint64 bytes) {
   ScopedActivateContext activation(context);

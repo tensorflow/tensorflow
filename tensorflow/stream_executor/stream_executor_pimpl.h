@@ -218,6 +218,11 @@ class StreamExecutor {
   // UnifiedMemoryAllocate.
   void UnifiedMemoryDeallocate(void *location);
 
+  // Advise about the usage of a given unified memory range.
+  void UnifiedMemoryAdvise(void* location, uint64 bytes, int advice);
+
+  void UnifiedMemoryAdvise(void* location, uint64 bytes, int advice, int ordinal);
+
   // Allocates a region of host memory and registers it with the platform API.
   // Memory allocated in this manner (or allocated and registered with
   // HostMemoryRegister() is required for use in asynchronous memcpy operations,

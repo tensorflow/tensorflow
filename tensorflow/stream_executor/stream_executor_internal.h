@@ -207,6 +207,10 @@ class StreamExecutorInterface {
   // Deallocates unified memory space previously allocated with
   // UnifiedMemoryAllocate.
   virtual void UnifiedMemoryDeallocate(void *mem) {}
+
+  virtual void UnifiedMemoryAdvise(void* location, uint64 bytes, int advice) {}
+  virtual void UnifiedMemoryAdvise(void* location, uint64 bytes, int advice, int ordinal) {}
+
   virtual void *HostMemoryAllocate(uint64 size) = 0;
   virtual void HostMemoryDeallocate(void *mem) = 0;
   virtual bool HostMemoryRegister(void *mem, uint64 size) = 0;

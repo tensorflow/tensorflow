@@ -67,8 +67,9 @@ class GPUProcessState {
   //
   // REQUIRES: tf_gpu_id must be a valid id for a BaseGPUDevice available in the
   // current system environment.  Otherwise returns nullptr.
-  virtual Allocator* GetGPUAllocator(const GPUOptions& options,
-                                     TfGpuId tf_gpu_id, size_t total_bytes);
+  virtual Allocator* GetGPUAllocator(
+      const GPUOptions& options, TfGpuId tf_gpu_id, size_t total_bytes,
+      const std::vector<CudaGpuId>& valid_cuda_gpu_ids);
 
   virtual Allocator* GetCUDAHostAllocator(int numa_node);
 

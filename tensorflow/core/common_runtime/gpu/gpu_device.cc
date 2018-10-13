@@ -810,21 +810,19 @@ int64 MinSystemMemory(int64 available_memory) {
 // created on that GPU.
 Status SingleVirtualDeviceMemoryLimit(const GPUOptions& gpu_options,
                                       CudaGpuId cuda_gpu_id,
-                                      int64* memory_limit) {
-  int64 total_memory = 0;
-  int64 available_memory = 0;
-  se::StreamExecutor* se =
-      GpuIdUtil::ExecutorForCudaGpuId(cuda_gpu_id).ValueOrDie();
-  if (!se->DeviceMemoryUsage(&available_memory, &total_memory)) {
-    return errors::Unknown("Failed to query available memory for GPU ",
-                           cuda_gpu_id.value());
-  }
-
-  int64 allocated_memory = 0;
+                                      int64* memory_limit,
+                                      const std::vector<CudaGpuId>& valid_cuda_gpu_ids) {
   const double per_process_gpu_memory_fraction =
       gpu_options.per_process_gpu_memory_fraction();
-  if (per_process_gpu_memory_fraction > 1.0 ||
-      gpu_options.experimental().use_unified_memory()) {
+  const bool use_unified_memory =
+      gpu_options.experimental().use_unified_memory();
+  se::StreamExecutor* se =
+      GpuIdUtil::ExecutorForCudaGpuId(cuda_gpu_id).ValueOrDie();
+  if (per_process_gpu_memory_fraction > 1.0) {
+    if (!use_unified_memory) {
+      return errors::Internal(
+          "GPU memory oversubscription needs unified memory enabled.");
+    }
     int cc_major = 0, cc_minor = 0;
     if (!se->GetDeviceDescription().cuda_compute_capability(&cc_major,
                                                             &cc_minor)) {
@@ -836,7 +834,28 @@ Status SingleVirtualDeviceMemoryLimit(const GPUOptions& gpu_options,
           "(pre-Pascal class GPUs) does not support oversubscription.");
     }
   }
-
+  int64 available_memory = 0;
+  int64 total_memory = 0;
+  if (!use_unified_memory) {
+    if (!se->DeviceMemoryUsage(&available_memory, &total_memory)) {
+      return errors::Unknown("Failed to query available memory for GPU ",
+                             cuda_gpu_id.value());
+    }
+  } else {
+    for (CudaGpuId valid_cuda_gpu_id : valid_cuda_gpu_ids) {
+      int64 device_available_memory = 0;
+      int64 device_total_memory = 0;
+      se = GpuIdUtil::ExecutorForCudaGpuId(valid_cuda_gpu_id).ValueOrDie();
+      if (!se->DeviceMemoryUsage(&device_available_memory,
+                                 &device_total_memory)) {
+        return errors::Unknown("Failed to query available memory for GPU ",
+                               valid_cuda_gpu_id.value());
+      }
+      available_memory += device_available_memory;
+      total_memory += device_total_memory;
+    }
+  }
+  int64 allocated_memory = 0;
   if (per_process_gpu_memory_fraction == 0) {
     allocated_memory = available_memory;
     const int64 min_system_memory = MinSystemMemory(available_memory);
@@ -1008,7 +1027,8 @@ Status BaseGPUDeviceFactory::CreateDevices(const SessionOptions& options,
         virtual_devices.Get(i).memory_limit_mb_size() == 0) {
       int64 single_virtual_device_memory_limit = 0;
       TF_RETURN_IF_ERROR(SingleVirtualDeviceMemoryLimit(
-          gpu_options, cuda_gpu_id, &single_virtual_device_memory_limit));
+          gpu_options, cuda_gpu_id, &single_virtual_device_memory_limit,
+          valid_cuda_gpu_ids));
       memory_limit_bytes.push_back(single_virtual_device_memory_limit);
     } else {
       const auto& memory_limit_mb = virtual_devices.Get(i).memory_limit_mb();
@@ -1041,7 +1061,8 @@ Status BaseGPUDeviceFactory::CreateDevices(const SessionOptions& options,
                               tf_gpu_id.value());
     }
     TF_RETURN_IF_ERROR(CreateGPUDevice(options, name_prefix, tf_gpu_id, bytes,
-                                       it->second, devices));
+                                       it->second, devices,
+                                       valid_cuda_gpu_ids));
   }
   return Status::OK();
 }
@@ -1067,7 +1088,8 @@ Status BaseGPUDeviceFactory::CreateGPUDevice(const SessionOptions& options,
                                              TfGpuId tf_gpu_id,
                                              int64 memory_limit,
                                              const DeviceLocality& dev_locality,
-                                             std::vector<Device*>* devices) {
+                                             std::vector<Device*>* devices,
+                                             const std::vector<CudaGpuId>& valid_cuda_gpu_ids) {
   CHECK_GE(tf_gpu_id.value(), 0);
   const string device_name =
       strings::StrCat(name_prefix, "/device:GPU:", tf_gpu_id.value());
@@ -1080,8 +1102,9 @@ Status BaseGPUDeviceFactory::CreateGPUDevice(const SessionOptions& options,
       GpuIdUtil::ExecutorForCudaGpuId(cuda_gpu_id).ValueOrDie();
   const se::DeviceDescription& desc = se->GetDeviceDescription();
   GPUProcessState* process_state = GPUProcessState::singleton();
-  Allocator* gpu_allocator = process_state->GetGPUAllocator(
-      options.config.gpu_options(), tf_gpu_id, memory_limit);
+  Allocator* gpu_allocator =
+      process_state->GetGPUAllocator(options.config.gpu_options(), tf_gpu_id,
+                                     memory_limit, valid_cuda_gpu_ids);
   if (gpu_allocator == nullptr) {
     return errors::Internal("Failed to get memory allocator for TF GPU ",
                             tf_gpu_id.value(), " with ", memory_limit,

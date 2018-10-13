@@ -116,6 +116,13 @@ class CUDADriver {
   // http://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__MEM.html#group__CUDA__MEM_1g89b3f154e17cc89b6eea277dbdf5c93a
   static void UnifiedMemoryDeallocate(CudaContext* context, void* location);
 
+  // Advise about the usage of a given unified memory range
+  // context via cuMemAdvise.
+  // https://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__UNIFIED.html#group__CUDA__UNIFIED_1g27608c857a9254789c13f3e3b72029e2
+  static void UnifiedMemoryAdvise(CudaContext* context, void* location,
+                                  uint64 bytes, CUmem_advise advice,
+                                  CUdevice device);
+
   // Allocates page-locked and CUDA-registered memory on the host via
   // cuMemAllocHost.
   // http://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__MEM.html#group__CUDA__MEM_1gdd8311286d2c2691605362c689bc64e0
