@@ -67,7 +67,7 @@ CompileOnlyService::CompileAheadOfTime(
     std::unique_ptr<AotCompilationMetadata>* metadata) {
   std::vector<std::unique_ptr<HloModule>> hlo_modules;
   for (const AotXlaComputationInstance& instance : computations) {
-    TF_RET_CHECK(instance.computation.has_program_shape());
+    TF_RET_CHECK(instance.computation.has_host_program_shape());
 
     const DebugOptions& debug_options = options.debug_options();
 
@@ -86,7 +86,7 @@ CompileOnlyService::CompileAheadOfTime(
           Executable::DumpToDirectory(per_host_path, filename, hlo_snapshot));
     }
 
-    const auto& program_shape = instance.computation.program_shape();
+    const auto& program_shape = instance.computation.host_program_shape();
     ExecutionOptions execution_options;
     *execution_options.mutable_debug_options() = debug_options;
     *execution_options.mutable_shape_with_output_layout() =
@@ -103,8 +103,10 @@ CompileOnlyService::CompileAheadOfTime(
     hlo_modules.push_back(std::move(hlo_module));
   }
 
-  return compiler_->CompileAheadOfTime(std::move(hlo_modules), options,
-                                       metadata);
+  return compiler_->CompileAheadOfTime(
+      absl::make_unique<HloModuleGroup>(hlo_modules[0]->name(),
+                                        absl::MakeSpan(hlo_modules)),
+      options, metadata);
 }
 
 }  // namespace xla

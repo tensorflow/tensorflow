@@ -3363,7 +3363,8 @@ void ArithmeticOptimizer::DedupComputations() {
       }
       VLOG(3) << "Remove duplicated node: node=" << node->name()
               << " representative=" << rep->name();
-      const std::set<NodeDef*>& fanouts = node_map_->GetOutputs(node->name());
+      const std::set<NodeDef*>& tmp = node_map_->GetOutputs(node->name());
+      std::vector<NodeDef*> fanouts(tmp.begin(), tmp.end());
       for (NodeDef* fanout : fanouts) {
         for (int i = 0; i < fanout->input_size(); ++i) {
           string* fanout_input = fanout->mutable_input(i);
@@ -3480,6 +3481,7 @@ Status ArithmeticOptimizer::SimplifyArithmeticOps(bool can_use_shapes) {
           << str_util::Join(pipeline.StageNames(), ", ");
 
   while (!nodes_to_simplify.Empty()) {
+    GRAPPLER_RETURN_IF_DEADLINE_EXCEEDED();
     NodeDef* node = nodes_to_simplify.PopBack();
 
     string simplified_tensor = "";
@@ -3549,6 +3551,7 @@ Status ArithmeticOptimizer::Optimize(Cluster* /*cluster*/,
   if (options_.dedup_computations) {
     DedupComputations();
   }
+  GRAPPLER_RETURN_IF_DEADLINE_EXCEEDED();
 
   // Perform topological sort on the graph in order to help AddOpsRewrite to
   // optimize larger subgraphs starting from the roots with more inputs.

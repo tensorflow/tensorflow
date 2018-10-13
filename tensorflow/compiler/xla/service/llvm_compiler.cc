@@ -21,8 +21,24 @@ limitations under the License.
 #endif
 
 namespace xla {
+Status LLVMCompiler::RunHloPassesOnModuleGroup(
+    HloModuleGroup* module_group, se::StreamExecutor* executor,
+    DeviceMemoryAllocator* device_allocator) {
+  return Unimplemented(
+      "Model partitioning not implemented for the CPU/GPU compilers!");
+}
+
+StatusOr<std::vector<std::unique_ptr<Executable>>>
+LLVMCompiler::RunBackendOnModuleGroup(
+    std::unique_ptr<HloModuleGroup> module_group,
+    std::vector<std::vector<se::StreamExecutor*>> stream_exec,
+    DeviceMemoryAllocator* device_allocator) {
+  return Unimplemented(
+      "Model partitioning not implemented for the CPU/GPU compilers!");
+}
+
 StatusOr<std::vector<std::unique_ptr<Executable>>> LLVMCompiler::Compile(
-    std::vector<std::unique_ptr<HloModule>> modules,
+    std::unique_ptr<HloModuleGroup> module_group,
     std::vector<std::vector<se::StreamExecutor*>> stream_execs,
     DeviceMemoryAllocator* device_allocator) {
   // Tensorflow tries to enable the following behaviors in all its threads:
@@ -38,6 +54,8 @@ StatusOr<std::vector<std::unique_ptr<Executable>>> LLVMCompiler::Compile(
   tensorflow::port::ScopedDontFlushDenormal dont_flush_denormals;
 
   std::vector<std::unique_ptr<Executable>> result;
+  std::vector<std::unique_ptr<HloModule>> modules =
+      module_group->ConsumeModules();
   for (size_t i = 0; i < modules.size(); i++) {
     if (stream_execs[i].size() != 1) {
       return Unimplemented(

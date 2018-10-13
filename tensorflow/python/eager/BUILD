@@ -143,6 +143,7 @@ cuda_py_test(
 
 cuda_py_test(
     name = "function_test",
+    size = "medium",
     srcs = ["function_test.py"],
     additional_deps = [
         ":backprop",
@@ -246,7 +247,6 @@ py_library(
     visibility = ["//tensorflow:internal"],
     deps = [
         ":graph_only_ops",
-        "//tensorflow/python:cond_v2_impl",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:errors",
         "//tensorflow/python:framework_ops",

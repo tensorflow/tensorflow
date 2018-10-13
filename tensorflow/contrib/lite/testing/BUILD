@@ -307,6 +307,7 @@ cc_library(
     visibility = [
         "//tensorflow/contrib/lite/java/src/main/native:__subpackages__",
         "//tensorflow/contrib/lite/testing:__subpackages__",
+        "//tensorflow/contrib/lite/tools/benchmark:__subpackages__",
     ],
     deps = select({
         "//conditions:default": [
@@ -383,35 +384,6 @@ cc_binary(
         ":init_tensorflow",
         ":tflite_diff_flags",
         ":tflite_diff_util",
-    ],
-)
-
-py_binary(
-    name = "model_coverage_lib",
-    srcs = ["//tensorflow/contrib/lite/testing:model_coverage/model_coverage_lib.py"],
-    srcs_version = "PY2AND3",
-    tags = ["no_pip"],
-    visibility = ["//tensorflow/contrib/lite:__subpackages__"],
-    deps = [
-        "//tensorflow/contrib/lite/python:lite",
-        "//tensorflow/python:platform",
-    ],
-)
-
-py_test(
-    name = "model_coverage_lib_test",
-    srcs = ["//tensorflow/contrib/lite/testing:model_coverage/model_coverage_lib_test.py"],
-    srcs_version = "PY2AND3",
-    tags = [
-        "manual",
-        "no_oss",
-        "no_pip",
-        "no_windows",
-        "notap",
-    ],
-    deps = [
-        ":model_coverage_lib",
-        "//tensorflow/python:client_testlib",
     ],
 )
 

@@ -591,6 +591,7 @@ tf_cc_test(
         "//tensorflow/core/kernels/data:dataset_ops",
         "//tensorflow/core/kernels:cast_op",
         "//tensorflow/core/kernels:logging_ops",
+        "//tensorflow/core/kernels:parsing",
         "//tensorflow/tools/graph_transforms:transform_utils",
     ] + tf_protos_all(),
 )

@@ -325,6 +325,7 @@ Status PinToHostOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
   std::vector<std::pair<NodeDef*, string>> const_nodes;
 
   for (auto& node : *optimized_graph->mutable_node()) {
+    GRAPPLER_RETURN_IF_DEADLINE_EXCEEDED();
     bool is_candidate = false;
     TF_RETURN_IF_ERROR(
         internal::IsNodeHostCandidate(graph, &properties, node, &is_candidate));
@@ -342,6 +343,7 @@ Status PinToHostOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
 
   // Traverse all `const_nodes`, and map them back to GPU greedily.
   for (auto& it : const_nodes) {
+    GRAPPLER_RETURN_IF_DEADLINE_EXCEEDED();
     NodeDef* node = it.first;
     const string& device = it.second;
 

@@ -1498,14 +1498,6 @@ def set_windows_build_flags(environ_cp):
   # TODO(pcloudy): Remove this flag when upgrading Bazel to 0.16.0
   # Short object file path will be enabled by default.
   write_to_bazelrc('build --experimental_shortened_obj_file_path=true')
-  # When building zip file for some py_binary and py_test targets, don't
-  # include its dependencies. This is for:
-  #   1. Running python tests against the system installed TF pip package.
-  #   2. Avoiding redundant files in
-  #      //tensorflow/tools/pip_package:simple_console_windows,
-  #      which is a py_binary used during creating TF pip package.
-  #      See https://github.com/tensorflow/tensorflow/issues/22390
-  write_to_bazelrc('build --define=no_tensorflow_py_deps=true')
 
   if get_var(
       environ_cp, 'TF_OVERRIDE_EIGEN_STRONG_INLINE', 'Eigen strong inline',
@@ -1573,8 +1565,6 @@ def main():
   if is_ppc64le():
     write_action_env_to_bazelrc('OMP_NUM_THREADS', 1)
 
-  set_build_var(environ_cp, 'TF_NEED_IGNITE', 'Apache Ignite',
-                'with_ignite_support', True, 'ignite')
   xla_enabled_by_default = is_linux()
   set_build_var(environ_cp, 'TF_ENABLE_XLA', 'XLA JIT', 'with_xla_support',
                 xla_enabled_by_default, 'xla')
@@ -1669,19 +1659,23 @@ def main():
     create_android_ndk_rule(environ_cp)
     create_android_sdk_rule(environ_cp)
 
-  # On Windows, we don't have MKL support and the build is always monolithic.
-  # So no need to print the following message.
-  # TODO(pcloudy): remove the following if check when they make sense on Windows
-  if not is_windows():
-    print('Preconfigured Bazel build configs. You can use any of the below by '
-          'adding "--config=<>" to your build command. See .bazelrc for more '
-          'details.')
-    config_info_line('mkl', 'Build with MKL support.')
-    config_info_line('monolithic', 'Config for mostly static monolithic build.')
-    config_info_line('gdr', 'Build with GDR support.')
-    config_info_line('verbs', 'Build with libverbs support.')
-    config_info_line('ngraph', 'Build with Intel nGraph support.')
+  print('Preconfigured Bazel build configs. You can use any of the below by '
+        'adding "--config=<>" to your build command. See .bazelrc for more '
+        'details.')
+  config_info_line('mkl', 'Build with MKL support.')
+  config_info_line('monolithic', 'Config for mostly static monolithic build.')
+  config_info_line('gdr', 'Build with GDR support.')
+  config_info_line('verbs', 'Build with libverbs support.')
+  config_info_line('ngraph', 'Build with Intel nGraph support.')
+
+  print('Preconfigured Bazel build configs to DISABLE default on features:')
+  config_info_line('noaws', 'Disable AWS S3 filesystem support.')
+  config_info_line('nogcp', 'Disable GCP support.')
+  config_info_line('nohdfs', 'Disable HDFS support.')
+  config_info_line('noignite', 'Disable Apacha Ignite support.')
+  config_info_line('nokafka', 'Disable Apache Kafka support.')
 
 
 if __name__ == '__main__':
   main()
+

@@ -83,7 +83,8 @@ std::unique_ptr<LocalExecutable> CompileExecutable(const HloSnapshot& module,
                                                    LocalClient* client) {
   XlaComputation computation(module.hlo().hlo_module());
   std::vector<const Shape*> argument_layouts;
-  for (const auto& param : computation.proto().program_shape().parameters()) {
+  for (const auto& param :
+       computation.proto().host_program_shape().parameters()) {
     argument_layouts.push_back(&param);
   }
   return client
