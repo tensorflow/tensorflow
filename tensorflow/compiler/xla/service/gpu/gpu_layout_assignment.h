@@ -46,8 +46,6 @@ class GpuLayoutAssignment : public LayoutAssignment {
   Status PropagateBufferConstraint(
       const BufferLayoutConstraint& buffer_constraint,
       LayoutConstraints* constraints) override;
-  bool CustomCallRequiresMajorFirstLayout(
-      const HloInstruction* instruction) override;
 
  private:
   Status AddBackendConstraintsToDnnConvCustomCall(

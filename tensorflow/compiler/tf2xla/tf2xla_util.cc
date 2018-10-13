@@ -330,8 +330,8 @@ uint32 GetXLARandomSeed() {
 
 // TODO(b/77601805): add tests for associated function related stuff.
 bool HasAssociatedFunction(const NodeDef& node_def,
-                           FunctionLibraryRuntime* flr) {
-  if (flr->GetFunctionLibraryDefinition()->Contains(node_def.op())) {
+                           const FunctionLibraryDefinition* fld) {
+  if (fld->Contains(node_def.op())) {
     return true;
   }
 
@@ -351,10 +351,10 @@ bool HasAssociatedFunction(const NodeDef& node_def,
 }
 
 std::vector<AssociatedFunctionInfo> GetAssociatedFunctions(
-    const Node& node, FunctionLibraryRuntime* flr) {
+    const Node& node, const FunctionLibraryDefinition* fld) {
   std::vector<AssociatedFunctionInfo> results;
   const string& op = node.type_string();
-  if (flr->GetFunctionLibraryDefinition()->Contains(op)) {
+  if (fld->Contains(op)) {
     // This is a function call node.
     AttrValueMap attrs(node.attrs().begin(), node.attrs().end());
     results.emplace_back(AssociatedFunctionInfo::FunctionCall(op, attrs));
@@ -439,6 +439,30 @@ Status RewriteAssociatedFunction(
   }
 
   return Status::OK();
+}
+
+Status CachedFunctionHandles::GetOrInstantiate(
+    const string& func_name, AttrSlice attrs,
+    FunctionLibraryRuntime::Handle* handle) {
+  string canonicalized_name = Canonicalize(func_name, attrs);
+  auto iter = handles_.find(canonicalized_name);
+  if (iter != handles_.end()) {
+    *handle = iter->second;
+    return Status::OK();
+  }
+
+  TF_RETURN_IF_ERROR(flr_->Instantiate(func_name, attrs, handle));
+  handles_[canonicalized_name] = *handle;
+  return Status::OK();
+}
+
+Status CachedFunctionHandles::ReleaseAllHandles() {
+  Status result;
+  for (auto iter : handles_) {
+    result.Update(flr_->ReleaseHandle(iter.second));
+  }
+  handles_.clear();
+  return result;
 }
 
 }  // namespace tensorflow

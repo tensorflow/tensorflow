@@ -461,8 +461,9 @@ ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(
   return ShapeUtil::IsArray(shape) && ElementsIn(shape) == 0;
 }
 
-/* static */ bool ShapeUtil::IsScalarF32(const Shape& shape) {
-  return shape.element_type() == F32 && Rank(shape) == 0;
+/* static */ bool ShapeUtil::IsScalarWithElementType(
+    const Shape& shape, PrimitiveType element_type) {
+  return IsScalar(shape) && shape.element_type() == element_type;
 }
 
 namespace {
@@ -596,7 +597,8 @@ StatusOr<Shape> ParseShapeStringInternal(absl::string_view* s) {
   // we convert in to the RE2-consumable type and then consume the corresponding
   // amount from our string_view type.
   static LazyRE2 shape_pattern = {
-      "^(\\w*\\d*)\\[([\\d,]*)\\](?:\\s*(dense|sparse)?\\s*{([\\d,]+)})?"};
+      "^(\\w*\\d*)\\[([\\d,\\s]*)\\](?:\\s*(dense|sparse)?\\s*{([\\d,\\s]+)})"
+      "?"};
   tensorflow::RegexpStringPiece s_consumable(s->data(), s->size());
   if (RE2::Consume(&s_consumable, *shape_pattern, &element_type_string,
                    &dimensions_string, &format_string, &layout_string)) {
@@ -1645,7 +1647,7 @@ ShapeUtil::DimensionsUnmodifiedByReshape(const Shape& input_shape,
 }
 
 std::ostream& operator<<(std::ostream& out, const Shape& shape) {
-  out << ShapeUtil::HumanString(shape);
+  out << ShapeUtil::HumanStringWithLayout(shape);
   return out;
 }
 

@@ -432,6 +432,27 @@ class Network(base_layer.Layer):
           'assign variables to attributes and they will show up in the weights '
           'and variables properties.')
 
+  def add_weight(self,
+                 name,
+                 shape,
+                 dtype=None,
+                 initializer=None,
+                 regularizer=None,
+                 trainable=None,
+                 constraint=None,
+                 partitioner=None,
+                 use_resource=None,
+                 synchronization=variables.VariableSynchronization.AUTO,
+                 aggregation=variables.VariableAggregation.NONE,
+                 **kwargs):
+    if self._is_graph_network:
+      raise NotImplementedError('`add_weight` is not supported on Networks.')
+    else:
+      raise NotImplementedError(
+          '`add_weight` is not supported on Networks. However, you may '
+          'assign variables to attributes and they will show up in the weights '
+          'and variables properties.')
+
   def add_loss(self, *args, **kwargs):
     if context.executing_eagerly():
       raise NotImplementedError('`add_loss` is not supported on Networks '
@@ -1641,10 +1662,11 @@ class Network(base_layer.Layer):
         ValueError: if `summary()` is called before the model is built.
     """
     if not self.built:
-      raise ValueError('This model has never been called, thus its weights '
-                       'have not yet been created, so no summary can be '
-                       'displayed. Build the model first '
-                       '(e.g. by calling it on some data).')
+      raise ValueError('This model has not yet been built. '
+                       'Build the model first by calling `build()` or calling '
+                       '`fit()` with some data, or specify '
+                       'an `input_shape` argument in the first layer(s) for '
+                       'automatic build.')
     layer_utils.print_summary(self,
                               line_length=line_length,
                               positions=positions,

@@ -380,6 +380,33 @@ def get_batch_dimension(iterator):
   return dims[0] if dims else None
 
 
+def get_batch_size(num_towers, num_samples, steps):
+  """Calculate and return batch size for numpy inputs.
+
+  Args:
+    num_towers: Number of devices over which the model input is distributed.
+    num_samples: Total number of input samples in the input numpy arrays.
+    steps: Number of steps that we run the model for.
+
+  Returns:
+    batch size used to create the Dataset object from the input numpy arrays.
+
+  """
+  if num_samples % steps != 0:
+    logging.warning('The number of input samples %d is not evenly '
+                    'divisible by the number of steps %d. '
+                    'Some samples will not be processed as expected.' %
+                    (num_samples, steps))
+  global_batch_size = num_samples // steps
+  if global_batch_size % num_towers != 0:
+    logging.warning('The total number of batches per step %d is not evenly '
+                    'divisible by the number of towers %d used in '
+                    'DistributionStrategy. Some samples will not be processed '
+                    'as expected.' %
+                    (global_batch_size, num_towers))
+  return global_batch_size // num_towers
+
+
 def get_cpu_device(distribution_strategy):
   """Returns the CPU device of the TPU host or the default CPU device string.
 

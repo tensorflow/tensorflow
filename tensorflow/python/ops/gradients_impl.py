@@ -21,7 +21,6 @@ from __future__ import print_function
 import collections
 import contextlib
 import enum  # pylint: disable=g-bad-import-order
-import sys
 import warnings
 
 import numpy as np
@@ -39,7 +38,6 @@ from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_grad  # pylint: disable=unused-import
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops  # pylint: disable=unused-import
-from tensorflow.python.ops import cond_v2_impl
 from tensorflow.python.ops import control_flow_grad  # pylint: disable=unused-import
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import control_flow_util
@@ -62,9 +60,6 @@ from tensorflow.python.util.tf_export import tf_export
 # This is to avoid a circular dependency (eager.function depends on
 # gradients_impl). This is set in eager/function.py.
 _function = None
-
-# This is to avoid a circular dependency with cond_v2_impl.
-cond_v2_impl._gradients_impl = sys.modules[__name__]  # pylint: disable=protected-access
 
 # Warn the user if we convert a sparse representation to dense with at
 # least this number of elements.
@@ -800,23 +795,21 @@ def _GradientsHelper(ys,
         # pylint: enable=protected-access
         has_out_grads = any(isinstance(g, ops.Tensor) or g for g in out_grads)
         if has_out_grads and (op not in stop_ops):
-          if is_func_call:
-            if is_partitioned_call:
-              func_call = src_graph._get_function(  # pylint: disable=protected-access
-                  compat.as_bytes(op.get_attr("f").name))
+          try:
+            grad_fn = ops.get_gradient_function(op)
+          except LookupError:
+            if is_func_call:
+              if is_partitioned_call:
+                func_call = src_graph._get_function(  # pylint: disable=protected-access
+                    compat.as_bytes(op.get_attr("f").name))
+              else:
+                func_call = src_graph._get_function(op.type)  # pylint: disable=protected-access
+              # Note that __defun is not set if the graph is
+              # imported. If it's set, we prefer to access the original
+              # defun.
+              func_call = getattr(op, "__defun", func_call)
+              grad_fn = func_call.python_grad_func
             else:
-              func_call = src_graph._get_function(op.type)  # pylint: disable=protected-access
-            # Note that __defun is not set if the graph is
-            # imported. If it's set, we prefer to access the original
-            # defun.
-            func_call = getattr(op, "__defun", func_call)
-            grad_fn = func_call.python_grad_func
-          else:
-            # A grad_fn must be defined, either as a function or as None
-            # for ops that do not have gradients.
-            try:
-              grad_fn = ops.get_gradient_function(op)
-            except LookupError:
               raise LookupError(
                   "No gradient defined for operation '%s' (op type: %s)" %
                   (op.name, op.type))
@@ -980,7 +973,8 @@ def _GetGrad(grads, t, unconnected_gradients):
   op_grads = grads.get(op)
   if not op_grads:
     if unconnected_gradients == UnconnectedGradients.ZERO:
-      return array_ops.zeros_like(t)
+      t_dtype = t.dtype if t.dtype != dtypes.resource else dtypes.float32
+      return array_ops.zeros_like(t, dtype=t_dtype)
     elif unconnected_gradients == UnconnectedGradients.NONE:
       return None
     else:

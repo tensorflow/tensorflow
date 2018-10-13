@@ -641,7 +641,7 @@ cuda_py_test(
         "//tensorflow/python:linalg_ops",
         "//tensorflow/python:math_ops",
     ],
-    tags = ["notap"],
+    tags = ["optonly"],
 )
 
 cuda_py_test(
@@ -1490,7 +1490,6 @@ cuda_py_test(
         "//tensorflow/python:array_ops_gen",
         "//tensorflow/python:client",
         "//tensorflow/python:client_testlib",
-        "//tensorflow/python:cond_v2",
         "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:data_flow_ops",
         "//tensorflow/python:data_flow_ops_gen",
@@ -1785,6 +1784,7 @@ cuda_py_test(
     size = "medium",
     srcs = ["linalg_ops_test.py"],
     additional_deps = [
+        "@absl_py//absl/testing:parameterized",
         "//third_party/py/numpy",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
@@ -3261,6 +3261,7 @@ cuda_py_test(
     srcs = ["cond_v2_test.py"],
     additional_deps = [
         "//tensorflow/python:array_ops",
+        "//tensorflow/python:test_ops",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:cond_v2",
         "//tensorflow/python:constant_op",

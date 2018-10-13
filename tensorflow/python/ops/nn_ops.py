@@ -22,6 +22,7 @@ import numbers
 
 import numpy as np
 
+from tensorflow.python.compat import compat
 from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import graph_util
@@ -1602,6 +1603,8 @@ def leaky_relu(features, alpha=0.2, name=None):
     features = ops.convert_to_tensor(features, name="features")
     if features.dtype.is_integer:
       features = math_ops.to_float(features)
+    if compat.forward_compatible(2018, 11, 1):
+      return gen_nn_ops.leaky_relu(features, alpha=alpha, name=name)
     alpha = ops.convert_to_tensor(alpha, dtype=features.dtype, name="alpha")
     return math_ops.maximum(alpha * features, features, name=name)
 

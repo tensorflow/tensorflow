@@ -78,7 +78,7 @@ class _PerDeviceGenerator(dataset_ops.Dataset):
           output_types=self._flat_output_types,
           output_shapes=self._flat_output_shapes)
 
-    @function.Defun(dtypes.string)
+    @function.Defun(dtypes.string, experimental_ints_on_device=True)
     def _remote_next_func(string_handle):
       return functional_ops.remote_call(
           target=source_device,

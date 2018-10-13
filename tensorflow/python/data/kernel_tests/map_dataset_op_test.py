@@ -805,6 +805,21 @@ class MapDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
         expected = map_fn(sess.run(self.structuredElement(structure)))
       self.assertEqual(expected, sess.run(get_next))
 
+  @parameterized.named_parameters(
+      ("Sequential", None),
+      ("Parallel", 10),
+  )
+  def testShortCircuitCapturedInput(self, num_parallel_calls):
+    captured_t = array_ops.placeholder(dtypes.int64, shape=[])
+    dataset = self.structuredDataset(None).repeat().map(
+        lambda x: captured_t, num_parallel_calls=num_parallel_calls)
+    iterator = dataset.make_initializable_iterator()
+    get_next = iterator.get_next()
+
+    with self.cached_session() as sess:
+      sess.run(iterator.initializer, feed_dict={captured_t: 42})
+      self.assertEqual(42, sess.run(get_next))
+
 
 class MapDatasetBenchmark(test.Benchmark):
 

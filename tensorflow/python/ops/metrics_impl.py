@@ -18,6 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.python.compat import compat
 from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -224,6 +225,8 @@ def _safe_div(numerator, denominator, name):
   Returns:
     0 if `denominator` <= 0, else `numerator` / `denominator`
   """
+  if compat.forward_compatible(2018, 11, 1):
+    return math_ops.div_no_nan(numerator, denominator)
   t = math_ops.truediv(numerator, denominator)
   zero = array_ops.zeros_like(t, dtype=denominator.dtype)
   condition = math_ops.greater(denominator, zero)
@@ -244,12 +247,7 @@ def _safe_scalar_div(numerator, denominator, name):
   """
   numerator.get_shape().with_rank_at_most(1)
   denominator.get_shape().with_rank_at_most(1)
-  return control_flow_ops.cond(
-      math_ops.equal(
-          array_ops.constant(0.0, dtype=dtypes.float64), denominator),
-      lambda: array_ops.constant(0.0, dtype=dtypes.float64),
-      lambda: math_ops.div(numerator, denominator),
-      name=name)
+  return _safe_div(numerator, denominator, name=name)
 
 
 def _streaming_confusion_matrix(labels, predictions, num_classes, weights=None):
@@ -402,11 +400,14 @@ def mean(values,
     with ops.control_dependencies([values]):
       update_count_op = state_ops.assign_add(count, num_values)
 
-    compute_mean = lambda _, t, c: _safe_div(t, c, 'value')
+    def compute_mean(_, t, c):
+      return _safe_div(t, math_ops.maximum(c, 0), name='value')
 
     mean_t = _aggregate_across_towers(
         metrics_collections, compute_mean, total, count)
-    update_op = _safe_div(update_total_op, update_count_op, 'update_op')
+    update_op = _safe_div(update_total_op,
+                          math_ops.maximum(update_count_op, 0),
+                          name='update_op')
 
     if updates_collections:
       ops.add_to_collections(updates_collections, update_op)
@@ -778,16 +779,21 @@ def auc(labels,
       """
       dtp = tp[:num_thresholds - 1] - tp[1:]
       p = tp + fp
-      prec_slope = _safe_div(dtp, p[:num_thresholds - 1] - p[1:], 'prec_slope')
+      prec_slope = _safe_div(
+          dtp,
+          math_ops.maximum(p[:num_thresholds - 1] - p[1:], 0),
+          name='prec_slope')
       intercept = tp[1:] - math_ops.multiply(prec_slope, p[1:])
       safe_p_ratio = array_ops.where(
           math_ops.logical_and(p[:num_thresholds - 1] > 0, p[1:] > 0),
-          _safe_div(p[:num_thresholds - 1], p[1:], 'recall_relative_ratio'),
+          _safe_div(p[:num_thresholds - 1],
+                    math_ops.maximum(p[1:], 0),
+                    name='recall_relative_ratio'),
           array_ops.ones_like(p[1:]))
       return math_ops.reduce_sum(
           _safe_div(
               prec_slope * (dtp + intercept * math_ops.log(safe_p_ratio)),
-              tp[1:] + fn[1:],
+              math_ops.maximum(tp[1:] + fn[1:], 0),
               name='pr_auc_increment'),
           name='interpolate_pr_auc')
 
@@ -1068,7 +1074,8 @@ def mean_per_class_accuracy(labels,
     update_count_op = state_ops.scatter_add(count, labels, is_correct)
 
     def compute_mean_accuracy(_, count, total):
-      per_class_accuracy = _safe_div(count, total, None)
+      per_class_accuracy = _safe_div(
+          count, math_ops.maximum(total, 0), name=None)
       mean_accuracy_v = math_ops.reduce_mean(
           per_class_accuracy, name='mean_accuracy')
       return mean_accuracy_v
@@ -1076,7 +1083,9 @@ def mean_per_class_accuracy(labels,
     mean_accuracy_v = _aggregate_across_towers(
         metrics_collections, compute_mean_accuracy, count, total)
 
-    update_op = _safe_div(update_count_op, update_total_op, name='update_op')
+    update_op = _safe_div(update_count_op,
+                          math_ops.maximum(update_total_op, 0),
+                          name='update_op')
     if updates_collections:
       ops.add_to_collections(updates_collections, update_op)
 
@@ -1385,12 +1394,15 @@ def mean_tensor(values,
     with ops.control_dependencies([values]):
       update_count_op = state_ops.assign_add(count, num_values)
 
-    compute_mean = lambda _, t, c: _safe_div(t, c, 'value')
+    compute_mean = lambda _, t, c: _safe_div(
+        t, math_ops.maximum(c, 0), name='value')
 
     mean_t = _aggregate_across_towers(
         metrics_collections, compute_mean, total, count)
 
-    update_op = _safe_div(update_total_op, update_count_op, 'update_op')
+    update_op = _safe_div(update_total_op,
+                          math_ops.maximum(update_count_op, 0),
+                          name='update_op')
     if updates_collections:
       ops.add_to_collections(updates_collections, update_op)
 

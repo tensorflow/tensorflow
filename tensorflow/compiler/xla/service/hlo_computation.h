@@ -128,9 +128,10 @@ class HloComputation {
   // users. Instruction is deallocated with this call.
   Status RemoveInstruction(HloInstruction* instruction);
 
-  // Remove an instruction from the computation and also transitively any
-  // operand that has no users post removing an instruction. The instruction
-  // must have no users. Instruction is deallocated with this call.
+  // Remove an instruction (including side effecting ones) from the computation
+  // and also transitively any operand that has no side effect and no users post
+  // removing an instruction. The instruction must have no users. Instruction is
+  // deallocated with this call.
   Status RemoveInstructionAndUnusedOperands(HloInstruction* instruction);
 
   // Set the root of the computation to the given instruction. The instruction

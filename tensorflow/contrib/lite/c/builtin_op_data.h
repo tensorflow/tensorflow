@@ -191,6 +191,13 @@ typedef struct {
   TfLiteFusedActivation activation;
   float cell_clip;
   float proj_clip;
+} TfLiteUnidirectionalSequenceLSTMParams;
+
+typedef struct {
+  // Parameters for the LSTM kernel.
+  TfLiteFusedActivation activation;
+  float cell_clip;
+  float proj_clip;
 
   // If true, store the outputs of both directions in the first output.
   bool merge_outputs;

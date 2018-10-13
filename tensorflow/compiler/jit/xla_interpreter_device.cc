@@ -25,8 +25,9 @@ namespace tensorflow {
 const char* const DEVICE_XLA_INTERPRETER = "XLA_INTERPRETER";
 const char* const DEVICE_INTERPRETER_XLA_JIT = "XLA_INTERPRETER_JIT";
 
-constexpr std::array<DataType, 6> kExecAllTypes = {
-    {DT_INT32, DT_INT64, DT_FLOAT, DT_DOUBLE, DT_COMPLEX64, DT_BOOL}};
+constexpr std::array<DataType, 9> kExecAllTypes = {
+    {DT_INT8, DT_INT32, DT_INT64, DT_HALF, DT_FLOAT, DT_DOUBLE, DT_COMPLEX64,
+     DT_BOOL, DT_BFLOAT16}};
 
 class XlaInterpreterDeviceFactory : public DeviceFactory {
  public:

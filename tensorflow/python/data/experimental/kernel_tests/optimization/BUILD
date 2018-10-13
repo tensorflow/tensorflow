@@ -79,6 +79,7 @@ py_test(
         "no_windows",
     ],
     deps = [
+        "//tensorflow/core:protos_all_py",
         "//tensorflow/python:check_ops",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:constant_op",
@@ -86,6 +87,7 @@ py_test(
         "//tensorflow/python:errors",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:math_ops",
+        "//tensorflow/python:parsing_ops",
         "//tensorflow/python:session",
         "//tensorflow/python/data/experimental/ops:optimization",
         "//tensorflow/python/data/kernel_tests:test_base",
@@ -161,6 +163,7 @@ py_test(
         "//tensorflow/python/data/kernel_tests:test_base",
         "//tensorflow/python/data/ops:dataset_ops",
         "//third_party/py/numpy",
+        "@absl_py//absl/testing:parameterized",
     ],
 )
 
@@ -199,6 +202,7 @@ py_test(
     deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:errors",
+        "//tensorflow/python/data/experimental/ops:batching",
         "//tensorflow/python/data/experimental/ops:optimization",
         "//tensorflow/python/data/kernel_tests:test_base",
         "//tensorflow/python/data/ops:dataset_ops",

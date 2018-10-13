@@ -19,6 +19,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
 #include "tensorflow/core/grappler/grappler_item.h"
+#include "tensorflow/core/lib/gtl/array_slice.h"
 
 namespace tensorflow {
 namespace grappler {
@@ -38,6 +39,21 @@ NodeDef MakeFilterNode(StringPiece name, StringPiece input_node_name,
                        StringPiece function_name) {
   return test::function::NDef(
       name, "FilterDataset", {string(input_node_name)},
+      {{"predicate", FunctionDefHelper::FunctionRef(string(function_name))},
+       {"Targuments", {}},
+       {"output_shapes", gtl::ArraySlice<TensorShape>{}},
+       {"output_types", gtl::ArraySlice<TensorShape>{}}});
+}
+
+NodeDef MakeMapAndBatchNode(StringPiece name, StringPiece input_node_name,
+                            StringPiece batch_size_node_name,
+                            StringPiece num_parallel_calls_node_name,
+                            StringPiece drop_remainder_node_name,
+                            StringPiece function_name) {
+  return test::function::NDef(
+      name, "MapAndBatchDatasetV2",
+      {string(input_node_name), "", string(batch_size_node_name),
+       string(num_parallel_calls_node_name), string(drop_remainder_node_name)},
       {{"predicate", FunctionDefHelper::FunctionRef(string(function_name))},
        {"Targuments", {}},
        {"output_shapes", gtl::ArraySlice<TensorShape>{}},

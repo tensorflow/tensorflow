@@ -919,6 +919,9 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
   switch (opcode) {
     case HloOpcode::kMaximum:
     case HloOpcode::kMinimum:
+      return InferElementwiseBinaryOpShape(opcode, lhs, rhs,
+                                           broadcast_dimensions);
+
     case HloOpcode::kSubtract:
     case HloOpcode::kAdd:
     case HloOpcode::kAtan2:
@@ -929,6 +932,12 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
     case HloOpcode::kShiftLeft:
     case HloOpcode::kShiftRightArithmetic:
     case HloOpcode::kShiftRightLogical:
+      if (lhs.element_type() == PRED || rhs.element_type() == PRED) {
+        return InvalidArgument(
+            "Expected element type in shape to be arithmetic type for "
+            "operation %s; got PRED.",
+            HloOpcodeString(opcode));
+      }
       return InferElementwiseBinaryOpShape(opcode, lhs, rhs,
                                            broadcast_dimensions);
 
@@ -1029,17 +1038,22 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
     case HloOpcode::kSort: {
       if (operand_shapes.size() == 1) {
         return *operand_shapes[0];
-      } else if (operand_shapes.size() == 2) {
-        if (!ShapeUtil::SameDimensions(*operand_shapes[0],
-                                       *operand_shapes[1])) {
-          return InvalidArgument(
-              "Sort keys and values dimensions must match. "
-              "Keys shape is: %s\n, Values shape is: %s",
-              ShapeUtil::HumanString(*operand_shapes[0]),
-              ShapeUtil::HumanString(*operand_shapes[1]));
+      } else {
+        for (int64 operand = 1; operand < operand_shapes.size(); ++operand) {
+          if (!ShapeUtil::SameDimensions(*operand_shapes[0],
+                                         *operand_shapes[operand])) {
+            return InvalidArgument(
+                "Sort keys and values dimensions must match. "
+                "Keys shape is: %s\n, Values shape (operand index %lld) is: %s",
+                ShapeUtil::HumanString(*operand_shapes[0]), operand,
+                ShapeUtil::HumanString(*operand_shapes[operand]));
+          }
         }
-        return ShapeUtil::MakeTupleShape(
-            {*operand_shapes[0], *operand_shapes[1]});
+        std::vector<Shape> operand_shape_values;
+        for (const Shape* operand_shape : operand_shapes) {
+          operand_shape_values.push_back(*operand_shape);
+        }
+        return ShapeUtil::MakeTupleShape(operand_shape_values);
       }
       return InvalidArgument("Unexpected number of operands for sort");
     }
