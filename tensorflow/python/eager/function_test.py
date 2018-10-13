@@ -637,7 +637,7 @@ class FunctionTest(test.TestCase):
       op = call()
       self.assertAllEqual(sess.run(op), 2.0)
 
-  def testSymbolicGradientVariableZerosLike(self):
+  def testSymbolicGradientVariableNoneNotZerosLike(self):
     with ops.Graph().as_default():
       v = resource_variable_ops.ResourceVariable(1.0)
 
@@ -651,7 +651,7 @@ class FunctionTest(test.TestCase):
       _, dv = gradients_impl.gradients(l, [x, v])
       with self.cached_session():
         v.initializer.run()
-        self.assertAllEqual(dv.eval(), 0.0)
+        self.assertEqual(dv, None)
 
   def testGraphModeManyFunctions(self):
     with context.graph_mode(), self.cached_session():
