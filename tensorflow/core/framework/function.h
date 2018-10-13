@@ -380,6 +380,7 @@ class FunctionLibraryDefinition : public OpRegistryInterface {
   // created for return values bear the name given by `kRetOp`.
   static constexpr const char* const kArgOp = "_Arg";
   static constexpr const char* const kRetOp = "_Retval";
+  static constexpr const char* const kDeviceRetOp = "_DeviceRetval";
 
   static constexpr const char* const kGradientOp = "SymbolicGradient";
   static constexpr const char* const kFuncAttr = "f";
