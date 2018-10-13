@@ -20375,15 +20375,6 @@ op {
     default_value {
       s: "stderr"
     }
-    allowed_values {
-      list {
-        s: "stdout"
-        s: "stderr"
-        s: "log(info)"
-        s: "log(warning)"
-        s: "log(error)"
-      }
-    }
   }
   is_stateful: true
 }
