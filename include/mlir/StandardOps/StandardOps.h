@@ -38,7 +38,9 @@ class MLValue;
 ///
 ///   %2 = addf %0, %1 : f32
 ///
-class AddFOp : public BinaryOp<AddFOp, OpTrait::ResultsAreFloatLike> {
+class AddFOp
+    : public BinaryOp<AddFOp, OpTrait::ResultsAreFloatLike,
+                      OpTrait::IsCommutative, OpTrait::HasNoSideEffect> {
 public:
   static StringRef getOperationName() { return "addf"; }
 
@@ -57,7 +59,9 @@ private:
 ///
 ///   %2 = addi %0, %1 : i32
 ///
-class AddIOp : public BinaryOp<AddIOp, OpTrait::ResultsAreIntegerLike> {
+class AddIOp
+    : public BinaryOp<AddIOp, OpTrait::ResultsAreIntegerLike,
+                      OpTrait::IsCommutative, OpTrait::HasNoSideEffect> {
 public:
   static StringRef getOperationName() { return "addi"; }
 
@@ -200,7 +204,8 @@ private:
 ///
 ///   %1 = dim %0, 2 : tensor<?x?x?xf32>
 ///
-class DimOp : public Op<DimOp, OpTrait::OneOperand, OpTrait::OneResult> {
+class DimOp : public Op<DimOp, OpTrait::OneOperand, OpTrait::OneResult,
+                        OpTrait::HasNoSideEffect> {
 public:
   static void build(Builder *builder, OperationState *result,
                     SSAValue *memrefOrTensor, unsigned index);
@@ -358,8 +363,9 @@ protected:
 ///
 ///   %3 = extract_element %0[%1, %2] : vector<4x4xi32>
 ///
-class ExtractElementOp : public Op<ExtractElementOp, OpTrait::VariadicOperands,
-                                   OpTrait::OneResult> {
+class ExtractElementOp
+    : public Op<ExtractElementOp, OpTrait::VariadicOperands, OpTrait::OneResult,
+                OpTrait::HasNoSideEffect> {
 public:
   static void build(Builder *builder, OperationState *result,
                     SSAValue *aggregate, ArrayRef<SSAValue *> indices = {});
@@ -430,7 +436,9 @@ private:
 ///
 ///   %2 = mulf %0, %1 : f32
 ///
-class MulFOp : public BinaryOp<MulFOp, OpTrait::ResultsAreFloatLike> {
+class MulFOp
+    : public BinaryOp<MulFOp, OpTrait::ResultsAreFloatLike,
+                      OpTrait::IsCommutative, OpTrait::HasNoSideEffect> {
 public:
   static StringRef getOperationName() { return "mulf"; }
 
@@ -449,7 +457,9 @@ private:
 ///
 ///   %2 = muli %0, %1 : i32
 ///
-class MulIOp : public BinaryOp<MulIOp, OpTrait::ResultsAreIntegerLike> {
+class MulIOp
+    : public BinaryOp<MulIOp, OpTrait::ResultsAreIntegerLike,
+                      OpTrait::IsCommutative, OpTrait::HasNoSideEffect> {
 public:
   static StringRef getOperationName() { return "muli"; }
 
@@ -471,8 +481,8 @@ private:
 /// Convert from unknown rank to rank 2 with unknown dimension sizes.
 ///    %2 = shape_cast %1 : tensor<??f32> to tensor<?x?xf32>
 ///
-class ShapeCastOp
-    : public Op<ShapeCastOp, OpTrait::OneOperand, OpTrait::OneResult> {
+class ShapeCastOp : public Op<ShapeCastOp, OpTrait::OneOperand,
+                              OpTrait::OneResult, OpTrait::HasNoSideEffect> {
 public:
   static StringRef getOperationName() { return "shape_cast"; }
 
@@ -543,7 +553,8 @@ private:
 ///
 ///   %2 = subf %0, %1 : f32
 ///
-class SubFOp : public BinaryOp<SubFOp, OpTrait::ResultsAreFloatLike> {
+class SubFOp : public BinaryOp<SubFOp, OpTrait::ResultsAreFloatLike,
+                               OpTrait::HasNoSideEffect> {
 public:
   static StringRef getOperationName() { return "subf"; }
 
@@ -562,7 +573,8 @@ private:
 ///
 ///   %2 = subi %0, %1 : i32
 ///
-class SubIOp : public BinaryOp<SubIOp, OpTrait::ResultsAreIntegerLike> {
+class SubIOp : public BinaryOp<SubIOp, OpTrait::ResultsAreIntegerLike,
+                               OpTrait::HasNoSideEffect> {
 public:
   static StringRef getOperationName() { return "subi"; }
 

@@ -37,6 +37,17 @@ class OpAsmPrinter;
 class SSAValue;
 class Type;
 
+enum class OperationProperty {
+  /// This bit is set for an operation if it is a commutative operation: that
+  /// is a binary operator (two inputs) where "a op b" and "b op a" produce the
+  /// same results.
+  Commutative = 0b01,
+
+  /// This bit is set for operations that have no side effects: that means that
+  /// they do not read or write memory, or access any hidden state.
+  NoSideEffect = 0b10,
+};
+
 /// This is a "type erased" representation of a registered operation.  This
 /// should only be used by things like the AsmPrinter and other things that need
 /// to be parameterized by generic operation hooks.  Most user code should use
@@ -44,10 +55,11 @@ class Type;
 class AbstractOperation {
 public:
   template <typename T> static AbstractOperation get() {
-    return AbstractOperation(T::getOperationName(), T::isClassFor,
-                             T::parseAssembly, T::printAssembly,
+    return AbstractOperation(T::getOperationName(), T::getOperationProperties(),
+                             T::isClassFor, T::parseAssembly, T::printAssembly,
                              T::verifyInvariants, T::constantFoldHook);
   }
+  using OperationProperties = uint32_t;
 
   /// This is the name of the operation.
   const StringRef name;
@@ -72,9 +84,15 @@ public:
   bool (&constantFoldHook)(const Operation *op, ArrayRef<Attribute *> operands,
                            SmallVectorImpl<Attribute *> &results);
 
+  // Returns whether the operation has a particular property.
+  bool hasProperty(OperationProperty property) const {
+    return opProperties & static_cast<OperationProperties>(property);
+  }
+
 private:
   AbstractOperation(
-      StringRef name, bool (&isClassFor)(const Operation *op),
+      StringRef name, OperationProperties opProperties,
+      bool (&isClassFor)(const Operation *op),
       bool (&parseAssembly)(OpAsmParser *parser, OperationState *result),
       void (&printAssembly)(const Operation *op, OpAsmPrinter *p),
       bool (&verifyInvariants)(const Operation *op),
@@ -83,7 +101,10 @@ private:
                                SmallVectorImpl<Attribute *> &results))
       : name(name), isClassFor(isClassFor), parseAssembly(parseAssembly),
         printAssembly(printAssembly), verifyInvariants(verifyInvariants),
-        constantFoldHook(constantFoldHook) {}
+        constantFoldHook(constantFoldHook), opProperties(opProperties) {}
+
+  /// The properties of the operation.
+  const OperationProperties opProperties;
 };
 
 /// NamedAttribute is a used for operation attribute lists, it holds an

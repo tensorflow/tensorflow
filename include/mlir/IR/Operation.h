@@ -205,6 +205,16 @@ public:
                                          : OperationKind::Statement;
   }
 
+  // Returns whether the operation is commutative.
+  bool isCommutative() const {
+    return getAbstractOperation()->hasProperty(OperationProperty::Commutative);
+  }
+
+  // Returns whether the operation has side-effects.
+  bool hasNoSideEffect() const {
+    return getAbstractOperation()->hasProperty(OperationProperty::NoSideEffect);
+  }
+
   /// Attempt to constant fold this operation with the specified constant
   /// operand values - the elements in "operands" will correspond directly to
   /// the operands of the operation, but may be null if non-constant.  If

@@ -45,8 +45,9 @@ class OperationSet;
 ///   #map42 = (d0)->(d0+1)
 ///   %y = affine_apply #map42(%x)
 ///
-class AffineApplyOp : public Op<AffineApplyOp, OpTrait::VariadicOperands,
-                                OpTrait::VariadicResults> {
+class AffineApplyOp
+    : public Op<AffineApplyOp, OpTrait::VariadicOperands,
+                OpTrait::VariadicResults, OpTrait::HasNoSideEffect> {
 public:
   /// Builds an affine apply op with the specified map and operands.
   static void build(Builder *builder, OperationState *result, AffineMap map,
@@ -84,8 +85,8 @@ private:
 ///   %1 = "constant"(){value: 42} : i32
 ///   %2 = "constant"(){value: @foo} : (f32)->f32
 ///
-class ConstantOp
-    : public Op<ConstantOp, OpTrait::ZeroOperands, OpTrait::OneResult> {
+class ConstantOp : public Op<ConstantOp, OpTrait::ZeroOperands,
+                             OpTrait::OneResult, OpTrait::HasNoSideEffect> {
 public:
   /// Builds a constant op with the specified attribute value and result type.
   static void build(Builder *builder, OperationState *result, Attribute *value,

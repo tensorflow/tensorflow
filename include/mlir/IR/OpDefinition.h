@@ -256,6 +256,9 @@ protected:
   /// Provide default implementations of trait hooks.  This allows traits to
   /// provide exactly the overrides they care about.
   static bool verifyTrait(const Operation *op) { return false; }
+  static AbstractOperation::OperationProperties getTraitProperties() {
+    return 0;
+  }
 };
 
 /// This class provides the API for ops that are known to have exactly one
@@ -566,6 +569,26 @@ public:
   }
 };
 
+/// This class adds property that the operation is commutative.
+template <typename ConcreteType>
+class IsCommutative : public TraitBase<ConcreteType, IsCommutative> {
+public:
+  static AbstractOperation::OperationProperties getTraitProperties() {
+    return static_cast<AbstractOperation::OperationProperties>(
+        OperationProperty::Commutative);
+  }
+};
+
+/// This class adds property that the operation has no side effects.
+template <typename ConcreteType>
+class HasNoSideEffect : public TraitBase<ConcreteType, HasNoSideEffect> {
+public:
+  static AbstractOperation::OperationProperties getTraitProperties() {
+    return static_cast<AbstractOperation::OperationProperties>(
+        OperationProperty::NoSideEffect);
+  }
+};
+
 } // end namespace OpTrait
 
 //===----------------------------------------------------------------------===//
@@ -624,6 +647,12 @@ public:
            op->getAs<ConcreteType>()->verify();
   }
 
+  // Returns the properties of an operation by combining the properties of the
+  // traits of the op.
+  static AbstractOperation::OperationProperties getOperationProperties() {
+    return BaseProperties<Traits<ConcreteType>...>::getTraitProperties();
+  }
+
   // TODO: Provide a dump() method.
 
 protected:
@@ -647,6 +676,28 @@ private:
 
   template <> struct BaseVerifier<> {
     static bool verifyTrait(const Operation *op) { return false; }
+  };
+
+  template <typename... Types> struct BaseProperties;
+
+  template <typename First, typename... Rest>
+  struct BaseProperties<First, Rest...> {
+    static AbstractOperation::OperationProperties getTraitProperties() {
+      return First::getTraitProperties() |
+             BaseProperties<Rest...>::getTraitProperties();
+    }
+  };
+
+  template <typename First> struct BaseProperties<First> {
+    static AbstractOperation::OperationProperties getTraitProperties() {
+      return First::getTraitProperties();
+    }
+  };
+
+  template <> struct BaseProperties<> {
+    static AbstractOperation::OperationProperties getTraitProperties() {
+      return 0;
+    }
   };
 };
 
