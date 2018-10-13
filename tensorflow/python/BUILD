@@ -1747,7 +1747,6 @@ tf_gen_op_wrapper_private_py(
 tf_gen_op_wrapper_private_py(
     name = "stateless_random_ops_gen",
     visibility = [
-        "//tensorflow/contrib/stateless:__pkg__",
         "//tensorflow/python/data/experimental/ops:__pkg__",
     ],
 )
@@ -2585,6 +2584,19 @@ py_library(
 )
 
 py_library(
+    name = "stateless_random_ops",
+    srcs = ["ops/stateless_random_ops.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":dtypes",
+        ":framework_ops",
+        ":math_ops",
+        ":random_ops",
+        ":stateless_random_ops_gen",
+    ],
+)
+
+py_library(
     name = "rnn",
     srcs = ["ops/rnn.py"],
     srcs_version = "PY2AND3",
@@ -2850,6 +2862,7 @@ py_library(
         ":spectral_grad",
         ":state_grad",
         ":state_ops",
+        ":stateless_random_ops",
         ":string_ops",
         ":template",
         ":tensor_array_grad",
