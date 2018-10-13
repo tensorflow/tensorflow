@@ -1605,6 +1605,8 @@ def _create_c_op(graph, node_def, inputs, control_inputs):
   op_desc = c_api.TF_NewOperation(graph._c_graph,
                                   compat.as_str(node_def.op),
                                   compat.as_str(node_def.name))
+  if node_def.device:
+    c_api.TF_SetDevice(op_desc, compat.as_str(node_def.device))
   # Add inputs
   for op_input in inputs:
     if isinstance(op_input, (list, tuple)):
