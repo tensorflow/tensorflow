@@ -48,13 +48,6 @@ import numpy as np
 
 from tensorflow.python import pywrap_tensorflow
 
-from tensorflow.python.tools import component_api_helper
-component_api_helper.package_hook(
-    parent_package_str='tensorflow.python',
-    child_package_str=(
-        'tensorflow_estimator.python.estimator'))
-del component_api_helper
-
 # Protocol buffers
 from tensorflow.core.framework.graph_pb2 import *
 from tensorflow.core.framework.node_def_pb2 import *

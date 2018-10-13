@@ -40,6 +40,10 @@ class LayoutUtil {
   static Layout MakeLayoutFromMajorToMinor(
       absl::Span<const int64> major_to_minor);
 
+  // Returns a layout with descending ((i.e. {n, n-1, ..., 0}) minor-to-major
+  // dimensions.
+  static Layout MakeDescendingLayout(int64 rank);
+
   // Creates a sparse layout with the given maximum number of elements. (This is
   // a convenience function for protobuf construction.)
   static Layout MakeSparseLayout(int64 max_sparse_elements);

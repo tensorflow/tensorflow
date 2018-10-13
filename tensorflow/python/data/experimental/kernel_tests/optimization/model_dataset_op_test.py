@@ -19,6 +19,7 @@ from __future__ import print_function
 
 import time
 
+from absl.testing import parameterized
 import numpy as np
 
 from tensorflow.python.data.experimental.ops import batching
@@ -29,7 +30,7 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import test
 
 
-class ModelDatasetTest(test_base.DatasetTestBase):
+class ModelDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
 
   def testModelMap(self):
     k = 1024 * 1024
@@ -82,7 +83,11 @@ class ModelDatasetTest(test_base.DatasetTestBase):
           (np.median(deltas), np.mean(deltas), np.std(deltas), np.min(deltas),
            np.max(deltas)))
 
-  def testModelMapAndBatch(self):
+  @parameterized.named_parameters(
+      ("Default", False),
+      ("NUMA", True),
+  )
+  def testModelMapAndBatch(self, numa_aware):
     batch_size = 16
     k = 1024 * 1024
     dataset = dataset_ops.Dataset.from_tensors((np.random.rand(1, 4 * k),
@@ -95,6 +100,8 @@ class ModelDatasetTest(test_base.DatasetTestBase):
             batch_size=batch_size))
     options = dataset_ops.Options()
     options.experimental_autotune = True
+    if numa_aware:
+      options.experimental_numa_aware = True
     iterator = dataset.with_options(options).make_one_shot_iterator()
     get_next = iterator.get_next()
 

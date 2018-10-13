@@ -34,7 +34,7 @@ from tensorflow.python.platform import test
 class LossTest(test.TestCase):
 
   def testSequenceLoss(self):
-    with self.test_session(use_gpu=True) as sess:
+    with self.session(use_gpu=True) as sess:
       with variable_scope.variable_scope(
           'root', initializer=init_ops.constant_initializer(0.5)):
         batch_size = 2

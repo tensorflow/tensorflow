@@ -371,7 +371,6 @@ TfLiteStatus ParseOpData(const Operator* op, BuiltinOperator op_type,
       *builtin_data = reinterpret_cast<void*>(params);
       break;
     }
-    case BuiltinOperator_UNIDIRECTIONAL_SEQUENCE_LSTM:
     case BuiltinOperator_LSTM: {
       auto params = allocator->AllocatePOD<TfLiteLSTMParams>();
       if (auto* lstm_params = op->builtin_options_as_LSTMOptions()) {
@@ -391,6 +390,20 @@ TfLiteStatus ParseOpData(const Operator* op, BuiltinOperator op_type,
       *builtin_data = reinterpret_cast<void*>(params);
       break;
     }
+    case BuiltinOperator_UNIDIRECTIONAL_SEQUENCE_LSTM: {
+      auto* params =
+          allocator->AllocatePOD<TfLiteUnidirectionalSequenceLSTMParams>();
+      if (auto* seq_lstm_params =
+              op->builtin_options_as_UnidirectionalSequenceLSTMOptions()) {
+        params->activation =
+            parse_activation(seq_lstm_params->fused_activation_function());
+        params->cell_clip = seq_lstm_params->cell_clip();
+        params->proj_clip = seq_lstm_params->proj_clip();
+      }
+      *builtin_data = reinterpret_cast<void*>(params);
+      break;
+    }
+
     case BuiltinOperator_BIDIRECTIONAL_SEQUENCE_LSTM: {
       auto params =
           allocator->AllocatePOD<TfLiteBidirectionalSequenceLSTMParams>();
@@ -638,6 +651,8 @@ TfLiteStatus ParseOpData(const Operator* op, BuiltinOperator op_type,
     case BuiltinOperator_SQUARE:
     case BuiltinOperator_ZEROS_LIKE:
     case BuiltinOperator_FILL:
+    case BuiltinOperator_FLOOR_MOD:
+    case BuiltinOperator_RANGE:
       break;
   }
   return kTfLiteOk;

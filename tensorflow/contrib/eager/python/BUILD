@@ -249,11 +249,10 @@ py_library(
     ],
 )
 
-py_test(
+cuda_py_test(
     name = "remote_test",
     srcs = ["remote_test.py"],
-    srcs_version = "PY2AND3",
-    deps = [
+    additional_deps = [
         ":parameter_server",
         ":remote",
         "//tensorflow/contrib/eager/python:tfe",

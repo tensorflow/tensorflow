@@ -122,6 +122,7 @@ py_library(
         "//tensorflow/python:array_ops",
         "//tensorflow/python:dataset_ops_gen",
         "//tensorflow/python:dtypes",
+        "//tensorflow/python:experimental_dataset_ops_gen",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:tensor_shape",
@@ -268,6 +269,16 @@ py_library(
 )
 
 py_library(
+    name = "sleep",
+    srcs = ["sleep.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow/python:experimental_dataset_ops_gen",
+        "//tensorflow/python/data/ops:dataset_ops",
+    ],
+)
+
+py_library(
     name = "stats_ops",
     srcs = ["stats_ops.py"],
     srcs_version = "PY2AND3",
@@ -365,6 +376,7 @@ py_library(
         ":resampling",
         ":scan_ops",
         ":shuffle_ops",
+        ":sleep",
         ":stats_ops",
         ":threadpool",
         ":unique",

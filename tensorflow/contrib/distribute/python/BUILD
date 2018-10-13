@@ -412,6 +412,24 @@ cuda_py_test(
 )
 
 cuda_py_test(
+    name = "moving_averages_test",
+    srcs = ["moving_averages_test.py"],
+    additional_deps = [
+        ":combinations",
+        "@absl_py//absl/testing:parameterized",
+        "//tensorflow/python/eager:test",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:constant_op",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:training",
+        "//tensorflow/python:variables",
+    ],
+    tags = [
+        "no_pip",
+    ],
+)
+
+cuda_py_test(
     name = "optimizer_v2_test",
     srcs = ["optimizer_v2_test.py"],
     additional_deps = [

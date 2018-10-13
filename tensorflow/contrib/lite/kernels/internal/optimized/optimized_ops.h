@@ -5674,12 +5674,12 @@ void TransposeIm2col(const ConvParams& params, uint8 zero_byte,
   const int batches = MatchingDim(input_shape, 0, output_shape, 0);
   const int input_height = input_shape.Dims(1);
   const int input_width = input_shape.Dims(2);
-  const int input_depth = MatchingDim(input_shape, 3, filter_shape, 0);
+  const int input_depth = MatchingDim(input_shape, 3, filter_shape, 3);
   const int filter_height = filter_shape.Dims(1);
   const int filter_width = filter_shape.Dims(2);
   const int output_height = output_shape.Dims(1);
   const int output_width = output_shape.Dims(2);
-  MatchingDim(output_shape, 3, filter_shape, 3);  // output_depth
+  MatchingDim(output_shape, 3, filter_shape, 0);  // output_depth
 
   // Construct the MxN sized im2col matrix.
   // The rows M, are sub-ordered B x H x W

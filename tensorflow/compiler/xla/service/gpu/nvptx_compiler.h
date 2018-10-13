@@ -59,7 +59,7 @@ class NVPTXCompiler : public LLVMCompiler {
       DeviceMemoryAllocator* device_allocator) override;
 
   StatusOr<std::vector<std::unique_ptr<AotCompilationResult>>>
-  CompileAheadOfTime(std::vector<std::unique_ptr<HloModule>> module,
+  CompileAheadOfTime(std::unique_ptr<HloModuleGroup> module_group,
                      AotCompilationOptions const& options) override;
 
   se::Platform::Id PlatformId() const override;

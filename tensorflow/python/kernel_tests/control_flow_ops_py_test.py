@@ -41,7 +41,6 @@ from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import cond_v2  # pylint: disable=unused-import
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import data_flow_ops
 from tensorflow.python.ops import functional_ops
@@ -333,7 +332,6 @@ class ControlFlowTest(test.TestCase):
       with self.assertRaisesOpError("has inputs from different frames"):
         res.eval(feed_dict={data: 1.0})
 
-  @test_util.disable_control_flow_v2("b/113294340")
   def testCondBool(self):
     values = constant_op.constant(10)
     fn1 = lambda: math_ops.add(values, 1)
@@ -661,8 +659,7 @@ class ControlFlowTest(test.TestCase):
       sess.run(r)
 
   def testCondGrad_1(self):
-    graph = ops.Graph()
-    with graph.as_default():
+    with self.cached_session():
       x = constant_op.constant(10.0, name="x")
       pred = math_ops.less(1, 2)
       fn1 = lambda: array_ops.identity(x)
@@ -670,8 +667,7 @@ class ControlFlowTest(test.TestCase):
       r = control_flow_ops.cond(pred, fn1, fn2)
 
       grad = gradients_impl.gradients(r, [x])[0]
-      with self.cached_session():
-        self.assertAllEqual(1.0, grad.eval())
+      self.assertAllEqual(1.0, grad.eval())
 
   def testCondGrad_2(self):
     with self.cached_session():
@@ -1118,8 +1114,8 @@ class ControlFlowTest(test.TestCase):
       self.assertAllClose(10.0, r.eval())
 
   def testWhile_Gpu_2(self):
-    self._testWhile_Gpu_1(use_gpu=False)
-    self._testWhile_Gpu_1(use_gpu=True)
+    self._testWhile_Gpu_2(use_gpu=False)
+    self._testWhile_Gpu_2(use_gpu=True)
 
   def testWhileShape(self):
     with self.cached_session():
@@ -1369,7 +1365,6 @@ class ControlFlowTest(test.TestCase):
       r = control_flow_ops.while_loop(lambda x: x < 10, body, [x0])
       self.assertEqual(10, sess.run(r, {b: True}))
 
-  @test_util.disable_control_flow_v2("b/116134862 (cond output shape)")
   def testWhileCondWithControl(self):
     # Ensure that no control edges by an outer control dependency context are
     # added to nodes inside cond/while contexts.
@@ -1481,7 +1476,6 @@ class ControlFlowTest(test.TestCase):
     self._testCondWhile_3(use_gpu=False)
     self._testCondWhile_3(use_gpu=True)
 
-  @test_util.disable_control_flow_v2("b/116134862 (cond output shape)")
   def testWhileCond_1(self):
 
     with self.cached_session():
@@ -1498,7 +1492,6 @@ class ControlFlowTest(test.TestCase):
       r = control_flow_ops.while_loop(c, b, [i])
       self.assertAllEqual(10, r.eval())
 
-  @test_util.disable_control_flow_v2("b/116134862 (cond output shape)")
   def testWhileCond_2(self):
 
     with self.cached_session():
@@ -1508,7 +1501,6 @@ class ControlFlowTest(test.TestCase):
       r = control_flow_ops.while_loop(c, b, [n])
       self.assertAllEqual(10, r.eval())
 
-  @test_util.disable_control_flow_v2("b/116134862 (cond output shape)")
   def testWhileCond_3(self):
 
     with self.cached_session():
@@ -2274,12 +2266,13 @@ class ControlFlowTest(test.TestCase):
       r = gradients_impl.gradients(r, v)[0]
       self.assertAllClose(1024.0, r.eval())
 
-  @test_util.disable_control_flow_v2("b/116272044 (cond_in_while)")
   def testWhileCondGrad_Simple(self):
     self._testWhileCondGrad_Simple(use_gpu=False)
-    self._testWhileCondGrad_Simple(use_gpu=True)
+    if not control_flow_ops.ENABLE_WHILE_V2:
+      # TODO(b/117519152): Enable.
+      self._testWhileCondGrad_Simple(use_gpu=True)
 
-  @test_util.disable_control_flow_v2("b/116272044 (cond_in_while)")
+  @test_util.disable_control_flow_v2("b/117276490")
   def testWhileCondGrad_UnknownShape(self):
     with self.cached_session() as sess:
       v = array_ops.placeholder(dtypes.float32)

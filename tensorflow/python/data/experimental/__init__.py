@@ -57,6 +57,8 @@ See [Importing Data](https://tensorflow.org/guide/datasets) for an overview.
 @@StatsAggregator
 @@unbatch
 @@unique
+
+@@AUTOTUNE
 """
 
 from __future__ import absolute_import

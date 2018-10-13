@@ -52,8 +52,8 @@ class MapDatasetOp : public UnaryDatasetOpKernel {
     OP_REQUIRES_OK(ctx, ComputeShortCircuitIndices(ctx, func_, &indices));
 
     MapIteratorFunction map_func;
+    CapturedFunction* raw_captured_func = captured_func.get();
     if (indices.empty()) {
-      CapturedFunction* raw_captured_func = captured_func.get();
       map_func = [raw_captured_func](IteratorContext* ctx,
                                      std::vector<Tensor> args,
                                      std::vector<Tensor>* out_tensors) {
@@ -61,15 +61,21 @@ class MapDatasetOp : public UnaryDatasetOpKernel {
       };
     } else {
       std::vector<bool> can_move = ComputeMoveVector(indices);
-      map_func = [indices, can_move](IteratorContext* ctx,
-                                     std::vector<Tensor> args,
-                                     std::vector<Tensor>* out_tensors) {
-        std::map<int, int> counts;
+      map_func = [raw_captured_func, indices, can_move](
+                     IteratorContext* ctx, std::vector<Tensor> args,
+                     std::vector<Tensor>* out_tensors) {
+        const std::vector<Tensor>& captured_inputs =
+            raw_captured_func->captured_inputs();
+        size_t num_args = args.size();
         for (size_t i = 0; i < indices.size(); ++i) {
-          if (can_move[i]) {
-            out_tensors->push_back(std::move(args[indices[i]]));
+          if (indices[i] < num_args) {
+            if (can_move[i]) {
+              out_tensors->push_back(std::move(args[indices[i]]));
+            } else {
+              out_tensors->push_back(args[indices[i]]);
+            }
           } else {
-            out_tensors->push_back(args[indices[i]]);
+            out_tensors->push_back(captured_inputs[indices[i] - num_args]);
           }
         }
         return Status::OK();

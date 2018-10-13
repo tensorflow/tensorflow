@@ -47,6 +47,7 @@ bool IsFusible(const HloInstruction& hlo) {
          hlo.opcode() == HloOpcode::kReduce ||
          hlo.opcode() == HloOpcode::kReduceWindow ||
          hlo.opcode() == HloOpcode::kReshape ||
+         hlo.opcode() == HloOpcode::kScatter ||
          hlo.opcode() == HloOpcode::kSlice ||
          hlo.opcode() == HloOpcode::kTranspose;
 }
@@ -223,6 +224,11 @@ bool GpuInstructionFusion::ShouldFuse(HloInstruction* consumer,
     return false;
   }
 
+  // Scatter is only supported at the root of a kInput fusion.
+  if (producer->opcode() == HloOpcode::kScatter) {
+    return false;
+  }
+
   // Do not fuse into reduce input fusions if the resulting kernel would suffer
   // from poor data locality (due to unfriendly input layouts).
   if (IsInputFusibleReduction(*consumer) &&
@@ -285,7 +291,8 @@ bool GpuInstructionFusion::ShouldFuseIntoMultiOutput(HloInstruction* consumer,
 
 HloInstruction::FusionKind GpuInstructionFusion::ChooseKind(
     const HloInstruction* producer, const HloInstruction* consumer) {
-  if (IsReductionToVector(*consumer)) {
+  if (IsReductionToVector(*consumer) ||
+      consumer->opcode() == HloOpcode::kScatter) {
     return HloInstruction::FusionKind::kInput;
   }
   if (producer->opcode() == HloOpcode::kDot ||

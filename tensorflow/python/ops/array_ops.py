@@ -1204,7 +1204,7 @@ def boolean_mask(tensor, mask, name="boolean_mask", axis=None):
     return _apply_mask_1d(tensor, mask, axis)
 
 
-@tf_export("sparse.mask", "sparse_mask")
+@tf_export("sparse.mask", v1=["sparse.mask", "sparse_mask"])
 @deprecation.deprecated_endpoints("sparse_mask")
 def sparse_mask(a, mask_indices, name=None):
   """Masks elements of `IndexedSlices`.
@@ -1407,8 +1407,13 @@ def transpose(a, perm=None, name="transpose", conjugate=False):
         gen_array_ops.conjugate_transpose
         if (conjugate and a.dtype.is_complex) else gen_array_ops.transpose)
     if perm is None:
-      rank = gen_array_ops.rank(a)
-      perm = (rank - 1) - gen_math_ops._range(0, rank, 1)
+      a = ops.convert_to_tensor(a, name="a")
+      if not a.get_shape().ndims:
+        rank = gen_array_ops.rank(a)
+        perm = (rank - 1) - gen_math_ops._range(0, rank, 1)
+      else:
+        rank = a.get_shape().ndims
+        perm = (rank - 1) - np.arange(rank)
       ret = transpose_fn(a, perm, name=name)
       # NOTE(mrry): Setting the shape explicitly because
       #   reverse is not handled by the shape function.
@@ -1422,7 +1427,7 @@ def transpose(a, perm=None, name="transpose", conjugate=False):
 
 
 # pylint: disable=invalid-name
-@tf_export("linalg.transpose", "matrix_transpose")
+@tf_export("linalg.transpose", v1=["linalg.transpose", "matrix_transpose"])
 @deprecation.deprecated_endpoints("matrix_transpose")
 def matrix_transpose(a, name="matrix_transpose", conjugate=False):
   """Transposes last two dimensions of tensor `a`.
@@ -1758,7 +1763,8 @@ def _normalize_sparse_shape(shape, name):
   return (ops.convert_to_tensor(shape, dtype=dtypes.int64, name=name), rank)
 
 
-@tf_export("sparse.placeholder", "sparse_placeholder")
+@tf_export(
+    "sparse.placeholder", v1=["sparse.placeholder", "sparse_placeholder"])
 @deprecation.deprecated_endpoints("sparse_placeholder")
 def sparse_placeholder(dtype, shape=None, name=None):
   """Inserts a placeholder for a sparse tensor that will be always fed.
@@ -2253,7 +2259,7 @@ def required_space_to_batch_paddings(input_shape,
     return result_paddings, result_crops
 
 
-@tf_export("nn.space_to_batch", "space_to_batch")
+@tf_export("nn.space_to_batch", v1=["nn.space_to_batch", "space_to_batch"])
 @deprecation.deprecated_endpoints("space_to_batch")
 def space_to_batch(input, paddings, block_size, name=None):  # pylint: disable=redefined-builtin
   result = space_to_batch_nd(
@@ -2268,7 +2274,7 @@ def space_to_batch(input, paddings, block_size, name=None):  # pylint: disable=r
 space_to_batch.__doc__ = gen_array_ops.space_to_batch.__doc__
 
 
-@tf_export("nn.space_to_depth", "space_to_depth")
+@tf_export("nn.space_to_depth", v1=["nn.space_to_depth", "space_to_depth"])
 @deprecation.deprecated_endpoints("space_to_depth")
 def space_to_depth(input, block_size, name=None, data_format="NHWC"):  # pylint: disable=redefined-builtin
   return gen_array_ops.space_to_depth(input, block_size, data_format, name=name)
@@ -2277,7 +2283,7 @@ def space_to_depth(input, block_size, name=None, data_format="NHWC"):  # pylint:
 space_to_depth.__doc__ = gen_array_ops.space_to_depth.__doc__
 
 
-@tf_export("nn.depth_to_space", "depth_to_space")
+@tf_export("nn.depth_to_space", v1=["nn.depth_to_space", "depth_to_space"])
 @deprecation.deprecated_endpoints("depth_to_space")
 def depth_to_space(input, block_size, name=None, data_format="NHWC"):  # pylint: disable=redefined-builtin
   return gen_array_ops.depth_to_space(input, block_size, data_format, name=name)
@@ -2782,7 +2788,7 @@ quantize_v2.__doc__ = """Please use `tf.quantize` instead."""
 
 # We want to expose tf.quantize instead of tf.quantize_v2; we can deprecate
 # tf.quantize_v2 in next version of TensorFlow.
-@tf_export("quantization.quantize", "quantize")
+@tf_export("quantization.quantize", v1=["quantization.quantize", "quantize"])
 @deprecation.deprecated_endpoints("quantize")
 def quantize(input,  # pylint: disable=redefined-builtin
              min_range,

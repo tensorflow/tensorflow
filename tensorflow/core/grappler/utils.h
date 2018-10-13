@@ -17,8 +17,6 @@ limitations under the License.
 #define TENSORFLOW_CORE_GRAPPLER_UTILS_H_
 
 #include <functional>
-#include <unordered_map>
-#include <unordered_set>
 #include <vector>
 
 #include "tensorflow/core/framework/graph.pb.h"
@@ -28,6 +26,8 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/core/threadpool.h"
+#include "tensorflow/core/lib/gtl/flatmap.h"
+#include "tensorflow/core/lib/gtl/flatset.h"
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
 
 namespace tensorflow {
@@ -57,8 +57,8 @@ class NodeMap {
 
  private:
   const std::set<NodeDef*> empty_set_;
-  std::unordered_map<string, NodeDef*> nodes_;
-  std::unordered_map<string, std::set<NodeDef*>> outputs_;
+  gtl::FlatMap<string, NodeDef*> nodes_;
+  gtl::FlatMap<string, std::set<NodeDef*>> outputs_;
 };
 
 // A vector with a set. The set stores the same elements as the vector, and
@@ -90,7 +90,7 @@ class SetVector {
   void Reserve(int64 size) { vector_.reserve(size); }
 
  private:
-  std::unordered_set<T, Hash> set_;
+  gtl::FlatSet<T, Hash> set_;
   std::vector<T> vector_;
 };
 
@@ -331,7 +331,7 @@ class SimpleGraphView {
  private:
   const GraphDef* graph_;  // Not owned.
   std::vector<string> index_to_name_;
-  std::unordered_map<string, int> name_to_index_;
+  gtl::FlatMap<string, int> name_to_index_;
   std::vector<gtl::InlinedVector<int, 4>> inputs_;
   std::vector<gtl::InlinedVector<int, 2>> outputs_;
 };

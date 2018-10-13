@@ -23,7 +23,12 @@ namespace tensorflow {
 REGISTER_OP("XRTCompile")
     .Input("computation: string")
     .Output("handle: int64")
-    .SetShapeFn(tensorflow::shape_inference::ScalarShape)
+    .Output("program_shape: string")
+    .SetShapeFn([](shape_inference::InferenceContext* c) {
+      c->set_output(0, c->Scalar());
+      c->set_output(1, c->UnknownShapeOfRank(1));
+      return Status::OK();
+    })
     .Doc(
         R"(
 Reads a computation proto, compiles it, and places it in the global compilation

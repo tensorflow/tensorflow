@@ -20,14 +20,21 @@ load(
     "//tensorflow/tools/def_file_filter:def_file_filter_configure.bzl",
     "def_file_filter_configure",
 )
+load("//third_party/aws:workspace.bzl", aws = "repo")
 load("//third_party/flatbuffers:workspace.bzl", flatbuffers = "repo")
+load("//third_party/highwayhash:workspace.bzl", highwayhash = "repo")
 load("//third_party/icu:workspace.bzl", icu = "repo")
 load("//third_party/jpeg:workspace.bzl", jpeg = "repo")
+load("//third_party/nasm:workspace.bzl", nasm = "repo")
 
 def initialize_third_party():
+    """ Load third party repositories.  See above load() statements. """
+    aws()
     flatbuffers()
+    highwayhash()
     icu()
     jpeg()
+    nasm()
 
 # Sanitize a dependency so that it works correctly from code that includes
 # TensorFlow as a submodule.
@@ -112,11 +119,11 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
     tf_http_archive(
         name = "com_google_absl",
         build_file = clean_dep("//third_party:com_google_absl.BUILD"),
-        sha256 = "507903ef9353cb25cccd0a6840048fdd348fd20e98314d694f04a990c0f277e3",
-        strip_prefix = "abseil-cpp-f21d187b80e3b7f08fb279775ea9c8b48c636030",
+        sha256 = "225b683f2f866cd12b868e43b5af00e032e70e3f78ff332108b0ce15d41f6091",
+        strip_prefix = "abseil-cpp-a00bdd176d66ef0b417d9576052a19091fbdf891",
         urls = [
-            "https://mirror.bazel.build/github.com/abseil/abseil-cpp/archive/f21d187b80e3b7f08fb279775ea9c8b48c636030.tar.gz",
-            "https://github.com/abseil/abseil-cpp/archive/f21d187b80e3b7f08fb279775ea9c8b48c636030.tar.gz",
+            "https://mirror.bazel.build/github.com/abseil/abseil-cpp/archive/a00bdd176d66ef0b417d9576052a19091fbdf891.tar.gz",
+            "https://github.com/abseil/abseil-cpp/archive/a00bdd176d66ef0b417d9576052a19091fbdf891.tar.gz",
         ],
     )
 
@@ -221,30 +228,6 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
         urls = [
             "https://mirror.bazel.build/github.com/google/farmhash/archive/816a4ae622e964763ca0862d9dbd19324a1eaf45.tar.gz",
             "https://github.com/google/farmhash/archive/816a4ae622e964763ca0862d9dbd19324a1eaf45.tar.gz",
-        ],
-    )
-
-    tf_http_archive(
-        name = "highwayhash",
-        build_file = clean_dep("//third_party:highwayhash.BUILD"),
-        sha256 = "9c3e0e87d581feeb0c18d814d98f170ff23e62967a2bd6855847f0b2fe598a37",
-        strip_prefix = "highwayhash-fd3d9af80465e4383162e4a7c5e2f406e82dd968",
-        urls = [
-            "http://mirror.bazel.build/github.com/google/highwayhash/archive/fd3d9af80465e4383162e4a7c5e2f406e82dd968.tar.gz",
-            "https://github.com/google/highwayhash/archive/fd3d9af80465e4383162e4a7c5e2f406e82dd968.tar.gz",
-        ],
-    )
-
-    tf_http_archive(
-        name = "nasm",
-        build_file = clean_dep("//third_party:nasm.BUILD"),
-        sha256 = "63ec86477ad3f0f6292325fd89e1d93aea2e2fd490070863f17d48f7cd387011",
-        strip_prefix = "nasm-2.13.03",
-        system_build_file = clean_dep("//third_party/systemlibs:nasm.BUILD"),
-        urls = [
-            "https://mirror.bazel.build/www.nasm.us/pub/nasm/releasebuilds/2.13.03/nasm-2.13.03.tar.bz2",
-            "http://pkgs.fedoraproject.org/repo/pkgs/nasm/nasm-2.13.03.tar.bz2/sha512/d7a6b4cee8dfd603d8d4c976e5287b5cc542fa0b466ff989b743276a6e28114e64289bf02a7819eca63142a5278aa6eed57773007e5f589e15768e6456a8919d/nasm-2.13.03.tar.bz2",
-            "http://www.nasm.us/pub/nasm/releasebuilds/2.13.03/nasm-2.13.03.tar.bz2",
         ],
     )
 
@@ -596,17 +579,6 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
         ],
     )
 
-    tf_http_archive(
-        name = "aws",
-        build_file = clean_dep("//third_party:aws.BUILD"),
-        sha256 = "b888d8ce5fc10254c3dd6c9020c7764dd53cf39cf011249d0b4deda895de1b7c",
-        strip_prefix = "aws-sdk-cpp-1.3.15",
-        urls = [
-            "https://mirror.bazel.build/github.com/aws/aws-sdk-cpp/archive/1.3.15.tar.gz",
-            "https://github.com/aws/aws-sdk-cpp/archive/1.3.15.tar.gz",
-        ],
-    )
-
     java_import_external(
         name = "junit",
         jar_sha256 = "59721f0805e223d84b90677887d9ff567dc534d7c502ca903c0c2b17f05c116a",
@@ -713,11 +685,11 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
 
     tf_http_archive(
         name = "bazel_toolchains",
-        sha256 = "3b604699685c5c65dd3f6f17425570a4b2f00ddba2f750db15acc72e55bb098b",
-        strip_prefix = "bazel-toolchains-37acf1841ab1475c98a152cb9e446460c8ae29e1",
+        sha256 = "07dfbe80638eb1fe681f7c07e61b34b579c6710c691e49ee90ccdc6e9e75ebbb",
+        strip_prefix = "bazel-toolchains-9a111bd82161c1fbe8ed17a593ca1023fd941c70",
         urls = [
-            "https://mirror.bazel.build/github.com/bazelbuild/bazel-toolchains/archive/37acf1841ab1475c98a152cb9e446460c8ae29e1.tar.gz",
-            "https://github.com/bazelbuild/bazel-toolchains/archive/37acf1841ab1475c98a152cb9e446460c8ae29e1.tar.gz",
+            "https://mirror.bazel.build/github.com/bazelbuild/bazel-toolchains/archive/9a111bd82161c1fbe8ed17a593ca1023fd941c70.tar.gz",
+            "https://github.com/bazelbuild/bazel-toolchains/archive/9a111bd82161c1fbe8ed17a593ca1023fd941c70.tar.gz",
         ],
     )
 

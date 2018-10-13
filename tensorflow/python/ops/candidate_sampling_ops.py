@@ -27,7 +27,9 @@ from tensorflow.python.util import deprecation
 from tensorflow.python.util.tf_export import tf_export
 
 
-@tf_export('random.uniform_candidate_sampler', 'nn.uniform_candidate_sampler')
+@tf_export(
+    'random.uniform_candidate_sampler',
+    v1=['random.uniform_candidate_sampler', 'nn.uniform_candidate_sampler'])
 @deprecation.deprecated_endpoints('nn.uniform_candidate_sampler')
 def uniform_candidate_sampler(true_classes, num_true, num_sampled, unique,
                               range_max, seed=None, name=None):
@@ -84,8 +86,12 @@ def uniform_candidate_sampler(true_classes, num_true, num_sampled, unique,
       seed2=seed2, name=name)
 
 
-@tf_export('random.log_uniform_candidate_sampler',
-           'nn.log_uniform_candidate_sampler')
+@tf_export(
+    'random.log_uniform_candidate_sampler',
+    v1=[
+        'random.log_uniform_candidate_sampler',
+        'nn.log_uniform_candidate_sampler'
+    ])
 @deprecation.deprecated_endpoints('nn.log_uniform_candidate_sampler')
 def log_uniform_candidate_sampler(true_classes, num_true, num_sampled, unique,
                                   range_max, seed=None, name=None):

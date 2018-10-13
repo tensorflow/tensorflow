@@ -73,12 +73,10 @@ licenses(["notice"])  # Apache 2.0
 load(
     "//tensorflow:tensorflow.bzl",
     "cc_header_only_library",
-    "full_path",
     "if_android",
     "if_ios",
     "if_linux_x86_64",
     "if_mobile",
-    "if_not_mobile",
     "if_not_windows",
     "if_windows",
     "tf_cc_test",
@@ -1157,6 +1155,21 @@ tf_gen_op_libs(
 )
 
 cc_library(
+    name = "ragged_ops",
+    deps = [
+        ":ragged_array_ops_op_lib",
+        ":ragged_math_ops_op_lib",
+    ],
+)
+
+tf_gen_op_libs(
+    op_lib_names = [
+        "ragged_array_ops",
+        "ragged_math_ops",
+    ],
+)
+
+cc_library(
     name = "ops",
     visibility = ["//visibility:public"],
     deps = [
@@ -1189,6 +1202,7 @@ cc_library(
         ":nn_ops_op_lib",
         ":no_op_op_lib",
         ":parsing_ops_op_lib",
+        ":ragged_ops",
         ":random_ops_op_lib",
         ":remote_fused_graph_ops_op_lib",
         ":resource_variable_ops_op_lib",
@@ -1342,6 +1356,7 @@ cc_library(
         "//tensorflow/core/kernels:parameterized_truncated_normal_op",
         "//tensorflow/core/kernels:parsing",
         "//tensorflow/core/kernels:partitioned_function_ops",
+        "//tensorflow/core/kernels:ragged_ops",
         "//tensorflow/core/kernels:random_ops",
         "//tensorflow/core/kernels:random_poisson_op",
         "//tensorflow/core/kernels:remote_fused_graph_ops",
@@ -2810,6 +2825,7 @@ CORE_CPU_LIB_HEADERS = CORE_CPU_BASE_HDRS + [
     "common_runtime/graph_optimizer.h",
     "common_runtime/local_device.h",
     "common_runtime/lower_if_op.h",
+    "common_runtime/lower_if_while.h",
     "common_runtime/lower_while_op.h",
     "common_runtime/memory_types.h",
     "common_runtime/mkl_cpu_allocator.h",
@@ -2865,6 +2881,7 @@ tf_cuda_library(
         "common_runtime/hierarchical_tree_broadcaster.cc",
         "common_runtime/local_device.cc",
         "common_runtime/lower_if_op.cc",
+        "common_runtime/lower_if_while.cc",
         "common_runtime/lower_while_op.cc",
         "common_runtime/memory_types.cc",
         "common_runtime/mkl_cpu_allocator.cc",
@@ -4691,6 +4708,29 @@ tf_cc_tests(
     name = "common_runtime_lower_while_op_test",
     size = "small",
     srcs = ["common_runtime/lower_while_op_test.cc"],
+    deps = [
+        ":all_kernels",
+        ":core_cpu",
+        ":core_cpu_internal",
+        ":direct_session",
+        ":framework",
+        ":framework_internal",
+        ":lib",
+        ":test",
+        ":test_main",
+        ":testlib",
+        "//tensorflow/cc:cc_ops",
+        "//tensorflow/cc:cc_ops_internal",
+        "//tensorflow/cc:client_session",
+        "//tensorflow/cc:function_ops",
+        "//tensorflow/cc:ops",
+    ],
+)
+
+tf_cc_tests(
+    name = "common_runtime_lower_if_while_test",
+    size = "small",
+    srcs = ["common_runtime/lower_if_while_test.cc"],
     deps = [
         ":all_kernels",
         ":core_cpu",

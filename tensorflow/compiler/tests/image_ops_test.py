@@ -26,7 +26,6 @@ import numpy as np
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
 from tensorflow.compiler.tests import xla_test
-from tensorflow.python.compat import compat
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
@@ -605,168 +604,205 @@ class ResizeBilinearTest(xla_test.XLATestCase):
 class NonMaxSuppressionTest(xla_test.XLATestCase):
 
   def testNMS128From1024(self):
-    with compat.forward_compatibility_horizon(2018, 8, 8):
-      num_boxes = 1024
-      boxes_np = np.random.normal(50, 10, (num_boxes, 4)).astype("f4")
-      scores_np = np.random.normal(0.5, 0.1, (num_boxes,)).astype("f4")
+    num_boxes = 1024
+    boxes_np = np.random.normal(50, 10, (num_boxes, 4)).astype("f4")
+    scores_np = np.random.normal(0.5, 0.1, (num_boxes,)).astype("f4")
 
-      max_output_size = 128
-      iou_threshold_np = np.array(0.5, dtype=np.float32)
-      score_threshold_np = np.array(0.0, dtype=np.float32)
+    max_output_size = 128
+    iou_threshold_np = np.array(0.5, dtype=np.float32)
+    score_threshold_np = np.array(0.0, dtype=np.float32)
 
-      with self.cached_session() as sess:
-        boxes = array_ops.placeholder(boxes_np.dtype, shape=boxes_np.shape)
-        scores = array_ops.placeholder(scores_np.dtype, shape=scores_np.shape)
-        iou_threshold = array_ops.placeholder(iou_threshold_np.dtype,
-                                              iou_threshold_np.shape)
-        score_threshold = array_ops.placeholder(score_threshold_np.dtype,
-                                                score_threshold_np.shape)
-        with self.test_scope():
-          selected_indices = image_ops.non_max_suppression_padded(
-              boxes=boxes,
-              scores=scores,
-              max_output_size=max_output_size,
-              iou_threshold=iou_threshold,
-              score_threshold=score_threshold,
-              pad_to_max_output_size=True)
-        inputs_feed = {
-            boxes: boxes_np,
-            scores: scores_np,
-            score_threshold: score_threshold_np,
-            iou_threshold: iou_threshold_np
-        }
-        (indices_tf, _) = sess.run(selected_indices, feed_dict=inputs_feed)
+    with self.cached_session() as sess:
+      boxes = array_ops.placeholder(boxes_np.dtype, shape=boxes_np.shape)
+      scores = array_ops.placeholder(scores_np.dtype, shape=scores_np.shape)
+      iou_threshold = array_ops.placeholder(iou_threshold_np.dtype,
+                                            iou_threshold_np.shape)
+      score_threshold = array_ops.placeholder(score_threshold_np.dtype,
+                                              score_threshold_np.shape)
+      with self.test_scope():
+        selected_indices = image_ops.non_max_suppression_padded(
+            boxes=boxes,
+            scores=scores,
+            max_output_size=max_output_size,
+            iou_threshold=iou_threshold,
+            score_threshold=score_threshold,
+            pad_to_max_output_size=True)
+      inputs_feed = {
+          boxes: boxes_np,
+          scores: scores_np,
+          score_threshold: score_threshold_np,
+          iou_threshold: iou_threshold_np
+      }
+      (indices_tf, _) = sess.run(selected_indices, feed_dict=inputs_feed)
 
-        self.assertEqual(indices_tf.size, max_output_size)
+      self.assertEqual(indices_tf.size, max_output_size)
 
   def testNMS3From6Boxes(self):
-    with compat.forward_compatibility_horizon(2018, 8, 8):
-      # Three boxes are selected based on IOU.
-      boxes_data = [[0, 0, 1, 1], [0, 0.1, 1, 1.1], [0, -0.1, 1, 0.9],
-                    [0, 10, 1, 11], [0, 10.1, 1, 11.1], [0, 100, 1, 101]]
-      boxes_np = np.array(boxes_data, dtype=np.float32)
+    # Three boxes are selected based on IOU.
+    boxes_data = [[0, 0, 1, 1], [0, 0.1, 1, 1.1], [0, -0.1, 1, 0.9],
+                  [0, 10, 1, 11], [0, 10.1, 1, 11.1], [0, 100, 1, 101]]
+    boxes_np = np.array(boxes_data, dtype=np.float32)
 
-      scores_data = [0.9, 0.75, 0.6, 0.95, 0.5, 0.3]
-      scores_np = np.array(scores_data, dtype=np.float32)
+    scores_data = [0.9, 0.75, 0.6, 0.95, 0.5, 0.3]
+    scores_np = np.array(scores_data, dtype=np.float32)
 
-      max_output_size = 3
-      iou_threshold_np = np.array(0.5, dtype=np.float32)
-      score_threshold_np = np.array(0.0, dtype=np.float32)
+    max_output_size = 3
+    iou_threshold_np = np.array(0.5, dtype=np.float32)
+    score_threshold_np = np.array(0.0, dtype=np.float32)
 
-      with self.cached_session() as sess:
-        boxes = array_ops.placeholder(boxes_np.dtype, shape=boxes_np.shape)
-        scores = array_ops.placeholder(scores_np.dtype, shape=scores_np.shape)
-        iou_threshold = array_ops.placeholder(iou_threshold_np.dtype,
-                                              iou_threshold_np.shape)
-        score_threshold = array_ops.placeholder(score_threshold_np.dtype,
-                                                score_threshold_np.shape)
-        with self.test_scope():
-          selected_indices = image_ops.non_max_suppression_padded(
-              boxes=boxes,
-              scores=scores,
-              max_output_size=max_output_size,
-              iou_threshold=iou_threshold,
-              score_threshold=score_threshold,
-              pad_to_max_output_size=True)
-        inputs_feed = {
-            boxes: boxes_np,
-            scores: scores_np,
-            score_threshold: score_threshold_np,
-            iou_threshold: iou_threshold_np
-        }
-        (indices_tf, num_valid) = sess.run(
-            selected_indices, feed_dict=inputs_feed)
+    with self.cached_session() as sess:
+      boxes = array_ops.placeholder(boxes_np.dtype, shape=boxes_np.shape)
+      scores = array_ops.placeholder(scores_np.dtype, shape=scores_np.shape)
+      iou_threshold = array_ops.placeholder(iou_threshold_np.dtype,
+                                            iou_threshold_np.shape)
+      score_threshold = array_ops.placeholder(score_threshold_np.dtype,
+                                              score_threshold_np.shape)
+      with self.test_scope():
+        selected_indices = image_ops.non_max_suppression_padded(
+            boxes=boxes,
+            scores=scores,
+            max_output_size=max_output_size,
+            iou_threshold=iou_threshold,
+            score_threshold=score_threshold,
+            pad_to_max_output_size=True)
+      inputs_feed = {
+          boxes: boxes_np,
+          scores: scores_np,
+          score_threshold: score_threshold_np,
+          iou_threshold: iou_threshold_np
+      }
+      (indices_tf, num_valid) = sess.run(
+          selected_indices, feed_dict=inputs_feed)
 
-        self.assertEqual(indices_tf.size, max_output_size)
-        self.assertEqual(num_valid, 3)
-        self.assertAllClose(indices_tf[:num_valid], [3, 0, 5])
+      self.assertEqual(indices_tf.size, max_output_size)
+      self.assertEqual(num_valid, 3)
+      self.assertAllClose(indices_tf[:num_valid], [3, 0, 5])
 
   def testNMS3Then2WithScoreThresh(self):
     # Three boxes are selected based on IOU.
     # One is filtered out by score threshold.
 
-    with compat.forward_compatibility_horizon(2018, 8, 8):
-      boxes_data = [[0, 0, 1, 1], [0, 0.1, 1, 1.1], [0, -0.1, 1, 0.9],
-                    [0, 10, 1, 11], [0, 10.1, 1, 11.1], [0, 100, 1, 101]]
-      boxes_np = np.array(boxes_data, dtype=np.float32)
+    boxes_data = [[0, 0, 1, 1], [0, 0.1, 1, 1.1], [0, -0.1, 1, 0.9],
+                  [0, 10, 1, 11], [0, 10.1, 1, 11.1], [0, 100, 1, 101]]
+    boxes_np = np.array(boxes_data, dtype=np.float32)
 
-      scores_data = [0.9, 0.75, 0.6, 0.95, 0.5, 0.3]
-      scores_np = np.array(scores_data, dtype=np.float32)
-      max_output_size = 3
-      iou_threshold_np = np.array(0.5, dtype=np.float32)
-      score_threshold_np = np.array(0.4, dtype=np.float32)
+    scores_data = [0.9, 0.75, 0.6, 0.95, 0.5, 0.3]
+    scores_np = np.array(scores_data, dtype=np.float32)
+    max_output_size = 3
+    iou_threshold_np = np.array(0.5, dtype=np.float32)
+    score_threshold_np = np.array(0.4, dtype=np.float32)
 
-      with self.cached_session() as sess:
-        boxes = array_ops.placeholder(boxes_np.dtype, shape=boxes_np.shape)
-        scores = array_ops.placeholder(scores_np.dtype, shape=scores_np.shape)
-        iou_threshold = array_ops.placeholder(iou_threshold_np.dtype,
-                                              iou_threshold_np.shape)
-        score_threshold = array_ops.placeholder(score_threshold_np.dtype,
-                                                score_threshold_np.shape)
-        with self.test_scope():
-          selected_indices = image_ops.non_max_suppression_padded(
-              boxes=boxes,
-              scores=scores,
-              max_output_size=max_output_size,
-              iou_threshold=iou_threshold,
-              score_threshold=score_threshold,
-              pad_to_max_output_size=True)
-        inputs_feed = {
-            boxes: boxes_np,
-            scores: scores_np,
-            iou_threshold: iou_threshold_np,
-            score_threshold: score_threshold_np
-        }
-        (indices_tf, num_valid) = sess.run(
-            selected_indices, feed_dict=inputs_feed)
+    with self.cached_session() as sess:
+      boxes = array_ops.placeholder(boxes_np.dtype, shape=boxes_np.shape)
+      scores = array_ops.placeholder(scores_np.dtype, shape=scores_np.shape)
+      iou_threshold = array_ops.placeholder(iou_threshold_np.dtype,
+                                            iou_threshold_np.shape)
+      score_threshold = array_ops.placeholder(score_threshold_np.dtype,
+                                              score_threshold_np.shape)
+      with self.test_scope():
+        selected_indices = image_ops.non_max_suppression_padded(
+            boxes=boxes,
+            scores=scores,
+            max_output_size=max_output_size,
+            iou_threshold=iou_threshold,
+            score_threshold=score_threshold,
+            pad_to_max_output_size=True)
+      inputs_feed = {
+          boxes: boxes_np,
+          scores: scores_np,
+          iou_threshold: iou_threshold_np,
+          score_threshold: score_threshold_np
+      }
+      (indices_tf, num_valid) = sess.run(
+          selected_indices, feed_dict=inputs_feed)
 
-        self.assertEqual(indices_tf.size, max_output_size)
-        self.assertEqual(num_valid, 2)
-        self.assertAllClose(indices_tf[:num_valid], [3, 0])
+      self.assertEqual(indices_tf.size, max_output_size)
+      self.assertEqual(num_valid, 2)
+      self.assertAllClose(indices_tf[:num_valid], [3, 0])
 
   def testNMS3Then1WithScoreMaxThresh(self):
     # Three boxes are selected based on IOU.
     # One is filtered out by score threshold.
     # One is filtered out by max_output_size.
 
-    with compat.forward_compatibility_horizon(2018, 8, 8):
-      boxes_data = [[0, 0, 1, 1], [0, 0.1, 1, 1.1], [0, -0.1, 1, 0.9],
-                    [0, 10, 1, 11], [0, 10.1, 1, 11.1], [0, 100, 1, 101]]
-      boxes_np = np.array(boxes_data, dtype=np.float32)
+    boxes_data = [[0, 0, 1, 1], [0, 0.1, 1, 1.1], [0, -0.1, 1, 0.9],
+                  [0, 10, 1, 11], [0, 10.1, 1, 11.1], [0, 100, 1, 101]]
+    boxes_np = np.array(boxes_data, dtype=np.float32)
 
-      scores_data = [0.9, 0.75, 0.6, 0.95, 0.5, 0.3]
-      scores_np = np.array(scores_data, dtype=np.float32)
-      max_output_size = 1
-      iou_threshold_np = np.array(0.5, dtype=np.float32)
-      score_threshold_np = np.array(0.4, dtype=np.float32)
+    scores_data = [0.9, 0.75, 0.6, 0.95, 0.5, 0.3]
+    scores_np = np.array(scores_data, dtype=np.float32)
+    max_output_size = 1
+    iou_threshold_np = np.array(0.5, dtype=np.float32)
+    score_threshold_np = np.array(0.4, dtype=np.float32)
 
-      with self.cached_session() as sess:
-        boxes = array_ops.placeholder(boxes_np.dtype, shape=boxes_np.shape)
-        scores = array_ops.placeholder(scores_np.dtype, shape=scores_np.shape)
-        iou_threshold = array_ops.placeholder(iou_threshold_np.dtype,
-                                              iou_threshold_np.shape)
-        score_threshold = array_ops.placeholder(score_threshold_np.dtype,
-                                                score_threshold_np.shape)
-        with self.test_scope():
-          selected_indices = image_ops.non_max_suppression_padded(
-              boxes=boxes,
-              scores=scores,
-              max_output_size=max_output_size,
-              iou_threshold=iou_threshold,
-              score_threshold=score_threshold,
-              pad_to_max_output_size=True)
-        inputs_feed = {
-            boxes: boxes_np,
-            scores: scores_np,
-            iou_threshold: iou_threshold_np,
-            score_threshold: score_threshold_np
-        }
-        (indices_tf, num_valid) = sess.run(
-            selected_indices, feed_dict=inputs_feed)
+    with self.cached_session() as sess:
+      boxes = array_ops.placeholder(boxes_np.dtype, shape=boxes_np.shape)
+      scores = array_ops.placeholder(scores_np.dtype, shape=scores_np.shape)
+      iou_threshold = array_ops.placeholder(iou_threshold_np.dtype,
+                                            iou_threshold_np.shape)
+      score_threshold = array_ops.placeholder(score_threshold_np.dtype,
+                                              score_threshold_np.shape)
+      with self.test_scope():
+        selected_indices = image_ops.non_max_suppression_padded(
+            boxes=boxes,
+            scores=scores,
+            max_output_size=max_output_size,
+            iou_threshold=iou_threshold,
+            score_threshold=score_threshold,
+            pad_to_max_output_size=True)
+      inputs_feed = {
+          boxes: boxes_np,
+          scores: scores_np,
+          iou_threshold: iou_threshold_np,
+          score_threshold: score_threshold_np
+      }
+      (indices_tf, num_valid) = sess.run(
+          selected_indices, feed_dict=inputs_feed)
 
-        self.assertEqual(indices_tf.size, max_output_size)
-        self.assertEqual(num_valid, 1)
-        self.assertAllClose(indices_tf[:num_valid], [3])
+      self.assertEqual(indices_tf.size, max_output_size)
+      self.assertEqual(num_valid, 1)
+      self.assertAllClose(indices_tf[:num_valid], [3])
+
+  def testSelectFromContinuousOverLap(self):
+    # Tests that a suppressed box does not itself suppress other boxes.
+
+    boxes_data = [[0, 0, 1, 1], [0, 0.2, 1, 1.2], [0, 0.4, 1, 1.4],
+                  [0, 0.6, 1, 1.6], [0, 0.8, 1, 1.8], [0, 2, 1, 3]]
+    boxes_np = np.array(boxes_data, dtype=np.float32)
+
+    scores_data = [0.9, 0.75, 0.6, 0.5, 0.4, 0.3]
+    scores_np = np.array(scores_data, dtype=np.float32)
+    max_output_size = 3
+    iou_threshold_np = np.array(0.5, dtype=np.float32)
+    score_threshold_np = np.array(0.1, dtype=np.float32)
+
+    with self.cached_session() as sess:
+      boxes = array_ops.placeholder(boxes_np.dtype, shape=boxes_np.shape)
+      scores = array_ops.placeholder(scores_np.dtype, shape=scores_np.shape)
+      iou_threshold = array_ops.placeholder(iou_threshold_np.dtype,
+                                            iou_threshold_np.shape)
+      score_threshold = array_ops.placeholder(score_threshold_np.dtype,
+                                              score_threshold_np.shape)
+      with self.test_scope():
+        selected_indices = image_ops.non_max_suppression_padded(
+            boxes=boxes,
+            scores=scores,
+            max_output_size=max_output_size,
+            iou_threshold=iou_threshold,
+            score_threshold=score_threshold,
+            pad_to_max_output_size=True)
+      inputs_feed = {
+          boxes: boxes_np,
+          scores: scores_np,
+          iou_threshold: iou_threshold_np,
+          score_threshold: score_threshold_np
+      }
+      (indices_tf, num_valid) = sess.run(
+          selected_indices, feed_dict=inputs_feed)
+
+      self.assertEqual(indices_tf.size, max_output_size)
+      self.assertEqual(num_valid, 3)
+      self.assertAllClose(indices_tf[:num_valid], [0, 2, 4])
 
 if __name__ == "__main__":
   test.main()

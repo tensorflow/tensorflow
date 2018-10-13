@@ -389,9 +389,10 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
         GetTemporary(context, node, kScalingFactors);
     scaling_factors->type = kTfLiteFloat32;
     scaling_factors->allocation_type = kTfLiteArenaRw;
-    TfLiteIntArray* scaling_factors_size = TfLiteIntArrayCreate(1);
-    scaling_factors_size->data[0] = n_batch;
-    if (!TfLiteIntArrayEqual(scaling_factors->dims, scaling_factors_size)) {
+    int scaling_dims[1] = {n_batch};
+    if (!TfLiteIntArrayEqualsArray(scaling_factors->dims, 1, scaling_dims)) {
+      TfLiteIntArray* scaling_factors_size = TfLiteIntArrayCreate(1);
+      scaling_factors_size->data[0] = n_batch;
       TF_LITE_ENSURE_OK(context, context->ResizeTensor(context, scaling_factors,
                                                        scaling_factors_size));
     }
@@ -401,10 +402,10 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
         GetTemporary(context, node, kProductScalingFactors);
     prod_scaling_factors->type = kTfLiteFloat32;
     prod_scaling_factors->allocation_type = kTfLiteArenaRw;
-    TfLiteIntArray* prod_scaling_factors_size = TfLiteIntArrayCreate(1);
-    prod_scaling_factors_size->data[0] = n_batch;
-    if (!TfLiteIntArrayEqual(prod_scaling_factors->dims,
-                             prod_scaling_factors_size)) {
+    if (!TfLiteIntArrayEqualsArray(prod_scaling_factors->dims, 1,
+                                   scaling_dims)) {
+      TfLiteIntArray* prod_scaling_factors_size = TfLiteIntArrayCreate(1);
+      prod_scaling_factors_size->data[0] = n_batch;
       TF_LITE_ENSURE_OK(context,
                         context->ResizeTensor(context, prod_scaling_factors,
                                               prod_scaling_factors_size));
@@ -418,10 +419,11 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
         GetTemporary(context, node, kRecoveredCellWeights);
     recovered_cell_weights->type = kTfLiteFloat32;
     recovered_cell_weights->allocation_type = kTfLiteArenaRw;
-    TfLiteIntArray* recovered_cell_weights_size = TfLiteIntArrayCreate(1);
-    recovered_cell_weights_size->data[0] = n_cell;
-    if (!TfLiteIntArrayEqual(recovered_cell_weights->dims,
-                             recovered_cell_weights_size)) {
+    int recovered_cell_dims[1] = {n_cell};
+    if (!TfLiteIntArrayEqualsArray(recovered_cell_weights->dims, 1,
+                                   recovered_cell_dims)) {
+      TfLiteIntArray* recovered_cell_weights_size = TfLiteIntArrayCreate(1);
+      recovered_cell_weights_size->data[0] = n_cell;
       TF_LITE_ENSURE_OK(context,
                         context->ResizeTensor(context, recovered_cell_weights,
                                               recovered_cell_weights_size));
@@ -431,7 +433,9 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
 }
 
 TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
-  auto* params = reinterpret_cast<TfLiteLSTMParams*>(node->builtin_data);
+  const auto* params =
+      reinterpret_cast<TfLiteUnidirectionalSequenceLSTMParams*>(
+          node->builtin_data);
   const TfLiteTensor* input = GetInput(context, node, kInputTensor);
 
   const TfLiteTensor* input_to_input_weights =
@@ -482,6 +486,12 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
 
   TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
 
+  // Copy out the LSTM specific params so they can be passed in the function.
+  TfLiteLSTMParams lstm_params;
+  lstm_params.activation = params->activation;
+  lstm_params.cell_clip = params->cell_clip;
+  lstm_params.proj_clip = params->proj_clip;
+
   switch (input_to_output_weights->type) {
     case kTfLiteFloat32: {
       return lstm_eval::EvalFloat(
@@ -496,7 +506,7 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
           /*aux_input_to_cell_weights=*/nullptr,
           /*aux_input_to_output_weights=*/nullptr, input_gate_bias,
           forget_gate_bias, cell_bias, output_gate_bias, projection_weights,
-          projection_bias, params, /*forward_sequence=*/true,
+          projection_bias, &lstm_params, /*forward_sequence=*/true,
           /*output_offset=*/0, scratch_buffer, activation_state, cell_state,
           output);
     }
@@ -523,7 +533,7 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
           /*aux_input_to_cell_weights=*/nullptr,
           /*aux_input_to_output_weights=*/nullptr, input_gate_bias,
           forget_gate_bias, cell_bias, output_gate_bias, projection_weights,
-          projection_bias, params, /*forward_sequence=*/true,
+          projection_bias, &lstm_params, /*forward_sequence=*/true,
           /*output_offset=*/0, scratch_buffer, scaling_factors,
           prod_scaling_factors, recovered_cell_weights, input_quantized,
           /*aux_input_quantized=*/nullptr, activation_state_quantized,

@@ -34,7 +34,7 @@ from tensorflow.python.util.tf_export import tf_export
 
 
 # TODO(b/27419586) Change docstring for required dtype of x once int allowed
-@tf_export('math.lbeta', 'lbeta')
+@tf_export('math.lbeta', v1=['math.lbeta', 'lbeta'])
 @deprecation.deprecated_endpoints('lbeta')
 def lbeta(x, name=None):
   r"""Computes \\(ln(|Beta(x)|)\\), reducing along the last dimension.

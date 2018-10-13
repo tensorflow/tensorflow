@@ -946,6 +946,49 @@ void ProcessLstmCellOperator(Model* model, LstmCellOperator* op) {
       .copy_shape(activ_temp_shape);
 }
 
+void ProcessUnidirectionalSequenceLstmOperator(
+    Model* model, UnidirectionalSequenceLstmOperator* op) {
+  auto& output_array = model->GetArray(op->outputs[0]);
+  if (output_array.has_shape()) {
+    // Shape already propagated
+    return;
+  }
+
+  if (output_array.data_type == ArrayDataType::kNone) {
+    // Yield until the output type has been set by PropagateArrayDataTypes
+    return;
+  }
+
+  // TODO(renjieliu): check the inputs, as well as all kinds of weights.
+  const auto& input_array = model->GetArray(op->inputs[0]);
+  // Yield until input dims have been resolved.
+  if (!input_array.has_shape()) {
+    return;
+  }
+  const auto& input_shape = input_array.shape();
+  const int batch_size = input_shape.dims(1);
+  const int timestamp = input_shape.dims(0);
+
+  const auto& recurrent_to_output_weights_array =
+      model->GetArray(op->inputs[8]);
+  // Yield until input dims have been resolved.
+  if (!recurrent_to_output_weights_array.has_shape()) {
+    return;
+  }
+
+  constexpr int kInputActivationStateTensor = 18;
+  constexpr int kInputCellStateTensor = 19;
+  // b(115961645): This is a hack to work around.
+  model->GetArray(op->inputs[kInputActivationStateTensor]).buffer.reset();
+  model->GetArray(op->inputs[kInputCellStateTensor]).buffer.reset();
+
+  const auto& output_weights_shape = recurrent_to_output_weights_array.shape();
+  const int output_size = output_weights_shape.dims(1);
+
+  Shape* output_shape = output_array.mutable_shape();
+  output_shape->ReplaceDims({timestamp, batch_size, output_size});
+}
+
 void ProcessSpaceToBatchNDOperator(Model* model, SpaceToBatchNDOperator* op) {
   const auto& input_array = model->GetArray(op->inputs[0]);
   // Yield until input dims have been resolved.
@@ -1622,7 +1665,10 @@ void ProcessUnpackOperator(Model* model, UnpackOperator* op) {
 
 }  // namespace
 
-bool PropagateFixedSizes::Run(Model* model, std::size_t op_index) {
+::tensorflow::Status PropagateFixedSizes::Run(Model* model,
+                                              std::size_t op_index,
+                                              bool* modified) {
+  *modified = false;
   auto it = model->operators.begin() + op_index;
   auto* op = it->get();
   std::unordered_map<string, std::vector<int>> old_output_dims;
@@ -1797,6 +1843,10 @@ bool PropagateFixedSizes::Run(Model* model, std::size_t op_index) {
       ProcessResizeBilinearOperator(model,
                                     static_cast<ResizeBilinearOperator*>(op));
       break;
+    case OperatorType::kUnidirectionalSequenceLstm:
+      ProcessUnidirectionalSequenceLstmOperator(
+          model, static_cast<UnidirectionalSequenceLstmOperator*>(op));
+      break;
     case OperatorType::kLstmCell:
       ProcessLstmCellOperator(model, static_cast<LstmCellOperator*>(op));
       break;
@@ -1836,7 +1886,7 @@ bool PropagateFixedSizes::Run(Model* model, std::size_t op_index) {
           static_cast<TensorFlowUnsupportedOperator*>(op);
       // Attribute can be not specified, ignore it.
       if (unsupported_op->output_shapes.size() < op->outputs.size()) {
-        return false;
+        return ::tensorflow::Status::OK();
       }
       for (int i = 0; i < op->outputs.size(); ++i) {
         const string& output = op->outputs[i];
@@ -1886,10 +1936,11 @@ bool PropagateFixedSizes::Run(Model* model, std::size_t op_index) {
         (old_output_dims[output] != model->GetArray(output).shape().dims())) {
       AddMessageF("Set shape of %s to [%s]", output,
                   absl::StrJoin(model->GetArray(output).shape().dims(), ","));
-      return true;
+      *modified = true;
+      return ::tensorflow::Status::OK();
     }
   }
-  return false;
+  return ::tensorflow::Status::OK();
 }
 
 }  // namespace toco

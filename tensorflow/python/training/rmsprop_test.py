@@ -92,7 +92,7 @@ class RMSPropOptimizerTest(test.TestCase):
     # TODO(yori): Use ParameterizedTest when available
     for (dtype, learning_rate, decay, momentum,
          epsilon, centered, use_resource) in _TESTPARAMS:
-      with self.test_session(use_gpu=True):
+      with self.cached_session(use_gpu=True):
         # Initialize variables for numpy implementation.
         var0_np = np.array([1.0, 2.0], dtype=dtype.as_numpy_dtype)
         grads0_np = np.array([0.1, 0.2], dtype=dtype.as_numpy_dtype)
@@ -211,7 +211,7 @@ class RMSPropOptimizerTest(test.TestCase):
     # TODO(yori): Use ParameterizedTest when available
     for (dtype, learning_rate, decay,
          momentum, epsilon, centered, _) in _TESTPARAMS:
-      with self.test_session(use_gpu=True):
+      with self.cached_session(use_gpu=True):
         # Initialize variables for numpy implementation.
         var0_np = np.array([1.0, 2.0], dtype=dtype.as_numpy_dtype)
         grads0_np = np.array([0.1], dtype=dtype.as_numpy_dtype)
@@ -285,7 +285,7 @@ class RMSPropOptimizerTest(test.TestCase):
 
   def testWithoutMomentum(self):
     for dtype in [dtypes.half, dtypes.float32]:
-      with self.test_session(use_gpu=True):
+      with self.cached_session(use_gpu=True):
         var0 = variables.Variable([1.0, 2.0], dtype=dtype)
         var1 = variables.Variable([3.0, 4.0], dtype=dtype)
         grads0 = constant_op.constant([0.1, 0.1], dtype=dtype)
@@ -351,7 +351,7 @@ class RMSPropOptimizerTest(test.TestCase):
 
   def testWithMomentum(self):
     for dtype in [dtypes.half, dtypes.float32]:
-      with self.test_session(use_gpu=True):
+      with self.cached_session(use_gpu=True):
         var0 = variables.Variable([1.0, 2.0], dtype=dtype)
         var1 = variables.Variable([3.0, 4.0], dtype=dtype)
         grads0 = constant_op.constant([0.1, 0.1], dtype=dtype)

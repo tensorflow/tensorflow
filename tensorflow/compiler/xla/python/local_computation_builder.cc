@@ -532,10 +532,13 @@ LocalOp LocalComputationBuilder::ReduceWindowWithGeneralPadding(
     const LocalComputation& local_computation,
     absl::Span<const int64> window_dimensions,
     absl::Span<const int64> window_strides,
+    absl::Span<const int64> base_dilations,
+    absl::Span<const int64> window_dilations,
     absl::Span<const std::pair<int64, int64>> padding) {
   return xla::ReduceWindowWithGeneralPadding(
       operand.op(), init_value.op(), local_computation.computation(),
-      window_dimensions, window_strides, padding);
+      window_dimensions, window_strides, base_dilations, window_dilations,
+      padding);
 }
 
 LocalOp LocalComputationBuilder::RngNormal(const LocalOp& mu,
@@ -569,13 +572,13 @@ StatusOr<bool> LocalComputationBuilder::IsConstant(const LocalOp& operand) {
 }
 
 LocalOp LocalComputationBuilder::Sort(const LocalOp& operand, int64 dimension) {
-  return xla::Sort(operand.op(), absl::nullopt, dimension);
+  return xla::Sort(operand.op(), {}, dimension);
 }
 
 LocalOp LocalComputationBuilder::SortKeyVal(const LocalOp& keys,
                                             const LocalOp& values,
                                             int64 dimension) {
-  return xla::Sort(keys.op(), values.op(), dimension);
+  return xla::Sort(keys.op(), {values.op()}, dimension);
 }
 
 StatusOr<LocalComputation*> LocalComputationBuilder::BuildConstantSubGraph(
