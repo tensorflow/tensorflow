@@ -25,13 +25,13 @@ import numpy as np
 from tensorflow.python.compat import compat
 from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import graph_util
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
-from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gen_nn_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
@@ -1678,27 +1678,29 @@ def _softmax(logits, compute_op, dim=-1, name=None):
   if is_last_dim:
     return compute_op(logits, name=name)
 
+  dim_val = tensor_util.constant_value(dim) if isinstance(dim, ops.Tensor) else dim
+  if dim_val is not None and (dim_val < -shape.ndims or dim_val >= shape.ndims):
+    raise errors_impl.InvalidArgumentError(
+        None, None,
+        "Dimension (%d) must be in the range [%d, %d) where %d is the number of dimensions in the input." % (dim_val, -shape.ndims, shape.ndims, shape.ndims))
   # If dim is not the last dimension, we have to do a transpose so that we can
   # still perform softmax on its last dimension.
-  is_valid_dim = control_flow_ops.Assert(math_ops.logical_and(
-      math_ops.greater_equal(dim, -shape.ndims),
-      math_ops.less(dim, shape.ndims)), [dim])
-  with ops.control_dependencies([is_valid_dim]):
-    # Swap logits' dimension of dim and its last dimension.
-    input_rank = array_ops.rank(logits)
-    dim_axis = dim % shape.ndims
-    logits = _swap_axis(logits, dim_axis, math_ops.subtract(input_rank, 1))
 
-    # Do the actual softmax on its last dimension.
-    output = compute_op(logits)
+  # Swap logits' dimension of dim and its last dimension.
+  input_rank = array_ops.rank(logits)
+  dim_axis = dim % shape.ndims
+  logits = _swap_axis(logits, dim_axis, math_ops.subtract(input_rank, 1))
 
-    output = _swap_axis(
-        output, dim_axis, math_ops.subtract(input_rank, 1), name=name)
+  # Do the actual softmax on its last dimension.
+  output = compute_op(logits)
 
-    # Make shape inference work since transpose may erase its static shape.
-    output.set_shape(shape)
+  output = _swap_axis(
+      output, dim_axis, math_ops.subtract(input_rank, 1), name=name)
 
-    return output
+  # Make shape inference work since transpose may erase its static shape.
+  output.set_shape(shape)
+
+  return output
 
 
 @tf_export("nn.softmax", "math.softmax")
