@@ -308,7 +308,8 @@ struct scalar_squared_difference_op {
   EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE const Packet
   packetOp(const Packet& a, const Packet& b) const {
     const Packet v = scalar_difference_op<Scalar>().packetOp(a, b);
-    return scalar_product_op<Scalar>().packetOp(v, scalar_conjugate_op<Scalar>().packetOp(v));
+    return scalar_product_op<Scalar>().packetOp(
+        v, scalar_conjugate_op<Scalar>().packetOp(v));
   }
 };
 
