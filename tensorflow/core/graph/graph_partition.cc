@@ -793,7 +793,7 @@ Status TopologicalSortNodesWithTimePriority(
   for (int n = 0; n < gdef->node_size(); ++n) {
     const NodeDef* ndef = &gdef->node(n);
     for (int i = 0; i < ndef->input_size(); ++i) {
-      node_to_output_nodes[std::string(ParseTensorName(ndef->input(i)).first)]
+      node_to_output_nodes[string(ParseTensorName(ndef->input(i)).first)]
           .push_back(ndef);
     }
     int64 start_time;

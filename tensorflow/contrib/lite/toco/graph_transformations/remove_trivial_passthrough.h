@@ -50,7 +50,8 @@ namespace toco {
 // and then discards it and returns true, or, if it's not trivial (if neither
 // the input nor the output may be discarded), returns false.
 bool RemoveTrivialPassthroughOp(GraphTransformation* transformation,
-                                Model* model, std::size_t op_index);
+                                Model* model, std::size_t op_index,
+                                int input_index = -1);
 
 }  // namespace toco
 

@@ -634,7 +634,7 @@ def create_low_latency_svdf_model(fingerprint_input, model_settings,
   label_count = model_settings['label_count']
   final_fc_weights = tf.get_variable(
       name='final_fc_weights',
-      initializer=tf.truncated_normal(stddev=0.01),
+      initializer=tf.truncated_normal_initializer(stddev=0.01),
       shape=[second_fc_output_channels, label_count])
   final_fc_bias = tf.get_variable(
       name='final_fc_bias',

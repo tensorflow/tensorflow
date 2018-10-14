@@ -25,6 +25,7 @@ py_library(
         "applications/inception_resnet_v2.py",
         "applications/inception_v3.py",
         "applications/mobilenet.py",
+        "applications/mobilenet_v2.py",
         "applications/nasnet.py",
         "applications/resnet50.py",
         "applications/vgg16.py",
@@ -61,6 +62,7 @@ py_library(
         ":backend",
         ":engine",
         ":layers",
+        ":optimizer_v2",
         "//tensorflow/python/saved_model",
         "//tensorflow/python:training",
     ],
@@ -101,7 +103,6 @@ py_library(
         "//tensorflow/python:tensor_array_ops",
         "//tensorflow/python:tensor_shape",
         "//tensorflow/python:util",
-        "//tensorflow/python:variable_scope",
         "//tensorflow/python:variables",
     ],
 )
@@ -114,12 +115,14 @@ py_library(
         "constraints.py",
         "engine/__init__.py",
         "engine/base_layer.py",
+        "engine/distributed_training_utils.py",
         "engine/input_layer.py",
         "engine/network.py",
         "engine/saving.py",
         "engine/sequential.py",
         "engine/training.py",
         "engine/training_arrays.py",
+        "engine/training_distributed.py",
         "engine/training_eager.py",
         "engine/training_generator.py",
         "engine/training_utils.py",
@@ -137,6 +140,7 @@ py_library(
         ":backend",
         "//tensorflow/python/data",
         "//tensorflow/python/training/checkpointable:data_structures",
+        "//tensorflow/tools/docs:doc_controls",
         "@six_archive//:six",
     ],
 )
@@ -183,6 +187,30 @@ py_library(
         "//tensorflow/python:tensor_array_ops",
         "//tensorflow/python:tensor_shape",
         "//tensorflow/python:util",
+    ],
+)
+
+py_library(
+    name = "optimizer_v2",
+    srcs = [
+        "optimizer_v2/adadelta.py",
+        "optimizer_v2/adagrad.py",
+        "optimizer_v2/adam.py",
+        "optimizer_v2/optimizer_v2.py",
+        "optimizer_v2/rmsprop.py",
+        "optimizer_v2/sgd.py",
+    ],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow/python:control_flow_ops",
+        "//tensorflow/python:distribute",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:resource_variable_ops",
+        "//tensorflow/python:state_ops",
+        "//tensorflow/python:training",
+        "//tensorflow/python:variable_scope",
+        "//tensorflow/python:variables",
     ],
 )
 
@@ -293,109 +321,15 @@ py_test(
 )
 
 py_test(
-    name = "densenet_test",
-    size = "large",
-    srcs = ["applications/densenet_test.py"],
-    srcs_version = "PY2AND3",
-    tags = ["nomsan"],  # times out, http://b/78650237
-    deps = [
-        ":keras",
-        "//tensorflow/python:client_testlib",
-        "//third_party/py/numpy",
-    ],
-)
-
-py_test(
-    name = "inception_resnet_v2_test",
-    size = "medium",
-    srcs = ["applications/inception_resnet_v2_test.py"],
+    name = "applications_test",
+    size = "enormous",
+    srcs = ["applications/applications_test.py"],
+    shard_count = 2,
     srcs_version = "PY2AND3",
     deps = [
         ":keras",
         "//tensorflow/python:client_testlib",
-        "//third_party/py/numpy",
-    ],
-)
-
-py_test(
-    name = "inception_v3_test",
-    size = "medium",
-    srcs = ["applications/inception_v3_test.py"],
-    srcs_version = "PY2AND3",
-    deps = [
-        ":keras",
-        "//tensorflow/python:client_testlib",
-        "//third_party/py/numpy",
-    ],
-)
-
-py_test(
-    name = "mobilenet_test",
-    size = "medium",
-    srcs = ["applications/mobilenet_test.py"],
-    srcs_version = "PY2AND3",
-    deps = [
-        ":keras",
-        "//tensorflow/python:client_testlib",
-        "//third_party/py/numpy",
-    ],
-)
-
-py_test(
-    name = "nasnet_test",
-    size = "large",
-    srcs = ["applications/nasnet_test.py"],
-    srcs_version = "PY2AND3",
-    tags = ["nomsan"],  # times out, http://b/78573625
-    deps = [
-        ":keras",
-        "//tensorflow/python:client_testlib",
-        "//third_party/py/numpy",
-    ],
-)
-
-py_test(
-    name = "resnet50_test",
-    size = "medium",
-    srcs = ["applications/resnet50_test.py"],
-    srcs_version = "PY2AND3",
-    deps = [
-        ":keras",
-        "//tensorflow/python:client_testlib",
-    ],
-)
-
-py_test(
-    name = "vgg16_test",
-    size = "small",
-    srcs = ["applications/vgg16_test.py"],
-    srcs_version = "PY2AND3",
-    deps = [
-        ":keras",
-        "//tensorflow/python:client_testlib",
-    ],
-)
-
-py_test(
-    name = "vgg19_test",
-    size = "small",
-    srcs = ["applications/vgg19_test.py"],
-    srcs_version = "PY2AND3",
-    deps = [
-        ":keras",
-        "//tensorflow/python:client_testlib",
-    ],
-)
-
-py_test(
-    name = "xception_test",
-    size = "medium",
-    srcs = ["applications/xception_test.py"],
-    srcs_version = "PY2AND3",
-    deps = [
-        ":keras",
-        "//tensorflow/python:client_testlib",
-        "//third_party/py/numpy",
+        "@absl_py//absl/testing:parameterized",
     ],
 )
 
@@ -428,11 +362,6 @@ py_test(
     size = "large",
     srcs = ["layers/convolutional_test.py"],
     srcs_version = "PY2AND3",
-    tags = [
-        "manual",
-        "noasan",  # times out b/63678675
-        "notsan",
-    ],
     deps = [
         ":keras",
         "//tensorflow/python:client_testlib",
@@ -477,12 +406,11 @@ py_test(
     ],
 )
 
-py_test(
+cuda_py_test(
     name = "embeddings_test",
-    size = "small",
+    size = "medium",
     srcs = ["layers/embeddings_test.py"],
-    srcs_version = "PY2AND3",
-    deps = [
+    additional_deps = [
         ":keras",
         "//tensorflow/python:client_testlib",
     ],
@@ -490,7 +418,7 @@ py_test(
 
 py_test(
     name = "local_test",
-    size = "medium",
+    size = "large",
     srcs = ["layers/local_test.py"],
     srcs_version = "PY2AND3",
     deps = [
@@ -716,14 +644,15 @@ cuda_py_test(
 )
 
 py_test(
-    name = "imagenet_utils_test",
+    name = "conv_utils_test",
     size = "small",
-    srcs = ["applications/imagenet_utils_test.py"],
+    srcs = ["utils/conv_utils_test.py"],
     srcs_version = "PY2AND3",
     deps = [
         ":keras",
         "//tensorflow/python:client_testlib",
         "//third_party/py/numpy",
+        "@absl_py//absl/testing:parameterized",
     ],
 )
 
@@ -778,13 +707,40 @@ py_test(
 
 py_test(
     name = "training_test",
-    size = "large",
+    size = "enormous",
     srcs = ["engine/training_test.py"],
     srcs_version = "PY2AND3",
     tags = ["notsan"],
     deps = [
         ":keras",
         "//tensorflow/python:client_testlib",
+        "//third_party/py/numpy",
+    ],
+)
+
+py_test(
+    name = "training_generator_test",
+    size = "enormous",
+    srcs = ["engine/training_generator_test.py"],
+    srcs_version = "PY2AND3",
+    tags = ["notsan"],
+    deps = [
+        ":keras",
+        "//tensorflow/python:client_testlib",
+        "//third_party/py/numpy",
+    ],
+)
+
+py_test(
+    name = "feature_columns_integration_test",
+    size = "small",
+    srcs = ["engine/feature_columns_integration_test.py"],
+    srcs_version = "PY2AND3",
+    tags = ["notsan"],
+    deps = [
+        ":keras",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python/feature_column:feature_column_py",
         "//third_party/py/numpy",
     ],
 )
@@ -858,19 +814,20 @@ py_test(
 
 py_test(
     name = "sequential_test",
-    size = "small",
+    size = "medium",
     srcs = ["engine/sequential_test.py"],
     srcs_version = "PY2AND3",
     deps = [
         ":keras",
         "//tensorflow/python:client_testlib",
         "//third_party/py/numpy",
+        "@absl_py//absl/testing:parameterized",
     ],
 )
 
 py_test(
     name = "models_test",
-    size = "small",
+    size = "medium",
     srcs = ["models_test.py"],
     srcs_version = "PY2AND3",
     tags = ["notsan"],  # b/67509773
@@ -907,4 +864,134 @@ py_library(
         "//tensorflow/python:util",
         "//third_party/py/numpy",
     ],
+)
+
+cuda_py_test(
+    name = "adadelta_test",
+    size = "medium",
+    srcs = ["optimizer_v2/adadelta_test.py"],
+    additional_deps = [
+        ":optimizer_v2",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:embedding_ops",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:platform",
+        "//tensorflow/python:platform_test",
+        "//tensorflow/python:resource_variable_ops",
+        "//tensorflow/python:variables",
+        "//third_party/py/numpy",
+    ],
+)
+
+cuda_py_test(
+    name = "adagrad_test",
+    size = "small",
+    srcs = ["optimizer_v2/adagrad_test.py"],
+    additional_deps = [
+        ":optimizer_v2",
+        "//tensorflow/python:embedding_ops",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:platform",
+        "//tensorflow/python:platform_test",
+        "//tensorflow/python:client_testlib",
+        "//third_party/py/numpy",
+    ],
+)
+
+cuda_py_test(
+    name = "adam_test",
+    size = "small",
+    srcs = ["optimizer_v2/adam_test.py"],
+    additional_deps = [
+        ":optimizer_v2",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:platform",
+        "//tensorflow/python:platform_test",
+        "//tensorflow/python:client_testlib",
+        "//third_party/py/numpy",
+    ],
+)
+
+cuda_py_test(
+    name = "checkpointable_utils_test",
+    srcs = ["optimizer_v2/checkpointable_utils_test.py"],
+    additional_deps = [
+        ":optimizer_v2",
+        "@six_archive//:six",
+        "//tensorflow/python:constant_op",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:init_ops",
+        "//tensorflow/python:layers",
+        "//tensorflow/python:layers_base",
+        "//tensorflow/python:resource_variable_ops",
+        "//tensorflow/python:state_ops",
+        "//tensorflow/python:training",
+        "//tensorflow/python:variable_scope",
+        "//tensorflow/python:variables",
+        "//tensorflow/python/eager:context",
+        "//tensorflow/python/eager:test",
+        "//tensorflow/python/keras",
+    ],
+    tags = ["notsan"],
+)
+
+cuda_py_test(
+    name = "sgd_test",
+    size = "medium",
+    srcs = ["optimizer_v2/sgd_test.py"],
+    additional_deps = [
+        ":optimizer_v2",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:embedding_ops",
+        "//tensorflow/python:platform_test",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:resource_variable_ops",
+        "//tensorflow/python:resources",
+        "//tensorflow/python:variables",
+        "//tensorflow/python/eager:context",
+    ],
+)
+
+cuda_py_test(
+    name = "optimizer_v2_test",
+    size = "medium",
+    srcs = ["optimizer_v2/optimizer_v2_test.py"],
+    additional_deps = [
+        ":optimizer_v2",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:clip_ops",
+        "//tensorflow/python:gradients",
+        "//tensorflow/python:resource_variable_ops",
+        "//tensorflow/python:state_ops",
+        "//tensorflow/python:variables",
+    ],
+)
+
+cuda_py_test(
+    name = "rmsprop_test",
+    size = "small",
+    srcs = ["optimizer_v2/rmsprop_test.py"],
+    additional_deps = [
+        ":optimizer_v2",
+        "@absl_py//absl/testing:parameterized",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:embedding_ops",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:platform",
+        "//tensorflow/python:platform_test",
+        "//tensorflow/python:client_testlib",
+        "//third_party/py/numpy",
+    ],
+    tags = ["optonly"],
 )

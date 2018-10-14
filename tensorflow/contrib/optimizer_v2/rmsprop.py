@@ -22,7 +22,7 @@ A detailed description of rmsprop.
 - divide gradient by the root of this average
 
 mean_square = decay * mean_square{t-1} + (1-decay) * gradient ** 2
-mom = momentum * mom{t-1} + learning_rate * g_t / sqrt(mean_square + epsilon)
+mom = momentum * mom{t-1} + learning_rate * g_t / sqrt(mean_square)
 delta = - mom
 
 This implementation of RMSProp uses plain momentum, not Nesterov momentum.
@@ -33,7 +33,7 @@ gradients, and uses that average to estimate the variance:
 mean_grad = decay * mean_square{t-1} + (1-decay) * gradient
 mean_square = decay * mean_square{t-1} + (1-decay) * gradient ** 2
 mom = momentum * mom{t-1} + learning_rate * g_t /
-    sqrt(mean_square - mean_grad**2 + epsilon)
+    sqrt(mean_square - mean_grad**2)
 delta = - mom
 """
 
@@ -41,20 +41,21 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.contrib.optimizer_v2 import optimizer_v2
-from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import init_ops
-
-from tensorflow.python.training import training_ops
+from tensorflow.python.keras.optimizer_v2 import rmsprop
+from tensorflow.python.util import deprecation
 
 
-class RMSPropOptimizer(optimizer_v2.OptimizerV2):
+class RMSPropOptimizer(rmsprop.RMSProp):
   """Optimizer that implements the RMSProp algorithm.
 
   See the
   [paper](http://www.cs.toronto.edu/~tijmen/csc321/slides/lecture_slides_lec6.pdf).
   """
 
+  @deprecation.deprecated_args(
+      "2018-10-01",
+      "`use_locking = True` is no longer supported and will be ignored.",
+      ("use_locking", [False]))
   def __init__(self,
                learning_rate,
                decay=0.9,
@@ -87,7 +88,8 @@ class RMSPropOptimizer(optimizer_v2.OptimizerV2):
       decay: A float hyperparameter. Discounting factor for the history/coming
         gradient.
       momentum: A float hyperparameter.
-      epsilon: A float hyperparameter. Small value to avoid zero denominator.
+      epsilon: A float hyperparameter. Small value to initialize the average
+        square gradient variable and avoid zero denominator.
       use_locking: If True use locks for update operation.
       centered: If True, gradients are normalized by the estimated variance of
         the gradient; if False, by the uncentered second moment. Setting this to
@@ -96,138 +98,10 @@ class RMSPropOptimizer(optimizer_v2.OptimizerV2):
       name: Optional name prefix for the operations created when applying
         gradients. Defaults to "RMSProp".
     """
-    super(RMSPropOptimizer, self).__init__(use_locking, name)
-    self._set_hyper("learning_rate", learning_rate)
-    self._set_hyper("decay", decay)
-    self._set_hyper("momentum", momentum)
-    self._set_hyper("epsilon", epsilon)
-
-    self._centered = centered
-
-  def _create_vars(self, var_list, state):
-    for v in var_list:
-      if v.get_shape().is_fully_defined():
-        init_rms = init_ops.ones_initializer(dtype=v.dtype.base_dtype)
-      else:
-        init_rms = array_ops.ones_like(v)
-      state.create_slot_with_initializer(v, init_rms, v.get_shape(),
-                                         v.dtype.base_dtype, "rms")
-      if self._centered:
-        state.zeros_slot(v, "mg")
-      state.zeros_slot(v, "momentum")
-
-  def _apply_dense(self, grad, var, state):
-    rms = state.get_slot(var, "rms")
-    mom = state.get_slot(var, "momentum")
-    if self._centered:
-      mg = state.get_slot(var, "mg")
-      return training_ops.apply_centered_rms_prop(
-          var,
-          mg,
-          rms,
-          mom,
-          state.get_hyper("learning_rate", var.dtype.base_dtype),
-          state.get_hyper("decay", var.dtype.base_dtype),
-          state.get_hyper("momentum", var.dtype.base_dtype),
-          state.get_hyper("epsilon", var.dtype.base_dtype),
-          grad,
-          use_locking=self._use_locking).op
-    else:
-      return training_ops.apply_rms_prop(
-          var,
-          rms,
-          mom,
-          state.get_hyper("learning_rate", var.dtype.base_dtype),
-          state.get_hyper("decay", var.dtype.base_dtype),
-          state.get_hyper("momentum", var.dtype.base_dtype),
-          state.get_hyper("epsilon", var.dtype.base_dtype),
-          grad,
-          use_locking=self._use_locking).op
-
-  def _resource_apply_dense(self, grad, var, state):
-    rms = state.get_slot(var, "rms")
-    mom = state.get_slot(var, "momentum")
-    if self._centered:
-      mg = state.get_slot(var, "mg")
-      return training_ops.resource_apply_centered_rms_prop(
-          var.handle,
-          mg.handle,
-          rms.handle,
-          mom.handle,
-          state.get_hyper("learning_rate", var.dtype.base_dtype),
-          state.get_hyper("decay", var.dtype.base_dtype),
-          state.get_hyper("momentum", var.dtype.base_dtype),
-          state.get_hyper("epsilon", var.dtype.base_dtype),
-          grad,
-          use_locking=self._use_locking)
-    else:
-      return training_ops.resource_apply_rms_prop(
-          var.handle,
-          rms.handle,
-          mom.handle,
-          state.get_hyper("learning_rate", var.dtype.base_dtype),
-          state.get_hyper("decay", var.dtype.base_dtype),
-          state.get_hyper("momentum", var.dtype.base_dtype),
-          state.get_hyper("epsilon", var.dtype.base_dtype),
-          grad,
-          use_locking=self._use_locking)
-
-  def _apply_sparse(self, grad, var, state):
-    rms = state.get_slot(var, "rms")
-    mom = state.get_slot(var, "momentum")
-    if self._centered:
-      mg = state.get_slot(var, "mg")
-      return training_ops.sparse_apply_centered_rms_prop(
-          var,
-          mg,
-          rms,
-          mom,
-          state.get_hyper("learning_rate", var.dtype.base_dtype),
-          state.get_hyper("decay", var.dtype.base_dtype),
-          state.get_hyper("momentum", var.dtype.base_dtype),
-          state.get_hyper("epsilon", var.dtype.base_dtype),
-          grad.values,
-          grad.indices,
-          use_locking=self._use_locking)
-    else:
-      return training_ops.sparse_apply_rms_prop(
-          var,
-          rms,
-          mom,
-          state.get_hyper("learning_rate", var.dtype.base_dtype),
-          state.get_hyper("decay", var.dtype.base_dtype),
-          state.get_hyper("momentum", var.dtype.base_dtype),
-          state.get_hyper("epsilon", var.dtype.base_dtype),
-          grad.values,
-          grad.indices,
-          use_locking=self._use_locking)
-
-  def _resource_apply_sparse(self, grad, var, indices, state):
-    rms = state.get_slot(var, "rms")
-    mom = state.get_slot(var, "momentum")
-    if self._centered:
-      mg = self.get_slot(var, "mg")
-      return training_ops.resource_sparse_apply_centered_rms_prop(
-          var.handle,
-          mg.handle,
-          rms.handle,
-          mom.handle,
-          state.get_hyper("learning_rate", var.dtype.base_dtype),
-          state.get_hyper("decay", var.dtype.base_dtype),
-          state.get_hyper("momentum", var.dtype.base_dtype),
-          state.get_hyper("epsilon", var.dtype.base_dtype),
-          grad,
-          indices,
-          use_locking=self._use_locking)
-    else:
-      return training_ops.resource_sparse_apply_rms_prop(
-          var.handle,
-          rms.handle,
-          mom.handle,
-          state.get_hyper("learning_rate", var.dtype.base_dtype),
-          state.get_hyper("decay", var.dtype.base_dtype),
-          state.get_hyper("momentum", var.dtype.base_dtype),
-          state.get_hyper("epsilon", var.dtype.base_dtype),
-          grad,
-          indices,
-          use_locking=self._use_locking)
+    super(RMSPropOptimizer, self).__init__(
+        learning_rate=learning_rate,
+        rho=decay,
+        momentum=momentum,
+        epsilon=epsilon,
+        centered=centered,
+        name=name)

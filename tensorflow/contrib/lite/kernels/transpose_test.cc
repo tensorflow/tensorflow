@@ -51,21 +51,21 @@ void RunTestPermutation(const std::vector<int>& shape,
     reversed_perms[k] = k;
   }
 
-  // Make input and output dims (i.e. reversed shape and dest_shape).
-  Dims<4> input_dims = GetTensorDims(shape);
-  Dims<4> output_dims;
-  for (int i = 0; i < 4; i++) {
-    output_dims.sizes[i] = input_dims.sizes[reversed_perms[i]];
-  }
-  output_dims.strides[0] = 1;
-  for (int k = 1; k < 4; k++) {
-    output_dims.strides[k] =
-        output_dims.strides[k - 1] * output_dims.sizes[k - 1];
+  // Make input and output shapes.
+  const RuntimeShape input_shape = GetTensorShape(shape);
+  RuntimeShape output_shape(perms.size());
+  for (int i = 0; i < perms.size(); i++) {
+    output_shape.SetDim(i, input_shape.Dims(perms[i]));
   }
 
-  reference_ops::Transpose<float>(input.data(), input_dims,
-                                  input_transposed->data(), output_dims,
-                                  reversed_perms);
+  TransposeParams params;
+  params.perm_count = perms.size();
+  for (int i = 0; i < perms.size(); ++i) {
+    params.perm[i] = perms[i];
+  }
+
+  reference_ops::Transpose<float>(params, input_shape, input.data(),
+                                  output_shape, input_transposed->data());
 }
 
 TEST(TransposeTest, TestRefOps1D) {

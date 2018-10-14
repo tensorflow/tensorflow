@@ -14,6 +14,7 @@ limitations under the License.
 
 #include "tensorflow/contrib/tensorrt/convert/trt_optimization_pass.h"
 #include "tensorflow/contrib/tensorrt/convert/convert_graph.h"
+#include "tensorflow/contrib/tensorrt/convert/utils.h"
 #include "tensorflow/core/grappler/clusters/cluster.h"
 #include "tensorflow/core/grappler/grappler_item.h"
 #include "tensorflow/core/grappler/optimizers/custom_graph_optimizer_registry.h"
@@ -21,6 +22,7 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/platform/stacktrace.h"
 
 #if GOOGLE_CUDA
 #if GOOGLE_TENSORRT
@@ -36,7 +38,6 @@ tensorflow::Status TRTOptimizationPass::Init(
     const tensorflow::RewriterConfig_CustomGraphOptimizer* config) {
   VLOG(1) << "Called INIT for " << name_ << " with config = " << config;
   if (config == nullptr) {
-    maximum_workspace_size_ = 2 << 30;
     return tensorflow::Status::OK();
   }
   const auto params = config->parameter_map();
@@ -46,7 +47,6 @@ tensorflow::Status TRTOptimizationPass::Init(
   if (params.count("max_batch_size")) {
     maximum_batch_size_ = params.at("max_batch_size").i();
   }
-  is_dynamic_op_ = false;
   if (params.count("is_dynamic_op")) {
     is_dynamic_op_ = params.at("is_dynamic_op").b();
   }
@@ -57,27 +57,15 @@ tensorflow::Status TRTOptimizationPass::Init(
       batches_.push_back(i);
     }
   }
-  max_cached_batches_ = 1;
   if (params.count("maximum_cached_engines")) {
     max_cached_batches_ = params.at("maximum_cached_engines").i();
   }
   if (params.count("max_workspace_size_bytes")) {
-    maximum_workspace_size_ = params.at("max_workspace_size_bytes").i();
+    max_workspace_size_bytes_ = params.at("max_workspace_size_bytes").i();
   }
   if (params.count("precision_mode")) {
-    string pm = Uppercase(params.at("precision_mode").s());
-    if (pm == "FP32") {
-      precision_mode_ = 0;
-    } else if (pm == "FP16") {
-      precision_mode_ = 1;
-    } else if (pm == "INT8") {
-      precision_mode_ = 2;
-    } else {
-      LOG(ERROR) << "Unknown precision mode '" << pm << "'";
-      return tensorflow::errors::InvalidArgument(
-          "Unknown precision mode argument" + pm +
-          " Valid values are FP32, FP16, INT8");
-    }
+    TF_RETURN_IF_ERROR(GetPrecisionMode(
+        Uppercase(params.at("precision_mode").s()), &precision_mode_));
   }
   return tensorflow::Status::OK();
 }
@@ -189,9 +177,6 @@ tensorflow::Status TRTOptimizationPass::Optimize(
     tensorflow::grappler::Cluster* cluster,
     const tensorflow::grappler::GrapplerItem& item, GraphDef* optimized_graph) {
   VLOG(1) << "Called TRTOptimization Pass " << name_;
-  if (VLOG_IS_ON(1)) {
-    PrintDebugInfo(cluster, item);
-  }
   // This is a hack to workaround optimizer issue. MetaOptimizer calls
   // optimization passes on function objects as well, we should not modify
   // generated funcdefs! This is fragile but we don't have any other option
@@ -202,6 +187,10 @@ tensorflow::Status TRTOptimizationPass::Optimize(
                     "be called on function objects.";
     *optimized_graph = item.graph;
     return tensorflow::Status::OK();
+  }
+  if (VLOG_IS_ON(1)) {
+    VLOG(2) << CurrentStackTrace();
+    PrintDebugInfo(cluster, item);
   }
   int max_dim = -1;
   if (item.feed.size()) {
@@ -253,7 +242,7 @@ tensorflow::Status TRTOptimizationPass::Optimize(
   cp.input_graph_def = &item.graph;
   cp.output_names = &nodes_to_preserve;
   cp.max_batch_size = maximum_batch_size_;
-  cp.max_workspace_size_bytes = maximum_workspace_size_;
+  cp.max_workspace_size_bytes = max_workspace_size_bytes_;
   cp.output_graph_def = optimized_graph;
   cp.precision_mode = precision_mode_;
   cp.minimum_segment_size = minimum_segment_size_;

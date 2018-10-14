@@ -33,7 +33,7 @@ _override_helper = ops._override_helper
 # pylint: enable=protected-access
 
 
-@tf_export("SparseTensor")
+@tf_export("sparse.SparseTensor", "SparseTensor")
 class SparseTensor(_TensorLike):
   """Represents a sparse tensor.
 
@@ -112,8 +112,6 @@ class SparseTensor(_TensorLike):
       values: A 1-D tensor of any type and shape `[N]`.
       dense_shape: A 1-D int64 tensor of shape `[ndims]`.
 
-    Returns:
-      A `SparseTensor`.
     """
     with ops.name_scope(None, "SparseTensor",
                         [indices, values, dense_shape]):
@@ -184,9 +182,30 @@ class SparseTensor(_TensorLike):
     return self._dense_shape
 
   @property
+  def shape(self):
+    """Get the `TensorShape` representing the shape of the dense tensor.
+
+    Returns:
+      A `TensorShape` object.
+    """
+    return tensor_util.constant_value_as_shape(self._dense_shape)
+
+  @property
   def graph(self):
     """The `Graph` that contains the index, value, and dense_shape tensors."""
     return self._indices.graph
+
+  def consumers(self):
+    """Returns a list of `Operation`s that consume this `SparseTensor`.
+
+    Returns:
+      A list of `Operation`s.
+    """
+    values_consumers = set(self._values.consumers())
+    indices_consumers = set(self._indices.consumers())
+    dense_shape_consumers = set(self._dense_shape.consumers())
+    return list(values_consumers \
+                .union(indices_consumers, dense_shape_consumers))
 
   def __str__(self):
     return "SparseTensor(indices=%s, values=%s, dense_shape=%s)" % (
@@ -205,7 +224,7 @@ class SparseTensor(_TensorLike):
 
     Args:
       feed_dict: A dictionary that maps `Tensor` objects to feed values.
-        See @{tf.Session.run} for a
+        See `tf.Session.run` for a
         description of the valid feed values.
       session: (Optional.) The `Session` to be used to evaluate this sparse
         tensor. If none, the default session will be used.
@@ -226,7 +245,7 @@ class SparseTensor(_TensorLike):
 SparseTensorValue = collections.namedtuple(
     "SparseTensorValue", ["indices", "values", "dense_shape"])
 tf_export("SparseTensorValue")(SparseTensorValue)
-pywrap_tensorflow.RegisterSparseTensorValueClass(SparseTensorValue)
+pywrap_tensorflow.RegisterType("SparseTensorValue", SparseTensorValue)
 
 
 @tf_export("convert_to_tensor_or_sparse_tensor")

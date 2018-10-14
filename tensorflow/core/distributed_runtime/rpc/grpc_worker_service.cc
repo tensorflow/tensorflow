@@ -419,7 +419,7 @@ class GrpcWorkerService : public AsyncServiceInterface {
 }  // namespace
 
 GrpcWorker::GrpcWorker(WorkerEnv* worker_env)
-    : Worker(worker_env), recv_tensor_recent_request_ids_(100000) {}
+    : Worker(worker_env), recent_request_ids_(100000) {}
 
 // GrpcRecvTensorAsync: unlike the other Worker methods, which use protocol
 // buffers for a response object, to avoid extra protocol buffer serialization
@@ -428,7 +428,7 @@ void GrpcWorker::GrpcRecvTensorAsync(CallOptions* opts,
                                      const RecvTensorRequest* request,
                                      ::grpc::ByteBuffer* response,
                                      StatusCallback done) {
-  Status s = recv_tensor_recent_request_ids_.TrackUnique(
+  Status s = recent_request_ids_.TrackUnique(
       request->request_id(), "RecvTensor (GrpcWorker)", *request);
   if (!s.ok()) {
     done(s);
@@ -508,6 +508,12 @@ void GrpcWorker::GrpcRecvTensorAsync(CallOptions* opts,
 void GrpcWorker::RecvBufAsync(CallOptions* opts, const RecvBufRequest* request,
                               RecvBufResponse* response, StatusCallback done) {
   // This is a generic, low performance implementation appropriate for grpc.
+  Status s = recent_request_ids_.TrackUnique(request->request_id(),
+                                             "RecvBuf (GrpcWorker)", *request);
+  if (!s.ok()) {
+    done(s);
+    return;
+  }
   CollectiveExecutor::Handle ce_handle(
       env_->collective_executor_mgr->FindOrCreate(request->step_id()), true);
   CollectiveRemoteAccess* rma = ce_handle.get()->remote_access();

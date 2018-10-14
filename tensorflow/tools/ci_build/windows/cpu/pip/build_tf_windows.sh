@@ -57,8 +57,7 @@ PY_TEST_DIR="py_test_dir"
 
 SKIP_TEST=0
 RELEASE_BUILD=0
-TEST_TARGET="//${PY_TEST_DIR}/tensorflow/python/... \
-    //${PY_TEST_DIR}/tensorflow/contrib/... "
+TEST_TARGET="//${PY_TEST_DIR}/tensorflow/python/..."
 
 # --skip_test            Skip running tests
 # --enable_remote_cache  Add options to enable remote cache for build and test
@@ -68,6 +67,7 @@ TEST_TARGET="//${PY_TEST_DIR}/tensorflow/python/... \
 # --test_contrib_only    Use tensorflow/contrib/... as test target
 for ARG in "$@"; do
   case "$ARG" in
+    --tf_nightly) TF_NIGHTLY=1 ;;
     --skip_test) SKIP_TEST=1 ;;
     --enable_remote_cache) set_remote_cache_options ;;
     --release_build) RELEASE_BUILD=1 ;;
@@ -84,6 +84,11 @@ if [[ "$RELEASE_BUILD" == 1 ]]; then
   export TF_OVERRIDE_EIGEN_STRONG_INLINE=0
 else
   export TF_OVERRIDE_EIGEN_STRONG_INLINE=1
+fi
+
+if [[ "$TF_NIGHTLY" == 1 ]]; then
+  python tensorflow/tools/ci_build/update_version.py --nightly
+  EXTRA_PIP_FLAG="--nightly_flag"
 fi
 
 # Enable short object file path to avoid long path issue on Windows.
@@ -104,7 +109,11 @@ fi
 # Create a python test directory to avoid package name conflict
 create_python_test_dir "${PY_TEST_DIR}"
 
-./bazel-bin/tensorflow/tools/pip_package/build_pip_package "$PWD/${PY_TEST_DIR}"
+./bazel-bin/tensorflow/tools/pip_package/build_pip_package "$PWD/${PY_TEST_DIR}" "${EXTRA_PIP_FLAG}"
+
+if [[ "$TF_NIGHTLY" == 1 ]]; then
+  exit 0
+fi
 
 # Running python tests on Windows needs pip package installed
 PIP_NAME=$(ls ${PY_TEST_DIR}/tensorflow-*.whl)

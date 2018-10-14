@@ -29,7 +29,7 @@ class ModelUtilsTest(test.TestCase):
   def test_parameter_switching(self):
     parameter = array_ops.constant(5)
     overridden_parameter = array_ops.constant(3)
-    with self.test_session():
+    with self.cached_session():
       getter = model_utils.parameter_switch({overridden_parameter: 4})
       self.assertEqual(5, getter(parameter))
       self.assertEqual(4, getter(overridden_parameter))

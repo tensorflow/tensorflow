@@ -21,18 +21,22 @@ limitations under the License.
 
 namespace tensorflow {
 
-#if !defined(INTEL_MKL) || defined(DO_NOT_USE_ML)
+// MKL_ML registers its own float and double kernels in mkl_batch_matmul_op.cc
+// if defined(INTEL_MKL) && !defined(INTEL_MKL_DNN_ONLY) && defined(ENABLE_MKL).
+// Anything else (the complement) should register the TF ones.
+// (MKL-DNN doesn't implement these kernels either.)
+#if !defined(INTEL_MKL) || defined(INTEL_MKL_DNN_ONLY) || !defined(ENABLE_MKL)
 TF_CALL_float(REGISTER_BATCH_MATMUL_CPU);
 TF_CALL_double(REGISTER_BATCH_MATMUL_CPU);
-#endif
+#endif  // !INTEL_MKL || INTEL_MKL_DNN_ONLY || !ENABLE_MKL
+
 TF_CALL_half(REGISTER_BATCH_MATMUL_CPU);
 TF_CALL_int32(REGISTER_BATCH_MATMUL_CPU);
 
 #if GOOGLE_CUDA
 TF_CALL_float(REGISTER_BATCH_MATMUL_GPU);
 TF_CALL_double(REGISTER_BATCH_MATMUL_GPU);
-// TODO(csigg): Implement Stream::ThenBlasGemv for Eigen::half and uncomment.
-// TF_CALL_half(REGISTER_BATCH_MATMUL_GPU);
+TF_CALL_half(REGISTER_BATCH_MATMUL_GPU);
 #endif  // GOOGLE_CUDA
 
 #ifdef TENSORFLOW_USE_SYCL

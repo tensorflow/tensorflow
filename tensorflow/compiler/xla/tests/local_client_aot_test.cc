@@ -42,13 +42,12 @@ extern "C" void SumStructElements(float* out, void** parameters) {
 TEST_F(LocalClientAotTest, Constant) {
   xla::ExecutableRunOptions run_options;
   OpaqueData opaque_data{100, 20, 3};
-  void* parameters[] = {&opaque_data};
   float out = 0;
-  void* temporary_buffers[] = {nullptr, &out};
-  SumAndDouble(&out, &run_options, parameters, temporary_buffers);
+  void* temporary_buffers[] = {&opaque_data, &out};
+  SumAndDouble(&out, &run_options, nullptr, temporary_buffers);
   EXPECT_EQ(out, 246.0f);
 
   opaque_data = {1, 2, 3};
-  SumAndDouble(&out, &run_options, parameters, temporary_buffers);
+  SumAndDouble(&out, &run_options, nullptr, temporary_buffers);
   EXPECT_EQ(out, 12.0f);
 }

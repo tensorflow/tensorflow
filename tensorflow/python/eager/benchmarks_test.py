@@ -38,8 +38,11 @@ from tensorflow.python.eager import context
 from tensorflow.python.eager import core
 from tensorflow.python.eager import function
 from tensorflow.python.eager import test
+from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_spec
+from tensorflow.python.ops import functional_ops
 from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.ops import gen_math_ops
 from tensorflow.python.ops import math_ops
@@ -75,19 +78,54 @@ class SubclassedKerasModel(keras.Model):
 
   def __init__(self):
     super(SubclassedKerasModel, self).__init__()
-    self.layer = keras.layers.Dense(
+    self.layer_a = keras.layers.Dense(
+        64, kernel_initializer="ones", bias_initializer="zeros")
+    self.layer_b = keras.layers.Dense(
+        128, kernel_initializer="ones", bias_initializer="zeros")
+    self.layer_c = keras.layers.Dense(
+        256, kernel_initializer="ones", bias_initializer="zeros")
+    self.layer_d = keras.layers.Dense(
+        256, kernel_initializer="ones", bias_initializer="zeros")
+    self.layer_e = keras.layers.Dense(
         10, kernel_initializer="ones", bias_initializer="zeros")
 
   def call(self, x):
-    return self.layer(x)
+    x = self.layer_a(x)
+    x = self.layer_b(x)
+    x = self.layer_c(x)
+    x = self.layer_d(x)
+    return self.layer_e(x)
 
 
 def make_keras_model():
-  x = keras.Input(shape=(10,))
-  y = keras.layers.Dense(
-      10, kernel_initializer="ones", bias_initializer="zeros")(
-          x)
-  return keras.Model(inputs=x, outputs=y)
+  model_input = keras.Input(shape=(10,))
+  x = keras.layers.Dense(
+      64, kernel_initializer="ones", bias_initializer="zeros")(model_input)
+  x = keras.layers.Dense(
+      128, kernel_initializer="ones", bias_initializer="zeros")(x)
+  x = keras.layers.Dense(
+      256, kernel_initializer="ones", bias_initializer="zeros")(x)
+  x = keras.layers.Dense(
+      256, kernel_initializer="ones", bias_initializer="zeros")(x)
+  x = keras.layers.Dense(
+      10, kernel_initializer="ones", bias_initializer="zeros")(x)
+  return keras.Model(inputs=model_input, outputs=x)
+
+
+def make_sequential_keras_model():
+  model = keras.models.Sequential()
+  model.add(keras.layers.Dense(
+      64, kernel_initializer="ones", bias_initializer="zeros",
+      input_shape=(10,)))
+  model.add(keras.layers.Dense(
+      128, kernel_initializer="ones", bias_initializer="zeros"))
+  model.add(keras.layers.Dense(
+      256, kernel_initializer="ones", bias_initializer="zeros"))
+  model.add(keras.layers.Dense(
+      256, kernel_initializer="ones", bias_initializer="zeros"))
+  model.add(keras.layers.Dense(
+      10, kernel_initializer="ones", bias_initializer="zeros"))
+  return model
 
 
 class MicroBenchmarks(test.Benchmark):
@@ -135,6 +173,11 @@ class MicroBenchmarks(test.Benchmark):
 
     def func():
       ops.EagerTensor(value, context=handle, device=device, dtype=dtype)
+
+    self._run(func, 30000)
+
+  def benchmark_create_constant(self):
+    func = lambda: constant_op.constant(3.0)
 
     self._run(func, 30000)
 
@@ -310,7 +353,22 @@ class MicroBenchmarks(test.Benchmark):
                               num_iters,
                               execution_mode=None):
     f = function.defun(math_ops.matmul)
-    func = lambda: f(m, m, transpose_b)
+    func = lambda: f(m, m, transpose_b=transpose_b)
+    self._run(func, num_iters, execution_mode=execution_mode)
+
+  def _benchmark_defun_matmul_forward_backward(self,
+                                               m,
+                                               transpose_b,
+                                               num_iters,
+                                               execution_mode=None):
+    f = function.defun(math_ops.matmul)
+
+    def func():
+      with backprop.GradientTape() as gt:
+        gt.watch(m)
+        y = f(m, m, transpose_b=transpose_b)
+      _ = gt.gradient(y, m)
+
     self._run(func, num_iters, execution_mode=execution_mode)
 
   def _benchmark_read_variable(self, m, num_iters):
@@ -379,6 +437,21 @@ class MicroBenchmarks(test.Benchmark):
     with context.device(CPU):
       m = self._m_2_by_2.cpu()
       self._benchmark_defun_matmul(
+          m,
+          transpose_b=False,
+          num_iters=self._num_iters_2_by_2,
+          execution_mode=context.ASYNC)
+
+  def benchmark_defun_matmul_forward_backward_2_by_2_CPU(self):
+    with context.device(CPU):
+      m = self._m_2_by_2.cpu()
+      self._benchmark_defun_matmul_forward_backward(
+          m, transpose_b=False, num_iters=self._num_iters_2_by_2)
+
+  def benchmark_defun_matmul_forward_backward_2_by_2_CPU_async(self):
+    with context.device(CPU):
+      m = self._m_2_by_2.cpu()
+      self._benchmark_defun_matmul_forward_backward(
           m,
           transpose_b=False,
           num_iters=self._num_iters_2_by_2,
@@ -527,6 +600,54 @@ class MicroBenchmarks(test.Benchmark):
       self._benchmark_defun_matmul(
           m, transpose_b=True, num_iters=self._num_iters_100_by_784)
 
+  def benchmark_defun_without_signature(self):
+
+    def func(t1, t2, t3, t4, t5, t6, t7, t8):
+      del t1, t2, t3, t4, t5, t6, t7, t8
+      return None
+
+    defined = function.defun(func)
+    t = constant_op.constant(0.0)
+    cache_computation = lambda: defined(t, t, t, t, t, t, t, t)
+    self._run(cache_computation, 30000)
+
+  def benchmark_defun_without_signature_and_with_kwargs(self):
+
+    def func(t1, t2, t3, t4, t5, t6, t7, t8):
+      del t1, t2, t3, t4, t5, t6, t7, t8
+      return None
+
+    defined = function.defun(func)
+    t = constant_op.constant(0.0)
+    def cache_computation():
+      return defined(t1=t, t2=t, t3=t, t4=t, t5=t, t6=t, t7=t, t8=t)
+    self._run(cache_computation, 30000)
+
+  def benchmark_defun_with_signature(self):
+
+    def func(t1, t2, t3, t4, t5, t6, t7, t8):
+      del t1, t2, t3, t4, t5, t6, t7, t8
+      return None
+
+    defined = function.defun(
+        func, input_signature=[tensor_spec.TensorSpec([], dtypes.float32)] * 8)
+    t = constant_op.constant(0.0)
+    signature_computation = lambda: defined(t, t, t, t, t, t, t, t)
+    self._run(signature_computation, 30000)
+
+  def benchmark_defun_with_signature_and_kwargs(self):
+
+    def func(t1, t2, t3, t4, t5, t6, t7, t8):
+      del t1, t2, t3, t4, t5, t6, t7, t8
+      return None
+
+    defined = function.defun(
+        func, input_signature=[tensor_spec.TensorSpec([], dtypes.float32)] * 8)
+    t = constant_op.constant(0.0)
+    def signature_computation():
+      return defined(t1=t, t2=t, t3=t, t4=t, t5=t, t6=t, t7=t, t8=t)
+    self._run(signature_computation, 30000)
+
   def benchmark_matmul_read_variable_op_2_by_2_CPU(self):
     with context.device(CPU):
       m = resource_variable_ops.ResourceVariable(self._m_2_by_2)
@@ -587,6 +708,34 @@ class MicroBenchmarks(test.Benchmark):
     func()
     assert np.equal(func(), SubclassedKerasModel()(data)).all()
     self._run(func, 30000)
+
+  def benchmark_keras_model_sequential(self):
+    model = make_sequential_keras_model()
+    data = random_ops.random_uniform((10, 10))
+    func = lambda: model(data)
+    # Symmetry with benchmark_keras_model_functional
+    func()
+    assert np.equal(func(), make_keras_model()(data)).all()
+    self._run(func, 30000)
+
+  def benchmarkScan(self):
+    elems = math_ops.range(1600)
+
+    def scan():
+      return functional_ops.scan(
+          lambda a, x: a + x, elems, parallel_iterations=1)
+
+    self._run(scan, 100)
+
+  def benchmarkScanDefun(self):
+    elems = math_ops.range(1600)
+
+    @function.defun
+    def scan():
+      return functional_ops.scan(
+          lambda a, x: a + x, elems, parallel_iterations=1)
+
+    self._run(scan, 100)
 
 
 if __name__ == "__main__":

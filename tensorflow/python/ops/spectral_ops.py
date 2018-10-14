@@ -180,9 +180,9 @@ def dct(input, type=2, n=None, axis=-1, norm=None, name=None):  # pylint: disabl
   """Computes the 1D [Discrete Cosine Transform (DCT)][dct] of `input`.
 
   Currently only Types II and III are supported. Type II is implemented using a
-  length `2N` padded @{tf.spectral.rfft}, as described here:
+  length `2N` padded `tf.spectral.rfft`, as described here:
   https://dsp.stackexchange.com/a/10606. Type III is a fairly straightforward
-  inverse of Type II (i.e. using a length `2N` padded @{tf.spectral.irfft}).
+  inverse of Type II (i.e. using a length `2N` padded `tf.spectral.irfft`).
 
   @compatibility(scipy)
   Equivalent to scipy.fftpack.dct for Type-II and Type-III DCT.

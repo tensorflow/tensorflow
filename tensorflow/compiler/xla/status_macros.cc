@@ -17,9 +17,8 @@ limitations under the License.
 
 #include <algorithm>
 
+#include "absl/strings/str_cat.h"
 #include "tensorflow/compiler/xla/types.h"
-#include "tensorflow/core/lib/strings/str_util.h"
-#include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/stacktrace.h"
 
@@ -37,8 +36,7 @@ static void LogError(const Status& status, const char* filename, int line,
   if (TF_PREDICT_TRUE(log_severity != tensorflow::NUM_SEVERITIES)) {
     string stack_trace;
     if (should_log_stack_trace) {
-      stack_trace =
-          tensorflow::strings::StrCat("\n", tensorflow::CurrentStackTrace());
+      stack_trace = absl::StrCat("\n", tensorflow::CurrentStackTrace());
     }
     switch (log_severity) {
       case tensorflow::INFO:
@@ -142,17 +140,15 @@ Status MakeErrorStream::Impl::GetStatus() {
   is_done_ = true;
 
   const string& stream_str = stream_.str();
-  const string str =
-      prior_message_handling_ == kAppendToPriorMessage
-          ? tensorflow::strings::StrCat(prior_message_, stream_str)
-          : tensorflow::strings::StrCat(stream_str, prior_message_);
+  const string str = prior_message_handling_ == kAppendToPriorMessage
+                         ? absl::StrCat(prior_message_, stream_str)
+                         : absl::StrCat(stream_str, prior_message_);
   if (TF_PREDICT_FALSE(str.empty())) {
-    return MakeError(file_, line_, code_,
-                     tensorflow::strings::StrCat(
-                         str, "Error without message at ", file_, ":", line_),
-                     true /* should_log */,
-                     tensorflow::ERROR /* log_severity */,
-                     should_log_stack_trace_);
+    return MakeError(
+        file_, line_, code_,
+        absl::StrCat(str, "Error without message at ", file_, ":", line_),
+        true /* should_log */, tensorflow::ERROR /* log_severity */,
+        should_log_stack_trace_);
   } else {
     return MakeError(file_, line_, code_, str, should_log_, log_severity_,
                      should_log_stack_trace_);

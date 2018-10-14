@@ -22,9 +22,13 @@ from __future__ import print_function
 from abc import ABCMeta
 from abc import abstractmethod
 
+import functools
+import sys
 import types
+import weakref
 import six
 
+from tensorflow.python.compat import compat
 from tensorflow.python.eager import context
 from tensorflow.python.eager import function
 from tensorflow.python.framework import dtypes
@@ -53,11 +57,12 @@ from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn
 from tensorflow.python.ops import state_ops
-from tensorflow.python.ops import variable_scope as vs
+from tensorflow.python.ops import variables as tf_variables
 from tensorflow.python.ops import weights_broadcast_ops
-from tensorflow.python.training import distribute as distribute_lib
+from tensorflow.python.training import distribution_strategy_context
 from tensorflow.python.util import tf_decorator
 from tensorflow.python.util.tf_export import tf_export
+from tensorflow.tools.docs import doc_controls
 
 
 def check_is_tensor_or_operation(x, name):
@@ -67,26 +72,36 @@ def check_is_tensor_or_operation(x, name):
         name, x))
 
 
+def clone_metric(metric):
+  """Returns a clone of the metric if stateful, otherwise returns it as is."""
+  if isinstance(metric, Metric):
+    return metric.__class__.from_config(metric.get_config())
+  return metric
+
+
+def clone_metrics(metrics):
+  """Clones the given metric list/dict."""
+  if metrics is None:
+    return None
+  if isinstance(metrics, dict):
+    return {key: clone_metric(value) for key, value in metrics.items()}
+  return [clone_metric(metric) for metric in metrics]
+
+
 def update_state_wrapper(update_state_fn):
-  """Decorator to wrap metric `update_state()` with `defun()`, `add_update()`.
+  """Decorator to wrap metric `update_state()` with `add_update()`.
 
   Args:
     update_state_fn: function that accumulates metric statistics.
 
   Returns:
-    If eager execution is enabled, returns None.
-    If graph execution is enabled, returns an update op. This op should be
-      executed to update the metric state with the given inputs.
+    Decorated function that wraps `update_state_fn()` with `add_update()`.
   """
 
   def decorated(metric_obj, *args, **kwargs):
-    """Decorated function with `defun()` and `add_update()`."""
+    """Decorated function with `add_update()`."""
 
-    # Converting update_state_fn() into a graph function, so that
-    # we can return a single op that performs all of the variable updates.
-    # Assigning to a different method name to avoid reference cycle.
-    defuned_update_state_fn = function.defun(update_state_fn)
-    update_op = defuned_update_state_fn(*args, **kwargs)
+    update_op = update_state_fn(*args, **kwargs)
     if update_op is not None:  # update_op will be None in eager execution.
       metric_obj.add_update(update_op, inputs=True)
       check_is_tensor_or_operation(
@@ -111,12 +126,13 @@ def result_wrapper(result_fn):
     result_fn: function that computes the metric result.
 
   Returns:
-    The metric result tensor.
+    Decorated function that wraps `result_fn()` in distribution strategy
+    `merge_call()`.
   """
 
   def decorated(metric_obj, *args):
     """Decorated function with merge_call."""
-    tower_context = distribute_lib.get_tower_context()
+    tower_context = distribution_strategy_context.get_tower_context()
     if tower_context is None:  # if in cross tower context already
       result_t = result_fn(*args)
     else:
@@ -141,24 +157,48 @@ def result_wrapper(result_fn):
   return tf_decorator.make_decorator(result_fn, decorated)
 
 
-def _safe_div(numerator, denominator):
-  """Divides two tensors element-wise, returning 0 if the denominator is <= 0.
+def weakmethod(method):
+  """Creates a weak reference to the bound method."""
+
+  cls = method.im_class
+  func = method.im_func
+  instance_ref = weakref.ref(method.im_self)
+
+  @functools.wraps(method)
+  def inner(*args, **kwargs):
+    return func.__get__(instance_ref(), cls)(*args, **kwargs)
+
+  del method
+  return inner
+
+
+def safe_div(numerator, denominator):
+  """Computes a safe divide which returns 0 if the denominator is zero.
+
+  Note that the function contains an additional conditional check that is
+  necessary for avoiding situations where the loss is zero causing NaNs to
+  creep into the gradient computation.
 
   Args:
-    numerator: A `Tensor`.
-    denominator: A `Tensor`, with dtype matching `numerator`.
+    numerator: An arbitrary `Tensor`.
+    denominator: A `Tensor` whose shape matches `numerator` and whose values are
+      assumed to be non-negative.
 
   Returns:
-    0 if `denominator` <= 0, else `numerator` / `denominator`
+    The element-wise value of the numerator divided by the denominator.
   """
-  t = math_ops.truediv(numerator, denominator)
-  zero = array_ops.zeros_like(t, dtype=denominator.dtype)
-  condition = math_ops.greater(denominator, zero)
-  zero = math_ops.cast(zero, t.dtype)
-  return array_ops.where(condition, t, zero)
+  if compat.forward_compatible(2018, 11, 1):
+    return math_ops.div_no_nan(numerator, denominator)
+  return array_ops.where(
+      math_ops.greater(denominator, 0),
+      math_ops.div(numerator,
+                   array_ops.where(
+                       math_ops.equal(denominator, 0),
+                       array_ops.ones_like(denominator), denominator)),
+      array_ops.zeros_like(numerator))
 
 
-def _squeeze_or_expand_dimensions(y_pred, y_true, sample_weight):
+def squeeze_or_expand_dimensions(y_pred, y_true, sample_weight):
   """Squeeze or expand last dimension if needed.
 
   1. Squeezes last dim of `y_pred` or `y_true` if their rank differs by 1
@@ -185,7 +225,6 @@ def _squeeze_or_expand_dimensions(y_pred, y_true, sample_weight):
     # squeeze last dim of `y_pred` or `y_true` if their rank differs by 1
     y_true, y_pred = confusion_matrix.remove_squeezable_dimensions(
         y_true, y_pred)
-    y_pred.get_shape().assert_is_compatible_with(y_true.get_shape())
 
   if sample_weight is None:
     return y_pred, y_true, None
@@ -246,13 +285,35 @@ class Metric(Layer):
 
   ```python
   m = SomeMetric(...)
-  init_op = tf.global_variables_initializer()  # Initialize variables
+  init_op = tf.variables_initializer(m.variables)  # Initialize variables
   with tf.Session() as sess:
     sess.run(init_op)
     for input in ...:
       update_op = m.update_state(input)
       sess.run(update_op)
     print('Final result: ', sess.run(m.result()))
+  ```
+
+  Usage with tf.keras API:
+
+  ```python
+  model = tf.keras.Sequential()
+  model.add(tf.keras.layers.Dense(64, activation='relu'))
+  model.add(tf.keras.layers.Dense(64, activation='relu'))
+  model.add(tf.keras.layers.Dense(10, activation='softmax'))
+
+  model.compile(optimizer=tf.train.RMSPropOptimizer(0.01),
+                loss=tf.keras.losses.categorical_crossentropy,
+                metrics=[tf.keras.metrics.CategoricalAccuracy()])
+
+  data = np.random.random((1000, 32))
+  labels = np.random.random((1000, 10))
+
+  dataset = tf.data.Dataset.from_tensor_slices((data, labels))
+  dataset = dataset.batch(32)
+  dataset = dataset.repeat()
+
+  model.fit(dataset, epochs=10, steps_per_epoch=30)
   ```
 
   To be implemented by subclasses:
@@ -267,7 +328,7 @@ class Metric(Layer):
 
   ```
   class BinaryTruePositives(Metric):
-    def __init__(self, name='binary-true-positives', dtype=None):
+    def __init__(self, name='binary_true_positives', dtype=None):
       super(BinaryTruePositives, self).__init__(name=name, dtype=dtype)
       self.true_positives = self.add_weight(
           'true_positives', initializer=init_ops.zeros_initializer)
@@ -275,7 +336,7 @@ class Metric(Layer):
     def update_state(self, y_true, y_pred, sample_weight=None):
       y_true = math_ops.cast(y_true, dtypes.bool)
       y_pred = math_ops.cast(y_pred, dtypes.bool)
-      y_pred, y_true, sample_weight = _squeeze_or_expand_dimensions(
+      y_pred, y_true, sample_weight = squeeze_or_expand_dimensions(
           y_pred, y_true, sample_weight)
 
       values = math_ops.logical_and(
@@ -299,10 +360,23 @@ class Metric(Layer):
     self._dtype = K.floatx() if dtype is None else dtypes.as_dtype(dtype).name
 
   def __new__(cls, *args, **kwargs):
-    obj = super(Metric, cls).__new__(cls, *args, **kwargs)
-    obj.update_state = types.MethodType(
-        update_state_wrapper(obj.update_state), obj)
-    obj.result = types.MethodType(result_wrapper(obj.result), obj)
+    obj = super(Metric, cls).__new__(cls)
+
+    if sys.version_info < (3,):
+      # Wrap methods in `weakmethod` function to remove binding and create a
+      # weak reference. This is to remove reference cycle that is created here.
+      # This is not an issue in python versions > 3.
+      if context.executing_eagerly():
+        obj.update_state = weakmethod(obj.update_state)
+      obj.update_state = weakmethod(
+          types.MethodType(update_state_wrapper(obj.update_state), obj))
+      result = weakmethod(obj.result)
+      obj.result = weakmethod(types.MethodType(result_wrapper(result), obj))
+    else:
+      obj.update_state = types.MethodType(
+          update_state_wrapper(obj.update_state), obj)
+      obj.result = types.MethodType(result_wrapper(obj.result), obj)
+
     return obj
 
   def __call__(self, *args, **kwargs):
@@ -359,12 +433,19 @@ class Metric(Layer):
     """
     NotImplementedError('Must be implemented in subclasses.')
 
+  @classmethod
+  def from_config(cls, config):
+    if 'trainable' in config:
+      config.pop('trainable')
+    return cls(**config)
+
   ### For use by subclasses ###
+  @doc_controls.for_subclass_implementers
   def add_weight(self,
                  name,
                  shape=(),
-                 aggregation=vs.VariableAggregation.SUM,
-                 synchronization=vs.VariableSynchronization.ON_READ,
+                 aggregation=tf_variables.VariableAggregation.SUM,
+                 synchronization=tf_variables.VariableSynchronization.ON_READ,
                  initializer=None):
     """Adds state variable. Only for use by subclasses."""
     return super(Metric, self).add_weight(
@@ -373,6 +454,7 @@ class Metric(Layer):
         dtype=self._dtype,
         trainable=False,
         initializer=initializer,
+        collections=[],
         synchronization=synchronization,
         aggregation=aggregation)
 
@@ -413,6 +495,9 @@ class Mean(Metric):
     Args:
       values: Per-example value.
       sample_weight: Optional weighting of each example. Defaults to 1.
+
+    Returns:
+      Update op.
     """
     values = math_ops.cast(values, self._dtype)
     if sample_weight is None:
@@ -420,21 +505,31 @@ class Mean(Metric):
     else:
       sample_weight = math_ops.cast(sample_weight, self._dtype)
 
-      # Update dimensions of weights to match with values.
-      values, _, sample_weight = _squeeze_or_expand_dimensions(
+      # Update dimensions of weights to match with values if possible.
+      values, _, sample_weight = squeeze_or_expand_dimensions(
           values, None, sample_weight)
-      sample_weight = weights_broadcast_ops.broadcast_weights(
-          sample_weight, values)
+      try:
+        # Broadcast weights if possible.
+        sample_weight = weights_broadcast_ops.broadcast_weights(
+            sample_weight, values)
+      except ValueError:
+        # Reduce values to same ndim as weight array
+        ndim = K.ndim(values)
+        weight_ndim = K.ndim(sample_weight)
+        values = math_ops.reduce_mean(
+            values, axis=list(range(weight_ndim, ndim)))
+
       num_values = math_ops.reduce_sum(sample_weight)
       values = math_ops.multiply(values, sample_weight)
     values = math_ops.reduce_sum(values)
 
     # Update state variables
-    state_ops.assign_add(self.total, values)
-    state_ops.assign_add(self.count, num_values)
+    update_total_op = state_ops.assign_add(self.total, values)
+    update_count_op = state_ops.assign_add(self.count, num_values)
+    return control_flow_ops.group(update_total_op, update_count_op)
 
   def result(self):
-    return _safe_div(self.total, self.count)
+    return safe_div(self.total, self.count)
 
 
 class MeanMetricWrapper(Mean):
@@ -465,14 +560,17 @@ class MeanMetricWrapper(Mean):
       sample_weight: Optional weighting of each example. Defaults to 1. Can be
         a `Tensor` whose rank is either 0, or the same rank as `y_true`,
         and must be broadcastable to `y_true`.
+
+    Returns:
+      Update op.
     """
     y_true = math_ops.cast(y_true, self._dtype)
     y_pred = math_ops.cast(y_pred, self._dtype)
-    y_pred, y_true, sample_weight = _squeeze_or_expand_dimensions(
+    y_pred, y_true, sample_weight = squeeze_or_expand_dimensions(
         y_pred, y_true, sample_weight)
 
     matches = self._fn(y_true, y_pred, **self._fn_kwargs)
-    super(MeanMetricWrapper, self).update_state(
+    return super(MeanMetricWrapper, self).update_state(
         matches, sample_weight=sample_weight)
 
   def get_config(self):
@@ -493,7 +591,7 @@ class BinaryAccuracy(MeanMetricWrapper):
   Use `sample_weight` of 0 to mask values.
   """
 
-  def __init__(self, name='binary-accuracy', dtype=None, threshold=0.5):
+  def __init__(self, name='binary_accuracy', dtype=None, threshold=0.5):
     """Creates a `BinaryAccuracy` instance.
 
     Args:
@@ -504,6 +602,46 @@ class BinaryAccuracy(MeanMetricWrapper):
     """
     super(BinaryAccuracy, self).__init__(
         binary_accuracy, name, dtype=dtype, threshold=threshold)
+
+
+class CategoricalAccuracy(MeanMetricWrapper):
+  """Calculates how often predictions matches labels.
+
+  This metric creates two local variables, `total` and `count` that are used to
+  compute the frequency with which `y_pred` matches `y_true`. This frequency is
+  ultimately returned as `categorical accuracy`: an idempotent operation that
+  simply divides `total` by `count`.
+
+  If `sample_weight` is `None`, weights default to 1.
+  Use `sample_weight` of 0 to mask values.
+  """
+
+  def __init__(self, name='categorical_accuracy', dtype=None):
+    """Creates a `CategoricalAccuracy` instance.
+
+    Args:
+      name: (Optional) string name of the metric instance.
+      dtype: (Optional) data type of the metric result.
+    """
+    super(CategoricalAccuracy, self).__init__(
+        categorical_accuracy, name, dtype=dtype)
+
+
+class SparseCategoricalAccuracy(MeanMetricWrapper):
+  """Calculates how often predictions matches integer labels.
+
+  This metric creates two local variables, `total` and `count` that are used to
+  compute the frequency with which `y_pred` matches `y_true`. This frequency is
+  ultimately returned as `sparse categorical accuracy`: an idempotent operation
+  that simply divides `total` by `count`.
+
+  If `sample_weight` is `None`, weights default to 1.
+  Use `sample_weight` of 0 to mask values.
+  """
+
+  def __init__(self, name='sparse_categorical_accuracy', dtype=None):
+    super(SparseCategoricalAccuracy, self).__init__(
+        sparse_categorical_accuracy, name, dtype=dtype)
 
 
 @tf_export('keras.metrics.binary_accuracy')
@@ -521,12 +659,19 @@ def categorical_accuracy(y_true, y_pred):
       K.floatx())
 
 
+@tf_export('keras.metrics.sparse_categorical_accuracy')
 def sparse_categorical_accuracy(y_true, y_pred):
-  return math_ops.cast(
-      math_ops.equal(
-          math_ops.reduce_max(y_true, axis=-1),
-          math_ops.cast(math_ops.argmax(y_pred, axis=-1), K.floatx())),
-      K.floatx())
+  # If the shape of y_true is (num_samples, 1), squeeze to (num_samples,)
+  if (len(K.int_shape(y_true)) == len(K.int_shape(y_pred))):
+    y_true = array_ops.squeeze(y_true, [-1])
+  y_pred = math_ops.argmax(y_pred, axis=-1)
+
+  # If the predicted output and actual output types don't match, force cast them
+  # to match.
+  if K.dtype(y_pred) != K.dtype(y_true):
+    y_pred = math_ops.cast(y_pred, K.dtype(y_true))
+
+  return math_ops.cast(math_ops.equal(y_true, y_pred), K.floatx())
 
 
 @tf_export('keras.metrics.top_k_categorical_accuracy')
@@ -537,11 +682,11 @@ def top_k_categorical_accuracy(y_true, y_pred, k=5):
 
 @tf_export('keras.metrics.sparse_top_k_categorical_accuracy')
 def sparse_top_k_categorical_accuracy(y_true, y_pred, k=5):
-  return K.mean(
-      nn.in_top_k(y_pred,
-                  math_ops.cast(math_ops.reduce_max(y_true, axis=-1), 'int32'),
-                  k),
-      axis=-1)
+  # If the shape of y_true is (num_samples, 1), squeeze to (num_samples,)
+  if (len(K.int_shape(y_true)) == len(K.int_shape(y_pred))):
+    y_true = array_ops.squeeze(y_true, [-1])
+
+  return K.mean(nn.in_top_k(y_pred, math_ops.cast(y_true, 'int32'), k), axis=-1)
 
 # Aliases
 
@@ -569,8 +714,7 @@ def deserialize(config, custom_objects=None):
 @tf_export('keras.metrics.get')
 def get(identifier):
   if isinstance(identifier, dict):
-    config = {'class_name': str(identifier), 'config': {}}
-    return deserialize(config)
+    return deserialize(identifier)
   elif isinstance(identifier, six.string_types):
     return deserialize(str(identifier))
   elif callable(identifier):

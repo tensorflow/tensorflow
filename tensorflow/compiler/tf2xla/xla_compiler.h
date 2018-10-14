@@ -16,6 +16,8 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_TF2XLA_XLA_COMPILER_H_
 #define TENSORFLOW_COMPILER_TF2XLA_XLA_COMPILER_H_
 
+#include <stack>
+
 #include "tensorflow/compiler/tf2xla/host_compute_metadata.pb.h"
 #include "tensorflow/compiler/tf2xla/xla_compilation_device.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
@@ -26,6 +28,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/framework/function.h"
+#include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/notification.h"
@@ -106,6 +109,9 @@ class XlaCompiler {
 
       // Argument is a run-time parameter.
       kParameter,
+
+      // Argument is an XLA token.
+      kToken,
     };
 
     Kind kind = kInvalid;
@@ -179,10 +185,15 @@ class XlaCompiler {
     // True when compiling the entry computation, false for subcomputations
     // (while, call, etc.)
     bool is_entry_computation = true;
+
+    // True when we should add XLA input & output to the graph/function.
+    bool add_token_input_output = false;
   };
 
   struct OutputDescription {
     // Type and shape of the output. The shape is the unflattened shape.
+    // When `type` is DT_RESOURCE, `shape` is the shape of the resource
+    // variable's value.
     DataType type;
     TensorShape shape;
 
@@ -190,6 +201,10 @@ class XlaCompiler {
     // 'Tensor' is in host memory.
     bool is_constant = false;
     Tensor constant_value;
+
+    // When this output is a resource, i.e. `type == DT_RESOURCE`, this is
+    // the index of the input that contains the resource.
+    int input_index;
   };
 
   // Describes a variable write side effect of the computation.
@@ -212,9 +227,9 @@ class XlaCompiler {
 
   struct CompilationResult {
     // Vector that maps from the parameters of the XLA computation to their
-    // original argument positions. To handle compile-time constant inputs and
-    // resources, the parameters to the XLA computation may be a subset of the
-    // original arguments, and are not necessarily in the same order.)
+    // original argument positions. To handle compile-time constant inputs, the
+    // parameters to the XLA computation may be a subset of the original
+    // arguments. The relative ordering of parameters are maintained.
     std::vector<int> input_mapping;
 
     // Input shapes of the computation. If we are flattening inputs, these are
@@ -332,11 +347,21 @@ class XlaCompiler {
   // same XlaCompiler.
   Status GetChannelHandle(const string& key, xla::ChannelHandle* channel);
 
+  // Retrieves the host-to-device channel handle associated with `key`.
+  // Allocates a new channel handle if none exists.
+  Status GetHostToDeviceChannelHandle(const string& key,
+                                      xla::ChannelHandle* channel);
+
+  // Retrieves the device-to-host channel handle associated with `key`.
+  // Allocates a new channel handle if none exists.
+  Status GetDeviceToHostChannelHandle(const string& key,
+                                      xla::ChannelHandle* channel);
+
   // Sets the shapes and types for the device to host transfer associated with
   // 'key'.
   Status SetDeviceToHostMetadata(const string& key,
-                                 gtl::ArraySlice<DataType> types,
-                                 gtl::ArraySlice<TensorShape> shapes);
+                                 absl::Span<const DataType> types,
+                                 absl::Span<const TensorShape> shapes);
 
   // Gets the shapes the device to host transfer associated with 'key'.
   Status GetDeviceToHostShapes(const string& key,
@@ -345,8 +370,8 @@ class XlaCompiler {
   // Sets the shapes and types for the host to device transfer associated with
   // 'key'.
   Status SetHostToDeviceMetadata(const string& key,
-                                 gtl::ArraySlice<DataType> types,
-                                 gtl::ArraySlice<TensorShape> shapes);
+                                 absl::Span<const DataType> types,
+                                 absl::Span<const TensorShape> shapes);
 
   // In order to avoid deadlocks from dependencies in host computations, it can
   // be necessary to enforce a partial order on the execution of HostCompute
@@ -367,6 +392,11 @@ class XlaCompiler {
   const Options& options() const { return options_; }
   xla::Client* client() const { return options_.client; }
   FunctionLibraryRuntime* flib_runtime() const { return flib_runtime_; }
+
+  void PushNodeTokenMapping();
+  Status PopNodeTokenMapping();
+  Status SetNodeToken(const string& node_name, const xla::XlaOp& op);
+  xla::StatusOr<xla::XlaOp> GetNodeToken(const string& node_name);
 
  private:
   // Sets the function body `fbody` to the one registered as `function`.
@@ -431,6 +461,15 @@ class XlaCompiler {
   std::unordered_map<string, tf2xla::HostTransferMetadata> host_compute_recvs_;
 
   std::unordered_map<string, xla::XlaOp> host_compute_control_output_;
+
+  // This is used to store <node name, token output> mapping. Side-effecting
+  // ops call SetNodeToken() to record its token output, so later side-effecting
+  // ops can use GetNodeToken() to get it and use it as token input.
+  //
+  // It's a stack because we need a mapping like this for each level of nested
+  // CompileGraph() call. In CompileGraph(), we will push a new mapping to the
+  // stack, and pop the mapping before returning.
+  std::stack<std::map<string, xla::XlaOp>> node_token_mapping_stack_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(XlaCompiler);
 };

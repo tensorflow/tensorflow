@@ -1,0 +1,146 @@
+path: "tensorflow.ConfigProto"
+tf_proto {
+  descriptor {
+    name: "ConfigProto"
+    field {
+      name: "device_count"
+      number: 1
+      label: LABEL_REPEATED
+      type: TYPE_MESSAGE
+      type_name: ".tensorflow.ConfigProto.DeviceCountEntry"
+    }
+    field {
+      name: "intra_op_parallelism_threads"
+      number: 2
+      label: LABEL_OPTIONAL
+      type: TYPE_INT32
+    }
+    field {
+      name: "inter_op_parallelism_threads"
+      number: 5
+      label: LABEL_OPTIONAL
+      type: TYPE_INT32
+    }
+    field {
+      name: "use_per_session_threads"
+      number: 9
+      label: LABEL_OPTIONAL
+      type: TYPE_BOOL
+    }
+    field {
+      name: "session_inter_op_thread_pool"
+      number: 12
+      label: LABEL_REPEATED
+      type: TYPE_MESSAGE
+      type_name: ".tensorflow.ThreadPoolOptionProto"
+    }
+    field {
+      name: "placement_period"
+      number: 3
+      label: LABEL_OPTIONAL
+      type: TYPE_INT32
+    }
+    field {
+      name: "device_filters"
+      number: 4
+      label: LABEL_REPEATED
+      type: TYPE_STRING
+    }
+    field {
+      name: "gpu_options"
+      number: 6
+      label: LABEL_OPTIONAL
+      type: TYPE_MESSAGE
+      type_name: ".tensorflow.GPUOptions"
+    }
+    field {
+      name: "allow_soft_placement"
+      number: 7
+      label: LABEL_OPTIONAL
+      type: TYPE_BOOL
+    }
+    field {
+      name: "log_device_placement"
+      number: 8
+      label: LABEL_OPTIONAL
+      type: TYPE_BOOL
+    }
+    field {
+      name: "graph_options"
+      number: 10
+      label: LABEL_OPTIONAL
+      type: TYPE_MESSAGE
+      type_name: ".tensorflow.GraphOptions"
+    }
+    field {
+      name: "operation_timeout_in_ms"
+      number: 11
+      label: LABEL_OPTIONAL
+      type: TYPE_INT64
+    }
+    field {
+      name: "rpc_options"
+      number: 13
+      label: LABEL_OPTIONAL
+      type: TYPE_MESSAGE
+      type_name: ".tensorflow.RPCOptions"
+    }
+    field {
+      name: "cluster_def"
+      number: 14
+      label: LABEL_OPTIONAL
+      type: TYPE_MESSAGE
+      type_name: ".tensorflow.ClusterDef"
+    }
+    field {
+      name: "isolate_session_state"
+      number: 15
+      label: LABEL_OPTIONAL
+      type: TYPE_BOOL
+    }
+    field {
+      name: "experimental"
+      number: 16
+      label: LABEL_OPTIONAL
+      type: TYPE_MESSAGE
+      type_name: ".tensorflow.ConfigProto.Experimental"
+    }
+    nested_type {
+      name: "DeviceCountEntry"
+      field {
+        name: "key"
+        number: 1
+        label: LABEL_OPTIONAL
+        type: TYPE_STRING
+      }
+      field {
+        name: "value"
+        number: 2
+        label: LABEL_OPTIONAL
+        type: TYPE_INT32
+      }
+      options {
+        map_entry: true
+      }
+    }
+    nested_type {
+      name: "Experimental"
+      field {
+        name: "collective_group_leader"
+        number: 1
+        label: LABEL_OPTIONAL
+        type: TYPE_STRING
+      }
+      field {
+        name: "executor_type"
+        number: 3
+        label: LABEL_OPTIONAL
+        type: TYPE_STRING
+      }
+      reserved_range {
+        start: 2
+        end: 3
+      }
+    }
+  }
+}

@@ -15,8 +15,8 @@ limitations under the License.
 #include <stddef.h>
 #include <stdint.h>
 
-#include "tensorflow/contrib/lite/builtin_op_data.h"
-#include "tensorflow/contrib/lite/context.h"
+#include "tensorflow/contrib/lite/c/builtin_op_data.h"
+#include "tensorflow/contrib/lite/c/c_api_internal.h"
 #include "tensorflow/contrib/lite/kernels/activation_functor.h"
 #include "tensorflow/contrib/lite/kernels/internal/kernel_utils.h"
 #include "tensorflow/contrib/lite/kernels/kernel_util.h"
@@ -31,8 +31,10 @@ constexpr int kInputTensor = 0;
 constexpr int kWeightsTensor = 1;
 constexpr int kRecurrentWeightsTensor = 2;
 constexpr int kBiasTensor = 3;
-constexpr int kHiddenStateTensor = 0;
-constexpr int kOutputTensor = 1;
+constexpr int kHiddenStateTensor = 4;
+
+// Output tensor.
+constexpr int kOutputTensor = 0;
 
 void* Init(TfLiteContext* context, const char* buffer, size_t length) {
   auto* scratch_tensor_index = new int;
@@ -46,14 +48,16 @@ void Free(TfLiteContext* context, void* buffer) {
 
 TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   // Check we have all the inputs and outputs we need.
-  TF_LITE_ENSURE_EQ(context, node->inputs->size, 4);
-  TF_LITE_ENSURE_EQ(context, node->outputs->size, 2);
+  TF_LITE_ENSURE_EQ(context, node->inputs->size, 5);
+  TF_LITE_ENSURE_EQ(context, node->outputs->size, 1);
 
   const TfLiteTensor* input = GetInput(context, node, kInputTensor);
   const TfLiteTensor* input_weights = GetInput(context, node, kWeightsTensor);
   const TfLiteTensor* recurrent_weights =
       GetInput(context, node, kRecurrentWeightsTensor);
   const TfLiteTensor* bias = GetInput(context, node, kBiasTensor);
+  const TfLiteTensor* hidden_state =
+      GetInput(context, node, kHiddenStateTensor);
 
   // Check all the parameters of tensor match within themselves and match the
   // input configuration.
@@ -65,19 +69,11 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ASSERT_EQ(recurrent_weights->dims->data[1], bias->dims->data[0]);
   TF_LITE_ENSURE_EQ(context, input->type, kTfLiteFloat32);
   TF_LITE_ENSURE_EQ(context, input_weights->type, recurrent_weights->type);
+  TF_LITE_ENSURE_EQ(context, NumDimensions(hidden_state), 2);
+  TF_LITE_ENSURE_EQ(context, hidden_state->dims->data[0], batch_size);
+  TF_LITE_ENSURE_EQ(context, hidden_state->dims->data[1], num_units);
 
-  TfLiteTensor* hidden_state = GetOutput(context, node, kHiddenStateTensor);
   TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
-
-  // Resize state.
-  TfLiteIntArray* hidden_state_size_array = TfLiteIntArrayCreate(2);
-  hidden_state_size_array->data[0] = batch_size;
-  hidden_state_size_array->data[1] = num_units;
-  TF_LITE_ENSURE_OK(context, context->ResizeTensor(context, hidden_state,
-                                                   hidden_state_size_array));
-
-  // Mark hidden state as a persistent tensor.
-  hidden_state->allocation_type = kTfLiteArenaRwPersistent;
 
   // Resize output.
   TfLiteIntArray* output_size_array = TfLiteIntArrayCreate(2);
@@ -118,9 +114,10 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
     TfLiteTensor* scaling_factors = GetTemporary(context, node, /*index=*/2);
     scaling_factors->type = kTfLiteFloat32;
     scaling_factors->allocation_type = kTfLiteArenaRw;
-    TfLiteIntArray* scaling_factors_size = TfLiteIntArrayCreate(1);
-    scaling_factors_size->data[0] = batch_size;
-    if (!TfLiteIntArrayEqual(scaling_factors->dims, scaling_factors_size)) {
+    int scaling_dims[1] = {batch_size};
+    if (!TfLiteIntArrayEqualsArray(scaling_factors->dims, 1, scaling_dims)) {
+      TfLiteIntArray* scaling_factors_size = TfLiteIntArrayCreate(1);
+      scaling_factors_size->data[0] = batch_size;
       TF_LITE_ENSURE_OK(context, context->ResizeTensor(context, scaling_factors,
                                                        scaling_factors_size));
     }
@@ -137,6 +134,8 @@ TfLiteStatus EvalFloat(const TfLiteTensor* input,
   const int batch_size = input->dims->data[0];
   const int num_units = input_weights->dims->data[0];
   const int input_size = input->dims->data[1];
+  const int output_batch_leading_dim =
+      output->dims->data[output->dims->size - 1];
 
   // Initialize the pointer to hidden state.
   float* hidden_state_ptr_batch = hidden_state->data.f;
@@ -148,10 +147,10 @@ TfLiteStatus EvalFloat(const TfLiteTensor* input,
   const float* recurrent_weights_ptr = recurrent_weights->data.f;
   const float* bias_ptr = bias->data.f;
 
-  kernel_utils::RnnBatchStep(input_ptr_batch, input_weights_ptr,
-                             recurrent_weights_ptr, bias_ptr, input_size,
-                             num_units, batch_size, params->activation,
-                             hidden_state_ptr_batch, output_ptr_batch);
+  kernel_utils::RnnBatchStep(
+      input_ptr_batch, input_weights_ptr, recurrent_weights_ptr, bias_ptr,
+      input_size, num_units, batch_size, output_batch_leading_dim,
+      params->activation, hidden_state_ptr_batch, output_ptr_batch);
   return kTfLiteOk;
 }
 
@@ -166,6 +165,8 @@ TfLiteStatus EvalHybrid(const TfLiteTensor* input,
   const int batch_size = input->dims->data[0];
   const int num_units = input_weights->dims->data[0];
   const int input_size = input->dims->data[1];
+  const int output_batch_leading_dim =
+      output->dims->data[output->dims->size - 1];
 
   // Initialize the pointer to hidden state.
   float* hidden_state_ptr_batch = hidden_state->data.f;
@@ -191,9 +192,9 @@ TfLiteStatus EvalHybrid(const TfLiteTensor* input,
   kernel_utils::RnnBatchStep(
       input_ptr_batch, input_weights_ptr, input_weights_scale,
       recurrent_weights_ptr, recurrent_weights_scale, bias_ptr, input_size,
-      num_units, batch_size, params->activation, quantized_input_ptr,
-      quantized_hidden_state_ptr, scaling_factors_ptr, hidden_state_ptr_batch,
-      output_ptr_batch);
+      num_units, batch_size, output_batch_leading_dim, params->activation,
+      quantized_input_ptr, quantized_hidden_state_ptr, scaling_factors_ptr,
+      hidden_state_ptr_batch, output_ptr_batch);
   return kTfLiteOk;
 }
 
@@ -205,7 +206,8 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   const TfLiteTensor* recurrent_weights =
       GetInput(context, node, kRecurrentWeightsTensor);
   const TfLiteTensor* bias = GetInput(context, node, kBiasTensor);
-  TfLiteTensor* hidden_state = GetOutput(context, node, kHiddenStateTensor);
+  TfLiteTensor* hidden_state =
+      &context->tensors[node->inputs->data[kHiddenStateTensor]];
   TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
 
   // We already checked that weight types are consistent, so branch on one.

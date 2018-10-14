@@ -178,14 +178,28 @@ def register_session_run_conversion_functions(
     feed_function_for_partial_run: A callable for specifying tensor values to
       feed when setting up a partial run, which takes a `tensor_type` type
       object as input, and returns a list of Tensors.
+
+  Raises:
+    ValueError: If `tensor_type` has already been registered.
   """
   for conversion_function in _REGISTERED_EXPANSIONS:
     if issubclass(conversion_function[0], tensor_type):
-      raise ValueError('%s has already been registered so ignore it.',
+      raise ValueError('%s has already been registered so ignore it.' %
                        tensor_type)
-      return
+
   _REGISTERED_EXPANSIONS.insert(0, (tensor_type, fetch_function, feed_function,
                                     feed_function_for_partial_run))
+
+
+def _is_attrs_instance(obj):
+  """Returns True if the given obj is an instance of attrs-decorated class."""
+  return getattr(obj.__class__, '__attrs_attrs__', None) is not None
+
+
+def _get_attrs_values(obj):
+  """Returns the list of values from an attrs instance."""
+  attrs = getattr(obj.__class__, '__attrs_attrs__')
+  return [getattr(obj, a.name) for a in attrs]
 
 
 class _FetchMapper(object):
@@ -247,6 +261,8 @@ class _FetchMapper(object):
       return _ListFetchMapper(fetch)
     elif isinstance(fetch, collections.Mapping):
       return _DictFetchMapper(fetch)
+    elif _is_attrs_instance(fetch):
+      return _AttrsFetchMapper(fetch)
     else:
       # Look for a handler in the registered expansions.
       for tensor_type, fetch_fn, _, _ in _REGISTERED_EXPANSIONS:
@@ -396,6 +412,32 @@ class _DictFetchMapper(_FetchMapper):
     for k, m, vi in zip(self._keys, self._mappers, self._value_indices):
       results[k] = m.build_results([values[j] for j in vi])
     return results
+
+
+class _AttrsFetchMapper(_FetchMapper):
+  """Fetch mapper for attrs decorated classes."""
+
+  def __init__(self, fetches):
+    """Creates a _AttrsFetchMapper.
+
+    Args:
+      fetches: An instance of an attrs decorated class.
+    """
+    values = _get_attrs_values(fetches)
+    self._fetch_type = type(fetches)
+    self._mappers = [
+        _FetchMapper.for_fetch(fetch) for fetch in values
+    ]
+    self._unique_fetches, self._value_indices = _uniquify_fetches(self._mappers)
+
+  def unique_fetches(self):
+    return self._unique_fetches
+
+  def build_results(self, values):
+    results = []
+    for m, vi in zip(self._mappers, self._value_indices):
+      results.append(m.build_results([values[j] for j in vi]))
+    return self._fetch_type(*results)
 
 
 class _FetchHandler(object):
@@ -724,7 +766,7 @@ class BaseSession(SessionInterface):
     """Returns a context manager that makes this object the default session.
 
     Use with the `with` keyword to specify that calls to
-    @{tf.Operation.run} or @{tf.Tensor.eval} should be executed in
+    `tf.Operation.run` or `tf.Tensor.eval` should be executed in
     this session.
 
     ```python
@@ -736,7 +778,7 @@ class BaseSession(SessionInterface):
       print(c.eval())
     ```
 
-    To get the current default session, use @{tf.get_default_session}.
+    To get the current default session, use `tf.get_default_session`.
 
     *N.B.* The `as_default` context manager *does not* close the
     session when you exit the context, and you must close the session
@@ -765,7 +807,7 @@ class BaseSession(SessionInterface):
 
     *N.B.* Entering a `with sess.as_default():` block does not affect
     the current default graph. If you are using multiple graphs, and
-    `sess.graph` is different from the value of @{tf.get_default_graph},
+    `sess.graph` is different from the value of `tf.get_default_graph`,
     you must explicitly enter a `with sess.graph.as_default():` block
     to make `sess.graph` the default graph.
 
@@ -786,14 +828,14 @@ class BaseSession(SessionInterface):
     nested list, tuple, namedtuple, dict, or OrderedDict containing graph
     elements at its leaves.  A graph element can be one of the following types:
 
-    * An @{tf.Operation}.
+    * An `tf.Operation`.
       The corresponding fetched value will be `None`.
-    * A @{tf.Tensor}.
+    * A `tf.Tensor`.
       The corresponding fetched value will be a numpy ndarray containing the
       value of that tensor.
-    * A @{tf.SparseTensor}.
+    * A `tf.SparseTensor`.
       The corresponding fetched value will be a
-      @{tf.SparseTensorValue}
+      `tf.SparseTensorValue`
       containing the value of that sparse tensor.
     * A `get_tensor_handle` op.  The corresponding fetched value will be a
       numpy ndarray containing the handle of that tensor.
@@ -829,16 +871,16 @@ class BaseSession(SessionInterface):
     the value of tensors in the graph. Each key in `feed_dict` can be
     one of the following types:
 
-    * If the key is a @{tf.Tensor}, the
+    * If the key is a `tf.Tensor`, the
       value may be a Python scalar, string, list, or numpy ndarray
       that can be converted to the same `dtype` as that
       tensor. Additionally, if the key is a
-      @{tf.placeholder}, the shape of
+      `tf.placeholder`, the shape of
       the value will be checked for compatibility with the placeholder.
     * If the key is a
-      @{tf.SparseTensor},
+      `tf.SparseTensor`,
       the value should be a
-      @{tf.SparseTensorValue}.
+      `tf.SparseTensorValue`.
     * If the key is a nested tuple of `Tensor`s or `SparseTensor`s, the value
       should be a nested tuple with the same structure that maps to their
       corresponding values as above.
@@ -1120,7 +1162,7 @@ class BaseSession(SessionInterface):
     For example, if element `i` of `feed_list` is a `tf.Tensor`, the `i`th
     argument to the returned callable must be a numpy ndarray (or something
     convertible to an ndarray) with matching element type and shape. See
-    @{tf.Session.run} for details of the allowable feed key and value types.
+    `tf.Session.run` for details of the allowable feed key and value types.
 
     The returned callable will have the same return type as
     `tf.Session.run(fetches, ...)`. For example, if `fetches` is a `tf.Tensor`,
@@ -1128,14 +1170,14 @@ class BaseSession(SessionInterface):
     it will return `None`.
 
     Args:
-      fetches: A value or list of values to fetch. See @{tf.Session.run}
+      fetches: A value or list of values to fetch. See `tf.Session.run`
         for details of the allowable fetch types.
       feed_list: (Optional.) A list of `feed_dict` keys. See
-        @{tf.Session.run} for details of the allowable feed key types.
-      accept_options: (Optional.) Iff `True`, the returned `Callable` will be
-        able to accept @{tf.RunOptions} and @{tf.RunMetadata} as optional
+        `tf.Session.run` for details of the allowable feed key types.
+      accept_options: (Optional.) If `True`, the returned `Callable` will be
+        able to accept `tf.RunOptions` and `tf.RunMetadata` as optional
         keyword arguments `options` and `run_metadata`, respectively, with
-        the same syntax and semantics as @{tf.Session.run}, which is useful
+        the same syntax and semantics as `tf.Session.run`, which is useful
         for certain use cases (profiling and debugging) but will result in
         measurable slowdown of the `Callable`'s performance. Default: `False`.
 
@@ -1145,7 +1187,7 @@ class BaseSession(SessionInterface):
 
     Raises:
       TypeError: If `fetches` or `feed_list` cannot be interpreted
-        as arguments to @{tf.Session.run}.
+        as arguments to `tf.Session.run`.
     """
     if feed_list is not None:
       if not isinstance(feed_list, (list, tuple)):
@@ -1302,9 +1344,7 @@ class BaseSession(SessionInterface):
           node_def = op.node_def
         except KeyError:
           pass
-      if (self._config is not None and
-          self._config.experimental.client_handles_error_formatting):
-        message = error_interpolation.interpolate(message, self._graph)
+      message = error_interpolation.interpolate(message, self._graph)
       raise type(e)(node_def, op, message)
 
   def _extend_graph(self):
@@ -1453,10 +1493,10 @@ class Session(BaseSession):
   ```
 
   A session may own resources, such as
-  @{tf.Variable}, @{tf.QueueBase},
-  and @{tf.ReaderBase}. It is important to release
+  `tf.Variable`, `tf.QueueBase`,
+  and `tf.ReaderBase`. It is important to release
   these resources when they are no longer required. To do this, either
-  invoke the @{tf.Session.close} method on the session, or use
+  invoke the `tf.Session.close` method on the session, or use
   the session as a context manager. The following two examples are
   equivalent:
 
@@ -1500,7 +1540,7 @@ class Session(BaseSession):
     Args:
       target: (Optional.) The execution engine to connect to.
         Defaults to using an in-process engine. See
-        @{$distributed$Distributed TensorFlow}
+        [Distributed TensorFlow](https://tensorflow.org/deploy/distributed)
         for more examples.
       graph: (Optional.) The `Graph` to be launched (described above).
       config: (Optional.) A
@@ -1592,8 +1632,8 @@ class InteractiveSession(BaseSession):
 
   The only difference with a regular `Session` is that an `InteractiveSession`
   installs itself as the default session on construction.
-  The methods @{tf.Tensor.eval}
-  and @{tf.Operation.run}
+  The methods `tf.Tensor.eval`
+  and `tf.Operation.run`
   will use that session to run ops.
 
   This is convenient in interactive shells and [IPython

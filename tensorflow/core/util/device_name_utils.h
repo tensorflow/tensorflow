@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_UTIL_DEVICE_NAME_UTILS_H_
-#define TENSORFLOW_UTIL_DEVICE_NAME_UTILS_H_
+#ifndef TENSORFLOW_CORE_UTIL_DEVICE_NAME_UTILS_H_
+#define TENSORFLOW_CORE_UTIL_DEVICE_NAME_UTILS_H_
 
 #include <string>
 
@@ -173,4 +173,4 @@ class DeviceNameUtils {
 
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_UTIL_DEVICE_NAME_UTILS_H_
+#endif  // TENSORFLOW_CORE_UTIL_DEVICE_NAME_UTILS_H_

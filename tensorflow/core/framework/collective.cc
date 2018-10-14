@@ -21,6 +21,31 @@ limitations under the License.
 
 namespace tensorflow {
 
+namespace {
+// A RegistrationInfo object stores a collective implementation registration
+// details.  `factory` is used to create instances of the collective
+// implementation.
+struct RegistrationInfo {
+  // This constructor also creates, and stores in `param_resolver_instance`,
+  // what is effectively a static instance of the collective implementation.
+  // During param resolution of collective ops we return this static instance.
+  // The actual op execution gets a fresh instance using `factory`.
+  RegistrationInfo(const string& n, CollectiveRegistry::Factory f)
+      : name(n),
+        factory(std::move(f)),
+        param_resolver_instance(this->factory()) {}
+  string name;
+  CollectiveRegistry::Factory factory;
+  CollectiveImplementationInterface* param_resolver_instance;
+};
+
+std::vector<RegistrationInfo>* MutableCollectiveRegistry() {
+  static std::vector<RegistrationInfo>* registry =
+      new std::vector<RegistrationInfo>;
+  return registry;
+}
+}  // namespace
+
 string CollGroupParams::ToString() const {
   return strings::StrCat("CollGroupParams {group_key=", group_key,
                          " group_size=", group_size,
@@ -102,7 +127,8 @@ string CollectiveParams::ToString() const {
   strings::StrAppend(&v, " ", instance.ToString());
   strings::StrAppend(&v, " ", task.ToString());
   strings::StrAppend(&v, " default_rank=", default_rank,
-                     " is_source=", is_source, " subdiv_rank={");
+                     " is_source=", is_source, " source_rank=", source_rank,
+                     " subdiv_rank={");
   for (const auto& r : subdiv_rank) {
     strings::StrAppend(&v, r, ",");
   }
@@ -115,7 +141,81 @@ string CollectiveParams::ToString() const {
   return ctx->params_;
 }
 
+CollectiveContext::CollectiveContext(CollectiveExecutor* col_exec,
+                                     const DeviceMgr* dev_mgr,
+                                     OpKernelContext* ctx,
+                                     OpKernelContext::Params* op_params,
+                                     const CollectiveParams& col_params,
+                                     const string& exec_key, int64 step_id,
+                                     const Tensor* input, Tensor* output)
+    : col_exec(col_exec),
+      dev_mgr(dev_mgr),
+      op_ctx(ctx),
+      op_params(op_params),
+      col_params(col_params),
+      exec_key(exec_key),
+      step_id(step_id),
+      input(input),
+      output(output),
+      device(nullptr),
+      device_name(col_params.instance.device_names[col_params.default_rank]) {}
+
 /*static*/
 int64 CollectiveExecutor::kInvalidId = -1;
+
+/*static*/
+Status CollectiveRegistry::Lookup(
+    const string& collective_name,
+    CollectiveImplementationInterface** implementation) {
+  return LookupHelper(collective_name, implementation, false);
+}
+
+/*static*/
+Status CollectiveRegistry::LookupParamResolverInstance(
+    const string& collective_name,
+    CollectiveImplementationInterface** implementation) {
+  return LookupHelper(collective_name, implementation, true);
+}
+
+/*static*/
+void CollectiveRegistry::GetAll(
+    std::vector<CollectiveImplementationInterface*>* implementations) {
+  std::vector<RegistrationInfo>* registry = MutableCollectiveRegistry();
+  for (const RegistrationInfo& reg_info : *registry)
+    implementations->emplace_back(reg_info.factory());
+}
+
+/*static*/
+Status CollectiveRegistry::Register(const string& collective_name,
+                                    Factory factory) {
+  std::vector<RegistrationInfo>* registry = MutableCollectiveRegistry();
+  for (const RegistrationInfo& reg_info : *registry) {
+    if (reg_info.name == collective_name)
+      return errors::Internal("Already registered collective ",
+                              collective_name);
+  }
+  registry->emplace_back(collective_name, std::move(factory));
+  return Status::OK();
+}
+
+/*static*/
+Status CollectiveRegistry::LookupHelper(
+    const string& collective_name,
+    CollectiveImplementationInterface** implementation, bool param_resolver) {
+  std::vector<RegistrationInfo>* registry = MutableCollectiveRegistry();
+  for (const RegistrationInfo& reg_info : *registry) {
+    if (reg_info.name == collective_name) {
+      if (param_resolver) {
+        *implementation = reg_info.param_resolver_instance;
+      } else {
+        *implementation = reg_info.factory();
+      }
+      return Status::OK();
+    }
+  }
+  return errors::Internal(
+      "CollectiveRegistry::Lookup did not find collective implementation ",
+      collective_name);
+}
 
 }  // namespace tensorflow

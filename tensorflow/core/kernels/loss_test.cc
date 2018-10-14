@@ -17,6 +17,7 @@ limitations under the License.
 
 #include "tensorflow/core/kernels/hinge-loss.h"
 #include "tensorflow/core/kernels/logistic-loss.h"
+#include "tensorflow/core/kernels/poisson-loss.h"
 #include "tensorflow/core/kernels/smooth-hinge-loss.h"
 #include "tensorflow/core/kernels/squared-loss.h"
 #include "tensorflow/core/lib/core/errors.h"
@@ -29,6 +30,24 @@ namespace {
 
 // TODO(sibyl-Aix6ihai): add a test to show the improvements of the Newton
 // modification detailed in readme.md
+
+// This test checks that the dual value after update is optimal.
+// At the optimum the dual value should be the opposite of the primal gradient.
+// This does not hold at a point where the primal is not differentiable.
+void TestComputeUpdatedDual(const DualLossUpdater &loss_updater,
+                            const int num_loss_partitions, const double label,
+                            const double example_weight,
+                            const double current_dual, const double wx,
+                            const double weighted_example_norm) {
+  double new_dual = loss_updater.ComputeUpdatedDual(
+      num_loss_partitions, label, example_weight, current_dual, wx,
+      weighted_example_norm);
+  // The primal gradient needs to be computed after the weight update.
+  double new_wx = wx + (new_dual - current_dual) * num_loss_partitions *
+                           weighted_example_norm * example_weight;
+  EXPECT_NEAR(new_dual, -loss_updater.PrimalLossDerivative(new_wx, label, 1.0),
+              1e-5);
+}
 
 TEST(LogisticLoss, ComputePrimalLoss) {
   LogisticLossUpdater loss_updater;
@@ -65,19 +84,12 @@ TEST(LogisticLoss, ComputeDualLoss) {
 
 TEST(LogisticLoss, ComputeUpdatedDual) {
   LogisticLossUpdater loss_updater;
-  EXPECT_NEAR(0.479,
-              loss_updater.ComputeUpdatedDual(
-                  1 /* num partitions */, 1.0 /* label */,
-                  1.0 /* example weight */, 0.5 /* current_dual */,
-                  0.3 /* wx */, 10.0 /* weighted_example_norm */),
-              1e-3);
-
-  EXPECT_NEAR(-0.031,
-              loss_updater.ComputeUpdatedDual(
-                  2 /* num partitions */, -1.0 /* label */,
-                  1.0 /* example weight */, 0.1 /* current_dual */,
-                  -0.8 /* wx */, 10.0 /* weighted_example_norm */),
-              1e-3);
+  TestComputeUpdatedDual(loss_updater, 1 /* num partitions */, 1.0 /* label */,
+                         1.0 /* example weight */, 0.5 /* current_dual */,
+                         0.3 /* wx */, 10.0 /* weighted_example_norm */);
+  TestComputeUpdatedDual(loss_updater, 2 /* num partitions */, -1.0 /* label */,
+                         1.0 /* example weight */, 0.1 /* current_dual */,
+                         -0.8 /* wx */, 10.0 /* weighted_example_norm */);
 }
 
 TEST(SquaredLoss, ComputePrimalLoss) {
@@ -126,19 +138,12 @@ TEST(SquaredLoss, ComputeDualLoss) {
 
 TEST(SquaredLoss, ComputeUpdatedDual) {
   SquaredLossUpdater loss_updater;
-  EXPECT_NEAR(0.336,
-              loss_updater.ComputeUpdatedDual(
-                  1 /* num partitions */, 1.0 /* label */,
-                  1.0 /* example weight */, 0.3 /* current_dual */,
-                  0.3 /* wx */, 10.0 /* weighted_example_norm */),
-              1e-3);
-
-  EXPECT_NEAR(-0.427,
-              loss_updater.ComputeUpdatedDual(
-                  5 /* num partitions */, -1.0 /* label */,
-                  1.0 /* example weight */, -0.4 /* current_dual */,
-                  0.8 /* wx */, 10.0 /* weighted_example_norm */),
-              1e-3);
+  TestComputeUpdatedDual(loss_updater, 1 /* num partitions */, 1.0 /* label */,
+                         1.0 /* example weight */, 0.3 /* current_dual */,
+                         0.3 /* wx */, 10.0 /* weighted_example_norm */);
+  TestComputeUpdatedDual(loss_updater, 5 /* num partitions */, -1.0 /* label */,
+                         1.0 /* example weight */, -0.4 /* current_dual */,
+                         0.8 /* wx */, 10.0 /* weighted_example_norm */);
 }
 
 TEST(HingeLoss, ComputePrimalLoss) {
@@ -207,48 +212,27 @@ TEST(HingeLoss, ConvertLabel) {
 
 TEST(HingeLoss, ComputeUpdatedDual) {
   HingeLossUpdater loss_updater;
-  // When label=1.0, example_weight=1.0, current_dual=0.5, wx=0.3 and
-  // weighted_example_norm=100.0, it turns out that the optimal value to update
-  // the dual to is 0.507 which is within the permitted range and thus should be
-  // the value returned.
+  // For the two tests belows, y*wx=1 after the update which is a
+  // non-differetiable point of the hinge loss and TestComputeUpdatedDual
+  // cannot be used. Check value of the dual variable instead.
   EXPECT_NEAR(0.507,
               loss_updater.ComputeUpdatedDual(
                   1 /* num partitions */, 1.0 /* label */,
                   1.0 /* example weight */, 0.5 /* current_dual */,
                   0.3 /* wx */, 100.0 /* weighted_example_norm */),
               1e-3);
-  // When label=-1.0, example_weight=1.0, current_dual=0.4, wx=0.6,
-  // weighted_example_norm=10.0 and num_loss_partitions=10, it turns out that
-  // the optimal value to update the dual to is 0.384 which is within the
-  // permitted range and thus should be the value returned.
   EXPECT_NEAR(-0.416,
               loss_updater.ComputeUpdatedDual(
                   10 /* num partitions */, -1.0 /* label */,
                   1.0 /* example weight */, -0.4 /* current_dual */,
                   0.6 /* wx */, 10.0 /* weighted_example_norm */),
               1e-3);
-  // When label=1.0, example_weight=1.0, current_dual=-0.5, wx=0.3 and
-  // weighted_example_norm=10.0, it turns out that the optimal value to update
-  // the dual to is -0.43. However, this is outside the allowed [0.0, 1.0] range
-  // and hence the closest permitted value (0.0) should be returned instead.
-  EXPECT_NEAR(0.0,
-              loss_updater.ComputeUpdatedDual(
-                  1 /* num partitions */, 1.0 /* label */,
-                  1.0 /* example weight */, -0.5 /* current_dual */,
-                  0.3 /* wx */, 10.0 /* weighted_example_norm */),
-              1e-3);
-
-  // When label=-1.0, example_weight=2.0, current_dual=-1.0, wx=0.3 and
-  // weighted_example_norm=10.0, it turns out that the optimal value to update
-  // the dual to is -1.065. However, this is outside the allowed [-1.0, 0.0]
-  // range and hence the closest permitted value (-1.0) should be returned
-  // instead.
-  EXPECT_NEAR(-1.0,
-              loss_updater.ComputeUpdatedDual(
-                  1 /* num partitions */, -1.0 /* label */,
-                  2.0 /* example weight */, -1.0 /* current_dual */,
-                  0.3 /* wx */, 10.0 /* weighted_example_norm */),
-              1e-3);
+  TestComputeUpdatedDual(loss_updater, 1 /* num partitions */, 1.0 /* label */,
+                         1.0 /* example weight */, -0.5 /* current_dual */,
+                         0.3 /* wx */, 10.0 /* weighted_example_norm */);
+  TestComputeUpdatedDual(loss_updater, 1 /* num partitions */, -1.0 /* label */,
+                         2.0 /* example weight */, -1.0 /* current_dual */,
+                         0.3 /* wx */, 10.0 /* weighted_example_norm */);
 }
 
 TEST(SmoothHingeLoss, ComputePrimalLoss) {
@@ -297,19 +281,75 @@ TEST(SmoothHingeLoss, ComputeDualLoss) {
 
 TEST(SmoothHingeLoss, ComputeUpdatedDual) {
   SmoothHingeLossUpdater loss_updater;
-  EXPECT_NEAR(0.336,
-              loss_updater.ComputeUpdatedDual(
-                  1 /* num partitions */, 1.0 /* label */,
-                  1.0 /* example weight */, 0.3 /* current_dual */,
-                  0.3 /* wx */, 10.0 /* weighted_example_norm */),
-              1e-3);
+  TestComputeUpdatedDual(loss_updater, 1 /* num partitions */, 1.0 /* label */,
+                         1.0 /* example weight */, 0.3 /* current_dual */,
+                         0.3 /* wx */, 10.0 /* weighted_example_norm */);
+  TestComputeUpdatedDual(loss_updater, 5 /* num partitions */, -1.0 /* label */,
+                         1.0 /* example weight */, -0.4 /* current_dual */,
+                         0.8 /* wx */, 10.0 /* weighted_example_norm */);
+}
 
-  EXPECT_NEAR(-0.427,
-              loss_updater.ComputeUpdatedDual(
-                  5 /* num partitions */, -1.0 /* label */,
-                  1.0 /* example weight */, -0.4 /* current_dual */,
-                  0.8 /* wx */, 10.0 /* weighted_example_norm */),
+TEST(PoissonLoss, ComputePrimalLoss) {
+  PoissonLossUpdater loss_updater;
+  EXPECT_NEAR(1.0,
+              loss_updater.ComputePrimalLoss(0.0 /* wx */, 3.0 /* label */,
+                                             1.0 /* example weight */),
               1e-3);
+  EXPECT_NEAR(21996.0,
+              loss_updater.ComputePrimalLoss(10.0 /* wx */, 3.0 /* label */,
+                                             1.0 /* example weight */),
+              1.0);
+  EXPECT_NEAR(0.606,
+              loss_updater.ComputePrimalLoss(-0.5 /* wx */, 0.0 /* label */,
+                                             1.0 /* example weight */),
+              1e-3);
+  EXPECT_NEAR(6.64,
+              loss_updater.ComputePrimalLoss(1.2 /* wx */, 0.0 /* label */,
+                                             2.0 /* example weight */),
+              1e-2);
+}
+
+TEST(PoissonLoss, ComputeDualLoss) {
+  PoissonLossUpdater loss_updater;
+  // Dual is undefined.
+  EXPECT_NEAR(
+      std::numeric_limits<double>::max(),
+      loss_updater.ComputeDualLoss(1.0 /* current dual */, 0.0 /* label */,
+                                   1.0 /* example weight */),
+      1e-3);
+  EXPECT_NEAR(
+      0.0,
+      loss_updater.ComputeDualLoss(0.0 /* current dual */, 0.0 /* label */,
+                                   3.0 /* example weight */),
+      1e-3);
+  EXPECT_NEAR(
+      -0.847,
+      loss_updater.ComputeDualLoss(1.5 /* current dual */, 2.0 /* label */,
+                                   1.0 /* example weight */),
+      1e-3);
+  EXPECT_NEAR(
+      -2.675,
+      loss_updater.ComputeDualLoss(0.5 /* current dual */, 2.0 /* label */,
+                                   3.0 /* example weight */),
+      1e-3);
+}
+
+TEST(PoissonLoss, ConvertLabel) {
+  PoissonLossUpdater loss_updater;
+  float example_label = -1.0;
+  // Negative label should throw an error.
+  Status status = loss_updater.ConvertLabel(&example_label);
+  EXPECT_FALSE(status.ok());
+}
+
+TEST(PoissonLoss, ComputeUpdatedDual) {
+  PoissonLossUpdater loss_updater;
+  TestComputeUpdatedDual(loss_updater, 1 /* num partitions */, 2.0 /* label */,
+                         1.0 /* example weight */, 0.5 /* current_dual */,
+                         0.3 /* wx */, 10.0 /* weighted_example_norm */);
+  TestComputeUpdatedDual(loss_updater, 2 /* num partitions */, 0.0 /* label */,
+                         1.0 /* example weight */, 0.0 /* current_dual */,
+                         -0.8 /* wx */, 10.0 /* weighted_example_norm */);
 }
 
 }  // namespace

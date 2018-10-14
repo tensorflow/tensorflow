@@ -33,13 +33,18 @@ namespace testing {
 
 namespace {
 bool FLAGS_ignore_known_bugs = true;
-// TODO(b/71769302) zip_files_dir should have a more accurate default, if
-// possible
-string* FLAGS_zip_file_path = new string("./");
+// As archive file names are test-specific, no default is possible.
+//
+// This test supports input as both zip and tar, as a stock android image does
+// not have unzip but does have tar.
+string* FLAGS_zip_file_path = new string;
+string* FLAGS_tar_file_path = new string;
 #ifndef __ANDROID__
 string* FLAGS_unzip_binary_path = new string("/usr/bin/unzip");
+string* FLAGS_tar_binary_path = new string("/bin/tar");
 #else
 string* FLAGS_unzip_binary_path = new string("/system/bin/unzip");
+string* FLAGS_tar_binary_path = new string("/system/bin/tar");
 #endif
 bool FLAGS_use_nnapi = false;
 bool FLAGS_ignore_unsupported_nnapi = false;
@@ -53,12 +58,6 @@ tensorflow::Env* env = tensorflow::Env::Default();
 // Key is a substring of the test name and value is a bug number.
 // TODO(ahentz): make sure we clean this list up frequently.
 std::map<string, string> kBrokenTests = {
-    // Pad and PadV2 only supports 4D tensors.
-    {R"(^\/pad.*,input_shape=\[.,.\],paddings=\[\[.,.\],\[.,.\]\])",
-     "70527055"},
-    {R"(^\/padv2.*,input_shape=\[.,.\],paddings=\[\[.,.\],\[.,.\]\])",
-     "70527055"},
-
     // L2Norm only supports tensors with 4D or fewer.
     {R"(^\/l2norm_dim=.*,epsilon=.*,input_shape=\[.,.,.,.,.*\])", "67963684"},
 
@@ -86,9 +85,6 @@ std::map<string, string> kBrokenTests = {
     // Transpose only supports 1D-4D input tensors.
     {R"(^\/transpose.*input_shape=\[.,.,.,.,.\])", "71545879"},
 
-    // PRelu only supports 4D input with (1, 1, channels) 3D alpha now.
-    {R"(^\/prelu.*shared_axes=\[1\])", "75975192"},
-
     // No support for axis!=0 in GatherV2.
     {R"(^\/gather.*axis=1)", "76910444"},
 
@@ -99,13 +95,22 @@ std::map<string, string> kBrokenTests = {
      "77546240"},
     {R"(^\/arg_min_max.*axis_is_last_dim=False.*input_shape=\[.,.\])",
      "77546240"},
+
+    // No Support for float.
+    {R"(^\/floor_div.*dtype=tf\.float32)", "112859002"},
+
+    // Relu does not support int32.
+    // These test cases appends a Relu after the tested ops when
+    // activation=True. The tests are failing since Relu doesn't support int32.
+    {R"(^\/div.*activation=True.*dtype=tf\.int32)", "112968789"},
+    {R"(^\/floor_div.*activation=True.*dtype=tf\.int32)", "112968789"},
 };
 
-// Allows test data to be unzipped into a temporary directory and makes
+// Allows test data to be unarchived into a temporary directory and makes
 // sure those temporary directories are removed later.
-class ZipEnvironment : public ::testing::Environment {
+class ArchiveEnvironment : public ::testing::Environment {
  public:
-  ~ZipEnvironment() override {}
+  ~ArchiveEnvironment() override {}
 
   // Delete all temporary directories on teardown.
   void TearDown() override {
@@ -117,15 +122,26 @@ class ZipEnvironment : public ::testing::Environment {
     temporary_directories_.clear();
   }
 
-  // Unzip `zip` file into a new temporary directory  `out_dir`.
-  tensorflow::Status UnZip(const string& zip, string* out_dir) {
+  // Unarchive `archive` file into a new temporary directory  `out_dir`.
+  tensorflow::Status UnArchive(const string& zip, const string& tar,
+                               string* out_dir) {
     string dir;
     TF_CHECK_OK(MakeTemporaryDirectory(&dir));
     tensorflow::SubProcess proc;
-    string unzip_binary = *FLAGS_unzip_binary_path;
-    TF_CHECK_OK(env->FileExists(unzip_binary));
-    TF_CHECK_OK(env->FileExists(zip));
-    proc.SetProgram(unzip_binary, {"unzip", "-d", dir, zip});
+    if (!zip.empty()) {
+      string unzip_binary = *FLAGS_unzip_binary_path;
+      TF_CHECK_OK(env->FileExists(unzip_binary));
+      TF_CHECK_OK(env->FileExists(zip));
+      proc.SetProgram(unzip_binary, {"unzip", "-d", dir, zip});
+    } else {
+      string tar_binary = *FLAGS_tar_binary_path;
+      TF_CHECK_OK(env->FileExists(tar_binary));
+      TF_CHECK_OK(env->FileExists(tar));
+      // 'o' needs to be explicitly set on Android so that
+      // untarring works as non-root (otherwise tries to chown
+      // files, which fails)
+      proc.SetProgram(tar_binary, {"tar", "xfo", tar, "-C", dir});
+    }
     proc.SetChannelAction(tensorflow::CHAN_STDOUT, tensorflow::ACTION_PIPE);
     proc.SetChannelAction(tensorflow::CHAN_STDERR, tensorflow::ACTION_PIPE);
     if (!proc.Start())
@@ -159,15 +175,15 @@ class ZipEnvironment : public ::testing::Environment {
   std::vector<string> temporary_directories_;
 };
 
-// Return the singleton zip_environment.
-ZipEnvironment* zip_environment() {
-  static ZipEnvironment* env = new ZipEnvironment;
+// Return the singleton archive_environment.
+ArchiveEnvironment* archive_environment() {
+  static ArchiveEnvironment* env = new ArchiveEnvironment;
   return env;
 }
 
-// Read the manifest.txt out of the unarchived zip file. Specifically
+// Read the manifest.txt out of the unarchived archive file. Specifically
 // `original_file` is the original zip file for error messages. `dir` is
-// the temporary directory where the zip file has been unarchived and
+// the temporary directory where the archive file has been unarchived and
 // `test_paths` is the list of test prefixes that were in the manifest.
 // Note, it is an error for a manifest to contain no tests.
 tensorflow::Status ReadManifest(const string& original_file, const string& dir,
@@ -193,12 +209,22 @@ tensorflow::Status ReadManifest(const string& original_file, const string& dir,
   return tensorflow::Status::OK();
 }
 
-// Get a list of tests from a zip file `zip_file_name`.
-std::vector<string> UnarchiveZipAndFindTestNames(const string& zip_file) {
+// Get a list of tests from either zip or tar file
+std::vector<string> UnarchiveAndFindTestNames(const string& zip_file,
+                                              const string& tar_file) {
+  if (zip_file.empty() && tar_file.empty()) {
+    TF_CHECK_OK(tensorflow::Status(tensorflow::error::UNKNOWN,
+                                   "Neither zip_file nor tar_file was given"));
+  }
   string decompress_tmp_dir;
-  TF_CHECK_OK(zip_environment()->UnZip(zip_file, &decompress_tmp_dir));
+  TF_CHECK_OK(archive_environment()->UnArchive(zip_file, tar_file,
+                                               &decompress_tmp_dir));
   std::vector<string> stuff;
-  TF_CHECK_OK(ReadManifest(zip_file, decompress_tmp_dir, &stuff));
+  if (!zip_file.empty()) {
+    TF_CHECK_OK(ReadManifest(zip_file, decompress_tmp_dir, &stuff));
+  } else {
+    TF_CHECK_OK(ReadManifest(tar_file, decompress_tmp_dir, &stuff));
+  }
   return stuff;
 }
 
@@ -226,8 +252,7 @@ TEST_P(OpsTest, RunZipTests) {
   string message = test_driver.GetErrorMessage();
   if (bug_number.empty()) {
     if (FLAGS_use_nnapi && FLAGS_ignore_unsupported_nnapi && !result) {
-      EXPECT_EQ(message, string("Failed to invoke NNAPI interpreter"))
-          << message;
+      EXPECT_EQ(message, string("Failed to invoke interpreter")) << message;
     } else {
       EXPECT_TRUE(result) << message;
     }
@@ -259,27 +284,34 @@ struct ZipPathParamName {
   }
 };
 
-INSTANTIATE_TEST_CASE_P(
-    tests, OpsTest,
-    ::testing::ValuesIn(UnarchiveZipAndFindTestNames(*FLAGS_zip_file_path)),
-    ZipPathParamName());
+INSTANTIATE_TEST_CASE_P(tests, OpsTest,
+                        ::testing::ValuesIn(UnarchiveAndFindTestNames(
+                            *FLAGS_zip_file_path, *FLAGS_tar_file_path)),
+                        ZipPathParamName());
 
 }  // namespace testing
 }  // namespace tflite
 
 int main(int argc, char** argv) {
-  ::testing::AddGlobalTestEnvironment(tflite::testing::zip_environment());
+  ::testing::AddGlobalTestEnvironment(tflite::testing::archive_environment());
 
   std::vector<tensorflow::Flag> flags = {
       tensorflow::Flag(
           "ignore_known_bugs", &tflite::testing::FLAGS_ignore_known_bugs,
           "If a particular model is affected by a known bug, the "
           "corresponding test should expect the outputs to not match."),
-      tensorflow::Flag("zip_file_path", tflite::testing::FLAGS_zip_file_path,
-                       "Required: Location of the test zip file."),
+      tensorflow::Flag(
+          "tar_file_path", tflite::testing::FLAGS_tar_file_path,
+          "Required (or zip_file_path): Location of the test tar file."),
+      tensorflow::Flag(
+          "zip_file_path", tflite::testing::FLAGS_zip_file_path,
+          "Required (or tar_file_path): Location of the test zip file."),
       tensorflow::Flag("unzip_binary_path",
                        tflite::testing::FLAGS_unzip_binary_path,
-                       "Required: Location of a suitable unzip binary."),
+                       "Location of a suitable unzip binary."),
+      tensorflow::Flag("tar_binary_path",
+                       tflite::testing::FLAGS_tar_binary_path,
+                       "Location of a suitable tar binary."),
       tensorflow::Flag("use_nnapi", &tflite::testing::FLAGS_use_nnapi,
                        "Whether to enable the NNAPI delegate"),
       tensorflow::Flag("ignore_unsupported_nnapi",

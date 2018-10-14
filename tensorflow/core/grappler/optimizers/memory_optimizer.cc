@@ -24,10 +24,12 @@ limitations under the License.
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/op.h"
+#include "tensorflow/core/framework/tensor.pb.h"  // NOLINT
 #include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/grappler/clusters/virtual_cluster.h"
 #include "tensorflow/core/grappler/costs/graph_memory.h"
 #include "tensorflow/core/grappler/costs/graph_properties.h"
+#include "tensorflow/core/grappler/costs/utils.h"
 #include "tensorflow/core/grappler/graph_view.h"
 #include "tensorflow/core/grappler/grappler_item.h"
 #include "tensorflow/core/grappler/op_types.h"
@@ -41,6 +43,8 @@ limitations under the License.
 
 namespace tensorflow {
 namespace grappler {
+
+namespace {
 
 // Prefix added to nodes which are recomputed.
 const char* kRecomputedNodePrefix = "Recomputed";
@@ -743,25 +747,6 @@ Status BuildSwapPair(NodeDef* node, int input_to_swap,
   return Status::OK();
 }
 
-static int64 EstimateSize(const OpInfo::TensorProperties& t) {
-  DataType dtype = t.dtype();
-  int64 size = DataTypeSize(dtype);
-  TensorShapeProto shape = t.shape();
-  if (shape.unknown_rank()) {
-    // Can't infer the size if the rank is unknown. It has to be at least a
-    // scalar though.
-    return size;
-  }
-  // If one of the dimensions is unknown statically, assume it's at least one.
-  for (int i = 0; i < shape.dim_size(); ++i) {
-    if (shape.dim(i).size() < 0) {
-      shape.mutable_dim(i)->set_size(1);
-    }
-  }
-  int64 num_elems = TensorShape(shape).num_elements();
-  return num_elems * size;
-}
-
 struct SwapInfo {
   std::vector<int> inputs_to_swap;
   Costs::NanoSeconds time_to_swap = 0;
@@ -1070,11 +1055,13 @@ static bool IdentifySwappingCandidates(
         // ensure that swapping the tensor back in won't recreate the memory
         // bottleneck. Last but not least, we want the tensor to have as few
         // remaining uses as possible.
+        //
+        // Note that we must perform the arithmetic inexactly as "double", since
+        // the values do not fit into any integral type.
         mem_info.fitness =
-            MathUtil::IPow((earliest_use - peak_time).count(), 2);
-        mem_info.fitness /= MathUtil::IPow(mem_info.uses_left.size(), 2);
-        mem_info.fitness +=
-            MathUtil::IPow((allocation_time - peak_time).count(), 2);
+            MathUtil::IPow<double>((earliest_use - peak_time).count(), 2) /
+            MathUtil::IPow<double>(mem_info.uses_left.size(), 2) +
+            MathUtil::IPow<double>((allocation_time - peak_time).count(), 2);
         mem_info.fitness = -mem_info.fitness;
         mem_state.push_back(mem_info);
       }
@@ -1146,7 +1133,7 @@ bool SwappingPass(RewriterConfig::MemOptType optimization_level,
     int64 bytes_to_swap = 0;
     for (int64 input_id : swap_info.inputs_to_swap) {
       const OpInfo::TensorProperties& t = props[input_id];
-      bytes_to_swap += EstimateSize(t);
+      bytes_to_swap += CalculateTensorSize(t);
     }
     // Let's assume we're going to swap over PCIe running at 16 GBps.
     swap_info.time_to_swap = bytes_to_swap / 16;
@@ -1296,6 +1283,8 @@ Status RelaxAllocatorConstraints(GraphDef* optimized_graph) {
   return Status::OK();
 }
 
+}  // namespace
+
 Status MemoryOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
                                  GraphDef* optimized_graph) {
   *optimized_graph = item.graph;
@@ -1310,6 +1299,7 @@ Status MemoryOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
   // that simply won't fit in memory.
   bool updated_graph = true;
   for (int i = 0; i < 25 && updated_graph; ++i) {
+    GRAPPLER_RETURN_IF_DEADLINE_EXCEEDED();
     updated_graph = false;
     if ((optimization_level_ == RewriterConfig::DEFAULT_MEM_OPT ||
          optimization_level_ == RewriterConfig::SCHEDULING_HEURISTICS ||
@@ -1318,6 +1308,7 @@ Status MemoryOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
       updated_graph |= SchedulingPass(cluster, &optimized_item);
     }
 
+    GRAPPLER_RETURN_IF_DEADLINE_EXCEEDED();
     if ((optimization_level_ == RewriterConfig::DEFAULT_MEM_OPT ||
          optimization_level_ == RewriterConfig::SWAPPING_HEURISTICS ||
          optimization_level_ == RewriterConfig::HEURISTICS ||

@@ -16,9 +16,9 @@ limitations under the License.
 #include <memory>
 #include <utility>
 
+#include "absl/memory/memory.h"
 #include "llvm/IR/Module.h"
 #include "tensorflow/compiler/xla/literal.h"
-#include "tensorflow/compiler/xla/ptr_util.h"
 #include "tensorflow/compiler/xla/service/buffer_assignment.h"
 #include "tensorflow/compiler/xla/service/cpu/tests/cpu_codegen_test.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
@@ -41,8 +41,7 @@ class CpuNoAliasTest : public CpuCodegenTest {};
 TEST_F(CpuNoAliasTest, Concat) {
   HloComputation::Builder builder(TestName());
 
-  std::unique_ptr<Literal> literal =
-      LiteralUtil::CreateR2<float>({{1.0, 2.0}, {3.0, 4.0}});
+  Literal literal = LiteralUtil::CreateR2<float>({{1.0, 2.0}, {3.0, 4.0}});
   auto param_shape = ShapeUtil::MakeShape(F32, {2, 2});
   HloInstruction* param_x = builder.AddInstruction(
       HloInstruction::CreateParameter(0, param_shape, "x"));
@@ -62,7 +61,8 @@ TEST_F(CpuNoAliasTest, Concat) {
 
   // Now that we have an HLO module, build an llvm_ir::AliasAnalysis for it.
   auto status_or_buffer_assn = BufferAssigner::Run(
-      hlo_module.get(), MakeUnique<DependencyHloOrdering>(hlo_module.get()),
+      hlo_module.get(),
+      absl::make_unique<DependencyHloOrdering>(hlo_module.get()),
       backend().compiler()->BufferSizeBytesFunction(),
       [](LogicalBuffer::Color) { return /*alignment=*/1; });
   ASSERT_EQ(status_or_buffer_assn.status(), Status::OK());
@@ -121,7 +121,7 @@ TEST_F(CpuNoAliasTest, Concat) {
     CHECK: %read_concat2_array = load {{.*}} !alias.scope [[concat1_noalias]], !noalias [[concat1_scope]]
     CHECK-DAG: [[buf_size32:![0-9]+]] = !{!"buffer:{{.*}} size:32
     CHECK-DAG: [[buf_size48:![0-9]+]] = !{!"buffer:{{.*}} size:48
-    CHECK-DAG: [[param_x_noalias]] = !{[[buf_size32]], [[buf_size48]]}
+    CHECK-DAG: [[param_x_noalias]] = !{[[buf_size48]], [[buf_size32]]}
     CHECK-DAG: [[concat1_scope]] = !{[[buf_size32]]}
     CHECK-DAG: [[concat1_noalias]] = !{[[buf_size48]]}
   )";

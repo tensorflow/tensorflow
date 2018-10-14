@@ -50,13 +50,22 @@ flags.DEFINE_string(
 flags.DEFINE_string(
     'logdir', None, 'Path of TensorBoard log directory e.g. /tmp/tb_log, '
     'gs://tb_bucket')
-flags.DEFINE_integer('duration_ms', 2000, 'Duration of tracing in ms.')
+flags.DEFINE_integer('duration_ms', 0,
+                     'Duration of tracing or monitoring in ms.')
 flags.DEFINE_integer(
     'num_tracing_attempts', 3, 'Automatically retry N times when no trace '
     'event is collected.')
 flags.DEFINE_boolean('include_dataset_ops', True,
                      'Set to false to profile longer TPU '
                      'device traces.')
+
+# Monitoring parameters
+flags.DEFINE_integer(
+    'monitoring_level', 0, 'Choose a monitoring level between '
+    '1 and 2 to monitor your TPU job continuously.')
+flags.DEFINE_integer(
+    'num_queries', 100,
+    'This script will run monitoring for num_queries before it stops.')
 
 FLAGS = flags.FLAGS
 EXECUTABLE = 'data/capture_tpu_profile'
@@ -107,17 +116,20 @@ def main(unused_argv=None):
     elif tpu_cluster_resolver is not None:
       workers_list = get_workers_list(tpu_cluster_resolver)
 
-  if not FLAGS.logdir:
+  if not FLAGS.logdir and not FLAGS.monitoring_level:
     sys.exit('logdir must be provided.')
   executable_path = os.path.join(os.path.dirname(__file__), EXECUTABLE)
-  logdir = os.path.expandvars(os.path.expanduser(FLAGS.logdir))
   cmd = [executable_path]
-  cmd.append('--logdir=' + logdir)
+  if FLAGS.logdir is not None:
+    logdir = os.path.expandvars(os.path.expanduser(FLAGS.logdir))
+    cmd.append('--logdir=' + logdir)
   cmd.append('--service_addr=' + service_addr)
   cmd.append('--workers_list=' + workers_list)
   cmd.append('--duration_ms=' + str(FLAGS.duration_ms))
   cmd.append('--num_tracing_attempts=' + str(FLAGS.num_tracing_attempts))
   cmd.append('--include_dataset_ops=' + str(FLAGS.include_dataset_ops).lower())
+  cmd.append('--monitoring_level=' + str(FLAGS.monitoring_level))
+  cmd.append('--num_queries=' + str(FLAGS.num_queries))
   subprocess.call(cmd)
 
 

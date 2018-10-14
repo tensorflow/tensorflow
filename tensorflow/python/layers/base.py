@@ -131,10 +131,20 @@ class Layer(base_layer.Layer):
 
   def add_loss(self, losses, inputs=None):
     previous_losses_length = len(self._losses)
+    previous_callable_losses_length = len(self._callable_losses)
     super(Layer, self).add_loss(losses, inputs=inputs)
-    # TODO(fchollet): deprecate collection below.
-    new_losses = self._losses[previous_losses_length:]
-    _add_elements_to_collection(new_losses, ops.GraphKeys.REGULARIZATION_LOSSES)
+    if not context.executing_eagerly():
+      # TODO(fchollet): deprecate collection below.
+      new_losses = self._losses[previous_losses_length:]
+      new_callable_losses = self._callable_losses[
+          previous_callable_losses_length:]
+      for regularizer in new_callable_losses:
+        loss_tensor = regularizer()
+        if loss_tensor is not None:
+          new_losses.append(loss_tensor)
+      _add_elements_to_collection(
+          new_losses,
+          ops.GraphKeys.REGULARIZATION_LOSSES)
 
   def _name_scope(self):
     """Determines op naming for the Layer."""
@@ -183,13 +193,13 @@ class Layer(base_layer.Layer):
       use_resource: Whether to use `ResourceVariable`.
       synchronization: Indicates when a distributed a variable will be
         aggregated. Accepted values are constants defined in the class
-        @{tf.VariableSynchronization}. By default the synchronization is set to
+        `tf.VariableSynchronization`. By default the synchronization is set to
         `AUTO` and the current `DistributionStrategy` chooses
         when to synchronize. If `synchronization` is set to `ON_READ`,
         `trainable` must not be set to `True`.
       aggregation: Indicates how a distributed variable will be aggregated.
         Accepted values are constants defined in the class
-        @{tf.VariableAggregation}.
+        `tf.VariableAggregation`.
       partitioner: (optional) partitioner instance (callable).  If
         provided, when the requested variable is created it will be split
         into multiple partitions according to `partitioner`.  In this case,
@@ -262,11 +272,13 @@ class Layer(base_layer.Layer):
         use_resource = (use_resource or
                         self._use_resource_variables or
                         scope.use_resource)
+        if initializer is None:
+          initializer = scope.initializer
         variable = super(Layer, self).add_weight(
             name,
             shape,
             dtype=dtypes.as_dtype(dtype),
-            initializer=initializer or scope.initializer,
+            initializer=initializer,
             trainable=trainable,
             constraint=constraint,
             partitioner=partitioner,

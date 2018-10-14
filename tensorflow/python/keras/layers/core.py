@@ -466,7 +466,7 @@ class Permute(Layer):
   Arguments:
       dims: Tuple of integers. Permutation pattern, does not include the
           samples dimension. Indexing starts at 1.
-          For instance, `(2, 1)` permutes the first and second dimension
+          For instance, `(2, 1)` permutes the first and second dimensions
           of the input.
 
   Input shape:
@@ -482,6 +482,11 @@ class Permute(Layer):
   def __init__(self, dims, **kwargs):
     super(Permute, self).__init__(**kwargs)
     self.dims = tuple(dims)
+    if sorted(dims) != list(range(1, len(dims) + 1)):
+      raise ValueError(
+          'Invalid permutation `dims` for Permute Layer: %s. '
+          'The set of indices in `dims` must be consecutive and start from 1.' %
+          (dims,))
     self.input_spec = InputSpec(ndim=len(self.dims) + 1)
 
   def compute_output_shape(self, input_shape):
@@ -666,23 +671,34 @@ class Lambda(Layer):
     if mask is not None:
       self.supports_masking = True
     self.mask = mask
-    if output_shape is None:
-      self._output_shape = None
-    elif isinstance(output_shape, (tuple, list)):
-      self._output_shape = tuple(output_shape)
-    else:
-      if not callable(output_shape):
-        raise TypeError('In Lambda, `output_shape` '
-                        'must be a list, a tuple, or a function.')
-      self._output_shape = output_shape
+    if (output_shape is not None and not isinstance(output_shape,
+                                                    (tuple, list)) and
+        not callable(output_shape)):
+      raise TypeError('In Lambda, `output_shape` '
+                      'must be a list, a tuple, or a function.')
+    # Convert a list representing a single shape into a tuple.
+    if (isinstance(output_shape, list) and isinstance(output_shape[0],
+                                                      (int, type(None)))):
+      output_shape = tuple(output_shape)
+    self._output_shape = output_shape
 
+  @tf_utils.shape_type_conversion
   def compute_output_shape(self, input_shape):
-    input_shape = tuple(tensor_shape.TensorShape(input_shape).as_list())
-
     if self._output_shape is None:
       if context.executing_eagerly():
-        raise NotImplementedError
-      x = K.placeholder(shape=input_shape)
+        # Make use of existing autocomputation for Eager mode but provide
+        # Lambda-specific error message.
+        try:
+          return super(Lambda, self).compute_output_shape(input_shape)
+        except NotImplementedError:
+          raise NotImplementedError('We could not automatically infer '
+                                    'the static shape of the Lambda\'s output.'
+                                    ' Please specify the `output_shape` for'
+                                    ' this Lambda.')
+      if isinstance(input_shape, list):
+        x = [K.placeholder(shape=shape) for shape in input_shape]
+      else:
+        x = K.placeholder(shape=input_shape)
       x = self.call(x)
       if isinstance(x, list):
         return [tensor_shape.TensorShape(K.int_shape(x_elem)) for x_elem in x]
@@ -693,16 +709,27 @@ class Lambda(Layer):
         num_samples = input_shape[0][0]
       else:
         num_samples = input_shape[0] if input_shape else None
-      return tensor_shape.TensorShape((num_samples,) +
-                                      tuple(self._output_shape))
+      # List here represents multiple outputs.
+      if isinstance(self._output_shape, list):
+        return [
+            tensor_shape.TensorShape((num_samples,) + tuple(single_shape))
+            for single_shape in self._output_shape
+        ]
+      return tensor_shape.TensorShape((num_samples,) + self._output_shape)
     else:
       shape = self._output_shape(input_shape)
       if not isinstance(shape, (list, tuple)):
         raise ValueError(
             '`output_shape` function must return a tuple or a list of tuples.')
+      # List here can represent multiple outputs or single output.
       if isinstance(shape, list):
-        if isinstance(shape[0], int) or shape[0] is None:
+        # Convert list representing single output into a tuple.
+        if isinstance(shape[0], (int, type(None))):
           shape = tuple(shape)
+        else:
+          return [
+              tensor_shape.TensorShape(single_shape) for single_shape in shape
+          ]
       return tensor_shape.TensorShape(shape)
 
   def call(self, inputs, mask=None):

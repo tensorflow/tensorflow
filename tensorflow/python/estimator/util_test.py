@@ -39,7 +39,7 @@ class UtilTest(test.TestCase):
 
     features, labels, hooks = util.parse_input_fn_result(_input_fn())
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       vals = sess.run([features, labels])
 
     self.assertAllEqual(vals[0], np.arange(100))
@@ -67,7 +67,7 @@ class UtilTest(test.TestCase):
 
     features, labels, hooks = util.parse_input_fn_result(_input_fn())
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       vals = sess.run([features])
 
     self.assertAllEqual(vals[0], np.arange(100))

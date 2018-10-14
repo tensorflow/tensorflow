@@ -15,11 +15,12 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/while_loop_simplifier.h"
 
+#include "absl/strings/str_cat.h"
+#include "absl/strings/str_replace.h"
 #include "tensorflow/compiler/xla/service/hlo_matchers.h"
 #include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/tests/hlo_verified_test_base.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
-#include "tensorflow/core/lib/strings/str_util.h"
 
 namespace xla {
 namespace {
@@ -64,10 +65,8 @@ void WhileLoopSimplifierTest::MakeModuleWithSimpleLoop(int num_iters) {
   }
   )";
 
-  string hlo_string = tensorflow::str_util::StringReplace(
-      hlo_string_template, "{{LOOP_BOUND}}",
-      tensorflow::strings::StrCat(42 + num_iters),
-      /*replace_all=*/true);
+  string hlo_string = absl::StrReplaceAll(
+      hlo_string_template, {{"{{LOOP_BOUND}}", absl::StrCat(42 + num_iters)}});
   ParseAndVerifyModule(hlo_string);
 }
 
@@ -103,10 +102,8 @@ void WhileLoopSimplifierTest::MakeModuleWithSimpleLoopTupleElementLoopBound(
   }
   )";
 
-  string hlo_string = tensorflow::str_util::StringReplace(
-      hlo_string_template, "{{LOOP_BOUND}}",
-      tensorflow::strings::StrCat(42 + num_iters),
-      /*replace_all=*/true);
+  string hlo_string = absl::StrReplaceAll(
+      hlo_string_template, {{"{{LOOP_BOUND}}", absl::StrCat(42 + num_iters)}});
   ParseAndVerifyModule(hlo_string);
 }
 

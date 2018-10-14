@@ -40,6 +40,7 @@ namespace tensorflow {
 XlaCompilationCache::XlaCompilationCache(xla::LocalClient* client,
                                          DeviceType device_type)
     : client_(client), device_type_(std::move(device_type)) {}
+
 XlaCompilationCache::~XlaCompilationCache() {
   // Ensure any use of our programs have completed by waiting for all stream
   // executors to complete.
@@ -67,12 +68,12 @@ string XlaCompilationCache::DebugString() {
 string XlaCompilationCache::SignatureDebugString(const Signature& sig) {
   string result = sig.name;
   for (const auto& a : sig.arg_types) {
-    strings::StrAppend(&result, ",", DataTypeString(a.first),
-                       a.second.DebugString());
+    absl::StrAppend(&result, ",", DataTypeString(a.first),
+                    a.second.DebugString());
   }
 
   for (const auto& v : sig.arg_values) {
-    strings::StrAppend(&result, "; ", v.DebugString());
+    absl::StrAppend(&result, "; ", v.DebugString());
   }
   return result;
 }
@@ -228,37 +229,46 @@ Status XlaCompilationCache::Compile(
     const XlaCompiler::Options& options, const NameAttrList& function,
     const std::map<int, Tensor>& constant_args,
     const std::map<int, OptionalTensor>& variable_args, OpKernelContext* ctx,
-    const XlaCompiler::CompilationResult** compilation_result,
-    xla::LocalExecutable** executable,
-    const XlaCompiler::CompileOptions* compile_options) {
+    const XlaCompiler::CompileOptions& compile_options,
+    CompileMode compile_mode,
+    const XlaCompiler::CompilationResult** out_compilation_result,
+    xla::LocalExecutable** out_executable) {
+  // Set the compile threshold to 1 to implement CompileMode::kStrict.
+  int64 compile_threshold =
+      compile_mode == CompileMode::kLazy ? kDefaultCompilationThreshold : 1;
   return CompileImpl(options, function, constant_args, variable_args, ctx,
-                     compilation_result, executable, compile_options, false);
+                     compile_options, /*compile_single_op=*/false,
+                     /*compile_threshold=*/compile_threshold,
+                     out_compilation_result, out_executable);
 }
 
 Status XlaCompilationCache::CompileSingleOp(
     const XlaCompiler::Options& options,
     const std::map<int, Tensor>& constant_args,
     const std::map<int, OptionalTensor>& variable_args, OpKernelContext* ctx,
-    const XlaCompiler::CompilationResult** compilation_result,
-    xla::LocalExecutable** executable,
-    const XlaCompiler::CompileOptions* compile_options) {
+    const XlaCompiler::CompileOptions& compile_options,
+    const XlaCompiler::CompilationResult** out_compilation_result,
+    xla::LocalExecutable** out_executable) {
   const NodeDef& def = ctx->op_kernel().def();
   NameAttrList name;
   name.set_name(def.op());
   *name.mutable_attr() = def.attr();
   return CompileImpl(options, name, constant_args, variable_args, ctx,
-                     compilation_result, executable, compile_options, true);
+                     compile_options,
+                     /*compile_single_op=*/true, /*compile_threshold=*/1,
+                     out_compilation_result, out_executable);
 }
 
 Status XlaCompilationCache::CompileImpl(
     const XlaCompiler::Options& options, const NameAttrList& function,
     const std::map<int, Tensor>& constant_args,
     const std::map<int, OptionalTensor>& variable_args, OpKernelContext* ctx,
-    const XlaCompiler::CompilationResult** compilation_result,
-    xla::LocalExecutable** executable,
-    const XlaCompiler::CompileOptions* compile_options,
-    bool compile_single_op) {
-  VLOG(1) << "XlaCompilationCache::Compile " << DebugString();
+    const XlaCompiler::CompileOptions& compile_options, bool compile_single_op,
+    int64 compile_threshold,
+    const XlaCompiler::CompilationResult** out_compilation_result,
+    xla::LocalExecutable** out_executable) {
+  DCHECK_NE(out_executable, nullptr);
+  VLOG(2) << "XlaCompilationCache::Compile " << DebugString();
 
   if (VLOG_IS_ON(2)) {
     VLOG(2) << "num_inputs=" << ctx->num_inputs()
@@ -295,7 +305,7 @@ Status XlaCompilationCache::CompileImpl(
   // protect the contents of the cache entry.
   Entry* entry;
   {
-    mutex_lock lock(mu_);
+    mutex_lock lock(compile_cache_mu_);
     // Find or create a cache entry.
     std::unique_ptr<Entry>& e = cache_[signature];
     if (!e) {
@@ -308,9 +318,20 @@ Status XlaCompilationCache::CompileImpl(
   // TODO(phawkins): this locking will need to be restructured when we implement
   // cache eviction.
   mutex_lock entry_lock(entry->mu);
+  int64 current_request_count = ++entry->request_count;
   if (!entry->compiled) {
-    VLOG(1) << "Compilation cache miss for signature: "
-            << SignatureDebugString(signature);
+    VLOG(2) << "Compilation cache miss for signature: "
+            << SignatureDebugString(signature) << " with request count "
+            << current_request_count << " and compile threshold "
+            << compile_threshold;
+    if (current_request_count < compile_threshold) {
+      *out_compilation_result = nullptr;
+      *out_executable = nullptr;
+      return Status::OK();
+    }
+
+    tensorflow::Env* env = tensorflow::Env::Default();
+    const uint64 compile_start_us = env->NowMicros();
     // Do the actual JIT compilation without holding the lock (it can take
     // a long time.)
     std::vector<XlaCompiler::Argument> args;
@@ -321,26 +342,42 @@ Status XlaCompilationCache::CompileImpl(
     entry->compiled = true;
 
     if (compile_single_op) {
-      entry->compilation_status = compiler.CompileSingleOp(
-          compile_options ? *compile_options : XlaCompiler::CompileOptions(),
-          signature.name, ctx, args, &entry->compilation_result);
+      entry->compilation_status =
+          compiler.CompileSingleOp(compile_options, signature.name, ctx, args,
+                                   &entry->compilation_result);
     } else {
       entry->compilation_status = compiler.CompileFunction(
-          compile_options ? *compile_options : XlaCompiler::CompileOptions(),
-          function, args, &entry->compilation_result);
+          compile_options, function, args, &entry->compilation_result);
     }
-  }
-  *compilation_result = &entry->compilation_result;
-  if (entry->compilation_status.ok() && executable) {
-    if (entry->executable == nullptr) {
-      entry->compilation_status = BuildExecutable(
-          options, entry->compilation_result, &entry->executable);
-    }
-    *executable = entry->executable.get();
-  }
+    TF_RETURN_IF_ERROR(entry->compilation_status);
+    CHECK_EQ(entry->executable.get(), nullptr);
+    entry->compilation_status =
+        BuildExecutable(options, entry->compilation_result, &entry->executable);
 
-  Status status = entry->compilation_status;
-  return status;
+    const uint64 compile_end_us = env->NowMicros();
+    const uint64 compile_time_us = compile_end_us - compile_start_us;
+    {
+      mutex_lock lock(compile_stats_mu_);
+      auto it = compile_stats_.emplace(function.name(), CompileStats{}).first;
+      it->second.compile_count++;
+      it->second.cumulative_compile_time_us += compile_time_us;
+      VLOG(1) << "compiled " << function.name() << " "
+              << it->second.compile_count
+              << " times, compile time: " << compile_time_us
+              << " us, cumulative: " << it->second.cumulative_compile_time_us
+              << " us ("
+              << tensorflow::strings::HumanReadableElapsedTime(compile_time_us /
+                                                               1.0e6)
+              << " / "
+              << tensorflow::strings::HumanReadableElapsedTime(
+                     it->second.cumulative_compile_time_us / 1.0e6)
+              << ")";
+    }
+  }
+  TF_RETURN_IF_ERROR(entry->compilation_status);
+  *out_compilation_result = &entry->compilation_result;
+  *out_executable = entry->executable.get();
+  return Status::OK();
 }
 
 }  // namespace tensorflow

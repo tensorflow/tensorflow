@@ -14,6 +14,7 @@
 # ==============================================================================
 """extenders tests."""
 
+
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
@@ -23,6 +24,7 @@ import tempfile
 import numpy as np
 
 from tensorflow.contrib.estimator.python.estimator import extenders
+from tensorflow.contrib.layers.python.layers import layers
 from tensorflow.contrib.predictor import from_saved_model
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.estimator import estimator_lib
@@ -170,19 +172,53 @@ class ClipGradientsByNormTest(test.TestCase):
 class ForwardFeaturesTest(test.TestCase):
   """Tests forward_features."""
 
-  def test_forward_single_key(self):
+  def _export_estimator(self, estimator, serving_input_fn):
+    tmpdir = tempfile.mkdtemp()
+    export_dir_base = os.path.join(
+        compat.as_bytes(tmpdir), compat.as_bytes('export'))
+    export_dir = estimator.export_savedmodel(export_dir_base, serving_input_fn)
+    self.assertTrue(gfile.Exists(export_dir))
+    return export_dir, tmpdir
 
-    def input_fn():
-      return {'x': [[3.], [5.]], 'id': [[101], [102]]}, [[1.], [2.]]
+  def make_dummy_input_fn(self):
+    def _input_fn():
+      dataset = dataset_ops.Dataset.from_tensors({
+          'x': [[3.], [5.]],
+          'id': [[101], [102]],
+          'sparse_id': sparse_tensor.SparseTensor(
+              values=[1, 2, 3],
+              indices=[[0, 0], [1, 0], [1, 1]],
+              dense_shape=[2, 2]),
+          'labels': [[1.], [2.]]
+      })
+      def _split(x):
+        labels = x.pop('labels')
+        return x, labels
+      dataset = dataset.map(_split)
+      return dataset
+    return _input_fn
 
+  def test_forward_keys(self):
+
+    input_fn = self.make_dummy_input_fn()
     estimator = linear.LinearRegressor([fc.numeric_column('x')])
     estimator.train(input_fn=input_fn, steps=1)
 
-    self.assertNotIn('id', next(estimator.predict(input_fn=input_fn)))
-    estimator = extenders.forward_features(estimator, 'id')
-    predictions = next(estimator.predict(input_fn=input_fn))
-    self.assertIn('id', predictions)
-    self.assertEqual(101, predictions['id'])
+    forwarded_keys = ['id', 'sparse_id']
+
+    for key in forwarded_keys:
+      self.assertNotIn(key, next(estimator.predict(input_fn=input_fn)))
+
+    estimator = extenders.forward_features(
+        estimator, forwarded_keys, sparse_default_values={'sparse_id': 1})
+
+    expected_results = [101, 2, 102, 5]
+    predictions = estimator.predict(input_fn=input_fn)
+    for _ in range(2):
+      prediction = next(predictions)
+      for key in forwarded_keys:
+        self.assertIn(key, prediction)
+        self.assertEqual(expected_results.pop(0), sum(prediction[key]))
 
   def test_forward_in_exported(self):
 
@@ -205,11 +241,7 @@ class ForwardFeaturesTest(test.TestCase):
     estimator = extenders.forward_features(estimator, 'id')
 
     # export saved model
-    tmpdir = tempfile.mkdtemp()
-    export_dir_base = os.path.join(
-        compat.as_bytes(tmpdir), compat.as_bytes('export'))
-    export_dir = estimator.export_savedmodel(export_dir_base, serving_input_fn)
-    self.assertTrue(gfile.Exists(export_dir))
+    export_dir, tmpdir = self._export_estimator(estimator, serving_input_fn)
 
     # restore model
     predict_fn = from_saved_model(export_dir, signature_def_key='predict')
@@ -220,6 +252,47 @@ class ForwardFeaturesTest(test.TestCase):
     self.assertEqual(101, predictions['id'])
 
     # Clean up.
+    gfile.DeleteRecursively(tmpdir)
+
+  def test_forward_in_exported_sparse(self):
+    features_columns = [fc.indicator_column(
+        fc.categorical_column_with_vocabulary_list('x', range(10)))]
+
+    classifier = linear.LinearClassifier(feature_columns=features_columns)
+
+    def train_input_fn():
+      dataset = dataset_ops.Dataset.from_tensors({
+          'x': sparse_tensor.SparseTensor(
+              values=[1, 2, 3],
+              indices=[[0, 0], [1, 0], [1, 1]],
+              dense_shape=[2, 2]),
+          'labels': [[0], [1]]
+      })
+      def _split(x):
+        labels = x.pop('labels')
+        return x, labels
+      dataset = dataset.map(_split)
+      return dataset
+
+    classifier.train(train_input_fn, max_steps=1)
+
+    classifier = extenders.forward_features(
+        classifier, keys=['x'], sparse_default_values={'x': 0})
+
+    def serving_input_fn():
+      features_ph = array_ops.placeholder(dtype=dtypes.int32, name='x',
+                                          shape=[None])
+      features = {'x': layers.dense_to_sparse(features_ph)}
+      return estimator_lib.export.ServingInputReceiver(features,
+                                                       {'x': features_ph})
+    export_dir, tmpdir = self._export_estimator(classifier, serving_input_fn)
+    prediction_fn = from_saved_model(export_dir, signature_def_key='predict')
+
+    features = (0, 2)
+    prediction = prediction_fn({'x': features})
+
+    self.assertIn('x', prediction)
+    self.assertEqual(features, tuple(prediction['x']))
     gfile.DeleteRecursively(tmpdir)
 
   def test_forward_list(self):
@@ -266,7 +339,6 @@ class ForwardFeaturesTest(test.TestCase):
       extenders.forward_features(estimator, ['x', estimator])
 
   def test_key_should_be_in_features(self):
-
     def input_fn():
       return {'x': [[3.], [5.]], 'id': [[101], [102]]}, [[1.], [2.]]
 
@@ -279,27 +351,36 @@ class ForwardFeaturesTest(test.TestCase):
       next(estimator.predict(input_fn=input_fn))
 
   def test_forwarded_feature_should_not_be_a_sparse_tensor(self):
-
     def input_fn():
       return {
           'x': [[3.], [5.]],
-          'id':
-              sparse_tensor.SparseTensor(
-                  values=['1', '2'],
-                  indices=[[0, 0], [1, 0]],
-                  dense_shape=[2, 1])
-      }, [[1.], [2.]]
+          'id': sparse_tensor.SparseTensor(
+              values=['1', '2'],
+              indices=[[0, 0], [1, 0]],
+              dense_shape=[2, 1])
+          }, [[1.], [2.]]
 
     estimator = linear.LinearRegressor([fc.numeric_column('x')])
     estimator.train(input_fn=input_fn, steps=1)
 
     estimator = extenders.forward_features(estimator)
     with self.assertRaisesRegexp(ValueError,
-                                 'Forwarded feature.* should be a Tensor.'):
+                                 'Feature .* should be a Tensor.*'):
+      next(estimator.predict(input_fn=input_fn))
+
+  def test_forwarded_feature_should_be_a_sparse_tensor(self):
+    input_fn = self.make_dummy_input_fn()
+
+    estimator = linear.LinearRegressor([fc.numeric_column('x')])
+    estimator.train(input_fn=input_fn, steps=1)
+
+    estimator = extenders.forward_features(
+        estimator, sparse_default_values={'id': 0, 'sparse_id': 0})
+    with self.assertRaisesRegexp(
+        ValueError, 'Feature .* is expected to be a `SparseTensor`.'):
       next(estimator.predict(input_fn=input_fn))
 
   def test_predictions_should_be_dict(self):
-
     def input_fn():
       return {'x': [[3.], [5.]], 'id': [[101], [102]]}
 

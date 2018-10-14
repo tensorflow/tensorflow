@@ -177,7 +177,7 @@ cuda_py_test(
 
 cuda_py_test(
     name = "beam_search_decoder_test",
-    size = "small",
+    size = "medium",
     srcs = ["python/kernel_tests/beam_search_decoder_test.py"],
     additional_deps = [
         ":seq2seq_py",

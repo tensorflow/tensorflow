@@ -76,7 +76,7 @@ inline std::vector<float> Dequantize(const std::vector<T>& data, float scale,
 // A helper struct to construct test tensors. This is particularly useful for
 // quantized tensor which must have their scale and zero_point defined before
 // the actual data is known. This mimics what happens in practice: quantization
-// parameters are calculate during training.
+// parameters are calculated during training.
 struct TensorData {
   TensorType type;
   std::vector<int> shape;
@@ -182,7 +182,8 @@ class SingleOpModel {
 
   // Build the interpreter for this model. Also, resize and allocate all
   // tensors given the shapes of the inputs.
-  void BuildInterpreter(std::vector<std::vector<int>> input_shapes);
+  void BuildInterpreter(std::vector<std::vector<int>> input_shapes,
+                        bool allow_fp32_relax_to_fp16 = false);
 
   void Invoke();
 

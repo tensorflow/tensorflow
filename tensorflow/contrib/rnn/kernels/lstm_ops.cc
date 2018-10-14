@@ -44,7 +44,7 @@ namespace functor {
 template <typename T>
 void LSTMBlockCellFpropWithEigen(
     const LSTMBlockCell& cell, OpKernelContext* ctx, const CPUDevice& d,
-    const T forget_bias, const T cell_clip, bool use_peephole,
+    const float forget_bias, const float cell_clip, bool use_peephole,
     typename TTypes<T>::ConstMatrix x, typename TTypes<T>::ConstMatrix cs_prev,
     typename TTypes<T>::ConstMatrix h_prev, typename TTypes<T>::ConstMatrix w,
     typename TTypes<T>::ConstVec wci, typename TTypes<T>::ConstVec wcf,
@@ -177,50 +177,51 @@ void LSTMBlockCellBpropWithEigen(
   }
 }
 
-#define DEFINE_CPU_SPECS(T)                                                    \
-  template <>                                                                  \
-  void LSTMBlockCellFprop<CPUDevice, T, false /* USE_CUBLAS */>::operator()(   \
-      OpKernelContext* ctx, const CPUDevice& d, const T forget_bias,           \
-      const T cell_clip, bool use_peephole, typename TTypes<T>::ConstMatrix x, \
-      typename TTypes<T>::ConstMatrix cs_prev,                                 \
-      typename TTypes<T>::ConstMatrix h_prev,                                  \
-      typename TTypes<T>::ConstMatrix w, typename TTypes<T>::ConstVec wci,     \
-      typename TTypes<T>::ConstVec wcf, typename TTypes<T>::ConstVec wco,      \
-      typename TTypes<T>::ConstVec b, typename TTypes<T>::Matrix xh,           \
-      typename TTypes<T>::Matrix i, typename TTypes<T>::Matrix cs,             \
-      typename TTypes<T>::Matrix f, typename TTypes<T>::Matrix o,              \
-      typename TTypes<T>::Matrix ci, typename TTypes<T>::Matrix co,            \
-      typename TTypes<T>::Matrix icfo, typename TTypes<T>::Matrix h) {         \
-    LSTMBlockCellFpropWithEigen<T>(                                            \
-        *this, ctx, d, forget_bias, cell_clip, use_peephole, x, cs_prev,       \
-        h_prev, w, wci, wcf, wco, b, xh, i, cs, f, o, ci, co, icfo, h);        \
-  }                                                                            \
-  template <>                                                                  \
-  void LSTMBlockCellBprop<CPUDevice, T, false /* USE_CUBLAS */>::operator()(   \
-      OpKernelContext* ctx, const CPUDevice& d, bool use_peephole,             \
-      typename TTypes<T>::ConstMatrix x,                                       \
-      typename TTypes<T>::ConstMatrix cs_prev,                                 \
-      typename TTypes<T>::ConstMatrix h_prev,                                  \
-      typename TTypes<T>::ConstMatrix w, typename TTypes<T>::ConstVec wci,     \
-      typename TTypes<T>::ConstVec wcf, typename TTypes<T>::ConstVec wco,      \
-      typename TTypes<T>::ConstVec b, typename TTypes<T>::ConstMatrix i,       \
-      typename TTypes<T>::ConstMatrix cs, typename TTypes<T>::ConstMatrix f,   \
-      typename TTypes<T>::ConstMatrix o, typename TTypes<T>::ConstMatrix ci,   \
-      typename TTypes<T>::ConstMatrix co,                                      \
-      typename TTypes<T>::ConstMatrix cs_grad,                                 \
-      typename TTypes<T>::ConstMatrix h_grad, typename TTypes<T>::Matrix do_,  \
-      typename TTypes<T>::Matrix dcs, typename TTypes<T>::Matrix dci,          \
-      typename TTypes<T>::Matrix df, typename TTypes<T>::Matrix di,            \
-      typename TTypes<T>::Matrix dicfo,                                        \
-      typename TTypes<T>::Matrix cs_prev_grad,                                 \
-      typename TTypes<T>::Vec wci_grad, typename TTypes<T>::Vec wcf_grad,      \
-      typename TTypes<T>::Vec wco_grad) {                                      \
-    LSTMBlockCellBpropWithEigen<CPUDevice, T, false /* USE_CUBLAS */>(         \
-        *this, ctx, d, use_peephole, x, cs_prev, h_prev, w, wci, wcf, wco, b,  \
-        i, cs, f, o, ci, co, cs_grad, h_grad, do_, dcs, dci, df, di, dicfo,    \
-        cs_prev_grad, wci_grad, wcf_grad, wco_grad);                           \
-  }                                                                            \
-  template struct LSTMBlockCellFprop<CPUDevice, T, false /* USE_CUBLAS */>;    \
+#define DEFINE_CPU_SPECS(T)                                                   \
+  template <>                                                                 \
+  void LSTMBlockCellFprop<CPUDevice, T, false /* USE_CUBLAS */>::operator()(  \
+      OpKernelContext* ctx, const CPUDevice& d, const float forget_bias,      \
+      const float cell_clip, bool use_peephole,                               \
+      typename TTypes<T>::ConstMatrix x,                                      \
+      typename TTypes<T>::ConstMatrix cs_prev,                                \
+      typename TTypes<T>::ConstMatrix h_prev,                                 \
+      typename TTypes<T>::ConstMatrix w, typename TTypes<T>::ConstVec wci,    \
+      typename TTypes<T>::ConstVec wcf, typename TTypes<T>::ConstVec wco,     \
+      typename TTypes<T>::ConstVec b, typename TTypes<T>::Matrix xh,          \
+      typename TTypes<T>::Matrix i, typename TTypes<T>::Matrix cs,            \
+      typename TTypes<T>::Matrix f, typename TTypes<T>::Matrix o,             \
+      typename TTypes<T>::Matrix ci, typename TTypes<T>::Matrix co,           \
+      typename TTypes<T>::Matrix icfo, typename TTypes<T>::Matrix h) {        \
+    LSTMBlockCellFpropWithEigen<T>(                                           \
+        *this, ctx, d, forget_bias, cell_clip, use_peephole, x, cs_prev,      \
+        h_prev, w, wci, wcf, wco, b, xh, i, cs, f, o, ci, co, icfo, h);       \
+  }                                                                           \
+  template <>                                                                 \
+  void LSTMBlockCellBprop<CPUDevice, T, false /* USE_CUBLAS */>::operator()(  \
+      OpKernelContext* ctx, const CPUDevice& d, bool use_peephole,            \
+      typename TTypes<T>::ConstMatrix x,                                      \
+      typename TTypes<T>::ConstMatrix cs_prev,                                \
+      typename TTypes<T>::ConstMatrix h_prev,                                 \
+      typename TTypes<T>::ConstMatrix w, typename TTypes<T>::ConstVec wci,    \
+      typename TTypes<T>::ConstVec wcf, typename TTypes<T>::ConstVec wco,     \
+      typename TTypes<T>::ConstVec b, typename TTypes<T>::ConstMatrix i,      \
+      typename TTypes<T>::ConstMatrix cs, typename TTypes<T>::ConstMatrix f,  \
+      typename TTypes<T>::ConstMatrix o, typename TTypes<T>::ConstMatrix ci,  \
+      typename TTypes<T>::ConstMatrix co,                                     \
+      typename TTypes<T>::ConstMatrix cs_grad,                                \
+      typename TTypes<T>::ConstMatrix h_grad, typename TTypes<T>::Matrix do_, \
+      typename TTypes<T>::Matrix dcs, typename TTypes<T>::Matrix dci,         \
+      typename TTypes<T>::Matrix df, typename TTypes<T>::Matrix di,           \
+      typename TTypes<T>::Matrix dicfo,                                       \
+      typename TTypes<T>::Matrix cs_prev_grad,                                \
+      typename TTypes<T>::Vec wci_grad, typename TTypes<T>::Vec wcf_grad,     \
+      typename TTypes<T>::Vec wco_grad) {                                     \
+    LSTMBlockCellBpropWithEigen<CPUDevice, T, false /* USE_CUBLAS */>(        \
+        *this, ctx, d, use_peephole, x, cs_prev, h_prev, w, wci, wcf, wco, b, \
+        i, cs, f, o, ci, co, cs_grad, h_grad, do_, dcs, dci, df, di, dicfo,   \
+        cs_prev_grad, wci_grad, wcf_grad, wco_grad);                          \
+  }                                                                           \
+  template struct LSTMBlockCellFprop<CPUDevice, T, false /* USE_CUBLAS */>;   \
   template struct LSTMBlockCellBprop<CPUDevice, T, false /* USE_CUBLAS */>;
 
 DEFINE_CPU_SPECS(float);
@@ -377,24 +378,26 @@ REGISTER_KERNEL(float);
 
 #if GOOGLE_CUDA
 namespace functor {
-#define DECLARE_GPU_SPEC(T)                                                    \
-  template <>                                                                  \
-  void LSTMBlockCellFprop<GPUDevice, T, true>::operator()(                     \
-      OpKernelContext* ctx, const GPUDevice& d, const T forget_bias,           \
-      const T cell_clip, bool use_peephole, typename TTypes<T>::ConstMatrix x, \
-      typename TTypes<T>::ConstMatrix cs_prev,                                 \
-      typename TTypes<T>::ConstMatrix h_prev,                                  \
-      typename TTypes<T>::ConstMatrix w, typename TTypes<T>::ConstVec wci,     \
-      typename TTypes<T>::ConstVec wcf, typename TTypes<T>::ConstVec wco,      \
-      typename TTypes<T>::ConstVec b, typename TTypes<T>::Matrix xh,           \
-      typename TTypes<T>::Matrix i, typename TTypes<T>::Matrix cs,             \
-      typename TTypes<T>::Matrix f, typename TTypes<T>::Matrix o,              \
-      typename TTypes<T>::Matrix ci, typename TTypes<T>::Matrix co,            \
-      typename TTypes<T>::Matrix icfo, typename TTypes<T>::Matrix h);          \
-                                                                               \
+#define DECLARE_GPU_SPEC(T)                                                \
+  template <>                                                              \
+  void LSTMBlockCellFprop<GPUDevice, T, true>::operator()(                 \
+      OpKernelContext* ctx, const GPUDevice& d, const float forget_bias,   \
+      const float cell_clip, bool use_peephole,                            \
+      typename TTypes<T>::ConstMatrix x,                                   \
+      typename TTypes<T>::ConstMatrix cs_prev,                             \
+      typename TTypes<T>::ConstMatrix h_prev,                              \
+      typename TTypes<T>::ConstMatrix w, typename TTypes<T>::ConstVec wci, \
+      typename TTypes<T>::ConstVec wcf, typename TTypes<T>::ConstVec wco,  \
+      typename TTypes<T>::ConstVec b, typename TTypes<T>::Matrix xh,       \
+      typename TTypes<T>::Matrix i, typename TTypes<T>::Matrix cs,         \
+      typename TTypes<T>::Matrix f, typename TTypes<T>::Matrix o,          \
+      typename TTypes<T>::Matrix ci, typename TTypes<T>::Matrix co,        \
+      typename TTypes<T>::Matrix icfo, typename TTypes<T>::Matrix h);      \
+                                                                           \
   extern template struct LSTMBlockCellFprop<GPUDevice, T, true>;
 
 DECLARE_GPU_SPEC(float);
+DECLARE_GPU_SPEC(Eigen::half);
 // DECLARE_GPU_SPEC(double);
 #undef DECLARE_GPU_SPEC
 }  // end namespace functor
@@ -405,6 +408,7 @@ DECLARE_GPU_SPEC(float);
       LSTMBlockCellOp<GPUDevice, T, true>);
 
 REGISTER_GPU_KERNEL(float);
+REGISTER_GPU_KERNEL(Eigen::half);
 // REGISTER_GPU_KERNEL(double);
 #undef REGISTER_GPU_KERNEL
 #endif  // GOOGLE_CUDA
@@ -629,9 +633,9 @@ class LSTMBlockCellGradOp : public OpKernel {
 
     const Device& device = ctx->eigen_device<Device>();
 
-    functor::TensorZero<Device, T>()(device, wci_grad_tensor->flat<float>());
-    functor::TensorZero<Device, T>()(device, wcf_grad_tensor->flat<float>());
-    functor::TensorZero<Device, T>()(device, wco_grad_tensor->flat<float>());
+    functor::TensorZero<Device, T>()(device, wci_grad_tensor->flat<T>());
+    functor::TensorZero<Device, T>()(device, wcf_grad_tensor->flat<T>());
+    functor::TensorZero<Device, T>()(device, wco_grad_tensor->flat<T>());
 
     functor::LSTMBlockCellBprop<Device, T, USE_CUBLAS>(batch_size, input_size,
                                                        cell_size)(
@@ -688,6 +692,7 @@ namespace functor {
                                             true /* USE_CUBLAS */>;
 
 DECLARE_GPU_SPEC(float);
+DECLARE_GPU_SPEC(Eigen::half);
 // DECLARE_GPU_SPEC(double);
 #undef DECLARE_GPU_SPEC
 }  // namespace functor
@@ -698,6 +703,7 @@ DECLARE_GPU_SPEC(float);
       LSTMBlockCellGradOp<GPUDevice, T, true>);
 
 REGISTER_GPU_KERNEL(float);
+REGISTER_GPU_KERNEL(Eigen::half);
 // REGISTER_GPU_KERNEL(double);
 #undef REGISTER_GPU_KERNEL
 #endif  // GOOGLE_CUDA
@@ -984,10 +990,10 @@ class BlockLSTMOp : public OpKernel {
       Tensor cs_tensor = cs_out->Slice(seq_len_max, timelen);
       Tensor h_tensor = h_out->Slice(seq_len_max, timelen);
 
-      functor::TensorUnalignedZero<Device, T>()(
-          device, cs_tensor.unaligned_flat<float>());
-      functor::TensorUnalignedZero<Device, T>()(
-          device, h_tensor.unaligned_flat<float>());
+      functor::TensorUnalignedZero<Device, T>()(device,
+                                                cs_tensor.unaligned_flat<T>());
+      functor::TensorUnalignedZero<Device, T>()(device,
+                                                h_tensor.unaligned_flat<T>());
     }
   }
 
@@ -1021,6 +1027,7 @@ namespace functor {
   extern template struct TensorUnalignedZero<GPUDevice, T>;
 
 DECLARE_GPU_SPEC(float);
+DECLARE_GPU_SPEC(Eigen::half);
 // DECLARE_GPU_SPEC(double);
 #undef DECLARE_GPU_SPEC
 }  // end namespace functor
@@ -1033,6 +1040,7 @@ DECLARE_GPU_SPEC(float);
                           BlockLSTMOp<GPUDevice, T, true>);
 
 REGISTER_GPU_KERNEL(float);
+REGISTER_GPU_KERNEL(Eigen::half);
 // REGISTER_GPU_KERNEL(double);
 #undef REGISTER_GPU_KERNEL
 #endif  // GOOGLE_CUDA
@@ -1195,16 +1203,15 @@ class BlockLSTMGradOp : public OpKernel {
 
     const Device& device = ctx->eigen_device<Device>();
 
-    functor::TensorZero<Device, T>()(device, cs_grad_tensor.flat<float>());
-    functor::TensorZero<Device, T>()(device,
-                                     cs_prev_grad_tensor->flat<float>());
-    functor::TensorZero<Device, T>()(device, h_grad_tensor.flat<float>());
-    functor::TensorZero<Device, T>()(device, h_prev_grad_tensor->flat<float>());
-    functor::TensorZero<Device, T>()(device, w_grad_tensor->flat<float>());
-    functor::TensorZero<Device, T>()(device, wci_grad_tensor->flat<float>());
-    functor::TensorZero<Device, T>()(device, wcf_grad_tensor->flat<float>());
-    functor::TensorZero<Device, T>()(device, wco_grad_tensor->flat<float>());
-    functor::TensorZero<Device, T>()(device, b_grad_tensor->flat<float>());
+    functor::TensorZero<Device, T>()(device, cs_grad_tensor.flat<T>());
+    functor::TensorZero<Device, T>()(device, cs_prev_grad_tensor->flat<T>());
+    functor::TensorZero<Device, T>()(device, h_grad_tensor.flat<T>());
+    functor::TensorZero<Device, T>()(device, h_prev_grad_tensor->flat<T>());
+    functor::TensorZero<Device, T>()(device, w_grad_tensor->flat<T>());
+    functor::TensorZero<Device, T>()(device, wci_grad_tensor->flat<T>());
+    functor::TensorZero<Device, T>()(device, wcf_grad_tensor->flat<T>());
+    functor::TensorZero<Device, T>()(device, wco_grad_tensor->flat<T>());
+    functor::TensorZero<Device, T>()(device, b_grad_tensor->flat<T>());
 
     const int64 seq_len_max = seq_len_max_tensor->scalar<int64>()();
     SliceHelper<Device, T> slicer(ctx);
@@ -1331,6 +1338,7 @@ namespace functor {
   extern template struct BlockLSTMBprop<GPUDevice, T, true>;
 
 DECLARE_GPU_SPEC(float);
+DECLARE_GPU_SPEC(Eigen::half);
 // DECLARE_GPU_SPEC(double);
 #undef DECLARE_GPU_SPEC
 }  // end namespace functor
@@ -1343,6 +1351,7 @@ DECLARE_GPU_SPEC(float);
                           BlockLSTMGradOp<GPUDevice, T, true>);
 
 REGISTER_GPU_KERNEL(float);
+REGISTER_GPU_KERNEL(Eigen::half);
 // REGISTER_GPU_KERNEL(double);
 #undef REGISTER_GPU_KERNEL
 #endif  // GOOGLE_CUDA

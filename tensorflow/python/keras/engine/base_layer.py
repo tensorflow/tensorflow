@@ -18,8 +18,9 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import collections
+import collections as collections_lib
 import enum  # pylint: disable=g-bad-import-order
+import functools
 import inspect  # Necessary supplement to tf_inspect to deal with variadic args.
 
 import numpy as np
@@ -42,7 +43,6 @@ from tensorflow.python.keras.utils.generic_utils import to_snake_case  # pylint:
 from tensorflow.python.keras.utils.tf_utils import is_tensor_or_tensor_list  # pylint: disable=unused-import
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import init_ops
-from tensorflow.python.ops import variable_scope as vs
 from tensorflow.python.ops import variables as tf_variables
 from tensorflow.python.training.checkpointable import base as checkpointable
 from tensorflow.python.util import function_utils
@@ -50,6 +50,7 @@ from tensorflow.python.util import nest
 from tensorflow.python.util import tf_decorator
 from tensorflow.python.util import tf_inspect
 from tensorflow.python.util.tf_export import tf_export
+from tensorflow.tools.docs import doc_controls
 
 
 class CallConvention(enum.Enum):
@@ -79,6 +80,7 @@ class Layer(checkpointable.CheckpointableBase):
   Users will just instantiate a layer and then treat it as a callable.
 
   We recommend that descendants of `Layer` implement the following methods:
+
   * `__init__()`: Save configuration in member variables
   * `build()`: Called once from `__call__`, when we know the shapes of inputs
     and `dtype`. Should have the calls to `add_weight()`, and then
@@ -159,9 +161,13 @@ class Layer(checkpointable.CheckpointableBase):
     self._trainable_weights = []
     self._non_trainable_weights = []
     self._updates = []
-    # When executing eagerly, _losses is a list of zero-argument lambdas which
-    # return tensors. When using graph execution, _losses is a list of ops.
+    # A list of zero-argument lambdas which return Tensors, used for variable
+    # regularizers.
+    self._callable_losses = []
+    # A list of Tensors containing activity regularizers and losses manually
+    # added through `add_loss`. Empty when executing eagerly.
     self._losses = []
+    self._in_call = False  # Flag for error checking in add_loss
     self._dtype = None if dtype is None else dtypes.as_dtype(dtype).name
     self._call_fn_args = function_utils.fn_args(self.call)
     self._compute_previous_mask = ('mask' in self._call_fn_args or
@@ -175,7 +181,7 @@ class Layer(checkpointable.CheckpointableBase):
 
     self.supports_masking = False
 
-    call_argspec = tf_inspect.getargspec(self.call)
+    call_argspec = tf_inspect.getfullargspec(self.call)
     if 'training' in call_argspec.args:
       self._expects_training_arg = True
     else:
@@ -272,6 +278,7 @@ class Layer(checkpointable.CheckpointableBase):
       return []
     return self._updates
 
+  @doc_controls.for_subclass_implementers
   def add_update(self, updates, inputs=None):
     """Add update op(s), potentially dependent on layer inputs.
 
@@ -357,21 +364,22 @@ class Layer(checkpointable.CheckpointableBase):
   def losses(self):
     """Losses which are associated with this `Layer`.
 
-    Note that when executing eagerly, getting this property evaluates
-    regularizers. When using graph execution, variable regularization ops have
-    already been created and are simply returned here.
+    Variable regularization tensors are created when this property is accessed,
+    so it is eager safe: accessing `losses` under a `tf.GradientTape` will
+    propagate gradients back to the corresponding variables.
 
     Returns:
       A list of tensors.
     """
-    if context.executing_eagerly():
-      # _losses may only contain variable regularization losses when executing
-      # eagerly, and they have been saved as lambdas to be executed when
-      # requested.
-      return [regularizer() for regularizer in self._losses]
-    else:
-      return self._losses
+    collected_losses = []
+    collected_losses.extend(self._losses)
+    for regularizer in self._callable_losses:
+      loss_tensor = regularizer()
+      if loss_tensor is not None:
+        collected_losses.append(loss_tensor)
+    return collected_losses
 
+  @doc_controls.for_subclass_implementers
   def add_loss(self, losses, inputs=None):
     """Add loss tensor(s), potentially dependent on layer inputs.
 
@@ -390,7 +398,9 @@ class Layer(checkpointable.CheckpointableBase):
     from `Layer.call()`).
 
     Arguments:
-      losses: Loss tensor, or list/tuple of tensors.
+      losses: Loss tensor, or list/tuple of tensors. Rather than tensors, losses
+        may also be zero-argument callables which create a loss tensor. Only
+        callable losses are supported when executing eagerly.
       inputs: If anything other than None is passed, it signals the losses
         are conditional on some of the layer's inputs,
         and thus they should only be run where these inputs are available.
@@ -400,29 +410,45 @@ class Layer(checkpointable.CheckpointableBase):
         (e.g. weight regularization losses).
 
     Raises:
-      RuntimeError: If called in Eager mode.
+      RuntimeError: If called in Eager mode with a `Tensor` rather than a
+        callable, or if `inputs` is not None.
     """
-    if context.executing_eagerly():
-      # TODO(fchollet): it should be possible (and highly desirable) to support
-      # `add_loss` in eager mode. This allows great convenience and flexibility
-      # in defining custom losses on the fly (e.g. in VAEs).
-      # Simply appending the loss value to `self._losses`
-      # is the correct behavior.
-      # The only caveat is that we need to force the user to only call
-      # `add_loss` from inside a model or Layer's `call` method
-      # (otherwise the loss computation cannot be backproped through).
-      raise RuntimeError('Layer.add_loss not supported in Eager mode.')
-
+    executing_eagerly = context.executing_eagerly()
+    if executing_eagerly:
+      if inputs is not None:
+        raise RuntimeError(
+            'Activity regularization (via the "inputs" argument to '
+            'Layer.add_loss) is not supported when executing eagerly. Consider '
+            'returning activity regularization losses from a Model\'s call() '
+            'method.')
+      if getattr(self, '_in_call', False):
+        # TODO(psv): Support activity regularization and a way to reset losses.
+        raise RuntimeError(
+            'Adding losses inside a Layer\'s call() method is not currently '
+            'supported when executing eagerly. Please file a feature request '
+            'if you need this limitation lifted.')
     losses = generic_utils.to_list(losses)
-    losses = [ops.convert_to_tensor(loss, dtype=backend.floatx())
-              if not tensor_util.is_tensor(loss) else loss for loss in losses]
-    self._losses += losses
-    if inputs is None:
-      for loss in losses:
-        loss._unconditional_loss = True  # pylint: disable=protected-access
-    else:
-      for loss in losses:
-        loss._unconditional_loss = False  # pylint: disable=protected-access
+
+    def _tag_unconditional(loss):
+      if callable(loss):
+        loss = loss()
+      if loss is None:
+        return None  # Will be filtered out when computing the .losses property
+      if not tensor_util.is_tensor(loss):
+        loss = ops.convert_to_tensor(loss, dtype=backend.floatx())
+      loss._unconditional_loss = (inputs is None)  # pylint: disable=protected-access
+      return loss
+
+    for loss in losses:
+      if callable(loss):
+        self._callable_losses.append(
+            functools.partial(_tag_unconditional, loss))
+      else:
+        if executing_eagerly:
+          raise RuntimeError(
+              'Layer.add_loss only supported for zero-argument lambdas when '
+              'executing eagerly.')
+        self._losses.append(_tag_unconditional(loss))
 
   def get_losses_for(self, inputs):
     """Retrieves losses relevant to a specific set of inputs.
@@ -463,10 +489,12 @@ class Layer(checkpointable.CheckpointableBase):
     """Creates the variables of the layer."""
     self.built = True
 
+  @doc_controls.for_subclass_implementers
   def add_variable(self, *args, **kwargs):
     """Alias for `add_weight`."""
     return self.add_weight(*args, **kwargs)
 
+  @doc_controls.for_subclass_implementers
   def add_weight(self,
                  name,
                  shape,
@@ -477,9 +505,9 @@ class Layer(checkpointable.CheckpointableBase):
                  constraint=None,
                  partitioner=None,
                  use_resource=None,
-                 synchronization=vs.VariableSynchronization.AUTO,
-                 aggregation=vs.VariableAggregation.NONE,
-                 getter=None):
+                 synchronization=tf_variables.VariableSynchronization.AUTO,
+                 aggregation=tf_variables.VariableAggregation.NONE,
+                 **kwargs):
     """Adds a new variable to the layer, or gets an existing one; returns it.
 
     Arguments:
@@ -500,14 +528,15 @@ class Layer(checkpointable.CheckpointableBase):
       use_resource: Whether to use `ResourceVariable`.
       synchronization: Indicates when a distributed a variable will be
         aggregated. Accepted values are constants defined in the class
-        @{tf.VariableSynchronization}. By default the synchronization is set to
+        `tf.VariableSynchronization`. By default the synchronization is set to
         `AUTO` and the current `DistributionStrategy` chooses
         when to synchronize. If `synchronization` is set to `ON_READ`,
         `trainable` must not be set to `True`.
       aggregation: Indicates how a distributed variable will be aggregated.
         Accepted values are constants defined in the class
-        @{tf.VariableAggregation}.
-      getter: Variable getter argument to be passed to the `Checkpointable` API.
+        `tf.VariableAggregation`.
+      **kwargs: Additional keyword arguments. Accepted values are `getter` and
+        `collections`.
 
     Returns:
       The created variable.  Usually either a `Variable` or `ResourceVariable`
@@ -520,6 +549,13 @@ class Layer(checkpointable.CheckpointableBase):
       ValueError: When giving unsupported dtype and no initializer or when
         trainable has been set to True with synchronization set as `ON_READ`.
     """
+    # Validate optional keyword arguments.
+    for kwarg in kwargs:
+      if kwarg not in ['getter', 'collections']:
+        raise TypeError('Unknown keyword argument:', kwarg)
+    getter = kwargs.pop('getter', None)
+    collections = kwargs.pop('collections', None)
+
     if dtype is None:
       dtype = self.dtype or backend.floatx()
     dtype = dtypes.as_dtype(dtype)
@@ -527,7 +563,7 @@ class Layer(checkpointable.CheckpointableBase):
     regularizer = regularizers.get(regularizer)
     constraint = constraints.get(constraint)
 
-    if synchronization == vs.VariableSynchronization.ON_READ:
+    if synchronization == tf_variables.VariableSynchronization.ON_READ:
       if trainable:
         raise ValueError(
             'Synchronization value can be set to '
@@ -568,8 +604,10 @@ class Layer(checkpointable.CheckpointableBase):
         trainable=trainable and self.trainable,
         partitioner=partitioner,
         use_resource=use_resource,
+        collections=collections,
         synchronization=synchronization,
         aggregation=aggregation)
+    backend.track_variable(variable)
 
     if regularizer is not None:
       # TODO(fchollet): in the future, this should be handled at the
@@ -584,56 +622,20 @@ class Layer(checkpointable.CheckpointableBase):
     return variable
 
   def _handle_weight_regularization(self, name, variable, regularizer):
-    # `init_graph` should point to the graph in which variable initialization
-    # will occur; it should be None if and only if initialization will take
-    # place in the eager context.
-    init_graph = None
-    if not context.executing_eagerly():
-      default_graph = ops.get_default_graph()
-      if default_graph.building_function:
-        with ops.init_scope():
-          # Retrieve the variables from the graph into which variables
-          # will be lifted; if initialization ops will be lifted into
-          # the eager context, then there is nothing to retrieve, since variable
-          # collections are not supported when eager execution is enabled.
-          if not context.executing_eagerly():
-            init_graph = ops.get_default_graph()
-      else:
-        # Initialization ops will not be lifted out of the default graph.
-        init_graph = default_graph
+    """Create lambdas which compute regularization losses."""
 
-    if init_graph is not None:  # pylint: disable=protected-access
-      # The variable was created and initialized in a graph.
-      if regularizer:
-        if isinstance(variable, tf_variables.PartitionedVariable):
-          for v in variable:
-            with ops.colocate_with(v.op):
-              with ops.name_scope(name + '/Regularizer'):
-                regularization = regularizer(v)
-            if regularization is not None:
-              self.add_loss(regularization)
-        else:
-          with ops.colocate_with(variable.op):
-            with ops.name_scope(name + '/Regularizer'):
-              regularization = regularizer(variable)
-          if regularization is not None:
-            self.add_loss(regularization)
-    elif regularizer:  # initialization took place in an eager context
-      if isinstance(variable, tf_variables.PartitionedVariable):
-        raise RuntimeError(
-            'Partitioned variable regularization is not yet '
-            'supported when executing eagerly. File a feature request'
-            'if this is important to you.')
-      # Save a zero-argument lambda which runs the regularizer on the
-      # variable, to be executed when `Layer.losses` is requested.
-      # This makes losses responsive to variable updates when executing
-      # eagerly.
-      #
-      # TODO(akshayka): Do the same for graphs as well, so that losses
-      # collected in a while_loop can be run outside its control flow
-      # context and so that losses won't be swallowed up by graph functions
-      # (i.e., `.losses()` should always create regularizers).
-      self._losses.append(lambda: regularizer(variable))
+    def _loss_for_variable(v):
+      """Creates a regularization loss `Tensor` for variable `v`."""
+      with ops.colocate_with(v):
+        with ops.name_scope(name + '/Regularizer'):
+          regularization = regularizer(v)
+      return regularization
+
+    if isinstance(variable, tf_variables.PartitionedVariable):
+      for v in variable:
+        self.add_loss(functools.partial(_loss_for_variable, v))
+    else:
+      self.add_loss(functools.partial(_loss_for_variable, variable))
 
   def _handle_activity_regularization(self, inputs, outputs):
     # Apply activity regularization.
@@ -646,6 +648,7 @@ class Layer(checkpointable.CheckpointableBase):
           activity_regularization = self._activity_regularizer(output)
         self.add_loss(activity_regularization, inputs=inputs)
 
+  @doc_controls.for_subclass_implementers
   def call(self, inputs, **kwargs):  # pylint: disable=unused-argument
     """This is where the layer's logic lives.
 
@@ -735,9 +738,11 @@ class Layer(checkpointable.CheckpointableBase):
           input_shapes = nest.map_structure(lambda x: x.shape, inputs)
 
         if (not hasattr(self, '_is_graph_network') or
-            self.__class__.__name__ == 'Sequential'):
-          # Only if self is a layer or an instance of a sequential model do we
-          # need to build it.
+            self.__class__.__name__ == 'Sequential' or
+            not hasattr(self.build, '_is_default')):
+          # Only if self is a layer, an instance of a sequential model, or
+          # the user has manually overwritten the build method do we need to
+          # build it.
           self.build(input_shapes)
         # We must set self.built since user defined build functions are not
         # constrained to set self.built.
@@ -748,7 +753,9 @@ class Layer(checkpointable.CheckpointableBase):
         self._assert_input_compatibility(inputs)
 
       if not in_deferred_mode:
+        self._in_call = True
         outputs = self.call(inputs, *args, **kwargs)
+        self._in_call = False
         if outputs is None:
           raise ValueError('A layer\'s `call` method should return a Tensor '
                            'or a list of Tensors, not None (layer: ' +
@@ -771,7 +778,6 @@ class Layer(checkpointable.CheckpointableBase):
 
       if build_graph:
         self._handle_activity_regularization(inputs, outputs)
-        # TODO(fchollet): consider enabling masking for Eager mode.
         self._set_mask_metadata(inputs, outputs, previous_mask)
 
       if in_deferred_mode or build_graph and have_all_keras_metadata(inputs):
@@ -828,21 +834,27 @@ class Layer(checkpointable.CheckpointableBase):
         pass
 
   def _set_mask_metadata(self, inputs, outputs, previous_mask):
-    if hasattr(self, 'compute_mask'):
+    # In some cases the mask of the outputs has already been computed by
+    # inner layers and does not need to be recomputed by this layer.
+    mask_already_computed = all(
+        hasattr(x, '_keras_mask') for x in generic_utils.to_list(outputs))
+    if hasattr(self, 'compute_mask') and not mask_already_computed:
       output_mask = self.compute_mask(inputs, previous_mask)
-      if isinstance(outputs, (list, tuple)):
-        if output_mask is None:
-          output_mask = [None for _ in range(len(outputs))]
-        for x, m in zip(outputs, output_mask):
-          try:
-            x._keras_mask = m  # pylint: disable=protected-access
-          except AttributeError:
-            pass  # C type such as dict. Masking not supported in this case.
-      else:
+    else:
+      output_mask = None
+    if isinstance(outputs, (list, tuple)):
+      if output_mask is None:
+        output_mask = [None for _ in range(len(outputs))]
+      for x, m in zip(outputs, output_mask):
         try:
-          outputs._keras_mask = output_mask  # pylint: disable=protected-access
+          x._keras_mask = m  # pylint: disable=protected-access
         except AttributeError:
           pass  # C type such as dict. Masking not supported in this case.
+    else:
+      try:
+        outputs._keras_mask = output_mask  # pylint: disable=protected-access
+      except AttributeError:
+        pass  # C type such as dict. Masking not supported in this case.
 
   def _set_connectivity_metadata_(self, inputs, outputs, args, kwargs):
     call_convention = getattr(self, '_call_convention',
@@ -904,7 +916,7 @@ class Layer(checkpointable.CheckpointableBase):
       assert len(call_args) == 1  # TypeError raised earlier in __call__.
       return call_args[0], call_kwargs
     else:
-      call_arg_spec = tf_inspect.getargspec(self.call)
+      call_arg_spec = tf_inspect.getfullargspec(self.call)
       # There is no explicit "inputs" argument expected or provided to
       # call(). Arguments which have default values are considered non-inputs,
       # and arguments without are considered inputs.
@@ -924,8 +936,8 @@ class Layer(checkpointable.CheckpointableBase):
       _, unwrapped_call = tf_decorator.unwrap(self.call)
       bound_args = inspect.getcallargs(
           unwrapped_call, *call_args, **call_kwargs)
-      if call_arg_spec.keywords is not None:
-        var_kwargs = bound_args.pop(call_arg_spec.keywords)
+      if call_arg_spec.varkw is not None:
+        var_kwargs = bound_args.pop(call_arg_spec.varkw)
         bound_args.update(var_kwargs)
         keyword_arg_names = keyword_arg_names.union(var_kwargs.keys())
       all_args = call_arg_spec.args
@@ -978,7 +990,7 @@ class Layer(checkpointable.CheckpointableBase):
       self.build(input_shape)
 
       with context.graph_mode():
-        graph = eager_function.CapturingGraph()
+        graph = eager_function.FuncGraph('graph')
         with graph.as_default():
           if isinstance(input_shape, list):
             inputs = [generate_placeholders_from_shape(shape)
@@ -1405,11 +1417,13 @@ class Layer(checkpointable.CheckpointableBase):
                            'instead.' % self.name)
 
   @property
+  @doc_controls.do_not_doc_inheritable
   def inbound_nodes(self):
     """Deprecated, do NOT use! Only for compatibility with external Keras."""
     return self._inbound_nodes
 
   @property
+  @doc_controls.do_not_doc_inheritable
   def outbound_nodes(self):
     """Deprecated, do NOT use! Only for compatibility with external Keras."""
     return self._outbound_nodes
@@ -1833,7 +1847,7 @@ def have_all_keras_metadata(iterable_or_element):
   if not isinstance(iterable_or_element, (list, tuple)):
     iterable = [iterable_or_element]
   else:
-    iterable = iterable_or_element
+    iterable = nest.flatten(iterable_or_element)
   return all([hasattr(x, '_keras_history') for x in iterable])
 
 
@@ -1864,7 +1878,7 @@ def get_default_graph_uid_map():
   graph = ops.get_default_graph()
   name_uid_map = backend.PER_GRAPH_LAYER_NAME_UIDS.get(graph, None)
   if name_uid_map is None:
-    name_uid_map = collections.defaultdict(int)
+    name_uid_map = collections_lib.defaultdict(int)
     backend.PER_GRAPH_LAYER_NAME_UIDS[graph] = name_uid_map
   return name_uid_map
 
@@ -1879,8 +1893,9 @@ def make_variable(name,
                   validate_shape=True,
                   constraint=None,
                   use_resource=None,
-                  synchronization=vs.VariableSynchronization.AUTO,
-                  aggregation=vs.VariableAggregation.NONE,
+                  collections=None,
+                  synchronization=tf_variables.VariableSynchronization.AUTO,
+                  aggregation=tf_variables.VariableAggregation.NONE,
                   partitioner=None):  # pylint: disable=unused-argument
   """Temporary util to create a variable (relies on `variable_scope.variable`).
 
@@ -1908,19 +1923,21 @@ def make_variable(name,
       then this parameter is ignored and any added variables are also
       marked as non-trainable. `trainable` defaults to `True` unless
       `synchronization` is set to `ON_READ`.
-    caching_device: Passed to `vs.variable`.
-    validate_shape: Passed to `vs.variable`.
+    caching_device: Passed to `tf.Variable`.
+    validate_shape: Passed to `tf.Variable`.
     constraint: Constraint instance (callable).
     use_resource: Whether to use a `ResourceVariable`.
+    collections: List of graph collections keys. The new variable is added to
+      these collections. Defaults to `[GraphKeys.GLOBAL_VARIABLES]`.
     synchronization: Indicates when a distributed a variable will be
       aggregated. Accepted values are constants defined in the class
-      @{tf.VariableSynchronization}. By default the synchronization is set to
+      `tf.VariableSynchronization`. By default the synchronization is set to
       `AUTO` and the current `DistributionStrategy` chooses
       when to synchronize. If `synchronization` is set to `ON_READ`,
       `trainable` must not be set to `True`.
     aggregation: Indicates how a distributed variable will be aggregated.
       Accepted values are constants defined in the class
-      @{tf.VariableAggregation}.
+      `tf.VariableAggregation`.
     partitioner: Not handled at this time.
 
   Returns:
@@ -1944,7 +1961,9 @@ def make_variable(name,
   if use_resource is None:
     use_resource = True
 
-  v = vs.variable(
+  # TODO(apassos,rohanj) figure out how to remove collections from here so we
+  # can remove the V1.
+  v = tf_variables.VariableV1(
       initial_value=init_val,
       name=name,
       trainable=trainable,
@@ -1953,20 +1972,16 @@ def make_variable(name,
       validate_shape=validate_shape,
       constraint=constraint,
       use_resource=use_resource,
+      collections=collections,
       synchronization=synchronization,
       aggregation=aggregation)
   return v
 
 
-def generate_dummy_data_from_shape(shape):
-  if isinstance(shape, tensor_shape.TensorShape):
-    shape = shape.as_list()
-
-  # Replace Nones in input shape with dummy `1` value
-  shape = [x.value if isinstance(x, tensor_shape.Dimension) else x
-           for x in shape]
-  shape = [1 if x is None else x for x in shape]
-  return array_ops.ones(shape, dtype=backend.floatx())
+def default(method):
+  """Decorates a method to detect overrides in subclasses."""
+  method._is_default = True
+  return method
 
 
 def generate_placeholders_from_shape(shape):

@@ -156,9 +156,8 @@ class GraphConstructorTest : public ::testing::Test {
       return "";
     }
     StringPiece loc(value[0]);
-    return str_util::ConsumePrefix(&loc, kColocationGroupPrefix)
-               ? std::string(loc)
-               : "";
+    return str_util::ConsumePrefix(&loc, kColocationGroupPrefix) ? string(loc)
+                                                                 : "";
   }
 
   string GraphDebugString() const {
@@ -200,6 +199,10 @@ REGISTER_OP("TestOneInputOneOutput")
     .Output("y: T")
     .Attr("T: {float, int64}")
     .SetShapeFn(shape_inference::UnchangedShape);
+REGISTER_OP("TestVariadicOutput")
+    .Output("outputs: N * int32")
+    .Attr("N: int >= 0")
+    .SetShapeFn(shape_inference::UnknownShape);
 REGISTER_OP("TestDefaultAttr")
     .Attr("default_int: int=31415")
     .SetShapeFn(shape_inference::NoOutputs);
@@ -1464,12 +1467,15 @@ TEST_F(GraphConstructorTest, ImportGraphDef_InputMapMissingUnusedKeys) {
   opts.input_map[TensorId("DNE", 0)] = TensorId("input", 0);
   // Unused but not missing
   opts.input_map[TensorId("t1", 0)] = TensorId("W1", 0);
+  // Unused but not missing
+  opts.input_map[TensorId("variadic", 4)] = TensorId("input", 0);
   ExpectOK(
       R"EOF(
       node { name: 'W2' op: 'TestParams' }
       node { name: 'new_input' op: 'TestInput' input: [ '^W2' ] }
       node { name: 't1' op: 'TestMul' input: [ 'new_input:0', 'new_input:1' ] }
-      node { name: 't2' op: 'TestMul' input: [ 't1:0', 't1:0' ] }
+      node { name: 'variadic' op: 'TestVariadicOutput'
+             attr { key: "N" value { i: 5 } } }
       )EOF",
       opts, &refiner, &results);
 

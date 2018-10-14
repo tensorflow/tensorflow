@@ -12,8 +12,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef TENSORFLOW_CONTRIB_LITE_NNAPI_PARSE_TESTDATA_H_
-#define TENSORFLOW_CONTRIB_LITE_NNAPI_PARSE_TESTDATA_H_
+#ifndef TENSORFLOW_CONTRIB_LITE_TESTING_PARSE_TESTDATA_H_
+#define TENSORFLOW_CONTRIB_LITE_TESTING_PARSE_TESTDATA_H_
 
 #include <vector>
 #include "tensorflow/contrib/lite/interpreter.h"
@@ -72,4 +72,4 @@ bool ParseAndRunTests(std::istream* input, TestRunner* test_runner,
 }  // namespace testing
 }  // namespace tflite
 
-#endif  // TENSORFLOW_CONTRIB_LITE_NNAPI_PARSE_TESTDATA_H_
+#endif  // TENSORFLOW_CONTRIB_LITE_TESTING_PARSE_TESTDATA_H_

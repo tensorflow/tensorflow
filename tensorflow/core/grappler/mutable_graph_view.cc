@@ -23,10 +23,22 @@ NodeDef* MutableGraphView::AddNode(NodeDef&& node) {
   auto* node_in_graph = GetGraph()->add_node();
   *node_in_graph = std::move(node);
 
-  auto result = MutableNodes()->emplace(node_in_graph->name(), node_in_graph);
-  // Check that the graph doesn't contain multiple nodes with the same name.
-  CHECK(result.second) << "Non unique node name detected: "
-                       << node_in_graph->name();
+  AddUniqueNodeOrDie(node_in_graph);
+
+  AddFanouts(node_in_graph);
+  return node_in_graph;
+}
+
+NodeDef* MutableGraphView::InsertNode(const NodeDef& input_node, NodeDef&& node,
+                                      const int output_port_id) {
+  auto* node_in_graph = GetGraph()->add_node();
+  *node_in_graph = std::move(node);
+
+  AddUniqueNodeOrDie(node_in_graph);
+
+  // replace input for the output nodes of `input_node` with `node`
+  ReplaceInput(input_node, *node_in_graph, output_port_id);
+
   AddFanouts(node_in_graph);
   return node_in_graph;
 }

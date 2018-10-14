@@ -48,14 +48,14 @@ def get_resource_handle_data(graph_op):
   assert ops._USE_C_SHAPES  # pylint: disable=protected-access
   assert type(graph_op) == ops.Tensor  # pylint: disable=unidiomatic-typecheck
 
-  handle_data = pywrap_tensorflow.GetResourceHandleShapeAndType(
+  handle_data = pywrap_tensorflow.GetHandleShapeAndType(
       graph_op.graph._c_graph, graph_op._as_tf_output())  # pylint: disable=protected-access
 
   return cpp_shape_inference_pb2.CppShapeInferenceResult.HandleData.FromString(
       compat.as_bytes(handle_data))
 
 
-def _eager_safe_variable_handle(shape, dtype, shared_name, name, graph_mode):
+def eager_safe_variable_handle(shape, dtype, shared_name, name, graph_mode):
   """Creates a variable handle with information to do shape inference."""
   container = ops.get_default_graph()._container  # pylint: disable=protected-access
   if container is None:
@@ -94,26 +94,8 @@ def _eager_safe_variable_handle(shape, dtype, shared_name, name, graph_mode):
         ops.set_shape_and_handle_data_for_outputs(h.op)
       handle._handle_data = h._handle_data
     # pylint: enable=protected-access
-
-  # Clean up our reference cycles to avoid making the garbage collector run.
-  # pylint: disable=protected-access
-  # OrderedDict, constructed on Graph creation, makes a simple reference loop
-  # and hides it in an __attribute in some Python versions. We don't need to
-  # throw an error if we can't find it, but if we do find it we can break the
-  # loop to avoid creating work for the garbage collector.
-  problematic_cycle = graph._functions.__dict__.get("_OrderedDict__root", None)
-  # pylint: enable=protected-access
-  if problematic_cycle:
-    try:
-      del problematic_cycle[0][:]
-    except TypeError:
-      # This is probably not one of the problematic Python versions. Continue
-      # with the rest of our cleanup.
-      pass
-  # Now clean up our own reference cycles by clearing all of the attributes for
-  # the Graph and op we created.
-  h.__dict__ = {}
-  graph.__dict__ = {}
+  # Clean up op->graph->op reference cycles.
+  ops.dismantle_graph(graph)
   return handle
 
 
@@ -185,7 +167,8 @@ def shape_safe_assign_variable_handle(handle, shape, value, name=None):
 class ResourceVariable(variables.RefVariable):
   """Variable based on resource handles.
 
-  See the @{$variables$Variables How To} for a high level overview.
+  See the [Variables How To](https://tensorflow.org/guide/variables)
+  for a high level overview.
 
   A `ResourceVariable` allows you to maintain state across subsequent calls to
   session.run.
@@ -372,6 +355,15 @@ class ResourceVariable(variables.RefVariable):
       raise ValueError("initial_value must be specified.")
     init_from_fn = callable(initial_value)
 
+    if isinstance(initial_value, ops.Tensor) and hasattr(
+        initial_value, "graph") and initial_value.graph.building_function:
+      raise ValueError("Tensor-typed variable initializers must either be "
+                       "wrapped in an init_scope or callable "
+                       "(e.g., `tf.Variable(lambda : "
+                       "tf.truncated_normal([10, 40]))`) when building "
+                       "functions. Please file a feature request if this "
+                       "restriction inconveniences you.")
+
     if collections is None:
       collections = [ops.GraphKeys.GLOBAL_VARIABLES]
     if not isinstance(collections, (list, tuple, set)):
@@ -405,61 +397,33 @@ class ResourceVariable(variables.RefVariable):
           # When in eager mode use a uid for the shared_name, to prevent
           # accidental sharing.
           shared_name = "%s_%d" % (handle_name, ops.uid())
-        if init_from_fn:
-          # Use attr_scope and device(None) to simulate the behavior of
-          # colocate_with when the variable we want to colocate with doesn't
-          # yet exist.
-          if self._in_graph_mode:
-            attr = attr_value_pb2.AttrValue(
-                list=attr_value_pb2.AttrValue.ListValue(
-                    s=[compat.as_bytes("loc:@%s" % handle_name)]))
-            with ops.get_default_graph()._attr_scope({"_class": attr}):
-              with ops.name_scope("Initializer"), ops.device(None):
-                initial_value = ops.convert_to_tensor(
-                    initial_value(), name="initial_value", dtype=dtype)
-              self._handle = _eager_safe_variable_handle(
-                  shape=initial_value.get_shape(),
-                  dtype=initial_value.dtype.base_dtype,
-                  shared_name=shared_name,
-                  name=name,
-                  graph_mode=self._in_graph_mode)
-              self._shape = initial_value.get_shape()
-          else:
-            initial_value = initial_value()
-            with ops.name_scope("Initializer"):
-              initial_value = ops.convert_to_tensor(
-                  initial_value, name="initial_value", dtype=dtype)
-            self._handle = _eager_safe_variable_handle(
-                shape=initial_value.get_shape(),
-                dtype=initial_value.dtype.base_dtype,
-                shared_name=shared_name,
-                name=name,
-                graph_mode=False)
-            self._shape = initial_value.get_shape()
-        # pylint: enable=protected-access
-
-        # Or get the initial value from a Tensor or Python object.
-        else:
-          with ops.name_scope("Initializer"):
+        # Use attr_scope and device(None) to simulate the behavior of
+        # colocate_with when the variable we want to colocate with doesn't
+        # yet exist.
+        attr = attr_value_pb2.AttrValue(
+            list=attr_value_pb2.AttrValue.ListValue(
+                s=[compat.as_bytes("loc:@%s" % handle_name)]))
+        with ops.get_default_graph()._attr_scope({"_class": attr}):
+          with ops.name_scope("Initializer"), ops.device(None):
             initial_value = ops.convert_to_tensor(
-                initial_value, name="initial_value", dtype=dtype)
-          # pylint: disable=protected-access
-          if (self._in_graph_mode and initial_value is not None and
-              initial_value.op._get_control_flow_context() is not None):
-            raise ValueError(
-                "Initializer for variable %s is from inside a control-flow "
-                "construct, such as a loop or conditional. When creating a "
-                "variable inside a loop or conditional, use a lambda as the "
-                "initializer." % name)
-          # pylint: enable=protected-access
-          self._handle = _eager_safe_variable_handle(
+                initial_value() if init_from_fn else initial_value,
+                name="initial_value", dtype=dtype)
+          self._handle = eager_safe_variable_handle(
               shape=initial_value.get_shape(),
               dtype=initial_value.dtype.base_dtype,
               shared_name=shared_name,
               name=name,
               graph_mode=self._in_graph_mode)
-          self._shape = initial_value.get_shape()
-
+        self._shape = initial_value.shape
+        # pylint: disable=protected-access
+        if (self._in_graph_mode and initial_value is not None and
+            initial_value.op._get_control_flow_context() is not None):
+          raise ValueError(
+              "Initializer for variable %s is from inside a control-flow "
+              "construct, such as a loop or conditional. When creating a "
+              "variable inside a loop or conditional, use a lambda as the "
+              "initializer." % name)
+        # pylint: enable=protected-access
         self._unique_id = shared_name
         self._initial_value = initial_value if self._in_graph_mode else None
         self._handle_name = handle_name + ":0"
@@ -603,6 +567,22 @@ class ResourceVariable(variables.RefVariable):
   def __bool__(self):
     return bool(self.read_value())
 
+  def __copy__(self):
+    return self
+
+  def __deepcopy__(self, memo):
+    if not context.executing_eagerly():
+      raise NotImplementedError(
+          "__deepcopy__() is only available when eager execution is enabled.")
+    copied_variable = ResourceVariable(
+        initial_value=self.read_value(),
+        trainable=self._trainable,
+        constraint=self._constraint,
+        dtype=self._dtype,
+        name=self._shared_name + "_copy")
+    memo[self._unique_id] = copied_variable
+    return copied_variable
+
   @property
   def dtype(self):
     """The dtype of this variable."""
@@ -742,7 +722,7 @@ class ResourceVariable(variables.RefVariable):
 
   def _read_variable_op(self):
     if self.trainable:
-      tape.watch_variable(self)
+      tape.variable_accessed(self)
     result = gen_resource_variable_ops.read_variable_op(self._handle,
                                                         self._dtype)
     if not context.executing_eagerly():
@@ -773,7 +753,7 @@ class ResourceVariable(variables.RefVariable):
     """Reads the value of this variable sparsely, using `gather`."""
     with ops.name_scope("Gather" if name is None else name) as name:
       if self.trainable:
-        tape.watch_variable(self)
+        tape.variable_accessed(self)
       value = gen_resource_variable_ops.resource_gather(
           self._handle, indices, dtype=self._dtype, name=name)
     return array_ops.identity(value)
@@ -941,11 +921,12 @@ class ResourceVariable(variables.RefVariable):
 
   def _lazy_read(self, op):
     if self.trainable:
-      tape.watch_variable(self)
+      tape.variable_accessed(self)
     return _UnreadVariable(
-        self._handle, self.dtype, self._shape, self._in_graph_mode,
-        self._handle_deleter if not self._in_graph_mode else None, op,
-        self._unique_id)
+        handle=self._handle, dtype=self.dtype, shape=self._shape,
+        in_graph_mode=self._in_graph_mode,
+        deleter=self._handle_deleter if not self._in_graph_mode else None,
+        parent_op=op, unique_id=self._unique_id)
 
   def assign(self, value, use_locking=None, name=None, read_value=True):
     """Assigns a new value to this variable.
@@ -973,6 +954,231 @@ class ResourceVariable(variables.RefVariable):
       if read_value:
         return self._lazy_read(assign_op)
     return assign_op
+
+  def __reduce__(self):
+    return (ResourceVariable, (self.numpy(),))
+
+  def scatter_sub(self, sparse_delta, use_locking=False, name=None):
+    """Subtracts `IndexedSlices` from this variable.
+
+    Args:
+      sparse_delta: `IndexedSlices` to be subtracted from this variable.
+      use_locking: If `True`, use locking during the operation.
+      name: the name of the operation.
+
+    Returns:
+      A `Tensor` that will hold the new value of this variable after
+      the scattered subtraction has completed.
+
+    Raises:
+      ValueError: if `sparse_delta` is not an `IndexedSlices`.
+    """
+    if not isinstance(sparse_delta, ops.IndexedSlices):
+      raise ValueError("sparse_delta is not IndexedSlices: %s" % sparse_delta)
+    return self._lazy_read(gen_resource_variable_ops.resource_scatter_sub(
+        self.handle, sparse_delta.indices,
+        ops.convert_to_tensor(sparse_delta.values, self.dtype), name=name))
+
+  def scatter_add(self, sparse_delta, use_locking=False, name=None):
+    """Adds `IndexedSlices` from this variable.
+
+    Args:
+      sparse_delta: `IndexedSlices` to be added to this variable.
+      use_locking: If `True`, use locking during the operation.
+      name: the name of the operation.
+
+    Returns:
+      A `Tensor` that will hold the new value of this variable after
+      the scattered subtraction has completed.
+
+    Raises:
+      ValueError: if `sparse_delta` is not an `IndexedSlices`.
+    """
+    if not isinstance(sparse_delta, ops.IndexedSlices):
+      raise ValueError("sparse_delta is not IndexedSlices: %s" % sparse_delta)
+    return self._lazy_read(gen_resource_variable_ops.resource_scatter_add(
+        self.handle, sparse_delta.indices,
+        ops.convert_to_tensor(sparse_delta.values, self.dtype), name=name))
+
+  def scatter_update(self, sparse_delta, use_locking=False, name=None):
+    """Assigns `IndexedSlices` to this variable.
+
+    Args:
+      sparse_delta: `IndexedSlices` to be assigned to this variable.
+      use_locking: If `True`, use locking during the operation.
+      name: the name of the operation.
+
+    Returns:
+      A `Tensor` that will hold the new value of this variable after
+      the scattered subtraction has completed.
+
+    Raises:
+      ValueError: if `sparse_delta` is not an `IndexedSlices`.
+    """
+    if not isinstance(sparse_delta, ops.IndexedSlices):
+      raise ValueError("sparse_delta is not IndexedSlices: %s" % sparse_delta)
+    return self._lazy_read(gen_resource_variable_ops.resource_scatter_update(
+        self.handle, sparse_delta.indices,
+        ops.convert_to_tensor(sparse_delta.values, self.dtype), name=name))
+
+  def scatter_nd_sub(self, indices, updates, name=None):
+    """Applies sparse subtraction to individual values or slices in a Variable.
+
+    `ref` is a `Tensor` with rank `P` and `indices` is a `Tensor` of rank `Q`.
+
+    `indices` must be integer tensor, containing indices into `ref`.
+    It must be shape `[d_0, ..., d_{Q-2}, K]` where `0 < K <= P`.
+
+    The innermost dimension of `indices` (with length `K`) corresponds to
+    indices into elements (if `K = P`) or slices (if `K < P`) along the `K`th
+    dimension of `ref`.
+
+    `updates` is `Tensor` of rank `Q-1+P-K` with shape:
+
+    ```
+    [d_0, ..., d_{Q-2}, ref.shape[K], ..., ref.shape[P-1]].
+    ```
+
+    For example, say we want to add 4 scattered elements to a rank-1 tensor to
+    8 elements. In Python, that update would look like this:
+
+    ```python
+        ref = tf.Variable([1, 2, 3, 4, 5, 6, 7, 8])
+        indices = tf.constant([[4], [3], [1] ,[7]])
+        updates = tf.constant([9, 10, 11, 12])
+        op = ref.scatter_nd_sub(indices, updates)
+        with tf.Session() as sess:
+          print sess.run(op)
+    ```
+
+    The resulting update to ref would look like this:
+
+        [1, -9, 3, -6, -6, 6, 7, -4]
+
+    See `tf.scatter_nd` for more details about how to make updates to
+    slices.
+
+    Args:
+      indices: The indices to be used in the operation.
+      updates: The values to be used in the operation.
+      name: the name of the operation.
+
+    Returns:
+      A `Tensor` that will hold the new value of this variable after
+      the scattered subtraction has completed.
+
+    Raises:
+      ValueError: if `sparse_delta` is not an `IndexedSlices`.
+    """
+    return self._lazy_read(gen_state_ops.resource_scatter_nd_sub(
+        self.handle, indices, ops.convert_to_tensor(updates, self.dtype),
+        name=name))
+
+  def scatter_nd_add(self, indices, updates, name=None):
+    """Applies sparse addition to individual values or slices in a Variable.
+
+    `ref` is a `Tensor` with rank `P` and `indices` is a `Tensor` of rank `Q`.
+
+    `indices` must be integer tensor, containing indices into `ref`.
+    It must be shape `[d_0, ..., d_{Q-2}, K]` where `0 < K <= P`.
+
+    The innermost dimension of `indices` (with length `K`) corresponds to
+    indices into elements (if `K = P`) or slices (if `K < P`) along the `K`th
+    dimension of `ref`.
+
+    `updates` is `Tensor` of rank `Q-1+P-K` with shape:
+
+    ```
+    [d_0, ..., d_{Q-2}, ref.shape[K], ..., ref.shape[P-1]].
+    ```
+
+    For example, say we want to add 4 scattered elements to a rank-1 tensor to
+    8 elements. In Python, that update would look like this:
+
+    ```python
+        ref = tf.Variable([1, 2, 3, 4, 5, 6, 7, 8])
+        indices = tf.constant([[4], [3], [1] ,[7]])
+        updates = tf.constant([9, 10, 11, 12])
+        add = ref.scatter_nd_add(indices, updates)
+        with tf.Session() as sess:
+          print sess.run(add)
+    ```
+
+    The resulting update to ref would look like this:
+
+        [1, 13, 3, 14, 14, 6, 7, 20]
+
+    See `tf.scatter_nd` for more details about how to make updates to
+    slices.
+
+    Args:
+      indices: The indices to be used in the operation.
+      updates: The values to be used in the operation.
+      name: the name of the operation.
+
+    Returns:
+      A `Tensor` that will hold the new value of this variable after
+      the scattered subtraction has completed.
+
+    Raises:
+      ValueError: if `sparse_delta` is not an `IndexedSlices`.
+    """
+    return self._lazy_read(gen_state_ops.resource_scatter_nd_add(
+        self.handle, indices, ops.convert_to_tensor(updates, self.dtype),
+        name=name))
+
+  def scatter_nd_update(self, indices, updates, name=None):
+    """Applies sparse assignment to individual values or slices in a Variable.
+
+    `ref` is a `Tensor` with rank `P` and `indices` is a `Tensor` of rank `Q`.
+
+    `indices` must be integer tensor, containing indices into `ref`.
+    It must be shape `[d_0, ..., d_{Q-2}, K]` where `0 < K <= P`.
+
+    The innermost dimension of `indices` (with length `K`) corresponds to
+    indices into elements (if `K = P`) or slices (if `K < P`) along the `K`th
+    dimension of `ref`.
+
+    `updates` is `Tensor` of rank `Q-1+P-K` with shape:
+
+    ```
+    [d_0, ..., d_{Q-2}, ref.shape[K], ..., ref.shape[P-1]].
+    ```
+
+    For example, say we want to add 4 scattered elements to a rank-1 tensor to
+    8 elements. In Python, that update would look like this:
+
+    ```python
+        ref = tf.Variable([1, 2, 3, 4, 5, 6, 7, 8])
+        indices = tf.constant([[4], [3], [1] ,[7]])
+        updates = tf.constant([9, 10, 11, 12])
+        op = ref.scatter_nd_update(indices, updates)
+        with tf.Session() as sess:
+          print sess.run(op)
+    ```
+
+    The resulting update to ref would look like this:
+
+        [1, 11, 3, 10, 9, 6, 7, 12]
+
+    See `tf.scatter_nd` for more details about how to make updates to
+    slices.
+
+    Args:
+      indices: The indices to be used in the operation.
+      updates: The values to be used in the operation.
+      name: the name of the operation.
+
+    Returns:
+      A `Tensor` that will hold the new value of this variable after
+      the scattered subtraction has completed.
+
+    Raises:
+      ValueError: if `sparse_delta` is not an `IndexedSlices`.
+    """
+    return self._lazy_read(gen_state_ops.resource_scatter_nd_update(
+        self.handle, indices, ops.convert_to_tensor(updates, self.dtype),
+        name=name))
 
   def _strided_slice_assign(self, begin, end, strides, value, name, begin_mask,
                             end_mask, ellipsis_mask, new_axis_mask,
@@ -1087,7 +1293,10 @@ class _UnreadVariable(ResourceVariable):
 
   @property
   def name(self):
-    return self._parent_op.name
+    if self._in_graph_mode:
+      return self._parent_op.name
+    else:
+      return "UnreadVariable"
 
   def value(self):
     return self._read_variable_op()

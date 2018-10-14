@@ -209,7 +209,7 @@ class ReplicateModelTest(test_util.TensorFlowTestCase):
     features = np.array([[1.0], [2.0]])
     labels = np.array([[1.0], [2.0]])
 
-    with self.test_session() as session:
+    with self.cached_session() as session:
       replicated_model_fn = replicate_model_fn.replicate_model_fn(
           self.model_fn,
           loss_reduction=losses.Reduction.SUM,
@@ -233,7 +233,7 @@ class ReplicateModelTest(test_util.TensorFlowTestCase):
     features = np.array([[1.0], [2.0]])
     labels = np.array([[1.0], [2.0]])
 
-    with self.test_session() as session:
+    with self.cached_session() as session:
       # Add another trainable variable that doesn't produce a gradient to
       # verify that None gradients are supported.
       _ = variable_scope.get_variable(
@@ -275,7 +275,7 @@ class ReplicateModelTest(test_util.TensorFlowTestCase):
       # for the second.
       expected_c = 10.0 - 3.0, 7.0 - 4.0
 
-      with self.test_session() as session, variable_scope.variable_scope(
+      with self.cached_session() as session, variable_scope.variable_scope(
           '', reuse=variable_scope.AUTO_REUSE):
         replicated_model_fn = replicate_model_fn.replicate_model_fn(
             self.model_fn,
@@ -299,7 +299,7 @@ class ReplicateModelTest(test_util.TensorFlowTestCase):
     features = np.array([[0.01], [0.002]])
     labels = np.array([[0.01], [0.02]])
 
-    with self.test_session() as session:
+    with self.cached_session() as session:
       replicated_model_fn = replicate_model_fn.replicate_model_fn(
           self.model_fn,
           loss_reduction=losses.Reduction.SUM,
@@ -330,7 +330,7 @@ class ReplicateModelTest(test_util.TensorFlowTestCase):
     features = np.array([[0.01], [0.002]])
     labels = np.array([[0.01], [0.02]])
 
-    with self.test_session() as session:
+    with self.cached_session() as session:
       replicated_model_fn = replicate_model_fn.replicate_model_fn(
           self.model_fn, losses.Reduction.MEAN, devices=['/gpu:0', '/gpu:1'])
       estimator_spec = replicated_model_fn(
@@ -359,7 +359,7 @@ class ReplicateModelTest(test_util.TensorFlowTestCase):
     features = np.array([[0.01], [0.002]])
     labels = np.array([[0.01], [0.02]])
 
-    with self.test_session() as session:
+    with self.cached_session() as session:
       replicated_model_fn = replicate_model_fn.replicate_model_fn(
           self.model_fn, devices=['/gpu:0', '/gpu:1'])
       estimator_spec = replicated_model_fn(
@@ -374,7 +374,7 @@ class ReplicateModelTest(test_util.TensorFlowTestCase):
     features = np.array([[1.0], [2.0]])
     labels = np.array([[1.0], [2.0]])
 
-    with self.test_session() as session:
+    with self.cached_session() as session:
       replicated_model_fn = replicate_model_fn.replicate_model_fn(
           self.model_fn, devices=['/gpu:0'])
       estimator_spec = replicated_model_fn(
@@ -396,7 +396,7 @@ class ReplicateModelTest(test_util.TensorFlowTestCase):
     features = np.array([[0.01], [0.002]])
     labels = np.array([[0.01], [0.02]])
 
-    with self.test_session() as session:
+    with self.cached_session() as session:
       replicated_model_fn = replicate_model_fn.replicate_model_fn(
           self.model_fn, devices=['/gpu:0'])
       estimator_spec = replicated_model_fn(
@@ -424,7 +424,7 @@ class ReplicateModelTest(test_util.TensorFlowTestCase):
     features = np.array([[0.01], [0.002]])
     labels = np.array([[0.01], [0.02]])
 
-    with self.test_session() as session:
+    with self.cached_session() as session:
       replicated_model_fn = replicate_model_fn.replicate_model_fn(
           self.model_fn, devices=['/gpu:0'])
       estimator_spec = replicated_model_fn(
@@ -456,7 +456,7 @@ class ReplicateModelTest(test_util.TensorFlowTestCase):
     features = np.array([[0.01], [0.002]])
     labels = np.array([[0.01], [0.02]])
 
-    with self.test_session():
+    with self.cached_session():
       replicated_model_fn = replicate_model_fn.replicate_model_fn(
           self.model_fn, devices=['/GPU:0'])
       _ = replicated_model_fn(
@@ -470,7 +470,7 @@ class ReplicateModelTest(test_util.TensorFlowTestCase):
     features = np.array([[0.01], [0.002]])
     labels = np.array([[0.01], [0.02]])
 
-    with self.test_session():
+    with self.cached_session():
       replicated_model_fn = replicate_model_fn.replicate_model_fn(
           self.model_fn, devices=['/gpu:0'])
       _ = replicated_model_fn(
@@ -521,7 +521,7 @@ class ReplicateAcrossASingleDeviceWithoutTowerOptimizer(
     features = np.array([[1.0], [2.0]])
     labels = np.array([[1.0], [2.0]])
 
-    with self.test_session() as session:
+    with self.cached_session() as session:
       replicated_model_fn = replicate_model_fn.replicate_model_fn(
           self.model_fn, devices=['/gpu:0'])
       estimator_spec = replicated_model_fn(
@@ -649,7 +649,7 @@ class ReplicateWithTwoOptimizersTest(test_util.TensorFlowTestCase):
     features = np.array([[1.0], [2.0]])
     labels = np.array([[1.0], [2.0]])
 
-    with self.test_session() as session:
+    with self.cached_session() as session:
       replicated_model_fn = replicate_model_fn.replicate_model_fn(
           self.model_fn,
           loss_reduction=losses.Reduction.SUM,
@@ -746,7 +746,7 @@ class ReplicateWithTwoLossesAndOneOptimizer(test_util.TensorFlowTestCase):
     features = np.array([[1.0], [2.0]])
     labels = np.array([[1.0], [2.0]])
 
-    with self.test_session() as session:
+    with self.cached_session() as session:
       replicated_model_fn = replicate_model_fn.replicate_model_fn(
           self.model_fn,
           loss_reduction=losses.Reduction.SUM,
@@ -777,7 +777,7 @@ class ReplicateWithTwoLossesAndOneOptimizer(test_util.TensorFlowTestCase):
     features = np.array([[1.0], [2.0]])
     labels = np.array([[1.0], [2.0]])
 
-    with self.test_session(), ops_lib.Graph().as_default():
+    with self.cached_session(), ops_lib.Graph().as_default():
       with self.assertRaisesRegexp(
           ValueError, '.+was.+supposed.+to.+make.+same.+optimizer.+calls.+'):
         replicated_model_fn = replicate_model_fn.replicate_model_fn(
@@ -819,7 +819,7 @@ class FailToWrapOptimizerInTheModelFn(test_util.TensorFlowTestCase):
     features = np.array([[1.0], [2.0]])
     labels = np.array([[1.0], [2.0]])
 
-    with self.test_session():
+    with self.cached_session():
       with self.assertRaisesRegexp(ValueError,
                                    'Please.+wrap.+with.+TowerOptimizer'):
         replicated_model_fn = replicate_model_fn.replicate_model_fn(
@@ -845,7 +845,7 @@ class GetLossTowersTest(test_util.TensorFlowTestCase):
     return model_fn_lib.EstimatorSpec(mode=mode, loss=math_ops.reduce_sum(loss))
 
   def test_gradients_are_computed(self):
-    with self.test_session() as session:
+    with self.cached_session() as session:
       tower_specs = replicate_model_fn._get_loss_towers(
           self.model_fn,
           mode=None,
@@ -879,7 +879,7 @@ class GetLossTowersTest(test_util.TensorFlowTestCase):
         self.assertEqual(0.25, session.run(c))
 
   def test_gradients_are_computed_with_mean_reduction(self):
-    with self.test_session() as session:
+    with self.cached_session() as session:
       tower_specs = replicate_model_fn._get_loss_towers(
           self.model_fn,
           mode=model_fn_lib.ModeKeys.EVAL,
@@ -932,7 +932,7 @@ class GetLossTowersTest(test_util.TensorFlowTestCase):
       return model_fn_lib.EstimatorSpec(
           mode=mode, loss=math_ops.reduce_sum(loss))
 
-    with self.test_session() as session:
+    with self.cached_session() as session:
       tower_specs = replicate_model_fn._get_loss_towers(
           model_fn,
           mode=None,
@@ -975,7 +975,7 @@ class SplitBatchTest(test_util.TensorFlowTestCase):
     self.assertAllEqual(a.dense_shape, b.dense_shape)
 
   def test_simple_half_split(self):
-    with self.test_session():
+    with self.cached_session():
       features = [0.0, 1.0, 2.0, 3.0]
       labels = [10.0, 11.0, 12.0, 13.0]
       feature_shards, label_shards = replicate_model_fn._split_batch(
@@ -988,7 +988,7 @@ class SplitBatchTest(test_util.TensorFlowTestCase):
       self.assertAllEqual([[10.0, 11.0], [12.0, 13.0]], label_shards)
 
   def test_to_each_their_own(self):
-    with self.test_session():
+    with self.cached_session():
       features = [0.0, 1.0, 2.0, 3.0]
       labels = [10.0, 11.0, 12.0, 13.0]
       feature_shards, label_shards = replicate_model_fn._split_batch(
@@ -1001,7 +1001,7 @@ class SplitBatchTest(test_util.TensorFlowTestCase):
       self.assertAllEqual([[10.0], [11.0], [12.0], [13.0]], label_shards)
 
   def test_one_batch(self):
-    with self.test_session():
+    with self.cached_session():
       features = [0.0, 1.0, 2.0, 3.0]
       labels = [10.0, 11.0, 12.0, 13.0]
       feature_shards, label_shards = replicate_model_fn._split_batch(
@@ -1014,7 +1014,7 @@ class SplitBatchTest(test_util.TensorFlowTestCase):
       self.assertAllEqual([[10.0, 11.0, 12.0, 13.0]], label_shards)
 
   def test_half_split_in_dictionary(self):
-    with self.test_session():
+    with self.cached_session():
       features = {'first': [0.0, 1.0, 2.0, 3.0], 'second': [4.0, 5.0, 6.0, 7.0]}
       labels = [10.0, 11.0, 12.0, 13.0]
 
@@ -1029,7 +1029,7 @@ class SplitBatchTest(test_util.TensorFlowTestCase):
       self.assertAllEqual([12.0, 13.0], label_shards[1].eval())
 
   def test_sparse_tensor_can_be_split_unevenly(self):
-    with self.test_session():
+    with self.cached_session():
       features = {
           'x':
               sparse_tensor.SparseTensor(
@@ -1054,7 +1054,7 @@ class SplitBatchTest(test_util.TensorFlowTestCase):
       self.assertAllEqual([[2.0]], label_shards[1].eval())
 
   def test_sparse_tensor_can_be_split_unevenly_repeated_row(self):
-    with self.test_session():
+    with self.cached_session():
       features = {
           'x':
               sparse_tensor.SparseTensor(
@@ -1081,7 +1081,7 @@ class SplitBatchTest(test_util.TensorFlowTestCase):
       self.assertAllEqual([[2.0]], label_shards[1].eval())
 
   def test_one_batch_in_dictionary(self):
-    with self.test_session() as session:  # pylint: disable=unused-variable
+    with self.cached_session() as session:  # pylint: disable=unused-variable
       features = {'first': [0.0, 1.0, 2.0, 3.0], 'second': [4.0, 5.0, 6.0, 7.0]}
       labels = [10.0, 11.0, 12.0, 13.0]
 
@@ -1095,7 +1095,7 @@ class SplitBatchTest(test_util.TensorFlowTestCase):
       self.assertAllEqual([10.0, 11.0, 12.0, 13.0], label_shards[0].eval())
 
   def test_feature_and_label_dictionaries(self):
-    with self.test_session() as session:  # pylint: disable=unused-variable
+    with self.cached_session() as session:  # pylint: disable=unused-variable
       features = {'first': [0.0, 1.0, 2.0, 3.0], 'second': [4.0, 5.0, 6.0, 7.0]}
       labels = {'first': [10.0, 11.0], 'second': [12.0, 13.0]}
 
@@ -1127,7 +1127,7 @@ class TrainSpecTest(test_util.TensorFlowTestCase):
     return constant_op.constant(loss_value, dtype=dtypes.float64)
 
   def test_example(self):
-    with self.test_session() as session:
+    with self.cached_session() as session:
       tower_losses = list(map(self.create_constant_loss, [2, 4, 6]))
       tower_specs = list(map(self.create_estimator_spec, tower_losses))
 
@@ -1161,7 +1161,7 @@ class EvalSpecTest(test_util.TensorFlowTestCase):
     return metrics
 
   def test_example(self):
-    with self.test_session() as session:
+    with self.cached_session() as session:
       tower_losses = map(self.create_constant_loss, [2, 4, 6])
       tower_metrics = map(self.create_eval_metrics, [0, 0.2, 0.3])
       tower_specs = [
@@ -1187,7 +1187,7 @@ class EvalSpecTest(test_util.TensorFlowTestCase):
       self.assertEqual(2 + 4 + 6, session.run(estimator_spec.loss))
 
   def test_handles_single_tower(self):
-    with self.test_session() as session:
+    with self.cached_session() as session:
       tower_losses = map(self.create_constant_loss, [5])
       tower_metrics = map(self.create_eval_metrics, [0.2])
       tower_specs = [
@@ -1231,7 +1231,7 @@ class PredictSpecTest(test_util.TensorFlowTestCase):
         })
 
   def test_example(self):
-    with self.test_session() as session:
+    with self.cached_session() as session:
       tower_specs = replicate_model_fn._get_loss_towers(
           self.model_fn,
           mode=None,
@@ -1273,7 +1273,7 @@ class ReduceMetricVariablesTest(test_util.TensorFlowTestCase):
           np.array([3.3, 3.5, 3.7]) * (tower_id + 1), 'total')
 
   def test_example(self):
-    with self.test_session() as session:
+    with self.cached_session() as session:
       for tower_id in range(3):
         self.create_tower_metrics(tower_id)
 
@@ -1303,7 +1303,7 @@ class ReduceMetricVariablesTest(test_util.TensorFlowTestCase):
       self.assertAllClose([0.0, 0.0, 0.0], local_metrics[8], 0.01)
 
   def test_reduce_is_idempotent(self):
-    with self.test_session() as session:
+    with self.cached_session() as session:
       for tower_id in range(3):
         self.create_tower_metrics(tower_id)
 
@@ -1329,7 +1329,7 @@ class ReduceMetricVariablesTest(test_util.TensorFlowTestCase):
       self.assertAllClose([0.0, 0.0, 0.0], local_metrics[8], 0.01)
 
   def test_handles_single_tower(self):
-    with self.test_session() as session:
+    with self.cached_session() as session:
       self.create_tower_metrics(0)
       session.run(
           variables.variables_initializer(
@@ -1346,7 +1346,7 @@ class ReduceMetricVariablesTest(test_util.TensorFlowTestCase):
       self.assertAllClose([3.3, 3.5, 3.7], local_metrics[2], 0.01)
 
   def test_doesnt_accept_uneven_number_of_variables(self):
-    with self.test_session() as session:
+    with self.cached_session() as session:
       for tower_id in range(3):
         self.create_tower_metrics(tower_id)
       self.create_metric_variable(-1.0, 'oddball')
@@ -1418,7 +1418,7 @@ class MergeExportOutputsTest(test_util.TensorFlowTestCase):
     return estimator_spec
 
   def test_merge_predict_output(self):
-    with self.test_session() as session:
+    with self.cached_session() as session:
       estimator_spec = self.replicate_estimator_spec(session)
       self.assertAllClose(
           {
@@ -1428,7 +1428,7 @@ class MergeExportOutputsTest(test_util.TensorFlowTestCase):
               signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY].outputs))
 
   def test_merge_classification_output_scores_classes(self):
-    with self.test_session() as session:
+    with self.cached_session() as session:
       estimator_spec = self.replicate_estimator_spec(session)
       self.assertAllClose(
           [0.1, 0.02],
@@ -1440,7 +1440,7 @@ class MergeExportOutputsTest(test_util.TensorFlowTestCase):
               estimator_spec.export_outputs['classification_output'].classes))
 
   def test_merge_classification_output_scores(self):
-    with self.test_session() as session:
+    with self.cached_session() as session:
       estimator_spec = self.replicate_estimator_spec(session)
       self.assertAllClose(
           [0.1, 0.02],
@@ -1450,7 +1450,7 @@ class MergeExportOutputsTest(test_util.TensorFlowTestCase):
           None, estimator_spec.export_outputs['classification_scores'].classes)
 
   def test_merge_classification_output_classes(self):
-    with self.test_session() as session:
+    with self.cached_session() as session:
       estimator_spec = self.replicate_estimator_spec(session)
       self.assertAllEqual(
           [b'split_inputs/split:0', b'split_inputs/split:1'],
@@ -1460,7 +1460,7 @@ class MergeExportOutputsTest(test_util.TensorFlowTestCase):
           None, estimator_spec.export_outputs['classification_classes'].scores)
 
   def test_merge_regression_output(self):
-    with self.test_session() as session:
+    with self.cached_session() as session:
       estimator_spec = self.replicate_estimator_spec(session)
       self.assertAllClose(
           [0.1, 0.02],
@@ -1548,7 +1548,7 @@ class LocalDeviceSetterTest(test_util.TensorFlowTestCase):
 class ComputeSumWithDevicePlacementTest(test_util.TensorFlowTestCase):
 
   def test_vectors(self):
-    with self.test_session() as session:
+    with self.cached_session() as session:
       total = replicate_model_fn._compute_sum_on_device(
           [1.0, 2.0, 3.0, 4.0], device='/device:GPU:0', name='test_sum')
 
@@ -1557,7 +1557,7 @@ class ComputeSumWithDevicePlacementTest(test_util.TensorFlowTestCase):
       self.assertEqual(10.0, session.run(total))
 
   def test_tensors(self):
-    with self.test_session() as session:
+    with self.cached_session() as session:
       total = replicate_model_fn._compute_sum_on_device(
           [[1.0, 2.0], [3.0, 4.0]], device='/device:GPU:0', name='test_sum')
 
@@ -1566,7 +1566,7 @@ class ComputeSumWithDevicePlacementTest(test_util.TensorFlowTestCase):
       self.assertAllEqual([4.0, 6.0], session.run(total))
 
   def test_indexedslices(self):
-    with self.test_session() as session:
+    with self.cached_session() as session:
       a = ops_lib.IndexedSlices(
           constant_op.constant([1.0, 2.0]), [0, 1],
           dense_shape=constant_op.constant([2]))
@@ -1580,7 +1580,7 @@ class ComputeSumWithDevicePlacementTest(test_util.TensorFlowTestCase):
                           session.run(ops_lib.convert_to_tensor(total)))
 
   def test_indexedslices_higher_dimensions(self):
-    with self.test_session() as session:
+    with self.cached_session() as session:
       a = ops_lib.IndexedSlices(
           constant_op.constant([[1.0, 5.0], [2.0, 6.0]]), [0, 1],
           dense_shape=constant_op.constant([2, 4]))
@@ -1595,7 +1595,7 @@ class ComputeSumWithDevicePlacementTest(test_util.TensorFlowTestCase):
                           session.run(ops_lib.convert_to_tensor(total)))
 
   def test_indexedslices_some_dont_overlap(self):
-    with self.test_session() as session:
+    with self.cached_session() as session:
       a = ops_lib.IndexedSlices(
           constant_op.constant([1.0, 2.0]), [0, 3],
           dense_shape=constant_op.constant([4]))
@@ -1637,7 +1637,7 @@ class ConcatTensorDictsTest(test_util.TensorFlowTestCase):
         },
     ]
 
-    with self.test_session() as session:
+    with self.cached_session() as session:
       self.assertAllClose({
           'a': np.array([1.0, 2.0, 3.0]),
           'b': np.array([11.0, 12.0, 13.0, 14.0]),

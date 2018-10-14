@@ -14,7 +14,9 @@
 # ==============================================================================
 """Ops for building neural network layers, regularizers, summaries, etc.
 
-See the @{$python/contrib.layers} guide.
+See the
+[Contrib Layers](https://tensorflow.org/api_guides/python/contrib.layers)
+guide.
 
 @@avg_pool2d
 @@avg_pool3d

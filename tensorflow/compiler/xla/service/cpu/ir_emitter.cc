@@ -24,9 +24,14 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
 #include "tensorflow/core/lib/math/math_util.h"
 #include "tensorflow/core/platform/logging.h"
 // IWYU pragma: no_include "llvm/IR/Intrinsics.gen.inc"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/str_format.h"
+#include "absl/types/span.h"
 #include "llvm/CodeGen/TargetRegisterInfo.h"
 #include "llvm/CodeGen/TargetSubtargetInfo.h"
 #include "llvm/IR/BasicBlock.h"
@@ -64,11 +69,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/window_util.h"
 #include "tensorflow/core/lib/core/bits.h"
 #include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/lib/gtl/array_slice.h"
-#include "tensorflow/core/lib/gtl/flatmap.h"
-#include "tensorflow/core/lib/gtl/flatset.h"
-#include "tensorflow/core/lib/strings/strcat.h"
-#include "tensorflow/core/lib/strings/stringprintf.h"
 
 namespace xla {
 
@@ -99,13 +99,18 @@ IrEmitter::IrEmitter(
       target_machine_features_(*target_machine_features) {
   b_.setFastMathFlags(llvm_ir::GetFastMathFlags(
       /*fast_math_enabled=*/hlo_module_config_.debug_options()
-          .xla_enable_fast_math()));
+          .xla_cpu_enable_fast_math()));
+  Status s = GatherComputationsByAllocationType(
+      &hlo_module, &thread_local_computations_, &global_computations_);
+  absl::c_sort(thread_local_computations_);
+  absl::c_sort(global_computations_);
+  TF_CHECK_OK(s) << "Should have failed buffer assignment.";
 }
 
 StatusOr<llvm::Function*> IrEmitter::EmitComputation(
     HloComputation* computation, const string& function_name_prefix,
     bool is_top_level_computation,
-    std::vector<const HloInstruction*>* instruction_order) {
+    const std::vector<const HloInstruction*>* instruction_order) {
   string function_name = name_uniquer_.GetUniqueName(function_name_prefix);
   VLOG(2) << "Emitting IR for CPU function [" << function_name_prefix
           << "]; ordered? " << (instruction_order != nullptr);
@@ -114,6 +119,19 @@ StatusOr<llvm::Function*> IrEmitter::EmitComputation(
   if (!computation->root_instruction()->outer_dimension_partitions().empty()) {
     num_dynamic_loop_bounds_ =
         computation->root_instruction()->outer_dimension_partitions().size();
+  }
+
+  if (computation->root_instruction()->opcode() != HloOpcode::kOutfeed) {
+    TF_ASSIGN_OR_RETURN(
+        computation_root_allocation_,
+        assignment_.GetUniqueTopLevelSlice(computation->root_instruction()));
+  }
+
+  for (const HloInstruction* param : computation->parameter_instructions()) {
+    TF_ASSIGN_OR_RETURN(BufferAllocation::Slice param_slice,
+                        assignment_.GetUniqueTopLevelSlice(param));
+    computation_parameter_allocations_[param_slice.allocation()->index()] =
+        param->parameter_number();
   }
 
   InitializeIrFunction(function_name);
@@ -132,6 +150,8 @@ StatusOr<llvm::Function*> IrEmitter::EmitComputation(
   // Delete 'compute_function', finalizing 'ir_function' and restoring caller
   // IR insert point.
   compute_function_.reset();
+  computation_root_allocation_ = BufferAllocation::Slice();
+  computation_parameter_allocations_.clear();
   return ir_function;
 }
 
@@ -143,11 +163,11 @@ void IrEmitter::InitializeIrFunction(const string& function_name) {
       is_top_level_computation_ ? llvm::GlobalValue::ExternalLinkage
                                 : llvm::GlobalValue::InternalLinkage;
   // Create and initialize new IrFunction.
-  compute_function_.reset(
-      new IrFunction(function_name, linkage,
-                     options::OptimizeForSizeRequested(hlo_module_config_),
-                     hlo_module_config_.debug_options().xla_enable_fast_math(),
-                     module_, &b_, num_dynamic_loop_bounds_));
+  compute_function_.reset(new IrFunction(
+      function_name, linkage,
+      options::OptimizeForSizeRequested(hlo_module_config_),
+      hlo_module_config_.debug_options().xla_cpu_enable_fast_math(), module_,
+      &b_, num_dynamic_loop_bounds_));
 }
 
 IrEmitter::~IrEmitter() {}
@@ -155,9 +175,9 @@ IrEmitter::~IrEmitter() {}
 Status IrEmitter::HandleBitcast(HloInstruction* bitcast) {
   VLOG(2) << "HandleBitcast: " << bitcast->ToString();
   emitted_value_[bitcast] =
-      b_.CreateBitCast(GetEmittedValueFor(bitcast->operand(0)),
-                       IrShapeType(bitcast->shape())->getPointerTo(),
-                       AsStringRef(IrName(bitcast)));
+      BitCast(GetEmittedValueFor(bitcast->operand(0)),
+              IrShapeType(bitcast->shape())->getPointerTo(),
+              AsStringRef(IrName(bitcast)));
   return Status::OK();
 }
 
@@ -215,9 +235,8 @@ Status IrEmitter::HandleCopy(HloInstruction* copy) {
     // Use the elemental emitter for array shapes.
     return DefaultAction(copy);
   }
-  return Unimplemented(
-      "unsupported operand type %s for copy instruction",
-      PrimitiveType_Name(copy->shape().element_type()).c_str());
+  return Unimplemented("unsupported operand type %s for copy instruction",
+                       PrimitiveType_Name(copy->shape().element_type()));
 }
 
 // Calculate the alignment of a buffer allocated for a given primitive type.
@@ -323,10 +342,10 @@ Status IrEmitter::HandleInfeed(HloInstruction* instruction) {
   // Write the tuple index table.
   TF_ASSIGN_OR_RETURN(BufferAllocation::Slice data_slice,
                       assignment_.GetUniqueSlice(infeed, {0}));
-  llvm::Value* data_address = EmitTempBufferPointer(data_slice, data_shape);
+  llvm::Value* data_address = EmitBufferPointer(data_slice, data_shape);
   TF_ASSIGN_OR_RETURN(BufferAllocation::Slice token_slice,
                       assignment_.GetUniqueSlice(infeed, {1}));
-  llvm::Value* token_address = EmitTempBufferPointer(
+  llvm::Value* token_address = EmitBufferPointer(
       token_slice, ShapeUtil::GetTupleElementShape(infeed->shape(), 1));
   llvm_ir::EmitTuple(GetIrArrayFor(infeed), {data_address, token_address}, &b_,
                      module_);
@@ -349,9 +368,9 @@ Status IrEmitter::HandleInfeed(HloInstruction* instruction) {
       // Only the outer tuple buffer's target address is obtained from
       // GetEmittedValueFor, to handle the case when Infeed is the root
       // instruction. Target addresses for internal elements can be obtained
-      // from EmitTempBufferPointer.
+      // from EmitBufferPointer.
       llvm::Value* tuple_element_address =
-          EmitTempBufferPointer(buffer, tuple_element_shape);
+          EmitBufferPointer(buffer, tuple_element_shape);
 
       TF_RETURN_IF_ERROR(EmitXfeedTransfer(
           XfeedKind::kInfeed, tuple_element_shape, tuple_element_address));
@@ -374,7 +393,7 @@ Status IrEmitter::EmitXfeedTransfer(XfeedKind kind, const Shape& shape,
   int64 length = ByteSizeOf(shape);
   if (length <= 0 || length > std::numeric_limits<int32>::max()) {
     return InvalidArgument(
-        "xfeed (infeed or outfeed) buffer length %lld is outside the valid "
+        "xfeed (infeed or outfeed) buffer length %d is outside the valid "
         "size range",
         length);
   }
@@ -385,13 +404,12 @@ Status IrEmitter::EmitXfeedTransfer(XfeedKind kind, const Shape& shape,
       llvm::Value * shape_ptr,
       llvm_ir::EncodeSelfDescribingShapeConstant(shape, &shape_length, &b_));
 
-  // The signature of the acquire infeed buffer function is:
-  //
-  //   (void*)(int32 length);
   llvm::Type* int32_type = b_.getInt32Ty();
   llvm::Type* i8_ptr_type = llvm::Type::getInt8PtrTy(module_->getContext());
   llvm::FunctionType* acquire_type = llvm::FunctionType::get(
-      i8_ptr_type, {int32_type, i8_ptr_type, int32_type},
+      i8_ptr_type,
+      {/*run_options*/ i8_ptr_type, /*buffer_length*/ int32_type,
+       /*shape_ptr*/ i8_ptr_type, /*shape_length*/ int32_type},
       /*isVarArg=*/false);
 
   llvm::Function* acquire_func;
@@ -404,11 +422,11 @@ Status IrEmitter::EmitXfeedTransfer(XfeedKind kind, const Shape& shape,
   }
   acquire_func->setCallingConv(llvm::CallingConv::C);
 
-  // The signature of the release infeed buffer function is:
-  //
-  //   (void)(int32 length, void* buffer);
   llvm::FunctionType* release_type = llvm::FunctionType::get(
-      b_.getVoidTy(), {int32_type, i8_ptr_type, i8_ptr_type, int32_type},
+      b_.getVoidTy(),
+      {/*run_options*/ i8_ptr_type, /*buffer_length*/ int32_type,
+       /*buffer_ptr*/ i8_ptr_type, /*shape_ptr*/ i8_ptr_type,
+       /*shape_length*/ int32_type},
       /*isVarArg=*/false);
 
   llvm::Function* release_func;
@@ -425,27 +443,33 @@ Status IrEmitter::EmitXfeedTransfer(XfeedKind kind, const Shape& shape,
   // of size exactly 'length_32', and the runtime is responsible for
   // check-failing the process if there is a mismatch, versus passing us back a
   // buffer that we might overrun.
-  llvm::Value* acquired_pointer = b_.CreateCall(
-      acquire_func,
-      {b_.getInt32(length_32), shape_ptr, b_.getInt32(shape_length)});
+  llvm::Value* acquired_pointer = Call(
+      acquire_func, {GetExecutableRunOptionsArgument(), b_.getInt32(length_32),
+                     shape_ptr, b_.getInt32(shape_length)});
 
   if (kind == XfeedKind::kInfeed) {
     // Copy to the program buffer address from the acquired buffer.
-    b_.CreateMemCpy(program_buffer_address, /*DstAlign=*/1, acquired_pointer,
-                    /*SrcAlign=*/1, length_32);
+    MemCpy(program_buffer_address, /*DstAlign=*/1, acquired_pointer,
+           /*SrcAlign=*/1, length_32);
   } else {
     // Outfeed -- copy from the in-program address to the acquired buffer.
-    b_.CreateMemCpy(acquired_pointer, /*DstAlign=*/1, program_buffer_address,
-                    /*SrcAlign=*/1, length_32);
+    MemCpy(acquired_pointer, /*DstAlign=*/1, program_buffer_address,
+           /*SrcAlign=*/1, length_32);
   }
 
-  b_.CreateCall(release_func, {b_.getInt32(length_32), acquired_pointer,
-                               shape_ptr, b_.getInt32(shape_length)});
+  Call(release_func, {GetExecutableRunOptionsArgument(), b_.getInt32(length_32),
+                      acquired_pointer, shape_ptr, b_.getInt32(shape_length)});
 
   return Status::OK();
 }
 
 Status IrEmitter::HandleOutfeed(HloInstruction* outfeed) {
+  // Outfeed produces no useful result, but it does return a token[] that can be
+  // threaded through to other side effecting operations to ensure ordering.  In
+  // the IR emitter we treat this token as a normal u8[] and thus need to insert
+  // an entry for it in emitted_value_.
+  TF_RETURN_IF_ERROR(EmitTargetAddressForOp(outfeed));
+
   HloInstruction* operand = outfeed->operands()[0];
   const Shape& operand_shape = operand->shape();
 
@@ -470,8 +494,150 @@ Status IrEmitter::HandleOutfeed(HloInstruction* outfeed) {
 }
 
 Status IrEmitter::HandleSort(HloInstruction* sort) {
-  // TODO(b/26783907): Implement sort on CPU.
-  return Unimplemented("Sort is not implemented on CPU.");
+  TF_RETURN_IF_ERROR(EmitTargetAddressForOp(sort));
+  auto keys = sort->operand(0);
+  auto values = sort->operand_count() > 1 ? sort->operand(1) : nullptr;
+  ShapeIndex keys_shape_index({});
+  ShapeIndex values_shape_index({});
+  if (values != nullptr) {
+    keys_shape_index = ShapeIndex({0});
+    values_shape_index = ShapeIndex({1});
+  }
+  auto keys_destination = GetAllocationSlice(*sort, keys_shape_index);
+  auto keys_destination_address =
+      EmitBufferPointer(keys_destination, keys->shape());
+  auto values_destination = GetAllocationSlice(*sort, values_shape_index);
+  llvm::Value* values_destination_address = nullptr;
+
+  // The sort is implemented in-place, therefore we first copy the operand
+  // buffer to the output buffer if they are not the same.
+  if (keys_destination != GetAllocationSlice(*keys)) {
+    int64 primitive_type_size =
+        ShapeUtil::ByteSizeOfPrimitiveType(keys->shape().element_type());
+    auto source_buffer = GetEmittedValueFor(keys);
+    int64 keys_size = ByteSizeOf(keys->shape());
+    MemCpy(keys_destination_address, /*DstAlign=*/primitive_type_size,
+           source_buffer,
+           /*SrcAlign=*/primitive_type_size, keys_size);
+  }
+  if (values != nullptr) {
+    values_destination_address =
+        EmitBufferPointer(values_destination, values->shape());
+    if (values_destination != GetAllocationSlice(*values)) {
+      int64 primitive_type_size =
+          ShapeUtil::ByteSizeOfPrimitiveType(values->shape().element_type());
+      auto source_buffer = GetEmittedValueFor(values);
+      int64 values_size = ByteSizeOf(values->shape());
+      MemCpy(values_destination_address, /*DstAlign=*/primitive_type_size,
+             source_buffer,
+             /*SrcAlign=*/primitive_type_size, values_size);
+    }
+  }
+
+  // Normalize the shape and the dimension to sort.
+  Shape normalized_keys_shape =
+      ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(
+          keys->shape());
+  int64 physical_dimension_to_sort = LayoutUtil::MakeLogicalToPhysical(
+      keys->shape().layout())[sort->dimensions(0)];
+
+  int64 sort_dimension_elements =
+      normalized_keys_shape.dimensions(physical_dimension_to_sort);
+  int64 higher_dimensions = 1;
+  for (int64 i = 0; i < physical_dimension_to_sort; ++i) {
+    higher_dimensions *= normalized_keys_shape.dimensions(i);
+  }
+  int64 lower_dimensions = 1;
+  for (int64 i = ShapeUtil::Rank(normalized_keys_shape) - 1;
+       i > physical_dimension_to_sort; --i) {
+    lower_dimensions *= normalized_keys_shape.dimensions(i);
+  }
+
+  PrimitiveType keys_type = keys->shape().element_type();
+  const char* fn_name = nullptr;
+  llvm::Type* keys_native_type = nullptr;
+  switch (keys_type) {
+    case PRED:
+      fn_name = runtime::kKeyValueSortPREDSymbolName;
+      keys_native_type = b_.getInt8PtrTy();
+      break;
+    case S8:
+      fn_name = runtime::kKeyValueSortS8SymbolName;
+      keys_native_type = b_.getInt8PtrTy();
+      break;
+    case U8:
+      fn_name = runtime::kKeyValueSortU8SymbolName;
+      keys_native_type = b_.getInt8PtrTy();
+      break;
+    case S16:
+      fn_name = runtime::kKeyValueSortS16SymbolName;
+      keys_native_type = b_.getInt16Ty()->getPointerTo();
+      break;
+    case U16:
+      fn_name = runtime::kKeyValueSortU16SymbolName;
+      keys_native_type = b_.getInt16Ty()->getPointerTo();
+      break;
+    case F16:
+      fn_name = runtime::kKeyValueSortF16SymbolName;
+      keys_native_type = b_.getHalfTy()->getPointerTo();
+      break;
+    case S32:
+      fn_name = runtime::kKeyValueSortS32SymbolName;
+      keys_native_type = b_.getInt32Ty()->getPointerTo();
+      break;
+    case U32:
+      fn_name = runtime::kKeyValueSortU32SymbolName;
+      keys_native_type = b_.getInt32Ty()->getPointerTo();
+      break;
+    case F32:
+      fn_name = runtime::kKeyValueSortF32SymbolName;
+      keys_native_type = b_.getFloatTy()->getPointerTo();
+      break;
+    case S64:
+      fn_name = runtime::kKeyValueSortS64SymbolName;
+      keys_native_type = b_.getInt64Ty()->getPointerTo();
+      break;
+    case U64:
+      fn_name = runtime::kKeyValueSortU64SymbolName;
+      keys_native_type = b_.getInt64Ty()->getPointerTo();
+      break;
+    case F64:
+      fn_name = runtime::kKeyValueSortF64SymbolName;
+      keys_native_type = b_.getDoubleTy()->getPointerTo();
+      break;
+    default:
+      return Unimplemented(
+          "Element type %s not supported in the Sort op on CPU.",
+          PrimitiveType_Name(keys_type));
+  }
+
+  llvm::FunctionType* key_value_sort_type = llvm::FunctionType::get(
+      b_.getVoidTy(),
+      {keys_native_type, b_.getInt64Ty(), b_.getInt64Ty(), b_.getInt64Ty(),
+       b_.getInt8PtrTy(), b_.getInt32Ty()},
+      /*isVarArg=*/false);
+  auto* key_value_sort_func = llvm::cast<llvm::Function>(
+      module_->getOrInsertFunction(fn_name, key_value_sort_type));
+  key_value_sort_func->setCallingConv(llvm::CallingConv::C);
+  key_value_sort_func->setDoesNotThrow();
+  key_value_sort_func->setOnlyAccessesArgMemory();
+  Call(key_value_sort_func,
+       {PointerCast(keys_destination_address, keys_native_type),
+        b_.getInt64(higher_dimensions), b_.getInt64(sort_dimension_elements),
+        b_.getInt64(lower_dimensions),
+        values != nullptr
+            ? PointerCast(values_destination_address, b_.getInt8PtrTy())
+            : llvm::Constant::getNullValue(b_.getInt8PtrTy()),
+        b_.getInt32(values != nullptr ? ShapeUtil::ByteSizeOfPrimitiveType(
+                                            values->shape().element_type())
+                                      : 0)});
+
+  if (values != nullptr) {
+    llvm_ir::EmitTuple(GetIrArrayFor(sort),
+                       {keys_destination_address, values_destination_address},
+                       &b_, module_);
+  }
+  return Status::OK();
 }
 
 Status IrEmitter::HandleTuple(HloInstruction* tuple) {
@@ -484,23 +650,10 @@ Status IrEmitter::HandleTuple(HloInstruction* tuple) {
   return Status::OK();
 }
 
-StatusOr<llvm::Value*> IrEmitter::EmitTargetElementLoopBodyForMap(
-    HloMapInstruction* map, const llvm_ir::IrArray::Index& index) {
-  llvm::Function* mapped_ir_function =
-      FindOrDie(emitted_functions_, map->to_apply());
-  std::vector<llvm::Value*> parameter_addresses;
-  for (const HloInstruction* operand : map->operands()) {
-    const llvm_ir::IrArray& array = GetIrArrayFor(operand);
-    parameter_addresses.push_back(array.EmitArrayElementAddress(index, &b_));
-  }
-  return EmitElementFunctionCall(mapped_ir_function, map->shape(),
-                                 parameter_addresses, "map_function");
-}
-
-Status IrEmitter::HandleMap(HloInstruction* map) {
-  return EmitTargetElementLoop(map, [&](const llvm_ir::IrArray::Index& index) {
-    return EmitTargetElementLoopBodyForMap(Cast<HloMapInstruction>(map), index);
-  });
+llvm::Value* IrEmitter::EmitElementalMap(
+    const HloMapInstruction& map_instr,
+    absl::Span<llvm::Value* const> elemental_operands, absl::string_view name) {
+  return EmitThreadLocalCall(*map_instr.to_apply(), elemental_operands, name);
 }
 
 StatusOr<llvm::Value*> IrEmitter::EmitTargetElementLoopBodyForReduceWindow(
@@ -508,9 +661,6 @@ StatusOr<llvm::Value*> IrEmitter::EmitTargetElementLoopBodyForReduceWindow(
     const llvm_ir::IrArray::Index& index) {
   const HloInstruction* operand = reduce_window->operand(0);
   const Window& window = reduce_window->window();
-  HloComputation* function = reduce_window->to_apply();
-  // The called computation should have been emitted previously.
-  llvm::Function* reducer_function = FindOrDie(emitted_functions_, function);
 
   // We fold inputs into the accumulator and initialize it to
   // the initial value on the reduce_window.
@@ -519,8 +669,8 @@ StatusOr<llvm::Value*> IrEmitter::EmitTargetElementLoopBodyForReduceWindow(
       llvm_ir::PrimitiveTypeToIrType(operand_element_type, module_),
       "reduce_window_accumulator_address", &b_,
       MinimumAlignmentForPrimitiveType(operand_element_type));
-  b_.CreateStore(b_.CreateLoad(GetEmittedValueFor(reduce_window->operand(1))),
-                 accumulator_address);
+  Store(Load(GetEmittedValueFor(reduce_window->operand(1))),
+        accumulator_address);
 
   llvm_ir::ForLoopNest loops(IrName(reduce_window, "inner"), &b_);
   std::vector<int64> window_size;
@@ -537,22 +687,38 @@ StatusOr<llvm::Value*> IrEmitter::EmitTargetElementLoopBodyForReduceWindow(
   llvm::Value* in_bounds_condition = nullptr;
   for (size_t i = 0; i < index.size(); ++i) {
     llvm::Value* strided_index =
-        b_.CreateNSWMul(index[i], b_.getInt64(window.dimensions(i).stride()));
+        NSWMul(index[i], b_.getInt64(window.dimensions(i).stride()));
+    input_index[i] = NSWSub(
+        NSWAdd(strided_index,
+               NSWMul(window_index[i],
+                      b_.getInt64(window.dimensions(i).window_dilation()))),
+        b_.getInt64(window.dimensions(i).padding_low()));
+
+    // We need to verify that we are not in the dilated base area.
+    llvm::Value* dilation_condition = ICmpEQ(
+        SRem(input_index[i], b_.getInt64(window.dimensions(i).base_dilation())),
+        b_.getInt64(0));
+    if (in_bounds_condition == nullptr) {
+      in_bounds_condition = dilation_condition;
+    } else {
+      in_bounds_condition = And(in_bounds_condition, dilation_condition);
+    }
+
+    // Apply base dilation to the index.
     input_index[i] =
-        b_.CreateNSWSub(b_.CreateNSWAdd(strided_index, window_index[i]),
-                        b_.getInt64(window.dimensions(i).padding_low()));
+        SDiv(input_index[i], b_.getInt64(window.dimensions(i).base_dilation()));
 
     // We need to check if 0 <= input_index[i] < bound, as otherwise we are in
     // the padding so that we can skip the computation. That is equivalent to
     // input_index[i] < bound as an *unsigned* comparison, since a negative
     // value will wrap to a large positive value.
-    llvm::Value* index_condition = b_.CreateICmpULT(
-        input_index[i],
-        b_.getInt64(ShapeUtil::GetDimension(operand->shape(), i)));
+    llvm::Value* index_condition =
+        ICmpULT(input_index[i],
+                b_.getInt64(ShapeUtil::GetDimension(operand->shape(), i)));
     if (in_bounds_condition == nullptr) {
       in_bounds_condition = index_condition;
     } else {
-      in_bounds_condition = b_.CreateAnd(in_bounds_condition, index_condition);
+      in_bounds_condition = And(in_bounds_condition, index_condition);
     }
   }
   CHECK(in_bounds_condition != nullptr);
@@ -563,28 +729,21 @@ StatusOr<llvm::Value*> IrEmitter::EmitTargetElementLoopBodyForReduceWindow(
 
   // We are not in the padding, so carry out the computation.
   llvm_ir::IrArray input_array(GetIrArrayFor(operand));
-  llvm::Value* input_value_address =
-      input_array.EmitArrayElementAddress(input_index, &b_);
-  llvm::Value* result = EmitElementFunctionCall(
-      reducer_function, reduce_window->shape(),
-      {accumulator_address, input_value_address}, "reducer_function");
-  b_.CreateStore(result, accumulator_address);
+  llvm::Value* input_value = input_array.EmitReadArrayElement(input_index, &b_);
+  llvm::Value* result = EmitThreadLocalCall(
+      *reduce_window->to_apply(), {Load(accumulator_address), input_value},
+      "reducer_function");
+  Store(result, accumulator_address);
 
   SetToFirstInsertPoint(loops.GetOuterLoopExitBasicBlock(), &b_);
-  return b_.CreateLoad(accumulator_address);
+  return Load(accumulator_address);
 }
 
 Status IrEmitter::HandleReduceWindow(HloInstruction* reduce_window) {
   TF_RETURN_IF_ERROR(ElementTypesSameAndSupported(
       /*instruction=*/*reduce_window,
       /*operands=*/{reduce_window->operand(0)},
-      /*supported_types=*/{F32, BF16, S32}));
-
-  // TODO(b/31410564): Implement dilation for reduce-window.
-  if (window_util::HasDilation(reduce_window->window())) {
-    return Unimplemented(
-        "Dilation for ReduceWindow is not implemented on CPU.");
-  }
+      /*supported_types=*/{F32, BF16, S32, F16}));
 
   // Pseudo code for reduce window:
   //
@@ -623,12 +782,6 @@ Status IrEmitter::HandleSelectAndScatter(HloInstruction* select_and_scatter) {
         "Dilation for SelectAndScatter is not implemented on CPU. ");
   }
 
-  // The select and scatter computations should have been emitted previously.
-  llvm::Function* select_function =
-      FindOrDie(emitted_functions_, select_and_scatter->select());
-  llvm::Function* scatter_function =
-      FindOrDie(emitted_functions_, select_and_scatter->scatter());
-
   // Pseudo code for select-and-scatter:
   //
   // initialized_flag is initially off for every window, and is turned on after
@@ -654,7 +807,7 @@ Status IrEmitter::HandleSelectAndScatter(HloInstruction* select_and_scatter) {
       select_and_scatter, /*desc=*/IrName(select_and_scatter, "init"),
       [this, init_value](const llvm_ir::IrArray::Index& target_index) {
         llvm::Value* init_value_addr = GetEmittedValueFor(init_value);
-        return b_.CreateLoad(init_value_addr);
+        return Load(init_value_addr);
       }));
 
   // Create a loop to iterate over the source array to scatter to the output.
@@ -674,7 +827,7 @@ Status IrEmitter::HandleSelectAndScatter(HloInstruction* select_and_scatter) {
           b_.getInt64Ty(), b_.getInt32(rank), "selected_index_address", &b_);
   llvm::Value* initialized_flag_address = llvm_ir::EmitAllocaAtFunctionEntry(
       b_.getInt1Ty(), "initialized_flag_address", &b_);
-  b_.CreateStore(b_.getInt1(false), initialized_flag_address);
+  Store(b_.getInt1(false), initialized_flag_address);
 
   // Create the inner loop to iterate over the window.
   llvm_ir::ForLoopNest window_loops(IrName(select_and_scatter, "window"), &b_);
@@ -692,15 +845,14 @@ Status IrEmitter::HandleSelectAndScatter(HloInstruction* select_and_scatter) {
   llvm_ir::IrArray::Index operand_index(b_.getInt64Ty(), source_index.size());
   llvm::Value* in_bounds_condition = b_.getTrue();
   for (int64 i = 0; i < rank; ++i) {
-    llvm::Value* strided_index = b_.CreateNSWMul(
-        source_index[i], b_.getInt64(window.dimensions(i).stride()));
-    operand_index[i] =
-        b_.CreateNSWSub(b_.CreateNSWAdd(strided_index, window_index[i]),
-                        b_.getInt64(window.dimensions(i).padding_low()));
-    llvm::Value* index_condition = b_.CreateICmpULT(
-        operand_index[i],
-        b_.getInt64(ShapeUtil::GetDimension(operand->shape(), i)));
-    in_bounds_condition = b_.CreateAnd(in_bounds_condition, index_condition);
+    llvm::Value* strided_index =
+        NSWMul(source_index[i], b_.getInt64(window.dimensions(i).stride()));
+    operand_index[i] = NSWSub(NSWAdd(strided_index, window_index[i]),
+                              b_.getInt64(window.dimensions(i).padding_low()));
+    llvm::Value* index_condition =
+        ICmpULT(operand_index[i],
+                b_.getInt64(ShapeUtil::GetDimension(operand->shape(), i)));
+    in_bounds_condition = And(in_bounds_condition, index_condition);
   }
   CHECK(in_bounds_condition != nullptr);
 
@@ -710,7 +862,7 @@ Status IrEmitter::HandleSelectAndScatter(HloInstruction* select_and_scatter) {
       llvm_ir::EmitIfThenElse(in_bounds_condition, "in-bounds", &b_);
   SetToFirstInsertPoint(if_in_bounds.true_block, &b_);
   llvm_ir::LlvmIfData if_initialized = llvm_ir::EmitIfThenElse(
-      b_.CreateLoad(initialized_flag_address), "initialized", &b_);
+      Load(initialized_flag_address), "initialized", &b_);
 
   // If the initialized_flag is false, initialize the selected value and index
   // with the currently visiting operand.
@@ -719,37 +871,37 @@ Status IrEmitter::HandleSelectAndScatter(HloInstruction* select_and_scatter) {
       [&](const llvm_ir::IrArray::Index& operand_index) {
         for (int64 i = 0; i < rank; ++i) {
           llvm::Value* selected_index_address_slot =
-              b_.CreateInBoundsGEP(selected_index_address, {b_.getInt32(i)});
-          b_.CreateStore(operand_index[i], selected_index_address_slot);
+              InBoundsGEP(selected_index_address, {b_.getInt32(i)});
+          Store(operand_index[i], selected_index_address_slot);
         }
       };
   llvm_ir::IrArray operand_array(GetIrArrayFor(operand));
   llvm::Value* operand_data =
       operand_array.EmitReadArrayElement(operand_index, &b_);
-  b_.CreateStore(operand_data, selected_value_address);
+  Store(operand_data, selected_value_address);
   save_operand_index(operand_index);
-  b_.CreateStore(b_.getInt1(true), initialized_flag_address);
+  Store(b_.getInt1(true), initialized_flag_address);
 
   // If the initialized_flag is true, call the `select` function to potentially
   // update the selected value and index with the currently visiting operand.
   SetToFirstInsertPoint(if_initialized.true_block, &b_);
-  const Shape output_shape = ShapeUtil::MakeShape(PRED, {});
   llvm::Value* operand_address =
       operand_array.EmitArrayElementAddress(operand_index, &b_);
-  llvm::Value* result = EmitElementFunctionCall(
-      select_function, output_shape, {selected_value_address, operand_address},
-      "select_function");
+  llvm::Value* operand_element = Load(operand_address);
+  llvm::Value* result = EmitThreadLocalCall(
+      *select_and_scatter->select(),
+      {Load(selected_value_address), operand_element}, "select_function");
 
   // If the 'select' function returns false, update the selected value and the
   // index to the currently visiting operand.
-  llvm::Value* cond = b_.CreateICmpNE(
+  llvm::Value* cond = ICmpNE(
       result,
       llvm::ConstantInt::get(llvm_ir::PrimitiveTypeToIrType(PRED, module_), 0),
       "boolean_predicate");
   llvm_ir::LlvmIfData if_select_lhs =
       llvm_ir::EmitIfThenElse(cond, "if-select-lhs", &b_);
   SetToFirstInsertPoint(if_select_lhs.false_block, &b_);
-  b_.CreateStore(b_.CreateLoad(operand_address), selected_value_address);
+  Store(Load(operand_address), selected_value_address);
   save_operand_index(operand_index);
 
   // After iterating over the window elements, scatter the source element to
@@ -760,18 +912,18 @@ Status IrEmitter::HandleSelectAndScatter(HloInstruction* select_and_scatter) {
   llvm_ir::IrArray::Index selected_index(source_index.GetType());
   for (int64 i = 0; i < rank; ++i) {
     llvm::Value* selected_index_address_slot =
-        b_.CreateInBoundsGEP(selected_index_address, {b_.getInt32(i)});
-    selected_index.push_back(b_.CreateLoad(selected_index_address_slot));
+        InBoundsGEP(selected_index_address, {b_.getInt32(i)});
+    selected_index.push_back(Load(selected_index_address_slot));
   }
   llvm_ir::IrArray source_array(GetIrArrayFor(source));
-  llvm::Value* source_value_address =
-      source_array.EmitArrayElementAddress(source_index, &b_);
+  llvm::Value* source_value =
+      source_array.EmitReadArrayElement(source_index, &b_);
   llvm_ir::IrArray output_array(GetIrArrayFor(select_and_scatter));
-  llvm::Value* output_value_address =
-      output_array.EmitArrayElementAddress(selected_index, &b_);
-  llvm::Value* scatter_value = EmitElementFunctionCall(
-      scatter_function, source->shape(),
-      {output_value_address, source_value_address}, "scatter_function");
+  llvm::Value* output_value =
+      output_array.EmitReadArrayElement(selected_index, &b_);
+  llvm::Value* scatter_value =
+      EmitThreadLocalCall(*select_and_scatter->scatter(),
+                          {output_value, source_value}, "scatter_function");
   output_array.EmitWriteArrayElement(selected_index, scatter_value, &b_);
 
   SetToFirstInsertPoint(source_loops.GetOuterLoopExitBasicBlock(), &b_);
@@ -843,7 +995,7 @@ StatusOr<llvm::Value*> IrEmitter::EmitTargetElementLoopBodyForConvolution(
       lhs_llvm_type, "convolution_sum_address", &b_,
       MinimumAlignmentForPrimitiveType(lhs_element_type));
   llvm::Value* constant_zero = llvm::Constant::getNullValue(lhs_llvm_type);
-  b_.CreateStore(constant_zero, sum_address);
+  Store(constant_zero, sum_address);
 
   llvm_ir::ForLoopNest loops(IrName(convolution, "inner"), &b_);
   std::vector<llvm::Value*> kernel_spatial(num_spatial_dims);
@@ -852,7 +1004,7 @@ StatusOr<llvm::Value*> IrEmitter::EmitTargetElementLoopBodyForConvolution(
         loops
             .AddLoop(
                 0, rhs->shape().dimensions(dnums.kernel_spatial_dimensions(i)),
-                tensorflow::strings::StrCat("k", i))
+                absl::StrCat("k", i))
             ->GetIndVarValue();
   }
   llvm::Value* input_feature =
@@ -870,11 +1022,11 @@ StatusOr<llvm::Value*> IrEmitter::EmitTargetElementLoopBodyForConvolution(
                                             llvm::Value* kernel_index,
                                             const WindowDimension& window_dim) {
     llvm::Value* strided_index =
-        b_.CreateNSWMul(output_index, b_.getInt64(window_dim.stride()));
-    llvm::Value* dilated_kernel_index = b_.CreateNSWMul(
-        kernel_index, b_.getInt64(window_dim.window_dilation()));
-    return b_.CreateNSWSub(b_.CreateNSWAdd(strided_index, dilated_kernel_index),
-                           b_.getInt64(window_dim.padding_low()));
+        NSWMul(output_index, b_.getInt64(window_dim.stride()));
+    llvm::Value* dilated_kernel_index =
+        NSWMul(kernel_index, b_.getInt64(window_dim.window_dilation()));
+    return NSWSub(NSWAdd(strided_index, dilated_kernel_index),
+                  b_.getInt64(window_dim.padding_low()));
   };
   std::vector<llvm::Value*> input_spatial(num_spatial_dims);
   for (int i = 0; i < num_spatial_dims; ++i) {
@@ -891,9 +1043,8 @@ StatusOr<llvm::Value*> IrEmitter::EmitTargetElementLoopBodyForConvolution(
   // Also need to check that the input coordinates are not in one of the
   // holes created by base dilation.
   const auto not_in_hole = [&](llvm::Value* input_index, int64 base_dilation) {
-    llvm::Value* remainder =
-        b_.CreateSRem(input_index, b_.getInt64(base_dilation));
-    return b_.CreateICmpEQ(remainder, b_.getInt64(0));
+    llvm::Value* remainder = SRem(input_index, b_.getInt64(base_dilation));
+    return ICmpEQ(remainder, b_.getInt64(0));
   };
 
   llvm::Value* in_bounds_condition = b_.getInt1(true);
@@ -901,17 +1052,17 @@ StatusOr<llvm::Value*> IrEmitter::EmitTargetElementLoopBodyForConvolution(
     llvm::ConstantInt* input_bound = b_.getInt64(window_util::DilatedBound(
         lhs->shape().dimensions(dnums.input_spatial_dimensions(i)),
         window.dimensions(i).base_dilation()));
-    llvm::Value* dim_in_bound = b_.CreateICmpULT(input_spatial[i], input_bound);
+    llvm::Value* dim_in_bound = ICmpULT(input_spatial[i], input_bound);
     llvm::Value* dim_not_in_hole =
         not_in_hole(input_spatial[i], window.dimensions(i).base_dilation());
-    llvm::Value* dim_ok = b_.CreateAnd(dim_in_bound, dim_not_in_hole);
-    in_bounds_condition = b_.CreateAnd(in_bounds_condition, dim_ok);
+    llvm::Value* dim_ok = And(dim_in_bound, dim_not_in_hole);
+    in_bounds_condition = And(in_bounds_condition, dim_ok);
   }
 
   // Now we need to map the dilated base coordinates back to the actual
   // data indices on the lhs.
   const auto undilate = [&](llvm::Value* input_index, int64 base_dilation) {
-    return b_.CreateSDiv(input_index, b_.getInt64(base_dilation));
+    return SDiv(input_index, b_.getInt64(base_dilation));
   };
   for (int i = 0; i < num_spatial_dims; ++i) {
     input_spatial[i] =
@@ -936,8 +1087,8 @@ StatusOr<llvm::Value*> IrEmitter::EmitTargetElementLoopBodyForConvolution(
   for (int i = 0; i < num_spatial_dims; ++i) {
     kernel_index[dnums.kernel_spatial_dimensions(i)] =
         window.dimensions(i).window_reversal()
-            ? b_.CreateNSWSub(b_.getInt64(window.dimensions(i).size() - 1),
-                              kernel_spatial[i])
+            ? NSWSub(b_.getInt64(window.dimensions(i).size() - 1),
+                     kernel_spatial[i])
             : kernel_spatial[i];
   }
 
@@ -946,13 +1097,13 @@ StatusOr<llvm::Value*> IrEmitter::EmitTargetElementLoopBodyForConvolution(
 
   llvm_ir::IrArray input_array(GetIrArrayFor(lhs));
   llvm::Value* product =
-      b_.CreateFMul(input_array.EmitReadArrayElement(input_index, &b_),
-                    kernel_array.EmitReadArrayElement(kernel_index, &b_));
-  llvm::Value* sum = b_.CreateFAdd(b_.CreateLoad(sum_address), product);
-  b_.CreateStore(sum, sum_address);
+      FMul(input_array.EmitReadArrayElement(input_index, &b_),
+           kernel_array.EmitReadArrayElement(kernel_index, &b_));
+  llvm::Value* sum = FAdd(Load(sum_address), product);
+  Store(sum, sum_address);
 
   SetToFirstInsertPoint(loops.GetOuterLoopExitBasicBlock(), &b_);
-  return b_.CreateLoad(sum_address);
+  return Load(sum_address);
 }
 
 Status IrEmitter::HandleConvolution(HloInstruction* convolution) {
@@ -1078,34 +1229,32 @@ Status IrEmitter::HandleConvolution(HloInstruction* convolution) {
       conv_func->setCallingConv(llvm::CallingConv::C);
       conv_func->setDoesNotThrow();
       conv_func->setOnlyAccessesArgMemory();
-      b_.CreateCall(
-          conv_func,
-          {
-              GetExecutableRunOptionsArgument(),
-              b_.CreateBitCast(GetEmittedValueFor(convolution), ir_ptr_type),
-              b_.CreateBitCast(lhs_address, ir_ptr_type),
-              b_.CreateBitCast(rhs_address, ir_ptr_type),
-              b_.getInt64(input_batch),
-              b_.getInt64(input_rows),
-              b_.getInt64(input_cols),
-              b_.getInt64(input_channels),
-              b_.getInt64(kernel_rows),
-              b_.getInt64(kernel_cols),
-              b_.getInt64(kernel_channels),
-              b_.getInt64(kernel_filters),
-              b_.getInt64(output_rows),
-              b_.getInt64(output_cols),
-              b_.getInt64(row_stride),
-              b_.getInt64(col_stride),
-              b_.getInt64(padding_top),
-              b_.getInt64(padding_bottom),
-              b_.getInt64(padding_left),
-              b_.getInt64(padding_right),
-              b_.getInt64(lhs_row_dilation),
-              b_.getInt64(lhs_col_dilation),
-              b_.getInt64(rhs_row_dilation),
-              b_.getInt64(rhs_col_dilation),
-          });
+      Call(conv_func, {
+                          GetExecutableRunOptionsArgument(),
+                          BitCast(GetEmittedValueFor(convolution), ir_ptr_type),
+                          BitCast(lhs_address, ir_ptr_type),
+                          BitCast(rhs_address, ir_ptr_type),
+                          b_.getInt64(input_batch),
+                          b_.getInt64(input_rows),
+                          b_.getInt64(input_cols),
+                          b_.getInt64(input_channels),
+                          b_.getInt64(kernel_rows),
+                          b_.getInt64(kernel_cols),
+                          b_.getInt64(kernel_channels),
+                          b_.getInt64(kernel_filters),
+                          b_.getInt64(output_rows),
+                          b_.getInt64(output_cols),
+                          b_.getInt64(row_stride),
+                          b_.getInt64(col_stride),
+                          b_.getInt64(padding_top),
+                          b_.getInt64(padding_bottom),
+                          b_.getInt64(padding_left),
+                          b_.getInt64(padding_right),
+                          b_.getInt64(lhs_row_dilation),
+                          b_.getInt64(lhs_col_dilation),
+                          b_.getInt64(rhs_row_dilation),
+                          b_.getInt64(rhs_col_dilation),
+                      });
 
       return Status::OK();
     }
@@ -1165,15 +1314,14 @@ Status IrEmitter::HandleFft(HloInstruction* fft) {
   fft_func->setDoesNotThrow();
   fft_func->setOnlyAccessesInaccessibleMemOrArgMem();
   const int fft_rank = fft_length.size();
-  b_.CreateCall(
-      fft_func,
-      {GetExecutableRunOptionsArgument(),
-       b_.CreateBitCast(GetEmittedValueFor(fft), int8_ptr_type),
-       b_.CreateBitCast(operand_address, int8_ptr_type),
-       b_.getInt32(fft->fft_type()), b_.getInt32(fft_rank),
-       b_.getInt64(input_batch), b_.getInt64(fft_rank > 0 ? fft_length[0] : 0),
-       b_.getInt64(fft_rank > 1 ? fft_length[1] : 0),
-       b_.getInt64(fft_rank > 2 ? fft_length[2] : 0)});
+  Call(fft_func,
+       {GetExecutableRunOptionsArgument(),
+        BitCast(GetEmittedValueFor(fft), int8_ptr_type),
+        BitCast(operand_address, int8_ptr_type), b_.getInt32(fft->fft_type()),
+        b_.getInt32(fft_rank), b_.getInt64(input_batch),
+        b_.getInt64(fft_rank > 0 ? fft_length[0] : 0),
+        b_.getInt64(fft_rank > 1 ? fft_length[1] : 0),
+        b_.getInt64(fft_rank > 2 ? fft_length[2] : 0)});
 
   return Status::OK();
 }
@@ -1209,11 +1357,11 @@ Status IrEmitter::HandleCrossReplicaSum(HloInstruction* crs) {
     const Shape& operand_shape = crs->operand(i)->shape();
     CHECK(ShapeUtil::IsArray(operand_shape))
         << "Operands to cross-replica-sum must be arrays: " << crs->ToString();
-    operand_ptrs.push_back(EmitTempBufferPointer(out_slice, operand_shape));
+    operand_ptrs.push_back(EmitBufferPointer(out_slice, operand_shape));
 
     // TODO(b/63762267): Be more aggressive about specifying alignment.
-    b_.CreateMemCpy(operand_ptrs.back(), /*DstAlign=*/1, in_ptr,
-                    /*SrcAlign=*/1, ShapeUtil::ByteSizeOf(operand_shape));
+    MemCpy(operand_ptrs.back(), /*DstAlign=*/1, in_ptr,
+           /*SrcAlign=*/1, ShapeUtil::ByteSizeOf(operand_shape));
   }
   llvm_ir::EmitTuple(GetIrArrayFor(crs), operand_ptrs, &b_, module_);
   return Status::OK();
@@ -1248,46 +1396,7 @@ static llvm_ir::IrArray::Index FillReducedDimensionIndex(
 
 Status IrEmitter::HandleParameter(HloInstruction* parameter) {
   VLOG(2) << "HandleParameter: " << parameter->ToString();
-  auto param_number = parameter->parameter_number();
-  auto param_shape = parameter->shape();
-
-  // We have to access the parameter at offset param_number in the params
-  // array. The code generated here is equivalent to this C code:
-  //
-  //   i8* param_address_untyped = params[param_number];
-  //   Param* param_address_typed = (Param*)param_address_untyped;
-  //
-  // Where Param is the actual element type of the underlying buffer (for
-  // example, float for an XLA F32 element type).
-  llvm::Value* params = compute_function_->parameters_arg();
-  llvm::Value* param_address_offset =
-      llvm_ir::EmitBufferIndexingGEP(params, param_number, &b_);
-  llvm::LoadInst* param_address_untyped = b_.CreateLoad(param_address_offset);
-  param_address_untyped->setName(AsStringRef(IrName(parameter, "untyped")));
-  if (is_top_level_computation_ &&
-      hlo_module_config_.debug_options()
-          .xla_llvm_enable_invariant_load_metadata()) {
-    // In the entry computation the parameter slots in the %params argument are
-    // invariant through program execution.  In computations that are called
-    // from the entry computation (via kWhile, kCall and kConditional) the
-    // parameter slots are *not* invariant since they're written to by their
-    // callers.
-    param_address_untyped->setMetadata(
-        llvm::LLVMContext::MD_invariant_load,
-        llvm::MDNode::get(param_address_untyped->getContext(), /*MDs=*/{}));
-  }
-
-  llvm::Value* param_address_typed = b_.CreateBitCast(
-      param_address_untyped, IrShapeType(param_shape)->getPointerTo());
-  emitted_value_[parameter] = param_address_typed;
-
-  if (!ShapeUtil::IsOpaque(param_shape)) {
-    AttachAlignmentMetadataForLoad(param_address_untyped, param_shape);
-    AttachDereferenceableMetadataForLoad(param_address_untyped, param_shape);
-  }
-
-  VLOG(2) << "  emitted value: " << llvm_ir::DumpToString(*param_address_typed);
-  return Status::OK();
+  return EmitTargetAddressForOp(parameter);
 }
 
 // Returns true if the relative order of the unreduced dimensions stays the same
@@ -1300,10 +1409,10 @@ static bool ReductionPreservesLayout(const HloInstruction& reduce) {
   //
   // So if we reduce f32[A,B,C,D] on dimensions 1 and 2, this map contains
   // [0->0, 3->1].
-  gtl::FlatMap<int64, int64> unreduced_dim_map;
+  absl::flat_hash_map<int64, int64> unreduced_dim_map;
 
-  gtl::FlatSet<int64> reduced_dims(reduce.dimensions().begin(),
-                                   reduce.dimensions().end());
+  absl::flat_hash_set<int64> reduced_dims(reduce.dimensions().begin(),
+                                          reduce.dimensions().end());
 
   const Shape& operand_shape = reduce.operand(0)->shape();
   const Shape& result_shape = reduce.shape();
@@ -1502,7 +1611,7 @@ IrEmitter::EmitInnerLoopForVectorizedReduction(
     const ReductionGenerator& reduction_generator,
     const llvm_ir::IrArray::Index& output_index,
     const ShardedVectorType& accumulator_type, HloInstruction* init_value,
-    HloInstruction* arg, gtl::ArraySlice<int64> dimensions,
+    HloInstruction* arg, absl::Span<const int64> dimensions,
     unsigned element_alignment) {
   ShardedVector accumulator;
   accumulator.reserve(accumulator_type.size());
@@ -1511,19 +1620,19 @@ IrEmitter::EmitInnerLoopForVectorizedReduction(
         accumulator_shard_type, "accumulator", &b_, 0));
   }
 
-  llvm::Value* init_value_ssa = b_.CreateLoad(GetEmittedValueFor(init_value));
+  llvm::Value* init_value_ssa = Load(GetEmittedValueFor(init_value));
 
   for (llvm::Value* accumulator_shard : accumulator) {
     llvm::Value* initial_value;
     auto shard_type = accumulator_shard->getType()->getPointerElementType();
     if (auto vector_type = llvm::dyn_cast<llvm::VectorType>(shard_type)) {
       initial_value =
-          b_.CreateVectorSplat(vector_type->getNumElements(), init_value_ssa);
+          VectorSplat(vector_type->getNumElements(), init_value_ssa);
     } else {
       initial_value = init_value_ssa;
     }
 
-    b_.CreateAlignedStore(initial_value, accumulator_shard, element_alignment);
+    AlignedStore(initial_value, accumulator_shard, element_alignment);
   }
 
   llvm_ir::ForLoopNest reduction_loop_nest(IrName(arg, "vectorized_inner"),
@@ -1545,24 +1654,24 @@ IrEmitter::EmitInnerLoopForVectorizedReduction(
   }
   CHECK(output_index.end() == it);
 
-  llvm::Value* input_address = b_.CreateBitCast(
+  llvm::Value* input_address = BitCast(
       arg_array.EmitArrayElementAddress(input_index, &b_), b_.getInt8PtrTy());
 
   for (int i = 0; i < accumulator.size(); i++) {
     auto input_address_typed =
-        b_.CreateBitCast(input_address, accumulator[i]->getType());
+        BitCast(input_address, accumulator[i]->getType());
     auto current_accumulator_value =
-        b_.CreateAlignedLoad(accumulator[i], element_alignment);
-    auto addend = b_.CreateAlignedLoad(input_address_typed, element_alignment);
+        AlignedLoad(accumulator[i], element_alignment);
+    auto addend = AlignedLoad(input_address_typed, element_alignment);
     arg_array.AnnotateLoadStoreInstructionWithMetadata(addend);
 
     auto reduced_result =
         reduction_generator(&b_, current_accumulator_value, addend);
-    b_.CreateAlignedStore(reduced_result, accumulator[i], element_alignment);
+    AlignedStore(reduced_result, accumulator[i], element_alignment);
 
     if (i != (accumulator.size() - 1)) {
-      input_address = b_.CreateConstInBoundsGEP1_32(reduced_result->getType(),
-                                                    input_address_typed, 1);
+      input_address = ConstInBoundsGEP1_32(reduced_result->getType(),
+                                           input_address_typed, 1);
     }
   }
 
@@ -1571,8 +1680,7 @@ IrEmitter::EmitInnerLoopForVectorizedReduction(
   ShardedVector result_ssa;
   result_ssa.reserve(accumulator.size());
   for (auto accumulator_shard : accumulator) {
-    result_ssa.push_back(
-        b_.CreateAlignedLoad(accumulator_shard, element_alignment));
+    result_ssa.push_back(AlignedLoad(accumulator_shard, element_alignment));
   }
   return result_ssa;
 }
@@ -1581,25 +1689,25 @@ void IrEmitter::EmitShardedVectorStore(
     llvm::Value* store_address, const std::vector<llvm::Value*>& value_to_store,
     const int alignment, const llvm_ir::IrArray& containing_array) {
   for (int i = 0; i < value_to_store.size(); i++) {
-    auto store_address_typed = b_.CreateBitCast(
-        store_address,
-        llvm::PointerType::getUnqual(value_to_store[i]->getType()));
+    auto store_address_typed =
+        BitCast(store_address,
+                llvm::PointerType::getUnqual(value_to_store[i]->getType()));
 
-    auto store_instruction = b_.CreateAlignedStore(
-        value_to_store[i], store_address_typed, alignment);
+    auto store_instruction =
+        AlignedStore(value_to_store[i], store_address_typed, alignment);
     containing_array.AnnotateLoadStoreInstructionWithMetadata(
         store_instruction);
 
     if (i != (value_to_store.size() - 1)) {
-      store_address = b_.CreateConstInBoundsGEP1_32(
-          value_to_store[i]->getType(), store_address_typed, 1);
+      store_address = ConstInBoundsGEP1_32(value_to_store[i]->getType(),
+                                           store_address_typed, 1);
     }
   }
 }
 
 StatusOr<bool> IrEmitter::EmitVectorizedReduce(
     HloInstruction* reduce, HloInstruction* arg, HloInstruction* init_value,
-    gtl::ArraySlice<int64> dimensions, HloComputation* function,
+    absl::Span<const int64> dimensions, HloComputation* function,
     string* failure_reason) {
   if (!ReductionPreservesLayout(*reduce)) {
     return false;
@@ -1665,9 +1773,8 @@ StatusOr<bool> IrEmitter::EmitVectorizedReduce(
     int64 dimension = LayoutUtil::Minor(reduce->shape().layout(), i);
     int64 start_index = 0;
     int64 end_index = reduce->shape().dimensions(dimension);
-    std::unique_ptr<llvm_ir::ForLoop> loop =
-        loop_nest.AddLoop(start_index, end_index,
-                          tensorflow::strings::Printf("dim.%lld", dimension));
+    std::unique_ptr<llvm_ir::ForLoop> loop = loop_nest.AddLoop(
+        start_index, end_index, absl::StrFormat("dim.%d", dimension));
     array_index[dimension] = loop->GetIndVarValue();
   }
 
@@ -1686,9 +1793,9 @@ StatusOr<bool> IrEmitter::EmitVectorizedReduce(
     int64 start_index = 0;
     int64 end_index = (innermost_dimension_size / vectorization_factor) *
                       vectorization_factor;
-    std::unique_ptr<llvm_ir::ForLoop> loop = loop_nest.AddLoop(
-        start_index, end_index, vectorization_factor,
-        tensorflow::strings::Printf("dim.%lld", innermost_dimension));
+    std::unique_ptr<llvm_ir::ForLoop> loop =
+        loop_nest.AddLoop(start_index, end_index, vectorization_factor,
+                          absl::StrFormat("dim.%d", innermost_dimension));
     array_index[innermost_dimension] = loop->GetIndVarValue();
 
     SetToFirstInsertPoint(loop->GetBodyBasicBlock(), &b_);
@@ -1750,10 +1857,7 @@ StatusOr<llvm::Value*> IrEmitter::EmitTargetElementLoopBodyForReduce(
     HloReduceInstruction* reduce, const llvm_ir::IrArray::Index& index) {
   const HloInstruction* arg = reduce->mutable_operand(0);
   const HloInstruction* init_value = reduce->mutable_operand(1);
-  gtl::ArraySlice<int64> dimensions(reduce->dimensions());
-  HloComputation* function = reduce->to_apply();
-  // The called computation should have been emitted previously.
-  llvm::Function* reducer_function = FindOrDie(emitted_functions_, function);
+  absl::Span<const int64> dimensions(reduce->dimensions());
 
   // Initialize an accumulator with init_value.
   PrimitiveType accumulator_type = reduce->shape().element_type();
@@ -1761,8 +1865,8 @@ StatusOr<llvm::Value*> IrEmitter::EmitTargetElementLoopBodyForReduce(
       llvm_ir::PrimitiveTypeToIrType(accumulator_type, module_), "accumulator",
       &b_, MinimumAlignmentForPrimitiveType(accumulator_type));
   llvm::Value* init_value_addr = GetEmittedValueFor(init_value);
-  llvm::Value* load_init_value = b_.CreateLoad(init_value_addr);
-  b_.CreateStore(load_init_value, accumulator_addr);
+  llvm::Value* load_init_value = Load(init_value_addr);
+  Store(load_init_value, accumulator_addr);
 
   // The enclosing loops go over all the target elements. Now we have to compute
   // the actual target element. For this, we build a new loop nest to iterate
@@ -1793,21 +1897,24 @@ StatusOr<llvm::Value*> IrEmitter::EmitTargetElementLoopBodyForReduce(
   CHECK(index.end() == it);
 
   // Apply the reduction function to the loaded value.
-  llvm::Value* input_address =
-      arg_array.EmitArrayElementAddress(input_index, &b_);
-  llvm::Value* result = EmitElementFunctionCall(
-      reducer_function, reduce->shape(), {accumulator_addr, input_address},
+  llvm::Value* input_element = arg_array.EmitReadArrayElement(input_index, &b_);
+  llvm::Value* result = EmitThreadLocalCall(
+      *reduce->to_apply(), {Load(accumulator_addr), input_element},
       "reduce_function");
-  b_.CreateStore(result, accumulator_addr);
+  Store(result, accumulator_addr);
 
   SetToFirstInsertPoint(loops.GetOuterLoopExitBasicBlock(), &b_);
-  return b_.CreateLoad(accumulator_addr);
+  return Load(accumulator_addr);
 }
 
 Status IrEmitter::HandleReduce(HloInstruction* reduce) {
+  // TODO(b/112040122): Support variadic reduce.
+  if (!ShapeUtil::IsArray(reduce->shape())) {
+    return Unimplemented("Variadic reduce is not supported on CPU");
+  }
   auto arg = reduce->mutable_operand(0);
   auto init_value = reduce->mutable_operand(1);
-  gtl::ArraySlice<int64> dimensions(reduce->dimensions());
+  absl::Span<const int64> dimensions(reduce->dimensions());
   HloComputation* function = reduce->to_apply();
   if (!options::VectorizedReduceDisabled(hlo_module_config_)) {
     string vectorization_failure_reason;
@@ -1840,6 +1947,10 @@ Status IrEmitter::HandleSend(HloInstruction* send) {
 Status IrEmitter::HandleSendDone(HloInstruction* send_done) {
   // TODO(b/33942983): Support Send/Recv on CPU.
   return Unimplemented("Send-done is not implemented on CPU.");
+}
+
+Status IrEmitter::HandleScatter(HloInstruction*) {
+  return Unimplemented("Scatter is not implemented on CPUs.");
 }
 
 Status IrEmitter::HandleSlice(HloInstruction* slice) {
@@ -1877,7 +1988,7 @@ Status IrEmitter::HandleSlice(HloInstruction* slice) {
   //
   // * Implement the memcpy within the innermost loop.
 
-  gtl::FlatSet<int64> inner_dims;
+  absl::flat_hash_set<int64> inner_dims;
   for (int64 dim : LayoutUtil::MinorToMajor(layout)) {
     if (operand->shape().dimensions(dim) != slice->shape().dimensions(dim)) {
       break;
@@ -2031,7 +2142,7 @@ Status IrEmitter::HandlePad(HloInstruction* pad) {
       [this, pad](const llvm_ir::IrArray::Index& target_index) {
         const HloInstruction* padding_value = pad->operand(1);
         llvm::Value* padding_value_addr = GetEmittedValueFor(padding_value);
-        return b_.CreateLoad(padding_value_addr);
+        return Load(padding_value_addr);
       }));
 
   // Create a loop to iterate over the operand elements and update the output
@@ -2053,10 +2164,10 @@ Status IrEmitter::HandlePad(HloInstruction* pad) {
   const PaddingConfig& padding_config = pad->padding_config();
   llvm_ir::IrArray::Index output_index(operand_index.GetType());
   for (size_t i = 0; i < operand_index.size(); ++i) {
-    llvm::Value* offset = b_.CreateMul(
-        operand_index[i],
-        b_.getInt64(padding_config.dimensions(i).interior_padding() + 1));
-    llvm::Value* index = b_.CreateAdd(
+    llvm::Value* offset =
+        Mul(operand_index[i],
+            b_.getInt64(padding_config.dimensions(i).interior_padding() + 1));
+    llvm::Value* index = Add(
         offset, b_.getInt64(padding_config.dimensions(i).edge_padding_low()));
     output_index.push_back(index);
   }
@@ -2134,21 +2245,16 @@ Status IrEmitter::HandleCall(HloInstruction* call) {
   HloComputation* computation = call->to_apply();
   llvm::Function* call_ir_function = FindOrDie(emitted_functions_, computation);
 
-  std::vector<llvm::Value*> parameter_addresses;
-  for (const HloInstruction* operand : call->operands()) {
-    parameter_addresses.push_back(GetEmittedValueFor(operand));
-  }
-
   TF_RETURN_IF_ERROR(EmitTargetAddressForOp(call));
 
   if (!computation->root_instruction()->outer_dimension_partitions().empty()) {
     // ParallelTaskAssignment assigned partitions, emit call to
     // ParallelForkJoin.
     std::vector<llvm::Value*> call_args = GetArrayFunctionCallArguments(
-        parameter_addresses, &b_, computation->name(),
+        {}, &b_, computation->name(),
         /*return_value_buffer=*/emitted_value_[call],
         /*exec_run_options_arg=*/GetExecutableRunOptionsArgument(),
-        /*temp_buffers_arg=*/GetTempBuffersArgument(),
+        /*buffer_table_arg=*/GetBufferTableArgument(),
         /*profile_counters_arg=*/GetProfileCountersArgument());
 
     HloInstruction* root = computation->root_instruction();
@@ -2156,16 +2262,15 @@ Status IrEmitter::HandleCall(HloInstruction* call) {
         call_args, root->shape(), root->outer_dimension_partitions(), &b_,
         call_ir_function, computation->name()));
   } else {
-    EmitArrayFunctionCallInto(call_ir_function, parameter_addresses,
-                              emitted_value_[call], computation->name());
+    EmitGlobalCall(*computation, computation->name());
   }
 
   return Status::OK();
 }
 
 Status IrEmitter::HandleCustomCall(HloInstruction* custom_call) {
-  gtl::ArraySlice<HloInstruction*> operands(custom_call->operands());
-  tensorflow::StringPiece custom_call_target(custom_call->custom_call_target());
+  absl::Span<HloInstruction* const> operands(custom_call->operands());
+  absl::string_view custom_call_target(custom_call->custom_call_target());
   llvm::Type* i8_ptr_type = b_.getInt8PtrTy();
   llvm::AllocaInst* operands_alloca =
       llvm_ir::EmitAllocaAtFunctionEntryWithCount(
@@ -2173,10 +2278,10 @@ Status IrEmitter::HandleCustomCall(HloInstruction* custom_call) {
   for (size_t i = 0; i < operands.size(); ++i) {
     const HloInstruction* operand = operands[i];
     llvm::Value* operand_as_i8ptr =
-        b_.CreatePointerCast(GetEmittedValueFor(operand), i8_ptr_type);
+        PointerCast(GetEmittedValueFor(operand), i8_ptr_type);
     llvm::Value* slot_in_operands_alloca =
-        b_.CreateInBoundsGEP(operands_alloca, {b_.getInt64(i)});
-    b_.CreateStore(operand_as_i8ptr, slot_in_operands_alloca);
+        InBoundsGEP(operands_alloca, {b_.getInt64(i)});
+    Store(operand_as_i8ptr, slot_in_operands_alloca);
   }
   auto* custom_call_ir_function =
       llvm::cast<llvm::Function>(module_->getOrInsertFunction(
@@ -2188,9 +2293,9 @@ Status IrEmitter::HandleCustomCall(HloInstruction* custom_call) {
 
   TF_RETURN_IF_ERROR(EmitTargetAddressForOp(custom_call));
   auto* output_address_arg =
-      b_.CreatePointerCast(GetEmittedValueFor(custom_call), i8_ptr_type);
+      PointerCast(GetEmittedValueFor(custom_call), i8_ptr_type);
 
-  b_.CreateCall(custom_call_ir_function, {output_address_arg, operands_alloca});
+  Call(custom_call_ir_function, {output_address_arg, operands_alloca});
 
   return Status::OK();
 }
@@ -2217,8 +2322,8 @@ Status IrEmitter::HandleWhile(HloInstruction* xla_while) {
             return InternalError(
                 "instruction %s %s does not share slice with "
                 "instruction %s %s",
-                a->ToString().c_str(), slice_a.ToString().c_str(),
-                b->ToString().c_str(), slice_b.ToString().c_str());
+                a->ToString(), slice_a.ToString(), b->ToString(),
+                slice_b.ToString());
           }
           return Status::OK();
         };
@@ -2238,12 +2343,6 @@ Status IrEmitter::HandleWhile(HloInstruction* xla_while) {
   const HloInstruction* init = xla_while->operand(0);
   emitted_value_[xla_while] = GetEmittedValueFor(init);
 
-  // The called computation should have been emitted previously.
-  llvm::Function* condition_ir_function =
-      FindOrDie(emitted_functions_, condition);
-  llvm::Function* body_ir_function =
-      FindOrDie(emitted_functions_, xla_while->while_body());
-
   // Generating:
   //   while (Condition(while_result)) {
   //     // CopyInsertion pass inserts copies which enable 'while_result' to
@@ -2255,17 +2354,14 @@ Status IrEmitter::HandleWhile(HloInstruction* xla_while) {
   llvm::BasicBlock* header_bb = llvm::BasicBlock::Create(
       module_->getContext(), AsStringRef(IrName(xla_while, "header")),
       compute_function_->function());
-  b_.CreateBr(header_bb);
+  Br(header_bb);
   b_.SetInsertPoint(header_bb);
 
   // Calls the condition function to determine whether to proceed with the
   // body.  It must return a bool, so use the scalar call form.
-  llvm::Value* while_result = GetEmittedValueFor(xla_while);
-  llvm::Value* while_condition = EmitElementFunctionCall(
-      condition_ir_function, condition->root_instruction()->shape(),
-      {while_result}, IrName(xla_while, "cond"));
-  llvm::Value* while_predicate = b_.CreateICmpNE(
-      while_condition,
+  EmitGlobalCall(*xla_while->while_condition(), IrName(xla_while, "cond"));
+  llvm::Value* while_predicate = ICmpNE(
+      Load(GetBufferForGlobalCallReturnValue(*xla_while->while_condition())),
       llvm::ConstantInt::get(llvm_ir::PrimitiveTypeToIrType(PRED, module_), 0));
 
   // Branches to the body or to the while exit depending on the condition.
@@ -2274,16 +2370,16 @@ Status IrEmitter::HandleWhile(HloInstruction* xla_while) {
       compute_function_->function());
   llvm::BasicBlock* exit_bb = llvm::BasicBlock::Create(
       module_->getContext(), AsStringRef(IrName(xla_while, "exit")));
-  b_.CreateCondBr(while_predicate, body_bb, exit_bb);
+  CondBr(while_predicate, body_bb, exit_bb);
 
   // Calls the body function from the body block.
   b_.SetInsertPoint(body_bb);
 
   // Calls the body function.
-  EmitArrayFunctionCallInto(body_ir_function, {while_result}, while_result,
-                            IrName(xla_while, "body"));
+  EmitGlobalCall(*xla_while->while_body(), IrName(xla_while, "body"));
+
   // Finishes with a branch back to the header.
-  b_.CreateBr(header_bb);
+  Br(header_bb);
 
   // Adds the exit block to the function and sets the insert point there.
   compute_function_->function()->getBasicBlockList().push_back(exit_bb);
@@ -2293,7 +2389,7 @@ Status IrEmitter::HandleWhile(HloInstruction* xla_while) {
 }
 
 StatusOr<bool> IrEmitter::EmitFastConcatenate(
-    HloInstruction* concatenate, gtl::ArraySlice<HloInstruction*> operands,
+    HloInstruction* concatenate, absl::Span<HloInstruction* const> operands,
     string* failure_reason) {
   if (ShouldEmitParallelLoopFor(*concatenate)) {
     *failure_reason =
@@ -2330,7 +2426,6 @@ StatusOr<bool> IrEmitter::EmitFastConcatenate(
                                 output_min2maj.end());
 
   llvm::Type* i8_ptr_type = b_.getInt8PtrTy();
-  llvm::Type* i8_type = b_.getInt8Ty();
 
   TF_RETURN_IF_ERROR(EmitTargetAddressForOp(concatenate));
   llvm_ir::IrArray target_array = GetIrArrayFor(concatenate);
@@ -2353,9 +2448,9 @@ StatusOr<bool> IrEmitter::EmitFastConcatenate(
   // Contiguous subregions from each operand to the concatenate contribute to a
   // contiguous subregion in the target buffer starting at target_region_begin.
   llvm::Value* target_region_begin =
-      b_.CreateBitCast(target_array.EmitArrayElementAddress(
-                           outer_dims_index, &b_, "target_region"),
-                       i8_ptr_type);
+      BitCast(target_array.EmitArrayElementAddress(outer_dims_index, &b_,
+                                                   "target_region"),
+              i8_ptr_type);
   int64 byte_offset_into_target_region = 0;
 
   int64 inner_dims_product =
@@ -2369,13 +2464,12 @@ StatusOr<bool> IrEmitter::EmitFastConcatenate(
   for (HloInstruction* operand : operands) {
     const Shape& input_shape = operand->shape();
     llvm_ir::IrArray source_array = GetIrArrayFor(operand);
-    llvm::Value* copy_source_address = b_.CreateBitCast(
+    llvm::Value* copy_source_address = BitCast(
         source_array.EmitArrayElementAddress(outer_dims_index, &b_, "src_addr"),
         i8_ptr_type);
 
     llvm::Value* copy_target_address =
-        b_.CreateGEP(i8_type, target_region_begin,
-                     b_.getInt64(byte_offset_into_target_region));
+        GEP(target_region_begin, b_.getInt64(byte_offset_into_target_region));
 
     EmitTransferElements(
         copy_target_address, copy_source_address,
@@ -2407,15 +2501,15 @@ void IrEmitter::EmitTransferElements(llvm::Value* target, llvm::Value* source,
       llvm_ir::PrimitiveTypeToIrType(primitive_type, module_));
 
   if (element_count == 1) {
-    auto* load_instruction = b_.CreateAlignedLoad(
-        b_.CreateBitCast(source, primitive_ptr_type), element_alignment);
+    auto* load_instruction =
+        AlignedLoad(BitCast(source, primitive_ptr_type), element_alignment);
     source_array.AnnotateLoadStoreInstructionWithMetadata(load_instruction);
-    auto* store_instruction = b_.CreateAlignedStore(
-        load_instruction, b_.CreateBitCast(target, primitive_ptr_type),
-        element_alignment);
+    auto* store_instruction =
+        AlignedStore(load_instruction, BitCast(target, primitive_ptr_type),
+                     element_alignment);
     target_array.AnnotateLoadStoreInstructionWithMetadata(store_instruction);
   } else {
-    auto* memcpy_instruction = b_.CreateMemCpy(
+    auto* memcpy_instruction = MemCpy(
         target, /*DstAlign=*/element_alignment, source,
         /*SrcAlign=*/element_alignment, element_count * primitive_type_size);
 
@@ -2431,7 +2525,7 @@ void IrEmitter::EmitTransferElements(llvm::Value* target, llvm::Value* source,
 }
 
 Status IrEmitter::HandleConcatenate(HloInstruction* concatenate) {
-  gtl::ArraySlice<HloInstruction*> operands(concatenate->operands());
+  absl::Span<HloInstruction* const> operands(concatenate->operands());
   string failure_reason;
   TF_ASSIGN_OR_RETURN(
       bool successful,
@@ -2449,8 +2543,6 @@ Status IrEmitter::HandleConcatenate(HloInstruction* concatenate) {
 
 Status IrEmitter::HandleConditional(HloInstruction* conditional) {
   auto pred = conditional->operand(0);
-  auto true_arg = conditional->operand(1);
-  auto false_arg = conditional->operand(2);
   TF_RET_CHECK(ShapeUtil::IsScalar(pred->shape()) &&
                pred->shape().element_type() == PRED)
       << "Predicate on a Conditional must be bool; got: "
@@ -2472,22 +2564,16 @@ Status IrEmitter::HandleConditional(HloInstruction* conditional) {
       << " and "
       << ShapeUtil::HumanString(false_computation->root_instruction()->shape());
 
-  llvm::Function* true_function =
-      FindOrDie(emitted_functions_, true_computation);
-  llvm::Function* false_function =
-      FindOrDie(emitted_functions_, false_computation);
-
   TF_RETURN_IF_ERROR(EmitTargetAddressForOp(conditional));
-  llvm::Value* conditional_result = GetEmittedValueFor(conditional);
 
   // Generating:
   //   if (pred)
   //     cond_result = true_computation(true_operand)
   //   else
   //     cond_result = false_computation(false_operand)
-  llvm::LoadInst* pred_value = b_.CreateLoad(
-      GetIrArrayFor(pred).GetBasePointer(), "load_predicate_value");
-  llvm::Value* pred_cond = b_.CreateICmpNE(
+  llvm::LoadInst* pred_value =
+      Load(GetIrArrayFor(pred).GetBasePointer(), "load_predicate_value");
+  llvm::Value* pred_cond = ICmpNE(
       pred_value,
       llvm::ConstantInt::get(llvm_ir::PrimitiveTypeToIrType(PRED, module_), 0),
       "boolean_predicate");
@@ -2495,12 +2581,12 @@ Status IrEmitter::HandleConditional(HloInstruction* conditional) {
       llvm_ir::EmitIfThenElse(pred_cond, "conditional", &b_);
 
   SetToFirstInsertPoint(if_data.true_block, &b_);
-  EmitArrayFunctionCallInto(true_function, {GetEmittedValueFor(true_arg)},
-                            conditional_result, IrName(conditional, "_true"));
+  EmitGlobalCall(*conditional->true_computation(),
+                 IrName(conditional, "_true"));
 
   SetToFirstInsertPoint(if_data.false_block, &b_);
-  EmitArrayFunctionCallInto(false_function, {GetEmittedValueFor(false_arg)},
-                            conditional_result, IrName(conditional, "_false"));
+  EmitGlobalCall(*conditional->false_computation(),
+                 IrName(conditional, "_false"));
 
   SetToFirstInsertPoint(if_data.after_block, &b_);
   return Status::OK();
@@ -2511,11 +2597,6 @@ Status IrEmitter::HandleAfterAll(HloInstruction* gen_token) {
   // No code to generate, but we need to emit an address for book-keeping.
   TF_RETURN_IF_ERROR(EmitTargetAddressForOp(gen_token));
   return Status::OK();
-}
-
-Status IrEmitter::HandleIota(HloInstruction* iota) {
-  // TODO(b/64798317): implement iota on CPU.
-  return Unimplemented("Iota is not implemented on CPU.");
 }
 
 Status IrEmitter::HandleRng(HloInstruction* rng) {
@@ -2574,8 +2655,8 @@ llvm::Value* IrEmitter::GetProfileCounterCommon(
 
   int64 prof_counter_idx = it->second;
   string counter_name = IrName("prof_counter", hlo.name());
-  return b_.CreateGEP(GetProfileCountersArgument(),
-                      b_.getInt64(prof_counter_idx), AsStringRef(counter_name));
+  return GEP(GetProfileCountersArgument(), b_.getInt64(prof_counter_idx),
+             AsStringRef(counter_name));
 }
 
 void IrEmitter::ProfilingState::UpdateProfileCounter(llvm::IRBuilder<>* b,
@@ -2693,52 +2774,81 @@ llvm::Value* IrEmitter::GetProfileCountersArgument() {
   return compute_function_->profile_counters_arg();
 }
 
-llvm::Value* IrEmitter::GetTempBuffersArgument() {
-  return compute_function_->temp_buffers_arg();
+llvm::Value* IrEmitter::GetBufferTableArgument() {
+  return compute_function_->buffer_table_arg();
 }
 
 llvm::Value* IrEmitter::GetExecutableRunOptionsArgument() {
   return compute_function_->exec_run_options_arg();
 }
 
-llvm::Value* IrEmitter::EmitTempBufferPointer(
+llvm::Value* IrEmitter::EmitThreadLocalBufferPointer(
     const BufferAllocation::Slice& slice, const Shape& target_shape) {
-  llvm::Type* element_type = IrShapeType(target_shape);
-  // The alignment and number of bytes within the temporary buffer is determined
-  // by the maximal shape as determined by buffer assignment.
-  const BufferAllocation& allocation = assignment_.GetAllocation(slice.index());
-  if (allocation.is_thread_local()) {
+  const BufferAllocation& allocation = *slice.allocation();
+  llvm::Value* tempbuf_address = [&]() -> llvm::Value* {
+    if (slice == computation_root_allocation_) {
+      llvm::Argument* retval = compute_function_->result_arg();
+      llvm::AttrBuilder attr_builder;
+      attr_builder.addAlignmentAttr(MinimumAlignmentForShape(target_shape));
+      attr_builder.addDereferenceableAttr(ByteSizeOf(target_shape));
+      retval->addAttrs(attr_builder);
+      return retval;
+    }
+
+    auto param_it =
+        computation_parameter_allocations_.find(slice.allocation()->index());
+    if (param_it != computation_parameter_allocations_.end()) {
+      int64 param_number = param_it->second;
+      // We have to access the parameter at offset param_number in the params
+      // array. The code generated here is equivalent to this C code:
+      //
+      //   i8* param_address_untyped = params[param_number];
+      //   Param* param_address_typed = (Param*)param_address_untyped;
+      //
+      // Where Param is the actual element type of the underlying buffer (for
+      // example, float for an XLA F32 element type).
+      llvm::Value* params = compute_function_->parameters_arg();
+      llvm::Value* param_address_offset =
+          llvm_ir::EmitBufferIndexingGEP(params, param_number, &b_);
+      llvm::LoadInst* param_address_untyped = Load(param_address_offset);
+
+      if (!ShapeUtil::IsOpaque(target_shape)) {
+        AttachAlignmentMetadataForLoad(param_address_untyped, target_shape);
+        AttachDereferenceableMetadataForLoad(param_address_untyped,
+                                             target_shape);
+      }
+      return param_address_untyped;
+    }
+
     // Thread-local allocations should only be assigned a single buffer.
     const auto& assigned_buffers = allocation.assigned_buffers();
     CHECK_EQ(1, assigned_buffers.size());
     const Shape& shape = assigned_buffers.begin()->first->shape();
 
-    llvm::AllocaInst*& tempbuf_address =
-        thread_local_buffers_[{b_.GetInsertBlock()->getParent(), slice}];
-    if (tempbuf_address == nullptr) {
-      tempbuf_address = llvm_ir::EmitAllocaAtFunctionEntry(
-          IrShapeType(shape),
-          tensorflow::strings::StrCat("thread_local", slice.ToString()), &b_,
-          MinimumAlignmentForShape(target_shape));
+    std::pair<llvm::Function*, BufferAllocation::Slice> key = {
+        compute_function_->function(), slice};
+    auto buf_it = thread_local_buffers_.find(key);
+    if (buf_it == thread_local_buffers_.end()) {
+      llvm::Value* buffer = llvm_ir::EmitAllocaAtFunctionEntry(
+          IrShapeType(shape), absl::StrCat("thread_local", slice.ToString()),
+          &b_, MinimumAlignmentForShape(target_shape));
+      auto it_inserted_pair = thread_local_buffers_.insert({key, buffer});
+      CHECK(it_inserted_pair.second);
+      buf_it = it_inserted_pair.first;
     }
-    return b_.CreateBitCast(tempbuf_address, element_type->getPointerTo());
-  }
+    return buf_it->second;
+  }();
+  return BitCast(tempbuf_address, IrShapeType(target_shape)->getPointerTo());
+}
 
-  if (allocation.is_constant()) {
-    return FindOrDie(constant_buffer_to_global_, allocation.index());
-  }
-
+llvm::Value* IrEmitter::EmitGlobalBufferPointer(
+    const BufferAllocation::Slice& slice, const Shape& target_shape) {
+  const BufferAllocation& allocation = *slice.allocation();
   llvm::Value* tempbuf_address_ptr = llvm_ir::EmitBufferIndexingGEP(
-      GetTempBuffersArgument(), slice.index(), &b_);
-  llvm::LoadInst* tempbuf_address_base = b_.CreateLoad(tempbuf_address_ptr);
-  if (is_top_level_computation_ &&
-      hlo_module_config_.debug_options()
+      GetBufferTableArgument(), slice.index(), &b_);
+  llvm::LoadInst* tempbuf_address_base = Load(tempbuf_address_ptr);
+  if (hlo_module_config_.debug_options()
           .xla_llvm_enable_invariant_load_metadata()) {
-    // In the entry computation the parameter slots in the %params argument are
-    // invariant through program execution.  In computations that are called
-    // from the entry computation (via kWhile, kCall and kConditional) the
-    // parameter slots are *not* invariant since they're written to by their
-    // callers.
     tempbuf_address_base->setMetadata(
         llvm::LLVMContext::MD_invariant_load,
         llvm::MDNode::get(tempbuf_address_base->getContext(), /*MDs=*/{}));
@@ -2750,88 +2860,28 @@ llvm::Value* IrEmitter::EmitTempBufferPointer(
   if (slice.offset() > 0) {
     // Adjust the address to account for the slice offset.
     tempbuf_address_untyped =
-        b_.CreateInBoundsGEP(tempbuf_address_base, b_.getInt64(slice.offset()));
+        InBoundsGEP(tempbuf_address_base, b_.getInt64(slice.offset()));
   }
-  return b_.CreateBitCast(tempbuf_address_untyped,
-                          element_type->getPointerTo());
+  return BitCast(tempbuf_address_untyped,
+                 IrShapeType(target_shape)->getPointerTo());
 }
 
-// Emits a function call returning a single array element.  Allocates space
-// for a single element_type value, and loads it after call.
-llvm::Value* IrEmitter::EmitElementFunctionCall(
-    llvm::Function* function, const Shape& return_shape,
-    gtl::ArraySlice<llvm::Value*> parameter_addresses,
-    tensorflow::StringPiece name) {
-  llvm::Value* return_value_buffer = EmitArrayFunctionCall(
-      function, return_shape, 1, parameter_addresses, name);
-  return b_.CreateLoad(
-      return_value_buffer,
-      AsStringRef(tensorflow::strings::StrCat(name, "_return_value")));
-}
-
-// Emits a core function call based on the following pseudo-code.
-//
-//   char** parameter_addresses_buffer =
-//       allocate buffer with a pointer for each parameter to the function
-//   for each parameter index, i.e. for i = 0, ..., #parameters:
-//     parameter_addresses_buffer[i] = parameter_addresses[i]
-//   call function(return_value_buffer,
-//                 parameter_addresses_buffer,
-//                 temps)
-//   return return_value_buffer  -- address of the return value.
-void IrEmitter::EmitArrayFunctionCallInto(
-    llvm::Function* function, gtl::ArraySlice<llvm::Value*> parameter_addresses,
-    llvm::Value* return_value_buffer, tensorflow::StringPiece name) {
-  b_.CreateCall(function,
-                GetArrayFunctionCallArguments(
-                    parameter_addresses, &b_, name,
-                    /*return_value_buffer=*/return_value_buffer,
-                    /*exec_run_options_arg=*/GetExecutableRunOptionsArgument(),
-                    /*temp_buffers_arg=*/GetTempBuffersArgument(),
-                    /*profile_counters_arg=*/GetProfileCountersArgument()));
-}
-
-llvm::Value* IrEmitter::EmitArrayFunctionCall(
-    llvm::Function* function, const Shape& return_shape, int64 element_count,
-    gtl::ArraySlice<llvm::Value*> parameter_addresses,
-    tensorflow::StringPiece name) {
-  llvm::Value* elements =
-      llvm::ConstantInt::get(b_.getInt64Ty(), element_count);
-  PrimitiveType return_type = return_shape.element_type();
-  llvm::Value* return_value_buffer =
-      llvm_ir::EmitAllocaAtFunctionEntryWithCount(
-          llvm_ir::PrimitiveTypeToIrType(return_type, module_), elements,
-          tensorflow::strings::StrCat(name, "_return_value_address"), &b_,
-          MinimumAlignmentForPrimitiveType(return_type));
-  EmitArrayFunctionCallInto(function, parameter_addresses, return_value_buffer,
-                            name);
-  return return_value_buffer;
+llvm::Value* IrEmitter::EmitBufferPointer(const BufferAllocation::Slice& slice,
+                                          const Shape& target_shape) {
+  if (slice.allocation()->is_thread_local()) {
+    return EmitThreadLocalBufferPointer(slice, target_shape);
+  } else if (slice.allocation()->is_constant()) {
+    return FindOrDie(constant_buffer_to_global_, slice.allocation()->index());
+  } else {
+    return EmitGlobalBufferPointer(slice, target_shape);
+  }
 }
 
 Status IrEmitter::EmitTargetAddressForOp(const HloInstruction* op) {
-  llvm::Value* addr;
   const Shape& target_shape = op->shape();
-  if (op == op->parent()->root_instruction()) {
-    // For the root node, we write directly to the output buffer of the
-    // function.
-    llvm::Argument* retval = compute_function_->result_arg();
-    if ((ShapeUtil::IsArray(target_shape) &&
-         !ShapeUtil::IsZeroElementArray(target_shape)) ||
-        (ShapeUtil::IsTuple(target_shape) &&
-         !ShapeUtil::IsEmptyTuple(target_shape))) {
-      llvm::AttrBuilder attr_builder;
-      attr_builder.addAlignmentAttr(MinimumAlignmentForShape(target_shape));
-      attr_builder.addDereferenceableAttr(ByteSizeOf(target_shape));
-      retval->addAttrs(attr_builder);
-    }
-    addr = b_.CreateBitCast(retval, IrShapeType(target_shape)->getPointerTo());
-  } else {
-    // For other nodes, we need the temporary buffer allocated for this node to
-    // write the result into.
-    TF_ASSIGN_OR_RETURN(const BufferAllocation::Slice slice,
-                        assignment_.GetUniqueTopLevelSlice(op));
-    addr = EmitTempBufferPointer(slice, target_shape);
-  }
+  TF_ASSIGN_OR_RETURN(const BufferAllocation::Slice slice,
+                      assignment_.GetUniqueTopLevelSlice(op));
+  llvm::Value* addr = EmitBufferPointer(slice, target_shape);
   addr->setName(AsStringRef(IrName(op)));
   emitted_value_[op] = addr;
   return Status::OK();
@@ -2844,7 +2894,7 @@ Status IrEmitter::EmitTargetElementLoop(
 }
 
 Status IrEmitter::EmitTargetElementLoop(
-    HloInstruction* target_op, tensorflow::StringPiece desc,
+    HloInstruction* target_op, absl::string_view desc,
     const llvm_ir::ElementGenerator& element_generator) {
   VLOG(2) << "EmitTargetElementLoop: " << target_op->ToString();
 
@@ -2860,8 +2910,7 @@ Status IrEmitter::EmitTargetElementLoop(
       TF_ASSIGN_OR_RETURN(BufferAllocation::Slice slice,
                           assignment_.GetUniqueSlice(target_op, {i}));
       const Shape& element_shape = ShapeUtil::GetSubshape(target_shape, {i});
-      llvm::Value* op_target_address =
-          EmitTempBufferPointer(slice, element_shape);
+      llvm::Value* op_target_address = EmitBufferPointer(slice, element_shape);
       output_arrays.push_back(
           llvm_ir::IrArray(op_target_address, element_shape));
     }
@@ -2899,15 +2948,15 @@ Status IrEmitter::EmitMemcpy(const HloInstruction& source,
   llvm::Value* destination_value = GetEmittedValueFor(&destination);
   int64 source_size = ByteSizeOf(source.shape());
   // TODO(b/63762267): Be more aggressive about specifying alignment.
-  b_.CreateMemCpy(destination_value, /*DstAlign=*/1, source_value,
-                  /*SrcAlign=*/1, source_size);
+  MemCpy(destination_value, /*DstAlign=*/1, source_value,
+         /*SrcAlign=*/1, source_size);
   return Status::OK();
 }
 
 Status IrEmitter::ElementTypesSameAndSupported(
     const HloInstruction& instruction,
-    gtl::ArraySlice<const HloInstruction*> operands,
-    gtl::ArraySlice<PrimitiveType> supported_types) {
+    absl::Span<const HloInstruction* const> operands,
+    absl::Span<const PrimitiveType> supported_types) {
   for (auto operand : operands) {
     TF_RET_CHECK(
         ShapeUtil::SameElementType(operands[0]->shape(), operand->shape()));
@@ -2918,8 +2967,8 @@ Status IrEmitter::ElementTypesSameAndSupported(
   if (std::find(supported_types.begin(), supported_types.end(),
                 primitive_type) == supported_types.end()) {
     return Unimplemented("unsupported operand type %s in op %s",
-                         PrimitiveType_Name(primitive_type).c_str(),
-                         HloOpcodeString(instruction.opcode()).c_str());
+                         PrimitiveType_Name(primitive_type),
+                         HloOpcodeString(instruction.opcode()));
   }
   return Status::OK();
 }
@@ -2936,20 +2985,71 @@ Status IrEmitter::DefaultAction(HloInstruction* hlo) {
       hlo, elemental_emitter.MakeElementGenerator(hlo, operand_to_generator));
 }
 
-StatusOr<llvm::Value*> IrEmitter::EmitScalarCall(
-    PrimitiveType return_type, HloComputation* computation,
-    const std::vector<llvm::Value*>& arguments, tensorflow::StringPiece name) {
-  llvm::Function* llvm_function = FindOrDie(emitted_functions_, computation);
-  std::vector<llvm::Value*> argument_addrs;
-  for (auto argument : arguments) {
-    llvm::Value* argument_addr = llvm_ir::EmitAllocaAtFunctionEntry(
-        argument->getType(), "arg_addr", &b_);
-    b_.CreateStore(argument, argument_addr);
-    argument_addrs.push_back(argument_addr);
+llvm::Value* IrEmitter::EmitThreadLocalCall(
+    const HloComputation& callee, absl::Span<llvm::Value* const> parameters,
+    absl::string_view name) {
+  CHECK(absl::c_binary_search(thread_local_computations_, &callee));
+
+  const Shape& return_shape = callee.root_instruction()->shape();
+
+  // Lifting this restriction to allow "small" arrays should be easy.  Allowing
+  // larger arrays is difficult because we allocate the buffer for this return
+  // value on the stack.
+  CHECK(ShapeUtil::IsScalar(return_shape));
+
+  PrimitiveType return_type = return_shape.element_type();
+
+  std::vector<llvm::Value*> parameter_addrs;
+  for (llvm::Value* parameter : parameters) {
+    CHECK(!parameter->getType()->isPointerTy());
+    llvm::Value* parameter_addr = llvm_ir::EmitAllocaAtFunctionEntry(
+        parameter->getType(), "arg_addr", &b_);
+    Store(parameter, parameter_addr);
+    parameter_addrs.push_back(parameter_addr);
   }
-  return EmitElementFunctionCall(llvm_function,
-                                 ShapeUtil::MakeShape(return_type, {}),
-                                 argument_addrs, name);
+
+  llvm::Value* return_value_buffer = llvm_ir::EmitAllocaAtFunctionEntry(
+      llvm_ir::PrimitiveTypeToIrType(return_type, module_),
+      absl::StrCat(name, "_retval_addr"), &b_,
+      MinimumAlignmentForPrimitiveType(return_type));
+
+  Call(FindOrDie(emitted_functions_, &callee),
+       GetArrayFunctionCallArguments(
+           parameter_addrs, &b_, name,
+           /*return_value_buffer=*/return_value_buffer,
+           /*exec_run_options_arg=*/GetExecutableRunOptionsArgument(),
+           /*buffer_table_arg=*/
+           llvm::Constant::getNullValue(b_.getInt8PtrTy()->getPointerTo()),
+           /*profile_counters_arg=*/GetProfileCountersArgument()));
+
+  return Load(return_value_buffer);
 }
+
+void IrEmitter::EmitGlobalCall(const HloComputation& callee,
+                               absl::string_view name) {
+  CHECK(absl::c_binary_search(global_computations_, &callee));
+
+  Call(FindOrDie(emitted_functions_, &callee),
+       GetArrayFunctionCallArguments(
+           /*parameter_addresses=*/{}, &b_, name,
+           /*return_value_buffer=*/
+           llvm::Constant::getNullValue(b_.getInt8PtrTy()),
+           /*exec_run_options_arg=*/GetExecutableRunOptionsArgument(),
+           /*buffer_table_arg=*/GetBufferTableArgument(),
+           /*profile_counters_arg=*/GetProfileCountersArgument()));
+}
+
+llvm::Value* IrEmitter::GetBufferForGlobalCallReturnValue(
+    const HloComputation& callee) {
+  const HloInstruction* root_inst = callee.root_instruction();
+  if (root_inst->opcode() == HloOpcode::kOutfeed) {
+    return llvm::Constant::getNullValue(b_.getInt8PtrTy());
+  }
+
+  const BufferAllocation::Slice root_buffer =
+      assignment_.GetUniqueTopLevelSlice(root_inst).ValueOrDie();
+  return EmitBufferPointer(root_buffer, root_inst->shape());
+}
+
 }  // namespace cpu
 }  // namespace xla

@@ -34,7 +34,7 @@ namespace tensorflow {
 
 const int Graph::kControlSlot = -1;
 
-class NodeProperties {
+struct NodeProperties {
  public:
   NodeProperties(const OpDef* op_def, const NodeDef& node_def,
                  const DataTypeSlice inputs, const DataTypeSlice outputs)
@@ -142,6 +142,19 @@ void Node::Clear() {
   assigned_device_name_index_ = 0;
 }
 
+void Node::UpdateProperties() {
+  DataTypeVector inputs;
+  DataTypeVector outputs;
+  Status status =
+      InOutTypesForNode(props_->node_def, *(props_->op_def), &inputs, &outputs);
+  if (!status.ok()) {
+    LOG(ERROR) << "Failed at updating node: " << status;
+    return;
+  }
+  props_ = std::make_shared<NodeProperties>(props_->op_def, props_->node_def,
+                                            inputs, outputs);
+}
+
 const string& Node::name() const { return props_->node_def.name(); }
 const string& Node::type_string() const { return props_->node_def.op(); }
 const NodeDef& Node::def() const { return props_->node_def; }
@@ -190,6 +203,11 @@ AttrValue* Node::AddAttrHelper(const string& name) {
 void Node::ClearAttr(const string& name) {
   MaybeCopyOnWrite();
   (*props_->node_def.mutable_attr()).erase(name);
+}
+
+void Node::set_name(string name) {
+  MaybeCopyOnWrite();
+  props_->node_def.set_name(std::move(name));
 }
 
 void Node::set_requested_device(const string& device) {
@@ -483,7 +501,7 @@ const Edge* Graph::AddControlEdge(Node* source, Node* dest,
 void Graph::RemoveControlEdge(const Edge* e) {
   if (!e->src_->IsSource() && !e->dst_->IsSink()) {
     e->dst_->MaybeCopyOnWrite();
-    std::string e_src_name = strings::StrCat("^", e->src_->name());
+    string e_src_name = strings::StrCat("^", e->src_->name());
     auto* inputs = e->dst_->props_->node_def.mutable_input();
     for (auto it = inputs->begin(); it != inputs->end(); ++it) {
       if (*it == e_src_name) {
@@ -494,6 +512,15 @@ void Graph::RemoveControlEdge(const Edge* e) {
   }
   RemoveEdge(e);
 }
+
+namespace {
+const Edge* FindEdge(const Node* dst, int index) {
+  for (const Edge* e : dst->in_edges()) {
+    if (e->dst_input() == index) return e;
+  }
+  return nullptr;
+}
+}  // namespace
 
 Status Graph::UpdateEdge(Node* new_src, int new_src_index, Node* dst,
                          int dst_index) {
@@ -510,17 +537,6 @@ Status Graph::UpdateEdge(Node* new_src, int new_src_index, Node* dst,
   (*dst->props_->node_def.mutable_input())[dst_index] =
       strings::StrCat(new_src->name(), ":", new_src_index);
   return Status::OK();
-}
-
-const Edge* Graph::FindEdge(const Node* dst, int index) {
-  for (const Edge* e : edges_) {
-    // edges_ will contain null edges if RemoveEdge() was called.
-    if (e == nullptr) continue;
-    if (e->dst() == dst && e->dst_input() == index) {
-      return e;
-    }
-  }
-  return nullptr;
 }
 
 Status Graph::AddFunctionLibrary(const FunctionDefLibrary& fdef_lib) {
@@ -645,7 +661,7 @@ Status Graph::IsValidNode(const Node* node) const {
 
 Status Graph::IsValidOutputTensor(const Node* node, int idx) const {
   TF_RETURN_IF_ERROR(IsValidNode(node));
-  if (idx >= node->num_outputs()) {
+  if (idx >= node->num_outputs() || idx < 0) {
     return errors::OutOfRange("Node '", node->name(), "' (type: '",
                               node->op_def().name(),
                               "', num of outputs: ", node->num_outputs(),
@@ -656,7 +672,7 @@ Status Graph::IsValidOutputTensor(const Node* node, int idx) const {
 
 Status Graph::IsValidInputTensor(const Node* node, int idx) const {
   TF_RETURN_IF_ERROR(IsValidNode(node));
-  if (idx >= node->num_inputs()) {
+  if (idx >= node->num_inputs() || idx < 0) {
     return errors::OutOfRange("Node '", node->name(), "' (type: '",
                               node->op_def().name(),
                               "', num of inputs: ", node->num_inputs(),
@@ -721,7 +737,7 @@ Status Graph::AddWhileContext(StringPiece frame_name,
                               std::vector<OutputTensor> body_outputs,
                               WhileContext** result) {
   auto pair = while_ctxs_.insert(std::pair<string, WhileContext>(
-      std::string(frame_name),
+      string(frame_name),
       WhileContext(frame_name, std::move(enter_nodes), std::move(exit_nodes),
                    cond_output, std::move(body_inputs),
                    std::move(body_outputs))));
@@ -732,6 +748,14 @@ Status Graph::AddWhileContext(StringPiece frame_name,
   }
   *result = &pair.first->second;
   return Status::OK();
+}
+
+std::unordered_map<string, Node*> Graph::BuildNodeNameIndex() const {
+  std::unordered_map<string, Node*> result;
+  for (Node* n : nodes()) {
+    result[n->name()] = n;
+  }
+  return result;
 }
 
 string Edge::DebugString() const {

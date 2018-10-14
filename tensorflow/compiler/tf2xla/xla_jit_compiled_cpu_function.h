@@ -66,9 +66,11 @@ class XlaJitCompiledCpuFunction {
   // The static data is backed by the rest of the state in this class.
   XlaCompiledCpuFunction::StaticData static_data_;
 
-  // The backing arrays of arg and temp buffer sizes.
-  std::vector<intptr_t> arg_sizes_;
-  std::vector<intptr_t> temp_sizes_;
+  // The backing array for buffer infos.
+  std::vector<cpu_function_runtime::BufferInfo> buffer_infos_;
+
+  // The backing array for the arg index table.
+  std::vector<int32> arg_index_table_;
 
   // The backing arrays of arg and result names. We hold the actual strings in
   // nonempty_*_names_, and hold arrays of pointers in *_names_ for the static

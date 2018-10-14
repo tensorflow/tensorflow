@@ -15,15 +15,17 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_COMMON_RUNTIME_BASE_COLLECTIVE_EXECUTOR_H_
 #define TENSORFLOW_CORE_COMMON_RUNTIME_BASE_COLLECTIVE_EXECUTOR_H_
 
+#include <memory>
 #include <string>
+
 #include "tensorflow/core/common_runtime/buf_rendezvous.h"
 #include "tensorflow/core/framework/collective.h"
 #include "tensorflow/core/framework/device_attributes.pb.h"
 
 namespace tensorflow {
-class Broadcaster;
+class CollectiveImplementation;
 class DeviceMgr;
-class RingReducer;
+class Device;
 
 // Helper interface that aliases regular subfields of a Tensor as separate
 // Tensors for in-place update.
@@ -133,18 +135,8 @@ class BaseCollectiveExecutor : public CollectiveExecutor {
   std::unique_ptr<PerStepCollectiveRemoteAccess> remote_access_;
 
  private:
-  RingReducer* CreateReducer(OpKernelContext* ctx,
-                             OpKernelContext::Params* params,
-                             const CollectiveParams& col_params,
-                             const string& exec_key, int64 step_id,
-                             const Tensor* input, Tensor* output,
-                             string* error);
-
-  Broadcaster* CreateBroadcaster(OpKernelContext* ctx,
-                                 OpKernelContext::Params* params,
-                                 const CollectiveParams& col_params,
-                                 const string& exec_key, int64 step_id,
-                                 Tensor* output, string* error);
+  Status CreateCollective(const CollectiveParams& col_params,
+                          CollectiveImplementationInterface** col_impl);
 };
 
 }  // namespace tensorflow

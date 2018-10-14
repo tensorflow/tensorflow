@@ -19,12 +19,13 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/kernels/data/captured_function.h"
 #include "tensorflow/core/kernels/data/dataset.h"
+#include "tensorflow/core/kernels/data/dataset_utils.h"
 #include "tensorflow/core/kernels/data/parallel_map_iterator.h"
 #include "tensorflow/core/lib/core/error_codes.pb.h"
 #include "tensorflow/core/lib/random/random.h"
 
 namespace tensorflow {
-
+namespace data {
 namespace {
 
 // See documentation in ../ops/dataset_ops.cc for a high-level
@@ -33,54 +34,99 @@ namespace {
 class ParallelMapDatasetOp : public UnaryDatasetOpKernel {
  public:
   explicit ParallelMapDatasetOp(OpKernelConstruction* ctx)
-      : UnaryDatasetOpKernel(ctx),
-        graph_def_version_(ctx->graph_def_version()) {
+      : UnaryDatasetOpKernel(ctx) {
     OP_REQUIRES_OK(ctx, ctx->GetAttr("f", &func_));
     OP_REQUIRES_OK(ctx, ctx->GetAttr("output_types", &output_types_));
     OP_REQUIRES_OK(ctx, ctx->GetAttr("output_shapes", &output_shapes_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("use_inter_op_parallelism",
+                                     &use_inter_op_parallelism_));
   }
 
  protected:
   void MakeDataset(OpKernelContext* ctx, DatasetBase* input,
                    DatasetBase** output) override {
-    OpInputList inputs;
-    OP_REQUIRES_OK(ctx, ctx->input_list("other_arguments", &inputs));
-    std::vector<Tensor> other_arguments;
-    other_arguments.reserve(inputs.size());
-    for (const Tensor& t : inputs) {
-      other_arguments.push_back(t);
-    }
-
     int32 num_parallel_calls;
     OP_REQUIRES_OK(ctx, ParseScalarArgument(ctx, "num_parallel_calls",
                                             &num_parallel_calls));
-    OP_REQUIRES(ctx, num_parallel_calls > 0,
+    OP_REQUIRES(ctx, num_parallel_calls > 0 || num_parallel_calls == kAutoTune,
                 errors::InvalidArgument(
                     "num_parallel_calls must be greater than zero."));
 
     std::unique_ptr<CapturedFunction> captured_func;
-    OP_REQUIRES_OK(ctx, CapturedFunction::Create(
-                            func_, std::move(other_arguments), &captured_func));
+    OP_REQUIRES_OK(ctx, CapturedFunction::Create(func_, ctx, "other_arguments",
+                                                 use_inter_op_parallelism_,
+                                                 &captured_func));
+
+    std::vector<int> indices;
+    OP_REQUIRES_OK(ctx, ComputeShortCircuitIndices(ctx, func_, &indices));
+
+    ParallelMapIteratorFunction map_func;
+    CapturedFunction* raw_captured_func = captured_func.get();
+    if (indices.empty()) {
+      map_func = [raw_captured_func](IteratorContext* ctx, const string& prefix,
+                                     std::vector<Tensor> args,
+                                     std::vector<Tensor>* out_tensors,
+                                     StatusCallback done) {
+        raw_captured_func->RunAsync(ctx, std::move(args), out_tensors,
+                                    std::move(done), prefix);
+      };
+      if (!use_inter_op_parallelism_) {
+        map_func = [map_func](IteratorContext* ctx, const string& prefix,
+                              std::vector<Tensor> args,
+                              std::vector<Tensor>* out_tensors,
+                              StatusCallback done) {
+          (*ctx->runner())(std::bind(map_func, ctx, prefix, std::move(args),
+                                     out_tensors, std::move(done)));
+        };
+      }
+    } else {
+      std::vector<bool> can_move = ComputeMoveVector(indices);
+      map_func = [raw_captured_func, indices, can_move](
+                     IteratorContext* ctx, const string& prefix,
+                     std::vector<Tensor> args, std::vector<Tensor>* out_tensors,
+                     StatusCallback done) {
+        const std::vector<Tensor>& captured_inputs =
+            raw_captured_func->captured_inputs();
+        size_t num_args = args.size();
+        for (size_t i = 0; i < indices.size(); ++i) {
+          if (indices[i] < num_args) {
+            if (can_move[i]) {
+              out_tensors->push_back(std::move(args[indices[i]]));
+            } else {
+              out_tensors->push_back(args[indices[i]]);
+            }
+          } else {
+            out_tensors->push_back(captured_inputs[indices[i] - num_args]);
+          }
+        }
+        done(Status::OK());
+      };
+    }
 
     *output = new Dataset(ctx, input, func_, num_parallel_calls, output_types_,
-                          output_shapes_, std::move(captured_func));
+                          output_shapes_, use_inter_op_parallelism_,
+                          std::move(captured_func), std::move(map_func));
   }
 
  private:
-  class Dataset : public GraphDatasetBase {
+  class Dataset : public DatasetBase {
    public:
     Dataset(OpKernelContext* ctx, const DatasetBase* input,
             const NameAttrList& func, int32 num_parallel_calls,
             const DataTypeVector& output_types,
             const std::vector<PartialTensorShape>& output_shapes,
-            std::unique_ptr<CapturedFunction> captured_func)
-        : GraphDatasetBase(ctx),
+            bool use_inter_op_parallelism,
+            std::unique_ptr<CapturedFunction> captured_func,
+            ParallelMapIteratorFunction map_func)
+        : DatasetBase(DatasetContext(ctx)),
           input_(input),
           func_(func),
           num_parallel_calls_(num_parallel_calls),
           output_types_(output_types),
           output_shapes_(output_shapes),
-          captured_func_(std::move(captured_func)) {
+          use_inter_op_parallelism_(use_inter_op_parallelism),
+          captured_func_(std::move(captured_func)),
+          map_func_(std::move(map_func)) {
       input_->Ref();
     }
 
@@ -88,16 +134,13 @@ class ParallelMapDatasetOp : public UnaryDatasetOpKernel {
 
     std::unique_ptr<IteratorBase> MakeIteratorInternal(
         const string& prefix) const override {
-      auto map_func = [this](IteratorContext* ctx,
-                             std::vector<Tensor> input_element,
-                             std::vector<Tensor>* result, StatusCallback done) {
-        captured_func_->RunAsync(ctx, std::move(input_element), result,
-                                 std::move(done));
+      auto init_func = [this](IteratorContext* ctx) {
+        return captured_func_->Instantiate(ctx);
       };
 
       return NewParallelMapIterator(
           {this, strings::StrCat(prefix, "::ParallelMap")}, input_,
-          std::move(map_func), num_parallel_calls_);
+          std::move(init_func), map_func_, num_parallel_calls_);
     }
 
     const DataTypeVector& output_dtypes() const override {
@@ -113,11 +156,12 @@ class ParallelMapDatasetOp : public UnaryDatasetOpKernel {
     }
 
    protected:
-    Status AsGraphDefInternal(OpKernelContext* ctx, DatasetGraphDefBuilder* b,
+    Status AsGraphDefInternal(SerializationContext* ctx,
+                              DatasetGraphDefBuilder* b,
                               Node** output) const override {
       // Input: input_dataset
       Node* input_graph_node = nullptr;
-      TF_RETURN_IF_ERROR(b->AddParentDataset(ctx, input_, &input_graph_node));
+      TF_RETURN_IF_ERROR(b->AddInputDataset(ctx, input_, &input_graph_node));
 
       // Input: other_arguments
       DataTypeVector other_arguments_types;
@@ -162,12 +206,14 @@ class ParallelMapDatasetOp : public UnaryDatasetOpKernel {
     const int32 num_parallel_calls_;
     const DataTypeVector output_types_;
     const std::vector<PartialTensorShape> output_shapes_;
+    const bool use_inter_op_parallelism_;
     const std::unique_ptr<CapturedFunction> captured_func_;
+    const ParallelMapIteratorFunction map_func_;
   };
 
-  const int graph_def_version_;
   DataTypeVector output_types_;
   std::vector<PartialTensorShape> output_shapes_;
+  bool use_inter_op_parallelism_;
   NameAttrList func_;
 };
 
@@ -175,5 +221,5 @@ REGISTER_KERNEL_BUILDER(Name("ParallelMapDataset").Device(DEVICE_CPU),
                         ParallelMapDatasetOp);
 
 }  // namespace
-
+}  // namespace data
 }  // namespace tensorflow

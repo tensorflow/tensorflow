@@ -14,7 +14,8 @@
 # ==============================================================================
 """Control Flow Operations.
 
-See the @{$python/control_flow_ops} guide.
+See the [Control
+Flow](https://tensorflow.org/api_guides/python/control_flow_ops) guide.
 """
 # pylint: disable=g-bad-name
 from __future__ import absolute_import
@@ -39,7 +40,6 @@ from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import cond_v2_impl
 from tensorflow.python.ops import control_flow_util as util
 from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.ops import gen_control_flow_ops
@@ -57,10 +57,22 @@ from tensorflow.python.util import compat
 from tensorflow.python.util import deprecation
 from tensorflow.python.util import nest
 from tensorflow.python.util import tf_should_use
+from tensorflow.python.util.lazy_loader import LazyLoader
 from tensorflow.python.util.tf_export import tf_export
 
+# This is to avoid a circular dependency:
+# cond_v2 -> gradients_impl -> control_flow_ops
+cond_v2 = LazyLoader(
+    "cond_v2", globals(), "tensorflow.python.ops.cond_v2")
 
-_ENABLE_COND_V2 = os.getenv("TF_ENABLE_COND_V2", "0") != "0"
+# This is to avoid circular dependencies:
+# while_v2 -> control_flow_ops
+# while_v2 -> gradients_impl -> control_flow_ops
+while_v2 = LazyLoader(
+    "while_v2", globals(), "tensorflow.python.ops.while_v2")
+
+ENABLE_COND_V2 = os.getenv("TF_ENABLE_COND_V2", "0") != "0"
+ENABLE_WHILE_V2 = os.getenv("TF_ENABLE_WHILE_V2", "0") != "0"
 
 
 # We override the 'tuple' for a control flow op, so we keep python's
@@ -96,7 +108,7 @@ def _summarize_eager(tensor, summarize=None):
 
 # Assert and Print are special symbols in python, so we must
 # use an upper-case version of them.
-@tf_export("Assert")
+@tf_export("debugging.Assert", "Assert")
 @tf_should_use.should_use_result
 def Assert(condition, data, summarize=None, name=None):
   """Asserts that the given condition is true.
@@ -609,9 +621,10 @@ def _EnforceShapeInvariant(merge_var, next_var):
           "less-specific shape." %
           (input_t.name, input_t.shape, n_shape))
   else:
-    if not isinstance(var, (ops.IndexedSlices, sparse_tensor.SparseTensor)):
-      raise TypeError("Type %s not supported" % type(var))
-    if isinstance(var, ops.IndexedSlices):
+    if not isinstance(merge_var,
+                      (ops.IndexedSlices, sparse_tensor.SparseTensor)):
+      raise TypeError("Type %s not supported" % type(merge_var))
+    if isinstance(merge_var, ops.IndexedSlices):
       m_values_shape = merge_var.values.get_shape()
       m_indices_shape = merge_var.indices.get_shape()
       m_shape_shape = tensor_shape.TensorShape(None)
@@ -817,11 +830,12 @@ class GradLoopState(object):
       outer_forward_ctxt = forward_ctxt.outer_context
 
     # Add the forward loop counter.
-    if outer_forward_ctxt:
-      outer_forward_ctxt.Enter()
-    cnt, forward_index = forward_ctxt.AddForwardLoopCounter(outer_grad_state)
-    if outer_forward_ctxt:
-      outer_forward_ctxt.Exit()
+    with forward_ctxt._graph.as_default():  # pylint: disable=protected-access
+      if outer_forward_ctxt:
+        outer_forward_ctxt.Enter()
+      cnt, forward_index = forward_ctxt.AddForwardLoopCounter(outer_grad_state)
+      if outer_forward_ctxt:
+        outer_forward_ctxt.Exit()
     self._forward_context = forward_ctxt
     self._forward_index = forward_index
 
@@ -984,60 +998,61 @@ class GradLoopState(object):
         for the stack can't be found.
     """
     # curr_ctxt is the context that tf.gradients was called in.
-    curr_ctxt = ops.get_default_graph()._get_control_flow_context()  # pylint: disable=protected-access
-    with ops.control_dependencies(None):
-      if curr_ctxt:
-        curr_ctxt.Enter()
-      with ops.colocate_with(value):
-        # We only need to pass maximum_iterations to the stack if
-        # we're inside an XLA context.
-        if not util.IsInXLAContext(value.op):
-          max_size = constant_op.constant(-1, dtypes.int32)
-        else:
-          max_size = GetMaxSizeFromNestedMaximumIterations(
-              value, self.forward_context)
-        acc = gen_data_flow_ops.stack_v2(
-            max_size=max_size, elem_type=value.dtype.base_dtype, name="f_acc")
-      if curr_ctxt:
-        curr_ctxt.Exit()
+    with self._forward_index.graph.as_default():
+      curr_ctxt = ops.get_default_graph()._get_control_flow_context()  # pylint: disable=protected-access
+      with ops.control_dependencies(None):
+        if curr_ctxt:
+          curr_ctxt.Enter()
+        with ops.colocate_with(value):
+          # We only need to pass maximum_iterations to the stack if
+          # we're inside an XLA context.
+          if not util.IsInXLAContext(value.op):
+            max_size = constant_op.constant(-1, dtypes.int32)
+          else:
+            max_size = GetMaxSizeFromNestedMaximumIterations(
+                value, self.forward_context)
+          acc = gen_data_flow_ops.stack_v2(
+              max_size=max_size, elem_type=value.dtype.base_dtype, name="f_acc")
+        if curr_ctxt:
+          curr_ctxt.Exit()
 
-      # Make acc available in the forward context.
-      enter_acc = self.forward_context.AddValue(acc)
+        # Make acc available in the forward context.
+        enter_acc = self.forward_context.AddValue(acc)
 
-      # Add the stack_push op in the context of value.op.
-      swap_enabled = self.forward_context.swap_memory
-      value_ctxt = util.GetOutputContext(value.op)
-      if value_ctxt == self.forward_context:
-        # value is not nested in the forward context.
-        self.forward_context.Enter()
-        push = gen_data_flow_ops.stack_push_v2(
-            enter_acc, value, swap_memory=swap_enabled)
-        self.forward_context.Exit()
-        # Protect stack push and order it before forward_index.
-        self.forward_index.op._add_control_input(push.op)
-      else:
-        # value is in a cond context within the forward context.
-        if not isinstance(value_ctxt, CondContext):
-          raise TypeError("value_ctxt is not a CondContext: %s" % value_ctxt)
-        if dead_branch:
-          # The special case for creating a zero tensor for a dead
-          # branch of a switch. See ControlFlowState.ZerosLike().
-          value_ctxt.outer_context.Enter()
+        # Add the stack_push op in the context of value.op.
+        swap_enabled = self.forward_context.swap_memory
+        value_ctxt = util.GetOutputContext(value.op)
+        if value_ctxt == self.forward_context:
+          # value is not nested in the forward context.
+          self.forward_context.Enter()
           push = gen_data_flow_ops.stack_push_v2(
               enter_acc, value, swap_memory=swap_enabled)
-          value_ctxt.outer_context.Exit()
-          push.op._set_control_flow_context(value_ctxt)
+          self.forward_context.Exit()
+          # Protect stack push and order it before forward_index.
+          self.forward_index.op._add_control_input(push.op)
         else:
-          value_ctxt.Enter()
-          push = gen_data_flow_ops.stack_push_v2(
-              enter_acc, value, swap_memory=swap_enabled)
-          value_ctxt.Exit()
-        # Protect stack push and order it before forward_sync.
-        self.forward_sync._add_control_input(push.op)
-      # Order stack push after the successor of forward_index
-      add_op = self.forward_index.op.inputs[0].op
-      push.op._add_control_input(add_op)
-      return acc
+          # value is in a cond context within the forward context.
+          if not isinstance(value_ctxt, CondContext):
+            raise TypeError("value_ctxt is not a CondContext: %s" % value_ctxt)
+          if dead_branch:
+            # The special case for creating a zero tensor for a dead
+            # branch of a switch. See ControlFlowState.ZerosLike().
+            value_ctxt.outer_context.Enter()
+            push = gen_data_flow_ops.stack_push_v2(
+                enter_acc, value, swap_memory=swap_enabled)
+            value_ctxt.outer_context.Exit()
+            push.op._set_control_flow_context(value_ctxt)
+          else:
+            value_ctxt.Enter()
+            push = gen_data_flow_ops.stack_push_v2(
+                enter_acc, value, swap_memory=swap_enabled)
+            value_ctxt.Exit()
+          # Protect stack push and order it before forward_sync.
+          self.forward_sync._add_control_input(push.op)
+        # Order stack push after the successor of forward_index
+        add_op = self.forward_index.op.inputs[0].op
+        push.op._add_control_input(add_op)
+        return acc
 
   def AddBackpropAccumulatedValue(self, history_value, value,
                                   dead_branch=False):
@@ -1320,6 +1335,9 @@ class ControlFlowState(object):
     """
     if util.IsLoopSwitch(op):
       return None
+    if op.graph._building_function:  # pylint: disable=protected-access
+      # The optimization here is tricky to apply to functions
+      return array_ops.zeros_like(op.outputs[index])
     dead_branch = util.IsSwitch(op)
     forward_ctxt = _GetWhileContext(op)
     grad_state = self._map.get(forward_ctxt)
@@ -1447,14 +1465,17 @@ def ZerosLikeOutsideLoop(op, index):
       pred = op_ctxt.pred
       branch = op_ctxt.branch
       switch_val = switch(op.inputs[0], pred)[1 - branch]
+      # A op is created along the branch taken as control dependencies are on
+      # the whole op and not on the tensor output.
+      pivot = array_ops.identity(switch_val)
       if val.dtype == dtypes.resource:
-        with ops.control_dependencies([switch_val]):
+        with ops.control_dependencies([pivot]):
           return array_ops.zeros(
               gen_resource_variable_ops.variable_shape(switch_val))
       zeros_shape = array_ops.shape_internal(switch_val, optimize=False)
       # Ensure ops created within array_ops.zeros are dominated by switch in
       # cond context.
-      with ops.control_dependencies([switch_val]):
+      with ops.control_dependencies([pivot]):
         return array_ops.zeros(zeros_shape, dtype=val.dtype)
     else:
       return array_ops.zeros_like(val, optimize=False)
@@ -1960,8 +1981,12 @@ def cond(pred,
   `true_fn` and `false_fn` both return lists of output tensors. `true_fn` and
   `false_fn` must have the same non-zero number and type of outputs.
 
-  Note that the conditional execution applies only to the operations defined in
-  `true_fn` and `false_fn`. Consider the following simple program:
+  **WARNING**: Any Tensors or Operations created outside of `true_fn` and
+  `false_fn` will be executed regardless of which branch is selected at runtime.
+
+  Although this behavior is consistent with the dataflow model of TensorFlow,
+  it has frequently surprised users who expected a lazier semantics.
+  Consider the following simple program:
 
   ```python
   z = tf.multiply(a, b)
@@ -1972,8 +1997,6 @@ def cond(pred,
   operation will not be executed. Since `z` is needed for at least one
   branch of the `cond`, the `tf.multiply` operation is always executed,
   unconditionally.
-  Although this behavior is consistent with the dataflow model of TensorFlow,
-  it has occasionally surprised some users who expected a lazier semantics.
 
   Note that `cond` calls `true_fn` and `false_fn` *exactly once* (inside the
   call to `cond`, and not at all during `Session.run()`). `cond`
@@ -2018,8 +2041,8 @@ def cond(pred,
   ```
 
   """
-  if _ENABLE_COND_V2:
-    return cond_v2_impl.cond_v2(pred, true_fn, false_fn, name)
+  if ENABLE_COND_V2 and not context.executing_eagerly():
+    return cond_v2.cond_v2(pred, true_fn, false_fn, name)
 
   # We needed to make true_fn/false_fn keyword arguments for
   # backwards-compatibility. This check exists so that we can convert back to
@@ -2063,21 +2086,25 @@ def cond(pred,
 
     # Build the graph for the true branch in a new context.
     context_t = CondContext(pred, pivot_1, branch=1)
-    context_t.Enter()
-    orig_res_t, res_t = context_t.BuildCondBranch(true_fn)
-    if orig_res_t is None:
-      raise ValueError("true_fn must have a return value.")
-    context_t.ExitResult(res_t)
-    context_t.Exit()
+    try:
+      context_t.Enter()
+      orig_res_t, res_t = context_t.BuildCondBranch(true_fn)
+      if orig_res_t is None:
+        raise ValueError("true_fn must have a return value.")
+      context_t.ExitResult(res_t)
+    finally:
+      context_t.Exit()
 
     # Build the graph for the false branch in a new context.
     context_f = CondContext(pred, pivot_2, branch=0)
-    context_f.Enter()
-    orig_res_f, res_f = context_f.BuildCondBranch(false_fn)
-    if orig_res_f is None:
-      raise ValueError("false_fn must have a return value.")
-    context_f.ExitResult(res_f)
-    context_f.Exit()
+    try:
+      context_f.Enter()
+      orig_res_f, res_f = context_f.BuildCondBranch(false_fn)
+      if orig_res_f is None:
+        raise ValueError("false_fn must have a return value.")
+      context_f.ExitResult(res_f)
+    finally:
+      context_f.Exit()
 
     if not strict:
       orig_res_t = _UnpackIfSingleton(orig_res_t)
@@ -2215,6 +2242,7 @@ class WhileContext(ControlFlowContext):
     self._loop_exits = []
     # The list of enter tensors for loop variables.
     self._loop_enters = []
+    self._graph = ops.get_default_graph()
 
   def _init_from_proto(self, context_def, import_scope=None):
     """Creates a new `WhileContext` from protocol buffer.
@@ -2268,6 +2296,7 @@ class WhileContext(ControlFlowContext):
           op._set_attr("frame_name",
                        attr_value_pb2.AttrValue(s=compat.as_bytes(self.name)))
           # pylint: enable=protected-access
+    self._graph = ops.get_default_graph()
 
   @property
   def maximum_iterations(self):
@@ -2592,7 +2621,14 @@ class WhileContext(ControlFlowContext):
     Returns:
       The loop index.
     """
-    one = constant_op.constant(1, name="b_count")
+    in_separate_functions = count.graph is not ops.get_default_graph()
+    if in_separate_functions:
+      # Brings the count into this graph
+      count = array_ops.identity(count)
+    else:
+      # TODO(apassos) XLA expects this constant to be created outside the loop,
+      # so doing that for now.
+      one = constant_op.constant(1, name="b_count")
 
     self.Enter()
     self.AddName(count.name)
@@ -2607,6 +2643,8 @@ class WhileContext(ControlFlowContext):
     merge_count = merge([enter_count, enter_count])[0]
     self._pivot_for_pred = merge_count
 
+    if in_separate_functions:
+      one = constant_op.constant(1, name="b_count")
     pred = math_ops.greater_equal(merge_count, one)
     self._pivot = loop_cond(pred, name="b_count")
     switch_count = switch(merge_count, self._pivot)
@@ -3056,7 +3094,7 @@ def while_loop(cond,
   `loop_vars` is the same in every iteration. The `shape_invariants` argument
   allows the caller to specify a less specific shape invariant for each loop
   variable, which is needed if the shape varies between iterations. The
-  @{tf.Tensor.set_shape}
+  `tf.Tensor.set_shape`
   function may also be used in the `body` function to indicate that
   the output loop variable has a particular shape. The shape invariant for
   SparseTensor and IndexedSlices are treated specially as follows:
@@ -3187,6 +3225,10 @@ def while_loop(cond,
   ```
 
   """
+  if ENABLE_WHILE_V2 and not context.executing_eagerly():
+    return while_v2.while_loop(
+        cond, body, loop_vars, shape_invariants=shape_invariants, name=name)
+
   with ops.name_scope(name, "while", loop_vars):
     if not loop_vars:
       raise ValueError("No loop variables provided")
@@ -3307,7 +3349,7 @@ def with_dependencies(dependencies, output_tensor, name=None):
   no guarantee that `output_tensor` will be evaluated after any `dependencies`
   have run.
 
-  See also @{tf.tuple$tuple} and @{tf.group$group}.
+  See also `tf.tuple` and `tf.group`.
 
   Args:
     dependencies: Iterable of operations to run before this op finishes.
@@ -3352,8 +3394,8 @@ def group(*inputs, **kwargs):
   When this op finishes, all ops in `inputs` have finished. This op has no
   output.
 
-  See also @{tf.tuple$tuple} and
-  @{tf.control_dependencies$control_dependencies}.
+  See also `tf.tuple` and
+  `tf.control_dependencies`.
 
   Args:
     *inputs: Zero or more tensors to group.
@@ -3422,8 +3464,8 @@ def tuple(tensors, name=None, control_inputs=None):  # pylint: disable=redefined
   returned by `tuple` are only available after all the parallel computations
   are done.
 
-  See also @{tf.group$group} and
-  @{tf.control_dependencies$control_dependencies}.
+  See also `tf.group` and
+  `tf.control_dependencies`.
 
   Args:
     tensors: A list of `Tensor`s or `IndexedSlices`, some entries can be `None`.

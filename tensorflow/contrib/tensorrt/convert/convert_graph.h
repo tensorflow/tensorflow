@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <vector>
 
+#include "tensorflow/contrib/tensorrt/convert/convert_nodes.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/grappler/clusters/cluster.h"
 #include "tensorflow/core/grappler/costs/graph_properties.h"
@@ -84,6 +85,11 @@ std::vector<int> GetLinkedTensorRTVersion();
 
 // Return runtime time TensorRT library version information.
 std::vector<int> GetLoadedTensorRTVersion();
+
+// Helper method for the conversion, expose for testing.
+std::pair<int, tensorflow::Allocator*> GetDeviceAndAllocator(
+    const ConversionParams& params, const EngineInfo& engine);
+
 }  // namespace convert
 }  // namespace tensorrt
 }  // namespace tensorflow

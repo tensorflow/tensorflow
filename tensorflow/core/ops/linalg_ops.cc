@@ -235,6 +235,8 @@ REGISTER_OP("MatrixInverse")
     .SetShapeFn(BatchUnchangedSquareShapeFn);
 
 REGISTER_OP("MatrixExponential")
+    .Deprecated(
+        27, "Use Python implementation tf.linalg.matrix_exponential instead.")
     .Input("input: T")
     .Output("output: T")
     .Attr("T: {double, float, complex64, complex128}")

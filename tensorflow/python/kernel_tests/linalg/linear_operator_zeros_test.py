@@ -20,14 +20,12 @@ from __future__ import print_function
 import numpy as np
 
 from tensorflow.python.framework import dtypes
-from tensorflow.python.framework import random_seed
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops.linalg import linalg as linalg_lib
 from tensorflow.python.ops.linalg import linear_operator_test_util
 from tensorflow.python.platform import test
 
 
-random_seed.set_random_seed(23)
 rng = np.random.RandomState(2016)
 
 
@@ -73,7 +71,7 @@ class LinearOperatorZerosTest(
       operator.assert_non_singular()
 
   def test_assert_self_adjoint(self):
-    with self.test_session():
+    with self.cached_session():
       operator = linalg_lib.LinearOperatorZeros(num_rows=2)
       operator.assert_self_adjoint().run()  # Should not fail
 
@@ -108,7 +106,7 @@ class LinearOperatorZerosTest(
       linalg_lib.LinearOperatorZeros(num_rows=2, batch_shape=[-2])
 
   def test_non_scalar_num_rows_raises_dynamic(self):
-    with self.test_session():
+    with self.cached_session():
       num_rows = array_ops.placeholder(dtypes.int32)
       operator = linalg_lib.LinearOperatorZeros(
           num_rows, assert_proper_shapes=True)
@@ -116,7 +114,7 @@ class LinearOperatorZerosTest(
         operator.to_dense().eval(feed_dict={num_rows: [2]})
 
   def test_negative_num_rows_raises_dynamic(self):
-    with self.test_session():
+    with self.cached_session():
       n = array_ops.placeholder(dtypes.int32)
       operator = linalg_lib.LinearOperatorZeros(
           num_rows=n, assert_proper_shapes=True)
@@ -129,7 +127,7 @@ class LinearOperatorZerosTest(
         operator.to_dense().eval(feed_dict={n: -2})
 
   def test_non_1d_batch_shape_raises_dynamic(self):
-    with self.test_session():
+    with self.cached_session():
       batch_shape = array_ops.placeholder(dtypes.int32)
       operator = linalg_lib.LinearOperatorZeros(
           num_rows=2, batch_shape=batch_shape, assert_proper_shapes=True)
@@ -137,7 +135,7 @@ class LinearOperatorZerosTest(
         operator.to_dense().eval(feed_dict={batch_shape: 2})
 
   def test_negative_batch_shape_raises_dynamic(self):
-    with self.test_session():
+    with self.cached_session():
       batch_shape = array_ops.placeholder(dtypes.int32)
       operator = linalg_lib.LinearOperatorZeros(
           num_rows=2, batch_shape=batch_shape, assert_proper_shapes=True)
@@ -154,7 +152,7 @@ class LinearOperatorZerosTest(
     num_rows = array_ops.placeholder(dtypes.int32)
     x = array_ops.placeholder(dtypes.float32)
 
-    with self.test_session():
+    with self.cached_session():
       operator = linalg_lib.LinearOperatorZeros(
           num_rows, assert_proper_shapes=True)
       y = operator.matmul(x)

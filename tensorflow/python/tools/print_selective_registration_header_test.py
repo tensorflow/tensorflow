@@ -59,6 +59,9 @@ GRAPH_DEF_TXT = """
   }
 """
 
+# AccumulateNV2 is included because it should be included in the header despite
+# lacking a kernel (it's rewritten by AccumulateNV2RemovePass; see
+# core/common_runtime/accumulate_n_optimizer.cc.
 GRAPH_DEF_TXT_2 = """
   node: {
     name: "node_4"
@@ -66,6 +69,12 @@ GRAPH_DEF_TXT_2 = """
     input: [ "none", "none" ]
     device: "/cpu:0"
     attr: { key: "T" value: { type: DT_FLOAT } }
+  }
+  node: {
+    name: "node_5"
+    op: "AccumulateNV2"
+    attr: { key: "T" value: { type: DT_INT32 } }
+    attr: { key  : "N" value: { i: 3 } }
   }
 
 """
@@ -100,6 +109,7 @@ class PrintOpFilegroupTest(test.TestCase):
 
     self.assertListEqual(
         [
+            ('AccumulateNV2', None),  #
             ('BiasAdd', 'BiasOp<CPUDevice, float>'),  #
             ('MatMul',
              matmul_prefix + 'MatMulOp<CPUDevice, double, false >'),  #
@@ -117,6 +127,7 @@ class PrintOpFilegroupTest(test.TestCase):
         'rawproto', self.WriteGraphFiles(graphs), default_ops)
     self.assertListEqual(
         [
+            ('AccumulateNV2', None),  #
             ('BiasAdd', 'BiasOp<CPUDevice, float>'),  #
             ('MatMul',
              matmul_prefix + 'MatMulOp<CPUDevice, double, false >'),  #
@@ -196,6 +207,7 @@ class PrintOpFilegroupTest(test.TestCase):
 
 constexpr inline bool ShouldRegisterOp(const char op[]) {
   return false
+     || isequal(op, "AccumulateNV2")
      || isequal(op, "BiasAdd")
   ;
 }

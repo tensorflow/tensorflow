@@ -36,7 +36,7 @@ class BinaryOpsTest(xla_test.XLATestCase):
   """Test cases for binary operators."""
 
   def _testBinary(self, op, a, b, expected, equality_test=None):
-    with self.test_session() as session:
+    with self.cached_session() as session:
       with self.test_scope():
         pa = array_ops.placeholder(dtypes.as_dtype(a.dtype), a.shape, name="a")
         pb = array_ops.placeholder(dtypes.as_dtype(b.dtype), b.shape, name="b")
@@ -210,7 +210,7 @@ class BinaryOpsTest(xla_test.XLATestCase):
             equality_test=self.ListsAreClose)
 
   def testIntOps(self):
-    for dtype in self.int_types:
+    for dtype in self.signed_int_types:
       self._testBinary(
           gen_math_ops.truncate_div,
           np.array([3, 3, -1, -9, -8], dtype=dtype),
@@ -287,7 +287,8 @@ class BinaryOpsTest(xla_test.XLATestCase):
           dtype(7),
           expected=np.array([[-6], [-5]], dtype=dtype))
 
-      if dtype not in self.complex_types:  # min/max not supported for complex
+      # min/max not supported for complex
+      if dtype not in self.complex_types | {np.uint8, np.int8}:
         self._testBinary(
             math_ops.maximum,
             np.array([1, 2], dtype=dtype),
@@ -337,7 +338,7 @@ class BinaryOpsTest(xla_test.XLATestCase):
           expected=np.array([[70], [14]], dtype=dtype))
 
       # Complex support for squared_difference is incidental, see b/68205550
-      if dtype not in self.complex_types:
+      if dtype not in self.complex_types | {np.uint8, np.int8}:
         self._testBinary(
             math_ops.squared_difference,
             np.array([1, 2], dtype=dtype),
@@ -559,6 +560,13 @@ class BinaryOpsTest(xla_test.XLATestCase):
         dtype(2),
         expected=np.array([[5], [2]], dtype=dtype))
 
+    if dtype in [np.float32, np.float64]:
+      nums = np.arange(-10, 10, .25, dtype=dtype).reshape(80, 1)
+      divs = np.arange(-3, 3, .25, dtype=dtype).reshape(1, 24)
+      np_result = np.true_divide(nums, divs)
+      np_result[:, divs[0] == 0] = 0
+      self._testBinary(gen_math_ops.div_no_nan, nums, divs, expected=np_result)
+
     if dtype not in self.complex_types:  # floordiv unsupported for complex.
       self._testBinary(
           gen_math_ops.floor_div,
@@ -567,7 +575,7 @@ class BinaryOpsTest(xla_test.XLATestCase):
           expected=np.array([1, -2, -1, -5, 2], dtype=dtype))
 
   def testIntDivision(self):
-    for dtype in self.int_types:
+    for dtype in self.signed_int_types:
       self._testDivision(dtype)
 
   def testFloatDivision(self):
@@ -588,7 +596,7 @@ class BinaryOpsTest(xla_test.XLATestCase):
         expected=np.array([1, 1, -1, 0], dtype=dtype))
 
   def testIntRemainder(self):
-    for dtype in self.int_types:
+    for dtype in self.signed_int_types - {np.int8}:
       self._testRemainder(dtype)
 
   def testFloatRemainder(self):
@@ -1010,7 +1018,38 @@ class BinaryOpsTest(xla_test.XLATestCase):
                [7, 7, 7, 7, 7, 7]],
               dtype=dtype))
 
-  def testMirrorPad(self):
+  def testSymmetricMirrorPad(self):
+    mirror_pad = lambda t, paddings: array_ops.pad(t, paddings, "SYMMETRIC")
+    for dtype in self.numeric_types:
+      self._testBinary(
+          mirror_pad,
+          np.array(
+              [
+                  [1, 2, 3],  #
+                  [4, 5, 6],  #
+              ],
+              dtype=dtype),
+          np.array([[
+              2,
+              2,
+          ], [3, 3]], dtype=np.int32),
+          expected=np.array(
+              [
+                  [6, 5, 4, 4, 5, 6, 6, 5, 4],  #
+                  [3, 2, 1, 1, 2, 3, 3, 2, 1],  #
+                  [3, 2, 1, 1, 2, 3, 3, 2, 1],  #
+                  [6, 5, 4, 4, 5, 6, 6, 5, 4],  #
+                  [6, 5, 4, 4, 5, 6, 6, 5, 4],  #
+                  [3, 2, 1, 1, 2, 3, 3, 2, 1],  #
+              ],
+              dtype=dtype))
+      self._testBinary(
+          mirror_pad,
+          np.array([[1, 2, 3], [4, 5, 6]], dtype=dtype),
+          np.array([[0, 0], [0, 0]], dtype=np.int32),
+          expected=np.array([[1, 2, 3], [4, 5, 6]], dtype=dtype))
+
+  def testReflectMirrorPad(self):
     mirror_pad = lambda t, paddings: array_ops.pad(t, paddings, "REFLECT")
     for dtype in self.numeric_types:
       self._testBinary(
@@ -1165,6 +1204,16 @@ class BinaryOpsTest(xla_test.XLATestCase):
 
   def testTile(self):
     for dtype in self.numeric_types:
+      self._testBinary(
+          array_ops.tile,
+          np.array([[6], [3], [4]], dtype=dtype),
+          np.array([2, 0], dtype=np.int32),
+          expected=np.empty([6, 0], dtype=dtype))
+      self._testBinary(
+          array_ops.tile,
+          np.array([[6, 3, 4]], dtype=dtype),
+          np.array([2, 0], dtype=np.int32),
+          expected=np.empty([2, 0], dtype=dtype))
       self._testBinary(
           array_ops.tile,
           np.array([[6]], dtype=dtype),
@@ -1361,6 +1410,48 @@ class BinaryOpsTest(xla_test.XLATestCase):
           expected=np.array([[[-1.0, 0.0, 3.0], [0.0, -2.0, 0.0]],
                              [[-4.0, 0.0, 4.0], [0.0, -5.0, 0.0]]],
                             dtype=dtype))
+
+  def testBroadcastTo(self):
+    for dtype in self.all_types:
+      x = np.random.randint(0, high=100, size=[2, 3])
+      self._testBinary(
+          array_ops.broadcast_to,
+          x,
+          np.array([2, 3], dtype=np.int32),
+          expected=x)
+      self._testBinary(
+          array_ops.broadcast_to,
+          x,
+          np.array([6, 6], dtype=np.int32),
+          expected=np.tile(x, [3, 2]))
+      self._testBinary(
+          array_ops.broadcast_to,
+          x,
+          np.array([7, 4, 3], dtype=np.int32),
+          expected=np.tile(x, [7, 2, 1]))
+      self._testBinary(
+          array_ops.broadcast_to,
+          x,
+          np.array([7, 0, 3], dtype=np.int32),
+          expected=np.zeros([7, 0, 3], dtype=dtype))
+      self._testBinary(
+          array_ops.broadcast_to,
+          x,
+          np.array([7, 1, 2, 9], dtype=np.int32),
+          expected=np.tile(x, [7, 1, 1, 3]))
+      self._testBinary(
+          array_ops.broadcast_to,
+          np.zeros([2, 0], dtype=dtype),
+          np.array([4, 0], dtype=np.int32),
+          expected=np.zeros([4, 0], dtype=dtype))
+
+      x = np.arange(3).reshape((3, 1, 1, 1)).astype(dtype)
+      self._testBinary(
+          array_ops.broadcast_to,
+          x,
+          np.array((3, 7, 8, 9), dtype=np.int32),
+          expected=np.tile(x, (1, 7, 8, 9)))
+
 
 if __name__ == "__main__":
   googletest.main()

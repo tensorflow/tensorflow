@@ -17,19 +17,19 @@ limitations under the License.
 
 #include <unordered_map>
 
+#include "absl/strings/escaping.h"
+#include "absl/strings/numbers.h"
+#include "absl/types/optional.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/util.h"
-#include "tensorflow/core/lib/gtl/optional.h"
 #include "tensorflow/core/lib/strings/numbers.h"
-#include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/regexp.h"
 
 namespace xla {
-
-using ::tensorflow::StringPiece;
-
 namespace {
+
+using absl::string_view;
 
 constexpr int kEOF = -1;
 constexpr int kError = -2;
@@ -66,12 +66,12 @@ bool HloLexer::CanDereference(const char* ptr) const {
   return ptr < buf_.end() && ptr >= buf_.begin();
 }
 
-tensorflow::StringPiece HloLexer::StringPieceFromPointers(
-    const char* begin, const char* end) const {
+absl::string_view HloLexer::StringPieceFromPointers(const char* begin,
+                                                    const char* end) const {
   CHECK(begin <= end);
   CHECK(begin == buf_.end() || CanDereference(begin));
   CHECK(end == buf_.end() || CanDereference(end));
-  return tensorflow::StringPiece(begin, end - begin);
+  return absl::string_view(begin, end - begin);
 }
 
 tensorflow::RegexpStringPiece HloLexer::RegexpStringPieceFromPointers(
@@ -143,8 +143,47 @@ TokKind HloLexer::LexToken() {
         return TokKind::kLparen;
       case ')':
         return TokKind::kRparen;
-      case '/':
-        return LexComment();
+      case '/': {
+        if (PeekCurrentChar() == '*') {
+          // This is the start of a /*...*/ delimited comment. Save the current
+          // location in case the comment is unterminated so the error message
+          // will point to the beginning of the comment.
+          const char* comment_start = current_ptr_;
+          current_ptr_++;
+          // Advance until '*/' is found.
+          while (true) {
+            int current = GetNextChar();
+            if (current == '*' && PeekCurrentChar() == '/') {
+              // End of comment.
+              current_ptr_++;
+              break;
+            }
+            if (current == kEOF) {
+              // Unterminated comment.
+              current_ptr_ = comment_start;
+              return TokKind::kError;
+            }
+          }
+          // Return no token for the comment. Keep lexing.
+          continue;
+        } else if (PeekCurrentChar() == '/') {
+          // This is the start of a '//' delimited comment. Throw away
+          // everything until end of line or file. The end-of-line character(s)
+          // are left unlexed in the buffer which is harmless because these are
+          // skipped later by the lexer. This approach enables support for
+          // different end-of-line encodings.
+          while (true) {
+            int current = PeekCurrentChar();
+            if (current == kEOF || current == '\n' || current == '\r') {
+              break;
+            }
+            current_ptr_++;
+          }
+          continue;
+        }
+        // A lone '/' is an error.
+        return TokKind::kError;
+      }
       case '"':
         return LexString();
     }
@@ -165,7 +204,7 @@ TokKind HloLexer::LexIdentifier() {
     auto consumable = RegexpStringPieceFromPointers(token_start_, buf_.end());
     // 'consumable' will be advanced iff its prefix matches the pattern.
     static LazyRE2 shape_pattern = {
-        R"(^(\w*\d*)\[([\d,]*)\](?:(dense|sparse)?{([\d,]+)})?)"};
+        R"(^(\w*\d*)\[([\d,\s]*)\](?:(dense|sparse)?{([\d,\s]+)})?)"};
     if (RE2::Consume(&consumable, *shape_pattern)) {
       auto status_or_shape = ShapeUtil::ParseShapeString(
           StringPieceFromPointers(token_start_, consumable.begin()));
@@ -196,7 +235,7 @@ TokKind HloLexer::LexIdentifier() {
     return TokKind::kAttributeName;
   }
 
-  tensorflow::StringPiece identifier =
+  absl::string_view identifier =
       StringPieceFromPointers(token_start_, current_ptr_);
 
   // See if this is a keyword.
@@ -230,7 +269,7 @@ TokKind HloLexer::LexIdentifier() {
     }
   }
 
-  str_val_ = std::string(identifier);
+  str_val_ = string(identifier);
   return TokKind::kIdent;
 }
 
@@ -267,8 +306,7 @@ TokKind HloLexer::LexNumberOrPattern() {
       R"([-]?((\d+|\d+[.]\d*|\d*[.]\d+)([eE][+-]?\d+))|[-]?(\d+[.]\d*|\d*[.]\d+))"};
   if (RE2::Consume(&consumable, *float_pattern)) {
     current_ptr_ = consumable.begin();
-    tensorflow::strings::safe_strtod(string(token_start_, current_ptr_).c_str(),
-                                     &decimal_val_);
+    CHECK(absl::SimpleAtod(string(token_start_, current_ptr_), &decimal_val_));
     return TokKind::kDecimal;
   }
 
@@ -299,9 +337,12 @@ TokKind HloLexer::LexNumberOrPattern() {
   static LazyRE2 int_pattern = {R"([-]?\d+)"};
   if (RE2::Consume(&consumable, *int_pattern)) {
     current_ptr_ = consumable.begin();
-    tensorflow::strings::safe_strto64(
-        StringPieceFromPointers(token_start_, current_ptr_), &int64_val_);
-    return TokKind::kInt;
+    auto slice = StringPieceFromPointers(token_start_, current_ptr_);
+    if (absl::SimpleAtoi(slice, &int64_val_)) {
+      return TokKind::kInt;
+    }
+    LOG(ERROR) << "Failed to parse int literal: " << slice;
+    return TokKind::kError;
   }
 
   static LazyRE2 neg_inf = {"-inf"};
@@ -323,6 +364,7 @@ std::pair<unsigned, unsigned> HloLexer::GetLineAndColumn(LocTy location) const {
     line_no = line_no_cache_.line_no_of_query;
   }
   for (; ptr != location; ptr++) {
+    CHECK_LT(ptr, buf_.end());
     if (*ptr == '\n') {
       line_no++;
     }
@@ -332,36 +374,26 @@ std::pair<unsigned, unsigned> HloLexer::GetLineAndColumn(LocTy location) const {
   line_no_cache_.last_query = ptr;
   line_no_cache_.line_no_of_query = line_no;
   size_t line_offset = StringPieceFromPointers(start, ptr).rfind('\n');
-  if (line_offset == tensorflow::StringPiece::npos) {
+  if (line_offset == absl::string_view::npos) {
     line_offset = 0;
   }
   return {line_no, ptr - start - line_offset};
 }
 
-tensorflow::StringPiece HloLexer::GetLine(LocTy loc) const {
+absl::string_view HloLexer::GetLine(LocTy loc) const {
   if (!CanDereference(loc)) {
     return "LINE OUT OF RANGE";
   }
   size_t line_start =
       StringPieceFromPointers(buf_.begin(), loc + 1).rfind('\n');
-  const char* start = line_start == tensorflow::StringPiece::npos
+  const char* start = line_start == absl::string_view::npos
                           ? buf_.begin()
                           : buf_.begin() + line_start + 1;
   size_t line_end = StringPieceFromPointers(loc, buf_.end()).find('\n');
   const char* end =
-      line_end == tensorflow::StringPiece::npos ? buf_.end() : loc + line_end;
+      line_end == absl::string_view::npos ? buf_.end() : loc + line_end;
 
   return StringPieceFromPointers(start, end);
-}
-
-TokKind HloLexer::LexComment() {
-  auto consumable = RegexpStringPieceFromPointers(token_start_, buf_.end());
-  static LazyRE2 comment_pattern = {R"(\/\*.*?\*\/)"};
-  if (RE2::Consume(&consumable, *comment_pattern)) {
-    current_ptr_ = consumable.begin();
-    return TokKind::kComment;
-  }
-  return TokKind::kError;
 }
 
 // Lexes quoted string with escaping characters. If matched, the quoted string
@@ -371,10 +403,10 @@ TokKind HloLexer::LexString() {
   static LazyRE2 escaping_pattern = {R"("([^"\\]|\\.)*")"};
   if (RE2::Consume(&consumable, *escaping_pattern)) {
     current_ptr_ = consumable.begin();
-    tensorflow::StringPiece raw =
+    absl::string_view raw =
         StringPieceFromPointers(token_start_ + 1, current_ptr_ - 1);
     string error;
-    if (!tensorflow::str_util::CUnescape(raw, &str_val_, &error)) {
+    if (!absl::CUnescape(raw, &str_val_, &error)) {
       LOG(ERROR) << "Failed unescaping string: " << raw << ". error: " << error;
       return TokKind::kError;
     }
@@ -409,8 +441,6 @@ string TokKindToString(TokKind kind) {
       return "kRparen";
     case TokKind::kArrow:
       return "kArrow";
-    case TokKind::kComment:
-      return "kComment";
     case TokKind::kw_HloModule:
       return "kw_HloModule";
     case TokKind::kw_ENTRY:

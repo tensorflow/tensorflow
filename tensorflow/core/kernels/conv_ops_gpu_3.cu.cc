@@ -170,51 +170,33 @@ EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE Index<IndexCount> FlatToTensorIndex(
   return tensor_index;
 }
 
-// A Cuda custom kernel that swaps dimension-0 and dimension-2 of a 3D tensor.
-template <typename T, bool conjugate = false>
-__global__ void SwapDimension0And2InTensor3Simple(int nthreads, const T* input,
-                                                  Dimension<3> input_dims,
-                                                  T* output) {
+// A simple CUDA custom kernel to shuffle dimensions of a 3D tensor according to
+// the given shuffle permutation in template parameters. Shuffle permutation
+// <sp0, sp1, sp2> shuffles dimensions such that input dimension 0 goes to sp0,
+// 1 goes to sp1 and 2 goes to sp2. For example, shuffle permutation <2, 0, 1>
+// will populate output so that input[x][y][z] is equal to (*output)[y][z][x].
+//
+// Requires that nthreads is equal to the total number of elements in the input
+// tensor.
+template <typename T, int sp0, int sp1, int sp2, bool conjugate = false>
+__global__ void ShuffleInTensor3Simple(int nthreads, const T* input,
+                                       Dimension<3> input_dims, T* output) {
   Dimension<3> output_dims;
-  output_dims[0] = input_dims[2];
-  output_dims[1] = input_dims[1];
-  output_dims[2] = input_dims[0];
+  output_dims[sp0] = input_dims[0];
+  output_dims[sp1] = input_dims[1];
+  output_dims[sp2] = input_dims[2];
 
-  CUDA_1D_KERNEL_LOOP(index, nthreads) {
-    int output_index = index;
-
+  // Iterate over output as opposed to iterating over input for better
+  // performance. Iterating over output will generate sequential writes and
+  // random reads that performs better compared to sequential reads and random
+  // writes.
+  CUDA_1D_KERNEL_LOOP(output_index, nthreads) {
     Index<3> output_tensor_index = FlatToTensorIndex(output_index, output_dims);
 
     Index<3> input_tensor_index;
-    input_tensor_index[0] = output_tensor_index[2];
-    input_tensor_index[1] = output_tensor_index[1];
-    input_tensor_index[2] = output_tensor_index[0];
-
-    int input_index = TensorIndexToFlat(input_tensor_index, input_dims);
-
-    output[output_index] =
-        maybe_conj<T, conjugate>::run(ldg(input + input_index));
-  }
-}
-
-// A Cuda custom kernel that swaps dimension-1 and dimension-2 of a 3D tensor.
-template <typename T, bool conjugate = false>
-__global__ void SwapDimension1And2InTensor3Simple(int nthreads, const T* input,
-                                                  Dimension<3> input_dims,
-                                                  T* output) {
-  Dimension<3> output_dims;
-  output_dims[0] = input_dims[0];
-  output_dims[1] = input_dims[2];
-  output_dims[2] = input_dims[1];
-
-  CUDA_1D_KERNEL_LOOP(index, nthreads) {
-    int output_index = index;
-    Index<3> output_tensor_index = FlatToTensorIndex(output_index, output_dims);
-
-    Index<3> input_tensor_index;
-    input_tensor_index[0] = output_tensor_index[0];
-    input_tensor_index[1] = output_tensor_index[2];
-    input_tensor_index[2] = output_tensor_index[1];
+    input_tensor_index[0] = output_tensor_index[sp0];
+    input_tensor_index[1] = output_tensor_index[sp1];
+    input_tensor_index[2] = output_tensor_index[sp2];
 
     int input_index = TensorIndexToFlat(input_tensor_index, input_dims);
 
@@ -439,7 +421,7 @@ __global__ void PadInputCustomKernelNCHW(int nthreads, const T* input,
 template <typename T, int NDIMS>
 struct TransformFilter<GPUDevice, T, int, NDIMS> {
   typedef GPUDevice Device;
-  void operator()(const Device& d,
+  void operator()(const Device& d, FilterTensorFormat dst_filter_format,
                   typename TTypes<T, NDIMS, int>::ConstTensor in,
                   typename TTypes<T, NDIMS, int>::Tensor out) {
     Dimension<3> combined_dims;
@@ -450,13 +432,18 @@ struct TransformFilter<GPUDevice, T, int, NDIMS> {
     combined_dims[1] = in.dimension(NDIMS - 2);  // input filters
     combined_dims[2] = in.dimension(NDIMS - 1);  // output filters
     CudaLaunchConfig config = GetCudaLaunchConfig(out.size(), d);
-    SwapDimension0And2InTensor3Simple<T>
+
+    CHECK(dst_filter_format == FORMAT_OIHW)
+        << "Unsupported output layout: " << ToString(dst_filter_format);
+
+    ShuffleInTensor3Simple<T, 2, 1, 0>
         <<<config.block_count, config.thread_per_block, 0, d.stream()>>>(
             config.virtual_thread_count, in.data(), combined_dims, out.data());
   }
 };
 
-// Converts Cudnn filter format back to TensorFlow filter format.
+// Converts Cudnn filter format OIHW back to TensorFlow filter format HWIO.
+// TODO(hinsu): Support reverse transformation from filter format OHWI as well.
 template <typename T, int NDIMS>
 struct ReverseTransformFilter<GPUDevice, T, NDIMS> {
   typedef GPUDevice Device;
@@ -470,7 +457,7 @@ struct ReverseTransformFilter<GPUDevice, T, NDIMS> {
       combined_dims[2] *= in.dimension(i);
     }
     CudaLaunchConfig config = GetCudaLaunchConfig(out.size(), d);
-    SwapDimension0And2InTensor3Simple<T>
+    ShuffleInTensor3Simple<T, 2, 1, 0>
         <<<config.block_count, config.thread_per_block, 0, d.stream()>>>(
             config.virtual_thread_count, in.data(), combined_dims, out.data());
   }
@@ -937,7 +924,7 @@ void RunSwapDimension1And2InTensor3(const GPUDevice& d, const T* input,
   } else {
     int total_element_count = input_dims[0] * input_dims[1] * input_dims[2];
     CudaLaunchConfig config = GetCudaLaunchConfig(total_element_count, d);
-    SwapDimension1And2InTensor3Simple<T, conjugate>
+    ShuffleInTensor3Simple<T, 0, 2, 1, conjugate>
         <<<config.block_count, config.thread_per_block, 0, d.stream()>>>(
             config.virtual_thread_count, input, input_dims, output);
   }
@@ -969,7 +956,7 @@ struct SwapDimension0And2InTensor3<GPUDevice, T, conjugate> {
                                static_cast<int>(combined_dims[2])};
     size_t total_size = combined_dims[0] * combined_dims[1] * combined_dims[2];
     CudaLaunchConfig config = GetCudaLaunchConfig(total_size, d);
-    SwapDimension0And2InTensor3Simple<T, conjugate>
+    ShuffleInTensor3Simple<T, 2, 1, 0, conjugate>
         <<<config.block_count, config.thread_per_block, 0, d.stream()>>>(
             config.virtual_thread_count, in, input_dims, out);
   }

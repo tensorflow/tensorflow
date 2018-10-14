@@ -26,8 +26,8 @@ limitations under the License.
 // * Task numbers are within the specified replica, so there are as
 //   many "task zeros" as replicas.
 
-#ifndef TENSORFLOW_COMMON_RUNTIME_DEVICE_H_
-#define TENSORFLOW_COMMON_RUNTIME_DEVICE_H_
+#ifndef TENSORFLOW_CORE_COMMON_RUNTIME_DEVICE_H_
+#define TENSORFLOW_CORE_COMMON_RUNTIME_DEVICE_H_
 
 #include <memory>
 #include <string>
@@ -101,10 +101,20 @@ class Device : public DeviceBase {
     }
   }
 
+  // If true, and tracing is enabled, the `tracing::ScopedAnnotation()` tracing
+  // mechanism will be used instead of `tracing::ScopedActivity()`. Some devices
+  // may override this method to use annotations, which enable child activities
+  // (such as GPU kernel launches) to be related to the OpKernel invocation.
+  virtual bool TraceUsingAnnotations() const { return false; }
+
   // Blocks until all operations queued on the device at the time of
   // the call have completed.  Returns any error pending on the device
   // at completion.
   virtual Status Sync() = 0;
+
+  // Override this to return true for devices that require a Sync() call before
+  // session completion.
+  virtual bool RequiresSyncOnCompletion() const { return false; }
 
   // Optionally modify the device's GraphDef before execution.
   //
@@ -183,4 +193,4 @@ class Device : public DeviceBase {
 
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_COMMON_RUNTIME_DEVICE_H_
+#endif  // TENSORFLOW_CORE_COMMON_RUNTIME_DEVICE_H_

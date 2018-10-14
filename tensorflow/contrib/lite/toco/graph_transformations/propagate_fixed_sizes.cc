@@ -285,7 +285,8 @@ void ProcessDepthwiseConvOperator(Model* model, DepthwiseConvOperator* op) {
   const int kheight = weights_shape.dims(1);
   const int kwidth = weights_shape.dims(2);
   ComputeConvSizes(input_shape, output_depth, kwidth, kheight, op->stride_width,
-                   op->stride_height, 1, 1, op->padding.type,
+                   op->stride_height, op->dilation_width_factor,
+                   op->dilation_height_factor, op->padding.type,
                    model->GetArray(output_name).mutable_shape(),
                    &op->padding.GetOrCreateFixedPadding());
 }
@@ -539,6 +540,8 @@ bool KeepDims(const Operator& op) {
       return static_cast<const TensorFlowProdOperator&>(op).keep_dims;
     case OperatorType::kMean:
       return static_cast<const MeanOperator&>(op).keep_dims;
+    case OperatorType::kAny:
+      return static_cast<const TensorFlowAnyOperator&>(op).keep_dims;
     default:
       LOG(FATAL) << "Not a reduction operator!";
       return false;
@@ -559,26 +562,38 @@ void ProcessTensorFlowReductionOperator(Model* model, Operator* op) {
   const bool keep_dims = KeepDims(*op);
   if (op->inputs.size() == 2) {
     // There is a reduction_indices input.
-    const auto& reduction_array = model->GetArray(op->inputs[1]);
-    if (!reduction_array.buffer) {
+    const auto& reduction_indices_array = model->GetArray(op->inputs[1]);
+    if (!reduction_indices_array.buffer) {
       return;
     }
-    CHECK(reduction_array.buffer->type == ArrayDataType::kInt32);
-    const auto& reduction_array_vals =
-        reduction_array.GetBuffer<ArrayDataType::kInt32>().data;
-    auto& output_dims = *output_array.mutable_shape()->mutable_dims();
-    output_dims.clear();
-    for (int i = 0; i < input_shape.dimensions_count(); i++) {
-      bool is_reduction_dim = false;
-      for (int r : reduction_array_vals) {
-        if (i == r) {
-          is_reduction_dim = true;
-        }
+    CHECK(reduction_indices_array.buffer->type == ArrayDataType::kInt32);
+
+    int input_rank = input_shape.dimensions_count();
+    std::set<int32> true_indices;
+    const auto& reduction_indices =
+        reduction_indices_array.GetBuffer<ArrayDataType::kInt32>().data;
+    for (int i = 0; i < reduction_indices.size(); ++i) {
+      const int32 reduction_index = reduction_indices[i];
+      if (reduction_index < -input_rank || reduction_index >= input_rank) {
+        CHECK(false) << "Invalid reduction dimension " << reduction_index
+                     << " for input with " << input_rank << " dimensions";
       }
-      if (!is_reduction_dim) {
-        output_dims.push_back(input_shape.dims(i));
-      } else if (keep_dims) {
-        output_dims.push_back(1);
+      int32 wrapped_index = reduction_index;
+      if (wrapped_index < 0) {
+        wrapped_index += input_rank;
+      }
+      true_indices.insert(wrapped_index);
+    }
+
+    auto* mutable_dims = output_array.mutable_shape()->mutable_dims();
+    mutable_dims->clear();
+    for (int i = 0; i < input_rank; ++i) {
+      if (true_indices.count(i) > 0) {
+        if (keep_dims) {
+          mutable_dims->emplace_back(1);
+        }
+      } else {
+        mutable_dims->emplace_back(input_shape.dims(i));
       }
     }
   } else {
@@ -644,11 +659,16 @@ void ProcessConcatenationOperator(Model* model, ConcatenationOperator* op) {
     }
   }
   auto& output_array = model->GetArray(op->outputs[0]);
-  // Use 0 input as basis for output dimensions.
-  const auto& first_input_array = model->GetArray(op->inputs[0]);
-  output_array.copy_shape(first_input_array.shape());
-  // Negative axis means the count starts at the back of the dims().
-  if (op->axis < 0) op->axis += first_input_array.shape().dims().size();
+  // Use first non-empty input as basis for output dimensions.
+  for (const auto& input_name : op->inputs) {
+    const auto& input_array = model->GetArray(input_name);
+    if (input_array.shape().dimensions_count() > 0) {
+      output_array.copy_shape(input_array.shape());
+      // Negative axis means the count starts at the back of the dims().
+      if (op->axis < 0) op->axis += input_array.shape().dims().size();
+      break;
+    }
+  }
   // Determine the concat size, and enfore that all inputs have
   // the same dimensions count.
   int concat_size = 0;
@@ -926,6 +946,49 @@ void ProcessLstmCellOperator(Model* model, LstmCellOperator* op) {
       .copy_shape(activ_temp_shape);
 }
 
+void ProcessUnidirectionalSequenceLstmOperator(
+    Model* model, UnidirectionalSequenceLstmOperator* op) {
+  auto& output_array = model->GetArray(op->outputs[0]);
+  if (output_array.has_shape()) {
+    // Shape already propagated
+    return;
+  }
+
+  if (output_array.data_type == ArrayDataType::kNone) {
+    // Yield until the output type has been set by PropagateArrayDataTypes
+    return;
+  }
+
+  // TODO(renjieliu): check the inputs, as well as all kinds of weights.
+  const auto& input_array = model->GetArray(op->inputs[0]);
+  // Yield until input dims have been resolved.
+  if (!input_array.has_shape()) {
+    return;
+  }
+  const auto& input_shape = input_array.shape();
+  const int batch_size = input_shape.dims(1);
+  const int timestamp = input_shape.dims(0);
+
+  const auto& recurrent_to_output_weights_array =
+      model->GetArray(op->inputs[8]);
+  // Yield until input dims have been resolved.
+  if (!recurrent_to_output_weights_array.has_shape()) {
+    return;
+  }
+
+  constexpr int kInputActivationStateTensor = 18;
+  constexpr int kInputCellStateTensor = 19;
+  // b(115961645): This is a hack to work around.
+  model->GetArray(op->inputs[kInputActivationStateTensor]).buffer.reset();
+  model->GetArray(op->inputs[kInputCellStateTensor]).buffer.reset();
+
+  const auto& output_weights_shape = recurrent_to_output_weights_array.shape();
+  const int output_size = output_weights_shape.dims(1);
+
+  Shape* output_shape = output_array.mutable_shape();
+  output_shape->ReplaceDims({timestamp, batch_size, output_size});
+}
+
 void ProcessSpaceToBatchNDOperator(Model* model, SpaceToBatchNDOperator* op) {
   const auto& input_array = model->GetArray(op->inputs[0]);
   // Yield until input dims have been resolved.
@@ -1082,27 +1145,23 @@ void ProcessTopkV2Operator(Model* model, TopKV2Operator* op) {
   }
 
   // Yield until input dims have been resolved.
-  if (!input_values.has_shape()) {
+  if (!input_values.has_shape() || !input_k.has_shape()) {
     return;
   }
 
-  const auto& input_values_shape = input_values.shape();
-  auto output_indexes_dims = output_indexes.mutable_shape()->mutable_dims();
-  auto output_values_dims = output_values.mutable_shape()->mutable_dims();
-  for (int dim = 0; dim < input_values_shape.dimensions_count() - 1; dim++) {
-    output_indexes_dims->push_back(input_values_shape.dims(dim));
-    output_values_dims->push_back(input_values_shape.dims(dim));
-  }
   // If the value is initialized, we can specify the last dimension, otherwise
   // unknown.
   if (input_k.buffer) {
+    const auto& input_values_shape = input_values.shape();
+    auto output_indexes_dims = output_indexes.mutable_shape()->mutable_dims();
+    auto output_values_dims = output_values.mutable_shape()->mutable_dims();
+    for (int dim = 0; dim < input_values_shape.dimensions_count() - 1; dim++) {
+      output_indexes_dims->push_back(input_values_shape.dims(dim));
+      output_values_dims->push_back(input_values_shape.dims(dim));
+    }
     const int32_t k_value = input_k.GetBuffer<ArrayDataType::kInt32>().data[0];
     output_indexes_dims->push_back(k_value);
     output_values_dims->push_back(k_value);
-
-  } else {
-    output_indexes_dims->push_back(0);
-    output_values_dims->push_back(0);
   }
 }
 
@@ -1304,12 +1363,16 @@ void ProcessStridedSliceOperator(Model* model, StridedSliceOperator* op) {
 
   // Compute output shape
   for (int axis = 0; axis < num_input_axes; ++axis) {
+    const auto strided_slice_params =
+        tflite::strided_slice::BuildStridedSliceParams(
+            op->begin_mask, op->end_mask, op->shrink_axis_mask,
+            op->start_indices, op->stop_indices, op->strides);
     int start_index = tflite::strided_slice::StartForAxis(
-        op->begin_mask, op->start_indices, op->strides,
-        input_array.shape().dims().data(), axis);
+        strided_slice_params, ToRuntimeShape(input_array.shape()), axis);
     int stop_index = tflite::strided_slice::StopForAxis(
-        op->end_mask, op->shrink_axis_mask, op->stop_indices, op->strides,
-        input_array.shape().dims().data(), axis, start_index);
+        strided_slice_params, ToRuntimeShape(input_array.shape()), axis,
+        start_index);
+
     int dim_size =
         ceil(static_cast<float>(stop_index - start_index) / op->strides[axis]);
 
@@ -1519,65 +1582,6 @@ void ProcessTileOperator(Model* model, TensorFlowTileOperator* op) {
   }
 }
 
-void ProcessAnyOperator(Model* model, AnyOperator* op) {
-  CHECK_EQ(op->inputs.size(), 2);
-  CHECK_EQ(op->outputs.size(), 1);
-
-  auto& output_array = model->GetArray(op->outputs[0]);
-  if (output_array.has_shape()) {
-    // We have already run.
-    return;
-  }
-
-  const auto& input_array = model->GetArray(op->inputs[0]);
-  if (!input_array.has_shape()) {
-    // Yield until input dims have been resolved.
-    return;
-  }
-  const auto& input_shape = input_array.shape();
-
-  auto& reduction_indices_array = model->GetArray(op->inputs[1]);
-  if (!reduction_indices_array.has_shape()) {
-    // Yield until reduction indices shape been resolved.
-    return;
-  }
-  if (!reduction_indices_array.buffer) {
-    // Yield until the reduction indices are constant.
-    return;
-  }
-  CHECK(reduction_indices_array.data_type == ArrayDataType::kInt32)
-      << "Any reduction input must be int32";
-
-  int input_rank = input_shape.dimensions_count();
-  std::set<int32> true_indices;
-  const auto& reduction_indices =
-      reduction_indices_array.GetBuffer<ArrayDataType::kInt32>().data;
-  for (int i = 0; i < reduction_indices.size(); ++i) {
-    const int32 reduction_index = reduction_indices[i];
-    if (reduction_index < -input_rank || reduction_index >= input_rank) {
-      CHECK(false) << "Invalid reduction dimension " << reduction_index
-                   << " for input with " << input_rank << " dimensions";
-    }
-    int32 wrapped_index = reduction_index;
-    if (wrapped_index < 0) {
-      wrapped_index += input_rank;
-    }
-    true_indices.insert(wrapped_index);
-  }
-
-  auto* mutable_dims = output_array.mutable_shape()->mutable_dims();
-  mutable_dims->clear();
-  for (int i = 0; i < input_rank; ++i) {
-    if (true_indices.count(i) > 0) {
-      if (op->keep_dims) {
-        mutable_dims->emplace_back(1);
-      }
-    } else {
-      mutable_dims->emplace_back(input_shape.dims(i));
-    }
-  }
-}
-
 void ProcessOneHotOperator(Model* model, OneHotOperator* op) {
   CHECK_EQ(op->inputs.size(), 4);
   CHECK_EQ(op->outputs.size(), 1);
@@ -1633,9 +1637,38 @@ void ProcessOneHotOperator(Model* model, OneHotOperator* op) {
   }
 }
 
+void ProcessUnpackOperator(Model* model, UnpackOperator* op) {
+  CHECK_EQ(op->inputs.size(), 1);
+  const auto& input_array = model->GetArray(op->inputs[0]);
+  // Yield until input dims have been resolved.
+  if (!input_array.has_shape()) {
+    return;
+  }
+
+  const std::vector<int>& input_dims = input_array.shape().dims();
+  std::vector<int> output_dims;
+
+  output_dims.reserve(input_dims.size() - 1);
+  for (int i = 0; i < input_dims.size(); ++i) {
+    if (i != op->axis) {
+      output_dims.push_back(input_dims[i]);
+    }
+  }
+  for (const string& output_name : op->outputs) {
+    auto& output_array = model->GetArray(output_name);
+    if (output_array.has_shape()) {
+      return;
+    }
+    *output_array.mutable_shape()->mutable_dims() = output_dims;
+  }
+}
+
 }  // namespace
 
-bool PropagateFixedSizes::Run(Model* model, std::size_t op_index) {
+::tensorflow::Status PropagateFixedSizes::Run(Model* model,
+                                              std::size_t op_index,
+                                              bool* modified) {
+  *modified = false;
   auto it = model->operators.begin() + op_index;
   auto* op = it->get();
   std::unordered_map<string, std::vector<int>> old_output_dims;
@@ -1674,6 +1707,7 @@ bool PropagateFixedSizes::Run(Model* model, std::size_t op_index) {
     case OperatorType::kLogicalAnd:
     case OperatorType::kLogicalNot:
     case OperatorType::kLogicalOr:
+    case OperatorType::kZerosLike:
       ProcessSimpleOperator(model, op, 0);
       break;
     case OperatorType::kGather:
@@ -1747,6 +1781,7 @@ bool PropagateFixedSizes::Run(Model* model, std::size_t op_index) {
     case OperatorType::kSum:
     case OperatorType::kReduceProd:
     case OperatorType::kMean:
+    case OperatorType::kAny:
       ProcessTensorFlowReductionOperator(model, op);
       break;
     case OperatorType::kSelect:
@@ -1808,6 +1843,10 @@ bool PropagateFixedSizes::Run(Model* model, std::size_t op_index) {
       ProcessResizeBilinearOperator(model,
                                     static_cast<ResizeBilinearOperator*>(op));
       break;
+    case OperatorType::kUnidirectionalSequenceLstm:
+      ProcessUnidirectionalSequenceLstmOperator(
+          model, static_cast<UnidirectionalSequenceLstmOperator*>(op));
+      break;
     case OperatorType::kLstmCell:
       ProcessLstmCellOperator(model, static_cast<LstmCellOperator*>(op));
       break;
@@ -1847,7 +1886,7 @@ bool PropagateFixedSizes::Run(Model* model, std::size_t op_index) {
           static_cast<TensorFlowUnsupportedOperator*>(op);
       // Attribute can be not specified, ignore it.
       if (unsupported_op->output_shapes.size() < op->outputs.size()) {
-        return false;
+        return ::tensorflow::Status::OK();
       }
       for (int i = 0; i < op->outputs.size(); ++i) {
         const string& output = op->outputs[i];
@@ -1878,11 +1917,12 @@ bool PropagateFixedSizes::Run(Model* model, std::size_t op_index) {
     case OperatorType::kTile:
       ProcessTileOperator(model, static_cast<TensorFlowTileOperator*>(op));
       break;
-    case OperatorType::kAny:
-      ProcessAnyOperator(model, static_cast<AnyOperator*>(op));
       break;
     case OperatorType::kOneHot:
       ProcessOneHotOperator(model, static_cast<OneHotOperator*>(op));
+      break;
+    case OperatorType::kUnpack:
+      ProcessUnpackOperator(model, static_cast<UnpackOperator*>(op));
       break;
     default:
       // Unimplemented, another graph transformation should drop it.
@@ -1896,10 +1936,11 @@ bool PropagateFixedSizes::Run(Model* model, std::size_t op_index) {
         (old_output_dims[output] != model->GetArray(output).shape().dims())) {
       AddMessageF("Set shape of %s to [%s]", output,
                   absl::StrJoin(model->GetArray(output).shape().dims(), ","));
-      return true;
+      *modified = true;
+      return ::tensorflow::Status::OK();
     }
   }
-  return false;
+  return ::tensorflow::Status::OK();
 }
 
 }  // namespace toco

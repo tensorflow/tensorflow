@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_UTIL_BOUNDS_CHECK_H_
-#define TENSORFLOW_UTIL_BOUNDS_CHECK_H_
+#ifndef TENSORFLOW_CORE_KERNELS_BOUNDS_CHECK_H_
+#define TENSORFLOW_CORE_KERNELS_BOUNDS_CHECK_H_
 
 #include <type_traits>
 
@@ -51,4 +51,4 @@ EIGEN_ALWAYS_INLINE EIGEN_DEVICE_FUNC const T SubtleMustCopy(const T &x) {
 }  // namespace internal
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_UTIL_BOUNDS_CHECK_H_
+#endif  // TENSORFLOW_CORE_KERNELS_BOUNDS_CHECK_H_

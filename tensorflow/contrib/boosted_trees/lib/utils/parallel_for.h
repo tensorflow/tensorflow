@@ -12,8 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 // =============================================================================
-#ifndef TENSORFLOW_CONTRIB_LIB_UTILS_PARALLEL_FOR_H_
-#define TENSORFLOW_CONTRIB_LIB_UTILS_PARALLEL_FOR_H_
+#ifndef TENSORFLOW_CONTRIB_BOOSTED_TREES_LIB_UTILS_PARALLEL_FOR_H_
+#define TENSORFLOW_CONTRIB_BOOSTED_TREES_LIB_UTILS_PARALLEL_FOR_H_
 
 #include "tensorflow/core/lib/core/threadpool.h"
 
@@ -30,4 +30,4 @@ void ParallelFor(int64 batch_size, int64 desired_parallelism,
 }  // namespace boosted_trees
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_CONTRIB_LIB_UTILS_PARALLEL_FOR_H_
+#endif  // TENSORFLOW_CONTRIB_BOOSTED_TREES_LIB_UTILS_PARALLEL_FOR_H_

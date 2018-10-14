@@ -231,7 +231,7 @@ def ctc_greedy_decoder(inputs, sequence_length, merge_repeated=True):
           log_probabilities)
 
 
-@tf_export("nn.ctc_beam_search_decoder")
+@tf_export(v1=["nn.ctc_beam_search_decoder"])
 def ctc_beam_search_decoder(inputs, sequence_length, beam_width=100,
                             top_paths=1, merge_repeated=True):
   """Performs beam search decoding on the logits given in input.
@@ -242,11 +242,11 @@ def ctc_beam_search_decoder(inputs, sequence_length, beam_width=100,
 
   If `merge_repeated` is `True`, merge repeated classes in the output beams.
   This means that if consecutive entries in a beam are the same,
-  only the first of these is emitted.  That is, when the top path
-  is `A B B B B`, the return value is:
+  only the first of these is emitted.  That is, when the sequence is
+  `A B B * B * B` (where '*' is the blank label), the return value is:
 
     * `A B` if `merge_repeated = True`.
-    * `A B B B B` if `merge_repeated = False`.
+    * `A B B B` if `merge_repeated = False`.
 
   Args:
     inputs: 3-D `float` `Tensor`, size
@@ -280,6 +280,44 @@ def ctc_beam_search_decoder(inputs, sequence_length, beam_width=100,
       [sparse_tensor.SparseTensor(ix, val, shape) for (ix, val, shape)
        in zip(decoded_ixs, decoded_vals, decoded_shapes)],
       log_probabilities)
+
+
+@tf_export("nn.ctc_beam_search_decoder", v1=["nn.ctc_beam_search_decoder_v2"])
+def ctc_beam_search_decoder_v2(inputs, sequence_length, beam_width=100,
+                               top_paths=1):
+  """Performs beam search decoding on the logits given in input.
+
+  **Note** The `ctc_greedy_decoder` is a special case of the
+  `ctc_beam_search_decoder` with `top_paths=1` and `beam_width=1` (but
+  that decoder is faster for this special case).
+
+  Args:
+    inputs: 3-D `float` `Tensor`, size
+      `[max_time, batch_size, num_classes]`.  The logits.
+    sequence_length: 1-D `int32` vector containing sequence lengths,
+      having size `[batch_size]`.
+    beam_width: An int scalar >= 0 (beam search beam width).
+    top_paths: An int scalar >= 0, <= beam_width (controls output size).
+
+  Returns:
+    A tuple `(decoded, log_probabilities)` where
+    decoded: A list of length top_paths, where `decoded[j]`
+      is a `SparseTensor` containing the decoded outputs:
+      `decoded[j].indices`: Indices matrix `[total_decoded_outputs[j], 2]`;
+        The rows store: `[batch, time]`.
+      `decoded[j].values`: Values vector, size `[total_decoded_outputs[j]]`.
+        The vector stores the decoded classes for beam `j`.
+      `decoded[j].dense_shape`: Shape vector, size `(2)`.
+        The shape values are: `[batch_size, max_decoded_length[j]]`.
+    log_probability: A `float` matrix `[batch_size, top_paths]` containing
+        sequence log-probabilities.
+  """
+
+  # Note, merge_repeated is an invalid optimization that is removed from the
+  # public API: it returns low probability paths.
+  return ctc_beam_search_decoder(inputs, sequence_length=sequence_length,
+                                 beam_width=beam_width, top_paths=top_paths,
+                                 merge_repeated=False)
 
 
 ops.NotDifferentiable("CTCGreedyDecoder")

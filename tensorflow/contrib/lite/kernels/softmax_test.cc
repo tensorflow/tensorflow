@@ -93,8 +93,10 @@ TEST(SoftmaxOpTest, CompareWithTFminiBetaEq1) {
 
   std::unique_ptr<float[]> output_buffer(new float[input_size * batch_size]);
   auto input_shape = RuntimeShape({batch_size, 1, 1, input_size});
-  tflite::reference_ops::Softmax(input_buffer, input_shape, beta,
-                                 output_buffer.get(), input_shape);
+  SoftmaxParams params;
+  params.beta = beta;
+  tflite::reference_ops::Softmax(params, input_shape, input_buffer, input_shape,
+                                 output_buffer.get());
 
   std::vector<float> expected;
   expected.insert(expected.end(), output_buffer.get(),
@@ -120,8 +122,10 @@ TEST(SoftmaxOpTest, CompareWithTFminiBetaNotEq1) {
 
   std::unique_ptr<float[]> output_buffer(new float[input_size * batch_size]);
   auto input_shape = RuntimeShape({batch_size, 1, 1, input_size});
-  tflite::reference_ops::Softmax(input_buffer, input_shape, beta,
-                                 output_buffer.get(), input_shape);
+  SoftmaxParams params;
+  params.beta = beta;
+  tflite::reference_ops::Softmax(params, input_shape, input_buffer, input_shape,
+                                 output_buffer.get());
 
   std::vector<float> expected;
   expected.insert(expected.end(), output_buffer.get(),

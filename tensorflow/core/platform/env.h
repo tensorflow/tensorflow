@@ -228,12 +228,19 @@ class Env {
   /// |suffix|. Returns true if success.
   bool CreateUniqueFileName(string* prefix, const string& suffix);
 
+  /// \brief Return the runfiles directory if running under bazel. Returns
+  /// the directory the executable is located in if not running under bazel.
+  virtual string GetRunfilesDir() = 0;
+
   // TODO(jeff,sanjay): Add back thread/thread-pool support if needed.
   // TODO(jeff,sanjay): if needed, tighten spec so relative to epoch, or
   // provide a routine to get the absolute time.
 
+  /// \brief Returns the number of nano-seconds since the Unix epoch.
+  virtual uint64 NowNanos() { return envTime->NowNanos(); }
+
   /// \brief Returns the number of micro-seconds since the Unix epoch.
-  virtual uint64 NowMicros() { return envTime->NowMicros(); };
+  virtual uint64 NowMicros() { return envTime->NowMicros(); }
 
   /// \brief Returns the number of seconds since the Unix epoch.
   virtual uint64 NowSeconds() { return envTime->NowSeconds(); }
@@ -356,6 +363,8 @@ class EnvWrapper : public Env {
                                const string& version) override {
     return target_->FormatLibraryFileName(name, version);
   }
+
+  string GetRunfilesDir() override { return target_->GetRunfilesDir(); }
 
  private:
   void GetLocalTempDirectories(std::vector<string>* list) override {

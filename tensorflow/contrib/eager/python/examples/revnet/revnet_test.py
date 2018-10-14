@@ -50,6 +50,9 @@ class RevNetTest(tf.test.TestCase):
     # Reconstruction could cause numerical error, use double precision for tests
     config.dtype = tf.float64
     config.fused = False  # Fused batch norm does not support tf.float64
+    # Reduce the batch size for tests because the OSS version runs
+    # in constrained GPU environment with 1-2GB of memory.
+    config.batch_size = 2
     shape = (config.batch_size,) + config.input_shape
     self.model = revnet.RevNet(config=config)
     self.x = tf.random_normal(shape=shape, dtype=tf.float64)
@@ -226,14 +229,13 @@ class RevNetBenchmark(tf.test.Benchmark):
                              label,
                              device_and_format,
                              defun=False,
-                             execution_mode=None,
-                             compiled=False):
+                             execution_mode=None):
     config = config_.get_hparams_imagenet_56()
     with tfe.execution_mode(execution_mode):
       device, data_format = device_and_format
       model = revnet.RevNet(config=config)
       if defun:
-        model.call = tfe.defun(model.call, compiled=compiled)
+        model.call = tfe.defun(model.call)
       batch_size = 64
       num_burn = 5
       num_iters = 10
@@ -271,8 +273,7 @@ class RevNetBenchmark(tf.test.Benchmark):
                              make_iterator,
                              device_and_format,
                              defun=False,
-                             execution_mode=None,
-                             compiled=False):
+                             execution_mode=None):
     config = config_.get_hparams_imagenet_56()
     with tfe.execution_mode(execution_mode):
       device, data_format = device_and_format

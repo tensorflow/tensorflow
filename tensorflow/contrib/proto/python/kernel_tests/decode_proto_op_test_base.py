@@ -170,7 +170,7 @@ class DecodeProtoOpTestBase(test_base.ProtoOpTestBase, parameterized.TestCase):
     field_names = [f.name for f in fields]
     output_types = [f.dtype for f in fields]
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       sizes, vtensor = self._decode_module.decode_proto(
           batch,
           message_type=message_type,
@@ -290,7 +290,7 @@ class DecodeProtoOpTestBase(test_base.ProtoOpTestBase, parameterized.TestCase):
     field_names = ['sizes']
     field_types = [dtypes.int32]
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       ctensor, vtensor = self._decode_module.decode_proto(
           batch,
           message_type=msg_type,

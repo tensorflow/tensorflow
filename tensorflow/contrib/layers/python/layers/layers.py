@@ -1584,7 +1584,7 @@ def dropout(inputs,
     outputs_collections: Collection to add the outputs.
     scope: Optional scope for name_scope.
     seed: A Python integer. Used to create random seeds. See
-      @{tf.set_random_seed} for behavior.
+      `tf.set_random_seed` for behavior.
 
   Returns:
     A tensor representing the output of the operation.
@@ -2660,7 +2660,7 @@ def separable_convolution2d(
     inputs,
     num_outputs,
     kernel_size,
-    depth_multiplier,
+    depth_multiplier=1,
     stride=1,
     padding='SAME',
     data_format=DATA_FORMAT_NHWC,
@@ -3109,7 +3109,7 @@ def maxout(inputs, num_units, axis=-1, scope=None):
     inputs: Tensor input
     num_units: Specifies how many features will remain after maxout
       in the `axis` dimension (usually channel).
-      This must be multiple of number of `axis`.
+      This must be a factor of number of features.
     axis: The dimension where max pooling will be performed. Default is the
     last dimension.
     scope: Optional scope for variable_scope.
@@ -3128,7 +3128,7 @@ def maxout(inputs, num_units, axis=-1, scope=None):
       raise ValueError('number of features({}) is not '
                        'a multiple of num_units({})'.format(
                            num_channels, num_units))
-    shape[axis] = -1
+    shape[axis] = num_units
     shape += [num_channels // num_units]
 
     # Dealing with batches with arbitrary sizes

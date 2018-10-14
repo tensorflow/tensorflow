@@ -38,6 +38,7 @@ GrapplerItem::GrapplerItem(const GrapplerItem& other, GraphDef* graph_def) {
   restore_op = other.restore_op;
   save_restore_loc_tensor = other.save_restore_loc_tensor;
   queue_runners = other.queue_runners;
+  allowed_optimizations = other.allowed_optimizations;
   graph.Swap(graph_def);
 }
 

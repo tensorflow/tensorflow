@@ -79,12 +79,15 @@ message StepInfoResult {
   // The step duration in picoseconds.
   optional uint64 duration_ps = 2;
   // The infeed duration in picoseconds.
-  // Can turn into a map if we want a variable number of ops.
   optional uint64 infeed_duration_ps = 3;
+  // The outfeed duration in picoseconds.
+  optional uint64 host_outfeed_ps = 8;
   // The start time of this step in picoseconds.
   optional uint64 begin_ps = 4;
   // The waiting time within this step in picoseconds.
   optional uint64 wait_duration_ps = 5;
+  // The unit b outfeed duration in picoseconds.
+  optional uint64 unit_b_outfeed_ps = 9;
   // The time spent on cross-replica-sum in picoseconds.
   optional uint64 crs_duration_ps = 6;
   // Percentage of unit b time spent on infeed.
@@ -165,6 +168,12 @@ message RunEnvironmentResult {
   optional HostIndependentJobInfoResult host_independent_job_info = 5;
   // Host-dependent job information.
   repeated HostDependentJobInfoResult host_dependent_job_info = 6;
+  // The number of replicas, corresponds to input parallelism.
+  // If there is no model parallelism, replica_count = tpu_core_count
+  optional int32 replica_count = 7;
+  // The number of cores used for a single replica, e.g. model parallelism.
+  // If there is no model parallelism, then num_cores_per_replica = 1
+  optional int32 num_cores_per_replica = 8;
 }
 
 // The types of host operations that are tracked.

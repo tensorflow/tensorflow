@@ -104,20 +104,20 @@ class ArgMaxTest(test.TestCase):
     self._testDim(np.int64)
 
   def testEmpty(self):
-    with self.test_session():
+    with self.cached_session():
       for op in math_ops.argmin, math_ops.argmax:
         with self.assertRaisesOpError(
             r"Reduction axis 0 is empty in shape \[0\]"):
           op([], 0).eval()
 
   def testDefaultAxis(self):
-    with self.test_session():
+    with self.cached_session():
       for op in math_ops.argmin, math_ops.argmax:
         ans = op([1]).eval()
         self.assertAllEqual(ans, 0)
 
   def testOutputEmpty(self):
-    with self.test_session():
+    with self.cached_session():
       for op in math_ops.argmin, math_ops.argmax:
         ret = op(array_ops.zeros(shape=[1, 0, 2]), axis=-1).eval()
         self.assertEqual(ret.shape, (1, 0))

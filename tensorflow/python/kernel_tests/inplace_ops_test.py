@@ -153,7 +153,7 @@ class InplaceOpsTest(test_util.TensorFlowTestCase):
       self.assertAllClose(vy, vz)
 
   def testError(self):
-    with self.test_session():
+    with self.cached_session():
       with self.assertRaisesRegexp(errors.InvalidArgumentError,
                                    "must be a vector"):
         _ = inplace_ops.inplace_update([[1.]], [[0]], [[10]]).eval()

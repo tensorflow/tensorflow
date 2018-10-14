@@ -25,11 +25,11 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_JIT_XLA_DEVICE_H_
 #define TENSORFLOW_COMPILER_JIT_XLA_DEVICE_H_
 
+#include "tensorflow/compiler/jit/xla_device_context.h"
 #include "tensorflow/compiler/jit/xla_tensor.h"
 #include "tensorflow/compiler/tf2xla/xla_compiler.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
-#include "tensorflow/compiler/xla/service/stream_pool.h"
 #include "tensorflow/core/common_runtime/device_factory.h"
 #include "tensorflow/core/common_runtime/local_device.h"
 #include "tensorflow/core/framework/allocator.h"
@@ -40,6 +40,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/stream_executor_no_cuda.h"
 
 namespace tensorflow {
@@ -87,6 +88,10 @@ class XlaDevice : public LocalDevice {
   // Sets `*metadata` to the XlaDevice Metadata in the XLA device used by `ctx`.
   static Status GetMetadata(OpKernelContext* ctx, const Metadata** metadata);
 
+  // Sets `*metadata` to the XlaDevice Metadata in the XLA device used by `ctx`.
+  static Status GetMetadata(OpKernelConstruction* ctx,
+                            const Metadata** metadata);
+
   // Factory function. 'platform_name' is the name of the XLA platform.
   // 'device_name' is the name of the Tensorflow device to create.
   // 'jit_device_name' is the name of the corresponding JIT device.
@@ -117,62 +122,101 @@ class XlaDevice : public LocalDevice {
             const PaddedShapeFn& padded_shape_fn);
   ~XlaDevice() override;
 
-  Allocator* GetAllocator(AllocatorAttributes attr) override;
+  Allocator* GetAllocator(AllocatorAttributes attr) override
+      LOCKS_EXCLUDED(mu_);
   void Compute(OpKernel* op_kernel, OpKernelContext* context) override;
   void ComputeAsync(AsyncOpKernel* op_kernel, OpKernelContext* context,
                     AsyncOpKernel::DoneCallback done) override;
-  Status Sync() override { return Status::OK(); }
+  Status Sync() override;
 
   Status FillContextMap(const Graph* graph,
-                        DeviceContextMap* device_context_map) override;
+                        DeviceContextMap* device_context_map) override
+      LOCKS_EXCLUDED(mu_);
 
   Status MakeTensorFromProto(const TensorProto& tensor_proto,
                              const AllocatorAttributes alloc_attrs,
-                             Tensor* tensor) override;
+                             Tensor* tensor) override LOCKS_EXCLUDED(mu_);
 
-  xla::LocalClient* client() const;
   const Metadata& metadata() { return xla_metadata_; }
-  xla::StatusOr<se::Stream*> GetStream();
-  xla::StatusOr<se::Stream*> GetHostToDeviceStream();
-  xla::StatusOr<se::Stream*> GetDeviceToHostStream();
 
-  // If not already set, create and set GpuDeviceInfo.
-  // Not thread-safe
-  Status CreateAndSetGpuDeviceInfo();
+  // Ensures the DeviceContext associated with this XlaDevice is created and
+  // valid (i.e. all streams are ok). If any state is not valid, a new
+  // DeviceContext will be created.
+  //
+  // TODO(b/111859745): The Eager context needs to call this method to recover
+  // from failures.
+  Status EnsureDeviceContextOk() LOCKS_EXCLUDED(mu_);
+
+  // Instructs this XlaDevice to set a GpuDeviceInfo, which holds extra
+  // information for GPU and TPU devices.
+  Status UseGpuDeviceInfo() LOCKS_EXCLUDED(mu_);
+
+  // Instructs this XlaDevice to return 'sync_on_completion' for
+  // RequiresSyncOnCompletion().
+  void SetRequiresSyncOnCompletion(bool sync_on_completion) LOCKS_EXCLUDED(mu_);
+
+  bool RequiresSyncOnCompletion() const override LOCKS_EXCLUDED(mu_);
 
  private:
+  xla::LocalClient* client() const;
+  Allocator* GetAllocatorLocked(AllocatorAttributes attr)
+      EXCLUSIVE_LOCKS_REQUIRED(mu_);
+  Status EnsureStreamOkLocked(xla::Backend* backend, const string& name,
+                              std::shared_ptr<se::Stream>* stream,
+                              bool* stream_was_changed)
+      EXCLUSIVE_LOCKS_REQUIRED(mu_);
+  xla::StatusOr<XlaDeviceContext*> GetDeviceContextLocked()
+      EXCLUSIVE_LOCKS_REQUIRED(mu_);
+
+  static Status GetMetadataFromDevice(DeviceBase* device,
+                                      const XlaDevice::Metadata** metadata);
+
+  mutable mutex mu_;
   // The metadata of this XlaDevice.
   const Metadata xla_metadata_;
   // Which hardware device in the client's platform this XlaDevice controls.
   const int device_ordinal_;
   // The name of the device that is used to compile Ops for this XlaDevice.
-  DeviceType jit_device_name_;
+  const DeviceType jit_device_name_;
+  // The platform for this device.
+  se::Platform* const platform_;  // Not owned.
   // Memory allocator associated with this device.
-  Allocator* xla_allocator_;  // Not owned.
-  se::Platform* platform_;    // Not owned.
+  Allocator* xla_allocator_ GUARDED_BY(mu_) = nullptr;  // Not owned.
   // Stream associated with this device. Operations enqueued on this
   // stream are executed on the device. Operations include data
   // copying back and forth between CPU and the device, and
   // computations enqueued by XLA.
-  xla::StreamPool::Ptr stream_;
-  // If true, only stream_ is valid and all computation and transfers use
-  // stream_. If false, computation is performed by stream_ and transfers are
+  std::shared_ptr<se::Stream> stream_ GUARDED_BY(mu_);
+  // If false, only stream_ is valid and all computation and transfers use
+  // stream_. If true, computation is performed by stream_ and transfers are
   // performed by host_to_device/device_to_host_stream.
-  bool use_multiple_streams_;
+  const bool use_multiple_streams_;
   // If use_multiple_streams_, host to device transfers are performed using this
   // stream.
-  xla::StreamPool::Ptr host_to_device_stream_;
+  std::shared_ptr<se::Stream> host_to_device_stream_ GUARDED_BY(mu_);
   // If use_multiple_streams_, device to host transfers are performed using this
   // stream.
-  xla::StreamPool::Ptr device_to_host_stream_;
+  std::shared_ptr<se::Stream> device_to_host_stream_ GUARDED_BY(mu_);
   // Must we use XLA's transfer manager for correct host<->device transfers? if
   // false, we can use ThenMemcpy() instead.
-  bool transfer_as_literal_;
-  XlaCompiler::ShapeRepresentationFn shape_representation_fn_;
+  const bool transfer_as_literal_;
+  const XlaCompiler::ShapeRepresentationFn shape_representation_fn_;
 
-  // If set, holds default device context (that we must Unref)
-  // and its stream.
-  std::unique_ptr<GpuDeviceInfo> gpu_device_info_;
+  // The device context accessed by all users of the XlaDevice, set by calls to
+  // EnsureDeviceContextOk. If gpu_device_info_ is non-null, this pointer is
+  // also filled in to that struct. XlaDeviceContext is a ref-counted object.
+  XlaDeviceContext* device_context_ GUARDED_BY(mu_) = nullptr;
+
+  // Holds extra information for GPU and TPU devices, e.g. the device context.
+  bool use_gpu_device_info_ GUARDED_BY(mu_) = false;
+  std::unique_ptr<GpuDeviceInfo> gpu_device_info_ GUARDED_BY(mu_);
+
+  // Thread pool used for running closures
+  std::unique_ptr<thread::ThreadPool> thread_pool_;
+
+  // True if the device requires XlaDevice::Sync to be called on completion
+  // regardless of status.
+  bool sync_on_completion_ GUARDED_BY(mu_) = false;
 };
 
 // Builds OpKernel registrations on 'device' for the JIT operators

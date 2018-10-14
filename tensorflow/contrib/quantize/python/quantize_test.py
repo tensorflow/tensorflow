@@ -122,7 +122,7 @@ class QuantizeTest(test_util.TensorFlowTestCase):
         array_ops.identity(node, name='control_dependency')
 
     quantize.Quantize(graph, is_training, weight_bits=8, activation_bits=8)
-
+    # Check if output of bias add is quantized
     quantization_node_name = 'FakeQuantWithMinMaxVars'
     conv_quant = graph.get_operation_by_name('test/test/conv_quant/' +
                                              quantization_node_name)
@@ -138,6 +138,88 @@ class QuantizeTest(test_util.TensorFlowTestCase):
           consumers.extend(output.consumers())
 
         self.assertNotIn('test/relu6', [c.name for c in consumers])
+
+  def testInsertQuantOpInSeparableConv2d(self):
+    self._RunTestOverParameters(self._TestInsertQuantOpInSeparableConv2d)
+
+  def _TestInsertQuantOpInSeparableConv2d(self, is_training):
+    graph = ops.Graph()
+    with graph.as_default():
+      batch_size, height, width, depth = 5, 128, 128, 3
+      input1 = array_ops.zeros((batch_size, height, width, depth))
+      input2 = array_ops.zeros((batch_size, height / 2, width / 2, depth))
+      conv = separable_conv2d(
+          input1,
+          3, [5, 5],
+          stride=2,
+          depth_multiplier=1.0,
+          padding='SAME',
+          weights_initializer=self._WeightInit(0.09),
+          activation_fn=None,
+          scope='test/test')
+      node = math_ops.add(conv, input2, name='test/add')
+      node = nn_ops.relu6(node, name='test/relu6')
+      update_barrier = control_flow_ops.no_op(name='update_barrier')
+      with ops.control_dependencies([update_barrier]):
+        array_ops.identity(node, name='control_dependency')
+
+    quantize.Quantize(graph, is_training, weight_bits=8, activation_bits=8)
+    # Check if output of bias add is quantized
+    quantization_node_name = 'FakeQuantWithMinMaxVars'
+    conv_quant = graph.get_operation_by_name('test/test/conv_quant/' +
+                                             quantization_node_name)
+    self.assertEqual(conv_quant.type, quantization_node_name)
+
+    # Check if weights for both convs inside seperable conv are quantized
+    pointwise_weight_quant = graph.get_operation_by_name(
+        'test/test/weights_quant/' + quantization_node_name)
+    self.assertEqual(pointwise_weight_quant.type, quantization_node_name)
+    depthwise_weight_quant = graph.get_operation_by_name(
+        'test/test/separable_conv2d/weights_quant/' + quantization_node_name)
+    self.assertEqual(depthwise_weight_quant.type, quantization_node_name)
+
+    # Check if activations after first depthwise conv are quantized.
+    depthwise_act_quant = graph.get_operation_by_name(
+        'test/test/separable_conv2d/act_quant/' + quantization_node_name)
+    self.assertEqual(depthwise_act_quant.type, quantization_node_name)
+
+    for op in graph.get_operations():
+      if op.type == quantization_node_name:
+        quant_op = graph.get_operation_by_name(op.name)
+        # Scan through all FakeQuant operations, ensuring that the activation
+        # identity op isn't in the consumers of the operation.
+        consumers = []
+        for output in quant_op.outputs:
+          consumers.extend(output.consumers())
+
+        self.assertNotIn('test/relu6', [c.name for c in consumers])
+
+  def testLayerActivationQuantized(self):
+    self._RunTestOverParameters(self._TestLayerActivationQuantized)
+
+  def _TestLayerActivationQuantized(self, is_training):
+    graph = ops.Graph()
+    with graph.as_default():
+      batch_size, height, width, depth = 5, 128, 128, 3
+      input1 = array_ops.zeros((batch_size, height, width, depth))
+      _ = conv2d(
+          input1,
+          32, [5, 5],
+          stride=2,
+          padding='SAME',
+          weights_initializer=self._WeightInit(0.09),
+          activation_fn=nn_ops.relu6,
+          biases_initializer=None,
+          scope='test')
+      # Ensure that both weights and output of activations are quantized
+      # when we have a conv->relu6 with no bias add
+      quantize.Quantize(graph, is_training, weight_bits=8, activation_bits=8)
+      activation_op = graph.get_operation_by_name('test/Relu6')
+      conv_op = graph.get_operation_by_name('test/Conv2D')
+      self.assertTrue('test/weights_quant/FakeQuantWithMinMaxVars:0' in
+                      [tensor_in.name for tensor_in in conv_op.inputs])
+      self.assertTrue('FakeQuantWithMinMaxVars' in
+                      [op.type for op in activation_op.outputs[0].consumers()])
 
   def testFinalLayerQuantized(self):
     self._RunTestOverParameters(self._TestFinalLayerQuantized)
@@ -388,6 +470,60 @@ class QuantizeTest(test_util.TensorFlowTestCase):
       op_names = [op.name for op in graph.get_operations()]
       self.assertTrue(
           'part/test/test/weights_quant/FakeQuantWithMinMaxVars' in op_names)
+
+  def testSkipReshapeQuantization(self):
+    self._RunTestOverParameters(self._TestSkipReshapeQuantization)
+
+  def _TestSkipReshapeQuantization(self, is_training):
+    graph = ops.Graph()
+    with graph.as_default():
+      batch_size, height, width, depth = 5, 128, 128, 3
+      input1 = array_ops.zeros((batch_size, height, width, depth))
+      conv = conv2d(
+          input1,
+          32, [5, 5],
+          stride=2,
+          padding='SAME',
+          weights_initializer=self._WeightInit(0.09),
+          activation_fn=nn_ops.relu6,
+          scope='test/test')
+
+      reshape = array_ops.reshape(
+          conv, (int(10), int(height / 2), int(width / 2), int(16)))
+
+      # Insert a fake quant node after the reshape. We will check that one isn't
+      # insert before.
+      array_ops.fake_quant_with_min_max_vars(reshape, -1, 1)
+
+      quantize.Quantize(graph, is_training, weight_bits=8, activation_bits=8)
+
+      # Ensure that there isn't a FakeQuant added before the reshape.
+      self.assertFalse(
+          'FakeQuantWithMinMaxVars' in [i.op.type for i in reshape.op.inputs])
+
+    graph = ops.Graph()
+    with graph.as_default():
+      batch_size, height, width, depth = 5, 128, 128, 3
+      input1 = array_ops.zeros((batch_size, height, width, depth))
+      conv = conv2d(
+          input1,
+          32, [5, 5],
+          stride=2,
+          padding='SAME',
+          weights_initializer=self._WeightInit(0.09),
+          activation_fn=nn_ops.relu6,
+          scope='test/test')
+
+      reshape = array_ops.reshape(
+          conv, (int(10), int(height / 2), int(width / 2), int(16)))
+
+      # If no fake quant is added after the reshape, a FakeQuant should be added
+      # before the reshape.
+      quantize.Quantize(graph, is_training, weight_bits=8, activation_bits=8)
+
+      # Ensure that there isn't a FakeQuant added before the reshape.
+      self.assertTrue(
+          'FakeQuantWithMinMaxVars' in [i.op.type for i in reshape.op.inputs])
 
   def _WeightInit(self, stddev):
     """Returns truncated normal variable initializer.

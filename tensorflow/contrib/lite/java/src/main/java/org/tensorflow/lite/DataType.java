@@ -15,8 +15,8 @@ limitations under the License.
 
 package org.tensorflow.lite;
 
-/** Type of elements in a {@link TfLiteTensor}. */
-enum DataType {
+/** Represents the type of elements in a TensorFlow Lite {@link Tensor} as an enum. */
+public enum DataType {
   /** 32-bit single precision floating point. */
   FLOAT32(1),
 
@@ -35,28 +35,8 @@ enum DataType {
     this.value = value;
   }
 
-  /** Corresponding value of the kTfLite* enum in the TensorFlow Lite CC API. */
-  int getNumber() {
-    return value;
-  }
-
-  /** Converts an integer to the corresponding type. */
-  static DataType fromNumber(int c) {
-    for (DataType t : values) {
-      if (t.value == c) {
-        return t;
-      }
-    }
-    throw new IllegalArgumentException(
-        "DataType error: DataType "
-            + c
-            + " is not recognized in Java (version "
-            + TensorFlowLite.version()
-            + ")");
-  }
-
-  /** Returns byte size of the type. */
-  int elemByteSize() {
+  /** Returns the size of an element of this type, in bytes, or -1 if element size is variable. */
+  public int byteSize() {
     switch (this) {
       case FLOAT32:
         return 4;
@@ -69,6 +49,26 @@ enum DataType {
     }
     throw new IllegalArgumentException(
         "DataType error: DataType " + this + " is not supported yet");
+  }
+
+  /** Corresponding value of the TfLiteType enum in the TensorFlow Lite C API. */
+  int c() {
+    return value;
+  }
+
+  /** Converts a C TfLiteType enum value to the corresponding type. */
+  static DataType fromC(int c) {
+    for (DataType t : values) {
+      if (t.value == c) {
+        return t;
+      }
+    }
+    throw new IllegalArgumentException(
+        "DataType error: DataType "
+            + c
+            + " is not recognized in Java (version "
+            + TensorFlowLite.version()
+            + ")");
   }
 
   /** Gets string names of the data type. */

@@ -34,13 +34,7 @@ import sys
 import unittest
 
 import tensorflow as tf
-# pylint: disable=g-import-not-at-top
-try:
-  from tensorflow.compat import v1 as tf_v1
-  # We import compat.v1 as tf_v1 instead.
-  del tf.compat.v1
-except ImportError:
-  tf_v1 = None
+from tensorflow._api import v2 as tf_v2
 
 from google.protobuf import message
 from google.protobuf import text_format
@@ -53,8 +47,6 @@ from tensorflow.tools.api.lib import api_objects_pb2
 from tensorflow.tools.api.lib import python_object_to_proto_visitor
 from tensorflow.tools.common import public_api
 from tensorflow.tools.common import traverse
-# pylint: enable=g-import-not-at-top
-
 
 # FLAGS defined at the bottom:
 FLAGS = None
@@ -64,25 +56,41 @@ _UPDATE_GOLDENS_HELP = """
      have to be authorized by TensorFlow leads.
 """
 
+# DEFINE_boolean, only_test_core_api, default False:
+_ONLY_TEST_CORE_API_HELP = """
+    Some TF APIs are being moved outside of the tensorflow/ directory. There is
+    no garuntee which versions of these APIs will be present when running this
+    test. Therefore, do not error out on API changes in non-core TF code
+    if this flag is set.
+"""
+
 # DEFINE_boolean, verbose_diffs, default True:
 _VERBOSE_DIFFS_HELP = """
      If set to true, print line by line diffs on all libraries. If set to
      false, only print which libraries have differences.
 """
 
-_API_GOLDEN_FOLDER = 'tensorflow/tools/api/golden'
+_API_GOLDEN_FOLDER_V1 = 'tensorflow/tools/api/golden/v1'
+_API_GOLDEN_FOLDER_V2 = 'tensorflow/tools/api/golden/v2'
 _TEST_README_FILE = 'tensorflow/tools/api/tests/README.txt'
 _UPDATE_WARNING_FILE = 'tensorflow/tools/api/tests/API_UPDATE_WARNING.txt'
 
+_NON_CORE_PACKAGES = ['estimator']
 
-def _KeyToFilePath(key):
-  """From a given key, construct a filepath."""
+
+def _KeyToFilePath(key, api_version):
+  """From a given key, construct a filepath.
+
+  Filepath will be inside golden folder for api_version.
+  """
   def _ReplaceCapsWithDash(matchobj):
     match = matchobj.group(0)
     return '-%s' % (match.lower())
 
   case_insensitive_key = re.sub('([A-Z]{1})', _ReplaceCapsWithDash, key)
-  return os.path.join(_API_GOLDEN_FOLDER, '%s.pbtxt' % case_insensitive_key)
+  api_folder = (
+      _API_GOLDEN_FOLDER_V2 if api_version == 2 else _API_GOLDEN_FOLDER_V1)
+  return os.path.join(api_folder, '%s.pbtxt' % case_insensitive_key)
 
 
 def _FileNameToKey(filename):
@@ -96,6 +104,34 @@ def _FileNameToKey(filename):
   api_object_key = re.sub(
       '((-[a-z]){1})', _ReplaceDashWithCaps, base_filename_without_ext)
   return api_object_key
+
+
+def _VerifyNoSubclassOfMessageVisitor(path, parent, unused_children):
+  """A Visitor that crashes on subclasses of generated proto classes."""
+  # If the traversed object is a proto Message class
+  if not (isinstance(parent, type) and
+          issubclass(parent, message.Message)):
+    return
+  if parent is message.Message:
+    return
+  # Check that it is a direct subclass of Message.
+  if message.Message not in parent.__bases__:
+    raise NotImplementedError(
+        'Object tf.%s is a subclass of a generated proto Message. '
+        'They are not yet supported by the API tools.' % path)
+
+
+def _FilterNonCoreGoldenFiles(golden_file_list):
+  """Filter out non-core API pbtxt files."""
+  filtered_file_list = []
+  filtered_package_prefixes = [
+      'tensorflow.%s.' % p for p in _NON_CORE_PACKAGES]
+  for f in golden_file_list:
+    if any([f.rsplit('/')[-1].startswith(pre)
+            for pre in filtered_package_prefixes]):
+      continue
+    filtered_file_list.append(f)
+  return filtered_file_list
 
 
 class ApiCompatibilityTest(test.TestCase):
@@ -120,7 +156,8 @@ class ApiCompatibilityTest(test.TestCase):
                              actual_dict,
                              verbose=False,
                              update_goldens=False,
-                             additional_missing_object_message=''):
+                             additional_missing_object_message='',
+                             api_version=2):
     """Diff given dicts of protobufs and report differences a readable way.
 
     Args:
@@ -133,6 +170,7 @@ class ApiCompatibilityTest(test.TestCase):
       update_goldens: Whether to update goldens when there are diffs found.
       additional_missing_object_message: Message to print when a symbol is
           missing.
+      api_version: TensorFlow API version to test.
     """
     diffs = []
     verbose_diffs = []
@@ -158,6 +196,8 @@ class ApiCompatibilityTest(test.TestCase):
         diff_message = 'New object %s found (added).' % key
         verbose_diff_message = diff_message
       else:
+        # Do not truncate diff
+        self.maxDiff = None  # pylint: disable=invalid-name
         # Now we can run an actual proto diff.
         try:
           self.assertProtoEquals(expected_dict[key], actual_dict[key])
@@ -188,13 +228,13 @@ class ApiCompatibilityTest(test.TestCase):
         # If the keys are only in expected, some objects are deleted.
         # Remove files.
         for key in only_in_expected:
-          filepath = _KeyToFilePath(key)
+          filepath = _KeyToFilePath(key, api_version)
           file_io.delete_file(filepath)
 
         # If the files are only in actual (current library), these are new
         # modules. Write them to files. Also record all updates in files.
         for key in only_in_actual | set(updated_keys):
-          filepath = _KeyToFilePath(key)
+          filepath = _KeyToFilePath(key, api_version)
           file_io.write_string_to_file(
               filepath, text_format.MessageToString(actual_dict[key]))
       else:
@@ -205,37 +245,55 @@ class ApiCompatibilityTest(test.TestCase):
       logging.info('No differences found between API and golden.')
 
   def testNoSubclassOfMessage(self):
-
-    def Visit(path, parent, unused_children):
-      """A Visitor that crashes on subclasses of generated proto classes."""
-      # If the traversed object is a proto Message class
-      if not (isinstance(parent, type) and
-              issubclass(parent, message.Message)):
-        return
-      if parent is message.Message:
-        return
-      # Check that it is a direct subclass of Message.
-      if message.Message not in parent.__bases__:
-        raise NotImplementedError(
-            'Object tf.%s is a subclass of a generated proto Message. '
-            'They are not yet supported by the API tools.' % path)
-    visitor = public_api.PublicAPIVisitor(Visit)
+    visitor = public_api.PublicAPIVisitor(_VerifyNoSubclassOfMessageVisitor)
     visitor.do_not_descend_map['tf'].append('contrib')
+    # Skip compat.v1 and compat.v2 since they are validated in separate tests.
+    visitor.private_map['tf.compat'] = ['v1', 'v2']
     traverse.traverse(tf, visitor)
 
-  def checkBackwardsCompatibility(self, root, golden_file_pattern):
-     # Extract all API stuff.
+  def testNoSubclassOfMessageV1(self):
+    if not hasattr(tf.compat, 'v1'):
+      return
+    visitor = public_api.PublicAPIVisitor(_VerifyNoSubclassOfMessageVisitor)
+    visitor.do_not_descend_map['tf'].append('contrib')
+    if FLAGS.only_test_core_api:
+      visitor.do_not_descend_map['tf'].extend(
+          _NON_CORE_PACKAGES)
+    traverse.traverse(tf_v2.compat.v1, visitor)
+
+  def testNoSubclassOfMessageV2(self):
+    if not hasattr(tf.compat, 'v2'):
+      return
+    visitor = public_api.PublicAPIVisitor(_VerifyNoSubclassOfMessageVisitor)
+    visitor.do_not_descend_map['tf'].append('contrib')
+    if FLAGS.only_test_core_api:
+      visitor.do_not_descend_map['tf'].extend(
+          _NON_CORE_PACKAGES)
+    traverse.traverse(tf_v2, visitor)
+
+  def _checkBackwardsCompatibility(
+      self, root, golden_file_pattern, api_version,
+      additional_private_map=None):
+    # Extract all API stuff.
     visitor = python_object_to_proto_visitor.PythonObjectToProtoVisitor()
 
     public_api_visitor = public_api.PublicAPIVisitor(visitor)
     public_api_visitor.do_not_descend_map['tf'].append('contrib')
-    public_api_visitor.do_not_descend_map['tf.GPUOptions'] = ['Experimental']
-    traverse.traverse(root, public_api_visitor)
+    public_api_visitor.do_not_descend_map['tf.GPUOptions'] = [
+        'Experimental']
+    if FLAGS.only_test_core_api:
+      public_api_visitor.do_not_descend_map['tf'].extend(
+          _NON_CORE_PACKAGES)
+    if additional_private_map:
+      public_api_visitor.private_map.update(additional_private_map)
 
+    traverse.traverse(root, public_api_visitor)
     proto_dict = visitor.GetProtos()
 
     # Read all golden files.
     golden_file_list = file_io.get_matching_files(golden_file_pattern)
+    if FLAGS.only_test_core_api:
+      golden_file_list = _FilterNonCoreGoldenFiles(golden_file_list)
 
     def _ReadFileToProto(filename):
       """Read a filename, create a protobuf from its contents."""
@@ -254,33 +312,58 @@ class ApiCompatibilityTest(test.TestCase):
         golden_proto_dict,
         proto_dict,
         verbose=FLAGS.verbose_diffs,
-        update_goldens=FLAGS.update_goldens)
+        update_goldens=FLAGS.update_goldens,
+        api_version=api_version)
 
   @unittest.skipUnless(
       sys.version_info.major == 2,
       'API compabitility test goldens are generated using python2.')
   def testAPIBackwardsCompatibility(self):
+    api_version = 1
     golden_file_pattern = os.path.join(
         resource_loader.get_root_dir_with_all_resources(),
-        _KeyToFilePath('*'))
-    self.checkBackwardsCompatibility(tf, golden_file_pattern)
+        _KeyToFilePath('*', api_version))
+    self._checkBackwardsCompatibility(
+        tf,
+        golden_file_pattern,
+        api_version,
+        # Skip compat.v1 and compat.v2 since they are validated
+        # in separate tests.
+        additional_private_map={'tf.compat': ['v1', 'v2']})
 
   @unittest.skipUnless(
       sys.version_info.major == 2,
       'API compabitility test goldens are generated using python2.')
   def testAPIBackwardsCompatibilityV1(self):
-    if not tf_v1:
-      return
+    api_version = 1
     golden_file_pattern = os.path.join(
         resource_loader.get_root_dir_with_all_resources(),
-        _KeyToFilePath('*'))
-    self.checkBackwardsCompatibility(tf_v1, golden_file_pattern)
+        _KeyToFilePath('*', api_version))
+    self._checkBackwardsCompatibility(
+        tf_v2.compat.v1, golden_file_pattern, api_version)
+
+  @unittest.skipUnless(
+      sys.version_info.major == 2,
+      'API compabitility test goldens are generated using python2.')
+  def testAPIBackwardsCompatibilityV2(self):
+    api_version = 2
+    golden_file_pattern = os.path.join(
+        resource_loader.get_root_dir_with_all_resources(),
+        _KeyToFilePath('*', api_version))
+    self._checkBackwardsCompatibility(
+        tf_v2, golden_file_pattern, api_version,
+        additional_private_map={'tf.compat': ['v1']})
 
 
 if __name__ == '__main__':
   parser = argparse.ArgumentParser()
   parser.add_argument(
       '--update_goldens', type=bool, default=False, help=_UPDATE_GOLDENS_HELP)
+  # TODO(mikecase): Create Estimator's own API compatibility test or
+  # a more general API compatibility test for use for TF components.
+  parser.add_argument(
+      '--only_test_core_api', type=bool, default=False,
+      help=_ONLY_TEST_CORE_API_HELP)
   parser.add_argument(
       '--verbose_diffs', type=bool, default=True, help=_VERBOSE_DIFFS_HELP)
   FLAGS, unparsed = parser.parse_known_args()

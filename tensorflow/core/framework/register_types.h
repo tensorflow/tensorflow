@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_FRAMEWORK_REGISTER_TYPES_H_
-#define TENSORFLOW_FRAMEWORK_REGISTER_TYPES_H_
+#ifndef TENSORFLOW_CORE_FRAMEWORK_REGISTER_TYPES_H_
+#define TENSORFLOW_CORE_FRAMEWORK_REGISTER_TYPES_H_
 // This file is used by cuda code and must remain compilable by nvcc.
 
 #include "tensorflow/core/framework/numeric_types.h"
@@ -161,9 +161,12 @@ limitations under the License.
   TF_CALL_int64(m) TF_CALL_int32(m) TF_CALL_uint16(m) TF_CALL_int16(m) \
       TF_CALL_uint8(m) TF_CALL_int8(m)
 
+#define TF_CALL_FLOAT_TYPES(m) \
+  TF_CALL_half(m) TF_CALL_bfloat16(m) TF_CALL_float(m) TF_CALL_double(m)
+
 #define TF_CALL_REAL_NUMBER_TYPES(m) \
   TF_CALL_INTEGRAL_TYPES(m)          \
-  TF_CALL_half(m) TF_CALL_bfloat16(m) TF_CALL_float(m) TF_CALL_double(m)
+  TF_CALL_FLOAT_TYPES(m)
 
 #define TF_CALL_REAL_NUMBER_TYPES_NO_BFLOAT16(m) \
   TF_CALL_INTEGRAL_TYPES(m) TF_CALL_half(m) TF_CALL_float(m) TF_CALL_double(m)
@@ -225,4 +228,4 @@ limitations under the License.
 #define TF_CALL_SYCL_NUMBER_TYPES(m) TF_CALL_float(m) TF_CALL_SYCL_double(m)
 #endif  // __ANDROID_TYPES_SLIM__
 
-#endif  // TENSORFLOW_FRAMEWORK_REGISTER_TYPES_H_
+#endif  // TENSORFLOW_CORE_FRAMEWORK_REGISTER_TYPES_H_

@@ -536,8 +536,8 @@ XLA_TEST_F(ConcatTest, ConcatOperandsOfSameOperand) {
   auto f32_scalar = ShapeUtil::MakeShape(xla::F32, {});
   auto x_literal = LiteralUtil::CreateR0<float>(2.f);
   auto y_literal = LiteralUtil::CreateR0<float>(3.f);
-  auto x_data = client_->TransferToServer(*x_literal).ConsumeValueOrDie();
-  auto y_data = client_->TransferToServer(*y_literal).ConsumeValueOrDie();
+  auto x_data = client_->TransferToServer(x_literal).ConsumeValueOrDie();
+  auto y_data = client_->TransferToServer(y_literal).ConsumeValueOrDie();
 
   XlaBuilder builder(TestName());
   auto x = Parameter(&builder, 0, f32_scalar, "x");
@@ -559,12 +559,12 @@ XLA_TEST_F(ConcatTest, ConcatBroadcastArgument) {
   auto x_literal = LiteralUtil::CreateR1<float>({2.0f, 3.0f, 5.0f, 6.0f});
   auto y_literal = LiteralUtil::CreateR0<float>(1.5f);
   auto z_literal = LiteralUtil::CreateR0<float>(5.5f);
-  auto x_data = client_->TransferToServer(*x_literal).ConsumeValueOrDie();
-  auto y_data = client_->TransferToServer(*y_literal).ConsumeValueOrDie();
-  auto z_data = client_->TransferToServer(*z_literal).ConsumeValueOrDie();
+  auto x_data = client_->TransferToServer(x_literal).ConsumeValueOrDie();
+  auto y_data = client_->TransferToServer(y_literal).ConsumeValueOrDie();
+  auto z_data = client_->TransferToServer(z_literal).ConsumeValueOrDie();
 
   XlaBuilder builder(TestName());
-  auto x = Parameter(&builder, 0, x_literal->shape(), "x");
+  auto x = Parameter(&builder, 0, x_literal.shape(), "x");
   auto y = Parameter(&builder, 1, f32_scalar, "y");
   auto z = Parameter(&builder, 2, f32_scalar, "z");
   auto bcast = Broadcast(y, {5});
@@ -587,12 +587,12 @@ XLA_TEST_F(ConcatTest, ConcatBroadcastArgumentR3) {
   auto x_literal = LiteralUtil::CreateR3FromArray3D<float>(x3d);
   auto y_literal = LiteralUtil::CreateR0<float>(1.5f);
   auto z_literal = LiteralUtil::CreateR0<float>(5.5f);
-  auto x_data = client_->TransferToServer(*x_literal).ConsumeValueOrDie();
-  auto y_data = client_->TransferToServer(*y_literal).ConsumeValueOrDie();
-  auto z_data = client_->TransferToServer(*z_literal).ConsumeValueOrDie();
+  auto x_data = client_->TransferToServer(x_literal).ConsumeValueOrDie();
+  auto y_data = client_->TransferToServer(y_literal).ConsumeValueOrDie();
+  auto z_data = client_->TransferToServer(z_literal).ConsumeValueOrDie();
 
   XlaBuilder builder(TestName());
-  auto x = Parameter(&builder, 0, x_literal->shape(), "x");
+  auto x = Parameter(&builder, 0, x_literal.shape(), "x");
   auto y = Parameter(&builder, 1, f32_scalar, "y");
   auto z = Parameter(&builder, 2, f32_scalar, "y");
   auto y_bcast = Broadcast(y, {1, 5, 7});

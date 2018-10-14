@@ -20,6 +20,7 @@ limitations under the License.
 #include "tensorflow/contrib/lite/toco/tflite/builtin_operator.h"
 #include "tensorflow/contrib/lite/toco/tflite/operator.h"
 #include "tensorflow/contrib/lite/toco/tflite/types.h"
+#include "tensorflow/core/framework/node_def.pb.h"
 
 namespace toco {
 namespace tflite {
@@ -52,6 +53,42 @@ class ExportTest : public ::testing::Test {
     input_model_.operators.emplace_back(new SubOperator);
   }
 
+  void BuildQuantizableTestModel() {
+    input_model_.GetOrCreateArray("inputs");
+    Array& weight_array = input_model_.GetOrCreateArray("weights");
+
+    // Make the buffer large enough for QuantizeWeights transformation to take
+    // effect.
+    int buf_size = 1296;
+    auto weight_buf = absl::make_unique<float[]>(buf_size);
+    for (int i = 0; i < buf_size; i++) {
+      // Fill the array with some garbage values.
+      weight_buf[i] = static_cast<float>(i % 128);
+    }
+
+    weight_array.data_type = ArrayDataType::kFloat;
+
+    // Initialize shape for the input array.
+    Shape* weight_array_shape = weight_array.mutable_shape();
+    std::vector<int>* weight_array_shape_dim =
+        weight_array_shape->mutable_dims();
+    weight_array_shape_dim->resize(4, 6);
+    auto& weight_array_buffer =
+        weight_array.GetMutableBuffer<ArrayDataType::kFloat>();
+    weight_array_buffer.data.resize(buf_size);
+    float* buf_ptr =
+        weight_array.GetMutableBuffer<ArrayDataType::kFloat>().data.data();
+    std::copy(weight_buf.get(), weight_buf.get() + buf_size, buf_ptr);
+
+    {
+      auto* op = new ConvOperator;
+      op->padding.type = PaddingType::kSame;
+      op->inputs = {"inputs", "weights"};
+      input_model_.operators.emplace_back(op);
+    }
+    input_model_.operators.emplace_back(new AddOperator);
+  }
+
   Model input_model_;
 };
 
@@ -69,19 +106,22 @@ TEST_F(ExportTest, LoadOperatorsMap) {
 
   details::OperatorsMap operators;
   const auto ops_by_type = BuildOperatorByTypeMap();
-  details::LoadOperatorsMap(input_model_, &operators, ops_by_type);
-  EXPECT_EQ(0, operators[details::OperatorKey(OperatorType::kAdd, "", 1)]);
-  EXPECT_EQ(1, operators[details::OperatorKey(OperatorType::kConv, "", 1)]);
-  EXPECT_EQ(2, operators[details::OperatorKey(OperatorType::kSub, "", 1)]);
-  EXPECT_EQ(3, operators[details::OperatorKey(OperatorType::kUnsupported,
+  details::LoadOperatorsMap(input_model_, &operators, ops_by_type, false);
+  EXPECT_EQ(
+      0, operators[details::OperatorKey(::tflite::BuiltinOperator_ADD, "", 1)]);
+  EXPECT_EQ(1, operators[details::OperatorKey(::tflite::BuiltinOperator_CONV_2D,
+                                              "", 1)]);
+  EXPECT_EQ(2, operators[details::OperatorKey(::tflite::BuiltinOperator_CUSTOM,
                                               "MyCrazyOp", 1)]);
+  EXPECT_EQ(
+      3, operators[details::OperatorKey(::tflite::BuiltinOperator_SUB, "", 1)]);
 }
 
 TEST_F(ExportTest, Export) {
   BuildTestModel();
 
   string result;
-  Export(input_model_, true, &result);
+  Export(input_model_, true, false, &result);
 
   auto* model = ::tflite::GetModel(result.data());
 
@@ -96,7 +136,7 @@ TEST_F(ExportTest, Export) {
   }
 
   EXPECT_THAT(names, ElementsAre("builtin:ADD", "builtin:CONV_2D",
-                                 "builtin:SUB", "custom:MyCrazyOp"));
+                                 "custom:MyCrazyOp", "builtin:SUB"));
 
   std::vector<uint32_t> indices;
   auto operators = (*model->subgraphs())[0]->operators();
@@ -105,7 +145,21 @@ TEST_F(ExportTest, Export) {
     indices.push_back(op->opcode_index());
   }
 
-  EXPECT_THAT(indices, ElementsAre(1, 0, 3, 2));
+  EXPECT_THAT(indices, ElementsAre(1, 0, 2, 3));
+}
+
+TEST_F(ExportTest, QuantizeWeights) {
+  // Sanity check for quantize_weights parameter.
+  BuildQuantizableTestModel();
+  string unquantized_result;
+  Export(input_model_, true, /*quantize_weights*/ false, &unquantized_result);
+
+  BuildQuantizableTestModel();
+  string quantized_result;
+  Export(input_model_, true, /*quantize_weights*/ true, &quantized_result);
+
+  // The quantized models should be smaller.
+  EXPECT_LT(quantized_result.size(), unquantized_result.size());
 }
 
 // This test is based on a hypothetical scenario that dilation is supported
@@ -203,10 +257,11 @@ TEST_F(VersionedOpExportTest, LoadOperatorsMapWithOpV1) {
 
   details::OperatorsMap operators;
   const auto ops_by_type = BuildFakeOperatorByTypeMap();
-  details::LoadOperatorsMap(input_model_, &operators, ops_by_type);
+  details::LoadOperatorsMap(input_model_, &operators, ops_by_type, false);
 
   EXPECT_EQ(1, operators.size());
-  EXPECT_EQ(0, operators.at(details::OperatorKey(OperatorType::kConv, "", 1)));
+  EXPECT_EQ(0, operators.at(details::OperatorKey(
+                   ::tflite::BuiltinOperator_CONV_2D, "", 1)));
 }
 
 TEST_F(VersionedOpExportTest, LoadOperatorsMapWithOpV2) {
@@ -214,10 +269,11 @@ TEST_F(VersionedOpExportTest, LoadOperatorsMapWithOpV2) {
 
   details::OperatorsMap operators;
   const auto ops_by_type = BuildFakeOperatorByTypeMap();
-  details::LoadOperatorsMap(input_model_, &operators, ops_by_type);
+  details::LoadOperatorsMap(input_model_, &operators, ops_by_type, false);
 
   EXPECT_EQ(1, operators.size());
-  EXPECT_EQ(0, operators.at(details::OperatorKey(OperatorType::kConv, "", 2)));
+  EXPECT_EQ(0, operators.at(details::OperatorKey(
+                   ::tflite::BuiltinOperator_CONV_2D, "", 2)));
 }
 
 TEST_F(VersionedOpExportTest, LoadOperatorsMapWithBothVersions) {
@@ -226,11 +282,13 @@ TEST_F(VersionedOpExportTest, LoadOperatorsMapWithBothVersions) {
 
   details::OperatorsMap operators;
   const auto ops_by_type = BuildFakeOperatorByTypeMap();
-  details::LoadOperatorsMap(input_model_, &operators, ops_by_type);
+  details::LoadOperatorsMap(input_model_, &operators, ops_by_type, false);
 
   EXPECT_EQ(2, operators.size());
-  EXPECT_EQ(0, operators.at(details::OperatorKey(OperatorType::kConv, "", 1)));
-  EXPECT_EQ(1, operators.at(details::OperatorKey(OperatorType::kConv, "", 2)));
+  EXPECT_EQ(0, operators.at(details::OperatorKey(
+                   ::tflite::BuiltinOperator_CONV_2D, "", 1)));
+  EXPECT_EQ(1, operators.at(details::OperatorKey(
+                   ::tflite::BuiltinOperator_CONV_2D, "", 2)));
 }
 
 TEST_F(VersionedOpExportTest, Export) {
@@ -239,7 +297,7 @@ TEST_F(VersionedOpExportTest, Export) {
 
   string result;
   const auto ops_by_type = BuildFakeOperatorByTypeMap();
-  Export(input_model_, true, &result, ops_by_type);
+  Export(input_model_, true, false, &result, ops_by_type);
 
   auto* model = ::tflite::GetModel(result.data());
   auto operator_codes = model->operator_codes();
@@ -260,6 +318,117 @@ TEST_F(VersionedOpExportTest, Export) {
   EXPECT_EQ(2, operators->size());
   EXPECT_EQ(0, (*operators)[0]->opcode_index());
   EXPECT_EQ(1, (*operators)[1]->opcode_index());
+}
+
+TEST(OperatorKeyTest, TestBuiltinOp) {
+  auto op = absl::make_unique<ConvOperator>();
+
+  const auto ops_by_type = BuildOperatorByTypeMap();
+  const auto key = details::GetOperatorKey(*op, ops_by_type, false);
+
+  EXPECT_EQ(key.type, ::tflite::BuiltinOperator_CONV_2D);
+  EXPECT_EQ(key.custom_code, "");
+  EXPECT_EQ(key.version, 1);
+}
+
+TEST(OperatorKeyTest, TestCustomOp) {
+  auto op = absl::make_unique<TensorFlowUnsupportedOperator>();
+  op->tensorflow_op = "MyCrazyCustomOp";
+
+  const auto ops_by_type = BuildOperatorByTypeMap();
+  const auto key = details::GetOperatorKey(*op, ops_by_type, false);
+
+  EXPECT_EQ(key.type, ::tflite::BuiltinOperator_CUSTOM);
+  EXPECT_EQ(key.custom_code, "MyCrazyCustomOp");
+  EXPECT_EQ(key.version, 1);
+}
+
+TEST(OperatorKeyTest, TestFlexOp) {
+  auto op = absl::make_unique<TensorFlowUnsupportedOperator>();
+  op->tensorflow_op = "BatchMatMul";
+
+  const auto ops_by_type = BuildOperatorByTypeMap();
+  {
+    const auto key = details::GetOperatorKey(*op, ops_by_type, false);
+    // It shouldn't be converted to Flex op if `allow_flex_op` is false.
+    EXPECT_EQ(key.type, ::tflite::BuiltinOperator_CUSTOM);
+    EXPECT_EQ(key.custom_code, "BatchMatMul");
+    EXPECT_EQ(key.version, 1);
+    EXPECT_FALSE(key.is_flex_op);
+  }
+
+  {
+    // Verify that the custom op name is prefixed by "Flex" and `is_flex_op`
+    // is true.
+    const auto key = details::GetOperatorKey(*op, ops_by_type, true);
+    EXPECT_EQ(key.type, ::tflite::BuiltinOperator_CUSTOM);
+    EXPECT_EQ(key.custom_code, "FlexBatchMatMul");
+    EXPECT_EQ(key.version, 1);
+    EXPECT_TRUE(key.is_flex_op);
+  }
+}
+
+TEST(OperatorKeyTest, TestFlexWithControlFlowOp) {
+  auto op = absl::make_unique<TensorFlowUnsupportedOperator>();
+  op->tensorflow_op = "Merge";
+
+  const auto ops_by_type = BuildOperatorByTypeMap();
+  const auto key = details::GetOperatorKey(*op, ops_by_type, true);
+
+  EXPECT_EQ(key.type, ::tflite::BuiltinOperator_CUSTOM);
+  EXPECT_EQ(key.custom_code, "FlexMerge");
+  EXPECT_EQ(key.version, 1);
+  EXPECT_TRUE(key.is_flex_op);
+  // The control flow ops should be marked as unsupported.
+  EXPECT_TRUE(key.is_unsupported_flex_op);
+}
+
+TEST(OperatorKeyTest, TestFlexWithUnsupportedOp) {
+  auto op = absl::make_unique<TensorFlowUnsupportedOperator>();
+  op->tensorflow_op = "HashTableV2";
+
+  const auto ops_by_type = BuildOperatorByTypeMap();
+  const auto key = details::GetOperatorKey(*op, ops_by_type, true);
+
+  EXPECT_EQ(key.type, ::tflite::BuiltinOperator_CUSTOM);
+  EXPECT_EQ(key.custom_code, "FlexHashTableV2");
+  EXPECT_EQ(key.version, 1);
+  EXPECT_TRUE(key.is_flex_op);
+  // The control flow ops should be marked as unsupported.
+  EXPECT_TRUE(key.is_unsupported_flex_op);
+}
+
+TEST(OperatorKeyTest, TestFlexWithPartiallySupportedOps) {
+  // Test Toco-supported/TFLite-unsupported operators.
+  // TODO(ycling): The test will be broken if Range is implemented in TFLite.
+  // Find a more robust way to test the fallback logic.
+  auto op = absl::make_unique<RangeOperator>();
+
+  const auto ops_by_type = BuildOperatorByTypeMap();
+
+  {
+    // If NodeDef isn't retained in the Toco op, a regular custom op
+    // will be exported.
+    const auto key = details::GetOperatorKey(*op, ops_by_type, true);
+    EXPECT_EQ(key.type, ::tflite::BuiltinOperator_CUSTOM);
+    EXPECT_EQ(key.custom_code, "Range");
+    EXPECT_EQ(key.version, 1);
+    EXPECT_FALSE(key.is_flex_op);
+  }
+
+  ::tensorflow::NodeDef node_def;
+  node_def.set_name("Range");
+  node_def.set_op("Range");
+  node_def.SerializeToString(&op->tensorflow_node_def);
+
+  {
+    // If NodeDef is retained in the Toco op, a Flex op will be exported.
+    const auto key = details::GetOperatorKey(*op, ops_by_type, true);
+    EXPECT_EQ(key.type, ::tflite::BuiltinOperator_CUSTOM);
+    EXPECT_EQ(key.custom_code, "FlexRange");
+    EXPECT_EQ(key.version, 1);
+    EXPECT_TRUE(key.is_flex_op);
+  }
 }
 
 // TODO(ahentz): tests for tensors, inputs, outputs, opcodes and operators.

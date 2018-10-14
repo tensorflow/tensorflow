@@ -26,7 +26,7 @@ namespace xla {
 // A pass which rewrites batch norm operations into more operations. Breaking a
 // big operation into smaller operations helps leverage our generic fusion
 // logic.
-class BatchNormExpander : public HloPassInterface {
+class BatchNormExpander : public HloModulePass {
  public:
   // When use_fusion is set, a multi-output fusion node is created.
   BatchNormExpander(bool rewrite_training_op = false,
@@ -36,7 +36,7 @@ class BatchNormExpander : public HloPassInterface {
         rewrite_inference_op_(rewrite_inference_op),
         rewrite_grad_op_(rewrite_grad_op) {}
   ~BatchNormExpander() = default;
-  tensorflow::StringPiece name() const override { return "batchnorm_expander"; }
+  absl::string_view name() const override { return "batchnorm_expander"; }
 
   // Run operation expander on the given computation. Returns whether the
   // computation was changed.

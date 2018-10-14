@@ -221,7 +221,7 @@ class ClusterConfig(object):
 class RunConfig(ClusterConfig, core_run_config.RunConfig):
   """This class specifies the configurations for an `Estimator` run.
 
-  This class is a deprecated implementation of @{tf.estimator.RunConfig}
+  This class is a deprecated implementation of `tf.estimator.RunConfig`
   interface.
   """
   _USE_DEFAULT = 0

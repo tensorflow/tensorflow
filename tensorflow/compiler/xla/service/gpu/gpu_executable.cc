@@ -19,8 +19,9 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
+#include "absl/memory/memory.h"
 #include "tensorflow/compiler/xla/map_util.h"
-#include "tensorflow/compiler/xla/ptr_util.h"
 #include "tensorflow/compiler/xla/service/gpu/buffer_allocations.h"
 #include "tensorflow/compiler/xla/service/gpu/hlo_execution_profiler.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
@@ -112,7 +113,7 @@ Status GpuExecutable::ExecuteThunks(
     //
     // TODO(jlebar): Should we cache the results of HloInstruction::ToString(),
     // since we expect it to be an expensive call?
-    tensorflow::gtl::optional<ScopedAnnotation> op_annotation;
+    absl::optional<ScopedAnnotation> op_annotation;
     if (top_level_annotation.IsEnabled()) {
       op_annotation.emplace(
           thunk->hlo_instruction() != nullptr
@@ -131,9 +132,10 @@ Status GpuExecutable::ExecuteThunks(
       stream->ThenWaitFor(FindOrDie(thunk_to_finish_event, dependency).get());
     }
 
-    // If this thunk requests it, wait for all currently-executing thunks to
-    // finish.  This is useful e.g. if the thunk is about to perform autotuning.
-    if (thunk->ShouldHaltAllActivityBeforeRunning(stream)) {
+    // If this thunk is about to autotune then wait for all currently executing
+    // thunks to finish.  This reduces noise and thus the probability of
+    // choosing a suboptimal algorithm.
+    if (thunk->WillAutotuneKernel(stream)) {
       TF_RETURN_IF_ERROR(main_stream->BlockHostUntilDone());
     }
 
@@ -143,7 +145,7 @@ Status GpuExecutable::ExecuteThunks(
     TF_RETURN_IF_ERROR(
         thunk->ExecuteOnStream(buffer_allocations, stream, &profiler));
     if (thunk_schedule_->Depended(thunk)) {
-      auto finish_event = MakeUnique<se::Event>(main_stream->parent());
+      auto finish_event = absl::make_unique<se::Event>(main_stream->parent());
       finish_event->Init();
       stream->ThenRecordEvent(finish_event.get());
       thunk_to_finish_event[thunk] = std::move(finish_event);
@@ -159,7 +161,7 @@ Status GpuExecutable::ExecuteThunks(
     if (!block_status.ok()) {
       return InternalError(
           "Failed to complete all kernels launched on stream %p: %s",
-          main_stream, block_status.error_message().c_str());
+          main_stream, block_status.error_message());
     }
   }
 
@@ -196,7 +198,7 @@ GpuExecutable::ResolveConstantGlobals(se::StreamExecutor* executor) {
   }
   module_spec.AddCudaPtxInMemory(ptx().c_str());
 
-  tensorflow::gtl::FlatMap<int64, se::DeviceMemoryBase> globals;
+  absl::flat_hash_map<int64, se::DeviceMemoryBase> globals;
   se::ModuleHandle module_handle;
   executor->LoadModule(module_spec, &module_handle);
 
@@ -233,7 +235,7 @@ GpuExecutable::ResolveConstantGlobals(se::StreamExecutor* executor) {
 
 StatusOr<ScopedShapedBuffer> GpuExecutable::ExecuteOnStream(
     const ServiceExecutableRunOptions* run_options,
-    tensorflow::gtl::ArraySlice<const ShapedBuffer*> arguments,
+    absl::Span<const ShapedBuffer* const> arguments,
     HloExecutionProfile* hlo_execution_profile) {
   DeviceMemoryAllocator* memory_allocator = run_options->allocator();
 
@@ -259,10 +261,9 @@ StatusOr<ScopedShapedBuffer> GpuExecutable::ExecuteOnStream(
       if (buffer.is_null() && buffer.size() > 0) {
         return FailedPrecondition(
             "Cannot run XLA computation because pointer to (sub-)buffer at "
-            "index %s of parameter %lld was null.  All pointers to "
-            "(sub-)buffers must not be null, unless the (sub-)buffer has zero "
-            "elements.",
-            allocation.param_shape_index().ToString().c_str(), param_no);
+            "index %s of parameter %d was null.  All pointers to (sub-)buffers "
+            "must not be null, unless the (sub-)buffer has zero elements.",
+            allocation.param_shape_index().ToString(), param_no);
       }
 
       buffer_allocations_builder.RegisterBuffer(i, buffer);
@@ -293,7 +294,7 @@ StatusOr<ScopedShapedBuffer> GpuExecutable::ExecuteOnStream(
   // the respective location in ShapedBuffer.
   std::set<se::DeviceMemoryBase> buffers_in_result;
   TF_RETURN_IF_ERROR(shaped_buffer.buffers().ForEachMutableElementWithStatus(
-      [&buffer_allocations, &buffers_in_result, &shaped_buffer, this](
+      [&buffer_allocations, &buffers_in_result, this](
           const ShapeIndex& index, se::DeviceMemoryBase* device_memory) {
         const auto& sources = this->GetRootPointsToSet().element(index);
         // The points-to set is unambiguous so the set should be a
@@ -325,7 +326,7 @@ StatusOr<ScopedShapedBuffer> GpuExecutable::ExecuteOnStream(
 
 StatusOr<ScopedShapedBuffer> GpuExecutable::ExecuteAsyncOnStream(
     const ServiceExecutableRunOptions* run_options,
-    tensorflow::gtl::ArraySlice<const ShapedBuffer*> arguments) {
+    absl::Span<const ShapedBuffer* const> arguments) {
   // TODO(b/30671675): Implement asynchronous execution mode.
   return Unimplemented(
       "Asynchronous execution on stream is not yet supported on GPU.");
