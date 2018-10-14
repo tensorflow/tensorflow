@@ -23,7 +23,7 @@ const std::unordered_set<std::string>* GetExcludedOps() {
           {"BigQueryReader", "GenerateBigQueryReaderPartitions",
            "GcsConfigureBlockCache", "GcsConfigureCredentials",
 #ifdef INTEL_MKL
-           // QuatizedFusedOps for Intel CPU
+           // QuantizedFusedOps for Intel CPU
            "QuantizedConv2DAndRequantize", "QuantizedConv2DWithBias",
            "QuantizedConv2DWithBiasAndRequantize", "QuantizedConv2DAndRelu",
            "QuantizedConv2DAndReluAndRequantize",
