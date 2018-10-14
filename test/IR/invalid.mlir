@@ -56,8 +56,8 @@ extfunc missingsigil() -> (i1, index, f32) // expected-error {{expected a functi
 // -----
 
 cfgfunc @bad_branch() {
-bb42:
-  br missing  // expected-error {{reference to an undefined basic block 'missing'}}
+bb12:
+  br missing  // expected-error {{reference to an undefined basic block}}
 }
 
 // -----
@@ -97,6 +97,14 @@ bb42 (i32): // expected-error {{expected SSA operand}}
 
 cfgfunc @block_arg_no_type() {
 bb42 (%0): // expected-error {{expected ':' and type for SSA operand}}
+  return
+}
+
+// -----
+
+cfgfunc @block_arg_no_close_paren() {
+bb42:
+  br bb2( // expected-error@+1 {{expected ')' to close argument list}}
   return
 }
 
@@ -378,6 +386,14 @@ bb0:
 
 // -----
 
+cfgfunc @undef() {
+bb0:
+  %x = "xxx"(%y) : (i32)->i32   // expected-error {{use of undeclared SSA value name}}
+  return
+}
+
+// -----
+
 mlfunc @undef() {
   %x = "xxx"(%y) : (i32)->i32   // expected-error {{use of undefined SSA value %y}}
   return
@@ -608,3 +624,7 @@ mlfunc @calls(%arg0 : i32) {
   // expected-error@+1 {{expected type}}
   %z = "casdasda"(%x) : (ppop32) -> i32
 }
+// -----
+// expected-error@+2 {{expected SSA operand}}
+cfgfunc@n(){b(
+// -----

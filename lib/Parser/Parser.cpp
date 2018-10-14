@@ -807,7 +807,8 @@ Attribute *Parser::parseAttribute() {
 ///
 ParseResult
 Parser::parseAttributeDict(SmallVectorImpl<NamedAttribute> &attributes) {
-  consumeToken(Token::l_brace);
+  if (!consumeIf(Token::l_brace))
+    return ParseFailure;
 
   auto parseElt = [&]() -> ParseResult {
     // We allow keywords as attribute names.
@@ -1413,6 +1414,8 @@ public:
 protected:
   FunctionParser(ParserState &state, Kind kind) : Parser(state), kind(kind) {}
 
+  ~FunctionParser();
+
 private:
   /// Kind indicates if this is CFG or ML function parser.
   Kind kind;
@@ -1528,18 +1531,29 @@ ParseResult FunctionParser::finalizeFunction(Function *func, SMLoc loc) {
   // Check for any forward references that are left.  If we find any, error out.
   if (!forwardReferencePlaceholders.empty()) {
     SmallVector<std::pair<const char *, SSAValue *>, 4> errors;
-    // Iteration over the map isn't determinstic, so sort by source location.
+    // Iteration over the map isn't deterministic, so sort by source location.
     for (auto entry : forwardReferencePlaceholders)
       errors.push_back({entry.second.getPointer(), entry.first});
     llvm::array_pod_sort(errors.begin(), errors.end());
 
-    for (auto entry : errors)
-      emitError(SMLoc::getFromPointer(entry.first),
-                "use of undeclared SSA value name");
+    for (auto entry : errors) {
+      auto loc = SMLoc::getFromPointer(entry.first);
+      emitError(loc, "use of undeclared SSA value name");
+    }
     return ParseFailure;
   }
 
   return ParseSuccess;
+}
+
+FunctionParser::~FunctionParser() {
+  for (auto &fwd : forwardReferencePlaceholders) {
+    // Drop all uses of undefined forward declared reference and destroy
+    // defining instruction.
+    for (auto &use : fwd.first->getUses())
+      use.drop();
+    fwd.first->getDefiningInst()->destroy();
+  }
 }
 
 /// Parse a SSA operand for an instruction or statement.
@@ -2007,6 +2021,7 @@ Operation *FunctionParser::parseCustomOperation(
 //===----------------------------------------------------------------------===//
 
 namespace {
+
 /// This is a specialized parser for CFGFunction's, maintaining the state
 /// transient to their bodies.
 class CFGFunctionParser : public FunctionParser {
@@ -2020,6 +2035,7 @@ public:
 private:
   CFGFunction *function;
   llvm::StringMap<std::pair<BasicBlock *, SMLoc>> blocksByName;
+  DenseMap<BasicBlock *, SMLoc> forwardRef;
 
   /// This builder intentionally shadows the builder in the base class, with a
   /// more specific builder type.
@@ -2032,8 +2048,34 @@ private:
     auto &blockAndLoc = blocksByName[name];
     if (!blockAndLoc.first) {
       blockAndLoc.first = new BasicBlock();
+      forwardRef[blockAndLoc.first] = loc;
+      function->push_back(blockAndLoc.first);
       blockAndLoc.second = loc;
     }
+
+    return blockAndLoc.first;
+  }
+
+  // Define the basic block with the specified name. Returns the BasicBlock* or
+  // nullptr in the case of redefinition.
+  BasicBlock *defineBlockNamed(StringRef name, SMLoc loc) {
+    auto &blockAndLoc = blocksByName[name];
+    if (!blockAndLoc.first) {
+      blockAndLoc.first = builder.createBlock();
+      blockAndLoc.second = loc;
+      return blockAndLoc.first;
+    }
+
+    // Forward declarations are removed once defined, so if we are defining a
+    // existing block and it is not a forward declaration, then it is a
+    // redeclaration.
+    if (!forwardRef.erase(blockAndLoc.first))
+      return nullptr;
+
+    // Move the block to the end of the function.  Forward ref'd blocks are
+    // inserted wherever they happen to be referenced.
+    function->getBlocks().splice(function->end(), function->getBlocks(),
+                                 blockAndLoc.first);
     return blockAndLoc.first;
   }
 
@@ -2084,14 +2126,19 @@ ParseResult CFGFunctionParser::parseFunctionBody() {
     if (parseBasicBlock())
       return ParseFailure;
 
-  // Verify that all referenced blocks were defined.  Iteration over a
-  // StringMap isn't determinstic, but this is good enough for our purposes.
-  for (auto &elt : blocksByName) {
-    auto *bb = elt.second.first;
-    if (!bb->getFunction())
-      return emitError(elt.second.second,
-                       "reference to an undefined basic block '" + elt.first() +
-                           "'");
+  // Verify that all referenced blocks were defined.
+  if (!forwardRef.empty()) {
+    SmallVector<std::pair<const char *, BasicBlock *>, 4> errors;
+    // Iteration over the map isn't deterministic, so sort by source location.
+    for (auto entry : forwardRef)
+      errors.push_back({entry.second.getPointer(), entry.first});
+    llvm::array_pod_sort(errors.begin(), errors.end());
+
+    for (auto entry : errors) {
+      auto loc = SMLoc::getFromPointer(entry.first);
+      emitError(loc, "reference to an undefined basic block");
+    }
+    return ParseFailure;
   }
 
   return finalizeFunction(function, braceLoc);
@@ -2110,11 +2157,10 @@ ParseResult CFGFunctionParser::parseBasicBlock() {
   if (parseToken(Token::bare_identifier, "expected basic block name"))
     return ParseFailure;
 
-  auto *block = getBlockNamed(name, nameLoc);
+  auto *block = defineBlockNamed(name, nameLoc);
 
-  // If this block has already been parsed, then this is a redefinition with the
-  // same block name.
-  if (block->getFunction())
+  // Fail if redefinition.
+  if (!block)
     return emitError(nameLoc, "redefinition of block '" + name.str() + "'");
 
   // If an argument list is present, parse it.
@@ -2124,9 +2170,6 @@ ParseResult CFGFunctionParser::parseBasicBlock() {
         parseToken(Token::r_paren, "expected ')' to end argument list"))
       return ParseFailure;
   }
-
-  // Add the block to the function.
-  function->push_back(block);
 
   if (parseToken(Token::colon, "expected ':' after basic block name"))
     return ParseFailure;
@@ -2152,15 +2195,19 @@ ParseResult CFGFunctionParser::parseBasicBlock() {
 
 ParseResult CFGFunctionParser::parseBranchBlockAndUseList(
     BasicBlock *&block, SmallVectorImpl<CFGValue *> &values) {
+  // Verify branch is identifier and get the matching block.
+  if (!getToken().is(Token::bare_identifier))
+    return emitError("expected basic block name");
   block = getBlockNamed(getTokenSpelling(), getToken().getLoc());
-  if (parseToken(Token::bare_identifier, "expected basic block name"))
-    return ParseFailure;
+  consumeToken();
 
-  if (!consumeIf(Token::l_paren))
-    return ParseSuccess;
-  if (parseOptionalSSAUseAndTypeList(values, /*isParenthesized*/ false) ||
-      parseToken(Token::r_paren, "expected ')' to close argument list"))
+  // Handle optional arguments.
+  if (consumeIf(Token::l_paren) &&
+      (parseOptionalSSAUseAndTypeList(values, /*isParenthesized=*/false) ||
+       parseToken(Token::r_paren, "expected ')' to close argument list"))) {
     return ParseFailure;
+  }
+
   return ParseSuccess;
 }
 
@@ -2184,7 +2231,7 @@ TerminatorInst *CFGFunctionParser::parseTerminator() {
 
     // Parse any operands.
     SmallVector<CFGValue *, 8> operands;
-    if (parseOptionalSSAUseAndTypeList(operands, /*isParenthesized*/ false))
+    if (parseOptionalSSAUseAndTypeList(operands, /*isParenthesized=*/false))
       return nullptr;
     return builder.createReturn(getEncodedSourceLocation(loc), operands);
   }
