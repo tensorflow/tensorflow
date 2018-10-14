@@ -24,8 +24,8 @@ limitations under the License.
 namespace xla {
 
 StatusOr<ProgramShape> XlaComputation::GetProgramShape() const {
-  TF_RET_CHECK(proto_.has_program_shape());
-  return proto_.program_shape();
+  TF_RET_CHECK(proto_.has_host_program_shape());
+  return proto_.host_program_shape();
 }
 
 StatusOr<std::unique_ptr<HloSnapshot>> XlaComputation::Snapshot() const {

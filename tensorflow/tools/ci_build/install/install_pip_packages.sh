@@ -124,6 +124,10 @@ pip3 install keras_preprocessing==1.0.5 --no-deps
 pip2 install --upgrade h5py==2.8.0
 pip3 install --upgrade h5py==2.8.0
 
+# Estimator
+pip2 install tensorflow_estimator --no-deps
+pip3 install tensorflow_estimator --no-deps
+
 # Install last working version of setuptools.
 pip2 install --upgrade setuptools==39.1.0
 pip3 install --upgrade setuptools==39.1.0

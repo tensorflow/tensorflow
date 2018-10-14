@@ -235,6 +235,18 @@ class MapDefunTest(test_base.DatasetTestBase):
       sess.close()
       thread.join()
 
+  def testMapDefunWithCapturedInputs(self):
+    c = constant_op.constant(2)
+
+    @function.Defun(dtypes.int32)
+    def fn(x):
+      return x + c
+
+    x = constant_op.constant([1, 2, 3, 4])
+    map_defun_op = map_defun.map_defun(fn, [x], [dtypes.int32], [()])[0]
+    expected = x + c
+    self.assertAllEqual(self.evaluate(expected), self.evaluate(map_defun_op))
+
 
 class MapDefunBenchmark(test.Benchmark):
 

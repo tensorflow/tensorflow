@@ -272,7 +272,7 @@ def _compile_internal(computation, inputs=None):
     raise TypeError(
         'Supplied computation cannot be called with the specified inputs. You '
         'specified %d inputs: %s, but the computation needs %s' %
-        (input_arity, str([i.name for i in inputs[0]]), arg_error))
+        (input_arity, str([i.name for i in inputs]), arg_error))
 
   cluster_name = ops.get_default_graph().unique_name('cluster')
   pivot = control_flow_ops.no_op(name=cluster_name + '/pivot')
@@ -606,8 +606,8 @@ class _ModelFnWrapper(object):
 def estimator_model_fn(target_model_fn=None):
   """estimator_model_fn decorates a model_fn to be compiled for execution.
 
-  Currently only it only works with `TPUEstimator`. If you need to use it with
-  base `Estimator`, please add `tf.enable_resource_variables()` at beginning of
+  Currently it only works with `TPUEstimator`. If you need to use it with base
+  `Estimator`, please add `tf.enable_resource_variables()` at the beginning of
   your program.
 
   Example 1, decorating model_fn:

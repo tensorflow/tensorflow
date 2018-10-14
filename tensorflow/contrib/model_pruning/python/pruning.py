@@ -210,7 +210,7 @@ def get_pruning_hparams():
       block_height=1,
       block_width=1,
       block_pooling_function='AVG',
-      initial_sparsity=0,
+      initial_sparsity=0.0,
       target_sparsity=0.5,
       sparsity_function_begin_step=0,
       sparsity_function_end_step=100,

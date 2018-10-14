@@ -34,6 +34,7 @@ from tensorflow.python.estimator.canned import metric_keys
 from tensorflow.python.estimator.canned import prediction_keys
 from tensorflow.python.estimator.inputs import numpy_io
 from tensorflow.python.feature_column import feature_column
+from tensorflow.python.feature_column import feature_column_v2
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -479,6 +480,60 @@ class BaseDNNModelFnTest(object):
           else:
             self.fail('Invalid mode: {}'.format(mode))
 
+  def test_multi_feature_column_mix_multi_dim_logits(self):
+    """Tests multiple feature columns and multi-dimensional logits.
+
+    All numbers are the same as test_multi_dim_input_multi_dim_logits. The only
+    difference is that the input consists of two 1D feature columns, instead of
+    one 2D feature column.
+    """
+    base_global_step = 100
+    create_checkpoint((
+        ([[.6, .5], [-.6, -.5]], [.1, -.1]),
+        ([[1., .8], [-.8, -1.]], [.2, -.2]),
+        ([[-1., 1., .5], [-1., 1., .5]], [.3, -.3, .0]),
+    ), base_global_step, self._model_dir)
+    hidden_units = (2, 2)
+    logits_dimension = 3
+    inputs = ([[10.]], [[8.]])
+    expected_logits = [[-0.48, 0.48, 0.39]]
+
+    for mode in [
+        model_fn.ModeKeys.TRAIN, model_fn.ModeKeys.EVAL,
+        model_fn.ModeKeys.PREDICT
+    ]:
+      with ops.Graph().as_default():
+        training_util.create_global_step()
+        head = mock_head(
+            self,
+            hidden_units=hidden_units,
+            logits_dimension=logits_dimension,
+            expected_logits=expected_logits)
+        estimator_spec = self._dnn_model_fn(
+            features={
+                'age': constant_op.constant(inputs[0]),
+                'height': constant_op.constant(inputs[1])
+            },
+            labels=constant_op.constant([[1]]),
+            mode=mode,
+            head=head,
+            hidden_units=hidden_units,
+            feature_columns=[
+                feature_column.numeric_column('age'),
+                feature_column_v2.numeric_column('height')
+            ],
+            optimizer=mock_optimizer(self, hidden_units))
+        with monitored_session.MonitoredTrainingSession(
+            checkpoint_dir=self._model_dir) as sess:
+          if mode == model_fn.ModeKeys.TRAIN:
+            sess.run(estimator_spec.train_op)
+          elif mode == model_fn.ModeKeys.EVAL:
+            sess.run(estimator_spec.loss)
+          elif mode == model_fn.ModeKeys.PREDICT:
+            sess.run(estimator_spec.predictions)
+          else:
+            self.fail('Invalid mode: {}'.format(mode))
+
   def test_features_tensor_raises_value_error(self):
     """Tests that passing a Tensor for features raises a ValueError."""
     hidden_units = (2, 2)
@@ -791,6 +846,60 @@ class BaseDNNLogitFnTest(object):
               feature_columns=[
                   self._fc_impl.numeric_column('age'),
                   self._fc_impl.numeric_column('height')
+              ],
+              activation_fn=nn.relu,
+              dropout=None,
+              input_layer_partitioner=input_layer_partitioner,
+              batch_norm=False)
+          logits = logit_fn(
+              features={
+                  'age': constant_op.constant(inputs[0]),
+                  'height': constant_op.constant(inputs[1])
+              },
+              mode=mode)
+          with monitored_session.MonitoredTrainingSession(
+              checkpoint_dir=self._model_dir) as sess:
+            self.assertAllClose(expected_logits, sess.run(logits))
+
+  def test_multi_feature_column_mix_multi_dim_logits(self):
+    """Tests multiple feature columns and multi-dimensional logits.
+
+    All numbers are the same as test_multi_dim_input_multi_dim_logits. The only
+    difference is that the input consists of two 1D feature columns, instead of
+    one 2D feature column.
+    """
+    base_global_step = 100
+    create_checkpoint((
+        ([[.6, .5], [-.6, -.5]], [.1, -.1]),
+        ([[1., .8], [-.8, -1.]], [.2, -.2]),
+        ([[-1., 1., .5], [-1., 1., .5]], [.3, -.3, .0]),
+    ), base_global_step, self._model_dir)
+
+    hidden_units = (2, 2)
+    logits_dimension = 3
+    inputs = ([[10.]], [[8.]])
+    expected_logits = [[-0.48, 0.48, 0.39]]
+
+    for mode in [
+        model_fn.ModeKeys.TRAIN, model_fn.ModeKeys.EVAL,
+        model_fn.ModeKeys.PREDICT
+    ]:
+      with ops.Graph().as_default():
+        # Global step needed for MonitoredSession, which is in turn used to
+        # explicitly set variable weights through a checkpoint.
+        training_util.create_global_step()
+        # Use a variable scope here with 'dnn', emulating the dnn model_fn, so
+        # the checkpoint naming is shared.
+        with variable_scope.variable_scope('dnn'):
+          input_layer_partitioner = (
+              partitioned_variables.min_max_variable_partitioner(
+                  max_partitions=0, min_slice_size=64 << 20))
+          logit_fn = self._dnn_logit_fn_builder(
+              units=logits_dimension,
+              hidden_units=hidden_units,
+              feature_columns=[
+                  feature_column.numeric_column('age'),
+                  feature_column_v2.numeric_column('height')
               ],
               activation_fn=nn.relu,
               dropout=None,

@@ -19,16 +19,21 @@ limitations under the License.
 #include <sys/types.h>
 
 #include "tensorflow/contrib/lite/kernels/internal/common.h"
+#include "tensorflow/contrib/lite/kernels/internal/legacy_types.h"
 #include "tensorflow/contrib/lite/kernels/internal/reference/depthwiseconv_float.h"
 #include "tensorflow/contrib/lite/kernels/internal/reference/depthwiseconv_uint8.h"
 #include "tensorflow/contrib/lite/kernels/internal/reference/reference_ops.h"
-#include "tensorflow/contrib/lite/kernels/internal/types.h"
 
 namespace tflite {
 
 namespace reference_ops {
 
 static constexpr int kDepthwiseReverseShift = -1;
+
+inline void ShapeFromDims(const tflite::Dims<4>& dims, RuntimeShape* shape) {
+  shape->BuildFrom(
+      {dims.sizes[3], dims.sizes[2], dims.sizes[1], dims.sizes[0]});
+}
 
 inline void DepthwiseConv(const float* input_data, const Dims<4>& input_dims,
                           const float* filter_data, const Dims<4>& filter_dims,

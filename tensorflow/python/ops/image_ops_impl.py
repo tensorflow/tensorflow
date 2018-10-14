@@ -1184,7 +1184,8 @@ def per_image_standardization(image):
   away from zero to protect against division by 0 when handling uniform images.
 
   Args:
-    image: 3-D tensor of shape `[height, width, channels]`.
+    image: An n-D Tensor where the last 3 dimensions are
+           `[height, width, channels]`.
 
   Returns:
     The standardized image with same shape as `image`.
@@ -1194,14 +1195,15 @@ def per_image_standardization(image):
   """
   with ops.name_scope(None, 'per_image_standardization', [image]) as scope:
     image = ops.convert_to_tensor(image, name='image')
-    image = _Assert3DImage(image)
-    num_pixels = math_ops.reduce_prod(array_ops.shape(image))
+    image = _AssertAtLeast3DImage(image)
+    num_pixels = math_ops.reduce_prod(array_ops.shape(image)[-3:])
 
     image = math_ops.cast(image, dtype=dtypes.float32)
-    image_mean = math_ops.reduce_mean(image)
+    image_mean = math_ops.reduce_mean(image, axis=[-1, -2, -3], keepdims=True)
 
     variance = (
-        math_ops.reduce_mean(math_ops.square(image)) -
+        math_ops.reduce_mean(
+            math_ops.square(image), axis=[-1, -2, -3], keepdims=True) -
         math_ops.square(image_mean))
     variance = gen_nn_ops.relu(variance)
     stddev = math_ops.sqrt(variance)

@@ -30,6 +30,11 @@ using thread::ThreadPool;
 
 namespace functor {
 
+#define Sum(a, b) ((a) + (b))
+#define Prod(a, b) ((a) * (b))
+#define Max(a, b) ((a) > (b) ? (a) : (b))
+#define Min(a, b) ((a) < (b) ? (a) : (b))
+
 #define CPUReduceSliceFunctorReduceop(reduceop, beginning)                    \
   template <typename T, typename Index>                                       \
   struct ReduceSliceFunctor##reduceop<CPUDevice, T, Index> {                  \
@@ -233,6 +238,11 @@ TF_CALL_REAL_NUMBER_TYPES(REGISTER_GPU_REDUCE_SLICE_KERNELS_ALL);
 
 #undef REGISTER_GPU_REDUCE_SLICE_KERNELS
 #undef REGISTER_GPU_REDUCE_SLICE_KERNELS_ALL
+
+#undef Sum
+#undef Prod
+#undef Min
+#undef Max
 
 #endif  // GOOGLE_CUDA
 

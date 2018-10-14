@@ -1847,7 +1847,7 @@ def have_all_keras_metadata(iterable_or_element):
   if not isinstance(iterable_or_element, (list, tuple)):
     iterable = [iterable_or_element]
   else:
-    iterable = iterable_or_element
+    iterable = nest.flatten(iterable_or_element)
   return all([hasattr(x, '_keras_history') for x in iterable])
 
 

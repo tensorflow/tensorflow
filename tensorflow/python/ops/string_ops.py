@@ -75,7 +75,8 @@ def regex_full_match(input, pattern, name=None):
 regex_full_match.__doc__ = gen_string_ops.regex_full_match.__doc__
 
 
-@tf_export("strings.regex_replace", "regex_replace")
+@tf_export(
+    "strings.regex_replace", v1=["strings.regex_replace", "regex_replace"])
 @deprecation.deprecated_endpoints("regex_replace")
 def regex_replace(input, pattern, rewrite, replace_global=True, name=None):
   r"""Replace elements of `input` matching regex `pattern` with `rewrite`.
@@ -313,7 +314,7 @@ def _reduce_join_reduction_dims(x, axis, reduction_indices):
     return math_ops.range(array_ops.rank(x) - 1, -1, -1)
 
 
-@tf_export("strings.reduce_join", "reduce_join")
+@tf_export("strings.reduce_join", v1=["strings.reduce_join", "reduce_join"])
 @deprecation.deprecated_endpoints("reduce_join")
 def reduce_join(inputs, axis=None,  # pylint: disable=missing-docstring
                 keep_dims=False,
@@ -345,6 +346,22 @@ def string_length(input, name=None, unit="BYTE"):
 
 
 string_length.__doc__ = gen_string_ops.string_length.__doc__
+
+
+@tf_export("substr")
+@deprecation.deprecated(None, "Use `tf.strings.substr` instead of `tf.substr`.")
+def substr_deprecated(input, pos, len, name=None, unit="BYTE"):
+  return substr(input, pos, len, name=name, unit=unit)
+
+substr_deprecated.__doc__ = gen_string_ops.substr.__doc__
+
+
+@tf_export("strings.substr")
+def substr(input, pos, len, name=None, unit="BYTE"):
+  return gen_string_ops.substr(input, pos, len, unit=unit, name=name)
+
+
+substr.__doc__ = gen_string_ops.substr.__doc__
 
 
 ops.NotDifferentiable("RegexReplace")

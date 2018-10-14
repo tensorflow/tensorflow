@@ -286,7 +286,8 @@ def _cross_replica_concat(tensor, core_id, num_cores, name):
                     '{}.'.format(input_dtype, name))
 
   batch_size = tensor.shape[0]
-  mask = math_ops.to_float(math_ops.equal(range(num_cores), core_id))
+  mask = math_ops.to_float(
+      math_ops.equal(np.arange(num_cores, dtype=np.int32), core_id))
   mask = array_ops.reshape(mask, [num_cores] + [1] * tensor.shape.ndims)
   result = mask * math_ops.to_float(tensor)
   local_tensor_with_holes = array_ops.reshape(result,
@@ -1998,6 +1999,9 @@ class KerasTPUModel(models.Model):
 
     logging.info('Setting weights on TPU model.')
     cloned_model.set_weights(weights)
+    if self._tpu_model.optimizer is None:
+      # tpu_model may not be compiled, e.g., loading weights and then predict.
+      return
     for k, v in six.iteritems(cpu_optimizer_config):
       opt_var = getattr(self._tpu_model.optimizer, k)
       if isinstance(opt_var, variables.Variable):
@@ -2050,6 +2054,10 @@ class KerasTPUModel(models.Model):
     # Instead, reset CPU model weights and force TPU re-initialization at the
     # next call.
     self._cpu_model.set_weights(weights)
+    self._tpu_weights_initialized = False
+
+  def load_weights(self, filepath, by_name=False):
+    self._cpu_model.load_weights(filepath, by_name)
     self._tpu_weights_initialized = False
 
 

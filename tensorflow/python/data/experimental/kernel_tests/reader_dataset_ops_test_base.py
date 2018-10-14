@@ -63,11 +63,11 @@ class FixedLengthRecordDatasetTestBase(test_base.DatasetTestBase):
     return filenames
 
 
-class ReadBatchFeaturesTestBase(test_base.DatasetTestBase):
-  """Base class for setting up and testing `make_batched_feature_dataset`."""
+class MakeBatchedFeaturesDatasetTestBase(test_base.DatasetTestBase):
+  """Base class for setting up and testing `make_batched_features_dataset`."""
 
   def setUp(self):
-    super(ReadBatchFeaturesTestBase, self).setUp()
+    super(MakeBatchedFeaturesDatasetTestBase, self).setUp()
     self._num_files = 2
     self._num_records = 7
     self.test_filenames = self._createFiles()

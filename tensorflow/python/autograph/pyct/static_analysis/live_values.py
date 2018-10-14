@@ -24,16 +24,19 @@ from __future__ import division
 from __future__ import print_function
 
 import gast
+import six
 
 from tensorflow.python.autograph.pyct import anno
 from tensorflow.python.autograph.pyct import transformer
-from tensorflow.python.autograph.pyct.static_analysis.annos import NodeAnno
 
 
 # TODO(aqj): Do we need this? Do other builtins fail in similar ways
 # See b/114389775 for a related bug in pyct
 # These symbols are legal in Python, but don't appear in the namespace.
 _SPECIAL_SYMBOLS = {'range': range, 'print': print}
+
+if six.PY2:
+  _SPECIAL_SYMBOLS['xrange'] = xrange
 
 
 class LiveValueResolver(transformer.Base):
@@ -129,11 +132,9 @@ class LiveValueResolver(transformer.Base):
         anno.setanno(node, 'fqn',
                      anno.getanno(node.value, 'type_fqn') + (node.attr,))
     elif isinstance(node.value, gast.Name):
-      stem_name = node.value
-      # All nonlocal symbols should be fully resolved.
-      assert anno.hasanno(stem_name, NodeAnno.IS_LOCAL), stem_name
       # TODO(mdan): Figure out what to do when calling attribute on local object
       # Maybe just leave as-is?
+      pass
     return node
 
 

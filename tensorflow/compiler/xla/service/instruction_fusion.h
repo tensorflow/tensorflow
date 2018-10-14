@@ -17,6 +17,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_INSTRUCTION_FUSION_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_INSTRUCTION_FUSION_H_
 
+#include "tensorflow/compiler/xla/service/fusion_queue.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
@@ -24,33 +25,6 @@ limitations under the License.
 #include "tensorflow/core/platform/macros.h"
 
 namespace xla {
-
-// A queue interface that allows implementations to choose fusion candidates in
-// custom order.
-class FusionQueue {
- public:
-  FusionQueue() = default;
-  virtual ~FusionQueue() = default;
-
-  // Dequeues the next fusion candidates: a consumer and the list of producers
-  // as operand indices.
-  virtual std::pair<HloInstruction*, std::vector<int64>>
-  DequeueNextInstructionAndOperandsToFuseInOrder() = 0;
-
-  // A callback passed to the queue implementation right before the producer is
-  // fused into the consumer.
-  virtual void PreFusion(HloInstruction* producer, HloInstruction* consumer) {}
-
-  // A callback passed to the queue implementation right after the fusion is
-  // created. Note that original_producer could have been destroyed.
-  virtual void OnFusingInstruction(HloInstruction* fusion,
-                                   HloInstruction* original_producer,
-                                   HloInstruction* original_consumer) {}
-
-  // A callback passed to the queue implementation to notify the removal of an
-  // instruction.
-  virtual void RemoveInstruction(HloInstruction* instruction) = 0;
-};
 
 // HLO pass which performs instruction fusion. Instructions are fused
 // "vertically", meaning producing instructions are fused into their consumers

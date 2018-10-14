@@ -41,65 +41,61 @@ bool ComputeFillArray(Model* model, FillOperator* op) {
   return true;
 }
 
-bool ResolveConstantFill::Run(Model* model, std::size_t op_index) {
+::tensorflow::Status ResolveConstantFill::Run(Model* model,
+                                              std::size_t op_index,
+                                              bool* modified) {
+  *modified = false;
   const auto fill_it = model->operators.begin() + op_index;
   auto* base_op = fill_it->get();
   if (base_op->type != OperatorType::kFill) {
-    return false;
+    return ::tensorflow::Status::OK();
   }
   auto* op = static_cast<FillOperator*>(base_op);
 
   CHECK_EQ(op->inputs.size(), 2);
   CHECK_EQ(op->outputs.size(), 1);
 
-  // If the output of this op is a non-discardable array such as an input_array
-  // or a state array of the model, then this is a job for RemoveUnusedOp, not
-  // for constants-propagation.
-  if (!IsDiscardableArray(*model, op->outputs[0])) {
-    return false;
-  }
-
   auto& output_array = model->GetArray(op->outputs[0]);
   if (output_array.data_type == ArrayDataType::kNone) {
     // Yield until the output type has been set by PropagateArrayDataTypes
-    return false;
+    return ::tensorflow::Status::OK();
   }
 
   if (!output_array.has_shape()) {
     // Yield until the output shape has been set by PropagateFixedShapes
-    return false;
+    return ::tensorflow::Status::OK();
   }
 
   const auto& val_array = model->GetArray(op->inputs[1]);
   if (!val_array.has_shape()) {
     // Yield until the value shape has been resolved.
-    return false;
+    return ::tensorflow::Status::OK();
   }
   if (!IsConstantParameterArray(*model, op->inputs[1])) {
     // Yield until the value is constant.
-    return false;
+    return ::tensorflow::Status::OK();
   }
   CHECK_EQ(RequiredBufferSizeForShape(val_array.shape()), 1);
 
   switch (output_array.data_type) {
     case ArrayDataType::kFloat:
       if (!ComputeFillArray<ArrayDataType::kFloat>(model, op)) {
-        return false;
+        return ::tensorflow::Status::OK();
       }
       break;
     case ArrayDataType::kUint8:
       if (!ComputeFillArray<ArrayDataType::kUint8>(model, op)) {
-        return false;
+        return ::tensorflow::Status::OK();
       }
       break;
     case ArrayDataType::kInt32:
       if (!ComputeFillArray<ArrayDataType::kInt32>(model, op)) {
-        return false;
+        return ::tensorflow::Status::OK();
       }
       break;
     case ArrayDataType::kInt64:
       if (!ComputeFillArray<ArrayDataType::kInt64>(model, op)) {
-        return false;
+        return ::tensorflow::Status::OK();
       }
       break;
     default:
@@ -121,7 +117,8 @@ bool ResolveConstantFill::Run(Model* model, std::size_t op_index) {
   // Erase the operator
   model->operators.erase(fill_it);
 
-  return true;
+  *modified = true;
+  return ::tensorflow::Status::OK();
 }
 
 }  // namespace toco

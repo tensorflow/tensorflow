@@ -349,6 +349,10 @@ class Interpreter {
     return context_.allow_fp32_relax_to_fp16;
   }
 
+  // Owning handle to a TfLiteDelegate instance.
+  using TfLiteDelegatePtr =
+      std::unique_ptr<TfLiteDelegate, void (*)(TfLiteDelegate*)>;
+
   // Allow a delegate to look at the graph and modify the graph to handle
   // parts of the graph themselves. After this is called, the graph may
   // contain new nodes that replace 1 more nodes.
@@ -574,19 +578,11 @@ class Interpreter {
                                  TfLiteExternalContextType type,
                                  TfLiteExternalContext* ctx);
 
-  using TfLiteDelegatePtr =
-      std::unique_ptr<TfLiteDelegate, void (*)(TfLiteDelegate*)>;
-
   // Variant of the public ModifyGraphWithDelegate method that additionally
   // Assumes ownership of the provided delegate.
   // WARNING: This is an experimental API and subject to change.
-  template <typename Delegate>
-  TfLiteStatus ModifyGraphWithDelegate(std::unique_ptr<Delegate> typed_delegate,
+  TfLiteStatus ModifyGraphWithDelegate(TfLiteDelegatePtr delegate,
                                        bool allow_dynamic_tensors = false) {
-    TfLiteDelegatePtr delegate(typed_delegate.release(),
-                               [](TfLiteDelegate* delegate) {
-                                 delete static_cast<Delegate*>(delegate);
-                               });
     // Note that we retain ownership of the delegate even if graph modification
     // fails, as delegate use will be in an indeterminate state at that point.
     owned_delegates_.push_back(std::move(delegate));
@@ -676,6 +672,7 @@ class Interpreter {
   // List of delegates that have been installed and are owned by this
   // interpreter instance. Useful if client delegate ownership is burdensome.
   // WARNING: This is an experimental API and subject to change.
+  // TODO(b/116667551): Use TfLiteExternalContext for storing state.
   std::vector<TfLiteDelegatePtr> owned_delegates_;
 
   std::unique_ptr<MemoryPlanner> memory_planner_;

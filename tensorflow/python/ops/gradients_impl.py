@@ -20,7 +20,7 @@ from __future__ import print_function
 
 import collections
 import contextlib
-import sys
+import enum  # pylint: disable=g-bad-import-order
 import warnings
 
 import numpy as np
@@ -38,7 +38,6 @@ from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_grad  # pylint: disable=unused-import
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops  # pylint: disable=unused-import
-from tensorflow.python.ops import cond_v2_impl
 from tensorflow.python.ops import control_flow_grad  # pylint: disable=unused-import
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import control_flow_util
@@ -61,9 +60,6 @@ from tensorflow.python.util.tf_export import tf_export
 # This is to avoid a circular dependency (eager.function depends on
 # gradients_impl). This is set in eager/function.py.
 _function = None
-
-# This is to avoid a circular dependency with cond_v2_impl.
-cond_v2_impl._gradients_impl = sys.modules[__name__]  # pylint: disable=protected-access
 
 # Warn the user if we convert a sparse representation to dense with at
 # least this number of elements.
@@ -537,6 +533,26 @@ def _Consumers(t, func_graphs):
   return consumers
 
 
+@tf_export("UnconnectedGradients")
+class UnconnectedGradients(enum.Enum):
+  """Controls how gradient computation behaves when y does not depend on x.
+
+  The gradient of y with respect to x can be zero in two different ways: there
+  could be no differentiable path in the graph connecting x to y (and so we can
+  statically prove that the gradient is zero) or it could be that runtime values
+  of tensors in a particular execution lead to a gradient of zero (say, if a
+  relu unit happens to not be activated). To allow you to distinguish between
+  these two cases you can choose what value gets returned for the gradient when
+  there is no path in the graph from x to y:
+
+  * `NONE`: Indicates that [None] will be returned if there is no path from x
+    to y
+  * `ZERO`: Indicates that a zero tensor will be returned in the shape of x.
+  """
+  NONE = "none"
+  ZERO = "zero"
+
+
 @tf_export("gradients")
 def gradients(ys,
               xs,
@@ -545,7 +561,8 @@ def gradients(ys,
               colocate_gradients_with_ops=False,
               gate_gradients=False,
               aggregation_method=None,
-              stop_gradients=None):
+              stop_gradients=None,
+              unconnected_gradients=UnconnectedGradients.NONE):
   """Constructs symbolic derivatives of sum of `ys` w.r.t. x in `xs`.
 
   `ys` and `xs` are each a `Tensor` or a list of tensors.  `grad_ys`
@@ -596,6 +613,23 @@ def gradients(ys,
   All integer tensors are considered constant with respect to all `xs`, as if
   they were included in `stop_gradients`.
 
+  `unconnected_gradients` determines the value returned for each x in xs if it
+  is unconnected in the graph to ys. By default this is None to safeguard
+  against errors. MAthematically these gradients are zero which can be requested
+  using the `'zero'` option. `tf.UnconnectedGradients` provides the
+  following options and behaviors:
+
+  ```python
+  a = tf.ones([1, 2])
+  b = tf.ones([3, 1])
+  g1 = tf.gradients([b], [a], unnconnected_gradients='none')
+  sess.run(g1)  # [None]
+
+  g2 = tf.gradients([b], [a], unconnected_gradients='zero')
+  sess.run(g2)  # [array([[0., 0.]], dtype=float32)]
+  ```
+
+
   Args:
     ys: A `Tensor` or list of tensors to be differentiated.
     xs: A `Tensor` or list of tensors to be used for differentiation.
@@ -611,6 +645,10 @@ def gradients(ys,
       Accepted values are constants defined in the class `AggregationMethod`.
     stop_gradients: Optional. A `Tensor` or list of tensors not to differentiate
       through.
+    unconnected_gradients: Optional. Specifies the gradient value returned when
+      the given input tensors are unconnected. Accepted values are constants
+      defined in the class `tf.UnconnectedGradients` and the default value is
+      `none`.
 
   Returns:
     A list of `sum(dy/dx)` for each x in `xs`.
@@ -627,7 +665,8 @@ def gradients(ys,
   # mutating new ops.
   with ops.get_default_graph()._mutation_lock():  # pylint: disable=protected-access
     return _GradientsHelper(ys, xs, grad_ys, name, colocate_gradients_with_ops,
-                            gate_gradients, aggregation_method, stop_gradients)
+                            gate_gradients, aggregation_method, stop_gradients,
+                            unconnected_gradients)
 
 
 def _GradientsHelper(ys,
@@ -638,6 +677,7 @@ def _GradientsHelper(ys,
                      gate_gradients=False,
                      aggregation_method=None,
                      stop_gradients=None,
+                     unconnected_gradients=UnconnectedGradients.NONE,
                      src_graph=None):
   """Implementation of gradients()."""
   if context.executing_eagerly():
@@ -645,6 +685,11 @@ def _GradientsHelper(ys,
                        "is enabled. Use tf.GradientTape instead.")
   if src_graph is None:
     src_graph = ops.get_default_graph()
+  try:
+    unconnected_gradients = UnconnectedGradients(unconnected_gradients)
+  except ValueError:
+    raise ValueError(
+        "Unknown value for unconnected_gradients: %r" % unconnected_gradients)
 
   # If src_graph is a _FuncGraph (i.e. a function body), gather it and all
   # ancestor graphs. This is necessary for correctly handling captured values.
@@ -750,23 +795,21 @@ def _GradientsHelper(ys,
         # pylint: enable=protected-access
         has_out_grads = any(isinstance(g, ops.Tensor) or g for g in out_grads)
         if has_out_grads and (op not in stop_ops):
-          if is_func_call:
-            if is_partitioned_call:
-              func_call = src_graph._get_function(  # pylint: disable=protected-access
-                  compat.as_bytes(op.get_attr("f").name))
+          try:
+            grad_fn = ops.get_gradient_function(op)
+          except LookupError:
+            if is_func_call:
+              if is_partitioned_call:
+                func_call = src_graph._get_function(  # pylint: disable=protected-access
+                    compat.as_bytes(op.get_attr("f").name))
+              else:
+                func_call = src_graph._get_function(op.type)  # pylint: disable=protected-access
+              # Note that __defun is not set if the graph is
+              # imported. If it's set, we prefer to access the original
+              # defun.
+              func_call = getattr(op, "__defun", func_call)
+              grad_fn = func_call.python_grad_func
             else:
-              func_call = src_graph._get_function(op.type)  # pylint: disable=protected-access
-            # Note that __defun is not set if the graph is
-            # imported. If it's set, we prefer to access the original
-            # defun.
-            func_call = getattr(op, "__defun", func_call)
-            grad_fn = func_call.python_grad_func
-          else:
-            # A grad_fn must be defined, either as a function or as None
-            # for ops that do not have gradients.
-            try:
-              grad_fn = ops.get_gradient_function(op)
-            except LookupError:
               raise LookupError(
                   "No gradient defined for operation '%s' (op type: %s)" %
                   (op.name, op.type))
@@ -856,7 +899,7 @@ def _GradientsHelper(ys,
 
   if loop_state:
     loop_state.PostProcessing()
-  return [_GetGrad(grads, x) for x in xs]
+  return [_GetGrad(grads, x, unconnected_gradients) for x in xs]
 
 
 def _HasAnyNotNoneGrads(grads, op):
@@ -924,12 +967,20 @@ def _SetGrad(grads, t, grad):
     op_grads[t.value_index] = grad
 
 
-def _GetGrad(grads, t):
+def _GetGrad(grads, t, unconnected_gradients):
   """Gets gradient for tensor "t"."""
   op = t.op
   op_grads = grads.get(op)
   if not op_grads:
-    return None
+    if unconnected_gradients == UnconnectedGradients.ZERO:
+      t_dtype = t.dtype if t.dtype != dtypes.resource else dtypes.float32
+      return array_ops.zeros_like(t, dtype=t_dtype)
+    elif unconnected_gradients == UnconnectedGradients.NONE:
+      return None
+    else:
+      raise ValueError(
+          "Unknown value for unconnected_gradients: %r" % unconnected_gradients)
+
   t_grad = op_grads[t.value_index]
   assert not isinstance(
       t_grad, list), ("gradients list should have been aggregated by now.")

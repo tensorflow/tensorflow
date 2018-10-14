@@ -29,6 +29,7 @@ from tensorflow.python.keras.layers.recurrent import _standardize_args
 from tensorflow.python.keras.utils import generic_utils
 from tensorflow.python.keras.utils import tf_utils
 from tensorflow.python.ops import array_ops
+from tensorflow.python.util import nest
 from tensorflow.python.util.tf_export import tf_export
 
 
@@ -517,7 +518,10 @@ class Bidirectional(Wrapper):
     if is_keras_tensor:
       # Compute the full input spec, including state
       full_input = [inputs] + additional_inputs
-      full_input_spec = self.input_spec + additional_specs
+      # The original input_spec is None since there could be a nested tensor
+      # input. Update the input_spec to match the inputs.
+      full_input_spec = [None for _ in range(len(nest.flatten(inputs)))
+                        ] + additional_specs
 
       # Perform the call with temporarily replaced input_spec
       original_input_spec = self.input_spec
@@ -587,6 +591,9 @@ class Bidirectional(Wrapper):
       output = y * y_rev
     elif self.merge_mode is None:
       output = [y, y_rev]
+    else:
+      raise ValueError(
+          'Unrecognized value for `merge_mode`: %s' % (self.merge_mode))
 
     # Properly set learning phase
     if (getattr(y, '_uses_learning_phase', False) or

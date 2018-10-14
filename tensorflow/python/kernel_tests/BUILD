@@ -76,6 +76,7 @@ tf_py_test(
     name = "batch_gather_op_test",
     srcs = ["batch_gather_op_test.py"],
     additional_deps = [
+        "@absl_py//absl/testing:parameterized",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:constant_op",
@@ -640,7 +641,7 @@ cuda_py_test(
         "//tensorflow/python:linalg_ops",
         "//tensorflow/python:math_ops",
     ],
-    tags = ["notap"],
+    tags = ["optonly"],
 )
 
 cuda_py_test(
@@ -1489,7 +1490,6 @@ cuda_py_test(
         "//tensorflow/python:array_ops_gen",
         "//tensorflow/python:client",
         "//tensorflow/python:client_testlib",
-        "//tensorflow/python:cond_v2",
         "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:data_flow_ops",
         "//tensorflow/python:data_flow_ops_gen",
@@ -1784,6 +1784,7 @@ cuda_py_test(
     size = "medium",
     srcs = ["linalg_ops_test.py"],
     additional_deps = [
+        "@absl_py//absl/testing:parameterized",
         "//third_party/py/numpy",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
@@ -3254,12 +3255,13 @@ tf_py_test(
     tags = ["no_pip"],
 )
 
-tf_py_test(
+cuda_py_test(
     name = "cond_v2_test",
     size = "medium",
     srcs = ["cond_v2_test.py"],
     additional_deps = [
         "//tensorflow/python:array_ops",
+        "//tensorflow/python:test_ops",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:cond_v2",
         "//tensorflow/python:constant_op",
@@ -3271,7 +3273,6 @@ tf_py_test(
         "//tensorflow/python:training",
     ],
     grpc_enabled = True,
-    tags = ["no_gpu"],  # TODO(b/111656070)
 )
 
 cuda_py_test(

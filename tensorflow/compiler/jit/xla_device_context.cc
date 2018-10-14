@@ -75,9 +75,8 @@ XlaTransferManager::XlaTransferManager(
   }
 }
 
-Status XlaTransferManager::TransferLiteralToDevice(const Tensor& host_tensor,
-                                                   Tensor* device_tensor,
-                                                   bool buffer_is_fresh) const {
+Status XlaTransferManager::TransferLiteralToDevice(
+    const Tensor& host_tensor, Tensor* device_tensor) const {
   xla::Shape xla_shape;
   TF_RETURN_IF_ERROR(TensorShapeToXLAShape(host_tensor.dtype(),
                                            host_tensor.shape(), &xla_shape));
@@ -98,11 +97,8 @@ Status XlaTransferManager::TransferLiteralToDevice(const Tensor& host_tensor,
     // synchronized.
     host_to_device_stream_->ThenWaitFor(stream_.get());
   }
-  xla::TransferManager::TransferToDeviceHint hint =
-      buffer_is_fresh ? xla::TransferManager::kBufferUndefined
-                      : xla::TransferManager::kNoHint;
   TF_RETURN_IF_ERROR(transfer_manager_->TransferLiteralToDeviceAsync(
-      host_to_device_stream_.get(), *literal, shaped_buffer, hint));
+      host_to_device_stream_.get(), *literal, shaped_buffer));
   if (UseMultipleStreams()) {
     auto event = std::make_shared<se::Event>(stream_->parent());
     TF_RET_CHECK(event->Init()) << "Event failed to initialize!";
@@ -169,7 +165,6 @@ void XlaTransferManager::CopyCPUTensorToDevice(const Tensor* cpu_tensor,
     return;
   }
   TensorShape shape = shape_or_status.ValueOrDie();
-  bool buffer_is_fresh = false;
   if (!xla_tensor->has_shaped_buffer()) {
     Status s =
         xla_tensor->AllocateShapedBuffer(device_tensor->dtype(), shape, client_,
@@ -178,7 +173,6 @@ void XlaTransferManager::CopyCPUTensorToDevice(const Tensor* cpu_tensor,
       done(s);
       return;
     }
-    buffer_is_fresh = true;
   }
 
   Status status;
@@ -189,8 +183,7 @@ void XlaTransferManager::CopyCPUTensorToDevice(const Tensor* cpu_tensor,
           "Tensor::CopyFrom failed when copying from CPU to XLA device"));
       return;
     }
-    status = TransferLiteralToDevice(reshaped_cpu_tensor, device_tensor,
-                                     buffer_is_fresh);
+    status = TransferLiteralToDevice(reshaped_cpu_tensor, device_tensor);
   } else {
     se::DeviceMemoryBase dev_dst_ptr =
         XlaTensor::DeviceMemoryFromTensor(*device_tensor);

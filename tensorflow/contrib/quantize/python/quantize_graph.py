@@ -27,6 +27,7 @@ def _create_graph(input_graph=None,
                   is_training=True,
                   weight_bits=8,
                   activation_bits=8,
+                  symmetric=False,
                   quant_delay=None,
                   freeze_bn_delay=None,
                   scope=None):
@@ -43,6 +44,8 @@ def _create_graph(input_graph=None,
     is_training: Whether quantizing training or eval graph.
     weight_bits: Number of bits to use for quantizing weights.
     activation_bits: Number of bits to use for quantizing activations.
+    symmetric: If true, use symmetric quantization limits instead of training
+      the minimum and maximum of each quantization range separately.
     quant_delay: Number of steps after which weights and activations are
       quantized during training.
     freeze_bn_delay: Number of steps after which moving mean and variance are
@@ -74,6 +77,7 @@ def _create_graph(input_graph=None,
         quant_delay=quant_delay,
         weight_bits=weight_bits,
         activation_bits=activation_bits,
+        symmetric=symmetric,
         scope=scope)
 
 
@@ -142,6 +146,7 @@ def create_eval_graph(input_graph=None):
 def experimental_create_training_graph(input_graph=None,
                                        weight_bits=8,
                                        activation_bits=8,
+                                       symmetric=False,
                                        quant_delay=0,
                                        freeze_bn_delay=None,
                                        scope=None):
@@ -173,6 +178,8 @@ def experimental_create_training_graph(input_graph=None,
       default graph.
     weight_bits: Number of bits to use for quantizing weights.
     activation_bits: Number of bits to use for quantizing activations.
+    symmetric: If true, use symmetric quantization limits instead of training
+      the minimum and maximum of each quantization range separately.
     quant_delay: Number of steps after which weights and activations are
       quantized during training.
     freeze_bn_delay: Number of steps after which moving mean and variance are
@@ -192,6 +199,7 @@ def experimental_create_training_graph(input_graph=None,
       is_training=True,
       weight_bits=weight_bits,
       activation_bits=activation_bits,
+      symmetric=symmetric,
       quant_delay=quant_delay,
       freeze_bn_delay=freeze_bn_delay,
       scope=scope)
@@ -200,6 +208,7 @@ def experimental_create_training_graph(input_graph=None,
 def experimental_create_eval_graph(input_graph=None,
                                    weight_bits=8,
                                    activation_bits=8,
+                                   symmetric=False,
                                    quant_delay=None,
                                    scope=None):
   """Rewrites an eval input_graph in place for simulated quantization.
@@ -219,6 +228,8 @@ def experimental_create_eval_graph(input_graph=None,
       default graph.
     weight_bits: Number of bits to use for quantizing weights.
     activation_bits: Number of bits to use for quantizing activations.
+    symmetric: If true, use symmetric quantization limits instead of training
+      the minimum and maximum of each quantization range separately.
     quant_delay: Number of steps after which weights and activations are
       quantized during eval.
     scope: The scope to be transformed. If it's not None, only the ops which
@@ -233,6 +244,7 @@ def experimental_create_eval_graph(input_graph=None,
       is_training=False,
       weight_bits=weight_bits,
       activation_bits=activation_bits,
+      symmetric=symmetric,
       quant_delay=quant_delay,
       scope=scope)
 

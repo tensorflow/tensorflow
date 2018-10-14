@@ -19,7 +19,7 @@ from __future__ import print_function
 
 import os
 
-from tensorflow.python.data.experimental.kernel_tests import sql_dataset_op_test_base
+from tensorflow.python.data.experimental.kernel_tests import sql_dataset_test_base
 from tensorflow.python.data.experimental.kernel_tests.serialization import dataset_serialization_test_base
 from tensorflow.python.data.experimental.ops import readers
 from tensorflow.python.framework import dtypes
@@ -28,7 +28,7 @@ from tensorflow.python.platform import test
 
 
 class SqlDatasetSerializationTest(
-    sql_dataset_op_test_base.SqlDatasetTestBase,
+    sql_dataset_test_base.SqlDatasetTestBase,
     dataset_serialization_test_base.DatasetSerializationTestBase):
 
   def _build_dataset(self, num_repeats):

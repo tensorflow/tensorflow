@@ -28,11 +28,10 @@ limitations under the License.
 #include <set>
 #include <string>
 #include <tuple>
-#include <unordered_map>
-#include <unordered_set>
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/memory/memory.h"
 #include "absl/strings/str_cat.h"
@@ -464,7 +463,7 @@ class HloInstruction {
   // the same all_reduce_id, they will be 'Allreduce'd. If empty, Allreduce will
   // not be applied cross modules.
   //
-  // TODO(b/79737069): Rename this to AllReduce.
+  // TODO(b/117564385): Rename this to AllReduce.
   static std::unique_ptr<HloInstruction> CreateCrossReplicaSum(
       const Shape& shape, absl::Span<HloInstruction* const> operands,
       HloComputation* reduce_computation,
@@ -670,10 +669,10 @@ class HloInstruction {
       const Shape& shape, HloInstruction* operand,
       absl::Span<const int64> dimensions);
 
-  // Creates a sort op, with a keys operand, and an optional values operand.
+  // Creates a sort op, with a keys operand, and optional values operands.
   static std::unique_ptr<HloInstruction> CreateSort(
       const Shape& shape, int64 dimension, HloInstruction* keys,
-      HloInstruction* values = nullptr);
+      absl::Span<HloInstruction* const> values = {});
 
   // Creates a while instruction, given a condition computation, a body
   // computation, and the initial value for the input of the computations. For
@@ -733,6 +732,16 @@ class HloInstruction {
   static std::unique_ptr<HloInstruction> CreateCustomCall(
       const Shape& shape, absl::Span<HloInstruction* const> operands,
       absl::string_view custom_call_target, absl::string_view opaque = "");
+
+  // Overload which constrains the layouts of the operand and result. 'shape'
+  // and 'operand_shapes_with_layout' must have layouts.
+  // 'operand_shapes_with_layout' must have a compatible element for each
+  // operand.
+  static std::unique_ptr<HloInstruction> CreateCustomCall(
+      const Shape& shape, absl::Span<HloInstruction* const> operands,
+      absl::string_view custom_call_target,
+      absl::Span<const Shape> operand_shapes_with_layout,
+      absl::string_view opaque = "");
 
   // Creates a tuple instruction with the given elements. This is a convenience
   // wrapper around CreateVariadic.
@@ -1330,9 +1339,6 @@ class HloInstruction {
   int64 slice_strides(int64 dimension) const;
   const std::vector<int64>& slice_strides() const;
 
-  // Delegates to HloSliceInstruction::IsInPlaceSlice.
-  bool IsInPlaceSlice() const;
-
   // Returns the literal associated with this instruction.
   const Literal& literal() const;
 
@@ -1638,7 +1644,7 @@ class HloInstruction {
   // members. The set enables fast membership testing and the vector enables
   // fast, stable iteration.
   std::vector<HloInstruction*> users_;
-  std::unordered_set<const HloInstruction*> user_set_;
+  absl::flat_hash_set<const HloInstruction*> user_set_;
 
   // The set of control successors of this instruction.
   std::vector<HloInstruction*> control_successors_;

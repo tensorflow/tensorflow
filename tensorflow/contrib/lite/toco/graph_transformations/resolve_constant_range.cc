@@ -19,43 +19,38 @@ limitations under the License.
 
 namespace toco {
 
-bool ResolveConstantRange::Run(Model* model, std::size_t op_index) {
+::tensorflow::Status ResolveConstantRange::Run(Model* model,
+                                               std::size_t op_index,
+                                               bool* modified) {
+  *modified = false;
   const auto it = model->operators.begin() + op_index;
   auto* base_op = it->get();
   if (base_op->type != OperatorType::kRange) {
-    return false;
+    return ::tensorflow::Status::OK();
   }
   auto* op = static_cast<RangeOperator*>(base_op);
 
   CHECK_EQ(op->inputs.size(), 3);
-
-  // If the output of this op is a non-discardable array such as an input_array
-  // or a state array of the model, then this is a job for RemoveUnusedOp, not
-  // for constants-propagation.
-  if (!IsDiscardableArray(*model, op->outputs[0])) {
-    return false;
-  }
-
   const auto& start_array = model->GetArray(op->inputs[0]);
   if (!start_array.has_shape()) {
     // Yield until all input dims have been resolved.
-    return false;
+    return ::tensorflow::Status::OK();
   }
   const auto& limit_array = model->GetArray(op->inputs[1]);
   if (!limit_array.has_shape()) {
     // Yield until all input dims have been resolved.
-    return false;
+    return ::tensorflow::Status::OK();
   }
   const auto& delta_array = model->GetArray(op->inputs[2]);
   if (!delta_array.has_shape()) {
     // Yield until all input dims have been resolved.
-    return false;
+    return ::tensorflow::Status::OK();
   }
 
   for (const auto& input : op->inputs) {
     if (!IsConstantParameterArray(*model, input)) {
       // yield if any input is mutable
-      return false;
+      return ::tensorflow::Status::OK();
     }
   }
 
@@ -63,7 +58,7 @@ bool ResolveConstantRange::Run(Model* model, std::size_t op_index) {
   auto& output_array = model->GetArray(op->outputs[0]);
   if (output_array.data_type == ArrayDataType::kNone) {
     // Yield until the output type has been set by PropagateArrayDataTypes
-    return false;
+    return ::tensorflow::Status::OK();
   }
 
   CHECK_EQ(RequiredBufferSizeForShape(start_array.shape()), 1)
@@ -109,7 +104,8 @@ bool ResolveConstantRange::Run(Model* model, std::size_t op_index) {
   // Delete the operator
   model->operators.erase(it);
 
-  return true;
+  *modified = true;
+  return ::tensorflow::Status::OK();
 }
 
 }  // namespace toco
