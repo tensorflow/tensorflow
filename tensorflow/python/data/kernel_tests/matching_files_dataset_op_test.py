@@ -61,7 +61,7 @@ class MatchingFilesDatasetTest(test_base.DatasetTestBase):
     dataset = MatchingFilesDataset(os.path.join(self.tmp_dir, '*'))
     with self.cached_session() as sess:
       next_element = dataset.make_one_shot_iterator().get_next()
-      with self.assertRaises(errors.OutOfRangeError):
+      with self.assertRaises(errors.NotFoundError):
         sess.run(next_element)
 
   def testSimpleDirectory(self):

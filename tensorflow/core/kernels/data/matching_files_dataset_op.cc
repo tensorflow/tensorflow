@@ -130,6 +130,7 @@ class MatchingFilesDatasetOp : public DatasetOpKernel {
                   std::move(current_path.first);
               out_tensors->emplace_back(std::move(filepath_tensor));
               *end_of_sequence = false;
+              hasMatch_ = true;
               return Status::OK();
             }
 
@@ -171,7 +172,11 @@ class MatchingFilesDatasetOp : public DatasetOpKernel {
         }
 
         *end_of_sequence = true;
-        return Status::OK();
+        if (hasMatch_) {
+          return Status::OK();
+        } else {
+          return errors::NotFound("Don't find any matched files");
+        }
       }
 
      protected:
@@ -182,6 +187,8 @@ class MatchingFilesDatasetOp : public DatasetOpKernel {
 
         TF_RETURN_IF_ERROR(writer->WriteScalar(full_name("current_pattern"),
                                                current_pattern_));
+        TF_RETURN_IF_ERROR(
+            writer->WriteScalar(full_name("hasMatch"), hasMatch_));
 
         if (!filepath_queue_.empty()) {
           TF_RETURN_IF_ERROR(writer->WriteScalar(full_name("queue_size"),
@@ -212,6 +219,10 @@ class MatchingFilesDatasetOp : public DatasetOpKernel {
 
         TF_RETURN_IF_ERROR(reader->ReadScalar(full_name("current_pattern"),
                                               &current_pattern_));
+        int64 hasMatch;
+        TF_RETURN_IF_ERROR(
+            reader->ReadScalar(full_name("hasMatch"), &hasMatch));
+        hasMatch_ = static_cast<bool>(hasMatch);
 
         if (reader->Contains(full_name("queue_size"))) {
           int64 queue_size;
@@ -224,7 +235,8 @@ class MatchingFilesDatasetOp : public DatasetOpKernel {
                 full_name(strings::StrCat("path_", i)), &path));
             TF_RETURN_IF_ERROR(reader->ReadScalar(
                 full_name(strings::StrCat("path_status_", i)), &path_status));
-            filepath_queue_.push(PathStatus(path, path_status));
+            filepath_queue_.push(
+                PathStatus(path, static_cast<bool>(path_status)));
           }
         }
 
@@ -265,20 +277,13 @@ class MatchingFilesDatasetOp : public DatasetOpKernel {
                     << fs->FileExists(current_dir).ToString() << std::endl;
           ret.Update(s);
 
-          // When the children is empty, 1) return the non-ok status immediately
-          // if it is not NOT_FOUND; 2) continue the search if the status is ok
-          // or NOT_FOUND;
-          if (children.empty()) {
-            if (ret.code() != error::NOT_FOUND || !ret.ok()) {
-              return ret;
-            } else {
-              // On some platforms, fs.GetChildren() return the OK status even
-              // if the path isn't found. fs->FileExists() is used to make
-              // different platforms return the same status when searching a
-              // non-existing path.
-              ret.Update(fs->FileExists(current_dir));
-              continue;
-            }
+          // Handle the error cases: 1) continue the search if the status is ok
+          // or NOT_FOUND; 2) return the non-ok status immediately if it is not
+          // NOT_FOUND.
+          if (ret.code() == error::NOT_FOUND) {
+            continue;
+          } else if (!ret.ok()) {
+            return ret;
           }
 
           // children_dir_status holds is_dir status for children. It can have
@@ -345,6 +350,7 @@ class MatchingFilesDatasetOp : public DatasetOpKernel {
           filepath_queue_ GUARDED_BY(mu_);
       size_t current_pattern_index_ GUARDED_BY(mu_) = 0;
       string current_pattern_ GUARDED_BY(mu_);
+      bool hasMatch_ GUARDED_BY(mu_) = false;
     };
 
     const std::vector<string> patterns_;
