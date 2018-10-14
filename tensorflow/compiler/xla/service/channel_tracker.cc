@@ -73,20 +73,20 @@ ChannelHandle ChannelTracker::AllocateHandle(ChannelHandle::ChannelType type) {
 
 Status ChannelTracker::RegisterSendInternal(const ChannelHandle& handle) {
   if (opaque_to_channel_.count(handle.handle()) == 0) {
-    return NotFound("channel handle not found: %lld", handle.handle());
+    return NotFound("channel handle not found: %d", handle.handle());
   }
   Channel& channel = opaque_to_channel_[handle.handle()];
   if (channel.type == ChannelHandle::HOST_TO_DEVICE) {
     return FailedPrecondition(
         "host-to-device channels cannot be used with a Send operation; "
-        "channel handle: %lld",
+        "channel handle: %d",
         handle.handle());
   }
 
   if (channel.has_sender) {
     return FailedPrecondition(
         "when registering send, passed a channel handle that is already used "
-        "by a sender: %lld",
+        "by a sender: %d",
         handle.handle());
   }
   channel.has_sender = true;
@@ -95,13 +95,13 @@ Status ChannelTracker::RegisterSendInternal(const ChannelHandle& handle) {
 
 Status ChannelTracker::RegisterRecvInternal(const ChannelHandle& handle) {
   if (opaque_to_channel_.count(handle.handle()) == 0) {
-    return NotFound("channel handle not found: %lld", handle.handle());
+    return NotFound("channel handle not found: %d", handle.handle());
   }
   Channel& channel = opaque_to_channel_[handle.handle()];
   if (channel.type == ChannelHandle::DEVICE_TO_HOST) {
     return FailedPrecondition(
         "device-to-host channels cannot be used with a Recv operation; "
-        "channel handle: %lld",
+        "channel handle: %d",
         handle.handle());
   }
 
@@ -109,7 +109,7 @@ Status ChannelTracker::RegisterRecvInternal(const ChannelHandle& handle) {
   if (channel.receiver_count >= 1) {
     return FailedPrecondition(
         "when registering recv, passed a channel handle that is already used "
-        "by a receiver: %lld",
+        "by a receiver: %d",
         handle.handle());
   }
   channel.receiver_count += 1;

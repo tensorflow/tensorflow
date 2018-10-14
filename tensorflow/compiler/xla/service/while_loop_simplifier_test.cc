@@ -28,11 +28,6 @@ namespace {
 namespace op = xla::testing::opcode_matchers;
 
 class WhileLoopSimplifierTest : public HloVerifiedTestBase {
- public:
-  WhileLoopSimplifierTest()
-      : HloVerifiedTestBase(/*layout_sensitive=*/false,
-                            /*allow_mixed_precision=*/false) {}
-
  protected:
   // Makes an HloModule that contains a loop with `num_iters` iteration.
   void MakeModuleWithSimpleLoop(int num_iters);

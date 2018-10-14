@@ -54,6 +54,33 @@ CHECK: private constant [48 x i8]
                                 /*match_optimized_ir=*/false);
 }
 
+TEST_F(CpuOutfeedTest, OutfeedTokenInTuple) {
+  const string hlo_text = R"(
+HloModule OutfeedTokenInTuple
+
+ENTRY main {
+  const = f32[] constant(42)
+  epoch = token[] after-all()
+  outfeed.tok = token[] outfeed(const, epoch)
+  ROOT root = (token[], f32[]) tuple(outfeed.tok, const)
+}
+)";
+
+  string filecheck_pattern = R"(
+CHECK: Outfeed
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseHloString(hlo_text));
+
+  CpuAotCompilationOptions options{
+      /*triple=*/"x86_64-pc-linux", /*cpu_name=*/"", /*features=*/"",
+      /*entry_point_name=*/"entry",
+      /*relocation_model=*/CpuAotCompilationOptions::RelocationModel::Static};
+
+  CompileAheadOfTimeAndVerifyIr(std::move(module), options, filecheck_pattern,
+                                /*match_optimized_ir=*/false);
+}
 }  // namespace
 }  // namespace cpu
 }  // namespace xla

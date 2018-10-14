@@ -15,7 +15,7 @@ limitations under the License.
 
 #include "tensorflow/contrib/lite/interpreter.h"
 #include <gtest/gtest.h>
-#include "tensorflow/contrib/lite/error_reporter.h"
+#include "tensorflow/contrib/lite/core/api/error_reporter.h"
 #include "tensorflow/contrib/lite/kernels/internal/compatibility.h"
 #include "tensorflow/contrib/lite/kernels/kernel_util.h"
 #include "tensorflow/contrib/lite/schema/schema_generated.h"
@@ -30,7 +30,11 @@ class InterpreterTest : public ::testing::Test {
   template <typename Delegate>
   static TfLiteStatus ModifyGraphWithDelegate(
       Interpreter* interpreter, std::unique_ptr<Delegate> delegate) {
-    return interpreter->ModifyGraphWithDelegate(std::move(delegate));
+    Interpreter::TfLiteDelegatePtr tflite_delegate(
+        delegate.release(), [](TfLiteDelegate* delegate) {
+          delete reinterpret_cast<Delegate*>(delegate);
+        });
+    return interpreter->ModifyGraphWithDelegate(std::move(tflite_delegate));
   }
 
  protected:

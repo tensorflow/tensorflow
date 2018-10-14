@@ -71,18 +71,40 @@ StatusOr<bool> HloConstantFolding::Run(HloModule* module) {
       // Broadcasts dramatically increase the size of constants, which is often
       // detrimental to performance and memory capacity, so do not fold
       // broadcasts.
-      if (instruction->opcode() == HloOpcode::kBroadcast) {
+      if (instruction->opcode() == HloOpcode::kBroadcast ||
+          instruction->opcode() == HloOpcode::kIota) {
         continue;
       }
 
-      std::unique_ptr<Literal> result = evaluator->TryEvaluate(instruction);
+      // Don't constant fold unless it's a net positive or the output is small.
+      if (ShapeUtil::IsArray(instruction->shape())) {
+        int64 elements_in_removed_operands = 0;
+        for (HloInstruction* operand : instruction->operands()) {
+          if (operand->user_count() == 1 &&
+              ShapeUtil::IsArray(operand->shape())) {
+            elements_in_removed_operands +=
+                ShapeUtil::ElementsIn(operand->shape());
+          }
+        }
+        int64 elements_in_constant =
+            ShapeUtil::ElementsIn(instruction->shape());
+
+        static const int64 kMaximumConstantSizeElements = 2 * 1000 * 1000;
+        if (elements_in_constant > elements_in_removed_operands &&
+            elements_in_constant > kMaximumConstantSizeElements) {
+          continue;
+        }
+      }
+
+      Literal result;
       // Currently we skip unimplemented operations.
       // TODO(b/35975797): Fold constant computations for more operations.
-      if (result == nullptr) {
+      if (!evaluator->TryEvaluate(instruction, &result)) {
         VLOG(2) << "Constant folding failed for instruction: "
                 << instruction->ToString();
         continue;
       }
+      VLOG(4) << "Constant folded: " << instruction->ToString();
 
       TF_RETURN_IF_ERROR(computation->ReplaceWithNewInstruction(
           instruction, HloInstruction::CreateConstant(std::move(result))));

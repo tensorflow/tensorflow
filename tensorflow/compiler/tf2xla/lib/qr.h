@@ -34,9 +34,8 @@ struct QRDecompositionResult {
 };
 
 xla::StatusOr<QRDecompositionResult> QRDecomposition(
-    xla::XlaOp a, int64 block_size = 128,
-    xla::PrecisionConfigProto::Precision precision =
-        xla::PrecisionConfigProto::HIGHEST);
+    xla::XlaOp a, bool full_matrices, int64 block_size = 128,
+    xla::PrecisionConfig::Precision precision = xla::PrecisionConfig::HIGHEST);
 
 }  // namespace tensorflow
 

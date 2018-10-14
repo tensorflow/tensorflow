@@ -50,6 +50,8 @@ void Shard(int max_parallelism, thread::ThreadPool* workers, int64 total,
               max_parallelism);
 }
 
+// DEPRECATED: Prefer threadpool->TransformRangeConcurrently, which allows you
+// to directly specify the shard size.
 void Sharder::Do(int64 total, int64 cost_per_unit, const Work& work,
                  const Runner& runner, int max_parallelism) {
   cost_per_unit = std::max(int64{1}, cost_per_unit);

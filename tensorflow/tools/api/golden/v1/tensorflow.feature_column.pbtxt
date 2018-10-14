@@ -34,7 +34,7 @@ tf_module {
   }
   member_method {
     name: "input_layer"
-    argspec: "args=[\'features\', \'feature_columns\', \'weight_collections\', \'trainable\', \'cols_to_vars\'], varargs=None, keywords=None, defaults=[\'None\', \'True\', \'None\'], "
+    argspec: "args=[\'features\', \'feature_columns\', \'weight_collections\', \'trainable\', \'cols_to_vars\', \'cols_to_output_tensors\'], varargs=None, keywords=None, defaults=[\'None\', \'True\', \'None\', \'None\'], "
   }
   member_method {
     name: "linear_model"

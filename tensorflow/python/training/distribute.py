@@ -26,12 +26,12 @@ from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import resource_variable_ops
-from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops.losses import losses_impl
 from tensorflow.python.platform import tf_logging
 from tensorflow.python.training import device_util
 from tensorflow.python.training import distribution_strategy_context
+from tensorflow.python.util import deprecation
 from tensorflow.python.util import nest
 
 
@@ -193,6 +193,10 @@ class _SameScopeAgainContext(object):
 
 class DistributionStrategy(object):
   """A list of devices with a state & compute distribution policy.
+
+  See [tensorflow/contrib/distribute/README.md](
+  https://www.tensorflow.org/code/tensorflow/contrib/distribute/README.md)
+  for overview and examples.
 
   The intent is that you can write an algorithm in a stylized way and
   it will be usable with a variety of different `DistributionStrategy`
@@ -371,7 +375,7 @@ class DistributionStrategy(object):
     use its API, including `merge_call()` to get back to cross-tower
     context), once for each tower. May use values with locality T or
     M, and any variable.
-  * `d.reduce(m, t)`: in cross-tower context, accepts t with locality T
+  * `d.reduce(m, t, t)`: in cross-tower context, accepts t with locality T
     and produces a value with locality M.
   * `d.reduce(m, t, v)`: in cross-tower context, accepts t with
     locality T and produces a value with locality V(`v`).
@@ -404,10 +408,11 @@ class DistributionStrategy(object):
 
   Another thing you might want to do in the middle of your tower function
   is an all-reduce of some intermediate value, using `d.reduce()` or
-  `d.batch_reduce()` without supplying a variable as the destination.
+  `d.batch_reduce()`. You simply provide the same tensor as the input and
+  destination.
 
   Layers should expect to be called in a tower context, and can use
-  the `get_tower_context()` function to get a `TowerContext` object.  The
+  the `get_tower_context()` function to get a `TowerContext` object. The
   `TowerContext` object has a `merge_call()` method for entering
   cross-tower context where you can use `reduce()` (or
   `batch_reduce()`) and then optionally `update()` to update state.
@@ -431,6 +436,9 @@ class DistributionStrategy(object):
 
   def __init__(self):
     self._default_device = None
+    # This property is used to determine if we should set drop_remainder=True
+    # when creating Datasets from numpy array inputs.
+    self._require_static_shapes = False
 
   def scope(self):
     """Returns a context manager selecting this DistributionStrategy as current.
@@ -625,7 +633,7 @@ class DistributionStrategy(object):
 
     Args:
       fn: function to run using this distribution strategy. The function must
-        have the following signature: def fn(context, *inputs).
+        have the following signature: `def fn(context, *inputs)`.
         `context` is an instance of `MultiStepContext` that will be passed when
         `fn` is run. `context` can be used to specify the outputs to be returned
         from `fn` by calling `context.set_last_step_output`. It can also be used
@@ -718,18 +726,18 @@ class DistributionStrategy(object):
   def _call_for_each_tower(self, fn, *args, **kwargs):
     raise NotImplementedError("must be implemented in descendants")
 
-  def reduce(self, aggregation, value, destinations=None):
+  def reduce(self, aggregation, value, destinations):
     """Combine (via e.g. sum or mean) values across towers.
 
     Args:
       aggregation: Indicates how a variable will be aggregated. Accepted values
-        are `tf.VariableAggregation.SUM`, `tf.VariableAggregation.MEAN`.
+        are `tf.VariableAggregation.SUM`, `tf.VariableAggregation.MEAN`,
+        `tf.VariableAggregation.ONLY_FIRST_TOWER`.
       value: A per-device value with one value per tower.
-      destinations: An optional mirrored variable, a device string,
-        list of device strings. The return value will be copied to all
-        destination devices (or all the devices where the mirrored
-        variable resides). If `None` or unspecified, the destinations
-        will match the devices `value` resides on.
+      destinations: A mirrored variable, a per-device tensor, a device string,
+        or list of device strings. The return value will be copied to all
+        destination devices (or all the devices where the `destinations` value
+        resides). To perform an all-reduction, pass `value` to `destinations`.
 
     Returns:
       A value mirrored to `destinations`.
@@ -740,7 +748,8 @@ class DistributionStrategy(object):
     _require_cross_tower_context(self)
     assert aggregation in [
         variable_scope.VariableAggregation.SUM,
-        variable_scope.VariableAggregation.MEAN
+        variable_scope.VariableAggregation.MEAN,
+        variable_scope.VariableAggregation.ONLY_FIRST_TOWER
     ]
     return self._reduce(aggregation, value, destinations)
 
@@ -752,7 +761,8 @@ class DistributionStrategy(object):
 
     Args:
       aggregation: Indicates how a variable will be aggregated. Accepted values
-        are `tf.VariableAggregation.SUM`, `tf.VariableAggregation.MEAN`.
+        are `tf.VariableAggregation.SUM`, `tf.VariableAggregation.MEAN`,
+        `tf.VariableAggregation.ONLY_FIRST_TOWER`.
       value_destination_pairs: A sequence of (value, destinations)
         pairs. See `reduce()` for a description.
 
@@ -763,7 +773,8 @@ class DistributionStrategy(object):
     _require_cross_tower_context(self)
     assert aggregation in [
         variable_scope.VariableAggregation.SUM,
-        variable_scope.VariableAggregation.MEAN
+        variable_scope.VariableAggregation.MEAN,
+        variable_scope.VariableAggregation.ONLY_FIRST_TOWER
     ]
     return self._batch_reduce(aggregation, value_destination_pairs)
 
@@ -788,9 +799,9 @@ class DistributionStrategy(object):
     return merged(results)
     ```
 
-    Otherwise this returns `fn(var, *args, **kwargs)` colocated with `var`.'
+    Otherwise this returns `fn(var, *args, **kwargs)` colocated with `var`.
 
-    Neither *args nor **kwargs may contain per-device values.
+    Neither `*args` nor `**kwargs` may contain per-device values.
     If they contain mirrored values, they will be unwrapped before
     calling `fn`.
 
@@ -798,15 +809,22 @@ class DistributionStrategy(object):
       var: Variable, possibly mirrored to multiple devices, to operate on.
       fn: Function to call. Should take the variable as the first argument.
       *args: Additional positional arguments to pass to `fn()`.
-      **kwargs: Keyword arguments to pass to `fn()`.
+      **kwargs: Keyword arguments to pass to `fn()`. If "grouped=False" is
+        specified, the return value will be unwrapped.
 
     Returns:
-      Merged return value of `fn` across all towers.
+      By default, the merged return value of `fn` across all towers.  The merged
+      result has dependencies to make sure that if it is evaluated at all, the
+      side effects (updates) will happen on every tower. If instead
+      "grouped=False" is specified, this function will return a nest of lists
+      where each list has an element per tower, and the caller is responsible
+      for ensuring all elements are executed.
     """
     _require_cross_tower_context(self)
-    return self._update(var, fn, *args, **kwargs)
+    options = {"grouped": kwargs.pop("grouped", True)}
+    return self._update(var, options, fn, *args, **kwargs)
 
-  def _update(self, var, fn, *args, **kwargs):
+  def _update(self, var, options, fn, *args, **kwargs):
     raise NotImplementedError("must be implemented in descendants")
 
   def update_non_slot(self, colocate_with, fn, *args, **kwargs):
@@ -816,15 +834,18 @@ class DistributionStrategy(object):
       colocate_with: The return value of `non_slot_devices()`.
       fn: Function to execute.
       *args: Positional arguments to pass to `fn()`.
-      **kwargs: Keyword arguments to pass to `fn()`.
+      **kwargs: Keyword arguments to pass to `fn()`. If "grouped=False" is
+        specified, the return value will be unwrapped and the caller is
+        responsible for ensuring all elements are executed.
 
     Returns:
       Return value of `fn`, possibly merged across devices.
     """
     _require_cross_tower_context(self)
-    return self._update_non_slot(colocate_with, fn, *args, **kwargs)
+    options = {"grouped": kwargs.pop("grouped", True)}
+    return self._update_non_slot(colocate_with, options, fn, *args, **kwargs)
 
-  def _update_non_slot(self, colocate_with, fn, *args, **kwargs):
+  def _update_non_slot(self, colocate_with, options, fn, *args, **kwargs):
     raise NotImplementedError("must be implemented in descendants")
 
   def unwrap(self, value):
@@ -879,6 +900,10 @@ class DistributionStrategy(object):
       If `False`, `call_for_each_tower(fn)` may call `fn` multiple times.
     """
     raise NotImplementedError("must be implemented in descendants")
+
+  @property
+  def require_static_shapes(self):
+    return self._require_static_shapes
 
   @property
   def num_towers(self):
@@ -1072,10 +1097,15 @@ class TowerContext(object):
     require_tower_context(self)
     return device_util.current()
 
-  # TODO(josh11b): Implement `start_all_reduce(method, t)` that returns
-  # a function returning the result of reducing `t` across all
-  # towers. Most likely can be implemented in terms of `merge_call()`
-  # and `batch_reduce()`.
+  # TODO(josh11b): Implement `start_all_reduce(method, t)` for efficient
+  # all-reduce. It would return a function returning the result of reducing `t`
+  # across all towers. The caller would wait to call this function until they
+  # needed the reduce result, allowing an efficient implementation:
+  # * With eager execution, the reduction could be performed asynchronously
+  #   in the background, not blocking until the result was needed.
+  # * When constructing a graph, it could batch up all reduction requests up
+  #   to that point that the first result is needed. Most likely this can be
+  #   implemented in terms of `merge_call()` and `batch_reduce()`.
 
 # ------------------------------------------------------------------------------
 
@@ -1120,17 +1150,22 @@ class _DefaultDistributionStrategy(DistributionStrategy):
     del aggregation, destinations
     return value
 
-  def _update(self, var, fn, *args, **kwargs):
-    # TODO(josh11b): Figure out what we should be passing to UpdateContext()
-    # once that value is used for something.
-    with ops.colocate_with(var), UpdateContext(var):
-      return fn(var, *args, **kwargs)
+  def _update(self, var, options, fn, *args, **kwargs):
+    # The implementations of _update() and _update_non_slot() are identical
+    # except _update() passes `var` as the first argument to `fn()`.
+    return self._update_non_slot(var, options, fn, var, *args, **kwargs)
 
-  def _update_non_slot(self, colocate_with, fn, *args, **kwargs):
+  def _update_non_slot(self, colocate_with, options, fn, *args, **kwargs):
+    should_group = options.pop("grouped")
+    assert not options  # Validate that we are processing all of the options.
     # TODO(josh11b): Figure out what we should be passing to UpdateContext()
     # once that value is used for something.
     with ops.colocate_with(colocate_with), UpdateContext(colocate_with):
-      return fn(*args, **kwargs)
+      result = fn(*args, **kwargs)
+      if should_group:
+        return result
+      else:
+        return nest.map_structure(self._unwrap, result)
 
   def read_var(self, tower_local_var):
     return array_ops.identity(tower_local_var)
@@ -1168,19 +1203,21 @@ class _DefaultDistributionStrategy(DistributionStrategy):
 
 
 # ------------------------------------------------------------------------------
-# Common operations
+# Deprecated, use v.assign_add(amount) instead.  Internal API, so expect
+# it to be deleted soon.
 
 
+@deprecation.deprecated(None,
+                        "Use v.assign_add(amount) instead. You may need to set "
+                        "aggregation=tf.VariableAggregation.ONLY_FIRST_TOWER "
+                        "when creating the variable.")
 def increment_var(v, amount=1):
   """`v += amount`, distributed-aware version."""
   def update(vu):
-    if isinstance(vu, resource_variable_ops.ResourceVariable):
-      return vu.assign_add(amount, read_value=False)
-    else:
-      return state_ops.assign_add(vu, amount)
+    return vu.assign_add(amount, read_value=False)
 
   def merge_fn(dist, vm):
-    return dist.group(dist.update(vm, update))
+    return dist.update(vm, update)
 
   tower_context = distribution_strategy_context.get_tower_context()
   return tower_context.merge_call(merge_fn, v)

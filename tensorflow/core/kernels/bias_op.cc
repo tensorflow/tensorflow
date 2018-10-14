@@ -134,8 +134,8 @@ class BiasOp : public BinaryOp<T> {
     if (data_format_ == FORMAT_NCHW) {
       int32 batch, height, width, channel;
       GetBiasValueDims(input, data_format_, &batch, &height, &width, &channel);
-      Eigen::DSizes<int32, 4> four_dims(1, channel, 1, 1);
-      Eigen::DSizes<int32, 4> broad_cast_dims(batch, 1, height, width);
+      Eigen::DSizes<Eigen::Index, 4> four_dims(1, channel, 1, 1);
+      Eigen::DSizes<Eigen::Index, 4> broad_cast_dims(batch, 1, height, width);
       const Device& d = context->eigen_device<Device>();
       output->tensor<T, 4>().device(d) =
           input.tensor<T, 4>() +
@@ -247,14 +247,14 @@ class BiasGradOp : public OpKernel {
         OP_REQUIRES(context, output_backprop.dims() == 4,
                     errors::InvalidArgument(
                         "NCHW format supports only 4D input/output tensor."));
-        Eigen::DSizes<int, 4> four_dims(batch, channel, height, width);
+        Eigen::DSizes<Eigen::Index, 4> four_dims(batch, channel, height, width);
 #ifdef EIGEN_HAS_INDEX_LIST
         using idx0 = Eigen::type2index<0>;
         using idx2 = Eigen::type2index<2>;
         using idx3 = Eigen::type2index<3>;
         Eigen::IndexList<idx0, idx2, idx3> reduction_axes;
 #else
-        Eigen::array<int, 3> reduction_axes = {0, 2, 3};
+        Eigen::array<Eigen::Index, 3> reduction_axes = {0, 2, 3};
 #endif
         output->template flat<T>().device(context->eigen_device<Device>()) =
             output_backprop.flat<T>()
@@ -263,11 +263,12 @@ class BiasGradOp : public OpKernel {
                 .sum(reduction_axes)
                 .template cast<T>();  // End of code by intel_tf.
       } else {
-        Eigen::DSizes<int, 2> two_dims(batch * height * width, channel);
+        Eigen::DSizes<Eigen::Index, 2> two_dims(batch * height * width,
+                                                channel);
 #ifdef EIGEN_HAS_INDEX_LIST
         Eigen::IndexList<Eigen::type2index<0> > reduction_axis;
 #else
-        Eigen::array<int, 1> reduction_axis = {0};
+        Eigen::array<Eigen::Index, 1> reduction_axis = {0};
 #endif
         output->template flat<T>().device(context->eigen_device<Device>()) =
             output_backprop.flat<T>()

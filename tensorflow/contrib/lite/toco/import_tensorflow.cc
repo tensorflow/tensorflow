@@ -43,6 +43,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/graph/graph_constructor.h"
+#include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/public/session_options.h"
@@ -58,6 +59,7 @@ using tensorflow::DT_STRING;
 using tensorflow::DT_UINT8;
 using tensorflow::GraphDef;
 using tensorflow::NodeDef;
+using tensorflow::OpRegistry;
 using tensorflow::TensorProto;
 using tensorflow::TensorShapeProto;
 
@@ -66,6 +68,13 @@ namespace toco {
 namespace {
 bool HasAttr(const NodeDef& node, const string& attr_name) {
   return node.attr().count(attr_name) > 0;
+}
+
+bool HasWildcardDimension(const TensorShapeProto& shape) {
+  for (const auto& dim : shape.dim()) {
+    if (dim.size() == -1) return true;
+  }
+  return false;
 }
 
 const string& GetStringAttr(const NodeDef& node, const string& attr_name) {
@@ -469,6 +478,30 @@ string CreateConstArray(Model* model, string const& name,
   return array_name;
 }
 
+// Retain TensorFlow NodeDef in Toco Operator.
+//
+// If an op is supported by Toco but not supported by TFLite, TFLite exporter
+// will use the retained NodeDef to populate a Flex op when Flex mode is
+// enabled.
+//
+// This can't be easily applied to all operations, because a TensorFlow node
+// may become multiple Toco operators. Thus we need to call this function in
+// operator conversion functions one by one whenever feasible.
+//
+// This may cause problems if a graph transformation rule changes parameters
+// of the node. When calling this function, please check if any existing
+// graph transformation rule will change an existing operator with the same
+// type.
+//
+// This provides a route to handle Toco-supported & TFLite-unsupported ops
+// in Flex mode. However it's not a solid solution. Eventually we should
+// get rid of this.
+// TODO(b/117327937): Implement all Toco-supported ops in TFLite, and remove
+// this function.
+void RetainTensorFlowNodeDef(const NodeDef& node, Operator* op) {
+  node.SerializeToString(&op->tensorflow_node_def);
+}
+
 tensorflow::Status ConvertConstOperator(
     const NodeDef& node, const TensorFlowImportFlags& tf_import_flags,
     Model* model) {
@@ -633,6 +666,23 @@ tensorflow::Status ConvertDepthwiseConvOperator(
   CHECK_EQ(strides.i(3), 1);
   conv->stride_height = strides.i(1);
   conv->stride_width = strides.i(2);
+  if (HasAttr(node, "dilations")) {
+    const auto& dilations = GetListAttr(node, "dilations");
+    TF_RETURN_IF_ERROR(
+        ExpectValue(dilations.i_size(), 4, "number of dilations"));
+    if (dilations.i(0) != 1 || dilations.i(3) != 1) {
+      return tensorflow::errors::InvalidArgument(absl::StrCat(
+          "Can only import Conv ops with dilation along the height "
+          "(1st) or width (2nd) axis. TensorFlow op \"",
+          node.name(), "\" had dilations:[ ", dilations.i(0), ", ",
+          dilations.i(1), ", ", dilations.i(2), ", ", dilations.i(3), "]."));
+    }
+    conv->dilation_height_factor = dilations.i(1);
+    conv->dilation_width_factor = dilations.i(2);
+  } else {
+    conv->dilation_height_factor = 1;
+    conv->dilation_width_factor = 1;
+  }
   const auto& padding = GetStringAttr(node, "padding");
   if (padding == "SAME") {
     conv->padding.type = PaddingType::kSame;
@@ -965,6 +1015,10 @@ tensorflow::Status ConvertBatchMatMulOperator(
   auto* batch_matmul = new BatchMatMulOperator;
   batch_matmul->inputs = {node.input(0), node.input(1)};
   batch_matmul->outputs = {node.name()};
+
+  // For Flex mode. Please read the comments of the function.
+  RetainTensorFlowNodeDef(node, batch_matmul);
+
   model->operators.emplace_back(batch_matmul);
   return tensorflow::Status::OK();
 }
@@ -1053,15 +1107,42 @@ tensorflow::Status ConvertUnsupportedOperator(
       "_support_output_type_float_in_quantized_op";
 
   LOG(INFO) << "Converting unsupported operation: " << node.op();
+
   auto* op = new TensorFlowUnsupportedOperator;
+  op->tensorflow_op = node.op();
+
+  // For Flex mode. Please read the comments of the function.
+  RetainTensorFlowNodeDef(node, op);
+
+  model->operators.emplace_back(op);
+
+  // Parse inputs.
   const int num_inputs = GetInputsCount(node, tf_import_flags);
   for (int i = 0; i < num_inputs; ++i) {
     op->inputs.push_back(node.input(i));
   }
-  op->outputs.push_back(node.name());
-  op->tensorflow_op = node.op();
-  node.SerializeToString(&op->tensorflow_node_def);
-  model->operators.emplace_back(op);
+
+  // Parse outputs. Name them after the node's name, plus an ordinal suffix.
+  // Note that some outputs are to be multipled by a named attribute.
+  const tensorflow::OpDef* op_def = nullptr;
+  if (tensorflow::OpRegistry::Global()->LookUpOpDef(node.op(), &op_def).ok()) {
+    int next_output = 0;
+    for (int i = 0; i < op_def->output_arg_size(); ++i) {
+      string multiples = op_def->output_arg(i).number_attr();
+      int num_outputs = multiples.empty() ? 1 : GetIntAttr(node, multiples);
+      for (int j = 0; j < num_outputs; ++j) {
+        if (next_output == 0) {
+          op->outputs.push_back(node.name());  // Implicit :0.
+        } else {
+          op->outputs.push_back(absl::StrCat(node.name(), ":", next_output));
+        }
+        ++next_output;
+      }
+    }
+  } else {
+    op->outputs.push_back(node.name());  // Implicit :0.
+  }
+
   // Parse if the op supports quantization
   if (HasAttr(node, kAttrOutputQuantized)) {
     op->quantized = GetBoolAttr(node, kAttrOutputQuantized);
@@ -1071,6 +1152,8 @@ tensorflow::Status ConvertUnsupportedOperator(
     op->support_output_type_float_in_quantized_op =
         GetBoolAttr(node, kAttrSupportOutputTypeFloatInQuantizedOp);
   }
+
+  // Parse output type(s).
   if (HasAttr(node, kAttrOutputTypes)) {
     const auto& output_types = GetListAttr(node, kAttrOutputTypes);
     for (int i = 0; i < output_types.type_size(); ++i) {
@@ -1079,14 +1162,43 @@ tensorflow::Status ConvertUnsupportedOperator(
   } else if (HasAttr(node, "Tout")) {
     const auto& output_type = GetDataTypeAttr(node, "Tout");
     op->output_data_types.push_back(ConvertDataType(output_type));
+  } else if (op_def != nullptr) {
+    for (const auto& output_arg : op_def->output_arg()) {
+      if (output_arg.type() != tensorflow::DT_INVALID) {
+        op->output_data_types.push_back(ConvertDataType(output_arg.type()));
+      } else if (HasAttr(node, output_arg.type_attr())) {
+        op->output_data_types.push_back(
+            ConvertDataType(GetDataTypeAttr(node, output_arg.type_attr())));
+      } else {
+        LOG(WARNING) << "Op node missing output type attribute: "
+                     << node.name();
+        op->output_data_types.clear();
+        break;
+      }
+    }
+  } else {
+    // TODO(b/113613439): Figure out how to propagate types for custom ops
+    // that have no OpDef.
+    LOG(INFO) << "Unable to determine output type for op: " << node.op();
   }
+
+  // Parse output shape(s).
   if (HasAttr(node, kAttrOutputShapes)) {
     const auto& output_shapes = GetListAttr(node, kAttrOutputShapes);
     Shape output_shape;
     for (int i = 0; i < output_shapes.shape_size(); ++i) {
+      const auto& shape = output_shapes.shape(i);
+      // TOCO doesn't yet properly handle shapes with wildcard dimensions.
+      // TODO(b/113613439): Handle shape inference for unsupported ops that have
+      // shapes with wildcard dimensions.
+      if (HasWildcardDimension(shape)) {
+        LOG(INFO) << "Skipping wildcard output shape(s) for node: "
+                  << node.name();
+        op->output_shapes.clear();
+        break;
+      }
       const auto status =
-          ImportShape(output_shapes.shape(i).dim(), /*input_flat_size=*/nullptr,
-                      &output_shape);
+          ImportShape(shape.dim(), /*input_flat_size=*/nullptr, &output_shape);
       if (!status.ok()) {
         return status;
       }
@@ -1139,15 +1251,9 @@ tensorflow::Status ConvertPlaceholderOperator(
   if (node.attr().count("shape")) {
     const auto& shape = GetShapeAttr(node, "shape");
     auto num_dims = shape.dim_size();
-    bool has_wildcard = false;
-    for (std::size_t i = 0; i < num_dims; i++) {
-      if (shape.dim(i).size() == -1) {
-        has_wildcard = true;
-      }
-    }
     // TODO(b/62716978): This logic needs to be revisted.  During dims
     // refactoring it is an interim fix.
-    if (num_dims > 0 && !has_wildcard) {
+    if (num_dims > 0 && !HasWildcardDimension(shape)) {
       auto& dst_array_dims = *array.mutable_shape()->mutable_dims();
       dst_array_dims.resize(num_dims);
       for (std::size_t i = 0; i < num_dims; i++) {
@@ -1546,6 +1652,10 @@ tensorflow::Status ConvertRangeOperator(
   op->inputs.push_back(node.input(1));
   op->inputs.push_back(node.input(2));
   op->outputs.push_back(node.name());
+
+  // For Flex mode. Please read the comments of the function.
+  RetainTensorFlowNodeDef(node, op);
+
   model->operators.emplace_back(op);
   return tensorflow::Status::OK();
 }
@@ -1634,24 +1744,6 @@ tensorflow::Status ConvertShapeOperator(
   op->output_data_type = ConvertDataType(out_type);
   op->inputs.push_back(node.input(0));
   op->outputs.push_back(node.name());
-  model->operators.push_back(std::move(op));
-  return tensorflow::Status::OK();
-}
-
-tensorflow::Status ConvertAnyOperator(
-    const NodeDef& node, const TensorFlowImportFlags& tf_import_flags,
-    Model* model) {
-  CHECK_EQ(node.op(), "Any");
-  TF_QCHECK_OK(CheckInputsCount(node, tf_import_flags, 2));
-  const auto idx_type =
-      HasAttr(node, "Tidx") ? GetDataTypeAttr(node, "Tidx") : DT_INT32;
-  CHECK(idx_type == DT_INT32);
-  auto op = absl::make_unique<AnyOperator>();
-  op->inputs.push_back(node.input(0));
-  op->inputs.push_back(node.input(1));
-  op->outputs.push_back(node.name());
-  op->keep_dims =
-      HasAttr(node, "keep_dims") ? GetBoolAttr(node, "keep_dims") : false;
   model->operators.push_back(std::move(op));
   return tensorflow::Status::OK();
 }
@@ -1923,6 +2015,48 @@ tensorflow::Status ConvertCTCBeamSearchDecoderOperator(
   return tensorflow::Status::OK();
 }
 
+// This isn't a TensorFlow builtin op. Currently this node can only be generated
+// with TfLite OpHint API.
+tensorflow::Status ConvertUnidirectionalSequenceLstm(
+    const NodeDef& node, const TensorFlowImportFlags& tf_import_flags,
+    Model* model) {
+  DCHECK_EQ(node.op(), "UnidirectionalSequenceLstm");
+
+  auto* op = new UnidirectionalSequenceLstmOperator();
+  const auto& indices = GetListAttr(node, "_tflite_input_indices");
+  if (indices.i_size() != node.input().size()) {
+    return tensorflow::errors::InvalidArgument("Input size does not match.");
+  }
+
+  // The input size needs to be the same as the TfLite UniDirectionalSequence
+  // Lstm implementation.
+  const int kInputsSize = 20;
+
+  op->inputs.resize(kInputsSize);
+  std::vector<bool> done(kInputsSize);
+  int idx = 0;
+  for (const string& input : node.input()) {
+    int real_index = indices.i(idx);
+    op->inputs[real_index] = (input);
+    done[real_index] = true;
+    idx++;
+  }
+
+  for (int idx = 0; idx < done.size(); idx++) {
+    if (!done[idx]) {
+      string optional_name = node.name() + "_" + std::to_string(idx);
+      model->CreateOptionalArray(optional_name);
+      op->inputs[idx] = optional_name;
+    }
+  }
+
+  // There're three outputs, only the last one is required.
+  op->outputs.push_back(node.name() + ":2");
+  model->operators.emplace_back(op);
+
+  return tensorflow::Status::OK();
+}
+
 }  // namespace
 
 namespace internal {
@@ -1937,7 +2071,7 @@ ConverterMapType GetTensorFlowNodeConverterMap() {
       {"Add", ConvertSimpleOperator<AddOperator, 2>},
       {"AddN", ConvertSimpleOperator<AddNOperator>},
       {"All", ConvertSimpleOperator<TensorFlowAllOperator>},
-      {"Any", ConvertAnyOperator},
+      {"Any", ConvertReduceOperator<TensorFlowAnyOperator>},
       {"ArgMax", ConvertArgMaxOperator},
       {"ArgMin", ConvertArgMinOperator},
       {"Assert", ConvertSimpleOperator<TensorFlowAssertOperator>},
@@ -2041,6 +2175,8 @@ ConverterMapType GetTensorFlowNodeConverterMap() {
       {"TopKV2", ConvertTopKV2Operator},
       {"Transpose", ConvertSimpleOperator<TransposeOperator, 2>},
       {"Unpack", ConvertUnpackOperator},
+      {"ZerosLike", ConvertSimpleOperator<TensorFlowZerosLikeOperator, 1>},
+      {"UnidirectionalSequenceLstm", ConvertUnidirectionalSequenceLstm},
   });
 }
 
@@ -2079,8 +2215,14 @@ std::unique_ptr<Model> ImportTensorFlowGraphDef(
   }
 
   Model* model = new Model;
-  const internal::ConverterMapType& converter_map =
-      internal::GetTensorFlowNodeConverterMap();
+  internal::ConverterMapType converter_map;
+
+  // This is used for the TFLite "Full Flex Mode" conversion. All the ops are
+  // imported as `TensorFlowUnsupportedOperator`, and later all these ops are
+  // converted to TFLite Flex ops.
+  if (!tf_import_flags.import_all_ops_as_unsupported) {
+    converter_map = internal::GetTensorFlowNodeConverterMap();
+  }
 
   for (auto node : inlined_graph.node()) {
     StripZeroOutputIndexFromInputs(&node);

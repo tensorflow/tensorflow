@@ -321,6 +321,16 @@ class DeviceTracerImpl : public DeviceTracer,
     return nullptr;
   }
 
+  bool IsEnabledForAnnotations() const override {
+    // We are always enabled for 'Annotations'.
+    return true;
+  }
+
+  bool IsEnabledForActivities(bool is_expensive) const override {
+    // We don't do anything with 'Activities' so we are never 'enabled'.
+    return false;
+  }
+
  protected:
   // This callback is used exclusively by CUPTIManager.
   friend class CUPTIManager;

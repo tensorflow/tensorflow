@@ -201,7 +201,7 @@ class FeatureColumnTest(test.TestCase):
       b2 = feature_column_ops.input_from_feature_columns({
           b[1]: input_tensor_c2
       }, [b[1]])
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       sess.run(variables.global_variables_initializer())
       b1_value = b1.eval()
       b2_value = b2.eval()
@@ -230,7 +230,7 @@ class FeatureColumnTest(test.TestCase):
       e1 = feature_column_ops.input_from_feature_columns({
           e[0]: input_tensor_c1
       }, [e[0]])
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       sess.run(variables.global_variables_initializer())
       d1_value = d1.eval()
       e1_value = e1.eval()
@@ -340,7 +340,7 @@ class FeatureColumnTest(test.TestCase):
       with variable_scope.variable_scope("output_rank_{}".format(output_rank)):
         one_hot_output = one_hot._to_dnn_input_layer(
             id_tensor, output_rank=output_rank)
-      with self.test_session() as sess:
+      with self.cached_session() as sess:
         one_hot_value = sess.run(one_hot_output)
         expected_shape = (id_tensor_shape[:output_rank - 1] + [vocab_size])
         self.assertEquals(expected_shape, list(one_hot_value.shape))
@@ -376,7 +376,7 @@ class FeatureColumnTest(test.TestCase):
       one_hot_output_shape = one_hot_output.get_shape().as_list()
       expected_shape = id_tensor_shape[:-1] + [vocab_size]
       self.assertEquals(expected_shape, one_hot_output_shape)
-      with self.test_session() as sess:
+      with self.cached_session() as sess:
         one_hot_value = sess.run(one_hot_output)
         self.assertEquals(expected_shape, list(one_hot_value.shape))
 
@@ -399,7 +399,7 @@ class FeatureColumnTest(test.TestCase):
     expected = np.array([[0., 1., 0., 0., 0., 0., 0., 1., 0.,
                           0.], [0., 1., 0., 0., 0., 0., 0., 0., 0., 1.],
                          [1., 0., 0., 0., 0., 0., 0., 0., 0., 1.]])
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       one_hot_value = sess.run(one_hot_output)
     self.assertTrue(np.array_equal(one_hot_value, expected))
 
@@ -440,7 +440,7 @@ class FeatureColumnTest(test.TestCase):
     }
     one_hot_tensor = feature_column_ops.input_from_feature_columns(
         features, [one_hot])
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       sess.run(variables.global_variables_initializer())
       sess.run(lookup_ops.tables_initializer())
       self.assertAllEqual([[2., 6., 0.]], one_hot_tensor.eval())
@@ -451,7 +451,7 @@ class FeatureColumnTest(test.TestCase):
     features = {"ids": constant_op.constant([["marlo", "unknown", "omar"]])}
     one_hot_tensor = feature_column_ops.input_from_feature_columns(
         features, [one_hot])
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       sess.run(variables.global_variables_initializer())
       sess.run(lookup_ops.tables_initializer())
       self.assertAllEqual([[1., 1., 0.]], one_hot_tensor.eval())
@@ -603,7 +603,7 @@ class FeatureColumnTest(test.TestCase):
         real_valued_output = real_valued_column._to_dnn_input_layer(
             constant_op.constant(real_valued_input, dtype=dtypes.float32),
             output_rank=output_rank)
-      with self.test_session() as sess:
+      with self.cached_session() as sess:
         real_valued_eval = sess.run(real_valued_output)
       expected_shape = (
           input_shape[:output_rank - 1] +
@@ -797,7 +797,7 @@ class FeatureColumnTest(test.TestCase):
     sparse_column.insert_transformed_feature(features)
     sparse_output = features[sparse_column]
     expected_shape = [batch_size, 1]
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       sparse_result = sess.run(sparse_output)
     self.assertEquals(expected_shape, list(sparse_result.dense_shape))
 
@@ -1110,7 +1110,7 @@ class FeatureColumnTest(test.TestCase):
     ckpt_dir = tempfile.mkdtemp(prefix=ckpt_dir_prefix)
     checkpoint_path = os.path.join(ckpt_dir, "model.ckpt")
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       sess.run(variables.global_variables_initializer())
       saved_embedding = embeddings.eval()
       save.save(sess, checkpoint_path)
@@ -1131,7 +1131,7 @@ class FeatureColumnTest(test.TestCase):
           embedding_col_initialized: input_tensor
       }, [embedding_col_initialized])
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       sess.run(variables.global_variables_initializer())
       loaded_embedding = pretrained_embeddings.eval()
 
@@ -1176,7 +1176,7 @@ class FeatureColumnTest(test.TestCase):
     ckpt_dir = tempfile.mkdtemp(prefix=ckpt_dir_prefix)
     checkpoint_path = os.path.join(ckpt_dir, "model.ckpt")
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       sess.run(variables.global_variables_initializer())
       sess.run(assign_op)
       saved_col_weights = col_weights[crossed_col][0].eval()
@@ -1201,7 +1201,7 @@ class FeatureColumnTest(test.TestCase):
           }, [crossed_col_initialized], 1))
       col_weights_from_ckpt = col_weights[crossed_col_initialized][0]
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       sess.run(variables.global_variables_initializer())
       loaded_col_weights = col_weights_from_ckpt.eval()
 

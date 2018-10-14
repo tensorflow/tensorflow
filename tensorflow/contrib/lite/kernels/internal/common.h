@@ -45,7 +45,7 @@ limitations under the License.
 #endif
 #endif
 
-#include "public/gemmlowp.h"
+#include "fixedpoint/fixedpoint.h"
 #include "tensorflow/contrib/lite/kernels/internal/types.h"
 
 namespace tflite {

@@ -73,7 +73,7 @@ class LatestCheckpointWithRelativePaths(test.TestCase):
         # Collides with the default name of the checkpoint state file.
         filepath = os.path.join(traindir, "checkpoint")
 
-        with self.test_session() as sess:
+        with self.cached_session() as sess:
           unused_a = variables.Variable(0.0)  # So that Saver saves something.
           variables.global_variables_initializer().run()
 
@@ -113,7 +113,7 @@ class LatestCheckpointWithRelativePaths(test.TestCase):
         filename = "snapshot"
         filepath = os.path.join(traindir, filename)
 
-        with self.test_session() as sess:
+        with self.cached_session() as sess:
           # Build a simple graph.
           v0 = variables.Variable(0.0)
           inc = v0.assign_add(1.0)
@@ -128,7 +128,7 @@ class LatestCheckpointWithRelativePaths(test.TestCase):
           inc.eval()
           save.save(sess, filepath, global_step=2)
 
-        with self.test_session() as sess:
+        with self.cached_session() as sess:
           # Build a new graph with different initialization.
           v0 = variables.Variable(-1.0)
 

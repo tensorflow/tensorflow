@@ -30,6 +30,7 @@ import numpy as np
 
 from tensorflow.core.framework import summary_pb2
 from tensorflow.python import keras
+from tensorflow.python.framework import ops
 from tensorflow.python.framework import random_seed
 from tensorflow.python.framework import test_util
 from tensorflow.python.keras import testing_utils
@@ -63,7 +64,7 @@ class KerasCallbacksTest(test.TestCase):
     if h5py is None:
       return  # Skip test if models cannot be saved.
 
-    with self.test_session():
+    with self.cached_session():
       np.random.seed(1337)
 
       temp_dir = self.get_temp_dir()
@@ -226,7 +227,7 @@ class KerasCallbacksTest(test.TestCase):
           mode='unknown')
 
   def test_EarlyStopping(self):
-    with self.test_session():
+    with self.cached_session():
       np.random.seed(123)
       (x_train, y_train), (x_test, y_test) = testing_utils.get_test_data(
           train_samples=TRAIN_SAMPLES,
@@ -265,7 +266,7 @@ class KerasCallbacksTest(test.TestCase):
             verbose=0)
 
   def test_EarlyStopping_reuse(self):
-    with self.test_session():
+    with self.cached_session():
       np.random.seed(1337)
       patience = 3
       data = np.random.random((100, 1))
@@ -287,7 +288,7 @@ class KerasCallbacksTest(test.TestCase):
       assert len(hist.epoch) >= patience
 
   def test_EarlyStopping_with_baseline(self):
-    with self.test_session():
+    with self.cached_session():
       np.random.seed(1337)
       baseline = 0.5
       (data, labels), _ = testing_utils.get_test_data(
@@ -312,6 +313,42 @@ class KerasCallbacksTest(test.TestCase):
       hist = model.fit(data, labels, callbacks=[stopper], verbose=0, epochs=20)
       assert len(hist.epoch) >= patience
 
+  def test_EarlyStopping_final_weights_when_restoring_model_weights(self):
+
+    class DummyModel(object):
+
+      def __init__(self):
+        self.stop_training = False
+        self.weights = -1
+
+      def get_weights(self):
+        return self.weights
+
+      def set_weights(self, weights):
+        self.weights = weights
+
+      def set_weight_to_epoch(self, epoch):
+        self.weights = epoch
+
+    early_stop = keras.callbacks.EarlyStopping(monitor='val_loss',
+                                               patience=2,
+                                               restore_best_weights=True)
+    early_stop.model = DummyModel()
+    losses = [0.2, 0.15, 0.1, 0.11, 0.12]
+    # The best configuration is in the epoch 2 (loss = 0.1000).
+    epochs_trained = 0
+    early_stop.on_train_begin()
+    for epoch in range(len(losses)):
+      epochs_trained += 1
+      early_stop.model.set_weight_to_epoch(epoch=epoch)
+      early_stop.on_epoch_end(epoch, logs={'val_loss': losses[epoch]})
+      if early_stop.model.stop_training:
+        break
+    # The best configuration is in epoch 2 (loss = 0.1000),
+    # and while patience = 2, we're restoring the best weights,
+    # so we end up at the epoch with the best weights, i.e. epoch 2
+    self.assertEqual(early_stop.model.get_weights(), 2)
+
   def test_RemoteMonitor(self):
     if requests is None:
       return
@@ -321,7 +358,7 @@ class KerasCallbacksTest(test.TestCase):
     monitor.on_epoch_end(0, logs={'loss': 0.})
 
   def test_LearningRateScheduler(self):
-    with self.test_session():
+    with self.cached_session():
       np.random.seed(1337)
       (x_train, y_train), (x_test, y_test) = testing_utils.get_test_data(
           train_samples=TRAIN_SAMPLES,
@@ -368,7 +405,7 @@ class KerasCallbacksTest(test.TestCase):
               model.optimizer.lr)) - 0.01 / 4) < keras.backend.epsilon()
 
   def test_ReduceLROnPlateau(self):
-    with self.test_session():
+    with self.cached_session():
       np.random.seed(1337)
       (x_train, y_train), (x_test, y_test) = testing_utils.get_test_data(
           train_samples=TRAIN_SAMPLES,
@@ -470,7 +507,7 @@ class KerasCallbacksTest(test.TestCase):
     self.assertEqual(reduce_on_plateau.min_delta, 1e-13)
 
   def test_CSVLogger(self):
-    with self.test_session():
+    with self.cached_session():
       np.random.seed(1337)
       temp_dir = self.get_temp_dir()
       self.addCleanup(shutil.rmtree, temp_dir, ignore_errors=True)
@@ -533,11 +570,15 @@ class KerasCallbacksTest(test.TestCase):
           batch_size=BATCH_SIZE,
           validation_data=(x_test, y_test),
           callbacks=cbks,
-          epochs=1,
+          epochs=2,
           verbose=0)
 
       with open(filepath) as csvfile:
-        output = ' '.join(csvfile.readlines())
+        list_lines = csvfile.readlines()
+        for line in list_lines:
+          assert line.count(sep) == 4
+        assert len(list_lines) == 5
+        output = ' '.join(list_lines)
         assert len(re.findall('epoch', output)) == 1
 
       os.remove(filepath)
@@ -549,7 +590,7 @@ class KerasCallbacksTest(test.TestCase):
     tmpdir = self.get_temp_dir()
     self.addCleanup(shutil.rmtree, tmpdir, ignore_errors=True)
 
-    with self.test_session():
+    with self.cached_session():
       fp = os.path.join(tmpdir, 'test.csv')
       (x_train, y_train), (x_test, y_test) = testing_utils.get_test_data(
           train_samples=TRAIN_SAMPLES,
@@ -601,7 +642,7 @@ class KerasCallbacksTest(test.TestCase):
       assert 'nan' in values[-1], 'The last epoch was not logged.'
 
   def test_TerminateOnNaN(self):
-    with self.test_session():
+    with self.cached_session():
       np.random.seed(1337)
       (x_train, y_train), (x_test, y_test) = testing_utils.get_test_data(
           train_samples=TRAIN_SAMPLES,
@@ -666,7 +707,7 @@ class KerasCallbacksTest(test.TestCase):
         i %= max_batch_index
 
     # case: Sequential
-    with self.test_session():
+    with self.cached_session():
       model = keras.models.Sequential()
       model.add(
           keras.layers.Dense(
@@ -743,7 +784,7 @@ class KerasCallbacksTest(test.TestCase):
     tmpdir = self.get_temp_dir()
     self.addCleanup(shutil.rmtree, tmpdir, ignore_errors=True)
 
-    with self.test_session():
+    with self.cached_session():
       filepath = os.path.join(tmpdir, 'logs')
 
       (x_train, y_train), (x_test, y_test) = testing_utils.get_test_data(
@@ -815,7 +856,7 @@ class KerasCallbacksTest(test.TestCase):
     tmpdir = self.get_temp_dir()
     self.addCleanup(shutil.rmtree, tmpdir, ignore_errors=True)
 
-    with self.test_session():
+    with self.cached_session():
       filepath = os.path.join(tmpdir, 'logs')
 
       (x_train, y_train), (x_test, y_test) = testing_utils.get_test_data(
@@ -925,7 +966,7 @@ class KerasCallbacksTest(test.TestCase):
     y_test = keras.utils.to_categorical(y_test)
     y_train = keras.utils.to_categorical(y_train)
 
-    with self.test_session():
+    with self.cached_session():
       model = keras.models.Sequential()
       model.add(
           keras.layers.Dense(
@@ -969,7 +1010,7 @@ class KerasCallbacksTest(test.TestCase):
       while True:
         yield x, y
 
-    with self.test_session():
+    with self.cached_session():
       model = testing_utils.get_small_sequential_mlp(
           num_hidden=10, num_classes=10, input_dim=100)
       model.compile(
@@ -1011,7 +1052,7 @@ class KerasCallbacksTest(test.TestCase):
       os.name == 'nt',
       'use_multiprocessing=True does not work on windows properly.')
   def test_LambdaCallback(self):
-    with self.test_session():
+    with self.cached_session():
       np.random.seed(1337)
       (x_train, y_train), (x_test, y_test) = testing_utils.get_test_data(
           train_samples=TRAIN_SAMPLES,
@@ -1055,7 +1096,7 @@ class KerasCallbacksTest(test.TestCase):
       assert not t.is_alive()
 
   def test_TensorBoard_with_ReduceLROnPlateau(self):
-    with self.test_session():
+    with self.cached_session():
       temp_dir = self.get_temp_dir()
       self.addCleanup(shutil.rmtree, temp_dir, ignore_errors=True)
 
@@ -1114,11 +1155,11 @@ class KerasCallbacksTest(test.TestCase):
     temp_dir = self.get_temp_dir()
     self.addCleanup(shutil.rmtree, temp_dir, ignore_errors=True)
 
-    tb_cbk = keras.callbacks.TensorBoard(temp_dir)
+    tb_cbk = keras.callbacks.TensorBoard(temp_dir, update_freq='batch')
     tb_cbk.writer = FileWriterStub(temp_dir)
 
     for batch in range(5):
-      tb_cbk.on_batch_end(batch, {'acc': np.float32(batch)})
+      tb_cbk.on_batch_end(batch, {'acc': batch})
     self.assertEqual(tb_cbk.writer.batches_logged, [0, 1, 2, 3, 4])
     self.assertEqual(tb_cbk.writer.summary_values, [0., 1., 2., 3., 4.])
     self.assertEqual(tb_cbk.writer.summary_tags, ['batch_acc'] * 5)
@@ -1146,14 +1187,17 @@ class KerasCallbacksTest(test.TestCase):
     temp_dir = self.get_temp_dir()
     self.addCleanup(shutil.rmtree, temp_dir, ignore_errors=True)
 
-    tb_cbk = keras.callbacks.TensorBoard(temp_dir)
+    tb_cbk = keras.callbacks.TensorBoard(temp_dir, update_freq='batch')
     tb_cbk.writer = FileWriterStub(temp_dir)
 
-    tb_cbk.on_batch_end(0, {'acc': np.float32(5.0)})
-    tb_cbk.on_epoch_end(0, {'acc': np.float32(10.0)})
+    tb_cbk.on_batch_end(0, {'acc': 5.0})
     batch_step, batch_summary = tb_cbk.writer.batch_summary
     self.assertEqual(batch_step, 0)
     self.assertEqual(batch_summary.value[0].simple_value, 5.0)
+
+    tb_cbk = keras.callbacks.TensorBoard(temp_dir, update_freq='epoch')
+    tb_cbk.writer = FileWriterStub(temp_dir)
+    tb_cbk.on_epoch_end(0, {'acc': 10.0})
     epoch_step, epoch_summary = tb_cbk.writer.epoch_summary
     self.assertEqual(epoch_step, 0)
     self.assertEqual(epoch_summary.value[0].simple_value, 10.0)
@@ -1191,10 +1235,70 @@ class KerasCallbacksTest(test.TestCase):
 
     self.assertTrue(os.path.exists(temp_dir))
 
+  def test_TensorBoard_update_freq(self):
+
+    class FileWriterStub(object):
+
+      def __init__(self, logdir, graph=None):
+        self.logdir = logdir
+        self.graph = graph
+        self.batch_summaries = []
+        self.epoch_summaries = []
+
+      def add_summary(self, summary, step):
+        if 'batch_' in summary.value[0].tag:
+          self.batch_summaries.append((step, summary))
+        elif 'epoch_' in summary.value[0].tag:
+          self.epoch_summaries.append((step, summary))
+
+      def flush(self):
+        pass
+
+      def close(self):
+        pass
+
+    temp_dir = self.get_temp_dir()
+    self.addCleanup(shutil.rmtree, temp_dir, ignore_errors=True)
+
+    # Epoch mode
+    tb_cbk = keras.callbacks.TensorBoard(temp_dir, update_freq='epoch')
+    tb_cbk.writer = FileWriterStub(temp_dir)
+
+    tb_cbk.on_batch_end(0, {'acc': 5.0, 'size': 1})
+    self.assertEqual(tb_cbk.writer.batch_summaries, [])
+    tb_cbk.on_epoch_end(0, {'acc': 10.0, 'size': 1})
+    self.assertEqual(len(tb_cbk.writer.epoch_summaries), 1)
+
+    # Batch mode
+    tb_cbk = keras.callbacks.TensorBoard(temp_dir, update_freq='batch')
+    tb_cbk.writer = FileWriterStub(temp_dir)
+
+    tb_cbk.on_batch_end(0, {'acc': 5.0, 'size': 1})
+    self.assertEqual(len(tb_cbk.writer.batch_summaries), 1)
+    tb_cbk.on_batch_end(0, {'acc': 5.0, 'size': 1})
+    self.assertEqual(len(tb_cbk.writer.batch_summaries), 2)
+    self.assertFalse(tb_cbk.writer.epoch_summaries)
+
+    # Integer mode
+    tb_cbk = keras.callbacks.TensorBoard(temp_dir, update_freq=20)
+    tb_cbk.writer = FileWriterStub(temp_dir)
+
+    tb_cbk.on_batch_end(0, {'acc': 5.0, 'size': 10})
+    self.assertFalse(tb_cbk.writer.batch_summaries)
+    tb_cbk.on_batch_end(0, {'acc': 5.0, 'size': 10})
+    self.assertEqual(len(tb_cbk.writer.batch_summaries), 1)
+    tb_cbk.on_batch_end(0, {'acc': 5.0, 'size': 10})
+    self.assertEqual(len(tb_cbk.writer.batch_summaries), 1)
+    tb_cbk.on_batch_end(0, {'acc': 5.0, 'size': 10})
+    self.assertEqual(len(tb_cbk.writer.batch_summaries), 2)
+    tb_cbk.on_batch_end(0, {'acc': 10.0, 'size': 10})
+    self.assertEqual(len(tb_cbk.writer.batch_summaries), 2)
+    self.assertFalse(tb_cbk.writer.epoch_summaries)
+
   def test_RemoteMonitorWithJsonPayload(self):
     if requests is None:
       self.skipTest('`requests` required to run this test')
-    with self.test_session():
+    with self.cached_session():
       (x_train, y_train), (x_test, y_test) = testing_utils.get_test_data(
           train_samples=TRAIN_SAMPLES,
           test_samples=TEST_SAMPLES,
@@ -1222,6 +1326,46 @@ class KerasCallbacksTest(test.TestCase):
             callbacks=cbks,
             epochs=1)
 
+  def test_fit_generator_with_callback(self):
+
+    class TestCallback(keras.callbacks.Callback):
+
+      def set_model(self, model):
+        # Check the model operations for the optimizer operations that
+        # the _make_train_function adds under a named scope for the
+        # optimizer. This ensurs the full model is populated before the
+        # set_model callback is called.
+        optimizer_name_scope = 'training/' + model.optimizer.__class__.__name__
+        graph_def = ops.get_default_graph().as_graph_def()
+        for node in graph_def.node:
+          if node.name.startswith(optimizer_name_scope):
+            return
+        raise RuntimeError('The optimizer operations are not present in the '
+                           'model graph when the Callback.set_model function '
+                           'is called')
+    np.random.seed(1337)
+
+    def generator():
+      x = np.random.randn(10, 100).astype(np.float32)
+      y = np.random.randn(10, 10).astype(np.float32)
+      while True:
+        yield x, y
+
+    with self.cached_session():
+      model = testing_utils.get_small_sequential_mlp(
+          num_hidden=10, num_classes=10, input_dim=100)
+      model.compile(
+          loss='categorical_crossentropy',
+          optimizer='sgd',
+          metrics=['accuracy'])
+      model.fit_generator(
+          generator(),
+          steps_per_epoch=2,
+          epochs=1,
+          validation_data=generator(),
+          validation_steps=2,
+          callbacks=[TestCallback()],
+          verbose=0)
 
 if __name__ == '__main__':
   test.main()

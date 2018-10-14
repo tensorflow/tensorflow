@@ -177,7 +177,7 @@ class SegmentReductionOpTest(SegmentReductionHelper):
 
   def testSegmentIdsInvalid1(self):
     shape = [4, 4]
-    with self.test_session():
+    with self.cached_session():
       tf_x, _ = self._input(shape)
       indices = [-1, -1, 0, 0]
       s = math_ops.segment_sum(data=tf_x, segment_ids=indices)
@@ -188,7 +188,7 @@ class SegmentReductionOpTest(SegmentReductionHelper):
 
   def testSegmentIdsInvalid2(self):
     shape = [4, 4]
-    with self.test_session():
+    with self.cached_session():
       tf_x, _ = self._input(shape)
       indices = [0, 1, 0, 1]
       s = math_ops.segment_sum(data=tf_x, segment_ids=indices)
@@ -197,7 +197,7 @@ class SegmentReductionOpTest(SegmentReductionHelper):
 
   def testSegmentIdsInvalid3(self):
     shape = [4, 4]
-    with self.test_session():
+    with self.cached_session():
       tf_x, _ = self._input(shape)
       indices = [0, 1, 2, 0]
       s = math_ops.segment_sum(data=tf_x, segment_ids=indices)
@@ -233,7 +233,7 @@ class SegmentReductionOpTest(SegmentReductionHelper):
         math_ops.segment_sum, math_ops.segment_mean, math_ops.segment_min,
         math_ops.segment_max
     ]:
-      with self.test_session():
+      with self.cached_session():
         tf_x, np_x = self._input(shape, dtype=dtypes_lib.float64)
         s = tf_op(data=tf_x, segment_ids=indices)
         jacob_t, jacob_n = gradient_checker.compute_gradient(
@@ -300,7 +300,7 @@ class UnsortedSegmentTest(SegmentReductionHelper):
               tf_ans = s.eval()
               if dtype is dtypes_lib.bfloat16:
                 tf_ans = tf_ans.astype(np.float32)
-              self.assertAllClose(np_ans, tf_ans)
+              self.assertAllCloseAccordingToType(np_ans, tf_ans)
               self.assertShapeEqual(np_ans, s)
 
   def testNumSegmentsTypes(self):
@@ -736,7 +736,7 @@ class SparseSegmentReductionOpTest(SparseSegmentReductionHelper):
     segment_indices = [0, 1, 2, 2]
     num_indices = len(segment_indices)
     for tf_op in [math_ops.sparse_segment_sum, math_ops.sparse_segment_mean]:
-      with self.test_session():
+      with self.cached_session():
         tf_indices, _, tf_x, np_x = self._sparse_input(
             shape, num_indices, dtype=dtypes_lib.float64)
         s = tf_op(data=tf_x, indices=tf_indices, segment_ids=segment_indices)
@@ -758,7 +758,7 @@ class SparseSegmentReductionOpTest(SparseSegmentReductionHelper):
         math_ops.sparse_segment_sum_with_num_segments,
         math_ops.sparse_segment_mean_with_num_segments,
     ]:
-      with self.test_session():
+      with self.cached_session():
         tf_indices, _, tf_x, np_x = self._sparse_input(
             shape, num_indices, dtype=dtypes_lib.float64)
         s = tf_op(

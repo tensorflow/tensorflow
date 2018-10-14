@@ -5,6 +5,14 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
+    name: "glorot_normal"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "glorot_uniform"
+    mtype: "<type \'type\'>"
+  }
+  member {
     name: "identity"
     mtype: "<type \'type\'>"
   }
@@ -45,14 +53,6 @@ tf_module {
     argspec: "args=[], varargs=None, keywords=None, defaults=None"
   }
   member_method {
-    name: "glorot_normal"
-    argspec: "args=[\'seed\', \'dtype\'], varargs=None, keywords=None, defaults=[\'None\', \"<dtype: \'float32\'>\"], "
-  }
-  member_method {
-    name: "glorot_uniform"
-    argspec: "args=[\'seed\', \'dtype\'], varargs=None, keywords=None, defaults=[\'None\', \"<dtype: \'float32\'>\"], "
-  }
-  member_method {
     name: "he_normal"
     argspec: "args=[\'seed\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
@@ -71,6 +71,10 @@ tf_module {
   member_method {
     name: "local_variables"
     argspec: "args=[], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "tables_initializer"
+    argspec: "args=[\'name\'], varargs=None, keywords=None, defaults=[\'init_all_tables\'], "
   }
   member_method {
     name: "variables"

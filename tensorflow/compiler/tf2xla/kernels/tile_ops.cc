@@ -16,6 +16,7 @@ limitations under the License.
 // XLA-specific Tile Op.
 
 #include <vector>
+#include "absl/types/span.h"
 #include "tensorflow/compiler/tf2xla/type_util.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
@@ -26,7 +27,6 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/type_index.h"
 #include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/platform/macros.h"
 
 namespace tensorflow {
@@ -96,7 +96,11 @@ class TileOp : public XlaOpKernel {
       // operation broadcast semantics.
       auto broadcasted_zero = xla::Broadcast(
           XlaHelpers::Zero(ctx->builder(), ctx->input_type(0)), output_shape);
-      ctx->SetOutput(0, xla::Add(broadcasted_zero, input));
+      if (ctx->input_type(0) == DT_BOOL) {
+        ctx->SetOutput(0, xla::Or(broadcasted_zero, input));
+      } else {
+        ctx->SetOutput(0, xla::Add(broadcasted_zero, input));
+      }
       return;
     }
 

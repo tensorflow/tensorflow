@@ -135,7 +135,7 @@ class RandomShuffleOp : public XlaOpKernel {
       xla::XlaOp curr = input;
       for (int i = 0; i < rounds; ++i) {
         xla::XlaOp keys = xla::RngUniform(zero, max_value, key_shape);
-        xla::XlaOp sorted = xla::Sort(keys, curr);
+        xla::XlaOp sorted = xla::Sort(keys, {curr});
         curr = xla::GetTupleElement(sorted, 1);
       }
 
@@ -155,7 +155,8 @@ class RandomShuffleOp : public XlaOpKernel {
     xla::XlaOp indices = xla::Iota(builder, xla::S32, n);
 
     // Swap the indices at i and swaps[i].
-    auto swap_body_fn = [&](xla::XlaOp i, gtl::ArraySlice<xla::XlaOp> loop_vars,
+    auto swap_body_fn = [&](xla::XlaOp i,
+                            absl::Span<const xla::XlaOp> loop_vars,
                             xla::XlaBuilder* builder)
         -> xla::StatusOr<std::vector<xla::XlaOp>> {
       auto swaps = loop_vars[0];

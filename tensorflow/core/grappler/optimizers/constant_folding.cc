@@ -32,8 +32,8 @@ limitations under the License.
 #include "tensorflow/core/grappler/grappler_item.h"
 #include "tensorflow/core/grappler/op_types.h"
 #include "tensorflow/core/grappler/optimizers/evaluation_utils.h"
-#include "tensorflow/core/grappler/optimizers/symbolic_shapes.h"
 #include "tensorflow/core/grappler/utils.h"
+#include "tensorflow/core/grappler/utils/symbolic_shapes.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/gtl/cleanup.h"
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
@@ -134,6 +134,27 @@ bool MaybeRemoveControlInput(const string& old_input, NodeDef* node,
     node_map->RemoveOutput(NodeName(old_input), node->name());
   }
   return removed_input;
+}
+
+bool GetConcatAxis(const GraphProperties& properties, NodeDef* node,
+                   int* axis) {
+  if (node->op() != "ConcatV2" ||
+      properties.GetInputProperties(node->name()).empty()) {
+    return false;
+  }
+  const auto& axis_input = properties.GetInputProperties(node->name()).back();
+  if (!TensorShape::IsValid(axis_input.shape()) || !axis_input.has_value()) {
+    return false;
+  }
+
+  Tensor axis_tensor(axis_input.dtype(), axis_input.shape());
+  if (!axis_tensor.FromProto(axis_input.value())) {
+    return false;
+  }
+  *axis = axis_input.dtype() == DT_INT64
+              ? static_cast<int>(axis_tensor.scalar<int64>()())
+              : axis_tensor.scalar<int32>()();
+  return true;
 }
 
 }  // namespace
@@ -416,25 +437,6 @@ Status ConstantFolding::MaterializeShapes(const GraphProperties& properties) {
 }
 
 namespace {
-bool ShapesEqual(const TensorShapeProto& shape1,
-                 const TensorShapeProto& shape2) {
-  if (shape1.unknown_rank() || shape2.unknown_rank()) {
-    return false;
-  }
-  if (shape1.dim_size() != shape2.dim_size()) {
-    return false;
-  }
-  for (int i = 0; i < shape1.dim_size(); ++i) {
-    if (shape1.dim(i).size() != shape2.dim(i).size()) {
-      return false;
-    }
-    if (shape1.dim(i).size() == -1 || shape2.dim(i).size() == -1) {
-      return false;
-    }
-  }
-  return true;
-}
-
 bool ExtractShape(const NodeDef& shape_node, const GraphProperties& properties,
                   BCast::Vec* shape, int64* min_id) {
   if (shape_node.op() == "Shape") {
@@ -614,28 +616,37 @@ Status ConstantFolding::MaterializeReductionIndices(
     // We can't do anything if we don't know the rank of the input.
     return Status::OK();
   }
-  const int rank = input_prop.shape().dim_size();
-  if (rank == 0) {
+  const int input_rank = input_prop.shape().dim_size();
+  if (input_rank < 1) {
     // Unexpected graph, don't try to change it.
     return Status::OK();
   }
+  const OpInfo::TensorProperties& reduction_indices_prop = input_props[1];
+  DataType dtype = reduction_indices_prop.dtype();
+  if (dtype != DT_INT32 && dtype != DT_INT64) {
+    return Status::OK();
+  }
+  PartialTensorShape reduction_indices_shape(reduction_indices_prop.shape());
+  const int num_reduction_indices = reduction_indices_shape.num_elements();
+
   const std::vector<OpInfo::TensorProperties>& output_props =
       properties.GetOutputProperties(node->name());
   if (output_props.size() != 1) {
     return Status::OK();
   }
-  const bool keep_dims =
-      node->attr().count("keep_dims") && node->attr().at("keep_dims").b();
   const OpInfo::TensorProperties& output_prop = output_props[0];
-  PartialTensorShape output_shape(output_prop.shape());
-  if (output_shape.num_elements() != 1) {
-    bool full_reduction = false;
+  const int output_rank =
+      output_prop.shape().unknown_rank() ? -1 : output_prop.shape().dim_size();
+
+  bool full_reduction = output_rank == 0 || num_reduction_indices == input_rank;
+  if (!full_reduction) {
+    // A full reduction will generate a tensor of one of the shapes
+    // [], [1], [1, 1], [1, 1, ...]. Even if we do not know the number of
+    // elements in the output of the reduction, we may deduce it from reshape
+    // nodes following it.
     for (const NodeDef* fanout : node_map_->GetOutputs(node->name())) {
-      if (!IsReshape(*fanout) && !keep_dims) {
-        // Depending on how it's setup, a full reduction will generate a tensor
-        // of shape [], [1], [1, 1], [1, 1, ...]. If keep_dims isn't true, we
-        // rely on the existence of a reshape node following the reduction to
-        // ensure that the fanout is fed a scalar of the right shape.
+      full_reduction = false;
+      if (!IsReshape(*fanout)) {
         return Status::OK();
       }
       const std::vector<OpInfo::TensorProperties>& reshape_props =
@@ -656,20 +667,15 @@ Status ConstantFolding::MaterializeReductionIndices(
     }
   }
 
-  const OpInfo::TensorProperties& reduction_prop = input_props[1];
-  DataType dtype = reduction_prop.dtype();
-  if (dtype != DT_INT32 && dtype != DT_INT64) {
-    return Status::OK();
-  }
-  // We know it's a full reduction. We can generate the set of indices to
-  // reduce.
+  // We know it's a full reduction. We can generate the full set of indices to
+  // reduce as a constant node.
   string const_name = OptimizedNodeName(*node, "-reduction_indices");
   if (node_map_->GetNode(const_name)) {
     return Status::OK();
   }
   NodeDef* reduction_indices = graph_->add_node();
-  Tensor value(dtype, TensorShape({rank}));
-  for (int i = 0; i < rank; ++i) {
+  Tensor value(dtype, TensorShape({input_rank}));
+  for (int i = 0; i < input_rank; ++i) {
     if (dtype == DT_INT32) {
       value.vec<int32>()(i) = i;
     } else {
@@ -678,6 +684,7 @@ Status ConstantFolding::MaterializeReductionIndices(
   }
   TF_RETURN_IF_ERROR(
       CreateNodeDef(const_name, TensorValue(&value), reduction_indices));
+
   reduction_indices->set_device(node->device());
   string ctrl_dep =
       AddControlDependency(node->input(1), graph_, node_map_.get());
@@ -852,19 +859,7 @@ DataType GetDataTypeFromNodeOrProps(const NodeDef& node,
   }
   return dtype;
 }
-bool IsValidConstShapeForNCHW(const TensorShapeProto& shape) {
-  if (shape.dim_size() != 4) {
-    return false;
-  }
-  int num_dim_larger_than_one = 0;
-  for (const auto& dim : shape.dim()) {
-    if (dim.size() > 1) ++num_dim_larger_than_one;
-  }
-  return num_dim_larger_than_one <= 1;
-}
-const string& GetShape(const NodeDef& node) {
-  return node.attr().at("data_format").s();
-}
+
 }  // namespace
 
 // static
@@ -1711,7 +1706,7 @@ Status ConstantFolding::SimplifyNode(bool use_shape_info, NodeDef* node,
     return Status::OK();
   }
 
-  if (MulConvPushDown(*properties, optimized_graph, node)) {
+  if (MulConvPushDown(node, *properties)) {
     graph_modified_ = true;
     return Status::OK();
   }
@@ -1727,6 +1722,11 @@ Status ConstantFolding::SimplifyNode(bool use_shape_info, NodeDef* node,
   }
 
   if (PartialConcatConstFolding(optimized_graph, properties, node)) {
+    graph_modified_ = true;
+    return Status::OK();
+  }
+
+  if (MergeConcat(*properties, use_shape_info, optimized_graph, node)) {
     graph_modified_ = true;
     return Status::OK();
   }
@@ -2111,7 +2111,8 @@ bool ConstantFolding::SimplifyPack(GraphDef* optimized_graph, NodeDef* node) {
     Tensor axis_t(DT_INT32, TensorShape({}));
     NodeDef* axis_node = optimized_graph->add_node();
     axis_node->set_name(OptimizedNodeName(*node, "_const_axis"));
-    const int axis = node->attr().at("axis").i();
+    const int axis =
+        node->attr().count("axis") == 0 ? 0 : node->attr().at("axis").i();
     if (!SetTensorValue(DT_INT32, axis, &axis_t).ok() ||
         !CreateNodeDef(axis_node->name(), TensorValue(&axis_t), axis_node)
              .ok()) {
@@ -2334,7 +2335,8 @@ Status ConstantFolding::SimplifyArithmeticOperations(
         properties.GetInputProperties(node->name())[1].shape();
     const bool x_is_zero = IsZeros(*x);
     const bool x_is_one = x_is_zero ? false : IsOnes(*x);
-    const bool y_matches_output_shape = ShapesEqual(output_shape, y_shape);
+    const bool y_matches_output_shape =
+        ShapesSymbolicallyEqual(output_shape, y_shape);
     if (y_matches_output_shape &&
         ((is_mul && x_is_one) || (is_add && x_is_zero))) {
       // 1 * y = y or 0 + y = y.
@@ -2364,7 +2366,8 @@ Status ConstantFolding::SimplifyArithmeticOperations(
         properties.GetInputProperties(node->name())[0].shape();
     const bool y_is_zero = IsZeros(*y);
     const bool y_is_one = y_is_zero ? false : IsOnes(*y);
-    const bool x_matches_output_shape = ShapesEqual(output_shape, x_shape);
+    const bool x_matches_output_shape =
+        ShapesSymbolicallyEqual(output_shape, x_shape);
     if (x_matches_output_shape && (((is_mul || is_any_div) && y_is_one) ||
                                    ((is_add || is_sub) && y_is_zero))) {
       // x * 1 = x or x / 1 = x or x +/- 0 = x
@@ -2553,9 +2556,8 @@ bool ConstantFolding::ConstantPushDown(NodeDef* node) {
   return false;
 }
 
-bool ConstantFolding::MulConvPushDown(const GraphProperties& properties,
-                                      GraphDef* optimized_graph,
-                                      NodeDef* node) {
+bool ConstantFolding::MulConvPushDown(NodeDef* node,
+                                      const GraphProperties& properties) {
   // Push down multiplication on ConvND.
   //                       *                  ConvND
   //                     /   \                /    \
@@ -2631,14 +2633,12 @@ bool ConstantFolding::MulConvPushDown(const GraphProperties& properties,
     }
     const auto& const_shape = const_props[0].shape();
 
-    if (GetShape(*conv_node) == "NHWC") {
-      TensorShapeProto new_filter_shape;
-      if (!ShapeAfterBroadcast(filter_shape, const_shape, &new_filter_shape)) {
-        return false;
-      }
-      if (!ShapesSymbolicallyEqual(filter_shape, new_filter_shape)) {
-        return false;
-      }
+    TensorShapeProto new_filter_shape;
+    if (!ShapeAfterBroadcast(filter_shape, const_shape, &new_filter_shape)) {
+      return false;
+    }
+    if (!ShapesSymbolicallyEqual(filter_shape, new_filter_shape)) {
+      return false;
     }
 
     string mul_new_name =
@@ -2671,69 +2671,6 @@ bool ConstantFolding::MulConvPushDown(const GraphProperties& properties,
       node->set_input(0, conv_const_node->name());
     }
     node_map_->AddNode(mul_new_name, node);
-
-    if (GetShape(*conv_node) == "NCHW") {
-      if (const_node->attr().at("value").tensor().tensor_shape().dim_size() <=
-          1) {
-        // Broadcast should work for scalar or 1D. No need to reshape.
-        return true;
-      }
-      if (!IsValidConstShapeForNCHW(
-              const_node->attr().at("value").tensor().tensor_shape())) {
-        return false;
-      }
-      // Adds Const node for Reshape.
-      auto* shape_const_node = optimized_graph->add_node();
-      const string shape_const_node_name =
-          OptimizedNodeName(*const_node, "_new_shape");
-      shape_const_node->set_name(shape_const_node_name);
-      shape_const_node->set_op("Const");
-      shape_const_node->set_device(const_node->device());
-      (*shape_const_node->mutable_attr())["dtype"].set_type(DT_INT32);
-      Tensor t(DT_INT32, {4});
-      t.flat<int32>()(0) = 1;
-      t.flat<int32>()(1) = 1;
-      t.flat<int32>()(2) = 1;
-      t.flat<int32>()(3) = const_node->attr()
-                               .at("value")
-                               .tensor()
-                               .tensor_shape()
-                               .dim(1)  // IsValidConstShapeForNCHW guarantees
-                                        // dim 1 is the dim to reshape
-                               .size();
-      t.AsProtoTensorContent(
-          (*shape_const_node->mutable_attr())["value"].mutable_tensor());
-      node_map_->AddNode(shape_const_node_name, shape_const_node);
-
-      // Adds Reshape node.
-      auto* reshape_node = optimized_graph->add_node();
-      const string reshape_node_name =
-          OptimizedNodeName(*const_node, "_reshape");
-      reshape_node->set_op("Reshape");
-      reshape_node->set_name(reshape_node_name);
-      reshape_node->set_device(const_node->device());
-      (*reshape_node->mutable_attr())["T"].set_type(
-          const_node->attr().at("dtype").type());
-      (*reshape_node->mutable_attr())["Tshape"].set_type(DT_INT32);
-      node_map_->AddNode(reshape_node_name, reshape_node);
-
-      // const_node -> reshape_node
-      node_map_->RemoveOutput(const_node->name(), node->name());
-      *reshape_node->add_input() = const_node->name();
-      node_map_->AddOutput(const_node->name(), reshape_node_name);
-
-      // shape_const_node -> reshape_node
-      *reshape_node->add_input() = shape_const_node_name;
-      node_map_->AddOutput(shape_const_node_name, reshape_node_name);
-
-      // reshape_node -> node (Mul)
-      node_map_->AddOutput(reshape_node_name, node->name());
-      if (left_child_is_constant) {
-        node->set_input(0, reshape_node_name);
-      } else {
-        node->set_input(1, reshape_node_name);
-      }
-    }
 
     return true;
   }
@@ -2988,6 +2925,55 @@ bool ConstantFolding::PartialConcatConstFolding(GraphDef* optimized_graph,
   return false;
 }
 
+bool ConstantFolding::MergeConcat(const GraphProperties& properties,
+                                  bool use_shape_info,
+                                  GraphDef* optimized_graph, NodeDef* node) {
+  // We only optimize for ConcatV2.
+  int axis;
+  if (!use_shape_info || !GetConcatAxis(properties, node, &axis) ||
+      nodes_to_preserve_.find(node->name()) != nodes_to_preserve_.end() ||
+      node_map_->GetOutputs(node->name()).size() != 1) {
+    return false;
+  }
+
+  NodeDef* parent = *node_map_->GetOutputs(node->name()).begin();
+  int parent_axis;
+  if (!GetConcatAxis(properties, parent, &parent_axis) || axis != parent_axis) {
+    return false;
+  }
+
+  const int index = NumNonControlInputs(*node) - 1;
+  auto inputs = parent->input();
+  parent->clear_input();
+  for (int i = 0; i < inputs.size(); ++i) {
+    if (IsSameInput(inputs.Get(i), node->name())) {
+      for (int j = 0; j < node->input_size(); ++j) {
+        if (j < index) {
+          // Input tensors (non axis), add to input list of parent.
+          parent->add_input(node->input(j));
+          node_map_->RemoveOutput(node->input(j), node->name());
+          node_map_->AddOutput(node->input(j), parent->name());
+        }
+        // Skip j == index, which means axis tensor.
+        if (j > index) {
+          // Control Dependencies, push back to inputs so they can be forwarded
+          // to parent.
+          *inputs.Add() = node->input(j);
+        }
+      }
+    } else {
+      parent->add_input(inputs.Get(i));
+    }
+  }
+  node->clear_input();
+  node->set_op("NoOp");
+  node->clear_attr();
+  node_map_->RemoveNode(node->name());
+  (*parent->mutable_attr())["N"].set_i(NumNonControlInputs(*parent) - 1);
+
+  return true;
+}
+
 Status ConstantFolding::RunOptimizationPass(Cluster* cluster,
                                             const GrapplerItem& item,
                                             GraphDef* optimized_graph) {
@@ -3056,6 +3042,7 @@ Status ConstantFolding::Optimize(Cluster* cluster, const GrapplerItem& item,
   *optimized_graph = item.graph;
   int64 node_count;
   do {
+    GRAPPLER_RETURN_IF_DEADLINE_EXCEEDED();
     graph_modified_ = false;
     item_to_optimize.graph.Swap(optimized_graph);
     graph_ = &item_to_optimize.graph;

@@ -23,10 +23,11 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/contrib/lite/allocation.h"
-#include "tensorflow/contrib/lite/context.h"
-#include "tensorflow/contrib/lite/error_reporter.h"
+#include "tensorflow/contrib/lite/c/c_api_internal.h"
+#include "tensorflow/contrib/lite/core/api/error_reporter.h"
 #include "tensorflow/contrib/lite/memory_planner.h"
 #include "tensorflow/contrib/lite/profiling/profiler.h"
+#include "tensorflow/contrib/lite/stderr_reporter.h"
 
 namespace tflite {
 
@@ -335,6 +336,23 @@ class Interpreter {
   // Set the number of threads available to the interpreter.
   void SetNumThreads(int num_threads);
 
+  // Allow float16 precision for FP32 calculation when possible.
+  // default: not allow.
+  // WARNING: This is an experimental API and subject to change.
+  void SetAllowFp16PrecisionForFp32(bool allow) {
+    context_.allow_fp32_relax_to_fp16 = allow;
+  }
+
+  // Get the half precision flag.
+  // WARNING: This is an experimental API and subject to change.
+  bool GetAllowFp16PrecisionForFp32() const {
+    return context_.allow_fp32_relax_to_fp16;
+  }
+
+  // Owning handle to a TfLiteDelegate instance.
+  using TfLiteDelegatePtr =
+      std::unique_ptr<TfLiteDelegate, void (*)(TfLiteDelegate*)>;
+
   // Allow a delegate to look at the graph and modify the graph to handle
   // parts of the graph themselves. After this is called, the graph may
   // contain new nodes that replace 1 more nodes.
@@ -407,9 +425,12 @@ class Interpreter {
     allow_buffer_handle_output_ = allow_buffer_handle_output;
   }
 
-  // Reset all variable tensors to zero.
+  // Reset all variable tensors to the default value.
+  // If a variable tensor doesn't have a buffer, reset it to zero.
+  // TODO(b/115961645): Implement - If a variable tensor has a buffer, reset it
+  // to the value of the buffer.
   // WARNING: This is an experimental API and subject to change.
-  TfLiteStatus ResetVariableTensorsToZero();
+  TfLiteStatus ResetVariableTensors();
 
   // Retrieve an operator's description of its work, for profiling purposes.
   const char* OpProfilingString(const TfLiteRegistration& op_reg,
@@ -557,19 +578,11 @@ class Interpreter {
                                  TfLiteExternalContextType type,
                                  TfLiteExternalContext* ctx);
 
-  using TfLiteDelegatePtr =
-      std::unique_ptr<TfLiteDelegate, void (*)(TfLiteDelegate*)>;
-
   // Variant of the public ModifyGraphWithDelegate method that additionally
   // Assumes ownership of the provided delegate.
   // WARNING: This is an experimental API and subject to change.
-  template <typename Delegate>
-  TfLiteStatus ModifyGraphWithDelegate(std::unique_ptr<Delegate> typed_delegate,
+  TfLiteStatus ModifyGraphWithDelegate(TfLiteDelegatePtr delegate,
                                        bool allow_dynamic_tensors = false) {
-    TfLiteDelegatePtr delegate(typed_delegate.release(),
-                               [](TfLiteDelegate* delegate) {
-                                 delete static_cast<Delegate*>(delegate);
-                               });
     // Note that we retain ownership of the delegate even if graph modification
     // fails, as delegate use will be in an indeterminate state at that point.
     owned_delegates_.push_back(std::move(delegate));
@@ -659,6 +672,7 @@ class Interpreter {
   // List of delegates that have been installed and are owned by this
   // interpreter instance. Useful if client delegate ownership is burdensome.
   // WARNING: This is an experimental API and subject to change.
+  // TODO(b/116667551): Use TfLiteExternalContext for storing state.
   std::vector<TfLiteDelegatePtr> owned_delegates_;
 
   std::unique_ptr<MemoryPlanner> memory_planner_;

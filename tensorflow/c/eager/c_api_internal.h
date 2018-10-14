@@ -62,15 +62,14 @@ struct TFE_ContextOptions {
 };
 
 struct TFE_Context {
-  explicit TFE_Context(const tensorflow::SessionOptions& opts,
-                       TFE_ContextDevicePlacementPolicy default_policy,
-                       bool async,
-                       std::unique_ptr<tensorflow::DeviceMgr> device_mgr,
-                       tensorflow::Rendezvous* rendezvous)
+  TFE_Context(const tensorflow::SessionOptions& opts,
+              TFE_ContextDevicePlacementPolicy default_policy, bool async,
+              const tensorflow::DeviceMgr* device_mgr, bool device_mgr_owned,
+              tensorflow::Rendezvous* rendezvous)
       : context(opts,
                 static_cast<tensorflow::ContextDevicePlacementPolicy>(
                     default_policy),
-                async, std::move(device_mgr), rendezvous) {}
+                async, device_mgr, device_mgr_owned, rendezvous) {}
 
   tensorflow::EagerContext context;
 };

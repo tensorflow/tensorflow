@@ -45,8 +45,8 @@ cc_library(
         "//tensorflow/compiler/xla/service:hlo_pass",
         "//tensorflow/compiler/xla/service:hlo_pass_pipeline",
         "//tensorflow/compiler/xla/service:hlo_subcomputation_unification",
-        "//tensorflow/compiler/xla/service:inliner",
         "//tensorflow/compiler/xla/service:layout_assignment",
+        "//tensorflow/compiler/xla/service:map_inliner",
         "//tensorflow/compiler/xla/service:reshape_mover",
         "//tensorflow/compiler/xla/service:while_loop_simplifier",
         "//tensorflow/core:lib",
@@ -89,6 +89,7 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:stream_executor_no_cuda",
         "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/types:span",
     ],
 )
 
@@ -114,5 +115,6 @@ cc_library(
         "//tensorflow/compiler/xla:xla_data_proto",
         "//tensorflow/core:lib",
         "//tensorflow/core:stream_executor_headers_lib",
+        "@com_google_absl//absl/types:span",
     ],
 )

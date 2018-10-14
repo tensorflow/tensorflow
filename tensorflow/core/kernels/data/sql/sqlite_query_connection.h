@@ -22,7 +22,7 @@ limitations under the License.
 #include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
-
+namespace data {
 namespace sql {
 
 class SqliteQueryConnection : public QueryConnection {
@@ -50,7 +50,7 @@ class SqliteQueryConnection : public QueryConnection {
 };
 
 }  // namespace sql
-
+}  // namespace data
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_CORE_KERNELS_DATA_SQL_SQLITE_QUERY_CONNECTION_H_

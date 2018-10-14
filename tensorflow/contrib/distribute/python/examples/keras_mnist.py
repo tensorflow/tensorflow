@@ -58,13 +58,12 @@ def get_input_datasets():
   train_ds = tf.data.Dataset.from_tensor_slices((x_train, y_train))
   train_ds = train_ds.repeat()
   train_ds = train_ds.shuffle(100)
-  train_ds = train_ds.batch(64)
+  train_ds = train_ds.batch(64, drop_remainder=True)
 
   # eval dataset
   eval_ds = tf.data.Dataset.from_tensor_slices((x_test, y_test))
   eval_ds = eval_ds.repeat()
-  eval_ds = eval_ds.shuffle(100)
-  eval_ds = eval_ds.batch(64)
+  eval_ds = eval_ds.batch(64, drop_remainder=True)
 
   return train_ds, eval_ds, input_shape
 
@@ -114,7 +113,7 @@ def main(_):
                 distribute=strategy)
 
   # Train the model with the train dataset.
-  model.fit(x=train_ds, epochs=20, steps_per_epoch=310)
+  model.fit(x=train_ds, epochs=20, steps_per_epoch=468)
 
   # Evaluate the model with the eval dataset.
   score = model.evaluate(eval_ds, steps=10, verbose=0)

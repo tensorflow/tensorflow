@@ -19,6 +19,7 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.contrib.boosted_trees.lib.learner.batch import base_split_handler
+from tensorflow.contrib.boosted_trees.proto import learner_pb2
 from tensorflow.contrib.boosted_trees.python.ops import split_handler_ops
 from tensorflow.contrib.boosted_trees.python.ops import stats_accumulator_ops
 from tensorflow.python.framework import constant_op
@@ -28,7 +29,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 
-_BIAS_FEATURE_ID = -1
+_BIAS_FEATURE_ID = int(dtypes.int64.min)
 
 
 class EqualitySplitHandler(base_split_handler.BaseSplitHandler):
@@ -46,6 +47,7 @@ class EqualitySplitHandler(base_split_handler.BaseSplitHandler):
                multiclass_strategy,
                init_stamp_token=0,
                loss_uses_sum_reduction=False,
+               weak_learner_type=learner_pb2.LearnerConfig.NORMAL_DECISION_TREE,
                name=None):
     """Initialize the internal state for this split handler.
 
@@ -66,6 +68,7 @@ class EqualitySplitHandler(base_split_handler.BaseSplitHandler):
          stamped objects.
       loss_uses_sum_reduction: A scalar boolean tensor that specifies whether
           SUM or MEAN reduction was used for the loss.
+      weak_learner_type: Specifies the type of weak learner to use.
       name: An optional handler name.
     """
     super(EqualitySplitHandler, self).__init__(
@@ -85,6 +88,7 @@ class EqualitySplitHandler(base_split_handler.BaseSplitHandler):
         hessian_shape,
         name="StatsAccumulator/{}".format(self._name))
     self._sparse_int_column = sparse_int_column
+    self._weak_learner_type = weak_learner_type
 
   def update_stats(self, stamp_token, example_partition_ids, gradients,
                    hessians, empty_gradients, empty_hessians, weights,
@@ -137,11 +141,18 @@ class EqualitySplitHandler(base_split_handler.BaseSplitHandler):
       # The bias is computed on gradients and hessians (and not
       # filtered_gradients) which have exactly one value per example, so we
       # don't double count a gradient in multivalent columns.
+      # Since unsorted_segment_sum can be numerically unstable, use 64bit
+      # operation.
+      gradients64 = math_ops.cast(gradients, dtypes.float64)
+      hessians64 = math_ops.cast(hessians, dtypes.float64)
       per_partition_gradients = math_ops.unsorted_segment_sum(
-          gradients, mapped_partitions, array_ops.size(unique_partitions))
+          gradients64, mapped_partitions, array_ops.size(unique_partitions))
       per_partition_hessians = math_ops.unsorted_segment_sum(
-          hessians, mapped_partitions, array_ops.size(unique_partitions))
-
+          hessians64, mapped_partitions, array_ops.size(unique_partitions))
+      per_partition_gradients = math_ops.cast(per_partition_gradients,
+                                              dtypes.float32)
+      per_partition_hessians = math_ops.cast(per_partition_hessians,
+                                             dtypes.float32)
       # Prepend a bias feature per partition that accumulates the stats for all
       # examples in that partition.
       # Bias is added to the stats even if there are no examples with values in
@@ -197,7 +208,8 @@ class EqualitySplitHandler(base_split_handler.BaseSplitHandler):
             tree_complexity_regularization=self._tree_complexity_regularization,
             min_node_weight=self._min_node_weight,
             bias_feature_id=_BIAS_FEATURE_ID,
-            multiclass_strategy=self._multiclass_strategy))
+            multiclass_strategy=self._multiclass_strategy,
+            weak_learner_type=self._weak_learner_type))
     # There are no warm-up rounds needed in the equality column handler. So we
     # always return ready.
     are_splits_ready = constant_op.constant(True)

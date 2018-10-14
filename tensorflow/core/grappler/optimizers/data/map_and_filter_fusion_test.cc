@@ -19,6 +19,7 @@ limitations under the License.
 #include "tensorflow/core/framework/function_testlib.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
 #include "tensorflow/core/grappler/grappler_item.h"
+#include "tensorflow/core/grappler/optimizers/data/graph_test_utils.h"
 #include "tensorflow/core/grappler/optimizers/data/graph_utils.h"
 
 #include "tensorflow/core/lib/core/status_test_util.h"
@@ -27,24 +28,8 @@ limitations under the License.
 namespace tensorflow {
 namespace grappler {
 namespace {
-
-NodeDef MakeMapNode(StringPiece name, StringPiece input_node_name) {
-  return test::function::NDef(
-      name, "MapDataset", {input_node_name.ToString()},
-      {{"f", FunctionDefHelper::FunctionRef("XTimesTwo")},
-       {"Targuments", {}},
-       {"output_shapes", {}},
-       {"output_types", {}}});
-}
-
-NodeDef MakeFilterNode(StringPiece name, StringPiece input_node_name) {
-  return test::function::NDef(
-      name, "FilterDataset", {input_node_name.ToString()},
-      {{"predicate", FunctionDefHelper::FunctionRef("IsZero")},
-       {"Targuments", {}},
-       {"output_shapes", {}},
-       {"output_types", {}}});
-}
+using graph_tests_utils::MakeFilterNode;
+using graph_tests_utils::MakeMapNode;
 
 TEST(MapAndFilterFusionTest, FuseMapAndFilter) {
   using test::function::NDef;

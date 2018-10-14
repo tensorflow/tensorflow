@@ -76,7 +76,7 @@ std::unique_ptr<GlobalData> MakeFakeDataViaDeviceOrDie(const Shape& shape,
 std::unique_ptr<GlobalData> MakeFakeDataOrDie(const Shape& shape,
                                               Client* client) {
   if (DataSizeOfShape(shape) < (1LL << 20)) {
-    StatusOr<std::unique_ptr<Literal>> literal_status = MakeFakeLiteral(shape);
+    StatusOr<Literal> literal_status = MakeFakeLiteral(shape);
     if (!literal_status.ok()) {
       // If we got an Unimplemented error, fall back to making the fake data via
       // an on-device computation.
@@ -84,7 +84,7 @@ std::unique_ptr<GlobalData> MakeFakeDataOrDie(const Shape& shape,
                tensorflow::error::UNIMPLEMENTED);
       return MakeFakeDataViaDeviceOrDie(shape, client);
     }
-    return client->TransferToServer(*literal_status.ValueOrDie()).ValueOrDie();
+    return client->TransferToServer(literal_status.ValueOrDie()).ValueOrDie();
   }
 
   // If the data is large, generate it on-device.
@@ -93,17 +93,15 @@ std::unique_ptr<GlobalData> MakeFakeDataOrDie(const Shape& shape,
 
 std::vector<std::unique_ptr<GlobalData>> MakeFakeArgumentsOrDie(
     const XlaComputation& computation, Client* client) {
-  CHECK(computation.proto().has_program_shape())
+  CHECK(computation.proto().has_host_program_shape())
       << "Computation should have progran shape.";
-  auto program_shape = computation.proto().program_shape();
+  auto program_shape = computation.proto().host_program_shape();
 
-  // Create and run a program which produces a tuple with one element per
-  // parameter, then return the tuple's constituent buffers.
-  std::vector<Shape> param_shapes(program_shape.parameters().begin(),
-                                  program_shape.parameters().end());
-  auto fake_input_tuple =
-      MakeFakeDataOrDie(ShapeUtil::MakeTupleShape(param_shapes), client);
-  return client->DeconstructTuple(*fake_input_tuple).ValueOrDie();
+  std::vector<std::unique_ptr<GlobalData>> results;
+  for (const Shape& shape : program_shape.parameters()) {
+    results.push_back(MakeFakeDataOrDie(shape, client));
+  }
+  return results;
 }
 
 }  // namespace xla

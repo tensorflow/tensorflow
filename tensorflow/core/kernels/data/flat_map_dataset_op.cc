@@ -21,7 +21,7 @@ limitations under the License.
 #include "tensorflow/core/lib/random/random.h"
 
 namespace tensorflow {
-
+namespace data {
 namespace {
 
 // See documentation in ../ops/dataset_ops.cc for a high-level
@@ -39,18 +39,9 @@ class FlatMapDatasetOp : public UnaryDatasetOpKernel {
 
   void MakeDataset(OpKernelContext* ctx, DatasetBase* input,
                    DatasetBase** output) override {
-    OpInputList inputs;
-    OP_REQUIRES_OK(ctx, ctx->input_list("other_arguments", &inputs));
-    std::vector<Tensor> other_arguments;
-    other_arguments.reserve(inputs.size());
-    for (const Tensor& t : inputs) {
-      other_arguments.push_back(t);
-    }
-
     std::unique_ptr<CapturedFunction> captured_func;
-    OP_REQUIRES_OK(ctx, CapturedFunction::Create(
-                            func_, std::move(other_arguments), &captured_func));
-
+    OP_REQUIRES_OK(ctx, CapturedFunction::Create(func_, ctx, "other_arguments",
+                                                 &captured_func));
     *output = new Dataset(ctx, input, func_, std::move(captured_func),
                           output_types_, output_shapes_);
   }
@@ -94,7 +85,7 @@ class FlatMapDatasetOp : public UnaryDatasetOpKernel {
     Status AsGraphDefInternal(SerializationContext* ctx,
                               DatasetGraphDefBuilder* b,
                               Node** output) const override {
-      TF_RETURN_IF_ERROR(b->AddFunction(ctx->flib_def(), func_.name()));
+      TF_RETURN_IF_ERROR(b->AddFunction(ctx, func_.name()));
       Node* input_graph_node = nullptr;
       TF_RETURN_IF_ERROR(b->AddInputDataset(ctx, input_, &input_graph_node));
 
@@ -245,7 +236,7 @@ class FlatMapDatasetOp : public UnaryDatasetOpKernel {
      private:
       Status BuildCurrentElementIteratorLocked(IteratorContext* ctx)
           EXCLUSIVE_LOCKS_REQUIRED(mu_) {
-        return dataset::MakeIteratorFromInputElement(
+        return MakeIteratorFromInputElement(
             ctx, captured_func_inputs_, element_index_++,
             dataset()->captured_func_.get(), prefix(),
             &current_element_iterator_);
@@ -285,5 +276,5 @@ REGISTER_KERNEL_BUILDER(Name("FlatMapDataset").Device(DEVICE_CPU),
                         FlatMapDatasetOp);
 
 }  // namespace
-
+}  // namespace data
 }  // namespace tensorflow

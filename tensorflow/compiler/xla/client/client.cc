@@ -37,8 +37,8 @@ Client::Client(ServiceInterface* stub) : stub_(stub) {}
 
 Client::~Client() = default;
 
-StatusOr<std::unique_ptr<Literal>> Client::Transfer(
-    const GlobalData& data, const Shape* shape_with_layout) {
+StatusOr<Literal> Client::Transfer(const GlobalData& data,
+                                   const Shape* shape_with_layout) {
   TransferToClientRequest request;
   *request.mutable_data() = data.handle();
   if (shape_with_layout != nullptr) {
@@ -114,7 +114,7 @@ Status Client::TransferToInfeed(const LiteralSlice& literal, int64 replica_id,
   return Status::OK();
 }
 
-StatusOr<std::unique_ptr<Literal>> Client::TransferFromOutfeed(
+StatusOr<Literal> Client::TransferFromOutfeed(
     const Shape* shape_with_layout, int64 replica_id,
     const DeviceHandle* device_handle) {
   TransferFromOutfeedRequest request;
@@ -162,9 +162,8 @@ Status Client::ResetDevice() {
   return Status::OK();
 }
 
-StatusOr<std::unique_ptr<Literal>> Client::ExecuteAndTransfer(
-    const XlaComputation& computation,
-    tensorflow::gtl::ArraySlice<GlobalData*> arguments,
+StatusOr<Literal> Client::ExecuteAndTransfer(
+    const XlaComputation& computation, absl::Span<GlobalData* const> arguments,
     const ExecutionOptions* execution_options,
     ExecutionProfile* execution_profile) {
   TF_ASSIGN_OR_RETURN(
@@ -178,8 +177,8 @@ StatusOr<std::unique_ptr<Literal>> Client::ExecuteAndTransfer(
   return Transfer(*data, shape_with_output_layout);
 }
 
-StatusOr<std::unique_ptr<Literal>> Client::ComputeConstant(
-    const XlaComputation& computation, const Layout* output_layout) const {
+StatusOr<Literal> Client::ComputeConstant(const XlaComputation& computation,
+                                          const Layout* output_layout) const {
   ComputeConstantGraphRequest request;
   *request.mutable_computation() = computation.proto();
   if (output_layout != nullptr) {
@@ -212,8 +211,7 @@ StatusOr<XlaComputation> Client::LoadSnapshot(const HloSnapshot& module) {
 }
 
 StatusOr<std::unique_ptr<GlobalData>> Client::Execute(
-    const XlaComputation& computation,
-    tensorflow::gtl::ArraySlice<GlobalData*> arguments,
+    const XlaComputation& computation, absl::Span<GlobalData* const> arguments,
     const ExecutionOptions* execution_options,
     ExecutionProfile* execution_profile) {
   ExecuteGraphRequest request;
@@ -252,7 +250,7 @@ StatusOr<std::unique_ptr<GlobalData>> Client::Execute(
 }
 
 StatusOr<std::vector<std::unique_ptr<GlobalData>>> Client::ExecuteParallel(
-    tensorflow::gtl::ArraySlice<XlaComputationInstance> computations) {
+    absl::Span<const XlaComputationInstance> computations) {
   ExecuteGraphParallelRequest request;
 
   for (const XlaComputationInstance& computation : computations) {

@@ -7,64 +7,6 @@ package(
 licenses(["notice"])  # Apache 2.0
 
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
-
-cc_library(
-    name = "batch_scheduler_hdrs",
-    hdrs = ["batch_scheduler.h"],
-    deps = [
-        "//tensorflow/core/kernels/batching_util:batch_scheduler_hdrs",
-    ],
-)
-
-cc_library(
-    name = "batch_scheduler",
-    hdrs = ["batch_scheduler.h"],
-    deps = [
-        "//tensorflow/core/kernels/batching_util:batch_scheduler",
-    ],
-)
-
-cc_library(
-    name = "shared_batch_scheduler_hdrs",
-    hdrs = ["shared_batch_scheduler.h"],
-    deps = [
-        "//tensorflow/core/kernels/batching_util:shared_batch_scheduler_hdrs",
-    ],
-)
-
-cc_library(
-    name = "shared_batch_scheduler",
-    hdrs = ["shared_batch_scheduler.h"],
-    deps = [
-        "//tensorflow/core/kernels/batching_util:shared_batch_scheduler",
-    ],
-    alwayslink = 1,
-)
-
-cc_library(
-    name = "adaptive_shared_batch_scheduler",
-    hdrs = ["adaptive_shared_batch_scheduler.h"],
-    deps = [
-        "//tensorflow/core/kernels/batching_util:adaptive_shared_batch_scheduler",
-    ],
-)
-
-cc_library(
-    name = "serial_device_batch_scheduler",
-    hdrs = ["serial_device_batch_scheduler.h"],
-    deps = [
-        "//tensorflow/core/kernels/batching_util:serial_device_batch_scheduler",
-    ],
-)
-
-cc_library(
-    name = "basic_batch_scheduler",
-    hdrs = ["basic_batch_scheduler.h"],
-    deps = [
-        "//tensorflow/core/kernels/batching_util:basic_batch_scheduler",
-    ],
-)
-
 load(
     "//tensorflow:tensorflow.bzl",
     "py_test",

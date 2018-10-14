@@ -15,8 +15,8 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/client/executable_build_options.h"
 
+#include "absl/strings/str_format.h"
 #include "tensorflow/compiler/xla/shape_util.h"
-#include "tensorflow/core/lib/strings/stringprintf.h"
 
 namespace xla {
 
@@ -59,10 +59,10 @@ string ExecutableBuildOptions::ToString() const {
   if (generate_hlo_graph_.has_value()) {
     generate_hlo_graph = generate_hlo_graph_.value();
   }
-  return tensorflow::strings::Printf(
+  return absl::StrFormat(
       "ExecutableBuildOptions{device_ordinal=%d, result_layout=%s, "
       "generate_hlo_graph=%s}",
-      device_ordinal_, result_layout.c_str(), generate_hlo_graph.c_str());
+      device_ordinal_, result_layout, generate_hlo_graph);
 }
 
 ExecutableBuildOptions& ExecutableBuildOptions::set_generate_hlo_graph(

@@ -463,7 +463,7 @@ class ModelSubclassingTest(test.TestCase):
     num_samples = 10
     input_dim = 50
 
-    with self.test_session():
+    with self.cached_session():
       model = SimpleTestModel(num_classes=num_classes,
                               use_dp=True,
                               use_bn=True)
@@ -481,7 +481,7 @@ class ModelSubclassingTest(test.TestCase):
     num_samples = 10
     input_dim = 50
 
-    with self.test_session():
+    with self.cached_session():
       model = MultiIOTestModel(num_classes=num_classes,
                                use_dp=True,
                                use_bn=True)
@@ -501,7 +501,7 @@ class ModelSubclassingTest(test.TestCase):
     num_samples = 10
     input_dim = 50
 
-    with self.test_session():
+    with self.cached_session():
       model = SimpleTestModel(num_classes=num_classes, use_dp=True, use_bn=True)
       model.compile(loss='mse', optimizer=RMSPropOptimizer(learning_rate=0.001))
 
@@ -521,7 +521,7 @@ class ModelSubclassingTest(test.TestCase):
     num_samples = 1000
     input_dim = 50
 
-    with self.test_session():
+    with self.cached_session():
       model = MultiIOTestModel(num_classes=num_classes,
                                use_dp=True,
                                use_bn=True)
@@ -610,7 +610,7 @@ class ModelSubclassingTest(test.TestCase):
       def call(self, x):
         return self.bn(self.fc(x))
 
-    with self.test_session():
+    with self.cached_session():
       model = TestModel1()
 
       x = array_ops.ones(shape=[100, 784], dtype='float32')
@@ -631,7 +631,7 @@ class ModelSubclassingTest(test.TestCase):
       def call(self, x):
         return self.bn(self.fc(x))
 
-    with self.test_session():
+    with self.cached_session():
       model = TestModel2()
 
       x = array_ops.ones(shape=[100, 784], dtype='float32')
@@ -655,7 +655,7 @@ class ModelSubclassingTest(test.TestCase):
       def call(self, x):
         return self.bn(self.fc(x))
 
-    with self.test_session():
+    with self.cached_session():
       model = TestModel3()
 
       x = array_ops.ones(shape=[100, 784], dtype='float32')

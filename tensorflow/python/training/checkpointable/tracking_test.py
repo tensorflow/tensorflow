@@ -165,7 +165,7 @@ class InterfaceTests(test.TestCase):
     self.assertEqual([c], a.attribute["c"].layers)
     checkpoint = util.Checkpoint(a=a)
     save_path = checkpoint.save(os.path.join(self.get_temp_dir(), "ckpt"))
-    with self.test_session():
+    with self.cached_session():
       checkpoint.restore(save_path).assert_consumed().initialize_or_restore()
 
   @test_util.run_in_graph_and_eager_modes

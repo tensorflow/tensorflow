@@ -805,3 +805,22 @@ def _ScatterNdNonAliasingAddGrad(op, grad):
   indices = op.inputs[1]
   updates_grad = array_ops.gather_nd(grad, indices)
   return [grad, None, updates_grad]
+
+
+@ops.RegisterGradient("BroadcastTo")
+def _BroadcastToGrad(op, grad):
+  input_value = op.inputs[0]
+  broadcast_shape = op.inputs[1]
+  # Assign ids for each position in input_value.
+  input_value_shape = array_ops.shape(input_value)
+  input_value_size = array_ops.size(input_value)
+  ids = array_ops.reshape(math_ops.range(input_value_size), input_value_shape)
+  broadcast_ids = array_ops.broadcast_to(ids, broadcast_shape)
+  # Group by ids and sum its gradients.
+  grad_flatten = array_ops.reshape(grad, [-1])
+  broadcast_ids_flatten = array_ops.reshape(broadcast_ids, [-1])
+  updates_grad_flatten = math_ops.unsorted_segment_sum(grad_flatten,
+                                                       broadcast_ids_flatten,
+                                                       input_value_size)
+  updates_grad = array_ops.reshape(updates_grad_flatten, input_value_shape)
+  return [updates_grad, None]

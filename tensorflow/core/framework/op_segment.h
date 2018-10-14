@@ -60,6 +60,10 @@ class OpSegment {
   Status FindOrCreate(const string& session_handle, const string& node_name,
                       OpKernel** kernel, CreateKernelFn create_fn);
 
+  // Returns true if OpSegment should own the kernel.
+  static bool ShouldOwnKernel(FunctionLibraryRuntime* lib,
+                              const string& node_op);
+
  private:
   // op name -> OpKernel
   typedef std::unordered_map<string, OpKernel*> KernelMap;

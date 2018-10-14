@@ -20,7 +20,7 @@ limitations under the License.
 #include <stdio.h>
 #include <time.h>
 #include <vector>
-#include "tensorflow/contrib/lite/context.h"
+#include "tensorflow/contrib/lite/c/c_api_internal.h"
 #include "tensorflow/contrib/lite/interpreter.h"
 #include "tensorflow/contrib/lite/java/src/main/native/exception_jni.h"
 #include "tensorflow/contrib/lite/java/src/main/native/tensor_jni.h"
@@ -46,25 +46,21 @@ Java_org_tensorflow_lite_NativeInterpreterWrapper_allocateTensors(
 
 /*
  *  Class:     org_tensorflow_lite_NativeInterpreterWrapper
- *  Method:    getInputTensor
- *  Signature: (JI)J
+ *  Method:    getInputTensorIndex
+ *  Signature: (JI)I
  */
-JNIEXPORT jlong JNICALL
-Java_org_tensorflow_lite_NativeInterpreterWrapper_getInputTensor(JNIEnv* env,
-                                                                 jclass clazz,
-                                                                 jlong handle,
-                                                                 jint index);
+JNIEXPORT jint JNICALL
+Java_org_tensorflow_lite_NativeInterpreterWrapper_getInputTensorIndex(
+    JNIEnv* env, jclass clazz, jlong handle, jint input_index);
 
 /*
  *  Class:     org_tensorflow_lite_NativeInterpreterWrapper
- *  Method:    getOutputTensor
- *  Signature: (JI)J
+ *  Method:    getOutputTensorIndex
+ *  Signature: (JI)I
  */
-JNIEXPORT jlong JNICALL
-Java_org_tensorflow_lite_NativeInterpreterWrapper_getOutputTensor(JNIEnv* env,
-                                                                  jclass clazz,
-                                                                  jlong handle,
-                                                                  jint index);
+JNIEXPORT jint JNICALL
+Java_org_tensorflow_lite_NativeInterpreterWrapper_getOutputTensorIndex(
+    JNIEnv* env, jclass clazz, jlong handle, jint output_index);
 
 /*
  *  Class:     org_tensorflow_lite_NativeInterpreterWrapper
@@ -120,13 +116,22 @@ Java_org_tensorflow_lite_NativeInterpreterWrapper_useNNAPI(JNIEnv* env,
 /*
  *  Class:     org_tensorflow_lite_NativeInterpreterWrapper
  *  Method:
+ *  Signature: (JZ)V
+ */
+JNIEXPORT void JNICALL
+Java_org_tensorflow_lite_NativeInterpreterWrapper_allowFp16PrecisionForFp32(
+    JNIEnv* env, jclass clazz, jlong handle, jboolean allow);
+
+/*
+ *  Class:     org_tensorflow_lite_NativeInterpreterWrapper
+ *  Method:
  *  Signature: (JI)V
  */
 JNIEXPORT void JNICALL
 Java_org_tensorflow_lite_NativeInterpreterWrapper_numThreads(JNIEnv* env,
-                                                           jclass clazz,
-                                                           jlong handle,
-                                                           jint num_threads);
+                                                             jclass clazz,
+                                                             jlong handle,
+                                                             jint num_threads);
 /*
  *  Class:     org_tensorflow_lite_NativeInterpreterWrapper
  *  Method:

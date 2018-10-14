@@ -18,7 +18,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.python.keras import activations
 from tensorflow.python.keras import backend as K
 from tensorflow.python.keras import constraints
 from tensorflow.python.keras import initializers
@@ -268,7 +267,7 @@ class Softmax(Layer):
     self.axis = axis
 
   def call(self, inputs):
-    return activations.softmax(inputs, axis=self.axis)
+    return K.softmax(inputs, axis=self.axis)
 
   def get_config(self):
     config = {'axis': self.axis}
@@ -315,18 +314,19 @@ class ReLU(Layer):
                        'cannot be negative value: ' + str(negative_slope))
 
     self.support_masking = True
-    self.max_value = K.cast_to_floatx(max_value)
+    if max_value is not None:
+      max_value = K.cast_to_floatx(max_value)
+    self.max_value = max_value
     self.negative_slope = K.cast_to_floatx(negative_slope)
     self.threshold = K.cast_to_floatx(threshold)
 
   def call(self, inputs):
     # alpha is used for leaky relu slope in activations instead of
     # negative_slope.
-    return activations.relu(
-        inputs,
-        alpha=self.negative_slope,
-        max_value=self.max_value,
-        threshold=self.threshold)
+    return K.relu(inputs,
+                  alpha=self.negative_slope,
+                  max_value=self.max_value,
+                  threshold=self.threshold)
 
   def get_config(self):
     config = {

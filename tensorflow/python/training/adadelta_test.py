@@ -155,7 +155,7 @@ class AdadeltaOptimizerTest(test.TestCase):
                   rtol=1e-5)
 
   def testBasic(self):
-    with self.test_session():
+    with self.cached_session():
       self.doTestBasic(use_resource=False)
 
   @test_util.run_in_graph_and_eager_modes(reset_test=True)
@@ -168,7 +168,7 @@ class AdadeltaOptimizerTest(test.TestCase):
 
   def testMinimizeSparseResourceVariable(self):
     for dtype in [dtypes.half, dtypes.float32, dtypes.float64]:
-      with self.test_session():
+      with self.cached_session():
         var0 = resource_variable_ops.ResourceVariable([[1.0, 2.0]], dtype=dtype)
         x = constant_op.constant([[4.0], [5.0]], dtype=dtype)
         pred = math_ops.matmul(embedding_ops.embedding_lookup([var0], [0]), x)

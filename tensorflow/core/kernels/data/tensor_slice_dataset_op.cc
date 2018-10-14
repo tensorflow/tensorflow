@@ -14,11 +14,12 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/kernels/data/dataset.h"
 #include "tensorflow/core/util/batch_util.h"
 
 namespace tensorflow {
-
+namespace data {
 namespace {
 
 // See documentation in ../ops/dataset_ops.cc for a high-level
@@ -30,8 +31,6 @@ class TensorSliceDatasetOp : public DatasetOpKernel {
       : DatasetOpKernel(ctx) {}
 
   void MakeDataset(OpKernelContext* ctx, DatasetBase** output) override {
-    // Create a new TensorDatasetOp::Dataset, insert it in the step
-    // container, and return it as the output.
     OpInputList inputs;
     OP_REQUIRES_OK(ctx, ctx->input_list("components", &inputs));
     std::vector<Tensor> components;
@@ -93,7 +92,13 @@ class TensorSliceDatasetOp : public DatasetOpKernel {
       components.reserve(tensors_.size());
       for (const Tensor& t : tensors_) {
         Node* node;
-        TF_RETURN_IF_ERROR(b->AddTensor(t, &node));
+        std::vector<std::pair<string, Tensor>>* input_list = ctx->input_list();
+        if (input_list) {
+          TF_RETURN_IF_ERROR(b->AddPlaceholder(t, &node));
+          input_list->emplace_back(node->name(), t);
+        } else {
+          TF_RETURN_IF_ERROR(b->AddTensor(t, &node));
+        }
         components.emplace_back(node);
       }
       AttrValue dtypes;
@@ -163,5 +168,5 @@ REGISTER_KERNEL_BUILDER(Name("TensorSliceDataset").Device(DEVICE_CPU),
                         TensorSliceDatasetOp);
 
 }  // namespace
-
+}  // namespace data
 }  // namespace tensorflow

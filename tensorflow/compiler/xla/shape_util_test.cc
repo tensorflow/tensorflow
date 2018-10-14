@@ -445,6 +445,22 @@ TEST(ShapeUtilTest, ElementsIn) {
   EXPECT_EQ(221, ShapeUtil::ElementsIn(ShapeUtil::MakeShape(S32, {13, 17})));
 }
 
+TEST(ShapeUtilTest, HasPrimitiveType) {
+  EXPECT_TRUE(ShapeUtil::HasPrimitiveType(ShapeUtil::MakeShape(S32, {}), S32));
+  EXPECT_FALSE(ShapeUtil::HasPrimitiveType(ShapeUtil::MakeShape(S32, {}), S16));
+  EXPECT_TRUE(ShapeUtil::HasPrimitiveType(ShapeUtil::MakeShape(S32, {0}), S32));
+  EXPECT_FALSE(ShapeUtil::HasPrimitiveType(ShapeUtil::MakeTupleShape({}), S32));
+  EXPECT_TRUE(ShapeUtil::HasPrimitiveType(
+      ShapeUtil::MakeTupleShape(
+          {ShapeUtil::MakeShape(S32, {}), ShapeUtil::MakeShape(S32, {})}),
+      S32));
+  EXPECT_TRUE(ShapeUtil::HasPrimitiveType(
+      ShapeUtil::MakeTupleShape(
+          {ShapeUtil::MakeShape(S32, {}),
+           ShapeUtil::MakeTupleShape({ShapeUtil::MakeShape(S16, {})})}),
+      S16));
+}
+
 TEST(ShapeUtilTest, IsZeroElementArray) {
   EXPECT_FALSE(ShapeUtil::IsZeroElementArray(ShapeUtil::MakeShape(S32, {})));
   EXPECT_TRUE(ShapeUtil::IsZeroElementArray(ShapeUtil::MakeShape(S32, {0})));
@@ -705,11 +721,10 @@ TEST(ShapeUtilTest, ForEachIndex) {
     Shape shape = ShapeUtil::MakeShape(F32, data.dimensions);
     // Increments at every invocation.
     int invocations = 0;
-    auto increment_func =
-        [&invocations](tensorflow::gtl::ArraySlice<int64> indexes) {
-          invocations++;
-          return true;
-        };
+    auto increment_func = [&invocations](absl::Span<const int64> indexes) {
+      invocations++;
+      return true;
+    };
 
     std::vector<int64> zero_base(data.dimensions.size(), 0);
     std::vector<int64> step(data.dimensions.size(), 1);
@@ -726,8 +741,7 @@ TEST(ShapeUtilTest, ForEachIndexWithStatus) {
   // Increments at every invocation.
   int invocations = 0;
   auto increment_func =
-      [&invocations](
-          tensorflow::gtl::ArraySlice<int64> indexes) -> StatusOr<bool> {
+      [&invocations](absl::Span<const int64> indexes) -> StatusOr<bool> {
     if (++invocations == 5) {
       return Unimplemented("Cannot increment beyond 5.");
     }
@@ -748,7 +762,7 @@ TEST(ShapeUtilTest, ForEachIndexParallel) {
   Shape shape = ShapeUtil::MakeShape(F32, {10, 10});
   int64 output[10][10];
   int init = 5;
-  auto set_func = [&](tensorflow::gtl::ArraySlice<int64> indexes) {
+  auto set_func = [&](absl::Span<const int64> indexes) {
     output[indexes[0]][indexes[1]] = init + indexes[0] + indexes[1];
   };
 

@@ -259,7 +259,7 @@ TEST_F(MultiOutputFusionTest, MultiOutputFusionTwoLoops) {
 TEST_F(MultiOutputFusionTest, MultiOutputFusionLoopReduceToInputFusion) {
   // Fusing a reduce into a loop fusion would require changing the fusion kind.
   // That's not supported yet.
-  auto module = ParseHloString(tensorflow::strings::StrCat(kModulePrefix, R"(
+  auto module = ParseHloString(absl::StrCat(kModulePrefix, R"(
     fused_computation_1 {
       p0.1 = f32[6400]{0} parameter(0)
       ROOT mul = f32[6400]{0} multiply(p0.1, p0.1)
@@ -277,7 +277,7 @@ TEST_F(MultiOutputFusionTest, MultiOutputFusionLoopReduceToInputFusion) {
 }
 
 TEST_F(MultiOutputFusionTest, MultiOutputFusionLoopElementwise) {
-  auto module = ParseHloString(tensorflow::strings::StrCat(kModulePrefix, R"(
+  auto module = ParseHloString(absl::StrCat(kModulePrefix, R"(
     fused_computation_1 {
       p0.1 = f32[6400]{0} parameter(0)
       ROOT mul = f32[6400]{0} multiply(p0.1, p0.1)
@@ -301,7 +301,7 @@ TEST_F(MultiOutputFusionTest, MultiOutputFusionLoopElementwise) {
 }
 
 TEST_F(MultiOutputFusionTest, MultiOutputFusionSiblingLoopsDifferentShapes) {
-  auto module = ParseHloString(tensorflow::strings::StrCat(kModulePrefix, R"(
+  auto module = ParseHloString(absl::StrCat(kModulePrefix, R"(
     fused_computation_1 {
       p0.1 = f32[8,1,5,16,1,1]{5,4,3,2,1,0} parameter(0)
       ROOT mul = f32[8,1,5,16,1,1]{5,4,3,2,1,0} multiply(p0.1, p0.1)
@@ -324,7 +324,7 @@ TEST_F(MultiOutputFusionTest, MultiOutputFusionSiblingLoopsDifferentShapes) {
 }
 
 TEST_F(MultiOutputFusionTest, MultiOutputFusionSiblingLoopAndMultiOutputLoop) {
-  auto module = ParseHloString(tensorflow::strings::StrCat(kModulePrefix, R"(
+  auto module = ParseHloString(absl::StrCat(kModulePrefix, R"(
     fused_computation_1 {
       p0.1 = f32[8,1,5,16,1,1]{5,4,3,2,1,0} parameter(0)
       mul = f32[8,1,5,16,1,1]{5,4,3,2,1,0} multiply(p0.1, p0.1)
@@ -358,7 +358,7 @@ TEST_F(MultiOutputFusionTest, MultiOutputFusionSiblingLoopAndMultiOutputLoop) {
 
 TEST_F(MultiOutputFusionTest,
        MultiOutputFusionSiblingLoopAndMultiOutputLoopDifferentShapes) {
-  auto module = ParseHloString(tensorflow::strings::StrCat(kModulePrefix, R"(
+  auto module = ParseHloString(absl::StrCat(kModulePrefix, R"(
     fused_computation_1 {
       p0.1 = f32[8,1,5,16,1,1]{5,4,3,2,1,0} parameter(0)
       mul = f32[8,1,5,16,1,1]{5,4,3,2,1,0} multiply(p0.1, p0.1)

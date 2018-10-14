@@ -17,7 +17,6 @@ limitations under the License.
 #include "absl/strings/match.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/util/device_name_utils.h"
 
 namespace tensorflow {

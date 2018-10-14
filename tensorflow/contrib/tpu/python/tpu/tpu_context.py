@@ -35,7 +35,8 @@ _NUM_CORES_TO_COMPUTATION_SHAPE = {
     1: [1, 1, 1],
     2: [1, 1, 2],
     4: [1, 2, 2],
-    8: [2, 2, 2]
+    8: [2, 2, 2],
+    16: [4, 2, 2],
 }
 
 
@@ -117,6 +118,11 @@ class TPUContext(object):
     return self._internal_ctx.num_hosts
 
   @property
+  def current_host(self):
+    """The current host index for the TPU system."""
+    return self._invocation_index
+
+  @property
   def num_of_replicas_per_host(self):
     """The number of replicas for each host."""
     if self._internal_ctx.model_parallelism_enabled:
@@ -147,6 +153,20 @@ class TPUContext(object):
     # a random permutation. The order should not matter in most cases
     # as far as model is replicated to all cores in the system.
     return self._internal_ctx.device_for_replica(replica_id)
+
+  @property
+  def tpu_host_placement_function(self):
+    """Returns the TPU host place function.
+
+    The place function takes host_id as the input and returns the TF device
+    for the correspoding host.
+    """
+
+    def _placement_function(host_id):
+      """Return the host device given host_id."""
+      return self._internal_ctx.tpu_host_placement_function(host_id=host_id)
+
+    return _placement_function
 
 
 class _InternalTPUContext(object):
@@ -298,6 +318,7 @@ class _InternalTPUContext(object):
 
   @property
   def num_of_replicas_per_host(self):
+    """Return the number of replicas per host."""
     if self.model_parallelism_enabled:
       return self.num_replicas // self.num_hosts
     else:
@@ -538,8 +559,8 @@ class _InternalTPUContext(object):
       """
       if self.model_parallelism_enabled:
         # We put both enqueue/dequeue ops at tpu.core(0) in each replica.
-        replica = self.device_assignment.lookup_replicas(
-            host_id, (0, 0, 0))[shard_index_in_host]
+        replica = self.device_assignment.lookup_replicas(host_id,
+                                                         0)[shard_index_in_host]
         return self.device_assignment.tpu_ordinal(replica=replica)
       else:
         return shard_index_in_host % self.num_of_cores_per_host
@@ -580,6 +601,17 @@ class _InternalTPUContext(object):
 
         raise ValueError(message)
 
+    if self._config.tpu_config.num_cores_per_replica:
+      num_cores_per_replica = self._config.tpu_config.num_cores_per_replica
+      num_cores_per_host = self._get_tpu_system_metadata().num_of_cores_per_host
+      if num_cores_per_replica > num_cores_per_host:
+        raise ValueError(
+            'The num of cores required by the model parallelism, specified by '
+            'TPUConfig.num_cores_per_replica, is larger than the '
+            'num_cores_per_host. num_cores_per_replica: {}, '
+            'num_cores_per_host: {}'.format(num_cores_per_replica,
+                                            num_cores_per_host))
+
     if mode == model_fn_lib.ModeKeys.TRAIN:
       if (self._train_batch_size % num_replicas != 0 and
           not self.is_input_broadcast_with_iterators()):
@@ -599,8 +631,8 @@ class _InternalTPUContext(object):
             .format(self._eval_batch_size, num_replicas))
       if num_hosts > 1 and not self.is_input_broadcast_with_iterators():
         raise ValueError(
-            'TPUEstimator.evaluate should be running on single TPU worker. '
-            'got {}.'.format(num_hosts))
+            'TPUEstimator.evaluate should be running on single TPU'
+            ' instead of a Pod.')
     else:
       assert mode == model_fn_lib.ModeKeys.PREDICT
       if self._predict_batch_size is None:
@@ -685,7 +717,7 @@ def _get_tpu_context(config, train_batch_size, eval_batch_size,
       config.tpu_config.num_cores_per_replica is None):
     logging.warning(
         'Setting TPUConfig.num_shards==1 is an unsupported behavior. '
-        'Please fix as soon as possible (leaving num_shards as None.')
+        'Please fix as soon as possible (leaving num_shards as None.)')
     return _OneCoreTPUContext(config, train_batch_size, eval_batch_size,
                               predict_batch_size, use_tpu)
 

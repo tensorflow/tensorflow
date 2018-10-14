@@ -40,6 +40,19 @@ class SliceTest(xla_test.XLATestCase):
 
         self.assertAllEqual([2, 3, 4, 5], result)
 
+  def testZeroSlice(self):
+    for dtype in self.numeric_types:
+      with self.cached_session():
+        i = array_ops.placeholder(dtype, shape=[2])
+        with self.test_scope():
+          o = array_ops.slice(i, [0], [0])
+        params = {
+            i: [0, 1],
+        }
+        result = o.eval(feed_dict=params)
+
+        self.assertAllEqual([], result)
+
   def test3D(self):
     for dtype in self.numeric_types:
       with self.cached_session():

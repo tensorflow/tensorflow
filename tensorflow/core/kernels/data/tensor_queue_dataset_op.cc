@@ -24,7 +24,7 @@ limitations under the License.
 #include "tensorflow/core/util/batch_util.h"
 
 namespace tensorflow {
-
+namespace data {
 namespace {
 
 bool IsGreaterEqualToOrCompatibleWith(const PartialTensorShape& a,
@@ -648,5 +648,5 @@ REGISTER_KERNEL_BUILDER(Name("EnqueueInQueueDataset").Device(DEVICE_CPU),
                         EnqueueInQueueDatasetOp);
 
 }  // namespace
-
+}  // namespace data
 }  // namespace tensorflow

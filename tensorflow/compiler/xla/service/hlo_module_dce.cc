@@ -36,23 +36,6 @@ namespace xla {
 
 namespace {
 
-bool HasSendRecv(HloComputation* computation) {
-  for (auto* instruction : computation->instructions()) {
-    if (instruction->opcode() == HloOpcode::kSend ||
-        instruction->opcode() == HloOpcode::kSendDone ||
-        instruction->opcode() == HloOpcode::kRecv ||
-        instruction->opcode() == HloOpcode::kRecvDone) {
-      return true;
-    }
-    for (auto* sub_computation : instruction->called_computations()) {
-      if (HasSendRecv(sub_computation)) {
-        return true;
-      }
-    }
-  }
-  return false;
-}
-
 StatusOr<bool> RunWhileDCE(HloModule* module, HloLivenessAnalysis* liveness) {
   bool changed = false;
   for (auto* computation : module->computations()) {
@@ -67,10 +50,9 @@ StatusOr<bool> RunWhileDCE(HloModule* module, HloLivenessAnalysis* liveness) {
       auto* while_body_root = while_body_comp->root_instruction();
 
       if (!ShapeUtil::IsTuple(xla_while->shape()) ||
-          while_body_root->opcode() != HloOpcode::kTuple ||
-          HasSendRecv(while_body_comp)) {
+          while_body_root->opcode() != HloOpcode::kTuple) {
         // Only run DCE on tuple-shaped while loops where body root is Tuple,
-        // with no send/recv instructions.
+        // with no I/O instructions.
         VLOG(1) << "WhileDCE SKIP while: " << xla_while->ToString();
         continue;
       }

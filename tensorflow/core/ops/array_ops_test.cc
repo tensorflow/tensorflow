@@ -975,6 +975,7 @@ TEST(ArrayOpsTest, Transpose_ShapeFn) {
   INFER_OK(op, "?;[2]", "[?,?]");
   INFER_OK(op, "[?,?];[2]", "[d0_1,d0_0]");
   INFER_OK(op, "[1,?];[2]", "[d0_1,d0_0]");
+  INFER_OK(op, "?;[0]", "in0");
 
   // Invalid arguments.
   perm = test::AsTensor<int32>({1, 2});

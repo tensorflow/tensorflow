@@ -147,7 +147,7 @@ class DataFeederTest(test.TestCase):
   def test_unsupervised(self):
 
     def func(feeder):
-      with self.test_session():
+      with self.cached_session():
         inp, _ = feeder.input_builder()
         feed_dict_fn = feeder.get_feed_dict_fn()
         feed_dict = feed_dict_fn()
@@ -181,7 +181,7 @@ class DataFeederTest(test.TestCase):
   def test_epoch(self):
 
     def func(feeder):
-      with self.test_session():
+      with self.cached_session():
         feeder.input_builder()
         epoch = feeder.make_epoch_variable()
         feed_dict_fn = feeder.get_feed_dict_fn()

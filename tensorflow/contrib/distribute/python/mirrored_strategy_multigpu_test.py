@@ -20,6 +20,8 @@ from __future__ import print_function
 
 import sys
 
+import numpy as np
+
 from tensorflow.contrib.distribute.python import mirrored_strategy
 from tensorflow.contrib.distribute.python import multi_worker_test_base
 from tensorflow.contrib.distribute.python import strategy_test_lib
@@ -34,14 +36,20 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
+from tensorflow.python.keras.engine import training as keras_training
+from tensorflow.python.keras.layers import core as keras_core
 from tensorflow.python.layers import core
+from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import rnn
 from tensorflow.python.ops import rnn_cell_impl
+from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
 from tensorflow.python.training import device_util
 from tensorflow.python.training import distribution_strategy_context
+from tensorflow.python.training import gradient_descent
+from tensorflow.python.training import optimizer as optimizer_lib
 from tensorflow.python.training import server_lib
 
 
@@ -127,6 +135,25 @@ class MirroredTwoDeviceDistributionTest(strategy_test_lib.DistributionTestBase):
       self.assertEqual(1, len(unwrapped))
       expected = sum(range(len(dist.worker_devices)))
       self.assertEqual(expected, self.evaluate(unwrapped[0]))
+
+  @test_util.run_in_graph_and_eager_modes
+  def testReduceOnlyFirstTowerUpdates(self):
+    if not GPU_TEST:
+      self.skipTest("Not GPU test")
+
+    def run_fn(device_id):
+      return constant_op.constant(3 + 5 * device_id)
+
+    dist = self._get_distribution_strategy()
+    with dist.scope():
+      result = dist.call_for_each_tower(run_fn, dist.worker_device_index)
+      reduced = dist.reduce(
+          variable_scope.VariableAggregation.ONLY_FIRST_TOWER,
+          result,
+          destinations="/device:CPU:0")
+      unwrapped = dist.unwrap(reduced)
+      self.assertEqual(1, len(unwrapped))
+      self.assertEqual(3, self.evaluate(unwrapped[0]))
 
   @test_util.run_in_graph_and_eager_modes()
   def testReduceToMultipleDestinations(self):
@@ -280,9 +307,15 @@ class MirroredStrategyVariableCreationTest(test.TestCase):
 
     dist = mirrored_strategy.MirroredStrategy(
         ["/device:GPU:0", "/device:CPU:0"])
-    features = dist.distribute_dataset(
-        lambda: dataset_ops.Dataset.from_tensors([[1.]]).repeat(10)
-    ).make_one_shot_iterator().get_next()
+    ds = dist.distribute_dataset(
+        lambda: dataset_ops.Dataset.from_tensors([[1.]]).repeat(10))
+    if context.executing_eagerly():
+      iterator = ds.make_one_shot_iterator()
+    else:
+      iterator = ds.make_initializable_iterator()
+      self.evaluate([iterator.initializer])
+
+    features = iterator.get_next()
 
     with dist.scope():
       result = dist.call_for_each_tower(
@@ -382,6 +415,84 @@ class MirroredStrategyVariableCreationTest(test.TestCase):
         self.assertEquals("main/common/var3:0", v3.name)
         self.assertEquals(variable_scope.VariableAggregation.MEAN,
                           v3.aggregation)
+
+  @test_util.run_in_graph_and_eager_modes(config=config)
+  def testOnlyFirstTowerUpdatesVariables(self):
+    self._skip_eager_if_gpus_less_than(1)
+
+    def create_fn():
+      aggregation = variable_scope.VariableAggregation.ONLY_FIRST_TOWER
+      v0 = variable_scope.variable(
+          2.0,
+          name="on_read",
+          synchronization=variable_scope.VariableSynchronization.ON_READ,
+          aggregation=aggregation)
+      v1 = variable_scope.variable(
+          3.0,
+          name="on_write",
+          synchronization=variable_scope.VariableSynchronization.ON_WRITE,
+          aggregation=aggregation)
+      return v0, v1
+
+    devices = ["/device:GPU:0", "/device:CPU:0"]
+    dist = mirrored_strategy.MirroredStrategy(devices)
+    with dist.scope():
+      v0, v1 = dist.call_for_each_tower(create_fn, run_concurrently=False)
+      self.evaluate(v0.initializer)
+      self.assertEqual(2.0, self.evaluate(v0.get(devices[0])))
+      self.assertEqual(2.0, self.evaluate(v0.get(devices[1])))
+      self.assertEqual(2.0, self.evaluate(dist.read_var(v0)))
+      self.evaluate(v1.initializer)
+      self.assertEqual(3.0, self.evaluate(v1.get(devices[0])))
+      self.assertEqual(3.0, self.evaluate(v1.get(devices[1])))
+      self.assertEqual(3.0, self.evaluate(dist.read_var(v1)))
+
+      # Update using the assign_add member function.
+      def update_member_fn(device_id):
+        update0 = v0.assign_add(5.0 * (device_id + 1))
+        update1 = v1.assign_add(7.0 * (device_id + 1))
+        return update0, update1
+
+      update0a, update1a = dist.call_for_each_tower(
+          update_member_fn, dist.worker_device_index, run_concurrently=False)
+
+      # Update "sync on read" variable.
+      self.evaluate(dist.group(update0a))
+      self.assertEqual(2.0 + 5.0, self.evaluate(v0.get(devices[0])))
+      # Writes are not synchronized for "sync on read" variables,
+      # so device[1] can end up with a different value.
+      self.assertEqual(2.0 + 2*5.0, self.evaluate(v0.get(devices[1])))
+      # Always reads from device 0.
+      self.assertEqual(2.0 + 5.0, self.evaluate(dist.read_var(v0)))
+
+      # Update "sync on write" variable.
+      self.evaluate(dist.group(update1a))
+      self.assertEqual(3.0 + 7.0, self.evaluate(v1.get(devices[0])))
+      # Writes are synchronized for v1, only the argument to assign_add on
+      # device[0] is used.
+      self.assertEqual(3.0 + 7.0, self.evaluate(v1.get(devices[1])))
+      self.assertEqual(3.0 + 7.0, self.evaluate(dist.read_var(v1)))
+
+      # Update using state_ops.assign_add global function.
+      def update_state_ops_fn(device_id):
+        update0 = state_ops.assign_add(v0, 11.0 * (device_id + 1))
+        update1 = state_ops.assign_add(v1, 13.0 * (device_id + 1))
+        return update0, update1
+
+      update0b, update1b = dist.call_for_each_tower(
+          update_state_ops_fn, dist.worker_device_index, run_concurrently=False)
+      self.evaluate(dist.group(update0b))
+
+      # Update "sync on read" variable.
+      self.assertEqual(2.0 + 5.0 + 11.0, self.evaluate(v0.get(devices[0])))
+      self.assertEqual(2.0 + 2*5.0 + 2*11.0, self.evaluate(v0.get(devices[1])))
+      self.assertEqual(2.0 + 5.0 + 11.0, self.evaluate(dist.read_var(v0)))
+
+      # Update "sync on write" variable.
+      self.evaluate(dist.group(update1b))
+      self.assertEqual(3.0 + 7.0 + 13.0, self.evaluate(v1.get(devices[0])))
+      self.assertEqual(3.0 + 7.0 + 13.0, self.evaluate(v1.get(devices[1])))
+      self.assertEqual(3.0 + 7.0 + 13.0, self.evaluate(dist.read_var(v1)))
 
   @test_util.run_in_graph_and_eager_modes(config=config)
   def testNoneSynchronizationWithGetVariable(self):
@@ -728,7 +839,7 @@ class MirroredStrategyVariableCreationTest(test.TestCase):
 
       with dist.scope():
         ret_v_sum = dist.call_for_each_tower(model_fn, run_concurrently=False)
-        update_ops = dist.unwrap(dist.update(ret_v_sum, update, 5.0))
+        update_ops = dist.update(ret_v_sum, update, 5.0, grouped=False)
 
         # Initialize variables.
         self.evaluate(variables.global_variables_initializer())
@@ -804,8 +915,8 @@ class MirroredVariableUpdateTest(test.TestCase):
         return mirrored_var.assign(5.0)
 
       with self.assertRaisesRegexp(
-          ValueError, "A non-DistributedValues value cannot be reduced with "
-          "the given aggregation."):
+          ValueError, "A non-DistributedValues value 5.0 cannot be reduced "
+          "with the given aggregation VariableAggregation.SUM."):
         self.evaluate(dist.unwrap(dist.call_for_each_tower(model_fn)))
 
   @test_util.run_in_graph_and_eager_modes(config=config)
@@ -1147,6 +1258,22 @@ class MockModel(object):
     return x
 
 
+class MiniModel(keras_training.Model):
+  """Minimal model for mnist.
+
+  Useful for testing and debugging on slow TPU simulators.
+  """
+
+  def __init__(self):
+    super(MiniModel, self).__init__(name="")
+    self.fc = keras_core.Dense(1, name="fc", kernel_initializer="ones",
+                               bias_initializer="ones")
+
+  def call(self, inputs, training=True):
+    inputs = array_ops.ones([1, 10])
+    return self.fc(inputs)
+
+
 class MirroredStrategyDefunTest(test.TestCase):
 
   def _skip_eager_if_gpus_less_than(self, num_gpus):
@@ -1173,7 +1300,17 @@ class MirroredStrategyDefunTest(test.TestCase):
                             self.evaluate(device_result))
 
       for defun in defuns:
-        self.assertEqual(set(mock_model.variables), set(defun.variables))
+        # PolymorphicFunctions are specialized to the current device stack, so
+        # call_for_each has one trace per device. To check that the expected set
+        # of variables was accessed on each trace, we first retrieve each
+        # device-specific graph function.
+        per_device_graph_functions = dist.call_for_each_tower(
+            defun.get_concrete_function,
+            mock_model, *inputs, run_concurrently=False)
+        for device in devices:
+          graph_function = per_device_graph_functions.get(device=device)
+          self.assertEqual(set(mock_model.variables),
+                           set(graph_function.graph.variables))
 
   @test_util.run_in_graph_and_eager_modes()
   def testVariableInDefun(self):
@@ -1257,6 +1394,41 @@ class MirroredStrategyDefunTest(test.TestCase):
                                         "GPU:0": 3.0 * 1.25})
     self._call_and_check(fn1, [factors], expected_result, [fn1])
 
+  @test_util.run_in_graph_and_eager_modes()
+  def testTrain(self):
+    self._skip_eager_if_gpus_less_than(1)
+
+    cpu_dev = device_util.canonicalize("CPU:0")
+    gpu_dev = device_util.canonicalize("GPU:0")
+    devices = [cpu_dev, gpu_dev]
+    dist = mirrored_strategy.MirroredStrategy(devices)
+
+    with dist.scope():
+      mock_model = MiniModel()
+      mock_model.call = function.defun(mock_model.call)
+
+      def loss_fn(ctx):
+        del ctx
+        return mock_model(array_ops.ones([1, 10]))
+
+      gradients_fn = backprop.implicit_grad(loss_fn)
+      gradients_fn = optimizer_lib.get_filtered_grad_fn(gradients_fn)
+      grads_and_vars = dist.call_for_each_tower(
+          gradients_fn, None, run_concurrently=False)
+
+      optimizer = gradient_descent.GradientDescentOptimizer(0.25)
+      update_ops = optimizer._distributed_apply(dist, grads_and_vars)  # pylint: disable=protected-access
+
+      if not context.executing_eagerly():
+        self.evaluate(variables.global_variables_initializer())
+        self.evaluate(update_ops)
+
+      updated_var_values = self.evaluate(mock_model.variables)
+      # All variables start at 1.0 and get two updates of 0.25.
+      self.assertAllEqual(0.5 * np.ones([10, 1]), updated_var_values[0])
+      self.assertAllEqual([0.5], updated_var_values[1])
+
+
 
 class MultiWorkerMirroredStrategyTest(
     multi_worker_test_base.MultiWorkerTestBase,
@@ -1287,7 +1459,8 @@ class MultiWorkerMirroredStrategyTestWithChief(
     cls._default_target = "grpc://" + cls._cluster_spec["chief"][0]
 
   def testMinimizeLossGraph(self):
-    strategy = mirrored_strategy.MirroredStrategy(num_gpus=context.num_gpus())
+    strategy = mirrored_strategy.MirroredStrategy(
+        num_gpus_per_worker=context.num_gpus())
     strategy.configure(cluster_spec=self._cluster_spec)
     self._test_minimize_loss_graph(strategy, learning_rate=0.05)
 

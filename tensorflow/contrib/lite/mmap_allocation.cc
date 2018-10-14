@@ -20,7 +20,7 @@ limitations under the License.
 #include <unistd.h>
 
 #include "tensorflow/contrib/lite/allocation.h"
-#include "tensorflow/contrib/lite/error_reporter.h"
+#include "tensorflow/contrib/lite/core/api/error_reporter.h"
 
 namespace tflite {
 

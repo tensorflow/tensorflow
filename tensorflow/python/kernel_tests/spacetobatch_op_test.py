@@ -551,7 +551,7 @@ class SpaceToBatchNDGradientTest(test.TestCase):
   def _checkGrad(self, x, block_shape, paddings):
     block_shape = np.array(block_shape)
     paddings = np.array(paddings).reshape((len(block_shape), 2))
-    with self.test_session():
+    with self.cached_session():
       tf_x = ops.convert_to_tensor(x)
       tf_y = array_ops.space_to_batch_nd(tf_x, block_shape, paddings)
       epsilon = 1e-5
@@ -638,7 +638,7 @@ class RequiredSpaceToBatchPaddingsTest(test.TestCase):
     t_paddings, t_crops = array_ops.required_space_to_batch_paddings(
         input_shape_placeholder, block_shape_placeholder,
         base_paddings_placeholder)
-    with self.test_session():
+    with self.cached_session():
       paddings_result = t_paddings.eval(assignments)
       crops_result = t_crops.eval(assignments)
     self.assertAllEqual(paddings_result, paddings_const)

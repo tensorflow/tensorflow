@@ -18,6 +18,7 @@ limitations under the License.
 #include "tensorflow/cc/framework/ops.h"
 #include "tensorflow/cc/ops/control_flow_ops_internal.h"
 #include "tensorflow/cc/ops/function_ops.h"
+#include "tensorflow/cc/ops/functional_ops.h"
 #include "tensorflow/cc/ops/resource_variable_ops.h"
 #include "tensorflow/cc/ops/standard_ops.h"
 #include "tensorflow/compiler/tf2xla/cc/ops/xla_ops.h"
@@ -112,16 +113,12 @@ TEST(FunctionalizeControlFlow, Conditional) {
     auto y = ops::Placeholder(scope.WithOpName("y"), DT_INT32);
     auto x = ops::Placeholder(scope.WithOpName("x"), DT_INT32);
     auto less = ops::Less(scope.WithOpName("cond/Less"), y, x);
-    auto if_op = ops::XlaIf(scope.WithOpName(op_name), less,
-                            std::initializer_list<Input>{less, y, x}, then_fn,
-                            else_fn, {DT_INT32});
+    auto if_op = ops::If(scope.WithOpName(op_name), less,
+                         std::initializer_list<Input>{less, y, x}, {DT_INT32},
+                         then_fn, else_fn);
     auto id = ops::Identity(scope.WithOpName("cond/Merge"), if_op.output[0]);
     GraphDef expected;
     TF_EXPECT_OK(scope.ToGraphDef(&expected));
-    // TODO(jpienaar): Create wrapper for IfOp.
-    for (NodeDef& n : *expected.mutable_node()) {
-      if (n.op() == "XlaIf") n.set_op("If");
-    }
     TF_EXPECT_GRAPH_EQ(expected, graph_def);
   }
 
@@ -177,7 +174,7 @@ TEST(FunctionalizeControlFlow, Conditional) {
 Status FindWhileCondAndBody(const GraphDef& graph, NameAttrList* cond,
                             NameAttrList* body) {
   for (const NodeDef& node : graph.node()) {
-    if (node.op() == "XlaWhile") {
+    if (node.op() == "While") {
       const NameAttrList* result;
       TF_RETURN_IF_ERROR(GetNodeAttr(node, "cond", &result));
       *cond = *result;
@@ -186,7 +183,7 @@ Status FindWhileCondAndBody(const GraphDef& graph, NameAttrList* cond,
       return Status::OK();
     }
   }
-  return errors::NotFound("No XlaWhile node found in graph");
+  return errors::NotFound("No While node found in graph");
 }
 
 // Graph:
@@ -255,8 +252,8 @@ TEST(FunctionalizeControlFlow, OneLoopVar) {
     Scope scope = Scope::NewRootScope().ExitOnError();
     auto source = ops::Placeholder(scope.WithOpName("source"), DT_INT32);
     auto while_op =
-        ops::XlaWhile(scope.WithOpName("while/LoopCond"),
-                      std::initializer_list<Input>{source}, cond_fn, body_fn);
+        ops::While(scope.WithOpName("while/LoopCond"),
+                   std::initializer_list<Input>{source}, cond_fn, body_fn);
     auto sink = ops::Identity(scope.WithOpName("sink"), while_op[0]);
     GraphDef expected;
     TF_EXPECT_OK(scope.ToGraphDef(&expected));
@@ -392,8 +389,8 @@ TEST(FunctionalizeControlFlow, NoinlineLoopBody) {
     Scope scope = Scope::NewRootScope().ExitOnError();
     auto source = ops::Placeholder(scope.WithOpName("source"), DT_INT32);
     auto while_op =
-        ops::XlaWhile(scope.WithOpName("while/LoopCond"),
-                      std::initializer_list<Input>{source}, cond_fn, body_fn);
+        ops::While(scope.WithOpName("while/LoopCond"),
+                   std::initializer_list<Input>{source}, cond_fn, body_fn);
     GraphDef expected;
     TF_ASSERT_OK(scope.ToGraphDef(&expected));
     TF_EXPECT_GRAPH_EQ(expected, graph_def);
@@ -483,8 +480,8 @@ TEST(FunctionalizeControlFlow, OneLoopVarWithoutExit) {
     Scope scope = Scope::NewRootScope().ExitOnError();
     auto source = ops::Placeholder(scope.WithOpName("source"), DT_INT32);
     auto while_op =
-        ops::XlaWhile(scope.WithOpName("while/LoopCond"),
-                      std::initializer_list<Input>{source}, cond_fn, body_fn);
+        ops::While(scope.WithOpName("while/LoopCond"),
+                   std::initializer_list<Input>{source}, cond_fn, body_fn);
     GraphDef expected;
     TF_EXPECT_OK(scope.ToGraphDef(&expected));
     TF_EXPECT_GRAPH_EQ(expected, graph_def);
@@ -625,8 +622,8 @@ TEST(FunctionalizeControlFlow, TwoLoopVars) {
     auto x = ops::Placeholder(scope.WithOpName("Placeholder/x"), DT_INT32);
     auto y = ops::Placeholder(scope.WithOpName("Placeholder/y"), DT_INT32);
     auto while_op =
-        ops::XlaWhile(scope.WithOpName("while/LoopCond"),
-                      std::initializer_list<Input>{x, y}, cond_fn, body_fn);
+        ops::While(scope.WithOpName("while/LoopCond"),
+                   std::initializer_list<Input>{x, y}, cond_fn, body_fn);
     auto sink_x = ops::Identity(scope.WithOpName("sink_x"), while_op[0]);
     auto sink_y = ops::Identity(scope.WithOpName("sink_y"), while_op[1]);
     GraphDef expected;
@@ -805,11 +802,11 @@ TEST(FunctionalizeControlFlow, Complex) {
     auto assign = ops::AssignAddVariableOp(
         scope.WithOpName("outer/inner/assign_add"), enter_var, add_jkx);
 
-    auto one =
-        ops::Const<int32>(scope.WithOpName("outer/inner/One")
-                              .WithControlDependencies(
-                                  gtl::ArraySlice<Operation>{assign.operation}),
-                          1);
+    auto one = ops::Const<int32>(
+        scope.WithOpName("outer/inner/One")
+            .WithControlDependencies(
+                absl::Span<const Operation>{assign.operation}),
+        1);
     auto add_j =
         ops::Add(scope.WithOpName("outer/inner/add_j"), identity_j, one);
 
@@ -823,7 +820,7 @@ TEST(FunctionalizeControlFlow, Complex) {
         scope.WithOpName("outer/add/y").WithControlDependencies(identity_i), 1);
     auto add_i =
         ops::Add(scope.WithOpName("outer/add")
-                     .WithControlDependencies(gtl::ArraySlice<Operation>{
+                     .WithControlDependencies(absl::Span<const Operation>{
                          exit_j.output.op(), exit_k.output.op()}),
                  identity_i, one_outer);
     auto next_iteration_i =
@@ -864,9 +861,9 @@ TEST(FunctionalizeControlFlow, Complex) {
 
     auto zero = ops::Const<int32>(scope.WithOpName("outer/Const"), 0);
 
-    auto while_op = ops::XlaWhile(scope.WithOpName("outer/LoopCond"),
-                                  std::initializer_list<Input>{zero, y, x, var},
-                                  outer_cond_fn, outer_body_fn);
+    auto while_op = ops::While(scope.WithOpName("outer/LoopCond"),
+                               std::initializer_list<Input>{zero, y, x, var},
+                               outer_cond_fn, outer_body_fn);
     auto sink = ops::Identity(scope.WithOpName("sink"), while_op[0]);
     GraphDef expected;
     TF_EXPECT_OK(scope.ToGraphDef(&expected));
@@ -921,15 +918,15 @@ TEST(FunctionalizeControlFlow, Complex) {
     auto one_j = ops::Const<int32>(
         scope.WithOpName("outer/j").WithControlDependencies(identity_i), 1);
     auto while_op =
-        ops::XlaWhile(scope.WithOpName("outer/LoopCond_1"),
-                      std::initializer_list<Input>{one_j, arg1, arg2, arg3},
-                      inner_cond_fn, inner_body_fn);
+        ops::While(scope.WithOpName("outer/LoopCond_1"),
+                   std::initializer_list<Input>{one_j, arg1, arg2, arg3},
+                   inner_cond_fn, inner_body_fn);
 
     auto one_outer = ops::Const<int32>(
         scope.WithOpName("outer/add/y").WithControlDependencies(identity_i), 1);
     auto add_i =
         ops::Add(scope.WithOpName("outer/add")
-                     .WithControlDependencies(gtl::ArraySlice<Operation>{
+                     .WithControlDependencies(absl::Span<const Operation>{
                          while_op[0].op(), while_op[1].op()}),
                  identity_i, one_outer);
 
@@ -991,11 +988,11 @@ TEST(FunctionalizeControlFlow, Complex) {
     auto assign = ops::AssignAddVariableOp(
         scope.WithOpName("outer/inner/assign_add"), arg3, add_jkx);
 
-    auto one =
-        ops::Const<int32>(scope.WithOpName("outer/inner/One")
-                              .WithControlDependencies(
-                                  gtl::ArraySlice<Operation>{assign.operation}),
-                          1);
+    auto one = ops::Const<int32>(
+        scope.WithOpName("outer/inner/One")
+            .WithControlDependencies(
+                absl::Span<const Operation>{assign.operation}),
+        1);
     auto add_j =
         ops::Add(scope.WithOpName("outer/inner/add_j"), identity_j, one);
 

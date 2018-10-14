@@ -149,6 +149,10 @@ tf_module {
     argspec: "args=[\'image\', \'lower\', \'upper\', \'seed\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
+    name: "random_crop"
+    argspec: "args=[\'value\', \'size\', \'seed\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
+  }
+  member_method {
     name: "random_flip_left_right"
     argspec: "args=[\'image\', \'seed\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }

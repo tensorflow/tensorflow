@@ -296,7 +296,9 @@ class MklInputConversionOp : public OpKernel {
       // implementation.
       TensorShape tf_shape0 = input_shape_0.GetTfShape();
       TensorShape tf_shape1 = input_shape_1.GetTfShape();
-      if (tf_shape0 == tf_shape1) {
+      TensorShape tensor_shape0 = input_tensor_0.shape();
+      TensorShape tensor_shape1 = input_tensor_1.shape();
+      if (tf_shape0 == tf_shape1 && tensor_shape0 == tensor_shape1) {
         auto input0_md = input_shape_0.GetMklLayout();
         auto input1_md = input_shape_1.GetMklLayout();
 
@@ -350,7 +352,8 @@ class MklInputConversionOp : public OpKernel {
       }
 
       // Sanity check
-      bool mkl_shapes_are_same = input_shape_0 == input_shape_1;
+      bool mkl_shapes_are_same = ((input_shape_0 == input_shape_1) &&
+                                  (tensor_shape0 == tensor_shape1));
       if (mkl_shapes_are_same) {
         CHECK(false) << "MklInputConversionOp: Unexpected: TF shapes are "
                         "different but MKL shapes are same";
@@ -403,7 +406,8 @@ class MklInputConversionOp : public OpKernel {
     }
 
     // Broadcast is needed if the shapes are not the same
-    if (mkl_shape->GetTfShape().num_elements() == tf_tensor->shape().num_elements() ) {
+    if (mkl_shape->GetTfShape().num_elements() ==
+        tf_tensor->shape().num_elements()) {
       // Both shapes are same, convert the TF input to MKL
       VLOG(1) << "MklInputConversionOp: No broadcast needed.";
       VLOG(1) << "MklInputConversionOp: Converting input " << tf_tensor_index
@@ -437,16 +441,17 @@ class MklInputConversionOp : public OpKernel {
       bool reordered = tf_input.CheckReorderToOpMem(
                    memory::primitive_desc(output_mkl_md, cpu_engine),
                    tensor_out, &net);
-      if(!reordered) {
+
+      if (!reordered) {
         // This is the case that the TF tensor has the same shape and format of
         // mkl tensor. However, tf_tensor can not be simply forwarded to the
         // output tensor since mkl data tensor is always one dimensional tensor.
         // Tensor::CopyFrom shares the buffer of the other tensor while set its
         // shape to the other tensor.
         CHECK(tensor_out->CopyFrom(*tf_tensor, tensor_out->shape()));
-      }
-      else  
+      } else {
         stream(stream::kind::eager).submit(net).wait();
+      }
 
       // -- The tensor in MKL format passes through --
       ForwardMklTensorInToOut(context, mkl_tensor_index, mkl_tensor_index);

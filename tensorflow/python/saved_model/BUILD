@@ -225,6 +225,7 @@ py_library(
         ":signature_constants",
         ":utils",
         "//tensorflow/core:protos_all_py",
+        "//tensorflow/python:framework_ops",
         "//tensorflow/python:util",
     ],
 )

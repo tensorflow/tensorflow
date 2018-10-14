@@ -203,7 +203,7 @@ void XlaTransferManager::CopyCPUTensorToDevice(const Tensor* cpu_tensor,
 }
 
 void XlaTransferManager::CopyDeviceTensorToCPU(const Tensor* device_tensor,
-                                               StringPiece tensor_name,
+                                               absl::string_view tensor_name,
                                                Device* device,
                                                Tensor* cpu_tensor,
                                                StatusCallback done) {
@@ -339,7 +339,7 @@ void XlaDeviceContext::CopyCPUTensorToDevice(const Tensor* cpu_tensor,
 }
 
 void XlaDeviceContext::CopyDeviceTensorToCPU(const Tensor* device_tensor,
-                                             StringPiece tensor_name,
+                                             absl::string_view tensor_name,
                                              Device* device, Tensor* cpu_tensor,
                                              StatusCallback done) {
   manager_.CopyDeviceTensorToCPU(device_tensor, tensor_name, device, cpu_tensor,

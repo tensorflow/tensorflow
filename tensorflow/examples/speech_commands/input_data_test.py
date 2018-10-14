@@ -32,7 +32,7 @@ from tensorflow.python.platform import test
 class InputDataTest(test.TestCase):
 
   def _getWavData(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       sample_data = tf.zeros([32000, 2])
       wav_encoder = contrib_audio.encode_wav(sample_data, 16000)
       wav_data = sess.run(wav_encoder)
@@ -75,7 +75,7 @@ class InputDataTest(test.TestCase):
       self._saveTestWavFile(file_path, wav_data)
     model_settings = models.prepare_model_settings(
         4, 16000, 1000, window_length_ms, 20, 40, preprocess)
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       audio_processor = input_data.AudioProcessor(
           "", wav_dir, 10, 10, ["a", "b"], 10, 10, model_settings, tmp_dir)
       result_data, result_labels = audio_processor.get_data(

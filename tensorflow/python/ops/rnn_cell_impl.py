@@ -370,9 +370,12 @@ class LayerRNNCell(RNNCell):
                                      *args, **kwargs)
 
 
-@tf_export("nn.rnn_cell.BasicRNNCell")
+@tf_export(v1=["nn.rnn_cell.BasicRNNCell"])
 class BasicRNNCell(LayerRNNCell):
   """The most basic RNN cell.
+
+  Note that this cell is not optimized for performance. Please use
+  `tf.contrib.cudnn_rnn.CudnnRNNTanh` for better performance on GPU.
 
   Args:
     num_units: int, The number of units in the RNN cell.
@@ -390,6 +393,8 @@ class BasicRNNCell(LayerRNNCell):
       `trainable` etc when constructing the cell from configs of get_config().
   """
 
+  @deprecated(None, "This class is equivalent as tf.keras.layers.SimpleRNNCell,"
+                    " and will be replaced by that in Tensorflow 2.0.")
   def __init__(self,
                num_units,
                activation=None,
@@ -399,6 +404,10 @@ class BasicRNNCell(LayerRNNCell):
                **kwargs):
     super(BasicRNNCell, self).__init__(
         _reuse=reuse, name=name, dtype=dtype, **kwargs)
+    if context.executing_eagerly() and context.num_gpus() > 0:
+      logging.warn("%s: Note that this cell is not optimized for performance. "
+                   "Please use tf.contrib.cudnn_rnn.CudnnRNNTanh for better "
+                   "performance on GPU.", self)
 
     # Inputs must be 2-dimensional.
     self.input_spec = base_layer.InputSpec(ndim=2)
@@ -421,7 +430,7 @@ class BasicRNNCell(LayerRNNCell):
   def build(self, inputs_shape):
     if inputs_shape[-1] is None:
       raise ValueError("Expected inputs.shape[-1] to be known, saw shape: %s"
-                       % inputs_shape)
+                       % str(inputs_shape))
 
     input_depth = inputs_shape[-1]
     self._kernel = self.add_variable(
@@ -457,6 +466,10 @@ class BasicRNNCell(LayerRNNCell):
 class GRUCell(LayerRNNCell):
   """Gated Recurrent Unit cell (cf. http://arxiv.org/abs/1406.1078).
 
+  Note that this cell is not optimized for performance. Please use
+  `tf.contrib.cudnn_rnn.CudnnGRU` for better performance on GPU, or
+  `tf.contrib.rnn.GRUBlockCellV2` for better performance on CPU.
+
   Args:
     num_units: int, The number of units in the GRU cell.
     activation: Nonlinearity to use.  Default: `tanh`.
@@ -487,6 +500,10 @@ class GRUCell(LayerRNNCell):
     super(GRUCell, self).__init__(
         _reuse=reuse, name=name, dtype=dtype, **kwargs)
 
+    if context.executing_eagerly() and context.num_gpus() > 0:
+      logging.warn("%s: Note that this cell is not optimized for performance. "
+                   "Please use tf.contrib.cudnn_rnn.CudnnGRU for better "
+                   "performance on GPU.", self)
     # Inputs must be 2-dimensional.
     self.input_spec = base_layer.InputSpec(ndim=2)
 
@@ -510,7 +527,7 @@ class GRUCell(LayerRNNCell):
   def build(self, inputs_shape):
     if inputs_shape[-1] is None:
       raise ValueError("Expected inputs.shape[-1] to be known, saw shape: %s"
-                       % inputs_shape)
+                       % str(inputs_shape))
 
     input_depth = inputs_shape[-1]
     self._gate_kernel = self.add_variable(
@@ -596,7 +613,7 @@ class LSTMStateTuple(_LSTMStateTuple):
 # TODO(scottzhu): Stop exporting this class in TF 2.0.
 @tf_export("nn.rnn_cell.BasicLSTMCell")
 class BasicLSTMCell(LayerRNNCell):
-  """DEPRECATED: Please use @{tf.nn.rnn_cell.LSTMCell} instead.
+  """DEPRECATED: Please use `tf.nn.rnn_cell.LSTMCell` instead.
 
   Basic LSTM recurrent network cell.
 
@@ -610,6 +627,11 @@ class BasicLSTMCell(LayerRNNCell):
 
   For advanced models, please use the full `tf.nn.rnn_cell.LSTMCell`
   that follows.
+
+  Note that this cell is not optimized for performance. Please use
+  `tf.contrib.cudnn_rnn.CudnnLSTM` for better performance on GPU, or
+  `tf.contrib.rnn.LSTMBlockCell` and `tf.contrib.rnn.LSTMBlockFusedCell` for
+  better performance on CPU.
   """
 
   @deprecated(None, "This class is deprecated, please use "
@@ -656,6 +678,10 @@ class BasicLSTMCell(LayerRNNCell):
     if not state_is_tuple:
       logging.warn("%s: Using a concatenated state is slower and will soon be "
                    "deprecated.  Use state_is_tuple=True.", self)
+    if context.executing_eagerly() and context.num_gpus() > 0:
+      logging.warn("%s: Note that this cell is not optimized for performance. "
+                   "Please use tf.contrib.cudnn_rnn.CudnnLSTM for better "
+                   "performance on GPU.", self)
 
     # Inputs must be 2-dimensional.
     self.input_spec = base_layer.InputSpec(ndim=2)
@@ -681,7 +707,7 @@ class BasicLSTMCell(LayerRNNCell):
   def build(self, inputs_shape):
     if inputs_shape[-1] is None:
       raise ValueError("Expected inputs.shape[-1] to be known, saw shape: %s"
-                       % inputs_shape)
+                       % str(inputs_shape))
 
     input_depth = inputs_shape[-1]
     h_depth = self._num_units
@@ -759,10 +785,10 @@ class LSTMCell(LayerRNNCell):
 
   The default non-peephole implementation is based on:
 
-    http://www.bioinf.jku.at/publications/older/2604.pdf
+    https://pdfs.semanticscholar.org/1154/0131eae85b2e11d53df7f1360eeb6476e7f4.pdf
 
-  S. Hochreiter and J. Schmidhuber.
-  "Long Short-Term Memory". Neural Computation, 9(8):1735-1780, 1997.
+  Felix Gers, Jurgen Schmidhuber, and Fred Cummins.
+  "Learning to forget: Continual prediction with LSTM." IET, 850-855, 1999.
 
   The peephole implementation is based on:
 
@@ -774,6 +800,11 @@ class LSTMCell(LayerRNNCell):
 
   The class uses optional peep-hole connections, optional cell clipping, and
   an optional projection layer.
+
+  Note that this cell is not optimized for performance. Please use
+  `tf.contrib.cudnn_rnn.CudnnLSTM` for better performance on GPU, or
+  `tf.contrib.rnn.LSTMBlockCell` and `tf.contrib.rnn.LSTMBlockFusedCell` for
+  better performance on CPU.
   """
 
   def __init__(self, num_units,
@@ -833,6 +864,10 @@ class LSTMCell(LayerRNNCell):
           "%s: The num_unit_shards and proj_unit_shards parameters are "
           "deprecated and will be removed in Jan 2017.  "
           "Use a variable scope with a partitioner instead.", self)
+    if context.executing_eagerly() and context.num_gpus() > 0:
+      logging.warn("%s: Note that this cell is not optimized for performance. "
+                   "Please use tf.contrib.cudnn_rnn.CudnnLSTM for better "
+                   "performance on GPU.", self)
 
     # Inputs must be 2-dimensional.
     self.input_spec = base_layer.InputSpec(ndim=2)
@@ -875,7 +910,7 @@ class LSTMCell(LayerRNNCell):
   def build(self, inputs_shape):
     if inputs_shape[-1] is None:
       raise ValueError("Expected inputs.shape[-1] to be known, saw shape: %s"
-                       % inputs_shape)
+                       % str(inputs_shape))
 
     input_depth = inputs_shape[-1]
     h_depth = self._num_units if self._num_proj is None else self._num_proj
@@ -921,7 +956,7 @@ class LSTMCell(LayerRNNCell):
     """Run one step of LSTM.
 
     Args:
-      inputs: input Tensor, 2D, `[batch, num_units].
+      inputs: input Tensor, must be 2-D, `[batch, input_size]`.
       state: if `state_is_tuple` is False, this must be a state Tensor,
         `2-D, [batch, state_size]`.  If `state_is_tuple` is True, this must be a
         tuple of state Tensors, both `2-D`, with column sizes `c_state` and

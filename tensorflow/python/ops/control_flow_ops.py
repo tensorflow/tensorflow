@@ -40,7 +40,6 @@ from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import cond_v2_impl
 from tensorflow.python.ops import control_flow_util as util
 from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.ops import gen_control_flow_ops
@@ -58,10 +57,22 @@ from tensorflow.python.util import compat
 from tensorflow.python.util import deprecation
 from tensorflow.python.util import nest
 from tensorflow.python.util import tf_should_use
+from tensorflow.python.util.lazy_loader import LazyLoader
 from tensorflow.python.util.tf_export import tf_export
 
+# This is to avoid a circular dependency:
+# cond_v2 -> gradients_impl -> control_flow_ops
+cond_v2 = LazyLoader(
+    "cond_v2", globals(), "tensorflow.python.ops.cond_v2")
 
-_ENABLE_COND_V2 = os.getenv("TF_ENABLE_COND_V2", "0") != "0"
+# This is to avoid circular dependencies:
+# while_v2 -> control_flow_ops
+# while_v2 -> gradients_impl -> control_flow_ops
+while_v2 = LazyLoader(
+    "while_v2", globals(), "tensorflow.python.ops.while_v2")
+
+ENABLE_COND_V2 = os.getenv("TF_ENABLE_COND_V2", "0") != "0"
+ENABLE_WHILE_V2 = os.getenv("TF_ENABLE_WHILE_V2", "0") != "0"
 
 
 # We override the 'tuple' for a control flow op, so we keep python's
@@ -97,7 +108,7 @@ def _summarize_eager(tensor, summarize=None):
 
 # Assert and Print are special symbols in python, so we must
 # use an upper-case version of them.
-@tf_export("Assert")
+@tf_export("debugging.Assert", "Assert")
 @tf_should_use.should_use_result
 def Assert(condition, data, summarize=None, name=None):
   """Asserts that the given condition is true.
@@ -610,9 +621,10 @@ def _EnforceShapeInvariant(merge_var, next_var):
           "less-specific shape." %
           (input_t.name, input_t.shape, n_shape))
   else:
-    if not isinstance(var, (ops.IndexedSlices, sparse_tensor.SparseTensor)):
-      raise TypeError("Type %s not supported" % type(var))
-    if isinstance(var, ops.IndexedSlices):
+    if not isinstance(merge_var,
+                      (ops.IndexedSlices, sparse_tensor.SparseTensor)):
+      raise TypeError("Type %s not supported" % type(merge_var))
+    if isinstance(merge_var, ops.IndexedSlices):
       m_values_shape = merge_var.values.get_shape()
       m_indices_shape = merge_var.indices.get_shape()
       m_shape_shape = tensor_shape.TensorShape(None)
@@ -1323,6 +1335,9 @@ class ControlFlowState(object):
     """
     if util.IsLoopSwitch(op):
       return None
+    if op.graph._building_function:  # pylint: disable=protected-access
+      # The optimization here is tricky to apply to functions
+      return array_ops.zeros_like(op.outputs[index])
     dead_branch = util.IsSwitch(op)
     forward_ctxt = _GetWhileContext(op)
     grad_state = self._map.get(forward_ctxt)
@@ -2026,8 +2041,8 @@ def cond(pred,
   ```
 
   """
-  if _ENABLE_COND_V2:
-    return cond_v2_impl.cond_v2(pred, true_fn, false_fn, name)
+  if ENABLE_COND_V2 and not context.executing_eagerly():
+    return cond_v2.cond_v2(pred, true_fn, false_fn, name)
 
   # We needed to make true_fn/false_fn keyword arguments for
   # backwards-compatibility. This check exists so that we can convert back to
@@ -3210,6 +3225,10 @@ def while_loop(cond,
   ```
 
   """
+  if ENABLE_WHILE_V2 and not context.executing_eagerly():
+    return while_v2.while_loop(
+        cond, body, loop_vars, shape_invariants=shape_invariants, name=name)
+
   with ops.name_scope(name, "while", loop_vars):
     if not loop_vars:
       raise ValueError("No loop variables provided")

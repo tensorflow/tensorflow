@@ -4,6 +4,7 @@ package(default_visibility = [
 
 licenses(["notice"])  # Apache 2.0
 
+load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 load("//tensorflow/contrib/lite:build_def.bzl", "tflite_copts", "gen_selected_ops")
 
 exports_files(glob([
@@ -26,6 +27,14 @@ config_setting(
     },
 )
 
+# Enables inclusion of TensorFlow kernels via the TF Lite Flex delegate.
+# WARNING: This build flag is experimental and subject to change.
+config_setting(
+    name = "with_tflite_flex",
+    define_values = {"with_tflite_flex": "true"},
+    visibility = ["//visibility:public"],
+)
+
 cc_library(
     name = "schema_fbs_version",
     hdrs = ["version.h"],
@@ -36,10 +45,10 @@ cc_library(
     srcs = ["arena_planner.cc"],
     hdrs = ["arena_planner.h"],
     deps = [
-        ":context",
         ":graph_info",
         ":memory_planner",
         ":simple_memory_arena",
+        "//tensorflow/contrib/lite/c:c_api_internal",
     ],
 )
 
@@ -54,6 +63,7 @@ cc_test(
     deps = [
         ":arena_planner",
         "//tensorflow/contrib/lite/testing:util",
+        "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "@com_google_googletest//:gtest",
     ],
@@ -63,27 +73,27 @@ cc_test(
 # TODO(aselle): Resolve problems preventing C99 usage.
 cc_library(
     name = "context",
-    srcs = ["context.c"],
     hdrs = ["context.h"],
+    deps = ["//tensorflow/contrib/lite/c:c_api_internal"],
 )
 
 cc_library(
     name = "graph_info",
     hdrs = ["graph_info.h"],
-    deps = [":context"],
+    deps = ["//tensorflow/contrib/lite/c:c_api_internal"],
 )
 
 cc_library(
     name = "memory_planner",
     hdrs = ["memory_planner.h"],
-    deps = [":context"],
+    deps = ["//tensorflow/contrib/lite/c:c_api_internal"],
 )
 
 cc_library(
     name = "simple_memory_arena",
     srcs = ["simple_memory_arena.cc"],
     hdrs = ["simple_memory_arena.h"],
-    deps = [":context"],
+    deps = ["//tensorflow/contrib/lite/c:c_api_internal"],
 )
 
 cc_library(
@@ -91,7 +101,7 @@ cc_library(
     hdrs = [
         "builtin_op_data.h",
     ],
-    deps = [":context"],
+    deps = ["//tensorflow/contrib/lite/c:c_api_internal"],
 )
 
 cc_library(
@@ -121,12 +131,12 @@ cc_library(
     name = "framework",
     srcs = [
         "allocation.cc",
-        "error_reporter.cc",
         "graph_info.cc",
         "interpreter.cc",
         "model.cc",
-        "op_resolver.cc",
+        "mutable_op_resolver.cc",
         "optional_debug_tools.cc",
+        "stderr_reporter.cc",
     ] + select({
         "//tensorflow:android": [
             "nnapi_delegate.cc",
@@ -149,9 +159,11 @@ cc_library(
         "graph_info.h",
         "interpreter.h",
         "model.h",
+        "mutable_op_resolver.h",
         "nnapi_delegate.h",
         "op_resolver.h",
         "optional_debug_tools.h",
+        "stderr_reporter.h",
     ],
     copts = tflite_copts(),
     linkopts = [
@@ -164,20 +176,25 @@ cc_library(
     }),
     deps = [
         ":arena_planner",
-        ":builtin_op_data",
-        ":context",
         ":graph_info",
         ":memory_planner",
         ":schema_fbs_version",
         ":simple_memory_arena",
         ":string",
         ":util",
+        "//tensorflow/contrib/lite/c:c_api_internal",
+        "//tensorflow/contrib/lite/core/api",
         "//tensorflow/contrib/lite/kernels:eigen_support",
         "//tensorflow/contrib/lite/kernels:gemm_support",
         "//tensorflow/contrib/lite/nnapi:nnapi_lib",
         "//tensorflow/contrib/lite/profiling:profiler",
         "//tensorflow/contrib/lite/schema:schema_fbs",
-    ],
+    ] + select({
+        ":with_tflite_flex": [
+            "//tensorflow/contrib/lite/delegates/flex:delegate",
+        ],
+        "//conditions:default": [],
+    }),
 )
 
 cc_library(
@@ -210,6 +227,8 @@ cc_test(
     deps = [
         ":framework",
         ":string_util",
+        "//tensorflow/contrib/lite/c:c_api_internal",
+        "//tensorflow/contrib/lite/core/api",
         "//tensorflow/contrib/lite/kernels:builtin_ops",
         "//tensorflow/contrib/lite/kernels:kernel_util",
         "//tensorflow/contrib/lite/kernels/internal:tensor_utils",
@@ -254,11 +273,34 @@ cc_test(
         "testdata/0_subgraphs.bin",
         "testdata/2_subgraphs.bin",
         "testdata/empty_model.bin",
+        "testdata/multi_add_flex.bin",
         "testdata/test_model.bin",
         "testdata/test_model_broken.bin",
     ],
     deps = [
         ":framework",
+        "//tensorflow/contrib/lite/c:c_api_internal",
+        "//tensorflow/contrib/lite/core/api",
+        "//tensorflow/contrib/lite/kernels:builtin_ops",
+        "//tensorflow/contrib/lite/testing:util",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+# Test model framework with the flex library linked into the target.
+tf_cc_test(
+    name = "model_flex_test",
+    size = "small",
+    srcs = ["model_flex_test.cc"],
+    data = [
+        "testdata/multi_add_flex.bin",
+    ],
+    tags = ["no_windows"],  # TODO(b/116667551): No weak symbols with MSVC.
+    deps = [
+        ":framework",
+        "//tensorflow/contrib/lite/core/api",
+        "//tensorflow/contrib/lite/delegates/flex:delegate",
+        "//tensorflow/contrib/lite/kernels:builtin_ops",
         "//tensorflow/contrib/lite/testing:util",
         "@com_google_googletest//:gtest",
     ],
@@ -266,22 +308,10 @@ cc_test(
 
 # Test OpResolver.
 cc_test(
-    name = "op_resolver_test",
+    name = "mutable_op_resolver_test",
     size = "small",
-    srcs = ["op_resolver_test.cc"],
+    srcs = ["mutable_op_resolver_test.cc"],
     tags = ["no_oss"],
-    deps = [
-        ":framework",
-        "//tensorflow/contrib/lite/testing:util",
-        "@com_google_googletest//:gtest",
-    ],
-)
-
-# Test the C extension API code.
-cc_test(
-    name = "context_test",
-    size = "small",
-    srcs = ["context_test.cc"],
     deps = [
         ":framework",
         "//tensorflow/contrib/lite/testing:util",
@@ -294,7 +324,7 @@ cc_library(
     srcs = ["util.cc"],
     hdrs = ["util.h"],
     deps = [
-        ":context",
+        "//tensorflow/contrib/lite/c:c_api_internal",
     ],
 )
 
@@ -304,7 +334,6 @@ cc_test(
     srcs = ["util_test.cc"],
     tags = ["no_oss"],
     deps = [
-        ":context",
         ":util",
         "//tensorflow/contrib/lite/testing:util",
         "@com_google_googletest//:gtest",

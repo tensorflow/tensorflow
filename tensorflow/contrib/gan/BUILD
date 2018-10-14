@@ -105,6 +105,7 @@ py_library(
     deps = [
         ":gan_estimator",
         ":head",
+        ":stargan_estimator",
         "//tensorflow/python:util",
     ],
 )
@@ -511,6 +512,57 @@ py_test(
     deps = [
         ":gan_estimator",
         ":namedtuples",
+        ":tuple_losses",
+        "//tensorflow/contrib/layers:layers_py",
+        "//tensorflow/contrib/learn",
+        "//tensorflow/core:protos_all_py",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:metrics",
+        "//tensorflow/python:parsing_ops",
+        "//tensorflow/python:summary",
+        "//tensorflow/python:training",
+        "//tensorflow/python:training_util",
+        "//tensorflow/python:variable_scope",
+        "//tensorflow/python/estimator:estimator_py",
+        "//third_party/py/numpy",
+        "@absl_py//absl/testing:parameterized",
+        "@six_archive//:six",
+    ],
+)
+
+py_library(
+    name = "stargan_estimator",
+    srcs = [
+        "python/estimator/python/stargan_estimator.py",
+        "python/estimator/python/stargan_estimator_impl.py",
+    ],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":namedtuples",
+        ":summaries",
+        ":train",
+        "//tensorflow/contrib/framework:framework_py",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:metrics",
+        "//tensorflow/python:util",
+        "//tensorflow/python:variable_scope",
+        "//tensorflow/python/estimator:estimator_py",
+    ],
+)
+
+py_test(
+    name = "stargan_estimator_test",
+    srcs = ["python/estimator/python/stargan_estimator_test.py"],
+    shard_count = 1,
+    srcs_version = "PY2AND3",
+    tags = ["notsan"],
+    deps = [
+        ":namedtuples",
+        ":stargan_estimator",
         ":tuple_losses",
         "//tensorflow/contrib/layers:layers_py",
         "//tensorflow/contrib/learn",

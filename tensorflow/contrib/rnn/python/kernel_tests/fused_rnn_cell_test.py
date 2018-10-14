@@ -38,7 +38,7 @@ class FusedRnnCellTest(test.TestCase):
   def testBasicRNNFusedWrapper(self):
     """This test checks that using a wrapper for BasicRNN works as expected."""
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       initializer = init_ops.random_uniform_initializer(
           -0.01, 0.01, seed=19890212)
       cell = rnn_cell.BasicRNNCell(10)
@@ -106,7 +106,7 @@ class FusedRnnCellTest(test.TestCase):
         self.assertAllClose(basic, fused, rtol=1e-2, atol=1e-2)
 
   def testTimeReversedFusedRNN(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       initializer = init_ops.random_uniform_initializer(
           -0.01, 0.01, seed=19890213)
       fw_cell = rnn_cell.BasicRNNCell(10)

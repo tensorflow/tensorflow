@@ -147,7 +147,7 @@ class GatherTest(test.TestCase):
 
   def testString(self):
     params = np.array([[b"asdf", b"zxcv"], [b"qwer", b"uiop"]])
-    with self.test_session():
+    with self.cached_session():
       self.assertAllEqual([b"qwer", b"uiop"],
                           array_ops.gather(params, 1, axis=0).eval())
       self.assertAllEqual([b"asdf", b"qwer"],
@@ -157,7 +157,7 @@ class GatherTest(test.TestCase):
     for unsigned_type in (dtypes.uint32, dtypes.uint64):
       params = self._buildParams(
           np.array([[1, 2, 3], [7, 8, 9]]), unsigned_type)
-      with self.test_session():
+      with self.cached_session():
         self.assertAllEqual([7, 8, 9],
                             array_ops.gather(params, 1, axis=0).eval())
         self.assertAllEqual([1, 7], array_ops.gather(params, 0, axis=1).eval())

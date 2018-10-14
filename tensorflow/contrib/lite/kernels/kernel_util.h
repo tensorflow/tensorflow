@@ -16,9 +16,10 @@ limitations under the License.
 #define TENSORFLOW_CONTRIB_LITE_KERNELS_KERNEL_UTIL_H_
 
 #include <algorithm>
+#include <limits>
 
-#include "tensorflow/contrib/lite/builtin_op_data.h"
-#include "tensorflow/contrib/lite/context.h"
+#include "tensorflow/contrib/lite/c/builtin_op_data.h"
+#include "tensorflow/contrib/lite/c/c_api_internal.h"
 
 namespace tflite {
 
@@ -29,6 +30,11 @@ inline int SizeOfDimension(const TfLiteTensor* t, int dim) {
 inline const TfLiteTensor* GetInput(TfLiteContext* context, TfLiteNode* node,
                                     int index) {
   return &context->tensors[node->inputs->data[index]];
+}
+inline TfLiteTensor* GetVariableInput(TfLiteContext* context, TfLiteNode* node,
+                                      int index) {
+  TfLiteTensor* tensor = &context->tensors[node->inputs->data[index]];
+  return (tensor->is_variable) ? tensor : nullptr;
 }
 inline TfLiteTensor* GetOutput(TfLiteContext* context, TfLiteNode* node,
                                int index) {

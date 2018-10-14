@@ -18,7 +18,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/data/sql/query_connection.h"
 
 namespace tensorflow {
-
+namespace data {
 namespace sql {
 
 // A factory class for creating `QueryConnection` instances.
@@ -35,7 +35,7 @@ class DriverManager {
 };
 
 }  // namespace sql
-
+}  // namespace data
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_CORE_KERNELS_DATA_SQL_DRIVER_MANAGER_H_

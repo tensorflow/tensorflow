@@ -72,7 +72,7 @@ class TapeTest(test.TestCase):
     a = constant_op.constant([[1., 0.], [0., 1.]])
     b = constant_op.constant([[1., 2.], [3., 4.]])
     da, db = backprop.gradients_function(fn, [0, 1])(a, b)
-    with context.graph_mode(), self.test_session():
+    with context.graph_mode(), self.cached_session():
       tf_a = constant_op.constant([[1, 0], [0, 1]], dtype=dtypes.float32)
       tf_b = constant_op.constant([[1, 2], [3, 4]], dtype=dtypes.float32)
       tf_c = tf_a + tf_b
@@ -135,7 +135,7 @@ class TapeTest(test.TestCase):
     a = constant_op.constant([[1., 0.], [0., 1.]])
     b = constant_op.constant([[1., 2.], [3., 4.]])
     da, db = backprop.gradients_function(fn, [0, 1])(a, b)
-    with context.graph_mode(), self.test_session():
+    with context.graph_mode(), self.cached_session():
       tf_a = constant_op.constant([[1, 0], [0, 1]], dtype=dtypes.float32)
       tf_b = constant_op.constant([[1, 2], [3, 4]], dtype=dtypes.float32)
       tf_mm = math_ops.matmul(tf_a, tf_b)

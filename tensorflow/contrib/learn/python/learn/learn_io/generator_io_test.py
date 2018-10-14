@@ -38,7 +38,7 @@ class GeneratorIoTest(test.TestCase):
             'label': np.ones(1) * index - 32
         }
 
-    with self.test_session() as session:
+    with self.cached_session() as session:
       input_fn = generator_io.generator_input_fn(
           generator,
           target_key='label',
@@ -68,7 +68,7 @@ class GeneratorIoTest(test.TestCase):
       for index in range(2):
         yield {'a': np.ones(1) * index}
 
-    with self.test_session() as session:
+    with self.cached_session() as session:
       input_fn = generator_io.generator_input_fn(
           generator, target_key=None, batch_size=2, shuffle=False, num_epochs=1)
       features = input_fn()
@@ -97,7 +97,7 @@ class GeneratorIoTest(test.TestCase):
             'label2': np.ones(1) * index - 64,
         }
 
-    with self.test_session() as session:
+    with self.cached_session() as session:
       input_fn = generator_io.generator_input_fn(
           generator,
           target_key=['label', 'label2'],
@@ -134,7 +134,7 @@ class GeneratorIoTest(test.TestCase):
             'label': np.ones((3, 3)) * index - 32
         }
 
-    with self.test_session() as session:
+    with self.cached_session() as session:
       input_fn = generator_io.generator_input_fn(
           generator,
           target_key='label',
@@ -162,7 +162,7 @@ class GeneratorIoTest(test.TestCase):
 
   def testGeneratorInputFnWithXAsNonGeneratorFunction(self):
     x = np.arange(32, 36)
-    with self.test_session():
+    with self.cached_session():
       with self.assertRaisesRegexp(TypeError, 'x must be generator function'):
         failing_input_fn = generator_io.generator_input_fn(
             x, batch_size=2, shuffle=False, num_epochs=1)
@@ -173,7 +173,7 @@ class GeneratorIoTest(test.TestCase):
     def generator():
       return np.arange(32, 36)
 
-    with self.test_session():
+    with self.cached_session():
       with self.assertRaisesRegexp(TypeError, 'x\(\) must be generator'):
         failing_input_fn = generator_io.generator_input_fn(
             generator, batch_size=2, shuffle=False, num_epochs=1)
@@ -184,7 +184,7 @@ class GeneratorIoTest(test.TestCase):
     def generator():
       yield np.arange(32, 36)
 
-    with self.test_session():
+    with self.cached_session():
       with self.assertRaisesRegexp(TypeError, 'x\(\) must yield dict'):
         failing_input_fn = generator_io.generator_input_fn(
             generator, batch_size=2, shuffle=False, num_epochs=1)
@@ -201,7 +201,7 @@ class GeneratorIoTest(test.TestCase):
         }
 
     y = np.arange(32, 36)
-    with self.test_session():
+    with self.cached_session():
       with self.assertRaisesRegexp(TypeError, 'target_key must be str or'
                                    ' Container of str'):
         failing_input_fn = generator_io.generator_input_fn(
@@ -219,7 +219,7 @@ class GeneratorIoTest(test.TestCase):
         }
 
     y = ['label', np.arange(10)]
-    with self.test_session():
+    with self.cached_session():
       with self.assertRaisesRegexp(TypeError, 'target_key must be str or'
                                    ' Container of str'):
         failing_input_fn = generator_io.generator_input_fn(
@@ -237,7 +237,7 @@ class GeneratorIoTest(test.TestCase):
         }
 
     y = ['label', 'target']
-    with self.test_session():
+    with self.cached_session():
       with self.assertRaisesRegexp(KeyError, 'target_key not in yielded dict'):
         failing_input_fn = generator_io.generator_input_fn(
             generator, target_key=y, batch_size=2, shuffle=False, num_epochs=1)
@@ -253,7 +253,7 @@ class GeneratorIoTest(test.TestCase):
             'label': np.ones(1) * index - 32
         }
 
-    with self.test_session() as session:
+    with self.cached_session() as session:
       input_fn = generator_io.generator_input_fn(
           generator, target_key=None, batch_size=2, shuffle=False, num_epochs=1)
       features = input_fn()
@@ -283,7 +283,7 @@ class GeneratorIoTest(test.TestCase):
             'label': np.ones(1) * index - 32
         }
 
-    with self.test_session() as session:
+    with self.cached_session() as session:
       input_fn = generator_io.generator_input_fn(
           generator, target_key=None, batch_size=4, shuffle=False, num_epochs=1)
       features = input_fn()
@@ -319,7 +319,7 @@ class GeneratorIoTest(test.TestCase):
           'label': np.ones(1) * index - 32
       }
 
-    with self.test_session() as session:
+    with self.cached_session() as session:
       input_fn = generator_io.generator_input_fn(
           generator, target_key=None, batch_size=2, shuffle=False, num_epochs=1)
       features = input_fn()

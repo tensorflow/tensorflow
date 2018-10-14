@@ -22,11 +22,6 @@ limitations under the License.
 namespace xla {
 namespace {
 class IndexedArrayAnalysisTest : public HloVerifiedTestBase {
- public:
-  IndexedArrayAnalysisTest()
-      : HloVerifiedTestBase(/*layout_sensitive=*/false,
-                            /*allow_mixed_precision=*/false) {}
-
  protected:
   void AssertArrayForRootExpressionIs(const string& hlo_text,
                                       const string& root_expression) {

@@ -10,14 +10,19 @@
 _TF_SYSTEM_LIBS = "TF_SYSTEM_LIBS"
 
 VALID_LIBS = [
+    "absl_py",
     "astor_archive",
+    "boringssl",
+    "com_github_googleapis_googleapis",
+    "com_github_googlecloudplatform_google_cloud_cpp",
     "com_googlesource_code_re2",
     "curl",
     "cython",
+    "double_conversion",
     "flatbuffers",
+    "gast_archive",
     "gif_archive",
     "grpc",
-    "jemalloc",
     "jpeg",
     "jsoncpp_git",
     "lmdb",

@@ -29,7 +29,8 @@ from tensorflow.python.util import tf_inspect
 def get_test_data(train_samples,
                   test_samples,
                   input_shape,
-                  num_classes):
+                  num_classes,
+                  random_seed=None):
   """Generates test data to train a model on.
 
   Arguments:
@@ -37,10 +38,13 @@ def get_test_data(train_samples,
     test_samples: Integer, how many test samples to generate.
     input_shape: Tuple of integers, shape of the inputs.
     num_classes: Integer, number of classes for the data and targets.
+    random_seed: Integer, random seed used by numpy to generate data.
 
   Returns:
     A tuple of Numpy arrays: `(x_train, y_train), (x_test, y_test)`.
   """
+  if random_seed is not None:
+    np.random.seed(random_seed)
   num_sample = train_samples + test_samples
   templates = 2 * num_classes * np.random.random((num_classes,) + input_shape)
   y = np.random.randint(0, num_classes, size=(num_sample,))
@@ -162,8 +166,9 @@ def layer_test(layer_cls, kwargs=None, input_shape=None, input_dtype=None,
     if expected_dim is not None:
       if expected_dim != actual_dim:
         raise AssertionError(
-            'When testing layer %s, for input %s, found output_shape='
-            '%s but expected to find %s.\nFull kwargs: %s' %
+            'When testing layer %s **after deserialization**, '
+            'for input %s, found output_shape='
+            '%s but expected to find inferred shape %s.\nFull kwargs: %s' %
             (layer_cls.__name__,
              x,
              actual_output_shape,

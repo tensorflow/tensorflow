@@ -248,6 +248,7 @@ class TestBeamStep(test.TestCase):
     self.vocab_size = 5
     self.end_token = 0
     self.length_penalty_weight = 0.6
+    self.coverage_penalty_weight = 0.0
 
   def test_step(self):
     dummy_cell_state = array_ops.zeros([self.batch_size, self.beam_width])
@@ -258,7 +259,8 @@ class TestBeamStep(test.TestCase):
         lengths=constant_op.constant(
             2, shape=[self.batch_size, self.beam_width], dtype=dtypes.int64),
         finished=array_ops.zeros(
-            [self.batch_size, self.beam_width], dtype=dtypes.bool))
+            [self.batch_size, self.beam_width], dtype=dtypes.bool),
+        accumulated_attention_probs=())
 
     logits_ = np.full([self.batch_size, self.beam_width, self.vocab_size],
                       0.0001)
@@ -281,7 +283,8 @@ class TestBeamStep(test.TestCase):
         batch_size=ops.convert_to_tensor(self.batch_size),
         beam_width=self.beam_width,
         end_token=self.end_token,
-        length_penalty_weight=self.length_penalty_weight)
+        length_penalty_weight=self.length_penalty_weight,
+        coverage_penalty_weight=self.coverage_penalty_weight)
 
     with self.cached_session() as sess:
       outputs_, next_state_, state_, log_probs_ = sess.run(
@@ -313,7 +316,8 @@ class TestBeamStep(test.TestCase):
         lengths=ops.convert_to_tensor(
             [[2, 1, 2], [2, 2, 1]], dtype=dtypes.int64),
         finished=ops.convert_to_tensor(
-            [[False, True, False], [False, False, True]], dtype=dtypes.bool))
+            [[False, True, False], [False, False, True]], dtype=dtypes.bool),
+        accumulated_attention_probs=())
 
     logits_ = np.full([self.batch_size, self.beam_width, self.vocab_size],
                       0.0001)
@@ -336,7 +340,8 @@ class TestBeamStep(test.TestCase):
         batch_size=ops.convert_to_tensor(self.batch_size),
         beam_width=self.beam_width,
         end_token=self.end_token,
-        length_penalty_weight=self.length_penalty_weight)
+        length_penalty_weight=self.length_penalty_weight,
+        coverage_penalty_weight=self.coverage_penalty_weight)
 
     with self.cached_session() as sess:
       outputs_, next_state_, state_, log_probs_ = sess.run(
@@ -372,6 +377,7 @@ class TestLargeBeamStep(test.TestCase):
     self.vocab_size = 5
     self.end_token = 0
     self.length_penalty_weight = 0.6
+    self.coverage_penalty_weight = 0.0
 
   def test_step(self):
 
@@ -411,7 +417,8 @@ class TestLargeBeamStep(test.TestCase):
         cell_state=dummy_cell_state,
         log_probs=log_probs,
         lengths=_lengths,
-        finished=_finished)
+        finished=_finished,
+        accumulated_attention_probs=())
 
     logits_ = np.full([self.batch_size, self.beam_width, self.vocab_size],
                       0.0001)
@@ -434,7 +441,8 @@ class TestLargeBeamStep(test.TestCase):
         batch_size=ops.convert_to_tensor(self.batch_size),
         beam_width=self.beam_width,
         end_token=self.end_token,
-        length_penalty_weight=self.length_penalty_weight)
+        length_penalty_weight=self.length_penalty_weight,
+        coverage_penalty_weight=self.coverage_penalty_weight)
 
     with self.cached_session() as sess:
       outputs_, next_state_, _, _ = sess.run(
@@ -476,7 +484,9 @@ class BeamSearchDecoderTest(test.TestCase):
       embedding = np.random.randn(vocab_size, embedding_dim).astype(np.float32)
       cell = rnn_cell.LSTMCell(cell_depth)
       initial_state = cell.zero_state(batch_size, dtypes.float32)
+      coverage_penalty_weight = 0.0
       if has_attention:
+        coverage_penalty_weight = 0.2
         inputs = array_ops.placeholder_with_default(
             np.random.randn(batch_size, decoder_max_time, input_depth).astype(
                 np.float32),
@@ -508,7 +518,8 @@ class BeamSearchDecoderTest(test.TestCase):
           initial_state=cell_state,
           beam_width=beam_width,
           output_layer=output_layer,
-          length_penalty_weight=0.0)
+          length_penalty_weight=0.0,
+          coverage_penalty_weight=coverage_penalty_weight)
 
       final_outputs, final_state, final_sequence_lengths = (
           decoder.dynamic_decode(

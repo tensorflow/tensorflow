@@ -38,11 +38,11 @@ using xla::llvm_ir::AsStringRef;
 
 static void AddEmbeddedProtocolBufferToLlvmModule(
     llvm::Module* module, const ::tensorflow::protobuf::MessageLite& proto,
-    StringPiece unique_identifier, string* protobuf_array_symbol_name,
+    absl::string_view unique_identifier, string* protobuf_array_symbol_name,
     int64* protobuf_array_size) {
   string protobuf_array_contents = proto.SerializeAsString();
   *protobuf_array_symbol_name =
-      strings::StrCat(unique_identifier, "_protobuf_array_contents");
+      absl::StrCat(unique_identifier, "_protobuf_array_contents");
   *protobuf_array_size = protobuf_array_contents.size();
 
   llvm::Constant* protobuf_array_initializer =
@@ -55,9 +55,9 @@ static void AddEmbeddedProtocolBufferToLlvmModule(
       protobuf_array_initializer, AsStringRef(*protobuf_array_symbol_name));
 }
 
-static string CreateCPPShimExpression(StringPiece qualified_cpp_protobuf_name,
-                                      StringPiece protobuf_array_symbol_name,
-                                      int64 protobuf_array_size) {
+static string CreateCPPShimExpression(
+    absl::string_view qualified_cpp_protobuf_name,
+    absl::string_view protobuf_array_symbol_name, int64 protobuf_array_size) {
   string code =
       "[]() {\n"
       "    {{PROTOBUF_NAME}}* proto = new {{PROTOBUF_NAME}};\n"
@@ -68,9 +68,9 @@ static string CreateCPPShimExpression(StringPiece qualified_cpp_protobuf_name,
   return absl::StrReplaceAll(
       code,
       {
-          {"{{ARRAY_SYMBOL}}", strings::StrCat(protobuf_array_symbol_name)},
-          {"{{ARRAY_SIZE}}", strings::StrCat(protobuf_array_size)},
-          {"{{PROTOBUF_NAME}}", strings::StrCat(qualified_cpp_protobuf_name)},
+          {"{{ARRAY_SYMBOL}}", absl::StrCat(protobuf_array_symbol_name)},
+          {"{{ARRAY_SIZE}}", absl::StrCat(protobuf_array_size)},
+          {"{{PROTOBUF_NAME}}", absl::StrCat(qualified_cpp_protobuf_name)},
       });
 }
 
@@ -93,7 +93,7 @@ static StatusOr<string> CodegenModule(llvm::TargetMachine* target_machine,
 }
 
 static StatusOr<std::unique_ptr<llvm::TargetMachine>>
-GetTargetMachineFromTriple(StringPiece target_triple) {
+GetTargetMachineFromTriple(absl::string_view target_triple) {
   std::string error;
   std::string normalized_triple =
       llvm::Triple::normalize(AsStringRef(absl::string_view(target_triple)));
@@ -110,8 +110,8 @@ GetTargetMachineFromTriple(StringPiece target_triple) {
 }
 
 StatusOr<EmbeddedProtocolBuffers> CreateEmbeddedProtocolBuffers(
-    StringPiece target_triple,
-    gtl::ArraySlice<ProtobufToEmbed> protobufs_to_embed) {
+    absl::string_view target_triple,
+    absl::Span<const ProtobufToEmbed> protobufs_to_embed) {
   TF_ASSIGN_OR_RETURN(std::unique_ptr<llvm::TargetMachine> target_machine,
                       GetTargetMachineFromTriple(target_triple));
 
@@ -135,8 +135,8 @@ StatusOr<EmbeddedProtocolBuffers> CreateEmbeddedProtocolBuffers(
           protobuf_to_embed.qualified_cpp_protobuf_name,
           protobuf_array_symbol_name, protobuf_array_size);
 
-      cpp_variable_decl = strings::StrCat("extern \"C\" char ",
-                                          protobuf_array_symbol_name, "[];");
+      cpp_variable_decl =
+          absl::StrCat("extern \"C\" char ", protobuf_array_symbol_name, "[];");
     } else {
       cpp_shim = "nullptr";
     }

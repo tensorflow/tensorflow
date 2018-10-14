@@ -17,7 +17,7 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 
-#include "tensorflow/contrib/lite/context.h"
+#include "tensorflow/contrib/lite/c/c_api_internal.h"
 #include "tensorflow/contrib/lite/util.h"
 
 namespace tflite {
@@ -41,14 +41,14 @@ TEST(ConvertVectorToTfLiteIntArray, TestWithEmptyVector) {
   TfLiteIntArrayFree(output);
 }
 
-TEST(UtilTest, IsEagerOp) {
-  EXPECT_TRUE(IsEagerOp("Eager"));
-  EXPECT_TRUE(IsEagerOp("EagerOp"));
-  EXPECT_FALSE(IsEagerOp("eager"));
-  EXPECT_FALSE(IsEagerOp("Eage"));
-  EXPECT_FALSE(IsEagerOp("OpEager"));
-  EXPECT_FALSE(IsEagerOp(nullptr));
-  EXPECT_FALSE(IsEagerOp(""));
+TEST(UtilTest, IsFlexOp) {
+  EXPECT_TRUE(IsFlexOp("Flex"));
+  EXPECT_TRUE(IsFlexOp("FlexOp"));
+  EXPECT_FALSE(IsFlexOp("flex"));
+  EXPECT_FALSE(IsFlexOp("Fle"));
+  EXPECT_FALSE(IsFlexOp("OpFlex"));
+  EXPECT_FALSE(IsFlexOp(nullptr));
+  EXPECT_FALSE(IsFlexOp(""));
 }
 
 }  // namespace

@@ -25,7 +25,7 @@ namespace xla {
 
 // A pass which replaces all fusion instructions with the equivalent un-fused
 // instructions.
-class Defuser : public HloPassInterface {
+class Defuser : public HloModulePass {
  public:
   Defuser() {}
   ~Defuser() override {}

@@ -24,6 +24,7 @@ tf_cc_binary(
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
+        "@com_google_absl//absl/base",
         "@com_google_absl//absl/strings",
     ],
 )
@@ -43,6 +44,7 @@ cc_library(
         "//tensorflow/compiler/xla/service",
         "//tensorflow/compiler/xla/service:hlo_proto",
         "//tensorflow/core:lib",
+        "@com_google_absl//absl/types:span",
     ],
 )
 
@@ -68,6 +70,7 @@ tf_cc_binary(
         "//tensorflow/compiler/xla/service:hlo_proto",
         "//tensorflow/compiler/xla/service:interpreter_plugin",
         "//tensorflow/core:lib",
+        "@com_google_absl//absl/types:span",
     ],
 )
 
@@ -95,6 +98,7 @@ cc_library(
         "//tensorflow/compiler/xla/tests:test_utils",
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
+        "@com_google_absl//absl/types:span",
     ],
     alwayslink = True,
 )
@@ -173,6 +177,7 @@ tf_cc_binary(
         "//tensorflow/compiler/xla/service:hlo_proto",
         "//tensorflow/compiler/xla/service:interpreter_plugin",
         "//tensorflow/core:lib",
+        "@com_google_absl//absl/types:span",
     ],
 )
 
@@ -193,6 +198,8 @@ tf_cc_binary(
         "//tensorflow/compiler/xla/service:interpreter_plugin",
         "//tensorflow/core:lib",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/types:span",
     ],
 )
 
@@ -212,6 +219,7 @@ tf_cc_binary(
         "//tensorflow/compiler/xla/service:hlo_proto",
         "//tensorflow/compiler/xla/service:interpreter_plugin",
         "//tensorflow/core:lib",
+        "@com_google_absl//absl/types:span",
     ],
 )
 

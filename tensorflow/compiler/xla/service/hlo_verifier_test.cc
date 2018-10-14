@@ -22,6 +22,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/hlo_parser.h"
+#include "tensorflow/compiler/xla/service/layout_assignment.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
@@ -34,6 +35,8 @@ namespace {
 
 using ::testing::HasSubstr;
 
+// This class cannot be converted to use HloVerifiedTestBase. It explicitly
+// uses HloTestBase to create and test malformed HLOs.
 class HloVerifierTest : public HloTestBase {
  public:
   HloVerifierTest()
@@ -46,6 +49,14 @@ class HloVerifierTestAllowMixedPrecision : public HloTestBase {
   HloVerifierTestAllowMixedPrecision()
       : HloTestBase(/*verifier_layout_sensitive=*/false,
                     /*allow_mixed_precision_in_hlo_verifier=*/true) {}
+};
+
+class HloVerifierTestLayoutSensitive : public HloTestBase {
+ public:
+  HloVerifierTestLayoutSensitive()
+      : HloTestBase(/*verifier_layout_sensitive=*/true,
+                    /*allow_mixed_precision_in_hlo_verifier=*/false,
+                    LayoutAssignment::InstructionCanChangeLayout) {}
 };
 
 TEST_F(HloVerifierTest, NullInstructionParent) {
@@ -277,5 +288,142 @@ TEST_F(HloVerifierTest, RngElementTypeNotSupported) {
   EXPECT_THAT(status.error_message(), HasSubstr("Element type not supported"));
 }
 
+TEST_F(HloVerifierTest, NegativeInteriorPaddingNotAllowed) {
+  // This testcase can't be written using textual HLO, because it doesn't parse
+  // negative interior padding.  That's probably a feature.  :)
+  HloComputation::Builder builder(TestName());
+  HloInstruction* param =
+      builder.AddInstruction(HloInstruction::CreateParameter(
+          0, ShapeUtil::MakeShape(F32, {100}), "param"));
+  PaddingConfig padding_config;
+  padding_config.add_dimensions()->set_interior_padding(-1);
+  builder.AddInstruction(HloInstruction::CreatePad(
+      ShapeUtil::MakeShape(F32, {100}), param,
+      builder.AddInstruction(
+          HloInstruction::CreateConstant(LiteralUtil::Zero(F32))),
+      padding_config));
+
+  auto module = CreateNewModule();
+  module->AddEntryComputation(builder.Build());
+
+  auto status = verifier().Run(module.get()).status();
+  ASSERT_FALSE(status.ok());
+  EXPECT_THAT(status.error_message(),
+              HasSubstr("Interior padding cannot be negative"));
+}
+
+TEST_F(HloVerifierTest, PadNegativeInteriorDilationNotAllowed) {
+  // This testcase can't be written using textual HLO, because it doesn't parse
+  // negative interior padding.  That's probably a feature.  :)
+  HloComputation::Builder builder(TestName());
+  HloInstruction* param =
+      builder.AddInstruction(HloInstruction::CreateParameter(
+          0, ShapeUtil::MakeShape(F32, {100}), "param"));
+  PaddingConfig padding_config;
+  padding_config.add_dimensions()->set_interior_padding(-1);
+  builder.AddInstruction(HloInstruction::CreatePad(
+      ShapeUtil::MakeShape(F32, {100}), param,
+      builder.AddInstruction(
+          HloInstruction::CreateConstant(LiteralUtil::Zero(F32).Clone())),
+      padding_config));
+
+  auto module = CreateNewModule();
+  module->AddEntryComputation(builder.Build());
+
+  EXPECT_THAT(verifier().Run(module.get()).status().error_message(),
+              HasSubstr("Interior padding cannot be negative"));
+}
+
+// Simple module containing a convolution as the root.
+static const char* const kConvHloString = R"(
+HloModule module
+ENTRY entry_computation {
+  param0 = f16[128,128,56,56] parameter(0)
+  param1 = f16[3,3,128,128] parameter(1)
+  zero_f16 = f16[] constant(0)
+  ROOT conv = f16[128,128,28,28] convolution(param0, param1),
+    window={size=3x3 stride=2x2}, dim_labels=bf01_01io->bf01
+})";
+
+TEST_F(HloVerifierTest, ConvNegativeWindowDilationNotAllowed) {
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseHloString(kConvHloString));
+  auto* conv = module->entry_computation()->root_instruction();
+  Window w = conv->window();
+  w.mutable_dimensions(0)->set_window_dilation(-1);
+  conv->set_window(w);
+
+  EXPECT_THAT(verifier().Run(module.get()).status().error_message(),
+              HasSubstr("non-positive window dilation factor"));
+}
+
+TEST_F(HloVerifierTest, ConvNegativeBaseDilationNotAllowed) {
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseHloString(kConvHloString));
+  auto* conv = module->entry_computation()->root_instruction();
+  Window w = conv->window();
+  w.mutable_dimensions(0)->set_base_dilation(-1);
+  conv->set_window(w);
+
+  EXPECT_THAT(verifier().Run(module.get()).status().error_message(),
+              HasSubstr("non-positive base area dilation factor"));
+}
+
+static const char* const kAddWithLayoutChangeHlo = R"(
+   HloModule AddWithLayoutChange
+    ENTRY AddWithLayoutChange {
+      par0 = f32[3,4]{1,0} parameter(0)
+      par1 = f32[3,4]{0,1} parameter(1)
+      ROOT add0 = f32[3,4]{1,0} add(par0,par1)
+    }
+  )";
+
+TEST_F(HloVerifierTest, AddWithLayoutChange) {
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseHloString(kAddWithLayoutChangeHlo));
+  auto status = verifier().Run(module.get()).status();
+  ASSERT_TRUE(status.ok());
+}
+
+TEST_F(HloVerifierTestLayoutSensitive, AddWithLayoutChangeNotAllowed) {
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseHloString(kAddWithLayoutChangeHlo));
+  auto status = verifier().Run(module.get()).status();
+  ASSERT_FALSE(status.ok());
+  EXPECT_THAT(status.error_message(),
+              HasSubstr("Instruction shouldn't change layouts"));
+}
+
+TEST_F(HloVerifierTestLayoutSensitive, SliceWithLayoutChangeNotAllowed) {
+  const char* const kSliceWithLayoutChangeHlo = R"(
+   HloModule SliceWithLayoutChange
+    ENTRY SliceWithLayoutChange {
+      par0 = f32[4,5]{0,1} parameter(0)
+      par1 = s32[2] parameter(1)
+      ROOT dslice0 = f32[3,4]{1,0} dynamic-slice(par0, par1),
+        dynamic_slice_sizes={3,4}
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseHloString(kSliceWithLayoutChangeHlo));
+  auto status = verifier().Run(module.get()).status();
+  ASSERT_FALSE(status.ok());
+  EXPECT_THAT(status.error_message(),
+              HasSubstr("Instruction shouldn't change layouts"));
+}
+
+TEST_F(HloVerifierTestLayoutSensitive, ConcatWithLayoutChangeNotAllowed) {
+  const char* const kConcatWithLayoutChangeHlo = R"(
+   HloModule ConcatWithLayoutChange
+   ENTRY ConcatWithLayoutChange {
+      par0 = f32[3,5]{0,1} parameter(0)
+      par1 = f32[3,3]{1,0} parameter(1)
+      ROOT concat0 = f32[3,8]{1,0} concatenate(f32[3,5] par0, f32[3,3] par1),
+        dimensions={1}
+   }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseHloString(kConcatWithLayoutChangeHlo));
+  auto status = verifier().Run(module.get()).status();
+  ASSERT_FALSE(status.ok());
+  EXPECT_THAT(status.error_message(),
+              HasSubstr("Instruction shouldn't change layouts"));
+}
 }  // namespace
 }  // namespace xla

@@ -144,8 +144,8 @@ TEST(VariantTest, TypeMismatch) {
 struct TensorList {
   void Encode(VariantTensorData* data) const { data->tensors_ = vec; }
 
-  bool Decode(const VariantTensorData& data) {
-    vec = data.tensors_;
+  bool Decode(VariantTensorData data) {
+    vec = std::move(data.tensors_);
     return true;
   }
 
@@ -186,7 +186,7 @@ TEST(VariantTest, TensorListTest) {
   x.Encode(&serialized);
 
   Variant y = TensorList();
-  y.Decode(serialized);
+  y.Decode(std::move(serialized));
 
   const TensorList& decoded_vec = *y.get<TensorList>();
   for (int i = 0; i < 4; ++i) {
@@ -204,15 +204,6 @@ TEST(VariantTest, TensorListTest) {
   EXPECT_EQ(y_unknown.DebugString(),
             strings::StrCat(
                 "Variant<type: TensorList value: ", data.DebugString(), ">"));
-
-  TensorList unknown_decoded_vec;
-  EXPECT_TRUE(y_unknown.MaybeDecodeAndCopy(&unknown_decoded_vec));
-  for (int i = 0; i < 4; ++i) {
-    EXPECT_EQ(unknown_decoded_vec.vec[i].flat<int>()(0), i);
-  }
-  for (int i = 0; i < 4; ++i) {
-    EXPECT_EQ(unknown_decoded_vec.vec[i + 4].flat<float>()(0), 2 * i);
-  }
 }
 
 TEST(VariantTest, VariantArray) {

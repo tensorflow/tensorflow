@@ -9,13 +9,36 @@ exports_files(["LICENSE"])
 load("//tensorflow:tensorflow.bzl", "py_test")
 
 py_library(
+    name = "distribute",
+    srcs_version = "PY2AND3",
+    visibility = ["//visibility:public"],
+    deps = [
+        ":distribute_config",
+        ":distribute_coordinator",
+        ":distribute_coordinator_context",
+    ],
+)
+
+py_library(
+    name = "distribute_config",
+    srcs = [
+        "distribute_config.py",
+    ],
+    deps = [],
+)
+
+py_library(
     name = "distribute_coordinator",
     srcs = [
         "distribute_coordinator.py",
     ],
     srcs_version = "PY2AND3",
     deps = [
+        ":distribute_coordinator_context",
+        ":multi_worker_util",
         "//tensorflow/core:protos_all_py",
+        "//tensorflow/python:platform",
+        "//tensorflow/python:session",
         "//tensorflow/python:training",
     ],
 )
@@ -25,7 +48,11 @@ py_test(
     size = "large",
     srcs = ["distribute_coordinator_test.py"],
     srcs_version = "PY2AND3",
-    tags = ["no_pip"],
+    tags = [
+        "manual",
+        "no_pip",
+        "notap",
+    ],
     deps = [
         ":distribute_coordinator",
         "//tensorflow/core:protos_all_py",
@@ -79,5 +106,19 @@ py_test(
         "//tensorflow/python/eager:test",
         "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+# Used only by estimator.
+py_library(
+    name = "estimator_training",
+    srcs = [
+        "estimator_training.py",
+    ],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":distribute_coordinator",
+        ":distribute_coordinator_context",
+        "//tensorflow/python:training",
     ],
 )

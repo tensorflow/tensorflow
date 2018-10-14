@@ -15,6 +15,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CONTRIB_LITE_EXPERIMENTAL_C_C_API_H_
 #define TENSORFLOW_CONTRIB_LITE_EXPERIMENTAL_C_C_API_H_
 
+#include <stdarg.h>
 #include <stdint.h>
 
 // Eventually the various C APIs defined in context.h will be migrated into
@@ -52,8 +53,9 @@ limitations under the License.
 extern "C" {
 #endif  // __cplusplus
 
-typedef TfLiteTensor TFL_Tensor;
+typedef TfLiteRegistration TFL_Registration;
 typedef TfLiteStatus TFL_Status;
+typedef TfLiteTensor TFL_Tensor;
 typedef TfLiteType TFL_Type;
 
 // --------------------------------------------------------------------------
@@ -85,6 +87,17 @@ TFL_CAPI_EXPORT extern void TFL_DeleteInterpreterOptions(
 TFL_CAPI_EXPORT extern void TFL_InterpreterOptionsSetNumThreads(
     TFL_InterpreterOptions* options, int32_t num_threads);
 
+// Sets a custom error reporter for interpreter execution.
+//
+// * `reporter` takes the provided `user_data` object, as well as a C-style
+//   format string and arg list (see also vprintf).
+// * `user_data` is optional. If provided, it is owned by the client and must
+//   remain valid for the duration of the interpreter lifetime.
+TFL_CAPI_EXPORT extern void TFL_InterpreterOptionsSetErrorReporter(
+    TFL_InterpreterOptions* options,
+    void (*reporter)(void* user_data, const char* format, va_list args),
+    void* user_data);
+
 // --------------------------------------------------------------------------
 // TFL_Interpreter provides inference from a provided model.
 typedef struct TFL_Interpreter TFL_Interpreter;
@@ -93,7 +106,8 @@ typedef struct TFL_Interpreter TFL_Interpreter;
 // failure.
 //
 // * `model` must be a valid model instance. The caller retains ownership of the
-//   object, and can destroy it immediately after creating the interpreter.
+//   object, and can destroy it immediately after creating the interpreter; the
+//   interpreter will maintain its own reference to the underlying model data.
 // * `optional_options` may be null. The caller retains ownership of the object,
 //   and can safely destroy it immediately after creating the interpreter.
 //
@@ -145,6 +159,11 @@ TFL_CAPI_EXPORT extern int32_t TFL_InterpreterGetOutputTensorCount(
 
 // Returns the tensor associated with the output index.
 // REQUIRES: 0 <= input_index < TFL_InterpreterGetOutputTensorCount(tensor)
+//
+// NOTE: The shape and underlying data buffer for output tensors may be not
+// be available until after the output tensor has been both sized and allocated.
+// In general, best practice is to interact with the output tensor *after*
+// calling TFL_InterpreterInvoke().
 TFL_CAPI_EXPORT extern const TFL_Tensor* TFL_InterpreterGetOutputTensor(
     const TFL_Interpreter* interpreter, int32_t output_index);
 
@@ -172,11 +191,14 @@ TFL_CAPI_EXPORT extern size_t TFL_TensorByteSize(const TFL_Tensor* tensor);
 
 // Returns a pointer to the underlying data buffer.
 //
-// Note: The result may be null if tensors have not yet been allocated, e.g.,
+// NOTE: The result may be null if tensors have not yet been allocated, e.g.,
 // if the Tensor has just been created or resized and `TFL_AllocateTensors()`
 // has yet to be called, or if the output tensor is dynamically sized and the
 // interpreter hasn't been invoked.
 TFL_CAPI_EXPORT extern void* TFL_TensorData(const TFL_Tensor* tensor);
+
+// Returns the (null-terminated) name of the tensor.
+TFL_CAPI_EXPORT extern const char* TFL_TensorName(const TFL_Tensor* tensor);
 
 // Copies from the provided input buffer into the tensor's buffer.
 // REQUIRES: input_data_size == TFL_TensorByteSize(tensor)

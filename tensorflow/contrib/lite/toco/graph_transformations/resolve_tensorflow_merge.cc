@@ -24,11 +24,14 @@ limitations under the License.
 
 namespace toco {
 
-bool ResolveTensorFlowMerge::Run(Model* model, std::size_t op_index) {
+::tensorflow::Status ResolveTensorFlowMerge::Run(Model* model,
+                                                 std::size_t op_index,
+                                                 bool* modified) {
+  *modified = false;
   const auto merge_it = model->operators.begin() + op_index;
   const auto* merge_op = merge_it->get();
   if (merge_op->type != OperatorType::kMerge) {
-    return false;
+    return ::tensorflow::Status::OK();
   }
 
   // We need to yield until this Merge node has only 1 input, which will mean
@@ -37,7 +40,7 @@ bool ResolveTensorFlowMerge::Run(Model* model, std::size_t op_index) {
   // non-selected inputs, so that at some point there will be only 1 input left.
   if (merge_op->inputs.size() > 1) {
     AddMessageF("Waiting for %s to be resolved", LogName(*merge_op));
-    return false;
+    return ::tensorflow::Status::OK();
   }
 
   // Now that the merge node has 1 input exactly, it is the same as an Identity
@@ -57,7 +60,8 @@ bool ResolveTensorFlowMerge::Run(Model* model, std::size_t op_index) {
   AddMessageF("Removing already-resolved %s", LogName(*merge_op));
   model->EraseArray(merge_op->outputs[0]);
   model->operators.erase(merge_it);
-  return true;
+  *modified = true;
+  return ::tensorflow::Status::OK();
 }
 
 }  // namespace toco

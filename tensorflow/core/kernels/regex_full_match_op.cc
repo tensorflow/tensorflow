@@ -20,6 +20,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/util/ptr_util.h"
 
 namespace tensorflow {
 
@@ -55,5 +56,37 @@ class RegexFullMatchOp : public OpKernel {
 
 REGISTER_KERNEL_BUILDER(Name("RegexFullMatch").Device(DEVICE_CPU),
                         RegexFullMatchOp);
+
+class StaticRegexFullMatchOp : public OpKernel {
+ public:
+  explicit StaticRegexFullMatchOp(OpKernelConstruction* ctx) : OpKernel(ctx) {
+    string pattern;
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("pattern", &pattern));
+    re_ = MakeUnique<RE2>(pattern);
+    OP_REQUIRES(ctx, re_->ok(),
+                errors::InvalidArgument("Invalid pattern: ", pattern,
+                                        ", error: ", re_->error()));
+  }
+
+  void Compute(OpKernelContext* ctx) override {
+    const Tensor* input_tensor;
+    OP_REQUIRES_OK(ctx, ctx->input("input", &input_tensor));
+    const auto& input_flat = input_tensor->flat<string>();
+
+    Tensor* output_tensor = nullptr;
+    OP_REQUIRES_OK(ctx, ctx->allocate_output("output", input_tensor->shape(),
+                                             &output_tensor));
+    auto output_flat = output_tensor->flat<bool>();
+    for (size_t i = 0; i < input_flat.size(); ++i) {
+      output_flat(i) = RE2::FullMatch(input_flat(i), *re_);
+    }
+  }
+
+ private:
+  std::unique_ptr<RE2> re_;
+};
+
+REGISTER_KERNEL_BUILDER(Name("StaticRegexFullMatch").Device(DEVICE_CPU),
+                        StaticRegexFullMatchOp);
 
 }  // namespace tensorflow

@@ -98,7 +98,7 @@ Status FusedIrEmitter::HandleGetTupleElement(
     return Unimplemented(
         "GetTupleElement fusion currently only supports"
         " parameter operands, but found operand: %s",
-        operand->name().c_str());
+        operand->name());
   }
   // Emit code to lookup tuple element pointer, and store it in 'gte_values_'.
   llvm::Value* tuple_element_ptr = llvm_ir::EmitGetTupleElement(
@@ -147,7 +147,7 @@ Status FusedIrEmitter::HandleParameter(HloInstruction* parameter) {
 }
 
 Status FusedIrEmitter::HandleTuple(HloInstruction* tuple) {
-  tensorflow::gtl::ArraySlice<HloInstruction*> operands(tuple->operands());
+  absl::Span<HloInstruction* const> operands(tuple->operands());
   std::vector<llvm::Type*> operand_elemental_ir_types;
   for (HloInstruction* operand : operands) {
     operand_elemental_ir_types.push_back(llvm_ir::PrimitiveTypeToIrType(

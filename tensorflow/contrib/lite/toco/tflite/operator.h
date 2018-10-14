@@ -16,6 +16,7 @@ limitations under the License.
 #define TENSORFLOW_CONTRIB_LITE_TOCO_TFLITE_OPERATOR_H_
 
 #include "flatbuffers/flatbuffers.h"
+#include "flatbuffers/flexbuffers.h"
 #include "tensorflow/contrib/lite/schema/schema_generated.h"
 #include "tensorflow/contrib/lite/toco/model.h"
 
@@ -26,11 +27,20 @@ namespace tflite {
 class BaseOperator;
 
 // Return a map contained all know TF Lite Operators, keyed by their names.
-std::map<string, std::unique_ptr<BaseOperator>> BuildOperatorByNameMap();
+// TODO(ycling): The pattern to propagate parameters (e.g. allow_flex_ops)
+// is ugly here. Consider refactoring.
+std::map<string, std::unique_ptr<BaseOperator>> BuildOperatorByNameMap(
+    bool allow_flex_ops = false);
 
 // Return a map contained all know TF Lite Operators, keyed by the type of
 // their tf.mini counterparts.
-std::map<OperatorType, std::unique_ptr<BaseOperator>> BuildOperatorByTypeMap();
+std::map<OperatorType, std::unique_ptr<BaseOperator>> BuildOperatorByTypeMap(
+    bool allow_flex_ops = false);
+
+// Write the custom option FlexBuffer with a serialized TensorFlow NodeDef
+// for a Flex op.
+std::unique_ptr<flexbuffers::Builder> WriteFlexOpOptions(
+    const string& tensorflow_node_def);
 
 // These are the flatbuffer types for custom and builtin options.
 using CustomOptions = flatbuffers::Vector<uint8_t>;
@@ -102,6 +112,11 @@ class BaseOperator {
   string name_;
   OperatorType type_;
 };
+
+// Helper function to determine if a unsupported TensorFlow op should be
+// exported as an Flex op or a regular custom op.
+bool ShouldExportAsFlexOp(bool allow_flex_ops,
+                          const string& tensorflow_op_name);
 
 }  // namespace tflite
 

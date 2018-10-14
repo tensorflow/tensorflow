@@ -33,8 +33,9 @@ from tensorflow.python.ops import gen_io_ops
 # go/tf-wildcard-import
 # pylint: disable=wildcard-import
 from tensorflow.python.ops.gen_io_ops import *
-from tensorflow.python.util.tf_export import tf_export
 # pylint: enable=wildcard-import
+from tensorflow.python.util import deprecation
+from tensorflow.python.util.tf_export import tf_export
 
 
 # pylint: disable=protected-access
@@ -95,7 +96,7 @@ def _restore_slice(file_pattern, tensor_name, shape_and_slice, tensor_type,
       preferred_shard, name=name)
 
 
-@tf_export("ReaderBase")
+@tf_export(v1=["ReaderBase"])
 class ReaderBase(object):
   """Base class for different Reader types, that produce a record every step.
 
@@ -309,7 +310,7 @@ ops.NotDifferentiable("ReaderRestoreState")
 ops.NotDifferentiable("ReaderReset")
 
 
-@tf_export("WholeFileReader")
+@tf_export(v1=["WholeFileReader"])
 class WholeFileReader(ReaderBase):
   """A Reader that outputs the entire contents of a file as a value.
 
@@ -324,6 +325,9 @@ class WholeFileReader(ReaderBase):
   @end_compatibility
   """
 
+  @deprecation.deprecated(
+      None, "Queue-based input pipelines have been replaced by `tf.data`. Use "
+      "`tf.data.Dataset.map(tf.read_file)`.")
   def __init__(self, name=None):
     """Create a WholeFileReader.
 
@@ -337,7 +341,7 @@ class WholeFileReader(ReaderBase):
 ops.NotDifferentiable("WholeFileReader")
 
 
-@tf_export("TextLineReader")
+@tf_export(v1=["TextLineReader"])
 class TextLineReader(ReaderBase):
   """A Reader that outputs the lines of a file delimited by newlines.
 
@@ -351,6 +355,9 @@ class TextLineReader(ReaderBase):
   """
   # TODO(josh11b): Support serializing and restoring state.
 
+  @deprecation.deprecated(
+      None, "Queue-based input pipelines have been replaced by `tf.data`. Use "
+      "`tf.data.TextLineDataset`.")
   def __init__(self, skip_header_lines=None, name=None):
     """Create a TextLineReader.
 
@@ -367,7 +374,7 @@ class TextLineReader(ReaderBase):
 ops.NotDifferentiable("TextLineReader")
 
 
-@tf_export("FixedLengthRecordReader")
+@tf_export(v1=["FixedLengthRecordReader"])
 class FixedLengthRecordReader(ReaderBase):
   """A Reader that outputs fixed-length records from a file.
 
@@ -380,6 +387,9 @@ class FixedLengthRecordReader(ReaderBase):
   """
   # TODO(josh11b): Support serializing and restoring state.
 
+  @deprecation.deprecated(
+      None, "Queue-based input pipelines have been replaced by `tf.data`. Use "
+      "`tf.data.FixedLengthRecordDataset`.")
   def __init__(self,
                record_bytes,
                header_bytes=None,
@@ -410,7 +420,7 @@ class FixedLengthRecordReader(ReaderBase):
 ops.NotDifferentiable("FixedLengthRecordReader")
 
 
-@tf_export("TFRecordReader")
+@tf_export(v1=["TFRecordReader"])
 class TFRecordReader(ReaderBase):
   """A Reader that outputs the records from a TFRecords file.
 
@@ -423,6 +433,9 @@ class TFRecordReader(ReaderBase):
   """
   # TODO(josh11b): Support serializing and restoring state.
 
+  @deprecation.deprecated(
+      None, "Queue-based input pipelines have been replaced by `tf.data`. Use "
+      "`tf.data.TFRecordDataset`.")
   def __init__(self, name=None, options=None):
     """Create a TFRecordReader.
 
@@ -441,7 +454,7 @@ class TFRecordReader(ReaderBase):
 ops.NotDifferentiable("TFRecordReader")
 
 
-@tf_export("LMDBReader")
+@tf_export(v1=["LMDBReader"])
 class LMDBReader(ReaderBase):
   """A Reader that outputs the records from a LMDB file.
 
@@ -452,6 +465,10 @@ class LMDBReader(ReaderBase):
   use `tf.data` to get data into your model.
   @end_compatibility
   """
+
+  @deprecation.deprecated(
+      None, "Queue-based input pipelines have been replaced by `tf.data`. Use "
+      "`tf.contrib.data.LMDBDataset`.")
   def __init__(self, name=None, options=None):
     """Create a LMDBReader.
 
@@ -459,6 +476,7 @@ class LMDBReader(ReaderBase):
       name: A name for the operation (optional).
       options: A LMDBRecordOptions object (optional).
     """
+    del options
     rr = gen_io_ops.lmdb_reader(name=name)
     super(LMDBReader, self).__init__(rr)
 
@@ -466,7 +484,7 @@ class LMDBReader(ReaderBase):
 ops.NotDifferentiable("LMDBReader")
 
 
-@tf_export("IdentityReader")
+@tf_export(v1=["IdentityReader"])
 class IdentityReader(ReaderBase):
   """A Reader that outputs the queued work as both the key and value.
 
@@ -481,6 +499,9 @@ class IdentityReader(ReaderBase):
   @end_compatibility
   """
 
+  @deprecation.deprecated(
+      None, "Queue-based input pipelines have been replaced by `tf.data`. Use "
+      "`tf.data.Dataset.map(...)`.")
   def __init__(self, name=None):
     """Create a IdentityReader.
 

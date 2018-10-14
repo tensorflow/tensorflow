@@ -25,6 +25,8 @@ namespace tensorflow {
 
 class Summary;
 
+namespace data {
+
 // A `StatsAggregator` accumulates statistics incrementally. A
 // `StatsAggregator` can accumulate multiple different statistics, distinguished
 // by a string name.
@@ -87,6 +89,7 @@ class StatsAggregatorResource : public ResourceBase {
   const std::shared_ptr<StatsAggregator> stats_aggregator_;
 };
 
+}  // namespace data
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_CORE_FRAMEWORK_STATS_AGGREGATOR_H_

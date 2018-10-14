@@ -854,6 +854,29 @@ Outputs {
 }
 ```
 
+**FLOOR_DIV**
+
+```
+Inputs {
+  0: a list of tensors.
+  1: a list of tensors.
+}
+Outputs {
+  0: A tensor of floor_div output tensors.
+}
+```
+
+**ZEROS_LIKE**
+
+```
+Inputs {
+  0: a tensor
+}
+Outputs {
+  0: A tensor of the same shape and type as x but filled with zeros
+}
+```
+
 And these are TensorFlow Lite operations that are present but not ready for
 custom models yet:
 

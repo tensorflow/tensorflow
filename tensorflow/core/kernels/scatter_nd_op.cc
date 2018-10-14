@@ -145,6 +145,7 @@ class ScatterNdUpdateOp : public OpKernel {
     if (dtype_ == DT_RESOURCE) {
       Var* v;
       OP_REQUIRES_OK(c, LookupResource(c, HandleFromInput(c, 0), &v));
+      core::ScopedUnref scoped_unref(v);
       mutex_lock m(*v->mu());
       DoCompute(c);
     } else if (use_exclusive_lock_) {

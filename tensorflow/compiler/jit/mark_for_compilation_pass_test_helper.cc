@@ -14,17 +14,34 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/compiler/jit/mark_for_compilation_pass_test_helper.h"
+#include "tensorflow/core/common_runtime/device_factory.h"
+#include "tensorflow/core/lib/gtl/cleanup.h"
 #include "tensorflow/core/public/session_options.h"
 
 namespace tensorflow {
 /*static*/ Status MarkForCompilationPassTestHelper::MarkForCompilation(
     std::unique_ptr<Graph>* graph, FunctionLibraryDefinition* flib_def,
     SessionOptions* session_options) {
-  // Assign all nodes to the CPU device.
+  // Assign all unassigned nodes to the CPU device.
   static const char* kCpuDevice = "/job:localhost/replica:0/task:0/cpu:0";
   for (Node* n : (*graph)->nodes()) {
-    n->set_assigned_device_name(kCpuDevice);
+    if (n->assigned_device_name().empty()) {
+      n->set_assigned_device_name(kCpuDevice);
+    }
   }
+
+  // Call AddDevices to register the XLA devices.
+  //
+  // It may be worth refactoring out XlaOpRegistry::RegisterCompilationDevice to
+  // make this more direct, but probably not worth it solely for this test.
+  std::vector<Device*> devices;
+  TF_RETURN_IF_ERROR(DeviceFactory::AddDevices(*session_options, "", &devices));
+
+  auto delete_devices = gtl::MakeCleanup([&] {
+    for (Device* d : devices) {
+      delete d;
+    }
+  });
 
   GraphOptimizationPassOptions opt_options;
   opt_options.graph = graph;

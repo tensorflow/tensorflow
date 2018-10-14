@@ -19,6 +19,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/memory/memory.h"
 #include "tensorflow/compiler/xla/map_util.h"
 #include "tensorflow/compiler/xla/service/gpu/buffer_allocations.h"
@@ -160,7 +161,7 @@ Status GpuExecutable::ExecuteThunks(
     if (!block_status.ok()) {
       return InternalError(
           "Failed to complete all kernels launched on stream %p: %s",
-          main_stream, block_status.error_message().c_str());
+          main_stream, block_status.error_message());
     }
   }
 
@@ -197,7 +198,7 @@ GpuExecutable::ResolveConstantGlobals(se::StreamExecutor* executor) {
   }
   module_spec.AddCudaPtxInMemory(ptx().c_str());
 
-  tensorflow::gtl::FlatMap<int64, se::DeviceMemoryBase> globals;
+  absl::flat_hash_map<int64, se::DeviceMemoryBase> globals;
   se::ModuleHandle module_handle;
   executor->LoadModule(module_spec, &module_handle);
 
@@ -234,7 +235,7 @@ GpuExecutable::ResolveConstantGlobals(se::StreamExecutor* executor) {
 
 StatusOr<ScopedShapedBuffer> GpuExecutable::ExecuteOnStream(
     const ServiceExecutableRunOptions* run_options,
-    tensorflow::gtl::ArraySlice<const ShapedBuffer*> arguments,
+    absl::Span<const ShapedBuffer* const> arguments,
     HloExecutionProfile* hlo_execution_profile) {
   DeviceMemoryAllocator* memory_allocator = run_options->allocator();
 
@@ -260,10 +261,9 @@ StatusOr<ScopedShapedBuffer> GpuExecutable::ExecuteOnStream(
       if (buffer.is_null() && buffer.size() > 0) {
         return FailedPrecondition(
             "Cannot run XLA computation because pointer to (sub-)buffer at "
-            "index %s of parameter %lld was null.  All pointers to "
-            "(sub-)buffers must not be null, unless the (sub-)buffer has zero "
-            "elements.",
-            allocation.param_shape_index().ToString().c_str(), param_no);
+            "index %s of parameter %d was null.  All pointers to (sub-)buffers "
+            "must not be null, unless the (sub-)buffer has zero elements.",
+            allocation.param_shape_index().ToString(), param_no);
       }
 
       buffer_allocations_builder.RegisterBuffer(i, buffer);
@@ -326,7 +326,7 @@ StatusOr<ScopedShapedBuffer> GpuExecutable::ExecuteOnStream(
 
 StatusOr<ScopedShapedBuffer> GpuExecutable::ExecuteAsyncOnStream(
     const ServiceExecutableRunOptions* run_options,
-    tensorflow::gtl::ArraySlice<const ShapedBuffer*> arguments) {
+    absl::Span<const ShapedBuffer* const> arguments) {
   // TODO(b/30671675): Implement asynchronous execution mode.
   return Unimplemented(
       "Asynchronous execution on stream is not yet supported on GPU.");

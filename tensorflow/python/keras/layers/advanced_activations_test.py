@@ -67,6 +67,14 @@ class AdvancedActivationsTest(test.TestCase):
       testing_utils.layer_test(keras.layers.ReLU,
                                kwargs={'max_value': 10},
                                input_shape=(2, 3, 4))
+      x = keras.backend.ones((3, 4))
+      # Test that we use `leaky_relu` when appropriate in graph mode.
+      self.assertTrue(
+          'LeakyRelu' in keras.layers.ReLU(negative_slope=0.2)(x).name)
+      # Test that we use `relu` when appropriate in graph mode.
+      self.assertTrue('Relu' in keras.layers.ReLU()(x).name)
+      # Test that we use `relu6` when appropriate in graph mode.
+      self.assertTrue('Relu6' in keras.layers.ReLU(max_value=6)(x).name)
 
   def test_relu_with_invalid_arg(self):
     with self.assertRaisesRegexp(

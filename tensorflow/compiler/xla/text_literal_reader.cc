@@ -39,8 +39,7 @@ limitations under the License.
 
 namespace xla {
 
-StatusOr<std::unique_ptr<Literal>> TextLiteralReader::ReadPath(
-    absl::string_view path) {
+StatusOr<Literal> TextLiteralReader::ReadPath(absl::string_view path) {
   CHECK(!absl::EndsWith(path, ".gz"))
       << "TextLiteralReader no longer supports reading .gz files";
   std::unique_ptr<tensorflow::RandomAccessFile> file;
@@ -57,7 +56,7 @@ StatusOr<std::unique_ptr<Literal>> TextLiteralReader::ReadPath(
 TextLiteralReader::TextLiteralReader(tensorflow::RandomAccessFile* file)
     : file_(file) {}
 
-StatusOr<std::unique_ptr<Literal>> TextLiteralReader::ReadAllLines() {
+StatusOr<Literal> TextLiteralReader::ReadAllLines() {
   tensorflow::io::RandomAccessInputStream stream(file_.get());
   tensorflow::io::BufferedInputStream buf(&stream, 65536);
   string shape_string;
@@ -71,12 +70,12 @@ StatusOr<std::unique_ptr<Literal>> TextLiteralReader::ReadAllLines() {
   if (shape.element_type() != F32) {
     return Unimplemented(
         "unsupported element type for text literal reading: %s",
-        ShapeUtil::HumanString(shape).c_str());
+        ShapeUtil::HumanString(shape));
   }
 
-  auto result = absl::make_unique<Literal>(shape);
+  Literal result(shape);
   const float fill = std::numeric_limits<float>::quiet_NaN();
-  result->PopulateWithValue<float>(fill);
+  result.PopulateWithValue<float>(fill);
   std::vector<absl::string_view> pieces;
   std::vector<absl::string_view> coordinates;
   std::vector<int64> coordinate_values;
@@ -88,16 +87,16 @@ StatusOr<std::unique_ptr<Literal>> TextLiteralReader::ReadAllLines() {
     absl::string_view value_string = absl::StripAsciiWhitespace(pieces[1]);
     if (!absl::ConsumePrefix(&coordinates_string, "(")) {
       return InvalidArgument(
-          "expected '(' at the beginning of coordinates: \"%s\"", line.c_str());
+          "expected '(' at the beginning of coordinates: \"%s\"", line);
     }
     if (!absl::ConsumeSuffix(&coordinates_string, ")")) {
       return InvalidArgument("expected ')' at the end of coordinates: \"%s\"",
-                             line.c_str());
+                             line);
     }
     float value;
-    if (!absl::SimpleAtof(absl::string_view(value_string), &value)) {
+    if (!absl::SimpleAtof(value_string, &value)) {
       return InvalidArgument("could not parse value as float: \"%s\"",
-                             string(value_string).c_str());
+                             value_string);
     }
     coordinates = absl::StrSplit(coordinates_string, ',');
     coordinate_values.clear();
@@ -106,17 +105,17 @@ StatusOr<std::unique_ptr<Literal>> TextLiteralReader::ReadAllLines() {
       if (!absl::SimpleAtoi(piece, &coordinate_value)) {
         return InvalidArgument(
             "could not parse coordinate member as int64: \"%s\"",
-            std::string(piece).c_str());
+            std::string(piece));
       }
       coordinate_values.push_back(coordinate_value);
     }
     if (coordinate_values.size() != shape.dimensions_size()) {
       return InvalidArgument(
-          "line did not have expected number of coordinates; want %d got %zu: "
+          "line did not have expected number of coordinates; want %d got %u: "
           "\"%s\"",
-          shape.dimensions_size(), coordinate_values.size(), line.c_str());
+          shape.dimensions_size(), coordinate_values.size(), line);
     }
-    result->Set<float>(coordinate_values, value);
+    result.Set<float>(coordinate_values, value);
   }
   return std::move(result);
 }

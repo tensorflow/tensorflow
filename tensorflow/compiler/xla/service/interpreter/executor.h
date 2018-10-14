@@ -22,9 +22,9 @@ limitations under the License.
 #include <functional>
 #include <memory>
 
+#include "absl/types/span.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/stream_executor/blas.h"
 #include "tensorflow/stream_executor/device_description.h"
@@ -47,7 +47,7 @@ limitations under the License.
 namespace stream_executor {
 namespace interpreter {
 
-using Args = tensorflow::gtl::ArraySlice<DeviceMemoryBase>;
+using Args = absl::Span<const DeviceMemoryBase>;
 
 class XlaInterpreterExecutor : public internal::StreamExecutorInterface {
  public:

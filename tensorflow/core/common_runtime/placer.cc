@@ -30,7 +30,6 @@ limitations under the License.
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/strings/str_util.h"
-#include "tensorflow/core/util/status_util.h"
 
 namespace tensorflow {
 
@@ -45,12 +44,18 @@ const StringPiece kColocationGroupPrefixStringPiece(kColocationGroupPrefix);
 // returned list is sorted by preferred type (higher numeric type is preferred).
 std::vector<Device*> FilterSupportedDevices(
     const std::vector<Device*>& devices,
-    const DeviceTypeVector& supported_device_types) {
+    const DeviceTypeVector& supported_device_types,
+    const Device* default_device) {
+  Device* filtered_default_device = nullptr;
   std::vector<Device*> filtered_devices;
   for (const DeviceType& d : supported_device_types) {
     for (Device* device : devices) {
       if (DeviceType(device->attributes().device_type()) == d) {
-        filtered_devices.emplace_back(device);
+        if (device == default_device) {
+          filtered_default_device = device;
+        } else {
+          filtered_devices.emplace_back(device);
+        }
       }
     }
   }
@@ -65,7 +70,16 @@ std::vector<Device*> FilterSupportedDevices(
     }
     return StringPiece(a->name()) < StringPiece(b->name());
   };
-  std::sort(filtered_devices.begin(), filtered_devices.end(), device_sort);
+  std::vector<Device*>::iterator sort_start;
+  if (filtered_default_device != nullptr) {
+    // Put the default device first outside of the normal ordering.
+    filtered_devices.emplace_back(filtered_default_device);
+    std::iter_swap(filtered_devices.begin(), std::prev(filtered_devices.end()));
+    sort_start = std::next(filtered_devices.begin());
+  } else {
+    sort_start = filtered_devices.begin();
+  }
+  std::sort(sort_start, filtered_devices.end(), device_sort);
   return filtered_devices;
 }
 
@@ -100,11 +114,12 @@ std::vector<Device*> FilterSupportedDevices(
 class ColocationGraph {
  public:
   ColocationGraph(Graph* graph, const DeviceSet* device_set,
-                  bool allow_soft_placement)
+                  bool allow_soft_placement, const Device* default_device)
       : graph_(graph),
         device_set_(device_set),
         device_types_(device_set->PrioritizedDeviceTypeList()),
-        allow_soft_placement_(allow_soft_placement) {
+        allow_soft_placement_(allow_soft_placement),
+        default_device_(default_device) {
     members_.resize(graph->num_node_ids());
   }
 
@@ -255,9 +270,11 @@ class ColocationGraph {
                                               old_root_member.device_name,
                                               allow_soft_placement_);
     if (!s.ok()) {
-      return errors::InvalidArgument("Cannot colocate nodes '", x.name(),
-                                     "' and '", y.name(), ": ",
-                                     s.error_message());
+      return errors::InvalidArgument(
+          "Cannot colocate nodes ",
+          errors::FormatColocationNodeForError(x.name()), " and ",
+          errors::FormatColocationNodeForError(y.name()), ": ",
+          s.error_message());
     }
 
     // Ensure that the common root has at least one supported device
@@ -268,8 +285,10 @@ class ColocationGraph {
                           old_root_member.supported_device_types);
     if (new_root_member.supported_device_types.empty()) {
       return errors::InvalidArgument(
-          "Cannot colocate nodes '", x.name(), "' and '", y.name(),
-          "' because no device type supports both of those nodes and the "
+          "Cannot colocate nodes ",
+          errors::FormatColocationNodeForError(x.name()), " and ",
+          errors::FormatColocationNodeForError(y.name()),
+          " because no device type supports both of those nodes and the "
           "other nodes colocated with them.",
           DebugInfo(x_root), DebugInfo(y_root));
     }
@@ -311,7 +330,8 @@ class ColocationGraph {
         // Filter devices into those that are compatible with the root
         // node (and its children).
         devices = FilterSupportedDevices(
-            devices, members_[node_root].supported_device_types);
+            devices, members_[node_root].supported_device_types,
+            default_device_);
       }
 
       // Perform soft placement if allow_soft_placement_ is set.
@@ -326,7 +346,8 @@ class ColocationGraph {
         device_set_->FindMatchingDevices(soft_device_name, &devices);
         if (!devices.empty()) {
           devices = FilterSupportedDevices(
-              devices, members_[node_root].supported_device_types);
+              devices, members_[node_root].supported_device_types,
+              default_device_);
         }
       }
 
@@ -377,8 +398,9 @@ class ColocationGraph {
           // merged set device is different, so print both.
           return errors::InvalidArgument(
               "Could not satisfy explicit device specification '",
-              node->requested_device(),
-              "' because the node was colocated with a group of nodes that "
+              node->requested_device(), "' because the node ",
+              errors::FormatColocationNodeForError(node->name()),
+              " was colocated with a group of nodes that ",
               "required incompatible device '",
               DeviceNameUtils::ParsedNameToString(
                   members_[node_root].device_name),
@@ -392,7 +414,8 @@ class ColocationGraph {
         return errors::Internal("No devices are registered");
       }
       devices = FilterSupportedDevices(
-          device_set_->devices(), members_[node_root].supported_device_types);
+          device_set_->devices(), members_[node_root].supported_device_types,
+          default_device_);
 
       if (devices.empty()) {
         return errors::InvalidArgument(
@@ -655,6 +678,7 @@ class ColocationGraph {
   const DeviceSet* device_set_;  // Not owned.
   const std::vector<DeviceType> device_types_;
   const bool allow_soft_placement_;
+  const Device* default_device_;
 };
 
 // Returns true if the node has no inputs and produces outputs
@@ -680,15 +704,16 @@ bool IsExemptFromResourceInputColocation(const Node* node) {
 }  // namespace
 
 Placer::Placer(Graph* graph, const DeviceSet* devices,
-               const SessionOptions* options)
+               const SessionOptions* options, const Device* default_device)
     : graph_(graph),
       devices_(devices),
       options_(options),
       log_device_placement_(options != nullptr &&
-                            options->config.log_device_placement()) {}
+                            options->config.log_device_placement()),
+      default_device_(default_device) {}
 
 Placer::Placer(Graph* graph, const DeviceSet* devices)
-    : Placer(graph, devices, nullptr) {}
+    : Placer(graph, devices, nullptr, nullptr) {}
 
 Placer::~Placer() {}
 
@@ -699,7 +724,8 @@ Status Placer::Run() {
 
   ColocationGraph colocation_graph(
       graph_, devices_,
-      options_ == nullptr || options_->config.allow_soft_placement());
+      options_ == nullptr || options_->config.allow_soft_placement(),
+      default_device_);
 
   TF_RETURN_IF_ERROR(colocation_graph.InitializeMembers());
 
@@ -810,10 +836,10 @@ Status Placer::Run() {
     std::vector<Device*>* devices;
     Status status = colocation_graph.GetDevicesForNode(node, &devices);
     if (!status.ok()) {
-      return AttachDef(errors::InvalidArgument(
-                           "Cannot assign a device for operation ",
-                           RichNodeName(node), ": ", status.error_message()),
-                       *node);
+      return AttachDef(
+          errors::InvalidArgument("Cannot assign a device for operation ",
+                                  node->name(), ": ", status.error_message()),
+          *node);
     }
 
     // Returns the first device in sorted devices list so we will always
@@ -857,10 +883,10 @@ Status Placer::Run() {
     std::vector<Device*>* devices;
     Status status = colocation_graph.GetDevicesForNode(node, &devices);
     if (!status.ok()) {
-      return AttachDef(errors::InvalidArgument(
-                           "Cannot assign a device for operation ",
-                           RichNodeName(node), ": ", status.error_message()),
-                       *node);
+      return AttachDef(
+          errors::InvalidArgument("Cannot assign a device for operation ",
+                                  node->name(), ": ", status.error_message()),
+          *node);
     }
 
     int assigned_device = -1;
@@ -923,24 +949,6 @@ void Placer::LogDeviceAssignment(const Node* node) const {
     LOG(INFO) << node->name() << ": "
               << "(" << node->type_string() << ")"
               << node->assigned_device_name();
-  }
-}
-
-bool Placer::ClientHandlesErrorFormatting() const {
-  return options_ != nullptr &&
-         options_->config.experimental().client_handles_error_formatting();
-}
-
-// Returns the node name in single quotes. If the client handles formatted
-// errors, appends a formatting tag which the client will reformat into, for
-// example, " (defined at filename:123)".
-string Placer::RichNodeName(const Node* node) const {
-  string quoted_name = strings::StrCat("'", node->name(), "'");
-  if (ClientHandlesErrorFormatting()) {
-    string file_and_line = error_format_tag(*node, "${defined_at}");
-    return strings::StrCat(quoted_name, file_and_line);
-  } else {
-    return quoted_name;
   }
 }
 

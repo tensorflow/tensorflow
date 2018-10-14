@@ -91,8 +91,9 @@ TEST(LogSoftmaxOpTest, CompareWithTFmini) {
 
   std::unique_ptr<float[]> output_buffer(new float[input_size * batch_size]);
   auto input_shape = RuntimeShape({batch_size, 1, 1, input_size});
-  tflite::reference_ops::LogSoftmax(input_buffer, input_shape,
-                                    output_buffer.get(), input_shape);
+  SoftmaxParams params;
+  tflite::reference_ops::LogSoftmax(params, input_shape, input_buffer,
+                                    input_shape, output_buffer.get());
 
   std::vector<float> expected;
   expected.insert(expected.end(), output_buffer.get(),

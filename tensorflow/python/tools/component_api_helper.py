@@ -65,9 +65,10 @@ def package_hook(parent_package_str, child_package_str, error_msg=None):
     Will allow the following import statement to work.
     >>> import parent.child
     """
-    child_pkg_path = [os.path.join(os.path.dirname(child_pkg.__file__), "..")]
+    child_pkg_path = [os.path.abspath(
+        os.path.join(os.path.dirname(child_pkg.__file__), ".."))]
     try:
-      parent_pkg.__path__ += child_pkg_path
+      parent_pkg.__path__ = child_pkg_path + parent_pkg.__path__
     except AttributeError:
       parent_pkg.__path__ = child_pkg_path
 

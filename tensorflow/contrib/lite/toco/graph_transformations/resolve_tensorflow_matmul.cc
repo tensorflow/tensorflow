@@ -24,10 +24,44 @@ limitations under the License.
 
 namespace toco {
 
-bool ResolveTensorFlowMatMul::Run(Model* model, std::size_t op_index) {
+namespace {
+
+TransposeOperator* FindTransposeOpWithInput(const Model& model,
+                                            const string& array_name) {
+  for (auto it = model.operators.begin(); it != model.operators.end(); ++it) {
+    Operator* op = it->get();
+    if (op->type != OperatorType::kTranspose) {
+      continue;
+    }
+    if (op->inputs[0] != array_name) {
+      continue;
+    }
+    const auto& permutation_array = model.GetArray(op->inputs[1]);
+    if (permutation_array.data_type != ArrayDataType::kInt32) {
+      continue;
+    }
+    const auto& permutation_data =
+        permutation_array.GetBuffer<ArrayDataType::kInt32>().data;
+    if (permutation_data.size() != 2) {
+      continue;
+    }
+    if (permutation_data[0] != 1 || permutation_data[1] != 0) {
+      continue;
+    }
+    return static_cast<TransposeOperator*>(op);
+  }
+  return nullptr;
+}
+
+}  // namespace
+
+::tensorflow::Status ResolveTensorFlowMatMul::Run(Model* model,
+                                                  std::size_t op_index,
+                                                  bool* modified) {
+  *modified = false;
   auto matmul_it = model->operators.begin() + op_index;
   if (matmul_it->get()->type != OperatorType::kMatMul) {
-    return false;
+    return ::tensorflow::Status::OK();
   }
   const auto* matmul_op =
       static_cast<const TensorFlowMatMulOperator*>(matmul_it->get());
@@ -37,7 +71,13 @@ bool ResolveTensorFlowMatMul::Run(Model* model, std::size_t op_index) {
   // TransposeOperator.  However, the second input is supposed to be 2D, so we
   // can actually handle transposition of that matrix, which happens to be more
   // common anyway.
-  CHECK(!matmul_op->transpose_a);
+  if (matmul_op->transpose_a) {
+    AddMessageF(
+        "Not replacing %s by a FullyConnected operator, because it has "
+        "the transpose_a attribute",
+        LogName(*matmul_op));
+    return ::tensorflow::Status::OK();
+  }
 
   // Reorder the axes on the second input. TensorFlow uses row-major ordering
   // on both inputs, however this is inefficient for the FullyConnected
@@ -46,18 +86,35 @@ bool ResolveTensorFlowMatMul::Run(Model* model, std::size_t op_index) {
   string input_lhs = matmul_op->inputs[0];
   string input_rhs = matmul_op->inputs[1];
   if (!matmul_op->transpose_b) {
-    auto* transpose_op = new TransposeOperator;
-    transpose_op->inputs = {
-        matmul_op->inputs[1],
-        CreateInt32Array(model,
-                         AvailableArrayName(
-                             *model, matmul_op->inputs[1] + "/transpose/perm"),
-                         {1, 0})};
-    transpose_op->outputs = {
-        AvailableArrayName(*model, matmul_op->inputs[1] + "/transpose")};
-    model->GetOrCreateArray(transpose_op->outputs[0]);
-    model->operators.emplace(matmul_it, transpose_op);
-
+    // Need to transpose input_rhs, by inserting a TransposeOperator.
+    // First, check if there already is a TransposeOperator transposing that
+    // array, so we can just reuse it.
+    auto* transpose_op = FindTransposeOpWithInput(*model, input_rhs);
+    if (!transpose_op) {
+      AddMessageF(
+          "While replacing %s by a FullyConnected operator, created new "
+          "Transpose op wrapping RHS input array %s",
+          LogName(*matmul_op), input_rhs);
+      // No such TransposeOperator found. Create one now.
+      transpose_op = new TransposeOperator;
+      transpose_op->inputs = {
+          input_rhs,
+          CreateInt32Array(
+              model, AvailableArrayName(*model, input_rhs + "/transpose/perm"),
+              {1, 0})};
+      transpose_op->outputs = {
+          AvailableArrayName(*model, input_rhs + "/transpose")};
+      model->GetOrCreateArray(transpose_op->outputs[0]);
+      model->operators.emplace(matmul_it, transpose_op);
+      // Sanity check
+      DCHECK_EQ(transpose_op, FindTransposeOpWithInput(*model, input_rhs));
+    } else {
+      AddMessageF(
+          "While replacing %s by a FullyConnected operator, reused existing "
+          "Transpose op wrapping RHS input array %s",
+          LogName(*matmul_op), input_rhs);
+    }
+    // Re-wire: have the matmul consume the transposed array.
     input_rhs = transpose_op->outputs[0];
   }
 
@@ -144,7 +201,8 @@ bool ResolveTensorFlowMatMul::Run(Model* model, std::size_t op_index) {
 
   // erase the MatMul operator
   model->operators.erase(matmul_it);
-  return true;
+  *modified = true;
+  return ::tensorflow::Status::OK();
 }
 
 }  // namespace toco

@@ -25,7 +25,7 @@ from tensorflow.python.platform import test
 class FreezeTest(test.TestCase):
 
   def testCreateInferenceGraphWithMfcc(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       freeze.create_inference_graph(
           wanted_words='a,b,c,d',
           sample_rate=16000,
@@ -44,7 +44,7 @@ class FreezeTest(test.TestCase):
       self.assertEqual(1, ops.count('Mfcc'))
 
   def testCreateInferenceGraphWithoutMfcc(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       freeze.create_inference_graph(
           wanted_words='a,b,c,d',
           sample_rate=16000,
@@ -63,7 +63,7 @@ class FreezeTest(test.TestCase):
       self.assertEqual(0, ops.count('Mfcc'))
 
   def testFeatureBinCount(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       freeze.create_inference_graph(
           wanted_words='a,b,c,d',
           sample_rate=16000,
