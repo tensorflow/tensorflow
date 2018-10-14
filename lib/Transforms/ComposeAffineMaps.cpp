@@ -140,11 +140,10 @@ PassResult ComposeAffineMaps::runOnMLFunction(MLFunction *f) {
     createComposedAffineApplyOp(&builder, opStmt->getLoc(), indices,
                                 affineApplyOps, results);
     // Create new LoadOp with new affine apply op.
-    auto *newLoadResult =
-        builder.create<LoadOp>(opStmt->getLoc(), loadOp->getMemRef(), results)
-            ->getResult();
+    auto newLoadResult =
+        builder.create<LoadOp>(opStmt->getLoc(), loadOp->getMemRef(), results);
     // Update all uses of old LoadOp to take new LoadOp.
-    loadOp->getResult()->replaceAllUsesWith(newLoadResult);
+    loadOp->replaceAllUsesWith(newLoadResult);
     loadOpsToDelete.push_back(loadOp);
   }
 

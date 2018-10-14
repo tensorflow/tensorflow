@@ -35,6 +35,10 @@
 namespace mlir {
 class Builder;
 
+namespace OpTrait {
+template <typename ConcreteType> class OneResult;
+}
+
 /// This type trait produces true if the specified type is in the specified
 /// type list.
 template <typename same, typename first, typename... more>
@@ -44,6 +48,12 @@ struct typelist_contains {
 };
 template <typename same, typename first>
 struct typelist_contains<same, first> : std::is_same<same, first> {};
+
+/// This type trait is used to determine if an operation has a single result.
+template <typename OpType> struct IsSingleResult {
+  static const bool value = std::is_convertible<
+      OpType *, OpTrait::OneResult<typename OpType::ConcreteOpType> *>::value;
+};
 
 /// This pointer represents a notional "Operation*" but where the actual
 /// storage of the pointer is maintained in the templated "OpType" class.
@@ -58,6 +68,18 @@ public:
   OpType *operator->() { return &value; }
 
   operator bool() const { return value.getOperation(); }
+
+  /// OpPointer can always be implicitly converted to Operation*.
+  operator Operation *() const { return value.getOperation(); }
+
+  /// If the OpType operation includes the OneResult trait, then OpPointer can
+  /// be implicitly converted to an SSAValue*.  This yields the value of the
+  /// only result.
+  template <typename SFINAE = OpType>
+  operator typename std::enable_if<IsSingleResult<SFINAE>::value,
+                                   SSAValue *>::type() {
+    return value.getResult();
+  }
 
 private:
   OpType value;
@@ -77,6 +99,21 @@ public:
 
   /// Return true if non-null.
   operator bool() const { return value.getOperation(); }
+
+  /// ConstOpPointer can always be implicitly converted to const Operation*.
+  operator const Operation *() const { return value.getOperation(); }
+
+  /// If the OpType operation includes the OneResult trait, then OpPointer can
+  /// be implicitly converted to an const SSAValue*.  This yields the value of
+  /// the only result.
+  template <typename SFINAE = OpType>
+  operator typename std::enable_if<
+      std::is_convertible<
+          SFINAE *,
+          OpTrait::OneResult<typename SFINAE::ConcreteOpType> *>::value,
+      const SSAValue *>::type() const {
+    return value.getResult();
+  }
 
 private:
   const OpType value;
@@ -445,6 +482,13 @@ public:
 
   Type *getType() const { return getResult()->getType(); }
 
+  /// Replace all uses of 'this' value with the new value, updating anything in
+  /// the IR that uses 'this' to use the other value instead.  When this returns
+  /// there are zero uses of 'this'.
+  void replaceAllUsesWith(SSAValue *newValue) {
+    getResult()->replaceAllUsesWith(newValue);
+  }
+
   static bool verifyTrait(const Operation *op) {
     return impl::verifyOneResult(op);
   }
@@ -654,6 +698,10 @@ public:
   }
 
   // TODO: Provide a dump() method.
+
+  /// Expose the type we are instantiated on to template machinery that may want
+  /// to introspect traits on this operation.
+  using ConcreteOpType = ConcreteType;
 
 protected:
   explicit Op(const Operation *state) : OpState(state) {}

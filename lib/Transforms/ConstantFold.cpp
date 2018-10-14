@@ -53,8 +53,8 @@ bool ConstantFold::foldOperation(Operation *op,
 
   // If this operation is already a constant, just remember it for cleanup
   // later, and don't try to fold it.
-  if (op->is<ConstantOp>()) {
-    existingConstants.push_back(op->getResult(0));
+  if (auto constant = op->getAs<ConstantOp>()) {
+    existingConstants.push_back(constant);
     return true;
   }
 
@@ -108,8 +108,7 @@ PassResult ConstantFold::runOnCFGFunction(CFGFunction *f) {
 
       auto constantFactory = [&](Attribute *value, Type *type) -> SSAValue * {
         builder.setInsertionPoint(&inst);
-        return builder.create<ConstantOp>(inst.getLoc(), value, type)
-            ->getResult();
+        return builder.create<ConstantOp>(inst.getLoc(), value, type);
       };
 
       if (!foldOperation(&inst, existingConstants, constantFactory)) {
@@ -137,7 +136,7 @@ PassResult ConstantFold::runOnCFGFunction(CFGFunction *f) {
 void ConstantFold::visitOperationStmt(OperationStmt *stmt) {
   auto constantFactory = [&](Attribute *value, Type *type) -> SSAValue * {
     MLFuncBuilder builder(stmt);
-    return builder.create<ConstantOp>(stmt->getLoc(), value, type)->getResult();
+    return builder.create<ConstantOp>(stmt->getLoc(), value, type);
   };
   if (!ConstantFold::foldOperation(stmt, existingConstants, constantFactory)) {
     opStmtsToErase.push_back(stmt);

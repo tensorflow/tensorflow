@@ -34,8 +34,54 @@ using namespace mlir;
 
 // TODO(clattner): Move this out of this file when it is ready.
 
-// TODO(clattner): Define this as a tagged union with proper sentinels.
-typedef int PatternBenefit;
+/// This class represents the benefit of a pattern match in a unitless scheme
+/// that ranges from 0 (very little benefit) to 65K.  The most common unit to
+/// use here is the "number of operations matched" by the pattern.
+///
+/// This also has a sentinel representation that can be used for patterns that
+/// fail to match.
+///
+class PatternBenefit {
+  enum { ImpossibleToMatchSentinel = 65535 };
+
+public:
+  /*implicit*/ PatternBenefit(unsigned benefit) : representation(benefit) {
+    assert(representation == benefit && benefit != ImpossibleToMatchSentinel &&
+           "This pattern match benefit is too large to represent");
+  }
+  PatternBenefit(const PatternBenefit &) = default;
+  PatternBenefit &operator=(const PatternBenefit &) = default;
+
+  static PatternBenefit impossibleToMatch() { return PatternBenefit(); }
+
+  bool isImpossibleToMatch() const {
+    return representation == ImpossibleToMatchSentinel;
+  }
+
+  /// If the corresponding pattern can match, return its benefit.  If the
+  // corresponding pattern isImpossibleToMatch() then this aborts.
+  unsigned short getBenefit() const {
+    assert(representation != ImpossibleToMatchSentinel &&
+           "Pattern doesn't match");
+    return representation;
+  }
+
+private:
+  PatternBenefit() : representation(ImpossibleToMatchSentinel) {}
+  unsigned short representation;
+};
+
+static inline bool operator==(PatternBenefit lhs, PatternBenefit rhs) {
+  if (lhs.isImpossibleToMatch())
+    return rhs.isImpossibleToMatch();
+  if (rhs.isImpossibleToMatch())
+    return false;
+  return lhs.getBenefit() == rhs.getBenefit();
+}
+
+static inline bool operator!=(PatternBenefit lhs, PatternBenefit rhs) {
+  return !operator==(lhs, rhs);
+}
 
 /// Pattern state is used by patterns that want to maintain state between their
 /// match and rewrite phases.  Patterns can define a pattern-specific subclass
@@ -43,6 +89,10 @@ typedef int PatternBenefit;
 class PatternState {
 public:
   virtual ~PatternState() {}
+
+protected:
+  // Must be subclassed.
+  PatternState() {}
 };
 
 /// This is the type returned by a pattern match.  The first field indicates the
@@ -54,11 +104,10 @@ typedef std::pair<PatternBenefit, std::unique_ptr<PatternState>>
 
 class Pattern {
 public:
-  // Return the benefit (the inverse of “cost”) of matching this pattern,
-  // if it is statically determinable.  The result is an integer if known,
-  // a sentinel if dynamically computed, and another sentinel if the
-  // pattern can never be matched.
-  PatternBenefit getStaticBenefit() const { return staticBenefit; }
+  // Return the benefit (the inverse of "cost") of matching this pattern,
+  // if it is statically determinable.  The result is a PatternBenefit if known,
+  // or 'None' if the cost is dynamically computed.
+  Optional<PatternBenefit> getStaticBenefit() const { return staticBenefit; }
 
   // Return the root node that this pattern matches.  Patterns that can
   // match multiple root types are instantiated once per root.
@@ -111,19 +160,59 @@ public:
     return {-1, std::unique_ptr<PatternState>()};
   }
 
-  static PatternMatchResult matchSuccess(
-      PatternBenefit benefit,
-      std::unique_ptr<PatternState> state = std::unique_ptr<PatternState>()) {
+  /// This method indicates that a match was found and has the specified cost.
+  PatternMatchResult
+  matchSuccess(PatternBenefit benefit,
+               std::unique_ptr<PatternState> state = {}) const {
+    assert((!getStaticBenefit().hasValue() ||
+            getStaticBenefit().getValue() == benefit) &&
+           "This version of matchSuccess must be called with a benefit that "
+           "matches the static benefit if set!");
+
     return {benefit, std::move(state)};
   }
 
+  /// This method indicates that a match was found for patterns that have a
+  /// known static benefit.
+  PatternMatchResult
+  matchSuccess(std::unique_ptr<PatternState> state = {}) const {
+    auto benefit = getStaticBenefit();
+    assert(benefit.hasValue() && "Pattern doesn't have a static benefit");
+    return matchSuccess(benefit.getValue(), std::move(state));
+  }
+
+  /// This method is used as the final replacement hook for patterns that match
+  /// a single result value.  In addition to replacing and removing the
+  /// specified operation, clients can specify a list of other nodes that this
+  /// replacement may make (perhaps transitively) dead.  If any of those ops are
+  /// dead, this will remove them as well.
+  void
+  replaceSingleResultOp(Operation *op, SSAValue *newValue,
+                        ArrayRef<SSAValue *> opsToRemoveIfDead = {}) const {
+    assert(op->getNumResults() == 1 && "op isn't a SingleResultOp!");
+    op->getResult(0)->replaceAllUsesWith(newValue);
+
+    // TODO: This shouldn't be statement specific.
+    cast<OperationStmt>(op)->eraseFromBlock();
+
+    // TODO: Process the opsToRemoveIfDead list once we have side-effect
+    // information.  Be careful about notifying clients that this is happening
+    // so they can be removed from worklists etc (needs a callback of some
+    // sort).
+  }
+
 protected:
-  Pattern(PatternBenefit staticBenefit, OperationName rootKind)
-      : staticBenefit(staticBenefit), rootKind(rootKind) {}
+  /// Patterns must specify the root operation name they match against, and can
+  /// also optionally specify a static benefit of matching.
+  Pattern(OperationName rootKind,
+          Optional<PatternBenefit> staticBenefit = llvm::None)
+      : rootKind(rootKind), staticBenefit(staticBenefit) {}
+  Pattern(OperationName rootKind, unsigned staticBenefit)
+      : rootKind(rootKind), staticBenefit(staticBenefit) {}
 
 private:
-  const PatternBenefit staticBenefit;
   const OperationName rootKind;
+  const Optional<PatternBenefit> staticBenefit;
 };
 
 Pattern::~Pattern() {}
@@ -149,10 +238,7 @@ public:
   /// needs) if found, or null if there are no matches.
   MatchResult findMatch(Operation *op);
 
-  ~PatternMatcher() {
-    for (auto *p : patterns)
-      delete p;
-  }
+  ~PatternMatcher() { llvm::DeleteContainerPointers(patterns); }
 
 private:
   PatternMatcher(const PatternMatcher &) = delete;
@@ -171,8 +257,7 @@ auto PatternMatcher::findMatch(Operation *op) -> MatchResult {
   // Keep track of the best match, the benefit of it, and any matcher specific
   // state it is maintaining.
   MatchResult bestMatch = {nullptr, nullptr};
-  // TODO: eliminate magic numbers.
-  PatternBenefit bestBenefit = -1;
+  Optional<PatternBenefit> bestBenefit;
 
   for (auto *pattern : patterns) {
     // Ignore patterns that are for the wrong root.
@@ -182,17 +267,27 @@ auto PatternMatcher::findMatch(Operation *op) -> MatchResult {
     // If we know the static cost of the pattern is worse than what we've
     // already found then don't run it.
     auto staticBenefit = pattern->getStaticBenefit();
-    if (staticBenefit < 0 || staticBenefit < bestBenefit)
+    if (staticBenefit.hasValue() && bestBenefit.hasValue() &&
+        staticBenefit.getValue().getBenefit() <
+            bestBenefit.getValue().getBenefit())
       continue;
 
     // Check to see if this pattern matches this node.
     auto result = pattern->match(op);
-    // TODO: magic numbers.
-    if (result.first < 0 || result.first < bestBenefit)
+    auto benefit = result.first;
+
+    // If this pattern failed to match, ignore it.
+    if (benefit.isImpossibleToMatch())
+      continue;
+
+    // If it matched but had lower benefit than our best match so far, then
+    // ignore it.
+    if (bestBenefit.hasValue() &&
+        benefit.getBenefit() < bestBenefit.getValue().getBenefit())
       continue;
 
     // Okay we found a match that is better than our previous one, remember it.
-    bestBenefit = result.first;
+    bestBenefit = benefit;
     bestMatch = {pattern, std::move(result.second)};
   }
 
@@ -210,7 +305,7 @@ namespace {
 struct SimplifyXMinusX : public Pattern {
   SimplifyXMinusX(MLIRContext *context)
       // FIXME: rename getOperationName and add a proper one.
-      : Pattern(1, OperationName(SubIOp::getOperationName(), context)) {}
+      : Pattern(OperationName(SubIOp::getOperationName(), context), 1) {}
 
   std::pair<PatternBenefit, std::unique_ptr<PatternState>>
   match(Operation *op) const override {
@@ -219,7 +314,7 @@ struct SimplifyXMinusX : public Pattern {
     assert(subi && "Matcher should have produced this");
 
     if (subi->getOperand(0) == subi->getOperand(1))
-      return matchSuccess(1);
+      return matchSuccess();
 
     return matchFailure();
   }
@@ -234,12 +329,10 @@ struct SimplifyXMinusX : public Pattern {
     auto subi = op->getAs<SubIOp>();
     assert(subi && "Matcher should have produced this");
 
-    // TODO: Better "replace and remove" API on Pattern.
     auto result =
         builder.create<ConstantIntOp>(op->getLoc(), 0, subi->getType());
-    op->getResult(0)->replaceAllUsesWith(result->getResult());
 
-    cast<OperationStmt>(op)->eraseFromBlock();
+    replaceSingleResultOp(op, result);
   }
 };
 } // end anonymous namespace.

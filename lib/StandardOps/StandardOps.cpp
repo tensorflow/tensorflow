@@ -539,7 +539,7 @@ bool ExtractElementOp::verify() const {
   if (!aggregateType)
     return emitOpError("first operand must be a vector or tensor");
 
-  if (getResult()->getType() != aggregateType->getElementType())
+  if (getType() != aggregateType->getElementType())
     return emitOpError("result type must match element type of aggregate");
 
   for (auto *idx : getIndices())
@@ -598,7 +598,7 @@ bool LoadOp::verify() const {
   if (!memRefType)
     return emitOpError("first operand must be a memref");
 
-  if (getResult()->getType() != memRefType->getElementType())
+  if (getType() != memRefType->getElementType())
     return emitOpError("result type must match element type of memref");
 
   if (memRefType->getRank() != getNumOperands() - 1)
@@ -669,7 +669,7 @@ void ShapeCastOp::build(Builder *builder, OperationState *result,
 
 bool ShapeCastOp::verify() const {
   auto *opType = dyn_cast<TensorType>(getOperand()->getType());
-  auto *resType = dyn_cast<TensorType>(getResult()->getType());
+  auto *resType = dyn_cast<TensorType>(getType());
   if (!opType || !resType)
     return emitOpError("requires input and result types to be tensors");
 

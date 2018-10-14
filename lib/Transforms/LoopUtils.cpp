@@ -102,7 +102,7 @@ bool mlir::promoteIfSingleIteration(ForStmt *forStmt) {
       MLFuncBuilder topBuilder(&mlFunc->front());
       auto constOp = topBuilder.create<ConstantIndexOp>(
           forStmt->getLoc(), forStmt->getConstantLowerBound());
-      forStmt->replaceAllUsesWith(constOp->getResult());
+      forStmt->replaceAllUsesWith(constOp);
     } else {
       const AffineBound lb = forStmt->getLowerBound();
       SmallVector<SSAValue *, 4> lbOperands(lb.operand_begin(),
