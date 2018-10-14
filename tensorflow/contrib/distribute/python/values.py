@@ -27,7 +27,7 @@ import weakref
 import six
 
 from tensorflow.contrib.distribute.python import input_ops
-from tensorflow.contrib.distribute.python import prefetching_ops_v2
+from tensorflow.python.data.ops import multi_device_iterator_ops
 from tensorflow.python.eager import context
 from tensorflow.python.eager import tape
 from tensorflow.python.framework import device as tf_device
@@ -1089,7 +1089,7 @@ class PerDeviceDataIterator(object):
   def get_next(self, name=None):
     """Scatter the input across devices."""
     if self._prefetch_on_device:
-      data_list = self._iterator.get_next(name=name)
+      data_list = self._iterator.get_next()
       index = dict(zip(self._devices, data_list))
     else:
       batch = self._iterator.get_next(name=name)
@@ -1113,17 +1113,15 @@ class PerDeviceDataset(object):
     self._devices = devices
 
     # Default to using prefetching in graph mode, unless specified.
-    # TODO(priyag): Enable prefetching in eager mode.
+    # TODO(rohanj): Enable prefetching in eager mode.
     self._prefetch_on_device = prefetch_on_device
     if self._prefetch_on_device is None:
       self._prefetch_on_device = not context.executing_eagerly()
     assert not (self._prefetch_on_device and context.executing_eagerly()), (
         "Prefetching is only supported in graph mode currently")
 
-    if self._prefetch_on_device:
-      self._dataset = dataset.apply(
-          prefetching_ops_v2.prefetch_to_devices(self._devices))
-    else:
+    self._dataset = dataset
+    if not self._prefetch_on_device:
       # TODO(priyag): If dropping remainder is not appropriate, find another
       # approach to distributing the dataset when not possible to divide evenly.
       # Possibly not an issue when we start using PartitionedDataset.
@@ -1131,15 +1129,33 @@ class PerDeviceDataset(object):
 
   def make_one_shot_iterator(self):
     """Get a one time use iterator for the distributed PerDeviceDataset."""
+    # Graph mode with one shot iterator is disabled.
+    if not context.executing_eagerly():
+      raise ValueError("Cannot create a one shot iterator. Please use "
+                       "`make_initializable_iterator()` instead.")
+    # Eager mode prefetching would error out in constructor. Only remaining
+    # case is non-prefetching in eager mode. We delegate to
+    # PerDeviceDataIterator to handle that case.
     dataset_iterator = self._dataset.make_one_shot_iterator()
-    return PerDeviceDataIterator(dataset_iterator, self._devices,
-                                 self._prefetch_on_device)
+    return PerDeviceDataIterator(
+        dataset_iterator, self._devices, prefetch_on_device=False)
 
   def make_initializable_iterator(self):
     """Get an initializable iterator for the distributed PerDeviceDataset."""
-    dataset_iterator = self._dataset.make_initializable_iterator()
-    return PerDeviceDataIterator(dataset_iterator, self._devices,
-                                 self._prefetch_on_device)
+    # Eager mode generates already initialized iterators. Hence we cannot create
+    # an initializable iterator.
+    if context.executing_eagerly():
+      raise ValueError("Cannot create initializable iterator in Eager mode. "
+                       "Please use `make_one_shot_iterator` instead.")
+    if self._prefetch_on_device:
+      dataset_iterator = multi_device_iterator_ops.MultiDeviceIterator(
+          self._dataset, self._devices)
+    else:
+      dataset_iterator = self._dataset.make_initializable_iterator()
+    return PerDeviceDataIterator(
+        dataset_iterator,
+        self._devices,
+        prefetch_on_device=self._prefetch_on_device)
 
 
 class MultiWorkerDataIterator(object):
