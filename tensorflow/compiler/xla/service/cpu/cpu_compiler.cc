@@ -51,6 +51,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/buffer_liveness.h"
 #include "tensorflow/compiler/xla/service/call_inliner.h"
 #include "tensorflow/compiler/xla/service/conditional_simplifier.h"
+#include "tensorflow/compiler/xla/service/conditional_to_select.h"
 #include "tensorflow/compiler/xla/service/convolution_feature_group_converter.h"
 #include "tensorflow/compiler/xla/service/cpu/buffer_info_util.h"
 #include "tensorflow/compiler/xla/service/cpu/compiler_functor.h"
@@ -250,6 +251,7 @@ Status CpuCompiler::RunHloPassesThroughLayoutAssn(
       &pipeline, module->config().debug_options(),
       ReducePrecisionInsertion::PassTiming::BEFORE_OPTIMIZATION);
 
+  pipeline.AddPass<ConditionalToSelect>();
   pipeline.AddPass<MapInliner>();
 
   // TODO(b/65775800): Fix wrong output bug in Call and remove the CallInliner
