@@ -118,10 +118,12 @@ StatusOr<HloInstruction*> MakeReduceHlo(HloInstruction* operand,
 
 // Creates a Select HLO instruction and adds it to the computation containing
 // the predicate. The on_true and on_false instructions must also be contained
-// in the same computation.
+// in the same computation. If on_true and on_false are tuples, create a tuple
+// select instead. `pred` is broadcasted up from a scalar if necessary.
 StatusOr<HloInstruction*> MakeSelectHlo(HloInstruction* pred,
                                         HloInstruction* on_true,
-                                        HloInstruction* on_false);
+                                        HloInstruction* on_false,
+                                        HloInstruction* derived_from = nullptr);
 
 // Creates an R1 Constant HLO instruction of the given PrimitiveType with the
 // given values and adds it to the given computation.
