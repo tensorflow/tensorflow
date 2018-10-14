@@ -18,4 +18,9 @@ limitations under the License.
 namespace tensorflow {
 REGISTER2(BinaryOp, CPU, "Zeta", functor::zeta, float, double);
 REGISTER2(BinaryOp, CPU, "Polygamma", functor::polygamma, float, double);
+
+#if GOOGLE_CUDA
+REGISTER2(BinaryOp, GPU, "Zeta", functor::zeta, float, double);
+REGISTER2(BinaryOp, GPU, "Polygamma", functor::polygamma, float, double);
+#endif
 }  // namespace tensorflow

@@ -34,9 +34,8 @@ XLA_TEST_F(TokenHloTest, SingleTokenInstruction) {
 
   module->AddEntryComputation(builder.Build());
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<Literal> result,
-                          Execute(std::move(module), {}));
-  EXPECT_TRUE(LiteralTestUtil::Equal(*result, *LiteralUtil::CreateToken()));
+  TF_ASSERT_OK_AND_ASSIGN(Literal result, Execute(std::move(module), {}));
+  EXPECT_TRUE(LiteralTestUtil::Equal(result, LiteralUtil::CreateToken()));
 }
 
 XLA_TEST_F(TokenHloTest, TokenTree) {
@@ -50,9 +49,8 @@ XLA_TEST_F(TokenHloTest, TokenTree) {
 
   module->AddEntryComputation(builder.Build());
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<Literal> result,
-                          Execute(std::move(module), {}));
-  EXPECT_TRUE(LiteralTestUtil::Equal(*result, *LiteralUtil::CreateToken()));
+  TF_ASSERT_OK_AND_ASSIGN(Literal result, Execute(std::move(module), {}));
+  EXPECT_TRUE(LiteralTestUtil::Equal(result, LiteralUtil::CreateToken()));
 }
 
 XLA_TEST_F(TokenHloTest, InvalidTokenShapedEntryParameter) {
@@ -193,9 +191,8 @@ ENTRY %TokenInConditional (param.3: pred[]) -> s32[] {
         std::unique_ptr<HloModule> module,
         HloRunner::CreateModuleFromString(module_string, debug_options));
     auto arg = LiteralUtil::CreateR0<bool>(true);
-    TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<Literal> result,
-                            Execute(std::move(module), {arg.get()}));
-    EXPECT_EQ(42, result->Get<int32>({}));
+    TF_ASSERT_OK_AND_ASSIGN(Literal result, Execute(std::move(module), {&arg}));
+    EXPECT_EQ(42, result.Get<int32>({}));
   }
 
   {
@@ -204,9 +201,8 @@ ENTRY %TokenInConditional (param.3: pred[]) -> s32[] {
         std::unique_ptr<HloModule> module,
         HloRunner::CreateModuleFromString(module_string, debug_options));
     auto arg = LiteralUtil::CreateR0<bool>(false);
-    TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<Literal> result,
-                            Execute(std::move(module), {arg.get()}));
-    EXPECT_EQ(7, result->Get<int32>({}));
+    TF_ASSERT_OK_AND_ASSIGN(Literal result, Execute(std::move(module), {&arg}));
+    EXPECT_EQ(7, result.Get<int32>({}));
   }
 }
 

@@ -631,6 +631,34 @@ class TFETest(test_util.TensorFlowTestCase):
     for t in tensors:
       self.assertIsInstance(t, ops.EagerTensor)
 
+  def testSmallIntegerOpsForcedToCPU(self):
+    if not context.context().num_gpus():
+      self.skipTest('No GPUs found')
+
+    a = constant_op.constant((1, 2, 3, 4, 5), dtype=dtypes.int64)
+    b = constant_op.constant((2, 3, 4, 5, 6), dtype=dtypes.int64)
+    with context.device('gpu:0'):
+      c = a + b
+
+    # Op forced to CPU since all constants are integers and small.
+    self.assertEqual(c.device, '/job:localhost/replica:0/task:0/device:CPU:0')
+
+    a = array_ops.zeros((8, 10), dtype=dtypes.int64)
+    b = array_ops.ones((8, 10), dtype=dtypes.int64)
+
+    with context.device('gpu:0'):
+      c = a + b
+
+    # Op not forced to CPU since the tensors are larger than 64 elements.
+    self.assertEqual(c.device, '/job:localhost/replica:0/task:0/device:GPU:0')
+
+    a = constant_op.constant((1, 2, 3, 4, 5), dtype=dtypes.float32)
+    b = constant_op.constant((2, 3, 4, 5, 6), dtype=dtypes.float32)
+    with context.device('gpu:0'):
+      c = a + b
+
+    # Op not forced to CPU since the constants are not integers.
+    self.assertEqual(c.device, '/job:localhost/replica:0/task:0/device:GPU:0')
 
 class SendRecvTest(test_util.TensorFlowTestCase):
 
@@ -687,6 +715,17 @@ class SendRecvTest(test_util.TensorFlowTestCase):
       self.assertAllEqual(
           self._recv(dtypes.float32, 't1', self.cpu_device),
           2.0)
+
+
+class EagerTensorCacheTest(test_util.TensorFlowTestCase):
+
+  def testCacheSkipsTensorsTooLarge(self):
+    cache = context._EagerTensorCache(max_items=100, max_tensor_size=3)
+    cache.put('1', array_ops.zeros((2, 2)))
+    self.assertEqual(cache.get('1'), None)
+
+    cache.put('2', array_ops.zeros((2)))
+    self.assertNotEqual(cache.get('2'), None)
 
 
 if __name__ == '__main__':

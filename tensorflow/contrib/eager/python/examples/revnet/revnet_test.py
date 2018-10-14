@@ -50,6 +50,9 @@ class RevNetTest(tf.test.TestCase):
     # Reconstruction could cause numerical error, use double precision for tests
     config.dtype = tf.float64
     config.fused = False  # Fused batch norm does not support tf.float64
+    # Reduce the batch size for tests because the OSS version runs
+    # in constrained GPU environment with 1-2GB of memory.
+    config.batch_size = 2
     shape = (config.batch_size,) + config.input_shape
     self.model = revnet.RevNet(config=config)
     self.x = tf.random_normal(shape=shape, dtype=tf.float64)

@@ -12,6 +12,7 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         ":feature_column",
+        ":feature_column_v2",
         "//tensorflow/python:util",
     ],
 )
@@ -53,6 +54,7 @@ py_library(
     srcs = ["feature_column_v2.py"],
     srcs_version = "PY2AND3",
     deps = [
+        ":feature_column",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:check_ops",
         "//tensorflow/python:control_flow_ops",
@@ -100,6 +102,7 @@ py_test(
     tags = [
         "no_cuda_on_cpu_tap",
         "no_pip",
+        "no_windows",
     ],
     deps = [
         ":feature_column",
@@ -133,6 +136,7 @@ py_test(
     tags = [
         "no_cuda_on_cpu_tap",
         "no_pip",
+        "no_windows",
     ],
     deps = [
         ":feature_column_py",

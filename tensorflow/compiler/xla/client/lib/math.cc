@@ -69,8 +69,7 @@ std::array<float, 6> kErfUCoefficient = {
 
 // Evaluate the polynomial given coefficients and `x`.
 // N.B. Coefficients should be supplied in decreasing order.
-XlaOp EvaluatePolynomial(XlaOp x,
-                         tensorflow::gtl::ArraySlice<float> coefficients) {
+XlaOp EvaluatePolynomial(XlaOp x, absl::Span<const float> coefficients) {
   XlaOp poly = ScalarLike(x, 0.0);
   for (float c : coefficients) {
     poly = poly * x + ScalarLike(x, c);

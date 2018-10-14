@@ -42,7 +42,7 @@ class NumpyIoTest(test.TestCase):
     x = {'a': a, 'b': b}
     y = np.arange(-32, -28)
 
-    with self.test_session() as session:
+    with self.cached_session() as session:
       input_fn = numpy_io.numpy_input_fn(
           x, y, batch_size=2, shuffle=False, num_epochs=1)
       features, target = input_fn()
@@ -68,7 +68,7 @@ class NumpyIoTest(test.TestCase):
     x = {'a': a, 'b': b}
     y = np.arange(-32, -30)
 
-    with self.test_session() as session:
+    with self.cached_session() as session:
       input_fn = numpy_io.numpy_input_fn(
           x, y, batch_size=128, shuffle=False, num_epochs=2)
       features, target = input_fn()
@@ -93,7 +93,7 @@ class NumpyIoTest(test.TestCase):
     x = {'a': a, 'b': b}
     y = np.arange(-32, -28)
 
-    with self.test_session() as session:
+    with self.cached_session() as session:
       input_fn = numpy_io.numpy_input_fn(
           x, y, batch_size=2, shuffle=False, num_epochs=0)
       features, target = input_fn()
@@ -114,7 +114,7 @@ class NumpyIoTest(test.TestCase):
     x = {'a': a, 'b': b}
     y = np.arange(-32, -27)
 
-    with self.test_session() as session:
+    with self.cached_session() as session:
       input_fn = numpy_io.numpy_input_fn(
           x, y, batch_size=batch_size, shuffle=False, num_epochs=1)
       features, target = input_fn()
@@ -150,7 +150,7 @@ class NumpyIoTest(test.TestCase):
     x = {'a': a, 'b': b}
     y = np.arange(-32, -29)
 
-    with self.test_session() as session:
+    with self.cached_session() as session:
       input_fn = numpy_io.numpy_input_fn(
           x, y, batch_size=batch_size, shuffle=False, num_epochs=3)
       features, target = input_fn()
@@ -196,7 +196,7 @@ class NumpyIoTest(test.TestCase):
     x = {'a': a, 'b': b}
     y = np.arange(-32, -28)
 
-    with self.test_session() as session:
+    with self.cached_session() as session:
       input_fn = numpy_io.numpy_input_fn(
           x, y, batch_size=batch_size, shuffle=False, num_epochs=1)
       features, target = input_fn()
@@ -221,7 +221,7 @@ class NumpyIoTest(test.TestCase):
     x = {'a': a, 'b': b}
     y = np.arange(-32, -30)
 
-    with self.test_session() as session:
+    with self.cached_session() as session:
       input_fn = numpy_io.numpy_input_fn(
           x, y, batch_size=2, shuffle=False, num_epochs=1)
       features, target = input_fn()
@@ -240,7 +240,7 @@ class NumpyIoTest(test.TestCase):
   def testNumpyInputFnWithXAsNonDict(self):
     x = list(range(32, 36))
     y = np.arange(4)
-    with self.test_session():
+    with self.cached_session():
       with self.assertRaisesRegexp(TypeError, 'x must be a dict or array'):
         failing_input_fn = numpy_io.numpy_input_fn(
             x, y, batch_size=2, shuffle=False, num_epochs=1)
@@ -249,7 +249,7 @@ class NumpyIoTest(test.TestCase):
   def testNumpyInputFnWithXIsEmptyDict(self):
     x = {}
     y = np.arange(4)
-    with self.test_session():
+    with self.cached_session():
       with self.assertRaisesRegexp(ValueError, 'x cannot be an empty'):
         failing_input_fn = numpy_io.numpy_input_fn(x, y, shuffle=False)
         failing_input_fn()
@@ -257,7 +257,7 @@ class NumpyIoTest(test.TestCase):
   def testNumpyInputFnWithXIsEmptyArray(self):
     x = np.array([[], []])
     y = np.arange(4)
-    with self.test_session():
+    with self.cached_session():
       with self.assertRaisesRegexp(ValueError, 'x cannot be an empty'):
         failing_input_fn = numpy_io.numpy_input_fn(x, y, shuffle=False)
         failing_input_fn()
@@ -268,7 +268,7 @@ class NumpyIoTest(test.TestCase):
     x = {'a': a, 'b': b}
     y = None
 
-    with self.test_session() as session:
+    with self.cached_session() as session:
       input_fn = numpy_io.numpy_input_fn(
           x, y, batch_size=2, shuffle=False, num_epochs=1)
       features_tensor = input_fn()
@@ -291,7 +291,7 @@ class NumpyIoTest(test.TestCase):
   def testNumpyInputFnWithNonBoolShuffle(self):
     x = np.arange(32, 36)
     y = np.arange(4)
-    with self.test_session():
+    with self.cached_session():
       with self.assertRaisesRegexp(ValueError,
                                    'shuffle must be provided and explicitly '
                                    'set as boolean'):
@@ -303,7 +303,7 @@ class NumpyIoTest(test.TestCase):
     x = {'__target_key__': array}
     y = np.arange(4)
 
-    with self.test_session():
+    with self.cached_session():
       input_fn = numpy_io.numpy_input_fn(
           x, y, batch_size=2, shuffle=False, num_epochs=1)
       input_fn()
@@ -318,7 +318,7 @@ class NumpyIoTest(test.TestCase):
     x_mismatch_length = {'a': np.arange(1), 'b': b}
     y_longer_length = np.arange(10)
 
-    with self.test_session():
+    with self.cached_session():
       with self.assertRaisesRegexp(
           ValueError, 'Length of tensors in x and y is mismatched.'):
         failing_input_fn = numpy_io.numpy_input_fn(
@@ -341,7 +341,7 @@ class NumpyIoTest(test.TestCase):
     x = {'a': a, 'b': b}
     y = {'y1': np.arange(-32, -28), 'y2': np.arange(32, 28, -1)}
 
-    with self.test_session() as session:
+    with self.cached_session() as session:
       input_fn = numpy_io.numpy_input_fn(
           x, y, batch_size=2, shuffle=False, num_epochs=1)
       features_tensor, targets_tensor = input_fn()
@@ -369,7 +369,7 @@ class NumpyIoTest(test.TestCase):
     b = np.arange(32, 36)
     x = {'a': a, 'b': b}
     y = {}
-    with self.test_session():
+    with self.cached_session():
       with self.assertRaisesRegexp(ValueError, 'y cannot be empty'):
         failing_input_fn = numpy_io.numpy_input_fn(x, y, shuffle=False)
         failing_input_fn()
@@ -379,7 +379,7 @@ class NumpyIoTest(test.TestCase):
     b = np.arange(32, 36)
     x = {'a': a, 'b': b}
     y = {'y1': np.arange(-32, -28), 'a': a, 'y2': np.arange(32, 28, -1), 'b': b}
-    with self.test_session():
+    with self.cached_session():
       with self.assertRaisesRegexp(
           ValueError, '2 duplicate keys are found in both x and y'):
         failing_input_fn = numpy_io.numpy_input_fn(x, y, shuffle=False)

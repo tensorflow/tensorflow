@@ -178,7 +178,7 @@ REGISTER_OP("FusedBatchNorm")
     .Output("reserve_space_2: T")
     .Attr("T: {float}")
     .Attr("epsilon: float = 0.0001")
-    .Attr("data_format: string = 'NHWC'")
+    .Attr(GetConvnetDataFormatAttrString())
     .Attr("is_training: bool = true")
     .SetShapeFn(shape_inference::FusedBatchNormShape);
 
@@ -196,7 +196,7 @@ REGISTER_OP("FusedBatchNormV2")
     .Attr("T: {half, bfloat16, float}")
     .Attr("U: {float}")
     .Attr("epsilon: float = 0.0001")
-    .Attr("data_format: string = 'NHWC'")
+    .Attr(GetConvnetDataFormatAttrString())
     .Attr("is_training: bool = true")
     .SetShapeFn(shape_inference::FusedBatchNormShape);
 
@@ -213,7 +213,7 @@ REGISTER_OP("FusedBatchNormGrad")
     .Output("reserve_space_4: T")
     .Attr("T: {float}")
     .Attr("epsilon: float = 0.0001")
-    .Attr("data_format: string = 'NHWC'")
+    .Attr(GetConvnetDataFormatAttrString())
     .Attr("is_training: bool = true")
     .SetShapeFn(shape_inference::FusedBatchNormGradShape);
 
@@ -231,7 +231,7 @@ REGISTER_OP("FusedBatchNormGradV2")
     .Attr("T: {half, bfloat16, float}")
     .Attr("U: {float}")
     .Attr("epsilon: float = 0.0001")
-    .Attr("data_format: string = 'NHWC'")
+    .Attr(GetConvnetDataFormatAttrString())
     .Attr("is_training: bool = true")
     .SetShapeFn(shape_inference::FusedBatchNormGradShape);
 
@@ -960,7 +960,7 @@ REGISTER_OP("Dilation2DBackpropFilter")
 REGISTER_OP("Relu")
     .Input("features: T")
     .Output("activations: T")
-    .Attr("T: realnumbertype")
+    .Attr("T: {realnumbertype, qint8}")
     .SetShapeFn(shape_inference::UnchangedShape);
 
 REGISTER_OP("ReluGrad")
@@ -981,6 +981,21 @@ REGISTER_OP("Relu6Grad")
     .Input("features: T")
     .Output("backprops: T")
     .Attr("T: realnumbertype")
+    .SetShapeFn(shape_inference::MergeBothInputsShapeFn);
+
+REGISTER_OP("LeakyRelu")
+    .Input("features: T")
+    .Output("activations: T")
+    .Attr("alpha: float = 0.2")
+    .Attr("T: {half, float, double} = DT_FLOAT")
+    .SetShapeFn(shape_inference::UnchangedShape);
+
+REGISTER_OP("LeakyReluGrad")
+    .Input("gradients: T")
+    .Input("features: T")
+    .Output("backprops: T")
+    .Attr("alpha: float = 0.2")
+    .Attr("T: {half, float, double} = DT_FLOAT")
     .SetShapeFn(shape_inference::MergeBothInputsShapeFn);
 
 REGISTER_OP("Elu")
@@ -1009,32 +1024,30 @@ REGISTER_OP("SeluGrad")
     .Attr("T: {half, bfloat16, float, double}")
     .SetShapeFn(shape_inference::MergeBothInputsShapeFn);
 
-// TODO(b/111515541): change T to {half, bfloat16, float, double}
 REGISTER_OP("Softplus")
     .Input("features: T")
     .Output("activations: T")
-    .Attr("T: realnumbertype")
+    .Attr("T: {half, bfloat16, float, double}")
     .SetShapeFn(shape_inference::UnchangedShape);
 
 REGISTER_OP("SoftplusGrad")
     .Input("gradients: T")
     .Input("features: T")
     .Output("backprops: T")
-    .Attr("T: realnumbertype")
+    .Attr("T: {half, bfloat16, float, double}")
     .SetShapeFn(shape_inference::MergeBothInputsShapeFn);
 
-// TODO(b/111515541): change T to {half, bfloat16, float, double}
 REGISTER_OP("Softsign")
     .Input("features: T")
     .Output("activations: T")
-    .Attr("T: realnumbertype")
+    .Attr("T: {half, bfloat16, float, double}")
     .SetShapeFn(shape_inference::UnchangedShape);
 
 REGISTER_OP("SoftsignGrad")
     .Input("gradients: T")
     .Input("features: T")
     .Output("backprops: T")
-    .Attr("T: realnumbertype")
+    .Attr("T: {half, bfloat16, float, double}")
     .SetShapeFn(shape_inference::MergeBothInputsShapeFn);
 
 // --------------------------------------------------------------------------
@@ -2021,6 +2034,104 @@ REGISTER_OP("_MklAvgPoolGrad")
     .Doc(R"doc(
 MKL version of AvgPoolGrad operator. Uses MKL DNN APIs to compute gradients
 of AvgPool function.
+
+NOTE Do not invoke this operator directly in Python. Graph rewrite pass is
+expected to invoke these operators.
+)doc");
+
+REGISTER_OP("_MklAvgPool3D")
+    .Input("value: T")
+    .Input("mkl_input: uint8")
+    .Output("output: T")
+    .Output("mkl_output: uint8")
+    .Attr("ksize: list(int) >= 5")
+    .Attr("strides: list(int) >= 5")
+    .Attr(GetPaddingAttrString())
+    .Attr(GetConvnet3dDataFormatAttrString())
+    .Attr("T: {float, half, double}")
+    .SetShapeFn(shape_inference::Pool3DShape)
+    .Doc(R"doc(
+MKL version of AvgPool3D operator. Uses MKL DNN APIs to perform average pooling
+on the input.
+
+NOTE Do not invoke this operator directly in Python. Graph rewrite pass is
+expected to invoke these operators.
+)doc");
+
+
+REGISTER_OP("_MklAvgPool3DGrad")
+    .Input("orig_input_shape: int32")
+    .Input("grad: T")
+    .Input("mkl_orig_input: uint8")
+    .Input("mkl_grad: uint8")
+    .Output("output: T")
+    .Output("mkl_output: uint8")
+    .Attr("ksize: list(int) >= 5")
+    .Attr("strides: list(int) >= 5")
+    .Attr(GetPaddingAttrString())
+    .Attr(GetConvnet3dDataFormatAttrString())
+    .Attr("T: {float, half, double}")
+    .SetShapeFn([](InferenceContext* c) {
+      ShapeHandle s;
+      TF_RETURN_IF_ERROR(c->MakeShapeFromShapeTensor(0, &s));
+      TF_RETURN_IF_ERROR(c->WithRank(s, 5, &s));
+      c->set_output(0, s);
+      return Status::OK();
+    })
+    .Doc(R"doc(
+MKL version of AvgPool3DGrad operator. Uses MKL DNN APIs to compute gradients
+of AvgPool function.
+
+NOTE Do not invoke this operator directly in Python. Graph rewrite pass is
+expected to invoke these operators.
+)doc");
+
+REGISTER_OP("_MklMaxPool3D")
+    .Input("input: T")
+    .Input("mkl_input: uint8")
+    .Output("output: T")
+    .Output("workspace: uint8")
+    .Output("mkl_output: uint8")
+    .Output("mkl_workspace: uint8")
+    .Attr("ksize: list(int) >= 5")
+    .Attr("strides: list(int) >= 5")
+    .Attr(GetPaddingAttrString())
+    .Attr(GetConvnet3dDataFormatAttrString())
+    .Attr("T: {half, bfloat16, float}")
+    .Attr("workspace_enabled: bool = false")
+    .SetShapeFn(shape_inference::Pool3DShape)
+    .Doc(R"doc(
+MKL version of MaxPool3D operator. Uses MKL DNN APIs to perform average pooling
+on the input.
+
+NOTE Do not invoke this operator directly in Python. Graph rewrite pass is
+expected to invoke these operators.
+)doc");
+
+REGISTER_OP("_MklMaxPool3DGrad")
+    .Input("orig_input: TInput")
+    .Input("orig_output: TInput")
+    .Input("grad: T")
+    .Input("workspace: uint8")
+    .Input("mkl_orig_input: uint8")
+    .Input("mkl_orig_output: uint8")
+    .Input("mkl_grad: uint8")
+    .Input("mkl_workspace: uint8")
+    .Output("output: T")
+    .Output("mkl_output: uint8")
+    .Attr("ksize: list(int) >= 5")
+    .Attr("strides: list(int) >= 5")
+    .Attr(GetPaddingAttrString())
+    .Attr(GetConvnet3dDataFormatAttrString())
+    .Attr("T: {half, bfloat16, float} = DT_FLOAT")
+    .Attr("TInput: {half, bfloat16, float} = DT_FLOAT")
+    .Attr("workspace_enabled: bool = false")
+    .SetShapeFn([](InferenceContext* c) {
+      return UnchangedShapeWithRank(c, 5);
+    })
+    .Doc(R"doc(
+MKL version of MklPool3DGrad operator. Uses MKL DNN APIs to compute gradients
+of MklPool function.
 
 NOTE Do not invoke this operator directly in Python. Graph rewrite pass is
 expected to invoke these operators.

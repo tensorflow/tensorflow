@@ -63,25 +63,24 @@ inline bool CanEmitFusedDynamicUpdateSliceInPlace(
 // Emits IR for running the given dynamic-update-slice op in-place -- that is,
 // where the input and output buffers share the same slice, so we can simply
 // modify the input/output buffer without touching any of the other elements.
-Status EmitDynamicUpdateSliceInPlace(
-    tensorflow::gtl::ArraySlice<IrArray> operand_arrays,
-    const IrArray& output_array, absl::string_view name, llvm::IRBuilder<>* b);
+Status EmitDynamicUpdateSliceInPlace(absl::Span<const IrArray> operand_arrays,
+                                     const IrArray& output_array,
+                                     absl::string_view name,
+                                     llvm::IRBuilder<>* b);
 
 // Given a loop-fusion node whose root is a dynamic-update-slice op whose
 // array-to-be-updated and output share the same buffer slice, emits
 // (sequential) code for a fusion node that does the dynamic-update-slice in
 // place.
 Status EmitFusedDynamicUpdateSliceInPlace(
-    HloInstruction* fusion,
-    tensorflow::gtl::ArraySlice<IrArray> fusion_operand_arrays,
+    HloInstruction* fusion, absl::Span<const IrArray> fusion_operand_arrays,
     const IrArray& fusion_output_array, ElementalIrEmitter* elemental_emitter,
     llvm::IRBuilder<>* b);
 
 // Same as EmitFusedDynamicUpdateSliceInPlace, except emits a parallel loop with
 // the given launch dimensions.
 Status EmitParallelFusedDynamicUpdateSliceInPlace(
-    HloInstruction* fusion,
-    tensorflow::gtl::ArraySlice<IrArray> fusion_operand_arrays,
+    HloInstruction* fusion, absl::Span<const IrArray> fusion_operand_arrays,
     const IrArray& fusion_output_array, ElementalIrEmitter* elemental_emitter,
     const gpu::LaunchDimensions& launch_dimensions, llvm::IRBuilder<>* b);
 

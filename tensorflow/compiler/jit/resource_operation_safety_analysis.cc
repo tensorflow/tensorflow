@@ -82,6 +82,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/jit/resource_operation_safety_analysis.h"
 
+#include "absl/container/flat_hash_set.h"
 #include "absl/memory/memory.h"
 #include "absl/strings/str_join.h"
 #include "absl/types/optional.h"
@@ -89,8 +90,6 @@ limitations under the License.
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/graph/algorithm.h"
 #include "tensorflow/core/graph/tensor_id.h"
-#include "tensorflow/core/lib/gtl/flatmap.h"
-#include "tensorflow/core/lib/gtl/flatset.h"
 #include "tensorflow/core/lib/hash/hash.h"
 #include "tensorflow/core/util/ptr_util.h"
 
@@ -165,7 +164,7 @@ bool IsEdgeSafe(XlaResourceOpKind from, XlaResourceOpKind to) {
 using ResourceOp = std::pair<int, XlaResourceOpKind>;
 
 string ResourceOpToString(const ResourceOp& resource_op) {
-  return strings::StrCat(
+  return absl::StrCat(
       resource_op.first, ": ",
       XlaResourceOpInfo::XlaResourceOpKindToString(resource_op.second));
 }
@@ -177,7 +176,7 @@ string ResourceOpToString(const ResourceOp& resource_op) {
 // point.
 class ResourceOpSet {
  private:
-  using Impl = gtl::FlatSet<ResourceOp>;
+  using Impl = absl::flat_hash_set<ResourceOp>;
 
  public:
   ResourceOpSet() = default;
@@ -257,11 +256,11 @@ string ResourceOpSetToString(const ResourceOpSet& resource_op_set) {
   std::vector<string> elements_debug_string;
   std::transform(resource_op_set.begin(), resource_op_set.end(),
                  std::back_inserter(elements_debug_string), ResourceOpToString);
-  return strings::StrCat("{", absl::StrJoin(elements_debug_string, ","), "}");
+  return absl::StrCat("{", absl::StrJoin(elements_debug_string, ","), "}");
 }
 
 string NodeToString(const Node& n, XlaResourceOpKind resource_op_kind) {
-  return strings::StrCat(
+  return absl::StrCat(
       "[", n.name(), ": ", n.type_string(), "(",
       XlaResourceOpInfo::XlaResourceOpKindToString(resource_op_kind), ")", "]");
 }

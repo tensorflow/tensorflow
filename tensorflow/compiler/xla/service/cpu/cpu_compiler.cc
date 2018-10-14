@@ -77,17 +77,17 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_dce.h"
 #include "tensorflow/compiler/xla/service/hlo_element_type_converter.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
+#include "tensorflow/compiler/xla/service/hlo_memory_scheduler.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/hlo_ordering.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_fix.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_pipeline.h"
 #include "tensorflow/compiler/xla/service/hlo_proto_util.h"
-#include "tensorflow/compiler/xla/service/hlo_scheduling.h"
 #include "tensorflow/compiler/xla/service/hlo_subcomputation_unification.h"
 #include "tensorflow/compiler/xla/service/hlo_verifier.h"
 #include "tensorflow/compiler/xla/service/indexed_array_analysis.h"
-#include "tensorflow/compiler/xla/service/inliner.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_util.h"
+#include "tensorflow/compiler/xla/service/map_inliner.h"
 #include "tensorflow/compiler/xla/service/reduce_precision_insertion.h"
 #include "tensorflow/compiler/xla/service/reshape_mover.h"
 #include "tensorflow/compiler/xla/service/scatter_expander.h"
@@ -249,9 +249,7 @@ Status CpuCompiler::RunHloPassesThroughLayoutAssn(
       &pipeline, module->config().debug_options(),
       ReducePrecisionInsertion::PassTiming::BEFORE_OPTIMIZATION);
 
-  // TODO(b/35786417): Re-enable inliner pass after fixing the bug and deciding
-  // where we will take this pass in future.
-  // pipeline.AddPass<Inliner>();
+  pipeline.AddPass<MapInliner>();
 
   // TODO(b/65775800): Fix wrong output bug in Call and remove the CallInliner
   // pass.
@@ -308,7 +306,8 @@ Status CpuCompiler::RunHloPassesThroughLayoutAssn(
       ReducePrecisionInsertion::PassTiming::AFTER_FUSION);
 
   pipeline.AddPass<CpuLayoutAssignment>(
-      module->mutable_entry_computation_layout(), target_machine_features);
+      module->mutable_entry_computation_layout(),
+      LayoutAssignment::InstructionCanChangeLayout, target_machine_features);
   return pipeline.Run(module).status();
 }
 
@@ -328,8 +327,13 @@ Status CpuCompiler::RunHloPassesAfterLayoutAssn(
   {
     auto& pass = pipeline.AddPass<HloPassFix<HloPassPipeline>>(
         "simplification after layout assignement");
-    pass.AddInvariantChecker<HloVerifier>(/*layout_sensitive=*/true,
-                                          /*allow_mixed_precision=*/false);
+    // TODO(b/117156505): When the bug is fixed, the CPU backend should not
+    // produce layout changing elementwise operations. We will then pass
+    // LayoutAssignment::InstructionCanChangeLayout to the HLO verifier to
+    // enable stricter verification.
+    pass.AddInvariantChecker<HloVerifier>(
+        /*layout_sensitive=*/true,
+        /*allow_mixed_precision=*/false);
     pass.AddPass<HloPassFix<AlgebraicSimplifier>>(
         /*is_layout_sensitive=*/true,
         [](const Shape&, const Shape&) { return true; },
@@ -584,17 +588,14 @@ StatusOr<std::unique_ptr<Executable>> CpuCompiler::RunBackend(
   // computation. Using this sequence enables tighter buffer liveness analysis
   // and reduced memory usage (as compared to using DependencyHloOrdering).
   TF_ASSIGN_OR_RETURN(
-      SequentialHloOrdering::HloModuleSequence module_sequence,
-      ScheduleComputationsInModule(*module, BufferSizeBytesFunction(),
-                                   DFSMemoryScheduler));
+      HloSchedule schedule,
+      ScheduleModule(*module, BufferSizeBytesFunction(), DFSMemoryScheduler));
 
-  // Run buffer analysis on the HLO graph. This analysis figures out which
-  // temporary buffers are required to run the computation.
+  // Run buffer allocation on the HLO graph.
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<BufferAssignment> assignment,
       BufferAssigner::Run(module.get(),
-                          absl::make_unique<SequentialHloOrdering>(
-                              module.get(), module_sequence),
+                          absl::make_unique<SequentialHloOrdering>(schedule),
                           BufferSizeBytesFunction(), memory_alignment,
                           /*allow_input_output_aliasing=*/false,
                           /*allocate_buffers_for_constants=*/true));
@@ -628,9 +629,10 @@ StatusOr<std::unique_ptr<Executable>> CpuCompiler::RunBackend(
     }
     TF_RETURN_IF_ERROR(
         ir_emitter
-            .EmitComputation(embedded_computation, embedded_computation->name(),
-                             /*is_top_level_computation=*/false,
-                             &module_sequence.at(embedded_computation))
+            .EmitComputation(
+                embedded_computation, embedded_computation->name(),
+                /*is_top_level_computation=*/false,
+                &schedule.sequence(embedded_computation).instructions())
             .status());
   }
   string function_name_prefix = entry_computation->name().empty()
@@ -638,9 +640,10 @@ StatusOr<std::unique_ptr<Executable>> CpuCompiler::RunBackend(
                                     : entry_computation->name();
   TF_ASSIGN_OR_RETURN(
       llvm::Function * entry_function,
-      ir_emitter.EmitComputation(entry_computation, function_name_prefix,
-                                 /*is_top_level_computation=*/true,
-                                 &module_sequence.at(entry_computation)));
+      ir_emitter.EmitComputation(
+          entry_computation, function_name_prefix,
+          /*is_top_level_computation=*/true,
+          &schedule.sequence(entry_computation).instructions()));
 
   string function_name = [&]() {
     llvm::SmallVector<char, 40> function_name_vector;
@@ -673,9 +676,12 @@ StatusOr<std::unique_ptr<Executable>> CpuCompiler::RunBackend(
 }
 
 StatusOr<std::vector<std::unique_ptr<AotCompilationResult>>>
-CpuCompiler::CompileAheadOfTime(std::vector<std::unique_ptr<HloModule>> modules,
+CpuCompiler::CompileAheadOfTime(std::unique_ptr<HloModuleGroup> module_group,
                                 const AotCompilationOptions& aot_options) {
-  TF_RET_CHECK(!modules.empty());
+  TF_RET_CHECK(!module_group->empty());
+  std::vector<std::unique_ptr<HloModule>> modules =
+      module_group->ConsumeModules();
+
   std::call_once(llvm_command_line_options_initialized,
                  &llvm_ir::InitializeLLVMCommandLineOptions,
                  modules[0]->config());
@@ -705,8 +711,7 @@ CpuCompiler::CompileAheadOfTime(std::vector<std::unique_ptr<HloModule>> modules,
   const llvm::Target* target =
       llvm::TargetRegistry::lookupTarget(triple.getTriple(), error);
   if (target == nullptr) {
-    return InternalError("TargetRegistry::lookupTarget failed: %s",
-                         error.c_str());
+    return InternalError("TargetRegistry::lookupTarget failed: %s", error);
   }
 
   llvm::Reloc::Model reloc_model = llvm::Reloc::Static;
@@ -773,20 +778,18 @@ CpuCompiler::CompileAheadOfTime(std::vector<std::unique_ptr<HloModule>> modules,
     VLOG(2) << "After optimization:";
     XLA_VLOG_LINES(2, module->ToString());
 
-    TF_ASSIGN_OR_RETURN(
-        SequentialHloOrdering::HloModuleSequence module_sequence,
-        ScheduleComputationsInModule(*module, BufferSizeBytesFunction()));
+    TF_ASSIGN_OR_RETURN(HloSchedule schedule,
+                        ScheduleModule(*module, BufferSizeBytesFunction()));
 
     // Run buffer analysis on the HLO graph. This analysis figures out which
     // temporary buffers are required to run the computation.
     TF_ASSIGN_OR_RETURN(
         std::unique_ptr<BufferAssignment> assignment,
-        BufferAssigner::Run(
-            module,
-            absl::make_unique<SequentialHloOrdering>(module, module_sequence),
-            BufferSizeBytesFunction(), memory_alignment,
-            /*allow_input_output_aliasing=*/false,
-            /*allocate_buffers_for_constants=*/true));
+        BufferAssigner::Run(module,
+                            absl::make_unique<SequentialHloOrdering>(schedule),
+                            BufferSizeBytesFunction(), memory_alignment,
+                            /*allow_input_output_aliasing=*/false,
+                            /*allocate_buffers_for_constants=*/true));
     // BufferAssignment::ToString() includes a header, so no need for us to
     // print one ourselves.
     XLA_VLOG_LINES(2, assignment->ToString());
@@ -826,18 +829,18 @@ CpuCompiler::CompileAheadOfTime(std::vector<std::unique_ptr<HloModule>> modules,
       }
       TF_RETURN_IF_ERROR(
           ir_emitter
-              .EmitComputation(embedded_computation,
-                               embedded_computation->name(),
-                               /*is_top_level_computation=*/false,
-                               &module_sequence.at(embedded_computation))
+              .EmitComputation(
+                  embedded_computation, embedded_computation->name(),
+                  /*is_top_level_computation=*/false,
+                  &schedule.sequence(embedded_computation).instructions())
               .status());
     }
     const string& entry_point_name = options.entry_point_name();
-    TF_ASSIGN_OR_RETURN(
-        llvm::Function * entry_function,
-        ir_emitter.EmitComputation(computation, entry_point_name,
-                                   /*is_top_level_computation=*/true,
-                                   &module_sequence.at(computation)));
+    TF_ASSIGN_OR_RETURN(llvm::Function * entry_function,
+                        ir_emitter.EmitComputation(
+                            computation, entry_point_name,
+                            /*is_top_level_computation=*/true,
+                            &schedule.sequence(computation).instructions()));
 
     CHECK(entry_function->getName() == llvm_ir::AsStringRef(entry_point_name));
 

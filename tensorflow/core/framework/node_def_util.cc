@@ -254,7 +254,7 @@ DEFINE_GET_ATTR(NameAttrList, func, "func", emplace_back, v, ;);
 #undef DEFINE_GET_ATTR
 
 bool HasNodeAttr(const NodeDef& node_def, StringPiece attr_name) {
-  return node_def.attr().find(std::string(attr_name)) != node_def.attr().end();
+  return node_def.attr().find(string(attr_name)) != node_def.attr().end();
 }
 
 static const string& kEmptyString = *new string();
@@ -372,6 +372,14 @@ Status InputTypeForNode(const NodeDef& node_def, const OpDef& op_def,
                                  node_def.name());
 }
 
+Status InputTypesForNode(const NodeDef& node_def, const OpDef& op_def,
+                         DataTypeVector* inputs) {
+  for (const auto& arg : op_def.input_arg()) {
+    TF_RETURN_IF_ERROR(AddArgToSig(node_def, arg, inputs));
+  }
+  return Status::OK();
+}
+
 Status OutputTypeForNode(const NodeDef& node_def, const OpDef& op_def,
                          int output_port, DataType* output_type) {
   DataTypeVector output_types;
@@ -397,10 +405,16 @@ Status OutputTypesForNode(const NodeDef& node_def, const OpDef& op_def,
 
 Status InOutTypesForNode(const NodeDef& node_def, const OpDef& op_def,
                          DataTypeVector* inputs, DataTypeVector* outputs) {
-  for (const auto& arg : op_def.input_arg()) {
-    TF_RETURN_IF_ERROR(AddArgToSig(node_def, arg, inputs));
-  }
+  TF_RETURN_IF_ERROR(InputTypesForNode(node_def, op_def, inputs));
   return OutputTypesForNode(node_def, op_def, outputs);
+}
+
+Status NumOutputsForNode(const NodeDef& node_def, const OpDef& op_def,
+                         int* num_outputs) {
+  DataTypeVector outputs;
+  TF_RETURN_IF_ERROR(OutputTypesForNode(node_def, op_def, &outputs));
+  *num_outputs = outputs.size();
+  return Status::OK();
 }
 
 Status ValidateNodeDef(const NodeDef& node_def, const OpDef& op_def) {
@@ -653,7 +667,7 @@ Status AttachDef(const Status& status, const Node& node) {
 
 void AddNodeAttr(StringPiece name, const AttrValue& value, NodeDef* node_def) {
   node_def->mutable_attr()->insert(
-      AttrValueMap::value_type(std::string(name), value));
+      AttrValueMap::value_type(string(name), value));
 }
 
 #define ADD_NODE_ATTR(T)                                           \
@@ -691,7 +705,7 @@ ADD_NODE_ATTR(gtl::ArraySlice<NameAttrList>)
 #undef ADD_NODE_ATTR
 
 void AddAttr(StringPiece name, const AttrValue& value, AttrValueMap* map) {
-  map->insert(AttrValueMap::value_type(std::string(name), value));
+  map->insert(AttrValueMap::value_type(string(name), value));
 }
 
 #define ADD_ATTR(T)                                            \

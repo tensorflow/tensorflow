@@ -105,7 +105,8 @@ def convert_to_eager_tensor(value, ctx, dtype=None):
     scalar_cache = ctx.scalar_cache()
     tensor = scalar_cache.get(cache_key, None)
     if tensor is not None:
-      return tensor
+      return ops.EagerTensor(
+          value, context=handle, device=device, dtype=dtype, other_value=tensor)
     t = ops.EagerTensor(value, context=handle, device=device, dtype=dtype)
     scalar_cache[cache_key] = t
     return t

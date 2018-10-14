@@ -57,7 +57,6 @@ limitations under the License.
 #include "llvm/Transforms/Scalar.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/core/lib/io/path.h"
-#include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/tracing.h"

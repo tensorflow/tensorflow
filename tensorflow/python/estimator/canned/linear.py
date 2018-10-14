@@ -25,14 +25,18 @@ import six
 from tensorflow.python.estimator import estimator
 from tensorflow.python.estimator.canned import head as head_lib
 from tensorflow.python.estimator.canned import optimizers
-from tensorflow.python.feature_column import feature_column as feature_column_lib
+from tensorflow.python.feature_column import feature_column
+from tensorflow.python.feature_column import feature_column_v2
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import nn
 from tensorflow.python.ops import partitioned_variables
+from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variable_scope
+from tensorflow.python.ops import variables as variable_ops
 from tensorflow.python.ops.losses import losses
 from tensorflow.python.summary import summary
 from tensorflow.python.training import ftrl
+from tensorflow.python.util import nest
 from tensorflow.python.util.tf_export import estimator_export
 
 
@@ -46,23 +50,42 @@ def _get_default_optimizer(feature_columns):
   return ftrl.FtrlOptimizer(learning_rate=learning_rate)
 
 
-def _compute_fraction_of_zero(cols_to_vars):
-  """Given a linear cols_to_vars dict, compute the fraction of zero weights.
+def _get_expanded_variable_list(var_list):
+  """Given a list of variables, expands them if they are partitioned.
 
   Args:
-    cols_to_vars: A dictionary mapping FeatureColumns to lists of tf.Variables
-      like one returned from feature_column_lib.linear_model.
+    var_list: A list of variables.
+
+  Returns:
+    A list of variables where each partitioned variable is expanded to its
+    components.
+  """
+  returned_list = []
+  for variable in var_list:
+    if (isinstance(variable, variable_ops.Variable) or
+        resource_variable_ops.is_resource_variable(variable)):
+      returned_list.append(variable)  # Single variable case.
+    else:  # Must be a PartitionedVariable, so convert into a list.
+      returned_list.extend(list(variable))
+  return returned_list
+
+
+# TODO(rohanj): Consider making this a public utility method.
+def _compute_fraction_of_zero(variables):
+  """Given a linear variables list, compute the fraction of zero weights.
+
+  Args:
+    variables: A list or list of list of variables
 
   Returns:
     The fraction of zeros (sparsity) in the linear model.
   """
   all_weight_vars = []
-  for var_or_var_list in cols_to_vars.values():
+  for var_or_var_list in variables:
+    var_list = nest.flatten(var_or_var_list)
     # Skip empty-lists associated with columns that created no Variables.
-    if var_or_var_list:
-      all_weight_vars += [
-          array_ops.reshape(var, [-1]) for var in var_or_var_list
-      ]
+    if var_list:
+      all_weight_vars += [array_ops.reshape(var, [-1]) for var in var_list]
   return nn.zero_fraction(array_ops.concat(all_weight_vars, axis=0))
 
 
@@ -92,14 +115,36 @@ def _linear_logit_fn_builder(units, feature_columns, sparse_combiner='sum'):
     Returns:
       A `Tensor` representing the logits.
     """
-    cols_to_vars = {}
-    logits = feature_column_lib.linear_model(
-        features=features,
-        feature_columns=feature_columns,
-        units=units,
-        sparse_combiner=sparse_combiner,
-        cols_to_vars=cols_to_vars)
-    bias = cols_to_vars.pop('bias')
+    if feature_column_v2.is_feature_column_v2(feature_columns):
+      shared_state_manager = feature_column_v2.SharedEmbeddingStateManager()
+      linear_model = feature_column_v2.LinearModel(
+          feature_columns=feature_columns,
+          units=units,
+          sparse_combiner=sparse_combiner,
+          shared_state_manager=shared_state_manager)
+      logits = linear_model(features)
+      bias = linear_model.bias_variable
+
+      # We'd like to get all the non-bias variables associated with this
+      # LinearModel. This includes the shared embedding variables as well.
+      variables = linear_model.variables
+      variables.remove(bias)
+      variables.extend(shared_state_manager.variables)
+
+      # Expand (potential) Partitioned variables
+      bias = _get_expanded_variable_list([bias])
+      variables = _get_expanded_variable_list(variables)
+    else:
+      linear_model = feature_column._LinearModel(  # pylint: disable=protected-access
+          feature_columns=feature_columns,
+          units=units,
+          sparse_combiner=sparse_combiner,
+          name='linear_model')
+      logits = linear_model(features)
+      cols_to_vars = linear_model.cols_to_vars()
+      bias = cols_to_vars.pop('bias')
+      variables = cols_to_vars.values()
+
     if units > 1:
       summary.histogram('bias', bias)
     else:
@@ -107,7 +152,7 @@ def _linear_logit_fn_builder(units, feature_columns, sparse_combiner='sum'):
       # so we should provide a scalar summary.
       summary.scalar('bias', bias[0][0])
     summary.scalar('fraction_of_zero_weights',
-                   _compute_fraction_of_zero(cols_to_vars))
+                   _compute_fraction_of_zero(variables))
     return logits
 
   return linear_logit_fn

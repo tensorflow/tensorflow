@@ -65,7 +65,7 @@ class _RequestedStop(Exception):
   pass
 
 
-# Make _call_for_each_tower and _reduce_non_distributed_value not members of
+# _call_for_each_tower and _reduce_non_distributed_value are not members of
 # MirroredStrategy so that they are generally not allowed to use anything
 # specific to MirroredStrategy and thus can be shared with other distribution
 # strategies.
@@ -197,10 +197,12 @@ def _reduce_non_distributed_value(distribution, aggregation, value,
   # and equal to 0.
   if value == 0:
     return 0
-  # If the aggregation type is MEAN, then this essentially means that the same
-  # value should be on all destinations.
-  if aggregation == variable_scope.VariableAggregation.MEAN:
-    return distribution.broadcast(value, destinations)
+  # If the aggregation type is MEAN or ONLY_FIRST_TOWER, then this
+  # essentially means that the same value should be on all destinations.
+  if aggregation in (
+      variable_scope.VariableAggregation.MEAN,
+      variable_scope.VariableAggregation.ONLY_FIRST_TOWER):
+    return value
 
   cross_tower_ops_lib.validate_destinations(destinations)
   # We do not support an aggregation type of SUM if the value is the same across
@@ -208,8 +210,8 @@ def _reduce_non_distributed_value(distribution, aggregation, value,
   # and summing up identical values across towers is not clearly defined.
   if (len(distribution.worker_devices) != 1 or
       not cross_tower_ops_lib.check_destinations(destinations)):
-    raise ValueError("A non-DistributedValues value cannot be reduced with the "
-                     "given aggregation.")
+    raise ValueError("A non-DistributedValues value %s cannot be reduced with "
+                     "the given aggregation %s." % (value, aggregation))
   # TODO(anjalisridhar): Moves these methods to a device utility file?
   devices = cross_tower_ops_lib.get_devices_from(destinations)
   if len(devices) == 1:
@@ -254,11 +256,12 @@ def _create_mirrored_variable(devices, real_mirrored_creator, *args, **kwargs): 
   # Get aggregation value
   aggregation = kwargs.pop("aggregation",
                            variable_scope.VariableAggregation.NONE)
-  if aggregation not in [
+  if aggregation not in (
       variable_scope.VariableAggregation.NONE,
       variable_scope.VariableAggregation.SUM,
-      variable_scope.VariableAggregation.MEAN
-  ]:
+      variable_scope.VariableAggregation.MEAN,
+      variable_scope.VariableAggregation.ONLY_FIRST_TOWER
+  ):
     raise ValueError("Invalid variable aggregation mode: " + aggregation +
                      " for variable: " + kwargs["name"])
 
@@ -290,7 +293,8 @@ def _create_mirrored_variable(devices, real_mirrored_creator, *args, **kwargs): 
       collections.append(ops.GraphKeys.TRAINABLE_VARIABLES)
       l = g.get_collection_ref(ops.GraphKeys.TRAINABLE_VARIABLES)
       for v in index.values():
-        l.remove(v)
+        if v in l:
+          l.remove(v)
     g.add_to_collections(collections, result)
   elif ops.GraphKeys.GLOBAL_STEP in collections:
     ops.add_to_collections(ops.GraphKeys.GLOBAL_STEP, result)
@@ -315,12 +319,13 @@ class MirroredStrategy(distribute_lib.DistributionStrategy):
   [TensorFlow's documentation](https://www.tensorflow.org/deploy/distributed).
   The distribution strategy inherits these concepts as well and in addition to
   that we also clarify several more concepts:
-    * **In-graph replication**: the `client` creates a single `tf.Graph` that
+
+  * **In-graph replication**: the `client` creates a single `tf.Graph` that
     specifies tasks for devices on all workers. The `client` then creates a
     client session which will talk to the `master` service of a `worker`. Then
     the `master` will partition the graph and distribute the work to all
     participating workers.
-    * **Worker**: A `worker` is a TensorFlow `task` that usually maps to one
+  * **Worker**: A `worker` is a TensorFlow `task` that usually maps to one
     physical machine. We will have multiple `worker`s with different `task`
     index. They all do similar things except for one worker checkpointing model
     variables, writing summaries, etc. in addition to its ordinary work.
@@ -337,25 +342,39 @@ class MirroredStrategy(distribute_lib.DistributionStrategy):
     num_gpus: number of GPUs. For local training, either specify `devices` or
       `num_gpus`. In distributed training, this must be specified as number of
       GPUs on each worker.
+    num_gpus_per_worker: number of GPUs per worker. This is the same as
+      `num_gpus` and only one of `num_gpus` and `num_gpus_per_worker` can be
+      specified.
     cross_tower_ops: optional, a descedant of `CrossTowerOps`. If this is not
       set, the `configure` method will try to find the best one.
     prefetch_on_device: optional boolean to specify whether to prefetch input
       data to devices.
+    auto_shard_dataset: whether to auto-shard the dataset when there are
+      multiple workers.
   """
 
   def __init__(self,
                devices=None,
                num_gpus=None,
+               num_gpus_per_worker=None,
                cross_tower_ops=None,
-               prefetch_on_device=None):
+               prefetch_on_device=None,
+               auto_shard_dataset=False):
     super(MirroredStrategy, self).__init__()
 
     self._cross_tower_ops = cross_tower_ops
     self._prefetch_on_device = prefetch_on_device
+    self._auto_shard_dataset = auto_shard_dataset
     # Rememeber num GPUs which might be needed by `configure` method.
-    self._num_gpus = num_gpus
+    if num_gpus is not None and num_gpus_per_worker is not None:
+      raise ValueError(
+          "You cannot specify both `num_gpus` and `num_gpus_per_worker`.")
+    if num_gpus is not None:
+      self._num_gpus = num_gpus
+    else:
+      self._num_gpus = num_gpus_per_worker
 
-    self._initialize_local(num_gpus, devices)
+    self._initialize_local(self._num_gpus, devices)
 
   def _initialize_local(self, num_gpus, devices):
     """Initializes the object for local training."""
@@ -443,16 +462,20 @@ class MirroredStrategy(distribute_lib.DistributionStrategy):
             # name as the absolute name of the variable.
             kwargs["name"] = "%s/replica_%d/" % (var0name, i)
             # Initialize replicas with the same value:
-            if context.executing_eagerly():
-              kwargs["initial_value"] = array_ops.identity(
-                  index[devices[0]].value())
-            else:
-              def initial_value_fn(device=d):
+            def initial_value_fn(device=d):
+              if context.executing_eagerly():
+                init_value = index[devices[0]].value()
+                return array_ops.identity(init_value)
+              else:
                 with ops.device(device):
-                  return array_ops.identity(index[devices[0]].initial_value)
-              kwargs["initial_value"] = initial_value_fn
+                  init_value = index[devices[0]].initial_value
+                  return array_ops.identity(init_value)
+            kwargs["initial_value"] = initial_value_fn
           with context.context().device_policy(context.DEVICE_PLACEMENT_SILENT):
-            v = next_creator(*args, **kwargs)
+            # Don't record operations (e.g. other variable reads) during
+            # variable creation.
+            with tape.stop_recording():
+              v = next_creator(*args, **kwargs)
           assert not isinstance(v, values.DistributedVariable)
           index[d] = v
       return index
@@ -464,7 +487,7 @@ class MirroredStrategy(distribute_lib.DistributionStrategy):
     if self._cluster_spec:
       return values.MultiWorkerDataset(
           partial(self._call_dataset_fn, dataset_fn), self._worker_device_map,
-          self._prefetch_on_device)
+          self._prefetch_on_device, self._auto_shard_dataset)
     else:
       return values.PerDeviceDataset(
           self._call_dataset_fn(dataset_fn), self._devices,
@@ -559,13 +582,24 @@ class MirroredStrategy(distribute_lib.DistributionStrategy):
                 task_type=None,
                 task_id=None):
     del task_type, task_id
+
+    if session_config:
+      session_config.isolate_session_state = True
+
     if cluster_spec:
       self._initialize_multi_worker(self._num_gpus, cluster_spec)
 
     if self._cross_tower_ops is None:
       if self._cluster_spec:
-        self._cross_tower_ops = cross_tower_ops_lib.MultiWorkerAllReduce(
-            self._workers, self._num_gpus)
+        # It currently cannot detect the toplogy of remote workers. So we
+        # hard-code the multi-worker all-reduce algorithm for now.
+        if len(self._workers) == 1:
+          # The default is "nccl".
+          self._cross_tower_ops = cross_tower_ops_lib.AllReduceCrossTowerOps()
+        else:
+          # The default is hierarchical reduce and broadcast.
+          self._cross_tower_ops = cross_tower_ops_lib.MultiWorkerAllReduce(
+              self._workers, self._num_gpus)
       else:
         self._cross_tower_ops = cross_tower_ops_lib.choose_the_best(
             self._devices, session_config=session_config)
@@ -584,16 +618,26 @@ class MirroredStrategy(distribute_lib.DistributionStrategy):
       # which case `value` would be a single value or value could be 0.
       return _reduce_non_distributed_value(self, aggregation, value,
                                            destinations)
+    if aggregation == variable_scope.VariableAggregation.ONLY_FIRST_TOWER:
+      value = value.get(self._devices[0])
+      if isinstance(value, (int, float)):
+        return value
+      return self.broadcast(value, destinations)
     return self._get_cross_tower_ops().reduce(
         aggregation, value, destinations=destinations)
 
   def _batch_reduce(self, aggregation, value_destination_pairs):
+    if aggregation == variable_scope.VariableAggregation.ONLY_FIRST_TOWER:
+      return [self.broadcast(v.get(self._devices[0]), d)
+              for v, d in value_destination_pairs]
     return self._get_cross_tower_ops().batch_reduce(aggregation,
                                                     value_destination_pairs)
 
-  def _update(self, var, fn, *args, **kwargs):
+  def _update(self, var, options, fn, *args, **kwargs):
     # TODO(josh11b): In eager mode, use one thread per device.
     assert isinstance(var, values.DistributedVariable)
+    should_group = options.pop("grouped")
+    assert not options  # Validate that we are processing all of the options.
     updates = {}
     for d, v in var._index.items():  # pylint: disable=protected-access
       name = "update_%d" % self._device_index.get(d)
@@ -602,10 +646,12 @@ class MirroredStrategy(distribute_lib.DistributionStrategy):
         updates[d] = fn(v,
                         *values.select_device_mirrored(d, args),
                         **values.select_device_mirrored(d, kwargs))
-    return values.regroup(updates, values.Mirrored)
+    return values.update_regroup(self, updates, should_group)
 
-  def _update_non_slot(self, colocate_with, fn, *args, **kwargs):
+  def _update_non_slot(self, colocate_with, options, fn, *args, **kwargs):
     assert isinstance(colocate_with, list)
+    should_group = options.pop("grouped")
+    assert not options  # Validate that we are processing all of the options.
     # TODO(josh11b): In eager mode, use one thread per device.
     updates = {}
     for d in colocate_with:
@@ -613,7 +659,7 @@ class MirroredStrategy(distribute_lib.DistributionStrategy):
       with ops.device(d), distribute_lib.UpdateContext(d), ops.name_scope(name):
         updates[d] = fn(*values.select_device_mirrored(d, args),
                         **values.select_device_mirrored(d, kwargs))
-    return values.regroup(updates, values.Mirrored)
+    return values.update_regroup(self, updates, should_group)
 
   def read_var(self, tower_local_var):
     """Read the aggregate value of a tower-local variable."""

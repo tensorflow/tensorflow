@@ -161,9 +161,12 @@ void RestoreTensor(OpKernelContext* context,
   // If we cannot find a cached reader we will allocate our own.
   std::unique_ptr<checkpoint::TensorSliceReader> allocated_reader;
 
-  const checkpoint::TensorSliceReader* reader =
-      context->slice_reader_cache()->GetReader(file_pattern, open_func,
-                                               preferred_shard);
+  const checkpoint::TensorSliceReader* reader = nullptr;
+
+  if (context->slice_reader_cache()) {
+    reader = context->slice_reader_cache()->GetReader(file_pattern, open_func,
+                                                      preferred_shard);
+  }
   if (!reader) {
     allocated_reader.reset(new checkpoint::TensorSliceReader(
         file_pattern, open_func, preferred_shard));

@@ -16,7 +16,7 @@ limitations under the License.
 
 #include "absl/memory/memory.h"
 #include "tensorflow/compiler/jit/defs.h"
-#include "tensorflow/compiler/jit/kernels/xla_launch_op.h"
+#include "tensorflow/compiler/jit/kernels/xla_ops.h"
 #include "tensorflow/compiler/jit/mark_for_compilation_pass.h"
 #include "tensorflow/compiler/tf2xla/const_analysis.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
@@ -209,8 +209,13 @@ Status CreateXlaLaunchOp(FunctionLibraryRuntime* flr, const NodeDef& node_def,
   // device memory.
 
   // XlaLaunch kernel keeps all outputs (including constants, which it copies),
-  // in device memory
+  // in device memory except for resources.
   MemoryTypeVector output_memory_types(fbody->ret_types.size(), DEVICE_MEMORY);
+  for (int i = 0; i < fbody->ret_types.size(); ++i) {
+    if (fbody->ret_types[i] == DT_RESOURCE) {
+      output_memory_types[i] = HOST_MEMORY;
+    }
+  }
 
   // Create the kernel.
   NameAttrList function;

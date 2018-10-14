@@ -49,6 +49,9 @@ def tflite_linkopts_unstripped():
     Returns:
        a select object with proper linkopts
     """
+
+    # In case you wonder why there's no --icf is because the gains were
+    # negligible, and created potential compatibility problems.
     return select({
         "//tensorflow:android": [
             "-Wl,--no-export-dynamic",  # Only inc syms referenced by dynamic obj.
@@ -56,12 +59,7 @@ def tflite_linkopts_unstripped():
             "-Wl,--gc-sections",  # Eliminate unused code and data.
             "-Wl,--as-needed",  # Don't link unused libs.
         ],
-        "//tensorflow:darwin": [],
-        "//tensorflow/contrib/lite:mips": [],
-        "//tensorflow/contrib/lite:mips64": [],
-        "//conditions:default": [
-            "-Wl,--icf=all",  # Identical code folding.
-        ],
+        "//conditions:default": [],
     })
 
 def tflite_jni_linkopts_unstripped():
@@ -73,17 +71,15 @@ def tflite_jni_linkopts_unstripped():
     Returns:
        a select object with proper linkopts
     """
+
+    # In case you wonder why there's no --icf is because the gains were
+    # negligible, and created potential compatibility problems.
     return select({
         "//tensorflow:android": [
             "-Wl,--gc-sections",  # Eliminate unused code and data.
             "-Wl,--as-needed",  # Don't link unused libs.
         ],
-        "//tensorflow:darwin": [],
-        "//tensorflow/contrib/lite:mips": [],
-        "//tensorflow/contrib/lite:mips64": [],
-        "//conditions:default": [
-            "-Wl,--icf=all",  # Identical code folding.
-        ],
+        "//conditions:default": [],
     })
 
 def tflite_linkopts():
@@ -216,7 +212,8 @@ def json_to_tflite(name, src, out):
 
 # This is the master list of generated examples that will be made into tests. A
 # function called make_XXX_tests() must also appear in generate_examples.py.
-# Disable a test by commenting it out. If you do, add a link to a bug or issue.
+# Disable a test by adding it to the blacklists specified in
+# generated_test_models_failing().
 def generated_test_models():
     return [
         "add",
@@ -235,6 +232,7 @@ def generated_test_models():
         "exp",
         "expand_dims",
         "floor",
+        "floor_div",
         "fully_connected",
         "fused_batch_norm",
         "gather",
@@ -266,6 +264,7 @@ def generated_test_models():
         "padv2",
         "prelu",
         "pow",
+        "reduce_any",
         "reduce_max",
         "reduce_min",
         "reduce_prod",
@@ -285,6 +284,7 @@ def generated_test_models():
         "sparse_to_dense",
         "split",
         "sqrt",
+        "square",
         "squeeze",
         "strided_slice",
         "strided_slice_1d_exhaustive",
@@ -292,37 +292,104 @@ def generated_test_models():
         "tile",
         "topk",
         "transpose",
-        #"transpose_conv",   # disabled due to b/111213074
+        "transpose_conv",
         "unpack",
         "where",
+        "zeros_like",
     ]
 
-def gen_zip_test(name, test_name, **kwargs):
+# List of models that fail generated tests for the conversion mode.
+# If you have to disable a test, please add here with a link to the appropriate
+# bug or issue.
+def generated_test_models_failing(conversion_mode):
+    if not conversion_mode:
+        return [
+            "transpose_conv",  # disabled due to b/111213074
+        ]
+
+    if conversion_mode == "toco-flex":
+        # TODO(b/117328698): Fix and enable the known flex failures.
+        return [
+            "lstm",
+            "split",
+            "unpack",
+        ]
+
+    return []
+
+def generated_test_conversion_modes():
+    """Returns a list of conversion modes."""
+
+    # TODO(nupurgarg): Add "pb2lite" when it's in open source. b/113614050.
+    return ["toco-flex", ""]
+
+def generated_test_models_all():
+    """Generates a list of all tests with the different converters.
+
+    Returns:
+      List of tuples representing:
+            (conversion mode, name of test, test tags, test args).
+    """
+    conversion_modes = generated_test_conversion_modes()
+    tests = generated_test_models()
+    options = []
+    for conversion_mode in conversion_modes:
+        failing_tests = generated_test_models_failing(conversion_mode)
+        for test in tests:
+            tags = []
+            args = []
+            if test in failing_tests:
+                tags.append("notap")
+                tags.append("manual")
+            if conversion_mode:
+                test += "_%s" % conversion_mode
+
+            # Flex conversion shouldn't suffer from the same conversion bugs
+            # listed for the default TFLite kernel backend.
+            if conversion_mode == "toco-flex":
+                args.append("--ignore_known_bugs=false")
+            options.append((conversion_mode, test, tags, args))
+    return options
+
+def gen_zip_test(name, test_name, conversion_mode, **kwargs):
     """Generate a zipped-example test and its dependent zip files.
 
     Args:
-      name: Resulting cc_test target name
-      test_name: Test targets this model. Comes from the list above.
-      **kwargs: tf_cc_test kwargs.
+      name: str. Resulting cc_test target name
+      test_name: str. Test targets this model. Comes from the list above.
+      conversion_mode: str. Which conversion mode to run with. Comes from the
+        list above.
+      **kwargs: tf_cc_test kwargs
     """
+    toco = "//tensorflow/contrib/lite/toco:toco"
+    flags = ""
+    if conversion_mode:
+        # TODO(nupurgarg): Comment in when pb2lite is in open source. b/113614050.
+        # if conversion_mode == "pb2lite":
+        #     toco = "//tensorflow/contrib/lite/experimental/pb2lite:pb2lite"
+        flags = "--ignore_toco_errors --run_with_flex"
+
     gen_zipped_test_file(
         name = "zip_%s" % test_name,
         file = "%s.zip" % test_name,
+        toco = toco,
+        flags = flags,
     )
     tf_cc_test(name, **kwargs)
 
-def gen_zipped_test_file(name, file):
+def gen_zipped_test_file(name, file, toco, flags):
     """Generate a zip file of tests by using :generate_examples.
 
     Args:
-      name: Name of output. We will produce "`file`.files" as a target.
-      file: The name of one of the generated_examples targets, e.g. "transpose"
+      name: str. Name of output. We will produce "`file`.files" as a target.
+      file: str. The name of one of the generated_examples targets, e.g. "transpose"
+      toco: str. Pathname of toco binary to run
+      flags: str. Any additional flags to include
     """
-    toco = "//tensorflow/contrib/lite/toco:toco"
     native.genrule(
         name = file + ".files",
-        cmd = ("$(locations :generate_examples) --toco $(locations %s) " % toco +
-               " --zip_to_output " + file + " $(@D)"),
+        cmd = (("$(locations :generate_examples) --toco $(locations {0}) " +
+                " --zip_to_output {1} {2} $(@D)").format(toco, file, flags)),
         outs = [file],
         tools = [
             ":generate_examples",
@@ -353,3 +420,43 @@ def gen_selected_ops(name, model):
               (tool, model, out, tflite_path[2:]),
         tools = [tool],
     )
+
+def gen_full_model_test(conversion_modes, models, data, tags):
+    """Generates Python test targets for testing TFLite models.
+
+    Args:
+      conversion_modes: List of conversion modes to test the models on.
+      models: List of models to test.
+      data: List of BUILD targets linking the data.
+      tags: Any additional tags including the test_suite tag.
+    """
+    options = [
+        (conversion_mode, model)
+        for model in models
+        for conversion_mode in conversion_modes
+    ]
+
+    for conversion_mode, model_name in options:
+        native.py_test(
+            name = "model_coverage_test_%s_%s" % (model_name, conversion_mode.lower()),
+            srcs = ["model_coverage_test.py"],
+            main = "model_coverage_test.py",
+            args = [
+                "--model_name=%s" % model_name,
+                "--converter_mode=%s" % conversion_mode,
+            ],
+            data = data,
+            srcs_version = "PY2AND3",
+            tags = [
+                "no_oss",
+                "no_windows",
+                "notap",
+                # TODO(nupurgarg): Remove manual tag when this test is running without the BUILD flag.
+                "manual",
+            ] + tags,
+            deps = [
+                "//tensorflow/contrib/lite/testing/model_coverage:model_coverage_lib",
+                "//tensorflow/contrib/lite/python:lite",
+                "//tensorflow/python:client_testlib",
+            ],
+        )

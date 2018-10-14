@@ -25,7 +25,7 @@ limitations under the License.
 #include "tensorflow/core/util/ptr_util.h"
 
 namespace tensorflow {
-
+namespace data {
 namespace {
 
 const int64 kLogIntervalMicros = 10 * 1000000;  // 10 seconds.
@@ -485,7 +485,7 @@ class ShuffleDatasetOp : public ShuffleDatasetOpBase {
                      int64 buffer_size, int64 seed, int64 seed2, int64 count)
         : ShuffleDatasetBase(ctx, input, buffer_size, count),
           seed_(seed),
-          seed2_(seed) {}
+          seed2_(seed2) {}
 
     string DebugString() const override {
       return strings::StrCat("ShuffleDatasetOp(", buffer_size_, ", ", seed_,
@@ -620,5 +620,5 @@ REGISTER_KERNEL_BUILDER(Name("ShuffleAndRepeatDataset").Device(DEVICE_CPU),
                         ShuffleAndRepeatDatasetOp);
 
 }  // namespace
-
+}  // namespace data
 }  // namespace tensorflow

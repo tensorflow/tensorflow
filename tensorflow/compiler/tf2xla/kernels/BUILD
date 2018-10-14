@@ -62,6 +62,7 @@ tf_kernel_library(
         "one_hot_op.cc",
         "pack_op.cc",
         "pad_op.cc",
+        "permute_op.cc",
         "pooling_ops.cc",
         "qr_op.cc",
         "quantize_and_dequantize_op.cc",
@@ -94,6 +95,7 @@ tf_kernel_library(
         "stateless_random_ops.cc",
         "strided_slice_op.cc",
         "tensor_array_ops.cc",
+        "tensor_list_ops.cc",
         "tile_ops.cc",
         "topk_op.cc",
         "training_ops.cc",
@@ -113,13 +115,13 @@ tf_kernel_library(
         "shape_util.h",
     ],
     deps = [
+        ":conv_op_helpers",
         ":if_op",
         ":while_op",
-        "@com_google_absl//absl/algorithm:container",
-        "@com_google_absl//absl/strings",
         "//tensorflow/compiler/tf2xla:common",
         "//tensorflow/compiler/tf2xla:xla_compiler",
         "//tensorflow/compiler/tf2xla/lib:batch_dot",
+        "//tensorflow/compiler/tf2xla/lib:broadcast",
         "//tensorflow/compiler/tf2xla/lib:cholesky",
         "//tensorflow/compiler/tf2xla/lib:qr",
         "//tensorflow/compiler/tf2xla/lib:random",
@@ -158,6 +160,7 @@ tf_kernel_library(
         "//tensorflow/core/kernels:control_flow_ops",
         "//tensorflow/core/kernels:conv_ops",
         "//tensorflow/core/kernels:cwise_op",
+        "//tensorflow/core/kernels:list_kernels",
         "//tensorflow/core/kernels:no_op",
         "//tensorflow/core/kernels:ops_util",
         "//tensorflow/core/kernels:pooling_ops",
@@ -167,14 +170,32 @@ tf_kernel_library(
         "//tensorflow/core/kernels:sparse_to_dense_op",
         "//tensorflow/core/kernels:stack_ops",
         "//tensorflow/core/kernels:training_ops",
-    ] + if_mkl(
-        [
-            "//tensorflow/core/kernels:mkl_transpose_op",
-        ],
-        [
-            "//tensorflow/core/kernels:transpose_op",
-        ],
-    ),
+        "//tensorflow/core/kernels:transpose_op",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
+    ],
+)
+
+cc_library(
+    name = "conv_op_helpers",
+    srcs = ["conv_op_helpers.cc"],
+    hdrs = ["conv_op_helpers.h"],
+    deps = [
+        "//tensorflow/compiler/tf2xla:common",
+        "//tensorflow/compiler/tf2xla:xla_compiler",
+        "//tensorflow/compiler/xla:literal_util",
+        "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/compiler/xla/client:xla_builder",
+        "//tensorflow/compiler/xla/client/lib:arithmetic",
+        "//tensorflow/compiler/xla/client/lib:constants",
+        "//tensorflow/compiler/xla/client/lib:numeric",
+        "//tensorflow/core:framework",
+        "//tensorflow/core/kernels:bounds_check",
+        "//tensorflow/core/kernels:conv_ops",
+        "//tensorflow/core/kernels:ops_util",
+        "@com_google_absl//absl/types:span",
+    ],
 )
 
 tf_kernel_library(
@@ -183,6 +204,7 @@ tf_kernel_library(
     hdrs = ["while_op.h"],
     deps = [
         "//tensorflow/compiler/tf2xla:common",
+        "//tensorflow/compiler/tf2xla:side_effect_util",
         "//tensorflow/compiler/tf2xla:xla_compiler",
         "//tensorflow/compiler/tf2xla/ops:xla_ops",
         "//tensorflow/compiler/xla:literal",
@@ -200,6 +222,7 @@ tf_kernel_library(
     hdrs = ["if_op.h"],
     deps = [
         "//tensorflow/compiler/tf2xla:common",
+        "//tensorflow/compiler/tf2xla:side_effect_util",
         "//tensorflow/compiler/tf2xla:xla_compiler",
         "//tensorflow/compiler/tf2xla/ops:xla_ops",
         "//tensorflow/compiler/xla:literal",

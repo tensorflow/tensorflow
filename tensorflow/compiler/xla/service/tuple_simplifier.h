@@ -25,7 +25,7 @@ namespace xla {
 
 // A pass which simplifies patterns of Tuple and GetTupleElement instructions in
 // the module.
-class TupleSimplifier : public HloPassInterface {
+class TupleSimplifier : public HloModulePass {
  public:
   TupleSimplifier() : TupleSimplifier(/*exclude_entry_computation=*/false) {}
   explicit TupleSimplifier(bool exclude_entry_computation);

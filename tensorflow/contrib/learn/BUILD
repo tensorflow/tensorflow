@@ -403,6 +403,7 @@ py_test(
     srcs = ["python/learn/estimators/dnn_test.py"],
     shard_count = 4,
     srcs_version = "PY2AND3",
+    tags = ["notap"],
     deps = [
         ":learn",
         "//tensorflow/contrib/layers:layers_py",

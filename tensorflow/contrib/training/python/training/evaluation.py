@@ -296,6 +296,7 @@ class SummaryAtEndHook(session_run_hook.SessionRunHook):
 
   def begin(self):
     if self._replace_summary_op:
+      # This can still remain None if there are no summaries.
       self._summary_op = summary.merge_all()
     self._global_step = training_util.get_or_create_global_step()
 
@@ -304,10 +305,12 @@ class SummaryAtEndHook(session_run_hook.SessionRunHook):
       self._summary_writer = summary.FileWriterCache.get(self._log_dir)
 
   def end(self, session):
-    global_step = training_util.global_step(session, self._global_step)
-    summary_str = session.run(self._summary_op, self._feed_dict)
+    if self._summary_op is not None:
+      global_step = training_util.global_step(session, self._global_step)
+      summary_str = session.run(self._summary_op, self._feed_dict)
+      if self._summary_writer:
+        self._summary_writer.add_summary(summary_str, global_step)
     if self._summary_writer:
-      self._summary_writer.add_summary(summary_str, global_step)
       self._summary_writer.flush()
 
 

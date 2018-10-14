@@ -45,8 +45,8 @@ RUN ${PIP} --no-cache-dir install \
         h5py \
         ipykernel \
         jupyter \
-        keras_applications==1.0.5 \
-        keras_preprocessing==1.0.3 \
+        keras_applications \
+        keras_preprocessing \
         matplotlib \
         mock \
         numpy \
@@ -106,6 +106,7 @@ RUN export TAG_PREFIX="v" && \
     fi
 
 RUN yes "" | ${PYTHON} configure.py
+RUN cp .bazelrc /root/.bazelrc
 
 ENV CI_BUILD_PYTHON ${PYTHON}
 
@@ -116,7 +117,8 @@ ENV CI_BUILD_PYTHON ${PYTHON}
 # --copt=-march="avx" \
 # For haswell, broadwell, or skylake
 # --copt=-march="avx2" \
-COPY .bazelrc /root/.bazelrc
+COPY .bazelrc /root/.mkl.bazelrc
+RUN echo "import /root/.mkl.bazelrc" >>/root/.bazelrc
 
 RUN tensorflow/tools/ci_build/builds/configured CPU \
     bazel --bazelrc=/root/.bazelrc build -c opt \

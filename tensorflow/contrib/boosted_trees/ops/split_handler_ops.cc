@@ -179,6 +179,7 @@ REGISTER_OP("BuildCategoricalEqualitySplits")
     .Input("tree_complexity_regularization: float")
     .Input("min_node_weight: float")
     .Input("multiclass_strategy: int32")
+    .Input("weak_learner_type: int32")
     .Output("output_partition_ids: int32")
     .Output("gains: float32")
     .Output("split_infos: string")
@@ -224,6 +225,8 @@ min_node_weight: A scalar, minimum sum of example hessian needed in a child.
     be considered.
 multiclass_strategy: A scalar, specifying the multiclass handling strategy.
     See LearnerConfig.MultiClassStrategy for valid values.
+weak_learner_type: A scalar, specifying the weak learner type to use.
+    See LearnerConfig.WeakLearnerType for valid values.
 output_partition_ids: A rank 1 tensor, the partition IDs that we created splits
     for.
 gains: A rank 1 tensor, for the computed gain for the created splits.

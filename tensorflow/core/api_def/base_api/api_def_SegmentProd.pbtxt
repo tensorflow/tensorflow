@@ -3,7 +3,7 @@ op {
   in_arg {
     name: "segment_ids"
     description: <<END
-A 1-D tensor whose rank is equal to the rank of `data`'s
+A 1-D tensor whose size is equal to the size of `data`'s
 first dimension.  Values should be sorted and can be repeated.
 END
   }

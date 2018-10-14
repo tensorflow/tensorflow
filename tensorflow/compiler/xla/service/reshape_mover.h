@@ -24,7 +24,7 @@ namespace xla {
 // This now only moves them outputward across elementwise ops all whose operands
 // are equivalent Reshapes or Transposes, but in future could potentially move
 // them inputward also.
-class ReshapeMover : public HloPassInterface {
+class ReshapeMover : public HloModulePass {
  public:
   absl::string_view name() const override { return "reshape-mover"; }
 

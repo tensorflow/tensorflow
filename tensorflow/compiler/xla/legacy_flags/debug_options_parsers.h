@@ -21,7 +21,6 @@ limitations under the License.
 #include "absl/strings/str_split.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/xla.pb.h"
-#include "tensorflow/core/lib/strings/stringprintf.h"
 
 namespace xla {
 namespace legacy_flags {

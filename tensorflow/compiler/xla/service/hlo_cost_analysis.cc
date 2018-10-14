@@ -227,6 +227,14 @@ Status HloCostAnalysis::HandleCopy(const HloInstruction*) {
   return Status::OK();
 }
 
+Status HloCostAnalysis::HandleDomain(const HloInstruction* domain) {
+  // Domain does not have any computation or data transfer.
+  current_should_compute_bottleneck_time_ = false;
+  current_properties_[kBytesAccessedKey] = 0;
+  current_properties_[kOptimalSecondsKey] = 0;
+  return Status::OK();
+}
+
 Status HloCostAnalysis::HandleDot(const HloInstruction* dot) {
   const Shape& lhs_shape = dot->operand(0)->shape();
   const Shape& rhs_shape = dot->operand(1)->shape();
@@ -274,15 +282,21 @@ Status HloCostAnalysis::HandleMap(const HloInstruction* map) {
 }
 
 Status HloCostAnalysis::HandleReduce(const HloInstruction* reduce) {
-  auto arg = reduce->operand(0);
   HloComputation* function = reduce->to_apply();
   // Compute the cost of the user function.
   TF_ASSIGN_OR_RETURN(const Properties sub_properties,
                       ProcessSubcomputation(function));
 
   // Compute the cost of all elements for this Reduce operation.
-  int64 reduction_count = ShapeUtil::ElementsIn(arg->shape()) -
-                          ShapeUtil::ElementsIn(reduce->shape());
+  // This counts the number of times the reduction function is applied, so it
+  // does not need to be multiplied by the number of input tensors - that's
+  // already "priced in" by the sub-computation doing more work.
+  auto arg = reduce->operand(0);
+  auto output_shape = ShapeUtil::IsArray(reduce->shape())
+                          ? reduce->shape()
+                          : reduce->shape().tuple_shapes(0);
+  int64 reduction_count =
+      ShapeUtil::ElementsIn(arg->shape()) - ShapeUtil::ElementsIn(output_shape);
   for (const auto& property : sub_properties) {
     if (property.first != kBytesAccessedKey) {
       current_properties_[property.first] = property.second * reduction_count;
@@ -501,8 +515,9 @@ Status HloCostAnalysis::HandleConvolution(const HloInstruction* convolution) {
     valid_position_counts.push_back(valid_position_count);
   }
 
-  const int64 fma_count =
-      input_feature * output_feature * batch * Product(valid_position_counts);
+  const int64 fma_count = (input_feature / convolution->feature_group_count()) *
+                          output_feature * batch *
+                          Product(valid_position_counts);
   current_properties_[kFlopsKey] = fma_count * kFmaFlops;
   return Status::OK();
 }
@@ -540,6 +555,10 @@ Status HloCostAnalysis::HandleCrossReplicaSum(const HloInstruction* crs) {
 }
 
 Status HloCostAnalysis::HandleAllToAll(const HloInstruction* hlo) {
+  return Status::OK();
+}
+
+Status HloCostAnalysis::HandleCollectivePermute(const HloInstruction* /*hlo*/) {
   return Status::OK();
 }
 
@@ -645,6 +664,11 @@ Status HloCostAnalysis::HandleConditional(const HloInstruction* conditional) {
 }
 
 Status HloCostAnalysis::HandleGather(const HloInstruction* gather) {
+  // Gather doesn't read the whole input buffer, it's equivalent to a copy the
+  // size of the output shape and a read of the gather indices.
+  current_properties_[kBytesAccessedKey] =
+      GetShapeSize(gather->shape()) * 2 +
+      GetShapeSize(gather->operand(1)->shape());
   // Gather does not issue any flops.
   return Status::OK();
 }

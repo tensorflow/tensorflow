@@ -28,7 +28,7 @@ namespace {
 // Returns the indices of the first elements of all consecutive subarrays of the
 // given array. For example:
 // ConsecutiveSegments({m, m+1, m+2, n, k, k+1}) = {0, 3, 4}
-std::vector<size_t> ConsecutiveSegments(tensorflow::gtl::ArraySlice<int64> xs) {
+std::vector<size_t> ConsecutiveSegments(absl::Span<const int64> xs) {
   std::vector<size_t> is = {0};
   for (size_t i = 1; i < xs.size(); ++i) {
     if (1 != xs[i] - xs[i - 1]) {
@@ -40,8 +40,7 @@ std::vector<size_t> ConsecutiveSegments(tensorflow::gtl::ArraySlice<int64> xs) {
 
 // Merges the sequences of dimensions of the given shape which start at the
 // given indices `segs`.
-Shape MergeDimensions(tensorflow::gtl::ArraySlice<size_t> segs,
-                      const Shape& shape) {
+Shape MergeDimensions(absl::Span<const size_t> segs, const Shape& shape) {
   std::vector<int64> dimensions;
   for (size_t i = 1; i <= segs.size(); ++i) {
     dimensions.push_back(std::accumulate(

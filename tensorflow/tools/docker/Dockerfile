@@ -29,10 +29,10 @@ RUN pip --no-cache-dir install \
         h5py \
         ipykernel \
         jupyter \
-        keras_applications==1.0.5 \
-        keras_preprocessing==1.0.3 \
+        keras_applications \
+        keras_preprocessing \
         matplotlib \
-        numpy==1.14.5 \
+        numpy \
         pandas \
         scipy \
         sklearn \

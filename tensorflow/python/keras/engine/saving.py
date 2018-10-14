@@ -248,7 +248,7 @@ def load_model(filepath, custom_objects=None, compile=True):  # pylint: disable=
       loss = convert_custom_objects(training_config['loss'])
       metrics = convert_custom_objects(training_config['metrics'])
       weighted_metrics = convert_custom_objects(
-          training_config['weighted_metrics'])
+          training_config.get('weighted_metrics', None))
       sample_weight_mode = training_config['sample_weight_mode']
       loss_weights = training_config['loss_weights']
 

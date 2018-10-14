@@ -135,7 +135,7 @@ class CrossTowerOpsTestBase(test.TestCase, parameterized.TestCase):
     destination_list = devices
 
     all_destinations = [
-        None, destination_mirrored, destination_different, destination_str,
+        destination_mirrored, destination_different, destination_str,
         destination_list
     ]
 
@@ -146,24 +146,24 @@ class CrossTowerOpsTestBase(test.TestCase, parameterized.TestCase):
               vs.VariableAggregation.MEAN,
               per_device,
               destinations=destinations),
-          _fake_mirrored(mean, destinations or per_device))
+          _fake_mirrored(mean, destinations))
       self._assert_values_equal(
           cross_tower_ops.reduce(
               vs.VariableAggregation.MEAN,
               per_device_2,
               destinations=destinations),
-          _fake_mirrored(mean_2, destinations or per_device))
+          _fake_mirrored(mean_2, destinations))
       self._assert_values_equal(
           cross_tower_ops.reduce(
               vs.VariableAggregation.SUM, per_device,
               destinations=destinations),
-          _fake_mirrored(mean * len(devices), destinations or per_device))
+          _fake_mirrored(mean * len(devices), destinations))
       self._assert_values_equal(
           cross_tower_ops.reduce(
               vs.VariableAggregation.SUM,
               per_device_2,
               destinations=destinations),
-          _fake_mirrored(mean_2 * len(devices), destinations or per_device))
+          _fake_mirrored(mean_2 * len(devices), destinations))
 
     # test batch_reduce()
     for d1, d2 in itertools.product(all_destinations, all_destinations):
@@ -171,25 +171,22 @@ class CrossTowerOpsTestBase(test.TestCase, parameterized.TestCase):
           cross_tower_ops.batch_reduce(vs.VariableAggregation.MEAN,
                                        [(per_device, d1), (per_device_2, d2)]),
           [
-              _fake_mirrored(mean, d1 or per_device),
-              _fake_mirrored(mean_2, d2 or per_device_2)
+              _fake_mirrored(mean, d1),
+              _fake_mirrored(mean_2, d2)
           ])
       self._assert_values_equal(
           cross_tower_ops.batch_reduce(vs.VariableAggregation.SUM,
                                        [(per_device, d1), (per_device_2, d2)]),
           [
-              _fake_mirrored(mean * len(devices), d1 or per_device),
-              _fake_mirrored(mean_2 * len(devices), d2 or per_device_2)
+              _fake_mirrored(mean * len(devices), d1),
+              _fake_mirrored(mean_2 * len(devices), d2)
           ])
 
     # test broadcast()
     for destinations in all_destinations:
-      if destinations is None:
-        continue
-      else:
-        self._assert_values_equal(
-            cross_tower_ops.broadcast(constant_op.constant(1.), destinations),
-            _fake_mirrored(1., destinations))
+      self._assert_values_equal(
+          cross_tower_ops.broadcast(constant_op.constant(1.), destinations),
+          _fake_mirrored(1., destinations))
 
 
 class SingleWorkerCrossTowerOpsTest(CrossTowerOpsTestBase):
@@ -494,7 +491,7 @@ class MultiWorkerCollectiveAllReduceTest(
       destination_list = devices
 
       all_destinations = [
-          destination_different, None, destination_mirrored, destination_str,
+          destination_different, destination_mirrored, destination_str,
           destination_list
       ]
 
@@ -505,27 +502,27 @@ class MultiWorkerCollectiveAllReduceTest(
                 vs.VariableAggregation.MEAN,
                 per_device,
                 destinations=destinations),
-            _fake_mirrored(mean, destinations or per_device), sess)
+            _fake_mirrored(mean, destinations), sess)
         self._assert_values_equal(
             collective_all_reduce.reduce(
                 vs.VariableAggregation.MEAN,
                 per_device_2,
                 destinations=destinations),
-            _fake_mirrored(mean_2, destinations or per_device), sess)
+            _fake_mirrored(mean_2, destinations), sess)
         self._assert_values_equal(
             collective_all_reduce.reduce(
                 vs.VariableAggregation.SUM,
                 per_device,
                 destinations=destinations),
-            _fake_mirrored(mean * len(devices) * num_workers, destinations or
-                           per_device), sess)
+            _fake_mirrored(mean * len(devices) * num_workers, destinations),
+            sess)
         self._assert_values_equal(
             collective_all_reduce.reduce(
                 vs.VariableAggregation.SUM,
                 per_device_2,
                 destinations=destinations),
-            _fake_mirrored(mean_2 * len(devices) * num_workers, destinations or
-                           per_device), sess)
+            _fake_mirrored(mean_2 * len(devices) * num_workers, destinations),
+            sess)
 
       # test batch_reduce()
       for d1, d2 in itertools.product(all_destinations, all_destinations):
@@ -534,18 +531,16 @@ class MultiWorkerCollectiveAllReduceTest(
                                                [(per_device, d1),
                                                 (per_device_2, d2)]),
             [
-                _fake_mirrored(mean, d1 or per_device),
-                _fake_mirrored(mean_2, d2 or per_device_2)
+                _fake_mirrored(mean, d1),
+                _fake_mirrored(mean_2, d2)
             ], sess)
         self._assert_values_equal(
             collective_all_reduce.batch_reduce(vs.VariableAggregation.SUM,
                                                [(per_device, d1),
                                                 (per_device_2, d2)]),
             [
-                _fake_mirrored(mean * len(devices) * num_workers, d1 or
-                               per_device),
-                _fake_mirrored(mean_2 * len(devices) * num_workers, d2 or
-                               per_device_2)
+                _fake_mirrored(mean * len(devices) * num_workers, d1),
+                _fake_mirrored(mean_2 * len(devices) * num_workers, d2)
             ], sess)
 
     return True

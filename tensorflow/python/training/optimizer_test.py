@@ -64,7 +64,7 @@ class OptimizerTest(test.TestCase):
 
   def testAggregationMethod(self):
     for dtype in [dtypes.half, dtypes.float32, dtypes.float64]:
-      with self.test_session():
+      with self.cached_session():
         var0 = variables.Variable([1.0, 2.0], dtype=dtype)
         var1 = variables.Variable([3.0, 4.0], dtype=dtype)
         cost = 5 * var0 + 3 * var1
@@ -89,7 +89,7 @@ class OptimizerTest(test.TestCase):
 
   def testPrecomputedGradient(self):
     for dtype in [dtypes.half, dtypes.float32, dtypes.float64]:
-      with self.test_session():
+      with self.cached_session():
         var0 = variables.Variable([1.0, 2.0], dtype=dtype)
         var1 = variables.Variable([3.0, 4.0], dtype=dtype)
         cost = 5 * var0 + 3 * var1
@@ -231,7 +231,7 @@ class OptimizerTest(test.TestCase):
       sgd_op.apply_gradients(grads_and_vars)
 
   def testTrainOp(self):
-    with self.test_session():
+    with self.cached_session():
       var0 = variables.Variable([1.0, 2.0])
       var1 = variables.Variable([3.0, 4.0])
       cost = 5 * var0 + 3 * var1
@@ -244,7 +244,7 @@ class OptimizerTest(test.TestCase):
   def testConstraint(self):
     constraint_01 = lambda x: clip_ops.clip_by_value(x, -0.1, 0.)
     constraint_0 = lambda x: clip_ops.clip_by_value(x, 0., 1.)
-    with self.test_session():
+    with self.cached_session():
       var0 = variables.Variable([1.0, 2.0],
                                 constraint=constraint_01)
       var1 = variables.Variable([3.0, 4.0],

@@ -116,13 +116,14 @@ void PopulateWithRandomIntegralData(Literal* literal, std::minstd_rand0* engine,
 // array. This is uniqueness is best-effort only. Some types (half and bfloat16)
 // are not supported and uniqueness cannot be guaranteed if the number of
 // elements exceeds the number of different values supported by the type.
-StatusOr<std::unique_ptr<Literal>> MakeFakeLiteralInternal(
-    const Shape& shape, std::minstd_rand0* engine, bool no_duplicates) {
+StatusOr<Literal> MakeFakeLiteralInternal(const Shape& shape,
+                                          std::minstd_rand0* engine,
+                                          bool no_duplicates) {
   if (ShapeUtil::IsTuple(shape)) {
-    std::vector<std::unique_ptr<Literal>> elements;
+    std::vector<Literal> elements;
     for (const Shape& element_shape : shape.tuple_shapes()) {
       TF_ASSIGN_OR_RETURN(
-          std::unique_ptr<Literal> element,
+          Literal element,
           MakeFakeLiteralInternal(element_shape, engine, no_duplicates));
       elements.push_back(std::move(element));
     }
@@ -131,60 +132,52 @@ StatusOr<std::unique_ptr<Literal>> MakeFakeLiteralInternal(
   if (engine == nullptr) {
     return Literal::CreateFromShape(shape);
   }
-  auto literal = absl::make_unique<Literal>(shape);
+  Literal literal(shape);
   switch (shape.element_type()) {
     case BF16:
-      PopulateWithRandomFloatingPointData<bfloat16>(literal.get(), engine,
+      PopulateWithRandomFloatingPointData<bfloat16>(&literal, engine,
                                                     no_duplicates);
       break;
     case F16:
-      PopulateWithRandomFloatingPointData<half>(literal.get(), engine,
+      PopulateWithRandomFloatingPointData<half>(&literal, engine,
                                                 no_duplicates);
       break;
     case F32:
-      PopulateWithRandomFloatingPointData<float>(literal.get(), engine,
+      PopulateWithRandomFloatingPointData<float>(&literal, engine,
                                                  no_duplicates);
       break;
     case F64:
-      PopulateWithRandomFloatingPointData<double>(literal.get(), engine,
+      PopulateWithRandomFloatingPointData<double>(&literal, engine,
                                                   no_duplicates);
       break;
     case S8:
-      PopulateWithRandomIntegralData<int8>(literal.get(), engine,
-                                           no_duplicates);
+      PopulateWithRandomIntegralData<int8>(&literal, engine, no_duplicates);
       break;
     case U8:
-      PopulateWithRandomIntegralData<uint8>(literal.get(), engine,
-                                            no_duplicates);
+      PopulateWithRandomIntegralData<uint8>(&literal, engine, no_duplicates);
       break;
     case S16:
-      PopulateWithRandomIntegralData<int16>(literal.get(), engine,
-                                            no_duplicates);
+      PopulateWithRandomIntegralData<int16>(&literal, engine, no_duplicates);
       break;
     case U16:
-      PopulateWithRandomIntegralData<uint16>(literal.get(), engine,
-                                             no_duplicates);
+      PopulateWithRandomIntegralData<uint16>(&literal, engine, no_duplicates);
       break;
     case S32:
-      PopulateWithRandomIntegralData<int32>(literal.get(), engine,
-                                            no_duplicates);
+      PopulateWithRandomIntegralData<int32>(&literal, engine, no_duplicates);
       break;
     case U32:
-      PopulateWithRandomIntegralData<uint32>(literal.get(), engine,
-                                             no_duplicates);
+      PopulateWithRandomIntegralData<uint32>(&literal, engine, no_duplicates);
       break;
     case S64:
-      PopulateWithRandomIntegralData<int64>(literal.get(), engine,
-                                            no_duplicates);
+      PopulateWithRandomIntegralData<int64>(&literal, engine, no_duplicates);
       break;
     case U64:
-      PopulateWithRandomIntegralData<uint64>(literal.get(), engine,
-                                             no_duplicates);
+      PopulateWithRandomIntegralData<uint64>(&literal, engine, no_duplicates);
       break;
     case PRED: {
       std::uniform_int_distribution<int> generator(0, 1);
-      TF_CHECK_OK(literal->Populate<bool>(
-          [&](tensorflow::gtl::ArraySlice<int64> /*indices*/) {
+      TF_CHECK_OK(
+          literal.Populate<bool>([&](absl::Span<const int64> /*indices*/) {
             return generator(*engine);
           }));
       break;
@@ -194,7 +187,7 @@ StatusOr<std::unique_ptr<Literal>> MakeFakeLiteralInternal(
       break;
     default:
       return Unimplemented("Unsupported type for fake literal generation: %s",
-                           ShapeUtil::HumanString(shape).c_str());
+                           ShapeUtil::HumanString(shape));
   }
   return std::move(literal);
 }
@@ -203,6 +196,7 @@ enum class ConstantType { kUnknown, kZero, kOne };
 
 // Return the constant type required by this computation, if known.
 ConstantType GetInitValue(const HloComputation& computation) {
+  // TODO(b/77635120): Add init values, for min, max, and their arg variants.
   const HloInstruction* const root = computation.root_instruction();
   if (computation.num_parameters() != 2 || root->operand_count() != 2 ||
       root->operand(0)->opcode() != HloOpcode::kParameter ||
@@ -227,16 +221,16 @@ bool NeedsInitValue(const HloUse& use) {
   const HloInstruction* const instruction = use.instruction;
   const HloOpcode opcode = instruction->opcode();
   const int64 op_num = use.operand_number;
-  return (
-      ((opcode == HloOpcode::kReduce || opcode == HloOpcode::kReduceWindow) &&
-       op_num == 1) ||
-      (opcode == HloOpcode::kSelectAndScatter && op_num == 2));
+  return ((opcode == HloOpcode::kReduceWindow && op_num == 1) ||
+          (opcode == HloOpcode::kSelectAndScatter && op_num == 2) ||
+          (opcode == HloOpcode::kReduce &&
+           op_num >= instruction->operand_count() / 2));
 }
 
 // Generate random values that are constrained to the input_shape minus the
 // output_shape so as not to produce wrapping slices, for instance.
-std::unique_ptr<Literal> MakeRandomIndex(
-    tensorflow::gtl::ArraySlice<int64> index_space, std::minstd_rand0* engine) {
+Literal MakeRandomIndex(absl::Span<const int64> index_space,
+                        std::minstd_rand0* engine) {
   std::vector<int32> start_indices(index_space.size());
   if (engine != nullptr) {
     for (int i = 0; i < index_space.size(); ++i) {
@@ -278,9 +272,11 @@ std::vector<HloInstruction*> FindConstrainedUses(
         constrained_uses.insert(constrained_uses.end(), converted_uses.begin(),
                                 converted_uses.end());
       } else if (opcode == HloOpcode::kSort &&
-                 instruction->operand_count() == 2 && op_num == 0) {
+                 instruction->operand_count() >= 2 && op_num == 0) {
         // Operand 0 of sort is the array of keys used for key/value
-        // (two-operand) kSort instructions.
+        // (two-operand) kSort instructions. Since sort stability is not
+        // guaranteed, constrain keys of key-value sort not to have duplicates,
+        // since otherwise the value order may legitimately differ.
         constrained_uses.push_back(instruction);
       }
     }
@@ -292,8 +288,8 @@ std::vector<HloInstruction*> FindConstrainedUses(
 // no constrained uses in the dataflow graph.  If such constraints exist,
 // generate a constrained literal (either bounded in the case of indices, or
 // zero in the case of init_values for reductions).
-StatusOr<std::unique_ptr<Literal>> CreateLiteralForConstrainedUses(
-    const tensorflow::gtl::ArraySlice<HloInstruction*> constrained_uses,
+StatusOr<Literal> CreateLiteralForConstrainedUses(
+    const absl::Span<HloInstruction* const> constrained_uses,
     const HloInstruction& param, std::minstd_rand0* engine) {
   std::vector<int64> index_space;
   bool no_duplicates = false;
@@ -342,7 +338,7 @@ StatusOr<std::unique_ptr<Literal>> CreateLiteralForConstrainedUses(
       default:
         return Unimplemented(
             "Constrained operand generation not implemented for %s.",
-            use->ToString().c_str());
+            use->ToString());
     }
   }
   int constraint_count = 0;
@@ -357,9 +353,9 @@ StatusOr<std::unique_ptr<Literal>> CreateLiteralForConstrainedUses(
   } else if (needs_constant) {
     switch (constant_type) {
       case ConstantType::kZero:
-        return LiteralUtil::Zero(param.shape().element_type()).CloneToUnique();
+        return LiteralUtil::Zero(param.shape().element_type());
       case ConstantType::kOne:
-        return LiteralUtil::One(param.shape().element_type()).CloneToUnique();
+        return LiteralUtil::One(param.shape().element_type());
       case ConstantType::kUnknown:
         // We want the identity element for the computation, but we don't really
         // know what it is - so any value we generate will be just as wrong.
@@ -373,34 +369,33 @@ StatusOr<std::unique_ptr<Literal>> CreateLiteralForConstrainedUses(
 
 // Given a module entry parameter, use the dataflow analysis to see if a
 // special case literal must be created, or if we can generate fake data.
-StatusOr<std::unique_ptr<Literal>> MakeConstrainedArgument(
-    const HloDataflowAnalysis& dataflow, const HloInstruction& param,
-    std::minstd_rand0* engine) {
+StatusOr<Literal> MakeConstrainedArgument(const HloDataflowAnalysis& dataflow,
+                                          const HloInstruction& param,
+                                          std::minstd_rand0* engine) {
   const auto constrained_uses = FindConstrainedUses(dataflow, param);
   return CreateLiteralForConstrainedUses(constrained_uses, param, engine);
 }
 
 }  // namespace
 
-StatusOr<std::unique_ptr<Literal>> MakeFakeLiteral(const Shape& shape,
-                                                   bool pseudo_random) {
+StatusOr<Literal> MakeFakeLiteral(const Shape& shape, bool pseudo_random) {
   auto engine =
       pseudo_random ? absl::make_unique<std::minstd_rand0>() : nullptr;
   return MakeFakeLiteralInternal(shape, engine.get(), /*no_duplicates=*/false);
 }
 
-StatusOr<std::vector<std::unique_ptr<Literal>>> MakeFakeArguments(
-    HloModule* const module, bool pseudo_random) {
+StatusOr<std::vector<Literal>> MakeFakeArguments(HloModule* const module,
+                                                 bool pseudo_random) {
   auto engine =
       pseudo_random ? absl::make_unique<std::minstd_rand0>() : nullptr;
   return MakeFakeArguments(module, engine.get());
 }
 
-StatusOr<std::vector<std::unique_ptr<Literal>>> MakeFakeArguments(
-    HloModule* const module, std::minstd_rand0* engine) {
+StatusOr<std::vector<Literal>> MakeFakeArguments(HloModule* const module,
+                                                 std::minstd_rand0* engine) {
   TF_ASSIGN_OR_RETURN(auto dataflow, HloDataflowAnalysis::Run(*module));
   const auto params = module->entry_computation()->parameter_instructions();
-  std::vector<std::unique_ptr<Literal>> arguments(params.size());
+  std::vector<Literal> arguments(params.size());
   for (int i = 0; i < params.size(); ++i) {
     arguments[i] =
         MakeConstrainedArgument(*dataflow, *params[i], engine).ValueOrDie();
@@ -416,4 +411,18 @@ Status VerifyHloModule(HloModule* const module, bool layout_sensitive,
       .status();
 }
 
+std::unique_ptr<HloDotInstruction> CreateCanonicalDot(const Shape& shape,
+                                                      HloInstruction* lhs,
+                                                      HloInstruction* rhs) {
+  CHECK_EQ(ShapeUtil::Rank(lhs->shape()), 2);
+  CHECK_EQ(ShapeUtil::Rank(rhs->shape()), 2);
+  PrecisionConfig precision_config;
+  precision_config.mutable_operand_precision()->Resize(
+      2, PrecisionConfig::DEFAULT);
+  DotDimensionNumbers dot_dimension_numbers;
+  dot_dimension_numbers.add_lhs_contracting_dimensions(1);
+  dot_dimension_numbers.add_rhs_contracting_dimensions(0);
+  return absl::make_unique<HloDotInstruction>(
+      shape, lhs, rhs, dot_dimension_numbers, precision_config);
+}
 }  // namespace xla

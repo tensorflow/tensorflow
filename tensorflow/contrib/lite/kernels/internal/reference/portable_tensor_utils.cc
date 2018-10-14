@@ -16,7 +16,7 @@ limitations under the License.
 #include <string.h>
 #include <algorithm>
 
-#include "tensorflow/contrib/lite/builtin_op_data.h"
+#include "tensorflow/contrib/lite/c/builtin_op_data.h"
 #include "tensorflow/contrib/lite/kernels/activation_functor.h"
 #include "tensorflow/contrib/lite/kernels/internal/round.h"
 #include "tensorflow/contrib/lite/kernels/op_macros.h"
@@ -55,7 +55,7 @@ void PortableSymmetricQuantizeFloats(const float* values, const int size,
     return;
   }
   *scaling_factor = range / kScale;
-  const float scaling_factor_inv = 1.0f / *scaling_factor;
+  const float scaling_factor_inv = kScale / range;
   for (int i = 0; i < size; ++i) {
     const int32_t quantized_value =
         static_cast<int32_t>(TfLiteRound(values[i] * scaling_factor_inv));
@@ -151,6 +151,16 @@ void PortableVectorVectorCwiseProductAccumulate(const float* vector1,
   }
 }
 
+void PortableVectorBatchVectorCwiseProduct(const float* vector, int v_size,
+                                           const float* batch_vector,
+                                           int n_batch, float* result) {
+  for (int b = 0; b < n_batch; b++) {
+    for (int v = 0; v < v_size; v++) {
+      *result++ = vector[v] * *batch_vector++;
+    }
+  }
+}
+
 void PortableVectorBatchVectorCwiseProductAccumulate(const float* vector,
                                                      int v_size,
                                                      const float* batch_vector,
@@ -160,6 +170,16 @@ void PortableVectorBatchVectorCwiseProductAccumulate(const float* vector,
     for (int v = 0; v < v_size; v++) {
       *result++ += vector[v] * *batch_vector++;
     }
+  }
+}
+
+void PortableVectorBatchVectorAdd(const float* vector, int v_size, int n_batch,
+                                  float* batch_vector) {
+  for (int b = 0; b < n_batch; b++) {
+    for (int i = 0; i < v_size; ++i) {
+      batch_vector[i] += vector[i];
+    }
+    batch_vector += v_size;
   }
 }
 
@@ -230,6 +250,32 @@ void PortableReductionSumVector(const float* input_vector, float* output_vector,
     for (int r = 0; r < reduction_size; r++) {
       output_vector[o] += *input_vector_ptr++;
     }
+  }
+}
+
+void PortableMeanStddevNormalization(const float* input_vector,
+                                     float* output_vector, int v_size,
+                                     int n_batch, float normalization_epsilon) {
+  for (int batch = 0; batch < n_batch; ++batch) {
+    float sum = 0.0f;
+    float sum_sq = 0.0f;
+    for (int i = 0; i < v_size; ++i) {
+      sum += input_vector[i];
+      sum_sq += input_vector[i] * input_vector[i];
+    }
+    const float mean = sum / v_size;
+    float stddev_inv = 0.0f;
+    const float variance = sum_sq / v_size - mean * mean;
+    if (variance == 0) {
+      stddev_inv = 1.0f / sqrt(normalization_epsilon);
+    } else {
+      stddev_inv = 1.0f / sqrt(variance);
+    }
+    for (int i = 0; i < v_size; ++i) {
+      output_vector[i] = (input_vector[i] - mean) * stddev_inv;
+    }
+    input_vector += v_size;
+    output_vector += v_size;
   }
 }
 

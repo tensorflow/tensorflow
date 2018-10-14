@@ -78,19 +78,20 @@ void IrFunction::Initialize(const string& function_name,
                             const bool optimize_for_size_requested,
                             const bool enable_fast_math) {
   // The function signature is:
-  //   void function(i8* retval, i8* run_options, i8** params, i8** temps,
+  //   void function(i8* retval, i8* run_options, i8** params, i8**
+  //   buffer_table,
   //                 i64* dynamic_loop_bounds, i64* prof_counters)
   //
   // For thread local functions:
   //   retval: points to the returned value.
   //   params: address of an array with pointers to parameters.
-  //   temps: is null
+  //   buffer_table: is null
   //
   // For global functions:
   //   retval: is null
   //   params: is null
-  //   temps: address of an array with pointers to temporary buffers and entry
-  //          computation parameters.
+  //   buffer_table: address of an array with pointers to temporary buffers and
+  //     entry computation parameters (but not to constant buffers).
   //
   // Therefore, the generated function's signature (FunctionType) is statically
   // determined - parameter unpacking is done in code generated into the
@@ -116,7 +117,7 @@ void IrFunction::Initialize(const string& function_name,
   //                     \---------/  \---------/         \-----------/
   //
   //                     /---------------------------------------------\
-  //   temps --------->  |  temp  0  |  temp  1  | ..... |  temp  N-1  |
+  //   buffer_table--->  |  buff  0  |  guff  1  | ..... |  buff  N-1  |
   //                     |   addr    |   addr    |       |   addr      |
   //                     \---------------------------------------------/
   //                          |           |                   |
@@ -134,9 +135,9 @@ void IrFunction::Initialize(const string& function_name,
   //   prof counters ->  | counter 0 | counter 1 | ..... | counter N-1 |
   //                     \---------------------------------------------/
 
-  // Even though the type of params and temps is void** in the host's view, in
-  // LLVM IR this is represented by i8*, similarly to void*. It's up to the code
-  // to use GEPs to unravel the indirection layers.
+  // Even though the type of params and buffer_table is void** in the host's
+  // view, in LLVM IR this is represented by i8*, similarly to void*. It's up to
+  // the code to use GEPs to unravel the indirection layers.
   llvm::FunctionType* function_type = llvm::FunctionType::get(
       /*Result=*/llvm::Type::getVoidTy(llvm_module_->getContext()),
       /*Params=*/
@@ -160,8 +161,8 @@ void IrFunction::Initialize(const string& function_name,
   exec_run_options_arg_ = &*arg_iter;
   (++arg_iter)->setName("params");
   parameters_arg_ = &*arg_iter;
-  (++arg_iter)->setName("temps");
-  temp_buffers_arg_ = &*arg_iter;
+  (++arg_iter)->setName("buffer_table");
+  buffer_table_arg_ = &*arg_iter;
   if (num_dynamic_loop_bounds_ > 0) {
     (++arg_iter)->setName("dynamic_loop_bounds");
     dynamic_loop_bounds_arg_ = &*arg_iter;
@@ -200,10 +201,10 @@ llvm::Value* IrFunction::GetDynamicLoopBound(const int64 offset) {
 // Returns an array of compute function call arguments (including parameter
 // address buffer).
 std::vector<llvm::Value*> GetArrayFunctionCallArguments(
-    tensorflow::gtl::ArraySlice<llvm::Value*> parameter_addresses,
-    llvm::IRBuilder<>* b, absl::string_view name,
-    llvm::Value* return_value_buffer, llvm::Value* exec_run_options_arg,
-    llvm::Value* temp_buffers_arg, llvm::Value* profile_counters_arg) {
+    absl::Span<llvm::Value* const> parameter_addresses, llvm::IRBuilder<>* b,
+    absl::string_view name, llvm::Value* return_value_buffer,
+    llvm::Value* exec_run_options_arg, llvm::Value* buffer_table_arg,
+    llvm::Value* profile_counters_arg) {
   llvm::Value* parameter_addresses_buffer;
 
   if (parameter_addresses.empty()) {
@@ -230,7 +231,7 @@ std::vector<llvm::Value*> GetArrayFunctionCallArguments(
   };
   std::vector<llvm::Value*> arguments{
       to_int8_ptr(return_value_buffer), to_int8_ptr(exec_run_options_arg),
-      parameter_addresses_buffer, temp_buffers_arg};
+      parameter_addresses_buffer, buffer_table_arg};
   if (profile_counters_arg != nullptr) {
     arguments.push_back(profile_counters_arg);
   }

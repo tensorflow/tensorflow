@@ -33,6 +33,7 @@ limitations under the License.
 #include "tensorflow/core/protobuf/rewriter_config.pb.h"
 
 namespace tensorflow {
+namespace data {
 namespace {
 
 // See documentation in ../ops/dataset_ops.cc for a high-level
@@ -92,7 +93,10 @@ class OptimizeDatasetOp : public UnaryDatasetOpKernel {
       DatasetGraphDefBuilder db(&b);
       Node* input_node = nullptr;
       SerializationContext::Params params;
+      std::vector<std::pair<string, Tensor>> input_list;
+      params.allow_stateful_functions = true;
       params.flib_def = ctx->function_library()->GetFunctionLibraryDefinition();
+      params.input_list = &input_list;
       SerializationContext serialization_ctx(params);
       TF_RETURN_IF_ERROR(
           db.AddInputDataset(&serialization_ctx, input_, &input_node));
@@ -117,7 +121,7 @@ class OptimizeDatasetOp : public UnaryDatasetOpKernel {
       GraphRunner graph_runner(ctx->function_library()->device());
 
       TF_RETURN_IF_ERROR(
-          graph_runner.Run(&graph, lib_, {}, {output_node}, &outputs));
+          graph_runner.Run(&graph, lib_, input_list, {output_node}, &outputs));
       TF_RETURN_IF_ERROR(
           GetDatasetFromVariantTensor(outputs[0], &optimized_input_));
       optimized_input_->Ref();
@@ -150,12 +154,8 @@ class OptimizeDatasetOp : public UnaryDatasetOpKernel {
           : DatasetIterator<Dataset>(params) {}
 
       Status Initialize(IteratorContext* ctx) override {
-        IteratorContext::Params params;
-        params.env = ctx->env();
-        params.runner = *(ctx->runner());
-        params.stats_aggregator_getter = ctx->stats_aggregator_getter();
+        IteratorContext::Params params = ctx->params();
         params.lib = dataset()->lib_;
-        params.allocator_getter = ctx->allocator_getter();
         return dataset()->optimized_input_->MakeIterator(
             IteratorContext(params), prefix(), &input_impl_);
       }
@@ -163,14 +163,10 @@ class OptimizeDatasetOp : public UnaryDatasetOpKernel {
       Status GetNextInternal(IteratorContext* ctx,
                              std::vector<Tensor>* out_tensors,
                              bool* end_of_sequence) override {
-        IteratorContext::Params params;
-        params.env = ctx->env();
-        params.runner = *(ctx->runner());
-        params.stats_aggregator_getter = ctx->stats_aggregator_getter();
+        IteratorContext::Params params = ctx->params();
         params.lib = dataset()->lib_;
-        params.allocator_getter = ctx->allocator_getter();
-        IteratorContext iter_ctx(params);
-        return input_impl_->GetNext(&iter_ctx, out_tensors, end_of_sequence);
+        return input_impl_->GetNext(IteratorContext(params), out_tensors,
+                                    end_of_sequence);
       }
 
      protected:
@@ -267,4 +263,5 @@ REGISTER_KERNEL_BUILDER(Name("OptimizeDataset").Device(DEVICE_CPU),
                         OptimizeDatasetOp);
 
 }  // namespace
+}  // namespace data
 }  // namespace tensorflow

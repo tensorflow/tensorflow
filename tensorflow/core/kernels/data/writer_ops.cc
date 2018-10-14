@@ -22,7 +22,7 @@ limitations under the License.
 #include "tensorflow/core/platform/file_system.h"
 
 namespace tensorflow {
-
+namespace data {
 namespace {
 
 class ToTFRecordOp : public AsyncOpKernel {
@@ -104,4 +104,5 @@ REGISTER_KERNEL_BUILDER(Name("DatasetToTFRecord").Device(DEVICE_CPU),
                         ToTFRecordOp);
 
 }  // namespace
+}  // namespace data
 }  // namespace tensorflow

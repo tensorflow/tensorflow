@@ -188,7 +188,7 @@ class PadOpTest(test.TestCase):
                       mode="SYMMETRIC").eval()
 
   def testInvalid(self):
-    with self.test_session():
+    with self.cached_session():
       x = [[1, 2, 3], [4, 5, 6]]
       with self.assertRaisesRegexp(ValueError, "Unknown padding mode"):
         array_ops.pad(x, [[1, 0], [2, 1]], mode="weird").eval()

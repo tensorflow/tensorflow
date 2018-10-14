@@ -203,7 +203,7 @@ def interleave_fn(index):
   start = tf.string_join(['training_data_', start_idx_str])
   end = tf.string_join(['training_data_', end_idx_str])
   return table.scan_range(start_idx, end_idx, columns=columns)
-ds = ds.apply(tf.contrib.data.parallel_interleave(
+ds = ds.apply(tf.data.experimental.parallel_interleave(
     interleave_fn, cycle_length=NUM_PARALLEL_READS, prefetch_input_elements=1))
 ```
 
@@ -249,7 +249,7 @@ def make_row_key_dataset():
    - ...
    - fake-data-23498103
   """
-  counter_dataset = tf.contrib.data.Counter()
+  counter_dataset = tf.data.experimental.Counter()
   width = 8
   row_key_prefix = 'fake-data-'
   ds = counter_dataset.map(lambda index: tf.as_string(index,
@@ -324,8 +324,14 @@ If you encounter a log line that includes the following:
 "filename":"/usr/share/grpc/roots.pem"
 ```
 
-you likely need to copy the [gRPC `roots.pem` file][grpcPem] to
-`/usr/share/grpc/roots.pem` on your local machine.
+you can solve it via either of the following approaches:
+
+* copy the [gRPC `roots.pem` file][grpcPem] to
+  `/usr/share/grpc/roots.pem` on your local machine, which is the default
+  location where gRPC will look for this file
+* export the environment variable `GRPC_DEFAULT_SSL_ROOTS_FILE_PATH` to point to
+  the full path of the gRPC `roots.pem` file on your file system if it's in a
+  different location
 
 [grpcPem]: https://github.com/grpc/grpc/blob/master/etc/roots.pem
 

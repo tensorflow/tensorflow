@@ -25,6 +25,7 @@ import random
 import threading
 
 from tensorflow.core.protobuf import config_pb2
+from tensorflow.core.protobuf import rewriter_config_pb2
 from tensorflow.python import pywrap_tensorflow
 from tensorflow.python.framework import c_api_util
 from tensorflow.python.framework import device as pydev
@@ -37,7 +38,7 @@ GRAPH_MODE = 0
 EAGER_MODE = 1
 
 # Default execution mode.
-_default_mode = GRAPH_MODE
+default_execution_mode = GRAPH_MODE
 
 # Cache from (old_device_name, partial_new_device_name) -> (new_device_name,
 # new_device_spec).
@@ -56,14 +57,18 @@ SYNC = 0
 ASYNC = 1
 
 
-class _TensorCache(object):
+class _EagerTensorCache(object):
   """Simple cache which evicts items based on length in a FIFO manner."""
 
-  def __init__(self, max_items=256):
+  def __init__(self, max_items=256, max_tensor_size=10000):
     self._data = collections.OrderedDict()
-    self._max_items = max_items if max_items else 256
+    self._max_items = max_items
+    self._max_tensor_size = max_tensor_size
 
   def put(self, key, value):
+    if value._num_elements() > self._max_tensor_size:  # pylint: disable=protected-access
+      return
+
     self._data[key] = value
 
     if len(self._data) > self._max_items:
@@ -80,19 +85,25 @@ class _TensorCache(object):
 class _EagerContext(threading.local):
   """Thread local eager context."""
 
-  def __init__(self):
+  def __init__(self, config=None):
     super(_EagerContext, self).__init__()
     self.device_spec = pydev.DeviceSpec.from_string("")
     self.device_name = self.device_spec.to_string()
-    self.mode = _default_mode
-    self.is_eager = _default_mode == EAGER_MODE
+    self.mode = default_execution_mode
+    self.is_eager = default_execution_mode == EAGER_MODE
     self.scope_name = ""
     self.recording_summaries = False
     self.summary_writer_resource = None
     self.scalar_cache = {}
-    self.ones_rank_cache = _TensorCache()
-    self.zeros_cache = _TensorCache()
+    self.ones_rank_cache = _EagerTensorCache()
+    self.zeros_cache = _EagerTensorCache()
     self.execution_mode = None
+    self.rewriter_config = None
+    if config is not None and config.HasField(
+        "graph_options") and config.graph_options.HasField("rewrite_options"):
+      self.rewriter_config = (
+          config.graph_options.rewrite_options.SerializeToString())
+
 
 
 ContextSwitch = collections.namedtuple(
@@ -111,8 +122,8 @@ class _ContextSwitchStack(threading.local):
       # Initialize the stack with a pointer to enter the eager context; this
       # ensures that the fact that eager execution was enabled is propagated
       # across threads, since (1) `enable_eager_execution` modifies a
-      # process-level flag (`_default_mode`) and (2) `__init__` is called each
-      # time a threading.local object is used in a separate thread.
+      # process-level flag (`default_execution_mode`) and (2) `__init__` is
+      # called each time a threading.local object is used in a separate thread.
       self.push(is_building_function=False, enter_context_fn=eager_mode)
 
   def push(self, is_building_function, enter_context_fn):
@@ -187,7 +198,7 @@ class Context(object):
     Raises:
      ValueError: If execution_mode is not valid.
     """
-    self._eager_context = _EagerContext()
+    self._eager_context = _EagerContext(config)
     self._context_switches = _ContextSwitchStack(self.executing_eagerly())
     self._context_handle = None
     self._context_devices = None
@@ -357,6 +368,36 @@ class Context(object):
       if mode == EAGER_MODE:
         self.context_switches.pop()
 
+  @tf_contextlib.contextmanager
+  def rewriter_config(self, rewriter_config_=None):
+    """A context manager to allow setting the grappler rewrite options.
+
+    Args:
+      rewriter_config_: A tensorflow.RewriterConfig proto object.
+
+    Yields:
+      Nothing.
+
+    Raises:
+      ValueError: if rewriter_config is not a tensorflow.RewriterConfig proto.
+    """
+    if rewriter_config_ is None or not isinstance(
+        rewriter_config_, rewriter_config_pb2.RewriterConfig):
+      raise ValueError("Must pass a rewriter_config proto")
+
+    ctx = self._eager_context
+    old_rewriter_config = ctx.rewriter_config
+    ctx.rewriter_config = rewriter_config_.SerializeToString()
+    try:
+      yield
+    finally:
+      ctx.rewriter_config = old_rewriter_config
+
+  @property
+  def rewriter_config_string(self):
+    """Returns the serialized rewriter_config for the current thread."""
+    return self._eager_context.rewriter_config
+
   def executing_eagerly(self):
     """Returns True if current thread has eager executing enabled."""
     return self._eager_context.is_eager
@@ -416,6 +457,10 @@ class Context(object):
     Raises:
       ValueError: If name is not a string or is an invalid device name.
     """
+    devices = self._context_devices
+    if devices is None:
+      self._initialize_handle_and_devices()
+      devices = self._context_devices
     eager_context = self._eager_context
     old_device_name = eager_context.device_name
     old_device_spec = eager_context.device_spec
@@ -436,8 +481,7 @@ class Context(object):
         if old_device_name:
           new_device_spec = copy.copy(old_device_spec)
         else:
-          new_device_spec = pydev.DeviceSpec.from_string(
-              "/job:localhost/replica:0/task:0/device:CPU:0")
+          new_device_spec = pydev.DeviceSpec.from_string(devices[0])
         new_device_spec.merge_from(device_spec)
       else:
         new_device_spec = pydev.DeviceSpec.from_string("")
@@ -504,9 +548,7 @@ class Context(object):
     Args:
       fn: A wrapped TF_Function (returned from TF_GraphToFunction_wrapper).
     """
-    pywrap_tensorflow.TFE_ContextAddFunction(
-        self._handle,  # pylint: disable=protected-access
-        fn)
+    pywrap_tensorflow.TFE_ContextAddFunction(self._handle, fn)
 
   def add_function_def(self, fdef):
     """Add a function definition to the context.
@@ -519,9 +561,7 @@ class Context(object):
     """
     fdef_string = fdef.SerializeToString()
     pywrap_tensorflow.TFE_ContextAddFunctionDef(
-        self._handle,  # pylint: disable=protected-access
-        fdef_string,
-        len(fdef_string))
+        self._handle, fdef_string, len(fdef_string))
 
   def add_post_execution_callback(self, callback):
     """Add a post-execution callback to the context.
@@ -633,14 +673,7 @@ def context():
 
 
 def context_safe():
-  return _context
-
-
-# TODO(agarwal): remove this.
-def get_default_context():
-  """Same as context."""
-  if _context is None:
-    _initialize_context()
+  """Returns current context (or None if one hasn't been initialized)."""
   return _context
 
 
@@ -788,6 +821,11 @@ def export_run_metadata():
     A RunMetadata protocol buffer.
   """
   return context().export_run_metadata()
+
+
+def rewriter_config(rewriter_config_):
+  """Context manager for setting the grappler rewrite config."""
+  return context().rewriter_config(rewriter_config_)
 
 
 def set_server_def(server_def):

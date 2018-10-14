@@ -82,7 +82,7 @@ class CheckpointsTest(test.TestCase):
 
   def testNoTensor(self):
     checkpoint_dir = self.get_temp_dir()
-    with self.test_session() as session:
+    with self.cached_session() as session:
       _, _, _, _ = _create_checkpoints(session, checkpoint_dir)
     with self.assertRaises(errors_impl.OpError):
       self.assertAllEqual(
@@ -90,7 +90,7 @@ class CheckpointsTest(test.TestCase):
 
   def testGetTensor(self):
     checkpoint_dir = self.get_temp_dir()
-    with self.test_session() as session:
+    with self.cached_session() as session:
       v1, v2, v3, v4 = _create_checkpoints(session, checkpoint_dir)
     self.assertAllEqual(
         checkpoint_utils.load_variable(checkpoint_dir, "var1"), v1)
@@ -103,7 +103,7 @@ class CheckpointsTest(test.TestCase):
 
   def testGetAllVariables(self):
     checkpoint_dir = self.get_temp_dir()
-    with self.test_session() as session:
+    with self.cached_session() as session:
       _create_checkpoints(session, checkpoint_dir)
     self.assertEqual(
         checkpoint_utils.list_variables(checkpoint_dir),
@@ -112,7 +112,7 @@ class CheckpointsTest(test.TestCase):
 
   def testInitFromCheckpoint(self):
     checkpoint_dir = self.get_temp_dir()
-    with self.test_session() as session:
+    with self.cached_session() as session:
       v1, v2, v3, v4 = _create_checkpoints(session, checkpoint_dir)
 
     # New graph and session.
@@ -146,7 +146,7 @@ class CheckpointsTest(test.TestCase):
 
   def testInitWithScopeDoesNotCaptureSuffixes(self):
     checkpoint_dir = self.get_temp_dir()
-    with self.test_session() as session:
+    with self.cached_session() as session:
       _, _, _, v4 = _create_checkpoints(session, checkpoint_dir)
 
     with ops.Graph().as_default() as g:
@@ -165,7 +165,7 @@ class CheckpointsTest(test.TestCase):
 
   def testInitFromRootCheckpoint(self):
     checkpoint_dir = self.get_temp_dir()
-    with self.test_session() as session:
+    with self.cached_session() as session:
       v1, v2, v3, v4 = _create_checkpoints(session, checkpoint_dir)
 
     # New graph and session.
@@ -189,7 +189,7 @@ class CheckpointsTest(test.TestCase):
 
   def testInitToRootCheckpoint(self):
     checkpoint_dir = self.get_temp_dir()
-    with self.test_session() as session:
+    with self.cached_session() as session:
       v1, v2, v3, v4 = _create_checkpoints(session, checkpoint_dir)
 
     # New graph and session.
@@ -212,7 +212,7 @@ class CheckpointsTest(test.TestCase):
 
   def testInitFromPartitionVar(self):
     checkpoint_dir = self.get_temp_dir()
-    with self.test_session() as session:
+    with self.cached_session() as session:
       v1 = _create_partition_checkpoints(session, checkpoint_dir)
 
     # New graph and session.
@@ -266,7 +266,7 @@ class CheckpointsTest(test.TestCase):
 
   def testInitFromCheckpointMissing(self):
     checkpoint_dir = self.get_temp_dir()
-    with self.test_session() as session:
+    with self.cached_session() as session:
       _, _, _, _ = _create_checkpoints(session, checkpoint_dir)
 
     # New graph and session.

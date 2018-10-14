@@ -320,6 +320,15 @@ TEST_F(XlaBuilderTest, AllToAll) {
       ShapeUtil::Equal(root->shape(), ShapeUtil::MakeShape(F32, {8, 8})));
 }
 
+TEST_F(XlaBuilderTest, CollectivePermute) {
+  XlaBuilder b(TestName());
+  auto x = Parameter(&b, 0, ShapeUtil::MakeShape(F32, {5, 7}), "x");
+  CollectivePermute(x, {{0, 1}, {1, 2}, {2, 3}});
+  TF_ASSERT_OK_AND_ASSIGN(auto module, BuildHloModule(&b));
+  auto root = module->entry_computation()->root_instruction();
+  EXPECT_EQ(root->opcode(), HloOpcode::kCollectivePermute);
+}
+
 TEST_F(XlaBuilderTest, ReportError) {
   XlaBuilder b(TestName());
   auto x = Parameter(&b, 0, ShapeUtil::MakeShape(F32, {5, 7}), "x");

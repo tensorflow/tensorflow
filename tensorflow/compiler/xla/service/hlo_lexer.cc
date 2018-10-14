@@ -204,7 +204,7 @@ TokKind HloLexer::LexIdentifier() {
     auto consumable = RegexpStringPieceFromPointers(token_start_, buf_.end());
     // 'consumable' will be advanced iff its prefix matches the pattern.
     static LazyRE2 shape_pattern = {
-        R"(^(\w*\d*)\[([\d,]*)\](?:(dense|sparse)?{([\d,]+)})?)"};
+        R"(^(\w*\d*)\[([\d,\s]*)\](?:(dense|sparse)?{([\d,\s]+)})?)"};
     if (RE2::Consume(&consumable, *shape_pattern)) {
       auto status_or_shape = ShapeUtil::ParseShapeString(
           StringPieceFromPointers(token_start_, consumable.begin()));
@@ -269,7 +269,7 @@ TokKind HloLexer::LexIdentifier() {
     }
   }
 
-  str_val_ = std::string(identifier);
+  str_val_ = string(identifier);
   return TokKind::kIdent;
 }
 
@@ -306,8 +306,7 @@ TokKind HloLexer::LexNumberOrPattern() {
       R"([-]?((\d+|\d+[.]\d*|\d*[.]\d+)([eE][+-]?\d+))|[-]?(\d+[.]\d*|\d*[.]\d+))"};
   if (RE2::Consume(&consumable, *float_pattern)) {
     current_ptr_ = consumable.begin();
-    CHECK(absl::SimpleAtod(string(token_start_, current_ptr_).c_str(),
-                           &decimal_val_));
+    CHECK(absl::SimpleAtod(string(token_start_, current_ptr_), &decimal_val_));
     return TokKind::kDecimal;
   }
 
@@ -407,11 +406,7 @@ TokKind HloLexer::LexString() {
     absl::string_view raw =
         StringPieceFromPointers(token_start_ + 1, current_ptr_ - 1);
     string error;
-    // TODO(b/113077997): Change to absl::CUnescape once it works properly with
-    // copy-on-write std::string implementations.
-    if (!tensorflow::str_util::CUnescape(                     // non-absl ok
-            tensorflow::StringPiece(raw.data(), raw.size()),  // non-absl ok
-            &str_val_, &error)) {
+    if (!absl::CUnescape(raw, &str_val_, &error)) {
       LOG(ERROR) << "Failed unescaping string: " << raw << ". error: " << error;
       return TokKind::kError;
     }

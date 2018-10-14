@@ -26,7 +26,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/platform/logging.h"
 
 namespace xla {
@@ -36,8 +35,8 @@ ForLoop::ForLoop(absl::string_view prefix, absl::string_view suffix,
                  llvm::Value* start_index, llvm::Value* end_index,
                  llvm::Value* step, UnrollMode unroll_mode,
                  bool prevent_vectorization)
-    : prefix_(std::string(prefix)),
-      suffix_(std::string(suffix)),
+    : prefix_(prefix),
+      suffix_(suffix),
       start_index_(start_index),
       end_index_(end_index),
       step_(step),
@@ -242,7 +241,7 @@ IrArray::Index ForLoopNest::AddLoopsForShape(const Shape& shape,
 }
 
 IrArray::Index ForLoopNest::AddLoopsForShapeOnDimensions(
-    const Shape& shape, tensorflow::gtl::ArraySlice<int64> dimensions,
+    const Shape& shape, absl::Span<const int64> dimensions,
     absl::string_view suffix) {
   llvm_ir::IrArray::Index index(index_type_, shape.dimensions_size());
   for (int64 dimension : dimensions) {

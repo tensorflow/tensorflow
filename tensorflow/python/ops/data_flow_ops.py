@@ -39,6 +39,7 @@ from tensorflow.python.ops import resource_variable_ops
 # go/tf-wildcard-import
 # pylint: disable=wildcard-import
 from tensorflow.python.ops.gen_data_flow_ops import *
+from tensorflow.python.util import deprecation
 from tensorflow.python.util.tf_export import tf_export
 
 # pylint: enable=wildcard-import
@@ -112,7 +113,8 @@ def _shape_common(s1, s2):
 
 
 # pylint: disable=protected-access
-@tf_export("QueueBase")
+@tf_export("io.QueueBase", v1=["io.QueueBase", "QueueBase"])
+@deprecation.deprecated_endpoints("QueueBase")
 class QueueBase(object):
   """Base class for queue implementations.
 
@@ -604,7 +606,9 @@ def _shared_name(shared_name):
   return shared_name
 
 
-@tf_export("RandomShuffleQueue")
+@tf_export(
+    "io.RandomShuffleQueue", v1=["io.RandomShuffleQueue", "RandomShuffleQueue"])
+@deprecation.deprecated_endpoints("RandomShuffleQueue")
 class RandomShuffleQueue(QueueBase):
   """A queue implementation that dequeues elements in a random order.
 
@@ -746,7 +750,9 @@ class FIFOQueue(QueueBase):
     super(FIFOQueue, self).__init__(dtypes, shapes, names, queue_ref)
 
 
-@tf_export("PaddingFIFOQueue")
+@tf_export(
+    "io.PaddingFIFOQueue", v1=["io.PaddingFIFOQueue", "PaddingFIFOQueue"])
+@deprecation.deprecated_endpoints("PaddingFIFOQueue")
 class PaddingFIFOQueue(QueueBase):
   """A FIFOQueue that supports batching variable-sized tensors by padding.
 
@@ -820,7 +826,8 @@ class PaddingFIFOQueue(QueueBase):
     super(PaddingFIFOQueue, self).__init__(dtypes, shapes, names, queue_ref)
 
 
-@tf_export("PriorityQueue")
+@tf_export("io.PriorityQueue", v1=["io.PriorityQueue", "PriorityQueue"])
+@deprecation.deprecated_endpoints("PriorityQueue")
 class PriorityQueue(QueueBase):
   """A queue implementation that dequeues elements in prioritized order.
 
@@ -1229,7 +1236,8 @@ class ConditionalAccumulator(ConditionalAccumulatorBase):
                dtype,
                shape=None,
                shared_name=None,
-               name="conditional_accumulator"):
+               name="conditional_accumulator",
+               reduction_type="MEAN"):
     """Creates a new ConditionalAccumulator.
 
     Args:
@@ -1238,9 +1246,14 @@ class ConditionalAccumulator(ConditionalAccumulatorBase):
       shared_name: Optional. If non-empty, this accumulator will be shared under
         the given name across multiple sessions.
       name: Optional name for the accumulator.
+      reduction_type: Reduction type to use when taking the gradient.
     """
     accumulator_ref = gen_data_flow_ops.conditional_accumulator(
-        dtype=dtype, shape=shape, shared_name=shared_name, name=name)
+        dtype=dtype,
+        shape=shape,
+        shared_name=shared_name,
+        name=name,
+        reduction_type=reduction_type)
     super(ConditionalAccumulator, self).__init__(dtype, shape, accumulator_ref)
 
   def apply_grad(self, grad, local_step=0, name=None):
@@ -1294,7 +1307,10 @@ class ConditionalAccumulator(ConditionalAccumulatorBase):
     return out
 
 
-@tf_export("SparseConditionalAccumulator")
+@tf_export(
+    "sparse.SparseConditionalAccumulator",
+    v1=["sparse.SparseConditionalAccumulator", "SparseConditionalAccumulator"])
+@deprecation.deprecated_endpoints("SparseConditionalAccumulator")
 class SparseConditionalAccumulator(ConditionalAccumulatorBase):
   """A conditional accumulator for aggregating sparse gradients.
 
@@ -1312,15 +1328,21 @@ class SparseConditionalAccumulator(ConditionalAccumulatorBase):
     shared_name: Optional. If non-empty, this accumulator will be shared under
       the given name across multiple sessions.
     name: Optional name for the accumulator.
+    reduction_type: Reduction type to use when taking the gradient.
   """
 
   def __init__(self,
                dtype,
                shape=None,
                shared_name=None,
-               name="sparse_conditional_accumulator"):
+               name="sparse_conditional_accumulator",
+               reduction_type="MEAN"):
     accumulator_ref = gen_data_flow_ops.sparse_conditional_accumulator(
-        dtype=dtype, shape=shape, shared_name=shared_name, name=name)
+        dtype=dtype,
+        shape=shape,
+        shared_name=shared_name,
+        name=name,
+        reduction_type=reduction_type)
     super(SparseConditionalAccumulator, self).__init__(dtype, shape,
                                                        accumulator_ref)
 

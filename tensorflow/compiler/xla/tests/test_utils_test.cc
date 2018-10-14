@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/tests/test_utils.h"
 
+#include "absl/container/flat_hash_set.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/compiler/xla/shape_util.h"
@@ -85,10 +86,10 @@ XLA_TEST_F(TestUtilsTest, MultipleIndexSpacesForDynamicSlices) {
       ROOT dynamic-slice.2 = f32[3,2,2] dynamic-slice(array_param.2, index_param), dynamic_slice_sizes={3,2,2}
     })")
                     .ValueOrDie();
-  TF_ASSERT_OK_AND_ASSIGN(std::vector<std::unique_ptr<Literal>> args,
+  TF_ASSERT_OK_AND_ASSIGN(std::vector<Literal> args,
                           MakeFakeArguments(module.get()));
   ASSERT_EQ(args.size(), 3);
-  const Literal& index_arg = *args[0];
+  const Literal& index_arg = args[0];
 
   EXPECT_EQ(index_arg.Get<int32>({0}), 0);
 
@@ -114,10 +115,10 @@ XLA_TEST_F(TestUtilsTest, MultipleIndexSpacesForDynamicUpdateSlices) {
       ROOT dynamic-update-slice.2 = f32[3,3000,5] dynamic-update-slice(array_param.2, update_param.2, index_param)
     })")
                     .ValueOrDie();
-  TF_ASSERT_OK_AND_ASSIGN(std::vector<std::unique_ptr<Literal>> args,
+  TF_ASSERT_OK_AND_ASSIGN(std::vector<Literal> args,
                           MakeFakeArguments(module.get()));
   ASSERT_EQ(args.size(), 5);
-  const Literal& index_arg = *args[0];
+  const Literal& index_arg = args[0];
 
   EXPECT_EQ(index_arg.Get<int32>({0}), 0);
 
@@ -140,12 +141,12 @@ ENTRY %sort.148.1589 (parameter.0: f32[1048576], parameter.1: s32[1048576]) -> (
 }
 )")
                     .ValueOrDie();
-  TF_ASSERT_OK_AND_ASSIGN(std::vector<std::unique_ptr<Literal>> args,
+  TF_ASSERT_OK_AND_ASSIGN(std::vector<Literal> args,
                           MakeFakeArguments(module.get()));
   ASSERT_EQ(args.size(), 2);
-  const Literal& key_arg = *args[0];
+  const Literal& key_arg = args[0];
 
-  tensorflow::gtl::FlatSet<uint32> key_set;
+  absl::flat_hash_set<uint32> key_set;
   for (const float& value : key_arg.data<float>()) {
     EXPECT_TRUE(key_set.insert(tensorflow::bit_cast<uint32>(value)).second);
   }
@@ -163,12 +164,12 @@ ENTRY %sort.148.1589 (parameter.0: s32[1048576], parameter.1: s32[1048576]) -> (
 }
 )")
                     .ValueOrDie();
-  TF_ASSERT_OK_AND_ASSIGN(std::vector<std::unique_ptr<Literal>> args,
+  TF_ASSERT_OK_AND_ASSIGN(std::vector<Literal> args,
                           MakeFakeArguments(module.get()));
   ASSERT_EQ(args.size(), 2);
-  const Literal& key_arg = *args[0];
+  const Literal& key_arg = args[0];
 
-  tensorflow::gtl::FlatSet<int32> key_set;
+  absl::flat_hash_set<int32> key_set;
   for (const int32& value : key_arg.data<int32>()) {
     EXPECT_TRUE(key_set.insert(tensorflow::bit_cast<uint32>(value)).second);
   }

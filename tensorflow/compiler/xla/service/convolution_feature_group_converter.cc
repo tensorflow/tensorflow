@@ -214,8 +214,8 @@ Status ConvolutionVisitor::HandleConvolution(HloInstruction* convolution) {
     expanded_filter = add(HloInstruction::CreateConcatenate(
         expanded_filter_shape, concat_operands, input_feature_dim));
   }
-  auto zero = add(HloInstruction::CreateConstant(absl::make_unique<Literal>(
-      LiteralUtil::Zero(expanded_filter_shape.element_type()))));
+  auto zero = add(HloInstruction::CreateConstant(
+      LiteralUtil::Zero(expanded_filter_shape.element_type())));
   auto zero_filter =
       add(HloInstruction::CreateBroadcast(expanded_filter_shape, zero, {}));
   auto new_filter = add(
@@ -223,8 +223,8 @@ Status ConvolutionVisitor::HandleConvolution(HloInstruction* convolution) {
                                     filter_mask, expanded_filter, zero_filter));
   auto new_convolution = HloInstruction::CreateConvolve(
       convolution->shape(), convolution->mutable_operand(0), new_filter,
-      convolution->window(), dim_numbers, /*feature_group_count=*/1);
-  new_convolution->set_precision_config(convolution->precision_config());
+      /*feature_group_count=*/1, convolution->window(), dim_numbers,
+      convolution->precision_config());
   TF_RETURN_IF_ERROR(computation_->ReplaceWithNewInstruction(
       convolution, std::move(new_convolution)));
   return Status::OK();

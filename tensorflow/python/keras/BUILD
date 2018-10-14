@@ -62,6 +62,7 @@ py_library(
         ":backend",
         ":engine",
         ":layers",
+        ":optimizer_v2",
         "//tensorflow/python/saved_model",
         "//tensorflow/python:training",
     ],
@@ -102,7 +103,6 @@ py_library(
         "//tensorflow/python:tensor_array_ops",
         "//tensorflow/python:tensor_shape",
         "//tensorflow/python:util",
-        "//tensorflow/python:variable_scope",
         "//tensorflow/python:variables",
     ],
 )
@@ -187,6 +187,30 @@ py_library(
         "//tensorflow/python:tensor_array_ops",
         "//tensorflow/python:tensor_shape",
         "//tensorflow/python:util",
+    ],
+)
+
+py_library(
+    name = "optimizer_v2",
+    srcs = [
+        "optimizer_v2/adadelta.py",
+        "optimizer_v2/adagrad.py",
+        "optimizer_v2/adam.py",
+        "optimizer_v2/optimizer_v2.py",
+        "optimizer_v2/rmsprop.py",
+        "optimizer_v2/sgd.py",
+    ],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow/python:control_flow_ops",
+        "//tensorflow/python:distribute",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:resource_variable_ops",
+        "//tensorflow/python:state_ops",
+        "//tensorflow/python:training",
+        "//tensorflow/python:variable_scope",
+        "//tensorflow/python:variables",
     ],
 )
 
@@ -338,11 +362,6 @@ py_test(
     size = "large",
     srcs = ["layers/convolutional_test.py"],
     srcs_version = "PY2AND3",
-    tags = [
-        "manual",
-        "noasan",  # times out b/63678675
-        "notsan",
-    ],
     deps = [
         ":keras",
         "//tensorflow/python:client_testlib",
@@ -387,12 +406,11 @@ py_test(
     ],
 )
 
-py_test(
+cuda_py_test(
     name = "embeddings_test",
-    size = "small",
+    size = "medium",
     srcs = ["layers/embeddings_test.py"],
-    srcs_version = "PY2AND3",
-    deps = [
+    additional_deps = [
         ":keras",
         "//tensorflow/python:client_testlib",
     ],
@@ -701,6 +719,33 @@ py_test(
 )
 
 py_test(
+    name = "training_generator_test",
+    size = "enormous",
+    srcs = ["engine/training_generator_test.py"],
+    srcs_version = "PY2AND3",
+    tags = ["notsan"],
+    deps = [
+        ":keras",
+        "//tensorflow/python:client_testlib",
+        "//third_party/py/numpy",
+    ],
+)
+
+py_test(
+    name = "feature_columns_integration_test",
+    size = "small",
+    srcs = ["engine/feature_columns_integration_test.py"],
+    srcs_version = "PY2AND3",
+    tags = ["notsan"],
+    deps = [
+        ":keras",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python/feature_column:feature_column_py",
+        "//third_party/py/numpy",
+    ],
+)
+
+py_test(
     name = "training_eager_test",
     size = "medium",
     srcs = ["engine/training_eager_test.py"],
@@ -819,4 +864,134 @@ py_library(
         "//tensorflow/python:util",
         "//third_party/py/numpy",
     ],
+)
+
+cuda_py_test(
+    name = "adadelta_test",
+    size = "medium",
+    srcs = ["optimizer_v2/adadelta_test.py"],
+    additional_deps = [
+        ":optimizer_v2",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:embedding_ops",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:platform",
+        "//tensorflow/python:platform_test",
+        "//tensorflow/python:resource_variable_ops",
+        "//tensorflow/python:variables",
+        "//third_party/py/numpy",
+    ],
+)
+
+cuda_py_test(
+    name = "adagrad_test",
+    size = "small",
+    srcs = ["optimizer_v2/adagrad_test.py"],
+    additional_deps = [
+        ":optimizer_v2",
+        "//tensorflow/python:embedding_ops",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:platform",
+        "//tensorflow/python:platform_test",
+        "//tensorflow/python:client_testlib",
+        "//third_party/py/numpy",
+    ],
+)
+
+cuda_py_test(
+    name = "adam_test",
+    size = "small",
+    srcs = ["optimizer_v2/adam_test.py"],
+    additional_deps = [
+        ":optimizer_v2",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:platform",
+        "//tensorflow/python:platform_test",
+        "//tensorflow/python:client_testlib",
+        "//third_party/py/numpy",
+    ],
+)
+
+cuda_py_test(
+    name = "checkpointable_utils_test",
+    srcs = ["optimizer_v2/checkpointable_utils_test.py"],
+    additional_deps = [
+        ":optimizer_v2",
+        "@six_archive//:six",
+        "//tensorflow/python:constant_op",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:init_ops",
+        "//tensorflow/python:layers",
+        "//tensorflow/python:layers_base",
+        "//tensorflow/python:resource_variable_ops",
+        "//tensorflow/python:state_ops",
+        "//tensorflow/python:training",
+        "//tensorflow/python:variable_scope",
+        "//tensorflow/python:variables",
+        "//tensorflow/python/eager:context",
+        "//tensorflow/python/eager:test",
+        "//tensorflow/python/keras",
+    ],
+    tags = ["notsan"],
+)
+
+cuda_py_test(
+    name = "sgd_test",
+    size = "medium",
+    srcs = ["optimizer_v2/sgd_test.py"],
+    additional_deps = [
+        ":optimizer_v2",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:embedding_ops",
+        "//tensorflow/python:platform_test",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:resource_variable_ops",
+        "//tensorflow/python:resources",
+        "//tensorflow/python:variables",
+        "//tensorflow/python/eager:context",
+    ],
+)
+
+cuda_py_test(
+    name = "optimizer_v2_test",
+    size = "medium",
+    srcs = ["optimizer_v2/optimizer_v2_test.py"],
+    additional_deps = [
+        ":optimizer_v2",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:clip_ops",
+        "//tensorflow/python:gradients",
+        "//tensorflow/python:resource_variable_ops",
+        "//tensorflow/python:state_ops",
+        "//tensorflow/python:variables",
+    ],
+)
+
+cuda_py_test(
+    name = "rmsprop_test",
+    size = "small",
+    srcs = ["optimizer_v2/rmsprop_test.py"],
+    additional_deps = [
+        ":optimizer_v2",
+        "@absl_py//absl/testing:parameterized",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:embedding_ops",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:platform",
+        "//tensorflow/python:platform_test",
+        "//tensorflow/python:client_testlib",
+        "//third_party/py/numpy",
+    ],
+    tags = ["optonly"],
 )

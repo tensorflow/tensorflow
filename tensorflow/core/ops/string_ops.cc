@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "absl/strings/str_split.h"
 #include "tensorflow/core/framework/common_shape_fns.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/shape_inference.h"
@@ -56,6 +57,12 @@ REGISTER_OP("RegexFullMatch")
       return Status::OK();
     });
 
+REGISTER_OP("StaticRegexFullMatch")
+    .Input("input: string")
+    .Attr("pattern: string")
+    .Output("output: bool")
+    .SetShapeFn(shape_inference::UnchangedShape);
+
 REGISTER_OP("StringToHashBucketFast")
     .Input("input: string")
     .Output("output: int64")
@@ -95,6 +102,32 @@ REGISTER_OP("AsString")
     .Attr("width: int = -1")
     .Attr("fill: string = ''")
     .SetShapeFn(shape_inference::UnchangedShape);
+
+REGISTER_OP("StringFormat")
+    .Input("inputs: T")
+    .Output("output: string")
+    .Attr("T: list(type) >= 0")
+    .Attr("template: string = '%s'")
+    .Attr("placeholder: string = '%s'")
+    .Attr("summarize: int = 3")
+    .SetShapeFn([](InferenceContext* c) {
+      string template_;
+      string placeholder;
+      TF_RETURN_IF_ERROR(c->GetAttr("template", &template_));
+      TF_RETURN_IF_ERROR(c->GetAttr("placeholder", &placeholder));
+
+      std::vector<std::string> split_template;
+      split_template = absl::StrSplit(template_, placeholder);
+      int64 num_placeholders = split_template.size() - 1;
+      if (c->num_inputs() != num_placeholders) {
+        return errors::InvalidArgument(strings::StrCat(
+            "num placeholders in template and num inputs must match: ",
+            num_placeholders, " vs. ", c->num_inputs()));
+      }
+
+      c->set_output(0, c->Scalar());
+      return Status::OK();
+    });
 
 REGISTER_OP("StringJoin")
     .Input("inputs: N * string")
@@ -170,6 +203,7 @@ REGISTER_OP("StringStrip")
 REGISTER_OP("StringLength")
     .Input("input: string")
     .Output("output: int32")
+    .Attr("unit: {'BYTE', 'UTF8_CHAR'} = 'BYTE'")
     .SetShapeFn(shape_inference::UnchangedShape);
 
 REGISTER_OP("EncodeBase64")
@@ -189,6 +223,7 @@ REGISTER_OP("Substr")
     .Input("len: T")
     .Output("output: string")
     .Attr("T: {int32, int64}")
+    .Attr("unit: {'BYTE', 'UTF8_CHAR'} = 'BYTE'")
     .SetShapeFn([](InferenceContext* c) {
       ShapeHandle pos_shape = c->input(1);
       ShapeHandle len_shape = c->input(2);
@@ -209,5 +244,10 @@ REGISTER_OP("Substr")
       // BroadcastBinaryOpShapeFn infers shape from c->input(0) and c->input(1).
       return shape_inference::BroadcastBinaryOpShapeFn(c);
     });
+
+REGISTER_OP("UnicodeScript")
+    .Input("input: int32")
+    .Output("output: int32")
+    .SetShapeFn(shape_inference::UnchangedShape);
 
 }  // namespace tensorflow

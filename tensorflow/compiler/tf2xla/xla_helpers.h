@@ -18,10 +18,10 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_TF2XLA_XLA_HELPERS_H_
 #define TENSORFLOW_COMPILER_TF2XLA_XLA_HELPERS_H_
 
+#include "absl/types/span.h"
 #include "tensorflow/compiler/tf2xla/xla_context.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/core/framework/tensor.h"
-#include "tensorflow/core/lib/gtl/array_slice.h"
 
 namespace tensorflow {
 
@@ -50,7 +50,7 @@ class XlaHelpers {
   // Reshapes literal 'input' to have 'shape'. Both the original shape and
   // 'shape' must contain the same number of elements.
   static Status ReshapeLiteral(const xla::Literal& input,
-                               gtl::ArraySlice<int64> shape,
+                               absl::Span<const int64> shape,
                                xla::Literal* output);
 
   // Returns the argmax of `input` along `axis`. `output_type` is the type to

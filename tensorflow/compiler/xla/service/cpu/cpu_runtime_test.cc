@@ -20,6 +20,7 @@ limitations under the License.
 #include <tuple>
 
 #include "absl/memory/memory.h"
+#include "absl/strings/str_format.h"
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/compiler/xla/array2d.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
@@ -28,7 +29,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/cpu/runtime_single_threaded_matmul.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/core/common_runtime/eigen_thread_pool.h"
-#include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/test.h"
@@ -142,10 +142,10 @@ class EigenMatMulTest : public CpuRuntimeTest,
     bool transpose_rhs = std::get<2>(info.param);
     bool single_threaded = std::get<3>(info.param);
 
-    return tensorflow::strings::Printf(
-        "EigenMatMul_%lld_%lld_%lld_%s%s%s_threaded", shape.m, shape.k, shape.n,
-        transpose_lhs ? "Tlhs_" : "", transpose_rhs ? "Trhs_" : "",
-        single_threaded ? "single" : "multi");
+    return absl::StrFormat("EigenMatMul_%d_%d_%d_%s%s%s_threaded", shape.m,
+                           shape.k, shape.n, transpose_lhs ? "Tlhs_" : "",
+                           transpose_rhs ? "Trhs_" : "",
+                           single_threaded ? "single" : "multi");
   }
 };
 
@@ -178,10 +178,10 @@ class MKLMatMulTest : public CpuRuntimeTest,
     bool transpose_rhs = std::get<2>(info.param);
     bool single_threaded = std::get<3>(info.param);
 
-    return tensorflow::strings::Printf(
-        "MKLMatMul_%lld_%lld_%lld_%s%s%s_threaded", shape.m, shape.k, shape.n,
-        transpose_lhs ? "Tlhs_" : "", transpose_rhs ? "Trhs_" : "",
-        single_threaded ? "single" : "multi");
+    return absl::StrFormat("MKLMatMul_%d_%d_%d_%s%s%s_threaded", shape.m,
+                           shape.k, shape.n, transpose_lhs ? "Tlhs_" : "",
+                           transpose_rhs ? "Trhs_" : "",
+                           single_threaded ? "single" : "multi");
   }
 };
 

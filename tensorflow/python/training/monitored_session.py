@@ -195,8 +195,12 @@ class Scaffold(object):
           default_ready_op)
     if self._ready_for_local_init_op is None:
       def default_ready_for_local_init_op():
-        return variables.report_uninitialized_variables(
-            variables.global_variables())
+        return array_ops.concat([
+            variables.report_uninitialized_variables(
+                variables.global_variables()),
+            resources.report_uninitialized_resources(
+                resources.shared_resources())
+        ], 0)
       self._ready_for_local_init_op = Scaffold.get_or_default(
           'ready_for_local_init_op', ops.GraphKeys.READY_FOR_LOCAL_INIT_OP,
           default_ready_for_local_init_op)
@@ -800,7 +804,8 @@ class _MonitoredSession(object):
       self.tf_sess = self._session_creator.create_session()
       # We don't want coordinator to suppress any exception.
       self.coord = coordinator.Coordinator(clean_stop_exception_types=[])
-      queue_runner.start_queue_runners(sess=self.tf_sess, coord=self.coord)
+      if ops.get_collection(ops.GraphKeys.QUEUE_RUNNERS):
+        queue_runner.start_queue_runners(sess=self.tf_sess, coord=self.coord)
       # Inform the hooks that a new session has been created.
       for hook in self._hooks:
         hook.after_create_session(self.tf_sess, self.coord)
@@ -1113,7 +1118,11 @@ class _RecoverableSession(_WrappedSession):
         logging.info('An error was raised while a session was being created. '
                      'This may be due to a preemption of a connected worker '
                      'or parameter server. A new session will be created. '
-                     'Error: %s', e)
+                     'This error may also occur due to a gRPC failure caused '
+                     'by high memory or network bandwidth usage in the '
+                     'parameter servers. If this error occurs repeatedly, try '
+                     'increasing the number of parameter servers assigned to '
+                     'the job. Error: %s', e)
 
   def _check_stop(self):
     try:
@@ -1126,7 +1135,11 @@ class _RecoverableSession(_WrappedSession):
                    'session is complete. This may be due to a preemption in '
                    'a connected worker or parameter server. The current '
                    'session will be closed and a new session will be '
-                   'created. Error: %s', e)
+                   'created. This error may also occur due to a gRPC failure '
+                   'caused by high memory or network bandwidth usage in the '
+                   'parameter servers. If this error occurs repeatedly, try '
+                   'increasing the number of parameter servers assigned to '
+                   'the job. Error: %s', e)
       self.close()
       self._sess = self._create_session()
       # Since we have just recreated the session, the overall computation should
@@ -1149,7 +1162,11 @@ class _RecoverableSession(_WrappedSession):
         logging.info('An error was raised. This may be due to a preemption in '
                      'a connected worker or parameter server. The current '
                      'session will be closed and a new session will be '
-                     'created. Error: %s', e)
+                     'created. This error may also occur due to a gRPC failure '
+                     'caused by high memory or network bandwidth usage in the '
+                     'parameter servers. If this error occurs repeatedly, try '
+                     'increasing the number of parameter servers assigned to '
+                     'the job. Error: %s', e)
         self.close()
         self._sess = None
 
@@ -1165,7 +1182,11 @@ class _RecoverableSession(_WrappedSession):
         logging.info('An error was raised. This may be due to a preemption in '
                      'a connected worker or parameter server. The current '
                      'session will be closed and a new session will be '
-                     'created. Error: %s', e)
+                     'created. This error may also occur due to a gRPC failure '
+                     'caused by high memory or network bandwidth usage in the '
+                     'parameter servers. If this error occurs repeatedly, try '
+                     'increasing the number of parameter servers assigned to '
+                     'the job. Error: %s', e)
         self.close()
         self._sess = None
 
@@ -1363,3 +1384,6 @@ class _HookedSession(_WrappedSession):
 
     options.debug_options.debug_tensor_watch_opts.extend(
         incoming_options.debug_options.debug_tensor_watch_opts)
+    options.debug_options.reset_disk_byte_usage = (
+        options.debug_options.reset_disk_byte_usage or
+        incoming_options.debug_options.reset_disk_byte_usage)

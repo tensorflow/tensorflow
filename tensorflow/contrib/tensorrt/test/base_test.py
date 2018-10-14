@@ -183,6 +183,12 @@ class PartiallyConvertedTestA(trt_test.TfTrtIntegrationTestBase):
         "my_trt_op_0": ["c0", "c1", "add0", "add1", "mul0", "mul1"]
     }
 
+  def ShouldRunTest(self, run_params):
+    """Whether to run the test."""
+    # Disable the test in fp16 mode since multiple matmul and add ops together
+    # can cause overflow.
+    return run_params.precision_mode != "FP16"
+
 
 class PartiallyConvertedTestB(PartiallyConvertedTestA):
 

@@ -981,5 +981,18 @@ class WhileLoopTestCase(test_util.TensorFlowTestCase):
     self.assertEqual(self.evaluate(r), [10, []])
 
 
+class AssertTest(test_util.TensorFlowTestCase):
+
+  def testAssert(self):
+    i = constant_op.constant(0)
+    c = control_flow_ops.Assert(i < 10, [i, [10], [i + 1]])
+    self.evaluate(c)
+
+    i = constant_op.constant(10)
+    c = control_flow_ops.Assert(i < 10, [i, [10], [i + 1]])
+    with self.assertRaises(errors.InvalidArgumentError):
+      self.evaluate(c)
+
+
 if __name__ == "__main__":
   googletest.main()

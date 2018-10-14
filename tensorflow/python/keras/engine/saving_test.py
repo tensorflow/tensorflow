@@ -38,6 +38,7 @@ from tensorflow.python.platform import test
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import checkpoint_management
 from tensorflow.python.training import training as training_module
+from tensorflow.python.training.checkpointable import util as checkpointable
 
 try:
   import h5py  # pylint:disable=g-import-not-at-top
@@ -48,7 +49,7 @@ except ImportError:
 class TestWeightSavingAndLoading(test.TestCase, parameterized.TestCase):
 
   def test_weight_loading(self):
-    with self.test_session():
+    with self.cached_session():
       a = keras.layers.Input(shape=(2,))
       x = keras.layers.Dense(3)(a)
       b = keras.layers.Dense(1)(x)
@@ -208,7 +209,7 @@ class TestWeightSavingAndLoading(test.TestCase, parameterized.TestCase):
       }))
   def test_preprocess_weights_for_loading_rnn_should_be_idempotent(
       self, layer_class, layer_args):
-    with self.test_session():
+    with self.cached_session():
       layer = layer_class(**layer_args)
       layer.build(input_shape=layer_args.get('input_shape'))
       weights1 = layer.get_weights()
@@ -232,7 +233,7 @@ class TestWeightSavingAndLoading(test.TestCase, parameterized.TestCase):
     batch_size = 5
     num_classes = 2
 
-    with self.test_session():
+    with self.cached_session():
       model = keras.models.Sequential()
       model.add(keras.layers.Dense(num_hidden, input_dim=input_dim))
       model.add(keras.layers.Dense(num_classes))
@@ -261,7 +262,7 @@ class TestWeightSavingAndLoading(test.TestCase, parameterized.TestCase):
     num_hidden = 5
     input_dim = 3
     num_classes = 2
-    with self.test_session():
+    with self.cached_session():
       ref_model = keras.models.Sequential()
       ref_model.add(keras.layers.Dense(num_hidden, input_dim=input_dim,
                                        name='d1'))
@@ -298,7 +299,7 @@ class TestWeightSavingAndLoading(test.TestCase, parameterized.TestCase):
     num_hidden = 5
     input_dim = 3
     num_classes = 2
-    with self.test_session():
+    with self.cached_session():
       ref_model = keras.models.Sequential()
       ref_model.add(keras.layers.Dense(num_hidden, input_dim=input_dim,
                                        name='d1'))
@@ -333,7 +334,7 @@ class TestWholeModelSaving(test.TestCase):
     if h5py is None:
       self.skipTest('h5py required to run this test')
 
-    with self.test_session():
+    with self.cached_session():
       model = keras.models.Sequential()
       model.add(keras.layers.Dense(2, input_shape=(3,)))
       model.add(keras.layers.RepeatVector(3))
@@ -370,6 +371,13 @@ class TestWholeModelSaving(test.TestCase):
       y = np.random.random((1, 3, 3))
       model.train_on_batch(x, y)
       new_model.train_on_batch(x, y)
+
+      x = np.random.random((1, 3))
+      y = np.random.random((1, 3, 3))
+      eval_out = model.evaluate(x, y)
+      eval_out2 = new_model.evaluate(x, y)
+      self.assertArrayNear(eval_out, eval_out2, 0.001)
+
       out = model.predict(x)
       out2 = new_model.predict(x)
       self.assertAllClose(out, out2, atol=1e-05)
@@ -378,7 +386,7 @@ class TestWholeModelSaving(test.TestCase):
     if h5py is None:
       self.skipTest('h5py required to run this test')
 
-    with self.test_session():
+    with self.cached_session():
       model = keras.models.Sequential()
       model.add(keras.layers.Dense(2, input_shape=(3,)))
       model.add(keras.layers.RepeatVector(3))
@@ -402,7 +410,7 @@ class TestWholeModelSaving(test.TestCase):
     if h5py is None:
       self.skipTest('h5py required to run this test')
 
-    with self.test_session():
+    with self.cached_session():
       # test with custom optimizer, loss
 
       class CustomOp(keras.optimizers.RMSprop):
@@ -438,7 +446,7 @@ class TestWholeModelSaving(test.TestCase):
     if h5py is None:
       self.skipTest('h5py required to run this test')
 
-    with self.test_session():
+    with self.cached_session():
       inputs = keras.layers.Input(shape=(3,))
       x = keras.layers.Dense(2)(inputs)
       output = keras.layers.Dense(3)(x)
@@ -474,7 +482,7 @@ class TestWholeModelSaving(test.TestCase):
     if h5py is None:
       self.skipTest('h5py required to run this test')
 
-    with self.test_session():
+    with self.cached_session():
       model = keras.models.Sequential()
       model.add(keras.layers.Dense(2, input_shape=(3,)))
       model.add(keras.layers.Dense(3))
@@ -490,7 +498,7 @@ class TestWholeModelSaving(test.TestCase):
     if h5py is None:
       self.skipTest('h5py required to run this test')
 
-    with self.test_session():
+    with self.cached_session():
       model = keras.models.Sequential()
       model.add(keras.layers.Dense(2, input_shape=(3,)))
       model.add(keras.layers.Dense(3))
@@ -508,7 +516,7 @@ class TestWholeModelSaving(test.TestCase):
     if h5py is None:
       self.skipTest('h5py required to run this test')
 
-    with self.test_session():
+    with self.cached_session():
       model = keras.models.Sequential()
       model.add(keras.layers.Dense(2, input_shape=(3,)))
       model.add(keras.layers.Dense(3))
@@ -522,7 +530,7 @@ class TestWholeModelSaving(test.TestCase):
       os.remove(fname)
 
   def test_saving_lambda_numpy_array_arguments(self):
-    with self.test_session():
+    with self.cached_session():
       if h5py is None:
         self.skipTest('h5py required to run this test')
 
@@ -548,7 +556,7 @@ class TestWholeModelSaving(test.TestCase):
     if h5py is None:
       self.skipTest('h5py required to run this test')
 
-    with self.test_session():
+    with self.cached_session():
       # This layer name will make the `layers_name` HDF5 attribute blow
       # out of proportion. Note that it fits into the internal HDF5
       # attribute memory limit on its own but because h5py converts
@@ -589,7 +597,7 @@ class TestWholeModelSaving(test.TestCase):
     if h5py is None:
       self.skipTest('h5py required to run this test')
 
-    with self.test_session():
+    with self.cached_session():
       x = keras.Input(shape=(2,), name='nested_model_input')
       f = x
       for i in range(4):
@@ -634,7 +642,7 @@ class TestWholeModelSaving(test.TestCase):
     if h5py is None:
       self.skipTest('h5py required to run this test')
 
-    with self.test_session():
+    with self.cached_session():
       inputs = keras.Input(shape=(3,))
       x = keras.layers.Dense(2)(inputs)
       outputs = keras.layers.Dense(3)(x)
@@ -703,7 +711,7 @@ class TestWeightSavingAndLoadingTFFormat(test.TestCase):
 
   @test_util.run_in_graph_and_eager_modes
   def test_tensorflow_format_overwrite(self):
-    with self.test_session() as session:
+    with self.cached_session() as session:
       model = SubclassedModel()
       temp_dir = self.get_temp_dir()
       prefix = os.path.join(temp_dir, 'ckpt')
@@ -760,7 +768,7 @@ class TestWeightSavingAndLoadingTFFormat(test.TestCase):
         self.assertEqual(len(graph.get_operations()), op_count)
 
   def _weight_loading_test_template(self, make_model_fn):
-    with self.test_session():
+    with self.cached_session():
       model = make_model_fn()
       model.compile(
           loss='mse',
@@ -822,7 +830,7 @@ class TestWeightSavingAndLoadingTFFormat(test.TestCase):
 
   def _new_layer_weight_loading_test_template(
       self, first_model_fn, second_model_fn, restore_init_fn):
-    with self.test_session() as session:
+    with self.cached_session() as session:
       model = first_model_fn()
       temp_dir = self.get_temp_dir()
       prefix = os.path.join(temp_dir, 'ckpt')
@@ -915,6 +923,18 @@ class TestWeightSavingAndLoadingTFFormat(test.TestCase):
         SubclassedModel, SubclassedModelRestore,
         _restore_init_fn)
 
+  @test_util.run_in_graph_and_eager_modes
+  def test_incompatible_checkpoint(self):
+    save_path = checkpointable.Checkpoint().save(
+        os.path.join(self.get_temp_dir(), 'ckpt'))
+    m = keras.Model()
+    with self.assertRaisesRegexp(AssertionError, 'Nothing to load'):
+      m.load_weights(save_path)
+    m.dense = keras.layers.Dense(2)
+    m.dense(constant_op.constant([[1.]]))
+    with self.assertRaisesRegexp(
+        AssertionError, 'Nothing except the root object matched'):
+      m.load_weights(save_path)
 
 if __name__ == '__main__':
   test.main()

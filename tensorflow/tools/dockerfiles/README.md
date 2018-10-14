@@ -2,8 +2,8 @@
 
 This directory houses TensorFlow's Dockerfiles. **DO NOT EDIT THE DOCKERFILES
 MANUALLY!** They are maintained by `assembler.py`, which builds Dockerfiles from
-the files in `partials/` and the rules in `spec.yml`. See [the Maintaining
-section](#maintaining) for more information.
+the files in `partials/` and the rules in `spec.yml`. See [the Contributing
+section](#contributing) for more information.
 
 ## Building
 
@@ -34,13 +34,13 @@ documentation](https://docs.docker.com/engine/reference/run/).
 # User permissions (-u) are required if you use (-v).
 
 # CPU-based images
-$ docker run -u $(id -u):$(id -g) -v $(PWD):/my-devel -it tf
+$ docker run -u $(id -u):$(id -g) -v $(pwd):/my-devel -it tf
 
 # GPU-based images (set up nvidia-docker2 first)
-$ docker run --runtime=nvidia -u $(id -u):$(id -g) -v $(PWD):/my-devel -it tf
+$ docker run --runtime=nvidia -u $(id -u):$(id -g) -v $(pwd):/my-devel -it tf
 
 # Images with Jupyter run on port 8888, and needs a volume for notebooks
-$ docker run --user $(id -u):$(id -g) -p 8888:8888 -v $(PWD):/notebooks -it tf
+$ docker run --user $(id -u):$(id -g) -p 8888:8888 -v $(pwd):/notebooks -it tf
 ```
 
 These images do not come with the TensorFlow source code -- but the development

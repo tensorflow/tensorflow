@@ -183,7 +183,6 @@ if (tensorflow_BUILD_PYTHON_TESTS)
     file(GLOB_RECURSE tf_test_src_py
       ${tf_test_src_py}
       "${tensorflow_source_dir}/tensorflow/contrib/legacy_seq2seq/*_test.py"
-      "${tensorflow_source_dir}/tensorflow/contrib/linalg/*_test.py"
       "${tensorflow_source_dir}/tensorflow/contrib/graph_editor/*_test.py"
       "${tensorflow_source_dir}/tensorflow/contrib/bayesflow/*_test.py"
       "${tensorflow_source_dir}/tensorflow/contrib/framework/*_test.py"

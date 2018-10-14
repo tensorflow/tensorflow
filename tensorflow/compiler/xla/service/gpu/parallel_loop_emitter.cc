@@ -40,7 +40,7 @@ ParallelLoopEmitter::ParallelLoopEmitter(
 
 ParallelLoopEmitter::ParallelLoopEmitter(
     const llvm_ir::ElementGenerator& target_element_generator,
-    tensorflow::gtl::ArraySlice<llvm_ir::IrArray> target_arrays,
+    absl::Span<const llvm_ir::IrArray> target_arrays,
     const LaunchDimensions& launch_dimensions, llvm::IRBuilder<>* b,
     int unroll_factor)
     : LoopEmitter(target_element_generator, target_arrays, b),

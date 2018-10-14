@@ -30,13 +30,13 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.layers import core as core_layers
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import partitioned_variables
 from tensorflow.python.ops import rnn
 from tensorflow.python.ops import rnn_cell
 from tensorflow.python.ops import variable_scope
+from tensorflow.python.ops.losses import losses
 from tensorflow.python.summary import summary
 from tensorflow.python.training import optimizer as optimizer_lib
 from tensorflow.python.training import training_util
@@ -89,55 +89,6 @@ def _make_rnn_cell_fn(num_units, cell_type='basic_rnn'):
       return cells[0]
     return rnn_cell.MultiRNNCell(cells)
   return rnn_cell_fn
-
-
-def _concatenate_context_input(sequence_input, context_input):
-  """Replicates `context_input` across all timesteps of `sequence_input`.
-
-  Expands dimension 1 of `context_input` then tiles it `sequence_length` times.
-  This value is appended to `sequence_input` on dimension 2 and the result is
-  returned.
-
-  Args:
-    sequence_input: A `Tensor` of dtype `float32` and shape `[batch_size,
-      padded_length, d0]`.
-    context_input: A `Tensor` of dtype `float32` and shape `[batch_size, d1]`.
-
-  Returns:
-    A `Tensor` of dtype `float32` and shape `[batch_size, padded_length,
-    d0 + d1]`.
-
-  Raises:
-    ValueError: If `sequence_input` does not have rank 3 or `context_input` does
-      not have rank 2.
-  """
-  seq_rank_check = check_ops.assert_rank(
-      sequence_input,
-      3,
-      message='sequence_input must have rank 3',
-      data=[array_ops.shape(sequence_input)])
-  seq_type_check = check_ops.assert_type(
-      sequence_input,
-      dtypes.float32,
-      message='sequence_input must have dtype float32; got {}.'.format(
-          sequence_input.dtype))
-  ctx_rank_check = check_ops.assert_rank(
-      context_input,
-      2,
-      message='context_input must have rank 2',
-      data=[array_ops.shape(context_input)])
-  ctx_type_check = check_ops.assert_type(
-      context_input,
-      dtypes.float32,
-      message='context_input must have dtype float32; got {}.'.format(
-          context_input.dtype))
-  with ops.control_dependencies(
-      [seq_rank_check, seq_type_check, ctx_rank_check, ctx_type_check]):
-    padded_length = array_ops.shape(sequence_input)[1]
-    tiled_context_input = array_ops.tile(
-        array_ops.expand_dims(context_input, 1),
-        array_ops.concat([[1], [padded_length], [1]], 0))
-  return array_ops.concat([sequence_input, tiled_context_input], 2)
 
 
 def _select_last_activations(activations, sequence_lengths):
@@ -221,8 +172,8 @@ def _rnn_logit_fn_builder(output_units, rnn_cell_fn, sequence_feature_columns,
         context_input = feature_column_lib.input_layer(
             features=features,
             feature_columns=context_feature_columns)
-        sequence_input = _concatenate_context_input(sequence_input,
-                                                    context_input)
+        sequence_input = seq_fc.concatenate_context_input(
+            context_input, sequence_input)
 
     cell = rnn_cell_fn(mode)
     # Ignore output state.
@@ -405,6 +356,7 @@ class RNNClassifier(estimator.Estimator):
                weight_column=None,
                label_vocabulary=None,
                optimizer='Adagrad',
+               loss_reduction=losses.Reduction.SUM_OVER_BATCH_SIZE,
                input_layer_partitioner=None,
                config=None):
     """Initializes a `RNNClassifier` instance.
@@ -454,6 +406,8 @@ class RNNClassifier(estimator.Estimator):
         string.
       optimizer: An instance of `tf.Optimizer` or string specifying optimizer
         type. Defaults to Adagrad optimizer.
+      loss_reduction: One of `tf.losses.Reduction` except `NONE`. Describes how
+        to reduce training loss over batch. Defaults to `SUM_OVER_BATCH_SIZE`.
       input_layer_partitioner: Optional. Partitioner for input layer. Defaults
         to `min_max_variable_partitioner` with `min_slice_size` 64 << 20.
       config: `RunConfig` object to configure the runtime settings.
@@ -467,11 +421,15 @@ class RNNClassifier(estimator.Estimator):
     if n_classes == 2:
       head = head_lib._binary_logistic_head_with_sigmoid_cross_entropy_loss(  # pylint: disable=protected-access
           weight_column=weight_column,
-          label_vocabulary=label_vocabulary)
+          label_vocabulary=label_vocabulary,
+          loss_reduction=loss_reduction)
     else:
       head = head_lib._multi_class_head_with_softmax_cross_entropy_loss(  # pylint: disable=protected-access
-          n_classes, weight_column=weight_column,
-          label_vocabulary=label_vocabulary)
+          n_classes,
+          weight_column=weight_column,
+          label_vocabulary=label_vocabulary,
+          loss_reduction=loss_reduction)
+
     def _model_fn(features, labels, mode, config):
       return _rnn_model_fn(
           features=features,

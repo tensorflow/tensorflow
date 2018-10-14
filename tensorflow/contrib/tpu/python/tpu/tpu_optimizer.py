@@ -19,7 +19,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import collections
 
 from tensorflow.contrib.tpu.python.ops import tpu_ops
 from tensorflow.contrib.tpu.python.tpu import tpu_function
@@ -44,8 +43,9 @@ class CrossShardOptimizer(optimizer.Optimizer):
       reduction: The reduction to apply to the shard losses.
       name: Optional name prefix for the operations created when applying
         gradients. Defaults to "CrossShardOptimizer".
-      group_assignment: Optional list of group ids for applying the optimizer
-        to subgroups.
+      group_assignment: Optional 2d int32 lists with shape
+        [num_groups, num_replicas_per_group] which describles how to apply
+        optimizer to subgroups.
 
     Raises:
       ValueError: If reduction is not a valid cross-shard reduction.
@@ -74,11 +74,22 @@ class CrossShardOptimizer(optimizer.Optimizer):
     """
     if not group_assignment:
       return None
-    if len(group_assignment) != num_shards:
-      raise ValueError("The size of group_assignment does not equal to "
-                       "num_shard({0}). Got group_assignment={1}".format(
-                           num_shards, self._group_assignment))
-    subgroup_size_list = dict(collections.Counter(group_assignment)).values()
+    if not (isinstance(group_assignment, list) and
+            all(isinstance(i, list) for i in group_assignment)):
+      raise ValueError("group_assignment must be a list of list. Got {}".format(
+          group_assignment))
+
+    replica_ids = set()
+    for g in group_assignment:
+      for i in g:
+        replica_ids.add(i)
+
+    if set(range(num_shards)) != replica_ids:
+      raise ValueError("group_assignment must be a permutation of range({0})."
+                       " Got group_assignment={1}".format(
+                           num_shards, group_assignment))
+
+    subgroup_size_list = [len(group) for group in group_assignment]
     if all(subgroup_size_list[0] == size for size in subgroup_size_list):
       return subgroup_size_list[0]
     else:

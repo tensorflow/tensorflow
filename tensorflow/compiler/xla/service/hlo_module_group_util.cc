@@ -22,6 +22,7 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include "absl/container/flat_hash_set.h"
 #include "absl/memory/memory.h"
 #include "absl/strings/str_cat.h"
 #include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
@@ -32,7 +33,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/lib/gtl/flatset.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/types.h"
 
@@ -42,7 +42,7 @@ std::vector<HloInstruction*> HloModuleGroupUtil::GlobalPredecessors(
     HloInstruction* instruction) {
   std::vector<HloInstruction*>
       predecessors;  // Use a vector to avoid non-determinism.
-  tensorflow::gtl::FlatSet<HloInstruction*> unique;
+  absl::flat_hash_set<HloInstruction*> unique;
 
   // Adds to the unique predecessors list; if the predecessors is a companion
   // instruction, also add companion instructions; if the predecessors is a
@@ -119,7 +119,7 @@ std::vector<HloInstruction*> HloModuleGroupUtil::GlobalSuccessors(
     HloInstruction* instruction) {
   std::vector<HloInstruction*>
       successors;  // Use a vector to avoid non-determinism.
-  tensorflow::gtl::FlatSet<HloInstruction*> unique;
+  absl::flat_hash_set<HloInstruction*> unique;
 
   // Adds to the unique successors list; if the successor is a companion
   // instruction, also add companion instructions; if the successor is a
@@ -193,7 +193,7 @@ std::vector<HloInstruction*> HloModuleGroupUtil::GlobalSuccessors(
 }
 
 std::vector<HloInstruction*> HloModuleGroupUtil::RootInstructions(
-    tensorflow::gtl::ArraySlice<HloComputation*> computations) {
+    absl::Span<HloComputation* const> computations) {
   std::vector<HloInstruction*> roots;
   for (HloComputation* computation : computations) {
     for (HloInstruction* instruction : computation->instructions()) {
@@ -282,7 +282,7 @@ Status HloModuleGroupUtil::VisitTopologicalOrder(
               "following nodes. Note that the order of the nodes is arbitrary "
               "and that the list may include nodes that are not part of the "
               "cycle.\n%s",
-              predecessor->ToString().c_str(), cyclic_instructions.c_str());
+              predecessor->ToString(), cyclic_instructions);
         }
         stack.push(predecessor);
       }
@@ -293,7 +293,7 @@ Status HloModuleGroupUtil::VisitTopologicalOrder(
 }
 
 Status HloModuleGroupUtil::VerifyComputations(
-    tensorflow::gtl::ArraySlice<HloComputation*> computations) {
+    absl::Span<HloComputation* const> computations) {
   auto visit_function =
       [&](HloInstruction* instruction,
           const std::vector<HloInstruction*>& instruction_group) {
@@ -324,7 +324,7 @@ Status HloModuleGroupUtil::VerifyComputations(
 
 StatusOr<std::unique_ptr<HloReachabilityMap>>
 HloModuleGroupUtil::ComputeReachability(
-    tensorflow::gtl::ArraySlice<HloComputation*> computations) {
+    absl::Span<HloComputation* const> computations) {
   std::vector<HloInstruction*> post_order;
   auto visit_function =
       [&](HloInstruction* instruction,

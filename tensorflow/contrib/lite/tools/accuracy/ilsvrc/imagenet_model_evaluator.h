@@ -56,6 +56,13 @@ class ImagenetModelEvaluator {
     // Path to the model file.
     string model_file_path;
 
+    // Path to black list file. 1762 images were blacklisted from
+    // original ILSVRC dataset. This black list file is present in
+    // ILSVRC2014 devkit. Please refer to readme.txt of the ILSVRC2014
+    // devkit for details.
+    // This file is a list of image indices in a sorted order.
+    string blacklist_file_path;
+
     // The maximum number of images to calculate accuracy.
     // 0 means all images, a positive number means only the specified
     // number of images.
@@ -66,6 +73,7 @@ class ImagenetModelEvaluator {
   };
 
   // An evaluation observer.
+  // Observers can be called from multiple threads and need to be thread safe.
   class Observer {
    public:
     Observer() = default;
@@ -76,38 +84,41 @@ class ImagenetModelEvaluator {
     Observer& operator=(const Observer&&) = delete;
 
     // Called on start of evaluation.
-    virtual void OnEvaluationStart(int total_number_of_images) = 0;
+    // `shard_id_image_count_map` map from shard id to image count.
+    virtual void OnEvaluationStart(
+        const std::unordered_map<uint64_t, int>& shard_id_image_count_map) = 0;
 
     // Called when evaluation was complete for `image`.
     virtual void OnSingleImageEvaluationComplete(
-        const ImagenetTopKAccuracy::AccuracyStats& stats,
+        uint64_t shard_id, const ImagenetTopKAccuracy::AccuracyStats& stats,
         const string& image) = 0;
 
     virtual ~Observer() = default;
   };
 
   ImagenetModelEvaluator(const utils::ModelInfo& model_info,
-                         const Params& params)
-      : model_info_(model_info), params_(params) {}
+                         const Params& params, const int num_threads)
+      : model_info_(model_info), params_(params), num_threads_(num_threads) {}
 
   // Factory method to create the evaluator by parsing command line arguments.
-  static Status Create(int argc, char* argv[],
+  static Status Create(int argc, char* argv[], int num_threads,
                        std::unique_ptr<ImagenetModelEvaluator>* evaluator);
 
   // Adds an observer that can observe evaluation events..
   void AddObserver(Observer* observer) { observers_.push_back(observer); }
 
-  const Params& params() { return params_; }
+  const Params& params() const { return params_; }
 
   // Evaluates the provided model over the dataset.
-  Status EvaluateModel();
+  Status EvaluateModel() const;
 
  private:
-  std::vector<Observer*> observers_;
   const utils::ModelInfo model_info_;
   const Params params_;
+  const int num_threads_;
+  std::vector<Observer*> observers_;
 };
 
 }  // namespace metrics
 }  // namespace tensorflow
-#endif  // TENSORFLOW_CONTRIB_LITE_TOOLS_ACCURACY_IMAGENET_MODEL_EVALUATOR_H_
+#endif  // TENSORFLOW_CONTRIB_LITE_TOOLS_ACCURACY_ILSVRC_IMAGENET_MODEL_EVALUATOR_H_

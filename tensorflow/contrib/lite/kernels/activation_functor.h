@@ -19,7 +19,7 @@ limitations under the License.
 #include <cmath>
 #include <cstdlib>
 
-#include "tensorflow/contrib/lite/builtin_op_data.h"
+#include "tensorflow/contrib/lite/c/builtin_op_data.h"
 
 namespace tflite {
 

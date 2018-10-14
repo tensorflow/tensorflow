@@ -69,8 +69,17 @@ class LLVMCompiler : public Compiler {
   using Compiler::RunBackend;
   using Compiler::RunHloPasses;
 
+  Status RunHloPassesOnModuleGroup(
+      HloModuleGroup* module_group, se::StreamExecutor* executor,
+      DeviceMemoryAllocator* device_allocator) override;
+
+  StatusOr<std::vector<std::unique_ptr<Executable>>> RunBackendOnModuleGroup(
+      std::unique_ptr<HloModuleGroup> module_group,
+      std::vector<std::vector<se::StreamExecutor*>> stream_exec,
+      DeviceMemoryAllocator* device_allocator) override;
+
   StatusOr<std::vector<std::unique_ptr<Executable>>> Compile(
-      std::vector<std::unique_ptr<HloModule>> modules,
+      std::unique_ptr<HloModuleGroup> module_group,
       std::vector<std::vector<se::StreamExecutor*>> stream_execs,
       DeviceMemoryAllocator* device_allocator) override;
 

@@ -19,6 +19,7 @@ from __future__ import division
 from __future__ import print_function
 
 import argparse
+import functools
 
 from tensorflow.tools.compatibility import ast_edits
 from tensorflow.tools.compatibility import renames_v2
@@ -45,6 +46,29 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
 
     # Specially handled functions.
     self.function_handle = {}
+    for decay in ["tf.train.exponential_decay", "tf.train.piecewise_constant",
+                  "tf.train.polynomial_decay", "tf.train.natural_exp_decay",
+                  "tf.train.inverse_time_decay", "tf.train.cosine_decay",
+                  "tf.train.cosine_decay_restarts",
+                  "tf.train.linear_cosine_decay",
+                  "tf.train.noisy_linear_cosine_decay"]:
+      self.function_handle[decay] = functools.partial(
+          self._learning_rate_decay_handler, decay_name=decay)
+
+  @staticmethod
+  def _learning_rate_decay_handler(file_edit_recorder, node, decay_name):
+    comment = ("ERROR: %s has been changed to return a callable instead of a "
+               "tensor when graph building, but its functionality remains "
+               "unchanged during eager execution (returns a callable like "
+               "before). The converter cannot detect and fix this reliably, so "
+               "you need to inspect this usage manually.\n") % decay_name
+    file_edit_recorder.add(
+        comment,
+        node.lineno,
+        node.col_offset,
+        decay_name,
+        decay_name,
+        error="%s requires manual check." % decay_name)
 
 
 if __name__ == "__main__":
@@ -96,10 +120,18 @@ Simple usage:
   report_filename = args.report_filename
   files_processed = 0
   if args.input_file:
+    if not args.output_file:
+      raise ValueError(
+          "--outfile=<output file> argument is required when converting a "
+          "single file.")
     files_processed, report_text, errors = upgrade.process_file(
         args.input_file, args.output_file)
     files_processed = 1
   elif args.input_tree:
+    if not args.output_tree:
+      raise ValueError(
+          "--outtree=<output directory> argument is required when converting a "
+          "file tree.")
     files_processed, report_text, errors = upgrade.process_tree(
         args.input_tree, args.output_tree, args.copy_other_files)
   else:

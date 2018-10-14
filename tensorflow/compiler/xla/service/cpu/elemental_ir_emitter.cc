@@ -30,15 +30,16 @@ limitations under the License.
 namespace xla {
 namespace cpu {
 
-StatusOr<llvm::Value*> CpuElementalIrEmitter::EmitAtan2(
-    PrimitiveType prim_type, llvm::Value* lhs, llvm::Value* rhs) const {
+StatusOr<llvm::Value*> CpuElementalIrEmitter::EmitAtan2(PrimitiveType prim_type,
+                                                        llvm::Value* lhs,
+                                                        llvm::Value* rhs) {
   string function_name;
   bool cast_result_to_fp16 = false;
   switch (prim_type) {
     case F16:
       cast_result_to_fp16 = true;
-      lhs = b_->CreateFPCast(lhs, b_->getFloatTy());
-      rhs = b_->CreateFPCast(rhs, b_->getFloatTy());
+      lhs = FPCast(lhs, b_->getFloatTy());
+      rhs = FPCast(rhs, b_->getFloatTy());
       TF_FALLTHROUGH_INTENDED;
     case F32:
       function_name = "atan2f";
@@ -58,21 +59,21 @@ StatusOr<llvm::Value*> CpuElementalIrEmitter::EmitAtan2(
   function->setDoesNotThrow();
   function->setDoesNotAccessMemory();
   // Create an instruction to call the function.
-  llvm::Value* result = b_->CreateCall(function, {lhs, rhs});
+  llvm::Value* result = Call(function, {lhs, rhs});
   if (cast_result_to_fp16) {
-    result = b_->CreateFPCast(result, b_->getHalfTy());
+    result = FPCast(result, b_->getHalfTy());
   }
   return result;
 }
 
-StatusOr<llvm::Value*> CpuElementalIrEmitter::EmitTanh(
-    PrimitiveType prim_type, llvm::Value* value) const {
+StatusOr<llvm::Value*> CpuElementalIrEmitter::EmitTanh(PrimitiveType prim_type,
+                                                       llvm::Value* value) {
   bool cast_result_to_fp16 = false;
   string function_name;
   switch (prim_type) {
     case F16:
       cast_result_to_fp16 = true;
-      value = b_->CreateFPCast(value, b_->getFloatTy());
+      value = FPCast(value, b_->getFloatTy());
       TF_FALLTHROUGH_INTENDED;
     case F32:
       function_name = "tanhf";
@@ -91,16 +92,16 @@ StatusOr<llvm::Value*> CpuElementalIrEmitter::EmitTanh(
   function->setDoesNotThrow();
   function->setDoesNotAccessMemory();
   // Create an instruction to call the function.
-  llvm::Value* result = b_->CreateCall(function, value);
+  llvm::Value* result = Call(function, value);
   if (cast_result_to_fp16) {
-    result = b_->CreateFPCast(result, b_->getHalfTy());
+    result = FPCast(result, b_->getHalfTy());
   }
   return result;
 }
 
 llvm_ir::ElementGenerator CpuElementalIrEmitter::MakeElementGenerator(
     const HloInstruction* hlo,
-    const HloToElementGeneratorMap& operand_to_generator) const {
+    const HloToElementGeneratorMap& operand_to_generator) {
   if (hlo->opcode() == HloOpcode::kMap) {
     return [this, hlo, &operand_to_generator](
                const llvm_ir::IrArray::Index& index) -> StatusOr<llvm::Value*> {

@@ -115,7 +115,8 @@ class DistributionTestBase(test.TestCase):
           with ops.control_dependencies([fetched]):
             g = d.reduce(
                 variable_scope.VariableAggregation.SUM, g, destinations=v)
-            with ops.control_dependencies(d.unwrap(d.update(v, update, g))):
+            with ops.control_dependencies(d.update(
+                v, update, g, grouped=False)):
               after_list.append(d.read_var(v))
         return before_list, after_list
 
@@ -169,7 +170,8 @@ class DistributionTestBase(test.TestCase):
           with ops.control_dependencies([fetched]):
             g = d.reduce(
                 variable_scope.VariableAggregation.SUM, g, destinations=v)
-            with ops.control_dependencies(d.unwrap(d.update(v, update, g))):
+            with ops.control_dependencies(d.update(
+                v, update, g, grouped=False)):
               after_list.append(d.read_var(v))
         return before_list, after_list
 
@@ -190,7 +192,8 @@ class DistributionTestBase(test.TestCase):
     with d.scope():
       map_in = [constant_op.constant(i) for i in range(10)]
       map_out = d.map(map_in, lambda x, y: x * y, 2)
-      observed = d.reduce(variable_scope.VariableAggregation.SUM, map_out)
+      observed = d.reduce(variable_scope.VariableAggregation.SUM, map_out,
+                          "/device:CPU:0")
       expected = 90  # 2 * (0 + 1 + ... + 9)
       self.assertEqual(expected, observed.numpy())
 

@@ -38,8 +38,7 @@ class GpuCopyTest : public GpuCodegenTest {};
 TEST_F(GpuCopyTest, UseMemcpy) {
   HloComputation::Builder builder(TestName());
 
-  std::unique_ptr<Literal> literal =
-      LiteralUtil::CreateR2<float>({{1.0, 2.0}, {3.0, 4.0}});
+  Literal literal = LiteralUtil::CreateR2<float>({{1.0, 2.0}, {3.0, 4.0}});
   HloInstruction* constant = builder.AddInstruction(
       HloInstruction::CreateConstant(std::move(literal)));
   builder.AddInstruction(HloInstruction::CreateUnary(

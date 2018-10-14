@@ -16,8 +16,8 @@ limitations under the License.
 #define TENSORFLOW_CONTRIB_LITE_NNAPI_DELEGATE_H_
 
 #include "tensorflow/contrib/lite/allocation.h"
-#include "tensorflow/contrib/lite/context.h"
-#include "tensorflow/contrib/lite/error_reporter.h"
+#include "tensorflow/contrib/lite/c/c_api_internal.h"
+#include "tensorflow/contrib/lite/core/api/error_reporter.h"
 #include "tensorflow/contrib/lite/interpreter.h"
 
 class ANeuralNetworksModel;

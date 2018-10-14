@@ -29,10 +29,10 @@ limitations under the License.
 
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
+#include "absl/types/span.h"
 #include "tensorflow/compiler/xla/status.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/core/lib/core/bits.h"
-#include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/types.h"
@@ -97,12 +97,11 @@ class Array {
   using value_type = T;
 
   // Creates a new array with the specified dimensions.
-  explicit Array(tensorflow::gtl::ArraySlice<int64> sizes)
-      : Array(sizes, T()) {}
+  explicit Array(absl::Span<const int64> sizes) : Array(sizes, T()) {}
 
   // Creates a new array with the specified dimensions and specified value for
   // every cell.
-  Array(tensorflow::gtl::ArraySlice<int64> sizes, T value)
+  Array(absl::Span<const int64> sizes, T value)
       : sizes_(sizes.begin(), sizes.end()), values_(new T[num_elements()]) {
     Fill(value);
   }
@@ -301,7 +300,7 @@ class Array {
 
   // Invokes a callback with the (indices, value_ptr) for each cell in the
   // array.
-  void Each(std::function<void(tensorflow::gtl::ArraySlice<int64>, T*)> f) {
+  void Each(std::function<void(absl::Span<const int64>, T*)> f) {
     std::vector<int64> index(sizes_.size());
     for (int64 i = 0; i < num_elements(); ++i, next_index(&index)) {
       f(index, &values_[i]);
@@ -309,8 +308,7 @@ class Array {
   }
 
   // Invokes a callback with the (indices, value) for each cell in the array.
-  void Each(
-      std::function<void(tensorflow::gtl::ArraySlice<int64>, T)> f) const {
+  void Each(std::function<void(absl::Span<const int64>, T)> f) const {
     std::vector<int64> index(sizes_.size());
     for (int64 i = 0; i < num_elements(); ++i, next_index(&index)) {
       f(index, values_[i]);
@@ -320,8 +318,7 @@ class Array {
   // Invokes a callback with the (indices, value_ptr) for each cell in the
   // array. If a callback returns a non-OK status, returns that else returns
   // Status::OK().
-  Status EachStatus(
-      std::function<Status(tensorflow::gtl::ArraySlice<int64>, T*)> f) {
+  Status EachStatus(std::function<Status(absl::Span<const int64>, T*)> f) {
     std::vector<int64> index(sizes_.size());
     for (int64 i = 0; i < num_elements(); ++i, next_index(&index)) {
       Status s = f(index, &values_[i]);
@@ -335,8 +332,7 @@ class Array {
   // Invokes a callback with the (indices, value) for each cell in the array.
   // If a callback returns a non-OK status, returns that else returns
   // Status::OK().
-  Status EachStatus(
-      std::function<Status(tensorflow::gtl::ArraySlice<int64>, T)> f) const {
+  Status EachStatus(std::function<Status(absl::Span<const int64>, T)> f) const {
     std::vector<int64> index(sizes_.size());
     for (int64 i = 0; i < num_elements(); ++i, next_index(&index)) {
       Status s = f(index, values_[i]);
@@ -377,13 +373,13 @@ class Array {
 
   // Returns the value at the cell specified by the indexes. The number of
   // arguments have to match with the number of dimensions for the array.
-  const T& operator()(tensorflow::gtl::ArraySlice<int64> indexes) const {
+  const T& operator()(absl::Span<const int64> indexes) const {
     return values_[calculate_index(indexes)];
   }
 
   // Returns the value at the cell specified by the indexes. The number of
   // arguments have to match with the number of dimensions for the array.
-  T& operator()(tensorflow::gtl::ArraySlice<int64> indexes) {
+  T& operator()(absl::Span<const int64> indexes) {
     return values_[calculate_index(indexes)];
   }
 
@@ -438,8 +434,8 @@ class Array {
   bool operator!=(const Array<T>& other) const { return !(*this == other); }
 
   // Performs the equivalent of a slice operation on this array.
-  Array<T> Slice(tensorflow::gtl::ArraySlice<int64> starts,
-                 tensorflow::gtl::ArraySlice<int64> limits) const {
+  Array<T> Slice(absl::Span<const int64> starts,
+                 absl::Span<const int64> limits) const {
     CHECK_EQ(starts.size(), num_dimensions());
     CHECK_EQ(limits.size(), num_dimensions());
 
@@ -464,7 +460,7 @@ class Array {
 
   // Performs the equivalent of a DynamicUpdateSlice in-place on this array.
   void UpdateSlice(const Array<T>& from,
-                   tensorflow::gtl::ArraySlice<int64> start_indices) {
+                   absl::Span<const int64> start_indices) {
     CHECK_EQ(from.num_dimensions(), num_dimensions());
     std::vector<int64> limit_indices;
     std::transform(start_indices.begin(), start_indices.end(),
@@ -484,7 +480,7 @@ class Array {
 
   // Performs an in-place reshape, modifying the dimensions but not the
   // underlying data.
-  void Reshape(tensorflow::gtl::ArraySlice<int64> new_dimensions) {
+  void Reshape(absl::Span<const int64> new_dimensions) {
     int64 old_num_elements = num_elements();
     sizes_ = std::vector<int64>(new_dimensions.begin(), new_dimensions.end());
     CHECK_EQ(num_elements(), old_num_elements);

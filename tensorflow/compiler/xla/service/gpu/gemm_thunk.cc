@@ -186,7 +186,7 @@ StatusOr<se::blas::AlgorithmType> DoGemmAutotune(
   }
 
   return InternalError(
-      "Unable to autotune cuBLAS gemm on stream %p; none of the %zu algorithms "
+      "Unable to autotune cuBLAS gemm on stream %p; none of the %u algorithms "
       "ran successfully",
       stream, algorithms.size());
 }

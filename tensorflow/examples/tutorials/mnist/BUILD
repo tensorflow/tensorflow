@@ -83,6 +83,20 @@ py_binary(
     ],
 )
 
+# Note: we need to add --define=with_xla_support=true to the build command in
+# order to run the mnist_softmax_xla example with xla.
+py_binary(
+    name = "mnist_softmax_xla",
+    srcs = [
+        "mnist_softmax_xla.py",
+    ],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":input_data",
+        "//tensorflow:tensorflow_py",
+    ],
+)
+
 py_binary(
     name = "mnist_deep",
     srcs = [

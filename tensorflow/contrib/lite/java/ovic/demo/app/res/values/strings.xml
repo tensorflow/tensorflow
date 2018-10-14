@@ -17,6 +17,7 @@
 <resources>
     <string name="app_name" translatable="false">Benchmarker</string>
 
-    <string name="start_label" translatable="false">Start</string>
+    <string name="start_clf_label" translatable="false">Clf</string>
+    <string name="start_det_label" translatable="false">Det</string>
     <string name="initial_status_msg" translatable="false"> Press start to run the benchmarks.</string>
 </resources>

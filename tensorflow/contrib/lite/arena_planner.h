@@ -18,7 +18,7 @@ limitations under the License.
 #include <memory>
 #include <vector>
 
-#include "tensorflow/contrib/lite/context.h"
+#include "tensorflow/contrib/lite/c/c_api_internal.h"
 #include "tensorflow/contrib/lite/graph_info.h"
 #include "tensorflow/contrib/lite/memory_planner.h"
 #include "tensorflow/contrib/lite/simple_memory_arena.h"
@@ -37,8 +37,8 @@ struct AllocationInfo;
 // each tensor needs to be allocated and deallocated, and preallocates all the
 // necessary memory (the PlanAllocations phase). It then assigns portions of
 // this memory buffer to each tensor (the ExecuteAllocations phase). Tensors may
-// share some of the buffer if a tensor B is to be allocated after another tensor
-// A has been deallocated.
+// share some of the buffer if a tensor B is to be allocated after another
+// tensor A has been deallocated.
 //
 // If dynamic tensors are used the planning steps can be repeated during model
 // execution. Since dynamic tensors don't have sizes until after the

@@ -22,6 +22,7 @@ import os
 import shutil
 
 from tensorflow.contrib.data.python.ops import readers
+from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
@@ -31,7 +32,7 @@ from tensorflow.python.util import compat
 prefix_path = "tensorflow/core/lib"
 
 
-class LMDBDatasetTest(test.TestCase):
+class LMDBDatasetTest(test_base.DatasetTestBase):
 
   def setUp(self):
     super(LMDBDatasetTest, self).setUp()
@@ -51,7 +52,7 @@ class LMDBDatasetTest(test.TestCase):
     init_op = iterator.initializer
     get_next = iterator.get_next()
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       sess.run(init_op)
       for _ in range(num_repeats):  # Dataset is repeated.
         for i in range(10):  # 10 records.

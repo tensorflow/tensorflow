@@ -150,13 +150,13 @@ Status ParseS3Path(const string& fname, bool empty_object_ok, string* bucket,
     return errors::InvalidArgument("S3 path doesn't start with 's3://': ",
                                    fname);
   }
-  *bucket = bucketp.ToString();
+  *bucket = string(bucketp);
   if (bucket->empty() || *bucket == ".") {
     return errors::InvalidArgument("S3 path doesn't contain a bucket name: ",
                                    fname);
   }
   str_util::ConsumePrefix(&objectp, "/");
-  *object = objectp.ToString();
+  *object = string(objectp);
   if (!empty_object_ok && object->empty()) {
     return errors::InvalidArgument("S3 path doesn't contain an object name: ",
                                    fname);
@@ -211,7 +211,7 @@ class S3WritableFile : public WritableFile {
             std::ios_base::binary | std::ios_base::trunc | std::ios_base::in |
                 std::ios_base::out)) {}
 
-  Status Append(const StringPiece& data) override {
+  Status Append(StringPiece data) override {
     if (!outfile_) {
       return errors::FailedPrecondition(
           "The internal temporary file is not writable.");

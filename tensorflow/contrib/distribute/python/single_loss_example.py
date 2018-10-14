@@ -18,7 +18,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.contrib.data.python.ops import batching
 from tensorflow.contrib.distribute.python import step_fn
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.framework import constant_op
@@ -59,10 +58,9 @@ def minimize_loss_example(optimizer_fn,
 
   def dataset_fn():
     dataset = dataset_ops.Dataset.from_tensors([[1.]]).repeat()
-    # TODO(isaprykin): map_and_batch with drop_remainder causes shapes to be
+    # TODO(isaprykin): batch with drop_remainder causes shapes to be
     # fully defined for TPU.  Remove this when XLA supports dynamic shapes.
-    return dataset.apply(
-        batching.map_and_batch(lambda x: x, batch_size=1, drop_remainder=True))
+    return dataset.batch(1, drop_remainder=True)
 
   # An Optimizer instance is created either outside or inside model_fn.
   outer_optimizer = None

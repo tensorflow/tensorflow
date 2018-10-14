@@ -17,11 +17,28 @@ limitations under the License.
 #define TENSORFLOW_CONTRIB_LITE_JAVA_SRC_MAIN_NATIVE_TENSOR_JNI_H_
 
 #include <jni.h>
-#include "tensorflow/contrib/lite/context.h"
+#include "tensorflow/contrib/lite/c/c_api_internal.h"
 
 #ifdef __cplusplus
 extern "C" {
 #endif  // __cplusplus
+
+/*
+ * Class:     org_tensorflow_lite_Tensor
+ * Method:    create
+ * Signature: (JI)J
+ */
+JNIEXPORT jlong JNICALL Java_org_tensorflow_lite_Tensor_create(
+    JNIEnv* env, jclass clazz, jlong interpreter_handle, jint tensor_index);
+
+/*
+ * Class:     org_tensorflow_lite_Tensor
+ * Method:    delete
+ * Signature: (J)
+ */
+JNIEXPORT void JNICALL Java_org_tensorflow_lite_Tensor_delete(JNIEnv* env,
+                                                              jclass clazz,
+                                                              jlong handle);
 
 /*
  * Class:     org_tensorflow_lite_Tensor

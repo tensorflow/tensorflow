@@ -35,6 +35,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/cpu/runtime_fft.h"
 #include "tensorflow/compiler/xla/service/cpu/runtime_fork_join.h"
 #include "tensorflow/compiler/xla/service/cpu/runtime_fp16.h"
+#include "tensorflow/compiler/xla/service/cpu/runtime_key_value_sort.h"
 #include "tensorflow/compiler/xla/service/cpu/runtime_matmul.h"
 #include "tensorflow/compiler/xla/service/cpu/runtime_matmul_mkl.h"
 #include "tensorflow/compiler/xla/service/cpu/runtime_single_threaded_conv2d.h"
@@ -202,6 +203,18 @@ bool RegisterKnownJITSymbols() {
   REGISTER_CPU_RUNTIME_SYMBOL(ParallelForkJoin);
   REGISTER_CPU_RUNTIME_SYMBOL(ReleaseInfeedBufferAfterDequeue);
   REGISTER_CPU_RUNTIME_SYMBOL(ReleaseOutfeedBufferAfterPopulation);
+  REGISTER_CPU_RUNTIME_SYMBOL(KeyValueSortPRED);
+  REGISTER_CPU_RUNTIME_SYMBOL(KeyValueSortS8);
+  REGISTER_CPU_RUNTIME_SYMBOL(KeyValueSortU8);
+  REGISTER_CPU_RUNTIME_SYMBOL(KeyValueSortS16);
+  REGISTER_CPU_RUNTIME_SYMBOL(KeyValueSortU16);
+  REGISTER_CPU_RUNTIME_SYMBOL(KeyValueSortF16);
+  REGISTER_CPU_RUNTIME_SYMBOL(KeyValueSortS32);
+  REGISTER_CPU_RUNTIME_SYMBOL(KeyValueSortU32);
+  REGISTER_CPU_RUNTIME_SYMBOL(KeyValueSortF32);
+  REGISTER_CPU_RUNTIME_SYMBOL(KeyValueSortS64);
+  REGISTER_CPU_RUNTIME_SYMBOL(KeyValueSortU64);
+  REGISTER_CPU_RUNTIME_SYMBOL(KeyValueSortF64);
 
   registry->Register("__gnu_f2h_ieee", reinterpret_cast<void*>(__gnu_f2h_ieee));
   registry->Register("__gnu_h2f_ieee", reinterpret_cast<void*>(__gnu_h2f_ieee));
