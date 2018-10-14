@@ -104,15 +104,6 @@ message DebugOptions {
   // interpretation of this value is left to the backends.
   int32 xla_backend_optimization_level = 31;
 
-  // When true, "unsafe" mathematical optimizations are enabled. These
-  // transformations include but are not limited to:
-  //
-  //  - Reducing the precision of operations (e.g. using an approximate sin
-  //    function, or transforming x/y into x * (1/y)).
-  //  - Assuming that operations never produce or consume NaN or +/- Inf.
-  //  - Assuming that +0 and -0 are indistinguishable.
-  bool xla_enable_fast_math = 32;
-
   // Embed the compiler IR as a string in the executable.
   bool xla_embed_ir_in_executable = 33;
 
@@ -194,8 +185,32 @@ message DebugOptions {
   // Maximum kernel unroll factor for the GPU backend.
   int32 xla_gpu_max_kernel_unroll_factor = 98;
 
-  // Extra options to pass to the compilation backend; specific interpretation
-  // of these values is left to the backend.
+  // When true, "unsafe" mathematical optimizations are enabled. These
+  // transformations include but are not limited to:
+  //
+  //  - Reducing the precision of operations (e.g. using an approximate sin
+  //    function, or transforming x/y into x * (1/y)).
+  //  - Assuming that operations never produce or consume NaN or +/- Inf.
+  //  - Assuming that +0 and -0 are indistinguishable.
+  bool xla_cpu_enable_fast_math = 99;
+  bool xla_gpu_enable_fast_math = 100;
+
+  // Crashes the program when any kind of verification fails, instead of just
+  // logging the failures. One example is cross checking of convolution results
+  // among different algorithms.
+  bool xla_gpu_crash_on_verification_failures = 101;
+
+  // Force the host platform to pretend that there are these many host
+  // "devices".  All these devices are backed by the same threadpool.  Defaults
+  // to 1.
+  //
+  // Setting this to anything other than 1 can increase overhead from context
+  // switching but we let the user override this behavior to help run tests on
+  // the host that run models in parallel across multiple devices.
+  int32 xla_force_host_platform_device_count = 102;
+
+  // Extra options to pass to the compilation backend (e.g. LLVM); specific
+  // interpretation of these values is left to the backend.
   map<string, string> xla_backend_extra_options = 500;
 }
 

@@ -39,6 +39,7 @@ from tensorflow.python.ops import resource_variable_ops
 # go/tf-wildcard-import
 # pylint: disable=wildcard-import
 from tensorflow.python.ops.gen_data_flow_ops import *
+from tensorflow.python.util import deprecation
 from tensorflow.python.util.tf_export import tf_export
 
 # pylint: enable=wildcard-import
@@ -112,7 +113,8 @@ def _shape_common(s1, s2):
 
 
 # pylint: disable=protected-access
-@tf_export("QueueBase")
+@tf_export("io.QueueBase", v1=["io.QueueBase", "QueueBase"])
+@deprecation.deprecated_endpoints("QueueBase")
 class QueueBase(object):
   """Base class for queue implementations.
 
@@ -126,8 +128,8 @@ class QueueBase(object):
   handle single elements, versions that support enqueuing and
   dequeuing a batch of elements at once.
 
-  See @{tf.FIFOQueue} and
-  @{tf.RandomShuffleQueue} for concrete
+  See `tf.FIFOQueue` and
+  `tf.RandomShuffleQueue` for concrete
   implementations of this class, and instructions on how to create
   them.
   """
@@ -309,12 +311,12 @@ class QueueBase(object):
     until the element has been enqueued.
 
     At runtime, this operation may raise an error if the queue is
-    @{tf.QueueBase.close} before or during its execution. If the
+    `tf.QueueBase.close` before or during its execution. If the
     queue is closed before this operation runs,
     `tf.errors.CancelledError` will be raised. If this operation is
     blocked, and either (i) the queue is closed by a close operation
     with `cancel_pending_enqueues=True`, or (ii) the session is
-    @{tf.Session.close},
+    `tf.Session.close`,
     `tf.errors.CancelledError` will be raised.
 
     Args:
@@ -352,12 +354,12 @@ class QueueBase(object):
     until all of the elements have been enqueued.
 
     At runtime, this operation may raise an error if the queue is
-    @{tf.QueueBase.close} before or during its execution. If the
+    `tf.QueueBase.close` before or during its execution. If the
     queue is closed before this operation runs,
     `tf.errors.CancelledError` will be raised. If this operation is
     blocked, and either (i) the queue is closed by a close operation
     with `cancel_pending_enqueues=True`, or (ii) the session is
-    @{tf.Session.close},
+    `tf.Session.close`,
     `tf.errors.CancelledError` will be raised.
 
     Args:
@@ -413,11 +415,11 @@ class QueueBase(object):
     until there is an element to dequeue.
 
     At runtime, this operation may raise an error if the queue is
-    @{tf.QueueBase.close} before or during its execution. If the
+    `tf.QueueBase.close` before or during its execution. If the
     queue is closed, the queue is empty, and there are no pending
     enqueue operations that can fulfill this request,
     `tf.errors.OutOfRangeError` will be raised. If the session is
-    @{tf.Session.close},
+    `tf.Session.close`,
     `tf.errors.CancelledError` will be raised.
 
     Args:
@@ -455,11 +457,11 @@ class QueueBase(object):
     `OutOfRange` exception is raised.
 
     At runtime, this operation may raise an error if the queue is
-    @{tf.QueueBase.close} before or during its execution. If the
+    `tf.QueueBase.close` before or during its execution. If the
     queue is closed, the queue contains fewer than `n` elements, and
     there are no pending enqueue operations that can fulfill this
     request, `tf.errors.OutOfRangeError` will be raised. If the
-    session is @{tf.Session.close},
+    session is `tf.Session.close`,
     `tf.errors.CancelledError` will be raised.
 
     Args:
@@ -500,7 +502,7 @@ class QueueBase(object):
 
     If the queue is closed and there are more than `0` but fewer than
     `n` elements remaining, then instead of raising a
-    `tf.errors.OutOfRangeError` like @{tf.QueueBase.dequeue_many},
+    `tf.errors.OutOfRangeError` like `tf.QueueBase.dequeue_many`,
     less than `n` elements are returned immediately.  If the queue is
     closed and there are `0` elements left in the queue, then a
     `tf.errors.OutOfRangeError` is raised just like in `dequeue_many`.
@@ -604,11 +606,13 @@ def _shared_name(shared_name):
   return shared_name
 
 
-@tf_export("RandomShuffleQueue")
+@tf_export(
+    "io.RandomShuffleQueue", v1=["io.RandomShuffleQueue", "RandomShuffleQueue"])
+@deprecation.deprecated_endpoints("RandomShuffleQueue")
 class RandomShuffleQueue(QueueBase):
   """A queue implementation that dequeues elements in a random order.
 
-  See @{tf.QueueBase} for a description of the methods on
+  See `tf.QueueBase` for a description of the methods on
   this class.
   """
 
@@ -657,7 +661,7 @@ class RandomShuffleQueue(QueueBase):
         with the same length as `dtypes`, or `None`.  If specified the dequeue
         methods return a dictionary with the names as keys.
       seed: A Python integer. Used to create a random seed. See
-        @{tf.set_random_seed}
+        `tf.set_random_seed`
         for behavior.
       shared_name: (Optional.) If non-empty, this queue will be shared under
         the given name across multiple sessions.
@@ -693,7 +697,7 @@ class RandomShuffleQueue(QueueBase):
 class FIFOQueue(QueueBase):
   """A queue implementation that dequeues elements in first-in first-out order.
 
-  See @{tf.QueueBase} for a description of the methods on
+  See `tf.QueueBase` for a description of the methods on
   this class.
   """
 
@@ -746,14 +750,16 @@ class FIFOQueue(QueueBase):
     super(FIFOQueue, self).__init__(dtypes, shapes, names, queue_ref)
 
 
-@tf_export("PaddingFIFOQueue")
+@tf_export(
+    "io.PaddingFIFOQueue", v1=["io.PaddingFIFOQueue", "PaddingFIFOQueue"])
+@deprecation.deprecated_endpoints("PaddingFIFOQueue")
 class PaddingFIFOQueue(QueueBase):
   """A FIFOQueue that supports batching variable-sized tensors by padding.
 
   A `PaddingFIFOQueue` may contain components with dynamic shape, while also
   supporting `dequeue_many`.  See the constructor for more details.
 
-  See @{tf.QueueBase} for a description of the methods on
+  See `tf.QueueBase` for a description of the methods on
   this class.
   """
 
@@ -820,11 +826,12 @@ class PaddingFIFOQueue(QueueBase):
     super(PaddingFIFOQueue, self).__init__(dtypes, shapes, names, queue_ref)
 
 
-@tf_export("PriorityQueue")
+@tf_export("io.PriorityQueue", v1=["io.PriorityQueue", "PriorityQueue"])
+@deprecation.deprecated_endpoints("PriorityQueue")
 class PriorityQueue(QueueBase):
   """A queue implementation that dequeues elements in prioritized order.
 
-  See @{tf.QueueBase} for a description of the methods on
+  See `tf.QueueBase` for a description of the methods on
   this class.
   """
 
@@ -1229,7 +1236,8 @@ class ConditionalAccumulator(ConditionalAccumulatorBase):
                dtype,
                shape=None,
                shared_name=None,
-               name="conditional_accumulator"):
+               name="conditional_accumulator",
+               reduction_type="MEAN"):
     """Creates a new ConditionalAccumulator.
 
     Args:
@@ -1238,9 +1246,14 @@ class ConditionalAccumulator(ConditionalAccumulatorBase):
       shared_name: Optional. If non-empty, this accumulator will be shared under
         the given name across multiple sessions.
       name: Optional name for the accumulator.
+      reduction_type: Reduction type to use when taking the gradient.
     """
     accumulator_ref = gen_data_flow_ops.conditional_accumulator(
-        dtype=dtype, shape=shape, shared_name=shared_name, name=name)
+        dtype=dtype,
+        shape=shape,
+        shared_name=shared_name,
+        name=name,
+        reduction_type=reduction_type)
     super(ConditionalAccumulator, self).__init__(dtype, shape, accumulator_ref)
 
   def apply_grad(self, grad, local_step=0, name=None):
@@ -1294,7 +1307,10 @@ class ConditionalAccumulator(ConditionalAccumulatorBase):
     return out
 
 
-@tf_export("SparseConditionalAccumulator")
+@tf_export(
+    "sparse.SparseConditionalAccumulator",
+    v1=["sparse.SparseConditionalAccumulator", "SparseConditionalAccumulator"])
+@deprecation.deprecated_endpoints("SparseConditionalAccumulator")
 class SparseConditionalAccumulator(ConditionalAccumulatorBase):
   """A conditional accumulator for aggregating sparse gradients.
 
@@ -1312,15 +1328,21 @@ class SparseConditionalAccumulator(ConditionalAccumulatorBase):
     shared_name: Optional. If non-empty, this accumulator will be shared under
       the given name across multiple sessions.
     name: Optional name for the accumulator.
+    reduction_type: Reduction type to use when taking the gradient.
   """
 
   def __init__(self,
                dtype,
                shape=None,
                shared_name=None,
-               name="sparse_conditional_accumulator"):
+               name="sparse_conditional_accumulator",
+               reduction_type="MEAN"):
     accumulator_ref = gen_data_flow_ops.sparse_conditional_accumulator(
-        dtype=dtype, shape=shape, shared_name=shared_name, name=name)
+        dtype=dtype,
+        shape=shape,
+        shared_name=shared_name,
+        name=name,
+        reduction_type=reduction_type)
     super(SparseConditionalAccumulator, self).__init__(dtype, shape,
                                                        accumulator_ref)
 

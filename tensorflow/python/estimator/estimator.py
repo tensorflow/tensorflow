@@ -35,7 +35,6 @@ from tensorflow.python.estimator import model_fn as model_fn_lib
 from tensorflow.python.estimator import run_config
 from tensorflow.python.estimator import util as estimator_util
 from tensorflow.python.estimator.export import export as export_helpers
-from tensorflow.python.estimator.export import export_output
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
@@ -45,14 +44,15 @@ from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import metrics as metrics_lib
-from tensorflow.python.ops import resources
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import gfile
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.saved_model import builder as saved_model_builder
-from tensorflow.python.saved_model import constants
+from tensorflow.python.saved_model import utils_impl as saved_model_utils
 from tensorflow.python.summary import summary
 from tensorflow.python.summary.writer import writer_cache
+from tensorflow.python.training import basic_session_run_hooks
+from tensorflow.python.training import checkpoint_management
 from tensorflow.python.training import device_setter
 from tensorflow.python.training import distribute as distribute_lib
 from tensorflow.python.training import evaluation
@@ -84,14 +84,15 @@ class Estimator(object):
   subdirectory thereof. If `model_dir` is not set, a temporary directory is
   used.
 
-  The `config` argument can be passed `RunConfig` object containing information
-  about the execution environment. It is passed on to the `model_fn`, if the
-  `model_fn` has a parameter named "config" (and input functions in the same
-  manner). If the `config` parameter is not passed, it is instantiated by the
-  `Estimator`. Not passing config means that defaults useful for local execution
-  are used. `Estimator` makes config available to the model (for instance, to
-  allow specialization based on the number of workers available), and also uses
-  some of its fields to control internals, especially regarding checkpointing.
+  The `config` argument can be passed `tf.estimator.RunConfig` object containing
+  information about the execution environment. It is passed on to the
+  `model_fn`, if the `model_fn` has a parameter named "config" (and input
+  functions in the same manner). If the `config` parameter is not passed, it is
+  instantiated by the `Estimator`. Not passing config means that defaults useful
+  for local execution are used. `Estimator` makes config available to the model
+  (for instance, to allow specialization based on the number of workers
+  available), and also uses some of its fields to control internals, especially
+  regarding checkpointing.
 
   The `params` argument contains hyperparameters. It is passed to the
   `model_fn`, if the `model_fn` has a parameter named "params", and to the input
@@ -103,7 +104,7 @@ class Estimator(object):
   constructor enforces this). Subclasses should use `model_fn` to configure
   the base class, and may add methods implementing specialized functionality.
 
-  @compatbility(eager)
+  @compatibility(eager)
   Calling methods of `Estimator` will work while eager execution is enabled.
   However, the `model_fn` and `input_fn` is not executed eagerly, `Estimator`
   will switch to graph model before calling all user-provided functions (incl.
@@ -117,7 +118,10 @@ class Estimator(object):
                warm_start_from=None):
     """Constructs an `Estimator` instance.
 
-    See @{$estimators} for more information. To warm-start an `Estimator`:
+    See [estimators](https://tensorflow.org/guide/estimators) for more
+    information.
+
+    To warm-start an `Estimator`:
 
     ```python
     estimator = tf.estimator.DNNClassifier(
@@ -127,7 +131,7 @@ class Estimator(object):
     ```
 
     For more details on warm-start configuration, see
-    @{tf.estimator.WarmStartSettings$WarmStartSettings}.
+    `tf.estimator.WarmStartSettings`.
 
     Args:
       model_fn: Model function. Follows the signature:
@@ -136,41 +140,43 @@ class Estimator(object):
 
           * `features`: This is the first item returned from the `input_fn`
                  passed to `train`, `evaluate`, and `predict`. This should be a
-                 single `Tensor` or `dict` of same.
+                 single `tf.Tensor` or `dict` of same.
           * `labels`: This is the second item returned from the `input_fn`
                  passed to `train`, `evaluate`, and `predict`. This should be a
-                 single `Tensor` or `dict` of same (for multi-head models). If
-                 mode is `ModeKeys.PREDICT`, `labels=None` will be passed. If
-                 the `model_fn`'s signature does not accept `mode`, the
-                 `model_fn` must still be able to handle `labels=None`.
+                 single `tf.Tensor` or `dict` of same (for multi-head models).
+                 If mode is `tf.estimator.ModeKeys.PREDICT`, `labels=None` will
+                 be passed. If the `model_fn`'s signature does not accept
+                 `mode`, the `model_fn` must still be able to handle
+                 `labels=None`.
           * `mode`: Optional. Specifies if this training, evaluation or
-                 prediction. See `ModeKeys`.
+                 prediction. See `tf.estimator.ModeKeys`.
           * `params`: Optional `dict` of hyperparameters.  Will receive what
                  is passed to Estimator in `params` parameter. This allows
                  to configure Estimators from hyper parameter tuning.
-          * `config`: Optional configuration object. Will receive what is passed
-                 to Estimator in `config` parameter, or the default `config`.
-                 Allows updating things in your `model_fn` based on
+          * `config`: Optional `estimator.RunConfig` object. Will receive what
+                 is passed to Estimator as its `config` parameter, or a default
+                 value. Allows setting up things in your `model_fn` based on
                  configuration such as `num_ps_replicas`, or `model_dir`.
 
         * Returns:
-          `EstimatorSpec`
+          `tf.estimator.EstimatorSpec`
 
       model_dir: Directory to save model parameters, graph and etc. This can
-        also be used to load checkpoints from the directory into a estimator to
+        also be used to load checkpoints from the directory into an estimator to
         continue training a previously saved model. If `PathLike` object, the
         path will be resolved. If `None`, the model_dir in `config` will be used
         if set. If both are set, they must be same. If both are `None`, a
         temporary directory will be used.
-      config: Configuration object.
+      config: `estimator.RunConfig` configuration object.
       params: `dict` of hyper parameters that will be passed into `model_fn`.
               Keys are names of parameters, values are basic python types.
       warm_start_from: Optional string filepath to a checkpoint or SavedModel to
                        warm-start from, or a `tf.estimator.WarmStartSettings`
                        object to fully configure warm-starting.  If the string
-                       filepath is provided instead of a `WarmStartSettings`,
-                       then all variables are warm-started, and it is assumed
-                       that vocabularies and Tensor names are unchanged.
+                       filepath is provided instead of a
+                       `tf.estimator.WarmStartSettings`, then all variables are
+                       warm-started, and it is assumed that vocabularies
+                       and `tf.Tensor` names are unchanged.
 
     Raises:
       ValueError: parameters of `model_fn` don't match `params`.
@@ -179,8 +185,8 @@ class Estimator(object):
     """
     Estimator._assert_members_are_not_overridden(self)
 
-    config = maybe_overwrite_model_dir_and_session_config(config, model_dir)
-    self._config = config
+    self._config = maybe_overwrite_model_dir_and_session_config(config,
+                                                                model_dir)
 
     # The distribute field contains an instance of DistributionStrategy.
     self._train_distribution = self._config.train_distribute
@@ -218,10 +224,10 @@ class Estimator(object):
 
   @property
   def model_fn(self):
-    """Returns the model_fn which is bound to self.params.
+    """Returns the `model_fn` which is bound to `self.params`.
 
     Returns:
-      The model_fn with following signature:
+      The `model_fn` with following signature:
         `def model_fn(features, labels, mode, config)`
     """
 
@@ -241,7 +247,7 @@ class Estimator(object):
       Numpy array - value of the tensor.
 
     Raises:
-      ValueError: If the Estimator has not produced a checkpoint yet.
+      ValueError: If the `Estimator` has not produced a checkpoint yet.
     """
     _check_checkpoint_available(self.model_dir)
     with context.graph_mode():
@@ -254,21 +260,21 @@ class Estimator(object):
       List of names.
 
     Raises:
-      ValueError: If the Estimator has not produced a checkpoint yet.
+      ValueError: If the `Estimator` has not produced a checkpoint yet.
     """
     _check_checkpoint_available(self.model_dir)
     with context.graph_mode():
       return [name for name, _ in training.list_variables(self.model_dir)]
 
   def latest_checkpoint(self):
-    """Finds the filename of latest saved checkpoint file in `model_dir`.
+    """Finds the filename of the latest saved checkpoint file in `model_dir`.
 
     Returns:
       The full path to the latest checkpoint or `None` if no checkpoint was
       found.
     """
     with context.graph_mode():
-      return saver.latest_checkpoint(self.model_dir)
+      return checkpoint_management.latest_checkpoint(self.model_dir)
 
   def train(self,
             input_fn,
@@ -276,40 +282,38 @@ class Estimator(object):
             steps=None,
             max_steps=None,
             saving_listeners=None):
-    """Trains a model given training data input_fn.
+    """Trains a model given training data `input_fn`.
 
     Args:
       input_fn: A function that provides input data for training as minibatches.
-        See @{$premade_estimators#create_input_functions} for more
-        information. The function should construct and return one of
-        the following:
-
-          * A 'tf.data.Dataset' object: Outputs of `Dataset` object must be a
-            tuple (features, labels) with same constraints as below.
-          * A tuple (features, labels): Where `features` is a `Tensor` or a
-            dictionary of string feature name to `Tensor` and `labels` is a
-            `Tensor` or a dictionary of string label name to `Tensor`. Both
-            `features` and `labels` are consumed by `model_fn`. They should
-            satisfy the expectation of `model_fn` from inputs.
-
-      hooks: List of `SessionRunHook` subclass instances. Used for callbacks
-        inside the training loop.
-      steps: Number of steps for which to train model. If `None`, train forever
-        or train until input_fn generates the `OutOfRange` error or
-        `StopIteration` exception. 'steps' works incrementally. If you call two
-        times train(steps=10) then training occurs in total 20 steps. If
-        `OutOfRange` or `StopIteration` occurs in the middle, training stops
+        See [Premade Estimators](
+        https://tensorflow.org/guide/premade_estimators#create_input_functions)
+        for more information. The function should construct and return one of
+        the following:  * A
+        `tf.data.Dataset` object: Outputs of `Dataset` object must be a tuple
+        `(features, labels)` with same constraints as below. * A tuple
+        `(features, labels)`: Where `features` is a `tf.Tensor` or a dictionary
+        of string feature name to `Tensor` and `labels` is a `Tensor` or a
+        dictionary of string label name to `Tensor`. Both `features` and
+        `labels` are consumed by `model_fn`. They should satisfy the expectation
+        of `model_fn` from inputs.
+      hooks: List of `tf.train.SessionRunHook` subclass instances. Used for
+        callbacks inside the training loop.
+      steps: Number of steps for which to train the model. If `None`, train
+        forever or train until `input_fn` generates the `tf.errors.OutOfRange`
+        error or `StopIteration` exception. `steps` works incrementally. If you
+        call two times `train(steps=10)` then training occurs in total 20 steps.
+        If `OutOfRange` or `StopIteration` occurs in the middle, training stops
         before 20 steps. If you don't want to have incremental behavior please
         set `max_steps` instead. If set, `max_steps` must be `None`.
       max_steps: Number of total steps for which to train model. If `None`,
-        train forever or train until input_fn generates the `OutOfRange` error
-        or `StopIteration` exception. If set, `steps` must be `None`. If
-        `OutOfRange` or `StopIteration` occurs in the middle, training stops
-        before `max_steps` steps.
-        Two calls to `train(steps=100)` means 200 training
-        iterations. On the other hand, two calls to `train(max_steps=100)` means
-        that the second call will not do any iteration since first call did
-        all 100 steps.
+        train forever or train until `input_fn` generates the
+        `tf.errors.OutOfRange` error or `StopIteration` exception. If set,
+        `steps` must be `None`. If `OutOfRange` or `StopIteration` occurs in the
+        middle, training stops before `max_steps` steps. Two calls to
+        `train(steps=100)` means 200 training iterations. On the other hand, two
+        calls to `train(max_steps=100)` means that the second call will not do
+        any iteration since first call did all 100 steps.
       saving_listeners: list of `CheckpointSaverListener` objects. Used for
         callbacks that run immediately before or after checkpoint savings.
 
@@ -318,8 +322,16 @@ class Estimator(object):
 
     Raises:
       ValueError: If both `steps` and `max_steps` are not `None`.
-      ValueError: If either `steps` or `max_steps` is <= 0.
+      ValueError: If either `steps` or `max_steps <= 0`.
     """
+    if self.config.task_type in (run_config.TaskType.EVALUATOR,
+                                 run_config.TaskType.PS):
+      raise ValueError(
+          'Train has been called wrong configuration. Please use '
+          'tf.estimator.train_and_evaluate which calls proper API according '
+          'to given configuration. Current configuration: {}.'.format(
+              self.config))
+
     with context.graph_mode():
       if (steps is not None) and (max_steps is not None):
         raise ValueError('Can not provide both steps and max_steps.')
@@ -344,13 +356,29 @@ class Estimator(object):
       return self
 
   def _convert_train_steps_to_hooks(self, steps, max_steps):
+    """Create hooks to run correct number of steps in training.
+
+    Args:
+      steps: number of steps to run during training.
+      max_steps: maximum number of steps to be run during training. It'll be
+        the maximum number of steps the model will train to after restoring
+        from checkpoint even across multiple estimator.train calls.
+
+    Returns:
+      List of hooks to be passed to the estimator.
+    """
     if steps is not None or max_steps is not None:
+      if self._train_distribution:
+        steps_per_run = getattr(self._train_distribution, 'steps_per_run', 1)
+        if steps_per_run > 1:
+          return [basic_session_run_hooks._MultiStepStopAtStepHook(  # pylint: disable=protected-access
+              steps, max_steps, steps_per_run)]
       return [training.StopAtStepHook(steps, max_steps)]
     else:
       return []
 
   def eval_dir(self, name=None):
-    """Shows directory name where evaluation metrics are dumped.
+    """Shows the directory name where evaluation metrics are dumped.
 
     Args:
       name: Name of the evaluation if user needs to run multiple evaluations on
@@ -366,36 +394,36 @@ class Estimator(object):
 
   def evaluate(self, input_fn, steps=None, hooks=None, checkpoint_path=None,
                name=None):
-    """Evaluates the model given evaluation data input_fn.
+    """Evaluates the model given evaluation data `input_fn`.
 
     For each step, calls `input_fn`, which returns one batch of data.
     Evaluates until:
     - `steps` batches are processed, or
-    - `input_fn` raises an end-of-input exception (`OutOfRangeError` or
+    - `input_fn` raises an end-of-input exception (`tf.errors.OutOfRangeError`
+    or
     `StopIteration`).
 
     Args:
-      input_fn: A function that constructs the input data for evaluation.
-        See @{$premade_estimators#create_input_functions} for more
-        information. The function should construct and return one of
-        the following:
-
-          * A 'tf.data.Dataset' object: Outputs of `Dataset` object must be a
-            tuple (features, labels) with same constraints as below.
-          * A tuple (features, labels): Where `features` is a `Tensor` or a
-            dictionary of string feature name to `Tensor` and `labels` is a
-            `Tensor` or a dictionary of string label name to `Tensor`. Both
-            `features` and `labels` are consumed by `model_fn`. They should
-            satisfy the expectation of `model_fn` from inputs.
-
+      input_fn: A function that constructs the input data for evaluation. See
+        [Premade Estimators](
+        https://tensorflow.org/guide/premade#create_input_functions)
+        for more information. The
+        function should construct and return one of the following:  * A
+        `tf.data.Dataset` object: Outputs of `Dataset` object must be a tuple
+        `(features, labels)` with same constraints as below. * A tuple
+        `(features, labels)`: Where `features` is a `tf.Tensor` or a dictionary
+        of string feature name to `Tensor` and `labels` is a `Tensor` or a
+        dictionary of string label name to `Tensor`. Both `features` and
+        `labels` are consumed by `model_fn`. They should satisfy the expectation
+        of `model_fn` from inputs.
       steps: Number of steps for which to evaluate model. If `None`, evaluates
         until `input_fn` raises an end-of-input exception.
-      hooks: List of `SessionRunHook` subclass instances. Used for callbacks
-        inside the evaluation call.
+      hooks: List of `tf.train.SessionRunHook` subclass instances. Used for
+        callbacks inside the evaluation call.
       checkpoint_path: Path of a specific checkpoint to evaluate. If `None`, the
         latest checkpoint in `model_dir` is used.  If there are no checkpoints
         in `model_dir`, evaluation is run with newly initialized `Variables`
-        instead of restored from checkpoint.
+        instead of ones restored from checkpoint.
       name: Name of the evaluation if user needs to run multiple evaluations on
         different data sets, such as on training data vs test data. Metrics for
         different evaluations are saved in separate folders, and appear
@@ -404,7 +432,11 @@ class Estimator(object):
     Returns:
       A dict containing the evaluation metrics specified in `model_fn` keyed by
       name, as well as an entry `global_step` which contains the value of the
-      global step for which this evaluation was performed.
+      global step for which this evaluation was performed. For canned
+      estimators, the dict contains the `loss` (mean loss per mini-batch) and
+      the `average_loss` (mean loss per sample). Canned classifiers also return
+      the `accuracy`. Canned regressors also return the `label/mean` and the
+      `prediction/mean`.
 
     Raises:
       ValueError: If `steps <= 0`.
@@ -417,7 +449,7 @@ class Estimator(object):
 
       # Check that model has been trained (if nothing has been set explicitly).
       if not checkpoint_path:
-        latest_path = saver.latest_checkpoint(self._model_dir)
+        latest_path = checkpoint_management.latest_checkpoint(self._model_dir)
         if not latest_path:
           logging.info('Could not find trained model in model_dir: {}, running '
                        'initialization to evaluate.'.format(self._model_dir))
@@ -435,20 +467,42 @@ class Estimator(object):
             output_dir=self.eval_dir(name))
 
       with ops.Graph().as_default():
-        # TODO(priyag): Support distributed eval on TPUs.
-        if (self._eval_distribution
-            and self._eval_distribution.__class__.__name__ != 'TPUStrategy'):
+        if self._eval_distribution:
+          # We want to create the iterations variable outside the distribution
+          # scope as that is just stored on the host and mainly used to drive
+          # the loop and doesn't need to be a Mirrored/Device variable.
+          training.get_or_create_steps_per_run_variable()
           with self._eval_distribution.scope():
             return _evaluate()
         else:
           return _evaluate()
 
   def _convert_eval_steps_to_hooks(self, steps):
+    """Create hooks to run correct number of steps in evaluation.
+
+    Args:
+      steps: number of steps to run during evaluation.
+
+    Raises:
+      ValueError: if steps is less than or equal to zero.
+
+    Returns:
+      List of hooks to be passed to the estimator.
+    """
     if steps is None:
       return []
 
     if steps <= 0:
       raise ValueError('Must specify steps > 0, given: {}'.format(steps))
+
+    # The hooks are declared as private in evaluation.py discourage the use
+    # by other libraries or open source users. This should be the only usage
+    # of the estimator evaluation hooks.
+    if self._eval_distribution:
+      steps_per_run = getattr(self._eval_distribution, 'steps_per_run', 1)
+      if steps_per_run > 1:
+        return [evaluation._MultiStepStopAfterNEvalsHook(  # pylint: disable=protected-access
+            num_evals=steps, steps_per_run=steps_per_run)]
     return [evaluation._StopAfterNEvalsHook(num_evals=steps)]  # pylint: disable=protected-access
 
   def predict(self,
@@ -459,35 +513,40 @@ class Estimator(object):
               yield_single_examples=True):
     """Yields predictions for given features.
 
+    Please note that interleaving two predict outputs does not work. See:
+    [issue/20506](
+    https://github.com/tensorflow/tensorflow/issues/20506#issuecomment-422208517)
+
     Args:
       input_fn: A function that constructs the features. Prediction continues
-        until `input_fn` raises an end-of-input exception (`OutOfRangeError` or
-        `StopIteration`).
-        See @{$premade_estimators#create_input_functions} for more
-        information. The function should construct and return one of
+        until `input_fn` raises an end-of-input exception
+        (`tf.errors.OutOfRangeError` or `StopIteration`).
+        See [Premade Estimators](
+        https://tensorflow.org/guide/premade_estimators#create_input_functions)
+        for more information. The function should construct and return one of
         the following:
 
-          * A 'tf.data.Dataset' object: Outputs of `Dataset` object must have
+          * A `tf.data.Dataset` object: Outputs of `Dataset` object must have
             same constraints as below.
-          * features: A `Tensor` or a dictionary of string feature name to
+          * features: A `tf.Tensor` or a dictionary of string feature name to
             `Tensor`. features are consumed by `model_fn`. They should satisfy
             the expectation of `model_fn` from inputs.
           * A tuple, in which case the first item is extracted as features.
 
       predict_keys: list of `str`, name of the keys to predict. It is used if
-        the `EstimatorSpec.predictions` is a `dict`. If `predict_keys` is used
-        then rest of the predictions will be filtered from the dictionary. If
-        `None`, returns all.
-      hooks: List of `SessionRunHook` subclass instances. Used for callbacks
-        inside the prediction call.
+        the `tf.estimator.EstimatorSpec.predictions` is a `dict`. If
+        `predict_keys` is used then rest of the predictions will be filtered
+        from the dictionary. If `None`, returns all.
+      hooks: List of `tf.train.SessionRunHook` subclass instances. Used for
+        callbacks inside the prediction call.
       checkpoint_path: Path of a specific checkpoint to predict. If `None`, the
         latest checkpoint in `model_dir` is used.  If there are no checkpoints
         in `model_dir`, prediction is run with newly initialized `Variables`
-        instead of restored from checkpoint.
-      yield_single_examples: If False, yield the whole batch as returned by the
-        `model_fn` instead of decomposing the batch into individual elements.
-        This is useful if `model_fn` returns some tensors whose first dimension
-        is not equal to the batch size.
+        instead of ones restored from checkpoint.
+      yield_single_examples: If `False`, yields the whole batch as returned by
+        the `model_fn` instead of decomposing the batch into individual
+        elements. This is useful if `model_fn` returns some tensors whose first
+        dimension is not equal to the batch size.
 
     Yields:
       Evaluated values of `predictions` tensors.
@@ -495,16 +554,17 @@ class Estimator(object):
     Raises:
       ValueError: Could not find a trained model in `model_dir`.
       ValueError: If batch length of predictions is not the same and
-        `yield_single_examples` is True.
+        `yield_single_examples` is `True`.
       ValueError: If there is a conflict between `predict_keys` and
         `predictions`. For example if `predict_keys` is not `None` but
-        `EstimatorSpec.predictions` is not a `dict`.
+        `tf.estimator.EstimatorSpec.predictions` is not a `dict`.
     """
     with context.graph_mode():
       hooks = _check_hooks_type(hooks)
       # Check that model has been trained.
       if not checkpoint_path:
-        checkpoint_path = saver.latest_checkpoint(self._model_dir)
+        checkpoint_path = checkpoint_management.latest_checkpoint(
+            self._model_dir)
       if not checkpoint_path:
         logging.info('Could not find trained model in model_dir: {}, running '
                      'initialization to predict.'.format(self._model_dir))
@@ -552,14 +612,10 @@ class Estimator(object):
       return
 
     allowed_overrides = set([
-        '_call_input_fn', '_call_model_fn',
-        '_convert_train_steps_to_hooks', '_convert_eval_steps_to_hooks',
-        '_create_global_step', '_create_and_assert_global_step',
+        '_create_and_assert_global_step',
         '_tf_api_names', '_tf_api_names_v1', '_estimator_api_names',
         '_estimator_api_names_v1', '_estimator_api_constants',
         '_estimator_api_constants_v1',
-        '_validate_features_in_predict_input',
-        '_add_meta_graph_for_mode'
     ])
     estimator_members = set([m for m in Estimator.__dict__.keys()
                              if not m.startswith('__')])
@@ -579,59 +635,24 @@ class Estimator(object):
       as_text=False,
       checkpoint_path=None,
       strip_default_attrs=False):
-    # pylint: disable=line-too-long
-    """Exports inference graph as a SavedModel into given dir.
+    # pylint: disable=line-too-long,g-doc-args,g-doc-return-or-yield
+    """Exports inference graph as a `SavedModel` into the given dir.
 
-    For a detailed guide, see
-    @{$saved_model#using_savedmodel_with_estimators$Using SavedModel with Estimators}.
+    Note that `export_to_savedmodel` will be renamed to `export_saved_model`
+    in TensorFlow 2.0. At that time, `export_to_savedmodel` without the
+    additional underscore will be available only through tf.compat.v1.
 
-    This method builds a new graph by first calling the
-    serving_input_receiver_fn to obtain feature `Tensor`s, and then calling
-    this `Estimator`'s model_fn to generate the model graph based on those
-    features. It restores the given checkpoint (or, lacking that, the most
-    recent checkpoint) into this graph in a fresh session.  Finally it creates
-    a timestamped export directory below the given export_dir_base, and writes
-    a `SavedModel` into it containing a single `MetaGraphDef` saved from this
-    session.
+    Please see `tf.estimator.Estimator.export_saved_model` for more information.
 
-    The exported `MetaGraphDef` will provide one `SignatureDef` for each
-    element of the export_outputs dict returned from the model_fn, named using
-    the same keys.  One of these keys is always
-    signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY, indicating which
-    signature will be served when a serving request does not specify one.
-    For each signature, the outputs are provided by the corresponding
-    `ExportOutput`s, and the inputs are always the input receivers provided by
-    the serving_input_receiver_fn.
-
-    Extra assets may be written into the SavedModel via the assets_extra
-    argument.  This should be a dict, where each key gives a destination path
-    (including the filename) relative to the assets.extra directory.  The
-    corresponding value gives the full path of the source file to be copied.
-    For example, the simple case of copying a single file without renaming it
-    is specified as `{'my_asset_file.txt': '/path/to/my_asset_file.txt'}`.
-
-    Args:
-      export_dir_base: A string containing a directory in which to create
-        timestamped subdirectories containing exported SavedModels.
-      serving_input_receiver_fn: A function that takes no argument and
-        returns a `ServingInputReceiver` or `TensorServingInputReceiver`.
-      assets_extra: A dict specifying how to populate the assets.extra directory
-        within the exported SavedModel, or `None` if no extra assets are needed.
-      as_text: whether to write the SavedModel proto in text format.
-      checkpoint_path: The checkpoint path to export.  If `None` (the default),
-        the most recent checkpoint found within the model directory is chosen.
-      strip_default_attrs: Boolean. If `True`, default-valued attributes will be
-        removed from the NodeDefs. For a detailed guide, see
-        [Stripping Default-Valued Attributes](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/python/saved_model/README.md#stripping-default-valued-attributes).
-
-    Returns:
-      The string path to the exported directory.
-
-    Raises:
-      ValueError: if no serving_input_receiver_fn is provided, no export_outputs
-          are provided, or no checkpoint can be found.
+    There is one additional arg versus the new method:
+      strip_default_attrs: This parameter is going away in TF 2.0, and
+        the new behavior will automatically strip all default attributes.
+        Boolean. If `True`, default-valued attributes will be
+        removed from the `NodeDef`s. For a detailed guide, see [Stripping
+        Default-Valued Attributes](
+        https://github.com/tensorflow/tensorflow/blob/master/tensorflow/python/saved_model/README.md#stripping-default-valued-attributes).
     """
-    # pylint: enable=line-too-long
+    # pylint: enable=line-too-long,g-doc-args,g-doc-return-or-yield
     return self._export_saved_model_for_mode(
         export_dir_base,
         serving_input_receiver_fn,
@@ -641,6 +662,77 @@ class Estimator(object):
         strip_default_attrs=strip_default_attrs,
         mode=model_fn_lib.ModeKeys.PREDICT)
 
+  def export_saved_model(
+      self, export_dir_base, serving_input_receiver_fn,
+      assets_extra=None,
+      as_text=False,
+      checkpoint_path=None):
+    # pylint: disable=line-too-long
+    """Exports inference graph as a `SavedModel` into the given dir.
+
+    For a detailed guide, see
+    [Using SavedModel with Estimators](https://tensorflow.org/guide/saved_model#using_savedmodel_with_estimators).
+
+    This method builds a new graph by first calling the
+    `serving_input_receiver_fn` to obtain feature `Tensor`s, and then calling
+    this `Estimator`'s `model_fn` to generate the model graph based on those
+    features. It restores the given checkpoint (or, lacking that, the most
+    recent checkpoint) into this graph in a fresh session.  Finally it creates
+    a timestamped export directory below the given `export_dir_base`, and writes
+    a `SavedModel` into it containing a single `tf.MetaGraphDef` saved from this
+    session.
+
+    The exported `MetaGraphDef` will provide one `SignatureDef` for each
+    element of the `export_outputs` dict returned from the `model_fn`, named
+    using
+    the same keys.  One of these keys is always
+    `tf.saved_model.signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY`,
+    indicating which
+    signature will be served when a serving request does not specify one.
+    For each signature, the outputs are provided by the corresponding
+    `tf.estimator.export.ExportOutput`s, and the inputs are always the input
+    receivers provided by
+    the `serving_input_receiver_fn`.
+
+    Extra assets may be written into the `SavedModel` via the `assets_extra`
+    argument.  This should be a dict, where each key gives a destination path
+    (including the filename) relative to the assets.extra directory.  The
+    corresponding value gives the full path of the source file to be copied.
+    For example, the simple case of copying a single file without renaming it
+    is specified as `{'my_asset_file.txt': '/path/to/my_asset_file.txt'}`.
+
+    Args:
+      export_dir_base: A string containing a directory in which to create
+        timestamped subdirectories containing exported `SavedModel`s.
+      serving_input_receiver_fn: A function that takes no argument and returns a
+        `tf.estimator.export.ServingInputReceiver` or
+        `tf.estimator.export.TensorServingInputReceiver`.
+      assets_extra: A dict specifying how to populate the assets.extra directory
+        within the exported `SavedModel`, or `None` if no extra assets are
+        needed.
+      as_text: whether to write the `SavedModel` proto in text format.
+      checkpoint_path: The checkpoint path to export.  If `None` (the default),
+        the most recent checkpoint found within the model directory is chosen.
+
+    Returns:
+      The string path to the exported directory.
+
+    Raises:
+      ValueError: if no `serving_input_receiver_fn` is provided, no
+      `export_outputs` are provided, or no checkpoint can be found.
+    """
+    # pylint: enable=line-too-long
+    # TODO(b/111442174): `export_to_savedmodel` will be renamed to
+    # `export_saved_model` in TensorFlow 2.0. This function is a wrapper
+    # while staging the new version; do not add any logic here.
+    return self.export_savedmodel(
+        export_dir_base,
+        serving_input_receiver_fn,
+        assets_extra=assets_extra,
+        as_text=as_text,
+        checkpoint_path=checkpoint_path,
+        strip_default_attrs=True)
+
   def _export_saved_model_for_mode(
       self, export_dir_base, input_receiver_fn,
       assets_extra=None,
@@ -649,35 +741,37 @@ class Estimator(object):
       strip_default_attrs=False,
       mode=model_fn_lib.ModeKeys.PREDICT):
     # pylint: disable=line-too-long
-    """Exports a single train/eval/predict graph as a SavedModel.
+    """Exports a single train/eval/predict graph as a `SavedModel`.
 
-    This method is a wrapper for _export_all_saved_models, and wraps a raw
-    input_receiver_fn in a dictionary to pass in to that function.
-    See _export_all_saved_models for full docs.
+    This method is a wrapper for `_export_all_saved_models`, and wraps a raw
+    `input_receiver_fn` in a dictionary to pass in to that function.
+    See `_export_all_saved_models` for full docs.
 
-    See tf.contrib.estimator.export_saved_model_for_mode for the currently
+    See `tf.contrib.estimator.export_saved_model_for_mode` for the currently
     exposed version of this function.
 
     Args:
       export_dir_base: A string containing a directory in which to create
-        timestamped subdirectories containing exported SavedModels.
-      input_receiver_fn: a function that takes no argument and
-        returns the appropriate subclass of `InputReceiver`.
+        timestamped subdirectories containing exported `SavedModel`s.
+      input_receiver_fn: a function that takes no argument and returns the
+        appropriate subclass of `InputReceiver`.
       assets_extra: A dict specifying how to populate the assets.extra directory
-        within the exported SavedModel, or `None` if no extra assets are needed.
-      as_text: whether to write the SavedModel proto in text format.
+        within the exported `SavedModel`, or `None` if no extra assets are
+        needed.
+      as_text: whether to write the `SavedModel` proto in text format.
       checkpoint_path: The checkpoint path to export.  If `None` (the default),
         the most recent checkpoint found within the model directory is chosen.
       strip_default_attrs: Boolean. If `True`, default-valued attributes will be
-        removed from the NodeDefs. For a detailed guide, see
-        [Stripping Default-Valued Attributes](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/python/saved_model/README.md#stripping-default-valued-attributes).
-      mode: tf.estimator.ModeKeys value indicating with mode will be exported.
+        removed from the `NodeDef`s. For a detailed guide, see [Stripping
+        Default-Valued
+        Attributes](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/python/saved_model/README.md#stripping-default-valued-attributes).
+      mode: `tf.estimator.ModeKeys` value indicating with mode will be exported.
 
     Returns:
       The string path to the exported directory.
 
     Raises:
-      ValueError: if input_receiver_fn is None, no export_outputs
+      ValueError: if `input_receiver_fn` is `None`, no `export_outputs`
         are provided, or no checkpoint can be found.
     """
     # pylint: enable=line-too-long
@@ -701,40 +795,46 @@ class Estimator(object):
       checkpoint_path=None,
       strip_default_attrs=False):
     # pylint: disable=line-too-long
-    """Exports a SavedModel containing MetaGraphDefs for each requested mode.
+    """Exports a `SavedModel` containing `tf.MetaGraphDefs` for each requested mode.
 
-    See tf.contrib.estimator.export_all_saved_models for the currently
+    See `tf.contrib.estimator.export_all_saved_models` for the currently
     exposed version of this function.
 
-    For each mode passed in via the input_receiver_fn_map,
-    this method builds a new graph by calling the input_receiver_fn to obtain
+    For each mode passed in via the `input_receiver_fn_map`,
+    this method builds a new graph by calling the `input_receiver_fn` to obtain
     feature and label `Tensor`s. Next, this method calls the `Estimator`'s
-    model_fn in the passed mode to generate the model graph based on
+    `model_fn` in the passed mode to generate the model graph based on
     those features and labels, and restores the given checkpoint
     (or, lacking that, the most recent checkpoint) into the graph.
-    Only one of the modes is used for saving variables to the SavedModel
-    (order of preference: TRAIN, EVAL, then PREDICT), such that up to three
-    MetaGraphDefs are saved with a single set of variables in a single
-    SavedModel directory.
+    Only one of the modes is used for saving variables to the `SavedModel`
+    (order of preference: `tf.estimator.ModeKeys.TRAIN`,
+    `tf.estimator.ModeKeys.EVAL`, then
+    `tf.estimator.ModeKeys.PREDICT`), such that up to three
+    `tf.MetaGraphDefs` are saved with a single set of variables in a single
+    `SavedModel` directory.
 
-    For the variables and MetaGraphDefs, a timestamped export directory below
-    export_dir_base, and writes a `SavedModel` into it containing
-    the `MetaGraphDef` for the given mode and its associated signatures.
+    For the variables and `tf.MetaGraphDefs`, a timestamped export directory
+    below
+    `export_dir_base`, and writes a `SavedModel` into it containing
+    the `tf.MetaGraphDef` for the given mode and its associated signatures.
 
     For prediction, the exported `MetaGraphDef` will provide one `SignatureDef`
-    for each element of the export_outputs dict returned from the model_fn,
+    for each element of the `export_outputs` dict returned from the `model_fn`,
     named using the same keys.  One of these keys is always
-    signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY, indicating which
+    `tf.saved_model.signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY`,
+    indicating which
     signature will be served when a serving request does not specify one.
     For each signature, the outputs are provided by the corresponding
-    `ExportOutput`s, and the inputs are always the input receivers provided by
-    the serving_input_receiver_fn.
+    `tf.estimator.export.ExportOutput`s, and the inputs are always the input
+    receivers provided by
+    the `serving_input_receiver_fn`.
 
-    For training and evaluation, the train_op is stored in an extra collection,
-    and loss, metrics, and predictions are included in a SignatureDef for the
+    For training and evaluation, the `train_op` is stored in an extra
+    collection,
+    and loss, metrics, and predictions are included in a `SignatureDef` for the
     mode in question.
 
-    Extra assets may be written into the SavedModel via the assets_extra
+    Extra assets may be written into the `SavedModel` via the `assets_extra`
     argument.  This should be a dict, where each key gives a destination path
     (including the filename) relative to the assets.extra directory.  The
     corresponding value gives the full path of the source file to be copied.
@@ -743,25 +843,28 @@ class Estimator(object):
 
     Args:
       export_dir_base: A string containing a directory in which to create
-        timestamped subdirectories containing exported SavedModels.
-      input_receiver_fn_map: dict of tf.estimator.ModeKeys to input_receiver_fn
-        mappings, where the input_receiver_fn is a function that takes no
-        argument and returns the appropriate subclass of `InputReceiver`.
+        timestamped subdirectories containing exported `SavedModel`s.
+      input_receiver_fn_map: dict of `tf.estimator.ModeKeys` to
+        `input_receiver_fn` mappings, where the `input_receiver_fn` is a
+        function that takes no arguments and returns the appropriate subclass of
+        `InputReceiver`.
       assets_extra: A dict specifying how to populate the assets.extra directory
-        within the exported SavedModel, or `None` if no extra assets are needed.
-      as_text: whether to write the SavedModel proto in text format.
+        within the exported `SavedModel`, or `None` if no extra assets are
+        needed.
+      as_text: whether to write the `SavedModel` proto in text format.
       checkpoint_path: The checkpoint path to export.  If `None` (the default),
         the most recent checkpoint found within the model directory is chosen.
       strip_default_attrs: Boolean. If `True`, default-valued attributes will be
-        removed from the NodeDefs. For a detailed guide, see
-        [Stripping Default-Valued Attributes](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/python/saved_model/README.md#stripping-default-valued-attributes).
+        removed from the `NodeDef`s. For a detailed guide, see [Stripping
+        Default-Valued
+        Attributes](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/python/saved_model/README.md#stripping-default-valued-attributes).
 
     Returns:
-      A dict of tf.estimator.ModeKeys value to string path for each exported
+      A dict of `tf.estimator.ModeKeys` value to string path for each exported
       directory.
 
     Raises:
-      ValueError: if any input_receiver_fn is None, no export_outputs
+      ValueError: if any `input_receiver_fn` is `None`, no `export_outputs`
         are provided, or no checkpoint can be found.
     """
     # pylint: enable=line-too-long
@@ -769,7 +872,8 @@ class Estimator(object):
     with context.graph_mode():
       if not checkpoint_path:
         # Locate the latest checkpoint
-        checkpoint_path = saver.latest_checkpoint(self._model_dir)
+        checkpoint_path = checkpoint_management.latest_checkpoint(
+            self._model_dir)
       if not checkpoint_path:
         raise ValueError("Couldn't find trained model at %s." % self._model_dir)
 
@@ -833,25 +937,29 @@ class Estimator(object):
                                export_tags=None,
                                check_variables=True):
     # pylint: disable=line-too-long
-    """Loads variables and adds them along with a MetaGraphDef for saving.
+    """Loads variables and adds them along with a `tf.MetaGraphDef` for saving.
 
     Args:
-      builder: instance of SavedModelBuilder that will be used for saving.
-      input_receiver_fn_map: dict of tf.estimator.ModeKeys to input_receiver_fn
-        mappings, where the input_receiver_fn is a function that takes no
-        argument and returns the appropriate subclass of `InputReceiver`.
+      builder: instance of `tf.saved_modle.builder.SavedModelBuilder` that will
+        be used for saving.
+      input_receiver_fn_map: dict of `tf.estimator.ModeKeys` to
+        `input_receiver_fn` mappings, where the `input_receiver_fn` is a
+        function that takes no argument and returns the appropriate subclass of
+        `InputReceiver`.
       checkpoint_path: The checkpoint path to export.  If `None` (the default),
         the most recent checkpoint found within the model directory is chosen.
       strip_default_attrs: Boolean. If `True`, default-valued attributes will be
-        removed from the NodeDefs. For a detailed guide, see
-        [Stripping Default-Valued Attributes](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/python/saved_model/README.md#stripping-default-valued-attributes).
-      save_variables: bool, whether variables should be saved. If False, just
-        the MetaGraphDef will be saved. Note that save_variables should only be
-        True for the first call to this function, and the SavedModelBuilder will
-        raise an error if that is not the case.
-      mode: tf.estimator.ModeKeys value indicating which mode will be exported.
-      export_tags: The set of tags with which to save `MetaGraphDef`. If None,
-        a default set will be selected to matched the passed mode.
+        removed from the `NodeDef`s. For a detailed guide, see [Stripping
+        Default-Valued
+        Attributes](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/python/saved_model/README.md#stripping-default-valued-attributes).
+      save_variables: bool, whether variables should be saved. If `False`, just
+        the `tf.MetaGraphDef` will be saved. Note that `save_variables` should
+        only be `True` for the first call to this function, and the
+        `SavedModelBuilder` will raise an error if that is not the case.
+      mode: `tf.estimator.ModeKeys` value indicating which mode will be
+        exported.
+      export_tags: The set of tags with which to save `tf.MetaGraphDef`. If
+        `None`, a default set will be selected to matched the passed mode.
       check_variables: bool, whether to check the checkpoint has all variables.
 
     Raises:
@@ -875,7 +983,12 @@ class Estimator(object):
           mode=mode,
           config=self.config)
 
-      export_outputs = self._get_export_outputs_for_spec(estimator_spec)
+      export_outputs = model_fn_lib.export_outputs_for_mode(
+          mode=estimator_spec.mode,
+          serving_export_outputs=estimator_spec.export_outputs,
+          predictions=estimator_spec.predictions,
+          loss=estimator_spec.loss,
+          metrics=estimator_spec.eval_metric_ops)
 
       # Build the SignatureDefs from receivers and all outputs
       signature_def_map = export_helpers.build_all_signature_defs(
@@ -932,43 +1045,6 @@ class Estimator(object):
         else:
           builder.add_meta_graph(**meta_graph_kwargs)
 
-  def _get_export_outputs_for_spec(self, estimator_spec):
-    """Given an EstimatorSpec, determine what our export outputs should be.
-
-    EstimatorSpecs contain export_outputs that are used for serving, but for
-    training and eval graphs, we must wrap the tensors of interest in
-    appropriate ExportOutput objects.
-
-    Args:
-      estimator_spec: EstimatorSpec object that will be exported.
-
-    Returns:
-      a dict mapping export_output_name to ExportOutput object.
-
-    Raises:
-      ValueError: if an appropriate ExportOutput cannot be found for the
-        passed EstimatorSpec.mode
-    """
-    mode = estimator_spec.mode
-    if mode == model_fn_lib.ModeKeys.PREDICT:
-      outputs = estimator_spec.export_outputs
-    else:
-      if mode == model_fn_lib.ModeKeys.TRAIN:
-        output_class = export_output.TrainOutput
-      elif mode == model_fn_lib.ModeKeys.EVAL:
-        output_class = export_output.EvalOutput
-      else:
-        raise ValueError(
-            'Export output type not found for mode: {}'.format(mode))
-
-      export_out = output_class(
-          loss=estimator_spec.loss,
-          predictions=estimator_spec.predictions,
-          metrics=estimator_spec.eval_metric_ops)
-      outputs = {mode: export_out}
-
-    return outputs
-
   def _get_features_from_input_fn(self, input_fn, mode):
     """Extracts the `features` from return values of `input_fn`."""
     result = self._call_input_fn(input_fn, mode)
@@ -982,16 +1058,21 @@ class Estimator(object):
                       'QueueRunner. That means predict yields forever. '
                       'This is probably a mistake.')
 
-  def _get_features_and_labels_from_input_fn(self, input_fn, mode,
-                                             distribution=None):
-    """Extracts the `features` and labels from return values of `input_fn`."""
-    if distribution is not None and mode == model_fn_lib.ModeKeys.TRAIN:
+  def _get_iterator_from_input_fn(self, input_fn, mode, distribution=None):
+    if distribution is not None:
       result = distribution.distribute_dataset(
           lambda: self._call_input_fn(input_fn, mode))
     else:
       result = self._call_input_fn(input_fn, mode)
 
-    return estimator_util.parse_input_fn_result(result)
+    iterator = result.make_initializable_iterator()
+    input_hooks = [estimator_util._DatasetInitializerHook(iterator)]  # pylint: disable=protected-access
+    return iterator, input_hooks
+
+  def _get_features_and_labels_from_input_fn(self, input_fn, mode):
+    """Extracts the `features` and labels from return values of `input_fn`."""
+    return estimator_util.parse_input_fn_result(
+        self._call_input_fn(input_fn, mode))
 
   def _extract_batch_length(self, preds_evaluated):
     """Extracts batch length of predictions."""
@@ -1024,13 +1105,13 @@ class Estimator(object):
     """Creates the global step tensor in graph.
 
     The global step tensor must be an integer type with name 'global_step' and
-    be added to the collection @{tf.GraphKeys.GLOBAL_STEP}.
+    be added to the collection `tf.GraphKeys.GLOBAL_STEP`.
 
     Args:
       graph: The graph in which to create the global step tensor.
 
     Returns:
-      The global step `Tensor`.
+      The global step `tf.Tensor`.
     """
     return training.create_global_step(graph)
 
@@ -1041,7 +1122,7 @@ class Estimator(object):
       graph: The graph in which to create the global step tensor.
 
     Returns:
-      The global step `Tensor`.
+      The global step `tf.Tensor`.
     """
     step = self._create_global_step(graph)
     assert step == training.get_global_step()
@@ -1053,21 +1134,21 @@ class Estimator(object):
 
     Args:
       input_fn: The input function.
-      mode: ModeKeys
+      mode: `tf.estimator.ModeKeys`
 
     Returns:
-      The return value of the passed input_fn, which should be one of:
+      The return value of the passed `input_fn`, which should be one of:
 
         * A 'tf.data.Dataset' object: Outputs of `Dataset` object must be a
-            tuple (features, labels) with same constraints as below.
-        * A tuple (features, labels): Where `features` is a `Tensor` or a
+            tuple `(features, labels)` with same constraints as below.
+        * A tuple `(features, labels)`: Where `features` is a `Tensor` or a
           dictionary of string feature name to `Tensor` and `labels` is a
           `Tensor` or a dictionary of string label name to `Tensor`. Both
           `features` and `labels` are consumed by `model_fn`. They should
           satisfy the expectation of `model_fn` from inputs.
 
     Raises:
-      ValueError: if input_fn takes invalid arguments.
+      ValueError: if `input_fn` takes invalid arguments.
     """
     input_fn_args = function_utils.fn_args(input_fn)
     kwargs = {}
@@ -1086,14 +1167,14 @@ class Estimator(object):
     Args:
       features: features dict.
       labels: labels dict.
-      mode: ModeKeys
-      config: RunConfig
+      mode: `tf.estimator.ModeKeys`
+      config: `tf.estimator.RunConfig`
 
     Returns:
-      An `EstimatorSpec` object.
+      An `tf.estimator.EstimatorSpec` object.
 
     Raises:
-      ValueError: if model_fn returns invalid objects.
+      ValueError: if `model_fn` returns invalid objects.
     """
     model_fn_args = function_utils.fn_args(self._model_fn)
     kwargs = {}
@@ -1126,14 +1207,14 @@ class Estimator(object):
       return self._train_model_default(input_fn, hooks, saving_listeners)
 
   def _train_model_default(self, input_fn, hooks, saving_listeners):
-    """Initiate training with input_fn, without DistributionStrategies.
+    """Initiate training with `input_fn`, without `DistributionStrategies`.
 
     Args:
       input_fn: A function that provides input data for training as minibatches.
-      hooks: List of `SessionRunHook` subclass instances. Used for callbacks
-        inside the training loop.
-      saving_listeners: list of `CheckpointSaverListener` objects. Used for
-        callbacks that run immediately before or after checkpoint savings.
+      hooks: List of `tf.train.SessionRunHook` subclass instances. Used for
+        callbacks inside the training loop.
+      saving_listeners: list of `tf.train.CheckpointSaverListener` objects. Used
+        for callbacks that run immediately before or after checkpoint savings.
 
     Returns:
       Loss from training
@@ -1160,14 +1241,14 @@ class Estimator(object):
                                              saving_listeners)
 
   def _train_model_distributed(self, input_fn, hooks, saving_listeners):
-    """Initiate training with input_fn, using DistributionStrategies.
+    """Initiate training with `input_fn`, using `DistributionStrategies`.
 
     Args:
       input_fn: A function that provides input data for training as minibatches.
-      hooks: List of `SessionRunHook` subclass instances. Used for callbacks
-        inside the training loop.
-      saving_listeners: list of `CheckpointSaverListener` objects. Used for
-        callbacks that run immediately before or after checkpoint savings.
+      hooks: List of `tf.train.SessionRunHook` subclass instances. Used for
+        callbacks inside the training loop.
+      saving_listeners: list of `tf.train.CheckpointSaverListener` objects. Used
+        for callbacks that run immediately before or after checkpoint savings.
 
     Returns:
       Loss from training
@@ -1181,101 +1262,83 @@ class Estimator(object):
 
     worker_hooks = []
     with ops.Graph().as_default() as g:
+      # We want to create the iterations variable outside the distribution scope
+      # as that is just stored on the host and mainly used to drive the loop
+      # and doesn't need to be a Mirrored/Device variable.
+      if is_tpu_strategy:
+        steps_per_run_variable = training.get_or_create_steps_per_run_variable()
       with self._train_distribution.scope():
         random_seed.set_random_seed(self._config.tf_random_seed)
+        iterator, input_hooks = self._get_iterator_from_input_fn(
+            input_fn, model_fn_lib.ModeKeys.TRAIN, self._train_distribution)
+        worker_hooks.extend(input_hooks)
+        global_step_tensor = self._create_and_assert_global_step(g)
+        # we want to add to the global collection in the main thread not the
+        # tower threads.
+        ops.add_to_collection(
+            training_util.GLOBAL_STEP_READ_KEY,
+            self._train_distribution.read_var(global_step_tensor))
 
         if is_tpu_strategy:
-          # Create the iterator for run_on_dataset function
-          # TODO(sourabhbajaj): refactor this out to call a function on the
-          # strategy
-          dataset = self._train_distribution.distribute_dataset(
-              lambda: self._call_input_fn(input_fn,  # pylint: disable=g-long-lambda
-                                          model_fn_lib.ModeKeys.TRAIN))
-          iterator = dataset.make_initializable_iterator()
-          worker_hooks.append(
-              estimator_util._DatasetInitializerHook(iterator))  # pylint: disable=protected-access
-
-          global_step_tensor = self._create_and_assert_global_step(g)
-          # we want to add to the global collection in the main thread not the
-          # tower threads.
-          ops.add_to_collection(
-              training_util.GLOBAL_STEP_READ_KEY,
-              self._train_distribution.read_var(global_step_tensor))
-
           # Create a step_fn from the train_op of grouped_estimator_spec
-          def step_fn(ctx, inputs):
+          def step_fn(ctx, features, labels=None):
             """A single step that is passed to run_on_dataset."""
-            features, labels = inputs
             estimator_spec = self._train_distribution.call_for_each_tower(
                 self._call_model_fn,
                 features,
                 labels,
                 model_fn_lib.ModeKeys.TRAIN,
                 self.config)
-            ctx.last_step_outputs = estimator_spec.loss
-            ctx.non_tensor_outputs = {'estimator_spec': estimator_spec}
-            with ops.control_dependencies([estimator_spec.train_op]):
-              return array_ops.identity(estimator_spec.loss)
+            ctx.set_last_step_output(
+                name='loss',
+                output=estimator_spec.loss,
+                aggregation=distribute_lib.get_loss_reduction())
+            ctx.set_non_tensor_output(
+                name='estimator_spec', output=estimator_spec)
+            return estimator_spec.train_op
 
           # Create new train_op post graph rewrites
-          # TODO(sourabhbajaj): Make sure train_steps and tpu_iterations
-          # work correctly. Currently hardcoded at 2
           initial_training_loss = constant_op.constant(1e7)
-          distributed_train_op, tpu_result, ctx = \
-              self._train_distribution._run_steps_on_dataset(  # pylint: disable=protected-access
-                  step_fn, iterator, iterations=2,
-                  initial_loop_values=initial_training_loss)
+          ctx = self._train_distribution.run_steps_on_dataset(
+              step_fn, iterator, iterations=steps_per_run_variable,
+              initial_loop_values={'loss': initial_training_loss})
+          distributed_train_op = ctx.run_op
+          loss = ctx.last_step_outputs['loss']
           grouped_estimator_spec = ctx.non_tensor_outputs['estimator_spec']
         else:
-          features, labels, input_hooks = (
-              self._get_features_and_labels_from_input_fn(
-                  input_fn, model_fn_lib.ModeKeys.TRAIN,
-                  self._train_distribution))
-          worker_hooks.extend(input_hooks)
-          global_step_tensor = self._create_and_assert_global_step(g)
-          # we want to add to the global collection in the main thread not the
-          # tower threads.
-          ops.add_to_collection(
-              training_util.GLOBAL_STEP_READ_KEY,
-              self._train_distribution.read_var(global_step_tensor))
+          features, labels = estimator_util.parse_iterator_result(
+              iterator.get_next())
           grouped_estimator_spec = self._train_distribution.call_for_each_tower(
               self._call_model_fn,
               features,
               labels,  # although this will be None it seems
               model_fn_lib.ModeKeys.TRAIN,
               self.config)
-
-        scaffold = _combine_distributed_scaffold(
-            grouped_estimator_spec.scaffold, self._train_distribution)
-
-        def get_hooks_from_the_first_device(per_device_hooks):
-          hooks_list = self._train_distribution.unwrap(per_device_hooks)
-          assert hooks_list
-          return hooks_list[0]
-
-        training_hooks = get_hooks_from_the_first_device(
-            grouped_estimator_spec.training_hooks)
-        training_chief_hooks = get_hooks_from_the_first_device(
-            grouped_estimator_spec.training_chief_hooks)
-
-        # TODO(sourabhbajaj): Merge the two code paths once we can
-        # handle per device variables correctly in reduce and can output
-        # the loss scaler.
-        if is_tpu_strategy:
-          loss = self._train_distribution.unwrap(
-              self._train_distribution.reduce(
-                  distribute_lib.get_loss_reduction(), tpu_result)[0])[0]
-          worker_hooks.append(
-              estimator_util.StrategyInitFinalizeHook(
-                  self._train_distribution.get_initialization_ops,
-                  self._train_distribution.get_finalize_ops))
-        else:
           loss = self._train_distribution.unwrap(
               self._train_distribution.reduce(
                   distribute_lib.get_loss_reduction(),
                   grouped_estimator_spec.loss,
                   destinations='/device:CPU:0'))[0]
           distributed_train_op = grouped_estimator_spec.train_op
+
+        scaffold = _combine_distributed_scaffold(
+            grouped_estimator_spec.scaffold, self._train_distribution)
+
+        # TODO(yuefengz): add a test for unwrapping per_device_hooks.
+        def get_hooks_from_the_first_device(per_device_hooks):
+          return [
+              self._distribution.unwrap(per_device_hook)[0]
+              for per_device_hook in per_device_hooks
+          ]
+
+        training_hooks = get_hooks_from_the_first_device(
+            grouped_estimator_spec.training_hooks)
+        training_chief_hooks = get_hooks_from_the_first_device(
+            grouped_estimator_spec.training_chief_hooks)
+        worker_hooks.append(
+            estimator_util.StrategyInitFinalizeHook(
+                self._train_distribution.initialize,
+                self._train_distribution.finalize))
 
         estimator_spec = model_fn_lib.EstimatorSpec(
             mode=grouped_estimator_spec.mode,
@@ -1355,6 +1418,36 @@ class Estimator(object):
         # It is expected to have one CheckpointSaverHook. If multiple, we pick
         # up the first one to add listener.
         saver_hooks[0]._listeners.extend(saving_listeners)  # pylint: disable=protected-access
+
+    # Add summary hooks to worker 0 if we are running with a master, to ensure
+    # that summaries are written at correct intervals even with long-running
+    # evaluations.
+    save_summary_steps = self._config.save_summary_steps
+    log_step_count_steps = self._config.log_step_count_steps
+    if (self._config.cluster_spec and self._config.cluster_spec.jobs and
+        (run_config.TaskType.MASTER in self._config.cluster_spec.jobs)):
+      # Update config values to prevent the default hooks from being created on
+      # the master or other workers.
+      save_summary_steps = 0
+      log_step_count_steps = None
+
+      if (self._config.task_type == run_config.TaskType.WORKER and
+          self._config.task_id == 0):
+        if (self._config.save_summary_steps and
+            self._config.save_summary_steps > 0):
+          worker_hooks.append(
+              training.SummarySaverHook(
+                  save_steps=self._config.save_summary_steps,
+                  output_dir=self._config.model_dir,
+                  scaffold=estimator_spec.scaffold))
+
+        if (self._config.log_step_count_steps and
+            self._config.log_step_count_steps > 0):
+          worker_hooks.append(
+              training.StepCounterHook(
+                  every_n_steps=self._config.log_step_count_steps,
+                  output_dir=self._config.model_dir))
+
     with training.MonitoredTrainingSession(
         master=self._config.master,
         is_chief=self._config.is_chief,
@@ -1364,9 +1457,9 @@ class Estimator(object):
         chief_only_hooks=(
             tuple(chief_hooks) + tuple(estimator_spec.training_chief_hooks)),
         save_checkpoint_secs=0,  # Saving is handled by a hook.
-        save_summaries_steps=self._config.save_summary_steps,
+        save_summaries_steps=save_summary_steps,
         config=self._session_config,
-        log_step_count_steps=self._config.log_step_count_steps) as mon_sess:
+        log_step_count_steps=log_step_count_steps) as mon_sess:
       loss = None
       while not mon_sess.should_stop():
         _, loss = mon_sess.run([estimator_spec.train_op, estimator_spec.loss])
@@ -1376,30 +1469,17 @@ class Estimator(object):
     """Builds the graph and related hooks to run evaluation."""
     random_seed.set_random_seed(self._config.tf_random_seed)
     self._create_and_assert_global_step(ops.get_default_graph())
-    features, labels, input_hooks = (
-        self._get_features_and_labels_from_input_fn(
-            input_fn, model_fn_lib.ModeKeys.EVAL, self._eval_distribution))
 
     if self._eval_distribution:
-      (loss_metric, scaffold, evaluation_hooks, eval_metric_ops) = (
-          self._call_model_fn_eval_distributed(features, labels, self.config))
+      (scaffold, evaluation_hooks, input_hooks, update_op, eval_dict) = (
+          self._call_model_fn_eval_distributed(input_fn, self.config))
     else:
-      (loss_metric, scaffold, evaluation_hooks, eval_metric_ops) = (
-          self._call_model_fn_eval(features, labels, self.config))
+      (scaffold, evaluation_hooks, input_hooks, update_op, eval_dict) = (
+          self._call_model_fn_eval(input_fn, self.config))
 
     global_step_tensor = training_util.get_global_step(ops.get_default_graph())
     # Call to warm_start has to be after model_fn is called.
     self._maybe_warm_start(checkpoint_path)
-
-    if model_fn_lib.LOSS_METRIC_KEY in eval_metric_ops:
-      raise ValueError(
-          'Metric with name "%s" is not allowed, because Estimator ' %
-          (model_fn_lib.LOSS_METRIC_KEY) +
-          'already defines a default metric with the same name.')
-    eval_metric_ops[model_fn_lib.LOSS_METRIC_KEY] = loss_metric
-
-    update_op, eval_dict = _extract_metric_update_ops(eval_metric_ops,
-                                                      self._eval_distribution)
 
     if ops.GraphKeys.GLOBAL_STEP in eval_dict:
       raise ValueError(
@@ -1425,26 +1505,72 @@ class Estimator(object):
 
     return scaffold, update_op, eval_dict, all_hooks
 
-  def _call_model_fn_eval(self, features, labels, config):
+  def _call_model_fn_eval(self, input_fn, config):
+    """Call model_fn for evaluation and handle return values."""
+    features, labels, input_hooks = self._get_features_and_labels_from_input_fn(
+        input_fn, model_fn_lib.ModeKeys.EVAL)
+
     estimator_spec = self._call_model_fn(
         features, labels, model_fn_lib.ModeKeys.EVAL, config)
-    loss_metric = metrics_lib.mean(estimator_spec.loss)
-    return (loss_metric, estimator_spec.scaffold,
-            estimator_spec.evaluation_hooks, estimator_spec.eval_metric_ops)
+    eval_metric_ops = _verify_and_create_loss_metric(
+        estimator_spec.eval_metric_ops, estimator_spec.loss)
+    update_op, eval_dict = _extract_metric_update_ops(eval_metric_ops)
+    return (estimator_spec.scaffold, estimator_spec.evaluation_hooks,
+            input_hooks, update_op, eval_dict)
 
-  def _call_model_fn_eval_distributed(self, features, labels, config):
+  def _call_model_fn_eval_distributed(self, input_fn, config):
     """Call model_fn in distribution mode and handle return values."""
-    grouped_estimator_spec = self._eval_distribution.call_for_each_tower(
-        self._call_model_fn, features, labels,
-        model_fn_lib.ModeKeys.EVAL, config)
+
+    iterator, input_hooks = self._get_iterator_from_input_fn(
+        input_fn, model_fn_lib.ModeKeys.EVAL, self._eval_distribution)
+
+    is_tpu_strategy = (
+        self._eval_distribution.__class__.__name__ == 'TPUStrategy')
+
+    if is_tpu_strategy:
+      steps_per_run_variable = training.get_or_create_steps_per_run_variable()
+      def step_fn(ctx, features, labels=None):
+        """Runs one step of the eval computation and captures outputs."""
+        estimator_spec = self._eval_distribution.call_for_each_tower(
+            self._call_model_fn, features, labels, model_fn_lib.ModeKeys.EVAL,
+            config)
+        eval_metric_ops = _verify_and_create_loss_metric(
+            estimator_spec.eval_metric_ops, estimator_spec.loss,
+            self._eval_distribution)
+        update_op, eval_dict = _extract_metric_update_ops(
+            eval_metric_ops, self._eval_distribution)
+        ctx.set_non_tensor_output(name='estimator_spec', output=estimator_spec)
+        ctx.set_non_tensor_output(name='eval_dict', output=eval_dict)
+        return update_op
+
+      # TODO(priyag): Fix eval step hook to account for steps_per_run.
+      ctx = self._eval_distribution.run_steps_on_dataset(
+          step_fn, iterator, iterations=steps_per_run_variable)
+      update_op = ctx.run_op
+      eval_dict = ctx.non_tensor_outputs['eval_dict']
+      grouped_estimator_spec = ctx.non_tensor_outputs['estimator_spec']
+    else:
+      features, labels = estimator_util.parse_iterator_result(
+          iterator.get_next())
+      grouped_estimator_spec = self._eval_distribution.call_for_each_tower(
+          self._call_model_fn, features, labels,
+          model_fn_lib.ModeKeys.EVAL, config)
+      eval_metric_ops = _verify_and_create_loss_metric(
+          grouped_estimator_spec.eval_metric_ops, grouped_estimator_spec.loss,
+          self._eval_distribution)
+      update_op, eval_dict = _extract_metric_update_ops(
+          eval_metric_ops, self._eval_distribution)
+
     scaffold = _combine_distributed_scaffold(
         grouped_estimator_spec.scaffold, self._eval_distribution)
     evaluation_hooks = self._eval_distribution.unwrap(
         grouped_estimator_spec.evaluation_hooks)[0]
-    loss_metric = self._eval_distribution.call_for_each_tower(
-        metrics_lib.mean, grouped_estimator_spec.loss)
-    return (loss_metric, scaffold,
-            evaluation_hooks, grouped_estimator_spec.eval_metric_ops)
+    evaluation_hooks = evaluation_hooks + (
+        estimator_util.StrategyInitFinalizeHook(
+            self._eval_distribution.initialize,
+            self._eval_distribution.finalize),)
+
+    return (scaffold, evaluation_hooks, input_hooks, update_op, eval_dict)
 
   def _evaluate_run(self, checkpoint_path, scaffold, update_op, eval_dict,
                     all_hooks, output_dir):
@@ -1480,6 +1606,23 @@ class Estimator(object):
       warm_starting_util.warm_start(*self._warm_start_settings)
 
 
+def _verify_and_create_loss_metric(eval_metric_ops, loss, distribution=None):
+  """Creates a metric for loss and throws an error if one already exists."""
+  if model_fn_lib.LOSS_METRIC_KEY in eval_metric_ops:
+    raise ValueError(
+        'Metric with name "%s" is not allowed, because Estimator ' %
+        (model_fn_lib.LOSS_METRIC_KEY) +
+        'already defines a default metric with the same name.')
+
+  if distribution is None:
+    loss_metric = metrics_lib.mean(loss)
+  else:
+    loss_metric = distribution.call_for_each_tower(
+        metrics_lib.mean, loss)
+  eval_metric_ops[model_fn_lib.LOSS_METRIC_KEY] = loss_metric
+  return eval_metric_ops
+
+
 def maybe_overwrite_model_dir_and_session_config(config, model_dir):
   """Overwrite estimator config by `model_dir` and `session_config` if needed.
 
@@ -1513,9 +1656,9 @@ def maybe_overwrite_model_dir_and_session_config(config, model_dir):
           "`model_dir` are set both in constructor and `RunConfig`, but with "
           "different values. In constructor: '{}', in `RunConfig`: "
           "'{}' ".format(model_dir, config.model_dir))
-    if model_dir:
-      config = run_config.RunConfig.replace(config, model_dir=model_dir)
-  if getattr(config, 'model_dir', None) is None:
+  if model_dir:
+    config = run_config.RunConfig.replace(config, model_dir=model_dir)
+  elif getattr(config, 'model_dir', None) is None:
     model_dir = tempfile.mkdtemp()
     logging.warning('Using temporary folder as model directory: %s', model_dir)
     config = run_config.RunConfig.replace(config, model_dir=model_dir)
@@ -1523,23 +1666,8 @@ def maybe_overwrite_model_dir_and_session_config(config, model_dir):
   return config
 
 
-def create_per_tower_ready_op(scaffold):
-  """Create a Scaffold.ready_op inside a tower."""
-  if scaffold.ready_op:
-    return scaffold.ready_op
-
-  def default_ready_op():
-    return array_ops.concat([
-        variables.report_uninitialized_variables(),
-        resources.report_uninitialized_resources()
-    ], 0)
-
-  return monitored_session.Scaffold.get_or_default(
-      'ready_op', ops.GraphKeys.READY_OP, default_ready_op)
-
-
 def create_per_tower_ready_for_local_init_op(scaffold):
-  """Create a Scaffold.ready_for_local_init_op inside a tower."""
+  """Create a `tf.train.Scaffold.ready_for_local_init_op` inside a tower."""
   if scaffold.ready_for_local_init_op:
     return scaffold.ready_for_local_init_op
 
@@ -1583,15 +1711,13 @@ def _combine_distributed_scaffold(grouped_scaffold, distribution):
   def _unwrap_and_concat(value):
     value = nest.flatten(distribution.unwrap(value))
     if len(value) != 1:
-      return array_ops.concat(value)
+      return array_ops.concat(value, 0)
     return value[0]
 
   ready_op = distribution.call_for_each_tower(
-      create_per_tower_ready_op, grouped_scaffold)
+      lambda scaffold: scaffold.ready_op, grouped_scaffold)
   if ready_op is not None:
     ready_op = _unwrap_and_concat(ready_op)
-  else:
-    ready_op = None
 
   ready_for_local_init_op = distribution.call_for_each_tower(
       create_per_tower_ready_for_local_init_op, grouped_scaffold)
@@ -1630,14 +1756,14 @@ def _combine_distributed_scaffold(grouped_scaffold, distribution):
 
 
 def _check_checkpoint_available(model_dir):
-  latest_path = saver.latest_checkpoint(model_dir)
+  latest_path = checkpoint_management.latest_checkpoint(model_dir)
   if not latest_path:
     raise ValueError(
         'Could not find trained model in model_dir: {}.'.format(model_dir))
 
 
 def _check_hooks_type(hooks):
-  """Returns hooks if all are SessionRunHook, raises TypeError otherwise."""
+  """Returns hooks if all are `SessionRunHook`, raises TypeError otherwise."""
   hooks = list(hooks or [])
   for h in hooks:
     if not isinstance(h, training.SessionRunHook):
@@ -1657,17 +1783,18 @@ def _check_listeners_type(saving_listeners):
 
 
 def _get_replica_device_setter(config):
-  """Creates a replica device setter if required as a default device_fn.
+  """Creates a replica device setter if required as a default `device_fn`.
 
-  `Estimator` uses ReplicaDeviceSetter as a default device placer. It sets the
-  distributed related arguments such as number of ps_replicas based on given
-  config.
+  `Estimator` uses `tf.train.ReplicaDeviceSetter` as a default device placer. It
+  sets the
+  distributed related arguments such as number of `ps_replicas` based on given
+  `config`.
 
   Args:
-    config: A `RunConfig` instance.
+    config: A `tf.estimator.RunConfig` instance.
 
   Returns:
-    A replica device setter, or None.
+    A replica device setter, or `None`.
   """
   if config.task_type:
     worker_device = '/job:%s/task:%d' % (config.task_type, config.task_id)
@@ -1686,7 +1813,7 @@ def _get_replica_device_setter(config):
 
 
 def _verify_model_fn_args(model_fn, params):
-  """Verifies model fn arguments."""
+  """Verifies `model_fn` arguments."""
   args = set(function_utils.fn_args(model_fn))
   if 'features' not in args:
     raise ValueError('model_fn (%s) must include features argument.' % model_fn)
@@ -1718,19 +1845,12 @@ def _extract_metric_update_ops(eval_dict, distribution=None):
   update_ops = []
   value_ops = {}
   # Sort metrics lexicographically so graph is identical every time.
-  for name, metric_ops in sorted(six.iteritems(eval_dict)):
-    value_ops[name] = metric_ops[0]
-    if distribution:
-      update_op = distribution.group(metric_ops[1])
-    else:
-      update_op = metric_ops[1]
-    update_ops.append(update_op)
+  for name, value in sorted(six.iteritems(eval_dict)):
+    value_ops[name] = value[0]
+    update_ops.append(
+        distribution.group(value[1]) if distribution else value[1])
 
-  if update_ops:
-    update_op = control_flow_ops.group(*update_ops)
-  else:
-    update_op = None
-
+  update_op = control_flow_ops.group(*update_ops) if update_ops else None
   return update_op, value_ops
 
 
@@ -1784,10 +1904,24 @@ def _write_dict_to_summary(output_dir,
         logging.warn('Skipping summary for %s, cannot parse string to Summary.',
                      key)
         continue
+    elif isinstance(dictionary[key], np.ndarray):
+      value = summary_proto.value.add()
+      value.tag = key
+      value.node_name = key
+      tensor_proto = tensor_util.make_tensor_proto(dictionary[key])
+      value.tensor.CopyFrom(tensor_proto)
+      # pylint: disable=line-too-long
+      logging.info(
+          'Summary for np.ndarray is not visible in Tensorboard by default. '
+          'Consider using a Tensorboard plugin for visualization (see '
+          'https://github.com/tensorflow/tensorboard-plugin-example/blob/master/README.md'
+          ' for more information).')
+      # pylint: enable=line-too-long
     else:
       logging.warn(
           'Skipping summary for %s, must be a float, np.float32, np.int64, '
-          'np.int32 or int or a serialized string of Summary.', key)
+          'np.int32 or int or np.ndarray or a serialized string of Summary.',
+          key)
   summary_writer.add_summary(summary_proto, current_global_step)
   summary_writer.flush()
 
@@ -1817,7 +1951,7 @@ def _write_checkpoint_path_to_summary(output_dir, checkpoint_path,
 
 
 def _has_dataset_or_queue_runner(maybe_tensor):
-  """Returns True if TF dataset or QueueRunner has been used."""
+  """Returns `True` if `Dataset` or `QueueRunner` has been used."""
   # Check TF dataset first. Here, we use a simple algorithm to check the top
   # level Tensors only, which should be sufficient for most users.
   tensors = [x for x in nest.flatten(maybe_tensor) if isinstance(x, ops.Tensor)]
@@ -1840,9 +1974,9 @@ class WarmStartSettings(
         'var_name_to_vocab_info',
         'var_name_to_prev_var_name',
     ])):
-  """Settings for warm-starting in Estimators.
+  """Settings for warm-starting in `tf.estimator.Estimators`.
 
-  Example Use with canned `DNNEstimator`:
+  Example Use with canned `tf.estimator.DNNEstimator`:
 
   ```
   emb_vocab_file = tf.feature_column.embedding_column(
@@ -1959,23 +2093,19 @@ class WarmStartSettings(
     ckpt_to_initialize_from: [Required] A string specifying the directory with
       checkpoint file(s) or path to checkpoint from which to warm-start the
       model parameters.
-    vars_to_warm_start: [Optional] One of the following:
-
-      - A regular expression (string) that captures which variables to
-        warm-start (see tf.get_collection).  This expression will only consider
-        variables in the TRAINABLE_VARIABLES collection.
-      - A list of Variables to warm-start.
-      - A list of strings, each representing a full variable name to warm-start.
-      - `None`, in which case only variables specified in
-        `var_name_to_vocab_info` will be warm-started.
-
-      Defaults to `'.*'`, which warm-starts all variables in the
-      TRAINABLE_VARIABLES collection.  Note that this excludes variables such as
-      accumulators and moving statistics from batch norm.
+    vars_to_warm_start: [Optional] One of the following:  - A regular expression
+      (string) that captures which variables to warm-start (see
+      `tf.get_collection`).  This expression will only consider variables in the
+      `TRAINABLE_VARIABLES` collection. - A list of Variables to warm-start. - A
+      list of strings, each representing a full variable name to warm-start. -
+      `None`, in which case only variables specified in `var_name_to_vocab_info`
+      will be warm-started.  Defaults to `'.*'`, which warm-starts all variables
+      in the `TRAINABLE_VARIABLES` collection.  Note that this excludes
+      variables such as accumulators and moving statistics from batch norm.
     var_name_to_vocab_info: [Optional] Dict of variable names (strings) to
-      VocabInfo. The variable names should be "full" variables, not the names
-      of the partitions.  If not explicitly provided, the variable is assumed to
-      have no vocabulary.
+      `tf.estimator.VocabInfo`. The variable names should be "full" variables,
+      not the names of the partitions.  If not explicitly provided, the variable
+      is assumed to have no (changes to) vocabulary.
     var_name_to_prev_var_name: [Optional] Dict of variable names (strings) to
       name of the previously-trained variable in `ckpt_to_initialize_from`. If
       not explicitly provided, the name of the variable is assumed to be same
@@ -2000,43 +2130,45 @@ class WarmStartSettings(
 
 
 def _get_saved_model_ckpt(saved_model_dir):
-  """Return path to variables checkpoint in a SavedModel directory."""
+  """Return path to variables checkpoint in a `SavedModel` directory."""
   if not gfile.Exists(
-      os.path.join(compat.as_bytes(saved_model_dir),
-                   compat.as_bytes('variables/variables.index'))):
+      os.path.join(saved_model_utils.get_variables_dir(saved_model_dir),
+                   compat.as_text('variables.index'))):
     raise ValueError('Directory provided has an invalid SavedModel format: %s'
                      % saved_model_dir)
-  return os.path.join(
-      compat.as_bytes(saved_model_dir),
-      compat.as_bytes('{}/{}'.format(constants.VARIABLES_DIRECTORY,
-                                     constants.VARIABLES_FILENAME)))
+  return saved_model_utils.get_variables_path(saved_model_dir)
 
 
 def _get_default_warm_start_settings(warm_start_from):
-  """Returns default WarmStartSettings.
+  """Returns default `tf.estimator.WarmStartSettings`.
 
   Args:
     warm_start_from: Either a string representing the filepath of a checkpoint
-      or SavedModel to initialize from, or an instance of WarmStartSettings.
+      or `SavedModel` to initialize from, or an instance of
+      `tf.estimator.WarmStartSettings`.
 
   Returns:
-    Either None or an instance of WarmStartSettings.
+    Either None or an instance of `WarmStartSettings`.
 
   Raises:
-    ValueError: If warm_start_from is not None but is neither a string nor an
-      instance of WarmStartSettings.
+    ValueError: If `warm_start_from` is not `None` but is neither a string nor
+    an
+      instance of `WarmStartSettings`.
   """
   if warm_start_from is None:
     return None
   if isinstance(warm_start_from, (six.string_types, six.binary_type)):
     # Infer that this is a SavedModel if export_path +
     # 'variables/variables.index' exists, and if so, construct the
-    # WarmStartSettings pointing to export_path + 'variables/variables'.
-    if gfile.Exists(os.path.join(compat.as_bytes(warm_start_from),
-                                 compat.as_bytes('variables/variables.index'))):
+    # WarmStartSettings pointing to the variables path
+    # (export_path + 'variables/variables').
+    if gfile.Exists(os.path.join(
+        saved_model_utils.get_variables_dir(warm_start_from),
+        compat.as_text('variables.index'))):
       logging.info('Warm-starting from a SavedModel')
       return WarmStartSettings(
-          ckpt_to_initialize_from=_get_saved_model_ckpt(warm_start_from))
+          ckpt_to_initialize_from=saved_model_utils.get_variables_path(
+              warm_start_from))
     return WarmStartSettings(ckpt_to_initialize_from=warm_start_from)
   elif isinstance(warm_start_from, WarmStartSettings):
     return warm_start_from

@@ -23,7 +23,7 @@ You can test specify version of TensorFlow:
 ./local_test.sh ${whl_file_url}
 ```
 
-For example, you can find these TensorFlow python package URLs from [here](https://www.tensorflow.org/install/install_linux#the_url_of_the_tensorflow_python_package) for Ubuntu.
+For example, you can find these TensorFlow python package URLs from [here](https://www.tensorflow.org/install/pip) for Ubuntu.
 
 **2) Launch a remote k8s cluster on Google Kubernetes Engine (GKE) and run the
 test suite on it**

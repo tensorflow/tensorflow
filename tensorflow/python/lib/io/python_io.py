@@ -15,7 +15,7 @@
 
 """Python functions for directly manipulating TFRecord-formatted files.
 
-See the @{$python/python_io} guide.
+See the [Python IO](https://tensorflow.org/api_guides/python/python_io) guide.
 """
 
 from __future__ import absolute_import

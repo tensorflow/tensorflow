@@ -46,7 +46,7 @@ class MergeLayersTest(test.TestCase):
     self.assertAllClose(out, x1 + x2 + x3, atol=1e-4)
 
   def test_merge_add_masking(self):
-    with self.test_session():
+    with self.cached_session():
       i1 = keras.layers.Input(shape=(4, 5))
       i2 = keras.layers.Input(shape=(4, 5))
       m1 = keras.layers.Masking()(i1)
@@ -57,7 +57,7 @@ class MergeLayersTest(test.TestCase):
       self.assertListEqual(mask.get_shape().as_list(), [None, 4])
 
   def test_merge_add_dynamic_shape(self):
-    with self.test_session():
+    with self.cached_session():
       i1 = array_ops.placeholder(shape=(4, None), dtype='float32')
       i2 = array_ops.placeholder(shape=(4, 5), dtype='float32')
       layer = keras.layers.Add()
@@ -149,7 +149,7 @@ class MergeLayersTest(test.TestCase):
     self.assertAllClose(out, np.concatenate([x1, x2], axis=1), atol=1e-4)
 
   def test_merge_concatenate_masking(self):
-    with self.test_session():
+    with self.cached_session():
       i1 = keras.layers.Input(shape=(4, 5))
       i2 = keras.layers.Input(shape=(4, 5))
       m1 = keras.layers.Masking()(i1)

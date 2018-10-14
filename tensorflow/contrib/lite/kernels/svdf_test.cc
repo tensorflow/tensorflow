@@ -141,16 +141,20 @@ class BaseSVDFOpModel : public SingleOpModel {
     weights_feature_ = AddInput(weights_feature_type);
     weights_time_ = AddInput(weights_time_type);
     bias_ = AddNullInput();
-    state_ = AddOutput(TensorType_FLOAT32);
+    const int num_filters = units * rank;
+    activation_state_ = AddInput(
+        TensorData{TensorType_FLOAT32, {batches, memory_size * num_filters}},
+        /*is_variable=*/true);
     output_ = AddOutput(TensorType_FLOAT32);
     SetBuiltinOp(
         BuiltinOperator_SVDF, BuiltinOptions_SVDFOptions,
         CreateSVDFOptions(builder_, rank, ActivationFunctionType_NONE).Union());
     BuildInterpreter({
-        {batches_, input_size_},        // Input tensor
-        {units_ * rank, input_size_},   // weights_feature tensor
-        {units_ * rank, memory_size_},  // weights_time tensor
-        {units_}                        // bias tensor
+        {batches_, input_size_},              // input tensor
+        {units_ * rank, input_size_},         // weights_feature tensor
+        {units_ * rank, memory_size_},        // weights_time tensor
+        {units_},                             // bias tensor
+        {batches, memory_size * num_filters}  // activation_state tensor
     });
   }
 
@@ -169,15 +173,6 @@ class BaseSVDFOpModel : public SingleOpModel {
     PopulateTensor(input_, offset, begin, end);
   }
 
-  // Resets the state of SVDF op by filling it with 0's.
-  void ResetState() {
-    const int zero_buffer_size = rank_ * units_ * batches_ * memory_size_;
-    std::unique_ptr<float[]> zero_buffer(new float[zero_buffer_size]);
-    memset(zero_buffer.get(), 0, zero_buffer_size * sizeof(float));
-    PopulateTensor(state_, 0, zero_buffer.get(),
-                   zero_buffer.get() + zero_buffer_size);
-  }
-
   // Extracts the output tensor from the SVDF op.
   std::vector<float> GetOutput() { return ExtractVector<float>(output_); }
 
@@ -190,7 +185,7 @@ class BaseSVDFOpModel : public SingleOpModel {
   int weights_feature_;
   int weights_time_;
   int bias_;
-  int state_;
+  int activation_state_;
   int output_;
 
   int batches_;
@@ -274,7 +269,6 @@ TEST_F(SVDFOpTest, BlackBoxTestRank1) {
        -0.10781813, 0.27201805,  0.14324132,  -0.23681851, -0.27115166,
        -0.01580888, -0.14943552, 0.15465137,  0.09784451,  -0.0337657});
 
-  svdf.ResetState();
   VerifyGoldens(svdf_input, svdf_golden_output_rank_1, sizeof(svdf_input),
                 &svdf);
 }
@@ -314,7 +308,6 @@ TEST_F(SVDFOpTest, BlackBoxTestRank2) {
        0.27179423,  -0.04710215, 0.31069002,  0.22672787,  0.09580326,
        0.08682203,  0.1258215,   0.1851041,   0.29228821,  0.12366763});
 
-  svdf.ResetState();
   VerifyGoldens(svdf_input, svdf_golden_output_rank_2, sizeof(svdf_input),
                 &svdf);
 }
@@ -339,7 +332,6 @@ TEST_F(SVDFOpTest, BlackBoxTestHybridRank1) {
        -0.10781813, 0.27201805,  0.14324132,  -0.23681851, -0.27115166,
        -0.01580888, -0.14943552, 0.15465137,  0.09784451,  -0.0337657});
 
-  svdf.ResetState();
   VerifyGoldens(svdf_input, svdf_golden_output_rank_1, sizeof(svdf_input),
                 &svdf,
                 /*tolerance=*/0.002945);
@@ -380,7 +372,6 @@ TEST_F(SVDFOpTest, BlackBoxTestHybridRank2) {
        0.27179423,  -0.04710215, 0.31069002,  0.22672787,  0.09580326,
        0.08682203,  0.1258215,   0.1851041,   0.29228821,  0.12366763});
 
-  svdf.ResetState();
   VerifyGoldens(svdf_input, svdf_golden_output_rank_2, sizeof(svdf_input),
                 &svdf,
                 /*tolerance=*/0.00625109);

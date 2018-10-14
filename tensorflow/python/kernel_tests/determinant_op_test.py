@@ -28,6 +28,7 @@ from tensorflow.python.ops import gen_linalg_ops
 from tensorflow.python.ops import linalg_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import variables
+from tensorflow.python.platform import benchmark
 from tensorflow.python.platform import test
 
 
@@ -185,8 +186,8 @@ class MatrixDeterminantBenchmark(test.Benchmark):
 
   def benchmarkMatrixDeterminantOp(self):
     for shape in self.shapes:
-      with ops.Graph().as_default(), session.Session() as sess, ops.device(
-          "/cpu:0"):
+      with ops.Graph().as_default(), session.Session(
+          config=benchmark.benchmark_config()) as sess, ops.device("/cpu:0"):
         matrix = self._GenerateMatrix(shape)
         d = linalg_ops.matrix_determinant(matrix)
         variables.global_variables_initializer().run()
@@ -198,8 +199,8 @@ class MatrixDeterminantBenchmark(test.Benchmark):
             name="matrix_determinant_cpu_{shape}".format(shape=shape))
 
       if test.is_gpu_available(True):
-        with ops.Graph().as_default(), session.Session() as sess, ops.device(
-            "/gpu:0"):
+        with ops.Graph().as_default(), session.Session(
+            config=benchmark.benchmark_config()) as sess, ops.device("/gpu:0"):
           matrix = self._GenerateMatrix(shape)
           d = linalg_ops.matrix_determinant(matrix)
           variables.global_variables_initializer().run()

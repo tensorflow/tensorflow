@@ -31,14 +31,14 @@ namespace cpu {
 // called canonical convolutions). This pass expands non-canonical convolutions
 // into reshapes and canonical convolutions, so that these non-canonical
 // convolutions can run faster.
-class ConvCanonicalization : public HloPassInterface {
+class ConvCanonicalization : public HloModulePass {
  public:
   explicit ConvCanonicalization(
       const TargetMachineFeatures* target_machine_features)
       : target_machine_features_(*target_machine_features) {}
 
   ~ConvCanonicalization() override {}
-  tensorflow::StringPiece name() const override {
+  absl::string_view name() const override {
     return "convolution-canonicalization";
   }
 

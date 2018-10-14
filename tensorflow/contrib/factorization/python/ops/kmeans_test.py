@@ -232,7 +232,7 @@ class KMeansTest(KMeansTestBase):
     self.assertEqual(features.shape, parsed_feature_dict.shape)
     self.assertEqual(features.dtype, parsed_feature_dict.dtype)
     # Then check that running the tensor yields the original list of points.
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       parsed_points = sess.run(parsed_feature_dict)
       self.assertAllEqual(self.points, parsed_points)
 

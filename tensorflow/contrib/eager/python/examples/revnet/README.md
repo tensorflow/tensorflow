@@ -1,6 +1,6 @@
 # RevNet with TensorFlow eager execution
 
-This folder contains a TensorFlow eager implementation of the [Reversible Residual Network](https://arxiv.org/pdf/1707.04585.pdf) adapted from the released implementation by the authors. The presented implementation can be ran both in eager and graph mode. The code is considerably simplified with `tf.GradientTape`. Moreover, we reduce the step of reconstructing the outputs. This saves us from using `tf.stop_gradient` and makes the model run faster.
+This folder contains a TensorFlow eager implementation of the [Reversible Residual Network](https://arxiv.org/pdf/1707.04585.pdf) adapted from the released implementation by the authors. The presented implementation can be ran with both eager and graph execution. The code is considerably simplified with `tf.GradientTape`. Moreover, we reduce the a redundant forward pass in the implementation by the authors. This saves us from using `tf.stop_gradient` and makes the model run faster.
 
 ##  Content
 
@@ -16,7 +16,7 @@ This folder contains a TensorFlow eager implementation of the [Reversible Residu
 - `resnet_preprocessing.py`, `imagenet_input.py`: Boilerplate to read ImageNet data from TFRecords.
 
 ## Train on CIFAR-10/CIFAR-100
-- Make sure you have installed TensorFlow 1.9+ or the latest `tf-nightly`
+- Make sure you have installed TensorFlow 1.10+ or the latest `tf-nightly`
 or `tf-nightly-gpu` pip package in order to access the eager execution feature.
 
 - First run
@@ -41,11 +41,13 @@ python main.py --data_dir ${PWD}/cifar
   - `config`: RevNet configuration.
   - `use_defun`: Use `tfe.defun` to boost performance.
 
-- To train a model with estimators in graph-mode, run
+- To train a model with estimators in graph execution, run
 
 ```bash
 python main_estimator.py --data_dir ${PWD}/cifar
 ```
+To ensure our code works properly when using the Keras model in an estimator,
+`tf-nightly` or `tf-nightly-gpu` is highly recommended as of August 2018.
 
 - Optional arguments for `main.py` include
   - `model_dir`: Directory to store eventfiles and checkpoints.
@@ -54,13 +56,19 @@ python main_estimator.py --data_dir ${PWD}/cifar
   - `export`: Export the model for serving if True.
 
 ## Speed up with `tfe.defun`
-Even though the speed difference between pure eager execution and graph-mode execution is noticeable,
-the difference between fully "defunned" model training and graph-mode
+To ensure that `tf.contrib.eager.defun` in our code works properly with all
+part of the model during training, the latest `tf-nightly` or `tf-nightly-gpu`
+is highly recommended as of August 2018.
+
+Even though the speed difference between pure eager execution and graph execution is noticeable,
+the difference between fully "defunned" model training and graph
 training is negligible.
 
 ## Train on ImageNet with Cloud TPUs
-The standard way to train models on Cloud TPUs is via TPU estimators and graph-mode
+The standard way to train models on Cloud TPUs is via TPU estimators and graph
 execution. Models built with the `tf.keras` API are fully compatible with TPU estimators.
+To ensure our code works properly in this setting,
+`tf-nightly` or `tf-nightly-gpu` is highly recommended as of August 2018.
 
 ### Setup a Google Cloud project
 
@@ -96,7 +104,8 @@ python main_estimator_tpu.py \
 ```
 
 ## Performance
-- With the current implementation, RevNet-38 achieves >92% on CIFAR-10 and >71% on CIFAR-100.
+- RevNet-38 achieves >92% and >71% accuracy on CIFAR-10 and CIFAR-100 respectively.
+- RevNet-56 achieves <26% top-1 error rate on ImageNet.
 
 ## Reference
 The Reversible Residual Network: Backpropagation Without Storing Activations.

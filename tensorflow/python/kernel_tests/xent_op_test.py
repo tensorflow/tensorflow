@@ -153,13 +153,13 @@ class XentTest(test.TestCase):
       self.assertAllCloseAccordingToType(np_backprop, tf_backprop)
 
   def testShapeMismatch(self):
-    with self.test_session():
+    with self.cached_session():
       with self.assertRaises(ValueError):
         gen_nn_ops.softmax_cross_entropy_with_logits(
             [[0., 1.], [2., 3.]], [[0., 1., 0.], [1., 0., 0.]])
 
   def testNotMatrix(self):
-    with self.test_session():
+    with self.cached_session():
       with self.assertRaises(ValueError):
         gen_nn_ops.softmax_cross_entropy_with_logits([0., 1., 2., 3.],
                                                      [0., 1., 0., 1.])
@@ -180,7 +180,7 @@ class XentTest(test.TestCase):
         np.array([[0., 0., 0., 1.], [0., .5, .5, 0.]]).astype(np.float64))
 
   def testGradient(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       l = constant_op.constant(
           [0.0, 0.0, 1.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.5, 0.0, 0.5],
           shape=[3, 4],
@@ -207,7 +207,7 @@ class XentTest(test.TestCase):
     self.assertLess(err, 5e-8)
 
   def testGradientLabelWithV2(self):
-    with self.test_session():
+    with self.cached_session():
       l = constant_op.constant(
           [0.0, 0.0, 1.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.5, 0.0, 0.5],
           shape=[3, 4],
@@ -225,7 +225,7 @@ class XentTest(test.TestCase):
     self.assertLess(err, 5e-8)
 
   def testSecondGradient(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       l = constant_op.constant(
           [
               0.0, 0.0, 1.0 / 3, 0.0, 1.0 / 3, 0.0, 0.0, 0.0, 0.0, 0.5 / 3, 0.0,

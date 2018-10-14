@@ -20,8 +20,8 @@ limitations under the License.
 // any changes here, make sure that you're not breaking any platforms.
 //
 
-#ifndef TENSORFLOW_LIB_CORE_CASTS_H_
-#define TENSORFLOW_LIB_CORE_CASTS_H_
+#ifndef TENSORFLOW_CORE_LIB_CORE_CASTS_H_
+#define TENSORFLOW_CORE_LIB_CORE_CASTS_H_
 
 #include <string.h>  // for memcpy
 
@@ -97,4 +97,4 @@ inline Dest bit_cast(const Source& source) {
 
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_LIB_CORE_CASTS_H_
+#endif  // TENSORFLOW_CORE_LIB_CORE_CASTS_H_

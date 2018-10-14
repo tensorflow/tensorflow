@@ -33,25 +33,27 @@ namespace {
 bool IsTakeAll(const NodeDef& take_node, const GraphView& graph) {
   if (take_node.op() != "TakeDataset") return false;
 
-  const NodeDef& count_node = *graph.GetNode(take_node.input(1));
+  const auto& count_node = *graph.GetNode(take_node.input(1));
+  if (count_node.op() != "Const") return false;
   // We are looking only for 'take' with negative count.
   return count_node.attr().at("value").tensor().int64_val(0) < 0;
 }
 
+bool IsConstNodeWithValue(const NodeDef& node, int value) {
+  if (node.op() != "Const") return false;
+  return node.attr().at("value").tensor().int64_val(0) == value;
+}
+
 bool IsSkipNone(const NodeDef& skip_node, const GraphView& graph) {
   if (skip_node.op() != "SkipDataset") return false;
-
-  const NodeDef& count_node = *graph.GetNode(skip_node.input(1));
   // We are looking only for skip(0) nodes.
-  return count_node.attr().at("value").tensor().int64_val(0) == 0;
+  return IsConstNodeWithValue(*graph.GetNode(skip_node.input(1)), 0);
 }
 
 bool IsRepeatOne(const NodeDef& repeat_node, const GraphView& graph) {
   if (repeat_node.op() != "RepeatDataset") return false;
-
-  const NodeDef& count_node = *graph.GetNode(repeat_node.input(1));
   // We are looking only for repeat(1) nodes.
-  return count_node.attr().at("value").tensor().int64_val(0) == 1;
+  return IsConstNodeWithValue(*graph.GetNode(repeat_node.input(1)), 1);
 }
 
 bool IsNoOp(const NodeDef& node, const GraphView& graph) {
@@ -69,8 +71,7 @@ Status NoOpElimination::Optimize(Cluster* cluster, const GrapplerItem& item,
   for (const NodeDef& node : item.graph.node()) {
     if (!IsNoOp(node, graph)) continue;
 
-    GraphView::InputPort input_port = graph.GetInputPort(node.name(), 0);
-    NodeDef* const parent = graph.GetRegularFanin(input_port).node;
+    NodeDef* const parent = graph_utils::GetInputNode(node, graph);
     graph.ReplaceInput(node, *parent);
 
     nodes_to_delete.insert(node.name());

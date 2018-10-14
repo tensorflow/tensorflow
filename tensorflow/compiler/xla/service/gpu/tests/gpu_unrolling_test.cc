@@ -138,6 +138,9 @@ TEST_F(GpuUnrollingTest, UnrollMultiOutputFusion) {
   HloModuleConfig config;
   auto debug_options = HloTestBase::GetDebugOptionsForTest();
   debug_options.set_xla_gpu_max_kernel_unroll_factor(2);
+  // Disable layout assignment for this test.  Layout assignment does not expect
+  // fusions to be present, and so it does the wrong thing.
+  debug_options.add_xla_disable_hlo_passes("layout-assignment");
   config.set_debug_options(debug_options);
 
   const char *const kMultiOutputFusionModule = R"(

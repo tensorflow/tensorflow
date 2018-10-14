@@ -12,8 +12,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include "tensorflow/contrib/lite/builtin_op_data.h"
-#include "tensorflow/contrib/lite/context.h"
+#include "tensorflow/contrib/lite/c/builtin_op_data.h"
+#include "tensorflow/contrib/lite/c/c_api_internal.h"
 #include "tensorflow/contrib/lite/kernels/internal/optimized/optimized_ops.h"
 #include "tensorflow/contrib/lite/kernels/internal/reference/reference_ops.h"
 #include "tensorflow/contrib/lite/kernels/internal/tensor.h"
@@ -79,10 +79,12 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   const TfLiteTensor* input = GetInput(context, node, kInputTensor);
   TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
 
-#define TF_LITE_SPACE_TO_DEPTH(type, scalar)                                  \
-  type::SpaceToDepth<scalar>(                                                 \
-      GetTensorData<scalar>(input), GetTensorDims(input), params->block_size, \
-      GetTensorData<scalar>(output), GetTensorDims(output))
+#define TF_LITE_SPACE_TO_DEPTH(type, scalar)                               \
+  tflite::SpaceToDepthParams op_params;                                    \
+  op_params.block_size = params->block_size;                               \
+  type::SpaceToDepth(op_params, GetTensorShape(input),                     \
+                     GetTensorData<scalar>(input), GetTensorShape(output), \
+                     GetTensorData<scalar>(output))
   switch (input->type) {  // Already know in/out types are same.
     case kTfLiteFloat32:
       if (kernel_type == kReference) {

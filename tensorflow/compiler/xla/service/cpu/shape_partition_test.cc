@@ -19,14 +19,14 @@ limitations under the License.
 #include <random>
 
 #include "tensorflow/compiler/xla/test_helpers.h"
-#include "tensorflow/compiler/xla/tests/hlo_test_base.h"
+#include "tensorflow/compiler/xla/tests/hlo_verified_test_base.h"
 #include "tensorflow/compiler/xla/util.h"
 
 namespace xla {
 namespace cpu {
 namespace {
 
-class ShapePartitionAssignerTest : public HloTestBase {
+class ShapePartitionAssignerTest : public HloVerifiedTestBase {
  protected:
   typedef std::vector<int64> Vec;
 
@@ -91,7 +91,7 @@ TEST_F(ShapePartitionAssignerTest, Shape532WithLayout201) {
             expected_partitions);
 }
 
-class ShapePartitionIteratorTest : public HloTestBase {
+class ShapePartitionIteratorTest : public HloVerifiedTestBase {
  protected:
   typedef std::vector<std::pair<int64, int64>> Partition;
 };
@@ -102,22 +102,22 @@ TEST_F(ShapePartitionIteratorTest, Shape53WithLayout10) {
   {
     ShapePartitionIterator iterator(shape, {1});
     EXPECT_EQ(1, iterator.GetTotalPartitionCount());
-    EXPECT_TRUE(ContainersEqual(Partition({{0, 5}}), iterator.GetPartition(0)));
+    EXPECT_TRUE(absl::c_equal(Partition({{0, 5}}), iterator.GetPartition(0)));
   }
 
   {
     ShapePartitionIterator iterator(shape, {2});
     EXPECT_EQ(2, iterator.GetTotalPartitionCount());
-    EXPECT_TRUE(ContainersEqual(Partition({{0, 2}}), iterator.GetPartition(0)));
-    EXPECT_TRUE(ContainersEqual(Partition({{2, 3}}), iterator.GetPartition(1)));
+    EXPECT_TRUE(absl::c_equal(Partition({{0, 2}}), iterator.GetPartition(0)));
+    EXPECT_TRUE(absl::c_equal(Partition({{2, 3}}), iterator.GetPartition(1)));
   }
 
   {
     ShapePartitionIterator iterator(shape, {3});
     EXPECT_EQ(3, iterator.GetTotalPartitionCount());
-    EXPECT_TRUE(ContainersEqual(Partition({{0, 1}}), iterator.GetPartition(0)));
-    EXPECT_TRUE(ContainersEqual(Partition({{1, 1}}), iterator.GetPartition(1)));
-    EXPECT_TRUE(ContainersEqual(Partition({{2, 3}}), iterator.GetPartition(2)));
+    EXPECT_TRUE(absl::c_equal(Partition({{0, 1}}), iterator.GetPartition(0)));
+    EXPECT_TRUE(absl::c_equal(Partition({{1, 1}}), iterator.GetPartition(1)));
+    EXPECT_TRUE(absl::c_equal(Partition({{2, 3}}), iterator.GetPartition(2)));
   }
 }
 
@@ -128,24 +128,24 @@ TEST_F(ShapePartitionIteratorTest, Shape532WithLayout210) {
     ShapePartitionIterator iterator(shape, {1, 1});
     EXPECT_EQ(1, iterator.GetTotalPartitionCount());
     EXPECT_TRUE(
-        ContainersEqual(Partition({{0, 5}, {0, 3}}), iterator.GetPartition(0)));
+        absl::c_equal(Partition({{0, 5}, {0, 3}}), iterator.GetPartition(0)));
   }
 
   {
     ShapePartitionIterator iterator(shape, {2, 2});
     EXPECT_EQ(4, iterator.GetTotalPartitionCount());
     EXPECT_TRUE(
-        ContainersEqual(Partition({{0, 2}, {0, 1}}), iterator.GetPartition(0)));
+        absl::c_equal(Partition({{0, 2}, {0, 1}}), iterator.GetPartition(0)));
     EXPECT_TRUE(
-        ContainersEqual(Partition({{0, 2}, {1, 2}}), iterator.GetPartition(1)));
+        absl::c_equal(Partition({{0, 2}, {1, 2}}), iterator.GetPartition(1)));
     EXPECT_TRUE(
-        ContainersEqual(Partition({{2, 3}, {0, 1}}), iterator.GetPartition(2)));
+        absl::c_equal(Partition({{2, 3}, {0, 1}}), iterator.GetPartition(2)));
     EXPECT_TRUE(
-        ContainersEqual(Partition({{2, 3}, {1, 2}}), iterator.GetPartition(3)));
+        absl::c_equal(Partition({{2, 3}, {1, 2}}), iterator.GetPartition(3)));
   }
 }
 
-class RandomShapePartitionIteratorTest : public HloTestBase {
+class RandomShapePartitionIteratorTest : public HloVerifiedTestBase {
  protected:
   typedef std::vector<std::pair<int64, int64>> Partition;
   RandomShapePartitionIteratorTest()

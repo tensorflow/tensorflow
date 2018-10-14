@@ -111,7 +111,7 @@ class DecodeImageOpTest(test.TestCase):
   def testInvalidBytes(self):
     image_bytes = b"ThisIsNotAnImage!"
     decode = image_ops.decode_image(image_bytes)
-    with self.test_session():
+    with self.cached_session():
       with self.assertRaises(errors_impl.InvalidArgumentError):
         decode.eval()
 

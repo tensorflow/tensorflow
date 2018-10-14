@@ -18,9 +18,8 @@ limitations under the License.
 
 #include <vector>
 
+#include "absl/strings/str_cat.h"
 #include "tensorflow/compiler/xla/util.h"
-#include "tensorflow/core/lib/strings/str_util.h"
-#include "tensorflow/core/lib/strings/strcat.h"
 
 namespace xla {
 
@@ -108,7 +107,7 @@ class MetricTableReport {
   // Append all parameters to the report.
   template <typename... Args>
   void AppendLine(Args... args) {
-    tensorflow::strings::StrAppend(&report_, std::forward<Args>(args)..., "\n");
+    absl::StrAppend(&report_, std::forward<Args>(args)..., "\n");
   }
 
   // Represents a set of entries with the same category_text.

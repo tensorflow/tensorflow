@@ -106,7 +106,7 @@ class MultiHeadTest(test.TestCase):
     multi_head = multi_head_lib.multi_head([head1, head2])
     self.assertEqual('head1_head2', multi_head.name)
 
-  def test_predict_two_heads_logits_dict(self):
+  def _test_predict_two_heads_logits_dict(self, use_tpu):
     """Tests predict with logits as dict."""
     head1 = head_lib.multi_label_head(n_classes=2, name='head1')
     head2 = head_lib.multi_label_head(n_classes=3, name='head2')
@@ -121,10 +121,16 @@ class MultiHeadTest(test.TestCase):
         'head2': _sigmoid(logits['head2']),
     }
 
-    spec = multi_head.create_estimator_spec(
-        features={'x': np.array(((42,),), dtype=np.int32)},
-        mode=model_fn.ModeKeys.PREDICT,
-        logits=logits)
+    if use_tpu:
+      spec = multi_head._create_tpu_estimator_spec(
+          features={'x': np.array(((42,),), dtype=np.int32)},
+          mode=model_fn.ModeKeys.PREDICT,
+          logits=logits).as_estimator_spec()
+    else:
+      spec = multi_head.create_estimator_spec(
+          features={'x': np.array(((42,),), dtype=np.int32)},
+          mode=model_fn.ModeKeys.PREDICT,
+          logits=logits)
 
     self.assertItemsEqual(
         (_DEFAULT_SERVING_KEY, 'predict', 'head1', 'head1/classification',
@@ -132,7 +138,7 @@ class MultiHeadTest(test.TestCase):
         spec.export_outputs.keys())
 
     # Assert predictions and export_outputs.
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       _initialize_variables(self, spec.scaffold)
       self.assertIsNone(spec.scaffold.summary_op)
       predictions = sess.run(spec.predictions)
@@ -175,6 +181,12 @@ class MultiHeadTest(test.TestCase):
           sess.run(
               spec.export_outputs['head2/predict'].outputs['probabilities']))
 
+  def test_predict_two_heads_logits_dict(self):
+    self._test_predict_two_heads_logits_dict(use_tpu=False)
+
+  def test_predict_two_heads_logits_dict_tpu(self):
+    self._test_predict_two_heads_logits_dict(use_tpu=True)
+
   def test_predict_two_heads_logits_tensor(self):
     """Tests predict with logits as Tensor."""
     head1 = head_lib.multi_label_head(n_classes=2, name='head1')
@@ -202,7 +214,7 @@ class MultiHeadTest(test.TestCase):
         spec.export_outputs.keys())
 
     # Assert predictions and export_outputs.
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       _initialize_variables(self, spec.scaffold)
       self.assertIsNone(spec.scaffold.summary_op)
       predictions = sess.run(spec.predictions)
@@ -259,7 +271,7 @@ class MultiHeadTest(test.TestCase):
         spec.export_outputs.keys())
 
     # Assert predictions and export_outputs.
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       _initialize_variables(self, spec.scaffold)
       self.assertIsNone(spec.scaffold.summary_op)
       predictions = sess.run(spec.predictions)
@@ -336,7 +348,7 @@ class MultiHeadTest(test.TestCase):
 
     # Assert predictions, loss, and metrics.
     tol = 1e-3
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       _initialize_variables(self, spec.scaffold)
       self.assertIsNone(spec.scaffold.summary_op)
       value_ops = {k: spec.eval_metric_ops[k][0] for k in spec.eval_metric_ops}
@@ -350,6 +362,31 @@ class MultiHeadTest(test.TestCase):
           rtol=tol,
           atol=tol)
 
+  def test_eval_tpu(self):
+    head1 = head_lib.multi_label_head(n_classes=2, name='head1')
+    head2 = head_lib.multi_label_head(n_classes=3, name='head2')
+    multi_head = multi_head_lib.multi_head(
+        [head1, head2], head_weights=[1., 2.])
+
+    logits = {
+        'head1': np.array([[-10., 10.], [-15., 10.]], dtype=np.float32),
+        'head2': np.array([[20., -20., 20.], [-30., 20., -20.]],
+                          dtype=np.float32),
+    }
+    labels = {
+        'head1': np.array([[1, 0], [1, 1]], dtype=np.int64),
+        'head2': np.array([[0, 1, 0], [1, 1, 0]], dtype=np.int64),
+    }
+
+    with self.assertRaisesRegexp(
+        NotImplementedError,
+        r'TPU evaluation is not implemented for multi_head\.'):
+      multi_head._create_tpu_estimator_spec(
+          features={'x': np.array(((42,),), dtype=np.int32)},
+          mode=model_fn.ModeKeys.EVAL,
+          logits=logits,
+          labels=labels)
+
   def test_train_create_loss_one_head(self):
     head1 = head_lib.multi_label_head(n_classes=2, name='head1')
     multi_head = multi_head_lib.multi_head([head1])
@@ -362,7 +399,7 @@ class MultiHeadTest(test.TestCase):
         logits=logits,
         labels=labels)[0]
     tol = 1e-3
-    with self.test_session():
+    with self.cached_session():
       # Unreduced loss of the head is [[(10 + 10) / 2], (15 + 0) / 2]
       # (averaged over classes, averaged over examples).
       self.assertAllClose(8.75, loss.eval(), rtol=tol, atol=tol)
@@ -397,7 +434,7 @@ class MultiHeadTest(test.TestCase):
         logits=logits,
         labels=labels)
     tol = 1e-3
-    with self.test_session():
+    with self.cached_session():
       # loss of the first head is [[(10 + 10) / 2], [(15 + 0) / 2]]
       # = [10, 7.5]
       # training_loss = (1 * 10 + 2 * 7.5) / 2 = 12.5
@@ -445,7 +482,7 @@ class MultiHeadTest(test.TestCase):
         logits=logits,
         labels=labels)
     tol = 1e-3
-    with self.test_session():
+    with self.cached_session():
       # loss of the first head is [[(10 + 10) / 2], [(15 + 0) / 2]]
       # = [10, 7.5]
       # training_loss = (1 * 10 + 2 * 7.5) / 2 = 12.5
@@ -498,7 +535,7 @@ class MultiHeadTest(test.TestCase):
         logits=logits,
         labels=labels)[0]
     tol = 1e-3
-    with self.test_session():
+    with self.cached_session():
       self.assertAllClose(
           expected_training_loss, training_loss.eval(), rtol=tol, atol=tol)
 
@@ -535,7 +572,7 @@ class MultiHeadTest(test.TestCase):
 
     # Assert predictions, loss, train_op, and summaries.
     tol = 1e-3
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       _initialize_variables(self, spec.scaffold)
       self.assertIsNotNone(spec.scaffold.summary_op)
       loss, train_result, summary_str = sess.run((spec.loss, spec.train_op,
@@ -579,7 +616,7 @@ class MultiHeadTest(test.TestCase):
         optimizer=_Optimizer())
 
     tol = 1e-3
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       _initialize_variables(self, spec.scaffold)
       loss, train_result = sess.run((spec.loss, spec.train_op))
       self.assertAllClose(expected_loss, loss, rtol=tol, atol=tol)
@@ -587,7 +624,7 @@ class MultiHeadTest(test.TestCase):
           six.b('{0:s}{1:.3f}'.format(expected_train_result, expected_loss)),
           train_result)
 
-  def test_train_two_heads_with_weights(self):
+  def _test_train_two_heads_with_weights(self, use_tpu):
     head1 = head_lib.multi_label_head(n_classes=2, name='head1')
     head2 = head_lib.multi_label_head(n_classes=3, name='head2')
     multi_head = multi_head_lib.multi_head(
@@ -619,12 +656,20 @@ class MultiHeadTest(test.TestCase):
           [constant_op.constant(expected_train_result),
            string_ops.as_string(loss, precision=3)])
 
-    spec = multi_head.create_estimator_spec(
-        features={'x': np.array(((42,),), dtype=np.int32)},
-        mode=model_fn.ModeKeys.TRAIN,
-        logits=logits,
-        labels=labels,
-        train_op_fn=_train_op_fn)
+    if use_tpu:
+      spec = multi_head._create_tpu_estimator_spec(
+          features={'x': np.array(((42,),), dtype=np.int32)},
+          mode=model_fn.ModeKeys.TRAIN,
+          logits=logits,
+          labels=labels,
+          train_op_fn=_train_op_fn).as_estimator_spec()
+    else:
+      spec = multi_head.create_estimator_spec(
+          features={'x': np.array(((42,),), dtype=np.int32)},
+          mode=model_fn.ModeKeys.TRAIN,
+          logits=logits,
+          labels=labels,
+          train_op_fn=_train_op_fn)
 
     self.assertIsNotNone(spec.loss)
     self.assertEqual({}, spec.eval_metric_ops)
@@ -634,7 +679,7 @@ class MultiHeadTest(test.TestCase):
 
     # Assert predictions, loss, train_op, and summaries.
     tol = 1e-3
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       _initialize_variables(self, spec.scaffold)
       self.assertIsNotNone(spec.scaffold.summary_op)
       loss, train_result, summary_str = sess.run((spec.loss, spec.train_op,
@@ -648,6 +693,12 @@ class MultiHeadTest(test.TestCase):
           metric_keys.MetricKeys.LOSS + '/head1': expected_loss_head1,
           metric_keys.MetricKeys.LOSS + '/head2': expected_loss_head2,
       }, summary_str, tol)
+
+  def test_train_two_heads_with_weights(self):
+    self._test_train_two_heads_with_weights(use_tpu=False)
+
+  def test_train_two_heads_with_weights_tpu(self):
+    self._test_train_two_heads_with_weights(use_tpu=True)
 
 
 if __name__ == '__main__':

@@ -19,6 +19,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/data/dataset.h"
 
 namespace tensorflow {
+namespace data {
 
 // See documentation in ../ops/dataset_ops.cc for a high-level
 // description of the following op.
@@ -32,7 +33,11 @@ class DatasetToGraphOp : public OpKernel {
     GraphDefBuilder b;
     DatasetBase::DatasetGraphDefBuilder db(&b);
     Node* input_node = nullptr;
-    OP_REQUIRES_OK(ctx, db.AddParentDataset(ctx, dataset, &input_node));
+    SerializationContext::Params params;
+    params.flib_def = ctx->function_library()->GetFunctionLibraryDefinition();
+    SerializationContext serialization_ctx(params);
+    OP_REQUIRES_OK(
+        ctx, db.AddInputDataset(&serialization_ctx, dataset, &input_node));
     GraphDef graph_def;
     OP_REQUIRES_OK(ctx, b.ToGraphDef(&graph_def));
     Tensor* result;
@@ -44,4 +49,5 @@ class DatasetToGraphOp : public OpKernel {
 REGISTER_KERNEL_BUILDER(Name("DatasetToGraph").Device(DEVICE_CPU),
                         DatasetToGraphOp);
 
+}  // namespace data
 }  // namespace tensorflow

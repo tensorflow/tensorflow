@@ -210,7 +210,7 @@ def get_pruning_hparams():
       block_height=1,
       block_width=1,
       block_pooling_function='AVG',
-      initial_sparsity=0,
+      initial_sparsity=0.0,
       target_sparsity=0.5,
       sparsity_function_begin_step=0,
       sparsity_function_end_step=100,
@@ -237,6 +237,9 @@ class Pruning(object):
     # Pruning specification
     self._spec = spec if spec else get_pruning_hparams()
 
+    # Sanity check for pruning hparams
+    self._validate_spec()
+
     # A tensorflow variable that tracks the sparsity function.
     # If not provided as input, the graph must already contain the global_step
     # variable before calling this constructor.
@@ -244,7 +247,8 @@ class Pruning(object):
 
     # Stores the tensorflow sparsity variable.
     # Built using self._setup_sparsity() or provided externally
-    self._sparsity = sparsity if sparsity else self._setup_sparsity()
+    self._sparsity = (sparsity
+                      if sparsity is not None else self._setup_sparsity())
 
     # List of tensorflow assignments ops for new masks and thresholds
     self._assign_ops = []
@@ -262,6 +266,34 @@ class Pruning(object):
     # Mapping of weight names and target sparsity
     self._weight_sparsity_map = self._get_weight_sparsity_map()
 
+  def _validate_spec(self):
+    spec = self._spec
+    if spec.begin_pruning_step < 0:
+      raise ValueError('Illegal value for begin_pruning_step')
+
+    if spec.begin_pruning_step >= spec.end_pruning_step:
+      if spec.end_pruning_step != -1:
+        raise ValueError(
+            'Pruning must begin before it can end. begin_step=%d, end_step=%d.'
+            'Set end_pruning_step to -1 if pruning is required till training'
+            'stops' % (spec.begin_pruning_step, spec.end_pruning_step))
+
+    if spec.sparsity_function_begin_step < 0:
+      raise ValueError('Illegal value for sparsity_function_begin_step')
+
+    if spec.sparsity_function_begin_step >= spec.sparsity_function_end_step:
+      raise ValueError(
+          'Sparsity function requires begin_step < end_step')
+
+    if not 0.0 <= spec.threshold_decay < 1.0:
+      raise ValueError('threshold_decay must be in range [0,1)')
+
+    if not 0.0 <= spec.initial_sparsity < 1.0:
+      raise ValueError('initial_sparsity must be in range [0,1)')
+
+    if not 0.0 <= spec.target_sparsity < 1.0:
+      raise ValueError('target_sparsity must be in range [0,1)')
+
   def _setup_global_step(self, global_step):
     graph_global_step = global_step
     if graph_global_step is None:
@@ -275,11 +307,6 @@ class Pruning(object):
     initial_sparsity = self._spec.initial_sparsity
     target_sparsity = self._spec.target_sparsity
     exponent = self._spec.sparsity_function_exponent
-
-    if begin_step >= end_step:
-      raise ValueError(
-          'Pruning must begin before it can end. begin_step=%d, end_step=%d' %
-          (begin_step, end_step))
 
     with ops.name_scope(self._spec.name):
       p = math_ops.minimum(
@@ -450,8 +477,8 @@ class Pruning(object):
 
       smoothed_threshold, new_mask = self._update_mask(pooled_weights,
                                                        threshold)
-      updated_mask = pruning_utils.kronecker_product(
-          new_mask, array_ops.ones(self._block_dim))
+
+      updated_mask = pruning_utils.expand_tensor(new_mask, self._block_dim)
       sliced_mask = array_ops.slice(
           updated_mask, [0, 0],
           [squeezed_weights.get_shape()[0],

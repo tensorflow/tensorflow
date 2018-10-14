@@ -50,8 +50,8 @@ class TrainingOpsTest(TensorFlowTestCase):
 
   def _testTypes(self, x, alpha, delta, use_gpu=None):
     self.setUp()
-    with self.test_session(use_gpu=use_gpu):
-      var = variables.Variable(x)
+    with self.session(use_gpu=use_gpu):
+      var = variables.VariableV1(x)
       variables.global_variables_initializer().run()
       self.assertAllCloseAccordingToType(x, var.eval())
       apply_sgd = training_ops.apply_gradient_descent(var, alpha, delta)
@@ -69,9 +69,9 @@ class TrainingOpsTest(TensorFlowTestCase):
 
   def _testTypesForAdagrad(self, x, y, lr, grad, use_gpu=None):
     self.setUp()
-    with self.test_session(use_gpu=use_gpu):
-      var = variables.Variable(x)
-      accum = variables.Variable(y)
+    with self.session(use_gpu=use_gpu):
+      var = variables.VariableV1(x)
+      accum = variables.VariableV1(y)
       variables.global_variables_initializer().run()
 
       self.assertAllCloseAccordingToType(x, var.eval())
@@ -93,10 +93,10 @@ class TrainingOpsTest(TensorFlowTestCase):
                         l2=0.0,
                         lr_power=-0.5):
     self.setUp()
-    with self.test_session(use_gpu=use_gpu):
-      var = variables.Variable(x)
-      accum = variables.Variable(y)
-      linear = variables.Variable(z)
+    with self.session(use_gpu=use_gpu):
+      var = variables.VariableV1(x)
+      accum = variables.VariableV1(y)
+      linear = variables.VariableV1(z)
       variables.global_variables_initializer().run()
 
       self.assertAllCloseAccordingToType(x, var.eval())
@@ -147,9 +147,9 @@ class TrainingOpsTest(TensorFlowTestCase):
 
   def _testTypesForSparseAdagrad(self, x, y, lr, grad, indices):
     self.setUp()
-    with self.test_session(use_gpu=False):
-      var = variables.Variable(x)
-      accum = variables.Variable(y)
+    with self.session(use_gpu=False):
+      var = variables.VariableV1(x)
+      accum = variables.VariableV1(y)
       variables.global_variables_initializer().run()
 
       self.assertAllCloseAccordingToType(x, var.eval())
@@ -177,10 +177,10 @@ class TrainingOpsTest(TensorFlowTestCase):
                               l2=0.0,
                               lr_power=-0.5):
     self.setUp()
-    with self.test_session(use_gpu=False):
-      var = variables.Variable(x)
-      accum = variables.Variable(y)
-      linear = variables.Variable(z)
+    with self.session(use_gpu=False):
+      var = variables.VariableV1(x)
+      accum = variables.VariableV1(y)
+      linear = variables.VariableV1(z)
       variables.global_variables_initializer().run()
 
       self.assertAllCloseAccordingToType(x, var.eval())
@@ -256,10 +256,10 @@ class TrainingOpsTest(TensorFlowTestCase):
 
   def _testTypesForAdam(self, var, m, v, grad, use_gpu):
     self.setUp()
-    with self.test_session(use_gpu=use_gpu):
-      var_t = variables.Variable(var)
-      m_t = variables.Variable(m)
-      v_t = variables.Variable(v)
+    with self.session(use_gpu=use_gpu):
+      var_t = variables.VariableV1(var)
+      m_t = variables.VariableV1(m)
+      v_t = variables.VariableV1(v)
 
       t = 1
       beta1 = np.array(0.9, dtype=var.dtype)
@@ -270,8 +270,8 @@ class TrainingOpsTest(TensorFlowTestCase):
       epsilon = np.array(1e-8, dtype=var.dtype)
       beta1_t = constant_op.constant(beta1, self._toType(var.dtype), [])
       beta2_t = constant_op.constant(beta2, self._toType(var.dtype), [])
-      beta1_power_t = variables.Variable(beta1_power)
-      beta2_power_t = variables.Variable(beta2_power)
+      beta1_power_t = variables.VariableV1(beta1_power)
+      beta2_power_t = variables.VariableV1(beta2_power)
       lr_t = constant_op.constant(lr, self._toType(var.dtype), [])
       epsilon_t = constant_op.constant(epsilon, self._toType(var.dtype), [])
       variables.global_variables_initializer().run()

@@ -108,6 +108,8 @@ def from_estimator(estimator,
 def from_saved_model(export_dir,
                      signature_def_key=None,
                      signature_def=None,
+                     input_names=None,
+                     output_names=None,
                      tags=None,
                      graph=None,
                      config=None):
@@ -121,6 +123,12 @@ def from_saved_model(export_dir,
     signature_def: A `SignatureDef` proto specifying the inputs and outputs
       for prediction. Only one of `signature_def_key` and `signature_def`
       should be specified.
+      input_names: A dictionary mapping strings to `Tensor`s in the `SavedModel`
+        that represent the input. The keys can be any string of the user's
+        choosing.
+      output_names: A dictionary mapping strings to `Tensor`s in the
+        `SavedModel` that represent the output. The keys can be any string of
+        the user's choosing.
     tags: Optional. Tags that will be used to retrieve the correct
       `SignatureDef`. Defaults to `DEFAULT_TAGS`.
     graph: Optional. The Tensorflow `graph` in which prediction should be
@@ -138,6 +146,8 @@ def from_saved_model(export_dir,
       export_dir,
       signature_def_key=signature_def_key,
       signature_def=signature_def,
+      input_names=input_names,
+      output_names=output_names,
       tags=tags,
       graph=graph,
       config=config)

@@ -30,7 +30,7 @@ class ClipOpsTest(test.TestCase):
     super(ClipOpsTest, self).__init__(method_name)
 
   def _testClipByNorm(self, inputs, max_norm, expected):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       input_op = constant_op.constant(inputs)
       clipped = clip_ops.clip_by_norm(input_op, max_norm)
       check_op = numerics.add_check_numerics_ops()

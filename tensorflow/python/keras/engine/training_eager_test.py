@@ -24,6 +24,7 @@ from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python import keras
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util as tf_test_util
+from tensorflow.python.keras import metrics as metrics_module
 from tensorflow.python.platform import test
 from tensorflow.python.training.rmsprop import RMSPropOptimizer
 
@@ -44,7 +45,7 @@ class TrainingTest(test.TestCase):
     optimizer = RMSPropOptimizer(learning_rate=0.001)
     loss = 'mse'
     loss_weights = [1., 0.5]
-    metrics = ['mae']
+    metrics = ['mae', metrics_module.CategoricalAccuracy()]
     model.compile(
         optimizer,
         loss,
@@ -109,7 +110,7 @@ class TrainingTest(test.TestCase):
 
     optimizer = RMSPropOptimizer(learning_rate=0.001)
     loss = 'mse'
-    metrics = ['mae']
+    metrics = ['mae', metrics_module.CategoricalAccuracy()]
     model.compile(optimizer, loss, metrics=metrics)
 
     inputs = keras.backend.zeros(shape=(10, 3))
@@ -124,11 +125,43 @@ class TrainingTest(test.TestCase):
     model.train_on_batch(inputs, targets)
     model.test_on_batch(inputs, targets)
 
+  def test_model_fit_and_validation_with_missing_arg_errors(self):
+    x = keras.layers.Input(shape=(3,), name='input')
+    y = keras.layers.Dense(4, name='dense')(x)
+    model = keras.Model(x, y)
+    model.compile(optimizer=RMSPropOptimizer(learning_rate=0.001), loss='mse')
+
+    x = keras.backend.zeros(shape=(10, 3))
+    y = keras.backend.zeros(shape=(10, 4))
+    dataset = dataset_ops.Dataset.from_tensor_slices((x, y)).repeat(10).batch(5)
+    iterator = dataset.make_one_shot_iterator()
+    validation_dataset = dataset_ops.Dataset.from_tensor_slices(
+        (x, y)).repeat(10).batch(5)
+    validation_iterator = validation_dataset.make_one_shot_iterator()
+
+    with self.assertRaisesRegexp(
+        ValueError, r'specify .* `steps_per_epoch`'):
+      model.fit(iterator, epochs=1, verbose=0)
+    with self.assertRaisesRegexp(
+        ValueError, r'provide either `batch_size` or `validation_steps`'):
+      model.fit(iterator, steps_per_epoch=2, epochs=1, verbose=0,
+                validation_data=(x, y))
+    with self.assertRaisesRegexp(
+        ValueError, r'provide either `batch_size` or `validation_steps`'):
+      model.fit(iterator, steps_per_epoch=2, epochs=1, verbose=0,
+                validation_data=validation_dataset)
+    with self.assertRaisesRegexp(
+        ValueError, r'provide either `batch_size` or `validation_steps`'):
+      model.fit(iterator, steps_per_epoch=2, epochs=1, verbose=0,
+                validation_data=validation_iterator)
+
   def test_generator_methods(self):
     model = keras.Sequential()
     model.add(keras.layers.Dense(4, input_shape=(3,)))
     optimizer = RMSPropOptimizer(learning_rate=0.001)
-    model.compile(optimizer, 'mse', metrics=['mae'])
+    model.compile(
+        optimizer, 'mse', metrics=['mae',
+                                   metrics_module.CategoricalAccuracy()])
 
     x = np.random.random((10, 3))
     y = np.random.random((10, 4))
@@ -167,27 +200,6 @@ class CorrectnessTest(test.TestCase):
         np.around(history.history['loss'][-1], decimals=4), 0.6173)
 
   @tf_test_util.run_in_graph_and_eager_modes
-  def test_metrics_correctness(self):
-    model = keras.Sequential()
-    model.add(keras.layers.Dense(3,
-                                 activation='relu',
-                                 input_dim=4,
-                                 kernel_initializer='ones'))
-    model.add(keras.layers.Dense(1,
-                                 activation='sigmoid',
-                                 kernel_initializer='ones'))
-    model.compile(loss='mae',
-                  metrics=['acc'],
-                  optimizer=RMSPropOptimizer(learning_rate=0.001))
-    x = np.ones((100, 4))
-    y = np.ones((100, 1))
-    outs = model.evaluate(x, y)
-    self.assertEqual(outs[1], 1.)
-    y = np.zeros((100, 1))
-    outs = model.evaluate(x, y)
-    self.assertEqual(outs[1], 0.)
-
-  @tf_test_util.run_in_graph_and_eager_modes
   def test_loss_correctness_with_iterator(self):
     # Test that training loss is the same in eager and graph
     # (by comparing it to a reference value in a deterministic case)
@@ -210,35 +222,20 @@ class CorrectnessTest(test.TestCase):
     history = model.fit(iterator, epochs=1, steps_per_epoch=10)
     self.assertEqual(np.around(history.history['loss'][-1], decimals=4), 0.6173)
 
-  @tf_test_util.run_in_graph_and_eager_modes
-  def test_metrics_correctness_with_iterator(self):
-    model = keras.Sequential()
-    model.add(
-        keras.layers.Dense(
-            8, activation='relu', input_dim=4, kernel_initializer='ones'))
-    model.add(
-        keras.layers.Dense(1, activation='sigmoid', kernel_initializer='ones'))
-    model.compile(
-        loss='binary_crossentropy',
-        metrics=['accuracy'],
-        optimizer=RMSPropOptimizer(learning_rate=0.001))
-    np.random.seed(123)
-    x = np.random.randint(10, size=(100, 4)).astype(np.float32)
-    y = np.random.randint(2, size=(100, 1)).astype(np.float32)
-    dataset = dataset_ops.Dataset.from_tensor_slices((x, y))
-    dataset = dataset.batch(10)
-    iterator = dataset.make_one_shot_iterator()
-    outs = model.evaluate(iterator, steps=10)
-    self.assertEqual(np.around(outs[1], decimals=1), 0.5)
+  def test_no_loss_in_call(self):
 
-    y = np.zeros((100, 1), dtype=np.float32)
-    dataset = dataset_ops.Dataset.from_tensor_slices((x, y))
-    dataset = dataset.repeat(100)
-    dataset = dataset.batch(10)
-    iterator = dataset.make_one_shot_iterator()
-    outs = model.evaluate(iterator, steps=10)
-    self.assertEqual(outs[1], 0.)
+    class HasLoss(keras.layers.Layer):
 
+      def call(self, x):
+        self.add_loss(x)
+        return x
+
+    layer = HasLoss()
+    with self.assertRaises(RuntimeError):
+      layer(1.)
+
+    with ops.Graph().as_default():
+      layer(1.)
 
 if __name__ == '__main__':
   ops.enable_eager_execution()

@@ -97,6 +97,16 @@ class OperatorTest : public ::testing::Test {
 
     ASSERT_NE(nullptr, output_toco_op.get());
   }
+
+  template <typename T>
+  void CheckReducerOperator(const string& name, OperatorType type) {
+    T op;
+
+    op.keep_dims = false;
+
+    auto output_toco_op = SerializeAndDeserialize(GetOperator(name, type), op);
+    EXPECT_EQ(op.keep_dims, output_toco_op->keep_dims);
+  }
 };
 
 TEST_F(OperatorTest, SimpleOperators) {
@@ -129,6 +139,15 @@ TEST_F(OperatorTest, SimpleOperators) {
   CheckSimpleOperator<PowOperator>("POW", OperatorType::kPow);
   CheckSimpleOperator<LogicalOrOperator>("LOGICAL_OR",
                                          OperatorType::kLogicalOr);
+  CheckSimpleOperator<LogicalAndOperator>("LOGICAL_AND",
+                                          OperatorType::kLogicalAnd);
+  CheckSimpleOperator<LogicalNotOperator>("LOGICAL_NOT",
+                                          OperatorType::kLogicalNot);
+  CheckSimpleOperator<FloorDivOperator>("FLOOR_DIV", OperatorType::kFloorDiv);
+  CheckSimpleOperator<TensorFlowSquareOperator>("SQUARE",
+                                                OperatorType::kSquare);
+  CheckSimpleOperator<TensorFlowZerosLikeOperator>("ZEROS_LIKE",
+                                                   OperatorType::kZerosLike);
 }
 
 TEST_F(OperatorTest, BuiltinAdd) {
@@ -140,13 +159,16 @@ TEST_F(OperatorTest, BuiltinAdd) {
             output_toco_op->fused_activation_function);
 }
 
-TEST_F(OperatorTest, BuiltinMean) {
-  MeanOperator op;
-  op.keep_dims = false;
-
-  auto output_toco_op =
-      SerializeAndDeserialize(GetOperator("MEAN", OperatorType::kMean), op);
-  EXPECT_EQ(op.keep_dims, output_toco_op->keep_dims);
+TEST_F(OperatorTest, BuiltinReducerOps) {
+  CheckReducerOperator<MeanOperator>("MEAN", OperatorType::kMean);
+  CheckReducerOperator<TensorFlowSumOperator>("SUM", OperatorType::kSum);
+  CheckReducerOperator<TensorFlowProdOperator>("REDUCE_PROD",
+                                               OperatorType::kReduceProd);
+  CheckReducerOperator<TensorFlowMaxOperator>("REDUCE_MAX",
+                                              OperatorType::kReduceMax);
+  CheckReducerOperator<TensorFlowMinOperator>("REDUCE_MIN",
+                                              OperatorType::kReduceMin);
+  CheckReducerOperator<TensorFlowAnyOperator>("REDUCE_ANY", OperatorType::kAny);
 }
 
 TEST_F(OperatorTest, BuiltinCast) {
@@ -472,6 +494,30 @@ TEST_F(OperatorTest, BuiltinOneHot) {
   EXPECT_EQ(op.axis, output_toco_op->axis);
 }
 
+TEST_F(OperatorTest, BuiltinUnpack) {
+  UnpackOperator op;
+  op.num = 5;
+  op.axis = 2;
+  auto output_toco_op =
+      SerializeAndDeserialize(GetOperator("UNPACK", OperatorType::kUnpack), op);
+  EXPECT_EQ(op.num, output_toco_op->num);
+  EXPECT_EQ(op.axis, output_toco_op->axis);
+}
+
+TEST_F(OperatorTest, CustomCTCBeamSearchDecoder) {
+  CTCBeamSearchDecoderOperator op;
+  op.beam_width = 3;
+  op.top_paths = 2;
+  op.merge_repeated = false;
+  std::unique_ptr<toco::CTCBeamSearchDecoderOperator> output_toco_op =
+      SerializeAndDeserialize(GetOperator("CTC_BEAM_SEARCH_DECODER",
+                                          OperatorType::kCTCBeamSearchDecoder),
+                              op);
+  EXPECT_EQ(op.beam_width, output_toco_op->beam_width);
+  EXPECT_EQ(op.top_paths, output_toco_op->top_paths);
+  EXPECT_EQ(op.merge_repeated, output_toco_op->merge_repeated);
+}
+
 TEST_F(OperatorTest, TensorFlowUnsupported) {
   TensorFlowUnsupportedOperator op;
   op.tensorflow_op = "MyCustomUnsupportedOp";
@@ -521,6 +567,12 @@ TEST_F(OperatorTest, TensorFlowUnsupportedWithoutAttr) {
   ::tensorflow::NodeDef output_node_def;
   output_node_def.ParseFromString(output_toco_op->tensorflow_node_def);
   EXPECT_TRUE(output_node_def.attr().empty());
+}
+
+TEST_F(OperatorTest, TestShouldExportAsFlexOp) {
+  EXPECT_FALSE(ShouldExportAsFlexOp(false, "Conv2D"));
+  EXPECT_TRUE(ShouldExportAsFlexOp(true, "Conv2D"));
+  EXPECT_FALSE(ShouldExportAsFlexOp(true, "MyAwesomeCustomOp"));
 }
 
 }  // namespace

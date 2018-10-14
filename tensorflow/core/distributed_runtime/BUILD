@@ -508,6 +508,7 @@ cc_library(
     hdrs = ["collective_rma_distributed.h"],
     deps = [
         ":cancellable_call",
+        ":request_id",
         ":worker_cache",
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework",
@@ -561,6 +562,7 @@ cc_library(
     deps = [
         ":worker_cache",
         ":worker_interface",
+        "//tensorflow/core:framework",
     ],
 )
 

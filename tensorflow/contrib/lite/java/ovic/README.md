@@ -4,7 +4,7 @@ This folder contains building code for track one of the [Low Power ImageNet Reco
 
 ## Pre-requisite
 
-Follow the steps [here](https://www.tensorflow.org/mobile/tflite/demo_android) to install Tensorflow, Bazel, and the Android NDK and SDK.
+Follow the steps [here](https://www.tensorflow.org/lite/demo_android) to install Tensorflow, Bazel, and the Android NDK and SDK.
 
 ## Test the benchmarker:
 

@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_PLATFORM_LOGGING_H_
-#define TENSORFLOW_PLATFORM_LOGGING_H_
+#ifndef TENSORFLOW_CORE_PLATFORM_LOGGING_H_
+#define TENSORFLOW_CORE_PLATFORM_LOGGING_H_
 
 #include "tensorflow/core/platform/platform.h"  // To pick up PLATFORM_define
 
@@ -36,4 +36,4 @@ void LogString(const char* fname, int line, int severity,
 
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_PLATFORM_LOGGING_H_
+#endif  // TENSORFLOW_CORE_PLATFORM_LOGGING_H_

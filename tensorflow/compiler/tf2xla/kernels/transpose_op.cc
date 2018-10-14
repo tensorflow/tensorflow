@@ -61,7 +61,7 @@ class TransposeOp : public XlaOpKernel {
 
     std::vector<int64> transposed_order;
     // Check whether permutation is a permutation of integers of [0 .. dims).
-    gtl::InlinedVector<bool, 8> bits(dims);
+    absl::InlinedVector<bool, 8> bits(dims);
     bool is_identity = true;
     for (int i = 0; i < dims; ++i) {
       const int32 d = perm[i];

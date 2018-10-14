@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 // Unit test for TFLite Bidirectional LSTM op.
 
+#include <initializer_list>
 #include <iomanip>
 #include <memory>
 #include <vector>
@@ -24,6 +25,7 @@ limitations under the License.
 #include "tensorflow/contrib/lite/kernels/register.h"
 #include "tensorflow/contrib/lite/kernels/test_util.h"
 #include "tensorflow/contrib/lite/model.h"
+#include "tensorflow/contrib/lite/schema/schema_generated.h"
 
 namespace tflite {
 namespace {
@@ -35,8 +37,9 @@ class BidirectionalLSTMOpModel : public SingleOpModel {
   BidirectionalLSTMOpModel(int n_batch, int n_input, int n_cell, int n_output,
                            int sequence_length, bool use_cifg,
                            bool use_peephole, bool use_projection_weights,
-                           bool use_projection_bias, float cell_clip,
-                           float proj_clip,
+                           bool use_projection_bias, bool merge_outputs,
+                           float cell_clip, float proj_clip,
+                           bool quantize_weights,
                            const std::vector<std::vector<int>>& input_shapes)
       : n_batch_(n_batch),
         n_input_(n_input),
@@ -44,37 +47,40 @@ class BidirectionalLSTMOpModel : public SingleOpModel {
         n_bw_cell_(n_cell),
         n_fw_output_(n_output),
         n_bw_output_(n_output),
-        sequence_length_(sequence_length) {
+        sequence_length_(sequence_length),
+        quantize_weights_(quantize_weights) {
     input_ = AddInput(TensorType_FLOAT32);
+    const auto weight_type =
+        quantize_weights_ ? TensorType_UINT8 : TensorType_FLOAT32;
 
     if (use_cifg) {
       fw_input_to_input_weights_ = AddNullInput();
     } else {
-      fw_input_to_input_weights_ = AddInput(TensorType_FLOAT32);
+      fw_input_to_input_weights_ = AddInput(weight_type);
     }
 
-    fw_input_to_forget_weights_ = AddInput(TensorType_FLOAT32);
-    fw_input_to_cell_weights_ = AddInput(TensorType_FLOAT32);
-    fw_input_to_output_weights_ = AddInput(TensorType_FLOAT32);
+    fw_input_to_forget_weights_ = AddInput(weight_type);
+    fw_input_to_cell_weights_ = AddInput(weight_type);
+    fw_input_to_output_weights_ = AddInput(weight_type);
 
     if (use_cifg) {
       fw_recurrent_to_input_weights_ = AddNullInput();
     } else {
-      fw_recurrent_to_input_weights_ = AddInput(TensorType_FLOAT32);
+      fw_recurrent_to_input_weights_ = AddInput(weight_type);
     }
 
-    fw_recurrent_to_forget_weights_ = AddInput(TensorType_FLOAT32);
-    fw_recurrent_to_cell_weights_ = AddInput(TensorType_FLOAT32);
-    fw_recurrent_to_output_weights_ = AddInput(TensorType_FLOAT32);
+    fw_recurrent_to_forget_weights_ = AddInput(weight_type);
+    fw_recurrent_to_cell_weights_ = AddInput(weight_type);
+    fw_recurrent_to_output_weights_ = AddInput(weight_type);
 
     if (use_peephole) {
       if (use_cifg) {
         fw_cell_to_input_weights_ = AddNullInput();
       } else {
-        fw_cell_to_input_weights_ = AddInput(TensorType_FLOAT32);
+        fw_cell_to_input_weights_ = AddInput(weight_type);
       }
-      fw_cell_to_forget_weights_ = AddInput(TensorType_FLOAT32);
-      fw_cell_to_output_weights_ = AddInput(TensorType_FLOAT32);
+      fw_cell_to_forget_weights_ = AddInput(weight_type);
+      fw_cell_to_output_weights_ = AddInput(weight_type);
     } else {
       fw_cell_to_input_weights_ = AddNullInput();
       fw_cell_to_forget_weights_ = AddNullInput();
@@ -102,38 +108,34 @@ class BidirectionalLSTMOpModel : public SingleOpModel {
       fw_projection_bias_ = AddNullInput();
     }
 
-    fw_output_state_ = AddOutput(TensorType_FLOAT32);
-    fw_cell_state_ = AddOutput(TensorType_FLOAT32);
-    fw_output_ = AddOutput(TensorType_FLOAT32);
-
     if (use_cifg) {
       bw_input_to_input_weights_ = AddNullInput();
     } else {
-      bw_input_to_input_weights_ = AddInput(TensorType_FLOAT32);
+      bw_input_to_input_weights_ = AddInput(weight_type);
     }
 
-    bw_input_to_forget_weights_ = AddInput(TensorType_FLOAT32);
-    bw_input_to_cell_weights_ = AddInput(TensorType_FLOAT32);
-    bw_input_to_output_weights_ = AddInput(TensorType_FLOAT32);
+    bw_input_to_forget_weights_ = AddInput(weight_type);
+    bw_input_to_cell_weights_ = AddInput(weight_type);
+    bw_input_to_output_weights_ = AddInput(weight_type);
 
     if (use_cifg) {
       bw_recurrent_to_input_weights_ = AddNullInput();
     } else {
-      bw_recurrent_to_input_weights_ = AddInput(TensorType_FLOAT32);
+      bw_recurrent_to_input_weights_ = AddInput(weight_type);
     }
 
-    bw_recurrent_to_forget_weights_ = AddInput(TensorType_FLOAT32);
-    bw_recurrent_to_cell_weights_ = AddInput(TensorType_FLOAT32);
-    bw_recurrent_to_output_weights_ = AddInput(TensorType_FLOAT32);
+    bw_recurrent_to_forget_weights_ = AddInput(weight_type);
+    bw_recurrent_to_cell_weights_ = AddInput(weight_type);
+    bw_recurrent_to_output_weights_ = AddInput(weight_type);
 
     if (use_peephole) {
       if (use_cifg) {
         bw_cell_to_input_weights_ = AddNullInput();
       } else {
-        bw_cell_to_input_weights_ = AddInput(TensorType_FLOAT32);
+        bw_cell_to_input_weights_ = AddInput(weight_type);
       }
-      bw_cell_to_forget_weights_ = AddInput(TensorType_FLOAT32);
-      bw_cell_to_output_weights_ = AddInput(TensorType_FLOAT32);
+      bw_cell_to_forget_weights_ = AddInput(weight_type);
+      bw_cell_to_output_weights_ = AddInput(weight_type);
     } else {
       bw_cell_to_input_weights_ = AddNullInput();
       bw_cell_to_forget_weights_ = AddNullInput();
@@ -150,7 +152,7 @@ class BidirectionalLSTMOpModel : public SingleOpModel {
     bw_output_gate_bias_ = AddInput(TensorType_FLOAT32);
 
     if (use_projection_weights) {
-      bw_projection_weights_ = AddInput(TensorType_FLOAT32);
+      bw_projection_weights_ = AddInput(weight_type);
       if (use_projection_bias) {
         bw_projection_bias_ = AddInput(TensorType_FLOAT32);
       } else {
@@ -161,122 +163,139 @@ class BidirectionalLSTMOpModel : public SingleOpModel {
       bw_projection_bias_ = AddNullInput();
     }
 
-    bw_output_state_ = AddOutput(TensorType_FLOAT32);
-    bw_cell_state_ = AddOutput(TensorType_FLOAT32);
-    bw_output_ = AddOutput(TensorType_FLOAT32);
+    // Adding the 2 input state tensors.
+    fw_input_activation_state_ =
+        AddInput(TensorData{TensorType_FLOAT32, {n_fw_output_ * n_batch_}},
+                 /*is_variable=*/true);
+    fw_input_cell_state_ =
+        AddInput(TensorData{TensorType_FLOAT32, {n_fw_cell_ * n_batch_}},
+                 /*is_variable=*/true);
+
+    // Adding the 2 input state tensors.
+    bw_input_activation_state_ =
+        AddInput(TensorData{TensorType_FLOAT32, {n_bw_output_ * n_batch_}},
+                 /*is_variable=*/true);
+    bw_input_cell_state_ =
+        AddInput(TensorData{TensorType_FLOAT32, {n_bw_cell_ * n_batch_}},
+                 /*is_variable=*/true);
+
+    fw_output_ = AddOutput(TensorType_FLOAT32);
+
+    if (!merge_outputs) {
+      bw_output_ = AddOutput(TensorType_FLOAT32);
+    }
+
+    aux_input_ = AddNullInput();
+    fw_aux_input_to_input_weights_ = AddNullInput();
+    fw_aux_input_to_forget_weights_ = AddNullInput();
+    fw_aux_input_to_cell_weights_ = AddNullInput();
+    fw_aux_input_to_output_weights_ = AddNullInput();
+    bw_aux_input_to_input_weights_ = AddNullInput();
+    bw_aux_input_to_forget_weights_ = AddNullInput();
+    bw_aux_input_to_cell_weights_ = AddNullInput();
+    bw_aux_input_to_output_weights_ = AddNullInput();
 
     SetBuiltinOp(BuiltinOperator_BIDIRECTIONAL_SEQUENCE_LSTM,
-                 BuiltinOptions_LSTMOptions,
-                 CreateLSTMOptions(builder_, ActivationFunctionType_TANH,
-                                   cell_clip, proj_clip)
+                 BuiltinOptions_BidirectionalSequenceLSTMOptions,
+                 CreateBidirectionalSequenceLSTMOptions(
+                     builder_, ActivationFunctionType_TANH, cell_clip,
+                     proj_clip, merge_outputs)
                      .Union());
     BuildInterpreter(input_shapes);
   }
 
+  void PopulateWeightTensor(int tensor_id, const std::vector<float>& f) {
+    if (quantize_weights_) {
+      SymmetricQuantizeAndPopulate(tensor_id, f);
+    } else {
+      PopulateTensor(tensor_id, f);
+    }
+  }
+
   // Set weights in forward and backward cells to be the same.
-  void SetInputToInputWeights(std::initializer_list<float> f) {
-    PopulateTensor(fw_input_to_input_weights_, f);
-    PopulateTensor(bw_input_to_input_weights_, f);
+  void SetInputToInputWeights(const std::vector<float>& f) {
+    PopulateWeightTensor(fw_input_to_input_weights_, f);
+    PopulateWeightTensor(bw_input_to_input_weights_, f);
   }
 
-  void SetInputToForgetWeights(std::initializer_list<float> f) {
-    PopulateTensor(fw_input_to_forget_weights_, f);
-    PopulateTensor(bw_input_to_forget_weights_, f);
+  void SetInputToForgetWeights(const std::vector<float>& f) {
+    PopulateWeightTensor(fw_input_to_forget_weights_, f);
+    PopulateWeightTensor(bw_input_to_forget_weights_, f);
   }
 
-  void SetInputToCellWeights(std::initializer_list<float> f) {
-    PopulateTensor(fw_input_to_cell_weights_, f);
-    PopulateTensor(bw_input_to_cell_weights_, f);
+  void SetInputToCellWeights(const std::vector<float>& f) {
+    PopulateWeightTensor(fw_input_to_cell_weights_, f);
+    PopulateWeightTensor(bw_input_to_cell_weights_, f);
   }
 
-  void SetInputToOutputWeights(std::initializer_list<float> f) {
-    PopulateTensor(fw_input_to_output_weights_, f);
-    PopulateTensor(bw_input_to_output_weights_, f);
+  void SetInputToOutputWeights(const std::vector<float>& f) {
+    PopulateWeightTensor(fw_input_to_output_weights_, f);
+    PopulateWeightTensor(bw_input_to_output_weights_, f);
   }
 
-  void SetRecurrentToInputWeights(std::initializer_list<float> f) {
-    PopulateTensor(fw_recurrent_to_input_weights_, f);
-    PopulateTensor(bw_recurrent_to_input_weights_, f);
+  void SetRecurrentToInputWeights(const std::vector<float>& f) {
+    PopulateWeightTensor(fw_recurrent_to_input_weights_, f);
+    PopulateWeightTensor(bw_recurrent_to_input_weights_, f);
   }
 
-  void SetRecurrentToForgetWeights(std::initializer_list<float> f) {
-    PopulateTensor(fw_recurrent_to_forget_weights_, f);
-    PopulateTensor(bw_recurrent_to_forget_weights_, f);
+  void SetRecurrentToForgetWeights(const std::vector<float>& f) {
+    PopulateWeightTensor(fw_recurrent_to_forget_weights_, f);
+    PopulateWeightTensor(bw_recurrent_to_forget_weights_, f);
   }
 
-  void SetRecurrentToCellWeights(std::initializer_list<float> f) {
-    PopulateTensor(fw_recurrent_to_cell_weights_, f);
-    PopulateTensor(bw_recurrent_to_cell_weights_, f);
+  void SetRecurrentToCellWeights(const std::vector<float>& f) {
+    PopulateWeightTensor(fw_recurrent_to_cell_weights_, f);
+    PopulateWeightTensor(bw_recurrent_to_cell_weights_, f);
   }
 
-  void SetRecurrentToOutputWeights(std::initializer_list<float> f) {
-    PopulateTensor(fw_recurrent_to_output_weights_, f);
-    PopulateTensor(bw_recurrent_to_output_weights_, f);
+  void SetRecurrentToOutputWeights(const std::vector<float>& f) {
+    PopulateWeightTensor(fw_recurrent_to_output_weights_, f);
+    PopulateWeightTensor(bw_recurrent_to_output_weights_, f);
   }
 
-  void SetCellToInputWeights(std::initializer_list<float> f) {
-    PopulateTensor(fw_cell_to_input_weights_, f);
-    PopulateTensor(bw_cell_to_input_weights_, f);
+  void SetCellToInputWeights(const std::vector<float>& f) {
+    PopulateWeightTensor(fw_cell_to_input_weights_, f);
+    PopulateWeightTensor(bw_cell_to_input_weights_, f);
   }
 
-  void SetCellToForgetWeights(std::initializer_list<float> f) {
-    PopulateTensor(fw_cell_to_forget_weights_, f);
-    PopulateTensor(bw_cell_to_forget_weights_, f);
+  void SetCellToForgetWeights(const std::vector<float>& f) {
+    PopulateWeightTensor(fw_cell_to_forget_weights_, f);
+    PopulateWeightTensor(bw_cell_to_forget_weights_, f);
   }
 
-  void SetCellToOutputWeights(std::initializer_list<float> f) {
-    PopulateTensor(fw_cell_to_output_weights_, f);
-    PopulateTensor(bw_cell_to_output_weights_, f);
+  void SetCellToOutputWeights(const std::vector<float>& f) {
+    PopulateWeightTensor(fw_cell_to_output_weights_, f);
+    PopulateWeightTensor(bw_cell_to_output_weights_, f);
   }
 
-  void SetInputGateBias(std::initializer_list<float> f) {
+  void SetInputGateBias(const std::vector<float>& f) {
     PopulateTensor(fw_input_gate_bias_, f);
     PopulateTensor(bw_input_gate_bias_, f);
   }
 
-  void SetForgetGateBias(std::initializer_list<float> f) {
+  void SetForgetGateBias(const std::vector<float>& f) {
     PopulateTensor(fw_forget_gate_bias_, f);
     PopulateTensor(bw_forget_gate_bias_, f);
   }
 
-  void SetCellBias(std::initializer_list<float> f) {
+  void SetCellBias(const std::vector<float>& f) {
     PopulateTensor(fw_cell_bias_, f);
     PopulateTensor(bw_cell_bias_, f);
   }
 
-  void SetOutputGateBias(std::initializer_list<float> f) {
+  void SetOutputGateBias(const std::vector<float>& f) {
     PopulateTensor(fw_output_gate_bias_, f);
     PopulateTensor(bw_output_gate_bias_, f);
   }
 
-  void SetProjectionWeights(std::initializer_list<float> f) {
-    PopulateTensor(fw_projection_weights_, f);
-    PopulateTensor(bw_projection_weights_, f);
+  void SetProjectionWeights(const std::vector<float>& f) {
+    PopulateWeightTensor(fw_projection_weights_, f);
+    PopulateWeightTensor(bw_projection_weights_, f);
   }
 
-  void SetProjectionBias(std::initializer_list<float> f) {
+  void SetProjectionBias(const std::vector<float>& f) {
     PopulateTensor(fw_projection_bias_, f);
     PopulateTensor(bw_projection_bias_, f);
-  }
-
-  void ResetFwOutputAndCellStates() {
-    const int zero_buffer_size = n_fw_cell_ * n_batch_;
-    std::unique_ptr<float[]> zero_buffer(new float[zero_buffer_size]);
-    memset(zero_buffer.get(), 0, zero_buffer_size * sizeof(float));
-    PopulateTensor(fw_output_state_, 0, zero_buffer.get(),
-                   zero_buffer.get() + zero_buffer_size);
-    PopulateTensor(fw_cell_state_, 0, zero_buffer.get(),
-                   zero_buffer.get() + zero_buffer_size);
-  }
-
-  void ResetBwOutputAndCellStates() {
-    const int zero_buffer_size = n_bw_cell_ * n_batch_;
-    std::unique_ptr<float[]> zero_buffer(new float[zero_buffer_size]);
-    memset(zero_buffer.get(), 0, zero_buffer_size * sizeof(float));
-    PopulateTensor(bw_output_state_, 0, zero_buffer.get(),
-                   zero_buffer.get() + zero_buffer_size);
-    PopulateTensor(bw_cell_state_, 0, zero_buffer.get(),
-                   zero_buffer.get() + zero_buffer_size);
   }
 
   void SetInput(int offset, float* begin, float* end) {
@@ -340,13 +359,23 @@ class BidirectionalLSTMOpModel : public SingleOpModel {
   int bw_projection_weights_;
   int bw_projection_bias_;
 
-  int fw_output_;
-  int fw_output_state_;
-  int fw_cell_state_;
+  int fw_input_activation_state_;
+  int fw_input_cell_state_;
+  int bw_input_activation_state_;
+  int bw_input_cell_state_;
 
+  int fw_output_;
   int bw_output_;
-  int bw_output_state_;
-  int bw_cell_state_;
+
+  int aux_input_;
+  int fw_aux_input_to_input_weights_;
+  int fw_aux_input_to_forget_weights_;
+  int fw_aux_input_to_cell_weights_;
+  int fw_aux_input_to_output_weights_;
+  int bw_aux_input_to_input_weights_;
+  int bw_aux_input_to_forget_weights_;
+  int bw_aux_input_to_cell_weights_;
+  int bw_aux_input_to_output_weights_;
 
   int n_batch_;
   int n_input_;
@@ -355,20 +384,30 @@ class BidirectionalLSTMOpModel : public SingleOpModel {
   int n_fw_output_;
   int n_bw_output_;
   int sequence_length_;
+
+  bool quantize_weights_;
 };
 
-TEST(LSTMOpTest, BlackBoxTestNoCifgNoPeepholeNoProjectionNoClipping) {
+// Declare LSTMOpTest as a parameterized test, where the parameter is a boolean
+// indicating whether to use quantization or not.
+class LSTMOpTest : public ::testing::TestWithParam<bool> {};
+
+INSTANTIATE_TEST_CASE_P(QuantizationOrNot, LSTMOpTest, ::testing::Bool());
+
+TEST_P(LSTMOpTest, BlackBoxTestNoCifgNoPeepholeNoProjectionNoClipping) {
   const int n_batch = 1;
   const int n_input = 2;
   // n_cell and n_output have the same size when there is no projection.
   const int n_cell = 4;
   const int n_output = 4;
   const int sequence_length = 3;
+  const bool quantize_weights = GetParam();
 
   BidirectionalLSTMOpModel lstm(
       n_batch, n_input, n_cell, n_output, sequence_length, /*use_cifg=*/false,
       /*use_peephole=*/false, /*use_projection_weights=*/false,
-      /*use_projection_bias=*/false, /*cell_clip=*/0.0, /*proj_clip=*/0.0,
+      /*use_projection_bias=*/false, /*merge_outputs=*/false, /*cell_clip=*/0.0,
+      /*proj_clip=*/0.0, quantize_weights,
       {
           {sequence_length, n_batch, n_input},  // input tensor
 
@@ -417,6 +456,22 @@ TEST(LSTMOpTest, BlackBoxTestNoCifgNoPeepholeNoProjectionNoClipping) {
 
           {0, 0},  // projection_weight tensor
           {0},     // projection_bias tensor
+
+          {n_batch, n_output},  // activation_state tensor
+          {n_batch, n_cell},    // cell_state tensor
+
+          {n_batch, n_output},  // activation_state tensor
+          {n_batch, n_cell},    // cell_state tensor
+
+          {n_batch, sequence_length, 0},  // aux_input tensor
+          {n_cell, 0},                    // aux_fw_input_to_input tensor
+          {n_cell, 0},                    // aux_fw_input_to_forget tensor
+          {n_cell, 0},                    // aux_fw_input_to_cell tensor
+          {n_cell, 0},                    // aux_fw_input_to_output tensor
+          {n_cell, 0},                    // aux_bw_input_to_input tensor
+          {n_cell, 0},                    // aux_bw_input_to_forget tensor
+          {n_cell, 0},                    // aux_bw_input_to_cell tensor
+          {n_cell, 0},                    // aux_bw_input_to_output tensor
       });
 
   lstm.SetInputToInputWeights({-0.45018822, -0.02338299, -0.0870589,
@@ -470,13 +525,8 @@ TEST(LSTMOpTest, BlackBoxTestNoCifgNoPeepholeNoProjectionNoClipping) {
       -0.03716109, 0.12507336, 0.41193449, -0.20860538,
       -0.15053082, 0.09120187, 0.24278517, -0.12222792};
   static float lstm_bw_golden_output[] = {
-      -0.0806187, 0.139077, 0.400476, -0.197842,
-      -0.0332076, 0.123838, 0.309777, -0.17621,
-      -0.0490733, 0.0739237, 0.067706, -0.0208124};
-
-  // Resetting cell_state and output_state
-  lstm.ResetFwOutputAndCellStates();
-  lstm.ResetBwOutputAndCellStates();
+      -0.0806187, 0.139077, 0.400476,   -0.197842, -0.0332076, 0.123838,
+      0.309777,   -0.17621, -0.0490733, 0.0739237, 0.067706,   -0.0208124};
 
   float* batch0_start = lstm_input;
   float* batch0_end = batch0_start + lstm.num_inputs() * lstm.sequence_length();
@@ -491,7 +541,8 @@ TEST(LSTMOpTest, BlackBoxTestNoCifgNoPeepholeNoProjectionNoClipping) {
   std::vector<float> fw_expected;
   fw_expected.insert(fw_expected.end(), fw_golden_start, fw_golden_end);
   EXPECT_THAT(lstm.GetFwOutput(),
-              ElementsAreArray(ArrayFloatNear(fw_expected)));
+              ElementsAreArray(
+                  ArrayFloatNear(fw_expected, quantize_weights ? 1e-2 : 1e-5)));
 
   float* bw_golden_start = lstm_bw_golden_output;
   float* bw_golden_end =
@@ -499,35 +550,328 @@ TEST(LSTMOpTest, BlackBoxTestNoCifgNoPeepholeNoProjectionNoClipping) {
   std::vector<float> bw_expected;
   bw_expected.insert(bw_expected.end(), bw_golden_start, bw_golden_end);
   EXPECT_THAT(lstm.GetBwOutput(),
-              ElementsAreArray(ArrayFloatNear(bw_expected)));
+              ElementsAreArray(
+                  ArrayFloatNear(bw_expected, quantize_weights ? 1e-2 : 1e-5)));
+}
 
-  // Check reversed inputs.
-  static float lstm_input_reversed[] = {1., 1., 3., 4., 2., 3.};
+// Same as the previous test, yet with a single merged output tensor and n_batch
+// of 2.
+TEST_P(LSTMOpTest, BlackBoxTestMergedOutput) {
+  const int n_batch = 2;
+  const int n_input = 2;
+  // n_cell and n_output have the same size when there is no projection.
+  const int n_cell = 4;
+  const int n_output = 4;
+  const int sequence_length = 3;
+  const bool quantize_weights = GetParam();
 
-  // Resetting cell_state and output_state
-  lstm.ResetFwOutputAndCellStates();
-  lstm.ResetBwOutputAndCellStates();
+  BidirectionalLSTMOpModel lstm(
+      n_batch, n_input, n_cell, n_output, sequence_length, /*use_cifg=*/false,
+      /*use_peephole=*/false, /*use_projection_weights=*/false,
+      /*use_projection_bias=*/false, /*merge_outputs=*/true, /*cell_clip=*/0.0,
+      /*proj_clip=*/0.0, quantize_weights,
+      {
+          {sequence_length, n_batch, n_input},  // input tensor
 
-  batch0_start = lstm_input_reversed;
-  batch0_end = batch0_start + lstm.num_inputs() * lstm.sequence_length();
+          // Forward cell
+          {n_cell, n_input},  // input_to_input_weight tensor
+          {n_cell, n_input},  // input_to_forget_weight tensor
+          {n_cell, n_input},  // input_to_cell_weight tensor
+          {n_cell, n_input},  // input_to_output_weight tensor
+
+          {n_cell, n_output},  // recurrent_to_input_weight tensor
+          {n_cell, n_output},  // recurrent_to_forget_weight tensor
+          {n_cell, n_output},  // recurrent_to_cell_weight tensor
+          {n_cell, n_output},  // recurrent_to_output_weight tensor
+
+          {0},  // cell_to_input_weight tensor
+          {0},  // cell_to_forget_weight tensor
+          {0},  // cell_to_output_weight tensor
+
+          {n_cell},  // input_gate_bias tensor
+          {n_cell},  // forget_gate_bias tensor
+          {n_cell},  // cell_bias tensor
+          {n_cell},  // output_gate_bias tensor
+
+          {0, 0},  // projection_weight tensor
+          {0},     // projection_bias tensor
+
+          // Backward cell
+          {n_cell, n_input},  // input_to_input_weight tensor
+          {n_cell, n_input},  // input_to_forget_weight tensor
+          {n_cell, n_input},  // input_to_cell_weight tensor
+          {n_cell, n_input},  // input_to_output_weight tensor
+
+          {n_cell, n_output},  // recurrent_to_input_weight tensor
+          {n_cell, n_output},  // recurrent_to_forget_weight tensor
+          {n_cell, n_output},  // recurrent_to_cell_weight tensor
+          {n_cell, n_output},  // recurrent_to_output_weight tensor
+
+          {0},  // cell_to_input_weight tensor
+          {0},  // cell_to_forget_weight tensor
+          {0},  // cell_to_output_weight tensor
+
+          {n_cell},  // input_gate_bias tensor
+          {n_cell},  // forget_gate_bias tensor
+          {n_cell},  // cell_bias tensor
+          {n_cell},  // output_gate_bias tensor
+
+          {0, 0},  // projection_weight tensor
+          {0},     // projection_bias tensor
+
+          {n_batch, n_output},  // activation_state tensor
+          {n_batch, n_cell},    // cell_state tensor
+
+          {n_batch, n_output},  // activation_state tensor
+          {n_batch, n_cell},    // cell_state tensor
+
+          {n_batch, sequence_length, 0},  // aux_input tensor
+          {n_cell, 0},                    // aux_fw_input_to_input tensor
+          {n_cell, 0},                    // aux_fw_input_to_forget tensor
+          {n_cell, 0},                    // aux_fw_input_to_cell tensor
+          {n_cell, 0},                    // aux_fw_input_to_output tensor
+          {n_cell, 0},                    // aux_bw_input_to_input tensor
+          {n_cell, 0},                    // aux_bw_input_to_forget tensor
+          {n_cell, 0},                    // aux_bw_input_to_cell tensor
+          {n_cell, 0},                    // aux_bw_input_to_output tensor
+      });
+
+  lstm.SetInputToInputWeights({-0.45018822, -0.02338299, -0.0870589,
+                               -0.34550029, 0.04266912, -0.15680569,
+                               -0.34856534, 0.43890524});
+
+  lstm.SetInputToCellWeights({-0.50013041, 0.1370284, 0.11810488, 0.2013163,
+                              -0.20583314, 0.44344562, 0.22077113,
+                              -0.29909778});
+
+  lstm.SetInputToForgetWeights({0.09701663, 0.20334584, -0.50592935,
+                                -0.31343272, -0.40032279, 0.44781327,
+                                0.01387155, -0.35593212});
+
+  lstm.SetInputToOutputWeights({-0.25065863, -0.28290087, 0.04613829,
+                                0.40525138, 0.44272184, 0.03897077, -0.1556896,
+                                0.19487578});
+
+  lstm.SetInputGateBias({0., 0., 0., 0.});
+
+  lstm.SetCellBias({0., 0., 0., 0.});
+
+  lstm.SetForgetGateBias({1., 1., 1., 1.});
+
+  lstm.SetOutputGateBias({0., 0., 0., 0.});
+
+  lstm.SetRecurrentToInputWeights(
+      {-0.0063535, -0.2042388, 0.31454784, -0.35746509, 0.28902304, 0.08183324,
+       -0.16555229, 0.02286911, -0.13566875, 0.03034258, 0.48091322,
+       -0.12528998, 0.24077177, -0.51332325, -0.33502164, 0.10629296});
+
+  lstm.SetRecurrentToCellWeights(
+      {-0.3407414, 0.24443203, -0.2078532, 0.26320225, 0.05695659, -0.00123841,
+       -0.4744786, -0.35869038, -0.06418842, -0.13502428, -0.501764, 0.22830659,
+       -0.46367589, 0.26016325, -0.03894562, -0.16368064});
+
+  lstm.SetRecurrentToForgetWeights(
+      {-0.48684245, -0.06655136, 0.42224967, 0.2112639, 0.27654213, 0.20864892,
+       -0.07646349, 0.45877004, 0.00141793, -0.14609534, 0.36447752, 0.09196436,
+       0.28053468, 0.01560611, -0.20127171, -0.01140004});
+
+  lstm.SetRecurrentToOutputWeights(
+      {0.43385774, -0.17194885, 0.2718237, 0.09215671, 0.24107647, -0.39835793,
+       0.18212086, 0.01301402, 0.48572797, -0.50656658, 0.20047462, -0.20607421,
+       -0.51818722, -0.15390486, 0.0468148, 0.39922136});
+
+  // Input should have n_input * sequence_length many values.
+  static float lstm_input[] = {2., 3., 2., 3., 3., 4., 3., 4., 1., 1., 1., 1.};
+  static float lstm_fw_golden_output[] = {
+      -0.02973187, 0.1229473,   0.20885126,  -0.15358765, -0.02973187,
+      0.1229473,   0.20885126,  -0.15358765, -0.03716109, 0.12507336,
+      0.41193449,  -0.20860538, -0.03716109, 0.12507336,  0.41193449,
+      -0.20860538, -0.15053082, 0.09120187,  0.24278517,  -0.12222792,
+      -0.15053082, 0.09120187,  0.24278517,  -0.12222792};
+  static float lstm_bw_golden_output[] = {
+      -0.0806187, 0.139077,   0.400476,   -0.197842, -0.0806187, 0.139077,
+      0.400476,   -0.197842,  -0.0332076, 0.123838,  0.309777,   -0.17621,
+      -0.0332076, 0.123838,   0.309777,   -0.17621,  -0.0490733, 0.0739237,
+      0.067706,   -0.0208124, -0.0490733, 0.0739237, 0.067706,   -0.0208124};
+
+  float* batch0_start = lstm_input;
+  float* batch0_end = batch0_start + lstm.num_inputs() * lstm.num_batches() *
+                                         lstm.sequence_length();
 
   lstm.SetInput(0, batch0_start, batch0_end);
 
   lstm.Invoke();
 
-  fw_expected.clear();
+  std::vector<float> merged_expected;
+  for (int k = 0; k < lstm.sequence_length() * lstm.num_batches(); k++) {
+    merged_expected.insert(
+        merged_expected.end(),
+        lstm_fw_golden_output + k * lstm.num_fw_outputs(),
+        lstm_fw_golden_output + (k + 1) * lstm.num_fw_outputs());
+    merged_expected.insert(
+        merged_expected.end(),
+        lstm_bw_golden_output + k * lstm.num_bw_outputs(),
+        lstm_bw_golden_output + (k + 1) * lstm.num_bw_outputs());
+  }
+  EXPECT_THAT(lstm.GetFwOutput(),
+              ElementsAreArray(ArrayFloatNear(merged_expected,
+                                              quantize_weights ? 1e-2 : 1e-5)));
+}
+
+TEST(LSTMOpTest, BlackBoxTestNoCifgNoPeepholeNoProjectionNoClippingReverse) {
+  const int n_batch = 1;
+  const int n_input = 2;
+  // n_cell and n_output have the same size when there is no projection.
+  const int n_cell = 4;
+  const int n_output = 4;
+  const int sequence_length = 3;
+
+  BidirectionalLSTMOpModel lstm(
+      n_batch, n_input, n_cell, n_output, sequence_length, /*use_cifg=*/false,
+      /*use_peephole=*/false, /*use_projection_weights=*/false,
+      /*use_projection_bias=*/false, /*merge_outputs=*/false, /*cell_clip=*/0.0,
+      /*proj_clip=*/0.0, /*quantize_weights=*/false,
+      {
+          {sequence_length, n_batch, n_input},  // input tensor
+
+          // Forward cell
+          {n_cell, n_input},  // input_to_input_weight tensor
+          {n_cell, n_input},  // input_to_forget_weight tensor
+          {n_cell, n_input},  // input_to_cell_weight tensor
+          {n_cell, n_input},  // input_to_output_weight tensor
+
+          {n_cell, n_output},  // recurrent_to_input_weight tensor
+          {n_cell, n_output},  // recurrent_to_forget_weight tensor
+          {n_cell, n_output},  // recurrent_to_cell_weight tensor
+          {n_cell, n_output},  // recurrent_to_output_weight tensor
+
+          {0},  // cell_to_input_weight tensor
+          {0},  // cell_to_forget_weight tensor
+          {0},  // cell_to_output_weight tensor
+
+          {n_cell},  // input_gate_bias tensor
+          {n_cell},  // forget_gate_bias tensor
+          {n_cell},  // cell_bias tensor
+          {n_cell},  // output_gate_bias tensor
+
+          {0, 0},  // projection_weight tensor
+          {0},     // projection_bias tensor
+
+          // Backward cell
+          {n_cell, n_input},  // input_to_input_weight tensor
+          {n_cell, n_input},  // input_to_forget_weight tensor
+          {n_cell, n_input},  // input_to_cell_weight tensor
+          {n_cell, n_input},  // input_to_output_weight tensor
+
+          {n_cell, n_output},  // recurrent_to_input_weight tensor
+          {n_cell, n_output},  // recurrent_to_forget_weight tensor
+          {n_cell, n_output},  // recurrent_to_cell_weight tensor
+          {n_cell, n_output},  // recurrent_to_output_weight tensor
+
+          {0},  // cell_to_input_weight tensor
+          {0},  // cell_to_forget_weight tensor
+          {0},  // cell_to_output_weight tensor
+
+          {n_cell},  // input_gate_bias tensor
+          {n_cell},  // forget_gate_bias tensor
+          {n_cell},  // cell_bias tensor
+          {n_cell},  // output_gate_bias tensor
+
+          {0, 0},  // projection_weight tensor
+          {0},     // projection_bias tensor
+
+          {n_batch, n_output},  // activation_state tensor
+          {n_batch, n_cell},    // cell_state tensor
+
+          {n_batch, n_output},  // activation_state tensor
+          {n_batch, n_cell},    // cell_state tensor
+
+          {n_batch, sequence_length, 0},  // aux_input tensor
+          {n_cell, 0},                    // aux_fw_input_to_input tensor
+          {n_cell, 0},                    // aux_fw_input_to_forget tensor
+          {n_cell, 0},                    // aux_fw_input_to_cell tensor
+          {n_cell, 0},                    // aux_fw_input_to_output tensor
+          {n_cell, 0},                    // aux_bw_input_to_input tensor
+          {n_cell, 0},                    // aux_bw_input_to_forget tensor
+          {n_cell, 0},                    // aux_bw_input_to_cell tensor
+          {n_cell, 0},                    // aux_bw_input_to_output tensor
+      });
+
+  lstm.SetInputToInputWeights({-0.45018822, -0.02338299, -0.0870589,
+                               -0.34550029, 0.04266912, -0.15680569,
+                               -0.34856534, 0.43890524});
+
+  lstm.SetInputToCellWeights({-0.50013041, 0.1370284, 0.11810488, 0.2013163,
+                              -0.20583314, 0.44344562, 0.22077113,
+                              -0.29909778});
+
+  lstm.SetInputToForgetWeights({0.09701663, 0.20334584, -0.50592935,
+                                -0.31343272, -0.40032279, 0.44781327,
+                                0.01387155, -0.35593212});
+
+  lstm.SetInputToOutputWeights({-0.25065863, -0.28290087, 0.04613829,
+                                0.40525138, 0.44272184, 0.03897077, -0.1556896,
+                                0.19487578});
+
+  lstm.SetInputGateBias({0., 0., 0., 0.});
+
+  lstm.SetCellBias({0., 0., 0., 0.});
+
+  lstm.SetForgetGateBias({1., 1., 1., 1.});
+
+  lstm.SetOutputGateBias({0., 0., 0., 0.});
+
+  lstm.SetRecurrentToInputWeights(
+      {-0.0063535, -0.2042388, 0.31454784, -0.35746509, 0.28902304, 0.08183324,
+       -0.16555229, 0.02286911, -0.13566875, 0.03034258, 0.48091322,
+       -0.12528998, 0.24077177, -0.51332325, -0.33502164, 0.10629296});
+
+  lstm.SetRecurrentToCellWeights(
+      {-0.3407414, 0.24443203, -0.2078532, 0.26320225, 0.05695659, -0.00123841,
+       -0.4744786, -0.35869038, -0.06418842, -0.13502428, -0.501764, 0.22830659,
+       -0.46367589, 0.26016325, -0.03894562, -0.16368064});
+
+  lstm.SetRecurrentToForgetWeights(
+      {-0.48684245, -0.06655136, 0.42224967, 0.2112639, 0.27654213, 0.20864892,
+       -0.07646349, 0.45877004, 0.00141793, -0.14609534, 0.36447752, 0.09196436,
+       0.28053468, 0.01560611, -0.20127171, -0.01140004});
+
+  lstm.SetRecurrentToOutputWeights(
+      {0.43385774, -0.17194885, 0.2718237, 0.09215671, 0.24107647, -0.39835793,
+       0.18212086, 0.01301402, 0.48572797, -0.50656658, 0.20047462, -0.20607421,
+       -0.51818722, -0.15390486, 0.0468148, 0.39922136});
+
+  // Input should have n_input * sequence_length many values.
+  // Check reversed inputs.
+  static float lstm_input_reversed[] = {1., 1., 3., 4., 2., 3.};
+  static float lstm_fw_golden_output[] = {
+      -0.02973187, 0.1229473,  0.20885126, -0.15358765,
+      -0.03716109, 0.12507336, 0.41193449, -0.20860538,
+      -0.15053082, 0.09120187, 0.24278517, -0.12222792};
+  static float lstm_bw_golden_output[] = {
+      -0.0806187, 0.139077, 0.400476,   -0.197842, -0.0332076, 0.123838,
+      0.309777,   -0.17621, -0.0490733, 0.0739237, 0.067706,   -0.0208124};
+
+  float* batch0_start = lstm_input_reversed;
+  float* batch0_end = batch0_start + lstm.num_inputs() * lstm.sequence_length();
+
+  lstm.SetInput(0, batch0_start, batch0_end);
+
+  lstm.Invoke();
+
+  std::vector<float> fw_expected;
   for (int s = 0; s < lstm.sequence_length(); s++) {
-    fw_golden_start = lstm_fw_golden_output + s * lstm.num_fw_outputs();
-    fw_golden_end = fw_golden_start + lstm.num_fw_outputs();
+    float* fw_golden_start = lstm_fw_golden_output + s * lstm.num_fw_outputs();
+    float* fw_golden_end = fw_golden_start + lstm.num_fw_outputs();
     fw_expected.insert(fw_expected.begin(), fw_golden_start, fw_golden_end);
   }
   EXPECT_THAT(lstm.GetBwOutput(),
               ElementsAreArray(ArrayFloatNear(fw_expected)));
 
-  bw_expected.clear();
+  std::vector<float> bw_expected;
   for (int s = 0; s < lstm.sequence_length(); s++) {
-    bw_golden_start = lstm_bw_golden_output + s * lstm.num_bw_outputs();
-    bw_golden_end = bw_golden_start + lstm.num_bw_outputs();
+    float* bw_golden_start = lstm_bw_golden_output + s * lstm.num_bw_outputs();
+    float* bw_golden_end = bw_golden_start + lstm.num_bw_outputs();
     bw_expected.insert(bw_expected.begin(), bw_golden_start, bw_golden_end);
   }
   EXPECT_THAT(lstm.GetFwOutput(),
@@ -545,7 +889,8 @@ TEST(LSTMOpTest, BlackBoxTestWithCifgWithPeepholeNoProjectionNoClipping) {
   BidirectionalLSTMOpModel lstm(
       n_batch, n_input, n_cell, n_output, sequence_length, /*use_cifg=*/true,
       /*use_peephole=*/true, /*use_projection_weights=*/false,
-      /*use_projection_bias=*/false, /*cell_clip=*/0.0, /*proj_clip=*/0.0,
+      /*use_projection_bias=*/false, /*merge_outputs=*/false, /*cell_clip=*/0.0,
+      /*proj_clip=*/0.0, /*quantize_weights=*/false,
       {
           {sequence_length, n_batch, n_input},  // input tensor
 
@@ -592,6 +937,22 @@ TEST(LSTMOpTest, BlackBoxTestWithCifgWithPeepholeNoProjectionNoClipping) {
 
           {0, 0},  // projection_weight tensor
           {0},     // projection_bias tensor
+
+          {n_batch, n_output},  // activation_state tensor
+          {n_batch, n_cell},    // cell_state tensor
+
+          {n_batch, n_output},  // activation_state tensor
+          {n_batch, n_cell},    // cell_state tensor
+
+          {n_batch, sequence_length, 0},  // aux_input tensor
+          {n_cell, 0},                    // aux_fw_input_to_input tensor
+          {n_cell, 0},                    // aux_fw_input_to_forget tensor
+          {n_cell, 0},                    // aux_fw_input_to_cell tensor
+          {n_cell, 0},                    // aux_fw_input_to_output tensor
+          {n_cell, 0},                    // aux_bw_input_to_input tensor
+          {n_cell, 0},                    // aux_bw_input_to_forget tensor
+          {n_cell, 0},                    // aux_bw_input_to_cell tensor
+          {n_cell, 0},                    // aux_bw_input_to_output tensor
       });
 
   lstm.SetInputToCellWeights({-0.49770179, -0.27711356, -0.09624726, 0.05100781,
@@ -642,10 +1003,6 @@ TEST(LSTMOpTest, BlackBoxTestWithCifgWithPeepholeNoProjectionNoClipping) {
       -0.401685, -0.0232794, 0.288642,  -0.123074,   -0.42915,  -0.00871577,
       0.20912,   -0.103567,  -0.166398, -0.00486649, 0.0697471, -0.0537578};
 
-  // Resetting cell_state and output_state
-  lstm.ResetFwOutputAndCellStates();
-  lstm.ResetBwOutputAndCellStates();
-
   float* batch0_start = lstm_input;
   float* batch0_end = batch0_start + lstm.num_inputs() * lstm.sequence_length();
 
@@ -668,34 +1025,154 @@ TEST(LSTMOpTest, BlackBoxTestWithCifgWithPeepholeNoProjectionNoClipping) {
   bw_expected.insert(bw_expected.end(), bw_golden_start, bw_golden_end);
   EXPECT_THAT(lstm.GetBwOutput(),
               ElementsAreArray(ArrayFloatNear(bw_expected)));
+}
 
-  // Check reversed inputs.
+TEST(LSTMOpTest,
+     BlackBoxTestWithCifgWithPeepholeNoProjectionNoClippingReversed) {
+  const int n_batch = 1;
+  const int n_input = 2;
+  // n_cell and n_output have the same size when there is no projection.
+  const int n_cell = 4;
+  const int n_output = 4;
+  const int sequence_length = 3;
+
+  BidirectionalLSTMOpModel lstm(
+      n_batch, n_input, n_cell, n_output, sequence_length, /*use_cifg=*/true,
+      /*use_peephole=*/true, /*use_projection_weights=*/false,
+      /*use_projection_bias=*/false, /*merge_outputs=*/false, /*cell_clip=*/0.0,
+      /*proj_clip=*/0.0, /*quantize_weights=*/false,
+      {
+          {sequence_length, n_batch, n_input},  // input tensor
+
+          {0, 0},             // input_to_input_weight tensor
+          {n_cell, n_input},  // input_to_forget_weight tensor
+          {n_cell, n_input},  // input_to_cell_weight tensor
+          {n_cell, n_input},  // input_to_output_weight tensor
+
+          {0, 0},              // recurrent_to_input_weight tensor
+          {n_cell, n_output},  // recurrent_to_forget_weight tensor
+          {n_cell, n_output},  // recurrent_to_cell_weight tensor
+          {n_cell, n_output},  // recurrent_to_output_weight tensor
+
+          {0},       // cell_to_input_weight tensor
+          {n_cell},  // cell_to_forget_weight tensor
+          {n_cell},  // cell_to_output_weight tensor
+
+          {0},       // input_gate_bias tensor
+          {n_cell},  // forget_gate_bias tensor
+          {n_cell},  // cell_bias tensor
+          {n_cell},  // output_gate_bias tensor
+
+          {0, 0},  // projection_weight tensor
+          {0},     // projection_bias tensor
+
+          {0, 0},             // input_to_input_weight tensor
+          {n_cell, n_input},  // input_to_forget_weight tensor
+          {n_cell, n_input},  // input_to_cell_weight tensor
+          {n_cell, n_input},  // input_to_output_weight tensor
+
+          {0, 0},              // recurrent_to_input_weight tensor
+          {n_cell, n_output},  // recurrent_to_forget_weight tensor
+          {n_cell, n_output},  // recurrent_to_cell_weight tensor
+          {n_cell, n_output},  // recurrent_to_output_weight tensor
+
+          {0},       // cell_to_input_weight tensor
+          {n_cell},  // cell_to_forget_weight tensor
+          {n_cell},  // cell_to_output_weight tensor
+
+          {0},       // input_gate_bias tensor
+          {n_cell},  // forget_gate_bias tensor
+          {n_cell},  // cell_bias tensor
+          {n_cell},  // output_gate_bias tensor
+
+          {0, 0},  // projection_weight tensor
+          {0},     // projection_bias tensor
+
+          {n_batch, n_output},  // activation_state tensor
+          {n_batch, n_cell},    // cell_state tensor
+
+          {n_batch, n_output},  // activation_state tensor
+          {n_batch, n_cell},    // cell_state tensor
+
+          {n_batch, sequence_length, 0},  // aux_input tensor
+          {n_cell, 0},                    // aux_fw_input_to_input tensor
+          {n_cell, 0},                    // aux_fw_input_to_forget tensor
+          {n_cell, 0},                    // aux_fw_input_to_cell tensor
+          {n_cell, 0},                    // aux_fw_input_to_output tensor
+          {n_cell, 0},                    // aux_bw_input_to_input tensor
+          {n_cell, 0},                    // aux_bw_input_to_forget tensor
+          {n_cell, 0},                    // aux_bw_input_to_cell tensor
+          {n_cell, 0},                    // aux_bw_input_to_output tensor
+      });
+
+  lstm.SetInputToCellWeights({-0.49770179, -0.27711356, -0.09624726, 0.05100781,
+                              0.04717243, 0.48944736, -0.38535351,
+                              -0.17212132});
+
+  lstm.SetInputToForgetWeights({-0.55291498, -0.42866567, 0.13056988,
+                                -0.3633365, -0.22755712, 0.28253698, 0.24407166,
+                                0.33826375});
+
+  lstm.SetInputToOutputWeights({0.10725588, -0.02335852, -0.55932593,
+                                -0.09426838, -0.44257352, 0.54939759,
+                                0.01533556, 0.42751634});
+
+  lstm.SetCellBias({0., 0., 0., 0.});
+
+  lstm.SetForgetGateBias({1., 1., 1., 1.});
+
+  lstm.SetOutputGateBias({0., 0., 0., 0.});
+
+  lstm.SetRecurrentToCellWeights(
+      {0.54066205, -0.32668582, -0.43562764, -0.56094903, 0.42957711,
+       0.01841056, -0.32764608, -0.33027974, -0.10826075, 0.20675004,
+       0.19069612, -0.03026325, -0.54532051, 0.33003211, 0.44901288,
+       0.21193194});
+
+  lstm.SetRecurrentToForgetWeights(
+      {-0.13832897, -0.0515101, -0.2359007, -0.16661474, -0.14340827,
+       0.36986142, 0.23414481, 0.55899, 0.10798943, -0.41174671, 0.17751795,
+       -0.34484994, -0.35874045, -0.11352962, 0.27268326, 0.54058349});
+
+  lstm.SetRecurrentToOutputWeights(
+      {0.41613156, 0.42610586, -0.16495961, -0.5663873, 0.30579174, -0.05115908,
+       -0.33941799, 0.23364776, 0.11178309, 0.09481031, -0.26424935, 0.46261835,
+       0.50248802, 0.26114327, -0.43736315, 0.33149987});
+
+  lstm.SetCellToForgetWeights(
+      {0.47485286, -0.51955009, -0.24458408, 0.31544167});
+  lstm.SetCellToOutputWeights(
+      {-0.17135078, 0.82760304, 0.85573703, -0.77109635});
+
   static float lstm_input_reversed[] = {1., 1., 3., 4., 2., 3.};
+  static float lstm_fw_golden_output[] = {
+      -0.36444446, -0.00352185, 0.12886585, -0.05163646,
+      -0.42312205, -0.01218222, 0.24201041, -0.08124574,
+      -0.358325,   -0.04621704, 0.21641694, -0.06471302};
+  static float lstm_bw_golden_output[] = {
+      -0.401685, -0.0232794, 0.288642,  -0.123074,   -0.42915,  -0.00871577,
+      0.20912,   -0.103567,  -0.166398, -0.00486649, 0.0697471, -0.0537578};
 
-  // Resetting cell_state and output_state
-  lstm.ResetFwOutputAndCellStates();
-  lstm.ResetBwOutputAndCellStates();
-
-  batch0_start = lstm_input_reversed;
-  batch0_end = batch0_start + lstm.num_inputs() * lstm.sequence_length();
+  float* batch0_start = lstm_input_reversed;
+  float* batch0_end = batch0_start + lstm.num_inputs() * lstm.sequence_length();
 
   lstm.SetInput(0, batch0_start, batch0_end);
 
   lstm.Invoke();
 
-  fw_expected.clear();
+  std::vector<float> fw_expected;
   for (int s = 0; s < lstm.sequence_length(); s++) {
-    fw_golden_start = lstm_fw_golden_output + s * lstm.num_fw_outputs();
-    fw_golden_end = fw_golden_start + lstm.num_fw_outputs();
+    float* fw_golden_start = lstm_fw_golden_output + s * lstm.num_fw_outputs();
+    float* fw_golden_end = fw_golden_start + lstm.num_fw_outputs();
     fw_expected.insert(fw_expected.begin(), fw_golden_start, fw_golden_end);
   }
   EXPECT_THAT(lstm.GetBwOutput(),
               ElementsAreArray(ArrayFloatNear(fw_expected)));
 
-  bw_expected.clear();
+  std::vector<float> bw_expected;
   for (int s = 0; s < lstm.sequence_length(); s++) {
-    bw_golden_start = lstm_bw_golden_output + s * lstm.num_bw_outputs();
-    bw_golden_end = bw_golden_start + lstm.num_bw_outputs();
+    float* bw_golden_start = lstm_bw_golden_output + s * lstm.num_bw_outputs();
+    float* bw_golden_end = bw_golden_start + lstm.num_bw_outputs();
     bw_expected.insert(bw_expected.begin(), bw_golden_start, bw_golden_end);
   }
   EXPECT_THAT(lstm.GetFwOutput(),
@@ -712,7 +1189,8 @@ TEST(LSTMOpTest, BlackBoxTestWithPeepholeWithProjectionNoClipping) {
   BidirectionalLSTMOpModel lstm(
       n_batch, n_input, n_cell, n_output, sequence_length, /*use_cifg=*/false,
       /*use_peephole=*/true, /*use_projection_weights=*/true,
-      /*use_projection_bias=*/false, /*cell_clip=*/0.0, /*proj_clip=*/0.0,
+      /*use_projection_bias=*/false, /*merge_outputs=*/false, /*cell_clip=*/0.0,
+      /*proj_clip=*/0.0, /*quantize_weights=*/false,
       {
           {sequence_length, n_batch, n_input},  // input tensor
 
@@ -759,6 +1237,22 @@ TEST(LSTMOpTest, BlackBoxTestWithPeepholeWithProjectionNoClipping) {
 
           {n_output, n_cell},  // projection_weight tensor
           {0},                 // projection_bias tensor
+
+          {n_batch, n_output},  // activation_state tensor
+          {n_batch, n_cell},    // cell_state tensor
+
+          {n_batch, n_output},  // activation_state tensor
+          {n_batch, n_cell},    // cell_state tensor
+
+          {n_batch, sequence_length, 0},  // aux_input tensor
+          {n_cell, 0},                    // aux_fw_input_to_input tensor
+          {n_cell, 0},                    // aux_fw_input_to_forget tensor
+          {n_cell, 0},                    // aux_fw_input_to_cell tensor
+          {n_cell, 0},                    // aux_fw_input_to_output tensor
+          {n_cell, 0},                    // aux_bw_input_to_input tensor
+          {n_cell, 0},                    // aux_bw_input_to_forget tensor
+          {n_cell, 0},                    // aux_bw_input_to_cell tensor
+          {n_cell, 0},                    // aux_bw_input_to_output tensor
       });
 
   lstm.SetInputToInputWeights(
@@ -1317,35 +1811,28 @@ TEST(LSTMOpTest, BlackBoxTestWithPeepholeWithProjectionNoClipping) {
        0.0412031,    0.0118723,   0.0239643,   0.0394009}};
 
   static float lstm_combined_golden_output[][64] = {
-    {
-      -0.022014,  0.073544, -0.002235,  0.040068, -0.037136, -0.052788,
-      0.075325, -0.029378,  0.024298, -0.07733 , -0.030674, -0.060229,
-      0.040599,  0.011608,  0.042005,  0.045977, -0.039225,  0.076294,
-      0.000735,  0.032852, -0.069869, -0.053312,  0.073527, -0.028136,
-      0.021585, -0.102679, -0.004327, -0.043304,  0.072861,  0.027077,
-      0.034558,  0.068292, -0.036292,  0.069832, -0.003032,  0.053829,
-      -0.043821, -0.072713,  0.085029, -0.040374,  0.020014, -0.104521,
-      -0.034504, -0.059759,  0.062569,  0.025652,  0.049306,  0.061189,
-      -0.025146,  0.079643, -0.005188,  0.033080, -0.048079, -0.048082,
-      0.069369, -0.028900,  0.024572, -0.077547, -0.022517, -0.054477,
-      0.038857,  0.013336,  0.043234,  0.044788},
-    {
-      -0.039186,  0.070792, -0.005913,  0.02642,  -0.068274, -0.05022,
-      0.061444, -0.031241,  0.014996, -0.094544, -0.004146, -0.03464,
-      0.058981,  0.026097,  0.039781,  0.058408, -0.031887,  0.069252,
-      0.00576,   0.054062, -0.042801, -0.059974,  0.085272, -0.034453,
-      0.026097, -0.0959,   -0.031164, -0.058699,  0.06839,   0.020512,
-      0.044727,  0.063609, -0.039863,  0.084819, -0.003909,  0.028666,
-      -0.075677, -0.045125,  0.070379, -0.033895,  0.022111, -0.097184,
-      -0.004921, -0.040851,  0.062316,  0.017435,  0.041437,  0.064568,
-      -0.039656,  0.060726, -0.003402,  0.036854, -0.056503, -0.058554,
-      0.068588, -0.034879,  0.01352,  -0.09962,  -0.01434,  -0.039505,
-      0.065133,  0.024321,  0.038473,  0.062438
-    }};
-
-  // Resetting cell_state and output_state
-  lstm.ResetFwOutputAndCellStates();
-  lstm.ResetBwOutputAndCellStates();
+      {-0.022014, 0.073544,  -0.002235, 0.040068,  -0.037136, -0.052788,
+       0.075325,  -0.029378, 0.024298,  -0.07733,  -0.030674, -0.060229,
+       0.040599,  0.011608,  0.042005,  0.045977,  -0.039225, 0.076294,
+       0.000735,  0.032852,  -0.069869, -0.053312, 0.073527,  -0.028136,
+       0.021585,  -0.102679, -0.004327, -0.043304, 0.072861,  0.027077,
+       0.034558,  0.068292,  -0.036292, 0.069832,  -0.003032, 0.053829,
+       -0.043821, -0.072713, 0.085029,  -0.040374, 0.020014,  -0.104521,
+       -0.034504, -0.059759, 0.062569,  0.025652,  0.049306,  0.061189,
+       -0.025146, 0.079643,  -0.005188, 0.033080,  -0.048079, -0.048082,
+       0.069369,  -0.028900, 0.024572,  -0.077547, -0.022517, -0.054477,
+       0.038857,  0.013336,  0.043234,  0.044788},
+      {-0.039186, 0.070792,  -0.005913, 0.02642,   -0.068274, -0.05022,
+       0.061444,  -0.031241, 0.014996,  -0.094544, -0.004146, -0.03464,
+       0.058981,  0.026097,  0.039781,  0.058408,  -0.031887, 0.069252,
+       0.00576,   0.054062,  -0.042801, -0.059974, 0.085272,  -0.034453,
+       0.026097,  -0.0959,   -0.031164, -0.058699, 0.06839,   0.020512,
+       0.044727,  0.063609,  -0.039863, 0.084819,  -0.003909, 0.028666,
+       -0.075677, -0.045125, 0.070379,  -0.033895, 0.022111,  -0.097184,
+       -0.004921, -0.040851, 0.062316,  0.017435,  0.041437,  0.064568,
+       -0.039656, 0.060726,  -0.003402, 0.036854,  -0.056503, -0.058554,
+       0.068588,  -0.034879, 0.01352,   -0.09962,  -0.01434,  -0.039505,
+       0.065133,  0.024321,  0.038473,  0.062438}};
 
   for (int i = 0; i < lstm.sequence_length(); i++) {
     float* batch0_start = lstm_input[0] + i * lstm.num_inputs();

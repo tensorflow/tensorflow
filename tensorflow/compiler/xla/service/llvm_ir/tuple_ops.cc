@@ -64,8 +64,7 @@ void EmitTupleSelect(const IrArray& select, const IrArray& pred,
   }
 }
 
-void EmitTuple(const IrArray& tuple,
-               tensorflow::gtl::ArraySlice<llvm::Value*> operands,
+void EmitTuple(const IrArray& tuple, absl::Span<llvm::Value* const> operands,
                llvm::IRBuilder<>* b, llvm::Module* module) {
   for (size_t i = 0; i < operands.size(); ++i) {
     auto* store = b->CreateStore(
@@ -74,6 +73,16 @@ void EmitTuple(const IrArray& tuple,
                              {b->getInt64(0), b->getInt64(i)}));
     tuple.AnnotateLoadStoreInstructionWithMetadata(store);
   }
+}
+
+void EmitTuple(const IrArray& tuple, absl::Span<const IrArray> buffers,
+               llvm::IRBuilder<>* b, llvm::Module* module) {
+  std::vector<llvm::Value*> buffer_ptrs;
+  buffer_ptrs.reserve(buffers.size());
+  absl::c_transform(
+      buffers, std::back_inserter(buffer_ptrs),
+      [](const llvm_ir::IrArray& buffer) { return buffer.GetBasePointer(); });
+  llvm_ir::EmitTuple(tuple, buffer_ptrs, b, module);
 }
 
 llvm::Value* EmitGetTupleElement(const Shape& target_shape, int64 index,

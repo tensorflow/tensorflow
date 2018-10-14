@@ -56,7 +56,6 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.layers import utils
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import rnn
@@ -214,10 +213,11 @@ def crf_log_norm(inputs, sequence_lengths, transition_params):
                                log_norm)
     return log_norm
 
-  max_seq_len = array_ops.shape(inputs)[1]
-  return control_flow_ops.cond(pred=math_ops.equal(max_seq_len, 1),
-                               true_fn=_single_seq_fn,
-                               false_fn=_multi_seq_fn)
+  return utils.smart_cond(
+      pred=math_ops.equal(inputs.shape[1].value or
+                          array_ops.shape(inputs)[1], 1),
+      true_fn=_single_seq_fn,
+      false_fn=_multi_seq_fn)
 
 
 def crf_log_likelihood(inputs,
@@ -548,7 +548,9 @@ def crf_decode(potentials, transition_params, sequence_length):
     initial_state = array_ops.squeeze(initial_state, axis=[1])  # [B, O]
     inputs = array_ops.slice(potentials, [0, 1, 0], [-1, -1, -1])  # [B, T-1, O]
     # Sequence length is not allowed to be less than zero.
-    sequence_length_less_one = math_ops.maximum(0, sequence_length - 1)
+    sequence_length_less_one = math_ops.maximum(
+        constant_op.constant(0, dtype=sequence_length.dtype),
+        sequence_length - 1)
     backpointers, last_score = rnn.dynamic_rnn(  # [B, T - 1, O], [B, O]
         crf_fwd_cell,
         inputs=inputs,

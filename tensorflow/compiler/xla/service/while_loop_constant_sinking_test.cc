@@ -206,7 +206,8 @@ body {
   p_body.0 = f32[2] get-tuple-element((f32[2],f32[2]) p_body), index=0
   p_body.1 = f32[2] get-tuple-element((f32[2],f32[2]) p_body), index=1
 
-  outfeed = token[] outfeed(p_body.0)
+  token = token[] after-all()
+  outfeed = token[] outfeed(p_body.0, token)
   ROOT root = (f32[2],f32[2],f32[2]) tuple(p_body.0, p_body.1, p_body.1)
 }
 

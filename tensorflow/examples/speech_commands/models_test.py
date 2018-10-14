@@ -49,7 +49,7 @@ class ModelsTest(test.TestCase):
 
   def testCreateModelConvTraining(self):
     model_settings = self._modelSettings()
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       fingerprint_input = tf.zeros([1, model_settings["fingerprint_size"]])
       logits, dropout_prob = models.create_model(fingerprint_input,
                                                  model_settings, "conv", True)
@@ -60,7 +60,7 @@ class ModelsTest(test.TestCase):
 
   def testCreateModelConvInference(self):
     model_settings = self._modelSettings()
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       fingerprint_input = tf.zeros([1, model_settings["fingerprint_size"]])
       logits = models.create_model(fingerprint_input, model_settings, "conv",
                                    False)
@@ -69,7 +69,7 @@ class ModelsTest(test.TestCase):
 
   def testCreateModelLowLatencyConvTraining(self):
     model_settings = self._modelSettings()
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       fingerprint_input = tf.zeros([1, model_settings["fingerprint_size"]])
       logits, dropout_prob = models.create_model(
           fingerprint_input, model_settings, "low_latency_conv", True)
@@ -80,7 +80,7 @@ class ModelsTest(test.TestCase):
 
   def testCreateModelFullyConnectedTraining(self):
     model_settings = self._modelSettings()
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       fingerprint_input = tf.zeros([1, model_settings["fingerprint_size"]])
       logits, dropout_prob = models.create_model(
           fingerprint_input, model_settings, "single_fc", True)
@@ -91,7 +91,7 @@ class ModelsTest(test.TestCase):
 
   def testCreateModelBadArchitecture(self):
     model_settings = self._modelSettings()
-    with self.test_session():
+    with self.cached_session():
       fingerprint_input = tf.zeros([1, model_settings["fingerprint_size"]])
       with self.assertRaises(Exception) as e:
         models.create_model(fingerprint_input, model_settings,
@@ -100,7 +100,7 @@ class ModelsTest(test.TestCase):
 
   def testCreateModelTinyConvTraining(self):
     model_settings = self._modelSettings()
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       fingerprint_input = tf.zeros([1, model_settings["fingerprint_size"]])
       logits, dropout_prob = models.create_model(
           fingerprint_input, model_settings, "tiny_conv", True)

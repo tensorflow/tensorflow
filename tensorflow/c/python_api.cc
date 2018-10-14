@@ -110,7 +110,7 @@ void ExtendSession(TF_Session* session, TF_Status* status) {
   session->extend_before_run = false;
 }
 
-std::string GetResourceHandleShapeAndType(TF_Graph* graph, TF_Output output) {
+std::string GetHandleShapeAndType(TF_Graph* graph, TF_Output output) {
   Node* node = &output.oper->node;
   CppShapeInferenceResult::HandleData handle_data;
   handle_data.set_is_set(true);
@@ -135,9 +135,8 @@ std::string GetResourceHandleShapeAndType(TF_Graph* graph, TF_Output output) {
   return result;
 }
 
-void SetResourceHandleShapeAndType(TF_Graph* graph, TF_Output output,
-                                   const void* proto, size_t proto_len,
-                                   TF_Status* status) {
+void SetHandleShapeAndType(TF_Graph* graph, TF_Output output, const void* proto,
+                           size_t proto_len, TF_Status* status) {
   tensorflow::CppShapeInferenceResult::HandleData handle_data;
   if (!handle_data.ParseFromArray(proto, proto_len)) {
     status->status = tensorflow::errors::InvalidArgument(

@@ -113,7 +113,7 @@ class FunctionTest(test.TestCase):
       return a
 
     with ops.Graph().as_default():
-      var = variables.Variable([18.0])
+      var = variables.VariableV1([18.0])
       call = MyIdentityFunc(var._ref())  # pylint: disable=protected-access
       self.assertEqual("MyIdentity", call.op.name)
       for cfg in _OptimizerOptions():
@@ -347,7 +347,7 @@ class FunctionTest(test.TestCase):
                 do_function_inlining=True,
                 do_constant_folding=True)))
 
-    with self.test_session(graph=g, config=cfg):
+    with self.session(graph=g, config=cfg):
       self.assertAllClose(y.eval(), 6.)
       self.assertAllClose(dx.eval(), 2.)
 
@@ -419,7 +419,7 @@ class FunctionTest(test.TestCase):
       with ops.control_dependencies([z]):
         return x * 2
 
-    with ops.Graph().as_default(), self.test_session():
+    with ops.Graph().as_default(), self.cached_session():
       z = Foo(constant_op.constant(3.0))
       self.assertAllEqual(z.eval(), 6.0)
 
@@ -434,7 +434,7 @@ class FunctionTest(test.TestCase):
     # Foo contains a stateful op (Assert).
     self.assertEqual([("Assert", "Assert")], Foo.stateful_ops)
     g = ops.Graph()
-    with g.as_default(), self.test_session():
+    with g.as_default(), self.cached_session():
       self.assertAllEqual(Foo(constant_op.constant(3.0)).eval(), 6.0)
       with self.assertRaisesRegexp(errors_impl.InvalidArgumentError,
                                    "assertion failed.*-3"):
@@ -448,14 +448,14 @@ class FunctionTest(test.TestCase):
           [control_flow_ops.Assert(math_ops.less_equal(x, 10.0), [x])]):
         return array_ops.identity(x)
 
-    with self.test_session():
+    with self.cached_session():
       self.assertEqual(1.0, MyFn(1.0).eval())
       with self.assertRaisesRegexp(errors_impl.InvalidArgumentError,
                                    "assertion"):
         _ = MyFn(100.0).eval()
 
   def testWhileLoopCallsFunc(self):
-    with self.test_session(use_gpu=True) as sess:
+    with self.session(use_gpu=True) as sess:
 
       @function.Defun(dtypes.float32)
       def Times2(x):
@@ -530,7 +530,7 @@ class FunctionTest(test.TestCase):
       v = variables.Variable(constant_op.constant(10.0))
       z = Foo(v)
 
-    with self.test_session(graph=g):
+    with self.session(graph=g):
       variables.global_variables_initializer().run()
       self.assertAllEqual(z.eval(), 101.)
 
@@ -552,7 +552,7 @@ class FunctionTest(test.TestCase):
       expected_val = v.value()
       actual_val, actual_shape = Foo()
 
-    with self.test_session(graph=g):
+    with self.session(graph=g):
       v.initializer.run()
       self.assertAllEqual(expected_val.eval(), actual_val.eval())
       self.assertAllEqual(expected_shape, actual_shape.eval())
@@ -667,7 +667,7 @@ class FunctionTest(test.TestCase):
 
     with ops.Graph().as_default():
       z = CubeXPlusY(3.0, -2.0)
-      with self.test_session():
+      with self.cached_session():
         self.assertAllEqual(z.eval(), 25.0)
 
   def testNestedDefinedFunction(self):
@@ -683,7 +683,7 @@ class FunctionTest(test.TestCase):
 
     with ops.Graph().as_default():
       z = CubeXPlusY(3.0, -2.0)
-      with self.test_session():
+      with self.cached_session():
         self.assertAllEqual(z.eval(), 25.0)
 
   def testUnusedFunction(self):
@@ -732,7 +732,7 @@ class FunctionTest(test.TestCase):
       dx1, = gradients_impl.gradients([y1], [x])
 
     # Both should produce the same result and gradient.
-    with self.test_session(graph=g) as sess:
+    with self.session(graph=g) as sess:
       vals = sess.run([y0, y1, dx0, dx1], {x: np.random.uniform(size=(3, 7))})
       self.assertAllClose(vals[0], vals[1])
       self.assertAllClose(vals[2], vals[3])
@@ -762,7 +762,7 @@ class FunctionTest(test.TestCase):
 
       z = Bar()
 
-    with self.test_session(graph=g):
+    with self.session(graph=g):
       variables.global_variables_initializer().run()
       self.assertAllEqual(y.eval(), [[12.0]])
       self.assertAllEqual(z.eval(), [[1.0]])
@@ -795,7 +795,7 @@ class FunctionTest(test.TestCase):
 
       y = Foo()
 
-    with self.test_session(graph=g) as sess:
+    with self.session(graph=g) as sess:
       self.assertEqual(sess.run(y), 10)
 
   def testCaptureInCond(self):
@@ -810,7 +810,7 @@ class FunctionTest(test.TestCase):
       y = Foo(True)
       z = Foo(False)
 
-    with self.test_session(graph=g) as sess:
+    with self.session(graph=g) as sess:
       self.assertEqual(sess.run(y), 1)
       self.assertEqual(sess.run(z), 2)
 
@@ -855,7 +855,7 @@ class FunctionTest(test.TestCase):
       y = Foo(x)
       z = Bar(x)
 
-    with self.test_session(graph=g) as sess:
+    with self.session(graph=g) as sess:
       v0, v1 = sess.run([y, z])
       self.assertAllEqual(v0, 20.)
       self.assertAllEqual(v1, 20.)
@@ -1077,7 +1077,7 @@ class FunctionTest(test.TestCase):
       self.assertNotEqual("GuaranteeConst", fifth.consumers()[0].node_def.op)
       return output
 
-    with self.test_session(use_gpu=False) as sess:
+    with self.session(use_gpu=False) as sess:
       sess.run(var.initializer)
       _ = sess.run(CapturesGuaranteedConst(), {also_not_const: 1.0})
 
@@ -1128,7 +1128,7 @@ class FunctionTest(test.TestCase):
       y2 = PartThree(x2)
       dx2, = gradients_impl.gradients(ys=[y2], xs=[x2])
 
-    with self.test_session(graph=g) as sess:
+    with self.session(graph=g) as sess:
       v0, v1, v2 = sess.run([dx0, dx1, dx2])
 
     self.assertAllEqual(v0, 2.)
@@ -1331,12 +1331,33 @@ class FunctionsFromProtos(test.TestCase):
   def testExperimentalAttrs(self):
 
     @function.Defun(dtypes.int32, experimental_tag="tag_value")
-    def FunctionWithAttr(i):
+    def FunctionWithStrAttr(i):
       return array_ops.identity(i)
 
-    self.assertTrue("experimental_tag" in FunctionWithAttr.definition.attr)
-    self.assertEqual(FunctionWithAttr.definition.attr["experimental_tag"].s,
+    @function.Defun(dtypes.int32, experimental_tag=123)
+    def FunctionWithIntAttr(i):
+      return array_ops.identity(i)
+
+    @function.Defun(dtypes.int32, experimental_tag=123.0)
+    def FunctionWithFloatAttr(i):
+      return array_ops.identity(i)
+
+    @function.Defun(dtypes.int32, experimental_tag=True)
+    def FunctionWithBoolAttr(i):
+      return array_ops.identity(i)
+
+    self.assertTrue("experimental_tag" in FunctionWithStrAttr.definition.attr)
+    self.assertEqual(FunctionWithStrAttr.definition.attr["experimental_tag"].s,
                      b"tag_value")
+    self.assertTrue("experimental_tag" in FunctionWithIntAttr.definition.attr)
+    self.assertEqual(FunctionWithIntAttr.definition.attr["experimental_tag"].i,
+                     123)
+    self.assertTrue("experimental_tag" in FunctionWithFloatAttr.definition.attr)
+    self.assertEqual(
+        FunctionWithFloatAttr.definition.attr["experimental_tag"].f, 123.0)
+    self.assertTrue("experimental_tag" in FunctionWithBoolAttr.definition.attr)
+    self.assertEqual(FunctionWithBoolAttr.definition.attr["experimental_tag"].b,
+                     True)
 
 
 @test_util.with_c_shapes
@@ -1353,7 +1374,7 @@ class FunctionOverloadTest(test.TestCase):
       x = Sinh(constant_op.constant(0.25, dtypes.float32))
       y = Sinh(constant_op.constant(0.25, dtypes.float64))
 
-    with self.test_session(graph=g):
+    with self.session(graph=g):
       self.assertAllClose(x.eval(), np.sinh(0.25))
       self.assertAllClose(y.eval(), np.sinh(0.25))
 
@@ -1374,7 +1395,7 @@ class FunctionOverloadTest(test.TestCase):
         y = F(x)
         dx, = gradients_impl.gradients(y, x)
 
-        with self.test_session(graph=g):
+        with self.session(graph=g):
           self.assertAllClose(dx.eval(), 0.25)
 
   def testDocString(self):
@@ -1418,7 +1439,7 @@ class FunctionCaptureByValueTest(test.TestCase):
 
     self.assertEqual(0, len(Foo.captured_inputs))
 
-    with self.test_session(graph=g):
+    with self.session(graph=g):
       self.assertAllEqual(y.eval(), [[12.0]])
 
 
@@ -1618,29 +1639,18 @@ class FunctionInlineControlTest(test.TestCase):
       self.assertEqual(MetadataHasCell(run_metadata), noinline)
 
 
-@function.Defun(*[dtypes.float32] * 3)
-def Linear(w, b, x):
-  return nn_ops.relu(math_ops.matmul(x, w) + b)
-
-
-@function.Defun(*[dtypes.float32] * 5)
-def Linear2(w1, b1, w2, b2, x):
-  return Linear(w2, b2, Linear(w1, b1, x))
-
-
-@function.Defun(*[dtypes.float32] * 3)
-def LinearWithCApi(w, b, x):
-  return nn_ops.relu(math_ops.matmul(x, w) + b)
-
-
-@function.Defun(*[dtypes.float32] * 5)
-def Linear2WithCApi(w1, b1, w2, b2, x):
-  return LinearWithCApi(w2, b2, LinearWithCApi(w1, b1, x))
-
-
 class ModuleFunctionTest(test.TestCase):
 
   def testBasic(self):
+
+    @function.Defun(*[dtypes.float32] * 3)
+    def LinearWithCApi(w, b, x):
+      return nn_ops.relu(math_ops.matmul(x, w) + b)
+
+    @function.Defun(*[dtypes.float32] * 5)
+    def Linear2WithCApi(w1, b1, w2, b2, x):
+      return LinearWithCApi(w2, b2, LinearWithCApi(w1, b1, x))
+
     with ops.Graph().as_default():
       a, b, c, d, e = [
           constant_op.constant([[_]], dtype=dtypes.float32) for _ in range(5)
@@ -1701,7 +1711,7 @@ class VariableHoistingTest(test.TestCase):
     self.assertEqual("Foo/w", w.op.name)
     self.assertEqual("Foo/b", b.op.name)
 
-    with self.test_session(graph=g) as sess:
+    with self.session(graph=g) as sess:
       sess.run(variables.global_variables_initializer())
       w, b, x, y0, loss, dw, db = sess.run([w, b, x, y0, loss, dw, db])
 

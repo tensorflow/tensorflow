@@ -60,4 +60,4 @@ class JniLongField {
   jfieldID field_ID_;
 };
 
-#endif
+#endif  // TENSORFLOW_EXAMPLES_ANDROID_JNI_OBJECT_TRACKING_JNI_UTILS_H_

@@ -55,7 +55,7 @@ class WhileUtil {
   //   that contains `while_instr`.
   static StatusOr<MakeInstructionsLiveInResult> MakeInstructionsLiveIn(
       HloInstruction* while_instr,
-      tensorflow::gtl::ArraySlice<HloInstruction*> instructions);
+      absl::Span<HloInstruction* const> instructions);
 
   using LoopStateTy = std::vector<HloInstruction*>;
   using LoopBodyGeneratorTy = std::function<StatusOr<LoopStateTy>(

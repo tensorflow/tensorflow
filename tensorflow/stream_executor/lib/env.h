@@ -32,7 +32,7 @@ inline Status FileExists(const string& filename) {
 }
 
 inline Status FileExists(const port::StringPiece& filename) {
-  return Env::Default()->FileExists(std::string(filename));
+  return Env::Default()->FileExists(string(filename));
 }
 
 }  // namespace port

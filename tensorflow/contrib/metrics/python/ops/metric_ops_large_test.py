@@ -47,7 +47,7 @@ class StreamingPrecisionRecallAtEqualThresholdsLargeTest(test.TestCase):
     # code used float32 for accumulation.
     num_updates = 71
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       sess.run(variables.local_variables_initializer())
       for _ in xrange(num_updates):
         sess.run(update_op)

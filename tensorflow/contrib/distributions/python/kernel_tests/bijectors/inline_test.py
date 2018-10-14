@@ -32,7 +32,7 @@ class InlineBijectorTest(test.TestCase):
   """Tests correctness of the inline constructed bijector."""
 
   def testBijector(self):
-    with self.test_session():
+    with self.cached_session():
       exp = Exp()
       inline = Inline(
           forward_fn=math_ops.exp,
@@ -55,7 +55,7 @@ class InlineBijectorTest(test.TestCase):
           inline.forward_log_det_jacobian(x, event_ndims=1).eval())
 
   def testShapeGetters(self):
-    with self.test_session():
+    with self.cached_session():
       bijector = Inline(
           forward_event_shape_tensor_fn=lambda x: array_ops.concat((x, [1]), 0),
           forward_event_shape_fn=lambda x: x.as_list() + [1],

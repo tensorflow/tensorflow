@@ -142,9 +142,8 @@ Status WriteTensorboardTPUProfile(const string& logdir, const string& run,
     TF_RETURN_IF_ERROR(DumpTraceToLogDirectory(profile_run_dir, host_prefix,
                                                response.encoded_trace(), os));
   }
-  if (response.has_op_profile() &&
-      (response.op_profile().has_by_program_structure() ||
-       response.op_profile().has_by_category())) {
+  if (response.has_op_profile() && (response.op_profile().has_by_program() ||
+                                    response.op_profile().has_by_category())) {
     TF_RETURN_IF_ERROR(DumpOpProfileToLogDirectory(profile_run_dir, host_prefix,
                                                    response.op_profile(), os));
   }

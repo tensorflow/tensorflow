@@ -24,11 +24,14 @@ limitations under the License.
 
 namespace toco {
 
-bool ResolveTensorFlowSwitch::Run(Model* model, std::size_t op_index) {
+::tensorflow::Status ResolveTensorFlowSwitch::Run(Model* model,
+                                                  std::size_t op_index,
+                                                  bool* modified) {
+  *modified = false;
   const auto switch_it = model->operators.begin() + op_index;
   const auto* switch_op = switch_it->get();
   if (switch_op->type != OperatorType::kSwitch) {
-    return false;
+    return ::tensorflow::Status::OK();
   }
 
   CHECK_EQ(switch_op->inputs.size(), 2);
@@ -40,7 +43,7 @@ bool ResolveTensorFlowSwitch::Run(Model* model, std::size_t op_index) {
     AddMessageF(
         "Waiting for the boolean predicate of %s to be resolved to a constant",
         LogName(*switch_op));
-    return false;
+    return ::tensorflow::Status::OK();
   }
 
   // The predicate should be boolean, and should consist of a single value.
@@ -92,7 +95,9 @@ bool ResolveTensorFlowSwitch::Run(Model* model, std::size_t op_index) {
       if (*input_it == switch_op->outputs[nonselected_output_index]) {
         // Let us guard our assumption that only Merge nodes consume the outputs
         // of Switch nodes:
-        CHECK(other_op->type == OperatorType::kMerge);
+        CHECK(other_op->type == OperatorType::kMerge)
+            << "Found " << HelpfulOperatorTypeName(*other_op)
+            << " as non-selected output from Switch, but only Merge supported.";
         input_it = other_op->inputs.erase(input_it);
       } else {
         ++input_it;
@@ -117,7 +122,8 @@ bool ResolveTensorFlowSwitch::Run(Model* model, std::size_t op_index) {
   // Remove the switch node itself.
   AddMessageF("Removing already-resolved %s", LogName(*switch_op));
   model->operators.erase(switch_it);
-  return true;
+  *modified = true;
+  return ::tensorflow::Status::OK();
 }
 
 }  // namespace toco

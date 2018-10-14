@@ -399,7 +399,7 @@ class StarGANModelTest(test.TestCase):
     target_tensor = train._generate_stargan_random_domain_target(
         batch_size, domain_numbers)
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       targets = sess.run(target_tensor)
       self.assertTupleEqual((batch_size, domain_numbers), targets.shape)
       for target in targets:
@@ -676,7 +676,7 @@ class GANLossTest(test.TestCase, parameterized.TestCase):
 
     self.assertIsInstance(model_loss, namedtuples.GANLoss)
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
 
       sess.run(variables.global_variables_initializer())
 

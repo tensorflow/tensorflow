@@ -26,8 +26,12 @@ namespace tensorflow {
 class CUDAHostAllocator : public SubAllocator {
  public:
   // Note: stream_exec cannot be null.
-  explicit CUDAHostAllocator(se::StreamExecutor* stream_exec)
-      : stream_exec_(stream_exec) {
+  explicit CUDAHostAllocator(se::StreamExecutor* stream_exec, int numa_node,
+                             const std::vector<Visitor>& alloc_visitors,
+                             const std::vector<Visitor>& free_visitors)
+      : SubAllocator(alloc_visitors, free_visitors),
+        stream_exec_(stream_exec),
+        numa_node_(numa_node) {
     CHECK(stream_exec_ != nullptr);
   }
   ~CUDAHostAllocator() override {}
@@ -39,19 +43,23 @@ class CUDAHostAllocator : public SubAllocator {
       if (ptr == nullptr) {
         LOG(WARNING) << "could not allocate pinned host memory of size: "
                      << num_bytes;
+        return ptr;
       }
+      VisitAlloc(ptr, numa_node_, num_bytes);
     }
     return ptr;
   }
 
   void Free(void* ptr, size_t num_bytes) override {
     if (ptr != nullptr) {
+      VisitFree(ptr, numa_node_, num_bytes);
       stream_exec_->HostMemoryDeallocate(ptr);
     }
   }
 
  private:
   se::StreamExecutor* stream_exec_;  // not owned, non-null
+  const int numa_node_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(CUDAHostAllocator);
 };

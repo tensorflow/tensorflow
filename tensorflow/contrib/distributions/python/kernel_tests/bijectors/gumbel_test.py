@@ -31,7 +31,7 @@ class GumbelBijectorTest(test.TestCase):
   """Tests correctness of the Gumbel bijector."""
 
   def testBijector(self):
-    with self.test_session():
+    with self.cached_session():
       loc = 0.3
       scale = 5.
       bijector = Gumbel(loc=loc, scale=scale, validate_args=True)
@@ -52,12 +52,12 @@ class GumbelBijectorTest(test.TestCase):
           atol=0.)
 
   def testScalarCongruency(self):
-    with self.test_session():
+    with self.cached_session():
       assert_scalar_congruency(
           Gumbel(loc=0.3, scale=20.), lower_x=1., upper_x=100., rtol=0.02)
 
   def testBijectiveAndFinite(self):
-    with self.test_session():
+    with self.cached_session():
       bijector = Gumbel(loc=0., scale=3.0, validate_args=True)
       x = np.linspace(-10., 10., num=10).astype(np.float32)
       y = np.linspace(0.01, 0.99, num=10).astype(np.float32)

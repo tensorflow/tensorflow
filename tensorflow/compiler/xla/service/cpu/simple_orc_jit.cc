@@ -20,13 +20,13 @@ limitations under the License.
 #include <list>
 #include <utility>
 
+#include "absl/memory/memory.h"
 #include "llvm/ExecutionEngine/ExecutionEngine.h"
 #include "llvm/ExecutionEngine/JITSymbol.h"
 #include "llvm/ExecutionEngine/SectionMemoryManager.h"
 #include "llvm/IR/Mangler.h"
 #include "llvm/Support/CodeGen.h"
 #include "llvm/Support/Host.h"
-#include "tensorflow/compiler/xla/ptr_util.h"
 #include "tensorflow/compiler/xla/service/cpu/cpu_runtime.h"
 #include "tensorflow/compiler/xla/service/cpu/custom_call_target_registry.h"
 #include "tensorflow/compiler/xla/service/cpu/orc_jit_memory_mapper.h"
@@ -35,6 +35,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/cpu/runtime_fft.h"
 #include "tensorflow/compiler/xla/service/cpu/runtime_fork_join.h"
 #include "tensorflow/compiler/xla/service/cpu/runtime_fp16.h"
+#include "tensorflow/compiler/xla/service/cpu/runtime_key_value_sort.h"
 #include "tensorflow/compiler/xla/service/cpu/runtime_matmul.h"
 #include "tensorflow/compiler/xla/service/cpu/runtime_matmul_mkl.h"
 #include "tensorflow/compiler/xla/service/cpu/runtime_single_threaded_conv2d.h"
@@ -170,15 +171,14 @@ namespace {
 bool RegisterKnownJITSymbols() {
   CustomCallTargetRegistry* registry = CustomCallTargetRegistry::Global();
 
-#define REGISTER_CPU_RUNTIME_SYMBOL(base_name)                                \
-  do {                                                                        \
-    auto* function_address =                                                  \
-        reinterpret_cast<void*>(__xla_cpu_runtime_##base_name);               \
-    registry->Register(xla::cpu::runtime::k##base_name##SymbolName,           \
-                       function_address);                                     \
-    CHECK_EQ(                                                                 \
-        tensorflow::StringPiece(xla::cpu::runtime::k##base_name##SymbolName), \
-        "__xla_cpu_runtime_" #base_name);                                     \
+#define REGISTER_CPU_RUNTIME_SYMBOL(base_name)                               \
+  do {                                                                       \
+    auto* function_address =                                                 \
+        reinterpret_cast<void*>(__xla_cpu_runtime_##base_name);              \
+    registry->Register(xla::cpu::runtime::k##base_name##SymbolName,          \
+                       function_address);                                    \
+    CHECK_EQ(absl::string_view(xla::cpu::runtime::k##base_name##SymbolName), \
+             "__xla_cpu_runtime_" #base_name);                               \
   } while (false)
 
   REGISTER_CPU_RUNTIME_SYMBOL(AcquireInfeedBufferForDequeue);
@@ -203,6 +203,18 @@ bool RegisterKnownJITSymbols() {
   REGISTER_CPU_RUNTIME_SYMBOL(ParallelForkJoin);
   REGISTER_CPU_RUNTIME_SYMBOL(ReleaseInfeedBufferAfterDequeue);
   REGISTER_CPU_RUNTIME_SYMBOL(ReleaseOutfeedBufferAfterPopulation);
+  REGISTER_CPU_RUNTIME_SYMBOL(KeyValueSortPRED);
+  REGISTER_CPU_RUNTIME_SYMBOL(KeyValueSortS8);
+  REGISTER_CPU_RUNTIME_SYMBOL(KeyValueSortU8);
+  REGISTER_CPU_RUNTIME_SYMBOL(KeyValueSortS16);
+  REGISTER_CPU_RUNTIME_SYMBOL(KeyValueSortU16);
+  REGISTER_CPU_RUNTIME_SYMBOL(KeyValueSortF16);
+  REGISTER_CPU_RUNTIME_SYMBOL(KeyValueSortS32);
+  REGISTER_CPU_RUNTIME_SYMBOL(KeyValueSortU32);
+  REGISTER_CPU_RUNTIME_SYMBOL(KeyValueSortF32);
+  REGISTER_CPU_RUNTIME_SYMBOL(KeyValueSortS64);
+  REGISTER_CPU_RUNTIME_SYMBOL(KeyValueSortU64);
+  REGISTER_CPU_RUNTIME_SYMBOL(KeyValueSortF64);
 
   registry->Register("__gnu_f2h_ieee", reinterpret_cast<void*>(__gnu_f2h_ieee));
   registry->Register("__gnu_h2f_ieee", reinterpret_cast<void*>(__gnu_h2f_ieee));

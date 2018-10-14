@@ -167,6 +167,17 @@ enum BuiltinOperator : byte {
   PACK = 83,
   LOGICAL_OR = 84,
   ONE_HOT = 85,
+  LOGICAL_AND = 86,
+  LOGICAL_NOT = 87,
+  UNPACK = 88,
+  REDUCE_MIN = 89,
+  FLOOR_DIV = 90,
+  REDUCE_ANY = 91,
+  SQUARE = 92,
+  ZEROS_LIKE = 93,
+  FILL = 94,
+  FLOOR_MOD = 95,
+  RANGE = 96,
 }
 
 // Options for the builtin operators.
@@ -232,6 +243,18 @@ union BuiltinOptions {
   PackOptions,
   LogicalOrOptions,
   OneHotOptions,
+  LogicalAndOptions,
+  LogicalNotOptions,
+  UnpackOptions,
+  FloorDivOptions,
+  SquareOptions,
+  ZerosLikeOptions,
+  FillOptions,
+  BidirectionalSequenceLSTMOptions,
+  BidirectionalSequenceRNNOptions,
+  UnidirectionalSequenceLSTMOptions,
+  FloorModOptions,
+  RangeOptions,
 }
 
 enum Padding : byte { SAME, VALID }
@@ -264,11 +287,15 @@ table Pool2DOptions {
 }
 
 table DepthwiseConv2DOptions {
+  // Parameters for DepthwiseConv version 1 or above.
   padding:Padding;
   stride_w:int;
   stride_h:int;
   depth_multiplier:int;
   fused_activation_function:ActivationFunctionType;
+  // Parameters for DepthwiseConv version 2 or above.
+  dilation_w_factor:int = 1;
+  dilation_h_factor:int = 1;
 }
 
 table ConcatEmbeddingsOptions {
@@ -307,6 +334,7 @@ table SequenceRNNOptions {
 table BidirectionalSequenceRNNOptions {
   time_major:bool;
   fused_activation_function:ActivationFunctionType;
+  merge_outputs: bool;
 }
 
 enum FullyConnectedOptionsWeightsFormat: byte {
@@ -369,6 +397,22 @@ table LSTMOptions {
   // Parameters for LSTM version 2 or above.
   // Basic kernel is only supported in version 2 or above.
   kernel_type: LSTMKernelType = FULL;
+}
+
+// An implementation of TensorFlow dynamic_rnn with LSTMCell.
+table UnidirectionalSequenceLSTMOptions {
+  fused_activation_function:ActivationFunctionType;
+  cell_clip: float; // Optional, 0.0 means no clipping
+  proj_clip: float; // Optional, 0.0 means no clipping
+}
+
+table BidirectionalSequenceLSTMOptions {
+  fused_activation_function:ActivationFunctionType;
+  cell_clip: float; // Optional, 0.0 means no clipping
+  proj_clip: float; // Optional, 0.0 means no clipping
+
+  // If true, store the outputs of both directions into the first output.
+  merge_outputs: bool;
 }
 
 table ResizeBilinearOptions {
@@ -555,6 +599,35 @@ table OneHotOptions {
   axis:int;
 }
 
+table LogicalAndOptions {
+}
+
+table LogicalNotOptions {
+}
+
+table UnpackOptions {
+  num:int;
+  axis:int;
+}
+
+table FloorDivOptions {
+}
+
+table SquareOptions {
+}
+
+table ZerosLikeOptions {
+}
+
+table FillOptions {
+}
+
+table FloorModOptions {
+}
+
+table RangeOptions {
+}
+
 // An OperatorCode can be an enum value (BuiltinOperator) if the operator is a
 // builtin, or a string if the operator is custom.
 table OperatorCode {
@@ -621,9 +694,9 @@ table SubGraph {
 }
 
 // Table of raw data buffers (used for constant tensors). Referenced by tensors
-// by index.
+// by index. The generous alignment accommodates mmap-friendly data structures.
 table Buffer {
-  data:[ubyte];
+  data:[ubyte] (force_align: 16);
 }
 
 table Model {

@@ -63,6 +63,15 @@ public final class NativeInterpreterWrapperTest {
   }
 
   @Test
+  public void testConstructorWithOptions() {
+    NativeInterpreterWrapper wrapper =
+        new NativeInterpreterWrapper(
+            FLOAT_MODEL_PATH, new Interpreter.Options().setNumThreads(2).setUseNNAPI(true));
+    assertThat(wrapper).isNotNull();
+    wrapper.close();
+  }
+
+  @Test
   public void testConstructorWithInvalidModel() {
     try {
       NativeInterpreterWrapper wrapper = new NativeInterpreterWrapper(INVALID_MODEL_PATH);

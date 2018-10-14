@@ -69,7 +69,7 @@ def weight_threshold_variable(var, scope):
     scope: The variable scope of the variable var
 
   Returns:
-    a scalar threshold variable initialized to 0.
+    A scalar threshold variable initialized to 0.
   """
   with variable_scope.variable_scope(scope):
     threshold = variable_scope.get_variable(
@@ -95,6 +95,74 @@ def kronecker_product(mat1, mat2):
   m2, n2 = mat2.get_shape().as_list()
   mat2_rsh = array_ops.reshape(mat2, [1, m2, 1, n2])
   return array_ops.reshape(mat1_rsh * mat2_rsh, [m1 * m2, n1 * n2])
+
+
+def expand_tensor(tensor, block_dims):
+  """Expands a 2D tensor by replicating the tensor values.
+
+  This is equivalent to the kronecker product of the tensor and a matrix of
+  ones of size block_dims.
+
+  Example:
+
+  tensor = [[1,2]
+            [3,4]]
+  block_dims = [2,2]
+
+  result = [[1 1 2 2]
+            [1 1 2 2]
+            [3 3 4 4]
+            [3 3 4 4]]
+
+  Args:
+    tensor: A 2D tensor that needs to be expanded.
+    block_dims: List of integers specifying the expansion factor.
+
+  Returns:
+    The expanded tensor
+
+  Raises:
+    ValueError: if tensor is not rank-2 or block_dims is does not have 2
+    elements.
+  """
+  if tensor.get_shape().ndims != 2:
+    raise ValueError('Input tensor must be rank 2')
+
+  if len(block_dims) != 2:
+    raise ValueError('block_dims must have 2 elements')
+
+  block_height, block_width = block_dims
+
+  def _tile_rows(tensor, multiple):
+    """Create a new tensor by tiling the tensor along rows."""
+    return array_ops.tile(tensor, [multiple, 1])
+
+  def _generate_indices(num_rows, block_dim):
+    indices = np.zeros(shape=[num_rows * block_dim, 1], dtype=np.int32)
+    for k in range(block_dim):
+      for r in range(num_rows):
+        indices[k * num_rows + r] = r * block_dim + k
+    return indices
+
+  def _replicate_rows(tensor, multiple):
+    tensor_shape = tensor.shape.as_list()
+    expanded_shape = [tensor_shape[0] * multiple, tensor_shape[1]]
+    indices = constant_op.constant(_generate_indices(tensor_shape[0], multiple))
+    return array_ops.scatter_nd(indices, _tile_rows(tensor, multiple),
+                                expanded_shape)
+
+  expanded_tensor = tensor
+
+  # Expand rows by factor block_height.
+  if block_height > 1:
+    expanded_tensor = _replicate_rows(tensor, block_height)
+
+  # Transpose and expand by factor block_width. Transpose the result.
+  if block_width > 1:
+    expanded_tensor = array_ops.transpose(
+        _replicate_rows(array_ops.transpose(expanded_tensor), block_width))
+
+  return expanded_tensor
 
 
 def _histogram(values, value_range, nbins=100, dtype=dtypes.int32, name=None):
@@ -167,19 +235,18 @@ def compute_cdf_from_histogram(values, value_range, **kwargs):
 def compute_cdf(values, value_range, **kwargs):
   """Returns the normalized cumulative distribution of the given values tensor.
 
-  Uses tf.while_loop to directly compute the cdf of the values. Number of bins
-  for histogram is fixed at _NBINS=255
+  Uses tf.while_loop to directly compute the cdf of the values.
 
   Args:
     values:  Numeric `Tensor`.
     value_range:  Shape [2] `Tensor` of same `dtype` as `values`
-    **kwargs: keyword arguments: name
+    **kwargs: keyword arguments: nbins, name
 
   Returns:
     A 1-D `Tensor` holding normalized cdf of values.
 
   """
-  nbins = _NBINS
+  nbins = kwargs.get('nbins', _NBINS)
   name = kwargs.get('name', None)
   with ops.name_scope(name, 'cdf', [values, value_range, nbins]):
     values = ops.convert_to_tensor(values, name='values')
@@ -213,7 +280,7 @@ def compute_cdf(values, value_range, **kwargs):
       cdf = math_ops.add(
           cdf,
           array_ops.one_hot(
-              loop_count, depth=_NBINS, on_value=temp, off_value=0.0))
+              loop_count, depth=nbins, on_value=temp, off_value=0.0))
       return [loop_count + 1, cdf]
 
     _, cdf = control_flow_ops.while_loop(

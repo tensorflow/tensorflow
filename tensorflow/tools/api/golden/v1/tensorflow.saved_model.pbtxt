@@ -1,0 +1,83 @@
+path: "tensorflow.saved_model"
+tf_module {
+  member {
+    name: "Builder"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "builder"
+    mtype: "<type \'module\'>"
+  }
+  member {
+    name: "constants"
+    mtype: "<type \'module\'>"
+  }
+  member {
+    name: "loader"
+    mtype: "<type \'module\'>"
+  }
+  member {
+    name: "main_op"
+    mtype: "<type \'module\'>"
+  }
+  member {
+    name: "signature_constants"
+    mtype: "<type \'module\'>"
+  }
+  member {
+    name: "signature_def_utils"
+    mtype: "<type \'module\'>"
+  }
+  member {
+    name: "tag_constants"
+    mtype: "<type \'module\'>"
+  }
+  member {
+    name: "utils"
+    mtype: "<type \'module\'>"
+  }
+  member_method {
+    name: "build_signature_def"
+    argspec: "args=[\'inputs\', \'outputs\', \'method_name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\'], "
+  }
+  member_method {
+    name: "build_tensor_info"
+    argspec: "args=[\'tensor\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "classification_signature_def"
+    argspec: "args=[\'examples\', \'classes\', \'scores\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "get_tensor_from_tensor_info"
+    argspec: "args=[\'tensor_info\', \'graph\', \'import_scope\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
+  }
+  member_method {
+    name: "is_valid_signature"
+    argspec: "args=[\'signature_def\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "load"
+    argspec: "args=[\'sess\', \'tags\', \'export_dir\', \'import_scope\'], varargs=None, keywords=saver_kwargs, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "main_op_with_restore"
+    argspec: "args=[\'restore_op_name\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "maybe_saved_model_directory"
+    argspec: "args=[\'export_dir\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "predict_signature_def"
+    argspec: "args=[\'inputs\', \'outputs\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "regression_signature_def"
+    argspec: "args=[\'examples\', \'predictions\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "simple_save"
+    argspec: "args=[\'session\', \'export_dir\', \'inputs\', \'outputs\', \'legacy_init_op\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+}

@@ -17,6 +17,8 @@ limitations under the License.
 
 #include <unordered_map>
 
+#include "absl/strings/str_cat.h"
+#include "tensorflow/compiler/jit/resource_operation_safety_analysis.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/graph/control_flow.h"
 #include "tensorflow/core/kernels/bounds_check.h"
@@ -51,8 +53,8 @@ string DescribeCycle(const GraphCycles* cycles, const Graph& graph, int src,
   };
 
   string description;
-  strings::StrAppend(&description, "Edge from ", node_name(src), " to ",
-                     node_name(dst), " would create a cycle.\n");
+  absl::StrAppend(&description, "Edge from ", node_name(src), " to ",
+                  node_name(dst), " would create a cycle.\n");
   path.resize(path_size);
   for (int32 node_id : path) {
     string ascii_art;
@@ -63,7 +65,7 @@ string DescribeCycle(const GraphCycles* cycles, const Graph& graph, int src,
     } else {
       ascii_art = "+-- ";
     }
-    strings::StrAppend(&description, ascii_art, node_name(node_id), "\n");
+    absl::StrAppend(&description, ascii_art, node_name(node_id), "\n");
   }
   return description;
 }
@@ -181,6 +183,53 @@ Status CreateCycleDetectionGraph(const Graph* graph, GraphCycles* cycles) {
           "compilation: ",
           DescribeCycle(cycles, *graph, edge->src()->id(), edge->dst()->id()));
     }
+  }
+  return Status::OK();
+}
+
+absl::optional<absl::string_view> GetXlaClusterForNode(const Node& node) {
+  const AttrValue* attr_value = node.attrs().Find(kXlaClusterAttr);
+  if (attr_value == nullptr) {
+    return absl::nullopt;
+  }
+  Status s = AttrValueHasType(*attr_value, "string");
+  if (!s.ok()) {
+    return absl::nullopt;
+  }
+  return attr_value->s();
+}
+
+bool HasResourceInputOrOutput(const Node& node) {
+  return std::find(node.input_types().begin(), node.input_types().end(),
+                   DT_RESOURCE) != node.input_types().end() ||
+         std::find(node.output_types().begin(), node.output_types().end(),
+                   DT_RESOURCE) != node.output_types().end();
+}
+
+void RemoveFromXlaCluster(NodeDef* node_def) {
+  node_def->mutable_attr()->erase(kXlaClusterAttr);
+}
+
+void RemoveFromXlaCluster(Node* node) { node->ClearAttr(kXlaClusterAttr); }
+
+Status AdjustCycleDetectionGraphForResourceOps(
+    const Graph* graph, const FunctionLibraryDefinition* flib_def,
+    const std::function<Status(const Node&, bool*)>& resource_ops_to_ignore,
+    GraphCycles* cycles) {
+  std::vector<std::pair<int, int>> unsafe_deps;
+  TF_RETURN_IF_ERROR(ComputeIncompatibleResourceOperationPairs(
+      *graph, flib_def, resource_ops_to_ignore, &unsafe_deps));
+
+  // An edge {P,Q} in `unsafe_deps` denotes that P and Q, both of which are
+  // operations that interact with resource variables, must not be put in the
+  // same cluster.  We enforce this constraint by creating a phantom node, X,
+  // and adding edges P->X and X->Q.  MarkForCompilation then cannot cluster P
+  // and Q together since that would create a cycle with X.
+
+  for (std::pair<int, int> unsafe_dep : unsafe_deps) {
+    int phantom_node_id = cycles->NewNode();
+    CHECK(cycles->InsertEdge(unsafe_dep.first, phantom_node_id));
+    CHECK(cycles->InsertEdge(phantom_node_id, unsafe_dep.second));
   }
   return Status::OK();
 }

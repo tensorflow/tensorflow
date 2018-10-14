@@ -111,7 +111,7 @@ class StackOp : public XlaOpKernel {
     xla::XlaOp value;
     XlaContext& xc = XlaContext::Get(ctx);
     XlaResource* resource;
-    string name = strings::StrCat("Stack: ", stack_name_);
+    string name = absl::StrCat("Stack: ", stack_name_);
     OP_REQUIRES_OK(
         ctx, xc.CreateResource(XlaResource::kStack, -1, std::move(name), dtype_,
                                TensorShape(), value, /*tensor_array_size=*/size,

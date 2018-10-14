@@ -46,17 +46,20 @@ import unittest
 from absl.testing import parameterized
 import six
 
+from tensorflow.contrib.cluster_resolver import TPUClusterResolver
 from tensorflow.contrib.distribute.python import mirrored_strategy as mirrored_lib
-from tensorflow.contrib.distribute.python import multi_worker_strategy
 from tensorflow.contrib.distribute.python import one_device_strategy as one_device_lib
 from tensorflow.contrib.distribute.python import tpu_strategy as tpu_lib
+from tensorflow.contrib.optimizer_v2 import adagrad as adagrad_v2
 from tensorflow.contrib.optimizer_v2 import adam as adam_v2
 from tensorflow.contrib.optimizer_v2 import gradient_descent as gradient_descent_v2
 from tensorflow.python.eager import context
 from tensorflow.python.framework import ops
+from tensorflow.python.training import adagrad
 from tensorflow.python.training import adam
-from tensorflow.python.training import distribute as distribute_lib
+from tensorflow.python.training import distribution_strategy_context
 from tensorflow.python.training import gradient_descent
+from tensorflow.python.training import rmsprop
 from tensorflow.python.util import tf_inspect
 
 
@@ -319,12 +322,19 @@ class NamedDistribution(object):
 # pylint: disable=g-long-lambda
 default_strategy = NamedDistribution(
     "Default",
-    lambda: distribute_lib._default_distribution_strategy,  # pylint: disable=protected-access
+    distribution_strategy_context._get_default_distribution_strategy,  # pylint: disable=protected-access
     required_gpus=None)
 one_device_strategy = NamedDistribution(
     "OneDeviceCPU", lambda: one_device_lib.OneDeviceStrategy("/cpu:0"),
     required_gpus=None)
-tpu_strategy = NamedDistribution("TPU", tpu_lib.TPUStrategy, required_tpu=True)
+tpu_strategy = NamedDistribution(
+    "TPU", lambda: tpu_lib.TPUStrategy(
+        TPUClusterResolver(""), steps_per_run=2),
+    required_tpu=True)
+tpu_strategy_one_step = NamedDistribution(
+    "TPUOneStep", lambda: tpu_lib.TPUStrategy(
+        TPUClusterResolver(""), steps_per_run=1),
+    required_tpu=True)
 # Note that we disable prefetching for testing since prefetching makes
 # the input non-deterministic.
 mirrored_strategy_with_gpu_and_cpu = NamedDistribution(
@@ -338,44 +348,27 @@ mirrored_strategy_with_two_gpus = NamedDistribution(
         ["/gpu:0", "/gpu:1"], prefetch_on_device=False),
     required_gpus=2)
 
-multi_worker_strategy_with_cpu = NamedDistribution(
-    "MultiWorkerCPU",
-    lambda: multi_worker_strategy.MultiWorkerMirroredStrategy(
-        cluster={
-            "worker": [
-                "/job:worker/replica:0/task:0", "/job:worker/replica:0/task:1"
-            ]
-        },
-        num_gpus_per_worker=0), 0)
-multi_worker_strategy_with_one_gpu = NamedDistribution(
-    "MultiWorker1GPU",
-    lambda: multi_worker_strategy.MultiWorkerMirroredStrategy(
-        cluster={
-            "worker": [
-                "/job:worker/replica:0/task:0", "/job:worker/replica:0/task:1"
-            ]
-        },
-        num_gpus_per_worker=1), 1)
-multi_worker_strategy_with_two_gpus = NamedDistribution(
-    "MultiWorker2GPUs",
-    lambda: multi_worker_strategy.MultiWorkerMirroredStrategy(
-        cluster={
-            "worker": [
-                "/job:worker/replica:0/task:0", "/job:worker/replica:0/task:1"
-            ]
-        },
-        num_gpus_per_worker=2), 2)
 
-adam_optimizer_v1_fn = NamedObject(
-    "AdamV1", lambda: adam.AdamOptimizer(0.2, epsilon=1))
 gradient_descent_optimizer_v1_fn = NamedObject(
     "GradientDescentV1", lambda: gradient_descent.GradientDescentOptimizer(0.2))
+adagrad_optimizer_v1_fn = NamedObject(
+    "AdagradV1", lambda: adagrad.AdagradOptimizer(0.001))
+adam_optimizer_v1_fn = NamedObject("AdamV1",
+                                   lambda: adam.AdamOptimizer(0.001, epsilon=1))
+rmsprop_optimizer_v1_fn = NamedObject(
+    "RmsPropV1", lambda: rmsprop.RMSPropOptimizer(0.001))
 
-adam_optimizer_v2_fn = NamedObject(
-    "AdamV2", lambda: adam_v2.AdamOptimizer(0.2, epsilon=1))
+optimizers_v1 = [gradient_descent_optimizer_v1_fn, adagrad_optimizer_v1_fn]
+
 gradient_descent_optimizer_v2_fn = NamedObject(
     "GradientDescentV2",
     lambda: gradient_descent_v2.GradientDescentOptimizer(0.2))
+adagrad_optimizer_v2_fn = NamedObject(
+    "AdagradV2", lambda: adagrad_v2.AdagradOptimizer(0.001))
+adam_optimizer_v2_fn = NamedObject(
+    "AdamV2", lambda: adam_v2.AdamOptimizer(0.001, epsilon=1))
+
+optimizers_v2 = [gradient_descent_optimizer_v2_fn, adagrad_optimizer_v2_fn]
 
 graph_and_eager_modes = ["graph", "eager"]
 
@@ -387,7 +380,7 @@ def distributions_and_v1_optimizers():
           one_device_strategy, mirrored_strategy_with_gpu_and_cpu,
           mirrored_strategy_with_two_gpus
       ],
-      optimizer_fn=[adam_optimizer_v1_fn, gradient_descent_optimizer_v1_fn])
+      optimizer_fn=optimizers_v1)
 
 
 def distributions_and_v2_optimizers():
@@ -397,4 +390,4 @@ def distributions_and_v2_optimizers():
           one_device_strategy, mirrored_strategy_with_gpu_and_cpu,
           mirrored_strategy_with_two_gpus
       ],
-      optimizer_fn=[adam_optimizer_v2_fn, gradient_descent_optimizer_v2_fn])
+      optimizer_fn=optimizers_v2)

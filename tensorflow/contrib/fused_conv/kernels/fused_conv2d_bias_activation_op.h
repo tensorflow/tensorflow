@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef THIRDPARTY_TENSORFLOW_CONTRIB_KERNELS_FUSED_CONV2D_BIAS_ACTIVATION_OP_H_
-#define THIRDPARTY_TENSORFLOW_CONTRIB_KERNELS_FUSED_CONV2D_BIAS_ACTIVATION_OP_H_
+#ifndef TENSORFLOW_CONTRIB_FUSED_CONV_KERNELS_FUSED_CONV2D_BIAS_ACTIVATION_OP_H_
+#define TENSORFLOW_CONTRIB_FUSED_CONV_KERNELS_FUSED_CONV2D_BIAS_ACTIVATION_OP_H_
 
 #include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/framework/tensor_types.h"
@@ -62,4 +62,4 @@ class LaunchFusedConv2DBiasActivationOp<Eigen::GpuDevice, T, BiasType,
 
 }  // namespace tensorflow
 
-#endif
+#endif  // TENSORFLOW_CONTRIB_FUSED_CONV_KERNELS_FUSED_CONV2D_BIAS_ACTIVATION_OP_H_

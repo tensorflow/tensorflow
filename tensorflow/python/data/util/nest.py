@@ -96,57 +96,11 @@ def _yield_value(iterable):
       yield value
 
 
-def is_sequence(seq):
-  """Returns a true if `seq` is a Sequence or dict (except strings/lists).
+# See the swig file (../../util/util.i) for documentation.
+is_sequence = _pywrap_tensorflow.IsSequenceForData
 
-  NOTE(mrry): This differs from `tensorflow.python.util.nest.is_sequence()`,
-  which *does* treat a Python list as a sequence. For ergonomic
-  reasons, `tf.data` users would prefer to treat lists as
-  implicit `tf.Tensor` objects, and dicts as (nested) sequences.
-
-  Args:
-    seq: an input sequence.
-
-  Returns:
-    True if the sequence is a not a string or list and is a
-    collections.Sequence.
-  """
-  return _pywrap_tensorflow.IsSequenceForData(seq)
-
-
-def flatten(nest):
-  """Returns a flat sequence from a given nested structure.
-
-  If `nest` is not a sequence, this returns a single-element list: `[nest]`.
-
-  Args:
-    nest: an arbitrarily nested structure or a scalar object.
-      Note, numpy arrays are considered scalars.
-
-  Returns:
-    A Python list, the flattened version of the input.
-  """
-  return _pywrap_tensorflow.FlattenForData(nest)
-
-
-def _recursive_assert_same_structure(nest1, nest2, check_types):
-  is_sequence_nest1 = is_sequence(nest1)
-  if is_sequence_nest1 != is_sequence(nest2):
-    raise ValueError(
-        "The two structures don't have the same nested structure. "
-        "First structure: %s, second structure: %s." % (nest1, nest2))
-
-  if is_sequence_nest1:
-    type_nest1 = type(nest1)
-    type_nest2 = type(nest2)
-    if check_types and type_nest1 != type_nest2:
-      raise TypeError(
-          "The two structures don't have the same sequence type. First "
-          "structure has type %s, while second structure has type %s."
-          % (type_nest1, type_nest2))
-
-    for n1, n2 in zip(_yield_value(nest1), _yield_value(nest2)):
-      _recursive_assert_same_structure(n1, n2, check_types)
+# See the swig file (../../util/util.i) for documentation.
+flatten = _pywrap_tensorflow.FlattenForData
 
 
 def assert_same_structure(nest1, nest2, check_types=True):
@@ -155,9 +109,12 @@ def assert_same_structure(nest1, nest2, check_types=True):
   Args:
     nest1: an arbitrarily nested structure.
     nest2: an arbitrarily nested structure.
-    check_types: if `True` (default) types of sequences are checked as
-      well. If set to `False`, for example a list and a tuple of objects will
-      look same if they have the same size.
+    check_types: if `True` (default) types of sequences should be same as
+      well. For dictionary, "type" of dictionary is considered to include its
+      keys. In other words, two dictionaries with different keys are considered
+      to have a different "type". If set to `False`, two iterables are
+      considered same as long as they yield the elements that have same
+      structures.
 
   Raises:
     ValueError: If the two structures do not have the same number of elements or
@@ -165,13 +122,7 @@ def assert_same_structure(nest1, nest2, check_types=True):
     TypeError: If the two structures differ in the type of sequence in any of
       their substructures. Only possible if `check_types` is `True`.
   """
-  len_nest1 = len(flatten(nest1)) if is_sequence(nest1) else 1
-  len_nest2 = len(flatten(nest2)) if is_sequence(nest2) else 1
-  if len_nest1 != len_nest2:
-    raise ValueError("The two structures don't have the same number of "
-                     "elements. First structure: %s, second structure: %s."
-                     % (nest1, nest2))
-  _recursive_assert_same_structure(nest1, nest2, check_types)
+  _pywrap_tensorflow.AssertSameStructureForData(nest1, nest2, check_types)
 
 
 def _packed_nest_with_indices(structure, flat, index):

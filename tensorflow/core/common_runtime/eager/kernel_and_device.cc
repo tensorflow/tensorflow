@@ -32,21 +32,6 @@ limitations under the License.
 namespace tensorflow {
 
 // static
-Status KernelAndDevice::InitOp(Device* device, const NodeDef& ndef,
-                               KernelAndDevice* out) {
-  OpKernel* k = nullptr;
-  Status s = CreateOpKernel(device->device_type().c_str(), device,
-                            device->GetAllocator(AllocatorAttributes()),
-                            nullptr, ndef, TF_GRAPH_DEF_VERSION, &k);
-  out->device_ = device;
-  out->kernel_.reset(k);
-  out->flib_ = nullptr;
-  out->runner_ = nullptr;
-  out->default_runner_ = [](std::function<void()> f) { f(); };
-  return s;
-}
-
-// static
 Status KernelAndDevice::Init(const NodeDef& ndef, FunctionLibraryRuntime* flib,
                              std::function<void(std::function<void()>)>* runner,
                              KernelAndDevice* out) {
@@ -60,12 +45,22 @@ Status KernelAndDevice::Init(const NodeDef& ndef, FunctionLibraryRuntime* flib,
   return s;
 }
 
-Status KernelAndDevice::Run(std::vector<Tensor>* input_tensors,
-                            std::vector<Tensor>* output_tensors,
+Status KernelAndDevice::Run(std::vector<Tensor>* inputs,
+                            std::vector<Tensor>* outputs,
                             NodeExecStats* stats) {
-  gtl::InlinedVector<TensorValue, 4> inputs;
-  for (Tensor& t : *input_tensors) {
-    inputs.push_back(TensorValue(&t));
+  ScopedStepContainer step_container(0, [this](const string& name) {
+    device_->resource_manager()->Cleanup(name).IgnoreError();
+  });
+  return this->Run(&step_container, inputs, outputs, stats);
+}
+
+Status KernelAndDevice::Run(ScopedStepContainer* step_container,
+                            std::vector<Tensor>* inputs,
+                            std::vector<Tensor>* outputs,
+                            NodeExecStats* stats) {
+  gtl::InlinedVector<TensorValue, 4> input_vector;
+  for (Tensor& t : *inputs) {
+    input_vector.push_back(TensorValue(&t));
   }
 
   std::vector<AllocatorAttributes> out_attrs(kernel_->num_outputs());
@@ -77,7 +72,7 @@ Status KernelAndDevice::Run(std::vector<Tensor>* input_tensors,
   OpKernelContext::Params params;
   params.device = device_;
   params.frame_iter = FrameAndIter(0, 0);
-  params.inputs = &inputs;
+  params.inputs = &input_vector;
   params.op_kernel = kernel_.get();
   params.resource_manager = device_->resource_manager();
   params.output_attr_array = gtl::vector_as_array(&out_attrs);
@@ -85,6 +80,7 @@ Status KernelAndDevice::Run(std::vector<Tensor>* input_tensors,
   params.slice_reader_cache = &slice_reader_cache_;
   params.rendezvous = rendez_;
   params.cancellation_manager = &cm_;
+  params.log_memory = log_memory_;
   if (stats != nullptr) {
     params.track_allocations = true;
   }
@@ -94,10 +90,7 @@ Status KernelAndDevice::Run(std::vector<Tensor>* input_tensors,
     params.runner = runner_;
   }
 
-  ScopedStepContainer step_container(0, [this](const string& name) {
-    device_->resource_manager()->Cleanup(name).IgnoreError();
-  });
-  params.step_container = &step_container;
+  params.step_container = step_container;
 
   OpKernelContext context(&params);
 
@@ -114,9 +107,9 @@ Status KernelAndDevice::Run(std::vector<Tensor>* input_tensors,
   }
   if (!context.status().ok()) return context.status();
 
-  output_tensors->clear();
+  outputs->clear();
   for (int i = 0; i < context.num_outputs(); ++i) {
-    output_tensors->push_back(Tensor(*context.mutable_output(i)));
+    outputs->push_back(Tensor(*context.mutable_output(i)));
   }
   if (stats != nullptr) {
     for (const auto& allocator_pair : context.wrapped_allocators()) {

@@ -21,18 +21,18 @@ limitations under the License.
 #include "tensorflow/core/util/sparse/sparse_tensor.h"
 
 namespace tensorflow {
-
+namespace data {
 namespace {
 
 // See documentation in ../ops/dataset_ops.cc for a high-level
 // description of the following op.
 
 template <typename T>
-class Dataset : public GraphDatasetBase {
+class Dataset : public DatasetBase {
  public:
   explicit Dataset(OpKernelContext* ctx,
                    const sparse::SparseTensor& sparse_tensor)
-      : GraphDatasetBase(ctx),
+      : DatasetBase(DatasetContext(ctx)),
         sparse_tensor_(sparse_tensor),
         dtypes_({DT_INT64, sparse_tensor.dtype(), DT_INT64}),
         shapes_({{-1, sparse_tensor.dims() - 1},
@@ -55,7 +55,8 @@ class Dataset : public GraphDatasetBase {
   }
 
  protected:
-  Status AsGraphDefInternal(DatasetGraphDefBuilder* b,
+  Status AsGraphDefInternal(SerializationContext* ctx,
+                            DatasetGraphDefBuilder* b,
                             Node** output) const override {
     Node* indices_node;
     TF_RETURN_IF_ERROR(b->AddTensor(sparse_tensor_.indices(), &indices_node));
@@ -273,5 +274,5 @@ TF_CALL_DATASET_TYPES(REGISTER_DATASET_KERNEL);
 #undef REGISTER_DATASET_KERNEL
 
 }  // namespace
-
+}  // namespace data
 }  // namespace tensorflow

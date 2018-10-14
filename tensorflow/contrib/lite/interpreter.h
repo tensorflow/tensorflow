@@ -23,10 +23,11 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/contrib/lite/allocation.h"
-#include "tensorflow/contrib/lite/context.h"
-#include "tensorflow/contrib/lite/error_reporter.h"
+#include "tensorflow/contrib/lite/c/c_api_internal.h"
+#include "tensorflow/contrib/lite/core/api/error_reporter.h"
 #include "tensorflow/contrib/lite/memory_planner.h"
 #include "tensorflow/contrib/lite/profiling/profiler.h"
+#include "tensorflow/contrib/lite/stderr_reporter.h"
 
 namespace tflite {
 
@@ -136,6 +137,11 @@ class Interpreter {
   // interpreter.
   TfLiteStatus SetVariables(std::vector<int> variables);
 
+  // Ensure the internal node storage memory allocates at least `count`
+  // spots for node. NOTE, this doesn't actually add operators. This is an
+  // efficiency optimization that is subject to change.
+  void ReserveNodes(int count);
+
   // Adds a node with the given parameters and returns the index of the new
   // node in `node_index` (optionally). Interpreter will take ownership of
   // `builtin_data` and destroy it with `free`. Ownership of 'init_data'
@@ -165,7 +171,7 @@ class Interpreter {
     return SetTensorParametersReadOnly(tensor_index, type, name, dims.size(),
                                        dims.data(), quantization, buffer, bytes,
                                        allocation);
-  };
+  }
 
   TfLiteStatus SetTensorParametersReadOnly(
       int tensor_index, TfLiteType type, const char* name, const size_t rank,
@@ -330,6 +336,23 @@ class Interpreter {
   // Set the number of threads available to the interpreter.
   void SetNumThreads(int num_threads);
 
+  // Allow float16 precision for FP32 calculation when possible.
+  // default: not allow.
+  // WARNING: This is an experimental API and subject to change.
+  void SetAllowFp16PrecisionForFp32(bool allow) {
+    context_.allow_fp32_relax_to_fp16 = allow;
+  }
+
+  // Get the half precision flag.
+  // WARNING: This is an experimental API and subject to change.
+  bool GetAllowFp16PrecisionForFp32() const {
+    return context_.allow_fp32_relax_to_fp16;
+  }
+
+  // Owning handle to a TfLiteDelegate instance.
+  using TfLiteDelegatePtr =
+      std::unique_ptr<TfLiteDelegate, void (*)(TfLiteDelegate*)>;
+
   // Allow a delegate to look at the graph and modify the graph to handle
   // parts of the graph themselves. After this is called, the graph may
   // contain new nodes that replace 1 more nodes.
@@ -350,7 +373,7 @@ class Interpreter {
       // This can be null if the delegate doesn't use its own buffer.
       TF_LITE_ENSURE(&context_,
                      tensor->delegate->CopyFromBufferHandle != nullptr);
-      tensor->delegate->CopyFromBufferHandle(tensor->delegate,
+      tensor->delegate->CopyFromBufferHandle(&context_, tensor->delegate,
                                              tensor->buffer_handle,
                                              tensor->data.raw, tensor->bytes);
       tensor->data_is_stale = false;
@@ -402,9 +425,12 @@ class Interpreter {
     allow_buffer_handle_output_ = allow_buffer_handle_output;
   }
 
-  // Reset all variable tensors to zero.
+  // Reset all variable tensors to the default value.
+  // If a variable tensor doesn't have a buffer, reset it to zero.
+  // TODO(b/115961645): Implement - If a variable tensor has a buffer, reset it
+  // to the value of the buffer.
   // WARNING: This is an experimental API and subject to change.
-  TfLiteStatus ResetVariableTensorsToZero();
+  TfLiteStatus ResetVariableTensors();
 
   // Retrieve an operator's description of its work, for profiling purposes.
   const char* OpProfilingString(const TfLiteRegistration& op_reg,
@@ -413,7 +439,12 @@ class Interpreter {
     return op_reg.profiling_string(&context_, node);
   }
 
+  // Set the value of an external context.
+  void SetExternalContext(TfLiteExternalContextType type,
+                          TfLiteExternalContext* ctx);
+
  private:
+  friend class InterpreterBuilder;
   friend class InterpreterTest;
 
   // Prevent 'context_' from accessing functions that are only available to
@@ -527,12 +558,13 @@ class Interpreter {
                                              TfLiteRegistration** registration);
 
   // WARNING: This is an experimental interface that is subject to change.
-  // Gets an TfLiteIntArray* representing the execution plan. The caller owns
-  // this memory and must free it with TfLiteIntArrayFree().
+  // Gets an TfLiteIntArray* representing the execution plan. The interpreter
+  // owns this memory and it is only guaranteed to exist during the invocation
+  // of the delegate prepare.
   TfLiteStatus GetExecutionPlan(TfLiteIntArray** execution_plan);
 
   // WARNING: This is an experimental interface that is subject to change.
-  // Entry point for C node plugin API to get the execution plan
+  // Entry point for C node plugin API to get the execution plan.
   static TfLiteStatus GetExecutionPlan(struct TfLiteContext* context,
                                        TfLiteIntArray** execution_plan);
 
@@ -542,11 +574,21 @@ class Interpreter {
       struct TfLiteContext* context, TfLiteExternalContextType type);
 
   // Set the value of an external context.
-  void SetExternalContext(TfLiteExternalContextType type,
-                          TfLiteExternalContext* ctx);
   static void SetExternalContext(struct TfLiteContext* context,
                                  TfLiteExternalContextType type,
                                  TfLiteExternalContext* ctx);
+
+  // Variant of the public ModifyGraphWithDelegate method that additionally
+  // Assumes ownership of the provided delegate.
+  // WARNING: This is an experimental API and subject to change.
+  TfLiteStatus ModifyGraphWithDelegate(TfLiteDelegatePtr delegate,
+                                       bool allow_dynamic_tensors = false) {
+    // Note that we retain ownership of the delegate even if graph modification
+    // fails, as delegate use will be in an indeterminate state at that point.
+    owned_delegates_.push_back(std::move(delegate));
+    return ModifyGraphWithDelegate(owned_delegates_.back().get(),
+                                   allow_dynamic_tensors);
+  }
 
   // Ensures that `tensors_` has at least `kTensorsCapacityHeadroom` extra
   // capacity. Calling this function may invalidate existing pointers to
@@ -626,6 +668,12 @@ class Interpreter {
 
   // Whether to delegate to NN API
   std::unique_ptr<NNAPIDelegate> nnapi_delegate_;
+
+  // List of delegates that have been installed and are owned by this
+  // interpreter instance. Useful if client delegate ownership is burdensome.
+  // WARNING: This is an experimental API and subject to change.
+  // TODO(b/116667551): Use TfLiteExternalContext for storing state.
+  std::vector<TfLiteDelegatePtr> owned_delegates_;
 
   std::unique_ptr<MemoryPlanner> memory_planner_;
 

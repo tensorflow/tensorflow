@@ -20,7 +20,6 @@ from __future__ import print_function
 import numpy as np
 
 from tensorflow.python.framework import dtypes
-from tensorflow.python.framework import random_seed
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops.linalg import linalg as linalg_lib
@@ -28,7 +27,6 @@ from tensorflow.python.ops.linalg import linear_operator_test_util
 from tensorflow.python.platform import test
 
 linalg = linalg_lib
-random_seed.set_random_seed(23)
 rng = np.random.RandomState(0)
 
 
@@ -256,7 +254,7 @@ class LinearOpearatorLowRankUpdateBroadcastsShape(test.TestCase):
 
     # domain_dimension is 3
     self.assertAllEqual([2, 3, 3], operator.shape)
-    with self.test_session():
+    with self.cached_session():
       self.assertAllEqual([2, 3, 3], operator.to_dense().eval().shape)
 
   def test_dynamic_shape_broadcasts_up_from_operator_to_other_args(self):
@@ -274,7 +272,7 @@ class LinearOpearatorLowRankUpdateBroadcastsShape(test.TestCase):
         u_shape_ph: [2, 3, 2],  # batch_shape = [2]
     }
 
-    with self.test_session():
+    with self.cached_session():
       shape_tensor = operator.shape_tensor().eval(feed_dict=feed_dict)
       self.assertAllEqual([2, 3, 3], shape_tensor)
       dense = operator.to_dense().eval(feed_dict=feed_dict)

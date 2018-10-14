@@ -367,7 +367,7 @@ def make_tensor_proto(values, dtype=None, shape=None, verify_shape=False):
     A `TensorProto`. Depending on the type, it may contain data in the
     "tensor_content" attribute, which is not directly useful to Python programs.
     To access the values you should convert the proto back to a numpy ndarray
-    with `tensor_util.MakeNdarray(proto)`.
+    with `tf.make_ndarray(proto)`.
 
     If `values` is a `TensorProto`, it is immediately returned; `dtype` and
     `shape` are ignored.
@@ -942,7 +942,7 @@ def is_tensor(x):  # pylint: disable=invalid-name
   """Check whether `x` is of tensor type.
 
   Check whether an object is a tensor. This check is equivalent to calling
-  `isinstance(x, [tf.Tensor, tf.SparseTensor, tf.Variable])` and also checks
+  `isinstance(x, (tf.Tensor, tf.SparseTensor, tf.Variable))` and also checks
   if all the component variables of a MirroredVariable or a TowerLocalVariable
   are tensors.
 

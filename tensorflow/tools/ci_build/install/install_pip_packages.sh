@@ -24,8 +24,10 @@ easy_install3 -U pip==9.0.3
 # Install pip packages from whl files to avoid the time-consuming process of
 # building from source.
 
-pip2 install wheel
-pip3 install wheel
+# Pin wheel==0.31.1 to work around issue
+# https://github.com/pypa/auditwheel/issues/102
+pip2 install wheel==0.31.1
+pip3 install wheel==0.31.1
 
 pip2 install virtualenv
 pip3 install virtualenv
@@ -61,15 +63,15 @@ rm -rf /usr/lib/python3/dist-packages/six*
 # https://github.com/tensorflow/tensorflow/issues/6968
 # This workaround isn't needed for Ubuntu 16.04 or later.
 if $(cat /etc/*-release | grep -q 14.04); then
-  pip2 install --no-binary=:all: --upgrade numpy==1.12.0
-  pip3 install --no-binary=:all: --upgrade numpy==1.12.0
+  pip2 install --no-binary=:all: --upgrade numpy==1.14.5
+  pip3 install --no-binary=:all: --upgrade numpy==1.14.5
 else
-  pip2 install --upgrade numpy==1.12.0
-  pip3 install --upgrade numpy==1.12.0
+  pip2 install --upgrade numpy==1.14.5
+  pip3 install --upgrade numpy==1.14.5
 fi
 
-pip2 install scipy==0.18.1
-pip3 install scipy==0.18.1
+pip2 install scipy==1.1.0
+pip3 install scipy==1.1.0
 
 pip2 install scikit-learn==0.18.1
 pip3 install scikit-learn==0.18.1
@@ -115,10 +117,16 @@ pip2 install --upgrade setuptools==39.1.0
 pip3 install --upgrade setuptools==39.1.0
 
 # Keras
-pip2 install keras_applications==1.0.2
-pip3 install keras_applications==1.0.2
-pip2 install keras_preprocessing==1.0.1
-pip3 install keras_preprocessing==1.0.1
+pip2 install keras_applications==1.0.6 --no-deps
+pip3 install keras_applications==1.0.6 --no-deps
+pip2 install keras_preprocessing==1.0.5 --no-deps
+pip3 install keras_preprocessing==1.0.5 --no-deps
+pip2 install --upgrade h5py==2.8.0
+pip3 install --upgrade h5py==2.8.0
+
+# Estimator
+pip2 install tensorflow_estimator --no-deps
+pip3 install tensorflow_estimator --no-deps
 
 # Install last working version of setuptools.
 pip2 install --upgrade setuptools==39.1.0

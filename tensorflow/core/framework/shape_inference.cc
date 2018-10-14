@@ -239,6 +239,15 @@ void InferenceContext::PreInputInit(
   output_handle_shapes_and_types_.resize(num_outputs);
 }
 
+Status InferenceContext::ExpandOutputs(int new_output_size) {
+  if (new_output_size < outputs_.size()) {
+    return errors::InvalidArgument("Trying to reduce number of outputs of op.");
+  }
+  outputs_.resize(new_output_size, nullptr);
+  output_handle_shapes_and_types_.resize(new_output_size);
+  return Status::OK();
+}
+
 void InferenceContext::PostInputInit(
     std::vector<std::unique_ptr<std::vector<ShapeAndType>>> input_handle_data) {
   int num_inputs_from_node_def = 0;
@@ -950,8 +959,7 @@ Status InferenceContext::GetScalarFromTensor(const Tensor* t, int64* val) {
     *val = t->scalar<int64>()();
     return Status::OK();
   } else {
-    return errors::InvalidArgument(
-        "Scalar input for dim size must be int32 or int64");
+    return errors::InvalidArgument("Scalar input must be int32 or int64.");
   }
 }
 

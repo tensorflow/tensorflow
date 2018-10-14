@@ -14,17 +14,59 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/core/grappler/graph_view.h"
+#include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/grappler/utils.h"
 
 namespace tensorflow {
 namespace grappler {
 
+namespace {
+int OpPortIdToArgId(const NodeDef& node,
+                    const protobuf::RepeatedPtrField<OpDef::ArgDef>& args,
+                    int port_id) {
+  for (int arg_id = 0; arg_id < args.size(); ++arg_id) {
+    if (port_id < 0) {
+      return -1;
+    } else if (port_id == 0) {
+      return arg_id;
+    }
+
+    // Default is 1 port per arg.
+    int n = 1;
+
+    const auto& arg = args.Get(arg_id);
+    if (!arg.number_attr().empty()) {
+      n = node.attr().at(arg.number_attr()).i();
+    } else if (!arg.type_list_attr().empty()) {
+      n = node.attr().at(arg.type_list_attr()).list().type_size();
+    }
+
+    if (n < 0) {
+      // This should never happen.
+      DCHECK_GE(n, 0);
+      return -1;
+    } else if (port_id < n) {
+      return arg_id;
+    }
+    port_id -= n;
+  }
+
+  return -1;
+}
+}  // end namespace
+
+int OpOutputPortIdToArgId(const NodeDef& node, const OpDef& op, int port_id) {
+  return OpPortIdToArgId(node, op.output_arg(), port_id);
+}
+
+int OpInputPortIdToArgId(const NodeDef& node, const OpDef& op, int port_id) {
+  return OpPortIdToArgId(node, op.input_arg(), port_id);
+}
+
 GraphView::GraphView(GraphDef* graph) : graph_(graph) {
   for (int i = 0; i < graph_->node_size(); i++) {
     auto node = graph_->mutable_node(i);
-    auto result = nodes_.emplace(node->name(), node);
-    // Check that the graph doesn't contain multiple nodes with the same name.
-    CHECK(result.second) << "Non unique node name detected: " << node->name();
+    AddUniqueNodeOrDie(node);
   }
 
   for (NodeDef& node : *graph_->mutable_node()) {
@@ -32,10 +74,16 @@ GraphView::GraphView(GraphDef* graph) : graph_(graph) {
   }
 }
 
+void GraphView::AddUniqueNodeOrDie(NodeDef* node) {
+  auto result = nodes_.emplace(node->name(), node);
+  // Check that the graph doesn't contain multiple nodes with the same name.
+  CHECK(result.second) << "Non unique node name detected: " << node->name();
+}
+
 void GraphView::AddFanouts(NodeDef* node) {
   for (int i = 0; i < node->input_size(); ++i) {
     OutputPort fanin;
-    string fanin_name = ParseNodeName(node->input(i), &fanin.port_id);
+    const string fanin_name = ParseNodeName(node->input(i), &fanin.port_id);
     fanin.node = nodes_[fanin_name];
 
     InputPort input;

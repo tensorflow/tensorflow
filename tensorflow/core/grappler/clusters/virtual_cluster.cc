@@ -45,6 +45,8 @@ VirtualCluster::VirtualCluster(const DeviceSet* device_set)
   for (const auto& device : device_set_->devices()) {
     DeviceProperties props = GetDeviceInfo(device->parsed_name());
     if (props.type() == "UNKNOWN") continue;
+    auto attrs = device->attributes();
+    props.set_memory_size(attrs.memory_limit());
     devices_[device->name()] = props;
   }
 }
@@ -68,8 +70,8 @@ Status VirtualCluster::Run(const GraphDef& graph,
   item.graph = graph;
   item.feed = feed;
   item.fetch = fetch;
-  VirtualScheduler scheduler(&item, true, this, node_manager_.get());
-  TF_RETURN_IF_ERROR(scheduler.Init());
+  VirtualScheduler scheduler(true, this, node_manager_.get());
+  TF_RETURN_IF_ERROR(scheduler.Init(&item));
 
   if (metadata) {
     metadata->clear_step_stats();

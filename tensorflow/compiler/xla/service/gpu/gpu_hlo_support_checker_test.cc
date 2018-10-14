@@ -16,7 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/gpu_hlo_support_checker.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/test.h"
-#include "tensorflow/compiler/xla/tests/hlo_test_base.h"
+#include "tensorflow/compiler/xla/tests/hlo_verified_test_base.h"
 #include "tensorflow/core/lib/core/error_codes.pb.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 
@@ -25,7 +25,7 @@ namespace {
 
 using ::testing::HasSubstr;
 
-class GpuHloSupportCheckerTest : public HloTestBase {
+class GpuHloSupportCheckerTest : public HloVerifiedTestBase {
  protected:
   GpuHloSupportChecker& checker() { return checker_; }
 
@@ -45,7 +45,7 @@ TEST_F(GpuHloSupportCheckerTest, Add) {
   auto module = CreateNewModule();
   module->AddEntryComputation(builder.Build());
 
-  TF_ASSERT_OK(checker().Run(module.get()).status());
+  TF_ASSERT_OK(checker().Run(module).status());
 }
 
 TEST_F(GpuHloSupportCheckerTest, SparseUnimplemented) {
@@ -57,7 +57,10 @@ TEST_F(GpuHloSupportCheckerTest, SparseUnimplemented) {
       HloInstruction::CreateParameter(1, sparse_shape, "param1"));
   builder.AddInstruction(HloInstruction::CreateBinary(
       sparse_shape, HloOpcode::kAdd, param0, param1));
-  auto module = CreateNewModule();
+  // Since verifier is reporting sparse layouts as errors, we should
+  // use a regular HloModule instead of VerifiedHloModule to avoid
+  // verifier errors being triggered in the destructor.
+  auto module = HloTestBase::CreateNewModule();
   module->AddEntryComputation(builder.Build());
 
   Status status = checker().Run(module.get()).status();

@@ -32,7 +32,7 @@ from tensorflow.python.platform import test
 class Conv3DBackpropFilterV2GradTest(test.TestCase):
 
   def testGradient(self):
-    with self.test_session():
+    with self.cached_session():
       for padding in ["SAME", "VALID"]:
         for stride in [1, 2]:
           np.random.seed(1)

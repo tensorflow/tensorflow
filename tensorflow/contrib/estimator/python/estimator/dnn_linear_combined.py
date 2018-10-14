@@ -118,7 +118,7 @@ class DNNLinearCombinedEstimator(estimator.Estimator):
       head: A `_Head` instance constructed with a method such as
         `tf.contrib.estimator.multi_label_head`.
       model_dir: Directory to save model parameters, graph and etc. This can
-        also be used to load checkpoints from the directory into a estimator
+        also be used to load checkpoints from the directory into an estimator
         to continue training a previously saved model.
       linear_feature_columns: An iterable containing all the feature columns
         used by linear part of the model. All items in the set must be
@@ -147,7 +147,7 @@ class DNNLinearCombinedEstimator(estimator.Estimator):
         if a categorical column is multivalent.  One of "mean", "sqrtn", and
         "sum" -- these are effectively different ways to do example-level
         normalization, which can be useful for bag-of-words features.  For more
-        details, see @{tf.feature_column.linear_model$linear_model}.
+        details, see `tf.feature_column.linear_model`.
 
     Raises:
       ValueError: If both linear_feature_columns and dnn_features_columns are

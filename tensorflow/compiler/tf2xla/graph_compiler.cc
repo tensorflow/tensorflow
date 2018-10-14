@@ -20,7 +20,6 @@ limitations under the License.
 #include <vector>
 #include "tensorflow/compiler/tf2xla/const_analysis.h"
 #include "tensorflow/compiler/tf2xla/dump_graph.h"
-#include "tensorflow/compiler/tf2xla/functionalize_control_flow.h"
 #include "tensorflow/compiler/tf2xla/literal_util.h"
 #include "tensorflow/compiler/tf2xla/shape_util.h"
 #include "tensorflow/compiler/tf2xla/type_util.h"
@@ -57,7 +56,8 @@ Status PrepareArguments(XlaOpKernelContext* ctx, Graph* graph,
   std::vector<bool> compile_time_constant_flags(expressions.size());
 
   TF_RETURN_IF_ERROR(
-      BackwardsConstAnalysis(*graph, &compile_time_constant_flags));
+      BackwardsConstAnalysis(*graph, &compile_time_constant_flags,
+                             /*compile_time_const_nodes=*/nullptr));
 
   args->resize(expressions.size());
   for (int i = 0; i < args->size(); ++i) {
@@ -80,7 +80,7 @@ Status PrepareArguments(XlaOpKernelContext* ctx, Graph* graph,
       TF_ASSIGN_OR_RETURN(auto literal,
                           client->ComputeConstant(constant_graph));
       TF_RETURN_IF_ERROR(
-          LiteralToHostTensor(*literal, arg.type, &arg.constant_value));
+          LiteralToHostTensor(literal, arg.type, &arg.constant_value));
     } else {
       arg.kind = XlaCompiler::Argument::kParameter;
     }
@@ -126,7 +126,7 @@ Status GraphCompiler::Compile() {
     TF_RET_CHECK(!n->IsRecv() && !n->IsSend() && !n->IsSwitch())
         << "Not supported node: " << n->DebugString();
     params.op_kernel = op_kernel.get();
-    gtl::InlinedVector<AllocatorAttributes, 4> output_attr(n->num_outputs());
+    absl::InlinedVector<AllocatorAttributes, 4> output_attr(n->num_outputs());
     params.output_attr_array = output_attr.data();
 
     // tensor_inputs_ is a buffer reused across graph traversal. We clean up and
@@ -145,6 +145,7 @@ Status GraphCompiler::Compile() {
     }
 
     OpKernelContext op_context(&params, n->num_outputs());
+    VLOG(3) << "Translating " << params.op_kernel->name();
     if (IsFunctional(n)) {
       TF_RETURN_IF_ERROR(CompileFunctionalNode(n, &op_context));
     } else {
