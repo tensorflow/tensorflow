@@ -2335,14 +2335,14 @@ HloInstructionProto HloDomainInstruction::ToProto() const {
   HloInstructionProto proto = HloInstruction::ToProto();
   auto operand_side_sharding =
       dynamic_cast<const ShardingMetadata*>(operand_side_metadata_.get());
-  if (operand_side_sharding) {
+  if (operand_side_sharding && operand_side_sharding->sharding() != nullptr) {
     *proto.mutable_domain_entry_sharding() =
         operand_side_sharding->sharding()->ToProto();
   }
 
   auto user_side_sharding =
       dynamic_cast<const ShardingMetadata*>(user_side_metadata_.get());
-  if (user_side_sharding) {
+  if (user_side_sharding && user_side_sharding->sharding() != nullptr) {
     *proto.mutable_domain_exit_sharding() =
         user_side_sharding->sharding()->ToProto();
   }
