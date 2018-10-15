@@ -29,7 +29,6 @@ cc_library(
         "//tensorflow/contrib/ffmpeg/default:ffmpeg_lib",
         "//tensorflow/core:framework_headers_lib",
         "//third_party/eigen3",
-        "@com_google_absl//absl/strings",
     ],
     alwayslink = 1,
 )
@@ -58,7 +57,6 @@ cc_library(
         "//tensorflow/contrib/ffmpeg/default:ffmpeg_lib",
         "//tensorflow/core:framework_headers_lib",
         "//third_party/eigen3",
-        "@com_google_absl//absl/strings",
     ],
     alwayslink = 1,
 )

@@ -17,7 +17,6 @@ limitations under the License.
 
 #include <limits>
 #include <vector>
-#include "absl/strings/string_view.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/attr_value_util.h"
 #include "tensorflow/core/framework/op_def_util.h"
@@ -34,11 +33,11 @@ namespace tensorflow {
 
 namespace {
 
-string AttrError(absl::string_view orig, const string& op_name) {
+string AttrError(StringPiece orig, const string& op_name) {
   return strings::StrCat(" from Attr(\"", orig, "\") for Op ", op_name);
 }
 
-bool ConsumeAttrName(absl::string_view* sp, absl::string_view* out) {
+bool ConsumeAttrName(StringPiece* sp, StringPiece* out) {
   return Scanner(*sp)
       .One(Scanner::LETTER)
       .Any(Scanner::LETTER_DIGIT_UNDERSCORE)
@@ -49,7 +48,7 @@ bool ConsumeAttrName(absl::string_view* sp, absl::string_view* out) {
       .GetResult(sp, out);
 }
 
-bool ConsumeListPrefix(absl::string_view* sp) {
+bool ConsumeListPrefix(StringPiece* sp) {
   return Scanner(*sp)
       .OneLiteral("list")
       .AnySpace()
@@ -58,8 +57,7 @@ bool ConsumeListPrefix(absl::string_view* sp) {
       .GetResult(sp);
 }
 
-bool ConsumeQuotedString(char quote_ch, absl::string_view* sp,
-                         absl::string_view* out) {
+bool ConsumeQuotedString(char quote_ch, StringPiece* sp, StringPiece* out) {
   const string quote_str(1, quote_ch);
   return Scanner(*sp)
       .OneLiteral(quote_str.c_str())
@@ -71,7 +69,7 @@ bool ConsumeQuotedString(char quote_ch, absl::string_view* sp,
       .GetResult(sp, out);
 }
 
-bool ConsumeAttrType(absl::string_view* sp, absl::string_view* out) {
+bool ConsumeAttrType(StringPiece* sp, StringPiece* out) {
   return Scanner(*sp)
       .Many(Scanner::LOWERLETTER_DIGIT)
       .StopCapture()
@@ -79,10 +77,10 @@ bool ConsumeAttrType(absl::string_view* sp, absl::string_view* out) {
       .GetResult(sp, out);
 }
 
-bool ConsumeAttrNumber(absl::string_view* sp, int64* out) {
+bool ConsumeAttrNumber(StringPiece* sp, int64* out) {
   Scanner scan(*sp);
-  absl::string_view match;
-  absl::string_view remaining;
+  StringPiece match;
+  StringPiece remaining;
 
   scan.AnySpace().RestartCapture();
   if (scan.Peek() == '-') {
@@ -112,21 +110,20 @@ bool ConsumeAttrNumber(absl::string_view* sp, int64* out) {
     }                                                                     \
   } while (false)
 
-bool ConsumeCompoundAttrType(absl::string_view* sp, absl::string_view* out) {
+bool ConsumeCompoundAttrType(StringPiece* sp, StringPiece* out) {
   auto capture_begin = sp->begin();
   if (str_util::ConsumePrefix(sp, "numbertype") ||
       str_util::ConsumePrefix(sp, "numerictype") ||
       str_util::ConsumePrefix(sp, "quantizedtype") ||
       str_util::ConsumePrefix(sp, "realnumbertype") ||
       str_util::ConsumePrefix(sp, "realnumberictype")) {
-    *out = absl::string_view(capture_begin, sp->begin() - capture_begin);
+    *out = StringPiece(capture_begin, sp->begin() - capture_begin);
     return true;
   }
   return false;
 }
 
-bool ProcessCompoundType(const absl::string_view type_string,
-                         AttrValue* allowed) {
+bool ProcessCompoundType(const StringPiece type_string, AttrValue* allowed) {
   if (type_string == "numbertype" || type_string == "numerictype") {
     for (DataType dt : NumberTypes()) {
       allowed->mutable_list()->add_type(dt);
@@ -146,20 +143,20 @@ bool ProcessCompoundType(const absl::string_view type_string,
   return true;
 }
 
-void FinalizeAttr(absl::string_view spec, OpDef* op_def,
+void FinalizeAttr(StringPiece spec, OpDef* op_def,
                   std::vector<string>* errors) {
   OpDef::AttrDef* attr = op_def->add_attr();
-  absl::string_view orig(spec);
+  StringPiece orig(spec);
 
   // Parse "<name>:" at the beginning.
-  absl::string_view tmp_name;
+  StringPiece tmp_name;
   VERIFY(ConsumeAttrName(&spec, &tmp_name), "Trouble parsing '<name>:'");
   attr->set_name(tmp_name.data(), tmp_name.size());
 
   // Read "<type>" or "list(<type>)".
   bool is_list = ConsumeListPrefix(&spec);
   string type;
-  absl::string_view type_string;  // Used if type == "type"
+  StringPiece type_string;  // Used if type == "type"
   if (str_util::ConsumePrefix(&spec, "string")) {
     type = "string";
   } else if (str_util::ConsumePrefix(&spec, "int")) {
@@ -188,7 +185,7 @@ void FinalizeAttr(absl::string_view spec, OpDef* op_def,
     if (str_util::StartsWith(spec, "\"") || str_util::StartsWith(spec, "'")) {
       type = "string";  // "{ \"foo\", \"bar\" }" or "{ 'foo', 'bar' }"
       while (true) {
-        absl::string_view escaped_string;
+        StringPiece escaped_string;
         VERIFY(ConsumeQuotedString('"', &spec, &escaped_string) ||
                    ConsumeQuotedString('\'', &spec, &escaped_string),
                "Trouble parsing allowed string at '", spec, "'");
@@ -269,13 +266,12 @@ void FinalizeAttr(absl::string_view spec, OpDef* op_def,
 
 #undef VERIFY
 
-string InOutError(bool is_output, absl::string_view orig,
-                  const string& op_name) {
+string InOutError(bool is_output, StringPiece orig, const string& op_name) {
   return strings::StrCat(" from ", is_output ? "Output" : "Input", "(\"", orig,
                          "\") for Op ", op_name);
 }
 
-bool ConsumeInOutName(absl::string_view* sp, absl::string_view* out) {
+bool ConsumeInOutName(StringPiece* sp, StringPiece* out) {
   return Scanner(*sp)
       .One(Scanner::LOWERLETTER)
       .Any(Scanner::LOWERLETTER_DIGIT_UNDERSCORE)
@@ -286,7 +282,7 @@ bool ConsumeInOutName(absl::string_view* sp, absl::string_view* out) {
       .GetResult(sp, out);
 }
 
-bool ConsumeInOutRefOpen(absl::string_view* sp) {
+bool ConsumeInOutRefOpen(StringPiece* sp) {
   return Scanner(*sp)
       .OneLiteral("Ref")
       .AnySpace()
@@ -295,11 +291,11 @@ bool ConsumeInOutRefOpen(absl::string_view* sp) {
       .GetResult(sp);
 }
 
-bool ConsumeInOutRefClose(absl::string_view* sp) {
+bool ConsumeInOutRefClose(StringPiece* sp) {
   return Scanner(*sp).OneLiteral(")").AnySpace().GetResult(sp);
 }
 
-bool ConsumeInOutNameOrType(absl::string_view* sp, absl::string_view* out) {
+bool ConsumeInOutNameOrType(StringPiece* sp, StringPiece* out) {
   return Scanner(*sp)
       .One(Scanner::LETTER)
       .Any(Scanner::LETTER_DIGIT_UNDERSCORE)
@@ -308,7 +304,7 @@ bool ConsumeInOutNameOrType(absl::string_view* sp, absl::string_view* out) {
       .GetResult(sp, out);
 }
 
-bool ConsumeInOutTimesType(absl::string_view* sp, absl::string_view* out) {
+bool ConsumeInOutTimesType(StringPiece* sp, StringPiece* out) {
   return Scanner(*sp)
       .OneLiteral("*")
       .AnySpace()
@@ -329,15 +325,15 @@ bool ConsumeInOutTimesType(absl::string_view* sp, absl::string_view* out) {
     }                                                                 \
   } while (false)
 
-void FinalizeInputOrOutput(absl::string_view spec, bool is_output,
-                           OpDef* op_def, std::vector<string>* errors) {
+void FinalizeInputOrOutput(StringPiece spec, bool is_output, OpDef* op_def,
+                           std::vector<string>* errors) {
   OpDef::ArgDef* arg =
       is_output ? op_def->add_output_arg() : op_def->add_input_arg();
 
-  absl::string_view orig(spec);
+  StringPiece orig(spec);
 
   // Parse "<name>:" at the beginning.
-  absl::string_view tmp_name;
+  StringPiece tmp_name;
   VERIFY(ConsumeInOutName(&spec, &tmp_name), "Trouble parsing 'name:'");
   arg->set_name(tmp_name.data(), tmp_name.size());
 
@@ -347,7 +343,7 @@ void FinalizeInputOrOutput(absl::string_view spec, bool is_output,
   }
 
   {  // Parse "<name|type>" or "<name>*<name|type>".
-    absl::string_view first, second, type_or_attr;
+    StringPiece first, second, type_or_attr;
     VERIFY(ConsumeInOutNameOrType(&spec, &first),
            "Trouble parsing either a type or an attr name at '", spec, "'");
     if (ConsumeInOutTimesType(&spec, &second)) {
@@ -413,7 +409,7 @@ void FinalizeInputOrOutput(absl::string_view spec, bool is_output,
 
 #undef VERIFY
 
-int num_leading_spaces(absl::string_view s) {
+int num_leading_spaces(StringPiece s) {
   size_t i = 0;
   while (i < s.size() && s[i] == ' ') {
     ++i;
@@ -421,7 +417,7 @@ int num_leading_spaces(absl::string_view s) {
   return i;
 }
 
-bool ConsumeDocNameColon(absl::string_view* sp, absl::string_view* out) {
+bool ConsumeDocNameColon(StringPiece* sp, StringPiece* out) {
   return Scanner(*sp)
       .One(Scanner::LETTER)
       .Any(Scanner::LETTER_DIGIT_UNDERSCORE)
@@ -432,7 +428,7 @@ bool ConsumeDocNameColon(absl::string_view* sp, absl::string_view* out) {
       .GetResult(sp, out);
 }
 
-bool IsDocNameColon(absl::string_view s) {
+bool IsDocNameColon(StringPiece s) {
   return ConsumeDocNameColon(&s, nullptr /* out */);
 }
 
@@ -469,8 +465,8 @@ void FinalizeDoc(const string& text, OpDef* op_def,
   // name: description
   //   possibly continued on the next line
   //   if so, we remove the minimum indent
-  absl::string_view name;
-  std::vector<absl::string_view> description;
+  StringPiece name;
+  std::vector<StringPiece> description;
   while (static_cast<size_t>(l) < lines.size()) {
     description.clear();
     description.push_back(lines[l]);
@@ -609,13 +605,13 @@ Status OpDefBuilder::Finalize(OpRegistrationData* op_reg_data) const {
   *op_reg_data = op_reg_data_;
 
   OpDef* op_def = &op_reg_data->op_def;
-  for (absl::string_view attr : attrs_) {
+  for (StringPiece attr : attrs_) {
     FinalizeAttr(attr, op_def, &errors);
   }
-  for (absl::string_view input : inputs_) {
+  for (StringPiece input : inputs_) {
     FinalizeInputOrOutput(input, false, op_def, &errors);
   }
-  for (absl::string_view output : outputs_) {
+  for (StringPiece output : outputs_) {
     FinalizeInputOrOutput(output, true, op_def, &errors);
   }
   FinalizeDoc(doc_, op_def, &errors);

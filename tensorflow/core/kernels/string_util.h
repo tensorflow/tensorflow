@@ -15,7 +15,6 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_KERNELS_STRING_UTIL_H_
 #define TENSORFLOW_CORE_KERNELS_STRING_UTIL_H_
 
-#include "absl/strings/string_view.h"
 #include "tensorflow/core/lib/core/status.h"
 
 namespace tensorflow {
@@ -50,7 +49,7 @@ int32 UTF8StrLen(const string& string);
 // the end of the string is reached before the requested characters, then the
 // position will point to the end of string and this function will return false.
 template <typename T>
-bool ForwardNUTF8CharPositions(const absl::string_view in,
+bool ForwardNUTF8CharPositions(const StringPiece in,
                                const T num_utf8_chars_to_shift, T* pos) {
   const size_t size = in.size();
   T utf8_chars_counted = 0;
@@ -71,7 +70,7 @@ bool ForwardNUTF8CharPositions(const absl::string_view in,
 // the string is reached before the requested character, then the position will
 // point to the beginning of the string and this function will return false.
 template <typename T>
-bool BackNUTF8CharPositions(const absl::string_view in,
+bool BackNUTF8CharPositions(const StringPiece in,
                             const T num_utf8_chars_to_shift, T* pos) {
   const size_t start = 0;
   T utf8_chars_counted = 0;

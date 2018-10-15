@@ -18,7 +18,7 @@ limitations under the License.
 
 #include <string>
 
-#include "absl/strings/string_view.h"
+#include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
@@ -52,7 +52,7 @@ class MultiModeKeyRange {
   // The first invalid key after the valid range.
   const string& end_key() const;
   // Returns true if the provided key is a part of the range, false otherwise.
-  bool contains_key(absl::string_view key) const;
+  bool contains_key(StringPiece key) const;
 
  private:
   MultiModeKeyRange(string begin, string end)

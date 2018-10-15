@@ -15,7 +15,6 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/eager/attr_builder.h"
 
-#include "absl/strings/string_view.h"
 #include "tensorflow/core/common_runtime/device_factory.h"
 #include "tensorflow/core/common_runtime/eager/kernel_and_device.h"
 #include "tensorflow/core/common_runtime/rendezvous_mgr.h"
@@ -97,12 +96,11 @@ Status AttrTypeMapForOp(const char* op_name, const AttrTypeMap** out) {
   return Status::OK();
 }
 
-#define DEFINE_SET_ATTR(value_type, value_field)             \
-  template <>                                                \
-  AttrBuilder& AttrBuilder::Set(absl::string_view attr_name, \
-                                value_type&& value) {        \
-    value_field.push_back(std::make_pair(attr_name, value)); \
-    return *this;                                            \
+#define DEFINE_SET_ATTR(value_type, value_field)                             \
+  template <>                                                                \
+  AttrBuilder& AttrBuilder::Set(StringPiece attr_name, value_type&& value) { \
+    value_field.push_back(std::make_pair(attr_name, value));                 \
+    return *this;                                                            \
   }
 
 DEFINE_SET_ATTR(float, float_attrs_);
@@ -196,13 +194,13 @@ void CombineUnordered(const tensorflow::Fprint128& a,
   b->high64 += a.high64;
 }
 
-inline tensorflow::Fprint128 CacheKeyHelper(absl::string_view s,
+inline tensorflow::Fprint128 CacheKeyHelper(StringPiece s,
                                             const tensorflow::Fprint128& b) {
   tensorflow::Fprint128 a = tensorflow::Fingerprint128(s);
   return FingerprintCat128(a, b);
 }
 
-inline tensorflow::Fprint128 CacheKeyHelper(absl::string_view s, uint64 b) {
+inline tensorflow::Fprint128 CacheKeyHelper(StringPiece s, uint64 b) {
   return CacheKeyHelper(s, {b, b});
 }
 

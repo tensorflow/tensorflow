@@ -15,7 +15,6 @@ limitations under the License.
 
 #include "tensorflow/core/platform/hadoop/hadoop_file_system.h"
 
-#include "absl/strings/string_view.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/gtl/stl_util.h"
 #include "tensorflow/core/lib/io/path.h"
@@ -55,7 +54,7 @@ class HadoopFileSystemTest : public ::testing::Test {
     TF_RETURN_IF_ERROR(hdfs.GetFileSize(fname, &file_size));
 
     content->resize(file_size);
-    absl::string_view result;
+    StringPiece result;
     TF_RETURN_IF_ERROR(
         reader->Read(0, file_size, &result, gtl::string_as_array(content)));
     if (file_size != result.size()) {
@@ -78,7 +77,7 @@ TEST_F(HadoopFileSystemTest, RandomAccessFile) {
 
   string got;
   got.resize(content.size());
-  absl::string_view result;
+  StringPiece result;
   TF_EXPECT_OK(
       reader->Read(0, content.size(), &result, gtl::string_as_array(&got)));
   EXPECT_EQ(content.size(), result.size());
@@ -214,7 +213,7 @@ TEST_F(HadoopFileSystemTest, WriteWhileReading) {
 
   string got;
   got.resize(content1.size());
-  absl::string_view result;
+  StringPiece result;
   TF_EXPECT_OK(
       reader->Read(0, content1.size(), &result, gtl::string_as_array(&got)));
   EXPECT_EQ(content1, result);

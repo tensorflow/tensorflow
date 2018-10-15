@@ -17,7 +17,6 @@ limitations under the License.
 #define TENSORFLOW_CORE_LIB_IO_SNAPPY_OUTPUTBUFFER_H_
 
 #include <string>
-#include "absl/strings/string_view.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/macros.h"
@@ -62,7 +61,7 @@ class SnappyOutputBuffer {
   // to file when the buffer is full.
   //
   // To immediately write contents to file call `Flush()`.
-  Status Write(absl::string_view data);
+  Status Write(StringPiece data);
 
   // Compresses any cached input and writes all output to file. This must be
   // called before the destructor to avoid any data loss.
@@ -71,7 +70,7 @@ class SnappyOutputBuffer {
  private:
   // Appends `data` to `input_buffer_`.
   // Throws if `data.size()` > AvailableInputSpace().
-  void AddToInputBuffer(absl::string_view data);
+  void AddToInputBuffer(StringPiece data);
 
   // Appends `data` to `output_buffer_`. Flushes buffer contents to file when
   // buffer gets full.

@@ -19,7 +19,6 @@ limitations under the License.
 #include "grpcpp/security/credentials.h"
 #include "grpcpp/server_builder.h"
 
-#include "absl/strings/string_view.h"
 #include "tensorflow/core/distributed_runtime/server_lib.h"
 
 #include "tensorflow/core/lib/core/errors.h"
@@ -51,7 +50,7 @@ Status FillServerDef(const string& job_spec, const string& job_name,
     CHECK_EQ(2, job_pieces.size()) << job_str;
     job_def->set_name(job_pieces[0]);
     // Does a bit more validation of the tasks_per_replica.
-    const absl::string_view spec = job_pieces[1];
+    const StringPiece spec = job_pieces[1];
     // job_str is of form <job_name>|<host_ports>.
     const std::vector<string> host_ports = str_util::Split(spec, ';');
     uint32 tasks_per_replica = host_ports.size();

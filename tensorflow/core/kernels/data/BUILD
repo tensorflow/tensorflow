@@ -42,7 +42,6 @@ cc_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
-        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -640,7 +639,6 @@ tf_kernel_library(
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:session_options",
         "//tensorflow/core/kernels:ops_util",
-        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -682,7 +680,6 @@ tf_kernel_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core/util/tensor_bundle",
-        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -797,7 +794,6 @@ tf_kernel_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core/kernels:ops_util",
-        "@com_google_absl//absl/strings",
     ],
 )
 

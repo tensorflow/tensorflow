@@ -17,7 +17,7 @@ limitations under the License.
 
 #include <vector>
 
-#include "absl/strings/string_view.h"
+#include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/strings/numbers.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
@@ -32,7 +32,7 @@ string VerbsUtil::AppendStepidToKey(const string& key, int64 step_id) {
 // static
 void VerbsUtil::GetKeyAndStepId(const string& key_with_step_id, string& key,
                                 int64& step_id) {
-  absl::string_view s(key_with_step_id);
+  StringPiece s(key_with_step_id);
   // a key (with step_id) has exact 6 parts if split by ";"
   // part 1: src_device;
   // part 2: src_incarnation;

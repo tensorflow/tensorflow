@@ -13,7 +13,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "absl/strings/string_view.h"
 #include "tensorflow/c/c_api_internal.h"
 
 #include <algorithm>
@@ -325,7 +324,7 @@ Status GraphToFunctionDef(const Graph& fn_body, const string& fn_name,
     TF_RETURN_IF_ERROR(
         NameRangesForNode(*node, node->op_def(), nullptr, &output_ranges));
     for (const auto& output : output_ranges) {
-      const absl::string_view& output_name = output.first;
+      const StringPiece& output_name = output.first;
       int index_start = output.second.first;
       int index_end = output.second.second;
       for (int i = index_start; i < index_end; ++i) {
@@ -365,7 +364,7 @@ Status GraphToFunctionDef(const Graph& fn_body, const string& fn_name,
     const uint64 hash = FunctionDefHash(*fdef);
     string encoded;
     TF_RETURN_IF_ERROR(Base64Encode(
-        absl::string_view(reinterpret_cast<const char*>(&hash), sizeof(hash)),
+        StringPiece(reinterpret_cast<const char*>(&hash), sizeof(hash)),
         &encoded));
     // Besides letters and digits our Base64 encoding uses '_' and '-'.
     // Dash is invalid in operation names and multiple underscores in random

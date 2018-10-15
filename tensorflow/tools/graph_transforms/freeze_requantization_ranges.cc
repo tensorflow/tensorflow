@@ -13,7 +13,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "absl/strings/string_view.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/env.h"
@@ -89,7 +88,7 @@ Status ExtractMinMaxRecords(const string& log_file_name,
     if (!strings::safe_strtof(max_number_string.c_str(), &max)) {
       continue;
     }
-    absl::string_view name_string = line_parts[min_max_index - 1];
+    StringPiece name_string = line_parts[min_max_index - 1];
     if (!str_util::EndsWith(name_string, print_suffix)) {
       continue;
     }

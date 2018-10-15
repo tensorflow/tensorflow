@@ -15,7 +15,6 @@ limitations under the License.
 
 #include "tensorflow/core/debug/debug_graph_utils.h"
 
-#include "absl/strings/string_view.h"
 #include "tensorflow/core/common_runtime/memory_types.h"
 #include "tensorflow/core/framework/kernel_def.pb.h"
 #include "tensorflow/core/framework/node_def_builder.h"
@@ -345,7 +344,7 @@ Status DebugNodeInserter::ParseDebugOpName(
 
     std::vector<string> attribute_segs = str_util::Split(arguments, ";");
     for (const string& attribute_seg : attribute_segs) {
-      absl::string_view seg(attribute_seg);
+      StringPiece seg(attribute_seg);
       str_util::RemoveWhitespaceContext(&seg);
       if (seg.empty()) {
         continue;

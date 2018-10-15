@@ -121,7 +121,6 @@ cc_library(
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:op_gen_lib",
         "//tensorflow/core:protos_all_cc",
-        "@com_google_absl//absl/strings",
         "@com_googlesource_code_re2//:re2",
     ],
 )

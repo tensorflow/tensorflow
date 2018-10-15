@@ -17,7 +17,6 @@ limitations under the License.
 
 #include <string>
 
-#include "absl/strings/string_view.h"
 #include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/types.h"
@@ -67,7 +66,7 @@ TEST(StrCat, Basics) {
 
   string strs[] = {"Hello", "Cruel", "World"};
 
-  absl::string_view pieces[] = {"Hello", "Cruel", "World"};
+  StringPiece pieces[] = {"Hello", "Cruel", "World"};
 
   const char *c_strs[] = {"Hello", "Cruel", "World"};
 
@@ -209,7 +208,7 @@ TEST(StrAppend, Basics) {
 
   string strs[] = {"Hello", "Cruel", "World"};
 
-  absl::string_view pieces[] = {"Hello", "Cruel", "World"};
+  StringPiece pieces[] = {"Hello", "Cruel", "World"};
 
   const char *c_strs[] = {"Hello", "Cruel", "World"};
 

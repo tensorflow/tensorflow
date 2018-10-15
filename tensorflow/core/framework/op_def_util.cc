@@ -18,12 +18,12 @@ limitations under the License.
 #include <set>
 #include <unordered_map>
 #include <unordered_set>
-#include "absl/strings/string_view.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/attr_value_util.h"
 #include "tensorflow/core/framework/op_def.pb_text.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/lib/hash/hash.h"
 #include "tensorflow/core/lib/strings/proto_serialization.h"
@@ -145,7 +145,7 @@ Status ValidateAttrValue(const AttrValue& attr_value,
   return Status::OK();
 }
 
-const OpDef::AttrDef* FindAttr(absl::string_view name, const OpDef& op_def) {
+const OpDef::AttrDef* FindAttr(StringPiece name, const OpDef& op_def) {
   for (int i = 0; i < op_def.attr_size(); ++i) {
     if (op_def.attr(i).name() == name) {
       return &op_def.attr(i);
@@ -154,7 +154,7 @@ const OpDef::AttrDef* FindAttr(absl::string_view name, const OpDef& op_def) {
   return nullptr;
 }
 
-OpDef::AttrDef* FindAttrMutable(absl::string_view name, OpDef* op_def) {
+OpDef::AttrDef* FindAttrMutable(StringPiece name, OpDef* op_def) {
   for (int i = 0; i < op_def->attr_size(); ++i) {
     if (op_def->attr(i).name() == name) {
       return op_def->mutable_attr(i);
@@ -163,7 +163,7 @@ OpDef::AttrDef* FindAttrMutable(absl::string_view name, OpDef* op_def) {
   return nullptr;
 }
 
-const OpDef::ArgDef* FindInputArg(absl::string_view name, const OpDef& op_def) {
+const OpDef::ArgDef* FindInputArg(StringPiece name, const OpDef& op_def) {
   for (int i = 0; i < op_def.input_arg_size(); ++i) {
     if (op_def.input_arg(i).name() == name) {
       return &op_def.input_arg(i);
@@ -172,7 +172,7 @@ const OpDef::ArgDef* FindInputArg(absl::string_view name, const OpDef& op_def) {
   return nullptr;
 }
 
-const ApiDef::Arg* FindInputArg(absl::string_view name, const ApiDef& api_def) {
+const ApiDef::Arg* FindInputArg(StringPiece name, const ApiDef& api_def) {
   for (int i = 0; i < api_def.in_arg_size(); ++i) {
     if (api_def.in_arg(i).name() == name) {
       return &api_def.in_arg(i);
@@ -268,11 +268,11 @@ Status ValidateOpDef(const OpDef& op_def) {
              attr.name(), " that matches a data type");
 
     // Validate type
-    absl::string_view type(attr.type());
+    StringPiece type(attr.type());
     bool is_list = str_util::ConsumePrefix(&type, "list(");
     bool found = false;
-    for (absl::string_view valid : {"string", "int", "float", "bool", "type",
-                                    "shape", "tensor", "func"}) {
+    for (StringPiece valid : {"string", "int", "float", "bool", "type", "shape",
+                              "tensor", "func"}) {
       if (str_util::ConsumePrefix(&type, valid)) {
         found = true;
         break;

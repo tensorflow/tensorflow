@@ -17,10 +17,10 @@ limitations under the License.
 
 #include <mutex>
 
-#include "absl/strings/string_view.h"
 #include "sqlite3.h"
 #include "tensorflow/core/lib/core/refcount.h"
 #include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/thread_annotations.h"
 #include "tensorflow/core/platform/types.h"
@@ -87,8 +87,8 @@ class LOCKABLE Sqlite : public core::RefCounted {
   /// routine will retry automatically and then possibly fail.
   ///
   /// The returned statement holds a reference to this object.
-  Status Prepare(const absl::string_view& sql, SqliteStatement* stmt);
-  SqliteStatement PrepareOrDie(const absl::string_view& sql);
+  Status Prepare(const StringPiece& sql, SqliteStatement* stmt);
+  SqliteStatement PrepareOrDie(const StringPiece& sql);
 
   /// \brief Returns extended result code of last error.
   ///
@@ -228,22 +228,22 @@ class SqliteStatement {
   ///
   /// When using the unsafe methods, the data must not be changed or
   /// freed until this statement is Reset() or finalized.
-  void BindText(int parameter, const absl::string_view& text) {
+  void BindText(int parameter, const StringPiece& text) {
     Update(sqlite3_bind_text64(stmt_, parameter, text.data(), text.size(),
                                SQLITE_TRANSIENT, SQLITE_UTF8),
            parameter);
     size_ += text.size();
   }
-  void BindText(const char* parameter, const absl::string_view& text) {
+  void BindText(const char* parameter, const StringPiece& text) {
     BindText(GetParameterIndex(parameter), text);
   }
-  void BindTextUnsafe(int parameter, const absl::string_view& text) {
+  void BindTextUnsafe(int parameter, const StringPiece& text) {
     Update(sqlite3_bind_text64(stmt_, parameter, text.data(), text.size(),
                                SQLITE_STATIC, SQLITE_UTF8),
            parameter);
     size_ += text.size();
   }
-  void BindTextUnsafe(const char* parameter, const absl::string_view& text) {
+  void BindTextUnsafe(const char* parameter, const StringPiece& text) {
     BindTextUnsafe(GetParameterIndex(parameter), text);
   }
 
@@ -251,22 +251,22 @@ class SqliteStatement {
   ///
   /// When using the unsafe methods, the data must not be changed or
   /// freed until this statement is Reset() or finalized.
-  void BindBlob(int parameter, const absl::string_view& blob) {
+  void BindBlob(int parameter, const StringPiece& blob) {
     Update(sqlite3_bind_blob64(stmt_, parameter, blob.data(), blob.size(),
                                SQLITE_TRANSIENT),
            parameter);
     size_ += blob.size();
   }
-  void BindBlob(const char* parameter, const absl::string_view& blob) {
+  void BindBlob(const char* parameter, const StringPiece& blob) {
     BindBlob(GetParameterIndex(parameter), blob);
   }
-  void BindBlobUnsafe(int parameter, const absl::string_view& blob) {
+  void BindBlobUnsafe(int parameter, const StringPiece& blob) {
     Update(sqlite3_bind_blob64(stmt_, parameter, blob.data(), blob.size(),
                                SQLITE_STATIC),
            parameter);
     size_ += blob.size();
   }
-  void BindBlobUnsafe(const char* parameter, const absl::string_view& text) {
+  void BindBlobUnsafe(const char* parameter, const StringPiece& text) {
     BindBlobUnsafe(GetParameterIndex(parameter), text);
   }
 
@@ -309,7 +309,7 @@ class SqliteStatement {
   /// Empty values are returned as NULL. The returned memory will no
   /// longer be valid the next time Step() or Reset() is called. No NUL
   /// terminator is added.
-  absl::string_view ColumnStringUnsafe(int column) const TF_MUST_USE_RESULT {
+  StringPiece ColumnStringUnsafe(int column) const TF_MUST_USE_RESULT {
     return {static_cast<const char*>(sqlite3_column_blob(stmt_, column)),
             static_cast<size_t>(ColumnSize(column))};
   }
@@ -438,7 +438,7 @@ class SCOPED_LOCKABLE SqliteTransaction {
   EXCLUSIVE_LOCKS_REQUIRED(__VA_ARGS__)
 #define SQLITE_TRANSACTIONS_EXCLUDED(...) LOCKS_EXCLUDED(__VA_ARGS__)
 
-inline SqliteStatement Sqlite::PrepareOrDie(const absl::string_view& sql) {
+inline SqliteStatement Sqlite::PrepareOrDie(const StringPiece& sql) {
   SqliteStatement stmt;
   TF_CHECK_OK(Prepare(sql, &stmt));
   return stmt;

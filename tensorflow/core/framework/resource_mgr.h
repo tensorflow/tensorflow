@@ -22,7 +22,6 @@ limitations under the License.
 #include <typeinfo>
 #include <unordered_map>
 
-#include "absl/strings/string_view.h"
 #include "tensorflow/core/framework/common_shape_fns.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/resource_handle.h"
@@ -245,7 +244,7 @@ ResourceHandle MakePerStepResourceHandle(OpKernelContext* ctx,
 
 // Returns a resource handle from a numbered op input.
 const ResourceHandle& HandleFromInput(OpKernelContext* ctx, int input);
-Status HandleFromInput(OpKernelContext* ctx, absl::string_view input,
+Status HandleFromInput(OpKernelContext* ctx, StringPiece input,
                        ResourceHandle* handle);
 
 // Create a resource pointed by a given resource handle.

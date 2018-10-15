@@ -14,7 +14,6 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/core/lib/io/snappy/snappy_inputbuffer.h"
-#include "absl/strings/string_view.h"
 
 namespace tensorflow {
 namespace io {
@@ -160,7 +159,7 @@ Status SnappyInputBuffer::ReadFromFile() {
     bytes_to_read -= avail_in_;
     read_location += avail_in_;
   }
-  absl::string_view data;
+  StringPiece data;
   // Try to read enough data to fill up input_buffer_.
   Status s = file_->Read(file_pos_, bytes_to_read, &data, read_location);
   if (data.data() != read_location) {

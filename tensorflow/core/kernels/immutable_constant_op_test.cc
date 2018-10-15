@@ -17,7 +17,6 @@ limitations under the License.
 #include <algorithm>
 #include <tuple>
 
-#include "absl/strings/string_view.h"
 #include "tensorflow/cc/ops/standard_ops.h"
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -65,7 +64,7 @@ class TestFileSystem : public NullFileSystem {
       const string& fname,
       std::unique_ptr<ReadOnlyMemoryRegion>* result) override {
     float val = 0;
-    absl::string_view scheme, host, path;
+    StringPiece scheme, host, path;
     io::ParseURI(fname, &scheme, &host, &path);
     // For the tests create in-memory regions with float values equal to the
     // region name.
@@ -149,8 +148,8 @@ Status CreateTempFile(Env* env, float value, uint64 size, string* filename) {
   std::unique_ptr<WritableFile> file;
   TF_RETURN_IF_ERROR(env->NewWritableFile(*filename, &file));
   for (uint64 i = 0; i < size; ++i) {
-    absl::string_view sp(static_cast<char*>(static_cast<void*>(&value)),
-                         sizeof(value));
+    StringPiece sp(static_cast<char*>(static_cast<void*>(&value)),
+                   sizeof(value));
     TF_RETURN_IF_ERROR(file->Append(sp));
   }
   TF_RETURN_IF_ERROR(file->Close());

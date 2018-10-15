@@ -19,9 +19,9 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "absl/strings/string_view.h"
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/device_factory.h"
+#include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
 
 namespace tensorflow {
@@ -68,7 +68,7 @@ static bool DeviceTypeComparator(const DeviceType& a, const DeviceType& b) {
     return a_priority > b_priority;
   }
 
-  return absl::string_view(a.type()) < absl::string_view(b.type());
+  return StringPiece(a.type()) < StringPiece(b.type());
 }
 
 std::vector<DeviceType> DeviceSet::PrioritizedDeviceTypeList() const {

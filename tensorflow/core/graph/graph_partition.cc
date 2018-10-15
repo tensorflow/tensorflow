@@ -22,7 +22,6 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "absl/strings/string_view.h"
 #include "tensorflow/core/framework/memory_types.h"
 #include "tensorflow/core/framework/node_def_builder.h"
 #include "tensorflow/core/framework/tensor.pb.h"
@@ -156,7 +155,7 @@ bool IsDstInputOnHost(const Edge* edge, const GraphInfo& info) {
 
 // Add an input to dst that comes from the "src_slot" output of the
 // node named by "src_name".
-void AddInput(NodeDef* dst, absl::string_view src_name, int src_slot) {
+void AddInput(NodeDef* dst, StringPiece src_name, int src_slot) {
   if (src_slot == Graph::kControlSlot) {
     dst->add_input(strings::StrCat("^", src_name));
   } else if (src_slot == 0) {
@@ -912,7 +911,7 @@ Status AddControlEdges(const PartitionOptions& opts,
 // If 'ndef' is a Send or Recv, fills its attr send_device_incarnation
 // if possible.
 void SetIncarnation(const PartitionOptions& opts, NodeDef* ndef) {
-  absl::string_view op(ndef->op());
+  StringPiece op(ndef->op());
   if (op != "_Send" && op != "_Recv") {
     // Not related to send/recv.
     return;

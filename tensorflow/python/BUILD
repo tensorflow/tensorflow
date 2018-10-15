@@ -336,7 +336,6 @@ cc_library(
         "//tensorflow/core:lib_internal",
         "//third_party/python_runtime:headers",
         "@com_google_absl//absl/memory",
-        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -359,7 +358,6 @@ cc_library(
         "//tensorflow/python/eager:pywrap_tfe_lib",
         "//third_party/py/numpy:headers",
         "//third_party/python_runtime:headers",
-        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -439,7 +437,6 @@ cc_library(
         "//tensorflow/c:tf_status_helper",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
-        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -457,7 +454,6 @@ tf_cc_shared_object(
     deps = [
         "//tensorflow/core:framework_headers_lib",
         "//third_party/eigen3",
-        "@com_google_absl//absl/strings",
         "@protobuf_archive//:protobuf_headers",
     ],
 )
@@ -546,7 +542,6 @@ cc_library(
         "//tensorflow/core:op_gen_lib",
         "//tensorflow/core:proto_text",
         "//tensorflow/core:protos_all_cc",
-        "@com_google_absl//absl/strings",
     ],
     alwayslink = 1,
 )
@@ -562,7 +557,6 @@ cc_library(
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:op_gen_lib",
         "//tensorflow/core:protos_all_cc",
-        "@com_google_absl//absl/strings",
     ],
 )
 

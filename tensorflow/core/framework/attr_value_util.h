@@ -20,12 +20,12 @@ limitations under the License.
 #include <string>
 #include <vector>
 
-#include "absl/strings/string_view.h"
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
 
 namespace tensorflow {
@@ -39,7 +39,7 @@ class NameAttrList;
 string SummarizeAttrValue(const AttrValue& attr_value);
 
 // Generates an error if attr_value doesn't have the indicated attr type.
-Status AttrValueHasType(const AttrValue& attr_value, absl::string_view type);
+Status AttrValueHasType(const AttrValue& attr_value, StringPiece type);
 
 // Converts a text proto value from "text" into the field of *out
 // indicated by "type" (e.g. from the type field of an AttrDef).
@@ -48,13 +48,12 @@ Status AttrValueHasType(const AttrValue& attr_value, absl::string_view type);
 // * If type:"list(string)" and text:"['foo', 'bar']",
 //   then *out is set to "list { s: ['foo', 'bar'] }"
 // Returns true on success.
-bool ParseAttrValue(absl::string_view type, absl::string_view text,
-                    AttrValue* out);
+bool ParseAttrValue(StringPiece type, StringPiece text, AttrValue* out);
 
 // Sets *out based on the type of value.
 void SetAttrValue(const string& value, AttrValue* out);
 void SetAttrValue(const char* value, AttrValue* out);
-void SetAttrValue(absl::string_view value, AttrValue* out);
+void SetAttrValue(StringPiece value, AttrValue* out);
 void SetAttrValue(int64 value, AttrValue* out);
 void SetAttrValue(int32 value, AttrValue* out);
 void SetAttrValue(float value, AttrValue* out);
@@ -70,7 +69,7 @@ void SetAttrValue(const NameAttrList& value, AttrValue* out);
 
 void SetAttrValue(gtl::ArraySlice<string> value, AttrValue* out);
 void SetAttrValue(gtl::ArraySlice<const char*> value, AttrValue* out);
-void SetAttrValue(gtl::ArraySlice<absl::string_view> value, AttrValue* out);
+void SetAttrValue(gtl::ArraySlice<StringPiece> value, AttrValue* out);
 void SetAttrValue(gtl::ArraySlice<int64> value, AttrValue* out);
 void SetAttrValue(gtl::ArraySlice<int32> value, AttrValue* out);
 void SetAttrValue(gtl::ArraySlice<float> value, AttrValue* out);

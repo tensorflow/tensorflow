@@ -14,7 +14,6 @@ limitations under the License.
 ==============================================================================*/
 
 #include <limits>
-#include "absl/strings/string_view.h"
 
 #define EIGEN_USE_THREADS
 #if GOOGLE_CUDA
@@ -100,7 +99,7 @@ bool TensorList::Decode(const VariantTensorData& data) {
   string metadata;
   data.get_metadata(&metadata);
   uint64 scratch;
-  absl::string_view iter(metadata);
+  StringPiece iter(metadata);
   core::GetVarint64(&iter, &scratch);
   element_dtype = static_cast<DataType>(scratch);
   std::vector<int64> dims;

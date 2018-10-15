@@ -17,7 +17,6 @@ limitations under the License.
 #include <deque>
 #include <utility>
 #include <vector>
-#include "absl/strings/string_view.h"
 #if defined(__APPLE__)
 #include <mach-o/dyld.h>
 #endif
@@ -91,7 +90,7 @@ Status FileSystemRegistryImpl::GetRegisteredFileSystemSchemes(
 Env::Env() : file_system_registry_(new FileSystemRegistryImpl) {}
 
 Status Env::GetFileSystemForFile(const string& fname, FileSystem** result) {
-  absl::string_view scheme, host, path;
+  StringPiece scheme, host, path;
   io::ParseURI(fname, &scheme, &host, &path);
   FileSystem* file_system = file_system_registry_->Lookup(string(scheme));
   if (!file_system) {
@@ -165,7 +164,7 @@ bool Env::FilesExist(const std::vector<string>& files,
                      std::vector<Status>* status) {
   std::unordered_map<string, std::vector<string>> files_per_fs;
   for (const auto& file : files) {
-    absl::string_view scheme, host, path;
+    StringPiece scheme, host, path;
     io::ParseURI(file, &scheme, &host, &path);
     files_per_fs[string(scheme)].push_back(file);
   }
@@ -390,7 +389,7 @@ Status ReadFileToString(Env* env, const string& fname, string* data) {
   }
   gtl::STLStringResizeUninitialized(data, file_size);
   char* p = gtl::string_as_array(data);
-  absl::string_view result;
+  StringPiece result;
   s = file->Read(0, file_size, &result, p);
   if (!s.ok()) {
     data->clear();
@@ -407,7 +406,7 @@ Status ReadFileToString(Env* env, const string& fname, string* data) {
 }
 
 Status WriteStringToFile(Env* env, const string& fname,
-                         const absl::string_view& data) {
+                         const StringPiece& data) {
   std::unique_ptr<WritableFile> file;
   Status s = env->NewWritableFile(fname, &file);
   if (!s.ok()) {
@@ -432,7 +431,7 @@ Status FileSystemCopyFile(FileSystem* src_fs, const string& src,
   std::unique_ptr<char[]> scratch(new char[kCopyFileBufferSize]);
   Status s = Status::OK();
   while (s.ok()) {
-    absl::string_view result;
+    StringPiece result;
     s = src_file->Read(offset, kCopyFileBufferSize, &result, scratch.get());
     if (!(s.ok() || s.code() == error::OUT_OF_RANGE)) {
       return s;
@@ -458,7 +457,7 @@ class FileStream : public ::tensorflow::protobuf::io::ZeroCopyInputStream {
   Status status() const { return status_; }
 
   bool Next(const void** data, int* size) override {
-    absl::string_view result;
+    StringPiece result;
     Status s = file_->Read(pos_, kBufSize, &result, scratch_);
     if (result.empty()) {
       status_ = s;

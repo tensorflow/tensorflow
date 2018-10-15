@@ -17,7 +17,6 @@ limitations under the License.
 
 #include <vector>
 
-#include "absl/strings/string_view.h"
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/device_set.h"
 #include "tensorflow/core/common_runtime/eager/context.h"
@@ -821,7 +820,7 @@ Status FindDeviceFromName(EagerContext* ctx, const char* device_name,
 }
 
 Status ExecuteSend(EagerContext* ctx, tensorflow::Device* device,
-                   TensorHandle* h, absl::string_view wire_id,
+                   TensorHandle* h, StringPiece wire_id,
                    const string& recv_device) {
   const tensorflow::AttrTypeMap* types;
   TF_RETURN_IF_ERROR(tensorflow::AttrTypeMapForOp("_Send", &types));
@@ -848,7 +847,7 @@ Status ExecuteSend(EagerContext* ctx, tensorflow::Device* device,
 }
 
 Status ExecuteRecv(EagerContext* ctx, tensorflow::Device* device,
-                   DataType dtype, absl::string_view wire_id,
+                   DataType dtype, StringPiece wire_id,
                    const string& send_device, int64 send_device_incarnation,
                    TensorHandle** result) {
   const tensorflow::AttrTypeMap* types;

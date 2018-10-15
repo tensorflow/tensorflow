@@ -20,10 +20,10 @@ limitations under the License.
 
 #include <memory>
 
-#include "absl/strings/string_view.h"
 #include "tensorflow/contrib/session_bundle/manifest.pb.h"
 #include "tensorflow/contrib/session_bundle/signature.h"
 #include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/protobuf/meta_graph.pb.h"
 #include "tensorflow/core/protobuf/saver.pb.h"
 #include "tensorflow/core/public/session.h"
@@ -60,7 +60,7 @@ struct SessionBundle {
 
 // Loads a manifest and initialized session using the output of an Exporter.
 Status LoadSessionBundleFromPath(const SessionOptions& options,
-                                 const absl::string_view export_dir,
+                                 const StringPiece export_dir,
                                  SessionBundle* bundle);
 
 // Similar to the LoadSessionBundleFromPath(), but also allows the session run
@@ -70,14 +70,14 @@ Status LoadSessionBundleFromPath(const SessionOptions& options,
 // This method is EXPERIMENTAL and may change or be removed.
 Status LoadSessionBundleFromPathUsingRunOptions(
     const SessionOptions& session_options, const RunOptions& run_options,
-    const absl::string_view export_dir, SessionBundle* bundle);
+    const StringPiece export_dir, SessionBundle* bundle);
 
 // Sanity checks whether the directory looks like an export directory. Note that
 // we don't try to load any data in this method.
 //
 // If the method returns false this is definitely not an export directory, if it
 // returns true, it is no guarantee that the model will load.
-bool IsPossibleExportDirectory(const absl::string_view export_dir);
+bool IsPossibleExportDirectory(const StringPiece export_dir);
 
 }  // namespace serving
 }  // namespace tensorflow

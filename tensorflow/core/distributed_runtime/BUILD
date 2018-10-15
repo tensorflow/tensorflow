@@ -172,7 +172,6 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:worker_proto_cc",
-        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -289,7 +288,6 @@ cc_library(
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:lib",
         "//tensorflow/core:worker_proto_cc",
-        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -346,7 +344,6 @@ cc_library(
         "//tensorflow/core:master_proto_cc",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/debug:debug_graph_utils",
-        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -400,7 +397,6 @@ cc_library(
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
-        "@com_google_absl//absl/strings",
     ],
 )
 

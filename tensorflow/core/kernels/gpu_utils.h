@@ -16,7 +16,6 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_KERNELS_GPU_UTILS_H_
 #define TENSORFLOW_CORE_KERNELS_GPU_UTILS_H_
 
-#include "absl/strings/string_view.h"
 #if GOOGLE_CUDA
 
 #include <unordered_map>
@@ -121,7 +120,7 @@ class AutoTuneMap {
     }
   };
 
-  string GetActionSummary(absl::string_view action, const Parameters& params,
+  string GetActionSummary(StringPiece action, const Parameters& params,
                           const Config& config) {
     return strings::Printf("autotune_map %s %s: %s -> (%s)", name_.c_str(),
                            string(action).c_str(), params.ToString().c_str(),

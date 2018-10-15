@@ -17,7 +17,6 @@ limitations under the License.
 #define TENSORFLOW_LIB_STRINGS_B64_H_
 
 #include <string>
-#include "absl/strings/string_view.h"
 #include "tensorflow/core/lib/core/status.h"
 
 namespace tensorflow {
@@ -25,14 +24,13 @@ namespace tensorflow {
 /// \brief Converts data into web-safe base64 encoding.
 ///
 /// See https://en.wikipedia.org/wiki/Base64
-Status Base64Encode(absl::string_view data, bool with_padding, string* encoded);
-Status Base64Encode(absl::string_view data,
-                    string* encoded);  // with_padding=false.
+Status Base64Encode(StringPiece data, bool with_padding, string* encoded);
+Status Base64Encode(StringPiece data, string* encoded);  // with_padding=false.
 
 /// \brief Converts data from web-safe base64 encoding.
 ///
 /// See https://en.wikipedia.org/wiki/Base64
-Status Base64Decode(absl::string_view data, string* decoded);
+Status Base64Decode(StringPiece data, string* decoded);
 
 }  // namespace tensorflow
 

@@ -17,7 +17,6 @@ limitations under the License.
 #include <algorithm>
 #include <deque>
 
-#include "absl/strings/string_view.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/lib/strings/str_util.h"
@@ -137,9 +136,9 @@ Status FileSystem::DeleteRecursively(const string& dirname,
 }
 
 Status FileSystem::RecursivelyCreateDir(const string& dirname) {
-  absl::string_view scheme, host, remaining_dir;
+  StringPiece scheme, host, remaining_dir;
   io::ParseURI(dirname, &scheme, &host, &remaining_dir);
-  std::vector<absl::string_view> sub_dirs;
+  std::vector<StringPiece> sub_dirs;
   while (!remaining_dir.empty()) {
     Status status = FileExists(io::CreateURI(scheme, host, remaining_dir));
     if (status.ok()) {
@@ -160,7 +159,7 @@ Status FileSystem::RecursivelyCreateDir(const string& dirname) {
 
   // Now create the directories.
   string built_path(remaining_dir);
-  for (const absl::string_view sub_dir : sub_dirs) {
+  for (const StringPiece sub_dir : sub_dirs) {
     built_path = io::JoinPath(built_path, sub_dir);
     Status status = CreateDir(io::CreateURI(scheme, host, built_path));
     if (!status.ok() && status.code() != tensorflow::error::ALREADY_EXISTS) {

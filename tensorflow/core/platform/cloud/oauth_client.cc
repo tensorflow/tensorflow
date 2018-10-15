@@ -14,7 +14,6 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/core/platform/cloud/oauth_client.h"
-#include "absl/strings/string_view.h"
 #ifndef _WIN32
 #include <pwd.h>
 #include <sys/types.h>
@@ -85,7 +84,7 @@ Status ReadJsonInt(const Json::Value& json, const string& name, int64* value) {
   return Status::OK();
 }
 
-Status CreateSignature(RSA* private_key, absl::string_view to_sign,
+Status CreateSignature(RSA* private_key, StringPiece to_sign,
                        string* signature) {
   if (!private_key || !signature) {
     return errors::FailedPrecondition(
@@ -121,14 +120,13 @@ Status CreateSignature(RSA* private_key, absl::string_view to_sign,
     return errors::Internal("DigestFinal (signature compute) failed.");
   }
   EVP_MD_CTX_cleanup(md_ctx.get());
-  return Base64Encode(
-      absl::string_view(reinterpret_cast<char*>(sig.get()), sig_len),
-      signature);
+  return Base64Encode(StringPiece(reinterpret_cast<char*>(sig.get()), sig_len),
+                      signature);
 }
 
 /// Encodes a claim for a JSON web token (JWT) to make an OAuth request.
-Status EncodeJwtClaim(absl::string_view client_email, absl::string_view scope,
-                      absl::string_view audience, uint64 request_timestamp_sec,
+Status EncodeJwtClaim(StringPiece client_email, StringPiece scope,
+                      StringPiece audience, uint64 request_timestamp_sec,
                       string* encoded) {
   // Step 1: create the JSON with the claim.
   Json::Value root;
@@ -150,7 +148,7 @@ Status EncodeJwtClaim(absl::string_view client_email, absl::string_view scope,
 }
 
 /// Encodes a header for a JSON web token (JWT) to make an OAuth request.
-Status EncodeJwtHeader(absl::string_view key_id, string* encoded) {
+Status EncodeJwtHeader(StringPiece key_id, string* encoded) {
   // Step 1: create the JSON with the header.
   Json::Value root;
   root["alg"] = kCryptoAlgorithm;
@@ -176,8 +174,8 @@ OAuthClient::OAuthClient(
     : http_request_factory_(std::move(http_request_factory)), env_(env) {}
 
 Status OAuthClient::GetTokenFromServiceAccountJson(
-    Json::Value json, absl::string_view oauth_server_uri,
-    absl::string_view scope, string* token, uint64* expiration_timestamp_sec) {
+    Json::Value json, StringPiece oauth_server_uri, StringPiece scope,
+    string* token, uint64* expiration_timestamp_sec) {
   if (!token || !expiration_timestamp_sec) {
     return errors::FailedPrecondition(
         "'token' and 'expiration_timestamp_sec' cannot be nullptr.");
@@ -223,15 +221,15 @@ Status OAuthClient::GetTokenFromServiceAccountJson(
   request->SetResultBuffer(&response_buffer);
   TF_RETURN_IF_ERROR(request->Send());
 
-  absl::string_view response =
-      absl::string_view(response_buffer.data(), response_buffer.size());
+  StringPiece response =
+      StringPiece(response_buffer.data(), response_buffer.size());
   TF_RETURN_IF_ERROR(ParseOAuthResponse(response, request_timestamp_sec, token,
                                         expiration_timestamp_sec));
   return Status::OK();
 }
 
 Status OAuthClient::GetTokenFromRefreshTokenJson(
-    Json::Value json, absl::string_view oauth_server_uri, string* token,
+    Json::Value json, StringPiece oauth_server_uri, string* token,
     uint64* expiration_timestamp_sec) {
   if (!token || !expiration_timestamp_sec) {
     return errors::FailedPrecondition(
@@ -255,14 +253,14 @@ Status OAuthClient::GetTokenFromRefreshTokenJson(
   request->SetResultBuffer(&response_buffer);
   TF_RETURN_IF_ERROR(request->Send());
 
-  absl::string_view response =
-      absl::string_view(response_buffer.data(), response_buffer.size());
+  StringPiece response =
+      StringPiece(response_buffer.data(), response_buffer.size());
   TF_RETURN_IF_ERROR(ParseOAuthResponse(response, request_timestamp_sec, token,
                                         expiration_timestamp_sec));
   return Status::OK();
 }
 
-Status OAuthClient::ParseOAuthResponse(absl::string_view response,
+Status OAuthClient::ParseOAuthResponse(StringPiece response,
                                        uint64 request_timestamp_sec,
                                        string* token,
                                        uint64* expiration_timestamp_sec) {

@@ -21,9 +21,9 @@ limitations under the License.
 #include <string>
 #include <unordered_map>
 #include <vector>
-#include "absl/strings/string_view.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/platform/cord.h"
 #include "tensorflow/core/platform/file_statistics.h"
 #include "tensorflow/core/platform/macros.h"
@@ -236,7 +236,7 @@ class RandomAccessFile {
   /// because of EOF.
   ///
   /// Safe for concurrent use by multiple threads.
-  virtual Status Read(uint64 offset, size_t n, absl::string_view* result,
+  virtual Status Read(uint64 offset, size_t n, StringPiece* result,
                       char* scratch) const = 0;
 
  private:
@@ -253,7 +253,7 @@ class WritableFile {
   virtual ~WritableFile();
 
   /// \brief Append 'data' to the file.
-  virtual Status Append(absl::string_view data) = 0;
+  virtual Status Append(StringPiece data) = 0;
 
   // TODO(ebrevdo): Remove this ifdef when absl is updated.
 #if defined(PLATFORM_GOOGLE)

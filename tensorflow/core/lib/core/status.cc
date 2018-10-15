@@ -15,11 +15,10 @@ limitations under the License.
 
 #include "tensorflow/core/lib/core/status.h"
 #include <stdio.h>
-#include "absl/strings/string_view.h"
 
 namespace tensorflow {
 
-Status::Status(tensorflow::error::Code code, absl::string_view msg) {
+Status::Status(tensorflow::error::Code code, StringPiece msg) {
   assert(code != tensorflow::error::OK);
   state_ = std::unique_ptr<State>(new State);
   state_->code = code;

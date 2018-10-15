@@ -18,7 +18,6 @@ limitations under the License.
 #include <algorithm>
 #include <cinttypes>
 
-#include "absl/strings/string_view.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/graph_transfer_info.pb.h"
 #include "tensorflow/core/framework/op.h"
@@ -588,7 +587,7 @@ bool GraphTransferer::HasPaddingAndStrides(const Node& node) {
 }
 
 bool GraphTransferer::NeedsToAddRank(const Node& node) {
-  const absl::string_view op_type(node.type_string());
+  const StringPiece op_type(node.type_string());
   if (op_type == "Transpose" || op_type == "ExpandDims") {
     return true;
   }
@@ -596,7 +595,7 @@ bool GraphTransferer::NeedsToAddRank(const Node& node) {
 }
 
 bool GraphTransferer::IsPadNode(const Node& node) {
-  const absl::string_view op_type(node.type_string());
+  const StringPiece op_type(node.type_string());
   if (op_type == "Pad") {
     return true;
   }

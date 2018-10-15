@@ -40,7 +40,6 @@ limitations under the License.
 #include <functional>
 #include <string>
 #include <vector>
-#include "absl/strings/string_view.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/types.h"
@@ -535,7 +534,7 @@ class Graph {
 
   // Generate new node name with the specified prefix that is unique
   // across this graph.
-  string NewName(absl::string_view prefix);
+  string NewName(StringPiece prefix);
 
   // Access to the list of all nodes.  Example usage:
   //   for (Node* node : graph.nodes()) { ... }
@@ -608,8 +607,7 @@ class Graph {
   // Create and return a new WhileContext owned by this graph. This is called
   // when a new while loop is created. `frame_name` must be unique among
   // WhileContexts in this graph.
-  Status AddWhileContext(absl::string_view frame_name,
-                         std::vector<Node*> enter_nodes,
+  Status AddWhileContext(StringPiece frame_name, std::vector<Node*> enter_nodes,
                          std::vector<Node*> exit_nodes,
                          OutputTensor cond_output,
                          std::vector<OutputTensor> body_inputs,

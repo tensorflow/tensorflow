@@ -16,8 +16,8 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_LIB_IO_PROTO_ENCODE_HELPER_H_
 #define TENSORFLOW_CORE_LIB_IO_PROTO_ENCODE_HELPER_H_
 
-#include "absl/strings/string_view.h"
 #include "tensorflow/core/lib/core/coding.h"
+#include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/platform/protobuf.h"
 
 // A helper class for appending various kinds of values in protocol
@@ -48,7 +48,7 @@ class ProtoEncodeHelper {
     Encode32(combine(tag, WIRETYPE_VARINT));
     EncodeBool(v);
   }
-  void WriteString(int tag, absl::string_view v) {
+  void WriteString(int tag, StringPiece v) {
     Encode32(combine(tag, WIRETYPE_LENGTH_DELIMITED));
     Encode32(v.size());
     EncodeBytes(v.data(), v.size());
@@ -57,7 +57,7 @@ class ProtoEncodeHelper {
     Encode32(combine(tag, WIRETYPE_LENGTH_DELIMITED));
     Encode32(len);
   }
-  void WriteRawBytes(absl::string_view v) { EncodeBytes(v.data(), v.size()); }
+  void WriteRawBytes(StringPiece v) { EncodeBytes(v.data(), v.size()); }
 
  private:
   // Note: this module's behavior must match the protocol buffer wire encoding

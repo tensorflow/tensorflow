@@ -18,7 +18,6 @@ limitations under the License.
 #include <ctype.h>
 #include <algorithm>
 #include <vector>
-#include "absl/strings/string_view.h"
 #include "tensorflow/core/lib/strings/numbers.h"
 #include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/platform/logging.h"
@@ -28,7 +27,7 @@ namespace str_util {
 
 static char hex_char[] = "0123456789abcdef";
 
-string CEscape(absl::string_view src) {
+string CEscape(StringPiece src) {
   string dest;
 
   for (unsigned char c : src) {
@@ -87,7 +86,7 @@ inline int hex_digit_to_int(char c) {
   return x & 0xf;
 }
 
-bool CUnescapeInternal(absl::string_view source, string* dest,
+bool CUnescapeInternal(StringPiece source, string* dest,
                        string::size_type* dest_len, string* error) {
   const char* p = source.data();
   const char* end = source.end();
@@ -217,8 +216,8 @@ bool CUnescapeInternal(absl::string_view source, string* dest,
 }
 
 template <typename T>
-bool SplitAndParseAsInts(absl::string_view text, char delim,
-                         std::function<bool(absl::string_view, T*)> converter,
+bool SplitAndParseAsInts(StringPiece text, char delim,
+                         std::function<bool(StringPiece, T*)> converter,
                          std::vector<T>* result) {
   result->clear();
   std::vector<string> num_strings = Split(text, delim);
@@ -232,7 +231,7 @@ bool SplitAndParseAsInts(absl::string_view text, char delim,
 
 }  // namespace
 
-bool CUnescape(absl::string_view source, string* dest, string* error) {
+bool CUnescape(StringPiece source, string* dest, string* error) {
   dest->resize(source.size());
   string::size_type dest_size;
   if (!CUnescapeInternal(source, dest, &dest_size, error)) {
@@ -250,7 +249,7 @@ void StripTrailingWhitespace(string* s) {
 }
 
 // Return lower-cased version of s.
-string Lowercase(absl::string_view s) {
+string Lowercase(StringPiece s) {
   string result(s.data(), s.size());
   for (char& c : result) {
     c = tolower(c);
@@ -259,7 +258,7 @@ string Lowercase(absl::string_view s) {
 }
 
 // Return upper-cased version of s.
-string Uppercase(absl::string_view s) {
+string Uppercase(StringPiece s) {
   string result(s.data(), s.size());
   for (char& c : result) {
     c = toupper(c);
@@ -267,7 +266,7 @@ string Uppercase(absl::string_view s) {
   return result;
 }
 
-string ArgDefCase(absl::string_view s) {
+string ArgDefCase(StringPiece s) {
   const size_t n = s.size();
 
   // Compute the size of resulting string.
@@ -319,18 +318,18 @@ string ArgDefCase(absl::string_view s) {
   return result;
 }
 
-void TitlecaseString(string* s, absl::string_view delimiters) {
+void TitlecaseString(string* s, StringPiece delimiters) {
   bool upper = true;
   for (string::iterator ss = s->begin(); ss != s->end(); ++ss) {
     if (upper) {
       *ss = toupper(*ss);
     }
-    upper = (delimiters.find(*ss) != absl::string_view::npos);
+    upper = (delimiters.find(*ss) != StringPiece::npos);
   }
 }
 
-string StringReplace(absl::string_view s, absl::string_view oldsub,
-                     absl::string_view newsub, bool replace_all) {
+string StringReplace(StringPiece s, StringPiece oldsub, StringPiece newsub,
+                     bool replace_all) {
   // TODO(jlebar): We could avoid having to shift data around in the string if
   // we had a StringPiece::find() overload that searched for a StringPiece.
   string res(s);
@@ -348,7 +347,7 @@ string StringReplace(absl::string_view s, absl::string_view oldsub,
   return res;
 }
 
-size_t RemoveLeadingWhitespace(absl::string_view* text) {
+size_t RemoveLeadingWhitespace(StringPiece* text) {
   size_t count = 0;
   const char* ptr = text->data();
   while (count < text->size() && isspace(*ptr)) {
@@ -359,7 +358,7 @@ size_t RemoveLeadingWhitespace(absl::string_view* text) {
   return count;
 }
 
-size_t RemoveTrailingWhitespace(absl::string_view* text) {
+size_t RemoveTrailingWhitespace(StringPiece* text) {
   size_t count = 0;
   const char* ptr = text->data() + text->size() - 1;
   while (count < text->size() && isspace(*ptr)) {
@@ -370,12 +369,12 @@ size_t RemoveTrailingWhitespace(absl::string_view* text) {
   return count;
 }
 
-size_t RemoveWhitespaceContext(absl::string_view* text) {
+size_t RemoveWhitespaceContext(StringPiece* text) {
   // use RemoveLeadingWhitespace() and RemoveTrailingWhitespace() to do the job
   return (RemoveLeadingWhitespace(text) + RemoveTrailingWhitespace(text));
 }
 
-bool ConsumePrefix(absl::string_view* s, absl::string_view expected) {
+bool ConsumePrefix(StringPiece* s, StringPiece expected) {
   if (StartsWith(*s, expected)) {
     s->remove_prefix(expected.size());
     return true;
@@ -383,7 +382,7 @@ bool ConsumePrefix(absl::string_view* s, absl::string_view expected) {
   return false;
 }
 
-bool ConsumeSuffix(absl::string_view* s, absl::string_view expected) {
+bool ConsumeSuffix(StringPiece* s, StringPiece expected) {
   if (EndsWith(*s, expected)) {
     s->remove_suffix(expected.size());
     return true;
@@ -391,7 +390,7 @@ bool ConsumeSuffix(absl::string_view* s, absl::string_view expected) {
   return false;
 }
 
-bool ConsumeLeadingDigits(absl::string_view* s, uint64* val) {
+bool ConsumeLeadingDigits(StringPiece* s, uint64* val) {
   const char* p = s->data();
   const char* limit = p + s->size();
   uint64 v = 0;
@@ -416,7 +415,7 @@ bool ConsumeLeadingDigits(absl::string_view* s, uint64* val) {
   }
 }
 
-bool ConsumeNonWhitespace(absl::string_view* s, absl::string_view* val) {
+bool ConsumeNonWhitespace(StringPiece* s, StringPiece* val) {
   const char* p = s->data();
   const char* limit = p + s->size();
   while (p < limit) {
@@ -426,29 +425,29 @@ bool ConsumeNonWhitespace(absl::string_view* s, absl::string_view* val) {
   }
   const size_t n = p - s->data();
   if (n > 0) {
-    *val = absl::string_view(s->data(), n);
+    *val = StringPiece(s->data(), n);
     s->remove_prefix(n);
     return true;
   } else {
-    *val = absl::string_view();
+    *val = StringPiece();
     return false;
   }
 }
 
-bool SplitAndParseAsInts(absl::string_view text, char delim,
+bool SplitAndParseAsInts(StringPiece text, char delim,
                          std::vector<int32>* result) {
   return SplitAndParseAsInts<int32>(text, delim, strings::safe_strto32, result);
 }
 
-bool SplitAndParseAsInts(absl::string_view text, char delim,
+bool SplitAndParseAsInts(StringPiece text, char delim,
                          std::vector<int64>* result) {
   return SplitAndParseAsInts<int64>(text, delim, strings::safe_strto64, result);
 }
 
-bool SplitAndParseAsFloats(absl::string_view text, char delim,
+bool SplitAndParseAsFloats(StringPiece text, char delim,
                            std::vector<float>* result) {
   return SplitAndParseAsInts<float>(text, delim,
-                                    [](absl::string_view str, float* value) {
+                                    [](StringPiece str, float* value) {
                                       return strings::safe_strtof(str, value);
                                     },
                                     result);
@@ -462,18 +461,18 @@ size_t Strnlen(const char* str, const size_t string_max_len) {
   return len;
 }
 
-bool StrContains(absl::string_view haystack, absl::string_view needle) {
+bool StrContains(StringPiece haystack, StringPiece needle) {
   return std::search(haystack.begin(), haystack.end(), needle.begin(),
                      needle.end()) != haystack.end();
 }
 
-bool StartsWith(absl::string_view text, absl::string_view prefix) {
+bool StartsWith(StringPiece text, StringPiece prefix) {
   return prefix.empty() ||
          (text.size() >= prefix.size() &&
           memcmp(text.data(), prefix.data(), prefix.size()) == 0);
 }
 
-bool EndsWith(absl::string_view text, absl::string_view suffix) {
+bool EndsWith(StringPiece text, StringPiece suffix) {
   return suffix.empty() || (text.size() >= suffix.size() &&
                             memcmp(text.data() + (text.size() - suffix.size()),
                                    suffix.data(), suffix.size()) == 0);

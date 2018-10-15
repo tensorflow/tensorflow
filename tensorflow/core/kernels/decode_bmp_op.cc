@@ -16,7 +16,6 @@ limitations under the License.
 // See docs in ../ops/image_ops.cc
 
 #include <memory>
-#include "absl/strings/string_view.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -55,7 +54,7 @@ class DecodeBmpOp : public OpKernel {
                                         contents.shape().DebugString()));
 
     // Start decoding image to get shape details
-    const absl::string_view input = contents.scalar<string>()();
+    const StringPiece input = contents.scalar<string>()();
 
     OP_REQUIRES(context, (32 <= input.size()),
                 errors::InvalidArgument("Incomplete bmp content, requires at "

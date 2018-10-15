@@ -18,8 +18,8 @@ limitations under the License.
 #define TENSORFLOW_PLATFORM_TENSOR_CODING_H_
 
 #include <string>
-#include "absl/strings/string_view.h"
 #include "tensorflow/core/lib/core/refcount.h"
+#include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/platform/platform.h"
 #include "tensorflow/core/platform/types.h"
 
@@ -35,8 +35,7 @@ namespace port {
 // Store src contents in *out.  If backing memory for src is shared with *out,
 // will ref obj during the call and will arrange to unref obj when no
 // longer needed.
-void AssignRefCounted(absl::string_view src, core::RefCounted* obj,
-                      string* out);
+void AssignRefCounted(StringPiece src, core::RefCounted* obj, string* out);
 
 // Copy contents of src to dst[0,src.size()-1].
 inline void CopyToArray(const string& src, char* dst) {

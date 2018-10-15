@@ -22,7 +22,6 @@ limitations under the License.
 #include <cstring>
 #include <fstream>
 #include <vector>
-#include "absl/strings/string_view.h"
 #ifdef _WIN32
 #include <io.h>  // for _mktemp
 #endif
@@ -173,9 +172,9 @@ Status GetTmpFilename(string* filename) {
 /// "bucket-name" and "path/to/file.txt".
 /// If fname only contains the bucket and empty_object_ok = true, the returned
 /// object is empty.
-Status ParseGcsPath(absl::string_view fname, bool empty_object_ok,
-                    string* bucket, string* object) {
-  absl::string_view scheme, bucketp, objectp;
+Status ParseGcsPath(StringPiece fname, bool empty_object_ok, string* bucket,
+                    string* object) {
+  StringPiece scheme, bucketp, objectp;
   io::ParseURI(fname, &scheme, &bucketp, &objectp);
   if (scheme != "gs") {
     return errors::InvalidArgument("GCS path doesn't start with 'gs://': ",
@@ -224,7 +223,7 @@ std::set<string> AddAllSubpaths(const std::vector<string>& paths) {
   std::set<string> result;
   result.insert(paths.begin(), paths.end());
   for (const string& path : paths) {
-    absl::string_view subpath = io::Dirname(path);
+    StringPiece subpath = io::Dirname(path);
     while (!subpath.empty()) {
       result.emplace(string(subpath));
       subpath = io::Dirname(subpath);
@@ -233,7 +232,7 @@ std::set<string> AddAllSubpaths(const std::vector<string>& paths) {
   return result;
 }
 
-Status ParseJson(absl::string_view json, Json::Value* result) {
+Status ParseJson(StringPiece json, Json::Value* result) {
   Json::Reader reader;
   if (!reader.parse(json.data(), json.data() + json.size(), *result)) {
     return errors::Internal("Couldn't parse JSON response from GCS.");
@@ -242,7 +241,7 @@ Status ParseJson(absl::string_view json, Json::Value* result) {
 }
 
 Status ParseJson(const std::vector<char>& json, Json::Value* result) {
-  return ParseJson(absl::string_view{json.data(), json.size()}, result);
+  return ParseJson(StringPiece{json.data(), json.size()}, result);
 }
 
 /// Reads a JSON value with the given name from a parent JSON value.
@@ -306,13 +305,13 @@ class GcsRandomAccessFile : public RandomAccessFile {
  public:
   using ReadFn =
       std::function<Status(const string& filename, uint64 offset, size_t n,
-                           absl::string_view* result, char* scratch)>;
+                           StringPiece* result, char* scratch)>;
 
   GcsRandomAccessFile(const string& filename, ReadFn read_fn)
       : filename_(filename), read_fn_(std::move(read_fn)) {}
 
   /// The implementation of reads with an LRU block cache. Thread safe.
-  Status Read(uint64 offset, size_t n, absl::string_view* result,
+  Status Read(uint64 offset, size_t n, StringPiece* result,
               char* scratch) const override {
     return read_fn_(filename_, offset, n, result, scratch);
   }
@@ -373,7 +372,7 @@ class GcsWritableFile : public WritableFile {
 
   ~GcsWritableFile() override { Close().IgnoreError(); }
 
-  Status Append(absl::string_view data) override {
+  Status Append(StringPiece data) override {
     TF_RETURN_IF_ERROR(CheckWritable());
     sync_needed_ = true;
     outfile_ << data;
@@ -531,7 +530,7 @@ class GcsWritableFile : public WritableFile {
       // This means GCS doesn't have any bytes of the file yet.
       *uploaded = 0;
     } else {
-      absl::string_view range_piece(received_range);
+      StringPiece range_piece(received_range);
       str_util::ConsumePrefix(&range_piece,
                               "bytes=");  // May or may not be present.
       std::vector<int64> range_parts;
@@ -605,7 +604,7 @@ class GcsReadOnlyMemoryRegion : public ReadOnlyMemoryRegion {
 // Helper function to extract an environment variable and convert it into a
 // value of type T.
 template <typename T>
-bool GetEnvVar(const char* varname, bool (*convert)(absl::string_view, T*),
+bool GetEnvVar(const char* varname, bool (*convert)(StringPiece, T*),
                T* value) {
   const char* env_value = std::getenv(varname);
   if (!env_value) {
@@ -614,14 +613,14 @@ bool GetEnvVar(const char* varname, bool (*convert)(absl::string_view, T*),
   return convert(env_value, value);
 }
 
-bool StringPieceIdentity(absl::string_view str, absl::string_view* value) {
+bool StringPieceIdentity(StringPiece str, StringPiece* value) {
   *value = str;
   return true;
 }
 
 /// \brief Utility function to split a comma delimited list of strings to an
 /// unordered set, lowercasing all values.
-bool SplitByCommaToLowercaseSet(absl::string_view list,
+bool SplitByCommaToLowercaseSet(StringPiece list,
                                 std::unordered_set<string>* set) {
   std::vector<string> vector =
       str_util::Split(tensorflow::str_util::Lowercase(list), ",");
@@ -714,14 +713,14 @@ GcsFileSystem::GcsFileSystem() {
   }
 
   // Get the additional header
-  absl::string_view add_header_contents;
+  StringPiece add_header_contents;
   if (GetEnvVar(kAdditionalRequestHeader, StringPieceIdentity,
                 &add_header_contents)) {
     size_t split = add_header_contents.find(':', 0);
 
-    if (split != absl::string_view::npos) {
-      absl::string_view header_name = add_header_contents.substr(0, split);
-      absl::string_view header_value = add_header_contents.substr(split + 1);
+    if (split != StringPiece::npos) {
+      StringPiece header_name = add_header_contents.substr(0, split);
+      StringPiece header_value = add_header_contents.substr(split + 1);
 
       if (!header_name.empty() && !header_value.empty()) {
         additional_header_.reset(new std::pair<const string, const string>(
@@ -818,7 +817,7 @@ Status GcsFileSystem::NewRandomAccessFile(
   result->reset(new GcsRandomAccessFile(fname, [this, bucket, object](
                                                    const string& fname,
                                                    uint64 offset, size_t n,
-                                                   absl::string_view* result,
+                                                   StringPiece* result,
                                                    char* scratch) {
     tf_shared_lock l(block_cache_lock_);
     if (file_block_cache_->IsCacheEnabled()) {
@@ -835,11 +834,11 @@ Status GcsFileSystem::NewRandomAccessFile(
             << fname;
       }
     }
-    *result = absl::string_view();
+    *result = StringPiece();
     size_t bytes_transferred;
     TF_RETURN_IF_ERROR(
         file_block_cache_->Read(fname, offset, n, scratch, &bytes_transferred));
-    *result = absl::string_view(scratch, bytes_transferred);
+    *result = StringPiece(scratch, bytes_transferred);
     if (bytes_transferred < n) {
       return errors::OutOfRange("EOF reached, ", result->size(),
                                 " bytes were read out of ", n,
@@ -955,7 +954,7 @@ Status GcsFileSystem::NewAppendableFile(const string& fname,
   std::unique_ptr<char[]> buffer(new char[kReadAppendableFileBufferSize]);
   Status status;
   uint64 offset = 0;
-  absl::string_view read_chunk;
+  StringPiece read_chunk;
 
   // Read the file from GCS in chunks and save it to a tmp file.
   string old_content_filename;
@@ -995,7 +994,7 @@ Status GcsFileSystem::NewReadOnlyMemoryRegionFromFile(
   std::unique_ptr<RandomAccessFile> file;
   TF_RETURN_IF_ERROR(NewRandomAccessFile(fname, &file));
 
-  absl::string_view piece;
+  StringPiece piece;
   TF_RETURN_IF_ERROR(file->Read(0, size, &piece, data.get()));
 
   result->reset(new GcsReadOnlyMemoryRegion(std::move(data), size));
@@ -1321,7 +1320,7 @@ Status GcsFileSystem::GetChildrenBounded(const string& dirname,
         // The names should be relative to the 'dirname'. That means the
         // 'object_prefix', which is part of 'dirname', should be removed from
         // the beginning of 'name'.
-        absl::string_view relative_path(name);
+        StringPiece relative_path(name);
         if (!str_util::ConsumePrefix(&relative_path, object_prefix)) {
           return errors::Internal(strings::StrCat(
               "Unexpected response: the returned file name ", name,
@@ -1350,7 +1349,7 @@ Status GcsFileSystem::GetChildrenBounded(const string& dirname,
               "response.");
         }
         const string& prefix_str = prefix.asString();
-        absl::string_view relative_path(prefix_str);
+        StringPiece relative_path(prefix_str);
         if (!str_util::ConsumePrefix(&relative_path, object_prefix)) {
           return errors::Internal(
               "Unexpected response: the returned folder name ", prefix_str,

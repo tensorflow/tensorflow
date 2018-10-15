@@ -19,7 +19,6 @@
 #include <string>
 #include <vector>
 
-#include "absl/strings/string_view.h"
 #include "tensorflow/core/lib/core/status.h"
 
 namespace tensorflow {
@@ -36,7 +35,7 @@ class FileDeleter {
 };
 
 // Writes binary data to a file.
-Status WriteFile(const string& filename, absl::string_view contents);
+Status WriteFile(const string& filename, tensorflow::StringPiece contents);
 
 // Reads an audio file using ffmpeg and converts it into an array of samples in
 // [-1.0, 1.0]. If there are multiple channels in the audio then each frame will

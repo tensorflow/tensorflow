@@ -79,7 +79,6 @@ cc_library(
         ":delegate_data",
         ":kernel",
         ":util",
-        "@com_google_absl//absl/strings",
         "//tensorflow/contrib/lite/c:c_api_internal",
         "//tensorflow/contrib/lite:kernel_api",
         "//tensorflow/contrib/lite:util",
@@ -177,7 +176,6 @@ tf_cc_test(
         ":kernel",
         ":test_util",
         "@com_google_googletest//:gtest",
-        "@com_google_absl//absl/strings",
     ] + select({
         "//tensorflow:android": [
             "//tensorflow/core:android_tensorflow_lib",

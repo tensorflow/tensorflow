@@ -17,7 +17,6 @@ limitations under the License.
 
 #include <errno.h>
 
-#include "absl/strings/string_view.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/lib/strings/strcat.h"
@@ -140,10 +139,10 @@ HadoopFileSystem::~HadoopFileSystem() {}
 // We rely on HDFS connection caching here. The HDFS client calls
 // org.apache.hadoop.fs.FileSystem.get(), which caches the connection
 // internally.
-Status HadoopFileSystem::Connect(absl::string_view fname, hdfsFS* fs) {
+Status HadoopFileSystem::Connect(StringPiece fname, hdfsFS* fs) {
   TF_RETURN_IF_ERROR(hdfs_->status());
 
-  absl::string_view scheme, namenode, path;
+  StringPiece scheme, namenode, path;
   io::ParseURI(fname, &scheme, &namenode, &path);
   const string nn(namenode);
 
@@ -153,7 +152,7 @@ Status HadoopFileSystem::Connect(absl::string_view fname, hdfsFS* fs) {
   } else if (scheme == "viewfs") {
     char* defaultFS = nullptr;
     hdfs_->hdfsConfGetStr("fs.defaultFS", &defaultFS);
-    absl::string_view defaultScheme, defaultCluster, defaultPath;
+    StringPiece defaultScheme, defaultCluster, defaultPath;
     io::ParseURI(defaultFS, &defaultScheme, &defaultCluster, &defaultPath);
 
     if (scheme != defaultScheme || namenode != defaultCluster) {
@@ -182,7 +181,7 @@ Status HadoopFileSystem::Connect(absl::string_view fname, hdfsFS* fs) {
 }
 
 string HadoopFileSystem::TranslateName(const string& name) const {
-  absl::string_view scheme, namenode, path;
+  StringPiece scheme, namenode, path;
   io::ParseURI(name, &scheme, &namenode, &path);
   return string(path);
 }
@@ -204,7 +203,7 @@ class HDFSRandomAccessFile : public RandomAccessFile {
     }
   }
 
-  Status Read(uint64 offset, size_t n, absl::string_view* result,
+  Status Read(uint64 offset, size_t n, StringPiece* result,
               char* scratch) const override {
     Status s;
     char* dst = scratch;
@@ -243,7 +242,7 @@ class HDFSRandomAccessFile : public RandomAccessFile {
         s = IOError(filename_, errno);
       }
     }
-    *result = absl::string_view(scratch, dst - scratch);
+    *result = StringPiece(scratch, dst - scratch);
     return s;
   }
 
@@ -283,7 +282,7 @@ class HDFSWritableFile : public WritableFile {
     }
   }
 
-  Status Append(absl::string_view data) override {
+  Status Append(StringPiece data) override {
     if (hdfs_->hdfsWrite(fs_, file_, data.data(),
                          static_cast<tSize>(data.size())) == -1) {
       return IOError(filename_, errno);

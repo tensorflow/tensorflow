@@ -18,7 +18,6 @@ limitations under the License.
 #include <unordered_map>
 #include <unordered_set>
 
-#include "absl/strings/string_view.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/grappler/costs/graph_properties.h"
@@ -28,6 +27,7 @@ limitations under the License.
 #include "tensorflow/core/grappler/utils.h"
 #include "tensorflow/core/grappler/utils/topological_sort.h"
 #include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
@@ -204,7 +204,7 @@ void DependencyOptimizer::OptimizeNode(int node_idx,
       bool data_connection = false;
       for (int i = fanout->input_size() - 1; i >= 0; --i) {
         int pos;
-        absl::string_view input_name =
+        StringPiece input_name =
             ParseNodeNameAsStringPiece(fanout->input(i), &pos);
         if (input_name == node_name) {
           if (pos < 0) {
@@ -352,7 +352,7 @@ void DependencyOptimizer::OptimizeNode(int node_idx,
           for (int j = 0; j < consumer->input_size(); ++j) {
             const string& old_input = consumer->input(j);
             int old_input_pos;
-            absl::string_view old_input_node_name =
+            StringPiece old_input_node_name =
                 ParseNodeNameAsStringPiece(old_input, &old_input_pos);
             if (old_input_node_name == node_name) {
               if (old_input_pos >= 0) {

@@ -17,7 +17,6 @@ limitations under the License.
 
 #include <string>
 
-#include "absl/strings/string_view.h"
 #include "tensorflow/core/framework/kernel_def_builder.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -63,7 +62,7 @@ class StringJoinOp : public OpKernel {
                                                      &output_tensor));
     auto output_flat = output_tensor->flat<string>();
 
-    std::vector<absl::string_view> strings(input_list.size());
+    std::vector<StringPiece> strings(input_list.size());
     for (size_t i = 0; i < input_shape.num_elements(); ++i) {
       for (int j = 0; j < input_list.size(); ++j) {
         strings[j] = (is_scalar[j]) ? inputs[j](0) : inputs[j](i);

@@ -24,7 +24,7 @@ limitations under the License.
 #include <functional>
 #include <string>
 
-#include "absl/strings/string_view.h"
+#include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
@@ -94,12 +94,12 @@ struct hash<string> {
 };
 
 template <>
-struct hash<absl::string_view> {
-  size_t operator()(absl::string_view sp) const {
+struct hash<StringPiece> {
+  size_t operator()(StringPiece sp) const {
     return static_cast<size_t>(Hash64(sp.data(), sp.size()));
   }
 };
-using StringPieceHasher = ::tensorflow::hash<absl::string_view>;
+using StringPieceHasher = ::tensorflow::hash<StringPiece>;
 
 template <typename T, typename U>
 struct hash<std::pair<T, U>> {

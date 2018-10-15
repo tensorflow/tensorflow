@@ -13,10 +13,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "absl/strings/string_view.h"
 #include "tensorflow/core/public/version.h"
 
 #include <string>
+#include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/test.h"
 
@@ -32,14 +32,14 @@ bool IsDotOrIdentifierChar(char c) {
   return false;
 }
 
-bool ConsumeDotSeparatedIdentifiers(absl::string_view* s, const string& prefix,
-                                    absl::string_view* val) {
+bool ConsumeDotSeparatedIdentifiers(StringPiece* s, const string& prefix,
+                                    StringPiece* val) {
   if (!str_util::ConsumePrefix(s, prefix)) return false;
   size_t i;
   for (i = 0; i < s->size() && IsDotOrIdentifierChar((*s)[i]); ++i) {
     // Intentionally empty
   }
-  *val = absl::string_view(s->data(), i);
+  *val = StringPiece(s->data(), i);
   s->remove_prefix(i);
   return i > 0;
 }
@@ -50,8 +50,8 @@ TEST(SemverTest, VersionStringFollowsSemver) {
   // free to refine further (for example, check for leading 0s in numbers), but
   // avoid adding dependencies.
   uint64 major, minor, patch;
-  absl::string_view prerelease, metadata;
-  absl::string_view semver(TF_VERSION_STRING);
+  StringPiece prerelease, metadata;
+  StringPiece semver(TF_VERSION_STRING);
 
   ASSERT_TRUE(str_util::ConsumeLeadingDigits(&semver, &major));
   ASSERT_TRUE(str_util::ConsumePrefix(&semver, "."));

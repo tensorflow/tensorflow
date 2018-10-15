@@ -18,7 +18,6 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "absl/strings/string_view.h"
 #include "re2/re2.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/types.h"
@@ -130,7 +129,7 @@ std::pair<Type, Type> TypeResolver::TypesOf(const OpDef_AttrDef& attr_def,
                                             bool* iterable_out) {
   std::pair<Type, Type> types = MakeTypePair(Type::Wildcard());
   *iterable_out = false;
-  absl::string_view attr_type = attr_def.type();
+  StringPiece attr_type = attr_def.type();
   if (str_util::ConsumePrefix(&attr_type, "list(")) {
     attr_type.remove_suffix(1);  // remove closing brace
     *iterable_out = true;

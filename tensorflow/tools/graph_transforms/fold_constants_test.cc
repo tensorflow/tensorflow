@@ -15,7 +15,6 @@ limitations under the License.
 
 #include <utility>
 
-#include "absl/strings/string_view.h"
 #include "tensorflow/cc/ops/const_op.h"
 #include "tensorflow/cc/ops/image_ops.h"
 #include "tensorflow/cc/ops/nn_ops.h"
@@ -209,7 +208,7 @@ class ConstantFoldingTest : public ::testing::Test {
     }
 
     for (const NodeDef& node : graph_def.node()) {
-      const absl::string_view name(node.name());
+      const StringPiece name(node.name());
       const int occurrence_count = folded_node_map.count(node.name());
       if (str_util::EndsWith(name, "expect_removed")) {
         EXPECT_EQ(0, occurrence_count) << "node.name()=" << node.name();

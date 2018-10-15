@@ -14,7 +14,6 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/core/kernels/hexagon/graph_transfer_utils.h"
-#include "absl/strings/string_view.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/remote_fused_graph_execute_info.pb.h"
 
@@ -154,7 +153,7 @@ GraphTransferUtils::BuildRemoteFusedGraphExecuteInfo(
                      .Attr("Tinputs", input_types)
                      .Attr("Toutputs", output_types)
                      .Attr("serialized_remote_fused_graph_execute_info",
-                           absl::string_view(execute_info.SerializeAsString()));
+                           StringPiece(execute_info.SerializeAsString()));
   CHECK(scope.ok());
   scope.UpdateBuilder(&builder);
   scope.UpdateStatus(builder.Finalize(scope.graph(), &node));

@@ -15,11 +15,11 @@ limitations under the License.
 
 #include "tensorflow/core/framework/op_def_builder.h"
 
-#include "absl/strings/string_view.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/op_def.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
+#include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/protobuf.h"
@@ -40,7 +40,7 @@ class OpDefBuilderTest : public ::testing::Test {
  protected:
   OpDefBuilder b() { return OpDefBuilder("Test"); }
 
-  void ExpectSuccess(const OpDefBuilder& builder, absl::string_view proto,
+  void ExpectSuccess(const OpDefBuilder& builder, StringPiece proto,
                      OpShapeInferenceFn* shape_fn_out = nullptr) {
     OpRegistrationData op_reg_data;
     Status status = builder.Finalize(&op_reg_data);
@@ -61,7 +61,7 @@ class OpDefBuilderTest : public ::testing::Test {
     }
   }
 
-  void ExpectOrdered(const OpDefBuilder& builder, absl::string_view proto) {
+  void ExpectOrdered(const OpDefBuilder& builder, StringPiece proto) {
     OpRegistrationData op_reg_data;
     Status status = builder.Finalize(&op_reg_data);
     TF_EXPECT_OK(status);

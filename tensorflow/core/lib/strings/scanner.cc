@@ -14,7 +14,6 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/core/lib/strings/scanner.h"
-#include "absl/strings/string_view.h"
 
 namespace tensorflow {
 namespace strings {
@@ -42,8 +41,7 @@ void Scanner::ScanUntilImpl(char end_ch, bool escaped) {
   }
 }
 
-bool Scanner::GetResult(absl::string_view* remaining,
-                        absl::string_view* capture) {
+bool Scanner::GetResult(StringPiece* remaining, StringPiece* capture) {
   if (error_) {
     return false;
   }
@@ -52,7 +50,7 @@ bool Scanner::GetResult(absl::string_view* remaining,
   }
   if (capture != nullptr) {
     const char* end = capture_end_ == nullptr ? cur_.data() : capture_end_;
-    *capture = absl::string_view(capture_start_, end - capture_start_);
+    *capture = StringPiece(capture_start_, end - capture_start_);
   }
   return true;
 }

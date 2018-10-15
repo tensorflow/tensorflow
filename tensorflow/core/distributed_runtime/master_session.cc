@@ -19,7 +19,6 @@ limitations under the License.
 #include <unordered_set>
 #include <vector>
 
-#include "absl/strings/string_view.h"
 #include "tensorflow/core/common_runtime/process_util.h"
 #include "tensorflow/core/common_runtime/profile_handler.h"
 #include "tensorflow/core/common_runtime/stats_publisher_interface.h"
@@ -236,7 +235,7 @@ class MasterSession::ReffedClientGraph : public core::RefCounted {
   const bool is_partial_;
   const CallableOptions callable_opts_;
   WorkerCacheInterface* const worker_cache_;  // Not owned.
-  std::unordered_map<absl::string_view, Node*, StringPieceHasher> name_to_node_;
+  std::unordered_map<StringPiece, Node*, StringPieceHasher> name_to_node_;
   const bool should_deregister_;
   std::atomic<int64> execution_count_ = {0};
 
@@ -297,14 +296,12 @@ class MasterSession::ReffedClientGraph : public core::RefCounted {
   // This is a generic method that handles Run, PartialRun, and RunCallable.
   template <class FetchListType, class ClientRequestType,
             class ClientResponseType>
-  Status RunPartitionsHelper(const std::unordered_map<absl::string_view, size_t,
-                                                      StringPieceHasher>& feeds,
-                             const FetchListType& fetches, const MasterEnv* env,
-                             int64 step_id, int64 execution_count,
-                             PerStepState* pss, CallOptions* call_opts,
-                             const ClientRequestType& req,
-                             ClientResponseType* resp, CancellationManager* cm,
-                             bool is_last_partial_run);
+  Status RunPartitionsHelper(
+      const std::unordered_map<StringPiece, size_t, StringPieceHasher>& feeds,
+      const FetchListType& fetches, const MasterEnv* env, int64 step_id,
+      int64 execution_count, PerStepState* pss, CallOptions* call_opts,
+      const ClientRequestType& req, ClientResponseType* resp,
+      CancellationManager* cm, bool is_last_partial_run);
 
   // Deregisters the partitions on the workers.  Called in the
   // destructor and does not wait for the rpc completion.
@@ -732,7 +729,7 @@ Status MasterSession::ReffedClientGraph::RunPartitions(
   VLOG(2) << "RunPartitions step_id " << step_id << " execution_count "
           << execution_count;
   // Maps the names of fed tensors to their index in `req`.
-  std::unordered_map<absl::string_view, size_t, StringPieceHasher> feeds(3);
+  std::unordered_map<StringPiece, size_t, StringPieceHasher> feeds(3);
   for (size_t i = 0; i < req.num_feeds(); ++i) {
     if (!feeds.insert({req.feed_name(i), i}).second) {
       return errors::InvalidArgument("Duplicated feeds: ", req.feed_name(i));
@@ -756,7 +753,7 @@ Status MasterSession::ReffedClientGraph::RunPartitions(
   VLOG(2) << "RunPartitions step_id " << step_id << " execution_count "
           << execution_count;
   // Maps the names of fed tensors to their index in `req`.
-  std::unordered_map<absl::string_view, size_t, StringPieceHasher> feeds(3);
+  std::unordered_map<StringPiece, size_t, StringPieceHasher> feeds(3);
   for (size_t i = 0; i < callable_opts_.feed_size(); ++i) {
     if (!feeds.insert({callable_opts_.feed(i), i}).second) {
       // MakeCallable will fail if there are two feeds with the same name.

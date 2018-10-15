@@ -17,7 +17,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
-#include "absl/strings/string_view.h"
+#include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/platform/logging.h"
@@ -26,7 +26,7 @@ limitations under the License.
 namespace tensorflow {
 namespace {
 
-bool ParseStringFlag(absl::string_view arg, absl::string_view flag,
+bool ParseStringFlag(tensorflow::StringPiece arg, tensorflow::StringPiece flag,
                      const std::function<bool(string)>& hook,
                      bool* value_parsing_ok) {
   *value_parsing_ok = true;
@@ -40,7 +40,7 @@ bool ParseStringFlag(absl::string_view arg, absl::string_view flag,
   return false;
 }
 
-bool ParseInt32Flag(absl::string_view arg, absl::string_view flag,
+bool ParseInt32Flag(tensorflow::StringPiece arg, tensorflow::StringPiece flag,
                     const std::function<bool(int32)>& hook,
                     bool* value_parsing_ok) {
   *value_parsing_ok = true;
@@ -62,7 +62,7 @@ bool ParseInt32Flag(absl::string_view arg, absl::string_view flag,
   return false;
 }
 
-bool ParseInt64Flag(absl::string_view arg, absl::string_view flag,
+bool ParseInt64Flag(tensorflow::StringPiece arg, tensorflow::StringPiece flag,
                     const std::function<bool(int64)>& hook,
                     bool* value_parsing_ok) {
   *value_parsing_ok = true;
@@ -84,7 +84,7 @@ bool ParseInt64Flag(absl::string_view arg, absl::string_view flag,
   return false;
 }
 
-bool ParseBoolFlag(absl::string_view arg, absl::string_view flag,
+bool ParseBoolFlag(tensorflow::StringPiece arg, tensorflow::StringPiece flag,
                    const std::function<bool(bool)>& hook,
                    bool* value_parsing_ok) {
   *value_parsing_ok = true;
@@ -112,7 +112,7 @@ bool ParseBoolFlag(absl::string_view arg, absl::string_view flag,
   return false;
 }
 
-bool ParseFloatFlag(absl::string_view arg, absl::string_view flag,
+bool ParseFloatFlag(tensorflow::StringPiece arg, tensorflow::StringPiece flag,
                     const std::function<bool(float)>& hook,
                     bool* value_parsing_ok) {
   *value_parsing_ok = true;

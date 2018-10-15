@@ -15,7 +15,6 @@ limitations under the License.
 
 #include "tensorflow/core/framework/resource_mgr.h"
 
-#include "absl/strings/string_view.h"
 #include "tensorflow/core/framework/device_attributes.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/node_def_util.h"
@@ -224,7 +223,7 @@ Status ResourceMgr::Cleanup(const string& container) {
   return Status::OK();
 }
 
-static bool IsValidContainerName(absl::string_view s) {
+static bool IsValidContainerName(StringPiece s) {
   using ::tensorflow::strings::Scanner;
   return Scanner(s)
       .One(Scanner::LETTER_DIGIT_DOT)
@@ -276,7 +275,7 @@ const ResourceHandle& HandleFromInput(OpKernelContext* ctx, int input) {
   return ctx->input(input).flat<ResourceHandle>()(0);
 }
 
-Status HandleFromInput(OpKernelContext* ctx, absl::string_view input,
+Status HandleFromInput(OpKernelContext* ctx, StringPiece input,
                        ResourceHandle* handle) {
   const Tensor* tensor;
   TF_RETURN_IF_ERROR(ctx->input(input, &tensor));

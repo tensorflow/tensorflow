@@ -17,14 +17,13 @@ limitations under the License.
 
 #include <vector>
 
-#include "absl/strings/string_view.h"
 #include "tensorflow/core/lib/core/coding.h"
+#include "tensorflow/core/lib/core/stringpiece.h"
 
 namespace tensorflow {
 namespace port {
 
-void AssignRefCounted(absl::string_view src, core::RefCounted* obj,
-                      string* out) {
+void AssignRefCounted(StringPiece src, core::RefCounted* obj, string* out) {
   out->assign(src.data(), src.size());
 }
 
@@ -40,7 +39,7 @@ void EncodeStringList(const string* strings, int64 n, string* out) {
 
 bool DecodeStringList(const string& src, string* strings, int64 n) {
   std::vector<uint32> sizes(n);
-  absl::string_view reader(src);
+  StringPiece reader(src);
   int64 tot = 0;
   for (auto& v : sizes) {
     if (!core::GetVarint32(&reader, &v)) return false;

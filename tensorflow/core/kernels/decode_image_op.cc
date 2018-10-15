@@ -16,7 +16,6 @@ limitations under the License.
 // See docs in ../ops/image_ops.cc
 
 #include <memory>
-#include "absl/strings/string_view.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -40,7 +39,7 @@ enum FileFormat {
 };
 
 // Classify the contents of a file based on starting bytes (the magic number).
-FileFormat ClassifyFileFormat(absl::string_view data) {
+FileFormat ClassifyFileFormat(StringPiece data) {
   // The 4th byte of JPEG is '\xe0' or '\xe1', so check just the first three
   if (str_util::StartsWith(data, "\xff\xd8\xff")) return kJpgFormat;
   if (str_util::StartsWith(data, "\x89PNG\r\n\x1a\n")) return kPngFormat;
@@ -48,7 +47,7 @@ FileFormat ClassifyFileFormat(absl::string_view data) {
   return kUnknownFormat;
 }
 
-string FileFormatString(FileFormat magic, absl::string_view data) {
+string FileFormatString(FileFormat magic, StringPiece data) {
   switch (magic) {
     case kPngFormat:
       return "PNG";
@@ -153,7 +152,7 @@ class DecodeImageOp : public OpKernel {
                                         contents.shape().DebugString()));
 
     // Determine format
-    const absl::string_view input = contents.scalar<string>()();
+    const StringPiece input = contents.scalar<string>()();
     const auto magic = ClassifyFileFormat(input);
     OP_REQUIRES(
         context,
@@ -184,7 +183,7 @@ class DecodeImageOp : public OpKernel {
     }
   }
 
-  void DecodeJpeg(OpKernelContext* context, absl::string_view input) {
+  void DecodeJpeg(OpKernelContext* context, StringPiece input) {
     OP_REQUIRES(context, channels_ == 0 || channels_ == 1 || channels_ == 3,
                 errors::InvalidArgument(
                     "channels must be 0, 1, or 3 for JPEG, got ", channels_));
@@ -232,7 +231,7 @@ class DecodeImageOp : public OpKernel {
                                 input.size()));
   }
 
-  void DecodePng(OpKernelContext* context, absl::string_view input) {
+  void DecodePng(OpKernelContext* context, StringPiece input) {
     // Start decoding png to get shape details
     png::DecodeContext decode;
     OP_REQUIRES(context,
@@ -288,7 +287,7 @@ class DecodeImageOp : public OpKernel {
     }
   }
 
-  void DecodeGif(OpKernelContext* context, absl::string_view input) {
+  void DecodeGif(OpKernelContext* context, StringPiece input) {
     OP_REQUIRES(context, channels_ == 0 || channels_ == 3,
                 errors::InvalidArgument("channels must be 0 or 3 for GIF, got ",
                                         channels_));

@@ -20,7 +20,6 @@ limitations under the License.
 #include <stdlib.h>
 #include <memory>
 
-#include "absl/strings/string_view.h"
 #include "tensorflow/core/common_runtime/step_stats_collector.h"
 #include "tensorflow/core/framework/step_stats.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
@@ -302,7 +301,7 @@ class DeviceTracerImpl : public DeviceTracer,
 
   // tracing::TraceCollector interface:
   virtual std::unique_ptr<Handle> CreateAnnotationHandle(
-      absl::string_view name_part1, absl::string_view name_part2) const {
+      StringPiece name_part1, StringPiece name_part2) const {
     struct Impl : public tracing::TraceCollector::Handle {
       string annotation;
       explicit Impl(string &&name_scope) : annotation(name_scope) {
@@ -316,8 +315,7 @@ class DeviceTracerImpl : public DeviceTracer,
         new Impl{ConcatenateNames(name_part1, name_part2)});
   }
 
-  virtual std::unique_ptr<Handle> CreateActivityHandle(absl::string_view,
-                                                       absl::string_view,
+  virtual std::unique_ptr<Handle> CreateActivityHandle(StringPiece, StringPiece,
                                                        bool) const {
     // We don't do anything with 'Activities' yet.
     return nullptr;

@@ -15,7 +15,6 @@ limitations under the License.
 
 #include "tensorflow/core/framework/node_def_util.h"
 
-#include "absl/strings/string_view.h"
 #include "tensorflow/core/framework/attr_value.pb.h"  // NOLINT
 #include "tensorflow/core/framework/fake_input.h"
 #include "tensorflow/core/framework/node_def_builder.h"
@@ -271,8 +270,7 @@ void ExpectInvalidSyntax(const NodeDef& bad, const string& message) {
   EXPECT_TRUE(errors::IsInvalidArgument(status))
       << status << "; NodeDef: " << SummarizeNodeDef(bad);
 
-  EXPECT_TRUE(
-      str_util::StrContains(absl::string_view(status.ToString()), message))
+  EXPECT_TRUE(str_util::StrContains(StringPiece(status.ToString()), message))
       << "NodeDef: " << SummarizeNodeDef(bad) << ", " << status << ", "
       << message;
 }

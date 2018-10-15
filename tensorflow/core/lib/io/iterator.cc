@@ -14,7 +14,6 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/core/lib/io/iterator.h"
-#include "absl/strings/string_view.h"
 
 namespace tensorflow {
 namespace table {
@@ -56,16 +55,16 @@ class EmptyIterator : public Iterator {
  public:
   explicit EmptyIterator(const Status& s) : status_(s) {}
   bool Valid() const override { return false; }
-  void Seek(const absl::string_view& target) override {}
+  void Seek(const StringPiece& target) override {}
   void SeekToFirst() override {}
   void Next() override { assert(false); }
-  absl::string_view key() const override {
+  StringPiece key() const override {
     assert(false);
-    return absl::string_view();
+    return StringPiece();
   }
-  absl::string_view value() const override {
+  StringPiece value() const override {
     assert(false);
-    return absl::string_view();
+    return StringPiece();
   }
   Status status() const override { return status_; }
 

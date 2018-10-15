@@ -14,7 +14,6 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/util/memmapped_file_system.h"
 
-#include "absl/strings/string_view.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
 #include "tensorflow/core/framework/versions.pb.h"
 #include "tensorflow/core/graph/graph_def_builder.h"
@@ -87,8 +86,8 @@ TEST(MemmappedFileSystemTest, SimpleTest) {
   // The memory region can be bigger but not less than Tensor size.
   ASSERT_GE(memory_region->length(), test_tensor.TotalBytes());
   EXPECT_EQ(test_tensor.tensor_data(),
-            absl::string_view(static_cast<const char*>(memory_region->data()),
-                              test_tensor.TotalBytes()));
+            StringPiece(static_cast<const char*>(memory_region->data()),
+                        test_tensor.TotalBytes()));
   // Check that GetFileSize works.
   uint64 file_size = 0;
   TF_ASSERT_OK(memmapped_env.GetFileSize(kTensor2FileName, &file_size));

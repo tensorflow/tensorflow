@@ -19,7 +19,6 @@ limitations under the License.
 #include <memory>
 #include <string>
 
-#include "absl/strings/string_view.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/io/record_writer.h"
 #include "tensorflow/core/platform/env.h"
@@ -67,7 +66,7 @@ class EventsWriter {
   // Append "event_str", a serialized Event, to the file.
   // Note that this function does NOT check that de-serializing event_str
   // results in a valid Event proto.  The tensorflow:: bit makes SWIG happy.
-  void WriteSerializedEvent(absl::string_view event_str);
+  void WriteSerializedEvent(tensorflow::StringPiece event_str);
 
   // EventWriter automatically flushes and closes on destruction, but
   // these two methods are provided for users who want to write to disk sooner

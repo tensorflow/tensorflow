@@ -15,7 +15,6 @@ limitations under the License.
 
 #include "tensorflow/core/grappler/optimizers/data/noop_elimination.h"
 #include <tuple>
-#include "absl/strings/string_view.h"
 #include "tensorflow/core/framework/attr_value_util.h"
 #include "tensorflow/core/grappler/grappler_item.h"
 #include "tensorflow/core/grappler/optimizers/data/graph_utils.h"
@@ -36,15 +35,15 @@ std::vector<std::pair<string, AttrValue>> GetCommonAttributes() {
   return commonAttributes;
 }
 
-NodeDef *MakeUnaryNode(absl::string_view node_type, int count,
-                       string input_node, MutableGraphView *graph) {
+NodeDef *MakeUnaryNode(StringPiece node_type, int count, string input_node,
+                       MutableGraphView *graph) {
   NodeDef *node_count = graph_utils::AddScalarConstNode<int64>(count, graph);
   return graph_utils::AddNode("", node_type,
                               {std::move(input_node), node_count->name()},
                               GetCommonAttributes(), graph);
 }
 
-NodeDef *MakeUnaryNonConstNode(absl::string_view node_type, string input_node,
+NodeDef *MakeUnaryNonConstNode(StringPiece node_type, string input_node,
                                MutableGraphView *graph) {
   NodeDef *node_count = graph_utils::AddScalarPlaceholder(DT_INT32, graph);
   return graph_utils::AddNode("", node_type,
@@ -54,7 +53,7 @@ NodeDef *MakeUnaryNonConstNode(absl::string_view node_type, string input_node,
 
 NodeDef *MakeCacheNode(string input_node, MutableGraphView *graph) {
   NodeDef *node_filename =
-      graph_utils::AddScalarConstNode<absl::string_view>("", graph);
+      graph_utils::AddScalarConstNode<StringPiece>("", graph);
   return graph_utils::AddNode("", "CacheDataset",
                               {std::move(input_node), node_filename->name()},
                               GetCommonAttributes(), graph);

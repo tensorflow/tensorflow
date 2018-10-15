@@ -17,7 +17,6 @@ limitations under the License.
 
 #include <stdlib.h>
 
-#include "absl/strings/string_view.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/strings/numbers.h"
 #include "tensorflow/core/lib/strings/str_util.h"
@@ -26,7 +25,7 @@ limitations under the License.
 
 namespace tensorflow {
 
-Status ReadBoolFromEnvVar(absl::string_view env_var_name, bool default_val,
+Status ReadBoolFromEnvVar(StringPiece env_var_name, bool default_val,
                           bool* value) {
   *value = default_val;
   const char* tf_env_var_val = getenv(string(env_var_name).c_str());
@@ -46,7 +45,7 @@ Status ReadBoolFromEnvVar(absl::string_view env_var_name, bool default_val,
       tf_env_var_val, ". Use the default value: ", default_val));
 }
 
-Status ReadInt64FromEnvVar(absl::string_view env_var_name, int64 default_val,
+Status ReadInt64FromEnvVar(StringPiece env_var_name, int64 default_val,
                            int64* value) {
   *value = default_val;
   const char* tf_env_var_val = getenv(string(env_var_name).c_str());
@@ -61,8 +60,8 @@ Status ReadInt64FromEnvVar(absl::string_view env_var_name, int64 default_val,
       tf_env_var_val, ". Use the default value: ", default_val));
 }
 
-Status ReadStringFromEnvVar(absl::string_view env_var_name,
-                            absl::string_view default_val, string* value) {
+Status ReadStringFromEnvVar(StringPiece env_var_name, StringPiece default_val,
+                            string* value) {
   const char* tf_env_var_val = getenv(string(env_var_name).c_str());
   if (tf_env_var_val != nullptr) {
     *value = tf_env_var_val;

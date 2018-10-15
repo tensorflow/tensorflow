@@ -32,7 +32,6 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
-        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -121,7 +120,6 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":transform_utils",
-        "@com_google_absl//absl/strings",
         "//tensorflow/c:checkpoint_reader",
         "//tensorflow/core/util/tensor_bundle",
         "//tensorflow/core:core_cpu",
@@ -183,7 +181,6 @@ tf_cc_test(
         "//tensorflow/core/kernels:quantization_utils",
         "//tensorflow/core/kernels:quantized_ops",
         "//tensorflow/core/util/tensor_bundle",
-        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -201,7 +198,6 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
-        "@com_google_absl//absl/strings",
     ],
 )
 

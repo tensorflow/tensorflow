@@ -14,7 +14,6 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/kernels/data/iterator_ops.h"
 
-#include "absl/strings/string_view.h"
 #include "tensorflow/core/common_runtime/graph_runner.h"
 #include "tensorflow/core/common_runtime/renamed_device.h"
 #include "tensorflow/core/common_runtime/threadpool_device.h"
@@ -214,19 +213,19 @@ class VariantTensorDataReader : public IteratorStateReader {
   // pre-processing did not have errors.
   Status status() const { return status_; }
 
-  Status ReadScalar(absl::string_view key, int64* val) override {
+  Status ReadScalar(StringPiece key, int64* val) override {
     return ReadScalarInternal(key, val);
   }
 
-  Status ReadScalar(absl::string_view key, string* val) override {
+  Status ReadScalar(StringPiece key, string* val) override {
     return ReadScalarInternal(key, val);
   }
 
-  Status ReadTensor(absl::string_view key, Tensor* val) override {
+  Status ReadTensor(StringPiece key, Tensor* val) override {
     return ReadTensorInternal(key, val);
   }
 
-  bool Contains(absl::string_view key) override {
+  bool Contains(StringPiece key) override {
     return map_.find(string(key)) != map_.end();
   }
 
@@ -247,7 +246,7 @@ class VariantTensorDataReader : public IteratorStateReader {
   }
 
   template <typename T>
-  Status ReadScalarInternal(absl::string_view key, T* val) {
+  Status ReadScalarInternal(StringPiece key, T* val) {
     if (map_.find(string(key)) == map_.end()) {
       return errors::NotFound(key);
     }
@@ -255,7 +254,7 @@ class VariantTensorDataReader : public IteratorStateReader {
     return Status::OK();
   }
 
-  Status ReadTensorInternal(absl::string_view key, Tensor* val) {
+  Status ReadTensorInternal(StringPiece key, Tensor* val) {
     if (map_.find(string(key)) == map_.end()) {
       return errors::NotFound(key);
     }
@@ -274,15 +273,15 @@ class VariantTensorDataWriter : public IteratorStateWriter {
   // Does not take ownership of data.
   explicit VariantTensorDataWriter(VariantTensorData* data) : data_(data) {}
 
-  Status WriteScalar(absl::string_view key, const int64 val) override {
+  Status WriteScalar(StringPiece key, const int64 val) override {
     return WriteScalarInternal(key, val);
   }
 
-  Status WriteScalar(absl::string_view key, const string& val) override {
+  Status WriteScalar(StringPiece key, const string& val) override {
     return WriteScalarInternal(key, val);
   }
 
-  Status WriteTensor(absl::string_view key, const Tensor& val) override {
+  Status WriteTensor(StringPiece key, const Tensor& val) override {
     return WriteTensorInternal(key, val);
   }
 
@@ -298,13 +297,13 @@ class VariantTensorDataWriter : public IteratorStateWriter {
 
  private:
   template <typename T>
-  Status WriteScalarInternal(absl::string_view key, const T& val) {
+  Status WriteScalarInternal(StringPiece key, const T& val) {
     Tensor val_t = Tensor(DataTypeToEnum<T>::v(), TensorShape({}));
     val_t.scalar<T>()() = val;
     return WriteTensorInternal(key, val_t);
   }
 
-  Status WriteTensorInternal(absl::string_view key, const Tensor& val) {
+  Status WriteTensorInternal(StringPiece key, const Tensor& val) {
     // Write key to the metadata proto. This gets written to `data_`
     // when `Flush()` is called. We do this lazily to avoid multiple
     // serialization calls.

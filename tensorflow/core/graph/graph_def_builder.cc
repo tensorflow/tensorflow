@@ -17,7 +17,6 @@ limitations under the License.
 
 #include <utility>
 
-#include "absl/strings/string_view.h"
 #include "tensorflow/core/graph/tensor_id.h"
 #include "tensorflow/core/lib/core/errors.h"
 
@@ -28,11 +27,11 @@ GraphDefBuilder::Options::Options(Graph* graph, Status* status)
 GraphDefBuilder::Options::~Options() {}
 
 GraphDefBuilder::Options GraphDefBuilder::Options::WithName(
-    absl::string_view name) const {
+    StringPiece name) const {
   return Options(*this).WithNameImpl(name);
 }
 GraphDefBuilder::Options GraphDefBuilder::Options::WithDevice(
-    absl::string_view device) const {
+    StringPiece device) const {
   return Options(*this).WithDeviceImpl(device);
 }
 GraphDefBuilder::Options GraphDefBuilder::Options::WithControlInput(
@@ -44,12 +43,12 @@ GraphDefBuilder::Options GraphDefBuilder::Options::WithControlInputs(
   return Options(*this).WithControlInputsImpl(control_inputs);
 }
 GraphDefBuilder::Options GraphDefBuilder::Options::WithNameImpl(
-    absl::string_view name) {
+    StringPiece name) {
   name_ = string(name);
   return *this;
 }
 GraphDefBuilder::Options GraphDefBuilder::Options::WithDeviceImpl(
-    absl::string_view device) {
+    StringPiece device) {
   device_ = string(device);
   return *this;
 }
@@ -72,7 +71,7 @@ Status GraphDefBuilder::ToGraphDef(GraphDef* graph_def) const {
   return status_;
 }
 
-string GraphDefBuilder::Options::GetNameForOp(absl::string_view op) const {
+string GraphDefBuilder::Options::GetNameForOp(StringPiece op) const {
   if (name_.empty()) return graph_->NewName(op);
   return name_;
 }

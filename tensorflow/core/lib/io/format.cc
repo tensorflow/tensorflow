@@ -15,7 +15,6 @@ limitations under the License.
 
 #include <limits>
 
-#include "absl/strings/string_view.h"
 #include "tensorflow/core/lib/io/format.h"
 
 #include "tensorflow/core/lib/core/coding.h"
@@ -36,7 +35,7 @@ void BlockHandle::EncodeTo(string* dst) const {
   core::PutVarint64(dst, size_);
 }
 
-Status BlockHandle::DecodeFrom(absl::string_view* input) {
+Status BlockHandle::DecodeFrom(StringPiece* input) {
   if (core::GetVarint64(input, &offset_) && core::GetVarint64(input, &size_)) {
     return Status::OK();
   } else {
@@ -56,7 +55,7 @@ void Footer::EncodeTo(string* dst) const {
   assert(dst->size() == original_size + kEncodedLength);
 }
 
-Status Footer::DecodeFrom(absl::string_view* input) {
+Status Footer::DecodeFrom(StringPiece* input) {
   const char* magic_ptr = input->data() + kEncodedLength - 8;
   const uint32 magic_lo = core::DecodeFixed32(magic_ptr);
   const uint32 magic_hi = core::DecodeFixed32(magic_ptr + 4);
@@ -73,14 +72,14 @@ Status Footer::DecodeFrom(absl::string_view* input) {
   if (result.ok()) {
     // We skip over any leftover data (just padding for now) in "input"
     const char* end = magic_ptr + 8;
-    *input = absl::string_view(end, input->data() + input->size() - end);
+    *input = StringPiece(end, input->data() + input->size() - end);
   }
   return result;
 }
 
 Status ReadBlock(RandomAccessFile* file, const BlockHandle& handle,
                  BlockContents* result) {
-  result->data = absl::string_view();
+  result->data = StringPiece();
   result->cachable = false;
   result->heap_allocated = false;
 
@@ -93,7 +92,7 @@ Status ReadBlock(RandomAccessFile* file, const BlockHandle& handle,
   }
 
   char* buf = new char[n + kBlockTrailerSize];
-  absl::string_view contents;
+  StringPiece contents;
   Status s = file->Read(handle.offset(), n + kBlockTrailerSize, &contents, buf);
   if (!s.ok()) {
     delete[] buf;
@@ -125,11 +124,11 @@ Status ReadBlock(RandomAccessFile* file, const BlockHandle& handle,
         // Use it directly under the assumption that it will be live
         // while the file is open.
         delete[] buf;
-        result->data = absl::string_view(data, n);
+        result->data = StringPiece(data, n);
         result->heap_allocated = false;
         result->cachable = false;  // Do not double-cache
       } else {
-        result->data = absl::string_view(buf, n);
+        result->data = StringPiece(buf, n);
         result->heap_allocated = true;
         result->cachable = true;
       }
@@ -149,7 +148,7 @@ Status ReadBlock(RandomAccessFile* file, const BlockHandle& handle,
         return errors::DataLoss("corrupted compressed block contents");
       }
       delete[] buf;
-      result->data = absl::string_view(ubuf, ulength);
+      result->data = StringPiece(ubuf, ulength);
       result->heap_allocated = true;
       result->cachable = true;
       break;

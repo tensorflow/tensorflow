@@ -34,7 +34,6 @@ tf_cc_binary(
     deps = [
         "//tensorflow/core:framework_headers_lib",
         "@aws",
-        "@com_google_absl//absl/strings",
         "@curl",
         "@protobuf_archive//:protobuf_headers",
     ],

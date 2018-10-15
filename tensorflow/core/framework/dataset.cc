@@ -14,7 +14,6 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/framework/dataset.h"
 
-#include "absl/strings/string_view.h"
 #include "tensorflow/core/framework/device_base.h"
 #include "tensorflow/core/graph/graph_def_builder.h"
 #include "tensorflow/core/graph/node_builder.h"
@@ -78,7 +77,7 @@ Status GraphDefBuilderWrapper::AddDataset(
     const DatasetBase* dataset,
     const std::vector<std::pair<size_t, Node*>>& inputs,
     const std::vector<std::pair<size_t, gtl::ArraySlice<Node*>>>& list_inputs,
-    const std::vector<std::pair<absl::string_view, AttrValue>>& attrs,
+    const std::vector<std::pair<StringPiece, AttrValue>>& attrs,
     Node** output) {
   const string& name = dataset->name();
   std::unique_ptr<const GraphDefBuilder::Options> opts(

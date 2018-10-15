@@ -16,7 +16,6 @@ limitations under the License.
 #ifndef TENSORFLOW_LIB_IO_TWO_LEVEL_ITERATOR_H_
 #define TENSORFLOW_LIB_IO_TWO_LEVEL_ITERATOR_H_
 
-#include "absl/strings/string_view.h"
 #include "tensorflow/core/lib/io/iterator.h"
 
 namespace tensorflow {
@@ -33,8 +32,7 @@ namespace table {
 // an iterator over the contents of the corresponding block.
 extern Iterator* NewTwoLevelIterator(
     Iterator* index_iter,
-    Iterator* (*block_function)(void* arg,
-                                const absl::string_view& index_value),
+    Iterator* (*block_function)(void* arg, const StringPiece& index_value),
     void* arg);
 
 }  // namespace table

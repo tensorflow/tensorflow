@@ -95,7 +95,6 @@ cc_library(
     deps = [
         ":constants",
         ":reader",
-        "@com_google_absl//absl/strings",
     ] + if_not_mobile([
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",

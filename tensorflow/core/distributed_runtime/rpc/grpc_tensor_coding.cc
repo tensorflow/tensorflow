@@ -16,7 +16,6 @@ limitations under the License.
 #include "tensorflow/core/distributed_runtime/rpc/grpc_tensor_coding.h"
 #include "grpcpp/support/byte_buffer.h"
 #include "grpcpp/support/slice.h"
-#include "absl/strings/string_view.h"
 #include "tensorflow/core/common_runtime/dma_helper.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor.pb.h"
@@ -159,7 +158,7 @@ void EncodeTensorToByteBuffer(bool is_dead, const Tensor& val,
     io::ProtoEncodeHelper e_skeleton(skeleton.data(), skeleton.size());
     EncodeSkeleton(val, &e_skeleton);
 
-    absl::string_view tdata = val.tensor_data();
+    StringPiece tdata = val.tensor_data();
     uint32 overall_tensor_proto_bytesize =
         (e_skeleton.size() +
          VarLengthEncodingSize(TensorProto::kTensorContentFieldNumber,
@@ -198,7 +197,7 @@ void EncodeTensorToByteBuffer(bool is_dead, const Tensor& val,
     e.WriteVarlengthBeginning(RecvTensorResponse::kTensorFieldNumber,
                               overall_tensor_proto_bytesize);
     // (C)
-    e.WriteRawBytes(absl::string_view(e_skeleton.data(), e_skeleton.size()));
+    e.WriteRawBytes(StringPiece(e_skeleton.data(), e_skeleton.size()));
     // (D1) & (D2)
     e.WriteVarlengthBeginning(TensorProto::kTensorContentFieldNumber,
                               tdata.size());

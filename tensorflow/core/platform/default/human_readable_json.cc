@@ -14,7 +14,6 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/core/platform/human_readable_json.h"
-#include "absl/strings/string_view.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/strings/strcat.h"
@@ -31,11 +30,12 @@ Status ProtoToHumanReadableJson(const ::google::protobuf::Message& proto,
 
   auto status = google::protobuf::util::MessageToJsonString(proto, result);
   if (!status.ok()) {
-    // Convert error_msg google::protobuf::StringPiece to absl::string_view.
+    // Convert error_msg google::protobuf::StringPiece to
+    // tensorflow::StringPiece.
     auto error_msg = status.error_message();
-    return errors::Internal(strings::StrCat(
-        "Could not convert proto to JSON string: ",
-        absl::string_view(error_msg.data(), error_msg.length())));
+    return errors::Internal(
+        strings::StrCat("Could not convert proto to JSON string: ",
+                        StringPiece(error_msg.data(), error_msg.length())));
   }
   return Status::OK();
 #endif
@@ -49,11 +49,12 @@ Status HumanReadableJsonToProto(const string& str,
   proto->Clear();
   auto status = google::protobuf::util::JsonStringToMessage(str, proto);
   if (!status.ok()) {
-    // Convert error_msg google::protobuf::StringPiece to absl::string_view.
+    // Convert error_msg google::protobuf::StringPiece to
+    // tensorflow::StringPiece.
     auto error_msg = status.error_message();
-    return errors::Internal(strings::StrCat(
-        "Could not convert JSON string to proto: ",
-        absl::string_view(error_msg.data(), error_msg.length())));
+    return errors::Internal(
+        strings::StrCat("Could not convert JSON string to proto: ",
+                        StringPiece(error_msg.data(), error_msg.length())));
   }
   return Status::OK();
 #endif

@@ -15,7 +15,6 @@ limitations under the License.
 
 #include "tensorflow/core/grappler/optimizers/data/vectorization_utils.h"
 
-#include "absl/strings/string_view.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/grappler/optimizers/data/function_utils.h"
 #include "tensorflow/core/grappler/optimizers/data/graph_utils.h"
@@ -70,8 +69,7 @@ string GetRetval(const FunctionDef& function_def, int index) {
 
 // TODO(rachelim): Use FunctionDefHelper::Create instead
 FunctionDef CreateFunction(
-    absl::string_view name,
-    const std::vector<std::pair<string, DataType>>& inputs,
+    StringPiece name, const std::vector<std::pair<string, DataType>>& inputs,
     const std::vector<std::pair<string, DataType>>& outputs,
     const std::map<string, string>& rets) {
   FunctionDef func;
@@ -93,6 +91,7 @@ FunctionDef CreateFunction(
 
   return func;
 }
+
 ///==================================//
 // Tests for vectorization framework //
 ///==================================//

@@ -21,7 +21,6 @@ limitations under the License.
 
 #include <string>
 
-#include "absl/strings/string_view.h"
 #include "tensorflow/core/lib/core/status.h"
 
 namespace tensorflow {
@@ -45,7 +44,7 @@ string GetMirrorPadModeAttrString();
 class NodeDef;
 
 // Specialization to parse an attribute directly into a MirrorPadMode enum.
-Status GetNodeAttr(const NodeDef& node_def, absl::string_view attr_name,
+Status GetNodeAttr(const NodeDef& node_def, StringPiece attr_name,
                    MirrorPadMode* value);
 
 }  // end namespace tensorflow

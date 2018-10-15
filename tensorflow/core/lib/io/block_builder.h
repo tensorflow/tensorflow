@@ -19,7 +19,7 @@ limitations under the License.
 #include <vector>
 
 #include <stdint.h>
-#include "absl/strings/string_view.h"
+#include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
@@ -36,12 +36,12 @@ class BlockBuilder {
 
   // REQUIRES: Finish() has not been called since the last call to Reset().
   // REQUIRES: key is larger than any previously added key
-  void Add(const absl::string_view& key, const absl::string_view& value);
+  void Add(const StringPiece& key, const StringPiece& value);
 
   // Finish building the block and return a slice that refers to the
   // block contents.  The returned slice will remain valid for the
   // lifetime of this builder or until Reset() is called.
-  absl::string_view Finish();
+  StringPiece Finish();
 
   // Returns an estimate of the current (uncompressed) size of the block
   // we are building.

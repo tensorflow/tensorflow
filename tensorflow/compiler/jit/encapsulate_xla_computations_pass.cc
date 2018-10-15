@@ -18,7 +18,6 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/memory/memory.h"
 #include "absl/strings/str_cat.h"
-#include "absl/strings/string_view.h"
 #include "tensorflow/compiler/jit/encapsulate_subgraphs_pass.h"
 #include "tensorflow/compiler/tf2xla/dump_graph.h"
 #include "tensorflow/compiler/xla/status_macros.h"
@@ -124,8 +123,8 @@ Status RewriteSubgraph(const std::vector<OutputTensor>& arg_source_tensors,
     bool a_is_resource = (a->output_type(0) == DT_RESOURCE);
     bool b_is_resource = (b->output_type(0) == DT_RESOURCE);
     // Uses the name as a tiebreaker so the output is deterministic.
-    absl::string_view a_name(a->name());
-    absl::string_view b_name(b->name());
+    StringPiece a_name(a->name());
+    StringPiece b_name(b->name());
     return std::tie(a_is_resource, a_name) < std::tie(b_is_resource, b_name);
   });
 

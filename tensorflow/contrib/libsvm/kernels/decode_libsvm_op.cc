@@ -13,7 +13,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "absl/strings/string_view.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
@@ -47,10 +46,10 @@ class DecodeLibsvmOp : public OpKernel {
     std::vector<T> out_values;
     std::vector<std::pair<int64, int64>> out_indices;
     for (int i = 0; i < input_flat.size(); ++i) {
-      absl::string_view line(input_flat(i));
+      StringPiece line(input_flat(i));
       str_util::RemoveWhitespaceContext(&line);
 
-      absl::string_view piece;
+      StringPiece piece;
       OP_REQUIRES(ctx, str_util::ConsumeNonWhitespace(&line, &piece),
                   errors::InvalidArgument("No label found for input[", i,
                                           "]: \"", input_flat(i), "\""));
@@ -65,7 +64,7 @@ class DecodeLibsvmOp : public OpKernel {
       str_util::RemoveLeadingWhitespace(&line);
       while (str_util::ConsumeNonWhitespace(&line, &piece)) {
         size_t p = piece.find(':');
-        OP_REQUIRES(ctx, (p != absl::string_view::npos),
+        OP_REQUIRES(ctx, (p != StringPiece::npos),
                     errors::InvalidArgument("Invalid feature \"", piece, "\""));
 
         int64 feature_index;

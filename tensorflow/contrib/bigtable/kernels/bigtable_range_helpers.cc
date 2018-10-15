@@ -15,7 +15,6 @@ limitations under the License.
 
 #include "tensorflow/contrib/bigtable/kernels/bigtable_range_helpers.h"
 
-#include "absl/strings/string_view.h"
 #include "tensorflow/core/platform/logging.h"
 
 namespace tensorflow {
@@ -56,11 +55,11 @@ const string& MultiModeKeyRange::begin_key() const { return begin_; }
 
 const string& MultiModeKeyRange::end_key() const { return end_; }
 
-bool MultiModeKeyRange::contains_key(absl::string_view key) const {
-  if (absl::string_view(begin_) > key) {
+bool MultiModeKeyRange::contains_key(StringPiece key) const {
+  if (StringPiece(begin_) > key) {
     return false;
   }
-  if (absl::string_view(end_) <= key && !end_.empty()) {
+  if (StringPiece(end_) <= key && !end_.empty()) {
     return false;
   }
   return true;

@@ -19,7 +19,6 @@ limitations under the License.
 #include <string>
 #include <vector>
 
-#include "absl/strings/string_view.h"
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/device_factory.h"
 #include "tensorflow/core/framework/allocator.h"
@@ -58,7 +57,7 @@ class RestoreV2OpTest : public OpsTestBase {
     TF_ASSERT_OK(InitOp());
   }
 
-  void RunTest(absl::string_view save_op_to_use) {
+  void RunTest(StringPiece save_op_to_use) {
     const string filename =
         io::JoinPath(testing::TmpDir(), "tensor_simple-", save_op_to_use);
     const std::vector<string> tensor_names = {

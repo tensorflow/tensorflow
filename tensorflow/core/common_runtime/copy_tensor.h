@@ -16,7 +16,6 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_COMMON_RUNTIME_COPY_TENSOR_H_
 #define TENSORFLOW_CORE_COMMON_RUNTIME_COPY_TENSOR_H_
 
-#include "absl/strings/string_view.h"
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/device_base.h"
@@ -41,8 +40,7 @@ class CopyTensor {
   // the type of devices and memory in use, the copy may be performed
   // synchronously or asynchronously.  'done' will be invoked only
   // after the copy is actually complete.
-  static void ViaDMA(absl::string_view edge_name,
-                     DeviceContext* send_dev_context,
+  static void ViaDMA(StringPiece edge_name, DeviceContext* send_dev_context,
                      DeviceContext* recv_dev_context, Device* src, Device* dst,
                      const AllocatorAttributes src_alloc_attr,
                      const AllocatorAttributes dst_alloc_attr,

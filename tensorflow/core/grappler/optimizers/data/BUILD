@@ -52,7 +52,6 @@ cc_library(
     deps = [
         ":graph_utils",
         ":function_utils",
-        "@com_google_absl//absl/strings",
         "//tensorflow/core/grappler:mutable_graph_view",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
@@ -91,7 +90,6 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":graph_utils",
-        "@com_google_absl//absl/strings",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core/grappler:mutable_graph_view",
@@ -126,7 +124,6 @@ cc_library(
     ],
     visibility = ["//visibility:public"],
     deps = [
-        "@com_google_absl//absl/strings",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
@@ -150,7 +147,6 @@ tf_cc_test(
         "//tensorflow/core/grappler:grappler_item",
         "//tensorflow/core/grappler/optimizers:custom_graph_optimizer",
         "//tensorflow/core/grappler/optimizers:custom_graph_optimizer_registry",
-        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -163,7 +159,6 @@ cc_library(
     ],
     visibility = ["//visibility:public"],
     deps = [
-        "@com_google_absl//absl/strings",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core/grappler:mutable_graph_view",
@@ -220,7 +215,6 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":graph_utils",
-        "@com_google_absl//absl/strings",
         "//tensorflow/core/grappler:mutable_graph_view",
         "//tensorflow/core:lib",
         "//tensorflow/core/grappler:grappler_item",
@@ -267,7 +261,6 @@ tf_cc_test(
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
         "//tensorflow/core/grappler:grappler_item",
-        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -302,7 +295,6 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core/grappler:grappler_item",
-        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -487,7 +479,6 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core/grappler:grappler_item",
-        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -589,7 +580,6 @@ tf_cc_test(
         ":graph_utils",
         ":function_utils",
         ":vectorization_utils",
-        "@com_google_absl//absl/strings",
         "//tensorflow/core:framework",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
