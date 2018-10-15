@@ -769,7 +769,6 @@ TfLiteStatus EvalFloat(
   float* aux_input_to_cell_weights_ptr = nullptr;
   float* aux_input_to_output_weights_ptr = nullptr;
   if (aux_input_size > 0) {
-    aux_input_ptr = aux_input->data.f;
     if (!use_cifg) {
       aux_input_to_input_weights_ptr = aux_input_to_input_weights->data.f;
     }
@@ -787,6 +786,9 @@ TfLiteStatus EvalFloat(
     // If this is the forward_sequence, step forward, otherwise step backwards.
     const int t_rel = forward_sequence ? t : max_time - t - 1;
     const float* input_ptr = input->data.f + t_rel * input_step;
+    if (aux_input) {
+      aux_input_ptr = aux_input->data.f + t_rel * input_step;
+    }
     float* output_ptr_time =
         output->data.f + t_rel * output_step + output_offset;
 
@@ -967,7 +969,6 @@ TfLiteStatus EvalHybrid(
   float aux_input_to_cell_weights_scale = 0.0f;
   float aux_input_to_output_weights_scale = 0.0f;
   if (aux_input_size > 0) {
-    aux_input_ptr = aux_input->data.f;
     if (!use_cifg) {
       aux_input_to_input_weights_ptr =
           reinterpret_cast<int8_t*>(aux_input_to_input_weights->data.uint8);
@@ -998,6 +999,9 @@ TfLiteStatus EvalHybrid(
     // If this is the forward_sequence, step forward, otherwise step backwards.
     const int t_rel = forward_sequence ? t : max_time - t - 1;
     const float* input_ptr = input->data.f + t_rel * input_step;
+    if (aux_input) {
+      aux_input_ptr = aux_input->data.f + t_rel * input_step;
+    }
     float* output_ptr = output->data.f + t_rel * output_step + output_offset;
 
     LstmStepWithAuxInput(
