@@ -89,6 +89,19 @@ from tensorflow.python.autograph.pyct.static_analysis import type_info
 # TODO(mdan): Add a test specific to this converter.
 
 
+class Feature(Enum):
+  """Constants to use when selecting AutoGraph features."""
+
+  ALL = 'Enable all features.'
+
+  AUTO_CONTROL_DEPS = (
+      'Insert of control dependencies in the generated code.')
+  LISTS = 'Convert list idioms, like initializers, slices, append, etc.'
+
+  def __repr__(self):
+    return self.name
+
+
 class ConversionOptions(object):
   """Immutable container for global conversion flags.
 
@@ -103,17 +116,30 @@ class ConversionOptions(object):
     force_conversion: bool, whether to force convertinng the target entity. When
       force_conversion is turned off, the converter may decide to return the
       function as-is.
+    optional_features: Union[Feature, Set[Feature]], controls the use of
+      optional features in the conversion process. See Feature for available
+      options.
   """
 
   def __init__(self,
                recursive=False,
                verbose=False,
                strip_decorators=None,
-               force_conversion=False):
+               force_conversion=False,
+               optional_features=Feature.ALL):
     self.recursive = recursive
     self.verbose = verbose
     self.strip_decorators = strip_decorators or ()
     self.force_conversion = force_conversion
+
+    if not isinstance(optional_features, (set, list, tuple)):
+      optional_features = (optional_features,)
+    optional_features = frozenset(optional_features)
+    self.optional_features = optional_features
+
+  def uses(self, feature):
+    return (Feature.ALL in self.optional_features or
+            feature in self.optional_features)
 
   def to_ast(self, namespace):
     """Returns a representation of this object as an AST node.
@@ -132,8 +158,9 @@ class ConversionOptions(object):
       constructor_name(
           recursive=recursive_val,
           verbose=verbose_val,
-          strip_decorators=strip_decorator_names,
-          force_conversion=force_conversion_val)
+          strip_decorators=strip_decorators_val,
+          force_conversion=force_conversion_val,
+          optional_features=optional_features_val)
     """
 
     def as_qualified_name(o):
@@ -143,8 +170,15 @@ class ConversionOptions(object):
             o, namespace))
       return name
 
-    strip_decorators_code = '({})'.format(', '.join(
-        tuple(as_qualified_name(o) for o in self.strip_decorators)))
+    def list_of_names(values):
+      return parser.parse_expression('({})'.format(', '.join(
+          tuple(as_qualified_name(v) for v in values))))
+
+    def list_of_features(values):
+      return parser.parse_expression('({})'.format(', '.join(
+          'ag__.Feature.{}'.format(v)
+          for v in Feature.__members__
+          if v in values)))
 
     expr_ast = templates.replace(
         template,
@@ -152,9 +186,10 @@ class ConversionOptions(object):
             as_qualified_name(ConversionOptions)),
         recursive_val=parser.parse_expression(str(self.recursive)),
         verbose_val=parser.parse_expression(str(self.verbose)),
-        strip_decorator_names=parser.parse_expression(strip_decorators_code),
+        strip_decorators_val=list_of_names(self.strip_decorators),
         force_conversion_val=parser.parse_expression(
-            str(self.force_conversion)))
+            str(self.force_conversion)),
+        optional_features_val=list_of_features(self.optional_features))
     return expr_ast[0].value
 
 
