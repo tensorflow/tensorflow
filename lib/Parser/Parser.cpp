@@ -1726,6 +1726,8 @@ Operation *FunctionParser::parseVerboseOperation(
   auto name = getToken().getStringValue();
   if (name.empty())
     return (emitError("empty operation name is invalid"), nullptr);
+  if (name.find('\0') != StringRef::npos)
+    return (emitError("null character not allowed in operation name"), nullptr);
 
   consumeToken(Token::string);
 
