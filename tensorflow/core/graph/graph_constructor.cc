@@ -87,7 +87,7 @@ class GraphConstructor {
           importing(true),
           validate_colocation_constraints(in.validate_colocation_constraints),
           validate_shape(in.validate_shape),
-	  bind_device(in.bind_device) {}
+          default_device(in.default_device) {}
 
     bool allow_internal_ops;
     bool expect_device_spec;
@@ -113,7 +113,7 @@ class GraphConstructor {
     bool validate_colocation_constraints;
     bool validate_shape = true;
 
-    std::string bind_device;
+    std::string default_device;
   };
 
   typedef gtl::ArraySlice<const NodeDef*> NodeDefSlice;
@@ -966,8 +966,8 @@ Status GraphConstructor::Convert() {
         // Note that input_already_exists can grow here
         AddControlDependencies(&imported_node_def, &input_already_exists);
       }
-      if (!opts_.bind_device.empty()) {
-        imported_node_def.set_device(opts_.bind_device);
+      if (!opts_.default_device.empty() && imported_node_def.device().empty()) {
+        imported_node_def.set_device(opts_.default_device);
       }
 
       node_def = &imported_node_def;
