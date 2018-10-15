@@ -268,4 +268,17 @@ static Shape MakeLoopStateShape(const WhileUtil::LoopStateTy& init_values) {
   return result;
 }
 
+/*static*/ std::map<int64, HloInstruction*>
+WhileUtil::GetGTEsMapForWhileConditional(
+    const HloComputation& while_conditional) {
+  std::map<int64, HloInstruction*> result;
+  for (auto* inst : while_conditional.instructions()) {
+    if (inst->opcode() == HloOpcode::kGetTupleElement &&
+        inst->operand(0) == while_conditional.parameter_instruction(0)) {
+      result[inst->tuple_index()] = inst;
+    }
+  }
+  return result;
+}
+
 }  // namespace xla

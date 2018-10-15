@@ -84,6 +84,13 @@ class WhileUtil {
   // Assumes `while_body` is the body computation of the while loop in question.
   static std::vector<HloInstruction*> GetInvariantGTEsForWhileBody(
       const HloComputation& while_body);
+
+  // Returns a map of index to GetTupleElement instructions in
+  // `while_conditional` that access elements in the parameter tuple. Assumes
+  // `while_conditional` is the conditional computation of the while loop in
+  // question.
+  static std::map<int64, HloInstruction*> GetGTEsMapForWhileConditional(
+      const HloComputation& while_conditional);
 };
 }  // namespace xla
 
