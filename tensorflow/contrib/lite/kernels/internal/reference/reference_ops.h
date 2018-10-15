@@ -3727,32 +3727,48 @@ template <typename T1, typename T2, typename T3, typename Cmp>
 void ArgMinMax(const RuntimeShape& input1_shape, const T1* input1_data,
                const T3* input2_data, const RuntimeShape& output_shape,
                T2* output_data, const Cmp& cmp) {
-  // The current ArgMax implemention can only determine the index of the maximum
-  // value in the last dimension. So the axis argument is ignored.
-
   // For ArgMax, the number of output dimensions = (number of input dimensions -
   // 1). For the sake of simplicity, the output dimensions are equal to the
-  // input dimensions here. We enforce the constraint that the last dimension
+  // input dimensions here. We enforce the constraint that the axis dimension
   // must always be 1.
-  const int trailing_dim = output_shape.DimensionsCount() - 1;
   TFLITE_DCHECK_EQ(input1_shape.DimensionsCount(),
                    output_shape.DimensionsCount());
-  TFLITE_DCHECK_EQ(output_shape.Dims(trailing_dim), 1);
-  const int outer_size =
-      MatchingFlatSizeSkipDim(input1_shape, trailing_dim, output_shape);
-  const int depth = input1_shape.Dims(trailing_dim);
 
-  for (int i = 0; i < outer_size; ++i) {
-    auto min_max_value = input1_data[i * depth];
-    int min_max_index = 0;
-    for (int d = 1; d < depth; ++d) {
-      const auto& curr_value = input1_data[i * depth + d];
-      if (cmp(curr_value, min_max_value)) {
-        min_max_value = curr_value;
-        min_max_index = d;
+  int axis = input2_data[0];
+  if (axis < 0) {
+    axis += input1_shape.DimensionsCount();
+  }
+
+  const int axis_size = input1_shape.Dims(axis);
+  TFLITE_DCHECK_EQ(output_shape.Dims(axis), 1);
+
+  int outer_size = 1;
+  for (int i = 0; i < axis; ++i) {
+    TFLITE_DCHECK_EQ(input1_shape.Dims(i), output_shape.Dims(i));
+    outer_size *= input1_shape.Dims(i);
+  }
+
+  int inner_size = 1;
+  const int dims_count = input1_shape.DimensionsCount();
+  for (int i = axis + 1; i < dims_count; ++i) {
+    TFLITE_DCHECK_EQ(input1_shape.Dims(i), output_shape.Dims(i));
+    inner_size *= input1_shape.Dims(i);
+  }
+
+  for (int outer = 0; outer < outer_size; ++outer) {
+    for (int inner = 0; inner < inner_size; ++inner) {
+      auto min_max_value = input1_data[outer * axis_size * inner_size + inner];
+      int min_max_index = 0;
+      for (int i = 1; i < axis_size; ++i) {
+        const auto& curr_value =
+            input1_data[(outer * axis_size + i) * inner_size + inner];
+        if (cmp(curr_value, min_max_value)) {
+          min_max_value = curr_value;
+          min_max_index = i;
+        }
       }
+      output_data[outer * inner_size + inner] = min_max_index;
     }
-    output_data[i] = min_max_index;
   }
 }
 
