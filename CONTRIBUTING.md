@@ -33,8 +33,6 @@ just getting started, Github has a [howto](https://help.github.com/articles/usin
 
 TensorFlow team members will be assigned to review your pull requests. Once the pull requests are approved and pass continuous integration checks, a TensorFlow team member will apply `ready to pull` label to your change. This means we are working on getting your pull request submitted to our internal repository. After the change has been submitted internally, your pull request will be merged automatically on GitHub.
 
-For some pull requests, we will apply the patch for each pull request to our internal version control system first, and export the change out as a new commit later, at which point the original pull request will be closed. The commits in the pull request will be squashed into a single commit with the pull request creator as the author. These pull requests will be labeled as pending merge internally.
-
 If you want to contribute but you're not sure where to start, take a look at the
 [issues with the "contributions welcome" label](https://github.com/tensorflow/tensorflow/labels/stat%3Acontributions%20welcome).
 These are issues that we believe are particularly well suited for outside
