@@ -16,6 +16,8 @@ limitations under the License.
 // Defines the XlaCompileOnDemandOp.
 
 #include "tensorflow/compiler/jit/xla_compile_on_demand_op.h"
+
+#include "absl/memory/memory.h"
 #include "tensorflow/compiler/jit/xla_device.h"
 #include "tensorflow/compiler/jit/xla_launch_util.h"
 #include "tensorflow/compiler/tf2xla/tf2xla_util.h"
@@ -164,8 +166,9 @@ Status XlaCompileOnDemandOp::Compile(
   XlaCompiler::Options options;
   options.device_type = metadata.jit_device_type();
   options.client = metadata.client();
-  options.flib_def =
-      new FunctionLibraryDefinition(OpRegistry::Global(), FunctionDefLibrary{});
+  auto flib_def = absl::make_unique<FunctionLibraryDefinition>(
+      OpRegistry::Global(), FunctionDefLibrary{});
+  options.flib_def = flib_def.get();
   options.shape_representation_fn = metadata.shape_representation_fn();
 
   XlaCompiler::CompileOptions compile_options;
