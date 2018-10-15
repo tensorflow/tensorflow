@@ -85,14 +85,15 @@ class FunctionNamer(object):
 class CallTreeTransformer(converter.Base):
   """Transforms the call tree by renaming transformed symbols."""
 
-  def _resolve_name(self, node):
+  def _resolve_decorator_name(self, node):
     """Used to resolve decorator info."""
     if isinstance(node, gast.Call):
-      return self._resolve_name(node.func)
+      return self._resolve_decorator_name(node.func)
     if isinstance(node, gast.Name):
-      return self.ctx.namespace.get(node.id)
+      # TODO(mdan): Add test coverage for this branch.
+      return self.ctx.info.namespace.get(node.id)
     if isinstance(node, gast.Attribute):
-      parent = self._resolve_name(node.value)
+      parent = self._resolve_decorator_name(node.value)
       if parent is not None:
         return getattr(parent, node.attr)
       return None
@@ -170,7 +171,7 @@ class CallTreeTransformer(converter.Base):
         return True
 
       for dec in target_node.decorator_list:
-        decorator_fn = self._resolve_name(dec)
+        decorator_fn = self._resolve_decorator_name(dec)
         if (decorator_fn is not None and
             decorator_fn in self.ctx.program.options.strip_decorators):
           return False
