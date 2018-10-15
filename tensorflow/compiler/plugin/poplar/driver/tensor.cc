@@ -28,6 +28,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
+#include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/util/bcast.h"
 #include "tensorflow/stream_executor/lib/status.h"
@@ -36,6 +37,7 @@ limitations under the License.
 #include <poplar/OptionFlags.hpp>
 #include <poputil/TileMapping.hpp>
 
+using ::tensorflow::str_util::Join;
 using ::tensorflow::strings::StrCat;
 
 namespace xla {
@@ -652,7 +654,9 @@ StatusOr<poplar::Tensor> BroadcastTensor(const poplar::Tensor& in,
 
   tensorflow::BCast bcast(tensor_shape, bcast_shape);
   if (!bcast.IsValid()) {
-    return xla::FailedPrecondition("Incompatible broadcast");
+    return xla::FailedPrecondition("Incompatible broadcast from (",
+                                   Join(tensor_shape, ","), ") to (",
+                                   Join(bcast_shape, ","), ")");
   }
 
   poplar::Tensor o = in;
