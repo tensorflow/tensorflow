@@ -106,6 +106,7 @@ public final class Tensor<T> implements AutoCloseable {
     DataType dtype = DataType.fromClass(type);
     if (!objectCompatWithType(obj, dtype)) {
       throw new IllegalArgumentException(
+//           Illegal Argument in DataType
           "DataType of object does not match T (expected "
               + dtype
               + ", got "
@@ -123,6 +124,7 @@ public final class Tensor<T> implements AutoCloseable {
    *     system.
    */
   public static Tensor<?> create(Object obj) {
+//       Returning the created object.
     return create(obj, dataTypeOf(obj));
   }
 
@@ -263,8 +265,8 @@ public final class Tensor<T> implements AutoCloseable {
   private static Tensor<?> create(DataType dtype, long[] shape, ByteBuffer data) {
     int nremaining = 0;
     if (dtype != DataType.STRING) {
-      int elemBytes = elemByteSize(dtype);
-      if (data.remaining() % elemBytes != 0) {
+      int elementBytes = elemByteSize(dtype);
+      if (data.remaining() % elementBytes != 0) {
         throw new IllegalArgumentException(
             String.format(
                 "ByteBuffer with %d bytes is not compatible with a %s Tensor (%d bytes/element)",
