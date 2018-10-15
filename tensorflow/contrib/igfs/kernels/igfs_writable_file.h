@@ -24,7 +24,7 @@ namespace tensorflow {
 class IGFSWritableFile : public WritableFile {
  public:
   IGFSWritableFile(const string &file_name, int64_t resource_id,
-                   std::shared_ptr<IGFSClient> client);
+                   std::unique_ptr<IGFSClient> &&client);
   ~IGFSWritableFile() override;
   Status Append(StringPiece data) override;
   Status Close() override;
@@ -34,7 +34,7 @@ class IGFSWritableFile : public WritableFile {
  private:
   const string file_name_;
   int64_t resource_id_;
-  std::shared_ptr<IGFSClient> client_;
+  std::unique_ptr<IGFSClient> client_;
 };
 
 }  // namespace tensorflow
