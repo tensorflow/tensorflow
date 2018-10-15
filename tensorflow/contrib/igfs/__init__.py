@@ -23,10 +23,7 @@ functionality to Hadoop HDFS, but only in-memory. In fact, in addition to
 its own APIs, IGFS implements Hadoop FileSystem API and can be transparently
 plugged into Hadoop or Spark deployments. This contrib package contains an
 intergration between IGFS and TensorFlow.
-
-@@IGFS
 """
-
 
 from __future__ import absolute_import
 from __future__ import division
