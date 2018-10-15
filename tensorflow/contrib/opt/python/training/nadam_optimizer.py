@@ -67,7 +67,7 @@ class NadamOptimizer(adam.AdamOptimizer):
         use_locking=self._use_locking,
         use_nesterov=True)
 
-  def _apply_sparse_shared(self, grad, var, indices):
+  def _apply_sparse_shared(self, grad, var, indices, scatter_add):
     beta1_power, beta2_power = self._get_beta_accumulators()
     beta1_power = math_ops.cast(beta1_power, var.dtype.base_dtype)
     beta2_power = math_ops.cast(beta2_power, var.dtype.base_dtype)
@@ -81,9 +81,7 @@ class NadamOptimizer(adam.AdamOptimizer):
     m_scaled_g_values = grad * (1 - beta1_t)
     m_t = state_ops.assign(m, m * beta1_t, use_locking=self._use_locking)
     with ops.control_dependencies([m_t]):
-      m_t = m.scatter_add(
-          ops.IndexedSlices(m_scaled_g_values, indices),
-          use_locking=self._use_locking)
+      m_t = scatter_add(m, indices, m_scaled_g_values)
       # m_bar = (1 - beta1) * g_t + beta1 * m_t
       m_bar = m_scaled_g_values + beta1_t * m_t
     # v_t = beta2 * v + (1 - beta2) * (g_t * g_t)
@@ -91,9 +89,7 @@ class NadamOptimizer(adam.AdamOptimizer):
     v_scaled_g_values = (grad * grad) * (1 - beta2_t)
     v_t = state_ops.assign(v, v * beta2_t, use_locking=self._use_locking)
     with ops.control_dependencies([v_t]):
-      v_t = v.scatter_add(
-          ops.IndexedSlices(v_scaled_g_values, indices),
-          use_locking=self._use_locking)
+      v_t = scatter_add(v, indices, v_scaled_g_values)
     v_sqrt = math_ops.sqrt(v_t)
     var_update = state_ops.assign_sub(
         var, lr * m_bar / (v_sqrt + epsilon_t), use_locking=self._use_locking)
