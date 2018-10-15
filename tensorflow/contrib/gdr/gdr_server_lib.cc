@@ -59,7 +59,7 @@ Status GdrServer::Init() {
 
   TF_RETURN_IF_ERROR(remote_memory_manager_->Init());
 
-  return GrpcServer::Init(nullptr, rendezvous_mgr_func, nullptr, worker_func));
+  return GrpcServer::Init(nullptr, rendezvous_mgr_func, nullptr, worker_func);
 }
 
 Status GdrServer::Start() {
