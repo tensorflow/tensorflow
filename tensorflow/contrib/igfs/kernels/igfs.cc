@@ -25,18 +25,12 @@ limitations under the License.
 
 namespace tensorflow {
 
-string GetEnvOrElse(const string &env, string default_value) {
+static string GetEnvOrElse(const string &env, string default_value) {
   const char *env_c_str = env.c_str();
   return getenv(env_c_str) != nullptr ? getenv(env_c_str) : default_value;
 }
 
-string IGFS::TranslateName(const string &name) const {
-  StringPiece scheme, namenode, path;
-  io::ParseURI(name, &scheme, &namenode, &path);
-  return string(path.data(), path.length());
-}
-
-string MakeRelative(const string &a, const string &b) {
+static string MakeRelative(const string &a, const string &b) {
   string max = a;
   string min = b;
   bool first = b.size() > a.size();
@@ -48,6 +42,12 @@ string MakeRelative(const string &a, const string &b) {
 
   auto r = mismatch(min.begin(), min.end(), max.begin());
   return string((first ? r.first : r.second), first ? min.end() : max.end());
+}
+
+string IGFS::TranslateName(const string &name) const {
+  StringPiece scheme, namenode, path;
+  io::ParseURI(name, &scheme, &namenode, &path);
+  return string(path.data(), path.length());
 }
 
 IGFS::IGFS()

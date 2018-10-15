@@ -89,12 +89,12 @@ PathCtrlRequest::PathCtrlRequest(int32_t command_id_, const string &user_name,
                                  bool collocate,
                                  const std::map<string, string> &properties)
     : Request(command_id_),
-      user_name_(std::move(user_name)),
-      path_(std::move(path)),
-      destination_path_(std::move(destination_path)),
+      user_name_(user_name),
+      path_(path),
+      destination_path_(destination_path),
       flag_(flag),
       collocate_(collocate),
-      props_(std::move(properties)) {}
+      props_(properties) {}
 
 Status PathCtrlRequest::Write(ExtendedTCPClient *client) const {
   TF_RETURN_IF_ERROR(Request::Write(client));

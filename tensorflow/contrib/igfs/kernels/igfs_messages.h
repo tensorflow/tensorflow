@@ -137,7 +137,7 @@ class ListResponse {
     int32_t len;
     TF_RETURN_IF_ERROR(client->ReadInt(&len));
 
-    entries = std::vector<T>();
+    entries.clear();
 
     for (int32_t i = 0; i < len; i++) {
       T f = {};

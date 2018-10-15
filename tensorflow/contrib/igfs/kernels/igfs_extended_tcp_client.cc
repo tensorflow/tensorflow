@@ -86,7 +86,7 @@ Status ExtendedTCPClient::ReadStringMap(std::map<string, string> *res) {
     TF_RETURN_IF_ERROR(ReadString(&key));
     TF_RETURN_IF_ERROR(ReadString(&val));
 
-    res->insert(std::pair<string, string>(key, val));
+    res->insert(std::pair<string, string>(std::move(key), std::move(val)));
   }
 
   return Status::OK();
@@ -113,7 +113,7 @@ Status ExtendedTCPClient::WriteBool(bool val) {
 Status ExtendedTCPClient::WriteString(string str) {
   if (!str.empty()) {
     TF_RETURN_IF_ERROR(WriteBool(false));
-    unsigned short l = str.length();
+    size_t l = str.length();
     TF_RETURN_IF_ERROR(WriteShort(l));
     TF_RETURN_IF_ERROR(WriteData(reinterpret_cast<const uint8_t *>(str.c_str()),
                                  str.length()));
