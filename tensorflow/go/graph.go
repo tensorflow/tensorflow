@@ -53,6 +53,17 @@ type Graph struct {
 	c *C.TF_Graph
 }
 
+// Graph execution options
+type GraphImportOptions struct {
+	// Node prefix
+	Prefix string
+
+	// Execution device
+	Device string
+
+	// TODO: extend this structure to support more options from TF_ImportGraphDefOptions
+}
+
 // NewGraph returns a new Graph.
 func NewGraph() *Graph {
 	g := &Graph{C.TF_NewGraph()}
@@ -88,22 +99,22 @@ func (g *Graph) WriteTo(w io.Writer) (int64, error) {
 	return int64(n), err
 }
 
-// Import imports the nodes and edges from a serialized representation of
+// ImportWithOptions imports the nodes and edges from a serialized representation of
 // another Graph into g.
 //
-// Names of imported nodes will be prefixed with prefix.
-func (g *Graph) ImportWithDevice(def []byte, prefix string, device string) error {
-	cprefix := C.CString(prefix)
+// Multiple options can be specified for the newly imported nodes.
+func (g *Graph) ImportWithOptions(def []byte, options GraphImportOptions) error {
+	cprefix := C.CString(options.Prefix)
 	defer C.free(unsafe.Pointer(cprefix))
 
 	opts := C.TF_NewImportGraphDefOptions()
 	defer C.TF_DeleteImportGraphDefOptions(opts)
 	C.TF_ImportGraphDefOptionsSetPrefix(opts, cprefix)
 
-	if len(device) != 0 {
-		cdev := C.CString(device)
+	if len(options.Device) != 0 {
+		cdev := C.CString(options.Device)
 		defer C.free(unsafe.Pointer(cdev))
-		C.TF_ImportGraphDefOptionsSetBindDevice(opts, cdev)
+		C.TF_ImportGraphDefOptionsSetDefaultDevice(opts, cdev)
 	}
 
 	buf := C.TF_NewBuffer()
@@ -129,8 +140,12 @@ func (g *Graph) ImportWithDevice(def []byte, prefix string, device string) error
 	return nil
 }
 
+// Import imports the nodes and edges from a serialized representation of
+// another Graph into g.
+//
+// Names of imported nodes will be prefixed with prefix.
 func (g *Graph) Import(def []byte, prefix string) error {
-    return g.ImportWithDevice(def, prefix, "")
+    return g.ImportWithOptions(def, GraphImportOptions{Prefix: prefix})
 }
 
 // Operation returns the Operation named name in the Graph, or nil if no such
