@@ -131,11 +131,11 @@ def auto_select_ipus(opts, num_ipus):
     :return: The IPUOptions configuration protobuf, configured for
              auto-selecting a set of IPU devices.
   """
-  if not isinstance(num_ipus, (int, list, tuple)):
-    raise Exception("`num_ipus` must be an integer, list or tuple.")
-
   if len(opts.device_config) > 0:
     raise Exception("IPU devices have already been configured.")
+
+  if not isinstance(num_ipus, (int, list, tuple)):
+    raise Exception("`num_ipus` must be an integer, list or tuple.")
 
   if isinstance(num_ipus, int):
     dev = opts.device_config.add()
@@ -147,47 +147,164 @@ def auto_select_ipus(opts, num_ipus):
 
   return opts
 
-def select_ipus(opts, indicies):
+def select_ipus(opts, indices):
   """Configure the IPUs to be used by the session.
 
   The configuration describes a system consisting of multiple Tensorflow
-  devices, each with control of one of more IPUs. The devices will be labeled
-  `/device:IPU:0`, `/device:IPU:1' and so on.
+  devices, each with control of one of more IPUs. The Tensorflow devices will be
+  labeled `/device:IPU:0`, `/device:IPU:1' and so on.
 
-  Each device can control a specific number of IPUs, given by the `num_ipus`
-  parameter. The system will automatically select IPU configurations from the
-  available IPUs, where they match the desired number of IPUs.
+  Each Tensorflow device uses a specific configuration consisting of one or more
+  IPUs from the list of devices.  These can be found by running the Graphcore
+  utility `gc-info -l`.  For instance, the following listing shows the device
+  configurations available on a system with 16 IPUs.
 
-  Examples:
+  ```
+  user@host:~$ gc-info -l
+  Graphcore device listing:
+
+  -+- Id:  [0], type:      [PCIe], PCI Domain: [0000:1a:00.0]
+  -+- Id:  [1], type:      [PCIe], PCI Domain: [0000:1b:00.0]
+  -+- Id:  [2], type:      [PCIe], PCI Domain: [0000:1c:00.0]
+  -+- Id:  [3], type:      [PCIe], PCI Domain: [0000:1d:00.0]
+  -+- Id:  [4], type:      [PCIe], PCI Domain: [0000:60:00.0]
+  -+- Id:  [5], type:      [PCIe], PCI Domain: [0000:61:00.0]
+  -+- Id:  [6], type:      [PCIe], PCI Domain: [0000:62:00.0]
+  -+- Id:  [7], type:      [PCIe], PCI Domain: [0000:63:00.0]
+  -+- Id:  [8], type:      [PCIe], PCI Domain: [0000:b1:00.0]
+  -+- Id:  [9], type:      [PCIe], PCI Domain: [0000:b2:00.0]
+  -+- Id: [10], type:      [PCIe], PCI Domain: [0000:b3:00.0]
+  -+- Id: [11], type:      [PCIe], PCI Domain: [0000:b4:00.0]
+  -+- Id: [12], type:      [PCIe], PCI Domain: [0000:da:00.0]
+  -+- Id: [13], type:      [PCIe], PCI Domain: [0000:db:00.0]
+  -+- Id: [14], type:      [PCIe], PCI Domain: [0000:dc:00.0]
+  -+- Id: [15], type:      [PCIe], PCI Domain: [0000:dd:00.0]
+  -+- Id: [32], type: [Multi IPU]
+   |--- PCIe Id:  [7], DNC Id: [0], PCI Domain: [0000:63:00.0]
+   |--- PCIe Id:  [6], DNC Id: [1], PCI Domain: [0000:62:00.0]
+   |--- PCIe Id:  [5], DNC Id: [2], PCI Domain: [0000:61:00.0]
+   |--- PCIe Id:  [4], DNC Id: [3], PCI Domain: [0000:60:00.0]
+   |--- PCIe Id:  [3], DNC Id: [4], PCI Domain: [0000:1d:00.0]
+   |--- PCIe Id:  [2], DNC Id: [5], PCI Domain: [0000:1c:00.0]
+   |--- PCIe Id:  [1], DNC Id: [6], PCI Domain: [0000:1b:00.0]
+   |--- PCIe Id:  [0], DNC Id: [7], PCI Domain: [0000:1a:00.0]
+   |--- PCIe Id: [11], DNC Id: [8], PCI Domain: [0000:b4:00.0]
+   |--- PCIe Id: [10], DNC Id: [9], PCI Domain: [0000:b3:00.0]
+   |--- PCIe Id:  [9], DNC Id: [10], PCI Domain: [0000:b2:00.0]
+   |--- PCIe Id:  [8], DNC Id: [11], PCI Domain: [0000:b1:00.0]
+   |--- PCIe Id: [15], DNC Id: [12], PCI Domain: [0000:dd:00.0]
+   |--- PCIe Id: [14], DNC Id: [13], PCI Domain: [0000:dc:00.0]
+   |--- PCIe Id: [13], DNC Id: [14], PCI Domain: [0000:db:00.0]
+   |--- PCIe Id: [12], DNC Id: [15], PCI Domain: [0000:da:00.0]
+  -+- Id: [33], type: [Multi IPU]
+   |--- PCIe Id:  [7], DNC Id: [0], PCI Domain: [0000:63:00.0]
+   |--- PCIe Id:  [6], DNC Id: [1], PCI Domain: [0000:62:00.0]
+   |--- PCIe Id:  [5], DNC Id: [2], PCI Domain: [0000:61:00.0]
+   |--- PCIe Id:  [4], DNC Id: [3], PCI Domain: [0000:60:00.0]
+   |--- PCIe Id:  [3], DNC Id: [4], PCI Domain: [0000:1d:00.0]
+   |--- PCIe Id:  [2], DNC Id: [5], PCI Domain: [0000:1c:00.0]
+   |--- PCIe Id:  [1], DNC Id: [6], PCI Domain: [0000:1b:00.0]
+   |--- PCIe Id:  [0], DNC Id: [7], PCI Domain: [0000:1a:00.0]
+  -+- Id: [34], type: [Multi IPU]
+   |--- PCIe Id: [11], DNC Id: [0], PCI Domain: [0000:b4:00.0]
+   |--- PCIe Id: [10], DNC Id: [1], PCI Domain: [0000:b3:00.0]
+   |--- PCIe Id:  [9], DNC Id: [2], PCI Domain: [0000:b2:00.0]
+   |--- PCIe Id:  [8], DNC Id: [3], PCI Domain: [0000:b1:00.0]
+   |--- PCIe Id: [15], DNC Id: [4], PCI Domain: [0000:dd:00.0]
+   |--- PCIe Id: [14], DNC Id: [5], PCI Domain: [0000:dc:00.0]
+   |--- PCIe Id: [13], DNC Id: [6], PCI Domain: [0000:db:00.0]
+   |--- PCIe Id: [12], DNC Id: [7], PCI Domain: [0000:da:00.0]
+  -+- Id: [35], type: [Multi IPU]
+   |--- PCIe Id:  [7], DNC Id: [0], PCI Domain: [0000:63:00.0]
+   |--- PCIe Id:  [6], DNC Id: [1], PCI Domain: [0000:62:00.0]
+   |--- PCIe Id:  [5], DNC Id: [2], PCI Domain: [0000:61:00.0]
+   |--- PCIe Id:  [4], DNC Id: [3], PCI Domain: [0000:60:00.0]
+  -+- Id: [36], type: [Multi IPU]
+   |--- PCIe Id:  [3], DNC Id: [0], PCI Domain: [0000:1d:00.0]
+   |--- PCIe Id:  [2], DNC Id: [1], PCI Domain: [0000:1c:00.0]
+   |--- PCIe Id:  [1], DNC Id: [2], PCI Domain: [0000:1b:00.0]
+   |--- PCIe Id:  [0], DNC Id: [3], PCI Domain: [0000:1a:00.0]
+  -+- Id: [37], type: [Multi IPU]
+   |--- PCIe Id: [11], DNC Id: [0], PCI Domain: [0000:b4:00.0]
+   |--- PCIe Id: [10], DNC Id: [1], PCI Domain: [0000:b3:00.0]
+   |--- PCIe Id:  [9], DNC Id: [2], PCI Domain: [0000:b2:00.0]
+   |--- PCIe Id:  [8], DNC Id: [3], PCI Domain: [0000:b1:00.0]
+  -+- Id: [38], type: [Multi IPU]
+   |--- PCIe Id: [15], DNC Id: [0], PCI Domain: [0000:dd:00.0]
+   |--- PCIe Id: [14], DNC Id: [1], PCI Domain: [0000:dc:00.0]
+   |--- PCIe Id: [13], DNC Id: [2], PCI Domain: [0000:db:00.0]
+   |--- PCIe Id: [12], DNC Id: [3], PCI Domain: [0000:da:00.0]
+  -+- Id: [39], type: [Multi IPU]
+   |--- PCIe Id:  [7], DNC Id: [0], PCI Domain: [0000:63:00.0]
+   |--- PCIe Id:  [6], DNC Id: [1], PCI Domain: [0000:62:00.0]
+  -+- Id: [40], type: [Multi IPU]
+   |--- PCIe Id:  [5], DNC Id: [0], PCI Domain: [0000:61:00.0]
+   |--- PCIe Id:  [4], DNC Id: [1], PCI Domain: [0000:60:00.0]
+  -+- Id: [41], type: [Multi IPU]
+   |--- PCIe Id:  [3], DNC Id: [0], PCI Domain: [0000:1d:00.0]
+   |--- PCIe Id:  [2], DNC Id: [1], PCI Domain: [0000:1c:00.0]
+  -+- Id: [42], type: [Multi IPU]
+   |--- PCIe Id:  [1], DNC Id: [0], PCI Domain: [0000:1b:00.0]
+   |--- PCIe Id:  [0], DNC Id: [1], PCI Domain: [0000:1a:00.0]
+  -+- Id: [43], type: [Multi IPU]
+   |--- PCIe Id: [11], DNC Id: [0], PCI Domain: [0000:b4:00.0]
+   |--- PCIe Id: [10], DNC Id: [1], PCI Domain: [0000:b3:00.0]
+  -+- Id: [44], type: [Multi IPU]
+   |--- PCIe Id:  [9], DNC Id: [0], PCI Domain: [0000:b2:00.0]
+   |--- PCIe Id:  [8], DNC Id: [1], PCI Domain: [0000:b1:00.0]
+  -+- Id: [45], type: [Multi IPU]
+   |--- PCIe Id: [15], DNC Id: [0], PCI Domain: [0000:dd:00.0]
+   |--- PCIe Id: [14], DNC Id: [1], PCI Domain: [0000:dc:00.0]
+  -+- Id: [46], type: [Multi IPU]
+   |--- PCIe Id: [13], DNC Id: [0], PCI Domain: [0000:db:00.0]
+   |--- PCIe Id: [12], DNC Id: [1], PCI Domain: [0000:da:00.0]
+  ```
+
+  Examples based on the listing above:
 
     ```python
-    # Create a single device, using IPU configuration index 0
+    # Create a single device with 1 IPU at PCI address 0000:1a:00.0 by using IPU
+    # configuration index 0
     opts = create_ipu_config()
-    opts = select_ipus(opts, indicies=[0])
+    opts = select_ipus(opts, indices=[0])
     with tf.Session(config=tf.ConfigProto(ipu_options=opts)) as s:
       ...
     ```
 
     ```python
-    # Create a single device, using IPU configuration index 8
+    # Create a single device with 1 IPU at PCI address 0000:b1:00.0 by using IPU
+    # configuration index 8
     opts = create_ipu_config()
-    opts = select_ipus(opts, indicies=[8])
+    opts = select_ipus(opts, indices=[8])
     with tf.Session(config=tf.ConfigProto(ipu_options=opts)) as s:
       ...
     ```
 
     ```python
-    # Create two devices, with IPU configuration indicies 0 and 1
+    # Create two Tensorflow devices, with one IPU each, being devices at indices
+    # 0 and 1
     opts = create_ipu_config()
-    opts = select_ipus(opts, indicies=[0,1])
+    opts = select_ipus(opts, indices=[0, 1])
     with tf.Session(config=tf.ConfigProto(ipu_options=opts)) as s:
       ...
     ```
 
     ```python
-    # Create four devices, with IPU configuration indicies 8, 9, 10, 11
+    # Create two Tensorflow devices, with four IPUs each. The device
+    # configurations at indices 37 (0000:b4:00.0, 0000:b3:00.0, 0000:b2:00.0,
+    # 000:b1:00.0) and 38 (0000:dd:00.0, 0000:dc:00.0, 0000:db:00.0,
+    # 00:da:00.0)
     opts = create_ipu_config()
-    opts = select_ipus(opts, indicies=[8, 9, 10, 11])
+    opts = select_ipus(opts, indices=[37, 38])
+    with tf.Session(config=tf.ConfigProto(ipu_options=opts)) as s:
+      ...
+    ```
+
+    ```python
+    # Create four Tensorflow devices each with one IPU, at addresses
+    # 0000:1a:00.0, 0000:1b:00.0, 0000:1c:00.0, 0000:1d:00.0.
+    opts = create_ipu_config()
+    opts = select_ipus(opts, indices=[0, 1, 2, 3])
     with tf.Session(config=tf.ConfigProto(ipu_options=opts)) as s:
       ...
     ```
@@ -204,10 +321,10 @@ def select_ipus(opts, indicies):
   if len(opts.device_config) > 0:
     raise Exception("IPU devices have already been configured.")
 
-  if isinstance(indicies, (list, tuple)):
+  if not isinstance(indices, (list, tuple)):
     raise Exception("`indicies` must be a list or tuple.")
 
-  for i in indicies:
+  for i in indices:
     dev = opts.device_config.add()
     dev.cfg_index = i
 

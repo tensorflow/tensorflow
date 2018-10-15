@@ -118,9 +118,7 @@ PoplarExecutor::PoplarExecutor()
     : ordinal_(0),
       device_open_(false),
       poplar_device_(poplar::Device::createCPUDevice()),
-      poplar_device_hash_(0) {
-  ConfigurePoplarDevice(current_config_);
-}
+      poplar_device_hash_(0) {}
 
 PoplarExecutor::~PoplarExecutor() {}
 
@@ -275,7 +273,8 @@ Status PoplarExecutor::ConfigurePoplarDevice(
           poplar::DeviceManager::getDeviceManager();
 
       if (device_open_) {
-        VLOG(1) << "Detaching poplar device type " << GetDeviceTargetName();
+        VLOG(1) << "Detaching ordinal " << ordinal_
+                << " from poplar device: type " << GetDeviceTargetName();
         poplar_device_.detach();
         device_open_ = false;
       }
@@ -300,35 +299,11 @@ Status PoplarExecutor::ConfigurePoplarDevice(
         // Hardware devices
         auto device_list = device_mgr.getDevices();
 
-        if (ordinal_ > current_config_.device_config_size()) {
-          return InternalError(
-              "Device ordinal %d not in device configuration list.", ordinal_);
-        }
-
-        const auto& device = current_config_.device_config(ordinal_);
-
-        if (device.selection_case() ==
-            tensorflow::IPUOptions::DeviceConfig::SelectionCase::kCfgIndex) {
-          const int32 cfg_index = device.cfg_index();
-
-          if (cfg_index >= device_list.size()) {
-            return InvalidArgument(
-                "Requested device configuration index %d, but %d "
-                "configurations were available.",
-                cfg_index, device_list.size());
-          }
-          poplar_device_ = std::move(device_list.at(cfg_index));
-          if (poplar_device_.attach()) {
-            opened = true;
-          } else {
-            return InternalError(
-                "Could not attach to requested device configuration index %d",
-                cfg_index);
-          }
-        } else {
+        if (current_config_.device_config_size() == 0) {
+          // Default case - 1 single TF device with one single IPU
           for (auto& d : device_list) {
             if (d.getTarget().getTargetType() == poplar::TargetType::IPU &&
-                d.getTarget().getNumIPUs() == device.auto_count()) {
+                d.getTarget().getNumIPUs() == 1) {
               if (d.attach()) {
                 poplar_device_ = std::move(d);
                 opened = true;
@@ -336,14 +311,50 @@ Status PoplarExecutor::ConfigurePoplarDevice(
               }
             }
           }
+        } else {
+          // User has specified a configuration
+          if (ordinal_ >= current_config_.device_config_size()) {
+            return InternalError(
+                "Device ordinal %d not in device configuration list.",
+                ordinal_);
+          }
+
+          const auto& device = current_config_.device_config(ordinal_);
+
+          if (device.selection_case() ==
+              tensorflow::IPUOptions::DeviceConfig::SelectionCase::kCfgIndex) {
+            const int32 cfg_index = device.cfg_index();
+
+            poplar_device_ = std::move(device_list.at(cfg_index));
+            if (poplar_device_.attach()) {
+              opened = true;
+            } else {
+              return InternalError(
+                  "Could not attach to requested device configuration index %d",
+                  cfg_index);
+            }
+          } else {
+            for (auto& d : device_list) {
+              if (d.getTarget().getTargetType() == poplar::TargetType::IPU &&
+                  d.getTarget().getNumIPUs() == device.auto_count()) {
+                if (d.attach()) {
+                  poplar_device_ = std::move(d);
+                  opened = true;
+                  break;
+                }
+              }
+            }
+          }
         }
+
         if (opened) {
           unsigned mj, mn, pt;
           poplar_device_.getDriverVersion(mj, mn, pt);
           VLOG(1) << "Poplar driver: " << mj << "." << mn << "." << pt;
 
           const auto& ids = poplar_device_.getDriverIDs();
-          LOG(INFO) << "Attached to IPU" << (ids.size() > 1 ? "s" : "") << ": "
+          LOG(INFO) << "Device /device:IPU:" << ordinal_ << " attached to IPU"
+                    << (ids.size() > 1 ? "s" : "") << ": "
                     << absl::StrJoin(ids, ",");
 
           if (current_config_.profiling().enable_execution_trace()) {
@@ -389,7 +400,7 @@ Status PoplarExecutor::ConfigurePoplarDevice(
           e.what());
     }
 
-    VLOG(1) << "Attached poplar device type " << GetDeviceTargetName();
+    VLOG(1) << "Opened Poplar device type " << GetDeviceTargetName();
     device_open_ = true;
 
     for (const auto& opt : current_config_.compilation_options()) {
