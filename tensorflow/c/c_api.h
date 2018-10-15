@@ -900,9 +900,9 @@ TF_CAPI_EXPORT extern void TF_DeleteImportGraphDefOptions(
 TF_CAPI_EXPORT extern void TF_ImportGraphDefOptionsSetPrefix(
     TF_ImportGraphDefOptions* opts, const char* prefix);
 
-// Set bind device for the nodes in the `graph_def` that will be imported into `graph`.
+// Set default execution device for the nodes in the `graph_def` that will be imported into `graph`.
 // `device` is copied and has no lifetime requirements.
-TF_CAPI_EXPORT extern void TF_ImportGraphDefOptionsSetBindDevice(
+TF_CAPI_EXPORT extern void TF_ImportGraphDefOptionsSetDefaultDevice(
     TF_ImportGraphDefOptions* opts, const char* device);
 
 // Set whether to uniquify imported operation names. If true, imported operation
