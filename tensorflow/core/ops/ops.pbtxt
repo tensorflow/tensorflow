@@ -19319,6 +19319,13 @@ op {
     has_minimum: true
     minimum: 1
   }
+  attr {
+    name: "sloppy"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
 }
 op {
   name: "ParallelMapDataset"
@@ -19364,6 +19371,13 @@ op {
     type: "bool"
     default_value {
       b: true
+    }
+  }
+  attr {
+    name: "sloppy"
+    type: "bool"
+    default_value {
+      b: false
     }
   }
 }
@@ -19581,6 +19595,13 @@ op {
     type: "list(shape)"
     has_minimum: true
     minimum: 1
+  }
+  attr {
+    name: "sloppy"
+    type: "bool"
+    default_value {
+      b: false
+    }
   }
 }
 op {
