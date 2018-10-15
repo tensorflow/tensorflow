@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CONTRIB_TENSORRT_CONVERT_CONVERT_NODES_H_
 #define TENSORFLOW_CONTRIB_TENSORRT_CONVERT_CONVERT_NODES_H_
 
+#include <list>
 #include <set>
 #include <string>
 #include <unordered_map>
@@ -26,6 +27,7 @@ limitations under the License.
 #include "tensorflow/contrib/tensorrt/log/trt_logger.h"
 #include "tensorflow/contrib/tensorrt/resources/trt_allocator.h"
 #include "tensorflow/contrib/tensorrt/resources/trt_int8_calibrator.h"
+#include "tensorflow/contrib/tensorrt/resources/trt_resources.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/grappler/costs/graph_properties.h"
@@ -33,6 +35,7 @@ limitations under the License.
 
 #if GOOGLE_CUDA
 #if GOOGLE_TENSORRT
+#include "tensorrt/include/NvInfer.h"
 
 namespace tensorflow {
 namespace tensorrt {
@@ -168,6 +171,162 @@ class OutputEdgeValidator {
   // Return true if the specified edge is eligible to be an output edge of the
   // TRT segment.
   bool operator()(const tensorflow::Edge* out_edge) const;
+};
+
+////////////////////////////////////////////////////////////////////////////////
+// Classes/functions below are exposed for testing purposes only.
+////////////////////////////////////////////////////////////////////////////////
+
+string DebugString(const nvinfer1::Dims& dims);
+string DebugString(const nvinfer1::ITensor& tensor);
+int64_t TrtDimsNumElements(const nvinfer1::Dims& dims);
+
+// Class to convert TF weight to TRT weight.
+class TRT_ShapedWeights {
+ public:
+  TRT_ShapedWeights(tensorflow::DataType type, const void* values,
+                    nvinfer1::Dims shape);
+
+  explicit TRT_ShapedWeights(tensorflow::DataType type);
+
+  // TODO(aaroey): use rvalue reference.
+  TRT_ShapedWeights(const TRT_ShapedWeights& rhs);
+
+  nvinfer1::Weights GetWeightsForTRT() const;
+
+  const void* GetValues() const { return values_; }
+
+  int64_t count() const;
+
+  size_t size_bytes() const;
+
+  // Default converter
+  operator nvinfer1::Weights() const { return GetWeightsForTRT(); }
+
+  string DebugString() const;
+
+  // TODO(aaroey): make these private.
+  nvinfer1::Dims shape_;  // Note: shape.type[] is not used.
+  tensorflow::DataType type_;
+
+ private:
+  // TODO(aaroey): this should not be const as it's always from TRTWeightStore.
+  const void* values_;
+
+  friend bool operator==(const TRT_ShapedWeights& lhs,
+                         const TRT_ShapedWeights& rhs);
+};
+
+class TRT_TensorOrWeights {
+ public:
+  explicit TRT_TensorOrWeights(nvinfer1::ITensor* tensor);
+
+  explicit TRT_TensorOrWeights(const TRT_ShapedWeights& weights);
+
+  // TODO(aaroey): use rvalue reference.
+  TRT_TensorOrWeights(const TRT_TensorOrWeights& rhs);
+
+  bool is_tensor() const { return is_tensor_; }
+  bool is_weights() const { return !is_tensor_; }
+
+  nvinfer1::ITensor* tensor() {
+    CHECK(is_tensor());
+    return tensor_;
+  }
+
+  const nvinfer1::ITensor* tensor() const {
+    CHECK(is_tensor());
+    return tensor_;
+  }
+
+  TRT_ShapedWeights& weights() {
+    CHECK(is_weights());
+    return weights_;
+  }
+
+  const TRT_ShapedWeights& weights() const {
+    CHECK(is_weights());
+    return weights_;
+  }
+
+  // TODO(aaroey): rename to dims() to be consistent.
+  nvinfer1::Dims shape() const;
+
+  string DebugString() const;
+
+ private:
+  nvinfer1::ITensor* tensor_;
+  TRT_ShapedWeights weights_;
+  const bool is_tensor_;
+};
+
+// Class to convert TF nodes to TRT network.
+class Converter {
+ public:
+  Converter(nvinfer1::INetworkDefinition* trt_network, bool fp16,
+            int max_batch_size);
+
+  virtual ~Converter() {}
+
+  nvinfer1::INetworkDefinition* network() { return trt_network_; }
+
+  TRTWeightStore* weight_store() { return &weight_store_; }
+
+  bool IsFP16() const { return fp16_; }
+
+  int GetMaxBatchSize() const { return max_batch_size_; }
+
+  TRT_ShapedWeights GetTempWeights(tensorflow::DataType type,
+                                   const nvinfer1::Dims& dims);
+
+  TRT_ShapedWeights GetTempWeightsLike(const TRT_ShapedWeights& weights) {
+    return GetTempWeights(weights.type_, weights.shape_);
+  }
+
+  Status ConvertNode(const tensorflow::NodeDef& node_def);
+
+  TRT_TensorOrWeights GetTensorOrWeights(const string& name);
+
+  Status AddInputTensor(const string& name, nvinfer1::ITensor* tensor);
+
+  Status TransposeTensor(nvinfer1::ITensor* input_tensor,
+                         const std::vector<int>& order_with_batch_dim,
+                         const nvinfer1::ITensor** output_tensor);
+
+  // Converts input into tensor with shape specified by dims.
+  Status PrepareTensorForShape(const TRT_TensorOrWeights& input,
+                               const nvinfer1::Dims& dims,
+                               const nvinfer1::ITensor** tensor);
+
+  // Expose for testing purposes.
+  Status GetInputs(const tensorflow::NodeDef& node_def,
+                   std::vector<TRT_TensorOrWeights>* inputs) const;
+
+ private:
+  using OpConverter = std::function<tensorflow::Status(
+      Converter&, const tensorflow::NodeDef&,
+      const std::vector<TRT_TensorOrWeights>&,
+      std::vector<TRT_TensorOrWeights>*)>;
+
+  void RegisterOpConverters();
+
+  std::unordered_map<string, OpConverter> op_registry_;
+
+  std::unordered_map<string, TRT_TensorOrWeights> trt_tensors_;
+
+  OpConverter plugin_converter_;
+
+  nvinfer1::INetworkDefinition* trt_network_;
+
+  // TODO(aaroey): inline the definition of TRTWeightStore here, and add APIs to
+  // operate the stored weights instead of operating it directly.
+  TRTWeightStore weight_store_;
+
+  bool fp16_;
+
+  int max_batch_size_;
+
+  friend class ConverterForTest;
 };
 
 }  // namespace convert

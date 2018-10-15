@@ -17,12 +17,10 @@ limitations under the License.
 
 #include <algorithm>
 #include <cstring>
-#include <list>
 #include <map>
 #include <memory>
 #include <set>
 #include <unordered_map>
-#include <unordered_set>
 #include <utility>
 #include <vector>
 
@@ -87,14 +85,13 @@ using ::tensorflow::str_util::Split;
 using ::tensorflow::strings::StrAppend;
 using ::tensorflow::strings::StrCat;
 
-namespace {
-
 inline tensorflow::Status ConvertDType(tensorflow::DataType tf_dtype,
                                        nvinfer1::DataType* trt_dtype) {
   switch (tf_dtype) {
     case tensorflow::DataType::DT_FLOAT:
       *trt_dtype = nvinfer1::DataType::kFLOAT;
       break;
+    // TODO(aaroey): this should be DT_QINT8 which is not a well supported type.
     case tensorflow::DataType::DT_INT8:
       *trt_dtype = nvinfer1::DataType::kINT8;
       break;
@@ -169,11 +166,16 @@ tensorflow::Status ValidateInputProperties(const PartialTensorShape& shape,
 
 string DebugString(const nvinfer1::Dims& dims) {
   string out = StrCat("nvinfer1::Dims(nbDims=", dims.nbDims, ", d=");
-  for (int i = 0; i < nvinfer1::Dims::MAX_DIMS; ++i) {
+  for (int i = 0; i < dims.nbDims; ++i) {
     StrAppend(&out, dims.d[i], ",");
   }
   StrAppend(&out, ")");
   return out;
+}
+
+string DebugString(const nvinfer1::ITensor& tensor) {
+  return StrCat("nvinfer1::ITensor(@", reinterpret_cast<uintptr_t>(&tensor),
+                ", shape=", DebugString(tensor.getDimensions()), ")");
 }
 
 // Return whether or not the broadcast is feasible;
@@ -268,7 +270,7 @@ inline bool DimsEqual(const nvinfer1::Dims& dim_l,
   return true;
 }
 
-inline nvinfer1::Dims GetTensorShape(const tensorflow::Tensor& tensor) {
+inline nvinfer1::Dims GetTrtDimsForTensor(const tensorflow::Tensor& tensor) {
   nvinfer1::Dims dims;
   dims.nbDims = tensor.dims();
   for (int i = 0; i < dims.nbDims; i++) {
@@ -277,11 +279,14 @@ inline nvinfer1::Dims GetTensorShape(const tensorflow::Tensor& tensor) {
   return dims;
 }
 
-inline int64_t GetShapeSize(const nvinfer1::Dims& shape) {
-  // Returns total number of elements in shape
+// Returns total number of elements in dims. Returning 0 means either some dim
+// is 0 or the number of dims is 0.
+// Note that for TF scalar constant, we always convert to dims [1].
+int64_t TrtDimsNumElements(const nvinfer1::Dims& dims) {
+  if (dims.nbDims == 0) return 0;
   int64_t count = 1;
-  for (int d = 0; d < shape.nbDims; ++d) {
-    count *= shape.d[d];
+  for (int d = 0; d < dims.nbDims; ++d) {
+    count *= dims.d[d];
   }
   return count;
 }
@@ -320,133 +325,64 @@ string GetCommonNameScope(const string& op_name_a, const string& op_name_b) {
   return op_name_a.substr(0, last_scope_separator);
 }
 
-// Class to convert TF weight to TRT weight.
-class TRT_ShapedWeights {
- public:
-  TRT_ShapedWeights(tensorflow::DataType type, const void* values,
-                    nvinfer1::Dims shape)
-      : shape_(shape), type_(type), values_(values), empty_weight_flag_(false) {
-    // Note: this->shape.type[] is not used
+TRT_ShapedWeights::TRT_ShapedWeights(
+    tensorflow::DataType type, const void* values, nvinfer1::Dims shape)
+    : shape_(shape), type_(type), values_(CHECK_NOTNULL(values)) {}
+
+TRT_ShapedWeights::TRT_ShapedWeights(tensorflow::DataType type)
+    : shape_(), type_(type), values_(nullptr) {
+  shape_.nbDims = 0;
+}
+
+TRT_ShapedWeights::TRT_ShapedWeights(const TRT_ShapedWeights& rhs)
+    : shape_(rhs.shape_), type_(rhs.type_), values_(rhs.values_) {}
+
+int64_t TRT_ShapedWeights::count() const { return TrtDimsNumElements(shape_); }
+
+nvinfer1::Weights TRT_ShapedWeights::GetWeightsForTRT() const {
+  nvinfer1::DataType trt_type(nvinfer1::DataType::kFLOAT);
+  TF_CHECK_OK(ConvertDType(type_, &trt_type));
+  return nvinfer1::Weights{trt_type, values_, values_ == nullptr ? 0 : count()};
+}
+
+size_t TRT_ShapedWeights::size_bytes() const {
+  return this->count() * tensorflow::DataTypeSize(this->type_);
+}
+
+string TRT_ShapedWeights::DebugString() const {
+  return StrCat(
+      "TRT_ShapedWeights(shape=", convert::DebugString(shape_), ", type=",
+      type_, ", values=", reinterpret_cast<uintptr_t>(values_), ")");
+}
+
+TRT_TensorOrWeights::TRT_TensorOrWeights(nvinfer1::ITensor* tensor)
+    : tensor_(tensor), weights_(DT_FLOAT), is_tensor_(true) {}
+
+TRT_TensorOrWeights::TRT_TensorOrWeights(const TRT_ShapedWeights& weights)
+    : tensor_(nullptr), weights_(weights), is_tensor_(false) {}
+
+TRT_TensorOrWeights::TRT_TensorOrWeights(const TRT_TensorOrWeights& rhs)
+    : tensor_(rhs.tensor_), weights_(rhs.weights_), is_tensor_(rhs.is_tensor_) {}
+
+nvinfer1::Dims TRT_TensorOrWeights::shape() const {
+  if (is_tensor()) {
+    return tensor()->getDimensions();
+  } else {
+    return weights().shape_;
   }
+}
 
-  explicit TRT_ShapedWeights(tensorflow::DataType type)
-      : shape_(), type_(type), values_(nullptr), empty_weight_flag_(true) {}
-
-  // TODO(aaroey): use rvalue reference.
-  TRT_ShapedWeights(const TRT_ShapedWeights& rhs)
-      : shape_(rhs.shape_),
-        type_(rhs.type_),
-        values_(rhs.values_),
-        empty_weight_flag_(rhs.empty_weight_flag_) {}
-
-  // TODO(aaroey): use GetShapeSize() instead.
-  int64_t count() const {
-    int64_t c = 1;
-    for (int i = 0; i < shape_.nbDims; i++) c *= shape_.d[i];
-    return c;
+string TRT_TensorOrWeights::DebugString() const {
+  string output = "TRT_TensorOrWeights(type=";
+  if (is_tensor()) {
+    StrAppend(&output, "tensor @", reinterpret_cast<uintptr_t>(tensor_),
+              ", shape=", convert::DebugString(tensor_->getDimensions()));
+  } else {
+    StrAppend(&output, "weights=", weights_.DebugString());
   }
-
-  nvinfer1::Weights GetWeightsForTRT() const {
-    nvinfer1::DataType trt_type(nvinfer1::DataType::kFLOAT);
-    TF_CHECK_OK(ConvertDType(type_, &trt_type));
-    if (empty_weight_flag_) return nvinfer1::Weights{trt_type, nullptr, 0};
-
-    // Note: this->shape.type[] is not used
-    return nvinfer1::Weights{trt_type, GetValues(), GetShapeSize(shape_)};
-  }
-
-  const void* GetValues() const { return values_; }
-
-  // TODO(aaroey): get rid of this method.
-  void SetValues(const void* values) { values_ = values; }
-
-  size_t size_bytes() const {
-    int type_size = tensorflow::DataTypeSize(this->type_);
-    return this->count() * type_size;
-  }
-
-  // Default converter
-  operator nvinfer1::Weights() const { return GetWeightsForTRT(); }
-
-  string DebugString() const {
-    return StrCat(
-        "TRT_ShapedWeights(shape=", convert::DebugString(shape_), ", type=",
-        type_, ", values=", reinterpret_cast<uintptr_t>(values_),
-        ", empty_weight_flag=", empty_weight_flag_, ")");
-  }
-
-  // TODO(aaroey): make these private.
-  nvinfer1::Dims shape_;
-  tensorflow::DataType type_;
-
- private:
-  // TODO(aaroey): this should not be const as it's always from TRTWeightStore.
-  const void* values_;
-  bool empty_weight_flag_;
-};
-
-class TRT_TensorOrWeights {
- public:
-  explicit TRT_TensorOrWeights(nvinfer1::ITensor* tensor)
-      : tensor_(tensor), weights_(DT_FLOAT), variant_(TRT_NODE_TENSOR) {}
-
-  explicit TRT_TensorOrWeights(const TRT_ShapedWeights& weights)
-      : tensor_(nullptr), weights_(weights), variant_(TRT_NODE_WEIGHTS) {}
-
-  // TODO(aaroey): use rvalue reference.
-  TRT_TensorOrWeights(const TRT_TensorOrWeights& rhs)
-      : tensor_(rhs.tensor_), weights_(rhs.weights_), variant_(rhs.variant_) {}
-
-  ~TRT_TensorOrWeights() {}
-
-  bool is_tensor() const { return variant_ == TRT_NODE_TENSOR; }
-  bool is_weights() const { return variant_ == TRT_NODE_WEIGHTS; }
-
-  nvinfer1::ITensor* tensor() {
-    CHECK(is_tensor());
-    return tensor_;
-  }
-
-  const nvinfer1::ITensor* tensor() const {
-    CHECK(is_tensor());
-    return tensor_;
-  }
-
-  TRT_ShapedWeights& weights() {
-    CHECK(is_weights());
-    return weights_;
-  }
-
-  const TRT_ShapedWeights& weights() const {
-    CHECK(is_weights());
-    return weights_;
-  }
-
-  nvinfer1::Dims shape() const {
-    if (is_tensor()) {
-      return tensor()->getDimensions();
-    } else {
-      return weights().shape_;
-    }
-  }
-
-  string DebugString() const {
-    string output = "TRT_TensorOrWeights(type=";
-    if (is_tensor()) {
-      StrAppend(&output, "tensor @", reinterpret_cast<uintptr_t>(tensor_),
-                ", shape=", convert::DebugString(tensor_->getDimensions()));
-    } else {
-      StrAppend(&output, "weights=", weights_.DebugString());
-    }
-    StrAppend(&output, ")");
-    return output;
-  }
-
- private:
-  nvinfer1::ITensor* tensor_;
-  TRT_ShapedWeights weights_;
-  enum { TRT_NODE_TENSOR, TRT_NODE_WEIGHTS } variant_;
-};
+  StrAppend(&output, ")");
+  return output;
+}
 
 class TFAttrs {
  public:
@@ -501,12 +437,6 @@ template <>
 std::vector<float> TFAttrs::get<std::vector<float>>(const string& key) const {
   auto attr = this->at(key)->list().f();
   return std::vector<float>(attr.begin(), attr.end());
-}
-
-template <>
-std::vector<string> TFAttrs::get<std::vector<string>>(const string& key) const {
-  auto attr = this->at(key)->list().s();
-  return std::vector<string>(attr.begin(), attr.end());
 }
 
 template <>
@@ -640,239 +570,199 @@ void ReorderRSCKToKCRS(const TRT_ShapedWeights& iweights,
   }
 }
 
-class Converter;
+Converter::Converter(nvinfer1::INetworkDefinition* trt_network, bool fp16,
+                     int max_batch_size)
+  : trt_network_(trt_network), fp16_(fp16), max_batch_size_(max_batch_size) {
+  this->RegisterOpConverters();
+}
 
-using OpConverter =
-    std::function<tensorflow::Status(Converter&, const tensorflow::NodeDef&,
-                                     const std::vector<TRT_TensorOrWeights>&,
-                                     std::vector<TRT_TensorOrWeights>*)>;
+TRT_ShapedWeights Converter::GetTempWeights(tensorflow::DataType type,
+                                            const nvinfer1::Dims& dims) {
+  const int64_t size_bytes =
+      TrtDimsNumElements(dims) * tensorflow::DataTypeSize(type);
+  // TODO(jie): check weights size_bytes. 0 means type error
+  weight_store_.store_.push_back(std::vector<uint8_t>(size_bytes));
+  TRT_ShapedWeights weights(type, weight_store_.store_.back().data(), dims);
+  return weights;
+}
 
-class Converter {
- public:
-  explicit Converter(nvinfer1::INetworkDefinition* trt_network,
-                     TRTWeightStore* ws, bool fp16, int max_batch_size)
-      : trt_network_(trt_network),
-        weight_store_(ws),
-        fp16_(fp16),
-        max_batch_size_(max_batch_size) {
-    this->register_op_converters();
-  }
-
-  TRTWeightStore* weight_store() { return weight_store_; }
-
-  TRT_ShapedWeights get_temp_weights(tensorflow::DataType type,
-                                     nvinfer1::Dims shape) {
-    TRT_ShapedWeights weights(type, nullptr, shape);
-    // TODO(jie): check weights size_bytes. 0 means type error
-    weight_store_->store_.push_back(std::vector<uint8_t>(weights.size_bytes()));
-    weights.SetValues(weight_store_->store_.back().data());
-    return weights;
-  }
-
-  // TODO(aaroey): fix all the namings.
-  bool isFP16() { return fp16_; }
-
-  int GetMaxBatchSize() { return max_batch_size_; }
-
-  TRT_ShapedWeights get_temp_weights_like(const TRT_ShapedWeights& weights) {
-    return this->get_temp_weights(weights.type_, weights.shape_);
-  }
-
-  tensorflow::Status convert_node(const tensorflow::NodeDef& node_def) {
-    std::vector<TRT_TensorOrWeights> inputs;
-    TF_RETURN_IF_ERROR(this->get_inputs(node_def, &inputs));
-    const string& op = node_def.op();
-    std::vector<TRT_TensorOrWeights> outputs;
-    if (PluginFactoryTensorRT::GetInstance()->IsPlugin(op)) {
-      TF_RETURN_IF_ERROR(plugin_converter_(*this, node_def, inputs, &outputs));
-    } else {
-      if (!op_registry_.count(op)) {
-        return tensorflow::errors::Unimplemented(
-            "No converter registered for op: " + op);
-      }
-      OpConverter op_converter = op_registry_.at(op);
-      TF_RETURN_IF_ERROR(op_converter(*this, node_def, inputs, &outputs));
+tensorflow::Status Converter::ConvertNode(const tensorflow::NodeDef& node_def) {
+  std::vector<TRT_TensorOrWeights> inputs;
+  TF_RETURN_IF_ERROR(this->GetInputs(node_def, &inputs));
+  const string& op = node_def.op();
+  std::vector<TRT_TensorOrWeights> outputs;
+  if (PluginFactoryTensorRT::GetInstance()->IsPlugin(op)) {
+    TF_RETURN_IF_ERROR(plugin_converter_(*this, node_def, inputs, &outputs));
+  } else {
+    if (!op_registry_.count(op)) {
+      return tensorflow::errors::Unimplemented(
+          "No converter registered for op: " + op);
     }
-    for (size_t i = 0; i < outputs.size(); ++i) {
-      TRT_TensorOrWeights& output = outputs[i];
-      // TODO(jie): tf protobuf seems to be omitting the :0 suffix
-      string output_name = node_def.name();
-      if (i != 0) output_name = StrCat(output_name, ":", i);
-      // We need to check the name before setting it. For Identity op where the
-      // output is the input, if its input is one of the engine input, setting
-      // the name here will overwrite engine input bindings which will cause
-      // runtime error.
-      if (output.is_tensor()) {
-        const char* tensor_name = output.tensor()->getName();
-        if (tensor_name == nullptr || std::strlen(tensor_name) == 0) {
-          output.tensor()->setName(output_name.c_str());
-        }
-      }
-      VLOG(2) << "Adding out tensor " << output_name << ": "
-              << output.DebugString();
-      if (!trt_tensors_.insert({output_name, output}).second) {
-        return tensorflow::errors::AlreadyExists(
-            "Output tensor already exists for op: " + op);
+    OpConverter op_converter = op_registry_.at(op);
+    TF_RETURN_IF_ERROR(op_converter(*this, node_def, inputs, &outputs));
+  }
+  for (size_t i = 0; i < outputs.size(); ++i) {
+    TRT_TensorOrWeights& output = outputs[i];
+    string output_name = node_def.name();
+    if (i != 0) output_name = StrCat(output_name, ":", i);
+    // We need to check the name before setting it. For Identity op where the
+    // output is the input, if its input is one of the engine input, setting
+    // the name here will overwrite engine input bindings which will cause
+    // runtime error.
+    if (output.is_tensor()) {
+      const char* tensor_name = output.tensor()->getName();
+      if (tensor_name == nullptr || std::strlen(tensor_name) == 0) {
+        output.tensor()->setName(output_name.c_str());
       }
     }
-    return tensorflow::Status::OK();
-  }
-
-  nvinfer1::INetworkDefinition* network() { return trt_network_; }
-
-  TRT_TensorOrWeights get_tensor(const string& name) {
-    if (!trt_tensors_.count(name)) {
-      return TRT_TensorOrWeights(nullptr);
+    VLOG(2) << "Adding out tensor " << output_name << ": "
+            << output.DebugString();
+    if (!trt_tensors_.insert({output_name, output}).second) {
+      return tensorflow::errors::AlreadyExists(
+          "Output tensor already exists for op: " + op);
     }
-    return trt_tensors_.at(name);
   }
+  return tensorflow::Status::OK();
+}
 
-  bool insert_input_tensor(const string& name, nvinfer1::ITensor* tensor) {
-    return trt_tensors_.insert({name, TRT_TensorOrWeights(tensor)}).second;
+TRT_TensorOrWeights Converter::GetTensorOrWeights(const string& name) {
+  if (!trt_tensors_.count(name)) {
+    return TRT_TensorOrWeights(nullptr);
   }
+  return trt_tensors_.at(name);
+}
 
-  tensorflow::Status TransposeTensor(nvinfer1::ITensor* input_tensor,
-                                     const std::vector<int>& order,
-                                     const nvinfer1::ITensor** output_tensor) {
-    const auto dims = input_tensor->getDimensions();
+Status Converter::AddInputTensor(
+    const string& name, nvinfer1::ITensor* tensor) {
+  if (!trt_tensors_.insert({name, TRT_TensorOrWeights(tensor)}).second) {
+    return errors::AlreadyExists("Input tensor already exists for op: ", name);
+  }
+  return Status::OK();
+}
 
-    if (order.size() - 1 != size_t(dims.nbDims)) {
-      return tensorflow::errors::InvalidArgument(
+Status Converter::TransposeTensor(nvinfer1::ITensor* input_tensor,
+                                  const std::vector<int>& order_with_batch_dim,
+                                  const nvinfer1::ITensor** output_tensor) {
+  const auto dims = input_tensor->getDimensions();
+
+  if (order_with_batch_dim.size() - 1 != size_t(dims.nbDims)) {
+    return tensorflow::errors::InvalidArgument(
         "Rank of perm for transpose does not match with that of the input.");
-    }
-    if (order[0] != 0) {
-      return tensorflow::errors::Unimplemented(
+  }
+  if (order_with_batch_dim[0] != 0) {
+    return tensorflow::errors::Unimplemented(
         "Transpose at batch dimension is not supported.");
-    }
-
-    nvinfer1::IShuffleLayer* layer = this->network()->addShuffle(*input_tensor);
-    TFTRT_RETURN_ERROR_IF_NULLPTR(layer, "TF-TRT Internal Transpose");
-
-    nvinfer1::Permutation permutation;
-    for (int32_t i = 0; i < dims.nbDims; ++i) {
-      permutation.order[i] = order[i + 1] - 1;
-    }
-    layer->setFirstTranspose(permutation);
-
-    nvinfer1::Dims reshape_dims;
-    reshape_dims.nbDims = dims.nbDims;
-    for (int32_t i = 0; i < reshape_dims.nbDims; ++i) {
-      reshape_dims.d[i] = 0;
-      reshape_dims.type[i] = dims.type[i];
-    }
-    layer->setReshapeDimensions(reshape_dims);
-
-    *output_tensor = layer->getOutput(0);
-    return tensorflow::Status::OK();
   }
 
-  // Helper function converts input into tensor with shape specified by dims.
-  tensorflow::Status PrepareTensorForShape(const TRT_TensorOrWeights& input,
-                                           const nvinfer1::Dims& dims,
-                                           const nvinfer1::ITensor** tensor) {
-    // If -1 is not used for one of the dims, we can check if the shapes are
-    // compatible.
-    bool can_check_shapes = true;
-    for (int i = 0; i < dims.nbDims; i++) {
-      if (dims.d[i] == -1) {
-        can_check_shapes = false;
-        break;
-      }
-    }
-    if (can_check_shapes &&
-        GetShapeSize(input.shape()) != GetShapeSize(dims)) {
-      return tensorflow::errors::InvalidArgument(
-          "Reshape shapes are not compatible.");
-    }
+  nvinfer1::IShuffleLayer* layer = this->network()->addShuffle(*input_tensor);
+  TFTRT_RETURN_ERROR_IF_NULLPTR(layer, "TF-TRT Internal Transpose");
 
-    if (input.is_tensor()) {
-      if (DimsEqual(input.shape(), dims)) {
-        *tensor = input.tensor();
-      } else {
-        nvinfer1::IShuffleLayer* layer = this->network()->addShuffle(
-            *const_cast<nvinfer1::ITensor*>(input.tensor()));
-        TFTRT_RETURN_ERROR_IF_NULLPTR(layer, "TF-TRT Internal Reshape");
-        layer->setReshapeDimensions(dims);
-        *tensor = layer->getOutput(0);
-      }
+  nvinfer1::Permutation permutation;
+  for (int32_t i = 0; i < dims.nbDims; ++i) {
+    permutation.order[i] = order_with_batch_dim[i + 1] - 1;
+  }
+  layer->setFirstTranspose(permutation);
+
+  nvinfer1::Dims reshape_dims;
+  reshape_dims.nbDims = dims.nbDims;
+  for (int32_t i = 0; i < reshape_dims.nbDims; ++i) {
+    reshape_dims.d[i] = 0;
+    // TODO(aaroey): why not transposing the types as well?
+    reshape_dims.type[i] = dims.type[i];
+  }
+  layer->setReshapeDimensions(reshape_dims);
+
+  *output_tensor = layer->getOutput(0);
+  return tensorflow::Status::OK();
+}
+
+Status Converter::PrepareTensorForShape(const TRT_TensorOrWeights& input,
+                                        const nvinfer1::Dims& dims,
+                                        const nvinfer1::ITensor** tensor) {
+  // If -1 is not used for one of the dims, we can check if the shapes are
+  // compatible.
+  bool can_check_shapes = true;
+  for (int i = 0; i < dims.nbDims; i++) {
+    if (dims.d[i] == -1) {
+      can_check_shapes = false;
+      break;
+    }
+  }
+  if (can_check_shapes &&
+      TrtDimsNumElements(input.shape()) != TrtDimsNumElements(dims)) {
+    return tensorflow::errors::InvalidArgument(
+        "Reshape shapes are not compatible.");
+  }
+
+  if (input.is_tensor()) {
+    if (DimsEqual(input.shape(), dims)) {
+      *tensor = input.tensor();
     } else {
-#if NV_TENSORRT_MAJOR > 3
-      nvinfer1::IConstantLayer* layer =
-          this->network()->addConstant(dims, input.weights());
+      nvinfer1::IShuffleLayer* layer = this->network()->addShuffle(
+          *const_cast<nvinfer1::ITensor*>(input.tensor()));
       TFTRT_RETURN_ERROR_IF_NULLPTR(layer, "TF-TRT Internal Reshape");
+      layer->setReshapeDimensions(dims);
       *tensor = layer->getOutput(0);
+    }
+  } else {
+#if NV_TENSORRT_MAJOR > 3
+    nvinfer1::IConstantLayer* layer =
+        this->network()->addConstant(dims, input.weights());
+    TFTRT_RETURN_ERROR_IF_NULLPTR(layer, "TF-TRT Internal Reshape");
+    *tensor = layer->getOutput(0);
 #else
-      return tensorflow::errors::Unimplemented(
+    return tensorflow::errors::Unimplemented(
         "Can't reshape constant. Please upgrade to TRT 4 or above.");
 #endif
-    }
-    return tensorflow::Status::OK();
   }
+  return tensorflow::Status::OK();
+}
 
- private:
-  std::unordered_map<string, TRT_TensorOrWeights> trt_tensors_;
-  std::unordered_map<string, OpConverter> op_registry_;
-  OpConverter plugin_converter_;
-  nvinfer1::INetworkDefinition* trt_network_;
-  std::list<std::vector<uint8_t>> temp_bufs_;
-
-  // TODO(aaroey): inline the definition of TRTWeightStore here, and add APIs to
-  // operate the stored weights instead of operating it directly.
-  TRTWeightStore* weight_store_;
-
-  bool fp16_;
-
-  int max_batch_size_;
-
-  void register_op_converters();
-
-  tensorflow::Status get_inputs(const tensorflow::NodeDef& node_def,
-                                std::vector<TRT_TensorOrWeights>* inputs) {
-    for (auto const& input_name : node_def.input()) {
-      /*************************************************************************
-       * TODO(jie): handle case 1) here.
-       * Normalizes the inputs and extracts associated metadata:
-       * 1) Inputs can contain a colon followed by a suffix of characters.
-       *    That suffix may be a single number (e.g. inputName:1) or several
-       *    word characters separated from a number by a colon
-       *    (e.g. inputName:foo:1). The
-       *    latter case is used to denote inputs and outputs of functions.
-       * 2) Control dependency inputs contain caret at the beginning and we
-       *    remove this and annotate the edge as a control dependency.
-       ************************************************************************/
-      // skip control nodes
-      if (input_name[0] == '^') continue;
-      string name = input_name;
-      auto last = name.find_last_of(':');
-      // TODO(aaroey): use TensorId
-      if (last != string::npos && last + 2 == name.size() &&
-          name[last + 1] == '0') {
-        name.erase(last);
-      }
-
-      if (trt_tensors_.count(name)) {
-        TRT_TensorOrWeights& input = trt_tensors_.at(name);
-        inputs->push_back(input);
-        VLOG(2) << "Retrieved input " << name << ": " << input.DebugString();
-      } else {
-        // TODO(aaroey): this should not happen, make it a CHECK.
-        // TODO(aaroey): use StrCat for pattern like this.
-        string msg("Node ");
-        StrAppend(&msg, node_def.name(), " should have an input named '", name,
-                  "' but it is not available");
-        LOG(ERROR) << msg;
-        return tensorflow::errors::InvalidArgument(msg);
-      }
+Status Converter::GetInputs(const tensorflow::NodeDef& node_def,
+                            std::vector<TRT_TensorOrWeights>* inputs) const {
+  for (auto const& input_name : node_def.input()) {
+    /*************************************************************************
+     * TODO(jie): handle case 1) here.
+     * Normalizes the inputs and extracts associated metadata:
+     * 1) Inputs can contain a colon followed by a suffix of characters.
+     *    That suffix may be a single number (e.g. inputName:1) or several
+     *    word characters separated from a number by a colon
+     *    (e.g. inputName:foo:1). The
+     *    latter case is used to denote inputs and outputs of functions.
+     * 2) Control dependency inputs contain caret at the beginning and we
+     *    remove this and annotate the edge as a control dependency.
+     ************************************************************************/
+    // skip control nodes
+    if (input_name[0] == '^') continue;
+    string name = input_name;
+    auto last = name.find_last_of(':');
+    // TODO(aaroey): use TensorId
+    if (last != string::npos && last + 2 == name.size() &&
+        name[last + 1] == '0') {
+      name.erase(last);
     }
-    return tensorflow::Status::OK();
+
+    if (trt_tensors_.count(name)) {
+      TRT_TensorOrWeights input = trt_tensors_.at(name);
+      inputs->push_back(input);
+      VLOG(2) << "Retrieved input " << name << ": " << input.DebugString();
+    } else {
+      // TODO(aaroey): this should not happen, make it a CHECK.
+      // TODO(aaroey): use StrCat for pattern like this.
+      string msg("Node ");
+      StrAppend(&msg, node_def.name(), " should have an input named '", name,
+                "' but it is not available");
+      LOG(ERROR) << msg;
+      return tensorflow::errors::InvalidArgument(msg);
+    }
   }
-};
+  return tensorflow::Status::OK();
+}
 
 TRT_ShapedWeights ConvertFP32ToFP16(Converter& ctx,
                                     const TRT_ShapedWeights& weights_src) {
   auto dtype_new = tensorflow::DataType::DT_HALF;
-  TRT_ShapedWeights weights =
-      ctx.get_temp_weights(dtype_new, weights_src.shape_);
+  TRT_ShapedWeights weights = ctx.GetTempWeights(dtype_new, weights_src.shape_);
   const float* src = static_cast<const float*>(weights_src.GetValues());
   Eigen::half* dst = const_cast<Eigen::half*>(
       static_cast<Eigen::half const*>(weights.GetValues()));
@@ -1028,77 +918,6 @@ tensorflow::Status UnaryCompute(const TRT_ShapedWeights& iweights,
   return tensorflow::Status::OK();
 }
 
-tensorflow::Status BinaryCompute(const TRT_ShapedWeights& iweights_l,
-                                 const TRT_ShapedWeights& iweights_r,
-                                 TRT_ShapedWeights* oweights,
-                                 LambdaFactory binary_op) {
-  // Assume iweights_l.type == iweight_r.type
-  CHECK_EQ(iweights_l.type_, oweights->type_);
-  CHECK_EQ(iweights_r.type_, oweights->type_);
-  VLOG(2) << "SANITY CHECK!";
-
-  switch (iweights_l.type_) {
-    case tensorflow::DataType::DT_FLOAT: {
-      auto inp_l = static_cast<const float*>(iweights_l.GetValues());
-      auto inp_r = static_cast<const float*>(iweights_r.GetValues());
-      auto oup = static_cast<float*>(const_cast<void*>(oweights->GetValues()));
-
-      if (iweights_l.count() != iweights_r.count()) {
-        // We only supports broadcast of RankZero
-        if (iweights_l.count() == 1) {
-          // TODO(aaroey): Remove loggings like this.
-          VLOG(2) << "I bet it is not working!" << (*inp_l);
-          std::transform(inp_r, inp_r + iweights_r.count(), oup,
-                         binary_op.broadcast_l<float>(*inp_l));
-        } else if (iweights_r.count() == 1) {
-          VLOG(2) << "I bet it is not working!" << (*inp_r);
-          std::transform(inp_l, inp_l + iweights_l.count(), oup,
-                         binary_op.broadcast_r<float>(*inp_r));
-        } else {
-          return tensorflow::errors::Unimplemented(
-              "Binary op with non-rankZero broadcast not supported");
-        }
-      } else {
-        std::transform(inp_l, inp_l + iweights_l.count(), inp_r, oup,
-                       binary_op.binary<float>());
-      }
-      break;
-    }
-    case tensorflow::DataType::DT_HALF: {
-      auto inp_l = static_cast<const Eigen::half*>(iweights_l.GetValues());
-      auto inp_r = static_cast<const Eigen::half*>(iweights_r.GetValues());
-      auto oup =
-          static_cast<Eigen::half*>(const_cast<void*>(oweights->GetValues()));
-
-      if (iweights_l.count() != iweights_r.count()) {
-        // We only supports broadcast of RankZero
-        if (iweights_l.count() == 1) {
-          VLOG(2) << "I bet it is not working!" << (*inp_l);
-          std::transform(inp_r, inp_r + iweights_r.count(), oup,
-                         binary_op.broadcast_l<Eigen::half>(*inp_l));
-        } else if (iweights_r.count() == 1) {
-          VLOG(2) << "I bet it is not working!" << (*inp_r);
-          std::transform(inp_l, inp_l + iweights_l.count(), oup,
-                         binary_op.broadcast_r<Eigen::half>(*inp_r));
-        } else {
-          return tensorflow::errors::Unimplemented(
-              "Binary op with non-rankZero broadcast not supported");
-        }
-      } else {
-        std::transform(inp_l, inp_l + iweights_l.count(), inp_r, oup,
-                       binary_op.binary<Eigen::half>());
-      }
-      break;
-    }
-    default:
-      return tensorflow::errors::Unimplemented(
-          "Data type not supported: " +
-          tensorflow::DataTypeString(iweights_l.type_));
-  }
-
-  return tensorflow::Status::OK();
-}
-
 // TODO(jie): broadcast is needed yet not implemented.
 // Only implemented channel wise for the time being
 tensorflow::Status BinaryTensorOpWeight(
@@ -1207,7 +1026,7 @@ tensorflow::Status BinaryTensorOpWeight(
     }
   }
 
-  if (ctx.isFP16()) {
+  if (ctx.IsFP16()) {
     weights = ConvertFP32ToFP16(ctx, weights);
   }
 
@@ -1226,7 +1045,7 @@ tensorflow::Status BinaryTensorOpWeight(
       TFTRT_RETURN_ERROR_IF_NULLPTR(layer, node_def.name());
       tensor = layer->getOutput(0);
     } else {
-      TRT_ShapedWeights neg_weights = ctx.get_temp_weights_like(weights);
+      TRT_ShapedWeights neg_weights = ctx.GetTempWeightsLike(weights);
       LambdaFactory unary_op;
       unary_op.op = LambdaFactory::OP_CATEGORY::NEG;
       TF_RETURN_IF_ERROR(UnaryCompute(weights, &neg_weights, unary_op));
@@ -1241,7 +1060,7 @@ tensorflow::Status BinaryTensorOpWeight(
       TFTRT_RETURN_ERROR_IF_NULLPTR(layer, node_def.name());
       tensor = layer->getOutput(0);
     } else {
-      TRT_ShapedWeights recip_weights = ctx.get_temp_weights_like(weights);
+      TRT_ShapedWeights recip_weights = ctx.GetTempWeightsLike(weights);
       LambdaFactory unary_op;
       unary_op.op = LambdaFactory::OP_CATEGORY::RECIP;
       TF_RETURN_IF_ERROR(UnaryCompute(weights, &recip_weights, unary_op));
@@ -1312,11 +1131,11 @@ tensorflow::Status ConvertConv2DHelper(
     return tensorflow::errors::Internal(
         "Conv2D expects kernel of dimension 4, at: " + node_def.name());
   }
-  if (ctx.isFP16()) {
+  if (ctx.IsFP16()) {
     weights_rsck = ConvertFP32ToFP16(ctx, inputs.at(1).weights());
   }
 
-  TRT_ShapedWeights weights = ctx.get_temp_weights_like(weights_rsck);
+  TRT_ShapedWeights weights = ctx.GetTempWeightsLike(weights_rsck);
   ReorderRSCKToKCRS(weights_rsck, &weights, num_groups);
   TRT_ShapedWeights biases(weights.type_);
   const int noutput = weights.shape_.d[0] * num_groups;
@@ -1504,7 +1323,7 @@ tensorflow::Status ConvertTranspose(
   if (inputs.size() != 2 || !inputs.at(0).is_tensor() ||
       !inputs.at(1).is_weights()) {
     return tensorflow::errors::InvalidArgument(
-        "Input expects tensor and weights, at", node_def.name());
+        "Input expects tensor and weights, at ", node_def.name());
   }
   nvinfer1::ITensor* input_tensor = const_cast<nvinfer1::ITensor*>(
       inputs.at(0).tensor());
@@ -1515,11 +1334,6 @@ tensorflow::Status ConvertTranspose(
   std::vector<int> perm(weights.count());
   for (int i = 0; i < weights.count(); i++) {
     perm[i] = weights_ptr[i];
-  }
-
-  if (perm[0] != 0) {
-    return tensorflow::errors::Unimplemented(
-        "Transpose at batch dimension is not supported, at", node_def.name());
   }
 
   const nvinfer1::ITensor* output_tensor = nullptr;
@@ -1535,30 +1349,30 @@ tensorflow::Status ConvertReshape(
     std::vector<TRT_TensorOrWeights>* outputs) {
   if (inputs.size() != 2 || !inputs.at(1).is_weights()) {
     return tensorflow::errors::InvalidArgument(
-        "Input expects weights for shape, at", node_def.name());
+        "Input expects weights for shape, at ", node_def.name());
   }
 
   TRT_ShapedWeights weights = inputs.at(1).weights();
   if (weights.count() == 0) {
     return tensorflow::errors::Unimplemented(
-        "Reshape to shape=[] is not supported, at", node_def.name());
+        "Reshape to shape=[] is not supported, at ", node_def.name());
   }
 
-  // Get new_shape
+  // Get new_dims
   const int* weights_ptr = static_cast<int*>(const_cast<void*>(
       weights.GetValues()));
-  nvinfer1::Dims new_shape;
+  nvinfer1::Dims new_dims;
   // Ignore first (batch) dimension because TRT abstracts batch away
-  new_shape.nbDims = weights.count() - 1;
+  new_dims.nbDims = weights.count() - 1;
   for (int i = 1; i < weights.count(); i++) {
-    new_shape.d[i-1] = weights_ptr[i];
+    new_dims.d[i-1] = weights_ptr[i];
   }
 
   // Check that batch dimension doesn't change
-  const nvinfer1::Dims input_shape = inputs.at(0).shape();
+  const nvinfer1::Dims input_dims = inputs.at(0).shape();
   if (weights_ptr[0] == -1) {
-    // Product of input shape should equal product of new_shape
-    if (GetShapeSize(input_shape) != GetShapeSize(new_shape)) {
+    // Product of input shape should equal product of new_dims
+    if (TrtDimsNumElements(input_dims) != TrtDimsNumElements(new_dims)) {
       return tensorflow::errors::Unimplemented(
         "Reshape on the batch dimension is not supported.");
     }
@@ -1569,7 +1383,7 @@ tensorflow::Status ConvertReshape(
 
   const nvinfer1::ITensor* output_tensor = nullptr;
   TF_RETURN_IF_ERROR(
-      ctx.PrepareTensorForShape(inputs.at(0), new_shape, &output_tensor));
+      ctx.PrepareTensorForShape(inputs.at(0), new_dims, &output_tensor));
   outputs->push_back(TRT_TensorOrWeights(
       const_cast<nvinfer1::ITensor*>(output_tensor)));
   return tensorflow::Status::OK();
@@ -1701,7 +1515,7 @@ tensorflow::Status ConvertScale(Converter& ctx,
 
   const nvinfer1::ITensor* tensor = inputs.at(0).tensor();
   TRT_ShapedWeights weights = inputs.at(1).weights();
-  if (ctx.isFP16()) {
+  if (ctx.IsFP16()) {
     weights = ConvertFP32ToFP16(ctx, inputs.at(1).weights());
   }
 
@@ -1783,140 +1597,153 @@ tensorflow::Status ConvertScale(Converter& ctx,
   return tensorflow::Status::OK();
 }
 
+Status GetTensorDimsWithProtoShape(const Tensor& tensor,
+                                   int tensor_proto_array_len,
+                                   nvinfer1::Dims* dims) {
+  if (tensor.dims() > 0) {
+    *dims = GetTrtDimsForTensor(tensor);
+    if (TrtDimsNumElements(*dims) != tensor_proto_array_len &&
+        tensor_proto_array_len != 1) {
+      return errors::InvalidArgument(
+          "Broadcast on weights only supports kCHANNEL and kUNIFORM");
+    }
+  } else {
+    dims->nbDims = 1;
+    // No dimension provided. Flatten it.
+    dims->d[0] = tensor_proto_array_len;
+    dims->type[0] = nvinfer1::DimensionType::kSPATIAL;
+    for (int i = 1; i < nvinfer1::Dims::MAX_DIMS; ++i) {
+      dims->d[i] = 0;
+    }
+  }
+  return Status::OK();
+}
+
+template <typename CType>
+Status TfTensorToTrtWeights(const DataType dtype,
+                            const Tensor& tensor,
+                            const CType* tensor_proto_array,
+                            int tensor_proto_array_len, Converter* converter,
+                            TRT_ShapedWeights* weights) {
+  nvinfer1::Dims weight_dims;
+  TF_RETURN_IF_ERROR(GetTensorDimsWithProtoShape(
+      tensor, tensor_proto_array_len, &weight_dims));
+  const int64_t size_bytes =
+      tensorflow::DataTypeSize(dtype) * TrtDimsNumElements(weight_dims);
+  converter->weight_store()->store_.push_back(std::vector<uint8_t>(size_bytes));
+  void* dst =
+      static_cast<void*>(&(converter->weight_store()->store_.back()[0]));
+  if (tensor_proto_array_len == 1) {
+    std::fill_n((CType*)dst, TrtDimsNumElements(weight_dims),
+                *tensor_proto_array);
+  } else {
+    memcpy(dst, tensor_proto_array, size_bytes);
+  }
+  *weights = TRT_ShapedWeights(dtype, dst, weight_dims);
+  return Status::OK();
+}
+
 tensorflow::Status ConvertConst(Converter& ctx,
                                 const tensorflow::NodeDef& node_def,
                                 const std::vector<TRT_TensorOrWeights>& inputs,
                                 std::vector<TRT_TensorOrWeights>* outputs) {
-  const auto& weights_tensor = node_def.attr().at("value").tensor();
+  if (!inputs.empty()) {
+    return errors::InvalidArgument(
+        "Constant node is expected to have empty input list: ",
+        node_def.name());
+  }
 
-  // Get trt type & shape
   TFAttrs attrs(node_def);
-  const tensorflow::DataType dtype = attrs.get<tensorflow::DataType>("dtype");
+  const DataType dtype = attrs.get<tensorflow::DataType>("dtype");
+  // We always convert the integer constants to kINT32, since TRT kINT8 is for
+  // quantized inference.
+  const DataType converted_dtype =
+      (dtype == DT_INT16 || dtype == DT_INT8 || dtype == DT_UINT8 ? DT_INT32
+                                                                  : dtype);
+  nvinfer1::DataType trt_dtype;
+  TF_RETURN_IF_ERROR(ConvertDType(converted_dtype, &trt_dtype));
 
   // Create shaped weights as output
+  const auto& tensor_proto = node_def.attr().at("value").tensor();
   tensorflow::Tensor tensor;
-  if (!tensor.FromProto(weights_tensor)) {
+  if (!tensor.FromProto(tensor_proto)) {
     return tensorflow::errors::Internal("Cannot parse weight tensor proto: ",
                                         node_def.name());
   }
 
-  TRT_ShapedWeights weights(dtype);
-  // TODO(aaroey): we should choose the array using dtype and shape.
-  if (!weights_tensor.float_val().empty()) {
-    VLOG(2) << "SCALAR!!!" << node_def.name();
-    nvinfer1::Dims scalar_shape;
-    if (tensor.dims() > 0) {
-      VLOG(2) << "dimensions: " << tensor.dims();
-      VLOG(2) << "size: " << weights_tensor.float_val_size();
-      scalar_shape = GetTensorShape(tensor);
-      VLOG(2) << "details: ";
-      for (int i = 0; i < scalar_shape.nbDims; i++)
-        VLOG(2) << scalar_shape.d[i];
-      if (GetShapeSize(scalar_shape) != weights_tensor.float_val_size() &&
-          weights_tensor.float_val_size() != 1) {
-        LOG(ERROR) << "Broadcast on weights only supports kCHANNEL and"
-                   << " kUNIFORM, at: " << node_def.name();
-        string err_str("Broadcast method is not supported for '");
-        StrAppend(&err_str, node_def.name(), "' of type ", node_def.op());
-        return tensorflow::errors::InvalidArgument(err_str);
-      }
-    } else {
-      VLOG(2) << "Dimensions: " << tensor.dims();
-      scalar_shape.nbDims = 1;
-      // no dimension provided. flatten it
-      scalar_shape.d[0] = weights_tensor.float_val_size();
-      scalar_shape.type[0] = nvinfer1::DimensionType::kSPATIAL;
-      for (int i = 1; i < nvinfer1::Dims::MAX_DIMS; i++) {
-        scalar_shape.d[i] = 0;
-      }
-    }
-    // TODO(aaroey): use GetShapeSize().
-    size_t len_data = tensorflow::DataTypeSize(dtype);
-    for (int i = 0; i < scalar_shape.nbDims; i++) len_data *= scalar_shape.d[i];
-    ctx.weight_store()->store_.push_back(std::vector<uint8_t>(len_data));
-    void* dst = static_cast<void*>(&(ctx.weight_store()->store_.back()[0]));
-    if (weights_tensor.float_val_size() == 1) {
-      std::fill_n((float*)dst, GetShapeSize(scalar_shape),
-                  *weights_tensor.float_val().begin());
-    } else {
-      // TODO(aaroey): get rid of this copy as RepeatedField is always
-      // contiguous make a local copy first to flatten doesn't have to be
-      // contiguous
-      std::vector<float> tensor_data(weights_tensor.float_val().begin(),
-                                     weights_tensor.float_val().end());
-      memcpy(dst, tensor_data.data(), len_data);  // store into weight store
-    }
-    VLOG(2) << "create shape details: ";
-    for (int i = 0; i < scalar_shape.nbDims; i++) VLOG(2) << scalar_shape.d[i];
-    weights = TRT_ShapedWeights(dtype, dst, scalar_shape);
-  } else if (!weights_tensor.int_val().empty()) {
-    // TODO(aaroey): this is very similar to the above code for float, merge
-    // them.
-    VLOG(2) << "int!!!" << node_def.name();
-    nvinfer1::Dims scalar_shape;
-    if (tensor.dims() > 0) {
-      VLOG(2) << "dimensions: " << tensor.dims();
-      scalar_shape = GetTensorShape(tensor);
-      if (GetShapeSize(scalar_shape) != weights_tensor.int_val_size() &&
-          weights_tensor.int_val_size() != 1) {
-        LOG(WARNING) << "Broadcast on weights only supports kCHANNEL and"
-                     << " kUNIFORM, at: " << node_def.name();
-        string err_str("Broadcast method is not supported for '");
-        StrAppend(&err_str, node_def.name(), "' of type ", node_def.op());
-        return tensorflow::errors::InvalidArgument(err_str);
-      }
-    } else {
-      VLOG(2) << "dimensions: " << tensor.dims();
-      scalar_shape.nbDims = 1;
-      // no dimension provided. flatten it
-      scalar_shape.d[0] = weights_tensor.int_val_size();
-      scalar_shape.type[0] = nvinfer1::DimensionType::kSPATIAL;
-      for (int i = 1; i < nvinfer1::Dims::MAX_DIMS; i++) {
-        scalar_shape.d[i] = 0;
-        scalar_shape.type[i] = nvinfer1::DimensionType::kSPATIAL;
-      }
-    }
-    // we should not have converted
-    size_t len_data = tensorflow::DataTypeSize(dtype);
-    for (int i = 0; i < scalar_shape.nbDims; i++) len_data *= scalar_shape.d[i];
-    size_t len_tensor = weights_tensor.int_val_size() * sizeof(int32);
-    len_data = std::max(len_data, len_tensor);
-    ctx.weight_store()->store_.push_back(std::vector<uint8_t>(len_data));
-    void* dst = static_cast<void*>(&(ctx.weight_store()->store_.back()[0]));
-    if (weights_tensor.int_val_size() == 1) {
-      std::fill_n((int*)dst, GetShapeSize(scalar_shape),
-                  *weights_tensor.int_val().begin());
-    } else {
-      // TODO(aaroey): get rid of this copy as RepeatedField is always
-      // contiguous make a local copy first to flatten doesn't have to be
-      // contiguous
-      std::vector<int32> tensor_data(weights_tensor.int_val().begin(),
-                                     weights_tensor.int_val().end());
-      memcpy(dst, tensor_data.data(), len_tensor);  // store into weight store
-    }
-    weights = TRT_ShapedWeights(dtype, dst, scalar_shape);
-  } else if (!weights_tensor.tensor_content().empty()) {
-    // obsolete method.
-    // After optimization path, we do not see weights in this format.
-    // TODO(aaroey): why?
-    // fp16 conversion technically should be needed here.
-    VLOG(2) << "TENSOR!!!" << node_def.name();
-    const auto& content = weights_tensor.tensor_content();
-
-    weights = ctx.get_temp_weights(dtype, GetTensorShape(tensor));
+  TRT_ShapedWeights weights(converted_dtype);
+  if (tensor.NumElements() == 0) {
+    // Do nothing.
+  } else if (!tensor_proto.float_val().empty()) {
+    TF_RETURN_IF_ERROR(TfTensorToTrtWeights(
+        converted_dtype, tensor, tensor_proto.float_val().begin(),
+        tensor_proto.float_val_size(), &ctx, &weights));
+  } else if (!tensor_proto.int_val().empty()) {
+    TF_RETURN_IF_ERROR(TfTensorToTrtWeights(
+        converted_dtype, tensor, tensor_proto.int_val().begin(),
+        tensor_proto.int_val_size(), &ctx, &weights));
+  } else if (!tensor_proto.half_val().empty()) {
+    // TODO(aaroey): implement fp16 conversion.
+    return errors::Unimplemented("fp16 constant is not supported yet.");
+  } else if (!tensor_proto.tensor_content().empty()) {
+    // TODO(aaroey): fp16 will remain in half format and is not converted to
+    // fp32, but the converter currently uses all float weights as fp32. Fix
+    // this.
+    const auto& content = tensor_proto.tensor_content();
     if (content.size() > 0) {
       const int dtype_size = tensorflow::DataTypeSize(dtype);
-      CHECK_EQ(0, content.size() % dtype_size)
-          << "Tensor content size (" << content.size()
-          << ") is not a multiple of " << dtype_size;
-      port::CopyToArray(
-          content, static_cast<char*>(const_cast<void*>(weights.GetValues())));
+      if (content.size() % dtype_size != 0) {
+        return errors::FailedPrecondition(
+            "Tensor content size ", content.size(), " is not a multiple of ",
+            dtype_size);
+      }
+      nvinfer1::Dims weights_dim;
+      TF_RETURN_IF_ERROR(GetTensorDimsWithProtoShape(
+          tensor, content.size() / dtype_size, &weights_dim));
+      const int64_t size_bytes = TrtDimsNumElements(weights_dim) * dtype_size;
+      if (content.size() != size_bytes) {
+        return errors::FailedPrecondition(
+            "Tensor size and TensorProto content size mismatch: ",
+            size_bytes, " vs ", content.size());
+      } else if (tensor.NumElements() != content.size() / dtype_size) {
+        return errors::FailedPrecondition(
+            "Tensor elements count and TensorProto content size mismatch: ",
+            tensor.NumElements(), " vs ", content.size() / dtype_size);
+      }
+      weights = ctx.GetTempWeights(converted_dtype, weights_dim);
+      if (dtype_size == tensorflow::DataTypeSize(converted_dtype)) {
+        port::CopyToArray(
+            content,
+            static_cast<char*>(const_cast<void*>(weights.GetValues())));
+      } else {
+        // Copy out the weights as original data type.
+        std::vector<uint8_t> temp_weights(content.size());
+        port::CopyToArray(content,
+                          reinterpret_cast<char*>(temp_weights.data()));
+        int32* dst =
+            static_cast<int32*>(const_cast<void*>(weights.GetValues()));
+        // Copy to the weight store as converted data type.
+        if (dtype == DT_INT16) {
+          int16* data = reinterpret_cast<int16*>(temp_weights.data());
+          std::copy(data, data + tensor.NumElements(), dst);
+        } else if (dtype == DT_INT8) {
+          int8* data = reinterpret_cast<int8*>(temp_weights.data());
+          std::copy(data, data + tensor.NumElements(), dst);
+        } else if (dtype == DT_UINT8) {
+          uint8* data = reinterpret_cast<uint8*>(temp_weights.data());
+          std::copy(data, data + tensor.NumElements(), dst);
+        } else {
+          return errors::FailedPrecondition(
+              "Unexpected data type: ", DataTypeString(dtype), " at: ",
+              node_def.name());
+        }
+      }
     }
   } else {
-    return tensorflow::errors::Unimplemented("Not supported constant type, at ",
-                                             node_def.name());
+    return errors::Unimplemented("Not supported constant type, at ",
+                                 node_def.name());
   }
-  // Pass the output
+  // Pass the output.
   outputs->push_back(TRT_TensorOrWeights(weights));
   return tensorflow::Status::OK();
 }
@@ -2462,9 +2289,9 @@ tensorflow::Status ConvertFusedBatchNorm(
   //  We could technically have two weights with different shape.
   //  that requires two addScale op, arguably less performant
   TRT_ShapedWeights combined_scale_weights =
-      ctx.get_temp_weights_like(*ptr_shape_weights);
+      ctx.GetTempWeightsLike(*ptr_shape_weights);
   TRT_ShapedWeights combined_offset_weights =
-      ctx.get_temp_weights_like(*ptr_shape_weights);
+      ctx.GetTempWeightsLike(*ptr_shape_weights);
 
   const Eigen::half* cast_vals_array[4];
   const float* vals_array[4];
@@ -2546,7 +2373,7 @@ tensorflow::Status ConvertMatMulHelper(
     weights = weights_raw;
   } else {
     TRT_ShapedWeights weights_ck = weights_raw;
-    weights = ctx.get_temp_weights_like(weights_ck);
+    weights = ctx.GetTempWeightsLike(weights_ck);
     ReorderCKtoKC(weights_raw, &weights);
   }
   TRT_ShapedWeights biases(weights.type_);
@@ -2750,7 +2577,7 @@ tensorflow::Status ConvertTopK(Converter& ctx,
 }
 #endif
 
-void Converter::register_op_converters() {
+void Converter::RegisterOpConverters() {
   // vgg_16 slim implementation
   op_registry_["Conv2D"] = ConvertConv2D;
   op_registry_["DepthwiseConv2dNative"] = ConvertConv2DDepthwise;
@@ -2807,8 +2634,6 @@ void Converter::register_op_converters() {
   plugin_converter_ = ConvertPlugin;
 }
 
-}  // namespace
-
 tensorflow::Status ConvertGraphDefToEngine(
     const tensorflow::GraphDef& gdef, int precision_mode, int max_batch_size,
     size_t max_workspace_size_bytes,
@@ -2842,11 +2667,10 @@ tensorflow::Status ConvertGraphDefToEngine(
     return tensorflow::errors::Internal(
         "Failed to create TensorRT network object");
   }
-  auto ws = std::unique_ptr<TRTWeightStore>(new TRTWeightStore());
 
   // Build the network
   VLOG(1) << "Starting engine conversion ";
-  Converter converter(trt_network.get(), ws.get(), precision_mode == FP16MODE,
+  Converter converter(trt_network.get(), precision_mode == FP16MODE,
                       max_batch_size);
   std::vector<std::pair<string, string>> output_tensors;
   // Graph nodes are already topologically sorted during construction
@@ -2891,10 +2715,7 @@ tensorflow::Status ConvertGraphDefToEngine(
       }
       VLOG(2) << "Adding engine input tensor " << node_name << " with shape "
               << DebugString(input_dim);
-      if (!converter.insert_input_tensor(node_name, input_tensor)) {
-        return tensorflow::errors::AlreadyExists(
-            "Output tensor already exists for op: " + node_name);
-      }
+      TF_RETURN_IF_ERROR(converter.AddInputTensor(node_name, input_tensor));
     } else if (tensorflow::str_util::StartsWith(node_name, kOutputPHName) &&
                (node_def.op() == "Identity")) {
       int32 slot_number = -1;
@@ -2910,11 +2731,11 @@ tensorflow::Status ConvertGraphDefToEngine(
     } else {
       VLOG(2) << "Converting node: " << node_def.name() << " , "
               << node_def.op();
-      TF_RETURN_IF_ERROR(converter.convert_node(node_def));
+      TF_RETURN_IF_ERROR(converter.ConvertNode(node_def));
     }
   }
   for (const auto& output : output_tensors) {
-    auto tensor_or_weights = converter.get_tensor(output.first);
+    auto tensor_or_weights = converter.GetTensorOrWeights(output.first);
     if (!tensor_or_weights.is_tensor()) {
       return tensorflow::errors::InvalidArgument(
           "Output node '" + output.first + "' is weights not tensor");
