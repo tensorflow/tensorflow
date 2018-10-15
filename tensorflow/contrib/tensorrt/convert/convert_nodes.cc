@@ -1604,7 +1604,7 @@ tensorflow::Status ConvertScale(Converter& ctx,
     channel_index = dims.nbDims - 1;  // batch dimension is implicit here!
   } else {
     //  2). NCHW is really N+CHW
-    channel_index = dims.nbDims - 3;  // batch dimension is implicit here!
+    channel_index = 0;  // batch dimension is implicit here!
   }
 
   nvinfer1::Permutation permutation;

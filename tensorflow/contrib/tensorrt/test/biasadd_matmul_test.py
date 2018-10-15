@@ -82,7 +82,7 @@ class BiasaddMatMulTest(trt_test.TfTrtIntegrationTestBase):
       x8 = gen_array_ops.reshape(x8, [48, -1])
 
       x9 = gen_array_ops.reshape(x, [4, 12, 3, 2, 2])
-      b = constant_op.constant(np.random.randn(3), dtype=dtype)
+      b = constant_op.constant(np.random.randn(12), dtype=dtype)
       x9 = nn.bias_add(x9, b, data_format="NCHW")
       x9 = gen_array_ops.reshape(x9, [48, -1])
 
@@ -92,7 +92,7 @@ class BiasaddMatMulTest(trt_test.TfTrtIntegrationTestBase):
       x10 = gen_array_ops.reshape(x10, [48, -1])
 
       x11 = gen_array_ops.reshape(x, [4, 12, 12])
-      b = constant_op.constant(np.random.randn(4), dtype=dtype)
+      b = constant_op.constant(np.random.randn(12), dtype=dtype)
       x11 = nn.bias_add(x11, b, data_format="NCHW")
       x11 = gen_array_ops.reshape(x11, [48, -1])
 
@@ -115,13 +115,13 @@ class BiasaddMatMulTest(trt_test.TfTrtIntegrationTestBase):
   def _ValidEngines(self):
     """Engines expected to build and run."""
     return [
-        "my_trt_op_0", "my_trt_op_1", "my_trt_op_2", "my_trt_op_6",
-        "my_trt_op_7", "my_trt_op_8", "my_trt_op_9"
+        "my_trt_op_0", "my_trt_op_1", "my_trt_op_2", "my_trt_op_3",
+        "my_trt_op_6", "my_trt_op_7", "my_trt_op_8", "my_trt_op_9"
     ]
 
   def _InvalidEngines(self):
     """Engines that will cause conversion error at building time."""
-    return ["my_trt_op_3", "my_trt_op_4", "my_trt_op_5"]
+    return ["my_trt_op_4", "my_trt_op_5"]
 
   def ExpectedEnginesToBuild(self, run_params):
     """Return the expected engines to build."""
