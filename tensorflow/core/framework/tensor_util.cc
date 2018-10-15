@@ -16,9 +16,9 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_util.h"
 
 #include <vector>
+#include "absl/strings/string_view.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/variant.h"
-#include "tensorflow/core/lib/core/stringpiece.h"
 
 namespace tensorflow {
 namespace tensor {
@@ -27,12 +27,12 @@ Tensor DeepCopy(const Tensor& other) {
   Tensor tmp = Tensor(other.dtype(), other.shape());
   if (DataTypeCanUseMemcpy(other.dtype())) {
     if (other.NumElements() > 0) {
-      StringPiece other_data = other.tensor_data();
+      absl::string_view other_data = other.tensor_data();
 
       // We use StringPiece as a convenient map over the tensor buffer,
       // but we cast the type to get to the underlying buffer to do the
       // copy.
-      StringPiece tmp_data = tmp.tensor_data();
+      absl::string_view tmp_data = tmp.tensor_data();
       memcpy(const_cast<char*>(tmp_data.data()), other_data.data(),
              other_data.size());
     }
@@ -72,12 +72,12 @@ Status Concat(const gtl::ArraySlice<Tensor>& tensors, Tensor* result) {
   // We use StringPiece as a convenient map over the tensor buffer,
   // but we cast the type to get to the underlying buffer to do the
   // copy.
-  StringPiece to_data = result->tensor_data();
+  absl::string_view to_data = result->tensor_data();
 
   if (DataTypeCanUseMemcpy(dtype)) {
     int64 offset = 0;
     for (const Tensor& tensor : tensors) {
-      StringPiece from_data = tensor.tensor_data();
+      absl::string_view from_data = tensor.tensor_data();
       CHECK_LE(offset + from_data.size(), to_data.size());
       memcpy(const_cast<char*>(to_data.data()) + offset, from_data.data(),
              from_data.size());
@@ -121,7 +121,7 @@ Status Split(const Tensor& tensor, const gtl::ArraySlice<int64>& sizes,
         "'tensor'");
   }
 
-  StringPiece from_data = tensor.tensor_data();
+  absl::string_view from_data = tensor.tensor_data();
 
   if (DataTypeCanUseMemcpy(tensor.dtype())) {
     int64 offset = 0;
@@ -134,7 +134,7 @@ Status Split(const Tensor& tensor, const gtl::ArraySlice<int64>& sizes,
       // We use StringPiece as a convenient map over the tensor buffer,
       // but we cast the type to get to the underlying buffer to do the
       // copy.
-      StringPiece to_data = split->tensor_data();
+      absl::string_view to_data = split->tensor_data();
       CHECK_LE(offset + to_data.size(), from_data.size());
       memcpy(const_cast<char*>(to_data.data()), from_data.data() + offset,
              to_data.size());

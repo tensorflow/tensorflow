@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <utility>
 #include <vector>
+#include "absl/strings/string_view.h"
 #include "tensorflow/core/framework/types.pb_text.h"
 #include "tensorflow/core/framework/versions.h"
 #include "tensorflow/core/lib/core/errors.h"
@@ -53,7 +54,7 @@ class TensorSliceReaderTable : public TensorSliceReader::Table {
     std::unique_ptr<table::Iterator> iter(table_->NewIterator());
     iter->Seek(key);
     if (iter->Valid() && iter->key() == key) {
-      StringPiece v = iter->value();
+      absl::string_view v = iter->value();
       value->assign(v.data(), v.size());
       return true;
     } else {

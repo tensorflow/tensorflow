@@ -20,6 +20,7 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//third_party/hadoop:hdfs",
+        "@com_google_absl//absl/strings",
     ],
     alwayslink = 1,
 )
@@ -59,5 +60,6 @@ tf_cc_test(
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
+        "@com_google_absl//absl/strings",
     ],
 )

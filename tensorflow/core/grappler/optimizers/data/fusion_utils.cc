@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/grappler/optimizers/data/fusion_utils.h"
 
+#include "absl/strings/string_view.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/node_def_builder.h"
 #include "tensorflow/core/framework/op_def.pb.h"
@@ -423,11 +424,14 @@ void LazyConjunctionOutput(const protobuf::Map<string, string>& first_ret,
   *fused_ret = first_ret;
 }
 
-FunctionDef* FuseFunctions(
-    const FunctionDef& first_function, const FunctionDef& second_function,
-    StringPiece fused_name_prefix, const SetFunctionSignatureFn& set_signature,
-    const SetInputFn& set_input, const SetOutputFn& set_output,
-    const SetNodesFn& set_nodes, FunctionDefLibrary* library) {
+FunctionDef* FuseFunctions(const FunctionDef& first_function,
+                           const FunctionDef& second_function,
+                           absl::string_view fused_name_prefix,
+                           const SetFunctionSignatureFn& set_signature,
+                           const SetInputFn& set_input,
+                           const SetOutputFn& set_output,
+                           const SetNodesFn& set_nodes,
+                           FunctionDefLibrary* library) {
   if (first_function.attr_size() != 0 || second_function.attr_size() != 0)
     return nullptr;  // Functions with attributes are currently not supported
 

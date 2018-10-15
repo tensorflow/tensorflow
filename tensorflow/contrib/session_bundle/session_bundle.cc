@@ -20,6 +20,7 @@ limitations under the License.
 #include <vector>
 
 #include "google/protobuf/any.pb.h"
+#include "absl/strings/string_view.h"
 #include "tensorflow/contrib/session_bundle/manifest.pb.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/graph_def_util.h"
@@ -62,7 +63,7 @@ Status CreateSessionFromGraphDef(const SessionOptions& options,
   return (*session)->Create(graph);
 }
 
-Status GetMetaGraphDefFromExport(const StringPiece export_dir,
+Status GetMetaGraphDefFromExport(const absl::string_view export_dir,
                                  MetaGraphDef* meta_graph_def) {
   const string meta_graph_def_path =
       io::JoinPath(export_dir, kMetaGraphDefFilename);
@@ -77,7 +78,7 @@ Tensor CreateStringTensor(const string& value) {
 }
 
 // Adds Assets related tensors (assets_dir and asset files) to the inputs.
-void AddAssetsTensorsToInputs(const StringPiece export_dir,
+void AddAssetsTensorsToInputs(const absl::string_view export_dir,
                               const std::vector<AssetFile>& asset_files,
                               std::vector<std::pair<string, Tensor>>* inputs) {
   if (asset_files.empty()) {
@@ -108,7 +109,7 @@ void AddAssetsTensorsToInputs(const StringPiece export_dir,
 // prefix.data-* are present in the filesystem. So if we see export.index
 // present in the export_dir, we know the export is in V2 format and we return
 // <export_dir>/export as this prefix.
-string GetVariablesFilename(const StringPiece export_dir) {
+string GetVariablesFilename(const absl::string_view export_dir) {
   const char kVariablesFilename[] = "export";
   const string kVariablesIndexFilename = MetaFilename("export");  // V2 ckpts
   const char kVariablesFilenamePattern[] = "export-\?\?\?\?\?-of-\?\?\?\?\?";
@@ -128,10 +129,11 @@ string GetVariablesFilename(const StringPiece export_dir) {
   }
 }
 
-Status RunRestoreOp(const RunOptions& run_options, const StringPiece export_dir,
+Status RunRestoreOp(const RunOptions& run_options,
+                    const absl::string_view export_dir,
                     const std::vector<AssetFile>& asset_files,
-                    const StringPiece restore_op_name,
-                    const StringPiece variables_filename_const_op_name,
+                    const absl::string_view restore_op_name,
+                    const absl::string_view variables_filename_const_op_name,
                     Session* session) {
   LOG(INFO) << "Running restore op for SessionBundle: " << restore_op_name
             << ", " << variables_filename_const_op_name;
@@ -145,9 +147,10 @@ Status RunRestoreOp(const RunOptions& run_options, const StringPiece export_dir,
                       nullptr /* outputs */, &run_metadata);
 }
 
-Status RunInitOp(const RunOptions& run_options, const StringPiece export_dir,
+Status RunInitOp(const RunOptions& run_options,
+                 const absl::string_view export_dir,
                  const std::vector<AssetFile>& asset_files,
-                 const StringPiece init_op_name, Session* session) {
+                 const absl::string_view init_op_name, Session* session) {
   LOG(INFO) << "Running init op for SessionBundle";
   std::vector<std::pair<string, Tensor>> inputs;
   AddAssetsTensorsToInputs(export_dir, asset_files, &inputs);
@@ -158,7 +161,7 @@ Status RunInitOp(const RunOptions& run_options, const StringPiece export_dir,
 
 Status LoadSessionBundleFromPathUsingRunOptionsInternal(
     const SessionOptions& options, const RunOptions& run_options,
-    const StringPiece export_dir, SessionBundle* const bundle) {
+    const absl::string_view export_dir, SessionBundle* const bundle) {
   LOG(INFO) << "Attempting to load a SessionBundle from: " << export_dir;
   LOG(INFO) << "Using RunOptions: " << DebugStringIfAvailable(run_options);
   TF_RETURN_IF_ERROR(
@@ -227,17 +230,16 @@ Status LoadSessionBundleFromPathUsingRunOptionsInternal(
 }  // namespace
 
 Status LoadSessionBundleFromPath(const SessionOptions& options,
-                                 const StringPiece export_dir,
+                                 const absl::string_view export_dir,
                                  SessionBundle* const bundle) {
   TF_RETURN_IF_ERROR(LoadSessionBundleFromPathUsingRunOptions(
       options, RunOptions(), export_dir, bundle));
   return Status::OK();
 }
 
-Status LoadSessionBundleFromPathUsingRunOptions(const SessionOptions& options,
-                                                const RunOptions& run_options,
-                                                const StringPiece export_dir,
-                                                SessionBundle* const bundle) {
+Status LoadSessionBundleFromPathUsingRunOptions(
+    const SessionOptions& options, const RunOptions& run_options,
+    const absl::string_view export_dir, SessionBundle* const bundle) {
   const uint64 start_microseconds = Env::Default()->NowMicros();
   const Status status = LoadSessionBundleFromPathUsingRunOptionsInternal(
       options, run_options, export_dir, bundle);
@@ -263,7 +265,7 @@ Status LoadSessionBundleFromPathUsingRunOptions(const SessionOptions& options,
   return status;
 }
 
-bool IsPossibleExportDirectory(const StringPiece directory) {
+bool IsPossibleExportDirectory(const absl::string_view directory) {
   const string meta_graph_def_path =
       io::JoinPath(directory, kMetaGraphDefFilename);
   return Env::Default()->FileExists(meta_graph_def_path).ok();

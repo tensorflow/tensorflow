@@ -33,6 +33,7 @@ limitations under the License.
 #include "grpcpp/alarm.h"
 #include "grpcpp/server_builder.h"
 
+#include "absl/strings/string_view.h"
 #include "tensorflow/core/distributed_runtime/master.h"
 #include "tensorflow/core/distributed_runtime/rpc/async_service_interface.h"
 #include "tensorflow/core/distributed_runtime/rpc/grpc_call.h"
@@ -286,12 +287,12 @@ class GrpcMasterService : public AsyncServiceInterface {
 
   // Start tracing, including the ID attached to the RPC.
   tracing::ScopedActivity* TraceRpc(
-      StringPiece name,
+      absl::string_view name,
       const std::multimap<::grpc::string_ref, ::grpc::string_ref>& metadata) {
-    StringPiece id;
+    absl::string_view id;
     auto it = metadata.find(GrpcIdKey());
     if (it != metadata.end()) {
-      id = StringPiece(it->second.data(), it->second.size());
+      id = absl::string_view(it->second.data(), it->second.size());
     }
     return new tracing::ScopedActivity(name, id);
   }

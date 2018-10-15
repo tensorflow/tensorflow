@@ -194,6 +194,7 @@ cc_library(
         "//tensorflow/core/kernels:bounds_check",
         "//tensorflow/core/kernels:conv_ops",
         "//tensorflow/core/kernels:ops_util",
+        "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
     ],
 )

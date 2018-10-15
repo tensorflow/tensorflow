@@ -20,11 +20,11 @@ limitations under the License.
 #include <fstream>
 #include <string>
 #include <vector>
+#include "absl/strings/string_view.h"
 #include <curl/curl.h>
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
-#include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/platform/cloud/curl_http_request.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/protobuf.h"
@@ -101,7 +101,7 @@ class FakeHttpRequest : public CurlHttpRequest {
       *captured_post_body_ = string(buffer, size);
     } else {
       actual_request_ +=
-          strings::StrCat("Post body: ", StringPiece(buffer, size), "\n");
+          strings::StrCat("Post body: ", absl::string_view(buffer, size), "\n");
     }
   }
   void SetPutEmptyBody() override { actual_request_ += "Put: yes\n"; }

@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/core/grappler/optimizers/data/function_utils.h"
+#include "absl/strings/string_view.h"
 #include "tensorflow/core/grappler/optimizers/data/graph_utils.h"
 
 #include "tensorflow/core/framework/device_base.h"
@@ -34,8 +35,8 @@ FunctionDefTensorDesc::FunctionDefTensorDesc(const string& node_name,
 FunctionDefTensorDesc::FunctionDefTensorDesc(const string& input) {
   // Parses node_name:node_output:position string into its components.
   full_str = input;
-  StringPiece capture;
-  StringPiece remaining;
+  absl::string_view capture;
+  absl::string_view remaining;
 
   // Parse "node_name"
   if (strings::Scanner(input)
@@ -86,8 +87,8 @@ void ReplaceReferences(const string& from, const string& to,
   }
 }
 
-void AddFunctionOutputWithUniqueName(StringPiece prefix,
-                                     StringPiece output_tensor_name,
+void AddFunctionOutputWithUniqueName(absl::string_view prefix,
+                                     absl::string_view output_tensor_name,
                                      FunctionDef* function, DataType dt) {
   string name = string(prefix);
   int id = function->signature().output_arg_size();
@@ -102,7 +103,7 @@ void AddFunctionOutputWithUniqueName(StringPiece prefix,
   (*function->mutable_ret())[name] = string(output_tensor_name);
 }
 
-NodeDef* AddNode(StringPiece name, StringPiece op,
+NodeDef* AddNode(absl::string_view name, absl::string_view op,
                  const std::vector<string>& inputs,
                  const std::vector<std::pair<string, AttrValue>>& attributes,
                  FunctionDef* fd) {
@@ -122,45 +123,49 @@ NodeDef* AddNode(StringPiece name, StringPiece op,
   return node;
 }
 
-bool ContainsFunctionNodeWithName(StringPiece name,
+bool ContainsFunctionNodeWithName(absl::string_view name,
                                   const FunctionDef& function) {
   return FindFunctionNodeWithName(name, function) != -1;
 }
 
-bool ContainsFunctionNodeWithOp(StringPiece op, const FunctionDef& function) {
+bool ContainsFunctionNodeWithOp(absl::string_view op,
+                                const FunctionDef& function) {
   return FindFunctionNodeWithOp(op, function) != -1;
 }
 
-bool ContainsFunctionOutputWithName(StringPiece name,
+bool ContainsFunctionOutputWithName(absl::string_view name,
                                     const FunctionDef& function) {
   return FindFunctionOutputWithName(name, function) != -1;
 }
 
-int FindFunctionInputWithName(StringPiece name, const FunctionDef& function) {
+int FindFunctionInputWithName(absl::string_view name,
+                              const FunctionDef& function) {
   return graph_utils::GetFirstElementIndexWithPredicate(
       [&name](const OpDef_ArgDef& arg) { return arg.name() == name; },
       function.signature().input_arg());
 }
 
-int FindFunctionOutputWithName(StringPiece name, const FunctionDef& function) {
+int FindFunctionOutputWithName(absl::string_view name,
+                               const FunctionDef& function) {
   return graph_utils::GetFirstElementIndexWithPredicate(
       [&name](const OpDef_ArgDef& arg) { return arg.name() == name; },
       function.signature().output_arg());
 }
 
-int FindFunctionNodeWithName(StringPiece name, const FunctionDef& function) {
+int FindFunctionNodeWithName(absl::string_view name,
+                             const FunctionDef& function) {
   return graph_utils::GetFirstElementIndexWithPredicate(
       [&name](const NodeDef& node) { return node.name() == name; },
       function.node_def());
 }
 
-int FindFunctionNodeWithOp(StringPiece op, const FunctionDef& function) {
+int FindFunctionNodeWithOp(absl::string_view op, const FunctionDef& function) {
   return graph_utils::GetFirstElementIndexWithPredicate(
       [&op](const NodeDef& node) { return node.op() == op; },
       function.node_def());
 }
 
-void SetUniqueFunctionNodeName(StringPiece prefix, FunctionDef* function,
+void SetUniqueFunctionNodeName(absl::string_view prefix, FunctionDef* function,
                                NodeDef* node) {
   string name = string(prefix);
   int id = function->node_def_size();

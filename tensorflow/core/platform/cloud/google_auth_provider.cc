@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/core/platform/cloud/google_auth_provider.h"
+#include "absl/strings/string_view.h"
 #ifndef _WIN32
 #include <pwd.h>
 #include <unistd.h>
@@ -206,8 +207,8 @@ Status GoogleAuthProvider::GetTokenFromGce() {
 
   TF_RETURN_IF_ERROR(compute_engine_metadata_client_->GetMetadata(
       kGceTokenPath, &response_buffer));
-  StringPiece response =
-      StringPiece(&response_buffer[0], response_buffer.size());
+  absl::string_view response =
+      absl::string_view(&response_buffer[0], response_buffer.size());
 
   TF_RETURN_IF_ERROR(oauth_client_->ParseOAuthResponse(
       response, request_timestamp_sec, &current_token_,

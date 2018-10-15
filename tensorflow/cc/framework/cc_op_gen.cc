@@ -17,6 +17,7 @@ limitations under the License.
 #include <unordered_set>
 #include <vector>
 
+#include "absl/strings/string_view.h"
 #include "tensorflow/cc/framework/cc_op_gen.h"
 #include "tensorflow/core/framework/api_def.pb.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
@@ -107,7 +108,7 @@ string ToTitle(const string& name) {
 //   ABC         /// ABC
 //               ///
 //   DEF         /// DEF
-string MakeComment(StringPiece text, StringPiece indent) {
+string MakeComment(absl::string_view text, absl::string_view indent) {
   string ret;
   while (!text.empty()) {
     int last_non_space = -1;
@@ -302,9 +303,9 @@ string ToCamelCase(const string& str) {
 // attr_type when defining an object of that type. The bool is a flag to
 // indicate whether to treat the type as const when accepting the C++ type as an
 // argument to a function.
-std::pair<const char*, bool> AttrTypeName(StringPiece attr_type) {
+std::pair<const char*, bool> AttrTypeName(absl::string_view attr_type) {
   static const auto* attr_type_map =
-      new std::unordered_map<StringPiece, std::pair<const char*, bool>,
+      new std::unordered_map<absl::string_view, std::pair<const char*, bool>,
                              StringPieceHasher>{
           {"string", {"StringPiece", false}},
           {"list(string)", {"gtl::ArraySlice<string>", true}},
@@ -331,9 +332,9 @@ std::pair<const char*, bool> AttrTypeName(StringPiece attr_type) {
   return entry->second;
 }
 
-const char* ListElementTypeName(StringPiece attr_type) {
+const char* ListElementTypeName(absl::string_view attr_type) {
   static const auto* attr_list_type_map =
-      new std::unordered_map<StringPiece, const char*, StringPieceHasher>{
+      new std::unordered_map<absl::string_view, const char*, StringPieceHasher>{
           {"list(string)", "string"},
           {"list(int)", "int"},
           {"list(float)", "float"},
@@ -351,8 +352,8 @@ const char* ListElementTypeName(StringPiece attr_type) {
   return entry->second;
 }
 
-bool IsCPPKeyword(StringPiece name) {
-  static const std::unordered_set<StringPiece, StringPieceHasher>
+bool IsCPPKeyword(absl::string_view name) {
+  static const std::unordered_set<absl::string_view, StringPieceHasher>
       // Keywords obtained from http://en.cppreference.com/w/cpp/keyword
       kCPPReserved{
           "alignas",
@@ -462,7 +463,7 @@ bool IsCPPKeyword(StringPiece name) {
   return kCPPReserved.count(name) > 0;
 }
 
-string AvoidCPPKeywords(StringPiece name) {
+string AvoidCPPKeywords(absl::string_view name) {
   if (IsCPPKeyword(name)) {
     return strings::StrCat(name, "_");
   }
@@ -516,7 +517,7 @@ struct OpInfo {
   explicit OpInfo(const OpDef& graph_op_def, const ApiDef& api_def,
                   const std::vector<string>& aliases);
   string GetOpAttrStruct() const;
-  string GetConstructorDecl(StringPiece op_name_prefix,
+  string GetConstructorDecl(absl::string_view op_name_prefix,
                             bool include_attr) const;
   void WriteClassDecl(WritableFile* h) const;
   void GetOutput(string* out) const;
@@ -574,7 +575,7 @@ OpInfo::OpInfo(const OpDef& graph_op_def, const ApiDef& api_def,
     arg_names.push_back(AvoidCPPKeywords(api_def_arg.rename_to()));
 
     // TODO(keveman): Include input type information.
-    StringPiece description = api_def_arg.description();
+    absl::string_view description = api_def_arg.description();
     if (!description.empty()) {
       ConsumeEquals(&description);
       strings::StrAppend(&comment, "* ",
@@ -768,7 +769,7 @@ string OpInfo::GetOpAttrStruct() const {
   return struct_decl;
 }
 
-string OpInfo::GetConstructorDecl(StringPiece op_name_prefix,
+string OpInfo::GetConstructorDecl(absl::string_view op_name_prefix,
                                   bool include_attr) const {
   const string prefix = strings::StrCat(op_name_prefix, op_name, "(");
   string c_decl;

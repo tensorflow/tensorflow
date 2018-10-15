@@ -16,6 +16,7 @@ limitations under the License.
 // XLA-specific Ops for 2D convolution.
 
 #include "tensorflow/compiler/tf2xla/kernels/conv_op_helpers.h"
+#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/tf2xla/shape_util.h"
 #include "tensorflow/compiler/tf2xla/type_util.h"
@@ -198,10 +199,11 @@ Status CheckConvAttrs(const ConvOpAttrs& attrs) {
 // Wrapper around ConvBackpropComputeDimensions that converts from XLA shapes
 // to TensorShapes.
 Status ConvBackpropComputeDimensionsV2XlaShapes(
-    StringPiece label, int num_spatial_dims, const xla::Shape& input_shape,
-    const xla::Shape& filter_shape, const xla::Shape& out_backprop_shape,
-    absl::Span<const int32> dilations, const std::vector<int32>& strides,
-    Padding padding, TensorFormat data_format, ConvBackpropDimensions* dims) {
+    absl::string_view label, int num_spatial_dims,
+    const xla::Shape& input_shape, const xla::Shape& filter_shape,
+    const xla::Shape& out_backprop_shape, absl::Span<const int32> dilations,
+    const std::vector<int32>& strides, Padding padding,
+    TensorFormat data_format, ConvBackpropDimensions* dims) {
   TensorShape input_tensor_shape, filter_tensor_shape,
       out_backprop_tensor_shape;
   TF_RETURN_IF_ERROR(XLAShapeToTensorShape(input_shape, &input_tensor_shape));
@@ -235,10 +237,9 @@ xla::StatusOr<ConvOpAttrs> ConvOpAttrs::Create(int num_spatial_dims,
   return attrs;
 }
 
-xla::StatusOr<xla::XlaOp> MakeXlaForwardConvOp(StringPiece /*type_string*/,
-                                               xla::XlaOp conv_input,
-                                               xla::XlaOp filter,
-                                               const ConvOpAttrs& attrs) {
+xla::StatusOr<xla::XlaOp> MakeXlaForwardConvOp(
+    absl::string_view /*type_string*/, xla::XlaOp conv_input, xla::XlaOp filter,
+    const ConvOpAttrs& attrs) {
   TF_RETURN_IF_ERROR(CheckConvAttrs(attrs));
 
   auto* builder = conv_input.builder();
@@ -309,8 +310,8 @@ xla::StatusOr<xla::XlaOp> MakeXlaForwardConvOp(StringPiece /*type_string*/,
 }
 
 xla::StatusOr<xla::XlaOp> MakeXlaBackpropInputConvOp(
-    StringPiece type_string, const xla::Shape& input_shape, xla::XlaOp filter,
-    xla::XlaOp out_backprop, const ConvOpAttrs& attrs) {
+    absl::string_view type_string, const xla::Shape& input_shape,
+    xla::XlaOp filter, xla::XlaOp out_backprop, const ConvOpAttrs& attrs) {
   TF_RETURN_IF_ERROR(CheckConvAttrs(attrs));
 
   int num_dims = attrs.num_spatial_dims + 2;
@@ -380,7 +381,7 @@ xla::StatusOr<xla::XlaOp> MakeXlaBackpropInputConvOp(
 }
 
 xla::StatusOr<xla::XlaOp> MakeXlaBackpropFilterConvOp(
-    StringPiece type_string, xla::XlaOp activations,
+    absl::string_view type_string, xla::XlaOp activations,
     const xla::Shape& filter_shape, xla::XlaOp gradients,
     const ConvOpAttrs& attrs) {
   TF_RETURN_IF_ERROR(CheckConvAttrs(attrs));

@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_GRAPPLER_OPTIMIZERS_DATA_GRAPH_UTILS_H_
 #define TENSORFLOW_CORE_GRAPPLER_OPTIMIZERS_DATA_GRAPH_UTILS_H_
 
+#include "absl/strings/string_view.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/function.pb.h"
 #include "tensorflow/core/framework/graph.pb.h"
@@ -48,7 +49,7 @@ int GetFirstElementIndexWithPredicate(const Predicate& predicate,
 }
 
 // Adds a node to the graph.
-NodeDef* AddNode(StringPiece name, StringPiece op,
+NodeDef* AddNode(absl::string_view name, absl::string_view op,
                  const std::vector<string>& inputs,
                  const std::vector<std::pair<string, AttrValue>>& attributes,
                  MutableGraphView* graph);
@@ -77,33 +78,33 @@ NodeDef* AddScalarConstNode(int v, MutableGraphView* graph);
 template <>
 NodeDef* AddScalarConstNode(int64 v, MutableGraphView* graph);
 template <>
-NodeDef* AddScalarConstNode(StringPiece v, MutableGraphView* graph);
+NodeDef* AddScalarConstNode(absl::string_view v, MutableGraphView* graph);
 
 // Checks whether the two graphs are the same.
 bool Compare(const GraphDef& g1, const GraphDef& g2);
 
 // Checks whether the graph contains a node with the given name.
-bool ContainsGraphNodeWithName(StringPiece name, const GraphDef& graph);
+bool ContainsGraphNodeWithName(absl::string_view name, const GraphDef& graph);
 
 // Checks whether the library contains a function with the given name.
-bool ContainsGraphFunctionWithName(StringPiece name,
+bool ContainsGraphFunctionWithName(absl::string_view name,
                                    const FunctionDefLibrary& library);
 
 // Checks whether the graph contains a node with the given op.
-bool ContainsNodeWithOp(StringPiece op, const GraphDef& graph);
+bool ContainsNodeWithOp(absl::string_view op, const GraphDef& graph);
 
 // Returns the index of the node with the given name or -1 if the node does
 // not exist.
-int FindGraphNodeWithName(StringPiece name, const GraphDef& graph);
+int FindGraphNodeWithName(absl::string_view name, const GraphDef& graph);
 
 // Returns the index of the function with the given name or -1 if the function
 // does not exist.
-int FindGraphFunctionWithName(StringPiece name,
+int FindGraphFunctionWithName(absl::string_view name,
                               const FunctionDefLibrary& library);
 
 // Returns the index of the first node with the given op or -1 if no such  node
 // exists.
-int FindGraphNodeWithOp(StringPiece op, const GraphDef& graph);
+int FindGraphNodeWithOp(absl::string_view op, const GraphDef& graph);
 
 // Gets the 0th input to a node in the graph.
 NodeDef* GetInputNode(const NodeDef& node, const MutableGraphView& graph);
@@ -115,11 +116,13 @@ std::vector<int> FindAllGraphNodesWithOp(const string& op,
 
 // Sets the node name using `prefix` as a prefix while guaranteeing the name
 // is unique across the graph.
-void SetUniqueGraphNodeName(StringPiece prefix, GraphDef* graph, NodeDef* node);
+void SetUniqueGraphNodeName(absl::string_view prefix, GraphDef* graph,
+                            NodeDef* node);
 
 // Sets the function name using the `prefix` name as a prefix while guaranteeing
 // the name is unique across the function library.
-void SetUniqueGraphFunctionName(StringPiece prefix, FunctionDefLibrary* library,
+void SetUniqueGraphFunctionName(absl::string_view prefix,
+                                FunctionDefLibrary* library,
                                 FunctionDef* function);
 
 // Copies attribute having name `attribute_name` from node `from` to node

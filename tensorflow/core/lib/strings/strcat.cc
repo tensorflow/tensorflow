@@ -20,6 +20,7 @@ limitations under the License.
 #include <stdio.h>
 #include <string.h>
 
+#include "absl/strings/string_view.h"
 #include "tensorflow/core/lib/gtl/stl_util.h"
 #include "tensorflow/core/platform/logging.h"
 
@@ -41,7 +42,7 @@ AlphaNum::AlphaNum(Hex hex) {
     value >>= 4;
     mask >>= 4;
   } while (mask != 0);
-  piece_ = StringPiece(writer, end - writer);
+  piece_ = absl::string_view(writer, end - writer);
 }
 
 // ----------------------------------------------------------------------
@@ -117,15 +118,15 @@ string StrCat(const AlphaNum &a, const AlphaNum &b, const AlphaNum &c,
 namespace internal {
 
 // Do not call directly - these are not part of the public API.
-string CatPieces(std::initializer_list<StringPiece> pieces) {
+string CatPieces(std::initializer_list<absl::string_view> pieces) {
   string result;
   size_t total_size = 0;
-  for (const StringPiece piece : pieces) total_size += piece.size();
+  for (const absl::string_view piece : pieces) total_size += piece.size();
   gtl::STLStringResizeUninitialized(&result, total_size);
 
   char *const begin = &*result.begin();
   char *out = begin;
-  for (const StringPiece piece : pieces) {
+  for (const absl::string_view piece : pieces) {
     const size_t this_size = piece.size();
     memcpy(out, piece.data(), this_size);
     out += this_size;
@@ -141,10 +142,11 @@ string CatPieces(std::initializer_list<StringPiece> pieces) {
 #define DCHECK_NO_OVERLAP(dest, src) \
   DCHECK_GE(uintptr_t((src).data() - (dest).data()), uintptr_t((dest).size()))
 
-void AppendPieces(string *result, std::initializer_list<StringPiece> pieces) {
+void AppendPieces(string *result,
+                  std::initializer_list<absl::string_view> pieces) {
   size_t old_size = result->size();
   size_t total_size = old_size;
-  for (const StringPiece piece : pieces) {
+  for (const absl::string_view piece : pieces) {
     DCHECK_NO_OVERLAP(*result, piece);
     total_size += piece.size();
   }
@@ -152,7 +154,7 @@ void AppendPieces(string *result, std::initializer_list<StringPiece> pieces) {
 
   char *const begin = &*result->begin();
   char *out = begin + old_size;
-  for (const StringPiece piece : pieces) {
+  for (const absl::string_view piece : pieces) {
     const size_t this_size = piece.size();
     memcpy(out, piece.data(), this_size);
     out += this_size;

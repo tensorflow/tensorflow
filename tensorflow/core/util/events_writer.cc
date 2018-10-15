@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <stddef.h>  // for NULL
 
+#include "absl/strings/string_view.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/io/path.h"
@@ -102,7 +103,7 @@ string EventsWriter::FileName() {
   return filename_;
 }
 
-void EventsWriter::WriteSerializedEvent(StringPiece event_str) {
+void EventsWriter::WriteSerializedEvent(absl::string_view event_str) {
   if (recordio_writer_ == nullptr) {
     if (!InitIfNeeded().ok()) {
       LOG(ERROR) << "Write failed because file could not be opened.";

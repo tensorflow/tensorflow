@@ -15,8 +15,8 @@ limitations under the License.
 
 #include "tensorflow/python/lib/io/py_record_writer.h"
 
+#include "absl/strings/string_view.h"
 #include "tensorflow/c/tf_status_helper.h"
-#include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/io/record_writer.h"
 #include "tensorflow/core/lib/io/zlib_compression_options.h"
 #include "tensorflow/core/platform/env.h"
@@ -48,7 +48,7 @@ PyRecordWriter::~PyRecordWriter() {
   file_.reset();
 }
 
-void PyRecordWriter::WriteRecord(tensorflow::StringPiece record,
+void PyRecordWriter::WriteRecord(absl::string_view record,
                                  TF_Status* out_status) {
   if (writer_ == nullptr) {
     TF_SetStatus(out_status, TF_FAILED_PRECONDITION,

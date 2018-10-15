@@ -20,12 +20,12 @@ limitations under the License.
 #include <queue>
 #include <vector>
 
+#include "absl/strings/string_view.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_def.pb.h"
 #include "tensorflow/core/framework/types.h"
-#include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/strings/numbers.h"
 #include "tensorflow/core/lib/strings/scanner.h"
 #include "tensorflow/core/lib/strings/strcat.h"
@@ -146,9 +146,9 @@ bool IsSameInput(const string& name1, const string& name2) {
     return true;
   }
   int position1;
-  StringPiece node1 = ParseNodeNameAsStringPiece(name1, &position1);
+  absl::string_view node1 = ParseNodeNameAsStringPiece(name1, &position1);
   int position2;
-  StringPiece node2 = ParseNodeNameAsStringPiece(name2, &position2);
+  absl::string_view node2 = ParseNodeNameAsStringPiece(name2, &position2);
   return (position1 == position2) && (node1 == node2);
 }
 
@@ -251,7 +251,7 @@ int NumNonControlOutputs(const NodeDef& node, const NodeMap& node_map) {
       if (node_as_input == node.name()) {
         ++num_outputs;
       } else {
-        const StringPiece name =
+        const absl::string_view name =
             ParseNodeNameAsStringPiece(node_as_input, &pos);
         if (name == node.name()) {
           ++num_outputs;

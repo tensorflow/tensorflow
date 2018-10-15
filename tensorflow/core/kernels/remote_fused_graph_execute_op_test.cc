@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "absl/strings/string_view.h"
 #include "tensorflow/cc/framework/ops.h"
 #include "tensorflow/cc/framework/scope.h"
 #include "tensorflow/cc/ops/const_op.h"
@@ -117,7 +118,7 @@ static Output BuildRemoteFusedGraphExecuteOp(
                      .Attr("Tinputs", input_types)
                      .Attr("Toutputs", output_types)
                      .Attr("serialized_remote_fused_graph_execute_info",
-                           StringPiece(execute_info.SerializeAsString()));
+                           absl::string_view(execute_info.SerializeAsString()));
   CHECK(scope.ok());
   scope.UpdateBuilder(&builder);
   scope.UpdateStatus(builder.Finalize(scope.graph(), &ret));

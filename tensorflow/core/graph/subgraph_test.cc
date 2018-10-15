@@ -18,6 +18,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/strings/string_view.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/graph/graph.h"
@@ -312,7 +313,7 @@ TEST_F(SubgraphTest, ChainOfFools) {
   EXPECT_TRUE(HasEdge("e", 0, "_send_e_0", 0));
 }
 
-static bool HasSubstr(StringPiece base, StringPiece substr) {
+static bool HasSubstr(absl::string_view base, absl::string_view substr) {
   bool ok = str_util::StrContains(base, substr);
   EXPECT_TRUE(ok) << base << ", expected substring " << substr;
   return ok;

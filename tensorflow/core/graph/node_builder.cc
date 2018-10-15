@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/core/graph/node_builder.h"
 
 #include <vector>
+#include "absl/strings/string_view.h"
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/versions.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
@@ -29,17 +30,17 @@ NodeBuilder::NodeOut::NodeOut(Node* n, int32 i)  // NOLINT(runtime/explicit)
       index(i),
       dt(SafeGetOutput(node, i, &error)) {}
 
-NodeBuilder::NodeOut::NodeOut(StringPiece n, int32 i, DataType t)
+NodeBuilder::NodeOut::NodeOut(absl::string_view n, int32 i, DataType t)
     : node(nullptr), error(false), name(n), index(i), dt(t) {}
 
 NodeBuilder::NodeOut::NodeOut()
     : node(nullptr), error(true), index(0), dt(DT_FLOAT) {}
 
-NodeBuilder::NodeBuilder(StringPiece name, StringPiece op_name,
+NodeBuilder::NodeBuilder(absl::string_view name, absl::string_view op_name,
                          const OpRegistryInterface* op_registry)
     : def_builder_(name, op_name, op_registry) {}
 
-NodeBuilder::NodeBuilder(StringPiece name, const OpDef* op_def)
+NodeBuilder::NodeBuilder(absl::string_view name, const OpDef* op_def)
     : def_builder_(name, op_def) {}
 
 NodeBuilder::NodeBuilder(const NodeDefBuilder& def_builder)
@@ -94,12 +95,12 @@ NodeBuilder& NodeBuilder::ControlInputs(gtl::ArraySlice<Node*> src_nodes) {
   return *this;
 }
 
-NodeBuilder& NodeBuilder::Device(StringPiece device_spec) {
+NodeBuilder& NodeBuilder::Device(absl::string_view device_spec) {
   def_builder_.Device(device_spec);
   return *this;
 }
 
-NodeBuilder& NodeBuilder::AssignedDevice(StringPiece device) {
+NodeBuilder& NodeBuilder::AssignedDevice(absl::string_view device) {
   assigned_device_ = string(device);
   return *this;
 }

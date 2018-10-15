@@ -19,8 +19,8 @@ limitations under the License.
 #include <array>
 #include <vector>
 
+#include "absl/strings/string_view.h"
 #include "tensorflow/core/framework/summary.pb.h"
-#include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
@@ -82,9 +82,9 @@ class AbstractMetricDef {
 
   ValueType value_type() const { return value_type_; }
 
-  StringPiece name() const { return name_; }
+  absl::string_view name() const { return name_; }
 
-  StringPiece description() const { return description_; }
+  absl::string_view description() const { return description_; }
 
   const std::vector<string>& label_descriptions() const {
     return label_descriptions_;
@@ -95,7 +95,8 @@ class AbstractMetricDef {
   friend class MetricDef;
 
   AbstractMetricDef(const MetricKind kind, const ValueType value_type,
-                    const StringPiece name, const StringPiece description,
+                    const absl::string_view name,
+                    const absl::string_view description,
                     const std::vector<string>& label_descriptions)
       : kind_(kind),
         value_type_(value_type),
@@ -127,7 +128,7 @@ template <MetricKind metric_kind, typename Value, int NumLabels>
 class MetricDef : public AbstractMetricDef {
  public:
   template <typename... LabelDesc>
-  MetricDef(const StringPiece name, const StringPiece description,
+  MetricDef(const absl::string_view name, const absl::string_view description,
             const LabelDesc&... label_descriptions)
       : AbstractMetricDef(metric_kind, internal::GetValueType<Value>(), name,
                           description, {label_descriptions...}) {

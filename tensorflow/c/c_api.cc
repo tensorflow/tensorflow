@@ -19,6 +19,7 @@ limitations under the License.
 #include <limits>
 #include <memory>
 #include <vector>
+#include "absl/strings/string_view.h"
 
 #ifndef __ANDROID__
 #include "tensorflow/cc/framework/gradients.h"
@@ -51,7 +52,6 @@ limitations under the License.
 #include "tensorflow/core/lib/core/coding.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
-#include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
@@ -120,7 +120,7 @@ void TF_SetStatus(TF_Status* s, TF_Code code, const char* msg) {
     s->status = Status::OK();
     return;
   }
-  s->status = Status(static_cast<Code>(code), tensorflow::StringPiece(msg));
+  s->status = Status(static_cast<Code>(code), absl::string_view(msg));
 }
 
 TF_Code TF_GetCode(const TF_Status* s) {
@@ -1160,7 +1160,7 @@ void TF_ColocateWith(TF_OperationDescription* desc, TF_Operation* op) {
 
 void TF_SetAttrString(TF_OperationDescription* desc, const char* attr_name,
                       const void* value, size_t length) {
-  tensorflow::StringPiece s(static_cast<const char*>(value), length);
+  absl::string_view s(static_cast<const char*>(value), length);
   desc->node_builder.Attr(attr_name, s);
 }
 
@@ -1174,7 +1174,7 @@ void TF_SetAttrStringList(TF_OperationDescription* desc, const char* attr_name,
                                            lengths[i]);
     }
   } else {
-    std::vector<tensorflow::StringPiece> v;
+    std::vector<absl::string_view> v;
     v.reserve(num_values);
     for (int i = 0; i < num_values; ++i) {
       v.emplace_back(static_cast<const char*>(values[i]), lengths[i]);

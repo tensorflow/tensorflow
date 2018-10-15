@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "absl/strings/string_view.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #if GOOGLE_CUDA
 
@@ -35,7 +36,7 @@ Status ReplaceReduce(Graph* graph, Node* node) {
   TF_RETURN_IF_ERROR(GetNodeAttr(node->attrs(), "T", &dtype));
   int num_devices = node->num_inputs();
   string shared_name = node->name();
-  auto make_builder = [&](StringPiece op_name, StringPiece suffix) {
+  auto make_builder = [&](absl::string_view op_name, absl::string_view suffix) {
     return NodeBuilder(strings::StrCat(shared_name, suffix), op_name)
         .Attr("reduction", reduction)
         .Attr("num_devices", num_devices)
@@ -159,7 +160,7 @@ Status ReplaceBroadcast(Graph* graph, Node* node) {
   }
 
   string shared_name = node->name();
-  auto make_builder = [&](StringPiece op_name, StringPiece suffix) {
+  auto make_builder = [&](absl::string_view op_name, absl::string_view suffix) {
     return NodeBuilder(strings::StrCat(shared_name, suffix), op_name)
         .Attr("num_devices", num_devices)
         .Attr("shared_name", shared_name)
@@ -255,7 +256,7 @@ class NcclReplacePass : public GraphOptimizationPass {
     }
     // Find reduction and broadcast ops and replace them with Send/Recv ops.
     for (Node* node : graph->op_nodes()) {
-      StringPiece type = node->type_string();
+      absl::string_view type = node->type_string();
       if (!str_util::StartsWith(type, "Nccl")) {
         continue;
       }

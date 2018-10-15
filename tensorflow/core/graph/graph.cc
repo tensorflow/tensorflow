@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/core/graph/graph.h"
 
 #include <vector>
+#include "absl/strings/string_view.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/node_def_util.h"
@@ -549,7 +550,7 @@ Status Graph::AddFunctionLibrary(const FunctionDefLibrary& fdef_lib) {
 
 namespace {
 
-void AddInput(NodeDef* dst, StringPiece src_name, int src_slot) {
+void AddInput(NodeDef* dst, absl::string_view src_name, int src_slot) {
   if (src_slot == Graph::kControlSlot) {
     dst->add_input(strings::StrCat("^", src_name));
   } else if (src_slot == 0) {
@@ -635,7 +636,7 @@ void Graph::ToGraphDefSubRange(GraphDef* graph_def, int from_node_id) const {
   }
 }
 
-string Graph::NewName(StringPiece prefix) {
+string Graph::NewName(absl::string_view prefix) {
   return strings::StrCat(prefix, "/_", name_counter_++);
 }
 
@@ -729,7 +730,7 @@ int Graph::InternDeviceName(const string& device_name) {
   return index;
 }
 
-Status Graph::AddWhileContext(StringPiece frame_name,
+Status Graph::AddWhileContext(absl::string_view frame_name,
                               std::vector<Node*> enter_nodes,
                               std::vector<Node*> exit_nodes,
                               OutputTensor cond_output,

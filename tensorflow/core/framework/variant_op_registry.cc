@@ -15,6 +15,7 @@ limitations under the License.
 
 #include <string>
 
+#include "absl/strings/string_view.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/type_index.h"
 #include "tensorflow/core/framework/variant.h"
@@ -89,7 +90,7 @@ REGISTER_VARIANT_SHAPE_TYPE(double);
 #undef REGISTER_VARIANT_SHAPE_TYPE
 
 UnaryVariantOpRegistry::VariantDecodeFn* UnaryVariantOpRegistry::GetDecodeFn(
-    StringPiece type_name) {
+    absl::string_view type_name) {
   auto found = decode_fns.find(type_name);
   if (found == decode_fns.end()) return nullptr;
   return &found->second;
@@ -102,7 +103,7 @@ void UnaryVariantOpRegistry::RegisterDecodeFn(
   CHECK_EQ(existing, nullptr)
       << "Unary VariantDecodeFn for type_name: " << type_name
       << " already registered";
-  decode_fns.insert(std::pair<StringPiece, VariantDecodeFn>(
+  decode_fns.insert(std::pair<absl::string_view, VariantDecodeFn>(
       GetPersistentStringPiece(type_name), decode_fn));
 }
 
@@ -179,7 +180,7 @@ Status VariantDeviceCopy(
 
 // Special casing UnaryOpFn per op and per device.
 UnaryVariantOpRegistry::VariantUnaryOpFn* UnaryVariantOpRegistry::GetUnaryOpFn(
-    VariantUnaryOp op, StringPiece device, const TypeIndex& type_index) {
+    VariantUnaryOp op, absl::string_view device, const TypeIndex& type_index) {
   auto found = unary_op_fns.find({op, device, type_index});
   if (found == unary_op_fns.end()) return nullptr;
   return &found->second;
@@ -221,7 +222,8 @@ REGISTER_VARIANT_ZEROS_LIKE_TYPE(bool);
 
 // Special casing BinaryOpFn per op and per device.
 UnaryVariantOpRegistry::VariantBinaryOpFn*
-UnaryVariantOpRegistry::GetBinaryOpFn(VariantBinaryOp op, StringPiece device,
+UnaryVariantOpRegistry::GetBinaryOpFn(VariantBinaryOp op,
+                                      absl::string_view device,
                                       const TypeIndex& type_index) {
   auto found = binary_op_fns.find({op, device, type_index});
   if (found == binary_op_fns.end()) return nullptr;

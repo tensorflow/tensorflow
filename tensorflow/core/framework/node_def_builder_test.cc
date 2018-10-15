@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <memory>
 #include <vector>
+#include "absl/strings/string_view.h"
 #include "tensorflow/core/framework/fake_input.h"
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/op_def_builder.h"
@@ -50,7 +51,8 @@ class NodeDefBuilderTest : public ::testing::Test {
   // expectations.
   void ExpectSuccess(const NodeDefBuilder& builder,
                      DataTypeSlice expected_in_types,
-                     DataTypeSlice expected_out_types, StringPiece proto) {
+                     DataTypeSlice expected_out_types,
+                     absl::string_view proto) {
     NodeDef node_def;
     Status status = builder.Finalize(&node_def);
     TF_EXPECT_OK(status);

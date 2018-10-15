@@ -18,6 +18,7 @@ limitations under the License.
 #include <memory>
 
 #include "google/protobuf/any.pb.h"
+#include "absl/strings/string_view.h"
 #include "tensorflow/contrib/session_bundle/manifest.pb.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -25,7 +26,6 @@ limitations under the License.
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
-#include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/public/session.h"
@@ -34,7 +34,7 @@ namespace tensorflow {
 namespace serving {
 namespace {
 
-static bool HasSubstr(StringPiece base, StringPiece substr) {
+static bool HasSubstr(absl::string_view base, absl::string_view substr) {
   bool ok = str_util::StrContains(base, substr);
   EXPECT_TRUE(ok) << base << ", expected substring " << substr;
   return ok;

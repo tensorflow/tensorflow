@@ -20,6 +20,7 @@ cc_library(
     deps = [
         "//tensorflow/core:framework_headers_lib",
         "//third_party/eigen3",
+        "@com_google_absl//absl/strings",
         "@protobuf_archive//:protobuf_headers",
     ],
 )

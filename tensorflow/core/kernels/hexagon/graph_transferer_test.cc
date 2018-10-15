@@ -15,6 +15,7 @@ limitations under the License.
 
 #include <memory>
 
+#include "absl/strings/string_view.h"
 #include "tensorflow/cc/ops/const_op.h"
 #include "tensorflow/core/framework/graph_transfer_info.pb.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
@@ -99,7 +100,7 @@ static Output BuildSoftmaxOps(const Scope& scope, const Input& logits) {
 static Output BuildConv2DOps(const Scope& scope, const Input& input,
                              const Input& filter,
                              const gtl::ArraySlice<int>& strides,
-                             const StringPiece& padding) {
+                             const absl::string_view& padding) {
   EXPECT_TRUE(scope.ok());
   auto _input = ops::AsNodeOut(scope, input);
   EXPECT_TRUE(scope.ok());
@@ -123,7 +124,7 @@ static Output BuildConv2DOps(const Scope& scope, const Input& input,
 static Output BuildMaxPoolOps(const Scope& scope, const Input& input,
                               const gtl::ArraySlice<int>& ksize,
                               const gtl::ArraySlice<int>& strides,
-                              const StringPiece& padding) {
+                              const absl::string_view& padding) {
   EXPECT_TRUE(scope.ok());
   auto _input = ops::AsNodeOut(scope, input);
   EXPECT_TRUE(scope.ok());

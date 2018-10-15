@@ -578,6 +578,7 @@ ARRAY_DEPS = [
     ":gather_functor",
     ":ops_util",
     ":transpose_functor",
+    "@com_google_absl//absl/strings",
     "//tensorflow/core:array_grad",
     "//tensorflow/core:array_ops_op_lib",
     "//tensorflow/core:core_cpu",
@@ -1745,6 +1746,7 @@ DATA_FLOW_DEPS = [
     ":tensor_array",
     ":typed_conditional_accumulator_base",
     ":typed_queue",
+    "@com_google_absl//absl/strings",
     "//third_party/eigen3",
     "//tensorflow/core:core_cpu",
     "//tensorflow/core:data_flow_ops_op_lib",
@@ -2104,6 +2106,7 @@ tf_kernel_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:list_ops_op_lib",
         "//third_party/eigen3",
+        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -2187,6 +2190,7 @@ IMAGE_DEPS = [
     ":bounds_check",
     ":eigen_helpers",
     ":image_resizer_state",
+    "@com_google_absl//absl/strings",
     "//third_party/eigen3",
     "//tensorflow/core:framework",
     "//tensorflow/core:gif_internal",
@@ -2618,6 +2622,7 @@ tf_cc_tests(
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
         "//tensorflow/core/util/tensor_bundle",
+        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -3170,6 +3175,7 @@ tf_cc_tests(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
+        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -3316,6 +3322,7 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
+        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -3337,6 +3344,7 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
+        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -3461,6 +3469,7 @@ tf_kernel_library(
         ":image_resizer_state",
         ":fill_functor",
         ":ops_util",
+        "@com_google_absl//absl/strings",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
@@ -3925,6 +3934,7 @@ cc_library(
 )
 
 PARSING_DEPS = [
+    "@com_google_absl//absl/strings",
     "//tensorflow/core:framework",
     "//tensorflow/core:lib",
     "//tensorflow/core:parsing_ops_op_lib",
@@ -4110,6 +4120,7 @@ cc_library(
 )
 
 SPARSE_DEPS = [
+    "@com_google_absl//absl/strings",
     "//tensorflow/core:framework",
     "//tensorflow/core:lib",
     "//tensorflow/core:sparse_ops_op_lib",
@@ -4528,6 +4539,7 @@ cc_library(
 STRING_DEPS = [
     ":bounds_check",
     ":string_util",
+    "@com_google_absl//absl/strings",
     "//third_party/eigen3",
     "//tensorflow/core:framework",
     "//tensorflow/core:lib",
@@ -4550,7 +4562,7 @@ tf_kernel_library(
 tf_kernel_library(
     name = "string_format_op",
     prefix = "string_format_op",
-    deps = STRING_DEPS + ["@com_google_absl//absl/strings"],
+    deps = STRING_DEPS,
 )
 
 tf_cc_test(
@@ -4803,6 +4815,7 @@ tf_kernel_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:word2vec_ops",
+        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -4841,6 +4854,7 @@ cc_library(
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
+        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -6324,6 +6338,7 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
+        "@com_google_absl//absl/strings",
     ],
 )
 

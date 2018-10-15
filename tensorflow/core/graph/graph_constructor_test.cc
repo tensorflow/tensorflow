@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/core/graph/graph_constructor.h"
 
 #include <vector>
+#include "absl/strings/string_view.h"
 #include "tensorflow/core/common_runtime/shape_refiner.h"
 #include "tensorflow/core/framework/common_shape_fns.h"
 #include "tensorflow/core/framework/graph.pb.h"
@@ -155,7 +156,7 @@ class GraphConstructorTest : public ::testing::Test {
              "value for the _class attribute. Update it and its callers";
       return "";
     }
-    StringPiece loc(value[0]);
+    absl::string_view loc(value[0]);
     return str_util::ConsumePrefix(&loc, kColocationGroupPrefix) ? string(loc)
                                                                  : "";
   }

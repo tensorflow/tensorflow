@@ -18,8 +18,8 @@ limitations under the License.
 
 #include <memory>
 
+#include "absl/strings/string_view.h"
 #include "tensorflow/c/c_api.h"
-#include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/io/record_writer.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/types.h"
@@ -42,7 +42,7 @@ class PyRecordWriter {
                              TF_Status* out_status);
   ~PyRecordWriter();
 
-  void WriteRecord(tensorflow::StringPiece record, TF_Status* out_status);
+  void WriteRecord(absl::string_view record, TF_Status* out_status);
   void Flush(TF_Status* out_status);
   void Close(TF_Status* out_status);
 

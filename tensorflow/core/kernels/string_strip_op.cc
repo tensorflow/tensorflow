@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <string>
 
+#include "absl/strings/string_view.h"
 #include "tensorflow/core/framework/kernel_def_builder.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -41,7 +42,7 @@ class StringStripOp : public OpKernel {
     auto output = output_tensor->flat<string>();
 
     for (int64 i = 0; i < input.size(); ++i) {
-      StringPiece entry(input(i));
+      absl::string_view entry(input(i));
       str_util::RemoveWhitespaceContext(&entry);
       output(i) = string(entry);
     }

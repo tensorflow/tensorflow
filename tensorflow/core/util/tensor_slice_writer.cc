@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <utility>
 
+#include "absl/strings/string_view.h"
 #include "tensorflow/core/framework/versions.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/io/table_builder.h"
@@ -40,7 +41,7 @@ class TableBuilder : public TensorSliceWriter::Builder {
     option.compression = table::kNoCompression;
     builder_.reset(new table::TableBuilder(option, f));
   }
-  void Add(StringPiece key, StringPiece val) override {
+  void Add(absl::string_view key, absl::string_view val) override {
     builder_->Add(key, val);
   }
   Status Finish(int64* file_size) override {

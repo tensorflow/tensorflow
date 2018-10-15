@@ -119,6 +119,7 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:worker_proto_cc",
+        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -208,6 +209,7 @@ cc_library(
         "//tensorflow/core:master_proto_cc",
         "//tensorflow/core/distributed_runtime:call_options",
         "//tensorflow/core/distributed_runtime:master_interface",
+        "@com_google_absl//absl/strings",
     ],
     alwayslink = 1,
 )
@@ -226,6 +228,7 @@ cc_library(
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:master_proto_cc",
         "//tensorflow/core/distributed_runtime:master",
+        "@com_google_absl//absl/strings",
     ],
     alwayslink = 1,
 )
@@ -254,6 +257,7 @@ cc_library(
         "//tensorflow/core/distributed_runtime:worker_cache",
         "//tensorflow/core/distributed_runtime:worker_env",
         "//tensorflow/core/distributed_runtime:worker_interface",
+        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -316,6 +320,7 @@ tf_cc_binary(
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/distributed_runtime:server_lib",
         "//tensorflow/core/kernels:data_flow",
+        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -341,6 +346,7 @@ tf_cc_binary(
         "//tensorflow/core/kernels:matmul_op",
         "//tensorflow/core/kernels:reduction_ops",
         "//tensorflow/core/kernels:variable_ops",
+        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -479,6 +485,7 @@ tf_cuda_cc_test(
         "//tensorflow/core/kernels:dense_update_ops",
         "//tensorflow/core/kernels:matmul_op",
         "//tensorflow/core/kernels:variable_ops",
+        "@com_google_absl//absl/strings",
     ],
 )
 

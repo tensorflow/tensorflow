@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "absl/strings/string_view.h"
 #include "tensorflow/core/common_runtime/kernel_benchmark_testlib.h"
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/fake_input.h"
@@ -32,7 +33,7 @@ namespace tensorflow {
 
 namespace {
 
-static void ExpectHasSubstr(StringPiece s, StringPiece expected) {
+static void ExpectHasSubstr(absl::string_view s, absl::string_view expected) {
   EXPECT_TRUE(str_util::StrContains(s, expected))
       << "'" << s << "' does not contain '" << expected << "'";
 }

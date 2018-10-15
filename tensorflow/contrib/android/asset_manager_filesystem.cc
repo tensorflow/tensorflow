@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <unistd.h>
 
+#include "absl/strings/string_view.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/file_system_helper.h"
@@ -26,7 +27,7 @@ namespace {
 
 string RemoveSuffix(const string& name, const string& suffix) {
   string output(name);
-  StringPiece piece(output);
+  absl::string_view piece(output);
   str_util::ConsumeSuffix(&piece, suffix);
   return string(piece);
 }
@@ -87,7 +88,7 @@ class RandomAccessFileFromAsset : public RandomAccessFile {
       : asset_manager_(asset_manager), file_name_(name) {}
   ~RandomAccessFileFromAsset() override = default;
 
-  Status Read(uint64 offset, size_t to_read, StringPiece* result,
+  Status Read(uint64 offset, size_t to_read, absl::string_view* result,
               char* scratch) const override {
     auto asset = ScopedAsset(AAssetManager_open(
         asset_manager_, file_name_.c_str(), AASSET_MODE_RANDOM));
@@ -98,7 +99,7 @@ class RandomAccessFileFromAsset : public RandomAccessFile {
     off64_t new_offset = AAsset_seek64(asset.get(), offset, SEEK_SET);
     off64_t length = AAsset_getLength64(asset.get());
     if (new_offset < 0) {
-      *result = StringPiece(scratch, 0);
+      *result = absl::string_view(scratch, 0);
       return errors::OutOfRange("Read after file end.");
     }
     const off64_t region_left =
@@ -107,7 +108,7 @@ class RandomAccessFileFromAsset : public RandomAccessFile {
     if (read < 0) {
       return errors::Internal("Error reading from asset.");
     }
-    *result = StringPiece(scratch, region_left);
+    *result = absl::string_view(scratch, region_left);
     return (region_left == to_read)
                ? Status::OK()
                : errors::OutOfRange("Read less bytes than requested.");
@@ -229,7 +230,7 @@ string AssetManagerFileSystem::NormalizeDirectoryPath(const string& fname) {
 }
 
 string AssetManagerFileSystem::RemoveAssetPrefix(const string& name) {
-  StringPiece piece(name);
+  absl::string_view piece(name);
   str_util::ConsumePrefix(&piece, prefix_);
   return string(piece);
 }

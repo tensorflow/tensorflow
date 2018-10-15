@@ -104,9 +104,9 @@ limitations under the License.
 #include <type_traits>
 
 #include "absl/base/macros.h"
+#include "absl/strings/string_view.h"
 #include "tensorflow/core/example/example.pb.h"
 #include "tensorflow/core/example/feature.pb.h"
-#include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/types.h"
 
@@ -170,7 +170,7 @@ template <>
 struct is_string<string> : std::true_type {};
 
 template <>
-struct is_string<::tensorflow::StringPiece> : std::true_type {};
+struct is_string<::absl::string_view> : std::true_type {};
 
 template <typename ValueType>
 struct FeatureTrait<

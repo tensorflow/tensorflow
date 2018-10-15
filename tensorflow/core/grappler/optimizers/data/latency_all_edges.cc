@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/grappler/optimizers/data/latency_all_edges.h"
 
+#include "absl/strings/string_view.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/grappler/clusters/cluster.h"
@@ -42,8 +43,8 @@ NodeDef MakeLatencyNode(const NodeDef& node, MutableGraphView* graph) {
   // Set the input of LatencyDataset node as `node`
   new_node.add_input(node.name());
 
-  NodeDef* tag = graph_utils::AddScalarConstNode<StringPiece>(
-      StringPiece("record_latency_" + node.name()), graph);
+  NodeDef* tag = graph_utils::AddScalarConstNode<absl::string_view>(
+      absl::string_view("record_latency_" + node.name()), graph);
   new_node.add_input(tag->name());
 
   // Set `output_types` and `output_shapes` attributes.

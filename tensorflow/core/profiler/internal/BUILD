@@ -254,6 +254,7 @@ cc_library(
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:regexp_internal",
         "//tensorflow/core/profiler:tfprof_options",
+        "@com_google_absl//absl/strings",
     ],
 )
 

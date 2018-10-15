@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/contrib/session_bundle/bundle_shim.h"
 
+#include "absl/strings/string_view.h"
 #include "tensorflow/cc/saved_model/loader.h"
 #include "tensorflow/cc/saved_model/signature_constants.h"
 #include "tensorflow/contrib/session_bundle/manifest.pb.h"
@@ -23,7 +24,6 @@ limitations under the License.
 #include "tensorflow/core/graph/graph_constructor.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
-#include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/protobuf/meta_graph.pb.h"
 #include "tensorflow/core/public/session.h"
 #include "tensorflow/core/public/session_options.h"
@@ -129,7 +129,7 @@ Status MaybeBuildPredictSignatureDef(
 
 Status LoadSavedModelFromLegacySessionBundlePath(
     const SessionOptions& session_options, const RunOptions& run_options,
-    const StringPiece session_bundle_export_dir,
+    const absl::string_view session_bundle_export_dir,
     SavedModelBundle* saved_model_bundle) {
   if (session_bundle_export_dir.empty()) {
     return Status(error::Code::NOT_FOUND, "Export directory path is empty.");

@@ -46,6 +46,7 @@ cc_library(
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/platform/cloud:curl_http_request",
         "//tensorflow/core/platform/cloud:google_auth_provider",
+        "@com_google_absl//absl/strings",
     ],
     alwayslink = 1,
 )
@@ -65,6 +66,7 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core/platform/cloud:http_request_fake",
+        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -85,6 +87,7 @@ tf_kernel_library(
         "//tensorflow/core/platform/cloud:curl_http_request",
         "//tensorflow/core/platform/cloud:gcs_file_system",
         "//tensorflow/core/platform/cloud:oauth_client",
+        "@com_google_absl//absl/strings",
         "@jsoncpp_git//:jsoncpp",
     ],
 )

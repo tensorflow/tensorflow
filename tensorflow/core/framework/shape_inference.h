@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <vector>
 
+#include "absl/strings/string_view.h"
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/lib/core/errors.h"
@@ -288,7 +289,8 @@ class InferenceContext {
   void SetInput(int idx, ShapeHandle shape) { inputs_[idx] = shape; }
 
   ShapeHandle input(int64 idx) const { return inputs_[idx]; }
-  Status input(StringPiece input_name, std::vector<ShapeHandle>* output) const;
+  Status input(absl::string_view input_name,
+               std::vector<ShapeHandle>* output) const;
   int num_inputs() const { return inputs_.size(); }
 
   // Returns the input tensor at index <idx>, or nullptr if the input tensor is
@@ -325,12 +327,12 @@ class InferenceContext {
 
   ShapeHandle output(int64 idx) const { return outputs_.at(idx); }
   void set_output(int idx, ShapeHandle shape) { outputs_.at(idx) = shape; }
-  Status set_output(StringPiece output_name,
+  Status set_output(absl::string_view output_name,
                     const std::vector<ShapeHandle>& shapes);
 
   int num_outputs() const { return outputs_.size(); }
   ShapeHandle output(int idx) const { return outputs_.at(idx); }
-  Status output(StringPiece output_name,
+  Status output(absl::string_view output_name,
                 std::vector<ShapeHandle>* output) const;
 
   AttrSlice attrs() const { return AttrSlice(*node_def_); }
@@ -525,7 +527,7 @@ class InferenceContext {
   // set *value to its value.  If no attr with attr_name is found in def(), or
   // the attr does not have a matching type, a non-ok status will be returned.
   template <class T>
-  Status GetAttr(StringPiece attr_name, T* value) const;
+  Status GetAttr(absl::string_view attr_name, T* value) const;
 
   // Returns in <out> the result of dividing <dividend> by <divisor>.
   // Returns an error if <divisor>  is not positive or if <evenly_divisible>
@@ -816,7 +818,7 @@ inline DimensionOrConstant::DimensionOrConstant(int64 val) : val(val) {
 }
 
 template <class T>
-Status InferenceContext::GetAttr(StringPiece attr_name, T* value) const {
+Status InferenceContext::GetAttr(absl::string_view attr_name, T* value) const {
   return GetNodeAttr(*node_def_, attr_name, value);
 }
 

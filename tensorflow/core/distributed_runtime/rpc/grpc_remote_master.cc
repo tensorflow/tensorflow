@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <utility>
 
+#include "absl/strings/string_view.h"
 #include "tensorflow/core/distributed_runtime/call_options.h"
 #include "tensorflow/core/distributed_runtime/master_interface.h"
 #include "tensorflow/core/distributed_runtime/rpc/grpc_master_service_impl.h"
@@ -119,7 +120,7 @@ class GrpcRemoteMaster : public MasterInterface {
 
  private:
   // Start tracing, attaching a unique ID to both the trace and the RPC.
-  tracing::ScopedActivity TraceRpc(StringPiece name,
+  tracing::ScopedActivity TraceRpc(absl::string_view name,
                                    ::grpc::ClientContext* ctx) {
     string trace_id = strings::StrCat(tracing::GetUniqueArg());
     ctx->AddMetadata(GrpcIdKey(), trace_id);

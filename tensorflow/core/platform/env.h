@@ -21,9 +21,9 @@ limitations under the License.
 #include <string>
 #include <unordered_map>
 #include <vector>
+#include "absl/strings/string_view.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
-#include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/platform/env_time.h"
 #include "tensorflow/core/platform/file_system.h"
 #include "tensorflow/core/platform/macros.h"
@@ -408,7 +408,7 @@ Status ReadFileToString(Env* env, const string& fname, string* data);
 /// A utility routine: write contents of `data` to file named `fname`
 /// (overwriting existing contents, if any).
 Status WriteStringToFile(Env* env, const string& fname,
-                         const StringPiece& data);
+                         const absl::string_view& data);
 
 /// Write binary representation of "proto" to the named file.
 Status WriteBinaryProto(Env* env, const string& fname,

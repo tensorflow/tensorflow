@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/grappler/optimizers/scoped_allocator_optimizer.h"
 
+#include "absl/strings/string_view.h"
 #include "tensorflow/core/common_runtime/scoped_allocator.h"
 #include "tensorflow/core/common_runtime/scoped_allocator_mgr.h"
 #include "tensorflow/core/framework/graph.pb.h"
@@ -198,7 +199,7 @@ Status RemoveEdge(const string& input_edge_name, const string& from_node_name,
 }
 }  // namespace
 
-void ScopedAllocatorOptimizer::ExtendNodeAttr(StringPiece name,
+void ScopedAllocatorOptimizer::ExtendNodeAttr(absl::string_view name,
                                               const std::vector<int32>& values,
                                               NodeDef* node_def) {
   if (HasNodeAttr(*node_def, name)) {

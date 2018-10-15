@@ -15,6 +15,7 @@ limitations under the License.
 
 // See docs in ../ops/parsing_ops.cc.
 #include <vector>
+#include "absl/strings/string_view.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
@@ -82,7 +83,7 @@ class DecodeCSVOp : public OpKernel {
     }
 
     for (int64 i = 0; i < records_size; ++i) {
-      const StringPiece record(records_t(i));
+      const absl::string_view record(records_t(i));
       std::vector<string> fields;
       ExtractFields(ctx, record, &fields);
       OP_REQUIRES(ctx, fields.size() == out_type_.size(),
@@ -205,7 +206,7 @@ class DecodeCSVOp : public OpKernel {
   bool select_all_cols_;
   string na_value_;
 
-  void ExtractFields(OpKernelContext* ctx, StringPiece input,
+  void ExtractFields(OpKernelContext* ctx, absl::string_view input,
                      std::vector<string>* result) {
     int64 current_idx = 0;
     int64 num_fields_parsed = 0;

@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/core/platform/cloud/compute_engine_zone_provider.h"
 
 #include <utility>
+#include "absl/strings/string_view.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 namespace tensorflow {
 
@@ -35,7 +36,7 @@ Status ComputeEngineZoneProvider::GetZone(string* zone) {
   std::vector<char> response_buffer;
   TF_RETURN_IF_ERROR(google_metadata_client_->GetMetadata(kGceMetadataZonePath,
                                                           &response_buffer));
-  StringPiece location(&response_buffer[0], response_buffer.size());
+  absl::string_view location(&response_buffer[0], response_buffer.size());
 
   std::vector<string> elems = str_util::Split(location, "/");
   if (elems.size() == 4) {

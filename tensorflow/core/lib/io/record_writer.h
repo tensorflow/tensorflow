@@ -16,9 +16,9 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_LIB_IO_RECORD_WRITER_H_
 #define TENSORFLOW_CORE_LIB_IO_RECORD_WRITER_H_
 
+#include "absl/strings/string_view.h"
 #include "tensorflow/core/lib/core/coding.h"
 #include "tensorflow/core/lib/core/status.h"
-#include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/hash/crc32c.h"
 #if !defined(IS_SLIM_BUILD)
 #include "tensorflow/core/lib/io/zlib_compression_options.h"
@@ -69,7 +69,7 @@ class RecordWriter {
   // implicit Close() call in the destructor.
   ~RecordWriter();
 
-  Status WriteRecord(StringPiece slice);
+  Status WriteRecord(absl::string_view slice);
 
   // Flushes any buffered data held by underlying containers of the
   // RecordWriter to the WritableFile. Does *not* flush the

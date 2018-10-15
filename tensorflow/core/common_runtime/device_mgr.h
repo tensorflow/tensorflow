@@ -21,10 +21,10 @@ limitations under the License.
 #include <unordered_set>
 #include <vector>
 
+#include "absl/strings/string_view.h"
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/lib/core/arena.h"
 #include "tensorflow/core/lib/core/status.h"
-#include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
 #include "tensorflow/core/platform/macros.h"
 
@@ -53,7 +53,7 @@ class DeviceMgr {
 
   // Assigns *device with pointer to Device of the given name.
   // Accepts either a full device name, or just the replica-local suffix.
-  Status LookupDevice(StringPiece name, Device** device) const;
+  Status LookupDevice(absl::string_view name, Device** device) const;
 
   // Clears given containers of all devices if 'container' is
   // non-empty. Otherwise, clears default containers of all devices.
@@ -66,9 +66,9 @@ class DeviceMgr {
   typedef gtl::InlinedVector<Device*, 8> DeviceVec;
   DeviceVec devices_;
 
-  StringPiece CopyToBackingStore(StringPiece s);
+  absl::string_view CopyToBackingStore(absl::string_view s);
 
-  std::unordered_map<StringPiece, Device*, StringPieceHasher> device_map_;
+  std::unordered_map<absl::string_view, Device*, StringPieceHasher> device_map_;
   core::Arena name_backing_store_;  // Storage for keys in device_map_
   std::unordered_map<string, int> device_type_counts_;
 

@@ -18,6 +18,7 @@ limitations under the License.
 #include <deque>
 #include <vector>
 
+#include "absl/strings/string_view.h"
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/executor.h"
 #include "tensorflow/core/common_runtime/executor_factory.h"
@@ -583,7 +584,7 @@ Status FunctionLibraryRuntimeImpl::ReleaseHandle(Handle handle) {
   return Status::OK();
 }
 
-void DumpGraph(StringPiece label, const Graph* g) {
+void DumpGraph(absl::string_view label, const Graph* g) {
   // TODO(zhifengc): Change Graph to record #nodes.
   VLOG(1) << "Graph " << label << " #nodes " << g->num_nodes() << " #edges "
           << g->num_edges();

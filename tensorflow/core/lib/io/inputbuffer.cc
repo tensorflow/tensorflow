@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/core/lib/io/inputbuffer.h"
+#include "absl/strings/string_view.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/platform/logging.h"
 
@@ -31,7 +32,7 @@ InputBuffer::InputBuffer(RandomAccessFile* file, size_t buffer_bytes)
 InputBuffer::~InputBuffer() { delete[] buf_; }
 
 Status InputBuffer::FillBuffer() {
-  StringPiece data;
+  absl::string_view data;
   Status s = file_->Read(file_pos_, size_, &data, buf_);
   if (data.data() != buf_) {
     memmove(buf_, data.data(), data.size());

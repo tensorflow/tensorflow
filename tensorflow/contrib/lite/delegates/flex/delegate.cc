@@ -16,6 +16,7 @@ limitations under the License.
 
 #include <vector>
 
+#include "absl/strings/string_view.h"
 #include "tensorflow/contrib/lite/context_util.h"
 #include "tensorflow/contrib/lite/delegates/flex/buffer_map.h"
 #include "tensorflow/contrib/lite/delegates/flex/kernel.h"
@@ -68,7 +69,7 @@ TfLiteStatus CopyFromBufferHandle(TfLiteContext* context,
   }
 
   tensorflow::Tensor t = buffer_map->GetTensor(buffer_handle);
-  tensorflow::StringPiece t_data = t.tensor_data();
+  absl::string_view t_data = t.tensor_data();
 
   if (size != t_data.size()) {
     context->ReportError(

@@ -20,6 +20,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/strings/string_view.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/random/random.h"
@@ -150,7 +151,7 @@ class RetryingRandomAccessFile : public RandomAccessFile {
                            const RetryConfig& retry_config)
       : base_file_(std::move(base_file)), retry_config_(retry_config) {}
 
-  Status Read(uint64 offset, size_t n, StringPiece* result,
+  Status Read(uint64 offset, size_t n, absl::string_view* result,
               char* scratch) const override {
     return RetryingUtils::CallWithRetries(
         [this, offset, n, result, scratch]() {
@@ -175,7 +176,7 @@ class RetryingWritableFile : public WritableFile {
     Close().IgnoreError();
   }
 
-  Status Append(StringPiece data) override {
+  Status Append(absl::string_view data) override {
     return RetryingUtils::CallWithRetries(
         [this, &data]() { return base_file_->Append(data); }, retry_config_);
   }

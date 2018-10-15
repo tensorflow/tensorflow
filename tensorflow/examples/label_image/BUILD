@@ -50,7 +50,7 @@ tf_cc_binary(
             "//tensorflow/core:protos_all_cc",
             "//tensorflow/core:tensorflow",
         ],
-    }),
+    }) + ["@com_google_absl//absl/strings"],
 )
 
 py_binary(

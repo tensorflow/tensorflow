@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/device_mgr.h"
 
 #include <vector>
+#include "absl/strings/string_view.h"
 #include "tensorflow/core/common_runtime/local_device.h"
 #include "tensorflow/core/framework/device_attributes.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
@@ -51,11 +52,11 @@ DeviceMgr::~DeviceMgr() {
   for (Device* p : devices_) delete p;
 }
 
-StringPiece DeviceMgr::CopyToBackingStore(StringPiece s) {
+absl::string_view DeviceMgr::CopyToBackingStore(absl::string_view s) {
   size_t n = s.size();
   char* space = name_backing_store_.Alloc(n);
   memcpy(space, s.data(), n);
-  return StringPiece(space, n);
+  return absl::string_view(space, n);
 }
 
 void DeviceMgr::ListDeviceAttributes(
@@ -89,11 +90,11 @@ string DeviceMgr::DeviceMappingString() const {
   return out;
 }
 
-Status DeviceMgr::LookupDevice(StringPiece name, Device** device) const {
+Status DeviceMgr::LookupDevice(absl::string_view name, Device** device) const {
   Status s;
   auto iter = device_map_.find(name);
   if (iter == device_map_.end()) {
-    std::vector<StringPiece> device_names;
+    std::vector<absl::string_view> device_names;
     for (auto&& itr : device_map_) {
       device_names.push_back(itr.first);
     }

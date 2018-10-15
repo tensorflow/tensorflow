@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_GRAPPLER_OPTIMIZERS_DATA_FUNCTION_UTILS_H_
 #define TENSORFLOW_CORE_GRAPPLER_OPTIMIZERS_DATA_FUNCTION_UTILS_H_
 
+#include "absl/strings/string_view.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/function.pb.h"
 #include "tensorflow/core/framework/graph.pb.h"
@@ -59,46 +60,50 @@ void ReplaceReferences(const string& from, const string& to, FunctionDef* func);
 
 // Adds a function output to the function def, ensuring that the output key
 // is unique, and maps to output_tensor_name in the ret dict.
-void AddFunctionOutputWithUniqueName(StringPiece prefix,
-                                     StringPiece output_tensor_name,
+void AddFunctionOutputWithUniqueName(absl::string_view prefix,
+                                     absl::string_view output_tensor_name,
                                      FunctionDef* function, DataType dt);
 
 // Adds a node to a FunctionDef.
-NodeDef* AddNode(StringPiece name, StringPiece op,
+NodeDef* AddNode(absl::string_view name, absl::string_view op,
                  const std::vector<string>& inputs,
                  const std::vector<std::pair<string, AttrValue>>& attributes,
                  FunctionDef* fd);
 
 // Checks whether the function contains a node with the given name.
-bool ContainsFunctionNodeWithName(StringPiece name,
+bool ContainsFunctionNodeWithName(absl::string_view name,
                                   const FunctionDef& function);
 
 // Checks whether the function contains a node with the given op.
-bool ContainsFunctionNodeWithOp(StringPiece op, const FunctionDef& function);
+bool ContainsFunctionNodeWithOp(absl::string_view op,
+                                const FunctionDef& function);
 
 // Checks whether the function contains an output with the given name.
-bool ContainsFunctionOutputWithName(StringPiece name,
+bool ContainsFunctionOutputWithName(absl::string_view name,
                                     const FunctionDef& function);
 
 // Returns the index of the function input with the given name or -1 if the
 // function node does not exist.
-int FindFunctionInputWithName(StringPiece name, const FunctionDef& function);
+int FindFunctionInputWithName(absl::string_view name,
+                              const FunctionDef& function);
 
 // Returns the index of the function output with the given name or -1 if the
 // function node does not exist.
-int FindFunctionOutputWithName(StringPiece name, const FunctionDef& function);
+int FindFunctionOutputWithName(absl::string_view name,
+                               const FunctionDef& function);
 
 // Returns the index of the function node with the given name or -1 if the
 // function node does not exist.
-int FindFunctionNodeWithName(StringPiece name, const FunctionDef& function);
+int FindFunctionNodeWithName(absl::string_view name,
+                             const FunctionDef& function);
 
 // Returns the index of the function node with the given op or -1 if the
 // function node does not exist.
-int FindFunctionNodeWithOp(StringPiece op, const FunctionDef& function);
+int FindFunctionNodeWithOp(absl::string_view op, const FunctionDef& function);
 
 // Sets the function node name using the `prefix` as a prefix while guaranteeing
 // the name is unique across the functions nodes.
-void SetUniqueFunctionNodeName(StringPiece prefix, FunctionDef* function,
+void SetUniqueFunctionNodeName(absl::string_view prefix, FunctionDef* function,
                                NodeDef* node);
 
 }  // end namespace function_utils

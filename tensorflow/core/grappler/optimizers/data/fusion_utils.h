@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_CORE_GRAPPLER_OPTIMIZERS_DATA_FUSION_UTILS_H_
 
 #include <functional>
+#include "absl/strings/string_view.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/grappler/op_types.h"
@@ -122,11 +123,14 @@ void LazyConjunctionNodes(const FunctionDef& first_function,
 // that are not conflicting with first function.  This means that copied nodes
 // from  second function can end up having different names.  For explanation of
 // set up functions see the documentation of the functions types.
-FunctionDef* FuseFunctions(
-    const FunctionDef& first_function, const FunctionDef& second_function,
-    StringPiece fused_name_prefix, const SetFunctionSignatureFn& set_signature,
-    const SetInputFn& set_input, const SetOutputFn& set_output,
-    const SetNodesFn& set_nodes, FunctionDefLibrary* library);
+FunctionDef* FuseFunctions(const FunctionDef& first_function,
+                           const FunctionDef& second_function,
+                           absl::string_view fused_name_prefix,
+                           const SetFunctionSignatureFn& set_signature,
+                           const SetInputFn& set_input,
+                           const SetOutputFn& set_output,
+                           const SetNodesFn& set_nodes,
+                           FunctionDefLibrary* library);
 
 }  // namespace fusion_utils
 }  // namespace grappler

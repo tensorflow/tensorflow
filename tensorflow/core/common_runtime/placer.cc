@@ -20,6 +20,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/strings/string_view.h"
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/framework/device_attributes.pb.h"
 #include "tensorflow/core/framework/graph.pb.h"
@@ -28,7 +29,6 @@ limitations under the License.
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 
 namespace tensorflow {
@@ -37,8 +37,9 @@ namespace {
 
 // We hoist the conversion from C-style string literal to StringPiece here,
 // so that we can avoid the many repeated calls to strlen().
-const StringPiece kColocationAttrNameStringPiece(kColocationAttrName);
-const StringPiece kColocationGroupPrefixStringPiece(kColocationGroupPrefix);
+const absl::string_view kColocationAttrNameStringPiece(kColocationAttrName);
+const absl::string_view kColocationGroupPrefixStringPiece(
+    kColocationGroupPrefix);
 
 // Returns a list of devices having type in supported_device_types.  The
 // returned list is sorted by preferred type (higher numeric type is preferred).
@@ -68,7 +69,7 @@ std::vector<Device*> FilterSupportedDevices(
     if (a_priority != b_priority) {
       return a_priority > b_priority;
     }
-    return StringPiece(a->name()) < StringPiece(b->name());
+    return absl::string_view(a->name()) < absl::string_view(b->name());
   };
   std::vector<Device*>::iterator sort_start;
   if (filtered_default_device != nullptr) {
@@ -144,7 +145,7 @@ class ColocationGraph {
     // 'string' values stored in NodeDef attribute lists, as well as StringPiece
     // values that refer to 'string' values from NodeDef::name(), without
     // performing any string allocations.
-    std::unordered_map<StringPiece, const Node*, StringPieceHasher>
+    std::unordered_map<absl::string_view, const Node*, StringPieceHasher>
         colocation_group_root;
 
     for (Node* node : graph_->op_nodes()) {
@@ -161,7 +162,7 @@ class ColocationGraph {
           node->attrs().Find(kColocationAttrNameStringPiece);
       if (attr_value != nullptr && attr_value->has_list()) {
         for (const string& class_spec : attr_value->list().s()) {
-          StringPiece spec(class_spec);
+          absl::string_view spec(class_spec);
           if (str_util::ConsumePrefix(&spec,
                                       kColocationGroupPrefixStringPiece)) {
             found_spec = true;
@@ -183,9 +184,9 @@ class ColocationGraph {
   }
 
   Status ColocateNodeToGroup(
-      std::unordered_map<StringPiece, const Node*, StringPieceHasher>*
+      std::unordered_map<absl::string_view, const Node*, StringPieceHasher>*
           colocation_group_root,
-      Node* node, StringPiece colocation_group) {
+      Node* node, absl::string_view colocation_group) {
     const Node*& root_node = (*colocation_group_root)[colocation_group];
     if (root_node == nullptr) {
       // This is the first node of the colocation group, so

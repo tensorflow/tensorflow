@@ -16,6 +16,7 @@ limitations under the License.
 
 #include <vector>
 
+#include "absl/strings/string_view.h"
 #include "tensorflow/core/example/example.pb.h"
 #include "tensorflow/core/example/feature.pb_text.h"
 #include "tensorflow/core/framework/numeric_op.h"
@@ -66,7 +67,7 @@ namespace parsed {
 class Feature {
  public:
   Feature() {}
-  explicit Feature(StringPiece serialized) : serialized_(serialized) {}
+  explicit Feature(absl::string_view serialized) : serialized_(serialized) {}
 
   Status ParseDataType(DataType* dtype) {
     DCHECK(dtype != nullptr);
@@ -223,14 +224,14 @@ class Feature {
     return true;
   }
 
-  StringPiece GetSerialized() const { return serialized_; }
+  absl::string_view GetSerialized() const { return serialized_; }
 
  private:
   // TODO(lew): Pair of uint8* would be more natural.
-  StringPiece serialized_;
+  absl::string_view serialized_;
 };
 
-using FeatureMapEntry = std::pair<StringPiece, Feature>;
+using FeatureMapEntry = std::pair<absl::string_view, Feature>;
 using Example = std::vector<FeatureMapEntry>;
 
 }  // namespace parsed
@@ -260,13 +261,14 @@ inline bool SkipExtraneousTag(protobuf::io::CodedInputStream* stream) {
   return false;  // unrecognized tag type
 }
 
-bool ParseString(protobuf::io::CodedInputStream* stream, StringPiece* result) {
+bool ParseString(protobuf::io::CodedInputStream* stream,
+                 absl::string_view* result) {
   DCHECK(stream != nullptr);
   DCHECK(result != nullptr);
   uint32 length;
   if (!stream->ReadVarint32(&length)) return false;
   if (length == 0) {
-    *result = StringPiece(nullptr, 0);
+    *result = absl::string_view(nullptr, 0);
     return true;
   }
   const void* stream_alias;
@@ -275,7 +277,7 @@ bool ParseString(protobuf::io::CodedInputStream* stream, StringPiece* result) {
     return false;
   }
   if (static_cast<uint32>(stream_size) < length) return false;
-  *result = StringPiece(static_cast<const char*>(stream_alias), length);
+  *result = absl::string_view(static_cast<const char*>(stream_alias), length);
   stream->Skip(length);
   return true;
 }
@@ -290,7 +292,7 @@ bool ParseFeatureMapEntry(protobuf::io::CodedInputStream* stream,
   if (!stream->ExpectTag(kDelimitedTag(1))) return false;
   if (!ParseString(stream, &feature_map_entry->first)) return false;
   if (!stream->ExpectTag(kDelimitedTag(2))) return false;
-  StringPiece feature_string_piece;
+  absl::string_view feature_string_piece;
   if (!ParseString(stream, &feature_string_piece)) return false;
   feature_map_entry->second = parsed::Feature(feature_string_piece);
   if (!stream->ExpectAtEnd()) return false;
@@ -332,7 +334,7 @@ bool ParseExample(protobuf::io::CodedInputStream* stream,
   return true;
 }
 
-bool ParseExample(StringPiece serialized, parsed::Example* example) {
+bool ParseExample(absl::string_view serialized, parsed::Example* example) {
   DCHECK(example != nullptr);
   protobuf::io::CodedInputStream stream(
       reinterpret_cast<const uint8*>(serialized.data()), serialized.size());
@@ -439,7 +441,7 @@ struct SparseBuffer {
 };
 
 struct SeededHasher {
-  uint64 operator()(StringPiece s) const {
+  uint64 operator()(absl::string_view s) const {
     return Hash64(s.data(), s.size(), seed);
   }
   uint64 seed{0xDECAFCAFFE};
@@ -467,7 +469,7 @@ class LimitedArraySlice {
   T* end_;
 };
 
-void LogDenseFeatureDataLoss(StringPiece feature_name) {
+void LogDenseFeatureDataLoss(absl::string_view feature_name) {
   LOG(WARNING) << "Data loss! Feature '" << feature_name
                << "' is present in multiple concatenated "
                   "tf.Examples. Ignoring all but last one.";
@@ -478,7 +480,7 @@ void LogDenseFeatureDataLoss(StringPiece feature_name) {
   duplicated_dense_feature->GetCell()->IncrementBy(1);
 }
 
-void LogSparseFeatureDataLoss(StringPiece feature_name) {
+void LogSparseFeatureDataLoss(absl::string_view feature_name) {
   LOG(WARNING) << "Data loss! Feature '" << feature_name
                << "' is present in multiple concatenated "
                   "tf.Examples. Ignoring all but last one.";
@@ -523,7 +525,7 @@ Status FastParseSerializedExample(
     parsed::FeatureMapEntry& name_and_feature =
         parsed_example[parsed_example_size - i - 1];
 
-    const StringPiece feature_name = name_and_feature.first;
+    const absl::string_view feature_name = name_and_feature.first;
     parsed::Feature& feature = name_and_feature.second;
 
     std::pair<size_t, Type> d_and_type;
@@ -542,7 +544,7 @@ Status FastParseSerializedExample(
       if (feature_name != config_feature_name) continue;
     }
 
-    auto example_error = [&](StringPiece suffix) {
+    auto example_error = [&](absl::string_view suffix) {
       return errors::InvalidArgument("Name: ", example_name,
                                      ", Key: ", feature_name,
                                      ", Index: ", example_index, ".  ", suffix);
@@ -585,7 +587,7 @@ Status FastParseSerializedExample(
 
         const std::size_t offset = example_index * num_elements;
 
-        auto shape_error = [&](size_t size, StringPiece type_str) {
+        auto shape_error = [&](size_t size, absl::string_view type_str) {
           return example_error(strings::StrCat(
               "Number of ", type_str,
               " values != expected.  "
@@ -637,7 +639,7 @@ Status FastParseSerializedExample(
               "Expected type: ", DataTypeString(config.dense[d].dtype)));
         }
 
-        auto shape_error = [&](size_t size, StringPiece type_str) {
+        auto shape_error = [&](size_t size, absl::string_view type_str) {
           return example_error(strings::StrCat(
               "Number of ", type_str,
               " values is not a multiple of stride length. Saw ", size,
@@ -1275,7 +1277,7 @@ Status FastParseSingleExample(const Config& config, const string& serialized,
     parsed::FeatureMapEntry& name_and_feature =
         parsed_example[parsed_example_size - i - 1];
 
-    const StringPiece feature_name = name_and_feature.first;
+    const absl::string_view feature_name = name_and_feature.first;
     parsed::Feature& feature = name_and_feature.second;
 
     std::pair<size_t, Type> d_and_type;
@@ -1294,7 +1296,7 @@ Status FastParseSingleExample(const Config& config, const string& serialized,
       if (feature_name != config_feature_name) continue;
     }
 
-    auto example_error = [feature_name](StringPiece suffix) {
+    auto example_error = [feature_name](absl::string_view suffix) {
       return errors::InvalidArgument("Key: ", feature_name, ".  ", suffix);
     };
 
@@ -1727,8 +1729,8 @@ Status FastParseSequenceExample(
   DCHECK(context_result != nullptr);
   DCHECK(feature_list_result != nullptr);
   DCHECK(dense_feature_lengths != nullptr);
-  std::map<StringPiece, bool> context_is_sparse;
-  std::map<StringPiece, std::pair<DataType, size_t>>
+  std::map<absl::string_view, bool> context_is_sparse;
+  std::map<absl::string_view, std::pair<DataType, size_t>>
       context_feature_type_and_lengths;
   if (!example_names.empty() && example_names.size() != num_examples) {
     return errors::InvalidArgument(
@@ -1759,8 +1761,8 @@ Status FastParseSequenceExample(
     }
     context_is_sparse[c.feature_name] = false;
   }
-  std::map<StringPiece, bool> sequence_is_sparse;
-  std::map<StringPiece, std::pair<DataType, size_t>>
+  std::map<absl::string_view, bool> sequence_is_sparse;
+  std::map<absl::string_view, std::pair<DataType, size_t>>
       sequence_feature_type_and_lengths;
   for (auto& c : feature_list_config.sparse) {
     TF_RETURN_IF_ERROR(CheckConfigDataType(c.dtype));
@@ -1779,10 +1781,10 @@ Status FastParseSequenceExample(
     sequence_is_sparse[c.feature_name] = false;
   }
 
-  std::vector<std::map<StringPiece, StringPiece>> all_context_features(
-      num_examples);
-  std::vector<std::map<StringPiece, StringPiece>> all_sequence_features(
-      num_examples);
+  std::vector<std::map<absl::string_view, absl::string_view>>
+      all_context_features(num_examples);
+  std::vector<std::map<absl::string_view, absl::string_view>>
+      all_sequence_features(num_examples);
   const string kUnknown = "<unknown>";
   for (int d = 0; d < num_examples; d++) {
     const string& example = serialized[d];
@@ -1798,8 +1800,8 @@ Status FastParseSequenceExample(
 
     // Extract pointers to all features within this serialized example.
     while (!stream.ExpectAtEnd()) {
-      std::map<StringPiece, StringPiece>* features = nullptr;
-      const std::map<StringPiece, std::pair<DataType, size_t>>* config =
+      std::map<absl::string_view, absl::string_view>* features = nullptr;
+      const std::map<absl::string_view, std::pair<DataType, size_t>>* config =
           nullptr;
       if (stream.ExpectTag(kDelimitedTag(1))) {
         // Context
@@ -1821,7 +1823,7 @@ Status FastParseSequenceExample(
         }
         auto limit = stream.PushLimit(length);
         while (!stream.ExpectAtEnd()) {
-          StringPiece key, value;
+          absl::string_view key, value;
           uint32 length;
           if (!stream.ExpectTag(kDelimitedTag(1)) ||
               !stream.ReadVarint32(&length)) {

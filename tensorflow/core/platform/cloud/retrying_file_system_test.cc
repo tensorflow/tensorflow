@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/platform/cloud/retrying_file_system.h"
 #include <fstream>
+#include "absl/strings/string_view.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/test.h"
@@ -60,7 +61,7 @@ class MockCallSequence {
 class MockRandomAccessFile : public RandomAccessFile {
  public:
   explicit MockRandomAccessFile(const ExpectedCalls& calls) : calls_(calls) {}
-  Status Read(uint64 offset, size_t n, StringPiece* result,
+  Status Read(uint64 offset, size_t n, absl::string_view* result,
               char* scratch) const override {
     return calls_.ConsumeNextCall("Read");
   }
@@ -72,7 +73,7 @@ class MockRandomAccessFile : public RandomAccessFile {
 class MockWritableFile : public WritableFile {
  public:
   explicit MockWritableFile(const ExpectedCalls& calls) : calls_(calls) {}
-  Status Append(StringPiece data) override {
+  Status Append(absl::string_view data) override {
     return calls_.ConsumeNextCall("Append");
   }
   Status Close() override { return calls_.ConsumeNextCall("Close"); }
@@ -192,7 +193,7 @@ TEST(RetryingFileSystemTest, NewRandomAccessFile_ImmediateSuccess) {
   TF_EXPECT_OK(fs.NewRandomAccessFile("filename.txt", &random_access_file));
 
   // Use it and check the results.
-  StringPiece result;
+  absl::string_view result;
   char scratch[10];
   TF_EXPECT_OK(random_access_file->Read(0, 10, &result, scratch));
 }
@@ -220,7 +221,7 @@ TEST(RetryingFileSystemTest, NewRandomAccessFile_SuccessWith3rdTry) {
   TF_EXPECT_OK(fs.NewRandomAccessFile("filename.txt", &random_access_file));
 
   // Use it and check the results.
-  StringPiece result;
+  absl::string_view result;
   char scratch[10];
   TF_EXPECT_OK(random_access_file->Read(0, 10, &result, scratch));
 }
@@ -245,7 +246,7 @@ TEST(RetryingFileSystemTest, NewRandomAccessFile_AllRetriesFailed) {
   TF_EXPECT_OK(fs.NewRandomAccessFile("filename.txt", &random_access_file));
 
   // Use it and check the results.
-  StringPiece result;
+  absl::string_view result;
   char scratch[10];
   const auto& status = random_access_file->Read(0, 10, &result, scratch);
   EXPECT_TRUE(
@@ -276,7 +277,7 @@ TEST(RetryingFileSystemTest, NewRandomAccessFile_NoRetriesForSomeErrors) {
   TF_EXPECT_OK(fs.NewRandomAccessFile("filename.txt", &random_access_file));
 
   // Use it and check the results.
-  StringPiece result;
+  absl::string_view result;
   char scratch[10];
   EXPECT_EQ("Failed precondition",
             random_access_file->Read(0, 10, &result, scratch).error_message());

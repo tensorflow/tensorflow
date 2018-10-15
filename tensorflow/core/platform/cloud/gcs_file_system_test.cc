@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/platform/cloud/gcs_file_system.h"
 #include <fstream>
+#include "absl/strings/string_view.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/cloud/http_request_fake.h"
@@ -79,7 +80,7 @@ TEST(GcsFileSystemTest, NewRandomAccessFile_NoBlockCache) {
   TF_EXPECT_OK(fs.NewRandomAccessFile("gs://bucket/random_access.txt", &file));
 
   char scratch[6];
-  StringPiece result;
+  absl::string_view result;
 
   // Read the first chunk.
   TF_EXPECT_OK(file->Read(0, sizeof(scratch), &result, scratch));
@@ -233,7 +234,7 @@ TEST(GcsFileSystemTest, NewRandomAccessFile_NoBlockCache_DifferentN) {
   TF_EXPECT_OK(fs.NewRandomAccessFile("gs://bucket/random_access.txt", &file));
 
   char small_scratch[3];
-  StringPiece result;
+  absl::string_view result;
 
   // Read the first chunk.
   TF_EXPECT_OK(file->Read(0, sizeof(small_scratch), &result, small_scratch));
@@ -290,7 +291,7 @@ TEST(GcsFileSystemTest, NewRandomAccessFile_WithBlockCache) {
       nullptr /* gcs additional header */);
 
   char scratch[100];
-  StringPiece result;
+  absl::string_view result;
   {
     // We are instantiating this in an enclosed scope to make sure after the
     // unique ptr goes out of scope, we can still access result.
@@ -379,7 +380,7 @@ TEST(GcsFileSystemTest, NewRandomAccessFile_WithBlockCache_Flush) {
       nullptr /* gcs additional header */);
 
   char scratch[100];
-  StringPiece result;
+  absl::string_view result;
   std::unique_ptr<RandomAccessFile> file;
   TF_EXPECT_OK(fs.NewRandomAccessFile("gs://bucket/random_access.txt", &file));
   // Read the first chunk. The cache will be populated with the first block of
@@ -428,7 +429,7 @@ TEST(GcsFileSystemTest, NewRandomAccessFile_WithBlockCache_MaxStaleness) {
                    kTestTimeoutConfig, *kAllowedLocationsDefault,
                    nullptr /* gcs additional header */);
   char scratch[100];
-  StringPiece result;
+  absl::string_view result;
   // There should only be two HTTP requests issued to GCS even though we iterate
   // this loop 10 times.  This shows that the underlying FileBlockCache persists
   // across file close/open boundaries.
@@ -502,7 +503,7 @@ TEST(GcsFileSystemTest,
   TF_EXPECT_OK(fs.NewRandomAccessFile("gs://bucket/random_access.txt", &file));
 
   char scratch[5];
-  StringPiece result;
+  absl::string_view result;
 
   // First read.
   TF_EXPECT_OK(file->Read(0, sizeof(scratch), &result, scratch));
@@ -568,7 +569,7 @@ TEST(GcsFileSystemTest, NewRandomAccessFile_InconsistentRead) {
   TF_ASSERT_OK(fs.NewRandomAccessFile("gs://bucket/random_access.txt", &file));
 
   char scratch[6];
-  StringPiece result;
+  absl::string_view result;
 
   EXPECT_EQ(errors::Code::INTERNAL,
             file->Read(0, sizeof(scratch), &result, scratch).code());
@@ -631,7 +632,7 @@ TEST(GcsFileSystemTest, NewWritableFile) {
   std::unique_ptr<RandomAccessFile> rfile;
   TF_EXPECT_OK(fs.NewRandomAccessFile("gs://bucket/path/writeable", &rfile));
   char scratch[100];
-  StringPiece result;
+  absl::string_view result;
   TF_EXPECT_OK(rfile->Read(0, 4, &result, scratch));
   EXPECT_EQ("0123", result);
   // Open the writable file.
@@ -791,7 +792,7 @@ TEST(GcsFileSystemTest, NewWritableFile_ResumeUploadSucceedsOnGetStatus) {
   std::unique_ptr<RandomAccessFile> rfile;
   TF_EXPECT_OK(fs.NewRandomAccessFile("gs://bucket/path/writeable", &rfile));
   char scratch[100];
-  StringPiece result;
+  absl::string_view result;
   TF_EXPECT_OK(rfile->Read(0, 4, &result, scratch));
   EXPECT_EQ("0123", result);
   // Now write to the same file. Once the write succeeds, the cached block will
@@ -1029,7 +1030,7 @@ TEST(GcsFileSystemTest, NewAppendableFile) {
   std::unique_ptr<RandomAccessFile> rfile;
   TF_EXPECT_OK(fs.NewRandomAccessFile("gs://bucket/path/appendable", &rfile));
   char scratch[100];
-  StringPiece result;
+  absl::string_view result;
   TF_EXPECT_OK(rfile->Read(0, 8, &result, scratch));
   EXPECT_EQ("content1", result);
   // Closing the appendable file will flush its contents to GCS, triggering HTTP
@@ -1092,8 +1093,9 @@ TEST(GcsFileSystemTest, NewReadOnlyMemoryRegionFromFile) {
   TF_EXPECT_OK(fs.NewReadOnlyMemoryRegionFromFile(
       "gs://bucket/path/random_access.txt", &region));
 
-  EXPECT_EQ(content, StringPiece(reinterpret_cast<const char*>(region->data()),
-                                 region->length()));
+  EXPECT_EQ(content,
+            absl::string_view(reinterpret_cast<const char*>(region->data()),
+                              region->length()));
 }
 
 TEST(GcsFileSystemTest, NewReadOnlyMemoryRegionFromFile_NoObjectName) {
@@ -1808,7 +1810,7 @@ TEST(GcsFileSystemTest, DeleteFile) {
 
   // Do an initial read of the file to load its contents into the block cache.
   char scratch[100];
-  StringPiece result;
+  absl::string_view result;
   std::unique_ptr<RandomAccessFile> file;
   TF_EXPECT_OK(fs.NewRandomAccessFile("gs://bucket/path/file1.txt", &file));
   TF_EXPECT_OK(file->Read(0, 8, &result, scratch));
@@ -2199,7 +2201,7 @@ TEST(GcsFileSystemTest, RenameFile_Object) {
   // Do an initial read of the source and destination files to load their
   // contents into the block cache.
   char scratch[100];
-  StringPiece result;
+  absl::string_view result;
   std::unique_ptr<RandomAccessFile> src;
   std::unique_ptr<RandomAccessFile> dst;
   TF_EXPECT_OK(fs.NewRandomAccessFile("gs://bucket/path/src.txt", &src));
@@ -3310,7 +3312,7 @@ TEST(GcsFileSystemTest, NewRandomAccessFile_StatsRecording) {
   TF_EXPECT_OK(fs.NewRandomAccessFile("gs://bucket/random_access.txt", &file));
 
   char scratch[6];
-  StringPiece result;
+  absl::string_view result;
 
   TF_EXPECT_OK(file->Read(0, sizeof(scratch), &result, scratch));
   EXPECT_EQ("012345", result);

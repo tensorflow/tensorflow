@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <sys/stat.h>
 
+#include "absl/strings/string_view.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/lib/strings/str_util.h"
@@ -120,7 +121,7 @@ class InterPlanetaryFileSystem : public NullFileSystem {
   }
 
   void ParsePath(const string& name, string* parsed_path) {
-    StringPiece scheme, host, path;
+    absl::string_view scheme, host, path;
     io::ParseURI(name, &scheme, &host, &path);
     ASSERT_EQ(scheme, "ipfs");
     ASSERT_EQ(host, "solarsystem");
@@ -156,10 +157,10 @@ string Match(InterPlanetaryFileSystem* ipfs, const string& suffix_pattern) {
   if (!s.ok()) {
     return s.ToString();
   } else {
-    std::vector<StringPiece> trimmed_results;
+    std::vector<absl::string_view> trimmed_results;
     std::sort(results.begin(), results.end());
     for (const string& result : results) {
-      StringPiece trimmed_result(result);
+      absl::string_view trimmed_result(result);
       EXPECT_TRUE(str_util::ConsumePrefix(&trimmed_result,
                                           strings::StrCat(kPrefix, "/")));
       trimmed_results.push_back(trimmed_result);

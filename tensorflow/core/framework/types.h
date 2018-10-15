@@ -20,6 +20,7 @@ limitations under the License.
 #include <set>
 #include <string>
 
+#include "absl/strings/string_view.h"
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 // Disable clang-format to prevent 'FixedPoint' header from being included
 // before 'Tensor' header on which it depends.
@@ -30,7 +31,6 @@ limitations under the License.
 #include "tensorflow/core/framework/numeric_types.h"
 #include "tensorflow/core/framework/resource_handle.h"
 #include "tensorflow/core/framework/types.pb.h"
-#include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
 #include "tensorflow/core/platform/logging.h"
@@ -56,7 +56,8 @@ class DeviceType {
   DeviceType(const char* type)  // NOLINT(runtime/explicit)
       : type_(type) {}
 
-  explicit DeviceType(StringPiece type) : type_(type.data(), type.size()) {}
+  explicit DeviceType(absl::string_view type)
+      : type_(type.data(), type.size()) {}
 
   const char* type() const { return type_.c_str(); }
   const string& type_string() const { return type_; }
@@ -228,7 +229,7 @@ class DataTypeSet {
 
 // If "sp" names a valid type, store it in "*dt" and return true.  Otherwise,
 // return false.
-bool DataTypeFromString(StringPiece sp, DataType* dt);
+bool DataTypeFromString(absl::string_view sp, DataType* dt);
 
 constexpr inline DataTypeSet ToSet(DataType dt) {
   return DataTypeSet(1u << static_cast<uint32>(dt));

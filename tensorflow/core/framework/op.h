@@ -20,6 +20,7 @@ limitations under the License.
 #include <unordered_map>
 
 #include <vector>
+#include "absl/strings/string_view.h"
 #include "tensorflow/core/framework/op_def_builder.h"
 #include "tensorflow/core/framework/op_def_util.h"
 #include "tensorflow/core/framework/selective_registration.h"
@@ -261,15 +262,17 @@ template <>
 class OpDefBuilderWrapper<false> {
  public:
   constexpr OpDefBuilderWrapper(const char name[]) {}
-  OpDefBuilderWrapper<false>& Attr(StringPiece spec) { return *this; }
-  OpDefBuilderWrapper<false>& Input(StringPiece spec) { return *this; }
-  OpDefBuilderWrapper<false>& Output(StringPiece spec) { return *this; }
+  OpDefBuilderWrapper<false>& Attr(absl::string_view spec) { return *this; }
+  OpDefBuilderWrapper<false>& Input(absl::string_view spec) { return *this; }
+  OpDefBuilderWrapper<false>& Output(absl::string_view spec) { return *this; }
   OpDefBuilderWrapper<false>& SetIsCommutative() { return *this; }
   OpDefBuilderWrapper<false>& SetIsAggregate() { return *this; }
   OpDefBuilderWrapper<false>& SetIsStateful() { return *this; }
   OpDefBuilderWrapper<false>& SetAllowsUninitializedInput() { return *this; }
-  OpDefBuilderWrapper<false>& Deprecated(int, StringPiece) { return *this; }
-  OpDefBuilderWrapper<false>& Doc(StringPiece text) { return *this; }
+  OpDefBuilderWrapper<false>& Deprecated(int, absl::string_view) {
+    return *this;
+  }
+  OpDefBuilderWrapper<false>& Doc(absl::string_view text) { return *this; }
   OpDefBuilderWrapper<false>& SetShapeFn(
       Status (*fn)(shape_inference::InferenceContext*)) {
     return *this;

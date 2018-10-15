@@ -22,6 +22,7 @@ limitations under the License.
 #include <unordered_set>
 #include <vector>
 
+#include "absl/strings/string_view.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/types.h"
@@ -44,7 +45,8 @@ namespace subgraph {
 
 namespace {
 
-typedef std::unordered_map<StringPiece, Node*, StringPieceHasher> NameIndex;
+typedef std::unordered_map<absl::string_view, Node*, StringPieceHasher>
+    NameIndex;
 
 // Rewrite graph by replacing the output tensors specified in
 // "fed_outputs" with special feed nodes for each specified output

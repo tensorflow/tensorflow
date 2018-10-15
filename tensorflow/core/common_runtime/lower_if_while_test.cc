@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/lower_if_while.h"
 
+#include "absl/strings/string_view.h"
 #include "tensorflow/cc/client/client_session.h"
 #include "tensorflow/cc/framework/ops.h"
 #include "tensorflow/cc/ops/array_ops.h"
@@ -38,7 +39,7 @@ namespace {
 
 typedef FunctionDefHelper FDH;
 
-static void AssertHasSubstr(StringPiece s, StringPiece expected) {
+static void AssertHasSubstr(absl::string_view s, absl::string_view expected) {
   ASSERT_TRUE(str_util::StrContains(s, expected))
       << "'" << s << "' does not contain '" << expected << "'";
 }

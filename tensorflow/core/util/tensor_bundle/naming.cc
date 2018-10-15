@@ -15,17 +15,19 @@ limitations under the License.
 
 #include "tensorflow/core/util/tensor_bundle/naming.h"
 
+#include "absl/strings/string_view.h"
 #include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/platform/logging.h"
 
 namespace tensorflow {
 
-string MetaFilename(StringPiece prefix) {
+string MetaFilename(absl::string_view prefix) {
   return strings::Printf("%.*s.index", static_cast<int>(prefix.size()),
                          prefix.data());
 }
 
-string DataFilename(StringPiece prefix, int32 shard_id, int32 num_shards) {
+string DataFilename(absl::string_view prefix, int32 shard_id,
+                    int32 num_shards) {
   DCHECK_GT(num_shards, 0);
   DCHECK_LT(shard_id, num_shards);
   return strings::Printf("%.*s.data-%05d-of-%05d",

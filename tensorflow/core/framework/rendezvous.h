@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <string>
 
+#include "absl/strings/string_view.h"
 #include "tensorflow/core/framework/control_flow.h"
 #include "tensorflow/core/framework/device_base.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -60,18 +61,18 @@ class Rendezvous : public core::RefCounted {
   // Parses the key constructed by CreateKey and parse src/dst device
   // names into structures respectively.
   struct ParsedKey {
-    StringPiece src_device;
+    absl::string_view src_device;
     DeviceNameUtils::ParsedName src;
     uint64 src_incarnation = 0;
-    StringPiece dst_device;
+    absl::string_view dst_device;
     DeviceNameUtils::ParsedName dst;
-    StringPiece edge_name;
+    absl::string_view edge_name;
 
     ParsedKey() {}
     ParsedKey(const ParsedKey& b) { *this = b; }
 
     ParsedKey& operator=(const ParsedKey& b);
-    StringPiece FullKey() const { return buf_; }
+    absl::string_view FullKey() const { return buf_; }
 
    private:
     friend class Rendezvous;
@@ -79,7 +80,7 @@ class Rendezvous : public core::RefCounted {
     friend class RecvOp;
     string buf_;
   };
-  static Status ParseKey(StringPiece key, ParsedKey* out);
+  static Status ParseKey(absl::string_view key, ParsedKey* out);
 
   // The caller is a tensor producer and it sends a message (a tensor
   // "val" and a bool "is_dead") under the given "key".

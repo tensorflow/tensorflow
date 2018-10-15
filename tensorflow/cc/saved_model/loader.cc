@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <unordered_set>
 
+#include "absl/strings/string_view.h"
 #include "tensorflow/cc/saved_model/constants.h"
 #include "tensorflow/cc/saved_model/reader.h"
 #include "tensorflow/core/lib/io/path.h"
@@ -60,7 +61,7 @@ Tensor CreateStringTensor(const string& value) {
   return tensor;
 }
 
-void AddAssetsTensorsToInputs(const StringPiece export_dir,
+void AddAssetsTensorsToInputs(const absl::string_view export_dir,
                               const std::vector<AssetFileDef>& asset_file_defs,
                               std::vector<std::pair<string, Tensor>>* inputs) {
   if (asset_file_defs.empty()) {
@@ -147,7 +148,8 @@ Status RunMainOp(const RunOptions& run_options, const string& export_dir,
     std::vector<std::pair<string, Tensor>> inputs;
     AddAssetsTensorsToInputs(export_dir, asset_file_defs, &inputs);
     RunMetadata run_metadata;
-    const StringPiece main_op_name = main_op_it->second.node_list().value(0);
+    const absl::string_view main_op_name =
+        main_op_it->second.node_list().value(0);
     return RunOnce(run_options, inputs, {}, {string(main_op_name)},
                    nullptr /* outputs */, &run_metadata, session);
   }
@@ -155,8 +157,8 @@ Status RunMainOp(const RunOptions& run_options, const string& export_dir,
 }
 
 Status RunRestore(const RunOptions& run_options, const string& export_dir,
-                  const StringPiece restore_op_name,
-                  const StringPiece variable_filename_const_op_name,
+                  const absl::string_view restore_op_name,
+                  const absl::string_view variable_filename_const_op_name,
                   const std::vector<AssetFileDef>& asset_file_defs,
                   Session* session) {
   LOG(INFO) << "Restoring SavedModel bundle.";

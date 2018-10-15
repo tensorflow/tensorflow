@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <cstring>
 #include <memory>
+#include "absl/strings/string_view.h"
 #include "tensorflow/core/lib/core/errors.h"
 
 namespace tensorflow {
@@ -73,7 +74,7 @@ Status DecodeThreeChars(const char* codes, char* result) {
 }
 }  // namespace
 
-Status Base64Decode(StringPiece data, string* decoded) {
+Status Base64Decode(absl::string_view data, string* decoded) {
   if (decoded == nullptr) {
     return errors::Internal("'decoded' cannot be nullptr.");
   }
@@ -135,11 +136,12 @@ Status Base64Decode(StringPiece data, string* decoded) {
   return Status::OK();
 }
 
-Status Base64Encode(StringPiece source, string* encoded) {
+Status Base64Encode(absl::string_view source, string* encoded) {
   return Base64Encode(source, false, encoded);
 }
 
-Status Base64Encode(StringPiece source, bool with_padding, string* encoded) {
+Status Base64Encode(absl::string_view source, bool with_padding,
+                    string* encoded) {
   const char* const base64_chars = kBase64UrlSafeChars;
   if (encoded == nullptr) {
     return errors::Internal("'encoded' cannot be nullptr.");
