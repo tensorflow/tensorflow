@@ -1083,3 +1083,32 @@ def _as_graph_element(obj):
                        "as this `Operation` has multiple outputs "
                        "(at least 2)." % obj)
   return element
+
+@tf_export("train.ValidationHook")
+class ValidationHook(session_run_hook.SessionRunHook):
+    def __init__(self, model_fn, params, input_fn, checkpoint_dir,
+                 every_n_secs=None, every_n_steps=None):
+        self._iter_count = 0
+        self._estimator = estimator_lib.Estimator(
+            model_fn=model_fn,
+            params=params,
+            model_dir=checkpoint_dir
+        )
+        self._input_fn = input_fn
+        self._timer = SecondOrStepTimer(every_n_secs, every_n_steps)
+        self._should_trigger = False
+
+    def begin(self):
+        self._timer.reset()
+        self._iter_count = 0
+
+    def before_run(self, run_context):
+        self._should_trigger = self._timer.should_trigger_for_step(self._iter_count)
+
+    def after_run(self, run_context, run_values):
+        if self._should_trigger:
+            self._estimator.evaluate(
+                self._input_fn
+            )
+            self._timer.update_last_triggered_step(self._iter_count)
+        self._iter_count += 1
