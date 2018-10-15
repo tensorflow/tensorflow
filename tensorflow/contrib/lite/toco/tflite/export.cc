@@ -63,6 +63,20 @@ bool IsControlFlowOp(const string& tensorflow_op) {
   return false;
 }
 
+// Check if a TensorFlow Op is unsupportred by the Flex runtime.
+bool IsUnsupportedFlexOp(const string& tensorflow_op) {
+  if (IsControlFlowOp(tensorflow_op)) {
+    return true;
+  }
+  // `HashTableV2` isn't supported for now since it requires an additinonal
+  // initialization step.
+  // TODO(b/117651199): Support `HashTableV2` with Flex runtime.
+  if (tensorflow_op == "HashTableV2") {
+    return true;
+  }
+  return false;
+}
+
 // Map from operator name to TF Lite enum value, for all builtins.
 const std::map<string, BuiltinOperator>& GetBuiltinOpsMap() {
   static std::map<string, BuiltinOperator>* builtin_ops = nullptr;
@@ -126,7 +140,7 @@ OperatorKey GetOperatorKey(
 
     // TODO(b/113715895): When `allow_flex_ops` is on, for now there's no way
     // to populate a regular custom op. We need to find a way to fix this.
-    if (allow_flex_ops) {
+    if (ShouldExportAsFlexOp(allow_flex_ops, unsupported_op.tensorflow_op)) {
       key.is_flex_op = true;
       key.flex_tensorflow_op = tensorflow_op;
       key.custom_code =
@@ -150,7 +164,7 @@ OperatorKey GetOperatorKey(
   }
 
   if (key.is_flex_op) {
-    if (IsControlFlowOp(key.flex_tensorflow_op)) {
+    if (IsUnsupportedFlexOp(key.flex_tensorflow_op)) {
       key.is_unsupported_flex_op = true;
     }
   }

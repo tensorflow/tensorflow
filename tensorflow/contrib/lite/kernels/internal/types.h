@@ -107,6 +107,11 @@ struct QuantizationParams {
   double scale = 0.0;
 };
 
+inline bool operator==(const QuantizationParams& qp1,
+                       const QuantizationParams& qp2) {
+  return qp1.zero_point == qp2.zero_point && qp1.scale == qp2.scale;
+}
+
 template <int N>
 struct Dims {
   int sizes[N];

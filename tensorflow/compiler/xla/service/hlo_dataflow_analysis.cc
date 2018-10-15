@@ -126,7 +126,7 @@ bool HloDataflowAnalysis::ValueIsDefinedAt(const HloInstruction* instruction,
 
 const HloValue& HloDataflowAnalysis::GetValueDefinedAt(
     const HloInstruction* instruction, const ShapeIndex& index) const {
-  CHECK(ValueIsDefinedAt(instruction, index));
+  CHECK(ValueIsDefinedAt(instruction, index)) << instruction->ToString();
   return GetUniqueValueAt(instruction, index);
 }
 
@@ -1048,6 +1048,7 @@ bool HloDataflowAnalysis::CanShareOperandBufferWithUser(
   }
 
   if (user->opcode() == HloOpcode::kDynamicUpdateSlice ||
+      user->opcode() == HloOpcode::kScatter ||
       user->opcode() == HloOpcode::kWhile) {
     // We eliminated other users in BufferLiveness::live_range_strictly_before,
     // so here we just need to check that the use is at operand index 0.

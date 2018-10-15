@@ -529,12 +529,15 @@ def tf_gen_op_wrappers_cc(
         op_lib_names = [],
         other_srcs = [],
         other_hdrs = [],
+        other_srcs_internal = [],
+        other_hdrs_internal = [],
         pkg = "",
         deps = [
             clean_dep("//tensorflow/cc:ops"),
             clean_dep("//tensorflow/cc:scope"),
             clean_dep("//tensorflow/cc:const_op"),
         ],
+        deps_internal = [],
         op_gen = clean_dep("//tensorflow/cc:cc_op_gen_main"),
         include_internal_ops = 0,
         visibility = None,
@@ -542,8 +545,8 @@ def tf_gen_op_wrappers_cc(
         api_def_srcs = []):
     subsrcs = other_srcs[:]
     subhdrs = other_hdrs[:]
-    internalsrcs = []
-    internalhdrs = []
+    internalsrcs = other_srcs_internal[:]
+    internalhdrs = other_hdrs_internal[:]
     for n in op_lib_names:
         tf_gen_op_wrapper_cc(
             n,
@@ -578,7 +581,7 @@ def tf_gen_op_wrappers_cc(
         name = name + "_internal",
         srcs = internalsrcs,
         hdrs = internalhdrs,
-        deps = deps + if_not_android([
+        deps = deps + deps_internal + if_not_android([
             clean_dep("//tensorflow/core:core_cpu"),
             clean_dep("//tensorflow/core:framework"),
             clean_dep("//tensorflow/core:lib"),
@@ -1544,7 +1547,7 @@ def tf_custom_op_py_library(
         srcs_version = "PY2AND3",
         visibility = None,
         deps = []):
-    kernels = kernels  # unused argument
+    _ignore = [kernels]
     native.py_library(
         name = name,
         data = dso,
@@ -1971,9 +1974,9 @@ def tf_version_info_genrule():
         ],
         outs = ["util/version_info.cc"],
         cmd =
-            "$(location //tensorflow/tools/git:gen_git_source.py) --generate $(SRCS) \"$@\" --git_tag_override=$${GIT_TAG_OVERRIDE:-}",
+            "$(location //tensorflow/tools/git:gen_git_source) --generate $(SRCS) \"$@\" --git_tag_override=$${GIT_TAG_OVERRIDE:-}",
         local = 1,
-        tools = [clean_dep("//tensorflow/tools/git:gen_git_source.py")],
+        tools = [clean_dep("//tensorflow/tools/git:gen_git_source")],
     )
 
 def tf_py_build_info_genrule():
@@ -1981,11 +1984,11 @@ def tf_py_build_info_genrule():
         name = "py_build_info_gen",
         outs = ["platform/build_info.py"],
         cmd =
-            "$(location //tensorflow/tools/build_info:gen_build_info.py) --raw_generate \"$@\" "
+            "$(location //tensorflow/tools/build_info:gen_build_info) --raw_generate \"$@\" "
             + " --is_config_cuda " + if_cuda("True", "False")
             + " --is_config_rocm " + if_rocm("True", "False"),
         local = 1,
-        tools = [clean_dep("//tensorflow/tools/build_info:gen_build_info.py")],
+        tools = [clean_dep("//tensorflow/tools/build_info:gen_build_info")],
     )
 
 def cc_library_with_android_deps(

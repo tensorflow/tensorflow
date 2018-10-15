@@ -23,6 +23,8 @@ limitations under the License.
 #include "tensorflow/contrib/lite/toco/tflite/types.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
+#include "tensorflow/core/framework/op.h"
+#include "tensorflow/core/framework/op_def.pb.h"
 #include "tensorflow/core/util/ptr_util.h"
 
 namespace toco {
@@ -741,6 +743,42 @@ class Lstm : public BuiltinOperator<LstmCellOperator, ::tflite::LSTMOptions,
   }
 };
 
+class UnidirectionalSequenceLstm
+    : public BuiltinOperator<
+          UnidirectionalSequenceLstmOperator,
+          ::tflite::UnidirectionalSequenceLSTMOptions,
+          ::tflite::BuiltinOptions_UnidirectionalSequenceLSTMOptions> {
+ public:
+  using BuiltinOperator::BuiltinOperator;
+  flatbuffers::Offset<TfLiteOptions> WriteOptions(
+      const TocoOperator& op,
+      flatbuffers::FlatBufferBuilder* builder) const override {
+    // Current toco converter only supports tanh, no clip.
+    return ::tflite::CreateUnidirectionalSequenceLSTMOptions(
+        *builder, /*fused_activation_function=*/
+        ::tflite::ActivationFunctionType_TANH,
+        /*cell_clip=*/0.0,
+        /*proj_clip=*/0.0);
+  }
+
+  void ReadOptions(const TfLiteOptions& options,
+                   TocoOperator* op) const override {
+    // Only support tanh activation, so check that tflite type is tanh.
+    DCHECK(options.fused_activation_function() ==
+           ::tflite::ActivationFunctionType_TANH);
+  }
+
+  int GetVersion(const Operator& op) const override { return 1; }
+
+  std::vector<bool> GetMutatingInputVariables(
+      const Operator& op) const override {
+    std::vector<bool> mutating_input_variables(op.inputs.size(), false);
+    mutating_input_variables[kInputActivationStateTensor] = true;
+    mutating_input_variables[kInputCellStateTensor] = true;
+    return mutating_input_variables;
+  }
+};
+
 class Mean : public BuiltinOperator<MeanOperator, ::tflite::ReducerOptions,
                                     ::tflite::BuiltinOptions_ReducerOptions> {
  public:
@@ -1222,6 +1260,16 @@ class TensorFlowUnsupported : public BaseOperator {
       return std::unique_ptr<flexbuffers::Builder>();
     }
 
+    if (ShouldExportAsFlexOp(allow_flex_ops_, node_def.op())) {
+      fbb->Vector([&]() {
+        fbb->String(node_def.op());
+        fbb->String(op.tensorflow_node_def);
+      });
+      fbb->Finish();
+      LOG(INFO) << "Writing flex op: " << node_def.op();
+      return std::unique_ptr<flexbuffers::Builder>(fbb.release());
+    }
+
     bool has_valid_attr = false;
     size_t map_start = fbb->StartMap();
     for (const auto& pair : node_def.attr()) {
@@ -1435,6 +1483,9 @@ std::vector<std::unique_ptr<BaseOperator>> BuildOperatorList(
                                       OperatorType::kFakeQuant));
   ops.push_back(
       MakeUnique<Pack>(::tflite::BuiltinOperator_PACK, OperatorType::kPack));
+  ops.emplace_back(MakeUnique<UnidirectionalSequenceLstm>(
+      ::tflite::BuiltinOperator_UNIDIRECTIONAL_SEQUENCE_LSTM,
+      OperatorType::kUnidirectionalSequenceLstm));
   ops.push_back(MakeUnique<OneHot>(::tflite::BuiltinOperator_ONE_HOT,
                                    OperatorType::kOneHot));
   ops.push_back(MakeUnique<Unpack>(::tflite::BuiltinOperator_UNPACK,
@@ -1547,6 +1598,21 @@ std::map<string, std::unique_ptr<BaseOperator>> BuildOperatorByNameMap(
   }
 
   return result;
+}
+
+bool ShouldExportAsFlexOp(bool allow_flex_ops,
+                          const string& tensorflow_op_name) {
+  // If Flex ops aren't allow at all, simply return false.
+  if (!allow_flex_ops) {
+    return false;
+  }
+  // Check if we can find the `OpDef` for the TensorFlow op. If we can find
+  // it, export the op as an Flex op. Otherwise, export it as a regular custom
+  // op.
+  const tensorflow::OpDef* op_def = nullptr;
+  return tensorflow::OpRegistry::Global()
+      ->LookUpOpDef(tensorflow_op_name, &op_def)
+      .ok();
 }
 
 }  // namespace tflite

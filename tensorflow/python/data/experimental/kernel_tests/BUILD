@@ -331,6 +331,7 @@ py_test(
     deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
+        "//tensorflow/python:cond_v2",
         "//tensorflow/python:constant_op",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:errors",
@@ -562,6 +563,19 @@ py_test(
         "//tensorflow/python/data/kernel_tests:test_base",
         "//tensorflow/python/data/ops:dataset_ops",
         "//third_party/py/numpy",
+    ],
+)
+
+py_test(
+    name = "sleep_test",
+    srcs = ["sleep_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:util",
+        "//tensorflow/python/data/experimental/ops:sleep",
+        "//tensorflow/python/data/kernel_tests:test_base",
+        "//tensorflow/python/data/ops:dataset_ops",
     ],
 )
 

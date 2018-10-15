@@ -92,7 +92,9 @@ def _shape_and_dtype_str(tensor):
   return 'shape=%s dtype=%s' % (tensor.shape, tensor.dtype.name)
 
 
-@tf_export('debugging.assert_proper_iterable', 'assert_proper_iterable')
+@tf_export(
+    'debugging.assert_proper_iterable',
+    v1=['debugging.assert_proper_iterable', 'assert_proper_iterable'])
 @deprecation.deprecated_endpoints('assert_proper_iterable')
 def assert_proper_iterable(values):
   """Static assert that values is a "proper" iterable.
@@ -121,7 +123,9 @@ def assert_proper_iterable(values):
         'Expected argument "values" to be iterable.  Found: %s' % type(values))
 
 
-@tf_export('debugging.assert_negative', 'assert_negative')
+@tf_export(
+    'debugging.assert_negative',
+    v1=['debugging.assert_negative', 'assert_negative'])
 @deprecation.deprecated_endpoints('assert_negative')
 def assert_negative(x, data=None, summarize=None, message=None, name=None):
   """Assert the condition `x < 0` holds element-wise.
@@ -163,7 +167,9 @@ def assert_negative(x, data=None, summarize=None, message=None, name=None):
     return assert_less(x, zero, data=data, summarize=summarize)
 
 
-@tf_export('debugging.assert_positive', 'assert_positive')
+@tf_export(
+    'debugging.assert_positive',
+    v1=['debugging.assert_positive', 'assert_positive'])
 @deprecation.deprecated_endpoints('assert_positive')
 def assert_positive(x, data=None, summarize=None, message=None, name=None):
   """Assert the condition `x > 0` holds element-wise.
@@ -204,7 +210,9 @@ def assert_positive(x, data=None, summarize=None, message=None, name=None):
     return assert_less(zero, x, data=data, summarize=summarize)
 
 
-@tf_export('debugging.assert_non_negative', 'assert_non_negative')
+@tf_export(
+    'debugging.assert_non_negative',
+    v1=['debugging.assert_non_negative', 'assert_non_negative'])
 @deprecation.deprecated_endpoints('assert_non_negative')
 def assert_non_negative(x, data=None, summarize=None, message=None, name=None):
   """Assert the condition `x >= 0` holds element-wise.
@@ -247,7 +255,9 @@ def assert_non_negative(x, data=None, summarize=None, message=None, name=None):
     return assert_less_equal(zero, x, data=data, summarize=summarize)
 
 
-@tf_export('debugging.assert_non_positive', 'assert_non_positive')
+@tf_export(
+    'debugging.assert_non_positive',
+    v1=['debugging.assert_non_positive', 'assert_non_positive'])
 @deprecation.deprecated_endpoints('assert_non_positive')
 def assert_non_positive(x, data=None, summarize=None, message=None, name=None):
   """Assert the condition `x <= 0` holds element-wise.
@@ -390,7 +400,9 @@ def assert_equal(x, y, data=None, summarize=None, message=None, name=None):
     return control_flow_ops.Assert(condition, data, summarize=summarize)
 
 
-@tf_export('debugging.assert_none_equal', 'assert_none_equal')
+@tf_export(
+    'debugging.assert_none_equal',
+    v1=['debugging.assert_none_equal', 'assert_none_equal'])
 @deprecation.deprecated_endpoints('assert_none_equal')
 def assert_none_equal(
     x, y, data=None, summarize=None, message=None, name=None):
@@ -442,7 +454,7 @@ def assert_none_equal(
     return control_flow_ops.Assert(condition, data, summarize=summarize)
 
 
-@tf_export('debugging.assert_near', 'assert_near')
+@tf_export('debugging.assert_near', v1=['debugging.assert_near', 'assert_near'])
 @deprecation.deprecated_endpoints('assert_near')
 def assert_near(
     x, y, rtol=None, atol=None, data=None, summarize=None, message=None,
@@ -464,7 +476,7 @@ def assert_near(
   If both `x` and `y` are empty, this is trivially satisfied.
 
   The default `atol` and `rtol` is `10 * eps`, where `eps` is the smallest
-  representable positive number such that `1 + eps != eps`.  This is about
+  representable positive number such that `1 + eps != 1`.  This is about
   `1.2e-6` in `32bit`, `2.22e-15` in `64bit`, and `0.00977` in `16bit`.
   See `numpy.finfo`.
 
@@ -569,7 +581,9 @@ def assert_less(x, y, data=None, summarize=None, message=None, name=None):
     return control_flow_ops.Assert(condition, data, summarize=summarize)
 
 
-@tf_export('debugging.assert_less_equal', 'assert_less_equal')
+@tf_export(
+    'debugging.assert_less_equal',
+    v1=['debugging.assert_less_equal', 'assert_less_equal'])
 @deprecation.deprecated_endpoints('assert_less_equal')
 def assert_less_equal(x, y, data=None, summarize=None, message=None, name=None):
   """Assert the condition `x <= y` holds element-wise.
@@ -666,7 +680,9 @@ def assert_greater(x, y, data=None, summarize=None, message=None, name=None):
     return control_flow_ops.Assert(condition, data, summarize=summarize)
 
 
-@tf_export('debugging.assert_greater_equal', 'assert_greater_equal')
+@tf_export(
+    'debugging.assert_greater_equal',
+    v1=['debugging.assert_greater_equal', 'assert_greater_equal'])
 @deprecation.deprecated_endpoints('assert_greater_equal')
 def assert_greater_equal(x, y, data=None, summarize=None, message=None,
                          name=None):
@@ -827,7 +843,9 @@ def assert_rank(x, rank, data=None, summarize=None, message=None, name=None):
   return assert_op
 
 
-@tf_export('debugging.assert_rank_at_least', 'assert_rank_at_least')
+@tf_export(
+    'debugging.assert_rank_at_least',
+    v1=['debugging.assert_rank_at_least', 'assert_rank_at_least'])
 @deprecation.deprecated_endpoints('assert_rank_at_least')
 def assert_rank_at_least(
     x, rank, data=None, summarize=None, message=None, name=None):
@@ -959,7 +977,9 @@ def _assert_ranks_condition(
   return control_flow_ops.Assert(condition, data, summarize=summarize)
 
 
-@tf_export('debugging.assert_rank_in', 'assert_rank_in')
+@tf_export(
+    'debugging.assert_rank_in',
+    v1=['debugging.assert_rank_in', 'assert_rank_in'])
 @deprecation.deprecated_endpoints('assert_rank_in')
 def assert_rank_in(
     x, ranks, data=None, summarize=None, message=None, name=None):
@@ -1022,7 +1042,9 @@ def assert_rank_in(
   return assert_op
 
 
-@tf_export('debugging.assert_integer', 'assert_integer')
+@tf_export(
+    'debugging.assert_integer',
+    v1=['debugging.assert_integer', 'assert_integer'])
 @deprecation.deprecated_endpoints('assert_integer')
 def assert_integer(x, message=None, name=None):
   """Assert that `x` is of integer dtype.
@@ -1061,7 +1083,7 @@ def assert_integer(x, message=None, name=None):
     return control_flow_ops.no_op('statically_determined_was_integer')
 
 
-@tf_export('debugging.assert_type', 'assert_type')
+@tf_export('debugging.assert_type', v1=['debugging.assert_type', 'assert_type'])
 @deprecation.deprecated_endpoints('assert_type')
 def assert_type(tensor, tf_type, message=None, name=None):
   """Statically asserts that the given `Tensor` is of the specified type.
@@ -1109,13 +1131,17 @@ def _get_diff_for_monotonic_comparison(x):
   return control_flow_ops.cond(is_shorter_than_two, short_result, diff)
 
 
-@tf_export('debugging.is_numeric_tensor', 'is_numeric_tensor')
+@tf_export(
+    'debugging.is_numeric_tensor',
+    v1=['debugging.is_numeric_tensor', 'is_numeric_tensor'])
 @deprecation.deprecated_endpoints('is_numeric_tensor')
 def is_numeric_tensor(tensor):
   return isinstance(tensor, ops.Tensor) and tensor.dtype in NUMERIC_TYPES
 
 
-@tf_export('debugging.is_non_decreasing', 'is_non_decreasing')
+@tf_export(
+    'debugging.is_non_decreasing',
+    v1=['debugging.is_non_decreasing', 'is_non_decreasing'])
 @deprecation.deprecated_endpoints('is_non_decreasing')
 def is_non_decreasing(x, name=None):
   """Returns `True` if `x` is non-decreasing.
@@ -1143,7 +1169,9 @@ def is_non_decreasing(x, name=None):
     return math_ops.reduce_all(math_ops.less_equal(zero, diff))
 
 
-@tf_export('debugging.is_strictly_increasing', 'is_strictly_increasing')
+@tf_export(
+    'debugging.is_strictly_increasing',
+    v1=['debugging.is_strictly_increasing', 'is_strictly_increasing'])
 @deprecation.deprecated_endpoints('is_strictly_increasing')
 def is_strictly_increasing(x, name=None):
   """Returns `True` if `x` is strictly increasing.
@@ -1219,7 +1247,9 @@ def _assert_same_base_type(items, expected_type=None):
     return expected_type
 
 
-@tf_export('debugging.assert_same_float_dtype', 'assert_same_float_dtype')
+@tf_export(
+    'debugging.assert_same_float_dtype',
+    v1=['debugging.assert_same_float_dtype', 'assert_same_float_dtype'])
 @deprecation.deprecated_endpoints('assert_same_float_dtype')
 def assert_same_float_dtype(tensors=None, dtype=None):
   """Validate and return float type based on `tensors` and `dtype`.
@@ -1249,7 +1279,8 @@ def assert_same_float_dtype(tensors=None, dtype=None):
   return dtype
 
 
-@tf_export('debugging.assert_scalar', 'assert_scalar')
+@tf_export(
+    'debugging.assert_scalar', v1=['debugging.assert_scalar', 'assert_scalar'])
 @deprecation.deprecated_endpoints('assert_scalar')
 def assert_scalar(tensor, name=None):
   with ops.name_scope(name, 'assert_scalar', [tensor]) as name_scope:

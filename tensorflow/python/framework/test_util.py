@@ -1721,7 +1721,7 @@ class TensorFlowTestCase(googletest.TestCase):
     self.assertGreater(np.min(a), comparison_target)
 
   def assertAllLess(self, a, comparison_target):
-    """Assert element values are all greater than a target value.
+    """Assert element values are all less than a target value.
 
     Args:
       a: The numpy `ndarray`, or anything that can be converted into a
@@ -1732,7 +1732,7 @@ class TensorFlowTestCase(googletest.TestCase):
     self.assertLess(np.max(a), comparison_target)
 
   def assertAllGreaterEqual(self, a, comparison_target):
-    """Assert element values are all greater than a target value.
+    """Assert element values are all greater than or equal to a target value.
 
     Args:
       a: The numpy `ndarray`, or anything that can be converted into a
@@ -1743,7 +1743,7 @@ class TensorFlowTestCase(googletest.TestCase):
     self.assertGreaterEqual(np.min(a), comparison_target)
 
   def assertAllLessEqual(self, a, comparison_target):
-    """Assert element values are all greater than a target value.
+    """Assert element values are all less than or equal to a target value.
 
     Args:
       a: The numpy `ndarray`, or anything that can be converted into a

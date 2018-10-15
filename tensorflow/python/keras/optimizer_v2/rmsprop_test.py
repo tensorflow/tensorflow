@@ -20,6 +20,7 @@ from __future__ import print_function
 
 import copy
 import math
+import types as python_types
 
 from absl.testing import parameterized
 import numpy as np
@@ -438,6 +439,27 @@ class RMSPropOptimizerTest(test.TestCase, parameterized.TestCase):
               (0.5 * (0.01 * 2.0 / math.sqrt(0.90001)) +
                (0.01 * 2.0 / math.sqrt(0.90001 * 0.9 + 1e-5)))
           ]), var1.eval())
+
+  def testConfig(self):
+
+    def momentum():
+      return ops.convert_to_tensor(3.0)
+
+    opt = rmsprop.RMSProp(
+        learning_rate=1.0,
+        rho=2.0,
+        momentum=momentum,
+        epsilon=lambda: ops.convert_to_tensor(4.0),
+        centered=True)
+    config = opt.get_config()
+    opt2 = rmsprop.RMSProp.from_config(config)
+    self.assertEqual(opt._hyper["learning_rate"][1],
+                     opt2._hyper["learning_rate"][1])
+    self.assertEqual(opt._hyper["rho"][1], opt2._hyper["rho"][1])
+    self.assertEqual(opt._hyper["momentum"][1].__name__,
+                     opt2._hyper["momentum"][1].__name__)
+    self.assertIsInstance(opt2._hyper["epsilon"][1], python_types.LambdaType)
+    self.assertEqual(True, opt2._centered)
 
 
 if __name__ == "__main__":

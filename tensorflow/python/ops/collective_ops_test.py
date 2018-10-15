@@ -32,7 +32,7 @@ class CollectiveOpTest(test.TestCase):
   def _testCollectiveReduce(self, t0, t1, expected, set_graph_key):
     group_key = 1
     instance_key = 1
-    with self.test_session(
+    with self.session(
         config=config_pb2.ConfigProto(device_count={'CPU': 2})) as sess:
       with ops.device('/CPU:0'):
         in0 = constant_op.constant(t0)
@@ -65,7 +65,7 @@ class CollectiveOpTest(test.TestCase):
   def _testCollectiveBroadcast(self, t0):
     group_key = 1
     instance_key = 1
-    with self.test_session(
+    with self.session(
         config=config_pb2.ConfigProto(device_count={'CPU': 2})) as sess:
       with ops.device('/CPU:0'):
         in0 = constant_op.constant(t0)

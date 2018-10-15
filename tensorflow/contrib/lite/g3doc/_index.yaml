@@ -97,7 +97,7 @@ landing_page:
       path: https://www.shazam.com/
     - custom_image:
         path: ./images/landing-page/nest_logo.png
-      path: https://nest.com/    
+      path: https://nest.com/
     - custom_image:
         path: ./images/landing-page/loseit_logo.png
       path: https://www.loseit.com/
@@ -129,10 +129,10 @@ landing_page:
         icon_name: autorenew
       description: >
         Convert a TensorFlow model into a compressed flat buffer with the
-        TensorFlow Lite Optimizing Converter (TOCO).
+        TensorFlow Lite Converter.
       buttons:
-      - label: Read the TOCO guide
-        path: https://github.com/tensorflow/tensorflow/blob/master/tensorflow/contrib/lite/toco/g3doc/python_api.md
+      - label: Read the converter guide
+        path: /lite/convert/
         classname: button button-primary tfo-button-primary
     - heading: Deploy
       icon:

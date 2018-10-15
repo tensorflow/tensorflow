@@ -142,7 +142,7 @@ bool GraphTransformationsPass(int increment, Model* model,
     for (const auto& transformation : transformations) {
       CHECK(!changed_now);
       CHECK(transformation->Messages().empty());
-      changed_now = transformation->Run(model, op_index);
+      CHECK(transformation->Run(model, op_index, &changed_now).ok());
       const char* made_a_change_msg =
           changed_now ? "made a change" : "did NOT make a change";
       const int log_level =

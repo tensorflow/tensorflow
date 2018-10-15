@@ -86,6 +86,7 @@ py_library(
         "//tensorflow/python:variable_scope",
         "//tensorflow/python:variables",
         "//tensorflow/python/estimator:estimator_py",
+        "//tensorflow/python/estimator:util",
         "@six_archive//:six",
     ],
 )
@@ -191,6 +192,7 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         ":keras_support",  # split out to avoid cycle with tpu_strategy
+        ":tpu_embedding",
         ":tpu_estimator",
         ":tpu_lib",
     ],
@@ -393,5 +395,23 @@ tf_py_test(
     additional_deps = [
         ":tpu",
         "//tensorflow/python:framework_test_lib",
+    ],
+)
+
+py_library(
+    name = "tpu_embedding",
+    srcs = ["python/tpu/tpu_embedding.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow/contrib/tpu:tpu_ops",
+        "//tensorflow/contrib/tpu/proto:tpu_embedding_configuration_proto_py",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:init_ops",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:partitioned_variables",
+        "//tensorflow/python:variable_scope",
+        "//tensorflow/python:variables",
+        "@six_archive//:six",
     ],
 )

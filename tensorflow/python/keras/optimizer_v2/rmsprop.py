@@ -237,3 +237,14 @@ class RMSProp(optimizer_v2.OptimizerV2):
           grad,
           indices,
           use_locking=self._use_locking)
+
+  def get_config(self):
+    config = super(RMSProp, self).get_config()
+    config.update({
+        "learning_rate": self._serialize_hyperparameter("learning_rate"),
+        "rho": self._serialize_hyperparameter("rho"),
+        "momentum": self._serialize_hyperparameter("momentum"),
+        "epsilon": self._serialize_hyperparameter("epsilon"),
+        "centered": self._centered
+    })
+    return config

@@ -50,6 +50,21 @@ input: The return value.
 index: This return value is the index-th return value of the function.
 )doc");
 
+REGISTER_SYSTEM_OP("_DeviceRetval")
+    .Input("input: T")
+    .Attr("T: type")
+    .Attr("index: int >= 0")
+    .SetIsStateful()
+    .SetShapeFn([](shape_inference::InferenceContext* context) {
+      return Status::OK();
+    })
+    .Doc(R"doc(
+A graph node which represents a return value of a function.
+
+input: The return value.
+index: This return value is the index-th return value of the function.
+)doc");
+
 REGISTER_OP("_ListToArray")
     .Input("input: Tin")
     .Output("output: N * T")

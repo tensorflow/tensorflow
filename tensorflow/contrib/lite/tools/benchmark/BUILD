@@ -32,13 +32,14 @@ cc_binary(
     deps = [
         ":benchmark_tflite_model_lib",
         ":logging",
+        "//tensorflow/contrib/lite/testing:init_tensorflow",
     ],
 )
 
 cc_binary(
     name = "benchmark_model_plus_flex",
     srcs = [
-        "benchmark_main.cc",
+        "benchmark_plus_flex_main.cc",
     ],
     copts = common_copts,
     linkopts = tflite_linkopts() + select({
@@ -52,6 +53,7 @@ cc_binary(
         ":benchmark_tflite_model_lib",
         ":logging",
         "//tensorflow/contrib/lite/delegates/flex:delegate",
+        "//tensorflow/contrib/lite/testing:init_tensorflow",
     ],
 )
 

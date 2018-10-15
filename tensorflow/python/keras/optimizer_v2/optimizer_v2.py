@@ -1319,6 +1319,42 @@ class OptimizerV2(optimizer_v1.Optimizer):
         variable=variable,
         optional_op_name=self._name)
 
+  def get_config(self):
+    """Returns the config of the optimimizer.
+
+    An optimizer config is a Python dictionary (serializable)
+    containing the configuration of an optimizer.
+    The same optimizer can be reinstantiated later
+    (without any saved state) from this configuration.
+
+    Returns:
+        Python dictionary.
+    """
+    return {"name": self._name}
+
+  @classmethod
+  def from_config(cls, config, custom_objects=None):
+    """Creates an optimizer from its config.
+
+    This method is the reverse of `get_config`,
+    capable of instantiating the same optimizer from the config
+    dictionary.
+
+    Arguments:
+        config: A Python dictionary, typically the output of get_config.
+        custom_objects: A Python dictionary mapping names to additional Python
+          objects used to create this optimizer, such as a function used for a
+          hyperparameter.
+
+    Returns:
+        An optimizer instance.
+    """
+    return cls(**config)
+
+  def _serialize_hyperparameter(self, hyperparameter_name):
+    """Serialize a hyperparameter that can be a float, callable, or Tensor."""
+    return self._hyper[hyperparameter_name][1]
+
   # --------------
   # Unsupported parent methods
   # --------------
