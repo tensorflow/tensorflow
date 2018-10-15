@@ -23,8 +23,6 @@ from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
-from tensorflow.python.ops import resource_variable_ops
-from tensorflow.python.ops import state_ops
 from tensorflow.python.training import adam
 from tensorflow.python.training import training_ops
 
@@ -134,8 +132,7 @@ class AdaMaxOptimizer(adam.AdamOptimizer):
         math_ops.cast(self._epsilon_t, grad.dtype.base_dtype),
         grad, use_locking=self._use_locking)
 
-  def _apply_sparse_shared(self, grad, var, indices,
-                           scatter_add, scatter_update):
+  def _apply_sparse_shared(self, grad, var, indices):
     beta1_power = self._get_beta_accumulators()
     beta1_power = math_ops.cast(beta1_power, var.dtype.base_dtype)
     lr_t = math_ops.cast(self._lr_t, var.dtype.base_dtype)
@@ -147,38 +144,28 @@ class AdaMaxOptimizer(adam.AdamOptimizer):
     m_slice = array_ops.gather(m, indices)
     m_t_slice = m_slice * beta1_t + grad * (1 - beta1_t)
     with ops.control_dependencies([m_t_slice]):
-      m_t = scatter_update(m, indices, m_t_slice)
+      m_t = m.scatter_update(
+          ops.IndexedSlices(m_t_slice, indices), use_locking=self._use_locking)
     # u_t = max(beta2 * u, abs(g_t))
     v = self.get_slot(var, "v")
     v_slice = array_ops.gather(v, indices)
     v_t_slice = math_ops.maximum(v_slice * beta2_t, math_ops.abs(grad))
     with ops.control_dependencies([v_t_slice]):
-      v_t = scatter_update(v, indices, v_t_slice)
+      v_t = v.scatter_update(
+          ops.IndexedSlices(v_t_slice, indices), use_locking=self._use_locking)
     # theta_t = theta - lr / (1 - beta1^t) * m_t / u_t
     var_slice = -lr_t / (1 - beta1_power) * (m_t_slice /
                                              (v_t_slice + epsilon_t))
     with ops.control_dependencies([var_slice]):
-      var_update = scatter_add(var, indices, var_slice)
+      var_update = var.scatter_add(
+          ops.IndexedSlices(var_slice, indices), use_locking=self._use_locking)
     return control_flow_ops.group(*[var_update, m_t, v_t])
 
   def _apply_sparse(self, grad, var):
-    return self._apply_sparse_shared(
-        grad.values, var, grad.indices,
-        lambda x, i, v: state_ops.scatter_add(  # pylint: disable=g-long-lambda
-            x, i, v, use_locking=self._use_locking),
-        lambda x, i, v: state_ops.scatter_update(  # pylint: disable=g-long-lambda
-            x, i, v, use_locking=self._use_locking))
-
-  def _resource_scatter_update(self, x, i, v):
-    with ops.control_dependencies(
-        [resource_variable_ops.resource_scatter_update(
-            x.handle, i, v)]):
-      return x.value()
+    return self._apply_sparse_shared(grad.values, var, grad.indices)
 
   def _resource_apply_sparse(self, grad, var, indices):
-    return self._apply_sparse_shared(
-        grad, var, indices,
-        self._resource_scatter_add, self._resource_scatter_update)
+    return self._apply_sparse_shared(grad, var, indices)
 
   def _finish(self, update_ops, name_scope):
     # Update the power accumulators.
