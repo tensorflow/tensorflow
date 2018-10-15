@@ -30,25 +30,27 @@ docker build -t renode_bluepill \
   -f ${ROOT_DIR}/tensorflow/contrib/lite/experimental/micro/testing/Dockerfile.bluepill \
   ${ROOT_DIR}/tensorflow/contrib/lite/experimental/micro/testing/
 
-docker run \
+exit_code=0
+# running in `if` to avoid setting +e
+if ! docker run \
   --log-driver=none -a stdout -a stderr \
   -v ${ROOT_DIR}:/workspace \
   -v /tmp:/tmp \
+  -e BIN=/workspace/$1 \
+  -e SCRIPT=/workspace/tensorflow/contrib/lite/experimental/micro/testing/bluepill.resc \
+  -e EXPECTED="$2" \
   -it renode_bluepill \
-  /bin/bash -c "renode -P 5000 --disable-xwt -e '
-\$bin?=@/workspace/$1
-s @/workspace/tensorflow/contrib/lite/experimental/micro/testing/bluepill.resc
-' 2>&1 >${MICRO_LOG_FILENAME}"
+  /bin/bash -c "/opt/renode/tests/test.sh /workspace/tensorflow/contrib/lite/experimental/micro/testing/bluepill.robot 2>&1 >${MICRO_LOG_FILENAME}"
+then
+  exit_code=1
+fi
 
 echo "LOGS:"
 cat ${MICRO_LOG_FILENAME}
-
-if grep -q "$2" ${MICRO_LOG_FILENAME}
+if [ $exit_code -eq 0 ]
 then
   echo "$1: PASS"
-  exit 0
 else
   echo "$1: FAIL - '$2' not found in logs."
-  exit 1
 fi
-
+exit $exit_code
