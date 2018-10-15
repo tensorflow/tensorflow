@@ -468,6 +468,7 @@ py_test(
     tags = [
         "no_pip",  # Path issues due to test environment
         "no_windows",
+        "notap",
     ],
     deps = [
         ":client_testlib",

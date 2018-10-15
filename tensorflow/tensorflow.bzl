@@ -1543,7 +1543,7 @@ def tf_custom_op_py_library(
         srcs_version = "PY2AND3",
         visibility = None,
         deps = []):
-    kernels = kernels  # unused argument
+    _ignore = [kernels]
     native.py_library(
         name = name,
         data = dso,
