@@ -80,7 +80,7 @@ class ArithmeticOptimizer : public GraphOptimizer {
     bool convert_log1p = true;
     bool convert_expm1 = true;
     bool unary_ops_composition = true;
-    bool remove_stack_strided_slice_same_axis = false;
+    bool remove_stack_strided_slice_same_axis = true;
 
     // Choose which arithmetic optimizer stages will be enabled for a given
     // optimization level by default.

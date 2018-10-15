@@ -3000,10 +3000,11 @@ class RemoveStackStridedSliceSameAxis : public ArithmeticOptimizerStage {
     *pack_axis = pack->attr().at("axis").i();
     auto slice_properties =
         ctx().graph_properties->GetInputProperties(node->name());
-    *pack_output_shape = slice_properties[0].shape();
-    if (pack_output_shape->unknown_rank()) {
+    if (slice_properties.empty() ||
+        slice_properties[0].shape().unknown_rank()) {
       return Status::OK();
     }
+    *pack_output_shape = slice_properties[0].shape();
     const int pack_input_rank = pack_output_shape->dims() - 1;
     if (*pack_axis < 0) {
       // The ndims of any input into Pack op is its output ndims - 1.
