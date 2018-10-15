@@ -106,9 +106,7 @@ Status FoldSubDivMulBatchNorms(const GraphDef& input_graph_def,
         const NodeDef& biasadd_node   = match.node;
         // const NodeDef& mul_node    = match.inputs[0].node;
         const NodeDef& beta_node      = match.inputs[1].node;
-        // const NodeDef& realdiv_node= match.inputs[0].inputs[0].node;
         const NodeDef& gamma_node     = match.inputs[0].inputs[1].node;
-        // const NodeDef& sub_node    = match.inputs[0].inputs[0].inputs[0].node;
         const NodeDef& variance_node  = match.inputs[0].inputs[0].inputs[1].node;
         const NodeDef& conv_node      = match.inputs[0].inputs[0].inputs[0].inputs[0].node;
         const NodeDef& mean_node      = match.inputs[0].inputs[0].inputs[0].inputs[1].node;
@@ -142,8 +140,8 @@ Status FoldSubDivMulBatchNorms(const GraphDef& input_graph_def,
 
         // Flat all dimensions except the last one so that we can iterate.
         auto weights_matrix = weights.flat_inner_dims<float>(); 
-        auto gamma_matrix = gamma.flat_inner_dims<float>();
-        auto variance_matrix = variance.flat_inner_dims<float>();
+        auto gamma_matrix = gamma.flat_inner_dims<float>();//gamma is a scalar value
+        auto variance_matrix = variance.flat_inner_dims<float>();//variance is 1d vector
 
         // Perform the actual calculation to get w_new(new_weights_matrix)
         Tensor new_weights(DT_FLOAT, weights.shape());
@@ -168,8 +166,8 @@ Status FoldSubDivMulBatchNorms(const GraphDef& input_graph_def,
         CHECK_EQ(beta_cols, variance_cols);
 
         // Flat all dimensions except the last one so that we can iterate.
-        auto beta_matrix = beta.flat_inner_dims<float>();
-        auto mean_matrix = mean.flat_inner_dims<float>();
+        auto beta_matrix = beta.flat_inner_dims<float>();// beta is a scalar value
+        auto mean_matrix = mean.flat_inner_dims<float>();// mean is a scalar value
 
         // Perform the actual calculation to get b_new(new_beta_matrix)
         Tensor new_beta(DT_FLOAT, beta.shape());
