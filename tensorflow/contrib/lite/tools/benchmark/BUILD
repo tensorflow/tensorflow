@@ -39,7 +39,7 @@ cc_binary(
 cc_binary(
     name = "benchmark_model_plus_flex",
     srcs = [
-        "benchmark_main.cc",
+        "benchmark_plus_flex_main.cc",
     ],
     copts = common_copts,
     linkopts = tflite_linkopts() + select({

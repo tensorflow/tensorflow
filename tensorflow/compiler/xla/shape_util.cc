@@ -931,7 +931,12 @@ StatusOr<Shape> ParseShapeStringInternal(absl::string_view* s) {
       return dense_shape_size;
     }
 
-    for (int64 dim : shape.dimensions()) {
+    bool is_padded =
+        LayoutUtil::IsDenseArray(shape) && LayoutUtil::IsPadded(shape);
+    absl::Span<const int64> shape_max_dimensions =
+        is_padded ? LayoutUtil::PaddedDimensions(shape)
+                  : AsInt64Slice(shape.dimensions());
+    for (int64 dim : shape_max_dimensions) {
       dense_shape_size = MultiplyWithoutOverflow(dense_shape_size, dim);
       if (dense_shape_size < 0) {
         return dense_shape_size;

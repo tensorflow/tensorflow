@@ -960,10 +960,13 @@ def func_graph_from_py_func(name,
     try:
       if experimental_autograph:
         func_outputs = autograph.converted_call(
-            python_func,
+            python_func, None,
             autograph.ConversionOptions(
-                verbose=True, recursive=True, strip_decorators=(defun,)),
-            *func_args, **func_kwargs)
+                verbose=True,
+                recursive=True,
+                strip_decorators=(defun,),
+                optional_features=(),
+            ), *func_args, **func_kwargs)
       else:
         func_outputs = python_func(*func_args, **func_kwargs)
       # invariant: `func_outputs` contains only Tensors and `None`s.

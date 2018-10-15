@@ -40,6 +40,7 @@ class ParallelMapDatasetOp : public UnaryDatasetOpKernel {
     OP_REQUIRES_OK(ctx, ctx->GetAttr("output_shapes", &output_shapes_));
     OP_REQUIRES_OK(ctx, ctx->GetAttr("use_inter_op_parallelism",
                                      &use_inter_op_parallelism_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("sloppy", &sloppy_));
   }
 
  protected:
@@ -104,7 +105,7 @@ class ParallelMapDatasetOp : public UnaryDatasetOpKernel {
     }
 
     *output = new Dataset(ctx, input, func_, num_parallel_calls, output_types_,
-                          output_shapes_, use_inter_op_parallelism_,
+                          output_shapes_, use_inter_op_parallelism_, sloppy_,
                           std::move(captured_func), std::move(map_func));
   }
 
@@ -115,7 +116,7 @@ class ParallelMapDatasetOp : public UnaryDatasetOpKernel {
             const NameAttrList& func, int32 num_parallel_calls,
             const DataTypeVector& output_types,
             const std::vector<PartialTensorShape>& output_shapes,
-            bool use_inter_op_parallelism,
+            bool use_inter_op_parallelism, bool sloppy,
             std::unique_ptr<CapturedFunction> captured_func,
             ParallelMapIteratorFunction map_func)
         : DatasetBase(DatasetContext(ctx)),
@@ -125,6 +126,7 @@ class ParallelMapDatasetOp : public UnaryDatasetOpKernel {
           output_types_(output_types),
           output_shapes_(output_shapes),
           use_inter_op_parallelism_(use_inter_op_parallelism),
+          sloppy_(sloppy),
           captured_func_(std::move(captured_func)),
           map_func_(std::move(map_func)) {
       input_->Ref();
@@ -140,7 +142,7 @@ class ParallelMapDatasetOp : public UnaryDatasetOpKernel {
 
       return NewParallelMapIterator(
           {this, strings::StrCat(prefix, "::ParallelMap")}, input_,
-          std::move(init_func), map_func_, num_parallel_calls_);
+          std::move(init_func), map_func_, num_parallel_calls_, sloppy_);
     }
 
     const DataTypeVector& output_dtypes() const override {
@@ -182,20 +184,32 @@ class ParallelMapDatasetOp : public UnaryDatasetOpKernel {
 
       // Attr: f
       TF_RETURN_IF_ERROR(b->AddFunction(ctx, func_.name()));
-      AttrValue f;
-      b->BuildAttrValue(func_, &f);
+      AttrValue f_attr;
+      b->BuildAttrValue(func_, &f_attr);
 
       // Attr: Targuments
       AttrValue other_arguments_types_attr;
       b->BuildAttrValue(other_arguments_types, &other_arguments_types_attr);
+
+      // Attr: use_inter_op_parallelism
+      AttrValue use_inter_op_parallelism_attr;
+      b->BuildAttrValue(use_inter_op_parallelism_,
+                        &use_inter_op_parallelism_attr);
+
+      // Attr: sloppy
+      AttrValue sloppy_attr;
+      b->BuildAttrValue(sloppy_, &sloppy_attr);
 
       TF_RETURN_IF_ERROR(b->AddDataset(
           this,
           {std::make_pair(0, input_graph_node),
            std::make_pair(2, num_parallel_calls)},  // Single tensor inputs.
           {std::make_pair(1, other_arguments)},     // Tensor list inputs.
-          {std::make_pair("f", f),
-           std::make_pair("Targuments", other_arguments_types_attr)},  // Attrs
+          {std::make_pair("f", f_attr),
+           std::make_pair("Targuments", other_arguments_types_attr),
+           std::make_pair("use_inter_op_parallelism",
+                          use_inter_op_parallelism_attr),
+           std::make_pair("sloppy", sloppy_attr)},  // Attrs
           output));
       return Status::OK();
     }
@@ -207,6 +221,7 @@ class ParallelMapDatasetOp : public UnaryDatasetOpKernel {
     const DataTypeVector output_types_;
     const std::vector<PartialTensorShape> output_shapes_;
     const bool use_inter_op_parallelism_;
+    const bool sloppy_;
     const std::unique_ptr<CapturedFunction> captured_func_;
     const ParallelMapIteratorFunction map_func_;
   };
@@ -214,6 +229,7 @@ class ParallelMapDatasetOp : public UnaryDatasetOpKernel {
   DataTypeVector output_types_;
   std::vector<PartialTensorShape> output_shapes_;
   bool use_inter_op_parallelism_;
+  bool sloppy_;
   NameAttrList func_;
 };
 
