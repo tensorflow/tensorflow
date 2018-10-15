@@ -242,6 +242,12 @@ class PartitionedCallOp : public AsyncOpKernel {
         int index = attr_value->i();
         TF_RETURN_IF_ERROR(node->attrs().Find("T", &attr_value));
         DataType dtype = attr_value->type();
+        if (dtype != args[index].dtype()) {
+          return errors::InvalidArgument("For argument ", index, " expected ",
+                                         DataTypeString(dtype), " tensor, got ",
+                                         DataTypeString(args[index].dtype()),
+                                         " instead.");
+        }
         if (dtype == DT_RESOURCE) {
           const ResourceHandle& handle = args[index].flat<ResourceHandle>()(0);
           node->set_assigned_device_name(handle.device());
