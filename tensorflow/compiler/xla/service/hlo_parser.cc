@@ -839,8 +839,6 @@ bool HloParser::ParseInstruciontRhs(HloComputation::Builder* builder,
       break;
     }
     case HloOpcode::kSort: {
-      auto loc = lexer_.GetLoc();
-
       optional<std::vector<tensorflow::int64>> dimensions;
       attrs["dimensions"] = {/*required=*/true, AttrTy::kBracedInt64List,
                              &dimensions};
@@ -848,20 +846,10 @@ bool HloParser::ParseInstruciontRhs(HloComputation::Builder* builder,
           dimensions->size() != 1) {
         return false;
       }
-      switch (operands.size()) {
-        case 1:
-          instruction = builder->AddInstruction(HloInstruction::CreateSort(
-              shape, dimensions->at(0), /*keys=*/operands[0]));
-          break;
-        case 2:
-          instruction = builder->AddInstruction(HloInstruction::CreateSort(
-              shape, dimensions->at(0),
-              /*keys=*/operands[0], /*values=*/operands[1]));
-          break;
-        default:
-          return Error(loc, StrCat("expects either 1 or 2 operands, but has ",
-                                   operands.size(), " operands"));
-      }
+      instruction = builder->AddInstruction(HloInstruction::CreateSort(
+          shape, dimensions->at(0),
+          /*keys=*/operands[0],
+          /*values=*/absl::Span<HloInstruction* const>(operands).subspan(1)));
       break;
     }
     case HloOpcode::kTuple: {
@@ -2994,7 +2982,8 @@ bool HloParser::ParseShape(Shape* result) {
   }
 
   if (lexer_.GetKind() != TokKind::kShape) {
-    return TokenError("expects shape");
+    return TokenError(absl::StrCat("expected shape, saw ",
+                                   TokKindToString(lexer_.GetKind())));
   }
   *result = lexer_.GetShapeVal();
   lexer_.Lex();

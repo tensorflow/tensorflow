@@ -43,4 +43,8 @@ public final class InterpreterFlexTest {
       interpreter.run(new float[1], new float[1]);
     }
   }
+
+  static {
+    TensorFlowLite.initTensorFlow();
+  }
 }

@@ -20,7 +20,6 @@ limitations under the License.
 #include "tensorflow/core/grappler/grappler_item.h"
 #include "tensorflow/core/grappler/optimizers/graph_optimizer.h"
 #include "tensorflow/core/lib/core/status.h"
-#include "tensorflow/core/lib/core/threadpool.h"
 #include "tensorflow/core/protobuf/rewriter_config.pb.h"
 
 namespace tensorflow {
@@ -30,7 +29,7 @@ namespace grappler {
 class MetaOptimizer : public GraphOptimizer {
  public:
   MetaOptimizer(DeviceBase* cpu_device, const RewriterConfig& cfg);
-  ~MetaOptimizer();
+  ~MetaOptimizer() override = default;
 
   string name() const override { return "meta_optimizer"; };
 
@@ -65,17 +64,8 @@ class MetaOptimizer : public GraphOptimizer {
   Status OptimizeGraph(Cluster* cluster, const GrapplerItem& item,
                        GraphDef* optimized_graph);
 
-  // Run optimization passes over the main graph and for functions in the
-  // function library.
-  Status OptimizeMainGraphAndFunctionLibrary(Cluster* cluster,
-                                             const GrapplerItem& item,
-                                             GraphDef* optimized_graph);
-
   DeviceBase* const cpu_device_;  // may be NULL
   RewriterConfig cfg_;
-
-  // Thread pool used for launching optimizers asynchronously.
-  std::unique_ptr<thread::ThreadPool> thread_pool_;
 
   struct OptimizerResult {
     string optimizer_name;

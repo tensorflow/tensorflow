@@ -92,7 +92,10 @@ def getqualifiedname(namespace, object_, max_depth=2):
 
   # TODO(mdan): Use breadth-first search and avoid visiting modules twice.
   if max_depth:
-    for name, value in namespace.items():
+    # Iterating over a copy prevents "changed size due to iteration" errors.
+    # It's unclear why those occur - suspecting new modules may load during
+    # iteration.
+    for name, value in namespace.copy().items():
       if tf_inspect.ismodule(value):
         name_in_module = getqualifiedname(value.__dict__, object_,
                                           max_depth - 1)
@@ -197,3 +200,59 @@ def getmethodclass(m):
     raise ValueError('Found too many owners of %s: %s' % (m, owners))
 
   return None
+
+
+class SuperWrapperForDynamicAttrs(object):
+  """A wrapper that supports dynamic attribute lookup on the super object.
+
+  For example, in the following code, `super` incorrectly reports that
+  `super(Bar, b)` lacks the `a` attribute:
+
+    class Foo(object):
+      def __init__(self):
+        self.a = lambda: 1
+
+      def bar(self):
+        return hasattr(self, 'a')
+
+    class Bar(Foo):
+      def bar(self):
+        return super(Bar, self).bar()
+
+
+    b = Bar()
+    print(hasattr(super(Bar, b), 'a'))  # False
+    print(super(Bar, b).bar())          # True
+
+  A practical situation when this tends to happen is Keras model hierarchies
+  that hold references to certain layers, like this:
+
+    class MiniModel(keras.Model):
+
+      def __init__(self):
+        super(MiniModel, self).__init__()
+        self.fc = keras.layers.Dense(1)
+
+      def call(self, inputs, training=True):
+        return self.fc(inputs)
+
+    class DefunnedMiniModel(MiniModel):
+
+      def call(self, inputs, training=True):
+        return super(DefunnedMiniModel, self).call(inputs, training=training)
+
+  A side effect of this wrapper is that all attributes become visible, even
+  those created in the subclass.
+  """
+
+  # TODO(mdan): Investigate why that happens - it may be for a reason.
+  # TODO(mdan): Probably need more overrides to make it look like super.
+
+  def __init__(self, target):
+    self._target = target
+
+  def __getattribute__(self, name):
+    target = object.__getattribute__(self, '_target')
+    if hasattr(target, name):
+      return getattr(target, name)
+    return getattr(target.__self__, name)

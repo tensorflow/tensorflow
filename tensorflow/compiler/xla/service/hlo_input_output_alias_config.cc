@@ -20,8 +20,17 @@ namespace xla {
 Status HloInputOutputAliasConfig::SetUpAlias(const ShapeIndex& output_index,
                                              int64 param_number,
                                              const ShapeIndex& param_index) {
+  TF_RET_CHECK(ShapeUtil::IndexIsValid(alias_.shape(), output_index))
+      << absl::StrCat("Tring to set up alias at ", output_index.ToString(),
+                      " which is an invalid index for shape ",
+                      ShapeUtil::HumanString(alias_.shape()));
   // Output can't be aliased with multiple parameters.
-  TF_RET_CHECK(!alias_.element(output_index));
+  TF_RET_CHECK(!alias_.element(output_index)) << absl::StrFormat(
+      "Trying to set up output alias for param %lld at %s but failed: output "
+      "index %s is already aliased with param %lld at %s",
+      param_number, param_index.ToString(), output_index.ToString(),
+      alias_.element(output_index)->first,
+      alias_.element(output_index)->second.ToString());
   (*alias_.mutable_element(output_index)) =
       std::make_pair(param_number, param_index);
   return Status::OK();
@@ -48,9 +57,8 @@ HloInputOutputAliasProto HloInputOutputAliasConfig::ToProto() const {
 }
 
 StatusOr<HloInputOutputAliasConfig> HloInputOutputAliasConfig::CreateFromProto(
-    const HloModule* module, const HloInputOutputAliasProto& proto) {
-  HloInputOutputAliasConfig result(
-      module->entry_computation()->root_instruction()->shape());
+    const Shape& output_shape, const HloInputOutputAliasProto& proto) {
+  HloInputOutputAliasConfig result(output_shape);
   for (const HloInputOutputAliasProto::AliasEntryProto& entry :
        proto.entries()) {
     ShapeIndex output_index(entry.output_shape_index().begin(),
@@ -80,12 +88,14 @@ string HloInputOutputAliasConfig::ToString() const {
   return absl::StrJoin(pieces, "\n");
 }
 
-bool HloInputOutputAliasConfig::ParameterHasAlias(int64 param_number) const {
+bool HloInputOutputAliasConfig::ParameterHasAlias(
+    int64 param_number, const ShapeIndex& param_index) const {
   bool output = false;
   alias_.ForEachElement(
       [&](const xla::ShapeIndex&,
           absl::optional<std::pair<int64, ShapeIndex>> alias) {
-        if (alias && alias->first == param_number) {
+        if (alias && alias->first == param_number &&
+            alias->second == param_index) {
           output = true;
         }
       });

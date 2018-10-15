@@ -14,8 +14,12 @@ tflite_micro_cc_test(
     name = "micro_speech_test",
     srcs = [
         "micro_speech_test.cc",
+        "no_features_data.cc",
+        "no_features_data.h",
         "tiny_conv_model_data.cc",
         "tiny_conv_model_data.h",
+        "yes_features_data.cc",
+        "yes_features_data.h",
     ],
     tags = [
         "nomsan",

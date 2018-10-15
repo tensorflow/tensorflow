@@ -44,14 +44,15 @@ class HloInputOutputAliasConfig {
 
   // Returns true if the given parameter is aliased with one of the output
   // buffers.
-  bool ParameterHasAlias(int64 param_number) const;
+  bool ParameterHasAlias(int64 param_number,
+                         const ShapeIndex& param_index) const;
 
   // (De)Serializes an HloInputOutoutAliasConfig to/from an
   // HloInputOutoutAliasProto.
   HloInputOutputAliasProto ToProto() const;
 
   static StatusOr<HloInputOutputAliasConfig> CreateFromProto(
-      const HloModule* module, const HloInputOutputAliasProto& proto);
+      const Shape& output_shape, const HloInputOutputAliasProto& proto);
 
   // Returns the output index that the given parameter and parameter index is
   // aliased with. A nullopt is returned if there is no output that is aliased

@@ -101,7 +101,7 @@ class _UserDeviceSpec(object):
       self.function = pydev.merge_device(self._device_name_or_function)
 
 
-class _NullContextmanager(object):
+class NullContextmanager(object):
 
   def __enter__(self):
     pass
@@ -1605,6 +1605,8 @@ def _create_c_op(graph, node_def, inputs, control_inputs):
   op_desc = c_api.TF_NewOperation(graph._c_graph,
                                   compat.as_str(node_def.op),
                                   compat.as_str(node_def.name))
+  if node_def.device:
+    c_api.TF_SetDevice(op_desc, compat.as_str(node_def.device))
   # Add inputs
   for op_input in inputs:
     if isinstance(op_input, (list, tuple)):
@@ -4951,7 +4953,7 @@ def _colocate_with_for_gradient(op, gradient_uid, ignore_existing=False):
     if op is not None:
       return device(op.device)
     else:
-      return _NullContextmanager()
+      return NullContextmanager()
   else:
     default_graph = get_default_graph()
     if isinstance(op, EagerTensor):
@@ -4996,7 +4998,7 @@ def control_dependencies(control_inputs):
       for control in control_inputs:
         if callable(control):
           control()
-    return _NullContextmanager()
+    return NullContextmanager()
   else:
     return get_default_graph().control_dependencies(control_inputs)
 

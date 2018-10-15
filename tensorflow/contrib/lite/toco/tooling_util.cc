@@ -407,6 +407,7 @@ const char* OperatorTypeName(OperatorType type) {
     HANDLE_OPERATORTYPENAME_CASE(CTCBeamSearchDecoder)
     HANDLE_OPERATORTYPENAME_CASE(Unpack)
     HANDLE_OPERATORTYPENAME_CASE(ZerosLike)
+    HANDLE_OPERATORTYPENAME_CASE(UnidirectionalSequenceLstm)
     default:
       LOG(FATAL) << "Unhandled op type";
 #undef HANDLE_OPERATORTYPENAME_CASE
@@ -737,15 +738,41 @@ bool CompareArrayBuffers(const Array& lhs_array, const Array& rhs_array) {
   }
   return true;
 }
+
+bool HaveSameMinMax(const Array& lhs_array, const Array& rhs_array) {
+  if (lhs_array.minmax || rhs_array.minmax) {
+    if (!lhs_array.minmax || !rhs_array.minmax) {
+      return false;
+    }
+    if (!(*lhs_array.minmax == *rhs_array.minmax)) {
+      return false;
+    }
+  }
+  return true;
+}
+
+bool HaveSameQuantizationParams(const Array& lhs_array,
+                                const Array& rhs_array) {
+  if (lhs_array.quantization_params || rhs_array.quantization_params) {
+    if (!lhs_array.quantization_params || !rhs_array.quantization_params) {
+      return false;
+    }
+    if (!(*lhs_array.quantization_params == *rhs_array.quantization_params)) {
+      return false;
+    }
+  }
+  return true;
+}
+
 }  // namespace
 
 bool CompareConstantArrays(const Array& lhs_array, const Array& rhs_array) {
-  bool attrs_equal =
-      lhs_array.shape() == rhs_array.shape() &&
-      lhs_array.data_type == rhs_array.data_type &&
-      lhs_array.final_data_type == rhs_array.final_data_type &&
-      lhs_array.minmax == rhs_array.minmax &&
-      lhs_array.quantization_params == rhs_array.quantization_params;
+  bool attrs_equal = lhs_array.shape() == rhs_array.shape() &&
+                     lhs_array.data_type == rhs_array.data_type &&
+                     lhs_array.final_data_type == rhs_array.final_data_type &&
+                     HaveSameMinMax(lhs_array, rhs_array) &&
+                     HaveSameQuantizationParams(lhs_array, rhs_array) &&
+                     lhs_array.narrow_range == rhs_array.narrow_range;
   if (!attrs_equal) {
     return false;
   }
@@ -898,12 +925,12 @@ void CheckNoMissingArray(const Model& model) {
 void FixNoMissingArray(Model* model) {
   for (const auto& op : model->operators) {
     for (const auto& input : op->inputs) {
-      if (!model->HasArray(input)) {
+      if (!model->HasArray(input) && !model->IsOptionalArray(input)) {
         model->GetOrCreateArray(input);
       }
     }
     for (const auto& output : op->outputs) {
-      if (!model->HasArray(output)) {
+      if (!model->HasArray(output) && !model->IsOptionalArray(output)) {
         model->GetOrCreateArray(output);
       }
     }
@@ -1237,11 +1264,15 @@ void DedupeConstantArrays(Model* model, size_t min_size) {
         lhs_array.final_data_type != ArrayDataType::kNone
             ? lhs_array.final_data_type
             : lhs_array.data_type;
-    size_t array_byte_size =
-        lhs_array.buffer->Length() * ElementSize(final_data_type);
-    if (array_byte_size < min_size) {
-      // Too small; skip.
-      continue;
+    // Ignore small arrays, don't check string arrays because it is not possible
+    // to estimate its size.
+    if (final_data_type != ArrayDataType::kString) {
+      size_t array_byte_size =
+          lhs_array.buffer->Length() * ElementSize(final_data_type);
+      if (array_byte_size < min_size) {
+        // Too small; skip.
+        continue;
+      }
     }
 
     auto next_lhs_array_it = lhs_array_it;
@@ -2173,6 +2204,8 @@ ArrayDataType ConvertIODataTypeToArrayDataType(IODataType type) {
       return ArrayDataType::kInt64;
     case BOOL:
       return ArrayDataType::kBool;
+    case STRING:
+      return ArrayDataType::kString;
     default:
       return ArrayDataType::kNone;
   }

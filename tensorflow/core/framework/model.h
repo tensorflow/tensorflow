@@ -335,7 +335,7 @@ class Model {
       if (name_ == "Map") {
         return Type::MAP;
       }
-      if (name_ == "MapAndBatch") {
+      if (name_ == "MapAndBatch" || name_ == "NumaMapAndBatch") {
         return Type::MAP_AND_BATCH;
       }
       if (name_ == "PaddedBatch") {

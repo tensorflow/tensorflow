@@ -78,7 +78,7 @@ class DataFormatVecPermuteOp : public XlaOpKernel {
       keys = xla::BroadcastInDim(
           keys, xla::ShapeUtil::MakeShape(xla::S32, {4, 2}), {0});
     }
-    auto sorted = xla::Sort(keys, ctx->Input(0), 0);
+    auto sorted = xla::Sort(keys, {ctx->Input(0)}, 0);
     auto output = xla::GetTupleElement(sorted, 1);
     ctx->SetOutput(0, output);
   }

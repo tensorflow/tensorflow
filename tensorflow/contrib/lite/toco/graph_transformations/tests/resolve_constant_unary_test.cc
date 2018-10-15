@@ -50,7 +50,8 @@ void RunResolveSum(const std::vector<float>& input,
   sum_op->inputs = {"input0", "input1"};
   sum_op->outputs = {"output"};
   model.operators.push_back(std::move(sum_op));
-  ResolveConstantUnaryOperator().Run(&model, 0);
+  bool modified;
+  ASSERT_TRUE(ResolveConstantUnaryOperator().Run(&model, 0, &modified).ok());
   EXPECT_EQ(model.GetArray("output").GetBuffer<ArrayDataType::kFloat>().data,
             expected_output);
   EXPECT_EQ(model.GetArray("output").shape().dims(), output_shape);

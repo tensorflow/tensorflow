@@ -1414,6 +1414,35 @@ TEST_F(CopyInsertionTest, ParametersAliasing) {
       /*output_index=*/{1}, /*param_number=*/0, /*param_index=*/{1}));
   InsertCopies(module.get());
 
+  EXPECT_EQ(CountCopies(*module), 0);
+}
+
+TEST_F(CopyInsertionTest, ParameterWithNoAliasing) {
+  // Test a case where no parameter is aliased with result. In this case, copy
+  // should be added
+  //
+  //  (p0 ,  p1)
+  //   |      |
+  //   |      |
+  //   |      |
+  //   |      |
+  //   |      |
+  //  (p0 ,  p1)
+  auto module = CreateNewModule();
+  const Shape tuple_shape =
+      ShapeUtil::MakeTupleShape({scalar_shape_, scalar_shape_});
+
+  auto builder = HloComputation::Builder(TestName());
+  auto param = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, tuple_shape, "p0"));
+  auto gte0 = builder.AddInstruction(
+      HloInstruction::CreateGetTupleElement(scalar_shape_, param, 0));
+  auto gte1 = builder.AddInstruction(
+      HloInstruction::CreateGetTupleElement(scalar_shape_, param, 1));
+  builder.AddInstruction(HloInstruction::CreateTuple({gte0, gte1}));
+  module->AddEntryComputation(builder.Build());
+  InsertCopies(module.get());
+
   EXPECT_THAT(module->entry_computation()->root_instruction(),
               op::Tuple(op::Copy(op::GetTupleElement(param, 0)),
                         op::Copy(op::GetTupleElement(param, 1))));
@@ -1450,10 +1479,10 @@ TEST_F(CopyInsertionTest, ParameterWithPartialAliasing) {
   InsertCopies(module.get());
 
   EXPECT_THAT(module->entry_computation()->root_instruction(),
-              op::Tuple(op::Copy(op::GetTupleElement(param, 0)),
+              op::Tuple(op::GetTupleElement(param, 0),
                         op::Copy(op::GetTupleElement(param, 1))));
 
-  EXPECT_EQ(CountCopies(*module), 2);
+  EXPECT_EQ(CountCopies(*module), 1);
 }
 
 TEST_F(CopyInsertionTest, ParameterAndParallelOpsWithPartialAliasing) {

@@ -45,7 +45,7 @@ bool IsReadonlyEntryParameterValue(const HloValue& value) {
   return value.defining_instruction()->opcode() == HloOpcode::kParameter &&
          computation == computation->parent()->entry_computation() &&
          !computation->parent()->input_output_alias_config().ParameterHasAlias(
-             value.defining_instruction()->parameter_number());
+             value.defining_instruction()->parameter_number(), value.index());
 }
 
 bool IsConstantValue(const HloValue& value) {
@@ -81,8 +81,7 @@ SpecialCaseCopyPolicy GetSpecialCaseCopyPolicy(const CallGraphNode& node,
 bool ShouldCopyRootValue(const HloValue& value,
                          const SpecialCaseCopyPolicy& policy) {
   if (policy.copy_parameters_and_constants) {
-    return IsConstantValue(value) ||
-           value.defining_instruction()->opcode() == HloOpcode::kParameter;
+    return ValueIsReadOnly(value);
   }
   return false;
 }

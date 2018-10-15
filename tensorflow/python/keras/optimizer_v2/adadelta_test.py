@@ -22,6 +22,7 @@ import numpy as np
 
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import ops
 from tensorflow.python.keras.optimizer_v2 import adadelta
 from tensorflow.python.ops import embedding_ops
 from tensorflow.python.ops import math_ops
@@ -160,6 +161,22 @@ class AdadeltaOptimizerTest(test.TestCase):
         # Validate updated params
         self.assertAllCloseAccordingToType(
             [[-111, -138]], var0.eval())
+
+  def testConfig(self):
+
+    def rho():
+      return ops.convert_to_tensor(1.0)
+
+    epsilon = ops.convert_to_tensor(1.0)
+
+    opt = adadelta.Adadelta(learning_rate=1.0, rho=rho, epsilon=epsilon)
+    config = opt.get_config()
+    opt2 = adadelta.Adadelta.from_config(config)
+    self.assertEqual(opt._hyper["learning_rate"][1],
+                     opt2._hyper["learning_rate"][1])
+    self.assertEqual(opt._hyper["rho"][1].__name__,
+                     opt2._hyper["rho"][1].__name__)
+    self.assertEqual(opt._hyper["epsilon"][1], opt2._hyper["epsilon"][1])
 
 
 if __name__ == "__main__":

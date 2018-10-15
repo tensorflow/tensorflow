@@ -496,11 +496,10 @@ TEST_F(MetaOptimizerTest, OptimizerTimesOut) {
   rewriter_config.set_meta_optimizer_timeout_ms(1500);
   rewriter_config.set_meta_optimizer_iterations(RewriterConfig::TWO);
 
-  MetaOptimizer optimizer(nullptr, rewriter_config);
   GraphDef output;
-  const Status status = optimizer.Optimize(nullptr, item, &output);
-  EXPECT_EQ(status.error_message(),
-            "Grappler MetaOptimizer timed out after 1.5 seconds");
+  const Status status =
+      RunMetaOptimizer(item, rewriter_config, nullptr, nullptr, &output);
+  EXPECT_EQ(status.error_message(), "meta_optimizer exceeded deadline.");
   // Make sure the graph was reverted to the original regardless of when the
   // optimizer timed out.
   CompareGraphs(item.graph, output);
@@ -516,9 +515,9 @@ TEST_F(MetaOptimizerTest, OptimizerDoesNotTimeOut) {
   rewriter_config.set_min_graph_nodes(-1);
   rewriter_config.set_meta_optimizer_timeout_ms(1500);
   rewriter_config.set_meta_optimizer_iterations(RewriterConfig::ONE);
-  MetaOptimizer optimizer(nullptr, rewriter_config);
   GraphDef output;
-  const Status status = optimizer.Optimize(nullptr, item, &output);
+  const Status status =
+      RunMetaOptimizer(item, rewriter_config, nullptr, nullptr, &output);
   TF_EXPECT_OK(status);
   EXPECT_EQ(item.graph.node_size() + 1, output.node_size());
 }

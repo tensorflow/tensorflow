@@ -20,13 +20,13 @@ from __future__ import division
 from __future__ import print_function
 import numpy as np
 from tensorflow.python.framework import constant_op
-from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import errors
+from tensorflow.python.framework import tensor_shape
 from tensorflow.python.keras import backend as K
 from tensorflow.python.keras import callbacks as cbks
+from tensorflow.python.keras import metrics as metrics_module
 from tensorflow.python.keras import optimizers
 from tensorflow.python.keras.engine import distributed_training_utils
-from tensorflow.python.keras import metrics as metrics_module
 from tensorflow.python.keras.utils.generic_utils import Progbar
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import variable_scope

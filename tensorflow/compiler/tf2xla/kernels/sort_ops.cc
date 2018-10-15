@@ -38,7 +38,7 @@ class XlaKeyValueSortOp : public XlaOpKernel {
 
   void Compile(XlaOpKernelContext* context) override {
     xla::XlaOp result =
-        xla::Sort(context->Input("keys"), context->Input("values"));
+        xla::Sort(context->Input("keys"), {context->Input("values")});
     context->SetOutput(0, xla::GetTupleElement(result, 0));
     context->SetOutput(1, xla::GetTupleElement(result, 1));
   }

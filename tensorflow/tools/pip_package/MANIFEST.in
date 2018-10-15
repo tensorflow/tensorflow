@@ -1,5 +1,6 @@
 include README
 recursive-include * *.py
+recursive-include * *.pyd
 recursive-include * *.pd
 recursive-include * *.so
 recursive-include * *.dll
