@@ -76,9 +76,9 @@ __global__ void BiasNCHWKernel(int32 nthreads, const T* input, const T* bias,
 template <typename T>
 void BiasGPU<T>::compute(const GPUDevice& d, const T* input, const T* bias,
                          T* output, int32 batch, int32 height, int32 width,
-                         int32 channel, TensorFormat data_format) {
+                         int depth, int32 channel, TensorFormat data_format) {
   const int32 bias_size = channel;
-  const int32 image_size = height * width;
+  const int32 image_size = height * width * depth;
   const int32 total_count = batch * bias_size * image_size;
   if (total_count == 0) {
     return;
