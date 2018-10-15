@@ -97,6 +97,22 @@ tf_py_test(
     ],
 )
 
+tf_py_test(
+    name = "while_loop_test",
+    size = "medium",
+    srcs = ["python/while_loop_test.py"],
+    additional_deps = [
+        ":ipu",
+        "//tensorflow:tensorflow_py",
+        "//tensorflow/contrib/compiler:xla",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:platform",
+        "//tensorflow/python:state_ops",
+        "//tensorflow/python:variables",
+    ],
+)
+
 test_suite(
     name = "all_tests",
     tests = [
@@ -104,6 +120,7 @@ test_suite(
         "while_loop_perf_test",
         "conditional_test",
         "mapping_test",
+        "while_loop_test",
     ],
 )
 

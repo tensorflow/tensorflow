@@ -238,7 +238,7 @@ class PoplarExecutor : public se::internal::StreamExecutorInterface {
 
   std::string GetDeviceTargetName() const;
 
-  Status ConfigurePoplarDevice(const tensorflow::IPUOptions::DeviceConfig&);
+  Status ConfigurePoplarDevice(const tensorflow::IPUOptions&);
 
   const poplar::Device& GetPoplarDevice() const { return poplar_device_; }
 
@@ -256,14 +256,6 @@ class PoplarExecutor : public se::internal::StreamExecutorInterface {
 
   bool CompilerReportingTextFormat() const {
     return current_config_.profiling().enable_poplar_reports_text();
-  }
-
-  StatusOr<int32> GetDeviceConfigIndex() const {
-    if (current_config_.device_config_index().has_index()) {
-      return current_config_.device_config_index().index();
-    } else {
-      return Unavailable("No device_config_index provided.");
-    }
   }
 
   void AddCompileBeginEventRecord(const std::string& module_name,
@@ -458,7 +450,7 @@ class PoplarExecutor : public se::internal::StreamExecutorInterface {
   ArgsHandleMap args_map_;
   OutputsHandleMap outputs_map_;
 
-  tensorflow::IPUOptions::DeviceConfig current_config_;
+  tensorflow::IPUOptions current_config_;
 
   std::list<tensorflow::IpuTraceEvent> reports_;
 };

@@ -83,9 +83,9 @@ class IpuXlaCacheConvTest(test_util.TensorFlowTestCase):
       # Matches two convolutions
       ok = ['progIdCopy',
             'host-exchange-local-copy-',
+            'Copy_',
             'vs/conv2d/Conv2D/convolution.*/Conv_1x1',
             'vs/Cast/convert.*/Cast',
-            'Copy_cast_to_cast[[]cloned[]]/OnTileCopy',
             'vs/conv2d_1/Conv2D/convolution.*/Conv_1x1']
       self.assertTrue(tu.check_all_compute_sets_and_list(cs_list, ok))
 
@@ -117,9 +117,8 @@ class IpuXlaCacheConvTest(test_util.TensorFlowTestCase):
       # Matches two convolutions
       ok = ['progIdCopy',
             'host-exchange-local-copy-',
+            'Copy_',
             'vs/conv2d/Conv2D/convolution.*/Conv_1x1',
-            'Copy_{<const>,XLA_Args/arg2.*_weights}_to_vs/conv2d_1/Conv2D/convolution.*/Conv_1x1/weightsRearranged',
-            'Copy_vs/conv2d_1/Conv2D/convolution.*/Conv_1x1/partials_to_vs/conv2d_1/Conv2D/convolution.*/Conv_1x1/partials[[]cloned[]]',
             'vs/conv2d_1/Conv2D/convolution.*/Conv_1x1']
       self.assertTrue(tu.check_all_compute_sets_and_list(cs_list, ok))
 
@@ -150,9 +149,8 @@ class IpuXlaCacheConvTest(test_util.TensorFlowTestCase):
       # Matches two convolutions
       ok = ['progIdCopy',
             'host-exchange-local-copy-',
+            'Copy_',
             'vs/conv2d/Conv2D/convolution.*/Conv_1x1',
-            'Copy_{<const>,XLA_Args/arg2.*_weights}_to_vs/conv2d_1/Conv2D/convolution.*/Conv_1x1_stride2x1/weightsRearranged',
-            'Copy_vs/conv2d_1/Conv2D/convolution.*/Conv_1x1_stride2x1/partials_to_vs/conv2d_1/Conv2D/convolution.*/Conv_1x1_stride2x1/partials[[]cloned[]]',
             'vs/conv2d_1/Conv2D/convolution.*/Conv_1x1']
       self.assertTrue(tu.check_all_compute_sets_and_list(cs_list, ok))
 

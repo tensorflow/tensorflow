@@ -186,10 +186,11 @@ static StatusOr<poplar::Tensor> AddConvolutionWeights(
 
 static StatusOr<poplar::Tensor> AddLeftMatMul(poplar::Graph& graph,
                                               const HloInstruction* inst,
+                                              const xla::Shape& shape,
                                               const HloInstruction* target,
                                               CompilerResources& resources) {
   poplar::Type type;
-  TF_ASSIGN_OR_RETURN(type, PoplarDataType(inst->shape()));
+  TF_ASSIGN_OR_RETURN(type, PoplarDataType(shape));
   const auto& aShape = PoplarShapeFromXlaShape(target->operand(0)->shape());
   const auto& bShape = PoplarShapeFromXlaShape(target->operand(1)->shape());
   auto name = StrCat(GetDebugName(inst), "_lhs");
@@ -200,10 +201,11 @@ static StatusOr<poplar::Tensor> AddLeftMatMul(poplar::Graph& graph,
 
 static StatusOr<poplar::Tensor> AddRightMatMul(poplar::Graph& graph,
                                                const HloInstruction* inst,
+                                               const xla::Shape& shape,
                                                const HloInstruction* target,
                                                CompilerResources& resources) {
   poplar::Type type;
-  TF_ASSIGN_OR_RETURN(type, PoplarDataType(inst->shape()));
+  TF_ASSIGN_OR_RETURN(type, PoplarDataType(shape));
   const auto& aShape = PoplarShapeFromXlaShape(target->operand(0)->shape());
   const auto& bShape = PoplarShapeFromXlaShape(target->operand(1)->shape());
   auto name = StrCat(GetDebugName(inst), "_rhs");
@@ -217,7 +219,6 @@ StatusOr<poplar::Tensor> AddTensor(poplar::Graph& graph,
                                    const xla::Shape& shape,
                                    CompilerResources& resources) {
   poplar::Tensor out;
-
   auto target = resources.annotations.tensor_allocation_map.find(src);
   if (target != resources.annotations.tensor_allocation_map.end()) {
     switch (target->second.tgt->opcode()) {
@@ -246,13 +247,13 @@ StatusOr<poplar::Tensor> AddTensor(poplar::Graph& graph,
         switch (target->second.input_index) {
           case 0: {
             TF_ASSIGN_OR_RETURN(
-                out,
-                AddLeftMatMul(graph, src.first, target->second.tgt, resources));
+                out, AddLeftMatMul(graph, src.first, shape, target->second.tgt,
+                                   resources));
             break;
           }
           case 1: {
             TF_ASSIGN_OR_RETURN(
-                out, AddRightMatMul(graph, src.first, target->second.tgt,
+                out, AddRightMatMul(graph, src.first, shape, target->second.tgt,
                                     resources));
             break;
           }

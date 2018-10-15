@@ -100,13 +100,7 @@ Status PoplarPlatform::ConfigurePoplarDevice(
 
   auto* e = static_cast<PoplarExecutor*>(executor->implementation());
 
-  if (opts.device_config().size() > ordinal) {
-    TF_RETURN_IF_ERROR(
-        e->ConfigurePoplarDevice(opts.device_config(ordinal)));
-  } else {
-    tensorflow::IPUOptions::DeviceConfig default_config;
-    TF_RETURN_IF_ERROR(e->ConfigurePoplarDevice(default_config));
-  }
+  TF_RETURN_IF_ERROR(e->ConfigurePoplarDevice(opts));
 
   return Status::OK();
 }

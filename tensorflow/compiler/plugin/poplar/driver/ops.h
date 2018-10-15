@@ -18,6 +18,9 @@
 #include <poplin/Convolution.hpp>
 #include <popops/Expr.hpp>
 
+#include <poplar/exceptions.hpp>
+#include <poputil/exceptions.hpp>
+
 namespace poplar {
 class Graph;
 class Tensor;
@@ -52,6 +55,10 @@ Status SetVertexField(poplar::Graph& graph, const poplar::FieldRef& field,
                       const Literal& literal);
 
 std::string GetDebugName(const HloInstruction*);
+
+// Convert a poplar/poplibs exception to a Tensorflow error Status
+Status PoplarExceptionToTensorflowStatus(const std::string& prefix,
+                                         const std::logic_error& e);
 
 StatusOr<poplin::ConvParams> GetConvolutionParameters(
     const HloInstruction* operand_op, const HloInstruction* conv_op,

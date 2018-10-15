@@ -152,29 +152,40 @@ bool GetConstantOutput(const HloInstruction* root, const Shape& layout,
 }
 
 bool AreAllOutputsParameters(
-    const HloInstruction* root,
+    HloInstruction* root,
     const std::set<const HloInstruction*>& non_standard_parameter_layout,
     std::vector<uint64>& result) {
+  // Get all the outputs
+  HloInstruction::InstructionVector outputs;
+  if (root->opcode() == HloOpcode::kTuple) {
+    outputs = HloInstruction::InstructionVector(root->operands());
+  } else if (root->opcode() == HloOpcode::kParameter) {
+    outputs.push_back(root);
+  } else {
+    return false;
+  }
+
   // Check if all the outputs are parameters so that we can simply remap input
   // instead of executing the engine
-  // Note that all the parameters need to be stored in a standard layout format
-  if (root->opcode() == HloOpcode::kParameter) {
-    if (non_standard_parameter_layout.count(root)) {
+  for (auto op : outputs) {
+    if (op->opcode() != HloOpcode::kParameter) {
       return false;
-    }
-    result.push_back(root->parameter_number());
-    return true;
-  } else if (root->opcode() == HloOpcode::kTuple) {
-    for (auto op : root->operands()) {
-      if (op->opcode() != HloOpcode::kParameter ||
-          non_standard_parameter_layout.count(op)) {
-        return false;
-      }
+    } else {
       result.push_back(op->parameter_number());
     }
-    return true;
   }
-  return false;
+
+  // Check that all the parameters are in a standard layout format
+  for (auto op : outputs) {
+    if (non_standard_parameter_layout.count(op)) {
+      return false;
+    }
+  }
+
+  // Check that the computation output shape is the same as the root
+  return ShapeUtil::Equal(
+      root->shape(),
+      root->GetModule()->entry_computation_layout().result_shape());
 }
 }  // namespace
 
@@ -332,8 +343,8 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::RunBackend(
   } else {
     try {
       TF_RETURN_IF_ERROR(entry->AcceptOrdered(&visitor, instruction_order));
-    } catch (std::logic_error e) {
-      return tensorflow::errors::Unknown(StrCat("[Poplar Compile] ", e.what()));
+    } catch (const std::logic_error& e) {
+      return PoplarExceptionToTensorflowStatus("[Build graph] ", e);
     }
 
     // =======================================================================
@@ -368,9 +379,8 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::RunBackend(
         };
 
         engine.reset(new poplar::Engine(graph, progs, opts, progress_logging));
-      } catch (std::logic_error e) {
-        return tensorflow::errors::Unknown(
-            StrCat("[Poplar Engine] ", e.what()));
+      } catch (const std::logic_error& e) {
+        return PoplarExceptionToTensorflowStatus("[Compile engine] ", e);
       }
     }
   }
@@ -379,14 +389,18 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::RunBackend(
     std::stringstream stream;
 
     if (engine != nullptr) {
-      poplar::OptionFlags opts;
-      opts.set("includeVarStorageReport", "true");
+      try {
+        poplar::OptionFlags opts;
+        opts.set("includeVarStorageReport", "true");
 
-      auto rep = engine->getGraphReport(opts);
-      if (poplarExecutor->CompilerReportingTextFormat()) {
-        rep.printSummary(stream);
-      } else {
-        rep.serialize(stream, poplar::SerializationFormat::JSON);
+        auto rep = engine->getGraphReport(opts);
+        if (poplarExecutor->CompilerReportingTextFormat()) {
+          rep.printSummary(stream);
+        } else {
+          rep.serialize(stream, poplar::SerializationFormat::JSON);
+        }
+      } catch (const std::logic_error& e) {
+        return PoplarExceptionToTensorflowStatus("[Compiler report] ", e);
       }
     }
 

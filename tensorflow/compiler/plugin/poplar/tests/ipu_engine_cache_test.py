@@ -26,9 +26,8 @@ class IpuEngineCacheTest(test_util.TensorFlowTestCase):
             output = pa + pb
 
         opts = config_pb2.IPUOptions()
-        dev = opts.device_config.add()
-        dev.type = config_pb2.IPUOptions.DeviceConfig.IPU_MODEL
-        dev.engine_cache_directory = cache_dir
+        opts.ipu_model_config.enable_ipu_model = True
+        opts.engine_cache_directory = cache_dir
 
         with session_lib.Session(
                 config=config_pb2.ConfigProto(ipu_options=opts)) as sess:

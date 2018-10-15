@@ -31,8 +31,7 @@ class IpuIpuModelTest(test_util.TensorFlowTestCase):
       output = pa + pb
 
     opts = config_pb2.IPUOptions()
-    dev = opts.device_config.add()
-    dev.type = config_pb2.IPUOptions.DeviceConfig.IPU_MODEL
+    opts.ipu_model_config.enable_ipu_model = True
 
     with session_lib.Session(
             config=config_pb2.ConfigProto(ipu_options=opts)) as sess:
@@ -51,8 +50,7 @@ class IpuIpuModelTest(test_util.TensorFlowTestCase):
         report = gen_ipu_ops.ipu_event_trace()
 
     opts = config_pb2.IPUOptions()
-    dev = opts.device_config.add()
-    dev.type = config_pb2.IPUOptions.DeviceConfig.IPU_MODEL
+    opts.ipu_model_config.enable_ipu_model = True
 
     with session_lib.Session(
             config=config_pb2.ConfigProto(ipu_options=opts)) as sess:
@@ -74,11 +72,10 @@ class IpuIpuModelTest(test_util.TensorFlowTestCase):
         report = gen_ipu_ops.ipu_event_trace()
 
     opts = config_pb2.IPUOptions()
-    dev = opts.device_config.add()
-    dev.type = config_pb2.IPUOptions.DeviceConfig.IPU_MODEL
-    dev.profiling.enable_compilation_trace = True
-    dev.profiling.enable_io_trace = False
-    dev.profiling.enable_execution_trace = True
+    opts.ipu_model_config.enable_ipu_model = True
+    opts.profiling.enable_compilation_trace = True
+    opts.profiling.enable_io_trace = False
+    opts.profiling.enable_execution_trace = True
 
     with session_lib.Session(
             config=config_pb2.ConfigProto(ipu_options=opts)) as sess:
@@ -105,11 +102,10 @@ class IpuIpuModelTest(test_util.TensorFlowTestCase):
         report = gen_ipu_ops.ipu_event_trace()
 
     opts = config_pb2.IPUOptions()
-    dev = opts.device_config.add()
-    dev.type = config_pb2.IPUOptions.DeviceConfig.IPU_MODEL
-    dev.profiling.enable_compilation_trace = True
-    dev.profiling.enable_io_trace = False
-    dev.profiling.enable_execution_trace = True
+    opts.ipu_model_config.enable_ipu_model = True
+    opts.profiling.enable_compilation_trace = True
+    opts.profiling.enable_io_trace = False
+    opts.profiling.enable_execution_trace = True
 
     with session_lib.Session(
             config=config_pb2.ConfigProto(ipu_options=opts)) as sess:
@@ -125,85 +121,6 @@ class IpuIpuModelTest(test_util.TensorFlowTestCase):
       # 2x compile_begin, 2x compile_end, 2x load engine
       self.assertTrue(len(rep) == 6)
 
-  #    def testIpuModelDeviceMultipleIPUs(self):
-  #        with ops.device("/device:IPU:0"):
-  #            pa = array_ops.placeholder(np.float32, [480], name="a")
-  #            pb = array_ops.placeholder(np.float32, [480], name="b")
-  #            output = pa + pb
-  #
-  #        with ops.device('cpu'):
-  #            with ops.control_dependencies([output]):
-  #                report = gen_ipu_ops.ipu_event_trace()
-  #
-  #        opts = config_pb2.IPUOptions()
-  #        dev = opts.device_config.add()
-  #        dev.type = config_pb2.IPUOptions.DeviceConfig.IPU_MODEL
-  #        dev.profiling.enable_compilation_trace = True
-  #        dev.profiling.enable_io_trace = False
-  #        dev.profiling.enable_execution_trace = True
-  #        dev.ipu_model_config.num_ipus = 2
-  #        dev.ipu_model_config.tiles_per_ipu = 4
-  #
-  #        with session_lib.Session(
-  #                config=config_pb2.ConfigProto(ipu_options=opts)) as sess:
-  #
-  #            fd = {pa: np.zeros([480]), pb: np.zeros([480])}
-  #            sess.run(report, fd)
-  #
-  #            result, rep = sess.run([output, report], fd)
-  #            self.assertAllClose(result, np.zeros([480]))
-  #            self.assertTrue(len(rep) == 3)
-  #
-  #            s = tu.extract_all_strings_from_event_trace(rep)
-  #            l = s.split("\n")
-  #            l = [x for x in l if re.search(" *Num tiles computing *: *8", x)]
-  #            self.assertTrue(len(l) == 1)
-
-  def testIpu(self):
-    with ops.device("/device:IPU:0"):
-      pa = array_ops.placeholder(np.float32, [480], name="a")
-      pb = array_ops.placeholder(np.float32, [480], name="b")
-      output = pa + pb
-
-    opts = config_pb2.IPUOptions()
-    dev = opts.device_config.add()
-    dev.type = config_pb2.IPUOptions.DeviceConfig.IPU
-    dev.profiling.enable_compilation_trace = True
-    dev.profiling.enable_io_trace = False
-    dev.profiling.enable_execution_trace = True
-    dev.ipu_model_config.num_ipus = 1
-
-    try:
-      with session_lib.Session(
-              config=config_pb2.ConfigProto(ipu_options=opts)) as sess:
-        fd = {pa: np.zeros([480]), pb: np.zeros([480])}
-        sess.run(output, fd)
-    except errors.ResourceExhaustedError:
-      pass
-
-  def testIpuWithSpecificTiles(self):
-    with ops.device("/device:IPU:0"):
-      pa = array_ops.placeholder(np.float32, [480], name="a")
-      pb = array_ops.placeholder(np.float32, [480], name="b")
-      output = pa + pb
-
-    opts = config_pb2.IPUOptions()
-    dev = opts.device_config.add()
-    dev.type = config_pb2.IPUOptions.DeviceConfig.IPU
-    dev.profiling.enable_compilation_trace = True
-    dev.profiling.enable_io_trace = False
-    dev.profiling.enable_execution_trace = True
-    dev.ipu_model_config.num_ipus = 1
-    dev.ipu_model_config.tiles_per_ipu = 4
-
-    try:
-      with session_lib.Session(
-              config=config_pb2.ConfigProto(ipu_options=opts)) as sess:
-        fd = {pa: np.zeros([480]), pb: np.zeros([480])}
-        sess.run(output, fd)
-    except errors.ResourceExhaustedError:
-      pass
-
   def testEngineCompilationOptions(self):
     with ops.device("/device:IPU:0"):
       pa = array_ops.placeholder(np.float32, [480], name="a")
@@ -211,14 +128,12 @@ class IpuIpuModelTest(test_util.TensorFlowTestCase):
       output = pa + pb
 
     opts = config_pb2.IPUOptions()
-    dev = opts.device_config.add()
-    dev.type = config_pb2.IPUOptions.DeviceConfig.IPU_MODEL
-    dev.profiling.enable_compilation_trace = True
-    dev.profiling.enable_io_trace = False
-    dev.profiling.enable_execution_trace = True
-    dev.ipu_model_config.num_ipus = 1
+    opts.ipu_model_config.enable_ipu_model = True
+    opts.profiling.enable_compilation_trace = True
+    opts.profiling.enable_io_trace = False
+    opts.profiling.enable_execution_trace = True
 
-    opt = dev.compilation_options.add()
+    opt = opts.compilation_options.add()
     opt.option = "some_option"
     opt.value = "some_value"
 
@@ -227,7 +142,9 @@ class IpuIpuModelTest(test_util.TensorFlowTestCase):
               config=config_pb2.ConfigProto(ipu_options=opts)) as sess:
         fd = {pa: np.zeros([480]), pb: np.zeros([480])}
         sess.run(output, fd)
-    except errors.UnknownError:
+
+        self.assertTrue(False)
+    except errors.InvalidArgumentError:
       pass
 
   def testNamedOperations(self):
@@ -347,6 +264,30 @@ class IpuIpuModelTest(test_util.TensorFlowTestCase):
 
       self.assertEqual(evts[1].compile_end.compilation_report.decode('utf-8')[0], '{')
       self.assertEqual(evts[2].execute.execution_report.decode('utf-8')[0], '{')
+
+  def testAttemptToProfileWithoutOptions(self):
+    with ops.device("/device:IPU:0"):
+      pa = array_ops.placeholder(np.float32, [480], name="a")
+      pb = array_ops.placeholder(np.float32, [480], name="b")
+      output = pa + pb
+
+    with ops.device('cpu'):
+      report = gen_ipu_ops.ipu_event_trace()
+
+    opts = config_pb2.IPUOptions()
+    opts.profiling.enable_compilation_trace = True
+    opts.profiling.enable_io_trace = False
+    opts.profiling.enable_execution_trace = True
+
+    try:
+      with session_lib.Session(
+            config=config_pb2.ConfigProto(ipu_options=opts)) as sess:
+        fd = {pa: np.zeros([480]), pb: np.zeros([480])}
+        sess.run(output, fd)
+
+        self.assertTrue(False)
+    except errors.InvalidArgumentError:
+      pass
 
 if __name__ == "__main__":
   googletest.main()

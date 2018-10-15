@@ -37,7 +37,7 @@ class ContribIpuOpsTest(test_util.TensorFlowTestCase):
 
     summary = ipu.ops.ipu_compile_summary('comp', out)
 
-    cfg = ipu.utils.create_ipu_config(profiling=True, type='IPU_MODEL')
+    cfg = ipu.utils.create_ipu_config(profiling=True)
     with sl.Session(config=config_pb2.ConfigProto(ipu_options=cfg)) as sess:
       fd = {
         a: [1.0],
@@ -48,50 +48,30 @@ class ContribIpuOpsTest(test_util.TensorFlowTestCase):
       self.assertTrue(len(s) > 100)
 
   def testCreateConfig(self):
-    cfg = ipu.utils.create_ipu_config(type='IPU')
-    self.assertTrue(isinstance(cfg, config_pb2.IPUOptions))
-
-    cfg = ipu.utils.create_ipu_config(type='IPU_MODEL')
-    self.assertTrue(isinstance(cfg, config_pb2.IPUOptions))
-
-    cfg = ipu.utils.create_ipu_config(type='CPU')
-    self.assertTrue(isinstance(cfg, config_pb2.IPUOptions))
-
-    cfg = ipu.utils.create_ipu_config(type='CPU', num_devices=2)
+    cfg = ipu.utils.create_ipu_config()
+    cfg = ipu.utils.auto_select_ipus(cfg, [1,1])
     self.assertTrue(isinstance(cfg, config_pb2.IPUOptions))
     self.assertTrue(len(cfg.device_config), 2)
 
-    cfg = ipu.utils.create_ipu_config(type='CPU', num_devices=2, num_ipus=4)
+    cfg = ipu.utils.create_ipu_config()
+    cfg = ipu.utils.auto_select_ipus(cfg, [4, 4])
     self.assertTrue(isinstance(cfg, config_pb2.IPUOptions))
     self.assertTrue(len(cfg.device_config), 2)
-    self.assertTrue(cfg.device_config[0].ipu_model_config.num_ipus, 4)
-    self.assertTrue(cfg.device_config[1].ipu_model_config.num_ipus, 4)
+    self.assertTrue(cfg.device_config[0].auto_count, 4)
+    self.assertTrue(cfg.device_config[1].auto_count, 4)
 
-    cfg = ipu.utils.create_ipu_config(compilation_options=dict([("A","B"),("C","D")]))
-    self.assertTrue(len(cfg.device_config), 1)
-    self.assertTrue(len(cfg.device_config[0].compilation_options), 2)
-    self.assertTrue(cfg.device_config[0].compilation_options[0].option, "A")
-    self.assertTrue(cfg.device_config[0].compilation_options[0].value, "B")
-    self.assertTrue(cfg.device_config[0].compilation_options[1].option, "C")
-    self.assertTrue(cfg.device_config[0].compilation_options[1].value, "D")
-
-    with self.assertRaises(Exception):
-      cfg = ipu.utils.create_ipu_config(type='Other')
+    cfg = ipu.utils.create_ipu_config()
+    cfg = ipu.utils.set_compilation_options(cfg, {'A':'B', 'C':'D'})
+    self.assertTrue(len(cfg.compilation_options), 2)
+    self.assertTrue(cfg.compilation_options[0].option, "A")
+    self.assertTrue(cfg.compilation_options[0].value, "B")
+    self.assertTrue(cfg.compilation_options[1].option, "C")
+    self.assertTrue(cfg.compilation_options[1].value, "D")
 
     with self.assertRaises(Exception):
-      ipu.utils.create_ipu_config(num_ipus=[1,2,3])
-
-    with self.assertRaises(Exception):
-      ipu.utils.create_ipu_config(num_devices=1, ipu_device_config_index=[1,2])
-
-    with self.assertRaises(Exception):
-      ipu.utils.create_ipu_config(num_devices=2, ipu_device_config_index=1)
-
-    with self.assertRaises(Exception):
-      ipu.utils.create_ipu_config(num_ipus=2, ipu_device_config_index=0)
-
-    with self.assertRaises(Exception):
-      ipu.utils.create_ipu_config(num_devices=5)
+      cfg = ipu.utils.create_ipu_config()
+      cfg = ipu.utils.auto_select_ipus(cfg, [4, 4])
+      cfg = ipu.utils.select_ipus(cfg, [4, 4])
 
   def testEventFetchAndStringDecode(self):
     with ops.device("/device:IPU:0"):
@@ -101,7 +81,7 @@ class ContribIpuOpsTest(test_util.TensorFlowTestCase):
 
     events = gen_ipu_ops.ipu_event_trace()
 
-    cfg = ipu.utils.create_ipu_config(profiling=True, type='IPU_MODEL')
+    cfg = ipu.utils.create_ipu_config(profiling=True)
     with sl.Session(config=config_pb2.ConfigProto(ipu_options=cfg)) as sess:
       # Discard any existing events
       sess.run(events)
@@ -133,7 +113,7 @@ class ContribIpuOpsTest(test_util.TensorFlowTestCase):
     with ipu.ops.ipu_scope("/device:IPU:0"):
       r = xla.compile(my_net, inputs=[a, b])
 
-    cfg = ipu.utils.create_ipu_config(profiling=True, type='IPU_MODEL')
+    cfg = ipu.utils.create_ipu_config(profiling=True)
     with sl.Session(config=config_pb2.ConfigProto(ipu_options=cfg)) as sess:
 
       fd = {
@@ -181,7 +161,7 @@ class ContribIpuOpsTest(test_util.TensorFlowTestCase):
 
       l = xla.compile(my_net, inputs=[a, b])
 
-    cfg = ipu.utils.create_ipu_config(profiling=False, type='IPU_MODEL')
+    cfg = ipu.utils.create_ipu_config()
     with sl.Session(config=config_pb2.ConfigProto(ipu_options=cfg)) as sess:
       # Initialize and then discard events relating to initialization
       sess.run(variables.global_variables_initializer())
@@ -210,7 +190,7 @@ class ContribIpuOpsTest(test_util.TensorFlowTestCase):
 
     ipu.utils.move_variable_initialization_to_cpu()
 
-    cfg = ipu.utils.create_ipu_config(profiling=True, type='IPU_MODEL')
+    cfg = ipu.utils.create_ipu_config(profiling=True)
     with sl.Session(config=config_pb2.ConfigProto(ipu_options=cfg)) as sess:
       # Discard any pending events
       sess.run(events)
@@ -220,33 +200,6 @@ class ContribIpuOpsTest(test_util.TensorFlowTestCase):
 
       e = sess.run(events)
       self.assertEqual(len(e), 2) # compile begin/end, no load/execute
-
-  def testDeviceConfigIndex(self):
-    # We only allow 1 device config for IPU_MODEL, so if one is requested and it
-    # is not 0, then an exception should occur.
-    try:
-      raised = False
-      with ops.device("/device:IPU:0"):
-        a = array_ops.placeholder(np.float32, [1], name="a")
-        b = array_ops.placeholder(np.float32, [1], name="b")
-        out = a + b
-
-      cfg = ipu.utils.create_ipu_config(profiling=True, type='IPU_MODEL',
-                                        ipu_device_config_index=1)
-      with sl.Session(config=config_pb2.ConfigProto(ipu_options=cfg)) as sess:
-        fd = {
-          a: [1.0],
-          b: [2.0],
-        }
-        result = sess.run(out, fd)
-    except Exception as e:
-      self.assertEqual(type(e).__name__, 'InvalidArgumentError')
-      self.assertEqual(
-        e.message,
-        'Requested device configuration index 1, but 1 configuration was available.'
-      )
-      raised = True
-    self.assertTrue(raised)
 
 if __name__ == "__main__":
     googletest.main()

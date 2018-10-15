@@ -266,5 +266,75 @@ std::string GetTensorMappingJson(const poplar::Graph& graph,
   return json_msg;
 }
 
+Status PoplarExceptionToTensorflowStatus(const std::string& prefix,
+                                         const std::logic_error& e) {
+  /* NOTE: Reduce this list if/when Poplar errors are subclassed */
+  try {
+    std::rethrow_exception(std::current_exception());
+  } catch (const poplar::file_load_error& e) {
+    return tensorflow::errors::NotFound(prefix, e.what());
+  } catch (const poplar::missing_cycle_estimate& e) {
+    return tensorflow::errors::NotFound(prefix, e.what());
+  } catch (const poplar::symbol_error& e) {
+    return tensorflow::errors::NotFound(prefix, e.what());
+  } catch (const poplar::unknown_field& e) {
+    return tensorflow::errors::NotFound(prefix, e.what());
+  } catch (const poplar::unknown_vertex_type& e) {
+    return tensorflow::errors::NotFound(prefix, e.what());
+  } catch (const poplar::no_environment& e) {
+    return tensorflow::errors::NotFound(prefix, e.what());
+  } catch (const poplar::parse_error& e) {
+    return tensorflow::errors::InvalidArgument(prefix, e.what());
+  } catch (const poplar::invalid_option& e) {
+    return tensorflow::errors::InvalidArgument(prefix, e.what());
+  } catch (const poplar::invalid_machine_model& e) {
+    return tensorflow::errors::InvalidArgument(prefix, e.what());
+  } catch (const poplar::stream_connection_error& e) {
+    return tensorflow::errors::InvalidArgument(prefix, e.what());
+  } catch (const poplar::graph_cycle_error& e) {
+    return tensorflow::errors::InvalidArgument(prefix, e.what());
+  } catch (const poplar::invalid_tile_mapping& e) {
+    return tensorflow::errors::InvalidArgument(prefix, e.what());
+  } catch (const poplar::type_error& e) {
+    return tensorflow::errors::InvalidArgument(prefix, e.what());
+  } catch (const poplar::no_size_specified& e) {
+    return tensorflow::errors::InvalidArgument(prefix, e.what());
+  } catch (const poplar::profiling_disabled& e) {
+    return tensorflow::errors::InvalidArgument(prefix, e.what());
+  } catch (const poplar::control_program_error& e) {
+    return tensorflow::errors::InvalidArgument(prefix, e.what());
+  } catch (const poplar::runtime_error& e) {
+    return tensorflow::errors::Internal(prefix, e.what());
+  } catch (const poplar::overflow_error& e) {
+    return tensorflow::errors::Internal(prefix, e.what());
+  } catch (const poplar::tensor_io_state_error& e) {
+    return tensorflow::errors::Internal(prefix, e.what());
+  } catch (const poplar::graph_connection_error& e) {
+    return tensorflow::errors::Internal(prefix, e.what());
+  } catch (const poplar::graph_object_load_error& e) {
+    return tensorflow::errors::Internal(prefix, e.what());
+  } catch (const poplar::graph_object_creation_error& e) {
+    return tensorflow::errors::Internal(prefix, e.what());
+  } catch (const poplar::graph_program_compilation_error& e) {
+    return tensorflow::errors::Internal(prefix, e.what());
+  } catch (const poputil::poplib_error& e) {
+    return tensorflow::errors::Internal(prefix, e.what());
+  } catch (const poplar::link_error& e) {
+    return tensorflow::errors::ResourceExhausted(prefix, e.what());
+  } catch (const poplar::stream_memory_allocation_error& e) {
+    return tensorflow::errors::ResourceExhausted(prefix, e.what());
+  } catch (const poplar::graph_memory_allocation_error& e) {
+    return tensorflow::errors::ResourceExhausted(prefix, e.what());
+  } catch (const poplar::tensor_creation_error& e) {
+    return tensorflow::errors::ResourceExhausted(prefix, e.what());
+  } catch (const poplar::memory_elem_constraints_error& e) {
+    return tensorflow::errors::ResourceExhausted(prefix, e.what());
+  } catch (const poplar::index_error& e) {
+    return tensorflow::errors::OutOfRange(prefix, e.what());
+  }
+
+  return tensorflow::errors::Unknown(prefix, e.what());
+}
+
 }  // namespace poplarplugin
 }  // namespace xla
