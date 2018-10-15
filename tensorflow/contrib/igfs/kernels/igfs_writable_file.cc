@@ -19,8 +19,10 @@ limitations under the License.
 namespace tensorflow {
 
 IGFSWritableFile::IGFSWritableFile(const string &file_name, int64_t resource_id,
-                                   std::shared_ptr<IGFSClient> client)
-    : file_name_(file_name), resource_id_(resource_id), client_(client) {}
+                                   std::unique_ptr<IGFSClient> &&client)
+    : file_name_(file_name),
+      resource_id_(resource_id),
+      client_(std::move(client)) {}
 
 IGFSWritableFile::~IGFSWritableFile() {
   if (resource_id_ >= 0) {

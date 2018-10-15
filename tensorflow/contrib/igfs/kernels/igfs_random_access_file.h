@@ -24,7 +24,7 @@ namespace tensorflow {
 class IGFSRandomAccessFile : public RandomAccessFile {
  public:
   IGFSRandomAccessFile(const string &file_name, int64_t resource_id,
-                       std::shared_ptr<IGFSClient> client);
+                       std::unique_ptr<IGFSClient> &&client);
   ~IGFSRandomAccessFile() override;
   Status Read(uint64 offset, size_t n, StringPiece *result,
               char *scratch) const override;
@@ -32,7 +32,7 @@ class IGFSRandomAccessFile : public RandomAccessFile {
  private:
   const string file_name_;
   const int64_t resource_id_;
-  std::shared_ptr<IGFSClient> client_;
+  std::unique_ptr<IGFSClient> client_;
 };
 
 }  // namespace tensorflow

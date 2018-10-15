@@ -20,8 +20,10 @@ namespace tensorflow {
 
 IGFSRandomAccessFile::IGFSRandomAccessFile(const string &file_name,
                                            int64_t resource_id,
-                                           std::shared_ptr<IGFSClient> client)
-    : file_name_(file_name), resource_id_(resource_id), client_(client) {}
+                                           std::unique_ptr<IGFSClient> &&client)
+    : file_name_(file_name),
+      resource_id_(resource_id),
+      client_(std::move(client)) {}
 
 IGFSRandomAccessFile::~IGFSRandomAccessFile() {
   CtrlResponse<CloseResponse> close_response = {false};

@@ -48,7 +48,7 @@ class IGFS : public FileSystem {
   string TranslateName(const string& name) const override;
 
  private:
-  std::shared_ptr<IGFSClient> CreateClient() const;
+  std::unique_ptr<IGFSClient> CreateClient() const;
 
   const string host_;
   const int port_;

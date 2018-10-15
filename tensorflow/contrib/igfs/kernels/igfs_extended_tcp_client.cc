@@ -114,6 +114,8 @@ Status ExtendedTCPClient::WriteString(string str) {
   if (!str.empty()) {
     TF_RETURN_IF_ERROR(WriteBool(false));
     size_t l = str.length();
+    if (l > 0xFFFF) return errors::InvalidArgument("String is too long");
+
     TF_RETURN_IF_ERROR(WriteShort(l));
     TF_RETURN_IF_ERROR(WriteData(reinterpret_cast<const uint8_t *>(str.c_str()),
                                  str.length()));
