@@ -227,6 +227,37 @@ cc_library(
 )
 
 cc_library(
+    name = "make_sloppy",
+    srcs = ["make_sloppy.cc"],
+    hdrs = ["make_sloppy.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//tensorflow/core/grappler:grappler_item",
+        "//tensorflow/core/grappler:mutable_graph_view",
+        "//tensorflow/core/grappler:op_types",
+        "//tensorflow/core/grappler/clusters:cluster",
+        "//tensorflow/core/grappler/optimizers:custom_graph_optimizer",
+        "//tensorflow/core/grappler/optimizers:custom_graph_optimizer_registry",
+    ] + tf_protos_all(),
+)
+
+tf_cc_test(
+    name = "make_sloppy_test",
+    srcs = ["make_sloppy_test.cc"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":graph_test_utils",
+        ":graph_utils",
+        ":make_sloppy",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+        "//tensorflow/core/grappler:grappler_item",
+    ],
+)
+
+cc_library(
     name = "map_vectorization",
     srcs = ["map_vectorization.cc"],
     hdrs = [
@@ -523,6 +554,7 @@ cc_library(
         ":filter_fusion",
         ":hoist_random_uniform",
         ":latency_all_edges",
+        ":make_sloppy",
         ":map_and_batch_fusion",
         ":map_and_batch_numa_aware_replacement",
         ":map_and_filter_fusion",

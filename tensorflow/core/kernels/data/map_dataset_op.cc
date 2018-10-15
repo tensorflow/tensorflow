@@ -83,7 +83,8 @@ class MapDatasetOp : public UnaryDatasetOpKernel {
     }
 
     *output = new Dataset(ctx, input, func_, std::move(captured_func),
-                          output_types_, output_shapes_, std::move(map_func));
+                          output_types_, output_shapes_,
+                          use_inter_op_parallelism_, std::move(map_func));
   }
 
  private:
@@ -94,10 +95,11 @@ class MapDatasetOp : public UnaryDatasetOpKernel {
             std::unique_ptr<CapturedFunction> captured_func,
             const DataTypeVector& output_types,
             const std::vector<PartialTensorShape>& output_shapes,
-            MapIteratorFunction map_func)
+            bool use_inter_op_parallelism, MapIteratorFunction map_func)
         : DatasetBase(DatasetContext(ctx)),
           input_(input),
           func_(func),
+          use_inter_op_parallelism_(use_inter_op_parallelism),
           captured_func_(std::move(captured_func)),
           output_types_(output_types),
           output_shapes_(output_shapes),
@@ -140,16 +142,28 @@ class MapDatasetOp : public UnaryDatasetOpKernel {
         other_arguments.emplace_back(node);
         other_arguments_types.emplace_back(t.dtype());
       }
-      AttrValue f;
-      b->BuildAttrValue(func_, &f);
+
+      // Attr: f
+      TF_RETURN_IF_ERROR(b->AddFunction(ctx, func_.name()));
+      AttrValue f_attr;
+      b->BuildAttrValue(func_, &f_attr);
+
+      // Attr: Targuments
       AttrValue other_arguments_types_attr;
       b->BuildAttrValue(other_arguments_types, &other_arguments_types_attr);
+
+      // Attr: use_inter_op_parallelism
+      AttrValue use_inter_op_parallelism_attr;
+      b->BuildAttrValue(use_inter_op_parallelism_,
+                        &use_inter_op_parallelism_attr);
 
       TF_RETURN_IF_ERROR(b->AddDataset(
           this, {std::make_pair(0, input_graph_node)},  // Single tensor inputs.
           {std::make_pair(1, other_arguments)},         // Tensor list inputs.
-          {std::make_pair("f", f),
-           std::make_pair("Targuments", other_arguments_types_attr)},  // Attrs
+          {std::make_pair("f", f_attr),
+           std::make_pair("Targuments", other_arguments_types_attr),
+           std::make_pair("use_inter_op_parallelism",
+                          use_inter_op_parallelism_attr)},  // Attrs
           output));
       return Status::OK();
     }
@@ -210,6 +224,7 @@ class MapDatasetOp : public UnaryDatasetOpKernel {
 
     const DatasetBase* const input_;
     const NameAttrList func_;
+    const bool use_inter_op_parallelism_;
     const std::unique_ptr<CapturedFunction> captured_func_;
     const DataTypeVector output_types_;
     const std::vector<PartialTensorShape> output_shapes_;

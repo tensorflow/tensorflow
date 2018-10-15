@@ -1402,6 +1402,8 @@ class Options(object):
       ("experimental_autotune", bool,
        "Whether to dynamically adjust the values of tunable parameters (e.g. "
        "degrees of parallelism)."),
+      ("experimental_deterministic", bool,
+       "Whether the outputs need to be produced in deterministic order."),
       ("experimental_filter_fusion", bool,
        "Whether to fuse filter transformations."),
       ("experimental_hoist_random_uniform", bool,
@@ -1475,6 +1477,8 @@ class Options(object):
 
     if getattr(self, "experimental_numa_aware"):
       result.append("map_and_batch_numa_aware_replacement")
+    if getattr(self, "experimental_deterministic") is False:
+      result.append("make_sloppy")
     return result
 
   def merge(self, options):
@@ -1496,13 +1500,19 @@ class Options(object):
     result = Options()
     for other in [self, options]:
       for name in [
-          "experimental_autotune", "experimental_filter_fusion",
-          "experimental_hoist_random_uniform", "experimental_latency_all_edges",
+          "experimental_autotune",
+          "experimental_deterministic",
+          "experimental_filter_fusion",
+          "experimental_hoist_random_uniform",
+          "experimental_latency_all_edges",
           "experimental_map_and_batch_fusion",
-          "experimental_map_and_filter_fusion", "experimental_map_fusion",
-          "experimental_map_parallelization", "experimental_map_vectorization",
+          "experimental_map_and_filter_fusion",
+          "experimental_map_fusion",
+          "experimental_map_parallelization",
+          "experimental_map_vectorization",
           "experimental_noop_elimination",
-          "experimental_shuffle_and_repeat_fusion", "experimental_numa_aware",
+          "experimental_numa_aware",
+          "experimental_shuffle_and_repeat_fusion",
       ]:
         this = getattr(result, name)
         that = getattr(other, name)
