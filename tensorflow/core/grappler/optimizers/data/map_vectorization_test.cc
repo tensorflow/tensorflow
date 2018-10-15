@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/grappler/optimizers/data/map_vectorization.h"
 
+#include "absl/strings/string_view.h"
 #include "tensorflow/core/framework/attr_value_util.h"
 #include "tensorflow/core/framework/function_testlib.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
@@ -30,8 +31,10 @@ namespace {
 using test::function::GDef;
 using test::function::NDef;
 
-NodeDef MakeMapNodeHelper(StringPiece name, StringPiece input_node_name,
-                          StringPiece function_name, StringPiece map_op_name,
+NodeDef MakeMapNodeHelper(absl::string_view name,
+                          absl::string_view input_node_name,
+                          absl::string_view function_name,
+                          absl::string_view map_op_name,
                           gtl::ArraySlice<PartialTensorShape> output_shapes,
                           gtl::ArraySlice<DataType> output_types) {
   return test::function::NDef(
@@ -42,16 +45,16 @@ NodeDef MakeMapNodeHelper(StringPiece name, StringPiece input_node_name,
        {"output_types", output_types}});
 }
 
-NodeDef MakeMapNode(StringPiece name, StringPiece input_node_name,
-                    StringPiece function_name,
+NodeDef MakeMapNode(absl::string_view name, absl::string_view input_node_name,
+                    absl::string_view function_name,
                     gtl::ArraySlice<PartialTensorShape> output_shapes,
                     gtl::ArraySlice<DataType> output_types) {
   return MakeMapNodeHelper(name, input_node_name, function_name, "MapDataset",
                            output_shapes, output_types);
 }
 
-NodeDef MakeBatchNode(StringPiece name, StringPiece input_node_name,
-                      StringPiece input_batch_size_name,
+NodeDef MakeBatchNode(absl::string_view name, absl::string_view input_node_name,
+                      absl::string_view input_batch_size_name,
                       gtl::ArraySlice<PartialTensorShape> output_shapes,
                       gtl::ArraySlice<DataType> output_types) {
   return NDef(
@@ -60,9 +63,10 @@ NodeDef MakeBatchNode(StringPiece name, StringPiece input_node_name,
       {{"output_types", output_types}, {"output_shapes", output_shapes}});
 }
 
-NodeDef MakeBatchV2Node(StringPiece name, StringPiece input_node_name,
-                        StringPiece input_batch_size_name,
-                        StringPiece input_drop_remainder_name,
+NodeDef MakeBatchV2Node(absl::string_view name,
+                        absl::string_view input_node_name,
+                        absl::string_view input_batch_size_name,
+                        absl::string_view input_drop_remainder_name,
                         gtl::ArraySlice<PartialTensorShape> output_shapes,
                         gtl::ArraySlice<DataType> output_types) {
   return NDef(
@@ -72,7 +76,7 @@ NodeDef MakeBatchV2Node(StringPiece name, StringPiece input_node_name,
       {{"output_types", output_types}, {"output_shapes", output_shapes}});
 }
 
-NodeDef MakeRangeNode(StringPiece name, gtl::ArraySlice<string> inputs) {
+NodeDef MakeRangeNode(absl::string_view name, gtl::ArraySlice<string> inputs) {
   return NDef(name, "RangeDataset", inputs,
               {{"output_shapes", gtl::ArraySlice<TensorShape>({{}})},
                {"output_types", gtl::ArraySlice<DataType>({DT_INT64})}});

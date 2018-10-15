@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "absl/strings/string_view.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/io/random_inputstream.h"
 #include "tensorflow/core/lib/io/zlib_compression_options.h"
@@ -75,7 +76,7 @@ void TestAllCombinations(CompressionOptions input_options,
                              output_options);
         TF_ASSERT_OK(out.Init());
 
-        TF_ASSERT_OK(out.Append(StringPiece(data)));
+        TF_ASSERT_OK(out.Append(absl::string_view(data)));
         TF_ASSERT_OK(out.Close());
         TF_ASSERT_OK(file_writer->Flush());
         TF_ASSERT_OK(file_writer->Close());
@@ -124,7 +125,7 @@ void TestMultipleWrites(uint8 input_buf_size, uint8 output_buf_size,
   TF_ASSERT_OK(out.Init());
 
   for (int i = 0; i < num_writes; i++) {
-    TF_ASSERT_OK(out.Append(StringPiece(data)));
+    TF_ASSERT_OK(out.Append(absl::string_view(data)));
     if (with_flush) {
       TF_ASSERT_OK(out.Flush());
     }
@@ -176,7 +177,7 @@ TEST(ZlibInputStream, FailsToReadIfWindowBitsAreIncompatible) {
                        output_options);
   TF_ASSERT_OK(out.Init());
 
-  TF_ASSERT_OK(out.Append(StringPiece(data)));
+  TF_ASSERT_OK(out.Append(absl::string_view(data)));
   TF_ASSERT_OK(out.Close());
   TF_ASSERT_OK(file_writer->Flush());
   TF_ASSERT_OK(file_writer->Close());
@@ -203,7 +204,7 @@ void WriteCompressedFile(Env* env, const string& fname, int input_buf_size,
                        output_options);
   TF_ASSERT_OK(out.Init());
 
-  TF_ASSERT_OK(out.Append(StringPiece(data)));
+  TF_ASSERT_OK(out.Append(absl::string_view(data)));
   TF_ASSERT_OK(out.Close());
   TF_ASSERT_OK(file_writer->Flush());
   TF_ASSERT_OK(file_writer->Close());

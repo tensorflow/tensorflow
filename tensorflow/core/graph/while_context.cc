@@ -14,10 +14,11 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/core/graph/while_context.h"
+#include "absl/strings/string_view.h"
 
 namespace tensorflow {
 
-WhileContext::WhileContext(StringPiece frame_name,
+WhileContext::WhileContext(absl::string_view frame_name,
                            std::vector<Node*> enter_nodes,
                            std::vector<Node*> exit_nodes,
                            OutputTensor cond_output,

@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_COMMON_RUNTIME_GPU_DEVICE_CONTEXT_H_
 #define TENSORFLOW_CORE_COMMON_RUNTIME_GPU_DEVICE_CONTEXT_H_
 
+#include "absl/strings/string_view.h"
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/framework/device_base.h"
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
@@ -53,9 +54,9 @@ class GPUDeviceContext : public DeviceContext {
                              Tensor* device_tensor,
                              StatusCallback done) const override;
 
-  void CopyDeviceTensorToCPU(const Tensor* device_tensor, StringPiece edge_name,
-                             Device* device, Tensor* cpu_tensor,
-                             StatusCallback done) override;
+  void CopyDeviceTensorToCPU(const Tensor* device_tensor,
+                             absl::string_view edge_name, Device* device,
+                             Tensor* cpu_tensor, StatusCallback done) override;
 
   void MaintainLifetimeOnStream(const Tensor* t,
                                 se::Stream* stream) const override {}

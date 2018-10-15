@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/kernels/hexagon/hexagon_control_wrapper.h"
 
+#include "absl/strings/string_view.h"
 #include "tensorflow/core/framework/graph_transfer_info.pb.h"
 #include "tensorflow/core/framework/remote_fused_graph_execute_info.pb.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
@@ -410,7 +411,7 @@ Status HexagonControlWrapper::FuseRemoteGraph(
 
 bool HexagonControlWrapper::FillInputNode(const string& node_name,
                                           const Tensor& tensor) {
-  StringPiece tensor_data = tensor.tensor_data();
+  absl::string_view tensor_data = tensor.tensor_data();
   const ConstByteArray ba =
       ConstByteArray(reinterpret_cast<const uint8*>(tensor_data.data()),
                      tensor_data.size(), tensor.dtype());

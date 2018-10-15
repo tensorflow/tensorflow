@@ -41,6 +41,7 @@ limitations under the License.
 
 #include <assert.h>
 #include <algorithm>
+#include "absl/strings/string_view.h"
 #include "tensorflow/core/lib/core/coding.h"
 #include "tensorflow/core/lib/io/table_builder.h"
 
@@ -68,7 +69,7 @@ size_t BlockBuilder::CurrentSizeEstimate() const {
           sizeof(uint32));                     // Restart array length
 }
 
-StringPiece BlockBuilder::Finish() {
+absl::string_view BlockBuilder::Finish() {
   // Append restart array
   CHECK_LE(restarts_.size(), std::numeric_limits<uint32_t>::max());
   for (const auto r : restarts_) {
@@ -77,11 +78,12 @@ StringPiece BlockBuilder::Finish() {
   // Downcast safe because of the CHECK.
   core::PutFixed32(&buffer_, static_cast<uint32_t>(restarts_.size()));
   finished_ = true;
-  return StringPiece(buffer_);
+  return absl::string_view(buffer_);
 }
 
-void BlockBuilder::Add(const StringPiece& key, const StringPiece& value) {
-  StringPiece last_key_piece(last_key_);
+void BlockBuilder::Add(const absl::string_view& key,
+                       const absl::string_view& value) {
+  absl::string_view last_key_piece(last_key_);
   assert(!finished_);
   assert(counter_ <= options_->block_restart_interval);
   assert(buffer_.empty()  // No values yet?
@@ -117,7 +119,7 @@ void BlockBuilder::Add(const StringPiece& key, const StringPiece& value) {
   // Update state
   last_key_.resize(shared);
   last_key_.append(key.data() + shared, non_shared);
-  assert(StringPiece(last_key_) == key);
+  assert(absl::string_view(last_key_) == key);
   counter_++;
 }
 

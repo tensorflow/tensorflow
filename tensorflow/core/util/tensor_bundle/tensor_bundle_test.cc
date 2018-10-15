@@ -18,6 +18,7 @@ limitations under the License.
 #include <random>
 #include <vector>
 
+#include "absl/strings/string_view.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/framework/variant.h"
@@ -281,7 +282,7 @@ void TestNonStandardShapes() {
 }
 
 // Writes a bundle to disk with a bad "version"; checks for "expected_error".
-void VersionTest(const VersionDef& version, StringPiece expected_error) {
+void VersionTest(const VersionDef& version, absl::string_view expected_error) {
   const string path = Prefix("version_test");
   {
     // Prepare an empty bundle with the given version information.
@@ -610,7 +611,7 @@ TEST(TensorBundleTest, DirectoryStructure) {
   // Ensures we have the expected files.
   auto CheckDirFiles = [env](const string& bundle_prefix,
                              gtl::ArraySlice<string> expected_files) {
-    StringPiece dir = io::Dirname(bundle_prefix);
+    absl::string_view dir = io::Dirname(bundle_prefix);
     for (const string& expected_file : expected_files) {
       TF_EXPECT_OK(env->FileExists(io::JoinPath(dir, expected_file)));
     }
@@ -754,8 +755,8 @@ TEST(TensorBundleTest, TruncatedTensorContents) {
   string data;
   TF_ASSERT_OK(ReadFileToString(env, datafile, &data));
   ASSERT_TRUE(!data.empty());
-  TF_ASSERT_OK(WriteStringToFile(env, datafile,
-                                 StringPiece(data.data(), data.size() - 1)));
+  TF_ASSERT_OK(WriteStringToFile(
+      env, datafile, absl::string_view(data.data(), data.size() - 1)));
 
   BundleReader reader(env, Prefix("end"));
   TF_ASSERT_OK(reader.status());

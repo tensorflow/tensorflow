@@ -16,10 +16,10 @@ limitations under the License.
 #define TENSORFLOW_CORE_FRAMEWORK_SHAPE_INFERENCE_TESTUTIL_H_
 
 #include <vector>
+#include "absl/strings/string_view.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/shape_inference.h"
 #include "tensorflow/core/lib/core/status.h"
-#include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/public/version.h"
@@ -32,7 +32,7 @@ class Tensor;
 
 struct ShapeInferenceTestOp {
   typedef std::pair<string, DataType> ShapeAndType;
-  explicit ShapeInferenceTestOp(StringPiece name) : name(string(name)) {}
+  explicit ShapeInferenceTestOp(absl::string_view name) : name(string(name)) {}
   string name;
   NodeDef node_def;
   std::vector<const Tensor*> input_tensors;

@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_CORE_FRAMEWORK_FUNCTION_H_
 
 #include <vector>
+#include "absl/strings/string_view.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/attr_value_util.h"
 #include "tensorflow/core/framework/function.pb.h"
@@ -92,7 +93,7 @@ class FunctionDefHelper {
     }
 
    private:
-    void InitFromString(StringPiece val);
+    void InitFromString(absl::string_view val);
   };
 
   // Constructs an AttrValue.func given the "name" and "attrs".
@@ -181,7 +182,8 @@ inline FunctionDefHelper::AttrValueWrapper::AttrValueWrapper(
 }
 
 template <>
-inline FunctionDefHelper::AttrValueWrapper::AttrValueWrapper(StringPiece val) {
+inline FunctionDefHelper::AttrValueWrapper::AttrValueWrapper(
+    absl::string_view val) {
   InitFromString(val);
 }
 
@@ -374,7 +376,7 @@ class FunctionLibraryDefinition : public OpRegistryInterface {
 
   // Generates new function name with the specified prefix that is unique
   // across this library.
-  string UniqueFunctionName(StringPiece prefix) const LOCKS_EXCLUDED(mu_);
+  string UniqueFunctionName(absl::string_view prefix) const LOCKS_EXCLUDED(mu_);
 
   // Ops created for function arguments bear the name given by `kArgOp`; those
   // created for return values bear the name given by `kRetOp`.

@@ -18,8 +18,8 @@ limitations under the License.
 
 #include <stdint.h>
 #include <string>
+#include "absl/strings/string_view.h"
 #include "tensorflow/core/lib/core/status.h"
-#include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/io/table_builder.h"
 
 namespace tensorflow {
@@ -43,7 +43,7 @@ class BlockHandle {
   void set_size(uint64 size) { size_ = size; }
 
   void EncodeTo(string* dst) const;
-  Status DecodeFrom(StringPiece* input);
+  Status DecodeFrom(absl::string_view* input);
 
   // Maximum encoding length of a BlockHandle
   enum { kMaxEncodedLength = 10 + 10 };
@@ -68,7 +68,7 @@ class Footer {
   void set_index_handle(const BlockHandle& h) { index_handle_ = h; }
 
   void EncodeTo(string* dst) const;
-  Status DecodeFrom(StringPiece* input);
+  Status DecodeFrom(absl::string_view* input);
 
   // Encoded length of a Footer.  Note that the serialization of a
   // Footer will always occupy exactly this many bytes.  It consists
@@ -89,7 +89,7 @@ static const uint64 kTableMagicNumber = 0xdb4775248b80fb57ull;
 static const size_t kBlockTrailerSize = 5;
 
 struct BlockContents {
-  StringPiece data;     // Actual contents of data
+  absl::string_view data;  // Actual contents of data
   bool cachable;        // True iff data can be cached
   bool heap_allocated;  // True iff caller should delete[] data.data()
 };

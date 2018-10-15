@@ -18,8 +18,8 @@ limitations under the License.
 
 #include <string>
 
+#include "absl/strings/string_view.h"
 #include "tensorflow/core/lib/core/status.h"
-#include "tensorflow/core/lib/core/stringpiece.h"
 
 namespace tensorflow {
 
@@ -86,15 +86,15 @@ class DeviceNameUtils {
     int id = 0;
   };
   // Parses "fullname" into "*parsed". Returns true iff succeeds.
-  static bool ParseFullName(StringPiece fullname, ParsedName* parsed);
+  static bool ParseFullName(absl::string_view fullname, ParsedName* parsed);
 
   // Canonicalizes "fullname" into "*canonical_name". Uses a fully specified
   // basename to fill in fields that are missing. Accepts both legacy, newer
   // and local versions of the device spec. Returns the newer version of the
   // device spec. If we were unable to interpret / parse "fullname" returns
   // an error and *canonical_name is set to "".
-  static Status CanonicalizeDeviceName(StringPiece fullname,
-                                       StringPiece basename,
+  static Status CanonicalizeDeviceName(absl::string_view fullname,
+                                       absl::string_view basename,
                                        string* canonical_name);
 
   // Returns true if "name" specifies any non-trivial constraint on the device.
@@ -133,20 +133,20 @@ class DeviceNameUtils {
 
   // Returns true iff devices identified by 'src' and 'dst' are in the
   // same address space.
-  static bool IsSameAddressSpace(StringPiece src, StringPiece dst);
+  static bool IsSameAddressSpace(absl::string_view src, absl::string_view dst);
   static bool IsSameAddressSpace(const ParsedName& src, const ParsedName& dst);
 
   // Returns the local device given its "type" and "id".
-  static string LocalName(StringPiece type, int id);
+  static string LocalName(absl::string_view type, int id);
 
   // Returns a short local device name (cpu:0, gpu:1, etc) based on
   // the given fullname.
-  static string LocalName(StringPiece fullname);
+  static string LocalName(absl::string_view fullname);
 
   // If "name" is a valid local device name (cpu:0, gpu:1, etc.),
   // fills in parsed.type and parsed.id accordingly. Returns true iff
   // succeeds.
-  static bool ParseLocalName(StringPiece name, ParsedName* parsed);
+  static bool ParseLocalName(absl::string_view name, ParsedName* parsed);
 
   // Splits a fully-qualified device name into a task identifier and a
   // relative device identifier. It first parses "name" using
@@ -155,7 +155,8 @@ class DeviceNameUtils {
   // component into *device.  This function will still return true if
   // the task component is empty, but it requires the relative device
   // component to be fully specified.
-  static bool SplitDeviceName(StringPiece name, string* task, string* device);
+  static bool SplitDeviceName(absl::string_view name, string* task,
+                              string* device);
 
   static string ParsedNameToString(const ParsedName& pn);
 

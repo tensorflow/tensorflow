@@ -38,6 +38,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/strings/string_view.h"
 #include "tensorflow/cc/ops/const_op.h"
 #include "tensorflow/cc/ops/image_ops.h"
 #include "tensorflow/cc/ops/standard_ops.h"
@@ -46,7 +47,6 @@ limitations under the License.
 #include "tensorflow/core/graph/default_device.h"
 #include "tensorflow/core/graph/graph_def_builder.h"
 #include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/core/threadpool.h"
 #include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/lib/strings/str_util.h"
@@ -99,7 +99,7 @@ static Status ReadEntireFile(tensorflow::Env* env, const string& filename,
   std::unique_ptr<tensorflow::RandomAccessFile> file;
   TF_RETURN_IF_ERROR(env->NewRandomAccessFile(filename, &file));
 
-  tensorflow::StringPiece data;
+  absl::string_view data;
   TF_RETURN_IF_ERROR(file->Read(0, file_size, &data, &(contents)[0]));
   if (data.size() != file_size) {
     return tensorflow::errors::DataLoss("Truncated read of '", filename,

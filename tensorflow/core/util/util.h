@@ -16,18 +16,18 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_UTIL_UTIL_H_
 #define TENSORFLOW_CORE_UTIL_UTIL_H_
 
+#include "absl/strings/string_view.h"
 #include "tensorflow/core/framework/tensor_shape.h"
-#include "tensorflow/core/lib/core/stringpiece.h"
 
 namespace tensorflow {
 
 // If op_name has '/' in it, then return everything before the first '/'.
 // Otherwise return empty string.
-StringPiece NodeNamePrefix(const StringPiece& op_name);
+absl::string_view NodeNamePrefix(const absl::string_view& op_name);
 
 // If op_name has '/' in it, then return everything before the last '/'.
 // Otherwise return empty string.
-StringPiece NodeNameFullPrefix(const StringPiece& op_name);
+absl::string_view NodeNameFullPrefix(const absl::string_view& op_name);
 
 class MovingAverage {
  public:

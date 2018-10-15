@@ -15,6 +15,7 @@ limitations under the License.
 
 #include <sstream>
 
+#include "absl/strings/string_view.h"
 #include "include/json/json.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor_shape.h"
@@ -63,8 +64,8 @@ Status RetrieveGcsFs(OpKernelContext* ctx, RetryingGcsFileSystem** fs) {
 }
 
 template <typename T>
-Status ParseScalarArgument(OpKernelContext* ctx, StringPiece argument_name,
-                           T* output) {
+Status ParseScalarArgument(OpKernelContext* ctx,
+                           absl::string_view argument_name, T* output) {
   const Tensor* argument_t;
   TF_RETURN_IF_ERROR(ctx->input(argument_name, &argument_t));
   if (!TensorShapeUtils::IsScalar(argument_t->shape())) {

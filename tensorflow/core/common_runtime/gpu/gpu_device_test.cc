@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "absl/strings/string_view.h"
 #if GOOGLE_CUDA
 
 #include "tensorflow/core/common_runtime/gpu/gpu_device.h"
@@ -53,7 +54,7 @@ Status GetComputeCapability(PlatformGpuId gpu_id, int* cc_major,
   return Status::OK();
 }
 
-void ExpectErrorMessageSubstr(const Status& s, StringPiece substr) {
+void ExpectErrorMessageSubstr(const Status& s, absl::string_view substr) {
   EXPECT_TRUE(str_util::StrContains(s.ToString(), substr))
       << s << ", expected substring " << substr;
 }

@@ -18,6 +18,7 @@ limitations under the License.
 #include <unordered_map>
 #include <vector>
 
+#include "absl/strings/string_view.h"
 #include "tensorflow/core/common_runtime/constant_folding.h"
 
 #include "tensorflow/cc/ops/array_ops_internal.h"
@@ -640,7 +641,7 @@ class TestTFFileSystem : public ::tensorflow::NullFileSystem {
       return ::tensorflow::errors::Unimplemented(
           "NewReadOnlyMemoryRegionFromFile unimplemented");
     }
-    const ::tensorflow::StringPiece sp = data_tensor_.tensor_data();
+    const ::absl::string_view sp = data_tensor_.tensor_data();
     *result = std::unique_ptr<::tensorflow::ReadOnlyMemoryRegion>(
         new TestReadOnlyMemoryRegion(sp.data(), sp.size()));
     return ::tensorflow::Status::OK();

@@ -18,6 +18,7 @@ limitations under the License.
 #include <fcntl.h>
 #include <stdio.h>
 #include <sys/mman.h>
+#include "absl/strings/string_view.h"
 #if !defined(__APPLE__)
 #include <sys/sendfile.h>
 #endif
@@ -52,7 +53,7 @@ class PosixRandomAccessFile : public RandomAccessFile {
       : filename_(fname), fd_(fd) {}
   ~PosixRandomAccessFile() override { close(fd_); }
 
-  Status Read(uint64 offset, size_t n, StringPiece* result,
+  Status Read(uint64 offset, size_t n, absl::string_view* result,
               char* scratch) const override {
     Status s;
     char* dst = scratch;
@@ -70,7 +71,7 @@ class PosixRandomAccessFile : public RandomAccessFile {
         s = IOError(filename_, errno);
       }
     }
-    *result = StringPiece(scratch, dst - scratch);
+    *result = absl::string_view(scratch, dst - scratch);
     return s;
   }
 };
@@ -91,7 +92,7 @@ class PosixWritableFile : public WritableFile {
     }
   }
 
-  Status Append(StringPiece data) override {
+  Status Append(absl::string_view data) override {
     size_t r = fwrite(data.data(), 1, data.size(), file_);
     if (r != data.size()) {
       return IOError(filename_, errno);
@@ -217,7 +218,7 @@ Status PosixFileSystem::GetChildren(const string& dir,
   }
   struct dirent* entry;
   while ((entry = readdir(d)) != nullptr) {
-    StringPiece basename = entry->d_name;
+    absl::string_view basename = entry->d_name;
     if ((basename != ".") && (basename != "..")) {
       result->push_back(entry->d_name);
     }

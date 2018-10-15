@@ -16,6 +16,7 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/strings/string_view.h"
 #include "tensorflow/contrib/lite/delegates/flex/delegate_data.h"
 #include "tensorflow/contrib/lite/delegates/flex/test_util.h"
 
@@ -60,9 +61,9 @@ class KernelTest : public testing::FlexModelTest {
                                         TfLiteBufferHandle buffer_handle,
                                         void* data, size_t size) {
       auto* delegate_data = reinterpret_cast<DelegateData*>(delegate->data_);
-      tensorflow::StringPiece values = delegate_data->GetBufferMap(context)
-                                           ->GetTensor(buffer_handle)
-                                           .tensor_data();
+      absl::string_view values = delegate_data->GetBufferMap(context)
+                                     ->GetTensor(buffer_handle)
+                                     .tensor_data();
       memcpy(data, values.data(), values.size());
       return kTfLiteOk;
     };

@@ -19,8 +19,8 @@ limitations under the License.
 #include <map>
 #include <memory>
 
+#include "absl/strings/string_view.h"
 #include "tensorflow/core/framework/summary.pb.h"
-#include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/monitoring/collected_metrics.h"
 #include "tensorflow/core/lib/monitoring/metric_def.h"
 #include "tensorflow/core/platform/env.h"
@@ -186,7 +186,7 @@ class CollectionRegistry {
     CollectionFunction collection_function;
     uint64 registration_time_millis;
   };
-  std::map<StringPiece, CollectionInfo> registry_ GUARDED_BY(mu_);
+  std::map<absl::string_view, CollectionInfo> registry_ GUARDED_BY(mu_);
 
   TF_DISALLOW_COPY_AND_ASSIGN(CollectionRegistry);
 };

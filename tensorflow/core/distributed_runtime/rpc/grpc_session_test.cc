@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/distributed_runtime/rpc/grpc_session.h"
 
+#include "absl/strings/string_view.h"
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/distributed_runtime/rpc/grpc_testlib.h"
 #include "tensorflow/core/framework/graph.pb.h"
@@ -667,7 +668,7 @@ TEST(GrpcSessionTest, LongErrorMessage) {
     auto a = test::graph::Constant(&g, Tensor());
     a->set_assigned_device_name(dev_a);
     std::vector<char> long_string_buffer(1024 * 1024, 'x');
-    StringPiece long_string(long_string_buffer.data(), 1024 * 1024);
+    absl::string_view long_string(long_string_buffer.data(), 1024 * 1024);
     string name = strings::StrCat(long_string, "fantasia!");
     auto a_err = test::graph::Error(&g, a, name);
     a_err->set_assigned_device_name(dev_a);

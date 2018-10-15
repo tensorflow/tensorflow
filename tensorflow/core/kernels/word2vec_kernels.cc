@@ -13,9 +13,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "absl/strings/string_view.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
-#include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/lib/random/distribution_sampler.h"
 #include "tensorflow/core/lib/random/philox_random.h"
@@ -33,9 +33,9 @@ const int kSentenceSize = 1000;
 
 namespace {
 
-bool ScanWord(StringPiece* input, string* word) {
+bool ScanWord(absl::string_view* input, string* word) {
   str_util::RemoveLeadingWhitespace(input);
-  StringPiece tmp;
+  absl::string_view tmp;
   if (str_util::ConsumeNonWhitespace(input, &tmp)) {
     word->assign(tmp.data(), tmp.size());
     return true;
@@ -179,7 +179,7 @@ class SkipgramOp : public OpKernel {
   Status Init(Env* env, const string& filename) {
     string data;
     TF_RETURN_IF_ERROR(ReadFileToString(env, filename, &data));
-    StringPiece input = data;
+    absl::string_view input = data;
     string w;
     corpus_size_ = 0;
     std::unordered_map<string, int32> word_freq;

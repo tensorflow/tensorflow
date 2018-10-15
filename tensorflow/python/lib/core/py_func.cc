@@ -20,6 +20,7 @@ limitations under the License.
 #include <Python.h>
 
 #include "numpy/arrayobject.h"
+#include "absl/strings/string_view.h"
 #include "tensorflow/c/eager/c_api.h"
 #include "tensorflow/c/eager/c_api_internal.h"
 #include "tensorflow/c/tf_status_helper.h"
@@ -401,7 +402,7 @@ Status ConvertNdarrayToTensor(PyObject* obj, Tensor* ret) {
               std::max(1, EIGEN_MAX_ALIGN_BYTES) !=
           0) {
         Tensor t(dtype, shape);
-        StringPiece p = t.tensor_data();
+        absl::string_view p = t.tensor_data();
         memcpy(const_cast<char*>(p.data()), PyArray_DATA(input), p.size());
         *ret = t;
       } else {
@@ -464,7 +465,7 @@ Status ConvertTensorToNdarray(const Tensor& t, PyObject** ret) {
     }
   } else {
     CHECK(DataTypeCanUseMemcpy(t.dtype()));
-    StringPiece p = t.tensor_data();
+    absl::string_view p = t.tensor_data();
     memcpy(PyArray_DATA(np_array), p.data(), p.size());
   }
   *ret = PyArray_Return(np_array);

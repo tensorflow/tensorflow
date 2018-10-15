@@ -47,6 +47,7 @@ cc_library(
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/kernels:summary_interface",
         "//tensorflow/core/lib/db:sqlite",
+        "@com_google_absl//absl/strings",
     ],
 )
 

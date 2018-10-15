@@ -16,24 +16,26 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_GRAPPLER_OPTIMIZERS_DATA_GRAPH_TEST_UTILS_H_
 #define TENSORFLOW_CORE_GRAPPLER_OPTIMIZERS_DATA_GRAPH_TEST_UTILS_H_
 
+#include "absl/strings/string_view.h"
 #include "tensorflow/core/framework/node_def.pb.h"
-#include "tensorflow/core/lib/core/stringpiece.h"
 
 namespace tensorflow {
 namespace grappler {
 namespace graph_tests_utils {
 
-NodeDef MakeMapNode(StringPiece name, StringPiece input_node_name,
-                    StringPiece function_name = "XTimesTwo");
+NodeDef MakeMapNode(absl::string_view name, absl::string_view input_node_name,
+                    absl::string_view function_name = "XTimesTwo");
 
-NodeDef MakeFilterNode(StringPiece name, StringPiece input_node_name,
-                       StringPiece function_name = "IsZero");
+NodeDef MakeFilterNode(absl::string_view name,
+                       absl::string_view input_node_name,
+                       absl::string_view function_name = "IsZero");
 
-NodeDef MakeMapAndBatchNode(StringPiece name, StringPiece input_node_name,
-                            StringPiece batch_size_node_name,
-                            StringPiece num_parallel_calls_node_name,
-                            StringPiece drop_remainder_node_name,
-                            StringPiece function_name = "XTimesTwo");
+NodeDef MakeMapAndBatchNode(absl::string_view name,
+                            absl::string_view input_node_name,
+                            absl::string_view batch_size_node_name,
+                            absl::string_view num_parallel_calls_node_name,
+                            absl::string_view drop_remainder_node_name,
+                            absl::string_view function_name = "XTimesTwo");
 
 }  // end namespace graph_tests_utils
 }  // end namespace grappler

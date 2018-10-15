@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <vector>
 
+#include "absl/strings/string_view.h"
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/process_util.h"
 #include "tensorflow/core/distributed_runtime/worker_cache.h"
@@ -33,9 +34,9 @@ namespace tensorflow {
 // parsing into one place.
 //
 // Parses and returns the local device part (e.g., cpu:0, gpu:4).
-string GetLocalDeviceName(StringPiece fullname) {
+string GetLocalDeviceName(absl::string_view fullname) {
   auto pos = fullname.rfind('/');
-  CHECK_NE(pos, StringPiece::npos);
+  CHECK_NE(pos, absl::string_view::npos);
   fullname.remove_prefix(pos + 1);
   return string(fullname);
 }

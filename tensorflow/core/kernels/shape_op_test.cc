@@ -16,6 +16,7 @@ limitations under the License.
 #include <functional>
 #include <memory>
 
+#include "absl/strings/string_view.h"
 #include "tensorflow/cc/client/client_session.h"
 #include "tensorflow/cc/ops/array_ops.h"
 #include "tensorflow/cc/ops/const_op.h"
@@ -63,7 +64,7 @@ REGISTER_UNARY_VARIANT_DECODE_FUNCTION(KnownVecSize, "KNOWN VECTOR SIZE TYPE");
 
 REGISTER_UNARY_VARIANT_SHAPE_FUNCTION(KnownVecSize, GetShapeFromKnownVecSize);
 
-static void ExpectHasError(const Status& s, StringPiece substr) {
+static void ExpectHasError(const Status& s, absl::string_view substr) {
   EXPECT_TRUE(str_util::StrContains(s.ToString(), substr))
       << ">>" << s << "<<, expected substring >>" << substr << "<<";
 }

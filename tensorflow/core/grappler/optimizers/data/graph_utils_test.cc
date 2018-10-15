@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/grappler/optimizers/data/graph_utils.h"
 
+#include "absl/strings/string_view.h"
 #include "tensorflow/core/framework/function_testlib.h"
 #include "tensorflow/core/graph/node_builder.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
@@ -81,7 +82,7 @@ TEST(GraphUtilsTest, AddScalarConstNodeInt64) {
 TEST(GraphUtilsTest, AddScalarConstNodeString) {
   GraphDef graph_def;
   MutableGraphView graph(&graph_def);
-  NodeDef* string_node = AddScalarConstNode<StringPiece>("hello", &graph);
+  NodeDef* string_node = AddScalarConstNode<absl::string_view>("hello", &graph);
   EXPECT_TRUE(
       ContainsGraphNodeWithName(string_node->name(), *graph.GetGraph()));
   EXPECT_EQ(string_node->attr().at("value").tensor().string_val(0), "hello");

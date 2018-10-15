@@ -161,8 +161,8 @@ limitations under the License.
 
 #include <vector>
 
+#include "absl/strings/string_view.h"
 #include "tensorflow/core/framework/tensor_shape.h"
-#include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/util/padding.h"
 #include "tensorflow/core/util/tensor_format.h"
 
@@ -249,19 +249,18 @@ struct ConvBackpropDimensions {
 // Common code between implementations of Conv?DBackpropInput and
 // Conv?DBackpropFilter. Verifies that the dimensions all match, and computes
 // sizes/padding for the spatial dimensions.
-Status ConvBackpropComputeDimensions(StringPiece label, int num_spatial_dims,
-                                     const TensorShape& input_shape,
-                                     const TensorShape& filter_shape,
-                                     const TensorShape& out_backprop_shape,
-                                     const std::vector<int32>& strides,
-                                     Padding padding, TensorFormat data_format,
-                                     ConvBackpropDimensions* dims);
+Status ConvBackpropComputeDimensions(
+    absl::string_view label, int num_spatial_dims,
+    const TensorShape& input_shape, const TensorShape& filter_shape,
+    const TensorShape& out_backprop_shape, const std::vector<int32>& strides,
+    Padding padding, TensorFormat data_format, ConvBackpropDimensions* dims);
 
 // The V2 version computes the same outputs with arbitrary dilation rate.
 // TODO(b/67112639): Merge V2 versions and the original versions eventually.
 Status ConvBackpropComputeDimensionsV2(
-    StringPiece label, int num_spatial_dims, const TensorShape& input_shape,
-    const TensorShape& filter_shape, const TensorShape& out_backprop_shape,
+    absl::string_view label, int num_spatial_dims,
+    const TensorShape& input_shape, const TensorShape& filter_shape,
+    const TensorShape& out_backprop_shape,
     const gtl::ArraySlice<int32>& dilations, const std::vector<int32>& strides,
     Padding padding, TensorFormat data_format, ConvBackpropDimensions* dims);
 }  // namespace tensorflow

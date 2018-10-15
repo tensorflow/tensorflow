@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "absl/strings/string_view.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/null_file_system.h"
 
@@ -20,7 +21,7 @@ namespace tensorflow {
 
 class TestRandomAccessFile : public RandomAccessFile {
   // The file contents is 10 bytes of all A's
-  Status Read(uint64 offset, size_t n, StringPiece* result,
+  Status Read(uint64 offset, size_t n, absl::string_view* result,
               char* scratch) const override {
     Status s;
     for (int i = 0; i < n; ++i) {
@@ -31,7 +32,7 @@ class TestRandomAccessFile : public RandomAccessFile {
       }
       scratch[i] = 'A';
     }
-    *result = StringPiece(scratch, n);
+    *result = absl::string_view(scratch, n);
     return s;
   }
 };

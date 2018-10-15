@@ -20,6 +20,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/memory/memory.h"
+#include "absl/strings/string_view.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/logging.h"
@@ -112,7 +113,7 @@ PyObject* MappingKeys(PyObject* o) {
 // Note that '__class__' attribute is set only in new-style classes.
 // A lot of tensorflow code uses __class__ without checks, so it seems like
 // we only support new-style classes.
-StringPiece GetClassName(PyObject* o) {
+absl::string_view GetClassName(PyObject* o) {
   // __class__ is equivalent to type() for new style classes.
   // type() is equivalent to PyObject_Type()
   // (https://docs.python.org/3.5/c-api/object.html#c.PyObject_Type)
@@ -122,9 +123,9 @@ StringPiece GetClassName(PyObject* o) {
 
   // __name__ is the value of `tp_name` after the last '.'
   // (https://docs.python.org/2/c-api/typeobj.html#c.PyTypeObject.tp_name)
-  StringPiece name(type->tp_name);
+  absl::string_view name(type->tp_name);
   size_t pos = name.rfind('.');
-  if (pos != StringPiece::npos) {
+  if (pos != absl::string_view::npos) {
     name.remove_prefix(pos + 1);
   }
   return name;

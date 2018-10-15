@@ -22,6 +22,7 @@ limitations under the License.
 #include <unordered_set>
 #include <vector>
 
+#include "absl/strings/string_view.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/attr_value_util.h"
 #include "tensorflow/core/framework/node_def.pb.h"
@@ -39,7 +40,6 @@ limitations under the License.
 #include "tensorflow/core/grappler/utils/symbolic_shapes.h"
 #include "tensorflow/core/grappler/utils/topological_sort.h"
 #include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/hash/hash.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
@@ -285,7 +285,7 @@ class ArithmeticOptimizerStage : public GraphOptimizerStage<string> {
     for (const NodeDef* output : ctx().node_map->GetOutputs(node.name())) {
       for (int i = 0; i < output->input_size(); ++i) {
         auto input = output->input(i);
-        StringPiece name = ParseNodeNameAsStringPiece(input, &position);
+        absl::string_view name = ParseNodeNameAsStringPiece(input, &position);
         if (name == node.name() && /*control input*/ position < 0) {
           return true;
         }
@@ -431,12 +431,12 @@ class ArithmeticNodesGroupOptimizerStage : public ArithmeticOptimizerStage {
     return signature;
   }
 
-  void MarkWithTag(const StringPiece tag, NodeDef* node) {
+  void MarkWithTag(const absl::string_view tag, NodeDef* node) {
     AddNodeAttr(tag, true, node);
   }
 
   void MarkAllMembersWithTag(const OptimizedNodesGroup& group,
-                             const StringPiece tag) const {
+                             const absl::string_view tag) const {
     AddNodeAttr(tag, true, group.root_node);
     for (NodeDef* optimized_node : group.optimized_nodes) {
       AddNodeAttr(tag, true, optimized_node);
@@ -453,12 +453,12 @@ class ArithmeticNodesGroupOptimizerStage : public ArithmeticOptimizerStage {
            ctx().nodes_to_preserve->end();
   }
 
-  bool IsMarkedWithTag(const NodeDef& node, const StringPiece tag) const {
+  bool IsMarkedWithTag(const NodeDef& node, const absl::string_view tag) const {
     return HasNodeAttr(node, tag);
   }
 
-  bool IsMarkedWithAnyTag(const NodeDef& node, const StringPiece tag1,
-                          const StringPiece tag2) const {
+  bool IsMarkedWithAnyTag(const NodeDef& node, const absl::string_view tag1,
+                          const absl::string_view tag2) const {
     return IsMarkedWithTag(node, tag1) || IsMarkedWithTag(node, tag2);
   }
 };
@@ -1577,7 +1577,7 @@ class HoistCWiseUnaryChainsStage : public ArithmeticOptimizerStage {
       for (NodeDef* output : outputs) {
         if (IsControlInput(output->input(0))) continue;
         int port;
-        const StringPiece node_name =
+        const absl::string_view node_name =
             ParseNodeNameAsStringPiece(output->input(0), &port);
         if (node_name == node.name()) {
           tails->insert(ChainLink(output, port));
@@ -1628,7 +1628,7 @@ class HoistCWiseUnaryChainsStage : public ArithmeticOptimizerStage {
       } else {
         for (NodeDef* new_tail : ctx().node_map->GetOutputs(tail->name())) {
           int port;
-          const StringPiece node_name =
+          const absl::string_view node_name =
               ParseNodeNameAsStringPiece(new_tail->input(0), &port);
           if (node_name != tail->name()) {
             return Status::OK();
@@ -3219,7 +3219,7 @@ uint64 UniqueNodes::ComputeSignature(const NodeDef& node) const {
 
   for (const auto& input : node.input()) {
     int pos;
-    const StringPiece node_name = ParseNodeNameAsStringPiece(input, &pos);
+    const absl::string_view node_name = ParseNodeNameAsStringPiece(input, &pos);
     h = Hash64CombineUnordered(Hash64(node_name.data(), node_name.size()), h);
     h = Hash64CombineUnordered(std::hash<int>()(pos), h);
   }

@@ -20,15 +20,16 @@ limitations under the License.
 #include <iomanip>
 #include <sstream>
 #include <unordered_map>
+#include "absl/strings/string_view.h"
 #include "tensorflow/core/framework/api_def.pb.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/op.h"
-#include "tensorflow/core/framework/op_def.pb.h"
 #include "tensorflow/core/framework/op_def.pb_text.h"
+#include "tensorflow/core/framework/op_def.pb.h"
 #include "tensorflow/core/framework/op_def_util.h"
 #include "tensorflow/core/framework/op_gen_lib.h"
-#include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/framework/tensor.pb_text.h"
+#include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/framework/types.pb.h"
@@ -110,7 +111,7 @@ string AvoidPythonReserved(const string& s) {
 
 // Indent the first line by "initial" spaces and all following lines
 // by "rest" spaces.
-string Indent(int initial, int rest, StringPiece in) {
+string Indent(int initial, int rest, absl::string_view in) {
   // TODO(josh11b): Also word-wrapping?
   string copy(in.data(), in.size());
   str_util::StripTrailingWhitespace(&copy);
@@ -135,7 +136,7 @@ string Indent(int initial, int rest, StringPiece in) {
 
 // Adds append to *dest, with a space if the first line will be <= width,
 // or a newline otherwise.
-void AppendWithinWidth(string* dest, StringPiece append, int width) {
+void AppendWithinWidth(string* dest, absl::string_view append, int width) {
   auto first_line = append.find('\n');
   if (first_line == string::npos) first_line = append.size();
   if (dest->size() + first_line + 1 /* space */ > static_cast<size_t>(width)) {
@@ -283,7 +284,7 @@ string GetReturns(const OpDef& op_def,
     strings::StrAppend(&result, "    The created Operation.\n");
   } else {
     if (num_outs == 1) {
-      StringPiece description = op_def.output_arg(0).description();
+      absl::string_view description = op_def.output_arg(0).description();
       if (ConsumeEquals(&description)) {  // Skip the generated type info.
         strings::StrAppend(&result, Indent(4, 4, description));
       } else {
@@ -319,7 +320,7 @@ string GetReturns(const OpDef& op_def,
                          str_util::Join(out_names, ", "), ").\n\n");
       for (int i = 0; i < num_outs; ++i) {
         string desc = strings::StrCat(out_names[i], ": ");
-        StringPiece description = op_def.output_arg(i).description();
+        absl::string_view description = op_def.output_arg(i).description();
         if (ConsumeEquals(&description)) {  // Skip the generated type info.
           strings::StrAppend(&desc, description);
         } else {
@@ -481,7 +482,7 @@ static void AddDelimiter(string* append_to, const string& delim) {
   if (!append_to->empty()) strings::StrAppend(append_to, delim);
 }
 
-const ApiDef::Attr* FindAttr(StringPiece name, const ApiDef& api_def) {
+const ApiDef::Attr* FindAttr(absl::string_view name, const ApiDef& api_def) {
   for (int i = 0; i < api_def.attr_size(); ++i) {
     if (api_def.attr(i).name() == name) {
       return &api_def.attr(i);
@@ -659,7 +660,7 @@ void GenPythonOp::AddDocStringInputs() {
   for (int i = 0; i < api_def_.arg_order_size(); ++i) {
     const auto& arg = *FindInputArg(api_def_.arg_order(i), op_def_);
     const auto& api_def_arg = *FindInputArg(api_def_.arg_order(i), api_def_);
-    StringPiece description = api_def_arg.description();
+    absl::string_view description = api_def_arg.description();
     string desc;
     if (ConsumeEquals(&description)) {  // Skip the generated type info.
       desc = strings::StrCat(param_names_[i].GetRenameTo(), ": ");

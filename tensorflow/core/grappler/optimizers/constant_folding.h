@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_GRAPPLER_OPTIMIZERS_CONSTANT_FOLDING_H_
 #define TENSORFLOW_CORE_GRAPPLER_OPTIMIZERS_CONSTANT_FOLDING_H_
 
+#include "absl/strings/string_view.h"
 #include "tensorflow/core/framework/device_base.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/resource_mgr.h"
@@ -52,8 +53,8 @@ class ConstantFolding : public GraphOptimizer {
                 const GraphDef& optimize_output, double result) override;
 
  private:
-  string OptimizedNodeName(const NodeDef& node, StringPiece suffix) const;
-  bool OptimizedNodeExists(const NodeDef& node, StringPiece suffix) const;
+  string OptimizedNodeName(const NodeDef& node, absl::string_view suffix) const;
+  bool OptimizedNodeExists(const NodeDef& node, absl::string_view suffix) const;
 
   bool IsReallyConstant(const NodeDef& node) const;
 

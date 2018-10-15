@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_CORE_LIB_IO_TABLE_H_
 
 #include <stdint.h>
+#include "absl/strings/string_view.h"
 #include "tensorflow/core/lib/io/iterator.h"
 
 namespace tensorflow {
@@ -60,21 +61,22 @@ class Table {
   // bytes, and so includes effects like compression of the underlying data.
   // E.g., the approximate offset of the last key in the table will
   // be close to the file length.
-  uint64 ApproximateOffsetOf(const StringPiece& key) const;
+  uint64 ApproximateOffsetOf(const absl::string_view& key) const;
 
  private:
   struct Rep;
   Rep* rep_;
 
   explicit Table(Rep* rep) { rep_ = rep; }
-  static Iterator* BlockReader(void*, const StringPiece&);
+  static Iterator* BlockReader(void*, const absl::string_view&);
 
   // Calls (*handle_result)(arg, ...) with the entry found after a call
   // to Seek(key).  May not make such a call if filter policy says
   // that key is not present.
-  Status InternalGet(const StringPiece& key, void* arg,
-                     void (*handle_result)(void* arg, const StringPiece& k,
-                                           const StringPiece& v));
+  Status InternalGet(const absl::string_view& key, void* arg,
+                     void (*handle_result)(void* arg,
+                                           const absl::string_view& k,
+                                           const absl::string_view& v));
 
   // No copying allowed
   Table(const Table&);

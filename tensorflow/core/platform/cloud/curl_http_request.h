@@ -19,10 +19,10 @@ limitations under the License.
 #include <string>
 #include <unordered_map>
 #include <vector>
+#include "absl/strings/string_view.h"
 #include <curl/curl.h>
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
-#include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/platform/cloud/http_request.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/macros.h"
@@ -165,7 +165,7 @@ class CurlHttpRequest : public HttpRequest {
                               curl_off_t ulnow);
   void CheckMethodNotSet() const;
   void CheckNotSent() const;
-  StringPiece GetResponse() const;
+  absl::string_view GetResponse() const;
 
   /// Helper to convert the given CURLcode and error buffer, representing the
   /// result of performing a transfer, into a Status with an error message.
@@ -176,7 +176,7 @@ class CurlHttpRequest : public HttpRequest {
 
   FILE* put_body_ = nullptr;
 
-  StringPiece post_body_buffer_;
+  absl::string_view post_body_buffer_;
   size_t post_body_read_ = 0;
 
   std::vector<char>* response_buffer_ = nullptr;

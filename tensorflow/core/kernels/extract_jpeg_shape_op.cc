@@ -16,6 +16,7 @@ limitations under the License.
 // See docs in ../ops/image_ops.cc
 
 #include <memory>
+#include "absl/strings/string_view.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -41,7 +42,7 @@ class ExtractJpegShapeOp : public OpKernel {
     OP_REQUIRES(context, TensorShapeUtils::IsScalar(contents.shape()),
                 errors::InvalidArgument("contents must be scalar, got shape ",
                                         contents.shape().DebugString()));
-    const StringPiece input = contents.scalar<string>()();
+    const absl::string_view input = contents.scalar<string>()();
     OP_REQUIRES(context, input.size() <= std::numeric_limits<int>::max(),
                 errors::InvalidArgument("JPEG contents are too large for int: ",
                                         input.size()));

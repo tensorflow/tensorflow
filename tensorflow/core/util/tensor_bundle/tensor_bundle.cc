@@ -21,6 +21,7 @@ limitations under the License.
 #include <memory>
 #include <utility>
 
+#include "absl/strings/string_view.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/framework/tensor_shape.pb_text.h"
@@ -197,7 +198,7 @@ string* GetStringBackingBuffer(const Tensor& val) {
   return const_cast<string*>(val.flat<string>().data());
 }
 
-Status ParseEntryProto(StringPiece key, StringPiece value,
+Status ParseEntryProto(absl::string_view key, absl::string_view value,
                        protobuf::MessageLite* out) {
   if (!out->ParseFromArray(value.data(), value.size())) {
     return errors::DataLoss("Entry for key ", key, " not parseable.");
@@ -216,7 +217,7 @@ Status WriteTensor(const Tensor& val, FileOutputBuffer* out,
   *bytes_written = val.TotalBytes();
   char* buf = GetBackingBuffer(val);
   VLOG(1) << "Appending " << *bytes_written << " bytes to file";
-  return out->Append(StringPiece(buf, *bytes_written));
+  return out->Append(absl::string_view(buf, *bytes_written));
 }
 
 // Serializes string tensor "val".  "bytes_written" is treated in the same
@@ -260,7 +261,7 @@ Status WriteStringTensor(const Tensor& val, FileOutputBuffer* out,
 
   // Writes the length checksum.
   const uint32 length_checksum = crc32c::Mask(*crc32c);
-  TF_RETURN_IF_ERROR(out->Append(StringPiece(
+  TF_RETURN_IF_ERROR(out->Append(absl::string_view(
       reinterpret_cast<const char*>(&length_checksum), sizeof(uint32))));
   *crc32c = crc32c::Extend(
       *crc32c, reinterpret_cast<const char*>(&length_checksum), sizeof(uint32));
@@ -313,7 +314,7 @@ Status WriteVariantTensor(const Tensor& val, FileOutputBuffer* out,
 
     // Write the checksum.
     const uint32 length_checksum = crc32c::Mask(*crc32c);
-    TF_RETURN_IF_ERROR(out->Append(StringPiece(
+    TF_RETURN_IF_ERROR(out->Append(absl::string_view(
         reinterpret_cast<const char*>(&length_checksum), sizeof(uint32))));
     *crc32c =
         crc32c::Extend(*crc32c, reinterpret_cast<const char*>(&length_checksum),
@@ -385,7 +386,8 @@ Status PadAlignment(FileOutputBuffer* out, int alignment, int64* size) {
 
 }  // namespace
 
-BundleWriter::BundleWriter(Env* env, StringPiece prefix, const Options& options)
+BundleWriter::BundleWriter(Env* env, absl::string_view prefix,
+                           const Options& options)
     : env_(env),
       options_(options),
       prefix_(prefix),
@@ -409,7 +411,7 @@ BundleWriter::BundleWriter(Env* env, StringPiece prefix, const Options& options)
   VLOG(1) << "Writing to file " << tmp_data_path_;
 }
 
-Status BundleWriter::Add(StringPiece key, const Tensor& val) {
+Status BundleWriter::Add(absl::string_view key, const Tensor& val) {
   if (!status_.ok()) return status_;
   CHECK_NE(key, kHeaderEntryKey);
   const string key_string(key);
@@ -446,7 +448,7 @@ Status BundleWriter::Add(StringPiece key, const Tensor& val) {
   return status_;
 }
 
-Status BundleWriter::AddSlice(StringPiece full_tensor_key,
+Status BundleWriter::AddSlice(absl::string_view full_tensor_key,
                               const TensorShape& full_tensor_shape,
                               const TensorSlice& slice_spec,
                               const Tensor& slice_tensor) {
@@ -563,7 +565,7 @@ struct MergeState {
 
 // Merges entries of "prefix" into the accumulator state "merge".
 // Returns OK iff the merge succeeds.
-static Status MergeOneBundle(Env* env, StringPiece prefix,
+static Status MergeOneBundle(Env* env, absl::string_view prefix,
                              MergeState* merge_state) {
   VLOG(1) << "Merging bundle:" << prefix;
   const string filename = MetaFilename(prefix);
@@ -663,7 +665,7 @@ static Status MergeOneBundle(Env* env, StringPiece prefix,
 }
 
 Status MergeBundles(Env* env, gtl::ArraySlice<string> prefixes,
-                    StringPiece merged_prefix) {
+                    absl::string_view merged_prefix) {
   // Merges all metadata tables.
   // TODO(zhifengc): KeyValue sorter if it becomes too big.
   MergeState merge;
@@ -713,7 +715,7 @@ Status MergeBundles(Env* env, gtl::ArraySlice<string> prefixes,
 
 // Interface for reading a tensor bundle.
 
-BundleReader::BundleReader(Env* env, StringPiece prefix)
+BundleReader::BundleReader(Env* env, absl::string_view prefix)
     : env_(env),
       prefix_(prefix),
       metadata_(nullptr),
@@ -772,7 +774,7 @@ BundleReader::~BundleReader() {
   gtl::STLDeleteValues(&tensor_slices_);
 }
 
-Status BundleReader::GetBundleEntryProto(StringPiece key,
+Status BundleReader::GetBundleEntryProto(absl::string_view key,
                                          BundleEntryProto* entry) {
   entry->Clear();
   TF_CHECK_OK(status_);
@@ -841,7 +843,7 @@ Status BundleReader::GetValue(const BundleEntryProto& entry, Tensor* val) {
     char* backing_buffer = const_cast<char*>((ret->tensor_data().data()));
     size_t unused_bytes_read;
     if (entry.size() > kBufferSize) {
-      StringPiece sp;
+      absl::string_view sp;
       TF_RETURN_IF_ERROR(buffered_file->file()->Read(
           entry.offset(), entry.size(), &sp, backing_buffer));
       if (sp.data() != backing_buffer) {
@@ -876,7 +878,7 @@ Status BundleReader::GetValue(const BundleEntryProto& entry, Tensor* val) {
   return Status::OK();
 }
 
-Status BundleReader::Lookup(StringPiece key, Tensor* val) {
+Status BundleReader::Lookup(absl::string_view key, Tensor* val) {
   CHECK(val != nullptr);
   BundleEntryProto entry;
   TF_RETURN_IF_ERROR(GetBundleEntryProto(key, &entry));
@@ -908,7 +910,7 @@ Status BundleReader::ReadCurrent(Tensor* val) {
   }
 }
 
-Status BundleReader::LookupTensorSlices(StringPiece key,
+Status BundleReader::LookupTensorSlices(absl::string_view key,
                                         std::vector<TensorSlice>* slices) {
   slices->clear();
   BundleEntryProto entry;
@@ -920,7 +922,7 @@ Status BundleReader::LookupTensorSlices(StringPiece key,
   return Status::OK();
 }
 
-Status BundleReader::LookupSlice(StringPiece full_tensor_key,
+Status BundleReader::LookupSlice(absl::string_view full_tensor_key,
                                  const TensorSlice& slice_spec, Tensor* val) {
   CHECK(val != nullptr);
   BundleEntryProto entry;
@@ -928,7 +930,7 @@ Status BundleReader::LookupSlice(StringPiece full_tensor_key,
   return GetSliceValue(full_tensor_key, entry, slice_spec, val);
 }
 
-Status BundleReader::GetSliceValue(StringPiece full_tensor_key,
+Status BundleReader::GetSliceValue(absl::string_view full_tensor_key,
                                    const BundleEntryProto& full_tensor_entry,
                                    const TensorSlice& slice_spec, Tensor* val) {
   using checkpoint::RegisterTensorSlice;
@@ -1042,12 +1044,12 @@ Status BundleReader::GetSliceValue(StringPiece full_tensor_key,
   return Status::OK();
 }
 
-bool BundleReader::Contains(StringPiece key) {
+bool BundleReader::Contains(absl::string_view key) {
   Seek(key);
   return Valid() && (this->key() == key);
 }
 
-Status BundleReader::LookupDtypeAndShape(StringPiece key, DataType* dtype,
+Status BundleReader::LookupDtypeAndShape(absl::string_view key, DataType* dtype,
                                          TensorShape* shape) {
   BundleEntryProto entry;
   TF_RETURN_IF_ERROR(GetBundleEntryProto(key, &entry));
@@ -1056,7 +1058,8 @@ Status BundleReader::LookupDtypeAndShape(StringPiece key, DataType* dtype,
   return Status::OK();
 }
 
-Status BundleReader::LookupTensorShape(StringPiece key, TensorShape* shape) {
+Status BundleReader::LookupTensorShape(absl::string_view key,
+                                       TensorShape* shape) {
   DataType ignored;
   return LookupDtypeAndShape(key, &ignored, shape);
 }
@@ -1080,7 +1083,7 @@ string BundleReader::DebugString() {
 
 FileOutputBuffer::~FileOutputBuffer() { delete file_; }
 
-Status FileOutputBuffer::Append(StringPiece data) {
+Status FileOutputBuffer::Append(absl::string_view data) {
   // In the below, it is critical to calculate the checksum on the actually
   // copied bytes, not the source bytes.  This is because "data" typically
   // points to tensor buffers, which may be concurrently written.
@@ -1117,7 +1120,8 @@ Status FileOutputBuffer::Close() {
 
 Status FileOutputBuffer::FlushBuffer() {
   if (position_ > 0) {
-    TF_RETURN_IF_ERROR(file_->Append(StringPiece(&buffer_[0], position_)));
+    TF_RETURN_IF_ERROR(
+        file_->Append(absl::string_view(&buffer_[0], position_)));
     position_ = 0;
   }
   return Status::OK();

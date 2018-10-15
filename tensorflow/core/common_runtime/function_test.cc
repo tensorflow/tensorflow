@@ -18,6 +18,7 @@ limitations under the License.
 #include <atomic>
 #include <utility>
 
+#include "absl/strings/string_view.h"
 #include "tensorflow/cc/ops/array_ops_internal.h"
 #include "tensorflow/cc/ops/function_ops.h"
 #include "tensorflow/cc/ops/functional_ops.h"
@@ -55,7 +56,7 @@ Status GetOpSig(const string& op, const OpDef** sig) {
   return OpRegistry::Global()->LookUpOpDef(op, sig);
 }
 
-void HasError(const Status& s, StringPiece substr) {
+void HasError(const Status& s, absl::string_view substr) {
   EXPECT_TRUE(str_util::StrContains(s.ToString(), substr))
       << s << ", expected substring " << substr;
 }

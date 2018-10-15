@@ -25,6 +25,7 @@ limitations under the License.
 #include <sys/types.h>
 #include <time.h>
 
+#include "absl/strings/string_view.h"
 #include "tensorflow/core/lib/core/error_codes.pb.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/env.h"
@@ -112,7 +113,7 @@ class WindowsRandomAccessFile : public RandomAccessFile {
     }
   }
 
-  Status Read(uint64 offset, size_t n, StringPiece* result,
+  Status Read(uint64 offset, size_t n, absl::string_view* result,
               char* scratch) const override {
     Status s;
     char* dst = scratch;
@@ -130,7 +131,7 @@ class WindowsRandomAccessFile : public RandomAccessFile {
         s = IOError(filename_, errno);
       }
     }
-    *result = StringPiece(scratch, dst - scratch);
+    *result = absl::string_view(scratch, dst - scratch);
     return s;
   }
 };
@@ -150,7 +151,7 @@ class WindowsWritableFile : public WritableFile {
     }
   }
 
-  Status Append(StringPiece data) override {
+  Status Append(absl::string_view data) override {
     DWORD bytes_written = 0;
     DWORD data_size = static_cast<DWORD>(data.size());
     BOOL write_result =
@@ -413,7 +414,7 @@ Status WindowsFileSystem::GetChildren(const string& dir,
 
   do {
     string file_name = WideCharToUtf8(find_data.cFileName);
-    const StringPiece basename = file_name;
+    const absl::string_view basename = file_name;
     if (basename != "." && basename != "..") {
       result->push_back(file_name);
     }

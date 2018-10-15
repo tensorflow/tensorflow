@@ -190,6 +190,7 @@ cc_library(
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
+        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -206,6 +207,7 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":signature_lite",
+        "@com_google_absl//absl/strings",
         "//tensorflow/core:lib_internal",
     ] + if_not_mobile([
         ":manifest_proto_cc",
@@ -342,6 +344,7 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
+        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -370,6 +373,7 @@ cc_library(
     deps = [
         ":session_bundle",
         ":signature",
+        "@com_google_absl//absl/strings",
         "//tensorflow/cc/saved_model:loader",
         "//tensorflow/cc/saved_model:signature_constants",
     ] + if_not_mobile([

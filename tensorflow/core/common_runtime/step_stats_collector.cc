@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/core/common_runtime/step_stats_collector.h"
+#include "absl/strings/string_view.h"
 #include "tensorflow/core/common_runtime/costmodel_manager.h"
 #include "tensorflow/core/framework/allocation_description.pb.h"
 #include "tensorflow/core/framework/op_kernel.h"
@@ -22,7 +23,6 @@ limitations under the License.
 #include "tensorflow/core/framework/tracking_allocator.h"
 #include "tensorflow/core/graph/costmodel.h"
 #include "tensorflow/core/graph/graph.h"
-#include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/strings/numbers.h"
 #include "tensorflow/core/lib/strings/scanner.h"
 #include "tensorflow/core/lib/strings/stringprintf.h"
@@ -212,7 +212,7 @@ static int ExtractGpuWithStreamAll(string device_name) {
   scanner.RestartCapture().Many(strings::Scanner::DIGIT).StopCapture();
   // Check that the digits are preceded by the 'device:GPU:' string
   scanner.OneLiteral(":UPG:ecived");
-  StringPiece capture;
+  absl::string_view capture;
   bool matched = scanner.GetResult(nullptr, &capture);
 
   if (!matched) {
@@ -241,7 +241,7 @@ static int ExtractGpuWithoutStream(string device_name) {
   scanner.RestartCapture().Many(strings::Scanner::DIGIT).StopCapture();
   // Check that the digits are preceded by the 'device:GPU:' string
   scanner.OneLiteral(":UPG:ecived");
-  StringPiece capture;
+  absl::string_view capture;
   bool matched = scanner.GetResult(nullptr, &capture);
 
   if (!matched) {
@@ -276,7 +276,7 @@ void StepStatsCollector::BuildCostModel(
     const DeviceStepStats* hardware_stats;
   };
 
-  std::unordered_map<StringPiece, DeviceStats, StringPieceHasher>
+  std::unordered_map<absl::string_view, DeviceStats, StringPieceHasher>
       per_device_stats;
   std::unordered_map<int, const DeviceStepStats*> gpu_hardware_stats;
 
@@ -295,7 +295,7 @@ void StepStatsCollector::BuildCostModel(
   }
 
   for (auto& itr : per_device_stats) {
-    const StringPiece device_name = itr.first;
+    const absl::string_view device_name = itr.first;
     const int gpu_id = ExtractGpuWithoutStream(string(device_name));
     if (gpu_id >= 0) {
       // Reference the gpu hardware stats in addition to the regular stats
@@ -307,7 +307,7 @@ void StepStatsCollector::BuildCostModel(
   }
 
   for (auto itr : device_map) {
-    const StringPiece device = itr.first;
+    const absl::string_view device = itr.first;
     if (per_device_stats.find(device) == per_device_stats.end()) {
       continue;
     }
@@ -316,7 +316,8 @@ void StepStatsCollector::BuildCostModel(
     CostModel* cm = cost_model_manager->FindOrCreateCostModel(graph);
     cm->IncrementUpdateTimes();
 
-    std::unordered_map<StringPiece, Node*, StringPieceHasher> name_to_node;
+    std::unordered_map<absl::string_view, Node*, StringPieceHasher>
+        name_to_node;
     for (Node* n : graph->nodes()) {
       name_to_node.emplace(n->name(), n);
     }

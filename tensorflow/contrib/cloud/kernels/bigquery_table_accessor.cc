@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/contrib/cloud/kernels/bigquery_table_accessor.h"
 
+#include "absl/strings/string_view.h"
 #include "tensorflow/core/example/feature.pb.h"
 #include "tensorflow/core/lib/strings/numbers.h"
 
@@ -31,7 +32,7 @@ bool IsPartitionEmpty(const BigQueryTablePartition& partition) {
   return false;
 }
 
-Status ParseJson(StringPiece json, Json::Value* result) {
+Status ParseJson(absl::string_view json, Json::Value* result) {
   Json::Reader reader;
   if (!reader.parse(string(json), *result)) {
     return errors::Internal("Couldn't parse JSON response from BigQuery.");
@@ -183,8 +184,8 @@ Status BigQueryTableAccessor::ReadRow(int64* row_id, Example* example) {
                                     FullTableName());
 
     // Parse the returned row.
-    StringPiece response_piece =
-        StringPiece(&output_buffer[0], output_buffer.size());
+    absl::string_view response_piece =
+        absl::string_view(&output_buffer[0], output_buffer.size());
     Json::Value root;
     TF_RETURN_IF_ERROR(ParseJson(response_piece, &root));
     for (unsigned int i = 0; i < root["rows"].size(); ++i) {
@@ -261,8 +262,8 @@ Status BigQueryTableAccessor::ReadSchema() {
                                   FullTableName());
 
   // Parse the schema.
-  StringPiece response_piece =
-      StringPiece(&output_buffer[0], output_buffer.size());
+  absl::string_view response_piece =
+      absl::string_view(&output_buffer[0], output_buffer.size());
 
   Json::Value root;
   TF_RETURN_IF_ERROR(ParseJson(response_piece, &root));

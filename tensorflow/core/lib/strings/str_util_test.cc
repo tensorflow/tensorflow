@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/str_util.h"
 
 #include <vector>
+#include "absl/strings/string_view.h"
 #include "tensorflow/core/platform/test.h"
 
 namespace tensorflow {
@@ -28,7 +29,7 @@ TEST(CEscape, Basic) {
   EXPECT_EQ(str_util::CEscape("\320hi\200"), "\\320hi\\200");
 }
 
-string ExpectCUnescapeSuccess(StringPiece source) {
+string ExpectCUnescapeSuccess(absl::string_view source) {
   string dest;
   string error;
   EXPECT_TRUE(str_util::CUnescape(source, &dest, &error)) << error;
@@ -49,7 +50,7 @@ TEST(CUnescape, HandlesCopyOnWriteStrings) {
   // For std::string, read and dest now share the same buffer.
 
   string error;
-  StringPiece source = "llohe";
+  absl::string_view source = "llohe";
   // CUnescape is going to write "llohe" to dest, so dest's buffer will be
   // reallocated, and read's buffer remains untouched.
   EXPECT_TRUE(str_util::CUnescape(source, &dest, &error));
@@ -81,71 +82,71 @@ TEST(StripTrailingWhitespace, Basic) {
 
 TEST(RemoveLeadingWhitespace, Basic) {
   string text = "  \t   \n  \r Quick\t";
-  StringPiece data(text);
+  absl::string_view data(text);
   // check that all whitespace is removed
   EXPECT_EQ(str_util::RemoveLeadingWhitespace(&data), 11);
-  EXPECT_EQ(data, StringPiece("Quick\t"));
+  EXPECT_EQ(data, absl::string_view("Quick\t"));
   // check that non-whitespace is not removed
   EXPECT_EQ(str_util::RemoveLeadingWhitespace(&data), 0);
-  EXPECT_EQ(data, StringPiece("Quick\t"));
+  EXPECT_EQ(data, absl::string_view("Quick\t"));
 }
 
 TEST(RemoveLeadingWhitespace, TerminationHandling) {
   // check termination handling
   string text = "\t";
-  StringPiece data(text);
+  absl::string_view data(text);
   EXPECT_EQ(str_util::RemoveLeadingWhitespace(&data), 1);
-  EXPECT_EQ(data, StringPiece(""));
+  EXPECT_EQ(data, absl::string_view(""));
 
   // check termination handling again
   EXPECT_EQ(str_util::RemoveLeadingWhitespace(&data), 0);
-  EXPECT_EQ(data, StringPiece(""));
+  EXPECT_EQ(data, absl::string_view(""));
 }
 
 TEST(RemoveTrailingWhitespace, Basic) {
   string text = "  \t   \n  \r Quick \t";
-  StringPiece data(text);
+  absl::string_view data(text);
   // check that all whitespace is removed
   EXPECT_EQ(str_util::RemoveTrailingWhitespace(&data), 2);
-  EXPECT_EQ(data, StringPiece("  \t   \n  \r Quick"));
+  EXPECT_EQ(data, absl::string_view("  \t   \n  \r Quick"));
   // check that non-whitespace is not removed
   EXPECT_EQ(str_util::RemoveTrailingWhitespace(&data), 0);
-  EXPECT_EQ(data, StringPiece("  \t   \n  \r Quick"));
+  EXPECT_EQ(data, absl::string_view("  \t   \n  \r Quick"));
 }
 
 TEST(RemoveTrailingWhitespace, TerminationHandling) {
   // check termination handling
   string text = "\t";
-  StringPiece data(text);
+  absl::string_view data(text);
   EXPECT_EQ(str_util::RemoveTrailingWhitespace(&data), 1);
-  EXPECT_EQ(data, StringPiece(""));
+  EXPECT_EQ(data, absl::string_view(""));
 
   // check termination handling again
   EXPECT_EQ(str_util::RemoveTrailingWhitespace(&data), 0);
-  EXPECT_EQ(data, StringPiece(""));
+  EXPECT_EQ(data, absl::string_view(""));
 }
 
 TEST(RemoveWhitespaceContext, Basic) {
   string text = "  \t   \n  \r Quick \t";
-  StringPiece data(text);
+  absl::string_view data(text);
   // check that all whitespace is removed
   EXPECT_EQ(str_util::RemoveWhitespaceContext(&data), 13);
-  EXPECT_EQ(data, StringPiece("Quick"));
+  EXPECT_EQ(data, absl::string_view("Quick"));
   // check that non-whitespace is not removed
   EXPECT_EQ(str_util::RemoveWhitespaceContext(&data), 0);
-  EXPECT_EQ(data, StringPiece("Quick"));
+  EXPECT_EQ(data, absl::string_view("Quick"));
 
   // Test empty string
   text = "";
   data = text;
   EXPECT_EQ(str_util::RemoveWhitespaceContext(&data), 0);
-  EXPECT_EQ(data, StringPiece(""));
+  EXPECT_EQ(data, absl::string_view(""));
 }
 
-void TestConsumeLeadingDigits(StringPiece s, int64 expected,
-                              StringPiece remaining) {
+void TestConsumeLeadingDigits(absl::string_view s, int64 expected,
+                              absl::string_view remaining) {
   uint64 v;
-  StringPiece input(s);
+  absl::string_view input(s);
   if (str_util::ConsumeLeadingDigits(&input, &v)) {
     EXPECT_EQ(v, static_cast<uint64>(expected));
     EXPECT_EQ(input, remaining);
@@ -178,10 +179,10 @@ TEST(ConsumeLeadingDigits, Basic) {
                            "184467440737095516159yz");
 }
 
-void TestConsumeNonWhitespace(StringPiece s, StringPiece expected,
-                              StringPiece remaining) {
-  StringPiece v;
-  StringPiece input(s);
+void TestConsumeNonWhitespace(absl::string_view s, absl::string_view expected,
+                              absl::string_view remaining) {
+  absl::string_view v;
+  absl::string_view input(s);
   if (str_util::ConsumeNonWhitespace(&input, &v)) {
     EXPECT_EQ(v, expected);
     EXPECT_EQ(input, remaining);
@@ -200,7 +201,7 @@ TEST(ConsumeNonWhitespace, Basic) {
 
 TEST(ConsumePrefix, Basic) {
   string s("abcdef");
-  StringPiece input(s);
+  absl::string_view input(s);
   EXPECT_FALSE(str_util::ConsumePrefix(&input, "abcdefg"));
   EXPECT_EQ(input, "abcdef");
 
@@ -228,7 +229,7 @@ TEST(JoinStrings, Basic) {
   s = {"hi", "there", "strings"};
   EXPECT_EQ(str_util::Join(s, " "), "hi there strings");
 
-  std::vector<StringPiece> sp;
+  std::vector<absl::string_view> sp;
   sp = {"hi"};
   EXPECT_EQ(str_util::Join(sp, ",,"), "hi");
   sp = {"hi", "there", "strings"};

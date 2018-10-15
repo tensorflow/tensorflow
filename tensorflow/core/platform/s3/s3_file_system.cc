@@ -13,6 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/platform/s3/s3_file_system.h"
+
+#include "absl/strings/string_view.h"
 #include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/file_system_helper.h"
@@ -144,7 +146,7 @@ Status ParseS3Path(const string& fname, bool empty_object_ok, string* bucket,
   if (!bucket || !object) {
     return errors::Internal("bucket and object cannot be null.");
   }
-  StringPiece scheme, bucketp, objectp;
+  absl::string_view scheme, bucketp, objectp;
   io::ParseURI(fname, &scheme, &bucketp, &objectp);
   if (scheme != "s3") {
     return errors::InvalidArgument("S3 path doesn't start with 's3://': ",
@@ -170,7 +172,7 @@ class S3RandomAccessFile : public RandomAccessFile {
                      std::shared_ptr<Aws::S3::S3Client> s3_client)
       : bucket_(bucket), object_(object), s3_client_(s3_client) {}
 
-  Status Read(uint64 offset, size_t n, StringPiece* result,
+  Status Read(uint64 offset, size_t n, absl::string_view* result,
               char* scratch) const override {
     Aws::S3::Model::GetObjectRequest getObjectRequest;
     getObjectRequest.WithBucket(bucket_.c_str()).WithKey(object_.c_str());
@@ -182,13 +184,13 @@ class S3RandomAccessFile : public RandomAccessFile {
     auto getObjectOutcome = this->s3_client_->GetObject(getObjectRequest);
     if (!getObjectOutcome.IsSuccess()) {
       n = 0;
-      *result = StringPiece(scratch, n);
+      *result = absl::string_view(scratch, n);
       return Status(error::OUT_OF_RANGE, "Read less bytes than requested");
     }
     n = getObjectOutcome.GetResult().GetContentLength();
     getObjectOutcome.GetResult().GetBody().read(scratch, n);
 
-    *result = StringPiece(scratch, n);
+    *result = absl::string_view(scratch, n);
     return Status::OK();
   }
 
@@ -211,7 +213,7 @@ class S3WritableFile : public WritableFile {
             std::ios_base::binary | std::ios_base::trunc | std::ios_base::in |
                 std::ios_base::out)) {}
 
-  Status Append(StringPiece data) override {
+  Status Append(absl::string_view data) override {
     if (!outfile_) {
       return errors::FailedPrecondition(
           "The internal temporary file is not writable.");
@@ -339,7 +341,7 @@ Status S3FileSystem::NewAppendableFile(const string& fname,
   std::unique_ptr<char[]> buffer(new char[kS3ReadAppendableFileBufferSize]);
   Status status;
   uint64 offset = 0;
-  StringPiece read_chunk;
+  absl::string_view read_chunk;
 
   string bucket, object;
   TF_RETURN_IF_ERROR(ParseS3Path(fname, false, &bucket, &object));
@@ -372,7 +374,7 @@ Status S3FileSystem::NewReadOnlyMemoryRegionFromFile(
   std::unique_ptr<RandomAccessFile> file;
   TF_RETURN_IF_ERROR(NewRandomAccessFile(fname, &file));
 
-  StringPiece piece;
+  absl::string_view piece;
   TF_RETURN_IF_ERROR(file->Read(0, size, &piece, data.get()));
 
   result->reset(new S3ReadOnlyMemoryRegion(std::move(data), size));

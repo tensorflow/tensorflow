@@ -25,6 +25,7 @@ limitations under the License.
 #define TENSORFLOW_CORE_LIB_IO_TABLE_BUILDER_H_
 
 #include <stdint.h>
+#include "absl/strings/string_view.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/io/table_options.h"
 
@@ -48,7 +49,7 @@ class TableBuilder {
   // Add key,value to the table being constructed.
   // REQUIRES: key is after any previously added key in lexicographic order.
   // REQUIRES: Finish(), Abandon() have not been called
-  void Add(const StringPiece& key, const StringPiece& value);
+  void Add(const absl::string_view& key, const absl::string_view& value);
 
   // Advanced operation: writes any buffered key/value pairs to file.
   // Can be used to ensure that two adjacent entries never live in
@@ -82,7 +83,7 @@ class TableBuilder {
  private:
   bool ok() const { return status().ok(); }
   void WriteBlock(BlockBuilder* block, BlockHandle* handle);
-  void WriteRawBlock(const StringPiece& data, CompressionType,
+  void WriteRawBlock(const absl::string_view& data, CompressionType,
                      BlockHandle* handle);
 
   struct Rep;

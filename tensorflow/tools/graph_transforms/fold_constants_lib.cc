@@ -24,12 +24,12 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/strings/string_view.h"
 #include "tensorflow/core/common_runtime/constant_folding.h"
 #include "tensorflow/core/common_runtime/shape_refiner.h"
 #include "tensorflow/core/graph/graph_constructor.h"
 #include "tensorflow/core/graph/node_builder.h"
 #include "tensorflow/core/graph/subgraph.h"
-#include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/strings/numbers.h"
 #include "tensorflow/core/platform/init_main.h"
 #include "tensorflow/core/public/session.h"
@@ -39,9 +39,10 @@ limitations under the License.
 namespace tensorflow {
 namespace graph_transforms {
 namespace {
-using StringPieceSet = std::unordered_set<StringPiece, StringPieceHasher>;
+using StringPieceSet = std::unordered_set<absl::string_view, StringPieceHasher>;
 template <typename T>
-using StringPieceMap = std::unordered_map<StringPiece, T, StringPieceHasher>;
+using StringPieceMap =
+    std::unordered_map<absl::string_view, T, StringPieceHasher>;
 }  // namespace
 
 Status ReplaceSendRecvs(const GraphDef& original_graph_def,
@@ -109,7 +110,7 @@ Status ReplaceSendRecvs(const GraphDef& original_graph_def,
 
   // Some input nodes are removed in rewrite_graph_def. Add those nodes to
   // output_graph_def.
-  for (StringPiece name : input_nodes) {
+  for (absl::string_view name : input_nodes) {
     const NodeDef& removed_node = *CHECK_NOTNULL(original_map[name]);
     output_graph_def->add_node()->MergeFrom(removed_node);
   }
@@ -163,7 +164,7 @@ Status RemoveUnusedNodes(const GraphDef& input_graph_def,
   }
   while (!current_nodes.empty()) {
     StringPieceSet next_nodes;
-    for (StringPiece node_name : current_nodes) {
+    for (absl::string_view node_name : current_nodes) {
       if (node_map.count(node_name) == 0) {
         LOG(ERROR) << "Bad graph structure, no node named '" << node_name
                    << "' found for input lookup";

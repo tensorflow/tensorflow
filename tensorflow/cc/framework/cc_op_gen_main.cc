@@ -13,11 +13,11 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "absl/strings/string_view.h"
 #include "tensorflow/cc/framework/cc_op_gen.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_def.pb.h"
 #include "tensorflow/core/framework/op_gen_lib.h"
-#include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/env.h"
@@ -69,7 +69,7 @@ int main(int argc, char* argv[]) {
     exit(1);
   }
 
-  bool include_internal = tensorflow::StringPiece("1") == argv[3];
+  bool include_internal = absl::string_view("1") == argv[3];
   std::vector<tensorflow::string> api_def_dirs = tensorflow::str_util::Split(
       argv[4], ",", tensorflow::str_util::SkipEmpty());
   tensorflow::PrintAllCCOps(argv[1], argv[2], include_internal, api_def_dirs);

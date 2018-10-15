@@ -16,10 +16,10 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_COMMON_RUNTIME_PROFILE_HANDLER_H_
 #define TENSORFLOW_CORE_COMMON_RUNTIME_PROFILE_HANDLER_H_
 
+#include "absl/strings/string_view.h"
 #include "tensorflow/core/framework/step_stats.pb.h"
 #include "tensorflow/core/graph/types.h"
 #include "tensorflow/core/lib/core/status.h"
-#include "tensorflow/core/lib/core/stringpiece.h"
 
 namespace tensorflow {
 
@@ -41,8 +41,9 @@ class ProfileHandler {
   // - op_type: String name of the Op.
   // - details: Main content for timeline click text.
   virtual void RecordOneOp(const string& device, const NodeExecStats& stats,
-                           bool is_copy, StringPiece label, StringPiece op_type,
-                           StringPiece details) = 0;
+                           bool is_copy, absl::string_view label,
+                           absl::string_view op_type,
+                           absl::string_view details) = 0;
 
   // Records that the current step finished.
   //

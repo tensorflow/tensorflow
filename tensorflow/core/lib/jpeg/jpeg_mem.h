@@ -24,7 +24,7 @@ limitations under the License.
 #include <functional>
 #include <string>
 
-#include "tensorflow/core/lib/core/stringpiece.h"
+#include "absl/strings/string_view.h"
 #include "tensorflow/core/platform/jpeg.h"
 #include "tensorflow/core/platform/types.h"
 
@@ -136,7 +136,7 @@ struct CompressFlags {
   int y_density = 300;
 
   // If not empty, embed this XMP metadata in the image header
-  StringPiece xmp_metadata;
+  absl::string_view xmp_metadata;
 
   // The distance in bytes from one scanline to the other.  Should be at least
   // equal to width*components*sizeof(JSAMPLE).  If 0 is passed, the stride

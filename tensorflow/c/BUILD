@@ -78,10 +78,12 @@ tf_cuda_library(
     deps = select({
         "//tensorflow:android": [
             ":c_api_internal",
+            "@com_google_absl//absl/strings",
             "//tensorflow/core:android_tensorflow_lib_lite",
         ],
         "//conditions:default": [
             ":c_api_internal",
+            "@com_google_absl//absl/strings",
             "//tensorflow/cc/saved_model:loader",
             "//tensorflow/cc:gradients",
             "//tensorflow/cc:ops",
@@ -228,6 +230,7 @@ tf_cuda_cc_test(
         "//tensorflow/core/kernels:array",
         "//tensorflow/core/kernels:control_flow_ops",
         "//tensorflow/core/kernels:math",
+        "@com_google_absl//absl/strings",
     ],
 )
 

@@ -18,6 +18,7 @@ limitations under the License.
 
 #include "tensorflow/core/util/reporter.h"
 
+#include "absl/strings/string_view.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
@@ -28,7 +29,7 @@ namespace tensorflow {
 namespace {
 
 // Tests of all the error paths in log_reader.cc follow:
-static void ExpectHasSubstr(StringPiece s, StringPiece expected) {
+static void ExpectHasSubstr(absl::string_view s, absl::string_view expected) {
   EXPECT_TRUE(str_util::StrContains(s, expected))
       << s << " does not contain " << expected;
 }

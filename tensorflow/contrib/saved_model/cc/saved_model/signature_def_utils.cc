@@ -15,17 +15,17 @@ limitations under the License.
 
 #include "tensorflow/contrib/saved_model/cc/saved_model/signature_def_utils.h"
 
+#include "absl/strings/string_view.h"
 #include "tensorflow/cc/saved_model/signature_constants.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/platform/protobuf.h"
 
 namespace tensorflow {
 
 namespace {
 template <class T>
-Status FindInProtobufMap(StringPiece description,
+Status FindInProtobufMap(absl::string_view description,
                          const protobuf::Map<string, T>& map, const string& key,
                          const T** value) {
   const auto it = map.find(key);

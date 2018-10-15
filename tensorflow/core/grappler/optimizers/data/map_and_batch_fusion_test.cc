@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/grappler/optimizers/data/map_and_batch_fusion.h"
 
+#include "absl/strings/string_view.h"
 #include "tensorflow/core/framework/attr_value_util.h"
 #include "tensorflow/core/grappler/grappler_item.h"
 #include "tensorflow/core/grappler/optimizers/data/graph_utils.h"
@@ -41,7 +42,7 @@ TEST(MapAndBatchFusionTest, FuseMapAndBatchNodesIntoOne) {
   NodeDef *range_node = graph_utils::AddNode("", "RangeDataset", range_inputs,
                                              range_attrs, &graph);
   NodeDef *captured_input_node =
-      graph_utils::AddScalarConstNode<StringPiece>("hello", &graph);
+      graph_utils::AddScalarConstNode<absl::string_view>("hello", &graph);
 
   NodeDef *map_node;
   {
@@ -123,7 +124,7 @@ TEST(MapAndBatchFusionTest, FuseMapAndBatchV2NodesIntoOne) {
   NodeDef *range_node = graph_utils::AddNode("", "RangeDataset", range_inputs,
                                              range_attrs, &graph);
   NodeDef *captured_input_node =
-      graph_utils::AddScalarConstNode<StringPiece>("hello", &graph);
+      graph_utils::AddScalarConstNode<absl::string_view>("hello", &graph);
 
   NodeDef *map_node;
   {
@@ -206,7 +207,7 @@ TEST(MapAndBatchFusionTest, FuseParallelMapAndBatchNodesIntoOne) {
   NodeDef *range_node = graph_utils::AddNode("", "RangeDataset", range_inputs,
                                              range_attrs, &graph);
   NodeDef *captured_input_node =
-      graph_utils::AddScalarConstNode<StringPiece>("hello", &graph);
+      graph_utils::AddScalarConstNode<absl::string_view>("hello", &graph);
   NodeDef *num_parallel_calls_node =
       graph_utils::AddScalarConstNode<int>(2, &graph);
 

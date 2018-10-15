@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_PLATFORM_HADOOP_HADOOP_FILE_SYSTEM_H_
 #define TENSORFLOW_CORE_PLATFORM_HADOOP_HADOOP_FILE_SYSTEM_H_
 
+#include "absl/strings/string_view.h"
 #include "tensorflow/core/platform/env.h"
 
 extern "C" {
@@ -67,7 +68,7 @@ class HadoopFileSystem : public FileSystem {
   string TranslateName(const string& name) const override;
 
  private:
-  Status Connect(StringPiece fname, hdfsFS* fs);
+  Status Connect(absl::string_view fname, hdfsFS* fs);
   LibHDFS* hdfs_;
 };
 

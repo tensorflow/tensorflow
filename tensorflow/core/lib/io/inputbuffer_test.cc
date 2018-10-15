@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/core/lib/io/inputbuffer.h"
 
 #include <vector>
+#include "absl/strings/string_view.h"
 #include "tensorflow/core/platform/env.h"
 
 #include "tensorflow/core/lib/core/coding.h"
@@ -192,31 +193,31 @@ TEST(InputBuffer, ReadNBytes) {
 
     EXPECT_EQ(0, in.Tell());
     TF_ASSERT_OK(in.ReadNBytes(3, read, &bytes_read));
-    EXPECT_EQ(StringPiece(read, 3), "012");
+    EXPECT_EQ(absl::string_view(read, 3), "012");
 
     EXPECT_EQ(3, in.Tell());
     TF_ASSERT_OK(in.ReadNBytes(0, read, &bytes_read));
-    EXPECT_EQ(StringPiece(read, 3), "012");
+    EXPECT_EQ(absl::string_view(read, 3), "012");
 
     EXPECT_EQ(3, in.Tell());
     TF_ASSERT_OK(in.ReadNBytes(4, read, &bytes_read));
-    EXPECT_EQ(StringPiece(read, 4), "3456");
+    EXPECT_EQ(absl::string_view(read, 4), "3456");
 
     EXPECT_EQ(7, in.Tell());
     TF_ASSERT_OK(in.ReadNBytes(0, read, &bytes_read));
-    EXPECT_EQ(StringPiece(read, 4), "3456");
+    EXPECT_EQ(absl::string_view(read, 4), "3456");
 
     EXPECT_EQ(7, in.Tell());
     EXPECT_TRUE(errors::IsOutOfRange(in.ReadNBytes(5, read, &bytes_read)));
-    EXPECT_EQ(StringPiece(read, 3), "789");
+    EXPECT_EQ(absl::string_view(read, 3), "789");
 
     EXPECT_EQ(10, in.Tell());
     EXPECT_TRUE(errors::IsOutOfRange(in.ReadNBytes(5, read, &bytes_read)));
-    EXPECT_EQ(StringPiece(read, 3), "789");
+    EXPECT_EQ(absl::string_view(read, 3), "789");
 
     EXPECT_EQ(10, in.Tell());
     TF_ASSERT_OK(in.ReadNBytes(0, read, &bytes_read));
-    EXPECT_EQ(StringPiece(read, 3), "789");
+    EXPECT_EQ(absl::string_view(read, 3), "789");
     EXPECT_EQ(10, in.Tell());
   }
 }
@@ -312,7 +313,7 @@ TEST(InputBuffer, ReadVarint32) {
     for (uint32 number : data) {
       varint.clear();
       core::PutVarint32(&varint, number);
-      TF_CHECK_OK(file->Append(StringPiece(varint)));
+      TF_CHECK_OK(file->Append(absl::string_view(varint)));
     }
   }
 
@@ -351,7 +352,7 @@ TEST(InputBuffer, ReadVarint64) {
     for (uint64 number : data) {
       varint.clear();
       core::PutVarint64(&varint, number);
-      TF_CHECK_OK(file->Append(StringPiece(varint)));
+      TF_CHECK_OK(file->Append(absl::string_view(varint)));
     }
   }
 

@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/platform/cloud/curl_http_request.h"
 #include <fstream>
+#include "absl/strings/string_view.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/platform/mem.h"
@@ -144,8 +145,8 @@ class FakeLibCurl : public LibCurl {
       posted_content_ = "";
       do {
         bytes_read = read_callback_(buffer, 1, sizeof(buffer), read_data_);
-        posted_content_ =
-            strings::StrCat(posted_content_, StringPiece(buffer, bytes_read));
+        posted_content_ = strings::StrCat(
+            posted_content_, absl::string_view(buffer, bytes_read));
       } while (bytes_read > 0);
     }
     if (write_data_ || write_callback_) {

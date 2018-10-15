@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <unordered_set>
 
+#include "absl/strings/string_view.h"
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/common_runtime/dma_helper.h"
@@ -58,7 +59,7 @@ class RpcRecvTensorCall : public BaseRecvTensorCall {
  public:
   RpcRecvTensorCall() : wi_(nullptr), dst_device_(nullptr) {}
 
-  void Init(WorkerInterface* wi, int64 step_id, StringPiece key,
+  void Init(WorkerInterface* wi, int64 step_id, absl::string_view key,
             AllocatorAttributes alloc_attrs, Device* dst_device,
             const Rendezvous::Args& recv_args, Rendezvous::DoneCallback done) {
     wi_ = wi;

@@ -18,8 +18,8 @@ limitations under the License.
 
 #include <string>
 
+#include "absl/strings/string_view.h"
 #include "tensorflow/core/graph/graph.h"
-#include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/hash/hash.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 
@@ -30,8 +30,8 @@ struct SafeTensorId;
 // Identifier for a tensor within a step.
 // first == operation_name, second == output_index
 // Note: does not own backing storage for name.
-struct TensorId : public std::pair<StringPiece, int> {
-  typedef std::pair<StringPiece, int> Base;
+struct TensorId : public std::pair<absl::string_view, int> {
+  typedef std::pair<absl::string_view, int> Base;
 
   // Inherit the set of constructors.
   using Base::pair;
@@ -55,7 +55,7 @@ struct TensorId : public std::pair<StringPiece, int> {
 };
 
 TensorId ParseTensorName(const string& name);
-TensorId ParseTensorName(StringPiece name);
+TensorId ParseTensorName(absl::string_view name);
 
 // Same as TensorId, except owns the backing storage for the op name. This makes
 // the memory management simpler at the expense of a copy.

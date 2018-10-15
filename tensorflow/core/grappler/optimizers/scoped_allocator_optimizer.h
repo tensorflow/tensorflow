@@ -18,6 +18,7 @@ limitations under the License.
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
+#include "absl/strings/string_view.h"
 #include "tensorflow/core/grappler/optimizers/graph_optimizer.h"
 #include "tensorflow/core/protobuf/rewriter_config.pb.h"
 
@@ -66,7 +67,8 @@ class ScopedAllocatorOptimizer : public GraphOptimizer {
 
   // Appends values to the attr value under name in node_def, if present.
   // If not present does an assignment.
-  static void ExtendNodeAttr(StringPiece name, const std::vector<int32>& values,
+  static void ExtendNodeAttr(absl::string_view name,
+                             const std::vector<int32>& values,
                              NodeDef* node_def);
 
   // Class that knows how to do graph rewriting for a particular kind of Op in

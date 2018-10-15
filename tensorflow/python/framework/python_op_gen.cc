@@ -17,6 +17,7 @@ limitations under the License.
 #include <stdio.h>
 #include <sstream>
 #include <unordered_map>
+#include "absl/strings/string_view.h"
 #include "tensorflow/core/framework/api_def.pb.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/op.h"
@@ -160,7 +161,7 @@ class GenEagerPythonOp : public python_op_gen_internal::GenPythonOp {
   string FlattenInputs(const std::vector<int>* input_indices,
                        std::vector<string>* output_sizes) const;
 
-  StringPiece op_name_;
+  absl::string_view op_name_;
   typedef std::unordered_map<string, std::vector<int>> AttrToArgMap;
   AttrToArgMap attr_to_args_;
   std::unordered_map<string, string> attr_expressions_;
@@ -473,7 +474,7 @@ bool GenEagerPythonOp::GetEagerFunctionSetup(const string& indentation,
     const auto& param = param_names_[i + op_def_.input_arg_size()];
     const auto& attr = *FindAttr(attr_name, op_def_);
     const string& attr_api_name = param.GetRenameTo();
-    StringPiece attr_type = attr.type();
+    absl::string_view attr_type = attr.type();
     attr_expressions_[attr_name] = attr_api_name;
     const int default_index = i - (attrs_.size() - params_with_default_.size());
     if (default_index >= 0) {

@@ -20,6 +20,7 @@ limitations under the License.
 
 #include <string>
 
+#include "absl/strings/string_view.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/io/zlib_compression_options.h"
 #include "tensorflow/core/platform/env.h"
@@ -62,7 +63,7 @@ class ZlibOutputBuffer : public WritableFile {
   // to file when the buffer is full.
   //
   // To immediately write contents to file call `Flush()`.
-  Status Append(StringPiece data) override;
+  Status Append(absl::string_view data) override;
 
   // Deflates any cached input and writes all output to file.
   Status Flush() override;
@@ -111,7 +112,7 @@ class ZlibOutputBuffer : public WritableFile {
 
   // Adds `data` to `z_stream_input_`.
   // Throws if `data.size()` > AvailableInputSpace().
-  void AddToInputBuffer(StringPiece data);
+  void AddToInputBuffer(absl::string_view data);
 
   // Returns the total space available in z_input_stream_ buffer.
   int32 AvailableInputSpace() const;

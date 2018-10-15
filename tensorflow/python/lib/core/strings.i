@@ -34,13 +34,13 @@ limitations under the License.
 //       as it comes up.
 
 %{
-#include "tensorflow/core/lib/core/stringpiece.h"
+#include "absl/strings/string_view.h"
 
 // Handles str in Python 2, bytes in Python 3.
 // Returns true on success, false on failure.
-bool _BytesToStringPiece(PyObject* obj, tensorflow::StringPiece* result) {
+bool _BytesToStringPiece(PyObject* obj, absl::string_view* result) {
   if (obj == Py_None) {
-    *result = tensorflow::StringPiece();
+    *result = absl::string_view();
   } else {
     char* ptr;
     Py_ssize_t len;
@@ -48,30 +48,30 @@ bool _BytesToStringPiece(PyObject* obj, tensorflow::StringPiece* result) {
       // Python has raised an error (likely TypeError or UnicodeEncodeError).
       return false;
     }
-    *result = tensorflow::StringPiece(ptr, len);
+    *result = absl::string_view(ptr, len);
   }
   return true;
 }
 %}
 
-%typemap(typecheck) tensorflow::StringPiece = char *;
-%typemap(typecheck) const tensorflow::StringPiece & = char *;
+%typemap(typecheck) absl::string_view = char *;
+%typemap(typecheck) const absl::string_view & = char *;
 
-// "tensorflow::StringPiece" arguments must be specified as a 'str' or 'bytes' object.
-%typemap(in) tensorflow::StringPiece {
+// "absl::string_view" arguments must be specified as a 'str' or 'bytes' object.
+%typemap(in) absl::string_view {
   if (!_BytesToStringPiece($input, &$1)) SWIG_fail;
 }
 
-// "const tensorflow::StringPiece&" arguments can be provided the same as
-// "tensorflow::StringPiece", whose typemap is defined above.
-%typemap(in) const tensorflow::StringPiece & (tensorflow::StringPiece temp) {
+// "const absl::string_view&" arguments can be provided the same as
+// "absl::string_view", whose typemap is defined above.
+%typemap(in) const absl::string_view & (absl::string_view temp) {
   if (!_BytesToStringPiece($input, &temp)) SWIG_fail;
   $1 = &temp;
 }
 
-// C++ functions returning tensorflow::StringPiece will simply return bytes in
+// C++ functions returning absl::string_view will simply return bytes in
 // Python, or None if the StringPiece contained a NULL pointer.
-%typemap(out) tensorflow::StringPiece {
+%typemap(out) absl::string_view {
   if ($1.data()) {
     $result = PyBytes_FromStringAndSize($1.data(), $1.size());
   } else {

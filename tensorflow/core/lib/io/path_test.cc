@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/core/lib/io/path.h"
+#include "absl/strings/string_view.h"
 #include "tensorflow/core/platform/test.h"
 
 namespace tensorflow {
@@ -101,8 +102,8 @@ TEST(PathTest, CleanPath) {
 
 #define EXPECT_PARSE_URI(uri, scheme, host, path)  \
   do {                                             \
-    StringPiece u(uri);                            \
-    StringPiece s, h, p;                           \
+    absl::string_view u(uri);                      \
+    absl::string_view s, h, p;                     \
     ParseURI(u, &s, &h, &p);                       \
     EXPECT_EQ(scheme, s);                          \
     EXPECT_EQ(host, h);                            \

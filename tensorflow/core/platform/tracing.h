@@ -23,7 +23,7 @@ limitations under the License.
 #include <map>
 #include <memory>
 
-#include "tensorflow/core/lib/core/stringpiece.h"
+#include "absl/strings/string_view.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/mutex.h"
@@ -82,7 +82,7 @@ inline const EventCollector* GetEventCollector(EventCategory category) {
 uint64 GetUniqueArg();
 
 // Returns an id for name to pass to RecordEvent/ScopedRegion.
-uint64 GetArgForName(StringPiece name);
+uint64 GetArgForName(absl::string_view name);
 
 // Records an atomic event through the currently registered EventCollector.
 inline void RecordEvent(EventCategory category, uint64 arg) {
@@ -121,7 +121,7 @@ class ScopedRegion {
 
   // Same as ScopedRegion(category, GetArgForName(name)), but faster if
   // EventCollector::IsEnaled() returns false.
-  ScopedRegion(EventCategory category, StringPiece name)
+  ScopedRegion(EventCategory category, absl::string_view name)
       : collector_(GetEventCollector(category)) {
     if (collector_) {
       collector_->StartRegion(GetArgForName(name));
@@ -150,9 +150,9 @@ class TraceCollector {
 
   virtual ~TraceCollector() {}
   virtual std::unique_ptr<Handle> CreateAnnotationHandle(
-      StringPiece name_part1, StringPiece name_part2) const = 0;
+      absl::string_view name_part1, absl::string_view name_part2) const = 0;
   virtual std::unique_ptr<Handle> CreateActivityHandle(
-      StringPiece name_part1, StringPiece name_part2,
+      absl::string_view name_part1, absl::string_view name_part2,
       bool is_expensive) const = 0;
 
   // Returns true if this annotation tracing is enabled for any op.
@@ -163,7 +163,8 @@ class TraceCollector {
   virtual bool IsEnabledForActivities(bool is_expensive) const = 0;
 
  protected:
-  static string ConcatenateNames(StringPiece first, StringPiece second);
+  static string ConcatenateNames(absl::string_view first,
+                                 absl::string_view second);
 
  private:
   friend void SetTraceCollector(const TraceCollector*);
@@ -185,14 +186,14 @@ const TraceCollector* GetTraceCollector();
 // This will add 'my kernels' to both kernels in the profiler UI
 class ScopedAnnotation {
  public:
-  explicit ScopedAnnotation(StringPiece name)
-      : ScopedAnnotation(name, StringPiece()) {}
+  explicit ScopedAnnotation(absl::string_view name)
+      : ScopedAnnotation(name, absl::string_view()) {}
 
   // If tracing is enabled, add a name scope of
   // "<name_part1>:<name_part2>".  This can be cheaper than the
   // single-argument constructor because the concatenation of the
   // label string is only done if tracing is enabled.
-  ScopedAnnotation(StringPiece name_part1, StringPiece name_part2)
+  ScopedAnnotation(absl::string_view name_part1, absl::string_view name_part2)
       : handle_([&] {
           auto trace_collector = GetTraceCollector();
           return trace_collector ? trace_collector->CreateAnnotationHandle(
@@ -211,14 +212,14 @@ class ScopedAnnotation {
 // the object is destroyed.
 class ScopedActivity {
  public:
-  explicit ScopedActivity(StringPiece name, bool is_expensive = true)
-      : ScopedActivity(name, StringPiece(), is_expensive) {}
+  explicit ScopedActivity(absl::string_view name, bool is_expensive = true)
+      : ScopedActivity(name, absl::string_view(), is_expensive) {}
 
   // If tracing is enabled, set up an activity with a label of
   // "<name_part1>:<name_part2>".  This can be cheaper than the
   // single-argument constructor because the concatenation of the
   // label string is only done if tracing is enabled.
-  ScopedActivity(StringPiece name_part1, StringPiece name_part2,
+  ScopedActivity(absl::string_view name_part1, absl::string_view name_part2,
                  bool is_expensive = true)
       : handle_([&] {
           auto trace_collector = GetTraceCollector();

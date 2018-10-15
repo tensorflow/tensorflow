@@ -16,7 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_PLATFORM_FINGERPRINT_H_
 #define TENSORFLOW_CORE_PLATFORM_FINGERPRINT_H_
 
-#include "tensorflow/core/lib/core/stringpiece.h"
+#include "absl/strings/string_view.h"
 #include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
@@ -39,10 +39,10 @@ struct Fprint128Hasher {
 
 // This is a portable fingerprint interface for strings that will never change.
 // However, it is not suitable for cryptography.
-uint64 Fingerprint64(StringPiece s);
+uint64 Fingerprint64(absl::string_view s);
 
 // 128-bit variant of Fingerprint64 above (same properties and caveats apply).
-Fprint128 Fingerprint128(StringPiece s);
+Fprint128 Fingerprint128(absl::string_view s);
 
 namespace internal {
 // Mixes some of the bits that got propagated to the high bits back into the

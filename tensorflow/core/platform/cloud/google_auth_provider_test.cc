@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/platform/cloud/google_auth_provider.h"
 #include <stdlib.h>
+#include "absl/strings/string_view.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/platform/cloud/http_request_fake.h"
@@ -37,8 +38,9 @@ class FakeEnv : public EnvWrapper {
 class FakeOAuthClient : public OAuthClient {
  public:
   Status GetTokenFromServiceAccountJson(
-      Json::Value json, StringPiece oauth_server_uri, StringPiece scope,
-      string* token, uint64* expiration_timestamp_sec) override {
+      Json::Value json, absl::string_view oauth_server_uri,
+      absl::string_view scope, string* token,
+      uint64* expiration_timestamp_sec) override {
     provided_credentials_json = json;
     *token = return_token;
     *expiration_timestamp_sec = return_expiration_timestamp;
@@ -47,7 +49,7 @@ class FakeOAuthClient : public OAuthClient {
 
   /// Retrieves a bearer token using a refresh token.
   Status GetTokenFromRefreshTokenJson(
-      Json::Value json, StringPiece oauth_server_uri, string* token,
+      Json::Value json, absl::string_view oauth_server_uri, string* token,
       uint64* expiration_timestamp_sec) override {
     provided_credentials_json = json;
     *token = return_token;

@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/js/ops/ts_op_gen.h"
 
+#include "absl/strings/string_view.h"
 #include "tensorflow/core/framework/op_def.pb.h"
 #include "tensorflow/core/framework/op_gen_lib.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
@@ -26,12 +27,12 @@ limitations under the License.
 namespace tensorflow {
 namespace {
 
-void ExpectContainsStr(StringPiece s, StringPiece expected) {
+void ExpectContainsStr(absl::string_view s, absl::string_view expected) {
   EXPECT_TRUE(str_util::StrContains(s, expected))
       << "'" << s << "' does not contain '" << expected << "'";
 }
 
-void ExpectDoesNotContainStr(StringPiece s, StringPiece expected) {
+void ExpectDoesNotContainStr(absl::string_view s, absl::string_view expected) {
   EXPECT_FALSE(str_util::StrContains(s, expected))
       << "'" << s << "' does not contain '" << expected << "'";
 }
