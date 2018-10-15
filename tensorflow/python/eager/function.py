@@ -1009,10 +1009,11 @@ def func_graph_from_py_func(name,
     func_graph.variables = variables
 
   # Register any other functions defined in the graph.
-  if context.executing_eagerly():
-    for f in func_graph._functions.values():  # pylint: disable=protected-access
-      # TODO(ashankar): What about the gradient registry?
-      _register(f._c_func.func)  # pylint: disable=protected-access
+  with ops.init_scope():
+    if context.executing_eagerly():
+      for f in func_graph._functions.values():  # pylint: disable=protected-access
+        # TODO(ashankar): What about the gradient registry?
+        _register(f._c_func.func)  # pylint: disable=protected-access
 
   return func_graph
 
