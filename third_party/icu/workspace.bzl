@@ -12,4 +12,5 @@ def repo():
             "https://github.com/unicode-org/icu/archive/release-62-1.tar.gz",
         ],
         build_file = "//third_party/icu:BUILD.bazel",
+        system_build_file = "//third_party/icu:BUILD.system",
     )
