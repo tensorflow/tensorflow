@@ -23,9 +23,9 @@ import math
 import numpy as np
 
 from tensorflow.compiler.tests import xla_test
-from tensorflow.contrib import stateless
 from tensorflow.python.framework import dtypes
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import stateless_random_ops as stateless
 from tensorflow.python.ops.distributions import special_math
 from tensorflow.python.platform import test
 

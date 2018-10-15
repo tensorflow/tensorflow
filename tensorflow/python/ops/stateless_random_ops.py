@@ -24,6 +24,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.util.tf_export import tf_export
 
 ops.NotDifferentiable("StatelessMultinomial")
 ops.NotDifferentiable("StatelessRandomNormal")
@@ -32,6 +33,7 @@ ops.NotDifferentiable("StatelessRandomUniformInt")
 ops.NotDifferentiable("StatelessTruncatedNormal")
 
 
+@tf_export("random.stateless_uniform")
 def stateless_random_uniform(shape,
                              seed,
                              minval=0,
@@ -98,6 +100,7 @@ def stateless_random_uniform(shape,
       return math_ops.add(rnd * (maxval - minval), minval, name=name)
 
 
+@tf_export("random.stateless_normal")
 def stateless_random_normal(shape,
                             seed,
                             mean=0.0,
@@ -134,6 +137,7 @@ def stateless_random_normal(shape,
     return math_ops.add(rnd * stddev, mean, name=name)
 
 
+@tf_export("random.stateless_truncated_normal")
 def stateless_truncated_normal(shape,
                                seed,
                                mean=0.0,
@@ -175,6 +179,7 @@ def stateless_truncated_normal(shape,
     return math_ops.add(rnd * stddev, mean, name=name)
 
 
+@tf_export("random.stateless_multinomial")
 def stateless_multinomial(logits,
                           num_samples,
                           seed,
@@ -193,7 +198,7 @@ def stateless_multinomial(logits,
   ```python
   # samples has shape [1, 5], where each value is either 0 or 1 with equal
   # probability.
-  samples = tf.contrib.stateless.stateless_multinomial(
+  samples = tf.random.stateless_multinomial(
       tf.log([[10., 10.]]), 5, seed=[7, 17])
   ```
 
