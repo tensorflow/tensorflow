@@ -72,8 +72,6 @@ StatusOr<int64> WhileLoopUtil::CanConvertWhileToRepeat(
     const HloInstruction* while_inst) {
   HloComputation* while_condition = while_inst->while_condition();
   HloComputation* while_body = while_inst->while_body();
-  Status status_no_convert =
-      xla::FailedPrecondition("Unable to convert this while loop");
   // Make sure that this is a while loop with a single conditional of form
   // "cond < const"
   std::vector<HloInstruction*> lt_instructions;
@@ -83,7 +81,9 @@ StatusOr<int64> WhileLoopUtil::CanConvertWhileToRepeat(
     }
   }
   // Make sure there is a single conditional
-  if (lt_instructions.size() != 1) return status_no_convert;
+  if (lt_instructions.size() != 1) {
+    return xla::FailedPrecondition("Unable to convert this while loop");
+  }
   HloInstruction* lt_inst = lt_instructions[0];
 
   // Make sure that for the LT:
@@ -93,18 +93,26 @@ StatusOr<int64> WhileLoopUtil::CanConvertWhileToRepeat(
   {
     const bool lhs_is_GTE_param_from_param_0 =
         WhileLoopUtil::IsGTEFromParamIndex(lt_inst->operand(0), 0);
-    if (!lhs_is_GTE_param_from_param_0) return status_no_convert;
+    if (!lhs_is_GTE_param_from_param_0) {
+      return xla::FailedPrecondition("Unable to convert this while loop");
+    }
 
     const bool lhs_GTE_is_integral =
         ShapeUtil::ElementIsIntegral(lt_inst->operand(0)->shape());
-    if (!lhs_GTE_is_integral) return status_no_convert;
+    if (!lhs_GTE_is_integral) {
+      return xla::FailedPrecondition("Unable to convert this while loop");
+    }
 
     const bool rhs_is_integral_const =
         WhileLoopUtil::IsIntegralConstant(lt_inst->operand(1));
-    if (!rhs_is_integral_const) return status_no_convert;
+    if (!rhs_is_integral_const) {
+      return xla::FailedPrecondition("Unable to convert this while loop");
+    }
 
     const bool is_root = while_condition->root_instruction() == lt_inst;
-    if (!is_root) return status_no_convert;
+    if (!is_root) {
+      return xla::FailedPrecondition("Unable to convert this while loop");
+    }
   }
 
   HloInstruction* comp_GTE = lt_inst->mutable_operand(0);
@@ -122,7 +130,9 @@ StatusOr<int64> WhileLoopUtil::CanConvertWhileToRepeat(
     bool is_zero;
     TF_ASSIGN_OR_RETURN(is_zero,
                         WhileLoopUtil::IsIntegralConstantOfValue(init_val, 0));
-    if (!is_zero) return status_no_convert;
+    if (!is_zero) {
+      return xla::FailedPrecondition("Unable to convert this while loop");
+    }
   }
 
   // Find corresponding GTE in the body
@@ -138,7 +148,9 @@ StatusOr<int64> WhileLoopUtil::CanConvertWhileToRepeat(
     }
   }
   // Make sure there is only one
-  if (matching_GTEs != 1) return status_no_convert;
+  if (matching_GTEs != 1) {
+    return xla::FailedPrecondition("Unable to convert this while loop");
+  }
 
   // Check that the mapped GTE instruction is incremented by 1 and that the
   // resulting increment is *only* used in the output tuple of the while body in
@@ -151,7 +163,7 @@ StatusOr<int64> WhileLoopUtil::CanConvertWhileToRepeat(
   if (matching_increments.size() == 1) {
     return repeat_count;
   } else {
-    return status_no_convert;
+    return xla::FailedPrecondition("Unable to convert this while loop");
   }
 }
 

@@ -54,6 +54,7 @@ cc_library(
         "driver/update_op_dependencies.cc",
         "driver/util.cc",
         "driver/while_loop_condition_simplify.cc",
+        "driver/while_loop_to_repeat_simplify.cc",
         "driver/while_loop_util.cc",
         "driver/wide_const_finder.cc",
     ],
@@ -81,6 +82,7 @@ cc_library(
         "driver/update_op_dependencies.h",
         "driver/util.h",
         "driver/while_loop_condition_simplify.h",
+        "driver/while_loop_to_repeat_simplify.h",
         "driver/while_loop_util.h",
         "driver/wide_const_finder.h",
     ],
@@ -89,6 +91,7 @@ cc_library(
         "//tensorflow/compiler/xla/service:call_inliner",
         "//tensorflow/compiler/xla/service:hlo_pass",
         "//tensorflow/compiler/xla/service:hlo_query",
+        "//tensorflow/compiler/xla/service:while_loop_analysis",
         "//tensorflow/core:framework_headers_lib",
         "//third_party/eigen3",
         "@protobuf_archive//:protobuf_headers",
@@ -165,6 +168,7 @@ cc_library(
         "//tensorflow/compiler/xla/service:reshape_mover",
         "//tensorflow/compiler/xla/service:transfer_manager",
         "//tensorflow/compiler/xla/service:tuple_simplifier",
+        "//tensorflow/compiler/xla/service:while_loop_constant_sinking",
         "//tensorflow/compiler/xla/service:zero_sized_hlo_elimination",
         "//tensorflow/core:framework_headers_lib",
         "//third_party/eigen3",
@@ -375,6 +379,16 @@ tf_cc_test(
 tf_cc_test(
     name = "while_loop_condition_simplify_test",
     srcs = ["tests/while_loop_condition_simplify_test.cc"],
+    deps = [
+        ":optimizers",
+        "//tensorflow/compiler/xla/service:hlo_matchers",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+    ],
+)
+
+tf_cc_test(
+    name = "while_loop_to_repeat_simplify_test",
+    srcs = ["tests/while_loop_to_repeat_simplify_test.cc"],
     deps = [
         ":optimizers",
         "//tensorflow/compiler/xla/service:hlo_matchers",
@@ -768,6 +782,7 @@ test_suite(
         "fuse_wide_const_test",
         "cache_graph_test",
         "scheduler_test",
+        "while_loop_to_repeat_simplify_test",
     ],
 )
 

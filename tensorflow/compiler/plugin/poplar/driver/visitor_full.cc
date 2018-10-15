@@ -17,6 +17,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/compiler/plugin/poplar/driver/visitor_full.h"
+#include "tensorflow/compiler/plugin/poplar/driver/compiler_resources.h"
 #include "tensorflow/compiler/plugin/poplar/driver/ops.h"
 #include "tensorflow/compiler/plugin/poplar/driver/tensor.h"
 #include "tensorflow/compiler/plugin/poplar/driver/util.h"
@@ -253,10 +254,16 @@ Status FullVisitor::HandleSelectAndScatter(HloInstruction* inst) {
 }
 
 Status FullVisitor::HandleWhile(HloInstruction* inst) {
-  VLOG(1) << "Processing " << inst->name();
   poplar::program::Program prog;
-  TF_ASSIGN_OR_RETURN(prog, CreateWhileOp(graph_, resources_, inst,
-                                          GetOutputShape(inst), tensor_map));
+  if (resources_.annotations.while_loop_num_iterations.count(inst)) {
+    VLOG(1) << "Processing " << inst->name() << " as a repeat";
+    TF_ASSIGN_OR_RETURN(prog, CreateRepeatOp(graph_, resources_, inst,
+                                             GetOutputShape(inst), tensor_map));
+  } else {
+    VLOG(1) << "Processing " << inst->name();
+    TF_ASSIGN_OR_RETURN(prog, CreateWhileOp(graph_, resources_, inst,
+                                            GetOutputShape(inst), tensor_map));
+  }
   sequence.add(prog);
   return Status::OK();
 }
