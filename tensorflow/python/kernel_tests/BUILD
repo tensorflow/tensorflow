@@ -3214,7 +3214,10 @@ tf_py_test(
         "//tensorflow/python:platform",
     ],
     data = [":ackermann_op.so"],
-    tags = ["no_pip"],
+    tags = [
+        "no_pip",
+        "notap",
+    ],
 )
 
 tf_custom_op_library(
@@ -3233,7 +3236,10 @@ tf_py_test(
         "//tensorflow/python:platform",
     ],
     data = [":duplicate_op.so"],
-    tags = ["no_pip"],
+    tags = [
+        "no_pip",
+        "notap",
+    ],
 )
 
 tf_custom_op_library(
@@ -3252,7 +3258,10 @@ tf_py_test(
         "//tensorflow/python:platform",
     ],
     data = [":invalid_op.so"],
-    tags = ["no_pip"],
+    tags = [
+        "no_pip",
+        "notap",
+    ],
 )
 
 cuda_py_test(
