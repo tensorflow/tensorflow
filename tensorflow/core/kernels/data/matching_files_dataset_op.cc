@@ -120,8 +120,7 @@ class MatchingFilesDatasetOp : public DatasetOpKernel {
               Tensor filepath_tensor(ctx->allocator({}), DT_STRING, {});
 
               // Replace the forward slash with the backslash for Windows path
-              if (dataset()->patterns_[current_pattern_index_ - 1].find('\\') !=
-                  std::string::npos) {
+              if (isWindows_) {
                 std::replace(current_path.first.begin(),
                              current_path.first.end(), '/', '\\');
               }
@@ -149,6 +148,7 @@ class MatchingFilesDatasetOp : public DatasetOpKernel {
             // the API expects backslash as an escape character, but no code
             // appears to rely on this behavior
             if (current_pattern_.find('\\') != std::string::npos) {
+              isWindows_ = true;
               std::replace(current_pattern_.begin(), current_pattern_.end(),
                            '\\', '/');
             }
@@ -189,6 +189,8 @@ class MatchingFilesDatasetOp : public DatasetOpKernel {
                                                current_pattern_));
         TF_RETURN_IF_ERROR(
             writer->WriteScalar(full_name("hasMatch"), hasMatch_));
+        TF_RETURN_IF_ERROR(
+            writer->WriteScalar(full_name("isWindows"), isWindows_));
 
         if (!filepath_queue_.empty()) {
           TF_RETURN_IF_ERROR(writer->WriteScalar(full_name("queue_size"),
@@ -223,6 +225,11 @@ class MatchingFilesDatasetOp : public DatasetOpKernel {
         TF_RETURN_IF_ERROR(
             reader->ReadScalar(full_name("hasMatch"), &hasMatch));
         hasMatch_ = static_cast<bool>(hasMatch);
+
+        int64 isWindows;
+        TF_RETURN_IF_ERROR(
+            reader->ReadScalar(full_name("isWindows"), &isWindows));
+        isWindows_ = static_cast<bool>(isWindows);
 
         if (reader->Contains(full_name("queue_size"))) {
           int64 queue_size;
@@ -269,16 +276,10 @@ class MatchingFilesDatasetOp : public DatasetOpKernel {
           // If current_path is a directory, search its children.
           const string& current_dir = current_path.first;
           std::vector<string> children;
-          Status s = fs->GetChildren(current_dir, &children);
-          std::cout << "Children Num: " << children.size()
-                    << "; Status: " << s.ToString()
-                    << "; Current dir: " << current_dir
-                    << "; FileExist status: "
-                    << fs->FileExists(current_dir).ToString() << std::endl;
-          ret.Update(s);
+          ret.Update(fs->GetChildren(current_dir, &children));
 
-          // Handle the error cases: 1) continue the search if the status is ok
-          // or NOT_FOUND; 2) return the non-ok status immediately if it is not
+          // Handle the error cases: 1) continue the search if the status is
+          // NOT_FOUND; 2) return the non-ok status immediately if it is not
           // NOT_FOUND.
           if (ret.code() == error::NOT_FOUND) {
             continue;
@@ -351,6 +352,7 @@ class MatchingFilesDatasetOp : public DatasetOpKernel {
       size_t current_pattern_index_ GUARDED_BY(mu_) = 0;
       string current_pattern_ GUARDED_BY(mu_);
       bool hasMatch_ GUARDED_BY(mu_) = false;
+      bool isWindows_ GUARDED_BY(mu_) = false;
     };
 
     const std::vector<string> patterns_;
