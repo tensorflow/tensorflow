@@ -430,6 +430,36 @@ class ParameterServerStrategyTestBase(
       self.assertLess(error_after, error_before)
       return error_after < error_before
 
+  def _test_reduce_to_cpu(self, task_type, task_id, num_gpus):
+    d, master_target, sess_config = self._get_test_objects(
+        task_type, task_id, num_gpus)
+    assert hasattr(d, '_cluster_spec') and d._cluster_spec
+    num_workers = len(d._cluster_spec.as_dict().get(WORKER))
+    if CHIEF in d._cluster_spec.as_dict():
+      num_workers += 1
+
+    with ops.Graph().as_default(), \
+         self.test_session(target=master_target,
+                           config=sess_config) as sess, \
+        d.scope():
+
+      def minus_one_square(x):
+        y = x - constant_op.constant(1.)
+        return y * y
+
+      two = d.broadcast(constant_op.constant(2.))
+      result_grouped = d.call_for_each_tower(minus_one_square, two)
+      result_mean = d.unwrap(d.reduce(variable_scope.VariableAggregation.MEAN,
+                                      result_grouped,
+                                      destinations="/device:CPU:0"))[0]
+      result_sum = d.unwrap(d.reduce(variable_scope.VariableAggregation.SUM,
+                                     result_grouped,
+                                     destinations="/device:CPU:0"))[0]
+
+      mean_var, sum_var = sess.run([result_mean, result_sum])
+      self.assertEqual(mean_var, 1.0)
+      self.assertEqual(sum_var, 1.0 * num_workers * d.num_towers)
+
 
 class ParameterServerStrategyTest(ParameterServerStrategyTestBase,
                                   parameterized.TestCase):
@@ -478,6 +508,12 @@ class ParameterServerStrategyTest(ParameterServerStrategyTestBase,
     self._run_between_graph_clients(self._test_minimize_loss_graph,
                                     self._cluster_spec, num_gpus)
 
+  @combinations.generate(
+      combinations.combine(mode=['graph'], num_gpus=[0, 1, 2]))
+  def testReduceToCPU(self, num_gpus):
+    self._run_between_graph_clients(self._test_reduce_to_cpu,
+                                    self._cluster_spec, num_gpus)
+
 
 class ParameterServerStrategyWithChiefTest(ParameterServerStrategyTestBase,
                                            parameterized.TestCase):
@@ -510,6 +546,12 @@ class ParameterServerStrategyWithChiefTest(ParameterServerStrategyTestBase,
                              id(get_step), get_step.__class__.__name__)))
       self.assertIs(values.AggregatingVariable, type(created_step))
       self.assertIs(values.AggregatingVariable, type(get_step))
+
+  @combinations.generate(
+      combinations.combine(mode=['graph'], num_gpus=[0, 1, 2]))
+  def testReduceToCPU(self, num_gpus):
+    self._run_between_graph_clients(self._test_reduce_to_cpu,
+                                    self._cluster_spec, num_gpus)
 
 
 if __name__ == '__main__':
