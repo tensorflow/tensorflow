@@ -82,9 +82,8 @@ int TryToReadNumaNode(ibv_device* device) {
   if (strings::safe_strto32(content, &value)) {
     if (value < 0) {
       LOG(INFO) << "Successful NUMA node read from SysFS had negative value ("
-                << value
-                << "), but there must be at least one NUMA node"
-                   ", so returning NUMA node zero";
+                << value << "), but there must be at least one NUMA node"
+                            ", so returning NUMA node zero";
       return port::kNUMANoAffinity;
     }
     LOG(INFO) << "NUMA node for device: " << device->name << " is " << value;
@@ -276,8 +275,8 @@ Status GdrMemoryManager::Init() {
     };
     GPUProcessState::singleton()->AddGPUAllocVisitor(bus_id,
                                                      cuda_alloc_visitor);
-    GPUProcessState::singleton()->AddCUDAHostAllocVisitor(bus_id,
-                                                          alloc_visitor);
+    GPUProcessState::singleton()->AddCUDAHostAllocVisitor(0, alloc_visitor);
+    GPUProcessState::singleton()->AddCUDAHostAllocVisitor(1, alloc_visitor);
     GPUProcessState::singleton()->AddCUDAHostFreeVisitor(bus_id, free_visitor);
     LOG(INFO) << "Instrumenting GPU allocator(s) with bus_id " << bus_id;
   }
@@ -640,8 +639,8 @@ void GdrMemoryManager::TensorFromTransportOptions(
     } else {
       checksum = GPUUtil::Checksum(*tensor);
     }
-    CHECK(checksum == remote_mr.checksum())
-        << "Checksum mismatch: " << checksum << "!=" << remote_mr.checksum();
+    CHECK(checksum == remote_mr.checksum()) << "Checksum mismatch: " << checksum
+                                            << "!=" << remote_mr.checksum();
 #endif
   }
   done(Status::OK());
