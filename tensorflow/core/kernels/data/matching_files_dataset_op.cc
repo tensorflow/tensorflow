@@ -151,6 +151,8 @@ class MatchingFilesDatasetOp : public DatasetOpKernel {
               isWindows_ = true;
               std::replace(current_pattern_.begin(), current_pattern_.end(),
                            '\\', '/');
+            } else {
+              isWindows_ = false;
             }
 
             StringPiece fixed_prefix =
