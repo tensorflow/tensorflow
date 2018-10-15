@@ -42,7 +42,10 @@ payload:
       - "-cxe"
       - >
         export TASKCLUSTER_ARTIFACTS="$(pwd)/public/" &&
+        (mkdir ../tc-workdir/ || rm -fr ../tc-workdir/*) && cd ../tc-workdir/ &&
         export TASKCLUSTER_TASK_DIR="$(pwd)" &&
+        export LC_ALL=C &&
+        export MACOSX_DEPLOYMENT_TARGET=10.10 &&
         mkdir -p $TASKCLUSTER_TASK_DIR/DeepSpeech/ &&
         env &&
         git clone --quiet ${event.head.repo.url} $TASKCLUSTER_TASK_DIR/DeepSpeech/tf/ &&
@@ -50,7 +53,8 @@ payload:
         $TASKCLUSTER_TASK_DIR/DeepSpeech/tf/tc-brew.sh &&
         $TASKCLUSTER_TASK_DIR/DeepSpeech/tf/tc-setup.sh &&
         $TASKCLUSTER_TASK_DIR/DeepSpeech/tf/tc-build.sh &&
-        $TASKCLUSTER_TASK_DIR/DeepSpeech/tf/tc-package.sh
+        $TASKCLUSTER_TASK_DIR/DeepSpeech/tf/tc-package.sh ;
+        cd $TASKCLUSTER_TASK_DIR/../ && rm -fr tc-workdir/
 
   artifacts:
     - type: "directory"

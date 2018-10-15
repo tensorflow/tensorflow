@@ -18,7 +18,7 @@ mkdir -p "${HOMEBREW_CACHE}" || true
 
 # Make sure to verify there is a 'brew' binary there, otherwise install things.
 if [ ! -x "${LOCAL_BREW}/bin/brew" ]; then
-    curl -L https://github.com/Homebrew/brew/tarball/master | tar xz --strip 1 -C "${LOCAL_BREW}"
+    curl -L https://github.com/Homebrew/brew/tarball/1.7.7 | tar xz --strip 1 -C "${LOCAL_BREW}"
 fi;
 
 echo "local brew list (should be empty) ..."
