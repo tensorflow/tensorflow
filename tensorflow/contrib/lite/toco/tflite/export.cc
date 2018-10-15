@@ -140,7 +140,7 @@ OperatorKey GetOperatorKey(
 
     // TODO(b/113715895): When `allow_flex_ops` is on, for now there's no way
     // to populate a regular custom op. We need to find a way to fix this.
-    if (allow_flex_ops) {
+    if (ShouldExportAsFlexOp(allow_flex_ops, unsupported_op.tensorflow_op)) {
       key.is_flex_op = true;
       key.flex_tensorflow_op = tensorflow_op;
       key.custom_code =

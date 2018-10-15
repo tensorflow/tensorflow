@@ -1113,7 +1113,10 @@ py_test(
     ],
     main = "platform/build_info_test.py",
     srcs_version = "PY2AND3",
-    tags = ["notap"],
+    tags = [
+        "no_pip",
+        "notap",
+    ],
     deps = [
         ":client_testlib",
         ":platform",
