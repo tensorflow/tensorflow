@@ -361,7 +361,7 @@ class AddNTest(test_util.TensorFlowTestCase):
 
   def testIndexedSlices(self):
     slc = ops.IndexedSlices(array_ops.constant([1, 2], shape=[1, 2]), 
-        array_ops.constant([1]), array_ops.constant([2,2]))
+                            array_ops.constant([1]), array_ops.constant([2, 2]))
     slc_as_dense = np.array([[0, 0], [1, 2]])
     with self.test_session(use_gpu=True):
       # add_n currently always converts IndexedSlices to dense
