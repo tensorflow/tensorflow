@@ -28,7 +28,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/stream_executor/lib/strcat.h"
+#include "tensorflow/core/lib/strings/str_util.h"
 
 #include <stddef.h>
 #include <string.h>
@@ -44,6 +44,8 @@ limitations under the License.
 #include <poplar/GraphElements.hpp>
 #include <poplar/Tensor.hpp>
 #include <poplar/exceptions.hpp>
+
+using ::tensorflow::str_util::Join;
 
 namespace se = ::stream_executor;
 
@@ -269,6 +271,21 @@ Status FullVisitor::HandlePad(HloInstruction* inst) {
   TF_CHECK_OK(
       AddOutputTensor(graph_, resources_, sequence, tensor_map, inst, 0, out)
           .status());
+  return Status::OK();
+}
+
+Status FullVisitor::Postprocess(HloInstruction* inst) {
+  if (!ShapeUtil::IsTuple(inst->shape())) {
+    auto outs = FindInstructionOutputs(tensor_map, inst);
+    if (outs.size() == 1) {
+      if (!PoplarShapeMatchesXLAShape(outs[0], inst->shape())) {
+        return xla::InternalError(
+            "Instruction %s has mismatched Poplar (%s) and XLA (%s) shapes",
+            inst->name().c_str(), Join(outs[0].shape(), ",").c_str(),
+            Join(inst->shape().dimensions(), ",").c_str());
+      }
+    }
+  }
   return Status::OK();
 }
 
