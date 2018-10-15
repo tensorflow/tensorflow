@@ -22,7 +22,6 @@ import collections
 import copy
 
 from tensorflow.contrib import learn
-from tensorflow.contrib import stateless
 from tensorflow.contrib.boosted_trees.lib.learner.batch import categorical_split_handler
 from tensorflow.contrib.boosted_trees.lib.learner.batch import ordinal_split_handler
 from tensorflow.contrib.boosted_trees.proto import learner_pb2
@@ -44,6 +43,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import stateless_random_ops as stateless
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
 from tensorflow.python.ops.losses import losses
