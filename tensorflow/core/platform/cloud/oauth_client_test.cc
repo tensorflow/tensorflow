@@ -15,7 +15,6 @@ limitations under the License.
 
 #include "tensorflow/core/platform/cloud/oauth_client.h"
 #include <fstream>
-#include "absl/strings/string_view.h"
 #include <openssl/bio.h>
 #include <openssl/evp.h>
 #include <openssl/pem.h>
@@ -116,7 +115,7 @@ TEST(OAuthClientTest, GetTokenFromServiceAccountJson) {
   EXPECT_EQ(13920, expiration_timestamp);
 
   // Now look at the JWT claim that was sent to the OAuth server.
-  absl::string_view grant_type, assertion;
+  StringPiece grant_type, assertion;
   ASSERT_TRUE(strings::Scanner(post_body)
                   .OneLiteral("grant_type=")
                   .RestartCapture()

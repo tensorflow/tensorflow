@@ -14,7 +14,6 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/core/framework/types.h"
-#include "absl/strings/string_view.h"
 #include "tensorflow/core/framework/register_types.h"
 
 #include "tensorflow/core/lib/strings/str_util.h"
@@ -114,7 +113,7 @@ string DataTypeString(DataType dtype) {
   return DataTypeStringInternal(dtype);
 }
 
-bool DataTypeFromString(absl::string_view sp, DataType* dt) {
+bool DataTypeFromString(StringPiece sp, DataType* dt) {
   if (str_util::EndsWith(sp, "_ref")) {
     sp.remove_suffix(4);
     DataType non_ref;

@@ -18,7 +18,6 @@ limitations under the License.
 // IWYU pragma: private, include "third_party/tensorflow/core/platform/tensor_coding.h"
 // IWYU pragma: friend third_party/tensorflow/core/platform/tensor_coding.h
 
-#include "absl/strings/string_view.h"
 #include "tensorflow/core/lib/core/coding.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/protobuf.h"
@@ -87,7 +86,7 @@ class StringListDecoder {
   }
 
  private:
-  absl::string_view reader_;
+  StringPiece reader_;
 };
 
 std::unique_ptr<StringListEncoder> NewStringListEncoder(string* out);

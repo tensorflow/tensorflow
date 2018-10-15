@@ -49,7 +49,6 @@ tf_cuda_library(
     deps = [
         ":eager_executor",
         ":kernel_and_device",
-        "@com_google_absl//absl/strings",
     ] + select({
         "//tensorflow:android": [
             "//tensorflow/core:android_tensorflow_lib_lite",
@@ -198,7 +197,6 @@ cc_library(
         ":eager_operation",
         ":kernel_and_device",
         ":tensor_handle",
-        "@com_google_absl//absl/strings",
     ] + select({
         "//tensorflow:android": [
             "//tensorflow/core:android_tensorflow_lib_lite",
@@ -223,7 +221,6 @@ tf_cuda_library(
     deps = [
         ":kernel_and_device",
         "@farmhash_archive//:farmhash",
-        "@com_google_absl//absl/strings",
         # Only the TF_AttrType enum is required, so pull in just the C headers.
         # TODO(b/113535673): Break this dependency and avoid the C header completely.
         "//tensorflow/c:c_api_headers",

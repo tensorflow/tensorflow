@@ -20,7 +20,6 @@ limitations under the License.
 #include <memory>
 #include <set>
 
-#include "absl/strings/string_view.h"
 #include "tensorflow/core/lib/strings/numbers.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
@@ -92,12 +91,12 @@ tensorflow::Status ReturnError(const std::vector<string>& pieces, int idx) {
       strings::StrCat("Invalid option '", pieces[idx], "' value: '", val, "'"));
 }
 
-bool CaseEqual(absl::string_view s1, absl::string_view s2) {
+bool CaseEqual(StringPiece s1, StringPiece s2) {
   if (s1.size() != s2.size()) return false;
   return str_util::Lowercase(s1) == str_util::Lowercase(s2);
 }
 
-bool StringToBool(absl::string_view str, bool* value) {
+bool StringToBool(StringPiece str, bool* value) {
   CHECK(value != nullptr) << "NULL output boolean given.";
   if (CaseEqual(str, "true") || CaseEqual(str, "t") || CaseEqual(str, "yes") ||
       CaseEqual(str, "y") || CaseEqual(str, "1")) {

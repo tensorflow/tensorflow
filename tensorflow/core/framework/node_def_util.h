@@ -19,9 +19,9 @@ limitations under the License.
 #include <string>
 #include <vector>
 
-#include "absl/strings/string_view.h"
 #include "tensorflow/core/framework/attr_value_util.h"
 #include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/gtl/flatmap.h"
 #include "tensorflow/core/lib/hash/hash.h"
 #include "tensorflow/core/platform/protobuf.h"
@@ -59,65 +59,61 @@ typedef protobuf::Map<string, AttrValue> AttrValueMap;
 
 // Adds an attr with name <name> and value <value> to *node_def.
 // The type of the attr is based on the type of value.
-void AddNodeAttr(absl::string_view name, const AttrValue& value,
+void AddNodeAttr(StringPiece name, const AttrValue& value, NodeDef* node_def);
+void AddNodeAttr(StringPiece name, StringPiece value, NodeDef* node_def);
+void AddNodeAttr(StringPiece name, const char* value, NodeDef* node_def);
+void AddNodeAttr(StringPiece name, int32 value, NodeDef* node_def);
+void AddNodeAttr(StringPiece name, int64 value, NodeDef* node_def);
+void AddNodeAttr(StringPiece name, float value, NodeDef* node_def);
+void AddNodeAttr(StringPiece name, double value, NodeDef* node_def);
+void AddNodeAttr(StringPiece name, bool value, NodeDef* node_def);
+void AddNodeAttr(StringPiece name, DataType value, NodeDef* node_def);
+void AddNodeAttr(StringPiece name, const PartialTensorShape& value,
                  NodeDef* node_def);
-void AddNodeAttr(absl::string_view name, absl::string_view value,
+void AddNodeAttr(StringPiece name, const Tensor& value, NodeDef* node_def);
+void AddNodeAttr(StringPiece name, const TensorProto& value, NodeDef* node_def);
+void AddNodeAttr(StringPiece name, const NameAttrList& value,
                  NodeDef* node_def);
-void AddNodeAttr(absl::string_view name, const char* value, NodeDef* node_def);
-void AddNodeAttr(absl::string_view name, int32 value, NodeDef* node_def);
-void AddNodeAttr(absl::string_view name, int64 value, NodeDef* node_def);
-void AddNodeAttr(absl::string_view name, float value, NodeDef* node_def);
-void AddNodeAttr(absl::string_view name, double value, NodeDef* node_def);
-void AddNodeAttr(absl::string_view name, bool value, NodeDef* node_def);
-void AddNodeAttr(absl::string_view name, DataType value, NodeDef* node_def);
-void AddNodeAttr(absl::string_view name, const PartialTensorShape& value,
+void AddNodeAttr(StringPiece name, gtl::ArraySlice<StringPiece> value,
                  NodeDef* node_def);
-void AddNodeAttr(absl::string_view name, const Tensor& value,
+void AddNodeAttr(StringPiece name, gtl::ArraySlice<const char*> value,
                  NodeDef* node_def);
-void AddNodeAttr(absl::string_view name, const TensorProto& value,
+void AddNodeAttr(StringPiece name, gtl::ArraySlice<string> value,
                  NodeDef* node_def);
-void AddNodeAttr(absl::string_view name, const NameAttrList& value,
+void AddNodeAttr(StringPiece name, gtl::ArraySlice<int32> value,
                  NodeDef* node_def);
-void AddNodeAttr(absl::string_view name,
-                 gtl::ArraySlice<absl::string_view> value, NodeDef* node_def);
-void AddNodeAttr(absl::string_view name, gtl::ArraySlice<const char*> value,
+void AddNodeAttr(StringPiece name, gtl::ArraySlice<int64> value,
                  NodeDef* node_def);
-void AddNodeAttr(absl::string_view name, gtl::ArraySlice<string> value,
+void AddNodeAttr(StringPiece name, gtl::ArraySlice<float> value,
                  NodeDef* node_def);
-void AddNodeAttr(absl::string_view name, gtl::ArraySlice<int32> value,
+void AddNodeAttr(StringPiece name, gtl::ArraySlice<bool> value,
                  NodeDef* node_def);
-void AddNodeAttr(absl::string_view name, gtl::ArraySlice<int64> value,
+void AddNodeAttr(StringPiece name, const std::vector<bool>& value,
                  NodeDef* node_def);
-void AddNodeAttr(absl::string_view name, gtl::ArraySlice<float> value,
+void AddNodeAttr(StringPiece name, gtl::ArraySlice<DataType> value,
                  NodeDef* node_def);
-void AddNodeAttr(absl::string_view name, gtl::ArraySlice<bool> value,
+void AddNodeAttr(StringPiece name, gtl::ArraySlice<TensorShape> value,
                  NodeDef* node_def);
-void AddNodeAttr(absl::string_view name, const std::vector<bool>& value,
+void AddNodeAttr(StringPiece name, gtl::ArraySlice<PartialTensorShape> value,
                  NodeDef* node_def);
-void AddNodeAttr(absl::string_view name, gtl::ArraySlice<DataType> value,
+void AddNodeAttr(StringPiece name, gtl::ArraySlice<TensorShapeProto> value,
                  NodeDef* node_def);
-void AddNodeAttr(absl::string_view name, gtl::ArraySlice<TensorShape> value,
+void AddNodeAttr(StringPiece name, gtl::ArraySlice<Tensor> value,
                  NodeDef* node_def);
-void AddNodeAttr(absl::string_view name,
-                 gtl::ArraySlice<PartialTensorShape> value, NodeDef* node_def);
-void AddNodeAttr(absl::string_view name,
-                 gtl::ArraySlice<TensorShapeProto> value, NodeDef* node_def);
-void AddNodeAttr(absl::string_view name, gtl::ArraySlice<Tensor> value,
-                 NodeDef* node_def);
-void AddNodeAttr(absl::string_view name, gtl::ArraySlice<NameAttrList> value,
+void AddNodeAttr(StringPiece name, gtl::ArraySlice<NameAttrList> value,
                  NodeDef* node_def);
 
 // Version to workaround C++'s "perfect" forwarding not being able to
 // forward {...} initialization.
 template <class T>
-void AddNodeAttr(absl::string_view name, std::initializer_list<T> value,
+void AddNodeAttr(StringPiece name, std::initializer_list<T> value,
                  NodeDef* node_def) {
   AddNodeAttr(name, gtl::ArraySlice<T>(value), node_def);
 }
 
 // Adds an attr to an attr value map.
-void AddAttr(absl::string_view name, const AttrValue& value, AttrValueMap* map);
-void AddAttr(absl::string_view name, bool value, AttrValueMap* map);
+void AddAttr(StringPiece name, const AttrValue& value, AttrValueMap* map);
+void AddAttr(StringPiece name, bool value, AttrValueMap* map);
 
 class AttrSlice {
  public:
@@ -130,11 +126,11 @@ class AttrSlice {
 
   // Returns the attr with attr_name if found.  Otherwise, returns
   // nullptr.
-  const AttrValue* Find(absl::string_view attr_name) const;
+  const AttrValue* Find(StringPiece attr_name) const;
 
   // Returns the attr_value for attr_name if found. Otherwise, returns a
   // NotFound status.
-  Status Find(absl::string_view attr_name, const AttrValue** attr_value) const;
+  Status Find(StringPiece attr_name, const AttrValue** attr_value) const;
 
   // Helper class to avoid allocations in EqualAttrs.
   // TODO(irving): Will go away once NodeInfo is used.
@@ -169,85 +165,84 @@ class AttrSlice {
 };
 
 // Return true if the attr with the name attr_name is defined in node_def.
-bool HasNodeAttr(const NodeDef& node_def, absl::string_view attr_name);
+bool HasNodeAttr(const NodeDef& node_def, StringPiece attr_name);
 
 // Look up the attr with name attr_name and set *value to its value.  If no
 // attr with attr_name is found in node_def, or the attr does not have
 // a matching type, a non-ok status will be returned.
-Status GetNodeAttr(const AttrSlice& attrs, absl::string_view attr_name,
+Status GetNodeAttr(const AttrSlice& attrs, StringPiece attr_name,
                    string* value);  // type: "string"
-Status GetNodeAttr(const AttrSlice& attrs, absl::string_view attr_name,
+Status GetNodeAttr(const AttrSlice& attrs, StringPiece attr_name,
                    int64* value);  // type: "int"
-Status GetNodeAttr(const AttrSlice& attrs, absl::string_view attr_name,
+Status GetNodeAttr(const AttrSlice& attrs, StringPiece attr_name,
                    int32* value);  // type: "int"
-Status GetNodeAttr(const AttrSlice& attrs, absl::string_view attr_name,
+Status GetNodeAttr(const AttrSlice& attrs, StringPiece attr_name,
                    float* value);  // type: "float"
-Status GetNodeAttr(const AttrSlice& attrs, absl::string_view attr_name,
+Status GetNodeAttr(const AttrSlice& attrs, StringPiece attr_name,
                    bool* value);  // type: "bool"
-Status GetNodeAttr(const AttrSlice& attrs, absl::string_view attr_name,
+Status GetNodeAttr(const AttrSlice& attrs, StringPiece attr_name,
                    DataType* value);  // type: "type"
-Status GetNodeAttr(const AttrSlice& attrs, absl::string_view attr_name,
+Status GetNodeAttr(const AttrSlice& attrs, StringPiece attr_name,
                    TensorShapeProto* value);  // type: "shape"
-Status GetNodeAttr(const AttrSlice& attrs, absl::string_view attr_name,
+Status GetNodeAttr(const AttrSlice& attrs, StringPiece attr_name,
                    TensorShape* value);  // type: "shape"
-Status GetNodeAttr(const AttrSlice& attrs, absl::string_view attr_name,
+Status GetNodeAttr(const AttrSlice& attrs, StringPiece attr_name,
                    PartialTensorShape* value);  // type: "shape"
-Status GetNodeAttr(const AttrSlice& attrs, absl::string_view attr_name,
+Status GetNodeAttr(const AttrSlice& attrs, StringPiece attr_name,
                    Tensor* value);  // type: "tensor"
-Status GetNodeAttr(const AttrSlice& attrs, absl::string_view attr_name,
+Status GetNodeAttr(const AttrSlice& attrs, StringPiece attr_name,
                    std::vector<string>* value);  // type "list(string)"
-Status GetNodeAttr(const AttrSlice& attrs, absl::string_view attr_name,
+Status GetNodeAttr(const AttrSlice& attrs, StringPiece attr_name,
                    std::vector<int64>* value);  // type "list(int)"
-Status GetNodeAttr(const AttrSlice& attrs, absl::string_view attr_name,
+Status GetNodeAttr(const AttrSlice& attrs, StringPiece attr_name,
                    std::vector<int32>* value);  // type "list(int)"
-Status GetNodeAttr(const AttrSlice& attrs, absl::string_view attr_name,
+Status GetNodeAttr(const AttrSlice& attrs, StringPiece attr_name,
                    std::vector<float>* value);  // type "list(float)"
-Status GetNodeAttr(const AttrSlice& attrs, absl::string_view attr_name,
+Status GetNodeAttr(const AttrSlice& attrs, StringPiece attr_name,
                    std::vector<bool>* value);  // type "list(bool)"
-Status GetNodeAttr(const AttrSlice& attrs, absl::string_view attr_name,
+Status GetNodeAttr(const AttrSlice& attrs, StringPiece attr_name,
                    std::vector<DataType>* value);  // type "list(type)"
-Status GetNodeAttr(const AttrSlice& attrs, absl::string_view attr_name,
+Status GetNodeAttr(const AttrSlice& attrs, StringPiece attr_name,
                    DataTypeVector* value);  // type "list(type)"
-Status GetNodeAttr(const AttrSlice& attrs, absl::string_view attr_name,
+Status GetNodeAttr(const AttrSlice& attrs, StringPiece attr_name,
                    std::vector<TensorShapeProto>* value);  // type "list(shape)"
-Status GetNodeAttr(const AttrSlice& attrs, absl::string_view attr_name,
+Status GetNodeAttr(const AttrSlice& attrs, StringPiece attr_name,
                    std::vector<TensorShape>* value);  // type "list(shape)"
 Status GetNodeAttr(
-    const AttrSlice& attrs, absl::string_view attr_name,
+    const AttrSlice& attrs, StringPiece attr_name,
     std::vector<PartialTensorShape>* value);  // type "list(shape)"
-Status GetNodeAttr(const AttrSlice& attrs, absl::string_view attr_name,
+Status GetNodeAttr(const AttrSlice& attrs, StringPiece attr_name,
                    std::vector<Tensor>* value);  // type: "list(tensor)"
 
 // This version avoids copying the TensorProto.
 // REQUIRES: Must not use *value beyond the lifetime of node_def.
-Status GetNodeAttr(const AttrSlice& attrs, absl::string_view attr_name,
+Status GetNodeAttr(const AttrSlice& attrs, StringPiece attr_name,
                    const TensorProto** value);  // type: "tensor"
 
 // This version avoids copying the NameAttrList.
 // REQUIRES: Must not use *value beyond the lifetime of node_def.
-Status GetNodeAttr(const AttrSlice& attrs, absl::string_view attr_name,
+Status GetNodeAttr(const AttrSlice& attrs, StringPiece attr_name,
                    const NameAttrList** value);  // type: "func"
 
 // These versions copies the NameAttrList(s).
-Status GetNodeAttr(const AttrSlice& attrs, absl::string_view attr_name,
+Status GetNodeAttr(const AttrSlice& attrs, StringPiece attr_name,
                    NameAttrList* value);  // type: "func"
-Status GetNodeAttr(const AttrSlice& attrs, absl::string_view attr_name,
+Status GetNodeAttr(const AttrSlice& attrs, StringPiece attr_name,
                    std::vector<NameAttrList>* value);  // type: "list(func)"
 
 // Look up the attr with name attr_name and set *value to its value.  If no
 // attr with attr_name is found in node_def, or the attr does not have
 // a matching type, false is returned.
-bool GetNodeAttrSimple(const AttrSlice& attrs, absl::string_view attr_name,
+bool GetNodeAttrSimple(const AttrSlice& attrs, StringPiece attr_name,
                        string* value);  // type: "string"
-bool GetNodeAttrSimple(const AttrSlice& attrs, absl::string_view attr_name,
+bool GetNodeAttrSimple(const AttrSlice& attrs, StringPiece attr_name,
                        std::vector<string>* value);  // type: "string"
 
 // Look up the attr with name attr_name and return a reference to its value.
 // If no attr with attr_name is found in node_def, or the attr does not have
 // a matching type, a reference to an empty string is returned.
 // REQUIRES: Must not use the returned value beyond the lifetime of node_def.
-const string& GetNodeAttrString(const AttrSlice& attrs,
-                                absl::string_view attr_name);
+const string& GetNodeAttrString(const AttrSlice& attrs, StringPiece attr_name);
 
 // Computes the input type for a specific node input.
 // REQUIRES: ValidateOpDef(op_def).ok()
@@ -289,8 +284,7 @@ Status ValidateNodeDef(const NodeDef& node_def, const OpDef& op_def);
 // space, the returned `NameRangeMap` objects borrow the input/output
 // argument names from `op_def`. The `op_def` must outlive the
 // returned `NameRangeMap` objects.
-typedef gtl::FlatMap<absl::string_view, std::pair<int, int>,
-                     hash<absl::string_view>>
+typedef gtl::FlatMap<StringPiece, std::pair<int, int>, hash<StringPiece>>
     NameRangeMap;
 Status NameRangesForNode(const NodeDef& node_def, const OpDef& op_def,
                          NameRangeMap* inputs, NameRangeMap* outputs);
@@ -321,8 +315,8 @@ Status AttachDef(const Status& status, const Node& node);
 // Appends the given prefix and suffix to the original node name in order to
 // make the name unique. If it's an "Enter" node, use the same way to reset
 // attribute "frame_name".
-Status AddPrefixAndSuffixToNode(absl::string_view prefix,
-                                absl::string_view suffix, NodeDef* node_def);
+Status AddPrefixAndSuffixToNode(StringPiece prefix, StringPiece suffix,
+                                NodeDef* node_def);
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_CORE_FRAMEWORK_NODE_DEF_UTIL_H_

@@ -485,7 +485,6 @@ cc_library(
         ":platform_port",
         ":platform_protobuf",
         "//tensorflow/core/platform/default/build_config:env",
-        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -515,7 +514,6 @@ cc_library(
         ":lib",
         ":lib_platform",
         ":platform_env",
-        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -594,7 +592,6 @@ cc_library(
         "//tensorflow/core/platform/default/build_config:other",
         "//tensorflow/core/platform/default/build_config:platformlib",
         "//tensorflow/core/platform/default/build_config:port",
-        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -981,7 +978,6 @@ cc_library(
         ":lib",
         ":lib_internal",
         ":protos_all_cc",
-        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -1482,7 +1478,6 @@ cc_library(
         "//tensorflow/core/kernels:ops_testutil",
         "//tensorflow/core/kernels:ops_util",
         "//tensorflow/core/kernels:random_ops",
-        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -2198,7 +2193,6 @@ cc_library(
         ":lib_proto_parsing",
         ":abi",
         ":core_stringpiece",
-        "@com_google_absl//absl/strings",
         "//third_party/eigen3",
         "//tensorflow/core/platform/default/build_config:platformlib",
         "@snappy",
@@ -2624,7 +2618,6 @@ tf_cuda_library(
         ":protos_all_cc",
         ":stats_calculator_portable",
         ":version_lib",
-        "@com_google_absl//absl/strings",
         "//tensorflow/core/platform/default/build_config:platformlib",
         "//tensorflow/core/kernels:bounds_check",
         "//third_party/eigen3",
@@ -2755,7 +2748,6 @@ tf_cuda_library(
         ":proto_text",
         ":protos_all_cc",
         "//third_party/eigen3",
-        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -2800,7 +2792,6 @@ tf_cuda_library(
         ":function_ops_op_lib",
         ":functional_grad",
         ":functional_ops_op_lib",
-        "@com_google_absl//absl/strings",
         "//tensorflow/core/kernels:bounds_check",
         "//tensorflow/core/kernels:required",
         ":core_cpu_impl",
@@ -2930,7 +2921,6 @@ tf_cuda_library(
         ":lib_internal",
         ":proto_text",
         ":protos_all_cc",
-        "@com_google_absl//absl/strings",
         "//third_party/eigen3",
         "//tensorflow/core/grappler:grappler_item",
     ] + mkl_deps(),
@@ -3010,7 +3000,6 @@ tf_cuda_library(
         ":protos_all_cc",
         "//tensorflow/core/debug:debug_graph_utils",
         "//tensorflow/core/kernels:function_ops",
-        "@com_google_absl//absl/strings",
     ],
     alwayslink = 1,
 )
@@ -3134,7 +3123,6 @@ tf_cuda_library(
         ":protos_all_cc",
         ":stream_executor",
         "//third_party/eigen3",
-        "@com_google_absl//absl/strings",
     ],
     alwayslink = 1,
 )
@@ -3264,7 +3252,6 @@ cc_library(
         ":lib",
         ":lib_internal",
         ":protos_all_cc",
-        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -3380,7 +3367,6 @@ tf_cc_tests(
         ":test",
         ":test_main",
         "//third_party/eigen3",
-        "@com_google_absl//absl/strings",
         "@zlib_archive//:zlib",
     ],
 )
@@ -3412,7 +3398,6 @@ tf_cc_test(
         ":test",
         ":test_main",
         "//third_party/eigen3",
-        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -3484,7 +3469,6 @@ tf_cc_test(
         ":protos_all_cc",
         ":test",
         ":test_main",
-        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -3534,7 +3518,6 @@ tf_cc_test(
         ":lib_internal",
         ":test",
         ":test_main",
-        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -3696,7 +3679,6 @@ tf_cc_tests(
         "//tensorflow/cc:while_loop",
         "//tensorflow/core/kernels:ops_util",
         "//third_party/eigen3",
-        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -3733,7 +3715,6 @@ tf_cc_tests(
         "//tensorflow/cc:sendrecv_ops",
         "//tensorflow/core/kernels:ops_util",
         "//third_party/eigen3",
-        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -3917,7 +3898,6 @@ tf_cc_tests_gpu(
         ":testlib",
         "//tensorflow/cc:cc_ops",
         "//tensorflow/core/kernels:ops_util",
-        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -3966,7 +3946,6 @@ tf_cuda_cc_test(
         ":testlib",
         "//tensorflow/cc:cc_ops",
         "//tensorflow/core/kernels:ops_util",
-        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -4083,7 +4062,6 @@ tf_cc_test(
         "//tensorflow/core/kernels:immutable_constant_op",
         "//tensorflow/core/kernels:matmul_op",
         "//third_party/eigen3",
-        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -4194,7 +4172,6 @@ tf_cuda_cc_test(
         ":test",
         ":test_main",
         ":testlib",
-        "@com_google_absl//absl/strings",
         "//third_party/eigen3",
         "//tensorflow/cc:cc_ops",
         "//tensorflow/core/kernels:collective_ops",
@@ -4235,7 +4212,6 @@ tf_cc_test(
         ":test",
         ":test_main",
         ":testlib",
-        "@com_google_absl//absl/strings",
         "//third_party/eigen3",
         "//tensorflow/cc:cc_ops",
         # Link with support for TensorFlow Debugger (tfdbg).
@@ -4376,7 +4352,6 @@ tf_cc_test(
         "//tensorflow/core/kernels:random_ops",
         "//tensorflow/core/kernels:shape_ops",
         "//third_party/eigen3",
-        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -4769,7 +4744,6 @@ tf_cc_tests(
         "//tensorflow/cc:client_session",
         "//tensorflow/cc:function_ops",
         "//tensorflow/cc:ops",
-        "@com_google_absl//absl/strings",
     ],
 )
 

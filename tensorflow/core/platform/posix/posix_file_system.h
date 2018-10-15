@@ -16,7 +16,6 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_PLATFORM_POSIX_POSIX_FILE_SYSTEM_H_
 #define TENSORFLOW_CORE_PLATFORM_POSIX_POSIX_FILE_SYSTEM_H_
 
-#include "absl/strings/string_view.h"
 #include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/platform/env.h"
 
@@ -69,7 +68,7 @@ Status IOError(const string& context, int err_number);
 class LocalPosixFileSystem : public PosixFileSystem {
  public:
   string TranslateName(const string& name) const override {
-    absl::string_view scheme, host, path;
+    StringPiece scheme, host, path;
     io::ParseURI(name, &scheme, &host, &path);
     return string(path);
   }

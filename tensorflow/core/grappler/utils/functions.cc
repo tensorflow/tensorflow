@@ -16,7 +16,6 @@ limitations under the License.
 
 #include <unordered_map>
 
-#include "absl/strings/string_view.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/function.pb.h"
@@ -109,8 +108,8 @@ Status GrapplerFunctionConnectivity::ExpandFunctionDefInput(
   string node_output;
   int position = -1;
 
-  absl::string_view capture;
-  absl::string_view remaining;
+  StringPiece capture;
+  StringPiece remaining;
 
   // Parse "node_name"
   if (Scanner(func_def_input)

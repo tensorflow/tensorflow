@@ -19,7 +19,6 @@ limitations under the License.
 #include <functional>
 #include <memory>
 
-#include "absl/strings/string_view.h"
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/common_runtime/process_function_library_runtime.h"
@@ -125,7 +124,7 @@ bool ExpandInlineFunctions(FunctionLibraryRuntime* lib, Graph* graph);
 
 // Dump the contents of the "graph" to log files if the logging level is
 // sufficiently high.
-void DumpGraph(absl::string_view label, const Graph* g);
+void DumpGraph(StringPiece label, const Graph* g);
 
 // Applies graph rewrite optimization such as inlining, dead code
 // removal, etc.

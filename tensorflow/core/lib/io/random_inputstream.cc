@@ -15,7 +15,6 @@ limitations under the License.
 
 #include "tensorflow/core/lib/io/random_inputstream.h"
 #include <memory>
-#include "absl/strings/string_view.h"
 
 namespace tensorflow {
 namespace io {
@@ -38,7 +37,7 @@ Status RandomAccessInputStream::ReadNBytes(int64 bytes_to_read,
   result->clear();
   result->resize(bytes_to_read);
   char* result_buffer = &(*result)[0];
-  absl::string_view data;
+  StringPiece data;
   Status s = file_->Read(pos_, bytes_to_read, &data, result_buffer);
   if (data.data() != result_buffer) {
     memmove(result_buffer, data.data(), data.size());
@@ -62,7 +61,7 @@ Status RandomAccessInputStream::SkipNBytes(int64 bytes_to_skip) {
   // Try to read 1 bytes first, if we could complete the read then EOF is
   // not reached yet and we could return.
   if (bytes_to_skip > 0) {
-    absl::string_view data;
+    StringPiece data;
     Status s = file_->Read(pos_ + bytes_to_skip - 1, 1, &data, scratch.get());
     if ((s.ok() || errors::IsOutOfRange(s)) && data.size() == 1) {
       pos_ += bytes_to_skip;
@@ -72,7 +71,7 @@ Status RandomAccessInputStream::SkipNBytes(int64 bytes_to_skip) {
   // Read kDefaultSkipSize at a time till bytes_to_skip.
   while (bytes_to_skip > 0) {
     int64 bytes_to_read = std::min<int64>(kMaxSkipSize, bytes_to_skip);
-    absl::string_view data;
+    StringPiece data;
     Status s = file_->Read(pos_, bytes_to_read, &data, scratch.get());
     if (s.ok() || errors::IsOutOfRange(s)) {
       pos_ += data.size();

@@ -18,7 +18,7 @@ limitations under the License.
 
 #include <string>
 
-#include "absl/strings/string_view.h"
+#include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
@@ -84,66 +84,66 @@ bool StringToFp(const string& s, Fprint* fp);
 // Convert a 64-bit fingerprint value to an ASCII representation that
 // is terminated by a '\0'.
 // Buf must point to an array of at least kFastToBufferSize characters
-absl::string_view Uint64ToHexString(uint64 v, char* buf);
+StringPiece Uint64ToHexString(uint64 v, char* buf);
 
 // Attempt to parse a uint64 in the form encoded by FastUint64ToHexString.  If
 // successful, stores the value in *v and returns true.  Otherwise,
 // returns false.
-bool HexStringToUint64(const absl::string_view& s, uint64* v);
+bool HexStringToUint64(const StringPiece& s, uint64* v);
 
 // Convert strings to 32bit integer values.
 // Leading and trailing spaces are allowed.
 // Return false with overflow or invalid input.
-bool safe_strto32(absl::string_view str, int32* value);
+bool safe_strto32(StringPiece str, int32* value);
 
 // Convert strings to unsigned 32bit integer values.
 // Leading and trailing spaces are allowed.
 // Return false with overflow or invalid input.
-bool safe_strtou32(absl::string_view str, uint32* value);
+bool safe_strtou32(StringPiece str, uint32* value);
 
 // Convert strings to 64bit integer values.
 // Leading and trailing spaces are allowed.
 // Return false with overflow or invalid input.
-bool safe_strto64(absl::string_view str, int64* value);
+bool safe_strto64(StringPiece str, int64* value);
 
 // Convert strings to unsigned 64bit integer values.
 // Leading and trailing spaces are allowed.
 // Return false with overflow or invalid input.
-bool safe_strtou64(absl::string_view str, uint64* value);
+bool safe_strtou64(StringPiece str, uint64* value);
 
 // Convert strings to floating point values.
 // Leading and trailing spaces are allowed.
 // Values may be rounded on over- and underflow.
 // Returns false on invalid input or if `strlen(value) >= kFastToBufferSize`.
-bool safe_strtof(absl::string_view str, float* value);
+bool safe_strtof(StringPiece str, float* value);
 
 // Convert strings to double precision floating point values.
 // Leading and trailing spaces are allowed.
 // Values may be rounded on over- and underflow.
 // Returns false on invalid input or if `strlen(value) >= kFastToBufferSize`.
-bool safe_strtod(absl::string_view str, double* value);
+bool safe_strtod(StringPiece str, double* value);
 
-inline bool ProtoParseNumeric(absl::string_view s, int32* value) {
+inline bool ProtoParseNumeric(StringPiece s, int32* value) {
   return safe_strto32(s, value);
 }
 
-inline bool ProtoParseNumeric(absl::string_view s, uint32* value) {
+inline bool ProtoParseNumeric(StringPiece s, uint32* value) {
   return safe_strtou32(s, value);
 }
 
-inline bool ProtoParseNumeric(absl::string_view s, int64* value) {
+inline bool ProtoParseNumeric(StringPiece s, int64* value) {
   return safe_strto64(s, value);
 }
 
-inline bool ProtoParseNumeric(absl::string_view s, uint64* value) {
+inline bool ProtoParseNumeric(StringPiece s, uint64* value) {
   return safe_strtou64(s, value);
 }
 
-inline bool ProtoParseNumeric(absl::string_view s, float* value) {
+inline bool ProtoParseNumeric(StringPiece s, float* value) {
   return safe_strtof(s, value);
 }
 
-inline bool ProtoParseNumeric(absl::string_view s, double* value) {
+inline bool ProtoParseNumeric(StringPiece s, double* value) {
   return safe_strtod(s, value);
 }
 
@@ -151,7 +151,7 @@ inline bool ProtoParseNumeric(absl::string_view s, double* value) {
 // Leading and trailing spaces are allowed.
 // Values may be rounded on over- and underflow.
 template <typename T>
-bool SafeStringToNumeric(absl::string_view s, T* value) {
+bool SafeStringToNumeric(StringPiece s, T* value) {
   return ProtoParseNumeric(s, value);
 }
 

@@ -21,7 +21,6 @@ limitations under the License.
 #include <memory>
 #include <vector>
 
-#include "absl/strings/string_view.h"
 #include "tensorflow/c/c_test_util.h"
 #include "tensorflow/cc/saved_model/signature_constants.h"
 #include "tensorflow/cc/saved_model/tag_constants.h"
@@ -56,7 +55,7 @@ Status TF_TensorToTensor(const TF_Tensor* src, Tensor* dst);
 
 namespace {
 
-static void ExpectHasSubstr(absl::string_view s, absl::string_view expected) {
+static void ExpectHasSubstr(StringPiece s, StringPiece expected) {
   EXPECT_TRUE(str_util::StrContains(s, expected))
       << "'" << s << "' does not contain '" << expected << "'";
 }

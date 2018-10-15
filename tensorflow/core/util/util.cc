@@ -15,30 +15,29 @@ limitations under the License.
 
 #include "tensorflow/core/util/util.h"
 
-#include "absl/strings/string_view.h"
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/logging.h"
 
 namespace tensorflow {
 
-absl::string_view NodeNamePrefix(const absl::string_view& op_name) {
-  absl::string_view sp(op_name);
+StringPiece NodeNamePrefix(const StringPiece& op_name) {
+  StringPiece sp(op_name);
   auto p = sp.find('/');
-  if (p == absl::string_view::npos || p == 0) {
+  if (p == StringPiece::npos || p == 0) {
     return "";
   } else {
-    return absl::string_view(sp.data(), p);
+    return StringPiece(sp.data(), p);
   }
 }
 
-absl::string_view NodeNameFullPrefix(const absl::string_view& op_name) {
-  absl::string_view sp(op_name);
+StringPiece NodeNameFullPrefix(const StringPiece& op_name) {
+  StringPiece sp(op_name);
   auto p = sp.rfind('/');
-  if (p == absl::string_view::npos || p == 0) {
+  if (p == StringPiece::npos || p == 0) {
     return "";
   } else {
-    return absl::string_view(sp.data(), p);
+    return StringPiece(sp.data(), p);
   }
 }
 

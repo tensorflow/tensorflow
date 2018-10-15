@@ -18,7 +18,6 @@ limitations under the License.
 #include <deque>
 #include <memory>
 
-#include "absl/strings/string_view.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/attr_value_util.h"
 #include "tensorflow/core/framework/dataset_stateful_op_whitelist.h"
@@ -58,10 +57,10 @@ class SerializationContext;
 // Used for restoring iterator state.
 class IteratorStateReader {
  public:
-  virtual Status ReadScalar(absl::string_view key, int64* val) = 0;
-  virtual Status ReadScalar(absl::string_view key, string* val) = 0;
-  virtual Status ReadTensor(absl::string_view key, Tensor* val) = 0;
-  virtual bool Contains(absl::string_view key) = 0;
+  virtual Status ReadScalar(StringPiece key, int64* val) = 0;
+  virtual Status ReadScalar(StringPiece key, string* val) = 0;
+  virtual Status ReadTensor(StringPiece key, Tensor* val) = 0;
+  virtual bool Contains(StringPiece key) = 0;
 
   virtual ~IteratorStateReader() {}
 };
@@ -70,9 +69,9 @@ class IteratorStateReader {
 // Used for saving iterator state.
 class IteratorStateWriter {
  public:
-  virtual Status WriteScalar(absl::string_view key, const int64 val) = 0;
-  virtual Status WriteScalar(absl::string_view key, const string& val) = 0;
-  virtual Status WriteTensor(absl::string_view key, const Tensor& val) = 0;
+  virtual Status WriteScalar(StringPiece key, const int64 val) = 0;
+  virtual Status WriteScalar(StringPiece key, const string& val) = 0;
+  virtual Status WriteTensor(StringPiece key, const Tensor& val) = 0;
 
   virtual ~IteratorStateWriter() {}
 };
@@ -156,10 +155,10 @@ class GraphDefBuilderWrapper {
   // `*output` contains a pointer to the output `Node`. It is guaranteed to be
   // non-null if the method returns with an OK status.
   // The returned Node pointer is owned by the backing Graph of GraphDefBuilder.
-  Status AddDataset(
-      const DatasetBase* dataset, const std::vector<Node*>& inputs,
-      const std::vector<std::pair<absl::string_view, AttrValue>>& attrs,
-      Node** output) {
+  Status AddDataset(const DatasetBase* dataset,
+                    const std::vector<Node*>& inputs,
+                    const std::vector<std::pair<StringPiece, AttrValue>>& attrs,
+                    Node** output) {
     std::vector<std::pair<size_t, Node*>> enumerated_inputs(inputs.size());
     for (int i = 0; i < inputs.size(); i++) {
       enumerated_inputs[i] = std::make_pair(i, inputs[i]);
@@ -171,7 +170,7 @@ class GraphDefBuilderWrapper {
       const DatasetBase* dataset,
       const std::vector<std::pair<size_t, Node*>>& inputs,
       const std::vector<std::pair<size_t, gtl::ArraySlice<Node*>>>& list_inputs,
-      const std::vector<std::pair<absl::string_view, AttrValue>>& attrs,
+      const std::vector<std::pair<StringPiece, AttrValue>>& attrs,
       Node** output);
 
   // Adds a user-defined function with name `function_name` to the graph and
@@ -727,8 +726,7 @@ class DatasetOpKernel : public OpKernel {
 
   template <typename T>
   Status ParseScalarArgument(OpKernelContext* ctx,
-                             const absl::string_view& argument_name,
-                             T* output) {
+                             const StringPiece& argument_name, T* output) {
     const Tensor* argument_t;
     TF_RETURN_IF_ERROR(ctx->input(argument_name, &argument_t));
     if (!TensorShapeUtils::IsScalar(argument_t->shape())) {
@@ -740,7 +738,7 @@ class DatasetOpKernel : public OpKernel {
 
   template <typename T>
   Status ParseVectorArgument(OpKernelContext* ctx,
-                             const absl::string_view& argument_name,
+                             const StringPiece& argument_name,
                              std::vector<T>* output) {
     const Tensor* argument_t;
     TF_RETURN_IF_ERROR(ctx->input(argument_name, &argument_t));

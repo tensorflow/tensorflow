@@ -20,7 +20,6 @@ limitations under the License.
 
 #include <algorithm>
 #include <vector>
-#include "absl/strings/string_view.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/logging.h"
@@ -118,7 +117,7 @@ void Benchmark::Run(const char* pattern) {
   // specified by clients, but we keep this here to match the internal
   // Google implementation, should we ever enable user-specified
   // pattern specification.
-  if (absl::string_view(pattern) == "all") {
+  if (StringPiece(pattern) == "all") {
     pattern = ".*";
   }
 

@@ -29,7 +29,6 @@ limitations under the License.
 
 #include "tensorflow/core/framework/tensor.h"
 
-#include "absl/strings/string_view.h"
 #include "tensorflow/core/framework/allocation_description.pb.h"
 #include "tensorflow/core/framework/log_memory.h"
 #include "tensorflow/core/framework/resource_handle.pb.h"
@@ -134,8 +133,8 @@ struct Helper {
   template <typename Destination>
   static void Encode(TensorBuffer* in, int64 n, Destination* out) {
     DCHECK_EQ(in->size(), sizeof(T) * n);
-    port::AssignRefCounted(
-        absl::string_view(in->base<const char>(), in->size()), in, out);
+    port::AssignRefCounted(StringPiece(in->base<const char>(), in->size()), in,
+                           out);
   }
 
   // Decoder of simple type T. Copy the bytes from "in" into the
@@ -1149,10 +1148,9 @@ string Tensor::SummarizeValue(int64 max_entries, bool print_v2) const {
   }
 }
 
-absl::string_view Tensor::tensor_data() const {
-  if (buf_ == nullptr)
-    return absl::string_view();  // Don't die for empty tensors
-  return absl::string_view(static_cast<char*>(buf_->data()), TotalBytes());
+StringPiece Tensor::tensor_data() const {
+  if (buf_ == nullptr) return StringPiece();  // Don't die for empty tensors
+  return StringPiece(static_cast<char*>(buf_->data()), TotalBytes());
 }
 
 bool Tensor::SharesBufferWith(const Tensor& b) const {

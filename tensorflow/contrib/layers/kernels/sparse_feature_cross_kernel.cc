@@ -19,7 +19,6 @@ limitations under the License.
 #include <string>
 #include <vector>
 
-#include "absl/strings/string_view.h"
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/kernel_def_builder.h"
 #include "tensorflow/core/framework/op_def_builder.h"
@@ -27,6 +26,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/fingerprint.h"
 #include "tensorflow/core/util/work_sharder.h"
@@ -92,8 +92,8 @@ string SparseTensorColumn<string>::Feature(int64 batch, int64 n) const {
 }
 
 template <>
-absl::string_view SparseTensorColumn<absl::string_view>::Feature(
-    int64 batch, int64 n) const {
+StringPiece SparseTensorColumn<StringPiece>::Feature(int64 batch,
+                                                     int64 n) const {
   const int64 start = feature_start_indices_[batch];
   return values_.vec<string>().data()[start + n];
 }
@@ -130,8 +130,8 @@ string DenseTensorColumn<string>::Feature(int64 batch, int64 n) const {
 }
 
 template <>
-absl::string_view DenseTensorColumn<absl::string_view>::Feature(int64 batch,
-                                                                int64 n) const {
+StringPiece DenseTensorColumn<StringPiece>::Feature(int64 batch,
+                                                    int64 n) const {
   return tensor_.matrix<string>()(batch, n);
 }
 

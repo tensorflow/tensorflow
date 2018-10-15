@@ -20,7 +20,6 @@ limitations under the License.
 #include <map>
 #include <string>
 #include <vector>
-#include "absl/strings/string_view.h"
 #include "tensorflow/core/lib/hash/hash.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
@@ -58,12 +57,11 @@ uint64 GetUniqueArg() {
   return unique_arg.fetch_add(1, std::memory_order_relaxed);
 }
 
-uint64 GetArgForName(absl::string_view name) {
+uint64 GetArgForName(StringPiece name) {
   return Hash64(name.data(), name.size());
 }
 
-string TraceCollector::ConcatenateNames(absl::string_view first,
-                                        absl::string_view second) {
+string TraceCollector::ConcatenateNames(StringPiece first, StringPiece second) {
   std::string result;
   bool has_two_parts = !first.empty() && !second.empty();
   result.reserve(first.size() + second.size() +

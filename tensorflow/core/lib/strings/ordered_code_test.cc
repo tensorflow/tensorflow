@@ -20,7 +20,7 @@ limitations under the License.
 #include <limits>
 #include <vector>
 
-#include "absl/strings/string_view.h"
+#include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/random/simple_philox.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/logging.h"
@@ -47,7 +47,7 @@ string RandomString(random::SimplePhilox* rnd, size_t len) {
 template <typename T>
 void OCWriteIncreasing(string* dest, const T& val);
 template <typename T>
-bool OCReadIncreasing(absl::string_view* src, T* result);
+bool OCReadIncreasing(StringPiece* src, T* result);
 
 // Read/WriteIncreasing<string>
 template <>
@@ -55,7 +55,7 @@ void OCWriteIncreasing<string>(string* dest, const string& val) {
   OrderedCode::WriteString(dest, val);
 }
 template <>
-bool OCReadIncreasing<string>(absl::string_view* src, string* result) {
+bool OCReadIncreasing<string>(StringPiece* src, string* result) {
   return OrderedCode::ReadString(src, result);
 }
 
@@ -65,7 +65,7 @@ void OCWriteIncreasing<uint64>(string* dest, const uint64& val) {
   OrderedCode::WriteNumIncreasing(dest, val);
 }
 template <>
-bool OCReadIncreasing<uint64>(absl::string_view* src, uint64* result) {
+bool OCReadIncreasing<uint64>(StringPiece* src, uint64* result) {
   return OrderedCode::ReadNumIncreasing(src, result);
 }
 
@@ -75,7 +75,7 @@ void OCWriteIncreasing<int64>(string* dest, const int64& val) {
   OrderedCode::WriteSignedNumIncreasing(dest, val);
 }
 template <>
-bool OCReadIncreasing<int64>(absl::string_view* src, int64* result) {
+bool OCReadIncreasing<int64>(StringPiece* src, int64* result) {
   return OrderedCode::ReadSignedNumIncreasing(src, result);
 }
 
@@ -92,7 +92,7 @@ void OCWriteToString(string* result, T val) {
 }
 
 template <typename T>
-bool OCRead(absl::string_view* s, T* val) {
+bool OCRead(StringPiece* s, T* val) {
   return OCReadIncreasing<T>(s, val);
 }
 
@@ -103,12 +103,12 @@ template <typename T>
 T TestRead(const string& a) {
   // gracefully reject any proper prefix of an encoding
   for (int i = 0; i < a.size() - 1; ++i) {
-    absl::string_view s(a.data(), i);
+    StringPiece s(a.data(), i);
     CHECK(!OCRead<T>(&s, nullptr));
     CHECK_EQ(s, a.substr(0, i));
   }
 
-  absl::string_view s(a);
+  StringPiece s(a);
   T v;
   CHECK(OCRead<T>(&s, &v));
   CHECK(s.empty());
@@ -304,7 +304,7 @@ inline string StrNot(const string& s) {
 
 template <typename T>
 void TestInvalidEncoding(const string& s) {
-  absl::string_view p(s);
+  StringPiece p(s);
   EXPECT_FALSE(OCRead<T>(&p, nullptr));
   EXPECT_EQ(s, p);
 }
@@ -338,7 +338,7 @@ TEST(OrderedCodeInvalidEncodingsDeathTest, NonCanonical) {
 
     EXPECT_NE(OCWrite<uint64>(0), non_minimal);
 #ifndef NDEBUG
-    absl::string_view s(non_minimal);
+    StringPiece s(non_minimal);
     EXPECT_DEATH(OrderedCode::ReadNumIncreasing(&s, nullptr),
                  "invalid encoding");
 #else
@@ -357,7 +357,7 @@ TEST(OrderedCodeInvalidEncodingsDeathTest, NonCanonical) {
 
     EXPECT_NE(OCWrite<int64>(0), non_minimal);
 #ifndef NDEBUG
-    absl::string_view s(non_minimal);
+    StringPiece s(non_minimal);
     EXPECT_DEATH(OrderedCode::ReadSignedNumIncreasing(&s, nullptr),
                  "invalid encoding")
         << n;
@@ -409,7 +409,7 @@ void BM_ReadNum(int n, T multiplier) {
   uint32 index = 0;
   while (n-- > 0) {
     T val;
-    absl::string_view s = values[index++ % kValues];
+    StringPiece s = values[index++ % kValues];
     OCRead<T>(&s, &val);
   }
 }
@@ -446,8 +446,8 @@ TEST(String, EncodeDecode) {
       OCWriteToString<string>(&out, b);
 
       string a2, b2, dummy;
-      absl::string_view s = out;
-      absl::string_view s2 = out;
+      StringPiece s = out;
+      StringPiece s2 = out;
       CHECK(OCRead<string>(&s, &a2));
       CHECK(OCRead<string>(&s2, nullptr));
       CHECK_EQ(s, s2);
@@ -467,9 +467,9 @@ TEST(String, EncodeDecode) {
 }
 
 // 'str' is a string literal that may contain '\0'.
-#define STATIC_STR(str) absl::string_view((str), sizeof(str) - 1)
+#define STATIC_STR(str) StringPiece((str), sizeof(str) - 1)
 
-string EncodeStringIncreasing(absl::string_view value) {
+string EncodeStringIncreasing(StringPiece value) {
   string encoded;
   OrderedCode::WriteString(&encoded, value);
   return encoded;
@@ -523,7 +523,7 @@ TEST(EncodingIsExpected, String) {
     OrderedCode::WriteString(&result, t.first);
     EXPECT_EQ(t.second, result);
 
-    absl::string_view in = result;
+    StringPiece in = result;
     string decoded;
     EXPECT_TRUE(OrderedCode::ReadString(&in, &decoded));
     EXPECT_EQ(t.first, decoded);
@@ -755,7 +755,7 @@ TEST(EncodingIsExpected, Unsigned) {
     OrderedCode::WriteNumIncreasing(&result, num);
     EXPECT_EQ(t.second, result) << std::hex << num;
 
-    absl::string_view in = result;
+    StringPiece in = result;
     uint64 decoded;
     EXPECT_TRUE(OrderedCode::ReadNumIncreasing(&in, &decoded));
     EXPECT_EQ(num, decoded);
@@ -1202,7 +1202,7 @@ TEST(EncodingIsExpected, Signed) {
     OrderedCode::WriteSignedNumIncreasing(&result, num);
     EXPECT_EQ(t.second, result) << std::hex << num;
 
-    absl::string_view in = result;
+    StringPiece in = result;
     int64 decoded;
     EXPECT_TRUE(OrderedCode::ReadSignedNumIncreasing(&in, &decoded));
     EXPECT_EQ(num, decoded);
@@ -1244,7 +1244,7 @@ void BM_ReadString(int n, int len) {
   testing::StartTiming();
   while (n-- > 0) {
     result.clear();
-    absl::string_view s = data;
+    StringPiece s = data;
     OCRead<string>(&s, &result);
   }
 }

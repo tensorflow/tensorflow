@@ -13,7 +13,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "absl/strings/string_view.h"
 #define EIGEN_USE_THREADS
 
 #include "tensorflow/core/grappler/optimizers/constant_folding.h"
@@ -35,6 +34,7 @@ limitations under the License.
 #include "tensorflow/core/grappler/optimizers/evaluation_utils.h"
 #include "tensorflow/core/grappler/utils.h"
 #include "tensorflow/core/grappler/utils/symbolic_shapes.h"
+#include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/gtl/cleanup.h"
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
 #include "tensorflow/core/lib/strings/numbers.h"
@@ -258,12 +258,12 @@ static Status ConvertShapeToConstant(const string& op, const DataType& type,
 
 // TODO(rmlarsen): Perhaps we should move this to the GraphOptimizer base class.
 bool ConstantFolding::OptimizedNodeExists(const NodeDef& node,
-                                          absl::string_view suffix) const {
+                                          StringPiece suffix) const {
   return node_map_->NodeExists(OptimizedNodeName(node, suffix));
 }
 
 string ConstantFolding::OptimizedNodeName(const NodeDef& node,
-                                          absl::string_view suffix) const {
+                                          StringPiece suffix) const {
   return AddPrefixToNodeName(strings::StrCat(node.name(), suffix),
                              kConstantFoldingConst);
 }

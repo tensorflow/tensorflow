@@ -14,7 +14,6 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/framework/shape_inference.h"
 
-#include "absl/strings/string_view.h"
 #include "tensorflow/core/framework/node_def.pb_text.h"
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
@@ -173,7 +172,7 @@ Status InferenceContext::Run(
   return s;
 }
 
-Status InferenceContext::set_output(absl::string_view output_name,
+Status InferenceContext::set_output(StringPiece output_name,
                                     const std::vector<ShapeHandle>& shapes) {
   auto result = output_name_map_.find(output_name);
   if (result == output_name_map_.end()) {
@@ -192,7 +191,7 @@ Status InferenceContext::set_output(absl::string_view output_name,
   return Status::OK();
 }
 
-Status InferenceContext::input(absl::string_view input_name,
+Status InferenceContext::input(StringPiece input_name,
                                std::vector<ShapeHandle>* output) const {
   const auto result = input_name_map_.find(input_name);
   if (result == input_name_map_.end()) {
@@ -206,7 +205,7 @@ Status InferenceContext::input(absl::string_view input_name,
   return Status::OK();
 }
 
-Status InferenceContext::output(absl::string_view output_name,
+Status InferenceContext::output(StringPiece output_name,
                                 std::vector<ShapeHandle>* output) const {
   const auto result = output_name_map_.find(output_name);
   if (result == output_name_map_.end()) {

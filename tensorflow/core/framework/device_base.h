@@ -21,11 +21,11 @@ limitations under the License.
 #include <vector>
 
 #include "absl/base/macros.h"
-#include "absl/strings/string_view.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/refcount.h"
 #include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/platform/logging.h"
 
 namespace Eigen {
@@ -86,9 +86,8 @@ class DeviceContext : public core::RefCounted {
   // device_tensor into "cpu_tensor".  "cpu_tensor" must be allocated
   // to be of the same size as "device_tensor".
   virtual void CopyDeviceTensorToCPU(const Tensor* device_tensor,
-                                     absl::string_view tensor_name,
-                                     Device* device, Tensor* cpu_tensor,
-                                     StatusCallback done) {
+                                     StringPiece tensor_name, Device* device,
+                                     Tensor* cpu_tensor, StatusCallback done) {
     done(errors::Internal("Unrecognized device type in device-to-CPU Copy"));
   }
 

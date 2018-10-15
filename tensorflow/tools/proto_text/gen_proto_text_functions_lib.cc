@@ -447,7 +447,7 @@ void Generator::AppendParseMessageFunction(const Descriptor& md) {
   Print("scanner->RestartCapture()");
   Print("    .Many(Scanner::LETTER_DIGIT_UNDERSCORE)");
   Print("    .StopCapture();");
-  Print("absl::string_view identifier;");
+  Print("StringPiece identifier;");
   Print("if (!scanner->GetResult(nullptr, &identifier)) return false;");
   Print("bool parsed_colon = false;");
   Print("(void)parsed_colon;"); // Avoid "set but not used" compiler warning
@@ -528,7 +528,7 @@ void Generator::AppendParseMessageFunction(const Descriptor& md) {
       Print("SetProtobufStringSwapAllowed(&str_value, ", mutable_value_expr,
             ");");
     } else if (field->cpp_type() == FieldDescriptor::CPPTYPE_ENUM) {
-      Print("absl::string_view value;");
+      Print("StringPiece value;");
       Print(
           "if (!parsed_colon || "
           "!scanner->RestartCapture().Many("

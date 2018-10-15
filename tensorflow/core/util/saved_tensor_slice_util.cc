@@ -15,7 +15,6 @@ limitations under the License.
 
 #include "tensorflow/core/util/saved_tensor_slice_util.h"
 
-#include "absl/strings/string_view.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/strings/ordered_code.h"
 #include "tensorflow/core/lib/strings/str_util.h"
@@ -45,7 +44,7 @@ string EncodeTensorNameSlice(const string& name, const TensorSlice& slice) {
 
 Status DecodeTensorNameSlice(const string& code, string* name,
                              tensorflow::TensorSlice* slice) {
-  absl::string_view src(code);
+  StringPiece src(code);
   uint64 x;
   if (!tensorflow::strings::OrderedCode::ReadNumIncreasing(&src, &x)) {
     return errors::Internal("Failed to parse the leading number: src = ", src);

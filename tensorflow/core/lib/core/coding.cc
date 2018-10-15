@@ -15,7 +15,6 @@ limitations under the License.
 
 #include "tensorflow/core/lib/core/coding.h"
 
-#include "absl/strings/string_view.h"
 #include "tensorflow/core/platform/byte_order.h"
 
 namespace tensorflow {
@@ -152,14 +151,14 @@ const char* GetVarint32PtrFallback(const char* p, const char* limit,
   return nullptr;
 }
 
-bool GetVarint32(absl::string_view* input, uint32* value) {
+bool GetVarint32(StringPiece* input, uint32* value) {
   const char* p = input->data();
   const char* limit = p + input->size();
   const char* q = GetVarint32Ptr(p, limit, value);
   if (q == nullptr) {
     return false;
   } else {
-    *input = absl::string_view(q, limit - q);
+    *input = StringPiece(q, limit - q);
     return true;
   }
 }
@@ -181,14 +180,14 @@ const char* GetVarint64Ptr(const char* p, const char* limit, uint64* value) {
   return nullptr;
 }
 
-bool GetVarint64(absl::string_view* input, uint64* value) {
+bool GetVarint64(StringPiece* input, uint64* value) {
   const char* p = input->data();
   const char* limit = p + input->size();
   const char* q = GetVarint64Ptr(p, limit, value);
   if (q == nullptr) {
     return false;
   } else {
-    *input = absl::string_view(q, limit - q);
+    *input = StringPiece(q, limit - q);
     return true;
   }
 }

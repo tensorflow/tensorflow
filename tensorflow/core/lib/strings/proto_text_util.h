@@ -16,7 +16,6 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_LIB_STRINGS_PROTO_TEXT_UTIL_H_
 #define TENSORFLOW_CORE_LIB_STRINGS_PROTO_TEXT_UTIL_H_
 
-#include "absl/strings/string_view.h"
 #include "tensorflow/core/lib/strings/numbers.h"
 #include "tensorflow/core/lib/strings/scanner.h"
 #include "tensorflow/core/lib/strings/str_util.h"
@@ -101,8 +100,7 @@ class ProtoTextOutput {
   }
 
  private:
-  void AppendFieldAndValue(const char field_name[],
-                           absl::string_view value_text) {
+  void AppendFieldAndValue(const char field_name[], StringPiece value_text) {
     StrAppend(output_, level_empty_ ? "" : field_separator_, indent_,
               field_name, kColonSeparator, value_text);
     level_empty_ = false;
@@ -133,7 +131,7 @@ inline void ProtoSpaceAndComments(Scanner* scanner) {
 // failed.
 template <typename T>
 bool ProtoParseNumericFromScanner(Scanner* scanner, T* value) {
-  absl::string_view numeric_str;
+  StringPiece numeric_str;
   scanner->RestartCapture();
   if (!scanner->Many(Scanner::LETTER_DIGIT_DOT_PLUS_MINUS)
            .GetResult(nullptr, &numeric_str)) {

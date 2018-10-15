@@ -16,7 +16,6 @@ limitations under the License.
 #include <algorithm>
 #include <vector>
 
-#include "absl/strings/string_view.h"
 #include "tensorflow/cc/framework/scope_internal.h"
 #include "tensorflow/core/common_runtime/shape_refiner.h"
 #include "tensorflow/core/framework/node_def_util.h"
@@ -248,7 +247,7 @@ std::unordered_set<string> Scope::Impl::GetColocationConstraints(
   std::vector<string> node_constraints;
   if (GetNodeAttr(attrs, kColocationAttrName, &node_constraints).ok()) {
     for (const string& entry : node_constraints) {
-      absl::string_view s(entry);
+      StringPiece s(entry);
       if (str_util::ConsumePrefix(&s, kColocationGroupPrefix)) {
         current_constraints.emplace(s);
       }

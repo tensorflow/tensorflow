@@ -23,7 +23,6 @@ limitations under the License.
 #include <unordered_set>
 #include <vector>
 
-#include "absl/strings/string_view.h"
 #include "tensorflow/core/common_runtime/costmodel_manager.h"
 #include "tensorflow/core/common_runtime/debugger_state_interface.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
@@ -66,8 +65,7 @@ class DirectSession : public Session {
   ~DirectSession() override;
 
   typedef std::vector<std::pair<string, Tensor>> NamedTensorList;
-  typedef std::unordered_map<absl::string_view, Node*, StringPieceHasher>
-      NameNodeMap;
+  typedef std::unordered_map<StringPiece, Node*, StringPieceHasher> NameNodeMap;
 
   ::tensorflow::Status Create(const GraphDef& graph) override;
   ::tensorflow::Status Extend(const GraphDef& graph) override;

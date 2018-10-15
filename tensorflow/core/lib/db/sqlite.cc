@@ -14,7 +14,6 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/lib/db/sqlite.h"
 
-#include "absl/strings/string_view.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/strings/stringprintf.h"
 
@@ -82,8 +81,7 @@ sqlite3_stmt* PrepareRawOrDie(sqlite3* db, const char* sql) {
   return stmt;
 }
 
-Status SetPragma(Sqlite* db, const char* pragma,
-                 const absl::string_view& value) {
+Status SetPragma(Sqlite* db, const char* pragma, const StringPiece& value) {
   if (value.empty()) return Status::OK();
   for (auto p = value.begin(); p < value.end(); ++p) {
     if (!(('0' <= *p && *p <= '9') || ('A' <= *p && *p <= 'Z') ||
@@ -98,9 +96,9 @@ Status SetPragma(Sqlite* db, const char* pragma,
   return stmt.Step(&unused_done);
 }
 
-const absl::string_view GetEnv(const char* var) {
+const StringPiece GetEnv(const char* var) {
   const char* val = std::getenv(var);
-  return (val == nullptr) ? absl::string_view() : absl::string_view(val);
+  return (val == nullptr) ? StringPiece() : StringPiece(val);
 }
 
 Status EnvPragma(Sqlite* db, const char* pragma, const char* var) {
@@ -162,7 +160,7 @@ Sqlite::~Sqlite() {
   CHECK_EQ(SQLITE_OK, sqlite3_close(db_));
 }
 
-Status Sqlite::Prepare(const absl::string_view& sql, SqliteStatement* stmt) {
+Status Sqlite::Prepare(const StringPiece& sql, SqliteStatement* stmt) {
   SqliteLock lock(*this);
   sqlite3_stmt* ps = nullptr;
   int rc = sqlite3_prepare_v2(db_, sql.data(), static_cast<int>(sql.size()),

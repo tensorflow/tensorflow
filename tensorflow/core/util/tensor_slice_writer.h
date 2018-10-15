@@ -21,12 +21,12 @@ limitations under the License.
 
 #include <unordered_map>
 
-#include "absl/strings/string_view.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_slice.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/platform/logging.h"
@@ -46,7 +46,7 @@ class TensorSliceWriter {
   class Builder {
    public:
     virtual ~Builder() {}
-    virtual void Add(absl::string_view key, absl::string_view value) = 0;
+    virtual void Add(StringPiece key, StringPiece value) = 0;
     virtual Status Finish(int64* file_size) = 0;
   };
   typedef std::function<Status(const string&, Builder**)> CreateBuilderFunction;

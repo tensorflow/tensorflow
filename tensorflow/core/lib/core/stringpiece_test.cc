@@ -13,8 +13,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "tensorflow/core/lib/core/stringpiece.h"
+
 #include <unordered_map>
-#include "absl/strings/string_view.h"
 #include "tensorflow/core/platform/test.h"
 
 namespace tensorflow {
@@ -23,24 +24,24 @@ TEST(StringPiece, Ctor) {
   {
     // const char* without size.
     const char* hello = "hello";
-    absl::string_view s20(hello);
+    StringPiece s20(hello);
     EXPECT_TRUE(s20.data() == hello);
     EXPECT_EQ(5, s20.size());
 
     // const char* with size.
-    absl::string_view s21(hello, 4);
+    StringPiece s21(hello, 4);
     EXPECT_TRUE(s21.data() == hello);
     EXPECT_EQ(4, s21.size());
 
     // Not recommended, but valid C++
-    absl::string_view s22(hello, 6);
+    StringPiece s22(hello, 6);
     EXPECT_TRUE(s22.data() == hello);
     EXPECT_EQ(6, s22.size());
   }
 
   {
     string hola = "hola";
-    absl::string_view s30(hola);
+    StringPiece s30(hola);
     EXPECT_TRUE(s30.data() == hola.data());
     EXPECT_EQ(4, s30.size());
 
@@ -48,15 +49,15 @@ TEST(StringPiece, Ctor) {
     hola.push_back('\0');
     hola.append("h2");
     hola.push_back('\0');
-    absl::string_view s31(hola);
+    StringPiece s31(hola);
     EXPECT_TRUE(s31.data() == hola.data());
     EXPECT_EQ(8, s31.size());
   }
 }
 
 TEST(StringPiece, ConversionToString) {
-  EXPECT_EQ("", string(absl::string_view("")));
-  EXPECT_EQ("foo", string(absl::string_view("foo")));
+  EXPECT_EQ("", string(StringPiece("")));
+  EXPECT_EQ("foo", string(StringPiece("foo")));
 }
 
 }  // namespace tensorflow

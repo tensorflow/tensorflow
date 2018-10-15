@@ -15,7 +15,6 @@ limitations under the License.
 
 #include "tensorflow/core/lib/io/record_writer.h"
 
-#include "absl/strings/string_view.h"
 #include "tensorflow/core/lib/core/coding.h"
 #include "tensorflow/core/lib/hash/crc32c.h"
 #include "tensorflow/core/lib/io/compression.h"
@@ -89,7 +88,7 @@ RecordWriter::~RecordWriter() {
   }
 }
 
-Status RecordWriter::WriteRecord(absl::string_view data) {
+Status RecordWriter::WriteRecord(StringPiece data) {
   if (dest_ == nullptr) {
     return Status(::tensorflow::error::FAILED_PRECONDITION,
                   "Writer not initialized or previously closed");
@@ -103,9 +102,9 @@ Status RecordWriter::WriteRecord(absl::string_view data) {
   char footer[kFooterSize];
   PopulateHeader(header, data.data(), data.size());
   PopulateFooter(footer, data.data(), data.size());
-  TF_RETURN_IF_ERROR(dest_->Append(absl::string_view(header, sizeof(header))));
+  TF_RETURN_IF_ERROR(dest_->Append(StringPiece(header, sizeof(header))));
   TF_RETURN_IF_ERROR(dest_->Append(data));
-  return dest_->Append(absl::string_view(footer, sizeof(footer)));
+  return dest_->Append(StringPiece(footer, sizeof(footer)));
 }
 
 Status RecordWriter::Close() {

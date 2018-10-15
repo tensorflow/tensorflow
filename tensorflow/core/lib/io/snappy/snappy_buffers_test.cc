@@ -13,7 +13,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "absl/strings/string_view.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/io/inputbuffer.h"
 #include "tensorflow/core/lib/io/snappy/snappy_inputbuffer.h"
@@ -69,7 +68,7 @@ Status TestMultipleWrites(size_t compress_input_buf_size,
                              compress_output_buf_size);
 
   for (int i = 0; i < num_writes; i++) {
-    TF_RETURN_IF_ERROR(out.Write(absl::string_view(data)));
+    TF_RETURN_IF_ERROR(out.Write(StringPiece(data)));
     if (with_flush) {
       TF_RETURN_IF_ERROR(out.Flush());
     }
@@ -88,7 +87,7 @@ Status TestMultipleWrites(size_t compress_input_buf_size,
     std::unique_ptr<RandomAccessFile> file_reader;
     TF_RETURN_IF_ERROR(env->NewRandomAccessFile(fname, &file_reader));
 
-    absl::string_view data;
+    StringPiece data;
     size_t file_pos = 0;
     size_t bytes_to_read = 256;
     char* scratch = new char[bytes_to_read];
@@ -98,14 +97,14 @@ Status TestMultipleWrites(size_t compress_input_buf_size,
     while ((file_reader->Read(file_pos, bytes_to_read, &data, scratch)).ok()) {
       file_pos += data.size();
       TF_CHECK_OK(
-          corrupt_file_writer->Append(absl::string_view(buffer, buffer_size)));
+          corrupt_file_writer->Append(StringPiece(buffer, buffer_size)));
       memcpy(buffer, data.data(), data.size());
       buffer_size = data.size();
     }
 
     // Drop the last byte. File is now corrupt.
-    TF_CHECK_OK(corrupt_file_writer->Append(
-        absl::string_view(buffer, buffer_size - 1)));
+    TF_CHECK_OK(
+        corrupt_file_writer->Append(StringPiece(buffer, buffer_size - 1)));
     TF_CHECK_OK(corrupt_file_writer->Flush());
     TF_CHECK_OK(corrupt_file_writer->Close());
     delete[] scratch;
@@ -137,7 +136,7 @@ Status TestMultipleWrites(size_t compress_input_buf_size,
 
 static bool SnappyCompressionSupported() {
   string out;
-  absl::string_view in = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+  StringPiece in = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
   return port::Snappy_Compress(in.data(), in.size(), &out);
 }
 

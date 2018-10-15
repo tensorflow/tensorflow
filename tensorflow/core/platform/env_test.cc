@@ -17,10 +17,10 @@ limitations under the License.
 
 #include <sys/stat.h>
 
-#include "absl/strings/string_view.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
+#include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
@@ -75,7 +75,7 @@ TEST_F(DefaultEnvTest, IncompleteReadOutOfRange) {
   TF_EXPECT_OK(env_->NewRandomAccessFile(filename, &f));
 
   // Reading past EOF should give an OUT_OF_RANGE error
-  absl::string_view result;
+  StringPiece result;
   char scratch[3];
   EXPECT_EQ(error::OUT_OF_RANGE, f->Read(0, 3, &result, scratch).code());
   EXPECT_EQ(input, result);
@@ -280,7 +280,7 @@ TEST_F(DefaultEnvTest, SleepForMicroseconds) {
 class TmpDirFileSystem : public NullFileSystem {
  public:
   Status FileExists(const string& dir) override {
-    absl::string_view scheme, host, path;
+    StringPiece scheme, host, path;
     io::ParseURI(dir, &scheme, &host, &path);
     if (path.empty()) return errors::NotFound(dir, " not found");
     // The special "flushed" file exists only if the filesystem's caches have
@@ -296,7 +296,7 @@ class TmpDirFileSystem : public NullFileSystem {
   }
 
   Status CreateDir(const string& dir) override {
-    absl::string_view scheme, host, path;
+    StringPiece scheme, host, path;
     io::ParseURI(dir, &scheme, &host, &path);
     if (scheme != "tmpdirfs") {
       return errors::FailedPrecondition("scheme must be tmpdirfs");
@@ -359,7 +359,7 @@ TEST_F(DefaultEnvTest, LocalTempFilename) {
   // Read from the temporary file and check content.
   std::unique_ptr<RandomAccessFile> file_to_read;
   TF_CHECK_OK(env->NewRandomAccessFile(filename, &file_to_read));
-  absl::string_view content;
+  StringPiece content;
   char scratch[1024];
   CHECK_EQ(error::OUT_OF_RANGE,
            file_to_read->Read(0 /* offset */, 1024 /* n */, &content, scratch)

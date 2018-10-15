@@ -20,7 +20,6 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "absl/strings/string_view.h"
 #include "tensorflow/core/framework/common_shape_fns.h"
 #include "tensorflow/core/framework/function.pb_text.h"
 #include "tensorflow/core/framework/graph.pb.h"
@@ -505,9 +504,9 @@ string Print(const NodeDef& n) {
     strings::StrAppend(&out, "[", str_util::Join(entries, ", "), "]");
   }
   strings::StrAppend(&out, "(");
-  std::vector<absl::string_view> dat;
+  std::vector<StringPiece> dat;
   std::vector<string> dep;
-  for (absl::string_view s : n.input()) {
+  for (StringPiece s : n.input()) {
     if (str_util::ConsumePrefix(&s, "^")) {
       dep.emplace_back(s);
     } else {
@@ -648,7 +647,7 @@ Status InstantiateFunction(const FunctionDef& fdef, AttrSlice attr_values,
     }
   }
 
-  auto substitute = [attr_values](absl::string_view name, AttrValue* val) {
+  auto substitute = [attr_values](StringPiece name, AttrValue* val) {
     if (const AttrValue* v = attr_values.Find(name)) {
       *val = *v;
       return true;
@@ -1193,8 +1192,7 @@ Status FunctionLibraryDefinition::LookUp(
   return default_registry_->LookUp(op, op_reg_data);
 }
 
-string FunctionLibraryDefinition::UniqueFunctionName(
-    absl::string_view prefix) const {
+string FunctionLibraryDefinition::UniqueFunctionName(StringPiece prefix) const {
   tf_shared_lock l(mu_);
   int index = 0;
   string name = strings::StrCat(prefix, index);
@@ -1272,8 +1270,7 @@ GET_ATTR(string)
 GET_ATTR(bool)
 #undef GET_ATTR
 
-void FunctionDefHelper::AttrValueWrapper::InitFromString(
-    absl::string_view val) {
+void FunctionDefHelper::AttrValueWrapper::InitFromString(StringPiece val) {
   if (val.size() >= 2 && val[0] == '$') {
     proto.set_placeholder(val.data() + 1, val.size() - 1);
   } else {

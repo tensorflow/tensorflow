@@ -15,7 +15,6 @@ limitations under the License.
 
 #include "tensorflow/core/lib/io/zlib_outputbuffer.h"
 
-#include "absl/strings/string_view.h"
 #include "tensorflow/core/lib/core/errors.h"
 
 namespace tensorflow {
@@ -73,7 +72,7 @@ int32 ZlibOutputBuffer::AvailableInputSpace() const {
   return input_buffer_capacity_ - z_stream_->avail_in;
 }
 
-void ZlibOutputBuffer::AddToInputBuffer(absl::string_view data) {
+void ZlibOutputBuffer::AddToInputBuffer(StringPiece data) {
   size_t bytes_to_write = data.size();
   CHECK_LE(bytes_to_write, AvailableInputSpace());
 
@@ -133,7 +132,7 @@ Status ZlibOutputBuffer::DeflateBuffered(bool last) {
 Status ZlibOutputBuffer::FlushOutputBufferToFile() {
   uint32 bytes_to_write = output_buffer_capacity_ - z_stream_->avail_out;
   if (bytes_to_write > 0) {
-    Status s = file_->Append(absl::string_view(
+    Status s = file_->Append(StringPiece(
         reinterpret_cast<char*>(z_stream_output_.get()), bytes_to_write));
     if (s.ok()) {
       z_stream_->next_out = z_stream_output_.get();
@@ -144,7 +143,7 @@ Status ZlibOutputBuffer::FlushOutputBufferToFile() {
   return Status::OK();
 }
 
-Status ZlibOutputBuffer::Append(absl::string_view data) {
+Status ZlibOutputBuffer::Append(StringPiece data) {
   // If there is sufficient free space in z_stream_input_ to fit data we
   // add it there and return.
   // If there isn't enough space we deflate the existing contents of

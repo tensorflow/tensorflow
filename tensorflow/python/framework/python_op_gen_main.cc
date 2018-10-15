@@ -13,7 +13,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "absl/strings/string_view.h"
 #include "tensorflow/python/framework/python_op_gen.h"
 
 #include <memory>
@@ -48,8 +47,8 @@ Status ReadOpListFromFile(const string& filename,
     // The parser assumes that the op name is the first string on each
     // line with no preceding whitespace, and ignores lines that do
     // not start with an op name as a comment.
-    strings::Scanner scanner{absl::string_view(line_contents)};
-    absl::string_view op_name;
+    strings::Scanner scanner{StringPiece(line_contents)};
+    StringPiece op_name;
     if (scanner.One(strings::Scanner::LETTER_DIGIT_DOT)
             .Any(strings::Scanner::LETTER_DIGIT_DASH_DOT_SLASH_UNDERSCORE)
             .GetResult(nullptr, &op_name)) {
@@ -90,7 +89,7 @@ Status ParseOpListCommandLine(const char* arg, std::vector<string>* op_list) {
 // Returns an empty string if the current executable's name does not
 // follow a known pattern.
 string InferSourceFileName(const char* argv_zero) {
-  absl::string_view command_str = io::Basename(argv_zero);
+  StringPiece command_str = io::Basename(argv_zero);
 
   // For built-in ops, the Bazel build creates a separate executable
   // with the name gen_<op type>_ops_py_wrappers_cc containing the

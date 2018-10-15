@@ -15,7 +15,6 @@ limitations under the License.
 
 #include "tensorflow/core/grappler/optimizers/data/graph_test_utils.h"
 
-#include "absl/strings/string_view.h"
 #include "tensorflow/core/framework/function_testlib.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
@@ -26,8 +25,8 @@ namespace tensorflow {
 namespace grappler {
 namespace graph_tests_utils {
 
-NodeDef MakeMapNode(absl::string_view name, absl::string_view input_node_name,
-                    absl::string_view function_name) {
+NodeDef MakeMapNode(StringPiece name, StringPiece input_node_name,
+                    StringPiece function_name) {
   return test::function::NDef(
       name, "MapDataset", {string(input_node_name)},
       {{"f", FunctionDefHelper::FunctionRef(string(function_name))},
@@ -36,9 +35,8 @@ NodeDef MakeMapNode(absl::string_view name, absl::string_view input_node_name,
        {"output_types", gtl::ArraySlice<DataType>{}}});
 }
 
-NodeDef MakeFilterNode(absl::string_view name,
-                       absl::string_view input_node_name,
-                       absl::string_view function_name) {
+NodeDef MakeFilterNode(StringPiece name, StringPiece input_node_name,
+                       StringPiece function_name) {
   return test::function::NDef(
       name, "FilterDataset", {string(input_node_name)},
       {{"predicate", FunctionDefHelper::FunctionRef(string(function_name))},
@@ -47,12 +45,11 @@ NodeDef MakeFilterNode(absl::string_view name,
        {"output_types", gtl::ArraySlice<TensorShape>{}}});
 }
 
-NodeDef MakeMapAndBatchNode(absl::string_view name,
-                            absl::string_view input_node_name,
-                            absl::string_view batch_size_node_name,
-                            absl::string_view num_parallel_calls_node_name,
-                            absl::string_view drop_remainder_node_name,
-                            absl::string_view function_name) {
+NodeDef MakeMapAndBatchNode(StringPiece name, StringPiece input_node_name,
+                            StringPiece batch_size_node_name,
+                            StringPiece num_parallel_calls_node_name,
+                            StringPiece drop_remainder_node_name,
+                            StringPiece function_name) {
   return test::function::NDef(
       name, "MapAndBatchDatasetV2",
       {string(input_node_name), "", string(batch_size_node_name),

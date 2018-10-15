@@ -21,7 +21,6 @@ limitations under the License.
 #include <memory>
 #include <unordered_map>
 
-#include "absl/strings/string_view.h"
 #include "tensorflow/c/c_api.h"
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/eager/kernel_and_device.h"
@@ -95,7 +94,7 @@ class AttrBuilder {
   AttrBuilder& NumInputs(int n);
 
   template <class T>
-  AttrBuilder& Set(absl::string_view attr_name, T&& value) {
+  AttrBuilder& Set(StringPiece attr_name, T&& value) {
     MayBeInitializeNodeDef();
     SetInAttrValueMap(node_def_->mutable_attr(), attr_name, value);
     return *this;
@@ -108,8 +107,7 @@ class AttrBuilder {
 
  private:
   template <class T>
-  using AttrVec =
-      tensorflow::gtl::InlinedVector<std::pair<absl::string_view, T>, 2>;
+  using AttrVec = tensorflow::gtl::InlinedVector<std::pair<StringPiece, T>, 2>;
 
   void MayBeInitializeNodeDef();
   // Fill `m` with the attr-value pairs set via AttrBuilder::Set() so far, as
@@ -121,7 +119,7 @@ class AttrBuilder {
   void FillAttrValueMap(AttrValueMap* m, bool include_those_in_node_def) const;
 
   template <class T>
-  void SetInAttrValueMap(AttrValueMap* m, absl::string_view attr_name,
+  void SetInAttrValueMap(AttrValueMap* m, StringPiece attr_name,
                          T&& value) const {
     DCHECK(!node_def_finalized_)
         << "Calling SetInAttrValueMap after BuildNodeDef.";
@@ -150,14 +148,15 @@ class AttrBuilder {
 };  // namespace tensorflow
 
 template <>
-AttrBuilder& AttrBuilder::Set(absl::string_view attr_name, int&& value);
+AttrBuilder& AttrBuilder::Set(StringPiece attr_name, int&& value);
 template <>
-AttrBuilder& AttrBuilder::Set(absl::string_view attr_name, float&& value);
+AttrBuilder& AttrBuilder::Set(StringPiece attr_name, float&& value);
 template <>
-AttrBuilder& AttrBuilder::Set(absl::string_view attr_name, bool&& value);
+AttrBuilder& AttrBuilder::Set(StringPiece attr_name, bool&& value);
 template <>
-AttrBuilder& AttrBuilder::Set(absl::string_view attr_name,
+AttrBuilder& AttrBuilder::Set(StringPiece attr_name,
                               tensorflow::DataType&& value);
+
 
 }  // namespace tensorflow
 

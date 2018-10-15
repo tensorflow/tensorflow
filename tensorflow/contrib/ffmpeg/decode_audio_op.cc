@@ -18,7 +18,6 @@
 #include <cstdio>
 #include <set>
 
-#include "absl/strings/string_view.h"
 #include "tensorflow/contrib/ffmpeg/ffmpeg_lib.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
@@ -42,7 +41,8 @@ const char* kValidFileFormats[] = {"mp3", "mp4", "ogg", "wav"};
  * Decoding implementation, shared across V1 and V2 ops. Creates a new
  * output in the context.
  */
-void Decode(OpKernelContext* context, const absl::string_view& file_contents,
+void Decode(OpKernelContext* context,
+            const tensorflow::StringPiece& file_contents,
             const string& file_format, const int32 samples_per_second,
             const int32 channel_count, const string& stream) {
   // Write the input data to a temp file.
@@ -135,7 +135,7 @@ class DecodeAudioOpV2 : public OpKernel {
                     "channel_count must be a rank-0 tensor but got shape ",
                     channel_count_tensor.shape().DebugString()));
 
-    const absl::string_view contents = contents_tensor.scalar<string>()();
+    const tensorflow::StringPiece contents = contents_tensor.scalar<string>()();
     const string file_format =
         str_util::Lowercase(file_format_tensor.scalar<string>()());
     const int32 samples_per_second =
@@ -245,7 +245,7 @@ class DecodeAudioOp : public OpKernel {
         errors::InvalidArgument("contents must be scalar but got shape ",
                                 contents.shape().DebugString()));
 
-    const absl::string_view file_contents = contents.scalar<string>()();
+    const tensorflow::StringPiece file_contents = contents.scalar<string>()();
     Decode(context, file_contents, file_format_, samples_per_second_,
            channel_count_, "");
   }

@@ -13,7 +13,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "absl/strings/string_view.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/kernels/data/dataset.h"
 #include "tensorflow/core/kernels/data/dataset_utils.h"
@@ -37,8 +36,7 @@ class ToTFRecordOp : public AsyncOpKernel {
 
   template <typename T>
   Status ParseScalarArgument(OpKernelContext* ctx,
-                             const absl::string_view& argument_name,
-                             T* output) {
+                             const StringPiece& argument_name, T* output) {
     const Tensor* argument_t;
     TF_RETURN_IF_ERROR(ctx->input(argument_name, &argument_t));
     if (!TensorShapeUtils::IsScalar(argument_t->shape())) {

@@ -17,12 +17,12 @@ limitations under the License.
 
 #include <string>
 
-#include "absl/strings/string_view.h"
 #include "tensorflow/core/framework/kernel_def_builder.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 
 namespace tensorflow {
@@ -36,11 +36,11 @@ namespace {
 template <typename Predicate>
 std::vector<StringPiece> SplitOnChar(const string& str, const char delim,
                                      Predicate p) {
-  std::vector<absl::string_view> result;
-  absl::string_view text(str);
+  std::vector<StringPiece> result;
+  StringPiece text(str);
   auto f = text.find(delim);
-  while (f != absl::string_view::npos) {
-    absl::string_view token = text.substr(0, f);
+  while (f != StringPiece::npos) {
+    StringPiece token = text.substr(0, f);
     if (p(token)) {
       result.emplace_back(token);
     }
@@ -60,14 +60,13 @@ std::vector<StringPiece> SplitOnChar(const string& str, const char delim,
 template <typename Predicate>
 std::vector<StringPiece> SplitOnCharSet(const string& str,
                                         const string& delim_set, Predicate p) {
-  std::vector<absl::string_view> result;
-  absl::string_view text(str);
-  absl::string_view delims(delim_set);
+  std::vector<StringPiece> result;
+  StringPiece text(str);
+  StringPiece delims(delim_set);
   size_t token_start = 0;
   for (size_t i = 0; i < text.size() + 1; i++) {
-    if ((i == text.size()) ||
-        (delims.find(text[i]) != absl::string_view::npos)) {
-      absl::string_view token(text.data() + token_start, i - token_start);
+    if ((i == text.size()) || (delims.find(text[i]) != StringPiece::npos)) {
+      StringPiece token(text.data() + token_start, i - token_start);
       if (p(token)) {
         result.emplace_back(token);
       }
@@ -84,13 +83,13 @@ template <typename Predicate>
 std::vector<StringPiece> Split(const string& str, const string& delimiter,
                                Predicate predicate) {
   if (str.empty()) {
-    return std::vector<absl::string_view>();
+    return std::vector<StringPiece>();
   }
   if (delimiter.empty()) {
-    std::vector<absl::string_view> result;
+    std::vector<StringPiece> result;
     result.resize(str.size());
     for (size_t i = 0; i < str.size(); ++i) {
-      result[i] = absl::string_view(str.data() + i, 1);
+      result[i] = StringPiece(str.data() + i, 1);
     }
     return result;
   }
@@ -100,8 +99,8 @@ std::vector<StringPiece> Split(const string& str, const string& delimiter,
   return SplitOnCharSet(str, delimiter, predicate);
 }
 
-std::vector<absl::string_view> SplitV2(const string& str, absl::string_view sep,
-                                       int maxsplit) {
+std::vector<StringPiece> SplitV2(const string& str, StringPiece sep,
+                                 int maxsplit) {
   // This SplitV2 method matches the behavior of python's str.split:
   //   If sep is given, consecutive delimiters are not grouped together
   //   and are deemed to delimit empty strings (for example, '1,,2'.split(',')
@@ -116,16 +115,16 @@ std::vector<absl::string_view> SplitV2(const string& str, absl::string_view sep,
   //   splitting an empty string or a string consisting of just whitespace
   //   with a None separator returns [].
 
-  std::vector<absl::string_view> result;
+  std::vector<StringPiece> result;
 
-  absl::string_view text(str);
+  StringPiece text(str);
   if (maxsplit == 0) {
     result.emplace_back(text);
     return result;
   }
 
   if (sep.empty()) {
-    absl::string_view token;
+    StringPiece token;
     // Remove leading whitespaces.
     str_util::RemoveLeadingWhitespace(&text);
     int split = 0;
@@ -143,13 +142,13 @@ std::vector<absl::string_view> SplitV2(const string& str, absl::string_view sep,
   auto p = std::search(text.begin(), text.end(), sep.begin(), sep.end());
   int split = 0;
   while (p != text.end()) {
-    absl::string_view token = text.substr(0, p - text.begin());
+    StringPiece token = text.substr(0, p - text.begin());
     result.push_back(token);
     text.remove_prefix(token.size());
     text.remove_prefix(sep.size());
     ++split;
     if (maxsplit > 0 && split == maxsplit) {
-      result.push_back(absl::string_view(text));
+      result.push_back(StringPiece(text));
       return result;
     }
     p = std::search(text.begin(), text.end(), sep.begin(), sep.end());
@@ -191,7 +190,7 @@ class StringSplitOp : public OpKernel {
     const auto delimiter_vec = delimiter_tensor->flat<string>();
     const string& delimiter = delimiter_vec(0);
     // Empty delimiter means split the input character by character.
-    std::vector<absl::string_view> tokens;
+    std::vector<StringPiece> tokens;
     // Guess that we'll be unpacking a handful of tokens per example.
     static constexpr int kReserveSize = 4;
     tokens.reserve(batch_size * kReserveSize);
@@ -200,7 +199,7 @@ class StringSplitOp : public OpKernel {
     int64 max_num_entries = 0;
     std::vector<int64> num_indices(batch_size);
     for (int64 i = 0; i < batch_size; ++i) {
-      std::vector<absl::string_view> parts =
+      std::vector<StringPiece> parts =
           skip_empty_ ? Split(input_vec(i), delimiter, str_util::SkipEmpty())
                       : Split(input_vec(i), delimiter, str_util::AllowEmpty());
       int64 n_entries = parts.size();
@@ -263,8 +262,8 @@ class StringSplitV2Op : public OpKernel {
                 errors::InvalidArgument("sep must be a scalar, got shape: ",
                                         sep_tensor->shape().DebugString()));
     const auto sep_vec = sep_tensor->flat<string>();
-    absl::string_view sep(sep_vec(0));
-    std::vector<absl::string_view> tokens;
+    StringPiece sep(sep_vec(0));
+    std::vector<StringPiece> tokens;
     // Guess that we'll be unpacking a handful of tokens per example.
     static constexpr int kReserveSize = 4;
     tokens.reserve(batch_size * kReserveSize);
@@ -273,8 +272,7 @@ class StringSplitV2Op : public OpKernel {
     int64 max_num_entries = 0;
     std::vector<int64> num_indices(batch_size);
     for (int64 i = 0; i < batch_size; ++i) {
-      std::vector<absl::string_view> parts =
-          SplitV2(input_vec(i), sep, maxsplit_);
+      std::vector<StringPiece> parts = SplitV2(input_vec(i), sep, maxsplit_);
       int64 n_entries = parts.size();
       num_indices[i] = n_entries;
       output_size += n_entries;

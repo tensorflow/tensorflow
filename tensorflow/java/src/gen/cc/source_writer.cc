@@ -17,7 +17,6 @@ limitations under the License.
 #include <algorithm>
 #include <list>
 
-#include "absl/strings/string_view.h"
 #include "tensorflow/java/src/gen/cc/source_writer.h"
 
 namespace tensorflow {
@@ -49,7 +48,7 @@ SourceWriter& SourceWriter::Prefix(const char* line_prefix) {
   return *this;
 }
 
-SourceWriter& SourceWriter::Write(const absl::string_view& str) {
+SourceWriter& SourceWriter::Write(const StringPiece& str) {
   size_t line_pos = 0;
   do {
     size_t start_pos = line_pos;
@@ -72,7 +71,7 @@ SourceWriter& SourceWriter::WriteFromFile(const string& fname, Env* env) {
   return Write(data_);
 }
 
-SourceWriter& SourceWriter::Append(const absl::string_view& str) {
+SourceWriter& SourceWriter::Append(const StringPiece& str) {
   if (!str.empty()) {
     if (newline_) {
       DoAppend(left_margin_ + line_prefix_);

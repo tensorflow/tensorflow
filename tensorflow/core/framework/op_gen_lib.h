@@ -18,10 +18,10 @@ limitations under the License.
 
 #include <string>
 #include <unordered_map>
-#include "absl/strings/string_view.h"
 #include "tensorflow/core/framework/api_def.pb.h"
 #include "tensorflow/core/framework/op_def.pb.h"
 #include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/platform/env.h"
 
 namespace tensorflow {
@@ -35,17 +35,17 @@ inline string Spaces(int n) { return string(n, ' '); }
 // after the first by prefix.size() spaces.  Intended use case is something
 // like prefix = "  Foo(" and str is a list of arguments (terminated by a ")").
 // TODO(josh11b): Option to wrap on ", " instead of " " when possible.
-string WordWrap(absl::string_view prefix, absl::string_view str, int width);
+string WordWrap(StringPiece prefix, StringPiece str, int width);
 
 // Looks for an "=" at the beginning of *description.  If found, strips it off
 // (and any following spaces) from *description and return true.  Otherwise
 // returns false.
-bool ConsumeEquals(absl::string_view* description);
+bool ConsumeEquals(StringPiece* description);
 
 // Convert text-serialized protobufs to/from multiline format.
-string PBTxtToMultiline(absl::string_view pbtxt,
+string PBTxtToMultiline(StringPiece pbtxt,
                         const std::vector<string>& multi_line_fields);
-string PBTxtFromMultiline(absl::string_view multiline_pbtxt);
+string PBTxtFromMultiline(StringPiece multiline_pbtxt);
 
 // Takes a list of files with ApiDefs text protos, and allows you to
 // look up the specific ApiDef for any given op.

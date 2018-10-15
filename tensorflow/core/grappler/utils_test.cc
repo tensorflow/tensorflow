@@ -14,7 +14,6 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/core/grappler/utils.h"
-#include "absl/strings/string_view.h"
 #include "tensorflow/cc/ops/standard_ops.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/grappler/grappler_item.h"
@@ -372,17 +371,16 @@ BM_NodePositionIfSameNode("^foo/bar/baz", "foo/bar/baz", Match_Ctrl);
 BM_NodePositionIfSameNode("blah", "foo/bar/baz", NoMatch_0);
 BM_NodePositionIfSameNode("foo/bar/baz/gnu", "foo/bar/baz", NoMatch_end);
 
-#define BM_ParseNodeNameAsStringPiece(I, NAME)                  \
-  static void BM_ParseNodeNameAsStringPiece_##NAME(int iters) { \
-    string input = I;                                           \
-    for (int i = 0; i < iters; ++i) {                           \
-      int position;                                             \
-      const absl::string_view name =                            \
-          ParseNodeNameAsStringPiece(input, &position);         \
-      CHECK_GE(position, -1);                                   \
-      CHECK(!name.empty());                                     \
-    }                                                           \
-  }                                                             \
+#define BM_ParseNodeNameAsStringPiece(I, NAME)                               \
+  static void BM_ParseNodeNameAsStringPiece_##NAME(int iters) {              \
+    string input = I;                                                        \
+    for (int i = 0; i < iters; ++i) {                                        \
+      int position;                                                          \
+      const StringPiece name = ParseNodeNameAsStringPiece(input, &position); \
+      CHECK_GE(position, -1);                                                \
+      CHECK(!name.empty());                                                  \
+    }                                                                        \
+  }                                                                          \
   BENCHMARK(BM_ParseNodeNameAsStringPiece_##NAME)
 
 BM_ParseNodeNameAsStringPiece("foo", foo);

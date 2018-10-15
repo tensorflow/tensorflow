@@ -21,7 +21,6 @@ limitations under the License.
 #include <string>
 #include <vector>
 
-#include "absl/strings/string_view.h"
 #include "tensorflow/c/c_api.h"
 #include "tensorflow/c/c_api_internal.h"
 #include "tensorflow/c/eager/c_api_internal.h"
@@ -47,6 +46,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/lib/core/refcount.h"
+#include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/gtl/cleanup.h"
 #include "tensorflow/core/lib/gtl/flatmap.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
@@ -526,7 +526,8 @@ TF_AttrType TFE_OpNameGetAttrType(TFE_Context* ctx,
 void TFE_OpSetAttrString(TFE_Op* op, const char* attr_name, const void* value,
                          size_t length) {
   op->operation.MutableAttrs()->Set(
-      attr_name, absl::string_view(static_cast<const char*>(value), length));
+      attr_name,
+      tensorflow::StringPiece(static_cast<const char*>(value), length));
 }
 
 void TFE_OpSetAttrInt(TFE_Op* op, const char* attr_name, int64_t value) {
@@ -595,9 +596,10 @@ void TFE_OpSetAttrTensor(TFE_Op* op, const char* attr_name, TF_Tensor* tensor,
 void TFE_OpSetAttrStringList(TFE_Op* op, const char* attr_name,
                              const void* const* values, const size_t* lengths,
                              int num_values) {
-  std::vector<absl::string_view> v(num_values);
+  std::vector<tensorflow::StringPiece> v(num_values);
   for (int i = 0; i < num_values; ++i) {
-    v[i] = absl::string_view(static_cast<const char*>(values[i]), lengths[i]);
+    v[i] = tensorflow::StringPiece(static_cast<const char*>(values[i]),
+                                   lengths[i]);
   }
   op->operation.MutableAttrs()->Set(attr_name, v);
 }

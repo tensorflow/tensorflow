@@ -15,7 +15,6 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/eager/context.h"
 
-#include "absl/strings/string_view.h"
 #include "tensorflow/core/common_runtime/device_set.h"
 #include "tensorflow/core/common_runtime/process_util.h"
 #include "tensorflow/core/framework/resource_mgr.h"
@@ -25,7 +24,7 @@ limitations under the License.
 namespace tensorflow {
 namespace {
 
-bool ReadBoolFromEnvVar(absl::string_view env_var_name, bool default_val) {
+bool ReadBoolFromEnvVar(StringPiece env_var_name, bool default_val) {
   bool val;
   if (tensorflow::ReadBoolFromEnvVar(env_var_name, default_val, &val).ok()) {
     return val;

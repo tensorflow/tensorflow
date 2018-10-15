@@ -14,7 +14,6 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/framework/shape_inference_testutil.h"
 
-#include "absl/strings/string_view.h"
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
@@ -87,7 +86,7 @@ Status ShapeInferenceTestutil::InferShapes(ShapeInferenceTestOp op,
                    " but should list ", num_outputs);
   }
   for (int i = 0; i < num_outputs; ++i) {
-    absl::string_view expected(expected_outs_v[i]);
+    StringPiece expected(expected_outs_v[i]);
     shape_inference::ShapeHandle out = c.output(i);
 
     string err_prefix = strings::StrCat("Output ", i);
@@ -154,7 +153,7 @@ Status ShapeInferenceTestutil::InferShapes(ShapeInferenceTestOp op,
     }
     for (int j = 0; j < expected_dims.size(); ++j) {
       err_prefix = strings::StrCat("Output dim ", i, ",", j);
-      absl::string_view expected_dim(expected_dims[j]);
+      StringPiece expected_dim(expected_dims[j]);
       DimensionHandle out_dim = c.Dim(out, j);
 
       std::pair<int, int> in_dim_idx(-1, -1);
@@ -246,7 +245,7 @@ Status ShapeInferenceTestutil::MakeShapeFromString(
       dims.push_back(manager->MakeDim(InferenceContext::kUnknownDim));
     } else {
       scanner.RestartCapture().Many(strings::Scanner::DIGIT);
-      absl::string_view match;
+      StringPiece match;
       int64 dim_size = 0;
 
       if (!scanner.GetResult(nullptr, &match) ||

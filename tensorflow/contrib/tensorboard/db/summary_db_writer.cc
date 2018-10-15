@@ -16,12 +16,12 @@ limitations under the License.
 
 #include <deque>
 
-#include "absl/strings/string_view.h"
 #include "tensorflow/contrib/tensorboard/db/summary_converter.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/summary.pb.h"
+#include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/db/sqlite.h"
 #include "tensorflow/core/lib/random/random.h"
 #include "tensorflow/core/util/event.pb.h"
@@ -136,7 +136,7 @@ void PatchPluginName(SummaryMetadata* metadata, const char* name) {
   }
 }
 
-Status SetDescription(Sqlite* db, int64 id, const absl::string_view& markdown) {
+Status SetDescription(Sqlite* db, int64 id, const StringPiece& markdown) {
   const char* sql = R"sql(
     INSERT OR REPLACE INTO Descriptions (id, description) VALUES (?, ?)
   )sql";
@@ -260,12 +260,12 @@ class GraphWriter {
     for (int node_id = 0; node_id < graph_->node_size(); ++node_id) {
       const NodeDef& node = graph_->node(node_id);
       for (int idx = 0; idx < node.input_size(); ++idx) {
-        absl::string_view name = node.input(idx);
+        StringPiece name = node.input(idx);
         int64 input_node_id;
         int64 input_node_idx = 0;
         int64 is_control = 0;
         size_t i = name.rfind(':');
-        if (i != absl::string_view::npos) {
+        if (i != StringPiece::npos) {
           if (!strings::safe_strto64(name.substr(i + 1, name.size() - i - 1),
                                      &input_node_idx)) {
             return errors::DataLoss("Bad NodeDef.input: ", name);
@@ -369,8 +369,7 @@ class GraphWriter {
   const uint64 now_;
   const int64 graph_id_;
   std::vector<string> name_copies_;
-  std::unordered_map<absl::string_view, int64, StringPieceHasher>
-      name_to_node_id_;
+  std::unordered_map<StringPiece, int64, StringPieceHasher> name_to_node_id_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(GraphWriter);
 };
@@ -681,7 +680,7 @@ class SeriesWriter {
       } else {
         SqliteTransaction txn(*db);
         TF_RETURN_IF_ERROR(
-            Update(db, step, computed_time, t, absl::string_view(), rowid));
+            Update(db, step, computed_time, t, StringPiece(), rowid));
         TF_RETURN_IF_ERROR(UpdateNdString(db, t, rowid));
         return txn.Commit();
       }
@@ -691,7 +690,7 @@ class SeriesWriter {
   }
 
   Status Update(Sqlite* db, int64 step, double computed_time, const Tensor& t,
-                const absl::string_view& data, int64 rowid) {
+                const StringPiece& data, int64 rowid) {
     const char* sql = R"sql(
       UPDATE OR REPLACE
         Tensors

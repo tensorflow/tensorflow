@@ -14,7 +14,6 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/core/kernels/data/dataset_utils.h"
-#include "absl/strings/string_view.h"
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/framework/op_kernel.h"
@@ -69,8 +68,8 @@ std::vector<bool> ComputeMoveVector(const std::vector<int>& indices) {
 
 Status MakeIteratorFromInputElement(
     IteratorContext* ctx, const std::vector<Tensor>& input_element,
-    int64 thread_index, CapturedFunction* captured_func,
-    absl::string_view prefix, std::unique_ptr<IteratorBase>* out_iterator) {
+    int64 thread_index, CapturedFunction* captured_func, StringPiece prefix,
+    std::unique_ptr<IteratorBase>* out_iterator) {
   std::vector<Tensor> return_values;
 
   TF_RETURN_IF_ERROR(

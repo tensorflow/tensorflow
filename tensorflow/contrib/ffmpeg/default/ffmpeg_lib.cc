@@ -25,7 +25,6 @@
 
 #include <vector>
 
-#include "absl/strings/string_view.h"
 #include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/lib/strings/numbers.h"
 #include "tensorflow/core/lib/strings/str_util.h"
@@ -304,7 +303,7 @@ FileDeleter::~FileDeleter() {
   env.DeleteFile(filename_).IgnoreError();
 }
 
-Status WriteFile(const string& filename, absl::string_view contents) {
+Status WriteFile(const string& filename, StringPiece contents) {
   Env& env = *Env::Default();
   std::unique_ptr<WritableFile> file;
   TF_RETURN_IF_ERROR(env.NewWritableFile(filename, &file));

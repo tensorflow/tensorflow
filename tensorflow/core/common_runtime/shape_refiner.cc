@@ -19,7 +19,6 @@ limitations under the License.
 #include <unordered_set>
 #include <vector>
 
-#include "absl/strings/string_view.h"
 #include "tensorflow/core/common_runtime/eval_const_tensor.h"
 #include "tensorflow/core/framework/common_shape_fns.h"
 #include "tensorflow/core/framework/node_def.pb.h"
@@ -69,7 +68,7 @@ Status InferShapesForFunctionSubNode(const Node* node, ShapeRefiner* refiner,
   TF_RETURN_IF_ERROR(refiner->AddNode(node));
   InferenceContext* node_context = CHECK_NOTNULL(refiner->GetContext(node));
 
-  if (absl::string_view(node->type_string()) == kArgOp) {
+  if (StringPiece(node->type_string()) == kArgOp) {
     // Handle special node: function input.
     // Shapes for these nodes are provided in the outer inference
     // context.
@@ -89,7 +88,7 @@ Status InferShapesForFunctionSubNode(const Node* node, ShapeRefiner* refiner,
     if (resource) {
       node_context->set_output_handle_shapes_and_types(0, *resource);
     }
-  } else if (absl::string_view(node->type_string()) == kRetvalOp) {
+  } else if (StringPiece(node->type_string()) == kRetvalOp) {
     // Handle special node: function output.
     // Shapes inferred for these nodes go into the outer inference
     // context.

@@ -20,8 +20,8 @@ limitations under the License.
 #include <iosfwd>
 #include <memory>
 #include <string>
-#include "absl/strings/string_view.h"
 #include "tensorflow/core/lib/core/error_codes.pb.h"
+#include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/types.h"
@@ -42,7 +42,7 @@ class Status {
 
   /// \brief Create a status with the specified error code and msg as a
   /// human-readable string containing more detailed information.
-  Status(tensorflow::error::Code code, absl::string_view msg);
+  Status(tensorflow::error::Code code, tensorflow::StringPiece msg);
 
   /// Copy the specified status.
   Status(const Status& s);

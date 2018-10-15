@@ -14,7 +14,6 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/contrib/cloud/kernels/bigquery_table_accessor.h"
-#include "absl/strings/string_view.h"
 #include "tensorflow/contrib/cloud/kernels/bigquery_table_accessor_test_data.h"
 #include "tensorflow/core/example/feature.pb.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
@@ -30,7 +29,7 @@ constexpr char kTestProject[] = "test-project";
 constexpr char kTestDataset[] = "test-dataset";
 constexpr char kTestTable[] = "test-table";
 
-bool HasSubstr(absl::string_view base, absl::string_view substr) {
+bool HasSubstr(StringPiece base, StringPiece substr) {
   bool ok = str_util::StrContains(base, substr);
   EXPECT_TRUE(ok) << base << ", expected substring " << substr;
   return ok;

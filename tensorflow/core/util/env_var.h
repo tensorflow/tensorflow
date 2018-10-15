@@ -16,8 +16,8 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_UTIL_ENV_VAR_H_
 #define TENSORFLOW_CORE_UTIL_ENV_VAR_H_
 
-#include "absl/strings/string_view.h"
 #include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
@@ -27,19 +27,19 @@ namespace tensorflow {
 // case insensitive "false" is interpreted as false. A string "1" or a case
 // insensitive "true" is interpreted as true. Otherwise, an error status is
 // returned.
-Status ReadBoolFromEnvVar(absl::string_view env_var_name, bool default_val,
+Status ReadBoolFromEnvVar(StringPiece env_var_name, bool default_val,
                           bool* value);
 
 // Returns an int64 into "value" from the environmental variable "env_var_name".
 // If it is unset, the default value is used.
 // If the string cannot be parsed into int64, an error status is returned.
-Status ReadInt64FromEnvVar(absl::string_view env_var_name, int64 default_val,
+Status ReadInt64FromEnvVar(StringPiece env_var_name, int64 default_val,
                            int64* value);
 
 // Returns a string into "value" from the environmental variable "env_var_name".
 // If it is unset, the default value is used.
-Status ReadStringFromEnvVar(absl::string_view env_var_name,
-                            absl::string_view default_val, string* value);
+Status ReadStringFromEnvVar(StringPiece env_var_name, StringPiece default_val,
+                            string* value);
 
 }  // namespace tensorflow
 

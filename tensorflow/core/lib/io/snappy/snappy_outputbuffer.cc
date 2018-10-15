@@ -14,7 +14,6 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/core/lib/io/snappy/snappy_outputbuffer.h"
-#include "absl/strings/string_view.h"
 
 namespace tensorflow {
 namespace io {
@@ -31,7 +30,7 @@ SnappyOutputBuffer::SnappyOutputBuffer(WritableFile* file,
       next_out_(output_buffer_.get()),
       avail_out_(output_buffer_bytes) {}
 
-Status SnappyOutputBuffer::Write(absl::string_view data) {
+Status SnappyOutputBuffer::Write(StringPiece data) {
   //
   // The deflated output is accumulated in output_buffer_ and gets written to
   // file as and when needed.
@@ -81,7 +80,7 @@ int32 SnappyOutputBuffer::AvailableInputSpace() const {
   return input_buffer_capacity_ - avail_in_;
 }
 
-void SnappyOutputBuffer::AddToInputBuffer(absl::string_view data) {
+void SnappyOutputBuffer::AddToInputBuffer(StringPiece data) {
   size_t bytes_to_write = data.size();
   DCHECK_LE(bytes_to_write, AvailableInputSpace());
 
@@ -141,7 +140,7 @@ Status SnappyOutputBuffer::DeflateBuffered() {
 Status SnappyOutputBuffer::FlushOutputBufferToFile() {
   size_t bytes_to_write = output_buffer_capacity_ - avail_out_;
   if (bytes_to_write > 0) {
-    Status s = file_->Append(absl::string_view(
+    Status s = file_->Append(StringPiece(
         reinterpret_cast<char*>(output_buffer_.get()), bytes_to_write));
     if (s.ok()) {
       next_out_ = output_buffer_.get();

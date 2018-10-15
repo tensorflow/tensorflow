@@ -15,7 +15,6 @@ limitations under the License.
 
 #include <thread>
 
-#include "absl/strings/string_view.h"
 #include "tensorflow/python/eager/pywrap_tfe.h"
 
 #include "absl/strings/str_cat.h"
@@ -208,12 +207,12 @@ bool ParseDimensionValue(const string& key, PyObject* py_value,
 }
 
 bool ParseStringValue(const string& key, PyObject* py_value, TF_Status* status,
-                      absl::string_view* value) {
+                      tensorflow::StringPiece* value) {
   if (PyBytes_Check(py_value)) {
     Py_ssize_t size = 0;
     char* buf = nullptr;
     if (PyBytes_AsStringAndSize(py_value, &buf, &size) < 0) return false;
-    *value = absl::string_view(buf, size);
+    *value = tensorflow::StringPiece(buf, size);
     return true;
   }
 #if PY_MAJOR_VERSION >= 3
@@ -287,7 +286,7 @@ bool SetOpAttrList(
     std::unique_ptr<const void*[]> values(new const void*[num_values]);
     std::unique_ptr<size_t[]> lengths(new size_t[num_values]);
     for (int i = 0; i < num_values; ++i) {
-      absl::string_view value;
+      tensorflow::StringPiece value;
       tensorflow::Safe_PyObjectPtr py_value(PySequence_ITEM(py_list, i));
       if (!ParseStringValue(key, py_value.get(), status, &value)) return false;
       values[i] = value.data();
@@ -490,7 +489,7 @@ bool SetOpAttrScalar(
     tensorflow::gtl::FlatMap<string, tensorflow::int64>* attr_list_sizes,
     TF_Status* status) {
   if (type == TF_ATTR_STRING) {
-    absl::string_view value;
+    tensorflow::StringPiece value;
     if (!ParseStringValue(key, py_value, status, &value)) return false;
     TFE_OpSetAttrString(op, key, value.data(), value.size());
   } else if (type == TF_ATTR_INT) {
@@ -553,7 +552,7 @@ bool SetOpAttrScalar(
     //     (which is what the various "defun" or "Defun" decorators do).
     // And in the future also allow an object that can encapsulate
     // the function name and its attribute values.
-    absl::string_view func_name;
+    tensorflow::StringPiece func_name;
     if (!ParseStringValue(key, py_value, status, &func_name)) {
       PyObject* name_attr = PyObject_GetAttrString(py_value, "name");
       if (name_attr == nullptr ||
@@ -2485,7 +2484,7 @@ PyObject* TFE_Py_FastPathExecute_C(PyObject*, PyObject* args) {
   for (int i = kFastPathExecuteInputStartIndex + op_def->input_arg_size();
        i < args_size; i += 2) {
     PyObject* py_attr_name = PyTuple_GET_ITEM(args, i);
-    const absl::string_view attr_name(TFE_GetPythonString(py_attr_name));
+    const tensorflow::StringPiece attr_name(TFE_GetPythonString(py_attr_name));
     PyObject* py_attr_value = PyTuple_GET_ITEM(args, i + 1);
 
     // Not creating an index since most of the time there are not more than a

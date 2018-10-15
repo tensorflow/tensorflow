@@ -15,7 +15,6 @@ limitations under the License.
 
 #include "tensorflow/cc/framework/cc_op_gen.h"
 
-#include "absl/strings/string_view.h"
 #include "tensorflow/core/framework/op_def.pb.h"
 #include "tensorflow/core/framework/op_gen_lib.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
@@ -62,12 +61,12 @@ op {
 }
 )";
 
-void ExpectHasSubstr(absl::string_view s, absl::string_view expected) {
+void ExpectHasSubstr(StringPiece s, StringPiece expected) {
   EXPECT_TRUE(str_util::StrContains(s, expected))
       << "'" << s << "' does not contain '" << expected << "'";
 }
 
-void ExpectDoesNotHaveSubstr(absl::string_view s, absl::string_view expected) {
+void ExpectDoesNotHaveSubstr(StringPiece s, StringPiece expected) {
   EXPECT_FALSE(str_util::StrContains(s, expected))
       << "'" << s << "' contains '" << expected << "'";
 }

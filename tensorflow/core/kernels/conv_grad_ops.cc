@@ -15,7 +15,6 @@ limitations under the License.
 
 // See docs in ../ops/nn_ops.cc.
 
-#include "absl/strings/string_view.h"
 #define USE_EIGEN_TENSOR
 #define EIGEN_USE_THREADS
 
@@ -57,7 +56,7 @@ int ConvBackpropDimensions::SpatialPadding(const Padding& padding,
 // while the original version only handles the cases where dilation_rates equal
 // to 1.
 Status ConvBackpropExtractAndVerifyDimensionV2(
-    absl::string_view label, const TensorShape& input_shape,
+    StringPiece label, const TensorShape& input_shape,
     const TensorShape& filter_shape, const TensorShape& output_shape,
     const gtl::ArraySlice<int32>& dilations, const std::vector<int32>& strides,
     Padding padding, int spatial_dim, int filter_spatial_dim,
@@ -96,7 +95,7 @@ Status ConvBackpropExtractAndVerifyDimensionV2(
 }
 
 Status ConvBackpropExtractAndVerifyDimension(
-    absl::string_view label, const TensorShape& input_shape,
+    StringPiece label, const TensorShape& input_shape,
     const TensorShape& filter_shape, const TensorShape& output_shape,
     const std::vector<int32>& strides, Padding padding, int spatial_dim,
     int filter_spatial_dim, ConvBackpropSpatialDimension* dim) {
@@ -107,9 +106,8 @@ Status ConvBackpropExtractAndVerifyDimension(
 }
 
 Status ConvBackpropComputeDimensionsV2(
-    absl::string_view label, int num_spatial_dims,
-    const TensorShape& input_shape, const TensorShape& filter_shape,
-    const TensorShape& out_backprop_shape,
+    StringPiece label, int num_spatial_dims, const TensorShape& input_shape,
+    const TensorShape& filter_shape, const TensorShape& out_backprop_shape,
     const gtl::ArraySlice<int32>& dilations, const std::vector<int32>& strides,
     Padding padding, TensorFormat data_format, ConvBackpropDimensions* dims) {
   // The + 2 in the following line is for the batch and feature dimensions.
@@ -161,11 +159,13 @@ Status ConvBackpropComputeDimensionsV2(
   return Status::OK();
 }
 
-Status ConvBackpropComputeDimensions(
-    absl::string_view label, int num_spatial_dims,
-    const TensorShape& input_shape, const TensorShape& filter_shape,
-    const TensorShape& out_backprop_shape, const std::vector<int32>& strides,
-    Padding padding, TensorFormat data_format, ConvBackpropDimensions* dims) {
+Status ConvBackpropComputeDimensions(StringPiece label, int num_spatial_dims,
+                                     const TensorShape& input_shape,
+                                     const TensorShape& filter_shape,
+                                     const TensorShape& out_backprop_shape,
+                                     const std::vector<int32>& strides,
+                                     Padding padding, TensorFormat data_format,
+                                     ConvBackpropDimensions* dims) {
   static constexpr std::array<int32, 5> one_dilations = {{1, 1, 1, 1, 1}};
   return ConvBackpropComputeDimensionsV2(
       label, num_spatial_dims, input_shape, filter_shape, out_backprop_shape,

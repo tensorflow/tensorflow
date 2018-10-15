@@ -19,12 +19,12 @@ limitations under the License.
 #include <functional>
 #include <vector>
 
-#include "absl/strings/string_view.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/core/threadpool.h"
 #include "tensorflow/core/lib/gtl/flatmap.h"
 #include "tensorflow/core/lib/gtl/flatset.h"
@@ -125,8 +125,8 @@ inline int NodePositionIfSameNode(const string& input_name,
   if (input_it == input_name.end()) {
     return is_ctrl ? -1 : 0;
   } else if (*input_it++ == ':') {
-    absl::string_view remaining(&(*input_it),
-                                std::distance(input_it, input_name.end()));
+    StringPiece remaining(&(*input_it),
+                          std::distance(input_it, input_name.end()));
     int position;
     if (!strings::safe_strto32(remaining, &position)) {
       return -2;
@@ -139,18 +139,18 @@ inline int NodePositionIfSameNode(const string& input_name,
 
 // Return the node name corresponding to 'name' if name is valid, or the empty
 // string otherwise.
-inline absl::string_view NodeNameAsStringPiece(const string& name) {
+inline StringPiece NodeNameAsStringPiece(const string& name) {
   static const string empty;
-  if (name.empty()) return absl::string_view(empty);
+  if (name.empty()) return StringPiece(empty);
   const auto begin_it = name[0] == '^' ? name.begin() + 1 : name.begin();
   auto end_it = begin_it;
   while (end_it != name.end() && *end_it != ':') {
     ++end_it;
   }
   if (end_it != name.end() && *end_it != ':') {
-    return absl::string_view(empty);
+    return StringPiece(empty);
   }
-  return absl::string_view(&(*begin_it), std::distance(begin_it, end_it));
+  return StringPiece(&(*begin_it), std::distance(begin_it, end_it));
 }
 
 // Return the node name corresponding to 'name' if name is valid, or the empty
@@ -160,12 +160,12 @@ inline string NodeName(const string& name) {
 }
 
 // Returns the node name and position in a single call.
-inline absl::string_view ParseNodeNameAsStringPiece(const string& name,
-                                                    int* position) {
+inline StringPiece ParseNodeNameAsStringPiece(const string& name,
+                                              int* position) {
   static const string empty;
   if (name.empty()) {
     *position = 0;
-    return absl::string_view(empty);
+    return StringPiece(empty);
   }
   const bool is_ctrl = name[0] == '^';
   const auto begin_it = is_ctrl ? name.begin() + 1 : name.begin();
@@ -174,17 +174,15 @@ inline absl::string_view ParseNodeNameAsStringPiece(const string& name,
   while (end_it != name.end() && *end_it != ':') {
     ++end_it;
   }
-  const absl::string_view node_name(&(*begin_it),
-                                    std::distance(begin_it, end_it));
+  const StringPiece node_name(&(*begin_it), std::distance(begin_it, end_it));
   if (end_it != name.end()) {
     if (*end_it != ':') {
-      return absl::string_view(empty);
+      return StringPiece(empty);
     } else if (!is_ctrl) {
       ++end_it;
-      absl::string_view remaining(&(*end_it),
-                                  std::distance(end_it, name.end()));
+      StringPiece remaining(&(*end_it), std::distance(end_it, name.end()));
       if (!strings::safe_strto32(remaining, position)) {
-        return absl::string_view(empty);
+        return StringPiece(empty);
       }
     }
   }

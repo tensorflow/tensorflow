@@ -16,7 +16,6 @@ limitations under the License.
 #include "tensorflow/contrib/gdr/gdr_rendezvous_mgr.h"
 
 #include "google/protobuf/any.pb.h"
-#include "absl/strings/string_view.h"
 #include "tensorflow/contrib/gdr/gdr_memory_manager.h"
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
@@ -42,7 +41,7 @@ class GdrRecvTensorCall : public BaseRecvTensorCall {
   GdrRecvTensorCall(WorkerInterface* wi, Device* dst_device,
                     RemoteMemoryManager* remote_memory_manager,
                     const Rendezvous::Args& recv_args, int64 step_id,
-                    absl::string_view key)
+                    StringPiece key)
       : wi_(wi),
         dst_device_(dst_device),
         remote_memory_manager_(remote_memory_manager),

@@ -19,7 +19,6 @@ limitations under the License.
 #include <string>
 #include <unordered_set>
 #include <vector>
-#include "absl/strings/string_view.h"
 
 #define EIGEN_USE_THREADS
 
@@ -106,7 +105,7 @@ class UnaryVariantOpRegistry {
                         const VariantDecodeFn& decode_fn);
 
   // Returns nullptr if no decode function was found for the given TypeName.
-  VariantDecodeFn* GetDecodeFn(absl::string_view type_name);
+  VariantDecodeFn* GetDecodeFn(StringPiece type_name);
 
   // Add a copy-to-GPU function to the registry.
   void RegisterDeviceCopyFn(const VariantDeviceCopyDirection direction,
@@ -125,7 +124,7 @@ class UnaryVariantOpRegistry {
 
   // Returns nullptr if no unary op function was found for the given
   // op, device, and TypeName.
-  VariantUnaryOpFn* GetUnaryOpFn(VariantUnaryOp op, absl::string_view device,
+  VariantUnaryOpFn* GetUnaryOpFn(VariantUnaryOp op, StringPiece device,
                                  const TypeIndex& type_index);
 
   // Add a binary op function to the registry.
@@ -135,7 +134,7 @@ class UnaryVariantOpRegistry {
 
   // Returns nullptr if no binary op function was found for the given
   // op, device and TypeName.
-  VariantBinaryOpFn* GetBinaryOpFn(VariantBinaryOp op, absl::string_view device,
+  VariantBinaryOpFn* GetBinaryOpFn(VariantBinaryOp op, StringPiece device,
                                    const TypeIndex& type_index);
 
   // Get a pointer to a global UnaryVariantOpRegistry object
@@ -156,8 +155,7 @@ class UnaryVariantOpRegistry {
   };
 
   gtl::FlatMap<TypeIndex, VariantShapeFn, TypeIndexHash> shape_fns;
-  gtl::FlatMap<absl::string_view, VariantDecodeFn, StringPieceHasher>
-      decode_fns;
+  gtl::FlatMap<StringPiece, VariantDecodeFn, StringPieceHasher> decode_fns;
 
   // Map std::pair<Direction, type_name> to function.
   struct PairHash {
@@ -181,11 +179,10 @@ class UnaryVariantOpRegistry {
   // and references therein
   template <typename Op>
   struct FuncTuple {
-    FuncTuple(const Op& op, const absl::string_view& dev,
-              const TypeIndex& type_index)
+    FuncTuple(const Op& op, const StringPiece& dev, const TypeIndex& type_index)
         : op_type_(op), device_(dev), type_index_(type_index) {}
     Op op_type_;
-    absl::string_view device_;
+    StringPiece device_;
     TypeIndex type_index_;
   };
   // friend declaration for operator==
@@ -195,7 +192,7 @@ class UnaryVariantOpRegistry {
   struct TupleHash {
     template <typename Op>
     std::size_t operator()(
-        const std::tuple<Op, absl::string_view, TypeIndex>& x) const {
+        const std::tuple<Op, StringPiece, TypeIndex>& x) const {
       // The hash of an enum is just its value as a std::size_t.
       std::size_t ret = static_cast<std::size_t>(std::get<0>(x));
       ret = Hash64Combine(ret, sp_hasher_(std::get<1>(x)));
@@ -221,14 +218,14 @@ class UnaryVariantOpRegistry {
   // Find or insert a string into a persistent string storage
   // container; return the StringPiece pointing to the permanent string
   // location.
-  static absl::string_view GetPersistentStringPiece(const string& str) {
+  static StringPiece GetPersistentStringPiece(const string& str) {
     const auto string_storage = PersistentStringStorage();
     auto found = string_storage->find(str);
     if (found == string_storage->end()) {
       auto inserted = string_storage->insert(str);
-      return absl::string_view(*inserted.first);
+      return StringPiece(*inserted.first);
     } else {
-      return absl::string_view(*found);
+      return StringPiece(*found);
     }
   }
 };

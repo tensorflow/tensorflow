@@ -18,7 +18,6 @@ limitations under the License.
 
 #include <string>
 
-#include "absl/strings/string_view.h"
 #include "tensorflow/core/framework/attr_value_util.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/function.pb.h"
@@ -49,8 +48,7 @@ class Attrs {
 
 // Helper to construct a NodeDef.
 NodeDef NDef(
-    absl::string_view name, absl::string_view op,
-    gtl::ArraySlice<string> inputs,
+    StringPiece name, StringPiece op, gtl::ArraySlice<string> inputs,
     gtl::ArraySlice<std::pair<string, FunctionDefHelper::AttrValueWrapper>>
         attrs = {},
     const string& device = "");

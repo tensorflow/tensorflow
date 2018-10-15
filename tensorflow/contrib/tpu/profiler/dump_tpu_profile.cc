@@ -19,7 +19,6 @@ limitations under the License.
 #include <ctime>
 #include <vector>
 
-#include "absl/strings/string_view.h"
 #include "tensorflow/contrib/tpu/profiler/op_profile.pb.h"
 #include "tensorflow/contrib/tpu/profiler/trace_events.pb.h"
 #include "tensorflow/contrib/tpu/profiler/trace_events_to_json.h"
@@ -64,8 +63,7 @@ Status WriteGzippedDataToFile(const string& filename, const string& data) {
   return Status::OK();
 }
 
-Status DumpTraceToLogDirectory(absl::string_view run_dir,
-                               const string& host_prefix,
+Status DumpTraceToLogDirectory(StringPiece run_dir, const string& host_prefix,
                                const string& encoded_trace, std::ostream* os) {
   string proto_path =
       JoinPath(run_dir, StrCat(host_prefix, kProtoTraceFileName));
@@ -88,7 +86,7 @@ Status DumpTraceToLogDirectory(absl::string_view run_dir,
   return Status::OK();
 }
 
-Status DumpOpProfileToLogDirectory(absl::string_view run_dir,
+Status DumpOpProfileToLogDirectory(StringPiece run_dir,
                                    const string& host_prefix,
                                    const tpu::op_profile::Profile& profile,
                                    std::ostream* os) {
@@ -109,7 +107,7 @@ Status DumpOpProfileToLogDirectory(absl::string_view run_dir,
   return Status::OK();
 }
 
-Status DumpToolDataToLogDirectory(absl::string_view run_dir,
+Status DumpToolDataToLogDirectory(StringPiece run_dir,
                                   const string& host_prefix,
                                   const tensorflow::ProfileToolData& tool,
                                   std::ostream* os) {

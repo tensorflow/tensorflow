@@ -14,7 +14,6 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/core/grappler/optimizers/data/vectorization_utils.h"
-#include "absl/strings/string_view.h"
 #include "tensorflow/core/grappler/optimizers/data/vectorization/vectorizer_registry.h"
 
 #include "absl/strings/str_join.h"
@@ -415,7 +414,7 @@ Status Vectorization::StackTensor(WrappedTensor* unstacked,
   }
 
   Graph* g = outer_scope_.get();
-  auto node_builder = [](absl::string_view op) {
+  auto node_builder = [](StringPiece op) {
     return NodeBuilder(strings::StrCat("vectorized/stack/", op), op);
   };
 

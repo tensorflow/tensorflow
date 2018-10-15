@@ -18,7 +18,6 @@ limitations under the License.
 #include <atomic>
 #include <utility>
 #include <vector>
-#include "absl/strings/string_view.h"
 #include "tensorflow/core/common_runtime/dma_helper.h"
 #include "tensorflow/core/framework/variant_op_registry.h"
 #include "tensorflow/core/lib/core/errors.h"
@@ -49,7 +48,7 @@ std::vector<RegistrationInfo>* MutableRegistry() {
 }
 
 void CopyHostToDevice(const Tensor* input, Allocator* cpu_allocator,
-                      Allocator* out_allocator, absl::string_view edge_name,
+                      Allocator* out_allocator, StringPiece edge_name,
                       Device* dst, Tensor* output,
                       DeviceContext* recv_dev_context, StatusCallback done) {
   if (input->dtype() == DT_VARIANT) {
@@ -114,7 +113,7 @@ void CopyHostToDevice(const Tensor* input, Allocator* cpu_allocator,
 }
 
 void CopyDeviceToHost(const Tensor* input, Allocator* cpu_allocator,
-                      Allocator* out_allocator, absl::string_view edge_name,
+                      Allocator* out_allocator, StringPiece edge_name,
                       Device* src, Tensor* output,
                       DeviceContext* send_dev_context, StatusCallback done) {
   if (input->dtype() == DT_VARIANT) {
@@ -247,8 +246,7 @@ void CopyDeviceToDevice(CopyTensor::CopyFunction copy_function,
 }  // namespace
 
 // static
-void CopyTensor::ViaDMA(absl::string_view edge_name,
-                        DeviceContext* send_dev_context,
+void CopyTensor::ViaDMA(StringPiece edge_name, DeviceContext* send_dev_context,
                         DeviceContext* recv_dev_context, Device* src,
                         Device* dst, const AllocatorAttributes src_alloc_attr,
                         const AllocatorAttributes dst_alloc_attr,

@@ -15,7 +15,6 @@ limitations under the License.
 
 #include <algorithm>
 
-#include "absl/strings/string_view.h"
 #include "tensorflow/core/platform/cloud/curl_http_request.h"
 
 #include "tensorflow/core/lib/core/errors.h"
@@ -276,7 +275,7 @@ void CurlHttpRequest::SetPostFromBuffer(const char* buffer, size_t size) {
                                            reinterpret_cast<void*>(this)));
   CHECK_CURL_OK(libcurl_->curl_easy_setopt(curl_, CURLOPT_READFUNCTION,
                                            &CurlHttpRequest::ReadCallback));
-  post_body_buffer_ = absl::string_view(buffer, size);
+  post_body_buffer_ = StringPiece(buffer, size);
 }
 
 void CurlHttpRequest::SetPostEmptyBody() {
@@ -387,8 +386,8 @@ size_t CurlHttpRequest::HeaderCallback(const void* ptr, size_t size,
                                        size_t nmemb, void* this_object) {
   CHECK(ptr);
   auto that = reinterpret_cast<CurlHttpRequest*>(this_object);
-  absl::string_view header(reinterpret_cast<const char*>(ptr), size * nmemb);
-  absl::string_view name, value;
+  StringPiece header(reinterpret_cast<const char*>(ptr), size * nmemb);
+  StringPiece name, value;
   // The supplied header has the form "<name>: <value>", parse it.
   if (strings::Scanner(header)
           .ScanEscapedUntil(':')
@@ -447,7 +446,7 @@ Status CurlHttpRequest::Send() {
   auto get_error_message = [this]() -> string {
     string error_message = strings::StrCat(
         "Error executing an HTTP request: HTTP response code ", response_code_);
-    absl::string_view body = GetResponse();
+    StringPiece body = GetResponse();
     if (!body.empty()) {
       return strings::StrCat(
           error_message, " with body '",
@@ -543,14 +542,13 @@ void CurlHttpRequest::CheckNotSent() const {
   CHECK(!is_sent_) << "The request has already been sent.";
 }
 
-absl::string_view CurlHttpRequest::GetResponse() const {
-  absl::string_view response;
+StringPiece CurlHttpRequest::GetResponse() const {
+  StringPiece response;
   if (IsDirectResponse()) {
-    response = absl::string_view(direct_response_.buffer_,
-                                 direct_response_.bytes_transferred_);
+    response = StringPiece(direct_response_.buffer_,
+                           direct_response_.bytes_transferred_);
   } else {
-    response =
-        absl::string_view(response_buffer_->data(), response_buffer_->size());
+    response = StringPiece(response_buffer_->data(), response_buffer_->size());
   }
   return response;
 }

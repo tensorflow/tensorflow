@@ -15,7 +15,6 @@ limitations under the License.
 
 #include "tensorflow/tools/graph_transforms/transform_utils.h"
 
-#include "absl/strings/string_view.h"
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/lib/hash/hash.h"
@@ -88,7 +87,7 @@ void NodeNamePartsFromInput(const string& input_name, string* prefix,
   } else {
     *suffix = ":" + input_parts[1];
   }
-  absl::string_view node_name_piece(input_parts[0]);
+  StringPiece node_name_piece(input_parts[0]);
   if (str_util::ConsumePrefix(&node_name_piece, "^")) {
     *prefix = "^";
   } else {
@@ -641,7 +640,7 @@ Status TransformFuncContext::GetOneInt32Parameter(const string& name,
   }
   string string_value;
   TF_RETURN_IF_ERROR(GetOneStringParameter(name, "", &string_value));
-  if (!strings::safe_strto32(absl::string_view(string_value), result)) {
+  if (!strings::safe_strto32(StringPiece(string_value), result)) {
     return errors::InvalidArgument("Couldn't interpret the ", name,
                                    " argument as a number:", string_value);
   }
@@ -658,7 +657,7 @@ Status TransformFuncContext::GetOneInt64Parameter(const string& name,
   }
   string string_value;
   TF_RETURN_IF_ERROR(GetOneStringParameter(name, "", &string_value));
-  if (!strings::safe_strto64(absl::string_view(string_value), result)) {
+  if (!strings::safe_strto64(StringPiece(string_value), result)) {
     return errors::InvalidArgument("Couldn't interpret the ", name,
                                    " argument as a number:", string_value);
   }

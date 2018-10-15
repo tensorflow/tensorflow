@@ -18,7 +18,6 @@
 #include <cstdio>
 #include <set>
 
-#include "absl/strings/string_view.h"
 #include "tensorflow/contrib/ffmpeg/ffmpeg_lib.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
@@ -46,7 +45,7 @@ class DecodeVideoOp : public OpKernel {
                 errors::InvalidArgument(
                     "contents must be a rank-0 tensor but got shape ",
                     contents_tensor.shape().DebugString()));
-    const absl::string_view contents = contents_tensor.scalar<string>()();
+    const tensorflow::StringPiece contents = contents_tensor.scalar<string>()();
 
     // Write the input data to a temp file.
     string extension;

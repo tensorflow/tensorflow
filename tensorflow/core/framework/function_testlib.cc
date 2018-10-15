@@ -15,7 +15,6 @@ limitations under the License.
 
 #include "tensorflow/core/framework/function_testlib.h"
 
-#include "absl/strings/string_view.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
@@ -46,8 +45,7 @@ GraphDef GDef(gtl::ArraySlice<NodeDef> nodes,
 }
 
 // Helper to construct a NodeDef.
-NodeDef NDef(absl::string_view name, absl::string_view op,
-             gtl::ArraySlice<string> inputs,
+NodeDef NDef(StringPiece name, StringPiece op, gtl::ArraySlice<string> inputs,
              gtl::ArraySlice<std::pair<string, FDH::AttrValueWrapper>> attrs,
              const string& device) {
   NodeDef n;

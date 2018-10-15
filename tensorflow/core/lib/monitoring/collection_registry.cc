@@ -15,7 +15,6 @@ limitations under the License.
 
 #include "tensorflow/core/lib/monitoring/collection_registry.h"
 
-#include "absl/strings/string_view.h"
 #include "tensorflow/core/platform/logging.h"
 
 namespace tensorflow {
@@ -46,7 +45,7 @@ void Collector::CollectMetricDescriptor(
   metric_descriptor->name = string(metric_def->name());
   metric_descriptor->description = string(metric_def->description());
 
-  for (const absl::string_view label_name : metric_def->label_descriptions()) {
+  for (const StringPiece label_name : metric_def->label_descriptions()) {
     metric_descriptor->label_names.emplace_back(label_name);
   }
 

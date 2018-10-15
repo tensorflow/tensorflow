@@ -15,7 +15,6 @@ limitations under the License.
 
 #include "tensorflow/core/grappler/optimizers/data/graph_utils.h"
 
-#include "absl/strings/string_view.h"
 #include "tensorflow/core/framework/device_base.h"
 #include "tensorflow/core/framework/op_def.pb.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
@@ -100,7 +99,7 @@ NodeDef* AddScalarPlaceholder(DataType dtype, MutableGraphView* graph) {
   return graph->AddNode(std::move(node));
 }
 
-NodeDef* AddNode(absl::string_view name, absl::string_view op,
+NodeDef* AddNode(StringPiece name, StringPiece op,
                  const std::vector<string>& inputs,
                  const std::vector<std::pair<string, AttrValue>>& attributes,
                  MutableGraphView* graph) {
@@ -151,7 +150,7 @@ NodeDef* AddScalarConstNode(int64 v, MutableGraphView* graph) {
 }
 
 template <>
-NodeDef* AddScalarConstNode(absl::string_view v, MutableGraphView* graph) {
+NodeDef* AddScalarConstNode(StringPiece v, MutableGraphView* graph) {
   return AddScalarConstNodeHelper(
       DT_STRING,
       [v](TensorProto* proto) { proto->add_string_val(v.data(), v.size()); },
@@ -188,20 +187,20 @@ bool Compare(const GraphDef& g1, const GraphDef& g2) {
   return true;
 }
 
-bool ContainsGraphFunctionWithName(absl::string_view name,
+bool ContainsGraphFunctionWithName(StringPiece name,
                                    const FunctionDefLibrary& library) {
   return FindGraphFunctionWithName(name, library) != -1;
 }
 
-bool ContainsGraphNodeWithName(absl::string_view name, const GraphDef& graph) {
+bool ContainsGraphNodeWithName(StringPiece name, const GraphDef& graph) {
   return FindGraphNodeWithName(name, graph) != -1;
 }
 
-bool ContainsNodeWithOp(absl::string_view op, const GraphDef& graph) {
+bool ContainsNodeWithOp(StringPiece op, const GraphDef& graph) {
   return FindGraphNodeWithOp(op, graph) != -1;
 }
 
-int FindGraphFunctionWithName(absl::string_view name,
+int FindGraphFunctionWithName(StringPiece name,
                               const FunctionDefLibrary& library) {
   return GetFirstElementIndexWithPredicate(
       [&name](const FunctionDef& function) {
@@ -210,13 +209,13 @@ int FindGraphFunctionWithName(absl::string_view name,
       library.function());
 }
 
-int FindGraphNodeWithName(absl::string_view name, const GraphDef& graph) {
+int FindGraphNodeWithName(StringPiece name, const GraphDef& graph) {
   return GetFirstElementIndexWithPredicate(
       [&name](const NodeDef& node) { return node.name() == name; },
       graph.node());
 }
 
-int FindGraphNodeWithOp(absl::string_view op, const GraphDef& graph) {
+int FindGraphNodeWithOp(StringPiece op, const GraphDef& graph) {
   return GetFirstElementIndexWithPredicate(
       [&op](const NodeDef& node) { return node.op() == op; }, graph.node());
 }
@@ -233,7 +232,7 @@ NodeDef* GetInputNode(const NodeDef& node, const MutableGraphView& graph) {
   return graph.GetRegularFanin(input_port).node;
 }
 
-void SetUniqueGraphNodeName(absl::string_view prefix, GraphDef* graph,
+void SetUniqueGraphNodeName(StringPiece prefix, GraphDef* graph,
                             NodeDef* node) {
   string name = string(prefix);
   int id = graph->node_size();
@@ -249,8 +248,7 @@ void SetUniqueGraphNodeName(absl::string_view prefix, GraphDef* graph,
   node->set_name(std::move(name));
 }
 
-void SetUniqueGraphFunctionName(absl::string_view prefix,
-                                FunctionDefLibrary* library,
+void SetUniqueGraphFunctionName(StringPiece prefix, FunctionDefLibrary* library,
                                 FunctionDef* function) {
   string name = string(prefix);
   int id = library->function_size();

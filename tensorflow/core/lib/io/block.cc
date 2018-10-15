@@ -18,7 +18,6 @@ limitations under the License.
 #include "tensorflow/core/lib/io/block.h"
 
 #include <algorithm>
-#include "absl/strings/string_view.h"
 #include "tensorflow/core/lib/core/coding.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/io/format.h"
@@ -96,11 +95,10 @@ class Block::Iter : public Iterator {
   uint32 current_;
   uint32 restart_index_;  // Index of restart block in which current_ falls
   string key_;
-  absl::string_view value_;
+  StringPiece value_;
   Status status_;
 
-  inline int Compare(const absl::string_view& a,
-                     const absl::string_view& b) const {
+  inline int Compare(const StringPiece& a, const StringPiece& b) const {
     return a.compare(b);
   }
 
@@ -121,7 +119,7 @@ class Block::Iter : public Iterator {
 
     // ParseNextKey() starts at the end of value_, so set value_ accordingly
     uint32 offset = GetRestartPoint(index);
-    value_ = absl::string_view(data_ + offset, 0);
+    value_ = StringPiece(data_ + offset, 0);
   }
 
  public:
@@ -136,11 +134,11 @@ class Block::Iter : public Iterator {
 
   bool Valid() const override { return current_ < restarts_; }
   Status status() const override { return status_; }
-  absl::string_view key() const override {
+  StringPiece key() const override {
     assert(Valid());
     return key_;
   }
-  absl::string_view value() const override {
+  StringPiece value() const override {
     assert(Valid());
     return value_;
   }
@@ -150,7 +148,7 @@ class Block::Iter : public Iterator {
     ParseNextKey();
   }
 
-  void Seek(const absl::string_view& target) override {
+  void Seek(const StringPiece& target) override {
     // Binary search in restart array to find the last restart point
     // with a key < target
     uint32 left = 0;
@@ -166,7 +164,7 @@ class Block::Iter : public Iterator {
         CorruptionError();
         return;
       }
-      absl::string_view mid_key(key_ptr, non_shared);
+      StringPiece mid_key(key_ptr, non_shared);
       if (Compare(mid_key, target) < 0) {
         // Key at "mid" is smaller than "target".  Therefore all
         // blocks before "mid" are uninteresting.
@@ -201,7 +199,7 @@ class Block::Iter : public Iterator {
     restart_index_ = num_restarts_;
     status_ = errors::DataLoss("bad entry in block");
     key_.clear();
-    value_ = absl::string_view();
+    value_ = StringPiece();
   }
 
   bool ParseNextKey() {
@@ -224,7 +222,7 @@ class Block::Iter : public Iterator {
     } else {
       key_.resize(shared);
       key_.append(p, non_shared);
-      value_ = absl::string_view(p + non_shared, value_length);
+      value_ = StringPiece(p + non_shared, value_length);
       while (restart_index_ + 1 < num_restarts_ &&
              GetRestartPoint(restart_index_ + 1) < current_) {
         ++restart_index_;

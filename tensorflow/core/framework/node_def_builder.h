@@ -18,7 +18,6 @@ limitations under the License.
 
 #include <functional>
 #include <vector>
-#include "absl/strings/string_view.h"
 #include "tensorflow/core/framework/attr_value_util.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/node_def_util.h"
@@ -51,9 +50,9 @@ class NodeDefBuilder {
  public:
   // To specify an output to be consumed by one of the Input() methods below.
   struct NodeOut {
-    NodeOut(absl::string_view n, int i, DataType dt);
+    NodeOut(StringPiece n, int i, DataType dt);
     NodeOut();  // uninitialized, call Reset() before use.
-    void Reset(absl::string_view n, int i, DataType dt);
+    void Reset(StringPiece n, int i, DataType dt);
     string node;
     int index;
     DataType data_type;
@@ -63,16 +62,16 @@ class NodeDefBuilder {
   // the Op plus a registry) for the NodeDef.  Other fields are
   // specified by calling the methods below.
   // REQUIRES: The OpDef must satisfy ValidateOpDef().
-  NodeDefBuilder(absl::string_view name, absl::string_view op_name,
+  NodeDefBuilder(StringPiece name, StringPiece op_name,
                  const OpRegistryInterface* op_registry = OpRegistry::Global());
   // REQUIRES: in addition, *op_def must outlive *this.
-  NodeDefBuilder(absl::string_view name, const OpDef* op_def);
+  NodeDefBuilder(StringPiece name, const OpDef* op_def);
 
   // You must call one Input() function per input_arg in the Op,
   // *and in the same order as the input_args appear in the OpDef.*
 
   // For inputs that take a single tensor.
-  NodeDefBuilder& Input(absl::string_view src_node, int src_index, DataType dt);
+  NodeDefBuilder& Input(StringPiece src_node, int src_index, DataType dt);
   NodeDefBuilder& Input(const NodeOut& src);
 
   // For inputs that take a list of tensors.
@@ -82,49 +81,45 @@ class NodeDefBuilder {
   NodeDefBuilder& Input(FakeInputFunctor fake_input);
 
   // Specify that this node must only run after src_node.
-  NodeDefBuilder& ControlInput(absl::string_view src_node);
+  NodeDefBuilder& ControlInput(StringPiece src_node);
 
   // Constrains what devices this node may be scheduled on.
-  NodeDefBuilder& Device(absl::string_view device_spec);
+  NodeDefBuilder& Device(StringPiece device_spec);
 
   // Sets the attr, if not already set.  If already set with a different
   // value, an error will be returned from Finalize().
-  NodeDefBuilder& Attr(absl::string_view name, const AttrValue& value);
-  NodeDefBuilder& Attr(absl::string_view name, absl::string_view value);
-  NodeDefBuilder& Attr(absl::string_view name, const char* value);
-  NodeDefBuilder& Attr(absl::string_view name, int32 value);
-  NodeDefBuilder& Attr(absl::string_view name, int64 value);
-  NodeDefBuilder& Attr(absl::string_view name, float value);
-  NodeDefBuilder& Attr(absl::string_view name, double value);
-  NodeDefBuilder& Attr(absl::string_view name, bool value);
-  NodeDefBuilder& Attr(absl::string_view name, DataType value);
-  NodeDefBuilder& Attr(absl::string_view name, const PartialTensorShape& value);
-  NodeDefBuilder& Attr(absl::string_view name, const Tensor& value);
-  NodeDefBuilder& Attr(absl::string_view name, const TensorProto& value);
-  NodeDefBuilder& Attr(absl::string_view name, const NameAttrList& value);
-  NodeDefBuilder& Attr(absl::string_view name,
-                       gtl::ArraySlice<absl::string_view> value);
-  NodeDefBuilder& Attr(absl::string_view name,
-                       gtl::ArraySlice<const char*> value);
-  NodeDefBuilder& Attr(absl::string_view name, gtl::ArraySlice<string> value);
-  NodeDefBuilder& Attr(absl::string_view name, gtl::ArraySlice<int32> value);
-  NodeDefBuilder& Attr(absl::string_view name, gtl::ArraySlice<int64> value);
-  NodeDefBuilder& Attr(absl::string_view name, gtl::ArraySlice<float> value);
-  NodeDefBuilder& Attr(absl::string_view name, gtl::ArraySlice<bool> value);
-  NodeDefBuilder& Attr(absl::string_view name, const std::vector<bool>& value);
-  NodeDefBuilder& Attr(absl::string_view name, gtl::ArraySlice<DataType> value);
-  NodeDefBuilder& Attr(absl::string_view name,
-                       gtl::ArraySlice<TensorShape> value);
-  NodeDefBuilder& Attr(absl::string_view name,
+  NodeDefBuilder& Attr(StringPiece name, const AttrValue& value);
+  NodeDefBuilder& Attr(StringPiece name, StringPiece value);
+  NodeDefBuilder& Attr(StringPiece name, const char* value);
+  NodeDefBuilder& Attr(StringPiece name, int32 value);
+  NodeDefBuilder& Attr(StringPiece name, int64 value);
+  NodeDefBuilder& Attr(StringPiece name, float value);
+  NodeDefBuilder& Attr(StringPiece name, double value);
+  NodeDefBuilder& Attr(StringPiece name, bool value);
+  NodeDefBuilder& Attr(StringPiece name, DataType value);
+  NodeDefBuilder& Attr(StringPiece name, const PartialTensorShape& value);
+  NodeDefBuilder& Attr(StringPiece name, const Tensor& value);
+  NodeDefBuilder& Attr(StringPiece name, const TensorProto& value);
+  NodeDefBuilder& Attr(StringPiece name, const NameAttrList& value);
+  NodeDefBuilder& Attr(StringPiece name, gtl::ArraySlice<StringPiece> value);
+  NodeDefBuilder& Attr(StringPiece name, gtl::ArraySlice<const char*> value);
+  NodeDefBuilder& Attr(StringPiece name, gtl::ArraySlice<string> value);
+  NodeDefBuilder& Attr(StringPiece name, gtl::ArraySlice<int32> value);
+  NodeDefBuilder& Attr(StringPiece name, gtl::ArraySlice<int64> value);
+  NodeDefBuilder& Attr(StringPiece name, gtl::ArraySlice<float> value);
+  NodeDefBuilder& Attr(StringPiece name, gtl::ArraySlice<bool> value);
+  NodeDefBuilder& Attr(StringPiece name, const std::vector<bool>& value);
+  NodeDefBuilder& Attr(StringPiece name, gtl::ArraySlice<DataType> value);
+  NodeDefBuilder& Attr(StringPiece name, gtl::ArraySlice<TensorShape> value);
+  NodeDefBuilder& Attr(StringPiece name,
                        gtl::ArraySlice<PartialTensorShape> value);
-  NodeDefBuilder& Attr(absl::string_view name,
+  NodeDefBuilder& Attr(StringPiece name,
                        gtl::ArraySlice<TensorShapeProto> value);
-  NodeDefBuilder& Attr(absl::string_view name, gtl::ArraySlice<Tensor> value);
-  NodeDefBuilder& Attr(absl::string_view name,
-                       gtl::ArraySlice<NameAttrList> value);
+  NodeDefBuilder& Attr(StringPiece name, gtl::ArraySlice<Tensor> value);
+  NodeDefBuilder& Attr(StringPiece name, gtl::ArraySlice<NameAttrList> value);
 
   template <class T>
-  NodeDefBuilder& Attr(absl::string_view name, std::initializer_list<T> value) {
+  NodeDefBuilder& Attr(StringPiece name, std::initializer_list<T> value) {
     return Attr(name, gtl::ArraySlice<T>(value));
   }
 
@@ -151,13 +146,13 @@ class NodeDefBuilder {
   bool NextArgAvailable();
 
   // These do the main work of the Input() methods.
-  void SingleInput(const OpDef::ArgDef* input_arg, absl::string_view src_node,
+  void SingleInput(const OpDef::ArgDef* input_arg, StringPiece src_node,
                    int src_index, DataType dt);
   void ListInput(const OpDef::ArgDef* input_arg,
                  gtl::ArraySlice<NodeOut> src_list);
 
   // Add "src_node:src_index" to the list of inputs in the node_def_.
-  void AddInput(absl::string_view src_node, int src_index);
+  void AddInput(StringPiece src_node, int src_index);
 
   // Generate an error if you can't pass dt when expected is expected.
   void VerifyInputType(const OpDef::ArgDef* input_arg, DataType expected,

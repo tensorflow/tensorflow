@@ -24,7 +24,6 @@ limitations under the License.
 #include <locale>
 #include <unordered_map>
 
-#include "absl/strings/string_view.h"
 #include "double-conversion/double-conversion.h"
 
 #include "tensorflow/core/lib/strings/str_util.h"
@@ -212,16 +211,16 @@ size_t DoubleToBuffer(double value, char* buffer) {
 }
 
 namespace {
-char SafeFirstChar(absl::string_view str) {
+char SafeFirstChar(StringPiece str) {
   if (str.empty()) return '\0';
   return str[0];
 }
-void SkipSpaces(absl::string_view* str) {
+void SkipSpaces(StringPiece* str) {
   while (isspace(SafeFirstChar(*str))) str->remove_prefix(1);
 }
 }  // namespace
 
-bool safe_strto64(absl::string_view str, int64* value) {
+bool safe_strto64(StringPiece str, int64* value) {
   SkipSpaces(&str);
 
   int64 vlimit = kint64max;
@@ -262,7 +261,7 @@ bool safe_strto64(absl::string_view str, int64* value) {
   return true;
 }
 
-bool safe_strtou64(absl::string_view str, uint64* value) {
+bool safe_strtou64(StringPiece str, uint64* value) {
   SkipSpaces(&str);
   if (!isdigit(SafeFirstChar(str))) return false;
 
@@ -283,7 +282,7 @@ bool safe_strtou64(absl::string_view str, uint64* value) {
   return true;
 }
 
-bool safe_strto32(absl::string_view str, int32* value) {
+bool safe_strto32(StringPiece str, int32* value) {
   SkipSpaces(&str);
 
   int64 vmax = kint32max;
@@ -313,7 +312,7 @@ bool safe_strto32(absl::string_view str, int32* value) {
   return true;
 }
 
-bool safe_strtou32(absl::string_view str, uint32* value) {
+bool safe_strtou32(StringPiece str, uint32* value) {
   SkipSpaces(&str);
   if (!isdigit(SafeFirstChar(str))) return false;
 
@@ -333,7 +332,7 @@ bool safe_strtou32(absl::string_view str, uint32* value) {
   return true;
 }
 
-bool safe_strtof(absl::string_view str, float* value) {
+bool safe_strtof(StringPiece str, float* value) {
   int processed_characters_count = -1;
   auto len = str.size();
 
@@ -346,7 +345,7 @@ bool safe_strtof(absl::string_view str, float* value) {
   return processed_characters_count > 0;
 }
 
-bool safe_strtod(absl::string_view str, double* value) {
+bool safe_strtod(StringPiece str, double* value) {
   int processed_characters_count = -1;
   auto len = str.size();
 
@@ -401,7 +400,7 @@ bool StringToFp(const string& s, Fprint* fp) {
   }
 }
 
-absl::string_view Uint64ToHexString(uint64 v, char* buf) {
+StringPiece Uint64ToHexString(uint64 v, char* buf) {
   static const char* hexdigits = "0123456789abcdef";
   const int num_byte = 16;
   buf[num_byte] = '\0';
@@ -409,10 +408,10 @@ absl::string_view Uint64ToHexString(uint64 v, char* buf) {
     buf[i] = hexdigits[v & 0xf];
     v >>= 4;
   }
-  return absl::string_view(buf, num_byte);
+  return StringPiece(buf, num_byte);
 }
 
-bool HexStringToUint64(const absl::string_view& s, uint64* result) {
+bool HexStringToUint64(const StringPiece& s, uint64* result) {
   uint64 v = 0;
   if (s.empty()) {
     return false;

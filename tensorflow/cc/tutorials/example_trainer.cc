@@ -18,7 +18,6 @@ limitations under the License.
 #include <string>
 #include <vector>
 
-#include "absl/strings/string_view.h"
 #include "tensorflow/cc/ops/standard_ops.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -166,7 +165,8 @@ void ConcurrentSessions(const Options& opts) {
 
 namespace {
 
-bool ParseInt32Flag(absl::string_view arg, absl::string_view flag, int32* dst) {
+bool ParseInt32Flag(tensorflow::StringPiece arg, tensorflow::StringPiece flag,
+                    int32* dst) {
   if (tensorflow::str_util::ConsumePrefix(&arg, flag) &&
       tensorflow::str_util::ConsumePrefix(&arg, "=")) {
     char extra;
@@ -176,7 +176,8 @@ bool ParseInt32Flag(absl::string_view arg, absl::string_view flag, int32* dst) {
   return false;
 }
 
-bool ParseBoolFlag(absl::string_view arg, absl::string_view flag, bool* dst) {
+bool ParseBoolFlag(tensorflow::StringPiece arg, tensorflow::StringPiece flag,
+                   bool* dst) {
   if (tensorflow::str_util::ConsumePrefix(&arg, flag)) {
     if (arg.empty()) {
       *dst = true;

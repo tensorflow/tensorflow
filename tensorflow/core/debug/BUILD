@@ -109,7 +109,6 @@ tf_cuda_library(
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:proto_text",
         "//tensorflow/core:protos_all_cc",
-        "@com_google_absl//absl/strings",
     ],
     alwayslink = 1,
 )
@@ -133,7 +132,6 @@ tf_cuda_library(
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:proto_text",
         "//tensorflow/core:protos_all_cc",
-        "@com_google_absl//absl/strings",
     ],
     alwayslink = 1,
 )
