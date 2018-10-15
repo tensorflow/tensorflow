@@ -326,6 +326,30 @@ tf_cuda_cc_test(
     ]),
 )
 
+tf_cuda_cc_test(
+    name = "convert_nodes_test",
+    size = "medium",
+    srcs = ["convert/convert_nodes_test.cc"],
+    tags = [
+        "no_cuda_on_cpu_tap",
+        "no_windows",
+        "nomac",
+    ],
+    deps = [
+        ":trt_logging",
+        ":trt_conversion",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:core_cpu_base",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+    ] + if_tensorrt([
+        "@local_config_tensorrt//:nv_infer",
+    ]),
+)
+
 # Library for the segmenting portion of TensorRT operation creation
 cc_library(
     name = "segment",
