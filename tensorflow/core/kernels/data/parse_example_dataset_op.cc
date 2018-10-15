@@ -25,7 +25,6 @@ namespace {
 
 // See documentation in ../ops/dataset_ops.cc for a high-level
 // description of the following op.
-
 class ParseExampleDatasetOp : public UnaryDatasetOpKernel {
  public:
   explicit ParseExampleDatasetOp(OpKernelConstruction* ctx)
@@ -38,6 +37,7 @@ class ParseExampleDatasetOp : public UnaryDatasetOpKernel {
     OP_REQUIRES_OK(ctx, ctx->GetAttr("dense_shapes", &dense_shapes_));
     OP_REQUIRES_OK(ctx, ctx->GetAttr("output_types", &output_types_));
     OP_REQUIRES_OK(ctx, ctx->GetAttr("output_shapes", &output_shapes_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("sloppy", &sloppy_));
     for (int i = 0; i < dense_shapes_.size(); ++i) {
       bool shape_ok = true;
       if (dense_shapes_[i].dims() == -1) {
@@ -142,11 +142,11 @@ class ParseExampleDatasetOp : public UnaryDatasetOpKernel {
       it->second = i++;
     }
 
-    *output = new Dataset(ctx, input, std::move(dense_defaults),
-                          std::move(sparse_keys_), std::move(dense_keys_),
-                          std::move(key_to_output_index), std::move(config),
-                          num_parallel_calls, sparse_types_, dense_types_,
-                          dense_shapes_, output_types_, output_shapes_);
+    *output = new Dataset(
+        ctx, input, std::move(dense_defaults), std::move(sparse_keys_),
+        std::move(dense_keys_), std::move(key_to_output_index),
+        std::move(config), num_parallel_calls, sparse_types_, dense_types_,
+        dense_shapes_, output_types_, output_shapes_, sloppy_);
   }
 
  private:
@@ -161,7 +161,7 @@ class ParseExampleDatasetOp : public UnaryDatasetOpKernel {
             const DataTypeVector& dense_types,
             const std::vector<PartialTensorShape>& dense_shapes,
             const DataTypeVector& output_types,
-            const std::vector<PartialTensorShape>& output_shapes)
+            const std::vector<PartialTensorShape>& output_shapes, bool sloppy)
         : DatasetBase(DatasetContext(ctx)),
           input_(input),
           dense_defaults_(std::move(dense_defaults)),
@@ -174,7 +174,8 @@ class ParseExampleDatasetOp : public UnaryDatasetOpKernel {
           dense_types_(dense_types),
           dense_shapes_(dense_shapes),
           output_types_(output_types),
-          output_shapes_(output_shapes) {
+          output_shapes_(output_shapes),
+          sloppy_(sloppy) {
       input_->Ref();
     }
 
@@ -272,7 +273,8 @@ class ParseExampleDatasetOp : public UnaryDatasetOpKernel {
 
       return NewParallelMapIterator(
           {this, strings::StrCat(prefix, "::ParseExample")}, input_,
-          std::move(map_fn), num_parallel_calls_);
+          /*init_func=*/nullptr, std::move(map_fn), num_parallel_calls_,
+          sloppy_);
     }
 
     const DataTypeVector& output_dtypes() const override {
@@ -312,12 +314,14 @@ class ParseExampleDatasetOp : public UnaryDatasetOpKernel {
       AttrValue sparse_types_attr;
       AttrValue dense_attr;
       AttrValue dense_shapes_attr;
+      AttrValue sloppy_attr;
 
       b->BuildAttrValue(sparse_keys_, &sparse_keys_attr);
       b->BuildAttrValue(dense_keys_, &dense_keys_attr);
       b->BuildAttrValue(sparse_types_, &sparse_types_attr);
       b->BuildAttrValue(dense_types_, &dense_attr);
       b->BuildAttrValue(dense_shapes_, &dense_shapes_attr);
+      b->BuildAttrValue(sloppy_, &sloppy_attr);
 
       TF_RETURN_IF_ERROR(b->AddDataset(this,
                                        {
@@ -329,7 +333,8 @@ class ParseExampleDatasetOp : public UnaryDatasetOpKernel {
                                         {"dense_keys", dense_keys_attr},
                                         {"sparse_types", sparse_types_attr},
                                         {"Tdense", dense_attr},
-                                        {"dense_shapes", dense_shapes_attr}},
+                                        {"dense_shapes", dense_shapes_attr},
+                                        {"sloppy", sloppy_attr}},
                                        output));
       return Status::OK();
     }
@@ -347,11 +352,13 @@ class ParseExampleDatasetOp : public UnaryDatasetOpKernel {
     const std::vector<PartialTensorShape> dense_shapes_;
     const DataTypeVector output_types_;
     const std::vector<PartialTensorShape> output_shapes_;
+    const bool sloppy_;
   };
 
   const int graph_def_version_;
   DataTypeVector output_types_;
   std::vector<PartialTensorShape> output_shapes_;
+  bool sloppy_;
   std::vector<string> sparse_keys_;
   std::vector<string> dense_keys_;
   DataTypeVector sparse_types_;

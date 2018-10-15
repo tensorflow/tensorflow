@@ -8,7 +8,6 @@ licenses(["notice"])  # Apache 2.0
 
 load("//tensorflow:tensorflow.bzl", "tf_py_test")
 load("//tensorflow:tensorflow.bzl", "cuda_py_test")
-load("//tensorflow:tensorflow.bzl", "sycl_py_test")
 
 tf_py_test(
     name = "batch_dataset_op_test",
