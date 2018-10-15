@@ -52,7 +52,7 @@ class WhileLoopConstantSinking : public HloModulePass {
   ~WhileLoopConstantSinking() override = default;
 
   absl::string_view name() const override {
-    return "while-loop-invariant-code-motion";
+    return "while-loop-constant-sinking";
   }
 
   StatusOr<bool> Run(HloModule* module) override;
