@@ -260,43 +260,19 @@ std::string PoplarExecutor::GetDeviceTargetName() const {
   return poplar::toString(poplar_device_.getTarget().getTargetType());
 }
 
-static bool DeviceConfigurationsEqual(
-    const tensorflow::IPUOptions::DeviceConfig& a,
-    const tensorflow::IPUOptions::DeviceConfig& b) {
+static bool DeviceConfigurationsEqual(const tensorflow::IPUOptions& a,
+                                      const tensorflow::IPUOptions& b) {
   return google::protobuf::util::MessageDifferencer::Equivalent(a, b);
 }
 
 Status PoplarExecutor::ConfigurePoplarDevice(
-    const tensorflow::IPUOptions::DeviceConfig& cfg) {
+    const tensorflow::IPUOptions& cfg) {
   if (!DeviceConfigurationsEqual(cfg, current_config_) || !device_open_) {
     current_config_ = cfg;
 
-    tensorflow::IPUOptions::DeviceConfig::Type type = cfg.type();
-
-    static poplar::DeviceManager device_mgr =
-        poplar::DeviceManager::getDeviceManager();
-
-    int num_ipus = cfg.ipu_model_config().num_ipus();
-    int tiles_per_ipu = cfg.ipu_model_config().tiles_per_ipu();
-
-    if (num_ipus == 0) {
-      num_ipus = 1;
-    }
-
     try {
-      // Only log the device_id when device type has been specified
-      bool log_device_id =
-          type != tensorflow::IPUOptions::DeviceConfig::DEFAULT;
-      auto device_list =
-          device_mgr.getDevices(poplar::TargetType::IPU, num_ipus);
-
-      if (type == tensorflow::IPUOptions::DeviceConfig::DEFAULT) {
-        if (device_list.size() > 0 && ordinal_ == 0) {
-          type = tensorflow::IPUOptions::DeviceConfig::IPU;
-        } else {
-          type = tensorflow::IPUOptions::DeviceConfig::CPU;
-        }
-      }
+      static poplar::DeviceManager device_mgr =
+          poplar::DeviceManager::getDeviceManager();
 
       if (device_open_) {
         VLOG(1) << "Detaching poplar device type " << GetDeviceTargetName();
@@ -304,83 +280,85 @@ Status PoplarExecutor::ConfigurePoplarDevice(
         device_open_ = false;
       }
 
-      auto statusor_device_config_index = GetDeviceConfigIndex();
-      bool opened = false;
-      switch (type) {
-        case tensorflow::IPUOptions::DeviceConfig::IPU: {
-          // If a specific device has been requested, then attach to it,
-          // otherwise attach to the first device available.
-          if (statusor_device_config_index.ok()) {
-            const auto device_config_index =
-                statusor_device_config_index.ValueOrDie();
-            if (device_config_index >= device_list.size()) {
-              return InvalidArgument(
-                  "Requested device configuration index %d, but %d "
-                  "configurations were available.",
-                  device_config_index, device_list.size());
-            }
-            poplar_device_ = std::move(device_list.at(device_config_index));
-            if (poplar_device_.attach()) {
-              opened = true;
-            } else {
-              return InternalError(
-                  "Could not attach to the device configuration index "
-                  "requested.");
-            }
-          } else {
-            for (auto& d : device_list) {
-              if (d.getTarget().getTargetType() == poplar::TargetType::IPU) {
-                if (d.attach()) {
-                  poplar_device_ = std::move(d);
-                  opened = true;
-                  break;
-                }
-              }
-            }
-          }
-          if (opened) {
-            unsigned mj, mn, pt;
-            poplar_device_.getDriverVersion(mj, mn, pt);
-            VLOG(1) << "Poplar driver: " << mj << "." << mn << "." << pt;
+      option_flags_ = poplar::OptionFlags();
+      option_flags_.set("target.workerStackSizeInBytes", "0x200");
 
-            if (tiles_per_ipu > 0) {
-              poplar_device_ =
-                  poplar_device_.createVirtualDevice(tiles_per_ipu);
-            }
-            if (log_device_id) {
-              // Log the device ID's in the current config
-              std::stringstream ss;
-              ss << "Attached to IPU";
-              if (poplar_device_.getDriverIDs().size() > 1) {
-                ss << "s";
-              }
-              ss << ": ";
-              auto first_pass = true;
-              for (const auto& id : poplar_device_.getDriverIDs()) {
-                if (first_pass) {
-                  first_pass = false;
-                } else {
-                  ss << ", ";
-                }
-                ss << id;
-              }
-              LOG(INFO) << ss.str();
-            }
+      bool opened = false;
+
+      bool have_ipu_hardware = false;
+      {
+        auto device_list = device_mgr.getDevices();
+        for (const auto& d : device_list) {
+          if (d.getTarget().getTargetType() == poplar::TargetType::IPU) {
+            have_ipu_hardware = true;
+            break;
           }
-          break;
         }
-        case tensorflow::IPUOptions::DeviceConfig::IPU_MODEL: {
-          if (statusor_device_config_index.ok()) {
-            const auto device_config_index =
-                statusor_device_config_index.ValueOrDie();
-            // We only allow one configutation for IPU_MODEL
-            if (device_config_index != 0) {
-              return InvalidArgument(
-                  "Requested device configuration index %d, but 1 "
-                  "configuration was available.",
-                  device_config_index);
+      }
+
+      if (have_ipu_hardware) {
+        // Hardware devices
+        auto device_list = device_mgr.getDevices();
+
+        if (ordinal_ > current_config_.device_config_size()) {
+          return InternalError(
+              "Device ordinal %d not in device configuration list.", ordinal_);
+        }
+
+        const auto& device = current_config_.device_config(ordinal_);
+
+        if (device.selection_case() ==
+            tensorflow::IPUOptions::DeviceConfig::SelectionCase::kCfgIndex) {
+          const int32 cfg_index = device.cfg_index();
+
+          if (cfg_index >= device_list.size()) {
+            return InvalidArgument(
+                "Requested device configuration index %d, but %d "
+                "configurations were available.",
+                cfg_index, device_list.size());
+          }
+          poplar_device_ = std::move(device_list.at(cfg_index));
+          if (poplar_device_.attach()) {
+            opened = true;
+          } else {
+            return InternalError(
+                "Could not attach to requested device configuration index %d",
+                cfg_index);
+          }
+        } else {
+          for (auto& d : device_list) {
+            if (d.getTarget().getTargetType() == poplar::TargetType::IPU &&
+                d.getTarget().getNumIPUs() == device.auto_count()) {
+              if (d.attach()) {
+                poplar_device_ = std::move(d);
+                opened = true;
+                break;
+              }
             }
           }
+        }
+        if (opened) {
+          unsigned mj, mn, pt;
+          poplar_device_.getDriverVersion(mj, mn, pt);
+          VLOG(1) << "Poplar driver: " << mj << "." << mn << "." << pt;
+
+          const auto& ids = poplar_device_.getDriverIDs();
+          LOG(INFO) << "Attached to IPU" << (ids.size() > 1 ? "s" : "") << ": "
+                    << absl::StrJoin(ids, ",");
+
+          if (current_config_.profiling().enable_execution_trace()) {
+            // Enable getting the cycle counts for each compute set on hardware
+            // when asking for an execution trace
+            option_flags_.set("debug.executionProfile", "compute_sets");
+          }
+        }
+      } else {
+        if (current_config_.ipu_model_config().enable_ipu_model()) {
+          // Poplar IPU Model device
+          int num_ipus = current_config_.ipu_model_config().num_ipus();
+          int tiles_per_ipu =
+              current_config_.ipu_model_config().tiles_per_ipu();
+
           poplar::IPUModel model;
           if (num_ipus != 0) {
             model.numIPUs = num_ipus;
@@ -392,30 +370,13 @@ Status PoplarExecutor::ConfigurePoplarDevice(
           if (poplar_device_.attach()) {
             opened = true;
           }
-          break;
-        }
-        case tensorflow::IPUOptions::DeviceConfig::CPU: {
-          if (statusor_device_config_index.ok()) {
-            const auto device_config_index =
-                statusor_device_config_index.ValueOrDie();
-            // We only allow one configutation for CPU
-            if (device_config_index != 0) {
-              return InvalidArgument(
-                  "Requested device configuration index %d, but 1 "
-                  "configuration was available.",
-                  device_config_index);
-            }
-          }
+        } else {
+          // Poplar CPU device
           poplar_device_ = poplar::Device::createCPUDevice();
           if (poplar_device_.attach()) {
             opened = true;
           }
-          break;
         }
-        default:
-          return xla::InternalError(
-              "Unrecognized poplar device type for ordinal %d: %d", ordinal_,
-              type);
       }
 
       if (!opened) {
@@ -431,23 +392,7 @@ Status PoplarExecutor::ConfigurePoplarDevice(
     VLOG(1) << "Attached poplar device type " << GetDeviceTargetName();
     device_open_ = true;
 
-    option_flags_ = poplar::OptionFlags();
-    option_flags_.set("target.workerStackSizeInBytes", "0x200");
-
-    // Device specific options
-    switch (type) {
-      case tensorflow::IPUOptions::DeviceConfig::IPU: {
-        if (current_config_.profiling().enable_execution_trace()) {
-          // Enable getting the cycle counts for each compute set on hardware
-          // when asking for an execution trace
-          option_flags_.set("debug.executionProfile", "compute_sets");
-        }
-        break;
-      }
-      default: { break; }
-    }
-
-    for (const auto& opt : cfg.compilation_options()) {
+    for (const auto& opt : current_config_.compilation_options()) {
       option_flags_.set(opt.option(), opt.value());
     }
 
@@ -561,11 +506,11 @@ void PoplarExecutor::AddExecuteEventRecord(const std::string& module_name,
 
 const poprand::RandomGenMode PoplarExecutor::GetRandomGenMode() const {
   switch (current_config_.random_type()) {
-    case tensorflow::IPUOptions::DeviceConfig::NOT_REPEATABLE:
+    case tensorflow::IPUOptions::NOT_REPEATABLE:
       return poprand::NOT_REPEATABLE;
-    case tensorflow::IPUOptions::DeviceConfig::SYSTEM_REPEATABLE:
+    case tensorflow::IPUOptions::SYSTEM_REPEATABLE:
       return poprand::SYSTEM_REPEATABLE;
-    case tensorflow::IPUOptions::DeviceConfig::ALWAYS_REPEATABLE:
+    case tensorflow::IPUOptions::ALWAYS_REPEATABLE:
       return poprand::ALWAYS_REPEATABLE;
     default:
       return poprand::NOT_REPEATABLE;

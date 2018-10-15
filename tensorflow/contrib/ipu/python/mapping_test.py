@@ -38,7 +38,7 @@ class MappingTest(test_util.TensorFlowTestCase):
     with ipu.ops.ipu_scope("/device:IPU:0"):
       r = xla.compile(my_net, inputs=[w, i])
 
-    cfg = ipu.utils.create_ipu_config(profiling=True, type='IPU_MODEL')
+    cfg = ipu.utils.create_ipu_config(profiling=True)
     with sl.Session(config=config_pb2.ConfigProto(ipu_options=cfg)) as sess:
 
       result = sess.run(r, {i:np.arange(0, 3*256, 3), w:np.arange(8192)})

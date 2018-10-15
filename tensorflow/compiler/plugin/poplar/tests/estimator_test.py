@@ -86,11 +86,10 @@ class IpuEstimatorTest(test_util.TensorFlowTestCase):
     shutil.rmtree("testlogs", True)
 
     opts = config_pb2.IPUOptions()
-    dev = opts.device_config.add()
-    dev.type = config_pb2.IPUOptions.DeviceConfig.IPU_MODEL
-    dev.profiling.enable_compilation_trace = True
-    dev.profiling.enable_io_trace = False
-    dev.profiling.enable_execution_trace = False
+    opts.ipu_model_config.enable_ipu_model = True
+    opts.profiling.enable_compilation_trace = True
+    opts.profiling.enable_io_trace = False
+    opts.profiling.enable_execution_trace = False
 
     sess_cfg = config_pb2.ConfigProto(ipu_options=opts)
     run_cfg = run_config.RunConfig(session_config=sess_cfg)
