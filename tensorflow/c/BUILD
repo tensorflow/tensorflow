@@ -11,7 +11,7 @@ load(
     "tf_custom_op_library",
     "tf_kernel_library",
 )
-load("//tensorflow:tensorflow.bzl", "tf_cuda_cc_test")
+load("//tensorflow:tensorflow.bzl", "tf_gpu_cc_test")
 
 # -----------------------------------------------------------------------------
 # Public targets

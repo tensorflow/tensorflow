@@ -249,7 +249,7 @@ py_library(
     ],
 )
 
-cuda_py_test(
+gpu_py_test(
     name = "remote_test",
     srcs = ["remote_test.py"],
     additional_deps = [
