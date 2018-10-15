@@ -225,6 +225,20 @@ AffineValueMap::AffineValueMap(AffineMap map, ArrayRef<MLValue *> operands)
   }
 }
 
+void AffineValueMap::forwardSubstitute(const AffineApplyOp &inputOp) {
+  SmallVector<bool, 4> inputResultsToSubstitute(inputOp.getNumResults());
+  for (unsigned i = 0, e = inputOp.getNumResults(); i < e; i++)
+    inputResultsToSubstitute[i] = true;
+  forwardSubstitute(inputOp, inputResultsToSubstitute);
+}
+
+void AffineValueMap::forwardSubstituteSingle(const AffineApplyOp &inputOp,
+                                             unsigned inputResultIndex) {
+  SmallVector<bool, 4> inputResultsToSubstitute(inputOp.getNumResults(), false);
+  inputResultsToSubstitute[inputResultIndex] = true;
+  forwardSubstitute(inputOp, inputResultsToSubstitute);
+}
+
 // Returns true and sets 'indexOfMatch' if 'valueToMatch' is found in
 // 'valuesToSearch'. Returns false otherwise.
 static bool findIndex(MLValue *valueToMatch, ArrayRef<MLValue *> valuesToSearch,
@@ -264,7 +278,8 @@ static bool findIndex(MLValue *valueToMatch, ArrayRef<MLValue *> valuesToSearch,
 //
 // TODO(andydavis) Move this to a function which can be shared with
 // forwardSubstitute(const AffineValueMap &inputMap).
-void AffineValueMap::forwardSubstitute(const AffineApplyOp &inputOp) {
+void AffineValueMap::forwardSubstitute(
+    const AffineApplyOp &inputOp, ArrayRef<bool> inputResultsToSubstitute) {
   unsigned currNumDims = map.getNumDims();
   unsigned inputNumResults = inputOp.getNumResults();
 
@@ -273,6 +288,8 @@ void AffineValueMap::forwardSubstitute(const AffineApplyOp &inputOp) {
   DenseMap<unsigned, unsigned> currOperandToInputResult;
   for (unsigned i = 0; i < currNumDims; ++i) {
     for (unsigned j = 0; j < inputNumResults; ++j) {
+      if (!inputResultsToSubstitute[j])
+        continue;
       if (operands[i] ==
           cast<MLValue>(const_cast<SSAValue *>(inputOp.getResult(j)))) {
         currOperandToInputResult[i] = j;

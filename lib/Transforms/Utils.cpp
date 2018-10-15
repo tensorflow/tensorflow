@@ -288,3 +288,53 @@ OperationStmt *mlir::createAffineComputationSlice(OperationStmt *opStmt) {
 
   return affineApplyStmt;
 }
+
+void mlir::forwardSubstitute(OpPointer<AffineApplyOp> affineApplyOp) {
+  if (affineApplyOp->getOperation()->getOperationFunction()->getKind() !=
+      Function::Kind::MLFunc) {
+    // TODO: Support forward substitution for CFGFunctions.
+    return;
+  }
+  auto *opStmt = cast<OperationStmt>(affineApplyOp->getOperation());
+  // Iterate through all uses of all results of 'opStmt', forward substituting
+  // into any uses which are AffineApplyOps.
+  for (unsigned resultIndex = 0, e = opStmt->getNumResults(); resultIndex < e;
+       ++resultIndex) {
+    const MLValue *result = opStmt->getResult(resultIndex);
+    for (auto it = result->use_begin(); it != result->use_end();) {
+      StmtOperand &use = *(it++);
+      auto *useStmt = use.getOwner();
+      auto *useOpStmt = dyn_cast<OperationStmt>(useStmt);
+      // Skip if use is not AffineApplyOp.
+      if (useOpStmt == nullptr || !useOpStmt->is<AffineApplyOp>())
+        continue;
+      // Advance iterator past 'opStmt' operands which also use 'result'.
+      while (it != result->use_end() && it->getOwner() == useStmt)
+        ++it;
+
+      MLFuncBuilder builder(useOpStmt);
+      // Initialize AffineValueMap with 'affineApplyOp' which uses 'result'.
+      auto oldAffineApplyOp = useOpStmt->getAs<AffineApplyOp>();
+      AffineValueMap valueMap(*oldAffineApplyOp);
+      // Forward substitute 'result' at index 'i' into 'valueMap'.
+      valueMap.forwardSubstituteSingle(*affineApplyOp, resultIndex);
+
+      // Create new AffineApplyOp from 'valueMap'.
+      unsigned numOperands = valueMap.getNumOperands();
+      SmallVector<SSAValue *, 4> operands(numOperands);
+      for (unsigned i = 0; i < numOperands; ++i) {
+        operands[i] = valueMap.getOperand(i);
+      }
+      auto newAffineApplyOp = builder.create<AffineApplyOp>(
+          useOpStmt->getLoc(), valueMap.getAffineMap(), operands);
+
+      // Update all uses to use results from 'newAffineApplyOp'.
+      for (unsigned i = 0, e = useOpStmt->getNumResults(); i < e; ++i) {
+        oldAffineApplyOp->getResult(i)->replaceAllUsesWith(
+            newAffineApplyOp->getResult(i));
+      }
+      // Erase 'oldAffineApplyOp'.
+      cast<OperationStmt>(oldAffineApplyOp->getOperation())->eraseFromBlock();
+    }
+  }
+}

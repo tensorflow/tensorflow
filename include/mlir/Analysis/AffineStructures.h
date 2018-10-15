@@ -136,7 +136,8 @@ public:
   // TODO(bondhugula)
   void forwardSubstitute(const AffineValueMap &inputMap);
   void forwardSubstitute(const AffineApplyOp &inputOp);
-
+  void forwardSubstituteSingle(const AffineApplyOp &inputOp,
+                               unsigned inputResultIndex);
   // TODO(andydavis, bondhugula) Expose an affine map simplify function, which
   // can be used to amortize the cost of simplification over multiple fwd
   // substitutions).
@@ -158,6 +159,8 @@ public:
   AffineMap getAffineMap();
 
 private:
+  void forwardSubstitute(const AffineApplyOp &inputOp,
+                         ArrayRef<bool> inputResultsToSubstitute);
   // A mutable affine map.
   MutableAffineMap map;
 

@@ -26,6 +26,7 @@
 #define MLIR_TRANSFORMS_UTILS_H
 
 #include "mlir/IR/AffineMap.h"
+#include "mlir/IR/BuiltinOps.h"
 #include "llvm/ADT/ArrayRef.h"
 
 namespace mlir {
@@ -88,6 +89,12 @@ createComposedAffineApplyOp(MLFuncBuilder *builder, Location *loc,
 /// and thus there was no affine computation slice to create. Returns the newly
 /// affine_apply operation statement otherwise.
 OperationStmt *createAffineComputationSlice(OperationStmt *opStmt);
+
+/// Forward substitutes results from 'AffineApplyOp' into any users which
+/// are also AffineApplyOps.
+// NOTE: This method may modify users of results of this operation.
+// TODO(mlir-team): extend this for SSAValue / CFGFunctions.
+void forwardSubstitute(OpPointer<AffineApplyOp> affineApplyOp);
 
 } // end namespace mlir
 
