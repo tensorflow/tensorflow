@@ -28,6 +28,7 @@ from tensorflow.python.autograph.operators import py_builtins
 from tensorflow.python.autograph.pyct import compiler
 from tensorflow.python.autograph.pyct import inspect_utils
 from tensorflow.python.autograph.utils import py_func
+from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import tf_decorator
 from tensorflow.python.util import tf_inspect
 
@@ -66,6 +67,7 @@ def convert(recursive=False, verbose=False):
               recursive=recursive,
               verbose=verbose,
               force_conversion=True,
+              optional_features=converter.Feature.ALL,
           ), *args, **kwargs)
 
     wrapper = tf_decorator.make_decorator(f, wrapper)
@@ -142,6 +144,9 @@ def do_not_convert(run_as=RunMode.GRAPH, return_dtypes=None):
 # TODO(mdan): Move to a private, undocumented module.
 def converted_call(f, owner, options, *args, **kwargs):
   """Compiles a function call inline. For internal use only."""
+  if options.verbose:
+    logging.info('Converted call: {}; owner: {}'.format(f, owner))
+
   if owner is not None:
     if not isinstance(f, str):
       raise ValueError(
@@ -233,7 +238,8 @@ def converted_call(f, owner, options, *args, **kwargs):
       arg_values=arg_values,
       arg_types=arg_types,
       partial_types=partial_types,
-      strip_decorators=options.strip_decorators)
+      strip_decorators=options.strip_decorators,
+      optional_features=options.optional_features)
   return converted_f(*effective_args, **kwargs)
 
 
@@ -246,7 +252,8 @@ def to_graph(e,
              arg_values=None,
              arg_types=None,
              partial_types=None,
-             strip_decorators=None):
+             strip_decorators=None,
+             optional_features=converter.Feature.ALL):
   """Converts a Python entity into equivalent code that uses TensorFlow ops.
 
   Supported Python entities include:
@@ -267,6 +274,8 @@ def to_graph(e,
     partial_types: Set[Type], reserved for internal use.
     strip_decorators: Tuple[Callable], same as
       ConversionOptions.strip_decorators.
+    optional_features: Union[Feature, Set[Feature]], same as
+      ConversionOptions.optional_features.
 
   Returns:
     Union[Callable, Type], the converted entity, which is the same kind as e
@@ -284,7 +293,8 @@ def to_graph(e,
       options=converter.ConversionOptions(
           recursive=recursive,
           verbose=verbose,
-          strip_decorators=strip_decorators),
+          strip_decorators=strip_decorators,
+          optional_features=optional_features),
       partial_types=partial_types,
       autograph_module=tf_inspect.getmodule(to_graph),
       uncompiled_modules=config.DEFAULT_UNCOMPILED_MODULES)
@@ -295,7 +305,7 @@ def to_graph(e,
   for dep in reversed(program_ctx.conversion_order):
     nodes.extend(program_ctx.dependency_cache[dep])
 
-  compiled_module, compiled_src = compiler.ast_to_object(
+  compiled_module, _ = compiler.ast_to_object(
       nodes,
       source_prefix=program_ctx.required_imports,
       include_source_map=True)

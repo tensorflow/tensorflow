@@ -1805,6 +1805,14 @@ tf_gen_op_wrapper_private_py(
 )
 
 tf_gen_op_wrapper_private_py(
+    name = "ragged_array_ops_gen",
+    visibility = [
+        "//learning/brain/contrib/text:__pkg__",
+        "//learning/brain/contrib/text/python/ragged:__pkg__",
+    ],
+)
+
+tf_gen_op_wrapper_private_py(
     name = "ragged_math_ops_gen",
     visibility = [
         "//learning/brain/contrib/text:__pkg__",

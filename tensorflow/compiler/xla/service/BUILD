@@ -3213,6 +3213,7 @@ cc_library(
         ":computation_placer",
         ":executable",
         ":hlo",
+        ":hlo_module_group",
         ":transfer_manager",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:status_macros",
