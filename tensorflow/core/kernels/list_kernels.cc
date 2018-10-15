@@ -449,9 +449,16 @@ class TensorListSetItem : public OpKernel {
                 errors::InvalidArgument("Trying to modify element ", index,
                                         " in a list with ", l->tensors.size(),
                                         " elements."));
+    const Tensor& value = c->input(2);
+    OP_REQUIRES(c, l->element_shape.IsCompatibleWith(value.shape()),
+                errors::InvalidArgument(
+                    "Tried to set a tensor with incompatible shape at a "
+                    "list index. Item element shape: ",
+                    value.shape().DebugString(),
+                    " list shape: ", l->element_shape.DebugString()));
     TensorList output;
     output = *l;
-    output.tensors[index] = c->input(2);
+    output.tensors[index] = value;
     Tensor* result;
     AllocatorAttributes attr;
     attr.set_on_host(true);
