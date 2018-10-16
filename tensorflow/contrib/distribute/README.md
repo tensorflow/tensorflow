@@ -20,7 +20,7 @@ on many GPUs on one machine. Essentially, we create copies of all variables in
 the model's layers on each device. We then use all-reduce to combine gradients
 across the devices before applying them to the variables to keep them in sync.
 * [`CollectiveAllReduceStrategy`](https://www.tensorflow.org/versions/master/api_docs/python/tf/contrib/distribute/CollectiveAllReduceStrategy):
-This is a version of `MirroredStrategy` for multi-working training. It uses
+This is a version of `MirroredStrategy` for multi-worker training. It uses
 a collective op to do all-reduce. This supports between-graph communication and
 synchronization, and delegates the specifics of the all-reduce implementation to
 the runtime (as opposed to encoding it in the graph). This allows it to perform
@@ -31,8 +31,8 @@ fault-tolerance to allow training to continue when there is worker failure.
 * [`ParameterServerStrategy`](https://www.tensorflow.org/versions/master/api_docs/python/tf/contrib/distribute/ParameterServerStrategy):
 This strategy supports using parameter servers either for multi-GPU local
 training or asynchronous multi-machine training. When used to train locally,
-variables are not mirrored, instead they placed on the CPU and operations are
-replicated across all local GPUs. In a multi-machine setting, some are
+variables are not mirrored, instead they are placed on the CPU and operations
+are replicated across all local GPUs. In a multi-machine setting, some are
 designated as workers and some as parameter servers. Each variable is placed on
 one parameter server. Computation operations are replicated across all GPUs of
 the workers.
