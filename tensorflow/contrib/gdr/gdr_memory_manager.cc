@@ -275,8 +275,13 @@ Status GdrMemoryManager::Init() {
     };
     GPUProcessState::singleton()->AddGPUAllocVisitor(bus_id,
                                                      cuda_alloc_visitor);
-    GPUProcessState::singleton()->AddCUDAHostAllocVisitor(0, alloc_visitor);
-    GPUProcessState::singleton()->AddCUDAHostAllocVisitor(1, alloc_visitor);
+
+    for (int numa_idx = 0; numa_idx < port::NUMANumNodes(); ++numa_idx) {
+      GPUProcessState::singleton()->AddCUDAHostAllocVisitor(numa_idx,
+                                                            alloc_visitor);
+      LOG(INFO) << "Instrumenting Cuda host allocator on numa " << numa_idx;
+    }
+
     GPUProcessState::singleton()->AddCUDAHostFreeVisitor(bus_id, free_visitor);
     LOG(INFO) << "Instrumenting GPU allocator(s) with bus_id " << bus_id;
   }
