@@ -22,6 +22,7 @@ from __future__ import print_function
 
 import collections
 import math
+import sys
 import time
 
 import numpy as np
@@ -739,6 +740,54 @@ class ControlFlowTest(test.TestCase):
           sum([y for (x, y) in zip(gi, gv) if x == i]) for i in range(2)
       ]
       self.assertAllEqual(dense_gv, [0.0, 2.0])
+
+  @test_util.run_in_graph_and_eager_modes()
+  def testCondAutoControlDeps(self):
+
+    def branch_fn():
+      logging_ops.print_v2("A")
+      logging_ops.print_v2("B")
+      with ops.control_dependencies([logging_ops.print_v2("C")]):
+        return constant_op.constant(10)
+
+    def build_cond():
+      return control_flow_ops.cond(
+          constant_op.constant(True), branch_fn, lambda: 0)
+
+    def build_nested_cond():
+      return control_flow_ops.cond(
+          constant_op.constant(True), build_cond, lambda: 0)
+
+    # In v1 graph mode, pruning should make only "C" print.
+    if not context.executing_eagerly():
+      with self.cached_session():
+        with self.captureWritesToStream(sys.stderr) as printed:
+          self.assertEqual(build_cond().eval(), 10)
+        self.assertEqual(printed.contents(), "C\n")
+
+        with self.captureWritesToStream(sys.stderr) as printed:
+          self.assertEqual(build_nested_cond().eval(), 10)
+        self.assertEqual(printed.contents(), "C\n")
+
+    # In defuns, all prints should execute in program order.
+    # This doesn't work with legacy control flow.
+    if control_flow_ops.ENABLE_COND_V2:
+
+      @eager_function.defun
+      def cond():
+        return build_cond()
+
+      with self.captureWritesToStream(sys.stderr) as printed:
+        self.assertEqual(self.evaluate(cond()), 10)
+      self.assertEqual(printed.contents(), "A\nB\nC\n")
+
+      @eager_function.defun
+      def nested_cond():
+        return build_nested_cond()
+
+      with self.captureWritesToStream(sys.stderr) as printed:
+        self.assertEqual(self.evaluate(nested_cond()), 10)
+      self.assertEqual(printed.contents(), "A\nB\nC\n")
 
   # Microbenchmark: 256,000 iterations/s.
   @test_util.disable_control_flow_v2("b/116630618 (Times out)")
