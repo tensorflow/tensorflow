@@ -406,6 +406,33 @@ tf_cc_test(
 )
 
 cc_library(
+    name = "encapsulate_util",
+    srcs = ["encapsulate_util.cc"],
+    hdrs = ["encapsulate_util.h"],
+    deps = [
+        ":shape_inference",
+        "//tensorflow/core:graph",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:optional",
+    ],
+)
+
+tf_cc_test(
+    name = "encapsulate_util_test",
+    srcs = ["encapsulate_util_test.cc"],
+    deps = [
+        ":encapsulate_util",
+        "//tensorflow/cc:cc_ops",
+        "//tensorflow/cc:scope",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:ops",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+    ],
+)
+
+cc_library(
     name = "compilation_passes",
     srcs = [
         "build_xla_ops_pass.cc",
