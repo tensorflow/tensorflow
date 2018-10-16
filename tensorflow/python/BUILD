@@ -2025,6 +2025,17 @@ py_library(
 )
 
 py_library(
+    name = "control_flow_util_v2",
+    srcs = ["ops/control_flow_util_v2.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        "framework_ops",
+        "//tensorflow/python/eager:context",
+        "//tensorflow/python/eager:function",
+    ],
+)
+
+py_library(
     name = "cond_v2",
     srcs = [
         "ops/cond_v2.py",
@@ -2033,6 +2044,7 @@ py_library(
     deps = [
         ":array_ops",
         ":c_api_util",
+        ":control_flow_util_v2",
         ":framework_ops",
         ":function",
         ":function_def_to_graph",
@@ -2055,10 +2067,10 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         ":array_ops",
-        ":cond_v2",
         ":constant_op",
         ":control_flow_ops",
         ":control_flow_util",
+        ":control_flow_util_v2",
         ":framework_ops",
         ":function_def_to_graph",
         ":functional_ops_gen",
