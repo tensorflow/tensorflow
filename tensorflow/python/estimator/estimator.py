@@ -1033,10 +1033,9 @@ class Estimator(object):
         meta_graph_kwargs = dict(
             tags=export_tags,
             signature_def_map=signature_def_map,
-            assets_collection=ops.get_collection(
-                ops.GraphKeys.ASSET_FILEPATHS),
+            assets_collection=ops.get_collection(ops.GraphKeys.ASSET_FILEPATHS),
             strip_default_attrs=strip_default_attrs,
-            legacy_init_op=local_init_op,
+            main_op=local_init_op,
             saver=graph_saver)
 
         if save_variables:
