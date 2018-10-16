@@ -36,7 +36,7 @@ namespace tensorflow {
 namespace data {
 namespace {
 
-// See documentation in ../ops/dataset_ops.cc for a high-level
+// See documentation in ../../ops/dataset_ops.cc for a high-level
 // description of the following op.
 class OptimizeDatasetOp : public UnaryDatasetOpKernel {
  public:
