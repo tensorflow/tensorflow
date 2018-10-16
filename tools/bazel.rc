@@ -91,5 +91,3 @@ build:dynamic_kernels --define=dynamic_loaded_kernels=true
 build --define=PREFIX=/usr
 build --define=LIBDIR=$(PREFIX)/lib
 build --define=INCLUDEDIR=$(PREFIX)/include
-
-# Do not commit the tf_configure.bazelrc line

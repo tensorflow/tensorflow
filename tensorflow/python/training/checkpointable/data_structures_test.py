@@ -24,6 +24,7 @@ import six
 
 from tensorflow.python.eager import context
 from tensorflow.python.eager import test
+from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import test_util
 from tensorflow.python.keras.engine import training
 from tensorflow.python.keras.layers import core
@@ -155,6 +156,23 @@ class ListTests(test.TestCase):
   def testNoPop(self):
     with self.assertRaises(AttributeError):
       data_structures.List().pop()
+
+  @test_util.run_in_graph_and_eager_modes
+  def testTensorConversion(self):
+
+    class ListToTensor(training.Model):
+
+      def __init__(self):
+        super(ListToTensor, self).__init__()
+        self.l = [1., 2., 3.]
+
+    self.assertAllEqual(
+        [1., 2., 3.],
+        self.evaluate(constant_op.constant(ListToTensor().l)))
+
+    self.assertAllEqual(
+        [1., 2., 3.],
+        self.evaluate(array_ops.pack(ListToTensor().l)))
 
   def testNesting(self):
     with context.graph_mode():

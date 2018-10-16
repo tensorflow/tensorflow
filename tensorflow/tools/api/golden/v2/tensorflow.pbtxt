@@ -9,14 +9,6 @@ tf_module {
     mtype: "<class \'google.protobuf.pyext.cpp_message.GeneratedProtocolMessageType\'>"
   }
   member {
-    name: "COMPILER_VERSION"
-    mtype: "<type \'str\'>"
-  }
-  member {
-    name: "CXX11_ABI_FLAG"
-    mtype: "<type \'int\'>"
-  }
-  member {
     name: "ConditionalAccumulator"
     mtype: "<type \'type\'>"
   }
@@ -57,24 +49,8 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
-    name: "GIT_VERSION"
-    mtype: "<type \'str\'>"
-  }
-  member {
     name: "GPUOptions"
     mtype: "<class \'google.protobuf.pyext.cpp_message.GeneratedProtocolMessageType\'>"
-  }
-  member {
-    name: "GRAPH_DEF_VERSION"
-    mtype: "<type \'int\'>"
-  }
-  member {
-    name: "GRAPH_DEF_VERSION_MIN_CONSUMER"
-    mtype: "<type \'int\'>"
-  }
-  member {
-    name: "GRAPH_DEF_VERSION_MIN_PRODUCER"
-    mtype: "<type \'int\'>"
   }
   member {
     name: "GradientTape"
@@ -111,10 +87,6 @@ tf_module {
   member {
     name: "LogMessage"
     mtype: "<class \'google.protobuf.pyext.cpp_message.GeneratedProtocolMessageType\'>"
-  }
-  member {
-    name: "MONOLITHIC_BUILD"
-    mtype: "<type \'int\'>"
   }
   member {
     name: "MetaGraphDef"
@@ -199,10 +171,6 @@ tf_module {
   member {
     name: "UnconnectedGradients"
     mtype: "<class \'enum.EnumMeta\'>"
-  }
-  member {
-    name: "VERSION"
-    mtype: "<type \'str\'>"
   }
   member {
     name: "VarLenFeature"
@@ -511,6 +479,10 @@ tf_module {
   member {
     name: "variant"
     mtype: "<class \'tensorflow.python.framework.dtypes.DType\'>"
+  }
+  member {
+    name: "version"
+    mtype: "<type \'module\'>"
   }
   member {
     name: "zeros_initializer"

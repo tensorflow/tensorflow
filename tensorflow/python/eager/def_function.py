@@ -26,6 +26,7 @@ from tensorflow.python.eager import context
 from tensorflow.python.eager import function as function_lib
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.training.checkpointable import base as checkpointable
@@ -225,7 +226,7 @@ class PolymorphicFunction(object):
     def variable_capturing_scope(unused_next_creator, **kwds):
       """Creates UnliftedInitializerVariables and saves references to them."""
       v = UnliftedInitializerVariable(**kwds)
-      self._created_variables.append(v)
+      self._created_variables.append(weakref.ref(v))
       return v
 
     self._stateful_fn = _defun_with_scope(
@@ -268,9 +269,16 @@ class PolymorphicFunction(object):
     def fn_with_cond(*inner_args, **inner_kwds):
       """Conditionally runs initialization if it's needed."""
       condition = True
-      for variable in self._created_variables:
-        condition = condition and resource_variable_ops.var_is_initialized_op(
-            variable.handle)
+      for wr in self._created_variables:
+        variable = wr()
+        if variable is None:
+          raise ValueError(
+              "Variable created in a tf.function garbage-collected. Code needs"
+              " to keep python references to variables created in a"
+              " tf.function.")
+        condition = math_ops.logical_and(
+            condition, resource_variable_ops.var_is_initialized_op(
+                variable.handle))
       # We want to call stateless_fn if possible because it avoids recomputing
       # potentially expensive initializers.
       return control_flow_ops.cond(

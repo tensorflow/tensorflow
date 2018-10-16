@@ -680,6 +680,26 @@ class TestWholeModelSaving(test.TestCase):
       os.remove(fname)
 
 
+  def test_saving_constant_initializer_with_numpy(self):
+    if h5py is None:
+      self.skipTest('h5py required to run this test')
+
+    with self.cached_session():
+      model = keras.models.Sequential()
+      model.add(
+          keras.layers.Dense(
+              2,
+              input_shape=(3,),
+              kernel_initializer=keras.initializers.Constant(np.ones((3, 2)))))
+      model.add(keras.layers.Dense(3))
+      model.compile(loss='mse', optimizer='sgd', metrics=['acc'])
+      fd, fname = tempfile.mkstemp('.h5')
+      keras.models.save_model(model, fname)
+      model = keras.models.load_model(fname)
+      os.close(fd)
+      os.remove(fname)
+
+
 class SubclassedModel(training.Model):
 
   def __init__(self):

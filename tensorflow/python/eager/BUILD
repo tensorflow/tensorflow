@@ -393,6 +393,7 @@ py_library(
     name = "def_function",
     srcs = ["def_function.py"],
     srcs_version = "PY2AND3",
+    visibility = ["//tensorflow:internal"],
     deps = [
         ":context",
         ":function",

@@ -180,6 +180,7 @@ REGISTER_OP("ParseExampleDataset")
     .Attr("output_shapes: list(shape) >= 1")  // Output components will be
                                               // sorted by key (dense_keys and
                                               // sparse_keys combined) here.
+    .Attr("sloppy: bool = false")
     .SetShapeFn(shape_inference::ScalarShape);
 
 REGISTER_OP("SetStatsAggregatorDataset")
@@ -213,6 +214,7 @@ REGISTER_OP("ParallelMapDataset")
     .Attr("output_types: list(type) >= 1")
     .Attr("output_shapes: list(shape) >= 1")
     .Attr("use_inter_op_parallelism: bool = true")
+    .Attr("sloppy: bool = false")
     .SetShapeFn(shape_inference::ScalarShape);
 
 REGISTER_OP("MapAndBatchDataset")
@@ -340,6 +342,7 @@ REGISTER_OP("ParallelInterleaveDatasetV2")
     .Attr("Targuments: list(type) >= 0")
     .Attr("output_types: list(type) >= 1")
     .Attr("output_shapes: list(shape) >= 1")
+    .Attr("sloppy: bool = false")
     .SetShapeFn(shape_inference::ScalarShape);
 
 REGISTER_OP("GroupByReducerDataset")

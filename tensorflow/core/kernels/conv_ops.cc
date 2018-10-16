@@ -851,7 +851,7 @@ void LaunchConv2DOp<GPUDevice, T>::operator()(
         ") filter shape(", filter.shape().DebugString(), ")"));
   }
 
-  // Convert the output tensor back from NHWC to NCHW.
+  // Convert the output tensor back from NCHW to NHWC.
   if (data_format == FORMAT_NHWC) {
     functor::NCHWToNHWC<GPUDevice, T, 4>()(
         ctx->eigen_device<GPUDevice>(),

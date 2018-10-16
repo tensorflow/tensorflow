@@ -25,6 +25,9 @@ file_identifier "TFL3";
 // File extension of any written files.
 file_extension "tflite";
 
+// IMPORTANT: All new members of tables, enums and unions must be added at the
+// end to ensure backwards compatibility.
+
 // The type of data stored in a tensor.
 enum TensorType : byte {
   FLOAT32 = 0,

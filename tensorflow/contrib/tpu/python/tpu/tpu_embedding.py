@@ -636,7 +636,7 @@ class TPUEmbedding(object):
         contiguous_device = device
 
   def _generate_enqueue_op(self, sparse_features, device_ordinal):
-    with ops.colocate_with(sparse_features.values()[0]):
+    with ops.colocate_with(list(sparse_features.values())[0]):
       sample_idcs, embedding_idcs, aggregation_weights = (
           self._format_for_tpu_embedding_sparse_batch(sparse_features))
       return tpu_ops.enqueue_tpu_embedding_sparse_batch(

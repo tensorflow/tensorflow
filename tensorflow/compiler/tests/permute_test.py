@@ -40,40 +40,48 @@ class XlaPermuteOpTest(xla_test.XLATestCase):
     self.assertAllEqual(result, expected)
 
   def testNHWCToNCHW(self):
-    x = np.array([7, 4, 9, 3], dtype=np.int32)
-    self._runPermuteAndCompare(x, "NHWC", "NCHW", [7, 3, 4, 9])
+    for dtype in {np.int32, np.int64}:
+      x = np.array([7, 4, 9, 3], dtype=dtype)
+      self._runPermuteAndCompare(x, "NHWC", "NCHW", [7, 3, 4, 9])
 
   def testNCHWToNHWC(self):
-    x = np.array([7, 4, 9, 3], dtype=np.int32)
-    self._runPermuteAndCompare(x, "NCHW", "NHWC", [7, 9, 3, 4])
+    for dtype in {np.int32, np.int64}:
+      x = np.array([7, 4, 9, 3], dtype=dtype)
+      self._runPermuteAndCompare(x, "NCHW", "NHWC", [7, 9, 3, 4])
 
   def testNHWCToHWNC(self):
-    x = np.array([7, 4, 9, 3], dtype=np.int32)
-    self._runPermuteAndCompare(x, "NHWC", "HWNC", [4, 9, 7, 3])
+    for dtype in {np.int32, np.int64}:
+      x = np.array([7, 4, 9, 3], dtype=dtype)
+      self._runPermuteAndCompare(x, "NHWC", "HWNC", [4, 9, 7, 3])
 
   def testHWNCToNHWC(self):
-    x = np.array([7, 4, 9, 3], dtype=np.int32)
-    self._runPermuteAndCompare(x, "HWNC", "NHWC", [9, 7, 4, 3])
+    for dtype in {np.int32, np.int64}:
+      x = np.array([7, 4, 9, 3], dtype=dtype)
+      self._runPermuteAndCompare(x, "HWNC", "NHWC", [9, 7, 4, 3])
 
   def testNHWCToNCHW2D(self):
-    x = np.array([[7, 4], [9, 3], [4, 5], [5, 1]], dtype=np.int32)
-    self._runPermuteAndCompare(x, "NHWC", "NCHW",
-                               [[7, 4], [5, 1], [9, 3], [4, 5]])
+    for dtype in {np.int32, np.int64}:
+      x = np.array([[7, 4], [9, 3], [4, 5], [5, 1]], dtype=dtype)
+      self._runPermuteAndCompare(x, "NHWC", "NCHW",
+                                 [[7, 4], [5, 1], [9, 3], [4, 5]])
 
   def testNHWCToHWNC2D(self):
-    x = np.array([[7, 4], [9, 3], [4, 5], [5, 1]], dtype=np.int32)
-    self._runPermuteAndCompare(x, "NHWC", "HWNC",
-                               [[9, 3], [4, 5], [7, 4], [5, 1]])
+    for dtype in {np.int32, np.int64}:
+      x = np.array([[7, 4], [9, 3], [4, 5], [5, 1]], dtype=dtype)
+      self._runPermuteAndCompare(x, "NHWC", "HWNC",
+                                 [[9, 3], [4, 5], [7, 4], [5, 1]])
 
   def testHWNCToNHWC2D(self):
-    x = np.array([[7, 4], [9, 3], [4, 5], [5, 1]], dtype=np.int32)
-    self._runPermuteAndCompare(x, "HWNC", "NHWC",
-                               [[4, 5], [7, 4], [9, 3], [5, 1]])
+    for dtype in {np.int32, np.int64}:
+      x = np.array([[7, 4], [9, 3], [4, 5], [5, 1]], dtype=dtype)
+      self._runPermuteAndCompare(x, "HWNC", "NHWC",
+                                 [[4, 5], [7, 4], [9, 3], [5, 1]])
 
   def testNCHWToNHWC2D(self):
-    x = np.array([[7, 4], [9, 3], [4, 5], [5, 1]], dtype=np.int32)
-    self._runPermuteAndCompare(x, "NCHW", "NHWC",
-                               [[7, 4], [4, 5], [5, 1], [9, 3]])
+    for dtype in {np.int32, np.int64}:
+      x = np.array([[7, 4], [9, 3], [4, 5], [5, 1]], dtype=dtype)
+      self._runPermuteAndCompare(x, "NCHW", "NHWC",
+                                 [[7, 4], [4, 5], [5, 1], [9, 3]])
 
 
 if __name__ == "__main__":

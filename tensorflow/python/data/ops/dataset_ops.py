@@ -47,6 +47,7 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import script_ops
 from tensorflow.python.ops import string_ops
 from tensorflow.python.util import deprecation
+from tensorflow.python.util import function_utils
 from tensorflow.python.util.tf_export import tf_export
 
 
@@ -1401,6 +1402,8 @@ class Options(object):
       ("experimental_autotune", bool,
        "Whether to dynamically adjust the values of tunable parameters (e.g. "
        "degrees of parallelism)."),
+      ("experimental_deterministic", bool,
+       "Whether the outputs need to be produced in deterministic order."),
       ("experimental_filter_fusion", bool,
        "Whether to fuse filter transformations."),
       ("experimental_hoist_random_uniform", bool,
@@ -1474,6 +1477,8 @@ class Options(object):
 
     if getattr(self, "experimental_numa_aware"):
       result.append("map_and_batch_numa_aware_replacement")
+    if getattr(self, "experimental_deterministic") is False:
+      result.append("make_sloppy")
     return result
 
   def merge(self, options):
@@ -1495,13 +1500,19 @@ class Options(object):
     result = Options()
     for other in [self, options]:
       for name in [
-          "experimental_autotune", "experimental_filter_fusion",
-          "experimental_hoist_random_uniform", "experimental_latency_all_edges",
+          "experimental_autotune",
+          "experimental_deterministic",
+          "experimental_filter_fusion",
+          "experimental_hoist_random_uniform",
+          "experimental_latency_all_edges",
           "experimental_map_and_batch_fusion",
-          "experimental_map_and_filter_fusion", "experimental_map_fusion",
-          "experimental_map_parallelization", "experimental_map_vectorization",
+          "experimental_map_and_filter_fusion",
+          "experimental_map_fusion",
+          "experimental_map_parallelization",
+          "experimental_map_vectorization",
           "experimental_noop_elimination",
-          "experimental_shuffle_and_repeat_fusion", "experimental_numa_aware",
+          "experimental_numa_aware",
+          "experimental_shuffle_and_repeat_fusion",
       ]:
         this = getattr(result, name)
         that = getattr(other, name)
@@ -1737,9 +1748,15 @@ class StructuredFunctionWrapper(object):
   """A wrapper for `Defun` that supports structured arguments and return values.
   """
 
-  def __init__(self, func, transformation_name, dataset=None,
-               input_classes=None, input_shapes=None, input_types=None,
-               add_to_graph=True, experimental_nested_dataset_support=False):
+  def __init__(self,
+               func,
+               transformation_name,
+               dataset=None,
+               input_classes=None,
+               input_shapes=None,
+               input_types=None,
+               add_to_graph=True,
+               experimental_nested_dataset_support=False):
     """Creates a new `StructuredFunctionWrapper` for the given function.
 
     Args:
@@ -1782,11 +1799,18 @@ class StructuredFunctionWrapper(object):
       self._input_classes = dataset.output_classes
 
     self._transformation_name = transformation_name
+    readable_transformation_name = transformation_name.replace(
+        ".", "_")[:-2] if len(transformation_name) > 2 else ""
+    self._func_name = "_".join([
+        readable_transformation_name,
+        function_utils.get_func_name(func),
+        str(ops.uid())
+    ])
 
     # TODO(b/110122868): Enable this support for all `tf.data` functions.
     self._nested_dataset_support = experimental_nested_dataset_support
 
-    @function.Defun(*self._defun_args())
+    @function.Defun(*self._defun_args(), func_name=self._func_name)
     def tf_data_structured_function_wrapper(*args):
       """Wrapper for passing nested structures to and from tf.data functions."""
       flat_args = []
@@ -1997,24 +2021,33 @@ class _GeneratorDataset(DatasetSource):
         init_args, [t.dtype for t in nest.flatten(init_args)])
 
     wrapped_init_func = StructuredFunctionWrapper(
-        init_func, "GeneratorDataset", input_classes=init_args_classes,
-        input_shapes=init_args_shapes, input_types=init_args_types)
+        init_func,
+        self._transformation_name(),
+        input_classes=init_args_classes,
+        input_shapes=init_args_shapes,
+        input_types=init_args_types)
     self._state_classes = wrapped_init_func.output_classes
     self._state_shapes = wrapped_init_func.output_shapes
     self._state_types = wrapped_init_func.output_types
     self._init_func = wrapped_init_func.function
 
     wrapped_next_func = StructuredFunctionWrapper(
-        next_func, "GeneratorDataset", input_classes=self._state_classes,
-        input_shapes=self._state_shapes, input_types=self._state_types)
+        next_func,
+        self._transformation_name(),
+        input_classes=self._state_classes,
+        input_shapes=self._state_shapes,
+        input_types=self._state_types)
     self._output_classes = wrapped_next_func.output_classes
     self._output_shapes = wrapped_next_func.output_shapes
     self._output_types = wrapped_next_func.output_types
     self._next_func = wrapped_next_func.function
 
     wrapped_finalize_func = StructuredFunctionWrapper(
-        finalize_func, "GeneratorDataset", input_classes=self._state_classes,
-        input_shapes=self._state_shapes, input_types=self._state_types)
+        finalize_func,
+        self._transformation_name(),
+        input_classes=self._state_classes,
+        input_shapes=self._state_shapes,
+        input_types=self._state_types)
     self._finalize_func = wrapped_finalize_func.function
 
   def _as_variant_tensor(self):
@@ -2038,6 +2071,9 @@ class _GeneratorDataset(DatasetSource):
   @property
   def output_types(self):
     return self._output_types
+
+  def _transformation_name(self):
+    return "Dataset.from_generator()"
 
 
 class ZipDataset(Dataset):
@@ -2630,7 +2666,7 @@ class MapDataset(UnaryDataset):
     self._use_inter_op_parallelism = use_inter_op_parallelism
 
     wrapped_func = StructuredFunctionWrapper(
-        map_func, "Dataset.map()", input_dataset)
+        map_func, self._transformation_name(), dataset=input_dataset)
     self._output_classes = wrapped_func.output_classes
     self._output_shapes = wrapped_func.output_shapes
     self._output_types = wrapped_func.output_types
@@ -2656,6 +2692,9 @@ class MapDataset(UnaryDataset):
   @property
   def output_types(self):
     return self._output_types
+
+  def _transformation_name(self):
+    return "Dataset.map()"
 
 
 class ParallelMapDataset(MapDataset):
@@ -2695,7 +2734,9 @@ class FlatMapDataset(UnaryDataset):
     self._input_dataset = input_dataset
 
     wrapped_func = StructuredFunctionWrapper(
-        map_func, self._transformation_name(), input_dataset,
+        map_func,
+        self._transformation_name(),
+        dataset=input_dataset,
         experimental_nested_dataset_support=True)
     if not isinstance(wrapped_func.output_classes, _NestedDatasetComponent):
       raise TypeError("`map_func` must return a `Dataset` object.")
@@ -2790,7 +2831,7 @@ class FilterDataset(UnaryDataset):
     super(FilterDataset, self).__init__(input_dataset)
     self._input_dataset = input_dataset
     wrapped_func = StructuredFunctionWrapper(
-        predicate, "Dataset.filter()", input_dataset)
+        predicate, self._transformation_name(), dataset=input_dataset)
     if not (
         wrapped_func.output_types == dtypes.bool and
         wrapped_func.output_shapes.is_compatible_with(tensor_shape.scalar())):
@@ -2815,6 +2856,9 @@ class FilterDataset(UnaryDataset):
   @property
   def output_types(self):
     return self._input_dataset.output_types
+
+  def _transformation_name(self):
+    return "Dataset.filter()"
 
 
 class PrefetchDataset(UnaryDataset):

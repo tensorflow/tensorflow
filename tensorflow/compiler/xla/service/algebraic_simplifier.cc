@@ -157,6 +157,8 @@ class AlgebraicSimplifierVisitor : public DfsHloVisitorWithDefault {
   Status HandleDynamicUpdateSlice(
       HloInstruction* dynamic_update_slice) override;
 
+  Status HandleSelect(HloInstruction* select) override;
+
   Status HandleSort(HloInstruction* sort) override;
 
   Status HandleTranspose(HloInstruction* transpose) override;
@@ -2197,6 +2199,22 @@ Status AlgebraicSimplifierVisitor::HandleReduceWindow(
                          /*init_value=*/reduce_window->mutable_operand(1),
                          /*window=*/new_window,
                          /*reduce_computation=*/function));
+}
+
+Status AlgebraicSimplifierVisitor::HandleSelect(HloInstruction* select) {
+  // select(x, y, y) -> y.
+  if (select->operand(1) == select->operand(2)) {
+    return ReplaceInstruction(select, select->mutable_operand(1));
+  }
+  // select(true, x, y) -> x.
+  if (IsAll(select->operand(0), true)) {
+    return ReplaceInstruction(select, select->mutable_operand(1));
+  }
+  // select(false, x, y) -> y.
+  if (IsAll(select->operand(0), false)) {
+    return ReplaceInstruction(select, select->mutable_operand(2));
+  }
+  return Status::OK();
 }
 
 Status AlgebraicSimplifierVisitor::HandleSort(HloInstruction* sort) {

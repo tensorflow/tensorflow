@@ -1728,6 +1728,14 @@ Status IrEmitterUnnested::HandleReduce(HloInstruction* reduce) {
 }
 
 Status IrEmitterUnnested::HandleTuple(HloInstruction* tuple) {
+  // For the root node of the entry computation we can elide writing the tuple
+  // buffer. We can always figure out the contents of the tuples from buffer
+  // assignment because we insert copies to ensure non-ambiguous output buffers.
+  // GpuExecutable never reads the tuple buffer.
+  if (tuple ==
+      tuple->parent()->parent()->entry_computation()->root_instruction()) {
+    return Status::OK();
+  }
   bool all_tuple_elements_have_buffer =
       absl::c_all_of(tuple->operands(), [&](HloInstruction* tuple_element) {
         return ir_emitter_context_->buffer_assignment()

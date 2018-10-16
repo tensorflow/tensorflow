@@ -33,9 +33,9 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import cond_v2
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import control_flow_util
+from tensorflow.python.ops import control_flow_util_v2 as util
 from tensorflow.python.ops import custom_gradient
 from tensorflow.python.ops import gen_functional_ops
 from tensorflow.python.ops import gradients_impl
@@ -87,7 +87,8 @@ def while_loop(cond, body, loop_vars, shape_invariants=None, name=None):
         for shape, t in zip(flattened_shapes, flattened_loop_vars)
     ]
     cond_graph = function.func_graph_from_py_func(
-        cond_name, wrapped_cond, flattened_loop_vars, {}, signature=signature)
+        cond_name, wrapped_cond, flattened_loop_vars, {}, signature=signature,
+        func_graph=util.WhileCondFuncGraph(cond_name))
 
     # Add external_captures of cond to the list of loop vars.
     # Note that external tensors will be treated as loop invariants, i.e.,
@@ -126,7 +127,8 @@ def while_loop(cond, body, loop_vars, shape_invariants=None, name=None):
         for shape, t in zip(flattened_shapes, flattened_loop_vars)
     ]
     body_graph = function.func_graph_from_py_func(
-        body_name, wrapped_body, flattened_loop_vars, {}, signature=signature)
+        body_name, wrapped_body, flattened_loop_vars, {}, signature=signature,
+        func_graph=util.WhileBodyFuncGraph(body_name))
     # Add external captures of body to the list of loop vars.
     # Note that external tensors will be treated as loop invariants, i.e.,
     # the value of that tensor in each iteration is the same as it was at the
@@ -177,8 +179,8 @@ def while_loop(cond, body, loop_vars, shape_invariants=None, name=None):
                          flattened_loop_vars[1:1 + num_outputs])
     outputs = gen_functional_ops._while(
         flattened_loop_vars,
-        cond_v2._create_new_tf_function(cond_graph),
-        cond_v2._create_new_tf_function(body_graph),
+        util.create_new_tf_function(cond_graph),
+        util.create_new_tf_function(body_graph),
         output_shapes=[t.shape for t in body_graph.outputs],
         name=scope)
 
@@ -231,9 +233,10 @@ def _WhileGrad(op, *grads):  # pylint: disable=invalid-name
     return counter < max_iters
 
   loop_vars = args + body_grad_graph.external_captures
+  grad_cond_name = _get_unique_name("%s_grad_cond" % op.name)
   cond_grad_graph = function.func_graph_from_py_func(
-      _get_unique_name("%s_grad_cond" % op.name),
-      grad_cond, loop_vars, {})
+      grad_cond_name, grad_cond, loop_vars, {},
+      func_graph=util.WhileCondFuncGraph(grad_cond_name))
 
   assert len(loop_vars) == len(body_grad_graph.inputs)
   assert len(loop_vars) == len(body_grad_graph.outputs)
@@ -241,8 +244,8 @@ def _WhileGrad(op, *grads):  # pylint: disable=invalid-name
 
   outputs = gen_functional_ops._while(
       loop_vars,
-      cond_v2._create_new_tf_function(cond_grad_graph),
-      cond_v2._create_new_tf_function(body_grad_graph),
+      util.create_new_tf_function(cond_grad_graph),
+      util.create_new_tf_function(body_grad_graph),
       output_shapes=[t.shape for t in body_grad_graph.outputs],
       name=_get_unique_name("%s_grad" % op.name))
 
@@ -461,7 +464,7 @@ def _get_unique_name(name):
     return ops.get_default_graph().unique_name(name)
 
 
-class _WhileBodyGradFuncGraph(function.FuncGraph):
+class _WhileBodyGradFuncGraph(util.WhileBodyFuncGraph):
   """FuncGraph for the gradient function of the body of a While op.
 
   Contains the logic for capturing the tensors from the body of the forward
