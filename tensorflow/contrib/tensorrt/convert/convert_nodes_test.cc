@@ -69,10 +69,6 @@ class FakeITensor : public nvinfer1::ITensor {
   FakeITensor(const string& name, const std::vector<int>& dims)
       : name_(name), dims_(GetTestDims(dims)) {}
 
-  void SetDims(const std::vector<int>& dims) {
-    setDimensions(GetTestDims(dims));
-  }
-
   void setName(const char* name) override { name_ = name; }
 
   const char* getName() const override { return name_.c_str(); }
@@ -98,6 +94,10 @@ class FakeITensor : public nvinfer1::ITensor {
   void setLocation(nvinfer1::TensorLocation location) override {
     location_ = location;
   }
+
+#if NV_TENSORRT_MAJOR >= 5
+  bool setDynamicRange(float min, float max) override {}
+#endif
 
  private:
   string name_;
@@ -609,7 +609,7 @@ TEST_F(ConverterTest, ConvertReshape) {
     AddTestTensor("input", {1, 2, 3});
     AddTestWeights<int32>("weights", DT_INT32, {4}, {-1, 1, 1, 2});
     ExpectStatus(converter_.ConvertNode(node_def), error::UNIMPLEMENTED,
-                 "Reshape on the batch dimension is not supported");
+                 "Reshape on batch dimension is not supported, at my_reshape");
   }
   {
     // Reshape at batch dimension, should fail.
@@ -617,7 +617,7 @@ TEST_F(ConverterTest, ConvertReshape) {
     AddTestTensor("input", {1, 2, 3});
     AddTestWeights<int32>("weights", DT_INT32, {4}, {3, 1, 1, 2});
     ExpectStatus(converter_.ConvertNode(node_def), error::UNIMPLEMENTED,
-                 "Reshape on the batch dimension is not supported");
+                 "Reshape on batch dimension is not supported, at my_reshape");
   }
   // Reshape on non batch dimensions, ok.
   for (int batch_dim : {-1, 1}) {
