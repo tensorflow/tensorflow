@@ -106,10 +106,7 @@ void OpEmitter::emit(const Record &def, raw_ostream &os) {
   // Query the returned type and operands types of the op.
   emitter.getAttributes();
 
-  // Query the C++ class from which this op should derived.
-  StringRef baseClass = def.getValueAsString("baseClass");
-  os << "\nclass " << def.getName() << " : public " << baseClass << "<"
-     << def.getName();
+  os << "\nclass " << def.getName() << " : public Op<" << def.getName();
   emitter.emitTraits();
   os << "> {\npublic:\n";
 
@@ -125,7 +122,7 @@ void OpEmitter::emit(const Record &def, raw_ostream &os) {
 
   os << "private:\n  friend class ::mlir::Operation;\n";
   os << "  explicit " << def.getName()
-     << "(const Operation* state) : " << baseClass << "(state) {}\n";
+     << "(const Operation* state) : Op(state) {}\n";
   os << "};\n";
 }
 
@@ -158,55 +155,18 @@ void OpEmitter::emitAttrGetters() {
 
 void OpEmitter::emitBuilder() {
   // If a custom builder is given then print that out instead.
-  auto builder = def.getValueAsString("builder");
+  auto valueInit = def.getValueInit("builder");
+  CodeInit *codeInit = dyn_cast<CodeInit>(valueInit);
+  if (!codeInit)
+    return;
+
+  auto builder = codeInit->getValue();
   if (!builder.empty()) {
     os << builder << '\n';
     return;
   }
 
-  os << "  static void build(Builder *builder, OperationState *result";
-  const std::vector<Record *> &operandTypes =
-      def.getValueAsListOfDefs("operandTypes");
-
-  // Label the operands as simply arg_i.
-  for (int i = 0, e = operandTypes.size(); i != e; ++i)
-    os << ", SSAValue *arg_" << i;
-
-  // Add a parameter for every attribute.
-  for (const auto &attr : attrs) {
-    os << ", " << attr.second->getValueAsString("PrimitiveType") << " "
-       << attr.second->getValueAsString("name");
-  }
-  os << ") {\n";
-
-  // Build the OperationState.
-
-  // Add the operands.
-  if (!operandTypes.empty()) {
-    os << "    result->addOperands({";
-    for (int i = 0, e = operandTypes.size(); i != e; ++i) {
-      if (i)
-        os << ", ";
-      os << "arg_" << i;
-    }
-    os << "});\n";
-  }
-
-  // Set the return type.
-  // TODO(jpienaar): Perform type propagation here.
-  if (isa<DefInit>(def.getValueInit("returnType"))) {
-    os << "    result->types.push_back(" << def.getName()
-       << "::ReturnType(*builder));\n";
-  }
-
-  // Add any attributes.
-  for (const auto &attr : attrs) {
-    os << "    result->addAttribute(\"" << attr.second->getValueAsString("name")
-       << "\", builder->get" << attr.second->getValueAsString("AttrType") << "("
-       << attr.second->getValueAsString("name") << "));\n";
-  }
-
-  os << "  }\n";
+  // TODO(jpienaar): Redo generating builder.
 }
 
 void OpEmitter::emitParser() {
@@ -232,12 +192,6 @@ void OpEmitter::emitPrinter() {
 }
 
 void OpEmitter::emitVerifier() {
-  auto valueInit = def.getValueInit("verifier");
-  CodeInit *codeInit = dyn_cast<CodeInit>(valueInit);
-  if (!codeInit)
-    return;
-
-  auto verifier = codeInit->getValue();
   os << "  bool verify() const {\n";
 
   // Verify the attributes have the correct type.
@@ -246,14 +200,16 @@ void OpEmitter::emitVerifier() {
     os << "     if (!dyn_cast_or_null<"
        << attr.second->getValueAsString("AttrType") << ">(this->getAttr(\""
        << name << "\"))) return emitOpError(\"requires "
-       << attr.second->getValueAsString("PrimitiveType") << " attribute '"
-       << name << "'\");\n";
+       << attr.second->getValueAsString("PrimitiveType").trim()
+       << " attribute '" << name << "'\");\n";
   }
 
-  if (verifier.empty())
+  auto valueInit = def.getValueInit("verifier");
+  CodeInit *codeInit = dyn_cast<CodeInit>(valueInit);
+  if (!codeInit || codeInit->getValue().empty())
     os << "    return false;\n";
   else
-    os << "    " << verifier << "\n";
+    os << "    " << codeInit->getValue() << "\n";
   os << "  }\n";
 }
 
@@ -287,24 +243,25 @@ void OpEmitter::emitTraits() {
     break;
   }
 
-  // Add op property traits.
-  if (def.getValueAsBit("isCommutative"))
-    os << ", OpTrait::IsCommutative";
-  if (def.getValueAsBit("hasNoSideEffect"))
-    os << ", OpTrait::HasNoSideEffect";
+  // Add op property traits. These match the propoerties specified in the table
+  // with the OperationProperty specified in OperationSupport.h.
+  for (Record *property : def.getValueAsListOfDefs("properties")) {
+    if (property->getName() == "Commutative") {
+      os << ", OpTrait::IsCommutative";
+    } else if (property->getName() == "NoSideEffect") {
+      os << ", OpTrait::HasNoSideEffect";
+    }
+  }
 
   // Add explicitly added traits.
   // TODO(jpienaar): Improve Trait specification to make adding them in the
   // tblgen file better.
-  const auto traitType = def.getRecords().getClass("Trait");
-  for (const auto &val : def.getValues()) {
-    if (DefInit *defInit = dyn_cast<DefInit>(val.getValue())) {
-      auto attr = defInit->getDef();
-      if (attr->isSubClassOf(traitType)) {
-        os << ", OpTrait::" << attr->getValueAsString("trait").trim();
-      }
-    }
-  }
+  auto *recordVal = def.getValue("traits");
+  if (!recordVal || !recordVal->getValue())
+    return;
+  auto traitList = dyn_cast<ListInit>(recordVal->getValue())->getValues();
+  for (Init *trait : traitList)
+    os << ", OpTrait::" << StringRef(trait->getAsUnquotedString()).trim();
 }
 
 // Emits the opcode enum and op classes.
