@@ -277,6 +277,35 @@ TEST_F(CudnnFusedConvRewriterTest, TestMatchBroadcastedBiasOnly) {
     })");
 }
 
+TEST_F(CudnnFusedConvRewriterTest, PreservesMetadata) {
+  const char* kHloString = R"(
+    HloModule Test
+
+    ENTRY Test {
+      zero = f32[] constant(0)
+      zeros = f32[1,32,9,9] broadcast(zero), dimensions={}
+
+      input = f32[1,17,9,9] parameter(0)
+      filter = f32[3,3,17,32] parameter(1)
+
+      conv = f32[1,32,9,9] convolution(input, filter), window={size=3x3 pad=1_1x1_1}, dim_labels=bf01_01io->bf01, feature_group_count=1, metadata={op_type="foo"}
+      ROOT relu = f32[1,32,9,9] maximum(zeros, conv)
+    })";
+
+  const string optimized_hlo_string =
+      backend()
+          .compiler()
+          ->RunHloPasses(ParseHloString(kHloString, GetModuleConfigForTest())
+                             .ConsumeValueOrDie(),
+                         backend().default_stream_executor(),
+                         backend().memory_allocator())
+          .ConsumeValueOrDie()
+          ->ToString();
+  EXPECT_THAT(
+      optimized_hlo_string,
+      ::testing::ContainsRegex(R"(custom-call.*metadata={op_type="foo"})"));
+}
+
 }  // namespace
 }  // namespace gpu
 }  // namespace xla

@@ -106,7 +106,7 @@ TEST_F(CudnnConvRewriterTest, BackwardFilterConvolve) {
   Window conv_window = default_conv_window_;
   conv_window.mutable_dimensions(1)->set_size(2);
   conv_window.mutable_dimensions(1)->set_window_dilation(2);
-  builder.AddInstruction(HloInstruction::CreateConvolve(
+  auto* conv = builder.AddInstruction(HloInstruction::CreateConvolve(
       ShapeInference::InferConvolveShape(
           activations->shape(), gradients->shape(), /*feature_group_count=*/1,
           conv_window, tf_default_dnums_for_backward_filter_)
@@ -114,13 +114,21 @@ TEST_F(CudnnConvRewriterTest, BackwardFilterConvolve) {
       activations, gradients, /*feature_group_count=*/1, conv_window,
       tf_default_dnums_for_backward_filter_, DefaultPrecisionConfig(2)));
 
+  OpMetadata metadata;
+  metadata.set_op_name("foo");
+  conv->set_metadata(metadata);
+
   auto module = CreateNewModule();
   HloComputation* entry_computation =
       module->AddEntryComputation(builder.Build());
   EXPECT_TRUE(RunPass(module));
-  EXPECT_THAT(entry_computation->root_instruction(),
+  ASSERT_THAT(entry_computation->root_instruction(),
               op::GetTupleElement(
                   op::CustomCall(kCudnnConvBackwardFilterCallTarget), 0));
+
+  // Check that metadata was preserved.
+  EXPECT_THAT(entry_computation->root_instruction()->operand(0)->metadata(),
+              ::testing::EqualsProto(metadata));
 }
 
 TEST_F(CudnnConvRewriterTest,
