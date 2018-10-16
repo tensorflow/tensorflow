@@ -79,7 +79,6 @@ TEST(ArgMaxOpTest, GetMaxArgFloat) {
   ArgMaxOpModel<int32_t> model({1, 1, 1, 4}, TensorType_FLOAT32,
                                TensorType_INT32, TensorType_INT32);
   model.PopulateTensor<float>(model.input(), {0.1, 0.9, 0.7, 0.3});
-  // Currently only support the last dimension.
   model.PopulateTensor<int>(model.axis(), {3});
   model.Invoke();
 
@@ -91,7 +90,6 @@ TEST(ArgMaxOpTest, GetMaxArgInt) {
   ArgMaxOpModel<int32_t> model({1, 1, 1, 4}, TensorType_INT32, TensorType_INT32,
                                TensorType_INT32);
   model.PopulateTensor<int>(model.input(), {1, 9, 7, 3});
-  // Currently only support the last dimension.
   model.PopulateTensor<int>(model.axis(), {3});
   model.Invoke();
 
@@ -103,7 +101,6 @@ TEST(ArgMaxOpTest, GetMaxArgMulDimensions) {
   ArgMaxOpModel<int32_t> model({1, 1, 2, 4}, TensorType_INT32, TensorType_INT32,
                                TensorType_INT32);
   model.PopulateTensor<int>(model.input(), {1, 2, 7, 8, 1, 9, 7, 3});
-  // Currently only support the last dimension.
   model.PopulateTensor<int>(model.axis(), {3});
   model.Invoke();
 
@@ -111,11 +108,21 @@ TEST(ArgMaxOpTest, GetMaxArgMulDimensions) {
   EXPECT_THAT(model.GetOutputShape(), ElementsAreArray({1, 1, 2, 1}));
 }
 
+TEST(ArgMaxOpTest, GetMaxArgNegativeAxis) {
+  ArgMaxOpModel<int32_t> model({1, 1, 2, 4}, TensorType_INT32, TensorType_INT32,
+                               TensorType_INT32);
+  model.PopulateTensor<int>(model.input(), {1, 2, 7, 8, 1, 9, 7, 3});
+  model.PopulateTensor<int>(model.axis(), {-2});
+  model.Invoke();
+
+  EXPECT_THAT(model.GetOutput(), ElementsAreArray({0, 1, 0, 0}));
+  EXPECT_THAT(model.GetOutputShape(), ElementsAreArray({1, 1, 1, 4}));
+}
+
 TEST(ArgMaxOpTest, GetMaxArgOutput64) {
   ArgMaxOpModel<int64_t> model({1, 1, 2, 4}, TensorType_INT32, TensorType_INT64,
                                TensorType_INT64);
   model.PopulateTensor<int>(model.input(), {10, 2, 7, 8, 1, 9, 7, 3});
-  // Currently only support the last dimension.
   model.PopulateTensor<int>(model.axis(), {3});
   model.Invoke();
 
@@ -127,7 +134,6 @@ TEST(ArgMinOpTest, GetMinArgFloat) {
   ArgMinOpModel<int32_t> model({1, 1, 1, 4}, TensorType_FLOAT32,
                                TensorType_INT32, TensorType_INT32);
   model.PopulateTensor<float>(model.input(), {0.1, 0.9, 0.7, 0.3});
-  // Currently only support the last dimension.
   model.PopulateTensor<int>(model.axis(), {3});
   model.Invoke();
 
@@ -139,7 +145,6 @@ TEST(ArgMinOpTest, GetMinArgInt) {
   ArgMinOpModel<int32_t> model({1, 1, 1, 4}, TensorType_INT32, TensorType_INT32,
                                TensorType_INT32);
   model.PopulateTensor<int>(model.input(), {1, 9, 7, 3});
-  // Currently only support the last dimension.
   model.PopulateTensor<int>(model.axis(), {3});
   model.Invoke();
 
@@ -151,7 +156,6 @@ TEST(ArgMinOpTest, GetMinArgMulDimensions) {
   ArgMinOpModel<int32_t> model({1, 1, 2, 4}, TensorType_INT32, TensorType_INT32,
                                TensorType_INT32);
   model.PopulateTensor<int>(model.input(), {1, 2, 7, 8, 1, 9, 7, 3});
-  // Currently only support the last dimension.
   model.PopulateTensor<int>(model.axis(), {3});
   model.Invoke();
 
@@ -159,11 +163,21 @@ TEST(ArgMinOpTest, GetMinArgMulDimensions) {
   EXPECT_THAT(model.GetOutputShape(), ElementsAreArray({1, 1, 2, 1}));
 }
 
+TEST(ArgMinOpTest, GetMinArgNegativeAxis) {
+  ArgMinOpModel<int32_t> model({1, 1, 2, 4}, TensorType_INT32, TensorType_INT32,
+                               TensorType_INT32);
+  model.PopulateTensor<int>(model.input(), {1, 2, 7, 8, 1, 9, 7, 3});
+  model.PopulateTensor<int>(model.axis(), {-2});
+  model.Invoke();
+
+  EXPECT_THAT(model.GetOutput(), ElementsAreArray({0, 0, 0, 1}));
+  EXPECT_THAT(model.GetOutputShape(), ElementsAreArray({1, 1, 1, 4}));
+}
+
 TEST(ArgMinOpTest, GetMinArgOutput64) {
   ArgMinOpModel<int64_t> model({1, 1, 2, 4}, TensorType_INT32, TensorType_INT64,
                                TensorType_INT64);
   model.PopulateTensor<int>(model.input(), {10, 2, 7, 8, 1, 9, 7, 3});
-  // Currently only support the last dimension.
   model.PopulateTensor<int>(model.axis(), {3});
   model.Invoke();
 

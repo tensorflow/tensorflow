@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include "absl/strings/str_replace.h"
+#include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 #include "tensorflow/core/platform/test.h"
@@ -21,6 +22,9 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 namespace {
+
+using ::testing::HasSubstr;
+using ::testing::Not;
 
 class CudnnFusedConvRewriterTest : public HloTestBase {
  protected:
@@ -39,13 +43,11 @@ class CudnnFusedConvRewriterTest : public HloTestBase {
     for (absl::string_view type : {"f16", "f32", "f64"}) {
       const string hlo_with_new_type =
           absl::StrReplaceAll(hlo_string, {{"TYPE", type}});
-      const string optimized_hlo_string = GetOptimizedHlo(hlo_with_new_type);
-      EXPECT_EQ(absl::string_view::npos,
-                optimized_hlo_string.find("__cudnn$convForward"))
-          << optimized_hlo_string;
-      EXPECT_NE(absl::string_view::npos,
-                optimized_hlo_string.find("__cudnn$convBiasActivationForward"))
-          << optimized_hlo_string;
+      string optimized_hlo_string = GetOptimizedHlo(hlo_with_new_type);
+      EXPECT_THAT(optimized_hlo_string,
+                  Not(HasSubstr(kCudnnConvForwardCallTarget)));
+      EXPECT_THAT(optimized_hlo_string,
+                  HasSubstr(kCudnnConvBiasActivationForwardCallTarget));
       EXPECT_TRUE(RunAndCompare(hlo_with_new_type, ErrorSpec{0.01}))
           << optimized_hlo_string;
     }
@@ -55,13 +57,10 @@ class CudnnFusedConvRewriterTest : public HloTestBase {
     for (absl::string_view type : {"f16", "f32", "f64"}) {
       const string hlo_with_new_type =
           absl::StrReplaceAll(hlo_string, {{"TYPE", type}});
-      string optimized_hlo = GetOptimizedHlo(hlo_with_new_type);
-      EXPECT_NE(absl::string_view::npos,
-                optimized_hlo.find("__cudnn$convForward"))
-          << optimized_hlo;
-      EXPECT_EQ(absl::string_view::npos,
-                optimized_hlo.find("__cudnn$convBiasActivationForward"))
-          << optimized_hlo;
+      string optimized_hlo_string = GetOptimizedHlo(hlo_with_new_type);
+      EXPECT_THAT(optimized_hlo_string, HasSubstr(kCudnnConvForwardCallTarget));
+      EXPECT_THAT(optimized_hlo_string,
+                  Not(HasSubstr(kCudnnConvBiasActivationForwardCallTarget)));
     }
   }
 };
@@ -275,6 +274,35 @@ TEST_F(CudnnFusedConvRewriterTest, TestMatchBroadcastedBiasOnly) {
       add2 = TYPE[1,3,3,64] add(add1, side_input1)
       ROOT relu = TYPE[1,3,3,64] maximum(zeros, add2)
     })");
+}
+
+TEST_F(CudnnFusedConvRewriterTest, PreservesMetadata) {
+  const char* kHloString = R"(
+    HloModule Test
+
+    ENTRY Test {
+      zero = f32[] constant(0)
+      zeros = f32[1,32,9,9] broadcast(zero), dimensions={}
+
+      input = f32[1,17,9,9] parameter(0)
+      filter = f32[3,3,17,32] parameter(1)
+
+      conv = f32[1,32,9,9] convolution(input, filter), window={size=3x3 pad=1_1x1_1}, dim_labels=bf01_01io->bf01, feature_group_count=1, metadata={op_type="foo"}
+      ROOT relu = f32[1,32,9,9] maximum(zeros, conv)
+    })";
+
+  const string optimized_hlo_string =
+      backend()
+          .compiler()
+          ->RunHloPasses(ParseHloString(kHloString, GetModuleConfigForTest())
+                             .ConsumeValueOrDie(),
+                         backend().default_stream_executor(),
+                         backend().memory_allocator())
+          .ConsumeValueOrDie()
+          ->ToString();
+  EXPECT_THAT(
+      optimized_hlo_string,
+      ::testing::ContainsRegex(R"(custom-call.*metadata={op_type="foo"})"));
 }
 
 }  // namespace

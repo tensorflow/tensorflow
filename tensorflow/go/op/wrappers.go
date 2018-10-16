@@ -6313,6 +6313,17 @@ func Reciprocal(scope *Scope, x tf.Output) (y tf.Output) {
 	return op.Output(0)
 }
 
+// ParseExampleDatasetAttr is an optional argument to ParseExampleDataset.
+type ParseExampleDatasetAttr func(optionalAttr)
+
+// ParseExampleDatasetSloppy sets the optional sloppy attribute to value.
+// If not specified, defaults to false
+func ParseExampleDatasetSloppy(value bool) ParseExampleDatasetAttr {
+	return func(m optionalAttr) {
+		m["sloppy"] = value
+	}
+}
+
 // Transforms `input_dataset` containing `Example` protos as vectors of DT_STRING into a dataset of `Tensor` or `SparseTensor` objects representing the parsed features.
 //
 // Arguments:
@@ -6338,11 +6349,14 @@ func Reciprocal(scope *Scope, x tf.Output) (y tf.Output) {
 // given feature along this dimension.
 //	output_types: The type list for the return values.
 //	output_shapes: The list of shapes being produced.
-func ParseExampleDataset(scope *Scope, input_dataset tf.Output, num_parallel_calls tf.Output, dense_defaults []tf.Output, sparse_keys []string, dense_keys []string, sparse_types []tf.DataType, dense_shapes []tf.Shape, output_types []tf.DataType, output_shapes []tf.Shape) (handle tf.Output) {
+func ParseExampleDataset(scope *Scope, input_dataset tf.Output, num_parallel_calls tf.Output, dense_defaults []tf.Output, sparse_keys []string, dense_keys []string, sparse_types []tf.DataType, dense_shapes []tf.Shape, output_types []tf.DataType, output_shapes []tf.Shape, optional ...ParseExampleDatasetAttr) (handle tf.Output) {
 	if scope.Err() != nil {
 		return
 	}
 	attrs := map[string]interface{}{"sparse_keys": sparse_keys, "dense_keys": dense_keys, "sparse_types": sparse_types, "dense_shapes": dense_shapes, "output_types": output_types, "output_shapes": output_shapes}
+	for _, a := range optional {
+		a(attrs)
+	}
 	opspec := tf.OpSpec{
 		Type: "ParseExampleDataset",
 		Input: []tf.Input{

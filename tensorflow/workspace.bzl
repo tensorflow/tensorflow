@@ -26,6 +26,7 @@ load("//third_party/highwayhash:workspace.bzl", highwayhash = "repo")
 load("//third_party/icu:workspace.bzl", icu = "repo")
 load("//third_party/jpeg:workspace.bzl", jpeg = "repo")
 load("//third_party/nasm:workspace.bzl", nasm = "repo")
+load("//third_party/kissfft:workspace.bzl", kissfft = "repo")
 
 def initialize_third_party():
     """ Load third party repositories.  See above load() statements. """
@@ -33,6 +34,7 @@ def initialize_third_party():
     flatbuffers()
     highwayhash()
     icu()
+    kissfft()
     jpeg()
     nasm()
 

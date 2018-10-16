@@ -229,3 +229,15 @@ class MultiDeviceIterator(object):
   @property
   def initializer(self):
     return self._initializer
+
+  @property
+  def output_types(self):
+    return self._dataset.output_types
+
+  @property
+  def output_shapes(self):
+    return self._dataset.output_shapes
+
+  @property
+  def output_classes(self):
+    return self._dataset.output_classes

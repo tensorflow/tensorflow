@@ -237,7 +237,6 @@ tf_proto_library(
     srcs = [],
     cc_api_version = 2,
     default_header = True,
-    js_api_version = 2,
     protodeps = [
         ":protos_all_proto",
         ":error_codes_proto",
@@ -2406,7 +2405,6 @@ tf_proto_library(
     srcs = ERROR_CODES_PROTO_SRCS,
     cc_api_version = 2,
     default_header = True,
-    js_api_version = 2,
     provide_cc_alias = True,
 )
 
@@ -2426,7 +2424,6 @@ tf_proto_library(
     srcs = COMMON_PROTO_SRCS + ADDITIONAL_CORE_PROTO_SRCS,
     cc_api_version = 2,
     default_header = True,
-    js_api_version = 2,
     protodeps = [
         ":error_codes_proto",
     ],

@@ -43,9 +43,9 @@ class FuzzExampleProtoFastParsing : public FuzzSession {
     std::vector<PartialTensorShape> dense_shapes;
     dense_shapes.push_back(PartialTensorShape());
 
-    std::ignore = ParseExample(scope.WithOpName("output"), in_expanded, names,
-                               sparse_keys, dense_keys, dense_defaults,
-                               sparse_types, dense_shapes);
+    (void)ParseExample(scope.WithOpName("output"), in_expanded, names,
+                       sparse_keys, dense_keys, dense_defaults, sparse_types,
+                       dense_shapes);
   }
 
   void FuzzImpl(const uint8_t* data, size_t size) final {

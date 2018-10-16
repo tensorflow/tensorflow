@@ -1529,6 +1529,21 @@ tf_py_test(
     ],
 )
 
+tf_py_test(
+    name = "control_flow_util_v2_test",
+    size = "small",
+    srcs = ["control_flow_util_v2_test.py"],
+    additional_deps = [
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:cond_v2",
+        "//tensorflow/python:constant_op",
+        "//tensorflow/python:control_flow_ops",
+        "//tensorflow/python:control_flow_util_v2",
+        "//tensorflow/python:while_v2",
+    ],
+    tags = ["no_gpu"],  # TODO(b/117796385): runs out of memory
+)
+
 cuda_py_test(
     name = "conv1d_test",
     size = "small",
@@ -3214,7 +3229,10 @@ tf_py_test(
         "//tensorflow/python:platform",
     ],
     data = [":ackermann_op.so"],
-    tags = ["no_pip"],
+    tags = [
+        "no_pip",
+        "notap",
+    ],
 )
 
 tf_custom_op_library(
@@ -3233,7 +3251,10 @@ tf_py_test(
         "//tensorflow/python:platform",
     ],
     data = [":duplicate_op.so"],
-    tags = ["no_pip"],
+    tags = [
+        "no_pip",
+        "notap",
+    ],
 )
 
 tf_custom_op_library(
@@ -3252,7 +3273,10 @@ tf_py_test(
         "//tensorflow/python:platform",
     ],
     data = [":invalid_op.so"],
-    tags = ["no_pip"],
+    tags = [
+        "no_pip",
+        "notap",
+    ],
 )
 
 cuda_py_test(
