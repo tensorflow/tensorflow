@@ -101,11 +101,14 @@ void Transpose(Model* model, const Array& input_array,
 
 }  // namespace
 
-bool ResolveConstantTranspose::Run(Model* model, std::size_t op_index) {
+::tensorflow::Status ResolveConstantTranspose::Run(Model* model,
+                                                   std::size_t op_index,
+                                                   bool* modified) {
+  *modified = false;
   auto it = model->operators.begin() + op_index;
   const auto* base_op = it->get();
   if (base_op->type != OperatorType::kTranspose) {
-    return false;
+    return ::tensorflow::Status::OK();
   }
   const auto* op = static_cast<const TransposeOperator*>(base_op);
 
@@ -114,17 +117,17 @@ bool ResolveConstantTranspose::Run(Model* model, std::size_t op_index) {
   auto& output_array = model->GetArray(op->outputs[0]);
   if (output_array.data_type == ArrayDataType::kNone) {
     // Yield until the output type has been set by PropagateArrayDataTypes.
-    return false;
+    return ::tensorflow::Status::OK();
   }
   if (!output_array.has_shape()) {
     // Yield until the output shape has been set by PropagateFixedShapes.
-    return false;
+    return ::tensorflow::Status::OK();
   }
 
   // We require constant inputs.
   if (!IsConstantParameterArray(*model, op->inputs[0]) ||
       !IsConstantParameterArray(*model, op->inputs[1])) {
-    return false;
+    return ::tensorflow::Status::OK();
   }
   const Array& input_array = model->GetArray(op->inputs[0]);
 
@@ -132,7 +135,7 @@ bool ResolveConstantTranspose::Run(Model* model, std::size_t op_index) {
 
   if (op->perm.empty()) {
     // Yield until perm has been populated by ResolveTransposeAttributes.
-    return false;
+    return ::tensorflow::Status::OK();
   }
 
   // We currently only support 1-4 dimensions.
@@ -174,7 +177,8 @@ bool ResolveConstantTranspose::Run(Model* model, std::size_t op_index) {
 
   // Erase the operator.
   model->operators.erase(it);
-  return true;
+  *modified = true;
+  return ::tensorflow::Status::OK();
 }
 
 }  // namespace toco

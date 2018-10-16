@@ -35,6 +35,8 @@ from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import session_run_hook
 from tensorflow.python.training import training_util
 
+_WATCHDOG = None
+
 
 class CoordinatorShutdownException(Exception):
   """Raised when the coordinator needs to shutdown."""
@@ -254,6 +256,22 @@ class WatchdogManager(threading.Thread):
     while self._running:
       self._worker_manager.ping(request=None)
       time.sleep(self.ping_interval)
+
+
+def start_worker_watchdog(session,
+                          devices=None,
+                          ping_interval=60,
+                          shutdown_timeout=3600):
+  """Start global worker watchdog to shutdown workers on coordinator exit."""
+  global _WATCHDOG
+  if _WATCHDOG is None:
+    # Ensure we can send a few pings before we timeout!
+    ping_interval = min(shutdown_timeout / 10., ping_interval)
+    logging.info('Enabling watchdog timer with %d second timeout',
+                 shutdown_timeout)
+    _WATCHDOG = WatchdogManager(session, devices, ping_interval,
+                                shutdown_timeout)
+    _WATCHDOG.configure_and_run()
 
 
 class GracefulShutdownHook(session_run_hook.SessionRunHook):

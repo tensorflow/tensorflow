@@ -43,6 +43,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/graph/graph_constructor.h"
+#include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/public/session_options.h"
@@ -1121,13 +1122,25 @@ tensorflow::Status ConvertUnsupportedOperator(
     op->inputs.push_back(node.input(i));
   }
 
-  // Parse outputs.
-  op->outputs.push_back(node.name());  // Implicit :0.
+  // Parse outputs. Name them after the node's name, plus an ordinal suffix.
+  // Note that some outputs are to be multipled by a named attribute.
   const tensorflow::OpDef* op_def = nullptr;
   if (tensorflow::OpRegistry::Global()->LookUpOpDef(node.op(), &op_def).ok()) {
-    for (int i = 1; i < op_def->output_arg_size(); ++i) {
-      op->outputs.push_back(absl::StrCat(node.name(), ":", i));
+    int next_output = 0;
+    for (int i = 0; i < op_def->output_arg_size(); ++i) {
+      string multiples = op_def->output_arg(i).number_attr();
+      int num_outputs = multiples.empty() ? 1 : GetIntAttr(node, multiples);
+      for (int j = 0; j < num_outputs; ++j) {
+        if (next_output == 0) {
+          op->outputs.push_back(node.name());  // Implicit :0.
+        } else {
+          op->outputs.push_back(absl::StrCat(node.name(), ":", next_output));
+        }
+        ++next_output;
+      }
     }
+  } else {
+    op->outputs.push_back(node.name());  // Implicit :0.
   }
 
   // Parse if the op supports quantization
@@ -1151,11 +1164,14 @@ tensorflow::Status ConvertUnsupportedOperator(
     op->output_data_types.push_back(ConvertDataType(output_type));
   } else if (op_def != nullptr) {
     for (const auto& output_arg : op_def->output_arg()) {
-      if (HasAttr(node, output_arg.type_attr())) {
+      if (output_arg.type() != tensorflow::DT_INVALID) {
+        op->output_data_types.push_back(ConvertDataType(output_arg.type()));
+      } else if (HasAttr(node, output_arg.type_attr())) {
         op->output_data_types.push_back(
             ConvertDataType(GetDataTypeAttr(node, output_arg.type_attr())));
       } else {
-        LOG(INFO) << "Op node missing output type attribute: " << node.name();
+        LOG(WARNING) << "Op node missing output type attribute: "
+                     << node.name();
         op->output_data_types.clear();
         break;
       }
@@ -1999,6 +2015,48 @@ tensorflow::Status ConvertCTCBeamSearchDecoderOperator(
   return tensorflow::Status::OK();
 }
 
+// This isn't a TensorFlow builtin op. Currently this node can only be generated
+// with TfLite OpHint API.
+tensorflow::Status ConvertUnidirectionalSequenceLstm(
+    const NodeDef& node, const TensorFlowImportFlags& tf_import_flags,
+    Model* model) {
+  DCHECK_EQ(node.op(), "UnidirectionalSequenceLstm");
+
+  auto* op = new UnidirectionalSequenceLstmOperator();
+  const auto& indices = GetListAttr(node, "_tflite_input_indices");
+  if (indices.i_size() != node.input().size()) {
+    return tensorflow::errors::InvalidArgument("Input size does not match.");
+  }
+
+  // The input size needs to be the same as the TfLite UniDirectionalSequence
+  // Lstm implementation.
+  const int kInputsSize = 20;
+
+  op->inputs.resize(kInputsSize);
+  std::vector<bool> done(kInputsSize);
+  int idx = 0;
+  for (const string& input : node.input()) {
+    int real_index = indices.i(idx);
+    op->inputs[real_index] = (input);
+    done[real_index] = true;
+    idx++;
+  }
+
+  for (int idx = 0; idx < done.size(); idx++) {
+    if (!done[idx]) {
+      string optional_name = node.name() + "_" + std::to_string(idx);
+      model->CreateOptionalArray(optional_name);
+      op->inputs[idx] = optional_name;
+    }
+  }
+
+  // There're three outputs, only the last one is required.
+  op->outputs.push_back(node.name() + ":2");
+  model->operators.emplace_back(op);
+
+  return tensorflow::Status::OK();
+}
+
 }  // namespace
 
 namespace internal {
@@ -2118,6 +2176,7 @@ ConverterMapType GetTensorFlowNodeConverterMap() {
       {"Transpose", ConvertSimpleOperator<TransposeOperator, 2>},
       {"Unpack", ConvertUnpackOperator},
       {"ZerosLike", ConvertSimpleOperator<TensorFlowZerosLikeOperator, 1>},
+      {"UnidirectionalSequenceLstm", ConvertUnidirectionalSequenceLstm},
   });
 }
 

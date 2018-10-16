@@ -389,9 +389,10 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
         GetTemporary(context, node, kScalingFactors);
     scaling_factors->type = kTfLiteFloat32;
     scaling_factors->allocation_type = kTfLiteArenaRw;
-    TfLiteIntArray* scaling_factors_size = TfLiteIntArrayCreate(1);
-    scaling_factors_size->data[0] = n_batch;
-    if (!TfLiteIntArrayEqual(scaling_factors->dims, scaling_factors_size)) {
+    int scaling_dims[1] = {n_batch};
+    if (!TfLiteIntArrayEqualsArray(scaling_factors->dims, 1, scaling_dims)) {
+      TfLiteIntArray* scaling_factors_size = TfLiteIntArrayCreate(1);
+      scaling_factors_size->data[0] = n_batch;
       TF_LITE_ENSURE_OK(context, context->ResizeTensor(context, scaling_factors,
                                                        scaling_factors_size));
     }
@@ -401,10 +402,10 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
         GetTemporary(context, node, kProductScalingFactors);
     prod_scaling_factors->type = kTfLiteFloat32;
     prod_scaling_factors->allocation_type = kTfLiteArenaRw;
-    TfLiteIntArray* prod_scaling_factors_size = TfLiteIntArrayCreate(1);
-    prod_scaling_factors_size->data[0] = n_batch;
-    if (!TfLiteIntArrayEqual(prod_scaling_factors->dims,
-                             prod_scaling_factors_size)) {
+    if (!TfLiteIntArrayEqualsArray(prod_scaling_factors->dims, 1,
+                                   scaling_dims)) {
+      TfLiteIntArray* prod_scaling_factors_size = TfLiteIntArrayCreate(1);
+      prod_scaling_factors_size->data[0] = n_batch;
       TF_LITE_ENSURE_OK(context,
                         context->ResizeTensor(context, prod_scaling_factors,
                                               prod_scaling_factors_size));
@@ -418,10 +419,11 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
         GetTemporary(context, node, kRecoveredCellWeights);
     recovered_cell_weights->type = kTfLiteFloat32;
     recovered_cell_weights->allocation_type = kTfLiteArenaRw;
-    TfLiteIntArray* recovered_cell_weights_size = TfLiteIntArrayCreate(1);
-    recovered_cell_weights_size->data[0] = n_cell;
-    if (!TfLiteIntArrayEqual(recovered_cell_weights->dims,
-                             recovered_cell_weights_size)) {
+    int recovered_cell_dims[1] = {n_cell};
+    if (!TfLiteIntArrayEqualsArray(recovered_cell_weights->dims, 1,
+                                   recovered_cell_dims)) {
+      TfLiteIntArray* recovered_cell_weights_size = TfLiteIntArrayCreate(1);
+      recovered_cell_weights_size->data[0] = n_cell;
       TF_LITE_ENSURE_OK(context,
                         context->ResizeTensor(context, recovered_cell_weights,
                                               recovered_cell_weights_size));

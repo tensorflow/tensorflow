@@ -1836,6 +1836,8 @@ bool OpGradientDoesntRequireOutputIndices(
           {"SoftplusGrad", {true, {}}},
           {"Softsign", {true, {}}},
           {"ReluGrad", {true, {}}},
+          {"LeakyRelu", {true, {}}},
+          {"LeakyReluGrad", {true, {}}},
           {"Conv2D", {true, {}}},
           {"DepthwiseConv2dNative", {true, {}}},
           {"Dilation2D", {true, {}}},
@@ -2545,7 +2547,12 @@ PyObject* TFE_Py_FastPathExecute_C(PyObject*, PyObject* args) {
     if (!input_arg.number_attr().empty()) {
       // The item is a homogeneous list.
       if (!RaiseIfNotPySequence(input, input_arg.number_attr())) return nullptr;
-      Py_ssize_t len = PySequence_Fast_GET_SIZE(input);
+      tensorflow::Safe_PyObjectPtr fast_input(
+          PySequence_Fast(input, "Could not parse sequence."));
+      if (fast_input.get() == nullptr) {
+        return nullptr;
+      }
+      Py_ssize_t len = PySequence_Fast_GET_SIZE(fast_input.get());
 
       TFE_OpSetAttrInt(op, input_arg.number_attr().data(), len);
       if (op_exec_info.run_callbacks) {
@@ -2557,15 +2564,17 @@ PyObject* TFE_Py_FastPathExecute_C(PyObject*, PyObject* args) {
 
       if (len > 0) {
         // First item adds the type attr.
-        if (!AddInputToOp(&op_exec_info, PySequence_Fast_GET_ITEM(input, 0),
-                          true, input_arg, flattened_attrs.get(),
+        if (!AddInputToOp(&op_exec_info,
+                          PySequence_Fast_GET_ITEM(fast_input.get(), 0), true,
+                          input_arg, flattened_attrs.get(),
                           flattened_inputs.get(), op, status)) {
           return nullptr;
         }
 
         for (Py_ssize_t j = 1; j < len; j++) {
           // Since the list is homogeneous, we don't need to re-add the attr.
-          if (!AddInputToOp(&op_exec_info, PySequence_Fast_GET_ITEM(input, j),
+          if (!AddInputToOp(&op_exec_info,
+                            PySequence_Fast_GET_ITEM(fast_input.get(), j),
                             false, input_arg, nullptr /* flattened_attrs */,
                             flattened_inputs.get(), op, status)) {
             return nullptr;

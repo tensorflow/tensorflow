@@ -171,6 +171,7 @@ class Node {
   template <typename T>
   void AddAttr(const string& name, const T& val) {
     SetAttrValue(val, AddAttrHelper(name));
+    UpdateProperties();
   }
 
   void ClearAttr(const string& name);
@@ -210,6 +211,10 @@ class Node {
   // other nodes. This must be called before mutating properties,
   // e.g. in AddAttr.
   void MaybeCopyOnWrite();
+
+  // Called after an attr has changed. Decides whether we need to update some
+  // property of the node (stored in props_).
+  void UpdateProperties();
 
   AttrValue* AddAttrHelper(const string& name);
 
@@ -608,6 +613,9 @@ class Graph {
                          std::vector<OutputTensor> body_inputs,
                          std::vector<OutputTensor> body_outputs,
                          WhileContext** result);
+
+  // Builds a node name to node pointer index for all nodes in the graph.
+  std::unordered_map<string, Node*> BuildNodeNameIndex() const;
 
   // TODO(josh11b): uint64 hash() const;
 

@@ -119,71 +119,71 @@ class UnidirectionalLSTMOpModel : public SingleOpModel {
     BuildInterpreter(input_shapes);
   }
 
-  void SetInputToInputWeights(std::initializer_list<float> f) {
+  void SetInputToInputWeights(const std::vector<float>& f) {
     PopulateTensor(input_to_input_weights_, f);
   }
 
-  void SetInputToForgetWeights(std::initializer_list<float> f) {
+  void SetInputToForgetWeights(const std::vector<float>& f) {
     PopulateTensor(input_to_forget_weights_, f);
   }
 
-  void SetInputToCellWeights(std::initializer_list<float> f) {
+  void SetInputToCellWeights(const std::vector<float>& f) {
     PopulateTensor(input_to_cell_weights_, f);
   }
 
-  void SetInputToOutputWeights(std::initializer_list<float> f) {
+  void SetInputToOutputWeights(const std::vector<float>& f) {
     PopulateTensor(input_to_output_weights_, f);
   }
 
-  void SetRecurrentToInputWeights(std::initializer_list<float> f) {
+  void SetRecurrentToInputWeights(const std::vector<float>& f) {
     PopulateTensor(recurrent_to_input_weights_, f);
   }
 
-  void SetRecurrentToForgetWeights(std::initializer_list<float> f) {
+  void SetRecurrentToForgetWeights(const std::vector<float>& f) {
     PopulateTensor(recurrent_to_forget_weights_, f);
   }
 
-  void SetRecurrentToCellWeights(std::initializer_list<float> f) {
+  void SetRecurrentToCellWeights(const std::vector<float>& f) {
     PopulateTensor(recurrent_to_cell_weights_, f);
   }
 
-  void SetRecurrentToOutputWeights(std::initializer_list<float> f) {
+  void SetRecurrentToOutputWeights(const std::vector<float>& f) {
     PopulateTensor(recurrent_to_output_weights_, f);
   }
 
-  void SetCellToInputWeights(std::initializer_list<float> f) {
+  void SetCellToInputWeights(const std::vector<float>& f) {
     PopulateTensor(cell_to_input_weights_, f);
   }
 
-  void SetCellToForgetWeights(std::initializer_list<float> f) {
+  void SetCellToForgetWeights(const std::vector<float>& f) {
     PopulateTensor(cell_to_forget_weights_, f);
   }
 
-  void SetCellToOutputWeights(std::initializer_list<float> f) {
+  void SetCellToOutputWeights(const std::vector<float>& f) {
     PopulateTensor(cell_to_output_weights_, f);
   }
 
-  void SetInputGateBias(std::initializer_list<float> f) {
+  void SetInputGateBias(const std::vector<float>& f) {
     PopulateTensor(input_gate_bias_, f);
   }
 
-  void SetForgetGateBias(std::initializer_list<float> f) {
+  void SetForgetGateBias(const std::vector<float>& f) {
     PopulateTensor(forget_gate_bias_, f);
   }
 
-  void SetCellBias(std::initializer_list<float> f) {
+  void SetCellBias(const std::vector<float>& f) {
     PopulateTensor(cell_bias_, f);
   }
 
-  void SetOutputGateBias(std::initializer_list<float> f) {
+  void SetOutputGateBias(const std::vector<float>& f) {
     PopulateTensor(output_gate_bias_, f);
   }
 
-  void SetProjectionWeights(std::initializer_list<float> f) {
+  void SetProjectionWeights(const std::vector<float>& f) {
     PopulateTensor(projection_weights_, f);
   }
 
-  void SetProjectionBias(std::initializer_list<float> f) {
+  void SetProjectionBias(const std::vector<float>& f) {
     PopulateTensor(projection_bias_, f);
   }
 
@@ -249,51 +249,51 @@ class HybridUnidirectionalLSTMOpModel : public UnidirectionalLSTMOpModel {
             use_peephole, use_projection_weights, use_projection_bias,
             cell_clip, proj_clip, input_shapes, TensorType_UINT8) {}
 
-  void SetInputToInputWeights(std::initializer_list<float> f) {
+  void SetInputToInputWeights(const std::vector<float>& f) {
     SymmetricQuantizeAndPopulate(input_to_input_weights_, f);
   }
 
-  void SetInputToForgetWeights(std::initializer_list<float> f) {
+  void SetInputToForgetWeights(const std::vector<float>& f) {
     SymmetricQuantizeAndPopulate(input_to_forget_weights_, f);
   }
 
-  void SetInputToCellWeights(std::initializer_list<float> f) {
+  void SetInputToCellWeights(const std::vector<float>& f) {
     SymmetricQuantizeAndPopulate(input_to_cell_weights_, f);
   }
 
-  void SetInputToOutputWeights(std::initializer_list<float> f) {
+  void SetInputToOutputWeights(const std::vector<float>& f) {
     SymmetricQuantizeAndPopulate(input_to_output_weights_, f);
   }
 
-  void SetRecurrentToInputWeights(std::initializer_list<float> f) {
+  void SetRecurrentToInputWeights(const std::vector<float>& f) {
     SymmetricQuantizeAndPopulate(recurrent_to_input_weights_, f);
   }
 
-  void SetRecurrentToForgetWeights(std::initializer_list<float> f) {
+  void SetRecurrentToForgetWeights(const std::vector<float>& f) {
     SymmetricQuantizeAndPopulate(recurrent_to_forget_weights_, f);
   }
 
-  void SetRecurrentToCellWeights(std::initializer_list<float> f) {
+  void SetRecurrentToCellWeights(const std::vector<float>& f) {
     SymmetricQuantizeAndPopulate(recurrent_to_cell_weights_, f);
   }
 
-  void SetRecurrentToOutputWeights(std::initializer_list<float> f) {
+  void SetRecurrentToOutputWeights(const std::vector<float>& f) {
     SymmetricQuantizeAndPopulate(recurrent_to_output_weights_, f);
   }
 
-  void SetCellToInputWeights(std::initializer_list<float> f) {
+  void SetCellToInputWeights(const std::vector<float>& f) {
     SymmetricQuantizeAndPopulate(cell_to_input_weights_, f);
   }
 
-  void SetCellToForgetWeights(std::initializer_list<float> f) {
+  void SetCellToForgetWeights(const std::vector<float>& f) {
     SymmetricQuantizeAndPopulate(cell_to_forget_weights_, f);
   }
 
-  void SetCellToOutputWeights(std::initializer_list<float> f) {
+  void SetCellToOutputWeights(const std::vector<float>& f) {
     SymmetricQuantizeAndPopulate(cell_to_output_weights_, f);
   }
 
-  void SetProjectionWeights(std::initializer_list<float> f) {
+  void SetProjectionWeights(const std::vector<float>& f) {
     SymmetricQuantizeAndPopulate(projection_weights_, f);
   }
 };
@@ -301,22 +301,22 @@ class HybridUnidirectionalLSTMOpModel : public UnidirectionalLSTMOpModel {
 class BaseLstmTest : public ::testing::Test {
  protected:
   // Weights of the LSTM model. Some are optional.
-  std::initializer_list<float> input_to_input_weights_;
-  std::initializer_list<float> input_to_cell_weights_;
-  std::initializer_list<float> input_to_forget_weights_;
-  std::initializer_list<float> input_to_output_weights_;
-  std::initializer_list<float> input_gate_bias_;
-  std::initializer_list<float> cell_gate_bias_;
-  std::initializer_list<float> forget_gate_bias_;
-  std::initializer_list<float> output_gate_bias_;
-  std::initializer_list<float> recurrent_to_input_weights_;
-  std::initializer_list<float> recurrent_to_cell_weights_;
-  std::initializer_list<float> recurrent_to_forget_weights_;
-  std::initializer_list<float> recurrent_to_output_weights_;
-  std::initializer_list<float> cell_to_input_weights_;
-  std::initializer_list<float> cell_to_forget_weights_;
-  std::initializer_list<float> cell_to_output_weights_;
-  std::initializer_list<float> projection_weights_;
+  std::vector<float> input_to_input_weights_;
+  std::vector<float> input_to_cell_weights_;
+  std::vector<float> input_to_forget_weights_;
+  std::vector<float> input_to_output_weights_;
+  std::vector<float> input_gate_bias_;
+  std::vector<float> cell_gate_bias_;
+  std::vector<float> forget_gate_bias_;
+  std::vector<float> output_gate_bias_;
+  std::vector<float> recurrent_to_input_weights_;
+  std::vector<float> recurrent_to_cell_weights_;
+  std::vector<float> recurrent_to_forget_weights_;
+  std::vector<float> recurrent_to_output_weights_;
+  std::vector<float> cell_to_input_weights_;
+  std::vector<float> cell_to_forget_weights_;
+  std::vector<float> cell_to_output_weights_;
+  std::vector<float> projection_weights_;
 
   // LSTM input is stored as num_batch x num_inputs vector.
   std::vector<std::vector<float>> lstm_input_;

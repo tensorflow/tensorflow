@@ -94,21 +94,13 @@ class TestCase(test.TestCase):
       self.dynamic_calls.append(args)
       return 7
 
-    class ConversionOptions(object):
-      """Mock version of api.ConversionOptions."""
-
-      def __init__(self, recursive):
-        self.recursive = recursive
-
-      @classmethod
-      def new(cls, recursive):
-        cls(recursive)
-
     try:
       result, source = compiler.ast_to_object(node, include_source_map=True)
 
+      # TODO(mdan): Move this into self.prepare()
       result.tf = self.make_fake_mod('fake_tf', *symbols)
-      fake_ag = self.make_fake_mod('fake_ag', converted_call, ConversionOptions)
+      fake_ag = self.make_fake_mod('fake_ag', converted_call,
+                                   converter.ConversionOptions)
       fake_ag.__dict__.update(operators.__dict__)
       fake_ag.__dict__['utils'] = utils
       fake_ag.__dict__['rewrite_graph_construction_error'] = (
@@ -128,7 +120,13 @@ class TestCase(test.TestCase):
   @contextlib.contextmanager
   def converted(self, entity, converter_module, namespace, *tf_symbols):
     node, ctx = self.prepare(entity, namespace)
-    node = converter_module.transform(node, ctx)
+
+    if not isinstance(converter_module, (list, tuple)):
+      converter_module = (converter_module,)
+    for m in converter_module:
+      node = m.transform(node, ctx)
+      node = converter.standard_analysis(node, ctx, is_initial=True)
+
     with self.compiled(node, namespace, *tf_symbols) as result:
       yield result
 
@@ -155,14 +153,16 @@ class TestCase(test.TestCase):
               arg_types=None,
               owner_type=None,
               recursive=True,
-              autograph_decorators=()):
+              strip_decorators=()):
+    namespace['ConversionOptions'] = converter.ConversionOptions
+
     node, source = parser.parse_entity(test_fn)
     node = node.body[0]
     if namer is None:
       namer = FakeNamer()
     program_ctx = converter.ProgramContext(
-        recursive=recursive,
-        autograph_decorators=autograph_decorators,
+        options=converter.ConversionOptions(
+            recursive=recursive, strip_decorators=strip_decorators),
         partial_types=None,
         autograph_module=None,
         uncompiled_modules=config.DEFAULT_UNCOMPILED_MODULES)

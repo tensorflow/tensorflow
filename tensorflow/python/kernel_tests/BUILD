@@ -641,7 +641,7 @@ gpu_py_test(
         "//tensorflow/python:linalg_ops",
         "//tensorflow/python:math_ops",
     ],
-    tags = ["notap"],
+    tags = ["optonly"],
 )
 
 gpu_py_test(
@@ -1490,7 +1490,6 @@ gpu_py_test(
         "//tensorflow/python:array_ops_gen",
         "//tensorflow/python:client",
         "//tensorflow/python:client_testlib",
-        "//tensorflow/python:cond_v2",
         "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:data_flow_ops",
         "//tensorflow/python:data_flow_ops_gen",
@@ -1785,6 +1784,7 @@ gpu_py_test(
     size = "medium",
     srcs = ["linalg_ops_test.py"],
     additional_deps = [
+        "@absl_py//absl/testing:parameterized",
         "//third_party/py/numpy",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
@@ -3214,7 +3214,10 @@ tf_py_test(
         "//tensorflow/python:platform",
     ],
     data = [":ackermann_op.so"],
-    tags = ["no_pip"],
+    tags = [
+        "no_pip",
+        "notap",
+    ],
 )
 
 tf_custom_op_library(
@@ -3233,7 +3236,10 @@ tf_py_test(
         "//tensorflow/python:platform",
     ],
     data = [":duplicate_op.so"],
-    tags = ["no_pip"],
+    tags = [
+        "no_pip",
+        "notap",
+    ],
 )
 
 tf_custom_op_library(
@@ -3252,7 +3258,10 @@ tf_py_test(
         "//tensorflow/python:platform",
     ],
     data = [":invalid_op.so"],
-    tags = ["no_pip"],
+    tags = [
+        "no_pip",
+        "notap",
+    ],
 )
 
 gpu_py_test(
@@ -3261,6 +3270,7 @@ gpu_py_test(
     srcs = ["cond_v2_test.py"],
     additional_deps = [
         "//tensorflow/python:array_ops",
+        "//tensorflow/python:test_ops",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:cond_v2",
         "//tensorflow/python:constant_op",

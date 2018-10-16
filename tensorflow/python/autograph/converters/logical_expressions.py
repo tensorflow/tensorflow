@@ -28,7 +28,6 @@ from tensorflow.python.autograph.pyct import anno
 from tensorflow.python.autograph.pyct import parser
 from tensorflow.python.autograph.pyct import templates
 
-
 # TODO(mdan): Properly extrack boolean ops according to lazy eval rules.
 # Note that this isn't completely safe either, because tensors may have control
 # dependencies.
@@ -44,19 +43,22 @@ class LogicalExpressionTransformer(converter.Base):
 
   def __init__(self, ctx):
     super(LogicalExpressionTransformer, self).__init__(ctx)
-    # TODO(mdan): Look into replacing with bitwise operators instead.
-    # TODO(mdan): Skip replacing if the function is trivial.
+    # TODO(mdan): For completeness and consistency, overload everything.
     self.op_mapping = {
-        gast.And: 'tf.logical_and',
-        gast.Eq: 'tf.equal',
-        gast.Gt: 'tf.greater',
-        gast.GtE: 'tf.greater_equal',
-        gast.Lt: 'tf.less',
-        gast.LtE: 'tf.less_equal',
-        gast.Not: 'tf.logical_not',
-        gast.NotEq: 'tf.not_equal',
-        gast.Or: 'tf.logical_or',
-        gast.USub: 'tf.negative',
+        gast.And: 'ag__.and_',
+        gast.Eq: 'ag__.eq',
+        gast.NotEq: 'ag__.not_eq',
+        gast.Lt: 'ag__.lt',
+        gast.LtE: 'ag__.lt_e',
+        gast.Gt: 'ag__.gt',
+        gast.GtE: 'ag__.gt_e',
+        gast.Is: 'ag__.is_',
+        gast.IsNot: 'ag__.is_not',
+        gast.In: 'ag__.in_',
+        gast.Not: 'ag__.not_',
+        gast.NotIn: 'ag__.not_in',
+        gast.Or: 'ag__.or_',
+        gast.USub: 'ag__.u_sub',
     }
 
   def _expect_simple_symbol(self, operand):
@@ -78,26 +80,47 @@ class LogicalExpressionTransformer(converter.Base):
     op_type = type(operator)
     return self.op_mapping[op_type]
 
-  def _as_function(self, func_name, args):
-    template = """
-      func_name(args)
-    """
-    replacement = templates.replace_as_expression(
-        template, func_name=parser.parse_expression(func_name), args=args)
+  def _as_function(self, func_name, args, args_as_lambda=False):
+    if args_as_lambda:
+      args_as_lambda = []
+      for arg in args:
+        template = """
+          lambda: arg
+        """
+        args_as_lambda.append(
+            templates.replace_as_expression(template, arg=arg))
+      args = args_as_lambda
+
+    if not args:
+      template = """
+        func_name()
+      """
+      replacement = templates.replace_as_expression(
+          template, func_name=parser.parse_expression(func_name))
+    elif len(args) == 1:
+      template = """
+        func_name(arg)
+      """
+      replacement = templates.replace_as_expression(
+          template, func_name=parser.parse_expression(func_name), arg=args[0])
+    elif len(args) == 2:
+      template = """
+        func_name(arg1, arg2)
+      """
+      replacement = templates.replace_as_expression(
+          template,
+          func_name=parser.parse_expression(func_name),
+          arg1=args[0],
+          arg2=args[1])
+    else:
+      raise NotImplementedError('{} arguments for {}'.format(
+          len(args), func_name))
+
     anno.setanno(replacement, SAFE_BOOLEAN_OPERAND, True)
     return replacement
 
   def visit_Compare(self, node):
     node = self.generic_visit(node)
-
-    if not all(self._has_matching_func(op) for op in node.ops):
-      if len(node.ops) == 1:
-        # Basic expressions are safe to leave as they are.
-        return node
-      else:
-        raise NotImplementedError(
-            'compound expression with at least one unsupported '
-            'operator: {}'.format(node.ops))
 
     ops_and_comps = list(zip(node.ops, node.comparators))
     left = node.left
@@ -113,8 +136,8 @@ class LogicalExpressionTransformer(converter.Base):
         anno.setanno(binary_comparison, SAFE_BOOLEAN_OPERAND, True)
       if op_tree:
         self._expect_simple_symbol(right)
-        op_tree = self._as_function('tf.logical_and',
-                                    (binary_comparison, op_tree))
+        op_tree = self._as_function(
+            'ag__.and_', (op_tree, binary_comparison), args_as_lambda=True)
       else:
         op_tree = binary_comparison
       left = right
@@ -123,7 +146,7 @@ class LogicalExpressionTransformer(converter.Base):
 
   def visit_UnaryOp(self, node):
     node = self.generic_visit(node)
-    return self._as_function(self._matching_func(node.op), node.operand)
+    return self._as_function(self._matching_func(node.op), (node.operand,))
 
   def visit_BoolOp(self, node):
     node = self.generic_visit(node)
@@ -133,7 +156,8 @@ class LogicalExpressionTransformer(converter.Base):
     while node_values:
       left = node_values.pop()
       self._expect_simple_symbol(left)
-      right = self._as_function(self._matching_func(node.op), (left, right))
+      right = self._as_function(
+          self._matching_func(node.op), (left, right), args_as_lambda=True)
     return right
 
 

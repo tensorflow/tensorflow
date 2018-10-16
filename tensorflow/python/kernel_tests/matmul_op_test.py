@@ -102,7 +102,7 @@ class MatMulGradientTest(test_lib.TestCase):
 def _GetMatMulGradientTest(a_np_, b_np_, use_static_shape_, **kwargs_):
 
   def Test(self):
-    if not use_static_shape_ or a_np_.dtype in (np.int32, np.float16):
+    if not use_static_shape_ or a_np_.dtype in (np.int32, np.int64, np.float16):
       self.skipTest("Skipping infeasible gradient test.")
 
     # Transpose and possibly conjugate a_np_ and b_np_ according to the
@@ -220,7 +220,7 @@ if __name__ == "__main__":
     dtypes_to_test = [np.int32, np.float16, np.float32, np.float64]
   for use_static_shape in [False, True]:
     for dtype in dtypes_to_test:
-      if not use_static_shape and dtype == np.int32:
+      if not use_static_shape and (dtype == np.int32 or dtype == np.int64):
         # TODO(rmlarsen): Re-enable this test when we have fixed the underlying
         # bug in Windows (b/35935459).
         continue

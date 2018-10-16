@@ -191,7 +191,7 @@ class Service : public ServiceInterface {
   // Prepare the arguments for executing parallel.
   StatusOr<std::vector<std::vector<const ShapedBuffer*>>> GetArguments(
       const ExecutionOptions& execution_options,
-      absl::Span<const GlobalDataHandle* const> arguments);
+      absl::Span<const GlobalDataHandle* const> arguments) const;
 
  protected:
   friend class LocalExecutable;
@@ -208,7 +208,7 @@ class Service : public ServiceInterface {
   StatusOr<std::vector<std::vector<const ShapedBuffer*>>>
   ResolveAndValidateArguments(
       absl::Span<const GlobalDataHandle* const> arguments,
-      absl::Span<se::StreamExecutor* const> stream_executors);
+      absl::Span<se::StreamExecutor* const> stream_executors) const;
 
   // Create a Hlo module config for the given program shape and arguments.
   // execution_options is optional; if not given a default is used.

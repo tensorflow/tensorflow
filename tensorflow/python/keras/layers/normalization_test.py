@@ -115,7 +115,7 @@ class NormalizationLayersTest(test.TestCase):
 
   def test_batchnorm_convnet(self):
     if test.is_gpu_available(cuda_only=True):
-      with self.test_session(use_gpu=True):
+      with self.session(use_gpu=True):
         model = keras.models.Sequential()
         norm = keras.layers.BatchNormalization(
             axis=1, input_shape=(3, 4, 4), momentum=0.8)

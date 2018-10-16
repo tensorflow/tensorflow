@@ -113,6 +113,7 @@ tf_cc_test(
     deps = [
         ":constant_folding",
         ":dependency_optimizer",
+        "//tensorflow/cc:array_ops_internal",
         "//tensorflow/cc:cc_ops",
         "//tensorflow/cc:cc_ops_internal",
         "//tensorflow/core:all_kernels",
@@ -423,6 +424,7 @@ cc_library(
         "//tensorflow/core/grappler/clusters:virtual_cluster",
         "//tensorflow/core/grappler/costs:graph_memory",
         "//tensorflow/core/grappler/costs:graph_properties",
+        "//tensorflow/core/grappler/costs:utils",
         "//tensorflow/core/grappler/utils:topological_sort",
         "//tensorflow/core/grappler/utils:traversal",
     ],

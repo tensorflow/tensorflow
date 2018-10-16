@@ -88,14 +88,6 @@ std::map<string, string> kBrokenTests = {
     // No support for axis!=0 in GatherV2.
     {R"(^\/gather.*axis=1)", "76910444"},
 
-    // No support for arbitrary dimensions in ArgMax.
-    {R"(^\/arg_min_max.*axis_is_last_dim=False.*input_shape=\[.,.,.,.\])",
-     "77546240"},
-    {R"(^\/arg_min_max.*axis_is_last_dim=False.*input_shape=\[.,.,.\])",
-     "77546240"},
-    {R"(^\/arg_min_max.*axis_is_last_dim=False.*input_shape=\[.,.\])",
-     "77546240"},
-
     // No Support for float.
     {R"(^\/floor_div.*dtype=tf\.float32)", "112859002"},
 

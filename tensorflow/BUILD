@@ -209,12 +209,40 @@ config_setting(
     visibility = ["//visibility:public"],
 )
 
+# Features that are default ON are handled differently below.
+#
 config_setting(
-    name = "with_ignite_support",
-    define_values = {"with_ignite_support": "true"},
+    name = "no_aws_support",
+    define_values = {"no_aws_support": "false"},
     visibility = ["//visibility:public"],
 )
 
+config_setting(
+    name = "no_gcp_support",
+    define_values = {"no_gcp_support": "false"},
+    visibility = ["//visibility:public"],
+)
+
+config_setting(
+    name = "no_hdfs_support",
+    define_values = {"no_hdfs_support": "false"},
+    visibility = ["//visibility:public"],
+)
+
+config_setting(
+    name = "no_ignite_support",
+    define_values = {"no_ignite_support": "false"},
+    visibility = ["//visibility:public"],
+)
+
+config_setting(
+    name = "no_kafka_support",
+    define_values = {"no_kafka_support": "false"},
+    visibility = ["//visibility:public"],
+)
+
+# Crosses between platforms and file system libraries not supported on those
+# platforms due to limitations in nested select() statements.
 config_setting(
     name = "with_cuda_support_windows_override",
     define_values = {"using_cuda_nvcc": "true"},

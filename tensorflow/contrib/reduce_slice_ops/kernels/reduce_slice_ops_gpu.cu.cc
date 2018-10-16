@@ -29,6 +29,11 @@ using GPUDevice = Eigen::GpuDevice;
 
 namespace functor {
 
+#define Sum(a, b) ((a) + (b))
+#define Prod(a, b) ((a) * (b))
+#define Max(a, b) ((a) > (b) ? (a) : (b))
+#define Min(a, b) ((a) < (b) ? (a) : (b))
+
 #define GPUReduceSliceFunctorReduceop(reduceop, beginning)                     \
   template <typename T, typename Index>                                        \
   __global__ void ReduceSliceDeviceKernel##reduceop(                           \
@@ -93,6 +98,11 @@ TF_CALL_REAL_NUMBER_TYPES(DEFINE_GPU_SPECS)
 
 #undef DEFINE_GPU_REDUCEOP_SPECS_INDEX
 #undef DEFINE_GPU_SPECS
+
+#undef Sum
+#undef Prod
+#undef Min
+#undef Max
 
 }  // namespace functor
 }  // namespace tensorflow

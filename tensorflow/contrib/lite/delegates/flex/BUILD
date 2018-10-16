@@ -42,8 +42,31 @@ tf_cc_test(
     ],
 )
 
+# Delegate implementation that pulls in the standard set of TensorFlow ops and
+# kernels.
 cc_library(
     name = "delegate",
+    hdrs = [
+        "delegate.h",
+    ],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":delegate_only_runtime",
+    ] + select({
+        "//tensorflow:android": [
+            "//tensorflow/core:android_tensorflow_lib",
+        ],
+        "//conditions:default": [
+            "//tensorflow/core:tensorflow",
+        ],
+    }),
+    alwayslink = 1,
+)
+
+# Delegate implementation that does *not* pull in the standard set of TensorFlow
+# ops and kernels.
+cc_library(
+    name = "delegate_only_runtime",
     srcs = [
         "delegate.cc",
     ],
@@ -134,12 +157,12 @@ cc_library(
         # set of core TensorFlow kernels. We may want to revisit this dependency
         # to allow selective registration via build targets.
         "//tensorflow:android": [
-            "//tensorflow/core:android_tensorflow_lib",
+            "//tensorflow/core:android_tensorflow_lib_lite",
         ],
         "//conditions:default": [
+            "//tensorflow/core:lib",
             "//tensorflow/core:protos_all_cc",
             "//tensorflow/core:framework",
-            "//tensorflow/core:tensorflow",
         ],
     }),
 )
@@ -153,7 +176,14 @@ tf_cc_test(
         ":kernel",
         ":test_util",
         "@com_google_googletest//:gtest",
-    ],
+    ] + select({
+        "//tensorflow:android": [
+            "//tensorflow/core:android_tensorflow_lib",
+        ],
+        "//conditions:default": [
+            "//tensorflow/core:tensorflow",
+        ],
+    }),
 )
 
 cc_library(
@@ -180,7 +210,7 @@ cc_library(
         "//tensorflow/contrib/lite:kernel_api",
     ] + select({
         "//tensorflow:android": [
-            "//tensorflow/core:android_tensorflow_lib",
+            "//tensorflow/core:android_tensorflow_lib_lite",
         ],
         "//conditions:default": [
             "//tensorflow/core:lib",

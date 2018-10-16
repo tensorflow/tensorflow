@@ -78,7 +78,10 @@ TfLiteStatus EvalFloat(TfLiteContext* context, TfLiteNode* node,
   for (int i = 0; i < SizeOfDimension(lookup, 0); i++) {
     int idx = lookup->data.i32[i];
     if (idx >= row_size || idx < 0) {
-      context->ReportError(context, "Embedding Lookup: index out of bounds.");
+      context->ReportError(context,
+                           "Embedding Lookup: index out of bounds. "
+                           "Got %d, and bounds are [0, %d]",
+                           idx, row_size - 1);
       return kTfLiteError;
     } else {
       memcpy(output->data.raw + i * row_bytes,
@@ -104,7 +107,10 @@ TfLiteStatus EvalHybrid(TfLiteContext* context, TfLiteNode* node,
   for (int i = 0; i < SizeOfDimension(lookup, 0); i++) {
     int idx = lookup->data.i32[i];
     if (idx >= row_size || idx < 0) {
-      context->ReportError(context, "Embedding Lookup: index out of bounds.");
+      context->ReportError(context,
+                           "Embedding Lookup: index out of bounds. "
+                           "Got %d, and bounds are [0, %d]",
+                           idx, row_size - 1);
       return kTfLiteError;
     } else {
       // Dequantize embedding values.

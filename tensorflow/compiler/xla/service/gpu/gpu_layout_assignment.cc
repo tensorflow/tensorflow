@@ -208,19 +208,35 @@ Status GpuLayoutAssignment::AddBackendConstraints(
           constraints->SetOperandLayout(op1_shape, instruction, 1));
       TF_RETURN_IF_ERROR(
           constraints->SetInstructionLayout(output_shape, instruction));
+    } else if (instruction->opcode() == HloOpcode::kSort &&
+               ShapeUtil::Rank(instruction->operand(0)->shape()) > 1) {
+      // Make sure that all the operands and the output(s) have the same layout.
+      Shape keys_shape = instruction->operand(0)->shape();
+      Layout keys_layout =
+          LayoutUtil::GetDefaultLayoutForRank(ShapeUtil::Rank(keys_shape));
+      for (int64 i = 0; i < instruction->operand_count(); ++i) {
+        Shape shape = instruction->operand(i)->shape();
+        *shape.mutable_layout() = keys_layout;
+        TF_RETURN_IF_ERROR(
+            constraints->SetOperandLayout(shape, instruction, i));
+        const LogicalBuffer* output_buffer;
+        if (ShapeUtil::IsArray(instruction->shape())) {
+          TF_ASSIGN_OR_RETURN(
+              output_buffer,
+              constraints->points_to_analysis().GetBufferDefinedAt(instruction,
+                                                                   {}));
+        } else {
+          TF_ASSIGN_OR_RETURN(
+              output_buffer,
+              constraints->points_to_analysis().GetBufferDefinedAt(instruction,
+                                                                   {i}));
+        }
+        TF_RETURN_IF_ERROR(
+            constraints->SetBufferLayout(keys_layout, *output_buffer));
+      }
     }
   }
   return Status::OK();
-}
-
-bool GpuLayoutAssignment::CustomCallRequiresMajorFirstLayout(
-    const HloInstruction* instruction) {
-  // - Inputs to cudnn batchnorm custom calls don't need the major-first layout
-  //   (i.e. {n, n-1, ...0}) -- we can handle any layout.
-  // - Inputs to cudnn convolution require custom layouts handled in
-  //   AddBackendConstraints.
-  return !IsCustomCallToDnnBatchNorm(*instruction) &&
-         !IsCustomCallToDnnConvolution(*instruction);
 }
 
 Status GpuLayoutAssignment::PropagateOperandConstraint(
