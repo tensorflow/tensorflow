@@ -407,6 +407,9 @@ table UnidirectionalSequenceLSTMOptions {
   fused_activation_function:ActivationFunctionType;
   cell_clip: float; // Optional, 0.0 means no clipping
   proj_clip: float; // Optional, 0.0 means no clipping
+
+  // If true then first dimension is sequence, otherwise batch.
+  time_major:bool;
 }
 
 table BidirectionalSequenceLSTMOptions {

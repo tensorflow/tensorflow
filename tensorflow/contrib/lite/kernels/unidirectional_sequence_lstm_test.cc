@@ -32,7 +32,7 @@ using ::testing::ElementsAreArray;
 class UnidirectionalLSTMOpModel : public SingleOpModel {
  public:
   UnidirectionalLSTMOpModel(int n_batch, int n_input, int n_cell, int n_output,
-                            int sequence_length, bool use_cifg,
+                            int sequence_length, bool time_major, bool use_cifg,
                             bool use_peephole, bool use_projection_weights,
                             bool use_projection_bias, float cell_clip,
                             float proj_clip,
@@ -110,12 +110,12 @@ class UnidirectionalLSTMOpModel : public SingleOpModel {
 
     output_ = AddOutput(TensorType_FLOAT32);
 
-    SetBuiltinOp(
-        BuiltinOperator_UNIDIRECTIONAL_SEQUENCE_LSTM,
-        BuiltinOptions_UnidirectionalSequenceLSTMOptions,
-        CreateUnidirectionalSequenceLSTMOptions(
-            builder_, ActivationFunctionType_TANH, cell_clip, proj_clip)
-            .Union());
+    SetBuiltinOp(BuiltinOperator_UNIDIRECTIONAL_SEQUENCE_LSTM,
+                 BuiltinOptions_UnidirectionalSequenceLSTMOptions,
+                 CreateUnidirectionalSequenceLSTMOptions(
+                     builder_, ActivationFunctionType_TANH, cell_clip,
+                     proj_clip, time_major)
+                     .Union());
     BuildInterpreter(input_shapes);
   }
 
@@ -241,12 +241,12 @@ class HybridUnidirectionalLSTMOpModel : public UnidirectionalLSTMOpModel {
  public:
   HybridUnidirectionalLSTMOpModel(
       int n_batch, int n_input, int n_cell, int n_output, int sequence_length,
-      bool use_cifg, bool use_peephole, bool use_projection_weights,
-      bool use_projection_bias, float cell_clip, float proj_clip,
-      const std::vector<std::vector<int>>& input_shapes)
+      bool time_major, bool use_cifg, bool use_peephole,
+      bool use_projection_weights, bool use_projection_bias, float cell_clip,
+      float proj_clip, const std::vector<std::vector<int>>& input_shapes)
       : UnidirectionalLSTMOpModel(
-            n_batch, n_input, n_cell, n_output, sequence_length, use_cifg,
-            use_peephole, use_projection_weights, use_projection_bias,
+            n_batch, n_input, n_cell, n_output, sequence_length, time_major,
+            use_cifg, use_peephole, use_projection_weights, use_projection_bias,
             cell_clip, proj_clip, input_shapes, TensorType_UINT8) {}
 
   void SetInputToInputWeights(const std::vector<float>& f) {
@@ -326,21 +326,32 @@ class BaseLstmTest : public ::testing::Test {
   // Compares output up to tolerance to the result of the lstm given the input.
   void VerifyGoldens(const std::vector<std::vector<float>>& input,
                      const std::vector<std::vector<float>>& output,
-                     UnidirectionalLSTMOpModel* lstm, float tolerance = 1e-5) {
+                     UnidirectionalLSTMOpModel* lstm, float tolerance = 1e-5,
+                     bool time_major = true) {
     const int num_batches = input.size();
     EXPECT_GT(num_batches, 0);
     const int num_inputs = lstm->num_inputs();
     EXPECT_GT(num_inputs, 0);
     const int input_sequence_size = input[0].size() / num_inputs;
     EXPECT_GT(input_sequence_size, 0);
-    // Feed the whole sequence as input.
-    for (int i = 0; i < input_sequence_size; ++i) {
-      for (int b = 0; b < num_batches; ++b) {
-        const float* batch_start = input[b].data() + i * num_inputs;
-        const float* batch_end = batch_start + num_inputs;
+    if (time_major) {
+      // Feed the whole sequence as input.
+      for (int i = 0; i < input_sequence_size; ++i) {
+        for (int b = 0; b < num_batches; ++b) {
+          const float* batch_start = input[b].data() + i * num_inputs;
+          const float* batch_end = batch_start + num_inputs;
 
-        lstm->SetInput(((i * num_batches) + b) * lstm->num_inputs(),
-                       batch_start, batch_end);
+          lstm->SetInput(((i * num_batches) + b) * num_inputs, batch_start,
+                         batch_end);
+        }
+      }
+    } else {
+      for (int b = 0; b < num_batches; ++b) {
+        const float* batch_start = input[b].data();
+        const float* batch_end = batch_start + input_sequence_size * num_inputs;
+
+        lstm->SetInput(b * input_sequence_size * num_inputs, batch_start,
+                       batch_end);
       }
     }
 
@@ -349,15 +360,25 @@ class BaseLstmTest : public ::testing::Test {
     const int num_outputs = lstm->num_outputs();
     EXPECT_GT(num_outputs, 0);
     std::vector<float> expected;
-    for (int i = 0; i < input_sequence_size; ++i) {
-      for (int b = 0; b < num_batches; ++b) {
-        const float* golden_start_batch = output[b].data() + i * num_outputs;
-        const float* golden_end_batch = golden_start_batch + num_outputs;
 
-        expected.insert(expected.end(), golden_start_batch, golden_end_batch);
+    if (time_major) {
+      for (int i = 0; i < input_sequence_size; ++i) {
+        for (int b = 0; b < num_batches; ++b) {
+          const float* golden_start_batch = output[b].data() + i * num_outputs;
+          const float* golden_end_batch = golden_start_batch + num_outputs;
+
+          expected.insert(expected.end(), golden_start_batch, golden_end_batch);
+        }
+      }
+    } else {
+      for (int b = 0; b < num_batches; ++b) {
+        const float* golden_batch_start = output[b].data();
+        const float* golden_batch_end =
+            golden_batch_start + input_sequence_size * num_outputs;
+
+        expected.insert(expected.end(), golden_batch_start, golden_batch_end);
       }
     }
-
     EXPECT_THAT(lstm->GetOutput(),
                 ElementsAreArray(ArrayFloatNear(expected, tolerance)));
   }
@@ -422,7 +443,7 @@ TEST_F(NoCifgNoPeepholeNoProjectionNoClippingLstmTest, LstmBlackBoxTest) {
 
   UnidirectionalLSTMOpModel lstm(
       n_batch, n_input, n_cell, n_output, sequence_length,
-      /*use_cifg=*/false, /*use_peephole=*/false,
+      /*time_major=*/true, /*use_cifg=*/false, /*use_peephole=*/false,
       /*use_projection_weights=*/false,
       /*use_projection_bias=*/false,
       /*cell_clip=*/0.0, /*proj_clip=*/0.0,
@@ -473,6 +494,73 @@ TEST_F(NoCifgNoPeepholeNoProjectionNoClippingLstmTest, LstmBlackBoxTest) {
   VerifyGoldens(lstm_input_, lstm_golden_output_, &lstm);
 }
 
+TEST_F(NoCifgNoPeepholeNoProjectionNoClippingLstmTest,
+       LstmBlackBoxTestBatchMajor) {
+  const int n_batch = 1;
+  const int n_input = 2;
+  // n_cell and n_output have the same size when there is no projection.
+  const int n_cell = 4;
+  const int n_output = 4;
+  const int sequence_length = 3;
+
+  UnidirectionalLSTMOpModel lstm(
+      n_batch, n_input, n_cell, n_output, sequence_length,
+      /*time_major=*/true, /*use_cifg=*/false, /*use_peephole=*/false,
+      /*use_projection_weights=*/false,
+      /*use_projection_bias=*/false,
+      /*cell_clip=*/0.0, /*proj_clip=*/0.0,
+      {
+          {sequence_length, n_batch, n_input},  // input tensor
+
+          {n_cell, n_input},  // input_to_input_weight tensor
+          {n_cell, n_input},  // input_to_forget_weight tensor
+          {n_cell, n_input},  // input_to_cell_weight tensor
+          {n_cell, n_input},  // input_to_output_weight tensor
+
+          {n_cell, n_output},  // recurrent_to_input_weight tensor
+          {n_cell, n_output},  // recurrent_to_forget_weight tensor
+          {n_cell, n_output},  // recurrent_to_cell_weight tensor
+          {n_cell, n_output},  // recurrent_to_output_weight tensor
+
+          {0},  // cell_to_input_weight tensor
+          {0},  // cell_to_forget_weight tensor
+          {0},  // cell_to_output_weight tensor
+
+          {n_cell},  // input_gate_bias tensor
+          {n_cell},  // forget_gate_bias tensor
+          {n_cell},  // cell_bias tensor
+          {n_cell},  // output_gate_bias tensor
+
+          {0, 0},  // projection_weight tensor
+          {0},     // projection_bias tensor
+
+          {n_batch, n_output},  // activation_state tensor
+          {n_batch, n_cell},    // cell_state tensor
+      });
+
+  lstm.SetInputToInputWeights(input_to_input_weights_);
+  lstm.SetInputToCellWeights(input_to_cell_weights_);
+  lstm.SetInputToForgetWeights(input_to_forget_weights_);
+  lstm.SetInputToOutputWeights(input_to_output_weights_);
+
+  lstm.SetInputGateBias(input_gate_bias_);
+  lstm.SetCellBias(cell_gate_bias_);
+  lstm.SetForgetGateBias(forget_gate_bias_);
+  lstm.SetOutputGateBias(output_gate_bias_);
+
+  lstm.SetRecurrentToInputWeights(recurrent_to_input_weights_);
+  lstm.SetRecurrentToCellWeights(recurrent_to_cell_weights_);
+  lstm.SetRecurrentToForgetWeights(recurrent_to_forget_weights_);
+  lstm.SetRecurrentToOutputWeights(recurrent_to_output_weights_);
+
+  // Reshuffle input and output to batch major format.
+  std::vector<std::vector<float>> input;
+  std::vector<std::vector<float>> output;
+
+  VerifyGoldens(lstm_input_, lstm_golden_output_, &lstm, /*tolerance=*/1e-5,
+                /*time_major=*/false);
+}
+
 TEST_F(NoCifgNoPeepholeNoProjectionNoClippingLstmTest, HybridLstmBlackBoxTest) {
   const int n_batch = 1;
   const int n_input = 2;
@@ -483,7 +571,7 @@ TEST_F(NoCifgNoPeepholeNoProjectionNoClippingLstmTest, HybridLstmBlackBoxTest) {
 
   HybridUnidirectionalLSTMOpModel lstm(
       n_batch, n_input, n_cell, n_output, sequence_length,
-      /*use_cifg=*/false, /*use_peephole=*/false,
+      /*time_major=*/true, /*use_cifg=*/false, /*use_peephole=*/false,
       /*use_projection_weights=*/false,
       /*use_projection_bias=*/false, /*cell_clip=*/0.0, /*proj_clip=*/0.0,
       {
@@ -591,7 +679,7 @@ TEST_F(CifgPeepholeNoProjectionNoClippingLstmTest, LstmBlackBoxTest) {
 
   UnidirectionalLSTMOpModel lstm(
       n_batch, n_input, n_cell, n_output, sequence_length,
-      /*use_cifg=*/true, /*use_peephole=*/true,
+      /*time_major=*/true, /*use_cifg=*/true, /*use_peephole=*/true,
       /*use_projection_weights=*/false,
       /*use_projection_bias=*/false,
       /*cell_clip=*/0.0, /*proj_clip=*/0.0,
@@ -652,7 +740,7 @@ TEST_F(CifgPeepholeNoProjectionNoClippingLstmTest, HybridLstmBlackBoxTest) {
 
   HybridUnidirectionalLSTMOpModel lstm(
       n_batch, n_input, n_cell, n_output, sequence_length,
-      /*use_cifg=*/true, /*use_peephole=*/true,
+      /*time_major=*/true, /*use_cifg=*/true, /*use_peephole=*/true,
       /*use_projection_weights=*/false,
       /*use_projection_bias=*/false,
       /*cell_clip=*/0.0, /*proj_clip=*/0.0,
@@ -1311,7 +1399,7 @@ TEST_F(NoCifgPeepholeProjectionClippingLstmTest, LstmBlackBoxTest) {
 
   UnidirectionalLSTMOpModel lstm(
       n_batch, n_input, n_cell, n_output, sequence_length,
-      /*use_cifg=*/false, /*use_peephole=*/true,
+      /*time_major=*/true, /*use_cifg=*/false, /*use_peephole=*/true,
       /*use_projection_weights=*/true,
       /*use_projection_bias=*/false,
       /*cell_clip=*/0.0, /*proj_clip=*/0.0,
@@ -1377,7 +1465,7 @@ TEST_F(NoCifgPeepholeProjectionClippingLstmTest, HybridLstmBlackBoxTest) {
 
   HybridUnidirectionalLSTMOpModel lstm(
       n_batch, n_input, n_cell, n_output, sequence_length,
-      /*use_cifg=*/false, /*use_peephole=*/true,
+      /*time_major=*/true, /*use_cifg=*/false, /*use_peephole=*/true,
       /*use_projection_weights=*/true,
       /*use_projection_bias=*/false,
       /*cell_clip=*/0.0, /*proj_clip=*/0.0,
