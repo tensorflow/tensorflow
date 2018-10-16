@@ -900,7 +900,9 @@ TF_CAPI_EXPORT extern void TF_DeleteImportGraphDefOptions(
 TF_CAPI_EXPORT extern void TF_ImportGraphDefOptionsSetPrefix(
     TF_ImportGraphDefOptions* opts, const char* prefix);
 
-// Set default execution device for the nodes in the `graph_def` that will be imported into `graph`.
+// Set default execution device for the nodes in the `graph_def`
+// if it has not been explicitly specified for operation already,
+// it will be imported into `graph` then.
 // `device` is copied and has no lifetime requirements.
 TF_CAPI_EXPORT extern void TF_ImportGraphDefOptionsSetDefaultDevice(
     TF_ImportGraphDefOptions* opts, const char* device);
