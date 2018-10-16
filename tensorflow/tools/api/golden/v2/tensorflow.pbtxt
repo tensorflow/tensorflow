@@ -177,6 +177,10 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
+    name: "Variable"
+    mtype: "<class \'tensorflow.python.ops.variables.VariableMetaclass\'>"
+  }
+  member {
     name: "VariableAggregation"
     mtype: "<class \'enum.EnumMeta\'>"
   }
@@ -1699,6 +1703,10 @@ tf_module {
   member_method {
     name: "variable_axis_size_partitioner"
     argspec: "args=[\'max_shard_bytes\', \'axis\', \'bytes_per_string_element\', \'max_shards\'], varargs=None, keywords=None, defaults=[\'0\', \'16\', \'None\'], "
+  }
+  member_method {
+    name: "variable_creator_scope"
+    argspec: "args=[\'variable_creator\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "where"
