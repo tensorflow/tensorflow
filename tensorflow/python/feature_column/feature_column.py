@@ -175,7 +175,7 @@ def _internal_input_layer(features,
                           cols_to_vars=None,
                           scope=None,
                           cols_to_output_tensors=None,
-                          from_template=False):
+                          from_template=False, reuse=None):
   """See input_layer. `scope` is a name or variable scope to use."""
 
   feature_columns = _normalize_feature_columns(feature_columns)
@@ -198,7 +198,7 @@ def _internal_input_layer(features,
     for column in sorted(feature_columns, key=lambda x: x.name):
       ordered_columns.append(column)
       with variable_scope.variable_scope(
-          None, default_name=column._var_scope_name):  # pylint: disable=protected-access
+          None, default_name=column._var_scope_name, reuse=reuse):  # pylint: disable=protected-access
         tensor = column._get_dense_tensor(  # pylint: disable=protected-access
             builder,
             weight_collections=weight_collections,
@@ -236,7 +236,9 @@ def input_layer(features,
                 weight_collections=None,
                 trainable=True,
                 cols_to_vars=None,
-                cols_to_output_tensors=None):
+                cols_to_output_tensors=None,
+                scope=None,
+                reuse=None):
   """Returns a dense `Tensor` as input layer based on given `feature_columns`.
 
   Generally a single example in training data is described with FeatureColumns.
@@ -284,6 +286,8 @@ def input_layer(features,
     cols_to_output_tensors: If not `None`, must be a dictionary that will be
       filled with a mapping from '_FeatureColumn' to the associated
       output `Tensor`s.
+    scope: Variable scope at the input_layer level.
+    reuse: Whether the variables are to be reused.
 
   Returns:
     A `Tensor` which represents input layer of a model. Its shape
@@ -299,7 +303,9 @@ def input_layer(features,
       weight_collections=weight_collections,
       trainable=trainable,
       cols_to_vars=cols_to_vars,
-      cols_to_output_tensors=cols_to_output_tensors)
+      cols_to_output_tensors=cols_to_output_tensors,
+      scope=scope,
+      reuse=reuse)
 
 
 # TODO(akshayka): InputLayer should be a subclass of Layer, and it
