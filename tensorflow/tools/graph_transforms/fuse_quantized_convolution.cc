@@ -179,8 +179,14 @@ Status FuseQuantizedConvolutionAndRequantize(
 
         TensorProto float_tensor_proto = bias_node->attr().at("value").tensor();
         Tensor float_tensor;
-        CHECK(float_tensor.FromProto(float_tensor_proto));
-        CHECK_EQ(float_tensor.dtype(), DT_FLOAT);
+        if(!float_tensor.FromProto(float_tensor_proto)) {
+          TF_RETURN_IF_ERROR(::tensorflow::errors::InvalidArgument(
+              "TensorProto object is not valid."));
+        }
+        if (float_tensor.dtype() != DT_FLOAT) {
+          TF_RETURN_IF_ERROR(::tensorflow::errors::Unimplemented(
+              "Expected float tensor."));
+        }
         float *p_bias_float = float_tensor.flat<float>().data();
 
         Tensor int32_tensor = Tensor(DT_QINT32, float_tensor.shape());
