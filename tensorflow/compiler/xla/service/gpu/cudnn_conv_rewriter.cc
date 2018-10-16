@@ -40,7 +40,8 @@ HloInstruction* CreateCudnnConv(const char* call_target, const Shape& shape,
                                 HloInstruction* lhs, HloInstruction* rhs,
                                 const Window& window,
                                 const ConvolutionDimensionNumbers& dnums,
-                                int64 feature_group_count) {
+                                int64 feature_group_count,
+                                const OpMetadata& metadata) {
   HloComputation* computation = lhs->parent();
 
   // This call returns a tuple of (conv_result, scratch_memory), where
@@ -59,6 +60,7 @@ HloInstruction* CreateCudnnConv(const char* call_target, const Shape& shape,
   custom_call->set_window(window);
   custom_call->set_convolution_dimension_numbers(dnums);
   custom_call->set_feature_group_count(feature_group_count);
+  custom_call->set_metadata(metadata);
   return custom_call;
 }
 
@@ -499,22 +501,24 @@ StatusOr<bool> RunOnInstruction(HloInstruction* conv) {
     if (match) {
       return CreateCudnnConv(kCudnnConvBackwardFilterCallTarget, conv->shape(),
                              conv->mutable_operand(0), conv->mutable_operand(1),
-                             window, dnums, conv->feature_group_count());
+                             window, dnums, conv->feature_group_count(),
+                             conv->metadata());
     }
 
     std::tie(match, window, dnums, rhs) = MatchBackwardInput(conv);
     if (match) {
       return CreateCudnnConv(kCudnnConvBackwardInputCallTarget, conv->shape(),
                              conv->mutable_operand(0), rhs, window, dnums,
-                             conv->feature_group_count());
+                             conv->feature_group_count(), conv->metadata());
     }
 
     // If all else fails, try a forward convolution.
     if (CanImplementAsCudnnForwardConv(conv)) {
-      return CreateCudnnConv(
-          kCudnnConvForwardCallTarget, conv->shape(), conv->mutable_operand(0),
-          conv->mutable_operand(1), conv->window(),
-          conv->convolution_dimension_numbers(), conv->feature_group_count());
+      return CreateCudnnConv(kCudnnConvForwardCallTarget, conv->shape(),
+                             conv->mutable_operand(0), conv->mutable_operand(1),
+                             conv->window(),
+                             conv->convolution_dimension_numbers(),
+                             conv->feature_group_count(), conv->metadata());
     }
 
     return nullptr;
