@@ -1374,11 +1374,11 @@ tensorflow::Status ConvertReshape(
     // Product of input shape should equal product of new_dims
     if (TrtDimsNumElements(input_dims) != TrtDimsNumElements(new_dims)) {
       return tensorflow::errors::Unimplemented(
-        "Reshape on the batch dimension is not supported.");
+        "Reshape on batch dimension is not supported, at ", node_def.name());
     }
   } else if (weights_ptr[0] != ctx.GetMaxBatchSize()) {
     return tensorflow::errors::Unimplemented(
-        "Reshape on the batch dimension is not supported.");
+        "Reshape on batch dimension is not supported, at ", node_def.name());
   }
 
   const nvinfer1::ITensor* output_tensor = nullptr;

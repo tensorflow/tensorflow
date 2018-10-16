@@ -37,91 +37,91 @@ class BiasaddMatMulTest(trt_test.TfTrtIntegrationTestBase):
     """Testing conversion of BiasAdd MatMul in TF-TRT conversion."""
     dtype = dtypes.float32
     input_name = "input"
-    input_dims = [48, 12]
+    input_dims = [4, 144]
     output_name = "output"
     g = ops.Graph()
     with g.as_default():
       x = array_ops.placeholder(dtype=dtype, shape=input_dims, name=input_name)
 
-      b = constant_op.constant(np.random.randn(12, 4), dtype=dtype)
+      b = constant_op.constant(np.random.randn(144, 4), dtype=dtype)
       x1 = math_ops.matmul(x, b)
       b = constant_op.constant(np.random.randn(1, 4), dtype=dtype)
       x1 = x1 + b
 
-      b = constant_op.constant(np.random.randn(48, 4), dtype=dtype)
-      x2 = math_ops.matmul(x, b, transpose_a=True)
-      x2 = gen_array_ops.reshape(x2, [48, 1])
+      b = constant_op.constant(np.random.randn(4, 144), dtype=dtype)
+      x2 = self.trt_incompatible_op(x)
+      x2 = math_ops.matmul(x2, b, transpose_a=True)
+      x2 = gen_array_ops.reshape(x2, [4, -1])
+      x2 = self.trt_incompatible_op(x2)
 
-      b = constant_op.constant(np.random.randn(4, 12), dtype=dtype)
+      b = constant_op.constant(np.random.randn(4, 144), dtype=dtype)
       x3 = math_ops.matmul(x, b, transpose_b=True)
 
-      b = constant_op.constant(np.random.randn(16, 48), dtype=dtype)
-      x4 = math_ops.matmul(x, b, transpose_b=True, transpose_a=True)
-      x4 = gen_array_ops.reshape(x4, [48, 4])
+      b = constant_op.constant(np.random.randn(16, 4), dtype=dtype)
+      x4 = self.trt_incompatible_op(x)
+      x4 = math_ops.matmul(x4, b, transpose_b=True, transpose_a=True)
+      x4 = gen_array_ops.reshape(x4, [4, -1])
+      x4 = self.trt_incompatible_op(x4)
 
-      x5 = gen_array_ops.reshape(x, [4, 144])
       b = constant_op.constant(np.random.randn(144, 48), dtype=dtype)
-      x5 = math_ops.matmul(x5, b)
+      x5 = math_ops.matmul(x, b)
       b = constant_op.constant(np.random.randn(48), dtype=dtype)
       x5 = nn.bias_add(x5, b)
-      x5 = gen_array_ops.reshape(x5, [48, 4])
+      x5 = gen_array_ops.reshape(x5, [4, -1])
 
       x6 = gen_array_ops.reshape(x, [4, 12, 12])
       b = constant_op.constant(np.random.randn(12), dtype=dtype)
       x6 = nn.bias_add(x6, b, data_format="NHWC")
-      x6 = gen_array_ops.reshape(x6, [48, -1])
+      x6 = gen_array_ops.reshape(x6, [4, -1])
 
       x7 = gen_array_ops.reshape(x, [4, 12, 3, 4])
       b = constant_op.constant(np.random.randn(4), dtype=dtype)
       x7 = nn.bias_add(x7, b, data_format="NHWC")
-      x7 = gen_array_ops.reshape(x7, [48, -1])
+      x7 = gen_array_ops.reshape(x7, [4, -1])
 
       x8 = gen_array_ops.reshape(x, [4, 12, 3, 2, 2])
       b = constant_op.constant(np.random.randn(2), dtype=dtype)
       x8 = nn.bias_add(x8, b, data_format="NHWC")
-      x8 = gen_array_ops.reshape(x8, [48, -1])
+      x8 = gen_array_ops.reshape(x8, [4, -1])
 
       x9 = gen_array_ops.reshape(x, [4, 12, 3, 2, 2])
       b = constant_op.constant(np.random.randn(12), dtype=dtype)
       x9 = nn.bias_add(x9, b, data_format="NCHW")
-      x9 = gen_array_ops.reshape(x9, [48, -1])
+      x9 = gen_array_ops.reshape(x9, [4, -1])
 
       x10 = gen_array_ops.reshape(x, [4, 12, 3, 4])
       b = constant_op.constant(np.random.randn(12), dtype=dtype)
       x10 = nn.bias_add(x10, b, data_format="NCHW")
-      x10 = gen_array_ops.reshape(x10, [48, -1])
+      x10 = gen_array_ops.reshape(x10, [4, -1])
 
       x11 = gen_array_ops.reshape(x, [4, 12, 12])
       b = constant_op.constant(np.random.randn(12), dtype=dtype)
       x11 = nn.bias_add(x11, b, data_format="NCHW")
-      x11 = gen_array_ops.reshape(x11, [48, -1])
+      x11 = gen_array_ops.reshape(x11, [4, -1])
 
-      out = array_ops.concat(
-          [x1, x2, x3, x4, x5, x6, x7, x8, x9, x10, x11], axis=-1)
+      out = array_ops.concat([x1, x2, x3, x4, x5, x6, x7, x8, x9, x10, x11],
+                             axis=-1)
       out = array_ops.squeeze(out, name=output_name)
     return trt_test.TfTrtIntegrationTestParams(
         gdef=g.as_graph_def(),
         input_names=[input_name],
         input_dims=[input_dims],
         output_names=[output_name],
-        expected_output_dims=[(48, 89)])
+        expected_output_dims=[(4, 6680)])
 
   def GetConversionParams(self, run_params):
     """Return a ConversionParams for test."""
     return super(BiasaddMatMulTest,
                  self).GetConversionParams(run_params)._replace(
-                     max_batch_size=48, maximum_cached_engines=2)
+                     max_batch_size=4, maximum_cached_engines=2)
 
   def _ValidEngines(self):
     """Engines expected to build and run."""
-    return [
-        "my_trt_op_0", "my_trt_op_1", "my_trt_op_2", "my_trt_op_3",
-        "my_trt_op_6", "my_trt_op_7", "my_trt_op_8", "my_trt_op_9"
-    ]
+    return ["my_trt_op_0"]
 
   def _InvalidEngines(self):
     """Engines that will cause conversion error at building time."""
-    return ["my_trt_op_4", "my_trt_op_5"]
+    return ["my_trt_op_1", "my_trt_op_2"]
 
   def ExpectedEnginesToBuild(self, run_params):
     """Return the expected engines to build."""
