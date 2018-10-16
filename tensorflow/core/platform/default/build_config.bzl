@@ -585,6 +585,9 @@ def tf_additional_device_tracer_cuda_deps():
 def tf_additional_device_tracer_deps():
     return []
 
+def tf_additional_device_tracer_test_flags():
+    return []
+
 def tf_additional_libdevice_data():
     return []
 
