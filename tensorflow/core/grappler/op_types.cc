@@ -216,15 +216,17 @@ bool IsHistogramSummary(const NodeDef& node) {
 
 bool IsIdentity(const NodeDef& node) {
   const auto& op = node.op();
-  if (op == "IdentityN" && node.attr().at("T").list().type_size() == 1) {
-    return true;
-  }
   return op == "Identity" || op == "RefIdentity";
 }
 
 bool IsIdentityN(const NodeDef& node) {
   const auto& op = node.op();
   return op == "IdentityN";
+}
+
+bool IsIdentityNSingleInput(const NodeDef& node) {
+  return IsIdentityN(node) && node.attr().count("T") != 0 &&
+         node.attr().at("T").list().type_size() == 1;
 }
 
 bool IsIgamma(const NodeDef& node) { return node.op() == "Igamma"; }

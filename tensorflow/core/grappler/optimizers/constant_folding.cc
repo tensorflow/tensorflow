@@ -187,7 +187,7 @@ string ConstantFolding::AddControlDependency(const string& input_name,
     // switch node, and use it to anchor the control dependency.
     auto outputs = node_map->GetOutputs(node->name());
     for (const NodeDef* output : outputs) {
-      if (IsIdentity(*output)) {
+      if (IsIdentity(*output) || IsIdentityNSingleInput(*output)) {
         if (IsSameInput(node->input(0), input_name)) {
           return AsControlDependency(*output);
         }
@@ -2200,7 +2200,7 @@ bool ConstantFolding::SimplifySwitch(GraphDef* optimized_graph, NodeDef* node) {
     auto fanouts = node_map_->GetOutputs(node->name());
     if (fanouts.size() == 2) {
       for (NodeDef* fanout : fanouts) {
-        if (!IsIdentity(*fanout) ||
+        if ((!IsIdentity(*fanout) && !IsIdentityNSingleInput(*fanout)) ||
             NumNonControlOutputs(*fanout, *node_map_) > 0) {
           already_optimized = false;
           break;
@@ -2679,7 +2679,8 @@ bool ConstantFolding::MulConvPushDown(NodeDef* node,
 
 bool ConstantFolding::PartialConstPropThroughIdentityN(NodeDef* node) {
   // Partial constant propagation through IdentityN.
-  if (IsIdentityN(*node) && NumNonControlInputs(*node) > 0) {
+  if ((IsIdentityN(*node) || IsIdentityNSingleInput(*node)) &&
+      NumNonControlInputs(*node) > 0) {
     const std::set<NodeDef*>& tmp = node_map_->GetOutputs(node->name());
     const std::vector<NodeDef*> consumers(tmp.begin(), tmp.end());
     bool updated_graph = false;

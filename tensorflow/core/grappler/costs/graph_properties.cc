@@ -1111,7 +1111,7 @@ class SymbolicShapeRefiner {
           c->output_tensors_as_shapes.resize(1);
           c->output_tensors_as_shapes[0] = ic->MakeShape(dims);
         }
-      } else if (IsIdentity(node)) {
+      } else if (IsIdentity(node) || IsIdentityNSingleInput(node)) {
         c->output_tensors_as_shapes.resize(1);
         c->output_tensors_as_shapes[0] = ic->input_tensors_as_shapes()[0];
         if (c->input_tensor_protos[0] != nullptr) {

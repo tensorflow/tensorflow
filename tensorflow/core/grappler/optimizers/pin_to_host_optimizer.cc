@@ -113,7 +113,7 @@ Status IsNodeOutputPortHostFriendly(const GraphView& graph,
 
   // These nodes may be optimized away downstream (even if pinned to Host), we
   // should (recusively) check their source.
-  if (IsIdentity(node)) {
+  if (IsIdentity(node) || IsIdentityNSingleInput(node)) {
     for (const auto& fanin : graph.GetFanins(node, false)) {
       bool fanin_candidate = false;
       TF_RETURN_IF_ERROR(IsNodeOutputPortHostFriendly(
