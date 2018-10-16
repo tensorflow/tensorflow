@@ -308,7 +308,12 @@ class CallTreeTransformer(converter.Base):
         target_fqn = anno.getanno(node.func, 'fqn')
       else:
         target_fqn = None
-      if self._function_is_compilable(target_entity):
+
+      if inspect_utils.isbuiltin(target_entity):
+        # Note: Any builtin that passed the builtins converter is assumed to be
+        # safe for graph mode.
+        return node
+      elif self._function_is_compilable(target_entity):
         node = self._rename_compilable_function(node)
       elif target_fqn and target_fqn in KNOWN_NUMPY_FUNCTIONS:
         # TODO(mdan): Should we replace these with equivalent TF ops instead?
@@ -318,18 +323,6 @@ class CallTreeTransformer(converter.Base):
         raise NotImplementedError(
             'py_func with return values (unknown function)')
     else:
-      if anno.hasanno(node.func, anno.Basic.QN):
-        # Special-case a few builtins that otherwise go undetected. This
-        # normally doesn't pose a problem, but the dict built-in doesn't
-        # work with inspect.getargspec which is required for dynamic functions.
-        # Note: expecting this is resilient to aliasing (e.g.
-        # dict = an_evil_dict), because in those cases the regular mechanisms
-        # process a simple user function.
-        qn = anno.getanno(node.func, anno.Basic.QN)
-        # Add items to this list as needed.
-        if str(qn) in ('dict',):
-          return node
-
       if ast_util.matches(node, 'super(_)'):
         # super() calls are preserved. The class conversion mechanism will
         # ensure that they return the correct value.
