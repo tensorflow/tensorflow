@@ -218,6 +218,9 @@ message IPUOptions {
 
   // Options controlling the configuration of each IPU device
   repeated DeviceConfig device_config = 6;
+
+  // Option controlling whether to rearrange streamed copies on the host
+  bool always_rearrange_copies_on_the_host = 7;
 };
 
 // Options passed to the graph optimizer

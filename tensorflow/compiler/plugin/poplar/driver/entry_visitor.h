@@ -29,8 +29,11 @@ struct CompilerResources;
  */
 class EntryVisitor : public FullVisitor {
  public:
-  EntryVisitor(poplar::Graph& graph, CompilerResources& resources)
-      : FullVisitor(graph, resources) {}
+  EntryVisitor(poplar::Graph& graph, CompilerResources& resources,
+               const bool always_rearrange_copies_on_the_host)
+      : FullVisitor(graph, resources),
+        always_rearrange_copies_on_the_host(
+            always_rearrange_copies_on_the_host) {}
 
   Status HandleParameter(HloInstruction* inst);
   Status FinishVisit(HloInstruction* root);
@@ -48,6 +51,8 @@ class EntryVisitor : public FullVisitor {
 
   poplar::program::Sequence host_to_device;
   poplar::program::Sequence device_to_host;
+
+  const bool always_rearrange_copies_on_the_host;
 };
 
 }  // namespace poplarplugin
