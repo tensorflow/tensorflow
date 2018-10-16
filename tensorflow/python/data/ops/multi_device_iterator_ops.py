@@ -18,6 +18,7 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.data.ops import iterator_ops
 from tensorflow.python.data.util import nest
 from tensorflow.python.data.util import sparse
 from tensorflow.python.eager import context
@@ -223,6 +224,16 @@ class MultiDeviceIterator(object):
     for device in self._devices:
       with ops.device(device):
         result.append(self._device_iterators[i].get_next())
+      i += 1
+    return result
+
+  def get_next_as_optional(self):
+    result = []
+    i = 0
+    for device in self._devices:
+      with ops.device(device):
+        result.append(iterator_ops.get_next_as_optional(
+            self._device_iterators[i]))
       i += 1
     return result
 
