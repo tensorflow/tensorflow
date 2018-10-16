@@ -37,6 +37,7 @@ limitations under the License.
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/public/session.h"
+#include "tensorflow/core/distributed_runtime/server_lib.h"
 
 namespace tensorflow {
 class Device;
@@ -177,6 +178,12 @@ struct TF_ApiDefMap {
 #endif
   bool update_docs_called GUARDED_BY(lock);
   tensorflow::mutex lock;
+};
+
+struct TF_Server {
+  TF_Server(tensorflow::ServerInterface* server);
+
+  tensorflow::ServerInterface* server;
 };
 
 namespace tensorflow {

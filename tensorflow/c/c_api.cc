@@ -2803,4 +2803,43 @@ TF_Buffer* TF_GetRegisteredKernelsForOp(const char* name, TF_Status* status) {
   }
   return ret;
 }
+
+// TF_Server functions ----------------------------------------------
+
+TF_Server::TF_Server(tensorflow::ServerInterface* server) : server(server) {}
+
+TF_Server* TF_NewServer(const void* proto, size_t proto_len,
+                        TF_Status* status) {
+  tensorflow::ServerDef server_def;
+  if (!server_def.ParseFromArray(proto, static_cast<int>(proto_len))) {
+    status->status = InvalidArgument("Unparseable ServerDef");
+    return nullptr;
+  }
+
+  auto out_server = new std::unique_ptr<tensorflow::ServerInterface>();
+  status->status = tensorflow::NewServer(server_def, out_server);
+  if (!status->status.ok()) return nullptr;
+
+  return new TF_Server(out_server->release());
+}
+
+void TF_StartServer(TF_Server* server, TF_Status* status) {
+  status->status = server->server->Start();
+}
+
+void TF_StopServer(TF_Server* server, TF_Status* status) {
+  status->status = server->server->Stop();
+}
+
+void TF_JoinServer(TF_Server* server, TF_Status* status) {
+  status->status = server->server->Join();
+}
+
+void TF_DeleteServer(TF_Server* server) {
+  if (server != nullptr) {
+    if (server->server != nullptr) delete server->server;
+    delete server;
+  }
+}
+
 }  // end extern "C"
