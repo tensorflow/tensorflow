@@ -336,6 +336,14 @@ class Conv3DTransposeTest(test.TestCase):
       self.assertEqual(layer.kernel.constraint, k_constraint)
       self.assertEqual(layer.bias.constraint, b_constraint)
 
+  def test_conv3dtranspose_dynamic_shape(self):
+    with self.session(use_gpu=True):
+      # Won't raise error here.
+      layer = keras.layers.Conv3DTranspose(3, 3, data_format='channels_last')
+      layer.build((None, None, None, None, 1))
+      layer1 = keras.layers.Conv3DTranspose(3, 3, data_format='channels_first')
+      layer1.build((None, 1, None, None, None))
+
 
 class SeparableConv1DTest(test.TestCase):
 
@@ -556,6 +564,14 @@ class Conv3DTest(test.TestCase):
       layer.build((None, 5, 5, 5, 2))
       self.assertEqual(layer.kernel.constraint, k_constraint)
       self.assertEqual(layer.bias.constraint, b_constraint)
+
+  def test_conv3d_dynamic_shape(self):
+    with self.session(use_gpu=True):
+      # Won't raise error here.
+      layer = keras.layers.Conv3D(3, 3, data_format='channels_last')
+      layer.build((None, None, None, None, 1))
+      layer1 = keras.layers.Conv3D(3, 3, data_format='channels_first')
+      layer1.build((None, 1, None, None, None))
 
 
 class ZeroPaddingTest(test.TestCase):

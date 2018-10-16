@@ -199,21 +199,8 @@ class Conv(Layer):
           # nn.bias_add does not accept a 1D input tensor.
           bias = array_ops.reshape(self.bias, (1, self.filters, 1))
           outputs += bias
-        if self.rank == 2:
+        else:
           outputs = nn.bias_add(outputs, self.bias, data_format='NCHW')
-        if self.rank == 3:
-          # As of Mar 2017, direct addition is significantly slower than
-          # bias_add when computing gradients. To use bias_add, we collapse Z
-          # and Y into a single dimension to obtain a 4D input tensor.
-          outputs_shape = outputs.shape.as_list()
-          if outputs_shape[0] is None:
-            outputs_shape[0] = -1
-          outputs_4d = array_ops.reshape(outputs,
-                                         [outputs_shape[0], outputs_shape[1],
-                                          outputs_shape[2] * outputs_shape[3],
-                                          outputs_shape[4]])
-          outputs_4d = nn.bias_add(outputs_4d, self.bias, data_format='NCHW')
-          outputs = array_ops.reshape(outputs_4d, outputs_shape)
       else:
         outputs = nn.bias_add(outputs, self.bias, data_format='NHWC')
 
@@ -1127,24 +1114,10 @@ class Conv3DTranspose(Conv3D):
       outputs.set_shape(out_shape)
 
     if self.use_bias:
-      outputs_shape = outputs.shape.as_list()
-      if outputs_shape[0] is None:
-        outputs_shape[0] = -1
-      if self.data_format == 'channels_first':
-        outputs_4d = array_ops.reshape(outputs, [
-            outputs_shape[0], outputs_shape[1],
-            outputs_shape[2] * outputs_shape[3], outputs_shape[4]
-        ])
-      else:
-        outputs_4d = array_ops.reshape(outputs, [
-            outputs_shape[0], outputs_shape[1] * outputs_shape[2],
-            outputs_shape[3], outputs_shape[4]
-        ])
-      outputs_4d = nn.bias_add(
-          outputs_4d,
+      outputs = nn.bias_add(
+          outputs,
           self.bias,
           data_format=conv_utils.convert_data_format(self.data_format, ndim=4))
-      outputs = array_ops.reshape(outputs_4d, outputs_shape)
 
     if self.activation is not None:
       return self.activation(outputs)
