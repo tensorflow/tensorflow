@@ -302,7 +302,7 @@ TEST_F(CudnnFusedConvRewriterTest, PreservesMetadata) {
           ->ToString();
   EXPECT_THAT(
       optimized_hlo_string,
-      ::testing::ContainsRegex(R"(custom-call.*metadata={op_type="foo"})"));
+      ::testing::ContainsRegex(R"(custom-call.*metadata=\{op_type="foo"\})"));
 }
 
 }  // namespace
