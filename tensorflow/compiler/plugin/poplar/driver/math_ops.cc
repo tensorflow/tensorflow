@@ -400,6 +400,8 @@ StatusOr<poplar::program::Program> CreateMatMulForDotOp(
   out = poplin::matMul(graph, in0, in1, seq, GetDebugName(inst), opts,
                        &res.dot_cache);
 
+  out = out.reshape(PoplarShapeFromXlaShape(output_shape));
+
   TF_CHECK_OK(
       AddOutputTensor(graph, res, seq, tensor_map, inst, 0, out).status());
 

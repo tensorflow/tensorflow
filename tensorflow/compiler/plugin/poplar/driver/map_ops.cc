@@ -7,7 +7,6 @@
 #include "tensorflow/compiler/plugin/poplar/driver/visitor_arithmetic_expr.h"
 #include "tensorflow/compiler/plugin/poplar/driver/visitor_inline_call.h"
 #include "tensorflow/compiler/plugin/poplar/driver/visitor_map.h"
-#include "tensorflow/compiler/plugin/poplar/driver/while_loop_util.h"
 
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
@@ -27,6 +26,65 @@ using tensorflow::str_util::StartsWith;
 
 namespace xla {
 namespace poplarplugin {
+namespace {
+StatusOr<poplar::program::Sequence> GetWhileAndRepeatAliasingCopies(
+    poplar::Graph& graph, ComputationMap::iterator body,
+    const ArgVector& body_inputs, const ArgVector& body_outputs,
+    unsigned int param_count, const std::string& debug_name) {
+  poplar::program::Sequence body_seq;
+  // A body output can be:
+  // - an independent new tensor (0)
+  // - containing an alias for one of the inputs (1)
+  // - a simple passthrough of its own input (2)
+  // - not required because the input is unused (3)
+
+  // Find outputs which are aliases of inputs
+  std::vector<int> alias_type(param_count, 0);
+  for (unsigned int o = 0; o < param_count; o++) {
+    if (body->second.input_valid(0, o)) {
+      for (unsigned int i = 0; i < param_count; i++) {
+        if (body->second.input_valid(0, i)) {
+          if (body_outputs[o].intersectsWith(body_inputs[i])) {
+            alias_type[o] = 1;
+          }
+        }
+      }
+
+      if (body_outputs[o] == body_inputs[o]) {
+        alias_type[o] = 2;
+      }
+    } else {
+      alias_type[o] = 3;
+    }
+  }
+
+  // Create a temporary copy location for outputs which need preserving
+  std::vector<poplar::Tensor> copies(param_count);
+  for (unsigned int o = 0; o < param_count; o++) {
+    if (alias_type[o] == 1) {
+      auto name = se::port::StrCat(debug_name, "_bodyout_temp_", o);
+      copies[o] = graph.clone(body_outputs[o], name);
+      body_seq.add(poplar::program::Copy(body_outputs[o], copies[o]));
+    }
+  }
+
+  for (unsigned int o = 0; o < param_count; o++) {
+    switch (alias_type[o]) {
+      case 0:
+        body_seq.add(poplar::program::Copy(body_outputs[o], body_inputs[o]));
+        break;
+      case 1:
+        body_seq.add(poplar::program::Copy(copies[o], body_inputs[o]));
+        break;
+      case 2:
+      case 3:
+        // nothing required
+        break;
+    }
+  }
+  return body_seq;
+}
+}
 
 static StatusOr<ComputationMap::iterator> GetOrCompileSubComputation(
     poplar::Graph& graph, CompilerResources& res, const ArgVectors& inputs,
@@ -257,59 +315,10 @@ StatusOr<poplar::program::Program> CreateWhileOp(poplar::Graph& graph,
   }
 
   // Body
-
-  poplar::program::Sequence body_seq;
-
-  // A body output can be:
-  // - an independent new tensor (0)
-  // - containing an alias for one of the inputs (1)
-  // - a simple passthrough of its own input (2)
-  // - not required because the input is unused (3)
-
-  // Find outputs which are aliases of inputs
-  std::vector<int> alias_type(param_count, 0);
-  for (unsigned int o = 0; o < param_count; o++) {
-    if (body->second.input_valid(0, o)) {
-      for (unsigned int i = 0; i < param_count; i++) {
-        if (body->second.input_valid(0, i)) {
-          if (body_outputs[o].intersectsWith(body_inputs[i])) {
-            alias_type[o] = 1;
-          }
-        }
-      }
-
-      if (body_outputs[o] == body_inputs[o]) {
-        alias_type[o] = 2;
-      }
-    } else {
-      alias_type[o] = 3;
-    }
-  }
-
-  // Create a temporary copy location for outputs which need preserving
-  std::vector<poplar::Tensor> copies(param_count);
-  for (unsigned int o = 0; o < param_count; o++) {
-    if (alias_type[o] == 1) {
-      auto name = se::port::StrCat(GetDebugName(inst), "_bodyout_temp_", o);
-      copies[o] = graph.clone(body_outputs[o], name);
-      body_seq.add(poplar::program::Copy(body_outputs[o], copies[o]));
-    }
-  }
-
-  for (unsigned int o = 0; o < param_count; o++) {
-    switch (alias_type[o]) {
-      case 0:
-        body_seq.add(poplar::program::Copy(body_outputs[o], body_inputs[o]));
-        break;
-      case 1:
-        body_seq.add(poplar::program::Copy(copies[o], body_inputs[o]));
-        break;
-      case 2:
-      case 3:
-        // nothing required
-        break;
-    }
-  }
+  TF_ASSIGN_OR_RETURN(
+      poplar::program::Sequence body_seq,
+      GetWhileAndRepeatAliasingCopies(graph, body, body_inputs, body_outputs,
+                                      param_count, GetDebugName(inst)));
   body_seq.add(body->second.sequence);
 
   // Condition
@@ -323,15 +332,66 @@ StatusOr<poplar::program::Program> CreateWhileOp(poplar::Graph& graph,
   poplar::Tensor pred =
       popops::allTrue(graph, cond_outputs[0], cond_seq, GetDebugName(inst));
 
-  // Main
-  auto ret = WhileLoopUtil::CanConvertWhileToRepeat(inst);
-  if (ret.ok()) {
-    int64 count = std::move(ret.ValueOrDie());
-    VLOG(1) << "Simplified while loop with a repeat of count " << count;
-    main_seq.add(poplar::program::Repeat(count, body_seq));
-  } else {
-    main_seq.add(poplar::program::RepeatWhileTrue(cond_seq, pred, body_seq));
+  main_seq.add(poplar::program::RepeatWhileTrue(cond_seq, pred, body_seq));
+
+  for (unsigned int i = 0; i < param_count; i++) {
+    auto name = se::port::StrCat(GetDebugName(inst), "_out_", i);
+    poplar::Tensor o = graph.clone(body_outputs[i], name);
+    main_seq.add(poplar::program::Copy(body_outputs[i], o));
+    TF_CHECK_OK(
+        AddOutputTensor(graph, res, main_seq, tensor_map, inst, i, o).status());
   }
+
+  return main_seq;
+}
+
+StatusOr<poplar::program::Program> CreateRepeatOp(poplar::Graph& graph,
+                                                  CompilerResources& res,
+                                                  const HloInstruction* inst,
+                                                  const xla::Shape& output,
+                                                  TensorMap& tensor_map) {
+  uint64 repeat_count;
+  auto it = res.annotations.while_loop_num_iterations.find(inst);
+  if (it != res.annotations.while_loop_num_iterations.end()) {
+    repeat_count = it->second;
+  } else {
+    return xla::FailedPrecondition("Cannot obtain the repeat count.");
+  }
+
+  ArgVectors inputs;
+  inputs.push_back(FindInstructionInputs(tensor_map, inst, 0));
+
+  ComputationMap::iterator body;
+  TF_ASSIGN_OR_RETURN(
+      body, GetOrCompileSubComputation(graph, res, inputs, inst->while_body()));
+
+  unsigned int param_count = inputs[0].size();
+
+  const ArgVector& body_inputs = body->second.inputs()[0];
+  const ArgVector& body_outputs = body->second.outputs();
+
+  if (body_inputs.size() != param_count) {
+    return xla::FailedPrecondition("Invalid number of body inputs");
+  }
+  if (body_outputs.size() != param_count) {
+    return xla::FailedPrecondition("Invalid number of body outputs");
+  }
+
+  poplar::program::Sequence main_seq;
+  for (unsigned int i = 0; i < param_count; i++) {
+    if (body_outputs[i].isParallelWriteable()) {
+      main_seq.add(poplar::program::Copy(inputs[0][i], body_outputs[i]));
+    }
+  }
+
+  // Body
+  TF_ASSIGN_OR_RETURN(
+      poplar::program::Sequence body_seq,
+      GetWhileAndRepeatAliasingCopies(graph, body, body_inputs, body_outputs,
+                                      param_count, GetDebugName(inst)));
+  body_seq.add(body->second.sequence);
+
+  main_seq.add(poplar::program::Repeat(repeat_count, body_seq));
 
   for (unsigned int i = 0; i < param_count; i++) {
     auto name = se::port::StrCat(GetDebugName(inst), "_out_", i);

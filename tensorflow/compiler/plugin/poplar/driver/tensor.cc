@@ -28,6 +28,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
+#include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/util/bcast.h"
 #include "tensorflow/stream_executor/lib/status.h"
@@ -36,6 +37,7 @@ limitations under the License.
 #include <poplar/OptionFlags.hpp>
 #include <poputil/TileMapping.hpp>
 
+using ::tensorflow::str_util::Join;
 using ::tensorflow::strings::StrCat;
 
 namespace xla {
@@ -221,19 +223,20 @@ StatusOr<poplar::Tensor> AddTensor(poplar::Graph& graph,
   poplar::Tensor out;
   auto target = resources.annotations.tensor_allocation_map.find(src);
   if (target != resources.annotations.tensor_allocation_map.end()) {
-    switch (target->second.tgt->opcode()) {
+    const auto* tgt = target->second.tgt;
+    auto tshape = tgt->operand(target->second.input_index)->shape();
+    switch (tgt->opcode()) {
       case HloOpcode::kConvolution: {
         switch (target->second.input_index) {
           case 0: {
-            TF_ASSIGN_OR_RETURN(
-                out, AddConvolutionInput(graph, src.first, target->second.tgt,
-                                         target->second.tgt, resources));
+            TF_ASSIGN_OR_RETURN(out, AddConvolutionInput(graph, src.first, tgt,
+                                                         tgt, resources));
             break;
           }
           case 1: {
             TF_ASSIGN_OR_RETURN(
-                out, AddConvolutionWeights(graph, src.first, target->second.tgt,
-                                           target->second.tgt, resources));
+                out,
+                AddConvolutionWeights(graph, src.first, tgt, tgt, resources));
             break;
           }
           default:
@@ -247,14 +250,12 @@ StatusOr<poplar::Tensor> AddTensor(poplar::Graph& graph,
         switch (target->second.input_index) {
           case 0: {
             TF_ASSIGN_OR_RETURN(
-                out, AddLeftMatMul(graph, src.first, shape, target->second.tgt,
-                                   resources));
+                out, AddLeftMatMul(graph, src.first, shape, tgt, resources));
             break;
           }
           case 1: {
             TF_ASSIGN_OR_RETURN(
-                out, AddRightMatMul(graph, src.first, shape, target->second.tgt,
-                                    resources));
+                out, AddRightMatMul(graph, src.first, shape, tgt, resources));
             break;
           }
           default:
@@ -267,29 +268,29 @@ StatusOr<poplar::Tensor> AddTensor(poplar::Graph& graph,
       case HloOpcode::kDynamicSlice: {
         if (target->second.input_index == 0) {
           if (ShapeUtil::Rank(shape) == 3) {
-            TF_ASSIGN_OR_RETURN(out, AddRnnSequence(graph, src.first, shape));
+            TF_ASSIGN_OR_RETURN(out, AddRnnSequence(graph, src.first, tshape));
           } else {
-            TF_ASSIGN_OR_RETURN(out, AddPlainTensor(graph, src.first, shape));
+            TF_ASSIGN_OR_RETURN(out, AddPlainTensor(graph, src.first, tshape));
           }
         } else {
-          TF_ASSIGN_OR_RETURN(out, AddPlainTensor(graph, src.first, shape));
+          TF_ASSIGN_OR_RETURN(out, AddPlainTensor(graph, src.first, tshape));
         }
         break;
       }
       case HloOpcode::kDynamicUpdateSlice: {
         if (target->second.input_index == 0) {
           if (ShapeUtil::Rank(shape) == 3) {
-            TF_ASSIGN_OR_RETURN(out, AddRnnSequence(graph, src.first, shape));
+            TF_ASSIGN_OR_RETURN(out, AddRnnSequence(graph, src.first, tshape));
           } else {
-            TF_ASSIGN_OR_RETURN(out, AddPlainTensor(graph, src.first, shape));
+            TF_ASSIGN_OR_RETURN(out, AddPlainTensor(graph, src.first, tshape));
           }
         } else {
-          TF_ASSIGN_OR_RETURN(out, AddPlainTensor(graph, src.first, shape));
+          TF_ASSIGN_OR_RETURN(out, AddPlainTensor(graph, src.first, tshape));
         }
         break;
       }
       case HloOpcode::kCall: {
-        const HloComputation* comp = target->second.tgt->to_apply();
+        const HloComputation* comp = tgt->to_apply();
         if (IsPopOpsCall(comp)) {
           auto end = comp->name().find('.');
           std::string name = comp->name().substr(8, end - 8);
@@ -298,16 +299,14 @@ StatusOr<poplar::Tensor> AddTensor(poplar::Graph& graph,
             switch (target->second.input_index) {
               case 0: {
                 TF_ASSIGN_OR_RETURN(
-                    out,
-                    AddConvolutionInput(graph, src.first, target->second.tgt,
-                                        conv_inst, resources));
+                    out, AddConvolutionInput(graph, src.first, tgt, conv_inst,
+                                             resources));
                 break;
               }
               case 1: {
                 TF_ASSIGN_OR_RETURN(
-                    out,
-                    AddConvolutionWeights(graph, src.first, target->second.tgt,
-                                          conv_inst, resources));
+                    out, AddConvolutionWeights(graph, src.first, tgt, conv_inst,
+                                               resources));
                 break;
               }
               default:
@@ -328,7 +327,7 @@ StatusOr<poplar::Tensor> AddTensor(poplar::Graph& graph,
       default:
         return xla::FailedPrecondition("Unknown tensor target for %s: %s",
                                        src.first->name().c_str(),
-                                       target->second.tgt->name().c_str());
+                                       tgt->name().c_str());
     }
 
     // Now apply any transformations required by the path from the source to
@@ -652,7 +651,9 @@ StatusOr<poplar::Tensor> BroadcastTensor(const poplar::Tensor& in,
 
   tensorflow::BCast bcast(tensor_shape, bcast_shape);
   if (!bcast.IsValid()) {
-    return xla::FailedPrecondition("Incompatible broadcast");
+    return xla::FailedPrecondition("Incompatible broadcast from (%s) to (%s)",
+                                   Join(tensor_shape, ",").c_str(),
+                                   Join(bcast_shape, ",").c_str());
   }
 
   poplar::Tensor o = in;

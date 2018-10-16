@@ -25,10 +25,8 @@ limitations under the License.
 
 namespace xla {
 namespace poplarplugin {
-
-WhileLoopConditionSimplify::WhileLoopConditionSimplify() {}
-
-static StatusOr<bool> TrySimplifyLoopCondition(HloInstruction* while_inst) {
+namespace {
+StatusOr<bool> TrySimplifyLoopCondition(HloInstruction* while_inst) {
   HloComputation* while_condition = while_inst->while_condition();
   HloComputation* while_body = while_inst->while_body();
 
@@ -47,19 +45,31 @@ static StatusOr<bool> TrySimplifyLoopCondition(HloInstruction* while_inst) {
   int64 smallest_constant_value = INT64_MAX;
 
   for (HloInstruction* inst : while_condition->MakeInstructionPostOrder()) {
+    // Ignore dead instructions
+    if (inst->user_count() == 0 && !inst->HasSideEffect() &&
+        inst != while_condition->root_instruction()) {
+      continue;
+    }
+
     switch (inst->opcode()) {
       case HloOpcode::kGetTupleElement: {
         // Make sure that GTEs are from parameter 0 and only have one user and
         // are integral and that they are unique
         const bool is_GTE_from_param_0 =
             WhileLoopUtil::IsGTEFromParamIndex(inst, 0);
-        if (!is_GTE_from_param_0) return false;
+        if (!is_GTE_from_param_0) {
+          return false;
+        }
 
         const bool has_one_user = inst->user_count() == 1;
-        if (!has_one_user) return false;
+        if (!has_one_user) {
+          return false;
+        }
 
         const bool is_integral = ShapeUtil::ElementIsIntegral(inst->shape());
-        if (!is_integral) return false;
+        if (!is_integral) {
+          return false;
+        }
 
         const bool unique_GTE =
             while_condition_GTEs.find(inst->tuple_index()) ==
@@ -131,7 +141,9 @@ static StatusOr<bool> TrySimplifyLoopCondition(HloInstruction* while_inst) {
     bool is_zero;
     TF_ASSIGN_OR_RETURN(is_zero,
                         WhileLoopUtil::IsIntegralConstantOfValue(init_val, 0));
-    if (!is_zero) return false;
+    if (!is_zero) {
+      return false;
+    }
   }
 
   // Find all GTEs from the parameter tuple in the while loop body
@@ -210,6 +222,9 @@ static StatusOr<bool> TrySimplifyLoopCondition(HloInstruction* while_inst) {
 
   return true;
 }
+}
+
+WhileLoopConditionSimplify::WhileLoopConditionSimplify() {}
 
 StatusOr<bool> WhileLoopConditionSimplify::Run(HloModule* module) {
   bool changed = false;
@@ -224,8 +239,7 @@ StatusOr<bool> WhileLoopConditionSimplify::Run(HloModule* module) {
   for (HloInstruction* while_inst : while_insts) {
     // Try to simplify the loop condition if it has 2 conditionals which both
     // have some constant upper bound
-    bool result;
-    TF_ASSIGN_OR_RETURN(result, TrySimplifyLoopCondition(while_inst));
+    TF_ASSIGN_OR_RETURN(bool result, TrySimplifyLoopCondition(while_inst));
     changed |= result;
   }
   return changed;

@@ -61,5 +61,42 @@ class WhileLoopTest(test_util.TensorFlowTestCase):
       # value obtained by running on XLA_CPU.
       self.assertAllClose(result[0], 621.9, rtol=1)
 
+  def testGather(self):
+    def my_net(p, i):
+      # Forward pass
+      a = array_ops.gather(p, i, axis=0)
+      return [a]
+
+    with ops.device('cpu'):
+      X = array_ops.placeholder(dtypes.int32, [2, 4])
+      Y = array_ops.placeholder(dtypes.int32, [2])
+
+    with ipu.ops.ipu_scope("/device:IPU:0"):
+      r = xla.compile(my_net, inputs=[X, Y])
+
+    with session_lib.Session() as sess:
+      sess.run(variables.global_variables_initializer())
+      result = sess.run(r, {X: [[1,3,5,7],[0,2,4,6]], Y: [1, 0]})
+      self.assertAllClose(result[0], [[0,2,4,6],[1,3,5,7]])
+
+  def testGatherTransposed(self):
+    def my_net(p, i):
+      # Forward pass
+      p = array_ops.transpose(p, [1, 0])
+      a = array_ops.gather(p, i, axis=0)
+      return [a]
+
+    with ops.device('cpu'):
+      X = array_ops.placeholder(dtypes.int32, [2, 4])
+      Y = array_ops.placeholder(dtypes.int32, [2])
+
+    with ipu.ops.ipu_scope("/device:IPU:0"):
+      r = xla.compile(my_net, inputs=[X, Y])
+
+    with session_lib.Session() as sess:
+      sess.run(variables.global_variables_initializer())
+      result = sess.run(r, {X: [[1,3,5,7],[0,2,4,6]], Y: [1, 0]})
+      self.assertAllClose(result[0], [[3,2],[1,0]])
+
 if __name__ == "__main__":
     googletest.main()

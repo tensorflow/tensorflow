@@ -43,6 +43,7 @@ limitations under the License.
 #include "tensorflow/compiler/plugin/poplar/driver/update_op_dependencies.h"
 #include "tensorflow/compiler/plugin/poplar/driver/util.h"
 #include "tensorflow/compiler/plugin/poplar/driver/while_loop_condition_simplify.h"
+#include "tensorflow/compiler/plugin/poplar/driver/while_loop_to_repeat_simplify.h"
 #include "tensorflow/compiler/plugin/poplar/driver/wide_const_finder.h"
 
 #include "tensorflow/compiler/xla/service/algebraic_simplifier.h"
@@ -60,6 +61,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/map_inliner.h"
 #include "tensorflow/compiler/xla/service/reshape_mover.h"
 #include "tensorflow/compiler/xla/service/tuple_simplifier.h"
+#include "tensorflow/compiler/xla/service/while_loop_constant_sinking.h"
 #include "tensorflow/compiler/xla/service/zero_sized_hlo_elimination.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 
@@ -282,7 +284,6 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::RunBackend(
     pipeline.AddPass<ZeroSizedHloElimination>();
     pipeline.AddPass<ComputationFlattener>();
     pipeline.AddPass<TupleSimplifier>(true);
-    // pipeline.AddPass<WhileLoopSimplifier>();
     // pass.AddPass<ConditionalSimplifier>();
     pipeline.AddPass<HloConstantFolding>();
     pipeline.AddPass<HloPassFix<CastsElimination>>(resources.annotations);
@@ -291,6 +292,7 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::RunBackend(
     pipeline.AddPass<CommutativeInstructionReorderOperands>();
     pipeline.AddPass<ConvolutionClassifier>(resources.annotations);
     pipeline.AddPass<HloDCE>();
+    pipeline.AddPass<WhileLoopConstantSinking>();
     pipeline.AddPass<HloPassFix<FuseMaxPool>>(resources.annotations);
     pipeline.AddPass<HloPassFix<FuseOpsLate>>(resources.annotations);
     pipeline.AddPass<FuseWideConst>(resources.annotations);
@@ -298,7 +300,9 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::RunBackend(
     pipeline.AddPass<UpdateOpDependenctOrdering>(resources.annotations);
     pipeline.AddPass<ExpressionOutliner>(resources.annotations);
     pipeline.AddPass<HloSubcomputationUnification>();
+    pipeline.AddPass<HloDCE>();
     pipeline.AddPass<WhileLoopConditionSimplify>();
+    pipeline.AddPass<WhileLoopToRepeatSimplify>(resources.annotations);
     pipeline.AddPass<HloDCE>();
     pipeline.AddPass<ConvolutionClassifier>(resources.annotations);
     pipeline.AddPass<AllocationFinder>(resources.annotations);

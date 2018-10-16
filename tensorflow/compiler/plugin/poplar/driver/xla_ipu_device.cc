@@ -91,11 +91,11 @@ Status XlaIpuDeviceFactory::CreateDevices(const SessionOptions& options,
 
   auto* p = static_cast<xp::PoplarPlatform*>(platform.ValueOrDie());
 
-  int visible_devices = p->VisibleDeviceCount();
+  int num_devices = p->VisibleDeviceCount();
   int config_count = options.config.ipu_options().device_config_size();
-  visible_devices = std::min(visible_devices, config_count);
-  visible_devices = std::max(visible_devices, 1);
-  for (int ordinal = 0; ordinal < visible_devices; ordinal++) {
+  num_devices = std::min(num_devices, config_count);
+  num_devices = std::max(num_devices, 1);
+  for (int ordinal = 0; ordinal < num_devices; ordinal++) {
     XlaOpRegistry::DeviceRegistration registration;
     registration.compilation_device_name = DEVICE_IPU_XLA_JIT;
     registration.requires_compilation = true;
@@ -150,18 +150,17 @@ REGISTER_XLA_RUN_KERNEL(DEVICE_XLA_IPU, XlaRunOp, kIpuAllTypes);
 
 REGISTER_XLA_DEVICE_KERNELS(DEVICE_XLA_IPU, kIpuAllTypes);
 
-
 // Additional ops not explicitly defined by standard JIT
 REGISTER_XLA_OP(Name("ArgMax")
-.Device(DEVICE_IPU_XLA_JIT)
-.CompileTimeConstInput("dimension"),
-XlaArgMaxOp);
+                    .Device(DEVICE_IPU_XLA_JIT)
+                    .CompileTimeConstInput("dimension"),
+                XlaArgMaxOp);
 
 REGISTER_KERNEL_BUILDER(Name("RefEnter").Device(DEVICE_IPU_XLA_JIT), NoOp);
 REGISTER_KERNEL_BUILDER(Name("RefExit").Device(DEVICE_IPU_XLA_JIT), NoOp);
 REGISTER_KERNEL_BUILDER(Name("RefMerge").Device(DEVICE_IPU_XLA_JIT), NoOp);
 REGISTER_KERNEL_BUILDER(Name("RefNextIteration").Device(DEVICE_IPU_XLA_JIT),
-    NoOp);
+                        NoOp);
 REGISTER_KERNEL_BUILDER(Name("RefSwitch").Device(DEVICE_IPU_XLA_JIT), NoOp);
 
 REGISTER_KERNEL_BUILDER(Name("Enter").Device(DEVICE_IPU_XLA_JIT), NoOp);

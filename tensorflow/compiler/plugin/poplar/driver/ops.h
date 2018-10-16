@@ -234,6 +234,12 @@ StatusOr<poplar::program::Program> CreateWhileOp(poplar::Graph& graph,
                                                  const xla::Shape& output,
                                                  TensorMap& tensor_map);
 
+StatusOr<poplar::program::Program> CreateRepeatOp(poplar::Graph& graph,
+                                                  CompilerResources& res,
+                                                  const HloInstruction* inst,
+                                                  const xla::Shape& output,
+                                                  TensorMap& tensor_map);
+
 StatusOr<poplar::program::Program> CreateConv2D(poplar::Graph& graph,
                                                 CompilerResources& res,
                                                 const HloInstruction* inst,
