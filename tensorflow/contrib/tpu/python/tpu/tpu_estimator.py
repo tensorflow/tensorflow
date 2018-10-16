@@ -2609,10 +2609,6 @@ class TPUEstimator(estimator_lib.Estimator):
               total_loss,
               math_ops.cast(iterations_per_loop_var, dtype=total_loss.dtype))
 
-          # Creates a dummy metric update_op for all metrics. Estimator expects
-          # all metrics in eval_metric_ops have update_op and calls them one by
-          # one. The real metric update_ops are invoked in a separated thread.
-          # So, here give Estimator the dummy op for all metrics.
           with ops.control_dependencies([mean_loss]):
             # After TPU evaluation computation is done (the mean_loss tensor),
             # reads all variables back from TPU and updates the eval step
@@ -2620,16 +2616,30 @@ class TPUEstimator(estimator_lib.Estimator):
             internal_ops_to_run = _sync_variables_ops(ctx)
             internal_ops_to_run.append(
                 _increase_eval_step_op(iterations_per_loop_var))
-            with ops.control_dependencies(internal_ops_to_run):
-              dummy_update_op = control_flow_ops.no_op()
 
           host_call_ret = host_calls.create_tpu_hostcall()
           eval_metric_ops = {}
           eval_update_ops = []
 
-          for k, v in host_call_ret.get('eval_metrics', {}).items():
-            eval_metric_ops[k] = (v[0], dummy_update_op)
-            eval_update_ops.append(v[1])
+          eval_metrics = host_call_ret.get('eval_metrics', {})
+          if eval_metrics:
+            # Creates a dummy metric update_op for all metrics. Estimator
+            # expects all metrics in `eval_metric_ops` have update_op and calls
+            # them one by one. The real metric update_ops are invoked in a
+            # separated thread. So, here give Estimator the dummy op for all
+            # metrics.
+            with ops.control_dependencies(internal_ops_to_run):
+              dummy_update_op = control_flow_ops.no_op()
+
+            for k, v in eval_metrics.items():
+              eval_metric_ops[k] = (v[0], dummy_update_op)
+              eval_update_ops.append(v[1])
+          else:
+            # If no eval metrics are passed, create an identity node for the
+            # loss and add `internal_ops_to_run` to its dependencies. So
+            # `internal_ops_to_run` can be executed.
+            with ops.control_dependencies(internal_ops_to_run):
+              mean_loss = array_ops.identity(mean_loss)
 
           if 'host_call' not in host_call_ret:
             host_ops = []
