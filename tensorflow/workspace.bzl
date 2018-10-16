@@ -348,9 +348,9 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
         name = "org_python_license",
         licenses = ["notice"],  # Python 2.0
         sha256_urls = {
-            "b5556e921715ddb9242c076cae3963f483aa47266c5e37ea4c187f77cc79501c": [
-                "https://mirror.bazel.build/docs.python.org/2.7/_sources/license.txt",
-                "https://docs.python.org/2.7/_sources/license.txt",
+            "7ca8f169368827781684f7f20876d17b4415bbc5cb28baa4ca4652f0dda05e9f": [
+                "https://mirror.bazel.build/docs.python.org/2.7/_sources/license.rst.txt",
+                "https://docs.python.org/2.7/_sources/license.rst.txt",
             ],
         },
     )
