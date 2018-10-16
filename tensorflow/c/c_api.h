@@ -1662,6 +1662,29 @@ TF_CAPI_EXPORT extern TF_Buffer* TF_GetAllRegisteredKernels(TF_Status* status);
 TF_CAPI_EXPORT extern TF_Buffer* TF_GetRegisteredKernelsForOp(
     const char* name, TF_Status* status);
 
+// --------------------------------------------------------------------------
+// Server functionality.
+
+// Server.
+typedef struct TF_Server TF_Server;
+
+// Creates new server.
+TF_CAPI_EXPORT extern TF_Server* TF_NewServer(const void* proto,
+                                              size_t proto_len,
+                                              TF_Status* status);
+
+// Starts a server.
+TF_CAPI_EXPORT extern void TF_StartServer(TF_Server* server, TF_Status* status);
+
+// Stops a server.
+TF_CAPI_EXPORT extern void TF_StopServer(TF_Server* server, TF_Status* status);
+
+// Blocks until the server has shut down (currently blocks forever).
+TF_CAPI_EXPORT extern void TF_JoinServer(TF_Server* server, TF_Status* status);
+
+// Destroy a server, frees memory.
+TF_CAPI_EXPORT extern void TF_DeleteServer(TF_Server* server);
+
 #ifdef __cplusplus
 } /* end extern "C" */
 #endif
