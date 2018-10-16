@@ -956,7 +956,7 @@ class Dense(Layer):
     self.built = True
 
   def call(self, inputs):
-    inputs = ops.convert_to_tensor(inputs, dtype=self.dtype)
+    inputs = ops.convert_to_tensor(inputs)
     rank = common_shapes.rank(inputs)
     if rank > 2:
       # Broadcasting is required for the inputs.
