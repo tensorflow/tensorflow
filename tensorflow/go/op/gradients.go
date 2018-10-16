@@ -28,7 +28,7 @@ import tf "github.com/tensorflow/tensorflow/tensorflow/go"
 //  return the partial derivatives
 func Gradients(scope *Scope, y []tf.Output, x []tf.Output, dx ...tf.Output) (output []tf.Output) {
 	var err error
-	if output, err = scope.graph.AddGradients(scope.opName(scope.uniqueName("Gradients")), y, x, dx); err != nil {
+	if output, err = scope.graph.AddGradients(scope.opName("Gradients"), y, x, dx); err != nil {
 		scope.UpdateErr("Gradients", err)
 		return
 	}
