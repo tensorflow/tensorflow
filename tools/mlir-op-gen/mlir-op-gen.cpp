@@ -130,10 +130,15 @@ void OpEmitter::getAttributes() {
   const auto &recordKeeper = def.getRecords();
   const auto attrType = recordKeeper.getClass("Attr");
   for (const auto &val : def.getValues()) {
-    if (DefInit *defInit = dyn_cast<DefInit>(val.getValue())) {
-      auto attr = defInit->getDef();
-      if (attr->isSubClassOf(attrType))
-        attrs.emplace_back(&val, attr);
+    if (auto *record = dyn_cast<RecordRecTy>(val.getType())) {
+      if (record->isSubClassOf(attrType)) {
+        if (record->getClasses().size() != 1) {
+          PrintFatalError(
+              def.getLoc(),
+              "unsupported attribute modelling, only single class expected");
+        }
+        attrs.emplace_back(&val, *record->getClasses().begin());
+      }
     }
   }
 }
@@ -144,8 +149,8 @@ void OpEmitter::emitAttrGetters() {
   for (const auto &pair : attrs) {
     auto &val = *pair.first;
     auto &attr = *pair.second;
-    auto name = attr.getValueAsString("name");
-    os << "  " << attr.getValueAsString("PrimitiveType").trim() << " get"
+    auto name = val.getName();
+    os << "  " << attr.getValueAsString("PrimitiveType").trim() << ' '
        << val.getName() << "() const {\n";
     os << "    return this->getAttrOfType<"
        << attr.getValueAsString("AttrType").trim() << ">(\"" << name
@@ -192,24 +197,27 @@ void OpEmitter::emitPrinter() {
 }
 
 void OpEmitter::emitVerifier() {
-  os << "  bool verify() const {\n";
+  auto valueInit = def.getValueInit("verifier");
+  CodeInit *codeInit = dyn_cast<CodeInit>(valueInit);
+  bool hasCustomVerify = codeInit && !codeInit->getValue().empty();
+  if (!hasCustomVerify && attrs.empty())
+    return;
 
+  os << "  bool verify() const {\n";
   // Verify the attributes have the correct type.
   for (const auto attr : attrs) {
-    auto name = attr.second->getValueAsString("name");
-    os << "     if (!dyn_cast_or_null<"
+    auto name = attr.first->getName();
+    os << "    if (!dyn_cast_or_null<"
        << attr.second->getValueAsString("AttrType") << ">(this->getAttr(\""
        << name << "\"))) return emitOpError(\"requires "
        << attr.second->getValueAsString("PrimitiveType").trim()
        << " attribute '" << name << "'\");\n";
   }
 
-  auto valueInit = def.getValueInit("verifier");
-  CodeInit *codeInit = dyn_cast<CodeInit>(valueInit);
-  if (!codeInit || codeInit->getValue().empty())
-    os << "    return false;\n";
-  else
+  if (hasCustomVerify)
     os << "    " << codeInit->getValue() << "\n";
+  else
+    os << "    return false;\n";
   os << "  }\n";
 }
 
