@@ -97,6 +97,7 @@ cc_library(
         "fold_old_batch_norms.cc",
         "freeze_requantization_ranges.cc",
         "fuse_convolutions.cc",
+        "fuse_quantized_convolution.cc",
         "insert_logging.cc",
         "obfuscate_names.cc",
         "quantize_nodes.cc",
