@@ -20,9 +20,9 @@ Install misc pkgs:
 ```
 sudo apt-get update && sudo apt-get install -y \
   build-essential \
-  clang-3.8 \
-  clang-format-3.8 \
-  clang-tidy-3.8 \
+  clang \
+  clang-format \
+  clang-tidy \
   cmake \
   cmake-qt-gui \
   ssh \
