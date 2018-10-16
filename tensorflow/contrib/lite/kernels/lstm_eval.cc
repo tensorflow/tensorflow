@@ -710,9 +710,10 @@ TfLiteStatus EvalFloat(
     const TfLiteTensor* input_gate_bias, const TfLiteTensor* forget_gate_bias,
     const TfLiteTensor* cell_bias, const TfLiteTensor* output_gate_bias,
     const TfLiteTensor* projection_weights, const TfLiteTensor* projection_bias,
-    const TfLiteLSTMParams* params, bool forward_sequence, int output_offset,
-    TfLiteTensor* scratch_buffer, TfLiteTensor* activation_state,
-    TfLiteTensor* cell_state, TfLiteTensor* output) {
+    const TfLiteLSTMParams* params, bool forward_sequence, bool time_major,
+    int output_offset, TfLiteTensor* scratch_buffer,
+    TfLiteTensor* activation_state, TfLiteTensor* cell_state,
+    TfLiteTensor* output) {
   TF_LITE_ASSERT(input->dims->size >= 2 && input->dims->size <= 3);
   const int max_time = (input->dims->size == 2) ? 1 : input->dims->data[0];
   const int n_batch = input->dims->data[input->dims->size - 2];
@@ -777,36 +778,71 @@ TfLiteStatus EvalFloat(
     aux_input_to_output_weights_ptr = aux_input_to_output_weights->data.f;
   }
 
-  // Loop through the sequence.
   const int output_batch_leading_dim =
       output->dims->data[output->dims->size - 1];
-  const int input_step = n_batch * n_input;
-  const int output_step = n_batch * output_batch_leading_dim;
-  for (int t = 0; t < max_time; t++) {
-    // If this is the forward_sequence, step forward, otherwise step backwards.
-    const int t_rel = forward_sequence ? t : max_time - t - 1;
-    const float* input_ptr = input->data.f + t_rel * input_step;
-    if (aux_input) {
-      aux_input_ptr = aux_input->data.f + t_rel * input_step;
-    }
-    float* output_ptr_time =
-        output->data.f + t_rel * output_step + output_offset;
+  if (time_major) {
+    // Loop through the sequence.
+    const int input_step = n_batch * n_input;
+    const int output_step = n_batch * output_batch_leading_dim;
+    for (int t = 0; t < max_time; t++) {
+      // If this is the forward_sequence, step forward, otherwise step
+      // backwards.
+      const int t_rel = forward_sequence ? t : max_time - t - 1;
+      const float* input_ptr = input->data.f + t_rel * input_step;
+      if (aux_input) {
+        aux_input_ptr = aux_input->data.f + t_rel * input_step;
+      }
+      float* output_ptr_time =
+          output->data.f + t_rel * output_step + output_offset;
 
-    LstmStepWithAuxInput(
-        input_ptr, input_to_input_weights_ptr, input_to_forget_weights->data.f,
-        input_to_cell_weights->data.f, input_to_output_weights->data.f,
-        aux_input_ptr, aux_input_to_input_weights_ptr,
-        aux_input_to_forget_weights_ptr, aux_input_to_cell_weights_ptr,
-        aux_input_to_output_weights_ptr, recurrent_to_input_weights_ptr,
-        recurrent_to_forget_weights->data.f, recurrent_to_cell_weights->data.f,
-        recurrent_to_output_weights->data.f, cell_to_input_weights_ptr,
-        cell_to_forget_weights_ptr, cell_to_output_weights_ptr,
-        input_gate_bias_ptr, forget_gate_bias->data.f, cell_bias->data.f,
-        output_gate_bias->data.f, projection_weights_ptr, projection_bias_ptr,
-        params, n_batch, n_cell, n_input, aux_input_size, n_output,
-        output_batch_leading_dim, activation_state->data.f, cell_state->data.f,
-        input_gate_scratch, forget_gate_scratch, cell_scratch,
-        output_gate_scratch, output_ptr_time);
+      LstmStepWithAuxInput(
+          input_ptr, input_to_input_weights_ptr,
+          input_to_forget_weights->data.f, input_to_cell_weights->data.f,
+          input_to_output_weights->data.f, aux_input_ptr,
+          aux_input_to_input_weights_ptr, aux_input_to_forget_weights_ptr,
+          aux_input_to_cell_weights_ptr, aux_input_to_output_weights_ptr,
+          recurrent_to_input_weights_ptr, recurrent_to_forget_weights->data.f,
+          recurrent_to_cell_weights->data.f,
+          recurrent_to_output_weights->data.f, cell_to_input_weights_ptr,
+          cell_to_forget_weights_ptr, cell_to_output_weights_ptr,
+          input_gate_bias_ptr, forget_gate_bias->data.f, cell_bias->data.f,
+          output_gate_bias->data.f, projection_weights_ptr, projection_bias_ptr,
+          params, n_batch, n_cell, n_input, aux_input_size, n_output,
+          output_batch_leading_dim, activation_state->data.f,
+          cell_state->data.f, input_gate_scratch, forget_gate_scratch,
+          cell_scratch, output_gate_scratch, output_ptr_time);
+    }
+  } else {
+    for (int b = 0; b < n_batch; b++) {
+      const int input_step = n_input;
+      const int output_step = output_batch_leading_dim;
+      for (int t = 0; t < max_time; t++) {
+        // If this is the forward_sequence, step forward, otherwise step
+        // backwards.
+        const int t_rel = forward_sequence ? t : max_time - t - 1;
+        const float* input_ptr = input->data.f + t_rel * input_step;
+        float* output_ptr_time =
+            output->data.f + t_rel * output_step + output_offset;
+
+        LstmStepWithAuxInput(
+            input_ptr, input_to_input_weights_ptr,
+            input_to_forget_weights->data.f, input_to_cell_weights->data.f,
+            input_to_output_weights->data.f, aux_input_ptr,
+            aux_input_to_input_weights_ptr, aux_input_to_forget_weights_ptr,
+            aux_input_to_cell_weights_ptr, aux_input_to_output_weights_ptr,
+            recurrent_to_input_weights_ptr, recurrent_to_forget_weights->data.f,
+            recurrent_to_cell_weights->data.f,
+            recurrent_to_output_weights->data.f, cell_to_input_weights_ptr,
+            cell_to_forget_weights_ptr, cell_to_output_weights_ptr,
+            input_gate_bias_ptr, forget_gate_bias->data.f, cell_bias->data.f,
+            output_gate_bias->data.f, projection_weights_ptr,
+            projection_bias_ptr, params, /*n_batch=*/1, n_cell, n_input,
+            aux_input_size, n_output, output_batch_leading_dim,
+            activation_state->data.f, cell_state->data.f, input_gate_scratch,
+            forget_gate_scratch, cell_scratch, output_gate_scratch,
+            output_ptr_time);
+      }
+    }
   }
   return kTfLiteOk;
 }
@@ -830,13 +866,13 @@ TfLiteStatus EvalHybrid(
     const TfLiteTensor* input_gate_bias, const TfLiteTensor* forget_gate_bias,
     const TfLiteTensor* cell_bias, const TfLiteTensor* output_gate_bias,
     const TfLiteTensor* projection_weights, const TfLiteTensor* projection_bias,
-    const TfLiteLSTMParams* params, bool forward_sequence, int output_offset,
-    TfLiteTensor* scratch_buffer, TfLiteTensor* scaling_factors,
-    TfLiteTensor* prod_scaling_factors, TfLiteTensor* recovered_cell_weights,
-    TfLiteTensor* input_quantized, TfLiteTensor* aux_input_quantized,
-    TfLiteTensor* output_state_quantized, TfLiteTensor* cell_state_quantized,
-    TfLiteTensor* output_state, TfLiteTensor* cell_state,
-    TfLiteTensor* output) {
+    const TfLiteLSTMParams* params, bool forward_sequence, bool time_major,
+    int output_offset, TfLiteTensor* scratch_buffer,
+    TfLiteTensor* scaling_factors, TfLiteTensor* prod_scaling_factors,
+    TfLiteTensor* recovered_cell_weights, TfLiteTensor* input_quantized,
+    TfLiteTensor* aux_input_quantized, TfLiteTensor* output_state_quantized,
+    TfLiteTensor* cell_state_quantized, TfLiteTensor* output_state,
+    TfLiteTensor* cell_state, TfLiteTensor* output) {
   TF_LITE_ASSERT(input->dims->size >= 2 && input->dims->size <= 3);
   const int max_time = (input->dims->size == 2) ? 1 : input->dims->data[0];
   const int n_batch = input->dims->data[input->dims->size - 2];
@@ -990,45 +1026,90 @@ TfLiteStatus EvalHybrid(
         aux_input_to_output_weights->params.scale;
   }
 
-  // Feed the sequence into the LSTM step-by-step.
   const int output_batch_leading_dim =
       output->dims->data[output->dims->size - 1];
-  const int input_step = n_batch * n_input;
-  const int output_step = n_batch * output_batch_leading_dim;
-  for (int t = 0; t < max_time; t++) {
-    // If this is the forward_sequence, step forward, otherwise step backwards.
-    const int t_rel = forward_sequence ? t : max_time - t - 1;
-    const float* input_ptr = input->data.f + t_rel * input_step;
-    if (aux_input) {
-      aux_input_ptr = aux_input->data.f + t_rel * input_step;
-    }
-    float* output_ptr = output->data.f + t_rel * output_step + output_offset;
+  if (time_major) {
+    // Feed the sequence into the LSTM step-by-step.
+    const int input_step = n_batch * n_input;
+    const int output_step = n_batch * output_batch_leading_dim;
+    for (int t = 0; t < max_time; t++) {
+      // If this is the forward_sequence, step forward, otherwise step
+      // backwards.
+      const int t_rel = forward_sequence ? t : max_time - t - 1;
+      const float* input_ptr = input->data.f + t_rel * input_step;
+      if (aux_input) {
+        aux_input_ptr = aux_input->data.f + t_rel * input_step;
+      }
+      float* output_ptr = output->data.f + t_rel * output_step + output_offset;
 
-    LstmStepWithAuxInput(
-        input_ptr, input_to_input_weights_ptr, input_to_input_weights_scale,
-        input_to_forget_weights_ptr, input_to_forget_weights_scale,
-        input_to_cell_weights_ptr, input_to_cell_weights_scale,
-        input_to_output_weights_ptr, input_to_output_weights_scale,
-        aux_input_ptr, aux_input_to_input_weights_ptr,
-        aux_input_to_input_weights_scale, aux_input_to_forget_weights_ptr,
-        aux_input_to_forget_weights_scale, aux_input_to_cell_weights_ptr,
-        aux_input_to_cell_weights_scale, aux_input_to_output_weights_ptr,
-        aux_input_to_output_weights_scale, recurrent_to_input_weights_ptr,
-        recurrent_to_input_weights_scale, recurrent_to_forget_weights_ptr,
-        recurrent_to_forget_weights_scale, recurrent_to_cell_weights_ptr,
-        recurrent_to_cell_weights_scale, recurrent_to_output_weights_ptr,
-        recurrent_to_output_weights_scale, cell_to_input_weights_ptr,
-        cell_to_input_weights_scale, cell_to_forget_weights_ptr,
-        cell_to_forget_weights_scale, cell_to_output_weights_ptr,
-        cell_to_output_weights_scale, input_gate_bias_ptr, forget_gate_bias_ptr,
-        cell_bias_ptr, output_gate_bias_ptr, projection_weights_ptr,
-        projection_weights_scale, projection_bias_ptr, params, n_batch, n_cell,
-        n_input, aux_input_size, n_output, output_batch_leading_dim,
-        input_gate_scratch, forget_gate_scratch, cell_scratch,
-        output_gate_scratch, scaling_factors_ptr, prod_scaling_factors_ptr,
-        recovered_cell_weights_ptr, quantized_input_ptr,
-        quantized_aux_input_ptr, quantized_output_state_ptr,
-        quantized_cell_state_ptr, output_state_ptr, cell_state_ptr, output_ptr);
+      LstmStepWithAuxInput(
+          input_ptr, input_to_input_weights_ptr, input_to_input_weights_scale,
+          input_to_forget_weights_ptr, input_to_forget_weights_scale,
+          input_to_cell_weights_ptr, input_to_cell_weights_scale,
+          input_to_output_weights_ptr, input_to_output_weights_scale,
+          aux_input_ptr, aux_input_to_input_weights_ptr,
+          aux_input_to_input_weights_scale, aux_input_to_forget_weights_ptr,
+          aux_input_to_forget_weights_scale, aux_input_to_cell_weights_ptr,
+          aux_input_to_cell_weights_scale, aux_input_to_output_weights_ptr,
+          aux_input_to_output_weights_scale, recurrent_to_input_weights_ptr,
+          recurrent_to_input_weights_scale, recurrent_to_forget_weights_ptr,
+          recurrent_to_forget_weights_scale, recurrent_to_cell_weights_ptr,
+          recurrent_to_cell_weights_scale, recurrent_to_output_weights_ptr,
+          recurrent_to_output_weights_scale, cell_to_input_weights_ptr,
+          cell_to_input_weights_scale, cell_to_forget_weights_ptr,
+          cell_to_forget_weights_scale, cell_to_output_weights_ptr,
+          cell_to_output_weights_scale, input_gate_bias_ptr,
+          forget_gate_bias_ptr, cell_bias_ptr, output_gate_bias_ptr,
+          projection_weights_ptr, projection_weights_scale, projection_bias_ptr,
+          params, n_batch, n_cell, n_input, aux_input_size, n_output,
+          output_batch_leading_dim, input_gate_scratch, forget_gate_scratch,
+          cell_scratch, output_gate_scratch, scaling_factors_ptr,
+          prod_scaling_factors_ptr, recovered_cell_weights_ptr,
+          quantized_input_ptr, quantized_aux_input_ptr,
+          quantized_output_state_ptr, quantized_cell_state_ptr,
+          output_state_ptr, cell_state_ptr, output_ptr);
+    }
+  } else {
+    for (int b = 0; b < n_batch; b++) {
+      const int input_step = n_input;
+      const int output_step = output_batch_leading_dim;
+      for (int t = 0; t < max_time; t++) {
+        // If this is the forward_sequence, step forward, otherwise step
+        // backwards.
+        const int t_rel = forward_sequence ? t : max_time - t - 1;
+        const float* input_ptr = input->data.f + t_rel * input_step;
+        float* output_ptr =
+            output->data.f + t_rel * output_step + output_offset;
+
+        LstmStepWithAuxInput(
+            input_ptr, input_to_input_weights_ptr, input_to_input_weights_scale,
+            input_to_forget_weights_ptr, input_to_forget_weights_scale,
+            input_to_cell_weights_ptr, input_to_cell_weights_scale,
+            input_to_output_weights_ptr, input_to_output_weights_scale,
+            aux_input_ptr, aux_input_to_input_weights_ptr,
+            aux_input_to_input_weights_scale, aux_input_to_forget_weights_ptr,
+            aux_input_to_forget_weights_scale, aux_input_to_cell_weights_ptr,
+            aux_input_to_cell_weights_scale, aux_input_to_output_weights_ptr,
+            aux_input_to_output_weights_scale, recurrent_to_input_weights_ptr,
+            recurrent_to_input_weights_scale, recurrent_to_forget_weights_ptr,
+            recurrent_to_forget_weights_scale, recurrent_to_cell_weights_ptr,
+            recurrent_to_cell_weights_scale, recurrent_to_output_weights_ptr,
+            recurrent_to_output_weights_scale, cell_to_input_weights_ptr,
+            cell_to_input_weights_scale, cell_to_forget_weights_ptr,
+            cell_to_forget_weights_scale, cell_to_output_weights_ptr,
+            cell_to_output_weights_scale, input_gate_bias_ptr,
+            forget_gate_bias_ptr, cell_bias_ptr, output_gate_bias_ptr,
+            projection_weights_ptr, projection_weights_scale,
+            projection_bias_ptr, params, n_batch, n_cell, n_input,
+            aux_input_size, n_output, output_batch_leading_dim,
+            input_gate_scratch, forget_gate_scratch, cell_scratch,
+            output_gate_scratch, scaling_factors_ptr, prod_scaling_factors_ptr,
+            recovered_cell_weights_ptr, quantized_input_ptr,
+            quantized_aux_input_ptr, quantized_output_state_ptr,
+            quantized_cell_state_ptr, output_state_ptr, cell_state_ptr,
+            output_ptr);
+      }
+    }
   }
 
   return kTfLiteOk;

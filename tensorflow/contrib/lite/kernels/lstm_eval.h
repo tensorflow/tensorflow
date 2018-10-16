@@ -42,9 +42,10 @@ TfLiteStatus EvalFloat(
     const TfLiteTensor* input_gate_bias, const TfLiteTensor* forget_gate_bias,
     const TfLiteTensor* cell_bias, const TfLiteTensor* output_gate_bias,
     const TfLiteTensor* projection_weights, const TfLiteTensor* projection_bias,
-    const TfLiteLSTMParams* params, bool forward_sequence, int output_offset,
-    TfLiteTensor* scratch_buffer, TfLiteTensor* activation_state,
-    TfLiteTensor* cell_state, TfLiteTensor* output);
+    const TfLiteLSTMParams* params, bool forward_sequence, bool time_major,
+    int output_offset, TfLiteTensor* scratch_buffer,
+    TfLiteTensor* activation_state, TfLiteTensor* cell_state,
+    TfLiteTensor* output);
 
 TfLiteStatus EvalHybrid(
     const TfLiteTensor* input, const TfLiteTensor* input_to_input_weights,
@@ -65,12 +66,13 @@ TfLiteStatus EvalHybrid(
     const TfLiteTensor* input_gate_bias, const TfLiteTensor* forget_gate_bias,
     const TfLiteTensor* cell_bias, const TfLiteTensor* output_gate_bias,
     const TfLiteTensor* projection_weights, const TfLiteTensor* projection_bias,
-    const TfLiteLSTMParams* params, bool forward_sequence, int output_offset,
-    TfLiteTensor* scratch_buffer, TfLiteTensor* scaling_factors,
-    TfLiteTensor* prod_scaling_factors, TfLiteTensor* recovered_cell_weights,
-    TfLiteTensor* input_quantized, TfLiteTensor* aux_input_quantized,
-    TfLiteTensor* output_state_quantized, TfLiteTensor* cell_state_quantized,
-    TfLiteTensor* output_state, TfLiteTensor* cell_state, TfLiteTensor* output);
+    const TfLiteLSTMParams* params, bool forward_sequence, bool time_major,
+    int output_offset, TfLiteTensor* scratch_buffer,
+    TfLiteTensor* scaling_factors, TfLiteTensor* prod_scaling_factors,
+    TfLiteTensor* recovered_cell_weights, TfLiteTensor* input_quantized,
+    TfLiteTensor* aux_input_quantized, TfLiteTensor* output_state_quantized,
+    TfLiteTensor* cell_state_quantized, TfLiteTensor* output_state,
+    TfLiteTensor* cell_state, TfLiteTensor* output);
 
 }  // namespace lstm_eval
 }  // namespace builtin
