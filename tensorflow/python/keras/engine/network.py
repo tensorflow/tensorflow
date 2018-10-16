@@ -1674,7 +1674,8 @@ class Network(base_layer.Layer):
 
 
 def _is_hdf5_filepath(filepath):
-  return filepath.endswith('.h5') or filepath.endswith('.keras')
+  return (filepath.endswith('.h5') or filepath.endswith('.keras') or
+          filepath.endswith('.hdf5'))
 
 
 def _make_node_key(layer_name, node_index):
