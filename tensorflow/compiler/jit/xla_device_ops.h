@@ -210,6 +210,8 @@ class XlaAssignVariableOp : public AsyncOpKernel {
                               .TypeConstraint<ResourceHandle>("T")             \
                               .HostMemory("input"),                            \
                           RetvalOp);                                           \
+  REGISTER_KERNEL_BUILDER(                                                     \
+      Name(kDeviceRetOp).Device(DEVICE).TypeConstraint<int32>("T"), RetvalOp); \
                                                                                \
   REGISTER_KERNEL_BUILDER(                                                     \
       Name("RemoteCall").Device(DEVICE).HostMemory("target"), RemoteCallOp);   \
