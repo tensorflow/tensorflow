@@ -36,7 +36,9 @@ Building requires a Linux or OS X machine.
  - Download the dependencies by running `tensorflow/contrib/lite/experimental/micro/tools/make/download_dependencies.sh`. This may take a few minutes
  - Build and test the library with `make -f tensorflow/contrib/lite/experimental/micro/tools/make/Makefile test`
 
-You should see a series of compilation steps, followed by "~~~ALL TESTS PASSED~~~" for the various tests of the code that it will run. If there's an error, you should get an informative message from make about what went wrong.
+You should see a series of compilation steps, followed by `~~~ALL TESTS
+PASSED~~~` for the various tests of the code that it will run. If there's an
+error, you should get an informative message from make about what went wrong.
 
 These tests are all built as simple binaries with few dependencies, so you can run them manually. For example, here's how to run the depthwise convolution test, and its output:
 
@@ -64,7 +66,13 @@ TF_LITE_MICRO_TEST(SimpleTest) {
 TF_LITE_MICRO_TESTS_END
 ```
 
-These macros work a lot like [the Google test framework](https://github.com/google/googletest), but they don't require any dependencies and just write results to stderr, rather than aborting the program. If all the tests pass, then "~~~ALL TESTS PASSED~~~" is output, and the test harness that runs the binary during the make process knows that everything ran correctly. If there's an error, the lack of the expected string lets the harness know that the test failed.
+These macros work a lot like
+[the Google test framework](https://github.com/google/googletest), but they
+don't require any dependencies and just write results to stderr, rather than
+aborting the program. If all the tests pass, then `~~~ALL TESTS PASSED~~~` is
+output, and the test harness that runs the binary during the make process knows
+that everything ran correctly. If there's an error, the lack of the expected
+string lets the harness know that the test failed.
 
 So, why are we running tests in this complicated way? So far, we've been building binaries that run locally on the Mac OS or Linux machine you're building on, but this approach becomes important when we're targeting simple micro controller devices.
 
@@ -111,4 +119,9 @@ LOGS:
 tensorflow/contrib/lite/experimental/micro/tools/make/gen/bluepill_cortex-m3/bin/tensorflow/contrib/lite/experimental/micro/kernels/depthwise_conv_test: PASS
 ```
 
-There's a lot of output here, but you should be able to see that the same tests that were covered when we ran locally on the development machine show up in the debug logs here, along with the magic string "~~~ALL TESTS PASSED~~~". This is the exact same code as before, just compiled and run on the STM32F103 rather than your desktop. We hope that the simplicity of this testing approach will help make adding support for new platforms as easy as possible.
+There's a lot of output here, but you should be able to see that the same tests
+that were covered when we ran locally on the development machine show up in the
+debug logs here, along with the magic string `~~~ALL TESTS PASSED~~~`. This is
+the exact same code as before, just compiled and run on the STM32F103 rather
+than your desktop. We hope that the simplicity of this testing approach will
+help make adding support for new platforms as easy as possible.
