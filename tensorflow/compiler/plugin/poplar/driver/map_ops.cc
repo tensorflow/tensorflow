@@ -84,7 +84,7 @@ StatusOr<poplar::program::Sequence> GetWhileAndRepeatAliasingCopies(
   }
   return body_seq;
 }
-}
+}  // namespace
 
 static StatusOr<ComputationMap::iterator> GetOrCompileSubComputation(
     poplar::Graph& graph, CompilerResources& res, const ArgVectors& inputs,

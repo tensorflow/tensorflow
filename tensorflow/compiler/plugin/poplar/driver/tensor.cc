@@ -124,31 +124,159 @@ poplar::Tensor ConvertFromDeviceLayout(const Shape& shape,
 }
 
 StatusOr<poplar::Tensor> AddPlainTensor(poplar::Graph& graph,
-                                        const HloInstruction* inst,
+                                        const std::string& debug_name,
                                         const xla::Shape& shape) {
   poplar::Tensor out;
   std::vector<std::size_t> dim = PoplarShapeFromXlaShape(shape);
   poplar::Type poplar_type;
   TF_ASSIGN_OR_RETURN(poplar_type, PoplarDataType(shape));
 
-  out = graph.addVariable(poplar_type, dim, GetDebugName(inst));
+  out = graph.addVariable(poplar_type, dim, debug_name);
   poputil::mapTensorLinearly(graph, out);
   return out;
 }
 
 StatusOr<poplar::Tensor> AddRnnSequence(poplar::Graph& graph,
-                                        const HloInstruction* inst,
+                                        const std::string& debug_name,
                                         const xla::Shape& shape) {
   poplar::Tensor out;
   std::vector<std::size_t> dim = PoplarShapeFromXlaShape(shape);
   poplar::Type poplar_type;
   TF_ASSIGN_OR_RETURN(poplar_type, PoplarDataType(shape));
 
-  out = graph.addVariable(poplar_type, dim, GetDebugName(inst));
+  out = graph.addVariable(poplar_type, dim, debug_name);
 
   for (auto i = 0; i != dim[0]; ++i) {
     poputil::mapTensorLinearly(graph, out[i]);
   }
+
+  return out;
+}
+
+template <typename IIter1, typename IIter2, typename OIter, typename Zipper>
+static void zip(IIter1 ibegin1, IIter1 iend1, IIter2 ibegin2, OIter obegin,
+                Zipper zipper) {
+  for (; ibegin1 != iend1; ++ibegin1, ++ibegin2, ++obegin) {
+    *obegin = zipper(*ibegin1, *ibegin2);
+  }
+}
+
+// Find a value for G s.t. D / G <= T, and G | D.
+static StatusOr<std::size_t> FindG(const std::size_t D, const std::size_t T) {
+  for (std::size_t g = (D + T - 1) / T; g <= D; ++g) {
+    if (D % g == 0) {
+      return g;
+    }
+  }
+
+  return tensorflow::errors::FailedPrecondition(
+      "Cannot find a value of G that is both a factor of D and satisfies D / G "
+      "<= T");
+}
+
+// Find the sequence dimension, if there is one
+static StatusOr<std::size_t> FindSeqDim(const xla::Shape& shape_xla,
+                                        const xla::Shape& slice_shape_xla) {
+  const auto shape = PoplarShapeFromXlaShape(shape_xla);
+  const auto slice_shape = PoplarShapeFromXlaShape(slice_shape_xla);
+  const auto volume =
+      std::accumulate(shape.begin(), shape.end(), std::size_t(1),
+                      std::multiplies<std::size_t>());
+  const auto slice_volume =
+      std::accumulate(slice_shape.begin(), slice_shape.end(), std::size_t(1),
+                      std::multiplies<std::size_t>());
+
+  // If the desired shape is 1D, then no special work is required.
+  // If the slice shape is the same as the input shape, this is just a copy
+  if (ShapeUtil::Rank(shape_xla) > 1 && shape != slice_shape && volume > 1 &&
+      slice_volume > 1) {
+    // Calculate the element-wise ratio between the slice the input rank
+    std::vector<float> dimension_ratios(shape.size());
+    zip(slice_shape.begin(), slice_shape.end(), shape.begin(),
+        dimension_ratios.begin(), std::divides<float>());
+
+    // Assumes the sequence dimension is the dimension with the smallest ratio
+    // between the input and the slice.
+    return std::distance(
+        dimension_ratios.begin(),
+        std::min_element(dimension_ratios.begin(), dimension_ratios.end()));
+  }
+
+  return tensorflow::errors::FailedPrecondition(
+      "Cannot compute slice sequence dimension");
+}
+
+StatusOr<poplar::Tensor> AddDynamicSliceTensor(
+    poplar::Graph& graph, const std::string& debug_name,
+    const xla::Shape& shape_xla, const xla::Shape& slice_shape_xla) {
+  poplar::Tensor unused;
+  return AddDynamicSliceTensor(graph, debug_name, shape_xla, slice_shape_xla,
+                               unused);
+}
+
+StatusOr<poplar::Tensor> AddDynamicSliceTensor(
+    poplar::Graph& graph, const std::string& debug_name,
+    const xla::Shape& shape_xla, const xla::Shape& slice_shape_xla,
+    poplar::Tensor& physical_layout) {
+  const auto shape = PoplarShapeFromXlaShape(shape_xla);
+  const auto volume =
+      std::accumulate(shape.begin(), shape.end(), std::size_t(1),
+                      std::multiplies<std::size_t>());
+
+  // If we are able to compute the sequence_dimension
+  const auto sequence_dimension_status = FindSeqDim(shape_xla, slice_shape_xla);
+  if (!sequence_dimension_status.ok()) {
+    TF_ASSIGN_OR_RETURN(physical_layout,
+                        AddPlainTensor(graph, debug_name, shape_xla));
+    return physical_layout;
+  }
+
+  const auto sequence_dimension = sequence_dimension_status.ValueOrDie();
+
+  // Create a tensor of the form [D/G, S, G] where D is the product of the N-1
+  // dimensions that are not the sequence dimension, S is the size of the
+  // sequence dimension, and G is a factor of D chosen to ensure that
+  // D/G <= T, where T is the number of tiles.
+  const auto T = graph.getTarget().getNumTiles();
+  const auto D = volume / shape[sequence_dimension];
+  const auto S = shape[sequence_dimension];
+  const auto G_status = FindG(D, T);
+  if (!G_status.ok()) {
+    TF_ASSIGN_OR_RETURN(physical_layout,
+                        AddPlainTensor(graph, debug_name, shape_xla));
+    return physical_layout;
+  }
+
+  const auto G = G_status.ValueOrDie();
+  if (D == G) {
+    TF_ASSIGN_OR_RETURN(physical_layout,
+                        AddPlainTensor(graph, debug_name, shape_xla));
+    return physical_layout;
+  }
+
+  // If a value for G was found
+  TF_ASSIGN_OR_RETURN(poplar::Type poplar_type, PoplarDataType(shape_xla));
+
+  poplar::Tensor out =
+      graph.addVariable(poplar_type, {D / G, S, G}, debug_name);
+  physical_layout = out;
+
+  // Map the sequence dimension across the tiles
+  for (std::size_t i = 0; i < out.dim(0); ++i) {
+    graph.setTileMapping(out[i], i);
+  }
+
+  // Reshape, with the sequence dimension being the last dimension
+  auto shape_tmp = shape;
+  std::swap(shape_tmp[sequence_dimension], shape_tmp.back());
+  out = out.reshape(shape_tmp);
+
+  // Shuffle the dimensions back into the desired order
+  // out.dimSwap(sequence_dimension, shape.size() - 1)
+  std::vector<unsigned> permutation(shape.size());
+  std::iota(permutation.begin(), permutation.end(), 0);
+  std::swap(permutation[sequence_dimension], permutation.back());
+  out = out.dimShuffle(permutation);
 
   return out;
 }
@@ -267,25 +395,23 @@ StatusOr<poplar::Tensor> AddTensor(poplar::Graph& graph,
       }
       case HloOpcode::kDynamicSlice: {
         if (target->second.input_index == 0) {
-          if (ShapeUtil::Rank(shape) == 3) {
-            TF_ASSIGN_OR_RETURN(out, AddRnnSequence(graph, src.first, tshape));
-          } else {
-            TF_ASSIGN_OR_RETURN(out, AddPlainTensor(graph, src.first, tshape));
-          }
+          TF_ASSIGN_OR_RETURN(
+              out, AddDynamicSliceTensor(graph, GetDebugName(src.first), shape,
+                                         target->second.tgt->shape()));
         } else {
-          TF_ASSIGN_OR_RETURN(out, AddPlainTensor(graph, src.first, tshape));
+          TF_ASSIGN_OR_RETURN(
+              out, AddPlainTensor(graph, GetDebugName(src.first), shape));
         }
         break;
       }
       case HloOpcode::kDynamicUpdateSlice: {
         if (target->second.input_index == 0) {
-          if (ShapeUtil::Rank(shape) == 3) {
-            TF_ASSIGN_OR_RETURN(out, AddRnnSequence(graph, src.first, tshape));
-          } else {
-            TF_ASSIGN_OR_RETURN(out, AddPlainTensor(graph, src.first, tshape));
-          }
+          TF_ASSIGN_OR_RETURN(
+              out, AddDynamicSliceTensor(graph, GetDebugName(src.first), shape,
+                                         target->second.tgt->shape()));
         } else {
-          TF_ASSIGN_OR_RETURN(out, AddPlainTensor(graph, src.first, tshape));
+          TF_ASSIGN_OR_RETURN(
+              out, AddPlainTensor(graph, GetDebugName(src.first), shape));
         }
         break;
       }
@@ -320,7 +446,8 @@ StatusOr<poplar::Tensor> AddTensor(poplar::Graph& graph,
                 src.first->name().c_str(), name.c_str());
           }
         } else {
-          TF_ASSIGN_OR_RETURN(out, AddPlainTensor(graph, src.first, shape));
+          TF_ASSIGN_OR_RETURN(
+              out, AddPlainTensor(graph, GetDebugName(src.first), shape));
         }
         break;
       }
@@ -357,7 +484,8 @@ StatusOr<poplar::Tensor> AddTensor(poplar::Graph& graph,
       }
     }
   } else {
-    TF_ASSIGN_OR_RETURN(out, AddPlainTensor(graph, src.first, shape));
+    TF_ASSIGN_OR_RETURN(out,
+                        AddPlainTensor(graph, GetDebugName(src.first), shape));
   }
   return out;
 }

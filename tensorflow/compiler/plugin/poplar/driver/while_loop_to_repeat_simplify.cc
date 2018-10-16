@@ -36,7 +36,7 @@ int64 GetMaxLoopTripCount() {
   }
   return 128;
 }
-}
+}  // namespace
 
 WhileLoopToRepeatSimplify::WhileLoopToRepeatSimplify(
     CompilerAnnotations& annotations)

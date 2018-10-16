@@ -301,6 +301,19 @@ tf_cc_test(
 )
 
 tf_cc_test(
+    name = "dynamic_slice_layout_test",
+    srcs = ["tests/dynamic_slice_layout_test.cc"],
+    extra_copts = [
+        "-fexceptions",
+    ],
+    deps = [
+        ":poplar_lib",
+        "//tensorflow/compiler/xla/service:hlo_matchers",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+    ],
+)
+
+tf_cc_test(
     name = "convolution_classifier_test",
     srcs = ["tests/convolution_classifier_test.cc"],
     size = "small",
@@ -782,6 +795,7 @@ test_suite(
         "fuse_wide_const_test",
         "cache_graph_test",
         "scheduler_test",
+        "dynamic_slice_layout_test",
         "while_loop_to_repeat_simplify_test",
     ],
 )
@@ -808,4 +822,3 @@ filegroup(
         ],
     ),
 )
-
