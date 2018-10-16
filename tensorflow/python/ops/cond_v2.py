@@ -62,12 +62,18 @@ def cond_v2(pred, true_fn, false_fn, name="cond"):
       true_name = graph.unique_name(("%strue" % scope).replace("/", "_"))
       false_name = graph.unique_name(("%sfalse" % scope).replace("/", "_"))
 
+    # Automatic control dependencies are added in defuns, but not in v1
+    # graphs. Propagate that behavior here.
+    add_control_dependencies = util.in_defun()
+
     true_graph = function.func_graph_from_py_func(
         true_name, true_fn, [], {},
-        func_graph=util.CondBranchFuncGraph(true_name))
+        func_graph=util.CondBranchFuncGraph(true_name),
+        add_control_dependencies=add_control_dependencies)
     false_graph = function.func_graph_from_py_func(
         false_name, false_fn, [], {},
-        func_graph=util.CondBranchFuncGraph(false_name))
+        func_graph=util.CondBranchFuncGraph(false_name),
+        add_control_dependencies=add_control_dependencies)
     _check_same_outputs(true_graph, false_graph)
 
     # Add inputs to true_graph and false_graph to make them match. Note that
@@ -119,6 +125,16 @@ def cond_v2(pred, true_fn, false_fn, name="cond"):
       if_op._set_attr("_lower_using_switch_merge",
                       attr_value_pb2.AttrValue(b=True))
       # pylint: enable=protected-access
+
+    # Return identities for each output of the If op, rather than the output of
+    # the If op directly. This makes pruning work if the output of cond() is
+    # fetched: the lowering pass converts the If outputs into IdentityN outputs,
+    # which if fetched will cause all ops in the taken branch to be run (since
+    # it takes all merge ops as input). After lowering, each output identity op
+    # will end up with only the appropriate merge op as input.
+    # TODO(b/79984175): this doesn't have to be a tuple once we covert to the
+    # correct output structure
+    tensors = tuple(array_ops.identity(t) for t in tensors)
 
     result = tuple(tensors[:num_cond_outputs])
     if len(result) == 1:

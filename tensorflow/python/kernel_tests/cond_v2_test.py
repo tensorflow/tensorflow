@@ -138,19 +138,19 @@ class CondV2Test(test.TestCase):
   def testDefaultName(self):
     with ops.Graph().as_default():
       cond = self._createCond(None)
-      self.assertEqual(cond.name, "cond")
+      self.assertStartsWith(cond.name, "cond")
       self.assertIn("cond_true", ops.get_default_graph()._functions)
       self.assertIn("cond_false", ops.get_default_graph()._functions)
 
     with ops.Graph().as_default():
       with ops.name_scope("foo"):
         cond = self._createCond("")
-        self.assertEqual(cond.name, "foo/cond")
+        self.assertStartsWith(cond.name, "foo/cond")
         self.assertIn("foo_cond_true", ops.get_default_graph()._functions)
         self.assertIn("foo_cond_false", ops.get_default_graph()._functions)
 
         cond2 = self._createCond(None)
-        self.assertEqual(cond2.name, "foo/cond_1")
+        self.assertStartsWith(cond2.name, "foo/cond_1")
         self.assertIn("foo_cond_1_true", ops.get_default_graph()._functions)
         self.assertIn("foo_cond_1_false", ops.get_default_graph()._functions)
 
