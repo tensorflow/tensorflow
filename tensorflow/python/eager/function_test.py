@@ -60,6 +60,7 @@ from tensorflow.python.training import momentum
 from tensorflow.python.training import training_ops
 from tensorflow.python.util import compat
 from tensorflow.python.util import nest
+from tensorflow.python.util import tf_inspect
 
 
 class MiniModel(keras_training.Model):
@@ -2337,6 +2338,54 @@ class FunctionTest(test.TestCase):
         maybe_add(x, True)
         self.assertEqual(len(maybe_add._function_cache), 3)
         self.assertEqual(len(add._function_cache), 2)
+
+  def testDecoratedMethod(self):
+    m = DefunnedMiniModel()
+    instance_call_one = m.call(array_ops.ones([1, 2]), training=True)
+    instance_call_two = m.call(
+        inputs=array_ops.ones([1, 2]), training=True)
+    class_call = DefunnedMiniModel.call(m, array_ops.ones([1, 2]),
+                                        training=True)
+    self.assertAllEqual(instance_call_one, instance_call_two)
+    self.assertAllEqual(instance_call_one, class_call)
+
+  def testDecoratedMethodUniquePolymorphicFuncPerInstance(self):
+    m = DefunnedMiniModel()
+    n = DefunnedMiniModel()
+
+    class_method_one = DefunnedMiniModel.call
+    class_method_two = DefunnedMiniModel.call
+
+    m_method_one = m.call
+    m_method_two = m.call
+
+    n_method_one = n.call
+    n_method_two = n.call
+
+    self.assertEqual(class_method_one, class_method_two)
+    self.assertEqual(m_method_one, m_method_two)
+    self.assertEqual(n_method_one, n_method_two)
+    self.assertNotEqual(m.call, n.call)
+
+  def testDecoratedMethodInspect(self):
+    m = DefunnedMiniModel()
+    fullargspec = tf_inspect.getfullargspec(m.call)
+    self.assertTrue('training' in fullargspec.args)
+
+  def testDecoratedMethodGetConcreteFunction(self):
+    m = DefunnedMiniModel()
+    instance_call_one = m.call.get_concrete_function(
+        array_ops.ones([1, 2]), training=False)
+    instance_call_two = m.call.get_concrete_function(
+        inputs=array_ops.ones([1, 2]), training=False)
+    self.assertAllEqual(instance_call_one(array_ops.ones([1, 2])),
+                        instance_call_two(array_ops.ones([1, 2])))
+
+    # Also make sure get_concrete_function works on the class method
+    DefunnedMiniModel.call.get_concrete_function(
+        m, array_ops.ones([1, 2]), training=False)
+    DefunnedMiniModel.call.get_concrete_function(
+        m, inputs=array_ops.ones([1, 2]), training=True)
 
 
 @test_util.with_c_shapes
