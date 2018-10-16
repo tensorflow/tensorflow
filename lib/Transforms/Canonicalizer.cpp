@@ -60,7 +60,7 @@ struct SimplifyXMinusX : public Pattern {
   // builder.  If an unexpected error is encountered (an internal
   // compiler error), it is emitted through the normal MLIR diagnostic
   // hooks and the IR is left in a valid state.
-  virtual void rewrite(Operation *op, MLFuncBuilder &builder) const override {
+  virtual void rewrite(Operation *op, FuncBuilder &builder) const override {
     // TODO: Rename getAs -> dyn_cast, and add a cast<> method.
     auto subi = op->getAs<SubIOp>();
     assert(subi && "Matcher should have produced this");
@@ -87,7 +87,7 @@ struct Canonicalizer : public FunctionPass {
   PassResult runOnMLFunction(MLFunction *f) override;
 
   void simplifyFunction(std::vector<Operation *> &worklist,
-                        MLFuncBuilder &builder);
+                        FuncBuilder &builder);
 
   void addToWorklist(Operation *op) {
     worklistMap[op] = worklist.size();
@@ -134,14 +134,15 @@ PassResult Canonicalizer::runOnMLFunction(MLFunction *f) {
 
   f->walk([&](OperationStmt *stmt) { addToWorklist(stmt); });
 
-  MLFuncBuilder builder(f);
+  MLFuncBuilder mlBuilder(f);
+  FuncBuilder builder(mlBuilder);
   simplifyFunction(worklist, builder);
   return success();
 }
 
 // TODO: This should work on both ML and CFG functions.
 void Canonicalizer::simplifyFunction(std::vector<Operation *> &worklist,
-                                     MLFuncBuilder &builder) {
+                                     FuncBuilder &builder) {
   // TODO: Instead of a hard coded list of patterns, ask the registered dialects
   // for their canonicalization patterns.
 

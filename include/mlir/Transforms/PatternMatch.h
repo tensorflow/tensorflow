@@ -22,8 +22,8 @@
 
 namespace mlir {
 
+class FuncBuilder;
 class Operation;
-class MLFuncBuilder;
 class SSAValue;
 
 //===----------------------------------------------------------------------===//
@@ -111,17 +111,14 @@ public:
   // compiler error), it is emitted through the normal MLIR diagnostic
   // hooks and the IR is left in a valid state.
   virtual void rewrite(Operation *op, std::unique_ptr<PatternState> state,
-                       // TODO: Need a generic builder.
-                       MLFuncBuilder &builder) const;
+                       FuncBuilder &builder) const;
 
   // Rewrite the IR rooted at the specified operation with the result of
   // this pattern, generating any new operations with the specified
   // builder.  If an unexpected error is encountered (an internal
   // compiler error), it is emitted through the normal MLIR diagnostic
   // hooks and the IR is left in a valid state.
-  virtual void rewrite(Operation *op,
-                       // TODO: Need a generic builder.
-                       MLFuncBuilder &builder) const;
+  virtual void rewrite(Operation *op, FuncBuilder &builder) const;
 
   virtual ~Pattern() {}
 

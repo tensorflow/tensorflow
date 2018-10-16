@@ -58,14 +58,11 @@ Optional<PatternBenefit> Pattern::getStaticBenefit() const {
 OperationName Pattern::getRootKind() const { return rootKind; }
 
 void Pattern::rewrite(Operation *op, std::unique_ptr<PatternState> state,
-                      // TODO: Need a generic builder.
-                      MLFuncBuilder &builder) const {
+                      FuncBuilder &builder) const {
   rewrite(op, builder);
 }
 
-void Pattern::rewrite(Operation *op,
-                      // TODO: Need a generic builder.
-                      MLFuncBuilder &builder) const {
+void Pattern::rewrite(Operation *op, FuncBuilder &builder) const {
   llvm_unreachable("need to implement one of the rewrite functions!");
 }
 
