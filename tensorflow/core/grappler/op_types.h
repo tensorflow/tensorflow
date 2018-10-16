@@ -71,6 +71,7 @@ bool IsGreaterEqual(const NodeDef& node);
 bool IsHistogramSummary(const NodeDef& node);
 bool IsIdentity(const NodeDef& node);
 bool IsIdentityN(const NodeDef& node);
+bool IsIdentityNSingleInput(const NodeDef& node);
 bool IsIgamma(const NodeDef& node);
 bool IsIgammac(const NodeDef& node);
 bool IsImag(const NodeDef& node);
