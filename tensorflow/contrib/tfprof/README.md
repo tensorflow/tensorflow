@@ -21,4 +21,3 @@
 * Python API
 * Command Line
 * Visualization
-* C++ API (Not public, contact us if needed.)
