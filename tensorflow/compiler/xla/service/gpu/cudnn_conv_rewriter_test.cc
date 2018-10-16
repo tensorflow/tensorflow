@@ -127,8 +127,10 @@ TEST_F(CudnnConvRewriterTest, BackwardFilterConvolve) {
                   op::CustomCall(kCudnnConvBackwardFilterCallTarget), 0));
 
   // Check that metadata was preserved.
-  EXPECT_THAT(entry_computation->root_instruction()->operand(0)->metadata(),
-              ::testing::EqualsProto(metadata));
+  const auto& md_after_opt =
+      entry_computation->root_instruction()->operand(0)->metadata();
+  EXPECT_TRUE(protobuf_util::ProtobufEquals(md_after_opt, metadata))
+      << md_after_opt.DebugString() << " vs " << metadata.DebugString();
 }
 
 TEST_F(CudnnConvRewriterTest,
