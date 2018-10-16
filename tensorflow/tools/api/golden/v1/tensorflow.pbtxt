@@ -601,6 +601,10 @@ tf_module {
     mtype: "<class \'tensorflow.python.framework.dtypes.DType\'>"
   }
   member {
+    name: "version"
+    mtype: "<type \'module\'>"
+  }
+  member {
     name: "zeros_initializer"
     mtype: "<type \'type\'>"
   }
