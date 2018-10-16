@@ -29,15 +29,25 @@ import six
 from tensorflow.python.util import tf_inspect
 
 
+# These functions test negative for isinstance(*, types.BuiltinFunctionType)
+# and inspect.isbuiltin, and are generally not visible in globals().
+SPECIAL_BUILTINS = {
+    'dict': dict,
+    'float': float,
+    'int': int,
+    'print': print,
+    'range': range,
+    'tuple': tuple
+}
+
+if six.PY2:
+  SPECIAL_BUILTINS['xrange'] = xrange
+
+
 def isbuiltin(f):
   """Returns True if the argument is a built-in function."""
-  # Note these return false for isinstance(f, types.BuiltinFunctionType) so we
-  # need to specifically check for them.
-  if f in (range, int, float):
+  if f in SPECIAL_BUILTINS.values():
     return True
-  if six.PY2:
-    if f in (xrange,):
-      return True
   if isinstance(f, types.BuiltinFunctionType):
     return True
   if tf_inspect.isbuiltin(f):
