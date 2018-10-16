@@ -131,6 +131,14 @@ SSAValue *Operation::getResult(unsigned idx) {
   return cast<OperationStmt>(this)->getResult(idx);
 }
 
+/// Return true if there are no users of any results of this operation.
+bool Operation::use_empty() const {
+  for (auto *result : getResults())
+    if (!result->use_empty())
+      return false;
+  return true;
+}
+
 ArrayRef<NamedAttribute> Operation::getAttrs() const {
   if (!attrs)
     return {};

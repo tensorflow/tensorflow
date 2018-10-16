@@ -1,4 +1,4 @@
-//===- mlir/PatternMatch.h - Base classes for pattern match -----*- C++ -*-===//
+//===- PatternMatch.h - Base classes for pattern match ----------*- C++ -*-===//
 //
 // Copyright 2019 The MLIR Authors.
 //
@@ -19,8 +19,6 @@
 #define MLIR_PATTERN_MATCH_H
 
 #include "mlir/IR/OperationSupport.h"
-#include "mlir/Support/LLVM.h"
-#include "llvm/ADT/ArrayRef.h"
 
 namespace mlir {
 

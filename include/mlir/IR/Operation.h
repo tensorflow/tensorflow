@@ -96,6 +96,9 @@ public:
   const_result_iterator result_end() const;
   llvm::iterator_range<const_result_iterator> getResults() const;
 
+  /// Return true if there are no users of any results of this operation.
+  bool use_empty() const;
+
   // Attributes.  Operations may optionally carry a list of attributes that
   // associate constants to names.  Attributes may be dynamically added and
   // removed over the lifetime of an operation.

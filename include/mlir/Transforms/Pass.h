@@ -1,4 +1,4 @@
-//===- mlir/Pass.h - Base classes for compiler passes -----------*- C++ -*-===//
+//===- Pass.h - Base classes for compiler passes ----------------*- C++ -*-===//
 //
 // Copyright 2019 The MLIR Authors.
 //
