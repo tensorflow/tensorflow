@@ -1172,6 +1172,7 @@ tf_py_test(
         "//tensorflow/python:variables",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:function",
+        "//tensorflow/python/eager:wrap_function",
     ],
     tags = ["no_windows"],
 )
