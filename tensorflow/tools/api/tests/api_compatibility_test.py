@@ -299,6 +299,7 @@ class ApiCompatibilityTest(test.TestCase):
       """Read a filename, create a protobuf from its contents."""
       ret_val = api_objects_pb2.TFAPIObject()
       text_format.Merge(file_io.read_file_to_string(filename), ret_val)
+      python_object_to_proto_visitor.normalize_proto(ret_val)
       return ret_val
 
     golden_proto_dict = {
@@ -315,9 +316,6 @@ class ApiCompatibilityTest(test.TestCase):
         update_goldens=FLAGS.update_goldens,
         api_version=api_version)
 
-  @unittest.skipUnless(
-      sys.version_info.major == 2,
-      'API compabitility test goldens are generated using python2.')
   def testAPIBackwardsCompatibility(self):
     api_version = 1
     golden_file_pattern = os.path.join(
@@ -331,9 +329,6 @@ class ApiCompatibilityTest(test.TestCase):
         # in separate tests.
         additional_private_map={'tf.compat': ['v1', 'v2']})
 
-  @unittest.skipUnless(
-      sys.version_info.major == 2,
-      'API compabitility test goldens are generated using python2.')
   def testAPIBackwardsCompatibilityV1(self):
     api_version = 1
     golden_file_pattern = os.path.join(
@@ -342,9 +337,6 @@ class ApiCompatibilityTest(test.TestCase):
     self._checkBackwardsCompatibility(
         tf_v2.compat.v1, golden_file_pattern, api_version)
 
-  @unittest.skipUnless(
-      sys.version_info.major == 2,
-      'API compabitility test goldens are generated using python2.')
   def testAPIBackwardsCompatibilityV2(self):
     api_version = 2
     golden_file_pattern = os.path.join(
