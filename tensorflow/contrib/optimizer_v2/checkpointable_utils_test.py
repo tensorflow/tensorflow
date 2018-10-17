@@ -24,7 +24,6 @@ import os
 
 import six
 
-from tensorflow.contrib.optimizer_v2 import adam
 from tensorflow.python.client import session as session_lib
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
@@ -35,6 +34,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.keras.engine import training
 from tensorflow.python.keras.layers import core
+from tensorflow.python.keras.optimizer_v2 import adam
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import resource_variable_ops
@@ -98,7 +98,7 @@ class CheckpointingTests(test.TestCase):
     # A nuisance Model using the same optimizer. Its slot variables should not
     # go in the checkpoint, since it is never depended on.
     other_model = MyModel()
-    optimizer = adam.AdamOptimizer(0.001)
+    optimizer = adam.Adam(0.001)
     optimizer_step = training_util.get_or_create_global_step()
     root_checkpointable = util.Checkpoint(
         optimizer=optimizer, model=model, optimizer_step=optimizer_step)
@@ -208,7 +208,7 @@ class CheckpointingTests(test.TestCase):
   @test_util.run_in_graph_and_eager_modes
   def testSaveRestore(self):
     model = MyModel()
-    optimizer = adam.AdamOptimizer(0.001)
+    optimizer = adam.Adam(0.001)
     root_checkpointable = util.Checkpoint(
         optimizer=optimizer, model=model)
     input_value = constant_op.constant([[3.]])
@@ -240,12 +240,12 @@ class CheckpointingTests(test.TestCase):
     if not context.executing_eagerly():
       return  # Restore-on-create is only supported when executing eagerly
     on_create_model = MyModel()
-    on_create_optimizer = adam.AdamOptimizer(
+    on_create_optimizer = adam.Adam(
         0.001,
         # Preserve beta_1_power and beta_2_power when appying gradients
         # so we can test that they've been restored correctly.
-        beta1=1.0,
-        beta2=1.0)
+        beta_1=1.0,
+        beta_2=1.0)
     on_create_root = util.Checkpoint(
         optimizer=on_create_optimizer, model=on_create_model)
     # Deferred restoration
@@ -277,7 +277,7 @@ class CheckpointingTests(test.TestCase):
     checkpoint_prefix = os.path.join(checkpoint_directory, "ckpt")
     for training_continuation in range(3):
       model = MyModel()
-      optimizer = adam.AdamOptimizer(0.001)
+      optimizer = adam.Adam(0.001)
       root = util.Checkpoint(
           optimizer=optimizer, model=model,
           optimizer_step=training_util.get_or_create_global_step())
@@ -302,7 +302,7 @@ class CheckpointingTests(test.TestCase):
       for training_continuation in range(3):
         with ops.Graph().as_default():
           model = MyModel()
-          optimizer = adam.AdamOptimizer(0.001)
+          optimizer = adam.Adam(0.001)
           root = util.Checkpoint(
               optimizer=optimizer, model=model,
               global_step=training_util.get_or_create_global_step())
@@ -337,10 +337,10 @@ class CheckpointingTests(test.TestCase):
     checkpoint_directory = self.get_temp_dir()
     checkpoint_prefix = os.path.join(checkpoint_directory, "ckpt")
     for training_continuation in range(3):
-      with ops.Graph().as_default(), self.session(
+      with ops.Graph().as_default(), self.test_session(
           graph=ops.get_default_graph()), test_util.device(use_gpu=True):
         model = MyModel()
-        optimizer = adam.AdamOptimizer(0.001)
+        optimizer = adam.Adam(0.001)
         root = util.Checkpoint(
             optimizer=optimizer, model=model,
             global_step=training_util.get_or_create_global_step())
@@ -370,11 +370,11 @@ class CheckpointingTests(test.TestCase):
     checkpoint_directory = self.get_temp_dir()
     checkpoint_prefix = os.path.join(checkpoint_directory, "ckpt")
     for training_continuation in range(3):
-      with ops.Graph().as_default(), self.session(
+      with ops.Graph().as_default(), self.test_session(
           graph=ops.get_default_graph()), test_util.device(use_gpu=True):
         model = MyModel()
         # Don't actually train so we can test variable values
-        optimizer = adam.AdamOptimizer(0.)
+        optimizer = adam.Adam(0.)
         root = util.Checkpoint(
             optimizer=optimizer, model=model,
             global_step=training_util.get_or_create_global_step())
@@ -423,7 +423,7 @@ class CheckpointingTests(test.TestCase):
 
     with context.eager_mode():
       model = Model()
-      optimizer = adam.AdamOptimizer(learning_rate=0.05)
+      optimizer = adam.Adam(learning_rate=0.05)
       checkpoint_directory = self.get_temp_dir()
       checkpoint_prefix = os.path.join(checkpoint_directory, "ckpt")
       checkpoint = util.Checkpoint(
@@ -444,7 +444,7 @@ class CheckpointingTests(test.TestCase):
     root = tracking.Checkpointable()
     root.var = util.add_variable(
         root, name="var", initializer=0.)
-    optimizer = adam.AdamOptimizer(0.1)
+    optimizer = adam.Adam(0.1)
     if context.executing_eagerly():
       optimizer.minimize(root.var.read_value)
     else:
@@ -478,7 +478,7 @@ class CheckpointingTests(test.TestCase):
     no_slot_status.assert_consumed()
     no_slot_status.run_restore_ops()
     self.assertEqual(12., self.evaluate(new_root.var))
-    new_root.optimizer = adam.AdamOptimizer(0.1)
+    new_root.optimizer = adam.Adam(0.1)
     with self.assertRaisesRegexp(AssertionError, "beta_1_power"):
       slot_status.assert_consumed()
     self.assertEqual(12., self.evaluate(new_root.var))
@@ -511,7 +511,7 @@ class CheckpointingTests(test.TestCase):
         checkpoint_prefix = os.path.join(checkpoint_directory, "ckpt")
         obj = tracking.Checkpointable()
         obj.var = variable_scope.get_variable(name="v", initializer=0.)
-        obj.opt = adam.AdamOptimizer(0.1)
+        obj.opt = adam.Adam(0.1)
         obj.opt.minimize(obj.var.read_value())
         self.evaluate(util.gather_initializers(obj))
         saver = util.CheckpointableSaver(obj)
@@ -529,7 +529,7 @@ class CheckpointingTests(test.TestCase):
         checkpoint_prefix = os.path.join(checkpoint_directory, "ckpt")
         obj = tracking.Checkpointable()
         obj.var = variable_scope.get_variable(name="v", initializer=0.)
-        obj.opt = adam.AdamOptimizer(0.1)
+        obj.opt = adam.Adam(0.1)
         obj.opt.minimize(obj.var.read_value())
         self.evaluate(util.gather_initializers(obj))
         saver = util.CheckpointableSaver(obj)
@@ -543,7 +543,7 @@ class CheckpointingTests(test.TestCase):
     with context.graph_mode():
       checkpoint_directory = self.get_temp_dir()
       checkpoint_prefix = os.path.join(checkpoint_directory, "ckpt")
-      optimizer = adam.AdamOptimizer(0.001)
+      optimizer = adam.Adam(0.001)
       # Construct a model in one graph
       first_graph = ops.Graph()
       first_session = session_lib.Session(graph=first_graph)
@@ -614,7 +614,7 @@ class TemplateTests(test.TestCase):
 
     save_template = template.make_template("s1", _templated)
     v1_save, _, v2_save = save_template()
-    optimizer = adam.AdamOptimizer(0.0)
+    optimizer = adam.Adam(0.0)
     save_root = util.Checkpoint(
         my_template=save_template, optimizer=optimizer)
     optimizer.minimize(v1_save.read_value)
@@ -626,7 +626,7 @@ class TemplateTests(test.TestCase):
     save_path = save_root.save(checkpoint_prefix)
 
     load_template = template.make_template("s2", _templated)
-    load_optimizer = adam.AdamOptimizer(0.0)
+    load_optimizer = adam.Adam(0.0)
     load_root = util.Checkpoint(
         my_template=load_template, optimizer=load_optimizer)
     status = load_root.restore(save_path)
@@ -646,7 +646,7 @@ class CheckpointCompatibilityTests(test.TestCase):
   def _initialized_model(self):
     input_value = constant_op.constant([[3.]])
     model = MyModel()
-    optimizer = adam.AdamOptimizer(0.001)
+    optimizer = adam.Adam(0.001)
     optimizer_step = training_util.get_or_create_global_step()
     root_checkpointable = util.Checkpoint(
         optimizer=optimizer, model=model, optimizer_step=optimizer_step)
@@ -688,7 +688,7 @@ class CheckpointCompatibilityTests(test.TestCase):
     checkpoint_prefix = os.path.join(checkpoint_directory, "ckpt")
     with context.graph_mode():
       save_graph = ops.Graph()
-      with save_graph.as_default(), self.session(
+      with save_graph.as_default(), self.test_session(
           graph=save_graph) as session:
         root = self._initialized_model()
         name_saver = core_saver.Saver()
@@ -733,7 +733,7 @@ class CheckpointCompatibilityTests(test.TestCase):
     checkpoint_prefix = os.path.join(checkpoint_directory, "ckpt")
     with context.graph_mode():
       save_graph = ops.Graph()
-      with save_graph.as_default(), self.session(
+      with save_graph.as_default(), self.test_session(
           graph=save_graph) as session:
         root = self._initialized_model()
         save_path = root.save(
@@ -752,8 +752,7 @@ class CheckpointCompatibilityTests(test.TestCase):
       save_path = root.save(file_prefix=checkpoint_prefix)
     with context.graph_mode():
       save_graph = ops.Graph()
-      with save_graph.as_default(), self.session(
-          graph=save_graph):
+      with save_graph.as_default(), self.test_session(graph=save_graph):
         root = self._initialized_model()
         self._set_sentinels(root)
         root.restore(save_path).assert_consumed().run_restore_ops()
