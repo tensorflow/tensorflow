@@ -975,8 +975,6 @@ Status GraphConstructor::Convert() {
       node_def = &original_node_def;
     }
 
-
-
     DCHECK_EQ(node_def->input_size(), input_already_exists.size());
     TF_RETURN_IF_ERROR(ValidateColocationConstraints(*node_def));
     for (int i = 0; i < node_def->input_size(); ++i) {
