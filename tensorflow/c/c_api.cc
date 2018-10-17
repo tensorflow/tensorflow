@@ -2806,40 +2806,37 @@ TF_Buffer* TF_GetRegisteredKernelsForOp(const char* name, TF_Status* status) {
 
 // TF_Server functions ----------------------------------------------
 
-TF_Server::TF_Server(tensorflow::ServerInterface* server) : server(server) {}
+TF_Server::TF_Server(std::unique_ptr<tensorflow::ServerInterface> server)
+    : server(std::move(server)) {}
 
 TF_Server* TF_NewServer(const void* proto, size_t proto_len,
                         TF_Status* status) {
   tensorflow::ServerDef server_def;
   if (!server_def.ParseFromArray(proto, static_cast<int>(proto_len))) {
-    status->status = InvalidArgument("Unparseable ServerDef");
+    status->status = InvalidArgument(
+        "Could not parse provided bytes into a ServerDef protocol buffer");
     return nullptr;
   }
 
-  auto out_server = new std::unique_ptr<tensorflow::ServerInterface>();
-  status->status = tensorflow::NewServer(server_def, out_server);
+  std::unique_ptr<tensorflow::ServerInterface> out_server;
+  status->status = tensorflow::NewServer(server_def, &out_server);
   if (!status->status.ok()) return nullptr;
 
-  return new TF_Server(out_server->release());
+  return new TF_Server(std::move(out_server));
 }
 
-void TF_StartServer(TF_Server* server, TF_Status* status) {
+void TF_ServerStart(TF_Server* server, TF_Status* status) {
   status->status = server->server->Start();
 }
 
-void TF_StopServer(TF_Server* server, TF_Status* status) {
+void TF_ServerStop(TF_Server* server, TF_Status* status) {
   status->status = server->server->Stop();
 }
 
-void TF_JoinServer(TF_Server* server, TF_Status* status) {
+void TF_ServerJoin(TF_Server* server, TF_Status* status) {
   status->status = server->server->Join();
 }
 
-void TF_DeleteServer(TF_Server* server) {
-  if (server != nullptr) {
-    if (server->server != nullptr) delete server->server;
-    delete server;
-  }
-}
+void TF_DeleteServer(TF_Server* server) { delete server; }
 
 }  // end extern "C"

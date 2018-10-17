@@ -28,6 +28,7 @@ limitations under the License.
 #include "tensorflow/core/framework/op_gen_lib.h"
 #endif
 #include "tensorflow/core/common_runtime/shape_refiner.h"
+#include "tensorflow/core/distributed_runtime/server_lib.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/graph/graph.h"
@@ -37,7 +38,6 @@ limitations under the License.
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/public/session.h"
-#include "tensorflow/core/distributed_runtime/server_lib.h"
 
 namespace tensorflow {
 class Device;
@@ -181,9 +181,9 @@ struct TF_ApiDefMap {
 };
 
 struct TF_Server {
-  TF_Server(tensorflow::ServerInterface* server);
+  TF_Server(std::unique_ptr<tensorflow::ServerInterface> server);
 
-  tensorflow::ServerInterface* server;
+  std::unique_ptr<tensorflow::ServerInterface> server;
 };
 
 namespace tensorflow {

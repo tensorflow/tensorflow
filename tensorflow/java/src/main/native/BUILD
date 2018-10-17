@@ -43,7 +43,6 @@ tf_cuda_library(
             "//tensorflow/core:all_kernels",
             "//tensorflow/core:direct_session",
             "//tensorflow/core:ops",
-            "//tensorflow/core/distributed_runtime/rpc:grpc_server_lib",
         ],
     }),
     alwayslink = 1,

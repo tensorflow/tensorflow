@@ -382,6 +382,7 @@ tf_cc_binary(
     linkstatic = 1,
     deps = [
         "//tensorflow/java/src/main/native",
+        "//tensorflow/core/distributed_runtime/rpc:grpc_server_lib",
         LINKER_VERSION_SCRIPT,
         LINKER_EXPORTED_SYMBOLS,
     ],

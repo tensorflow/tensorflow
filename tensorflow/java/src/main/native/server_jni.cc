@@ -29,44 +29,76 @@ JNIEXPORT jlong JNICALL Java_org_tensorflow_Server_allocate(
       status);
 
   env->ReleaseByteArrayElements(server_def, server_def_ptr, JNI_ABORT);
-  throwExceptionIfNotOK(env, status);
+  bool ok = throwExceptionIfNotOK(env, status);
 
-  return reinterpret_cast<jlong>(server);
+  TF_DeleteStatus(status);
+
+  return ok ? reinterpret_cast<jlong>(server) : 0;
 }
 
 JNIEXPORT void JNICALL Java_org_tensorflow_Server_start(JNIEnv* env,
                                                         jclass clazz,
                                                         jlong handle) {
+  if (handle == 0) {
+    throwException(env, kIllegalStateException,
+                   "close() has been called on the Server");
+    return;
+  }
+
   TF_Status* status = TF_NewStatus();
   TF_Server* server = reinterpret_cast<TF_Server*>(handle);
 
-  TF_StartServer(server, status);
+  TF_ServerStart(server, status);
   throwExceptionIfNotOK(env, status);
+
+  TF_DeleteStatus(status);
 }
 
 JNIEXPORT void JNICALL Java_org_tensorflow_Server_stop(JNIEnv* env,
                                                        jclass clazz,
                                                        jlong handle) {
+  if (handle == 0) {
+    throwException(env, kIllegalStateException,
+                   "close() has been called on the Server");
+    return;
+  }
+
   TF_Status* status = TF_NewStatus();
   TF_Server* server = reinterpret_cast<TF_Server*>(handle);
 
-  TF_StopServer(server, status);
+  TF_ServerStop(server, status);
   throwExceptionIfNotOK(env, status);
+
+  TF_DeleteStatus(status);
 }
 
 JNIEXPORT void JNICALL Java_org_tensorflow_Server_join(JNIEnv* env,
                                                        jclass clazz,
                                                        jlong handle) {
+  if (handle == 0) {
+    throwException(env, kIllegalStateException,
+                   "close() has been called on the Server");
+    return;
+  }
+
   TF_Status* status = TF_NewStatus();
   TF_Server* server = reinterpret_cast<TF_Server*>(handle);
 
-  TF_JoinServer(server, status);
+  TF_ServerJoin(server, status);
   throwExceptionIfNotOK(env, status);
+
+  TF_DeleteStatus(status);
 }
 
 JNIEXPORT void JNICALL Java_org_tensorflow_Server_delete(JNIEnv* env,
                                                          jclass clazz,
                                                          jlong handle) {
+  if (handle == 0) {
+    throwException(env, kIllegalStateException,
+                   "close() has been called on the Server");
+    return;
+  }
+  
   TF_Server* server = reinterpret_cast<TF_Server*>(handle);
 
   TF_DeleteServer(server);
