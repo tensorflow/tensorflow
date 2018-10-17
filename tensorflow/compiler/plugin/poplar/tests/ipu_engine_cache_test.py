@@ -27,7 +27,8 @@ class IpuEngineCacheTest(test_util.TensorFlowTestCase):
 
         opts = config_pb2.IPUOptions()
         opts.ipu_model_config.enable_ipu_model = True
-        opts.engine_cache_directory = cache_dir
+
+        os.environ['TF_POPLAR_ENGINE_CACHE'] = cache_dir
 
         with session_lib.Session(
                 config=config_pb2.ConfigProto(ipu_options=opts)) as sess:
