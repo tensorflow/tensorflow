@@ -19,7 +19,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import re
+import enum
 import sys
 from google.protobuf import message
 from tensorflow.python.platform import tf_logging as logging
@@ -32,60 +32,44 @@ _CORNER_CASES = {
     '': {'tools': {}},
     'test.TestCase': {},
     'test.TestCase.failureException': {},
+    'train.NanLossDuringTrainingError': {'message': {}},
 }
 
 
 # Python 2 vs. 3 differences
 if sys.version_info.major == 3:
-  _CODE_ATTR = '__code__'
-  _CLASS_TO_TYPE = {}
+  _NORMALIZE_TYPE = {}
   for t in ('property', 'object', 'getset_descriptor', 'int', 'str', 'type',
             'tuple', 'module', 'collections.defaultdict', 'set', 'dict',
             'NoneType', 'frozenset'):
-    _CLASS_TO_TYPE["<class '%s'>" % t] = "<type '%s'>" % t
+    _NORMALIZE_TYPE["<class '%s'>" % t] = "<type '%s'>" % t
   for e in 'Exception', 'RuntimeError':
-    _CLASS_TO_TYPE["<class '%s'>" % e] = "<type 'exceptions.%s'>" % e
+    _NORMALIZE_TYPE["<class '%s'>" % e] = "<type 'exceptions.%s'>" % e
+  _NORMALIZE_TYPE["<class 'abc.ABCMeta'>"] = "<type 'type'>"
   _NORMALIZE_ISINSTANCE = {
-      "<class 'tensorflow.python.training.monitored_session._MonitoredSession.StepContext'>":
+      "<class 'tensorflow.python.training.monitored_session._MonitoredSession.StepContext'>":  # pylint: disable=line-too-long
           "<class 'tensorflow.python.training.monitored_session.StepContext'>",
       "<class 'tensorflow.python.ops.variables.Variable.SaveSliceInfo'>":
           "<class 'tensorflow.python.ops.variables.SaveSliceInfo'>"}
 
-  def _normalize_type(ty):
-    return _CLASS_TO_TYPE.get(ty, ty)
-
-  def _normalize_isinstance(ty):
-    return _NORMALIZE_ISINSTANCE.get(ty, ty)
-
   def _skip_member(cls, member):
-    if member == 'with_traceback':
-      return True
-    if (cls in ('VariableSynchronization', 'UnconnectedGradients', 'VariableAggregation') and
-        member in ('name', 'value')):
-      return True
-
-  def normalize_proto(proto):
-    for kind in 'tf_module', 'tf_class':
-      if proto.HasField(kind):
-        for member in getattr(proto, kind).member:
-          if member.mtype == "<class 'abc.ABCMeta'>":
-            member.mtype = "<type 'type'>"
-        if proto.path == 'tensorflow.train.NanLossDuringTrainingError':
-          del proto.tf_class.member[1]
+    return (member == 'with_traceback' or
+            member in ('name', 'value') and isinstance(cls, type) and
+            issubclass(cls, enum.Enum))
 else:
-  _CODE_ATTR = 'func_code'
-
-  def _normalize_type(ty):
-    return ty
-
-  def _normalize_isinstance(ty):
-    return ty
+  _NORMALIZE_TYPE = {"<class 'abc.ABCMeta'>": "<type 'type'>"}
+  _NORMALIZE_ISINSTANCE = {}
 
   def _skip_member(cls, member):
     return False
 
-  def normalize_proto(proto):
-    pass
+
+def _normalize_type(ty):
+  return _NORMALIZE_TYPE.get(ty, ty)
+
+
+def _normalize_isinstance(ty):
+  return _NORMALIZE_ISINSTANCE.get(ty, ty)
 
 
 def _SanitizedArgSpec(obj):
@@ -185,7 +169,7 @@ class PythonObjectToProtoVisitor(object):
     def _AddMember(member_name, member_obj, proto):
       """Add the child object to the object being constructed."""
       _, member_obj = tf_decorator.unwrap(member_obj)
-      if _skip_member(parent.__name__, member_name):
+      if _skip_member(parent, member_name):
         return
       if member_name == '__init__' or not member_name.startswith('_'):
         if tf_inspect.isroutine(member_obj):
@@ -194,7 +178,7 @@ class PythonObjectToProtoVisitor(object):
           # If member_obj is a python builtin, there is no way to get its
           # argspec, because it is implemented on the C side. It also has no
           # func_code.
-          if hasattr(member_obj, _CODE_ATTR):
+          if hasattr(member_obj, '__code__'):
             new_method.argspec = _SanitizedArgSpec(member_obj)
         else:
           new_member = proto.member.add()
@@ -229,7 +213,8 @@ class PythonObjectToProtoVisitor(object):
       elif tf_inspect.isclass(parent):
         # Construct a class.
         class_obj = api_objects_pb2.TFAPIClass()
-        class_obj.is_instance.extend(_normalize_isinstance(i) for i in _SanitizedMRO(parent))
+        class_obj.is_instance.extend(
+            _normalize_isinstance(i) for i in _SanitizedMRO(parent))
         for name, child in children:
           if name in parent_corner_cases:
             # If we have an empty entry, skip this object.
