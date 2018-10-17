@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/framework/op_kernel.h"
 
+#include <mutex>
 #include <unordered_map>
 #include <utility>
 #include <vector>
@@ -38,6 +39,7 @@ limitations under the License.
 #include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
+#include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/types.h"
@@ -924,12 +926,52 @@ struct KernelRegistration {
 // KernelDef.
 typedef std::unordered_multimap<string, KernelRegistration> KernelRegistry;
 
+#if defined(_WIN32)
+static const char kKernelLibPattern[] = "libtfkernel*.dll";
+#elif defined(__APPLE__)
+static const char kKernelLibPattern[] = "libtfkernel*.dylib";
+#else
+static const char kKernelLibPattern[] = "libtfkernel*.so";
+#endif
+
+void LoadDynamicKernelsInternal() {
+  Env* env = Env::Default();
+  string bazel_kernel_dir = io::JoinPath(env->GetRunfilesDir(),
+                                         "tensorflow",
+                                         "core",
+                                         "kernels");
+  std::vector<string> files;
+  Status s_kernel_dir = env->GetChildren(bazel_kernel_dir, &files);
+  if (s_kernel_dir.ok()) {
+    string dll_spec = io::JoinPath(bazel_kernel_dir, kKernelLibPattern);
+    for (const auto&  file : files) {
+      string fullpath =  io::JoinPath(bazel_kernel_dir, file);
+      if (env->MatchPath(fullpath, dll_spec)) {
+        // TODO(gunan): Store the handles to the opened files.
+        void* unused_filehandle;
+        TF_CHECK_OK(env->LoadLibrary(fullpath.c_str(), &unused_filehandle));
+      }
+    }
+  }
+}
+
+// Mechanism for loading existing kernel libraries.
+void LoadDynamicKernels() {
+  // TODO(gunan): As more features are available, add intelligent kernel
+  // selection, and dropping unsuitable kernel logic here.
+  static std::once_flag dll_loader_flag;
+  std::call_once(dll_loader_flag, LoadDynamicKernelsInternal);
+}
+
 void* GlobalKernelRegistry() {
   static KernelRegistry* global_kernel_registry = new KernelRegistry;
   return global_kernel_registry;
 }
 
 static KernelRegistry* GlobalKernelRegistryTyped() {
+#ifdef AUTOLOAD_DYNAMIC_KERNELS
+  LoadDynamicKernels();
+#endif  // AUTOLOAD_DYNAMIC_KERNELS
   return reinterpret_cast<KernelRegistry*>(GlobalKernelRegistry());
 }
 
@@ -949,8 +991,17 @@ void OpKernelRegistrar::InitInternal(const KernelDef* kernel_def,
     const string key =
         Key(kernel_def->op(), DeviceType(kernel_def->device_type()),
             kernel_def->label());
-    GlobalKernelRegistryTyped()->insert(std::make_pair(
-        key, KernelRegistration(*kernel_def, kernel_class_name, factory)));
+
+    // To avoid calling LoadDynamicKernels DO NOT CALL GlobalKernelRegistryTyped
+    // here.
+    // InitInternal gets called by static initializers, so it ends up executing
+    // before main. This causes LoadKernelLibraries function to get called
+    // before some file libraries can initialize, which in turn crashes the
+    // program flakily. Until we get rid of static initializers in kernel
+    // registration mechanism, we have this workaround here.
+    reinterpret_cast<KernelRegistry*>(GlobalKernelRegistry())
+        ->insert(std::make_pair(
+            key, KernelRegistration(*kernel_def, kernel_class_name, factory)));
   }
   delete kernel_def;
 }
