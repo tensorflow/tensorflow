@@ -31,7 +31,6 @@ import argparse
 import os
 import re
 import sys
-import unittest
 
 import tensorflow as tf
 from tensorflow._api import v2 as tf_v2
@@ -299,7 +298,6 @@ class ApiCompatibilityTest(test.TestCase):
       """Read a filename, create a protobuf from its contents."""
       ret_val = api_objects_pb2.TFAPIObject()
       text_format.Merge(file_io.read_file_to_string(filename), ret_val)
-      python_object_to_proto_visitor.normalize_proto(ret_val)
       return ret_val
 
     golden_proto_dict = {
