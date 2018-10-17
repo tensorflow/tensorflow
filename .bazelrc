@@ -93,3 +93,4 @@ build --define=LIBDIR=$(PREFIX)/lib
 build --define=INCLUDEDIR=$(PREFIX)/include
 
 # Do not commit the tf_configure.bazelrc line
+import %workspace%/.tf_configure.bazelrc
