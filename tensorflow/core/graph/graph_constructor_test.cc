@@ -3205,6 +3205,30 @@ TEST_F(GraphConstructorTest, ImportGraphDef_ValidateColationConstraints) {
   TF_EXPECT_OK(ImportGraphDef(options, def, &graph_, nullptr));
 }
 
+TEST_F(GraphConstructorTest, ImportGraphDef_ValidateDefaultDevice) {
+  std::string gdef_ascii(
+      R"EOF(
+      node { name: 'test_input' op: 'TestInput' }
+      node { name: 'test_op' op: 'TestMul' input: [ 'test_input:0', 'test_input:1' ] }
+      )EOF");
+
+  GraphDef gdef;
+  CHECK(protobuf::TextFormat::ParseFromString(gdef_ascii, &gdef));
+
+  ImportGraphDefOptions options;
+  std::string dev = "/gpu:13";
+  options.default_device = dev;
+  options.return_nodes = std::vector<std::string>{"test_input", "test_op"};
+
+  ImportGraphDefResults res;
+
+  TF_EXPECT_OK(ImportGraphDef(options, gdef, &graph_, NULL, &res));
+  EXPECT_EQ(res.return_nodes.size(), options.return_nodes.size());
+  for (auto node: res.return_nodes) {
+    EXPECT_EQ(node->requested_device(), dev);
+  }
+}
+
 TEST_F(GraphConstructorTest, ImportGraphDef_UnknownOps) {
   const string pb_ascii = "node { name: 'op_from_contrib' op: 'OpFromContrib'}";
   // Try load twice to check for two parts of the error message. We cannot check
