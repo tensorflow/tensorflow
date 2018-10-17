@@ -27,12 +27,42 @@ limitations under the License.
 
 namespace xla {
 
-Status ShapeVerifier::Preprocess(HloInstruction* hlo) {
-  if (LayoutUtil::IsSparseArray(hlo->shape())) {
-    return InternalError("Sparse arrays are not yet fully supported: %s",
-                         hlo->ToString());
+Status VerifyNotSparse(const Shape& shape) {
+  return ShapeUtil::ForEachSubshapeWithStatus(
+      shape, [](const Shape& subshape, const ShapeIndex&) -> Status {
+        if (LayoutUtil::IsSparseArray(subshape)) {
+          return InternalError("Sparse arrays are not yet fully supported: %s",
+                               ShapeUtil::HumanStringWithLayout(subshape));
+        }
+        return Status::OK();
+      });
+}
+
+bool IsCallerInstruction(HloInstruction* hlo) {
+  switch (hlo->opcode()) {
+    case HloOpcode::kCall:
+    case HloOpcode::kConditional:
+    case HloOpcode::kWhile:
+    case HloOpcode::kCrossReplicaSum:
+    case HloOpcode::kMap:
+    case HloOpcode::kReduce:
+    case HloOpcode::kReduceWindow:
+    case HloOpcode::kScatter:
+    case HloOpcode::kSelectAndScatter:
+    case HloOpcode::kFusion:
+      return true;
+    default:
+      return false;
   }
-  return Status::OK();
+}
+
+Status ShapeVerifier::Preprocess(HloInstruction* hlo) {
+  if (!hlo->called_computations().empty() && !IsCallerInstruction(hlo)) {
+    return InternalError(
+        "Called computations specified for non-caller instruction  %s",
+        hlo->ToString());
+  }
+  return VerifyNotSparse(hlo->shape());
 }
 
 static Status CheckOperandCount(const HloInstruction* hlo, int expected) {
@@ -351,7 +381,7 @@ Status ShapeVerifier::HandleBroadcast(HloInstruction* broadcast) {
   // ShapeInference method. Check the output shape explicitly.
   const Shape& operand_shape = broadcast->operand(0)->shape();
   // Check for mixed precision.
-  TF_RETURN_IF_ERROR(CheckShape(broadcast, broadcast->shape()));
+  TF_RET_CHECK(SameElementType(broadcast->shape(), operand_shape));
   TF_RET_CHECK(ShapeUtil::Rank(operand_shape) ==
                broadcast->dimensions().size());
   for (int64 operand_dimension = 0;
@@ -369,9 +399,10 @@ Status ShapeVerifier::HandleBroadcast(HloInstruction* broadcast) {
 Status ShapeVerifier::HandleReshape(HloInstruction* reshape) {
   TF_RETURN_IF_ERROR(CheckOperandCount(reshape, 1));
   // Check for mixed precision.
-  TF_RETURN_IF_ERROR(CheckShape(reshape, reshape->shape()));
+  const Shape& operand_shape = reshape->operand(0)->shape();
+  TF_RET_CHECK(SameElementType(reshape->shape(), operand_shape));
   TF_RET_CHECK(ShapeUtil::ElementsIn(reshape->shape()) ==
-               ShapeUtil::ElementsIn(reshape->operand(0)->shape()));
+               ShapeUtil::ElementsIn(operand_shape));
   return Status::OK();
 }
 
@@ -902,11 +933,7 @@ Status CheckEntryComputationLayout(const HloModule& module) {
   TF_RETURN_IF_ERROR(
       ShapeUtil::ValidateShapeWithOptionalLayout(result_layout.shape()));
 
-  if (LayoutUtil::IsSparseArray(result_layout.shape())) {
-    return Unimplemented(
-        "Sparse arrays are not yet fully supported in program result shape: %s",
-        ShapeUtil::HumanStringWithLayout(result_layout.shape()));
-  }
+  TF_RETURN_IF_ERROR(VerifyNotSparse(result_layout.shape()));
 
   if (!ShapeUtil::Compatible(computation->root_instruction()->shape(),
                              result_layout.shape())) {
@@ -928,12 +955,7 @@ Status CheckEntryComputationLayout(const HloModule& module) {
     const HloInstruction* parameter = computation->parameter_instruction(i);
     TF_RETURN_IF_ERROR(
         ShapeUtil::ValidateShapeWithOptionalLayout(layout.parameter_shape(i)));
-    if (LayoutUtil::IsSparseArray(layout.parameter_shape(i))) {
-      return Unimplemented(
-          "Sparse arrays are not yet fully supported "
-          "in program parameter shape: %s",
-          ShapeUtil::HumanStringWithLayout(layout.parameter_shape(i)));
-    }
+    TF_RETURN_IF_ERROR(VerifyNotSparse(layout.parameter_shape(i)));
     if (!ShapeUtil::Compatible(parameter->shape(), layout.parameter_shape(i))) {
       return InternalError(
           "Shape of the entry computation parameter %d is %s should be "

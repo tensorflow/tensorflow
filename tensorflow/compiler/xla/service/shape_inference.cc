@@ -207,7 +207,7 @@ StatusOr<Shape> InferWindowOutputShape(const Shape& base_shape,
         padded_dilated_base, dilated_window, dim.stride());
   }
 
-  return ShapeUtil::MakeShape(element_type, output_dimensions);
+  return ShapeUtil::MakeValidatedShape(element_type, output_dimensions);
 }
 
 }  // namespace
@@ -1580,8 +1580,16 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
       dnums.kernel_spatial_dimensions_size()) {
     return InvalidArgument(
         "Both arguments to convolution must have same number of dimensions.\n"
-        "Window: %s",
-        window.DebugString());
+        "Numbers: %s",
+        dnums.DebugString());
+  }
+
+  if (dnums.input_spatial_dimensions_size() !=
+      dnums.output_spatial_dimensions_size()) {
+    return InvalidArgument(
+        "Both input and output of convolution must have same number of "
+        "dimensions.\nNumbers: %s",
+        dnums.DebugString());
   }
 
   const int num_spatial_dims = dnums.input_spatial_dimensions_size();
@@ -1600,8 +1608,8 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
   }
   if (ShapeUtil::Rank(rhs) != num_dims) {
     return InvalidArgument(
-        "The RHS argument to a convolution should have rank %d; lhs: %s.",
-        num_dims, ShapeUtil::HumanString(lhs));
+        "The RHS argument to a convolution should have rank %d; rhs: %s.",
+        num_dims, ShapeUtil::HumanString(rhs));
   }
   TF_DCHECK_OK(ShapeUtil::ValidateShapeWithOptionalLayout(lhs));
   TF_DCHECK_OK(ShapeUtil::ValidateShapeWithOptionalLayout(rhs));

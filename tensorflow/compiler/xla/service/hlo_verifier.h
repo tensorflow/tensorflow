@@ -123,6 +123,13 @@ class ShapeVerifier : public DfsHloVisitor {
                              : ShapeUtil::HumanString(s);
   }
 
+  // Helpers that switch on allow_mixed_precision_.
+  bool SameElementType(const Shape& a, const Shape& b) {
+    return allow_mixed_precision_
+               ? ShapeUtil::SameElementTypeIgnoringFpPrecision(a, b)
+               : ShapeUtil::SameElementType(a, b);
+  }
+
   // Checks that the given operand of the given instruction is of type TOKEN.
   Status CheckIsTokenOperand(const HloInstruction* instruction,
                              int64 operand_no);
