@@ -1307,14 +1307,11 @@ class PolymorphicFunction(object):
       except (ValueError, TypeError):
         raise ValueError("Structure of Python function inputs does not match "
                          "input_signature.")
-      if any(not isinstance(arg, ops.Tensor) for arg in flat_inputs):
+      if any(not pywrap_tensorflow.IsTensor(arg) for arg in flat_inputs):
         raise ValueError("When input_signature is provided, all inputs to "
                          "the Python function must be Tensors.")
-      tensor_specs = [
-          tensor_spec.TensorSpec.from_tensor(tensor) for tensor in flat_inputs
-      ]
       if any(not spec.is_compatible_with(other)
-             for spec, other in zip(self._flat_input_signature, tensor_specs)):
+             for spec, other in zip(self._flat_input_signature, flat_inputs)):
         raise ValueError("Python inputs incompatible with input_signature: "
                          "inputs (%s), input_signature (%s)" %
                          (str(inputs), str(self._input_signature)))
