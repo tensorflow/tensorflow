@@ -216,9 +216,14 @@ StatusOr<Shape> MakeShapeWithLayoutInternal(
 
 /* static */ Shape ShapeUtil::MakeShape(PrimitiveType element_type,
                                         absl::Span<const int64> dimensions) {
+  return MakeValidatedShape(element_type, dimensions).ValueOrDie();
+}
+
+/* static */ StatusOr<Shape> ShapeUtil::MakeValidatedShape(
+    PrimitiveType element_type, absl::Span<const int64> dimensions) {
   CHECK(IsArrayPrimitiveType(element_type));
   Shape result;
-  PopulateShape(element_type, dimensions, &result);
+  TF_RETURN_IF_ERROR(PopulateShape(element_type, dimensions, &result));
   return result;
 }
 
@@ -256,16 +261,16 @@ ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(
   return MakeShapeWithDescendingLayout(shape.element_type(), dims);
 }
 
-/* static */ void ShapeUtil::PopulateShape(PrimitiveType element_type,
-                                           absl::Span<const int64> dimensions,
-                                           Shape* shape) {
+/* static */ Status ShapeUtil::PopulateShape(PrimitiveType element_type,
+                                             absl::Span<const int64> dimensions,
+                                             Shape* shape) {
   shape->Clear();
   shape->set_element_type(element_type);
   for (int64 dimension : dimensions) {
     shape->add_dimensions(dimension);
   }
   LayoutUtil::SetToDefaultLayout(shape);
-  TF_DCHECK_OK(ValidateShape(*shape));
+  return ValidateShape(*shape);
 }
 
 /* static */ Shape ShapeUtil::MakeTupleShape(absl::Span<const Shape> shapes) {
@@ -786,6 +791,9 @@ StatusOr<Shape> ParseShapeStringInternal(absl::string_view* s) {
     return byte_size;
   } else if (shape.element_type() == TOKEN) {
     return 0;
+  } else if (shape.element_type() == OPAQUE) {
+    CHECK_GT(pointer_size, 0);
+    return pointer_size;
   }
   LOG(FATAL) << PrimitiveType_Name(shape.element_type())
              << " primitive type has no definitive size";
@@ -981,7 +989,7 @@ StatusOr<Shape> ParseShapeStringInternal(absl::string_view* s) {
                                           ShapeIndexView index) {
   const Shape* subshape = &shape;
   for (auto i : index) {
-    if (!IsTuple(*subshape) || i >= subshape->tuple_shapes_size()) {
+    if (!IsTuple(*subshape) || i >= subshape->tuple_shapes_size() || i < 0) {
       return false;
     }
     subshape = &subshape->tuple_shapes(i);
@@ -1609,7 +1617,11 @@ ShapeUtil::DimensionsUnmodifiedByReshape(const Shape& input_shape,
   Shape output_shape_with_layout = MakeShapeWithLayout(
       output_shape.element_type(), AsInt64Slice(output_shape.dimensions()),
       output_layout);
-  CHECK(ReshapeIsBitcast(input_shape, output_shape_with_layout));
+  CHECK(ReshapeIsBitcast(input_shape, output_shape_with_layout))
+      << "reshape is not a bitcast for input_shape: "
+      << ShapeUtil::HumanStringWithLayout(input_shape)
+      << " and output_shape_with_layout: "
+      << ShapeUtil::HumanStringWithLayout(output_shape_with_layout);
   return output_shape_with_layout;
 }
 
