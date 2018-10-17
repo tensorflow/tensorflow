@@ -32,7 +32,6 @@ cc_binary(
     deps = [
         ":benchmark_tflite_model_lib",
         ":logging",
-        "//tensorflow/contrib/lite/testing:init_tensorflow",
     ],
 )
 
