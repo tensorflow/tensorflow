@@ -31,6 +31,7 @@ limitations under the License.
 #include "tensorflow/stream_executor/lib/stringprintf.h"
 
 #include <poplar/Device.hpp>
+#include <poplar/DeviceManager.hpp>
 #include <poplar/Graph.hpp>
 
 namespace se = ::stream_executor;
@@ -39,8 +40,6 @@ namespace xla {
 namespace poplarplugin {
 
 PoplarPlatform::PoplarPlatform() : name_("Poplar") {
-  num_devices_ = 4;
-
   VLOG(1) << "Poplar version: " << poplar::versionString();
 }
 
@@ -48,7 +47,18 @@ PoplarPlatform::~PoplarPlatform() {}
 
 se::Platform::Id PoplarPlatform::id() const { return kPoplarPlatformId; }
 
-int PoplarPlatform::VisibleDeviceCount() const { return num_devices_; }
+int PoplarPlatform::VisibleDeviceCount() const {
+  poplar::DeviceManager device_mgr = poplar::DeviceManager::getDeviceManager();
+
+  int num_devices = device_mgr.getDevices(poplar::TargetType::IPU, 1).size();
+
+  if (num_devices == 0) {
+    // Allow for 2 virtual devices
+    num_devices = 2;
+  }
+
+  return num_devices;
+}
 
 const std::string& PoplarPlatform::Name() const { return name_; }
 
