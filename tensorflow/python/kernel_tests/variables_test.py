@@ -124,7 +124,7 @@ class VariablesTestCase(test.TestCase):
       self.assertAllClose(4.0, var.eval())
 
   def testResourceAssignments(self):
-    with self.test_session(use_gpu=True):
+    with self.session(use_gpu=True):
       var = resource_variable_ops.ResourceVariable(0.0)
       plus_one = var.assign_add(1.0)
       minus_one = var.assign_sub(2.0)

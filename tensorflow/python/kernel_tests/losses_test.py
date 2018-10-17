@@ -1348,7 +1348,7 @@ class ComputeWeightedLossTest(test.TestCase):
                 raw_losses, weights=np.ones(self._shape), reduction=reduction)
         )
         self.assertEqual(9, len(util.get_losses()))
-        with self.test_session(g):
+        with self.session(g):
           for unweighted_loss in unweighted_losses:
             if reduction == losses.Reduction.NONE:
               self.assertAllClose(self._raw_losses, unweighted_loss.eval())
@@ -1375,7 +1375,7 @@ class ComputeWeightedLossTest(test.TestCase):
                 raw_losses, weights=np.ones((1, 1, 4)), reduction=reduction),
         )
         self.assertEqual(3, len(util.get_losses()))
-        with self.test_session(g):
+        with self.session(g):
           for unweighted_loss in unweighted_losses:
             if reduction == losses.Reduction.NONE:
               self.assertAllClose(
@@ -1466,7 +1466,7 @@ class ComputeWeightedLossTest(test.TestCase):
         weighted_loss = losses.compute_weighted_loss(
             self._raw_losses, weights=weights, reduction=reduction)
         self.assertEqual(1, len(util.get_losses()))
-        with self.test_session(g):
+        with self.session(g):
           weighted_losses = weights * self._raw_losses
           weighted_sum = np.sum(weighted_losses)
           if reduction == losses.Reduction.NONE:

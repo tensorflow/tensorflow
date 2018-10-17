@@ -57,7 +57,7 @@ class AddNTest(test.TestCase):
 
   def testAddN(self):
     np.random.seed(12345)
-    with self.test_session(use_gpu=True) as sess:
+    with self.session(use_gpu=True) as sess:
       for dtype in self._supported_types():
         for count in range(1, self._MAX_N + 1):
           data = [self._buildData((2, 2), dtype) for _ in range(count)]
@@ -69,7 +69,7 @@ class AddNTest(test.TestCase):
 
   def testUnknownShapes(self):
     np.random.seed(12345)
-    with self.test_session(use_gpu=True) as sess:
+    with self.session(use_gpu=True) as sess:
       for dtype in self._supported_types():
         data = self._buildData((2, 2), dtype)
         for count in range(1, self._MAX_N + 1):
@@ -96,7 +96,7 @@ class AddNTest(test.TestCase):
 
     # TODO(ebrevdo): Re-enable use_gpu=True once non-DMA Variant
     # copying between CPU and GPU is supported.
-    with self.test_session(use_gpu=False):
+    with self.session(use_gpu=False):
       variant_const_3 = create_constant_variant(3)
       variant_const_4 = create_constant_variant(4)
       variant_const_5 = create_constant_variant(5)

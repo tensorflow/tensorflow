@@ -54,7 +54,7 @@ class CastOpTest(test.TestCase):
       return None
 
   def _cast(self, x, dtype, use_gpu=False):
-    with self.test_session(use_gpu=use_gpu):
+    with self.cached_session(use_gpu=use_gpu):
       val = constant_op.constant(x, self._toDataType(np.array([x]).dtype))
       return math_ops.cast(val, self._toDataType(dtype), name="cast").eval()
 
@@ -105,10 +105,10 @@ class CastOpTest(test.TestCase):
 
   def testBfloat16(self):
     a = np.random.uniform(-100, 100, 100).astype(np.float32)
-    with self.test_session(use_gpu=False):
+    with self.cached_session(use_gpu=False):
       b = math_ops.cast(math_ops.cast(a, dtypes.bfloat16), dtypes.float32)
       self.assertAllClose(a, b.eval(), rtol=1 / 128.)
-    with self.test_session(use_gpu=True):
+    with self.cached_session(use_gpu=True):
       b = math_ops.cast(math_ops.cast(a, dtypes.bfloat16), dtypes.float32)
       self.assertAllClose(a, b.eval(), rtol=1 / 128.)
 

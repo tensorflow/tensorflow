@@ -554,7 +554,7 @@ class RNNTest(test.TestCase):
     kernel, recurrent_kernel, bias = keras_weights
     tf_weights = [np.concatenate((kernel, recurrent_kernel)), bias]
 
-    with self.test_session(graph=ops_lib.Graph()) as sess:
+    with self.session(graph=ops_lib.Graph()) as sess:
       inputs = array_ops.placeholder(
           dtypes.float32, shape=(None, timestep, input_shape))
       cell = keras.layers.SimpleRNNCell(output_shape)
@@ -562,7 +562,7 @@ class RNNTest(test.TestCase):
           cell, inputs, dtype=dtypes.float32)
       cell.set_weights(keras_weights)
       [k_out, k_state] = sess.run([k_out, k_state], {inputs: x_train})
-    with self.test_session(graph=ops_lib.Graph()) as sess:
+    with self.session(graph=ops_lib.Graph()) as sess:
       inputs = array_ops.placeholder(
           dtypes.float32, shape=(None, timestep, input_shape))
       cell = rnn_cell_impl.BasicRNNCell(output_shape)

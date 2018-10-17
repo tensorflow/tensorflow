@@ -36,7 +36,7 @@ class AccumulateNV2Test(test_util.TensorFlowTestCase):
     np.random.seed(12345)
     x = [np.random.random((1, 2, 3, 4, 5)) - 0.5 for _ in range(5)]
     tf_x = ops.convert_n_to_tensor(x)
-    with self.test_session(use_gpu=True):
+    with self.session(use_gpu=True):
       self.assertAllClose(sum(x), math_ops.accumulate_n(tf_x).eval())
       self.assertAllClose(x[0] * 5,
                           math_ops.accumulate_n([tf_x[0]] * 5).eval())
@@ -45,13 +45,13 @@ class AccumulateNV2Test(test_util.TensorFlowTestCase):
     np.random.seed(54321)
     x = [np.random.randint(-128, 128, (5, 4, 3, 2, 1)) for _ in range(6)]
     tf_x = ops.convert_n_to_tensor(x)
-    with self.test_session(use_gpu=True):
+    with self.session(use_gpu=True):
       self.assertAllEqual(sum(x), math_ops.accumulate_n(tf_x).eval())
       self.assertAllEqual(x[0] * 6,
                           math_ops.accumulate_n([tf_x[0]] * 6).eval())
 
   def testUnknownShape(self):
-    with self.test_session(use_gpu=True):
+    with self.session(use_gpu=True):
       x0 = array_ops.placeholder(dtype=dtypes_lib.int32, shape=[None])
       acc = math_ops.accumulate_n([x0, x0], shape=[None])
       self.assertAllEqual([2, 4], acc.eval(feed_dict={x0: [1, 2]}))
@@ -59,7 +59,7 @@ class AccumulateNV2Test(test_util.TensorFlowTestCase):
   def testGrad(self):
     np.random.seed(42)
     for num_inputs in range(1, 10):
-      with self.test_session(use_gpu=True) as sess:
+      with self.cached_session(use_gpu=True) as sess:
         input_vars = [
             variables.Variable(10.0 * np.random.random())
             for _ in range(0, num_inputs)
