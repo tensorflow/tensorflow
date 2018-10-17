@@ -85,6 +85,10 @@ BLACKLIST = [
     # contrib
     "//tensorflow/contrib/session_bundle:session_bundle_half_plus_two",
     "//tensorflow/contrib/keras:testing_utils",
+    "//tensorflow/contrib/lite/experimental/examples/lstm:tflite_lstm",
+    "//tensorflow/contrib/lite/experimental/examples/lstm:tflite_lstm.py",
+    "//tensorflow/contrib/lite/experimental/examples/lstm:unidirectional_sequence_lstm_test",  # pylint:disable=line-too-long
+    "//tensorflow/contrib/lite/experimental/examples/lstm:unidirectional_sequence_lstm_test.py",  # pylint:disable=line-too-long
     "//tensorflow/contrib/lite/python:interpreter",
     "//tensorflow/contrib/lite/python:interpreter_test",
     "//tensorflow/contrib/lite/python:interpreter.py",
@@ -142,7 +146,7 @@ def main():
 
   missing_dependencies = []
   # File extensions and endings to ignore
-  ignore_extensions = ["_test", "_test.py", "_test_gpu", "_test_gpu.py"]
+  ignore_extensions = ["_test", "_test.py"]
 
   ignored_files = 0
   blacklisted_files = len(BLACKLIST)

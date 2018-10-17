@@ -739,7 +739,8 @@ def test_loop(model, inputs, targets,
       y=targets,
       sample_weights=sample_weights,
       batch_size=batch_size,
-      steps_per_epoch=steps)
+      steps_per_epoch=steps,
+      is_validation=True)
   with backend.learning_phase_scope(0):
     return iterator_test_loop(model, inputs, steps, verbose=verbose)
 

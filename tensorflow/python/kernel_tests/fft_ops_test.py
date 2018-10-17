@@ -68,12 +68,12 @@ class BaseFFTOpsTest(test.TestCase):
   def _checkMemoryFail(self, x, rank):
     config = config_pb2.ConfigProto()
     config.gpu_options.per_process_gpu_memory_fraction = 1e-2
-    with self.test_session(config=config, force_gpu=True):
+    with self.cached_session(config=config, force_gpu=True):
       self._tfFFT(x, rank, fft_length=None)
 
   def _checkGradComplex(self, func, x, y, result_is_complex=True,
                         rtol=1e-2, atol=1e-2):
-    with self.test_session(use_gpu=True):
+    with self.cached_session(use_gpu=True):
       inx = ops.convert_to_tensor(x)
       iny = ops.convert_to_tensor(y)
       # func is a forward or inverse, real or complex, batched or unbatched FFT
@@ -93,7 +93,7 @@ class BaseFFTOpsTest(test.TestCase):
     self.assertAllClose(y_jacob_t, y_jacob_n, rtol=rtol, atol=atol)
 
   def _checkGradReal(self, func, x, rtol=1e-2, atol=1e-2):
-    with self.test_session(use_gpu=True):
+    with self.cached_session(use_gpu=True):
       inx = ops.convert_to_tensor(x)
       # func is a forward RFFT function (batched or unbatched).
       z = func(inx)
@@ -109,12 +109,12 @@ class FFTOpsTest(BaseFFTOpsTest):
 
   def _tfFFT(self, x, rank, fft_length=None, feed_dict=None):
     # fft_length unused for complex FFTs.
-    with self.test_session(use_gpu=True):
+    with self.cached_session(use_gpu=True):
       return self._tfFFTForRank(rank)(x).eval(feed_dict=feed_dict)
 
   def _tfIFFT(self, x, rank, fft_length=None, feed_dict=None):
     # fft_length unused for complex FFTs.
-    with self.test_session(use_gpu=True):
+    with self.cached_session(use_gpu=True):
       return self._tfIFFTForRank(rank)(x).eval(feed_dict=feed_dict)
 
   def _npFFT(self, x, rank, fft_length=None):
@@ -283,11 +283,11 @@ class RFFTOpsTest(BaseFFTOpsTest):
                                               use_placeholder)
 
   def _tfFFT(self, x, rank, fft_length=None, feed_dict=None):
-    with self.test_session(use_gpu=True):
+    with self.cached_session(use_gpu=True):
       return self._tfFFTForRank(rank)(x, fft_length).eval(feed_dict=feed_dict)
 
   def _tfIFFT(self, x, rank, fft_length=None, feed_dict=None):
-    with self.test_session(use_gpu=True):
+    with self.cached_session(use_gpu=True):
       return self._tfIFFTForRank(rank)(x, fft_length).eval(feed_dict=feed_dict)
 
   def _npFFT(self, x, rank, fft_length=None):

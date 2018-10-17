@@ -81,7 +81,7 @@ class SpectralOpsTest(test.TestCase):
 
   def _compare(self, signal, frame_length, frame_step, fft_length):
     with spectral_ops_test_util.fft_kernel_label_map(), (
-        self.test_session(use_gpu=True)) as sess:
+        self.cached_session(use_gpu=True)) as sess:
       actual_stft = spectral_ops.stft(
           signal, frame_length, frame_step, fft_length, pad_end=False)
       signal_ph = array_ops.placeholder(dtype=dtypes.as_dtype(signal.dtype))
@@ -117,7 +117,7 @@ class SpectralOpsTest(test.TestCase):
 
   def test_shapes(self):
     with spectral_ops_test_util.fft_kernel_label_map(), (
-        self.test_session(use_gpu=True)):
+        self.session(use_gpu=True)):
       signal = np.zeros((512,)).astype(np.float32)
 
       # If fft_length is not provided, the smallest enclosing power of 2 of
@@ -188,7 +188,7 @@ class SpectralOpsTest(test.TestCase):
       signal = random_ops.random_normal([signal_length])
 
       with spectral_ops_test_util.fft_kernel_label_map(), (
-          self.test_session(use_gpu=True)) as sess:
+          self.cached_session(use_gpu=True)) as sess:
         stft = spectral_ops.stft(signal, frame_length, frame_step, fft_length,
                                  pad_end=False)
         inverse_stft = spectral_ops.inverse_stft(stft, frame_length, frame_step,
@@ -234,7 +234,7 @@ class SpectralOpsTest(test.TestCase):
       inverse_window_fn = spectral_ops.inverse_stft_window_fn(frame_step)
       inverse_window = inverse_window_fn(frame_length, dtype=dtypes.float32)
 
-      with self.test_session(use_gpu=True) as sess:
+      with self.cached_session(use_gpu=True) as sess:
         hann_window, inverse_window = sess.run([hann_window, inverse_window])
 
       # Expect unit gain at each phase of the window.
@@ -262,7 +262,7 @@ class SpectralOpsTest(test.TestCase):
       inverse_window_fn = spectral_ops.inverse_stft_window_fn(frame_step)
       inverse_window = inverse_window_fn(frame_length, dtype=dtypes.float32)
 
-      with self.test_session(use_gpu=True) as sess:
+      with self.cached_session(use_gpu=True) as sess:
         hann_window, inverse_window = sess.run([hann_window, inverse_window])
 
       self.assertAllClose(hann_window, inverse_window * 1.5)
@@ -279,7 +279,7 @@ class SpectralOpsTest(test.TestCase):
   def test_gradients(self):
     """Test that spectral_ops.stft has a working gradient."""
     with spectral_ops_test_util.fft_kernel_label_map(), (
-        self.test_session(use_gpu=True)) as sess:
+        self.session(use_gpu=True)) as sess:
       signal_length = 512
 
       # An all-zero signal has all zero gradients with respect to the sum of the
@@ -298,7 +298,7 @@ class SpectralOpsTest(test.TestCase):
 
   def test_gradients_numerical(self):
     with spectral_ops_test_util.fft_kernel_label_map(), (
-        self.test_session(use_gpu=True)):
+        self.session(use_gpu=True)):
       # Tuples of (signal_length, frame_length, frame_step, fft_length,
       # stft_bound, inverse_stft_bound).
       # TODO(rjryan): Investigate why STFT gradient error is so high.

@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Tests for the experimental input pipeline ops."""
+"""Tests for `tf.data.Dataset.map()`."""
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
@@ -26,6 +26,7 @@ from absl.testing import parameterized
 import numpy as np
 
 from tensorflow.core.framework import attr_value_pb2
+from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.client import session
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
@@ -46,6 +47,40 @@ from tensorflow.python.ops import sparse_ops
 from tensorflow.python.ops import string_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.platform import test
+
+
+def _make_coordinated_sloppy_dataset(num_elements, num_parallel_calls):
+  """Produces a dataset iterator and events to control the order of elements.
+
+  Args:
+    num_elements: the number of input elements
+    num_parallel_calls: the degree of map parallelism
+
+  Returns:
+    A dataset iterator (represented as `get_next` op) and events that can be
+    used to control the order of output elements.
+  """
+
+  # Set up threading events used to sequence when items are produced that
+  # are subsequently interleaved. These events allow us to deterministically
+  # simulate slowdowns and force sloppiness.
+  coordination_events = {i: threading.Event() for i in range(num_elements)}
+
+  def map_py_fn(x):
+    coordination_events[x].wait()
+    coordination_events[x].clear()
+    return x * x
+
+  def map_fn(x):
+    return script_ops.py_func(map_py_fn, [x], x.dtype)
+
+  options = dataset_ops.Options()
+  options.experimental_deterministic = False
+  dataset = dataset_ops.Dataset.range(num_elements).map(
+      map_fn, num_parallel_calls).with_options(options)
+  iterator = dataset.make_one_shot_iterator()
+  next_element = iterator.get_next()
+  return next_element, coordination_events
 
 
 class MapDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
@@ -266,6 +301,35 @@ class MapDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
       sess.run(get_next)
       with self.assertRaises(errors.OutOfRangeError):
         sess.run(get_next)
+
+  def testCaptureIterator(self):
+
+    def _build_ds(iterator):
+
+      def _map_fn(x):
+        get_next = iterator.get_next()
+        return x * get_next
+
+      return dataset_ops.Dataset.range(10).map(_map_fn)
+
+    def _build_graph():
+      captured_iterator = dataset_ops.Dataset.range(
+          10).make_initializable_iterator()
+      ds = _build_ds(captured_iterator)
+      iterator = ds.make_initializable_iterator()
+      init_op = iterator.initializer
+      get_next = iterator.get_next()
+      return captured_iterator.initializer, init_op, get_next
+
+    with ops.Graph().as_default() as g:
+      captured_init_op, init_op, get_next = _build_graph()
+      with self.session(graph=g) as sess:
+        sess.run(captured_init_op)
+        sess.run(init_op)
+        for i in range(10):
+          self.assertEqual(i * i, sess.run(get_next))
+        with self.assertRaises(errors.OutOfRangeError):
+          sess.run(get_next)
 
   def testCaptureHashTable(self):
     # NOTE(mrry): We must use the V2 variants of `HashTable`
@@ -593,7 +657,7 @@ class MapDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
       sess.run(init_op)
       for i in range(10):
         actual = sess.run(get_next)
-        self.assertTrue(isinstance(actual, sparse_tensor.SparseTensorValue))
+        self.assertIsInstance(actual, sparse_tensor.SparseTensorValue)
         self.assertSparseValuesEqual(actual, _sparse(i))
       with self.assertRaises(errors.OutOfRangeError):
         sess.run(get_next)
@@ -620,7 +684,7 @@ class MapDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
       sess.run(init_op)
       for i in range(10):
         actual = sess.run(get_next)
-        self.assertTrue(isinstance(actual, sparse_tensor.SparseTensorValue))
+        self.assertIsInstance(actual, sparse_tensor.SparseTensorValue)
         self.assertSparseValuesEqual(actual, _check(_sparse(i)).eval())
       with self.assertRaises(errors.OutOfRangeError):
         sess.run(get_next)
@@ -754,19 +818,115 @@ class MapDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
       self.assertTrue(all(tids[0] == tid for tid in tids))
 # pylint: enable=g-long-lambda
 
+  @parameterized.named_parameters(
+      ("SequentialIdentity", None, lambda x: x, None),
+      ("SequentialReplicate", None, lambda x: (x, x), None),
+      ("SequentialSwap", (None, None), lambda x, y: (y, x), None),
+      ("SequentialProject", (None, None), lambda x, y: x, None),
+      ("ParallelIdentity", None, lambda x: x, 10),
+      ("ParallelReplicate", None, lambda x: (x, x), 10),
+      ("ParallelSwap", (None, None), lambda x, y: (y, x), 10),
+      ("ParallelProject", (None, None), lambda x, y: x, 10),
+  )
+  def testShortCircuit(self, structure, map_fn, num_parallel_calls):
+    dataset = self.structuredDataset(structure).repeat().map(
+        map_fn, num_parallel_calls=num_parallel_calls)
+    get_next = dataset.make_one_shot_iterator().get_next()
+
+    with self.cached_session() as sess:
+      if isinstance(structure, tuple):
+        expected = map_fn(*sess.run(self.structuredElement(structure)))
+      else:
+        expected = map_fn(sess.run(self.structuredElement(structure)))
+      self.assertEqual(expected, sess.run(get_next))
+
+  @parameterized.named_parameters(
+      ("Sequential", None),
+      ("Parallel", 10),
+  )
+  def testShortCircuitCapturedInput(self, num_parallel_calls):
+    captured_t = array_ops.placeholder(dtypes.int64, shape=[])
+    dataset = self.structuredDataset(None).repeat().map(
+        lambda x: captured_t, num_parallel_calls=num_parallel_calls)
+    iterator = dataset.make_initializable_iterator()
+    get_next = iterator.get_next()
+
+    with self.cached_session() as sess:
+      sess.run(iterator.initializer, feed_dict={captured_t: 42})
+      self.assertEqual(42, sess.run(get_next))
+
+  @parameterized.named_parameters(
+      ("1", 1, 1),
+      ("2", 10, 1),
+      ("3", 10, 10),
+      ("4", 100, 1),
+      ("5", 100, 10),
+      ("6", 100, 100),
+  )
+  def testSloppyInterleaveInOrder(self, num_elements, num_parallel_calls):
+    get_next, coordination_events = _make_coordinated_sloppy_dataset(
+        num_elements, num_parallel_calls)
+    config = config_pb2.ConfigProto(
+        inter_op_parallelism_threads=num_parallel_calls + 1,
+        use_per_session_threads=True)
+    with self.cached_session(config=config) as sess:
+      for i in range(num_elements):
+        coordination_events[i].set()
+        self.assertEqual(i * i, sess.run(get_next))
+      with self.assertRaises(errors.OutOfRangeError):
+        sess.run(get_next)
+
+  @parameterized.named_parameters(
+      ("1", 10, 10),
+      ("2", 100, 10),
+      ("3", 100, 100),
+  )
+  def testSloppyInterleaveOutOfOrder(self, num_elements, num_parallel_calls):
+    get_next, coordination_events = _make_coordinated_sloppy_dataset(
+        num_elements, num_parallel_calls)
+    config = config_pb2.ConfigProto(
+        inter_op_parallelism_threads=num_parallel_calls + 1,
+        use_per_session_threads=True)
+    with self.cached_session(config=config) as sess:
+      elements = [x for x in range(num_elements)]
+      for i in [1, 4, 7]:
+        elements[i], elements[i + 1] = elements[i + 1], elements[i]
+
+      for element in elements:
+        coordination_events[element].set()
+        self.assertEqual(element * element, sess.run(get_next))
+      with self.assertRaises(errors.OutOfRangeError):
+        sess.run(get_next)
+
 
 class MapDatasetBenchmark(test.Benchmark):
 
   def benchmarkChainOfMaps(self):
     chain_lengths = [0, 1, 2, 5, 10, 20, 50]
     for chain_length in chain_lengths:
-      for use_inter_op_parallelism in [False, True]:
+      for mode in ["general", "single-threaded", "short-circuit"]:
+        if mode == "general":
+          map_fn = lambda x: x + 1
+          use_inter_op_parallelism = True
+          print_label = ""
+          benchmark_label = ""
+        if mode == "single-threaded":
+          map_fn = lambda x: x + 1
+          use_inter_op_parallelism = False
+          print_label = " (single threaded mode)"
+          benchmark_label = "_single_threaded"
+        if mode == "short-circuit":
+          map_fn = lambda x: x
+          use_inter_op_parallelism = True  # should not have any significance
+          print_label = " (short circuit mode)"
+          benchmark_label = "_short_circuit"
+
         with ops.Graph().as_default():
           dataset = dataset_ops.Dataset.from_tensors(0).repeat(None)
           for _ in range(chain_length):
             dataset = dataset_ops.MapDataset(
                 dataset,
-                lambda x: x,
+                map_fn,
                 use_inter_op_parallelism=use_inter_op_parallelism)
           iterator = dataset.make_one_shot_iterator()
           next_element = iterator.get_next()
@@ -784,25 +944,39 @@ class MapDatasetBenchmark(test.Benchmark):
 
             median_wall_time = np.median(deltas) / 100
             print("Map dataset chain length%s: %d Median wall time: %f" %
-                  (" (single threaded mode)" if not use_inter_op_parallelism
-                   else "", chain_length, median_wall_time))
+                  (print_label, chain_length, median_wall_time))
             self.report_benchmark(
                 iters=1000,
                 wall_time=median_wall_time,
                 name="benchmark_map_dataset_chain_latency_%d%s" %
-                (chain_length, "_single_threaded"
-                 if not use_inter_op_parallelism else ""))
+                (chain_length, benchmark_label))
 
   def benchmarkMapFanOut(self):
     fan_outs = [1, 2, 5, 10, 20, 50, 100]
     for fan_out in fan_outs:
-      for use_inter_op_parallelism in [False, True]:
+      for mode in ["general", "single-threaded", "short-circuit"]:
+        if mode == "general":
+          map_fn = lambda *xs: [x + 1 for x in xs]
+          use_inter_op_parallelism = True
+          print_label = ""
+          benchmark_label = ""
+        if mode == "single-threaded":
+          map_fn = lambda *xs: [x + 1 for x in xs]
+          use_inter_op_parallelism = False
+          print_label = " (single threaded mode)"
+          benchmark_label = "_single_threaded"
+        if mode == "short-circuit":
+          map_fn = lambda *xs: xs
+          use_inter_op_parallelism = True  # should not have any significance
+          print_label = " (short circuit mode)"
+          benchmark_label = "_short_circuit"
+
         with ops.Graph().as_default():
           dataset = dataset_ops.Dataset.from_tensors(
               tuple(0 for _ in range(fan_out))).repeat(None)
           dataset = dataset_ops.MapDataset(
               dataset,
-              lambda *xs: xs,
+              map_fn,
               use_inter_op_parallelism=use_inter_op_parallelism)
           iterator = dataset.make_one_shot_iterator()
           next_element = iterator.get_next()
@@ -820,14 +994,12 @@ class MapDatasetBenchmark(test.Benchmark):
 
             median_wall_time = np.median(deltas) / 100
             print("Map dataset fan out%s: %d Median wall time: %f" %
-                  (" (single threaded mode)" if not use_inter_op_parallelism
-                   else "", fan_out, median_wall_time))
+                  (print_label, fan_out, median_wall_time))
             self.report_benchmark(
                 iters=1000,
                 wall_time=median_wall_time,
-                name="benchmark_map_dataset_fan_out_%d%s" %
-                (fan_out, "_single_threaded"
-                 if not use_inter_op_parallelism else ""))
+                name="benchmark_map_dataset_fan_out_%d%s" % (fan_out,
+                                                             benchmark_label))
 
 
 if __name__ == "__main__":

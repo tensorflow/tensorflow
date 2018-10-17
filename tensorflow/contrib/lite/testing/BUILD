@@ -20,8 +20,7 @@ load(
     name = "zip_test_%s" % test_name,
     size = "large",
     srcs = ["generated_examples_zip_test.cc"],
-    args = [
-    ] + select({
+    args = args + select({
         "//tensorflow:android": [],
         "//conditions:default": [
             "--zip_file_path=$(location :zip_%s)" % test_name,
@@ -35,7 +34,7 @@ load(
         ":zip_%s" % test_name,
     ],
     shard_count = 20,
-    tags = [
+    tags = tags + [
         "gen_zip_test",
         "no_oss",
         "tflite_not_portable_intentional",
@@ -61,7 +60,7 @@ load(
             "//tensorflow/core:android_tensorflow_test_lib",
         ],
     }),
-) for conversion_mode, test_name in generated_test_models_all()]
+) for conversion_mode, test_name, tags, args in generated_test_models_all()]
 
 test_suite(
     name = "generated_zip_tests",
@@ -298,6 +297,29 @@ cc_test(
 )
 
 cc_library(
+    name = "init_tensorflow",
+    srcs = [
+        "init_tensorflow.cc",
+    ],
+    hdrs = [
+        "init_tensorflow.h",
+    ],
+    visibility = [
+        "//tensorflow/contrib/lite/java/src/main/native:__subpackages__",
+        "//tensorflow/contrib/lite/testing:__subpackages__",
+        "//tensorflow/contrib/lite/tools/benchmark:__subpackages__",
+    ],
+    deps = select({
+        "//conditions:default": [
+            "//tensorflow/core:lib",
+        ],
+        "//tensorflow:android": [
+            "//tensorflow/core:android_tensorflow_lib",
+        ],
+    }),
+)
+
+cc_library(
     name = "tflite_diff_util",
     srcs = ["tflite_diff_util.cc"],
     hdrs = ["tflite_diff_util.h"],
@@ -349,6 +371,7 @@ tf_cc_test(
         "tflite_not_portable",
     ],
     deps = [
+        ":init_tensorflow",
         ":tflite_diff_flags",
         ":tflite_diff_util",
     ],
@@ -358,36 +381,9 @@ cc_binary(
     name = "tflite_diff",
     srcs = ["tflite_diff_example_test.cc"],
     deps = [
+        ":init_tensorflow",
         ":tflite_diff_flags",
         ":tflite_diff_util",
-    ],
-)
-
-py_binary(
-    name = "model_coverage_lib",
-    srcs = ["//tensorflow/contrib/lite/testing:model_coverage/model_coverage_lib.py"],
-    srcs_version = "PY2AND3",
-    tags = ["no_pip"],
-    visibility = ["//tensorflow/contrib/lite:__subpackages__"],
-    deps = [
-        "//tensorflow/contrib/lite/python:lite",
-        "//tensorflow/python:platform",
-    ],
-)
-
-py_test(
-    name = "model_coverage_lib_test",
-    srcs = ["//tensorflow/contrib/lite/testing:model_coverage/model_coverage_lib_test.py"],
-    srcs_version = "PY2AND3",
-    tags = [
-        "no_oss",
-        "no_pip",
-        "no_windows",
-        "notap",
-    ],
-    deps = [
-        ":model_coverage_lib",
-        "//tensorflow/python:client_testlib",
     ],
 )
 

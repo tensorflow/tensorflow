@@ -51,11 +51,6 @@ def imperative_grad(
 
   Raises:
     RuntimeError: if something goes wrong.
-    ValueError: if there is no sequence of differentiable operations connecting
-     a source and any target Tensor. This can happen either if the target is
-     not computed based on the source, if the tracing was set up incorrectly,
-     or if only non-differentiable functions of the source were used in the
-     computation of target.
   """
   return pywrap_tensorflow.TFE_Py_TapeGradient(
       tape._tape,  # pylint: disable=protected-access

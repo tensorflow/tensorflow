@@ -34,6 +34,8 @@ set -e
 #
 # Make sure you have an up to date version of the Bazel build tool installed too.
 
+export TF_ENABLE_XLA=0
+
 yes '' | ./configure
 
 # Fix for curl build problem in 32-bit, see https://stackoverflow.com/questions/35181744/size-of-array-curl-rule-01-is-negative

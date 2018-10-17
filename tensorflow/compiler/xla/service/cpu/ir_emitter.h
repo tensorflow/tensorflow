@@ -23,6 +23,7 @@ limitations under the License.
 #include <unordered_map>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "llvm/ADT/Triple.h"
@@ -47,7 +48,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/lib/gtl/flatmap.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/types.h"
 
@@ -427,7 +427,7 @@ class IrEmitter : public DfsHloVisitorWithDefault,
   // Maps the buffer allocation slices for the parameters to the computation
   // being compiled to their parameter numbers.  Only relevant for thread local
   // computations.
-  tensorflow::gtl::FlatMap<BufferAllocation::Index, int64>
+  absl::flat_hash_map<BufferAllocation::Index, int64>
       computation_parameter_allocations_;
 
   // Maps HLO instructions to their index into the profile counter array.
@@ -567,11 +567,11 @@ class IrEmitter : public DfsHloVisitorWithDefault,
     }
   };
 
-  tensorflow::gtl::FlatMap<const Literal*, llvm::Constant*,
-                           LiteralPtrHashFunctor, LiteralPtrEqualityFunctor>
+  absl::flat_hash_map<const Literal*, llvm::Constant*, LiteralPtrHashFunctor,
+                      LiteralPtrEqualityFunctor>
       emitted_literals_;
 
-  tensorflow::gtl::FlatMap<BufferAllocation::Index, llvm::Constant*>
+  absl::flat_hash_map<BufferAllocation::Index, llvm::Constant*>
       constant_buffer_to_global_;
 
   std::vector<const HloComputation*> thread_local_computations_;

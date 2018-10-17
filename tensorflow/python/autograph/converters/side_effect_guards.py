@@ -126,7 +126,7 @@ class SideEffectGuardTransformer(converter.Base):
       # In addition, avoid renaming well-known names.
       # TODO(mdan): Move these names into config.
       unguarded_names = (qual_names.QN('self'), qual_names.QN('tf'))
-      guarded_args = tuple(s for s in args_scope.used
+      guarded_args = tuple(s for s in args_scope.read
                            if not s.is_composite() and s not in unguarded_names)
 
       # TODO(mdan): Include all arguments which depended on guarded_args too.

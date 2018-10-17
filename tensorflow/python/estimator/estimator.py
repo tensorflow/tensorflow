@@ -1033,10 +1033,9 @@ class Estimator(object):
         meta_graph_kwargs = dict(
             tags=export_tags,
             signature_def_map=signature_def_map,
-            assets_collection=ops.get_collection(
-                ops.GraphKeys.ASSET_FILEPATHS),
+            assets_collection=ops.get_collection(ops.GraphKeys.ASSET_FILEPATHS),
             strip_default_attrs=strip_default_attrs,
-            legacy_init_op=local_init_op,
+            main_op=local_init_op,
             saver=graph_saver)
 
         if save_variables:
@@ -1424,7 +1423,13 @@ class Estimator(object):
     # evaluations.
     save_summary_steps = self._config.save_summary_steps
     log_step_count_steps = self._config.log_step_count_steps
+
+    # Check existence of appropriate cluster spec fields, as well as master and
+    # worker nodes. As master also performs evaluation, summary writing must
+    # occur on a different node. The presence of a worker is also checked to
+    # prevent reassigning hooks for single-replica jobs with just a master node.
     if (self._config.cluster_spec and self._config.cluster_spec.jobs and
+        (run_config.TaskType.WORKER in self._config.cluster_spec.jobs) and
         (run_config.TaskType.MASTER in self._config.cluster_spec.jobs)):
       # Update config values to prevent the default hooks from being created on
       # the master or other workers.

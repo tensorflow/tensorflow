@@ -32,6 +32,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/lib/gtl/flatset.h"
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
 #include "tensorflow/core/lib/random/random.h"
 #include "tensorflow/core/platform/env.h"
@@ -424,8 +425,24 @@ Status EagerRemoteSendTensor(EagerContext* ctx, TensorHandle* h,
   request.set_op_id(ctx->NextId());
   request.set_device_name(recv_device->name());
 
+  Device* tensor_handle_device;
+  TF_RETURN_IF_ERROR(h->Device(&tensor_handle_device));
+
+  // AsProtoTensorContent doesn't work when the tensor is on the GPU, hence copy
+  // it to the CPU before copying it out.
+  // TODO(nareshmodi): this is currently slow, but can be fixed by making tensor
+  // handles aware of more than one device.
+  TensorHandle* actual_handle;
+  if (tensor_handle_device != nullptr &&
+      tensor_handle_device->device_type() != "CPU") {
+    TF_RETURN_IF_ERROR(h->CopyToDevice(ctx, ctx->HostCPU(), &actual_handle));
+  } else {
+    actual_handle = h;
+    actual_handle->Ref();
+  }
+
   const Tensor* tensor;
-  TF_RETURN_IF_ERROR(h->Tensor(&tensor));
+  TF_RETURN_IF_ERROR(actual_handle->Tensor(&tensor));
   tensor->AsProtoTensorContent(request.add_tensors());
 
   const tensorflow::uint64 id = request.op_id();
@@ -448,6 +465,8 @@ Status EagerRemoteSendTensor(EagerContext* ctx, TensorHandle* h,
                              tensor->dtype(), std::move(destructor),
                              recv_device, recv_device, ctx);
   (*result)->SetRemoteShape(MakeUnique<TensorShape>(tensor->shape()));
+
+  actual_handle->Unref();
 
   return Status::OK();
 #endif
@@ -579,19 +598,40 @@ Status EagerRemoteExecute(EagerOperation* op, TensorHandle** retvals,
   return Status::OK();
 #endif
 }
-}  // namespace
 
-Status EagerExecute(EagerOperation* op,
-                    gtl::InlinedVector<TensorHandle*, 2>* retvals,
-                    int* num_retvals) {
-  // Ensure all resource-touching ops run in the device the resource is,
-  // regardless of anything else that has been specified. This is identical to
-  // the graph mode behavior.
+// These ops are not pinnable since they generate data. It can be slower to
+// generate and then copy the data instead of just generating the data on the
+// device directly.
+bool IsPinnableOp(const string& op_type) {
+  static const gtl::FlatSet<string>* unpinnable_ops = new gtl::FlatSet<string>({
+      "RandomUniform",
+      "RandomUniformInt",
+      "RandomNormal",
+      "StatelessRandomUniform",
+      "StatelessRandomUniformInt",
+      "StatelessRandomNormal",
+  });
+
+  return unpinnable_ops->find(op_type) == unpinnable_ops->end();
+}
+
+// The Op device may be updated if:
+// - A resource touching input is specified: all resource-touching ops run in
+// the device the resource is, regardless of anything else that has been
+// specified. This is identical to the graph mode behavior.
+//
+// - All op inputs are on the CPU, small (<64 elements) and integers
+// (int32/int64). This can be disabled by setting the environment variable
+// "TF_EAGER_ENABLE_SMALL_TENSOR_CPU_PINNING" to "0" or "false".
+Status MaybeUpdateOpDevice(EagerOperation* op) {
   EagerContext* ctx = op->EagerContext();
+  bool device_set_for_resource_variable = false;
+  bool all_inputs_eligible_for_cpu_pinning =
+      ctx->PinSmallOpsToCPU() && IsPinnableOp(op->Name());
+
   for (int i = 0; i < op->Inputs().size(); ++i) {
     Device* input_op_device = nullptr;
-    auto status = op->Inputs()[i]->OpDevice(&input_op_device);
-    if (!status.ok()) return status;
+    TF_RETURN_IF_ERROR(op->Inputs()[i]->OpDevice(&input_op_device));
     VLOG(2) << "for op " << op->Name() << " input " << i << " "
             << DataTypeString(op->Inputs()[i]->dtype) << " "
             << (input_op_device == nullptr ? "cpu" : input_op_device->name())
@@ -603,8 +643,53 @@ Status EagerExecute(EagerOperation* op,
               << d->name() << " because input #" << i
               << " is a resource in this device.";
       op->SetDevice(d);
+
+      device_set_for_resource_variable = true;
+      all_inputs_eligible_for_cpu_pinning = false;
+    } else if (all_inputs_eligible_for_cpu_pinning) {
+      TensorHandle* handle = op->Inputs()[i];
+
+      // Input is on CPU.
+      if (input_op_device != nullptr && input_op_device != ctx->HostCPU()) {
+        all_inputs_eligible_for_cpu_pinning = false;
+        continue;
+      }
+
+      if (handle->dtype != DataType::DT_INT32 &&
+          handle->dtype != DataType::DT_INT64) {
+        all_inputs_eligible_for_cpu_pinning = false;
+        continue;
+      }
+
+      int64 num_elements;
+      TF_RETURN_IF_ERROR(handle->NumElements(&num_elements));
+      if (num_elements > 64) {
+        all_inputs_eligible_for_cpu_pinning = false;
+      }
     }
   }
+
+  // Ops without inputs are usually ops that generate a tensor in some way and
+  // usually require being present on whatever device they are scheduled on
+  // - for e.g. VarHandleOp or _Recv).
+  // TODO(nareshmodi): Is it possible there is no int32/int64 CPU kernel for
+  // an op, but there is a GPU kernel?
+  if (!op->Inputs().empty() && all_inputs_eligible_for_cpu_pinning) {
+    VLOG(1) << "Forcing op " << op->Name()
+            << " to be on the CPU since all input tensors have an "
+               "int32/int64 dtype, and are small (less than 64 elements).";
+    op->SetDevice(ctx->HostCPU());
+  }
+
+  return Status::OK();
+}
+}  // namespace
+
+Status EagerExecute(EagerOperation* op,
+                    gtl::InlinedVector<TensorHandle*, 2>* retvals,
+                    int* num_retvals) {
+  TF_RETURN_IF_ERROR(MaybeUpdateOpDevice(op));
+
   bool op_is_local = IsLocal(op->EagerContext(), op->Device());
 
   if (op_is_local) {

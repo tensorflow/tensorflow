@@ -65,6 +65,12 @@ void SetDefaultLayoutToContainer(
   return layout;
 }
 
+/* static */ Layout LayoutUtil::MakeDescendingLayout(int64 rank) {
+  std::vector<int64> layout(rank);
+  std::iota(layout.rbegin(), layout.rend(), static_cast<int64>(0));
+  return MakeLayout(layout);
+}
+
 /* static */ Layout LayoutUtil::MakeLayoutFromMajorToMinor(
     absl::Span<const int64> major_to_minor) {
   Layout layout;
@@ -156,18 +162,23 @@ Layout CreateDefaultLayoutForRank(int64 rank) {
   LayoutUtil::SetToDefaultLayout(program_shape->mutable_result());
 }
 
-/* static */ Status LayoutUtil::ValidateLayoutInShape(const Shape& shape) {
+/* static */ Status LayoutUtil::ValidateLayoutInShape(
+    const Shape& shape, bool allow_missing_layouts) {
   if (ShapeUtil::IsTuple(shape)) {
     // Tuple shape.
     if (shape.has_layout()) {
       return InvalidArgument("tuple should not have a layout field");
     }
     for (auto& element_shape : shape.tuple_shapes()) {
-      TF_RETURN_IF_ERROR(ValidateLayoutInShape(element_shape));
+      TF_RETURN_IF_ERROR(
+          ValidateLayoutInShape(element_shape, allow_missing_layouts));
     }
     return Status::OK();
   } else if (ShapeUtil::IsArray(shape)) {
     if (!shape.has_layout()) {
+      if (allow_missing_layouts) {
+        return Status::OK();
+      }
       return InvalidArgument("shape %s does not have a layout",
                              ShapeUtil::HumanString(shape));
     }
@@ -199,10 +210,10 @@ Layout CreateDefaultLayoutForRank(int64 rank) {
     return Status::OK();
   }
 
-  if (layout.format() == INVALID_FORMAT) {
+  if (layout.format() == INVALID_FORMAT || !Format_IsValid(layout.format())) {
     return InvalidArgument(
-        "Layout does not have a valid format: layout {%s}, shape {%s}",
-        layout.ShortDebugString(), shape.ShortDebugString());
+        "Layout has an invalid format (%d) in layout {%s}, shape {%s}",
+        layout.format(), layout.ShortDebugString(), shape.ShortDebugString());
   }
 
   if (layout.format() == DENSE) {

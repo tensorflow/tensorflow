@@ -22,7 +22,10 @@ py_test(
         "errors_test.py",
     ],
     srcs_version = "PY2AND3",
-    tags = ["no_windows"],
+    tags = [
+        "no_oss",
+        "no_windows",
+    ],
     deps = [
         "//tensorflow:tensorflow_py",
     ],

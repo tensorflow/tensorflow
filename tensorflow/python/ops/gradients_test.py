@@ -350,6 +350,40 @@ class GradientsTest(test_util.TensorFlowTestCase):
       for a, b in zip(npgrad1, npgrad2):
         np.testing.assert_allclose(a, b)
 
+  def testUnconnectedGradientsNoneUnconnectedGradients(self):
+    with ops.Graph().as_default():
+      x = constant(1.0, shape=[2, 2])
+      y = constant(3.0, shape=[3, 1])
+      grad = gradients.gradients(
+          [y], [x], unconnected_gradients="none")
+    self.assertIsNone(grad[0])
+
+  def testUnconnectedGradientsZerosUnconnectedGradients(self):
+    with ops.Graph().as_default():
+      x = constant(1.0, shape=[2, 2])
+      y = constant(3.0, shape=[3, 1])
+      grads = gradients.gradients(
+          [y], [x], unconnected_gradients="zero")
+      with self.cached_session() as sess:
+        self.assertAllEqual([[0.0, 0.0], [0.0, 0.0]], sess.run(grads)[0])
+
+  def testUnconnectedGradientsZeroConnectedGradients(self):
+    with ops.Graph().as_default():
+      x = constant(1.0)
+      y = x * 3.0
+      grad = gradients.gradients(
+          [y], [x], unconnected_gradients="zero")
+      with self.cached_session() as sess:
+        self.assertEquals(3.0, sess.run(grad)[0])
+
+  def testUnknownUnconnectedGradientsValueGiven(self):
+    with ops.Graph().as_default():
+      x = constant(1.0)
+      y = constant(1.0)
+      with self.assertRaisesRegexp(
+          ValueError, "Unknown value for unconnected_gradients: 'nonsense'"):
+        gradients.gradients([y], [x], unconnected_gradients="nonsense")
+
 
 class FunctionGradientsTest(test_util.TensorFlowTestCase):
 
@@ -587,7 +621,7 @@ class HessianVectorProductTest(test_util.TensorFlowTestCase):
     hess_value = mat_value + mat_value.T
     hess_v_value = np.dot(hess_value, v_value)
     for use_gpu in [False, True]:
-      with self.test_session(use_gpu=use_gpu):
+      with self.cached_session(use_gpu=use_gpu):
         mat = constant_op.constant(mat_value)
         v = constant_op.constant(v_value)
         x = constant_op.constant(x_value)
@@ -609,7 +643,7 @@ class HessianTest(test_util.TensorFlowTestCase):
     mat_value = rng.randn(m, m).astype("float32")
     x_value = rng.randn(m).astype("float32")
     hess_value = mat_value + mat_value.T
-    with self.test_session(use_gpu=True):
+    with self.session(use_gpu=True):
       mat = constant_op.constant(mat_value)
       x = constant_op.constant(x_value)
       x_mat_x = math_ops.reduce_sum(x[:, None] * mat * x[None, :])
@@ -625,7 +659,7 @@ class HessianTest(test_util.TensorFlowTestCase):
     mat_values = [rng.randn(m, m).astype("float32") for _ in range(n)]
     x_values = [rng.randn(m).astype("float32") for _ in range(n)]
     hess_values = [mat_value + mat_value.T for mat_value in mat_values]
-    with self.test_session(use_gpu=True):
+    with self.session(use_gpu=True):
       mats = [constant_op.constant(mat_value) for mat_value in mat_values]
       xs = [constant_op.constant(x_value) for x_value in x_values]
       xs_mats_xs = [
@@ -639,7 +673,7 @@ class HessianTest(test_util.TensorFlowTestCase):
 
   def testHessianInvalidDimension(self):
     for shape in [(10, 10), None]:
-      with self.test_session(use_gpu=True):
+      with self.cached_session(use_gpu=True):
         x = array_ops.placeholder(dtypes.float32, shape)
         # Expect a ValueError because the dimensions are wrong
         with self.assertRaises(ValueError):
@@ -652,7 +686,7 @@ class HessianTest(test_util.TensorFlowTestCase):
     m = 3
     rng = np.random.RandomState([1, 2, 3])
     x_value = rng.randn(m, m).astype("float32")
-    with self.test_session(use_gpu=True):
+    with self.session(use_gpu=True):
       x = constant_op.constant(x_value)
       x_square = math_ops.reduce_sum(
           math_ops.matmul(array_ops.transpose(x), x) * 0.5
@@ -671,7 +705,7 @@ class HessianTest(test_util.TensorFlowTestCase):
     n = 4
     rng = np.random.RandomState([1, 2, 3])
     x_value = rng.randn(m, n).astype("float32")
-    with self.test_session(use_gpu=True):
+    with self.session(use_gpu=True):
       x = constant_op.constant(x_value)
       x_square = math_ops.reduce_sum(
           math_ops.matmul(array_ops.transpose(x), x) * 0.5

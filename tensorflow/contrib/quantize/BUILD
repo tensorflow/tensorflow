@@ -138,7 +138,6 @@ py_library(
     srcs = ["python/quant_ops.py"],
     srcs_version = "PY2AND3",
     deps = [
-        "//tensorflow/contrib/framework:framework_py",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:init_ops",

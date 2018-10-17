@@ -20,6 +20,7 @@ from __future__ import print_function
 
 import os
 import tempfile
+import numpy as np
 
 from tensorflow.contrib.lite.python import lite
 from tensorflow.contrib.lite.testing.model_coverage import model_coverage_lib as model_coverage
@@ -65,6 +66,38 @@ class EvaluateFrozenGraph(test.TestCase):
 
     model_coverage.test_frozen_graph(filename, ['inputA', 'inputB'],
                                      ['add', 'Mean'])
+
+  def _getQuantizedModel(self):
+    np.random.seed(0)
+    with session.Session().as_default() as sess:
+      # The tensor needs to have more than 1024 elements for quantize_weights to
+      # kick in. Thus, the [33, 33] shape.
+      in_tensor_1 = array_ops.placeholder(
+          shape=[33, 33], dtype=dtypes.float32, name='inputA')
+      in_tensor_2 = constant_op.constant(
+          np.random.uniform(low=-10., high=10., size=(33, 33)),
+          shape=[33, 33],
+          dtype=dtypes.float32,
+          name='inputB')
+      _ = math_ops.matmul(in_tensor_1, in_tensor_2, name='output')
+
+    filename = self._saveFrozenGraph(sess)
+    return filename
+
+  def testQuantized(self):
+    filename = self._getQuantizedModel()
+    model_coverage.test_frozen_graph_quant(filename, ['inputA'], ['output'])
+
+  def testQuantizedInputShapes(self):
+    filename = self._getQuantizedModel()
+    model_coverage.test_frozen_graph_quant(
+        filename, ['inputA'], ['output'], input_shapes={'inputA': [33, 33]})
+
+  def testQuantizedFlexAll(self):
+    filename = self._getQuantizedModel()
+    model_coverage.test_frozen_graph_quant(
+        filename, ['inputA'], ['output'],
+        converter_mode=lite.ConverterMode.TOCO_FLEX_ALL)
 
 
 class EvaluateSavedModel(test.TestCase):

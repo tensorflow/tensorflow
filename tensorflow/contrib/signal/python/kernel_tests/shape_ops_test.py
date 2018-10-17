@@ -33,7 +33,7 @@ from tensorflow.python.platform import test
 class FrameTest(test.TestCase):
 
   def test_mapping_of_indices_without_padding(self):
-    with self.test_session(use_gpu=True):
+    with self.session(use_gpu=True):
       tensor = constant_op.constant(np.arange(9152), dtypes.int32)
       tensor = array_ops.expand_dims(tensor, 0)
 
@@ -48,7 +48,7 @@ class FrameTest(test.TestCase):
       self.assertAllEqual(expected, result)
 
   def test_mapping_of_indices_with_padding(self):
-    with self.test_session(use_gpu=True):
+    with self.session(use_gpu=True):
       tensor = constant_op.constant(np.arange(10000), dtypes.int32)
       tensor = array_ops.expand_dims(tensor, 0)
 
@@ -89,7 +89,7 @@ class FrameTest(test.TestCase):
     frame_length = 2
     frame_step = 1
 
-    with self.test_session(use_gpu=True):
+    with self.session(use_gpu=True):
       result = shape_ops.frame(signal, frame_length, frame_step,
                                pad_end=True, pad_value=99).eval()
       self.assertEqual((0, 2), result.shape)
@@ -149,7 +149,7 @@ class FrameTest(test.TestCase):
         for pad_end in [False, True]:
           op = shape_ops.frame(signal, frame_length, frame_step,
                                pad_end=pad_end, pad_value=99)
-          with self.test_session(use_gpu=True):
+          with self.cached_session(use_gpu=True):
             result = op.eval()
           self.assertEqual(op.shape.as_list(), list(result.shape))
 
@@ -158,7 +158,7 @@ class FrameTest(test.TestCase):
     frame_length = 3
     frame_step = 2
 
-    with self.test_session(use_gpu=True):
+    with self.session(use_gpu=True):
       for rank in range(5):
         nd_signal = np.reshape(signal, (1,) * rank + signal.shape)
 
@@ -184,7 +184,7 @@ class FrameTest(test.TestCase):
     frame_length = 3
     frame_step = 2
 
-    with self.test_session(use_gpu=True):
+    with self.session(use_gpu=True):
       for rank in range(5):
         nd_signal = np.reshape(signal, (1,) * rank + signal.shape)
 
@@ -218,7 +218,7 @@ class FrameTest(test.TestCase):
     frame_length = 3
     frame_step = 2
 
-    with self.test_session(use_gpu=True):
+    with self.session(use_gpu=True):
       # With padding, we pad the last frame with pad_value.
       result = shape_ops.frame(signal, frame_length, frame_step,
                                pad_end=True, pad_value=99).eval()
@@ -244,7 +244,7 @@ class FrameTest(test.TestCase):
 
   def test_axis(self):
     signal = np.reshape(np.arange(16), (2, 4, 2))
-    with self.test_session(use_gpu=True):
+    with self.session(use_gpu=True):
       result = shape_ops.frame(signal, frame_length=2, frame_step=2,
                                pad_end=True, axis=1)
       expected = np.reshape(np.arange(16), (2, 2, 2, 2))
@@ -279,7 +279,7 @@ class FrameTest(test.TestCase):
     frame_length = 4
     frame_step = 1
 
-    with self.test_session(use_gpu=True):
+    with self.session(use_gpu=True):
       result = shape_ops.frame(signal, frame_length, frame_step,
                                pad_end=True, pad_value=99).eval()
       self.assertAllClose([[[1, 2, 99, 99], [2, 99, 99, 99]],
@@ -303,7 +303,7 @@ class FrameTest(test.TestCase):
     frame_length = 2
     frame_step = 3
 
-    with self.test_session(use_gpu=True):
+    with self.session(use_gpu=True):
       result = shape_ops.frame(signal, frame_length, frame_step)
       self.assertEqual(result.dtype, signal.dtype)
 
@@ -315,7 +315,7 @@ class FrameTest(test.TestCase):
     frame_length = 2
     frame_step = 2
 
-    with self.test_session(use_gpu=True) as sess:
+    with self.session(use_gpu=True) as sess:
       signal_placeholder = array_ops.placeholder(shape=(None, None),
                                                  dtype=dtypes.float32)
       result = sess.run(shape_ops.frame(
@@ -326,7 +326,7 @@ class FrameTest(test.TestCase):
                            [[20, 21], [22, 23]]], result)
 
   def test_gradient_numerical(self):
-    with self.test_session(use_gpu=True):
+    with self.session(use_gpu=True):
       signal_shape = (2, 128)
       signal = array_ops.ones(signal_shape)
       frame_length = 33

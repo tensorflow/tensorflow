@@ -27,7 +27,7 @@ class FuzzParseTensor : public FuzzSession {
     // The serialized proto.
     auto input = Placeholder(scope.WithOpName("input1"), DT_STRING);
 
-    std::ignore = ParseTensor(scope.WithOpName("output"), input, DT_FLOAT);
+    (void)ParseTensor(scope.WithOpName("output"), input, DT_FLOAT);
   }
 
   void FuzzImpl(const uint8_t* data, size_t size) final {

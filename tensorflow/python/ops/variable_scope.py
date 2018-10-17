@@ -939,7 +939,8 @@ class _VariableStore(object):
     if regularizer:
       with ops.colocate_with(v):
         with ops.name_scope(name + "/Regularizer/"):
-          loss = regularizer(v)
+          with ops.init_scope():
+            loss = regularizer(v)
         if loss is not None:
           if context.executing_eagerly():
             v_name = "v_%s" % type(v)
@@ -2557,7 +2558,7 @@ def variable_creator_scope_v1(variable_creator):
 
 
 # Note: only the docstrings differ between this and v1.
-@tf_export(v2=["variable_creator_scope"])
+@tf_export("variable_creator_scope", v1=[])
 @tf_contextlib.contextmanager
 def variable_creator_scope(variable_creator):
   """Scope which defines a variable creation function to be used by variable().

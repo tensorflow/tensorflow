@@ -29,11 +29,13 @@ from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.util import deprecation
 from tensorflow.python.util.tf_export import tf_export
 
 
 # TODO(b/27419586) Change docstring for required dtype of x once int allowed
-@tf_export('lbeta')
+@tf_export('math.lbeta', v1=['math.lbeta', 'lbeta'])
+@deprecation.deprecated_endpoints('lbeta')
 def lbeta(x, name=None):
   r"""Computes \\(ln(|Beta(x)|)\\), reducing along the last dimension.
 
@@ -180,7 +182,6 @@ def einsum(equation, *inputs, **kwargs):
   * Ellipses (subscripts like `ij...,jk...->ik...`)
   * Subscripts where an axis appears more than once for a single input
     (e.g. `ijj,k->ik`).
-  * Subscripts that are summed across multiple inputs (e.g., `ij,ij,jk->ik`).
 
   Args:
     equation: a `str` describing the contraction, in the same format as
@@ -235,6 +236,13 @@ def einsum(equation, *inputs, **kwargs):
 
       output_axis_labels = ''.join(
           sorted(ax for ax in indices if counts[ax] == 1))
+
+    for a in axis_labels:
+      for input_labels in input_axis_labels:
+        if input_labels.count(a) > 1:
+          raise ValueError(
+              'Subscript not supported: an axis appears more than once: %s' %
+              input_labels)
 
     for a in axis_labels:
       input_count = sum(1 for s in input_axis_labels if a in s)

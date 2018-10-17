@@ -37,16 +37,11 @@ DeviceDescription::DeviceDescription()
                         kUninitializedUint64),
       block_dim_limit_(kUninitializedUint64, kUninitializedUint64,
                        kUninitializedUint64),
-      blocks_per_core_limit_(kUninitializedUint64),
       threads_per_core_limit_(kUninitializedUint64),
       threads_per_block_limit_(kUninitializedUint64),
       threads_per_warp_(kUninitializedUint64),
       registers_per_core_limit_(kUninitializedUint64),
       registers_per_block_limit_(kUninitializedUint64),
-      registers_per_thread_limit_(kUninitializedUint64),
-      warp_alloc_granularity_(1),
-      register_alloc_granularity_(1),
-      shared_memory_alloc_granularity_(1),
       device_address_bits_(kUninitializedUint64),
       device_memory_size_(kUninitializedUint64),
       memory_bandwidth_(kUninitializedUint64),
@@ -160,77 +155,6 @@ static uint64 RoundUp(uint64 value, uint64 n) {
 // Round value down to a multiple of n.
 static uint64 RoundDown(uint64 value, uint64 n) {
   return port::MathUtil::FloorOfRatio(value, n) * n;
-}
-
-uint64 CalculateOccupancy(const DeviceDescription &device_description,
-                          uint64 registers_per_thread,
-                          uint64 shared_memory_per_block,
-                          const ThreadDim &thread_dims) {
-  // Don't try to compute occupancy if necessary values are not initialized.
-  uint64 required_fields[] =  { device_description.registers_per_thread_limit(),
-                                device_description.threads_per_warp(),
-                                device_description.warp_alloc_granularity(),
-                                device_description.register_alloc_granularity(),
-                                device_description.registers_per_block_limit(),
-                                device_description.shared_memory_per_core(),
-                                device_description.blocks_per_core_limit() };
-  for (auto value : required_fields) {
-    if (value == kUninitializedUint64) {
-      return 0;
-    }
-  }
-
-  if (registers_per_thread > device_description.registers_per_thread_limit()) {
-    return 0;
-  }
-
-  uint64 warps_per_block =
-      port::MathUtil::CeilOfRatio(thread_dims.x * thread_dims.y * thread_dims.z,
-                                  device_description.threads_per_warp());
-
-  // Warp resources are allocated at a particular granularity.  This value is
-  // the effective number of warps for resource allocation purposes.
-  uint64 alloc_warps_per_block =
-      RoundUp(warps_per_block, device_description.warp_alloc_granularity());
-
-  uint64 alloc_regs_per_warp =
-      RoundUp(device_description.threads_per_warp() * registers_per_thread,
-              device_description.register_alloc_granularity());
-  uint64 regs_per_block = alloc_warps_per_block * alloc_regs_per_warp;
-  uint64 reg_limit =
-      device_description.registers_per_block_limit() / regs_per_block;
-
-  uint64 alloc_smem_per_block = RoundUp(
-      shared_memory_per_block,
-      device_description.shared_memory_alloc_granularity());
-  uint64 smem_limit = alloc_smem_per_block > 0 ?
-      device_description.shared_memory_per_core() / alloc_smem_per_block :
-      device_description.blocks_per_core_limit();
-
-  uint64 thread_limit = device_description.threads_per_core_limit()
-      / (warps_per_block  * device_description.threads_per_warp());
-
-  return std::min({ device_description.blocks_per_core_limit(),
-          reg_limit, smem_limit, thread_limit });
-}
-
-uint64 CalculateRegisterLimitForTargetOccupancy(
-    const DeviceDescription &device_description, uint64 shared_memory_per_block,
-    const ThreadDim &thread_dims, uint64 target_blocks_per_core) {
-  // Linear search from maximum number of registers down until the target
-  // blocks per SM is found.
-  // TODO(meheff): Compute this using a closed form solution.
-  int reg_step = device_description.register_alloc_granularity() /
-      device_description.threads_per_warp();
-  for (int r = device_description.registers_per_thread_limit(); r > 0;
-       r = RoundDown(r - 1, reg_step)) {
-    uint64 occupancy = CalculateOccupancy(
-        device_description, r, shared_memory_per_block, thread_dims);
-    if (occupancy >= target_blocks_per_core) {
-      return r;
-    }
-  }
-  return 0;
 }
 
 }  // namespace stream_executor

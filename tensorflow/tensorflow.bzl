@@ -528,12 +528,15 @@ def tf_gen_op_wrappers_cc(
         op_lib_names = [],
         other_srcs = [],
         other_hdrs = [],
+        other_srcs_internal = [],
+        other_hdrs_internal = [],
         pkg = "",
         deps = [
             clean_dep("//tensorflow/cc:ops"),
             clean_dep("//tensorflow/cc:scope"),
             clean_dep("//tensorflow/cc:const_op"),
         ],
+        deps_internal = [],
         op_gen = clean_dep("//tensorflow/cc:cc_op_gen_main"),
         include_internal_ops = 0,
         visibility = None,
@@ -541,8 +544,8 @@ def tf_gen_op_wrappers_cc(
         api_def_srcs = []):
     subsrcs = other_srcs[:]
     subhdrs = other_hdrs[:]
-    internalsrcs = []
-    internalhdrs = []
+    internalsrcs = other_srcs_internal[:]
+    internalhdrs = other_hdrs_internal[:]
     for n in op_lib_names:
         tf_gen_op_wrapper_cc(
             n,
@@ -577,7 +580,7 @@ def tf_gen_op_wrappers_cc(
         name = name + "_internal",
         srcs = internalsrcs,
         hdrs = internalhdrs,
-        deps = deps + if_not_android([
+        deps = deps + deps_internal + if_not_android([
             clean_dep("//tensorflow/core:core_cpu"),
             clean_dep("//tensorflow/core:framework"),
             clean_dep("//tensorflow/core:lib"),
@@ -1479,9 +1482,9 @@ check_deps = rule(
     },
 )
 
-# Helper to build a dynamic library (.so) from the sources containing
-# implementations of custom ops and kernels.
-def tf_custom_op_library(name, srcs = [], gpu_srcs = [], deps = [], linkopts = []):
+def tf_custom_op_library(name, srcs = [], gpu_srcs = [], deps = [], linkopts = [], **kwargs):
+    """Helper to build a dynamic library (.so) from the sources containing implementations of custom ops and kernels.
+    """
     cuda_deps = [
         clean_dep("//tensorflow/core:stream_executor_headers_lib"),
         "@local_config_cuda//cuda:cuda_headers",
@@ -1499,6 +1502,7 @@ def tf_custom_op_library(name, srcs = [], gpu_srcs = [], deps = [], linkopts = [
             copts = _cuda_copts() + if_tensorrt(["-DGOOGLE_TENSORRT=1"]),
             features = if_cuda(["-use_header_modules"]),
             deps = deps + if_cuda_is_configured(cuda_deps) + if_rocm_is_configured(rocm_deps),
+            **kwargs
         )
         cuda_deps.extend([":" + basename + "_gpu"])
         rocm_deps.extend([":" + basename + "_gpu"])
@@ -1525,6 +1529,7 @@ def tf_custom_op_library(name, srcs = [], gpu_srcs = [], deps = [], linkopts = [
             clean_dep("//tensorflow:windows"): [],
             clean_dep("//tensorflow:darwin"): [],
         }),
+        **kwargs
     )
 
 register_extension_info(
@@ -1540,7 +1545,7 @@ def tf_custom_op_py_library(
         srcs_version = "PY2AND3",
         visibility = None,
         deps = []):
-    kernels = kernels  # unused argument
+    _ignore = [kernels]
     native.py_library(
         name = name,
         data = dso,
@@ -1798,29 +1803,22 @@ def cuda_py_test(
         flaky = 0,
         xla_enabled = False,
         grpc_enabled = False):
-    if main == None:
-        main = name + ".py"
-    for config in ["cpu", "gpu"]:
-        test_name = name
-        test_tags = tags
-        if config == "gpu":
-            test_name += "_gpu"
-            test_tags = test_tags + tf_cuda_tests_tags()
-        tf_py_test(
-            name = test_name,
-            size = size,
-            srcs = srcs,
-            data = data,
-            main = main,
-            args = args,
-            tags = test_tags,
-            shard_count = shard_count,
-            additional_deps = additional_deps,
-            kernels = kernels,
-            flaky = flaky,
-            xla_enabled = xla_enabled,
-            grpc_enabled = grpc_enabled,
-        )
+    test_tags = tags + tf_cuda_tests_tags()
+    tf_py_test(
+        name = name,
+        size = size,
+        srcs = srcs,
+        data = data,
+        main = main,
+        args = args,
+        tags = test_tags,
+        shard_count = shard_count,
+        additional_deps = additional_deps,
+        kernels = kernels,
+        flaky = flaky,
+        xla_enabled = xla_enabled,
+        grpc_enabled = grpc_enabled,
+    )
 
 register_extension_info(
     extension_name = "cuda_py_test",
@@ -1974,9 +1972,9 @@ def tf_version_info_genrule():
         ],
         outs = ["util/version_info.cc"],
         cmd =
-            "$(location //tensorflow/tools/git:gen_git_source.py) --generate $(SRCS) \"$@\" --git_tag_override=$${GIT_TAG_OVERRIDE:-}",
+            "$(location //tensorflow/tools/git:gen_git_source) --generate $(SRCS) \"$@\" --git_tag_override=$${GIT_TAG_OVERRIDE:-}",
         local = 1,
-        tools = [clean_dep("//tensorflow/tools/git:gen_git_source.py")],
+        tools = [clean_dep("//tensorflow/tools/git:gen_git_source")],
     )
 
 def tf_py_build_info_genrule():
@@ -1984,9 +1982,9 @@ def tf_py_build_info_genrule():
         name = "py_build_info_gen",
         outs = ["platform/build_info.py"],
         cmd =
-            "$(location //tensorflow/tools/build_info:gen_build_info.py) --raw_generate \"$@\" --build_config " + if_cuda("cuda", "cpu"),
+            "$(location //tensorflow/tools/build_info:gen_build_info) --raw_generate \"$@\" --build_config " + if_cuda("cuda", "cpu"),
         local = 1,
-        tools = [clean_dep("//tensorflow/tools/build_info:gen_build_info.py")],
+        tools = [clean_dep("//tensorflow/tools/build_info:gen_build_info")],
     )
 
 def cc_library_with_android_deps(

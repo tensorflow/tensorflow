@@ -130,7 +130,7 @@ class GradientTape {
       const string& op_type, std::vector<TapeTensor>& output_tensors,
       gtl::ArraySlice<int64> input_tensor_id,
       gtl::ArraySlice<tensorflow::DataType> input_dtypes,
-      BackwardFunction* backward_function,
+      const std::function<BackwardFunction*()>& backward_function_getter,
       const std::function<void(BackwardFunction*)>& backward_function_deleter);
 
   void DeleteTrace(int64 tensor_id);
@@ -206,10 +206,9 @@ void GradientTape<Gradient, BackwardFunction, TapeTensor>::RecordOperation(
     const string& op_type, std::vector<TapeTensor>& output_tensors,
     gtl::ArraySlice<int64> input_tensor_id,
     gtl::ArraySlice<tensorflow::DataType> input_dtypes,
-    BackwardFunction* backward_function,
+    const std::function<BackwardFunction*()>& backward_function_getter,
     const std::function<void(BackwardFunction*)>& backward_function_deleter) {
   if (!ShouldRecord(input_tensor_id, input_dtypes)) {
-    backward_function_deleter(backward_function);
     return;
   }
   std::vector<int64> ids;
@@ -229,7 +228,7 @@ void GradientTape<Gradient, BackwardFunction, TapeTensor>::RecordOperation(
     tensors.push_back(o);
   }
   op_tape_[op_id] = OpTapeEntry<BackwardFunction, TapeTensor>{
-      op_type, std::move(tensors), ids, backward_function,
+      op_type, std::move(tensors), std::move(ids), backward_function_getter(),
       backward_function_deleter};
 }
 

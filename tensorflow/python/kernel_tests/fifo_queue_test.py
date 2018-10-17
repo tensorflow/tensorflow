@@ -1586,7 +1586,7 @@ class FIFOQueueDictTest(test.TestCase):
 class FIFOQueueWithTimeoutTest(test.TestCase):
 
   def testDequeueWithTimeout(self):
-    with self.test_session(
+    with self.session(
         config=config_pb2.ConfigProto(operation_timeout_in_ms=20)) as sess:
       q = data_flow_ops.FIFOQueue(10, dtypes_lib.float32)
       self.assertEqual(

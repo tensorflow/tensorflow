@@ -102,7 +102,7 @@ class StatefulScatterNdTest(test.TestCase):
     np.random.seed(8)
     ref_shapes = [(3, 6), (3, 6), (3, 6, 9), (3, 6, 9), (3, 6, 9), (3, 6, 9)]
     indices_shapes = [(2,), (2, 2), (2,), (2, 2), (2, 3), (2, 3, 3)]
-    with self.test_session(use_gpu=True):
+    with self.cached_session(use_gpu=True):
       for ref_shape, indices_shape in zip(ref_shapes, indices_shapes):
         num_updates = indices_shape[0]
         ixdim = indices_shape[-1]
@@ -158,7 +158,7 @@ class StatefulScatterNdTest(test.TestCase):
     scatter = state_ops.scatter_nd_update(ref, indices, updates)
     init = variables.global_variables_initializer()
 
-    with self.test_session(use_gpu=True) as sess:
+    with self.session(use_gpu=True) as sess:
       sess.run(init)
       result = sess.run(scatter)
       self.assertAllClose(result, expected)
@@ -172,7 +172,7 @@ class StatefulScatterNdTest(test.TestCase):
     scatter = state_ops.scatter_nd_update(ref, indices, updates)
     init = variables.global_variables_initializer()
 
-    with self.test_session(use_gpu=True) as sess:
+    with self.session(use_gpu=True) as sess:
       sess.run(init)
       sess.run(scatter)
       self.assertAllClose(ref.eval(), expected)
@@ -186,7 +186,7 @@ class StatefulScatterNdTest(test.TestCase):
     scatter = state_ops.scatter_nd_update(ref, indices, updates)
     init = variables.global_variables_initializer()
 
-    with self.test_session(use_gpu=True) as sess:
+    with self.session(use_gpu=True) as sess:
       sess.run(init)
       result = sess.run(scatter)
       self.assertAllClose(result, expected)
@@ -200,7 +200,7 @@ class StatefulScatterNdTest(test.TestCase):
     scatter = state_ops.scatter_nd_update(ref, indices, updates)
     init = variables.global_variables_initializer()
 
-    with self.test_session(use_gpu=True) as sess:
+    with self.session(use_gpu=True) as sess:
       sess.run(init)
       result = sess.run(scatter)
       self.assertAllClose(result, expected)
@@ -239,7 +239,7 @@ class StatefulScatterNdTest(test.TestCase):
   # TODO(simister): Re-enable once binary size increase due to
   # extra templating is back under control and this op is re-enabled
   # def testBooleanScatterUpdate(self):
-  #   with self.test_session(use_gpu=False) as session:
+  #   with self.session(use_gpu=False) as session:
   #     var = tf.Variable([True, False])
   #     update0 = tf.scatter_nd_update(var, [[1]], [True])
   #     update1 = tf.scatter_nd_update(
@@ -257,7 +257,7 @@ class StatefulScatterNdTest(test.TestCase):
                state_ops.scatter_nd_update):
       params = np.array([1, 2, 3, 4, 5, 6]).astype(np.float32)
       updates = np.array([-3, -4, -5]).astype(np.float32)
-      with self.test_session(use_gpu=False):
+      with self.cached_session(use_gpu=False):
         ref = variables.VariableV1(params)
         ref.initializer.run()
 
@@ -284,6 +284,15 @@ class StatefulScatterNdTest(test.TestCase):
     self.assertAllEqual(
         state_ops.scatter_nd_update(ref, indices,
                                     updates).get_shape().as_list(), shape)
+
+  def testResVarInvalidOutputShape(self):
+    res = variables.Variable(
+        initial_value=lambda: array_ops.zeros(shape=[], dtype=dtypes.float32),
+        dtype=dtypes.float32)
+    with self.cached_session():
+      res.initializer.run()
+      with self.assertRaisesOpError("Output must be at least 1-D"):
+        state_ops.scatter_nd_update(res, [[0]], [0.22]).eval()
 
   def testExtraIndicesDimensions(self):
     indices = array_ops.zeros([1, 1, 2], dtypes.int32)
@@ -347,7 +356,7 @@ class StatefulScatterNdTest(test.TestCase):
       updates = np.array([-3, -4, -5]).astype(np.float32)
       # With GPU, the code ignores indices that are out of range.
       # We don't test the implementation; just test there's no failures.
-      with self.test_session(force_gpu=True):
+      with self.cached_session(force_gpu=True):
         ref = variables.Variable(params)
         ref.initializer.run()
 

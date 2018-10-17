@@ -38,6 +38,7 @@ from tensorflow.python.platform import test
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import checkpoint_management
 from tensorflow.python.training import training as training_module
+from tensorflow.python.training.checkpointable import util as checkpointable
 
 try:
   import h5py  # pylint:disable=g-import-not-at-top
@@ -679,6 +680,26 @@ class TestWholeModelSaving(test.TestCase):
       os.remove(fname)
 
 
+  def test_saving_constant_initializer_with_numpy(self):
+    if h5py is None:
+      self.skipTest('h5py required to run this test')
+
+    with self.cached_session():
+      model = keras.models.Sequential()
+      model.add(
+          keras.layers.Dense(
+              2,
+              input_shape=(3,),
+              kernel_initializer=keras.initializers.Constant(np.ones((3, 2)))))
+      model.add(keras.layers.Dense(3))
+      model.compile(loss='mse', optimizer='sgd', metrics=['acc'])
+      fd, fname = tempfile.mkstemp('.h5')
+      keras.models.save_model(model, fname)
+      model = keras.models.load_model(fname)
+      os.close(fd)
+      os.remove(fname)
+
+
 class SubclassedModel(training.Model):
 
   def __init__(self):
@@ -922,6 +943,18 @@ class TestWeightSavingAndLoadingTFFormat(test.TestCase):
         SubclassedModel, SubclassedModelRestore,
         _restore_init_fn)
 
+  @test_util.run_in_graph_and_eager_modes
+  def test_incompatible_checkpoint(self):
+    save_path = checkpointable.Checkpoint().save(
+        os.path.join(self.get_temp_dir(), 'ckpt'))
+    m = keras.Model()
+    with self.assertRaisesRegexp(AssertionError, 'Nothing to load'):
+      m.load_weights(save_path)
+    m.dense = keras.layers.Dense(2)
+    m.dense(constant_op.constant([[1.]]))
+    with self.assertRaisesRegexp(
+        AssertionError, 'Nothing except the root object matched'):
+      m.load_weights(save_path)
 
 if __name__ == '__main__':
   test.main()

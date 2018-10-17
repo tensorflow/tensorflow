@@ -62,6 +62,7 @@ py_library(
         ":backend",
         ":engine",
         ":layers",
+        "//tensorflow/python/keras/optimizer_v2:optimizer_v2",
         "//tensorflow/python/saved_model",
         "//tensorflow/python:training",
     ],
@@ -684,6 +685,19 @@ py_test(
     name = "training_test",
     size = "enormous",
     srcs = ["engine/training_test.py"],
+    srcs_version = "PY2AND3",
+    tags = ["notsan"],
+    deps = [
+        ":keras",
+        "//tensorflow/python:client_testlib",
+        "//third_party/py/numpy",
+    ],
+)
+
+py_test(
+    name = "training_generator_test",
+    size = "enormous",
+    srcs = ["engine/training_generator_test.py"],
     srcs_version = "PY2AND3",
     tags = ["notsan"],
     deps = [

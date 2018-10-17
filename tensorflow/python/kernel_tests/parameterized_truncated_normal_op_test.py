@@ -115,7 +115,7 @@ class ParameterizedTruncatedNormalTest(test.TestCase):
       # Give up early if we are unable to import it.
       import scipy.stats  # pylint: disable=g-import-not-at-top,unused-variable
       random_seed.set_random_seed(seed)
-      with self.test_session(use_gpu=True):
+      with self.cached_session(use_gpu=True):
         samples = random_ops.parameterized_truncated_normal(shape, mean, stddev,
                                                             minval,
                                                             maxval).eval()
@@ -139,7 +139,7 @@ class ParameterizedTruncatedNormalTest(test.TestCase):
     try:
       import scipy.stats  # pylint: disable=g-import-not-at-top
       random_seed.set_random_seed(seed)
-      with self.test_session(use_gpu=True):
+      with self.cached_session(use_gpu=True):
         samples = random_ops.parameterized_truncated_normal(shape, mean, stddev,
                                                             minval,
                                                             maxval).eval()
@@ -186,7 +186,7 @@ class ParameterizedTruncatedNormalTest(test.TestCase):
     sample_op = random_ops.parameterized_truncated_normal(
         shape=(int(1e5),), means=0.8, stddevs=0.05, minvals=-1., maxvals=1.)
 
-    with self.test_session(use_gpu=True) as sess:
+    with self.session(use_gpu=True) as sess:
       samples = sess.run(sample_op)
       # 0. is more than 16 standard deviations from the mean, and
       # should have a likelihood < 1e-57.

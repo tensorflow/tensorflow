@@ -34,6 +34,7 @@ limitations under the License.
 #include "llvm/IR/Instructions.h"
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/Module.h"
+#include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/service/buffer_assignment.h"
 #include "tensorflow/compiler/xla/service/dfs_hlo_visitor.h"
@@ -43,7 +44,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/convolution_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/copy_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/cudnn_batchnorm_thunk.h"
-#include "tensorflow/compiler/xla/service/gpu/cudnn_convolution_runner.h"
+#include "tensorflow/compiler/xla/service/gpu/cudnn_conv_runner.h"
 #include "tensorflow/compiler/xla/service/gpu/fft_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/for_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/gemm_thunk.h"
@@ -493,13 +494,68 @@ Status IrEmitterUnnested::HandleFft(HloInstruction* fft) {
 
 Status IrEmitterUnnested::HandleFusion(HloInstruction* fusion) {
   HloInstruction* root = fusion->fused_expression_root();
-  // HandleFusion specializes reduction from a multi-dimensional array to a 1D
-  // array. The specialized version requires a initializer thunk that
-  // initializes the output array to the initial value of the reduce.
   if (HloInstruction::FusionKind::kInput == fusion->fusion_kind()) {
     switch (root->opcode()) {
+      case HloOpcode::kScatter: {
+        std::vector<std::unique_ptr<Thunk>> thunks;
+        // The initialization from 'operand' is using different loop bounds, so
+        // emit it in a separate kernel. Treat it like a loop fusion, writing to
+        // the output buffer.
+        {
+          int unroll_factor = ComputeMaxUnrollFactor(fusion);
+          thunks.push_back(BuildKernelThunk(
+              fusion, /*implements_whole_instruction=*/false, unroll_factor));
+
+          std::vector<IrArray> operand_parameter_arrays;
+          for (HloInstruction* operand : fusion->operands()) {
+            operand_parameter_arrays.push_back(GetIrArray(*operand, *fusion));
+          }
+          GpuElementalIrEmitter operand_elemental_emitter(
+              hlo_module_config_, ir_emitter_context_->llvm_module(), &b_,
+              GetNestedComputer());
+          FusedIrEmitter operand_fused_emitter(operand_parameter_arrays,
+                                               &operand_elemental_emitter);
+          TF_RETURN_IF_ERROR(
+              root->mutable_operand(0)->Accept(&operand_fused_emitter));
+
+          TF_RETURN_IF_ERROR(EmitTargetElementLoopInThunk(
+              *fusion, operand_fused_emitter.GetGenerator(root->operand(0)),
+              static_cast<KernelThunk*>(thunks.back().get())));
+        }
+
+        // Now build the actual scatter, reading and writing to the freshly
+        // filled output buffer.
+        {
+          thunks.push_back(
+              BuildKernelThunk(fusion,
+                               /*implements_whole_instruction=*/false));
+          // Spin up a new fused emitter for the scatter kernel and emit it.
+          std::vector<IrArray> scatter_parameter_arrays;
+          for (HloInstruction* operand : fusion->operands()) {
+            scatter_parameter_arrays.push_back(GetIrArray(*operand, *fusion));
+          }
+          GpuElementalIrEmitter scatter_elemental_emitter(
+              hlo_module_config_, ir_emitter_context_->llvm_module(), &b_,
+              GetNestedComputer());
+          FusedIrEmitter scatter_fused_emitter(scatter_parameter_arrays,
+                                               &scatter_elemental_emitter);
+          TF_RETURN_IF_ERROR(root->Accept(&scatter_fused_emitter));
+          TF_RETURN_IF_ERROR(EmitScatter(
+              thunks.back().get(), root,
+              /*scatter_indices_gen=*/
+              scatter_fused_emitter.GetGenerator(root->operand(1)),
+              /*updates_gen=*/
+              scatter_fused_emitter.GetGenerator(root->operand(2))));
+        }
+        thunk_sequence_->emplace_back(
+            absl::make_unique<SequentialThunk>(std::move(thunks), fusion));
+        return Status::OK();
+      }
       case HloOpcode::kTuple:
       case HloOpcode::kReduce: {
+        // HandleFusion specializes reduction from a multi-dimensional array to
+        // a 1D array. The specialized version requires a initializer thunk that
+        // initializes the output array to the initial value of the reduce.
         if (root->opcode() == HloOpcode::kReduce &&
             ShapeUtil::IsTuple(root->shape())) {
           // TODO(b/112040122): Support variadic reduce.
@@ -1672,6 +1728,14 @@ Status IrEmitterUnnested::HandleReduce(HloInstruction* reduce) {
 }
 
 Status IrEmitterUnnested::HandleTuple(HloInstruction* tuple) {
+  // For the root node of the entry computation we can elide writing the tuple
+  // buffer. We can always figure out the contents of the tuples from buffer
+  // assignment because we insert copies to ensure non-ambiguous output buffers.
+  // GpuExecutable never reads the tuple buffer.
+  if (tuple ==
+      tuple->parent()->parent()->entry_computation()->root_instruction()) {
+    return Status::OK();
+  }
   bool all_tuple_elements_have_buffer =
       absl::c_all_of(tuple->operands(), [&](HloInstruction* tuple_element) {
         return ir_emitter_context_->buffer_assignment()
@@ -1958,6 +2022,178 @@ Status IrEmitterUnnested::HandleRng(HloInstruction* rng) {
   return Status::OK();
 }
 
+Status IrEmitterUnnested::HandleScatter(HloInstruction* scatter) {
+  const HloInstruction* operand = scatter->operand(0);
+  const HloInstruction* scatter_indices = scatter->operand(1);
+  const HloInstruction* updates = scatter->operand(2);
+
+  std::vector<std::unique_ptr<Thunk>> thunks;
+
+  // Copy the operand into the output if it's not the same buffer already.
+  auto operand_buffer = GetAllocationSlice(*operand);
+  auto destination_buffer = GetAllocationSlice(*scatter);
+  if (operand_buffer != destination_buffer) {
+    thunks.push_back(absl::make_unique<DeviceToDeviceCopyThunk>(
+        /*source_address=*/operand_buffer,
+        /*destination_buffer=*/destination_buffer,
+        /*mem_size=*/ShapeUtil::ByteSizeOf(operand->shape()), scatter));
+  }
+
+  thunks.push_back(
+      BuildKernelThunk(scatter,
+                       /*implements_whole_instruction=*/thunks.empty()));
+
+  TF_RETURN_IF_ERROR(
+      EmitScatter(thunks.back().get(), scatter,
+                  /*scatter_indices_gen=*/
+                  [=](const IrArray::Index& index) {
+                    return GetIrArray(*scatter_indices, *scatter)
+                        .EmitReadArrayElement(index, &b_, "scatter_index");
+                  },
+                  /*updates_gen=*/
+                  [=](const IrArray::Index& index) {
+                    return GetIrArray(*updates, *scatter)
+                        .EmitReadArrayElement(index, &b_, "update");
+                  }));
+
+  // Elide the sequential thunk if there's no copy.
+  if (thunks.size() == 1) {
+    thunk_sequence_->push_back(std::move(thunks[0]));
+  } else {
+    thunk_sequence_->emplace_back(
+        absl::make_unique<SequentialThunk>(std::move(thunks), scatter));
+  }
+  return Status::OK();
+}
+
+Status IrEmitterUnnested::EmitScatter(
+    Thunk* thunk, HloInstruction* scatter,
+    const llvm_ir::ElementGenerator& scatter_indices_gen,
+    const llvm_ir::ElementGenerator& updates_gen) {
+  const HloInstruction* operand = scatter->operand(0);
+  const HloInstruction* scatter_indices = scatter->operand(1);
+  const HloInstruction* updates = scatter->operand(2);
+  const ScatterDimensionNumbers& dim_numbers =
+      scatter->scatter_dimension_numbers();
+  CHECK(ShapeUtil::Equal(scatter->shape(), operand->shape()));
+
+  auto loop_body_emitter = [&](const IrArray::Index& index) -> Status {
+    std::vector<llvm::Value*> raw_window_multidim;
+    std::vector<llvm::Value*> input_scatter_multidim;
+    std::vector<int64> raw_window_bounds;
+
+    // Partition the index into window indices and scatter indices.
+    for (int64 i = 0, e = index.size(); i != e; ++i) {
+      // For window indices also remember the window size, this comes in handy
+      // later.
+      if (absl::c_binary_search(dim_numbers.update_window_dims(), i)) {
+        raw_window_multidim.push_back(index[i]);
+        raw_window_bounds.push_back(updates->shape().dimensions(i));
+      } else {
+        input_scatter_multidim.push_back(index[i]);
+      }
+    }
+    DCHECK_EQ(raw_window_multidim.size(),
+              dim_numbers.update_window_dims_size());
+
+    // Apply inserted_window_dims to the window dimensions.
+    int64 raw_window_multidim_idx = 0;
+    std::vector<llvm::Value*> input_window_multidim;
+    std::vector<int64> input_window_bounds;
+    for (int64 i = 0, e = ShapeUtil::Rank(operand->shape()); i != e; ++i) {
+      if (absl::c_binary_search(dim_numbers.inserted_window_dims(), i)) {
+        input_window_bounds.push_back(1);  // Trivial dimension.
+        input_window_multidim.push_back(index.GetConstantWithIndexType(0));
+      } else {
+        input_window_bounds.push_back(
+            raw_window_bounds[raw_window_multidim_idx]);
+        input_window_multidim.push_back(
+            raw_window_multidim[raw_window_multidim_idx]);
+        ++raw_window_multidim_idx;
+      }
+    }
+    DCHECK_EQ(input_window_multidim.size(), ShapeUtil::Rank(operand->shape()));
+
+    // Insert a 1 dimension at the end if index_vector_dim requests one.
+    Shape scatter_indices_shape = scatter_indices->shape();
+    if (dim_numbers.index_vector_dim() ==
+        ShapeUtil::Rank(scatter_indices_shape)) {
+      scatter_indices_shape.add_dimensions(1);
+      scatter_indices_shape.mutable_layout()->add_minor_to_major(
+          dim_numbers.index_vector_dim());
+    }
+
+    // Now load the indices corresponding to the current window from
+    // scatter_indices.
+    llvm_ir::IrArray::Index raw_scatter_index_index(input_scatter_multidim,
+                                                    index.GetType());
+    raw_scatter_index_index.InsertAt(dim_numbers.index_vector_dim(), nullptr);
+    llvm::Value* is_in_bounds = b_.getTrue();
+    for (int64 i = 0, e = dim_numbers.scatter_dims_to_operand_dims_size();
+         i != e; ++i) {
+      // Our index is stored along index_vector_dim, insert that into the lookup
+      // index into scatter_indices.
+      raw_scatter_index_index[dim_numbers.index_vector_dim()] =
+          raw_scatter_index_index.GetConstantWithIndexType(i);
+
+      int64 operand_dim = dim_numbers.scatter_dims_to_operand_dims(i);
+      TF_ASSIGN_OR_RETURN(
+          llvm::Value* const loaded_scatter_index,
+          scatter_indices_gen(raw_scatter_index_index.SourceIndexOfReshape(
+              scatter_indices_shape, scatter_indices->shape(), &b_)));
+      // And add the index to our window index. This yields the output index.
+      llvm::Value* casted_scatter_index =
+          IntCast(loaded_scatter_index, index.GetType(),
+                  /*isSigned=*/true);
+      llvm::Value* dim_offset =
+          Add(input_window_multidim[operand_dim], casted_scatter_index);
+      input_window_multidim[operand_dim] = dim_offset;
+
+      // Also do the bounds check now.
+      int64 max_index = operand->shape().dimensions(operand_dim) -
+                        input_window_bounds[operand_dim] + 1;
+      // is_in_bounds = index >= 0 && index < dim_size-window_size+1
+      //   --> index u< dim_size-window_size+1
+      is_in_bounds =
+          And(is_in_bounds, ICmpULT(casted_scatter_index,
+                                    index.GetConstantWithIndexType(max_index)));
+    }
+
+    llvm_ir::LlvmIfData if_window_in_bounds_data = llvm_ir::EmitIfThenElse(
+        is_in_bounds, "scatter.in_bounds", &b_, /*emit_else=*/false);
+    llvm_ir::SetToFirstInsertPoint(if_window_in_bounds_data.true_block, &b_);
+    // All done, now just read from the calculated input from the window, and do
+    // an atomic store to the calculated location in the output.
+    llvm_ir::IrArray::Index input_window_index(input_window_multidim,
+                                               index.GetType());
+    HloInstruction* output_hlo =
+        scatter->IsFused() ? scatter->parent()->FusionInstruction() : scatter;
+    llvm::Value* output_address =
+        GetIrArray(*output_hlo, *output_hlo)
+            .EmitArrayElementAddress(input_window_index, &b_);
+    llvm::Value* input_address = Alloca(llvm_ir::PrimitiveTypeToIrType(
+        updates->shape().element_type(), module_));
+    TF_ASSIGN_OR_RETURN(llvm::Value* const input_ir_value, updates_gen(index));
+    Store(input_ir_value, input_address);
+    return EmitAtomicOperationForNestedComputation(
+        *scatter->to_apply(), output_address, input_address);
+  };
+
+  // Launch a kernel that reads every element in the updates tensor. We could
+  // also do one kernel per window instead if bounds checks turn out to be a
+  // bottleneck.
+  LaunchDimensions launch_dimensions = CalculateLaunchDimensions(
+      updates->shape(), ir_emitter_context_->device_description());
+  UpdateLaunchDimensions(launch_dimensions, thunk,
+                         ir_emitter_context_->llvm_module());
+
+  return ParallelLoopEmitter(loop_body_emitter, updates->shape(),
+                             launch_dimensions, &b_)
+      .EmitLoop(IrName(scatter),
+                GetIndexTypeForKernel(scatter, launch_dimensions.launch_bound(),
+                                      &b_));
+}
+
 Status IrEmitterUnnested::HandleSelect(HloInstruction* select) {
   thunk_sequence_->push_back(
       BuildKernelThunk(select, /*implements_whole_instruction=*/true));
@@ -1966,34 +2202,34 @@ Status IrEmitterUnnested::HandleSelect(HloInstruction* select) {
 
 Status IrEmitterUnnested::HandleSort(HloInstruction* sort) {
   std::vector<std::unique_ptr<Thunk>> thunks;
-  auto keys = sort->operand(0);
-  auto values = sort->operand_count() > 1 ? sort->operand(1) : nullptr;
-  ShapeIndex keys_shape_index({});
-  ShapeIndex values_shape_index({});
-  if (values != nullptr) {
-    keys_shape_index = ShapeIndex({0});
-    values_shape_index = ShapeIndex({1});
-  }
-  auto keys_destination = GetAllocationSlice(*sort, keys_shape_index);
-  auto values_destination = GetAllocationSlice(*sort, values_shape_index);
+  Shape keys_shape = sort->operand(0)->shape();
+  for (int64 i = 0; i < sort->operand_count(); ++i) {
+    ShapeIndex shape_index =
+        sort->operand_count() > 1 ? ShapeIndex({i}) : ShapeIndex({});
+    // We assume that the layout of all involved operands and outputs is the
+    // same.
+    TF_RET_CHECK(LayoutUtil::LayoutsInShapesEqual(keys_shape,
+                                                  sort->operand(i)->shape()));
+    TF_RET_CHECK(LayoutUtil::LayoutsInShapesEqual(
+        keys_shape, ShapeUtil::GetSubshape(sort->shape(), shape_index)));
 
-  if (keys_destination != GetAllocationSlice(*keys)) {
-    thunks.push_back(absl::make_unique<DeviceToDeviceCopyThunk>(
-        /*source_address=*/GetAllocationSlice(*keys),
-        /*destination_buffer=*/keys_destination,
-        /*mem_size=*/ShapeUtil::ByteSizeOf(keys->shape()), nullptr));
-  }
-  if (values != nullptr && values_destination != GetAllocationSlice(*values)) {
-    // TODO(b/26783907): Figure out why we never seem to share buffers for
-    // key/value sort.
-    thunks.push_back(absl::make_unique<DeviceToDeviceCopyThunk>(
-        /*source_address=*/GetAllocationSlice(*values),
-        /*destination_buffer=*/values_destination,
-        /*mem_size=*/ShapeUtil::ByteSizeOf(values->shape()), nullptr));
+    // If possible, we share buffers. If that is not possible, we need to copy
+    // the values, because the emitter does the sorting in-place.
+    auto destination_buffer = GetAllocationSlice(*sort, shape_index);
+    auto source_address = GetAllocationSlice(*sort->operand(i));
+    if (destination_buffer != source_address) {
+      // TODO(b/26783907): Figure out why we never seem to share buffers for
+      // key/value sort.
+      thunks.push_back(absl::make_unique<DeviceToDeviceCopyThunk>(
+          /*source_address=*/source_address,
+          /*destination_buffer=*/destination_buffer,
+          /*mem_size=*/ShapeUtil::ByteSizeOf(sort->operand(i)->shape()),
+          nullptr));
+    }
   }
 
   int64 dimension_to_sort = sort->dimensions(0);
-  int64 dimension_to_sort_bound = keys->shape().dimensions(dimension_to_sort);
+  int64 dimension_to_sort_bound = keys_shape.dimensions(dimension_to_sort);
   int64 num_stages = tensorflow::Log2Ceiling(dimension_to_sort_bound);
   auto index_type = b_.getInt64Ty();
 
@@ -2017,7 +2253,7 @@ Status IrEmitterUnnested::HandleSort(HloInstruction* sort) {
       thunks.push_back(
           BuildKernelThunk(sort, /*implements_whole_instruction=*/false));
       LaunchDimensions launch_dimensions = CalculateLaunchDimensions(
-          keys->shape(), ir_emitter_context_->device_description());
+          keys_shape, ir_emitter_context_->device_description());
       UpdateLaunchDimensions(launch_dimensions, thunks.back().get(),
                              ir_emitter_context_->llvm_module());
 
@@ -2028,12 +2264,21 @@ Status IrEmitterUnnested::HandleSort(HloInstruction* sort) {
         xor_mask = llvm::ConstantInt::get(index_type, 1LL << mask);
       }
 
+      IrArray keys_array;
+      std::vector<IrArray> values_arrays;
+      values_arrays.reserve(sort->operand_count() - 1);
+      for (int64 i = 0; i < sort->operand_count(); ++i) {
+        ShapeIndex shape_index =
+            sort->operand_count() > 1 ? ShapeIndex({i}) : ShapeIndex({});
+        if (i == 0) {
+          keys_array = GetIrArray(*sort, *sort, shape_index);
+        } else {
+          values_arrays.push_back(GetIrArray(*sort, *sort, shape_index));
+        }
+      }
       TF_RETURN_IF_ERROR(llvm_ir::EmitSortInPlace(
-          dimension_to_sort, GetIrArray(*sort, *sort, keys_shape_index),
-          values != nullptr ? absl::make_optional<IrArray>(
-                                  GetIrArray(*sort, *sort, values_shape_index))
-                            : absl::nullopt,
-          IrName(sort), xor_mask, &b_, &launch_dimensions));
+          dimension_to_sort, keys_array, values_arrays, IrName(sort), xor_mask,
+          &b_, &launch_dimensions));
     }
   }
 

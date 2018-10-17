@@ -20,11 +20,10 @@ import android.util.Log;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.ByteBuffer;
-import java.nio.ByteOrder;
 import java.nio.MappedByteBuffer;
 
 /**
- * Class that benchmarks image classifier models.
+ * Base class that benchmarks image models.
  *
  * <p>===================== General workflow =======================
  *
@@ -33,37 +32,40 @@ import java.nio.MappedByteBuffer;
  * benchmarker.getReadyToTest(labelInputStream, model);
  * while (!benchmarker.shouldStop()) {
  *   Bitmap bitmap = ...
- *   benchmarker.doTestIteration(bitmap);
+ *   imgId = ...
+ *   benchmarker.processBitmap(bitmap, imgId);
  * }
  * }</pre>
  */
-public class OvicBenchmarker {
+public abstract class OvicBenchmarker {
   /** Tag for the {@link Log}. */
   private static final String TAG = "OvicBenchmarker";
 
-  /** Evaluation transformation parameters. */
-  private static final float CENTRAL_FRACTION = 0.875f;
-
   /** Dimensions of inputs. */
-  private static final int DIM_BATCH_SIZE = 1;
-  private static final int DIM_PIXEL_SIZE = 3;
-  private int imgHeight = 224;
-  private int imgWidth = 224;
+  protected static final int DIM_BATCH_SIZE = 1;
+  protected static final int DIM_PIXEL_SIZE = 3;
+  protected int imgHeight = 224;
+  protected int imgWidth = 224;
+
+  /** Preprocess parameters (only used when input is float). */
+  protected static final float IMAGE_MEAN = 127.5f;
+  protected static final float IMAGE_STD = 127.5f;
+
+  /** Whether input is float or quantized. */
+  protected Boolean quantizedInput = null;
 
   /* Preallocated buffers for storing image data in. */
-  private int[] intValues = null;
+  protected int[] intValues = null;
 
   /** A ByteBuffer to hold image data, to be feed into classifier as inputs. */
-  private ByteBuffer imgData = null;
-
-  private OvicClassifier classifier;
+  protected ByteBuffer imgData = null;
 
   /** Total runtime in ms. */
-  private double totalRuntime = 0.0;
+  protected double totalRuntime = 0.0;
   /** Total allowed runtime in ms. */
-  private double wallTime = 20000 * 30.0;
-
-  private Boolean benchmarkStarted = null;
+  protected double wallTime = 20000 * 30.0;
+  /** Record whether benchmark has started (used to skip the first image). */
+  protected boolean benchmarkStarted = false;
 
   /**
    * Initializes an {@link OvicBenchmarker}
@@ -74,6 +76,11 @@ public class OvicBenchmarker {
     benchmarkStarted = false;
     totalRuntime = 0.0;
     this.wallTime = wallTime;
+  }
+
+  /** Return the cumulative latency of all runs so far. */
+  public double getTotalRunTime() {
+    return totalRuntime;
   }
 
   /** Check whether the benchmarker should stop. */
@@ -90,105 +97,62 @@ public class OvicBenchmarker {
     return false;
   }
 
-  /** Check whether the benchmarker is ready to start classifying images. */
-  public Boolean readyToTest() {
-    return (classifier != null);
-  }
+  /** Abstract class for checking whether the benchmarker is ready to start processing images */
+  public abstract boolean readyToTest();
 
   /**
-   * Getting the benchmarker ready for classifying images.
+   * Abstract class for getting the benchmarker ready.
    *
    * @param labelInputStream: an {@link InputStream} specifying where the list of labels should be
    *     read from.
    * @param model: a {@link MappedByteBuffer} model to benchmark.
    */
-  public void getReadyToTest(InputStream labelInputStream, MappedByteBuffer model) {
-    try {
-      Log.i(TAG, "Creating classifier.");
-      classifier = new OvicClassifier(labelInputStream, model);
-      int [] inputDims = classifier.getInputDims();
-      imgHeight = inputDims[1];
-      imgWidth = inputDims[2];
-      // Only accept QUANTIZED_UINT8 input.
-      imgData = ByteBuffer.allocateDirect(DIM_BATCH_SIZE * imgHeight * imgWidth * DIM_PIXEL_SIZE);
-      imgData.order(ByteOrder.nativeOrder());
-      intValues = new int[imgHeight * imgWidth];
-    } catch (Exception e) {
-        Log.e(TAG, e.getMessage());
-        Log.e(TAG, "Failed to initialize ImageNet classifier for the benchmarker.");
-    }
-  }
-
-  /** Return how many classes are predicted per image. */
-  public int getNumPredictions() {
-    return classifier.getNumPredictions();
-  }
+  public abstract void getReadyToTest(InputStream labelInputStream, MappedByteBuffer model);
 
   /**
    * Perform test on a single bitmap image.
    *
-   * @param bitmap: a {@link Bitmap} image to classify.
+   * @param bitmap: a {@link Bitmap} image to process.
+   * @param imageId: an ID uniquely representing the image.
    */
-  public OvicSingleImageResult doTestIteration(Bitmap bitmap)
-      throws IOException, InterruptedException {
-    if (shouldStop() || !readyToTest()) {
-      return null;
-    }
-    OvicSingleImageResult iterResult = null;
-    try {
-      Log.i(TAG, "Converting bitmap.");
-      convertBitmapToInput(bitmap);
-      Log.i(TAG, "Classifying image.");
-      iterResult = classifier.classifyByteBuffer(imgData);
-    } catch (RuntimeException e) {
-      Log.e(TAG, e.getMessage());
-      Log.e(TAG, "Failed to classify image.");
-    }
-    if (iterResult == null || iterResult.latency == null) {
-      throw new RuntimeException("Classification result or timing is invalid.");
-    }
-    Log.d(TAG, "Native inference latency: " + iterResult.latency);
-    Log.i(TAG, iterResult.toString());
+  public abstract boolean processBitmap(Bitmap bitmap, int imageId)
+      throws IOException, InterruptedException;
 
-    if (!benchmarkStarted) {  // Skip the first image to discount warming-up time.
-      benchmarkStarted = true;
-    } else {
-      totalRuntime += (double) iterResult.latency;
-    }
-    return iterResult;
+  /** Perform test on a single bitmap image without an image ID. */
+  public boolean processBitmap(Bitmap bitmap) throws IOException, InterruptedException {
+    return processBitmap(bitmap, /* imageId = */ 0);
   }
 
+  /** Returns the last inference results as string. */
+  public abstract String getLastResultString();
+
   /**
-   * Writes Image data into a {@link ByteBuffer}.
-   *
-   * @param bitmap: a {@link Bitmap} source image.
-   */
-  private void convertBitmapToInput(Bitmap bitmap) throws RuntimeException {
-    if (imgData == null) {
+   * Loads input buffer from intValues into ByteBuffer for the interpreter.
+   * Input buffer must be loaded in intValues and output will be placed in imgData.
+  */
+  protected void loadsInputToByteBuffer() {
+    if (imgData == null || intValues == null || quantizedInput == null) {
       throw new RuntimeException("Benchmarker is not yet ready to test.");
     }
-    imgData.rewind();
-    // Perform transformations corresponding to evaluation mode.
-    float width = (float) bitmap.getWidth();
-    float height = (float) bitmap.getHeight();
-    int stWidth = Math.round((width - width * CENTRAL_FRACTION) / 2);
-    int stHeight = Math.round((height - height * CENTRAL_FRACTION) / 2);
-    int newWidth = Math.round(width - stWidth * 2);
-    int newHeight = Math.round(height - stHeight * 2);
-    bitmap = Bitmap.createBitmap(bitmap, stWidth, stHeight, newWidth, newHeight);
-    bitmap = Bitmap.createScaledBitmap(bitmap, imgWidth, imgHeight, true);
-    bitmap.getPixels(intValues, 0, bitmap.getWidth(), 0, 0, bitmap.getWidth(), bitmap.getHeight());
-
     // Convert the image to ByteBuffer.
+    imgData.rewind();
     int pixel = 0;
     long startTime = SystemClock.uptimeMillis();
 
     for (int i = 0; i < imgHeight; ++i) {
       for (int j = 0; j < imgWidth; ++j) {
-        final int val = intValues[pixel++];
-        imgData.put((byte) ((val >> 16) & 0xFF));
-        imgData.put((byte) ((val >> 8) & 0xFF));
-        imgData.put((byte) (val & 0xFF));
+        final int pixelValue = intValues[pixel++];
+        if (quantizedInput) {
+          // Quantized model
+          imgData.put((byte) ((pixelValue >> 16) & 0xFF));
+          imgData.put((byte) ((pixelValue >> 8) & 0xFF));
+          imgData.put((byte) (pixelValue & 0xFF));
+        } else {
+          // Float model
+          imgData.putFloat((((pixelValue >> 16) & 0xFF) - IMAGE_MEAN) / IMAGE_STD);
+          imgData.putFloat((((pixelValue >> 8) & 0xFF) - IMAGE_MEAN) / IMAGE_STD);
+          imgData.putFloat(((pixelValue & 0xFF) - IMAGE_MEAN) / IMAGE_STD);
+        }
       }
     }
     long endTime = SystemClock.uptimeMillis();

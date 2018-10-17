@@ -361,6 +361,7 @@ class TestUtilTest(test_util.TensorFlowTestCase):
     b = [1, 2]
     self.assertArrayNear(a, b, 0.001)
 
+  @test_util.skip_if(True)  # b/117665998
   def testForceGPU(self):
     with self.assertRaises(errors.InvalidArgumentError):
       with self.test_session(force_gpu=True):

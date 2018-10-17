@@ -16,15 +16,15 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_JIT_DEADNESS_ANALYSIS_INTERNAL_H_
 #define TENSORFLOW_COMPILER_JIT_DEADNESS_ANALYSIS_INTERNAL_H_
 
+#include "absl/container/flat_hash_map.h"
 #include "tensorflow/core/graph/tensor_id.h"
-#include "tensorflow/core/lib/gtl/flatmap.h"
 
 namespace tensorflow {
 namespace deadness_analysis_internal {
 
 // Returns a map describing the predicate each Tensor was mapped to.  For
 // testing purposes only.
-using PredicateMapTy = gtl::FlatMap<TensorId, string, TensorId::Hasher>;
+using PredicateMapTy = absl::flat_hash_map<TensorId, string, TensorId::Hasher>;
 Status ComputePredicates(const Graph& graph, PredicateMapTy* out_predicate_map);
 
 // Returns a map describing the predicate each Tensor was mapped to.  For

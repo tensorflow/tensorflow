@@ -187,7 +187,7 @@ string ConstantFolding::AddControlDependency(const string& input_name,
     // switch node, and use it to anchor the control dependency.
     auto outputs = node_map->GetOutputs(node->name());
     for (const NodeDef* output : outputs) {
-      if (IsIdentity(*output)) {
+      if (IsIdentity(*output) || IsIdentityNSingleInput(*output)) {
         if (IsSameInput(node->input(0), input_name)) {
           return AsControlDependency(*output);
         }
@@ -349,6 +349,9 @@ Status ConstantFolding::MaterializeShapes(const GraphProperties& properties) {
       if (IsReallyConstant(*array_size)) {
         // Don't materialize 0 sizes to avoid triggering incorrect static
         // checks. A 0 sized array that can't grow isn't useful anyway.
+        if (array_size->attr().count("value") == 0) {
+          continue;
+        }
         const TensorProto& raw_val = array_size->attr().at("value").tensor();
         if (raw_val.dtype() != DT_INT32) {
           continue;
@@ -454,6 +457,9 @@ bool ExtractShape(const NodeDef& shape_node, const GraphProperties& properties,
       *min_id = std::min<int64>(*min_id, dim.size());
     }
   } else {
+    if (shape_node.attr().count("value") == 0) {
+      return false;
+    }
     const TensorProto& raw_val = shape_node.attr().at("value").tensor();
     if (raw_val.dtype() != DT_INT64 && raw_val.dtype() != DT_INT32) {
       return false;
@@ -552,6 +558,7 @@ Status ConstantFolding::MaterializeBroadcastGradientArgs(
   reduce_dims[0] = bcast.grad_x_reduce_idx();
   reduce_dims[1] = bcast.grad_y_reduce_idx();
 
+  TF_RETURN_IF_ERROR(CheckAttrExists(node, "T"));
   const DataType type = node.attr().at("T").type();
   NodeDef* out[2];
   for (int j = 0; j < 2; ++j) {
@@ -616,28 +623,37 @@ Status ConstantFolding::MaterializeReductionIndices(
     // We can't do anything if we don't know the rank of the input.
     return Status::OK();
   }
-  const int rank = input_prop.shape().dim_size();
-  if (rank == 0) {
+  const int input_rank = input_prop.shape().dim_size();
+  if (input_rank < 1) {
     // Unexpected graph, don't try to change it.
     return Status::OK();
   }
+  const OpInfo::TensorProperties& reduction_indices_prop = input_props[1];
+  DataType dtype = reduction_indices_prop.dtype();
+  if (dtype != DT_INT32 && dtype != DT_INT64) {
+    return Status::OK();
+  }
+  PartialTensorShape reduction_indices_shape(reduction_indices_prop.shape());
+  const int num_reduction_indices = reduction_indices_shape.num_elements();
+
   const std::vector<OpInfo::TensorProperties>& output_props =
       properties.GetOutputProperties(node->name());
   if (output_props.size() != 1) {
     return Status::OK();
   }
-  const bool keep_dims =
-      node->attr().count("keep_dims") && node->attr().at("keep_dims").b();
   const OpInfo::TensorProperties& output_prop = output_props[0];
-  PartialTensorShape output_shape(output_prop.shape());
-  if (output_shape.num_elements() != 1) {
-    bool full_reduction = false;
+  const int output_rank =
+      output_prop.shape().unknown_rank() ? -1 : output_prop.shape().dim_size();
+
+  bool full_reduction = output_rank == 0 || num_reduction_indices == input_rank;
+  if (!full_reduction) {
+    // A full reduction will generate a tensor of one of the shapes
+    // [], [1], [1, 1], [1, 1, ...]. Even if we do not know the number of
+    // elements in the output of the reduction, we may deduce it from reshape
+    // nodes following it.
     for (const NodeDef* fanout : node_map_->GetOutputs(node->name())) {
-      if (!IsReshape(*fanout) && !keep_dims) {
-        // Depending on how it's setup, a full reduction will generate a tensor
-        // of shape [], [1], [1, 1], [1, 1, ...]. If keep_dims isn't true, we
-        // rely on the existence of a reshape node following the reduction to
-        // ensure that the fanout is fed a scalar of the right shape.
+      full_reduction = false;
+      if (!IsReshape(*fanout)) {
         return Status::OK();
       }
       const std::vector<OpInfo::TensorProperties>& reshape_props =
@@ -658,20 +674,15 @@ Status ConstantFolding::MaterializeReductionIndices(
     }
   }
 
-  const OpInfo::TensorProperties& reduction_prop = input_props[1];
-  DataType dtype = reduction_prop.dtype();
-  if (dtype != DT_INT32 && dtype != DT_INT64) {
-    return Status::OK();
-  }
-  // We know it's a full reduction. We can generate the set of indices to
-  // reduce.
+  // We know it's a full reduction. We can generate the full set of indices to
+  // reduce as a constant node.
   string const_name = OptimizedNodeName(*node, "-reduction_indices");
   if (node_map_->GetNode(const_name)) {
     return Status::OK();
   }
   NodeDef* reduction_indices = graph_->add_node();
-  Tensor value(dtype, TensorShape({rank}));
-  for (int i = 0; i < rank; ++i) {
+  Tensor value(dtype, TensorShape({input_rank}));
+  for (int i = 0; i < input_rank; ++i) {
     if (dtype == DT_INT32) {
       value.vec<int32>()(i) = i;
     } else {
@@ -680,6 +691,7 @@ Status ConstantFolding::MaterializeReductionIndices(
   }
   TF_RETURN_IF_ERROR(
       CreateNodeDef(const_name, TensorValue(&value), reduction_indices));
+
   reduction_indices->set_device(node->device());
   string ctrl_dep =
       AddControlDependency(node->input(1), graph_, node_map_.get());
@@ -785,7 +797,8 @@ bool ConstantFolding::IsFoldable(const NodeDef& node) const {
     if (is_const) {
       // Don't fold strings constants for now since this causes problems with
       // checkpointing.
-      if (input_node->attr().at("dtype").type() == DT_STRING) {
+      if (input_node->attr().count("dtype") == 0 ||
+          input_node->attr().at("dtype").type() == DT_STRING) {
         return false;
       }
       // Special case: If a Merge node has at least one constant input that
@@ -980,6 +993,7 @@ Status ConstantFolding::EvaluateOneFoldable(const NodeDef& node,
                     strings::StrCat("Can't fold ", node.name(), ", its ", input,
                                     " isn't constant"));
     }
+    TF_RETURN_IF_ERROR(CheckAttrExists(*input_node, "value"));
     const TensorProto& raw_val = input_node->attr().at("value").tensor();
     Tensor* value = new Tensor(raw_val.dtype(), raw_val.tensor_shape());
     CHECK(value->FromProto(raw_val));
@@ -1393,16 +1407,13 @@ bool ConstantFolding::IsOnes(const NodeDef& node) const {
   if (feed_nodes_.find(node.name()) != feed_nodes_.end()) {
     return false;
   }
-  if (node.op() == "OnesLike") {
-    return true;
-  }
+  if (node.op() == "OnesLike") return true;
   if (node.op() == "Fill") {
     NodeDef* values = node_map_->GetNode(NodeName(node.input(1)));
     return values != nullptr && IsOnes(*values);
   }
-  if (node.op() != "Const") {
-    return false;
-  }
+  if (node.op() != "Const") return false;
+  if (node.attr().count("dtype") == 0) return false;
   const auto dtype = node.attr().at("dtype").type();
   switch (dtype) {
     IS_ONES_CASE(DT_BOOL);
@@ -1429,16 +1440,13 @@ bool ConstantFolding::IsZeros(const NodeDef& node) const {
   if (feed_nodes_.find(node.name()) != feed_nodes_.end()) {
     return false;
   }
-  if (node.op() == "ZerosLike") {
-    return true;
-  }
+  if (node.op() == "ZerosLike") return true;
   if (node.op() == "Fill") {
     NodeDef* values = node_map_->GetNode(NodeName(node.input(1)));
     return values != nullptr && IsZeros(*values);
   }
-  if (!IsConstant(node)) {
-    return false;
-  }
+  if (!IsConstant(node)) return false;
+  if (node.attr().count("dtype") == 0) return false;
   const auto dtype = node.attr().at("dtype").type();
   switch (dtype) {
     IS_ZEROS_CASE(DT_BOOL);
@@ -1732,11 +1740,11 @@ Status ConstantFolding::SimplifyNode(bool use_shape_info, NodeDef* node,
 bool ConstantFolding::RemoveSplitOrSplitV(const GraphProperties& properties,
                                           GraphDef* optimized_graph,
                                           NodeDef* node) {
+  if (node->attr().count("num_split") == 0) return false;
   if (IsSplit(*node) && node->attr().at("num_split").i() == 1) {
     ReplaceOperationWithIdentity(1, properties, node, optimized_graph);
     return true;
   }
-
   if (IsSplitV(*node) && node->attr().at("num_split").i() == 1) {
     ReplaceOperationWithIdentity(0, properties, node, optimized_graph);
     return true;
@@ -1913,6 +1921,8 @@ Status ConstantFolding::SimplifyStridedSlice(const GraphProperties& properties,
                                              NodeDef* node, bool* success) {
   if (use_shape_info && IsStridedSlice(*node) &&
       properties.GetInputProperties(node->name()).size() == 4) {
+    TF_RETURN_IF_ERROR(
+        CheckAttrsExist(*node, {"new_axis_mask", "shrink_axis_mask"}));
     if (node->attr().at("new_axis_mask").i() != 0 ||
         node->attr().at("shrink_axis_mask").i() != 0) {
       // Skip nodes with new/shrink axis mask, since they involve dimension
@@ -1947,6 +1957,8 @@ Status ConstantFolding::SimplifyStridedSlice(const GraphProperties& properties,
         return errors::InvalidArgument("Cannot parse tensor from proto: ",
                                        s.value().DebugString());
       }
+      TF_RETURN_IF_ERROR(
+          CheckAttrsExist(*node, {"begin_mask", "end_mask", "ellipsis_mask"}));
       int begin_mask = node->attr().at("begin_mask").i();
       int end_mask = node->attr().at("end_mask").i();
       std::set<int> expanded_ellipsis_indices;
@@ -2195,7 +2207,7 @@ bool ConstantFolding::SimplifySwitch(GraphDef* optimized_graph, NodeDef* node) {
     auto fanouts = node_map_->GetOutputs(node->name());
     if (fanouts.size() == 2) {
       for (NodeDef* fanout : fanouts) {
-        if (!IsIdentity(*fanout) ||
+        if ((!IsIdentity(*fanout) && !IsIdentityNSingleInput(*fanout)) ||
             NumNonControlOutputs(*fanout, *node_map_) > 0) {
           already_optimized = false;
           break;
@@ -2275,7 +2287,7 @@ bool ConstantFolding::SimplifyReduction(const GraphProperties& properties,
     // Replace the reduction node with an identity node, that can be further
     // optimized by the model pruner.
     DataType output_type;
-    if (node->attr().count("T") > 0) {
+    if (node->attr().count("T") != 0) {
       output_type = node->attr().at("T").type();
     } else {
       // This is an 'any' or 'all' reduction. The output is always boolean.
@@ -2292,8 +2304,10 @@ bool ConstantFolding::SimplifyReduction(const GraphProperties& properties,
 
 bool ConstantFolding::SimplifyReshape(const GraphProperties& properties,
                                       bool use_shape_info, NodeDef* node) {
-  if (!use_shape_info) return false;
-  if (!IsSimplifiableReshape(*node, properties)) return false;
+  if (!use_shape_info || node->attr().count("T") == 0 ||
+      !IsSimplifiableReshape(*node, properties)) {
+    return false;
+  }
   DataType output_type = node->attr().at("T").type();
   node->set_op("Identity");
   node->clear_attr();
@@ -2305,6 +2319,7 @@ bool ConstantFolding::SimplifyReshape(const GraphProperties& properties,
 Status ConstantFolding::SimplifyArithmeticOperations(
     const GraphProperties& properties, bool use_shape_info,
     GraphDef* optimized_graph, NodeDef* node, bool* success) {
+  *success = false;
   const bool is_mul = IsMul(*node) || IsLogicalAnd(*node);
   const bool is_matmul = IsMatMul(*node);
   const bool is_add = IsAdd(*node) || IsBiasAdd(*node) || IsLogicalOr(*node);
@@ -2349,6 +2364,7 @@ Status ConstantFolding::SimplifyArithmeticOperations(
 
     // Replace 1 / y with Reciprocal op.
     if (y_matches_output_shape && is_any_div && x_is_one) {
+      TF_RETURN_IF_ERROR(CheckAttrExists(*node, "T"));
       DataType type = node->attr().at("T").type();
       if (DataTypeIsFloating(type) || DataTypeIsComplex(type)) {
         ReplaceDivisionOfOnesByReciprocal(node, optimized_graph);
@@ -2674,7 +2690,8 @@ bool ConstantFolding::MulConvPushDown(NodeDef* node,
 
 bool ConstantFolding::PartialConstPropThroughIdentityN(NodeDef* node) {
   // Partial constant propagation through IdentityN.
-  if (IsIdentityN(*node) && NumNonControlInputs(*node) > 0) {
+  if ((IsIdentityN(*node) || IsIdentityNSingleInput(*node)) &&
+      NumNonControlInputs(*node) > 0) {
     const std::set<NodeDef*>& tmp = node_map_->GetOutputs(node->name());
     const std::vector<NodeDef*> consumers(tmp.begin(), tmp.end());
     bool updated_graph = false;
@@ -3037,6 +3054,7 @@ Status ConstantFolding::Optimize(Cluster* cluster, const GrapplerItem& item,
   *optimized_graph = item.graph;
   int64 node_count;
   do {
+    GRAPPLER_RETURN_IF_DEADLINE_EXCEEDED();
     graph_modified_ = false;
     item_to_optimize.graph.Swap(optimized_graph);
     graph_ = &item_to_optimize.graph;

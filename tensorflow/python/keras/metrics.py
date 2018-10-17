@@ -28,6 +28,7 @@ import types
 import weakref
 import six
 
+from tensorflow.python.compat import compat
 from tensorflow.python.eager import context
 from tensorflow.python.eager import function
 from tensorflow.python.framework import dtypes
@@ -172,20 +173,29 @@ def weakmethod(method):
 
 
 def safe_div(numerator, denominator):
-  """Divides two tensors element-wise, returning 0 if the denominator is <= 0.
+  """Computes a safe divide which returns 0 if the denominator is zero.
+
+  Note that the function contains an additional conditional check that is
+  necessary for avoiding situations where the loss is zero causing NaNs to
+  creep into the gradient computation.
 
   Args:
-    numerator: A `Tensor`.
-    denominator: A `Tensor`, with dtype matching `numerator`.
+    numerator: An arbitrary `Tensor`.
+    denominator: A `Tensor` whose shape matches `numerator` and whose values are
+      assumed to be non-negative.
 
   Returns:
-    0 if `denominator` <= 0, else `numerator` / `denominator`
+    The element-wise value of the numerator divided by the denominator.
   """
-  t = math_ops.truediv(numerator, denominator)
-  zero = array_ops.zeros_like(t, dtype=denominator.dtype)
-  condition = math_ops.greater(denominator, zero)
-  zero = math_ops.cast(zero, t.dtype)
-  return array_ops.where(condition, t, zero)
+  if compat.forward_compatible(2018, 11, 1):
+    return math_ops.div_no_nan(numerator, denominator)
+  return array_ops.where(
+      math_ops.greater(denominator, 0),
+      math_ops.div(numerator,
+                   array_ops.where(
+                       math_ops.equal(denominator, 0),
+                       array_ops.ones_like(denominator), denominator)),
+      array_ops.zeros_like(numerator))
 
 
 def squeeze_or_expand_dimensions(y_pred, y_true, sample_weight):
@@ -651,13 +661,15 @@ def categorical_accuracy(y_true, y_pred):
 
 @tf_export('keras.metrics.sparse_categorical_accuracy')
 def sparse_categorical_accuracy(y_true, y_pred):
-  y_true = math_ops.reduce_max(y_true, axis=-1)
+  # If the shape of y_true is (num_samples, 1), squeeze to (num_samples,)
+  if (len(K.int_shape(y_true)) == len(K.int_shape(y_pred))):
+    y_true = array_ops.squeeze(y_true, [-1])
   y_pred = math_ops.argmax(y_pred, axis=-1)
 
-  # If the expected labels are float, we need to cast the int returned by
-  # argmax to compare.
-  if K.dtype(y_true) == K.floatx():
-    y_pred = math_ops.cast(y_pred, K.floatx())
+  # If the predicted output and actual output types don't match, force cast them
+  # to match.
+  if K.dtype(y_pred) != K.dtype(y_true):
+    y_pred = math_ops.cast(y_pred, K.dtype(y_true))
 
   return math_ops.cast(math_ops.equal(y_true, y_pred), K.floatx())
 
@@ -670,11 +682,11 @@ def top_k_categorical_accuracy(y_true, y_pred, k=5):
 
 @tf_export('keras.metrics.sparse_top_k_categorical_accuracy')
 def sparse_top_k_categorical_accuracy(y_true, y_pred, k=5):
-  return K.mean(
-      nn.in_top_k(y_pred,
-                  math_ops.cast(math_ops.reduce_max(y_true, axis=-1), 'int32'),
-                  k),
-      axis=-1)
+  # If the shape of y_true is (num_samples, 1), squeeze to (num_samples,)
+  if (len(K.int_shape(y_true)) == len(K.int_shape(y_pred))):
+    y_true = array_ops.squeeze(y_true, [-1])
+
+  return K.mean(nn.in_top_k(y_pred, math_ops.cast(y_true, 'int32'), k), axis=-1)
 
 # Aliases
 

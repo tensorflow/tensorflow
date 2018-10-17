@@ -29,6 +29,19 @@ constexpr int kInputTensor = 0;
 constexpr int kAxis = 1;
 constexpr int kOutputTensor = 0;
 
+TfLiteStatus ResizeOutput(TfLiteContext* context, const TfLiteTensor* input,
+                          const TfLiteTensor* axis, TfLiteTensor* output) {
+  int axis_value = *GetTensorData<int>(axis);
+  if (axis_value < 0) {
+    axis_value += NumDimensions(input);
+  }
+
+  // Copy the input dimensions to output except make the axis dimension 1.
+  TfLiteIntArray* output_dims = TfLiteIntArrayCopy(input->dims);
+  output_dims->data[axis_value] = 1;
+  return context->ResizeTensor(context, output, output_dims);
+}
+
 TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE_EQ(context, NumInputs(node), 2);
   TF_LITE_ENSURE_EQ(context, NumOutputs(node), 1);
@@ -37,10 +50,10 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   const TfLiteTensor* axis = GetInput(context, node, kAxis);
   // Make sure the axis is only 1 dimension.
   TF_LITE_ENSURE_EQ(context, NumElements(axis), 1);
-
   // Make sure the axis is only either int32 or int64.
   TF_LITE_ENSURE(context,
                  axis->type == kTfLiteInt32 || axis->type == kTfLiteInt64);
+
   TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
 
   auto* params = reinterpret_cast<TfLiteArgMaxParams*>(node->builtin_data);
@@ -72,12 +85,15 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
       return kTfLiteError;
   }
 
-  // Copy the input dimensions to output except make the last dimension 1.
   TF_LITE_ENSURE(context, NumDimensions(input) >= 1);
-  TfLiteIntArray* output_size = TfLiteIntArrayCopy(input->dims);
-  output_size->data[NumDimensions(input) - 1] = 1;
 
-  return context->ResizeTensor(context, output, output_size);
+  if (IsConstantTensor(axis)) {
+    TF_LITE_ENSURE_STATUS(ResizeOutput(context, input, axis, output));
+  } else {
+    SetTensorToDynamic(output);
+  }
+
+  return kTfLiteOk;
 }
 
 template <typename T>
@@ -89,12 +105,13 @@ std::function<bool(T, T)> GetComparefunction(bool is_arg_max) {
   }
 }
 
-// The current impl actually ignores the axis argument.
-// Only determine the index of the maximum value in the last dimension.
 TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node, bool is_arg_max) {
   const TfLiteTensor* input = GetInput(context, node, kInputTensor);
   const TfLiteTensor* axis = GetInput(context, node, kAxis);
   TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
+  if (IsDynamicTensor(output)) {
+    TF_LITE_ENSURE_STATUS(ResizeOutput(context, input, axis, output));
+  }
 
 #define TF_LITE_ARG_MIN_MAX(data_type, axis_type, output_type) \
   optimized_ops::ArgMinMax(                                    \
