@@ -594,6 +594,7 @@ py_library(
         ":values",
         "//tensorflow/contrib/all_reduce:all_reduce_py",
         "//tensorflow/contrib/nccl:nccl_py",
+        "//tensorflow/contrib/rccl:rccl_py",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:collective_ops",
         "//tensorflow/python:device",
