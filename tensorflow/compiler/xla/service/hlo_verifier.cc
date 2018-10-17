@@ -388,7 +388,15 @@ Status ShapeVerifier::HandleParameter(HloInstruction* hlo) {
 }
 
 Status ShapeVerifier::HandleFusion(HloInstruction* fusion) {
-  for (HloInstruction* fused_param : fusion->fused_parameters()) {
+  auto& fused_parameters = fusion->fused_parameters();
+  if (fused_parameters.size() != fusion->operand_count()) {
+    return InternalError(
+        "Fused parameter count (%d) does not match the number of operands (%d)"
+        " passed to the fusion instruction in: %s.",
+        fused_parameters.size(), fusion->operand_count(),
+        fusion->ToString().c_str());
+  }
+  for (HloInstruction* fused_param : fused_parameters) {
     int64 param_no = fused_param->parameter_number();
     if (!ShapesSame(fused_param->shape(), fusion->operand(param_no)->shape())) {
       return InternalError(
@@ -891,6 +899,9 @@ Status CheckEntryComputationLayout(const HloModule& module) {
   const auto& layout = module.entry_computation_layout();
   const ShapeLayout& result_layout = layout.result_layout();
 
+  TF_RETURN_IF_ERROR(
+      ShapeUtil::ValidateShapeWithOptionalLayout(result_layout.shape()));
+
   if (LayoutUtil::IsSparseArray(result_layout.shape())) {
     return Unimplemented(
         "Sparse arrays are not yet fully supported in program result shape: %s",
@@ -915,6 +926,8 @@ Status CheckEntryComputationLayout(const HloModule& module) {
 
   for (int i = 0; i < computation->num_parameters(); ++i) {
     const HloInstruction* parameter = computation->parameter_instruction(i);
+    TF_RETURN_IF_ERROR(
+        ShapeUtil::ValidateShapeWithOptionalLayout(layout.parameter_shape(i)));
     if (LayoutUtil::IsSparseArray(layout.parameter_shape(i))) {
       return Unimplemented(
           "Sparse arrays are not yet fully supported "
@@ -1319,6 +1332,12 @@ class InstructionVerifier : public DfsHloVisitorWithDefault {
 
 StatusOr<bool> HloVerifier::Run(HloModule* module) {
   TF_RET_CHECK(!module->name().empty());
+
+  if (module->entry_computation()->IsFusionComputation()) {
+    return InvalidArgument(
+        "Module entry computation cannot be a fusion computation");
+  }
+
   TF_RETURN_IF_ERROR(VerifyHloStructure(module));
   TF_RETURN_IF_ERROR(VerifySendsAndRecvs(*module));
 

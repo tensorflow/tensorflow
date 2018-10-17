@@ -283,7 +283,7 @@ XLA_TEST_F(ReducePrecisionInsertionTest,
            DISABLED_ON_INTERPRETER(ReducePrecisionSkippedAfterFusion)) {
   XlaBuilder builder(TestName());
 
-  Literal a_literal = LiteralUtil::CreateR1<float>({1.00001});
+  Literal a_literal = LiteralUtil::CreateR1<float>({1.00001, 1.00001});
   std::unique_ptr<GlobalData> a_data =
       client_->TransferToServer(a_literal).ConsumeValueOrDie();
   auto a = Parameter(&builder, 0, a_literal.shape(), "a");
@@ -301,7 +301,7 @@ XLA_TEST_F(ReducePrecisionInsertionTest,
       HloReducePrecisionOptions::UNFUSED_OP_OUTPUTS, 5, 10,
       [](const HloOpcode opcode) { return opcode == HloOpcode::kAbs; });
 
-  ComputeAndCompareR1<float>(&builder, {-1.00001f}, {a_data.get()});
+  ComputeAndCompareR1<float>(&builder, {-1.00001f, -1.00001f}, {a_data.get()});
 }
 
 // The interpreter has no fusion pass, so skip this test.
@@ -309,7 +309,7 @@ XLA_TEST_F(ReducePrecisionInsertionTest,
            DISABLED_ON_INTERPRETER(ReducePrecisionAddedAfterFusion)) {
   XlaBuilder builder(TestName());
 
-  Literal a_literal = LiteralUtil::CreateR1<float>({1.00001});
+  Literal a_literal = LiteralUtil::CreateR1<float>({1.00001, 1.00001});
   std::unique_ptr<GlobalData> a_data =
       client_->TransferToServer(a_literal).ConsumeValueOrDie();
   auto a = Parameter(&builder, 0, a_literal.shape(), "a");
@@ -325,7 +325,7 @@ XLA_TEST_F(ReducePrecisionInsertionTest,
       HloReducePrecisionOptions::UNFUSED_OP_OUTPUTS, 5, 10,
       [](const HloOpcode opcode) { return opcode == HloOpcode::kFusion; });
 
-  ComputeAndCompareR1<float>(&builder, {-1.0f}, {a_data.get()});
+  ComputeAndCompareR1<float>(&builder, {-1.0f, -1.0f}, {a_data.get()});
 }
 
 // The interpreter has no fusion pass, so skip this test.
@@ -358,7 +358,7 @@ XLA_TEST_F(ReducePrecisionInsertionTest,
            DISABLED_ON_INTERPRETER(ReducePrecisionAddedFusionContains)) {
   XlaBuilder builder(TestName());
 
-  Literal a_literal = LiteralUtil::CreateR1<float>({1.00001});
+  Literal a_literal = LiteralUtil::CreateR1<float>({1.00001, 1.00001});
   std::unique_ptr<GlobalData> a_data =
       client_->TransferToServer(a_literal).ConsumeValueOrDie();
   auto a = Parameter(&builder, 0, a_literal.shape(), "a");
@@ -375,7 +375,7 @@ XLA_TEST_F(ReducePrecisionInsertionTest,
       HloReducePrecisionOptions::FUSION_OUTPUTS_BY_CONTENT, 5, 10,
       [](const HloOpcode opcode) { return opcode == HloOpcode::kAbs; });
 
-  ComputeAndCompareR1<float>(&builder, {-1.0f}, {a_data.get()});
+  ComputeAndCompareR1<float>(&builder, {-1.0f, -1.0f}, {a_data.get()});
 }
 
 }  // namespace

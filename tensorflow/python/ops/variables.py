@@ -187,7 +187,7 @@ class VariableMetaclass(type):
       return super(VariableMetaclass, cls).__call__(*args, **kwargs)
 
 
-@tf_export(v2=["Variable"])
+@tf_export("Variable", v1=[])
 class Variable(six.with_metaclass(VariableMetaclass,
                                   checkpointable.CheckpointableBase)):
   """See the [Variables Guide](https://tensorflow.org/guide/variables).

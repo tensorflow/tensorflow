@@ -275,7 +275,23 @@ bool CompositeNodeManager::Empty() const {
   return empty && send_manager_.Empty() && recv_manager_.Empty();
 }
 
-// TODO(pcma): Modify to return unique_ptr instead
+std::unique_ptr<ReadyNodeManager> ReadyNodeManagerFactory(
+    const string& ready_node_manager) {
+  if (ready_node_manager == "FIFO") {
+    return absl::make_unique<FIFOManager>();
+  } else if (ready_node_manager == "LIFO") {
+    return absl::make_unique<LIFOManager>();
+  } else if (ready_node_manager == "FirstReady") {
+    return absl::make_unique<FirstReadyManager>();
+  } else if (ready_node_manager == "Composite") {
+    return absl::make_unique<CompositeNodeManager>();
+  }
+  LOG(FATAL) << "Not a valid ready node manager: " << ready_node_manager;
+  return nullptr;
+}
+
+// TODO(pcma): Delete this deprecated API after power_analyzer.cc is modeified
+// to use the new factory API
 ReadyNodeManager* VirtualScheduler::ReadyNodeManagerFactory(
     const string& ready_node_manager) {
   if (ready_node_manager == "FIFO") {

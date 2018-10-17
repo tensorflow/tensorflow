@@ -48,7 +48,7 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         "//tensorflow/python:util",
-        "//tensorflow/python/keras:optimizer_v2",
+        "//tensorflow/python/keras/optimizer_v2",
     ],
 )
 

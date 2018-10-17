@@ -22,6 +22,7 @@ limitations under the License.
 #include "tensorflow/core/grappler/op_types.h"
 #include "tensorflow/core/grappler/utils/grappler_test.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
+#include "tensorflow/core/lib/gtl/flatset.h"
 
 namespace tensorflow {
 namespace grappler {
@@ -856,6 +857,10 @@ TEST_F(FunctionOptimizerTest, SpecializeFunction_OncePerUniqueContext) {
        NDef("mul_6", "MyMul", {"three", "xf"}, {{"T", DT_FLOAT}}, kDevice)},
       function_library);
 
+  // Specify fetch nodes before optimization to prevent pruning unused function
+  // outputs.
+  item.fetch = {"mul_1", "mul_2", "mul_3", "mul_4", "mul_5", "mul_6"};
+
   GraphDef output;
   TF_EXPECT_OK(optimizer.Optimize(nullptr, item, &output));
 
@@ -893,8 +898,9 @@ TEST_F(FunctionOptimizerTest, SpecializeFunction_OncePerUniqueContext) {
       EXPECT_EQ("MyMul_specialized_for_mul_4", node.op());
       ASSERT_EQ(3, node.input_size());
       EXPECT_EQ("yf", node.input(0));
-      EXPECT_EQ("^init", node.input(1));
-      EXPECT_EQ("^xf", node.input(2));
+      gtl::FlatSet<string> expected_ctrl = {"^init", "^xf"};
+      gtl::FlatSet<string> actual_ctrl = {node.input(1), node.input(2)};
+      EXPECT_EQ(expected_ctrl, actual_ctrl);
 
     } else if (node.name() == "mul_6" && count++) {
       EXPECT_EQ("MyMul_specialized_for_mul_6", node.op());
@@ -908,7 +914,6 @@ TEST_F(FunctionOptimizerTest, SpecializeFunction_OncePerUniqueContext) {
   // And that graph evaluation yields the same result.
   Tensor pi = test::AsScalar<float>(3.14f);
   Tensor four = test::AsScalar<int32>(4);
-  item.fetch = {"mul_1", "mul_2", "mul_3", "mul_4", "mul_5", "mul_6"};
   item.feed = {{"xf", pi}, {"yf", pi}, {"xi", four}, {"yi", four}};
 
   auto tensors_expected = EvaluateFetchNodes(item);
@@ -921,6 +926,112 @@ TEST_F(FunctionOptimizerTest, SpecializeFunction_OncePerUniqueContext) {
   test::ExpectTensorEqual<float>(tensors_expected[3], tensors[3]);
   test::ExpectTensorEqual<float>(tensors_expected[4], tensors[4]);
   test::ExpectTensorEqual<float>(tensors_expected[5], tensors[5]);
+}
+
+TEST_F(FunctionOptimizerTest, SpecializeFunctionForUsedOutputTensors) {
+  using test::function::NDef;
+
+  FunctionOptimizer optimizer(RewriterConfig::DEFAULT);
+
+  // MyFunc computes x*y three times and has three output values.
+  FunctionDef my_func = FunctionDefHelper::Create(
+      "MyFunc", {"x:T", "y:T"}, {"z1:T", "z2:T", "z3:T"}, {"T: {float, int32}"},
+      {{{"output1"}, "Mul", {"x", "y"}, {{"T", "$T"}}},
+       {{"output2"}, "Mul", {"x", "y"}, {{"T", "$T"}}},
+       {{"output3"}, "Mul", {"x", "y"}, {{"T", "$T"}}}},
+      /* Mapping between function returns and function node outputs. */
+      {{"z1", "output1:z:0"}, {"z2", "output2:z:0"}, {"z3", "output3:z:0"}});
+  (*my_func.mutable_attr())["_noinline"].set_b(true);
+  std::vector<FunctionDef> function_library = {my_func};
+
+  GrapplerItem item;
+  item.graph = test::function::GDef(
+      {NDef("init", "NoOp", {}, {}, kDevice),
+
+       // Float placeholders.
+       NDef("xf", "Placeholder", {}, {{"dtype", DT_FLOAT}}, kDevice),
+       NDef("yf", "Placeholder", {}, {{"dtype", DT_FLOAT}}, kDevice),
+
+       // Specialization #1: DT_FLOAT type parameter. All outputs used.
+       NDef("fn1", "MyFunc", {"xf", "yf"}, {{"T", DT_FLOAT}}, kDevice),
+       NDef("use_fn1_0", "Identity", {"fn1:0"}, {{"T", DT_FLOAT}}, kDevice),
+       NDef("use_fn1_1", "Identity", {"fn1:1"}, {{"T", DT_FLOAT}}, kDevice),
+       NDef("use_fn1_2", "Identity", {"fn1:2"}, {{"T", DT_FLOAT}}, kDevice),
+
+       // Specialization #2: DT_FLOAT type parameter. Only first output used.
+       NDef("fn2", "MyFunc", {"xf", "yf"}, {{"T", DT_FLOAT}}, kDevice),
+       NDef("use_fn2_0", "Identity", {"fn2:0"}, {{"T", DT_FLOAT}}, kDevice),
+
+       // Specialization #3: DT_FLOAT type parameter. Only second output used.
+       NDef("fn3", "MyFunc", {"xf", "yf"}, {{"T", DT_FLOAT}}, kDevice),
+       NDef("use_fn3_1", "Identity", {"fn3:1"}, {{"T", DT_FLOAT}}, kDevice),
+
+       // Specialization #4: DT_FLOAT type parameter. Only last output used.
+       NDef("fn4", "MyFunc", {"xf", "yf"}, {{"T", DT_FLOAT}}, kDevice),
+       NDef("use_fn4_2", "Identity", {"fn4:2"}, {{"T", DT_FLOAT}}, kDevice),
+
+       // Specialization #5: DT_FLOAT type parameter. First and last outputs.
+       NDef("fn5", "MyFunc", {"xf", "yf"}, {{"T", DT_FLOAT}}, kDevice),
+       NDef("use_fn5_0", "Identity", {"fn5:0"}, {{"T", DT_FLOAT}}, kDevice),
+       NDef("use_fn5_2", "Identity", {"fn5:2"}, {{"T", DT_FLOAT}}, kDevice),
+
+       // Specialization #6: DT_FLOAT type parameter. Outputs not used.
+       // Check that function optimizer do not fail. In practice it should be
+       // pruned from the graph before passing to function optimizer.
+       NDef("fn6", "MyFunc", {"xf", "yf"}, {{"T", DT_FLOAT}}, kDevice)},
+      function_library);
+
+  GraphDef output;
+  TF_EXPECT_OK(optimizer.Optimize(nullptr, item, &output));
+
+  // Make sure that MyFunc was specialized once per unique context.
+  EXPECT_EQ(6, output.library().function_size());
+
+  // And graph nodes calling specialized functions.
+  int found = 0;
+  for (const NodeDef& node : output.node()) {
+    // All function caller nodes must be specialized.
+    if (node.name() == "fn1" && found++) {
+      EXPECT_EQ("MyFunc_specialized_for_fn1", node.op());
+    } else if (node.name() == "fn2" && found++) {
+      EXPECT_EQ("MyFunc_specialized_for_fn2", node.op());
+    } else if (node.name() == "fn3" && found++) {
+      EXPECT_EQ("MyFunc_specialized_for_fn3", node.op());
+    } else if (node.name() == "fn4" && found++) {
+      EXPECT_EQ("MyFunc_specialized_for_fn4", node.op());
+    } else if (node.name() == "fn5" && found++) {
+      EXPECT_EQ("MyFunc_specialized_for_fn5", node.op());
+    } else if (node.name() == "fn6" && found++) {
+      EXPECT_EQ("MyFunc_specialized_for_fn6", node.op());
+    }
+    // And all consumers of specialized function nodes must be mapped to new
+    // output ports.
+    if (node.name() == "use_fn3_1" && found++) {
+      EXPECT_EQ("fn3:0", node.input(0));
+    } else if (node.name() == "use_fn4_2" && found++) {
+      EXPECT_EQ("fn4:0", node.input(0));
+    } else if (node.name() == "use_fn5_0" && found++) {
+      EXPECT_EQ("fn5:0", node.input(0));
+    } else if (node.name() == "use_fn5_2" && found++) {
+      EXPECT_EQ("fn5:1", node.input(0));
+    }
+  }
+  EXPECT_EQ(10, found);
+
+  // And that graph evaluation yields the same result.
+  Tensor pi = test::AsScalar<float>(3.14f);
+  item.fetch = {"use_fn1_0", "use_fn1_1", "use_fn1_2", "use_fn2_0",
+                "use_fn3_1", "use_fn4_2", "use_fn5_0", "use_fn5_2"};
+  item.feed = {{"xf", pi}, {"yf", pi}};
+
+  auto tensors_expected = EvaluateFetchNodes(item);
+  GrapplerItem optimized(item, std::move(output));
+  auto tensors = EvaluateFetchNodes(optimized);
+
+  ASSERT_EQ(tensors_expected.size(), tensors.size());
+  for (int i = 0; i < item.fetch.size(); ++i) {
+    test::ExpectTensorEqual<float>(tensors_expected[i], tensors[i]);
+  }
 }
 
 TEST_F(FunctionOptimizerTest, PruningUselessLibraryFunctions) {

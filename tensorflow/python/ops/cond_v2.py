@@ -31,6 +31,7 @@ from tensorflow.python.framework import function_def_to_graph
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_util
+from tensorflow.python.ops import control_flow_util_v2 as util
 from tensorflow.python.ops import gen_functional_ops
 from tensorflow.python.ops import gradients_impl
 
@@ -61,10 +62,18 @@ def cond_v2(pred, true_fn, false_fn, name="cond"):
       true_name = graph.unique_name(("%strue" % scope).replace("/", "_"))
       false_name = graph.unique_name(("%sfalse" % scope).replace("/", "_"))
 
+    # Automatic control dependencies are added in defuns, but not in v1
+    # graphs. Propagate that behavior here.
+    add_control_dependencies = util.in_defun()
+
     true_graph = function.func_graph_from_py_func(
-        true_name, true_fn, [], {})
+        true_name, true_fn, [], {},
+        func_graph=util.CondBranchFuncGraph(true_name),
+        add_control_dependencies=add_control_dependencies)
     false_graph = function.func_graph_from_py_func(
-        false_name, false_fn, [], {})
+        false_name, false_fn, [], {},
+        func_graph=util.CondBranchFuncGraph(false_name),
+        add_control_dependencies=add_control_dependencies)
     _check_same_outputs(true_graph, false_graph)
 
     # Add inputs to true_graph and false_graph to make them match. Note that
@@ -93,8 +102,8 @@ def cond_v2(pred, true_fn, false_fn, name="cond"):
     tensors = gen_functional_ops._if(  # pylint: disable=protected-access
         pred,
         cond_inputs, [t.dtype for t in true_graph.outputs],
-        _create_new_tf_function(true_graph),
-        _create_new_tf_function(false_graph),
+        util.create_new_tf_function(true_graph),
+        util.create_new_tf_function(false_graph),
         output_shapes=_get_output_shapes(true_graph.outputs,
                                          false_graph.outputs),
         name=scope)
@@ -116,6 +125,16 @@ def cond_v2(pred, true_fn, false_fn, name="cond"):
       if_op._set_attr("_lower_using_switch_merge",
                       attr_value_pb2.AttrValue(b=True))
       # pylint: enable=protected-access
+
+    # Return identities for each output of the If op, rather than the output of
+    # the If op directly. This makes pruning work if the output of cond() is
+    # fetched: the lowering pass converts the If outputs into IdentityN outputs,
+    # which if fetched will cause all ops in the taken branch to be run (since
+    # it takes all merge ops as input). After lowering, each output identity op
+    # will end up with only the appropriate merge op as input.
+    # TODO(b/79984175): this doesn't have to be a tuple once we covert to the
+    # correct output structure
+    tensors = tuple(array_ops.identity(t) for t in tensors)
 
     result = tuple(tensors[:num_cond_outputs])
     if len(result) == 1:
@@ -175,8 +194,8 @@ def _IfGrad(op, *grads):  # pylint: disable=invalid-name
   tensors = gen_functional_ops._if(
       op.inputs[0],
       grad_inputs, [t.dtype for t in true_grad_graph.outputs],
-      _create_new_tf_function(true_grad_graph),
-      _create_new_tf_function(false_grad_graph),
+      util.create_new_tf_function(true_grad_graph),
+      util.create_new_tf_function(false_grad_graph),
       output_shapes=_get_output_shapes(true_grad_graph.outputs,
                                        false_grad_graph.outputs))
 
@@ -266,7 +285,8 @@ def _grad_fn(func_graph, grads):
 def _create_grad_func(func_graph, grads, name):
   """Returns the FuncGraph representation of _grad_fn."""
   return function.func_graph_from_py_func(
-      name, lambda: _grad_fn(func_graph, grads), [], {})
+      name, lambda: _grad_fn(func_graph, grads), [], {},
+      func_graph=util.CondBranchFuncGraph(name))
 
 
 def _resolve_grad_inputs(cond_graph, grad_graph):
@@ -312,21 +332,6 @@ def _resolve_grad_inputs(cond_graph, grad_graph):
     new_inputs.append(t)
 
   return new_inputs
-
-
-def _create_new_tf_function(func_graph):
-  """Converts func_graph to a TF_Function and adds it to the current graph.
-
-  Args:
-    func_graph: function.FuncGraph
-
-  Returns:
-    The name of the new TF_Function.
-  """
-  func = function._EagerDefinedFunction(
-      func_graph.name, func_graph, func_graph.inputs, func_graph.outputs, {})
-  func.add_to_graph(func_graph.outer_graph)
-  return func_graph.name
 
 
 def _get_intermediates(func_graph):

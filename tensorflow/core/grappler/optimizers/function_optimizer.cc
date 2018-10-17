@@ -29,6 +29,7 @@ limitations under the License.
 #include "tensorflow/core/framework/op_def.pb.h"
 #include "tensorflow/core/framework/versions.pb.h"
 #include "tensorflow/core/graph/graph_constructor.h"
+#include "tensorflow/core/grappler/graph_view.h"
 #include "tensorflow/core/grappler/grappler_item.h"
 #include "tensorflow/core/grappler/op_types.h"
 #include "tensorflow/core/grappler/utils.h"
@@ -38,6 +39,14 @@ limitations under the License.
 namespace tensorflow {
 namespace grappler {
 namespace {
+
+// WARNING: Code in this file implicitly assumes that function input and output
+// arguments are plain tensors (tensor lists are not supported). Function inputs
+// and outputs are always expanded to a single placeholder or output tensor.
+// With this assumption, the calling node's input/output ports always match
+// function input/output arguments.
+//
+// This is guaranteed by the implementation of MakeGrapplerFunctionItem.
 
 // Mark functions that were created as a result of function specialization.
 constexpr char kGrapplerSpecializedFuncAttr[] = "_GrapplerSpecializedFunc";
@@ -80,13 +89,23 @@ string UniqueSpecializedFunctionName(const FunctionDef& func,
 // Specialized function instantiation type parameters, body parameters, and
 // const inputs.
 struct FunctionSpecializationSignature {
+  // Currently we do not support functions with tensor lists as inputs or
+  // outputs, so caller node input/output ports always match function
+  // input/output arguments.
+  using InputPort = int;
+  using OutputPort = int;
+
   string func_name;
+  bool is_in_fetch_set;
+  gtl::FlatSet<OutputPort> active_outputs;
   std::unordered_map<string, DataType> type_parameters;
   std::unordered_map<string, AttrValue> body_parameters;
-  std::unordered_map<int, string> const_inputs;
+  std::unordered_map<InputPort, string> const_inputs;
 
   bool operator==(const FunctionSpecializationSignature& other) const {
     bool equals = func_name == other.func_name &&
+                  is_in_fetch_set == other.is_in_fetch_set &&
+                  active_outputs == other.active_outputs &&
                   type_parameters == other.type_parameters &&
                   const_inputs == other.const_inputs;
 
@@ -104,11 +123,21 @@ struct FunctionSpecializationSignature {
     return true;
   }
 
+  // TODO(ezhulenev): Migrate to AbslHashValue.
+  // TODO(ezhulenev): Optimize performance by computing hashes of unordered
+  // values first, and then compute a hash of sorted hashes.
   struct Hash {
     uint64 operator()(FunctionSpecializationSignature const& s) const {
       uint64 h = Hash64(s.func_name);
+      h = Hash64Combine(std::hash<bool>()(s.is_in_fetch_set), h);
 
-      // Use std::map for deterministic iteration order.
+      // Use std::set/std::map for deterministic iteration order.
+
+      std::set<OutputPort> active_outputs(s.active_outputs.begin(),
+                                          s.active_outputs.end());
+      for (const auto& active_output : active_outputs) {
+        h = Hash64Combine(std::hash<int>()(active_output), h);
+      }
 
       std::map<string, DataType> types(s.type_parameters.begin(),
                                        s.type_parameters.end());
@@ -126,8 +155,8 @@ struct FunctionSpecializationSignature {
         h = Hash64Combine(FastAttrValueHash(pair.second), h);
       }
 
-      std::map<int, string> inputs(s.const_inputs.begin(),
-                                   s.const_inputs.end());
+      std::map<InputPort, string> inputs(s.const_inputs.begin(),
+                                         s.const_inputs.end());
       for (const auto& pair : inputs) {
         h = Hash64Combine(std::hash<int>()(pair.first), h);
         h = Hash64Combine(Hash64(pair.second), h);
@@ -140,8 +169,15 @@ struct FunctionSpecializationSignature {
 
 struct FunctionSpecialization {
   string specialized_func_name;
-  std::unordered_set<string> const_inputs;
-  std::unordered_set<string> control_deps;
+  // Names of the tensors that were pushed down into the function body.
+  gtl::FlatSet<string> const_inputs;
+  // Control dependencies of pushed down const inputs have to be attached to
+  // function caller node.
+  gtl::FlatSet<string> control_deps;
+  // Mapping from original function output port to the output port of
+  // specialized function. If function specialization changes the number of
+  // function outputs it's required to update all node consumers.
+  std::vector<std::pair<int, int>> output_mapping;
 };
 
 class FakeCPUDevice : public Device {
@@ -155,9 +191,12 @@ class FunctionOptimizerContext {
   explicit FunctionOptimizerContext(RewriterConfig::Toggle opt_level,
                                     const GrapplerItem& item)
       : graph_version_(item.graph.versions().producer()),
-        function_library_(OpRegistry::Global(), item.graph.library()) {
+        function_library_(OpRegistry::Global(), item.graph.library()),
+        // GraphView doesn't not modify the graph or the nodes.
+        graph_view_(const_cast<GraphDef*>(&item.graph)) {
     InitializeTrulyConstNodes(item);
     InitializeInlinedFunctions(opt_level, item);
+    InitializeFetchNodes(item);
   }
 
   const FunctionLibraryDefinition& function_library() const {
@@ -171,6 +210,19 @@ class FunctionOptimizerContext {
   FunctionLibraryRuntime* mutable_function_library_runtime() {
     InitializeFunctionLibraryRuntime();
     return flr_;
+  }
+
+  const gtl::FlatMap<string, std::vector<std::pair<int, int>>>&
+  output_mappings() const {
+    return output_mappings_;
+  }
+
+  const GraphView& graph_view() const { return graph_view_; }
+
+  const gtl::FlatSet<string>& fetch_tensors() const { return fetch_tensors_; }
+
+  bool IsFetchNode(const string& node_name) const {
+    return fetch_nodes_.find(node_name) != fetch_nodes_.end();
   }
 
   bool IsInlinedFunction(const string& name) const {
@@ -200,9 +252,25 @@ class FunctionOptimizerContext {
     specialized_functions_.emplace(sig, specialized_func);
   }
 
+  void AddOutputMapping(const string& func_node,
+                        const FunctionSpecialization& specialized_func) {
+    output_mappings_.emplace(func_node, specialized_func.output_mapping);
+  }
+
+  // Return true if we had any specialized function that changed it's output
+  // mapping, and it's required to update output consumers to new ports ids.
+  bool RequiresOutputMapping() const {
+    for (const auto& m1 : output_mappings_) {
+      for (const std::pair<int, int>& m2 : m1.second) {
+        if (m2.first != m2.second) return true;
+      }
+    }
+    return false;
+  }
+
  private:
   void InitializeTrulyConstNodes(const GrapplerItem& item) {
-    std::unordered_set<string> feed_nodes;
+    gtl::FlatSet<string> feed_nodes;
     for (const auto& feed : item.feed) {
       feed_nodes.insert(NodeName(feed.first));
     }
@@ -231,6 +299,13 @@ class FunctionOptimizerContext {
       if (!marked_specialized && (!marked_noinline || aggressive)) {
         inlined_functions_[func.signature().name()] = &func;
       }
+    }
+  }
+
+  void InitializeFetchNodes(const GrapplerItem& item) {
+    for (const string& fetch : item.fetch) {
+      fetch_tensors_.insert(fetch);
+      fetch_nodes_.insert(NodeName(fetch));
     }
   }
 
@@ -269,8 +344,41 @@ class FunctionOptimizerContext {
                      FunctionSpecializationSignature::Hash>
       specialized_functions_;
 
+  // GrapplerItem.fetch is a vector of tensors.
+  gtl::FlatSet<string> fetch_tensors_;  // format: node_name:port
+  gtl::FlatSet<string> fetch_nodes_;    // format: node_name
+
+  // Output mappings that have to be applied to the graph after all functions
+  // are specialized (node name -> output mappings).
+  gtl::FlatMap<string, std::vector<std::pair<int, int>>> output_mappings_;
+
+  // Use graph view to find active outputs of the function caller nodes.
+  GraphView graph_view_;
+
   TF_DISALLOW_COPY_AND_ASSIGN(FunctionOptimizerContext);
 };
+
+gtl::FlatSet<int> GetActiveOutputs(const NodeDef& node,
+                                   const FunctionOptimizerContext& ctx,
+                                   int size_hint = 0) {
+  gtl::FlatSet<int> active_outputs;
+  active_outputs.reserve(static_cast<size_t>(size_hint));
+
+  // 1. Output can be consumed by the other graph node.
+  const auto node_fanout_edges =
+      ctx.graph_view().GetFanoutEdges(node, /*include_controlled_edges=*/false);
+  for (const GraphView::Edge& edge : node_fanout_edges) {
+    active_outputs.insert(edge.src.port_id);
+  }
+
+  // 2. Or it can be in a fetch set.
+  for (const string& fetch_tensor : ctx.fetch_tensors()) {
+    int port = NodePositionIfSameNode(fetch_tensor, node.name());
+    if (port >= 0) active_outputs.insert(port);
+  }
+
+  return active_outputs;
+}
 
 bool HasTrulyConstInputs(const NodeDef& node,
                          const FunctionOptimizerContext& ctx) {
@@ -280,12 +388,24 @@ bool HasTrulyConstInputs(const NodeDef& node,
   return std::any_of(node.input().begin(), node.input().end(), is_truly_const);
 }
 
+bool HasUnusedOutputs(const NodeDef& func_node, const FunctionDef& func,
+                      const FunctionOptimizerContext& ctx) {
+  // Functions with tensor list outputs are not supported right now, so the
+  // number of output args is the same as number of possible function caller
+  // node outputs.
+  int num_outputs = func.signature().output_arg_size();
+  const gtl::FlatSet<int> active_outputs =
+      GetActiveOutputs(func_node, ctx, /*size_hind*/ num_outputs);
+
+  return active_outputs.size() != num_outputs;
+}
+
 // Return trimmed FunctionDefLibrary with functions that are reachable from
 // the optimized graph.
 FunctionDefLibrary TrimFunctionLibrary(const FunctionLibraryDefinition& flib,
                                        const GraphDef& optimized_graph) {
   // Functions that are reachable from the optimized graph.
-  std::unordered_set<string> keep_funcs;
+  gtl::FlatSet<string> keep_funcs;
 
   std::vector<const FunctionDef*> func_queue;
   func_queue.reserve(flib.num_functions());
@@ -365,8 +485,8 @@ FunctionDefLibrary TrimFunctionLibrary(const FunctionLibraryDefinition& flib,
 Status PushDownConstInputs(const NodeDef& func_node,
                            const FunctionOptimizerContext& ctx,
                            GrapplerFunctionItem* item,
-                           std::unordered_set<string>* const_inputs,
-                           std::unordered_set<string>* control_deps) {
+                           gtl::FlatSet<string>* const_inputs,
+                           gtl::FlatSet<string>* control_deps) {
   // Record node control dependencies in the control_deps set.
   const auto record_control_deps = [&](const NodeDef* const_input) {
     for (int i = const_input->input_size() - 1; i >= 0; --i) {
@@ -397,8 +517,8 @@ Status PushDownConstInputs(const NodeDef& func_node,
 
 // Remove inputs that were pushed into the function body, and attach their
 // control dependencies to the function caller node.
-void RemovePushedDownConstInputs(const std::unordered_set<string>& const_inputs,
-                                 const std::unordered_set<string>& control_deps,
+void RemovePushedDownConstInputs(const gtl::FlatSet<string>& const_inputs,
+                                 const gtl::FlatSet<string>& control_deps,
                                  NodeDef* specialized_func_node) {
   // Nothing to do if it was no const inputs to the function node.
   if (const_inputs.empty()) return;
@@ -416,7 +536,7 @@ void RemovePushedDownConstInputs(const std::unordered_set<string>& const_inputs,
 
   // Attach control dependencies of pushed down const input to the caller node.
   if (!control_deps.empty()) {
-    std::unordered_set<string> existing_control_deps;
+    gtl::FlatSet<string> existing_control_deps;
 
     for (const string& input : keep_inputs) {
       existing_control_deps.insert(AsControlDependency(NodeName(input)));
@@ -435,7 +555,12 @@ Status InitializeFunctionSpecializationSignature(
     const NodeDef& func_node, const FunctionDef& func,
     const AttrValueMap& func_attr, const FunctionOptimizerContext& ctx,
     FunctionSpecializationSignature* sig) {
+  DCHECK(sig->const_inputs.empty());
+  DCHECK(sig->active_outputs.empty());
+
   sig->func_name = func.signature().name();
+  sig->is_in_fetch_set = ctx.IsFetchNode(func_node.name());
+  sig->active_outputs = GetActiveOutputs(func_node, ctx);
 
   TF_RETURN_IF_ERROR(
       InstantiationTypeParameters(func, func_attr, &sig->type_parameters));
@@ -484,6 +609,8 @@ Status SpecializeFunction(const NodeDef& func_node, const FunctionDef& func,
                                 already_specialized->control_deps,
                                 specialized_func_node);
 
+    ctx->AddOutputMapping(specialized_func_node->name(), *already_specialized);
+
     return Status::OK();
   }
 
@@ -498,10 +625,18 @@ Status SpecializeFunction(const NodeDef& func_node, const FunctionDef& func,
 
   // Push const inputs into the function body, and keep track of their control
   // dependencies.
-  std::unordered_set<string> const_inputs;
-  std::unordered_set<string> control_deps;
+  gtl::FlatSet<string> const_inputs;
+  gtl::FlatSet<string> control_deps;
   TF_RETURN_IF_ERROR(PushDownConstInputs(func_node, *ctx, &item, &const_inputs,
                                          &control_deps));
+
+  // Remove function outputs that do not have any consumers. We can't safely
+  // update outputs for the fetch nodes, so we just skip them.
+  std::vector<std::pair<int, int>> output_mapping;
+  if (!signature.is_in_fetch_set) {
+    TF_RETURN_IF_ERROR(
+        RemoveUnusedOutputs(signature.active_outputs, &item, &output_mapping));
+  }
 
   // TODO(ezhulenev): Push down known input shapes.
   FunctionDef specialized_func;
@@ -528,8 +663,10 @@ Status SpecializeFunction(const NodeDef& func_node, const FunctionDef& func,
   RemovePushedDownConstInputs(const_inputs, control_deps,
                               specialized_func_node);
 
-  ctx->AddSpecializedFunction(
-      signature, {specialized_func_name, const_inputs, control_deps});
+  FunctionSpecialization func_specialization = {
+      specialized_func_name, const_inputs, control_deps, output_mapping};
+  ctx->AddSpecializedFunction(signature, func_specialization);
+  ctx->AddOutputMapping(specialized_func_node->name(), func_specialization);
 
   return Status::OK();
 }
@@ -835,9 +972,12 @@ Status FunctionOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
       // Do not specialize if function has custom gradient.
       const string grad_func = ctx.function_library().FindGradient(func_name);
 
-      // 2b. Specialize it to it's instantiation context if can't be inlined.
-      if (specialize_func && grad_func.empty() &&
-          (IsParametrized(*func) || HasTrulyConstInputs(node, ctx))) {
+      // 2b. Specialize it to it's instantiation context if can't be inlined,
+      // and it has something worth specializing.
+      bool specialization_worthy = IsParametrized(*func) ||
+                                   HasTrulyConstInputs(node, ctx) ||
+                                   HasUnusedOutputs(node, *func, ctx);
+      if (specialize_func && grad_func.empty() && specialization_worthy) {
         // TODO(ezhulenev): Specialize function call if input has a known shape.
         // Specialize function body for its instantiation attributes and inputs.
         TF_SKIP_ERROR_IF_GRAPH_UNMODIFIED(
@@ -852,6 +992,32 @@ Status FunctionOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
     add_node_copy();
 
 #undef TF_SKIP_ERROR_IF_GRAPH_UNMODIFIED
+  }
+
+  // Function specialization might change the number of function outputs, so we
+  // have to process the final optimized graph and update all the node mapping.
+  if (ctx.RequiresOutputMapping()) {
+    GraphView optimized_graph_view(optimized_graph);
+    for (const auto& output_mapping : ctx.output_mappings()) {
+      const auto& node_name = output_mapping.first;
+      const auto& mappings = output_mapping.second;
+
+      for (const std::pair<int, int>& mapping : mappings) {
+        int from = mapping.first;
+        int to = mapping.second;
+
+        // Find the output port corresponding to the old output position.
+        GraphView::OutputPort from_port =
+            optimized_graph_view.GetOutputPort(node_name, from);
+
+        // Update all input ports that read from old output port.
+        for (GraphView::InputPort to_port :
+             optimized_graph_view.GetFanout(from_port)) {
+          *to_port.node->mutable_input(to_port.port_id) =
+              strings::StrCat(node_name, ":", to);
+        }
+      }
+    }
   }
 
   *optimized_graph->mutable_versions() = item.graph.versions();

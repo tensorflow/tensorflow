@@ -260,8 +260,11 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   const TfLiteTensor* input = GetInput(context, node, kInputTensor);
   TF_LITE_ENSURE_EQ(context, input->type, kTfLiteFloat32);
   TF_LITE_ENSURE(context, input->dims->size > 1);
-  const int max_time = input->dims->data[0];
-  const int n_batch = input->dims->data[1];
+  const auto* params =
+      reinterpret_cast<TfLiteUnidirectionalSequenceLSTMParams*>(
+          node->builtin_data);
+  const bool time_major = params->time_major;
+  const int n_batch = time_major ? input->dims->data[1] : input->dims->data[0];
   const int n_input = input->dims->data[2];
 
   const TfLiteTensor* input_to_output_weights =
@@ -296,10 +299,8 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE_EQ(context, NumElements(cell_state), n_batch * n_cell);
 
   // Resize the output tensors.
-  TfLiteIntArray* output_size = TfLiteIntArrayCreate(3);
-  output_size->data[0] = max_time;
-  output_size->data[1] = n_batch;
-  output_size->data[2] = n_output;
+  TfLiteIntArray* output_size = TfLiteIntArrayCopy(input->dims);
+  output_size->data[input->dims->size - 1] = n_output;
   TF_LITE_ENSURE_OK(context,
                     context->ResizeTensor(context, output, output_size));
 
@@ -436,6 +437,7 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   const auto* params =
       reinterpret_cast<TfLiteUnidirectionalSequenceLSTMParams*>(
           node->builtin_data);
+  const bool time_major = params->time_major;
   const TfLiteTensor* input = GetInput(context, node, kInputTensor);
 
   const TfLiteTensor* input_to_input_weights =
@@ -506,7 +508,7 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
           /*aux_input_to_cell_weights=*/nullptr,
           /*aux_input_to_output_weights=*/nullptr, input_gate_bias,
           forget_gate_bias, cell_bias, output_gate_bias, projection_weights,
-          projection_bias, &lstm_params, /*forward_sequence=*/true,
+          projection_bias, &lstm_params, /*forward_sequence=*/true, time_major,
           /*output_offset=*/0, scratch_buffer, activation_state, cell_state,
           output);
     }
@@ -533,7 +535,7 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
           /*aux_input_to_cell_weights=*/nullptr,
           /*aux_input_to_output_weights=*/nullptr, input_gate_bias,
           forget_gate_bias, cell_bias, output_gate_bias, projection_weights,
-          projection_bias, &lstm_params, /*forward_sequence=*/true,
+          projection_bias, &lstm_params, /*forward_sequence=*/true, time_major,
           /*output_offset=*/0, scratch_buffer, scaling_factors,
           prod_scaling_factors, recovered_cell_weights, input_quantized,
           /*aux_input_quantized=*/nullptr, activation_state_quantized,

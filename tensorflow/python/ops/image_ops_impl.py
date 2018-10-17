@@ -2210,7 +2210,7 @@ def non_max_suppression_with_overlaps(overlaps,
     overlap_threshold = ops.convert_to_tensor(
         overlap_threshold, name='overlap_threshold')
     # pylint: disable=protected-access
-    return gen_image_ops._non_max_suppression_v3(
+    return gen_image_ops.non_max_suppression_with_overlaps(
         overlaps, scores, max_output_size, overlap_threshold, score_threshold)
     # pylint: enable=protected-access
 

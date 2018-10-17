@@ -1482,10 +1482,12 @@ class KerasTPUModel(models.Model):
 
       self._numpy_to_infeed_manager_list = infeed_managers
       try:
-        if not kwargs.get('_pipeline', True):
-          logging.info('Running non-pipelined training loop (`_pipeline=%s`).',
-                       kwargs['_pipeline'])
+        pipeline = kwargs.get('_pipeline', True)
+        if '_pipeline' in kwargs:
           kwargs.pop('_pipeline')
+        if not pipeline:
+          logging.info('Running non-pipelined training loop (`_pipeline=%s`).',
+                       pipeline)
           return super(KerasTPUModel, self).fit(
               x, y, batch_size, epochs, verbose, callbacks, validation_split,
               validation_data, shuffle, class_weight, sample_weight,

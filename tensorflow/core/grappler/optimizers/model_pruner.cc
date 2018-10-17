@@ -32,7 +32,7 @@ bool IsTrivialOp(const NodeDef& node, const GraphRewriter& rewriter) {
   if (IsStopGradient(node)) {
     return true;
   }
-  if (IsIdentity(node)) {
+  if (IsIdentity(node) || IsIdentityNSingleInput(node)) {
     if (rewriter.FeedsMerge(node) || rewriter.IsDrivenBySwitch(node) ||
         rewriter.IsDrivenByControlDependency(node) ||
         rewriter.DrivesControlDependency(node)) {

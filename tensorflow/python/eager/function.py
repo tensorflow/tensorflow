@@ -924,7 +924,9 @@ def func_graph_from_py_func(name,
   else:
     control_manager = ops.NullContextmanager
   with func_graph.as_default(), control_manager() as a:
-    variable_scope.get_variable_scope().set_use_resource(True)
+    current_scope = variable_scope.get_variable_scope()
+    default_use_recource = current_scope.use_resource
+    current_scope.set_use_resource(True)
 
     if signature is not None:
       args = signature
@@ -976,6 +978,7 @@ def func_graph_from_py_func(name,
       check_mutation(func_kwargs_before, func_kwargs)
     finally:
       tape.pop_tape(this_tape)
+      current_scope.set_use_resource(default_use_recource)
 
     # Variables in `func_args`, `func_kwargs` should be explicit inputs
     # to the function, not captured inputs.
@@ -1009,10 +1012,11 @@ def func_graph_from_py_func(name,
     func_graph.variables = variables
 
   # Register any other functions defined in the graph.
-  if context.executing_eagerly():
-    for f in func_graph._functions.values():  # pylint: disable=protected-access
-      # TODO(ashankar): What about the gradient registry?
-      _register(f._c_func.func)  # pylint: disable=protected-access
+  with ops.init_scope():
+    if context.executing_eagerly():
+      for f in func_graph._functions.values():  # pylint: disable=protected-access
+        # TODO(ashankar): What about the gradient registry?
+        _register(f._c_func.func)  # pylint: disable=protected-access
 
   return func_graph
 
@@ -1076,6 +1080,10 @@ class PolymorphicFunction(object):
     self._function_attributes = attributes or {}
 
     self._lock = threading.Lock()
+    # _descriptor_cache is a of instance of a class to an instance-specific
+    # PolymorphicFunction, used to make sure defun-decorated methods create
+    # different functions for each instance.
+    self._descriptor_cache = weakref.WeakKeyDictionary()
 
     fullargspec = tf_inspect.getfullargspec(self._python_function)
     if tf_inspect.ismethod(self._python_function):
@@ -1150,8 +1158,34 @@ class PolymorphicFunction(object):
     #   foo = Foo()
     #   foo.bar()  # `foo.bar` is a `PolymorphicFunction` instance
     #
-    # then `instance` will be `foo` (and `owner` will be `Foo`).
-    return functools.partial(self.__call__, instance)
+    # then `instance` will be `foo` (and `owner` will be `Foo`).  We create a
+    # new instance of PolymorphicFunction here to allow different instances each
+    # to create variables once, thereby allowing methods to be decorated with
+    # defun. Keeps a cache to avoid retracing the function every time the
+    # descriptor is accessed.
+    if instance not in self._descriptor_cache:
+      if instance is None:
+        return self
+      # If there is no instance-specific polymorphic func in the cache,
+      # we construct an instance-specific polymorphic function
+      # that uses a weak reference to the instance (so that the instance will
+      # be correctly gc'd).
+      def make_partial_py_func(py_func, weak_instance):
+        return lambda *args, **kwargs: py_func(weak_instance(), *args, **kwargs)
+      weak_instance = weakref.ref(instance)
+      instance_func = PolymorphicFunction(
+          make_partial_py_func(self.python_function, weak_instance),
+          name=self._name)
+
+      # And we wrap the function with tf_decorator so inspection works correctly
+      wrapped_instance_func = tf_decorator.make_decorator(
+          self.python_function, instance_func)
+
+      # And finally add the wrapped function to the description cache
+      self._descriptor_cache[instance] = wrapped_instance_func
+
+    # Return the cached polymorphic function for the instance
+    return self._descriptor_cache[instance]
 
   def _cache_key(self, args, kwargs):
     """Computes the cache key given inputs and execution context."""

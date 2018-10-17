@@ -473,6 +473,19 @@ class ListOpsTest(test_util.TensorFlowTestCase):
     with self.assertRaises(errors.InvalidArgumentError):
       self.evaluate(list_ops.tensor_list_set_item(l, 20, 3.0))
 
+  def testSetItemWithMismatchedShapeFails(self):
+    with self.cached_session() as sess:
+      ph = array_ops.placeholder(dtypes.float32)
+      c = constant_op.constant([1.0, 2.0])
+      l = list_ops.tensor_list_from_tensor(c, element_shape=scalar_shape())
+      # Set a placeholder with unknown shape to satisfy the shape inference
+      # at graph building time.
+      l = list_ops.tensor_list_set_item(l, 0, ph)
+      l_0 = list_ops.tensor_list_get_item(l, 0, element_dtype=dtypes.float32)
+      with self.assertRaisesRegexp(errors.InvalidArgumentError,
+                                   "incompatible shape"):
+        sess.run(l_0, {ph: [3.0]})
+
   @test_util.run_in_graph_and_eager_modes
   def testResourceVariableScatterGather(self):
     c = constant_op.constant([1.0, 2.0], dtype=dtypes.float32)

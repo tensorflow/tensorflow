@@ -360,6 +360,79 @@ tf_cc_test(
 )
 
 cc_library(
+    name = "shape_inference",
+    srcs = ["shape_inference.cc"],
+    hdrs = ["shape_inference.h"],
+    deps = [
+        ":shape_inference_helpers",
+        "//tensorflow/compiler/tf2xla:dump_graph",
+        "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/core:core_cpu_internal",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:graph",
+        "//tensorflow/core:lib",
+    ],
+)
+
+cc_library(
+    name = "test_util",
+    testonly = 1,
+    srcs = ["test_util.cc"],
+    hdrs = ["test_util.h"],
+    deps = [
+        ":shape_inference",
+        "//tensorflow/compiler/xla:status_macros",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+    ],
+)
+
+tf_cc_test(
+    name = "shape_inference_test",
+    srcs = ["shape_inference_test.cc"],
+    deps = [
+        ":shape_inference",
+        ":test_util",
+        "//tensorflow/cc:cc_ops",
+        "//tensorflow/cc:cc_ops_internal",
+        "//tensorflow/cc:ops",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:ops",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core/kernels:constant_op",
+    ],
+)
+
+cc_library(
+    name = "encapsulate_util",
+    srcs = ["encapsulate_util.cc"],
+    hdrs = ["encapsulate_util.h"],
+    deps = [
+        ":shape_inference",
+        "//tensorflow/core:graph",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:optional",
+    ],
+)
+
+tf_cc_test(
+    name = "encapsulate_util_test",
+    srcs = ["encapsulate_util_test.cc"],
+    deps = [
+        ":encapsulate_util",
+        "//tensorflow/cc:cc_ops",
+        "//tensorflow/cc:scope",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:ops",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+    ],
+)
+
+cc_library(
     name = "compilation_passes",
     srcs = [
         "build_xla_ops_pass.cc",

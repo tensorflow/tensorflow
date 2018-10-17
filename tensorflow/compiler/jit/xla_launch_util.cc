@@ -239,7 +239,7 @@ Status XlaComputationLaunchContext::PopulateOutputs(
         // Copy host -> device. (Empty tensors don't have backing buffers.)
         // Manually allocate memory using an XlaTensorBuffer so we can allocate
         // as much memory as the device requires (as given by
-        // GetByteSizeRequirement). This avoids XlaTransferManager having to
+        // GetByteSizeRequirement). This avoids XlaDeviceContext having to
         // reallocate the device buffer later.
         VLOG(1) << "Constant output tensor on device";
 

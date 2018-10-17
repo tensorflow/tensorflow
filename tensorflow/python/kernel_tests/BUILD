@@ -1172,6 +1172,7 @@ tf_py_test(
         "//tensorflow/python:variables",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:function",
+        "//tensorflow/python/eager:wrap_function",
     ],
     tags = ["no_windows"],
 )
@@ -1490,6 +1491,7 @@ cuda_py_test(
         "//tensorflow/python:array_ops_gen",
         "//tensorflow/python:client",
         "//tensorflow/python:client_testlib",
+        "//tensorflow/python:cond_v2",
         "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:data_flow_ops",
         "//tensorflow/python:data_flow_ops_gen",
@@ -1527,6 +1529,21 @@ tf_py_test(
         "//tensorflow/python:control_flow_util",
         "//tensorflow/python:test_ops",
     ],
+)
+
+tf_py_test(
+    name = "control_flow_util_v2_test",
+    size = "small",
+    srcs = ["control_flow_util_v2_test.py"],
+    additional_deps = [
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:cond_v2",
+        "//tensorflow/python:constant_op",
+        "//tensorflow/python:control_flow_ops",
+        "//tensorflow/python:control_flow_util_v2",
+        "//tensorflow/python:while_v2",
+    ],
+    tags = ["no_gpu"],  # TODO(b/117796385): runs out of memory
 )
 
 cuda_py_test(
