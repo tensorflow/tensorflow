@@ -48,7 +48,7 @@ class BiasAddTest(test.TestCase):
 
   def _testBias(self, np_inputs, np_bias, use_gpu=False):
     np_val = self._npBias(np_inputs, np_bias)
-    with self.test_session(use_gpu=use_gpu):
+    with self.cached_session(use_gpu=use_gpu):
       tf_val = nn_ops.bias_add(np_inputs, np_bias).eval()
     self.assertAllCloseAccordingToType(np_val, tf_val)
 
@@ -76,7 +76,7 @@ class BiasAddTest(test.TestCase):
   def _testBiasNCHW(self, np_inputs, np_bias, use_gpu):
     np_val = self._npBias(np_inputs, np_bias)
     np_inputs = self._NHWCToNCHW(np_inputs)
-    with self.test_session(use_gpu=use_gpu):
+    with self.cached_session(use_gpu=use_gpu):
       tf_val = nn_ops.bias_add(np_inputs, np_bias, data_format="NCHW").eval()
     tf_val = self._NCHWToNHWC(tf_val)
     self.assertAllCloseAccordingToType(self._AtLeast3d(np_val), tf_val)
@@ -133,7 +133,7 @@ class BiasAddTest(test.TestCase):
           np.random.rand(4).astype(t))
 
   def _testGradient(self, np_input, bias, dtype, data_format, use_gpu):
-    with self.test_session(use_gpu=use_gpu):
+    with self.cached_session(use_gpu=use_gpu):
       if data_format == "NCHW":
         np_input = self._NHWCToNCHW(np_input)
       input_tensor = constant_op.constant(

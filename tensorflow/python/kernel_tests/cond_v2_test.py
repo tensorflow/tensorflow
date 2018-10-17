@@ -849,7 +849,7 @@ class CondV2ColocationGroupAndDeviceTest(test.TestCase):
 
   def testColocateWithInCondGraphPartitioning(self):
     with ops.Graph().as_default() as g:
-      with self.test_session(
+      with self.session(
           graph=g,
           config=config_pb2.ConfigProto(device_count={"CPU": 2})
       ) as sess:
@@ -904,7 +904,7 @@ class CondV2ColocationGroupAndDeviceTest(test.TestCase):
 
   def testDeviceInAndOutOfCond(self):
     with ops.Graph().as_default() as g:
-      with self.test_session(
+      with self.session(
           graph=g, config=config_pb2.ConfigProto(device_count={"CPU": 2})):
 
         def fn2():
@@ -922,7 +922,7 @@ class CondV2ColocationGroupAndDeviceTest(test.TestCase):
 
   def testDeviceInCondGraphPartitioning(self):
     with ops.Graph().as_default() as g:
-      with self.test_session(
+      with self.session(
           graph=g,
           config=config_pb2.ConfigProto(device_count={"CPU": 2})
       ) as sess:

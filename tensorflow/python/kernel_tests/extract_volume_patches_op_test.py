@@ -45,7 +45,7 @@ class ExtractVolumePatches(test.TestCase):
     ksizes = [1] + ksizes + [1]
     strides = [1] + strides + [1]
 
-    with self.test_session(use_gpu=True):
+    with self.cached_session(use_gpu=True):
       out_tensor = array_ops.extract_volume_patches(
           constant_op.constant(image),
           ksizes=ksizes,
