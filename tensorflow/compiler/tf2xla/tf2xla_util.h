@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <unordered_map>
 
+#include "absl/types/optional.h"
 #include "tensorflow/compiler/tf2xla/tf2xla.pb.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/core/framework/graph.pb.h"
@@ -167,6 +168,20 @@ class CachedFunctionHandles {
 
   TF_DISALLOW_COPY_AND_ASSIGN(CachedFunctionHandles);
 };
+
+// Struct for node's output edge info.
+struct OutEdgeInfo {
+  Node* dst;
+  int src_output, dst_input;
+};
+
+// Replaces node `n` with a new node whose NodeDef is `node_def`.
+xla::StatusOr<Node*> ReplaceNode(Graph* g, Node* n, const NodeDef& node_def);
+
+// Helper function that builds an Identity node.
+xla::StatusOr<Node*> BuildIdentityNode(Graph* graph, const string& node_name,
+                                       DataType dtype, const Node* input,
+                                       absl::optional<string> requested_device);
 
 }  // namespace tensorflow
 

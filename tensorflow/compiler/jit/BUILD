@@ -411,7 +411,11 @@ cc_library(
     hdrs = ["encapsulate_util.h"],
     deps = [
         ":shape_inference",
+        "//tensorflow/compiler/tf2xla:tf2xla_util",
+        "//tensorflow/core:framework",
         "//tensorflow/core:graph",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:optional",
     ],

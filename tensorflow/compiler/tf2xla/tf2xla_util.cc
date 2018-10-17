@@ -21,7 +21,6 @@ limitations under the License.
 #include <unordered_map>
 
 #include "absl/strings/str_cat.h"
-#include "absl/types/optional.h"
 #include "tensorflow/compiler/tf2xla/sharding_util.h"
 #include "tensorflow/compiler/tf2xla/tf2xla.pb.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
@@ -463,6 +462,62 @@ Status CachedFunctionHandles::ReleaseAllHandles() {
   }
   handles_.clear();
   return result;
+}
+
+xla::StatusOr<Node*> ReplaceNode(Graph* g, Node* n, const NodeDef& node_def) {
+  // Create the replacement node.
+  Status s;
+  Node* new_node = g->AddNode(node_def, &s);
+  if (!s.ok()) {
+    return s;
+  }
+
+  // Record original node's output edges and remove them first. This is to avoid
+  // multiple producers for dst nodes' input.
+  std::vector<OutEdgeInfo> out_edge_info;
+  std::vector<const Edge*> out_edges;
+  for (const Edge* edge : n->out_edges()) {
+    out_edges.push_back(edge);
+    out_edge_info.push_back(
+        {edge->dst(), edge->src_output(), edge->dst_input()});
+  }
+  for (const Edge* edge : out_edges) {
+    g->RemoveEdge(edge);
+  }
+
+  // Add original node's input and output edges to the replacement node.
+  for (const Edge* in_edge : n->in_edges()) {
+    g->AddEdge(in_edge->src(), in_edge->src_output(), new_node,
+               in_edge->dst_input());
+  }
+  for (const OutEdgeInfo& out_edge : out_edge_info) {
+    g->AddEdge(new_node, out_edge.src_output, out_edge.dst, out_edge.dst_input);
+  }
+
+  // Remove the original node.
+  g->RemoveNode(n);
+
+  return new_node;
+}
+
+xla::StatusOr<Node*> BuildIdentityNode(
+    Graph* graph, const string& node_name, DataType dtype, const Node* input,
+    absl::optional<string> requested_device) {
+  // Create identity node.
+  NodeDef ndef;
+  ndef.set_name(node_name);
+  ndef.set_op("Identity");
+  if (input) {
+    ndef.add_input(input->name());
+  }
+  if (requested_device) {
+    ndef.set_device(*requested_device);
+  }
+  AddNodeAttr("T", dtype, &ndef);
+  Status s;
+  Node* id_node = graph->AddNode(ndef, &s);
+  TF_RETURN_IF_ERROR(s);
+  return id_node;
 }
 
 }  // namespace tensorflow
