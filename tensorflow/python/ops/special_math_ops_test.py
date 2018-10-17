@@ -311,6 +311,11 @@ class EinsumTest(test.TestCase):
           invalid1='value1',
           invalid2='value2')
 
+  def test_repeated_axis_single_input(self):
+    x = array_ops.placeholder(dtypes.float32, shape=[2, 2])
+    with self.assertRaises(ValueError):
+      _ = special_math_ops.einsum('ii->', x)
+
   def test_dim_mismatch(self):
     for axes, input_shapes in self.dim_mismatch_cases:
       inputs = [
