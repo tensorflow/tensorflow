@@ -1565,7 +1565,8 @@ def main():
   if is_ppc64le():
     write_action_env_to_bazelrc('OMP_NUM_THREADS', 1)
 
-  xla_enabled_by_default = is_linux()
+  #xla_enabled_by_default = is_linux()
+  xla_enabled_by_default = False
   set_build_var(environ_cp, 'TF_ENABLE_XLA', 'XLA JIT', 'with_xla_support',
                 xla_enabled_by_default, 'xla')
 
