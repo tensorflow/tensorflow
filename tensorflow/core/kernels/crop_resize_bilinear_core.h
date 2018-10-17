@@ -3616,33 +3616,53 @@ class CropResizeCastImage : public VectorLoader<T>, public VectorWriter<U> {
         x1_(flip_x ? out_width - 1 - min_ix : max_ix),
         y0_(flip_y ? out_height - 1 - max_iy : min_iy),
         y1_(flip_y ? out_height - 1 - min_iy : max_iy) {
-    // copy xs values, but filter out the following:
-    // xs[].lower == xs[].upper AND xs[].lerp == 0
-    // xs[].lower == xs[].upper AND xs[].lerp == 1
-    assert(min_ix_ <= max_ix_);
-    xs_ = new CachedInterpolation[max_ix_ - min_ix_ + 1];
-    for (int i = min_ix_; i <= max_ix_; ++i) {
-      int ix = i - min_ix_;
-      int xs_lower = xs[ix].lower / channels_;
-      int xs_upper = xs[ix].upper / channels_;
-      if (xs_lower == xs_upper) {
-        if (xs[ix].lerp == 0.0f && xs_lower + 1 < in_width) {
-          // upper weight is zero
-          xs_upper = xs_lower + 1;
-        } else if (xs[ix].lerp == 1.0f && xs_upper - 1 >= 0) {
-          // lower weight is zero
-          xs_lower = xs_upper - 1;
-        }
+    if (min_ix_ <= max_ix_ && min_iy_ <= max_iy_) {
+      // copy xs values, but filter out the following:
+      // xs[].lower == xs[].upper AND xs[].lerp == 0
+      // xs[].lower == xs[].upper AND xs[].lerp == 1
+      xs_ = new CachedInterpolation[max_ix_ - min_ix_ + 1];
+      for (int i = min_ix_; i <= max_ix_; ++i) {
+	int ix = i - min_ix_;
+	int xs_lower = xs[ix].lower / channels_;
+	int xs_upper = xs[ix].upper / channels_;
+	if (xs_lower == xs_upper) {
+	  if (xs[ix].lerp == 0.0f && xs_lower + 1 < in_width) {
+	    // upper weight is zero
+	    xs_upper = xs_lower + 1;
+	  } else if (xs[ix].lerp == 1.0f && xs_upper - 1 >= 0) {
+	    // lower weight is zero
+	    xs_lower = xs_upper - 1;
+	  }
+	}
+	xs_[ix].lower = xs_lower * channels_;
+	xs_[ix].upper = xs_upper * channels_;
+	xs_[ix].lerp = xs[ix].lerp;
       }
-      xs_[ix].lower = xs_lower * channels_;
-      xs_[ix].upper = xs_upper * channels_;
-      xs_[ix].lerp = xs[ix].lerp;
+      _u_min_val = std::numeric_limits<U>::min();
+      _u_max_val = std::numeric_limits<U>::max();
+      _f_min_val = static_cast<float>(_u_min_val);
+      _f_max_val = static_cast<float>(_u_max_val);
+      Configure_();
+    } else {
+      // crop region outside of input image.
+      // extrapolation only.
+      general_x_ = NULL;
+      load1_x_ = NULL;
+      load2_x_ = NULL;
+      load4_x_ = NULL;
+      load8_x_ = NULL;
+      load1_offsets_ = NULL;
+      load2_offsets_ = NULL;
+      load4_offsets_ = NULL;
+      load8_offsets_ = NULL;
+      load1_shuffle_masks_ = NULL;
+      load2_shuffle_masks_ = NULL;
+      load1_mmxs_lerp_ = NULL;
+      load2_mmxs_lerp_ = NULL;
+      load4_mmxs_lerp_ = NULL;
+      load8_mmxs_lerp_ = NULL;
+      xs_ = NULL;
     }
-    _u_min_val = std::numeric_limits<U>::min();
-    _u_max_val = std::numeric_limits<U>::max();
-    _f_min_val = static_cast<float>(_u_min_val);
-    _f_max_val = static_cast<float>(_u_max_val);
-    Configure_();
   }
   ~CropResizeCastImage() {
     if (general_x_ != NULL) delete[] general_x_;
@@ -3803,168 +3823,170 @@ void CropResizeCastImage<T, U>::Resize(const T* input_image, U* output_image) {
     }
   }
   // interpolation region
-  int y = y0_;
-  for (y = y0_; y + 1 <= y1_; y += 2) {
-    const int iyA = flip_y_ ? out_height_ - 1 - min_iy_ - y : y - min_iy_;
-    const float yA_lerp = ys_[iyA].lerp;
-    const __m128 ysA_lerp = _mm_set1_ps(yA_lerp);
-    const T* ysA_input_lower_ptr =
-        input_image + ys_[iyA].lower * in_width_ * channels_;
-    const T* ysA_input_upper_ptr =
-        input_image + ys_[iyA].upper * in_width_ * channels_;
-    U* ysA_output_ptr = output_image + y * out_width_ * channels_;
-    const int iyB =
-        flip_y_ ? out_height_ - 1 - min_iy_ - (y + 1) : (y + 1) - min_iy_;
-    const float yB_lerp = ys_[iyB].lerp;
-    const __m128 ysB_lerp = _mm_set1_ps(yB_lerp);
-    const T* ysB_input_lower_ptr =
-        input_image + ys_[iyB].lower * in_width_ * channels_;
-    const T* ysB_input_upper_ptr =
-        input_image + ys_[iyB].upper * in_width_ * channels_;
-    U* ysB_output_ptr = output_image + (y + 1) * out_width_ * channels_;
-    if (channels_ == 1) {
-      this->ResizeRow_load1_1ch_(ysA_lerp, ysA_input_lower_ptr,
-                                 ysA_input_upper_ptr, ysA_output_ptr);
-      this->ResizeRow_load1_1ch_(ysB_lerp, ysB_input_lower_ptr,
-                                 ysB_input_upper_ptr, ysB_output_ptr);
-      this->ResizeRow_load2_1ch_(ysA_lerp, ysA_input_lower_ptr,
-                                 ysA_input_upper_ptr, ysA_output_ptr);
-      this->ResizeRow_load2_1ch_(ysB_lerp, ysB_input_lower_ptr,
-                                 ysB_input_upper_ptr, ysB_output_ptr);
-      this->ResizeRow_load4_1ch_(ysA_lerp, ysA_input_lower_ptr,
-                                 ysA_input_upper_ptr, ysA_output_ptr);
-      this->ResizeRow_load4_1ch_(ysB_lerp, ysB_input_lower_ptr,
-                                 ysB_input_upper_ptr, ysB_output_ptr);
-      this->ResizeRow_load8_1ch_(ysA_lerp, ysA_input_lower_ptr,
-                                 ysA_input_upper_ptr, ysA_output_ptr);
-      this->ResizeRow_load8_1ch_(ysB_lerp, ysB_input_lower_ptr,
-                                 ysB_input_upper_ptr, ysB_output_ptr);
-      this->ResizeRow_general_(yA_lerp, ysA_input_lower_ptr,
-                               ysA_input_upper_ptr, ysA_output_ptr);
-      this->ResizeRow_general_(yB_lerp, ysB_input_lower_ptr,
-                               ysB_input_upper_ptr, ysB_output_ptr);
-    } else if (channels_ == 2) {
-      this->ResizeRow_load1_2ch_(ysA_lerp, ysA_input_lower_ptr,
-                                 ysA_input_upper_ptr, ysA_output_ptr);
-      this->ResizeRow_load1_2ch_(ysB_lerp, ysB_input_lower_ptr,
-                                 ysB_input_upper_ptr, ysB_output_ptr);
-      this->ResizeRow_load2_2ch_(ysA_lerp, ysA_input_lower_ptr,
-                                 ysA_input_upper_ptr, ysA_output_ptr);
-      this->ResizeRow_load2_2ch_(ysB_lerp, ysB_input_lower_ptr,
-                                 ysB_input_upper_ptr, ysB_output_ptr);
-      this->ResizeRow_load4_2ch_(ysA_lerp, ysA_input_lower_ptr,
-                                 ysA_input_upper_ptr, ysA_output_ptr);
-      this->ResizeRow_load4_2ch_(ysB_lerp, ysB_input_lower_ptr,
-                                 ysB_input_upper_ptr, ysB_output_ptr);
-      this->ResizeRow_load8_2ch_(ysA_lerp, ysA_input_lower_ptr,
-                                 ysA_input_upper_ptr, ysA_output_ptr);
-      this->ResizeRow_load8_2ch_(ysB_lerp, ysB_input_lower_ptr,
-                                 ysB_input_upper_ptr, ysB_output_ptr);
-      this->ResizeRow_general_(yA_lerp, ysA_input_lower_ptr,
-                               ysA_input_upper_ptr, ysA_output_ptr);
-      this->ResizeRow_general_(yB_lerp, ysB_input_lower_ptr,
-                               ysB_input_upper_ptr, ysB_output_ptr);
-    } else if (channels_ == 3) {
-      this->ResizeRow_load1_3ch_(ysA_lerp, ysA_input_lower_ptr,
-                                 ysA_input_upper_ptr, ysA_output_ptr);
-      this->ResizeRow_load1_3ch_(ysB_lerp, ysB_input_lower_ptr,
-                                 ysB_input_upper_ptr, ysB_output_ptr);
-      this->ResizeRow_load2_3ch_(ysA_lerp, ysA_input_lower_ptr,
-                                 ysA_input_upper_ptr, ysA_output_ptr);
-      this->ResizeRow_load2_3ch_(ysB_lerp, ysB_input_lower_ptr,
-                                 ysB_input_upper_ptr, ysB_output_ptr);
-      this->ResizeRow_load4_3ch_(ysA_lerp, ysA_input_lower_ptr,
-                                 ysA_input_upper_ptr, ysA_output_ptr);
-      this->ResizeRow_load4_3ch_(ysB_lerp, ysB_input_lower_ptr,
-                                 ysB_input_upper_ptr, ysB_output_ptr);
-      this->ResizeRow_load8_3ch_(ysA_lerp, ysA_input_lower_ptr,
-                                 ysA_input_upper_ptr, ysA_output_ptr);
-      this->ResizeRow_load8_3ch_(ysB_lerp, ysB_input_lower_ptr,
-                                 ysB_input_upper_ptr, ysB_output_ptr);
-      this->ResizeRow_general_(yA_lerp, ysA_input_lower_ptr,
-                               ysA_input_upper_ptr, ysA_output_ptr);
-      this->ResizeRow_general_(yB_lerp, ysB_input_lower_ptr,
-                               ysB_input_upper_ptr, ysB_output_ptr);
-    } else if (channels_ == 4) {
-      this->ResizeRow_load1_4ch_(ysA_lerp, ysA_input_lower_ptr,
-                                 ysA_input_upper_ptr, ysA_output_ptr);
-      this->ResizeRow_load1_4ch_(ysB_lerp, ysB_input_lower_ptr,
-                                 ysB_input_upper_ptr, ysB_output_ptr);
-      this->ResizeRow_load2_4ch_(ysA_lerp, ysA_input_lower_ptr,
-                                 ysA_input_upper_ptr, ysA_output_ptr);
-      this->ResizeRow_load2_4ch_(ysB_lerp, ysB_input_lower_ptr,
-                                 ysB_input_upper_ptr, ysB_output_ptr);
-      this->ResizeRow_load4_4ch_(ysA_lerp, ysA_input_lower_ptr,
-                                 ysA_input_upper_ptr, ysA_output_ptr);
-      this->ResizeRow_load4_4ch_(ysB_lerp, ysB_input_lower_ptr,
-                                 ysB_input_upper_ptr, ysB_output_ptr);
-      this->ResizeRow_load8_4ch_(ysA_lerp, ysA_input_lower_ptr,
-                                 ysA_input_upper_ptr, ysA_output_ptr);
-      this->ResizeRow_load8_4ch_(ysB_lerp, ysB_input_lower_ptr,
-                                 ysB_input_upper_ptr, ysB_output_ptr);
-      this->ResizeRow_general_(yA_lerp, ysA_input_lower_ptr,
-                               ysA_input_upper_ptr, ysA_output_ptr);
-      this->ResizeRow_general_(yB_lerp, ysB_input_lower_ptr,
-                               ysB_input_upper_ptr, ysB_output_ptr);
-    } else {
-      assert(false);
+  if (min_ix_ <= max_ix_ && min_iy_ <= max_iy_) {
+    int y = y0_;
+    for (y = y0_; y + 1 <= y1_; y += 2) {
+      const int iyA = flip_y_ ? out_height_ - 1 - min_iy_ - y : y - min_iy_;
+      const float yA_lerp = ys_[iyA].lerp;
+      const __m128 ysA_lerp = _mm_set1_ps(yA_lerp);
+      const T* ysA_input_lower_ptr =
+	input_image + ys_[iyA].lower * in_width_ * channels_;
+      const T* ysA_input_upper_ptr =
+	input_image + ys_[iyA].upper * in_width_ * channels_;
+      U* ysA_output_ptr = output_image + y * out_width_ * channels_;
+      const int iyB =
+	flip_y_ ? out_height_ - 1 - min_iy_ - (y + 1) : (y + 1) - min_iy_;
+      const float yB_lerp = ys_[iyB].lerp;
+      const __m128 ysB_lerp = _mm_set1_ps(yB_lerp);
+      const T* ysB_input_lower_ptr =
+	input_image + ys_[iyB].lower * in_width_ * channels_;
+      const T* ysB_input_upper_ptr =
+	input_image + ys_[iyB].upper * in_width_ * channels_;
+      U* ysB_output_ptr = output_image + (y + 1) * out_width_ * channels_;
+      if (channels_ == 1) {
+	this->ResizeRow_load1_1ch_(ysA_lerp, ysA_input_lower_ptr,
+	    ysA_input_upper_ptr, ysA_output_ptr);
+	this->ResizeRow_load1_1ch_(ysB_lerp, ysB_input_lower_ptr,
+	    ysB_input_upper_ptr, ysB_output_ptr);
+	this->ResizeRow_load2_1ch_(ysA_lerp, ysA_input_lower_ptr,
+	    ysA_input_upper_ptr, ysA_output_ptr);
+	this->ResizeRow_load2_1ch_(ysB_lerp, ysB_input_lower_ptr,
+	    ysB_input_upper_ptr, ysB_output_ptr);
+	this->ResizeRow_load4_1ch_(ysA_lerp, ysA_input_lower_ptr,
+	    ysA_input_upper_ptr, ysA_output_ptr);
+	this->ResizeRow_load4_1ch_(ysB_lerp, ysB_input_lower_ptr,
+	    ysB_input_upper_ptr, ysB_output_ptr);
+	this->ResizeRow_load8_1ch_(ysA_lerp, ysA_input_lower_ptr,
+	    ysA_input_upper_ptr, ysA_output_ptr);
+	this->ResizeRow_load8_1ch_(ysB_lerp, ysB_input_lower_ptr,
+	    ysB_input_upper_ptr, ysB_output_ptr);
+	this->ResizeRow_general_(yA_lerp, ysA_input_lower_ptr,
+	    ysA_input_upper_ptr, ysA_output_ptr);
+	this->ResizeRow_general_(yB_lerp, ysB_input_lower_ptr,
+	    ysB_input_upper_ptr, ysB_output_ptr);
+      } else if (channels_ == 2) {
+	this->ResizeRow_load1_2ch_(ysA_lerp, ysA_input_lower_ptr,
+	    ysA_input_upper_ptr, ysA_output_ptr);
+	this->ResizeRow_load1_2ch_(ysB_lerp, ysB_input_lower_ptr,
+	    ysB_input_upper_ptr, ysB_output_ptr);
+	this->ResizeRow_load2_2ch_(ysA_lerp, ysA_input_lower_ptr,
+	    ysA_input_upper_ptr, ysA_output_ptr);
+	this->ResizeRow_load2_2ch_(ysB_lerp, ysB_input_lower_ptr,
+	    ysB_input_upper_ptr, ysB_output_ptr);
+	this->ResizeRow_load4_2ch_(ysA_lerp, ysA_input_lower_ptr,
+	    ysA_input_upper_ptr, ysA_output_ptr);
+	this->ResizeRow_load4_2ch_(ysB_lerp, ysB_input_lower_ptr,
+	    ysB_input_upper_ptr, ysB_output_ptr);
+	this->ResizeRow_load8_2ch_(ysA_lerp, ysA_input_lower_ptr,
+	    ysA_input_upper_ptr, ysA_output_ptr);
+	this->ResizeRow_load8_2ch_(ysB_lerp, ysB_input_lower_ptr,
+	    ysB_input_upper_ptr, ysB_output_ptr);
+	this->ResizeRow_general_(yA_lerp, ysA_input_lower_ptr,
+	    ysA_input_upper_ptr, ysA_output_ptr);
+	this->ResizeRow_general_(yB_lerp, ysB_input_lower_ptr,
+	    ysB_input_upper_ptr, ysB_output_ptr);
+      } else if (channels_ == 3) {
+	this->ResizeRow_load1_3ch_(ysA_lerp, ysA_input_lower_ptr,
+	    ysA_input_upper_ptr, ysA_output_ptr);
+	this->ResizeRow_load1_3ch_(ysB_lerp, ysB_input_lower_ptr,
+	    ysB_input_upper_ptr, ysB_output_ptr);
+	this->ResizeRow_load2_3ch_(ysA_lerp, ysA_input_lower_ptr,
+	    ysA_input_upper_ptr, ysA_output_ptr);
+	this->ResizeRow_load2_3ch_(ysB_lerp, ysB_input_lower_ptr,
+	    ysB_input_upper_ptr, ysB_output_ptr);
+	this->ResizeRow_load4_3ch_(ysA_lerp, ysA_input_lower_ptr,
+	    ysA_input_upper_ptr, ysA_output_ptr);
+	this->ResizeRow_load4_3ch_(ysB_lerp, ysB_input_lower_ptr,
+	    ysB_input_upper_ptr, ysB_output_ptr);
+	this->ResizeRow_load8_3ch_(ysA_lerp, ysA_input_lower_ptr,
+	    ysA_input_upper_ptr, ysA_output_ptr);
+	this->ResizeRow_load8_3ch_(ysB_lerp, ysB_input_lower_ptr,
+	    ysB_input_upper_ptr, ysB_output_ptr);
+	this->ResizeRow_general_(yA_lerp, ysA_input_lower_ptr,
+	    ysA_input_upper_ptr, ysA_output_ptr);
+	this->ResizeRow_general_(yB_lerp, ysB_input_lower_ptr,
+	    ysB_input_upper_ptr, ysB_output_ptr);
+      } else if (channels_ == 4) {
+	this->ResizeRow_load1_4ch_(ysA_lerp, ysA_input_lower_ptr,
+	    ysA_input_upper_ptr, ysA_output_ptr);
+	this->ResizeRow_load1_4ch_(ysB_lerp, ysB_input_lower_ptr,
+	    ysB_input_upper_ptr, ysB_output_ptr);
+	this->ResizeRow_load2_4ch_(ysA_lerp, ysA_input_lower_ptr,
+	    ysA_input_upper_ptr, ysA_output_ptr);
+	this->ResizeRow_load2_4ch_(ysB_lerp, ysB_input_lower_ptr,
+	    ysB_input_upper_ptr, ysB_output_ptr);
+	this->ResizeRow_load4_4ch_(ysA_lerp, ysA_input_lower_ptr,
+	    ysA_input_upper_ptr, ysA_output_ptr);
+	this->ResizeRow_load4_4ch_(ysB_lerp, ysB_input_lower_ptr,
+	    ysB_input_upper_ptr, ysB_output_ptr);
+	this->ResizeRow_load8_4ch_(ysA_lerp, ysA_input_lower_ptr,
+	    ysA_input_upper_ptr, ysA_output_ptr);
+	this->ResizeRow_load8_4ch_(ysB_lerp, ysB_input_lower_ptr,
+	    ysB_input_upper_ptr, ysB_output_ptr);
+	this->ResizeRow_general_(yA_lerp, ysA_input_lower_ptr,
+	    ysA_input_upper_ptr, ysA_output_ptr);
+	this->ResizeRow_general_(yB_lerp, ysB_input_lower_ptr,
+	    ysB_input_upper_ptr, ysB_output_ptr);
+      } else {
+	assert(false);
+      }
     }
-  }
-  for (; y <= y1_; ++y) {
-    const int iyA = flip_y_ ? out_height_ - 1 - min_iy_ - y : y - min_iy_;
-    const float yA_lerp = ys_[iyA].lerp;
-    const __m128 ysA_lerp = _mm_set1_ps(yA_lerp);
-    const T* ysA_input_lower_ptr =
-        input_image + ys_[iyA].lower * in_width_ * channels_;
-    const T* ysA_input_upper_ptr =
-        input_image + ys_[iyA].upper * in_width_ * channels_;
-    U* ysA_output_ptr = output_image + y * out_width_ * channels_;
-    if (channels_ == 1) {
-      this->ResizeRow_load1_1ch_(ysA_lerp, ysA_input_lower_ptr,
-                                 ysA_input_upper_ptr, ysA_output_ptr);
-      this->ResizeRow_load2_1ch_(ysA_lerp, ysA_input_lower_ptr,
-                                 ysA_input_upper_ptr, ysA_output_ptr);
-      this->ResizeRow_load4_1ch_(ysA_lerp, ysA_input_lower_ptr,
-                                 ysA_input_upper_ptr, ysA_output_ptr);
-      this->ResizeRow_load8_1ch_(ysA_lerp, ysA_input_lower_ptr,
-                                 ysA_input_upper_ptr, ysA_output_ptr);
-      this->ResizeRow_general_(yA_lerp, ysA_input_lower_ptr,
-                               ysA_input_upper_ptr, ysA_output_ptr);
-    } else if (channels_ == 2) {
-      this->ResizeRow_load1_2ch_(ysA_lerp, ysA_input_lower_ptr,
-                                 ysA_input_upper_ptr, ysA_output_ptr);
-      this->ResizeRow_load2_2ch_(ysA_lerp, ysA_input_lower_ptr,
-                                 ysA_input_upper_ptr, ysA_output_ptr);
-      this->ResizeRow_load4_2ch_(ysA_lerp, ysA_input_lower_ptr,
-                                 ysA_input_upper_ptr, ysA_output_ptr);
-      this->ResizeRow_load8_2ch_(ysA_lerp, ysA_input_lower_ptr,
-                                 ysA_input_upper_ptr, ysA_output_ptr);
-      this->ResizeRow_general_(yA_lerp, ysA_input_lower_ptr,
-                               ysA_input_upper_ptr, ysA_output_ptr);
-    } else if (channels_ == 3) {
-      this->ResizeRow_load1_3ch_(ysA_lerp, ysA_input_lower_ptr,
-                                 ysA_input_upper_ptr, ysA_output_ptr);
-      this->ResizeRow_load2_3ch_(ysA_lerp, ysA_input_lower_ptr,
-                                 ysA_input_upper_ptr, ysA_output_ptr);
-      this->ResizeRow_load4_3ch_(ysA_lerp, ysA_input_lower_ptr,
-                                 ysA_input_upper_ptr, ysA_output_ptr);
-      this->ResizeRow_load8_3ch_(ysA_lerp, ysA_input_lower_ptr,
-                                 ysA_input_upper_ptr, ysA_output_ptr);
-      this->ResizeRow_general_(yA_lerp, ysA_input_lower_ptr,
-                               ysA_input_upper_ptr, ysA_output_ptr);
-    } else if (channels_ == 4) {
-      this->ResizeRow_load1_4ch_(ysA_lerp, ysA_input_lower_ptr,
-                                 ysA_input_upper_ptr, ysA_output_ptr);
-      this->ResizeRow_load2_4ch_(ysA_lerp, ysA_input_lower_ptr,
-                                 ysA_input_upper_ptr, ysA_output_ptr);
-      this->ResizeRow_load4_4ch_(ysA_lerp, ysA_input_lower_ptr,
-                                 ysA_input_upper_ptr, ysA_output_ptr);
-      this->ResizeRow_load8_4ch_(ysA_lerp, ysA_input_lower_ptr,
-                                 ysA_input_upper_ptr, ysA_output_ptr);
-      this->ResizeRow_general_(yA_lerp, ysA_input_lower_ptr,
-                               ysA_input_upper_ptr, ysA_output_ptr);
-    } else {
-      assert(false);
+    for (; y <= y1_; ++y) {
+      const int iyA = flip_y_ ? out_height_ - 1 - min_iy_ - y : y - min_iy_;
+      const float yA_lerp = ys_[iyA].lerp;
+      const __m128 ysA_lerp = _mm_set1_ps(yA_lerp);
+      const T* ysA_input_lower_ptr =
+	input_image + ys_[iyA].lower * in_width_ * channels_;
+      const T* ysA_input_upper_ptr =
+	input_image + ys_[iyA].upper * in_width_ * channels_;
+      U* ysA_output_ptr = output_image + y * out_width_ * channels_;
+      if (channels_ == 1) {
+	this->ResizeRow_load1_1ch_(ysA_lerp, ysA_input_lower_ptr,
+	    ysA_input_upper_ptr, ysA_output_ptr);
+	this->ResizeRow_load2_1ch_(ysA_lerp, ysA_input_lower_ptr,
+	    ysA_input_upper_ptr, ysA_output_ptr);
+	this->ResizeRow_load4_1ch_(ysA_lerp, ysA_input_lower_ptr,
+	    ysA_input_upper_ptr, ysA_output_ptr);
+	this->ResizeRow_load8_1ch_(ysA_lerp, ysA_input_lower_ptr,
+	    ysA_input_upper_ptr, ysA_output_ptr);
+	this->ResizeRow_general_(yA_lerp, ysA_input_lower_ptr,
+	    ysA_input_upper_ptr, ysA_output_ptr);
+      } else if (channels_ == 2) {
+	this->ResizeRow_load1_2ch_(ysA_lerp, ysA_input_lower_ptr,
+	    ysA_input_upper_ptr, ysA_output_ptr);
+	this->ResizeRow_load2_2ch_(ysA_lerp, ysA_input_lower_ptr,
+	    ysA_input_upper_ptr, ysA_output_ptr);
+	this->ResizeRow_load4_2ch_(ysA_lerp, ysA_input_lower_ptr,
+	    ysA_input_upper_ptr, ysA_output_ptr);
+	this->ResizeRow_load8_2ch_(ysA_lerp, ysA_input_lower_ptr,
+	    ysA_input_upper_ptr, ysA_output_ptr);
+	this->ResizeRow_general_(yA_lerp, ysA_input_lower_ptr,
+	    ysA_input_upper_ptr, ysA_output_ptr);
+      } else if (channels_ == 3) {
+	this->ResizeRow_load1_3ch_(ysA_lerp, ysA_input_lower_ptr,
+	    ysA_input_upper_ptr, ysA_output_ptr);
+	this->ResizeRow_load2_3ch_(ysA_lerp, ysA_input_lower_ptr,
+	    ysA_input_upper_ptr, ysA_output_ptr);
+	this->ResizeRow_load4_3ch_(ysA_lerp, ysA_input_lower_ptr,
+	    ysA_input_upper_ptr, ysA_output_ptr);
+	this->ResizeRow_load8_3ch_(ysA_lerp, ysA_input_lower_ptr,
+	    ysA_input_upper_ptr, ysA_output_ptr);
+	this->ResizeRow_general_(yA_lerp, ysA_input_lower_ptr,
+	    ysA_input_upper_ptr, ysA_output_ptr);
+      } else if (channels_ == 4) {
+	this->ResizeRow_load1_4ch_(ysA_lerp, ysA_input_lower_ptr,
+	    ysA_input_upper_ptr, ysA_output_ptr);
+	this->ResizeRow_load2_4ch_(ysA_lerp, ysA_input_lower_ptr,
+	    ysA_input_upper_ptr, ysA_output_ptr);
+	this->ResizeRow_load4_4ch_(ysA_lerp, ysA_input_lower_ptr,
+	    ysA_input_upper_ptr, ysA_output_ptr);
+	this->ResizeRow_load8_4ch_(ysA_lerp, ysA_input_lower_ptr,
+	    ysA_input_upper_ptr, ysA_output_ptr);
+	this->ResizeRow_general_(yA_lerp, ysA_input_lower_ptr,
+	    ysA_input_upper_ptr, ysA_output_ptr);
+      } else {
+	assert(false);
+      }
     }
   }
 }
