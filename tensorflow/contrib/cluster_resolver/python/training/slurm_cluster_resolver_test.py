@@ -18,7 +18,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import subprocess
 import os
 
 from tensorflow.contrib.cluster_resolver.python.training.slurm_cluster_resolver import SlurmClusterResolver
@@ -57,22 +56,9 @@ class SlurmClusterResolverTest(test.TestCase):
 
     actual_cluster_spec = slurm_cluster_resolver.cluster_spec()
     expected_proto = """
-      job {
-        name: "ps"
-        tasks {
-          value: "t02n13:8888"
-        }
-      }
-      job {
-        name: "worker"
-        tasks {
-          value: "t02n41:8888"
-        }
-        tasks {
-          key: 1
-          value: "t02n43:8888"
-        }
-      }
+    job { name: 'ps' tasks { value: 't02n13:8888' } }
+    job { name: 'worker' tasks { key: 0 value: 't02n41:8888' }
+                         tasks { key: 1 value: 't02n43:8888' } }
     """
     self._verifyClusterSpecEquality(actual_cluster_spec, expected_proto)
 
@@ -91,22 +77,9 @@ class SlurmClusterResolverTest(test.TestCase):
 
     actual_cluster_spec = slurm_cluster_resolver.cluster_spec()
     expected_proto = """
-      job {
-        name: "ps"
-        tasks {
-          value: "t02n13:8888"
-        }
-      }
-      job {
-        name: "worker"
-        tasks {
-          value: "t02n41:8888"
-        }
-        tasks {
-          key: 1
-          value: "t02n43:8888"
-        }
-      }
+    job { name: 'ps' tasks { value: 't02n13:8888' } }
+    job { name: 'worker' tasks { key: 0 value: 't02n41:8888' }
+                         tasks { key: 1 value: 't02n43:8888' } }
     """
     self._verifyClusterSpecEquality(actual_cluster_spec, expected_proto)
 
@@ -126,31 +99,13 @@ class SlurmClusterResolverTest(test.TestCase):
 
     actual_cluster_spec = slurm_cluster_resolver.cluster_spec()
     expected_proto = """
-      job {
-        name: "ps"
-        tasks {
-          value: "t02n13:8888"
-        }
-      }
-      job {
-        name: "worker"
-        tasks {
-          value: "t02n13:8889"
-        }
-        tasks {
-          key: 1
-          value: "t02n41:8888"
-        }
-        tasks {
-          key: 2
-          value: "t02n41:8889"
-        }
-        tasks {
-          key: 3
-          value: "t02n43:8888"
-        }
-      }
+    job { name: 'ps' tasks { value: 't02n13:8888' } }
+    job { name: 'worker' tasks { key: 0 value: 't02n13:8889' }
+                         tasks { key: 1 value: 't02n41:8888' } }
+                         tasks { key: 2 value: 't02n41:8889' } }
+                         tasks { key: 3 value: 't02n43:8888' } }
     """
+
     self._verifyClusterSpecEquality(actual_cluster_spec, expected_proto)
     assert os.environ['CUDA_VISIBLE_DEVICES'] == '1'
 
@@ -170,31 +125,13 @@ class SlurmClusterResolverTest(test.TestCase):
 
     actual_cluster_spec = slurm_cluster_resolver.cluster_spec()
     expected_proto = """
-      job {
-        name: "ps"
-        tasks {
-          value: "t02n13:8888"
-        }
-      }
-      job {
-        name: "worker"
-        tasks {
-          value: "t02n13:8889"
-        }
-        tasks {
-          key: 1
-          value: "t02n41:8888"
-        }
-        tasks {
-          key: 2
-          value: "t02n41:8889"
-        }
-        tasks {
-          key: 3
-          value: "t02n43:8888"
-        }
-      }
+    job { name: 'ps' tasks { value: 't02n13:8888' } }
+    job { name: 'worker' tasks { key: 0 value: 't02n13:8889' }
+                         tasks { key: 1 value: 't02n41:8888' } }
+                         tasks { key: 2 value: 't02n41:8889' } }
+                         tasks { key: 3 value: 't02n43:8888' } }
     """
+
     self._verifyClusterSpecEquality(actual_cluster_spec, expected_proto)
     assert os.environ['CUDA_VISIBLE_DEVICES'] == '2,3'
 
