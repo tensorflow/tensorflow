@@ -349,6 +349,9 @@ Status ConstantFolding::MaterializeShapes(const GraphProperties& properties) {
       if (IsReallyConstant(*array_size)) {
         // Don't materialize 0 sizes to avoid triggering incorrect static
         // checks. A 0 sized array that can't grow isn't useful anyway.
+        if (array_size->attr().count("value") == 0) {
+          continue;
+        }
         const TensorProto& raw_val = array_size->attr().at("value").tensor();
         if (raw_val.dtype() != DT_INT32) {
           continue;
@@ -454,6 +457,9 @@ bool ExtractShape(const NodeDef& shape_node, const GraphProperties& properties,
       *min_id = std::min<int64>(*min_id, dim.size());
     }
   } else {
+    if (shape_node.attr().count("value") == 0) {
+      return false;
+    }
     const TensorProto& raw_val = shape_node.attr().at("value").tensor();
     if (raw_val.dtype() != DT_INT64 && raw_val.dtype() != DT_INT32) {
       return false;
@@ -552,6 +558,7 @@ Status ConstantFolding::MaterializeBroadcastGradientArgs(
   reduce_dims[0] = bcast.grad_x_reduce_idx();
   reduce_dims[1] = bcast.grad_y_reduce_idx();
 
+  TF_RETURN_IF_ERROR(CheckAttrExists(node, "T"));
   const DataType type = node.attr().at("T").type();
   NodeDef* out[2];
   for (int j = 0; j < 2; ++j) {
@@ -790,7 +797,8 @@ bool ConstantFolding::IsFoldable(const NodeDef& node) const {
     if (is_const) {
       // Don't fold strings constants for now since this causes problems with
       // checkpointing.
-      if (input_node->attr().at("dtype").type() == DT_STRING) {
+      if (input_node->attr().count("dtype") == 0 ||
+          input_node->attr().at("dtype").type() == DT_STRING) {
         return false;
       }
       // Special case: If a Merge node has at least one constant input that
@@ -985,6 +993,7 @@ Status ConstantFolding::EvaluateOneFoldable(const NodeDef& node,
                     strings::StrCat("Can't fold ", node.name(), ", its ", input,
                                     " isn't constant"));
     }
+    TF_RETURN_IF_ERROR(CheckAttrExists(*input_node, "value"));
     const TensorProto& raw_val = input_node->attr().at("value").tensor();
     Tensor* value = new Tensor(raw_val.dtype(), raw_val.tensor_shape());
     CHECK(value->FromProto(raw_val));
@@ -1398,16 +1407,13 @@ bool ConstantFolding::IsOnes(const NodeDef& node) const {
   if (feed_nodes_.find(node.name()) != feed_nodes_.end()) {
     return false;
   }
-  if (node.op() == "OnesLike") {
-    return true;
-  }
+  if (node.op() == "OnesLike") return true;
   if (node.op() == "Fill") {
     NodeDef* values = node_map_->GetNode(NodeName(node.input(1)));
     return values != nullptr && IsOnes(*values);
   }
-  if (node.op() != "Const") {
-    return false;
-  }
+  if (node.op() != "Const") return false;
+  if (node.attr().count("dtype") == 0) return false;
   const auto dtype = node.attr().at("dtype").type();
   switch (dtype) {
     IS_ONES_CASE(DT_BOOL);
@@ -1434,16 +1440,13 @@ bool ConstantFolding::IsZeros(const NodeDef& node) const {
   if (feed_nodes_.find(node.name()) != feed_nodes_.end()) {
     return false;
   }
-  if (node.op() == "ZerosLike") {
-    return true;
-  }
+  if (node.op() == "ZerosLike") return true;
   if (node.op() == "Fill") {
     NodeDef* values = node_map_->GetNode(NodeName(node.input(1)));
     return values != nullptr && IsZeros(*values);
   }
-  if (!IsConstant(node)) {
-    return false;
-  }
+  if (!IsConstant(node)) return false;
+  if (node.attr().count("dtype") == 0) return false;
   const auto dtype = node.attr().at("dtype").type();
   switch (dtype) {
     IS_ZEROS_CASE(DT_BOOL);
@@ -1737,11 +1740,11 @@ Status ConstantFolding::SimplifyNode(bool use_shape_info, NodeDef* node,
 bool ConstantFolding::RemoveSplitOrSplitV(const GraphProperties& properties,
                                           GraphDef* optimized_graph,
                                           NodeDef* node) {
+  if (node->attr().count("num_split") == 0) return false;
   if (IsSplit(*node) && node->attr().at("num_split").i() == 1) {
     ReplaceOperationWithIdentity(1, properties, node, optimized_graph);
     return true;
   }
-
   if (IsSplitV(*node) && node->attr().at("num_split").i() == 1) {
     ReplaceOperationWithIdentity(0, properties, node, optimized_graph);
     return true;
@@ -1918,6 +1921,8 @@ Status ConstantFolding::SimplifyStridedSlice(const GraphProperties& properties,
                                              NodeDef* node, bool* success) {
   if (use_shape_info && IsStridedSlice(*node) &&
       properties.GetInputProperties(node->name()).size() == 4) {
+    TF_RETURN_IF_ERROR(
+        CheckAttrsExist(*node, {"new_axis_mask", "shrink_axis_mask"}));
     if (node->attr().at("new_axis_mask").i() != 0 ||
         node->attr().at("shrink_axis_mask").i() != 0) {
       // Skip nodes with new/shrink axis mask, since they involve dimension
@@ -1952,6 +1957,8 @@ Status ConstantFolding::SimplifyStridedSlice(const GraphProperties& properties,
         return errors::InvalidArgument("Cannot parse tensor from proto: ",
                                        s.value().DebugString());
       }
+      TF_RETURN_IF_ERROR(
+          CheckAttrsExist(*node, {"begin_mask", "end_mask", "ellipsis_mask"}));
       int begin_mask = node->attr().at("begin_mask").i();
       int end_mask = node->attr().at("end_mask").i();
       std::set<int> expanded_ellipsis_indices;
@@ -2280,7 +2287,7 @@ bool ConstantFolding::SimplifyReduction(const GraphProperties& properties,
     // Replace the reduction node with an identity node, that can be further
     // optimized by the model pruner.
     DataType output_type;
-    if (node->attr().count("T") > 0) {
+    if (node->attr().count("T") != 0) {
       output_type = node->attr().at("T").type();
     } else {
       // This is an 'any' or 'all' reduction. The output is always boolean.
@@ -2297,8 +2304,10 @@ bool ConstantFolding::SimplifyReduction(const GraphProperties& properties,
 
 bool ConstantFolding::SimplifyReshape(const GraphProperties& properties,
                                       bool use_shape_info, NodeDef* node) {
-  if (!use_shape_info) return false;
-  if (!IsSimplifiableReshape(*node, properties)) return false;
+  if (!use_shape_info || node->attr().count("T") == 0 ||
+      !IsSimplifiableReshape(*node, properties)) {
+    return false;
+  }
   DataType output_type = node->attr().at("T").type();
   node->set_op("Identity");
   node->clear_attr();
@@ -2310,6 +2319,7 @@ bool ConstantFolding::SimplifyReshape(const GraphProperties& properties,
 Status ConstantFolding::SimplifyArithmeticOperations(
     const GraphProperties& properties, bool use_shape_info,
     GraphDef* optimized_graph, NodeDef* node, bool* success) {
+  *success = false;
   const bool is_mul = IsMul(*node) || IsLogicalAnd(*node);
   const bool is_matmul = IsMatMul(*node);
   const bool is_add = IsAdd(*node) || IsBiasAdd(*node) || IsLogicalOr(*node);
@@ -2354,6 +2364,7 @@ Status ConstantFolding::SimplifyArithmeticOperations(
 
     // Replace 1 / y with Reciprocal op.
     if (y_matches_output_shape && is_any_div && x_is_one) {
+      TF_RETURN_IF_ERROR(CheckAttrExists(*node, "T"));
       DataType type = node->attr().at("T").type();
       if (DataTypeIsFloating(type) || DataTypeIsComplex(type)) {
         ReplaceDivisionOfOnesByReciprocal(node, optimized_graph);

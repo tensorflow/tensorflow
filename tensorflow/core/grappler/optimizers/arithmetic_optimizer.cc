@@ -67,7 +67,8 @@ bool ValuesFromConstNode(const NodeDef& node, std::vector<T>* values) {
     return false;
   }
 
-  if (node.attr().at("dtype").type() != DataTypeToEnum<T>::value) {
+  if (node.attr().count("dtype") == 0 || node.attr().count("value") == 0 ||
+      node.attr().at("dtype").type() != DataTypeToEnum<T>::value) {
     return false;
   }
 
@@ -156,14 +157,6 @@ DataType GetDestinationDataType(const NodeDef& node) {
 
 void SetSourceDataType(DataType dtype, NodeDef* node) {
   SetDataTypeToAttr(dtype, SourceDataTypeAttrName(*node), node);
-}
-
-Status CheckAttrExists(const NodeDef& node, const string& key) {
-  if (node.attr().count(key) == 0) {
-    return errors::InvalidArgument("Node '", node.name(), "'lacks '", key,
-                                   "' attr: ", node.DebugString());
-  }
-  return Status::OK();
 }
 
 NodeDef* GetTailOfValuePreservingChain(
@@ -641,7 +634,7 @@ class AddOpsRewriteStage : public ArithmeticNodesGroupOptimizerStage {
     CHECK(!inputs.empty()) << "Inputs must be non-empty";
 
     // Do not create redundant AddN nodes
-    if (inputs.size() == 1) {
+    if (inputs.size() == 1 || root_node.attr().count("T") == 0) {
       return inputs[0];
     }
 
@@ -1450,10 +1443,11 @@ class HoistCWiseUnaryChainsStage : public ArithmeticOptimizerStage {
 
   bool IsSupported(const NodeDef* node) const override {
     if (IsInPreserveSet(*node)) return false;
-    if (IsConcat(*node)) {
+    if (IsConcat(*node) && node->attr().count("N") != 0) {
       const int n = node->attr().at("N").i();
       return n > 1;
-    } else if (IsSplit(*node) || IsSplitV(*node)) {
+    } else if ((IsSplit(*node) || IsSplitV(*node)) &&
+               node->attr().count("num_split") != 0) {
       const int num_split = node->attr().at("num_split").i();
       if (NumNonControlOutputs(*node, *ctx().node_map) > num_split) {
         // TODO(rmlarsen): Remove this constraint when we have optimizations
@@ -1556,6 +1550,7 @@ class HoistCWiseUnaryChainsStage : public ArithmeticOptimizerStage {
   Status InitializeChains(const NodeDef& node, ChainLinkSet* tails) const {
     if (node_is_concat_) {
       // Handle concat nodes by looking backwards in the graph.
+      TF_RETURN_IF_ERROR(CheckAttrExists(node, "N"));
       const int n = node.attr().at("N").i();
       const int start = node.op() == "Concat" ? 1 : 0;
       const int end = start + n;
@@ -2029,6 +2024,8 @@ class FoldMultiplyIntoConv : public ArithmeticOptimizerStage {
 
     // Check that 'scale * weight' can be const folded.
     TF_RETURN_IF_TRUE(!IsConstant(*scale));
+    TF_RETURN_IF_ERROR(CheckAttrsExist(*scale, {"dtype", "value"}));
+    TF_RETURN_IF_ERROR(CheckAttrExists(*weights, "dtype"));
     TF_RETURN_IF_TRUE(scale->attr().at("dtype").type() !=
                       weights->attr().at("dtype").type());
 
@@ -2803,6 +2800,7 @@ class UnaryOpsComposition : public ArithmeticOptimizerStage {
   }
 
   Status TrySimplify(NodeDef* root, string* simplified_node_name) override {
+    TF_RETURN_IF_ERROR(CheckAttrExists(*root, "T"));
     DataType dtype = root->attr().at("T").type();
 
     // Keep a trace of all supported input nodes that can be fused together.
@@ -3023,10 +3021,9 @@ class RemoveStackStridedSliceSameAxis : public ArithmeticOptimizerStage {
                       const PartialTensorShape& pack_output_shape,
                       int pack_axis, int* slice_start_value, bool* found) {
     *found = false;
-    for (auto key : {"begin_mask", "end_mask", "ellipsis_mask", "new_axis_mask",
-                     "shrink_axis_mask"}) {
-      TF_RETURN_IF_ERROR(CheckAttrExists(*node, key));
-    }
+    TF_RETURN_IF_ERROR(
+        CheckAttrsExist(*node, {"begin_mask", "end_mask", "ellipsis_mask",
+                                "new_axis_mask", "shrink_axis_mask"}));
 
     const int begin_mask = node->attr().at("begin_mask").i();
     const int end_mask = node->attr().at("end_mask").i();
@@ -3056,14 +3053,14 @@ class RemoveStackStridedSliceSameAxis : public ArithmeticOptimizerStage {
     Tensor slice_strides_t;
 
     TF_RETURN_IF_ERROR(CheckAttrExists(*slice_begin, "value"));
-    TF_RETURN_IF_ERROR(CheckAttrExists(*slice_end, "value"));
-
     if (!slice_begin_t.FromProto(slice_begin->attr().at("value").tensor())) {
       return Status::OK();
     }
+    TF_RETURN_IF_ERROR(CheckAttrExists(*slice_end, "value"));
     if (!slice_end_t.FromProto(slice_end->attr().at("value").tensor())) {
       return Status::OK();
     }
+    TF_RETURN_IF_ERROR(CheckAttrExists(*slice_strides, "value"));
     if (!slice_strides_t.FromProto(
             slice_strides->attr().at("value").tensor())) {
       return Status::OK();
