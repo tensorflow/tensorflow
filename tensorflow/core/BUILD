@@ -593,6 +593,7 @@ cc_library(
         "//tensorflow/core/platform/default/build_config:other",
         "//tensorflow/core/platform/default/build_config:platformlib",
         "//tensorflow/core/platform/default/build_config:port",
+        "@com_google_absl//absl/flags:flag",
     ],
 )
 
@@ -2194,6 +2195,7 @@ cc_library(
         ":lib_proto_parsing",
         ":abi",
         ":core_stringpiece",
+        "@com_google_absl//absl/flags:flag",
         "//third_party/eigen3",
         "//tensorflow/core/platform/default/build_config:platformlib",
         "@snappy",
