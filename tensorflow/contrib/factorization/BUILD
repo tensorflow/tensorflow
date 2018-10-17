@@ -154,8 +154,6 @@ tf_py_test(
     ],
     tags = [
         "no_pip",  # b/38283730
-        "noasan",  # b/116875897
-        "nomsan",
         "notsan",  # Flaky: b/30756419
     ],
 )
@@ -179,11 +177,7 @@ tf_py_test(
         "//tensorflow/python:random_seed",
         "//tensorflow/python:variables",
     ],
-    tags = [
-        "noasan",  # b/116875897
-        "nomsan",
-        "notsan",  # b/62863147
-    ],
+    tags = ["notsan"],  # b/62863147
 )
 
 py_library(
@@ -282,7 +276,6 @@ tf_py_test(
         "manual",
         "noasan",  # times out b/63678675
         "nomsan",
-        "notsan",  # b/116875897
     ],
 )
 

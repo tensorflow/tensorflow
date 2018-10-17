@@ -132,7 +132,7 @@ class TPUStrategy(one_device_strategy.OneDeviceStrategy):
     """
     # TODO(sourabhbajaj): OneDeviceStrategy should be initialized with the
     # master node fetched from the cluster resolver.
-    super(TPUStrategy, self).__init__('/device:CPU:0')
+    super(TPUStrategy, self).__init__("/device:CPU:0")
 
     self._tpu_cluster_resolver = tpu_cluster_resolver
     self._tpu_metadata = get_tpu_system_metadata(self._tpu_cluster_resolver)
@@ -151,6 +151,8 @@ class TPUStrategy(one_device_strategy.OneDeviceStrategy):
     # TODO(sourabhbajaj): Remove this once performance of running one step
     # at a time is comparable to multiple steps.
     self.steps_per_run = steps_per_run
+
+    self._require_static_shapes = True
 
   def _get_enqueue_op_per_host(self, host_id, iterator, input_shapes,
                                iterations):
@@ -297,6 +299,7 @@ class TPUStrategy(one_device_strategy.OneDeviceStrategy):
       # For outputs that have already been aggregated, take the first value
       # from the list as each value should be the same. Else return the full
       # list of values.
+      # TODO(josh11b): If aggregation is NONE, we should return a PerDevice value.
       if aggregation is not variables_lib.VariableAggregation.NONE:
         # TODO(priyag): Should this return the element or a list with 1 element
         last_step_tensor_outputs_dict[name] = output[0]
@@ -398,11 +401,16 @@ class TPUStrategy(one_device_strategy.OneDeviceStrategy):
       return output * (1. / len(value))
     return output
 
-  def _update(self, var, fn, *args, **kwargs):
-    # TODO(jhseu): Consider supporting grouped==False.
+  def _update(self, var, options, fn, *args, **kwargs):
     assert isinstance(var, values.TPUMirroredVariable)
+    should_group = options.pop("grouped")
+    assert not options  # Validate that we are processing all of the options.
+
     if values._enclosing_tpu_context() is not None:  # pylint: disable=protected-access
-      return fn(var, *args, **kwargs)
+      if should_group:
+        return fn(var, *args, **kwargs)
+      else:
+        return [fn(var, *args, **kwargs)]
 
     # Otherwise, we revert to MirroredStrategy behavior and update each variable
     # directly.
@@ -414,23 +422,25 @@ class TPUStrategy(one_device_strategy.OneDeviceStrategy):
         updates[d] = fn(v,
                         *values.select_device_mirrored(d, args),
                         **values.select_device_mirrored(d, kwargs))
+    return values.update_regroup(self, updates, should_group)
 
-    # Make a single control dependency to keep the variables mirrored. If one
-    # assignment is fetched, then run all assignments.
-    sorted_keys = sorted(updates.keys())
-    update_tuple = control_flow_ops.tuple([updates[d] for d in sorted_keys])
-    for i, d in enumerate(sorted_keys):
-      updates[d] = update_tuple[i]
-    return values.regroup(updates, values.Mirrored)
+  # TODO(josh11b): Need to implement _update_non_slot()!
 
   def read_var(self, var):
     assert isinstance(var, values.TPUMirroredVariable)
     return var.read_value()
 
-  def _unwrap(self, value):
-    if isinstance(value, list):
-      return value
-    return [value]
+  def _unwrap(self, val):
+    if isinstance(val, values.DistributedValues):
+      # Return in a deterministic order.
+      return [val.get(device=d) for d in sorted(val.devices)]
+    elif isinstance(val, list):
+      # TODO(josh11b): We need to remove this case; per device values should
+      # be represented using a PerDevice wrapper instead of a list with
+      # one entry per device.
+      return val
+    return [val]
+
 
   @property
   def num_towers(self):

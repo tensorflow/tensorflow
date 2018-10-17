@@ -81,11 +81,25 @@ using TensorsMap = std::unordered_map<string, int>;
 // Only when `type` is `kUnsupported`, `custom_code` is filled to
 // identify which operation is used.
 struct OperatorKey {
-  OperatorKey(OperatorType type, const std::string& custom_code, int version)
+  OperatorKey() {}
+  OperatorKey(::tflite::BuiltinOperator type, const std::string& custom_code,
+              int version)
       : type(type), custom_code(custom_code), version(version) {}
-  const OperatorType type;
-  const std::string custom_code;
-  const int version;
+
+  // Only `type`, `custom_code` and `version` is used to compute hash and
+  // identity.
+  ::tflite::BuiltinOperator type = ::tflite::BuiltinOperator_CUSTOM;
+  std::string custom_code;
+  int version = 1;
+
+  // The fields below are not used to compute hash and identity.
+  // TODO(ycling): Consider to change these fields to accessor functions.
+  bool is_custom_op = false;
+  bool is_flex_op = false;
+  bool is_unsupported_flex_op = false;
+  // The original TensorFlow op name for the flex op. Filled only when
+  // `is_flex_op` is true.
+  std::string flex_tensorflow_op;
 
   bool operator<(const OperatorKey& other) const {
     if (type < other.type) return true;
@@ -113,6 +127,11 @@ struct OperatorKey {
     }
   };
 };
+
+OperatorKey GetOperatorKey(
+    const ::toco::Operator& op,
+    const std::map<OperatorType, std::unique_ptr<BaseOperator>>& ops_by_type,
+    bool allow_flex_ops);
 
 // A maps from operator type to its final position in the TF Lite buffer.
 using OperatorsMap = std::unordered_map<OperatorKey, int, OperatorKey::Hash>;

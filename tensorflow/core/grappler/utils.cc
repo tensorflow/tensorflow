@@ -547,5 +547,20 @@ Status SetTensorValue(DataType dtype, int value, Tensor* tensor) {
 
 #undef HANDLE_CASE
 
+Status CheckAttrExists(const NodeDef& node, const string& key) {
+  if (node.attr().count(key) == 0) {
+    return errors::InvalidArgument("Node '", node.name(), "' lacks '", key,
+                                   "' attr: ", node.ShortDebugString());
+  }
+  return Status::OK();
+}
+
+Status CheckAttrsExist(const NodeDef& node, absl::Span<const string> keys) {
+  for (const string& key : keys) {
+    TF_RETURN_IF_ERROR(CheckAttrExists(node, key));
+  }
+  return Status::OK();
+}
+
 }  // end namespace grappler
 }  // end namespace tensorflow

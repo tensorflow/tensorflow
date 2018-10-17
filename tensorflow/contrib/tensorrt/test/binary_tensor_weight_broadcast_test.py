@@ -32,79 +32,34 @@ from tensorflow.python.platform import test
 
 class BinaryTensorWeightBroadcastTest(trt_test.TfTrtIntegrationTestBase):
 
+  def _ConstOp(self, shape):
+    return constant_op.constant(np.random.randn(*shape), dtype=dtypes.float32)
+
   def GetParams(self):
     """Tests for scale & elementwise layers in TF-TRT."""
-    dtype = dtypes.float32
     input_name = "input"
     input_dims = [10, 24, 24, 20]
     output_name = "output"
     g = ops.Graph()
     with g.as_default():
-      x = array_ops.placeholder(dtype=dtype, shape=input_dims, name=input_name)
-      # scale
-      a = constant_op.constant(np.random.randn(1), dtype=dtype)
-      f = x + a
-      x = math_ops.sigmoid(f)
-      # scale
-      a = constant_op.constant(np.random.randn(1), dtype=dtype)
-      f = a + x
-      x = math_ops.sigmoid(f)
-      # scale
-      a = constant_op.constant(np.random.randn(24, 1, 1), dtype=dtype)
-      f = x + a
-      x = math_ops.sigmoid(f)
-      # scale
-      a = constant_op.constant(np.random.randn(24, 1, 1), dtype=dtype)
-      f = a + x
-      x = math_ops.sigmoid(f)
-      # scale
-      a = constant_op.constant(np.random.randn(24, 24, 20), dtype=dtype)
-      f = a + x
-      x = math_ops.sigmoid(f)
-      # scale
-      a = constant_op.constant(np.random.randn(24, 24, 20), dtype=dtype)
-      f = x + a
-      x = math_ops.sigmoid(f)
-      # elementwise
-      a = constant_op.constant(np.random.randn(20), dtype=dtype)
-      f = x + a
-      x = math_ops.sigmoid(f)
-      # elementwise
-      a = constant_op.constant(np.random.randn(20), dtype=dtype)
-      f = a + x
-      x = math_ops.sigmoid(f)
-      # elementwise
-      a = constant_op.constant(np.random.randn(1, 24, 1, 1), dtype=dtype)
-      f = a + x
-      x = math_ops.sigmoid(f)
-      # elementwise
-      a = constant_op.constant(np.random.randn(1, 24, 1, 1), dtype=dtype)
-      f = x + a
-      x = math_ops.sigmoid(f)
-      # elementwise
-      a = constant_op.constant(np.random.randn(1, 24, 24, 1), dtype=dtype)
-      f = a + x
-      x = math_ops.sigmoid(f)
-      # elementwise
-      a = constant_op.constant(np.random.randn(1, 24, 24, 1), dtype=dtype)
-      f = x + a
-      x = math_ops.sigmoid(f)
-      # elementwise
-      a = constant_op.constant(np.random.randn(1, 24, 24, 20), dtype=dtype)
-      f = a + x
-      x = math_ops.sigmoid(f)
-      # elementwise
-      a = constant_op.constant(np.random.randn(1, 24, 24, 20), dtype=dtype)
-      f = x + a
-      x = math_ops.sigmoid(f)
-      # elementwise
-      a = constant_op.constant(np.random.randn(24, 20), dtype=dtype)
-      f = a + x
-      x = math_ops.sigmoid(f)
-      # elementwise
-      a = constant_op.constant(np.random.randn(24, 20), dtype=dtype)
-      f = x + a
-      x = math_ops.sigmoid(f)
+      x = array_ops.placeholder(
+          dtype=dtypes.float32, shape=input_dims, name=input_name)
+      for weights_shape in [
+          (1,),  # scale
+          (24, 1, 1),  # scale
+          (24, 24, 20),  # scale
+          (20,),  # elementwise
+          (1, 24, 1, 1),  # elementwise
+          (1, 24, 24, 1),  # elementwise
+          (1, 24, 24, 20),  # elementwise
+          (24, 20),  # elementwise
+      ]:
+        a = self._ConstOp(weights_shape)
+        f = x + a
+        x = math_ops.sigmoid(f)
+        a = self._ConstOp(weights_shape)
+        f = a + x
+        x = math_ops.sigmoid(f)
       gen_array_ops.reshape(x, [5, -1], name=output_name)
     return trt_test.TfTrtIntegrationTestParams(
         gdef=g.as_graph_def(),
@@ -115,24 +70,7 @@ class BinaryTensorWeightBroadcastTest(trt_test.TfTrtIntegrationTestBase):
 
   def ExpectedEnginesToBuild(self, run_params):
     """Return the expected engines to build."""
-    return [
-        "my_trt_op_0",
-        "my_trt_op_1",
-        "my_trt_op_2",
-        "my_trt_op_3",
-        "my_trt_op_4",
-        "my_trt_op_5",
-        "my_trt_op_6",
-        "my_trt_op_7",
-        "my_trt_op_8",
-        "my_trt_op_9",
-        "my_trt_op_10",
-        "my_trt_op_11",
-        "my_trt_op_12",
-        "my_trt_op_13",
-        "my_trt_op_14",
-        "my_trt_op_15",
-    ]
+    return ["my_trt_op_%d" % i for i in range(16)]
 
 
 if __name__ == "__main__":

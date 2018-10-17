@@ -212,7 +212,8 @@ def json_to_tflite(name, src, out):
 
 # This is the master list of generated examples that will be made into tests. A
 # function called make_XXX_tests() must also appear in generate_examples.py.
-# Disable a test by commenting it out. If you do, add a link to a bug or issue.
+# Disable a test by adding it to the blacklists specified in
+# generated_test_models_failing().
 def generated_test_models():
     return [
         "add",
@@ -291,11 +292,30 @@ def generated_test_models():
         "tile",
         "topk",
         "transpose",
-        #"transpose_conv",   # disabled due to b/111213074
+        "transpose_conv",
         "unpack",
         "where",
         "zeros_like",
     ]
+
+# List of models that fail generated tests for the conversion mode.
+# If you have to disable a test, please add here with a link to the appropriate
+# bug or issue.
+def generated_test_models_failing(conversion_mode):
+    if not conversion_mode:
+        return [
+            "transpose_conv",  # disabled due to b/111213074
+        ]
+
+    if conversion_mode == "toco-flex":
+        # TODO(b/117328698): Fix and enable the known flex failures.
+        return [
+            "lstm",
+            "split",
+            "unpack",
+        ]
+
+    return []
 
 def generated_test_conversion_modes():
     """Returns a list of conversion modes."""
@@ -307,16 +327,28 @@ def generated_test_models_all():
     """Generates a list of all tests with the different converters.
 
     Returns:
-      List of tuples representing (conversion mode, name of test).
+      List of tuples representing:
+            (conversion mode, name of test, test tags, test args).
     """
     conversion_modes = generated_test_conversion_modes()
     tests = generated_test_models()
     options = []
     for conversion_mode in conversion_modes:
+        failing_tests = generated_test_models_failing(conversion_mode)
         for test in tests:
+            tags = []
+            args = []
+            if test in failing_tests:
+                tags.append("notap")
+                tags.append("manual")
             if conversion_mode:
                 test += "_%s" % conversion_mode
-            options.append((conversion_mode, test))
+
+            # Flex conversion shouldn't suffer from the same conversion bugs
+            # listed for the default TFLite kernel backend.
+            if conversion_mode == "toco-flex":
+                args.append("--ignore_known_bugs=false")
+            options.append((conversion_mode, test, tags, args))
     return options
 
 def gen_zip_test(name, test_name, conversion_mode, **kwargs):
@@ -336,9 +368,6 @@ def gen_zip_test(name, test_name, conversion_mode, **kwargs):
         # if conversion_mode == "pb2lite":
         #     toco = "//tensorflow/contrib/lite/experimental/pb2lite:pb2lite"
         flags = "--ignore_toco_errors --run_with_flex"
-        kwargs["tags"].append("skip_already_failing")
-        kwargs["tags"].append("no_oss")
-        kwargs["tags"].append("notap")
 
     gen_zipped_test_file(
         name = "zip_%s" % test_name,
@@ -392,14 +421,14 @@ def gen_selected_ops(name, model):
         tools = [tool],
     )
 
-def gen_full_model_test(conversion_modes, models, data, test_suite_tag):
+def gen_full_model_test(conversion_modes, models, data, tags):
     """Generates Python test targets for testing TFLite models.
 
     Args:
       conversion_modes: List of conversion modes to test the models on.
       models: List of models to test.
       data: List of BUILD targets linking the data.
-      test_suite_tag: Tag identifying the model test suite.
+      tags: Any additional tags including the test_suite tag.
     """
     options = [
         (conversion_mode, model)
@@ -422,9 +451,11 @@ def gen_full_model_test(conversion_modes, models, data, test_suite_tag):
                 "no_oss",
                 "no_windows",
                 "notap",
-            ] + [test_suite_tag],
+                # TODO(nupurgarg): Remove manual tag when this test is running without the BUILD flag.
+                "manual",
+            ] + tags,
             deps = [
-                "//tensorflow/contrib/lite/testing:model_coverage_lib",
+                "//tensorflow/contrib/lite/testing/model_coverage:model_coverage_lib",
                 "//tensorflow/contrib/lite/python:lite",
                 "//tensorflow/python:client_testlib",
             ],

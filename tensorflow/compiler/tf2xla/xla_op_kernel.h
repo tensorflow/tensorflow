@@ -255,6 +255,11 @@ class XlaOpKernelContext {
   // Returns the tensor of input `name`.
   const Tensor& GetInputTensorByName(absl::string_view name);
 
+  // Wraps OpKernelContext's allocate_output method while providing special
+  // behavior for DT_VARIANT: a variant is treated as DT_UINT8 scalar as the
+  // type to allow mapping for variant to more generic types.
+  Status allocate_output(int index, const xla::Shape& shape, Tensor** output);
+
   OpKernelContext* const context_;
 };
 

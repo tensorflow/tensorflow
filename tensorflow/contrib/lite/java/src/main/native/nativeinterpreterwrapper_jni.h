@@ -46,25 +46,21 @@ Java_org_tensorflow_lite_NativeInterpreterWrapper_allocateTensors(
 
 /*
  *  Class:     org_tensorflow_lite_NativeInterpreterWrapper
- *  Method:    getInputTensor
- *  Signature: (JI)J
+ *  Method:    getInputTensorIndex
+ *  Signature: (JI)I
  */
-JNIEXPORT jlong JNICALL
-Java_org_tensorflow_lite_NativeInterpreterWrapper_getInputTensor(JNIEnv* env,
-                                                                 jclass clazz,
-                                                                 jlong handle,
-                                                                 jint index);
+JNIEXPORT jint JNICALL
+Java_org_tensorflow_lite_NativeInterpreterWrapper_getInputTensorIndex(
+    JNIEnv* env, jclass clazz, jlong handle, jint input_index);
 
 /*
  *  Class:     org_tensorflow_lite_NativeInterpreterWrapper
- *  Method:    getOutputTensor
- *  Signature: (JI)J
+ *  Method:    getOutputTensorIndex
+ *  Signature: (JI)I
  */
-JNIEXPORT jlong JNICALL
-Java_org_tensorflow_lite_NativeInterpreterWrapper_getOutputTensor(JNIEnv* env,
-                                                                  jclass clazz,
-                                                                  jlong handle,
-                                                                  jint index);
+JNIEXPORT jint JNICALL
+Java_org_tensorflow_lite_NativeInterpreterWrapper_getOutputTensorIndex(
+    JNIEnv* env, jclass clazz, jlong handle, jint output_index);
 
 /*
  *  Class:     org_tensorflow_lite_NativeInterpreterWrapper

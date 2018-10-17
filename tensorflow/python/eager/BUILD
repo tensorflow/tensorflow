@@ -37,6 +37,7 @@ cc_library(
         "//tensorflow/python:safe_ptr",
         "//third_party/py/numpy:headers",
         "//third_party/python_runtime:headers",
+        "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:variant",
     ],
 )
@@ -55,6 +56,7 @@ py_library(
         ":graph_only_ops",
         ":tape",
         ":test",
+        ":wrap_function",
         "//tensorflow/python:pywrap_tensorflow",
     ],
 )
@@ -141,6 +143,7 @@ cuda_py_test(
 
 cuda_py_test(
     name = "function_test",
+    size = "medium",
     srcs = ["function_test.py"],
     additional_deps = [
         ":backprop",
@@ -148,6 +151,7 @@ cuda_py_test(
         ":function",
         ":tape",
         ":test",
+        "//tensorflow/python:test_ops",
         "//tensorflow/python:clip_ops",
         "//tensorflow/python:init_ops",
         "//tensorflow/python:layers",
@@ -243,13 +247,13 @@ py_library(
     visibility = ["//tensorflow:internal"],
     deps = [
         ":graph_only_ops",
-        "//tensorflow/python:cond_v2_impl",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:errors",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:gradients_impl",
         "//tensorflow/python:graph_to_function_def",
         "//tensorflow/python:util",
+        "//tensorflow/python/autograph",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:core",
         "//tensorflow/python/eager:execute",
@@ -389,6 +393,7 @@ py_library(
     name = "def_function",
     srcs = ["def_function.py"],
     srcs_version = "PY2AND3",
+    visibility = ["//tensorflow:internal"],
     deps = [
         ":context",
         ":function",
@@ -408,6 +413,32 @@ py_test(
         ":def_function",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:constant_op",
+        "//tensorflow/python:framework_ops",
+    ],
+)
+
+py_library(
+    name = "wrap_function",
+    srcs = ["wrap_function.py"],
+    srcs_version = "PY2AND3",
+    visibility = ["//tensorflow:internal"],
+    deps = [
+        ":context",
+        ":function",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:template",
+        "//tensorflow/python:variable_scope",
+        "//tensorflow/python/training/checkpointable:base",
+    ],
+)
+
+py_test(
+    name = "wrap_function_test",
+    srcs = ["wrap_function_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":wrap_function",
+        "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_ops",
     ],
 )

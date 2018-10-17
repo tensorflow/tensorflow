@@ -30,7 +30,7 @@ namespace {
 
 const int64 kLogIntervalMicros = 10 * 1000000;  // 10 seconds.
 
-// See documentation in ../ops/dataset_ops.cc for a high-level
+// See documentation in ../../ops/dataset_ops.cc for a high-level
 // description of the following op.
 
 class ShuffleDatasetOpBase : public UnaryDatasetOpKernel {
@@ -485,7 +485,7 @@ class ShuffleDatasetOp : public ShuffleDatasetOpBase {
                      int64 buffer_size, int64 seed, int64 seed2, int64 count)
         : ShuffleDatasetBase(ctx, input, buffer_size, count),
           seed_(seed),
-          seed2_(seed) {}
+          seed2_(seed2) {}
 
     string DebugString() const override {
       return strings::StrCat("ShuffleDatasetOp(", buffer_size_, ", ", seed_,

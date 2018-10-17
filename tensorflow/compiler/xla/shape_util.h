@@ -72,7 +72,7 @@ class ShapeIndex {
   void push_back(int64 value) { indices_.push_back(value); }
   void pop_back() { indices_.pop_back(); }
 
-  // push_front is O(n^2), but shapes don't usually have a ton of dimensions.
+  // push_front is O(n), but shapes don't usually have a ton of dimensions.
   void push_front(int64 value) { indices_.insert(indices_.begin(), value); }
 
   using container_type = absl::InlinedVector<int64, 2>;
@@ -312,7 +312,10 @@ class ShapeUtil {
   static bool IsEffectiveScalar(const Shape& shape) {
     return IsArray(shape) && TrueRank(shape) == 0;
   }
-  static bool IsScalarF32(const Shape& shape);
+
+  // Returns whether "shape" is a scalar (array) with the given element_type.
+  static bool IsScalarWithElementType(const Shape& shape,
+                                      PrimitiveType element_type);
 
   // Extracts the size of the shape's dimension at dimension number
   // GetDimensionNumber(dimension_number).

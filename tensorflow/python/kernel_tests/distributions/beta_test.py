@@ -167,6 +167,11 @@ class BetaTest(test.TestCase):
     self.assertAllClose([[1., 3. / 2], [3. / 2, 15. / 8]], self.evaluate(pdf))
     self.assertEqual((2, 2), pdf.get_shape())
 
+  def testLogPdfOnBoundaryIsFiniteWhenAlphaIsOne(self):
+    b = [[0.01, 0.1, 1., 2], [5., 10., 2., 3]]
+    pdf = self.evaluate(beta_lib.Beta(1., b).prob(0.))
+    self.assertAllEqual(np.ones_like(pdf, dtype=np.bool), np.isfinite(pdf))
+
   def testBetaMean(self):
     a = [1., 2, 3]
     b = [2., 4, 1.2]

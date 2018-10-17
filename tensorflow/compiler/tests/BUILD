@@ -867,9 +867,9 @@ tf_xla_py_test(
     tags = ["optonly"],
     deps = [
         ":xla_test",
-        "//tensorflow/contrib/stateless",
         "//tensorflow/python:framework",
         "//tensorflow/python:platform_test",
+        "//tensorflow/python:stateless_random_ops",
     ],
 )
 
@@ -891,6 +891,22 @@ tf_xla_py_test(
         "//tensorflow/python:tensor_array_grad",
         "//tensorflow/python:tensor_array_ops",
         "//tensorflow/python:training",
+    ],
+)
+
+tf_xla_py_test(
+    name = "tensor_list_ops_test",
+    size = "small",
+    srcs = ["tensor_list_ops_test.py"],
+    # TensorList ops are not implemented in the on-demand compilation model yet.
+    disabled_backends = "cpu_ondemand",
+    deps = [
+        ":xla_test",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:list_ops",
+        "//tensorflow/python:platform_test",
+        "//tensorflow/python/eager:function",
     ],
 )
 
@@ -1029,6 +1045,19 @@ tf_xla_py_test(
 )
 
 tf_xla_py_test(
+    name = "permute_test",
+    size = "small",
+    srcs = ["permute_test.py"],
+    deps = [
+        "//tensorflow/compiler/tests:xla_test",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:nn_ops",
+    ],
+)
+
+tf_xla_py_test(
     name = "xla_device_test",
     size = "small",
     srcs = ["xla_device_test.py"],
@@ -1060,6 +1089,7 @@ cuda_py_test(
     size = "medium",
     srcs = ["jit_test.py"],
     additional_deps = [
+        ":test_utils",
         "//tensorflow/contrib/compiler:compiler_py",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:array_ops",
@@ -1078,6 +1108,7 @@ cuda_py_test(
     size = "small",
     srcs = ["dense_layer_test.py"],
     additional_deps = [
+        ":test_utils",
         "//tensorflow/contrib/compiler:compiler_py",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:array_ops",
@@ -1105,6 +1136,7 @@ cc_library(
         "//tensorflow/core:test",
         "//tensorflow/core:testlib",
         "//tensorflow/core/kernels:ops_util",
+        "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/strings",
     ],
 )

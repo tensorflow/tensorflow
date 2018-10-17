@@ -22,6 +22,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.util import deprecation
 from tensorflow.python.util import tf_inspect
 from tensorflow.python.util.tf_export import tf_export
 
@@ -51,6 +52,14 @@ def _registered_kl(type_a, type_b):
   return kl_fn
 
 
+@deprecation.deprecated(
+    "2019-01-01",
+    "The TensorFlow Distributions library has moved to "
+    "TensorFlow Probability "
+    "(https://github.com/tensorflow/probability). You "
+    "should update all references to use `tfp.distributions` "
+    "instead of `tf.distributions`.",
+    warn_once=True)
 @tf_export("distributions.kl_divergence")
 def kl_divergence(distribution_a, distribution_b,
                   allow_nan_stats=True, name=None):
@@ -112,6 +121,14 @@ def kl_divergence(distribution_a, distribution_b,
       return array_ops.identity(kl_t, name="checked_kl")
 
 
+@deprecation.deprecated(
+    "2019-01-01",
+    "The TensorFlow Distributions library has moved to "
+    "TensorFlow Probability "
+    "(https://github.com/tensorflow/probability). You "
+    "should update all references to use `tfp.distributions` "
+    "instead of `tf.distributions`.",
+    warn_once=True)
 def cross_entropy(ref, other,
                   allow_nan_stats=True, name=None):
   """Computes the (Shannon) cross entropy.
@@ -155,6 +172,14 @@ class RegisterKL(object):
     # Return KL(norm_a || norm_b)
   """
 
+  @deprecation.deprecated(
+      "2019-01-01",
+      "The TensorFlow Distributions library has moved to "
+      "TensorFlow Probability "
+      "(https://github.com/tensorflow/probability). You "
+      "should update all references to use `tfp.distributions` "
+      "instead of `tf.distributions`.",
+      warn_once=True)
   def __init__(self, dist_cls_a, dist_cls_b):
     """Initialize the KL registrar.
 

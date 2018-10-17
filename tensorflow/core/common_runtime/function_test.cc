@@ -584,7 +584,28 @@ TEST_F(FunctionLibraryRuntimeTest, ExecutorFactory) {
              "Internal: This is a dummy.");
   }
 
-  // Test that non-existent exector types trigger an error.
+  // Test that a non-default executor factory can be invoked via an attr.
+  {
+    FunctionLibraryRuntime::InstantiateOptions options;
+    HasError(InstantiateAndRun(flr0_, "XTimesTwo",
+                               {{"T", DT_FLOAT}, {"_executor", "DUMMY"}},
+                               options, {x}, {&y}),
+             "Internal: This is a dummy.");
+  }
+
+  // Test that a non-default executor factory specified via an
+  // `InstantiateOptions` supersedes the attr when both are present.
+  {
+    FunctionLibraryRuntime::InstantiateOptions options;
+    options.executor_type = "DUMMY";
+    HasError(
+        InstantiateAndRun(flr0_, "XTimesTwo",
+                          {{"T", DT_FLOAT}, {"_executor", "UNKNOWN_EXECUTOR"}},
+                          options, {x}, {&y}),
+        "Internal: This is a dummy.");
+  }
+
+  // Test that non-existent executor types trigger an error.
   {
     FunctionLibraryRuntime::InstantiateOptions options;
     options.executor_type = "UNKNOWN_EXECUTOR";
@@ -592,6 +613,15 @@ TEST_F(FunctionLibraryRuntimeTest, ExecutorFactory) {
                                {x}, {&y}),
              "Not found: No executor factory registered for the given executor "
              "type: UNKNOWN_EXECUTOR");
+  }
+  {
+    FunctionLibraryRuntime::InstantiateOptions options;
+    HasError(
+        InstantiateAndRun(flr0_, "XTimesTwo",
+                          {{"T", DT_FLOAT}, {"_executor", "UNKNOWN_EXECUTOR"}},
+                          options, {x}, {&y}),
+        "Not found: No executor factory registered for the given executor "
+        "type: UNKNOWN_EXECUTOR");
   }
 }
 
@@ -869,7 +899,7 @@ TEST_F(FunctionLibraryRuntimeTest, OptimizeGraph) {
     Scope s = Scope::NewRootScope();
     auto x = ops::_Arg(s.WithOpName("x"), DT_FLOAT, 0);
     auto x4_x2_scale = ops::Const<float>(
-        s.WithOpName("x4/x2/scale/_12__cf__10")
+        s.WithOpName("x4/x2/scale/_12__cf__13")
             .WithDevice("/job:localhost/replica:0/task:0/device:CPU:0"),
         2.0f);
     auto x4_x2_y = ops::Mul(s.WithOpName("x4/x2/y"), x, x4_x2_scale);
@@ -1076,13 +1106,13 @@ TEST_F(FunctionLibraryRuntimeTest, Gradient_XTimesTwo) {
     auto x = ops::_Arg(s.WithOpName("x"), DT_FLOAT, 0);
     auto func0 = ops::_Arg(s.WithOpName("Func/_0"), DT_FLOAT, 1);
     auto scale = ops::Const(
-        s.WithOpName("scale/_6__cf__15")
+        s.WithOpName("scale/_6__cf__18")
             .WithDevice("/job:localhost/replica:0/task:0/device:CPU:0"),
         2.0f);
     auto func1_gx = ops::Mul(s.WithOpName("Func/_1/gx"), func0, scale);
     auto func1_sx = ops::Shape(s.WithOpName("Func/_1/sx"), x);
     auto const0 = ops::Const(
-        s.WithOpName("Func/_1/sy/_5__cf__14")
+        s.WithOpName("Func/_1/sy/_5__cf__17")
             .WithDevice("/job:localhost/replica:0/task:0/device:CPU:0"),
         0, {0});
     auto func1_rx = ops::internal::BroadcastGradientArgs(

@@ -43,6 +43,7 @@ from tensorflow.python.ops import gen_linalg_ops
 from tensorflow.python.ops import linalg_ops_impl
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
+from tensorflow.python.util import deprecation
 from tensorflow.python.util.deprecation import deprecated
 from tensorflow.python.util.deprecation import  deprecated_arg_values
 from tensorflow.python.util.tf_export import tf_export
@@ -339,8 +340,12 @@ class TruncatedNormal(Initializer):
     }
 
 
-@tf_export("initializers.uniform_unit_scaling",
-           "uniform_unit_scaling_initializer")
+@tf_export(
+    "initializers.uniform_unit_scaling",
+    v1=[
+        "initializers.uniform_unit_scaling", "uniform_unit_scaling_initializer"
+    ])
+@deprecation.deprecated_endpoints("uniform_unit_scaling_initializer")
 class UniformUnitScaling(Initializer):
   """Initializer that generates tensors without scaling variance.
 
@@ -399,8 +404,14 @@ class UniformUnitScaling(Initializer):
     return {"factor": self.factor, "seed": self.seed, "dtype": self.dtype.name}
 
 
-@tf_export("keras.initializers.VarianceScaling",
-           "initializers.variance_scaling", "variance_scaling_initializer")
+@tf_export(
+    "keras.initializers.VarianceScaling",
+    "initializers.variance_scaling",
+    v1=[
+        "keras.initializers.VarianceScaling", "initializers.variance_scaling",
+        "variance_scaling_initializer"
+    ])
+@deprecation.deprecated_endpoints("variance_scaling_initializer")
 class VarianceScaling(Initializer):
   """Initializer capable of adapting its scale to the shape of weights tensors.
 
@@ -492,8 +503,15 @@ class VarianceScaling(Initializer):
     }
 
 
-@tf_export("keras.initializers.Orthogonal", "initializers.orthogonal",
-           "orthogonal_initializer", "keras.initializers.orthogonal")
+@tf_export(
+    "keras.initializers.Orthogonal",
+    "initializers.orthogonal",
+    "keras.initializers.orthogonal",
+    v1=[
+        "keras.initializers.Orthogonal", "initializers.orthogonal",
+        "orthogonal_initializer", "keras.initializers.orthogonal"
+    ])
+@deprecation.deprecated_endpoints("orthogonal_initializer")
 class Orthogonal(Initializer):
   """Initializer that generates an orthogonal matrix.
 
@@ -1147,8 +1165,14 @@ class GlorotUniform(VarianceScaling):
     }
 
 
-@tf_export("glorot_normal_initializer", "keras.initializers.glorot_normal",
-           "initializers.glorot_normal")
+@tf_export(
+    "keras.initializers.glorot_normal",
+    "initializers.glorot_normal",
+    v1=[
+        "glorot_normal_initializer", "keras.initializers.glorot_normal",
+        "initializers.glorot_normal"
+    ])
+@deprecation.deprecated_endpoints("glorot_normal_initializer")
 class GlorotNormal(VarianceScaling):
   """The Glorot normal initializer, also called Xavier normal initializer.
 

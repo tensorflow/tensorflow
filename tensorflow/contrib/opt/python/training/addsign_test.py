@@ -66,7 +66,7 @@ class AddSignTest(test.TestCase):
                  alpha=1.0,
                  beta=0.9):
     for dtype in [dtypes.half, dtypes.float32, dtypes.float64]:
-      with self.test_session(use_gpu=True):
+      with self.cached_session(use_gpu=True):
         # Initialize variables for numpy implementation.
         m0, m1 = 0.0, 0.0
         var0_np = np.array([1.0, 2.0], dtype=dtype.as_numpy_dtype)
@@ -169,7 +169,7 @@ class AddSignTest(test.TestCase):
                   alpha=1.0,
                   beta=0.9):
     for dtype in [dtypes.half, dtypes.float32, dtypes.float64]:
-      with self.test_session(use_gpu=True):
+      with self.cached_session(use_gpu=True):
         # Initialize variables for numpy implementation.
         m0, m1 = 0.0, 0.0
         var0_np = np.array([1.0, 2.0], dtype=dtype.as_numpy_dtype)

@@ -21,7 +21,7 @@ limitations under the License.
 namespace tensorflow {
 
 REGISTER_OP("XRTExecute")
-    .Attr("Ninputs: int")
+    .Attr("Ninputs: int >= 0")
     .Input("computation_handle: int64")
     .Input("execution_config: string")
     .Input("input_handles: Ninputs * int64")

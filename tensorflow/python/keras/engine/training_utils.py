@@ -106,7 +106,8 @@ def convert_to_iterator(x=None,
                         batch_size=None,
                         steps_per_epoch=None,
                         epochs=1,
-                        shuffle=False):
+                        shuffle=False,
+                        is_validation=False):
   """Converts NumPy arrays or EagerTensors to an EagerIterator.
 
   Combines all provided data into a single EagerIterator.
@@ -124,6 +125,9 @@ def convert_to_iterator(x=None,
         epoch.
       epochs: Epochs to repeat iterator for.
       shuffle: Whether to shuffle data after each epoch.
+      is_validation: Whether this call is for validation during a training
+        (e.g., `fit()`) call. This info is used to construct error messages
+        (if any).
 
   Raises:
       ValueError: if steps_per_epoch cannot be calculated from the data
@@ -151,9 +155,12 @@ def convert_to_iterator(x=None,
     steps_per_epoch = int(math.ceil(num_samples / batch_size))
 
   if steps_per_epoch is None:
-    raise ValueError('Could not determine steps_per_epoch.'
-                     'Please provide either batch_size or'
-                     'steps_per_epoch.')
+    alternative_arg_name = (
+        'validation_steps' if is_validation else 'steps_per_epoch')
+    raise ValueError(
+        'Could not determine how to convert EagerTensors into EagerIterator. '
+        'Please provide either `batch_size` or '
+        '`%s`.' % alternative_arg_name)
 
   # TODO(omalleyt) for NumPy arrays in graph mode
   # placeholder ops should be used

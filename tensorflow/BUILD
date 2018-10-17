@@ -203,27 +203,46 @@ config_setting(
     visibility = ["//visibility:public"],
 )
 
-# TODO(jhseu): Enable on other platforms other than Linux.
-config_setting(
-    name = "with_jemalloc_linux_x86_64",
-    define_values = {"with_jemalloc": "true"},
-    values = {"cpu": "k8"},
-    visibility = ["//visibility:public"],
-)
-
-config_setting(
-    name = "with_jemalloc_linux_ppc64le",
-    define_values = {"with_jemalloc": "true"},
-    values = {"cpu": "ppc"},
-    visibility = ["//visibility:public"],
-)
-
 config_setting(
     name = "with_default_optimizations",
     define_values = {"with_default_optimizations": "true"},
     visibility = ["//visibility:public"],
 )
 
+# Features that are default ON are handled differently below.
+#
+config_setting(
+    name = "no_aws_support",
+    define_values = {"no_aws_support": "false"},
+    visibility = ["//visibility:public"],
+)
+
+config_setting(
+    name = "no_gcp_support",
+    define_values = {"no_gcp_support": "false"},
+    visibility = ["//visibility:public"],
+)
+
+config_setting(
+    name = "no_hdfs_support",
+    define_values = {"no_hdfs_support": "false"},
+    visibility = ["//visibility:public"],
+)
+
+config_setting(
+    name = "no_ignite_support",
+    define_values = {"no_ignite_support": "false"},
+    visibility = ["//visibility:public"],
+)
+
+config_setting(
+    name = "no_kafka_support",
+    define_values = {"no_kafka_support": "false"},
+    visibility = ["//visibility:public"],
+)
+
+# Crosses between platforms and file system libraries not supported on those
+# platforms due to limitations in nested select() statements.
 config_setting(
     name = "with_cuda_support_windows_override",
     define_values = {"using_cuda_nvcc": "true"},
@@ -255,30 +274,6 @@ config_setting(
     name = "framework_shared_object",
     define_values = {
         "framework_shared_object": "true",
-    },
-    visibility = ["//visibility:public"],
-)
-
-config_setting(
-    name = "with_jemalloc_linux_x86_64_dynamic",
-    define_values = {
-        "with_jemalloc": "true",
-        "framework_shared_object": "true",
-    },
-    values = {
-        "cpu": "k8",
-    },
-    visibility = ["//visibility:public"],
-)
-
-config_setting(
-    name = "with_jemalloc_linux_ppc64le_dynamic",
-    define_values = {
-        "with_jemalloc": "true",
-        "framework_shared_object": "true",
-    },
-    values = {
-        "cpu": "ppc",
     },
     visibility = ["//visibility:public"],
 )

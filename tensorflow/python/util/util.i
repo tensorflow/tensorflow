@@ -28,14 +28,8 @@ limitations under the License.
 // for functions in this module because they use python methods that need GIL.
 // TODO(iga): Find a way not to leak such definitions across files.
 
-%unignore tensorflow::swig::RegisterSequenceClass;
-%noexception tensorflow::swig::RegisterSequenceClass;
-
-%unignore tensorflow::swig::RegisterMappingClass;
-%noexception tensorflow::swig::RegisterMappingClass;
-
-%unignore tensorflow::swig::RegisterSparseTensorValueClass;
-%noexception tensorflow::swig::RegisterSparseTensorValueClass;
+%unignore tensorflow::swig::RegisterType;
+%noexception tensorflow::swig::RegisterType;
 
 %feature("docstring") tensorflow::swig::IsSequence
 """Returns a true if its input is a collections.Sequence (except strings).

@@ -27,7 +27,7 @@ import weakref
 import six
 
 from tensorflow.contrib.distribute.python import input_ops
-from tensorflow.contrib.distribute.python import prefetching_ops_v2
+from tensorflow.python.data.ops import multi_device_iterator_ops
 from tensorflow.python.eager import context
 from tensorflow.python.eager import tape
 from tensorflow.python.framework import device as tf_device
@@ -366,18 +366,7 @@ class MirroredVariable(DistributedVariable, Mirrored,
       # We are calling assign on the mirrored variable in cross tower context,
       # use update to update the variable.
       strategy = distribution_strategy_context.get_distribution_strategy()
-      updates = strategy.update(self, f, *args, **kwargs)
-      grouped = strategy.group(updates)
-      if isinstance(updates, DistributedValues) and updates.is_tensor_like:
-        # Make sure we run all updates. Without this, something like
-        # session.run(mirrored_var.assign*(...)) may only update one tower.
-        index = {}
-        for d in updates.devices:
-          with ops.device(d), ops.control_dependencies([grouped]):
-            index[d] = array_ops.identity(updates.get(d))
-        return Mirrored(index)
-      else:
-        return grouped
+      return strategy.update(self, f, *args, **kwargs)
     else:
       _assert_tower_context()
       # We are calling an assign function on the mirrored variable in tower
@@ -486,6 +475,11 @@ class TPUMirroredVariable(checkpointable.CheckpointableBase):
     self._aggregation = aggregation
     # Needed for GradientTape
     self._trainable = self._primary_var.trainable
+    # Typically like `DistributedVariable`, a `TPUMirroredVariable`'s
+    # initializer is composed of the initializers of the components variables.
+    # However, in some cases, such as when restoring from a checkpoint, we may
+    # set the _initializer_op property on the entire `TPUMirroredVariable`.
+    self._initializer_op = None
 
   def _get(self, device=None):
     """Returns the value for the current device or raises a ValueError."""
@@ -581,6 +575,10 @@ class TPUMirroredVariable(checkpointable.CheckpointableBase):
       six.raise_from(
           ValueError("Device %s not found in %s (current device %s)" %
                      (device, self._index.keys(), device_util.current())), e)
+
+  @property
+  def device(self):
+    return self._get().device
 
   # The arguments to update() are automatically unwrapped so the update()
   # function would normally see regular variables, not MirroredVariables.
@@ -711,8 +709,12 @@ class TPUMirroredVariable(checkpointable.CheckpointableBase):
 
   @property
   def initializer(self):
-    return control_flow_ops.group(
-        [v.initializer for v in nest.flatten(self._index)])
+    if self._initializer_op:
+      init_op = self._initializer_op
+    else:
+      init_op = control_flow_ops.group(
+          [v.initializer for v in self._index.values()])
+    return init_op
 
   @property
   def graph(self):
@@ -1049,6 +1051,29 @@ def select_device_mirrored(device, structured):
   return nest.map_structure(_get_mirrored, structured)
 
 
+def update_regroup(strategy, updates, should_group):
+  """Regroup for an update, with dependencies to ensure all updates execute."""
+  regrouped = regroup(updates, Mirrored)
+  if not should_group:
+    return nest.map_structure(strategy.unwrap, regrouped)
+  grouped_flat = []
+  for u in nest.flatten(regrouped):
+    if isinstance(u, DistributedValues):
+      g = strategy.group(u)
+      if u.is_tensor_like:
+        # Make sure we run all updates. Without this, something like
+        # session.run(strategy.update(...)) may only update one tower.
+        index = {}
+        for d in u.devices:
+          with ops.device(d), ops.control_dependencies([g]):
+            index[d] = array_ops.identity(u.get(d))
+        g = Mirrored(index)
+    else:
+      g = u
+    grouped_flat.append(g)
+  return nest.pack_sequence_as(regrouped, grouped_flat)
+
+
 class PerDeviceDataIterator(object):
   """An iterator (like `tf.data.Iterator`) into a `PerDeviceDataset`."""
 
@@ -1064,7 +1089,7 @@ class PerDeviceDataIterator(object):
   def get_next(self, name=None):
     """Scatter the input across devices."""
     if self._prefetch_on_device:
-      data_list = self._iterator.get_next(name=name)
+      data_list = self._iterator.get_next()
       index = dict(zip(self._devices, data_list))
     else:
       batch = self._iterator.get_next(name=name)
@@ -1088,17 +1113,15 @@ class PerDeviceDataset(object):
     self._devices = devices
 
     # Default to using prefetching in graph mode, unless specified.
-    # TODO(priyag): Enable prefetching in eager mode.
+    # TODO(rohanj): Enable prefetching in eager mode.
     self._prefetch_on_device = prefetch_on_device
     if self._prefetch_on_device is None:
       self._prefetch_on_device = not context.executing_eagerly()
     assert not (self._prefetch_on_device and context.executing_eagerly()), (
         "Prefetching is only supported in graph mode currently")
 
-    if self._prefetch_on_device:
-      self._dataset = dataset.apply(
-          prefetching_ops_v2.prefetch_to_devices(self._devices))
-    else:
+    self._dataset = dataset
+    if not self._prefetch_on_device:
       # TODO(priyag): If dropping remainder is not appropriate, find another
       # approach to distributing the dataset when not possible to divide evenly.
       # Possibly not an issue when we start using PartitionedDataset.
@@ -1106,15 +1129,33 @@ class PerDeviceDataset(object):
 
   def make_one_shot_iterator(self):
     """Get a one time use iterator for the distributed PerDeviceDataset."""
+    # Graph mode with one shot iterator is disabled.
+    if not context.executing_eagerly():
+      raise ValueError("Cannot create a one shot iterator. Please use "
+                       "`make_initializable_iterator()` instead.")
+    # Eager mode prefetching would error out in constructor. Only remaining
+    # case is non-prefetching in eager mode. We delegate to
+    # PerDeviceDataIterator to handle that case.
     dataset_iterator = self._dataset.make_one_shot_iterator()
-    return PerDeviceDataIterator(dataset_iterator, self._devices,
-                                 self._prefetch_on_device)
+    return PerDeviceDataIterator(
+        dataset_iterator, self._devices, prefetch_on_device=False)
 
   def make_initializable_iterator(self):
     """Get an initializable iterator for the distributed PerDeviceDataset."""
-    dataset_iterator = self._dataset.make_initializable_iterator()
-    return PerDeviceDataIterator(dataset_iterator, self._devices,
-                                 self._prefetch_on_device)
+    # Eager mode generates already initialized iterators. Hence we cannot create
+    # an initializable iterator.
+    if context.executing_eagerly():
+      raise ValueError("Cannot create initializable iterator in Eager mode. "
+                       "Please use `make_one_shot_iterator` instead.")
+    if self._prefetch_on_device:
+      dataset_iterator = multi_device_iterator_ops.MultiDeviceIterator(
+          self._dataset, self._devices)
+    else:
+      dataset_iterator = self._dataset.make_initializable_iterator()
+    return PerDeviceDataIterator(
+        dataset_iterator,
+        self._devices,
+        prefetch_on_device=self._prefetch_on_device)
 
 
 class MultiWorkerDataIterator(object):

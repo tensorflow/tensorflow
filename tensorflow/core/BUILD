@@ -73,12 +73,10 @@ licenses(["notice"])  # Apache 2.0
 load(
     "//tensorflow:tensorflow.bzl",
     "cc_header_only_library",
-    "full_path",
     "if_android",
     "if_ios",
     "if_linux_x86_64",
     "if_mobile",
-    "if_not_mobile",
     "if_not_windows",
     "if_windows",
     "tf_cc_test",
@@ -110,6 +108,7 @@ load(
     "tf_additional_device_tracer_cuda_deps",
     "tf_additional_device_tracer_deps",
     "tf_additional_device_tracer_srcs",
+    "tf_additional_device_tracer_test_flags",
     "tf_additional_gdr_lib_defines",
     "tf_additional_human_readable_json_deps",
     "tf_additional_lib_defines",
@@ -239,8 +238,6 @@ tf_proto_library(
     srcs = [],
     cc_api_version = 2,
     default_header = True,
-    java_api_version = 2,
-    js_api_version = 2,
     protodeps = [
         ":protos_all_proto",
         ":error_codes_proto",
@@ -270,6 +267,12 @@ proto_library(
         "example/feature.proto",
     ],
     visibility = ["//visibility:public"],
+)
+
+java_proto_library(
+    name = "example_java_proto",
+    visibility = ["//visibility:public"],
+    deps = [":example_protos"],
 )
 
 closure_proto_library(
@@ -1152,6 +1155,21 @@ tf_gen_op_libs(
 )
 
 cc_library(
+    name = "ragged_ops",
+    deps = [
+        ":ragged_array_ops_op_lib",
+        ":ragged_math_ops_op_lib",
+    ],
+)
+
+tf_gen_op_libs(
+    op_lib_names = [
+        "ragged_array_ops",
+        "ragged_math_ops",
+    ],
+)
+
+cc_library(
     name = "ops",
     visibility = ["//visibility:public"],
     deps = [
@@ -1184,6 +1202,7 @@ cc_library(
         ":nn_ops_op_lib",
         ":no_op_op_lib",
         ":parsing_ops_op_lib",
+        ":ragged_ops",
         ":random_ops_op_lib",
         ":remote_fused_graph_ops_op_lib",
         ":resource_variable_ops_op_lib",
@@ -1237,6 +1256,7 @@ cc_library(
     srcs = [
         "ops/math_grad.cc",
         "ops/random_grad.cc",
+        "ops/stateless_random_grad.cc",
     ],
     linkstatic = 1,  # Needed since alwayslink is broken in bazel b/27630669
     visibility = ["//visibility:public"],
@@ -1336,6 +1356,7 @@ cc_library(
         "//tensorflow/core/kernels:parameterized_truncated_normal_op",
         "//tensorflow/core/kernels:parsing",
         "//tensorflow/core/kernels:partitioned_function_ops",
+        "//tensorflow/core/kernels:ragged_ops",
         "//tensorflow/core/kernels:random_ops",
         "//tensorflow/core/kernels:random_poisson_op",
         "//tensorflow/core/kernels:remote_fused_graph_ops",
@@ -2385,8 +2406,6 @@ tf_proto_library(
     srcs = ERROR_CODES_PROTO_SRCS,
     cc_api_version = 2,
     default_header = True,
-    java_api_version = 2,
-    js_api_version = 2,
     provide_cc_alias = True,
 )
 
@@ -2406,8 +2425,6 @@ tf_proto_library(
     srcs = COMMON_PROTO_SRCS + ADDITIONAL_CORE_PROTO_SRCS,
     cc_api_version = 2,
     default_header = True,
-    java_api_version = 2,
-    js_api_version = 2,
     protodeps = [
         ":error_codes_proto",
     ],
@@ -2806,6 +2823,7 @@ CORE_CPU_LIB_HEADERS = CORE_CPU_BASE_HDRS + [
     "common_runtime/graph_optimizer.h",
     "common_runtime/local_device.h",
     "common_runtime/lower_if_op.h",
+    "common_runtime/lower_if_while.h",
     "common_runtime/lower_while_op.h",
     "common_runtime/memory_types.h",
     "common_runtime/mkl_cpu_allocator.h",
@@ -2861,6 +2879,7 @@ tf_cuda_library(
         "common_runtime/hierarchical_tree_broadcaster.cc",
         "common_runtime/local_device.cc",
         "common_runtime/lower_if_op.cc",
+        "common_runtime/lower_if_while.cc",
         "common_runtime/lower_while_op.cc",
         "common_runtime/memory_types.cc",
         "common_runtime/mkl_cpu_allocator.cc",
@@ -3747,7 +3766,7 @@ tf_cc_tests_gpu(
 
 tf_cc_tests_gpu(
     name = "hierarchical_tree_broadcaster_test",
-    size = "small",
+    size = "medium",
     srcs = [
         "common_runtime/hierarchical_tree_broadcaster_test.cc",
     ],
@@ -4636,7 +4655,8 @@ tf_cc_test_gpu(
     name = "device_tracer_test",
     size = "small",
     srcs = ["platform/device_tracer_test.cc"],
-    args = ["--heap_check=local"],
+    args =
+        ["--heap_check=local"] + tf_additional_device_tracer_test_flags(),
     linkstatic = tf_kernel_tests_linkstatic(),
     tags = tf_cuda_tests_tags() + ["nomac"],
     deps = [
@@ -4687,6 +4707,29 @@ tf_cc_tests(
     name = "common_runtime_lower_while_op_test",
     size = "small",
     srcs = ["common_runtime/lower_while_op_test.cc"],
+    deps = [
+        ":all_kernels",
+        ":core_cpu",
+        ":core_cpu_internal",
+        ":direct_session",
+        ":framework",
+        ":framework_internal",
+        ":lib",
+        ":test",
+        ":test_main",
+        ":testlib",
+        "//tensorflow/cc:cc_ops",
+        "//tensorflow/cc:cc_ops_internal",
+        "//tensorflow/cc:client_session",
+        "//tensorflow/cc:function_ops",
+        "//tensorflow/cc:ops",
+    ],
+)
+
+tf_cc_tests(
+    name = "common_runtime_lower_if_while_test",
+    size = "small",
+    srcs = ["common_runtime/lower_if_while_test.cc"],
     deps = [
         ":all_kernels",
         ":core_cpu",

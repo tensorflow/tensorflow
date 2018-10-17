@@ -17,6 +17,7 @@ limitations under the License.
 
 #include "tensorflow/core/framework/device_base.h"
 #include "tensorflow/core/framework/op_def.pb.h"
+#include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/util/ptr_util.h"
 
 namespace tensorflow {
@@ -272,6 +273,26 @@ void ConcatAttributeList(const string& attribute_name, const NodeDef& first,
       ->MergeFrom(second.attr().at(attribute_name).list());
 }
 
+Status EnsureNodeNamesUnique(Graph* g) {
+  // Modeled after Scope::Impl::GetUniqueName
+  std::unordered_map<string, int> name_map;
+
+  for (auto node : g->op_nodes()) {
+    const string& prefix = node->name();
+    if (auto entry = gtl::FindOrNull(name_map, prefix)) {
+      string unique_name;
+      do {
+        unique_name = strings::StrCat(prefix, "_", ++(*entry));
+      } while (name_map.find(unique_name) != name_map.end());
+      name_map.insert({unique_name, 0});
+      node->set_name(std::move(unique_name));
+    } else {
+      name_map.insert({node->name(), 0});
+    }
+  }
+
+  return Status::OK();
+}
 }  // end namespace graph_utils
 }  // end namespace grappler
 }  // end namespace tensorflow

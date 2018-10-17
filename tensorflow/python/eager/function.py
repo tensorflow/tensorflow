@@ -21,6 +21,7 @@ from __future__ import print_function
 
 import collections
 import functools
+import re
 import sys
 import threading
 import weakref
@@ -30,6 +31,7 @@ import six
 
 from tensorflow.core.framework import attr_value_pb2
 from tensorflow.core.framework import function_pb2
+from tensorflow.python import autograph
 from tensorflow.python import pywrap_tensorflow
 from tensorflow.python.eager import context
 from tensorflow.python.eager import execute
@@ -42,28 +44,30 @@ from tensorflow.python.framework import dtypes as dtypes_module
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import cond_v2_impl
 from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import control_flow_util
+from tensorflow.python.ops import custom_gradient
 from tensorflow.python.ops import functional_ops
 from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variable_scope
-from tensorflow.python.training import distribution_strategy_context
 from tensorflow.python.util import compat
 from tensorflow.python.util import nest
 from tensorflow.python.util import tf_decorator
 from tensorflow.python.util import tf_inspect
 
-# This is to avoid a circular dependency with cond_v2_impl
-# (function -> gradients_impl -> control_flow_ops -> cond_v2_impl).
-cond_v2_impl._function = sys.modules[__name__]  # pylint: disable=protected-access
-
 # This is to avoid a circular dependency with gradients_impl
 gradients_impl._function = sys.modules[__name__]  # pylint: disable=protected-access
 
+FORWARD_FUNCTION_ATTRIBUTE_NAME = "forward_function_name"
+BACKWARD_FUNCTION_ATTRIBUTE_NAME = "backward_function_name"
 
 # TODO(scottzhu): Update this to allow arbitrary attribute names in future.
-WHITELIST_FUNCTION_ATTRIBUTE_PREFIX = "experimental_"
+WHITELIST_FUNCTION_ATTRIBUTE_REGEX = [
+    "experimental_.*",
+    FORWARD_FUNCTION_ATTRIBUTE_NAME,
+    BACKWARD_FUNCTION_ATTRIBUTE_NAME
+]
 
 
 def _create_substitute_placeholder(value, name=None, dtype=None):
@@ -73,55 +77,14 @@ def _create_substitute_placeholder(value, name=None, dtype=None):
   with ops.control_dependencies(None):
     placeholder = graph_placeholder(
         dtype=dtype or value.dtype, shape=value.shape, name=name)
-  _copy_handle_data(value, placeholder)
+  custom_gradient.copy_handle_data(value, placeholder)
   return placeholder
 
 
-def _copy_handle_data(source_t, target_t):
-  """Copies HandleData for variant and resource type tensors if available.
-
-  The CppShapeInferenceResult::HandleData proto contains information about the
-  shapes and types of the element tensors of resource/variant type tensors.
-  We need to copy this across function boundaries, i.e., when capturing a
-  placeholder or when returning a function tensor as output. If we don't do this
-  the element tensors will have unknown shapes, e.g., if a TensorList variant
-  tensor is captured as a placeholder, elements popped from that list would have
-  unknown shape.
-
-  Args:
-    source_t: The tensor to copy HandleData from.
-    target_t: The tensor to copy HandleData to.
-  """
-  if (target_t.dtype == dtypes_module.resource or
-      target_t.dtype == dtypes_module.variant):
-    if isinstance(source_t, ops.EagerTensor):
-      handle_data = source_t._handle_data  # pylint: disable=protected-access
-    else:
-      handle_data = resource_variable_ops.get_resource_handle_data(source_t)
-    if handle_data is not None and handle_data.is_set:
-      # pylint: disable=protected-access
-      pywrap_tensorflow.SetHandleShapeAndType(target_t.graph._c_graph,
-                                              target_t._as_tf_output(),
-                                              handle_data.SerializeToString())
-      # pylint: enable=protected-access
-      # Ensure that shapes and dtypes are propagated.
-      shapes, types = zip(*[(pair.shape, pair.dtype)
-                            for pair in handle_data.shape_and_type])
-      ranks = [len(s.dim) if not s.unknown_rank else -1 for s in shapes]
-      shapes = [[d.size for d in s.dim]
-                if not s.unknown_rank else None for s in shapes]
-      pywrap_tensorflow.TF_GraphSetOutputHandleShapesAndTypes_wrapper(
-          target_t._op._graph._c_graph,  # pylint: disable=protected-access
-          target_t._as_tf_output(),  # pylint: disable=protected-access
-          shapes, ranks, types)
-
-
-def _get_device_functions(ctx, graph):
-  """Returns a tuple of device functions representing the device stack."""
-  if ctx.executing_eagerly():
-    return (pydev.merge_device(ctx.device_name),)
-  else:
-    return tuple(graph._device_functions_outer_to_inner)  # pylint: disable=protected-access
+def _device_stack_has_callable(device_stack):
+  """Checks whether a device stack contains a callable."""
+  return any(callable(spec._device_name_or_function)  # pylint: disable=protected-access
+             for spec in device_stack.peek_objs())
 
 
 def _parse_func_attrs(attributes):
@@ -140,10 +103,11 @@ def _parse_func_attrs(attributes):
   """
   attrs = {}
   for key, value in attributes.items():
-    if not key.startswith(WHITELIST_FUNCTION_ATTRIBUTE_PREFIX):
+    if not any([re.match(reg, key)
+                for reg in WHITELIST_FUNCTION_ATTRIBUTE_REGEX]):
       raise ValueError("Attribute name is not whitelisted. "
                        "Whitelisted: prefix %s, got: %s" %
-                       (WHITELIST_FUNCTION_ATTRIBUTE_PREFIX, key))
+                       (WHITELIST_FUNCTION_ATTRIBUTE_REGEX, key))
 
     if isinstance(value, attr_value_pb2.AttrValue):
       attrs[key] = value
@@ -154,7 +118,7 @@ def _parse_func_attrs(attributes):
       attrs[key] = attr_value_pb2.AttrValue(i=value)
     elif isinstance(value, float):
       attrs[key] = attr_value_pb2.AttrValue(f=value)
-    elif isinstance(value, str):
+    elif isinstance(value, (str, bytes)):
       attrs[key] = attr_value_pb2.AttrValue(s=compat.as_bytes(value))
     else:
       raise ValueError("Unsupported attribute type for %s with type %s" %
@@ -187,8 +151,8 @@ class FuncGraph(ops.Graph):
   def __init__(self, name):
     """Construct a new FuncGraph.
 
-    The graph will inherit its graph key, collections, seed, device stack, and
-    distribution strategy stack from the current context or graph.
+    The graph will inherit its graph key, collections, seed, and distribution
+    strategy stack from the current context or graph.
 
     Args:
       name: the name of the function.
@@ -211,26 +175,40 @@ class FuncGraph(ops.Graph):
 
     graph = self.outer_graph
 
+    # pylint: disable=protected-access
+    # TODO(b/112906995, nareshmodi): distribution strategy depends on inheriting
+    # this stack from the default graph even in eager mode. Maybe it should be
+    # part of the eager context? This would also allow us to remove a
+    # get_default_graph() call from the function cache lookup.
+    self._distribution_strategy_stack = graph._distribution_strategy_stack
+    # We ignore device placements from any outer scopes while tracing the
+    # function when possible, to avoid hard-coding them in the function
+    # graph. "Default" placements come from the PartitionedCallOp's placement,
+    # so that the same trace of the Python function may be placed on several
+    # different devices and saved functions may be placed on new devices when
+    # restored.
     if context.executing_eagerly():
       self.seed = context.global_seed()
       self._xla_compile = (context.context().device_spec.device_type == "TPU")
-      self._add_device_to_stack(context.context().device_name)
+      if self._distribution_strategy_stack or self._xla_compile:
+        self._add_device_to_stack(context.context().device_name)
     else:
       self.seed = graph.seed
       self._xla_compile = getattr(graph, "_xla_compile", False)
-      self._device_function_stack = graph._device_function_stack.copy()  # pylint: disable=protected-access
-      self._colocation_stack = graph._colocation_stack.copy()  # pylint: disable=protected-access
-
+      # TODO(allenl): Figure out if we can remove colocation stack
+      # specialization (currently used in cond_v2), here and in the cache key.
+      self._colocation_stack = graph._colocation_stack.copy()
+      if (self._distribution_strategy_stack
+          or self._xla_compile
+          or _device_stack_has_callable(graph._device_function_stack)):
+        # Hard-code devices from device functions in the function body
+        self._device_function_stack = graph._device_function_stack.copy()
     # TODO(b/112165328, b/112906995): summaries depend on inheriting collections
     # from the default graph even in eager mode. It'd be nice to not have a
     # default graph with eager execution, so hopefully this will go away when we
     # remove collections.
-    # pylint: disable=protected-access
     self._collections = graph._collections
-    # TODO(b/112906995): distribution strategy depends on inheriting this stack
-    # from the default graph even in eager mode. Maybe it should be part of the
-    # eager context?
-    self._distribution_strategy_stack = graph._distribution_strategy_stack
+    self._variable_creator_stack = graph._variable_creator_stack
     # Inherit the graph key, since this is used for matching variables in
     # optimizers.
     self._graph_key = graph._graph_key
@@ -445,8 +423,9 @@ class _EagerDefinedFunction(object):
       proto_data = pywrap_tensorflow.TF_GetBuffer(buffer_)
     function_def = function_pb2.FunctionDef()
     function_def.ParseFromString(compat.as_bytes(proto_data))
-    if context.executing_eagerly():
-      _register(fn)
+    with ops.init_scope():
+      if context.executing_eagerly():
+        _register(fn)
     self.definition = function_def
     self.name = compat.as_bytes(function_def.signature.name)
     self.signature = function_def.signature
@@ -486,6 +465,9 @@ class _EagerDefinedFunction(object):
 
     Returns:
       The outputs of the function call.
+
+    Raises:
+      ValueError: if the number of arguments is incorrect.
     """
 
     executing_eagerly = ctx.executing_eagerly()
@@ -519,11 +501,16 @@ class _EagerDefinedFunction(object):
       # TODO(akshayka): Either remove this if the FunctionLibraryRuntime
       # creates `PartitionedCallOp` kernels by default, or remove the previous
       # branch if a TPU kernel is registered for `PartitionedCall`.
+      if len(args) != len(self.signature.input_arg):
+        raise ValueError(
+            "Arguments and signature arguments do not match: %s %s " %
+            (len(args), len(list(self.signature.input_arg))))
       outputs = functional_ops.partitioned_call(
           args=args,
           f=self,
           tout=self._output_types,
-          executing_eagerly=executing_eagerly)
+          executing_eagerly=executing_eagerly,
+          config=ctx.rewriter_config_string)  # pylint: disable=protected-access
 
     if executing_eagerly:
       return outputs
@@ -531,7 +518,7 @@ class _EagerDefinedFunction(object):
       for i, shape in enumerate(self._output_shapes):
         outputs[i].set_shape(shape)
       for i, func_graph_output in enumerate(self._func_graph_outputs):
-        _copy_handle_data(func_graph_output, outputs[i])
+        custom_gradient.copy_handle_data(func_graph_output, outputs[i])
       return outputs
 
 
@@ -558,7 +545,7 @@ class Function(object):
   is differentiable under `tf.GradientTape` objects.
   """
 
-  def __init__(self, func_graph, attrs=None):
+  def __init__(self, func_graph, attrs=None, signature=None):
     """Initialize a Function.
 
     Args:
@@ -577,24 +564,13 @@ class Function(object):
     self._output_shapes = tuple(
         output.shape for output in self._func_graph.outputs)
     self._attrs = _parse_func_attrs(attrs or {})
-    self._device_functions = tuple(
-        self._func_graph._device_functions_outer_to_inner)  # pylint: disable=protected-access
 
     self._inference_function = _EagerDefinedFunction(
         _inference_name(self._func_graph.name), self._func_graph,
         self._func_graph.inputs, self._func_graph.outputs, self._attrs)
     self._backward_graph_function = None
-
-    # Map holding distributed variables, keyed by resource handle tensors.
-    self._distributed_variables = {}
-    strategy = distribution_strategy_context.get_distribution_strategy()
-    for variable in self._func_graph.variables:
-      # If variable is not distributed, unwrap returns [variable].
-      component_variables = strategy.unwrap(variable)
-      # Only update the dictionary when the variable is actually distributed.
-      if (len(component_variables) > 1 or component_variables[0] != variable):
-        for component_variable in component_variables:
-          self._distributed_variables[component_variable.handle] = variable
+    self._signature = signature
+    self._gradient_name = None
 
   def __call__(self, *args):
     """Executes the wrapped function.
@@ -606,25 +582,14 @@ class Function(object):
       The result of applying the TF function to `args`.
 
     Raises:
-      ValueError: If the current device stack does not match the device stack
-        under which the function was created, or if `args` contains anything
-        other than Tensors or Variables.
+      ValueError: If `args` contains anything other than Tensors or Variables.
     """
     ctx = context.context()
-    device_functions = _get_device_functions(ctx, ops.get_default_graph())
-    if device_functions != self._device_functions:
-      raise ValueError(
-          "The current device stack does not match the device stack under "
-          "which the TensorFlow function '%s' was created.\n"
-          "Current device stack: %s\n%s device stack: %s" %
-          (self._inference_function.name, device_functions,
-           self._inference_function.name, self._device_functions))
 
     for v in self._func_graph.variables:
       if v.trainable:
         tape.variable_accessed(v)
 
-    captures = self._resolve_captured_inputs()
     tensor_inputs = []
     for i, arg in enumerate(nest.flatten(args)):
       if isinstance(arg, resource_variable_ops.ResourceVariable):
@@ -633,17 +598,79 @@ class Function(object):
         tensor_inputs.append(arg.handle)
       elif isinstance(arg, ops.Tensor):
         tensor_inputs.append(arg)
+      elif (self._signature is not None and
+            isinstance(self._signature[i], tensor_spec.TensorSpec)):
+        tensor_inputs.append(
+            ops.convert_to_tensor(arg, self._signature[i].dtype))
       else:
         raise ValueError("All inputs to `Function`s must be Tensors; "
                          "on invocation of %s, the %d-th input (%s) was not a "
                          "Tensor." % (self._func_graph.name, i, str(arg)))
-    args = tensor_inputs + captures
+    args = tensor_inputs + self._captured_inputs
 
-    if tape.should_record(tensor_inputs) or tape.should_record(captures):
+    if (tape.should_record(tensor_inputs) or
+        tape.should_record(self._captured_inputs)):
       return self._backprop_call(args)
 
-    outputs = self._inference_function.call(ctx, args)
+    # Only need to override the gradient in graph mode and when we have outputs.
+    if context.executing_eagerly() or not self.outputs:
+      outputs = self._inference_function.call(ctx, args)
+    else:
+      if not self._gradient_name:
+        self._gradient_name = "PartitionedCall-%s" % ops.uid()
+        self._register_gradient(self._gradient_name)
+      with ops.get_default_graph().gradient_override_map(
+          {"PartitionedCall": self._gradient_name,
+           "StatefulPartitionedCall": self._gradient_name}):
+        outputs = self._inference_function.call(ctx, args)
     return self._build_call_outputs(outputs)
+
+  def _register_gradient(self, name):
+    """Registers the gradient for the current Function under the given name.
+
+    The gradient rewrites an inference call op to a forward call op, but does
+    not modify a pre-existing forward call op. It then computes the gradient
+    from the output's gradients and the side outputs of the forward op.
+
+    Args:
+      name: The name to register the gradient as.
+    """
+    @ops.RegisterGradient(name)
+    def grad_fn(op, *doutputs):  # pylint: disable=unused-variable
+      """Gradients of this function."""
+      if self._backward_graph_function is None:
+        self._construct_backprop_function()
+
+      # pylint: disable=protected-access
+      self._forward_function.add_to_graph(op.graph)
+      num_inference_outputs = self._inference_function._num_outputs
+
+      # Rewrite an inference call op to be a forward call op
+      if op.get_attr("f").name.encode() == self._inference_function.name:
+        func = attr_value_pb2.AttrValue(
+            func=attr_value_pb2.NameAttrList(
+                name=self._forward_function.name))
+        op._set_attr("f", func)
+        types = attr_value_pb2.AttrValue.ListValue(
+            type=self._forward_function._output_types)
+        op._set_attr("Tout", attr_value_pb2.AttrValue(list=types))
+        for i in range(
+            num_inference_outputs, len(self._forward_function._output_types)):
+          t = ops.Tensor(op, i, self._forward_function._output_types[i])
+          t.set_shape(self._forward_function._output_shapes[i])
+          func_graph_output = self._forward_function._func_graph_outputs[i]
+          custom_gradient.copy_handle_data(func_graph_output, t)
+          op._outputs.append(t)
+      # pylint: enable=protected-access
+      # Compute the gradients using the side outputs
+      side_outputs = op.outputs[num_inference_outputs:]
+      return self._backward_graph_function(
+          *(list(doutputs[:num_inference_outputs]) + list(side_outputs)))
+
+  @property
+  def name(self):
+    """Function name."""
+    return self._inference_function.name
 
   @property
   def graph(self):
@@ -702,9 +729,14 @@ class Function(object):
     return nest.map_structure(lambda x: x.dtype if x is not None else None,
                               self._func_graph.structured_outputs)
 
+  def add_to_graph(self, g):
+    """Adds this function into the graph g."""
+    return self._inference_function.add_to_graph(g)
+
   def _construct_backprop_function(self):
     """Constructs the backprop function object for this function."""
     backwards_graph = FuncGraph(_backward_name(self._func_graph.name))
+    forward_function_name = _forward_name(self._func_graph.name)
     with backwards_graph.as_default():
       gradients_wrt_outputs = [
           graph_placeholder(x.dtype, x.shape) for x in self._func_graph.outputs
@@ -713,13 +745,14 @@ class Function(object):
           self._func_graph.outputs,
           self._func_graph.inputs,
           grad_ys=gradients_wrt_outputs,
-          src_graph=self._func_graph)
+          src_graph=self._func_graph,
+          unconnected_gradients=gradients_impl.UnconnectedGradients.NONE)
 
-    self._forward_function = _EagerDefinedFunction(
-        _forward_name(
-            self._func_graph.name), self._func_graph, self._func_graph.inputs,
-        self._func_graph.outputs + list(backwards_graph.captures.keys()),
-        self._attrs)
+    backwards_graph_captures = list(backwards_graph.captures.keys())
+
+    backward_function_attr = _parse_func_attrs(
+        {FORWARD_FUNCTION_ATTRIBUTE_NAME: forward_function_name})
+    backward_function_attr.update(self._attrs)
 
     # The ordering of `backwards_graph.inputs` is important: inputs of
     # `self._backward_graph_function` correspond to outputs of
@@ -732,7 +765,16 @@ class Function(object):
         grad for grad in _flatten(gradients_wrt_inputs) if grad is not None)
     backwards_graph.structured_outputs = gradients_wrt_inputs
     self._backward_graph_function = Function(
-        backwards_graph, attrs=self._attrs)
+        backwards_graph, attrs=backward_function_attr)
+
+    forward_function_attr = _parse_func_attrs({
+        BACKWARD_FUNCTION_ATTRIBUTE_NAME:
+            self._backward_graph_function._inference_function.name})  # pylint: disable=protected-access
+    forward_function_attr.update(self._attrs)
+    self._forward_function = _EagerDefinedFunction(
+        forward_function_name, self._func_graph, self._func_graph.inputs,
+        self._func_graph.outputs + backwards_graph_captures,
+        forward_function_attr)
 
   def _backprop_call(self, args):
     """Calls the forward function and records the result on a tape.
@@ -749,7 +791,15 @@ class Function(object):
       self._construct_backprop_function()
 
     ctx = context.context()
-    outputs = self._forward_function.call(ctx, args)
+
+    if not self._gradient_name:
+      self._gradient_name = "PartitionedCall-%s" % ops.uid()
+      self._register_gradient(self._gradient_name)
+    with ops.get_default_graph().gradient_override_map(
+        {"PartitionedCall": self._gradient_name,
+         "StatefulPartitionedCall": self._gradient_name}):
+      outputs = self._forward_function.call(ctx, args)
+
     if isinstance(outputs, ops.Operation) or outputs is None:
       return outputs
 
@@ -765,32 +815,6 @@ class Function(object):
     tape.record_operation(self._forward_function.signature.name, real_outputs,
                           args, backward_function)
     return self._build_call_outputs(real_outputs)
-
-  def _resolve_captured_inputs(self):
-    """Resolve captured distributed variables to their current values.
-
-    Some inputs can be distributed variables. Such variables yield a different
-    component (i.e. actual tf.Variable) variables depending on the context of
-    execution.
-
-    Returns:
-      a list of resolved captured input tensors.
-    """
-    if self._distributed_variables:
-      # Loop over each captured input and check if it corresponds to something
-      # distributed. If so, get its _distributed_container and fetch the
-      # component appropriate for the current execution context.
-      resolved_captured_inputs = self._captured_inputs[:]
-      for i, captured_input in enumerate(self._captured_inputs):
-        distributed_var = self._distributed_variables.get(captured_input, None)
-        if distributed_var is not None:
-          # distributed variables override __getattr__ and substitute the
-          # right component variable. In here, `distributed_var.handle`
-          # actually does the equivalent of
-          # distributed_var.get_current_component_var().handle.
-          resolved_captured_inputs[i] = distributed_var.handle
-      return resolved_captured_inputs
-    return self._captured_inputs
 
   def _build_call_outputs(self, result):
     """Maps the fdef output list to actual output structure.
@@ -829,22 +853,30 @@ class Function(object):
     return ret
 
 
-def _get_defun_inputs_from_signature(signature):
-  """Maps a signature to graph-construction inputs."""
-  function_inputs = [
-      graph_placeholder(spec.dtype, spec.shape)
-      for spec in nest.flatten(signature)
-  ]
-  return nest.pack_sequence_as(signature, function_inputs)
-
-
 def _get_defun_inputs_from_args(args):
   """Maps python function args to graph-construction inputs."""
   function_inputs = [
       graph_placeholder(arg.dtype, arg.shape)
-      if isinstance(arg, ops.Tensor) else arg for arg in nest.flatten(args)
+      if isinstance(arg, (ops.Tensor, tensor_spec.TensorSpec))
+      else arg for arg in nest.flatten(args)
   ]
   return nest.pack_sequence_as(args, function_inputs)
+
+
+def check_mutation(n1, n2):
+  """Check if two list of arguments are exactly the same."""
+  errmsg = ("Function to be traced should not modify structure of input "
+            "arguments. Check if your function has list and dictionary "
+            "operations that alter input arguments, "
+            "such as `list.pop`, `list.append`")
+  try:
+    nest.assert_same_structure(n1, n2)
+  except ValueError:
+    raise ValueError(errmsg)
+
+  for arg1, arg2 in zip(nest.flatten(n1), nest.flatten(n2)):
+    if arg1 is not arg2:
+      raise ValueError(errmsg)
 
 
 def func_graph_from_py_func(name,
@@ -852,7 +884,9 @@ def func_graph_from_py_func(name,
                             args,
                             kwargs,
                             signature=None,
-                            func_graph=None):
+                            func_graph=None,
+                            experimental_autograph=False,
+                            add_control_dependencies=True):
   """Returns a `FuncGraph` generated from `python_func`.
 
   Args:
@@ -869,6 +903,11 @@ def func_graph_from_py_func(name,
       inputs.
     func_graph: Optional. An instance of FuncGraph. If provided, we will use
       this graph else a new one is built and returned.
+    experimental_autograph: whether to use autograph to compile `python_func`.
+      See https://www.tensorflow.org/guide/autograph for more information.
+    add_control_dependencies: If True, automatically adds control dependencies
+      to ensure program order matches execution order and stateful ops always
+      execute.
 
   Returns:
     A FuncGraph.
@@ -880,15 +919,21 @@ def func_graph_from_py_func(name,
   if func_graph is None:
     func_graph = FuncGraph(name)
   assert isinstance(func_graph, FuncGraph)
-  with func_graph.as_default(), AutomaticControlDependencies() as a:
-    variable_scope.get_variable_scope().set_use_resource(True)
+  if add_control_dependencies:
+    control_manager = AutomaticControlDependencies
+  else:
+    control_manager = ops.NullContextmanager
+  with func_graph.as_default(), control_manager() as a:
+    current_scope = variable_scope.get_variable_scope()
+    default_use_recource = current_scope.use_resource
+    current_scope.set_use_resource(True)
 
-    if signature is None:
-      func_args = _get_defun_inputs_from_args(args)
-      func_kwargs = _get_defun_inputs_from_args(kwargs)
-    else:
-      func_args = _get_defun_inputs_from_signature(signature)
-      func_kwargs = {}
+    if signature is not None:
+      args = signature
+      kwargs = {}
+
+    func_args = _get_defun_inputs_from_args(args)
+    func_kwargs = _get_defun_inputs_from_args(kwargs)
 
     # Note: `nest.flatten` sorts by keys, as does `_deterministic_dict_values`.
     # Variables to help check whether mutation happens in calling the function
@@ -909,34 +954,31 @@ def func_graph_from_py_func(name,
             "must return zero or more Tensors; in compilation of %s, found "
             "return value of type %s, which is not a Tensor." %
             (str(python_func), type(x)))
-      x = a.mark_as_return(x)
+      if add_control_dependencies:
+        x = a.mark_as_return(x)
       return x
 
     this_tape = tape.push_new_tape()
     try:
-      func_outputs = python_func(*func_args, **func_kwargs)
+      if experimental_autograph:
+        func_outputs = autograph.converted_call(
+            python_func, None,
+            autograph.ConversionOptions(
+                verbose=True,
+                recursive=True,
+                strip_decorators=(defun,),
+                optional_features=(),
+            ), *func_args, **func_kwargs)
+      else:
+        func_outputs = python_func(*func_args, **func_kwargs)
       # invariant: `func_outputs` contains only Tensors and `None`s.
       func_outputs = nest.map_structure(convert, func_outputs)
-
-      def check_mutation(n1, n2):
-        """Check if two list of arguments are exactly the same."""
-        errmsg = ("Function to be traced should not modify structure of input "
-                  "arguments. Check if your function has list and dictionary "
-                  "operations that alter input arguments, "
-                  "such as `list.pop`, `list.append`")
-        try:
-          nest.assert_same_structure(n1, n2)
-        except ValueError:
-          raise ValueError(errmsg)
-
-        for arg1, arg2 in zip(nest.flatten(n1), nest.flatten(n2)):
-          if arg1 is not arg2:
-            raise ValueError(errmsg)
 
       check_mutation(func_args_before, func_args)
       check_mutation(func_kwargs_before, func_kwargs)
     finally:
       tape.pop_tape(this_tape)
+      current_scope.set_use_resource(default_use_recource)
 
     # Variables in `func_args`, `func_kwargs` should be explicit inputs
     # to the function, not captured inputs.
@@ -967,71 +1009,20 @@ def func_graph_from_py_func(name,
         for x in _flatten(func_graph.structured_outputs)
         if x is not None)
 
-    # Some captured variables might be components of DistributedValues.
-    # Instead of storing non-distributed component variables, we
-    # store their distributed containers so we can retrieve the correct
-    # component variables at call-time.
-    strategy = distribution_strategy_context.get_distribution_strategy()
-    for i, variable in enumerate(variables):
-      # If variable is not distributed value_container returns itself.
-      variables[i] = strategy.value_container(variable)
     func_graph.variables = variables
 
   # Register any other functions defined in the graph.
-  if context.executing_eagerly():
-    for f in func_graph._functions.values():  # pylint: disable=protected-access
-      # TODO(ashankar): What about the gradient registry?
-      _register(f._c_func.func)  # pylint: disable=protected-access
+  with ops.init_scope():
+    if context.executing_eagerly():
+      for f in func_graph._functions.values():  # pylint: disable=protected-access
+        # TODO(ashankar): What about the gradient registry?
+        _register(f._c_func.func)  # pylint: disable=protected-access
 
   return func_graph
 
 
-_TensorType = collections.namedtuple("_TensorType", ["dtype", "shape"])
-
-
-def _encode_arg(arg):
-  """A canonical representation for this argument, for use in a cache key."""
-
-  # `defun` uses dtypes and shapes instead of `Tensors` as cache keys. Dtypes
-  # are used because TensorFlow graphs are not parametric w.r.t. dtypes. Shapes
-  # are used for both performance reasons, as much TensorFlow code specializes
-  # on known shapes to produce slimmer graphs, and correctness, as some
-  # high-level APIs require shapes to be fully-known.
-  #
-  # TODO(akshayka): Add support for sparse tensors.
-  #
-  # pylint: disable=protected-access
-  if isinstance(arg, ops.Tensor):
-    return _TensorType(arg.dtype, arg._shape_tuple())
-  elif isinstance(arg, ops.IndexedSlices):
-    if arg.dense_shape is not None:
-      return tuple([
-          _TensorType(arg.values.dtype, arg.values._shape_tuple()),
-          _TensorType(arg.indices.dtype, arg.indices._shape_tuple()),
-          _TensorType(arg.dense_shape.dtype, arg.dense_shape._shape_tuple()),
-      ])
-    else:
-      return tuple([
-          _TensorType(arg.values.dtype, arg.values._shape_tuple()),
-          _TensorType(arg.indices.dtype, arg.indices._shape_tuple()),
-      ])
-  # pylint: enable=protected-access
-  elif isinstance(arg, (list, tuple)):
-    return tuple([_encode_arg(elem) for elem in arg])
-  elif isinstance(arg, dict):
-    return tuple(
-        (_encode_arg(key), _encode_arg(arg[key])) for key in sorted(arg))
-  else:
-    try:
-      # If possible, keep only a weak reference to Python objects. Weak
-      # references hash to the same value as the original object.
-      # TODO(allenl): Clean up dead functions and their cache keys if the cache
-      # gets large. Right now creating objects with a defunned method, calling
-      # the method, and losing a reference to the object in a loop will leak
-      # memory here.
-      return weakref.ref(arg)
-    except TypeError:
-      return arg
+pywrap_tensorflow.RegisterType("Tensor", ops.Tensor)
+pywrap_tensorflow.RegisterType("IndexedSlices", ops.IndexedSlices)
 
 
 def _deterministic_dict_values(dictionary):
@@ -1054,7 +1045,8 @@ class PolymorphicFunction(object):
                python_function,
                name,
                input_signature=None,
-               attributes=None):
+               attributes=None,
+               experimental_autograph=False):
     """Initializes a polymorphic function.
 
     Args:
@@ -1064,7 +1056,10 @@ class PolymorphicFunction(object):
         specifying the input signature of this function. If `None`, a separate
         function is instantiated for each inferred input signature.
       attributes: dict, extra keyword arguments that will be added as attribute
-         of the function.
+        of the function.
+      experimental_autograph: whether to use autograph to compile
+        `python_function`. See https://www.tensorflow.org/guide/autograph for
+        more information.
 
     Raises:
       ValueError: if `input_signature` is not None and the `python_function`'s
@@ -1080,10 +1075,15 @@ class PolymorphicFunction(object):
       self._args_to_prepend = tuple()
       self._kwargs_to_include = {}
     self._name = name
+    self._experimental_autograph = experimental_autograph
     self._function_cache = collections.OrderedDict()
     self._function_attributes = attributes or {}
 
     self._lock = threading.Lock()
+    # _descriptor_cache is a of instance of a class to an instance-specific
+    # PolymorphicFunction, used to make sure defun-decorated methods create
+    # different functions for each instance.
+    self._descriptor_cache = weakref.WeakKeyDictionary()
 
     fullargspec = tf_inspect.getfullargspec(self._python_function)
     if tf_inspect.ismethod(self._python_function):
@@ -1101,6 +1101,8 @@ class PolymorphicFunction(object):
         offset + index: default
         for index, default in enumerate(fullargspec.defaults or [])
     }
+    self._default_values = fullargspec.defaults
+    self._default_values_start_index = offset
     if input_signature is None:
       self._input_signature = None
     else:
@@ -1136,6 +1138,8 @@ class PolymorphicFunction(object):
       *args: inputs to specialize on.
       **kwargs: inputs to specialize on.
     """
+    if self._input_signature:
+      args, kwargs = None, None
     graph_function, _ = self._maybe_define_function(args, kwargs)
     return graph_function
 
@@ -1154,37 +1158,79 @@ class PolymorphicFunction(object):
     #   foo = Foo()
     #   foo.bar()  # `foo.bar` is a `PolymorphicFunction` instance
     #
-    # then `instance` will be `foo` (and `owner` will be `Foo`).
-    return functools.partial(self.__call__, instance)
+    # then `instance` will be `foo` (and `owner` will be `Foo`).  We create a
+    # new instance of PolymorphicFunction here to allow different instances each
+    # to create variables once, thereby allowing methods to be decorated with
+    # defun. Keeps a cache to avoid retracing the function every time the
+    # descriptor is accessed.
+    if instance not in self._descriptor_cache:
+      if instance is None:
+        return self
+      # If there is no instance-specific polymorphic func in the cache,
+      # we construct an instance-specific polymorphic function
+      # that uses a weak reference to the instance (so that the instance will
+      # be correctly gc'd).
+      def make_partial_py_func(py_func, weak_instance):
+        return lambda *args, **kwargs: py_func(weak_instance(), *args, **kwargs)
+      weak_instance = weakref.ref(instance)
+      instance_func = PolymorphicFunction(
+          make_partial_py_func(self.python_function, weak_instance),
+          name=self._name)
+
+      # And we wrap the function with tf_decorator so inspection works correctly
+      wrapped_instance_func = tf_decorator.make_decorator(
+          self.python_function, instance_func)
+
+      # And finally add the wrapped function to the description cache
+      self._descriptor_cache[instance] = wrapped_instance_func
+
+    # Return the cached polymorphic function for the instance
+    return self._descriptor_cache[instance]
 
   def _cache_key(self, args, kwargs):
     """Computes the cache key given inputs and execution context."""
     if self._input_signature is None:
       inputs = (args, kwargs) if kwargs else args
-      cache_key = tuple(_encode_arg(arg) for arg in inputs)
+      cache_key = pywrap_tensorflow.TFE_Py_EncodeArg(inputs)
     else:
       del args, kwargs
       cache_key = self._flat_input_signature
 
+    ctx = context.context()
     with ops.init_scope():
-      init_graph = ops.get_default_graph()
-
       # The graph, or whether we're executing eagerly, should be a part of the
       # cache key so we don't improperly capture tensors such as variables.
-      executing_eagerly = context.executing_eagerly()
-      execution_context = executing_eagerly or init_graph
+      executing_eagerly = ctx.executing_eagerly()
+      execution_context = executing_eagerly or ops.get_default_graph()
 
+    # pylint: disable=protected-access
     default_graph = ops.get_default_graph()
-    # Putting the device in the cache key ensures that call-site device
-    # annotations are respected.
-    device_functions = _get_device_functions(context.context(), default_graph)
-
-    # `ops.colocate_with` directives translate into `ops.device` directives when
-    # eager execution is enabled.
-    colocation_stack = (() if executing_eagerly else
-                        tuple(default_graph._colocation_stack.peek_objs()))  # pylint: disable=protected-access
-
-    return cache_key + (execution_context, device_functions, colocation_stack)
+    # TODO(b/117617952): The current distribution strategy will affect graph
+    # building (e.g. accessing different variables from different devices) and
+    # so requires retracing for each device.
+    uses_distribution_strategy = bool(
+        default_graph._distribution_strategy_stack)
+    if executing_eagerly:
+      colocation_stack = ()
+      uses_xla = ctx.device_spec.device_type == "TPU"
+      if uses_distribution_strategy or uses_xla:
+        device_functions = (pydev.merge_device(ctx.device_name),)
+      else:
+        device_functions = ()
+    else:
+      colocation_stack = tuple(default_graph._colocation_stack.peek_objs())
+      uses_xla = getattr(default_graph, "_xla_compile", False)
+      if (uses_distribution_strategy
+          or uses_xla
+          or _device_stack_has_callable(default_graph._device_function_stack)):
+        # Putting the device in the cache key ensures that call-site device
+        # annotations are respected.
+        device_functions = tuple(default_graph._device_functions_outer_to_inner)
+      else:
+        device_functions = ()
+    # pylint: enable=protected-access
+    return (cache_key, execution_context, device_functions, colocation_stack,
+            uses_xla)
 
   def _canonicalize_function_inputs(self, *args, **kwargs):
     """Canonicalizes `args` and `kwargs`.
@@ -1209,35 +1255,44 @@ class PolymorphicFunction(object):
     """
     args = self._args_to_prepend + args
     kwargs = dict(kwargs, **self._kwargs_to_include)
-    # Maps from index of arg to its corresponding value, according to `args`
-    # and `kwargs`; seeded with the default values for the named args that
-    # aren't in `args`.
-    arg_indices_to_values = {
-        index: default
-        for index, default in six.iteritems(self._arg_indices_to_default_values)
-        if index >= len(args)
-    }
-    consumed_args = []
-    for arg, value in six.iteritems(kwargs):
-      index = self._args_to_indices.get(arg, None)
-      if index is not None:
-        arg_indices_to_values[index] = value
-        consumed_args.append(arg)
-      elif self._input_signature is not None:
-        raise ValueError("Cannot define a TensorFlow function from a Python "
-                         "function with keyword arguments when "
-                         "input_signature is provided.")
-    for arg in consumed_args:
-      # After this loop, `kwargs` will only contain true keyword arguments, as
-      # opposed to named arguments called in a keyword-like fashion.
-      kwargs.pop(arg)
-    inputs = args + _deterministic_dict_values(arg_indices_to_values)
+    if not kwargs:
+      if self._default_values:
+        inputs = args + self._default_values[len(args) -
+                                             self._default_values_start_index:]
+      else:
+        inputs = args
+    else:
+      # Maps from index of arg to its corresponding value, according to `args`
+      # and `kwargs`; seeded with the default values for the named args that
+      # aren't in `args`.
+      arg_indices_to_values = {
+          index: default for index, default in six.iteritems(
+              self._arg_indices_to_default_values) if index >= len(args)
+      }
+      consumed_args = []
+      for arg, value in six.iteritems(kwargs):
+        index = self._args_to_indices.get(arg, None)
+        if index is not None:
+          arg_indices_to_values[index] = value
+          consumed_args.append(arg)
+        elif self._input_signature is not None:
+          raise ValueError("Cannot define a TensorFlow function from a Python "
+                           "function with keyword arguments when "
+                           "input_signature is provided.")
+      for arg in consumed_args:
+        # After this loop, `kwargs` will only contain true keyword arguments, as
+        # opposed to named arguments called in a keyword-like fashion.
+        kwargs.pop(arg)
+      inputs = args + _deterministic_dict_values(arg_indices_to_values)
     flat_inputs = nest.flatten(inputs)
 
     # Check for NumPy arrays in arguments and convert them to Tensors.
+    # TODO(nareshmodi): Skip ndarray conversion to tensor altogether, perhaps
+    # finding a way to store them directly in the cache key (currently not
+    # possible since ndarrays are not hashable).
     need_packing = False
     for index, value in enumerate(flat_inputs):
-      if isinstance(value, np.ndarray):
+      if type(value) == np.ndarray:
         flat_inputs[index] = constant_op.constant(value)
         need_packing = True
     if need_packing:
@@ -1295,8 +1350,13 @@ class PolymorphicFunction(object):
 
       if graph_function is None:
         graph_function = Function(
-            func_graph_from_py_func(self._name, self._python_function, args,
-                                    kwargs, self._input_signature),
+            func_graph_from_py_func(
+                self._name,
+                self._python_function,
+                args,
+                kwargs,
+                self._input_signature,
+                experimental_autograph=self._experimental_autograph),
             self._function_attributes)
         self._function_cache[cache_key] = graph_function
       return graph_function, [
@@ -1311,6 +1371,9 @@ def register(func, *args, **kwargs):
   This won't actually call the function with the inputs, and only put the
   function definition into graph. Register function with different input param
   will result into multiple version of functions registered in graph.
+
+  Also, `args` and `kwargs` are ignored if this `PolymorphicFunction` was
+  created with an `input_signature`.
 
   Args:
     func: the PolymorphicFunction instance that generated by a @defun
@@ -1357,7 +1420,7 @@ def _validate_signature(signature):
                     "a possibly nested sequence of TensorSpec objects.")
 
 
-def defun(func=None, input_signature=None):
+def defun(func=None, input_signature=None, experimental_autograph=False):
   """Compiles a Python function into a callable TensorFlow graph.
 
   `defun` (short for "define function") trace-compiles a Python function
@@ -1666,6 +1729,10 @@ def defun(func=None, input_signature=None):
       function is instantiated for each inferred input signature.  If a
       signature is specified, every input to `func` must be a `Tensor`, and
       `func` cannot accept `**kwargs`.
+    experimental_autograph: Whether `func` should be compiled before
+      constructing the graph. See https://www.tensorflow.org/guide/autograph
+      for more information.
+
 
   Returns:
      If `func` is not None, returns a callable that will execute the compiled
@@ -1677,10 +1744,16 @@ def defun(func=None, input_signature=None):
     TypeError: If `input_signature` is neither `None` nor a sequence of
       `tf.contrib.eager.TensorSpec` objects.
   """
-  return defun_with_attributes(func=func, input_signature=input_signature)
+  return defun_with_attributes(
+      func=func,
+      input_signature=input_signature,
+      experimental_autograph=experimental_autograph)
 
 
-def defun_with_attributes(func=None, input_signature=None, attributes=None):
+def defun_with_attributes(func=None,
+                          input_signature=None,
+                          attributes=None,
+                          experimental_autograph=False):
   """Compiles a Python function into a callable TensorFlow graph.
 
   This function supports adding extra function attributes. See detailed
@@ -1695,6 +1768,7 @@ def defun_with_attributes(func=None, input_signature=None, attributes=None):
       attributes. Currently only support primitive types as value, and only
       whitelisted attribute name is allowed. Unwhitelisted attribute name or
       unsupported value will result into ValueError.
+    experimental_autograph: same as defun()'s experimental_autograph.
 
   Returns:
     Same as the return value of defun, with attributes added to the function in
@@ -1711,8 +1785,12 @@ def defun_with_attributes(func=None, input_signature=None, attributes=None):
       name = "function"
     return tf_decorator.make_decorator(
         function,
-        PolymorphicFunction(function, name, input_signature=input_signature,
-                            attributes=attributes))
+        PolymorphicFunction(
+            function,
+            name,
+            input_signature=input_signature,
+            attributes=attributes,
+            experimental_autograph=experimental_autograph))
 
   # This code path is for the `foo = tfe.defun(foo, ...)` use case
   if func is not None:
@@ -1896,7 +1974,7 @@ class AutomaticControlDependencies(object):
     # this.
     for op in new_operations:
       # TODO(apassos) make this code safely support while loops.
-      if isinstance(op._control_flow_context, control_flow_ops.WhileContext):  # pylint: disable=protected-access
+      if control_flow_util.IsInWhileLoop(op):
         continue
       control_inputs = set()
       # Ensure stateful ops run
@@ -1915,8 +1993,10 @@ class AutomaticControlDependencies(object):
               last_op_using_resource_tensor[inp] = op
         ops_which_must_run = set([op])
         continue
+      found_resource = False
       for inp in op.inputs:
         if inp.dtype == dtypes_module.resource:
+          found_resource = True
           # Deal with switches, finally.
           if inp.op.type == "Switch":
             self._process_switch(inp.op, ops_which_must_run,
@@ -1931,6 +2011,11 @@ class AutomaticControlDependencies(object):
           if inp in merge_for_resource:
             merge_for_resource[inp]._add_control_input(op)  # pylint: disable=protected-access
           last_op_using_resource_tensor[inp] = op
+      if (op.op_def.is_stateful and not found_resource
+          and op._control_flow_context is None):  # pylint: disable=protected-access
+        if None in last_op_using_resource_tensor:
+          op._add_control_input(last_op_using_resource_tensor[None])  # pylint: disable=protected-access
+        last_op_using_resource_tensor[None] = op
       control_inputs = [c for c in control_inputs
                         if c._control_flow_context is op._control_flow_context]  # pylint: disable=protected-access
       op._add_control_inputs(control_inputs)  # pylint: disable=protected-access

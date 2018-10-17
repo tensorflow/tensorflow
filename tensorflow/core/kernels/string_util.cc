@@ -16,10 +16,6 @@ limitations under the License.
 
 #include "tensorflow/core/lib/core/errors.h"
 
-namespace {
-inline bool IsTrailByte(char x) { return static_cast<signed char>(x) < -0x40; }
-}  // namespace
-
 namespace tensorflow {
 
 // Sets unit value based on str.

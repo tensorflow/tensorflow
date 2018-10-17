@@ -122,7 +122,7 @@ tf_module {
   }
   member_method {
     name: "flatten"
-    argspec: "args=[\'inputs\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+    argspec: "args=[\'inputs\', \'name\', \'data_format\'], varargs=None, keywords=None, defaults=[\'None\', \'channels_last\'], "
   }
   member_method {
     name: "max_pooling1d"

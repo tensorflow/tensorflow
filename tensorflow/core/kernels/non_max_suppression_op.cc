@@ -163,7 +163,8 @@ void DoNonMaxSuppressionOp(
     // therefore we iterate through the previously selected boxes backwards
     // in order to see if `next_candidate` should be suppressed.
     bool should_select = true;
-    for (int j = selected.size() - 1; j >= 0; --j) {
+
+    for (int j = static_cast<int>(selected.size()) - 1; j >= 0; --j) {
       if (suppress_check_fn(next_candidate.box_index, selected[j])) {
         should_select = false;
         break;

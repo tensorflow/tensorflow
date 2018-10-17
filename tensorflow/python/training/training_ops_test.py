@@ -50,7 +50,7 @@ class TrainingOpsTest(TensorFlowTestCase):
 
   def _testTypes(self, x, alpha, delta, use_gpu=None):
     self.setUp()
-    with self.test_session(use_gpu=use_gpu):
+    with self.session(use_gpu=use_gpu):
       var = variables.VariableV1(x)
       variables.global_variables_initializer().run()
       self.assertAllCloseAccordingToType(x, var.eval())
@@ -69,7 +69,7 @@ class TrainingOpsTest(TensorFlowTestCase):
 
   def _testTypesForAdagrad(self, x, y, lr, grad, use_gpu=None):
     self.setUp()
-    with self.test_session(use_gpu=use_gpu):
+    with self.session(use_gpu=use_gpu):
       var = variables.VariableV1(x)
       accum = variables.VariableV1(y)
       variables.global_variables_initializer().run()
@@ -93,7 +93,7 @@ class TrainingOpsTest(TensorFlowTestCase):
                         l2=0.0,
                         lr_power=-0.5):
     self.setUp()
-    with self.test_session(use_gpu=use_gpu):
+    with self.session(use_gpu=use_gpu):
       var = variables.VariableV1(x)
       accum = variables.VariableV1(y)
       linear = variables.VariableV1(z)
@@ -147,7 +147,7 @@ class TrainingOpsTest(TensorFlowTestCase):
 
   def _testTypesForSparseAdagrad(self, x, y, lr, grad, indices):
     self.setUp()
-    with self.test_session(use_gpu=False):
+    with self.session(use_gpu=False):
       var = variables.VariableV1(x)
       accum = variables.VariableV1(y)
       variables.global_variables_initializer().run()
@@ -177,7 +177,7 @@ class TrainingOpsTest(TensorFlowTestCase):
                               l2=0.0,
                               lr_power=-0.5):
     self.setUp()
-    with self.test_session(use_gpu=False):
+    with self.session(use_gpu=False):
       var = variables.VariableV1(x)
       accum = variables.VariableV1(y)
       linear = variables.VariableV1(z)
@@ -256,7 +256,7 @@ class TrainingOpsTest(TensorFlowTestCase):
 
   def _testTypesForAdam(self, var, m, v, grad, use_gpu):
     self.setUp()
-    with self.test_session(use_gpu=use_gpu):
+    with self.session(use_gpu=use_gpu):
       var_t = variables.VariableV1(var)
       m_t = variables.VariableV1(m)
       v_t = variables.VariableV1(v)

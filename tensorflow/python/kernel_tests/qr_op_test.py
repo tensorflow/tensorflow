@@ -50,7 +50,7 @@ class QrOpTest(test.TestCase):
       linalg_ops.qr(vector)
 
   def testConcurrentExecutesWithoutError(self):
-    with self.test_session(use_gpu=True) as sess:
+    with self.session(use_gpu=True) as sess:
       all_ops = []
       for full_matrices_ in True, False:
         for rows_ in 4, 5:
@@ -121,7 +121,7 @@ def _GetQrOpTest(dtype_, shape_, full_matrices_, use_static_shape_):
           low=-1.0, high=1.0,
           size=np.prod(shape_)).reshape(shape_).astype(dtype_)
 
-    with self.test_session(use_gpu=True) as sess:
+    with self.session(use_gpu=True) as sess:
       if use_static_shape_:
         x_tf = constant_op.constant(x_np)
       else:
@@ -173,7 +173,7 @@ def _GetQrGradOpTest(dtype_, shape_, full_matrices_):
       tol = 3e-2
     else:
       tol = 1e-6
-    with self.test_session(use_gpu=True):
+    with self.session(use_gpu=True):
       tf_a = constant_op.constant(a)
       tf_b = linalg_ops.qr(tf_a, full_matrices=full_matrices_)
       for b in tf_b:

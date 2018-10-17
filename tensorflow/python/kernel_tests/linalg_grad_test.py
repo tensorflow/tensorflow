@@ -60,7 +60,7 @@ class MatrixUnaryFunctorGradientTest(test_lib.TestCase):
 def _GetMatrixUnaryFunctorGradientTest(functor_, dtype_, shape_, **kwargs_):
 
   def Test(self):
-    with self.test_session(use_gpu=True):
+    with self.session(use_gpu=True):
       np.random.seed(1)
       a_np = np.random.uniform(
           low=-1.0, high=1.0,
@@ -102,7 +102,7 @@ def _GetMatrixBinaryFunctorGradientTest(functor_,
     # GPU test for matrix_solve.
     use_gpu = False if functor_ == linalg_ops.matrix_solve else True
 
-    with self.test_session(use_gpu=use_gpu):
+    with self.session(use_gpu=use_gpu):
       np.random.seed(1)
       a_np = np.random.uniform(
           low=-1.0, high=1.0,

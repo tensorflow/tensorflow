@@ -299,7 +299,7 @@ cuda_py_test(
 
 cuda_py_test(
     name = "mvn_diag_test",
-    size = "small",
+    size = "medium",
     srcs = ["python/kernel_tests/mvn_diag_test.py"],
     additional_deps = [
         ":distributions_py",

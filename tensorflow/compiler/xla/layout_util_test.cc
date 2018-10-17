@@ -352,5 +352,92 @@ TEST_F(LayoutUtilTest, StreamOut) {
   EXPECT_EQ(oss.str(), "{0,1,2}");
 }
 
+TEST_F(LayoutUtilTest, ValidateLayout_ValidArrayLayout) {
+  Shape shape = ShapeUtil::MakeShapeWithLayout(F32, {2, 3}, {0, 1});
+  auto status =
+      LayoutUtil::ValidateLayoutInShape(shape, /*allow_missing_layouts=*/false);
+  EXPECT_TRUE(status.ok());
+  status =
+      LayoutUtil::ValidateLayoutInShape(shape, /*allow_missing_layouts=*/true);
+  EXPECT_TRUE(status.ok());
+}
+
+TEST_F(LayoutUtilTest, ValidateLayout_InvalidArrayLayout) {
+  Shape shape = ShapeUtil::MakeShape(F32, {2, 3});
+  *shape.mutable_layout() = LayoutUtil::MakeLayout({0, 1, 2});
+  auto status =
+      LayoutUtil::ValidateLayoutInShape(shape, /*allow_missing_layouts=*/false);
+  EXPECT_FALSE(status.ok());
+  EXPECT_THAT(status.error_message(),
+              ::testing::HasSubstr("layout minor_to_major field "
+                                   "contains 3 elements, but shape is rank 2"));
+  status =
+      LayoutUtil::ValidateLayoutInShape(shape, /*allow_missing_layouts=*/true);
+  EXPECT_FALSE(status.ok());
+  EXPECT_THAT(status.error_message(),
+              ::testing::HasSubstr("layout minor_to_major field "
+                                   "contains 3 elements, but shape is rank 2"));
+}
+
+TEST_F(LayoutUtilTest, ValidateLayout_MissingArrayLayout) {
+  Shape shape = ShapeUtil::MakeShape(F32, {2, 3});
+  LayoutUtil::ClearLayout(&shape);
+  auto status =
+      LayoutUtil::ValidateLayoutInShape(shape, /*allow_missing_layouts=*/false);
+  EXPECT_FALSE(status.ok());
+  EXPECT_THAT(status.error_message(),
+              ::testing::HasSubstr("shape f32[2,3] does not have a layout"));
+  status =
+      LayoutUtil::ValidateLayoutInShape(shape, /*allow_missing_layouts=*/true);
+  EXPECT_TRUE(status.ok());
+}
+
+TEST_F(LayoutUtilTest, ValidateLayout_TupleWithLayout) {
+  Shape shape = ShapeUtil::MakeTupleShape({});
+  *shape.mutable_layout() = LayoutUtil::MakeLayout({0});
+  auto status =
+      LayoutUtil::ValidateLayoutInShape(shape, /*allow_missing_layouts=*/false);
+  EXPECT_FALSE(status.ok());
+  EXPECT_THAT(status.error_message(),
+              ::testing::HasSubstr("tuple should not have a layout field"));
+  status =
+      LayoutUtil::ValidateLayoutInShape(shape, /*allow_missing_layouts=*/true);
+  EXPECT_FALSE(status.ok());
+  EXPECT_THAT(status.error_message(),
+              ::testing::HasSubstr("tuple should not have a layout field"));
+}
+
+TEST_F(LayoutUtilTest, ValidateLayout_TupleSubshapesWithMissingLayouts) {
+  Shape sub_1_1_1 = ShapeUtil::MakeShape(F32, {1, 2});
+  Shape sub_1_1 = ShapeUtil::MakeTupleShape({sub_1_1_1});
+  Shape sub_1_2 = ShapeUtil::MakeShape(F32, {1, 2});
+  LayoutUtil::ClearLayout(&sub_1_2);
+  Shape sub_1 = ShapeUtil::MakeTupleShape({sub_1_1, sub_1_2});
+  Shape sub_2_1 = ShapeUtil::MakeShape(F32, {9});
+  LayoutUtil::ClearLayout(&sub_2_1);
+  Shape sub_2 = ShapeUtil::MakeTupleShape({sub_2_1});
+  Shape shape = ShapeUtil::MakeTupleShape({sub_1, sub_2});
+
+  auto status =
+      LayoutUtil::ValidateLayoutInShape(shape, /*allow_missing_layouts=*/false);
+  EXPECT_FALSE(status.ok());
+  EXPECT_THAT(status.error_message(),
+              ::testing::HasSubstr("shape f32[1,2] does not have a layout"));
+  status =
+      LayoutUtil::ValidateLayoutInShape(shape, /*allow_missing_layouts=*/true);
+  EXPECT_TRUE(status.ok());
+
+  // Add invalid layout on one of sub-shapes.
+  *shape.mutable_tuple_shapes(1)->mutable_tuple_shapes(0)->mutable_layout() =
+      LayoutUtil::MakeLayout({0, 2, 3});
+
+  status =
+      LayoutUtil::ValidateLayoutInShape(shape, /*allow_missing_layouts=*/true);
+  EXPECT_FALSE(status.ok());
+  EXPECT_THAT(status.error_message(),
+              ::testing::HasSubstr("layout minor_to_major field "
+                                   "contains 3 elements, but shape is rank 1"));
+}
+
 }  // namespace
 }  // namespace xla

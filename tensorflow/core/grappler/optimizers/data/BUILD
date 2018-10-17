@@ -129,6 +129,7 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core/grappler:mutable_graph_view",
         "//tensorflow/core/grappler:utils",
+        "//tensorflow/core:lib_internal",
     ] + tf_protos_all(),
 )
 
@@ -138,6 +139,7 @@ tf_cc_test(
     visibility = ["//visibility:public"],
     deps = [
         ":graph_utils",
+        "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
@@ -222,6 +224,37 @@ cc_library(
         "//tensorflow/core/grappler/optimizers:custom_graph_optimizer",
         "//tensorflow/core/grappler/optimizers:custom_graph_optimizer_registry",
     ] + tf_protos_all(),
+)
+
+cc_library(
+    name = "make_sloppy",
+    srcs = ["make_sloppy.cc"],
+    hdrs = ["make_sloppy.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//tensorflow/core/grappler:grappler_item",
+        "//tensorflow/core/grappler:mutable_graph_view",
+        "//tensorflow/core/grappler:op_types",
+        "//tensorflow/core/grappler/clusters:cluster",
+        "//tensorflow/core/grappler/optimizers:custom_graph_optimizer",
+        "//tensorflow/core/grappler/optimizers:custom_graph_optimizer_registry",
+    ] + tf_protos_all(),
+)
+
+tf_cc_test(
+    name = "make_sloppy_test",
+    srcs = ["make_sloppy_test.cc"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":graph_test_utils",
+        ":graph_utils",
+        ":make_sloppy",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+        "//tensorflow/core/grappler:grappler_item",
+    ],
 )
 
 cc_library(
@@ -413,6 +446,40 @@ tf_cc_test(
 )
 
 cc_library(
+    name = "map_and_batch_numa_aware_replacement",
+    srcs = ["map_and_batch_numa_aware_replacement.cc"],
+    hdrs = ["map_and_batch_numa_aware_replacement.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":graph_utils",
+        "//tensorflow/core/grappler:mutable_graph_view",
+        "//tensorflow/core:lib",
+        "//tensorflow/core/grappler:grappler_item",
+        "//tensorflow/core/grappler:op_types",
+        "//tensorflow/core/grappler:utils",
+        "//tensorflow/core/grappler/clusters:cluster",
+        "//tensorflow/core/grappler/optimizers:custom_graph_optimizer",
+        "//tensorflow/core/grappler/optimizers:custom_graph_optimizer_registry",
+    ] + tf_protos_all(),
+)
+
+tf_cc_test(
+    name = "map_and_batch_numa_aware_replacement_test",
+    srcs = ["map_and_batch_numa_aware_replacement_test.cc"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":graph_test_utils",
+        ":graph_utils",
+        ":map_and_batch_numa_aware_replacement",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+        "//tensorflow/core/grappler:grappler_item",
+    ],
+)
+
+cc_library(
     name = "noop_elimination",
     srcs = ["noop_elimination.cc"],
     hdrs = [
@@ -487,7 +554,9 @@ cc_library(
         ":filter_fusion",
         ":hoist_random_uniform",
         ":latency_all_edges",
+        ":make_sloppy",
         ":map_and_batch_fusion",
+        ":map_and_batch_numa_aware_replacement",
         ":map_and_filter_fusion",
         ":map_fusion",
         ":map_parallelization",
@@ -522,6 +591,7 @@ cc_library(
     deps = [
         ":function_utils",
         ":graph_utils",
+        "//tensorflow/cc:ops",
         "@com_google_absl//absl/strings",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",
@@ -553,6 +623,7 @@ tf_cc_test(
         "//tensorflow/core/kernels/data:dataset_ops",
         "//tensorflow/core/kernels:cast_op",
         "//tensorflow/core/kernels:logging_ops",
+        "//tensorflow/core/kernels:parsing",
         "//tensorflow/tools/graph_transforms:transform_utils",
     ] + tf_protos_all(),
 )

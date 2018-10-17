@@ -33,7 +33,7 @@ from tensorflow.python.platform import test
 class StackOpTest(test.TestCase):
 
   def _testStackPushPop(self, use_gpu):
-    with self.test_session(use_gpu=use_gpu):
+    with self.cached_session(use_gpu=use_gpu):
       h = gen_data_flow_ops.stack_v2(
           -1, elem_type=dtypes.float32, stack_name="foo")
       c = gen_data_flow_ops.stack_push_v2(h, [[4.0, 5.0]])
@@ -46,7 +46,7 @@ class StackOpTest(test.TestCase):
     self._testStackPushPop(use_gpu=True)
 
   def _testStackPushPopSwap(self, use_gpu):
-    with self.test_session(use_gpu=use_gpu):
+    with self.cached_session(use_gpu=use_gpu):
       a = np.arange(2000)
       x = constant_op.constant(a, dtype=dtypes.float32)
       h = gen_data_flow_ops.stack_v2(
@@ -61,7 +61,7 @@ class StackOpTest(test.TestCase):
     self._testStackPushPopSwap(use_gpu=True)
 
   def _testStackWhileSwap(self, use_gpu):
-    with self.test_session(use_gpu=use_gpu):
+    with self.cached_session(use_gpu=use_gpu):
       n = constant_op.constant(0)
       h = gen_data_flow_ops.stack_v2(
           -1, elem_type=dtypes.float32, stack_name="foo")
@@ -98,7 +98,7 @@ class StackOpTest(test.TestCase):
     self._testStackWhileSwap(use_gpu=True)
 
   def _testMultiStack(self, use_gpu):
-    with self.test_session(use_gpu=use_gpu):
+    with self.cached_session(use_gpu=use_gpu):
       h1 = gen_data_flow_ops.stack_v2(
           -1, elem_type=dtypes.float32, stack_name="foo")
       c1 = gen_data_flow_ops.stack_push_v2(h1, 4.0)
@@ -118,7 +118,7 @@ class StackOpTest(test.TestCase):
 
   def _testSameNameStacks(self, use_gpu):
     """Different stacks with the same name do not interfere."""
-    with self.test_session(use_gpu=use_gpu) as sess:
+    with self.cached_session(use_gpu=use_gpu) as sess:
       h1 = gen_data_flow_ops.stack_v2(
           -1, elem_type=dtypes.float32, stack_name="foo")
       h2 = gen_data_flow_ops.stack_v2(
@@ -140,7 +140,7 @@ class StackOpTest(test.TestCase):
     self._testSameNameStacks(use_gpu=True)
 
   def _testCloseStack(self, use_gpu):
-    with self.test_session(use_gpu=use_gpu) as sess:
+    with self.cached_session(use_gpu=use_gpu) as sess:
       h = gen_data_flow_ops.stack_v2(
           -1, elem_type=dtypes.float32, stack_name="foo")
       c1 = gen_data_flow_ops.stack_close_v2(h)
@@ -151,7 +151,7 @@ class StackOpTest(test.TestCase):
     self._testCloseStack(use_gpu=True)
 
   def _testPushCloseStack(self, use_gpu):
-    with self.test_session(use_gpu=use_gpu) as sess:
+    with self.cached_session(use_gpu=use_gpu) as sess:
       h = gen_data_flow_ops.stack_v2(
           -1, elem_type=dtypes.float32, stack_name="foo")
       c = gen_data_flow_ops.stack_push_v2(h, [[4.0, 5.0]])
@@ -168,7 +168,7 @@ class StackOpRefTest(test.TestCase):
   """Tests for deprecated non-resource variant of stack ops."""
 
   def _testStackPushPop(self, use_gpu):
-    with self.test_session(use_gpu=use_gpu):
+    with self.cached_session(use_gpu=use_gpu):
       h = gen_data_flow_ops._stack(dtypes.float32, stack_name="foo")
       c = gen_data_flow_ops.stack_push(h, [[4.0, 5.0]])
       with ops.control_dependencies([c]):
@@ -180,7 +180,7 @@ class StackOpRefTest(test.TestCase):
     self._testStackPushPop(use_gpu=True)
 
   def _testStackPushPopSwap(self, use_gpu):
-    with self.test_session(use_gpu=use_gpu):
+    with self.cached_session(use_gpu=use_gpu):
       a = np.arange(2000)
       x = constant_op.constant(a, dtype=dtypes.float32)
       h = gen_data_flow_ops._stack(dtypes.float32, stack_name="foo")
@@ -194,7 +194,7 @@ class StackOpRefTest(test.TestCase):
     self._testStackPushPopSwap(use_gpu=True)
 
   def _testMultiStack(self, use_gpu):
-    with self.test_session(use_gpu=use_gpu):
+    with self.cached_session(use_gpu=use_gpu):
       h1 = gen_data_flow_ops._stack(dtypes.float32, stack_name="foo")
       c1 = gen_data_flow_ops.stack_push(h1, 4.0)
       with ops.control_dependencies([c1]):
@@ -207,7 +207,7 @@ class StackOpRefTest(test.TestCase):
       self.assertAllClose(9.0, r.eval())
 
   def _testStackWhileSwap(self, use_gpu):
-    with self.test_session(use_gpu=use_gpu):
+    with self.cached_session(use_gpu=use_gpu):
       n = constant_op.constant(0)
       h = gen_data_flow_ops._stack(dtypes.float32, stack_name="foo")
 
@@ -247,7 +247,7 @@ class StackOpRefTest(test.TestCase):
     self._testMultiStack(use_gpu=True)
 
   def _testSameNameStacks(self, use_gpu):
-    with self.test_session(use_gpu=use_gpu):
+    with self.cached_session(use_gpu=use_gpu):
       h1 = gen_data_flow_ops._stack(dtypes.float32, stack_name="foo")
       c1 = gen_data_flow_ops.stack_push(h1, 4.0)
       h2 = gen_data_flow_ops._stack(dtypes.float32, stack_name="foo")
@@ -260,7 +260,7 @@ class StackOpRefTest(test.TestCase):
     self._testSameNameStacks(use_gpu=True)
 
   def _testCloseStack(self, use_gpu):
-    with self.test_session(use_gpu=use_gpu) as sess:
+    with self.cached_session(use_gpu=use_gpu) as sess:
       h = gen_data_flow_ops._stack(dtypes.float32, stack_name="foo")
       c1 = gen_data_flow_ops.stack_close(h)
       sess.run(c1)
@@ -270,7 +270,7 @@ class StackOpRefTest(test.TestCase):
     self._testCloseStack(use_gpu=True)
 
   def _testPushCloseStack(self, use_gpu):
-    with self.test_session(use_gpu=use_gpu) as sess:
+    with self.cached_session(use_gpu=use_gpu) as sess:
       h = gen_data_flow_ops._stack(dtypes.float32, stack_name="foo")
       c = gen_data_flow_ops.stack_push(h, [[4.0, 5.0]])
       with ops.control_dependencies([c]):

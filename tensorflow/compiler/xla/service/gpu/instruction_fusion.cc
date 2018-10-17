@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/gpu/instruction_fusion.h"
 
+#include "absl/container/flat_hash_set.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_fusible.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
@@ -46,6 +47,7 @@ bool IsFusible(const HloInstruction& hlo) {
          hlo.opcode() == HloOpcode::kReduce ||
          hlo.opcode() == HloOpcode::kReduceWindow ||
          hlo.opcode() == HloOpcode::kReshape ||
+         hlo.opcode() == HloOpcode::kScatter ||
          hlo.opcode() == HloOpcode::kSlice ||
          hlo.opcode() == HloOpcode::kTranspose;
 }
@@ -125,8 +127,8 @@ bool IsIEEEFloatingPointScalarConstant(const HloInstruction* constant) {
   }
 
   // Compute the precise number of operands to the new fusion.
-  tensorflow::gtl::FlatSet<const HloInstruction*> operands(
-      a->operands().begin(), a->operands().end());
+  absl::flat_hash_set<const HloInstruction*> operands(a->operands().begin(),
+                                                      a->operands().end());
   operands.insert(b->operands().begin(), b->operands().end());
   // If there's an edge between `a` and `b`, don't count it: We're fusing that
   // producer -> consumer relationship.
@@ -222,6 +224,11 @@ bool GpuInstructionFusion::ShouldFuse(HloInstruction* consumer,
     return false;
   }
 
+  // Scatter is only supported at the root of a kInput fusion.
+  if (producer->opcode() == HloOpcode::kScatter) {
+    return false;
+  }
+
   // Do not fuse into reduce input fusions if the resulting kernel would suffer
   // from poor data locality (due to unfriendly input layouts).
   if (IsInputFusibleReduction(*consumer) &&
@@ -284,7 +291,8 @@ bool GpuInstructionFusion::ShouldFuseIntoMultiOutput(HloInstruction* consumer,
 
 HloInstruction::FusionKind GpuInstructionFusion::ChooseKind(
     const HloInstruction* producer, const HloInstruction* consumer) {
-  if (IsReductionToVector(*consumer)) {
+  if (IsReductionToVector(*consumer) ||
+      consumer->opcode() == HloOpcode::kScatter) {
     return HloInstruction::FusionKind::kInput;
   }
   if (producer->opcode() == HloOpcode::kDot ||

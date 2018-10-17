@@ -30,10 +30,14 @@ from tensorflow.python.util import tf_inspect
 
 
 def isbuiltin(f):
+  """Returns True if the argument is a built-in function."""
   # Note these return false for isinstance(f, types.BuiltinFunctionType) so we
   # need to specifically check for them.
   if f in (range, int, float):
     return True
+  if six.PY2:
+    if f in (xrange,):
+      return True
   if isinstance(f, types.BuiltinFunctionType):
     return True
   if tf_inspect.isbuiltin(f):
@@ -61,6 +65,43 @@ def getnamespace(f):
     for name, cell in zip(freevars, closure):
       namespace[name] = cell.cell_contents
   return namespace
+
+
+def getqualifiedname(namespace, object_, max_depth=2):
+  """Returns the name by which a value can be referred to in a given namespace.
+
+  This function will recurse inside modules, but it will not search objects for
+  attributes. The recursion depth is controlled by max_depth.
+
+  Args:
+    namespace: Dict[str, Any], the namespace to search into.
+    object_: Any, the value to search.
+    max_depth: Optional[int], a limit to the recursion depth when searching
+        inside modules.
+  Returns: Union[str, None], the fully-qualified name that resolves to the value
+      o, or None if it couldn't be found.
+  """
+  for name, value in namespace.items():
+    # The value may be referenced by more than one symbol, case in which
+    # any symbol will be fine. If the program contains symbol aliases that
+    # change over time, this may capture a symbol that will later point to
+    # something else.
+    # TODO(mdan): Prefer the symbol that matches the value type name.
+    if object_ is value:
+      return name
+
+  # TODO(mdan): Use breadth-first search and avoid visiting modules twice.
+  if max_depth:
+    # Iterating over a copy prevents "changed size due to iteration" errors.
+    # It's unclear why those occur - suspecting new modules may load during
+    # iteration.
+    for name, value in namespace.copy().items():
+      if tf_inspect.ismodule(value):
+        name_in_module = getqualifiedname(value.__dict__, object_,
+                                          max_depth - 1)
+        if name_in_module is not None:
+          return '{}.{}'.format(name, name_in_module)
+  return None
 
 
 def _get_unbound_function(m):
@@ -159,3 +200,59 @@ def getmethodclass(m):
     raise ValueError('Found too many owners of %s: %s' % (m, owners))
 
   return None
+
+
+class SuperWrapperForDynamicAttrs(object):
+  """A wrapper that supports dynamic attribute lookup on the super object.
+
+  For example, in the following code, `super` incorrectly reports that
+  `super(Bar, b)` lacks the `a` attribute:
+
+    class Foo(object):
+      def __init__(self):
+        self.a = lambda: 1
+
+      def bar(self):
+        return hasattr(self, 'a')
+
+    class Bar(Foo):
+      def bar(self):
+        return super(Bar, self).bar()
+
+
+    b = Bar()
+    print(hasattr(super(Bar, b), 'a'))  # False
+    print(super(Bar, b).bar())          # True
+
+  A practical situation when this tends to happen is Keras model hierarchies
+  that hold references to certain layers, like this:
+
+    class MiniModel(keras.Model):
+
+      def __init__(self):
+        super(MiniModel, self).__init__()
+        self.fc = keras.layers.Dense(1)
+
+      def call(self, inputs, training=True):
+        return self.fc(inputs)
+
+    class DefunnedMiniModel(MiniModel):
+
+      def call(self, inputs, training=True):
+        return super(DefunnedMiniModel, self).call(inputs, training=training)
+
+  A side effect of this wrapper is that all attributes become visible, even
+  those created in the subclass.
+  """
+
+  # TODO(mdan): Investigate why that happens - it may be for a reason.
+  # TODO(mdan): Probably need more overrides to make it look like super.
+
+  def __init__(self, target):
+    self._target = target
+
+  def __getattribute__(self, name):
+    target = object.__getattribute__(self, '_target')
+    if hasattr(target, name):
+      return getattr(target, name)
+    return getattr(target.__self__, name)

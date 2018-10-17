@@ -20,11 +20,9 @@ from __future__ import print_function
 
 import weakref
 import numpy as np
-import six
 
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import iterator_ops
-from tensorflow.python.data.ops.dataset_ops import Dataset
 from tensorflow.python.eager import context
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
@@ -565,9 +563,11 @@ class Model(Network):
         for name in self.output_names:
           tmp_target_tensors.append(target_tensors.get(name, None))
         target_tensors = tmp_target_tensors
+      elif tensor_util.is_tensor(target_tensors):
+        target_tensors = [target_tensors]
       else:
-        raise TypeError('Expected `target_tensors` to be '
-                        'a list or dict, but got:', target_tensors)
+        raise TypeError('Expected `target_tensors` to be a list or tuple or '
+                        'dict or a single tensor, but got:', target_tensors)
 
     for i in range(len(self.outputs)):
       if i in skip_target_indices:
@@ -676,11 +676,10 @@ class Model(Network):
       return
 
     if len(self.trainable_weights) != len(self._collected_trainable_weights):
-      logging.warning(
-          UserWarning(
-              'Discrepancy between trainable weights and collected trainable'
-              ' weights, did you set `model.trainable` without calling'
-              ' `model.compile` after ?'))
+      logging.log_first_n(
+          logging.WARN, 'Discrepancy between trainable weights and collected'
+          ' trainable weights, did you set `model.trainable`'
+          ' without calling `model.compile` after ?', 1)
 
   def _make_train_function(self):
     if not hasattr(self, 'train_function'):
@@ -802,47 +801,48 @@ class Model(Network):
 
     # Validates `steps` argument right at the beginning since we use it to
     # construct the dataset object.
-    # TODO(anjalisridhar): This may not be a valid error since we now accept
-    # numpy array inputs. We still want to assert that we have a populated steps
-    # parameter.
-    if check_steps:
-      if steps is None:
-        raise ValueError('When using DistributionStrategy, '
-                         'you should specify the `{steps_name}` argument.'
-                         .format(steps_name=steps_name))
+    # TODO(anjalisridhar): Remove this check once we refactor the
+    # _standardize_user_data code path. This check is already present elsewhere
+    # in the codebase.
+    if check_steps and isinstance(x, dataset_ops.Dataset) and steps is None:
+      raise ValueError('When using Datasets as input, '
+                       'you should specify the `{steps_name}` argument.'
+                       .format(steps_name=steps_name))
 
     first_x_value = nest.flatten(x)[0]
     if isinstance(first_x_value, np.ndarray):
+      assert steps is not None
       x_shape = first_x_value.shape
-      x_dtype = first_x_value.dtype
       if batch_size is None:
-        batch_size = x_shape[0] // steps
+        batch_size = distributed_training_utils.get_batch_size(
+            self._distribution_strategy.num_towers, x_shape[0], steps)
+      # We need to use the drop_remainder argument to allow for a static
+      # input shape which is required for TPUs.
+      drop_remainder = self._distribution_strategy.require_static_shapes
       if y is not None:
-        first_y_value = nest.flatten(y)[0]
-        x = Dataset.from_generator(lambda x=x, y=y: six.moves.zip(x, y),
-                                   output_types=(x_dtype, first_y_value.dtype),
-                                   output_shapes=(x_shape[1:],
-                                                  first_y_value.shape[1:]))
-        # TODO(anjalisridhar): What should the buffer size be?
-        x = x.shuffle(10000)
+        var_x = distributed_training_utils.get_var_for_numpy(
+            self._distribution_strategy, x)
+        var_y = distributed_training_utils.get_var_for_numpy(
+            self._distribution_strategy, y)
+
+        x = dataset_ops.Dataset.from_tensor_slices((var_x, var_y))
+        # 1024 is a good buffer size since it is much larger than the average
+        # batch size provided by the user and provides sufficient randomness.
+        # One thing to keep in mind is the memory usage based on the size of
+        # each sample.
+        x = x.shuffle(1024)
         x = x.repeat()
-        x = x.batch(batch_size)
+        x = x.batch(batch_size, drop_remainder=drop_remainder)
         y = None
       else:
         # This case is for the predict call where the dataset only contains
-        # inputs and no targets i.e it does not return a tuple.
-        # TODO(anjalisridhar): Raise an error if we are not able to process
-        # all the predict samples. This can happen if the number of batches is
-        # not evenly divisible by the number of worker devices.
-        x = Dataset.from_generator(lambda x=x: x,
-                                   output_types=x_dtype,
-                                   output_shapes=x_shape[1:])
+        # inputs and no targets, i.e. it does not return a tuple
+        var_x = distributed_training_utils.get_var_for_numpy(
+            self._distribution_strategy, x)
+        x = dataset_ops.Dataset.from_tensor_slices(var_x)
         x = x.repeat()
-        x = x.batch(batch_size)
+        x = x.batch(batch_size, drop_remainder=drop_remainder)
 
-    # TODO(anjalisridhar): Can we use the iterator and getnext op cache?
-    # We require users to pass Datasets since we distribute the dataset across
-    # multiple devices.
     assert isinstance(x, dataset_ops.Dataset)
 
     # TODO(anjalisridhar): We want distribute_dataset() to accept a Dataset or a
@@ -978,16 +978,18 @@ class Model(Network):
                            'Make sure that your dataset can generate '
                            'required number of samples.')
 
-      if (not isinstance(next_element, (list, tuple)) or
-          len(next_element) not in [2, 3]):
-        raise ValueError(
-            'Please provide model inputs as a list or tuple of 2  or 3'
-            'elements: (input, target) or (input, target, sample_weights)'
-            'Received %s' % next_element)
-      if len(next_element) == 2:
-        x, y = next_element
+      if isinstance(next_element, (list, tuple)):
+        if len(next_element) not in [2, 3]:
+          raise ValueError(
+              'Please provide model inputs as a list or tuple of 2  or 3'
+              'elements: (input, target) or (input, target, sample_weights)'
+              'Received %s' % next_element)
+        if len(next_element) == 2:
+          x, y = next_element
+        else:
+          x, y, sample_weight = next_element
       else:
-        x, y, sample_weight = next_element
+        x = next_element
     x, y, sample_weights = self._standardize_weights(x, y, sample_weight,
                                                      class_weight, batch_size)
     return x, y, sample_weights
@@ -1415,6 +1417,8 @@ class Model(Network):
               - tuple `(x_val, y_val)` of Numpy arrays or tensors
               - tuple `(x_val, y_val, val_sample_weights)` of Numpy arrays
               - dataset or a dataset iterator
+            For the first two cases, `batch_size` must be provided.
+            For the last case, `validation_steps` must be provided.
         shuffle: Boolean (whether to shuffle the training data
             before each epoch) or str (for 'batch').
             'batch' is a special option for dealing with the
@@ -1450,9 +1454,10 @@ class Model(Network):
             TensorFlow data tensors, the default `None` is equal to
             the number of samples in your dataset divided by
             the batch size, or 1 if that cannot be determined.
-        validation_steps: Only relevant if `steps_per_epoch`
-            is specified. Total number of steps (batches of samples)
-            to validate before stopping.
+        validation_steps: Only relevant if `validation_data` is provided and
+            is a dataset or dataset iterator. Total number of steps (batches of
+            samples) to draw before stopping when performing validation
+            at the end of every epoch.
         max_queue_size: Integer. Used for generator or `keras.utils.Sequence`
             input only. Maximum size for the generator queue.
             If unspecified, `max_queue_size` will default to 10.
@@ -2356,6 +2361,6 @@ class DistributedCallbackModel(Model):
     # Whitelisted atttributes of the model that can be accessed by the user
     # during a callback.
     if item not in ['_setattr_tracking']:
-      logging.warning('You are accessing attribute ' + item + 'of the '
+      logging.warning('You are accessing attribute ' + item + ' of the '
                       'DistributedCallbackModel that may not have been set '
                       'correctly.')

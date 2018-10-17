@@ -249,6 +249,10 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
+    name: "UnconnectedGradients"
+    mtype: "<class \'enum.EnumMeta\'>"
+  }
+  member {
     name: "VERSION"
     mtype: "<type \'str\'>"
   }
@@ -497,6 +501,10 @@ tf_module {
     mtype: "<class \'tensorflow.python.framework.dtypes.DType\'>"
   }
   member {
+    name: "random"
+    mtype: "<type \'module\'>"
+  }
+  member {
     name: "random_normal_initializer"
     mtype: "<type \'type\'>"
   }
@@ -591,6 +599,10 @@ tf_module {
   member {
     name: "variant"
     mtype: "<class \'tensorflow.python.framework.dtypes.DType\'>"
+  }
+  member {
+    name: "version"
+    mtype: "<type \'module\'>"
   }
   member {
     name: "zeros_initializer"
@@ -1230,7 +1242,7 @@ tf_module {
   }
   member_method {
     name: "gradients"
-    argspec: "args=[\'ys\', \'xs\', \'grad_ys\', \'name\', \'colocate_gradients_with_ops\', \'gate_gradients\', \'aggregation_method\', \'stop_gradients\'], varargs=None, keywords=None, defaults=[\'None\', \'gradients\', \'False\', \'False\', \'None\', \'None\'], "
+    argspec: "args=[\'ys\', \'xs\', \'grad_ys\', \'name\', \'colocate_gradients_with_ops\', \'gate_gradients\', \'aggregation_method\', \'stop_gradients\', \'unconnected_gradients\'], varargs=None, keywords=None, defaults=[\'None\', \'gradients\', \'False\', \'False\', \'None\', \'None\', \'UnconnectedGradients.NONE\'], "
   }
   member_method {
     name: "greater"
@@ -1745,6 +1757,10 @@ tf_module {
     argspec: "args=[\'x\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
+    name: "roll"
+    argspec: "args=[\'input\', \'shift\', \'axis\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
     name: "round"
     argspec: "args=[\'x\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
@@ -2082,7 +2098,7 @@ tf_module {
   }
   member_method {
     name: "substr"
-    argspec: "args=[\'input\', \'pos\', \'len\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+    argspec: "args=[\'input\', \'pos\', \'len\', \'name\', \'unit\'], varargs=None, keywords=None, defaults=[\'None\', \'BYTE\'], "
   }
   member_method {
     name: "subtract"

@@ -184,9 +184,11 @@ class SessionManager(object):
     self._target = master
     sess = session.Session(self._target, graph=self._graph, config=config)
     # TODO(jhseu): Delete once tpu.initialize_system() goes away.
-    sess.run(
+    initialize_ops = (
         distribution_strategy_context.get_distribution_strategy().initialize()
     )
+    if initialize_ops:
+      sess.run(initialize_ops)
 
     if checkpoint_dir and checkpoint_filename_with_path:
       raise ValueError("Can not provide both checkpoint_dir and "

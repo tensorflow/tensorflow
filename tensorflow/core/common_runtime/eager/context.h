@@ -202,6 +202,7 @@ class EagerContext {
   // EagerService.SendTensor RPC. If false, _Send/_Recv ops should be used
   // instead (which in-turn use WorkerService.RecvTensor RPCs).
   bool UseSendTensorRPC() { return use_send_tensor_rpc_; }
+  bool PinSmallOpsToCPU() { return pin_small_ops_to_cpu_; }
 
  private:
   void InitDeviceMapAndAsync();
@@ -293,6 +294,7 @@ class EagerContext {
 #endif
 
   bool use_send_tensor_rpc_;
+  const bool pin_small_ops_to_cpu_;
 };
 
 }  // namespace tensorflow

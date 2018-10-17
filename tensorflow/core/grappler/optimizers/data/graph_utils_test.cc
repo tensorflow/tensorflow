@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/core/grappler/optimizers/data/graph_utils.h"
 
 #include "tensorflow/core/framework/function_testlib.h"
+#include "tensorflow/core/graph/node_builder.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/test.h"
 
@@ -227,6 +228,33 @@ TEST(GraphUtilsTest, GetInputNode) {
 
   EXPECT_EQ(GetInputNode(*node2, graph), node1);
   EXPECT_EQ(GetInputNode(*node1, graph), nullptr);
+}
+
+TEST(GraphUtilsTest, EnsureNodeNamesUnique) {
+  Graph g(OpRegistry::Global());
+
+  Node *const_0, *const_1, *const_2;
+
+  // Arbitrary const
+  Tensor tensor(DT_INT32, {});
+  tensor.scalar<int32>()() = 5;
+
+  for (auto node : {&const_0, &const_1}) {
+    TF_EXPECT_OK(NodeBuilder("Const", "Const")
+                     .Attr("value", tensor)
+                     .Attr("dtype", DT_INT32)
+                     .Finalize(&g, node));
+  }
+  // Make sure generated name doesn't clash with existing name either
+  TF_EXPECT_OK(NodeBuilder("Const_1", "Const")
+                   .Attr("value", tensor)
+                   .Attr("dtype", DT_INT32)
+                   .Finalize(&g, &const_2));
+
+  TF_EXPECT_OK(EnsureNodeNamesUnique(&g));
+  EXPECT_NE(const_0->name(), const_1->name());
+  EXPECT_NE(const_1->name(), const_2->name());
+  EXPECT_NE(const_0->name(), const_2->name());
 }
 
 }  // namespace

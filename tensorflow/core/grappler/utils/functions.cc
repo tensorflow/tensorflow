@@ -685,6 +685,47 @@ Status ReplaceInputWithConst(const NodeDef& input_const, int input_position,
   return Status::OK();
 }
 
+Status RemoveUnusedOutputs(const gtl::FlatSet<int>& active_outputs,
+                           GrapplerFunctionItem* item,
+                           std::vector<std::pair<int, int>>* output_mapping) {
+  DCHECK(output_mapping->empty());
+
+  // Do some sanity checking of the active outputs positions.
+  for (int active_output : active_outputs) {
+    if (active_output < 0 || active_output >= item->output_size()) {
+      return errors::InvalidArgument(
+          "Active output position is out of bound: active_output=",
+          active_output, " num_output_args=", item->output_size());
+    }
+  }
+
+  gtl::FlatSet<const OutputArgExpansion*> unused_output_args;
+
+  const auto is_unused_output_arg = [&](const OutputArgExpansion& output) {
+    return unused_output_args.find(&output) != unused_output_args.end();
+  };
+
+  for (int i = 0; i < item->output_size(); ++i) {
+    const OutputArgExpansion& output = item->output(i);
+    DCHECK(output.output_tensors.size() == 1)
+        << "Output arg expansion must have single tensor";
+
+    if (active_outputs.find(i) == active_outputs.end()) {
+      VLOG(3) << "Remove unused output: output_name=" << output.output_name
+              << " output_position=" << i;
+      unused_output_args.insert(&output);
+    } else if (!unused_output_args.empty()) {
+      // Add output mapping only if output position changed.
+      output_mapping->push_back({i, i - unused_output_args.size()});
+    }
+  }
+
+  auto& o = item->output_arg_expansions_;
+  o.erase(std::remove_if(o.begin(), o.end(), is_unused_output_arg), o.end());
+
+  return Status::OK();
+}
+
 Status MakeFunctionDef(const GrapplerFunctionItem& item,
                        const FunctionLibraryDefinition& flib,
                        FunctionDef* func) {

@@ -91,7 +91,14 @@ class ForwardPassConvolution_3x3x256_256_OutputZ_Iota : public ConvolutionTest {
     XlaBuilder builder(TestName());
     auto lhs = ConstantR4FromArray4D<T>(&builder, *alhs);
     auto rhs = ConstantR4FromArray4D<T>(&builder, *arhs);
-    Conv(lhs, rhs, {1, 1}, Padding::kValid);
+    PrecisionConfig precision;
+    // The left hand side of the convolution is numbers between 0 and 2304 which
+    // requires at least 11 mantissa bits and the DEFAULT precision config is
+    // allowed to round to bfloat16 which only has 7 mantissa bits.
+    precision.add_operand_precision(PrecisionConfig::HIGHEST);
+    precision.add_operand_precision(PrecisionConfig::DEFAULT);
+    Conv(lhs, rhs, {1, 1}, Padding::kValid, /*feature_group_count=*/1,
+         &precision);
 
     ComputeAndCompare(&builder, {}, error_spec_);
   }
@@ -876,7 +883,7 @@ XLA_TEST_F(ConvolutionTest, Convolve_bf16_1x1x1x2_1x1x1x2_Valid) {
 // (We run this test on all platforms, because, what the heck.)
 XLA_TEST_F(ConvolutionTest, NoCudnnAlgorithmPicker) {
   execution_options_.mutable_debug_options()->add_xla_disable_hlo_passes(
-      "cudnn-convolution-algorithm-picker");
+      "cudnn-conv-algorithm-picker");
 
   XlaBuilder builder(TestName());
   Shape input_shape = ShapeUtil::MakeShape(F32, {1, 1, 1, 2});

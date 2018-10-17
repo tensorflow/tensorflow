@@ -19,15 +19,15 @@ limitations under the License.
 
 namespace tensorflow {
 namespace grappler {
-namespace vectorization_utils {
+namespace {
 
 class UnpackVectorizer : public Vectorizer {
  public:
   Status Vectorize(const Node& node, Graph* outer_scope,
-                   std::vector<Port>* input_ports,
-                   std::vector<Port>* output_ports) override {
+                   std::vector<WrappedTensor>&& inputs,
+                   std::vector<WrappedTensor>* outputs) override {
     Status s;
-    if (node.num_inputs() != 1) {
+    if (node.num_inputs() != 1 || inputs.size() != 1) {
       return errors::Internal("Unpack op should only have one input.");
     }
 
@@ -35,17 +35,28 @@ class UnpackVectorizer : public Vectorizer {
     auto new_unpack_node = outer_scope->AddNode(node.def(), &s);
     TF_RETURN_IF_ERROR(s);
 
-    // Increment "axis" attr by 1:
-    int new_axis = node.def().attr().at("axis").i() + 1;
-    new_unpack_node->AddAttr("axis", new_axis);
+    int axis = 0;
+    if (HasNodeAttr(node.def(), "axis")) {
+      TF_RETURN_IF_ERROR(GetNodeAttr(node.attrs(), "axis", &axis));
+    }
 
-    // Add the input mappings
-    input_ports->push_back({new_unpack_node, 0});
+    if (axis >= 0) {
+      // Since the vectorized input has an extra leading dimension, we need
+      // to increment `axis` attr by 1 for non-negative axis values.
+      // Note: negative axis values wrap around.
+      axis += 1;
+    }
+    new_unpack_node->AddAttr("axis", axis);
+
+    outer_scope->AddEdge(inputs[0].node, inputs[0].output_index,
+                         new_unpack_node, 0);
+
+    int num;
+    TF_RETURN_IF_ERROR(GetNodeAttr(node.attrs(), "num", &num));
 
     // Add the output mappings
-    int num = node.def().attr().at("num").i();
     for (int i = 0; i < num; ++i) {
-      output_ports->push_back({new_unpack_node, i});
+      outputs->push_back({new_unpack_node, i, true});
     }
 
     return Status::OK();
@@ -54,6 +65,6 @@ class UnpackVectorizer : public Vectorizer {
 
 REGISTER_VECTORIZER("Unpack", UnpackVectorizer);
 
-}  // namespace vectorization_utils
+}  // namespace
 }  // namespace grappler
 }  // namespace tensorflow

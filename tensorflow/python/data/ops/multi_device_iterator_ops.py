@@ -18,6 +18,7 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.data.ops import iterator_ops
 from tensorflow.python.data.util import nest
 from tensorflow.python.data.util import sparse
 from tensorflow.python.eager import context
@@ -78,7 +79,7 @@ class _PerDeviceGenerator(dataset_ops.Dataset):
           output_types=self._flat_output_types,
           output_shapes=self._flat_output_shapes)
 
-    @function.Defun(dtypes.string)
+    @function.Defun(dtypes.string, experimental_ints_on_device=True)
     def _remote_next_func(string_handle):
       return functional_ops.remote_call(
           target=source_device,
@@ -226,6 +227,28 @@ class MultiDeviceIterator(object):
       i += 1
     return result
 
+  def get_next_as_optional(self):
+    result = []
+    i = 0
+    for device in self._devices:
+      with ops.device(device):
+        result.append(iterator_ops.get_next_as_optional(
+            self._device_iterators[i]))
+      i += 1
+    return result
+
   @property
   def initializer(self):
     return self._initializer
+
+  @property
+  def output_types(self):
+    return self._dataset.output_types
+
+  @property
+  def output_shapes(self):
+    return self._dataset.output_shapes
+
+  @property
+  def output_classes(self):
+    return self._dataset.output_classes

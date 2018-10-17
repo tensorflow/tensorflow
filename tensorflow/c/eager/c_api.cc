@@ -578,6 +578,14 @@ void TFE_OpSetAttrFunction(TFE_Op* op, const char* attr_name,
   op->operation.MutableAttrs()->Set(attr_name, attr_value);
 }
 
+void TFE_OpSetAttrFunctionName(TFE_Op* op, const char* attr_name,
+                               const char* data, size_t length) {
+  tensorflow::AttrValue attr_value;
+  tensorflow::NameAttrList* func = attr_value.mutable_func();
+  func->set_name(data, length);
+  op->operation.MutableAttrs()->Set(attr_name, attr_value);
+}
+
 void TFE_OpSetAttrTensor(TFE_Op* op, const char* attr_name, TF_Tensor* tensor,
                          TF_Status* status) {
   tensorflow::Tensor t;

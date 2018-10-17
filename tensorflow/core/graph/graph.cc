@@ -34,7 +34,7 @@ namespace tensorflow {
 
 const int Graph::kControlSlot = -1;
 
-class NodeProperties {
+struct NodeProperties {
  public:
   NodeProperties(const OpDef* op_def, const NodeDef& node_def,
                  const DataTypeSlice inputs, const DataTypeSlice outputs)
@@ -142,6 +142,19 @@ void Node::Clear() {
   assigned_device_name_index_ = 0;
 }
 
+void Node::UpdateProperties() {
+  DataTypeVector inputs;
+  DataTypeVector outputs;
+  Status status =
+      InOutTypesForNode(props_->node_def, *(props_->op_def), &inputs, &outputs);
+  if (!status.ok()) {
+    LOG(ERROR) << "Failed at updating node: " << status;
+    return;
+  }
+  props_ = std::make_shared<NodeProperties>(props_->op_def, props_->node_def,
+                                            inputs, outputs);
+}
+
 const string& Node::name() const { return props_->node_def.name(); }
 const string& Node::type_string() const { return props_->node_def.op(); }
 const NodeDef& Node::def() const { return props_->node_def; }
@@ -190,6 +203,11 @@ AttrValue* Node::AddAttrHelper(const string& name) {
 void Node::ClearAttr(const string& name) {
   MaybeCopyOnWrite();
   (*props_->node_def.mutable_attr()).erase(name);
+}
+
+void Node::set_name(string name) {
+  MaybeCopyOnWrite();
+  props_->node_def.set_name(std::move(name));
 }
 
 void Node::set_requested_device(const string& device) {
@@ -643,7 +661,7 @@ Status Graph::IsValidNode(const Node* node) const {
 
 Status Graph::IsValidOutputTensor(const Node* node, int idx) const {
   TF_RETURN_IF_ERROR(IsValidNode(node));
-  if (idx >= node->num_outputs()) {
+  if (idx >= node->num_outputs() || idx < 0) {
     return errors::OutOfRange("Node '", node->name(), "' (type: '",
                               node->op_def().name(),
                               "', num of outputs: ", node->num_outputs(),
@@ -654,7 +672,7 @@ Status Graph::IsValidOutputTensor(const Node* node, int idx) const {
 
 Status Graph::IsValidInputTensor(const Node* node, int idx) const {
   TF_RETURN_IF_ERROR(IsValidNode(node));
-  if (idx >= node->num_inputs()) {
+  if (idx >= node->num_inputs() || idx < 0) {
     return errors::OutOfRange("Node '", node->name(), "' (type: '",
                               node->op_def().name(),
                               "', num of inputs: ", node->num_inputs(),
@@ -730,6 +748,14 @@ Status Graph::AddWhileContext(StringPiece frame_name,
   }
   *result = &pair.first->second;
   return Status::OK();
+}
+
+std::unordered_map<string, Node*> Graph::BuildNodeNameIndex() const {
+  std::unordered_map<string, Node*> result;
+  for (Node* n : nodes()) {
+    result[n->name()] = n;
+  }
+  return result;
 }
 
 string Edge::DebugString() const {

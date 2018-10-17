@@ -59,6 +59,7 @@ class InterpreterWrapper {
   PyObject* OutputIndices() const;
   PyObject* ResizeInputTensor(int i, PyObject* value);
 
+  int NumTensors() const;
   std::string TensorName(int i) const;
   PyObject* TensorType(int i) const;
   PyObject* TensorSize(int i) const;
