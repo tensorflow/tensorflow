@@ -378,12 +378,12 @@ StatusOr<poplar::Tensor> AddTensor(poplar::Graph& graph,
         switch (target->second.input_index) {
           case 0: {
             TF_ASSIGN_OR_RETURN(
-                out, AddLeftMatMul(graph, src.first, shape, tgt, resources));
+                out, AddLeftMatMul(graph, src.first, tshape, tgt, resources));
             break;
           }
           case 1: {
             TF_ASSIGN_OR_RETURN(
-                out, AddRightMatMul(graph, src.first, shape, tgt, resources));
+                out, AddRightMatMul(graph, src.first, tshape, tgt, resources));
             break;
           }
           default:
@@ -396,22 +396,22 @@ StatusOr<poplar::Tensor> AddTensor(poplar::Graph& graph,
       case HloOpcode::kDynamicSlice: {
         if (target->second.input_index == 0) {
           TF_ASSIGN_OR_RETURN(
-              out, AddDynamicSliceTensor(graph, GetDebugName(src.first), shape,
+              out, AddDynamicSliceTensor(graph, GetDebugName(src.first), tshape,
                                          target->second.tgt->shape()));
         } else {
           TF_ASSIGN_OR_RETURN(
-              out, AddPlainTensor(graph, GetDebugName(src.first), shape));
+              out, AddPlainTensor(graph, GetDebugName(src.first), tshape));
         }
         break;
       }
       case HloOpcode::kDynamicUpdateSlice: {
         if (target->second.input_index == 0) {
           TF_ASSIGN_OR_RETURN(
-              out, AddDynamicSliceTensor(graph, GetDebugName(src.first), shape,
+              out, AddDynamicSliceTensor(graph, GetDebugName(src.first), tshape,
                                          target->second.tgt->shape()));
         } else {
           TF_ASSIGN_OR_RETURN(
-              out, AddPlainTensor(graph, GetDebugName(src.first), shape));
+              out, AddPlainTensor(graph, GetDebugName(src.first), tshape));
         }
         break;
       }
@@ -447,7 +447,7 @@ StatusOr<poplar::Tensor> AddTensor(poplar::Graph& graph,
           }
         } else {
           TF_ASSIGN_OR_RETURN(
-              out, AddPlainTensor(graph, GetDebugName(src.first), shape));
+              out, AddPlainTensor(graph, GetDebugName(src.first), tshape));
         }
         break;
       }
