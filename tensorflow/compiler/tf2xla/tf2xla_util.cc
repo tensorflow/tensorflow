@@ -293,7 +293,7 @@ Status SetNodeShardingFromNeighbors(Node* n, bool out_edges) {
   return Status::OK();
 }
 
-void AddDtypeToKernalDefConstraint(absl::string_view name, DataType dtype,
+void AddDtypeToKernelDefConstraint(absl::string_view name, DataType dtype,
                                    KernelDef* kdef) {
   for (KernelDef::AttrConstraint& constraint : *kdef->mutable_constraint()) {
     if (constraint.name() == name) {
