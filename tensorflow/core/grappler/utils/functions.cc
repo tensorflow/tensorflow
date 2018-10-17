@@ -57,14 +57,14 @@ Status RegisterFunctionBodyOutputs(const FunctionLibraryDefinition& flib,
 // Replace the placeholder attribute values with the values specified in
 // instantiation attributes.
 Status ResolveFunctionBodyNodeAttrPlaceholders(
-    const AttrValueMap& func_instantiation_attr, NodeDef* node) {
+    const AttrSlice& func_instantiation_attr, NodeDef* node) {
   for (auto& attr : *node->mutable_attr()) {
     const string& placeholder = attr.second.placeholder();
     if (placeholder.empty()) continue;
 
-    auto it = func_instantiation_attr.find(placeholder);
-    if (it != func_instantiation_attr.end()) {
-      attr.second = it->second;
+    const AttrValue* attr_value = func_instantiation_attr.Find(placeholder);
+    if (attr_value) {
+      attr.second = *attr_value;
     } else {
       return errors::InvalidArgument("Can't resolve placeholder: ",
                                      placeholder);
@@ -277,15 +277,15 @@ Status GrapplerFunctionConnectivity::AsFunctionDefNode(
 
 Status GrapplerFunctionItemInstantiation::GetTypeAttr(
     const string& type_attr_name, DataType* data_type) const {
-  auto it = func_instantiation_attr_->find(type_attr_name);
-  if (it == func_instantiation_attr_->end()) {
+  const AttrValue* type_attr = func_instantiation_attr_.Find(type_attr_name);
+  if (type_attr == nullptr) {
     return errors::InvalidArgument("Type attribute ", type_attr_name,
                                    " is not defined");
-  } else if (it->second.type() == DT_INVALID) {
+  } else if (type_attr->type() == DT_INVALID) {
     return errors::InvalidArgument("Type attribute ", type_attr_name,
                                    " is not defined with a valid type");
   } else {
-    *data_type = it->second.type();
+    *data_type = type_attr->type();
   }
   return Status::OK();
 }
@@ -307,7 +307,7 @@ Status GrapplerFunctionItemInstantiation::GetArgType(
 }
 
 GrapplerFunctionItem::GrapplerFunctionItem(
-    string func_name, string description, AttrValueMap func_attr,
+    string func_name, string description, AttrSlice func_attr,
     std::vector<InputArgExpansion> input_arg_expansions,
     std::vector<OutputArgExpansion> output_arg_expansions,
     std::vector<string> keep_nodes, const int graph_def_version,
@@ -375,9 +375,7 @@ const std::size_t GrapplerFunctionItem::output_size() const {
   return output_arg_expansions_.size();
 }
 
-const AttrValueMap& GrapplerFunctionItem::func_attr() const {
-  return func_attr_;
-}
+const AttrSlice& GrapplerFunctionItem::func_attr() const { return func_attr_; }
 
 const GraphDef& GrapplerFunctionItem::function_body() const { return graph; }
 
@@ -418,13 +416,13 @@ bool IsParametrized(const FunctionDef& func) {
 }
 
 Status InstantiationTypeParameters(
-    const FunctionDef& func, const AttrValueMap& func_instantiation_attr,
+    const FunctionDef& func, const AttrSlice& func_instantiation_attr,
     std::unordered_map<string, DataType>* type_parameters) {
   if (!type_parameters->empty()) {
     return errors::InvalidArgument("Type parameters output map must be empty");
   }
 
-  GrapplerFunctionItemInstantiation instantiation(&func_instantiation_attr);
+  GrapplerFunctionItemInstantiation instantiation(func_instantiation_attr);
 
   const auto resolve_type_attr = [&](const OpDef::ArgDef& arg) {
     // Check if it's unknown and unresolved type.
@@ -446,7 +444,7 @@ Status InstantiationTypeParameters(
 }
 
 Status InstantiationBodyParameters(
-    const FunctionDef& func, const AttrValueMap& func_instantiation_attr,
+    const FunctionDef& func, const AttrSlice& func_instantiation_attr,
     std::unordered_map<string, AttrValue>* body_parameters) {
   if (!body_parameters->empty()) {
     return errors::InvalidArgument("Body parameters output map must be empty");
@@ -461,9 +459,10 @@ Status InstantiationBodyParameters(
         continue;
       }
 
-      auto it = func_instantiation_attr.find(placeholder);
-      if (it != func_instantiation_attr.end()) {
-        body_parameters->insert({placeholder, it->second});
+      const AttrValue* placeholder_value =
+          func_instantiation_attr.Find(placeholder);
+      if (placeholder_value) {
+        body_parameters->insert({placeholder, *placeholder_value});
       } else {
         return errors::InvalidArgument("Can't resolve placeholder: ",
                                        placeholder);
@@ -475,7 +474,7 @@ Status InstantiationBodyParameters(
 }
 
 Status MakeGrapplerFunctionItem(const FunctionDef& func,
-                                const AttrValueMap& func_instantiation_attr,
+                                const AttrSlice& func_instantiation_attr,
                                 const FunctionLibraryDefinition& flib,
                                 const int graph_def_version,
                                 GrapplerFunctionItem* item) {
@@ -495,7 +494,7 @@ Status MakeGrapplerFunctionItem(const FunctionDef& func,
   }
 
   // Helper methods to lookup function instantiation attributes
-  GrapplerFunctionItemInstantiation instantiation(&func_instantiation_attr);
+  GrapplerFunctionItemInstantiation instantiation(func_instantiation_attr);
 
   // Mapping from FunctionDef input format (name[:output][:position]) to
   // GraphDef input format (name[:position])
@@ -602,9 +601,9 @@ Status MakeGrapplerFunctionItem(const FunctionDef& func,
 
   *item = GrapplerFunctionItem(
       /*func_name=*/signature.name(), /*description=*/signature.description(),
-      /*func_attr=*/AttrValueMap(func.attr().begin(), func.attr().end()),
-      std::move(inputs), std::move(outputs), std::move(keep_nodes),
-      graph_def_version, is_stateful, std::move(function_body));
+      /*func_attr=*/AttrSlice(&func.attr()), std::move(inputs),
+      std::move(outputs), std::move(keep_nodes), graph_def_version, is_stateful,
+      std::move(function_body));
   return Status::OK();
 }
 
@@ -612,7 +611,7 @@ Status MakeGrapplerFunctionItem(const FunctionDef& func,
                                 const FunctionLibraryDefinition& flib,
                                 const int graph_def_version,
                                 GrapplerFunctionItem* item) {
-  return MakeGrapplerFunctionItem(func, AttrValueMap(), flib, graph_def_version,
+  return MakeGrapplerFunctionItem(func, AttrSlice(), flib, graph_def_version,
                                   item);
 }
 
