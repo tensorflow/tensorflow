@@ -17,6 +17,7 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/device_factory.h"
 #include "tensorflow/core/common_runtime/rendezvous_mgr.h"
+#include "tensorflow/core/common_runtime/step_stats_collector.h"
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/resource_mgr.h"
@@ -46,18 +47,18 @@ Status KernelAndDevice::Init(const NodeDef& ndef, FunctionLibraryRuntime* flib,
 }
 
 Status KernelAndDevice::Run(std::vector<Tensor>* inputs,
-                            std::vector<Tensor>* outputs,
-                            NodeExecStats* stats) {
+                            std::vector<Tensor>* outputs, NodeExecStats* stats,
+                            StepStats* step_stats) {
   ScopedStepContainer step_container(0, [this](const string& name) {
     device_->resource_manager()->Cleanup(name).IgnoreError();
   });
-  return this->Run(&step_container, inputs, outputs, stats);
+  return this->Run(&step_container, inputs, outputs, stats, step_stats);
 }
 
 Status KernelAndDevice::Run(ScopedStepContainer* step_container,
                             std::vector<Tensor>* inputs,
-                            std::vector<Tensor>* outputs,
-                            NodeExecStats* stats) {
+                            std::vector<Tensor>* outputs, NodeExecStats* stats,
+                            StepStats* step_stats) {
   gtl::InlinedVector<TensorValue, 4> input_vector;
   for (Tensor& t : *inputs) {
     input_vector.push_back(TensorValue(&t));
@@ -81,8 +82,11 @@ Status KernelAndDevice::Run(ScopedStepContainer* step_container,
   params.rendezvous = rendez_;
   params.cancellation_manager = &cm_;
   params.log_memory = log_memory_;
+  std::unique_ptr<StepStatsCollector> step_stats_collector;
   if (stats != nullptr) {
+    step_stats_collector.reset(new StepStatsCollector(step_stats));
     params.track_allocations = true;
+    params.stats_collector = step_stats_collector.get();
   }
   if (runner_ == nullptr) {
     params.runner = &default_runner_;
@@ -132,6 +136,7 @@ Status KernelAndDevice::Run(ScopedStepContainer* step_container,
     }
 
     ms->set_persistent_memory_size(context.persistent_memory_allocated());
+    step_stats_collector->Finalize();
   }
   return Status::OK();
 }

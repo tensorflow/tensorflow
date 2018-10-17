@@ -623,6 +623,29 @@ class FunctionTest(test.TestCase):
     # Ensure that v is watched again.
     self.assertAllEqual(backprop.implicit_grad(f)()[0][0], 2.0)
 
+  def testRunMetadata(self):
+
+    @function.defun
+    def f(x):
+      return x * x
+
+    with ops.device('cpu:0'):
+      f(constant_op.constant(1.0))  # pre-build the defun
+      context.enable_run_metadata()
+      f(constant_op.constant(1.0))
+    run_metadata = context.export_run_metadata()
+    context.disable_run_metadata()
+    step_stats = run_metadata.step_stats
+    self.assertGreater(len(step_stats.dev_stats), 0)
+    cpu_stats = step_stats.dev_stats[0]
+    self.assertEqual('/job:localhost/replica:0/task:0/device:CPU:0',
+                     cpu_stats.device)
+    # Testing for at least 2 because the function call should generate at most
+    # one entry in the step_stats; the ops inside function can generate
+    # arbitrarily many (placeholders, return identities, etc, might be included
+    # or not in the future, so shouldn't be tested for exactly.
+    self.assertGreaterEqual(len(cpu_stats.node_stats), 2)
+
   def testGraphModeCaptureVariable(self):
     with context.graph_mode(), self.cached_session() as sess:
 
