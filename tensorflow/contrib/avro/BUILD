@@ -12,7 +12,8 @@ load("//tensorflow:tensorflow.bzl", "tf_gen_op_libs")
 tf_custom_op_py_library(
     name = "avro",
     srcs = ["python/avro_record_dataset.py",
-            "python/parse_avro_record.py",],
+            "python/parse_avro_record.py",
+            "//tensorflow/contrib/avro/python/utils:avro_utils"],
     dso = [":python/_avro_record_dataset.so",
            ":python/_parse_avro_record.so",
            "//third_party/avro:libavro_so"
@@ -39,7 +40,8 @@ tf_custom_op_library(
     name = "python/_parse_avro_record.so",
     srcs = ["ops/parse_avro_record.cc"],
     deps = [
-        "//third_party/avro"
+        "//third_party/avro",
+        "@com_googlesource_code_re2//:re2",
     ],
 )
 

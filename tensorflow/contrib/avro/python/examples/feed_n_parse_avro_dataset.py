@@ -22,9 +22,9 @@ import tensorflow as tf
 
 from avro.datafile import DataFileWriter
 from avro.io import DatumWriter
-from avro.schema import parse
 from tensorflow.contrib.avro.python.avro_record_dataset import AvroRecordDataset
 from tensorflow.contrib.avro.python.parse_avro_record import parse_avro_record
+from tensorflow.contrib.avro.python.utils.avro_serialization import AvroParser
 
 if __name__ == '__main__':
     # Set the logging level
@@ -37,13 +37,23 @@ if __name__ == '__main__':
     filenames = [filename]
 
     # Define simple schema with an integer index and string data
-    schema = '''{"doc": "Row index with data string.",
-                 "type": "record",
-                 "name": "row",
-                 "fields": [
-                     {"name": "index", "type": "int"},
-                     {"name": "data", "type": "string"}
-                 ]}'''
+    schema = """
+    {
+       "doc":"Row index with data string.",
+       "type":"record",
+       "name":"row",
+       "fields":[
+          {
+             "name":"index",
+             "type":"int"
+          },
+          {
+             "name":"data",
+             "type":"string"
+          }
+       ]
+    }
+    """
 
     # Define some sample data
     data = [{
@@ -66,7 +76,7 @@ if __name__ == '__main__':
     # Write the avro data into the sample file
     with open(filename, 'wb') as out:
         writer = DataFileWriter(
-            out, DatumWriter(), writers_schema=parse(schema))
+            out, DatumWriter(), AvroParser(schema).get_schema_object())
         for datum in data:
             writer.append(datum)
         writer.close()

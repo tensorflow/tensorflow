@@ -19,24 +19,26 @@ from __future__ import print_function
 
 import logging
 import os
+import six
 import shutil
 import tempfile
 
-from avro.datafile import DataFileReader, DataFileWriter
-from avro.io import DatumReader, DatumWriter
-from avro.schema import parse as parse_schema
+from avro.io import DatumWriter
+from avro.datafile import DataFileWriter
 
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.platform import test
 from tensorflow.python.framework import test_util
 from tensorflow.python.framework.errors import OpError, OutOfRangeError
 from tensorflow.contrib.avro.python.avro_record_dataset import AvroRecordDataset
-from tensorflow.contrib.avro.python.utils.avro_serialization import AvroDeserializer
+from tensorflow.contrib.avro.python.utils.avro_serialization import \
+    AvroDeserializer, AvroParser, AvroSchemaReader, AvroFileToRecords
 
 
 class AvroRecordDatasetTest(test_util.TensorFlowTestCase):
     """
-    Tests the avro record dataset; especially schema resolution that is possible within that dataset
+    Tests the avro record dataset; especially schema resolution that is possible
+    within that dataset
     """
 
     def __init__(self, *args, **kwargs):
@@ -98,9 +100,9 @@ class AvroRecordDatasetTest(test_util.TensorFlowTestCase):
             {
                 "index": 0,
                 "boolean_type": True,
-                "bytes_type": "",
+                "bytes_type": b"",
                 "int_type": 0,
-                "long_type": 0L,
+                "long_type": 0,
                 "float_type": 0.0,
                 "double_type": 0.0,
                 "string_type": "",
@@ -125,11 +127,11 @@ class AvroRecordDatasetTest(test_util.TensorFlowTestCase):
                 "boolean_type":
                 False,
                 "bytes_type":
-                "SpecialChars@!#$%^&*()-_=+{}[]|/`~\\\"?",
+                b"SpecialChars@!#$%^&*()-_=+{}[]|/`~\\\"?",
                 "int_type":
                 2147483648 - 1,
                 "long_type":
-                9223372036854775807L,
+                9223372036854775807,
                 "float_type":
                 3.40282306074e+38,
                 "double_type":
@@ -154,11 +156,11 @@ class AvroRecordDatasetTest(test_util.TensorFlowTestCase):
                 "boolean_type":
                 False,
                 "bytes_type":
-                "ABCDEFGHIJKLMNOPQRSTUVWZabcdefghijklmnopqrstuvwz0123456789",
+                b"ABCDEFGHIJKLMNOPQRSTUVWZabcdefghijklmnopqrstuvwz0123456789",
                 "int_type":
                 -2147483648,
                 "long_type":
-                -9223372036854775807L - 1L,
+                -9223372036854775807 - 1,
                 "float_type":
                 -3.40282306074e+38,
                 "double_type":
@@ -176,18 +178,18 @@ class AvroRecordDatasetTest(test_util.TensorFlowTestCase):
                 }],
                 "map_features": {}
             },
-            # Check random data
+            # Random data
             {
                 "index":
                 3,
                 "boolean_type":
                 False,
                 "bytes_type":
-                "alkdfjiwij2oi2jp",
+                b"alkdfjiwij2oi2jp",
                 "int_type":
                 213648,
                 "long_type":
-                -234829L,
+                -234829,
                 "float_type":
                 2342.322,
                 "double_type":
@@ -211,49 +213,23 @@ class AvroRecordDatasetTest(test_util.TensorFlowTestCase):
             },
         ]
 
-    def _read_schema_from_file(self):
-        """
-        Reads the schema from a file into json string
-
-        :return: json string of the schema
-        """
-        with open(self.filename, 'rb') as file_handle:
-            reader = DataFileReader(file_handle, DatumReader())
-            return str(reader.datum_reader.writers_schema)
-
-    def _read_records_resolved(self, readers_schema):
-        """
-        Reads records as strings where each row is serialized separately
-
-        :param readers_schema: Schema used for reading
-
-        :return: An array of serialized string with one string per record
-        """
-        records = []
-        schema_object = parse_schema(readers_schema)
-        with open(self.filename, 'rb') as file_handle:
-            reader = DataFileReader(
-                file_handle, DatumReader(readers_schema=schema_object))
-            records += [record for record in reader]
-        return records
-
     @staticmethod
     def _write_records_to_file(records,
                                filename,
-                               writers_schema,
+                               writer_schema,
                                codec='deflate'):
         """
         Writes the string data into an avro encoded file
 
         :param records: Records to write
         :param filename: Filename for the file to be written
-        :param writers_schema: The schema used when writing the records
+        :param writer_schema: The schema used when writing the records
         :param codec: Compression codec used to write the avro file
         """
-        schema = parse_schema(writers_schema)
+        schema = AvroParser(writer_schema).get_schema_object()
         with open(filename, 'wb') as out:
             writer = DataFileWriter(
-                out, DatumWriter(), writers_schema=schema, codec=codec)
+                out, DatumWriter(), schema, codec=codec)
             for record in records:
                 writer.append(record)
             writer.close()
@@ -267,23 +243,23 @@ class AvroRecordDatasetTest(test_util.TensorFlowTestCase):
         self.filename = os.path.join(self.output_dir, "test.avro")
         AvroRecordDatasetTest._write_records_to_file(
             records=self.test_records,
-            writers_schema=self.full_schema,
+            writer_schema=self.full_schema,
             filename=self.filename)
 
     def tearDown(self):
         shutil.rmtree(self.output_dir)
 
-    def _load_records(self, readers_schema):
+    def _load_records(self, reader_schema):
         """
         Loads records using the avro dataset
 
         Typically used in tests that fail due to loading
 
-        :param readers_schema: The schema used when reading the dataset
+        :param reader_schema: The schema used when reading the dataset
         """
         with self.test_session() as sess:
             dataset = AvroRecordDataset(
-                filenames=[self.filename], schema=readers_schema)
+                filenames=[self.filename], schema=reader_schema)
             iterator = dataset.make_initializable_iterator()
             next_element = iterator.get_next()
             sess.run(iterator.initializer)
@@ -294,11 +270,12 @@ class AvroRecordDatasetTest(test_util.TensorFlowTestCase):
                     logging.info("Done")
                 break
 
-    def _load_and_compare_records(self, readers_schema=None):
+    def _load_and_compare_records(self, reader_schema=None):
         """
-        Reads records using avro and the avro dataset and compares the contents of the records
+        Reads records using avro and the avro dataset and compares the contents
+        of the records
 
-        :param readers_schema: Optional readers schema
+        :param reader_schema: Optional readers schema
         """
 
         # Parse cases in sequence
@@ -308,28 +285,28 @@ class AvroRecordDatasetTest(test_util.TensorFlowTestCase):
         with self.test_session(config=config) as sess:
 
             dataset = AvroRecordDataset(
-                filenames=[self.filename], schema=readers_schema)
+                filenames=[self.filename], schema=reader_schema)
             iterator = dataset.make_initializable_iterator()
             next_element = iterator.get_next()
 
-            writers_schema = self._read_schema_from_file()
+            writer_schema = AvroSchemaReader(self.filename).get_schema_json()
 
-            if readers_schema is None:
-                readers_schema = writers_schema
+            if reader_schema is None:
+                reader_schema = writer_schema
 
-            records_expected = self._read_records_resolved(
-                readers_schema=readers_schema)
+            records_expected = AvroFileToRecords(filename=self.filename,
+                                                 reader_schema=reader_schema).get_records()
 
             sess.run(iterator.initializer)
 
-            deserializer = AvroDeserializer(readers_schema)
+            deserializer = AvroDeserializer(reader_schema)
             while True:
                 i_record = 0
                 try:
                     record_actual = deserializer.deserialize(
                         sess.run(next_element))
                     record_expected = records_expected[record_actual['index']]
-                    for name, value_actual in record_actual.iteritems():
+                    for name, value_actual in six.iteritems(record_actual):
                         # The field must be present in the read record
                         assert name in record_expected, "Could not find {0} in read record.".format(
                             name)
@@ -365,7 +342,7 @@ class AvroRecordDatasetTest(test_util.TensorFlowTestCase):
             ]}'''
 
         with self.assertRaises(OpError) as error:
-            self._load_records(readers_schema=broken_schema)
+            self._load_records(reader_schema=broken_schema)
         logging.info(error)
 
     def test_incompatible_schema_fail(self):
@@ -384,7 +361,7 @@ class AvroRecordDatasetTest(test_util.TensorFlowTestCase):
             ]}'''
 
         with self.assertRaises(OpError) as error:
-            self._load_records(readers_schema=incompatible_schema)
+            self._load_records(reader_schema=incompatible_schema)
         logging.info(error)
 
     def test_wrong_file_name_fail(self):
@@ -393,20 +370,20 @@ class AvroRecordDatasetTest(test_util.TensorFlowTestCase):
         """
         with self.assertRaises(OpError) as error:
             self.filename = self.filename + ".abc"
-            self._load_records(readers_schema=self.full_schema)
+            self._load_records(reader_schema=self.full_schema)
         logging.info(error)
 
     def test_no_schema_resolution_by_supplying_no_schema(self):
         """
         Test no schema resolution by supplying no schema.
         """
-        self._load_and_compare_records(readers_schema=None)
+        self._load_and_compare_records(reader_schema=None)
 
     def test_no_schema_resolution_by_supplying_full_schema(self):
         """
         Test no schema resolution by supplying the original schema.
         """
-        self._load_and_compare_records(readers_schema=self.full_schema)
+        self._load_and_compare_records(reader_schema=self.full_schema)
 
     def test_resolve_to_sub_schema(self):
         """
@@ -420,7 +397,7 @@ class AvroRecordDatasetTest(test_util.TensorFlowTestCase):
                              {"name": "index", "type": "int"},
                              {"name": "boolean_type", "type": "boolean"}
                          ]}'''
-        self._load_and_compare_records(readers_schema=sub_schema)
+        self._load_and_compare_records(reader_schema=sub_schema)
 
     def test_extend_with_default_fail(self):
         """
@@ -436,7 +413,7 @@ class AvroRecordDatasetTest(test_util.TensorFlowTestCase):
                                   {"name": "string_type_with_default", "type": "string", "default": "unknown"}
                               ]}'''
         with self.assertRaises(OpError) as error:
-            self._load_and_compare_records(readers_schema=expanded_schema)
+            self._load_and_compare_records(reader_schema=expanded_schema)
         logging.info(error)
 
     def test_remove_field_in_record_in_array_fail(self):
@@ -471,7 +448,7 @@ class AvroRecordDatasetTest(test_util.TensorFlowTestCase):
                                               ]}'''
         with self.assertRaises(OpError) as error:
             self._load_and_compare_records(
-                readers_schema=collapse_record_in_array_schema)
+                reader_schema=collapse_record_in_array_schema)
         logging.info(error)
 
     def test_remove_field_in_record_in_map_fail(self):
@@ -499,7 +476,7 @@ class AvroRecordDatasetTest(test_util.TensorFlowTestCase):
                                                 }
                                             ]}'''
         self._load_and_compare_records(
-            readers_schema=collapse_record_in_map_schema)
+            reader_schema=collapse_record_in_map_schema)
 
     def test_up_cast(self):
         """
@@ -513,7 +490,7 @@ class AvroRecordDatasetTest(test_util.TensorFlowTestCase):
                                  {"name": "index", "type": "int"},
                                  {"name": "float_type", "type": "double"}
                             ]}'''
-        self._load_and_compare_records(readers_schema=up_cast_schema)
+        self._load_and_compare_records(reader_schema=up_cast_schema)
 
 
 if __name__ == "__main__":

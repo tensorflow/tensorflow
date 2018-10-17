@@ -17,9 +17,82 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import six
+
+from io import BytesIO
 from avro.io import DatumReader, DatumWriter, BinaryDecoder, BinaryEncoder
-from avro.schema import parse
-from StringIO import StringIO
+from avro.datafile import DataFileReader
+
+if six.PY2:
+    from avro.schema import parse as parse
+
+if six.PY3:
+    from avro.schema import Parse as parse
+
+
+class AvroFileToRecords(object):
+    def __init__(self, filename, reader_schema):
+        """
+        Reads records as strings where each row is serialized separately
+
+        :param filename: The filename from where to load the records
+        :param reader_schema: Schema used for reading
+
+        :return: An array of serialized string with one string per record
+        """
+        self.records = []
+        schema_object = AvroParser(reader_schema).get_schema_object()
+
+        with open(filename, 'rb') as file_handle:
+            if six.PY2:
+                datum_reader = DatumReader(readers_schema=schema_object)
+            elif six.PY3:
+                datum_reader = DatumReader(reader_schema=schema_object)
+            else:
+                raise RuntimeError("Only python 2 and python 3 are supported!")
+
+            reader = DataFileReader(file_handle, datum_reader)
+
+            self.records += [record for record in reader]
+
+    def get_records(self):
+        return self.records
+
+
+class AvroSchemaReader(object):
+    def __init__(self, filename):
+        """
+        Reads the schema from a file into json string
+        """
+        with open(filename, 'rb') as file_handle:
+            reader = DataFileReader(file_handle, DatumReader())
+            self.schema_json = ""
+            if six.PY2:
+                self.schema_json = str(reader.datum_reader.writers_schema)
+
+            elif six.PY3:
+                self.schema_json = str(reader.datum_reader.writer_schema)
+
+            else:
+                raise RuntimeError("Only python 2 and python 3 are supported!")
+
+    def get_schema_json(self):
+        return self.schema_json
+
+
+class AvroParser(object):
+
+    def __init__(self, schema_json):
+        """
+        Create an avro parser mostly to abstract away the API change between
+        avro and avro-python3
+
+        :param schema_json:
+        """
+        self.schema_object = parse(schema_json)
+
+    def get_schema_object(self):
+        return self.schema_object
 
 
 class AvroDeserializer(object):
@@ -30,20 +103,19 @@ class AvroDeserializer(object):
 
         :param schema_json: Json string of the schema.
         """
-        schema_object = parse(schema_json)
-        self.datum_reader = DatumReader(
-            writers_schema=schema_object, readers_schema=schema_object)
+        schema_object = AvroParser(schema_json).get_schema_object()
+        # No schema resolution
+        self.datum_reader = DatumReader(schema_object, schema_object)
 
-    def deserialize(self, serialized_str):
+    def deserialize(self, serialized_bytes):
         """
-        Deserialize an avro record from a string.
+        Deserialize an avro record from bytes.
 
-        :param serialized_str: The serialized input string.
+        :param serialized_bytes: The serialized bytes input.
 
         :return: The de-serialized record structure in python as map-list object.
         """
-        # Use the same schema for reading as used for writing -- no schema resolution here
-        return self.datum_reader.read(BinaryDecoder(StringIO(serialized_str)))
+        return self.datum_reader.read(BinaryDecoder(BytesIO(serialized_bytes)))
 
 
 class AvroSerializer(object):
@@ -52,10 +124,10 @@ class AvroSerializer(object):
         """
         Create an avro serializer.
 
-        :param schema_json:
+        :param schema_json: Json string of the schema.
         """
-        schema_object = parse(schema_json)
-        self.datum_writer = DatumWriter(writers_schema=schema_object)
+        self.datum_writer = DatumWriter(
+            AvroParser(schema_json).get_schema_object())
 
     def serialize(self, datum):
         """
@@ -63,8 +135,9 @@ class AvroSerializer(object):
 
         :param datum: The avro datum.
 
-        :return: The serialized string.
+        :return: The serialized bytes.
         """
-        string_writer = StringIO()
-        self.datum_writer.write(datum, BinaryEncoder(string_writer))
-        return string_writer.getvalue()
+        writer = BytesIO()
+        self.datum_writer.write(datum, BinaryEncoder(writer))
+        return writer.getvalue()
+

@@ -12,32 +12,52 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Example of parsing Avro data with sparse data."""
+"""Example of parsing Avro data with sparse data"""
 
 import tensorflow as tf
 
 from tensorflow.contrib.avro.python.parse_avro_record import parse_avro_record
-from tensorflow.contrib.avro.python.utils.avro_serialization import AvroSerializer
+from tensorflow.contrib.avro.python.utils.avro_serialization import \
+    AvroSerializer
 
-schema = '''{"doc": "Sparse features.",
-             "namespace": "com.linkedin.test.sparse",
-             "type": "record",
-             "name": "sparse_feature",
-             "fields": [
-                 {"name": "index", "type": "int"},
-                 {"name": "sparse_type", "type": {
-                     "type": "array",
-                     "items": {
-                         "type": "record",
-                         "name": "sparse_triplet",
-                         "fields": [
-                             {"name": "index", "type": "long"},
-                             {"name": "max_index", "type": "int"},
-                             {"name": "value", "type": "float"}
-                         ]
-                     }
-                 }}
-             ]}'''
+schema = """
+{
+   "doc":"Sparse features",
+   "namespace":"com.test.sparse",
+   "type":"record",
+   "name":"sparse_feature",
+   "fields":[
+      {
+         "name":"index",
+         "type":"int"
+      },
+      {
+         "name":"sparse_type",
+         "type":{
+            "type":"array",
+            "items":{
+               "type":"record",
+               "name":"sparse_triplet",
+               "fields":[
+                  {
+                     "name":"index",
+                     "type":"long"
+                  },
+                  {
+                     "name":"max_index",
+                     "type":"int"
+                  },
+                  {
+                     "name":"value",
+                     "type":"float"
+                  }
+               ]
+            }
+         }
+      }
+   ]
+}
+"""
 
 data = [{
     'index':
@@ -86,6 +106,8 @@ features = {
 }
 
 if __name__ == '__main__':
+    tf.logging.set_verbosity(tf.logging.INFO)
+
     # Create a serializer
     serializer = AvroSerializer(schema)
 
@@ -97,4 +119,4 @@ if __name__ == '__main__':
         input_str = tf.placeholder(tf.string)
         # Use the parse function
         tensors = parse_avro_record(input_str, schema, features)
-        print sess.run(tensors, feed_dict={input_str: serialized})
+        print(sess.run(tensors, feed_dict={input_str: serialized}))

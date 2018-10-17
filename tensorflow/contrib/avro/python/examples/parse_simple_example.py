@@ -12,22 +12,35 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Example of parsing Avro data with a simple schema."""
+"""Example of parsing Avro data with a simple schema"""
 
 import tensorflow as tf
 
 from tensorflow.contrib.avro.python.parse_avro_record import parse_avro_record
 from tensorflow.contrib.avro.python.utils.avro_serialization import AvroSerializer
 
-schema = '''{"doc": "Simple example.",
-             "namespace": "com.linkedin.demo.person",
-             "type": "record",
-             "name": "data_row",
-             "fields": [
-               {"name": "index", "type": "long"},
-               {"name": "first_name", "type": "string"},
-               {"name": "age", "type": "int"}
-            ]}'''
+schema = """
+{
+   "doc":"Simple example",
+   "namespace":"com.test.person",
+   "type":"record",
+   "name":"data_row",
+   "fields":[
+      {
+         "name":"index",
+         "type":"long"
+      },
+      {
+         "name":"first_name",
+         "type":"string"
+      },
+      {
+         "name":"age",
+         "type":"int"
+      }
+   ]
+}
+"""
 
 data = [{
     'index': 0,

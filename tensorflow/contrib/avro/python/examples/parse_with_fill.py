@@ -12,34 +12,63 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Example of parse Avro data and fill in with default values."""
+"""Example of parse Avro data and fill in default values"""
 
 import tensorflow as tf
 
 from tensorflow.contrib.avro.python.parse_avro_record import parse_avro_record
-from tensorflow.contrib.avro.python.utils.avro_serialization import AvroSerializer
+from tensorflow.contrib.avro.python.utils.avro_serialization import \
+    AvroSerializer
 
-schema = '''{"doc": "Fixed length lists.",
-                   "namespace": "com.linkedin.test.lists.fixed",
-                   "type": "record",
-                   "name": "data_row",
-                   "fields": [
-                     {"name": "float_list_type", "type": {"type": "array", "items": "float"}},
-                     {"name": "boolean_list_type", "type": {"type": "array", "items": "boolean"}},
-                     {"name": "string_list_type", "type": {"type": "array", "items": "string"}},
-                     {"name": "bytes_list_type", "type": {"type": "array", "items": "bytes"}}
-                   ]}'''
+schema = """
+{
+   "doc":"Fixed length lists",
+   "namespace":"com.test.lists.fixed.length",
+   "type":"record",
+   "name":"data_row",
+   "fields":[
+      {
+         "name":"float_list_type",
+         "type":{
+            "type":"array",
+            "items":"float"
+         }
+      },
+      {
+         "name":"boolean_list_type",
+         "type":{
+            "type":"array",
+            "items":"boolean"
+         }
+      },
+      {
+         "name":"string_list_type",
+         "type":{
+            "type":"array",
+            "items":"string"
+         }
+      },
+      {
+         "name":"bytes_list_type",
+         "type":{
+            "type":"array",
+            "items":"bytes"
+         }
+      }
+   ]
+}
+"""
 
 data = [{
     'float_list_type': [-1.0001, 0.1, 23.2],
     'boolean_list_type': [True],
     'string_list_type': ["a", "b", "c"],
-    'bytes_list_type': ["a", "b", "c"]
+    'bytes_list_type': [b"a", b"b", b"c"]
 }, {
     'float_list_type': [],
     'boolean_list_type': [],
     'string_list_type': ["d1", "e1"],
-    'bytes_list_type': ["d1"]
+    'bytes_list_type': [b"d1"]
 }]
 
 features = {
@@ -51,7 +80,7 @@ features = {
     tf.FixedLenSequenceFeature(
         [], tf.string, allow_missing=True, default_value="f"),
     'bytes_list_type':
-    tf.FixedLenFeature([3], tf.string, default_value=["d", "e", "f"])
+    tf.FixedLenFeature([3], tf.string, default_value=[b"d", b"e", b"f"])
 }
 
 if __name__ == '__main__':

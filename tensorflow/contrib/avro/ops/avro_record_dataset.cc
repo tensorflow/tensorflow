@@ -312,15 +312,16 @@ class AvroRecordDatasetOp : public DatasetOpKernel {
     OP_REQUIRES(ctx, buffer_size >= 256,
                 errors::InvalidArgument("`buffer_size` must be >= 256 B"));
 
-    *output = new Dataset(std::move(filenames), schema, buffer_size);
+    *output = new Dataset(ctx, std::move(filenames), schema, buffer_size);
   }
 
  private:
   class Dataset : public DatasetBase {
    public:
-    explicit Dataset(std::vector<string> filenames, const string& schema,
-                     int64 buffer_size)
-        : filenames_(std::move(filenames)),
+    explicit Dataset(OpKernelContext* ctx, std::vector<string> filenames,
+                     const string& schema, int64 buffer_size)
+        : DatasetBase(DatasetContext(ctx)),
+          filenames_(std::move(filenames)),
           options_(AvroReaderOptions::CreateAvroReaderOptions(schema,
                                                               buffer_size)) {}
 
@@ -342,6 +343,58 @@ class AvroRecordDatasetOp : public DatasetOpKernel {
     }
 
     string DebugString() const override { return "AvroRecordDatasetOp::Dataset"; }
+
+   protected:
+    Status AsGraphDefInternal(SerializationContext* ctx,
+                              DatasetGraphDefBuilder* b,
+                              Node** output) const override {
+
+      // TODO(fraudies): Implement me, below is a copy of the code from the
+      // protobuf example reader
+      /*
+      Node* input_graph_node = nullptr;
+      TF_RETURN_IF_ERROR(b->AddInputDataset(ctx, input_, &input_graph_node));
+
+      Node* num_parallle_calls_node;
+      std::vector<Node*> dense_defaults_nodes;
+      dense_defaults_nodes.reserve(dense_defaults_.size());
+
+      TF_RETURN_IF_ERROR(
+          b->AddScalar(num_parallel_calls_, &num_parallle_calls_node));
+
+      for (const Tensor& dense_default : dense_defaults_) {
+        Node* node;
+        TF_RETURN_IF_ERROR(b->AddTensor(dense_default, &node));
+        dense_defaults_nodes.emplace_back(node);
+      }
+
+      AttrValue sparse_keys_attr;
+      AttrValue dense_keys_attr;
+      AttrValue sparse_types_attr;
+      AttrValue dense_attr;
+      AttrValue dense_shapes_attr;
+
+      b->BuildAttrValue(sparse_keys_, &sparse_keys_attr);
+      b->BuildAttrValue(dense_keys_, &dense_keys_attr);
+      b->BuildAttrValue(sparse_types_, &sparse_types_attr);
+      b->BuildAttrValue(dense_types_, &dense_attr);
+      b->BuildAttrValue(dense_shapes_, &dense_shapes_attr);
+
+      TF_RETURN_IF_ERROR(b->AddDataset(this,
+                                       {
+                                           {0, input_graph_node},
+                                           {1, num_parallle_calls_node},
+                                       },
+                                       {{2, dense_defaults_nodes}},
+                                       {{"sparse_keys", sparse_keys_attr},
+                                        {"dense_keys", dense_keys_attr},
+                                        {"sparse_types", sparse_types_attr},
+                                        {"Tdense", dense_attr},
+                                        {"dense_shapes", dense_shapes_attr}},
+                                       output));
+                                       */
+      return Status::OK();
+   }
 
    private:
     class Iterator : public DatasetIterator<Dataset> {

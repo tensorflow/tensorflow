@@ -19,6 +19,7 @@ from __future__ import print_function
 
 import logging
 import numpy as np
+import six
 
 from tensorflow.python.framework.errors import OpError
 from tensorflow.python.framework import dtypes as tf_types
@@ -27,6 +28,7 @@ from tensorflow.python.ops import parsing_ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import test_util
+from tensorflow.python.util import compat
 
 from tensorflow.contrib.avro.python.utils.avro_serialization import AvroSerializer
 from tensorflow.contrib.avro.python.parse_avro_record import parse_avro_record
@@ -66,13 +68,13 @@ class ParseAvroRecordTest(test_util.TensorFlowTestCase):
         return [serializer.serialize(record) for record in records_to_serialize]
 
     def _compare_all_tensors(self, schema, serialized_records, features,
-                             tensors_expected):
+        tensors_expected):
         with self.test_session() as sess:
             str_input = array_ops.placeholder(tf_types.string)
             parsed = parse_avro_record(str_input, schema, features)
             tensors = sess.run(
                 parsed, feed_dict={str_input: serialized_records})
-            for key, value in features.iteritems():
+            for key, value in six.iteritems(features):
                 tensor_expected = tensors_expected[key]
                 tensor_actual = tensors[key]
                 self.assert_same_tensor(tensor_expected, tensor_actual)
@@ -90,66 +92,91 @@ class ParseAvroRecordTest(test_util.TensorFlowTestCase):
         logging.info("Running {}".format(
             self.test_primitive_types.__func__.__name__))
 
-        schema = '''{"doc": "Primitive types.",
-                       "namespace": "com.test.primitive",
-                       "type": "record",
-                       "name": "data_row",
-                       "fields": [
-                         {"name": "float_type", "type": "float"},
-                         {"name": "double_type", "type": "double"},
-                         {"name": "long_type", "type": "long"},
-                         {"name": "int_type", "type": "int"},
-                         {"name": "boolean_type", "type": "boolean"},
-                         {"name": "string_type", "type": "string"},
-                         {"name": "bytes_type", "type": "bytes"}
-                       ]}'''
+        schema = """
+        {  
+           "doc":"Primitive types",
+           "namespace":"com.test.primitive",
+           "type":"record",
+           "name":"data_row",
+           "fields":[  
+              {  
+                 "name":"float_type",
+                 "type":"float"
+              },
+              {  
+                 "name":"double_type",
+                 "type":"double"
+              },
+              {  
+                 "name":"long_type",
+                 "type":"long"
+              },
+              {  
+                 "name":"int_type",
+                 "type":"int"
+              },
+              {  
+                 "name":"boolean_type",
+                 "type":"boolean"
+              },
+              {  
+                 "name":"string_type",
+                 "type":"string"
+              },
+              {  
+                 "name":"bytes_type",
+                 "type":"bytes"
+              }
+           ]
+        }
+        """
 
         records_to_serialize = [{
             'float_type': 0.0,
             'double_type': 0.0,
-            'long_type': 0L,
+            'long_type': 0,
             'int_type': 0,
             'boolean_type': False,
             'string_type': "",
-            'bytes_type': ""
+            'bytes_type': b""
         }, {
             'float_type':
-            3.40282306074e+38,
+                3.40282306074e+38,
             'double_type':
-            1.7976931348623157e+308,
+                1.7976931348623157e+308,
             'long_type':
-            9223372036854775807L,
+                9223372036854775807,
             'int_type':
-            2147483648 - 1,
+                2147483648 - 1,
             'boolean_type':
-            True,
+                True,
             'string_type':
-            "SpecialChars@!#$%^&*()-_=+{}[]|/`~\\\'?",
+                "SpecialChars@!#$%^&*()-_=+{}[]|/`~\\\'?",
             'bytes_type':
-            "SpecialChars@!#$%^&*()-_=+{}[]|/`~\\\'?"
+                b"SpecialChars@!#$%^&*()-_=+{}[]|/`~\\\'?"
         }, {
             'float_type':
-            -3.40282306074e+38,
+                -3.40282306074e+38,
             'double_type':
-            -1.7976931348623157e+308,
+                -1.7976931348623157e+308,
             'long_type':
-            -9223372036854775807L - 1L,
+                -9223372036854775807 - 1,
             'int_type':
-            -2147483648,
+                -2147483648,
             'boolean_type':
-            True,
+                True,
             'string_type':
-            "ABCDEFGHIJKLMNOPQRSTUVWZabcdefghijklmnopqrstuvwz0123456789",
+                "ABCDEFGHIJKLMNOPQRSTUVWZabcdefghijklmnopqrstuvwz0123456789",
             'bytes_type':
-            "ABCDEFGHIJKLMNOPQRSTUVWZabcdefghijklmnopqrstuvwz0123456789"
+                b"ABCDEFGHIJKLMNOPQRSTUVWZabcdefghijklmnopqrstuvwz0123456789"
         }, {
             'float_type': 2342.322,
             'double_type': 2.2250738585072014e-308,
-            'long_type': -234829L,
+            'long_type': -234829,
             'int_type': 213648,
             'boolean_type': False,
             'string_type': "alkdfjiwij2oi2jp",
-            'bytes_type': "aljk2ijlqn,w"
+            'bytes_type': b"aljk2ijlqn,w"
         }]
 
         features = {
@@ -164,32 +191,34 @@ class ParseAvroRecordTest(test_util.TensorFlowTestCase):
 
         tensors_expected = {
             'float_type':
-            np.asarray([0.0, 3.40282306074e+38, -3.40282306074e+38, 2342.322]),
+                np.asarray([0.0, 3.40282306074e+38, -3.40282306074e+38, 2342.322]),
             'double_type':
-            np.asarray([
-                0.0, 1.7976931348623157e+308, -1.7976931348623157e+308,
-                2.2250738585072014e-308
-            ]),
+                np.asarray([
+                    0.0, 1.7976931348623157e+308, -1.7976931348623157e+308,
+                    2.2250738585072014e-308
+                ]),
             'long_type':
-            np.asarray([
-                0L, 9223372036854775807L, -9223372036854775807L - 1L, -234829L
-            ]),
+                np.asarray([
+                    0, 9223372036854775807, -9223372036854775807 - 1, -234829
+                ]),
             'int_type':
-            np.asarray([0, 2147483648 - 1, -2147483648, 213648]),
+                np.asarray([0, 2147483648 - 1, -2147483648, 213648]),
             'boolean_type':
-            np.asarray([False, True, True, False]),
+                np.asarray([False, True, True, False]),
             'string_type':
-            np.asarray([
-                "", "SpecialChars@!#$%^&*()-_=+{}[]|/`~\\\'?",
-                "ABCDEFGHIJKLMNOPQRSTUVWZabcdefghijklmnopqrstuvwz0123456789",
-                "alkdfjiwij2oi2jp"
-            ]),
+                np.asarray([
+                    compat.as_bytes(""),
+                    compat.as_bytes("SpecialChars@!#$%^&*()-_=+{}[]|/`~\\\'?"),
+                    compat.as_bytes("ABCDEFGHIJKLMNOPQRSTUVWZabcdefghijklmnopqrstuvwz0123456789"),
+                    compat.as_bytes("alkdfjiwij2oi2jp")
+                ]),
             'bytes_type':
-            np.asarray([
-                "", "SpecialChars@!#$%^&*()-_=+{}[]|/`~\\\'?",
-                "ABCDEFGHIJKLMNOPQRSTUVWZabcdefghijklmnopqrstuvwz0123456789",
-                "aljk2ijlqn,w"
-            ])
+                np.asarray([
+                    compat.as_bytes(""),
+                    compat.as_bytes("SpecialChars@!#$%^&*()-_=+{}[]|/`~\\\'?"),
+                    compat.as_bytes("ABCDEFGHIJKLMNOPQRSTUVWZabcdefghijklmnopqrstuvwz0123456789"),
+                    compat.as_bytes("aljk2ijlqn,w")
+                ])
         }
 
         self._compare_all_tensors(
@@ -198,35 +227,82 @@ class ParseAvroRecordTest(test_util.TensorFlowTestCase):
                 schema, records_to_serialize), features, tensors_expected)
 
     def test_fixed_length_lists(self):
-        schema = '''{"doc": "Fixed length lists.",
-                   "namespace": "com.test.lists.fixed",
-                   "type": "record",
-                   "name": "data_row",
-                   "fields": [
-                     {"name": "float_list_type", "type": {"type": "array", "items": "float"}},
-                     {"name": "double_list_type", "type": {"type": "array", "items": "double"}},
-                     {"name": "long_list_type", "type": {"type": "array", "items": "long"}},
-                     {"name": "int_list_type", "type": {"type": "array", "items": "int"}},
-                     {"name": "boolean_list_type", "type": {"type": "array", "items": "boolean"}},
-                     {"name": "string_list_type", "type": {"type": "array", "items": "string"}},
-                     {"name": "bytes_list_type", "type": {"type": "array", "items": "bytes"}}
-                   ]}'''
+        schema = """
+        {
+           "doc":"Fixed length lists",
+           "namespace":"com.test.lists.fixed",
+           "type":"record",
+           "name":"data_row",
+           "fields":[
+              {
+                 "name":"float_list_type",
+                 "type":{
+                    "type":"array",
+                    "items":"float"
+                 }
+              },
+              {
+                 "name":"double_list_type",
+                 "type":{
+                    "type":"array",
+                    "items":"double"
+                 }
+              },
+              {
+                 "name":"long_list_type",
+                 "type":{
+                    "type":"array",
+                    "items":"long"
+                 }
+              },
+              {
+                 "name":"int_list_type",
+                 "type":{
+                    "type":"array",
+                    "items":"int"
+                 }
+              },
+              {
+                 "name":"boolean_list_type",
+                 "type":{
+                    "type":"array",
+                    "items":"boolean"
+                 }
+              },
+              {
+                 "name":"string_list_type",
+                 "type":{
+                    "type":"array",
+                    "items":"string"
+                 }
+              },
+              {
+                 "name":"bytes_list_type",
+                 "type":{
+                    "type":"array",
+                    "items":"bytes"
+                 }
+              }
+           ]
+        }
+        """
+
         records_to_serialize = [{
             'float_list_type': [-1.0001, 0.1, 23.2],
             'double_list_type': [-20.0, 22.33],
-            'long_list_type': [-15L, 0L, 3022123019L],
+            'long_list_type': [-15, 0, 3022123019],
             'int_list_type': [-20, -1, 2934],
             'boolean_list_type': [True],
             'string_list_type': ["abc", "defg", "hijkl"],
-            'bytes_list_type': ["abc", "defg", "hijkl"]
+            'bytes_list_type': [b"abc", b"defg", b"hijkl"]
         }, {
             'float_list_type': [-3.22, 3298.233, 3939.1213],
             'double_list_type': [-2332.324, 2.665439],
-            'long_list_type': [-1543L, 233L, 322L],
+            'long_list_type': [-1543, 233, 322],
             'int_list_type': [-5, 342, -3222],
             'boolean_list_type': [False],
             'string_list_type': ["mnop", "qrs", "tuvwz"],
-            'bytes_list_type': ["mnop", "qrs", "tuvwz"]
+            'bytes_list_type': [b"mnop", b"qrs", b"tuvwz"]
         }]
 
         features = {
@@ -245,19 +321,25 @@ class ParseAvroRecordTest(test_util.TensorFlowTestCase):
 
         tensors_expected = {
             'float_list_type':
-            np.asarray([[-1.0001, 0.1, 23.2], [-3.22, 3298.233, 3939.1213]]),
+                np.asarray([[-1.0001, 0.1, 23.2], [-3.22, 3298.233, 3939.1213]]),
             'double_list_type':
-            np.asarray([[-20.0, 22.33], [-2332.324, 2.665439]]),
+                np.asarray([[-20.0, 22.33], [-2332.324, 2.665439]]),
             'long_list_type':
-            np.asarray([[-15L, 0L, 3022123019L], [-1543L, 233L, 322L]]),
+                np.asarray([[-15, 0, 3022123019], [-1543, 233, 322]]),
             'int_list_type':
-            np.asarray([[-20, -1, 2934], [-5, 342, -3222]]),
+                np.asarray([[-20, -1, 2934], [-5, 342, -3222]]),
             'boolean_list_type':
-            np.asarray([[True], [False]]),
+                np.asarray([[True], [False]]),
             'string_list_type':
-            np.asarray([["abc", "defg", "hijkl"], ["mnop", "qrs", "tuvwz"]]),
+                np.asarray([[compat.as_bytes("abc"), compat.as_bytes("defg"),
+                             compat.as_bytes("hijkl")],
+                            [compat.as_bytes("mnop"), compat.as_bytes("qrs"),
+                             compat.as_bytes("tuvwz")]]),
             'bytes_list_type':
-            np.asarray([["abc", "defg", "hijkl"], ["mnop", "qrs", "tuvwz"]])
+                np.asarray([[compat.as_bytes("abc"), compat.as_bytes("defg"),
+                             compat.as_bytes("hijkl")],
+                            [compat.as_bytes("mnop"), compat.as_bytes("qrs"),
+                             compat.as_bytes("tuvwz")]])
         }
 
         self._compare_all_tensors(
@@ -266,36 +348,82 @@ class ParseAvroRecordTest(test_util.TensorFlowTestCase):
                 schema, records_to_serialize), features, tensors_expected)
 
     def test_variable_length_lists(self):
-        schema = '''{"doc": "Variable length lists.",
-                     "namespace": "com.test.lists.var",
-                     "type": "record",
-                     "name": "data_row",
-                     "fields": [
-                       {"name": "float_list_type", "type": {"type": "array", "items": "float"}},
-                       {"name": "double_list_type", "type": {"type": "array", "items": "double"}},
-                       {"name": "long_list_type", "type": {"type": "array", "items": "long"}},
-                       {"name": "int_list_type", "type": {"type": "array", "items": "int"}},
-                       {"name": "boolean_list_type", "type": {"type": "array", "items": "boolean"}},
-                       {"name": "string_list_type", "type": {"type": "array", "items": "string"}},
-                       {"name": "bytes_list_type", "type": {"type": "array", "items": "bytes"}}
-                    ]}'''
+        schema = """
+        {
+           "doc":"Variable length lists",
+           "namespace":"com.test.lists.variable.length",
+           "type":"record",
+           "name":"data_row",
+           "fields":[
+              {
+                 "name":"float_list_type",
+                 "type":{
+                    "type":"array",
+                    "items":"float"
+                 }
+              },
+              {
+                 "name":"double_list_type",
+                 "type":{
+                    "type":"array",
+                    "items":"double"
+                 }
+              },
+              {
+                 "name":"long_list_type",
+                 "type":{
+                    "type":"array",
+                    "items":"long"
+                 }
+              },
+              {
+                 "name":"int_list_type",
+                 "type":{
+                    "type":"array",
+                    "items":"int"
+                 }
+              },
+              {
+                 "name":"boolean_list_type",
+                 "type":{
+                    "type":"array",
+                    "items":"boolean"
+                 }
+              },
+              {
+                 "name":"string_list_type",
+                 "type":{
+                    "type":"array",
+                    "items":"string"
+                 }
+              },
+              {
+                 "name":"bytes_list_type",
+                 "type":{
+                    "type":"array",
+                    "items":"bytes"
+                 }
+              }
+           ]
+        }
+        """
 
         records_to_serialize = [{
             'float_list_type': [-1.0001, 0.1],
             'double_list_type': [-20.0, 22.33, 234.32334],
-            'long_list_type': [-15L, 0L, 3022123019L],
+            'long_list_type': [-15, 0, 3022123019],
             'int_list_type': [-20, -1],
             'boolean_list_type': [True, False],
             'string_list_type': ["abc", "defg"],
-            'bytes_list_type': ["abc", "defgsd"]
+            'bytes_list_type': [b"abc", b"defgsd"]
         }, {
             'float_list_type': [-3.22, 3298.233, 3939.1213],
             'double_list_type': [-2332.324, 2.665439],
-            'long_list_type': [-1543L, 233L, 322L],
+            'long_list_type': [-1543, 233, 322],
             'int_list_type': [-5, 342, -3222],
             'boolean_list_type': [False],
             'string_list_type': ["mnop", "qrs", "tuvwz"],
-            'bytes_list_type': ["mnop", "qrs", "tuvwz"]
+            'bytes_list_type': [b"mnop", b"qrs", b"tuvwz"]
         }]
 
         features = {
@@ -310,38 +438,42 @@ class ParseAvroRecordTest(test_util.TensorFlowTestCase):
 
         tensors_expected = {
             'float_list_type':
-            sparse_tensor.SparseTensorValue(
-                np.asarray([[0, 0], [0, 1], [1, 0], [1, 1], [1, 2]]),
-                np.asarray([-1.0001, 0.1, -3.22, 3298.233, 3939.1213]),
-                np.asarray([2, 3])),
+                sparse_tensor.SparseTensorValue(
+                    np.asarray([[0, 0], [0, 1], [1, 0], [1, 1], [1, 2]]),
+                    np.asarray([-1.0001, 0.1, -3.22, 3298.233, 3939.1213]),
+                    np.asarray([2, 3])),
             'double_list_type':
-            sparse_tensor.SparseTensorValue(
-                np.asarray([[0, 0], [0, 1], [0, 2], [1, 0], [1, 1]]),
-                np.asarray([-20.0, 22.33, 234.32334, -2332.324, 2.665439]),
-                np.asarray([2, 3])),
+                sparse_tensor.SparseTensorValue(
+                    np.asarray([[0, 0], [0, 1], [0, 2], [1, 0], [1, 1]]),
+                    np.asarray([-20.0, 22.33, 234.32334, -2332.324, 2.665439]),
+                    np.asarray([2, 3])),
             'long_list_type':
-            sparse_tensor.SparseTensorValue(
-                np.asarray([[0, 0], [0, 1], [0, 2], [1, 0], [1, 1], [1, 2]]),
-                np.asarray([-15L, 0L, 3022123019L, -1543L, 233L, 322L]),
-                np.asarray([2, 3])),
+                sparse_tensor.SparseTensorValue(
+                    np.asarray([[0, 0], [0, 1], [0, 2], [1, 0], [1, 1], [1, 2]]),
+                    np.asarray([-15, 0, 3022123019, -1543, 233, 322]),
+                    np.asarray([2, 3])),
             'int_list_type':
-            sparse_tensor.SparseTensorValue(
-                np.asarray([[0, 0], [0, 1], [1, 0], [1, 1], [1, 2]]),
-                np.asarray([-20, -1, -5, 342, -3222]), np.asarray([2, 3])),
+                sparse_tensor.SparseTensorValue(
+                    np.asarray([[0, 0], [0, 1], [1, 0], [1, 1], [1, 2]]),
+                    np.asarray([-20, -1, -5, 342, -3222]), np.asarray([2, 3])),
             'boolean_list_type':
-            sparse_tensor.SparseTensorValue(
-                np.asarray([[0, 0], [0, 1], [1, 0]]),
-                np.asarray([True, False, False]), np.asarray([2, 2])),
+                sparse_tensor.SparseTensorValue(
+                    np.asarray([[0, 0], [0, 1], [1, 0]]),
+                    np.asarray([True, False, False]), np.asarray([2, 2])),
             'string_list_type':
-            sparse_tensor.SparseTensorValue(
-                np.asarray([[0, 0], [0, 1], [1, 0], [1, 1], [1, 2]]),
-                np.asarray(["abc", "defg", "mnop", "qrs", "tuvwz"]),
-                np.asarray([2, 3])),
+                sparse_tensor.SparseTensorValue(
+                    np.asarray([[0, 0], [0, 1], [1, 0], [1, 1], [1, 2]]),
+                    np.asarray([compat.as_bytes("abc"), compat.as_bytes("defg"),
+                                compat.as_bytes("mnop"), compat.as_bytes("qrs"),
+                                compat.as_bytes("tuvwz")]),
+                    np.asarray([2, 3])),
             'bytes_list_type':
-            sparse_tensor.SparseTensorValue(
-                np.asarray([[0, 0], [0, 1], [1, 0], [1, 1], [1, 2]]),
-                np.asarray(["abc", "defgsd", "mnop", "qrs", "tuvwz"]),
-                np.asarray([2, 3]))
+                sparse_tensor.SparseTensorValue(
+                    np.asarray([[0, 0], [0, 1], [1, 0], [1, 1], [1, 2]]),
+                    np.asarray([compat.as_bytes("abc"), compat.as_bytes("defgsd"),
+                                compat.as_bytes("mnop"), compat.as_bytes("qrs"),
+                                compat.as_bytes("tuvwz")]),
+                    np.asarray([2, 3]))
         }
 
         self._compare_all_tensors(
@@ -350,26 +482,40 @@ class ParseAvroRecordTest(test_util.TensorFlowTestCase):
                 schema, records_to_serialize), features, tensors_expected)
 
     def test_sparse_features(self):
-        schema = '''{"doc": "Sparse features.",
-                     "namespace": "com.test.sparse",
-                     "type": "record",
-                     "name": "sparse_feature",
-                     "fields": [
-                       {"name": "sparse_type",
-                         "type":
-                         {
-                            "type": "array",
-                            "items": {
-                                "type": "record",
-                                "name": "sparse_triplet",
-                                "fields": [
-                                    {"name": "index", "type": "long"},
-                                    {"name": "max_index", "type": "int"},
-                                    {"name": "value", "type": "float"}
-                                ]
-                            }
-                         }
-                     }]}'''
+        schema = """
+        {
+           "doc":"Sparse features",
+           "namespace":"com.test.sparse.features",
+           "type":"record",
+           "name":"sparse_feature",
+           "fields":[
+              {
+                 "name":"sparse_type",
+                 "type":{
+                    "type":"array",
+                    "items":{
+                       "type":"record",
+                       "name":"sparse_triplet",
+                       "fields":[
+                          {
+                             "name":"index",
+                             "type":"long"
+                          },
+                          {
+                             "name":"max_index",
+                             "type":"int"
+                          },
+                          {
+                             "name":"value",
+                             "type":"float"
+                          }
+                       ]
+                    }
+                 }
+              }
+           ]
+        }        
+        """
 
         records_to_serialize = [{
             'sparse_type': [{
@@ -399,18 +545,18 @@ class ParseAvroRecordTest(test_util.TensorFlowTestCase):
 
         features = {
             'sparse_type':
-            parsing_ops.SparseFeature(
-                index_key='index',
-                value_key='value',
-                dtype=tf_types.float32,
-                size=10)
+                parsing_ops.SparseFeature(
+                    index_key='index',
+                    value_key='value',
+                    dtype=tf_types.float32,
+                    size=10)
         }
 
         tensors_expected = {
             'sparse_type':
-            sparse_tensor.SparseTensorValue(
-                np.asarray([[0, 0], [0, 3], [0, 5], [1, 0], [1, 9]]),
-                np.asarray([5.0, 1.0, 7.0, 2.0, 1.0]), np.asarray([2, 10]))
+                sparse_tensor.SparseTensorValue(
+                    np.asarray([[0, 0], [0, 3], [0, 5], [1, 0], [1, 9]]),
+                    np.asarray([5.0, 1.0, 7.0, 2.0, 1.0]), np.asarray([2, 10]))
         }
 
         self._compare_all_tensors(
@@ -419,46 +565,76 @@ class ParseAvroRecordTest(test_util.TensorFlowTestCase):
                 schema, records_to_serialize), features, tensors_expected)
 
     def test_nesting(self):
-        schema = '''{"doc": "Nested records, arrays, lists, and link resolution.",
-                     "namespace": "com.test.nested",
-                     "type": "record",
-                     "name": "test_nested_record",
-                     "fields": [
-                         {"name": "nested_record",
-                          "type": {
-                               "type": "record",
-                               "name": "nested_values",
-                               "fields": [
-                                   {"name": "nested_int", "type": "int"},
-                                   {"name": "nested_float_list", "type": {"type": "array", "items": "float"}}
-                                   ]}
-                         },
-                         {"name": "list_of_records",
-                          "type": {
-                               "type": "array",
-                               "items": {
-                                   "type": "record",
-                                   "name": "person",
-                                   "fields": [
-                                       {"name": "first_name", "type": "string"},
-                                       {"name": "age", "type": "int"}
-                                   ]
-                               }
-                           }
-                         },
-                         {"name": "map_of_records",
-                          "type": {
-                               "type": "map",
-                               "values": {
-                                   "type": "record",
-                                   "name": "secondPerson",
-                                   "fields": [
-                                       {"name": "first_name", "type": "string"},
-                                       {"name": "age", "type": "int"}
-                                   ]
-                               }
-                           }
-                         }]}'''
+        schema = """
+        {
+           "doc":"Nested records, arrays, lists, and link resolution",
+           "namespace":"com.test.nested.records",
+           "type":"record",
+           "name":"test_nested_record",
+           "fields":[
+              {
+                 "name":"nested_record",
+                 "type":{
+                    "type":"record",
+                    "name":"nested_values",
+                    "fields":[
+                       {
+                          "name":"nested_int",
+                          "type":"int"
+                       },
+                       {
+                          "name":"nested_float_list",
+                          "type":{
+                             "type":"array",
+                             "items":"float"
+                          }
+                       }
+                    ]
+                 }
+              },
+              {
+                 "name":"list_of_records",
+                 "type":{
+                    "type":"array",
+                    "items":{
+                       "type":"record",
+                       "name":"person",
+                       "fields":[
+                          {
+                             "name":"first_name",
+                             "type":"string"
+                          },
+                          {
+                             "name":"age",
+                             "type":"int"
+                          }
+                       ]
+                    }
+                 }
+              },
+              {
+                 "name":"map_of_records",
+                 "type":{
+                    "type":"map",
+                    "values":{
+                       "type":"record",
+                       "name":"secondPerson",
+                       "fields":[
+                          {
+                             "name":"first_name",
+                             "type":"string"
+                          },
+                          {
+                             "name":"age",
+                             "type":"int"
+                          }
+                       ]
+                    }
+                 }
+              }
+           ]
+        }
+        """
 
         records_to_serialize = [{
             'nested_record': {
@@ -527,24 +703,26 @@ class ParseAvroRecordTest(test_util.TensorFlowTestCase):
 
         features = {
             'nested_record.nested_int':
-            parsing_ops.FixedLenFeature([], tf_types.int32),
+                parsing_ops.FixedLenFeature([], tf_types.int32),
             'nested_record.nested_float_list':
-            parsing_ops.FixedLenFeature([2], tf_types.float32),
+                parsing_ops.FixedLenFeature([2], tf_types.float32),
             'list_of_records[0].first_name':
-            parsing_ops.FixedLenFeature([1], tf_types.string),
+                parsing_ops.FixedLenFeature([1], tf_types.string),
             "map_of_records['second'].age":
-            parsing_ops.FixedLenFeature([1], tf_types.int32)
+                parsing_ops.FixedLenFeature([1], tf_types.int32)
         }
 
         tensors_expected = {
             'nested_record.nested_int':
-            np.asarray([0, 5, 7]),
+                np.asarray([0, 5, 7]),
             'nested_record.nested_float_list':
-            np.asarray([[0.0, 10.0], [-2.0, 7.0], [3.0, 4.0]]),
+                np.asarray([[0.0, 10.0], [-2.0, 7.0], [3.0, 4.0]]),
             'list_of_records[0].first_name':
-            np.asarray([["Herbert"], ["Doug"], ["Karl"]]),
+                np.asarray([[compat.as_bytes("Herbert")],
+                            [compat.as_bytes("Doug")],
+                            [compat.as_bytes("Karl")]]),
             "map_of_records['second'].age":
-            np.asarray([[30], [66], [21]])
+                np.asarray([[30], [66], [21]])
         }
 
         self._compare_all_tensors(
@@ -553,26 +731,40 @@ class ParseAvroRecordTest(test_util.TensorFlowTestCase):
                 schema, records_to_serialize), features, tensors_expected)
 
     def test_nested_with_asterisk(self):
-        schema = '''{"doc": "Nested records in array to use asterisk.",
-                     "namespace": "com.test.nested.records",
-                     "type": "record",
-                     "name": "test_nested_record",
-                     "fields": [
-                        {"name": "sparse_type",
-                            "type":
-                            {
-                                "type": "array",
-                                "items": {
-                                    "type": "record",
-                                    "name": "sparse_triplet",
-                                    "fields": [
-                                        {"name": "index", "type": "long"},
-                                        {"name": "max_index", "type": "int"},
-                                        {"name": "value", "type": "float"}
-                                    ]
-                                }
-                            }
-                    }]}'''
+        schema = """
+        {
+           "doc":"Nested records in array to use asterisk",
+           "namespace":"com.test.nested.records.asterisk",
+           "type":"record",
+           "name":"test_nested_record",
+           "fields":[
+              {
+                 "name":"sparse_type",
+                 "type":{
+                    "type":"array",
+                    "items":{
+                       "type":"record",
+                       "name":"sparse_triplet",
+                       "fields":[
+                          {
+                             "name":"index",
+                             "type":"long"
+                          },
+                          {
+                             "name":"max_index",
+                             "type":"int"
+                          },
+                          {
+                             "name":"value",
+                             "type":"float"
+                          }
+                       ]
+                    }
+                 }
+              }
+           ]
+        }
+        """
 
         records_to_serialize = [{
             'sparse_type': [{
@@ -607,13 +799,13 @@ class ParseAvroRecordTest(test_util.TensorFlowTestCase):
 
         tensors_expected = {
             'sparse_type[*].index':
-            sparse_tensor.SparseTensorValue(
-                np.asarray([[0, 0], [0, 1], [0, 2], [1, 0], [1, 1]]),
-                np.asarray([0, 5, 3, 0, 9]), np.asarray([2, 3])),
+                sparse_tensor.SparseTensorValue(
+                    np.asarray([[0, 0], [0, 1], [0, 2], [1, 0], [1, 1]]),
+                    np.asarray([0, 5, 3, 0, 9]), np.asarray([2, 3])),
             'sparse_type[*].value':
-            sparse_tensor.SparseTensorValue(
-                np.asarray([[0, 0], [0, 1], [0, 2], [1, 0], [1, 1]]),
-                np.asarray([5.0, 7.0, 1.0, 2.0, 1.0]), np.asarray([2, 3]))
+                sparse_tensor.SparseTensorValue(
+                    np.asarray([[0, 0], [0, 1], [0, 2], [1, 0], [1, 1]]),
+                    np.asarray([5.0, 7.0, 1.0, 2.0, 1.0]), np.asarray([2, 3]))
         }
 
         self._compare_all_tensors(
@@ -622,13 +814,20 @@ class ParseAvroRecordTest(test_util.TensorFlowTestCase):
                 schema, records_to_serialize), features, tensors_expected)
 
     def test_parse_int_as_long_fail(self):
-        schema = '''{"doc": "Parse int as long (int64) fails.",
-                     "namespace": "com.test.int.type.failure",
-                     "type": "record",
-                     "name": "data_row",
-                     "fields": [
-                       {"name": "index", "type": "int"}
-                    ]}'''
+        schema = """
+        {
+           "doc":"Parse int as long (int64) fails",
+           "namespace":"com.test.int.type.failure",
+           "type":"record",
+           "name":"data_row",
+           "fields":[
+              {
+                 "name":"index",
+                 "type":"int"
+              }
+           ]
+        }
+        """
         records_to_serialize = [{'index': 0}]
         features = {'index': parsing_ops.FixedLenFeature([], tf_types.int64)}
         self._parse_must_fail(
@@ -637,21 +836,28 @@ class ParseAvroRecordTest(test_util.TensorFlowTestCase):
                 schema, records_to_serialize), features)
 
     def test_parse_int_as_sparse_type_fail(self):
-        schema = '''{"doc": "Parse int as SparseType fails.",
-                     "namespace": "com.test.sparse.type.failure",
-                     "type": "record",
-                     "name": "data_row",
-                     "fields": [
-                       {"name": "index", "type": "int"}
-                     ]}'''
+        schema = """
+        {
+           "doc":"Parse int as SparseType fails",
+           "namespace":"com.test.sparse.type.failure",
+           "type":"record",
+           "name":"data_row",
+           "fields":[
+              {
+                 "name":"index",
+                 "type":"int"
+              }
+           ]
+        }        
+        """
         records_to_serialize = [{'index': 0}]
         features = {
             'index':
-            parsing_ops.SparseFeature(
-                index_key='index',
-                value_key='value',
-                dtype=tf_types.float32,
-                size=10)
+                parsing_ops.SparseFeature(
+                    index_key='index',
+                    value_key='value',
+                    dtype=tf_types.float32,
+                    size=10)
         }
         self._parse_must_fail(
             schema,
@@ -659,14 +865,20 @@ class ParseAvroRecordTest(test_util.TensorFlowTestCase):
                 schema, records_to_serialize), features)
 
     def test_parse_float_as_double_fail(self):
-        schema = '''{"doc": "Parse float as double fails.",
-                     "namespace": "com.test.float.type.failure",
-                     "type": "record",
-                     "name": "data_row",
-                     "fields": [
-                       {"name": "weight", "type": "float"}
-                     ]}'''
-
+        schema = """
+        {
+           "doc":"Parse float as double fails.",
+           "namespace":"com.test.float.type.failure",
+           "type":"record",
+           "name":"data_row",
+           "fields":[
+              {
+                 "name":"weight",
+                 "type":"float"
+              }
+           ]
+        }        
+        """
         records_to_serialize = [{'weight': 0.5}]
         features = {'weight': parsing_ops.FixedLenFeature([], tf_types.float64)}
         self._parse_must_fail(
@@ -675,13 +887,23 @@ class ParseAvroRecordTest(test_util.TensorFlowTestCase):
                 schema, records_to_serialize), features)
 
     def test_fixed_length_without_proper_default_fail(self):
-        schema = '''{"doc": "Used fixed length without proper default.",
-                     "namespace": "com.test.wrong.list.type",
-                     "type": "record",
-                     "name": "data_row",
-                     "fields": [
-                       {"name": "int_list_type", "type": {"type": "array", "items": "int"}}
-                     ]}'''
+        schema = """
+        {
+           "doc":"Used fixed length without proper default",
+           "namespace":"com.test.wrong.list.type",
+           "type":"record",
+           "name":"data_row",
+           "fields":[
+              {
+                 "name":"int_list_type",
+                 "type":{
+                    "type":"array",
+                    "items":"int"
+                 }
+              }
+           ]
+        }        
+        """
 
         records_to_serialize = [{
             'int_list_type': [0, 1, 2]
@@ -699,81 +921,133 @@ class ParseAvroRecordTest(test_util.TensorFlowTestCase):
                 schema, records_to_serialize), features)
 
     def test_fixed_length_with_default(self):
-        schema = '''{"doc": "Fixed length lists with defaults.",
-                     "namespace": "com.test.lists.fixed",
-                     "type": "record",
-                     "name": "data_row",
-                     "fields": [
-                       {"name": "float_list_type", "type": {"type": "array", "items": "float"}},
-                       {"name": "double_list_type", "type": {"type": "array", "items": "double"}},
-                       {"name": "long_list_type", "type": {"type": "array", "items": "long"}},
-                       {"name": "int_list_type", "type": {"type": "array", "items": "int"}},
-                       {"name": "boolean_list_type", "type": {"type": "array", "items": "boolean"}},
-                       {"name": "string_list_type", "type": {"type": "array", "items": "string"}},
-                       {"name": "bytes_list_type", "type": {"type": "array", "items": "bytes"}}
-                     ]}'''
+        schema = """
+        {
+           "doc":"Fixed length lists with defaults",
+           "namespace":"com.test.lists.fixed",
+           "type":"record",
+           "name":"data_row",
+           "fields":[
+              {
+                 "name":"float_list_type",
+                 "type":{
+                    "type":"array",
+                    "items":"float"
+                 }
+              },
+              {
+                 "name":"double_list_type",
+                 "type":{
+                    "type":"array",
+                    "items":"double"
+                 }
+              },
+              {
+                 "name":"long_list_type",
+                 "type":{
+                    "type":"array",
+                    "items":"long"
+                 }
+              },
+              {
+                 "name":"int_list_type",
+                 "type":{
+                    "type":"array",
+                    "items":"int"
+                 }
+              },
+              {
+                 "name":"boolean_list_type",
+                 "type":{
+                    "type":"array",
+                    "items":"boolean"
+                 }
+              },
+              {
+                 "name":"string_list_type",
+                 "type":{
+                    "type":"array",
+                    "items":"string"
+                 }
+              },
+              {
+                 "name":"bytes_list_type",
+                 "type":{
+                    "type":"array",
+                    "items":"bytes"
+                 }
+              }
+           ]
+        }        
+        """
+
         records_to_serialize = [{
             'float_list_type': [-1.0001, 0.1, 23.2],
             'double_list_type': [-20.0, 22.33],
-            'long_list_type': [-15L, 0L, 3022123019L],
+            'long_list_type': [-15, 0, 3022123019],
             'int_list_type': [-20, -1, 2934],
             'boolean_list_type': [True],
             'string_list_type': ["abc", "defg", "hijkl"],
-            'bytes_list_type': ["abc", "defg", "hijkl"]
+            'bytes_list_type': [b"abc", b"defg", b"hijkl"]
         }, {
             'float_list_type': [-3.22, 3298.233],
             'double_list_type': [-2332.324],
-            'long_list_type': [-1543L, 233L],
+            'long_list_type': [-1543, 233],
             'int_list_type': [-5, 342],
             'boolean_list_type': [],
             'string_list_type': ["mnop", "qrs"],
-            'bytes_list_type': ["mnop"]
+            'bytes_list_type': [b"mnop"]
         }]
 
         features = {
             'float_list_type':
-            parsing_ops.FixedLenFeature(
-                [3], tf_types.float32, default_value=[0.0, 0.0, 1.0]),
+                parsing_ops.FixedLenFeature(
+                    [3], tf_types.float32, default_value=[0.0, 0.0, 1.0]),
             'double_list_type':
-            parsing_ops.FixedLenFeature(
-                [2], tf_types.float64, default_value=[0.0, 0.0]),
+                parsing_ops.FixedLenFeature(
+                    [2], tf_types.float64, default_value=[0.0, 0.0]),
             'long_list_type':
-            parsing_ops.FixedLenFeature(
-                [3], tf_types.int64, default_value=[1L, 1L, 1L]),
+                parsing_ops.FixedLenFeature(
+                    [3], tf_types.int64, default_value=[1, 1, 1]),
             'int_list_type':
-            parsing_ops.FixedLenFeature(
-                [3], tf_types.int32, default_value=[0, 1, 2]),
+                parsing_ops.FixedLenFeature(
+                    [3], tf_types.int32, default_value=[0, 1, 2]),
             'boolean_list_type':
-            parsing_ops.FixedLenFeature(
-                [], tf_types.bool, default_value=[False]),
+                parsing_ops.FixedLenFeature(
+                    [], tf_types.bool, default_value=[False]),
             'string_list_type':
-            parsing_ops.FixedLenFeature(
-                [3], tf_types.string, default_value=['a', 'b', 'c']),
+                parsing_ops.FixedLenFeature(
+                    [3], tf_types.string, default_value=['a', 'b', 'c']),
             'bytes_list_type':
-            parsing_ops.FixedLenFeature(
-                [3], tf_types.string, default_value=['a', 'b', 'c'])
+                parsing_ops.FixedLenFeature(
+                    [3], tf_types.string, default_value=['a', 'b', 'c'])
         }
 
         tensors_expected = {
             'float_list_type':
-            np.asarray([[-1.0001, 0.1, 23.2],
-                        [-3.22, 3298.233, 1.0]]),  # fill in 1.0 from defaults
+                np.asarray([[-1.0001, 0.1, 23.2],
+                            [-3.22, 3298.233, 1.0]]),  # fill in 1.0 from defaults
             'double_list_type':
-            np.asarray([[-20.0, 22.33], [-2332.324,
-                                         0.0]]),  # fill in 0.0 from defaults
+                np.asarray([[-20.0, 22.33], [-2332.324,
+                                             0.0]]),  # fill in 0.0 from defaults
             'long_list_type':
-            np.asarray([[-15L, 0L, 3022123019L],
-                        [-1543L, 233L, 1L]]),  # fill in 1L from defaults
+                np.asarray([[-15, 0, 3022123019],
+                            [-1543, 233, 1]]),  # fill in 1L from defaults
             'int_list_type':
-            np.asarray([[-20, -1, 2934], [-5, 342,
-                                          2]]),  # fill in 2 from defaults
+                np.asarray([[-20, -1, 2934], [-5, 342,
+                                              2]]),  # fill in 2 from defaults
             'boolean_list_type':
-            np.asarray([True, False]),  # fill in False from defaults
+                np.asarray([True, False]),  # fill in False from defaults
             'string_list_type':
-            np.asarray([["abc", "defg", "hijkl"], ["mnop", "qrs",
-                                                   "c"]]),  # fill in 'c'
+                np.asarray([[compat.as_bytes("abc"), compat.as_bytes("defg"),
+                             compat.as_bytes("hijkl")],
+                            [compat.as_bytes("mnop"), compat.as_bytes("qrs"),
+                             compat.as_bytes("c")]]),  # fill in 'c'
             'bytes_list_type':
-            np.asarray([["abc", "defg", "hijkl"], ["mnop", "b", "c"]])
+                np.asarray([[compat.as_bytes("abc"), compat.as_bytes("defg"),
+                             compat.as_bytes("hijkl")],
+                            [compat.as_bytes("mnop"), compat.as_bytes("b"),
+                             compat.as_bytes("c")]])
         }
 
         self._compare_all_tensors(
@@ -782,94 +1056,151 @@ class ParseAvroRecordTest(test_util.TensorFlowTestCase):
                 schema, records_to_serialize), features, tensors_expected)
 
     def test_fixed_length_sequence_with_default(self):
-        schema = '''{"doc": "Fixed length lists with defaults.",
-                     "namespace": "com.test.lists.fixed",
-                     "type": "record",
-                     "name": "data_row",
-                     "fields": [
-                       {"name": "float_list_type", "type": {"type": "array", "items": "float"}},
-                       {"name": "double_list_type", "type": {"type": "array", "items": "double"}},
-                       {"name": "long_list_type", "type": {"type": "array", "items": "long"}},
-                       {"name": "int_list_type", "type": {"type": "array", "items": "int"}},
-                       {"name": "boolean_list_type", "type": {"type": "array", "items": "boolean"}},
-                       {"name": "string_list_type", "type": {"type": "array", "items": "string"}},
-                       {"name": "bytes_list_type", "type": {"type": "array", "items": "bytes"}},
-                       {"name": "first_short", "type": {"type": "array", "items": "int"}}
-                     ]}'''
+        schema = """
+        {
+           "doc":"Fixed length lists with defaults",
+           "namespace":"com.test.lists.fixed",
+           "type":"record",
+           "name":"data_row",
+           "fields":[
+              {
+                 "name":"float_list_type",
+                 "type":{
+                    "type":"array",
+                    "items":"float"
+                 }
+              },
+              {
+                 "name":"double_list_type",
+                 "type":{
+                    "type":"array",
+                    "items":"double"
+                 }
+              },
+              {
+                 "name":"long_list_type",
+                 "type":{
+                    "type":"array",
+                    "items":"long"
+                 }
+              },
+              {
+                 "name":"int_list_type",
+                 "type":{
+                    "type":"array",
+                    "items":"int"
+                 }
+              },
+              {
+                 "name":"boolean_list_type",
+                 "type":{
+                    "type":"array",
+                    "items":"boolean"
+                 }
+              },
+              {
+                 "name":"string_list_type",
+                 "type":{
+                    "type":"array",
+                    "items":"string"
+                 }
+              },
+              {
+                 "name":"bytes_list_type",
+                 "type":{
+                    "type":"array",
+                    "items":"bytes"
+                 }
+              },
+              {
+                 "name":"first_short",
+                 "type":{
+                    "type":"array",
+                    "items":"int"
+                 }
+              }
+           ]
+        }
+        """
         records_to_serialize = [{
             'float_list_type': [-1.0001, 0.1, 23.2],
             'double_list_type': [-20.0, 22.33],
-            'long_list_type': [-15L, 0L, 3022123019L],
+            'long_list_type': [-15, 0, 3022123019],
             'int_list_type': [-20, -1, 2934],
             'boolean_list_type': [True],
             'string_list_type': ["abc", "defg", "hijkl"],
-            'bytes_list_type': ["abc", "defg", "hijkl"],
+            'bytes_list_type': [b"abc", b"defg", b"hijkl"],
             'first_short': [1, 2]
         }, {
             'float_list_type': [-3.22, 3298.233],
             'double_list_type': [-2332.324],
-            'long_list_type': [-1543L, 233L],
+            'long_list_type': [-1543, 233],
             'int_list_type': [-5, 342],
             'boolean_list_type': [],
             'string_list_type': ["mnop", "qrs"],
-            'bytes_list_type': ["mnop"],
+            'bytes_list_type': [b"mnop"],
             'first_short': [1, 2, 3]
         }]
         features = {
             'float_list_type':
-            parsing_ops.FixedLenSequenceFeature(
-                [], tf_types.float32, default_value=0.5, allow_missing=True),
+                parsing_ops.FixedLenSequenceFeature(
+                    [], tf_types.float32, default_value=0.5, allow_missing=True),
             'double_list_type':
-            parsing_ops.FixedLenSequenceFeature(
-                [], tf_types.float64, default_value=1.0, allow_missing=True),
+                parsing_ops.FixedLenSequenceFeature(
+                    [], tf_types.float64, default_value=1.0, allow_missing=True),
             'long_list_type':
-            parsing_ops.FixedLenSequenceFeature(
-                [], tf_types.int64, default_value=5L, allow_missing=True),
+                parsing_ops.FixedLenSequenceFeature(
+                    [], tf_types.int64, default_value=5, allow_missing=True),
             'int_list_type':
-            parsing_ops.FixedLenSequenceFeature(
-                [], tf_types.int32, default_value=2, allow_missing=True),
+                parsing_ops.FixedLenSequenceFeature(
+                    [], tf_types.int32, default_value=2, allow_missing=True),
             'boolean_list_type':
-            parsing_ops.FixedLenSequenceFeature(
-                [], tf_types.bool, default_value=False, allow_missing=True),
+                parsing_ops.FixedLenSequenceFeature(
+                    [], tf_types.bool, default_value=False, allow_missing=True),
             'string_list_type':
-            parsing_ops.FixedLenSequenceFeature(
-                [],
-                tf_types.string,
-                default_value="default",
-                allow_missing=True),
+                parsing_ops.FixedLenSequenceFeature(
+                    [],
+                    tf_types.string,
+                    default_value="default",
+                    allow_missing=True),
             'bytes_list_type':
-            parsing_ops.FixedLenSequenceFeature(
-                [],
-                tf_types.string,
-                default_value="default",
-                allow_missing=True),
+                parsing_ops.FixedLenSequenceFeature(
+                    [],
+                    tf_types.string,
+                    default_value="default",
+                    allow_missing=True),
             'first_short':
-            parsing_ops.FixedLenSequenceFeature(
-                [], tf_types.int32, default_value=3, allow_missing=True)
+                parsing_ops.FixedLenSequenceFeature(
+                    [], tf_types.int32, default_value=3, allow_missing=True)
         }
 
         tensors_expected = {
             'float_list_type':
-            np.asarray([[-1.0001, 0.1, 23.2], [-3.22, 3298.233,
-                                               0.5]]),  # fill 0.5 as default
+                np.asarray([[-1.0001, 0.1, 23.2], [-3.22, 3298.233,
+                                                   0.5]]),  # fill 0.5 as default
             'double_list_type':
-            np.asarray([[-20.0, 22.33], [-2332.324,
-                                         1.0]]),  # fill 1.0 as default
+                np.asarray([[-20.0, 22.33], [-2332.324,
+                                             1.0]]),  # fill 1.0 as default
             'long_list_type':
-            np.asarray([[-15L, 0L, 3022123019L], [-1543L, 233L,
-                                                  5L]]),  # fill 5L as default
+                np.asarray([[-15, 0, 3022123019], [-1543, 233,
+                                                   5]]),  # fill 5L as default
             'int_list_type':
-            np.asarray([[-20, -1, 2934], [-5, 342, 2]]),  # fill in 2 as default
+                np.asarray([[-20, -1, 2934], [-5, 342, 2]]),  # fill in 2 as default
             'boolean_list_type':
-            np.asarray([[True], [False]]),  # fill in False as default
+                np.asarray([[True], [False]]),  # fill in False as default
             'string_list_type':
-            np.asarray([["abc", "defg", "hijkl"], ["mnop", "qrs",
-                                                   "default"]]),  # add default
+                np.asarray([[compat.as_bytes("abc"), compat.as_bytes("defg"),
+                             compat.as_bytes("hijkl")],
+                            [compat.as_bytes("mnop"), compat.as_bytes("qrs"),
+                             compat.as_bytes("default")]]),  # add default
             'bytes_list_type':
-            np.asarray([["abc", "defg", "hijkl"],
-                        ["mnop", "default", "default"]]),  # add default
+                np.asarray([[compat.as_bytes("abc"), compat.as_bytes("defg"),
+                             compat.as_bytes("hijkl")],
+                            [compat.as_bytes("mnop"), compat.as_bytes("default"),
+                             compat.as_bytes("default")]]),
+            # add default
             'first_short':
-            np.asarray([[1, 2, 3], [1, 2, 3]])  # add 3 as default
+                np.asarray([[1, 2, 3], [1, 2, 3]])  # add 3 as default
         }
 
         self._compare_all_tensors(
@@ -878,13 +1209,23 @@ class ParseAvroRecordTest(test_util.TensorFlowTestCase):
                 schema, records_to_serialize), features, tensors_expected)
 
     def test_fixed_length_for_array(self):
-        schema = '''{"doc": "Use fixed length for array features.",
-                     "namespace": "com.test.fixed.length.for.array",
-                     "type": "record",
-                     "name": "data_row",
-                     "fields": [
-                       {"name": "names", "type": {"type": "array", "items": "string"}}
-                     ]}'''
+        schema = """
+        {
+           "doc":"Use fixed length for array features",
+           "namespace":"com.test.fixed.length.for.array",
+           "type":"record",
+           "name":"data_row",
+           "fields":[
+              {
+                 "name":"names",
+                 "type":{
+                    "type":"array",
+                    "items":"string"
+                 }
+              }
+           ]
+        }
+        """
         records_to_serialize = [{
             'names': ["Hans", "Herbert", "Heinz"]
         }, {
@@ -893,8 +1234,10 @@ class ParseAvroRecordTest(test_util.TensorFlowTestCase):
         features = {'names': parsing_ops.FixedLenFeature([3], tf_types.string)}
         tensors_expected = {
             'names':
-            np.asarray([["Hans", "Herbert", "Heinz"],
-                        ["Gilbert", "Gerald", "Genie"]])
+                np.asarray([[compat.as_bytes("Hans"), compat.as_bytes("Herbert"),
+                             compat.as_bytes("Heinz")],
+                            [compat.as_bytes("Gilbert"), compat.as_bytes("Gerald"),
+                             compat.as_bytes("Genie")]])
         }
         self._compare_all_tensors(
             schema,
@@ -919,24 +1262,32 @@ class ParseAvroRecordTest(test_util.TensorFlowTestCase):
                 schema, records_to_serialize), features)
 
     def test_wrong_index(self):
-        schema = '''{"doc": "Wrong spelling of feature name and wrong index.",
-                     "namespace": "com.test.wrong.feature",
-                     "type": "record",
-                     "name": "data_row",
-                     "fields": [
-                       {"name": "list_of_records",
-                         "type": {
-                              "type": "array",
-                              "items": {
-                                  "type": "record",
-                                  "name": "person",
-                                  "fields": [
-                                      {"name": "first_name", "type": "string"}
-                                  ]
-                              }
+        schema = """
+        {
+           "doc":"Wrong spelling of feature name and wrong index",
+           "namespace":"com.test.wrong.feature",
+           "type":"record",
+           "name":"data_row",
+           "fields":[
+              {
+                 "name":"list_of_records",
+                 "type":{
+                    "type":"array",
+                    "items":{
+                       "type":"record",
+                       "name":"person",
+                       "fields":[
+                          {
+                             "name":"first_name",
+                             "type":"string"
                           }
-                        }
-                     ]}'''
+                       ]
+                    }
+                 }
+              }
+           ]
+        }
+        """
         records_to_serialize = [{
             'list_of_records': [{
                 'first_name': "My name"
@@ -944,7 +1295,7 @@ class ParseAvroRecordTest(test_util.TensorFlowTestCase):
         }]
         features = {
             'list_of_records[2].name':
-            parsing_ops.FixedLenFeature([], tf_types.string)
+                parsing_ops.FixedLenFeature([], tf_types.string)
         }
         self._parse_must_fail(
             schema,
@@ -952,25 +1303,36 @@ class ParseAvroRecordTest(test_util.TensorFlowTestCase):
                 schema, records_to_serialize), features)
 
     def test_filter_with_variable_length(self):
-        schema = '''{"doc": "Test filtering",
-                     "namespace": "com.test.filtering",
-                     "type": "record",
-                     "name": "data_row",
-                     "fields": [
-                       {"name": "guests",
-                         "type": {
-                              "type": "array",
-                              "items": {
-                                  "type": "record",
-                                  "name": "person",
-                                  "fields": [
-                                      {"name": "name", "type": "string"},
-                                      {"name": "gender", "type": "string"}
-                                  ]
-                              }
+        schema = """
+        {
+           "doc":"Test filter",
+           "namespace":"com.test.filter",
+           "type":"record",
+           "name":"data_row",
+           "fields":[
+              {
+                 "name":"guests",
+                 "type":{
+                    "type":"array",
+                    "items":{
+                       "type":"record",
+                       "name":"person",
+                       "fields":[
+                          {
+                             "name":"name",
+                             "type":"string"
+                          },
+                          {
+                             "name":"gender",
+                             "type":"string"
                           }
-                        }
-                     ]}'''
+                       ]
+                    }
+                 }
+              }
+           ]
+        }
+        """
         records_to_serialize = [{
             'guests': [{
                 'name': "Hans",
@@ -996,19 +1358,23 @@ class ParseAvroRecordTest(test_util.TensorFlowTestCase):
         }]
         features = {
             'guests[gender=male].name':
-            parsing_ops.VarLenFeature(tf_types.string),
+                parsing_ops.VarLenFeature(tf_types.string),
             'guests[gender=female].name':
-            parsing_ops.VarLenFeature(tf_types.string)
+                parsing_ops.VarLenFeature(tf_types.string)
         }
         tensors_expected = {
             'guests[gender=male].name':
-            sparse_tensor.SparseTensorValue(
-                np.asarray([[0, 0], [1, 0], [1, 1]]),
-                np.asarray(["Hans", "Joel", "Marc"]), np.asarray([2, 1])),
+                sparse_tensor.SparseTensorValue(
+                    np.asarray([[0, 0], [1, 0], [1, 1]]),
+                    np.asarray([compat.as_bytes("Hans"), compat.as_bytes("Joel"),
+                                compat.as_bytes("Marc")]),
+                    np.asarray([2, 1])),
             'guests[gender=female].name':
-            sparse_tensor.SparseTensorValue(
-                np.asarray([[0, 0], [0, 1], [1, 0]]),
-                np.asarray(["Mary", "July", "JoAn"]), np.asarray([2, 1]))
+                sparse_tensor.SparseTensorValue(
+                    np.asarray([[0, 0], [0, 1], [1, 0]]),
+                    np.asarray([compat.as_bytes("Mary"), compat.as_bytes("July"),
+                                compat.as_bytes("JoAn")]),
+                    np.asarray([2, 1]))
         }
         self._compare_all_tensors(
             schema,
@@ -1016,25 +1382,36 @@ class ParseAvroRecordTest(test_util.TensorFlowTestCase):
                 schema, records_to_serialize), features, tensors_expected)
 
     def test_filter_with_fixed_length(self):
-        schema = '''{"doc": "Test filtering",
-                     "namespace": "com.test.filtering",
-                     "type": "record",
-                     "name": "data_row",
-                     "fields": [
-                       {"name": "guests",
-                         "type": {
-                              "type": "array",
-                              "items": {
-                                  "type": "record",
-                                  "name": "person",
-                                  "fields": [
-                                      {"name": "name", "type": "string"},
-                                      {"name": "gender", "type": "string"}
-                                  ]
-                              }
+        schema = """
+        {
+           "doc":"Test filter",
+           "namespace":"com.test.filter.fixed.length",
+           "type":"record",
+           "name":"data_row",
+           "fields":[
+              {
+                 "name":"guests",
+                 "type":{
+                    "type":"array",
+                    "items":{
+                       "type":"record",
+                       "name":"person",
+                       "fields":[
+                          {
+                             "name":"name",
+                             "type":"string"
+                          },
+                          {
+                             "name":"gender",
+                             "type":"string"
                           }
-                        }
-                     ]}'''
+                       ]
+                    }
+                 }
+              }
+           ]
+        }        
+        """
         records_to_serialize = [{
             'guests': [{
                 'name': "Hans",
@@ -1060,15 +1437,16 @@ class ParseAvroRecordTest(test_util.TensorFlowTestCase):
         }]
         features = {
             'guests[gender=male].name':
-            parsing_ops.FixedLenFeature([1], tf_types.string),
+                parsing_ops.FixedLenFeature([1], tf_types.string),
             'guests[gender=female].name':
-            parsing_ops.FixedLenFeature([2], tf_types.string)
+                parsing_ops.FixedLenFeature([2], tf_types.string)
         }
         tensors_expected = {
             'guests[gender=male].name':
-            np.asarray([["Hans"], ["Joel"]]),
+                np.asarray([[compat.as_bytes("Hans")], [compat.as_bytes("Joel")]]),
             'guests[gender=female].name':
-            np.asarray([["Mary", "July"], ["JoAn", "Kloy"]])
+                np.asarray([[compat.as_bytes("Mary"), compat.as_bytes("July")],
+                            [compat.as_bytes("JoAn"), compat.as_bytes("Kloy")]])
         }
         self._compare_all_tensors(
             schema,
@@ -1076,25 +1454,36 @@ class ParseAvroRecordTest(test_util.TensorFlowTestCase):
                 schema, records_to_serialize), features, tensors_expected)
 
     def test_filter_with_empty_result(self):
-        schema = '''{"doc": "Test filtering",
-                     "namespace": "com.test.filtering",
-                     "type": "record",
-                     "name": "data_row",
-                     "fields": [
-                       {"name": "guests",
-                         "type": {
-                              "type": "array",
-                              "items": {
-                                  "type": "record",
-                                  "name": "person",
-                                  "fields": [
-                                      {"name": "name", "type": "string"},
-                                      {"name": "gender", "type": "string"}
-                                  ]
-                              }
+        schema = """
+        {
+           "doc":"Test filter",
+           "namespace":"com.test.filter.empty.result",
+           "type":"record",
+           "name":"data_row",
+           "fields":[
+              {
+                 "name":"guests",
+                 "type":{
+                    "type":"array",
+                    "items":{
+                       "type":"record",
+                       "name":"person",
+                       "fields":[
+                          {
+                             "name":"name",
+                             "type":"string"
+                          },
+                          {
+                             "name":"gender",
+                             "type":"string"
                           }
-                        }
-                     ]}'''
+                       ]
+                    }
+                 }
+              }
+           ]
+        }
+        """
         records_to_serialize = [{
             'guests': [{
                 'name': "Hans",
@@ -1108,13 +1497,13 @@ class ParseAvroRecordTest(test_util.TensorFlowTestCase):
         }]
         features = {
             'guests[gender=wrong_value].name':
-            parsing_ops.VarLenFeature(tf_types.string)
+                parsing_ops.VarLenFeature(tf_types.string)
         }
         tensors_expected = {
             'guests[gender=wrong_value].name':
-            sparse_tensor.SparseTensorValue(
-                np.empty(shape=[0, 2], dtype=np.int64),
-                np.empty(shape=[0], dtype=np.str), np.asarray([2, 0]))
+                sparse_tensor.SparseTensorValue(
+                    np.empty(shape=[0, 2], dtype=np.int64),
+                    np.empty(shape=[0], dtype=np.str), np.asarray([2, 0]))
         }
         self._compare_all_tensors(
             schema,
@@ -1122,24 +1511,32 @@ class ParseAvroRecordTest(test_util.TensorFlowTestCase):
                 schema, records_to_serialize), features, tensors_expected)
 
     def test_filter_with_wrong_key_fail(self):
-        schema = '''{"doc": "Test filtering",
-                     "namespace": "com.test.filtering",
-                     "type": "record",
-                     "name": "data_row",
-                     "fields": [
-                       {"name": "guests",
-                         "type": {
-                              "type": "array",
-                              "items": {
-                                  "type": "record",
-                                  "name": "person",
-                                  "fields": [
-                                      {"name": "name", "type": "string"}
-                                  ]
-                              }
+        schema = """
+        {
+           "doc":"Test filter",
+           "namespace":"com.test.filter.key.fail",
+           "type":"record",
+           "name":"data_row",
+           "fields":[
+              {
+                 "name":"guests",
+                 "type":{
+                    "type":"array",
+                    "items":{
+                       "type":"record",
+                       "name":"person",
+                       "fields":[
+                          {
+                             "name":"name",
+                             "type":"string"
                           }
-                        }
-                     ]}'''
+                       ]
+                    }
+                 }
+              }
+           ]
+        }
+        """
         records_to_serialize = [{
             'guests': [{
                 'name': "Hans"
@@ -1151,7 +1548,7 @@ class ParseAvroRecordTest(test_util.TensorFlowTestCase):
         }]
         features = {
             'guests[wrong_key=female].name':
-            parsing_ops.VarLenFeature(tf_types.string)
+                parsing_ops.VarLenFeature(tf_types.string)
         }
         self._parse_must_fail(
             schema,
@@ -1159,24 +1556,32 @@ class ParseAvroRecordTest(test_util.TensorFlowTestCase):
                 schema, records_to_serialize), features)
 
     def test_filter_with_wrong_pair_fail(self):
-        schema = '''{"doc": "Test filtering",
-                     "namespace": "com.test.filtering",
-                     "type": "record",
-                     "name": "data_row",
-                     "fields": [
-                       {"name": "guests",
-                         "type": {
-                              "type": "array",
-                              "items": {
-                                  "type": "record",
-                                  "name": "person",
-                                  "fields": [
-                                      {"name": "name", "type": "string"}
-                                  ]
-                              }
+        schema = """
+        {
+           "doc":"Test filter",
+           "namespace":"com.test.filter.fail",
+           "type":"record",
+           "name":"data_row",
+           "fields":[
+              {
+                 "name":"guests",
+                 "type":{
+                    "type":"array",
+                    "items":{
+                       "type":"record",
+                       "name":"person",
+                       "fields":[
+                          {
+                             "name":"name",
+                             "type":"string"
                           }
-                        }
-                     ]}'''
+                       ]
+                    }
+                 }
+              }
+           ]
+        }
+        """
         records_to_serialize = [{
             'guests': [{
                 'name': "Hans"
@@ -1188,7 +1593,7 @@ class ParseAvroRecordTest(test_util.TensorFlowTestCase):
         }]
         features = {
             'guests[forgot_the_separator].name':
-            parsing_ops.VarLenFeature(tf_types.string)
+                parsing_ops.VarLenFeature(tf_types.string)
         }
         self._parse_must_fail(
             schema,
@@ -1196,24 +1601,32 @@ class ParseAvroRecordTest(test_util.TensorFlowTestCase):
                 schema, records_to_serialize), features)
 
     def test_filter_with_too_many_separators_fail(self):
-        schema = '''{"doc": "Test filtering",
-                     "namespace": "com.test.filtering",
-                     "type": "record",
-                     "name": "data_row",
-                     "fields": [
-                       {"name": "guests",
-                         "type": {
-                              "type": "array",
-                              "items": {
-                                  "type": "record",
-                                  "name": "person",
-                                  "fields": [
-                                      {"name": "name", "type": "string"}
-                                  ]
-                              }
+        schema = """
+        {
+           "doc":"Test filter",
+           "namespace":"com.test.filter.seperator.fail",
+           "type":"record",
+           "name":"data_row",
+           "fields":[
+              {
+                 "name":"guests",
+                 "type":{
+                    "type":"array",
+                    "items":{
+                       "type":"record",
+                       "name":"person",
+                       "fields":[
+                          {
+                             "name":"name",
+                             "type":"string"
                           }
-                        }
-                     ]}'''
+                       ]
+                    }
+                 }
+              }
+           ]
+        }        
+        """
         records_to_serialize = [{
             'guests': [{
                 'name': "Hans"
@@ -1225,7 +1638,7 @@ class ParseAvroRecordTest(test_util.TensorFlowTestCase):
         }]
         features = {
             'guests[used=too=many=separators].name':
-            parsing_ops.VarLenFeature(tf_types.string)
+                parsing_ops.VarLenFeature(tf_types.string)
         }
         self._parse_must_fail(
             schema,
@@ -1233,36 +1646,57 @@ class ParseAvroRecordTest(test_util.TensorFlowTestCase):
                 schema, records_to_serialize), features)
 
     def test_filter_for_nested_record(self):
-        schema = '''{"doc": "Test filtering",
-                     "namespace": "com.test.filtering",
-                     "type": "record",
-                     "name": "data_row",
-                     "fields": [
-                       {"name": "guests",
-                         "type": {
-                              "type": "array",
-                              "items": {
-                                  "type": "record",
-                                  "name": "person",
-                                  "fields": [
-                                      {"name": "name", "type": "string"},
-                                      {"name": "gender", "type": "string"},
-                                      {"name": "address",
-                                          "type": {
-                                              "type": "record",
-                                              "name": "postal",
-                                              "fields": [
-                                                  {"name": "street", "type": "string"},
-                                                  {"name": "zip", "type": "int"},
-                                                  {"name": "state", "type": "string"}
-                                              ]
-                                          }
-                                      }
-                                  ]
-                              }
+        schema = """
+        {
+           "doc":"Test filter",
+           "namespace":"com.test.filter.nested.record",
+           "type":"record",
+           "name":"data_row",
+           "fields":[
+              {
+                 "name":"guests",
+                 "type":{
+                    "type":"array",
+                    "items":{
+                       "type":"record",
+                       "name":"person",
+                       "fields":[
+                          {
+                             "name":"name",
+                             "type":"string"
+                          },
+                          {
+                             "name":"gender",
+                             "type":"string"
+                          },
+                          {
+                             "name":"address",
+                             "type":{
+                                "type":"record",
+                                "name":"postal",
+                                "fields":[
+                                   {
+                                      "name":"street",
+                                      "type":"string"
+                                   },
+                                   {
+                                      "name":"zip",
+                                      "type":"int"
+                                   },
+                                   {
+                                      "name":"state",
+                                      "type":"string"
+                                   }
+                                ]
+                             }
                           }
-                        }
-                     ]}'''
+                       ]
+                    }
+                 }
+              }
+           ]
+        }
+        """
         records_to_serialize = [{
             'guests': [{
                 'name': "Hans",
@@ -1284,13 +1718,13 @@ class ParseAvroRecordTest(test_util.TensorFlowTestCase):
         }]
         features = {
             'guests[gender=female].address.street':
-            parsing_ops.VarLenFeature(tf_types.string)
+                parsing_ops.VarLenFeature(tf_types.string)
         }
         tensors_expected = {
             'guests[gender=female].address.street':
-            sparse_tensor.SparseTensorValue(
-                np.asarray([[0, 0]]), np.asarray(["Ellis St"]),
-                np.asarray([2, 1]))
+                sparse_tensor.SparseTensorValue(
+                    np.asarray([[0, 0]]), np.asarray([compat.as_bytes("Ellis St")]),
+                    np.asarray([2, 1]))
         }
         self._compare_all_tensors(
             schema,
@@ -1298,63 +1732,78 @@ class ParseAvroRecordTest(test_util.TensorFlowTestCase):
                 schema, records_to_serialize), features, tensors_expected)
 
     def test_filter_with_bytes_as_type(self):
-        schema = '''{"doc": "Test filtering",
-                     "namespace": "com.test.filtering",
-                     "type": "record",
-                     "name": "data_row",
-                     "fields": [
-                       {"name": "guests",
-                         "type": {
-                              "type": "array",
-                              "items": {
-                                  "type": "record",
-                                  "name": "person",
-                                  "fields": [
-                                      {"name": "name", "type": "bytes"},
-                                      {"name": "gender", "type": "bytes"}
-                                  ]
-                              }
+        schema = """
+        {
+           "doc":"Test filter",
+           "namespace":"com.test.filter.bytes.type",
+           "type":"record",
+           "name":"data_row",
+           "fields":[
+              {
+                 "name":"guests",
+                 "type":{
+                    "type":"array",
+                    "items":{
+                       "type":"record",
+                       "name":"person",
+                       "fields":[
+                          {
+                             "name":"name",
+                             "type":"bytes"
+                          },
+                          {
+                             "name":"gender",
+                             "type":"bytes"
                           }
-                        }
-                     ]}'''
+                       ]
+                    }
+                 }
+              }
+           ]
+        }
+        """
         records_to_serialize = [{
             'guests': [{
-                'name': "Hans",
-                'gender': "male"
+                'name': b"Hans",
+                'gender': b"male"
             }, {
-                'name': "Mary",
-                'gender': "female"
+                'name': b"Mary",
+                'gender': b"female"
             }, {
-                'name': "July",
-                'gender': "female"
+                'name': b"July",
+                'gender': b"female"
             }]
         }, {
             'guests': [{
-                'name': "Joel",
-                'gender': "male"
+                'name': b"Joel",
+                'gender': b"male"
             }, {
-                'name': "JoAn",
-                'gender': "female"
+                'name': b"JoAn",
+                'gender': b"female"
             }, {
-                'name': "Marc",
-                'gender': "male"
+                'name': b"Marc",
+                'gender': b"male"
             }]
         }]
         features = {
             'guests[gender=male].name':
-            parsing_ops.VarLenFeature(tf_types.string),
+                parsing_ops.VarLenFeature(tf_types.string),
             'guests[gender=female].name':
-            parsing_ops.VarLenFeature(tf_types.string)
+                parsing_ops.VarLenFeature(tf_types.string)
         }
         tensors_expected = {
             'guests[gender=male].name':
-            sparse_tensor.SparseTensorValue(
-                np.asarray([[0, 0], [1, 0], [1, 1]]),
-                np.asarray(["Hans", "Joel", "Marc"]), np.asarray([2, 1])),
+                sparse_tensor.SparseTensorValue(
+                    np.asarray([[0, 0], [1, 0], [1, 1]]),
+                    np.asarray([compat.as_bytes("Hans"), compat.as_bytes("Joel"),
+                                compat.as_bytes("Marc")]),
+                    np.asarray([2, 1])),
             'guests[gender=female].name':
-            sparse_tensor.SparseTensorValue(
-                np.asarray([[0, 0], [0, 1], [1, 0]]),
-                np.asarray(["Mary", "July", "JoAn"]), np.asarray([2, 1]))
+                sparse_tensor.SparseTensorValue(
+                    np.asarray([[0, 0], [0, 1], [1, 0]]),
+                    np.asarray([compat.as_bytes("Mary"), compat.as_bytes("July"),
+                                compat.as_bytes("JoAn")]),
+                    np.asarray([2, 1]))
         }
         self._compare_all_tensors(
             schema,
@@ -1362,45 +1811,66 @@ class ParseAvroRecordTest(test_util.TensorFlowTestCase):
                 schema, records_to_serialize), features, tensors_expected)
 
     def test_filter_of_sparse_feature(self):
-        schema = '''{"doc": "Test filtering",
-                     "namespace": "com.test.filtering",
-                     "type": "record",
-                     "name": "data_row",
-                     "fields": [
-                       {"name": "guests",
-                         "type": {
-                              "type": "array",
-                              "items": {
-                                  "type": "record",
-                                  "name": "person",
-                                  "fields": [
-                                      {"name": "name", "type": "string"},
-                                      {"name": "gender", "type": "string"},
-                                      {"name": "address",
-                                          "type": {
-                                              "type": "array",
-                                              "items": {
-                                                  "type": "record",
-                                                  "name": "postal",
-                                                  "fields": [
-                                                      {"name": "street", "type": "string"},
-                                                      {"name": "zip", "type": "long"},
-                                                      {"name": "street_no", "type": "int"}
-                                                  ]
-                                              }
-                                          }
+        schema = """
+        {
+           "doc":"Test filter",
+           "namespace":"com.test.filter.sparse.feature",
+           "type":"record",
+           "name":"data_row",
+           "fields":[
+              {
+                 "name":"guests",
+                 "type":{
+                    "type":"array",
+                    "items":{
+                       "type":"record",
+                       "name":"person",
+                       "fields":[
+                          {
+                             "name":"name",
+                             "type":"string"
+                          },
+                          {
+                             "name":"gender",
+                             "type":"string"
+                          },
+                          {
+                             "name":"address",
+                             "type":{
+                                "type":"array",
+                                "items":{
+                                   "type":"record",
+                                   "name":"postal",
+                                   "fields":[
+                                      {
+                                         "name":"street",
+                                         "type":"string"
+                                      },
+                                      {
+                                         "name":"zip",
+                                         "type":"long"
+                                      },
+                                      {
+                                         "name":"street_no",
+                                         "type":"int"
                                       }
-                                  ]
-                              }
+                                   ]
+                                }
+                             }
                           }
-                        }
-                     ]}'''
+                       ]
+                    }
+                 }
+              }
+           ]
+        }
+        """
         records_to_serialize = [{
             'guests': [{
                 'name':
-                "Hans",
+                    "Hans",
                 'gender':
-                "male",
+                    "male",
                 'address': [{
                     'street': "California St",
                     'zip': 94040,
@@ -1414,9 +1884,9 @@ class ParseAvroRecordTest(test_util.TensorFlowTestCase):
                 }]
             }, {
                 'name':
-                "Mary",
+                    "Mary",
                 'gender':
-                "female",
+                    "female",
                 'address': [{
                     'street': "Ellis St",
                     'zip': 29040,
@@ -1427,17 +1897,17 @@ class ParseAvroRecordTest(test_util.TensorFlowTestCase):
         }]
         features = {
             'guests[gender=female].address':
-            parsing_ops.SparseFeature(
-                index_key="zip",
-                value_key="street_no",
-                dtype=tf_types.int32,
-                size=94040)
+                parsing_ops.SparseFeature(
+                    index_key="zip",
+                    value_key="street_no",
+                    dtype=tf_types.int32,
+                    size=94040)
         }
         tensors_expected = {
             'guests[gender=female].address':
-            sparse_tensor.SparseTensorValue(
-                np.asarray([[0, 29040]]), np.asarray([3]),
-                np.asarray([1, 94040]))
+                sparse_tensor.SparseTensorValue(
+                    np.asarray([[0, 29040]]), np.asarray([3]),
+                    np.asarray([1, 94040]))
         }
         self._compare_all_tensors(
             schema,
@@ -1446,34 +1916,75 @@ class ParseAvroRecordTest(test_util.TensorFlowTestCase):
 
     def test_null_union_primitive_type(self):
         """
-        The union of null and bytes is missing because of an ambiguity between the 0 termination symbol and the
-        representation of null in the c implementation for avro.
+        The union of null and bytes is missing because of an ambiguity between
+        the 0 termination symbol and the representation of null in the c
+        implementation for avro.
         """
-        schema = '''{"doc": "Primitive types union with null.",
-                     "namespace": "com.test.null.union.primitive",
-                     "type": "record",
-                     "name": "data_row",
-                     "fields": [
-                       {"name": "float_type", "type": [ "null", "float"]},
-                       {"name": "double_type", "type": [ "null", "double"]},
-                       {"name": "long_type", "type": [ "null", "long"]},
-                       {"name": "int_type", "type": [ "null", "int"]},
-                       {"name": "boolean_type", "type": [ "null", "boolean"]},
-                       {"name": "string_type", "type": [ "null", "string"]}
-                     ]}'''
+        schema = """
+        {
+           "doc":"Primitive types union with null.",
+           "namespace":"com.test.null.union.primitive",
+           "type":"record",
+           "name":"data_row",
+           "fields":[
+              {
+                 "name":"float_type",
+                 "type":[
+                    "null",
+                    "float"
+                 ]
+              },
+              {
+                 "name":"double_type",
+                 "type":[
+                    "null",
+                    "double"
+                 ]
+              },
+              {
+                 "name":"long_type",
+                 "type":[
+                    "null",
+                    "long"
+                 ]
+              },
+              {
+                 "name":"int_type",
+                 "type":[
+                    "null",
+                    "int"
+                 ]
+              },
+              {
+                 "name":"boolean_type",
+                 "type":[
+                    "null",
+                    "boolean"
+                 ]
+              },
+              {
+                 "name":"string_type",
+                 "type":[
+                    "null",
+                    "string"
+                 ]
+              }
+           ]
+        }        
+        """
         records_to_serialize = [{
             'float_type':
-            3.40282306074e+38,
+                3.40282306074e+38,
             'double_type':
-            1.7976931348623157e+308,
+                1.7976931348623157e+308,
             'long_type':
-            9223372036854775807L,
+                9223372036854775807,
             'int_type':
-            2147483648 - 1,
+                2147483648 - 1,
             'boolean_type':
-            True,
+                True,
             'string_type':
-            "SpecialChars@!#$%^&*()-_=+{}[]|/`~\\\'?"
+                "SpecialChars@!#$%^&*()-_=+{}[]|/`~\\\'?"
         }]
         features = {
             'float_type': parsing_ops.FixedLenFeature([], tf_types.float32),
@@ -1486,11 +1997,13 @@ class ParseAvroRecordTest(test_util.TensorFlowTestCase):
         tensors_expected = {
             'float_type': np.asarray([3.40282306074e+38]),
             'double_type': np.asarray([1.7976931348623157e+308]),
-            'long_type': np.asarray([9223372036854775807L]),
+            'long_type': np.asarray([9223372036854775807]),
             'int_type': np.asarray([2147483648 - 1]),
             'boolean_type': np.asarray([True]),
             'string_type':
-            np.asarray(["SpecialChars@!#$%^&*()-_=+{}[]|/`~\\\'?"])
+                np.asarray([
+                    compat.as_bytes("SpecialChars@!#$%^&*()-_=+{}[]|/`~\\\'?")
+                ])
         }
         self._compare_all_tensors(
             schema,
@@ -1498,14 +2011,40 @@ class ParseAvroRecordTest(test_util.TensorFlowTestCase):
                 schema, records_to_serialize), features, tensors_expected)
 
     def test_null_union_non_primitive_types(self):
-        schema = '''{"doc": "Unions between null and a non-primitive type.",
-                     "namespace": "com.test.null.union.non.primitive",
-                     "type": "record",
-                     "name": "data_row",
-                     "fields": [
-                         {"name": "array_type", "type": [ "null", {"type": "array", "items": {"type": "float"}}]},
-                         {"name": "map_type", "type": [ "null", {"type": "map", "values": {"type": "double"}}]}
-                     ]}'''
+        schema = """
+        {
+           "doc":"Unions between null and a non-primitive type",
+           "namespace":"com.test.null.union.non.primitive",
+           "type":"record",
+           "name":"data_row",
+           "fields":[
+              {
+                 "name":"array_type",
+                 "type":[
+                    "null",
+                    {
+                       "type":"array",
+                       "items":{
+                          "type":"float"
+                       }
+                    }
+                 ]
+              },
+              {
+                 "name":"map_type",
+                 "type":[
+                    "null",
+                    {
+                       "type":"map",
+                       "values":{
+                          "type":"double"
+                       }
+                    }
+                 ]
+              }
+           ]
+        }
+        """
         records_to_serialize = [{
             'array_type': [1.0, 2.0, 3.0],
             'map_type': {
@@ -1516,7 +2055,7 @@ class ParseAvroRecordTest(test_util.TensorFlowTestCase):
         features = {
             "array_type[0]": parsing_ops.FixedLenFeature([], tf_types.float32),
             "map_type['one']": parsing_ops.FixedLenFeature([],
-                                                            tf_types.float64)
+                                                           tf_types.float64)
         }
         tensors_expected = {
             "array_type[0]": np.asarray([1.0]),
@@ -1535,28 +2074,48 @@ class ParseAvroRecordTest(test_util.TensorFlowTestCase):
         string, null
         float, null
         """
-        schema = '''{"doc": "Test filtering",
-                     "namespace": "com.test.nested.union.with.null",
-                     "type": "record",
-                     "name": "row",
-                     "fields" : [ {
-                        "name" : "features",
-                        "type" : [ "null", {
-                          "type" : "array",
-                          "items" : [ "null", {
-                            "type" : "record",
-                            "name" : "nameTermValue",
-                            "fields" : [ {
-                              "name" : "name",
-                              "type" : [ "null", "string" ]
-                            }, {
-                              "name" : "value",
-                              "type" : [ "null", "float" ]
-                            } ]
-                          } ]
-                        } ]
-                      } ]
-                     }'''
+        schema = """
+        {
+           "doc":"Test nested unions with null",
+           "namespace":"com.test.nested.union.with.null",
+           "type":"record",
+           "name":"row",
+           "fields":[
+              {
+                 "name":"features",
+                 "type":[
+                    "null",
+                    {
+                       "type":"array",
+                       "items":[
+                          "null",
+                          {
+                             "type":"record",
+                             "name":"nameTermValue",
+                             "fields":[
+                                {
+                                   "name":"name",
+                                   "type":[
+                                      "null",
+                                      "string"
+                                   ]
+                                },
+                                {
+                                   "name":"value",
+                                   "type":[
+                                      "null",
+                                      "float"
+                                   ]
+                                }
+                             ]
+                          }
+                       ]
+                    }
+                 ]
+              }
+           ]
+        }        
+        """
         records_to_serialize = [{
             'features': [{
                 'name': "First",
@@ -1582,11 +2141,11 @@ class ParseAvroRecordTest(test_util.TensorFlowTestCase):
         }]
         features = {
             'features[name=First].value':
-            parsing_ops.FixedLenFeature([], tf_types.float32, default_value=0),
+                parsing_ops.FixedLenFeature([], tf_types.float32, default_value=0),
             'features[name=Second].value':
-            parsing_ops.FixedLenFeature([], tf_types.float32, default_value=0),
+                parsing_ops.FixedLenFeature([], tf_types.float32, default_value=0),
             'features[name=Third].value':
-            parsing_ops.FixedLenFeature([], tf_types.float32, default_value=0)
+                parsing_ops.FixedLenFeature([], tf_types.float32, default_value=0)
         }
         tensors_expected = {
             'features[name=First].value': np.asarray([1.0, 1.0]),
@@ -1602,18 +2161,58 @@ class ParseAvroRecordTest(test_util.TensorFlowTestCase):
         """
         This test case will fail because we do not auto-convert to null's
         """
-        schema = '''{"doc": "Primitive types union with null.",
-                     "namespace": "com.test.primitive.and.null",
-                     "type": "record",
-                     "name": "data_row",
-                     "fields": [
-                       {"name": "float_type", "type": [ "null", "float"]},
-                       {"name": "double_type", "type": [ "null", "double"]},
-                       {"name": "long_type", "type": [ "null", "long"]},
-                       {"name": "int_type", "type": [ "null", "int"]},
-                       {"name": "boolean_type", "type": [ "null", "boolean"]},
-                       {"name": "string_type", "type": [ "null", "string"]}
-                     ]}'''
+        schema = """
+        {
+           "doc":"Primitive types union with null",
+           "namespace":"com.test.primitive.and.null",
+           "type":"record",
+           "name":"data_row",
+           "fields":[
+              {
+                 "name":"float_type",
+                 "type":[
+                    "null",
+                    "float"
+                 ]
+              },
+              {
+                 "name":"double_type",
+                 "type":[
+                    "null",
+                    "double"
+                 ]
+              },
+              {
+                 "name":"long_type",
+                 "type":[
+                    "null",
+                    "long"
+                 ]
+              },
+              {
+                 "name":"int_type",
+                 "type":[
+                    "null",
+                    "int"
+                 ]
+              },
+              {
+                 "name":"boolean_type",
+                 "type":[
+                    "null",
+                    "boolean"
+                 ]
+              },
+              {
+                 "name":"string_type",
+                 "type":[
+                    "null",
+                    "string"
+                 ]
+              }
+           ]
+        }        
+        """
         records_to_serialize = [{
             'float_type': None,
             'double_type': None,

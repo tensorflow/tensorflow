@@ -13,7 +13,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include <regex>
 #include <string>
 #include <vector>
 #include <algorithm>
@@ -21,6 +20,7 @@ limitations under the License.
 
 #include <avro.h>
 
+#include "re2/re2.h"
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
 #include "tensorflow/core/framework/common_shape_fns.h"
 #include "tensorflow/core/framework/shape_inference.h"
@@ -1408,12 +1408,13 @@ class ParseAvroRecordOp : public OpKernel {
 
     std::vector<string> incomplete_tokens = str_util::Split(str, ".");
     std::vector<string> tokens;
-    std::regex re(R"(([A-Za-z_][A-Za-z0-9_]*)(\[\S+\]))");
+    string regex = R"(([A-Za-z_][A-Za-z0-9_]*)(\[\S+\]))";
     for(const string& token: incomplete_tokens) {
-      std::smatch index_match;
-      if (std::regex_search(token, index_match, re)) {
-        tokens.push_back(index_match[1]);
-        tokens.push_back(index_match[2]);
+      string beforeBrackets;
+      string insideBrackets;
+      if (RE2::FullMatch(token, regex, &beforeBrackets, &insideBrackets)) {
+        tokens.push_back(beforeBrackets);
+        tokens.push_back(insideBrackets);
       } else {
         tokens.push_back(token);
       }
@@ -1724,7 +1725,7 @@ class ParseAvroRecordOp : public OpKernel {
         avro_value_get_by_name(&next_avro_value, key.c_str(), &child_avro_value,
                                NULL) == 0
             ? Status::OK()
-            : errors::InvalidArgument("Could not find name'", key, "'."));
+            : errors::InvalidArgument("Could not find name '", key, "'."));
 
     // Resolve union(s) for child avro value
     TF_RETURN_IF_ERROR(ResolveUnion(&child_avro_value, child_avro_value));
