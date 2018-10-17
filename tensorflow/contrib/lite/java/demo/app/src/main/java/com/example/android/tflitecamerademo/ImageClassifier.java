@@ -84,27 +84,20 @@ public abstract class ImageClassifier {
   private static final float FILTER_FACTOR = 0.4f;
 
   private PriorityQueue<Map.Entry<String, Float>> sortedLabels =
-      new PriorityQueue<>(
-          RESULTS_TO_SHOW,
-          new Comparator<Map.Entry<String, Float>>() {
-            @Override
-            public int compare(Map.Entry<String, Float> o1, Map.Entry<String, Float> o2) {
-              return (o1.getValue()).compareTo(o2.getValue());
-            }
-          });
+      new PriorityQueue<>(RESULTS_TO_SHOW, new Comparator<Map.Entry<String, Float>>() {
+        @Override
+        public int compare(Map.Entry<String, Float> o1, Map.Entry<String, Float> o2) {
+          return (o1.getValue()).compareTo(o2.getValue());
+        }
+      });
 
   /** Initializes an {@code ImageClassifier}. */
   ImageClassifier(Activity activity) throws IOException {
     tfliteModel = loadModelFile(activity);
     tflite = new Interpreter(tfliteModel, tfliteOptions);
     labelList = loadLabelList(activity);
-    imgData =
-        ByteBuffer.allocateDirect(
-            DIM_BATCH_SIZE
-                * getImageSizeX()
-                * getImageSizeY()
-                * DIM_PIXEL_SIZE
-                * getNumBytesPerChannel());
+    imgData = ByteBuffer.allocateDirect(DIM_BATCH_SIZE * getImageSizeX() * getImageSizeY()
+        * DIM_PIXEL_SIZE * getNumBytesPerChannel());
     imgData.order(ByteOrder.nativeOrder());
     filterLabelProbArray = new float[FILTER_STAGES][getNumLabels()];
     Log.d(TAG, "Created a Tensorflow Lite Image Classifier.");
