@@ -1466,6 +1466,30 @@ class MultiRNNCell(RNNCell):
         # presumably does not contain TensorArrays or anything else fancy
         return super(MultiRNNCell, self).zero_state(batch_size, dtype)
 
+  @property
+  def trainable_weights(self):
+    if not self.trainable:
+      return []
+    weights = []
+    for cell in self._cells:
+      if isinstance(cell, base_layer.Layer):
+        weights += cell.trainable_weights
+    return weights
+
+  @property
+  def non_trainable_weights(self):
+    weights = []
+    for cell in self._cells:
+      if isinstance(cell, base_layer.Layer):
+        weights += cell.non_trainable_weights
+    if not self.trainable:
+      trainable_weights = []
+      for cell in self._cells:
+        if isinstance(cell, base_layer.Layer):
+          trainable_weights += cell.trainable_weights
+      return trainable_weights + weights
+    return weights
+
   def call(self, inputs, state):
     """Run this multi-layer cell on inputs, starting from state."""
     cur_state_pos = 0
