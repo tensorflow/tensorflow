@@ -55,7 +55,7 @@ string TensorIdToString(const tf2xla::TensorId& id);
 Status SetNodeShardingFromNeighbors(Node* n, bool out_edges);
 
 // Add an allowed data type to the AttrConstraint with the given name.
-void AddDtypeToKernalDefConstraint(absl::string_view name, DataType dtype,
+void AddDtypeToKernelDefConstraint(absl::string_view name, DataType dtype,
                                    KernelDef* kdef);
 
 // Returns the next random seed to use for seeding xla rng.
