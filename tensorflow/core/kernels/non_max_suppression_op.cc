@@ -285,15 +285,15 @@ class NonMaxSuppressionV3V4Base : public OpKernel {
 
   void Compute(OpKernelContext* context) override {
     // boxes: [num_boxes, 4]
-    boxes_ = context->input(0);
+    boxes_ = &context->input(0);
     // scores: [num_boxes]
-    scores_ = context->input(1);
+    scores_ = &context->input(1);
     // max_output_size: scalar
-    max_output_size_ = context->input(2);
+    max_output_size_ = &context->input(2);
     OP_REQUIRES(
-        context, TensorShapeUtils::IsScalar(max_output_size_.shape()),
+        context, TensorShapeUtils::IsScalar(max_output_size_->shape()),
         errors::InvalidArgument("max_output_size must be 0-D, got shape ",
-                                max_output_size_.shape().DebugString()));
+                                max_output_size_->shape().DebugString()));
     // iou_threshold: scalar
     const Tensor& iou_threshold = context->input(3);
     OP_REQUIRES(context, TensorShapeUtils::IsScalar(iou_threshold.shape()),
@@ -311,8 +311,8 @@ class NonMaxSuppressionV3V4Base : public OpKernel {
     score_threshold_val_ = score_threshold.scalar<float>()();
 
     num_boxes_ = 0;
-    ParseAndCheckBoxSizes(context, boxes_, &num_boxes_);
-    CheckScoreSizes(context, num_boxes_, scores_);
+    ParseAndCheckBoxSizes(context, *boxes_, &num_boxes_);
+    CheckScoreSizes(context, num_boxes_, *scores_);
     if (!context->status().ok()) {
       return;
     }
@@ -323,9 +323,9 @@ class NonMaxSuppressionV3V4Base : public OpKernel {
  protected:
   virtual void DoComputeAndPostProcess(OpKernelContext* context) = 0;
 
-  Tensor boxes_;
-  Tensor scores_;
-  Tensor max_output_size_;
+  const Tensor* boxes_;
+  const Tensor* scores_;
+  const Tensor* max_output_size_;
   int num_boxes_;
   float iou_threshold_val_;
   float score_threshold_val_;
@@ -340,9 +340,9 @@ class NonMaxSuppressionV3Op : public NonMaxSuppressionV3V4Base {
  protected:
   void DoComputeAndPostProcess(OpKernelContext* context) override {
     auto suppress_check_fn =
-        CreateIOUSuppressCheckFn<T>(boxes_, iou_threshold_val_);
+        CreateIOUSuppressCheckFn<T>(*boxes_, iou_threshold_val_);
 
-    DoNonMaxSuppressionOp<T>(context, scores_, num_boxes_, max_output_size_,
+    DoNonMaxSuppressionOp<T>(context, *scores_, num_boxes_, *max_output_size_,
                              score_threshold_val_, suppress_check_fn);
   }
 };
@@ -359,10 +359,10 @@ class NonMaxSuppressionV4Op : public NonMaxSuppressionV3V4Base {
  protected:
   void DoComputeAndPostProcess(OpKernelContext* context) override {
     auto suppress_check_fn =
-        CreateIOUSuppressCheckFn<T>(boxes_, iou_threshold_val_);
+        CreateIOUSuppressCheckFn<T>(*boxes_, iou_threshold_val_);
     int num_valid_outputs;
 
-    DoNonMaxSuppressionOp<T>(context, scores_, num_boxes_, max_output_size_,
+    DoNonMaxSuppressionOp<T>(context, *scores_, num_boxes_, *max_output_size_,
                              score_threshold_val_, suppress_check_fn,
                              pad_to_max_output_size_, &num_valid_outputs);
 
