@@ -758,7 +758,8 @@ class UnidirectionalSequenceLstm
         *builder, /*fused_activation_function=*/
         ::tflite::ActivationFunctionType_TANH,
         /*cell_clip=*/0.0,
-        /*proj_clip=*/0.0);
+        /*proj_clip=*/0.0,
+        /*time_major=*/true);
   }
 
   void ReadOptions(const TfLiteOptions& options,
