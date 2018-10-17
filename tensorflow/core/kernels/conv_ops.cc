@@ -739,11 +739,16 @@ void LaunchConv2DOp<GPUDevice, T>::operator()(
       To32Bit(transformed_filter.tensor<T, 4>()));
 
   Tensor transformed_output;
-  OP_REQUIRES_OK(
-      ctx, ctx->allocate_temp(DataTypeToEnum<T>::value,
-                              ShapeFromFormat(FORMAT_NCHW, out_batch, out_rows,
-                                              out_cols, out_depths),
-                              &transformed_output));
+  if (data_format == FORMAT_NHWC) {
+    // Only allocate temporary memory when a layout transformation is needed.
+    OP_REQUIRES_OK(
+        ctx, ctx->allocate_temp(DataTypeToEnum<T>::value,
+                                ShapeFromFormat(FORMAT_NCHW, out_batch,
+                                                out_rows, out_cols, out_depths),
+                                &transformed_output));
+  } else {
+    transformed_output = *output;
+  }
 
   auto input_ptr = AsDeviceMemory(input.template flat<T>().data(),
                                   input.template flat<T>().size());
@@ -857,8 +862,6 @@ void LaunchConv2DOp<GPUDevice, T>::operator()(
         ctx->eigen_device<GPUDevice>(),
         const_cast<const Tensor&>(transformed_output).tensor<T, 4>(),
         output->tensor<T, 4>());
-  } else {
-    *output = transformed_output;
   }
 }
 
