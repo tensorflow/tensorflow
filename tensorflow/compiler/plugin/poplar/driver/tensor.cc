@@ -282,14 +282,14 @@ StatusOr<poplar::Tensor> AddDynamicSliceTensor(
 }
 
 static StatusOr<poplar::Tensor> AddConvolutionInput(
-    poplar::Graph& graph, const HloInstruction* inst,
+    poplar::Graph& graph, const std::string& debug_name,
     const HloInstruction* op_target, const HloInstruction* conv_target,
     CompilerResources& resources) {
   poplin::ConvParams params;
   TF_ASSIGN_OR_RETURN(params,
                       GetConvolutionParameters(op_target, conv_target, 0, 1));
 
-  auto name = StrCat(GetDebugName(inst), "_input");
+  auto name = StrCat(debug_name, "_input");
   poplar::OptionFlags opts;
   poplar::Tensor out = poplin::createInput(graph, params, name, opts,
                                            &resources.convolution_cache);
@@ -297,14 +297,14 @@ static StatusOr<poplar::Tensor> AddConvolutionInput(
 }
 
 static StatusOr<poplar::Tensor> AddConvolutionWeights(
-    poplar::Graph& graph, const HloInstruction* inst,
+    poplar::Graph& graph, const std::string& debug_name,
     const HloInstruction* op_target, const HloInstruction* conv_target,
     CompilerResources& resources) {
   poplin::ConvParams params;
   TF_ASSIGN_OR_RETURN(params,
                       GetConvolutionParameters(op_target, conv_target, 0, 1));
 
-  auto name = StrCat(GetDebugName(inst), "_weights");
+  auto name = StrCat(debug_name, "_weights");
   poplar::OptionFlags opts;
   poplar::Tensor out = poplin::createWeights(graph, params, name, opts,
                                              &resources.convolution_cache);
@@ -315,7 +315,7 @@ static StatusOr<poplar::Tensor> AddConvolutionWeights(
 }
 
 static StatusOr<poplar::Tensor> AddLeftMatMul(poplar::Graph& graph,
-                                              const HloInstruction* inst,
+                                              const std::string& debug_name,
                                               const xla::Shape& shape,
                                               const HloInstruction* target,
                                               CompilerResources& resources) {
@@ -323,14 +323,14 @@ static StatusOr<poplar::Tensor> AddLeftMatMul(poplar::Graph& graph,
   TF_ASSIGN_OR_RETURN(type, PoplarDataType(shape));
   const auto& aShape = PoplarShapeFromXlaShape(target->operand(0)->shape());
   const auto& bShape = PoplarShapeFromXlaShape(target->operand(1)->shape());
-  auto name = StrCat(GetDebugName(inst), "_lhs");
+  auto name = StrCat(debug_name, "_lhs");
   poplar::OptionFlags opts;
   return poplin::createMatMulInputLHS(graph, type, aShape, bShape, name, opts,
                                       &resources.dot_cache);
 }
 
 static StatusOr<poplar::Tensor> AddRightMatMul(poplar::Graph& graph,
-                                               const HloInstruction* inst,
+                                               const std::string& debug_name,
                                                const xla::Shape& shape,
                                                const HloInstruction* target,
                                                CompilerResources& resources) {
@@ -338,7 +338,7 @@ static StatusOr<poplar::Tensor> AddRightMatMul(poplar::Graph& graph,
   TF_ASSIGN_OR_RETURN(type, PoplarDataType(shape));
   const auto& aShape = PoplarShapeFromXlaShape(target->operand(0)->shape());
   const auto& bShape = PoplarShapeFromXlaShape(target->operand(1)->shape());
-  auto name = StrCat(GetDebugName(inst), "_rhs");
+  auto name = StrCat(debug_name, "_rhs");
   poplar::OptionFlags opts;
   return poplin::createMatMulInputRHS(graph, type, aShape, bShape, name, opts,
                                       &resources.dot_cache);
@@ -348,6 +348,7 @@ StatusOr<poplar::Tensor> AddTensor(poplar::Graph& graph,
                                    const TensorSource& src,
                                    const xla::Shape& shape,
                                    CompilerResources& resources) {
+  const auto& name = GetDebugName(src.first);
   poplar::Tensor out;
   auto target = resources.annotations.tensor_allocation_map.find(src);
   if (target != resources.annotations.tensor_allocation_map.end()) {
@@ -357,14 +358,13 @@ StatusOr<poplar::Tensor> AddTensor(poplar::Graph& graph,
       case HloOpcode::kConvolution: {
         switch (target->second.input_index) {
           case 0: {
-            TF_ASSIGN_OR_RETURN(out, AddConvolutionInput(graph, src.first, tgt,
-                                                         tgt, resources));
+            TF_ASSIGN_OR_RETURN(
+                out, AddConvolutionInput(graph, name, tgt, tgt, resources));
             break;
           }
           case 1: {
             TF_ASSIGN_OR_RETURN(
-                out,
-                AddConvolutionWeights(graph, src.first, tgt, tgt, resources));
+                out, AddConvolutionWeights(graph, name, tgt, tgt, resources));
             break;
           }
           default:
@@ -378,12 +378,12 @@ StatusOr<poplar::Tensor> AddTensor(poplar::Graph& graph,
         switch (target->second.input_index) {
           case 0: {
             TF_ASSIGN_OR_RETURN(
-                out, AddLeftMatMul(graph, src.first, tshape, tgt, resources));
+                out, AddLeftMatMul(graph, name, tshape, tgt, resources));
             break;
           }
           case 1: {
             TF_ASSIGN_OR_RETURN(
-                out, AddRightMatMul(graph, src.first, tshape, tgt, resources));
+                out, AddRightMatMul(graph, name, tshape, tgt, resources));
             break;
           }
           default:
@@ -396,22 +396,20 @@ StatusOr<poplar::Tensor> AddTensor(poplar::Graph& graph,
       case HloOpcode::kDynamicSlice: {
         if (target->second.input_index == 0) {
           TF_ASSIGN_OR_RETURN(
-              out, AddDynamicSliceTensor(graph, GetDebugName(src.first), tshape,
+              out, AddDynamicSliceTensor(graph, name, tshape,
                                          target->second.tgt->shape()));
         } else {
-          TF_ASSIGN_OR_RETURN(
-              out, AddPlainTensor(graph, GetDebugName(src.first), tshape));
+          TF_ASSIGN_OR_RETURN(out, AddPlainTensor(graph, name, tshape));
         }
         break;
       }
       case HloOpcode::kDynamicUpdateSlice: {
         if (target->second.input_index == 0) {
           TF_ASSIGN_OR_RETURN(
-              out, AddDynamicSliceTensor(graph, GetDebugName(src.first), tshape,
+              out, AddDynamicSliceTensor(graph, name, tshape,
                                          target->second.tgt->shape()));
         } else {
-          TF_ASSIGN_OR_RETURN(
-              out, AddPlainTensor(graph, GetDebugName(src.first), tshape));
+          TF_ASSIGN_OR_RETURN(out, AddPlainTensor(graph, name, tshape));
         }
         break;
       }
@@ -425,13 +423,13 @@ StatusOr<poplar::Tensor> AddTensor(poplar::Graph& graph,
             switch (target->second.input_index) {
               case 0: {
                 TF_ASSIGN_OR_RETURN(
-                    out, AddConvolutionInput(graph, src.first, tgt, conv_inst,
+                    out, AddConvolutionInput(graph, name, tgt, conv_inst,
                                              resources));
                 break;
               }
               case 1: {
                 TF_ASSIGN_OR_RETURN(
-                    out, AddConvolutionWeights(graph, src.first, tgt, conv_inst,
+                    out, AddConvolutionWeights(graph, name, tgt, conv_inst,
                                                resources));
                 break;
               }
@@ -446,8 +444,7 @@ StatusOr<poplar::Tensor> AddTensor(poplar::Graph& graph,
                 src.first->name().c_str(), name.c_str());
           }
         } else {
-          TF_ASSIGN_OR_RETURN(
-              out, AddPlainTensor(graph, GetDebugName(src.first), tshape));
+          TF_ASSIGN_OR_RETURN(out, AddPlainTensor(graph, name, tshape));
         }
         break;
       }
@@ -484,8 +481,7 @@ StatusOr<poplar::Tensor> AddTensor(poplar::Graph& graph,
       }
     }
   } else {
-    TF_ASSIGN_OR_RETURN(out,
-                        AddPlainTensor(graph, GetDebugName(src.first), shape));
+    TF_ASSIGN_OR_RETURN(out, AddPlainTensor(graph, name, shape));
   }
   return out;
 }
