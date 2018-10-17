@@ -33,6 +33,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.keras import backend
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gen_resource_variable_ops
+from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variable_scope
 
@@ -227,7 +228,7 @@ class ReplicatedVariable(object):
       return self._primary_var._dense_var_to_tensor(dtype, name, as_ref)
     # pylint: enable=protected-access
     if dtype is not None and dtype != self.dtype:
-      return NotImplemented
+      return math_ops.cast(self._read_variable_op(), dtype)
     if as_ref:
       return self.handle
     else:

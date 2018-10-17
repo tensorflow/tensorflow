@@ -280,9 +280,9 @@ def _cross_replica_concat(tensor, core_id, num_cores, name):
   """
 
   input_dtype = tensor.dtype
-  if input_dtype not in [dtypes.float32, dtypes.int32]:
-    raise TypeError('For model replication, only (float32 and int32) is '
-                    'supported for model outputs and targets. Got {} for '
+  if input_dtype not in [dtypes.bfloat16, dtypes.float32, dtypes.int32]:
+    raise TypeError('For model replication, only (bfloat16, float32 and int32) '
+                    'is supported for model outputs and targets. Got {} for '
                     '{}.'.format(input_dtype, name))
 
   batch_size = tensor.shape[0]
@@ -362,7 +362,7 @@ def _replicated_optimizer(opt):
     return KerasCrossShardOptimizer(opt)
 
 
-def _clone_optimizer(optimizer, config=None):
+def _clone_optimizer(optimizer, config=None, worker_name=None):
   """Returns a cloned optimizer with the provided optimizer.config or config."""
   if not isinstance(optimizer, keras_optimizers.Optimizer):
     # In the first call to tpu_model(model), Keras may not have wrapped the TF
@@ -377,7 +377,10 @@ def _clone_optimizer(optimizer, config=None):
   if config is None:
     config = optimizer.get_config()
   logging.info('Cloning %s %s', optimizer.__class__.__name__, config)
-  return optimizer.__class__.from_config(config)
+  with ops.device(
+      '%s/device:CPU:0' % ('/job:%s' % worker_name if worker_name else '')):
+    # Explicitly put optimizer parameter variables on TPU worker.
+    return optimizer.__class__.from_config(config)
 
 
 class TPURewriteContext(object):
@@ -956,7 +959,8 @@ class TPUFunction(object):
               self._tpu_assignment.num_towers):
             if not self._cloned_optimizer:
               self._cloned_optimizer = _clone_optimizer(
-                  self.model.cpu_optimizer)
+                  self.model.cpu_optimizer,
+                  worker_name=self._tpu_assignment.worker_name)
 
             self._cloned_model = models.clone_model(self.model)
 
@@ -973,6 +977,12 @@ class TPUFunction(object):
                       name='model output ({})'.format(o.name))
                   for o in self._cloned_model.outputs
               ]
+              # Recast all low precision outputs back to float32 since we only
+              # casted the inputs to bfloat16 and not targets. This is done so
+              # that we can preserve precision when calculating the loss value.
+              if new_outputs and new_outputs[0].dtype == dtypes.bfloat16:
+                new_outputs = [
+                    math_ops.cast(o, dtypes.float32) for o in new_outputs]
               self._cloned_model.outputs = new_outputs
               tpu_targets = [
                   _cross_replica_concat(
