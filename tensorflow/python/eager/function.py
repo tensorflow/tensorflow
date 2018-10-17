@@ -924,7 +924,9 @@ def func_graph_from_py_func(name,
   else:
     control_manager = ops.NullContextmanager
   with func_graph.as_default(), control_manager() as a:
-    variable_scope.get_variable_scope().set_use_resource(True)
+    current_scope = variable_scope.get_variable_scope()
+    default_use_recource = current_scope.use_resource
+    current_scope.set_use_resource(True)
 
     if signature is not None:
       args = signature
@@ -976,6 +978,7 @@ def func_graph_from_py_func(name,
       check_mutation(func_kwargs_before, func_kwargs)
     finally:
       tape.pop_tape(this_tape)
+      current_scope.set_use_resource(default_use_recource)
 
     # Variables in `func_args`, `func_kwargs` should be explicit inputs
     # to the function, not captured inputs.
