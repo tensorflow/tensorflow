@@ -37,8 +37,8 @@ namespace {
 
 // Compute the interpolation indices only once.
 struct CachedInterpolation {
-  int lower;  // Lower source index used in the interpolation
-  int upper;  // Upper source index used in the interpolation
+  int lower; // Lower source index used in the interpolation
+  int upper; // Upper source index used in the interpolation
   // 1-D linear iterpolation scale (see:
   // https://en.wikipedia.org/wiki/Bilinear_interpolation)
   float lerp;
@@ -48,7 +48,7 @@ bool compute_single_interpolation_weight(const int in_size,
                                          const float out2in_scale,
                                          const float out2in_start,
                                          const bool clip, const int i,
-                                         int* lower, int* upper, float* lerp) {
+                                         int *lower, int *upper, float *lerp) {
   const float in = i * out2in_scale + out2in_start;
   *lower = (int)floor(in);
   *upper = (int)ceil(in);
@@ -76,7 +76,7 @@ bool compute_single_interpolation_weight(const int in_size,
 bool compute_interpolation_weights(const int min_i, const int max_i,
                                    const int in_size, const float out2in_scale,
                                    const float out2in_start, const bool clip,
-                                   CachedInterpolation* interpolation) {
+                                   CachedInterpolation *interpolation) {
   bool rval = true;
   int num_i = max_i - min_i + 1;
   for (int i = 0; i < num_i; ++i) {
@@ -94,16 +94,15 @@ bool compute_interpolation_weights(const int min_i, const int max_i,
  */
 void compute_interpolation_weights(const int out_size, const int in_size,
                                    const float out2in_scale,
-                                   CachedInterpolation* interpolation) {
+                                   CachedInterpolation *interpolation) {
   interpolation[out_size].lower = 0;
   interpolation[out_size].upper = 0;
   const bool clip = true;
   if (!compute_interpolation_weights(0, out_size - 1, in_size, out2in_scale,
                                      0.0f, clip, interpolation)) {
     // Should never happen, check for it anyway
-    printf(
-        "Warning! Interpolation values have lower,upper indexes outside of "
-        "range [0,in_size-1]\n");
+    printf("Warning! Interpolation values have lower,upper indexes outside of "
+           "range [0,in_size-1]\n");
   }
 }
 /**
@@ -115,7 +114,7 @@ void compute_interpolation_weights(const int out_size, const int in_size,
  */
 bool compute_minmax_indexes(const int out_size, const int in_size,
                             const float out2in_scale, const float out2in_start,
-                            int* min_i, int* max_i) {
+                            int *min_i, int *max_i) {
   *min_i = out_size;
   *max_i = -1;
   int lower, upper;
@@ -123,8 +122,10 @@ bool compute_minmax_indexes(const int out_size, const int in_size,
   for (int i = 0; i < out_size; ++i) {
     if (compute_single_interpolation_weight(in_size, out2in_scale, out2in_start,
                                             false, i, &lower, &upper, &lerp)) {
-      if (i < *min_i) *min_i = i;
-      if (i > *max_i) *max_i = i;
+      if (i < *min_i)
+        *min_i = i;
+      if (i > *max_i)
+        *max_i = i;
     }
   }
   return (*min_i <= *max_i) ? true : false;
@@ -136,9 +137,9 @@ bool compute_minmax_indexes(const int out_size, const int in_size,
  */
 bool compute_interpolation_weights(
     const int out_size, const int in_size,
-    const float x1,  // lower bounding box, crop region starts at in_size*x1
-    const float x2,  // upper bounding box, crop region ends at in_size*x2
-    int* min_i, int* max_i, std::vector<CachedInterpolation>* interpolation) {
+    const float x1, // lower bounding box, crop region starts at in_size*x1
+    const float x2, // upper bounding box, crop region ends at in_size*x2
+    int *min_i, int *max_i, std::vector<CachedInterpolation> *interpolation) {
   float out2in_start = out_size > 1
                            ? (float)(in_size - 1) * (float)x1
                            : (float)(in_size - 1) * (float)(x1 + x2) / 2.0f;
@@ -206,24 +207,24 @@ float compute_lerp(const float top_left, const float top_right,
  * Optionally flips horizontal and/or vertical axis.
  */
 template <typename T, typename U>
-void crop_resize_single_image(const T* image, const int64 in_height,
+void crop_resize_single_image(const T *image, const int64 in_height,
                               const int64 in_width, const int64 out_height,
                               const int64 out_width, const int channels,
                               const int min_ix, const int max_ix,
-                              const CachedInterpolation* xs, const int min_iy,
-                              const int max_iy, const CachedInterpolation* ys,
+                              const CachedInterpolation *xs, const int min_iy,
+                              const int max_iy, const CachedInterpolation *ys,
                               const float extrapolated_value, const bool flip_x,
                               const bool flip_y,
-                              U* output) TF_ATTRIBUTE_NOINLINE;
+                              U *output) TF_ATTRIBUTE_NOINLINE;
 template <typename T, typename U>
-void crop_resize_single_image(const T* image, const int64 in_height,
+void crop_resize_single_image(const T *image, const int64 in_height,
                               const int64 in_width, const int64 out_height,
                               const int64 out_width, const int channels,
                               const int min_ix, const int max_ix,
-                              const CachedInterpolation* xs, const int min_iy,
-                              const int max_iy, const CachedInterpolation* ys,
+                              const CachedInterpolation *xs, const int min_iy,
+                              const int max_iy, const CachedInterpolation *ys,
                               const float extrapolated_value, const bool flip_x,
-                              const bool flip_y, U* output) {
+                              const bool flip_y, U *output) {
   const int64 in_row_size = in_width * channels;
   const int64 out_row_size = out_width * channels;
   U u_min_val = std::numeric_limits<U>::min();
@@ -234,22 +235,24 @@ void crop_resize_single_image(const T* image, const int64 in_height,
       cast_to<U>(extrapolated_value, min_val, max_val, u_min_val, u_max_val);
   // low y extrapolation zone
   if (min_iy > 0) {
-    U* p = flip_y ? output + out_row_size * (out_height - min_iy) : output;
+    U *p = flip_y ? output + out_row_size * (out_height - min_iy) : output;
     int64 nn = out_row_size * (int64)min_iy;
-    for (int64 i = 0; i < nn; ++i) p[i] = uEx;
+    for (int64 i = 0; i < nn; ++i)
+      p[i] = uEx;
   }
   // high y extrapolation zone
   if (max_iy < out_height - 1) {
-    U* p = flip_y ? output : output + out_row_size * (max_iy + 1);
+    U *p = flip_y ? output : output + out_row_size * (max_iy + 1);
     int64 nn = out_row_size * (int64)(out_height - 1 - max_iy);
-    for (int64 i = 0; i < nn; ++i) p[i] = uEx;
+    for (int64 i = 0; i < nn; ++i)
+      p[i] = uEx;
   }
   // low x extrapolation zone
   if (min_ix > 0) {
     for (int iy = min_iy; iy <= max_iy; ++iy) {
       int xx0 = flip_x ? (out_width - min_ix) * channels : 0;
       int nxx = min_ix * channels;
-      U* p = output + xx0 +
+      U *p = output + xx0 +
              out_row_size * (int64)(flip_y ? out_height - 1 - iy : iy);
       for (int ix = 0; ix < nxx; ++ix) {
         p[ix] = uEx;
@@ -261,22 +264,22 @@ void crop_resize_single_image(const T* image, const int64 in_height,
     for (int iy = min_iy; iy <= max_iy; ++iy) {
       int xx0 = flip_x ? 0 : (max_ix + 1) * channels;
       int nxx = (out_width - 1 - max_ix) * channels;
-      U* p = output + xx0 +
+      U *p = output + xx0 +
              out_row_size * (int64)(flip_y ? out_height - 1 - iy : iy);
       for (int ix = 0; ix < nxx; ++ix) {
         p[ix] = uEx;
       }
     }
   }
-  U* output_y_ptr =
+  U *output_y_ptr =
       output +
       out_row_size * (int64)(flip_y ? out_height - 1 - min_iy : min_iy);
   // interpolation zone
   if (channels == 1) {
     for (int y = min_iy; y <= max_iy; ++y) {
       const int iy = y - min_iy;
-      const T* ys_input_lower_ptr = image + ys[iy].lower * in_row_size;
-      const T* ys_input_upper_ptr = image + ys[iy].upper * in_row_size;
+      const T *ys_input_lower_ptr = image + ys[iy].lower * in_row_size;
+      const T *ys_input_upper_ptr = image + ys[iy].upper * in_row_size;
       const float ys_lerp = ys[iy].lerp;
       const int x0 = flip_x ? out_width - 1 - max_ix : min_ix;
       const int x1 = flip_x ? out_width - 1 - min_ix : max_ix;
@@ -304,8 +307,8 @@ void crop_resize_single_image(const T* image, const int64 in_height,
   } else if (channels == 2) {
     for (int y = min_iy; y <= max_iy; ++y) {
       const int iy = y - min_iy;
-      const T* ys_input_lower_ptr = image + ys[iy].lower * in_row_size;
-      const T* ys_input_upper_ptr = image + ys[iy].upper * in_row_size;
+      const T *ys_input_lower_ptr = image + ys[iy].lower * in_row_size;
+      const T *ys_input_upper_ptr = image + ys[iy].upper * in_row_size;
       const float ys_lerp = ys[iy].lerp;
       const int x0 = flip_x ? out_width - 1 - max_ix : min_ix;
       const int x1 = flip_x ? out_width - 1 - min_ix : max_ix;
@@ -343,8 +346,8 @@ void crop_resize_single_image(const T* image, const int64 in_height,
   } else if (channels == 3) {
     for (int y = min_iy; y <= max_iy; ++y) {
       const int iy = y - min_iy;
-      const T* ys_input_lower_ptr = image + ys[iy].lower * in_row_size;
-      const T* ys_input_upper_ptr = image + ys[iy].upper * in_row_size;
+      const T *ys_input_lower_ptr = image + ys[iy].lower * in_row_size;
+      const T *ys_input_upper_ptr = image + ys[iy].upper * in_row_size;
       const float ys_lerp = ys[iy].lerp;
       const int x0 = flip_x ? out_width - 1 - max_ix : min_ix;
       const int x1 = flip_x ? out_width - 1 - min_ix : max_ix;
@@ -392,8 +395,8 @@ void crop_resize_single_image(const T* image, const int64 in_height,
   } else if (channels == 4) {
     for (int y = min_iy; y <= max_iy; ++y) {
       const int iy = y - min_iy;
-      const T* ys_input_lower_ptr = image + ys[iy].lower * in_row_size;
-      const T* ys_input_upper_ptr = image + ys[iy].upper * in_row_size;
+      const T *ys_input_lower_ptr = image + ys[iy].lower * in_row_size;
+      const T *ys_input_upper_ptr = image + ys[iy].upper * in_row_size;
       const float ys_lerp = ys[iy].lerp;
       const int x0 = flip_x ? out_width - 1 - max_ix : min_ix;
       const int x1 = flip_x ? out_width - 1 - min_ix : max_ix;
@@ -451,8 +454,8 @@ void crop_resize_single_image(const T* image, const int64 in_height,
   } else {
     for (int y = min_iy; y <= max_iy; ++y) {
       const int iy = y - min_iy;
-      const T* ys_input_lower_ptr = image + ys[iy].lower * in_row_size;
-      const T* ys_input_upper_ptr = image + ys[iy].upper * in_row_size;
+      const T *ys_input_lower_ptr = image + ys[iy].lower * in_row_size;
+      const T *ys_input_upper_ptr = image + ys[iy].upper * in_row_size;
       const float ys_lerp = ys[iy].lerp;
       const int x0 = flip_x ? out_width - 1 - max_ix : min_ix;
       const int x1 = flip_x ? out_width - 1 - min_ix : max_ix;
@@ -483,12 +486,12 @@ void crop_resize_single_image(const T* image, const int64 in_height,
 // machine you are running on
 template <typename T, typename U>
 void crop_resize_single_image_common(
-    const T* image, const int64 in_height, const int64 in_width,
+    const T *image, const int64 in_height, const int64 in_width,
     const int64 out_height, const int64 out_width, const int channels,
-    const int min_ix, const int max_ix, const CachedInterpolation* xs,
-    const int min_iy, const int max_iy, const CachedInterpolation* ys,
+    const int min_ix, const int max_ix, const CachedInterpolation *xs,
+    const int min_iy, const int max_iy, const CachedInterpolation *ys,
     const float extrapolated_value, const bool flip_x, const bool flip_y,
-    U* output) TF_ATTRIBUTE_NOINLINE;
+    U *output) TF_ATTRIBUTE_NOINLINE;
 
 // For now, only compile vectorized code on LINUX systems.
 // to-do: Test vectorized code on other platforms (MacOS and Windows).
@@ -515,9 +518,8 @@ void crop_resize_single_image_common(
 // Eigen::half, bfloat16 or float.
 //
 
-template <class T>
-class VectorLoader {
- public:
+template <class T> class VectorLoader {
+public:
 #ifdef __AVX2__
   // convert 8 packed words of type T to fp32.
   // T must be one of uint8, int8, uint16, int16, int32, Eigen::half, bfloat16
@@ -535,20 +537,20 @@ class VectorLoader {
   // separate 128 bit lanes.
   // input is stored in lower portion of 4 separate sse words, v0 through v3.
   // output is stored in lower portion of v0.
-  void pack_1ch(__m256i* v0, __m256i* v1, __m256i* v2, __m256i* v3);
+  void pack_1ch(__m256i *v0, __m256i *v1, __m256i *v2, __m256i *v3);
   // output is stored in lower portion of v0 and v1.
-  void pack_2ch(__m256i* v0, __m256i* v1, __m256i* v2, __m256i* v3);
+  void pack_2ch(__m256i *v0, __m256i *v1, __m256i *v2, __m256i *v3);
   // output is stored in lower portion of v0, v1 and v2.
-  void pack_3ch(__m256i* v0, __m256i* v1, __m256i* v2, __m256i* v3);
+  void pack_3ch(__m256i *v0, __m256i *v1, __m256i *v2, __m256i *v3);
 #else
   // pack 4 pixels with 1 channel, 2 channels and 3channels respectively.
   // input is stored in lower portion of 4 separate sse words, v0 through v3.
   // output is stored in lower portion of v0.
-  void pack_1ch(__m128i* v0, __m128i* v1, __m128i* v2, __m128i* v3);
+  void pack_1ch(__m128i *v0, __m128i *v1, __m128i *v2, __m128i *v3);
   // output is stored in lower portion of v0 and v1.
-  void pack_2ch(__m128i* v0, __m128i* v1, __m128i* v2, __m128i* v3);
+  void pack_2ch(__m128i *v0, __m128i *v1, __m128i *v2, __m128i *v3);
   // output is stored in lower portion of v0, v1 and v2.
-  void pack_3ch(__m128i* v0, __m128i* v1, __m128i* v2, __m128i* v3);
+  void pack_3ch(__m128i *v0, __m128i *v1, __m128i *v2, __m128i *v3);
 #endif
 
 #ifdef __AVX2__
@@ -572,8 +574,8 @@ class VectorLoader {
   // pixels have 1 channel.
   // load1 case, i.e. 4 left and right inputs are loaded with a single unaligned
   // SSE load.
-  void load1_1ch(const T* lower_ptr, const T* upper_ptr, int offset0,
-                 const __m128i* shuffle_masks, __m256* left0, __m256* right0);
+  void load1_1ch(const T *lower_ptr, const T *upper_ptr, int offset0,
+                 const __m128i *shuffle_masks, __m256 *left0, __m256 *right0);
   // load top left and bottom left interpolation inputs into output argument
   // left.
   // load top right and bottom right interpolation inputs into output argument
@@ -581,9 +583,9 @@ class VectorLoader {
   // pixels have 2 channels.
   // load1 case, i.e. 4 left and right inputs are loaded with a single unaligned
   // SSE load.
-  void load1_2ch(const T* lower_ptr, const T* upper_ptr, int offset0,
-                 const __m128i* shuffle_masks, __m256* left0, __m256* left1,
-                 __m256* right0, __m256* right1);
+  void load1_2ch(const T *lower_ptr, const T *upper_ptr, int offset0,
+                 const __m128i *shuffle_masks, __m256 *left0, __m256 *left1,
+                 __m256 *right0, __m256 *right1);
   // load top left and bottom left interpolation inputs into output argument
   // left.
   // load top right and bottom right interpolation inputs into output argument
@@ -591,9 +593,9 @@ class VectorLoader {
   // pixels have 3 channels.
   // load1 case, i.e. 4 left and right inputs are loaded with a single unaligned
   // SSE load.
-  void load1_3ch(const T* lower_ptr, const T* upper_ptr, int offset0,
-                 const __m128i* shuffle_masks, __m256* left0, __m256* left1,
-                 __m256* left2, __m256* right0, __m256* right1, __m256* right2);
+  void load1_3ch(const T *lower_ptr, const T *upper_ptr, int offset0,
+                 const __m128i *shuffle_masks, __m256 *left0, __m256 *left1,
+                 __m256 *left2, __m256 *right0, __m256 *right1, __m256 *right2);
   // load top left and bottom left interpolation inputs into output argument
   // left.
   // load top right and bottom right interpolation inputs into output argument
@@ -601,10 +603,10 @@ class VectorLoader {
   // pixels have 4 channels.
   // load1 case, i.e. 4 left and right inputs are loaded with a single unaligned
   // SSE load.
-  void load1_4ch(const T* lower_ptr, const T* upper_ptr, int offset0,
-                 const __m128i* shuffle_masks, __m256* left0, __m256* left1,
-                 __m256* left2, __m256* left3, __m256* right0, __m256* right1,
-                 __m256* right2, __m256* right3);
+  void load1_4ch(const T *lower_ptr, const T *upper_ptr, int offset0,
+                 const __m128i *shuffle_masks, __m256 *left0, __m256 *left1,
+                 __m256 *left2, __m256 *left3, __m256 *right0, __m256 *right1,
+                 __m256 *right2, __m256 *right3);
   // load top left and bottom left interpolation inputs into output argument
   // left.
   // load top right and bottom right interpolation inputs into output argument
@@ -612,8 +614,8 @@ class VectorLoader {
   // pixels have 1 channel.
   // load2 case, i.e. 4 left inputs are loaded with first SSE load and 4 right
   // inputs are loaded with second SSE load.
-  void load2_1ch(const T* lower_ptr, const T* upper_ptr, int offset0,
-                 const __m128i* shuffle_masks, __m256* left0, __m256* right0);
+  void load2_1ch(const T *lower_ptr, const T *upper_ptr, int offset0,
+                 const __m128i *shuffle_masks, __m256 *left0, __m256 *right0);
   // load top left and bottom left interpolation inputs into output argument
   // left.
   // load top right and bottom right interpolation inputs into output argument
@@ -621,9 +623,9 @@ class VectorLoader {
   // pixels have 2 channels.
   // load2 case, i.e. 4 left inputs are loaded with first SSE load and 4 right
   // inputs are loaded with second SSE load.
-  void load2_2ch(const T* lower_ptr, const T* upper_ptr, int offset0,
-                 const __m128i* shuffle_masks, __m256* left0, __m256* left1,
-                 __m256* right0, __m256* right1);
+  void load2_2ch(const T *lower_ptr, const T *upper_ptr, int offset0,
+                 const __m128i *shuffle_masks, __m256 *left0, __m256 *left1,
+                 __m256 *right0, __m256 *right1);
   // load top left and bottom left interpolation inputs into output argument
   // left.
   // load top right and bottom right interpolation inputs into output argument
@@ -631,9 +633,9 @@ class VectorLoader {
   // pixels have 3 channels.
   // load2 case, i.e. 4 left inputs are loaded with first SSE load and 4 right
   // inputs are loaded with second SSE load.
-  void load2_3ch(const T* lower_ptr, const T* upper_ptr, int offset0,
-                 const __m128i* shuffle_masks, __m256* left0, __m256* left1,
-                 __m256* left2, __m256* right0, __m256* right1, __m256* right2);
+  void load2_3ch(const T *lower_ptr, const T *upper_ptr, int offset0,
+                 const __m128i *shuffle_masks, __m256 *left0, __m256 *left1,
+                 __m256 *left2, __m256 *right0, __m256 *right1, __m256 *right2);
   // load top left and bottom left interpolation inputs into output argument
   // left.
   // load top right and bottom right interpolation inputs into output argument
@@ -641,10 +643,10 @@ class VectorLoader {
   // pixels have 4 channels.
   // load2 case, i.e. 4 left inputs are loaded with first SSE load and 4 right
   // inputs are loaded with second SSE load.
-  void load2_4ch(const T* lower_ptr, const T* upper_ptr, int offset0,
-                 const __m128i* shuffle_masks, __m256* left0, __m256* left1,
-                 __m256* left2, __m256* left3, __m256* right0, __m256* right1,
-                 __m256* right2, __m256* right3);
+  void load2_4ch(const T *lower_ptr, const T *upper_ptr, int offset0,
+                 const __m128i *shuffle_masks, __m256 *left0, __m256 *left1,
+                 __m256 *left2, __m256 *left3, __m256 *right0, __m256 *right1,
+                 __m256 *right2, __m256 *right3);
   // load top left and bottom left interpolation inputs into output argument
   // left.
   // load top right and bottom right interpolation inputs into output argument
@@ -652,9 +654,9 @@ class VectorLoader {
   // pixels have 1 channel.
   // load4 case, i.e. each pair of left and right inputs are loaded with a
   // separate SSE load.
-  void load4_1ch(const T* lower_ptr, const T* upper_ptr, int offset0,
-                 int offset1, int offset2, int offset3, __m256* left0,
-                 __m256* right0);
+  void load4_1ch(const T *lower_ptr, const T *upper_ptr, int offset0,
+                 int offset1, int offset2, int offset3, __m256 *left0,
+                 __m256 *right0);
   // load top left and bottom left interpolation inputs into output argument
   // left.
   // load top right and bottom right interpolation inputs into output argument
@@ -662,9 +664,9 @@ class VectorLoader {
   // pixels have 2 channels.
   // load4 case, i.e. each pair of left and right inputs are loaded with a
   // separate SSE load.
-  void load4_2ch(const T* lower_ptr, const T* upper_ptr, int offset0,
-                 int offset1, int offset2, int offset3, __m256* left0,
-                 __m256* left1, __m256* right0, __m256* right1);
+  void load4_2ch(const T *lower_ptr, const T *upper_ptr, int offset0,
+                 int offset1, int offset2, int offset3, __m256 *left0,
+                 __m256 *left1, __m256 *right0, __m256 *right1);
   // load top left and bottom left interpolation inputs into output argument
   // left.
   // load top right and bottom right interpolation inputs into output argument
@@ -672,10 +674,10 @@ class VectorLoader {
   // pixels have 3 channels.
   // load4 case, i.e. each pair of left and right inputs are loaded with a
   // separate SSE load.
-  void load4_3ch(const T* lower_ptr, const T* upper_ptr, int offset0,
-                 int offset1, int offset2, int offset3, __m256* left0,
-                 __m256* left1, __m256* left2, __m256* right0, __m256* right1,
-                 __m256* right2);
+  void load4_3ch(const T *lower_ptr, const T *upper_ptr, int offset0,
+                 int offset1, int offset2, int offset3, __m256 *left0,
+                 __m256 *left1, __m256 *left2, __m256 *right0, __m256 *right1,
+                 __m256 *right2);
   // load top left and bottom left interpolation inputs into output argument
   // left.
   // load top right and bottom right interpolation inputs into output argument
@@ -683,10 +685,10 @@ class VectorLoader {
   // pixels have 4 channels.
   // load4 case, i.e. each pair of left and right inputs are loaded with a
   // separate SSE load.
-  void load4_4ch(const T* lower_ptr, const T* upper_ptr, int offset0,
-                 int offset1, int offset2, int offset3, __m256* left0,
-                 __m256* left1, __m256* left2, __m256* left3, __m256* right0,
-                 __m256* right1, __m256* right2, __m256* right3);
+  void load4_4ch(const T *lower_ptr, const T *upper_ptr, int offset0,
+                 int offset1, int offset2, int offset3, __m256 *left0,
+                 __m256 *left1, __m256 *left2, __m256 *left3, __m256 *right0,
+                 __m256 *right1, __m256 *right2, __m256 *right3);
   // load top left and bottom left interpolation inputs into output argument
   // left.
   // load top right and bottom right interpolation inputs into output argument
@@ -695,9 +697,9 @@ class VectorLoader {
   // load8 case, i.e. each input is loaded with a separate SSE load.
   // 4 pixels, each with left and right input necessitates 8 separate SSE loads
   // per input row.
-  void load8_1ch(const T* lower_ptr, const T* upper_ptr, int offset0,
-                 int offset1, int offset2, int offset3, __m256* left0,
-                 __m256* right0);
+  void load8_1ch(const T *lower_ptr, const T *upper_ptr, int offset0,
+                 int offset1, int offset2, int offset3, __m256 *left0,
+                 __m256 *right0);
   // load top left and bottom left interpolation inputs into output argument
   // left.
   // load top right and bottom right interpolation inputs into output argument
@@ -706,9 +708,9 @@ class VectorLoader {
   // load8 case, i.e. each input is loaded with a separate SSE load.
   // 4 pixels, each with left and right input necessitates 8 separate SSE loads
   // per input row.
-  void load8_2ch(const T* lower_ptr, const T* upper_ptr, int offset0,
-                 int offset1, int offset2, int offset3, __m256* left0,
-                 __m256* left1, __m256* right0, __m256* right1);
+  void load8_2ch(const T *lower_ptr, const T *upper_ptr, int offset0,
+                 int offset1, int offset2, int offset3, __m256 *left0,
+                 __m256 *left1, __m256 *right0, __m256 *right1);
   // load top left and bottom left interpolation inputs into output argument
   // left.
   // load top right and bottom right interpolation inputs into output argument
@@ -717,10 +719,10 @@ class VectorLoader {
   // load8 case, i.e. each input is loaded with a separate SSE load.
   // 4 pixels, each with left and right input necessitates 8 separate SSE loads
   // per input row.
-  void load8_3ch(const T* lower_ptr, const T* upper_ptr, int offset0,
-                 int offset1, int offset2, int offset3, __m256* left0,
-                 __m256* left1, __m256* left2, __m256* right0, __m256* right1,
-                 __m256* right2);
+  void load8_3ch(const T *lower_ptr, const T *upper_ptr, int offset0,
+                 int offset1, int offset2, int offset3, __m256 *left0,
+                 __m256 *left1, __m256 *left2, __m256 *right0, __m256 *right1,
+                 __m256 *right2);
   // load top left and bottom left interpolation inputs into output argument
   // left.
   // load top right and bottom right interpolation inputs into output argument
@@ -729,10 +731,10 @@ class VectorLoader {
   // load8 case, i.e. each input is loaded with a separate SSE load.
   // 4 pixels, each with left and right input necessitates 8 separate SSE loads
   // per input row.
-  void load8_4ch(const T* lower_ptr, const T* upper_ptr, int offset0,
-                 int offset1, int offset2, int offset3, __m256* left0,
-                 __m256* left1, __m256* left2, __m256* left3, __m256* right0,
-                 __m256* right1, __m256* right2, __m256* right3);
+  void load8_4ch(const T *lower_ptr, const T *upper_ptr, int offset0,
+                 int offset1, int offset2, int offset3, __m256 *left0,
+                 __m256 *left1, __m256 *left2, __m256 *left3, __m256 *right0,
+                 __m256 *right1, __m256 *right2, __m256 *right3);
 #else
   // load top left interpolation inputs into output argument tl.
   // load bottom left interpolation inputs into output argument bl.
@@ -741,9 +743,9 @@ class VectorLoader {
   // pixels have 1 channel.
   // load1 case, i.e. all inputs for one input row are loaded with a single SSE
   // load.
-  void load1_1ch(const T* lower_ptr, const T* upper_ptr, int offset0,
-                 const __m128i* shuffle_masks, __m128* tl0, __m128* bl0,
-                 __m128* tr0, __m128* br0);
+  void load1_1ch(const T *lower_ptr, const T *upper_ptr, int offset0,
+                 const __m128i *shuffle_masks, __m128 *tl0, __m128 *bl0,
+                 __m128 *tr0, __m128 *br0);
   // load top left interpolation inputs into output argument tl.
   // load bottom left interpolation inputs into output argument bl.
   // load top right interpolation inputs into output argument tr.
@@ -751,10 +753,10 @@ class VectorLoader {
   // pixels have 2 channels.
   // load1 case, i.e. all inputs for one input row are loaded with a single SSE
   // load.
-  void load1_2ch(const T* lower_ptr, const T* upper_ptr, int offset0,
-                 const __m128i* shuffle_masks, __m128* tl0, __m128* tl1,
-                 __m128* bl0, __m128* bl1, __m128* tr0, __m128* tr1,
-                 __m128* br0, __m128* br1);
+  void load1_2ch(const T *lower_ptr, const T *upper_ptr, int offset0,
+                 const __m128i *shuffle_masks, __m128 *tl0, __m128 *tl1,
+                 __m128 *bl0, __m128 *bl1, __m128 *tr0, __m128 *tr1,
+                 __m128 *br0, __m128 *br1);
   // load top left interpolation inputs into output argument tl.
   // load bottom left interpolation inputs into output argument bl.
   // load top right interpolation inputs into output argument tr.
@@ -762,11 +764,11 @@ class VectorLoader {
   // pixels have 3 channels.
   // load1 case, i.e. all inputs for one input row are loaded with a single SSE
   // load.
-  void load1_3ch(const T* lower_ptr, const T* upper_ptr, int offset0,
-                 const __m128i* shuffle_masks, __m128* tl0, __m128* tl1,
-                 __m128* tl2, __m128* bl0, __m128* bl1, __m128* bl2,
-                 __m128* tr0, __m128* tr1, __m128* tr2, __m128* br0,
-                 __m128* br1, __m128* br2);
+  void load1_3ch(const T *lower_ptr, const T *upper_ptr, int offset0,
+                 const __m128i *shuffle_masks, __m128 *tl0, __m128 *tl1,
+                 __m128 *tl2, __m128 *bl0, __m128 *bl1, __m128 *bl2,
+                 __m128 *tr0, __m128 *tr1, __m128 *tr2, __m128 *br0,
+                 __m128 *br1, __m128 *br2);
   // load top left interpolation inputs into output argument tl.
   // load bottom left interpolation inputs into output argument bl.
   // load top right interpolation inputs into output argument tr.
@@ -774,12 +776,12 @@ class VectorLoader {
   // pixels have 4 channels.
   // load1 case, i.e. all inputs for one input row are loaded with a single SSE
   // load.
-  void load1_4ch(const T* lower_ptr, const T* upper_ptr, int offset0,
-                 const __m128i* shuffle_masks, __m128* tl0, __m128* tl1,
-                 __m128* tl2, __m128* tl3, __m128* bl0, __m128* bl1,
-                 __m128* bl2, __m128* bl3, __m128* tr0, __m128* tr1,
-                 __m128* tr2, __m128* tr3, __m128* br0, __m128* br1,
-                 __m128* br2, __m128* br3);
+  void load1_4ch(const T *lower_ptr, const T *upper_ptr, int offset0,
+                 const __m128i *shuffle_masks, __m128 *tl0, __m128 *tl1,
+                 __m128 *tl2, __m128 *tl3, __m128 *bl0, __m128 *bl1,
+                 __m128 *bl2, __m128 *bl3, __m128 *tr0, __m128 *tr1,
+                 __m128 *tr2, __m128 *tr3, __m128 *br0, __m128 *br1,
+                 __m128 *br2, __m128 *br3);
   // load top left interpolation inputs into output argument tl.
   // load bottom left interpolation inputs into output argument bl.
   // load top right interpolation inputs into output argument tr.
@@ -787,9 +789,9 @@ class VectorLoader {
   // pixels have 1 channel.
   // load2 case, i.e. left inputs are loaded with first SSE load, right inputs
   // are loaded with second SSE load.
-  void load2_1ch(const T* lower_ptr, const T* upper_ptr, int offset0,
-                 const __m128i* shuffle_masks, __m128* tl0, __m128* bl0,
-                 __m128* tr0, __m128* br0);
+  void load2_1ch(const T *lower_ptr, const T *upper_ptr, int offset0,
+                 const __m128i *shuffle_masks, __m128 *tl0, __m128 *bl0,
+                 __m128 *tr0, __m128 *br0);
   // load top left interpolation inputs into output argument tl.
   // load bottom left interpolation inputs into output argument bl.
   // load top right interpolation inputs into output argument tr.
@@ -797,10 +799,10 @@ class VectorLoader {
   // pixels have 2 channels.
   // load2 case, i.e. left inputs are loaded with first SSE load, right inputs
   // are loaded with second SSE load.
-  void load2_2ch(const T* lower_ptr, const T* upper_ptr, int offset0,
-                 const __m128i* shuffle_masks, __m128* tl0, __m128* tl1,
-                 __m128* bl0, __m128* bl1, __m128* tr0, __m128* tr1,
-                 __m128* br0, __m128* br1);
+  void load2_2ch(const T *lower_ptr, const T *upper_ptr, int offset0,
+                 const __m128i *shuffle_masks, __m128 *tl0, __m128 *tl1,
+                 __m128 *bl0, __m128 *bl1, __m128 *tr0, __m128 *tr1,
+                 __m128 *br0, __m128 *br1);
   // load top left interpolation inputs into output argument tl.
   // load bottom left interpolation inputs into output argument bl.
   // load top right interpolation inputs into output argument tr.
@@ -808,11 +810,11 @@ class VectorLoader {
   // pixels have 3 channels.
   // load2 case, i.e. left inputs are loaded with first SSE load, right inputs
   // are loaded with second SSE load.
-  void load2_3ch(const T* lower_ptr, const T* upper_ptr, int offset0,
-                 const __m128i* shuffle_masks, __m128* tl0, __m128* tl1,
-                 __m128* tl2, __m128* bl0, __m128* bl1, __m128* bl2,
-                 __m128* tr0, __m128* tr1, __m128* tr2, __m128* br0,
-                 __m128* br1, __m128* br2);
+  void load2_3ch(const T *lower_ptr, const T *upper_ptr, int offset0,
+                 const __m128i *shuffle_masks, __m128 *tl0, __m128 *tl1,
+                 __m128 *tl2, __m128 *bl0, __m128 *bl1, __m128 *bl2,
+                 __m128 *tr0, __m128 *tr1, __m128 *tr2, __m128 *br0,
+                 __m128 *br1, __m128 *br2);
   // load top left interpolation inputs into output argument tl.
   // load bottom left interpolation inputs into output argument bl.
   // load top right interpolation inputs into output argument tr.
@@ -820,12 +822,12 @@ class VectorLoader {
   // pixels have 4 channels.
   // load2 case, i.e. left inputs are loaded with first SSE load, right inputs
   // are loaded with second SSE load.
-  void load2_4ch(const T* lower_ptr, const T* upper_ptr, int offset0,
-                 const __m128i* shuffle_masks, __m128* tl0, __m128* tl1,
-                 __m128* tl2, __m128* tl3, __m128* bl0, __m128* bl1,
-                 __m128* bl2, __m128* bl3, __m128* tr0, __m128* tr1,
-                 __m128* tr2, __m128* tr3, __m128* br0, __m128* br1,
-                 __m128* br2, __m128* br3);
+  void load2_4ch(const T *lower_ptr, const T *upper_ptr, int offset0,
+                 const __m128i *shuffle_masks, __m128 *tl0, __m128 *tl1,
+                 __m128 *tl2, __m128 *tl3, __m128 *bl0, __m128 *bl1,
+                 __m128 *bl2, __m128 *bl3, __m128 *tr0, __m128 *tr1,
+                 __m128 *tr2, __m128 *tr3, __m128 *br0, __m128 *br1,
+                 __m128 *br2, __m128 *br3);
   // load top left interpolation inputs into output argument tl.
   // load bottom left interpolation inputs into output argument bl.
   // load top right interpolation inputs into output argument tr.
@@ -833,9 +835,9 @@ class VectorLoader {
   // pixels have 1 channel.
   // load4 case, i.e. left and right inputs are loaded with a separate SSE load
   // for each pixel.
-  void load4_1ch(const T* lower_ptr, const T* upper_ptr, int offset0,
-                 int offset1, int offset2, int offset3, __m128* tl0,
-                 __m128* bl0, __m128* tr0, __m128* br0);
+  void load4_1ch(const T *lower_ptr, const T *upper_ptr, int offset0,
+                 int offset1, int offset2, int offset3, __m128 *tl0,
+                 __m128 *bl0, __m128 *tr0, __m128 *br0);
   // load top left interpolation inputs into output argument tl.
   // load bottom left interpolation inputs into output argument bl.
   // load top right interpolation inputs into output argument tr.
@@ -843,10 +845,10 @@ class VectorLoader {
   // pixels have 2 channels.
   // load4 case, i.e. left and right inputs are loaded with a separate SSE load
   // for each pixel.
-  void load4_2ch(const T* lower_ptr, const T* upper_ptr, int offset0,
-                 int offset1, int offset2, int offset3, __m128* tl0,
-                 __m128* tl1, __m128* bl0, __m128* bl1, __m128* tr0,
-                 __m128* tr1, __m128* br0, __m128* br1);
+  void load4_2ch(const T *lower_ptr, const T *upper_ptr, int offset0,
+                 int offset1, int offset2, int offset3, __m128 *tl0,
+                 __m128 *tl1, __m128 *bl0, __m128 *bl1, __m128 *tr0,
+                 __m128 *tr1, __m128 *br0, __m128 *br1);
   // load top left interpolation inputs into output argument tl.
   // load bottom left interpolation inputs into output argument bl.
   // load top right interpolation inputs into output argument tr.
@@ -854,11 +856,11 @@ class VectorLoader {
   // pixels have 3 channels.
   // load4 case, i.e. left and right inputs are loaded with a separate SSE load
   // for each pixel.
-  void load4_3ch(const T* lower_ptr, const T* upper_ptr, int offset0,
-                 int offset1, int offset2, int offset3, __m128* tl0,
-                 __m128* tl1, __m128* tl2, __m128* bl0, __m128* bl1,
-                 __m128* bl2, __m128* tr0, __m128* tr1, __m128* tr2,
-                 __m128* br0, __m128* br1, __m128* br2);
+  void load4_3ch(const T *lower_ptr, const T *upper_ptr, int offset0,
+                 int offset1, int offset2, int offset3, __m128 *tl0,
+                 __m128 *tl1, __m128 *tl2, __m128 *bl0, __m128 *bl1,
+                 __m128 *bl2, __m128 *tr0, __m128 *tr1, __m128 *tr2,
+                 __m128 *br0, __m128 *br1, __m128 *br2);
   // load top left interpolation inputs into output argument tl.
   // load bottom left interpolation inputs into output argument bl.
   // load top right interpolation inputs into output argument tr.
@@ -866,12 +868,12 @@ class VectorLoader {
   // pixels have 4 channels.
   // load4 case, i.e. left and right inputs are loaded with a separate SSE load
   // for each pixel.
-  void load4_4ch(const T* lower_ptr, const T* upper_ptr, int offset0,
-                 int offset1, int offset2, int offset3, __m128* tl0,
-                 __m128* tl1, __m128* tl2, __m128* tl3, __m128* bl0,
-                 __m128* bl1, __m128* bl2, __m128* bl3, __m128* tr0,
-                 __m128* tr1, __m128* tr2, __m128* tr3, __m128* br0,
-                 __m128* br1, __m128* br2, __m128* br3);
+  void load4_4ch(const T *lower_ptr, const T *upper_ptr, int offset0,
+                 int offset1, int offset2, int offset3, __m128 *tl0,
+                 __m128 *tl1, __m128 *tl2, __m128 *tl3, __m128 *bl0,
+                 __m128 *bl1, __m128 *bl2, __m128 *bl3, __m128 *tr0,
+                 __m128 *tr1, __m128 *tr2, __m128 *tr3, __m128 *br0,
+                 __m128 *br1, __m128 *br2, __m128 *br3);
   // load top left interpolation inputs into output argument tl.
   // load bottom left interpolation inputs into output argument bl.
   // load top right interpolation inputs into output argument tr.
@@ -879,9 +881,9 @@ class VectorLoader {
   // pixels have 1 channel.
   // load8 case, i.e. left and right inputs are loaded with separate SSE loads
   // for each pixel.
-  void load8_1ch(const T* lower_ptr, const T* upper_ptr, int offset0,
-                 int offset1, int offset2, int offset3, __m128* tl0,
-                 __m128* bl0, __m128* tr0, __m128* br0);
+  void load8_1ch(const T *lower_ptr, const T *upper_ptr, int offset0,
+                 int offset1, int offset2, int offset3, __m128 *tl0,
+                 __m128 *bl0, __m128 *tr0, __m128 *br0);
   // load top left interpolation inputs into output argument tl.
   // load bottom left interpolation inputs into output argument bl.
   // load top right interpolation inputs into output argument tr.
@@ -889,10 +891,10 @@ class VectorLoader {
   // pixels have 2 channels.
   // load8 case, i.e. left and right inputs are loaded with separate SSE loads
   // for each pixel.
-  void load8_2ch(const T* lower_ptr, const T* upper_ptr, int offset0,
-                 int offset1, int offset2, int offset3, __m128* tl0,
-                 __m128* tl1, __m128* bl0, __m128* bl1, __m128* tr0,
-                 __m128* tr1, __m128* br0, __m128* br1);
+  void load8_2ch(const T *lower_ptr, const T *upper_ptr, int offset0,
+                 int offset1, int offset2, int offset3, __m128 *tl0,
+                 __m128 *tl1, __m128 *bl0, __m128 *bl1, __m128 *tr0,
+                 __m128 *tr1, __m128 *br0, __m128 *br1);
   // load top left interpolation inputs into output argument tl.
   // load bottom left interpolation inputs into output argument bl.
   // load top right interpolation inputs into output argument tr.
@@ -900,11 +902,11 @@ class VectorLoader {
   // pixels have 3 channels.
   // load8 case, i.e. left and right inputs are loaded with separate SSE loads
   // for each pixel.
-  void load8_3ch(const T* lower_ptr, const T* upper_ptr, int offset0,
-                 int offset1, int offset2, int offset3, __m128* tl0,
-                 __m128* tl1, __m128* tl2, __m128* bl0, __m128* bl1,
-                 __m128* bl2, __m128* tr0, __m128* tr1, __m128* tr2,
-                 __m128* br0, __m128* br1, __m128* br2);
+  void load8_3ch(const T *lower_ptr, const T *upper_ptr, int offset0,
+                 int offset1, int offset2, int offset3, __m128 *tl0,
+                 __m128 *tl1, __m128 *tl2, __m128 *bl0, __m128 *bl1,
+                 __m128 *bl2, __m128 *tr0, __m128 *tr1, __m128 *tr2,
+                 __m128 *br0, __m128 *br1, __m128 *br2);
   // load top left interpolation inputs into output argument tl.
   // load bottom left interpolation inputs into output argument bl.
   // load top right interpolation inputs into output argument tr.
@@ -912,48 +914,48 @@ class VectorLoader {
   // pixels have 4 channels.
   // load8 case, i.e. left and right inputs are loaded with separate SSE loads
   // for each pixel.
-  void load8_4ch(const T* lower_ptr, const T* upper_ptr, int offset0,
-                 int offset1, int offset2, int offset3, __m128* tl0,
-                 __m128* tl1, __m128* tl2, __m128* tl3, __m128* bl0,
-                 __m128* bl1, __m128* bl2, __m128* bl3, __m128* tr0,
-                 __m128* tr1, __m128* tr2, __m128* tr3, __m128* br0,
-                 __m128* br1, __m128* br2, __m128* br3);
+  void load8_4ch(const T *lower_ptr, const T *upper_ptr, int offset0,
+                 int offset1, int offset2, int offset3, __m128 *tl0,
+                 __m128 *tl1, __m128 *tl2, __m128 *tl3, __m128 *bl0,
+                 __m128 *bl1, __m128 *bl2, __m128 *bl3, __m128 *tr0,
+                 __m128 *tr1, __m128 *tr2, __m128 *tr3, __m128 *br0,
+                 __m128 *br1, __m128 *br2, __m128 *br3);
 #endif
 
   // there is no method that packs 4 pixels with 4 channel into four sse words.
   // nothing to do for this case, everything is already in the right position.
 
- private:
+private:
 // helper methods
 #ifdef __AVX2__
   // pack 4 pixels with 1, 2, 3 or 4 channels into lower portion of SSE vector
   // word.
   // works within SSE lanes.
   // sizeof(sample_data_type) can be 1, 2 or 4 bytes.
-  void pack4_1b_1ch_(__m256i* v0, __m256i* v1, __m256i* v2, __m256i* v3);
-  void pack4_2b_1ch_(__m256i* v0, __m256i* v1, __m256i* v2, __m256i* v3);
-  void pack4_4b_1ch_(__m256i* v0, __m256i* v1, __m256i* v2, __m256i* v3);
-  void pack4_1b_2ch_(__m256i* v0, __m256i* v1, __m256i* v2, __m256i* v3);
-  void pack4_2b_2ch_(__m256i* v0, __m256i* v1, __m256i* v2, __m256i* v3);
-  void pack4_4b_2ch_(__m256i* v0, __m256i* v1, __m256i* v2, __m256i* v3);
-  void pack4_1b_3ch_(__m256i* v0, __m256i* v1, __m256i* v2, __m256i* v3);
-  void pack4_2b_3ch_(__m256i* v0, __m256i* v1, __m256i* v2, __m256i* v3);
-  void pack4_4b_3ch_(__m256i* v0, __m256i* v1, __m256i* v2, __m256i* v3);
+  void pack4_1b_1ch_(__m256i *v0, __m256i *v1, __m256i *v2, __m256i *v3);
+  void pack4_2b_1ch_(__m256i *v0, __m256i *v1, __m256i *v2, __m256i *v3);
+  void pack4_4b_1ch_(__m256i *v0, __m256i *v1, __m256i *v2, __m256i *v3);
+  void pack4_1b_2ch_(__m256i *v0, __m256i *v1, __m256i *v2, __m256i *v3);
+  void pack4_2b_2ch_(__m256i *v0, __m256i *v1, __m256i *v2, __m256i *v3);
+  void pack4_4b_2ch_(__m256i *v0, __m256i *v1, __m256i *v2, __m256i *v3);
+  void pack4_1b_3ch_(__m256i *v0, __m256i *v1, __m256i *v2, __m256i *v3);
+  void pack4_2b_3ch_(__m256i *v0, __m256i *v1, __m256i *v2, __m256i *v3);
+  void pack4_4b_3ch_(__m256i *v0, __m256i *v1, __m256i *v2, __m256i *v3);
 // there is no pack4_xx_4ch functions because none is needed.
 // all the bytes are loaded in the right spots for this case.
 #else
   // pack 4 pixels with 1, 2, 3 or 4 channels into lower portion of SSE vector
   // word.
   // sizeof(sample_data_type) can be 1, 2 or 4 bytes.
-  void pack4_1b_1ch_(__m128i* v0, __m128i* v1, __m128i* v2, __m128i* v3);
-  void pack4_2b_1ch_(__m128i* v0, __m128i* v1, __m128i* v2, __m128i* v3);
-  void pack4_4b_1ch_(__m128i* v0, __m128i* v1, __m128i* v2, __m128i* v3);
-  void pack4_1b_2ch_(__m128i* v0, __m128i* v1, __m128i* v2, __m128i* v3);
-  void pack4_2b_2ch_(__m128i* v0, __m128i* v1, __m128i* v2, __m128i* v3);
-  void pack4_4b_2ch_(__m128i* v0, __m128i* v1, __m128i* v2, __m128i* v3);
-  void pack4_1b_3ch_(__m128i* v0, __m128i* v1, __m128i* v2, __m128i* v3);
-  void pack4_2b_3ch_(__m128i* v0, __m128i* v1, __m128i* v2, __m128i* v3);
-  void pack4_4b_3ch_(__m128i* v0, __m128i* v1, __m128i* v2, __m128i* v3);
+  void pack4_1b_1ch_(__m128i *v0, __m128i *v1, __m128i *v2, __m128i *v3);
+  void pack4_2b_1ch_(__m128i *v0, __m128i *v1, __m128i *v2, __m128i *v3);
+  void pack4_4b_1ch_(__m128i *v0, __m128i *v1, __m128i *v2, __m128i *v3);
+  void pack4_1b_2ch_(__m128i *v0, __m128i *v1, __m128i *v2, __m128i *v3);
+  void pack4_2b_2ch_(__m128i *v0, __m128i *v1, __m128i *v2, __m128i *v3);
+  void pack4_4b_2ch_(__m128i *v0, __m128i *v1, __m128i *v2, __m128i *v3);
+  void pack4_1b_3ch_(__m128i *v0, __m128i *v1, __m128i *v2, __m128i *v3);
+  void pack4_2b_3ch_(__m128i *v0, __m128i *v1, __m128i *v2, __m128i *v3);
+  void pack4_4b_3ch_(__m128i *v0, __m128i *v1, __m128i *v2, __m128i *v3);
 #endif
 #ifdef __AVX2__
   __m256i extract_right_1b_(const __m256i left);
@@ -974,8 +976,8 @@ class VectorLoader {
 
 #ifdef __AVX2__
 template <class T>
-void VectorLoader<T>::pack4_1b_1ch_(__m256i* v0, __m256i* v1, __m256i* v2,
-                                    __m256i* v3) {
+void VectorLoader<T>::pack4_1b_1ch_(__m256i *v0, __m256i *v1, __m256i *v2,
+                                    __m256i *v3) {
   *v3 = _mm256_slli_si256(*v3, 3);
   __m256i and_mask = _mm256_setr_epi32(255, 0, 0, 0, 255, 0, 0, 0);
   *v2 = _mm256_or_si256(*v3,
@@ -985,8 +987,8 @@ void VectorLoader<T>::pack4_1b_1ch_(__m256i* v0, __m256i* v1, __m256i* v2,
   *v0 = _mm256_or_si256(*v1, _mm256_and_si256(and_mask, *v0));
 }
 template <class T>
-void VectorLoader<T>::pack4_2b_1ch_(__m256i* v0, __m256i* v1, __m256i* v2,
-                                    __m256i* v3) {
+void VectorLoader<T>::pack4_2b_1ch_(__m256i *v0, __m256i *v1, __m256i *v2,
+                                    __m256i *v3) {
   *v3 = _mm256_slli_si256(*v3, 6);
   __m256i and_mask = _mm256_setr_epi32(65535, 0, 0, 0, 65535, 0, 0, 0);
   *v2 = _mm256_or_si256(*v3,
@@ -996,8 +998,8 @@ void VectorLoader<T>::pack4_2b_1ch_(__m256i* v0, __m256i* v1, __m256i* v2,
   *v0 = _mm256_or_si256(*v1, _mm256_and_si256(and_mask, *v0));
 }
 template <class T>
-void VectorLoader<T>::pack4_4b_1ch_(__m256i* v0, __m256i* v1, __m256i* v2,
-                                    __m256i* v3) {
+void VectorLoader<T>::pack4_4b_1ch_(__m256i *v0, __m256i *v1, __m256i *v2,
+                                    __m256i *v3) {
   *v3 = _mm256_slli_si256(*v3, 12);
   __m256i and_mask = _mm256_setr_epi32(-1, 0, 0, 0, -1, 0, 0, 0);
   *v2 = _mm256_or_si256(*v3,
@@ -1008,8 +1010,8 @@ void VectorLoader<T>::pack4_4b_1ch_(__m256i* v0, __m256i* v1, __m256i* v2,
 }
 
 template <class T>
-void VectorLoader<T>::pack4_1b_2ch_(__m256i* v0, __m256i* v1, __m256i* v2,
-                                    __m256i* v3) {
+void VectorLoader<T>::pack4_1b_2ch_(__m256i *v0, __m256i *v1, __m256i *v2,
+                                    __m256i *v3) {
   __m256i and_mask = _mm256_setr_epi32(65535, 0, 0, 0, 65535, 0, 0, 0);
   *v0 = _mm256_or_si256(_mm256_and_si256(*v0, and_mask),
                         _mm256_slli_si256(*v1, 2));
@@ -1017,8 +1019,8 @@ void VectorLoader<T>::pack4_1b_2ch_(__m256i* v0, __m256i* v1, __m256i* v2,
                         _mm256_slli_si256(*v3, 2));
 }
 template <class T>
-void VectorLoader<T>::pack4_2b_2ch_(__m256i* v0, __m256i* v1, __m256i* v2,
-                                    __m256i* v3) {
+void VectorLoader<T>::pack4_2b_2ch_(__m256i *v0, __m256i *v1, __m256i *v2,
+                                    __m256i *v3) {
   __m256i and_mask = _mm256_setr_epi32(-1, 0, 0, 0, -1, 0, 0, 0);
   *v0 = _mm256_or_si256(_mm256_and_si256(*v0, and_mask),
                         _mm256_slli_si256(*v1, 4));
@@ -1026,8 +1028,8 @@ void VectorLoader<T>::pack4_2b_2ch_(__m256i* v0, __m256i* v1, __m256i* v2,
                         _mm256_slli_si256(*v3, 4));
 }
 template <class T>
-void VectorLoader<T>::pack4_4b_2ch_(__m256i* v0, __m256i* v1, __m256i* v2,
-                                    __m256i* v3) {
+void VectorLoader<T>::pack4_4b_2ch_(__m256i *v0, __m256i *v1, __m256i *v2,
+                                    __m256i *v3) {
   __m256i and_mask = _mm256_setr_epi32(-1, -1, 0, 0, -1, -1, 0, 0);
   *v0 = _mm256_or_si256(_mm256_and_si256(*v0, and_mask),
                         _mm256_slli_si256(*v1, 8));
@@ -1036,8 +1038,8 @@ void VectorLoader<T>::pack4_4b_2ch_(__m256i* v0, __m256i* v1, __m256i* v2,
 }
 
 template <class T>
-void VectorLoader<T>::pack4_1b_3ch_(__m256i* v0, __m256i* v1, __m256i* v2,
-                                    __m256i* v3) {
+void VectorLoader<T>::pack4_1b_3ch_(__m256i *v0, __m256i *v1, __m256i *v2,
+                                    __m256i *v3) {
   __m256i and_mask = _mm256_setr_epi32(16777215, 0, 0, 0, 16777215, 0, 0, 0);
   *v0 = _mm256_or_si256(_mm256_and_si256(*v0, and_mask),
                         _mm256_slli_si256(*v1, 3));
@@ -1049,8 +1051,8 @@ void VectorLoader<T>::pack4_1b_3ch_(__m256i* v0, __m256i* v1, __m256i* v2,
                         _mm256_slli_si256(*v3, 1));
 }
 template <class T>
-void VectorLoader<T>::pack4_2b_3ch_(__m256i* v0, __m256i* v1, __m256i* v2,
-                                    __m256i* v3) {
+void VectorLoader<T>::pack4_2b_3ch_(__m256i *v0, __m256i *v1, __m256i *v2,
+                                    __m256i *v3) {
   __m256i and_mask = _mm256_setr_epi32(-1, 65535, 0, 0, -1, 65535, 0, 0);
   *v0 = _mm256_or_si256(_mm256_and_si256(*v0, and_mask),
                         _mm256_slli_si256(*v1, 6));
@@ -1062,8 +1064,8 @@ void VectorLoader<T>::pack4_2b_3ch_(__m256i* v0, __m256i* v1, __m256i* v2,
                         _mm256_slli_si256(*v3, 2));
 }
 template <class T>
-void VectorLoader<T>::pack4_4b_3ch_(__m256i* v0, __m256i* v1, __m256i* v2,
-                                    __m256i* v3) {
+void VectorLoader<T>::pack4_4b_3ch_(__m256i *v0, __m256i *v1, __m256i *v2,
+                                    __m256i *v3) {
   __m256i and_mask = _mm256_setr_epi32(-1, -1, -1, 0, -1, -1, -1, 0);
   *v0 = _mm256_or_si256(_mm256_and_si256(*v0, and_mask),
                         _mm256_slli_si256(*v1, 12));
@@ -1076,131 +1078,131 @@ void VectorLoader<T>::pack4_4b_3ch_(__m256i* v0, __m256i* v1, __m256i* v2,
 }
 
 template <>
-void VectorLoader<uint8>::pack_1ch(__m256i* v0, __m256i* v1, __m256i* v2,
-                                   __m256i* v3) {
+void VectorLoader<uint8>::pack_1ch(__m256i *v0, __m256i *v1, __m256i *v2,
+                                   __m256i *v3) {
   pack4_1b_1ch_(v0, v1, v2, v3);
 }
 template <>
-void VectorLoader<int8>::pack_1ch(__m256i* v0, __m256i* v1, __m256i* v2,
-                                  __m256i* v3) {
+void VectorLoader<int8>::pack_1ch(__m256i *v0, __m256i *v1, __m256i *v2,
+                                  __m256i *v3) {
   pack4_1b_1ch_(v0, v1, v2, v3);
 }
 template <>
-void VectorLoader<uint16>::pack_1ch(__m256i* v0, __m256i* v1, __m256i* v2,
-                                    __m256i* v3) {
+void VectorLoader<uint16>::pack_1ch(__m256i *v0, __m256i *v1, __m256i *v2,
+                                    __m256i *v3) {
   pack4_2b_1ch_(v0, v1, v2, v3);
 }
 template <>
-void VectorLoader<int16>::pack_1ch(__m256i* v0, __m256i* v1, __m256i* v2,
-                                   __m256i* v3) {
+void VectorLoader<int16>::pack_1ch(__m256i *v0, __m256i *v1, __m256i *v2,
+                                   __m256i *v3) {
   pack4_2b_1ch_(v0, v1, v2, v3);
 }
 template <>
-void VectorLoader<int32>::pack_1ch(__m256i* v0, __m256i* v1, __m256i* v2,
-                                   __m256i* v3) {
+void VectorLoader<int32>::pack_1ch(__m256i *v0, __m256i *v1, __m256i *v2,
+                                   __m256i *v3) {
   pack4_4b_1ch_(v0, v1, v2, v3);
 }
 template <>
-void VectorLoader<Eigen::half>::pack_1ch(__m256i* v0, __m256i* v1, __m256i* v2,
-                                         __m256i* v3) {
+void VectorLoader<Eigen::half>::pack_1ch(__m256i *v0, __m256i *v1, __m256i *v2,
+                                         __m256i *v3) {
   pack4_2b_1ch_(v0, v1, v2, v3);
 }
 template <>
-void VectorLoader<bfloat16>::pack_1ch(__m256i* v0, __m256i* v1, __m256i* v2,
-                                      __m256i* v3) {
+void VectorLoader<bfloat16>::pack_1ch(__m256i *v0, __m256i *v1, __m256i *v2,
+                                      __m256i *v3) {
   pack4_2b_1ch_(v0, v1, v2, v3);
 }
 template <>
-void VectorLoader<float>::pack_1ch(__m256i* v0, __m256i* v1, __m256i* v2,
-                                   __m256i* v3) {
+void VectorLoader<float>::pack_1ch(__m256i *v0, __m256i *v1, __m256i *v2,
+                                   __m256i *v3) {
   pack4_4b_1ch_(v0, v1, v2, v3);
 }
 
 template <>
-void VectorLoader<uint8>::pack_2ch(__m256i* v0, __m256i* v1, __m256i* v2,
-                                   __m256i* v3) {
+void VectorLoader<uint8>::pack_2ch(__m256i *v0, __m256i *v1, __m256i *v2,
+                                   __m256i *v3) {
   pack4_1b_2ch_(v0, v1, v2, v3);
 }
 template <>
-void VectorLoader<int8>::pack_2ch(__m256i* v0, __m256i* v1, __m256i* v2,
-                                  __m256i* v3) {
+void VectorLoader<int8>::pack_2ch(__m256i *v0, __m256i *v1, __m256i *v2,
+                                  __m256i *v3) {
   pack4_1b_2ch_(v0, v1, v2, v3);
 }
 template <>
-void VectorLoader<uint16>::pack_2ch(__m256i* v0, __m256i* v1, __m256i* v2,
-                                    __m256i* v3) {
+void VectorLoader<uint16>::pack_2ch(__m256i *v0, __m256i *v1, __m256i *v2,
+                                    __m256i *v3) {
   pack4_2b_2ch_(v0, v1, v2, v3);
 }
 template <>
-void VectorLoader<int16>::pack_2ch(__m256i* v0, __m256i* v1, __m256i* v2,
-                                   __m256i* v3) {
+void VectorLoader<int16>::pack_2ch(__m256i *v0, __m256i *v1, __m256i *v2,
+                                   __m256i *v3) {
   pack4_2b_2ch_(v0, v1, v2, v3);
 }
 template <>
-void VectorLoader<int32>::pack_2ch(__m256i* v0, __m256i* v1, __m256i* v2,
-                                   __m256i* v3) {
+void VectorLoader<int32>::pack_2ch(__m256i *v0, __m256i *v1, __m256i *v2,
+                                   __m256i *v3) {
   pack4_4b_2ch_(v0, v1, v2, v3);
 }
 template <>
-void VectorLoader<Eigen::half>::pack_2ch(__m256i* v0, __m256i* v1, __m256i* v2,
-                                         __m256i* v3) {
+void VectorLoader<Eigen::half>::pack_2ch(__m256i *v0, __m256i *v1, __m256i *v2,
+                                         __m256i *v3) {
   pack4_2b_2ch_(v0, v1, v2, v3);
 }
 template <>
-void VectorLoader<bfloat16>::pack_2ch(__m256i* v0, __m256i* v1, __m256i* v2,
-                                      __m256i* v3) {
+void VectorLoader<bfloat16>::pack_2ch(__m256i *v0, __m256i *v1, __m256i *v2,
+                                      __m256i *v3) {
   pack4_2b_2ch_(v0, v1, v2, v3);
 }
 template <>
-void VectorLoader<float>::pack_2ch(__m256i* v0, __m256i* v1, __m256i* v2,
-                                   __m256i* v3) {
+void VectorLoader<float>::pack_2ch(__m256i *v0, __m256i *v1, __m256i *v2,
+                                   __m256i *v3) {
   pack4_4b_2ch_(v0, v1, v2, v3);
 }
 
 template <>
-void VectorLoader<uint8>::pack_3ch(__m256i* v0, __m256i* v1, __m256i* v2,
-                                   __m256i* v3) {
+void VectorLoader<uint8>::pack_3ch(__m256i *v0, __m256i *v1, __m256i *v2,
+                                   __m256i *v3) {
   pack4_1b_3ch_(v0, v1, v2, v3);
 }
 template <>
-void VectorLoader<int8>::pack_3ch(__m256i* v0, __m256i* v1, __m256i* v2,
-                                  __m256i* v3) {
+void VectorLoader<int8>::pack_3ch(__m256i *v0, __m256i *v1, __m256i *v2,
+                                  __m256i *v3) {
   pack4_1b_3ch_(v0, v1, v2, v3);
 }
 template <>
-void VectorLoader<uint16>::pack_3ch(__m256i* v0, __m256i* v1, __m256i* v2,
-                                    __m256i* v3) {
+void VectorLoader<uint16>::pack_3ch(__m256i *v0, __m256i *v1, __m256i *v2,
+                                    __m256i *v3) {
   pack4_2b_3ch_(v0, v1, v2, v3);
 }
 template <>
-void VectorLoader<int16>::pack_3ch(__m256i* v0, __m256i* v1, __m256i* v2,
-                                   __m256i* v3) {
+void VectorLoader<int16>::pack_3ch(__m256i *v0, __m256i *v1, __m256i *v2,
+                                   __m256i *v3) {
   pack4_2b_3ch_(v0, v1, v2, v3);
 }
 template <>
-void VectorLoader<int32>::pack_3ch(__m256i* v0, __m256i* v1, __m256i* v2,
-                                   __m256i* v3) {
+void VectorLoader<int32>::pack_3ch(__m256i *v0, __m256i *v1, __m256i *v2,
+                                   __m256i *v3) {
   pack4_4b_3ch_(v0, v1, v2, v3);
 }
 template <>
-void VectorLoader<Eigen::half>::pack_3ch(__m256i* v0, __m256i* v1, __m256i* v2,
-                                         __m256i* v3) {
+void VectorLoader<Eigen::half>::pack_3ch(__m256i *v0, __m256i *v1, __m256i *v2,
+                                         __m256i *v3) {
   pack4_2b_3ch_(v0, v1, v2, v3);
 }
 template <>
-void VectorLoader<bfloat16>::pack_3ch(__m256i* v0, __m256i* v1, __m256i* v2,
-                                      __m256i* v3) {
+void VectorLoader<bfloat16>::pack_3ch(__m256i *v0, __m256i *v1, __m256i *v2,
+                                      __m256i *v3) {
   pack4_2b_3ch_(v0, v1, v2, v3);
 }
 template <>
-void VectorLoader<float>::pack_3ch(__m256i* v0, __m256i* v1, __m256i* v2,
-                                   __m256i* v3) {
+void VectorLoader<float>::pack_3ch(__m256i *v0, __m256i *v1, __m256i *v2,
+                                   __m256i *v3) {
   pack4_4b_3ch_(v0, v1, v2, v3);
 }
 #else
 template <class T>
-void VectorLoader<T>::pack4_1b_1ch_(__m128i* v0, __m128i* v1, __m128i* v2,
-                                    __m128i* v3) {
+void VectorLoader<T>::pack4_1b_1ch_(__m128i *v0, __m128i *v1, __m128i *v2,
+                                    __m128i *v3) {
   *v3 = _mm_slli_si128(*v3, 3);
   __m128i and_mask = _mm_setr_epi32(255, 0, 0, 0);
   *v2 = _mm_or_si128(*v3, _mm_slli_si128(_mm_and_si128(and_mask, *v2), 2));
@@ -1208,8 +1210,8 @@ void VectorLoader<T>::pack4_1b_1ch_(__m128i* v0, __m128i* v1, __m128i* v2,
   *v0 = _mm_or_si128(*v1, _mm_and_si128(and_mask, *v0));
 }
 template <class T>
-void VectorLoader<T>::pack4_2b_1ch_(__m128i* v0, __m128i* v1, __m128i* v2,
-                                    __m128i* v3) {
+void VectorLoader<T>::pack4_2b_1ch_(__m128i *v0, __m128i *v1, __m128i *v2,
+                                    __m128i *v3) {
   *v3 = _mm_slli_si128(*v3, 6);
   __m128i and_mask = _mm_setr_epi32(65535, 0, 0, 0);
   *v2 = _mm_or_si128(*v3, _mm_slli_si128(_mm_and_si128(and_mask, *v2), 4));
@@ -1217,8 +1219,8 @@ void VectorLoader<T>::pack4_2b_1ch_(__m128i* v0, __m128i* v1, __m128i* v2,
   *v0 = _mm_or_si128(*v1, _mm_and_si128(and_mask, *v0));
 }
 template <class T>
-void VectorLoader<T>::pack4_4b_1ch_(__m128i* v0, __m128i* v1, __m128i* v2,
-                                    __m128i* v3) {
+void VectorLoader<T>::pack4_4b_1ch_(__m128i *v0, __m128i *v1, __m128i *v2,
+                                    __m128i *v3) {
   *v3 = _mm_slli_si128(*v3, 12);
   __m128i and_mask = _mm_setr_epi32(-1, 0, 0, 0);
   *v2 = _mm_or_si128(*v3, _mm_slli_si128(_mm_and_si128(and_mask, *v2), 8));
@@ -1226,29 +1228,29 @@ void VectorLoader<T>::pack4_4b_1ch_(__m128i* v0, __m128i* v1, __m128i* v2,
   *v0 = _mm_or_si128(*v1, _mm_and_si128(and_mask, *v0));
 }
 template <class T>
-void VectorLoader<T>::pack4_1b_2ch_(__m128i* v0, __m128i* v1, __m128i* v2,
-                                    __m128i* v3) {
+void VectorLoader<T>::pack4_1b_2ch_(__m128i *v0, __m128i *v1, __m128i *v2,
+                                    __m128i *v3) {
   __m128i and_mask = _mm_setr_epi32(65535, 0, 0, 0);
   *v0 = _mm_or_si128(_mm_and_si128(*v0, and_mask), _mm_slli_si128(*v1, 2));
   *v1 = _mm_or_si128(_mm_and_si128(*v2, and_mask), _mm_slli_si128(*v3, 2));
 }
 template <class T>
-void VectorLoader<T>::pack4_2b_2ch_(__m128i* v0, __m128i* v1, __m128i* v2,
-                                    __m128i* v3) {
+void VectorLoader<T>::pack4_2b_2ch_(__m128i *v0, __m128i *v1, __m128i *v2,
+                                    __m128i *v3) {
   __m128i and_mask = _mm_setr_epi32(-1, 0, 0, 0);
   *v0 = _mm_or_si128(_mm_and_si128(*v0, and_mask), _mm_slli_si128(*v1, 4));
   *v1 = _mm_or_si128(_mm_and_si128(*v2, and_mask), _mm_slli_si128(*v3, 4));
 }
 template <class T>
-void VectorLoader<T>::pack4_4b_2ch_(__m128i* v0, __m128i* v1, __m128i* v2,
-                                    __m128i* v3) {
+void VectorLoader<T>::pack4_4b_2ch_(__m128i *v0, __m128i *v1, __m128i *v2,
+                                    __m128i *v3) {
   __m128i and_mask = _mm_setr_epi32(-1, -1, 0, 0);
   *v0 = _mm_or_si128(_mm_and_si128(*v0, and_mask), _mm_slli_si128(*v1, 8));
   *v1 = _mm_or_si128(_mm_and_si128(*v2, and_mask), _mm_slli_si128(*v3, 8));
 }
 template <class T>
-void VectorLoader<T>::pack4_1b_3ch_(__m128i* v0, __m128i* v1, __m128i* v2,
-                                    __m128i* v3) {
+void VectorLoader<T>::pack4_1b_3ch_(__m128i *v0, __m128i *v1, __m128i *v2,
+                                    __m128i *v3) {
   __m128i and_mask = _mm_setr_epi32(16777215, 0, 0, 0);
   *v0 = _mm_or_si128(_mm_and_si128(*v0, and_mask), _mm_slli_si128(*v1, 3));
   and_mask = _mm_srli_si128(and_mask, 1);
@@ -1259,8 +1261,8 @@ void VectorLoader<T>::pack4_1b_3ch_(__m128i* v0, __m128i* v1, __m128i* v2,
                      _mm_slli_si128(*v3, 1));
 }
 template <class T>
-void VectorLoader<T>::pack4_2b_3ch_(__m128i* v0, __m128i* v1, __m128i* v2,
-                                    __m128i* v3) {
+void VectorLoader<T>::pack4_2b_3ch_(__m128i *v0, __m128i *v1, __m128i *v2,
+                                    __m128i *v3) {
   __m128i and_mask = _mm_setr_epi32(-1, 65535, 0, 0);
   *v0 = _mm_or_si128(_mm_and_si128(*v0, and_mask), _mm_slli_si128(*v1, 6));
   and_mask = _mm_srli_si128(and_mask, 2);
@@ -1271,8 +1273,8 @@ void VectorLoader<T>::pack4_2b_3ch_(__m128i* v0, __m128i* v1, __m128i* v2,
                      _mm_slli_si128(*v3, 2));
 }
 template <class T>
-void VectorLoader<T>::pack4_4b_3ch_(__m128i* v0, __m128i* v1, __m128i* v2,
-                                    __m128i* v3) {
+void VectorLoader<T>::pack4_4b_3ch_(__m128i *v0, __m128i *v1, __m128i *v2,
+                                    __m128i *v3) {
   __m128i and_mask = _mm_setr_epi32(-1, -1, -1, 0);
   *v0 = _mm_or_si128(_mm_and_si128(*v0, and_mask), _mm_slli_si128(*v1, 12));
   and_mask = _mm_srli_si128(and_mask, 4);
@@ -1284,148 +1286,144 @@ void VectorLoader<T>::pack4_4b_3ch_(__m128i* v0, __m128i* v1, __m128i* v2,
 }
 
 template <>
-void VectorLoader<uint8>::pack_1ch(__m128i* v0, __m128i* v1, __m128i* v2,
-                                   __m128i* v3) {
+void VectorLoader<uint8>::pack_1ch(__m128i *v0, __m128i *v1, __m128i *v2,
+                                   __m128i *v3) {
   pack4_1b_1ch_(v0, v1, v2, v3);
 }
 template <>
-void VectorLoader<int8>::pack_1ch(__m128i* v0, __m128i* v1, __m128i* v2,
-                                  __m128i* v3) {
+void VectorLoader<int8>::pack_1ch(__m128i *v0, __m128i *v1, __m128i *v2,
+                                  __m128i *v3) {
   pack4_1b_1ch_(v0, v1, v2, v3);
 }
 template <>
-void VectorLoader<uint16>::pack_1ch(__m128i* v0, __m128i* v1, __m128i* v2,
-                                    __m128i* v3) {
+void VectorLoader<uint16>::pack_1ch(__m128i *v0, __m128i *v1, __m128i *v2,
+                                    __m128i *v3) {
   pack4_2b_1ch_(v0, v1, v2, v3);
 }
 template <>
-void VectorLoader<int16>::pack_1ch(__m128i* v0, __m128i* v1, __m128i* v2,
-                                   __m128i* v3) {
+void VectorLoader<int16>::pack_1ch(__m128i *v0, __m128i *v1, __m128i *v2,
+                                   __m128i *v3) {
   pack4_2b_1ch_(v0, v1, v2, v3);
 }
 template <>
-void VectorLoader<int32>::pack_1ch(__m128i* v0, __m128i* v1, __m128i* v2,
-                                   __m128i* v3) {
+void VectorLoader<int32>::pack_1ch(__m128i *v0, __m128i *v1, __m128i *v2,
+                                   __m128i *v3) {
   pack4_4b_1ch_(v0, v1, v2, v3);
 }
 template <>
-void VectorLoader<Eigen::half>::pack_1ch(__m128i* v0, __m128i* v1, __m128i* v2,
-                                         __m128i* v3) {
+void VectorLoader<Eigen::half>::pack_1ch(__m128i *v0, __m128i *v1, __m128i *v2,
+                                         __m128i *v3) {
   pack4_2b_1ch_(v0, v1, v2, v3);
 }
 template <>
-void VectorLoader<bfloat16>::pack_1ch(__m128i* v0, __m128i* v1, __m128i* v2,
-                                      __m128i* v3) {
+void VectorLoader<bfloat16>::pack_1ch(__m128i *v0, __m128i *v1, __m128i *v2,
+                                      __m128i *v3) {
   pack4_2b_1ch_(v0, v1, v2, v3);
 }
 template <>
-void VectorLoader<float>::pack_1ch(__m128i* v0, __m128i* v1, __m128i* v2,
-                                   __m128i* v3) {
+void VectorLoader<float>::pack_1ch(__m128i *v0, __m128i *v1, __m128i *v2,
+                                   __m128i *v3) {
   pack4_4b_1ch_(v0, v1, v2, v3);
 }
 
 template <>
-void VectorLoader<uint8>::pack_2ch(__m128i* v0, __m128i* v1, __m128i* v2,
-                                   __m128i* v3) {
+void VectorLoader<uint8>::pack_2ch(__m128i *v0, __m128i *v1, __m128i *v2,
+                                   __m128i *v3) {
   pack4_1b_2ch_(v0, v1, v2, v3);
 }
 template <>
-void VectorLoader<int8>::pack_2ch(__m128i* v0, __m128i* v1, __m128i* v2,
-                                  __m128i* v3) {
+void VectorLoader<int8>::pack_2ch(__m128i *v0, __m128i *v1, __m128i *v2,
+                                  __m128i *v3) {
   pack4_1b_2ch_(v0, v1, v2, v3);
 }
 template <>
-void VectorLoader<uint16>::pack_2ch(__m128i* v0, __m128i* v1, __m128i* v2,
-                                    __m128i* v3) {
+void VectorLoader<uint16>::pack_2ch(__m128i *v0, __m128i *v1, __m128i *v2,
+                                    __m128i *v3) {
   pack4_2b_2ch_(v0, v1, v2, v3);
 }
 template <>
-void VectorLoader<int16>::pack_2ch(__m128i* v0, __m128i* v1, __m128i* v2,
-                                   __m128i* v3) {
+void VectorLoader<int16>::pack_2ch(__m128i *v0, __m128i *v1, __m128i *v2,
+                                   __m128i *v3) {
   pack4_2b_2ch_(v0, v1, v2, v3);
 }
 template <>
-void VectorLoader<int32>::pack_2ch(__m128i* v0, __m128i* v1, __m128i* v2,
-                                   __m128i* v3) {
+void VectorLoader<int32>::pack_2ch(__m128i *v0, __m128i *v1, __m128i *v2,
+                                   __m128i *v3) {
   pack4_4b_2ch_(v0, v1, v2, v3);
 }
 template <>
-void VectorLoader<Eigen::half>::pack_2ch(__m128i* v0, __m128i* v1, __m128i* v2,
-                                         __m128i* v3) {
+void VectorLoader<Eigen::half>::pack_2ch(__m128i *v0, __m128i *v1, __m128i *v2,
+                                         __m128i *v3) {
   pack4_2b_2ch_(v0, v1, v2, v3);
 }
 template <>
-void VectorLoader<bfloat16>::pack_2ch(__m128i* v0, __m128i* v1, __m128i* v2,
-                                      __m128i* v3) {
+void VectorLoader<bfloat16>::pack_2ch(__m128i *v0, __m128i *v1, __m128i *v2,
+                                      __m128i *v3) {
   pack4_2b_2ch_(v0, v1, v2, v3);
 }
 template <>
-void VectorLoader<float>::pack_2ch(__m128i* v0, __m128i* v1, __m128i* v2,
-                                   __m128i* v3) {
+void VectorLoader<float>::pack_2ch(__m128i *v0, __m128i *v1, __m128i *v2,
+                                   __m128i *v3) {
   pack4_4b_2ch_(v0, v1, v2, v3);
 }
 
 template <>
-void VectorLoader<uint8>::pack_3ch(__m128i* v0, __m128i* v1, __m128i* v2,
-                                   __m128i* v3) {
+void VectorLoader<uint8>::pack_3ch(__m128i *v0, __m128i *v1, __m128i *v2,
+                                   __m128i *v3) {
   pack4_1b_3ch_(v0, v1, v2, v3);
 }
 template <>
-void VectorLoader<int8>::pack_3ch(__m128i* v0, __m128i* v1, __m128i* v2,
-                                  __m128i* v3) {
+void VectorLoader<int8>::pack_3ch(__m128i *v0, __m128i *v1, __m128i *v2,
+                                  __m128i *v3) {
   pack4_1b_3ch_(v0, v1, v2, v3);
 }
 template <>
-void VectorLoader<uint16>::pack_3ch(__m128i* v0, __m128i* v1, __m128i* v2,
-                                    __m128i* v3) {
+void VectorLoader<uint16>::pack_3ch(__m128i *v0, __m128i *v1, __m128i *v2,
+                                    __m128i *v3) {
   pack4_2b_3ch_(v0, v1, v2, v3);
 }
 template <>
-void VectorLoader<int16>::pack_3ch(__m128i* v0, __m128i* v1, __m128i* v2,
-                                   __m128i* v3) {
+void VectorLoader<int16>::pack_3ch(__m128i *v0, __m128i *v1, __m128i *v2,
+                                   __m128i *v3) {
   pack4_2b_3ch_(v0, v1, v2, v3);
 }
 template <>
-void VectorLoader<int32>::pack_3ch(__m128i* v0, __m128i* v1, __m128i* v2,
-                                   __m128i* v3) {
+void VectorLoader<int32>::pack_3ch(__m128i *v0, __m128i *v1, __m128i *v2,
+                                   __m128i *v3) {
   pack4_4b_3ch_(v0, v1, v2, v3);
 }
 template <>
-void VectorLoader<Eigen::half>::pack_3ch(__m128i* v0, __m128i* v1, __m128i* v2,
-                                         __m128i* v3) {
+void VectorLoader<Eigen::half>::pack_3ch(__m128i *v0, __m128i *v1, __m128i *v2,
+                                         __m128i *v3) {
   pack4_2b_3ch_(v0, v1, v2, v3);
 }
 template <>
-void VectorLoader<bfloat16>::pack_3ch(__m128i* v0, __m128i* v1, __m128i* v2,
-                                      __m128i* v3) {
+void VectorLoader<bfloat16>::pack_3ch(__m128i *v0, __m128i *v1, __m128i *v2,
+                                      __m128i *v3) {
   pack4_2b_3ch_(v0, v1, v2, v3);
 }
 template <>
-void VectorLoader<float>::pack_3ch(__m128i* v0, __m128i* v1, __m128i* v2,
-                                   __m128i* v3) {
+void VectorLoader<float>::pack_3ch(__m128i *v0, __m128i *v1, __m128i *v2,
+                                   __m128i *v3) {
   pack4_4b_3ch_(v0, v1, v2, v3);
 }
 #endif
 
 #ifdef __AVX2__
-template <>
-__m256i VectorLoader<uint8>::extract_right_1ch(const __m256i left) {
+template <> __m256i VectorLoader<uint8>::extract_right_1ch(const __m256i left) {
   return extract_right_1b_(left);
 }
-template <>
-__m256i VectorLoader<int8>::extract_right_1ch(const __m256i left) {
+template <> __m256i VectorLoader<int8>::extract_right_1ch(const __m256i left) {
   return extract_right_1b_(left);
 }
 template <>
 __m256i VectorLoader<uint16>::extract_right_1ch(const __m256i left) {
   return extract_right_2b_(left);
 }
-template <>
-__m256i VectorLoader<int16>::extract_right_1ch(const __m256i left) {
+template <> __m256i VectorLoader<int16>::extract_right_1ch(const __m256i left) {
   return extract_right_2b_(left);
 }
-template <>
-__m256i VectorLoader<int32>::extract_right_1ch(const __m256i left) {
+template <> __m256i VectorLoader<int32>::extract_right_1ch(const __m256i left) {
   return extract_right_4b_(left);
 }
 template <>
@@ -1436,29 +1434,24 @@ template <>
 __m256i VectorLoader<bfloat16>::extract_right_1ch(const __m256i left) {
   return extract_right_2b_(left);
 }
-template <>
-__m256i VectorLoader<float>::extract_right_1ch(const __m256i left) {
+template <> __m256i VectorLoader<float>::extract_right_1ch(const __m256i left) {
   return extract_right_4b_(left);
 }
 
-template <>
-__m256i VectorLoader<uint8>::extract_right_2ch(const __m256i left) {
+template <> __m256i VectorLoader<uint8>::extract_right_2ch(const __m256i left) {
   return extract_right_2b_(left);
 }
-template <>
-__m256i VectorLoader<int8>::extract_right_2ch(const __m256i left) {
+template <> __m256i VectorLoader<int8>::extract_right_2ch(const __m256i left) {
   return extract_right_2b_(left);
 }
 template <>
 __m256i VectorLoader<uint16>::extract_right_2ch(const __m256i left) {
   return extract_right_4b_(left);
 }
-template <>
-__m256i VectorLoader<int16>::extract_right_2ch(const __m256i left) {
+template <> __m256i VectorLoader<int16>::extract_right_2ch(const __m256i left) {
   return extract_right_4b_(left);
 }
-template <>
-__m256i VectorLoader<int32>::extract_right_2ch(const __m256i left) {
+template <> __m256i VectorLoader<int32>::extract_right_2ch(const __m256i left) {
   return extract_right_8b_(left);
 }
 template <>
@@ -1469,29 +1462,24 @@ template <>
 __m256i VectorLoader<bfloat16>::extract_right_2ch(const __m256i left) {
   return extract_right_4b_(left);
 }
-template <>
-__m256i VectorLoader<float>::extract_right_2ch(const __m256i left) {
+template <> __m256i VectorLoader<float>::extract_right_2ch(const __m256i left) {
   return extract_right_8b_(left);
 }
 
-template <>
-__m256i VectorLoader<uint8>::extract_right_3ch(const __m256i left) {
+template <> __m256i VectorLoader<uint8>::extract_right_3ch(const __m256i left) {
   return extract_right_3b_(left);
 }
-template <>
-__m256i VectorLoader<int8>::extract_right_3ch(const __m256i left) {
+template <> __m256i VectorLoader<int8>::extract_right_3ch(const __m256i left) {
   return extract_right_3b_(left);
 }
 template <>
 __m256i VectorLoader<uint16>::extract_right_3ch(const __m256i left) {
   return extract_right_6b_(left);
 }
-template <>
-__m256i VectorLoader<int16>::extract_right_3ch(const __m256i left) {
+template <> __m256i VectorLoader<int16>::extract_right_3ch(const __m256i left) {
   return extract_right_6b_(left);
 }
-template <>
-__m256i VectorLoader<int32>::extract_right_3ch(const __m256i left) {
+template <> __m256i VectorLoader<int32>::extract_right_3ch(const __m256i left) {
   assert(false);
 }
 template <>
@@ -1502,29 +1490,24 @@ template <>
 __m256i VectorLoader<bfloat16>::extract_right_3ch(const __m256i left) {
   return extract_right_6b_(left);
 }
-template <>
-__m256i VectorLoader<float>::extract_right_3ch(const __m256i left) {
+template <> __m256i VectorLoader<float>::extract_right_3ch(const __m256i left) {
   assert(false);
 }
 
-template <>
-__m256i VectorLoader<uint8>::extract_right_4ch(const __m256i left) {
+template <> __m256i VectorLoader<uint8>::extract_right_4ch(const __m256i left) {
   return extract_right_4b_(left);
 }
-template <>
-__m256i VectorLoader<int8>::extract_right_4ch(const __m256i left) {
+template <> __m256i VectorLoader<int8>::extract_right_4ch(const __m256i left) {
   return extract_right_4b_(left);
 }
 template <>
 __m256i VectorLoader<uint16>::extract_right_4ch(const __m256i left) {
   return extract_right_8b_(left);
 }
-template <>
-__m256i VectorLoader<int16>::extract_right_4ch(const __m256i left) {
+template <> __m256i VectorLoader<int16>::extract_right_4ch(const __m256i left) {
   return extract_right_8b_(left);
 }
-template <>
-__m256i VectorLoader<int32>::extract_right_4ch(const __m256i left) {
+template <> __m256i VectorLoader<int32>::extract_right_4ch(const __m256i left) {
   assert(false);
 }
 template <>
@@ -1535,29 +1518,24 @@ template <>
 __m256i VectorLoader<bfloat16>::extract_right_4ch(const __m256i left) {
   return extract_right_8b_(left);
 }
-template <>
-__m256i VectorLoader<float>::extract_right_4ch(const __m256i left) {
+template <> __m256i VectorLoader<float>::extract_right_4ch(const __m256i left) {
   assert(false);
 }
 #else
-template <>
-__m128i VectorLoader<uint8>::extract_right_1ch(const __m128i left) {
+template <> __m128i VectorLoader<uint8>::extract_right_1ch(const __m128i left) {
   return extract_right_1b_(left);
 }
-template <>
-__m128i VectorLoader<int8>::extract_right_1ch(const __m128i left) {
+template <> __m128i VectorLoader<int8>::extract_right_1ch(const __m128i left) {
   return extract_right_1b_(left);
 }
 template <>
 __m128i VectorLoader<uint16>::extract_right_1ch(const __m128i left) {
   return extract_right_2b_(left);
 }
-template <>
-__m128i VectorLoader<int16>::extract_right_1ch(const __m128i left) {
+template <> __m128i VectorLoader<int16>::extract_right_1ch(const __m128i left) {
   return extract_right_2b_(left);
 }
-template <>
-__m128i VectorLoader<int32>::extract_right_1ch(const __m128i left) {
+template <> __m128i VectorLoader<int32>::extract_right_1ch(const __m128i left) {
   return extract_right_4b_(left);
 }
 template <>
@@ -1568,29 +1546,24 @@ template <>
 __m128i VectorLoader<bfloat16>::extract_right_1ch(const __m128i left) {
   return extract_right_2b_(left);
 }
-template <>
-__m128i VectorLoader<float>::extract_right_1ch(const __m128i left) {
+template <> __m128i VectorLoader<float>::extract_right_1ch(const __m128i left) {
   return extract_right_4b_(left);
 }
 
-template <>
-__m128i VectorLoader<uint8>::extract_right_2ch(const __m128i left) {
+template <> __m128i VectorLoader<uint8>::extract_right_2ch(const __m128i left) {
   return extract_right_2b_(left);
 }
-template <>
-__m128i VectorLoader<int8>::extract_right_2ch(const __m128i left) {
+template <> __m128i VectorLoader<int8>::extract_right_2ch(const __m128i left) {
   return extract_right_2b_(left);
 }
 template <>
 __m128i VectorLoader<uint16>::extract_right_2ch(const __m128i left) {
   return extract_right_4b_(left);
 }
-template <>
-__m128i VectorLoader<int16>::extract_right_2ch(const __m128i left) {
+template <> __m128i VectorLoader<int16>::extract_right_2ch(const __m128i left) {
   return extract_right_4b_(left);
 }
-template <>
-__m128i VectorLoader<int32>::extract_right_2ch(const __m128i left) {
+template <> __m128i VectorLoader<int32>::extract_right_2ch(const __m128i left) {
   return extract_right_8b_(left);
 }
 template <>
@@ -1601,29 +1574,24 @@ template <>
 __m128i VectorLoader<bfloat16>::extract_right_2ch(const __m128i left) {
   return extract_right_4b_(left);
 }
-template <>
-__m128i VectorLoader<float>::extract_right_2ch(const __m128i left) {
+template <> __m128i VectorLoader<float>::extract_right_2ch(const __m128i left) {
   return extract_right_8b_(left);
 }
 
-template <>
-__m128i VectorLoader<uint8>::extract_right_3ch(const __m128i left) {
+template <> __m128i VectorLoader<uint8>::extract_right_3ch(const __m128i left) {
   return extract_right_3b_(left);
 }
-template <>
-__m128i VectorLoader<int8>::extract_right_3ch(const __m128i left) {
+template <> __m128i VectorLoader<int8>::extract_right_3ch(const __m128i left) {
   return extract_right_3b_(left);
 }
 template <>
 __m128i VectorLoader<uint16>::extract_right_3ch(const __m128i left) {
   return extract_right_6b_(left);
 }
-template <>
-__m128i VectorLoader<int16>::extract_right_3ch(const __m128i left) {
+template <> __m128i VectorLoader<int16>::extract_right_3ch(const __m128i left) {
   return extract_right_6b_(left);
 }
-template <>
-__m128i VectorLoader<int32>::extract_right_3ch(const __m128i left) {
+template <> __m128i VectorLoader<int32>::extract_right_3ch(const __m128i left) {
   assert(false);
 }
 template <>
@@ -1634,29 +1602,24 @@ template <>
 __m128i VectorLoader<bfloat16>::extract_right_3ch(const __m128i left) {
   return extract_right_6b_(left);
 }
-template <>
-__m128i VectorLoader<float>::extract_right_3ch(const __m128i left) {
+template <> __m128i VectorLoader<float>::extract_right_3ch(const __m128i left) {
   assert(false);
 }
 
-template <>
-__m128i VectorLoader<uint8>::extract_right_4ch(const __m128i left) {
+template <> __m128i VectorLoader<uint8>::extract_right_4ch(const __m128i left) {
   return extract_right_4b_(left);
 }
-template <>
-__m128i VectorLoader<int8>::extract_right_4ch(const __m128i left) {
+template <> __m128i VectorLoader<int8>::extract_right_4ch(const __m128i left) {
   return extract_right_4b_(left);
 }
 template <>
 __m128i VectorLoader<uint16>::extract_right_4ch(const __m128i left) {
   return extract_right_8b_(left);
 }
-template <>
-__m128i VectorLoader<int16>::extract_right_4ch(const __m128i left) {
+template <> __m128i VectorLoader<int16>::extract_right_4ch(const __m128i left) {
   return extract_right_8b_(left);
 }
-template <>
-__m128i VectorLoader<int32>::extract_right_4ch(const __m128i left) {
+template <> __m128i VectorLoader<int32>::extract_right_4ch(const __m128i left) {
   assert(false);
 }
 template <>
@@ -1667,53 +1630,45 @@ template <>
 __m128i VectorLoader<bfloat16>::extract_right_4ch(const __m128i left) {
   return extract_right_8b_(left);
 }
-template <>
-__m128i VectorLoader<float>::extract_right_4ch(const __m128i left) {
+template <> __m128i VectorLoader<float>::extract_right_4ch(const __m128i left) {
   assert(false);
 }
 #endif
 
 #ifdef __AVX2__
-template <>
-__m256 VectorLoader<uint8>::to_fp32(__m256i raw) {
+template <> __m256 VectorLoader<uint8>::to_fp32(__m256i raw) {
   raw = _mm256_insertf128_si256(
       _mm256_castsi128_si256(_mm_cvtepu8_epi32(_mm256_castsi256_si128(raw))),
       _mm_cvtepu8_epi32(_mm256_extractf128_si256(raw, 1)), 1);
   return _mm256_cvtepi32_ps(raw);
 }
-template <>
-__m256 VectorLoader<int8>::to_fp32(__m256i raw) {
+template <> __m256 VectorLoader<int8>::to_fp32(__m256i raw) {
   raw = _mm256_insertf128_si256(
       _mm256_castsi128_si256(_mm_cvtepi8_epi32(_mm256_castsi256_si128(raw))),
       _mm_cvtepi8_epi32(_mm256_extractf128_si256(raw, 1)), 1);
   return _mm256_cvtepi32_ps(raw);
 }
-template <>
-__m256 VectorLoader<uint16>::to_fp32(__m256i raw) {
+template <> __m256 VectorLoader<uint16>::to_fp32(__m256i raw) {
   raw = _mm256_insertf128_si256(
       _mm256_castsi128_si256(_mm_cvtepu16_epi32(_mm256_castsi256_si128(raw))),
       _mm_cvtepu16_epi32(_mm256_extractf128_si256(raw, 1)), 1);
   return _mm256_cvtepi32_ps(raw);
 }
-template <>
-__m256 VectorLoader<int16>::to_fp32(__m256i raw) {
+template <> __m256 VectorLoader<int16>::to_fp32(__m256i raw) {
   raw = _mm256_insertf128_si256(
       _mm256_castsi128_si256(_mm_cvtepi16_epi32(_mm256_castsi256_si128(raw))),
       _mm_cvtepi16_epi32(_mm256_extractf128_si256(raw, 1)), 1);
   return _mm256_cvtepi32_ps(raw);
 }
-template <>
-__m256 VectorLoader<int32>::to_fp32(__m256i raw) {
+template <> __m256 VectorLoader<int32>::to_fp32(__m256i raw) {
   return _mm256_cvtepi32_ps(raw);
 }
-template <>
-__m256 VectorLoader<Eigen::half>::to_fp32(__m256i raw) {
+template <> __m256 VectorLoader<Eigen::half>::to_fp32(__m256i raw) {
   return _mm256_insertf128_ps(
       _mm256_castps128_ps256(_mm_cvtph_ps(_mm256_castsi256_si128(raw))),
       _mm_cvtph_ps(_mm256_extractf128_si256(raw, 1)), 1);
 }
-template <>
-__m256 VectorLoader<bfloat16>::to_fp32(__m256i raw) {
+template <> __m256 VectorLoader<bfloat16>::to_fp32(__m256i raw) {
   // bfloat16 is essentially fp32 with mantissa truncated from 23 to 7 bits.
   // can convert with << 16, which we fuse with initial shuffle into epi32
   // positions.
@@ -1722,33 +1677,26 @@ __m256 VectorLoader<bfloat16>::to_fp32(__m256i raw) {
       -128, -128, 0, 1, -128, -128, 2, 3, -128, -128, 4, 5, -128, -128, 6, 7);
   return _mm256_castsi256_ps(_mm256_shuffle_epi8(raw, shuf_hi32));
 }
-template <>
-__m256 VectorLoader<float>::to_fp32(__m256i raw) {
+template <> __m256 VectorLoader<float>::to_fp32(__m256i raw) {
   return _mm256_castsi256_ps(raw);
 }
 #else
-template <>
-__m128 VectorLoader<uint8>::to_fp32(__m128i raw) {
+template <> __m128 VectorLoader<uint8>::to_fp32(__m128i raw) {
   return _mm_cvtepi32_ps(_mm_cvtepu8_epi32(raw));
 }
-template <>
-__m128 VectorLoader<int8>::to_fp32(__m128i raw) {
+template <> __m128 VectorLoader<int8>::to_fp32(__m128i raw) {
   return _mm_cvtepi32_ps(_mm_cvtepi8_epi32(raw));
 }
-template <>
-__m128 VectorLoader<uint16>::to_fp32(__m128i raw) {
+template <> __m128 VectorLoader<uint16>::to_fp32(__m128i raw) {
   return _mm_cvtepi32_ps(_mm_cvtepu16_epi32(raw));
 }
-template <>
-__m128 VectorLoader<int16>::to_fp32(__m128i raw) {
+template <> __m128 VectorLoader<int16>::to_fp32(__m128i raw) {
   return _mm_cvtepi32_ps(_mm_cvtepi16_epi32(raw));
 }
-template <>
-__m128 VectorLoader<int32>::to_fp32(__m128i raw) {
+template <> __m128 VectorLoader<int32>::to_fp32(__m128i raw) {
   return _mm_cvtepi32_ps(raw);
 }
-template <>
-__m128 VectorLoader<Eigen::half>::to_fp32(__m128i raw) {
+template <> __m128 VectorLoader<Eigen::half>::to_fp32(__m128i raw) {
 #ifdef __F16C__
   return _mm_cvtph_ps(raw);
 #else
@@ -1813,8 +1761,7 @@ __m128 VectorLoader<Eigen::half>::to_fp32(__m128i raw) {
   return _mm_castsi128_ps(fp32_val);
 #endif
 }
-template <>
-__m128 VectorLoader<bfloat16>::to_fp32(__m128i raw) {
+template <> __m128 VectorLoader<bfloat16>::to_fp32(__m128i raw) {
   // bfloat16 is essentially fp32 with mantissa truncated from 23 to 7 bits.
   // can convert with << 16, which we fuse with initial shuffle into epi32
   // positions.
@@ -1822,8 +1769,7 @@ __m128 VectorLoader<bfloat16>::to_fp32(__m128i raw) {
                                     -128, 4, 5, -128, -128, 6, 7);
   return _mm_castsi128_ps(_mm_shuffle_epi8(raw, shuf_hi32));
 }
-template <>
-__m128 VectorLoader<float>::to_fp32(__m128i raw) {
+template <> __m128 VectorLoader<float>::to_fp32(__m128i raw) {
   return _mm_castsi128_ps(raw);
 }
 #endif
@@ -1882,25 +1828,25 @@ __m128i VectorLoader<T>::extract_right_8b_(const __m128i left) {
 
 #ifdef __AVX2__
 template <class T>
-void VectorLoader<T>::load1_1ch(const T* lower_ptr, const T* upper_ptr,
-                                int offset0, const __m128i* shuffle_masks,
-                                __m256* left0, __m256* right0) {
+void VectorLoader<T>::load1_1ch(const T *lower_ptr, const T *upper_ptr,
+                                int offset0, const __m128i *shuffle_masks,
+                                __m256 *left0, __m256 *right0) {
   __m256i raw = _mm256_insertf128_si256(
-      _mm256_castsi128_si256(_mm_loadu_si128((__m128i*)(lower_ptr + offset0))),
-      _mm_loadu_si128((__m128i*)(upper_ptr + offset0)), 1);
+      _mm256_castsi128_si256(_mm_loadu_si128((__m128i *)(lower_ptr + offset0))),
+      _mm_loadu_si128((__m128i *)(upper_ptr + offset0)), 1);
   *left0 = to_fp32(
       _mm256_shuffle_epi8(raw, _mm256_broadcastsi128_si256(shuffle_masks[0])));
   *right0 = to_fp32(
       _mm256_shuffle_epi8(raw, _mm256_broadcastsi128_si256(shuffle_masks[1])));
 }
 template <class T>
-void VectorLoader<T>::load1_2ch(const T* lower_ptr, const T* upper_ptr,
-                                int offset0, const __m128i* shuffle_masks,
-                                __m256* left0, __m256* left1, __m256* right0,
-                                __m256* right1) {
+void VectorLoader<T>::load1_2ch(const T *lower_ptr, const T *upper_ptr,
+                                int offset0, const __m128i *shuffle_masks,
+                                __m256 *left0, __m256 *left1, __m256 *right0,
+                                __m256 *right1) {
   __m256i raw = _mm256_insertf128_si256(
-      _mm256_castsi128_si256(_mm_loadu_si128((__m128i*)(lower_ptr + offset0))),
-      _mm_loadu_si128((__m128i*)(upper_ptr + offset0)), 1);
+      _mm256_castsi128_si256(_mm_loadu_si128((__m128i *)(lower_ptr + offset0))),
+      _mm_loadu_si128((__m128i *)(upper_ptr + offset0)), 1);
   *left0 = to_fp32(
       _mm256_shuffle_epi8(raw, _mm256_broadcastsi128_si256(shuffle_masks[0])));
   *left1 = to_fp32(
@@ -1911,14 +1857,14 @@ void VectorLoader<T>::load1_2ch(const T* lower_ptr, const T* upper_ptr,
       _mm256_shuffle_epi8(raw, _mm256_broadcastsi128_si256(shuffle_masks[3])));
 }
 template <class T>
-void VectorLoader<T>::load1_3ch(const T* lower_ptr, const T* upper_ptr,
-                                int offset0, const __m128i* shuffle_masks,
-                                __m256* left0, __m256* left1, __m256* left2,
-                                __m256* right0, __m256* right1,
-                                __m256* right2) {
+void VectorLoader<T>::load1_3ch(const T *lower_ptr, const T *upper_ptr,
+                                int offset0, const __m128i *shuffle_masks,
+                                __m256 *left0, __m256 *left1, __m256 *left2,
+                                __m256 *right0, __m256 *right1,
+                                __m256 *right2) {
   __m256i raw = _mm256_insertf128_si256(
-      _mm256_castsi128_si256(_mm_loadu_si128((__m128i*)(lower_ptr + offset0))),
-      _mm_loadu_si128((__m128i*)(upper_ptr + offset0)), 1);
+      _mm256_castsi128_si256(_mm_loadu_si128((__m128i *)(lower_ptr + offset0))),
+      _mm_loadu_si128((__m128i *)(upper_ptr + offset0)), 1);
   *left0 = to_fp32(
       _mm256_shuffle_epi8(raw, _mm256_broadcastsi128_si256(shuffle_masks[0])));
   *left1 = to_fp32(
@@ -1933,14 +1879,14 @@ void VectorLoader<T>::load1_3ch(const T* lower_ptr, const T* upper_ptr,
       _mm256_shuffle_epi8(raw, _mm256_broadcastsi128_si256(shuffle_masks[5])));
 }
 template <class T>
-void VectorLoader<T>::load1_4ch(const T* lower_ptr, const T* upper_ptr,
-                                int offset0, const __m128i* shuffle_masks,
-                                __m256* left0, __m256* left1, __m256* left2,
-                                __m256* left3, __m256* right0, __m256* right1,
-                                __m256* right2, __m256* right3) {
+void VectorLoader<T>::load1_4ch(const T *lower_ptr, const T *upper_ptr,
+                                int offset0, const __m128i *shuffle_masks,
+                                __m256 *left0, __m256 *left1, __m256 *left2,
+                                __m256 *left3, __m256 *right0, __m256 *right1,
+                                __m256 *right2, __m256 *right3) {
   __m256i raw = _mm256_insertf128_si256(
-      _mm256_castsi128_si256(_mm_loadu_si128((__m128i*)(lower_ptr + offset0))),
-      _mm_loadu_si128((__m128i*)(upper_ptr + offset0)), 1);
+      _mm256_castsi128_si256(_mm_loadu_si128((__m128i *)(lower_ptr + offset0))),
+      _mm_loadu_si128((__m128i *)(upper_ptr + offset0)), 1);
   *left0 = to_fp32(
       _mm256_shuffle_epi8(raw, _mm256_broadcastsi128_si256(shuffle_masks[0])));
   *left1 = to_fp32(
@@ -1959,32 +1905,32 @@ void VectorLoader<T>::load1_4ch(const T* lower_ptr, const T* upper_ptr,
       _mm256_shuffle_epi8(raw, _mm256_broadcastsi128_si256(shuffle_masks[7])));
 }
 template <class T>
-void VectorLoader<T>::load2_1ch(const T* lower_ptr, const T* upper_ptr,
-                                int offset0, const __m128i* shuffle_masks,
-                                __m256* left0, __m256* right0) {
+void VectorLoader<T>::load2_1ch(const T *lower_ptr, const T *upper_ptr,
+                                int offset0, const __m128i *shuffle_masks,
+                                __m256 *left0, __m256 *right0) {
   __m256i raw1 = _mm256_insertf128_si256(
-      _mm256_castsi128_si256(_mm_loadu_si128((__m128i*)(lower_ptr + offset0))),
-      _mm_loadu_si128((__m128i*)(upper_ptr + offset0)), 1);
+      _mm256_castsi128_si256(_mm_loadu_si128((__m128i *)(lower_ptr + offset0))),
+      _mm_loadu_si128((__m128i *)(upper_ptr + offset0)), 1);
   __m256i raw2 = _mm256_insertf128_si256(
       _mm256_castsi128_si256(
-          _mm_loadu_si128((__m128i*)(lower_ptr + offset0 + 1))),
-      _mm_loadu_si128((__m128i*)(upper_ptr + offset0 + 1)), 1);
+          _mm_loadu_si128((__m128i *)(lower_ptr + offset0 + 1))),
+      _mm_loadu_si128((__m128i *)(upper_ptr + offset0 + 1)), 1);
   __m256i mask = _mm256_broadcastsi128_si256(shuffle_masks[0]);
   *left0 = to_fp32(_mm256_shuffle_epi8(raw1, mask));
   *right0 = to_fp32(_mm256_shuffle_epi8(raw2, mask));
 }
 template <class T>
-void VectorLoader<T>::load2_2ch(const T* lower_ptr, const T* upper_ptr,
-                                int offset0, const __m128i* shuffle_masks,
-                                __m256* left0, __m256* left1, __m256* right0,
-                                __m256* right1) {
+void VectorLoader<T>::load2_2ch(const T *lower_ptr, const T *upper_ptr,
+                                int offset0, const __m128i *shuffle_masks,
+                                __m256 *left0, __m256 *left1, __m256 *right0,
+                                __m256 *right1) {
   __m256i raw1 = _mm256_insertf128_si256(
-      _mm256_castsi128_si256(_mm_loadu_si128((__m128i*)(lower_ptr + offset0))),
-      _mm_loadu_si128((__m128i*)(upper_ptr + offset0)), 1);
+      _mm256_castsi128_si256(_mm_loadu_si128((__m128i *)(lower_ptr + offset0))),
+      _mm_loadu_si128((__m128i *)(upper_ptr + offset0)), 1);
   __m256i raw2 = _mm256_insertf128_si256(
       _mm256_castsi128_si256(
-          _mm_loadu_si128((__m128i*)(lower_ptr + offset0 + 2))),
-      _mm_loadu_si128((__m128i*)(upper_ptr + offset0 + 2)), 1);
+          _mm_loadu_si128((__m128i *)(lower_ptr + offset0 + 2))),
+      _mm_loadu_si128((__m128i *)(upper_ptr + offset0 + 2)), 1);
   __m256i mask = _mm256_broadcastsi128_si256(shuffle_masks[0]);
   *left0 = to_fp32(_mm256_shuffle_epi8(raw1, mask));
   *right0 = to_fp32(_mm256_shuffle_epi8(raw2, mask));
@@ -1993,18 +1939,18 @@ void VectorLoader<T>::load2_2ch(const T* lower_ptr, const T* upper_ptr,
   *right1 = to_fp32(_mm256_shuffle_epi8(raw2, mask));
 }
 template <class T>
-void VectorLoader<T>::load2_3ch(const T* lower_ptr, const T* upper_ptr,
-                                int offset0, const __m128i* shuffle_masks,
-                                __m256* left0, __m256* left1, __m256* left2,
-                                __m256* right0, __m256* right1,
-                                __m256* right2) {
+void VectorLoader<T>::load2_3ch(const T *lower_ptr, const T *upper_ptr,
+                                int offset0, const __m128i *shuffle_masks,
+                                __m256 *left0, __m256 *left1, __m256 *left2,
+                                __m256 *right0, __m256 *right1,
+                                __m256 *right2) {
   __m256i raw1 = _mm256_insertf128_si256(
-      _mm256_castsi128_si256(_mm_loadu_si128((__m128i*)(lower_ptr + offset0))),
-      _mm_loadu_si128((__m128i*)(upper_ptr + offset0)), 1);
+      _mm256_castsi128_si256(_mm_loadu_si128((__m128i *)(lower_ptr + offset0))),
+      _mm_loadu_si128((__m128i *)(upper_ptr + offset0)), 1);
   __m256i raw2 = _mm256_insertf128_si256(
       _mm256_castsi128_si256(
-          _mm_loadu_si128((__m128i*)(lower_ptr + offset0 + 3))),
-      _mm_loadu_si128((__m128i*)(upper_ptr + offset0 + 3)), 1);
+          _mm_loadu_si128((__m128i *)(lower_ptr + offset0 + 3))),
+      _mm_loadu_si128((__m128i *)(upper_ptr + offset0 + 3)), 1);
   __m256i mask = _mm256_broadcastsi128_si256(shuffle_masks[0]);
   *left0 = to_fp32(_mm256_shuffle_epi8(raw1, mask));
   *right0 = to_fp32(_mm256_shuffle_epi8(raw2, mask));
@@ -2016,18 +1962,18 @@ void VectorLoader<T>::load2_3ch(const T* lower_ptr, const T* upper_ptr,
   *right2 = to_fp32(_mm256_shuffle_epi8(raw2, mask));
 }
 template <class T>
-void VectorLoader<T>::load2_4ch(const T* lower_ptr, const T* upper_ptr,
-                                int offset0, const __m128i* shuffle_masks,
-                                __m256* left0, __m256* left1, __m256* left2,
-                                __m256* left3, __m256* right0, __m256* right1,
-                                __m256* right2, __m256* right3) {
+void VectorLoader<T>::load2_4ch(const T *lower_ptr, const T *upper_ptr,
+                                int offset0, const __m128i *shuffle_masks,
+                                __m256 *left0, __m256 *left1, __m256 *left2,
+                                __m256 *left3, __m256 *right0, __m256 *right1,
+                                __m256 *right2, __m256 *right3) {
   __m256i raw1 = _mm256_insertf128_si256(
-      _mm256_castsi128_si256(_mm_loadu_si128((__m128i*)(lower_ptr + offset0))),
-      _mm_loadu_si128((__m128i*)(upper_ptr + offset0)), 1);
+      _mm256_castsi128_si256(_mm_loadu_si128((__m128i *)(lower_ptr + offset0))),
+      _mm_loadu_si128((__m128i *)(upper_ptr + offset0)), 1);
   __m256i raw2 = _mm256_insertf128_si256(
       _mm256_castsi128_si256(
-          _mm_loadu_si128((__m128i*)(lower_ptr + offset0 + 4))),
-      _mm_loadu_si128((__m128i*)(upper_ptr + offset0 + 4)), 1);
+          _mm_loadu_si128((__m128i *)(lower_ptr + offset0 + 4))),
+      _mm_loadu_si128((__m128i *)(upper_ptr + offset0 + 4)), 1);
   __m256i mask = _mm256_broadcastsi128_si256(shuffle_masks[0]);
   *left0 = to_fp32(_mm256_shuffle_epi8(raw1, mask));
   *right0 = to_fp32(_mm256_shuffle_epi8(raw2, mask));
@@ -2042,12 +1988,12 @@ void VectorLoader<T>::load2_4ch(const T* lower_ptr, const T* upper_ptr,
   *right3 = to_fp32(_mm256_shuffle_epi8(raw2, mask));
 }
 template <class T>
-void VectorLoader<T>::load4_1ch(const T* lower_ptr, const T* upper_ptr,
+void VectorLoader<T>::load4_1ch(const T *lower_ptr, const T *upper_ptr,
                                 int offset0, int offset1, int offset2,
-                                int offset3, __m256* left0, __m256* right0) {
+                                int offset3, __m256 *left0, __m256 *right0) {
   __m256i l0 = _mm256_insertf128_si256(
-      _mm256_castsi128_si256(_mm_loadu_si128((__m128i*)(lower_ptr + offset0))),
-      _mm_loadu_si128((__m128i*)(upper_ptr + offset0)), 1);
+      _mm256_castsi128_si256(_mm_loadu_si128((__m128i *)(lower_ptr + offset0))),
+      _mm_loadu_si128((__m128i *)(upper_ptr + offset0)), 1);
   __m256i r0 = extract_right_1ch(l0);
   __m256i l1, r1;
   if (offset1 == offset0) {
@@ -2056,8 +2002,8 @@ void VectorLoader<T>::load4_1ch(const T* lower_ptr, const T* upper_ptr,
   } else {
     l1 = _mm256_insertf128_si256(
         _mm256_castsi128_si256(
-            _mm_loadu_si128((__m128i*)(lower_ptr + offset1))),
-        _mm_loadu_si128((__m128i*)(upper_ptr + offset1)), 1);
+            _mm_loadu_si128((__m128i *)(lower_ptr + offset1))),
+        _mm_loadu_si128((__m128i *)(upper_ptr + offset1)), 1);
     r1 = extract_right_1ch(l1);
   }
   __m256i l2, r2;
@@ -2067,8 +2013,8 @@ void VectorLoader<T>::load4_1ch(const T* lower_ptr, const T* upper_ptr,
   } else {
     l2 = _mm256_insertf128_si256(
         _mm256_castsi128_si256(
-            _mm_loadu_si128((__m128i*)(lower_ptr + offset2))),
-        _mm_loadu_si128((__m128i*)(upper_ptr + offset2)), 1);
+            _mm_loadu_si128((__m128i *)(lower_ptr + offset2))),
+        _mm_loadu_si128((__m128i *)(upper_ptr + offset2)), 1);
     r2 = extract_right_1ch(l2);
   }
   __m256i l3, r3;
@@ -2078,8 +2024,8 @@ void VectorLoader<T>::load4_1ch(const T* lower_ptr, const T* upper_ptr,
   } else {
     l3 = _mm256_insertf128_si256(
         _mm256_castsi128_si256(
-            _mm_loadu_si128((__m128i*)(lower_ptr + offset3))),
-        _mm_loadu_si128((__m128i*)(upper_ptr + offset3)), 1);
+            _mm_loadu_si128((__m128i *)(lower_ptr + offset3))),
+        _mm_loadu_si128((__m128i *)(upper_ptr + offset3)), 1);
     r3 = extract_right_1ch(l3);
   }
   pack_1ch(&l0, &l1, &l2, &l3);
@@ -2088,13 +2034,13 @@ void VectorLoader<T>::load4_1ch(const T* lower_ptr, const T* upper_ptr,
   *right0 = to_fp32(r0);
 }
 template <class T>
-void VectorLoader<T>::load4_2ch(const T* lower_ptr, const T* upper_ptr,
+void VectorLoader<T>::load4_2ch(const T *lower_ptr, const T *upper_ptr,
                                 int offset0, int offset1, int offset2,
-                                int offset3, __m256* left0, __m256* left1,
-                                __m256* right0, __m256* right1) {
+                                int offset3, __m256 *left0, __m256 *left1,
+                                __m256 *right0, __m256 *right1) {
   __m256i l0 = _mm256_insertf128_si256(
-      _mm256_castsi128_si256(_mm_loadu_si128((__m128i*)(lower_ptr + offset0))),
-      _mm_loadu_si128((__m128i*)(upper_ptr + offset0)), 1);
+      _mm256_castsi128_si256(_mm_loadu_si128((__m128i *)(lower_ptr + offset0))),
+      _mm_loadu_si128((__m128i *)(upper_ptr + offset0)), 1);
   __m256i r0 = extract_right_2ch(l0);
   __m256i l1, r1;
   if (offset1 == offset0) {
@@ -2103,8 +2049,8 @@ void VectorLoader<T>::load4_2ch(const T* lower_ptr, const T* upper_ptr,
   } else {
     l1 = _mm256_insertf128_si256(
         _mm256_castsi128_si256(
-            _mm_loadu_si128((__m128i*)(lower_ptr + offset1))),
-        _mm_loadu_si128((__m128i*)(upper_ptr + offset1)), 1);
+            _mm_loadu_si128((__m128i *)(lower_ptr + offset1))),
+        _mm_loadu_si128((__m128i *)(upper_ptr + offset1)), 1);
     r1 = extract_right_2ch(l1);
   }
   __m256i l2, r2;
@@ -2114,8 +2060,8 @@ void VectorLoader<T>::load4_2ch(const T* lower_ptr, const T* upper_ptr,
   } else {
     l2 = _mm256_insertf128_si256(
         _mm256_castsi128_si256(
-            _mm_loadu_si128((__m128i*)(lower_ptr + offset2))),
-        _mm_loadu_si128((__m128i*)(upper_ptr + offset2)), 1);
+            _mm_loadu_si128((__m128i *)(lower_ptr + offset2))),
+        _mm_loadu_si128((__m128i *)(upper_ptr + offset2)), 1);
     r2 = extract_right_2ch(l2);
   }
   __m256i l3, r3;
@@ -2125,8 +2071,8 @@ void VectorLoader<T>::load4_2ch(const T* lower_ptr, const T* upper_ptr,
   } else {
     l3 = _mm256_insertf128_si256(
         _mm256_castsi128_si256(
-            _mm_loadu_si128((__m128i*)(lower_ptr + offset3))),
-        _mm_loadu_si128((__m128i*)(upper_ptr + offset3)), 1);
+            _mm_loadu_si128((__m128i *)(lower_ptr + offset3))),
+        _mm_loadu_si128((__m128i *)(upper_ptr + offset3)), 1);
     r3 = extract_right_2ch(l3);
   }
   pack_2ch(&l0, &l1, &l2, &l3);
@@ -2137,14 +2083,14 @@ void VectorLoader<T>::load4_2ch(const T* lower_ptr, const T* upper_ptr,
   *right1 = to_fp32(r1);
 }
 template <class T>
-void VectorLoader<T>::load4_3ch(const T* lower_ptr, const T* upper_ptr,
+void VectorLoader<T>::load4_3ch(const T *lower_ptr, const T *upper_ptr,
                                 int offset0, int offset1, int offset2,
-                                int offset3, __m256* left0, __m256* left1,
-                                __m256* left2, __m256* right0, __m256* right1,
-                                __m256* right2) {
+                                int offset3, __m256 *left0, __m256 *left1,
+                                __m256 *left2, __m256 *right0, __m256 *right1,
+                                __m256 *right2) {
   __m256i l0 = _mm256_insertf128_si256(
-      _mm256_castsi128_si256(_mm_loadu_si128((__m128i*)(lower_ptr + offset0))),
-      _mm_loadu_si128((__m128i*)(upper_ptr + offset0)), 1);
+      _mm256_castsi128_si256(_mm_loadu_si128((__m128i *)(lower_ptr + offset0))),
+      _mm_loadu_si128((__m128i *)(upper_ptr + offset0)), 1);
   __m256i r0 = extract_right_3ch(l0);
   __m256i l1, r1;
   if (offset1 == offset0) {
@@ -2153,8 +2099,8 @@ void VectorLoader<T>::load4_3ch(const T* lower_ptr, const T* upper_ptr,
   } else {
     l1 = _mm256_insertf128_si256(
         _mm256_castsi128_si256(
-            _mm_loadu_si128((__m128i*)(lower_ptr + offset1))),
-        _mm_loadu_si128((__m128i*)(upper_ptr + offset1)), 1);
+            _mm_loadu_si128((__m128i *)(lower_ptr + offset1))),
+        _mm_loadu_si128((__m128i *)(upper_ptr + offset1)), 1);
     r1 = extract_right_3ch(l1);
   }
   __m256i l2, r2;
@@ -2164,8 +2110,8 @@ void VectorLoader<T>::load4_3ch(const T* lower_ptr, const T* upper_ptr,
   } else {
     l2 = _mm256_insertf128_si256(
         _mm256_castsi128_si256(
-            _mm_loadu_si128((__m128i*)(lower_ptr + offset2))),
-        _mm_loadu_si128((__m128i*)(upper_ptr + offset2)), 1);
+            _mm_loadu_si128((__m128i *)(lower_ptr + offset2))),
+        _mm_loadu_si128((__m128i *)(upper_ptr + offset2)), 1);
     r2 = extract_right_3ch(l2);
   }
   __m256i l3, r3;
@@ -2175,8 +2121,8 @@ void VectorLoader<T>::load4_3ch(const T* lower_ptr, const T* upper_ptr,
   } else {
     l3 = _mm256_insertf128_si256(
         _mm256_castsi128_si256(
-            _mm_loadu_si128((__m128i*)(lower_ptr + offset3))),
-        _mm_loadu_si128((__m128i*)(upper_ptr + offset3)), 1);
+            _mm_loadu_si128((__m128i *)(lower_ptr + offset3))),
+        _mm_loadu_si128((__m128i *)(upper_ptr + offset3)), 1);
     r3 = extract_right_3ch(l3);
   }
   pack_3ch(&l0, &l1, &l2, &l3);
@@ -2189,15 +2135,15 @@ void VectorLoader<T>::load4_3ch(const T* lower_ptr, const T* upper_ptr,
   *right2 = to_fp32(r2);
 }
 template <class T>
-void VectorLoader<T>::load4_4ch(const T* lower_ptr, const T* upper_ptr,
+void VectorLoader<T>::load4_4ch(const T *lower_ptr, const T *upper_ptr,
                                 int offset0, int offset1, int offset2,
-                                int offset3, __m256* left0, __m256* left1,
-                                __m256* left2, __m256* left3, __m256* right0,
-                                __m256* right1, __m256* right2,
-                                __m256* right3) {
+                                int offset3, __m256 *left0, __m256 *left1,
+                                __m256 *left2, __m256 *left3, __m256 *right0,
+                                __m256 *right1, __m256 *right2,
+                                __m256 *right3) {
   __m256i l0 = _mm256_insertf128_si256(
-      _mm256_castsi128_si256(_mm_loadu_si128((__m128i*)(lower_ptr + offset0))),
-      _mm_loadu_si128((__m128i*)(upper_ptr + offset0)), 1);
+      _mm256_castsi128_si256(_mm_loadu_si128((__m128i *)(lower_ptr + offset0))),
+      _mm_loadu_si128((__m128i *)(upper_ptr + offset0)), 1);
   __m256i r0 = extract_right_4ch(l0);
   __m256i l1, r1;
   if (offset1 == offset0) {
@@ -2206,8 +2152,8 @@ void VectorLoader<T>::load4_4ch(const T* lower_ptr, const T* upper_ptr,
   } else {
     l1 = _mm256_insertf128_si256(
         _mm256_castsi128_si256(
-            _mm_loadu_si128((__m128i*)(lower_ptr + offset1))),
-        _mm_loadu_si128((__m128i*)(upper_ptr + offset1)), 1);
+            _mm_loadu_si128((__m128i *)(lower_ptr + offset1))),
+        _mm_loadu_si128((__m128i *)(upper_ptr + offset1)), 1);
     r1 = extract_right_4ch(l1);
   }
   __m256i l2, r2;
@@ -2217,8 +2163,8 @@ void VectorLoader<T>::load4_4ch(const T* lower_ptr, const T* upper_ptr,
   } else {
     l2 = _mm256_insertf128_si256(
         _mm256_castsi128_si256(
-            _mm_loadu_si128((__m128i*)(lower_ptr + offset2))),
-        _mm_loadu_si128((__m128i*)(upper_ptr + offset2)), 1);
+            _mm_loadu_si128((__m128i *)(lower_ptr + offset2))),
+        _mm_loadu_si128((__m128i *)(upper_ptr + offset2)), 1);
     r2 = extract_right_4ch(l2);
   }
   __m256i l3, r3;
@@ -2228,8 +2174,8 @@ void VectorLoader<T>::load4_4ch(const T* lower_ptr, const T* upper_ptr,
   } else {
     l3 = _mm256_insertf128_si256(
         _mm256_castsi128_si256(
-            _mm_loadu_si128((__m128i*)(lower_ptr + offset3))),
-        _mm_loadu_si128((__m128i*)(upper_ptr + offset3)), 1);
+            _mm_loadu_si128((__m128i *)(lower_ptr + offset3))),
+        _mm_loadu_si128((__m128i *)(upper_ptr + offset3)), 1);
     r3 = extract_right_4ch(l3);
   }
   *left0 = to_fp32(l0);
@@ -2242,16 +2188,16 @@ void VectorLoader<T>::load4_4ch(const T* lower_ptr, const T* upper_ptr,
   *right3 = to_fp32(r3);
 }
 template <class T>
-void VectorLoader<T>::load8_1ch(const T* lower_ptr, const T* upper_ptr,
+void VectorLoader<T>::load8_1ch(const T *lower_ptr, const T *upper_ptr,
                                 int offset0, int offset1, int offset2,
-                                int offset3, __m256* left0, __m256* right0) {
+                                int offset3, __m256 *left0, __m256 *right0) {
   __m256i l0 = _mm256_insertf128_si256(
-      _mm256_castsi128_si256(_mm_loadu_si128((__m128i*)(lower_ptr + offset0))),
-      _mm_loadu_si128((__m128i*)(upper_ptr + offset0)), 1);
+      _mm256_castsi128_si256(_mm_loadu_si128((__m128i *)(lower_ptr + offset0))),
+      _mm_loadu_si128((__m128i *)(upper_ptr + offset0)), 1);
   __m256i r0 = _mm256_insertf128_si256(
       _mm256_castsi128_si256(
-          _mm_loadu_si128((__m128i*)(lower_ptr + offset0 + 1))),
-      _mm_loadu_si128((__m128i*)(upper_ptr + offset0 + 1)), 1);
+          _mm_loadu_si128((__m128i *)(lower_ptr + offset0 + 1))),
+      _mm_loadu_si128((__m128i *)(upper_ptr + offset0 + 1)), 1);
   __m256i l1, r1;
   if (offset1 == offset0) {
     l1 = l0;
@@ -2259,12 +2205,12 @@ void VectorLoader<T>::load8_1ch(const T* lower_ptr, const T* upper_ptr,
   } else {
     l1 = _mm256_insertf128_si256(
         _mm256_castsi128_si256(
-            _mm_loadu_si128((__m128i*)(lower_ptr + offset1))),
-        _mm_loadu_si128((__m128i*)(upper_ptr + offset1)), 1);
+            _mm_loadu_si128((__m128i *)(lower_ptr + offset1))),
+        _mm_loadu_si128((__m128i *)(upper_ptr + offset1)), 1);
     r1 = _mm256_insertf128_si256(
         _mm256_castsi128_si256(
-            _mm_loadu_si128((__m128i*)(lower_ptr + offset1 + 1))),
-        _mm_loadu_si128((__m128i*)(upper_ptr + offset1 + 1)), 1);
+            _mm_loadu_si128((__m128i *)(lower_ptr + offset1 + 1))),
+        _mm_loadu_si128((__m128i *)(upper_ptr + offset1 + 1)), 1);
   }
   __m256i l2, r2;
   if (offset2 == offset1) {
@@ -2273,12 +2219,12 @@ void VectorLoader<T>::load8_1ch(const T* lower_ptr, const T* upper_ptr,
   } else {
     l2 = _mm256_insertf128_si256(
         _mm256_castsi128_si256(
-            _mm_loadu_si128((__m128i*)(lower_ptr + offset2))),
-        _mm_loadu_si128((__m128i*)(upper_ptr + offset2)), 1);
+            _mm_loadu_si128((__m128i *)(lower_ptr + offset2))),
+        _mm_loadu_si128((__m128i *)(upper_ptr + offset2)), 1);
     r2 = _mm256_insertf128_si256(
         _mm256_castsi128_si256(
-            _mm_loadu_si128((__m128i*)(lower_ptr + offset2 + 1))),
-        _mm_loadu_si128((__m128i*)(upper_ptr + offset2 + 1)), 1);
+            _mm_loadu_si128((__m128i *)(lower_ptr + offset2 + 1))),
+        _mm_loadu_si128((__m128i *)(upper_ptr + offset2 + 1)), 1);
   }
   __m256i l3, r3;
   if (offset3 == offset2) {
@@ -2287,12 +2233,12 @@ void VectorLoader<T>::load8_1ch(const T* lower_ptr, const T* upper_ptr,
   } else {
     l3 = _mm256_insertf128_si256(
         _mm256_castsi128_si256(
-            _mm_loadu_si128((__m128i*)(lower_ptr + offset3))),
-        _mm_loadu_si128((__m128i*)(upper_ptr + offset3)), 1);
+            _mm_loadu_si128((__m128i *)(lower_ptr + offset3))),
+        _mm_loadu_si128((__m128i *)(upper_ptr + offset3)), 1);
     r3 = _mm256_insertf128_si256(
         _mm256_castsi128_si256(
-            _mm_loadu_si128((__m128i*)(lower_ptr + offset3 + 1))),
-        _mm_loadu_si128((__m128i*)(upper_ptr + offset3 + 1)), 1);
+            _mm_loadu_si128((__m128i *)(lower_ptr + offset3 + 1))),
+        _mm_loadu_si128((__m128i *)(upper_ptr + offset3 + 1)), 1);
   }
   pack_1ch(&l0, &l1, &l2, &l3);
   *left0 = to_fp32(l0);
@@ -2300,17 +2246,17 @@ void VectorLoader<T>::load8_1ch(const T* lower_ptr, const T* upper_ptr,
   *right0 = to_fp32(r0);
 }
 template <class T>
-void VectorLoader<T>::load8_2ch(const T* lower_ptr, const T* upper_ptr,
+void VectorLoader<T>::load8_2ch(const T *lower_ptr, const T *upper_ptr,
                                 int offset0, int offset1, int offset2,
-                                int offset3, __m256* left0, __m256* left1,
-                                __m256* right0, __m256* right1) {
+                                int offset3, __m256 *left0, __m256 *left1,
+                                __m256 *right0, __m256 *right1) {
   __m256i l0 = _mm256_insertf128_si256(
-      _mm256_castsi128_si256(_mm_loadu_si128((__m128i*)(lower_ptr + offset0))),
-      _mm_loadu_si128((__m128i*)(upper_ptr + offset0)), 1);
+      _mm256_castsi128_si256(_mm_loadu_si128((__m128i *)(lower_ptr + offset0))),
+      _mm_loadu_si128((__m128i *)(upper_ptr + offset0)), 1);
   __m256i r0 = _mm256_insertf128_si256(
       _mm256_castsi128_si256(
-          _mm_loadu_si128((__m128i*)(lower_ptr + offset0 + 2))),
-      _mm_loadu_si128((__m128i*)(upper_ptr + offset0 + 2)), 1);
+          _mm_loadu_si128((__m128i *)(lower_ptr + offset0 + 2))),
+      _mm_loadu_si128((__m128i *)(upper_ptr + offset0 + 2)), 1);
   __m256i l1, r1;
   if (offset1 == offset0) {
     l1 = l0;
@@ -2318,12 +2264,12 @@ void VectorLoader<T>::load8_2ch(const T* lower_ptr, const T* upper_ptr,
   } else {
     l1 = _mm256_insertf128_si256(
         _mm256_castsi128_si256(
-            _mm_loadu_si128((__m128i*)(lower_ptr + offset1))),
-        _mm_loadu_si128((__m128i*)(upper_ptr + offset1)), 1);
+            _mm_loadu_si128((__m128i *)(lower_ptr + offset1))),
+        _mm_loadu_si128((__m128i *)(upper_ptr + offset1)), 1);
     r1 = _mm256_insertf128_si256(
         _mm256_castsi128_si256(
-            _mm_loadu_si128((__m128i*)(lower_ptr + offset1 + 2))),
-        _mm_loadu_si128((__m128i*)(upper_ptr + offset1 + 2)), 1);
+            _mm_loadu_si128((__m128i *)(lower_ptr + offset1 + 2))),
+        _mm_loadu_si128((__m128i *)(upper_ptr + offset1 + 2)), 1);
   }
   __m256i l2, r2;
   if (offset2 == offset1) {
@@ -2332,12 +2278,12 @@ void VectorLoader<T>::load8_2ch(const T* lower_ptr, const T* upper_ptr,
   } else {
     l2 = _mm256_insertf128_si256(
         _mm256_castsi128_si256(
-            _mm_loadu_si128((__m128i*)(lower_ptr + offset2))),
-        _mm_loadu_si128((__m128i*)(upper_ptr + offset2)), 1);
+            _mm_loadu_si128((__m128i *)(lower_ptr + offset2))),
+        _mm_loadu_si128((__m128i *)(upper_ptr + offset2)), 1);
     r2 = _mm256_insertf128_si256(
         _mm256_castsi128_si256(
-            _mm_loadu_si128((__m128i*)(lower_ptr + offset2 + 2))),
-        _mm_loadu_si128((__m128i*)(upper_ptr + offset2 + 2)), 1);
+            _mm_loadu_si128((__m128i *)(lower_ptr + offset2 + 2))),
+        _mm_loadu_si128((__m128i *)(upper_ptr + offset2 + 2)), 1);
   }
   __m256i l3, r3;
   if (offset3 == offset2) {
@@ -2346,12 +2292,12 @@ void VectorLoader<T>::load8_2ch(const T* lower_ptr, const T* upper_ptr,
   } else {
     l3 = _mm256_insertf128_si256(
         _mm256_castsi128_si256(
-            _mm_loadu_si128((__m128i*)(lower_ptr + offset3))),
-        _mm_loadu_si128((__m128i*)(upper_ptr + offset3)), 1);
+            _mm_loadu_si128((__m128i *)(lower_ptr + offset3))),
+        _mm_loadu_si128((__m128i *)(upper_ptr + offset3)), 1);
     r3 = _mm256_insertf128_si256(
         _mm256_castsi128_si256(
-            _mm_loadu_si128((__m128i*)(lower_ptr + offset3 + 2))),
-        _mm_loadu_si128((__m128i*)(upper_ptr + offset3 + 2)), 1);
+            _mm_loadu_si128((__m128i *)(lower_ptr + offset3 + 2))),
+        _mm_loadu_si128((__m128i *)(upper_ptr + offset3 + 2)), 1);
   }
   pack_2ch(&l0, &l1, &l2, &l3);
   *left0 = to_fp32(l0);
@@ -2361,18 +2307,18 @@ void VectorLoader<T>::load8_2ch(const T* lower_ptr, const T* upper_ptr,
   *right1 = to_fp32(r1);
 }
 template <class T>
-void VectorLoader<T>::load8_3ch(const T* lower_ptr, const T* upper_ptr,
+void VectorLoader<T>::load8_3ch(const T *lower_ptr, const T *upper_ptr,
                                 int offset0, int offset1, int offset2,
-                                int offset3, __m256* left0, __m256* left1,
-                                __m256* left2, __m256* right0, __m256* right1,
-                                __m256* right2) {
+                                int offset3, __m256 *left0, __m256 *left1,
+                                __m256 *left2, __m256 *right0, __m256 *right1,
+                                __m256 *right2) {
   __m256i l0 = _mm256_insertf128_si256(
-      _mm256_castsi128_si256(_mm_loadu_si128((__m128i*)(lower_ptr + offset0))),
-      _mm_loadu_si128((__m128i*)(upper_ptr + offset0)), 1);
+      _mm256_castsi128_si256(_mm_loadu_si128((__m128i *)(lower_ptr + offset0))),
+      _mm_loadu_si128((__m128i *)(upper_ptr + offset0)), 1);
   __m256i r0 = _mm256_insertf128_si256(
       _mm256_castsi128_si256(
-          _mm_loadu_si128((__m128i*)(lower_ptr + offset0 + 3))),
-      _mm_loadu_si128((__m128i*)(upper_ptr + offset0 + 3)), 1);
+          _mm_loadu_si128((__m128i *)(lower_ptr + offset0 + 3))),
+      _mm_loadu_si128((__m128i *)(upper_ptr + offset0 + 3)), 1);
   __m256i l1, r1;
   if (offset1 == offset0) {
     l1 = l0;
@@ -2380,12 +2326,12 @@ void VectorLoader<T>::load8_3ch(const T* lower_ptr, const T* upper_ptr,
   } else {
     l1 = _mm256_insertf128_si256(
         _mm256_castsi128_si256(
-            _mm_loadu_si128((__m128i*)(lower_ptr + offset1))),
-        _mm_loadu_si128((__m128i*)(upper_ptr + offset1)), 1);
+            _mm_loadu_si128((__m128i *)(lower_ptr + offset1))),
+        _mm_loadu_si128((__m128i *)(upper_ptr + offset1)), 1);
     r1 = _mm256_insertf128_si256(
         _mm256_castsi128_si256(
-            _mm_loadu_si128((__m128i*)(lower_ptr + offset1 + 3))),
-        _mm_loadu_si128((__m128i*)(upper_ptr + offset1 + 3)), 1);
+            _mm_loadu_si128((__m128i *)(lower_ptr + offset1 + 3))),
+        _mm_loadu_si128((__m128i *)(upper_ptr + offset1 + 3)), 1);
   }
   __m256i l2, r2;
   if (offset2 == offset1) {
@@ -2394,12 +2340,12 @@ void VectorLoader<T>::load8_3ch(const T* lower_ptr, const T* upper_ptr,
   } else {
     l2 = _mm256_insertf128_si256(
         _mm256_castsi128_si256(
-            _mm_loadu_si128((__m128i*)(lower_ptr + offset2))),
-        _mm_loadu_si128((__m128i*)(upper_ptr + offset2)), 1);
+            _mm_loadu_si128((__m128i *)(lower_ptr + offset2))),
+        _mm_loadu_si128((__m128i *)(upper_ptr + offset2)), 1);
     r2 = _mm256_insertf128_si256(
         _mm256_castsi128_si256(
-            _mm_loadu_si128((__m128i*)(lower_ptr + offset2 + 3))),
-        _mm_loadu_si128((__m128i*)(upper_ptr + offset2 + 3)), 1);
+            _mm_loadu_si128((__m128i *)(lower_ptr + offset2 + 3))),
+        _mm_loadu_si128((__m128i *)(upper_ptr + offset2 + 3)), 1);
   }
   __m256i l3, r3;
   if (offset3 == offset2) {
@@ -2408,12 +2354,12 @@ void VectorLoader<T>::load8_3ch(const T* lower_ptr, const T* upper_ptr,
   } else {
     l3 = _mm256_insertf128_si256(
         _mm256_castsi128_si256(
-            _mm_loadu_si128((__m128i*)(lower_ptr + offset3))),
-        _mm_loadu_si128((__m128i*)(upper_ptr + offset3)), 1);
+            _mm_loadu_si128((__m128i *)(lower_ptr + offset3))),
+        _mm_loadu_si128((__m128i *)(upper_ptr + offset3)), 1);
     r3 = _mm256_insertf128_si256(
         _mm256_castsi128_si256(
-            _mm_loadu_si128((__m128i*)(lower_ptr + offset3 + 3))),
-        _mm_loadu_si128((__m128i*)(upper_ptr + offset3 + 3)), 1);
+            _mm_loadu_si128((__m128i *)(lower_ptr + offset3 + 3))),
+        _mm_loadu_si128((__m128i *)(upper_ptr + offset3 + 3)), 1);
   }
   pack_3ch(&l0, &l1, &l2, &l3);
   *left0 = to_fp32(l0);
@@ -2425,19 +2371,19 @@ void VectorLoader<T>::load8_3ch(const T* lower_ptr, const T* upper_ptr,
   *right2 = to_fp32(r2);
 }
 template <class T>
-void VectorLoader<T>::load8_4ch(const T* lower_ptr, const T* upper_ptr,
+void VectorLoader<T>::load8_4ch(const T *lower_ptr, const T *upper_ptr,
                                 int offset0, int offset1, int offset2,
-                                int offset3, __m256* left0, __m256* left1,
-                                __m256* left2, __m256* left3, __m256* right0,
-                                __m256* right1, __m256* right2,
-                                __m256* right3) {
+                                int offset3, __m256 *left0, __m256 *left1,
+                                __m256 *left2, __m256 *left3, __m256 *right0,
+                                __m256 *right1, __m256 *right2,
+                                __m256 *right3) {
   __m256i l0 = _mm256_insertf128_si256(
-      _mm256_castsi128_si256(_mm_loadu_si128((__m128i*)(lower_ptr + offset0))),
-      _mm_loadu_si128((__m128i*)(upper_ptr + offset0)), 1);
+      _mm256_castsi128_si256(_mm_loadu_si128((__m128i *)(lower_ptr + offset0))),
+      _mm_loadu_si128((__m128i *)(upper_ptr + offset0)), 1);
   __m256i r0 = _mm256_insertf128_si256(
       _mm256_castsi128_si256(
-          _mm_loadu_si128((__m128i*)(lower_ptr + offset0 + 4))),
-      _mm_loadu_si128((__m128i*)(upper_ptr + offset0 + 4)), 1);
+          _mm_loadu_si128((__m128i *)(lower_ptr + offset0 + 4))),
+      _mm_loadu_si128((__m128i *)(upper_ptr + offset0 + 4)), 1);
   __m256i l1, r1;
   if (offset1 == offset0) {
     l1 = l0;
@@ -2445,12 +2391,12 @@ void VectorLoader<T>::load8_4ch(const T* lower_ptr, const T* upper_ptr,
   } else {
     l1 = _mm256_insertf128_si256(
         _mm256_castsi128_si256(
-            _mm_loadu_si128((__m128i*)(lower_ptr + offset1))),
-        _mm_loadu_si128((__m128i*)(upper_ptr + offset1)), 1);
+            _mm_loadu_si128((__m128i *)(lower_ptr + offset1))),
+        _mm_loadu_si128((__m128i *)(upper_ptr + offset1)), 1);
     r1 = _mm256_insertf128_si256(
         _mm256_castsi128_si256(
-            _mm_loadu_si128((__m128i*)(lower_ptr + offset1 + 4))),
-        _mm_loadu_si128((__m128i*)(upper_ptr + offset1 + 4)), 1);
+            _mm_loadu_si128((__m128i *)(lower_ptr + offset1 + 4))),
+        _mm_loadu_si128((__m128i *)(upper_ptr + offset1 + 4)), 1);
   }
   __m256i l2, r2;
   if (offset2 == offset1) {
@@ -2459,12 +2405,12 @@ void VectorLoader<T>::load8_4ch(const T* lower_ptr, const T* upper_ptr,
   } else {
     l2 = _mm256_insertf128_si256(
         _mm256_castsi128_si256(
-            _mm_loadu_si128((__m128i*)(lower_ptr + offset2))),
-        _mm_loadu_si128((__m128i*)(upper_ptr + offset2)), 1);
+            _mm_loadu_si128((__m128i *)(lower_ptr + offset2))),
+        _mm_loadu_si128((__m128i *)(upper_ptr + offset2)), 1);
     r2 = _mm256_insertf128_si256(
         _mm256_castsi128_si256(
-            _mm_loadu_si128((__m128i*)(lower_ptr + offset2 + 4))),
-        _mm_loadu_si128((__m128i*)(upper_ptr + offset2 + 4)), 1);
+            _mm_loadu_si128((__m128i *)(lower_ptr + offset2 + 4))),
+        _mm_loadu_si128((__m128i *)(upper_ptr + offset2 + 4)), 1);
   }
   __m256i l3, r3;
   if (offset3 == offset2) {
@@ -2473,12 +2419,12 @@ void VectorLoader<T>::load8_4ch(const T* lower_ptr, const T* upper_ptr,
   } else {
     l3 = _mm256_insertf128_si256(
         _mm256_castsi128_si256(
-            _mm_loadu_si128((__m128i*)(lower_ptr + offset3))),
-        _mm_loadu_si128((__m128i*)(upper_ptr + offset3)), 1);
+            _mm_loadu_si128((__m128i *)(lower_ptr + offset3))),
+        _mm_loadu_si128((__m128i *)(upper_ptr + offset3)), 1);
     r3 = _mm256_insertf128_si256(
         _mm256_castsi128_si256(
-            _mm_loadu_si128((__m128i*)(lower_ptr + offset3 + 4))),
-        _mm_loadu_si128((__m128i*)(upper_ptr + offset3 + 4)), 1);
+            _mm_loadu_si128((__m128i *)(lower_ptr + offset3 + 4))),
+        _mm_loadu_si128((__m128i *)(upper_ptr + offset3 + 4)), 1);
   }
   *left0 = to_fp32(l0);
   *left1 = to_fp32(l1);
@@ -2491,49 +2437,49 @@ void VectorLoader<T>::load8_4ch(const T* lower_ptr, const T* upper_ptr,
 }
 #else
 template <class T>
-void VectorLoader<T>::load1_1ch(const T* lower_ptr, const T* upper_ptr,
-                                int offset0, const __m128i* shuffle_masks,
-                                __m128* tl0, __m128* bl0, __m128* tr0,
-                                __m128* br0) {
-  __m128i raw = _mm_loadu_si128((__m128i*)(lower_ptr + offset0));
+void VectorLoader<T>::load1_1ch(const T *lower_ptr, const T *upper_ptr,
+                                int offset0, const __m128i *shuffle_masks,
+                                __m128 *tl0, __m128 *bl0, __m128 *tr0,
+                                __m128 *br0) {
+  __m128i raw = _mm_loadu_si128((__m128i *)(lower_ptr + offset0));
   *tl0 = to_fp32(_mm_shuffle_epi8(raw, shuffle_masks[0]));
   *tr0 = to_fp32(_mm_shuffle_epi8(raw, shuffle_masks[1]));
-  raw = _mm_loadu_si128((__m128i*)(upper_ptr + offset0));
+  raw = _mm_loadu_si128((__m128i *)(upper_ptr + offset0));
   *bl0 = to_fp32(_mm_shuffle_epi8(raw, shuffle_masks[0]));
   *br0 = to_fp32(_mm_shuffle_epi8(raw, shuffle_masks[1]));
 }
 template <class T>
-void VectorLoader<T>::load1_2ch(const T* lower_ptr, const T* upper_ptr,
-                                int offset0, const __m128i* shuffle_masks,
-                                __m128* tl0, __m128* tl1, __m128* bl0,
-                                __m128* bl1, __m128* tr0, __m128* tr1,
-                                __m128* br0, __m128* br1) {
-  __m128i raw = _mm_loadu_si128((__m128i*)(lower_ptr + offset0));
+void VectorLoader<T>::load1_2ch(const T *lower_ptr, const T *upper_ptr,
+                                int offset0, const __m128i *shuffle_masks,
+                                __m128 *tl0, __m128 *tl1, __m128 *bl0,
+                                __m128 *bl1, __m128 *tr0, __m128 *tr1,
+                                __m128 *br0, __m128 *br1) {
+  __m128i raw = _mm_loadu_si128((__m128i *)(lower_ptr + offset0));
   *tl0 = to_fp32(_mm_shuffle_epi8(raw, shuffle_masks[0]));
   *tl1 = to_fp32(_mm_shuffle_epi8(raw, shuffle_masks[1]));
   *tr0 = to_fp32(_mm_shuffle_epi8(raw, shuffle_masks[2]));
   *tr1 = to_fp32(_mm_shuffle_epi8(raw, shuffle_masks[3]));
-  raw = _mm_loadu_si128((__m128i*)(upper_ptr + offset0));
+  raw = _mm_loadu_si128((__m128i *)(upper_ptr + offset0));
   *bl0 = to_fp32(_mm_shuffle_epi8(raw, shuffle_masks[0]));
   *bl1 = to_fp32(_mm_shuffle_epi8(raw, shuffle_masks[1]));
   *br0 = to_fp32(_mm_shuffle_epi8(raw, shuffle_masks[2]));
   *br1 = to_fp32(_mm_shuffle_epi8(raw, shuffle_masks[3]));
 }
 template <class T>
-void VectorLoader<T>::load1_3ch(const T* lower_ptr, const T* upper_ptr,
-                                int offset0, const __m128i* shuffle_masks,
-                                __m128* tl0, __m128* tl1, __m128* tl2,
-                                __m128* bl0, __m128* bl1, __m128* bl2,
-                                __m128* tr0, __m128* tr1, __m128* tr2,
-                                __m128* br0, __m128* br1, __m128* br2) {
-  __m128i raw = _mm_loadu_si128((__m128i*)(lower_ptr + offset0));
+void VectorLoader<T>::load1_3ch(const T *lower_ptr, const T *upper_ptr,
+                                int offset0, const __m128i *shuffle_masks,
+                                __m128 *tl0, __m128 *tl1, __m128 *tl2,
+                                __m128 *bl0, __m128 *bl1, __m128 *bl2,
+                                __m128 *tr0, __m128 *tr1, __m128 *tr2,
+                                __m128 *br0, __m128 *br1, __m128 *br2) {
+  __m128i raw = _mm_loadu_si128((__m128i *)(lower_ptr + offset0));
   *tl0 = to_fp32(_mm_shuffle_epi8(raw, shuffle_masks[0]));
   *tl1 = to_fp32(_mm_shuffle_epi8(raw, shuffle_masks[1]));
   *tl2 = to_fp32(_mm_shuffle_epi8(raw, shuffle_masks[2]));
   *tr0 = to_fp32(_mm_shuffle_epi8(raw, shuffle_masks[3]));
   *tr1 = to_fp32(_mm_shuffle_epi8(raw, shuffle_masks[4]));
   *tr2 = to_fp32(_mm_shuffle_epi8(raw, shuffle_masks[5]));
-  raw = _mm_loadu_si128((__m128i*)(upper_ptr + offset0));
+  raw = _mm_loadu_si128((__m128i *)(upper_ptr + offset0));
   *bl0 = to_fp32(_mm_shuffle_epi8(raw, shuffle_masks[0]));
   *bl1 = to_fp32(_mm_shuffle_epi8(raw, shuffle_masks[1]));
   *bl2 = to_fp32(_mm_shuffle_epi8(raw, shuffle_masks[2]));
@@ -2542,15 +2488,15 @@ void VectorLoader<T>::load1_3ch(const T* lower_ptr, const T* upper_ptr,
   *br2 = to_fp32(_mm_shuffle_epi8(raw, shuffle_masks[5]));
 }
 template <class T>
-void VectorLoader<T>::load1_4ch(const T* lower_ptr, const T* upper_ptr,
-                                int offset0, const __m128i* shuffle_masks,
-                                __m128* tl0, __m128* tl1, __m128* tl2,
-                                __m128* tl3, __m128* bl0, __m128* bl1,
-                                __m128* bl2, __m128* bl3, __m128* tr0,
-                                __m128* tr1, __m128* tr2, __m128* tr3,
-                                __m128* br0, __m128* br1, __m128* br2,
-                                __m128* br3) {
-  __m128i raw = _mm_loadu_si128((__m128i*)(lower_ptr + offset0));
+void VectorLoader<T>::load1_4ch(const T *lower_ptr, const T *upper_ptr,
+                                int offset0, const __m128i *shuffle_masks,
+                                __m128 *tl0, __m128 *tl1, __m128 *tl2,
+                                __m128 *tl3, __m128 *bl0, __m128 *bl1,
+                                __m128 *bl2, __m128 *bl3, __m128 *tr0,
+                                __m128 *tr1, __m128 *tr2, __m128 *tr3,
+                                __m128 *br0, __m128 *br1, __m128 *br2,
+                                __m128 *br3) {
+  __m128i raw = _mm_loadu_si128((__m128i *)(lower_ptr + offset0));
   *tl0 = to_fp32(_mm_shuffle_epi8(raw, shuffle_masks[0]));
   *tl1 = to_fp32(_mm_shuffle_epi8(raw, shuffle_masks[1]));
   *tl2 = to_fp32(_mm_shuffle_epi8(raw, shuffle_masks[2]));
@@ -2559,7 +2505,7 @@ void VectorLoader<T>::load1_4ch(const T* lower_ptr, const T* upper_ptr,
   *tr1 = to_fp32(_mm_shuffle_epi8(raw, shuffle_masks[5]));
   *tr2 = to_fp32(_mm_shuffle_epi8(raw, shuffle_masks[6]));
   *tr3 = to_fp32(_mm_shuffle_epi8(raw, shuffle_masks[7]));
-  raw = _mm_loadu_si128((__m128i*)(upper_ptr + offset0));
+  raw = _mm_loadu_si128((__m128i *)(upper_ptr + offset0));
   *bl0 = to_fp32(_mm_shuffle_epi8(raw, shuffle_masks[0]));
   *bl1 = to_fp32(_mm_shuffle_epi8(raw, shuffle_masks[1]));
   *bl2 = to_fp32(_mm_shuffle_epi8(raw, shuffle_masks[2]));
@@ -2570,100 +2516,100 @@ void VectorLoader<T>::load1_4ch(const T* lower_ptr, const T* upper_ptr,
   *br3 = to_fp32(_mm_shuffle_epi8(raw, shuffle_masks[7]));
 }
 template <class T>
-void VectorLoader<T>::load2_1ch(const T* lower_ptr, const T* upper_ptr,
-                                int offset0, const __m128i* shuffle_masks,
-                                __m128* tl0, __m128* bl0, __m128* tr0,
-                                __m128* br0) {
-  __m128i raw = _mm_loadu_si128((__m128i*)(lower_ptr + offset0));
+void VectorLoader<T>::load2_1ch(const T *lower_ptr, const T *upper_ptr,
+                                int offset0, const __m128i *shuffle_masks,
+                                __m128 *tl0, __m128 *bl0, __m128 *tr0,
+                                __m128 *br0) {
+  __m128i raw = _mm_loadu_si128((__m128i *)(lower_ptr + offset0));
   *tl0 = to_fp32(_mm_shuffle_epi8(raw, shuffle_masks[0]));
-  raw = _mm_loadu_si128((__m128i*)(lower_ptr + offset0 + 1));
+  raw = _mm_loadu_si128((__m128i *)(lower_ptr + offset0 + 1));
   *tr0 = to_fp32(_mm_shuffle_epi8(raw, shuffle_masks[0]));
-  raw = _mm_loadu_si128((__m128i*)(upper_ptr + offset0));
+  raw = _mm_loadu_si128((__m128i *)(upper_ptr + offset0));
   *bl0 = to_fp32(_mm_shuffle_epi8(raw, shuffle_masks[0]));
-  raw = _mm_loadu_si128((__m128i*)(upper_ptr + offset0 + 1));
+  raw = _mm_loadu_si128((__m128i *)(upper_ptr + offset0 + 1));
   *br0 = to_fp32(_mm_shuffle_epi8(raw, shuffle_masks[0]));
 }
 template <class T>
-void VectorLoader<T>::load2_2ch(const T* lower_ptr, const T* upper_ptr,
-                                int offset0, const __m128i* shuffle_masks,
-                                __m128* tl0, __m128* tl1, __m128* bl0,
-                                __m128* bl1, __m128* tr0, __m128* tr1,
-                                __m128* br0, __m128* br1) {
-  __m128i raw = _mm_loadu_si128((__m128i*)(lower_ptr + offset0));
+void VectorLoader<T>::load2_2ch(const T *lower_ptr, const T *upper_ptr,
+                                int offset0, const __m128i *shuffle_masks,
+                                __m128 *tl0, __m128 *tl1, __m128 *bl0,
+                                __m128 *bl1, __m128 *tr0, __m128 *tr1,
+                                __m128 *br0, __m128 *br1) {
+  __m128i raw = _mm_loadu_si128((__m128i *)(lower_ptr + offset0));
   *tl0 = to_fp32(_mm_shuffle_epi8(raw, shuffle_masks[0]));
   *tl1 = to_fp32(_mm_shuffle_epi8(raw, shuffle_masks[1]));
-  raw = _mm_loadu_si128((__m128i*)(lower_ptr + offset0 + 2));
+  raw = _mm_loadu_si128((__m128i *)(lower_ptr + offset0 + 2));
   *tr0 = to_fp32(_mm_shuffle_epi8(raw, shuffle_masks[0]));
   *tr1 = to_fp32(_mm_shuffle_epi8(raw, shuffle_masks[1]));
-  raw = _mm_loadu_si128((__m128i*)(upper_ptr + offset0));
+  raw = _mm_loadu_si128((__m128i *)(upper_ptr + offset0));
   *bl0 = to_fp32(_mm_shuffle_epi8(raw, shuffle_masks[0]));
   *bl1 = to_fp32(_mm_shuffle_epi8(raw, shuffle_masks[1]));
-  raw = _mm_loadu_si128((__m128i*)(upper_ptr + offset0 + 2));
+  raw = _mm_loadu_si128((__m128i *)(upper_ptr + offset0 + 2));
   *br0 = to_fp32(_mm_shuffle_epi8(raw, shuffle_masks[0]));
   *br1 = to_fp32(_mm_shuffle_epi8(raw, shuffle_masks[1]));
 }
 template <class T>
-void VectorLoader<T>::load2_3ch(const T* lower_ptr, const T* upper_ptr,
-                                int offset0, const __m128i* shuffle_masks,
-                                __m128* tl0, __m128* tl1, __m128* tl2,
-                                __m128* bl0, __m128* bl1, __m128* bl2,
-                                __m128* tr0, __m128* tr1, __m128* tr2,
-                                __m128* br0, __m128* br1, __m128* br2) {
-  __m128i raw = _mm_loadu_si128((__m128i*)(lower_ptr + offset0));
+void VectorLoader<T>::load2_3ch(const T *lower_ptr, const T *upper_ptr,
+                                int offset0, const __m128i *shuffle_masks,
+                                __m128 *tl0, __m128 *tl1, __m128 *tl2,
+                                __m128 *bl0, __m128 *bl1, __m128 *bl2,
+                                __m128 *tr0, __m128 *tr1, __m128 *tr2,
+                                __m128 *br0, __m128 *br1, __m128 *br2) {
+  __m128i raw = _mm_loadu_si128((__m128i *)(lower_ptr + offset0));
   *tl0 = to_fp32(_mm_shuffle_epi8(raw, shuffle_masks[0]));
   *tl1 = to_fp32(_mm_shuffle_epi8(raw, shuffle_masks[1]));
   *tl2 = to_fp32(_mm_shuffle_epi8(raw, shuffle_masks[2]));
-  raw = _mm_loadu_si128((__m128i*)(lower_ptr + offset0 + 3));
+  raw = _mm_loadu_si128((__m128i *)(lower_ptr + offset0 + 3));
   *tr0 = to_fp32(_mm_shuffle_epi8(raw, shuffle_masks[0]));
   *tr1 = to_fp32(_mm_shuffle_epi8(raw, shuffle_masks[1]));
   *tr2 = to_fp32(_mm_shuffle_epi8(raw, shuffle_masks[2]));
-  raw = _mm_loadu_si128((__m128i*)(upper_ptr + offset0));
+  raw = _mm_loadu_si128((__m128i *)(upper_ptr + offset0));
   *bl0 = to_fp32(_mm_shuffle_epi8(raw, shuffle_masks[0]));
   *bl1 = to_fp32(_mm_shuffle_epi8(raw, shuffle_masks[1]));
   *bl2 = to_fp32(_mm_shuffle_epi8(raw, shuffle_masks[2]));
-  raw = _mm_loadu_si128((__m128i*)(upper_ptr + offset0 + 3));
+  raw = _mm_loadu_si128((__m128i *)(upper_ptr + offset0 + 3));
   *br0 = to_fp32(_mm_shuffle_epi8(raw, shuffle_masks[0]));
   *br1 = to_fp32(_mm_shuffle_epi8(raw, shuffle_masks[1]));
   *br2 = to_fp32(_mm_shuffle_epi8(raw, shuffle_masks[2]));
 }
 template <class T>
-void VectorLoader<T>::load2_4ch(const T* lower_ptr, const T* upper_ptr,
-                                int offset0, const __m128i* shuffle_masks,
-                                __m128* tl0, __m128* tl1, __m128* tl2,
-                                __m128* tl3, __m128* bl0, __m128* bl1,
-                                __m128* bl2, __m128* bl3, __m128* tr0,
-                                __m128* tr1, __m128* tr2, __m128* tr3,
-                                __m128* br0, __m128* br1, __m128* br2,
-                                __m128* br3) {
-  __m128i raw = _mm_loadu_si128((__m128i*)(lower_ptr + offset0));
+void VectorLoader<T>::load2_4ch(const T *lower_ptr, const T *upper_ptr,
+                                int offset0, const __m128i *shuffle_masks,
+                                __m128 *tl0, __m128 *tl1, __m128 *tl2,
+                                __m128 *tl3, __m128 *bl0, __m128 *bl1,
+                                __m128 *bl2, __m128 *bl3, __m128 *tr0,
+                                __m128 *tr1, __m128 *tr2, __m128 *tr3,
+                                __m128 *br0, __m128 *br1, __m128 *br2,
+                                __m128 *br3) {
+  __m128i raw = _mm_loadu_si128((__m128i *)(lower_ptr + offset0));
   *tl0 = to_fp32(_mm_shuffle_epi8(raw, shuffle_masks[0]));
   *tl1 = to_fp32(_mm_shuffle_epi8(raw, shuffle_masks[1]));
   *tl2 = to_fp32(_mm_shuffle_epi8(raw, shuffle_masks[2]));
   *tl3 = to_fp32(_mm_shuffle_epi8(raw, shuffle_masks[3]));
-  raw = _mm_loadu_si128((__m128i*)(lower_ptr + offset0 + 4));
+  raw = _mm_loadu_si128((__m128i *)(lower_ptr + offset0 + 4));
   *tr0 = to_fp32(_mm_shuffle_epi8(raw, shuffle_masks[0]));
   *tr1 = to_fp32(_mm_shuffle_epi8(raw, shuffle_masks[1]));
   *tr2 = to_fp32(_mm_shuffle_epi8(raw, shuffle_masks[2]));
   *tr3 = to_fp32(_mm_shuffle_epi8(raw, shuffle_masks[3]));
-  raw = _mm_loadu_si128((__m128i*)(upper_ptr + offset0));
+  raw = _mm_loadu_si128((__m128i *)(upper_ptr + offset0));
   *bl0 = to_fp32(_mm_shuffle_epi8(raw, shuffle_masks[0]));
   *bl1 = to_fp32(_mm_shuffle_epi8(raw, shuffle_masks[1]));
   *bl2 = to_fp32(_mm_shuffle_epi8(raw, shuffle_masks[2]));
   *bl3 = to_fp32(_mm_shuffle_epi8(raw, shuffle_masks[3]));
-  raw = _mm_loadu_si128((__m128i*)(upper_ptr + offset0 + 4));
+  raw = _mm_loadu_si128((__m128i *)(upper_ptr + offset0 + 4));
   *br0 = to_fp32(_mm_shuffle_epi8(raw, shuffle_masks[0]));
   *br1 = to_fp32(_mm_shuffle_epi8(raw, shuffle_masks[1]));
   *br2 = to_fp32(_mm_shuffle_epi8(raw, shuffle_masks[2]));
   *br3 = to_fp32(_mm_shuffle_epi8(raw, shuffle_masks[3]));
 }
 template <class T>
-void VectorLoader<T>::load4_1ch(const T* lower_ptr, const T* upper_ptr,
+void VectorLoader<T>::load4_1ch(const T *lower_ptr, const T *upper_ptr,
                                 int offset0, int offset1, int offset2,
-                                int offset3, __m128* tl0, __m128* bl0,
-                                __m128* tr0, __m128* br0) {
-  __m128i itl0 = _mm_loadu_si128((__m128i*)(lower_ptr + offset0));
+                                int offset3, __m128 *tl0, __m128 *bl0,
+                                __m128 *tr0, __m128 *br0) {
+  __m128i itl0 = _mm_loadu_si128((__m128i *)(lower_ptr + offset0));
   __m128i itr0 = extract_right_1ch(itl0);
-  __m128i ibl0 = _mm_loadu_si128((__m128i*)(upper_ptr + offset0));
+  __m128i ibl0 = _mm_loadu_si128((__m128i *)(upper_ptr + offset0));
   __m128i ibr0 = extract_right_1ch(ibl0);
   __m128i itl1, itr1;
   __m128i ibl1, ibr1;
@@ -2673,9 +2619,9 @@ void VectorLoader<T>::load4_1ch(const T* lower_ptr, const T* upper_ptr,
     ibl1 = ibl0;
     ibr1 = ibr0;
   } else {
-    itl1 = _mm_loadu_si128((__m128i*)(lower_ptr + offset1));
+    itl1 = _mm_loadu_si128((__m128i *)(lower_ptr + offset1));
     itr1 = extract_right_1ch(itl1);
-    ibl1 = _mm_loadu_si128((__m128i*)(upper_ptr + offset1));
+    ibl1 = _mm_loadu_si128((__m128i *)(upper_ptr + offset1));
     ibr1 = extract_right_1ch(ibl1);
   }
   __m128i itl2, itr2;
@@ -2686,9 +2632,9 @@ void VectorLoader<T>::load4_1ch(const T* lower_ptr, const T* upper_ptr,
     ibl2 = ibl1;
     ibr2 = ibr1;
   } else {
-    itl2 = _mm_loadu_si128((__m128i*)(lower_ptr + offset2));
+    itl2 = _mm_loadu_si128((__m128i *)(lower_ptr + offset2));
     itr2 = extract_right_1ch(itl2);
-    ibl2 = _mm_loadu_si128((__m128i*)(upper_ptr + offset2));
+    ibl2 = _mm_loadu_si128((__m128i *)(upper_ptr + offset2));
     ibr2 = extract_right_1ch(ibl2);
   }
   __m128i itl3, itr3;
@@ -2699,9 +2645,9 @@ void VectorLoader<T>::load4_1ch(const T* lower_ptr, const T* upper_ptr,
     ibl3 = ibl2;
     ibr3 = ibr2;
   } else {
-    itl3 = _mm_loadu_si128((__m128i*)(lower_ptr + offset3));
+    itl3 = _mm_loadu_si128((__m128i *)(lower_ptr + offset3));
     itr3 = extract_right_1ch(itl3);
-    ibl3 = _mm_loadu_si128((__m128i*)(upper_ptr + offset3));
+    ibl3 = _mm_loadu_si128((__m128i *)(upper_ptr + offset3));
     ibr3 = extract_right_1ch(ibl3);
   }
   pack_1ch(&itl0, &itl1, &itl2, &itl3);
@@ -2714,14 +2660,14 @@ void VectorLoader<T>::load4_1ch(const T* lower_ptr, const T* upper_ptr,
   *br0 = to_fp32(ibr0);
 }
 template <class T>
-void VectorLoader<T>::load4_2ch(const T* lower_ptr, const T* upper_ptr,
+void VectorLoader<T>::load4_2ch(const T *lower_ptr, const T *upper_ptr,
                                 int offset0, int offset1, int offset2,
-                                int offset3, __m128* tl0, __m128* tl1,
-                                __m128* bl0, __m128* bl1, __m128* tr0,
-                                __m128* tr1, __m128* br0, __m128* br1) {
-  __m128i itl0 = _mm_loadu_si128((__m128i*)(lower_ptr + offset0));
+                                int offset3, __m128 *tl0, __m128 *tl1,
+                                __m128 *bl0, __m128 *bl1, __m128 *tr0,
+                                __m128 *tr1, __m128 *br0, __m128 *br1) {
+  __m128i itl0 = _mm_loadu_si128((__m128i *)(lower_ptr + offset0));
   __m128i itr0 = extract_right_2ch(itl0);
-  __m128i ibl0 = _mm_loadu_si128((__m128i*)(upper_ptr + offset0));
+  __m128i ibl0 = _mm_loadu_si128((__m128i *)(upper_ptr + offset0));
   __m128i ibr0 = extract_right_2ch(ibl0);
   __m128i itl1, itr1;
   __m128i ibl1, ibr1;
@@ -2731,9 +2677,9 @@ void VectorLoader<T>::load4_2ch(const T* lower_ptr, const T* upper_ptr,
     ibl1 = ibl0;
     ibr1 = ibr0;
   } else {
-    itl1 = _mm_loadu_si128((__m128i*)(lower_ptr + offset1));
+    itl1 = _mm_loadu_si128((__m128i *)(lower_ptr + offset1));
     itr1 = extract_right_2ch(itl1);
-    ibl1 = _mm_loadu_si128((__m128i*)(upper_ptr + offset1));
+    ibl1 = _mm_loadu_si128((__m128i *)(upper_ptr + offset1));
     ibr1 = extract_right_2ch(ibl1);
   }
   __m128i itl2, itr2;
@@ -2744,9 +2690,9 @@ void VectorLoader<T>::load4_2ch(const T* lower_ptr, const T* upper_ptr,
     ibl2 = ibl1;
     ibr2 = ibr1;
   } else {
-    itl2 = _mm_loadu_si128((__m128i*)(lower_ptr + offset2));
+    itl2 = _mm_loadu_si128((__m128i *)(lower_ptr + offset2));
     itr2 = extract_right_2ch(itl2);
-    ibl2 = _mm_loadu_si128((__m128i*)(upper_ptr + offset2));
+    ibl2 = _mm_loadu_si128((__m128i *)(upper_ptr + offset2));
     ibr2 = extract_right_2ch(ibl2);
   }
   __m128i itl3, itr3;
@@ -2757,9 +2703,9 @@ void VectorLoader<T>::load4_2ch(const T* lower_ptr, const T* upper_ptr,
     ibl3 = ibl2;
     ibr3 = ibr2;
   } else {
-    itl3 = _mm_loadu_si128((__m128i*)(lower_ptr + offset3));
+    itl3 = _mm_loadu_si128((__m128i *)(lower_ptr + offset3));
     itr3 = extract_right_2ch(itl3);
-    ibl3 = _mm_loadu_si128((__m128i*)(upper_ptr + offset3));
+    ibl3 = _mm_loadu_si128((__m128i *)(upper_ptr + offset3));
     ibr3 = extract_right_2ch(ibl3);
   }
   pack_2ch(&itl0, &itl1, &itl2, &itl3);
@@ -2776,16 +2722,16 @@ void VectorLoader<T>::load4_2ch(const T* lower_ptr, const T* upper_ptr,
   *br1 = to_fp32(ibr1);
 }
 template <class T>
-void VectorLoader<T>::load4_3ch(const T* lower_ptr, const T* upper_ptr,
+void VectorLoader<T>::load4_3ch(const T *lower_ptr, const T *upper_ptr,
                                 int offset0, int offset1, int offset2,
-                                int offset3, __m128* tl0, __m128* tl1,
-                                __m128* tl2, __m128* bl0, __m128* bl1,
-                                __m128* bl2, __m128* tr0, __m128* tr1,
-                                __m128* tr2, __m128* br0, __m128* br1,
-                                __m128* br2) {
-  __m128i itl0 = _mm_loadu_si128((__m128i*)(lower_ptr + offset0));
+                                int offset3, __m128 *tl0, __m128 *tl1,
+                                __m128 *tl2, __m128 *bl0, __m128 *bl1,
+                                __m128 *bl2, __m128 *tr0, __m128 *tr1,
+                                __m128 *tr2, __m128 *br0, __m128 *br1,
+                                __m128 *br2) {
+  __m128i itl0 = _mm_loadu_si128((__m128i *)(lower_ptr + offset0));
   __m128i itr0 = extract_right_3ch(itl0);
-  __m128i ibl0 = _mm_loadu_si128((__m128i*)(upper_ptr + offset0));
+  __m128i ibl0 = _mm_loadu_si128((__m128i *)(upper_ptr + offset0));
   __m128i ibr0 = extract_right_3ch(ibl0);
   __m128i itl1, itr1;
   __m128i ibl1, ibr1;
@@ -2795,9 +2741,9 @@ void VectorLoader<T>::load4_3ch(const T* lower_ptr, const T* upper_ptr,
     ibl1 = ibl0;
     ibr1 = ibr0;
   } else {
-    itl1 = _mm_loadu_si128((__m128i*)(lower_ptr + offset1));
+    itl1 = _mm_loadu_si128((__m128i *)(lower_ptr + offset1));
     itr1 = extract_right_3ch(itl1);
-    ibl1 = _mm_loadu_si128((__m128i*)(upper_ptr + offset1));
+    ibl1 = _mm_loadu_si128((__m128i *)(upper_ptr + offset1));
     ibr1 = extract_right_3ch(ibl1);
   }
   __m128i itl2, itr2;
@@ -2808,9 +2754,9 @@ void VectorLoader<T>::load4_3ch(const T* lower_ptr, const T* upper_ptr,
     ibl2 = ibl1;
     ibr2 = ibr1;
   } else {
-    itl2 = _mm_loadu_si128((__m128i*)(lower_ptr + offset2));
+    itl2 = _mm_loadu_si128((__m128i *)(lower_ptr + offset2));
     itr2 = extract_right_3ch(itl2);
-    ibl2 = _mm_loadu_si128((__m128i*)(upper_ptr + offset2));
+    ibl2 = _mm_loadu_si128((__m128i *)(upper_ptr + offset2));
     ibr2 = extract_right_3ch(ibl2);
   }
   __m128i itl3, itr3;
@@ -2821,9 +2767,9 @@ void VectorLoader<T>::load4_3ch(const T* lower_ptr, const T* upper_ptr,
     ibl3 = ibl2;
     ibr3 = ibr2;
   } else {
-    itl3 = _mm_loadu_si128((__m128i*)(lower_ptr + offset3));
+    itl3 = _mm_loadu_si128((__m128i *)(lower_ptr + offset3));
     itr3 = extract_right_3ch(itl3);
-    ibl3 = _mm_loadu_si128((__m128i*)(upper_ptr + offset3));
+    ibl3 = _mm_loadu_si128((__m128i *)(upper_ptr + offset3));
     ibr3 = extract_right_3ch(ibl3);
   }
   pack_3ch(&itl0, &itl1, &itl2, &itl3);
@@ -2844,17 +2790,17 @@ void VectorLoader<T>::load4_3ch(const T* lower_ptr, const T* upper_ptr,
   *br2 = to_fp32(ibr2);
 }
 template <class T>
-void VectorLoader<T>::load4_4ch(const T* lower_ptr, const T* upper_ptr,
+void VectorLoader<T>::load4_4ch(const T *lower_ptr, const T *upper_ptr,
                                 int offset0, int offset1, int offset2,
-                                int offset3, __m128* tl0, __m128* tl1,
-                                __m128* tl2, __m128* tl3, __m128* bl0,
-                                __m128* bl1, __m128* bl2, __m128* bl3,
-                                __m128* tr0, __m128* tr1, __m128* tr2,
-                                __m128* tr3, __m128* br0, __m128* br1,
-                                __m128* br2, __m128* br3) {
-  __m128i itl0 = _mm_loadu_si128((__m128i*)(lower_ptr + offset0));
+                                int offset3, __m128 *tl0, __m128 *tl1,
+                                __m128 *tl2, __m128 *tl3, __m128 *bl0,
+                                __m128 *bl1, __m128 *bl2, __m128 *bl3,
+                                __m128 *tr0, __m128 *tr1, __m128 *tr2,
+                                __m128 *tr3, __m128 *br0, __m128 *br1,
+                                __m128 *br2, __m128 *br3) {
+  __m128i itl0 = _mm_loadu_si128((__m128i *)(lower_ptr + offset0));
   __m128i itr0 = extract_right_4ch(itl0);
-  __m128i ibl0 = _mm_loadu_si128((__m128i*)(upper_ptr + offset0));
+  __m128i ibl0 = _mm_loadu_si128((__m128i *)(upper_ptr + offset0));
   __m128i ibr0 = extract_right_4ch(ibl0);
   __m128i itl1, itr1;
   __m128i ibl1, ibr1;
@@ -2864,9 +2810,9 @@ void VectorLoader<T>::load4_4ch(const T* lower_ptr, const T* upper_ptr,
     ibl1 = ibl0;
     ibr1 = ibr0;
   } else {
-    itl1 = _mm_loadu_si128((__m128i*)(lower_ptr + offset1));
+    itl1 = _mm_loadu_si128((__m128i *)(lower_ptr + offset1));
     itr1 = extract_right_4ch(itl1);
-    ibl1 = _mm_loadu_si128((__m128i*)(upper_ptr + offset1));
+    ibl1 = _mm_loadu_si128((__m128i *)(upper_ptr + offset1));
     ibr1 = extract_right_4ch(ibl1);
   }
   __m128i itl2, itr2;
@@ -2877,9 +2823,9 @@ void VectorLoader<T>::load4_4ch(const T* lower_ptr, const T* upper_ptr,
     ibl2 = ibl1;
     ibr2 = ibr1;
   } else {
-    itl2 = _mm_loadu_si128((__m128i*)(lower_ptr + offset2));
+    itl2 = _mm_loadu_si128((__m128i *)(lower_ptr + offset2));
     itr2 = extract_right_4ch(itl2);
-    ibl2 = _mm_loadu_si128((__m128i*)(upper_ptr + offset2));
+    ibl2 = _mm_loadu_si128((__m128i *)(upper_ptr + offset2));
     ibr2 = extract_right_4ch(ibl2);
   }
   __m128i itl3, itr3;
@@ -2890,9 +2836,9 @@ void VectorLoader<T>::load4_4ch(const T* lower_ptr, const T* upper_ptr,
     ibl3 = ibl2;
     ibr3 = ibr2;
   } else {
-    itl3 = _mm_loadu_si128((__m128i*)(lower_ptr + offset3));
+    itl3 = _mm_loadu_si128((__m128i *)(lower_ptr + offset3));
     itr3 = extract_right_4ch(itl3);
-    ibl3 = _mm_loadu_si128((__m128i*)(upper_ptr + offset3));
+    ibl3 = _mm_loadu_si128((__m128i *)(upper_ptr + offset3));
     ibr3 = extract_right_4ch(ibl3);
   }
   *tl0 = to_fp32(itl0);
@@ -2913,14 +2859,14 @@ void VectorLoader<T>::load4_4ch(const T* lower_ptr, const T* upper_ptr,
   *br3 = to_fp32(ibr3);
 }
 template <class T>
-void VectorLoader<T>::load8_1ch(const T* lower_ptr, const T* upper_ptr,
+void VectorLoader<T>::load8_1ch(const T *lower_ptr, const T *upper_ptr,
                                 int offset0, int offset1, int offset2,
-                                int offset3, __m128* tl0, __m128* bl0,
-                                __m128* tr0, __m128* br0) {
-  __m128i itl0 = _mm_loadu_si128((__m128i*)(lower_ptr + offset0));
-  __m128i itr0 = _mm_loadu_si128((__m128i*)(lower_ptr + offset0 + 1));
-  __m128i ibl0 = _mm_loadu_si128((__m128i*)(upper_ptr + offset0));
-  __m128i ibr0 = _mm_loadu_si128((__m128i*)(upper_ptr + offset0 + 1));
+                                int offset3, __m128 *tl0, __m128 *bl0,
+                                __m128 *tr0, __m128 *br0) {
+  __m128i itl0 = _mm_loadu_si128((__m128i *)(lower_ptr + offset0));
+  __m128i itr0 = _mm_loadu_si128((__m128i *)(lower_ptr + offset0 + 1));
+  __m128i ibl0 = _mm_loadu_si128((__m128i *)(upper_ptr + offset0));
+  __m128i ibr0 = _mm_loadu_si128((__m128i *)(upper_ptr + offset0 + 1));
   __m128i itl1, itr1;
   __m128i ibl1, ibr1;
   if (offset1 == offset0) {
@@ -2929,10 +2875,10 @@ void VectorLoader<T>::load8_1ch(const T* lower_ptr, const T* upper_ptr,
     ibl1 = ibl0;
     ibr1 = ibr0;
   } else {
-    itl1 = _mm_loadu_si128((__m128i*)(lower_ptr + offset1));
-    itr1 = _mm_loadu_si128((__m128i*)(lower_ptr + offset1 + 1));
-    ibl1 = _mm_loadu_si128((__m128i*)(upper_ptr + offset1));
-    ibr1 = _mm_loadu_si128((__m128i*)(upper_ptr + offset1 + 1));
+    itl1 = _mm_loadu_si128((__m128i *)(lower_ptr + offset1));
+    itr1 = _mm_loadu_si128((__m128i *)(lower_ptr + offset1 + 1));
+    ibl1 = _mm_loadu_si128((__m128i *)(upper_ptr + offset1));
+    ibr1 = _mm_loadu_si128((__m128i *)(upper_ptr + offset1 + 1));
   }
   __m128i itl2, itr2;
   __m128i ibl2, ibr2;
@@ -2942,10 +2888,10 @@ void VectorLoader<T>::load8_1ch(const T* lower_ptr, const T* upper_ptr,
     ibl2 = ibl1;
     ibr2 = ibr1;
   } else {
-    itl2 = _mm_loadu_si128((__m128i*)(lower_ptr + offset2));
-    itr2 = _mm_loadu_si128((__m128i*)(lower_ptr + offset2 + 1));
-    ibl2 = _mm_loadu_si128((__m128i*)(upper_ptr + offset2));
-    ibr2 = _mm_loadu_si128((__m128i*)(upper_ptr + offset2 + 1));
+    itl2 = _mm_loadu_si128((__m128i *)(lower_ptr + offset2));
+    itr2 = _mm_loadu_si128((__m128i *)(lower_ptr + offset2 + 1));
+    ibl2 = _mm_loadu_si128((__m128i *)(upper_ptr + offset2));
+    ibr2 = _mm_loadu_si128((__m128i *)(upper_ptr + offset2 + 1));
   }
   __m128i itl3, itr3;
   __m128i ibl3, ibr3;
@@ -2955,10 +2901,10 @@ void VectorLoader<T>::load8_1ch(const T* lower_ptr, const T* upper_ptr,
     ibl3 = ibl2;
     ibr3 = ibr2;
   } else {
-    itl3 = _mm_loadu_si128((__m128i*)(lower_ptr + offset3));
-    itr3 = _mm_loadu_si128((__m128i*)(lower_ptr + offset3 + 1));
-    ibl3 = _mm_loadu_si128((__m128i*)(upper_ptr + offset3));
-    ibr3 = _mm_loadu_si128((__m128i*)(upper_ptr + offset3 + 1));
+    itl3 = _mm_loadu_si128((__m128i *)(lower_ptr + offset3));
+    itr3 = _mm_loadu_si128((__m128i *)(lower_ptr + offset3 + 1));
+    ibl3 = _mm_loadu_si128((__m128i *)(upper_ptr + offset3));
+    ibr3 = _mm_loadu_si128((__m128i *)(upper_ptr + offset3 + 1));
   }
   pack_1ch(&itl0, &itl1, &itl2, &itl3);
   *tl0 = to_fp32(itl0);
@@ -2970,15 +2916,15 @@ void VectorLoader<T>::load8_1ch(const T* lower_ptr, const T* upper_ptr,
   *br0 = to_fp32(ibr0);
 }
 template <class T>
-void VectorLoader<T>::load8_2ch(const T* lower_ptr, const T* upper_ptr,
+void VectorLoader<T>::load8_2ch(const T *lower_ptr, const T *upper_ptr,
                                 int offset0, int offset1, int offset2,
-                                int offset3, __m128* tl0, __m128* tl1,
-                                __m128* bl0, __m128* bl1, __m128* tr0,
-                                __m128* tr1, __m128* br0, __m128* br1) {
-  __m128i itl0 = _mm_loadu_si128((__m128i*)(lower_ptr + offset0));
-  __m128i itr0 = _mm_loadu_si128((__m128i*)(lower_ptr + offset0 + 2));
-  __m128i ibl0 = _mm_loadu_si128((__m128i*)(upper_ptr + offset0));
-  __m128i ibr0 = _mm_loadu_si128((__m128i*)(upper_ptr + offset0 + 2));
+                                int offset3, __m128 *tl0, __m128 *tl1,
+                                __m128 *bl0, __m128 *bl1, __m128 *tr0,
+                                __m128 *tr1, __m128 *br0, __m128 *br1) {
+  __m128i itl0 = _mm_loadu_si128((__m128i *)(lower_ptr + offset0));
+  __m128i itr0 = _mm_loadu_si128((__m128i *)(lower_ptr + offset0 + 2));
+  __m128i ibl0 = _mm_loadu_si128((__m128i *)(upper_ptr + offset0));
+  __m128i ibr0 = _mm_loadu_si128((__m128i *)(upper_ptr + offset0 + 2));
   __m128i itl1, itr1;
   __m128i ibl1, ibr1;
   if (offset1 == offset0) {
@@ -2987,10 +2933,10 @@ void VectorLoader<T>::load8_2ch(const T* lower_ptr, const T* upper_ptr,
     ibl1 = ibl0;
     ibr1 = ibr0;
   } else {
-    itl1 = _mm_loadu_si128((__m128i*)(lower_ptr + offset1));
-    itr1 = _mm_loadu_si128((__m128i*)(lower_ptr + offset1 + 2));
-    ibl1 = _mm_loadu_si128((__m128i*)(upper_ptr + offset1));
-    ibr1 = _mm_loadu_si128((__m128i*)(upper_ptr + offset1 + 2));
+    itl1 = _mm_loadu_si128((__m128i *)(lower_ptr + offset1));
+    itr1 = _mm_loadu_si128((__m128i *)(lower_ptr + offset1 + 2));
+    ibl1 = _mm_loadu_si128((__m128i *)(upper_ptr + offset1));
+    ibr1 = _mm_loadu_si128((__m128i *)(upper_ptr + offset1 + 2));
   }
   __m128i itl2, itr2;
   __m128i ibl2, ibr2;
@@ -3000,10 +2946,10 @@ void VectorLoader<T>::load8_2ch(const T* lower_ptr, const T* upper_ptr,
     ibl2 = ibl1;
     ibr2 = ibr1;
   } else {
-    itl2 = _mm_loadu_si128((__m128i*)(lower_ptr + offset2));
-    itr2 = _mm_loadu_si128((__m128i*)(lower_ptr + offset2 + 2));
-    ibl2 = _mm_loadu_si128((__m128i*)(upper_ptr + offset2));
-    ibr2 = _mm_loadu_si128((__m128i*)(upper_ptr + offset2 + 2));
+    itl2 = _mm_loadu_si128((__m128i *)(lower_ptr + offset2));
+    itr2 = _mm_loadu_si128((__m128i *)(lower_ptr + offset2 + 2));
+    ibl2 = _mm_loadu_si128((__m128i *)(upper_ptr + offset2));
+    ibr2 = _mm_loadu_si128((__m128i *)(upper_ptr + offset2 + 2));
   }
   __m128i itl3, itr3;
   __m128i ibl3, ibr3;
@@ -3013,10 +2959,10 @@ void VectorLoader<T>::load8_2ch(const T* lower_ptr, const T* upper_ptr,
     ibl3 = ibl2;
     ibr3 = ibr2;
   } else {
-    itl3 = _mm_loadu_si128((__m128i*)(lower_ptr + offset3));
-    itr3 = _mm_loadu_si128((__m128i*)(lower_ptr + offset3 + 2));
-    ibl3 = _mm_loadu_si128((__m128i*)(upper_ptr + offset3));
-    ibr3 = _mm_loadu_si128((__m128i*)(upper_ptr + offset3 + 2));
+    itl3 = _mm_loadu_si128((__m128i *)(lower_ptr + offset3));
+    itr3 = _mm_loadu_si128((__m128i *)(lower_ptr + offset3 + 2));
+    ibl3 = _mm_loadu_si128((__m128i *)(upper_ptr + offset3));
+    ibr3 = _mm_loadu_si128((__m128i *)(upper_ptr + offset3 + 2));
   }
   pack_2ch(&itl0, &itl1, &itl2, &itl3);
   *tl0 = to_fp32(itl0);
@@ -3032,17 +2978,17 @@ void VectorLoader<T>::load8_2ch(const T* lower_ptr, const T* upper_ptr,
   *br1 = to_fp32(ibr1);
 }
 template <class T>
-void VectorLoader<T>::load8_3ch(const T* lower_ptr, const T* upper_ptr,
+void VectorLoader<T>::load8_3ch(const T *lower_ptr, const T *upper_ptr,
                                 int offset0, int offset1, int offset2,
-                                int offset3, __m128* tl0, __m128* tl1,
-                                __m128* tl2, __m128* bl0, __m128* bl1,
-                                __m128* bl2, __m128* tr0, __m128* tr1,
-                                __m128* tr2, __m128* br0, __m128* br1,
-                                __m128* br2) {
-  __m128i itl0 = _mm_loadu_si128((__m128i*)(lower_ptr + offset0));
-  __m128i itr0 = _mm_loadu_si128((__m128i*)(lower_ptr + offset0 + 3));
-  __m128i ibl0 = _mm_loadu_si128((__m128i*)(upper_ptr + offset0));
-  __m128i ibr0 = _mm_loadu_si128((__m128i*)(upper_ptr + offset0 + 3));
+                                int offset3, __m128 *tl0, __m128 *tl1,
+                                __m128 *tl2, __m128 *bl0, __m128 *bl1,
+                                __m128 *bl2, __m128 *tr0, __m128 *tr1,
+                                __m128 *tr2, __m128 *br0, __m128 *br1,
+                                __m128 *br2) {
+  __m128i itl0 = _mm_loadu_si128((__m128i *)(lower_ptr + offset0));
+  __m128i itr0 = _mm_loadu_si128((__m128i *)(lower_ptr + offset0 + 3));
+  __m128i ibl0 = _mm_loadu_si128((__m128i *)(upper_ptr + offset0));
+  __m128i ibr0 = _mm_loadu_si128((__m128i *)(upper_ptr + offset0 + 3));
   __m128i itl1, itr1;
   __m128i ibl1, ibr1;
   if (offset1 == offset0) {
@@ -3051,10 +2997,10 @@ void VectorLoader<T>::load8_3ch(const T* lower_ptr, const T* upper_ptr,
     ibl1 = ibl0;
     ibr1 = ibr0;
   } else {
-    itl1 = _mm_loadu_si128((__m128i*)(lower_ptr + offset1));
-    itr1 = _mm_loadu_si128((__m128i*)(lower_ptr + offset1 + 3));
-    ibl1 = _mm_loadu_si128((__m128i*)(upper_ptr + offset1));
-    ibr1 = _mm_loadu_si128((__m128i*)(upper_ptr + offset1 + 3));
+    itl1 = _mm_loadu_si128((__m128i *)(lower_ptr + offset1));
+    itr1 = _mm_loadu_si128((__m128i *)(lower_ptr + offset1 + 3));
+    ibl1 = _mm_loadu_si128((__m128i *)(upper_ptr + offset1));
+    ibr1 = _mm_loadu_si128((__m128i *)(upper_ptr + offset1 + 3));
   }
   __m128i itl2, itr2;
   __m128i ibl2, ibr2;
@@ -3064,10 +3010,10 @@ void VectorLoader<T>::load8_3ch(const T* lower_ptr, const T* upper_ptr,
     ibl2 = ibl1;
     ibr2 = ibr1;
   } else {
-    itl2 = _mm_loadu_si128((__m128i*)(lower_ptr + offset2));
-    itr2 = _mm_loadu_si128((__m128i*)(lower_ptr + offset2 + 3));
-    ibl2 = _mm_loadu_si128((__m128i*)(upper_ptr + offset2));
-    ibr2 = _mm_loadu_si128((__m128i*)(upper_ptr + offset2 + 3));
+    itl2 = _mm_loadu_si128((__m128i *)(lower_ptr + offset2));
+    itr2 = _mm_loadu_si128((__m128i *)(lower_ptr + offset2 + 3));
+    ibl2 = _mm_loadu_si128((__m128i *)(upper_ptr + offset2));
+    ibr2 = _mm_loadu_si128((__m128i *)(upper_ptr + offset2 + 3));
   }
   __m128i itl3, itr3;
   __m128i ibl3, ibr3;
@@ -3077,10 +3023,10 @@ void VectorLoader<T>::load8_3ch(const T* lower_ptr, const T* upper_ptr,
     ibl3 = ibl2;
     ibr3 = ibr2;
   } else {
-    itl3 = _mm_loadu_si128((__m128i*)(lower_ptr + offset3));
-    itr3 = _mm_loadu_si128((__m128i*)(lower_ptr + offset3 + 3));
-    ibl3 = _mm_loadu_si128((__m128i*)(upper_ptr + offset3));
-    ibr3 = _mm_loadu_si128((__m128i*)(upper_ptr + offset3 + 3));
+    itl3 = _mm_loadu_si128((__m128i *)(lower_ptr + offset3));
+    itr3 = _mm_loadu_si128((__m128i *)(lower_ptr + offset3 + 3));
+    ibl3 = _mm_loadu_si128((__m128i *)(upper_ptr + offset3));
+    ibr3 = _mm_loadu_si128((__m128i *)(upper_ptr + offset3 + 3));
   }
   pack_3ch(&itl0, &itl1, &itl2, &itl3);
   *tl0 = to_fp32(itl0);
@@ -3100,18 +3046,18 @@ void VectorLoader<T>::load8_3ch(const T* lower_ptr, const T* upper_ptr,
   *br2 = to_fp32(ibr2);
 }
 template <class T>
-void VectorLoader<T>::load8_4ch(const T* lower_ptr, const T* upper_ptr,
+void VectorLoader<T>::load8_4ch(const T *lower_ptr, const T *upper_ptr,
                                 int offset0, int offset1, int offset2,
-                                int offset3, __m128* tl0, __m128* tl1,
-                                __m128* tl2, __m128* tl3, __m128* bl0,
-                                __m128* bl1, __m128* bl2, __m128* bl3,
-                                __m128* tr0, __m128* tr1, __m128* tr2,
-                                __m128* tr3, __m128* br0, __m128* br1,
-                                __m128* br2, __m128* br3) {
-  __m128i itl0 = _mm_loadu_si128((__m128i*)(lower_ptr + offset0));
-  __m128i itr0 = _mm_loadu_si128((__m128i*)(lower_ptr + offset0 + 4));
-  __m128i ibl0 = _mm_loadu_si128((__m128i*)(upper_ptr + offset0));
-  __m128i ibr0 = _mm_loadu_si128((__m128i*)(upper_ptr + offset0 + 4));
+                                int offset3, __m128 *tl0, __m128 *tl1,
+                                __m128 *tl2, __m128 *tl3, __m128 *bl0,
+                                __m128 *bl1, __m128 *bl2, __m128 *bl3,
+                                __m128 *tr0, __m128 *tr1, __m128 *tr2,
+                                __m128 *tr3, __m128 *br0, __m128 *br1,
+                                __m128 *br2, __m128 *br3) {
+  __m128i itl0 = _mm_loadu_si128((__m128i *)(lower_ptr + offset0));
+  __m128i itr0 = _mm_loadu_si128((__m128i *)(lower_ptr + offset0 + 4));
+  __m128i ibl0 = _mm_loadu_si128((__m128i *)(upper_ptr + offset0));
+  __m128i ibr0 = _mm_loadu_si128((__m128i *)(upper_ptr + offset0 + 4));
   __m128i itl1, itr1;
   __m128i ibl1, ibr1;
   if (offset1 == offset0) {
@@ -3120,10 +3066,10 @@ void VectorLoader<T>::load8_4ch(const T* lower_ptr, const T* upper_ptr,
     ibl1 = ibl0;
     ibr1 = ibr0;
   } else {
-    itl1 = _mm_loadu_si128((__m128i*)(lower_ptr + offset1));
-    itr1 = _mm_loadu_si128((__m128i*)(lower_ptr + offset1 + 4));
-    ibl1 = _mm_loadu_si128((__m128i*)(upper_ptr + offset1));
-    ibr1 = _mm_loadu_si128((__m128i*)(upper_ptr + offset1 + 4));
+    itl1 = _mm_loadu_si128((__m128i *)(lower_ptr + offset1));
+    itr1 = _mm_loadu_si128((__m128i *)(lower_ptr + offset1 + 4));
+    ibl1 = _mm_loadu_si128((__m128i *)(upper_ptr + offset1));
+    ibr1 = _mm_loadu_si128((__m128i *)(upper_ptr + offset1 + 4));
   }
   __m128i itl2, itr2;
   __m128i ibl2, ibr2;
@@ -3133,10 +3079,10 @@ void VectorLoader<T>::load8_4ch(const T* lower_ptr, const T* upper_ptr,
     ibl2 = ibl1;
     ibr2 = ibr1;
   } else {
-    itl2 = _mm_loadu_si128((__m128i*)(lower_ptr + offset2));
-    itr2 = _mm_loadu_si128((__m128i*)(lower_ptr + offset2 + 4));
-    ibl2 = _mm_loadu_si128((__m128i*)(upper_ptr + offset2));
-    ibr2 = _mm_loadu_si128((__m128i*)(upper_ptr + offset2 + 4));
+    itl2 = _mm_loadu_si128((__m128i *)(lower_ptr + offset2));
+    itr2 = _mm_loadu_si128((__m128i *)(lower_ptr + offset2 + 4));
+    ibl2 = _mm_loadu_si128((__m128i *)(upper_ptr + offset2));
+    ibr2 = _mm_loadu_si128((__m128i *)(upper_ptr + offset2 + 4));
   }
   __m128i itl3, itr3;
   __m128i ibl3, ibr3;
@@ -3146,10 +3092,10 @@ void VectorLoader<T>::load8_4ch(const T* lower_ptr, const T* upper_ptr,
     ibl3 = ibl2;
     ibr3 = ibr2;
   } else {
-    itl3 = _mm_loadu_si128((__m128i*)(lower_ptr + offset3));
-    itr3 = _mm_loadu_si128((__m128i*)(lower_ptr + offset3 + 4));
-    ibl3 = _mm_loadu_si128((__m128i*)(upper_ptr + offset3));
-    ibr3 = _mm_loadu_si128((__m128i*)(upper_ptr + offset3 + 4));
+    itl3 = _mm_loadu_si128((__m128i *)(lower_ptr + offset3));
+    itr3 = _mm_loadu_si128((__m128i *)(lower_ptr + offset3 + 4));
+    ibl3 = _mm_loadu_si128((__m128i *)(upper_ptr + offset3));
+    ibr3 = _mm_loadu_si128((__m128i *)(upper_ptr + offset3 + 4));
   }
   *tl0 = to_fp32(itl0);
   *tl1 = to_fp32(itl1);
@@ -3177,9 +3123,8 @@ void VectorLoader<T>::load8_4ch(const T* lower_ptr, const T* upper_ptr,
 // bfloat16 or float.
 //
 
-template <class U>
-class VectorWriter {
- public:
+template <class U> class VectorWriter {
+public:
   // convert 4 fp32 words to type U with.
   // this function calls clip.
   // resulting words are packed.
@@ -3189,89 +3134,89 @@ class VectorWriter {
 
   // converts from fp32 to U by calling method from_fp32(...)
   // writes 4 pixels with 1 channel to destination.
-  void write_1ch(U* destination, __m128* vec);
+  void write_1ch(U *destination, __m128 *vec);
 
   // converts from fp32 to U by calling method from_fp32(...)
   // writes 4 pixels with 1 channel to destination.
-  void write_2ch(U* destination, __m128* vec);
+  void write_2ch(U *destination, __m128 *vec);
 
   // converts from fp32 to U by calling method from_fp32(...)
   // writes 4 pixels with 1 channel to destination.
-  void write_3ch(U* destination, __m128* vec);
+  void write_3ch(U *destination, __m128 *vec);
 
   // converts from fp32 to U by calling method from_fp32(...)
   // writes 4 pixels with 1 channel to destination.
-  void write_4ch(U* destination, __m128* vec);
+  void write_4ch(U *destination, __m128 *vec);
 
- private:
+private:
   // clip 4 fp32 words to prevent overflow when converting to type U.
   __m128 clip_(__m128 vec) {
     // default is to do nothing, since the packing intrinsics include clipping.
     return vec;
   }
-  void write_1b_1ch(U* destination, __m128* vec) {
+  void write_1b_1ch(U *destination, __m128 *vec) {
     __m128i ivec = from_fp32(vec[0]);
-    _mm_store_ss((float*)(destination), _mm_castsi128_ps(ivec));
+    _mm_store_ss((float *)(destination), _mm_castsi128_ps(ivec));
   }
-  void write_2b_1ch(U* destination, __m128* vec) {
+  void write_2b_1ch(U *destination, __m128 *vec) {
     __m128i ivec = from_fp32(vec[0]);
-    _mm_store_sd((double*)(destination), _mm_castsi128_pd(ivec));
+    _mm_store_sd((double *)(destination), _mm_castsi128_pd(ivec));
   }
-  void write_4b_1ch(U* destination, __m128* vec) {
+  void write_4b_1ch(U *destination, __m128 *vec) {
     __m128i ivec = from_fp32(vec[0]);
-    _mm_storeu_si128((__m128i*)(destination), ivec);
+    _mm_storeu_si128((__m128i *)(destination), ivec);
   }
-  void write_1b_2ch(U* destination, __m128* vec) {
+  void write_1b_2ch(U *destination, __m128 *vec) {
     __m128i ivec1 = from_fp32(vec[0]);
     __m128i ivec2 = from_fp32(vec[1]);
     __m128i mask = _mm_setr_epi32(-1, 0, 0, 0);
     ivec1 = _mm_or_si128(_mm_and_si128(mask, ivec1),
                          _mm_slli_si128(_mm_and_si128(mask, ivec2), 4));
-    _mm_store_sd((double*)(destination), _mm_castsi128_pd(ivec1));
+    _mm_store_sd((double *)(destination), _mm_castsi128_pd(ivec1));
   }
-  void write_2b_2ch(U* destination, __m128* vec) {
+  void write_2b_2ch(U *destination, __m128 *vec) {
     __m128i ivec1 = from_fp32(vec[0]);
     __m128i ivec2 = from_fp32(vec[1]);
     __m128i mask = _mm_setr_epi32(-1, -1, 0, 0);
     ivec1 = _mm_or_si128(_mm_and_si128(mask, ivec1),
                          _mm_slli_si128(_mm_and_si128(mask, ivec2), 8));
-    _mm_storeu_si128((__m128i*)(destination), ivec1);
+    _mm_storeu_si128((__m128i *)(destination), ivec1);
   }
-  void write_4b_2ch(U* destination, __m128* vec) {
+  void write_4b_2ch(U *destination, __m128 *vec) {
     __m128i ivec1 = from_fp32(vec[0]);
     __m128i ivec2 = from_fp32(vec[1]);
-    _mm_storeu_si128((__m128i*)(destination), ivec1);
-    _mm_storeu_si128((__m128i*)(destination + 4), ivec2);
+    _mm_storeu_si128((__m128i *)(destination), ivec1);
+    _mm_storeu_si128((__m128i *)(destination + 4), ivec2);
   }
-  void write_1b_3ch(U* destination, __m128* vec) {
+  void write_1b_3ch(U *destination, __m128 *vec) {
     __m128i ivec1 = from_fp32(vec[0]);
     __m128i ivec2 = from_fp32(vec[1]);
     __m128i mask = _mm_setr_epi32(-1, 0, 0, 0);
     ivec1 = _mm_or_si128(_mm_and_si128(mask, ivec1),
                          _mm_slli_si128(_mm_and_si128(mask, ivec2), 4));
-    _mm_store_sd((double*)(destination), _mm_castsi128_pd(ivec1));
+    _mm_store_sd((double *)(destination), _mm_castsi128_pd(ivec1));
     __m128i ivec3 = from_fp32(vec[2]);
-    _mm_store_ss((float*)(destination + 8), _mm_castsi128_ps(ivec3));
+    _mm_store_ss((float *)(destination + 8), _mm_castsi128_ps(ivec3));
   }
-  void write_2b_3ch(U* destination, __m128* vec) {
+  void write_2b_3ch(U *destination, __m128 *vec) {
     __m128i ivec1 = from_fp32(vec[0]);
     __m128i ivec2 = from_fp32(vec[1]);
     __m128i mask = _mm_setr_epi32(-1, -1, 0, 0);
     ivec1 = _mm_or_si128(_mm_and_si128(mask, ivec1),
                          _mm_slli_si128(_mm_and_si128(mask, ivec2), 8));
-    _mm_storeu_si128((__m128i*)(destination), ivec1);
+    _mm_storeu_si128((__m128i *)(destination), ivec1);
     __m128i ivec3 = from_fp32(vec[2]);
-    _mm_store_sd((double*)(destination + 8), _mm_castsi128_pd(ivec3));
+    _mm_store_sd((double *)(destination + 8), _mm_castsi128_pd(ivec3));
   }
-  void write_4b_3ch(U* destination, __m128* vec) {
+  void write_4b_3ch(U *destination, __m128 *vec) {
     __m128i ivec1 = from_fp32(vec[0]);
     __m128i ivec2 = from_fp32(vec[1]);
     __m128i ivec3 = from_fp32(vec[2]);
-    _mm_storeu_si128((__m128i*)(destination), ivec1);
-    _mm_storeu_si128((__m128i*)(destination + 4), ivec2);
-    _mm_storeu_si128((__m128i*)(destination + 8), ivec3);
+    _mm_storeu_si128((__m128i *)(destination), ivec1);
+    _mm_storeu_si128((__m128i *)(destination + 4), ivec2);
+    _mm_storeu_si128((__m128i *)(destination + 8), ivec3);
   }
-  void write_1b_4ch(U* destination, __m128* vec) {
+  void write_1b_4ch(U *destination, __m128 *vec) {
     __m128i ivec1 = from_fp32(vec[0]);
     __m128i ivec2 = from_fp32(vec[1]);
     __m128i ivec3 = from_fp32(vec[2]);
@@ -3281,9 +3226,9 @@ class VectorWriter {
     ivec = _mm_or_si128(ivec, _mm_slli_si128(_mm_and_si128(mask, ivec2), 4));
     ivec = _mm_or_si128(ivec, _mm_slli_si128(_mm_and_si128(mask, ivec3), 8));
     ivec = _mm_or_si128(ivec, _mm_slli_si128(_mm_and_si128(mask, ivec4), 12));
-    _mm_storeu_si128((__m128i*)(destination), ivec);
+    _mm_storeu_si128((__m128i *)(destination), ivec);
   }
-  void write_2b_4ch(U* destination, __m128* vec) {
+  void write_2b_4ch(U *destination, __m128 *vec) {
     __m128i ivec1 = from_fp32(vec[0]);
     __m128i ivec2 = from_fp32(vec[1]);
     __m128i ivec3 = from_fp32(vec[2]);
@@ -3291,25 +3236,24 @@ class VectorWriter {
     __m128i mask = _mm_setr_epi32(-1, -1, 0, 0);
     __m128i ivec = _mm_and_si128(mask, ivec1);
     ivec = _mm_or_si128(ivec, _mm_slli_si128(_mm_and_si128(mask, ivec2), 8));
-    _mm_storeu_si128((__m128i*)(destination), ivec);
+    _mm_storeu_si128((__m128i *)(destination), ivec);
     ivec = _mm_and_si128(mask, ivec3);
     ivec = _mm_or_si128(ivec, _mm_slli_si128(_mm_and_si128(mask, ivec4), 8));
-    _mm_storeu_si128((__m128i*)(destination + 8), ivec);
+    _mm_storeu_si128((__m128i *)(destination + 8), ivec);
   }
-  void write_4b_4ch(U* destination, __m128* vec) {
+  void write_4b_4ch(U *destination, __m128 *vec) {
     __m128i ivec1 = from_fp32(vec[0]);
     __m128i ivec2 = from_fp32(vec[1]);
     __m128i ivec3 = from_fp32(vec[2]);
     __m128i ivec4 = from_fp32(vec[3]);
-    _mm_storeu_si128((__m128i*)(destination), ivec1);
-    _mm_storeu_si128((__m128i*)(destination + 4), ivec2);
-    _mm_storeu_si128((__m128i*)(destination + 8), ivec3);
-    _mm_storeu_si128((__m128i*)(destination + 12), ivec4);
+    _mm_storeu_si128((__m128i *)(destination), ivec1);
+    _mm_storeu_si128((__m128i *)(destination + 4), ivec2);
+    _mm_storeu_si128((__m128i *)(destination + 8), ivec3);
+    _mm_storeu_si128((__m128i *)(destination + 12), ivec4);
   }
 };
 
-template <>
-__m128 VectorWriter<int32>::clip_(__m128 vec) {
+template <> __m128 VectorWriter<int32>::clip_(__m128 vec) {
   // clip against low limit, -2147483648.
   // we round up to nearest number that can be represented as float.
   __m128 lt_val = _mm_set1_ps(-2147483520.0f);
@@ -3322,8 +3266,7 @@ __m128 VectorWriter<int32>::clip_(__m128 vec) {
   vec = _mm_or_ps(_mm_andnot_ps(gt_mask, vec), _mm_and_ps(gt_mask, gt_val));
   return vec;
 }
-template <>
-__m128 VectorWriter<Eigen::half>::clip_(__m128 vec) {
+template <> __m128 VectorWriter<Eigen::half>::clip_(__m128 vec) {
   // clip against low limit, -65504.0f;
   __m128 lt_val = _mm_set1_ps(-65504.0f);
   __m128 lt_mask = _mm_cmplt_ps(vec, lt_val);
@@ -3335,34 +3278,28 @@ __m128 VectorWriter<Eigen::half>::clip_(__m128 vec) {
   return vec;
 }
 
-template <>
-__m128i VectorWriter<uint8>::from_fp32(__m128 vec) {
+template <> __m128i VectorWriter<uint8>::from_fp32(__m128 vec) {
   __m128i ivec = _mm_cvttps_epi32(vec);
   ivec = _mm_packs_epi32(ivec, ivec);
   return _mm_packus_epi16(ivec, ivec);
 }
-template <>
-__m128i VectorWriter<int8>::from_fp32(__m128 vec) {
+template <> __m128i VectorWriter<int8>::from_fp32(__m128 vec) {
   __m128i ivec = _mm_cvttps_epi32(vec);
   ivec = _mm_packs_epi32(ivec, ivec);
   return _mm_packs_epi16(ivec, ivec);
 }
-template <>
-__m128i VectorWriter<uint16>::from_fp32(__m128 vec) {
+template <> __m128i VectorWriter<uint16>::from_fp32(__m128 vec) {
   __m128i ivec = _mm_cvttps_epi32(vec);
   return _mm_packus_epi32(ivec, ivec);
 }
-template <>
-__m128i VectorWriter<int16>::from_fp32(__m128 vec) {
+template <> __m128i VectorWriter<int16>::from_fp32(__m128 vec) {
   __m128i ivec = _mm_cvttps_epi32(vec);
   return _mm_packs_epi32(ivec, ivec);
 }
-template <>
-__m128i VectorWriter<int32>::from_fp32(__m128 vec) {
+template <> __m128i VectorWriter<int32>::from_fp32(__m128 vec) {
   return _mm_cvttps_epi32(clip_(vec));
 }
-template <>
-__m128i VectorWriter<Eigen::half>::from_fp32(__m128 vec) {
+template <> __m128i VectorWriter<Eigen::half>::from_fp32(__m128 vec) {
 #ifdef __F16C__
   return _mm_cvtps_ph(vec, _MM_FROUND_TO_ZERO);
 #else
@@ -3426,8 +3363,7 @@ __m128i VectorWriter<Eigen::half>::from_fp32(__m128 vec) {
   return number;
 #endif
 }
-template <>
-__m128i VectorWriter<bfloat16>::from_fp32(__m128 vec) {
+template <> __m128i VectorWriter<bfloat16>::from_fp32(__m128 vec) {
   // casting from float to bfloat16 simply means >> 16
   // we do this with a shuffle that also moves everything to lower portion of
   // sse vector word
@@ -3435,181 +3371,166 @@ __m128i VectorWriter<bfloat16>::from_fp32(__m128 vec) {
                                          -128, -128, -128, -128, -128, -128);
   return _mm_shuffle_epi8(_mm_castps_si128(vec), shuf_from_hi32);
 }
-template <>
-__m128i VectorWriter<float>::from_fp32(__m128 vec) {
+template <> __m128i VectorWriter<float>::from_fp32(__m128 vec) {
   // nothing to do in this case
   return _mm_castps_si128(vec);
 }
 
 template <>
-void VectorWriter<uint8>::write_1ch(uint8* destination, __m128* vec) {
+void VectorWriter<uint8>::write_1ch(uint8 *destination, __m128 *vec) {
+  write_1b_1ch(destination, vec);
+}
+template <> void VectorWriter<int8>::write_1ch(int8 *destination, __m128 *vec) {
   write_1b_1ch(destination, vec);
 }
 template <>
-void VectorWriter<int8>::write_1ch(int8* destination, __m128* vec) {
-  write_1b_1ch(destination, vec);
-}
-template <>
-void VectorWriter<uint16>::write_1ch(uint16* destination, __m128* vec) {
+void VectorWriter<uint16>::write_1ch(uint16 *destination, __m128 *vec) {
   write_2b_1ch(destination, vec);
 }
 template <>
-void VectorWriter<int16>::write_1ch(int16* destination, __m128* vec) {
+void VectorWriter<int16>::write_1ch(int16 *destination, __m128 *vec) {
   write_2b_1ch(destination, vec);
 }
 template <>
-void VectorWriter<int32>::write_1ch(int32* destination, __m128* vec) {
+void VectorWriter<int32>::write_1ch(int32 *destination, __m128 *vec) {
   write_4b_1ch(destination, vec);
 }
 template <>
-void VectorWriter<Eigen::half>::write_1ch(Eigen::half* destination,
-                                          __m128* vec) {
+void VectorWriter<Eigen::half>::write_1ch(Eigen::half *destination,
+                                          __m128 *vec) {
   write_2b_1ch(destination, vec);
 }
 template <>
-void VectorWriter<bfloat16>::write_1ch(bfloat16* destination, __m128* vec) {
+void VectorWriter<bfloat16>::write_1ch(bfloat16 *destination, __m128 *vec) {
   write_2b_1ch(destination, vec);
 }
 template <>
-void VectorWriter<float>::write_1ch(float* destination, __m128* vec) {
-  _mm_storeu_si128((__m128i*)(destination), _mm_castps_si128(vec[0]));
+void VectorWriter<float>::write_1ch(float *destination, __m128 *vec) {
+  _mm_storeu_si128((__m128i *)(destination), _mm_castps_si128(vec[0]));
 }
 
 template <>
-void VectorWriter<uint8>::write_2ch(uint8* destination, __m128* vec) {
+void VectorWriter<uint8>::write_2ch(uint8 *destination, __m128 *vec) {
+  write_1b_2ch(destination, vec);
+}
+template <> void VectorWriter<int8>::write_2ch(int8 *destination, __m128 *vec) {
   write_1b_2ch(destination, vec);
 }
 template <>
-void VectorWriter<int8>::write_2ch(int8* destination, __m128* vec) {
-  write_1b_2ch(destination, vec);
-}
-template <>
-void VectorWriter<uint16>::write_2ch(uint16* destination, __m128* vec) {
+void VectorWriter<uint16>::write_2ch(uint16 *destination, __m128 *vec) {
   write_2b_2ch(destination, vec);
 }
 template <>
-void VectorWriter<int16>::write_2ch(int16* destination, __m128* vec) {
+void VectorWriter<int16>::write_2ch(int16 *destination, __m128 *vec) {
   write_2b_2ch(destination, vec);
 }
 template <>
-void VectorWriter<int32>::write_2ch(int32* destination, __m128* vec) {
+void VectorWriter<int32>::write_2ch(int32 *destination, __m128 *vec) {
   write_4b_2ch(destination, vec);
 }
 template <>
-void VectorWriter<Eigen::half>::write_2ch(Eigen::half* destination,
-                                          __m128* vec) {
+void VectorWriter<Eigen::half>::write_2ch(Eigen::half *destination,
+                                          __m128 *vec) {
   write_2b_2ch(destination, vec);
 }
 template <>
-void VectorWriter<bfloat16>::write_2ch(bfloat16* destination, __m128* vec) {
+void VectorWriter<bfloat16>::write_2ch(bfloat16 *destination, __m128 *vec) {
   write_2b_2ch(destination, vec);
 }
 template <>
-void VectorWriter<float>::write_2ch(float* destination, __m128* vec) {
-  _mm_storeu_si128((__m128i*)(destination), _mm_castps_si128(vec[0]));
-  _mm_storeu_si128((__m128i*)(destination + 4), _mm_castps_si128(vec[1]));
+void VectorWriter<float>::write_2ch(float *destination, __m128 *vec) {
+  _mm_storeu_si128((__m128i *)(destination), _mm_castps_si128(vec[0]));
+  _mm_storeu_si128((__m128i *)(destination + 4), _mm_castps_si128(vec[1]));
 }
 
 template <>
-void VectorWriter<uint8>::write_3ch(uint8* destination, __m128* vec) {
+void VectorWriter<uint8>::write_3ch(uint8 *destination, __m128 *vec) {
+  write_1b_3ch(destination, vec);
+}
+template <> void VectorWriter<int8>::write_3ch(int8 *destination, __m128 *vec) {
   write_1b_3ch(destination, vec);
 }
 template <>
-void VectorWriter<int8>::write_3ch(int8* destination, __m128* vec) {
-  write_1b_3ch(destination, vec);
-}
-template <>
-void VectorWriter<uint16>::write_3ch(uint16* destination, __m128* vec) {
+void VectorWriter<uint16>::write_3ch(uint16 *destination, __m128 *vec) {
   write_2b_3ch(destination, vec);
 }
 template <>
-void VectorWriter<int16>::write_3ch(int16* destination, __m128* vec) {
+void VectorWriter<int16>::write_3ch(int16 *destination, __m128 *vec) {
   write_2b_3ch(destination, vec);
 }
 template <>
-void VectorWriter<int32>::write_3ch(int32* destination, __m128* vec) {
+void VectorWriter<int32>::write_3ch(int32 *destination, __m128 *vec) {
   write_4b_3ch(destination, vec);
 }
 template <>
-void VectorWriter<Eigen::half>::write_3ch(Eigen::half* destination,
-                                          __m128* vec) {
+void VectorWriter<Eigen::half>::write_3ch(Eigen::half *destination,
+                                          __m128 *vec) {
   write_2b_3ch(destination, vec);
 }
 template <>
-void VectorWriter<bfloat16>::write_3ch(bfloat16* destination, __m128* vec) {
+void VectorWriter<bfloat16>::write_3ch(bfloat16 *destination, __m128 *vec) {
   write_2b_3ch(destination, vec);
 }
 template <>
-void VectorWriter<float>::write_3ch(float* destination, __m128* vec) {
-  _mm_storeu_si128((__m128i*)(destination), _mm_castps_si128(vec[0]));
-  _mm_storeu_si128((__m128i*)(destination + 4), _mm_castps_si128(vec[1]));
-  _mm_storeu_si128((__m128i*)(destination + 8), _mm_castps_si128(vec[2]));
+void VectorWriter<float>::write_3ch(float *destination, __m128 *vec) {
+  _mm_storeu_si128((__m128i *)(destination), _mm_castps_si128(vec[0]));
+  _mm_storeu_si128((__m128i *)(destination + 4), _mm_castps_si128(vec[1]));
+  _mm_storeu_si128((__m128i *)(destination + 8), _mm_castps_si128(vec[2]));
 }
 
 template <>
-void VectorWriter<uint8>::write_4ch(uint8* destination, __m128* vec) {
+void VectorWriter<uint8>::write_4ch(uint8 *destination, __m128 *vec) {
+  write_1b_4ch(destination, vec);
+}
+template <> void VectorWriter<int8>::write_4ch(int8 *destination, __m128 *vec) {
   write_1b_4ch(destination, vec);
 }
 template <>
-void VectorWriter<int8>::write_4ch(int8* destination, __m128* vec) {
-  write_1b_4ch(destination, vec);
-}
-template <>
-void VectorWriter<uint16>::write_4ch(uint16* destination, __m128* vec) {
+void VectorWriter<uint16>::write_4ch(uint16 *destination, __m128 *vec) {
   write_2b_4ch(destination, vec);
 }
 template <>
-void VectorWriter<int16>::write_4ch(int16* destination, __m128* vec) {
+void VectorWriter<int16>::write_4ch(int16 *destination, __m128 *vec) {
   write_2b_4ch(destination, vec);
 }
 template <>
-void VectorWriter<int32>::write_4ch(int32* destination, __m128* vec) {
+void VectorWriter<int32>::write_4ch(int32 *destination, __m128 *vec) {
   write_4b_4ch(destination, vec);
 }
 template <>
-void VectorWriter<Eigen::half>::write_4ch(Eigen::half* destination,
-                                          __m128* vec) {
+void VectorWriter<Eigen::half>::write_4ch(Eigen::half *destination,
+                                          __m128 *vec) {
   write_2b_4ch(destination, vec);
 }
 template <>
-void VectorWriter<bfloat16>::write_4ch(bfloat16* destination, __m128* vec) {
+void VectorWriter<bfloat16>::write_4ch(bfloat16 *destination, __m128 *vec) {
   write_2b_4ch(destination, vec);
 }
 template <>
-void VectorWriter<float>::write_4ch(float* destination, __m128* vec) {
-  _mm_storeu_si128((__m128i*)(destination), _mm_castps_si128(vec[0]));
-  _mm_storeu_si128((__m128i*)(destination + 4), _mm_castps_si128(vec[1]));
-  _mm_storeu_si128((__m128i*)(destination + 8), _mm_castps_si128(vec[2]));
-  _mm_storeu_si128((__m128i*)(destination + 12), _mm_castps_si128(vec[3]));
+void VectorWriter<float>::write_4ch(float *destination, __m128 *vec) {
+  _mm_storeu_si128((__m128i *)(destination), _mm_castps_si128(vec[0]));
+  _mm_storeu_si128((__m128i *)(destination + 4), _mm_castps_si128(vec[1]));
+  _mm_storeu_si128((__m128i *)(destination + 8), _mm_castps_si128(vec[2]));
+  _mm_storeu_si128((__m128i *)(destination + 12), _mm_castps_si128(vec[3]));
 }
 
 template <class T, class U>
 class CropResizeCastImage : public VectorLoader<T>, public VectorWriter<U> {
- public:
+public:
   CropResizeCastImage(const int in_height, const int in_width,
                       const int out_height, const int out_width,
                       const int channels, const int min_ix, const int max_ix,
-                      const CachedInterpolation* xs, const int min_iy,
-                      const int max_iy, const CachedInterpolation* ys,
+                      const CachedInterpolation *xs, const int min_iy,
+                      const int max_iy, const CachedInterpolation *ys,
                       const float extrapolated_value, const bool flip_x,
                       const bool flip_y, const bool verbose = false,
                       const int allowed_load_groups = 15)
-      : verbose_(verbose),
-        allowed_load_groups_(allowed_load_groups),
-        in_height_(in_height),
-        in_width_(in_width),
-        out_height_(out_height),
-        out_width_(out_width),
-        channels_(channels),
-        min_ix_(min_ix),
-        max_ix_(max_ix),
-        min_iy_(min_iy),
-        max_iy_(max_iy),
-        ys_(ys),
-        extrapolated_value_(extrapolated_value),
-        flip_x_(flip_x),
-        flip_y_(flip_y),
-        in_row_size_(in_width * channels),
+      : verbose_(verbose), allowed_load_groups_(allowed_load_groups),
+        in_height_(in_height), in_width_(in_width), out_height_(out_height),
+        out_width_(out_width), channels_(channels), min_ix_(min_ix),
+        max_ix_(max_ix), min_iy_(min_iy), max_iy_(max_iy), ys_(ys),
+        extrapolated_value_(extrapolated_value), flip_x_(flip_x),
+        flip_y_(flip_y), in_row_size_(in_width * channels),
         in_row_size_bytes_(in_width * channels * sizeof(T)),
         out_row_size_(out_width * channels),
         x0_(flip_x ? out_width - 1 - max_ix : min_ix),
@@ -3622,21 +3543,21 @@ class CropResizeCastImage : public VectorLoader<T>, public VectorWriter<U> {
       // xs[].lower == xs[].upper AND xs[].lerp == 1
       xs_ = new CachedInterpolation[max_ix_ - min_ix_ + 1];
       for (int i = min_ix_; i <= max_ix_; ++i) {
-	int ix = i - min_ix_;
-	int xs_lower = xs[ix].lower / channels_;
-	int xs_upper = xs[ix].upper / channels_;
-	if (xs_lower == xs_upper) {
-	  if (xs[ix].lerp == 0.0f && xs_lower + 1 < in_width) {
-	    // upper weight is zero
-	    xs_upper = xs_lower + 1;
-	  } else if (xs[ix].lerp == 1.0f && xs_upper - 1 >= 0) {
-	    // lower weight is zero
-	    xs_lower = xs_upper - 1;
-	  }
-	}
-	xs_[ix].lower = xs_lower * channels_;
-	xs_[ix].upper = xs_upper * channels_;
-	xs_[ix].lerp = xs[ix].lerp;
+        int ix = i - min_ix_;
+        int xs_lower = xs[ix].lower / channels_;
+        int xs_upper = xs[ix].upper / channels_;
+        if (xs_lower == xs_upper) {
+          if (xs[ix].lerp == 0.0f && xs_lower + 1 < in_width) {
+            // upper weight is zero
+            xs_upper = xs_lower + 1;
+          } else if (xs[ix].lerp == 1.0f && xs_upper - 1 >= 0) {
+            // lower weight is zero
+            xs_lower = xs_upper - 1;
+          }
+        }
+        xs_[ix].lower = xs_lower * channels_;
+        xs_[ix].upper = xs_upper * channels_;
+        xs_[ix].lerp = xs[ix].lerp;
       }
       _u_min_val = std::numeric_limits<U>::min();
       _u_max_val = std::numeric_limits<U>::max();
@@ -3665,25 +3586,40 @@ class CropResizeCastImage : public VectorLoader<T>, public VectorWriter<U> {
     }
   }
   ~CropResizeCastImage() {
-    if (general_x_ != NULL) delete[] general_x_;
-    if (load1_x_ != NULL) delete[] load1_x_;
-    if (load2_x_ != NULL) delete[] load2_x_;
-    if (load4_x_ != NULL) delete[] load4_x_;
-    if (load8_x_ != NULL) delete[] load8_x_;
-    if (load1_offsets_ != NULL) delete[] load1_offsets_;
-    if (load2_offsets_ != NULL) delete[] load2_offsets_;
-    if (load4_offsets_ != NULL) delete[] load4_offsets_;
-    if (load8_offsets_ != NULL) delete[] load8_offsets_;
-    if (load1_shuffle_masks_ != NULL) delete[] load1_shuffle_masks_;
-    if (load2_shuffle_masks_ != NULL) delete[] load2_shuffle_masks_;
-    if (load1_mmxs_lerp_ != NULL) delete[] load1_mmxs_lerp_;
-    if (load2_mmxs_lerp_ != NULL) delete[] load2_mmxs_lerp_;
-    if (load4_mmxs_lerp_ != NULL) delete[] load4_mmxs_lerp_;
-    if (load8_mmxs_lerp_ != NULL) delete[] load8_mmxs_lerp_;
+    if (general_x_ != NULL)
+      delete[] general_x_;
+    if (load1_x_ != NULL)
+      delete[] load1_x_;
+    if (load2_x_ != NULL)
+      delete[] load2_x_;
+    if (load4_x_ != NULL)
+      delete[] load4_x_;
+    if (load8_x_ != NULL)
+      delete[] load8_x_;
+    if (load1_offsets_ != NULL)
+      delete[] load1_offsets_;
+    if (load2_offsets_ != NULL)
+      delete[] load2_offsets_;
+    if (load4_offsets_ != NULL)
+      delete[] load4_offsets_;
+    if (load8_offsets_ != NULL)
+      delete[] load8_offsets_;
+    if (load1_shuffle_masks_ != NULL)
+      delete[] load1_shuffle_masks_;
+    if (load2_shuffle_masks_ != NULL)
+      delete[] load2_shuffle_masks_;
+    if (load1_mmxs_lerp_ != NULL)
+      delete[] load1_mmxs_lerp_;
+    if (load2_mmxs_lerp_ != NULL)
+      delete[] load2_mmxs_lerp_;
+    if (load4_mmxs_lerp_ != NULL)
+      delete[] load4_mmxs_lerp_;
+    if (load8_mmxs_lerp_ != NULL)
+      delete[] load8_mmxs_lerp_;
     delete[] xs_;
   }
 
- private:
+private:
   // constructor arguments
   const bool verbose_;
   // this value is meant for unit testing.
@@ -3697,8 +3633,8 @@ class CropResizeCastImage : public VectorLoader<T>, public VectorWriter<U> {
   const int in_height_, in_width_, out_height_, out_width_;
   const int channels_;
   const int min_ix_, max_ix_, min_iy_, max_iy_;
-  const CachedInterpolation* ys_;
-  CachedInterpolation* xs_;
+  const CachedInterpolation *ys_;
+  CachedInterpolation *xs_;
   const float extrapolated_value_;
   const bool flip_x_, flip_y_;
   // computed arguments
@@ -3709,40 +3645,40 @@ class CropResizeCastImage : public VectorLoader<T>, public VectorWriter<U> {
   const int y0_, y1_;
 
   // helper methods
-  void ResizeRow_load1_1ch_(const __m128 y_lerp, const T* ysA_input_lower_ptr,
-                            const T* ysA_input_upper_ptr, U* ysA_output_ptr);
-  void ResizeRow_load2_1ch_(const __m128 y_lerp, const T* ysA_input_lower_ptr,
-                            const T* ysA_input_upper_ptr, U* ysA_output_ptr);
-  void ResizeRow_load4_1ch_(const __m128 y_lerp, const T* ysA_input_lower_ptr,
-                            const T* ysA_input_upper_ptr, U* ysA_output_ptr);
-  void ResizeRow_load8_1ch_(const __m128 y_lerp, const T* ysA_input_lower_ptr,
-                            const T* ysA_input_upper_ptr, U* ysA_output_ptr);
-  void ResizeRow_load1_2ch_(const __m128 y_lerp, const T* ysA_input_lower_ptr,
-                            const T* ysA_input_upper_ptr, U* ysA_output_ptr);
-  void ResizeRow_load2_2ch_(const __m128 y_lerp, const T* ysA_input_lower_ptr,
-                            const T* ysA_input_upper_ptr, U* ysA_output_ptr);
-  void ResizeRow_load4_2ch_(const __m128 y_lerp, const T* ysA_input_lower_ptr,
-                            const T* ysA_input_upper_ptr, U* ysA_output_ptr);
-  void ResizeRow_load8_2ch_(const __m128 y_lerp, const T* ysA_input_lower_ptr,
-                            const T* ysA_input_upper_ptr, U* ysA_output_ptr);
-  void ResizeRow_load1_3ch_(const __m128 y_lerp, const T* ysA_input_lower_ptr,
-                            const T* ysA_input_upper_ptr, U* ysA_output_ptr);
-  void ResizeRow_load2_3ch_(const __m128 y_lerp, const T* ysA_input_lower_ptr,
-                            const T* ysA_input_upper_ptr, U* ysA_output_ptr);
-  void ResizeRow_load4_3ch_(const __m128 y_lerp, const T* ysA_input_lower_ptr,
-                            const T* ysA_input_upper_ptr, U* ysA_output_ptr);
-  void ResizeRow_load8_3ch_(const __m128 y_lerp, const T* ysA_input_lower_ptr,
-                            const T* ysA_input_upper_ptr, U* ysA_output_ptr);
-  void ResizeRow_load1_4ch_(const __m128 y_lerp, const T* ysA_input_lower_ptr,
-                            const T* ysA_input_upper_ptr, U* ysA_output_ptr);
-  void ResizeRow_load2_4ch_(const __m128 y_lerp, const T* ysA_input_lower_ptr,
-                            const T* ysA_input_upper_ptr, U* ysA_output_ptr);
-  void ResizeRow_load4_4ch_(const __m128 y_lerp, const T* ysA_input_lower_ptr,
-                            const T* ysA_input_upper_ptr, U* ysA_output_ptr);
-  void ResizeRow_load8_4ch_(const __m128 y_lerp, const T* ysA_input_lower_ptr,
-                            const T* ysA_input_upper_ptr, U* ysA_output_ptr);
-  void ResizeRow_general_(const float ys_lerp, const T* ysA_input_lower_ptr,
-                          const T* ysA_input_upper_ptr, U* ysA_output_ptr);
+  void ResizeRow_load1_1ch_(const __m128 y_lerp, const T *ysA_input_lower_ptr,
+                            const T *ysA_input_upper_ptr, U *ysA_output_ptr);
+  void ResizeRow_load2_1ch_(const __m128 y_lerp, const T *ysA_input_lower_ptr,
+                            const T *ysA_input_upper_ptr, U *ysA_output_ptr);
+  void ResizeRow_load4_1ch_(const __m128 y_lerp, const T *ysA_input_lower_ptr,
+                            const T *ysA_input_upper_ptr, U *ysA_output_ptr);
+  void ResizeRow_load8_1ch_(const __m128 y_lerp, const T *ysA_input_lower_ptr,
+                            const T *ysA_input_upper_ptr, U *ysA_output_ptr);
+  void ResizeRow_load1_2ch_(const __m128 y_lerp, const T *ysA_input_lower_ptr,
+                            const T *ysA_input_upper_ptr, U *ysA_output_ptr);
+  void ResizeRow_load2_2ch_(const __m128 y_lerp, const T *ysA_input_lower_ptr,
+                            const T *ysA_input_upper_ptr, U *ysA_output_ptr);
+  void ResizeRow_load4_2ch_(const __m128 y_lerp, const T *ysA_input_lower_ptr,
+                            const T *ysA_input_upper_ptr, U *ysA_output_ptr);
+  void ResizeRow_load8_2ch_(const __m128 y_lerp, const T *ysA_input_lower_ptr,
+                            const T *ysA_input_upper_ptr, U *ysA_output_ptr);
+  void ResizeRow_load1_3ch_(const __m128 y_lerp, const T *ysA_input_lower_ptr,
+                            const T *ysA_input_upper_ptr, U *ysA_output_ptr);
+  void ResizeRow_load2_3ch_(const __m128 y_lerp, const T *ysA_input_lower_ptr,
+                            const T *ysA_input_upper_ptr, U *ysA_output_ptr);
+  void ResizeRow_load4_3ch_(const __m128 y_lerp, const T *ysA_input_lower_ptr,
+                            const T *ysA_input_upper_ptr, U *ysA_output_ptr);
+  void ResizeRow_load8_3ch_(const __m128 y_lerp, const T *ysA_input_lower_ptr,
+                            const T *ysA_input_upper_ptr, U *ysA_output_ptr);
+  void ResizeRow_load1_4ch_(const __m128 y_lerp, const T *ysA_input_lower_ptr,
+                            const T *ysA_input_upper_ptr, U *ysA_output_ptr);
+  void ResizeRow_load2_4ch_(const __m128 y_lerp, const T *ysA_input_lower_ptr,
+                            const T *ysA_input_upper_ptr, U *ysA_output_ptr);
+  void ResizeRow_load4_4ch_(const __m128 y_lerp, const T *ysA_input_lower_ptr,
+                            const T *ysA_input_upper_ptr, U *ysA_output_ptr);
+  void ResizeRow_load8_4ch_(const __m128 y_lerp, const T *ysA_input_lower_ptr,
+                            const T *ysA_input_upper_ptr, U *ysA_output_ptr);
+  void ResizeRow_general_(const float ys_lerp, const T *ysA_input_lower_ptr,
+                          const T *ysA_input_upper_ptr, U *ysA_output_ptr);
 
   // configuration parameters
   int num_general_, num_load1_, num_load2_, num_load4_, num_load8_;
@@ -3756,17 +3692,17 @@ class CropResizeCastImage : public VectorLoader<T>, public VectorWriter<U> {
   // configuration methods
   void Configure_();
   int DetermineLoadGroup_(const int x);
-  bool ComputeXIndexRange_(const int x, int* min_xidx, int* max_xidx);
-  bool Load1_ok_(
-      const int min_xidx,
-      const int max_xidx);  // xs - pointer to first xs for this load group
-  bool Load2_ok_(
-      const int min_xidx,
-      const int max_xidx);  // xs - pointer to first xs for this load group
+  bool ComputeXIndexRange_(const int x, int *min_xidx, int *max_xidx);
+  bool
+  Load1_ok_(const int min_xidx,
+            const int max_xidx); // xs - pointer to first xs for this load group
+  bool
+  Load2_ok_(const int min_xidx,
+            const int max_xidx); // xs - pointer to first xs for this load group
   bool Load4_ok_(const int min_xidx, const int max_xidx);
   bool Load8_ok_(const int min_xidx, const int max_xidx);
 
- public:
+public:
   //
   // public client methods
   //
@@ -3776,34 +3712,36 @@ class CropResizeCastImage : public VectorLoader<T>, public VectorWriter<U> {
   static bool clip_necessary();
 
   // resize image
-  void Resize(const T* input_image, U* output_image);
+  void Resize(const T *input_image, U *output_image);
 };
 
 template <class T, class U>
-void CropResizeCastImage<T, U>::Resize(const T* input_image, U* output_image) {
+void CropResizeCastImage<T, U>::Resize(const T *input_image, U *output_image) {
   //
   U uEx = cast_to<U>(extrapolated_value_, _f_min_val, _f_max_val, _u_min_val,
                      _u_max_val);
   // extrapolate top
   if (min_iy_ > 0) {
-    U* p = flip_y_ ? output_image + out_row_size_ * (out_height_ - min_iy_)
+    U *p = flip_y_ ? output_image + out_row_size_ * (out_height_ - min_iy_)
                    : output_image;
     int nn = out_row_size_ * min_iy_;
-    for (int i = 0; i < nn; ++i) p[i] = uEx;
+    for (int i = 0; i < nn; ++i)
+      p[i] = uEx;
   }
   // extrapolate bottom
   if (max_iy_ < out_height_ - 1) {
-    U* p =
+    U *p =
         flip_y_ ? output_image : output_image + out_row_size_ * (max_iy_ + 1);
     int nn = out_row_size_ * (out_height_ - 1 - max_iy_);
-    for (int i = 0; i < nn; ++i) p[i] = uEx;
+    for (int i = 0; i < nn; ++i)
+      p[i] = uEx;
   }
   // extrapolate left
   if (min_ix_ > 0) {
     for (int iy = min_iy_; iy <= max_iy_; ++iy) {
       int xx0 = flip_x_ ? (out_width_ - min_ix_) * channels_ : 0;
       int nxx = min_ix_ * channels_;
-      U* p = output_image + xx0 +
+      U *p = output_image + xx0 +
              out_row_size_ * (flip_y_ ? out_height_ - 1 - iy : iy);
       for (int ix = 0; ix < nxx; ++ix) {
         p[ix] = uEx;
@@ -3815,7 +3753,7 @@ void CropResizeCastImage<T, U>::Resize(const T* input_image, U* output_image) {
     for (int iy = min_iy_; iy <= max_iy_; ++iy) {
       int xx0 = flip_x_ ? 0 : (max_ix_ + 1) * channels_;
       int nxx = (out_width_ - 1 - max_ix_) * channels_;
-      U* p = output_image + xx0 +
+      U *p = output_image + xx0 +
              out_row_size_ * (flip_y_ ? out_height_ - 1 - iy : iy);
       for (int ix = 0; ix < nxx; ++ix) {
         p[ix] = uEx;
@@ -3829,163 +3767,163 @@ void CropResizeCastImage<T, U>::Resize(const T* input_image, U* output_image) {
       const int iyA = flip_y_ ? out_height_ - 1 - min_iy_ - y : y - min_iy_;
       const float yA_lerp = ys_[iyA].lerp;
       const __m128 ysA_lerp = _mm_set1_ps(yA_lerp);
-      const T* ysA_input_lower_ptr =
-	input_image + ys_[iyA].lower * in_width_ * channels_;
-      const T* ysA_input_upper_ptr =
-	input_image + ys_[iyA].upper * in_width_ * channels_;
-      U* ysA_output_ptr = output_image + y * out_width_ * channels_;
+      const T *ysA_input_lower_ptr =
+          input_image + ys_[iyA].lower * in_width_ * channels_;
+      const T *ysA_input_upper_ptr =
+          input_image + ys_[iyA].upper * in_width_ * channels_;
+      U *ysA_output_ptr = output_image + y * out_width_ * channels_;
       const int iyB =
-	flip_y_ ? out_height_ - 1 - min_iy_ - (y + 1) : (y + 1) - min_iy_;
+          flip_y_ ? out_height_ - 1 - min_iy_ - (y + 1) : (y + 1) - min_iy_;
       const float yB_lerp = ys_[iyB].lerp;
       const __m128 ysB_lerp = _mm_set1_ps(yB_lerp);
-      const T* ysB_input_lower_ptr =
-	input_image + ys_[iyB].lower * in_width_ * channels_;
-      const T* ysB_input_upper_ptr =
-	input_image + ys_[iyB].upper * in_width_ * channels_;
-      U* ysB_output_ptr = output_image + (y + 1) * out_width_ * channels_;
+      const T *ysB_input_lower_ptr =
+          input_image + ys_[iyB].lower * in_width_ * channels_;
+      const T *ysB_input_upper_ptr =
+          input_image + ys_[iyB].upper * in_width_ * channels_;
+      U *ysB_output_ptr = output_image + (y + 1) * out_width_ * channels_;
       if (channels_ == 1) {
-	this->ResizeRow_load1_1ch_(ysA_lerp, ysA_input_lower_ptr,
-	    ysA_input_upper_ptr, ysA_output_ptr);
-	this->ResizeRow_load1_1ch_(ysB_lerp, ysB_input_lower_ptr,
-	    ysB_input_upper_ptr, ysB_output_ptr);
-	this->ResizeRow_load2_1ch_(ysA_lerp, ysA_input_lower_ptr,
-	    ysA_input_upper_ptr, ysA_output_ptr);
-	this->ResizeRow_load2_1ch_(ysB_lerp, ysB_input_lower_ptr,
-	    ysB_input_upper_ptr, ysB_output_ptr);
-	this->ResizeRow_load4_1ch_(ysA_lerp, ysA_input_lower_ptr,
-	    ysA_input_upper_ptr, ysA_output_ptr);
-	this->ResizeRow_load4_1ch_(ysB_lerp, ysB_input_lower_ptr,
-	    ysB_input_upper_ptr, ysB_output_ptr);
-	this->ResizeRow_load8_1ch_(ysA_lerp, ysA_input_lower_ptr,
-	    ysA_input_upper_ptr, ysA_output_ptr);
-	this->ResizeRow_load8_1ch_(ysB_lerp, ysB_input_lower_ptr,
-	    ysB_input_upper_ptr, ysB_output_ptr);
-	this->ResizeRow_general_(yA_lerp, ysA_input_lower_ptr,
-	    ysA_input_upper_ptr, ysA_output_ptr);
-	this->ResizeRow_general_(yB_lerp, ysB_input_lower_ptr,
-	    ysB_input_upper_ptr, ysB_output_ptr);
+        this->ResizeRow_load1_1ch_(ysA_lerp, ysA_input_lower_ptr,
+                                   ysA_input_upper_ptr, ysA_output_ptr);
+        this->ResizeRow_load1_1ch_(ysB_lerp, ysB_input_lower_ptr,
+                                   ysB_input_upper_ptr, ysB_output_ptr);
+        this->ResizeRow_load2_1ch_(ysA_lerp, ysA_input_lower_ptr,
+                                   ysA_input_upper_ptr, ysA_output_ptr);
+        this->ResizeRow_load2_1ch_(ysB_lerp, ysB_input_lower_ptr,
+                                   ysB_input_upper_ptr, ysB_output_ptr);
+        this->ResizeRow_load4_1ch_(ysA_lerp, ysA_input_lower_ptr,
+                                   ysA_input_upper_ptr, ysA_output_ptr);
+        this->ResizeRow_load4_1ch_(ysB_lerp, ysB_input_lower_ptr,
+                                   ysB_input_upper_ptr, ysB_output_ptr);
+        this->ResizeRow_load8_1ch_(ysA_lerp, ysA_input_lower_ptr,
+                                   ysA_input_upper_ptr, ysA_output_ptr);
+        this->ResizeRow_load8_1ch_(ysB_lerp, ysB_input_lower_ptr,
+                                   ysB_input_upper_ptr, ysB_output_ptr);
+        this->ResizeRow_general_(yA_lerp, ysA_input_lower_ptr,
+                                 ysA_input_upper_ptr, ysA_output_ptr);
+        this->ResizeRow_general_(yB_lerp, ysB_input_lower_ptr,
+                                 ysB_input_upper_ptr, ysB_output_ptr);
       } else if (channels_ == 2) {
-	this->ResizeRow_load1_2ch_(ysA_lerp, ysA_input_lower_ptr,
-	    ysA_input_upper_ptr, ysA_output_ptr);
-	this->ResizeRow_load1_2ch_(ysB_lerp, ysB_input_lower_ptr,
-	    ysB_input_upper_ptr, ysB_output_ptr);
-	this->ResizeRow_load2_2ch_(ysA_lerp, ysA_input_lower_ptr,
-	    ysA_input_upper_ptr, ysA_output_ptr);
-	this->ResizeRow_load2_2ch_(ysB_lerp, ysB_input_lower_ptr,
-	    ysB_input_upper_ptr, ysB_output_ptr);
-	this->ResizeRow_load4_2ch_(ysA_lerp, ysA_input_lower_ptr,
-	    ysA_input_upper_ptr, ysA_output_ptr);
-	this->ResizeRow_load4_2ch_(ysB_lerp, ysB_input_lower_ptr,
-	    ysB_input_upper_ptr, ysB_output_ptr);
-	this->ResizeRow_load8_2ch_(ysA_lerp, ysA_input_lower_ptr,
-	    ysA_input_upper_ptr, ysA_output_ptr);
-	this->ResizeRow_load8_2ch_(ysB_lerp, ysB_input_lower_ptr,
-	    ysB_input_upper_ptr, ysB_output_ptr);
-	this->ResizeRow_general_(yA_lerp, ysA_input_lower_ptr,
-	    ysA_input_upper_ptr, ysA_output_ptr);
-	this->ResizeRow_general_(yB_lerp, ysB_input_lower_ptr,
-	    ysB_input_upper_ptr, ysB_output_ptr);
+        this->ResizeRow_load1_2ch_(ysA_lerp, ysA_input_lower_ptr,
+                                   ysA_input_upper_ptr, ysA_output_ptr);
+        this->ResizeRow_load1_2ch_(ysB_lerp, ysB_input_lower_ptr,
+                                   ysB_input_upper_ptr, ysB_output_ptr);
+        this->ResizeRow_load2_2ch_(ysA_lerp, ysA_input_lower_ptr,
+                                   ysA_input_upper_ptr, ysA_output_ptr);
+        this->ResizeRow_load2_2ch_(ysB_lerp, ysB_input_lower_ptr,
+                                   ysB_input_upper_ptr, ysB_output_ptr);
+        this->ResizeRow_load4_2ch_(ysA_lerp, ysA_input_lower_ptr,
+                                   ysA_input_upper_ptr, ysA_output_ptr);
+        this->ResizeRow_load4_2ch_(ysB_lerp, ysB_input_lower_ptr,
+                                   ysB_input_upper_ptr, ysB_output_ptr);
+        this->ResizeRow_load8_2ch_(ysA_lerp, ysA_input_lower_ptr,
+                                   ysA_input_upper_ptr, ysA_output_ptr);
+        this->ResizeRow_load8_2ch_(ysB_lerp, ysB_input_lower_ptr,
+                                   ysB_input_upper_ptr, ysB_output_ptr);
+        this->ResizeRow_general_(yA_lerp, ysA_input_lower_ptr,
+                                 ysA_input_upper_ptr, ysA_output_ptr);
+        this->ResizeRow_general_(yB_lerp, ysB_input_lower_ptr,
+                                 ysB_input_upper_ptr, ysB_output_ptr);
       } else if (channels_ == 3) {
-	this->ResizeRow_load1_3ch_(ysA_lerp, ysA_input_lower_ptr,
-	    ysA_input_upper_ptr, ysA_output_ptr);
-	this->ResizeRow_load1_3ch_(ysB_lerp, ysB_input_lower_ptr,
-	    ysB_input_upper_ptr, ysB_output_ptr);
-	this->ResizeRow_load2_3ch_(ysA_lerp, ysA_input_lower_ptr,
-	    ysA_input_upper_ptr, ysA_output_ptr);
-	this->ResizeRow_load2_3ch_(ysB_lerp, ysB_input_lower_ptr,
-	    ysB_input_upper_ptr, ysB_output_ptr);
-	this->ResizeRow_load4_3ch_(ysA_lerp, ysA_input_lower_ptr,
-	    ysA_input_upper_ptr, ysA_output_ptr);
-	this->ResizeRow_load4_3ch_(ysB_lerp, ysB_input_lower_ptr,
-	    ysB_input_upper_ptr, ysB_output_ptr);
-	this->ResizeRow_load8_3ch_(ysA_lerp, ysA_input_lower_ptr,
-	    ysA_input_upper_ptr, ysA_output_ptr);
-	this->ResizeRow_load8_3ch_(ysB_lerp, ysB_input_lower_ptr,
-	    ysB_input_upper_ptr, ysB_output_ptr);
-	this->ResizeRow_general_(yA_lerp, ysA_input_lower_ptr,
-	    ysA_input_upper_ptr, ysA_output_ptr);
-	this->ResizeRow_general_(yB_lerp, ysB_input_lower_ptr,
-	    ysB_input_upper_ptr, ysB_output_ptr);
+        this->ResizeRow_load1_3ch_(ysA_lerp, ysA_input_lower_ptr,
+                                   ysA_input_upper_ptr, ysA_output_ptr);
+        this->ResizeRow_load1_3ch_(ysB_lerp, ysB_input_lower_ptr,
+                                   ysB_input_upper_ptr, ysB_output_ptr);
+        this->ResizeRow_load2_3ch_(ysA_lerp, ysA_input_lower_ptr,
+                                   ysA_input_upper_ptr, ysA_output_ptr);
+        this->ResizeRow_load2_3ch_(ysB_lerp, ysB_input_lower_ptr,
+                                   ysB_input_upper_ptr, ysB_output_ptr);
+        this->ResizeRow_load4_3ch_(ysA_lerp, ysA_input_lower_ptr,
+                                   ysA_input_upper_ptr, ysA_output_ptr);
+        this->ResizeRow_load4_3ch_(ysB_lerp, ysB_input_lower_ptr,
+                                   ysB_input_upper_ptr, ysB_output_ptr);
+        this->ResizeRow_load8_3ch_(ysA_lerp, ysA_input_lower_ptr,
+                                   ysA_input_upper_ptr, ysA_output_ptr);
+        this->ResizeRow_load8_3ch_(ysB_lerp, ysB_input_lower_ptr,
+                                   ysB_input_upper_ptr, ysB_output_ptr);
+        this->ResizeRow_general_(yA_lerp, ysA_input_lower_ptr,
+                                 ysA_input_upper_ptr, ysA_output_ptr);
+        this->ResizeRow_general_(yB_lerp, ysB_input_lower_ptr,
+                                 ysB_input_upper_ptr, ysB_output_ptr);
       } else if (channels_ == 4) {
-	this->ResizeRow_load1_4ch_(ysA_lerp, ysA_input_lower_ptr,
-	    ysA_input_upper_ptr, ysA_output_ptr);
-	this->ResizeRow_load1_4ch_(ysB_lerp, ysB_input_lower_ptr,
-	    ysB_input_upper_ptr, ysB_output_ptr);
-	this->ResizeRow_load2_4ch_(ysA_lerp, ysA_input_lower_ptr,
-	    ysA_input_upper_ptr, ysA_output_ptr);
-	this->ResizeRow_load2_4ch_(ysB_lerp, ysB_input_lower_ptr,
-	    ysB_input_upper_ptr, ysB_output_ptr);
-	this->ResizeRow_load4_4ch_(ysA_lerp, ysA_input_lower_ptr,
-	    ysA_input_upper_ptr, ysA_output_ptr);
-	this->ResizeRow_load4_4ch_(ysB_lerp, ysB_input_lower_ptr,
-	    ysB_input_upper_ptr, ysB_output_ptr);
-	this->ResizeRow_load8_4ch_(ysA_lerp, ysA_input_lower_ptr,
-	    ysA_input_upper_ptr, ysA_output_ptr);
-	this->ResizeRow_load8_4ch_(ysB_lerp, ysB_input_lower_ptr,
-	    ysB_input_upper_ptr, ysB_output_ptr);
-	this->ResizeRow_general_(yA_lerp, ysA_input_lower_ptr,
-	    ysA_input_upper_ptr, ysA_output_ptr);
-	this->ResizeRow_general_(yB_lerp, ysB_input_lower_ptr,
-	    ysB_input_upper_ptr, ysB_output_ptr);
+        this->ResizeRow_load1_4ch_(ysA_lerp, ysA_input_lower_ptr,
+                                   ysA_input_upper_ptr, ysA_output_ptr);
+        this->ResizeRow_load1_4ch_(ysB_lerp, ysB_input_lower_ptr,
+                                   ysB_input_upper_ptr, ysB_output_ptr);
+        this->ResizeRow_load2_4ch_(ysA_lerp, ysA_input_lower_ptr,
+                                   ysA_input_upper_ptr, ysA_output_ptr);
+        this->ResizeRow_load2_4ch_(ysB_lerp, ysB_input_lower_ptr,
+                                   ysB_input_upper_ptr, ysB_output_ptr);
+        this->ResizeRow_load4_4ch_(ysA_lerp, ysA_input_lower_ptr,
+                                   ysA_input_upper_ptr, ysA_output_ptr);
+        this->ResizeRow_load4_4ch_(ysB_lerp, ysB_input_lower_ptr,
+                                   ysB_input_upper_ptr, ysB_output_ptr);
+        this->ResizeRow_load8_4ch_(ysA_lerp, ysA_input_lower_ptr,
+                                   ysA_input_upper_ptr, ysA_output_ptr);
+        this->ResizeRow_load8_4ch_(ysB_lerp, ysB_input_lower_ptr,
+                                   ysB_input_upper_ptr, ysB_output_ptr);
+        this->ResizeRow_general_(yA_lerp, ysA_input_lower_ptr,
+                                 ysA_input_upper_ptr, ysA_output_ptr);
+        this->ResizeRow_general_(yB_lerp, ysB_input_lower_ptr,
+                                 ysB_input_upper_ptr, ysB_output_ptr);
       } else {
-	assert(false);
+        assert(false);
       }
     }
     for (; y <= y1_; ++y) {
       const int iyA = flip_y_ ? out_height_ - 1 - min_iy_ - y : y - min_iy_;
       const float yA_lerp = ys_[iyA].lerp;
       const __m128 ysA_lerp = _mm_set1_ps(yA_lerp);
-      const T* ysA_input_lower_ptr =
-	input_image + ys_[iyA].lower * in_width_ * channels_;
-      const T* ysA_input_upper_ptr =
-	input_image + ys_[iyA].upper * in_width_ * channels_;
-      U* ysA_output_ptr = output_image + y * out_width_ * channels_;
+      const T *ysA_input_lower_ptr =
+          input_image + ys_[iyA].lower * in_width_ * channels_;
+      const T *ysA_input_upper_ptr =
+          input_image + ys_[iyA].upper * in_width_ * channels_;
+      U *ysA_output_ptr = output_image + y * out_width_ * channels_;
       if (channels_ == 1) {
-	this->ResizeRow_load1_1ch_(ysA_lerp, ysA_input_lower_ptr,
-	    ysA_input_upper_ptr, ysA_output_ptr);
-	this->ResizeRow_load2_1ch_(ysA_lerp, ysA_input_lower_ptr,
-	    ysA_input_upper_ptr, ysA_output_ptr);
-	this->ResizeRow_load4_1ch_(ysA_lerp, ysA_input_lower_ptr,
-	    ysA_input_upper_ptr, ysA_output_ptr);
-	this->ResizeRow_load8_1ch_(ysA_lerp, ysA_input_lower_ptr,
-	    ysA_input_upper_ptr, ysA_output_ptr);
-	this->ResizeRow_general_(yA_lerp, ysA_input_lower_ptr,
-	    ysA_input_upper_ptr, ysA_output_ptr);
+        this->ResizeRow_load1_1ch_(ysA_lerp, ysA_input_lower_ptr,
+                                   ysA_input_upper_ptr, ysA_output_ptr);
+        this->ResizeRow_load2_1ch_(ysA_lerp, ysA_input_lower_ptr,
+                                   ysA_input_upper_ptr, ysA_output_ptr);
+        this->ResizeRow_load4_1ch_(ysA_lerp, ysA_input_lower_ptr,
+                                   ysA_input_upper_ptr, ysA_output_ptr);
+        this->ResizeRow_load8_1ch_(ysA_lerp, ysA_input_lower_ptr,
+                                   ysA_input_upper_ptr, ysA_output_ptr);
+        this->ResizeRow_general_(yA_lerp, ysA_input_lower_ptr,
+                                 ysA_input_upper_ptr, ysA_output_ptr);
       } else if (channels_ == 2) {
-	this->ResizeRow_load1_2ch_(ysA_lerp, ysA_input_lower_ptr,
-	    ysA_input_upper_ptr, ysA_output_ptr);
-	this->ResizeRow_load2_2ch_(ysA_lerp, ysA_input_lower_ptr,
-	    ysA_input_upper_ptr, ysA_output_ptr);
-	this->ResizeRow_load4_2ch_(ysA_lerp, ysA_input_lower_ptr,
-	    ysA_input_upper_ptr, ysA_output_ptr);
-	this->ResizeRow_load8_2ch_(ysA_lerp, ysA_input_lower_ptr,
-	    ysA_input_upper_ptr, ysA_output_ptr);
-	this->ResizeRow_general_(yA_lerp, ysA_input_lower_ptr,
-	    ysA_input_upper_ptr, ysA_output_ptr);
+        this->ResizeRow_load1_2ch_(ysA_lerp, ysA_input_lower_ptr,
+                                   ysA_input_upper_ptr, ysA_output_ptr);
+        this->ResizeRow_load2_2ch_(ysA_lerp, ysA_input_lower_ptr,
+                                   ysA_input_upper_ptr, ysA_output_ptr);
+        this->ResizeRow_load4_2ch_(ysA_lerp, ysA_input_lower_ptr,
+                                   ysA_input_upper_ptr, ysA_output_ptr);
+        this->ResizeRow_load8_2ch_(ysA_lerp, ysA_input_lower_ptr,
+                                   ysA_input_upper_ptr, ysA_output_ptr);
+        this->ResizeRow_general_(yA_lerp, ysA_input_lower_ptr,
+                                 ysA_input_upper_ptr, ysA_output_ptr);
       } else if (channels_ == 3) {
-	this->ResizeRow_load1_3ch_(ysA_lerp, ysA_input_lower_ptr,
-	    ysA_input_upper_ptr, ysA_output_ptr);
-	this->ResizeRow_load2_3ch_(ysA_lerp, ysA_input_lower_ptr,
-	    ysA_input_upper_ptr, ysA_output_ptr);
-	this->ResizeRow_load4_3ch_(ysA_lerp, ysA_input_lower_ptr,
-	    ysA_input_upper_ptr, ysA_output_ptr);
-	this->ResizeRow_load8_3ch_(ysA_lerp, ysA_input_lower_ptr,
-	    ysA_input_upper_ptr, ysA_output_ptr);
-	this->ResizeRow_general_(yA_lerp, ysA_input_lower_ptr,
-	    ysA_input_upper_ptr, ysA_output_ptr);
+        this->ResizeRow_load1_3ch_(ysA_lerp, ysA_input_lower_ptr,
+                                   ysA_input_upper_ptr, ysA_output_ptr);
+        this->ResizeRow_load2_3ch_(ysA_lerp, ysA_input_lower_ptr,
+                                   ysA_input_upper_ptr, ysA_output_ptr);
+        this->ResizeRow_load4_3ch_(ysA_lerp, ysA_input_lower_ptr,
+                                   ysA_input_upper_ptr, ysA_output_ptr);
+        this->ResizeRow_load8_3ch_(ysA_lerp, ysA_input_lower_ptr,
+                                   ysA_input_upper_ptr, ysA_output_ptr);
+        this->ResizeRow_general_(yA_lerp, ysA_input_lower_ptr,
+                                 ysA_input_upper_ptr, ysA_output_ptr);
       } else if (channels_ == 4) {
-	this->ResizeRow_load1_4ch_(ysA_lerp, ysA_input_lower_ptr,
-	    ysA_input_upper_ptr, ysA_output_ptr);
-	this->ResizeRow_load2_4ch_(ysA_lerp, ysA_input_lower_ptr,
-	    ysA_input_upper_ptr, ysA_output_ptr);
-	this->ResizeRow_load4_4ch_(ysA_lerp, ysA_input_lower_ptr,
-	    ysA_input_upper_ptr, ysA_output_ptr);
-	this->ResizeRow_load8_4ch_(ysA_lerp, ysA_input_lower_ptr,
-	    ysA_input_upper_ptr, ysA_output_ptr);
-	this->ResizeRow_general_(yA_lerp, ysA_input_lower_ptr,
-	    ysA_input_upper_ptr, ysA_output_ptr);
+        this->ResizeRow_load1_4ch_(ysA_lerp, ysA_input_lower_ptr,
+                                   ysA_input_upper_ptr, ysA_output_ptr);
+        this->ResizeRow_load2_4ch_(ysA_lerp, ysA_input_lower_ptr,
+                                   ysA_input_upper_ptr, ysA_output_ptr);
+        this->ResizeRow_load4_4ch_(ysA_lerp, ysA_input_lower_ptr,
+                                   ysA_input_upper_ptr, ysA_output_ptr);
+        this->ResizeRow_load8_4ch_(ysA_lerp, ysA_input_lower_ptr,
+                                   ysA_input_upper_ptr, ysA_output_ptr);
+        this->ResizeRow_general_(yA_lerp, ysA_input_lower_ptr,
+                                 ysA_input_upper_ptr, ysA_output_ptr);
       } else {
-	assert(false);
+        assert(false);
       }
     }
   }
@@ -3993,9 +3931,9 @@ void CropResizeCastImage<T, U>::Resize(const T* input_image, U* output_image) {
 
 template <class T, class U>
 void CropResizeCastImage<T, U>::ResizeRow_general_(const float ys_lerp,
-                                                   const T* ys_input_lower_ptr,
-                                                   const T* ys_input_upper_ptr,
-                                                   U* output_y_ptr) {
+                                                   const T *ys_input_lower_ptr,
+                                                   const T *ys_input_upper_ptr,
+                                                   U *output_y_ptr) {
   for (int current = 0; current < num_general_; ++current) {
     int x = general_x_[current];
     const int ix = flip_x_ ? out_width_ - 1 - min_ix_ - x : x - min_ix_;
@@ -4020,12 +3958,12 @@ void CropResizeCastImage<T, U>::ResizeRow_general_(const float ys_lerp,
 // 1 channel image.
 template <class T, class U>
 void CropResizeCastImage<T, U>::ResizeRow_load1_1ch_(
-    const __m128 y_lerp, const T* ysA_input_lower_ptr,
-    const T* ysA_input_upper_ptr, U* ysA_output_ptr) {
+    const __m128 y_lerp, const T *ysA_input_lower_ptr,
+    const T *ysA_input_upper_ptr, U *ysA_output_ptr) {
   for (int current = 0; current < num_load1_; ++current) {
-    __m128* mmxs_lerp =
-        (__m128*)(load1_shuffle_masks_ + current * CHANNELS * 3);
-    __m128i* shuffle_masks = (__m128i*)mmxs_lerp + CHANNELS;
+    __m128 *mmxs_lerp =
+        (__m128 *)(load1_shuffle_masks_ + current * CHANNELS * 3);
+    __m128i *shuffle_masks = (__m128i *)mmxs_lerp + CHANNELS;
 #ifdef __AVX2__
     __m256 left0, right0;
     this->load1_1ch(ysA_input_lower_ptr, ysA_input_upper_ptr,
@@ -4062,12 +4000,12 @@ void CropResizeCastImage<T, U>::ResizeRow_load1_1ch_(
 // 1 channel image.
 template <class T, class U>
 void CropResizeCastImage<T, U>::ResizeRow_load2_1ch_(
-    const __m128 y_lerp, const T* ysA_input_lower_ptr,
-    const T* ysA_input_upper_ptr, U* ysA_output_ptr) {
+    const __m128 y_lerp, const T *ysA_input_lower_ptr,
+    const T *ysA_input_upper_ptr, U *ysA_output_ptr) {
   for (int current = 0; current < num_load2_; ++current) {
-    __m128* mmxs_lerp =
-        (__m128*)(load2_shuffle_masks_ + current * CHANNELS * 2);
-    __m128i* shuffle_masks = (__m128i*)mmxs_lerp + CHANNELS;
+    __m128 *mmxs_lerp =
+        (__m128 *)(load2_shuffle_masks_ + current * CHANNELS * 2);
+    __m128i *shuffle_masks = (__m128i *)mmxs_lerp + CHANNELS;
 #ifdef __AVX2__
     __m256 left0, right0;
     this->load2_1ch(ysA_input_lower_ptr, ysA_input_upper_ptr,
@@ -4104,10 +4042,10 @@ void CropResizeCastImage<T, U>::ResizeRow_load2_1ch_(
 // 1 channel image.
 template <class T, class U>
 void CropResizeCastImage<T, U>::ResizeRow_load4_1ch_(
-    const __m128 y_lerp, const T* ysA_input_lower_ptr,
-    const T* ysA_input_upper_ptr, U* ysA_output_ptr) {
+    const __m128 y_lerp, const T *ysA_input_lower_ptr,
+    const T *ysA_input_upper_ptr, U *ysA_output_ptr) {
   for (int current = 0; current < num_load4_; ++current) {
-    __m128* mmxs_lerp = (__m128*)(load4_mmxs_lerp_ + current * CHANNELS);
+    __m128 *mmxs_lerp = (__m128 *)(load4_mmxs_lerp_ + current * CHANNELS);
 #ifdef __AVX2__
     __m256 left0, right0;
     this->load4_1ch(
@@ -4147,10 +4085,10 @@ void CropResizeCastImage<T, U>::ResizeRow_load4_1ch_(
 // 1 channel image.
 template <class T, class U>
 void CropResizeCastImage<T, U>::ResizeRow_load8_1ch_(
-    const __m128 y_lerp, const T* ysA_input_lower_ptr,
-    const T* ysA_input_upper_ptr, U* ysA_output_ptr) {
+    const __m128 y_lerp, const T *ysA_input_lower_ptr,
+    const T *ysA_input_upper_ptr, U *ysA_output_ptr) {
   for (int current = 0; current < num_load8_; ++current) {
-    __m128* mmxs_lerp = (__m128*)(load8_mmxs_lerp_ + current * CHANNELS);
+    __m128 *mmxs_lerp = (__m128 *)(load8_mmxs_lerp_ + current * CHANNELS);
 #ifdef __AVX2__
     __m256 left0, right0;
     this->load8_1ch(
@@ -4193,12 +4131,12 @@ void CropResizeCastImage<T, U>::ResizeRow_load8_1ch_(
 // 2 channel image.
 template <class T, class U>
 void CropResizeCastImage<T, U>::ResizeRow_load1_2ch_(
-    const __m128 y_lerp, const T* ysA_input_lower_ptr,
-    const T* ysA_input_upper_ptr, U* ysA_output_ptr) {
+    const __m128 y_lerp, const T *ysA_input_lower_ptr,
+    const T *ysA_input_upper_ptr, U *ysA_output_ptr) {
   for (int current = 0; current < num_load1_; ++current) {
-    __m128* mmxs_lerp =
-        (__m128*)(load1_shuffle_masks_ + current * CHANNELS * 3);
-    __m128i* shuffle_masks = (__m128i*)mmxs_lerp + CHANNELS;
+    __m128 *mmxs_lerp =
+        (__m128 *)(load1_shuffle_masks_ + current * CHANNELS * 3);
+    __m128i *shuffle_masks = (__m128i *)mmxs_lerp + CHANNELS;
 #ifdef __AVX2__
     __m256 left0, left1, right0, right1;
     this->load1_2ch(ysA_input_lower_ptr, ysA_input_upper_ptr,
@@ -4246,12 +4184,12 @@ void CropResizeCastImage<T, U>::ResizeRow_load1_2ch_(
 // 2 channel image.
 template <class T, class U>
 void CropResizeCastImage<T, U>::ResizeRow_load2_2ch_(
-    const __m128 y_lerp, const T* ysA_input_lower_ptr,
-    const T* ysA_input_upper_ptr, U* ysA_output_ptr) {
+    const __m128 y_lerp, const T *ysA_input_lower_ptr,
+    const T *ysA_input_upper_ptr, U *ysA_output_ptr) {
   for (int current = 0; current < num_load2_; ++current) {
-    __m128* mmxs_lerp =
-        (__m128*)(load2_shuffle_masks_ + current * CHANNELS * 2);
-    __m128i* shuffle_masks = (__m128i*)mmxs_lerp + CHANNELS;
+    __m128 *mmxs_lerp =
+        (__m128 *)(load2_shuffle_masks_ + current * CHANNELS * 2);
+    __m128i *shuffle_masks = (__m128i *)mmxs_lerp + CHANNELS;
 #ifdef __AVX2__
     __m256 left0, left1, right0, right1;
     this->load2_2ch(ysA_input_lower_ptr, ysA_input_upper_ptr,
@@ -4299,10 +4237,10 @@ void CropResizeCastImage<T, U>::ResizeRow_load2_2ch_(
 // 2 channel image.
 template <class T, class U>
 void CropResizeCastImage<T, U>::ResizeRow_load4_2ch_(
-    const __m128 y_lerp, const T* ysA_input_lower_ptr,
-    const T* ysA_input_upper_ptr, U* ysA_output_ptr) {
+    const __m128 y_lerp, const T *ysA_input_lower_ptr,
+    const T *ysA_input_upper_ptr, U *ysA_output_ptr) {
   for (int current = 0; current < num_load4_; ++current) {
-    __m128* mmxs_lerp = (__m128*)(load4_mmxs_lerp_ + current * CHANNELS);
+    __m128 *mmxs_lerp = (__m128 *)(load4_mmxs_lerp_ + current * CHANNELS);
 #ifdef __AVX2__
     __m256 left0, left1, right0, right1;
     this->load4_2ch(
@@ -4353,10 +4291,10 @@ void CropResizeCastImage<T, U>::ResizeRow_load4_2ch_(
 // 2 channel image.
 template <class T, class U>
 void CropResizeCastImage<T, U>::ResizeRow_load8_2ch_(
-    const __m128 y_lerp, const T* ysA_input_lower_ptr,
-    const T* ysA_input_upper_ptr, U* ysA_output_ptr) {
+    const __m128 y_lerp, const T *ysA_input_lower_ptr,
+    const T *ysA_input_upper_ptr, U *ysA_output_ptr) {
   for (int current = 0; current < num_load8_; ++current) {
-    __m128* mmxs_lerp = (__m128*)(load8_mmxs_lerp_ + current * CHANNELS);
+    __m128 *mmxs_lerp = (__m128 *)(load8_mmxs_lerp_ + current * CHANNELS);
 #ifdef __AVX2__
     __m256 left0, left1, right0, right1;
     this->load8_2ch(
@@ -4410,12 +4348,12 @@ void CropResizeCastImage<T, U>::ResizeRow_load8_2ch_(
 // 3 channel image.
 template <class T, class U>
 void CropResizeCastImage<T, U>::ResizeRow_load1_3ch_(
-    const __m128 y_lerp, const T* ysA_input_lower_ptr,
-    const T* ysA_input_upper_ptr, U* ysA_output_ptr) {
+    const __m128 y_lerp, const T *ysA_input_lower_ptr,
+    const T *ysA_input_upper_ptr, U *ysA_output_ptr) {
   for (int current = 0; current < num_load1_; ++current) {
-    __m128* mmxs_lerp =
-        (__m128*)(load1_shuffle_masks_ + current * CHANNELS * 3);
-    __m128i* shuffle_masks = (__m128i*)mmxs_lerp + CHANNELS;
+    __m128 *mmxs_lerp =
+        (__m128 *)(load1_shuffle_masks_ + current * CHANNELS * 3);
+    __m128i *shuffle_masks = (__m128i *)mmxs_lerp + CHANNELS;
 #ifdef __AVX2__
     __m256 left0, left1, left2, right0, right1, right2;
     this->load1_3ch(ysA_input_lower_ptr, ysA_input_upper_ptr,
@@ -4473,12 +4411,12 @@ void CropResizeCastImage<T, U>::ResizeRow_load1_3ch_(
 // 3 channel image.
 template <class T, class U>
 void CropResizeCastImage<T, U>::ResizeRow_load2_3ch_(
-    const __m128 y_lerp, const T* ysA_input_lower_ptr,
-    const T* ysA_input_upper_ptr, U* ysA_output_ptr) {
+    const __m128 y_lerp, const T *ysA_input_lower_ptr,
+    const T *ysA_input_upper_ptr, U *ysA_output_ptr) {
   for (int current = 0; current < num_load2_; ++current) {
-    __m128* mmxs_lerp =
-        (__m128*)(load2_shuffle_masks_ + current * CHANNELS * 2);
-    __m128i* shuffle_masks = (__m128i*)mmxs_lerp + CHANNELS;
+    __m128 *mmxs_lerp =
+        (__m128 *)(load2_shuffle_masks_ + current * CHANNELS * 2);
+    __m128i *shuffle_masks = (__m128i *)mmxs_lerp + CHANNELS;
 #ifdef __AVX2__
     __m256 left0, left1, left2, right0, right1, right2;
     this->load2_3ch(ysA_input_lower_ptr, ysA_input_upper_ptr,
@@ -4536,10 +4474,10 @@ void CropResizeCastImage<T, U>::ResizeRow_load2_3ch_(
 // 3 channel image.
 template <class T, class U>
 void CropResizeCastImage<T, U>::ResizeRow_load4_3ch_(
-    const __m128 y_lerp, const T* ysA_input_lower_ptr,
-    const T* ysA_input_upper_ptr, U* ysA_output_ptr) {
+    const __m128 y_lerp, const T *ysA_input_lower_ptr,
+    const T *ysA_input_upper_ptr, U *ysA_output_ptr) {
   for (int current = 0; current < num_load4_; ++current) {
-    __m128* mmxs_lerp = (__m128*)(load4_mmxs_lerp_ + current * CHANNELS);
+    __m128 *mmxs_lerp = (__m128 *)(load4_mmxs_lerp_ + current * CHANNELS);
 #ifdef __AVX2__
     __m256 left0, left1, left2, right0, right1, right2;
     this->load4_3ch(
@@ -4601,10 +4539,10 @@ void CropResizeCastImage<T, U>::ResizeRow_load4_3ch_(
 // 3 channel image.
 template <class T, class U>
 void CropResizeCastImage<T, U>::ResizeRow_load8_3ch_(
-    const __m128 y_lerp, const T* ysA_input_lower_ptr,
-    const T* ysA_input_upper_ptr, U* ysA_output_ptr) {
+    const __m128 y_lerp, const T *ysA_input_lower_ptr,
+    const T *ysA_input_upper_ptr, U *ysA_output_ptr) {
   for (int current = 0; current < num_load8_; ++current) {
-    __m128* mmxs_lerp = (__m128*)(load8_mmxs_lerp_ + current * CHANNELS);
+    __m128 *mmxs_lerp = (__m128 *)(load8_mmxs_lerp_ + current * CHANNELS);
 #ifdef __AVX2__
     __m256 left0, left1, left2, right0, right1, right2;
     this->load8_3ch(
@@ -4669,12 +4607,12 @@ void CropResizeCastImage<T, U>::ResizeRow_load8_3ch_(
 // 4 channel image.
 template <class T, class U>
 void CropResizeCastImage<T, U>::ResizeRow_load1_4ch_(
-    const __m128 y_lerp, const T* ysA_input_lower_ptr,
-    const T* ysA_input_upper_ptr, U* ysA_output_ptr) {
+    const __m128 y_lerp, const T *ysA_input_lower_ptr,
+    const T *ysA_input_upper_ptr, U *ysA_output_ptr) {
   for (int current = 0; current < num_load1_; ++current) {
-    __m128* mmxs_lerp =
-        (__m128*)(load1_shuffle_masks_ + current * CHANNELS * 3);
-    __m128i* shuffle_masks = (__m128i*)mmxs_lerp + CHANNELS;
+    __m128 *mmxs_lerp =
+        (__m128 *)(load1_shuffle_masks_ + current * CHANNELS * 3);
+    __m128i *shuffle_masks = (__m128i *)mmxs_lerp + CHANNELS;
 #ifdef __AVX2__
     __m256 left0, left1, left2, left3, right0, right1, right2, right3;
     this->load1_4ch(ysA_input_lower_ptr, ysA_input_upper_ptr,
@@ -4744,12 +4682,12 @@ void CropResizeCastImage<T, U>::ResizeRow_load1_4ch_(
 // 4 channel image.
 template <class T, class U>
 void CropResizeCastImage<T, U>::ResizeRow_load2_4ch_(
-    const __m128 y_lerp, const T* ysA_input_lower_ptr,
-    const T* ysA_input_upper_ptr, U* ysA_output_ptr) {
+    const __m128 y_lerp, const T *ysA_input_lower_ptr,
+    const T *ysA_input_upper_ptr, U *ysA_output_ptr) {
   for (int current = 0; current < num_load2_; ++current) {
-    __m128* mmxs_lerp =
-        (__m128*)(load2_shuffle_masks_ + current * CHANNELS * 2);
-    __m128i* shuffle_masks = (__m128i*)mmxs_lerp + CHANNELS;
+    __m128 *mmxs_lerp =
+        (__m128 *)(load2_shuffle_masks_ + current * CHANNELS * 2);
+    __m128i *shuffle_masks = (__m128i *)mmxs_lerp + CHANNELS;
 #ifdef __AVX2__
     __m256 left0, left1, left2, left3, right0, right1, right2, right3;
     this->load2_4ch(ysA_input_lower_ptr, ysA_input_upper_ptr,
@@ -4819,10 +4757,10 @@ void CropResizeCastImage<T, U>::ResizeRow_load2_4ch_(
 // 4 channel image.
 template <class T, class U>
 void CropResizeCastImage<T, U>::ResizeRow_load4_4ch_(
-    const __m128 y_lerp, const T* ysA_input_lower_ptr,
-    const T* ysA_input_upper_ptr, U* ysA_output_ptr) {
+    const __m128 y_lerp, const T *ysA_input_lower_ptr,
+    const T *ysA_input_upper_ptr, U *ysA_output_ptr) {
   for (int current = 0; current < num_load4_; ++current) {
-    __m128* mmxs_lerp = (__m128*)(load4_mmxs_lerp_ + current * CHANNELS);
+    __m128 *mmxs_lerp = (__m128 *)(load4_mmxs_lerp_ + current * CHANNELS);
 #ifdef __AVX2__
     __m256 left0, left1, left2, left3, right0, right1, right2, right3;
     this->load4_4ch(
@@ -4895,10 +4833,10 @@ void CropResizeCastImage<T, U>::ResizeRow_load4_4ch_(
 // 4 channel image.
 template <class T, class U>
 void CropResizeCastImage<T, U>::ResizeRow_load8_4ch_(
-    const __m128 y_lerp, const T* ysA_input_lower_ptr,
-    const T* ysA_input_upper_ptr, U* ysA_output_ptr) {
+    const __m128 y_lerp, const T *ysA_input_lower_ptr,
+    const T *ysA_input_upper_ptr, U *ysA_output_ptr) {
   for (int current = 0; current < num_load8_; ++current) {
-    __m128* mmxs_lerp = (__m128*)(load8_mmxs_lerp_ + current * CHANNELS);
+    __m128 *mmxs_lerp = (__m128 *)(load8_mmxs_lerp_ + current * CHANNELS);
 #ifdef __AVX2__
     __m256 left0, left1, left2, left3, right0, right1, right2, right3;
     this->load8_4ch(
@@ -4969,22 +4907,23 @@ void CropResizeCastImage<T, U>::ResizeRow_load8_4ch_(
 }
 #undef CHANNELS
 
-template <class T, class U>
-void CropResizeCastImage<T, U>::Configure_() {
+template <class T, class U> void CropResizeCastImage<T, U>::Configure_() {
   // num_cases[0] = general case
   // num_cases[1] = load4from1
   // num_cases[2] = load4from2
   // num_cases[3] = load4from4
   // num_cases[4] = load4from8
   int num_cases[5];
-  for (int i = 0; i < 5; ++i) num_cases[i] = 0;
+  for (int i = 0; i < 5; ++i)
+    num_cases[i] = 0;
   for (int x = x0_; x <= x1_; ++x) {
     int load_group = this->DetermineLoadGroup_(x);
     assert(load_group >= 0 && load_group <= 4);
     ++num_cases[load_group];
     // load_group == 0 -> general case, pixel by pixel
     // every other value indidcates 1+3 = 4 pixels were processed this iteration
-    if (load_group > 0) x += 3;
+    if (load_group > 0)
+      x += 3;
   }
   num_general_ = num_cases[0];
   num_load1_ = num_cases[1];
@@ -4999,7 +4938,7 @@ void CropResizeCastImage<T, U>::Configure_() {
   if (num_load1_ > 0) {
     load1_offsets_ = new int[num_load1_];
     load1_shuffle_masks_ = new __m128i[num_load1_ * channels_ * 3];
-    load1_mmxs_lerp_ = NULL;  // new __m128[num_load1_*channels_];
+    load1_mmxs_lerp_ = NULL; // new __m128[num_load1_*channels_];
     load1_x_ = new int[num_load1_];
   } else {
     load1_offsets_ = NULL;
@@ -5010,7 +4949,7 @@ void CropResizeCastImage<T, U>::Configure_() {
   if (num_load2_ > 0) {
     load2_offsets_ = new int[num_load2_];
     load2_shuffle_masks_ = new __m128i[num_load2_ * channels_ * 2];
-    load2_mmxs_lerp_ = NULL;  // new __m128[num_load2_*channels_];
+    load2_mmxs_lerp_ = NULL; // new __m128[num_load2_*channels_];
     load2_x_ = new int[num_load2_];
   } else {
     load2_offsets_ = NULL;
@@ -5036,7 +4975,8 @@ void CropResizeCastImage<T, U>::Configure_() {
     load8_mmxs_lerp_ = NULL;
     load8_x_ = NULL;
   }
-  for (int i = 0; i < 5; ++i) num_cases[i] = 0;
+  for (int i = 0; i < 5; ++i)
+    num_cases[i] = 0;
   if (verbose_) {
     printf("    load4from1  = %d\n", num_load1_);
     printf("    load4from2  = %d\n", num_load2_);
@@ -5060,17 +5000,19 @@ void CropResizeCastImage<T, U>::Configure_() {
       int min_xidx, max_xidx;
       ComputeXIndexRange_(x, &min_xidx, &max_xidx);
       load1_offsets_[current] = min_xidx * channels_;
-      float* xs_lerp = (float*)(load1_shuffle_masks_ + current * channels_ * 3);
-      char* shufmasks1 =
-          (char*)(load1_shuffle_masks_ + current * channels_ * 3 + channels_);
-      char* shufmasks2 = shufmasks1 + 16 * channels_;
-      for (int j = 0; j < 32 * channels_; ++j) shufmasks1[j] = -128;
+      float *xs_lerp =
+          (float *)(load1_shuffle_masks_ + current * channels_ * 3);
+      char *shufmasks1 =
+          (char *)(load1_shuffle_masks_ + current * channels_ * 3 + channels_);
+      char *shufmasks2 = shufmasks1 + 16 * channels_;
+      for (int j = 0; j < 32 * channels_; ++j)
+        shufmasks1[j] = -128;
       for (int pix = 0; pix < 4; ++pix) {
         const int ix = flip_x_ ? out_width_ - 1 - min_ix_ - (x + pix)
                                : (x + pix) - min_ix_;
         float lerp = xs_[ix].lerp;
         int widx0 = xs_[ix].lower -
-                    load1_offsets_[current];  // word index within SSE vector
+                    load1_offsets_[current]; // word index within SSE vector
         for (int ch = 0; ch < channels_; ++ch) {
           int idx = pix * channels_ + ch;
           xs_lerp[idx] = lerp;
@@ -5092,16 +5034,18 @@ void CropResizeCastImage<T, U>::Configure_() {
       int min_xidx, max_xidx;
       ComputeXIndexRange_(x, &min_xidx, &max_xidx);
       load2_offsets_[current] = min_xidx * channels_;
-      float* xs_lerp = (float*)(load2_shuffle_masks_ + current * channels_ * 2);
-      char* shufmasks1 =
-          (char*)(load2_shuffle_masks_ + current * channels_ * 2 + channels_);
-      for (int j = 0; j < 16 * channels_; ++j) shufmasks1[j] = -128;
+      float *xs_lerp =
+          (float *)(load2_shuffle_masks_ + current * channels_ * 2);
+      char *shufmasks1 =
+          (char *)(load2_shuffle_masks_ + current * channels_ * 2 + channels_);
+      for (int j = 0; j < 16 * channels_; ++j)
+        shufmasks1[j] = -128;
       for (int pix = 0; pix < 4; ++pix) {
         const int ix = flip_x_ ? out_width_ - 1 - min_ix_ - (x + pix)
                                : (x + pix) - min_ix_;
         float lerp = xs_[ix].lerp;
         int widx0 = xs_[ix].lower -
-                    load2_offsets_[current];  // word index within SSE vector
+                    load2_offsets_[current]; // word index within SSE vector
         for (int ch = 0; ch < channels_; ++ch) {
           int idx = pix * channels_ + ch;
           xs_lerp[idx] = lerp;
@@ -5118,8 +5062,8 @@ void CropResizeCastImage<T, U>::Configure_() {
       // load4from4
       assert(current < num_load4_);
       load4_x_[current] = x;
-      int* index = load4_offsets_ + current * 4;
-      float* xs_lerp = (float*)(load4_mmxs_lerp_ + current * channels_);
+      int *index = load4_offsets_ + current * 4;
+      float *xs_lerp = (float *)(load4_mmxs_lerp_ + current * channels_);
       for (int pix = 0; pix < 4; ++pix) {
         const int ix = flip_x_ ? out_width_ - 1 - min_ix_ - (x + pix)
                                : (x + pix) - min_ix_;
@@ -5134,8 +5078,8 @@ void CropResizeCastImage<T, U>::Configure_() {
       // load4from8
       assert(current < num_load8_);
       load8_x_[current] = x;
-      int* index = load8_offsets_ + current * 4;
-      float* xs_lerp = (float*)(load8_mmxs_lerp_ + current * channels_);
+      int *index = load8_offsets_ + current * 4;
+      float *xs_lerp = (float *)(load8_mmxs_lerp_ + current * channels_);
       for (int pix = 0; pix < 4; ++pix) {
         const int ix = flip_x_ ? out_width_ - 1 - min_ix_ - (x + pix)
                                : (x + pix) - min_ix_;
@@ -5152,7 +5096,8 @@ void CropResizeCastImage<T, U>::Configure_() {
     ++num_cases[load_group];
     // load_group == 0 -> general case, pixel by pixel
     // every other value indidcates 1+3 = 4 pixels were processed this iteration
-    if (load_group > 0) x += 3;
+    if (load_group > 0)
+      x += 3;
   }
 }
 
@@ -5198,8 +5143,8 @@ int CropResizeCastImage<T, U>::DetermineLoadGroup_(const int x) {
 // Compute range of x indexes for xs[0] through xs[3].
 // Returns true if valid (xs[i].lower + channels == xs[i].upper for all pixels).
 template <class T, class U>
-bool CropResizeCastImage<T, U>::ComputeXIndexRange_(const int x, int* min_xidx,
-                                                    int* max_xidx) {
+bool CropResizeCastImage<T, U>::ComputeXIndexRange_(const int x, int *min_xidx,
+                                                    int *max_xidx) {
   bool upper_is_lower_plus_one = true;
   *min_xidx = 0;
   *max_xidx = -1;
@@ -5212,8 +5157,10 @@ bool CropResizeCastImage<T, U>::ComputeXIndexRange_(const int x, int* min_xidx,
         *min_xidx = curr_xidx;
         *max_xidx = curr_xidx;
       } else {
-        if (curr_xidx < *min_xidx) *min_xidx = curr_xidx;
-        if (curr_xidx > *max_xidx) *max_xidx = curr_xidx;
+        if (curr_xidx < *min_xidx)
+          *min_xidx = curr_xidx;
+        if (curr_xidx > *max_xidx)
+          *max_xidx = curr_xidx;
       }
     } else {
       upper_is_lower_plus_one = false;
@@ -5313,206 +5260,158 @@ bool CropResizeCastImage<T, U>::Load8_ok_(const int min_xidx,
 // full implementations of templated static member function clip_necessary()
 //
 
-template <>
-bool CropResizeCastImage<uint8, uint8>::clip_necessary() {
+template <> bool CropResizeCastImage<uint8, uint8>::clip_necessary() {
   return false;
 }
-template <>
-bool CropResizeCastImage<uint8, int8>::clip_necessary() {
+template <> bool CropResizeCastImage<uint8, int8>::clip_necessary() {
   return true;
 }
-template <>
-bool CropResizeCastImage<uint8, uint16>::clip_necessary() {
+template <> bool CropResizeCastImage<uint8, uint16>::clip_necessary() {
   return false;
 }
-template <>
-bool CropResizeCastImage<uint8, int16>::clip_necessary() {
+template <> bool CropResizeCastImage<uint8, int16>::clip_necessary() {
   return false;
 }
-template <>
-bool CropResizeCastImage<uint8, int32>::clip_necessary() {
+template <> bool CropResizeCastImage<uint8, int32>::clip_necessary() {
   return false;
 }
-template <>
-bool CropResizeCastImage<uint8, Eigen::half>::clip_necessary() {
+template <> bool CropResizeCastImage<uint8, Eigen::half>::clip_necessary() {
   return false;
 }
-template <>
-bool CropResizeCastImage<uint8, float>::clip_necessary() {
+template <> bool CropResizeCastImage<uint8, float>::clip_necessary() {
   return false;
 }
 
-template <>
-bool CropResizeCastImage<int8, uint8>::clip_necessary() {
+template <> bool CropResizeCastImage<int8, uint8>::clip_necessary() {
   return true;
 }
-template <>
-bool CropResizeCastImage<int8, int8>::clip_necessary() {
+template <> bool CropResizeCastImage<int8, int8>::clip_necessary() {
   return false;
 }
-template <>
-bool CropResizeCastImage<int8, uint16>::clip_necessary() {
+template <> bool CropResizeCastImage<int8, uint16>::clip_necessary() {
   return false;
 }
-template <>
-bool CropResizeCastImage<int8, int16>::clip_necessary() {
+template <> bool CropResizeCastImage<int8, int16>::clip_necessary() {
   return false;
 }
-template <>
-bool CropResizeCastImage<int8, int32>::clip_necessary() {
+template <> bool CropResizeCastImage<int8, int32>::clip_necessary() {
   return false;
 }
-template <>
-bool CropResizeCastImage<int8, Eigen::half>::clip_necessary() {
+template <> bool CropResizeCastImage<int8, Eigen::half>::clip_necessary() {
   return false;
 }
-template <>
-bool CropResizeCastImage<int8, float>::clip_necessary() {
+template <> bool CropResizeCastImage<int8, float>::clip_necessary() {
   return false;
 }
 
-template <>
-bool CropResizeCastImage<uint16, uint8>::clip_necessary() {
+template <> bool CropResizeCastImage<uint16, uint8>::clip_necessary() {
   return true;
 }
-template <>
-bool CropResizeCastImage<uint16, int8>::clip_necessary() {
+template <> bool CropResizeCastImage<uint16, int8>::clip_necessary() {
   return true;
 }
-template <>
-bool CropResizeCastImage<uint16, uint16>::clip_necessary() {
+template <> bool CropResizeCastImage<uint16, uint16>::clip_necessary() {
   return false;
 }
-template <>
-bool CropResizeCastImage<uint16, int16>::clip_necessary() {
+template <> bool CropResizeCastImage<uint16, int16>::clip_necessary() {
   return true;
 }
-template <>
-bool CropResizeCastImage<uint16, int32>::clip_necessary() {
+template <> bool CropResizeCastImage<uint16, int32>::clip_necessary() {
   return false;
 }
-template <>
-bool CropResizeCastImage<uint16, Eigen::half>::clip_necessary() {
+template <> bool CropResizeCastImage<uint16, Eigen::half>::clip_necessary() {
   return true;
 }
-template <>
-bool CropResizeCastImage<uint16, float>::clip_necessary() {
+template <> bool CropResizeCastImage<uint16, float>::clip_necessary() {
   return false;
 }
 
-template <>
-bool CropResizeCastImage<int16, uint8>::clip_necessary() {
+template <> bool CropResizeCastImage<int16, uint8>::clip_necessary() {
   return true;
 }
-template <>
-bool CropResizeCastImage<int16, int8>::clip_necessary() {
+template <> bool CropResizeCastImage<int16, int8>::clip_necessary() {
   return true;
 }
-template <>
-bool CropResizeCastImage<int16, uint16>::clip_necessary() {
+template <> bool CropResizeCastImage<int16, uint16>::clip_necessary() {
   return true;
 }
-template <>
-bool CropResizeCastImage<int16, int16>::clip_necessary() {
+template <> bool CropResizeCastImage<int16, int16>::clip_necessary() {
   return false;
 }
-template <>
-bool CropResizeCastImage<int16, int32>::clip_necessary() {
+template <> bool CropResizeCastImage<int16, int32>::clip_necessary() {
   return false;
 }
-template <>
-bool CropResizeCastImage<int16, Eigen::half>::clip_necessary() {
+template <> bool CropResizeCastImage<int16, Eigen::half>::clip_necessary() {
   return false;
 }
-template <>
-bool CropResizeCastImage<int16, float>::clip_necessary() {
+template <> bool CropResizeCastImage<int16, float>::clip_necessary() {
   return false;
 }
 
-template <>
-bool CropResizeCastImage<int32, uint8>::clip_necessary() {
+template <> bool CropResizeCastImage<int32, uint8>::clip_necessary() {
   return true;
 }
-template <>
-bool CropResizeCastImage<int32, int8>::clip_necessary() {
+template <> bool CropResizeCastImage<int32, int8>::clip_necessary() {
   return true;
 }
-template <>
-bool CropResizeCastImage<int32, uint16>::clip_necessary() {
+template <> bool CropResizeCastImage<int32, uint16>::clip_necessary() {
   return true;
 }
-template <>
-bool CropResizeCastImage<int32, int16>::clip_necessary() {
+template <> bool CropResizeCastImage<int32, int16>::clip_necessary() {
   return true;
 }
-template <>
-bool CropResizeCastImage<int32, int32>::clip_necessary() {
+template <> bool CropResizeCastImage<int32, int32>::clip_necessary() {
   return false;
 }
-template <>
-bool CropResizeCastImage<int32, Eigen::half>::clip_necessary() {
+template <> bool CropResizeCastImage<int32, Eigen::half>::clip_necessary() {
   return true;
 }
-template <>
-bool CropResizeCastImage<int32, float>::clip_necessary() {
+template <> bool CropResizeCastImage<int32, float>::clip_necessary() {
   return false;
 }
 
-template <>
-bool CropResizeCastImage<Eigen::half, uint8>::clip_necessary() {
+template <> bool CropResizeCastImage<Eigen::half, uint8>::clip_necessary() {
   return true;
 }
-template <>
-bool CropResizeCastImage<Eigen::half, int8>::clip_necessary() {
+template <> bool CropResizeCastImage<Eigen::half, int8>::clip_necessary() {
   return true;
 }
-template <>
-bool CropResizeCastImage<Eigen::half, uint16>::clip_necessary() {
+template <> bool CropResizeCastImage<Eigen::half, uint16>::clip_necessary() {
   return true;
 }
-template <>
-bool CropResizeCastImage<Eigen::half, int16>::clip_necessary() {
+template <> bool CropResizeCastImage<Eigen::half, int16>::clip_necessary() {
   return true;
 }
-template <>
-bool CropResizeCastImage<Eigen::half, int32>::clip_necessary() {
+template <> bool CropResizeCastImage<Eigen::half, int32>::clip_necessary() {
   return false;
 }
 template <>
 bool CropResizeCastImage<Eigen::half, Eigen::half>::clip_necessary() {
   return false;
 }
-template <>
-bool CropResizeCastImage<Eigen::half, float>::clip_necessary() {
+template <> bool CropResizeCastImage<Eigen::half, float>::clip_necessary() {
   return false;
 }
 
-template <>
-bool CropResizeCastImage<float, uint8>::clip_necessary() {
+template <> bool CropResizeCastImage<float, uint8>::clip_necessary() {
   return true;
 }
-template <>
-bool CropResizeCastImage<float, int8>::clip_necessary() {
+template <> bool CropResizeCastImage<float, int8>::clip_necessary() {
   return true;
 }
-template <>
-bool CropResizeCastImage<float, uint16>::clip_necessary() {
+template <> bool CropResizeCastImage<float, uint16>::clip_necessary() {
   return true;
 }
-template <>
-bool CropResizeCastImage<float, int16>::clip_necessary() {
+template <> bool CropResizeCastImage<float, int16>::clip_necessary() {
   return true;
 }
-template <>
-bool CropResizeCastImage<float, int32>::clip_necessary() {
+template <> bool CropResizeCastImage<float, int32>::clip_necessary() {
   return true;
 }
-template <>
-bool CropResizeCastImage<float, Eigen::half>::clip_necessary() {
+template <> bool CropResizeCastImage<float, Eigen::half>::clip_necessary() {
   return true;
 }
-template <>
-bool CropResizeCastImage<float, float>::clip_necessary() {
+template <> bool CropResizeCastImage<float, float>::clip_necessary() {
   return false;
 }
 
@@ -5524,14 +5423,14 @@ bool CropResizeCastImage<float, float>::clip_necessary() {
 #define CROP_RESIZE_SINGLE_IMAGE_VECT(T_type, U_type)                          \
   template <>                                                                  \
   void crop_resize_single_image_common<T_type, U_type>(                        \
-      const T_type* image, const int64 in_height, const int64 in_width,        \
+      const T_type *image, const int64 in_height, const int64 in_width,        \
       const int64 out_height, const int64 out_width, const int channels,       \
-      const int min_ix, const int max_ix, const CachedInterpolation* xs,       \
-      const int min_iy, const int max_iy, const CachedInterpolation* ys,       \
+      const int min_ix, const int max_ix, const CachedInterpolation *xs,       \
+      const int min_iy, const int max_iy, const CachedInterpolation *ys,       \
       const float extrapolated_value, const bool flip_x, const bool flip_y,    \
-      U_type* output) {                                                        \
+      U_type *output) {                                                        \
     if (channels <= 4) {                                                       \
-      CropResizeCastImage<T_type, U_type>* resizer =                           \
+      CropResizeCastImage<T_type, U_type> *resizer =                           \
           new CropResizeCastImage<T_type, U_type>(                             \
               in_height, in_width, out_height, out_width, channels, min_ix,    \
               max_ix, xs, min_iy, max_iy, ys, extrapolated_value, flip_x,      \
@@ -5560,19 +5459,19 @@ CROP_RESIZE_SINGLE_IMAGE_VECT(float, float)
 // image resizing for these data types default to the original code.
 // at the moment, this is int64 and double.
 
-#define CROP_RESIZE_SINGLE_IMAGE_REGULAR(T_type, U_type)                      \
-  template <>                                                                 \
-  void crop_resize_single_image_common<T_type, U_type>(                       \
-      const T_type* image, const int64 in_height, const int64 in_width,       \
-      const int64 out_height, const int64 out_width, const int channels,      \
-      const int min_ix, const int max_ix, const CachedInterpolation* xs,      \
-      const int min_iy, const int max_iy, const CachedInterpolation* ys,      \
-      const float extrapolated_value, const bool flip_x, const bool flip_y,   \
-      U_type* output) {                                                       \
-    crop_resize_single_image(image, in_height, in_width, out_height,          \
-                             out_width, channels, min_ix, max_ix, xs, min_iy, \
-                             max_iy, ys, extrapolated_value, flip_x, flip_y,  \
-                             output);                                         \
+#define CROP_RESIZE_SINGLE_IMAGE_REGULAR(T_type, U_type)                       \
+  template <>                                                                  \
+  void crop_resize_single_image_common<T_type, U_type>(                        \
+      const T_type *image, const int64 in_height, const int64 in_width,        \
+      const int64 out_height, const int64 out_width, const int channels,       \
+      const int min_ix, const int max_ix, const CachedInterpolation *xs,       \
+      const int min_iy, const int max_iy, const CachedInterpolation *ys,       \
+      const float extrapolated_value, const bool flip_x, const bool flip_y,    \
+      U_type *output) {                                                        \
+    crop_resize_single_image(image, in_height, in_width, out_height,           \
+                             out_width, channels, min_ix, max_ix, xs, min_iy,  \
+                             max_iy, ys, extrapolated_value, flip_x, flip_y,   \
+                             output);                                          \
   }
 
 CROP_RESIZE_SINGLE_IMAGE_REGULAR(int64, float)
@@ -5586,12 +5485,12 @@ CROP_RESIZE_SINGLE_IMAGE_REGULAR(double, float)
 
 template <class T, class U>
 void crop_resize_single_image_common(
-    const T* image, const int64 in_height, const int64 in_width,
+    const T *image, const int64 in_height, const int64 in_width,
     const int64 out_height, const int64 out_width, const int channels,
-    const int min_ix, const int max_ix, const CachedInterpolation* xs,
-    const int min_iy, const int max_iy, const CachedInterpolation* ys,
+    const int min_ix, const int max_ix, const CachedInterpolation *xs,
+    const int min_iy, const int max_iy, const CachedInterpolation *ys,
     const float extrapolated_value, const bool flip_x, const bool flip_y,
-    U* output) {
+    U *output) {
   crop_resize_single_image(image, in_height, in_width, out_height, out_width,
                            channels, min_ix, max_ix, xs, min_iy, max_iy, ys,
                            extrapolated_value, flip_x, flip_y, output);
@@ -5599,6 +5498,6 @@ void crop_resize_single_image_common(
 
 #endif
 
-}  // namespace
-}  // namespace tensorflow
-#endif  // define TENSORFLOW_CORE_KERNELS_CROP_RESIZE_BILINEAR_CORE_H_
+} // namespace
+} // namespace tensorflow
+#endif // define TENSORFLOW_CORE_KERNELS_CROP_RESIZE_BILINEAR_CORE_H_
