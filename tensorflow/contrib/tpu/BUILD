@@ -69,8 +69,6 @@ py_library(
     deps = [
         ":async_checkpoint",
         ":tpu_lib",
-        "//tensorflow/compiler/xla/experimental/xla_sharding",
-        "//tensorflow/compiler/xla/python_api:xla_shape",
         "//tensorflow/contrib/training:training_py",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:array_ops",
@@ -258,6 +256,8 @@ py_library(
         ":datasets",
         ":profiler",
         ":tpu_py",
+        "//tensorflow/compiler/xla/experimental/xla_sharding",
+        "//tensorflow/compiler/xla/python_api:xla_shape",
         "//tensorflow/contrib/cluster_resolver:tpu_cluster_resolver_py",
         "//tensorflow/contrib/tpu/proto:compilation_result_proto_py",
         "//tensorflow/contrib/tpu/proto:optimization_parameters_proto_py",
