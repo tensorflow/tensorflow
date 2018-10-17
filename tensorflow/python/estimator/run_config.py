@@ -566,7 +566,7 @@ class RunConfig(object):
     elif self._task_type == TaskType.WORKER:
       device_filters = ['/job:ps', '/job:worker/task:%d' % self._task_id]
     elif self._task_type == TaskType.PS:
-      device_filters = ['/job:ps', '/job:worker', '/job:master']
+      device_filters = ['/job:ps', '/job:worker', '/job:chief', '/job:master']
     else:
       # If the task_type is `EVALUATOR` or something other than the ones in
       # TaskType then don't set any device filters.
