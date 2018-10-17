@@ -291,6 +291,14 @@ class ArrayTest(PForTest):
 
       self._test_loop_fn(loop_fn, 3, loop_fn_dtypes=[dtypes.float32] * 3)
 
+  def test_identity_n(self):
+    x = random_ops.random_uniform([3, 4])
+
+    def loop_fn(i):
+      return array_ops.identity_n([x, array_ops.gather(x, i)])
+
+    self._test_loop_fn(loop_fn, 3, loop_fn_dtypes=[dtypes.float32] * 2)
+
   def test_strided_slice(self):
     x = random_ops.random_uniform([3, 3, 4, 4, 2, 2, 2])
 
