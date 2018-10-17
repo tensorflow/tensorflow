@@ -29,7 +29,9 @@ from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variable_scope
+from tensorflow.python.ops import variables
 from tensorflow.python.training.checkpointable import base as checkpointable
+from tensorflow.python.util import nest
 
 
 class UnliftedInitializerVariable(resource_variable_ops.ResourceVariable):
@@ -178,12 +180,15 @@ def _defun_with_scope(scope, fn, input_signature):
   return function_lib.defun(wrapped_fn, input_signature=input_signature)
 
 
+# TODO(apassos) there should be an easier way to call a concrete defun.
 def _call_concrete(fn, args, unused_kwargs):
   """Calls the given concrete function with only the tensor arguments."""
 
   def inner():
     # TODO(apassos) figure out what to do with kwargs and concrete functions.
-    return fn(*[x for x in args if isinstance(x, ops.Tensor)])
+    return fn(*[x if isinstance(x, ops.Tensor) else x.handle
+                for x in nest.flatten(args)
+                if isinstance(x, (ops.Tensor, variables.Variable))])
 
   return inner
 
@@ -254,7 +259,7 @@ class PolymorphicFunction(object):
     elif self._stateful_fn is not None:
       # In this case we have not created variables on the first call. So we can
       # run the first trace but we should fail if variables are created.
-      results = self._first_trace(*args, **kwds)
+      results = self._stateful_fn(*args, **kwds)
       if self._created_variables:
         raise ValueError("Creating variables on a non-first call to a function"
                          " decorated with tf.function.")
