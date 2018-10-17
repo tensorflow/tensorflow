@@ -88,9 +88,6 @@ class PoplarPlatform : public se::Platform {
   // Cache of created StreamExecutors.
   se::ExecutorCache executor_cache_;
 
-  // The number of poplar devices to be created
-  int num_devices_;
-
   SE_DISALLOW_COPY_AND_ASSIGN(PoplarPlatform);
 };
 

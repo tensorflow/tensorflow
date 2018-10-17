@@ -200,9 +200,6 @@ message IPUOptions {
   };
   repeated CompilationOption compilation_options = 4;
 
-  // Set to a directory in which to establish a cache of compiled executables
-  string engine_cache_directory = 5;
-
   message DeviceConfig {
 
     // Set one of these fields to determine the way to select IPUs
@@ -217,7 +214,10 @@ message IPUOptions {
   };
 
   // Options controlling the configuration of each IPU device
-  repeated DeviceConfig device_config = 6;
+  repeated DeviceConfig device_config = 5;
+
+  // Option controlling whether to rearrange streamed copies on the host
+  bool always_rearrange_copies_on_the_host = 6;
 };
 
 // Options passed to the graph optimizer

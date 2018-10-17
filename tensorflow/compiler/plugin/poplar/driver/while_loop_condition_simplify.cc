@@ -222,7 +222,7 @@ StatusOr<bool> TrySimplifyLoopCondition(HloInstruction* while_inst) {
 
   return true;
 }
-}
+}  // namespace
 
 WhileLoopConditionSimplify::WhileLoopConditionSimplify() {}
 

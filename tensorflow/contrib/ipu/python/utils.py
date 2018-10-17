@@ -25,7 +25,8 @@ import re
 import time
 
 def create_ipu_config(profiling=False, use_poplar_text_report=False,
-                      report_every_nth_execution=0):
+                      report_every_nth_execution=0,
+                      always_rearrange_copies_on_the_host=False):
   """Create an empty IPU session configuration structure.
 
   Args:
@@ -34,6 +35,17 @@ def create_ipu_config(profiling=False, use_poplar_text_report=False,
     :param report_every_nth_execution: Only produce an execution report on
                                        every Nth execution.  0=One report
                                        only.
+    :param always_rearrange_copies_on_the_host: *** Experimental Flag ***
+                                                The data which is streamed
+                                                to/from the device might be
+                                                stored in different layouts on
+                                                the device and on the host. If
+                                                that is the case the
+                                                rearrangment is performed on the
+                                                device by default. By enabling
+                                                this option the rearrangment
+                                                will be perfomed on the host at
+                                                the expense of latency.
 
   Returns:
 
@@ -49,6 +61,8 @@ def create_ipu_config(profiling=False, use_poplar_text_report=False,
   opts.profiling.enable_poplar_reports_text = use_poplar_text_report
   opts.profiling.report_every_nth_execution = report_every_nth_execution
 
+  opts.always_rearrange_copies_on_the_host = always_rearrange_copies_on_the_host
+
   return opts
 
 def set_compilation_options(opts, compilation_options=None):
@@ -59,7 +73,7 @@ def set_compilation_options(opts, compilation_options=None):
     opts = create_ipu_config()
     opts = set_compilation_options(opts,
         compilation_options={"debug.executionProfile", "compute_sets"})
-    
+
     with tf.Session(config=tf.ConfigProto(ipu_options=opts)) as s:
       ...
     ```

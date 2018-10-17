@@ -334,7 +334,8 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::RunBackend(
 
   std::shared_ptr<poplar::Engine> engine;
   std::vector<poplar::program::Program> progs;
-  EntryVisitor visitor(graph, resources);
+  EntryVisitor visitor(graph, resources,
+                       poplarExecutor->AlwaysRearrangeCopiesOnTheHost());
 
   std::vector<std::vector<Literal>> constant_output;
   const auto is_constant_graph = GetConstantOutput(

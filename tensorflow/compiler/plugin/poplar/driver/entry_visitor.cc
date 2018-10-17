@@ -52,8 +52,9 @@ Status EntryVisitor::HandleParameter(HloInstruction* inst) {
       auto fifo = graph_.addHostToDeviceFIFO(
           GetInputCopyHandle(inst->parameter_number(), i), out.elementType(),
           out.numElements());
-
-      seq.add(poplar::program::Copy(fifo, out, !in_info.IsStreaming()));
+      seq.add(poplar::program::Copy(
+          fifo, out,
+          !in_info.IsStreaming() || always_rearrange_copies_on_the_host));
     }
 
     if (!LayoutUtil::IsMonotonicWithDim0Major(module_shapes[i].layout())) {
@@ -144,8 +145,8 @@ Status EntryVisitor::FinishVisit(HloInstruction* root) {
             out.elementType(), out.numElements());
 
         seq.add(poplar::program::Copy(
-            out, fifo, /* only rearrange on host when not streaming */
-            !out_info.IsStreaming()));
+            out, fifo,
+            !out_info.IsStreaming() || always_rearrange_copies_on_the_host));
       }
     }
     from_tensor_index = to_tensor_index;

@@ -35,8 +35,17 @@ poplar::Tensor ConvertFromDeviceLayout(const Shape& shape,
 bool PoplarShapeMatchesXLAShape(const poplar::Tensor& tensor,
                                 const xla::Shape& shape);
 
+StatusOr<poplar::Tensor> AddDynamicSliceTensor(
+    poplar::Graph& graph, const std::string& debug_name,
+    const xla::Shape& shape_xla, const xla::Shape& slice_shape_xla);
+
+StatusOr<poplar::Tensor> AddDynamicSliceTensor(
+    poplar::Graph& graph, const std::string& debug_name,
+    const xla::Shape& shape_xla, const xla::Shape& slice_shape_xla,
+    poplar::Tensor& physical_layout);
+
 StatusOr<poplar::Tensor> AddPlainTensor(poplar::Graph& graph,
-                                        const HloInstruction* inst,
+                                        const std::string& debug_name,
                                         const xla::Shape& shape);
 
 StatusOr<poplar::Tensor> AddTensor(poplar::Graph& graph,

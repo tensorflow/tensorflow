@@ -258,6 +258,10 @@ class PoplarExecutor : public se::internal::StreamExecutorInterface {
     return current_config_.profiling().enable_poplar_reports_text();
   }
 
+  bool AlwaysRearrangeCopiesOnTheHost() const {
+    return current_config_.always_rearrange_copies_on_the_host();
+  }
+
   void AddCompileBeginEventRecord(const std::string& module_name,
                                   const std::string& xla_graph);
 

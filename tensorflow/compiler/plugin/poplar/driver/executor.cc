@@ -100,6 +100,8 @@ namespace se = ::stream_executor;
 namespace xla {
 namespace poplarplugin {
 
+static const char* s_cache_env_variable = "TF_POPLAR_ENGINE_CACHE";
+
 std::string GetInputCopyHandle(int64 parameter, int64 index) {
   return tensorflow::strings::Printf("%lld.%lld", parameter, index);
 }
@@ -427,7 +429,7 @@ Status PoplarExecutor::ConfigurePoplarDevice(
 }
 
 bool PoplarExecutor::HaveExecutableCache() const {
-  return !current_config_.engine_cache_directory().empty();
+  return getenv(s_cache_env_variable) != nullptr;
 }
 
 std::string PoplarExecutor::CachedExecutableFilename(
@@ -438,7 +440,7 @@ std::string PoplarExecutor::CachedExecutableFilename(
 
   std::string filename = tensorflow::strings::Printf("%0llx.xla_engine", hash);
 
-  const auto& dir = current_config_.engine_cache_directory();
+  const auto& dir = std::string(getenv(s_cache_env_variable));
 
   return tensorflow::io::JoinPath(dir, filename);
 }
