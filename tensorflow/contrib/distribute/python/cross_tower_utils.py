@@ -21,7 +21,11 @@ from __future__ import print_function
 import collections as pycoll
 import threading
 
-from tensorflow.contrib import nccl
+from tensorflow.python import pywrap_tensorflow
+if pywrap_tensorflow.IsBuiltWithROCm():
+  from tensorflow.contrib import rccl as nccl
+else:
+  from tensorflow.contrib import nccl
 from tensorflow.contrib.all_reduce.python import all_reduce
 from tensorflow.contrib.distribute.python import values as value_lib
 from tensorflow.python.framework import device as pydev
