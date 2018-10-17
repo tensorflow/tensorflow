@@ -2,6 +2,7 @@
 
 /tenosrflow/core/debug @caisq
 /tensorflow/core/platform/windows/ @mrry
+/tensorflow/core/platform/s3 @yongtang
 /tensorflow/go @asimshankar
 /tensorflow/java/ @asimshankar
 /tensorflow/python/debug @caisq
@@ -30,14 +31,16 @@
 /tensorflow/contrib/gan/ @joel-shor
 /tensorflow/contrib/graph_editor/ @purpledog
 # NEED OWNER: /tensorflow/contrib/grid_rnn/
+/tensorflow/contrib/hadoop @yongtang
 /tensorflow/contrib/hvx/ @satok16
 /tensorflow/contrib/integrate/ @shoyer
+/tensorflow/contrib/kafka @yongtang
 /tensorflow/contrib/kernel_methods/ @petrosmol
+/tensorflow/contrib/kinesis @yongtang
 /tensorflow/contrib/ios_examples/ @petewarden
 /tensorflow/contrib/labeled_tensor/ @shoyer
 /tensorflow/contrib/layers/ @fchollet @martinwicke
 /tensorflow/contrib/learn/ @martinwicke @ispirmustafa @alextp
-/tensorflow/contrib/linalg/ @langmore
 /tensorflow/contrib/linear_optimizer/ @petrosmol @andreasst @katsiapis
 /tensorflow/contrib/lookup/ @ysuematsu @andreasst
 /tensorflow/contrib/losses/ @alextp @ispirmustafa

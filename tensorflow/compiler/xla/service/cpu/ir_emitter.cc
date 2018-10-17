@@ -24,6 +24,8 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
 #include "tensorflow/core/lib/math/math_util.h"
 #include "tensorflow/core/platform/logging.h"
 // IWYU pragma: no_include "llvm/IR/Intrinsics.gen.inc"
@@ -67,8 +69,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/window_util.h"
 #include "tensorflow/core/lib/core/bits.h"
 #include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/lib/gtl/flatmap.h"
-#include "tensorflow/core/lib/gtl/flatset.h"
 
 namespace xla {
 
@@ -404,13 +404,12 @@ Status IrEmitter::EmitXfeedTransfer(XfeedKind kind, const Shape& shape,
       llvm::Value * shape_ptr,
       llvm_ir::EncodeSelfDescribingShapeConstant(shape, &shape_length, &b_));
 
-  // The signature of the acquire infeed buffer function is:
-  //
-  //   (void*)(int32 length);
   llvm::Type* int32_type = b_.getInt32Ty();
   llvm::Type* i8_ptr_type = llvm::Type::getInt8PtrTy(module_->getContext());
   llvm::FunctionType* acquire_type = llvm::FunctionType::get(
-      i8_ptr_type, {int32_type, i8_ptr_type, int32_type},
+      i8_ptr_type,
+      {/*run_options*/ i8_ptr_type, /*buffer_length*/ int32_type,
+       /*shape_ptr*/ i8_ptr_type, /*shape_length*/ int32_type},
       /*isVarArg=*/false);
 
   llvm::Function* acquire_func;
@@ -423,11 +422,11 @@ Status IrEmitter::EmitXfeedTransfer(XfeedKind kind, const Shape& shape,
   }
   acquire_func->setCallingConv(llvm::CallingConv::C);
 
-  // The signature of the release infeed buffer function is:
-  //
-  //   (void)(int32 length, void* buffer);
   llvm::FunctionType* release_type = llvm::FunctionType::get(
-      b_.getVoidTy(), {int32_type, i8_ptr_type, i8_ptr_type, int32_type},
+      b_.getVoidTy(),
+      {/*run_options*/ i8_ptr_type, /*buffer_length*/ int32_type,
+       /*buffer_ptr*/ i8_ptr_type, /*shape_ptr*/ i8_ptr_type,
+       /*shape_length*/ int32_type},
       /*isVarArg=*/false);
 
   llvm::Function* release_func;
@@ -444,9 +443,9 @@ Status IrEmitter::EmitXfeedTransfer(XfeedKind kind, const Shape& shape,
   // of size exactly 'length_32', and the runtime is responsible for
   // check-failing the process if there is a mismatch, versus passing us back a
   // buffer that we might overrun.
-  llvm::Value* acquired_pointer =
-      Call(acquire_func,
-           {b_.getInt32(length_32), shape_ptr, b_.getInt32(shape_length)});
+  llvm::Value* acquired_pointer = Call(
+      acquire_func, {GetExecutableRunOptionsArgument(), b_.getInt32(length_32),
+                     shape_ptr, b_.getInt32(shape_length)});
 
   if (kind == XfeedKind::kInfeed) {
     // Copy to the program buffer address from the acquired buffer.
@@ -458,8 +457,8 @@ Status IrEmitter::EmitXfeedTransfer(XfeedKind kind, const Shape& shape,
            /*SrcAlign=*/1, length_32);
   }
 
-  Call(release_func, {b_.getInt32(length_32), acquired_pointer, shape_ptr,
-                      b_.getInt32(shape_length)});
+  Call(release_func, {GetExecutableRunOptionsArgument(), b_.getInt32(length_32),
+                      acquired_pointer, shape_ptr, b_.getInt32(shape_length)});
 
   return Status::OK();
 }
@@ -495,8 +494,150 @@ Status IrEmitter::HandleOutfeed(HloInstruction* outfeed) {
 }
 
 Status IrEmitter::HandleSort(HloInstruction* sort) {
-  // TODO(b/26783907): Implement sort on CPU.
-  return Unimplemented("Sort is not implemented on CPU.");
+  TF_RETURN_IF_ERROR(EmitTargetAddressForOp(sort));
+  auto keys = sort->operand(0);
+  auto values = sort->operand_count() > 1 ? sort->operand(1) : nullptr;
+  ShapeIndex keys_shape_index({});
+  ShapeIndex values_shape_index({});
+  if (values != nullptr) {
+    keys_shape_index = ShapeIndex({0});
+    values_shape_index = ShapeIndex({1});
+  }
+  auto keys_destination = GetAllocationSlice(*sort, keys_shape_index);
+  auto keys_destination_address =
+      EmitBufferPointer(keys_destination, keys->shape());
+  auto values_destination = GetAllocationSlice(*sort, values_shape_index);
+  llvm::Value* values_destination_address = nullptr;
+
+  // The sort is implemented in-place, therefore we first copy the operand
+  // buffer to the output buffer if they are not the same.
+  if (keys_destination != GetAllocationSlice(*keys)) {
+    int64 primitive_type_size =
+        ShapeUtil::ByteSizeOfPrimitiveType(keys->shape().element_type());
+    auto source_buffer = GetEmittedValueFor(keys);
+    int64 keys_size = ByteSizeOf(keys->shape());
+    MemCpy(keys_destination_address, /*DstAlign=*/primitive_type_size,
+           source_buffer,
+           /*SrcAlign=*/primitive_type_size, keys_size);
+  }
+  if (values != nullptr) {
+    values_destination_address =
+        EmitBufferPointer(values_destination, values->shape());
+    if (values_destination != GetAllocationSlice(*values)) {
+      int64 primitive_type_size =
+          ShapeUtil::ByteSizeOfPrimitiveType(values->shape().element_type());
+      auto source_buffer = GetEmittedValueFor(values);
+      int64 values_size = ByteSizeOf(values->shape());
+      MemCpy(values_destination_address, /*DstAlign=*/primitive_type_size,
+             source_buffer,
+             /*SrcAlign=*/primitive_type_size, values_size);
+    }
+  }
+
+  // Normalize the shape and the dimension to sort.
+  Shape normalized_keys_shape =
+      ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(
+          keys->shape());
+  int64 physical_dimension_to_sort = LayoutUtil::MakeLogicalToPhysical(
+      keys->shape().layout())[sort->dimensions(0)];
+
+  int64 sort_dimension_elements =
+      normalized_keys_shape.dimensions(physical_dimension_to_sort);
+  int64 higher_dimensions = 1;
+  for (int64 i = 0; i < physical_dimension_to_sort; ++i) {
+    higher_dimensions *= normalized_keys_shape.dimensions(i);
+  }
+  int64 lower_dimensions = 1;
+  for (int64 i = ShapeUtil::Rank(normalized_keys_shape) - 1;
+       i > physical_dimension_to_sort; --i) {
+    lower_dimensions *= normalized_keys_shape.dimensions(i);
+  }
+
+  PrimitiveType keys_type = keys->shape().element_type();
+  const char* fn_name = nullptr;
+  llvm::Type* keys_native_type = nullptr;
+  switch (keys_type) {
+    case PRED:
+      fn_name = runtime::kKeyValueSortPREDSymbolName;
+      keys_native_type = b_.getInt8PtrTy();
+      break;
+    case S8:
+      fn_name = runtime::kKeyValueSortS8SymbolName;
+      keys_native_type = b_.getInt8PtrTy();
+      break;
+    case U8:
+      fn_name = runtime::kKeyValueSortU8SymbolName;
+      keys_native_type = b_.getInt8PtrTy();
+      break;
+    case S16:
+      fn_name = runtime::kKeyValueSortS16SymbolName;
+      keys_native_type = b_.getInt16Ty()->getPointerTo();
+      break;
+    case U16:
+      fn_name = runtime::kKeyValueSortU16SymbolName;
+      keys_native_type = b_.getInt16Ty()->getPointerTo();
+      break;
+    case F16:
+      fn_name = runtime::kKeyValueSortF16SymbolName;
+      keys_native_type = b_.getHalfTy()->getPointerTo();
+      break;
+    case S32:
+      fn_name = runtime::kKeyValueSortS32SymbolName;
+      keys_native_type = b_.getInt32Ty()->getPointerTo();
+      break;
+    case U32:
+      fn_name = runtime::kKeyValueSortU32SymbolName;
+      keys_native_type = b_.getInt32Ty()->getPointerTo();
+      break;
+    case F32:
+      fn_name = runtime::kKeyValueSortF32SymbolName;
+      keys_native_type = b_.getFloatTy()->getPointerTo();
+      break;
+    case S64:
+      fn_name = runtime::kKeyValueSortS64SymbolName;
+      keys_native_type = b_.getInt64Ty()->getPointerTo();
+      break;
+    case U64:
+      fn_name = runtime::kKeyValueSortU64SymbolName;
+      keys_native_type = b_.getInt64Ty()->getPointerTo();
+      break;
+    case F64:
+      fn_name = runtime::kKeyValueSortF64SymbolName;
+      keys_native_type = b_.getDoubleTy()->getPointerTo();
+      break;
+    default:
+      return Unimplemented(
+          "Element type %s not supported in the Sort op on CPU.",
+          PrimitiveType_Name(keys_type));
+  }
+
+  llvm::FunctionType* key_value_sort_type = llvm::FunctionType::get(
+      b_.getVoidTy(),
+      {keys_native_type, b_.getInt64Ty(), b_.getInt64Ty(), b_.getInt64Ty(),
+       b_.getInt8PtrTy(), b_.getInt32Ty()},
+      /*isVarArg=*/false);
+  auto* key_value_sort_func = llvm::cast<llvm::Function>(
+      module_->getOrInsertFunction(fn_name, key_value_sort_type));
+  key_value_sort_func->setCallingConv(llvm::CallingConv::C);
+  key_value_sort_func->setDoesNotThrow();
+  key_value_sort_func->setOnlyAccessesArgMemory();
+  Call(key_value_sort_func,
+       {PointerCast(keys_destination_address, keys_native_type),
+        b_.getInt64(higher_dimensions), b_.getInt64(sort_dimension_elements),
+        b_.getInt64(lower_dimensions),
+        values != nullptr
+            ? PointerCast(values_destination_address, b_.getInt8PtrTy())
+            : llvm::Constant::getNullValue(b_.getInt8PtrTy()),
+        b_.getInt32(values != nullptr ? ShapeUtil::ByteSizeOfPrimitiveType(
+                                            values->shape().element_type())
+                                      : 0)});
+
+  if (values != nullptr) {
+    llvm_ir::EmitTuple(GetIrArrayFor(sort),
+                       {keys_destination_address, values_destination_address},
+                       &b_, module_);
+  }
+  return Status::OK();
 }
 
 Status IrEmitter::HandleTuple(HloInstruction* tuple) {
@@ -547,8 +688,25 @@ StatusOr<llvm::Value*> IrEmitter::EmitTargetElementLoopBodyForReduceWindow(
   for (size_t i = 0; i < index.size(); ++i) {
     llvm::Value* strided_index =
         NSWMul(index[i], b_.getInt64(window.dimensions(i).stride()));
-    input_index[i] = NSWSub(NSWAdd(strided_index, window_index[i]),
-                            b_.getInt64(window.dimensions(i).padding_low()));
+    input_index[i] = NSWSub(
+        NSWAdd(strided_index,
+               NSWMul(window_index[i],
+                      b_.getInt64(window.dimensions(i).window_dilation()))),
+        b_.getInt64(window.dimensions(i).padding_low()));
+
+    // We need to verify that we are not in the dilated base area.
+    llvm::Value* dilation_condition = ICmpEQ(
+        SRem(input_index[i], b_.getInt64(window.dimensions(i).base_dilation())),
+        b_.getInt64(0));
+    if (in_bounds_condition == nullptr) {
+      in_bounds_condition = dilation_condition;
+    } else {
+      in_bounds_condition = And(in_bounds_condition, dilation_condition);
+    }
+
+    // Apply base dilation to the index.
+    input_index[i] =
+        SDiv(input_index[i], b_.getInt64(window.dimensions(i).base_dilation()));
 
     // We need to check if 0 <= input_index[i] < bound, as otherwise we are in
     // the padding so that we can skip the computation. That is equivalent to
@@ -586,12 +744,6 @@ Status IrEmitter::HandleReduceWindow(HloInstruction* reduce_window) {
       /*instruction=*/*reduce_window,
       /*operands=*/{reduce_window->operand(0)},
       /*supported_types=*/{F32, BF16, S32, F16}));
-
-  // TODO(b/31410564): Implement dilation for reduce-window.
-  if (window_util::HasDilation(reduce_window->window())) {
-    return Unimplemented(
-        "Dilation for ReduceWindow is not implemented on CPU.");
-  }
 
   // Pseudo code for reduce window:
   //
@@ -1257,10 +1409,10 @@ static bool ReductionPreservesLayout(const HloInstruction& reduce) {
   //
   // So if we reduce f32[A,B,C,D] on dimensions 1 and 2, this map contains
   // [0->0, 3->1].
-  gtl::FlatMap<int64, int64> unreduced_dim_map;
+  absl::flat_hash_map<int64, int64> unreduced_dim_map;
 
-  gtl::FlatSet<int64> reduced_dims(reduce.dimensions().begin(),
-                                   reduce.dimensions().end());
+  absl::flat_hash_set<int64> reduced_dims(reduce.dimensions().begin(),
+                                          reduce.dimensions().end());
 
   const Shape& operand_shape = reduce.operand(0)->shape();
   const Shape& result_shape = reduce.shape();
@@ -1836,7 +1988,7 @@ Status IrEmitter::HandleSlice(HloInstruction* slice) {
   //
   // * Implement the memcpy within the innermost loop.
 
-  gtl::FlatSet<int64> inner_dims;
+  absl::flat_hash_set<int64> inner_dims;
   for (int64 dim : LayoutUtil::MinorToMajor(layout)) {
     if (operand->shape().dimensions(dim) != slice->shape().dimensions(dim)) {
       break;

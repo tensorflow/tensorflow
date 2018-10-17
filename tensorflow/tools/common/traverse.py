@@ -18,6 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import enum
 import sys
 
 from tensorflow.python.util import tf_inspect
@@ -34,6 +35,13 @@ def _traverse_internal(root, visit, stack, path):
 
   try:
     children = tf_inspect.getmembers(root)
+
+    # Add labels for duplicate values in Enum.
+    if tf_inspect.isclass(root) and issubclass(root, enum.Enum):
+      for enum_member in root.__members__.items():
+        if enum_member not in children:
+          children.append(enum_member)
+      children = sorted(children)
   except ImportError:
     # On some Python installations, some modules do not support enumerating
     # members (six in particular), leading to import errors.

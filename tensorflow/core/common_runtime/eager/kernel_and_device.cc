@@ -32,21 +32,6 @@ limitations under the License.
 namespace tensorflow {
 
 // static
-Status KernelAndDevice::InitOp(Device* device, const NodeDef& ndef,
-                               KernelAndDevice* out) {
-  OpKernel* k = nullptr;
-  Status s = CreateOpKernel(device->device_type().c_str(), device,
-                            device->GetAllocator(AllocatorAttributes()),
-                            nullptr, ndef, TF_GRAPH_DEF_VERSION, &k);
-  out->device_ = device;
-  out->kernel_.reset(k);
-  out->flib_ = nullptr;
-  out->runner_ = nullptr;
-  out->default_runner_ = [](std::function<void()> f) { f(); };
-  return s;
-}
-
-// static
 Status KernelAndDevice::Init(const NodeDef& ndef, FunctionLibraryRuntime* flib,
                              std::function<void(std::function<void()>)>* runner,
                              KernelAndDevice* out) {

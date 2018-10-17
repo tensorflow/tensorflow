@@ -565,21 +565,22 @@ tensorflow::Status TRTEngineOp::AllocateCalibrationResources(
       new TRTInt8Calibrator(device_buffers_, batch_size, name()));
   const string label(name());
   auto segment_graph = &segment_graph_;
-  const int cuda_gpu_id = ctx->device()->tensorflow_gpu_device_info()->gpu_id;
-  if (cuda_gpu_id < 0) {
+  const int platform_gpu_id =
+      ctx->device()->tensorflow_gpu_device_info()->gpu_id;
+  if (platform_gpu_id < 0) {
     LOG(ERROR) << "Can't get gpu_device_info from context->device()";
     return tensorflow::errors::InvalidArgument(
         "Context->device doesn't contain device info!");
   }
   const int64 workspace_size_bytes = workspace_size_;
   cres->thr_.reset(new std::thread([cres, label, segment_graph, shapes,
-                                    cuda_gpu_id, workspace_size_bytes]() {
-    VLOG(0) << "Starting calibration thread on device " << cuda_gpu_id
+                                    platform_gpu_id, workspace_size_bytes]() {
+    VLOG(0) << "Starting calibration thread on device " << platform_gpu_id
             << ", Calibration Resource @ " << cres;
-    auto err = cudaSetDevice(cuda_gpu_id);
+    auto err = cudaSetDevice(platform_gpu_id);
     if (err != cudaSuccess) {
       // TODO(aaroey): should return error here.
-      LOG(ERROR) << "Couldn't set cuda device to " << cuda_gpu_id
+      LOG(ERROR) << "Couldn't set cuda device to " << platform_gpu_id
                  << " in calibration thread";
     }
     // ConvertGraphDefToEngine() will try to build the engine. This thread

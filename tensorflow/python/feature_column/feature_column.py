@@ -121,6 +121,10 @@ Example of building model using FeatureColumns, this can be used in a
 
 NOTE: Functions prefixed with "_" indicate experimental or private parts of
 the API subject to change, and should not be relied upon!
+
+NOTE: The new feature columns are being developed in feature_column_v2.py and
+are a somewhat duplicate of the code here. Please make sure to update logic
+in both places.
 """
 
 from __future__ import absolute_import
@@ -169,7 +173,9 @@ def _internal_input_layer(features,
                           weight_collections=None,
                           trainable=True,
                           cols_to_vars=None,
-                          scope=None):
+                          scope=None,
+                          cols_to_output_tensors=None,
+                          from_template=False):
   """See input_layer. `scope` is a name or variable scope to use."""
 
   feature_columns = _normalize_feature_columns(feature_columns)
@@ -185,10 +191,7 @@ def _internal_input_layer(features,
   if ops.GraphKeys.MODEL_VARIABLES not in weight_collections:
     weight_collections.append(ops.GraphKeys.MODEL_VARIABLES)
 
-  # a non-None `scope` can allow for variable reuse, when, e.g., this function
-  # is wrapped by a `make_template`.
-  with variable_scope.variable_scope(
-      scope, default_name='input_layer', values=features.values()):
+  def _get_logits():  # pylint: disable=missing-docstring
     builder = _LazyBuilder(features)
     output_tensors = []
     ordered_columns = []
@@ -202,16 +205,29 @@ def _internal_input_layer(features,
             trainable=trainable)
         num_elements = column._variable_shape.num_elements()  # pylint: disable=protected-access
         batch_size = array_ops.shape(tensor)[0]
-        output_tensors.append(
-            array_ops.reshape(tensor, shape=(batch_size, num_elements)))
+        output_tensor = array_ops.reshape(
+            tensor, shape=(batch_size, num_elements))
+        output_tensors.append(output_tensor)
         if cols_to_vars is not None:
           # Retrieve any variables created (some _DenseColumn's don't create
           # variables, in which case an empty list is returned).
           cols_to_vars[column] = ops.get_collection(
               ops.GraphKeys.GLOBAL_VARIABLES,
               scope=variable_scope.get_variable_scope().name)
+        if cols_to_output_tensors is not None:
+          cols_to_output_tensors[column] = output_tensor
     _verify_static_batch_size_equality(output_tensors, ordered_columns)
     return array_ops.concat(output_tensors, 1)
+
+  # If we're constructing from the `make_template`, that by default adds a
+  # variable scope with the name of the layer. In that case, we dont want to
+  # add another `variable_scope` as that would break checkpoints.
+  if from_template:
+    return _get_logits()
+  else:
+    with variable_scope.variable_scope(
+        scope, default_name='input_layer', values=features.values()):
+      return _get_logits()
 
 
 @tf_export('feature_column.input_layer')
@@ -219,7 +235,8 @@ def input_layer(features,
                 feature_columns,
                 weight_collections=None,
                 trainable=True,
-                cols_to_vars=None):
+                cols_to_vars=None,
+                cols_to_output_tensors=None):
   """Returns a dense `Tensor` as input layer based on given `feature_columns`.
 
   Generally a single example in training data is described with FeatureColumns.
@@ -264,6 +281,9 @@ def input_layer(features,
         dimension=10): [<tf.Variable 'some_variable:0' shape=(5, 10),
                         <tf.Variable 'some_variable:1' shape=(5, 10)]}
       If a column creates no variables, its value will be an empty list.
+    cols_to_output_tensors: If not `None`, must be a dictionary that will be
+      filled with a mapping from '_FeatureColumn' to the associated
+      output `Tensor`s.
 
   Returns:
     A `Tensor` which represents input layer of a model. Its shape
@@ -273,8 +293,13 @@ def input_layer(features,
   Raises:
     ValueError: if an item in `feature_columns` is not a `_DenseColumn`.
   """
-  return _internal_input_layer(features, feature_columns, weight_collections,
-                               trainable, cols_to_vars)
+  return _internal_input_layer(
+      features,
+      feature_columns,
+      weight_collections=weight_collections,
+      trainable=trainable,
+      cols_to_vars=cols_to_vars,
+      cols_to_output_tensors=cols_to_output_tensors)
 
 
 # TODO(akshayka): InputLayer should be a subclass of Layer, and it
@@ -288,17 +313,18 @@ class InputLayer(object):
                feature_columns,
                weight_collections=None,
                trainable=True,
-               cols_to_vars=None):
+               cols_to_vars=None,
+               name='feature_column_input_layer',
+               create_scope_now=True):
     """See `input_layer`."""
 
     self._feature_columns = feature_columns
     self._weight_collections = weight_collections
     self._trainable = trainable
     self._cols_to_vars = cols_to_vars
+    self._name = name
     self._input_layer_template = template.make_template(
-        'feature_column_input_layer',
-        _internal_input_layer,
-        create_scope_now_=True)
+        self._name, _internal_input_layer, create_scope_now_=create_scope_now)
     self._scope = self._input_layer_template.variable_scope
 
   def __call__(self, features):
@@ -308,7 +334,11 @@ class InputLayer(object):
         weight_collections=self._weight_collections,
         trainable=self._trainable,
         cols_to_vars=None,
-        scope=self._scope)
+        from_template=True)
+
+  @property
+  def name(self):
+    return self._name
 
   @property
   def non_trainable_variables(self):
@@ -2292,7 +2322,7 @@ class _LazyBuilder(object):
       # Input_tensor must have rank 1.
       if isinstance(input_tensor, sparse_tensor_lib.SparseTensor):
         return sparse_ops.sparse_reshape(
-            input_tensor, [array_ops.shape(input_tensor)[0], -1])
+            input_tensor, [array_ops.shape(input_tensor)[0], 1])
       else:
         return array_ops.expand_dims(input_tensor, -1)
 
@@ -2634,6 +2664,7 @@ class _EmbeddingColumn(
         inputs=inputs,
         weight_collections=weight_collections,
         trainable=trainable)
+
     sparse_tensors = self.categorical_column._get_sparse_tensors(inputs)  # pylint: disable=protected-access
     sequence_length = _sequence_length_from_sparse_tensor(
         sparse_tensors.id_tensor)
@@ -2803,7 +2834,7 @@ def _check_shape(shape, key):
     shape = [shape]
   shape = tuple(shape)
   for dimension in shape:
-    if not isinstance(dimension, int):
+    if not isinstance(dimension, six.integer_types):
       raise TypeError('shape dimensions must be integer. '
                       'shape: {}, key: {}'.format(shape, key))
     if dimension < 1:
@@ -3357,6 +3388,16 @@ class _IndicatorColumn(_DenseColumn, _SequenceDenseColumn,
 
 
 def _verify_static_batch_size_equality(tensors, columns):
+  """Validates that the first dim (batch size) of all tensors are equal or None.
+
+  Args:
+    tensors: list of tensors to check.
+    columns: list of feature columns matching tensors. Will be used for error
+      messaging.
+
+  Raises:
+    ValueError: if one of the tensors has a variant batch size
+  """
   # bath_size is a tf.Dimension object.
   expected_batch_size = None
   for i in range(0, len(tensors)):
@@ -3377,9 +3418,18 @@ def _sequence_length_from_sparse_tensor(sp_tensor, num_elements=1):
   with ops.name_scope(None, 'sequence_length') as name_scope:
     row_ids = sp_tensor.indices[:, 0]
     column_ids = sp_tensor.indices[:, 1]
+    # Add one to convert column indices to element length
     column_ids += array_ops.ones_like(column_ids)
-    seq_length = math_ops.to_int64(
-        math_ops.segment_max(column_ids, segment_ids=row_ids) / num_elements)
+    # Get the number of elements we will have per example/row
+    seq_length = math_ops.segment_max(column_ids, segment_ids=row_ids)
+
+    # The raw values are grouped according to num_elements;
+    # how many entities will we have after grouping?
+    # Example: orig tensor [[1, 2], [3]], col_ids = (0, 1, 1),
+    # row_ids = (0, 0, 1), seq_length = [2, 1]. If num_elements = 2,
+    # these will get grouped, and the final seq_length is [1, 1]
+    seq_length = math_ops.to_int64(math_ops.ceil(seq_length / num_elements))
+
     # If the last n rows do not have ids, seq_length will have shape
     # [batch_size - n]. Pad the remaining values with zeros.
     n_pad = array_ops.shape(sp_tensor)[:1] - array_ops.shape(seq_length)[:1]
@@ -3413,25 +3463,17 @@ class _SequenceCategoricalColumn(
     sparse_tensors = self.categorical_column._get_sparse_tensors(inputs)  # pylint: disable=protected-access
     id_tensor = sparse_tensors.id_tensor
     weight_tensor = sparse_tensors.weight_tensor
-    # Expands final dimension, so that embeddings are not combined during
-    # embedding lookup.
-    check_id_rank = check_ops.assert_equal(
-        array_ops.rank(id_tensor), 2,
-        data=[
-            'Column {} expected ID tensor of rank 2. '.format(self.name),
-            'id_tensor shape: ', array_ops.shape(id_tensor)])
-    with ops.control_dependencies([check_id_rank]):
-      id_tensor = sparse_ops.sparse_reshape(
-          id_tensor,
-          shape=array_ops.concat([id_tensor.dense_shape, [1]], axis=0))
+
+    # Expands third dimension, if necessary so that embeddings are not
+    # combined during embedding lookup. If the tensor is already 3D, leave
+    # as-is.
+    shape = array_ops.shape(id_tensor)
+    # Compute the third dimension explicitly instead of setting it to -1, as
+    # that doesn't work for dynamically shaped tensors with 0-length at runtime.
+    # This happens for empty sequences.
+    target_shape = [shape[0], shape[1], math_ops.reduce_prod(shape[2:])]
+    id_tensor = sparse_ops.sparse_reshape(id_tensor, target_shape)
     if weight_tensor is not None:
-      check_weight_rank = check_ops.assert_equal(
-          array_ops.rank(weight_tensor), 2,
-          data=[
-              'Column {} expected weight tensor of rank 2.'.format(self.name),
-              'weight_tensor shape:', array_ops.shape(weight_tensor)])
-      with ops.control_dependencies([check_weight_rank]):
-        weight_tensor = sparse_ops.sparse_reshape(
-            weight_tensor,
-            shape=array_ops.concat([weight_tensor.dense_shape, [1]], axis=0))
+      weight_tensor = sparse_ops.sparse_reshape(weight_tensor, target_shape)
+
     return _CategoricalColumn.IdWeightPair(id_tensor, weight_tensor)

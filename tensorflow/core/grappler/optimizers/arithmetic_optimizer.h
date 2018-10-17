@@ -20,6 +20,7 @@ limitations under the License.
 #include "tensorflow/core/grappler/costs/graph_properties.h"
 #include "tensorflow/core/grappler/optimizers/graph_optimizer.h"
 #include "tensorflow/core/grappler/utils.h"
+#include "tensorflow/core/lib/gtl/flatset.h"
 #include "tensorflow/core/protobuf/rewriter_config.pb.h"
 
 namespace tensorflow {
@@ -79,6 +80,7 @@ class ArithmeticOptimizer : public GraphOptimizer {
     bool convert_log1p = true;
     bool convert_expm1 = true;
     bool unary_ops_composition = true;
+    bool remove_stack_strided_slice_same_axis = true;
 
     // Choose which arithmetic optimizer stages will be enabled for a given
     // optimization level by default.
@@ -128,6 +130,7 @@ class ArithmeticOptimizer : public GraphOptimizer {
   std::unique_ptr<NodeMap> node_map_;
   std::unique_ptr<GraphProperties> graph_properties_;
   GraphDef* optimized_graph_ = nullptr;  // Not owned.
+  gtl::FlatSet<string> feed_nodes_;
 };
 
 }  // end namespace grappler

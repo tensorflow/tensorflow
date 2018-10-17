@@ -203,6 +203,10 @@ class LiteralBase {
   // Returns the count of the elements in the array at the given shape index in
   // this literal.
   int64 element_count(const ShapeIndex& index = {}) const {
+    if (index.empty()) {
+      // Common case, avoid GetSubshape().
+      return ShapeUtil::ElementsIn(shape());
+    }
     return ShapeUtil::ElementsIn(ShapeUtil::GetSubshape(shape(), index));
   }
 
@@ -217,14 +221,7 @@ class LiteralBase {
 
   // Converts this literal to the given shape. Returns an error is the
   // conversion is not possible.
-  //
-  // round_f32_to_bf16: if true, converting F32 elements to BF16 uses rounding
-  // instead of truncation; otherwise, truncation is used.
-  //
-  // TODO(b/69266521): remove the round_to_bfloat16 flag when rounding becomes
-  // the default behavior.
-  StatusOr<Literal> ConvertToShape(const Shape& dest_shape,
-                                   bool round_f32_to_bf16 = false) const;
+  StatusOr<Literal> ConvertToShape(const Shape& dest_shape) const;
 
   // Converts this literal to another primitive type using a bitcast
   // conversion. The to and from primitive types must have the same bit
@@ -859,9 +856,9 @@ class BorrowingLiteral : public LiteralBase {
 
 template <typename NativeT>
 absl::Span<const NativeT> LiteralBase::Piece::data() const {
-  CHECK(ShapeUtil::IsArray(subshape())) << ShapeUtil::HumanString(subshape());
-  CHECK_EQ(subshape().element_type(),
-           primitive_util::NativeToPrimitiveType<NativeT>())
+  DCHECK(ShapeUtil::IsArray(subshape())) << ShapeUtil::HumanString(subshape());
+  DCHECK_EQ(subshape().element_type(),
+            primitive_util::NativeToPrimitiveType<NativeT>())
       << "Attempting to access "
       << PrimitiveType_Name(primitive_util::NativeToPrimitiveType<NativeT>())
       << " type, but literal element type is "
@@ -872,9 +869,9 @@ absl::Span<const NativeT> LiteralBase::Piece::data() const {
 
 template <typename NativeT>
 absl::Span<NativeT> LiteralBase::Piece::data() {
-  CHECK(ShapeUtil::IsArray(subshape())) << ShapeUtil::HumanString(subshape());
-  CHECK_EQ(subshape().element_type(),
-           primitive_util::NativeToPrimitiveType<NativeT>())
+  DCHECK(ShapeUtil::IsArray(subshape())) << ShapeUtil::HumanString(subshape());
+  DCHECK_EQ(subshape().element_type(),
+            primitive_util::NativeToPrimitiveType<NativeT>())
       << "Attempting to access "
       << PrimitiveType_Name(primitive_util::NativeToPrimitiveType<NativeT>())
       << " type, but literal element type is "

@@ -4,6 +4,7 @@ package(default_visibility = [
 
 licenses(["notice"])  # Apache 2.0
 
+load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 load("//tensorflow/contrib/lite:build_def.bzl", "tflite_copts", "gen_selected_ops")
 
 exports_files(glob([
@@ -24,6 +25,14 @@ config_setting(
     values = {
         "cpu": "mips64",
     },
+)
+
+# Enables inclusion of TensorFlow kernels via the TF Lite Flex delegate.
+# WARNING: This build flag is experimental and subject to change.
+config_setting(
+    name = "with_tflite_flex",
+    define_values = {"with_tflite_flex": "true"},
+    visibility = ["//visibility:public"],
 )
 
 cc_library(
@@ -180,7 +189,12 @@ cc_library(
         "//tensorflow/contrib/lite/nnapi:nnapi_lib",
         "//tensorflow/contrib/lite/profiling:profiler",
         "//tensorflow/contrib/lite/schema:schema_fbs",
-    ],
+    ] + select({
+        ":with_tflite_flex": [
+            "//tensorflow/contrib/lite/delegates/flex:delegate",
+        ],
+        "//conditions:default": [],
+    }),
 )
 
 cc_library(
@@ -259,6 +273,7 @@ cc_test(
         "testdata/0_subgraphs.bin",
         "testdata/2_subgraphs.bin",
         "testdata/empty_model.bin",
+        "testdata/multi_add_flex.bin",
         "testdata/test_model.bin",
         "testdata/test_model_broken.bin",
     ],
@@ -266,6 +281,26 @@ cc_test(
         ":framework",
         "//tensorflow/contrib/lite/c:c_api_internal",
         "//tensorflow/contrib/lite/core/api",
+        "//tensorflow/contrib/lite/kernels:builtin_ops",
+        "//tensorflow/contrib/lite/testing:util",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+# Test model framework with the flex library linked into the target.
+tf_cc_test(
+    name = "model_flex_test",
+    size = "small",
+    srcs = ["model_flex_test.cc"],
+    data = [
+        "testdata/multi_add_flex.bin",
+    ],
+    tags = ["no_windows"],  # TODO(b/116667551): No weak symbols with MSVC.
+    deps = [
+        ":framework",
+        "//tensorflow/contrib/lite/core/api",
+        "//tensorflow/contrib/lite/delegates/flex:delegate",
+        "//tensorflow/contrib/lite/kernels:builtin_ops",
         "//tensorflow/contrib/lite/testing:util",
         "@com_google_googletest//:gtest",
     ],

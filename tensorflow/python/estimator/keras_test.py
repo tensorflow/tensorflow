@@ -102,6 +102,49 @@ def gen_input_fn(x, y=None, batch_size=128, num_epochs=1, shuffle=False):
   return input_fn
 
 
+def get_multi_inputs_multi_outputs_data():
+  (a_train, c_train), (a_test, c_test) = testing_utils.get_test_data(
+      train_samples=_TRAIN_SIZE,
+      test_samples=50,
+      input_shape=(16,),
+      num_classes=3,
+      random_seed=_RANDOM_SEED)
+  (b_train, d_train), (b_test, d_test) = testing_utils.get_test_data(
+      train_samples=_TRAIN_SIZE,
+      test_samples=50,
+      input_shape=(16,),
+      num_classes=2,
+      random_seed=_RANDOM_SEED)
+  (m_train, _), (m_test, _) = testing_utils.get_test_data(
+      train_samples=_TRAIN_SIZE,
+      test_samples=50,
+      input_shape=(8,),
+      num_classes=2,
+      random_seed=_RANDOM_SEED)
+
+  c_train = keras.utils.to_categorical(c_train)
+  c_test = keras.utils.to_categorical(c_test)
+  d_train = keras.utils.to_categorical(d_train)
+  d_test = keras.utils.to_categorical(d_test)
+
+  train_data = {
+      'input_a': a_train,
+      'input_b': b_train,
+      'input_m': m_train,
+      'output_c': c_train,
+      'output_d': d_train
+  }
+  test_data = {
+      'input_a': a_test,
+      'input_b': b_test,
+      'input_m': m_test,
+      'output_c': c_test,
+      'output_d': d_test
+  }
+
+  return (train_data, test_data)
+
+
 def get_resource_for_simple_model(model_type='sequential',
                                   is_evaluate=False,):
   if model_type == 'sequential':
@@ -159,20 +202,21 @@ def randomize_io_type(array, name):
 
 
 def multi_inputs_multi_outputs_model():
-  a = keras.layers.Input(shape=(16,), name='input_a')
-  b = keras.layers.Input(shape=(16,), name='input_b')
-  m = keras.layers.Input(shape=(8,), dtype='string', name='input_m')
+  input_a = keras.layers.Input(shape=(16,), name='input_a')
+  input_b = keras.layers.Input(shape=(16,), name='input_b')
+  input_m = keras.layers.Input(shape=(8,), dtype='string', name='input_m')
   dense = keras.layers.Dense(8, name='dense_1')
 
-  a_2 = dense(a)
+  interm_a = dense(input_a)
   # Read m
-  m_2 = keras.layers.Lambda(gen_parsing_ops.string_to_number)(m)
-  s_2 = keras.layers.Lambda(lambda k: k[0] * k[1])([m_2, a_2])
-  b_2 = dense(b)
-  merged = keras.layers.concatenate([s_2, b_2], name='merge')
-  c = keras.layers.Dense(3, activation='softmax', name='dense_2')(merged)
-  d = keras.layers.Dense(2, activation='softmax', name='dense_3')(merged)
-  model = keras.models.Model(inputs=[a, b, m], outputs=[c, d])
+  interm_m = keras.layers.Lambda(gen_parsing_ops.string_to_number)(input_m)
+  interm_s = keras.layers.Lambda(lambda k: k[0] * k[1])([interm_m, interm_a])
+  interm_b = dense(input_b)
+  merged = keras.layers.concatenate([interm_s, interm_b], name='merge')
+  output_c = keras.layers.Dense(3, activation='softmax', name='dense_2')(merged)
+  output_d = keras.layers.Dense(2, activation='softmax', name='dense_3')(merged)
+  model = keras.models.Model(
+      inputs=[input_a, input_b, input_m], outputs=[output_c, output_d])
   model.compile(
       loss='categorical_crossentropy',
       optimizer='rmsprop',
@@ -213,7 +257,7 @@ class TestKerasEstimator(test_util.TensorFlowTestCase):
       keras_model.compile(
           loss='categorical_crossentropy',
           optimizer='rmsprop',
-          metrics=['mse', keras.metrics.categorical_accuracy])
+          metrics=['mse', keras.metrics.CategoricalAccuracy()])
 
       with self.cached_session():
         est_keras = keras_lib.model_to_estimator(
@@ -237,7 +281,7 @@ class TestKerasEstimator(test_util.TensorFlowTestCase):
       keras_model.compile(
           loss='categorical_crossentropy',
           optimizer=rmsprop.RMSPropOptimizer(1e-3),
-          metrics=['mse', keras.metrics.categorical_accuracy])
+          metrics=['mse', keras.metrics.CategoricalAccuracy()])
 
       my_hook = MyHook()
       with self.cached_session():
@@ -262,7 +306,7 @@ class TestKerasEstimator(test_util.TensorFlowTestCase):
     keras_model.compile(
         loss='categorical_crossentropy',
         optimizer=rmsprop.RMSPropOptimizer(1e-3),
-        metrics=['mse', keras.metrics.categorical_accuracy])
+        metrics=['mse', keras.metrics.CategoricalAccuracy()])
     my_hook = MyHook()
     with self.cached_session():
       keras_model.fit(x_train, y_train, epochs=1)
@@ -284,7 +328,7 @@ class TestKerasEstimator(test_util.TensorFlowTestCase):
       keras_model.compile(
           loss='categorical_crossentropy',
           optimizer=rmsprop.RMSPropOptimizer(1e-3),
-          metrics=['mse', keras.metrics.categorical_accuracy])
+          metrics=['mse', keras.metrics.CategoricalAccuracy()])
 
       with self.cached_session():
         est_keras = keras_lib.model_to_estimator(
@@ -307,7 +351,7 @@ class TestKerasEstimator(test_util.TensorFlowTestCase):
     keras_model.compile(
         loss='categorical_crossentropy',
         optimizer=rmsprop.RMSPropOptimizer(1e-3),
-        metrics=['mse', keras.metrics.categorical_accuracy])
+        metrics=['mse', keras.metrics.CategoricalAccuracy()])
 
     with self.cached_session():
       est_keras = keras_lib.model_to_estimator(
@@ -326,7 +370,7 @@ class TestKerasEstimator(test_util.TensorFlowTestCase):
     keras_model.compile(
         loss='categorical_crossentropy',
         optimizer=rmsprop.RMSPropOptimizer(1e-3),
-        metrics=['mse', keras.metrics.categorical_accuracy])
+        metrics=['mse', keras.metrics.CategoricalAccuracy()])
 
     with self.cached_session():
       # Create state
@@ -414,51 +458,85 @@ class TestKerasEstimator(test_util.TensorFlowTestCase):
       ]
     self.assertAllEqual(est_pred, keras_pred)
 
-  def test_multi_inputs_multi_outputs(self):
-    np.random.seed(_RANDOM_SEED)
-    (a_train, c_train), (a_test, c_test) = testing_utils.get_test_data(
-        train_samples=_TRAIN_SIZE,
-        test_samples=50,
-        input_shape=(16,),
-        num_classes=3)
-    np.random.seed(_RANDOM_SEED)
-    (b_train, d_train), (b_test, d_test) = testing_utils.get_test_data(
-        train_samples=_TRAIN_SIZE,
-        test_samples=50,
-        input_shape=(16,),
-        num_classes=2)
-    np.random.seed(_RANDOM_SEED)
-    (input_m_train, _), (input_m_test, _) = testing_utils.get_test_data(
-        train_samples=_TRAIN_SIZE,
-        test_samples=50,
-        input_shape=(8,),
-        num_classes=2)
-
-    c_train = keras.utils.to_categorical(c_train)
-    c_test = keras.utils.to_categorical(c_test)
-    d_train = keras.utils.to_categorical(d_train)
-    d_test = keras.utils.to_categorical(d_test)
+  def test_multi_inputs_multi_outputs_with_input_fn_as_dict(self):
+    train_data, test_data = get_multi_inputs_multi_outputs_data()
 
     def train_input_fn():
-      input_dict = {'input_a': a_train, 'input_b': b_train,
-                    'input_m': input_m_train.astype(np.str)}
-      output_dict = {'dense_2': c_train, 'dense_3': d_train}
+      input_dict = {
+          'input_a': train_data['input_a'],
+          'input_b': train_data['input_b'],
+          'input_m': train_data['input_m'].astype(np.str)
+      }
+      output_dict = {
+          'dense_2': train_data['output_c'],
+          'dense_3': train_data['output_d']
+      }
       return input_dict, output_dict
 
     def eval_input_fn():
-      input_dict = {'input_a': a_test, 'input_b': b_test,
-                    'input_m': input_m_test.astype(np.str)}
-      output_dict = {'dense_2': c_test, 'dense_3': d_test}
+      input_dict = {
+          'input_a': test_data['input_a'],
+          'input_b': test_data['input_b'],
+          'input_m': test_data['input_m'].astype(np.str)
+      }
+      output_dict = {
+          'dense_2': test_data['output_c'],
+          'dense_3': test_data['output_d']
+      }
       return input_dict, output_dict
 
+    def pred_input_fn():
+      input_dict = {
+          'input_a': test_data['input_a'],
+          'input_b': test_data['input_b'],
+          'input_m': test_data['input_m'].astype(np.str)
+      }
+      return input_dict
+
+    self.do_test_multi_inputs_multi_outputs_with_input_fn(
+        train_input_fn, eval_input_fn, pred_input_fn)
+
+  def test_multi_inputs_multi_outputs_with_input_fn_as_list(self):
+    train_data, test_data = get_multi_inputs_multi_outputs_data()
+
+    def train_input_fn():
+      input_list = [
+          train_data['input_a'], train_data['input_b'],
+          train_data['input_m'].astype(np.str)
+      ]
+      output_list = [train_data['output_c'], train_data['output_d']]
+      return input_list, output_list
+
+    def eval_input_fn():
+      input_list = [
+          test_data['input_a'], test_data['input_b'],
+          test_data['input_m'].astype(np.str)
+      ]
+      output_list = [test_data['output_c'], test_data['output_d']]
+      return input_list, output_list
+
+    def pred_input_fn():
+      input_list = [
+          test_data['input_a'], test_data['input_b'],
+          test_data['input_m'].astype(np.str)
+      ]
+      return input_list
+
+    self.do_test_multi_inputs_multi_outputs_with_input_fn(
+        train_input_fn, eval_input_fn, pred_input_fn)
+
+  def do_test_multi_inputs_multi_outputs_with_input_fn(
+      self, train_input_fn, eval_input_fn, pred_input_fn):
     with self.cached_session():
       model = multi_inputs_multi_outputs_model()
       est_keras = keras_lib.model_to_estimator(
           keras_model=model, config=self._config)
-      before_eval_results = est_keras.evaluate(input_fn=eval_input_fn, steps=1)
+      baseline_eval_results = est_keras.evaluate(
+          input_fn=eval_input_fn, steps=1)
       est_keras.train(input_fn=train_input_fn, steps=_TRAIN_SIZE / 16)
-      after_eval_results = est_keras.evaluate(input_fn=eval_input_fn, steps=1)
-      self.assertLess(after_eval_results['loss'], before_eval_results['loss'])
+      eval_results = est_keras.evaluate(input_fn=eval_input_fn, steps=1)
+      self.assertLess(eval_results['loss'], baseline_eval_results['loss'])
+      est_keras.predict(input_fn=pred_input_fn)
 
   def test_init_from_file(self):
     if h5py is None:
@@ -502,12 +580,6 @@ class TestKerasEstimator(test_util.TensorFlowTestCase):
       keras_model = simple_sequential_model()
       with self.assertRaisesRegexp(ValueError, 'compiled'):
         keras_lib.model_to_estimator(keras_model=keras_model)
-
-    with self.cached_session():
-      keras_model = simple_sequential_model()
-      with self.assertRaisesRegexp(ValueError, 'not a local path'):
-        keras_lib.model_to_estimator(
-            keras_model_path='gs://bucket/object')
 
   def test_invalid_ionames_error(self):
     (x_train, y_train), (_, _) = testing_utils.get_test_data(
@@ -584,7 +656,7 @@ class TestKerasEstimator(test_util.TensorFlowTestCase):
     keras_model.compile(
         loss='categorical_crossentropy',
         optimizer='rmsprop',
-        metrics=['mse', keras.metrics.categorical_accuracy])
+        metrics=['mse', keras.metrics.CategoricalAccuracy()])
 
     tf_config = json.dumps({
         'cluster': {
@@ -609,7 +681,7 @@ class TestKerasEstimator(test_util.TensorFlowTestCase):
       keras_model.compile(
           loss='categorical_crossentropy',
           optimizer='rmsprop',
-          metrics=['mse', keras.metrics.categorical_accuracy])
+          metrics=['mse', keras.metrics.CategoricalAccuracy()])
 
       gpu_options = config_pb2.GPUOptions(per_process_gpu_memory_fraction=0.3)
       sess_config = config_pb2.ConfigProto(gpu_options=gpu_options)
@@ -628,7 +700,7 @@ class TestKerasEstimator(test_util.TensorFlowTestCase):
     keras_model.compile(
         loss='categorical_crossentropy',
         optimizer='rmsprop',
-        metrics=['mse', keras.metrics.categorical_accuracy])
+        metrics=['mse', keras.metrics.CategoricalAccuracy()])
 
     with self.cached_session():
       est_keras = keras_lib.model_to_estimator(
@@ -658,7 +730,7 @@ class TestKerasEstimator(test_util.TensorFlowTestCase):
     keras_model.compile(
         loss='categorical_crossentropy',
         optimizer='rmsprop',
-        metrics=['mse', keras.metrics.categorical_accuracy])
+        metrics=['mse', keras.metrics.CategoricalAccuracy()])
 
     with self.cached_session():
       with test.mock.patch.object(tempfile, 'mkdtemp', return_value=_TMP_DIR):
@@ -673,7 +745,7 @@ class TestKerasEstimator(test_util.TensorFlowTestCase):
     keras_model.compile(
         loss='categorical_crossentropy',
         optimizer='rmsprop',
-        metrics=['mse', keras.metrics.categorical_accuracy])
+        metrics=['mse', keras.metrics.CategoricalAccuracy()])
 
     with self.cached_session():
       with self.assertRaisesRegexp(ValueError, '`model_dir` are set both in '
@@ -687,7 +759,7 @@ class TestKerasEstimator(test_util.TensorFlowTestCase):
     keras_model.compile(
         loss='categorical_crossentropy',
         optimizer=rmsprop.RMSPropOptimizer(1e-3),
-        metrics=['mse', keras.metrics.categorical_accuracy])
+        metrics=['mse', keras.metrics.CategoricalAccuracy()])
     with self.cached_session():
       keras_model.train_on_batch(
           np.random.random((10,) + _INPUT_SIZE),
@@ -698,7 +770,7 @@ class TestKerasEstimator(test_util.TensorFlowTestCase):
       keras_model.compile(
           loss='categorical_crossentropy',
           optimizer=SGD(lr=0.0001, momentum=0.9),
-          metrics=['mse', keras.metrics.categorical_accuracy])
+          metrics=['mse', keras.metrics.CategoricalAccuracy()])
       keras_lib.model_to_estimator(
           keras_model=keras_model, config=self._config)
 
@@ -708,7 +780,7 @@ class TestKerasEstimator(test_util.TensorFlowTestCase):
     keras_model.compile(
         loss='categorical_crossentropy',
         optimizer=optimizer,
-        metrics=['mse', keras.metrics.categorical_accuracy])
+        metrics=['mse', keras.metrics.CategoricalAccuracy()])
     with self.cached_session() as sess:
       keras_model_fn = keras_lib._create_keras_model_fn(keras_model)
       global_step = training_util.create_global_step()

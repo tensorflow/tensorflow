@@ -202,7 +202,7 @@ class TensorMapper(object):
       html += str(i) + " "
       html += tensor["name"] + " "
       html += str(tensor["type"]) + " "
-      html += repr(tensor["shape"]) + "<br>"
+      html += (repr(tensor["shape"]) if "shape" in tensor else "[]") + "<br>"
     html += "</span>"
     html += repr(x)
     html += "</span>"

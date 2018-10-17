@@ -16,6 +16,8 @@ limitations under the License.
 // Defines the XlaCompileOnDemandOp.
 
 #include "tensorflow/compiler/jit/xla_compile_on_demand_op.h"
+
+#include "absl/memory/memory.h"
 #include "tensorflow/compiler/jit/xla_device.h"
 #include "tensorflow/compiler/jit/xla_launch_util.h"
 #include "tensorflow/compiler/tf2xla/tf2xla_util.h"
@@ -34,6 +36,7 @@ std::map<int, OptionalTensor> GetVariables(OpKernelContext* ctx) {
       OptionalTensor& optional = variables[i];
       optional.name = handle.name();
       if (LookupResource(ctx, handle, &variable).ok()) {
+        core::ScopedUnref scoped_unref(variable);
         tf_shared_lock lock(*variable->mu());
         optional.present = true;
         optional.value = *variable->tensor();
@@ -58,7 +61,8 @@ Status XlaCompileOnDemandOp::Run(OpKernelContext* ctx,
       /*allocate_xla_tensors=*/true,
       /*use_multiple_streams=*/metadata.UseMultipleStreams());
 
-  launch_context.PopulateInputs(ctx, result, variables);
+  launch_context.PopulateInputs(ctx, result, variables,
+                                /*missing_ctx_input_prefix=*/0);
 
   se::Stream* stream =
       ctx->op_device_context() ? ctx->op_device_context()->stream() : nullptr;
@@ -79,7 +83,8 @@ Status XlaCompileOnDemandOp::Run(OpKernelContext* ctx,
   TF_RETURN_IF_ERROR(run_result.status());
 
   TF_RETURN_IF_ERROR(launch_context.PopulateOutputs(
-      ctx, result, run_result.ConsumeValueOrDie()));
+      ctx, result, run_result.ConsumeValueOrDie(),
+      /*missing_ctx_input_prefix=*/0));
   return Status::OK();
 }
 
@@ -161,8 +166,9 @@ Status XlaCompileOnDemandOp::Compile(
   XlaCompiler::Options options;
   options.device_type = metadata.jit_device_type();
   options.client = metadata.client();
-  options.flib_def =
-      new FunctionLibraryDefinition(OpRegistry::Global(), FunctionDefLibrary{});
+  auto flib_def = absl::make_unique<FunctionLibraryDefinition>(
+      OpRegistry::Global(), FunctionDefLibrary{});
+  options.flib_def = flib_def.get();
   options.shape_representation_fn = metadata.shape_representation_fn();
 
   XlaCompiler::CompileOptions compile_options;
@@ -177,7 +183,7 @@ Status XlaCompileOnDemandOp::Compile(
 
   std::map<int, OptionalTensor> variable_args = GetVariables(ctx);
   return cache->CompileSingleOp(options, constant_arguments, variable_args, ctx,
-                                result, executable, compile_options);
+                                compile_options, result, executable);
 }
 
 void XlaCompileOnDemandOp::Compute(OpKernelContext* ctx) {

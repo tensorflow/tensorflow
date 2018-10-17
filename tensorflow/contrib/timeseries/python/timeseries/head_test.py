@@ -104,7 +104,7 @@ class EvaluationMetricsTests(test.TestCase):
           "ticker":
               array_ops.reshape(
                   math_ops.cast(
-                      variables.Variable(
+                      variables.VariableV1(
                           name="ticker",
                           initial_value=0,
                           dtype=dtypes.int64,

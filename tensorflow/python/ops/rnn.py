@@ -709,6 +709,10 @@ def _dynamic_rnn_loop(cell,
   Raises:
     ValueError: If the input depth cannot be inferred via shape inference
       from the inputs.
+    ValueError: If time_step is not the same for all the elements in the
+      inputs.
+    ValueError: If batch_size is not the same for all the elements in the
+      inputs.
   """
   state = initial_state
   assert isinstance(parallel_iterations, int), "parallel_iterations must be int"

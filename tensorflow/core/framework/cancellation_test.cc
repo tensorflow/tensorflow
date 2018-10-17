@@ -115,4 +115,56 @@ TEST(Cancellation, IsCancelled) {
   delete cm;
 }
 
+TEST(Cancellation, TryDeregisterWithoutCancel) {
+  bool is_cancelled = false;
+  CancellationManager* manager = new CancellationManager();
+  auto token = manager->get_cancellation_token();
+  bool registered = manager->RegisterCallback(
+      token, [&is_cancelled]() { is_cancelled = true; });
+  EXPECT_TRUE(registered);
+  bool deregistered = manager->TryDeregisterCallback(token);
+  EXPECT_TRUE(deregistered);
+  delete manager;
+  EXPECT_FALSE(is_cancelled);
+}
+
+TEST(Cancellation, TryDeregisterAfterCancel) {
+  bool is_cancelled = false;
+  CancellationManager* manager = new CancellationManager();
+  auto token = manager->get_cancellation_token();
+  bool registered = manager->RegisterCallback(
+      token, [&is_cancelled]() { is_cancelled = true; });
+  EXPECT_TRUE(registered);
+  manager->StartCancel();
+  EXPECT_TRUE(is_cancelled);
+  bool deregistered = manager->TryDeregisterCallback(token);
+  EXPECT_FALSE(deregistered);
+  delete manager;
+}
+
+TEST(Cancellation, TryDeregisterDuringCancel) {
+  Notification cancel_started, finish_callback, cancel_complete;
+  CancellationManager* manager = new CancellationManager();
+  auto token = manager->get_cancellation_token();
+  bool registered = manager->RegisterCallback(token, [&]() {
+    cancel_started.Notify();
+    finish_callback.WaitForNotification();
+  });
+  EXPECT_TRUE(registered);
+
+  thread::ThreadPool w(Env::Default(), "test", 1);
+  w.Schedule([&]() {
+    manager->StartCancel();
+    cancel_complete.Notify();
+  });
+  cancel_started.WaitForNotification();
+
+  bool deregistered = manager->TryDeregisterCallback(token);
+  EXPECT_FALSE(deregistered);
+
+  finish_callback.Notify();
+  cancel_complete.WaitForNotification();
+  delete manager;
+}
+
 }  // namespace tensorflow

@@ -90,7 +90,7 @@ tf_module {
   }
   member_method {
     name: "ctc_beam_search_decoder"
-    argspec: "args=[\'inputs\', \'sequence_length\', \'beam_width\', \'top_paths\', \'merge_repeated\'], varargs=None, keywords=None, defaults=[\'100\', \'1\', \'True\'], "
+    argspec: "args=[\'inputs\', \'sequence_length\', \'beam_width\', \'top_paths\'], varargs=None, keywords=None, defaults=[\'100\', \'1\'], "
   }
   member_method {
     name: "ctc_greedy_decoder"
@@ -99,6 +99,10 @@ tf_module {
   member_method {
     name: "ctc_loss"
     argspec: "args=[\'labels\', \'inputs\', \'sequence_length\', \'preprocess_collapse_repeated\', \'ctc_merge_repeated\', \'ignore_longer_outputs_than_inputs\', \'time_major\'], varargs=None, keywords=None, defaults=[\'False\', \'True\', \'False\', \'True\'], "
+  }
+  member_method {
+    name: "depth_to_space"
+    argspec: "args=[\'input\', \'block_size\', \'name\', \'data_format\'], varargs=None, keywords=None, defaults=[\'None\', \'NHWC\'], "
   }
   member_method {
     name: "depthwise_conv2d"
@@ -191,10 +195,6 @@ tf_module {
   member_method {
     name: "log_softmax"
     argspec: "args=[\'logits\', \'axis\', \'name\', \'dim\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\'], "
-  }
-  member_method {
-    name: "log_uniform_candidate_sampler"
-    argspec: "args=[\'true_classes\', \'num_true\', \'num_sampled\', \'unique\', \'range_max\', \'seed\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
   }
   member_method {
     name: "lrn"
@@ -305,6 +305,14 @@ tf_module {
     argspec: "args=[\'features\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
+    name: "space_to_batch"
+    argspec: "args=[\'input\', \'paddings\', \'block_size\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "space_to_depth"
+    argspec: "args=[\'input\', \'block_size\', \'name\', \'data_format\'], varargs=None, keywords=None, defaults=[\'None\', \'NHWC\'], "
+  }
+  member_method {
     name: "sparse_softmax_cross_entropy_with_logits"
     argspec: "args=[\'_sentinel\', \'labels\', \'logits\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'None\'], "
   }
@@ -331,10 +339,6 @@ tf_module {
   member_method {
     name: "top_k"
     argspec: "args=[\'input\', \'k\', \'sorted\', \'name\'], varargs=None, keywords=None, defaults=[\'1\', \'True\', \'None\'], "
-  }
-  member_method {
-    name: "uniform_candidate_sampler"
-    argspec: "args=[\'true_classes\', \'num_true\', \'num_sampled\', \'unique\', \'range_max\', \'seed\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
   }
   member_method {
     name: "weighted_cross_entropy_with_logits"

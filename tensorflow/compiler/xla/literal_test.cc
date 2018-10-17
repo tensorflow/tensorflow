@@ -224,6 +224,16 @@ TEST_F(LiteralUtilTest, CreateSparse) {
             absl::Span<const int64>(expected_indices.data(),
                                     expected_indices.num_elements()));
   EXPECT_EQ(literal.data<int64>(), absl::Span<const int64>(expected_values));
+
+  // Serialize then deserialize and verify the resulting literal.
+  TF_ASSERT_OK_AND_ASSIGN(Literal literal_from_proto,
+                          Literal::CreateFromProto(literal.ToProto()));
+
+  EXPECT_EQ(literal_from_proto.sparse_indices()->data(),
+            absl::Span<const int64>(expected_indices.data(),
+                                    expected_indices.num_elements()));
+  EXPECT_EQ(literal_from_proto.data<int64>(),
+            absl::Span<const int64>(expected_values));
 }
 
 TEST_F(LiteralUtilTest, LiteralR4F32ProjectedStringifies) {
@@ -1640,6 +1650,7 @@ TEST_F(LiteralUtilTest, ProtoRoundTrip) {
   auto one_f32 = LiteralUtil::CreateR0<float>(1.0);
   auto two_f32 = LiteralUtil::CreateR0<float>(2.0);
   auto vector_int8 = LiteralUtil::CreateR1<int8>({-128, 0, 2, 4, 7, 56, 127});
+  auto vector_uint8 = LiteralUtil::CreateR1<uint8>({128, 0, 2, 56, 127, 255});
   auto vector_c64 = LiteralUtil::CreateR1<complex64>({{1.0, 2.0}, {3.0, 4.0}});
   auto vector_bfloat16 = LiteralUtil::CreateR1<bfloat16>(
       {bfloat16{-1.0}, bfloat16{2.0}, bfloat16{-3.0}});
@@ -1658,6 +1669,8 @@ TEST_F(LiteralUtilTest, ProtoRoundTrip) {
   };
 
   EXPECT_EQ(one_f32, to_from_proto(one_f32));
+  EXPECT_EQ(vector_int8, to_from_proto(vector_int8));
+  EXPECT_EQ(vector_uint8, to_from_proto(vector_uint8));
   EXPECT_EQ(vector_c64, to_from_proto(vector_c64));
   EXPECT_EQ(vector_bfloat16, to_from_proto(vector_bfloat16));
   EXPECT_EQ(matrix_pred, to_from_proto(matrix_pred));

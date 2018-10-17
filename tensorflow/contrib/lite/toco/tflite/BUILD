@@ -26,6 +26,7 @@ cc_library(
         "//tensorflow/contrib/lite/schema:schema_fbs",
         "//tensorflow/contrib/lite/toco:graph_transformations",
         "//tensorflow/contrib/lite/toco:model",
+        "//tensorflow/core:framework",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:ptr_util",
         "@com_google_absl//absl/memory",
@@ -42,6 +43,7 @@ tf_cc_test(
     deps = [
         ":operator",
         "//tensorflow/contrib/lite/toco:tooling_util",
+        "//tensorflow/core:ops",
         "//tensorflow/core:protos_all_cc",
         "@com_google_googletest//:gtest_main",
         "@flatbuffers",
@@ -71,6 +73,7 @@ tf_cc_test(
     tags = ["no_oss"],
     deps = [
         ":types",
+        "//tensorflow/core:ops",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -106,6 +109,7 @@ tf_cc_test(
     deps = [
         ":export",
         "//tensorflow/contrib/lite/schema:schema_fbs",
+        "//tensorflow/core:ops",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -141,6 +145,7 @@ tf_cc_test(
         ":import",
         "//tensorflow/contrib/lite:schema_fbs_version",
         "//tensorflow/contrib/lite/schema:schema_fbs",
+        "//tensorflow/core:ops",
         "@com_google_googletest//:gtest_main",
         "@flatbuffers",
     ],

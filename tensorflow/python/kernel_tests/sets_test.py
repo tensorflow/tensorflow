@@ -158,7 +158,7 @@ class SetOpsTest(test_util.TensorFlowTestCase):
     for op in ops:
       self.assertEqual(None, op.get_shape().dims)
       self.assertEqual(dtypes.int32, op.dtype)
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       results = sess.run(ops)
     self.assertAllEqual(results[0], results[1])
     return results[0]
@@ -477,7 +477,7 @@ class SetOpsTest(test_util.TensorFlowTestCase):
     dynamic_values_shape_ops = []
     static_indices_shape = None
     static_values_shape = None
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       for op in ops:
         if static_indices_shape is None:
           static_indices_shape = op.indices.get_shape()
@@ -533,7 +533,7 @@ class SetOpsTest(test_util.TensorFlowTestCase):
 
   def _set_intersection_count(self, a, b):
     op = sets.set_size(sets.set_intersection(a, b))
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       return sess.run(op)
 
   def test_set_difference_multirow_2d(self):
@@ -971,7 +971,7 @@ class SetOpsTest(test_util.TensorFlowTestCase):
 
   def _set_difference_count(self, a, b, aminusb=True):
     op = sets.set_size(sets.set_difference(a, b, aminusb))
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       return sess.run(op)
 
   def test_set_union_multirow_2d(self):
@@ -1220,7 +1220,7 @@ class SetOpsTest(test_util.TensorFlowTestCase):
 
   def _set_union_count(self, a, b):
     op = sets.set_size(sets.set_union(a, b))
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       return sess.run(op)
 
   def _assert_set_operation(self, expected_indices, expected_values,

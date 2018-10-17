@@ -20,12 +20,12 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_matchers.h"
+#include "tensorflow/compiler/xla/service/hlo_memory_scheduler.h"
 #include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
-
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/test.h"
 
@@ -251,6 +251,99 @@ ENTRY %axpy.v5 (alpha: f32[], x: f32[2,4], y: f32[2,4]) -> f32[2,4] {
           .instructions(),
       ::testing::ElementsAre(op::Parameter(), op::Parameter(), op::Parameter(),
                              op::Broadcast(), op::Multiply(), op::Add()));
+}
+
+TEST_F(HloModuleTest, ProtoSerializationPreservesIds) {
+  // Verify that serializing then deserializing an HLO proto preserves the
+  // unique IDs of the instruction and module.
+  const string text =
+      R"(HloModule ReduceR3ToR2_module
+
+add_F32.v3 {
+  lhs = f32[] parameter(0)
+  rhs = f32[] parameter(1)
+  ROOT add = f32[] add(lhs, rhs)
+}
+
+ENTRY ReduceR3ToR2.v3 {
+  input = f32[8,16,256]{2,1,0} parameter(0)
+  constant = f32[] constant(0)
+  ROOT reduce = f32[8,16]{1,0} reduce(input, constant), dimensions={2}, to_apply=add_F32.v3
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseHloString(text));
+
+  // Perform various transformations on the graph:
+  //
+  //  * clone the reduction function
+  //  * replace use of reduction function with the clone.
+  //  * add a random instruction to the entry computation.
+  //
+  // This will create instruction and computation IDs which are interesting:
+  // not consecutive and not densely packed.
+  HloComputation* entry = module->entry_computation();
+  HloInstruction* root = entry->root_instruction();
+  HloComputation* reduction = root->to_apply();
+  HloComputation* reduction_clone =
+      module->AddEmbeddedComputation(reduction->Clone());
+  root->set_to_apply(reduction_clone);
+  TF_ASSERT_OK(module->RemoveEmbeddedComputation(reduction));
+  HloInstruction* negate = entry->AddInstruction(
+      HloInstruction::CreateUnary(root->shape(), HloOpcode::kNegate, root));
+  entry->set_root_instruction(negate);
+
+  // Schedule the transformed module, this verifies that the serialized schedule
+  // is robust against non-consecutive IDs as well (b/114712358).
+  auto size_fn = [](const BufferValue& buffer) {
+    return ShapeUtil::ByteSizeOf(buffer.shape());
+  };
+  HloMemoryScheduler scheduler(size_fn);
+  TF_ASSERT_OK(scheduler.Run(module.get()).status());
+  ASSERT_TRUE(module->has_schedule());
+
+  // Serialize and deserialize and verify that the instruction and computations
+  // unique ids are the same.
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<HloModule> module_copy,
+      HloModule::CreateFromProto(module->ToProto(), module->config()));
+
+  // The module IDs should *not* be the same because module ids must be globally
+  // unique.
+  EXPECT_NE(module->unique_id(), module_copy->unique_id());
+
+  // Verify that the computations and instructions all have the same unique id.
+  auto computation_copy_it = module_copy->computations().begin();
+  for (const HloComputation* computation_orig : module->computations()) {
+    const HloComputation* computation_copy = *computation_copy_it++;
+    EXPECT_EQ(computation_orig->unique_id(), computation_copy->unique_id())
+        << absl::StrFormat(
+               "ID of original computation %s != ID of deserialized "
+               "computation %s: %d != %d",
+               computation_orig->name(), computation_copy->name(),
+               computation_orig->unique_id(), computation_copy->unique_id());
+
+    auto instruction_copy_it = computation_copy->instructions().begin();
+    for (const HloInstruction* instruction_orig :
+         computation_orig->instructions()) {
+      const HloInstruction* instruction_copy = *instruction_copy_it++;
+      EXPECT_EQ(instruction_orig->unique_id(), instruction_copy->unique_id())
+          << absl::StrFormat(
+                 "ID of original instruction %s != ID of deserialized "
+                 "instruction %s: %d != %d",
+                 instruction_orig->name(), instruction_copy->name(),
+                 instruction_orig->unique_id(), instruction_copy->unique_id());
+    }
+  }
+
+  // Verify that the next unique ID which the module would have handed out is
+  // greater than the unique id of any instruction.
+  int next_id = module_copy->NewUniqueInstructionId();
+  for (const HloComputation* computation : module_copy->computations()) {
+    for (const HloInstruction* instruction : computation->instructions()) {
+      EXPECT_GT(next_id, instruction->unique_id());
+    }
+  }
 }
 
 }  // namespace

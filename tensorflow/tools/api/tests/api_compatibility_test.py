@@ -56,6 +56,14 @@ _UPDATE_GOLDENS_HELP = """
      have to be authorized by TensorFlow leads.
 """
 
+# DEFINE_boolean, only_test_core_api, default False:
+_ONLY_TEST_CORE_API_HELP = """
+    Some TF APIs are being moved outside of the tensorflow/ directory. There is
+    no garuntee which versions of these APIs will be present when running this
+    test. Therefore, do not error out on API changes in non-core TF code
+    if this flag is set.
+"""
+
 # DEFINE_boolean, verbose_diffs, default True:
 _VERBOSE_DIFFS_HELP = """
      If set to true, print line by line diffs on all libraries. If set to
@@ -66,6 +74,8 @@ _API_GOLDEN_FOLDER_V1 = 'tensorflow/tools/api/golden/v1'
 _API_GOLDEN_FOLDER_V2 = 'tensorflow/tools/api/golden/v2'
 _TEST_README_FILE = 'tensorflow/tools/api/tests/README.txt'
 _UPDATE_WARNING_FILE = 'tensorflow/tools/api/tests/API_UPDATE_WARNING.txt'
+
+_NON_CORE_PACKAGES = ['estimator']
 
 
 def _KeyToFilePath(key, api_version):
@@ -109,6 +119,19 @@ def _VerifyNoSubclassOfMessageVisitor(path, parent, unused_children):
     raise NotImplementedError(
         'Object tf.%s is a subclass of a generated proto Message. '
         'They are not yet supported by the API tools.' % path)
+
+
+def _FilterNonCoreGoldenFiles(golden_file_list):
+  """Filter out non-core API pbtxt files."""
+  filtered_file_list = []
+  filtered_package_prefixes = [
+      'tensorflow.%s.' % p for p in _NON_CORE_PACKAGES]
+  for f in golden_file_list:
+    if any([f.rsplit('/')[-1].startswith(pre)
+            for pre in filtered_package_prefixes]):
+      continue
+    filtered_file_list.append(f)
+  return filtered_file_list
 
 
 class ApiCompatibilityTest(test.TestCase):
@@ -174,7 +197,7 @@ class ApiCompatibilityTest(test.TestCase):
         verbose_diff_message = diff_message
       else:
         # Do not truncate diff
-        self.maxDiffs = None  # pylint: disable=invalid-name
+        self.maxDiff = None  # pylint: disable=invalid-name
         # Now we can run an actual proto diff.
         try:
           self.assertProtoEquals(expected_dict[key], actual_dict[key])
@@ -233,6 +256,9 @@ class ApiCompatibilityTest(test.TestCase):
       return
     visitor = public_api.PublicAPIVisitor(_VerifyNoSubclassOfMessageVisitor)
     visitor.do_not_descend_map['tf'].append('contrib')
+    if FLAGS.only_test_core_api:
+      visitor.do_not_descend_map['tf'].extend(
+          _NON_CORE_PACKAGES)
     traverse.traverse(tf_v2.compat.v1, visitor)
 
   def testNoSubclassOfMessageV2(self):
@@ -240,6 +266,9 @@ class ApiCompatibilityTest(test.TestCase):
       return
     visitor = public_api.PublicAPIVisitor(_VerifyNoSubclassOfMessageVisitor)
     visitor.do_not_descend_map['tf'].append('contrib')
+    if FLAGS.only_test_core_api:
+      visitor.do_not_descend_map['tf'].extend(
+          _NON_CORE_PACKAGES)
     traverse.traverse(tf_v2, visitor)
 
   def _checkBackwardsCompatibility(
@@ -252,6 +281,9 @@ class ApiCompatibilityTest(test.TestCase):
     public_api_visitor.do_not_descend_map['tf'].append('contrib')
     public_api_visitor.do_not_descend_map['tf.GPUOptions'] = [
         'Experimental']
+    if FLAGS.only_test_core_api:
+      public_api_visitor.do_not_descend_map['tf'].extend(
+          _NON_CORE_PACKAGES)
     if additional_private_map:
       public_api_visitor.private_map.update(additional_private_map)
 
@@ -260,6 +292,8 @@ class ApiCompatibilityTest(test.TestCase):
 
     # Read all golden files.
     golden_file_list = file_io.get_matching_files(golden_file_pattern)
+    if FLAGS.only_test_core_api:
+      golden_file_list = _FilterNonCoreGoldenFiles(golden_file_list)
 
     def _ReadFileToProto(filename):
       """Read a filename, create a protobuf from its contents."""
@@ -325,6 +359,11 @@ if __name__ == '__main__':
   parser = argparse.ArgumentParser()
   parser.add_argument(
       '--update_goldens', type=bool, default=False, help=_UPDATE_GOLDENS_HELP)
+  # TODO(mikecase): Create Estimator's own API compatibility test or
+  # a more general API compatibility test for use for TF components.
+  parser.add_argument(
+      '--only_test_core_api', type=bool, default=False,
+      help=_ONLY_TEST_CORE_API_HELP)
   parser.add_argument(
       '--verbose_diffs', type=bool, default=True, help=_VERBOSE_DIFFS_HELP)
   FLAGS, unparsed = parser.parse_known_args()

@@ -90,6 +90,10 @@ TfLiteStatus RsqrtEval(TfLiteContext* context, TfLiteNode* node) {
   return EvalNumeric(context, node, [](float f) { return 1.f / std::sqrt(f); });
 }
 
+TfLiteStatus SquareEval(TfLiteContext* context, TfLiteNode* node) {
+  return EvalNumeric(context, node, [](float f) { return f * f; });
+}
+
 TfLiteStatus LogicalNotEval(TfLiteContext* context, TfLiteNode* node) {
   return EvalLogical(context, node, [](bool v) { return !v; });
 }
@@ -126,6 +130,14 @@ TfLiteRegistration* Register_RSQRT() {
       /*init=*/nullptr, /*free=*/nullptr,
       elementwise::GenericPrepare<elementwise::IsNumericSupportedType>,
       elementwise::RsqrtEval};
+  return &r;
+}
+
+TfLiteRegistration* Register_SQUARE() {
+  static TfLiteRegistration r = {
+      /*init=*/nullptr, /*free=*/nullptr,
+      elementwise::GenericPrepare<elementwise::IsNumericSupportedType>,
+      elementwise::SquareEval};
   return &r;
 }
 

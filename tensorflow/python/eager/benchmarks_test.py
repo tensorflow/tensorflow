@@ -353,7 +353,7 @@ class MicroBenchmarks(test.Benchmark):
                               num_iters,
                               execution_mode=None):
     f = function.defun(math_ops.matmul)
-    func = lambda: f(m, m, transpose_b)
+    func = lambda: f(m, m, transpose_b=transpose_b)
     self._run(func, num_iters, execution_mode=execution_mode)
 
   def _benchmark_defun_matmul_forward_backward(self,
@@ -366,7 +366,7 @@ class MicroBenchmarks(test.Benchmark):
     def func():
       with backprop.GradientTape() as gt:
         gt.watch(m)
-        y = f(m, m, transpose_b)
+        y = f(m, m, transpose_b=transpose_b)
       _ = gt.gradient(y, m)
 
     self._run(func, num_iters, execution_mode=execution_mode)

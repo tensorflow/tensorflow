@@ -206,6 +206,14 @@ std::vector<TensorInfo> GetQuantizableTensorsFromOperator(
       continue;
     }
 
+    // Some tensors may have a null buffer vector, indicating an intermediate
+    // array.
+    if (model->buffers[tensor->buffer]->data.data() == nullptr) {
+      LOG(INFO) << "Skipping quantization of tensor " << tensor->name
+                << " because it has no allocated buffer.";
+      continue;
+    }
+
     TensorInfo tensor_info;
     tensor_info.eval_hybrid = eval_hybrid;
     tensor_info.op_input_idx = op_input_idx;

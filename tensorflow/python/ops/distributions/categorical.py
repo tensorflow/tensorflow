@@ -29,6 +29,7 @@ from tensorflow.python.ops import random_ops
 from tensorflow.python.ops.distributions import distribution
 from tensorflow.python.ops.distributions import kullback_leibler
 from tensorflow.python.ops.distributions import util as distribution_util
+from tensorflow.python.util import deprecation
 from tensorflow.python.util.tf_export import tf_export
 
 
@@ -69,7 +70,7 @@ class Categorical(distribution.Distribution):
   The Categorical distribution is closely related to the `OneHotCategorical` and
   `Multinomial` distributions.  The Categorical distribution can be intuited as
   generating samples according to `argmax{ OneHotCategorical(probs) }` itself
-  being identical to `argmax{ Multinomial(probs, total_count=1) }.
+  being identical to `argmax{ Multinomial(probs, total_count=1) }`.
 
   #### Mathematical Details
 
@@ -83,7 +84,7 @@ class Categorical(distribution.Distribution):
 
   The number of classes, `K`, must not exceed:
   - the largest integer representable by `self.dtype`, i.e.,
-    `2**(mantissa_bits+1)` (IEE754),
+    `2**(mantissa_bits+1)` (IEEE 754),
   - the maximum `Tensor` index, i.e., `2**31-1`.
 
   In other words,
@@ -149,6 +150,14 @@ class Categorical(distribution.Distribution):
 
   """
 
+  @deprecation.deprecated(
+      "2019-01-01",
+      "The TensorFlow Distributions library has moved to "
+      "TensorFlow Probability "
+      "(https://github.com/tensorflow/probability). You "
+      "should update all references to use `tfp.distributions` "
+      "instead of `tf.distributions`.",
+      warn_once=True)
   def __init__(
       self,
       logits=None,

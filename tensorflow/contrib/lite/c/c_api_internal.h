@@ -88,8 +88,11 @@ int TfLiteIntArrayGetSizeInBytes(int size);
 // This returns a pointer, that you must free using TfLiteIntArrayFree().
 TfLiteIntArray* TfLiteIntArrayCreate(int size);
 
-// Check if two tensors are equal. Returns 1 if they are equal, 0 otherwise.
+// Check if two intarrays are equal. Returns 1 if they are equal, 0 otherwise.
 int TfLiteIntArrayEqual(TfLiteIntArray* a, TfLiteIntArray* b);
+
+// Check if an intarray equals an array. Returns 1 if equals, 0 otherwise.
+int TfLiteIntArrayEqualsArray(TfLiteIntArray* a, int b_size, int b_data[]);
 
 // Create a copy of an array passed as `src`.
 // You are expected to free memory with TfLiteIntArrayFree
@@ -146,7 +149,7 @@ void TfLiteIntArrayFree(TfLiteIntArray* v);
 #define TF_LITE_ENSURE_OK(context, status) \
   do {                                     \
     if ((status) != kTfLiteOk) {           \
-      return status;                       \
+      return kTfLiteError;                 \
     }                                      \
   } while (0)
 
@@ -374,6 +377,11 @@ typedef struct TfLiteContext {
   // WARNING: This is an experimental interface that is subject to change.
   void (*SetExternalContext)(struct TfLiteContext*, TfLiteExternalContextType,
                              TfLiteExternalContext*);
+
+  // Flag for allowing float16 precision for FP32 calculation.
+  // default: false.
+  // WARNING: This is an experimental API and subject to change.
+  bool allow_fp32_relax_to_fp16;
 } TfLiteContext;
 
 typedef struct _TfLiteRegistration {

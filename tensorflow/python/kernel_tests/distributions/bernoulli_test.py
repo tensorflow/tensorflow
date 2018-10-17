@@ -118,7 +118,9 @@ class BernoulliTest(test.TestCase):
     self.assertEqual(dist.probs.dtype, dist.stddev().dtype)
     self.assertEqual(dist.probs.dtype, dist.entropy().dtype)
     self.assertEqual(dist.probs.dtype, dist.prob(0).dtype)
+    self.assertEqual(dist.probs.dtype, dist.prob(0.5).dtype)
     self.assertEqual(dist.probs.dtype, dist.log_prob(0).dtype)
+    self.assertEqual(dist.probs.dtype, dist.log_prob(0.5).dtype)
 
     dist64 = make_bernoulli([], dtypes.int64)
     self.assertEqual(dist64.dtype, dtypes.int64)
@@ -180,6 +182,16 @@ class BernoulliTest(test.TestCase):
     if not special:
       return
     self._testPmf(logits=special.logit(p))
+
+  @test_util.run_in_graph_and_eager_modes
+  def testPmfWithFloatArgReturnsXEntropy(self):
+    p = [[0.2], [0.4], [0.3], [0.6]]
+    samps = [0, 0.1, 0.8]
+    self.assertAllClose(
+        np.float32(samps) * np.log(np.float32(p)) +
+        (1 - np.float32(samps)) * np.log(1 - np.float32(p)),
+        self.evaluate(
+            bernoulli.Bernoulli(probs=p, validate_args=False).log_prob(samps)))
 
   def testBroadcasting(self):
     with self.cached_session():

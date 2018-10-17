@@ -228,6 +228,7 @@ class DensenetBenchmark(tf.test.Benchmark):
                                 weight_decay=1e-4, dropout_rate=0,
                                 pool_initial=True, include_top=True)
       if defun:
+        # TODO(apassos) enable tfe.function here
         model.call = tfe.defun(model.call)
       batch_size = 64
       num_burn = 5

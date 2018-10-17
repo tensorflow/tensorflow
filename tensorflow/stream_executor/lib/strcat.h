@@ -18,13 +18,13 @@ limitations under the License.
 #ifndef TENSORFLOW_STREAM_EXECUTOR_LIB_STRCAT_H_
 #define TENSORFLOW_STREAM_EXECUTOR_LIB_STRCAT_H_
 
-#include "tensorflow/core/lib/strings/strcat.h"
+#include "absl/strings/str_cat.h"
 
 namespace stream_executor {
 namespace port {
 
-using tensorflow::strings::StrCat;
-using tensorflow::strings::StrAppend;
+using absl::StrAppend;
+using absl::StrCat;
 
 }  // namespace port
 }  // namespace stream_executor

@@ -107,6 +107,9 @@ bool HaveSameShapes(const TfLiteTensor* input1, const TfLiteTensor* input2) {
   return TfLiteIntArrayEqual(input1->dims, input2->dims);
 }
 
+// TODO(petewarden): Having macros around this is ugly, look at other strategies
+// before replicating this approach elsewhere.
+#ifndef TF_LITE_STATIC_MEMORY
 TfLiteStatus CalculateShapeForBroadcast(TfLiteContext* context,
                                         const TfLiteTensor* input1,
                                         const TfLiteTensor* input2,
@@ -125,5 +128,6 @@ TfLiteStatus CalculateShapeForBroadcast(TfLiteContext* context,
   *output_shape = shape.release();
   return kTfLiteOk;
 }
+#endif  // TF_LITE_STATIC_MEMORY
 
 }  // namespace tflite

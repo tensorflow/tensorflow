@@ -50,7 +50,7 @@ void XlaDeviceAllocator::DeallocateRaw(void* ptr) {
 
 void XlaDeviceAllocator::GetStats(AllocatorStats* stats) { stats->Clear(); }
 
-XlaTransferManager::XlaTransferManager(
+XlaDeviceContext::XlaDeviceContext(
     std::shared_ptr<se::Stream> compute_stream,
     std::shared_ptr<se::Stream> host_to_device_stream,
     std::shared_ptr<se::Stream> device_to_host_stream, xla::LocalClient* client,
@@ -75,8 +75,8 @@ XlaTransferManager::XlaTransferManager(
   }
 }
 
-Status XlaTransferManager::TransferLiteralToDevice(
-    const Tensor& host_tensor, Tensor* device_tensor) const {
+Status XlaDeviceContext::TransferLiteralToDevice(const Tensor& host_tensor,
+                                                 Tensor* device_tensor) const {
   xla::Shape xla_shape;
   TF_RETURN_IF_ERROR(TensorShapeToXLAShape(host_tensor.dtype(),
                                            host_tensor.shape(), &xla_shape));
@@ -112,7 +112,7 @@ Status XlaTransferManager::TransferLiteralToDevice(
   return Status::OK();
 }
 
-void XlaTransferManager::TransferLiteralFromDevice(
+void XlaDeviceContext::TransferLiteralFromDevice(
     Tensor* host_tensor, const Tensor& device_tensor,
     const StatusCallback& done) const {
   xla::MutableBorrowingLiteral literal;
@@ -134,10 +134,10 @@ void XlaTransferManager::TransferLiteralFromDevice(
       });
 }
 
-void XlaTransferManager::CopyCPUTensorToDevice(const Tensor* cpu_tensor,
-                                               Device* device,
-                                               Tensor* device_tensor,
-                                               StatusCallback done) const {
+void XlaDeviceContext::CopyCPUTensorToDevice(const Tensor* cpu_tensor,
+                                             Device* device,
+                                             Tensor* device_tensor,
+                                             StatusCallback done) const {
   if (cpu_tensor->NumElements() == 0) {
     VLOG(2) << "CopyCPUTensorToDevice empty tensor";
     done(Status::OK());
@@ -202,11 +202,10 @@ void XlaTransferManager::CopyCPUTensorToDevice(const Tensor* cpu_tensor,
   done(status);
 }
 
-void XlaTransferManager::CopyDeviceTensorToCPU(const Tensor* device_tensor,
-                                               absl::string_view tensor_name,
-                                               Device* device,
-                                               Tensor* cpu_tensor,
-                                               StatusCallback done) {
+void XlaDeviceContext::CopyDeviceTensorToCPU(const Tensor* device_tensor,
+                                             absl::string_view tensor_name,
+                                             Device* device, Tensor* cpu_tensor,
+                                             StatusCallback done) {
   if (device_tensor->NumElements() == 0) {
     VLOG(2) << "CopyDeviceTensorToCPU empty tensor";
     done(Status::OK());
@@ -250,9 +249,9 @@ void XlaTransferManager::CopyDeviceTensorToCPU(const Tensor* device_tensor,
   done(status);
 }
 
-void XlaTransferManager::CopyDeviceTensorToDevice(const Tensor& src_tensor,
-                                                  Tensor* dst_tensor,
-                                                  const StatusCallback& done) {
+void XlaDeviceContext::CopyDeviceTensorToDevice(const Tensor& src_tensor,
+                                                Tensor* dst_tensor,
+                                                const StatusCallback& done) {
   VLOG(2) << "CopyDeviceTensorToDevice "
           << reinterpret_cast<const void*>(src_tensor.tensor_data().data())
           << " "
@@ -318,38 +317,6 @@ void XlaTransferManager::CopyDeviceTensorToDevice(const Tensor& src_tensor,
       thread_pool_->Schedule([done]() { done(Status::OK()); });
     });
   }
-}
-
-XlaDeviceContext::XlaDeviceContext(
-    std::shared_ptr<se::Stream> compute_stream,
-    std::shared_ptr<se::Stream> host_to_device_stream,
-    std::shared_ptr<se::Stream> device_to_host_stream, xla::LocalClient* client,
-    bool transfer_as_literal,
-    XlaCompiler::ShapeRepresentationFn shape_representation_fn,
-    thread::ThreadPool* thread_pool)
-    : manager_(std::move(compute_stream), std::move(host_to_device_stream),
-               std::move(device_to_host_stream), client, transfer_as_literal,
-               std::move(shape_representation_fn), thread_pool) {}
-
-void XlaDeviceContext::CopyCPUTensorToDevice(const Tensor* cpu_tensor,
-                                             Device* device,
-                                             Tensor* device_tensor,
-                                             StatusCallback done) const {
-  manager_.CopyCPUTensorToDevice(cpu_tensor, device, device_tensor, done);
-}
-
-void XlaDeviceContext::CopyDeviceTensorToCPU(const Tensor* device_tensor,
-                                             absl::string_view tensor_name,
-                                             Device* device, Tensor* cpu_tensor,
-                                             StatusCallback done) {
-  manager_.CopyDeviceTensorToCPU(device_tensor, tensor_name, device, cpu_tensor,
-                                 done);
-}
-
-void XlaDeviceContext::CopyDeviceTensorToDevice(const Tensor& src_tensor,
-                                                Tensor* dst_tensor,
-                                                const StatusCallback& done) {
-  manager_.CopyDeviceTensorToDevice(src_tensor, dst_tensor, done);
 }
 
 }  // namespace tensorflow

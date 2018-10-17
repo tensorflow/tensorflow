@@ -64,7 +64,7 @@ Status ShuffleAndRepeatFusion::Optimize(Cluster* cluster,
 
     // Set `output_types` and `output_shapes` attributes.
     for (auto key : {"output_shapes", "output_types"}) {
-      (*new_node.mutable_attr())[key] = repeat_node.attr().at(key);
+      graph_utils::CopyAttribute(key, repeat_node, &new_node);
     }
     return new_node;
   };

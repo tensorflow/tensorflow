@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/grappler/utils.h"
 
+#include <iterator>
 #include <memory>
 #include <queue>
 #include <vector>
@@ -24,6 +25,7 @@ limitations under the License.
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_def.pb.h"
 #include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/strings/numbers.h"
 #include "tensorflow/core/lib/strings/scanner.h"
 #include "tensorflow/core/lib/strings/strcat.h"
@@ -152,17 +154,6 @@ bool IsSameInput(const string& name1, const string& name2) {
 
 bool IsControlInput(const string& name) {
   return !name.empty() && name[0] == '^';
-}
-
-string NodeName(const string& name) {
-  int position;
-  return ParseNodeName(name, &position);
-}
-
-int NodePosition(const string& name) {
-  int position;
-  ParseNodeNameAsStringPiece(name, &position);
-  return position;
 }
 
 string AddPrefixToNodeName(const string& name, const string& prefix,
@@ -555,6 +546,21 @@ Status SetTensorValue(DataType dtype, int value, Tensor* tensor) {
 }
 
 #undef HANDLE_CASE
+
+Status CheckAttrExists(const NodeDef& node, const string& key) {
+  if (node.attr().count(key) == 0) {
+    return errors::InvalidArgument("Node '", node.name(), "' lacks '", key,
+                                   "' attr: ", node.ShortDebugString());
+  }
+  return Status::OK();
+}
+
+Status CheckAttrsExist(const NodeDef& node, absl::Span<const string> keys) {
+  for (const string& key : keys) {
+    TF_RETURN_IF_ERROR(CheckAttrExists(node, key));
+  }
+  return Status::OK();
+}
 
 }  // end namespace grappler
 }  // end namespace tensorflow

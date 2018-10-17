@@ -19,6 +19,7 @@ from __future__ import division
 from __future__ import print_function
 
 from functools import partial
+import os
 import numpy as np
 
 from tensorflow.contrib import nccl
@@ -60,6 +61,7 @@ class NcclTestCase(test.TestCase):
   def _Test(self,
             nccl_reduce,
             numpy_fn,
+            dtypes=[np.float16, np.float32, np.int32, np.int64, np.float64],
             device_sets=(['/device:GPU:1', '/device:GPU:2', '/device:GPU:0'],
                          ['/device:GPU:1', '/device:GPU:0'])):
     """Tests that nccl_reduce does the same as reduction with numpy_fn.
@@ -72,7 +74,10 @@ class NcclTestCase(test.TestCase):
           two.
       device_sets: Tuple of virtual devices to run test on.
     """
-    for dtype in [np.float16, np.float32, np.int32, np.int64, np.float64]:
+    # Enable NCCL printouts.
+    os.environ["NCCL_DEBUG"] = "INFO"
+
+    for dtype in dtypes:
       # Create session inside outer loop to test use of
       # same communicator across multiple sessions.
       with self.test_session(use_gpu=True) as sess:
@@ -124,7 +129,8 @@ class NcclTestCase(test.TestCase):
           reduce_tensors, inputs, losses, colocate_gradients_with_ops=True)
       return [g for g in grads if g is not None]
 
-    self._Test(_Gradient, numpy_fn)
+    # int types are considered not 'trainable' and no gradients are generated.
+    self._Test(_Gradient, numpy_fn, dtypes=[np.float16, np.float32, np.float64])
 
 
 class AllReduceTest(NcclTestCase):

@@ -24,7 +24,7 @@ limitations under the License.
 namespace xla {
 
 // A pass which performs algebraic simplifications.
-class AlgebraicSimplifier : public HloPassInterface {
+class AlgebraicSimplifier : public HloModulePass {
  public:
   // Given shapes 'from_shape' and 'to_shape', determines if it is valid to
   // bitcast from 'from_shape' to 'to_shape' after considering platform

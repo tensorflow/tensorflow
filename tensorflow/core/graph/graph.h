@@ -72,6 +72,7 @@ class Node {
   int id() const { return id_; }
   int cost_id() const { return cost_id_; }
   const string& name() const;
+  void set_name(string name);
   const string& type_string() const;
 
   // def() provides the NodeDef the user supplied, but the specifics
@@ -170,6 +171,7 @@ class Node {
   template <typename T>
   void AddAttr(const string& name, const T& val) {
     SetAttrValue(val, AddAttrHelper(name));
+    UpdateProperties();
   }
 
   void ClearAttr(const string& name);
@@ -209,6 +211,10 @@ class Node {
   // other nodes. This must be called before mutating properties,
   // e.g. in AddAttr.
   void MaybeCopyOnWrite();
+
+  // Called after an attr has changed. Decides whether we need to update some
+  // property of the node (stored in props_).
+  void UpdateProperties();
 
   AttrValue* AddAttrHelper(const string& name);
 
@@ -590,12 +596,12 @@ class Graph {
   // Returns OK if `node` is non-null and belongs to this graph
   Status IsValidNode(const Node* node) const;
 
-  // Returns OK if IsValidNode(`node`) and `idx` is less than
-  // node->num_outputs()
+  // Returns OK if IsValidNode(`node`) and `idx` is a valid output.  Does not
+  // accept control outputs.
   Status IsValidOutputTensor(const Node* node, int idx) const;
 
-  // Returns OK if IsValidNode(`node`) and `idx` is less than
-  // node->num_inputs()
+  // Returns OK if IsValidNode(`node`) and `idx` a valid input.  Does not accept
+  // control inputs.
   Status IsValidInputTensor(const Node* node, int idx) const;
 
   // Create and return a new WhileContext owned by this graph. This is called
@@ -607,6 +613,9 @@ class Graph {
                          std::vector<OutputTensor> body_inputs,
                          std::vector<OutputTensor> body_outputs,
                          WhileContext** result);
+
+  // Builds a node name to node pointer index for all nodes in the graph.
+  std::unordered_map<string, Node*> BuildNodeNameIndex() const;
 
   // TODO(josh11b): uint64 hash() const;
 

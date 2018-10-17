@@ -24,11 +24,11 @@ import time
 import numpy as np
 
 from tensorflow.contrib import lookup
-from tensorflow.contrib.data.python.ops import prefetching_ops
-from tensorflow.contrib.data.python.ops import threadpool
-from tensorflow.contrib.data.python.ops import unique
 from tensorflow.contrib.eager.python import datasets
 from tensorflow.python.data import Dataset
+from tensorflow.python.data.experimental.ops import prefetching_ops
+from tensorflow.python.data.experimental.ops import threadpool
+from tensorflow.python.data.experimental.ops import unique
 from tensorflow.python.eager import test
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes

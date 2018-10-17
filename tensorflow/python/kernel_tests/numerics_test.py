@@ -35,7 +35,7 @@ class VerifyTensorAllFiniteTest(test.TestCase):
   def testVerifyTensorAllFiniteSucceeds(self):
     x_shape = [5, 4]
     x = np.random.random_sample(x_shape).astype(np.float32)
-    with self.test_session(use_gpu=True):
+    with self.session(use_gpu=True):
       t = constant_op.constant(x, shape=x_shape, dtype=dtypes.float32)
       t_verified = numerics.verify_tensor_all_finite(t,
                                                      "Input is not a number.")
@@ -48,7 +48,7 @@ class VerifyTensorAllFiniteTest(test.TestCase):
 
     # Test NaN.
     x[0] = np.nan
-    with self.test_session(use_gpu=True):
+    with self.session(use_gpu=True):
       with self.assertRaisesOpError(my_msg):
         t = constant_op.constant(x, shape=x_shape, dtype=dtypes.float32)
         t_verified = numerics.verify_tensor_all_finite(t, my_msg)
@@ -56,7 +56,7 @@ class VerifyTensorAllFiniteTest(test.TestCase):
 
     # Test Inf.
     x[0] = np.inf
-    with self.test_session(use_gpu=True):
+    with self.session(use_gpu=True):
       with self.assertRaisesOpError(my_msg):
         t = constant_op.constant(x, shape=x_shape, dtype=dtypes.float32)
         t_verified = numerics.verify_tensor_all_finite(t, my_msg)
@@ -66,7 +66,7 @@ class VerifyTensorAllFiniteTest(test.TestCase):
 class NumericsTest(test.TestCase):
 
   def testInf(self):
-    with self.test_session(graph=ops.Graph()):
+    with self.session(graph=ops.Graph()):
       t1 = constant_op.constant(1.0)
       t2 = constant_op.constant(0.0)
       a = math_ops.div(t1, t2)
@@ -76,7 +76,7 @@ class NumericsTest(test.TestCase):
         a.eval()
 
   def testNaN(self):
-    with self.test_session(graph=ops.Graph()):
+    with self.session(graph=ops.Graph()):
       t1 = constant_op.constant(0.0)
       t2 = constant_op.constant(0.0)
       a = math_ops.div(t1, t2)
@@ -86,7 +86,7 @@ class NumericsTest(test.TestCase):
         a.eval()
 
   def testBoth(self):
-    with self.test_session(graph=ops.Graph()):
+    with self.session(graph=ops.Graph()):
       t1 = constant_op.constant([1.0, 0.0])
       t2 = constant_op.constant([0.0, 0.0])
       a = math_ops.div(t1, t2)
@@ -96,7 +96,7 @@ class NumericsTest(test.TestCase):
         a.eval()
 
   def testPassThrough(self):
-    with self.test_session(graph=ops.Graph()):
+    with self.session(graph=ops.Graph()):
       t1 = constant_op.constant([1.0, 2.0, 3.0, 4.0, 5.0, 6.0], shape=[2, 3])
       checked = array_ops.check_numerics(t1, message="pass through test")
       value = checked.eval()

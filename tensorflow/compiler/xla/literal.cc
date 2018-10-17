@@ -287,6 +287,8 @@ Status MutableLiteralBase::CopyElementFrom(const LiteralSlice& src_literal,
     return InvalidArgument("LiteralProto has no layout");
   }
 
+  TF_RETURN_IF_ERROR(ShapeUtil::ValidateShapeWithOptionalLayout(proto.shape()));
+
   Literal literal(proto.shape());
 
   TF_RETURN_IF_ERROR(literal.root_piece_->ForEachMutableSubpieceWithStatus(
@@ -725,16 +727,34 @@ Literal LiteralBase::Slice(absl::Span<const int64> start_indices,
       ShapeUtil::MakeShapeWithLayout(shape().element_type(), result_dimensions,
                                      LayoutUtil::MinorToMajor(shape()));
   switch (result_shape.element_type()) {
-    case F32:
-      return SliceInternal<float>(result_shape, start_indices);
-    case BF16:
-      return SliceInternal<bfloat16>(result_shape, start_indices);
-    case C64:
-      return SliceInternal<complex64>(result_shape, start_indices);
-    case S32:
-      return SliceInternal<int32>(result_shape, start_indices);
+    case PRED:
+      return SliceInternal<bool>(result_shape, start_indices);
+    case U8:
+      return SliceInternal<uint8>(result_shape, start_indices);
+    case U16:
+      return SliceInternal<uint16>(result_shape, start_indices);
     case U32:
       return SliceInternal<uint32>(result_shape, start_indices);
+    case U64:
+      return SliceInternal<uint64>(result_shape, start_indices);
+    case S8:
+      return SliceInternal<int8>(result_shape, start_indices);
+    case S16:
+      return SliceInternal<int16>(result_shape, start_indices);
+    case S32:
+      return SliceInternal<int32>(result_shape, start_indices);
+    case S64:
+      return SliceInternal<int64>(result_shape, start_indices);
+    case F16:
+      return SliceInternal<half>(result_shape, start_indices);
+    case BF16:
+      return SliceInternal<bfloat16>(result_shape, start_indices);
+    case F32:
+      return SliceInternal<float>(result_shape, start_indices);
+    case F64:
+      return SliceInternal<double>(result_shape, start_indices);
+    case C64:
+      return SliceInternal<complex64>(result_shape, start_indices);
     default:
       LOG(FATAL) << "not yet implemented: "
                  << PrimitiveType_Name(result_shape.element_type());
@@ -1351,17 +1371,8 @@ StatusOr<Literal> LiteralBase::BitcastConvert(
   return ConvertSwitch(*this, primitive_dest_type, /*bitcast=*/true);
 }
 
-StatusOr<Literal> LiteralBase::ConvertToShape(const Shape& dest_shape,
-                                              bool round_f32_to_bf16) const {
+StatusOr<Literal> LiteralBase::ConvertToShape(const Shape& dest_shape) const {
   if (!ShapeUtil::IsTuple(dest_shape)) {
-    if (round_f32_to_bf16 && shape().element_type() == F32 &&
-        dest_shape.element_type() == BF16) {
-      auto converter = [](float src) {
-        return tensorflow::bfloat16::round_to_bfloat16(src);
-      };
-      return ConvertBetweenNativeTypesWithConverter<float, bfloat16>(*this,
-                                                                     converter);
-    }
     return Convert(dest_shape.element_type());
   }
   std::vector<Literal> elements;
@@ -1769,6 +1780,10 @@ void LiteralBase::Piece::WriteToProto(LiteralProto* proto) const {
     case PRED:
       CopyToRepeatedField(proto->mutable_preds(), data<bool>());
       break;
+    case S8:
+      proto->set_s8s(static_cast<const signed char*>(data<int8>().data()),
+                     element_count());
+      break;
     case U8:
       proto->set_u8s(static_cast<const unsigned char*>(data<uint8>().data()),
                      element_count());
@@ -1855,10 +1870,33 @@ Status LiteralBase::Piece::CopyFromProto(const LiteralProto& proto) {
   TF_RET_CHECK(LayoutUtil::HasLayout(proto.shape()));
   TF_RET_CHECK(ShapeUtil::Equal(proto.shape(), subshape()));
 
+  if (LayoutUtil::IsSparseArray(subshape())) {
+    // Compute the number of elements (indices) in the sparse shape and reserve
+    // the necessary space in spare_indices.
+    TF_RET_CHECK(ShapeUtil::Rank(subshape()) != 0)
+        << "Scalar shapes cannot be sparse";
+    TF_RET_CHECK(proto.sparse_indices_size() % ShapeUtil::Rank(subshape()) == 0)
+        << "Unexpected number of indices in proto ("
+        << proto.sparse_indices_size() << ") for shape of rank "
+        << ShapeUtil::Rank(subshape());
+    const int64 index_count =
+        proto.sparse_indices_size() / ShapeUtil::Rank(subshape());
+    sparse_indices()->Resize(index_count);
+
+    // Copy the indices from the proto into the SparseIndexArray object.
+    TF_RETURN_IF_ERROR(CopyFromRepeatedField(sparse_indices()->mutable_data(),
+                                             proto.sparse_indices()));
+  }
+
   switch (subshape().element_type()) {
     case PRED:
       TF_RETURN_IF_ERROR(CopyFromRepeatedField(data<bool>(), proto.preds()));
       break;
+    case S8: {
+      auto s8_data = data<int8>();
+      TF_RET_CHECK(proto.s8s().size() == s8_data.size());
+      std::copy(proto.s8s().begin(), proto.s8s().end(), s8_data.begin());
+    } break;
     case U8: {
       auto u8_data = data<uint8>();
       TF_RET_CHECK(proto.u8s().size() == u8_data.size());
@@ -1907,11 +1945,11 @@ Status LiteralBase::Piece::CopyFromProto(const LiteralProto& proto) {
       }
     } break;
     case TUPLE:
-      LOG(FATAL) << "Should not be called on tuple shapes: "
-                 << ShapeUtil::HumanString(subshape());
-      break;
+      return InvalidArgument("Should not be called on tuple shapes: %s",
+                             ShapeUtil::HumanString(subshape()));
     default:
-      LOG(FATAL) << "Unhandled primitive type " << subshape().element_type();
+      return InvalidArgument("Is called on unsupported shape: %s",
+                             ShapeUtil::HumanString(subshape()));
   }
   return Status::OK();
 }

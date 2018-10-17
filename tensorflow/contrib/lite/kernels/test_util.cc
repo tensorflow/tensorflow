@@ -74,8 +74,8 @@ void SingleOpModel::SetCustomOp(
       CustomOptionsFormat_FLEXBUFFERS));
 }
 
-void SingleOpModel::BuildInterpreter(
-    std::vector<std::vector<int>> input_shapes) {
+void SingleOpModel::BuildInterpreter(std::vector<std::vector<int>> input_shapes,
+                                     bool allow_fp32_relax_to_fp16) {
   auto opcodes = builder_.CreateVector(opcodes_);
   auto operators = builder_.CreateVector(operators_);
   auto tensors = builder_.CreateVector(tensors_);
@@ -113,6 +113,8 @@ void SingleOpModel::BuildInterpreter(
     CHECK(interpreter_->ResizeInputTensor(input_idx, shape) == kTfLiteOk);
   }
 
+  interpreter_->SetAllowFp16PrecisionForFp32(allow_fp32_relax_to_fp16);
+
   // Modify delegate with function.
   if (apply_delegate_fn_) {
     apply_delegate_fn_(interpreter_.get());
@@ -120,7 +122,7 @@ void SingleOpModel::BuildInterpreter(
 
   CHECK(interpreter_->AllocateTensors() == kTfLiteOk)
       << "Cannot allocate tensors";
-  interpreter_->ResetVariableTensorsToZero();
+  interpreter_->ResetVariableTensors();
 }
 
 void SingleOpModel::Invoke() { CHECK(interpreter_->Invoke() == kTfLiteOk); }

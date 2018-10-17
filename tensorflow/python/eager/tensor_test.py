@@ -347,6 +347,13 @@ class TFETensorUtilTest(test_util.TensorFlowTestCase):
     instance_dir.remove("test_attr")
     self.assertEqual(instance_dir, type_dir)
 
+  def testNonRectangularPackAsConstant(self):
+    l = [array_ops.zeros((10, 1)).numpy(), array_ops.zeros(1).numpy()]
+
+    with self.assertRaisesRegexp(
+        ValueError, "non-rectangular Python sequence"):
+      constant_op.constant(l)
+
 
 if __name__ == "__main__":
   test.main()

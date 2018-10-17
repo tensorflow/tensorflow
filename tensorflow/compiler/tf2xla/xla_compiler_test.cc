@@ -604,10 +604,17 @@ TEST_F(XlaCompilerTest, DeterministicCompilation) {
         auto instr1 = c1.instructions(j);
         auto instr2 = c2.instructions(j);
         instr1.clear_name();
+        instr1.clear_id();
+        instr1.clear_operand_ids();
         instr2.clear_name();
-        // The names of instructions were uniquified by the XlaBuilder, the rest
-        // of the fields should be identical.
+        instr2.clear_id();
+        instr2.clear_operand_ids();
+        // The names of instructions were uniquified by the XlaBuilder and the
+        // unique ids may be different, the rest of the fields should be
+        // identical.
         string str1, str2;
+        LOG(INFO) << "instr1 = " << instr1.DebugString();
+        LOG(INFO) << "instr2 = " << instr2.DebugString();
         instr1.AppendPartialToString(&str1);
         instr2.AppendPartialToString(&str2);
         EXPECT_EQ(str1, str2);
@@ -1219,25 +1226,8 @@ TEST_F(XlaCompilerTest, SingleOpWithoutInputs) {
     std::unique_ptr<Graph> graph_copy(new Graph(OpRegistry::Global()));
     CopyGraph(*graph, graph_copy.get());
     XlaCompiler::CompilationResult result;
-    status = compiler.CompileGraph(XlaCompiler::CompileOptions(), "NoOp",
-                                   std::move(graph_copy), args, &result);
-    ASSERT_FALSE(status.ok());
-    EXPECT_TRUE(
-        absl::StrContains(status.error_message(),
-                          "The following nodes are unreachable "
-                          "from the source in the graph: {{node NoOp}}"))
-        << status.error_message();
-  }
-
-  // Fix control edges for NoOp.
-  {
-    std::unique_ptr<Graph> graph_copy(new Graph(OpRegistry::Global()));
-    CopyGraph(*graph, graph_copy.get());
-    EXPECT_TRUE(FixupSourceAndSinkEdges(graph_copy.get()));
-    XlaCompiler::CompilationResult result;
     TF_ASSERT_OK(compiler.CompileGraph(XlaCompiler::CompileOptions(), "NoOp",
                                        std::move(graph_copy), args, &result));
-    EXPECT_EQ(0, result.resource_updates.size());
   }
 }
 

@@ -34,6 +34,7 @@ limitations under the License.
 #include "tensorflow/core/graph/algorithm.h"
 #include "tensorflow/core/graph/control_flow.h"
 #include "tensorflow/core/graph/node_builder.h"
+#include "tensorflow/core/lib/strings/strcat.h"
 
 using xla::StatusOr;
 
@@ -215,10 +216,6 @@ void StateMap::ResetAncestorId(const Node* node, StateMap::AncestorId id) {
     node_to_ancestorid_map_[node->id()] = id;
   else
     added_node_ancestorid_mapping_[node->id()] = id;
-}
-
-const StateMap::CondState& StateMap::LookupState(const Node* node) const {
-  return *LookupCondId(node);
 }
 
 void StateMap::MarkDead(const Node* node) { ResetCondId(node, dead_id_); }
@@ -642,7 +639,7 @@ Status Conditional::ExtractBodies(Graph* graph) {
 Status Conditional::BuildIfNode(Graph* graph,
                                 FunctionLibraryDefinition* library) {
   VLOG(2) << "Build cond function for " << name();
-  NodeDefBuilder builder(name(), "If");
+  NodeDefBuilder builder(name(), "If", library);
   const string branch_name[] = {"else_branch", "then_branch"};
   for (auto branch : {BranchType::kElseBranch, BranchType::kThenBranch}) {
     int branch_index = static_cast<int>(branch);
@@ -698,6 +695,12 @@ Status Conditional::BuildIfNode(Graph* graph,
   VLOG(3) << "Build output type: " << DataTypeVectorString(out_type);
 
   builder.Attr("Tcond", DT_BOOL);
+  string outside_compilation;
+  if (GetNodeAttr(predicate_.node->def(), kXlaOutsideCompilationAttrName,
+                  &outside_compilation)
+          .ok()) {
+    builder.Attr(kXlaOutsideCompilationAttrName, outside_compilation);
+  }
   builder.Device(predicate_.node->assigned_device_name());
   // Conditional should be the first input ...
   builder.Input(NodeDefBuilder::NodeOut(predicate_.node->name(),
@@ -791,7 +794,6 @@ Status Conditional::BuildAndReplace(Graph* graph,
   TF_RETURN_IF_ERROR(AddInputEdges(graph));
   TF_RETURN_IF_ERROR(AddOutputEdges(graph));
   TF_RETURN_IF_ERROR(parent_->PropagateUpdatedState(if_node_));
-  for (Node* m : merges_) state_map_->MarkDead(m);
 
   // Check that the if_node doesn't feed into itself.
   TF_RETURN_WITH_CONTEXT_IF_ERROR(
@@ -1056,7 +1058,6 @@ Status FunctionalizeCond::RemoveRedundantMerge(Node* node) {
                                    " has no non-dead inputs.");
   }
   state_map_.MarkDead(node);
-  delete_nodes_.push_back(node->id());
   VLOG(5) << "removing redundant merge: " << node->name();
   while (!node->out_edges().empty()) {
     const Edge* oe = *node->out_edges().begin();
@@ -1132,7 +1133,6 @@ Status FunctionalizeCond::RemoveRedundantSwitch(Node* node) {
       }
     } else if (BranchType(switch_branch) != b) {
       state_map_.MarkDead(dst_node);
-      delete_nodes_.push_back(dst_node->id());
       continue;
     }
     graph_->AddEdge(
@@ -1154,7 +1154,7 @@ Status FunctionalizeCond::DetermineStates(std::vector<Node*> rev_topo_order) {
 
     VLOG(5) << dst->name() << " :: " << state_map_.CondStateToString(dst)
             << " @ " << state_map_.AncestorStateToString(dst);
-    if (VLOG_IS_ON(10)) DumpGraphWithCondState("cond_it");
+    if (VLOG_IS_ON(10)) DumpGraphWithCondState("it");
   }
   return Status::OK();
 }
@@ -1184,23 +1184,62 @@ Status FunctionalizeCond::DetermineAncestorState(Node* dst) {
   return Status::OK();
 }
 
-void FunctionalizeCond::DeleteReachableNodes() {
+void FunctionalizeCond::DeleteReachableAndDeadNodes(
+    const std::vector<int>& switch_ids, const std::vector<Node*>& merge_order) {
   // Delete all nodes that have been extracted or are reachable from
   // deleted/dead nodes. The input and outgoing edges should have already been
   // removed.
+  std::deque<int> delete_nodes;
   std::vector<bool> deleted(graph_->num_node_ids(), false);
   // Don't try to delete source or sink nodes.
   deleted[graph_->kSourceId] = true;
   deleted[graph_->kSinkId] = true;
-  while (!delete_nodes_.empty()) {
-    int d_id = delete_nodes_.front();
-    delete_nodes_.pop_front();
+
+  // All remaining Switch nodes are not reachable from a Merge node and
+  // removed. This is to account for dead Switch nodes.
+  for (int s_id : switch_ids) {
+    Node* s = graph_->FindNodeId(s_id);
+    if (s == nullptr) continue;
+    for (const Edge* e : s->out_edges()) {
+      // Control outputs of switch nodes (which are unconditionally executed if
+      // the switch is) are not removed as they need not be part of a
+      // conditional.
+      if (!e->IsControlEdge()) delete_nodes.push_back(e->dst()->id());
+    }
+    deleted[s_id] = true;
+    graph_->RemoveNode(s);
+  }
+
+  // All merge nodes should have been transformed at this point and we remove
+  // them from the graph here.
+  for (Node* m : merge_order) {
+    for (const Edge* e : m->out_edges()) {
+      // Similar to control outputs of switch nodes don't remove control
+      // outputs of merge nodes.
+      // TODO(jpienaar): Check cases where output edges still exist here vs
+      // being removed in AddOutputEdges.
+      if (!e->IsControlEdge()) delete_nodes.push_back(e->dst()->id());
+    }
+    deleted[m->id()] = true;
+    graph_->RemoveNode(m);
+  }
+
+  // Enqueue all the dead nodes.
+  for (Node* n : graph_->nodes()) {
+    if (state_map_.IsDead(state_map_.LookupCondId(n))) {
+      delete_nodes.push_back(n->id());
+    }
+  }
+
+  while (!delete_nodes.empty()) {
+    int d_id = delete_nodes.front();
+    delete_nodes.pop_front();
     if (deleted[d_id]) continue;
     Node* d = graph_->FindNodeId(d_id);
     // Switch and Merge nodes could have been deleted already.
     if (d == nullptr) continue;
     for (const Edge* e : d->out_edges()) {
-      delete_nodes_.push_back(e->dst()->id());
+      delete_nodes.push_back(e->dst()->id());
     }
     deleted[d_id] = true;
     graph_->RemoveNode(d);
@@ -1274,7 +1313,7 @@ Status FunctionalizeCond::FunctionalizeInternal() {
   }
 
   TF_RETURN_IF_ERROR(DetermineStates(std::move(rev_topo_order)));
-  if (VLOG_IS_ON(4)) DumpGraphWithCondState("cond_id");
+  if (VLOG_IS_ON(4)) DumpGraphWithCondState("id");
 
   // Sort the merge nodes from innermost outwards.
   SortMergeNodes(&merge_order);
@@ -1312,11 +1351,7 @@ Status FunctionalizeCond::FunctionalizeInternal() {
     if (VLOG_IS_ON(4)) DumpGraphWithCondState("after_extract");
   }
 
-  // All remaining Switch nodes are not reachable from a Merge node and
-  // removed. This is to account for dead Switch nodes.
-  for (int s_id : switch_ids) delete_nodes_.push_back(s_id);
-  for (Node* m : merge_order) delete_nodes_.push_back(m->id());
-  DeleteReachableNodes();
+  DeleteReachableAndDeadNodes(switch_ids, merge_order);
 
   return Status::OK();
 }
@@ -1331,8 +1366,9 @@ void FunctionalizeCond::DumpGraphWithCondState(const string& name) {
                             state_map_.AncestorStateToString(n)));
   }
   LOG(INFO) << "FunctionalizeControlFlow (" << name << "): "
-            << dump_graph::DumpGraphToFile(absl::StrCat("functionalize_", name),
-                                           *graph_, library_);
+            << dump_graph::DumpGraphToFile(
+                   absl::StrCat("functionalize_cond_", name), *graph_,
+                   library_);
 }
 
 Status FunctionalizeCond::Functionalize(Graph* graph,

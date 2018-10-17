@@ -142,7 +142,7 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase):
       v = resource_variable_ops.ResourceVariable(1.0)
     ops.reset_default_graph()
     v.assign(2.0)  # Note: this fails if we run convert_to_tensor on not the
-                   # variable graph.
+    # variable graph.
 
   def testFetchHandle(self):
     with self.cached_session():
@@ -290,7 +290,7 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase):
     self.assertEqual(self.evaluate(read), [[2]])
 
   def testUseResource(self):
-    v = variables.Variable(1.0, use_resource=True)
+    v = variables.VariableV1(1.0, use_resource=True)
     self.assertTrue(isinstance(v, resource_variable_ops.ResourceVariable))
 
   def testEagerNoUseResource(self):
@@ -907,6 +907,13 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase):
     # eager execution (where the error is realized during kernel execution).
     with self.assertRaisesRegexp(Exception, r"shape.*2.*3"):
       state_ops.scatter_update(v, [0, 1], [0, 1, 2])
+
+  @test_util.run_in_graph_and_eager_modes
+  def testAssignIncompatibleShape(self):
+    v = resource_variable_ops.ResourceVariable([0, 1, 2, 3])
+    self.evaluate(v.initializer)
+    with self.assertRaisesRegexp(Exception, r"hapes must be equal"):
+      self.assertAllEqual(self.evaluate(v.assign_add(1)), [1, 2, 3, 4])
 
 
 class _MixedPrecisionVariableTest(test_util.TensorFlowTestCase):

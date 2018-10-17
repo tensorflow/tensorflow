@@ -19,6 +19,7 @@ limitations under the License.
 #include <unordered_map>
 
 #include "tensorflow/compiler/tf2xla/tf2xla.pb.h"
+#include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/kernel_def.pb.h"
 #include "tensorflow/core/framework/op.h"
@@ -58,6 +59,114 @@ void AddDtypeToKernalDefConstraint(absl::string_view name, DataType dtype,
 
 // Returns the next random seed to use for seeding xla rng.
 uint32 GetXLARandomSeed();
+
+// Indicates how a FunctionDef is associated with a graph node (e.g. the node is
+// a function call, or the node has function attrs).
+class AssociatedFunctionInfo {
+ public:
+  enum AssociatedFunctionType {
+    kFunctionAttr = 0,
+    kFunctionCallNode = 1,
+    kSymbolicGradient = 2,
+  };
+
+  // The function is an attr of the node.
+  static AssociatedFunctionInfo FunctionAttr(const string& func_name,
+                                             const AttrValueMap& attrs,
+                                             const string& attr_name) {
+    return AssociatedFunctionInfo(kFunctionAttr, func_name, attrs, attr_name);
+  }
+
+  // The node is a function call.
+  static AssociatedFunctionInfo FunctionCall(const string& func_name,
+                                             const AttrValueMap& attrs) {
+    // attr_name will not be used in this case.
+    return AssociatedFunctionInfo(kFunctionCallNode, func_name, attrs,
+                                  /*attr_name=*/"");
+  }
+
+  // The node is a SymbolicGradient op.
+  static AssociatedFunctionInfo SymbolicGradient(const string& func_name,
+                                                 const AttrValueMap& attrs) {
+    // attr_name will not be used in this case.
+    return AssociatedFunctionInfo(kSymbolicGradient, func_name, attrs,
+                                  /*attr_name=*/"");
+  }
+
+  AssociatedFunctionType type() const { return type_; }
+
+  const string& func_name() const { return func_name_; }
+
+  const string& attr_name() const { return attr_name_; }
+
+  const AttrValueMap& attrs() const { return attrs_; }
+
+ private:
+  AssociatedFunctionInfo(AssociatedFunctionType type, const string& func_name,
+                         const AttrValueMap& attrs, const string& attr_name)
+      : type_(type),
+        func_name_(func_name),
+        attrs_(attrs),
+        attr_name_(attr_name) {}
+
+  // Available for all instances.
+  AssociatedFunctionType type_;
+  string func_name_;
+  AttrValueMap attrs_;
+
+  // Only available if the function is defined in an attr.
+  string attr_name_;
+};
+
+// Returns if the NodeDef has associated function.
+bool HasAssociatedFunction(const NodeDef& node_def,
+                           const FunctionLibraryDefinition* fld);
+
+// Gets functions associated with the node. Current cases:
+// 1. For function call node, its function name;
+// 2. For SymbolicGradient op, returned func_name will be "SymbolicGradient",
+//    and returned attrs will be this node's attributes;
+// 3. For nodes like XlaWhile/XlaIf, all their function attributes.
+std::vector<AssociatedFunctionInfo> GetAssociatedFunctions(
+    const Node& node, const FunctionLibraryDefinition* fld);
+
+// Changes associated functions for the node. Current cases:
+// 1. For function call node, creates a new node with the new function name and
+//    remove the old node;
+// 2. For SymbolicGradient op, add or replace GradientDef in
+//    FunctionLibraryDefinition;
+// 3. For nodes like XlaWhile/XlaIf, modify their function attributes.
+Status RewriteAssociatedFunction(
+    Graph* graph, Node* node, FunctionLibraryDefinition* fld,
+    const AssociatedFunctionInfo& associated_function,
+    const string& rewritten_function_name);
+
+// Attribute to mark nodes to be executed on host.
+extern const char kXlaOutsideCompilationAttrName[];
+
+// Class to act as cache for FunctionLibraryRuntime::Handle objects.
+class CachedFunctionHandles {
+ public:
+  CachedFunctionHandles(FunctionLibraryRuntime* flr) : flr_(flr) {}
+
+  // Populates `handle` for requested function and attributes. If we have
+  // instantiated the function with the same attributes before, `handle` will be
+  // cached handle; otherwise instantiate the function and populate `handle`.
+  Status GetOrInstantiate(const string& func_name, AttrSlice attrs,
+                          FunctionLibraryRuntime::Handle* handle);
+
+  // Releases all handles in the cache. Returns first non-OK status if any;
+  // returns OK otherwise.
+  Status ReleaseAllHandles();
+
+  ~CachedFunctionHandles() { ReleaseAllHandles().IgnoreError(); }
+
+ private:
+  FunctionLibraryRuntime* flr_;
+  std::map<string, FunctionLibraryRuntime::Handle> handles_;
+
+  TF_DISALLOW_COPY_AND_ASSIGN(CachedFunctionHandles);
+};
 
 }  // namespace tensorflow
 

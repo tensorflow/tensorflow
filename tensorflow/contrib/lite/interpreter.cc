@@ -123,6 +123,7 @@ Interpreter::Interpreter(ErrorReporter* error_reporter)
   context_.AddTensors = AddTensors;
   context_.tensors = nullptr;
   context_.tensors_size = 0;
+  context_.allow_fp32_relax_to_fp16 = false;
   context_.recommended_num_threads = -1;
   context_.GetExternalContext = GetExternalContext;
   context_.SetExternalContext = SetExternalContext;
@@ -450,16 +451,15 @@ TfLiteStatus Interpreter::AllocateTensors() {
 
   // Reset the variable tensors to zero after (re)allocating the tensors.
   // Developers shouldn't rely on the side effect of this function to reset
-  // variable tesnsors. They should call `ResetVariableTensorsToZero` directly
+  // variable tesnsors. They should call `ResetVariableTensors` directly
   // instead.
-  ResetVariableTensorsToZero();
+  ResetVariableTensors();
 
   return kTfLiteOk;
 }
 
-// TODO(ycling): Consider to provide other functions to initialize variable
-// tensors to non-zero values.
-TfLiteStatus Interpreter::ResetVariableTensorsToZero() {
+// TODO(ycling): Support non-zero default values.
+TfLiteStatus Interpreter::ResetVariableTensors() {
   for (auto& tensor : tensors_) {
     if (!tensor.is_variable) {
       continue;
@@ -952,7 +952,10 @@ TfLiteStatus Interpreter::ModifyGraphWithDelegate(TfLiteDelegate* delegate,
       }
     }
     if (has_dynamic_tensors) {
-      ReportError(&context_, "Attempting to resize a fixed-size tensor.");
+      ReportError(
+          &context_,
+          "Attempting to use a delegate that only supports static-sized "
+          "tensors with a graph that has dynamic-sized tensors.");
       return kTfLiteError;
     }
   }

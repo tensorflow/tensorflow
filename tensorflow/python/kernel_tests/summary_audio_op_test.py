@@ -50,7 +50,7 @@ class SummaryAudioOpTest(test.TestCase):
   def testAudioSummary(self):
     np.random.seed(7)
     for channels in (1, 2, 5, 8):
-      with self.test_session(graph=ops.Graph()) as sess:
+      with self.session(graph=ops.Graph()) as sess:
         num_frames = 7
         shape = (4, num_frames, channels)
         # Generate random audio in the range [-1.0, 1.0).

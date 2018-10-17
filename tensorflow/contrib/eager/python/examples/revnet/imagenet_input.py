@@ -169,11 +169,11 @@ class ImageNetInput(object):
 
     # Read the data from disk in parallel
     dataset = dataset.apply(
-        tf.contrib.data.parallel_interleave(
+        tf.data.experimental.parallel_interleave(
             fetch_dataset, cycle_length=self.num_parallel_calls, sloppy=True))
     if self.cache:
       dataset = dataset.cache().apply(
-          tf.contrib.data.shuffle_and_repeat(1024 * 16))
+          tf.data.experimental.shuffle_and_repeat(1024 * 16))
     else:
       dataset = dataset.shuffle(1024)
 
@@ -188,9 +188,11 @@ class ImageNetInput(object):
     # batch size. As long as this validation is done with consistent batch size,
     # exactly the same images will be used.
     dataset = dataset.apply(
-        tf.contrib.data.map_and_batch(
-            self.dataset_parser, batch_size=batch_size,
-            num_parallel_batches=self.num_cores, drop_remainder=True))
+        tf.data.experimental.map_and_batch(
+            self.dataset_parser,
+            batch_size=batch_size,
+            num_parallel_batches=self.num_cores,
+            drop_remainder=True))
 
     # Transpose for performance on TPU
     if self.transpose_input:
