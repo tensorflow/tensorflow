@@ -313,9 +313,9 @@ TEST_F(MetaOptimizerTest, OptimizeFunctionLibrary) {
   // Graph should call optimized function.
   int count = 0;
   for (const NodeDef& node : output.node()) {
-    if (node.name() == "square" && count++) {
+    if (node.name() == "square" && ++count) {
       EXPECT_EQ("MySquare_specialized_for_square", node.op());
-    } else if (node.name() == "quadratic" && count++) {
+    } else if (node.name() == "quadratic" && ++count) {
       EXPECT_EQ("MyQuadratic_specialized_for_quadratic", node.op());
     }
   }
@@ -324,9 +324,9 @@ TEST_F(MetaOptimizerTest, OptimizeFunctionLibrary) {
   // Specialized MySquare should call specialized functions.
   count = 0;
   for (const NodeDef& node : optimized_func_0->node_def()) {
-    if (node.name() == "square" && count++) {
+    if (node.name() == "square" && ++count) {
       EXPECT_EQ(optimized_2, node.op());
-    } else if (node.name() == "quadratic" && count++) {
+    } else if (node.name() == "quadratic" && ++count) {
       EXPECT_EQ(optimized_3, node.op());
     }
   }
@@ -339,25 +339,25 @@ TEST_F(MetaOptimizerTest, OptimizeFunctionLibrary) {
   for (const FunctionDef* optimized_func : optimized_funcs) {
     count = 0;
     for (const NodeDef& node : optimized_func->node_def()) {
-      if (node.name() == "my_mul/inlined_inputs" && count++) {
+      if (node.name() == "my_mul/inlined_inputs" && ++count) {
         EXPECT_EQ("IdentityN", node.op());
         EXPECT_EQ(2, node.input_size());
         EXPECT_EQ("x:0", node.input(0));
         EXPECT_EQ("x:0", node.input(1));
-      } else if (node.name() == "my_mul/x" && count++) {
+      } else if (node.name() == "my_mul/x" && ++count) {
         EXPECT_EQ("Identity", node.op());
         EXPECT_EQ(1, node.input_size());
         EXPECT_EQ("my_mul/inlined_inputs:output:0", node.input(0));
-      } else if (node.name() == "my_mul/y" && count++) {
+      } else if (node.name() == "my_mul/y" && ++count) {
         EXPECT_EQ("Identity", node.op());
         EXPECT_EQ(1, node.input_size());
         EXPECT_EQ("my_mul/inlined_inputs:output:1", node.input(0));
-      } else if (node.name() == "my_mul/mul" && count++) {
+      } else if (node.name() == "my_mul/mul" && ++count) {
         EXPECT_EQ("Mul", node.op());
         EXPECT_EQ(2, node.input_size());
         EXPECT_EQ("my_mul/x:output:0", node.input(0));
         EXPECT_EQ("my_mul/y:output:0", node.input(1));
-      } else if (node.name() == "my_mul" && count++) {
+      } else if (node.name() == "my_mul" && ++count) {
         EXPECT_EQ("IdentityN", node.op());
         EXPECT_EQ(1, node.input_size());
         EXPECT_EQ("my_mul/mul:z:0", node.input(0));
@@ -446,9 +446,9 @@ TEST_F(MetaOptimizerTest, OptimizeFunctionLibraryPruneFunctionBody) {
   // Graph should call optimized function.
   int count = 0;
   for (const NodeDef& node : output.node()) {
-    if (node.name() == "fn1" && count++) {
+    if (node.name() == "fn1" && ++count) {
       EXPECT_EQ(optimized_fn1, node.op());
-    } else if (node.name() == "fn2" && count++) {
+    } else if (node.name() == "fn2" && ++count) {
       EXPECT_EQ(optimized_fn2, node.op());
     }
   }

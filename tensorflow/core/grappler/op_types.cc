@@ -300,6 +300,10 @@ bool IsPad(const NodeDef& node) {
   return op == "Pad" || op == "PadV2";
 }
 
+bool IsPartitionedCall(const NodeDef& node) {
+  return node.op() == "PartitionedCall";
+}
+
 bool IsPlaceholder(const NodeDef& node) {
   const auto& op = node.op();
   return op == "Placeholder" || op == "PlaceholderV2" ||
@@ -416,6 +420,10 @@ bool IsStackPushOp(const NodeDef& node) {
 }
 bool IsStackPopOp(const NodeDef& node) {
   return node.op() == "StackPop" || node.op() == "StackPopV2";
+}
+
+bool IsStatefulPartitionedCall(const NodeDef& node) {
+  return node.op() == "StatefulPartitionedCall";
 }
 
 bool IsStopGradient(const NodeDef& node) {
