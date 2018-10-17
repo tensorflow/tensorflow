@@ -19,7 +19,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import functools
 import weakref
 
 from tensorflow.python.eager import context
@@ -32,6 +31,7 @@ from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
 from tensorflow.python.training.checkpointable import base as checkpointable
 from tensorflow.python.util import nest
+from tensorflow.python.util import tf_decorator
 
 
 class UnliftedInitializerVariable(resource_variable_ops.ResourceVariable):
@@ -177,7 +177,8 @@ def _defun_with_scope(scope, fn, input_signature):
     with variable_scope.variable_creator_scope(scope):
       return fn(*args, **kwds)
 
-  return function_lib.defun(wrapped_fn, input_signature=input_signature)
+  return function_lib.defun(tf_decorator.make_decorator(fn, wrapped_fn),
+                            input_signature=input_signature)
 
 
 # TODO(apassos) there should be an easier way to call a concrete defun.
@@ -204,11 +205,13 @@ class PolymorphicFunction(object):
 
   def __init__(self,
                python_function,
-               input_signature=None,):
+               name,
+               input_signature=None):
     """Initializes a polymorphic function.
 
     Args:
       python_function: the function to be wrapped.
+      name: the name given to it.
       input_signature: a possibly nested sequence of `TensorSpec` objects
         specifying the input signature of this function. If `None`, a separate
         function is instantiated for each inferred input signature.
@@ -222,6 +225,7 @@ class PolymorphicFunction(object):
     self._created_variables = None
     self._stateful_fn = None
     self._descriptor_cache = weakref.WeakKeyDictionary()
+    self._name = name
 
   def _initialize(self, args, kwds):
     """Initializes, on the first call."""
@@ -236,6 +240,7 @@ class PolymorphicFunction(object):
 
     self._stateful_fn = _defun_with_scope(
         variable_capturing_scope, self._python_function, self._input_signature)
+    self._stateful_fn._name = self._name  # pylint: disable=protected-access
 
     # Force the definition of the function for these arguments
     self._concrete_stateful_fn = self._stateful_fn.get_concrete_function(
@@ -249,6 +254,7 @@ class PolymorphicFunction(object):
 
     self._stateless_fn = _defun_with_scope(
         invalid_creator_scope, self._python_function, self._input_signature)
+    self._stateless_fn._name = self._name  # pylint: disable=protected-access
 
   def __call__(self, *args, **kwds):
     """Calls the graph function."""
@@ -326,7 +332,7 @@ class PolymorphicFunction(object):
     elif self._stateful_fn is not None:
       # In this case we have not created variables on the first call. So we can
       # run the first trace but we should fail if variables are created.
-      concrete = self._first_trace.get_concrete_function(*args, **kwargs)
+      concrete = self._stateful_fn.get_concrete_function(*args, **kwargs)
       if self._created_variables:
         raise ValueError("Creating variables on a non-first call to a function"
                          " decorated with tf.function.")
@@ -353,12 +359,39 @@ class PolymorphicFunction(object):
     # tf.function. Keeps a cache to avoid retracing the function every time the
     # descriptor is accessed.
     if instance not in self._descriptor_cache:
-      self._descriptor_cache[instance] = PolymorphicFunction(
-          functools.partial(self.python_function, instance),
-          self._input_signature)
+      if instance is None:
+        return self
+      self._descriptor_cache[instance] = (
+          function_lib.class_method_to_instance_method(self, instance))
     return self._descriptor_cache[instance]
 
 
-def function(fn=None, input_signature=None):
+def function(func=None, input_signature=None):
   """Defines a function as per the "functions, not sessions" document."""
-  return PolymorphicFunction(fn, input_signature)
+  if input_signature is not None:
+    function_lib.validate_signature(input_signature)
+
+  def decorated(inner_function):
+    try:
+      name = inner_function.__name__
+    except AttributeError:
+      name = "function"
+    return tf_decorator.make_decorator(
+        inner_function,
+        PolymorphicFunction(
+            inner_function,
+            name,
+            input_signature=input_signature))
+
+  # This code path is for the `foo = tf.function(foo, ...)` use case
+  if func is not None:
+    return decorated(func)
+
+  # This code path is for the
+  #
+  # @tf.function(...)
+  # def foo(...):
+  #    ...
+  #
+  # use case, which is equivalent to `foo = tf.function(...)(foo)`
+  return decorated
