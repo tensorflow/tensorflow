@@ -1480,9 +1480,7 @@ cuda_py_test(
 
 cuda_py_test(
     name = "control_flow_ops_py_test",
-    # TODO(b/70473603): change this back to "small" once the C API is
-    # permanently enabled
-    size = "large",
+    size = "small",
     srcs = ["control_flow_ops_py_test.py"],
     additional_deps = [
         "//third_party/py/numpy",
@@ -1516,6 +1514,8 @@ cuda_py_test(
         "//tensorflow/python:variables",
         "//tensorflow/python:while_v2",
     ],
+    shard_count = 16,
+    tags = ["no_oss"],  # TODO(b/117928656)
 )
 
 tf_py_test(
