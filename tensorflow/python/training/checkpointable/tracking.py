@@ -70,3 +70,26 @@ class Checkpointable(base.CheckpointableBase):
   def _no_dependency(self, value):
     """Override to allow CheckpointableBase to disable dependency tracking."""
     return data_structures.NoDependency(value)
+
+
+class TrackableResource(base.CheckpointableBase):
+  """Base class for all resources that need to be tracked."""
+
+  def __init__(self):
+    self._resource_handle = None
+
+  def create_resource(self):
+    """A function that creates a resource handle."""
+    raise NotImplementedError("TrackableResource.create_resource not "
+                              "implemented.")
+
+  def initialize(self):
+    """A function that initializes the resource. Optional."""
+    pass
+
+  @property
+  def resource_handle(self):
+    """Returns the resource handle associated with this Resource."""
+    if self._resource_handle is None:
+      self._resource_handle = self.create_resource()
+    return self._resource_handle
