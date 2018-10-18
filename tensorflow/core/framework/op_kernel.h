@@ -1320,6 +1320,9 @@ class Name : public KernelDefBuilder {
             return new __VA_ARGS__(context);                             \
           });
 
+// Checks whether a given kernel is registered on device_type.
+bool KernelDefAvailable(const DeviceType& device_type, const NodeDef& node_def);
+
 // If node_def has a corresponding kernel registered on device_type,
 // returns OK and fill in the kernel def and kernel_class_name. <def> and
 // <kernel_class_name> may be null.

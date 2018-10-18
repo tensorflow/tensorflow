@@ -1047,6 +1047,15 @@ Status FindKernelRegistration(const DeviceType& device_type,
 
 }  // namespace
 
+bool KernelDefAvailable(const DeviceType& device_type,
+                        const NodeDef& node_def) {
+  const KernelRegistration* reg = nullptr;
+  bool was_attr_mismatch;
+  Status result =
+      FindKernelRegistration(device_type, node_def, &reg, &was_attr_mismatch);
+  return result.ok() && reg != nullptr;
+}
+
 // TODO(irving): Change const NodeDef& to const Node&
 Status FindKernelDef(const DeviceType& device_type, const NodeDef& node_def,
                      const KernelDef** def, string* kernel_class_name) {
