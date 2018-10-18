@@ -197,10 +197,10 @@ Status SelectDevice(const NodeDef& ndef, EagerContext* ctx, Device** device) {
   TF_RETURN_IF_ERROR(SupportedDeviceTypesForNode(
       ctx->prioritized_device_type_list(), ndef, &final_devices));
   if (final_devices.empty()) {
-    return errors::Internal(
-        "Could not find valid device for node.\nNode: ", SummarizeNodeDef(ndef),
-        "\nAll kernels registered for op ", ndef.op(), " :\n",
-        KernelsRegisteredForOp(ndef.op()));
+    return errors::Internal("Could not find valid device for node.\nNode: ",
+                            FormatNodeDefForError(ndef),
+                            "\nAll kernels registered for op ", ndef.op(),
+                            " :\n", KernelsRegisteredForOp(ndef.op()));
   }
   for (Device* d : *ctx->devices()) {
     if (d->device_type() == final_devices[0].type_string()) {
@@ -209,7 +209,7 @@ Status SelectDevice(const NodeDef& ndef, EagerContext* ctx, Device** device) {
     }
   }
   return errors::Unknown("Could not find a device for node ",
-                         SummarizeNodeDef(ndef));
+                         FormatNodeDefForError(ndef));
 }
 
 Status GetOutputDTypes(EagerOperation* op, DataTypeVector* output_dtypes) {

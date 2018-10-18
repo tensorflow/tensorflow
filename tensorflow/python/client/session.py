@@ -1283,7 +1283,7 @@ class BaseSession(SessionInterface):
   # Old format: [[Node: <node_name> = ...]]
   # New format: [[{{node <node_name>}} = ...]]
   _NODEDEF_NAME_RE = re.compile(
-      r'\[\[(Node: )?(\{\{node )?([^\} ]*)(\}\})?\s*=')
+      r'\[\[(Node: )?(\{\{node )?([^\} ]*)(\}\})?\s*=*')
 
   def _do_run(self, handle, target_list, fetch_list, feed_dict, options,
               run_metadata):

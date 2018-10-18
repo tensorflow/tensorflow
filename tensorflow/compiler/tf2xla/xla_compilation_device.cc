@@ -92,7 +92,7 @@ Allocator* XlaCompilationDevice::GetAllocator(AllocatorAttributes attr) {
 void XlaCompilationDevice::Compute(OpKernel* op_kernel,
                                    OpKernelContext* context) {
   VLOG(4) << "XlaCompilationDevice::Compute "
-          << SummarizeNodeDef(op_kernel->def());
+          << FormatNodeDefForError(op_kernel->def());
   auto* b = XlaContext::Get(context).builder();
   xla::OpMetadata metadata;
   metadata.set_op_type(op_kernel->type_string());
