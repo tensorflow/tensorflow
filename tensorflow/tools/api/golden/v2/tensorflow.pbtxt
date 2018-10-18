@@ -1170,7 +1170,7 @@ tf_module {
   }
   member_method {
     name: "matrix_square_root"
-    argspec: "args=[\'matrix\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+    argspec: "args=[\'input\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
     name: "matrix_triangular_solve"
