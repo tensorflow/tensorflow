@@ -310,6 +310,25 @@ public:
             getOperation()->operand_end()};
   }
 
+  /// Returns true if this is a DMA from a faster memory space to a slower one.
+  bool isDestMemorySpaceFaster() const {
+    return (getSrcMemorySpace() < getDstMemorySpace());
+  }
+
+  /// Returns true if this is a DMA from a slower memory space to a faster one.
+  bool isSrcMemorySpaceFaster() const {
+    // Assumes that a lower number is for a slower memory space.
+    return (getDstMemorySpace() < getSrcMemorySpace());
+  }
+
+  /// Given a DMA start operation, returns the operand position of either the
+  /// source or destination memref depending on the one that is at the higher
+  /// level of the memory hierarchy. Asserts failure if neither is true.
+  unsigned getFasterMemPos() const {
+    assert(isSrcMemorySpaceFaster() || isDestMemorySpaceFaster());
+    return isSrcMemorySpaceFaster() ? 0 : getSrcMemRefRank() + 1;
+  }
+
   static StringRef getOperationName() { return "dma_start"; }
   static bool parse(OpAsmParser *parser, OperationState *result);
   void print(OpAsmPrinter *p) const;
@@ -321,8 +340,9 @@ protected:
 
 // DmaWaitOp blocks until the completion of a DMA operation associated with the
 // tag element '%tag[%index]'. %tag is a memref, and %index has to be an index
-// with the same restrictions as any load/store index in MLFunctions. For
-// example:
+// with the same restrictions as any load/store index in MLFunctions.
+// %num_elements is the number of elements associated with the DMA operation.
+// For example:
 //
 //   dma_start %src[%i, %j], %dst[%k, %l], %tag[%index] :
 //     memref<3 x vector<8x128xf32>, (d0) -> (d0), 0>,
@@ -330,7 +350,7 @@ protected:
 //     memref<1 x i32>, (d0) -> (d0), 4>
 //   ...
 //   ...
-//   dma_wait %tag[%index] : memref<1 x i32, (d0) -> (d0), 4>
+//   dma_wait %tag[%index], %num_elements : memref<1 x i32, (d0) -> (d0), 4>
 //
 class DmaWaitOp
     : public Op<DmaWaitOp, OpTrait::VariadicOperands, OpTrait::ZeroResult> {
@@ -344,7 +364,18 @@ public:
   // Returns the tag memref index for this DMA operation.
   llvm::iterator_range<Operation::const_operand_iterator>
   getTagIndices() const {
-    return {getOperation()->operand_begin() + 1, getOperation()->operand_end()};
+    return {getOperation()->operand_begin() + 1,
+            getOperation()->operand_begin() + 1 + getTagMemRefRank()};
+  }
+
+  // Returns the rank (number of indices) of the tag memref.
+  unsigned getTagMemRefRank() const {
+    return cast<MemRefType>(getTagMemRef()->getType())->getRank();
+  }
+
+  // Returns the number of elements transferred in the associated DMA operation.
+  const SSAValue *getNumElements() const {
+    return getOperand(1 + getTagMemRefRank());
   }
 
 protected:

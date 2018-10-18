@@ -45,3 +45,19 @@ MLFunction *StmtBlock::findFunction() const {
   }
   return dyn_cast<MLFunction>(block);
 }
+
+/// Returns 'stmt' if 'stmt' lies in this block, or otherwise finds the ancestor
+/// statement of 'stmt' that lies in this block. Returns nullptr if the latter
+/// fails.
+const Statement *
+StmtBlock::findAncestorStmtInBlock(const Statement &stmt) const {
+  // Traverse up the statement hierarchy starting from the owner of operand to
+  // find the ancestor statement that resides in the block of 'forStmt'.
+  const auto *currStmt = &stmt;
+  while (currStmt->getBlock() != this) {
+    currStmt = currStmt->getParentStmt();
+    if (!currStmt)
+      return nullptr;
+  }
+  return currStmt;
+}

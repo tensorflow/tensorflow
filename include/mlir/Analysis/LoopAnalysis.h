@@ -22,6 +22,7 @@
 #ifndef MLIR_ANALYSIS_LOOP_ANALYSIS_H
 #define MLIR_ANALYSIS_LOOP_ANALYSIS_H
 
+#include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/Optional.h"
 
 namespace mlir {
@@ -52,6 +53,13 @@ uint64_t getLargestDivisorOfTripCount(const ForStmt &forStmt);
 // vectorizable. A function over the actions will give us a cost model.
 bool isVectorizableLoop(const ForStmt &loop);
 
+/// Checks where SSA dominance would be violated if a for stmt's body statements
+/// are shifted by the specified shifts. This method checks if a 'def' and all
+/// its uses have the same shift factor.
+// TODO(mlir-team): extend this to check for memory-based dependence
+// violation when we have the support.
+bool isStmtwiseShiftValid(const ForStmt &forStmt,
+                          llvm::ArrayRef<uint64_t> shifts);
 } // end namespace mlir
 
 #endif // MLIR_ANALYSIS_LOOP_ANALYSIS_H

@@ -105,6 +105,26 @@ public:
   void printBlock(raw_ostream &os) const;
   void dumpBlock() const;
 
+  /// Returns the statement's position in this block or -1 if the statement is
+  /// not present.
+  int findStmtPosInBlock(const Statement &stmt) const {
+    unsigned j = 0;
+    for (const auto &s : statements) {
+      if (&s == &stmt)
+        return j;
+      j++;
+    }
+    return -1;
+  }
+
+  /// Returns 'stmt' if 'stmt' lies in this block, or otherwise finds the
+  /// ancestor statement of 'stmt' that lies in this block. Returns nullptr if
+  /// the latter fails.
+  const Statement *findAncestorStmtInBlock(const Statement &stmt) const;
+  Statement *findAncestorStmtInBlock(Statement *stmt) {
+    return const_cast<Statement *>(findAncestorStmtInBlock(*stmt));
+  }
+
 protected:
   StmtBlock(StmtBlockKind kind) : kind(kind) {}
 

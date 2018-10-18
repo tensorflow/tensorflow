@@ -181,57 +181,6 @@ generateLoop(AffineMap lb, AffineMap ub,
   return loopChunk;
 }
 
-// Returns delay of that child statement of 'forStmt' which either has 'operand'
-// as one of its operands or has a descendant statement with operand 'operand'.
-// This is a naive implementation. If performance becomes an issue, a map can
-// be used to store 'delays' - to look up the delay for a statement in constant
-// time.
-static uint64_t getContainingStmtDelay(const StmtOperand &operand,
-                                       const ForStmt &forStmt,
-                                       ArrayRef<uint64_t> delays) {
-  // Traverse up the statement hierarchy starting from the owner of operand to
-  // find the ancestor statement that resides in the block of 'forStmt'.
-  const Statement *stmt = operand.getOwner();
-  assert(stmt != nullptr);
-  while (stmt->getParentStmt() != &forStmt) {
-    stmt = stmt->getParentStmt();
-    assert(stmt && "traversing parent's should reach forStmt block");
-  }
-  // Look up the delay of 'stmt'.
-  unsigned j = 0;
-  for (const auto &s : forStmt) {
-    if (&s == stmt)
-      break;
-    j++;
-  }
-  assert(j < forStmt.getStatements().size() && "child stmt should be found");
-  return delays[j];
-}
-
-/// Checks if SSA dominance would be violated if a for stmt's body statements
-/// are shifted by the specified delays. This method checks if a 'def' and all
-/// its uses have the same delay factor.
-bool mlir::checkDominancePreservationOnShift(const ForStmt &forStmt,
-                                             ArrayRef<uint64_t> delays) {
-  assert(delays.size() == forStmt.getStatements().size());
-  unsigned s = 0;
-  for (const auto &stmt : forStmt) {
-    // A for or if stmt does not produce any def/results (that are used
-    // outside).
-    if (auto *opStmt = dyn_cast<OperationStmt>(&stmt)) {
-      for (unsigned i = 0, e = opStmt->getNumResults(); i < e; ++i) {
-        const MLValue *result = opStmt->getResult(i);
-        for (const StmtOperand &use : result->getUses()) {
-          if (delays[s] != getContainingStmtDelay(use, forStmt, delays))
-            return false;
-        }
-      }
-    }
-    s++;
-  }
-  return true;
-}
-
 /// Skew the statements in the body of a 'for' statement with the specified
 /// statement-wise delays. The delays are with respect to the original execution
 /// order. A delay of zero for each statement will lead to no change.
@@ -260,7 +209,7 @@ UtilResult mlir::stmtBodySkew(ForStmt *forStmt, ArrayRef<uint64_t> delays,
     return UtilResult::Failure;
   uint64_t tripCount = mayBeConstTripCount.getValue();
 
-  assert(checkDominancePreservationOnShift(*forStmt, delays) &&
+  assert(isStmtwiseShiftValid(*forStmt, delays) &&
          "dominance preservation failed\n");
 
   unsigned numChildStmts = forStmt->getStatements().size();

@@ -86,10 +86,6 @@ AffineMap getUnrolledLoopUpperBound(const ForStmt &forStmt,
 UtilResult stmtBodySkew(ForStmt *forStmt, ArrayRef<uint64_t> delays,
                         bool unrollPrologueEpilogue = false);
 
-/// Checks if SSA dominance would be violated if a for stmt's child statements
-/// are shifted by the specified delays.
-bool checkDominancePreservationOnShift(const ForStmt &forStmt,
-                                       ArrayRef<uint64_t> delays);
 
 } // end namespace mlir
 

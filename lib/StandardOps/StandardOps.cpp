@@ -392,7 +392,7 @@ void DmaStartOp::print(OpAsmPrinter *p) const {
 }
 
 // Parse DmaStartOp.
-// EX:
+// Ex:
 //   %dma_id = dma_start %src[%i, %j], %dst[%k, %l], %size,
 //                             %tag[%index] :
 //    memref<3 x vector<8x128xf32>, (d0) -> (d0), 0>,
@@ -458,33 +458,38 @@ bool DmaStartOp::parse(OpAsmParser *parser, OperationState *result) {
 // ---------------------------------------------------------------------------
 // DmaWaitOp
 // ---------------------------------------------------------------------------
-// Parse DmaWaitOp.
-// Eg:
-//   dma_wait %tag[%index] : memref<1 x i32, (d0) -> (d0), 4>
-//
+
 void DmaWaitOp::print(OpAsmPrinter *p) const {
   *p << getOperationName() << ' ';
   // Print operands.
   p->printOperand(getTagMemRef());
   *p << '[';
   p->printOperands(getTagIndices());
-  *p << ']';
+  *p << "], ";
+  p->printOperand(getNumElements());
   *p << " : " << *getTagMemRef()->getType();
 }
 
+// Parse DmaWaitOp.
+// Eg:
+//   dma_wait %tag[%index], %num_elements : memref<1 x i32, (d0) -> (d0), 4>
+//
 bool DmaWaitOp::parse(OpAsmParser *parser, OperationState *result) {
   OpAsmParser::OperandType tagMemrefInfo;
   SmallVector<OpAsmParser::OperandType, 2> tagIndexInfos;
   Type *type;
   auto *indexType = parser->getBuilder().getIndexType();
+  OpAsmParser::OperandType numElementsInfo;
 
-  // Parse tag memref and index.
+  // Parse tag memref, its indices, and dma size.
   if (parser->parseOperand(tagMemrefInfo) ||
       parser->parseOperandList(tagIndexInfos, -1,
                                OpAsmParser::Delimiter::Square) ||
+      parser->parseComma() || parser->parseOperand(numElementsInfo) ||
       parser->parseColonType(type) ||
       parser->resolveOperand(tagMemrefInfo, type, result->operands) ||
-      parser->resolveOperands(tagIndexInfos, indexType, result->operands))
+      parser->resolveOperands(tagIndexInfos, indexType, result->operands) ||
+      parser->resolveOperand(numElementsInfo, indexType, result->operands))
     return true;
 
   if (tagIndexInfos.size() != cast<MemRefType>(type)->getRank())

@@ -24,8 +24,6 @@
 #include "mlir/Analysis/AffineAnalysis.h"
 #include "mlir/Analysis/AffineStructures.h"
 #include "mlir/Analysis/MLFunctionMatcher.h"
-#include "mlir/IR/AffineExpr.h"
-#include "mlir/IR/AffineMap.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/Statements.h"
@@ -128,12 +126,13 @@ static bool isAccessInvariant(MLValue *input, MemRefType *memRefType,
   assert(indices.size() == memRefType->getRank());
   assert(dim < indices.size());
   auto layoutMap = memRefType->getAffineMaps();
-  assert(layoutMap.size() <= 1);
+  assert(memRefType->getAffineMaps().size() <= 1);
   // TODO(ntv): remove dependency on Builder once we support non-identity
   // layout map.
   Builder b(memRefType->getContext());
   assert(layoutMap.empty() ||
          layoutMap[0] == b.getMultiDimIdentityMap(indices.size()));
+  (void)layoutMap;
 
   SmallVector<OperationStmt *, 4> affineApplyOps;
   getReachableAffineApplyOps({indices[dim]}, affineApplyOps);
@@ -194,6 +193,38 @@ bool mlir::isVectorizableLoop(const ForStmt &loop) {
     if (!contiguous) {
       return false;
     }
+  }
+  return true;
+}
+
+/// Checks whether SSA dominance would be violated if a for stmt's body
+/// statements are shifted by the specified shifts. This method checks if a
+/// 'def' and all its uses have the same shift factor.
+// TODO(mlir-team): extend this to check for memory-based dependence
+// violation when we have the support.
+bool mlir::isStmtwiseShiftValid(const ForStmt &forStmt,
+                                ArrayRef<uint64_t> shifts) {
+  assert(shifts.size() == forStmt.getStatements().size());
+  unsigned s = 0;
+  for (const auto &stmt : forStmt) {
+    // A for or if stmt does not produce any def/results (that are used
+    // outside).
+    if (const auto *opStmt = dyn_cast<OperationStmt>(&stmt)) {
+      for (unsigned i = 0, e = opStmt->getNumResults(); i < e; ++i) {
+        const MLValue *result = opStmt->getResult(i);
+        for (const StmtOperand &use : result->getUses()) {
+          // If an ancestor statement doesn't lie in the block of forStmt, there
+          // is no shift to check.
+          // This is a naive way. If performance becomes an issue, a map can
+          // be used to store 'shifts' - to look up the shift for a statement in
+          // constant time.
+          if (auto *ancStmt = forStmt.findAncestorStmtInBlock(*use.getOwner()))
+            if (shifts[s] != shifts[forStmt.findStmtPosInBlock(*ancStmt)])
+              return false;
+        }
+      }
+    }
+    s++;
   }
   return true;
 }

@@ -48,7 +48,8 @@ static bool isMemRefDereferencingOp(const Operation &op) {
 /// at the start for now.
 // TODO(mlir-team): extend this for SSAValue / CFGFunctions. Can also be easily
 // extended to add additional indices at any position.
-bool mlir::replaceAllMemRefUsesWith(MLValue *oldMemRef, MLValue *newMemRef,
+bool mlir::replaceAllMemRefUsesWith(const MLValue *oldMemRef,
+                                    MLValue *newMemRef,
                                     ArrayRef<MLValue *> extraIndices,
                                     AffineMap indexRemap) {
   unsigned newMemRefRank = cast<MemRefType>(newMemRef->getType())->getRank();
@@ -219,11 +220,11 @@ mlir::createComposedAffineApplyOp(MLFuncBuilder *builder, Location *loc,
 /// This allows applying different transformations on send and compute (for eg.
 /// different shifts/delays).
 ///
-/// Returns nullptr if none of the operands were the result of an affine_apply
-/// and thus there was no affine computation slice to create. Returns the newly
-/// affine_apply operation statement otherwise.
-///
-///
+/// Returns nullptr either if none of opStmt's operands were the result of an
+/// affine_apply and thus there was no affine computation slice to create, or if
+/// all the affine_apply op's supplying operands to this opStmt do not have any
+/// uses besides this opStmt. Returns the new affine_apply operation statement
+/// otherwise.
 OperationStmt *mlir::createAffineComputationSlice(OperationStmt *opStmt) {
   // Collect all operands that are results of affine apply ops.
   SmallVector<MLValue *, 4> subOperands;
