@@ -66,7 +66,7 @@ def _GetMatrixUnaryFunctorGradientTest(functor_, dtype_, shape_, **kwargs_):
           low=-1.0, high=1.0,
           size=np.prod(shape_)).reshape(shape_).astype(dtype_)
       a = constant_op.constant(a_np)
-      if functor_.func_name == 'matrix_square_root':
+      if functor_.__name__ == 'matrix_square_root':
         # Square the input matrix to ensure that its matrix square root exists
         a = math_ops.matmul(a, a)
         a_np = a.eval()
