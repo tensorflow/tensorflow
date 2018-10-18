@@ -14,7 +14,7 @@ load(
 )
 
 tf_cc_binary(
-    name = "s3_file_system.so",
+    name = "libs3_file_system_shared.so",
     srcs = [
         "aws_crypto.cc",
         "aws_crypto.h",
