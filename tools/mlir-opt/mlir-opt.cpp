@@ -70,6 +70,7 @@ enum Passes {
   ComposeAffineMaps,
   ConstantFold,
   ConvertToCFG,
+  Vectorize,
   LoopUnroll,
   LoopUnrollAndJam,
   PipelineDataTransfer,
@@ -89,6 +90,8 @@ static cl::list<Passes> passList(
                    "Constant fold operations in functions"),
         clEnumValN(ConvertToCFG, "convert-to-cfg",
                    "Convert all ML functions in the module to CFG ones"),
+        clEnumValN(Vectorize, "vectorize",
+                   "Vectorize to a target independent n-D vector abstraction."),
         clEnumValN(LoopUnroll, "loop-unroll", "Unroll loops"),
         clEnumValN(LoopUnrollAndJam, "loop-unroll-jam", "Unroll and jam loops"),
         clEnumValN(PipelineDataTransfer, "pipeline-data-transfer",
@@ -187,6 +190,9 @@ static OptResult performActions(SourceMgr &sourceMgr, MLIRContext *context) {
       break;
     case ConvertToCFG:
       pass = createConvertToCFGPass();
+      break;
+    case Vectorize:
+      pass = createVectorizePass();
       break;
     case LoopUnroll:
       pass = createLoopUnrollPass();

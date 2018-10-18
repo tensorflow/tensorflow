@@ -114,6 +114,9 @@ private:
 // or simplified. Unlike AffineMap's, AffineValueMap's are created and destroyed
 // during analysis. Only the AffineMap expressions that are pointed by them are
 // unique'd.
+// An affine value map, and the operations on it, maintain the invariant that
+// operands are always positionally aligned with the AffineDimExpr and
+// AffineSymbolExpr in the underlying AffineMap.
 // TODO(bondhugula): Some of these classes could go into separate files.
 class AffineValueMap {
 public:
@@ -145,6 +148,9 @@ public:
   /// Return true if the idx^th result can be proved to be a multiple of
   /// 'factor', false otherwise.
   inline bool isMultipleOf(unsigned idx, int64_t factor) const;
+
+  /// Return true if the idx^th result depends on 'value', false otherwise.
+  bool isFunctionOf(unsigned idx, MLValue *value) const;
 
   /// Return true if the result at 'idx' is a constant, false
   /// otherwise.

@@ -37,6 +37,10 @@ FunctionPass *createConstantFoldPass();
 /// Creates an instance of the Canonicalizer pass.
 FunctionPass *createCanonicalizerPass();
 
+/// Creates a pass to vectorize loops, operations and data types using a
+/// target-independent, n-D virtual vector abstraction.
+MLFunctionPass *createVectorizePass();
+
 /// Creates a loop unrolling pass. Default option or command-line options take
 /// effect if -1 is passed as parameter.
 MLFunctionPass *createLoopUnrollPass(int unrollFactor = -1,

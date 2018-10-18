@@ -44,6 +44,14 @@ llvm::Optional<uint64_t> getConstantTripCount(const ForStmt &forStmt);
 /// this method is thus able to determine non-trivial divisors.
 uint64_t getLargestDivisorOfTripCount(const ForStmt &forStmt);
 
+/// Checks whether all the LoadOp and StoreOp matched have access indexing
+/// functions that are are either:
+///   1. invariant along the loop induction variable;
+///   2. varying along the fastest varying memory dimension only.
+// TODO(ntv): return for each statement the required action to make the loop
+// vectorizable. A function over the actions will give us a cost model.
+bool isVectorizableLoop(const ForStmt &loop);
+
 } // end namespace mlir
 
 #endif // MLIR_ANALYSIS_LOOP_ANALYSIS_H

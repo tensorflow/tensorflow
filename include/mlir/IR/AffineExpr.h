@@ -115,6 +115,9 @@ public:
   /// Return true if the affine expression is a multiple of 'factor'.
   bool isMultipleOf(int64_t factor) const;
 
+  /// Return true if the affine expression involves AffineDimExpr `position`.
+  bool isFunctionOfDim(unsigned position) const;
+
   AffineExpr operator+(int64_t v) const;
   AffineExpr operator+(AffineExpr other) const;
   AffineExpr operator-() const;

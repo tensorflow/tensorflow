@@ -146,6 +146,17 @@ bool AffineExpr::isMultipleOf(int64_t factor) const {
   }
 }
 
+bool AffineExpr::isFunctionOfDim(unsigned position) const {
+  if (getKind() == AffineExprKind::DimId) {
+    return *this == mlir::getAffineDimExpr(position, getContext());
+  }
+  if (auto expr = this->dyn_cast<AffineBinaryOpExpr>()) {
+    return expr.getLHS().isFunctionOfDim(position) ||
+           expr.getRHS().isFunctionOfDim(position);
+  }
+  return false;
+}
+
 AffineBinaryOpExpr::AffineBinaryOpExpr(AffineExpr::ImplType *ptr)
     : AffineExpr(ptr) {}
 AffineExpr AffineBinaryOpExpr::getLHS() const {

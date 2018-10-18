@@ -21,6 +21,7 @@
 
 #include "mlir/Analysis/AffineStructures.h"
 #include "mlir/Analysis/AffineAnalysis.h"
+#include "mlir/IR/AffineExpr.h"
 #include "mlir/IR/AffineExprVisitor.h"
 #include "mlir/IR/AffineMap.h"
 #include "mlir/IR/BuiltinOps.h"
@@ -242,11 +243,11 @@ void AffineValueMap::forwardSubstituteSingle(const AffineApplyOp &inputOp,
 // Returns true and sets 'indexOfMatch' if 'valueToMatch' is found in
 // 'valuesToSearch'. Returns false otherwise.
 static bool findIndex(MLValue *valueToMatch, ArrayRef<MLValue *> valuesToSearch,
-                      unsigned &indexOfMatch) {
+                      unsigned *indexOfMatch) {
   unsigned size = valuesToSearch.size();
   for (unsigned i = 0; i < size; ++i) {
     if (valueToMatch == valuesToSearch[i]) {
-      indexOfMatch = i;
+      *indexOfMatch = i;
       return true;
     }
   }
@@ -354,7 +355,7 @@ void AffineValueMap::forwardSubstitute(
     auto *inputOperand =
         cast<MLValue>(const_cast<SSAValue *>(inputOp.getOperand(i)));
     unsigned outputIndex;
-    if (findIndex(inputOperand, outputOperands, outputIndex)) {
+    if (findIndex(inputOperand, outputOperands, &outputIndex)) {
       mapUpdate.inputDimMap[i] = outputIndex;
     } else {
       mapUpdate.inputDimMap[i] = outputOperandPosition++;
@@ -387,7 +388,7 @@ void AffineValueMap::forwardSubstitute(
         cast<MLValue>(const_cast<SSAValue *>(inputOp.getOperand(i)));
     // Find output operand index of 'inputOperand' dup.
     unsigned outputIndex;
-    if (findIndex(inputOperand, outputOperands, outputIndex)) {
+    if (findIndex(inputOperand, outputOperands, &outputIndex)) {
       unsigned outputSymbolPosition = outputIndex - outputNumDims;
       mapUpdate.inputSymbolMap[inputSymbolPosition] = outputSymbolPosition;
     } else {
@@ -410,6 +411,17 @@ void AffineValueMap::forwardSubstitute(
 
 inline bool AffineValueMap::isMultipleOf(unsigned idx, int64_t factor) const {
   return map.isMultipleOf(idx, factor);
+}
+
+/// This method uses the invariant that operands are always positionally aligned
+/// with the AffineDimExpr in the underlying AffineMap.
+bool AffineValueMap::isFunctionOf(unsigned idx, MLValue *value) const {
+  unsigned index;
+  findIndex(value, operands, &index);
+  auto expr = const_cast<AffineValueMap *>(this)->getAffineMap().getResult(idx);
+  // TODO(ntv): this is better implemented on a flattened representation.
+  // At least for now it is conservative.
+  return expr.isFunctionOfDim(index);
 }
 
 unsigned AffineValueMap::getNumOperands() const { return operands.size(); }
