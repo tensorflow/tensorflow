@@ -213,6 +213,10 @@ bool IsUnaryElementWise(const NodeDef& node);
 // Returns true if we can find an opdef corresponding to the op of the node.
 bool HasOpDef(const NodeDef& node);
 
+// Returns true if the op changes the scalar type of its first input elements
+// and preserves the number of elements.
+bool IsCastLike(const NodeDef& node);
+
 }  // end namespace grappler
 }  // end namespace tensorflow
 

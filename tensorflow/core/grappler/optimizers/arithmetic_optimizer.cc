@@ -127,12 +127,10 @@ void SetDataTypeToAttr(DataType dtype, const string& attr_name, NodeDef* node) {
 }
 
 string SourceDataTypeAttrName(const NodeDef& node) {
-  if (node.op() == "Bitcast") {
-    return "T";
-  } else if (node.op() == "Cast") {
+  if (node.op() == "Cast") {
     return "SrcT";
   } else {
-    LOG(FATAL) << "SourceDataTypeAttrName not implemented for op " << node.op();
+    return "T";
   }
 }
 
@@ -1853,79 +1851,114 @@ class RemoveRedundantReshape : public ArithmeticOptimizerStage {
   }
 };
 
-// Reorder Cast and Transpose if beneficial.
+// Reorder casting and value-preserving ops if beneficial.
 //
-// A common pattern after the layout optimizer is casting an uint8 NHWC
-// image to float before transposing it to NCHW. It is beneficial to reorder
-// the cast and the transpose to make the transpose process smaller amount
-// of data. This optimization converts
-//   Transpose(Cast(image, dst_type), perm)
+// Original motivation: A common pattern after the layout optimizer is
+// casting an uint8 NHWC image to float before transposing it to NCHW. It
+// is beneficial to reorder the cast and the transpose to make the transpose
+// process smaller amount of data. More generally, this optimization converts
+//   Op(Cast(tensor, dst_type))
 // to
-//   Cast(Transpose(image, perm), dst_type)
-// when sizeof(image.type) < sizeof(dst_type).
+//   Cast(Op(tensor), dst_type)
+// when sizeof(tensor.type) < sizeof(dst_type), and Op is any value-preserving
+// Op, i.e. an op that only reorders the order of the elements in its first
+// input. Similarly, this optimization converts
+//   Cast(Op(tensor), dst_type)
+// to
+//   Op(Cast(tensor, dst_type))
+// when sizeof(tensor.type) > sizeof(dst_type)
 //
-// TODO(jingyue): This optimization can be generalized to a cast followed by
-// a chain of ops that merely reorder elements (e.g. Reshape and
-// DepthToSpace).
-class ReorderCastAndTranspose : public ArithmeticOptimizerStage {
+class ReorderCastLikeAndValuePreserving : public ArithmeticOptimizerStage {
  public:
-  explicit ReorderCastAndTranspose(const GraphOptimizerContext& ctx,
-                                   const ArithmeticOptimizerContext& ctx_ext)
-      : ArithmeticOptimizerStage("ReorderCastAndTranspose", ctx, ctx_ext) {}
-  ~ReorderCastAndTranspose() override = default;
+  explicit ReorderCastLikeAndValuePreserving(
+      const GraphOptimizerContext& ctx,
+      const ArithmeticOptimizerContext& ctx_ext)
+      : ArithmeticOptimizerStage("ReorderCastLikeAndValuePreserving", ctx,
+                                 ctx_ext) {}
+  ~ReorderCastLikeAndValuePreserving() override = default;
 
   bool IsSupported(const NodeDef* node) const override {
-    return IsTranspose(*node) && NodeIsOnCpuOrGpu(node);
+    return (IsValuePreserving(*node) || IsCastLike(*node)) &&
+           NodeIsOnCpuOrGpu(node) && !IsControlFlow(*node) &&
+           !IsInPreserveSet(*node);
   }
 
-  Status TrySimplify(NodeDef* node, string* simplified_node_name) override {
-    const NodeDef* transpose = node;
+  Status TrySimplify(NodeDef* consumer, string* simplified_node_name) override {
+    NodeDef* producer;
+    TF_RETURN_IF_ERROR(GetInputNode(consumer->input(0), &producer));
+    const bool producer_is_cast = IsCastLike(*producer);
+    const bool can_optimize =
+        ((producer_is_cast && IsValuePreserving(*consumer)) ||
+         (IsValuePreserving(*producer) && IsCastLike(*consumer)));
+    if (!can_optimize || IsControlFlow(*producer) ||
+        producer->device() != consumer->device()) {
+      return Status::OK();
+    }
 
-    // Verify that input to Transpose is the Cast op.
-    NodeDef* cast;
-    TF_RETURN_IF_ERROR(GetInputNode(transpose->input(0), &cast));
-    if (!IsCast(*cast)) return Status::OK();
-
-    // Input to the Cast-Transpose chain.
-    NodeDef* input;
-    TF_RETURN_IF_ERROR(GetInputNode(cast->input(0), &input));
-
-    const DataType src_type = GetSourceDataType(*cast);
-    const DataType dst_type = GetDestinationDataType(*cast);
-
+    const NodeDef* cast_like_node = producer_is_cast ? producer : consumer;
+    const string src_attr_name = SourceDataTypeAttrName(*cast_like_node);
+    const string dst_attr_name = DestinationDataTypeAttrName(*cast_like_node);
+    const DataType src_type =
+        GetDataTypeFromAttr(*cast_like_node, src_attr_name);
+    const DataType dst_type =
+        GetDataTypeFromAttr(*cast_like_node, dst_attr_name);
     const string src_type_name = DataTypeString(src_type);
     const string dst_type_name = DataTypeString(dst_type);
-
-    // Check if nodes were not already optimized.
-    const string optimized_cast_name =
-        OptimizedNodeName(ParseNodeScopeAndName(cast->name()), dst_type_name);
-    const string optimized_transpose_name = OptimizedNodeName(
-        ParseNodeScopeAndName(transpose->name()), src_type_name);
-
-    bool is_already_optimized =
-        ctx().node_map->NodeExists(optimized_transpose_name) ||
-        ctx().node_map->NodeExists(optimized_cast_name);
-
-    if (IsNumberType(src_type) && IsNumberType(dst_type) &&
-        DataTypeSize(src_type) < DataTypeSize(dst_type) &&
-        !is_already_optimized) {
-      NodeDef* new_transpose = AddCopyNode(optimized_transpose_name, transpose);
-      (*new_transpose->mutable_attr())["T"].set_type(src_type);
-      new_transpose->set_input(0, cast->input(0));
-
-      ctx().node_map->AddOutput(input->name(), new_transpose->name());
-      ctx().node_map->AddOutput(NodeName(new_transpose->input(1)),
-                                new_transpose->name());
-
-      NodeDef* new_cast = AddCopyNode(optimized_cast_name, cast);
-      new_cast->set_input(0, new_transpose->name());
-      ctx().node_map->AddOutput(new_transpose->name(), new_cast->name());
-
-      AddToOptimizationQueue(new_transpose);
-      ForwardControlDependencies(new_transpose, {cast, node});
-
-      *simplified_node_name = new_cast->name();
+    if (!IsFixedSizeType(src_type) || !IsFixedSizeType(dst_type)) {
+      return Status::OK();
+    } else if (producer_is_cast &&
+               DataTypeSize(dst_type) <= DataTypeSize(src_type)) {
+      return Status::OK();
+    } else if (!producer_is_cast &&
+               DataTypeSize(dst_type) >= DataTypeSize(src_type)) {
+      return Status::OK();
     }
+
+    // Check that nodes were not already optimized.
+    const string optimized_producer_name = OptimizedNodeName(
+        ParseNodeScopeAndName(producer->name()), dst_type_name);
+    const string optimized_consumer_name = OptimizedNodeName(
+        ParseNodeScopeAndName(consumer->name()), src_type_name);
+    const bool is_already_optimized =
+        ctx().node_map->NodeExists(optimized_consumer_name) ||
+        ctx().node_map->NodeExists(optimized_producer_name);
+    if (is_already_optimized) {
+      return Status::OK();
+    }
+
+    // Add copies of consumer and producer in reverse order.
+    const string new_producer_type_attr_name =
+        SourceDataTypeAttrName(*consumer);
+    TF_RETURN_IF_ERROR(CheckAttrExists(*consumer, new_producer_type_attr_name));
+    const string new_consumer_type_attr_name =
+        SourceDataTypeAttrName(*producer);
+    TF_RETURN_IF_ERROR(CheckAttrExists(*producer, new_consumer_type_attr_name));
+    NodeDef* input;
+    TF_RETURN_IF_ERROR(GetInputNode(producer->input(0), &input));
+    // Create new producer node.
+    NodeDef* new_producer = AddCopyNode(optimized_consumer_name, consumer);
+    if (IsCheckNumerics(*new_producer) && !IsFloatingType(src_type)) {
+      new_producer->set_op("Identity");
+      new_producer->clear_attr();
+    }
+    new_producer->set_input(0, producer->input(0));
+    (*new_producer->mutable_attr())[new_producer_type_attr_name].set_type(
+        src_type);
+    ctx().node_map->AddOutput(input->name(), new_producer->name());
+    // Create new consumer node.
+    NodeDef* new_consumer = AddCopyNode(optimized_producer_name, producer);
+    new_consumer->set_input(0, new_producer->name());
+    const DataType new_consumer_type = producer_is_cast ? src_type : dst_type;
+    if (IsCheckNumerics(*new_producer) && !IsFloatingType(new_consumer_type)) {
+      new_consumer->set_op("Identity");
+      new_consumer->clear_attr();
+    }
+    (*new_consumer->mutable_attr())[new_consumer_type_attr_name].set_type(
+        new_consumer_type);
+    ctx().node_map->AddOutput(new_producer->name(), new_consumer->name());
+
+    AddToOptimizationQueue(new_producer);
+    *simplified_node_name = new_consumer->name();
 
     return Status::OK();
   }
@@ -1944,7 +1977,13 @@ class ReorderCastAndTranspose : public ArithmeticOptimizerStage {
            (StrContains(device, DEVICE_CPU) || StrContains(device, DEVICE_GPU));
   }
 
-  bool IsNumberType(DataType dtype) { return kNumberTypes.Contains(dtype); }
+  bool IsFixedSizeType(DataType dtype) {
+    return dtype != DT_STRING && dtype != DT_VARIANT && dtype != DT_RESOURCE;
+  }
+
+  bool IsFloatingType(DataType dtype) {
+    return kDataTypeIsFloating.Contains(dtype);
+  }
 };
 
 // Fold a multiply of a scalar into the following convolution. This folding
@@ -3453,8 +3492,8 @@ Status ArithmeticOptimizer::SimplifyArithmeticOps(bool can_use_shapes) {
     pipeline.AddStage<ReplaceMulWithSquare>(ctx, ctx_ext);
   if (options_.remove_logical_not)
     pipeline.AddStage<RemoveLogicalNotStage>(ctx, ctx_ext);
-  if (options_.reorder_cast_and_transpose)
-    pipeline.AddStage<ReorderCastAndTranspose>(ctx, ctx_ext);
+  if (options_.reorder_cast_like_and_value_preserving)
+    pipeline.AddStage<ReorderCastLikeAndValuePreserving>(ctx, ctx_ext);
   if (options_.simplify_aggregation)
     pipeline.AddStage<SimplifyAggregation>(ctx, ctx_ext);
   if (options_.hoist_cwise_unary_chains)
