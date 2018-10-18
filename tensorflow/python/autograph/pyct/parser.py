@@ -31,8 +31,21 @@ from tensorflow.python.util import tf_inspect
 def parse_entity(entity):
   """Returns the AST of given entity."""
   source = tf_inspect.getsource(entity)
+  # Comments and multiline strings can appear at arbitrary indentation levels,
+  # causing textwrap.dedent to not correctly dedent source code.
+  # TODO(b/115884650): Automatic handling of comments/multiline strings.
   source = textwrap.dedent(source)
-  return parse_str(source), source
+  try:
+    return parse_str(source), source
+  except IndentationError:
+    # Because we are parsing the source code of entities that have already
+    # successfully parsed once, any IndentationErrors are guaranteed to be
+    # caused by insufficient dedenting.
+    raise ValueError(
+        'Failed to dedent prior to parsing source code. If you have comments '
+        'or multiline strings in your code, try indenting them. '
+        'Multiline strings can be rewritten using textwrap.dedent.\n'
+        'Offending source code: \n %s' % source)
 
 
 def parse_str(src):

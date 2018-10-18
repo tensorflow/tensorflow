@@ -32,7 +32,7 @@ class AsStringOpTest(test.TestCase):
         0, 1, -1, 0.5, 0.25, 0.125, float("INF"), float("NAN"), float("-INF")
     ]
 
-    with self.test_session():
+    with self.cached_session():
       for dtype in (dtypes.float32, dtypes.float64):
         input_ = array_ops.placeholder(dtype)
 
@@ -84,7 +84,7 @@ class AsStringOpTest(test.TestCase):
     int_inputs_ = [0, -1, 1, -128, 127, -101, 101, -0]
     s = lambda strs: [x.decode("ascii") for x in strs]
 
-    with self.test_session():
+    with self.cached_session():
       for dtype in (dtypes.int32, dtypes.int64, dtypes.int8):
         input_ = array_ops.placeholder(dtype)
 
@@ -117,7 +117,7 @@ class AsStringOpTest(test.TestCase):
     # testing int8
     s = lambda strs: [x.decode("ascii") for x in strs]
 
-    with self.test_session():
+    with self.cached_session():
       input_ = array_ops.placeholder(dtypes.int32)
       int_inputs_ = [np.iinfo(np.int32).min, np.iinfo(np.int32).max]
       output = string_ops.as_string(input_)
@@ -133,7 +133,7 @@ class AsStringOpTest(test.TestCase):
   def testHalfInt(self):
     s = lambda strs: [x.decode("ascii") for x in strs]
 
-    with self.test_session():
+    with self.cached_session():
       input_ = array_ops.placeholder(dtypes.int16)
       int_inputs_ = [np.iinfo(np.int16).min, np.iinfo(np.int16).max]
       output = string_ops.as_string(input_)
@@ -144,7 +144,7 @@ class AsStringOpTest(test.TestCase):
     bool_inputs_ = [False, True]
     s = lambda strs: [x.decode("ascii") for x in strs]
 
-    with self.test_session():
+    with self.cached_session():
       for dtype in (dtypes.bool,):
         input_ = array_ops.placeholder(dtype)
 
@@ -159,7 +159,7 @@ class AsStringOpTest(test.TestCase):
     ]
     complex_inputs_ = [(x + (x + 1) * 1j) for x in float_inputs_]
 
-    with self.test_session():
+    with self.cached_session():
       for dtype in (dtypes.complex64, dtypes.complex128):
         input_ = array_ops.placeholder(dtype)
 

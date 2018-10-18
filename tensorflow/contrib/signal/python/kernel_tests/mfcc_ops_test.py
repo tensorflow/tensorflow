@@ -46,14 +46,14 @@ class MFCCTest(test.TestCase):
   def test_basic(self):
     """A basic test that the op runs on random input."""
     with spectral_ops_test_util.fft_kernel_label_map():
-      with self.test_session(use_gpu=True):
+      with self.session(use_gpu=True):
         signal = random_ops.random_normal((2, 3, 5))
         mfcc_ops.mfccs_from_log_mel_spectrograms(signal).eval()
 
   def test_unknown_shape(self):
     """A test that the op runs when shape and rank are unknown."""
     with spectral_ops_test_util.fft_kernel_label_map():
-      with self.test_session(use_gpu=True):
+      with self.session(use_gpu=True):
         signal = array_ops.placeholder_with_default(
             random_ops.random_normal((2, 3, 5)), tensor_shape.TensorShape(None))
         self.assertIsNone(signal.shape.ndims)

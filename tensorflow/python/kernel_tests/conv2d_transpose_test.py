@@ -37,7 +37,7 @@ from tensorflow.python.platform import test
 class Conv2DTransposeTest(test.TestCase):
 
   def testConv2DTransposeSingleStride(self):
-    with self.test_session():
+    with self.cached_session():
       strides = [1, 1, 1, 1]
 
       # Input, output: [batch, height, width, depth]
@@ -75,7 +75,7 @@ class Conv2DTransposeTest(test.TestCase):
               self.assertAllClose(target, value[n, h, w, k])
 
   def testConv2DTransposeSame(self):
-    with self.test_session():
+    with self.cached_session():
       strides = [1, 2, 2, 1]
 
       # Input, output: [batch, height, width, depth]
@@ -108,7 +108,7 @@ class Conv2DTransposeTest(test.TestCase):
               self.assertAllClose(target, value[n, h, w, k])
 
   def testConv2DTransposeValid(self):
-    with self.test_session():
+    with self.cached_session():
       strides = [1, 2, 2, 1]
 
       # Input, output: [batch, height, width, depth]
@@ -163,7 +163,7 @@ class Conv2DTransposeTest(test.TestCase):
     np.random.seed(1)  # Make it reproducible.
     x_val = np.random.random_sample(x_shape).astype(np.float64)
     f_val = np.random.random_sample(f_shape).astype(np.float64)
-    with self.test_session():
+    with self.cached_session():
       x = constant_op.constant(x_val, name="x", dtype=dtypes.float32)
       f = constant_op.constant(f_val, name="f", dtype=dtypes.float32)
       output = nn_ops.conv2d_transpose(
@@ -177,7 +177,7 @@ class Conv2DTransposeTest(test.TestCase):
   def testConv2DTransposeSingleStrideNCHW(self):
     # `NCHW` data format is only supported for CUDA device.
     if test.is_gpu_available(cuda_only=True):
-      with self.test_session(use_gpu=True):
+      with self.session(use_gpu=True):
         strides = [1, 1, 1, 1]
 
         # Input, output: [batch, depth, height, width, depth]
@@ -212,7 +212,7 @@ class Conv2DTransposeTest(test.TestCase):
   def testConv2DTransposeSameNCHW(self):
     # `NCHW` data format is only supported for CUDA device.
     if test.is_gpu_available(cuda_only=True):
-      with self.test_session(use_gpu=True):
+      with self.session(use_gpu=True):
         strides = [1, 1, 2, 2]
 
         # Input, output: [batch, depth, height, width]
@@ -248,7 +248,7 @@ class Conv2DTransposeTest(test.TestCase):
   def testConv2DTransposeValidNCHW(self):
     # `NCHW` data format is only supported for CUDA device.
     if test.is_gpu_available(cuda_only=True):
-      with self.test_session(use_gpu=True):
+      with self.session(use_gpu=True):
         strides = [1, 1, 2, 2]
 
         # Input, output: [batch, depth, height, width]

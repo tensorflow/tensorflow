@@ -191,6 +191,43 @@ class ARModel(model.TimeSeriesModel):
 
   Note that this class can also be used to regress against time only by setting
   the input_window_size to zero.
+
+  Each periodicity in the `periodicities` arg is divided by the
+  `num_time_buckets` into time buckets that are represented as features added
+  to the model.
+
+  A good heuristic for picking an appropriate periodicity for a given data set
+  would be the length of cycles in the data. For example, energy usage in a
+  home is typically cyclic each day. If the time feature in a home energy
+  usage dataset is in the unit of hours, then 24 would be an appropriate
+  periodicity. Similarly, a good heuristic for `num_time_buckets` is how often
+  the data is expected to change within the cycle. For the aforementioned home
+  energy usage dataset and periodicity of 24, then 48 would be a reasonable
+  value if usage is expected to change every half hour.
+
+  Each feature's value for a given example with time t is the difference
+  between t and the start of the time bucket it falls under. If it doesn't fall
+  under a feature's associated time bucket, then that feature's value is zero.
+
+  For example: if `periodicities` = (9, 12) and `num_time_buckets` = 3, then 6
+  features would be added to the model, 3 for periodicity 9 and 3 for
+  periodicity 12.
+
+  For an example data point where t = 17:
+  - It's in the 3rd time bucket for periodicity 9 (2nd period is 9-18 and 3rd
+    time bucket is 15-18)
+  - It's in the 2nd time bucket for periodicity 12 (2nd period is 12-24 and
+    2nd time bucket is between 16-20).
+
+  Therefore the 6 added features for this row with t = 17 would be:
+
+  # Feature name (periodicity#_timebucket#), feature value
+  P9_T1, 0 # not in first time bucket
+  P9_T2, 0 # not in second time bucket
+  P9_T3, 2 # 17 - 15 since 15 is the start of the 3rd time bucket
+  P12_T1, 0 # not in first time bucket
+  P12_T2, 1 # 17 - 16 since 16 is the start of the 2nd time bucket
+  P12_T3, 0 # not in third time bucket
   """
   SQUARED_LOSS = "squared_loss"
   NORMAL_LIKELIHOOD_LOSS = "normal_likelihood_loss"
@@ -208,7 +245,9 @@ class ARModel(model.TimeSeriesModel):
 
     Args:
       periodicities: periodicities of the input data, in the same units as the
-        time feature. Note this can be a single value or a list of values for
+        time feature (for example 24 if feeding hourly data with a daily
+        periodicity, or 60 * 24 if feeding minute-level data with daily
+        periodicity). Note this can be a single value or a list of values for
         multiple periodicities.
       input_window_size: Number of past time steps of data to look at when doing
         the regression.
@@ -218,21 +257,18 @@ class ARModel(model.TimeSeriesModel):
       prediction_model_factory: A callable taking arguments `num_features`,
         `input_window_size`, and `output_window_size` and returning a
         `tf.keras.Model`. The `Model`'s `call()` takes two arguments: an input
-        window and an output window, and returns a dictionary of
-        predictions. See `FlatPredictionModel` for an example. Example usage:
+        window and an output window, and returns a dictionary of predictions.
+        See `FlatPredictionModel` for an example. Example usage:
 
-        ```python
-        model = ar_model.ARModel(
-          periodicities=2, num_features=3,
-          prediction_model_factory=functools.partial(
-              FlatPredictionModel,
-              hidden_layer_sizes=[10, 10]))
-        ```
+        ```python model = ar_model.ARModel( periodicities=2, num_features=3,
+        prediction_model_factory=functools.partial( FlatPredictionModel,
+        hidden_layer_sizes=[10, 10])) ```
 
         The default model computes predictions as a linear function of flattened
         input and output windows.
       num_time_buckets: Number of buckets into which to divide (time %
-        periodicity) for generating time based features.
+        periodicity). This value multiplied by the number of periodicities is
+        the number of time features added to the model.
       loss: Loss function to use for training. Currently supported values are
         SQUARED_LOSS and NORMAL_LIKELIHOOD_LOSS. Note that for
         NORMAL_LIKELIHOOD_LOSS, we train the covariance term as well. For
@@ -240,10 +276,9 @@ class ARModel(model.TimeSeriesModel):
         observations and predictions, while the training loss is computed on
         normalized data (if input statistics are available).
       exogenous_feature_columns: A list of `tf.feature_column`s (for example
-          `tf.feature_column.embedding_column`) corresponding to exogenous
-          features which provide extra information to the model but are not part
-          of the series to be predicted. Passed to
-          `tf.feature_column.input_layer`.
+        `tf.feature_column.embedding_column`) corresponding to
+        features which provide extra information to the model but are not part
+        of the series to be predicted.
     """
     self._model_factory = prediction_model_factory
     self.input_window_size = input_window_size

@@ -14,9 +14,9 @@
 # ==============================================================================
 """Bring in all of the public TensorFlow interface into this module."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
+from __future__ import absolute_import as _absolute_import
+from __future__ import division as _division
+from __future__ import print_function as _print_function
 
 import os as _os
 
@@ -41,6 +41,11 @@ except (ImportError, AttributeError):
 from tensorflow.python.util.lazy_loader import LazyLoader  # pylint: disable=g-import-not-at-top
 contrib = LazyLoader('contrib', globals(), 'tensorflow.contrib')
 del LazyLoader
+# The templated code that replaces the placeholder above sometimes
+# sets the __all__ variable. If it does, we have to be sure to add
+# "contrib".
+if '__all__' in vars():
+  vars()['__all__'].append('contrib')
 
 from tensorflow.python.platform import flags  # pylint: disable=g-import-not-at-top
 app.flags = flags  # pylint: disable=undefined-variable
@@ -50,10 +55,6 @@ app.flags = flags  # pylint: disable=undefined-variable
 _tf_api_dir = _os.path.dirname(_os.path.dirname(app.__file__))  # pylint: disable=undefined-variable
 if _tf_api_dir not in __path__:
   __path__.append(_tf_api_dir)
-
-del absolute_import
-del division
-del print_function
 
 # These symbols appear because we import the python package which
 # in turn imports from tensorflow.core and tensorflow.python. They

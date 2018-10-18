@@ -460,7 +460,7 @@ class CudnnRNNTestBasic(test_util.TensorFlowTestCase):
       grad, = gradients.gradients(
           math_ops.reduce_sum(accumulation), (original_input,))
     init_op = variables.global_variables_initializer()
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       sess.run(init_op)
       accumulation_eval, grad_eval = sess.run((accumulation, grad))
       self.assertAllEqual([28, 100, 100], accumulation_eval.shape)

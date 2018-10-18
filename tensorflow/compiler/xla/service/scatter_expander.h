@@ -20,7 +20,7 @@ limitations under the License.
 
 namespace xla {
 
-class ScatterExpander : public HloPassInterface {
+class ScatterExpander : public HloModulePass {
  public:
   absl::string_view name() const override { return "scatter_expander"; }
   StatusOr<bool> Run(HloModule* module) override;

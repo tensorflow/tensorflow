@@ -58,9 +58,9 @@ import android.view.View;
 import android.view.ViewGroup;
 import android.widget.CompoundButton;
 import android.widget.NumberPicker;
-import android.widget.ToggleButton;
 import android.widget.TextView;
 import android.widget.Toast;
+import android.widget.ToggleButton;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -305,22 +305,24 @@ public class Camera2BasicFragment extends Fragment
     textView = (TextView) view.findViewById(R.id.text);
     toggle = (ToggleButton) view.findViewById(R.id.button);
 
-    toggle.setOnCheckedChangeListener(new CompoundButton.OnCheckedChangeListener() {
-      public void onCheckedChanged(CompoundButton buttonView, boolean isChecked) {
-        classifier.setUseNNAPI(isChecked);
-      }
-    });
+    toggle.setOnCheckedChangeListener(
+        new CompoundButton.OnCheckedChangeListener() {
+          public void onCheckedChanged(CompoundButton buttonView, boolean isChecked) {
+            backgroundHandler.post(() -> classifier.setUseNNAPI(isChecked));
+          }
+        });
 
     np = (NumberPicker) view.findViewById(R.id.np);
     np.setMinValue(1);
     np.setMaxValue(10);
     np.setWrapSelectorWheel(true);
-    np.setOnValueChangedListener(new NumberPicker.OnValueChangeListener() {
-      @Override
-      public void onValueChange(NumberPicker picker, int oldVal, int newVal){
-        classifier.setNumThreads(newVal);
-      }
-    });
+    np.setOnValueChangedListener(
+        new NumberPicker.OnValueChangeListener() {
+          @Override
+          public void onValueChange(NumberPicker picker, int oldVal, int newVal) {
+            backgroundHandler.post(() -> classifier.setNumThreads(newVal));
+          }
+        });
   }
 
   /** Load the model and labels. */

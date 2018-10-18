@@ -88,14 +88,18 @@ class HloTestBase : public ::testing::Test {
   // interpreter is the only supported backend, it will be both the test backend
   // and the reference backend.
   HloTestBase(bool verifier_layout_sensitive = false,
-              bool allow_mixed_precision_in_hlo_verifier = true);
+              bool allow_mixed_precision_in_hlo_verifier = true,
+              std::function<bool(const HloInstruction*)>
+                  instruction_can_change_layout_func = {});
 
   // If your test doesn't use interpreter as the reference backend, you can use
   // this constructor. Note that your test target is responsible for linking in
   // both needed backends.
   HloTestBase(se::Platform* test_platform, se::Platform* reference_platform,
               bool verifier_layout_sensitive = false,
-              bool allow_mixed_precision_in_hlo_verifier = true);
+              bool allow_mixed_precision_in_hlo_verifier = true,
+              std::function<bool(const HloInstruction*)>
+                  instruction_can_change_layout_func = {});
 
   ~HloTestBase() override {}
 

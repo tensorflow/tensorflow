@@ -85,11 +85,16 @@ BLACKLIST = [
     # contrib
     "//tensorflow/contrib/session_bundle:session_bundle_half_plus_two",
     "//tensorflow/contrib/keras:testing_utils",
+    "//tensorflow/contrib/lite/experimental/examples/lstm:tflite_lstm",
+    "//tensorflow/contrib/lite/experimental/examples/lstm:tflite_lstm.py",
+    "//tensorflow/contrib/lite/experimental/examples/lstm:unidirectional_sequence_lstm_test",  # pylint:disable=line-too-long
+    "//tensorflow/contrib/lite/experimental/examples/lstm:unidirectional_sequence_lstm_test.py",  # pylint:disable=line-too-long
     "//tensorflow/contrib/lite/python:interpreter",
     "//tensorflow/contrib/lite/python:interpreter_test",
     "//tensorflow/contrib/lite/python:interpreter.py",
     "//tensorflow/contrib/lite/python:interpreter_test.py",
     "//tensorflow/contrib/ffmpeg:test_data",
+    "//tensorflow/contrib/fused_conv:fused_conv2d_bias_activation_op_test_base",
     "//tensorflow/contrib/hadoop:test_data",
     "//tensorflow/contrib/factorization/examples:mnist",
     "//tensorflow/contrib/factorization/examples:mnist.py",

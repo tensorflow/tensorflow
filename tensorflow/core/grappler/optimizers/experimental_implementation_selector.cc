@@ -32,8 +32,6 @@ limitations under the License.
 namespace tensorflow {
 namespace grappler {
 
-REGISTER_GRAPH_OPTIMIZER(ExperimentalImplementationSelector);
-
 Status ExperimentalImplementationSelector::LoadFunctions(
     const GraphDef& graph) {
   lib_info_.reset(new FunctionLibraryApiInfo);
@@ -43,8 +41,20 @@ Status ExperimentalImplementationSelector::LoadFunctions(
 
 Status ExperimentalImplementationSelector::MaybeOptimizeFunctionCall(
     NodeDef* node_def) const {
-  const FunctionApiInfo* info = lib_info_->GetApiInfo(node_def->op());
-  if (info == nullptr) {
+  // There are two ways of calling functions:
+  //  1. By specifying an op name as a function name, or
+  //  2. Via the @defun functional interface, where the real function name
+  //     appear as the attribute with type func.
+  std::vector<string> function_attribute_names;
+  for (const auto& attr : node_def->attr()) {
+    if (attr.second.has_func() &&
+        lib_info_->GetApiInfo(attr.second.func().name()) != nullptr) {
+      function_attribute_names.emplace_back(attr.first);
+    }
+  }
+
+  if (function_attribute_names.empty() &&
+      lib_info_->GetApiInfo(node_def->op()) == nullptr) {
     // A regular op, or a function which has no interface.
     return Status::OK();
   }
@@ -58,17 +68,25 @@ Status ExperimentalImplementationSelector::MaybeOptimizeFunctionCall(
   DeviceNameUtils::ParsedName parsed_name;
   DeviceNameUtils::ParseLocalName(device, &parsed_name);
 
-  string best_function_name;
-  lib_info_->GetBestImplementation(node_def->op(), parsed_name.type,
-                                   &best_function_name);
-  if (node_def->op() != best_function_name) {
-    // The current implementation is not the best, swap the op to the best one.
-    // There will be duplicates in the graph and they will be pruned by other
-    // grappler plugin since no other node is using their output as inputs.
-    // TODO(scottzhu): Update the tf.eager.defun to register functions without
-    // having to call them with input data. That will reduce the graph size and
-    // save the work for prune them.
-    node_def->set_op(best_function_name);
+  for (const auto& attr_name : function_attribute_names) {
+    string function_name = node_def->attr().at(attr_name).func().name();
+    string best_function_name;
+    lib_info_->GetBestImplementation(function_name, parsed_name.type,
+                                     &best_function_name);
+    if (function_name != best_function_name) {
+      node_def->mutable_attr()
+          ->find(attr_name)
+          ->second.mutable_func()
+          ->set_name(best_function_name);
+    }
+  }
+  if (lib_info_->GetApiInfo(node_def->op()) != nullptr) {
+    string best_function_name;
+    lib_info_->GetBestImplementation(node_def->op(), parsed_name.type,
+                                     &best_function_name);
+    if (node_def->op() != best_function_name) {
+      node_def->set_op(best_function_name);
+    }
   }
   return Status::OK();
 }

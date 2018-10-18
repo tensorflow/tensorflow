@@ -25,6 +25,7 @@ import numpy
 
 from tensorflow.python.eager import context
 from tensorflow.python.eager import function
+from tensorflow.python.eager import wrap_function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
@@ -44,6 +45,25 @@ from tensorflow.python.util import compat
 from tensorflow.python.util import tf_inspect
 
 
+def wrap_and_execute(graph_function, skip_graph=False):
+  """Wrap a graph _nullary_ function and execute it in graph and eager modes.
+
+  If graph mode fails, use skip_graph=True and comment on the caller with the
+  failure reason.
+
+  Args:
+    graph_function: python function containing graph code to be wrapped
+    skip_graph: Optional. Don't call the graph function if it errors.
+  """
+  wrapped = wrap_function.wrap_function(graph_function, [])
+  if context.executing_eagerly():
+    # use the wrapped graph function
+    wrapped()
+  elif not skip_graph:
+    # use the original function
+    graph_function()
+
+
 class VariableScopeTest(test.TestCase):
 
   def tearDown(self):
@@ -52,18 +72,29 @@ class VariableScopeTest(test.TestCase):
     # involving objects with __del__ defined.
     self.assertEqual(0, len(gc.garbage))
 
+  @test_util.run_in_graph_and_eager_modes
   def testGetVar(self):
-    vs = variable_scope._get_default_variable_store()
-    v = vs.get_variable("v", [1])
-    v1 = vs.get_variable("v", [1])
-    self.assertEqual(v, v1)
+
+    def _f():
+      vs = variable_scope._get_default_variable_store()
+      v = vs.get_variable("v", [1])
+      v1 = vs.get_variable("v", [1])
+      self.assertEqual(v, v1)
+
+    wrap_and_execute(_f)
 
   @test_util.run_in_graph_and_eager_modes
   def testResource(self):
-    vs = variable_scope._get_default_variable_store()
-    v1 = vs.get_variable("v", [1], use_resource=True)
-    self.assertTrue(isinstance(v1, resource_variable_ops.ResourceVariable))
 
+    def _f():
+      vs = variable_scope._get_default_variable_store()
+      v1 = vs.get_variable("v", [1], use_resource=True)
+      self.assertTrue(isinstance(v1, resource_variable_ops.ResourceVariable))
+
+    wrap_and_execute(_f)
+
+  # TODO(mihaimaruseac): Not converted to use wrap_function because of
+  # AttributeError: Tensor.op is meaningless when eager execution is enabled.
   def testNameExists(self):
     vs = variable_scope._get_default_variable_store()
     # No check by default, so we can both create and get existing names.
@@ -80,14 +111,22 @@ class VariableScopeTest(test.TestCase):
     with self.assertRaises(ValueError):
       vs.get_variable("u", [1], reuse=True)  # That fails.
 
+  @test_util.run_in_graph_and_eager_modes
   def testNamelessStore(self):
-    vs = variable_scope._get_default_variable_store()
-    vs.get_variable("v1", [2])
-    vs.get_variable("v2", [2])
-    expected_names = ["%s:0" % name for name in ["v1", "v2"]]
-    self.assertEqual(
-        set(expected_names), set([v.name for v in vs._vars.values()]))
 
+    def _f():
+      vs = variable_scope._get_default_variable_store()
+      vs.get_variable("v1", [2])
+      vs.get_variable("v2", [2])
+      expected_names = ["%s:0" % name for name in ["v1", "v2"]]
+      self.assertEqual(
+          set(expected_names), set([v.name for v in vs._vars.values()]))
+
+    wrap_and_execute(_f)
+
+  # TODO(mihaimaruseac): Not converted to use wrap_function because of
+  # ValueError: Operation name: "tower0/foo/v/Assign" ... is not an element of
+  # this graph.
   @test_util.run_in_graph_and_eager_modes
   def testVarScopeInitializer(self):
     init = init_ops.constant_initializer(0.3)
@@ -101,6 +140,8 @@ class VariableScopeTest(test.TestCase):
         self.evaluate(variables_lib.variables_initializer([w]))
         self.assertAllClose(self.evaluate(w.value()), 0.3)
 
+  # TODO(mihaimaruseac): Not converted to use wrap_function because of
+  # ValueError: Variable tower1/foo/v already exists, disallowed.
   @test_util.run_in_graph_and_eager_modes
   def testVarScopeConstraint(self):
     constraint = lambda x: 0. * x
@@ -112,12 +153,18 @@ class VariableScopeTest(test.TestCase):
         w = variable_scope.get_variable("w", [])
         self.assertEqual(w.constraint, constraint)
 
+  # TODO(mihaimaruseac): Not converted to use wrap_function because of
+  # TypeError: Fetch argument <tf.Variable 'string:0' shape=() dtype=string>
+  # has invalid type <class '...ResourceVariable'>, must be a string or Tensor.
+  # (Can not convert a ResourceVariable into a Tensor or Operation.)
   def testStringDefaultInitializer(self):
-    with self.test_session():
+    with self.cached_session():
       v = variable_scope.get_variable("string", shape=[], dtype=dtypes.string)
       variables_lib.global_variables_initializer().run()
-      self.assertAllEqual(compat.as_bytes(v.eval()), b"")
+      self.assertAllEqual(compat.as_bytes(self.evaluate(v)), b"")
 
+  # TODO(mihaimaruseac): Not converted to use wrap_function because of
+  # ValueError: Variable tower2/foo/v already exists, disallowed.
   @test_util.run_in_graph_and_eager_modes
   def testVarScopeDType(self):
     with variable_scope.variable_scope("tower2") as tower:
@@ -198,6 +245,8 @@ class VariableScopeTest(test.TestCase):
         self.assertAllEqual([v1, v2], [v3, v4])
       f()
 
+  # TODO(mihaimaruseac): Not converted to use wrap_function because of
+  # obtaining different results in the eager case compared to the graph one
   @test_util.run_in_graph_and_eager_modes
   def testEagerVariablesStoreAddsToCollections(self):
     store = variable_scope.EagerVariableStore()
@@ -215,15 +264,15 @@ class VariableScopeTest(test.TestCase):
       self.assertEqual(
           ops.get_collection(ops.GraphKeys.CONCATENATED_VARIABLES), [concat])
 
-  @test_util.run_in_graph_and_eager_modes
   def testEagerVariablesOutsideStoreNotAddedToCollections(self):
-    if not context.executing_eagerly():
-      return
-    variable_scope.get_variable("v1", [], trainable=True)
-    variable_scope.get_variable("v2", [], trainable=False)
-    self.assertFalse(ops.get_collection(ops.GraphKeys.GLOBAL_VARIABLES))
-    self.assertFalse(ops.get_collection(ops.GraphKeys.TRAINABLE_VARIABLES))
+    with context.eager_mode():
+      variable_scope.get_variable("v1", [], trainable=True)
+      variable_scope.get_variable("v2", [], trainable=False)
+      self.assertFalse(ops.get_collection(ops.GraphKeys.GLOBAL_VARIABLES))
+      self.assertFalse(ops.get_collection(ops.GraphKeys.TRAINABLE_VARIABLES))
 
+  # TODO(mihaimaruseac): Not converted to use wrap_function because of
+  # ValueError: Operation name: "v4/Assign" ... is not an element of this graph.
   @test_util.run_in_graph_and_eager_modes
   def testInitFromNonTensorValue(self):
     v = variable_scope.get_variable("v4", initializer=4, dtype=dtypes.int32)
@@ -240,6 +289,8 @@ class VariableScopeTest(test.TestCase):
     with self.assertRaises(error):
       variable_scope.get_variable("x4", initializer={})
 
+  # TODO(mihaimaruseac): Not converted to use wrap_function because of
+  # ValueError: Operation name: "xx0/Assign" ...is not an element of this graph.
   @test_util.run_in_graph_and_eager_modes
   def testInitFromNonInitializer(self):
     # Test various dtypes with zeros initializer as following:
@@ -262,8 +313,10 @@ class VariableScopeTest(test.TestCase):
       self.assertAllEqual(self.evaluate(x.value()), self.evaluate(y.value()))
 
   # TODO(alive): support variable partitioning/caching in eager mode.
+  # TODO(mihaimaruseac): Not converted to use wrap_function because of
+  # InvalidArgumentError: /job:moo/replica:0/task:0/device:CPU:0 unknown device.
   def testVarScopeCachingDevice(self):
-    with self.test_session():
+    with self.cached_session():
       caching_device = "/job:moo"
       with variable_scope.variable_scope("tower"):
         with variable_scope.variable_scope(
@@ -295,6 +348,8 @@ class VariableScopeTest(test.TestCase):
         v_tower = variable_scope.get_variable("v", [])
         self.assertFalse(v_tower.value().device.startswith(caching_device))
 
+  # TODO(mihaimaruseac): Not converted to use wrap_function because of
+  # ValueError: Operation name: ".../Assign"... is not an element of this graph.
   @test_util.run_in_graph_and_eager_modes
   def testVarScopeRegularizer(self):
     init = init_ops.constant_initializer(0.3)
@@ -340,6 +395,9 @@ class VariableScopeTest(test.TestCase):
           losses = ops.get_collection(ops.GraphKeys.REGULARIZATION_LOSSES)
           self.assertEqual(3, len(losses))  # No new loss added.
 
+  # TODO(mihaimaruseac): Not converted to use wrap_function because of
+  # ValueError: Tensor-typed variable initializers must either be wrapped in an
+  # init_scope or callable...
   @test_util.run_in_graph_and_eager_modes
   def testInitializeFromValue(self):
     init = constant_op.constant(0.1)
@@ -366,8 +424,13 @@ class VariableScopeTest(test.TestCase):
     with self.assertRaisesRegexp(ValueError, "don't match"):
       variable_scope.get_variable("s", initializer=init, dtype=dtypes.float64)
 
+  # TODO(mihaimaruseac): Not converted to use wrap_function because of
+  # TypeError: Fetch argument <tf.Variable 'v0:0' shape=(1,) dtype=float32> has
+  # invalid type <class '...ops.resource_variable_ops.ResourceVariable'>, must
+  # be a string or Tensor. (Can not convert a ResourceVariable into a Tensor or
+  # Operation.)
   def testControlDeps(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       v0 = variable_scope.get_variable(
           "v0", [1], initializer=init_ops.constant_initializer(0))
       with ops.control_dependencies([v0.value()]):
@@ -390,20 +453,24 @@ class VariableScopeTest(test.TestCase):
       sess.run(v0.initializer)
       sess.run(add)
 
+  # TODO(mihaimaruseac): Not converted to use wrap_function because of
+  # AssertionError: True is not false (last assertFalse)
   def testEnableResourceVariables(self):
     old = variable_scope._DEFAULT_USE_RESOURCE
     try:
       variable_scope.enable_resource_variables()
-      self.assertTrue(isinstance(variables_lib.Variable(1.0),
+      self.assertTrue(isinstance(variables_lib.VariableV1(1.0),
                                  resource_variable_ops.ResourceVariable))
       variable_scope.disable_resource_variables()
-      self.assertFalse(isinstance(variables_lib.Variable(1.0),
+      self.assertFalse(isinstance(variables_lib.VariableV1(1.0),
                                   resource_variable_ops.ResourceVariable))
     finally:
       variable_scope._DEFAULT_USE_RESOURCE = old
 
+  # TODO(mihaimaruseac): Not converted to use wrap_function because of
+  # TypeError: Fetch argument None has invalid type <type 'NoneType'>
   def testControlFlow(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       v0 = variable_scope.get_variable(
           "v0", [], initializer=init_ops.constant_initializer(0))
       var_dict = {}
@@ -441,6 +508,8 @@ class VariableScopeTest(test.TestCase):
       sess.run(v0.initializer)
       sess.run(add)
 
+  # TODO(mihaimaruseac): Not converted to use wrap_function because of
+  # ValueError: Operation name: ".../Assign"... is not an element of this graph.
   @test_util.run_in_graph_and_eager_modes
   def testGetVariableScope(self):
     # Test the get_variable_scope() function and setting properties of result.
@@ -464,125 +533,152 @@ class VariableScopeTest(test.TestCase):
 
   @test_util.run_in_graph_and_eager_modes
   def testVarScope(self):
-    with variable_scope.variable_scope("tower4") as tower:
-      self.assertEqual(tower.name, "tower4")
-      with ops.name_scope("scope") as sc:
-        self.assertEqual(sc, "tower4/scope/")
 
-    with variable_scope.variable_scope("tower5"):
-      with variable_scope.variable_scope("bar") as bar:
-        self.assertEqual(bar.name, "tower5/bar")
+    def _f():
+      with variable_scope.variable_scope("tower4") as tower:
+        self.assertEqual(tower.name, "tower4")
         with ops.name_scope("scope") as sc:
-          self.assertEqual(sc, "tower5/bar/scope/")
+          self.assertEqual(sc, "tower4/scope/")
 
-    with variable_scope.variable_scope("tower6"):
-      with variable_scope.variable_scope(tower, reuse=True) as tower_shared:
-        self.assertEqual(tower_shared.name, "tower4")
-        with ops.name_scope("scope") as sc:
-          self.assertEqual(sc, "tower6/tower4/scope/")
+      with variable_scope.variable_scope("tower5"):
+        with variable_scope.variable_scope("bar") as bar:
+          self.assertEqual(bar.name, "tower5/bar")
+          with ops.name_scope("scope") as sc:
+            self.assertEqual(sc, "tower5/bar/scope/")
+
+      with variable_scope.variable_scope("tower6"):
+        with variable_scope.variable_scope(tower, reuse=True) as tower_shared:
+          self.assertEqual(tower_shared.name, "tower4")
+          with ops.name_scope("scope") as sc:
+            self.assertEqual(sc, "tower6/tower4/scope/")
+
+    wrap_and_execute(_f)
 
   @test_util.run_in_graph_and_eager_modes
   def testVarScopeNameScope(self):
-    with ops.name_scope("testVarScopeNameScope1"):
-      with variable_scope.variable_scope("tower") as tower:
-        with ops.name_scope("scope2") as sc2:
-          self.assertEqual(sc2, "testVarScopeNameScope1/tower/scope2/")
-      if not context.executing_eagerly():
-        with variable_scope.variable_scope(
-            tower):  # Re-entering acts like another "tower".
-          with ops.name_scope("scope2") as sc2:
-            self.assertEqual(sc2, "testVarScopeNameScope1/tower_1/scope2/")
-        with variable_scope.variable_scope(
-            "tower"):  # Re-entering by string acts the same.
-          with ops.name_scope("scope2") as sc2:
-            self.assertEqual(sc2, "testVarScopeNameScope1/tower_2/scope2/")
 
-    with ops.name_scope("testVarScopeNameScope2"):
-      with variable_scope.variable_scope("tower"):
-        with ops.name_scope("scope2") as sc2:
-          self.assertEqual(sc2, "testVarScopeNameScope2/tower/scope2/")
-      if not context.executing_eagerly():
-        with variable_scope.variable_scope(tower):
-          with ops.name_scope("scope2") as sc2:
-            self.assertEqual(sc2, "testVarScopeNameScope2/tower_1/scope2/")
-
-    root_var_scope = variable_scope.get_variable_scope()
-    with ops.name_scope("testVarScopeNameScope3"):
-      with variable_scope.variable_scope(root_var_scope):
-        with ops.name_scope("scope2") as sc2:
-          self.assertEqual(sc2, "testVarScopeNameScope3/scope2/")
-
-  def testVarScopeOriginalNameScope(self):
-    with self.test_session():
-      with ops.name_scope("scope1"):
+    def _f():
+      with ops.name_scope("testVarScopeNameScope1"):
         with variable_scope.variable_scope("tower") as tower:
-          self.assertEqual(tower.original_name_scope, "scope1/tower/")
           with ops.name_scope("scope2") as sc2:
-            self.assertEqual(sc2, "scope1/tower/scope2/")
-      with ops.name_scope("scope2"):
-        with variable_scope.variable_scope(tower) as tower1:
-          # Re-entering preserves original name scope.
-          self.assertEqual(tower1.original_name_scope, "scope1/tower/")
-          with ops.name_scope("foo") as sc2:
-            self.assertEqual(sc2, "scope2/tower/foo/")
-        # Test re-entering original name scope.
-        with ops.name_scope(tower.original_name_scope):
-          with ops.name_scope("bar") as sc3:
-            self.assertEqual(sc3, "scope1/tower/bar/")
-      with ops.name_scope("scope2"):
-        with variable_scope.variable_scope(tower):
+            self.assertEqual(sc2, "testVarScopeNameScope1/tower/scope2/")
+        if not context.executing_eagerly():
+          with variable_scope.variable_scope(
+              tower):  # Re-entering acts like another "tower".
+            with ops.name_scope("scope2") as sc2:
+              self.assertEqual(sc2, "testVarScopeNameScope1/tower_1/scope2/")
+          with variable_scope.variable_scope(
+              "tower"):  # Re-entering by string acts the same.
+            with ops.name_scope("scope2") as sc2:
+              self.assertEqual(sc2, "testVarScopeNameScope1/tower_2/scope2/")
+
+      with ops.name_scope("testVarScopeNameScope2"):
+        with variable_scope.variable_scope("tower"):
+          with ops.name_scope("scope2") as sc2:
+            self.assertEqual(sc2, "testVarScopeNameScope2/tower/scope2/")
+        if not context.executing_eagerly():
+          with variable_scope.variable_scope(tower):
+            with ops.name_scope("scope2") as sc2:
+              self.assertEqual(sc2, "testVarScopeNameScope2/tower_1/scope2/")
+
+      root_var_scope = variable_scope.get_variable_scope()
+      with ops.name_scope("testVarScopeNameScope3"):
+        with variable_scope.variable_scope(root_var_scope):
+          with ops.name_scope("scope2") as sc2:
+            self.assertEqual(sc2, "testVarScopeNameScope3/scope2/")
+
+    wrap_and_execute(_f)
+
+  @test_util.run_in_graph_and_eager_modes
+  def testVarScopeOriginalNameScope(self):
+
+    def _f():
+      with self.cached_session():
+        with ops.name_scope("scope1"):
+          with variable_scope.variable_scope("tower") as tower:
+            self.assertEqual(tower.original_name_scope, "scope1/tower/")
+            with ops.name_scope("scope2") as sc2:
+              self.assertEqual(sc2, "scope1/tower/scope2/")
+        with ops.name_scope("scope2"):
+          with variable_scope.variable_scope(tower) as tower1:
+            # Re-entering preserves original name scope.
+            self.assertEqual(tower1.original_name_scope, "scope1/tower/")
+            with ops.name_scope("foo") as sc2:
+              self.assertEqual(sc2, "scope2/tower/foo/")
+          # Test re-entering original name scope.
           with ops.name_scope(tower.original_name_scope):
             with ops.name_scope("bar") as sc3:
-              self.assertEqual(sc3, "scope1/tower/bar_1/")
+              self.assertEqual(sc3, "scope1/tower/bar/")
+        with ops.name_scope("scope2"):
+          with variable_scope.variable_scope(tower):
+            with ops.name_scope(tower.original_name_scope):
+              with ops.name_scope("bar") as sc3:
+                self.assertEqual(sc3, "scope1/tower/bar_1/")
 
+    # TODO(mihaimaruseac): calling _f fails with
+    # AssertionError: 'scope1_1/tower/' != 'scope1/tower/'
+    wrap_and_execute(_f, skip_graph=True)
+
+  @test_util.run_in_graph_and_eager_modes
   def testVarScopeObjectReuse(self):
-    with self.test_session():
-      vs = None
-      with variable_scope.variable_scope("jump", reuse=True) as scope:
-        vs = scope
 
-      with variable_scope.variable_scope(vs) as jump:
-        self.assertTrue(jump.reuse)
+    def _f():
+      with self.cached_session():
+        vs = None
+        with variable_scope.variable_scope("jump", reuse=True) as scope:
+          vs = scope
 
-      with variable_scope.variable_scope(vs, reuse=True) as jump_reuse:
-        self.assertTrue(jump_reuse.reuse)
+        with variable_scope.variable_scope(vs) as jump:
+          self.assertTrue(jump.reuse)
 
-      with variable_scope.variable_scope(vs, reuse=False) as jump_no_reuse:
-        self.assertTrue(jump_no_reuse.reuse)  # Inherited, cannot be undone.
+        with variable_scope.variable_scope(vs, reuse=True) as jump_reuse:
+          self.assertTrue(jump_reuse.reuse)
 
-      with variable_scope.variable_scope("jump", reuse=False) as scope:
-        vs = scope
+        with variable_scope.variable_scope(vs, reuse=False) as jump_no_reuse:
+          self.assertTrue(jump_no_reuse.reuse)  # Inherited, cannot be undone.
 
-      with variable_scope.variable_scope(vs) as jump:
-        self.assertFalse(jump.reuse)
+        with variable_scope.variable_scope("jump", reuse=False) as scope:
+          vs = scope
 
-      with variable_scope.variable_scope(vs, reuse=True) as jump_reuse:
-        self.assertTrue(jump_reuse.reuse)
+        with variable_scope.variable_scope(vs) as jump:
+          self.assertFalse(jump.reuse)
 
-      with variable_scope.variable_scope(vs, reuse=False) as jump_no_reuse:
-        self.assertFalse(jump_no_reuse.reuse)
+        with variable_scope.variable_scope(vs, reuse=True) as jump_reuse:
+          self.assertTrue(jump_reuse.reuse)
 
+        with variable_scope.variable_scope(vs, reuse=False) as jump_no_reuse:
+          self.assertFalse(jump_no_reuse.reuse)
+
+    wrap_and_execute(_f)
+
+  @test_util.run_in_graph_and_eager_modes
   def testVarScopeGetOrCreateReuse(self):
-    with self.test_session():
 
-      def test_value(value):
-        x = constant_op.constant(value)
-        with variable_scope.variable_scope(
-            "testVarScopeGetOrCreateReuse_bar",
-            reuse=variable_scope.AUTO_REUSE):
-          _ = state_ops.assign(variable_scope.get_variable("var", []), x)
-        with variable_scope.variable_scope(
-            "testVarScopeGetOrCreateReuse_bar",
-            reuse=variable_scope.AUTO_REUSE):
-          _ = variable_scope.get_variable("var", [])
-        self.assertEqual(value, x.eval())
+    def _f():
+      with self.cached_session():
 
-      test_value(42.)  # Variable is created.
-      test_value(13.)  # Variable is reused hereafter.
-      test_value(17.)
+        def test_value(value):
+          x = constant_op.constant(value)
+          with variable_scope.variable_scope(
+              "testVarScopeGetOrCreateReuse_bar",
+              reuse=variable_scope.AUTO_REUSE):
+            _ = state_ops.assign(variable_scope.get_variable("var", []), x)
+          with variable_scope.variable_scope(
+              "testVarScopeGetOrCreateReuse_bar",
+              reuse=variable_scope.AUTO_REUSE):
+            _ = variable_scope.get_variable("var", [])
+          self.assertEqual(value, x.eval())
 
+        test_value(42.)  # Variable is created.
+        test_value(13.)  # Variable is reused hereafter.
+        test_value(17.)
+
+    wrap_and_execute(_f)
+
+  # TODO(mihaimaruseac): Not converted to use wrap_function because of
+  # AttributeError: Tensor.op is meaningless when eager execution is enabled.
   def testVarOpScope(self):
-    with self.test_session():
+    with self.cached_session():
       with ops.name_scope("testVarOpScope1"):
         with variable_scope.variable_scope("tower", "default", []):
           self.assertEqual(
@@ -607,73 +703,98 @@ class VariableScopeTest(test.TestCase):
           with ops.name_scope("testVarOpScope2") as sc2:
             self.assertEqual(sc2, "testVarOpScope2/default_1/testVarOpScope2/")
 
+  @test_util.run_in_graph_and_eager_modes
   def testVarOpScopeUniqueNamesInterleavedSubstringScopes(self):
-    with self.test_session():
-      with variable_scope.variable_scope(None, "defaultScope1"):
-        with variable_scope.variable_scope(None, "layer"):
-          self.assertEqual(
-              variable_scope.get_variable("w", []).name,
-              "defaultScope1/layer/w:0")
-      with variable_scope.variable_scope(None, "defaultScope1"):
-        with variable_scope.variable_scope(None, "layer"):
-          self.assertEqual(
-              variable_scope.get_variable("w", []).name,
-              "defaultScope1_1/layer/w:0")
-      with variable_scope.variable_scope(None, "defaultScope"):
-        with variable_scope.variable_scope(None, "layer"):
-          self.assertEqual(
-              variable_scope.get_variable("w", []).name,
-              "defaultScope/layer/w:0")
-      with variable_scope.variable_scope(None, "defaultScope1"):
-        with variable_scope.variable_scope(None, "layer"):
-          self.assertEqual(
-              variable_scope.get_variable("w", []).name,
-              "defaultScope1_2/layer/w:0")
 
+    def _f():
+      with self.cached_session():
+        with variable_scope.variable_scope(None, "defaultScope1"):
+          with variable_scope.variable_scope(None, "layer"):
+            self.assertEqual(
+                variable_scope.get_variable("w", []).name,
+                "defaultScope1/layer/w:0")
+        with variable_scope.variable_scope(None, "defaultScope1"):
+          with variable_scope.variable_scope(None, "layer"):
+            self.assertEqual(
+                variable_scope.get_variable("w", []).name,
+                "defaultScope1_1/layer/w:0")
+        with variable_scope.variable_scope(None, "defaultScope"):
+          with variable_scope.variable_scope(None, "layer"):
+            self.assertEqual(
+                variable_scope.get_variable("w", []).name,
+                "defaultScope/layer/w:0")
+        with variable_scope.variable_scope(None, "defaultScope1"):
+          with variable_scope.variable_scope(None, "layer"):
+            self.assertEqual(
+                variable_scope.get_variable("w", []).name,
+                "defaultScope1_2/layer/w:0")
+
+    # TODO(mihaimaruseac): calling _f fails with
+    # AssertionError: 'defaultScope1_3/layer/w:0' != 'defaultScope1/layer/w:0'
+    wrap_and_execute(_f, skip_graph=True)
+
+  @test_util.run_in_graph_and_eager_modes
   def testVarOpScopeUniqueNamesWithJump(self):
-    with self.test_session():
-      with variable_scope.variable_scope("default") as default:
-        with variable_scope.variable_scope(None, "layer"):
-          self.assertEqual(
-              variable_scope.get_variable("w", []).name, "default/layer/w:0")
-        with variable_scope.variable_scope(None, "layer"):
-          self.assertEqual(
-              variable_scope.get_variable("w", []).name, "default/layer_1/w:0")
-        with variable_scope.variable_scope(default):
-          pass
-        # No matter the jump in the middle, unique numbering continues.
-        with variable_scope.variable_scope(None, "layer"):
-          self.assertEqual(
-              variable_scope.get_variable("w", []).name, "default/layer_2/w:0")
 
+    def _f():
+      with self.cached_session():
+        with variable_scope.variable_scope("default") as default:
+          with variable_scope.variable_scope(None, "layer"):
+            self.assertEqual(
+                variable_scope.get_variable("w", []).name, "default/layer/w:0")
+          with variable_scope.variable_scope(None, "layer"):
+            self.assertEqual(
+                variable_scope.get_variable("w", []).name,
+                "default/layer_1/w:0")
+          with variable_scope.variable_scope(default):
+            pass
+          # No matter the jump in the middle, unique numbering continues.
+          with variable_scope.variable_scope(None, "layer"):
+            self.assertEqual(
+                variable_scope.get_variable("w", []).name,
+                "default/layer_2/w:0")
+
+    # TODO(mihaimaruseac): calling _f fails with
+    # ValueError: Variable default/layer/w already exists, disallowed.
+    wrap_and_execute(_f, skip_graph=True)
+
+  @test_util.run_in_graph_and_eager_modes
   def testVarOpScopeReuse(self):
-    with self.test_session():
-      with variable_scope.variable_scope("outer") as outer:
-        with variable_scope.variable_scope("tower", "default", []):
-          self.assertEqual(
-              variable_scope.get_variable("w", []).name, "outer/tower/w:0")
-          with ops.name_scope("scope2") as sc2:
-            self.assertEqual(sc2, "outer/tower/scope2/")
-        with variable_scope.variable_scope(None, "default", []):
-          self.assertEqual(
-              variable_scope.get_variable("w", []).name, "outer/default/w:0")
-          with ops.name_scope("scope2") as sc2:
-            self.assertEqual(sc2, "outer/default/scope2/")
 
-      with variable_scope.variable_scope(outer, reuse=True) as outer:
-        with variable_scope.variable_scope("tower", "default", []):
-          self.assertEqual(
-              variable_scope.get_variable("w", []).name, "outer/tower/w:0")
-          with ops.name_scope("scope2") as sc2:
-            self.assertEqual(sc2, "outer_1/tower/scope2/")
-        with variable_scope.variable_scope(None, "default", []):
-          self.assertEqual(
-              variable_scope.get_variable("w", []).name, "outer/default/w:0")
-          with ops.name_scope("scope2") as sc2:
-            self.assertEqual(sc2, "outer_1/default/scope2/")
+    def _f():
+      with self.cached_session():
+        with variable_scope.variable_scope("outer") as outer:
+          with variable_scope.variable_scope("tower", "default", []):
+            self.assertEqual(
+                variable_scope.get_variable("w", []).name, "outer/tower/w:0")
+            with ops.name_scope("scope2") as sc2:
+              self.assertEqual(sc2, "outer/tower/scope2/")
+          with variable_scope.variable_scope(None, "default", []):
+            self.assertEqual(
+                variable_scope.get_variable("w", []).name, "outer/default/w:0")
+            with ops.name_scope("scope2") as sc2:
+              self.assertEqual(sc2, "outer/default/scope2/")
 
+        with variable_scope.variable_scope(outer, reuse=True) as outer:
+          with variable_scope.variable_scope("tower", "default", []):
+            self.assertEqual(
+                variable_scope.get_variable("w", []).name, "outer/tower/w:0")
+            with ops.name_scope("scope2") as sc2:
+              self.assertEqual(sc2, "outer_1/tower/scope2/")
+          with variable_scope.variable_scope(None, "default", []):
+            self.assertEqual(
+                variable_scope.get_variable("w", []).name, "outer/default/w:0")
+            with ops.name_scope("scope2") as sc2:
+              self.assertEqual(sc2, "outer_1/default/scope2/")
+
+    # TODO(mihaimaruseac): calling _f fails with
+    # ValueError: Variable outer/tower/w already exists, disallowed.
+    wrap_and_execute(_f, skip_graph=True)
+
+  # TODO(mihaimaruseac): Not converted to use wrap_function because of
+  # AttributeError: Tensor.op is meaningless when eager execution is enabled.
   def testVarScopeGetVar(self):
-    with self.test_session():
+    with self.cached_session():
       with variable_scope.variable_scope("root"):
         with variable_scope.variable_scope("towerA") as tower_a:
           va = variable_scope.get_variable("v", [1])
@@ -718,262 +839,347 @@ class VariableScopeTest(test.TestCase):
             variable_scope.get_variable("v", [1], dtype=dtypes.int32)
         self.assertEqual("dtype" in str(exc.exception), True)
 
+  @test_util.run_in_graph_and_eager_modes
   def testVarScopeOuterScope(self):
-    with self.test_session():
-      with variable_scope.variable_scope("outer") as outer:
-        pass
-      with variable_scope.variable_scope(outer):
-        self.assertEqual(variable_scope.get_variable("w", []).name, "outer/w:0")
-        with ops.name_scope("scope2") as sc2:
-          self.assertEqual(sc2, "outer_1/scope2/")
-        with variable_scope.variable_scope("default"):
-          self.assertEqual(
-              variable_scope.get_variable("w", []).name, "outer/default/w:0")
-          with ops.name_scope("scope2") as sc2:
-            self.assertEqual(sc2, "outer_1/default/scope2/")
 
-      with variable_scope.variable_scope(outer, reuse=True):
-        self.assertEqual(variable_scope.get_variable("w", []).name, "outer/w:0")
-        with ops.name_scope("scope2") as sc2:
-          self.assertEqual(sc2, "outer_2/scope2/")
-        with variable_scope.variable_scope("default", reuse=True):
-          self.assertEqual(
-              variable_scope.get_variable("w", []).name, "outer/default/w:0")
-          with ops.name_scope("scope2") as sc2:
-            self.assertEqual(sc2, "outer_2/default/scope2/")
-
-  def testVarScopeNestedOuterScope(self):
-    with self.test_session():
-      with variable_scope.variable_scope("outer") as outer:
+    def _f():
+      with self.cached_session():
+        with variable_scope.variable_scope("outer") as outer:
+          pass
         with variable_scope.variable_scope(outer):
           self.assertEqual(
               variable_scope.get_variable("w", []).name, "outer/w:0")
           with ops.name_scope("scope2") as sc2:
-            self.assertEqual(sc2, "outer/outer/scope2/")
-        with variable_scope.variable_scope("default"):
-          self.assertEqual(
-              variable_scope.get_variable("w", []).name, "outer/default/w:0")
-          with ops.name_scope("scope2") as sc2:
-            self.assertEqual(sc2, "outer/default/scope2/")
+            self.assertEqual(sc2, "outer_1/scope2/")
+          with variable_scope.variable_scope("default"):
+            self.assertEqual(
+                variable_scope.get_variable("w", []).name, "outer/default/w:0")
+            with ops.name_scope("scope2") as sc2:
+              self.assertEqual(sc2, "outer_1/default/scope2/")
 
         with variable_scope.variable_scope(outer, reuse=True):
           self.assertEqual(
               variable_scope.get_variable("w", []).name, "outer/w:0")
           with ops.name_scope("scope2") as sc2:
-            self.assertEqual(sc2, "outer/outer_1/scope2/")
-        with variable_scope.variable_scope("default", reuse=True):
-          self.assertEqual(
-              variable_scope.get_variable("w", []).name, "outer/default/w:0")
-          with ops.name_scope("scope2") as sc2:
-            self.assertEqual(sc2, "outer/default_1/scope2/")
+            self.assertEqual(sc2, "outer_2/scope2/")
+          with variable_scope.variable_scope("default", reuse=True):
+            self.assertEqual(
+                variable_scope.get_variable("w", []).name, "outer/default/w:0")
+            with ops.name_scope("scope2") as sc2:
+              self.assertEqual(sc2, "outer_2/default/scope2/")
 
+    # TODO(mihaimaruseac): calling _f fails with
+    # ValueError: Variable outer/w already exists, disallowed.
+    wrap_and_execute(_f, skip_graph=True)
+
+  @test_util.run_in_graph_and_eager_modes
+  def testVarScopeNestedOuterScope(self):
+
+    def _f():
+      with self.cached_session():
+        with variable_scope.variable_scope("outer") as outer:
+          with variable_scope.variable_scope(outer):
+            self.assertEqual(
+                variable_scope.get_variable("w", []).name, "outer/w:0")
+            with ops.name_scope("scope2") as sc2:
+              self.assertEqual(sc2, "outer/outer/scope2/")
+          with variable_scope.variable_scope("default"):
+            self.assertEqual(
+                variable_scope.get_variable("w", []).name, "outer/default/w:0")
+            with ops.name_scope("scope2") as sc2:
+              self.assertEqual(sc2, "outer/default/scope2/")
+
+          with variable_scope.variable_scope(outer, reuse=True):
+            self.assertEqual(
+                variable_scope.get_variable("w", []).name, "outer/w:0")
+            with ops.name_scope("scope2") as sc2:
+              self.assertEqual(sc2, "outer/outer_1/scope2/")
+          with variable_scope.variable_scope("default", reuse=True):
+            self.assertEqual(
+                variable_scope.get_variable("w", []).name, "outer/default/w:0")
+            with ops.name_scope("scope2") as sc2:
+              self.assertEqual(sc2, "outer/default_1/scope2/")
+
+    # TODO(mihaimaruseac): calling _f fails with
+    # ValueError: Variable outer/w already exists, disallowed.
+    wrap_and_execute(_f, skip_graph=True)
+
+  @test_util.run_in_graph_and_eager_modes
   def testVarOpScopeReuseParam(self):
-    with self.test_session():
-      with variable_scope.variable_scope("outer") as outer:
-        with variable_scope.variable_scope("tower", "default", []):
-          self.assertEqual(
-              variable_scope.get_variable("w", []).name, "outer/tower/w:0")
-          with ops.name_scope("scope2") as sc2:
-            self.assertEqual(sc2, "outer/tower/scope2/")
-        with variable_scope.variable_scope(None, "default", []):
-          self.assertEqual(
-              variable_scope.get_variable("w", []).name, "outer/default/w:0")
-          with ops.name_scope("scope2") as sc2:
-            self.assertEqual(sc2, "outer/default/scope2/")
 
-      with variable_scope.variable_scope(outer) as outer:
-        with variable_scope.variable_scope("tower", "default", reuse=True):
-          self.assertEqual(
-              variable_scope.get_variable("w", []).name, "outer/tower/w:0")
-          with ops.name_scope("scope2") as sc2:
-            self.assertEqual(sc2, "outer_1/tower/scope2/")
-        outer.reuse_variables()
-        with variable_scope.variable_scope(None, "default", []):
-          self.assertEqual(
-              variable_scope.get_variable("w", []).name, "outer/default/w:0")
-          with ops.name_scope("scope2") as sc2:
-            self.assertEqual(sc2, "outer_1/default/scope2/")
+    def _f():
+      with self.cached_session():
+        with variable_scope.variable_scope("outer") as outer:
+          with variable_scope.variable_scope("tower", "default", []):
+            self.assertEqual(
+                variable_scope.get_variable("w", []).name, "outer/tower/w:0")
+            with ops.name_scope("scope2") as sc2:
+              self.assertEqual(sc2, "outer/tower/scope2/")
+          with variable_scope.variable_scope(None, "default", []):
+            self.assertEqual(
+                variable_scope.get_variable("w", []).name, "outer/default/w:0")
+            with ops.name_scope("scope2") as sc2:
+              self.assertEqual(sc2, "outer/default/scope2/")
 
+        with variable_scope.variable_scope(outer) as outer:
+          with variable_scope.variable_scope("tower", "default", reuse=True):
+            self.assertEqual(
+                variable_scope.get_variable("w", []).name, "outer/tower/w:0")
+            with ops.name_scope("scope2") as sc2:
+              self.assertEqual(sc2, "outer_1/tower/scope2/")
+          outer.reuse_variables()
+          with variable_scope.variable_scope(None, "default", []):
+            self.assertEqual(
+                variable_scope.get_variable("w", []).name, "outer/default/w:0")
+            with ops.name_scope("scope2") as sc2:
+              self.assertEqual(sc2, "outer_1/default/scope2/")
+
+    # TODO(mihaimaruseac): calling _f fails with
+    # ValueError: Variable outer/tower/w already exists, disallowed.
+    wrap_and_execute(_f, skip_graph=True)
+
+  # TODO(mihaimaruseac): Not converted to use wrap_function because of
+  # AttributeError: 'variable_scope' object has no attribute
+  # '_graph_context_manager'
   def testVarOpScopeReuseError(self):
-    with self.test_session():
+    with self.cached_session():
       with self.assertRaises(ValueError):
         with variable_scope.variable_scope(None, "default", reuse=True):
           self.assertEqual(
               variable_scope.get_variable("w", []).name, "outer/tower/w:0")
 
+  @test_util.run_in_graph_and_eager_modes
   def testVarOpScopeOuterScope(self):
-    with self.test_session():
-      with variable_scope.variable_scope("outer") as outer:
-        pass
-      with variable_scope.variable_scope(outer, "default", []):
-        self.assertEqual(variable_scope.get_variable("w", []).name, "outer/w:0")
-        with ops.name_scope("scope2") as sc2:
-          self.assertEqual(sc2, "outer_1/scope2/")
-        with variable_scope.variable_scope(None, "default", []):
-          self.assertEqual(
-              variable_scope.get_variable("w", []).name, "outer/default/w:0")
-          with ops.name_scope("scope2") as sc2:
-            self.assertEqual(sc2, "outer_1/default/scope2/")
 
-      with variable_scope.variable_scope(outer, "default", reuse=True):
-        self.assertEqual(variable_scope.get_variable("w", []).name, "outer/w:0")
-        with ops.name_scope("scope2") as sc2:
-          self.assertEqual(sc2, "outer_2/scope2/")
-        outer.reuse_variables()
-        with variable_scope.variable_scope(None, "default", []):
-          self.assertEqual(
-              variable_scope.get_variable("w", []).name, "outer/default/w:0")
-          with ops.name_scope("scope2") as sc2:
-            self.assertEqual(sc2, "outer_2/default/scope2/")
-
-  def testVarOpScopeNestedOuterScope(self):
-    with self.test_session():
-      with variable_scope.variable_scope("outer") as outer:
+    def _f():
+      with self.cached_session():
+        with variable_scope.variable_scope("outer") as outer:
+          pass
         with variable_scope.variable_scope(outer, "default", []):
           self.assertEqual(
               variable_scope.get_variable("w", []).name, "outer/w:0")
           with ops.name_scope("scope2") as sc2:
-            self.assertEqual(sc2, "outer/outer/scope2/")
-        with variable_scope.variable_scope(None, "default", []):
-          self.assertEqual(
-              variable_scope.get_variable("w", []).name, "outer/default/w:0")
-          with ops.name_scope("scope2") as sc2:
-            self.assertEqual(sc2, "outer/default/scope2/")
+            self.assertEqual(sc2, "outer_1/scope2/")
+          with variable_scope.variable_scope(None, "default", []):
+            self.assertEqual(
+                variable_scope.get_variable("w", []).name, "outer/default/w:0")
+            with ops.name_scope("scope2") as sc2:
+              self.assertEqual(sc2, "outer_1/default/scope2/")
 
-      with variable_scope.variable_scope(outer, "default", reuse=True):
-        self.assertEqual(variable_scope.get_variable("w", []).name, "outer/w:0")
-        with ops.name_scope("scope2") as sc2:
-          self.assertEqual(sc2, "outer_1/scope2/")
-        with variable_scope.variable_scope(None, "default", []):
+        with variable_scope.variable_scope(outer, "default", reuse=True):
           self.assertEqual(
-              variable_scope.get_variable("w", []).name, "outer/default/w:0")
+              variable_scope.get_variable("w", []).name, "outer/w:0")
           with ops.name_scope("scope2") as sc2:
-            self.assertEqual(sc2, "outer_1/default/scope2/")
+            self.assertEqual(sc2, "outer_2/scope2/")
+          outer.reuse_variables()
+          with variable_scope.variable_scope(None, "default", []):
+            self.assertEqual(
+                variable_scope.get_variable("w", []).name, "outer/default/w:0")
+            with ops.name_scope("scope2") as sc2:
+              self.assertEqual(sc2, "outer_2/default/scope2/")
 
+    # TODO(mihaimaruseac): calling _f fails with
+    # ValueError: Variable outer/w already exists, disallowed.
+    wrap_and_execute(_f, skip_graph=True)
+
+  @test_util.run_in_graph_and_eager_modes
+  def testVarOpScopeNestedOuterScope(self):
+
+    def _f():
+      with self.cached_session():
+        with variable_scope.variable_scope("outer") as outer:
+          with variable_scope.variable_scope(outer, "default", []):
+            self.assertEqual(
+                variable_scope.get_variable("w", []).name, "outer/w:0")
+            with ops.name_scope("scope2") as sc2:
+              self.assertEqual(sc2, "outer/outer/scope2/")
+          with variable_scope.variable_scope(None, "default", []):
+            self.assertEqual(
+                variable_scope.get_variable("w", []).name, "outer/default/w:0")
+            with ops.name_scope("scope2") as sc2:
+              self.assertEqual(sc2, "outer/default/scope2/")
+
+        with variable_scope.variable_scope(outer, "default", reuse=True):
+          self.assertEqual(
+              variable_scope.get_variable("w", []).name, "outer/w:0")
+          with ops.name_scope("scope2") as sc2:
+            self.assertEqual(sc2, "outer_1/scope2/")
+          with variable_scope.variable_scope(None, "default", []):
+            self.assertEqual(
+                variable_scope.get_variable("w", []).name, "outer/default/w:0")
+            with ops.name_scope("scope2") as sc2:
+              self.assertEqual(sc2, "outer_1/default/scope2/")
+
+    # TODO(mihaimaruseac): calling _f fails with
+    # ValueError: Variable outer/w already exists, disallowed.
+    wrap_and_execute(_f, skip_graph=True)
+
+  @test_util.run_in_graph_and_eager_modes
   def testBasicWhenAuxiliaryNameScopeIsFalse(self):
-    with self.test_session():
-      with variable_scope.variable_scope(
-          "scope", auxiliary_name_scope=False) as scope:
-        self.assertEqual(scope.original_name_scope, "")
-        self.assertEqual(variable_scope.get_variable("w", []).name, "scope/w:0")
-        self.assertEqual(constant_op.constant([], name="c").name, "c:0")
-      with variable_scope.variable_scope(scope, auxiliary_name_scope=False):
-        self.assertEqual(scope.original_name_scope, "")
-        self.assertEqual(
-            variable_scope.get_variable("w1", []).name, "scope/w1:0")
-        self.assertEqual(constant_op.constant([], name="c1").name, "c1:0")
-      # Recheck: new name scope is NOT created before
-      with ops.name_scope("scope"):
-        self.assertEqual(constant_op.constant([], name="c").name, "scope/c:0")
 
-      with variable_scope.variable_scope("outer"):
+    def _f():
+      with self.cached_session():
         with variable_scope.variable_scope(
-            "inner", auxiliary_name_scope=False) as inner:
-          self.assertEqual(inner.original_name_scope, "outer/")
+            "scope", auxiliary_name_scope=False) as scope:
+          self.assertEqual(scope.original_name_scope, "")
           self.assertEqual(
-              variable_scope.get_variable("w", []).name, "outer/inner/w:0")
-          self.assertEqual(constant_op.constant([], name="c").name, "outer/c:0")
-        with variable_scope.variable_scope(
-            inner, auxiliary_name_scope=False) as inner1:
-          self.assertEqual(inner1.original_name_scope, "outer/")
+              variable_scope.get_variable("w", []).name, "scope/w:0")
+          self.assertEqual(constant_op.constant([], name="c").name, "c:0")
+        with variable_scope.variable_scope(scope, auxiliary_name_scope=False):
+          self.assertEqual(scope.original_name_scope, "")
           self.assertEqual(
-              variable_scope.get_variable("w1", []).name, "outer/inner/w1:0")
-          self.assertEqual(
-              constant_op.constant([], name="c1").name, "outer/c1:0")
+              variable_scope.get_variable("w1", []).name, "scope/w1:0")
+          self.assertEqual(constant_op.constant([], name="c1").name, "c1:0")
         # Recheck: new name scope is NOT created before
-        with ops.name_scope("inner"):
-          self.assertEqual(
-              constant_op.constant([], name="c").name, "outer/inner/c:0")
+        with ops.name_scope("scope"):
+          self.assertEqual(constant_op.constant([], name="c").name, "scope/c:0")
 
-  def testCreatedByDefaultNameWhenAuxiliaryNameScopeIsFalse(self):
-    with self.test_session():
-      with variable_scope.variable_scope(
-          None, default_name="default", auxiliary_name_scope=False) as scope:
-        self.assertEqual(scope.original_name_scope, "")
-        self.assertEqual(
-            variable_scope.get_variable("w", []).name, "default/w:0")
-        self.assertEqual(constant_op.constant([], name="c").name, "c:0")
-      # Recheck: new name scope is NOT created before
-      with ops.name_scope("default"):
-        self.assertEqual(constant_op.constant([], name="c").name, "default/c:0")
-
-      with variable_scope.variable_scope("outer"):
-        with variable_scope.variable_scope(
-            None, default_name="default", auxiliary_name_scope=False) as inner:
-          self.assertEqual(inner.original_name_scope, "outer/")
-          self.assertEqual(
-              variable_scope.get_variable("w", []).name, "outer/default/w:0")
-          self.assertEqual(constant_op.constant([], name="c").name, "outer/c:0")
-        # Recheck: new name scope is NOT created before
-        with ops.name_scope("default"):
-          self.assertEqual(
-              constant_op.constant([], name="c").name, "outer/default/c:0")
-
-  def testReenterRootScopeWhenAuxiliaryNameScopeIsFalse(self):
-    with self.test_session():
-      root_scope = variable_scope.get_variable_scope()
-      with variable_scope.variable_scope(
-          root_scope, auxiliary_name_scope=False) as scope:
-        self.assertEqual(scope.original_name_scope, "")
-        self.assertEqual(variable_scope.get_variable("w", []).name, "w:0")
-        self.assertEqual(constant_op.constant([], name="c").name, "c:0")
-
-      with variable_scope.variable_scope("outer"):
-        with variable_scope.variable_scope(
-            root_scope, auxiliary_name_scope=False) as inner:
-          self.assertEqual(inner.original_name_scope, "")
-          self.assertEqual(variable_scope.get_variable("w1", []).name, "w1:0")
-          self.assertEqual(
-              constant_op.constant([], name="c1").name, "outer/c1:0")
-
-  def testAuxiliaryNameScopeIsInvalid(self):
-    with self.test_session():
-      with self.assertRaisesRegexp(TypeError, "auxiliary_name_scope"):
-        with variable_scope.variable_scope(
-            None, default_name="scope", auxiliary_name_scope="invalid"):
-          pass
-
-      with self.assertRaisesRegexp(TypeError, "auxiliary_name_scope"):
-        with variable_scope.variable_scope(
-            "scope", auxiliary_name_scope="invalid"):
-          pass
-
-      with variable_scope.variable_scope("scope") as scope:
-        pass
-      with self.assertRaisesRegexp(TypeError, "auxiliary_name_scope"):
-        with variable_scope.variable_scope(
-            scope, auxiliary_name_scope="invalid"):
-          pass
-
-  def testReuseScopeWithoutNameScopeCollision(self):
-    # Github issue: #13429
-    with self.test_session():
-      with variable_scope.variable_scope("outer"):
-        with variable_scope.variable_scope("inner") as inner:
-          pass
-
-      with variable_scope.variable_scope(
-          inner, auxiliary_name_scope=False) as scope:
-        with ops.name_scope(scope.original_name_scope):
-          self.assertEqual(
-              variable_scope.get_variable("w", []).name, "outer/inner/w:0")
-          self.assertEqual(
-              constant_op.constant([], name="c").name, "outer/inner/c:0")
-        with ops.name_scope("inner"):
-          self.assertEqual(constant_op.constant([], name="c").name, "inner/c:0")
-
-      with variable_scope.variable_scope("another"):
-        with variable_scope.variable_scope(
-            inner, auxiliary_name_scope=False) as scope1:
-          with ops.name_scope(scope1.original_name_scope):
+        with variable_scope.variable_scope("outer"):
+          with variable_scope.variable_scope(
+              "inner", auxiliary_name_scope=False) as inner:
+            self.assertEqual(inner.original_name_scope, "outer/")
+            self.assertEqual(
+                variable_scope.get_variable("w", []).name, "outer/inner/w:0")
+            self.assertEqual(
+                constant_op.constant([], name="c").name, "outer/c:0")
+          with variable_scope.variable_scope(
+              inner, auxiliary_name_scope=False) as inner1:
+            self.assertEqual(inner1.original_name_scope, "outer/")
             self.assertEqual(
                 variable_scope.get_variable("w1", []).name, "outer/inner/w1:0")
             self.assertEqual(
-                constant_op.constant([], name="c1").name, "outer/inner/c1:0")
+                constant_op.constant([], name="c1").name, "outer/c1:0")
+          # Recheck: new name scope is NOT created before
           with ops.name_scope("inner"):
             self.assertEqual(
-                constant_op.constant([], name="c").name, "another/inner/c:0")
+                constant_op.constant([], name="c").name, "outer/inner/c:0")
 
+    # TODO(mihaimaruseac): calling _f fails with
+    # ValueError: Variable scope/w already exists, disallowed.
+    wrap_and_execute(_f, skip_graph=True)
+
+  @test_util.run_in_graph_and_eager_modes
+  def testCreatedByDefaultNameWhenAuxiliaryNameScopeIsFalse(self):
+
+    def _f():
+      with self.cached_session():
+        with variable_scope.variable_scope(
+            None, default_name="default", auxiliary_name_scope=False) as scope:
+          self.assertEqual(scope.original_name_scope, "")
+          self.assertEqual(
+              variable_scope.get_variable("w", []).name, "default/w:0")
+          self.assertEqual(constant_op.constant([], name="c").name, "c:0")
+        # Recheck: new name scope is NOT created before
+        with ops.name_scope("default"):
+          self.assertEqual(
+              constant_op.constant([], name="c").name, "default/c:0")
+
+        with variable_scope.variable_scope("outer"):
+          with variable_scope.variable_scope(
+              None, default_name="default",
+              auxiliary_name_scope=False) as inner:
+            self.assertEqual(inner.original_name_scope, "outer/")
+            self.assertEqual(
+                variable_scope.get_variable("w", []).name, "outer/default/w:0")
+            self.assertEqual(
+                constant_op.constant([], name="c").name, "outer/c:0")
+          # Recheck: new name scope is NOT created before
+          with ops.name_scope("default"):
+            self.assertEqual(
+                constant_op.constant([], name="c").name, "outer/default/c:0")
+
+    # TODO(mihaimaruseac): calling _f fails with
+    # AssertionError: 'default_1/w:0' != 'default/w:0'
+    wrap_and_execute(_f, skip_graph=True)
+
+  @test_util.run_in_graph_and_eager_modes
+  def testReenterRootScopeWhenAuxiliaryNameScopeIsFalse(self):
+
+    def _f():
+      with self.cached_session():
+        root_scope = variable_scope.get_variable_scope()
+        with variable_scope.variable_scope(
+            root_scope, auxiliary_name_scope=False) as scope:
+          self.assertEqual(scope.original_name_scope, "")
+          self.assertEqual(variable_scope.get_variable("w", []).name, "w:0")
+          self.assertEqual(constant_op.constant([], name="c").name, "c:0")
+
+        with variable_scope.variable_scope("outer"):
+          with variable_scope.variable_scope(
+              root_scope, auxiliary_name_scope=False) as inner:
+            self.assertEqual(inner.original_name_scope, "")
+            self.assertEqual(variable_scope.get_variable("w1", []).name, "w1:0")
+            self.assertEqual(
+                constant_op.constant([], name="c1").name, "outer/c1:0")
+
+    # TODO(mihaimaruseac): calling _f fails with
+    # ValueError: Variable w already exists, disallowed.
+    wrap_and_execute(_f, skip_graph=True)
+
+  @test_util.run_in_graph_and_eager_modes
+  def testAuxiliaryNameScopeIsInvalid(self):
+
+    def _f():
+      with self.cached_session():
+        with self.assertRaisesRegexp(TypeError, "auxiliary_name_scope"):
+          with variable_scope.variable_scope(
+              None, default_name="scope", auxiliary_name_scope="invalid"):
+            pass
+
+        with self.assertRaisesRegexp(TypeError, "auxiliary_name_scope"):
+          with variable_scope.variable_scope(
+              "scope", auxiliary_name_scope="invalid"):
+            pass
+
+        with variable_scope.variable_scope("scope") as scope:
+          pass
+        with self.assertRaisesRegexp(TypeError, "auxiliary_name_scope"):
+          with variable_scope.variable_scope(
+              scope, auxiliary_name_scope="invalid"):
+            pass
+
+    wrap_and_execute(_f)
+
+  @test_util.run_in_graph_and_eager_modes
+  def testReuseScopeWithoutNameScopeCollision(self):
+    # Github issue: #13429
+    def _f():
+      with self.cached_session():
+        with variable_scope.variable_scope("outer"):
+          with variable_scope.variable_scope("inner") as inner:
+            pass
+
+        with variable_scope.variable_scope(
+            inner, auxiliary_name_scope=False) as scope:
+          with ops.name_scope(scope.original_name_scope):
+            self.assertEqual(
+                variable_scope.get_variable("w", []).name, "outer/inner/w:0")
+            self.assertEqual(
+                constant_op.constant([], name="c").name, "outer/inner/c:0")
+          with ops.name_scope("inner"):
+            self.assertEqual(
+                constant_op.constant([], name="c").name, "inner/c:0")
+
+        with variable_scope.variable_scope("another"):
+          with variable_scope.variable_scope(
+              inner, auxiliary_name_scope=False) as scope1:
+            with ops.name_scope(scope1.original_name_scope):
+              self.assertEqual(
+                  variable_scope.get_variable("w1", []).name,
+                  "outer/inner/w1:0")
+              self.assertEqual(
+                  constant_op.constant([], name="c1").name, "outer/inner/c1:0")
+            with ops.name_scope("inner"):
+              self.assertEqual(
+                  constant_op.constant([], name="c").name, "another/inner/c:0")
+
+    # TODO(mihaimaruseac): calling _f fails with
+    # ValueError: Variable outer/inner/w already exists, disallowed.
+    wrap_and_execute(_f, skip_graph=True)
+
+  # TODO(mihaimaruseac): Not converted to use wrap_function because of
+  # obtaining different results in the eager case compared to the graph one
+  # (different assertions failing after wrapping, in both execution modes)
   @test_util.run_in_graph_and_eager_modes
   def testGetLocalVar(self):
     # Check that local variable respects naming.
@@ -996,32 +1202,44 @@ class VariableScopeTest(test.TestCase):
         self.assertEqual(
             variable_scope.get_local_variable("w", []).name, "outer/w:0")
 
+  @test_util.run_in_graph_and_eager_modes
   def testSignatureGetVarVsGetLocalVar(self):
     """get_{local,}variable() must take the same list of args."""
-    arg_names = tf_inspect.getargspec(variable_scope.get_variable)[0]
-    local_arg_names = tf_inspect.getargspec(
-        variable_scope.get_local_variable)[0]
-    self.assertEqual(arg_names, local_arg_names)
 
+    def _f():
+      arg_names = tf_inspect.getargspec(variable_scope.get_variable)[0]
+      local_arg_names = tf_inspect.getargspec(
+          variable_scope.get_local_variable)[0]
+      self.assertEqual(arg_names, local_arg_names)
+
+    wrap_and_execute(_f)
+
+  @test_util.run_in_graph_and_eager_modes
   def testGetVarWithDevice(self):
-    g = ops.Graph()
-    varname_type = []
 
-    def device_func(op):
-      if op.type in ["Variable", "VariableV2", "VarHandleOp"]:
-        varname_type.append((op.name, op.get_attr("dtype")))
-      return "/device:GPU:0"
+    def _f():
+      g = ops.Graph()
+      varname_type = []
 
-    with g.as_default():
-      with ops.device(device_func):
-        _ = variable_scope.get_variable("x", (100, 200))
-        _ = variable_scope.get_variable(
-            "y", dtype=dtypes.int64, initializer=numpy.arange(73))
-    self.assertEqual(varname_type[0], ("x", dtypes.float32))
-    self.assertEqual(varname_type[1], ("y", dtypes.int64))
+      def device_func(op):
+        if op.type in ["Variable", "VariableV2", "VarHandleOp"]:
+          varname_type.append((op.name, op.get_attr("dtype")))
+        return "/device:GPU:0"
 
+      with g.as_default():
+        with ops.device(device_func):
+          _ = variable_scope.get_variable("x", (100, 200))
+          _ = variable_scope.get_variable(
+              "y", dtype=dtypes.int64, initializer=numpy.arange(73))
+      self.assertEqual(varname_type[0], ("x", dtypes.float32))
+      self.assertEqual(varname_type[1], ("y", dtypes.int64))
+
+    wrap_and_execute(_f)
+
+  # TODO(mihaimaruseac): Not converted to use wrap_function because of
+  # obtaining different results in the eager case compared to the graph one
   def testGetCollection(self):
-    with self.test_session():
+    with self.cached_session():
       _ = variable_scope.get_variable("testGetCollection_a", [])
       _ = variable_scope.get_variable(
           "testGetCollection_b", [], trainable=False)
@@ -1074,8 +1292,10 @@ class VariableScopeTest(test.TestCase):
           "testGetCollection_foo/testGetCollection_a:0"
       ])
 
+  # TODO(mihaimaruseac): Not converted to use wrap_function because of
+  # obtaining different results in the eager case compared to the graph one
   def testGetTrainableVariablesWithGetVariable(self):
-    with self.test_session():
+    with self.cached_session():
       _ = variable_scope.get_variable("testGetTrainableVariables_a", [])
       with variable_scope.variable_scope(
           "testGetTrainableVariables_foo") as scope:
@@ -1110,8 +1330,10 @@ class VariableScopeTest(test.TestCase):
             synchronization=variable_scope.VariableSynchronization.ON_READ,
             trainable=True)
 
+  # TODO(mihaimaruseac): Not converted to use wrap_function because of
+  # obtaining different results in the eager case compared to the graph one
   def testGetTrainableVariablesWithVariable(self):
-    with self.test_session():
+    with self.cached_session():
       _ = variable_scope.variable(1.0, name="testGetTrainableVariables_a")
       with variable_scope.variable_scope(
           "testGetTrainableVariables_foo") as scope:
@@ -1149,8 +1371,10 @@ class VariableScopeTest(test.TestCase):
             synchronization=variable_scope.VariableSynchronization.ON_READ,
             trainable=True)
 
+  # TODO(mihaimaruseac): Not converted to use wrap_function because of
+  # obtaining different results in the eager case compared to the graph one
   def testGetGlobalVariables(self):
-    with self.test_session():
+    with self.cached_session():
       _ = variable_scope.get_variable("testGetGlobalVariables_a", [])
       with variable_scope.variable_scope("testGetGlobalVariables_foo") as scope:
         _ = variable_scope.get_variable("testGetGlobalVariables_b", [])
@@ -1159,8 +1383,10 @@ class VariableScopeTest(test.TestCase):
             ["testGetGlobalVariables_foo/"
              "testGetGlobalVariables_b:0"])
 
+  # TODO(mihaimaruseac): Not converted to use wrap_function because of
+  # obtaining different results in the eager case compared to the graph one
   def testGetLocalVariables(self):
-    with self.test_session():
+    with self.cached_session():
       _ = variable_scope.get_variable(
           "a", [], collections=[ops.GraphKeys.LOCAL_VARIABLES])
       with variable_scope.variable_scope("foo") as scope:
@@ -1169,22 +1395,34 @@ class VariableScopeTest(test.TestCase):
         _ = variable_scope.get_variable("c", [])
         self.assertEqual([v.name for v in scope.local_variables()], ["foo/b:0"])
 
+  @test_util.run_in_graph_and_eager_modes
   def testGetVariableWithRefDtype(self):
-    v = variable_scope.get_variable("v", shape=[3, 4], dtype=dtypes.float32)
-    # Ensure it is possible to do get_variable with a _ref dtype passed in.
-    _ = variable_scope.get_variable("w", shape=[5, 6], dtype=v.dtype)
 
+    def _f():
+      v = variable_scope.get_variable("v", shape=[3, 4], dtype=dtypes.float32)
+      # Ensure it is possible to do get_variable with a _ref dtype passed in.
+      _ = variable_scope.get_variable("w", shape=[5, 6], dtype=v.dtype)
+
+    # TODO(mihaimaruseac): calling _f fails with
+    # ValueError: Variable v already exists, disallowed.
+    wrap_and_execute(_f, skip_graph=True)
+
+  @test_util.run_in_graph_and_eager_modes
   def testTwoGraphs(self):
 
-    def f():
-      g1 = ops.Graph()
-      g2 = ops.Graph()
-      with g1.as_default():
-        with g2.as_default():
-          with variable_scope.variable_scope("_"):
-            pass
+    def _f():
 
-    self.assertRaisesRegexp(ValueError, "'_' is not a valid scope name", f)
+      def f():
+        g1 = ops.Graph()
+        g2 = ops.Graph()
+        with g1.as_default():
+          with g2.as_default():
+            with variable_scope.variable_scope("_"):
+              pass
+
+      self.assertRaisesRegexp(ValueError, "'_' is not a valid scope name", f)
+
+    wrap_and_execute(_f)
 
 
 def axis0_into1_partitioner(shape=None, **unused_kwargs):
@@ -1206,6 +1444,8 @@ def axis0_into3_partitioner(shape=None, **unused_kwargs):
 
 class VariableScopeWithPartitioningTest(test.TestCase):
 
+  # TODO(mihaimaruseac): Not converted to use wrap_function because of
+  # obtaining different results in the eager case compared to the graph one
   def testResultNameMatchesRequested(self):
     with variable_scope.variable_scope(
         "scope0", partitioner=axis0_into2_partitioner):
@@ -1218,50 +1458,78 @@ class VariableScopeWithPartitioningTest(test.TestCase):
       self.assertIn("scope0/name0/part_1:0", [x.name for x in variables])
       self.assertNotIn("scope0/name0/part_2:0", [x.name for x in variables])
 
+  @test_util.run_in_graph_and_eager_modes
   def testBreaksIfPartitioningChanges(self):
-    with variable_scope.variable_scope(
-        "scope0", partitioner=axis0_into2_partitioner):
-      variable_scope.get_variable("name0", shape=(3, 1, 1))
 
-    with variable_scope.variable_scope(
-        "scope0", partitioner=axis0_into3_partitioner, reuse=True):
-      with self.assertRaisesRegexp(
-          ValueError,
-          "Trying to reuse partitioned variable .* but specified partitions .* "
-          "and found partitions .*"):
+    def _f():
+      with variable_scope.variable_scope(
+          "scope0", partitioner=axis0_into2_partitioner):
         variable_scope.get_variable("name0", shape=(3, 1, 1))
 
-    with variable_scope.variable_scope(
-        "scope0", partitioner=axis0_into1_partitioner, reuse=True):
-      with self.assertRaisesRegexp(
-          ValueError,
-          "Trying to reuse partitioned variable .* but specified partitions .* "
-          "and found partitions .*"):
-        variable_scope.get_variable("name0", shape=(3, 1, 1))
+      with variable_scope.variable_scope(
+          "scope0", partitioner=axis0_into3_partitioner, reuse=True):
+        with self.assertRaisesRegexp(
+            ValueError,
+            "Trying to reuse partitioned variable .* but specified partitions "
+            ".* and found partitions .*"):
+          variable_scope.get_variable("name0", shape=(3, 1, 1))
 
+      with variable_scope.variable_scope(
+          "scope0", partitioner=axis0_into1_partitioner, reuse=True):
+        with self.assertRaisesRegexp(
+            ValueError,
+            "Trying to reuse partitioned variable .* but specified partitions "
+            ".* and found partitions .*"):
+          variable_scope.get_variable("name0", shape=(3, 1, 1))
+
+    # TODO(mihaimaruseac): calling _f fails with
+    # ValueError: Partitioned variable with name scope0/name0 already exists.
+    wrap_and_execute(_f, skip_graph=True)
+
+  @test_util.run_in_graph_and_eager_modes
   def testReturnsExistingConcatenatedValueIfReuse(self):
-    with variable_scope.variable_scope(
-        "scope0", partitioner=axis0_into2_partitioner):
-      v_concat = variable_scope.get_variable("name0", shape=(3, 1, 1))
-      variable_scope.get_variable_scope().reuse_variables()
-      v_concat_2 = variable_scope.get_variable("name0", shape=(3, 1, 1))
-      self.assertEqual(v_concat, v_concat_2)
 
+    def _f():
+      with variable_scope.variable_scope(
+          "scope0", partitioner=axis0_into2_partitioner):
+        v_concat = variable_scope.get_variable("name0", shape=(3, 1, 1))
+        variable_scope.get_variable_scope().reuse_variables()
+        v_concat_2 = variable_scope.get_variable("name0", shape=(3, 1, 1))
+        self.assertEqual(v_concat, v_concat_2)
+
+    # TODO(mihaimaruseac): calling _f fails with
+    # ValueError: Partitioned variable with name scope0/name0 already exists.
+    wrap_and_execute(_f, skip_graph=True)
+
+  @test_util.run_in_graph_and_eager_modes
   def testAllowsReuseWithoutPartitioner(self):
-    with variable_scope.variable_scope(
-        "scope0", partitioner=axis0_into2_partitioner):
-      v = variable_scope.get_variable("name0", shape=(3, 1, 1))
-    with variable_scope.variable_scope("scope0", reuse=True):
-      v_reused = variable_scope.get_variable("name0")
-    self.assertEqual(v, v_reused)
 
+    def _f():
+      with variable_scope.variable_scope(
+          "scope0", partitioner=axis0_into2_partitioner):
+        v = variable_scope.get_variable("name0", shape=(3, 1, 1))
+      with variable_scope.variable_scope("scope0", reuse=True):
+        v_reused = variable_scope.get_variable("name0")
+      self.assertEqual(v, v_reused)
+
+    # TODO(mihaimaruseac): calling _f fails with
+    # ValueError: Partitioned variable with name scope0/name0 already exists.
+    wrap_and_execute(_f, skip_graph=True)
+
+  @test_util.run_in_graph_and_eager_modes
   def testPropagatePartitionerOnReopening(self):
-    with variable_scope.variable_scope(
-        "scope0", partitioner=axis0_into2_partitioner) as vs:
-      self.assertEqual(axis0_into2_partitioner, vs.partitioner)
-      with variable_scope.variable_scope(vs) as vs1:
-        self.assertEqual(axis0_into2_partitioner, vs1.partitioner)
 
+    def _f():
+      with variable_scope.variable_scope(
+          "scope0", partitioner=axis0_into2_partitioner) as vs:
+        self.assertEqual(axis0_into2_partitioner, vs.partitioner)
+        with variable_scope.variable_scope(vs) as vs1:
+          self.assertEqual(axis0_into2_partitioner, vs1.partitioner)
+
+    wrap_and_execute(_f)
+
+  # TODO(mihaimaruseac): Not converted to use wrap_function because of
+  # obtaining different results in the eager case compared to the graph one
   def testScalarIgnoresPartitioner(self):
     with variable_scope.variable_scope(
         "scope0", partitioner=axis0_into2_partitioner):
@@ -1272,94 +1540,124 @@ class VariableScopeWithPartitioningTest(test.TestCase):
 
   def _testPartitionConcatenatesAlongCorrectAxis(self, use_resource):
 
-    def _part_axis_0(**unused_kwargs):
-      return (2, 1, 1)
+    def _f():
 
-    def _part_axis_1(**unused_kwargs):
-      return (1, 2, 1)
+      def _part_axis_0(**unused_kwargs):
+        return (2, 1, 1)
 
-    with variable_scope.variable_scope("root", use_resource=use_resource):
-      v0 = variable_scope.get_variable(
-          "n0", shape=(2, 2, 2), partitioner=_part_axis_0)
-      v1 = variable_scope.get_variable(
-          "n1", shape=(2, 2, 2), partitioner=_part_axis_1)
+      def _part_axis_1(**unused_kwargs):
+        return (1, 2, 1)
 
-    self.assertEqual(v0.get_shape(), (2, 2, 2))
-    self.assertEqual(v1.get_shape(), (2, 2, 2))
+      with variable_scope.variable_scope("root", use_resource=use_resource):
+        v0 = variable_scope.get_variable(
+            "n0", shape=(2, 2, 2), partitioner=_part_axis_0)
+        v1 = variable_scope.get_variable(
+            "n1", shape=(2, 2, 2), partitioner=_part_axis_1)
 
-    n0_0 = list(v0)[0]
-    n0_1 = list(v0)[1]
-    self.assertEqual(n0_0.get_shape(), (1, 2, 2))
-    self.assertEqual(n0_1.get_shape(), (1, 2, 2))
+      self.assertEqual(v0.get_shape(), (2, 2, 2))
+      self.assertEqual(v1.get_shape(), (2, 2, 2))
 
-    n1_0 = list(v1)[0]
-    n1_1 = list(v1)[1]
-    self.assertEqual(n1_0.get_shape(), (2, 1, 2))
-    self.assertEqual(n1_1.get_shape(), (2, 1, 2))
+      n0_0 = list(v0)[0]
+      n0_1 = list(v0)[1]
+      self.assertEqual(n0_0.get_shape(), (1, 2, 2))
+      self.assertEqual(n0_1.get_shape(), (1, 2, 2))
 
+      n1_0 = list(v1)[0]
+      n1_1 = list(v1)[1]
+      self.assertEqual(n1_0.get_shape(), (2, 1, 2))
+      self.assertEqual(n1_1.get_shape(), (2, 1, 2))
+
+    # TODO(mihaimaruseac): calling _f fails with
+    # ValueError: Partitioned variable with name root/n0 already exists.
+    wrap_and_execute(_f, skip_graph=True)
+
+  @test_util.run_in_graph_and_eager_modes
   def testPartitionConcatenatesAlongCorrectAxis(self):
     self._testPartitionConcatenatesAlongCorrectAxis(use_resource=False)
 
+  @test_util.run_in_graph_and_eager_modes
   def testPartitionConcatenatesAlongCorrectAxisResource(self):
     self._testPartitionConcatenatesAlongCorrectAxis(use_resource=True)
 
 
 class VariableScopeWithCustomGetterTest(test.TestCase):
 
+  @test_util.run_in_graph_and_eager_modes
   def testNonCallableGetterFails(self):
-    with self.assertRaisesRegexp(ValueError, r"custom_getter .* not callable:"):
-      with variable_scope.variable_scope("scope0", custom_getter=3):
-        variable_scope.get_variable("name0")
-    with self.assertRaisesRegexp(ValueError, r"custom_getter .* not callable:"):
-      variable_scope.get_variable("name0", custom_getter=3)
 
+    def _f():
+      with self.assertRaisesRegexp(ValueError,
+                                   r"custom_getter .* not callable:"):
+        with variable_scope.variable_scope("scope0", custom_getter=3):
+          variable_scope.get_variable("name0")
+      with self.assertRaisesRegexp(ValueError,
+                                   r"custom_getter .* not callable:"):
+        variable_scope.get_variable("name0", custom_getter=3)
+
+    wrap_and_execute(_f)
+
+  @test_util.run_in_graph_and_eager_modes
   def testNoSideEffectsWithIdentityCustomGetter(self):
-    called = [0]
 
-    def custom_getter(getter, *args, **kwargs):
-      called[0] += 1
-      return getter(*args, **kwargs)
+    def _f():
+      called = [0]
 
-    with variable_scope.variable_scope(
-        "scope", custom_getter=custom_getter) as scope:
-      v = variable_scope.get_variable("v", [1])
-    with variable_scope.variable_scope(scope, reuse=True):
-      v2 = variable_scope.get_variable("v", [1])
-    with variable_scope.variable_scope("new_scope") as new_scope:
-      v3 = variable_scope.get_variable("v3", [1])
-    with variable_scope.variable_scope(
-        new_scope, reuse=True, custom_getter=custom_getter):
-      v4 = variable_scope.get_variable("v3", [1])
+      def custom_getter(getter, *args, **kwargs):
+        called[0] += 1
+        return getter(*args, **kwargs)
 
-    self.assertEqual(v, v2)
-    self.assertEqual(v3, v4)
-    self.assertEqual(3, called[0])  # skipped one in the first new_scope
+      with variable_scope.variable_scope(
+          "scope", custom_getter=custom_getter) as scope:
+        v = variable_scope.get_variable("v", [1])
+      with variable_scope.variable_scope(scope, reuse=True):
+        v2 = variable_scope.get_variable("v", [1])
+      with variable_scope.variable_scope("new_scope") as new_scope:
+        v3 = variable_scope.get_variable("v3", [1])
+      with variable_scope.variable_scope(
+          new_scope, reuse=True, custom_getter=custom_getter):
+        v4 = variable_scope.get_variable("v3", [1])
 
+      self.assertEqual(v, v2)
+      self.assertEqual(v3, v4)
+      self.assertEqual(3, called[0])  # skipped one in the first new_scope
+
+    # TODO(mihaimaruseac): calling _f fails with
+    # ValueError: Variable scope/v already exists, disallowed.
+    wrap_and_execute(_f, skip_graph=True)
+
+  @test_util.run_in_graph_and_eager_modes
   def testSynchronizationAndAggregationWithCustomGetter(self):
-    called = [0]
-    synchronization = variable_scope.VariableSynchronization.AUTO
-    aggregation = variable_scope.VariableAggregation.NONE
 
-    def custom_getter(getter, *args, **kwargs):
-      called[0] += 1
+    def _f():
+      called = [0]
+      synchronization = variable_scope.VariableSynchronization.AUTO
+      aggregation = variable_scope.VariableAggregation.NONE
 
-      # Verify synchronization and aggregation kwargs are as expected.
-      self.assertEqual(kwargs["synchronization"], synchronization)
-      self.assertEqual(kwargs["aggregation"], aggregation)
-      return getter(*args, **kwargs)
+      def custom_getter(getter, *args, **kwargs):
+        called[0] += 1
 
-    with variable_scope.variable_scope("scope", custom_getter=custom_getter):
-      variable_scope.get_variable("v", [1])
-    self.assertEqual(1, called[0])
+        # Verify synchronization and aggregation kwargs are as expected.
+        self.assertEqual(kwargs["synchronization"], synchronization)
+        self.assertEqual(kwargs["aggregation"], aggregation)
+        return getter(*args, **kwargs)
 
-    with variable_scope.variable_scope("scope", custom_getter=custom_getter):
-      synchronization = variable_scope.VariableSynchronization.ON_READ
-      aggregation = variable_scope.VariableAggregation.MEAN
-      variable_scope.get_variable(
-          "v1", [1], synchronization=synchronization, aggregation=aggregation)
+      with variable_scope.variable_scope("scope", custom_getter=custom_getter):
+        variable_scope.get_variable("v", [1])
+      self.assertEqual(1, called[0])
 
-    self.assertEqual(2, called[0])
+      with variable_scope.variable_scope("scope", custom_getter=custom_getter):
+        synchronization = variable_scope.VariableSynchronization.ON_READ
+        aggregation = variable_scope.VariableAggregation.MEAN
+        variable_scope.get_variable(
+            "v1", [1], synchronization=synchronization, aggregation=aggregation)
 
+      self.assertEqual(2, called[0])
+
+    # TODO(mihaimaruseac): calling _f fails with
+    # ValueError: Variable scope/v already exists, disallowed.
+    wrap_and_execute(_f, skip_graph=True)
+
+  @test_util.run_in_graph_and_eager_modes
   def testCustomGetterWithReuse(self):
     # Custom getter can choose to behave differently on reused variables.
     def custom_getter(getter, *args, **kwargs):
@@ -1370,15 +1668,25 @@ class VariableScopeWithCustomGetterTest(test.TestCase):
       else:
         return array_ops.identity(var, name="not_reused")
 
-    with variable_scope.variable_scope(
-        "scope", custom_getter=custom_getter) as scope:
-      v = variable_scope.get_variable("v", [1])
-    with variable_scope.variable_scope(scope, reuse=True):
-      v2 = variable_scope.get_variable("v", [1])
+    def _f():
+      with variable_scope.variable_scope(
+          "scope", custom_getter=custom_getter) as scope:
+        v = variable_scope.get_variable("v", [1])
+      with variable_scope.variable_scope(scope, reuse=True):
+        v2 = variable_scope.get_variable("v", [1])
 
-    self.assertEqual(v.name, "not_reused:0")
-    self.assertEqual(v2.name, "reused:0")
+      self.assertEqual(v.name, "not_reused:0")
+      self.assertEqual(v2.name, "reused:0")
 
+    # TODO(mihaimaruseac): calling _f fails with
+    # ValueError: Variable scope/v already exists, disallowed.
+    wrap_and_execute(_f, skip_graph=True)
+
+  # TODO(mihaimaruseac): Not converted to use wrap_function because of
+  # ValueError: Fetch argument <tf.Tensor 'custom_getter/add:0' shape=(1, 2, 3)
+  # dtype=float32> cannot be interpreted as a Tensor. (Tensor
+  # Tensor("custom_getter/add:0", shape=(1, 2, 3), dtype=float32) is not an
+  # element of this graph.)
   def testGetterThatCreatesTwoVariablesAndSumsThem(self):
 
     def custom_getter(getter, name, *args, **kwargs):
@@ -1396,11 +1704,16 @@ class VariableScopeWithCustomGetterTest(test.TestCase):
     self.assertEqual("scope/v/0:0", true_vars[0].name)
     self.assertEqual("scope/v/1:0", true_vars[1].name)
     self.assertEqual("custom_getter/add:0", v.name)
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       variables_lib.global_variables_initializer().run()
       np_vars, np_v = sess.run([true_vars, v])
       self.assertAllClose(np_v, sum(np_vars))
 
+  # TODO(mihaimaruseac): Not converted to use wrap_function because of
+  # ValueError: Fetch argument <tf.Tensor 'sum_getter_2/add:0' shape=(1, 2, 3)
+  # dtype=float32> cannot be interpreted as a Tensor. (Tensor
+  # Tensor("sum_getter_2/add:0", shape=(1, 2, 3), dtype=float32) is not an
+  # element of this graph.)
   def testNestedCustomGetters(self):
 
     def sum_getter(getter, name, *args, **kwargs):
@@ -1436,7 +1749,7 @@ class VariableScopeWithCustomGetterTest(test.TestCase):
     self.assertEqual(template % (1, 1, 0), true_vars[6].name)
     self.assertEqual(template % (1, 1, 1), true_vars[7].name)
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       variables_lib.global_variables_initializer().run()
       np_vars, np_v = sess.run([true_vars, v])
       # take products of sums of products
@@ -1444,101 +1757,125 @@ class VariableScopeWithCustomGetterTest(test.TestCase):
           np_v, (((np_vars[0] * np_vars[1]) + (np_vars[2] * np_vars[3])) + (
               (np_vars[4] * np_vars[5]) + (np_vars[6] * np_vars[7]))))
 
+  @test_util.run_in_graph_and_eager_modes
   def testVariableCreator(self):
 
-    variable_names = []
+    def _f():
 
-    def creator_a(next_creator, **kwargs):
-      variable_names.append(kwargs.get("name", ""))
-      return next_creator(**kwargs)
+      variable_names = []
 
-    def creator_b(next_creator, **kwargs):
-      kwargs["name"] = "forced_name"
-      return next_creator(**kwargs)
+      def creator_a(next_creator, **kwargs):
+        variable_names.append(kwargs.get("name", ""))
+        return next_creator(**kwargs)
 
-    with variable_scope.variable_creator_scope(creator_a):
-      with variable_scope.variable_creator_scope(creator_b):
-        variable_scope.variable(1.0, name="one_name")
+      def creator_b(next_creator, **kwargs):
+        kwargs["name"] = "forced_name"
+        return next_creator(**kwargs)
 
-    self.assertAllEqual(variable_names, ["forced_name"])
+      with variable_scope.variable_creator_scope(creator_a):
+        with variable_scope.variable_creator_scope(creator_b):
+          variable_scope.variable(1.0, name="one_name")
 
-    called = [False]
+      self.assertAllEqual(variable_names, ["forced_name"])
 
-    def creater_c(next_creator, **kwargs):
-      called[0] = True
-      self.assertEqual(kwargs["synchronization"],
-                       variable_scope.VariableSynchronization.ON_WRITE)
-      self.assertEqual(kwargs["aggregation"],
-                       variable_scope.VariableAggregation.MEAN)
-      return next_creator(**kwargs)
+      called = [False]
 
-    with variable_scope.variable_creator_scope(creater_c):
-      variable_scope.get_variable(
-          "v", [],
-          synchronization=variable_scope.VariableSynchronization.ON_WRITE,
-          aggregation=variable_scope.VariableAggregation.MEAN)
-    self.assertTrue(called[0])
+      def creater_c(next_creator, **kwargs):
+        called[0] = True
+        self.assertEqual(kwargs["synchronization"],
+                         variable_scope.VariableSynchronization.ON_WRITE)
+        self.assertEqual(kwargs["aggregation"],
+                         variable_scope.VariableAggregation.MEAN)
+        return next_creator(**kwargs)
+
+      with variable_scope.variable_creator_scope(creater_c):
+        variable_scope.get_variable(
+            "v", [],
+            synchronization=variable_scope.VariableSynchronization.ON_WRITE,
+            aggregation=variable_scope.VariableAggregation.MEAN)
+      self.assertTrue(called[0])
+
+    # TODO(mihaimaruseac): calling _f fails with
+    # ValueError: Variable v already exists, disallowed.
+    wrap_and_execute(_f, skip_graph=True)
 
 
 class PartitionInfoTest(test.TestCase):
 
+  @test_util.run_in_graph_and_eager_modes
   def testConstructorChecks(self):
-    # Invalid arg types.
-    with self.assertRaises(TypeError):
-      variable_scope._PartitionInfo(full_shape=None, var_offset=[0, 1])
-    with self.assertRaises(TypeError):
-      variable_scope._PartitionInfo(full_shape=[0, 1], var_offset=None)
-    with self.assertRaises(TypeError):
-      variable_scope._PartitionInfo(full_shape="foo", var_offset=[0, 1])
-    with self.assertRaises(TypeError):
-      variable_scope._PartitionInfo(full_shape=[0, 1], var_offset="foo")
 
-    # full_shape and var_offset must have same length.
-    with self.assertRaises(ValueError):
-      variable_scope._PartitionInfo(full_shape=[0, 1], var_offset=[0])
-    # Offset must always be less than shape.
-    with self.assertRaises(ValueError):
-      variable_scope._PartitionInfo(full_shape=[1, 1], var_offset=[0, 1])
+    def _f():
+      # Invalid arg types.
+      with self.assertRaises(TypeError):
+        variable_scope._PartitionInfo(full_shape=None, var_offset=[0, 1])
+      with self.assertRaises(TypeError):
+        variable_scope._PartitionInfo(full_shape=[0, 1], var_offset=None)
+      with self.assertRaises(TypeError):
+        variable_scope._PartitionInfo(full_shape="foo", var_offset=[0, 1])
+      with self.assertRaises(TypeError):
+        variable_scope._PartitionInfo(full_shape=[0, 1], var_offset="foo")
 
+      # full_shape and var_offset must have same length.
+      with self.assertRaises(ValueError):
+        variable_scope._PartitionInfo(full_shape=[0, 1], var_offset=[0])
+      # Offset must always be less than shape.
+      with self.assertRaises(ValueError):
+        variable_scope._PartitionInfo(full_shape=[1, 1], var_offset=[0, 1])
+
+    wrap_and_execute(_f)
+
+  @test_util.run_in_graph_and_eager_modes
   def testSingleOffset(self):
-    partition_info = variable_scope._PartitionInfo(
-        full_shape=[9, 3], var_offset=[4, 0])
-    self.assertEqual(4, partition_info.single_offset([1, 3]))
 
-    # Tests when the variable isn't partitioned at all.
-    partition_info = variable_scope._PartitionInfo(
-        full_shape=[9, 3], var_offset=[0, 0])
-    self.assertEqual(0, partition_info.single_offset([9, 3]))
+    def _f():
+      partition_info = variable_scope._PartitionInfo(
+          full_shape=[9, 3], var_offset=[4, 0])
+      self.assertEqual(4, partition_info.single_offset([1, 3]))
 
+      # Tests when the variable isn't partitioned at all.
+      partition_info = variable_scope._PartitionInfo(
+          full_shape=[9, 3], var_offset=[0, 0])
+      self.assertEqual(0, partition_info.single_offset([9, 3]))
+
+    wrap_and_execute(_f)
+
+  @test_util.run_in_graph_and_eager_modes
   def testSingleSliceDim(self):
-    partition_info = variable_scope._PartitionInfo(
-        full_shape=[9, 3], var_offset=[4, 0])
-    # Invalid shape.
-    with self.assertRaises(TypeError):
-      partition_info.single_slice_dim(None)
 
-    # Rank of shape differs from full_shape.
-    with self.assertRaises(ValueError):
-      partition_info.single_slice_dim([1, 2, 3])
+    def _f():
+      partition_info = variable_scope._PartitionInfo(
+          full_shape=[9, 3], var_offset=[4, 0])
+      # Invalid shape.
+      with self.assertRaises(TypeError):
+        partition_info.single_slice_dim(None)
 
-    # Shape is too large given var_offset (4+6 > 9).
-    with self.assertRaises(ValueError):
-      partition_info.single_slice_dim([6, 3])
+      # Rank of shape differs from full_shape.
+      with self.assertRaises(ValueError):
+        partition_info.single_slice_dim([1, 2, 3])
 
-    # Multiple possible slice dim from shape.
-    with self.assertRaises(ValueError):
-      partition_info.single_slice_dim([1, 1])
+      # Shape is too large given var_offset (4+6 > 9).
+      with self.assertRaises(ValueError):
+        partition_info.single_slice_dim([6, 3])
 
-    partition_info = variable_scope._PartitionInfo(
-        full_shape=[9, 3], var_offset=[0, 0])
-    self.assertEqual(1, partition_info.single_slice_dim([9, 2]))
-    partition_info = variable_scope._PartitionInfo(
-        full_shape=[9, 3], var_offset=[4, 0])
-    self.assertEqual(0, partition_info.single_slice_dim([2, 3]))
+      # Multiple possible slice dim from shape.
+      with self.assertRaises(ValueError):
+        partition_info.single_slice_dim([1, 1])
+
+      partition_info = variable_scope._PartitionInfo(
+          full_shape=[9, 3], var_offset=[0, 0])
+      self.assertEqual(1, partition_info.single_slice_dim([9, 2]))
+      partition_info = variable_scope._PartitionInfo(
+          full_shape=[9, 3], var_offset=[4, 0])
+      self.assertEqual(0, partition_info.single_slice_dim([2, 3]))
+
+    wrap_and_execute(_f)
 
 
 class VariableScopeMultithreadedTest(test.TestCase):
 
+  # TODO(mihaimaruseac): Not wrapping these as they cause timeouts if wrapped
+  @test_util.run_in_graph_and_eager_modes
   def testTwoThreadsDisjointScopeEntry(self):
 
     def thread_fn(i, graph):
@@ -1567,6 +1904,8 @@ class VariableScopeMultithreadedTest(test.TestCase):
     threads[1].start()
     threads[1].join()
 
+  # TODO(mihaimaruseac): Not wrapping these as they cause timeouts if wrapped
+  @test_util.run_in_graph_and_eager_modes
   def testTwoThreadsNestedScopeEntry(self):
 
     def thread_fn(i, graph, run_event, pause_event):
@@ -1604,6 +1943,8 @@ class VariableScopeMultithreadedTest(test.TestCase):
     threads[0].join()
     threads[1].join()
 
+  # TODO(mihaimaruseac): Not wrapping these as they cause timeouts if wrapped
+  @test_util.run_in_graph_and_eager_modes
   def testReenterMainScope(self):
 
     def thread_fn(graph, main_thread_scope):

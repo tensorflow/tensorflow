@@ -146,6 +146,8 @@ TEST_F(OperatorTest, SimpleOperators) {
   CheckSimpleOperator<FloorDivOperator>("FLOOR_DIV", OperatorType::kFloorDiv);
   CheckSimpleOperator<TensorFlowSquareOperator>("SQUARE",
                                                 OperatorType::kSquare);
+  CheckSimpleOperator<TensorFlowZerosLikeOperator>("ZEROS_LIKE",
+                                                   OperatorType::kZerosLike);
 }
 
 TEST_F(OperatorTest, BuiltinAdd) {
@@ -565,6 +567,12 @@ TEST_F(OperatorTest, TensorFlowUnsupportedWithoutAttr) {
   ::tensorflow::NodeDef output_node_def;
   output_node_def.ParseFromString(output_toco_op->tensorflow_node_def);
   EXPECT_TRUE(output_node_def.attr().empty());
+}
+
+TEST_F(OperatorTest, TestShouldExportAsFlexOp) {
+  EXPECT_FALSE(ShouldExportAsFlexOp(false, "Conv2D"));
+  EXPECT_TRUE(ShouldExportAsFlexOp(true, "Conv2D"));
+  EXPECT_FALSE(ShouldExportAsFlexOp(true, "MyAwesomeCustomOp"));
 }
 
 }  // namespace

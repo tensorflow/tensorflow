@@ -29,14 +29,6 @@ Status BackwardsConstAnalysis(const Graph& g,
                               std::vector<bool>* compile_time_const_arg_indices,
                               std::vector<bool>* compile_time_const_nodes,
                               std::function<bool(const Edge&)> edge_filter) {
-  // Operators that don't look at the data of their inputs, just the shapes.
-  const std::unordered_set<string> metadata_ops = {
-      "Rank",
-      "Shape",
-      "ShapeN",
-      "Size",
-  };
-
   std::vector<bool> compile_time_const_nodes_impl;
   if (compile_time_const_nodes) {
     CHECK_EQ(compile_time_const_nodes->size(), g.num_node_ids());
@@ -50,7 +42,9 @@ Status BackwardsConstAnalysis(const Graph& g,
     if (!status.ok()) return;
 
     // If this is a metadata-only op, don't propagate the const requirement.
-    if (metadata_ops.find(node->type_string()) != metadata_ops.end()) return;
+    if (XlaOpRegistry::IsMetadataOp(node->type_string())) {
+      return;
+    }
 
     // If this node must be const, and it isn't a metadata op, then all of its
     // parents must be const.

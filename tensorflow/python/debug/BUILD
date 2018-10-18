@@ -18,6 +18,7 @@ exports_files(["LICENSE"])
 
 load("//tensorflow:tensorflow.bzl", "cuda_py_test")
 load("//tensorflow:tensorflow.bzl", "py_test")
+load("//tensorflow:tensorflow.bzl", "py_binary")
 load("//tensorflow:tensorflow.bzl", "if_not_windows")
 
 py_library(

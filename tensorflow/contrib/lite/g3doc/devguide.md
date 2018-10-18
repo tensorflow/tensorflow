@@ -1,5 +1,4 @@
-
-# Developer Guide
+# TF Lite Developer Guide
 
 Using a TensorFlow Lite model in your mobile app requires multiple
 considerations: you must choose a pre-trained or custom model, convert the model
@@ -55,7 +54,7 @@ both floating point and quantized inference.
 ### Train a custom model
 
 A developer may choose to train a custom model using Tensorflow (see the
-[TensorFlow tutorials](../../tutorials/) for examples of building and training
+[TensorFlow tutorials](../tutorials/) for examples of building and training
 models). If you have already written a model, the first step is to export this
 to a `tf.GraphDef` file. This is required because some formats do not store the
 model structure outside the code, and we must communicate with other parts of the
@@ -205,7 +204,7 @@ The open source Android demo app uses the JNI interface and is available
 [on GitHub](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/contrib/lite/java/demo/app).
 You can also download a
 [prebuilt APK](http://download.tensorflow.org/deps/tflite/TfLiteCameraDemo.apk).
-See the <a href="../demo_android.md">Android demo</a> guide for details.
+See the <a href="./demo_android.md">Android demo</a> guide for details.
 
 The <a href="./android_build.md">Android mobile</a> guide has instructions for
 installing TensorFlow on Android and setting up `bazel` and Android Studio.
@@ -214,7 +213,7 @@ installing TensorFlow on Android and setting up `bazel` and Android Studio.
 
 To integrate a TensorFlow model in an iOS app, see the
 [TensorFlow Lite for iOS](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/contrib/lite/g3doc/ios.md)
-guide and <a href="../demo_ios.md">iOS demo</a> guide.
+guide and <a href="./demo_ios.md">iOS demo</a> guide.
 
 #### Core ML support
 

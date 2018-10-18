@@ -18,12 +18,14 @@ limitations under the License.
 
 #include <memory>
 #include <string>
+#include <unordered_map>
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/function.pb.h"
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/op_def.pb.h"
 #include "tensorflow/core/grappler/grappler_item.h"
+#include "tensorflow/core/lib/gtl/flatset.h"
 
 namespace tensorflow {
 namespace grappler {
@@ -70,9 +72,9 @@ struct OutputArgExpansion {
 // and fold it back when doing backward conversion.
 class GrapplerFunctionConnectivity {
  public:
-  void RegisterInputArgExpansion(const InputArgExpansion& input_arg_expansion);
+  void RegisterInputArgExpansion(InputArgExpansion input_arg_expansion);
   void RegisterFunctionBodyOutputs(const string& node_name,
-                                   const tensorflow::NameRangeMap& outputs);
+                                   tensorflow::NameRangeMap&& outputs);
 
   // Expand input encoded in FunctionDef format (name[:output][:position]) into
   // multiple inputs in GraphDef format (name[:position]).
@@ -166,6 +168,9 @@ class GrapplerFunctionItem : public GrapplerItem {
  private:
   friend Status ReplaceInputWithConst(const NodeDef&, int,
                                       GrapplerFunctionItem*);
+  friend Status RemoveUnusedOutputs(
+      const gtl::FlatSet<int>& active_outputs, GrapplerFunctionItem* item,
+      std::vector<std::pair<int, int>>* output_mapping);
 
   string description_;
   AttrValueMap func_attr_;  // Attributes specific to function definition that
@@ -215,13 +220,23 @@ Status RegisterGrapplerFunctionConnectivity(
 Status ReplaceInputWithConst(const NodeDef& input_const, int input_position,
                              GrapplerFunctionItem* item);
 
+// Remove function output arguments that do not have any active outputs (output
+// tensor connected to other node inputs or in a fetch set). Active outputs uses
+// GraphDef output position encoding, and multiple active outputs could
+// potentially be connected to the same output argument (in case of tensor list
+// outputs). Add output mapping for all active outputs that changed it's output
+// position (std::pair<old position, new position>).
+Status RemoveUnusedOutputs(const gtl::FlatSet<int>& active_outputs,
+                           GrapplerFunctionItem* item,
+                           std::vector<std::pair<int, int>>* output_mapping);
+
 // Make a GrapplerFunctionItem from the function definition and function
 // instantiation attributes (caller node attributes). Returns error if the given
 // function def cannot be converted (e.g. not all attributes are defined).
 Status MakeGrapplerFunctionItem(const FunctionDef& func,
                                 const AttrValueMap& func_instantiation_attr,
                                 const FunctionLibraryDefinition& flib,
-                                const int graph_def_version,
+                                int graph_def_version,
                                 GrapplerFunctionItem* item);
 
 // Make a GrapplerFunction item from the function definition. Function must be
@@ -231,7 +246,7 @@ Status MakeGrapplerFunctionItem(const FunctionDef& func,
 // without specializing it to it's instantiation attributes (at least types)?
 Status MakeGrapplerFunctionItem(const FunctionDef& func,
                                 const FunctionLibraryDefinition& flib,
-                                const int graph_def_version,
+                                int graph_def_version,
                                 GrapplerFunctionItem* item);
 
 // Make a FunctionDef from the GrapplerFunctionItem. Use function library

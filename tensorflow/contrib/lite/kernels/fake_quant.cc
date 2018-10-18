@@ -68,11 +68,14 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   const auto* params =
       reinterpret_cast<TfLiteFakeQuantParams*>(node->builtin_data);
 
-  reference_ops::FakeQuant(GetTensorData<float>(op_context.input),
-                           GetTensorDims(op_context.input), params->min,
-                           params->max, params->num_bits,
-                           GetTensorData<float>(op_context.output),
-                           GetTensorDims(op_context.output));
+  tflite::FakeQuantParams op_params;
+  op_params.num_bits = params->num_bits;
+  op_params.minmax.min = params->min;
+  op_params.minmax.max = params->max;
+  reference_ops::FakeQuant(op_params, GetTensorShape(op_context.input),
+                           GetTensorData<float>(op_context.input),
+                           GetTensorShape(op_context.output),
+                           GetTensorData<float>(op_context.output));
 
   return kTfLiteOk;
 }

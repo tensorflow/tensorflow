@@ -58,6 +58,7 @@ enum class OperatorType : uint8 {
   kL2Normalization,
   kL2Pool,
   kLstmCell,
+  kUnidirectionalSequenceLstm,
   kLocalResponseNormalization,
   kLog,
   kLogistic,
@@ -150,6 +151,7 @@ enum class OperatorType : uint8 {
   kLogicalOr,
   kCTCBeamSearchDecoder,
   kUnpack,
+  kZerosLike,
 };
 
 // Helper to deal with TensorFlow arrays using a different ordering of
@@ -375,6 +377,13 @@ struct Operator {
   // looks unused.
   bool unresolved_outputs = false;
 
+  // A serialized tensorflow::NodeDef string.
+  // The field is filled only when importing from TensorFlow.
+  // It's guaranteed to be filled for `TensorFlowUnsupportedOperator`.
+  // It's not guaranteed to be filled for other ops. Ops created by graph
+  // transformations won't have TensorFlow NodeDef.
+  string tensorflow_node_def;
+
  protected:
   // Constructor used by subclasses for specific OperatorType's.
   explicit Operator(OperatorType t)
@@ -477,6 +486,11 @@ struct DepthwiseConvOperator : Operator {
   int stride_height = 0;
   int stride_width = 0;
   int depth_multiplier = 0;
+  // A dilation_rate of 0 is invalid and this field is an optional attribute.
+  // Thus initializing it to 1 to allow default conv behavior when the
+  // attribute is not present.
+  int dilation_width_factor = 1;
+  int dilation_height_factor = 1;
 };
 
 // Depth-to-space transform operator.
@@ -620,6 +634,11 @@ struct LstmCellOperator : Operator {
       : Operator(OperatorType::kLstmCell), kernel_type(KERNEL_BASIC) {}
 
   KernelType kernel_type;
+};
+
+struct UnidirectionalSequenceLstmOperator : Operator {
+  UnidirectionalSequenceLstmOperator()
+      : Operator(OperatorType::kUnidirectionalSequenceLstm) {}
 };
 
 // Element-wise multiplication operator.
@@ -1529,8 +1548,6 @@ struct TensorFlowUnsupportedOperator : Operator {
 
   // The original TF operation type. Used for diagnostic purposes.
   string tensorflow_op;
-  // A serialized tensorflow::NodeDef string.
-  string tensorflow_node_def;
   // A boolean indicating if the unsupported op should be treated as quantized.
   bool quantized = false;
   // A boolean indicating if the unsupported op output should allow float values
@@ -1844,6 +1861,16 @@ struct UnpackOperator : Operator {
   ArrayDataType dtype = ArrayDataType::kNone;
 };
 
+// ZerosLike operator:
+//
+// Inputs:
+// inputs[0]: required: the input array
+//
+// TensorFlow equivalent: tf.zeros_like
+struct TensorFlowZerosLikeOperator : Operator {
+  TensorFlowZerosLikeOperator() : Operator(OperatorType::kZerosLike) {}
+};
+
 // Alloc's are used for transient arrays only. An Alloc specifies which interval
 // of the "transient_data" workspace buffer passed to inference functions, is to
 // be used for the transient array at hand. The 'start' and 'end' values are
@@ -2068,6 +2095,7 @@ class Model {
     }
   }
   const ArrayMap& GetArrayMap() const { return arrays; }
+  ArrayMap& GetMutableArrayMap() { return arrays; }
 
   int64 ArithmeticOpsCount() const { return ops_count; }
 

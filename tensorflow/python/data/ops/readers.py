@@ -61,6 +61,9 @@ class TextLineDataset(dataset_ops.Dataset):
     return gen_dataset_ops.text_line_dataset(
         self._filenames, self._compression_type, self._buffer_size)
 
+  def _inputs(self):
+    return []
+
   @property
   def output_classes(self):
     return ops.Tensor
@@ -105,6 +108,9 @@ class _TFRecordDataset(dataset_ops.Dataset):
     return gen_dataset_ops.tf_record_dataset(
         self._filenames, self._compression_type, self._buffer_size)
 
+  def _inputs(self):
+    return []
+
   @property
   def output_classes(self):
     return ops.Tensor
@@ -123,7 +129,7 @@ class ParallelInterleaveDataset(dataset_ops.InterleaveDataset):
 
   def __init__(self, input_dataset, map_func, cycle_length, block_length,
                sloppy, buffer_output_elements, prefetch_input_elements):
-    """See `tf.contrib.data.parallel_interleave()` for details."""
+    """See `tf.data.experimental.parallel_interleave()` for details."""
     super(ParallelInterleaveDataset, self).__init__(input_dataset, map_func,
                                                     cycle_length, block_length)
     self._sloppy = ops.convert_to_tensor(
@@ -152,7 +158,7 @@ class ParallelInterleaveDataset(dataset_ops.InterleaveDataset):
     # pylint: enable=protected-access
 
   def _transformation_name(self):
-    return "tf.contrib.data.parallel_interleave()"
+    return "tf.data.experimental.parallel_interleave()"
 
 
 @tf_export("data.TFRecordDataset")
@@ -224,6 +230,9 @@ class TFRecordDataset(dataset_ops.Dataset):
   def _as_variant_tensor(self):
     return self._impl._as_variant_tensor()  # pylint: disable=protected-access
 
+  def _inputs(self):
+    return self._impl._inputs()  # pylint: disable=protected-access
+
   @property
   def output_classes(self):
     return self._impl.output_classes
@@ -277,6 +286,9 @@ class FixedLengthRecordDataset(dataset_ops.Dataset):
     return gen_dataset_ops.fixed_length_record_dataset(
         self._filenames, self._header_bytes, self._record_bytes,
         self._footer_bytes, self._buffer_size)
+
+  def _inputs(self):
+    return []
 
   @property
   def output_classes(self):

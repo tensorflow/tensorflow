@@ -457,7 +457,7 @@ void NeonSymmetricQuantizeFloats(const float* values, const int size,
     return;
   }
   *scaling_factor = range / kScale;
-  const float scaling_factor_inv = 1.0f / *scaling_factor;
+  const float scaling_factor_inv = kScale / range;
 
   const int postamble_start =
       size - (size & (2 * kFloatWeightsPerNeonLane - 1));

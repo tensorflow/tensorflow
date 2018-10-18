@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_JIT_XLA_COMPILATION_CACHE_H_
 #define TENSORFLOW_COMPILER_JIT_XLA_COMPILATION_CACHE_H_
 
+#include "absl/container/flat_hash_map.h"
 #include "tensorflow/compiler/tf2xla/xla_compiler.h"
 #include "tensorflow/compiler/tf2xla/xla_context.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
@@ -24,7 +25,6 @@ limitations under the License.
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/lib/core/threadpool.h"
-#include "tensorflow/core/lib/gtl/flatmap.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/thread_annotations.h"
 
@@ -50,6 +50,11 @@ class XlaCompilationCache : public ResourceBase {
   XlaCompilationCache(xla::LocalClient* client, DeviceType device_type);
   ~XlaCompilationCache() override;
 
+  enum class CompileMode {
+    kLazy,
+    kStrict,
+  };
+
   // Compiles a function into a XlaCompiler::CompilationResult that can be used
   // to execute an XLA Computation. Compilation results are cached.
   // `function` is the name of a Tensorflow function to compile.
@@ -58,6 +63,14 @@ class XlaCompilationCache : public ResourceBase {
   // `variable_args` is a snapshot of the current values of the
   // resource variable arguments to `function`; uninitialized variables are
   // represented by an absent OptionalTensor.
+  //
+  // `compile_mode` controls the behavior of the compilation cache on a cache
+  // miss.  If `compile_mode` is `kLazy` then, based on some profitability
+  // heuristics, the compilation cache may decide not to compile the cluster at
+  // this time.  In this case it returns null into both `out_compilation_result`
+  // and `out_executable`.  If `compile_mode` is `kStrict` then the compilation
+  // cache always attempts the compilation on a cache miss.
+  //
   // The result of compilation is written to `*compilation_result`, which must
   // be non-null. If `executable` is non-null, also builds an
   // xla::LocalExecutable and sets `executable` to point to it. The resulting
@@ -68,9 +81,10 @@ class XlaCompilationCache : public ResourceBase {
                  const std::map<int, Tensor>& constant_args,
                  const std::map<int, OptionalTensor>& variable_args,
                  OpKernelContext* ctx,
-                 const XlaCompiler::CompilationResult** compilation_result,
-                 xla::LocalExecutable** executable,
-                 const XlaCompiler::CompileOptions& compile_options);
+                 const XlaCompiler::CompileOptions& compile_options,
+                 CompileMode compile_mode,
+                 const XlaCompiler::CompilationResult** out_compilation_result,
+                 xla::LocalExecutable** out_executable);
 
   // As above, but calls XlaCompiler::CompileSingleOp instead of
   // XlaCompiler::CompileFunction.
@@ -78,9 +92,9 @@ class XlaCompilationCache : public ResourceBase {
       const XlaCompiler::Options& options,
       const std::map<int, Tensor>& constant_args,
       const std::map<int, OptionalTensor>& variable_args, OpKernelContext* ctx,
-      const XlaCompiler::CompilationResult** compilation_result,
-      xla::LocalExecutable** executable,
-      const XlaCompiler::CompileOptions& compile_options);
+      const XlaCompiler::CompileOptions& compile_options,
+      const XlaCompiler::CompilationResult** out_compilation_result,
+      xla::LocalExecutable** out_executable);
 
   xla::LocalClient* client() const { return client_; }
   const DeviceType& device_type() const { return device_type_; }
@@ -89,15 +103,14 @@ class XlaCompilationCache : public ResourceBase {
 
  private:
   // Common implementation of Compile and CompileSingleOp.
-  Status CompileImpl(const XlaCompiler::Options& options,
-                     const NameAttrList& function,
-                     const std::map<int, Tensor>& constant_args,
-                     const std::map<int, OptionalTensor>& variable_args,
-                     OpKernelContext* ctx,
-                     const XlaCompiler::CompilationResult** compilation_result,
-                     xla::LocalExecutable** executable,
-                     const XlaCompiler::CompileOptions& compile_options,
-                     bool compile_single_op);
+  Status CompileImpl(
+      const XlaCompiler::Options& options, const NameAttrList& function,
+      const std::map<int, Tensor>& constant_args,
+      const std::map<int, OptionalTensor>& variable_args, OpKernelContext* ctx,
+      const XlaCompiler::CompileOptions& compile_options,
+      bool compile_single_op, int64 compile_threshold,
+      const XlaCompiler::CompilationResult** out_compilation_result,
+      xla::LocalExecutable** out_executable);
 
   // Takes `result` which has been compiled from a Tensorflow subgraph to a
   // XLA computation already, and generates an XLA LocalExecutable `executable`.
@@ -140,6 +153,9 @@ class XlaCompilationCache : public ResourceBase {
     // Have we tried compiling this entry?
     bool compiled = false;
 
+    // The number of times a compilation with this signature has been requested.
+    int64 request_count = 0;
+
     // Did compilation succeed?
     Status compilation_status GUARDED_BY(mu);
 
@@ -152,7 +168,7 @@ class XlaCompilationCache : public ResourceBase {
   };
 
   mutex compile_cache_mu_;
-  gtl::FlatMap<Signature, std::unique_ptr<Entry>, Signature::Hash> cache_
+  absl::flat_hash_map<Signature, std::unique_ptr<Entry>, Signature::Hash> cache_
       GUARDED_BY(compile_cache_mu_);
 
   struct CompileStats {
@@ -165,8 +181,12 @@ class XlaCompilationCache : public ResourceBase {
   mutex compile_stats_mu_;
 
   // Maps cluster names to compilation statistics for said cluster.
-  gtl::FlatMap<string, CompileStats> compile_stats_
+  absl::flat_hash_map<string, CompileStats> compile_stats_
       GUARDED_BY(compile_stats_mu_);
+
+  // The number of times a lazy compilation must be requested for a specific
+  // signature before  we attempt to compile it.
+  static constexpr int64 kDefaultCompilationThreshold = 2;
 
   TF_DISALLOW_COPY_AND_ASSIGN(XlaCompilationCache);
 };

@@ -135,7 +135,7 @@ class RandomShuffleOp : public XlaOpKernel {
       xla::XlaOp curr = input;
       for (int i = 0; i < rounds; ++i) {
         xla::XlaOp keys = xla::RngUniform(zero, max_value, key_shape);
-        xla::XlaOp sorted = xla::Sort(keys, curr);
+        xla::XlaOp sorted = xla::Sort(keys, {curr});
         curr = xla::GetTupleElement(sorted, 1);
       }
 

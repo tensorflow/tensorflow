@@ -42,6 +42,22 @@ class ParserTest(test.TestCase):
     """))
     self.assertEqual('f', mod.body[0].name)
 
+  def test_parse_comments(self):
+    def f():
+# unindented comment
+      pass
+    with self.assertRaises(ValueError):
+      parser.parse_entity(f)
+
+  def test_parse_multiline_strings(self):
+    def f():
+      print("""
+some
+multiline
+string""")
+    with self.assertRaises(ValueError):
+      parser.parse_entity(f)
+
   def test_parse_expression(self):
     node = parser.parse_expression('a.b')
     self.assertEqual('a', node.value.id)

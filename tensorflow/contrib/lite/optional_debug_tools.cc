@@ -25,7 +25,7 @@ void PrintIntVector(const std::vector<int>& v) {
 
 void PrintTfLiteIntVector(const TfLiteIntArray* v) {
   if (!v) {
-    printf(" (null)");
+    printf(" (null)\n");
     return;
   }
   for (int k = 0; k < v->size; k++) {
@@ -99,8 +99,12 @@ void PrintInterpreterState(Interpreter* interpreter) {
         interpreter->node_and_registration(node_index);
     const TfLiteNode& node = node_and_reg->first;
     const TfLiteRegistration& reg = node_and_reg->second;
-    printf("Node %3d Operator Builtin Code %3d\n", node_index,
-           reg.builtin_code);
+    if (reg.custom_name != nullptr) {
+      printf("Node %3d Operator Custom Name %s\n", node_index, reg.custom_name);
+    } else {
+      printf("Node %3d Operator Builtin Code %3d\n", node_index,
+             reg.builtin_code);
+    }
     printf("  Inputs:");
     PrintTfLiteIntVector(node.inputs);
     printf("  Outputs:");

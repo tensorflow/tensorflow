@@ -149,7 +149,7 @@ class AllReduceTest(test_util.TensorFlowTestCase):
     num_devices = num_workers * num_gpus
     dev_list = ["/replica:0/task:0/device:CPU:0"
                 for _ in range(num_devices)]
-    with self.test_session():
+    with self.cached_session():
       input_tensors = self._buildInitialVars(shape, dev_list)
       un_op = lambda x: math_ops.div(
           x, constant_op.constant(num_devices, dtype=types_pb2.DT_FLOAT))

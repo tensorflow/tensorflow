@@ -89,6 +89,16 @@ bool CancellationManager::DeregisterCallback(CancellationToken token) {
   }
 }
 
+bool CancellationManager::TryDeregisterCallback(CancellationToken token) {
+  mutex_lock lock(mu_);
+  if (is_cancelled_ || is_cancelling_) {
+    return false;
+  } else {
+    callbacks_.erase(token);
+    return true;
+  }
+}
+
 CancellationManager::~CancellationManager() {
   if (!callbacks_.empty()) {
     StartCancel();

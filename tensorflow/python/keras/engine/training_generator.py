@@ -21,8 +21,10 @@ from __future__ import print_function
 
 import numpy as np
 
+from tensorflow.python.eager import context
 from tensorflow.python.keras import callbacks as cbks
 from tensorflow.python.keras.utils.data_utils import GeneratorEnqueuer
+from tensorflow.python.keras.utils.data_utils import iter_sequence_infinite
 from tensorflow.python.keras.utils.data_utils import OrderedEnqueuer
 from tensorflow.python.keras.utils.data_utils import Sequence
 from tensorflow.python.keras.utils.generic_utils import Progbar
@@ -44,10 +46,13 @@ def fit_generator(model,
                   shuffle=True,
                   initial_epoch=0):
   """See docstring for `Model.fit_generator`."""
-  wait_time = 0.01  # in seconds
   epoch = initial_epoch
 
   do_validation = bool(validation_data)
+  if not context.executing_eagerly():
+    model._make_train_function()
+    if do_validation:
+      model._make_test_function()
 
   is_sequence = isinstance(generator, Sequence)
   if not is_sequence and use_multiprocessing and workers > 1:
@@ -119,13 +124,12 @@ def fit_generator(model,
       else:
         enqueuer = GeneratorEnqueuer(
             generator,
-            use_multiprocessing=use_multiprocessing,
-            wait_time=wait_time)
+            use_multiprocessing=use_multiprocessing)
       enqueuer.start(workers=workers, max_queue_size=max_queue_size)
       output_generator = enqueuer.get()
     else:
       if is_sequence:
-        output_generator = iter(generator)
+        output_generator = iter_sequence_infinite(generator)
       else:
         output_generator = generator
 
@@ -233,6 +237,9 @@ def evaluate_generator(model,
                        use_multiprocessing=False,
                        verbose=0):
   """See docstring for `Model.evaluate_generator`."""
+  if not context.executing_eagerly():
+    model._make_test_function()
+
   if hasattr(model, 'metrics'):
     for m in model.stateful_metric_functions:
       m.reset_states()
@@ -243,7 +250,6 @@ def evaluate_generator(model,
     stateful_metric_indices = []
 
   steps_done = 0
-  wait_time = 0.01
   all_outs = []
   batch_sizes = []
   is_sequence = isinstance(generator, Sequence)
@@ -271,13 +277,12 @@ def evaluate_generator(model,
       else:
         enqueuer = GeneratorEnqueuer(
             generator,
-            use_multiprocessing=use_multiprocessing,
-            wait_time=wait_time)
+            use_multiprocessing=use_multiprocessing)
       enqueuer.start(workers=workers, max_queue_size=max_queue_size)
       output_generator = enqueuer.get()
     else:
       if is_sequence:
-        output_generator = iter(generator)
+        output_generator = iter_sequence_infinite(generator)
       else:
         output_generator = generator
 
@@ -342,8 +347,10 @@ def predict_generator(model,
                       use_multiprocessing=False,
                       verbose=0):
   """See docstring for `Model.predict_generator`."""
+  if not context.executing_eagerly():
+    model._make_test_function()
+
   steps_done = 0
-  wait_time = 0.01
   all_outs = []
   is_sequence = isinstance(generator, Sequence)
   if not is_sequence and use_multiprocessing and workers > 1:
@@ -370,13 +377,12 @@ def predict_generator(model,
       else:
         enqueuer = GeneratorEnqueuer(
             generator,
-            use_multiprocessing=use_multiprocessing,
-            wait_time=wait_time)
+            use_multiprocessing=use_multiprocessing)
       enqueuer.start(workers=workers, max_queue_size=max_queue_size)
       output_generator = enqueuer.get()
     else:
       if is_sequence:
-        output_generator = iter(generator)
+        output_generator = iter_sequence_infinite(generator)
       else:
         output_generator = generator
 

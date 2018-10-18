@@ -157,6 +157,8 @@ class AlgebraicSimplifierVisitor : public DfsHloVisitorWithDefault {
   Status HandleDynamicUpdateSlice(
       HloInstruction* dynamic_update_slice) override;
 
+  Status HandleSelect(HloInstruction* select) override;
+
   Status HandleSort(HloInstruction* sort) override;
 
   Status HandleTranspose(HloInstruction* transpose) override;
@@ -745,12 +747,25 @@ StatusOr<bool> AlgebraicSimplifierVisitor::HandleDotStrengthReduction(
   }
   const int64 rhs_kept_dim = 1 - rhs_collapsing_dim;
 
-  auto reshape_if_necessary = [&](HloInstruction* hlo) {
-    if (ShapeUtil::SameDimensions(hlo->shape(), dot->shape())) {
+  auto as_type = [&](HloInstruction* hlo, const PrimitiveType element_type) {
+    if (hlo->shape().element_type() == element_type) {
       return hlo;
     }
-    return computation_->AddInstruction(
-        HloInstruction::CreateReshape(dot->shape(), hlo));
+    return computation_->AddInstruction(HloInstruction::CreateConvert(
+        ShapeUtil::ChangeElementType(hlo->shape(), element_type), hlo));
+  };
+
+  auto reshape_if_necessary = [&](HloInstruction* hlo) {
+    hlo = as_type(hlo, dot->shape().element_type());
+    if (!ShapeUtil::SameDimensions(hlo->shape(), dot->shape())) {
+      hlo = computation_->AddInstruction(
+          HloInstruction::CreateReshape(dot->shape(), hlo));
+    }
+    return hlo;
+  };
+
+  auto add_reduce_in_f32 = [&](HloInstruction* hlo, const int64 dim) {
+    return AddReduce(as_type(hlo, F32), dim);
   };
 
   auto broadcast_to_dim = [&](HloInstruction* hlo, const Shape& shape,
@@ -770,7 +785,7 @@ StatusOr<bool> AlgebraicSimplifierVisitor::HandleDotStrengthReduction(
   if (ShapeUtil::Rank(rhs->shape()) == 1 &&
       ShapeUtil::Rank(lhs->shape()) == 1) {
     TF_RETURN_IF_ERROR(
-        ReplaceInstruction(dot, reshape_if_necessary(AddReduce(
+        ReplaceInstruction(dot, reshape_if_necessary(add_reduce_in_f32(
                                     multiply(Flatten(lhs), Flatten(rhs)), 0))));
     return true;
   }
@@ -804,17 +819,17 @@ StatusOr<bool> AlgebraicSimplifierVisitor::HandleDotStrengthReduction(
       (ShapeUtil::Rank(lhs->shape()) == 2 &&
        lhs->shape().dimensions(lhs_kept_dim) == 1)) {
     if (ShapeUtil::Rank(rhs->shape()) == 1) {
-      TF_RETURN_IF_ERROR(ReplaceInstruction(
-          dot,
-          reshape_if_necessary(AddReduce(multiply(Flatten(lhs), rhs), 0))));
+      TF_RETURN_IF_ERROR(
+          ReplaceInstruction(dot, reshape_if_necessary(add_reduce_in_f32(
+                                      multiply(Flatten(lhs), rhs), 0))));
       return true;
     }
     TF_RETURN_IF_ERROR(ReplaceInstruction(
-        dot, reshape_if_necessary(
-                 AddReduce(multiply(broadcast_to_dim(Flatten(lhs), rhs->shape(),
-                                                     rhs_collapsing_dim),
-                                    rhs),
-                           rhs_collapsing_dim))));
+        dot, reshape_if_necessary(add_reduce_in_f32(
+                 multiply(broadcast_to_dim(Flatten(lhs), rhs->shape(),
+                                           rhs_collapsing_dim),
+                          rhs),
+                 rhs_collapsing_dim))));
     return true;
   }
 
@@ -826,7 +841,7 @@ StatusOr<bool> AlgebraicSimplifierVisitor::HandleDotStrengthReduction(
       (ShapeUtil::Rank(rhs->shape()) == 2 &&
        rhs->shape().dimensions(rhs_kept_dim) == 1)) {
     TF_RETURN_IF_ERROR(ReplaceInstruction(
-        dot, reshape_if_necessary(AddReduce(
+        dot, reshape_if_necessary(add_reduce_in_f32(
                  multiply(lhs, broadcast_to_dim(Flatten(rhs), lhs->shape(),
                                                 lhs_collapsing_dim)),
                  lhs_collapsing_dim))));
@@ -1061,7 +1076,8 @@ StatusOr<HloInstruction*> AlgebraicSimplifierVisitor::OptimizeDotOfGather(
   const int m = left_operand->shape().dimensions(1 - lhs_contracting_dimension);
   const int n =
       right_operand->shape().dimensions(1 - rhs_contracting_dimension);
-  auto memoized_shape = ShapeUtil::MakeShape(F32, {m, n});
+  auto memoized_shape =
+      ShapeUtil::MakeShape(dot->shape().element_type(), {m, n});
   auto* memoized_inst = computation_->AddInstruction(
       HloInstruction::CreateDot(memoized_shape, left_operand, right_operand,
                                 dnums, dot->precision_config()));
@@ -1109,10 +1125,12 @@ Status AlgebraicSimplifierVisitor::HandleDot(HloInstruction* dot) {
   HloInstruction *lhs, *rhs;
   CHECK(Match(dot, m::Dot(m::Op(&lhs), m::Op(&rhs))));
 
-  // Only optimize F32 dot operations where the dot, rhs and lhs are rank 2 or
-  // below.
-  if (dot->shape().element_type() != F32 || ShapeUtil::Rank(lhs->shape()) > 2 ||
-      ShapeUtil::Rank(rhs->shape()) > 2 || ShapeUtil::Rank(dot->shape()) > 2) {
+  // Only optimize F32 or BF16 dot operations where the dot, rhs and lhs are
+  // rank 2 or below.
+  if ((dot->shape().element_type() != F32 &&
+       dot->shape().element_type() != BF16) ||
+      ShapeUtil::Rank(lhs->shape()) > 2 || ShapeUtil::Rank(rhs->shape()) > 2 ||
+      ShapeUtil::Rank(dot->shape()) > 2) {
     return Status::OK();
   }
 
@@ -2041,6 +2059,12 @@ Status AlgebraicSimplifierVisitor::HandleReduceWindow(
     return Status::OK();
   }
 
+  // Bail on dilation.
+  if (window_util::HasDilation(window)) {
+    VLOG(10) << "Not folding pad into reduce-window as there is dilation.";
+    return Status::OK();
+  }
+
   VLOG(10) << "Considering folding Pad: " << pad->ToString()
            << "\ninto reduce-window: " << reduce_window->ToString()
            << (convert != nullptr
@@ -2177,6 +2201,22 @@ Status AlgebraicSimplifierVisitor::HandleReduceWindow(
                          /*reduce_computation=*/function));
 }
 
+Status AlgebraicSimplifierVisitor::HandleSelect(HloInstruction* select) {
+  // select(x, y, y) -> y.
+  if (select->operand(1) == select->operand(2)) {
+    return ReplaceInstruction(select, select->mutable_operand(1));
+  }
+  // select(true, x, y) -> x.
+  if (IsAll(select->operand(0), true)) {
+    return ReplaceInstruction(select, select->mutable_operand(1));
+  }
+  // select(false, x, y) -> y.
+  if (IsAll(select->operand(0), false)) {
+    return ReplaceInstruction(select, select->mutable_operand(2));
+  }
+  return Status::OK();
+}
+
 Status AlgebraicSimplifierVisitor::HandleSort(HloInstruction* sort) {
   auto operand = sort->mutable_operand(0);
   int64 dimension_to_sort = sort->dimensions(0);
@@ -2187,7 +2227,7 @@ Status AlgebraicSimplifierVisitor::HandleSort(HloInstruction* sort) {
     }
     // If it is key/value sort, the output of sort is a tuple.
     return ReplaceWithNewInstruction(
-        sort, HloInstruction::CreateTuple({operand, sort->mutable_operand(1)}));
+        sort, HloInstruction::CreateTuple(sort->operands()));
   }
   return Status::OK();
 }

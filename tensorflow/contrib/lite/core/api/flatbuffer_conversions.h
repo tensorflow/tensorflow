@@ -26,6 +26,25 @@ limitations under the License.
 
 namespace tflite {
 
+// Interface class for builtin data allocations.
+class BuiltinDataAllocator {
+ public:
+  virtual void* Allocate(size_t size) = 0;
+  virtual void Deallocate(void* data) = 0;
+
+  // Allocate a structure, but make sure it is a POD structure that doesn't
+  // require constructors to run. The reason we do this, is that Interpreter's C
+  // extension part will take ownership so destructors  will not be run during
+  // deallocation.
+  template <typename T>
+  T* AllocatePOD() {
+    static_assert(std::is_pod<T>::value, "Builtin data structure must be POD.");
+    return static_cast<T*>(this->Allocate(sizeof(T)));
+  }
+
+  virtual ~BuiltinDataAllocator() {}
+};
+
 // Parse the appropriate data out of the op.
 //
 // This handles builtin data explicitly as there are flatbuffer schemas.
@@ -36,7 +55,8 @@ namespace tflite {
 // function's responsibility to free it.
 // If it returns kTfLiteError, `builtin_data` will be `nullptr`.
 TfLiteStatus ParseOpData(const Operator* op, BuiltinOperator op_type,
-                         ErrorReporter* error_reporter, void** builtin_data);
+                         ErrorReporter* error_reporter,
+                         BuiltinDataAllocator* allocator, void** builtin_data);
 
 // Converts the tensor data type used in the flat buffer to the representation
 // used by the runtime.

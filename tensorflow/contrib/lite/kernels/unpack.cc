@@ -88,10 +88,13 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
 template <typename T>
 void UnpackImpl(TfLiteContext* context, TfLiteNode* node,
                 const TfLiteTensor* input, int output_count, int axis) {
+  tflite::UnpackParams op_params;
+  op_params.axis = axis;
+  op_params.num_split = output_count;
   VectorOfTensors<T> all_outputs(*context, *node->outputs);
-  reference_ops::Unpack<T>(axis, GetTensorData<T>(input), GetTensorDims(input),
-                           NumDimensions(input), output_count,
-                           all_outputs.data(), **all_outputs.dims());
+  reference_ops::Unpack<T>(op_params, GetTensorShape(input),
+                           GetTensorData<T>(input), **all_outputs.shapes(),
+                           all_outputs.data());
 }
 
 TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {

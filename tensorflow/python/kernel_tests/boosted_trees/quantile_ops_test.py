@@ -78,7 +78,7 @@ class QuantileOpsTest(test_util.TensorFlowTestCase):
     self.num_quantiles = constant_op.constant(3, dtype=dtypes.int64)
 
   def testBasicQuantileBucketsSingleResource(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       quantile_accumulator_handle = self.create_resource("floats", self.eps,
                                                          self.max_elements, 2)
       resources.initialize_resources(resources.shared_resources()).run()
@@ -102,7 +102,7 @@ class QuantileOpsTest(test_util.TensorFlowTestCase):
       self.assertAllClose(self._feature_1_quantiles, quantiles[1].eval())
 
   def testBasicQuantileBucketsMultipleResources(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       quantile_accumulator_handle_0 = self.create_resource("float_0", self.eps,
                                                            self.max_elements)
       quantile_accumulator_handle_1 = self.create_resource("float_1", self.eps,

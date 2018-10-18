@@ -269,7 +269,7 @@ class TestModelSavedModelExport(test.TestCase, parameterized.TestCase):
   def testSaveAndLoadSavedModelExport(
       self, model_builder, uses_learning_phase, optimizer, train_before_export):
     saved_model_path = self._save_model_dir()
-    with self.test_session(graph=ops.Graph()):
+    with self.session(graph=ops.Graph()):
       input_arr = np.random.random((1, 3))
       target_arr = np.random.random((1, 3))
 

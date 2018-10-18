@@ -25,11 +25,14 @@ limitations under the License.
 
 namespace toco {
 
-bool RemoveFinalDequantizeOp::Run(Model* model, std::size_t op_index) {
+::tensorflow::Status RemoveFinalDequantizeOp::Run(Model* model,
+                                                  std::size_t op_index,
+                                                  bool* modified) {
+  *modified = false;
   const auto dequantize_it = model->operators.begin() + op_index;
   const auto* dequantize_op = dequantize_it->get();
   if (dequantize_op->type != OperatorType::kDequantize) {
-    return false;
+    return ::tensorflow::Status::OK();
   }
   const auto& output = dequantize_op->outputs[0];
   // We can remove any dequantize op whose output is not consumed by
@@ -38,7 +41,7 @@ bool RemoveFinalDequantizeOp::Run(Model* model, std::size_t op_index) {
   // in the middle of the graph might be designated as an output
   // array.
   if (CountOpsWithInput(*model, output)) {
-    return false;
+    return ::tensorflow::Status::OK();
   }
 
   // If one of the model's output arrays was actually the Dequantize op's
@@ -53,7 +56,8 @@ bool RemoveFinalDequantizeOp::Run(Model* model, std::size_t op_index) {
   AddMessageF("Removed final %s", LogName(*dequantize_op));
   model->EraseArray(output);
   model->operators.erase(dequantize_it);
-  return true;
+  *modified = true;
+  return ::tensorflow::Status::OK();
 }
 
 }  // namespace toco

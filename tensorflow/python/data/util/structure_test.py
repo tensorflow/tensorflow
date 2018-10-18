@@ -25,59 +25,65 @@ from tensorflow.python.data.util import nest
 from tensorflow.python.data.util import structure
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
+from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 
 
 class StructureTest(test.TestCase, parameterized.TestCase):
-  # pylint disable=protected-access
 
+  # NOTE(mrry): The arguments must be lifted into lambdas because otherwise they
+  # will be executed before the (eager- or graph-mode) test environment has been
+  # set up.
+  # pylint: disable=g-long-lambda,protected-access
   @parameterized.parameters(
-      (constant_op.constant(37.0), structure.TensorStructure, [dtypes.float32],
-       [[]]), (sparse_tensor.SparseTensor(
-           indices=[[3, 4]], values=[-1], dense_shape=[4, 5]),
-               structure.SparseTensorStructure, [dtypes.variant], [[3]]),
-      ((constant_op.constant(37.0), constant_op.constant([1, 2, 3])),
-       structure.NestedStructure, [dtypes.float32, dtypes.int32], [[], [3]]), ({
-           "a": constant_op.constant(37.0),
-           "b": constant_op.constant([1, 2, 3])
-       }, structure.NestedStructure, [dtypes.float32, dtypes.int32], [[], [3]]),
-      ({
-          "a":
-              constant_op.constant(37.0),
+      (lambda: constant_op.constant(37.0), structure.TensorStructure,
+       [dtypes.float32], [[]]),
+      (lambda: sparse_tensor.SparseTensor(
+          indices=[[3, 4]], values=[-1], dense_shape=[4, 5]),
+       structure.SparseTensorStructure, [dtypes.variant], [[3]]),
+      (lambda: (constant_op.constant(37.0), constant_op.constant([1, 2, 3])),
+       structure.NestedStructure, [dtypes.float32, dtypes.int32], [[], [3]]),
+      (lambda: {
+          "a": constant_op.constant(37.0),
+          "b": constant_op.constant([1, 2, 3])
+      }, structure.NestedStructure, [dtypes.float32, dtypes.int32], [[], [3]]),
+      (lambda: {
+          "a": constant_op.constant(37.0),
           "b": (sparse_tensor.SparseTensor(
               indices=[[0, 0]], values=[1], dense_shape=[1, 1]),
                 sparse_tensor.SparseTensor(
                     indices=[[3, 4]], values=[-1], dense_shape=[4, 5]))
       }, structure.NestedStructure,
        [dtypes.float32, dtypes.variant, dtypes.variant], [[], [3], [3]]))
-  def testFlatStructure(self, value, expected_structure, expected_types,
+  def testFlatStructure(self, value_fn, expected_structure, expected_types,
                         expected_shapes):
+    value = value_fn()
     s = structure.Structure.from_value(value)
     self.assertIsInstance(s, expected_structure)
     self.assertEqual(expected_types, s._flat_types)
     self.assertEqual(expected_shapes, s._flat_shapes)
 
   @parameterized.parameters(
-      (constant_op.constant(37.0), [
+      (lambda: constant_op.constant(37.0), lambda: [
           constant_op.constant(38.0),
           array_ops.placeholder(dtypes.float32),
           variables.Variable(100.0), 42.0,
           np.array(42.0, dtype=np.float32)
-      ], [constant_op.constant([1.0, 2.0]),
-          constant_op.constant(37)]),
-      (sparse_tensor.SparseTensor(
+      ], lambda: [constant_op.constant([1.0, 2.0]), constant_op.constant(37)]),
+      (lambda: sparse_tensor.SparseTensor(
           indices=[[3, 4]], values=[-1], dense_shape=[4, 5]),
-       [
+       lambda: [
            sparse_tensor.SparseTensor(
                indices=[[1, 1], [3, 4]], values=[10, -1], dense_shape=[4, 5]),
            sparse_tensor.SparseTensorValue(
                indices=[[1, 1], [3, 4]], values=[10, -1], dense_shape=[4, 5]),
            array_ops.sparse_placeholder(dtype=dtypes.int32),
            array_ops.sparse_placeholder(dtype=dtypes.int32, shape=[None, None])
-       ], [
+       ], lambda: [
            constant_op.constant(37, shape=[4, 5]),
            sparse_tensor.SparseTensor(
                indices=[[3, 4]], values=[-1], dense_shape=[5, 6]),
@@ -86,13 +92,13 @@ class StructureTest(test.TestCase, parameterized.TestCase):
            sparse_tensor.SparseTensor(
                indices=[[3, 4]], values=[-1.0], dense_shape=[4, 5])
        ]),
-      ({
+      (lambda: {
           "a": constant_op.constant(37.0),
           "b": constant_op.constant([1, 2, 3])
-      }, [{
+      }, lambda: [{
           "a": constant_op.constant(15.0),
           "b": constant_op.constant([4, 5, 6])
-      }], [{
+      }], lambda: [{
           "a": constant_op.constant(15.0),
           "b": constant_op.constant([4, 5, 6, 7])
       }, {
@@ -106,18 +112,21 @@ class StructureTest(test.TestCase, parameterized.TestCase):
                   indices=[[0], [1], [2]], values=[4, 5, 6], dense_shape=[3])
       }, (constant_op.constant(15.0), constant_op.constant([4, 5, 6]))]),
   )
-  def testIsCompatibleWith(self, original_value, compatible_values,
-                           incompatible_values):
+  def testIsCompatibleWithStructure(
+      self, original_value_fn, compatible_values_fn, incompatible_values_fn):
+    original_value = original_value_fn()
+    compatible_values = compatible_values_fn()
+    incompatible_values = incompatible_values_fn()
     s = structure.Structure.from_value(original_value)
     for compatible_value in compatible_values:
-      self.assertTrue(s.is_compatible_with(compatible_value))
+      self.assertTrue(
+          s.is_compatible_with(
+              structure.Structure.from_value(compatible_value)))
     for incompatible_value in incompatible_values:
-      self.assertFalse(s.is_compatible_with(incompatible_value))
+      self.assertFalse(
+          s.is_compatible_with(
+              structure.Structure.from_value(incompatible_value)))
 
-  # NOTE(mrry): The arguments must be lifted into lambdas because otherwise they
-  # will be executed before the (eager- or graph-mode) test environment has been
-  # set up.
-  # pylint: disable=g-long-lambda
   @parameterized.parameters(
       (lambda: constant_op.constant(37.0),),
       (lambda: sparse_tensor.SparseTensor(
@@ -322,6 +331,28 @@ class StructureTest(test.TestCase, parameterized.TestCase):
         ValueError, "Expected 3 flat values in NestedStructure but got 2."):
       s_2._from_tensor_list(flat_s_1)
 
+  @parameterized.named_parameters(
+      ("Tensor", dtypes.float32, tensor_shape.scalar(), ops.Tensor,
+       structure.TensorStructure(dtypes.float32, [])),
+      ("SparseTensor", dtypes.int32, tensor_shape.matrix(2, 2),
+       sparse_tensor.SparseTensor,
+       structure.SparseTensorStructure(dtypes.int32, [2, 2])),
+      ("Nest",
+       {"a": dtypes.float32, "b": (dtypes.int32, dtypes.string)},
+       {"a": tensor_shape.scalar(),
+        "b": (tensor_shape.matrix(2, 2), tensor_shape.scalar())},
+       {"a": ops.Tensor, "b": (sparse_tensor.SparseTensor, ops.Tensor)},
+       structure.NestedStructure({
+           "a": structure.TensorStructure(dtypes.float32, []),
+           "b": (structure.SparseTensorStructure(dtypes.int32, [2, 2]),
+                 structure.TensorStructure(dtypes.string, []))})),
+  )
+  def testFromLegacyStructure(self, output_types, output_shapes, output_classes,
+                              expected_structure):
+    actual_structure = structure.Structure._from_legacy_structure(
+        output_types, output_shapes, output_classes)
+    self.assertTrue(expected_structure.is_compatible_with(actual_structure))
+    self.assertTrue(actual_structure.is_compatible_with(expected_structure))
 
 if __name__ == "__main__":
   test.main()

@@ -228,12 +228,12 @@ Status BiasAddShape(shape_inference::InferenceContext* c) {
   if (s.ok() && data_format == "NCHW") {
     // Merge the length of bias_shape into the third to last dimension
     ShapeHandle first;
-    TF_RETURN_IF_ERROR(c->Subshape(input_shape, 0, -3, &first));
+    TF_RETURN_IF_ERROR(c->Subshape(input_shape, 0, 1, &first));
 
     ShapeHandle last;
-    TF_RETURN_IF_ERROR(c->Subshape(input_shape, -2, &last));
+    TF_RETURN_IF_ERROR(c->Subshape(input_shape, 2, &last));
 
-    DimensionHandle input_bias_dim = c->Dim(input_shape, -3);
+    DimensionHandle input_bias_dim = c->Dim(input_shape, 1);
     DimensionHandle merged_bias_dim;
     TF_RETURN_IF_ERROR(c->Merge(input_bias_dim, bias_dim, &merged_bias_dim));
     ShapeHandle merged_bias = c->Vector(merged_bias_dim);
@@ -266,7 +266,7 @@ Status BiasAddGradShape(shape_inference::InferenceContext* c) {
 
   if (s.ok() && data_format == "NCHW") {
     TF_RETURN_IF_ERROR(c->WithRankAtLeast(c->input(0), 3, &input_shape));
-    c->set_output(0, c->Vector(c->Dim(input_shape, -3)));
+    c->set_output(0, c->Vector(c->Dim(input_shape, 1)));
   } else {
     TF_RETURN_IF_ERROR(c->WithRankAtLeast(c->input(0), 2, &input_shape));
     c->set_output(0, c->Vector(c->Dim(input_shape, -1)));
@@ -1306,6 +1306,113 @@ Status RandomShape(shape_inference::InferenceContext* c) {
   return Status::OK();
 }
 
+namespace {
+
+// This SliceHelper processes the output shape of the `slice`
+// when the tensor of `sizes` is available.
+template <typename T>
+Status SliceHelper(InferenceContext* c, ShapeHandle begin_value,
+                   const Tensor* sizes_value,
+                   std::vector<DimensionHandle>* dims) {
+  auto sizes_vec = sizes_value->vec<T>();
+  for (int i = 0; i < sizes_value->NumElements(); ++i) {
+    DimensionHandle dim = c->Dim(c->input(0), i);
+    if (sizes_vec(i) != -1) {
+      auto dim_val = c->Value(dim);
+      if (sizes_vec(i) < 0) {
+        return errors::InvalidArgument(
+            "Out of bounds slicing on dimension ", i, " of length ", dim_val,
+            ": sizes vector cannot be < -1, but was ", sizes_vec(i));
+      }
+
+      dims->emplace_back(c->MakeDim(sizes_vec(i)));
+    } else {
+      DimensionHandle result;
+      TF_RETURN_IF_ERROR(c->Subtract(dim, c->Dim(begin_value, i), &result));
+      dims->emplace_back(result);
+    }
+  }
+
+  return Status::OK();
+}
+}  // namespace
+
+Status SliceShape(InferenceContext* c) {
+  ShapeHandle input = c->input(0);
+  ShapeHandle begin_shape;
+  TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 1, &begin_shape));
+  ShapeHandle sizes_shape;
+  TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 1, &sizes_shape));
+
+  // Merge to check compatibility of begin and sizes tensors.
+  TF_RETURN_IF_ERROR(c->Merge(begin_shape, sizes_shape, &begin_shape));
+
+  DimensionHandle ndims = c->Dim(begin_shape, 0);
+  if (c->ValueKnown(ndims)) {
+    TF_RETURN_IF_ERROR(c->WithRank(input, c->Value(ndims), &input));
+  }
+
+  // NOTE(mrry): Use MakeShapeFromShapeTensor to handle partially-known
+  // values, even though the `begin` value does not represent a shape.
+  ShapeHandle begin_value;
+  TF_RETURN_IF_ERROR(c->MakeShapeFromShapeTensor(1, &begin_value));
+
+  // We check the tensor value here and will only use
+  // `MakeShapeFromShapeTensor` when `sizes_value` is null.
+  // The reason is that `sizes` might contain -1, which can't
+  // be represented (-1 in the ShapeHandle would mean "unknown").
+  const Tensor* sizes_value = c->input_tensor(2);
+
+  if (sizes_value != nullptr) {
+    TF_RETURN_IF_ERROR(
+        c->WithRank(begin_value, sizes_value->NumElements(), &begin_value));
+    std::vector<DimensionHandle> dims;
+    // If the begin and sizes tensors are available, then
+    // we can be precise about the shape of the output.
+    if (sizes_value->dtype() == DT_INT64) {
+      TF_RETURN_IF_ERROR(
+          SliceHelper<int64>(c, begin_value, sizes_value, &dims));
+    } else {
+      TF_RETURN_IF_ERROR(
+          SliceHelper<int32>(c, begin_value, sizes_value, &dims));
+    }
+    c->set_output(0, c->MakeShape(dims));
+    return Status::OK();
+  } else {
+    // In case `sizes` is not available (`sizes_value` is null),
+    // we could try to use `MakeShapeFromShapeTensor` here.
+    // If sizes contain -1, we will simply consider it as `Unknown`.
+    // This is less than ideal but still an improvement of shape inference.
+    // The following is an example that returns [None, 1, None] with this
+    // code path:
+    //   z = tf.zeros((1, 2, 3))
+    //   m = tf.slice(z, [0, 0, 0], [tf.constant(1) + 0, 1, -1])
+    //   m.get_shape().as_list()
+    ShapeHandle sizes_value;
+    TF_RETURN_IF_ERROR(c->MakeShapeFromShapeTensor(2, &sizes_value));
+    if (c->RankKnown(sizes_value)) {
+      TF_RETURN_IF_ERROR(
+          c->WithRank(begin_value, c->Rank(sizes_value), &begin_value));
+      std::vector<DimensionHandle> dims;
+      dims.reserve(c->Rank(sizes_value));
+      for (int i = 0; i < c->Rank(sizes_value); ++i) {
+        dims.emplace_back(c->Dim(sizes_value, i));
+      }
+      c->set_output(0, c->MakeShape(dims));
+      return Status::OK();
+    }
+    // We might know the rank of the input.
+    if (c->RankKnown(input)) {
+      c->set_output(0, c->UnknownShapeOfRank(c->Rank(input)));
+      return Status::OK();
+    } else {
+      return shape_inference::UnknownShape(c);
+    }
+  }
+
+  return Status::OK();
+}
+
 Status ValidateSparseTensor(InferenceContext* c, ShapeHandle indices_shape,
                             ShapeHandle values_shape, ShapeHandle shape_shape) {
   // Validate ranks.
@@ -1350,7 +1457,11 @@ Status ValidateSparseTensor(InferenceContext* c, ShapeHandle indices_shape,
 Status ScatterNdUpdateShape(InferenceContext* c) {
   ShapeHandle input_shape = c->input(0);
   if (c->input_handle_shapes_and_types(0) != nullptr) {
-    input_shape = (*c->input_handle_shapes_and_types(0))[0].shape;
+    // This is called for tf.scatter_nd_update; input is a Variable handle.
+    const auto& shape_and_type = *(c->input_handle_shapes_and_types(0));
+    if (shape_and_type.size() == 1) {
+      input_shape = shape_and_type[0].shape;
+    }
   }
   ShapeHandle indices_shape;
   TF_RETURN_IF_ERROR(c->WithRankAtLeast(c->input(1), 1, &indices_shape));
@@ -1407,7 +1518,8 @@ Status ScatterNdUpdateShape(InferenceContext* c) {
     }
   }
 
-  if (c->input_handle_shapes_and_types(0) == nullptr) {
+  if (c->input_handle_shapes_and_types(0) == nullptr && c->num_outputs() > 0) {
+    // This is called for tf.scatter_nd; output is a tensor with this shape.
     c->set_output(0, input_shape);
   }
   return Status::OK();

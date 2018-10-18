@@ -27,10 +27,10 @@ py_library(
         "decorators.py",
         "directives.py",
         "error_handlers.py",
+        "function_scopes.py",
         "list_comprehensions.py",
         "lists.py",
         "logical_expressions.py",
-        "name_scopes.py",
         "return_statements.py",
         "side_effect_guards.py",
         "slices.py",
@@ -157,8 +157,8 @@ py_test(
 )
 
 py_test(
-    name = "name_scopes_test",
-    srcs = ["name_scopes_test.py"],
+    name = "function_scopes_test",
+    srcs = ["function_scopes_test.py"],
     deps = [
         ":converters",
         "//tensorflow/python:client_testlib",

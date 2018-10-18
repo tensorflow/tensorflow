@@ -30,7 +30,7 @@ class UniqueTest(test.TestCase):
 
   def testInt32(self):
     x = np.random.randint(2, high=10, size=7000)
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       y, idx = array_ops.unique(x)
       tf_y, tf_idx = sess.run([y, idx])
 
@@ -41,7 +41,7 @@ class UniqueTest(test.TestCase):
 
   def testInt32OutIdxInt64(self):
     x = np.random.randint(2, high=10, size=7000)
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       y, idx = array_ops.unique(x, out_idx=dtypes.int64)
       tf_y, tf_idx = sess.run([y, idx])
 
@@ -53,7 +53,7 @@ class UniqueTest(test.TestCase):
   def testString(self):
     indx = np.random.randint(65, high=122, size=7000)
     x = [chr(i) for i in indx]
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       y, idx = array_ops.unique(x)
       tf_y, tf_idx = sess.run([y, idx])
 
@@ -65,7 +65,7 @@ class UniqueTest(test.TestCase):
   def testInt32Axis(self):
     for dtype in [np.int32, np.int64]:
       x = np.array([[1, 0, 0], [1, 0, 0], [2, 0, 0]])
-      with self.test_session() as sess:
+      with self.cached_session() as sess:
         y0, idx0 = gen_array_ops.unique_v2(x, axis=np.array([0], dtype))
         tf_y0, tf_idx0 = sess.run([y0, idx0])
         y1, idx1 = gen_array_ops.unique_v2(x, axis=np.array([1], dtype))
@@ -79,7 +79,7 @@ class UniqueTest(test.TestCase):
     # This test is only temporary, once V2 is used
     # by default, the axis will be wrapped to allow `axis=None`.
     x = np.random.randint(2, high=10, size=7000)
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       y, idx = gen_array_ops.unique_v2(x, axis=np.array([], np.int32))
       tf_y, tf_idx = sess.run([y, idx])
 
@@ -93,7 +93,7 @@ class UniqueWithCountsTest(test.TestCase):
 
   def testInt32(self):
     x = np.random.randint(2, high=10, size=7000)
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       y, idx, count = array_ops.unique_with_counts(x)
       tf_y, tf_idx, tf_count = sess.run([y, idx, count])
 
@@ -106,7 +106,7 @@ class UniqueWithCountsTest(test.TestCase):
 
   def testInt32OutIdxInt64(self):
     x = np.random.randint(2, high=10, size=7000)
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       y, idx, count = array_ops.unique_with_counts(x, out_idx=dtypes.int64)
       tf_y, tf_idx, tf_count = sess.run([y, idx, count])
 
@@ -121,7 +121,7 @@ class UniqueWithCountsTest(test.TestCase):
     indx = np.random.randint(65, high=122, size=7000)
     x = [chr(i) for i in indx]
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       y, idx, count = array_ops.unique_with_counts(x)
       tf_y, tf_idx, tf_count = sess.run([y, idx, count])
 
@@ -136,7 +136,7 @@ class UniqueWithCountsTest(test.TestCase):
   def testInt32Axis(self):
     for dtype in [np.int32, np.int64]:
       x = np.array([[1, 0, 0], [1, 0, 0], [2, 0, 0]])
-      with self.test_session() as sess:
+      with self.cached_session() as sess:
         y0, idx0, count0 = gen_array_ops.unique_with_counts_v2(
             x, axis=np.array([0], dtype))
         tf_y0, tf_idx0, tf_count0 = sess.run([y0, idx0, count0])
@@ -154,7 +154,7 @@ class UniqueWithCountsTest(test.TestCase):
     # This test is only temporary, once V2 is used
     # by default, the axis will be wrapped to allow `axis=None`.
     x = np.random.randint(2, high=10, size=7000)
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       y, idx, count = gen_array_ops.unique_with_counts_v2(
           x, axis=np.array([], np.int32))
       tf_y, tf_idx, tf_count = sess.run([y, idx, count])

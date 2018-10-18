@@ -37,6 +37,7 @@ limitations under the License.
 
 #include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/platform/png.h"
+#include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
 namespace png {

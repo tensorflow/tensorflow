@@ -488,6 +488,18 @@ TEST(ConstUint8SumOpTest, NotKeepDims) {
                   ArrayFloatNear({-0.823529, -0.815686}, kQuantizedTolerance)));
 }
 
+TEST(ConstUint8SumOpTest, NotKeepDimsRescaling) {
+  float kQuantizedTolerance = GetTolerance(0.0, 2.0);
+  std::vector<float> data = {0.4, 0.2, 0.3, 0.4, 0.5, 0.6};
+  SumOpConstModel m({TensorType_UINT8, {1, 3, 2}, 0.0, 1.0},
+                    {TensorType_UINT8, {2}, 0.0, 2.0}, {1}, {1}, false);
+  m.QuantizeAndPopulate<uint8_t>(m.Input(), data);
+  m.Invoke();
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1, 2}));
+  EXPECT_THAT(m.GetDequantizedOutput(), ElementsAreArray(ArrayFloatNear(
+                                            {1.2, 1.2}, kQuantizedTolerance)));
+}
+
 TEST(ConstUint8SumOpTest, KeepDims) {
   float kQuantizedTolerance = GetTolerance(-1.0, 1.0);
   std::vector<float> data = {0.4, 0.2, 0.3, 0.4, 0.5, 0.6};

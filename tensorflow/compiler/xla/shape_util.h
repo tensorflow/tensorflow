@@ -22,6 +22,7 @@ limitations under the License.
 #include <initializer_list>
 #include <string>
 
+#include "absl/base/macros.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/types/optional.h"
 #include "absl/types/span.h"
@@ -71,7 +72,7 @@ class ShapeIndex {
   void push_back(int64 value) { indices_.push_back(value); }
   void pop_back() { indices_.pop_back(); }
 
-  // push_front is O(n^2), but shapes don't usually have a ton of dimensions.
+  // push_front is O(n), but shapes don't usually have a ton of dimensions.
   void push_front(int64 value) { indices_.insert(indices_.begin(), value); }
 
   using container_type = absl::InlinedVector<int64, 2>;
@@ -179,6 +180,10 @@ class ShapeUtil {
 
   // As ElementsIn(), but recurses through tuples.
   static int64 ElementsInRecursive(const Shape& shape);
+
+  // Returns true if shape has the primitive type, recurses through tuples.
+  static bool HasPrimitiveType(const Shape& shape,
+                               PrimitiveType primitive_type);
 
   // Returns true if 'shape' is an array with zero elements.
   static bool IsZeroElementArray(const Shape& shape);
@@ -307,7 +312,10 @@ class ShapeUtil {
   static bool IsEffectiveScalar(const Shape& shape) {
     return IsArray(shape) && TrueRank(shape) == 0;
   }
-  static bool IsScalarF32(const Shape& shape);
+
+  // Returns whether "shape" is a scalar (array) with the given element_type.
+  static bool IsScalarWithElementType(const Shape& shape,
+                                      PrimitiveType element_type);
 
   // Extracts the size of the shape's dimension at dimension number
   // GetDimensionNumber(dimension_number).
@@ -475,8 +483,7 @@ class ShapeUtil {
 
   // Shorthand for testing whether a shape is of a given element type and
   // sequence of dimensions.
-  //
-  // DEPRECATED: Use Equal() instead.
+  ABSL_DEPRECATED("Use Equal() instead.")
   static bool ShapeIs(const Shape& shape, PrimitiveType element_type,
                       std::initializer_list<int64> dimensions);
 

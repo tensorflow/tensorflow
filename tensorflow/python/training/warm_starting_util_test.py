@@ -203,7 +203,7 @@ class WarmStartingUtilTest(test.TestCase):
                                        "new_vocab")
     # New session and new graph.
     with ops.Graph().as_default() as g:
-      with self.test_session(graph=g) as sess:
+      with self.session(graph=g) as sess:
         fruit_output_layer = variable_scope.get_variable(
             "fruit_output_layer",
             initializer=[[0., 0., 0.], [0., 0., 0.], [0., 0., 0.],
@@ -279,7 +279,7 @@ class WarmStartingUtilTest(test.TestCase):
                                        "new_vocab")
     # New session and new graph.
     with ops.Graph().as_default() as g:
-      with self.test_session(graph=g) as sess:
+      with self.session(graph=g) as sess:
         fruit_output_layer = variable_scope.get_variable(
             "fruit_output_layer",
             initializer=[[0., 0., 0.], [0., 0., 0.], [0., 0., 0.],
@@ -337,7 +337,7 @@ class WarmStartingUtilTest(test.TestCase):
                                        "new_vocab")
     # New session and new graph.
     with ops.Graph().as_default() as g:
-      with self.test_session(graph=g) as sess:
+      with self.session(graph=g) as sess:
         fruit_output_layer = variable_scope.get_variable(
             "fruit_output_layer",
             shape=[4, 3],
@@ -403,7 +403,7 @@ class WarmStartingUtilTest(test.TestCase):
                                        "new_vocab")
     # New session and new graph.
     with ops.Graph().as_default() as g:
-      with self.test_session(graph=g) as sess:
+      with self.session(graph=g) as sess:
         fruit_output_layer = variable_scope.get_variable(
             "fruit_output_layer",
             shape=[4, 3],

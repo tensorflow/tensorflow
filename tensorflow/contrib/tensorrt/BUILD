@@ -19,6 +19,7 @@ load(
     "tf_gen_op_libs",
     "tf_gen_op_wrapper_py",
 )
+load("//tensorflow:tensorflow.bzl", "cuda_py_test")
 load("//tensorflow:tensorflow.bzl", "cuda_py_tests")
 load("//tensorflow:tensorflow.bzl", "tf_cuda_cc_test")
 load("//tensorflow:tensorflow.bzl", "tf_custom_op_py_library")
@@ -181,7 +182,12 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         ":wrap_conversion",
+        "//tensorflow/python:graph_util",
+        "//tensorflow/python:session",
         "//tensorflow/python:tf_optimizer",
+        "//tensorflow/python/saved_model:builder",
+        "//tensorflow/python/saved_model:loader",
+        "//tensorflow/python/saved_model:tag_constants",
     ],
 )
 
@@ -320,6 +326,34 @@ tf_cuda_cc_test(
     ]),
 )
 
+tf_cuda_cc_test(
+    name = "convert_nodes_test",
+    size = "medium",
+    srcs = ["convert/convert_nodes_test.cc"],
+    tags = [
+        "no_cuda_on_cpu_tap",
+        "no_windows",
+        "nomac",
+    ],
+    deps = [
+        ":trt_logging",
+        ":trt_conversion",
+        ":trt_plugins",
+        "@com_google_googletest//:gtest",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:core_cpu_base",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+    ] + if_tensorrt([
+        "@local_config_cuda//cuda:cuda_headers",
+        "@local_config_tensorrt//:nv_infer",
+    ]),
+)
+
 # Library for the segmenting portion of TensorRT operation creation
 cc_library(
     name = "segment",
@@ -410,6 +444,31 @@ py_library(
     ],
 )
 
+cuda_py_test(
+    name = "trt_convert_test",
+    srcs = ["python/trt_convert_test.py"],
+    additional_deps = [
+        ":trt_convert_py",
+        ":trt_ops_py",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:graph_util",
+        "//tensorflow/python/saved_model:builder",
+        "//tensorflow/python/saved_model:loader",
+        "//tensorflow/python/saved_model:signature_constants",
+        "//tensorflow/python/saved_model:signature_def_utils",
+        "//tensorflow/python/saved_model:tag_constants",
+        "//tensorflow/python/saved_model:utils",
+        "//tensorflow/python/tools:freeze_graph_lib",
+        "//tensorflow/python/tools:saved_model_utils",
+    ],
+    tags = [
+        "no_cuda_on_cpu_tap",
+        "no_windows",
+        "nomac",
+    ],
+)
+
 cuda_py_tests(
     name = "tf_trt_integration_test",
     srcs = [
@@ -424,7 +483,7 @@ cuda_py_tests(
         "test/multi_connection_neighbor_engine_test.py",
         "test/neighboring_engine_test.py",
         "test/rank_two_test.py",
-        "test/unary_test.py",
+        "test/reshape_transpose_test.py",
         "test/vgg_block_nchw_test.py",
         "test/vgg_block_test.py",
     ],
@@ -435,6 +494,25 @@ cuda_py_tests(
     ],
     tags = [
         "no_cuda_on_cpu_tap",
+        "no_windows",
+        "nomac",
+    ],
+)
+
+cuda_py_tests(
+    name = "tf_trt_integration_test_no_oss",
+    srcs = [
+        "test/unary_test.py",
+    ],
+    additional_deps = [
+        ":tf_trt_integration_test_base",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_test_lib",
+    ],
+    tags = [
+        "no_cuda_on_cpu_tap",
+        "no_oss",  # TODO(b/117274186): re-enable in OSS after crash fixed
+        "no_pip",  # TODO(b/117274186): re-enable in OSS after crash fixed
         "no_windows",
         "nomac",
     ],
