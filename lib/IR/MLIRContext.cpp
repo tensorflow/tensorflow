@@ -297,6 +297,9 @@ public:
   using DenseElementsAttrSet =
       DenseSet<DenseElementsAttr *, DenseElementsAttrInfo>;
   DenseElementsAttrSet denseElementsAttrs;
+  DenseMap<std::tuple<Type *, DenseElementsAttr *, DenseElementsAttr *>,
+           SparseElementsAttr *>
+      sparseElementsAttrs;
 
 public:
   MLIRContextImpl() : filenames(locationAllocator), identifiers(allocator) {}
@@ -951,7 +954,8 @@ void DenseFPElementsAttr::getValues(
   }
 }
 
-ElementsAttr *SplatElementsAttr::get(VectorOrTensorType *type, Attribute *elt) {
+SplatElementsAttr *SplatElementsAttr::get(VectorOrTensorType *type,
+                                          Attribute *elt) {
   auto &impl = type->getContext()->getImpl();
 
   // Look to see if we already have this.
@@ -964,6 +968,26 @@ ElementsAttr *SplatElementsAttr::get(VectorOrTensorType *type, Attribute *elt) {
   // Otherwise, allocate them into the bump pointer.
   result = impl.allocator.Allocate<SplatElementsAttr>();
   new (result) SplatElementsAttr(type, elt);
+
+  return result;
+}
+
+SparseElementsAttr *SparseElementsAttr::get(VectorOrTensorType *type,
+                                            DenseIntElementsAttr *indices,
+                                            DenseElementsAttr *values) {
+  auto &impl = type->getContext()->getImpl();
+
+  // Look to see if we already have this.
+  auto key = std::make_tuple(type, indices, values);
+  auto *&result = impl.sparseElementsAttrs[key];
+
+  // If we already have it, return that value.
+  if (result)
+    return result;
+
+  // Otherwise, allocate them into the bump pointer.
+  result = impl.allocator.Allocate<SparseElementsAttr>();
+  new (result) SparseElementsAttr(type, indices, values);
 
   return result;
 }

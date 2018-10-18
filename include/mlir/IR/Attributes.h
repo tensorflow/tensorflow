@@ -48,8 +48,9 @@ public:
     SplatElements,
     DenseIntElements,
     DenseFPElements,
+    SparseElements,
     FIRST_ELEMENTS_ATTR = SplatElements,
-    LAST_ELEMENTS_ATTR = DenseFPElements,
+    LAST_ELEMENTS_ATTR = SparseElements,
   };
 
   /// Return the classification for this attribute.
@@ -271,7 +272,7 @@ private:
 /// meaning all of the elements have the same value.
 class SplatElementsAttr : public ElementsAttr {
 public:
-  static ElementsAttr *get(VectorOrTensorType *type, Attribute *elt);
+  static SplatElementsAttr *get(VectorOrTensorType *type, Attribute *elt);
   Attribute *getValue() const { return elt; }
 
   /// Method for support type inquiry through isa, cast and dyn_cast.
@@ -333,7 +334,7 @@ public:
   // TODO: returns APInts instead of IntegerAttr.
   void getValues(SmallVectorImpl<Attribute *> &values) const;
 
-  APInt getValue(ArrayRef<int> indices) const;
+  APInt getValue(ArrayRef<unsigned> indices) const;
 
   /// Writes the lowest `bitWidth` bits of `value` to the bit position `bitPos`
   /// in array `rawData`.
@@ -366,7 +367,7 @@ public:
   // TODO: returns APFPs instead of FloatAttr.
   void getValues(SmallVectorImpl<Attribute *> &values) const;
 
-  APFloat getValue(ArrayRef<int> indices) const;
+  APFloat getValue(ArrayRef<unsigned> indices) const;
 
   /// Method for support type inquiry through isa, cast and dyn_cast.
   static bool classof(const Attribute *attr) {
@@ -375,6 +376,50 @@ public:
 
 private:
   ~DenseFPElementsAttr() = delete;
+};
+
+/// An attribute represents a reference to a sparse vector or tensor object.
+///
+/// This class uses COO (coordinate list) encoding to represent the sparse
+/// elements in an element attribute. Specifically, the sparse vector/tensor
+/// stores the indices and values as two separate dense elements attributes. The
+/// dense elements attribute indices is a 2-D tensor with shape [N, ndims],
+/// which specifies the indices of the elements in the sparse tensor that
+/// contains nonzero values. The dense elements attribute values is a 1-D tensor
+/// with shape [N], and it supplies the corresponding values for the indices.
+///
+/// For example,
+/// `sparse<tensor<3x4xi32>, [[0, 0], [1, 2]], [1, 5]>` represents tensor
+/// [[1, 0, 0, 0],
+///  [0, 0, 5, 0],
+///  [0, 0, 0, 0]].
+class SparseElementsAttr : public ElementsAttr {
+public:
+  static SparseElementsAttr *get(VectorOrTensorType *type,
+                                 DenseIntElementsAttr *indices,
+                                 DenseElementsAttr *values);
+
+  DenseIntElementsAttr *getIndices() const { return indices; }
+
+  DenseElementsAttr *getValues() const { return values; }
+
+  /// Return the value at the given index.
+  Attribute *getValue(ArrayRef<unsigned> index) const;
+
+  /// Method for support type inquiry through isa, cast and dyn_cast.
+  static bool classof(const Attribute *attr) {
+    return attr->getKind() == Kind::SparseElements;
+  }
+
+private:
+  SparseElementsAttr(VectorOrTensorType *type, DenseIntElementsAttr *indices,
+                     DenseElementsAttr *values)
+      : ElementsAttr(Kind::SparseElements, type), indices(indices),
+        values(values) {}
+  ~SparseElementsAttr() = delete;
+
+  DenseIntElementsAttr *const indices;
+  DenseElementsAttr *const values;
 };
 } // end namespace mlir.
 

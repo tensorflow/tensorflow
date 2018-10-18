@@ -477,6 +477,17 @@ void ModulePrinter::printAttribute(const Attribute *attr) {
     os << '>';
     break;
   }
+  case Attribute::Kind::SparseElements: {
+    auto *elementsAttr = cast<SparseElementsAttr>(attr);
+    os << "sparse<";
+    printType(elementsAttr->getType());
+    os << ", ";
+    printDenseElementsAttr(elementsAttr->getIndices());
+    os << ", ";
+    printDenseElementsAttr(elementsAttr->getValues());
+    os << '>';
+    break;
+  }
   }
 }
 

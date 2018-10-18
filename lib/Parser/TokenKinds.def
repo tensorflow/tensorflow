@@ -123,6 +123,7 @@ TOK_KEYWORD(tf_string)
 TOK_KEYWORD(tf_f32ref)
 TOK_KEYWORD(to)
 TOK_KEYWORD(true)
+TOK_KEYWORD(sparse)
 TOK_KEYWORD(vector)
 
 #undef TOK_MARKER

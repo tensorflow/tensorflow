@@ -591,3 +591,59 @@ bb0:
   "float64"(){bar: dense<vector<2x1x4xf64>, [[[-5.0, 6.0, 1.0, 2.0]], [[7.0, -8.0, 3.0, 4.0]]]>} : () -> ()
   return
 }
+
+// CHECK-LABEL: cfgfunc @sparsetensorattr
+cfgfunc @sparsetensorattr() -> () {
+bb0:
+// NOTE: The {{\[\[}} syntax is because "[[" confuses FileCheck.
+// CHECK: "fooi8"() {bar: sparse<tensor<1x1x1xi8>, {{\[\[}}0, 0, 0]], {{\[}}-2]>} : () -> ()
+  "fooi8"(){bar: sparse<tensor<1x1x1xi8>, [[0, 0, 0]], [-2]>} : () -> ()
+// CHECK: "fooi16"() {bar: sparse<tensor<2x2x2xi16>, {{\[\[}}1, 1, 0], {{\[}}0, 1, 0], {{\[}}0, 0, 1]], {{\[}}2, -1, 5]>} : () -> ()
+  "fooi16"(){bar: sparse<tensor<2x2x2xi16>, [[1, 1, 0], [0, 1, 0], [0, 0, 1]], [2, -1, 5]>} : () -> ()
+// CHECK: "fooi32"() {bar: sparse<tensor<1x1xi32>, {{\[}}], {{\[}}]>} : () -> ()
+  "fooi32"(){bar: sparse<tensor<1x1xi32>, [], []>} : () -> ()
+// CHECK: "fooi64"() {bar: sparse<tensor<1xi64>, {{\[\[}}0]], {{\[}}-1]>} : () -> ()
+  "fooi64"(){bar: sparse<tensor<1xi64>, [[0]], [-1]>} : () -> ()
+// CHECK: "foo2"() {bar: sparse<tensor<0xi32>, {{\[}}], {{\[}}]>} : () -> ()
+  "foo2"(){bar: sparse<tensor<0 x i32>, [], []>} : () -> ()
+  
+// CHECK: "foof16"() {bar: sparse<tensor<1x1x1xf16>, {{\[\[}}0, 0, 0]], {{\[}}-2.000000e+00]>} : () -> ()
+  "foof16"(){bar: sparse<tensor<1x1x1xf16>, [[0, 0, 0]], [-2.0]>} : () -> ()
+// CHECK: "foobf16"() {bar: sparse<tensor<2x2x2xbf16>, {{\[\[}}1, 1, 0], {{\[}}0, 1, 0], {{\[}}0, 0, 1]], {{\[}}2.000000e+00, -1.000000e+00, 5.000000e+00]>} : () -> ()
+  "foobf16"(){bar: sparse<tensor<2x2x2xbf16>, [[1, 1, 0], [0, 1, 0], [0, 0, 1]], [2.0, -1.0, 5.0]>} : () -> ()
+// CHECK: "foof32"() {bar: sparse<tensor<1x1xf32>, {{\[}}], {{\[}}]>} : () -> ()
+  "foof32"(){bar: sparse<tensor<1x0x1xf32>, [], []>} : () -> ()
+// CHECK:  "foof64"() {bar: sparse<tensor<1xf64>, {{\[\[}}0]], {{\[}}-1.000000e+00]>} : () -> ()
+  "foof64"(){bar: sparse<tensor<1xf64>, [[0]], [-1.0]>} : () -> ()
+// CHECK: "foof320"() {bar: sparse<tensor<0xf32>, {{\[}}], {{\[}}]>} : () -> ()
+  "foof320"(){bar: sparse<tensor<0 x f32>, [], []>} : () -> ()
+  return
+}
+
+// CHECK-LABEL: cfgfunc @sparsevectorattr
+cfgfunc @sparsevectorattr() -> () {
+bb0:
+// NOTE: The {{\[\[}} syntax is because "[[" confuses FileCheck.
+// CHECK: "fooi8"() {bar: sparse<vector<1x1x1xi8>, {{\[\[}}0, 0, 0]], {{\[}}-2]>} : () -> ()
+  "fooi8"(){bar: sparse<vector<1x1x1xi8>, [[0, 0, 0]], [-2]>} : () -> ()
+// CHECK: "fooi16"() {bar: sparse<vector<2x2x2xi16>, {{\[\[}}1, 1, 0], {{\[}}0, 1, 0], {{\[}}0, 0, 1]], {{\[}}2, -1, 5]>} : () -> ()
+  "fooi16"(){bar: sparse<vector<2x2x2xi16>, [[1, 1, 0], [0, 1, 0], [0, 0, 1]], [2, -1, 5]>} : () -> ()
+// CHECK: "fooi32"() {bar: sparse<vector<1x1xi32>, {{\[}}], {{\[}}]>} : () -> ()
+  "fooi32"(){bar: sparse<vector<1x1xi32>, [], []>} : () -> ()
+// CHECK: "fooi64"() {bar: sparse<vector<1xi64>, {{\[\[}}0]], {{\[}}-1]>} : () -> ()
+  "fooi64"(){bar: sparse<vector<1xi64>, [[0]], [-1]>} : () -> ()
+// CHECK: "foo2"() {bar: sparse<vector<0xi32>, {{\[}}], {{\[}}]>} : () -> ()
+  "foo2"(){bar: sparse<vector<0 x i32>, [], []>} : () -> ()
+  
+// CHECK: "foof16"() {bar: sparse<vector<1x1x1xf16>, {{\[\[}}0, 0, 0]], {{\[}}-2.000000e+00]>} : () -> ()
+  "foof16"(){bar: sparse<vector<1x1x1xf16>, [[0, 0, 0]], [-2.0]>} : () -> ()
+// CHECK: "foobf16"() {bar: sparse<vector<2x2x2xbf16>, {{\[\[}}1, 1, 0], {{\[}}0, 1, 0], {{\[}}0, 0, 1]], {{\[}}2.000000e+00, -1.000000e+00, 5.000000e+00]>} : () -> ()
+  "foobf16"(){bar: sparse<vector<2x2x2xbf16>, [[1, 1, 0], [0, 1, 0], [0, 0, 1]], [2.0, -1.0, 5.0]>} : () -> ()
+// CHECK: "foof32"() {bar: sparse<vector<1x1xf32>, {{\[}}], {{\[}}]>} : () -> ()
+  "foof32"(){bar: sparse<vector<1x0x1xf32>, [], []>} : () -> ()
+// CHECK:  "foof64"() {bar: sparse<vector<1xf64>, {{\[\[}}0]], {{\[}}-1.000000e+00]>} : () -> ()
+  "foof64"(){bar: sparse<vector<1xf64>, [[0]], [-1.0]>} : () -> ()
+// CHECK: "foof320"() {bar: sparse<vector<0xf32>, {{\[}}], {{\[}}]>} : () -> ()
+  "foof320"(){bar: sparse<vector<0 x f32>, [], []>} : () -> ()
+  return
+}

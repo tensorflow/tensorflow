@@ -44,6 +44,8 @@ class TypeAttr;
 class ArrayAttr;
 class FunctionAttr;
 class ElementsAttr;
+class DenseElementsAttr;
+class DenseIntElementsAttr;
 class AffineMapAttr;
 class AffineMap;
 
@@ -102,6 +104,9 @@ public:
   ElementsAttr *getSplatElementsAttr(VectorOrTensorType *type, Attribute *elt);
   ElementsAttr *getDenseElementsAttr(VectorOrTensorType *type,
                                      ArrayRef<char> data);
+  ElementsAttr *getSparseElementsAttr(VectorOrTensorType *type,
+                                      DenseIntElementsAttr *indicies,
+                                      DenseElementsAttr *values);
 
   // Affine expressions and affine maps.
   AffineExpr getAffineDimExpr(unsigned position);
@@ -264,8 +269,7 @@ public:
   }
 
 private:
-  template <typename T>
-  T *insertTerminator(T *term) {
+  template <typename T> T *insertTerminator(T *term) {
     block->setTerminator(term);
     return term;
   }

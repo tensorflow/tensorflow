@@ -200,6 +200,7 @@ public:
   Function *resolveFunctionReference(StringRef nameStr, SMLoc nameLoc,
                                      FunctionType *type);
   Attribute *parseAttribute();
+
   ParseResult parseAttributeDict(SmallVectorImpl<NamedAttribute> &attributes);
 
   // Polyhedral structures.
@@ -207,7 +208,8 @@ public:
   AffineMap parseAffineMapReference();
   IntegerSet parseIntegerSetInline();
   IntegerSet parseIntegerSetReference();
-  ElementsAttr *parseDenseElementsAttr(VectorOrTensorType *type);
+  DenseElementsAttr *parseDenseElementsAttr(VectorOrTensorType *type);
+  DenseElementsAttr *parseDenseElementsAttr(Type *eltType, bool isVector);
   VectorOrTensorType *parseVectorOrTensorType();
 
 private:
@@ -803,6 +805,8 @@ Function *Parser::resolveFunctionReference(StringRef nameStr, SMLoc nameLoc,
 ///                    | function-id `:` function-type
 ///                    | (`splat<` | `dense<`) (tensor-type | vector-type)`,`
 ///                          attribute-value `>`
+///                    | `sparse<` (tensor-type | vector-type)`,`
+///                          attribute-value`, ` attribute-value `>`
 ///
 Attribute *Parser::parseAttribute() {
   switch (getToken().getKind()) {
@@ -905,7 +909,6 @@ Attribute *Parser::parseAttribute() {
     auto *type = parseVectorOrTensorType();
     if (!type)
       return nullptr;
-
     switch (getToken().getKind()) {
     case Token::floatliteral:
     case Token::integer:
@@ -942,6 +945,64 @@ Attribute *Parser::parseAttribute() {
       return (emitError("expected '[' to start dense tensor literal"), nullptr);
     }
   }
+  case Token::kw_sparse: {
+    consumeToken(Token::kw_sparse);
+    if (parseToken(Token::less, "Expected '<' after 'sparse'"))
+      return nullptr;
+
+    auto *type = parseVectorOrTensorType();
+    if (!type)
+      return nullptr;
+
+    switch (getToken().getKind()) {
+    case Token::l_square: {
+      /// Parse indices
+      auto *indicesEltType = builder.getIntegerType(32);
+      auto *indices =
+          parseDenseElementsAttr(indicesEltType, isa<VectorType>(type));
+
+      if (parseToken(Token::comma, "expected ','"))
+        return nullptr;
+
+      /// Parse values.
+      auto *valuesEltType = type->getElementType();
+      auto *values =
+          parseDenseElementsAttr(valuesEltType, isa<VectorType>(type));
+
+      /// Sanity check.
+      auto *indicesType = indices->getType();
+      auto *valuesType = values->getType();
+      auto sameShape = (indicesType->getRank() == 1) ||
+                       (type->getRank() == indicesType->getDimSize(1));
+      auto sameElementNum =
+          indicesType->getDimSize(0) == valuesType->getDimSize(0);
+      if (!sameShape || !sameElementNum) {
+        std::string str;
+        llvm::raw_string_ostream s(str);
+        s << "expected shape ([";
+        interleaveComma(type->getShape(), s);
+        s << "]); inferred shape of indices literal ([";
+        interleaveComma(indicesType->getShape(), s);
+        s << "]); inferred shape of values literal ([";
+        interleaveComma(valuesType->getShape(), s);
+        s << "])";
+        return (emitError(s.str()), nullptr);
+      }
+
+      if (parseToken(Token::greater, "expected '>'"))
+        return nullptr;
+
+      // Build the sparse elements attribute by the indices and values.
+      return builder.getSparseElementsAttr(
+          type, cast<DenseIntElementsAttr>(indices), values);
+    }
+    default:
+      return (emitError("expected '[' to start sparse tensor literal"),
+              nullptr);
+    }
+    return (emitError("expected elements literal has a tensor or vector type"),
+            nullptr);
+  }
   default: {
     if (Type *type = parseType())
       return builder.getTypeAttr(type);
@@ -950,7 +1011,42 @@ Attribute *Parser::parseAttribute() {
   }
 }
 
-ElementsAttr *Parser::parseDenseElementsAttr(VectorOrTensorType *type) {
+/// Dense elements attribute.
+///
+///   dense-attr-list ::= `[` attribute-value `]`
+///   attribute-value ::= integer-literal
+///                     | float-literal
+///                     | `[` (attribute-value (`,` attribute-value)*)? `]`
+///
+/// This method returns a constructed dense elements attribute with the shape
+/// from the parsing result.
+DenseElementsAttr *Parser::parseDenseElementsAttr(Type *eltType,
+                                                  bool isVector) {
+  TensorLiteralParser literalParser(*this, eltType);
+  if (literalParser.parse())
+    return nullptr;
+
+  VectorOrTensorType *type;
+  if (isVector) {
+    type = builder.getVectorType(literalParser.getShape(), eltType);
+  } else {
+    type = builder.getTensorType(literalParser.getShape(), eltType);
+  }
+  return (DenseElementsAttr *)builder.getDenseElementsAttr(
+      type, literalParser.getValues());
+}
+
+/// Dense elements attribute.
+///
+///   dense-attr-list ::= `[` attribute-value `]`
+///   attribute-value ::= integer-literal
+///                     | float-literal
+///                     | `[` (attribute-value (`,` attribute-value)*)? `]`
+///
+/// This method compares the shapes from the parsing result and that from the
+/// input argument. It returns a constructed dense elements attribute if both
+/// match.
+DenseElementsAttr *Parser::parseDenseElementsAttr(VectorOrTensorType *type) {
   auto *eltTy = type->getElementType();
   TensorLiteralParser literalParser(*this, eltTy);
   if (literalParser.parse())
@@ -965,9 +1061,15 @@ ElementsAttr *Parser::parseDenseElementsAttr(VectorOrTensorType *type) {
     s << "])";
     return (emitError(s.str()), nullptr);
   }
-  return builder.getDenseElementsAttr(type, literalParser.getValues());
+  return (DenseElementsAttr *)builder.getDenseElementsAttr(
+      type, literalParser.getValues());
 }
 
+/// Vector or tensor type for elements attribute.
+///
+///   vector-or-tensor-type ::= vector-type | tensor-type
+///
+/// This method also checks the type has static shape and ranked.
 VectorOrTensorType *Parser::parseVectorOrTensorType() {
   auto *type = dyn_cast<VectorOrTensorType>(parseType());
   if (!type) {
@@ -982,7 +1084,6 @@ VectorOrTensorType *Parser::parseVectorOrTensorType() {
     return (emitError("tensor literals must be ranked and have static shape"),
             nullptr);
   }
-
   return type;
 }
 

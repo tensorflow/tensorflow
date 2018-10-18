@@ -154,6 +154,12 @@ ElementsAttr *Builder::getDenseElementsAttr(VectorOrTensorType *type,
   return DenseElementsAttr::get(type, data);
 }
 
+ElementsAttr *Builder::getSparseElementsAttr(VectorOrTensorType *type,
+                                             DenseIntElementsAttr *indicies,
+                                             DenseElementsAttr *values) {
+  return SparseElementsAttr::get(type, indicies, values);
+}
+
 //===----------------------------------------------------------------------===//
 // Affine Expressions, Affine Maps, and Integet Sets.
 //===----------------------------------------------------------------------===//
