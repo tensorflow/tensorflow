@@ -265,25 +265,22 @@ Status GdrMemoryManager::Init() {
   LOG(INFO) << "Instrumenting CPU allocator(s)";
 
 #if GOOGLE_CUDA
+  for (int numa_idx = 0; numa_idx < port::NUMANumNodes(); ++numa_idx) {
+    GPUProcessState::singleton()->AddCUDAHostAllocVisitor(numa_idx,
+                                                            alloc_visitor);
+  }
   if (IsGDRAvailable()) {
-    int bus_id = numa_node_ + 1;
-
     SubAllocator::Visitor cuda_alloc_visitor = [this](void* ptr, int gpu_id,
                                                       size_t num_bytes) {
       VLOG(2) << "Registering RDMA capable memory region on GPU " << gpu_id;
       InsertMemoryRegion(ptr, num_bytes, strings::StrCat("GPU:", gpu_id));
     };
-    GPUProcessState::singleton()->AddGPUAllocVisitor(bus_id,
-                                                     cuda_alloc_visitor);
-
     for (int numa_idx = 0; numa_idx < port::NUMANumNodes(); ++numa_idx) {
-      GPUProcessState::singleton()->AddCUDAHostAllocVisitor(numa_idx,
-                                                            alloc_visitor);
-      LOG(INFO) << "Instrumenting Cuda host allocator on numa " << numa_idx;
+      GPUProcessState::singleton()->AddGPUAllocVisitor(numa_idx,
+                                                       cuda_alloc_visitor);
+      GPUProcessState::singleton()->AddCUDAHostFreeVisitor(numa_idx, free_visitor);
     }
-
-    GPUProcessState::singleton()->AddCUDAHostFreeVisitor(bus_id, free_visitor);
-    LOG(INFO) << "Instrumenting GPU allocator(s) with bus_id " << bus_id;
+    LOG(INFO) << "Instrumenting GPU allocator(s) for all numas ";
   }
 #endif  // GOOGLE_CUDA
 
