@@ -561,11 +561,8 @@ void CopyOrMoveBlock(const string* b, const string* e, string* t) {
 // the 'default_value' tensor.
 //
 // 'key' Name of the element that is parsed.
-//
 // 'n_elements_per_batch'  The number of elements in a batch.
-//
 // 'end_indices'  The end indices of the dense tensor as it is.
-//
 // 'default_value'  Tensor with default values. If we need to fill in this
 // tensor must have at least
 //                  'n_elements_per_batch' many elements.
@@ -603,9 +600,8 @@ Status CheckDefaultsAvailable(const string& key,
 // This method is used by the fixed len sequence feature.
 //
 // 'key' Name of the element that is parsed.
-//
 // 'default_value'  Tensor with default value. If we need to fill in this tensor
-// must have at least 1 element.
+//   must have at least 1 element.
 //
 // returns OK we have at least one element; otherwise false.
 //
@@ -623,11 +619,8 @@ Status CheckDefaultAvailable(const string& key, const Tensor& default_value) {
 // 'values' unchanged.
 //
 // 'n_elements' The total number of elements that shall be.
-//
 // 'n_elements_per_batch' The number of elements per batch that shall be.
-//
 // 'end_indices'  The end indices per batch that are.
-//
 // 'values' The result tensor.
 //
 template <typename T>
@@ -653,15 +646,11 @@ void FillInFromValues(const size_t n_elements,
 // that shall be copied per batch.
 //
 // 'n_elements' The overall number of elements.
-//
 // 'n_elements_per_batch' The number of elements in a batch.  Note, that the
-// 'buffer' may not have that many elements
-//                        per batch and we have separate methods to fill these
-// with defaults.
-//
+// 'buffer' may not have that many elements per batch and we have separate
+//   methods to fill these with defaults.
 // 'buffer' The buffer that contains the 'end_indices' and a flattened list of
-// all values for one batch.
-//
+//   all values for one batch.
 // 'values' The result tensor.
 //
 template <typename T>
@@ -718,14 +707,10 @@ void CopyVarLen(const size_t n_elements, const size_t n_elements_per_batch,
 // 'FillInFixedLen'.
 //
 // 'n_elements' The total number of elements.
-//
 // 'n_elements_per_batch' The number of elements in a batch.
-//
 // 'buffer' The buffer with the parsed elements.
-//
 // 'default_value' The tensor with the scalar default value, which we assume
-// exists here.
-//
+//   exists here.
 // 'values' The return tensors.
 //
 template <typename T>
@@ -1518,7 +1503,6 @@ class ParseAvroRecordOp : public OpKernel {
   // Checks the compatibility between data types.
   //
   // 'data_type' The TensorFlow primitive data type.
-  //
   // 'avro_type' The Avro primitive data type.
   //
   // returns True if the types are compatible otherwise false.
@@ -1534,7 +1518,6 @@ class ParseAvroRecordOp : public OpKernel {
   // Resolves union(s).
   //
   // 'resolved_avro_value' The resolved avro value.
-  //
   // 'avro_value' The avro value.
   //
   // returns An error status if we were unable to resolve the union; otherwise
@@ -1564,9 +1547,7 @@ class ParseAvroRecordOp : public OpKernel {
   // and compatible with the TensorFlow type.
   //
   // 'data_buffer' A variable length buffer to add data.
-  //
   // 'avro_value' The avro value that is used to pull the data.
-  //
   // 'data_type' The TensorFlow data type.
   //
   // returns Status that indicates OK or an error with message.
@@ -1696,9 +1677,7 @@ class ParseAvroRecordOp : public OpKernel {
   // used for filters.
   //
   // 'name' The name corresponding to the key.
-  //
   // 'avro_value' The avro value that is a record with the 'name' attribute.
-  //
   // 'key' The attribute name.
   //
   // returns Status that indicates OK or an error with message.
@@ -1770,15 +1749,11 @@ class ParseAvroRecordOp : public OpKernel {
   // Sets values in the buffer for a given avro field.
   //
   // 'data_buffer' Data buffer is add the data.
-  //
   // 'features_avro_fields' Avro fields for a single feature string that is
-  // defined by the caller of the parser.
-  //
+  //   defined by the caller of the parser.
   // 'avro_value' The avro value for this record.
-  //
   // 'data_type' The expected TensorFlow type for the Avro value as defined by
   // 'features_avro_fields'.
-  //
   // 'i_start_avro_field' Start following the fields from this start index on.
   // We need this recursion to support
   //    the asterisk wildcard.

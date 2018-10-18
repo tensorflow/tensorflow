@@ -34,7 +34,7 @@ namespace tensorflow {
 // Register the avro record dataset operator
 REGISTER_OP("AvroRecordDataset")
     .Input("filenames: string")
-    .Input("schema: string")
+    .Input("reader_schema: string")
     .Input("buffer_size: int64")
     .Output("handle: variant")
     .SetIsStateful()
@@ -43,25 +43,9 @@ REGISTER_OP("AvroRecordDataset")
 Creates a dataset that emits the avro records from one or more files.
 filenames: A scalar or vector containing the name(s) of the file(s) to be
   read.
-schema: A string used that is used for schema resolution.
+reader_schema: Reader schema used for schema resolution.
+buffer_size: The size of the buffer used when reading avro files into memory
 )doc");
-
-// This class represents the avro reader options
-class AvroReaderOptions {
- public:
-  // Creates avro reader options with the given schema and buffer size.
-  //
-  static AvroReaderOptions CreateAvroReaderOptions(const string& schema,
-                                                   int64 buffer_size) {
-    AvroReaderOptions options;
-    options.schema = schema;
-    options.buffer_size = buffer_size;
-    return options;
-  }
-  string schema;
-  int64 buffer_size =
-      256 * 1024;  // 256 kB as default but this can be overwritten by the user
-};
 
 void AvroFileReaderDestructor(avro_file_reader_t reader) {
   // I don't think we need the CHECK_NOTNULL
@@ -86,28 +70,27 @@ class SequentialAvroRecordReader {
   // Construct a sequential avro record reader
   //
   // 'file' is the random access file
-  //
   // 'file_size' is the size of the file
-  //
   // 'filename' is the name of the file
-  //
-  // 'options' are avro reader options
+  // 'reader_schema' are avro reader options
+  // 'buffer_size' size of the buffer reading from files
   //
   SequentialAvroRecordReader(RandomAccessFile* file, const uint64 file_size,
                              const string& filename,
-                             const AvroReaderOptions& options =
-                                 AvroReaderOptions())
+                             const string& reader_schema,
+                             const int64 buffer_size)
     : initialized_(false),
       filename_(filename),
       file_buffer_(file_size, '\0'),
-      input_buffer_size_(options.buffer_size),
-      input_buffer_(new io::InputBuffer(file, options.buffer_size)),
-      reader_schema_str_(options.schema),
+      input_buffer_size_(buffer_size),
+      input_buffer_(new io::InputBuffer(file, buffer_size)),
+      reader_schema_str_(reader_schema),
       file_reader_(nullptr, AvroFileReaderDestructor),
       reader_schema_(nullptr, AvroSchemaDestructor),
       writer_schema_(nullptr, AvroSchemaDestructor),
       p_reader_iface_(nullptr, AvroValueInterfaceDestructor),
-      p_writer_iface_(nullptr, AvroValueInterfaceDestructor) { }
+      p_writer_iface_(nullptr, AvroValueInterfaceDestructor) {}
+
   virtual ~SequentialAvroRecordReader() {
     // Guard against clean-up of non-initialized instances
     if (initialized_) {
@@ -303,8 +286,9 @@ class AvroRecordDatasetOp : public DatasetOpKernel {
       filenames.push_back(filenames_tensor->flat<string>()(i));
     }
 
-    string schema;
-    OP_REQUIRES_OK(ctx, ParseScalarArgument<string>(ctx, "schema", &schema));
+    string reader_schema_str;
+    OP_REQUIRES_OK(ctx, ParseScalarArgument<string>(ctx, "reader_schema",
+      &reader_schema_str));
 
     int64 buffer_size = -1;
     OP_REQUIRES_OK(
@@ -312,18 +296,20 @@ class AvroRecordDatasetOp : public DatasetOpKernel {
     OP_REQUIRES(ctx, buffer_size >= 256,
                 errors::InvalidArgument("`buffer_size` must be >= 256 B"));
 
-    *output = new Dataset(ctx, std::move(filenames), schema, buffer_size);
+    *output = new Dataset(ctx, std::move(filenames), reader_schema_str,
+      buffer_size);
   }
 
  private:
   class Dataset : public DatasetBase {
    public:
     explicit Dataset(OpKernelContext* ctx, std::vector<string> filenames,
-                     const string& schema, int64 buffer_size)
+                     const string& reader_schema_str,
+                     const int64 buffer_size)
         : DatasetBase(DatasetContext(ctx)),
           filenames_(std::move(filenames)),
-          options_(AvroReaderOptions::CreateAvroReaderOptions(schema,
-                                                              buffer_size)) {}
+          reader_schema_str_(reader_schema_str),
+          buffer_size_(buffer_size) {}
 
     std::unique_ptr<IteratorBase> MakeIteratorInternal(const string& prefix) const
         override {
@@ -446,7 +432,8 @@ class AvroRecordDatasetOp : public DatasetOpKernel {
             ctx->env()->GetFileSize(next_filename, &file_size));
 
           reader_.reset(new SequentialAvroRecordReader(
-              file_.get(), file_size, next_filename, dataset()->options_));
+              file_.get(), file_size, next_filename,
+              dataset()->reader_schema_str_, dataset()->buffer_size_));
           TF_RETURN_IF_ERROR(reader_->OnWorkStartup());
         } while (true);
       }
@@ -462,7 +449,8 @@ class AvroRecordDatasetOp : public DatasetOpKernel {
     };
 
     const std::vector<string> filenames_;
-    AvroReaderOptions options_;
+    const string reader_schema_str_;
+    const int64 buffer_size_;
   };
 };
 
