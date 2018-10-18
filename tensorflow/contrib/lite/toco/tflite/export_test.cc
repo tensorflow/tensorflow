@@ -30,27 +30,27 @@ using ::testing::ElementsAre;
 
 class ExportTest : public ::testing::Test {
  protected:
-  // This is a very simplistic model. We are not interested in testing all the
-  // details here, since tf.mini's testing framework will be exercising all the
-  // conversions multiple times, and the conversion of operators is tested by
-  // separate unittests.
-  void BuildTestModel() {
-    input_model_.GetOrCreateArray("tensor_one");
-    input_model_.GetOrCreateArray("tensor_two");
-    {
-      auto* op = new ConvOperator;
-      op->padding.type = PaddingType::kSame;
-      input_model_.operators.emplace_back(op);
+  void AddTensorsByName(std::initializer_list<string> names) {
+    for (const string& name : names) {
+      input_model_.GetOrCreateArray(name);
     }
-    input_model_.operators.emplace_back(new AddOperator);
-    {
-      auto* op = new TensorFlowUnsupportedOperator;
-      op->tensorflow_op = "MyCrazyOp";
-      input_model_.operators.emplace_back(op);
+  }
+  void AddOperatorsByName(std::initializer_list<string> names) {
+    for (const string& name : names) {
+      if (name == "Conv") {
+        auto* op = new ConvOperator;
+        op->padding.type = PaddingType::kSame;
+        input_model_.operators.emplace_back(op);
+      } else if (name == "Add") {
+        input_model_.operators.emplace_back(new AddOperator);
+      } else if (name == "Sub") {
+        input_model_.operators.emplace_back(new SubOperator);
+      } else {
+        auto* op = new TensorFlowUnsupportedOperator;
+        op->tensorflow_op = name;
+        input_model_.operators.emplace_back(op);
+      }
     }
-    // Note that Sub is not know to TF Lite, so it gets exported as a custom
-    // op (and no options).
-    input_model_.operators.emplace_back(new SubOperator);
   }
 
   void BuildQuantizableTestModel() {
@@ -89,11 +89,46 @@ class ExportTest : public ::testing::Test {
     input_model_.operators.emplace_back(new AddOperator);
   }
 
+  std::vector<string> ExportAndSummarizeOperators(const ExportParams& params) {
+    std::vector<string> names;
+
+    string result;
+    if (!Export(input_model_, &result, params).ok()) return names;
+
+    auto* model = ::tflite::GetModel(result.data());
+
+    for (const ::tflite::OperatorCode* opcode : *model->operator_codes()) {
+      if (opcode->builtin_code() != ::tflite::BuiltinOperator_CUSTOM) {
+        names.push_back(string("builtin:") + ::tflite::EnumNameBuiltinOperator(
+                                                 opcode->builtin_code()));
+      } else {
+        names.push_back(string("custom:") + opcode->custom_code()->c_str());
+      }
+    }
+
+    return names;
+  }
+
+  std::vector<uint32_t> ExportAndGetOperatorIndices(
+      const ExportParams& params) {
+    std::vector<uint32_t> indices;
+
+    string result;
+    if (!Export(input_model_, &result, params).ok()) return indices;
+    auto* model = ::tflite::GetModel(result.data());
+
+    auto operators = (*model->subgraphs())[0]->operators();
+    for (const auto* op : *operators) {
+      indices.push_back(op->opcode_index());
+    }
+    return indices;
+  }
+
   Model input_model_;
 };
 
 TEST_F(ExportTest, LoadTensorsMap) {
-  BuildTestModel();
+  AddTensorsByName({"tensor_one", "tensor_two"});
 
   details::TensorsMap tensors;
   details::LoadTensorsMap(input_model_, &tensors);
@@ -102,7 +137,7 @@ TEST_F(ExportTest, LoadTensorsMap) {
 }
 
 TEST_F(ExportTest, LoadOperatorsMap) {
-  BuildTestModel();
+  AddOperatorsByName({"Conv", "Add", "MyCrazyOp", "Sub"});
 
   details::OperatorsMap operators;
   const auto ops_by_type = BuildOperatorByTypeMap();
@@ -118,34 +153,50 @@ TEST_F(ExportTest, LoadOperatorsMap) {
 }
 
 TEST_F(ExportTest, Export) {
-  BuildTestModel();
+  AddOperatorsByName({"Conv", "Add", "MyCrazyOp", "Sub"});
 
-  string result;
-  Export(input_model_, true, false, &result);
+  ExportParams params;
+  params.allow_custom_ops = true;
+  params.allow_flex_ops = false;
+  params.quantize_weights = false;
 
-  auto* model = ::tflite::GetModel(result.data());
+  EXPECT_THAT(ExportAndSummarizeOperators(params),
+              ElementsAre("builtin:ADD", "builtin:CONV_2D", "custom:MyCrazyOp",
+                          "builtin:SUB"));
+  EXPECT_THAT(ExportAndGetOperatorIndices(params), ElementsAre(1, 0, 2, 3));
+}
 
-  std::vector<string> names;
-  for (const ::tflite::OperatorCode* opcode : *model->operator_codes()) {
-    if (opcode->builtin_code() != ::tflite::BuiltinOperator_CUSTOM) {
-      names.push_back(string("builtin:") + ::tflite::EnumNameBuiltinOperator(
-                                               opcode->builtin_code()));
-    } else {
-      names.push_back(string("custom:") + opcode->custom_code()->c_str());
-    }
-  }
+TEST_F(ExportTest, ExportWithOptions) {
+  // We have three main types of operators:
+  //  1) first-class TOCO/TF Lite operators, which are exported as TF Lite
+  //     builtins
+  //  2) operators that are not recognized by TOCO but are known to the
+  //     standard TensorFlow runtime. Those should be exported as FLEX
+  //     operators, when requested. Otherwise they are custom TF Lite ops.
+  //  3) operators that are not recognized and should be exported as custom
+  //     TF Lite ops. There are two subtypes: ops that would be recognized
+  //     by a custom TensorFlow runtime, and "fake" ops that have only a
+  //     TF Lite impl.
+  AddOperatorsByName({"Add", "ResizeNearestNeighbor"});
 
-  EXPECT_THAT(names, ElementsAre("builtin:ADD", "builtin:CONV_2D",
-                                 "custom:MyCrazyOp", "builtin:SUB"));
+  ExportParams params;
+  params.allow_custom_ops = false;
+  params.allow_flex_ops = false;
+  params.quantize_weights = false;
 
-  std::vector<uint32_t> indices;
-  auto operators = (*model->subgraphs())[0]->operators();
-  EXPECT_EQ(operators->Length(), 4);
-  for (const auto* op : *operators) {
-    indices.push_back(op->opcode_index());
-  }
+  // Conversion fails because ResizeNearestNeighbor is unknown.
+  EXPECT_THAT(ExportAndSummarizeOperators(params), ElementsAre());
 
-  EXPECT_THAT(indices, ElementsAre(1, 0, 2, 3));
+  // ResizeNearestNeighbor is treated as a simple custom op (#3 above).
+  params.allow_custom_ops = true;
+  EXPECT_THAT(ExportAndSummarizeOperators(params),
+              ElementsAre("builtin:ADD", "custom:ResizeNearestNeighbor"));
+
+  // ResizeNearestNeighbor is recognized as a TensorFlow (Flex) op.
+  params.allow_custom_ops = true;
+  params.allow_flex_ops = true;
+  EXPECT_THAT(ExportAndSummarizeOperators(params),
+              ElementsAre("builtin:ADD", "custom:FlexResizeNearestNeighbor"));
 }
 
 TEST_F(ExportTest, QuantizeWeights) {

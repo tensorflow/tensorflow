@@ -32,11 +32,11 @@ struct ExportParams {
 
 // Transform the given tf.mini model into a TF Lite flatbuffer and deposit the
 // result in the given string.
-void Export(const Model& model, string* output_file_contents,
-            const ExportParams& params);
+tensorflow::Status Export(const Model& model, string* output_file_contents,
+                          const ExportParams& params);
 
 // Export API with custom TFLite operator mapping.
-void Export(
+tensorflow::Status Export(
     const Model& model, string* output_file_contents,
     const ExportParams& params,
     const std::map<OperatorType, std::unique_ptr<BaseOperator>>& ops_by_type);
@@ -48,7 +48,8 @@ inline void Export(const Model& model, bool allow_custom_ops,
   ExportParams params;
   params.allow_custom_ops = allow_custom_ops;
   params.quantize_weights = quantize_weights;
-  Export(model, output_file_contents, params);
+  auto status = Export(model, output_file_contents, params);
+  if (!status.ok()) LOG(QFATAL) << status.error_message();
 }
 
 // This is for backward-compatibility.
@@ -60,7 +61,8 @@ inline void Export(
   ExportParams params;
   params.allow_custom_ops = allow_custom_ops;
   params.quantize_weights = quantize_weights;
-  Export(model, output_file_contents, params, ops_by_type);
+  auto status = Export(model, output_file_contents, params, ops_by_type);
+  if (!status.ok()) LOG(QFATAL) << status.error_message();
 }
 
 // This is for backward-compatibility.
@@ -68,8 +70,8 @@ inline void Export(
 inline void Export(const Model& model, string* output_file_contents) {
   ExportParams params;
   params.allow_custom_ops = true;
-  Export(model, output_file_contents, params);
-  Export(model, true, false, output_file_contents);
+  auto status = Export(model, output_file_contents, params);
+  if (!status.ok()) LOG(QFATAL) << status.error_message();
 }
 
 namespace details {
