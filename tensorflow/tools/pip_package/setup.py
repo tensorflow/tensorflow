@@ -57,6 +57,7 @@ REQUIRED_PACKAGES = [
     'six >= 1.10.0',
     'protobuf >= 3.6.1',
     'tensorboard >= 1.11.0, < 1.12.0',
+    'tensorflow_estimator >= 1.10.0',
     'termcolor >= 1.1.0',
 ]
 
