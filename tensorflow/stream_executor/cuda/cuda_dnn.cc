@@ -505,13 +505,13 @@ RnnDescriptor CreateRnnDescriptor() {
   CHECK_CUDNN_OK(cudnnCreateRNNDescriptor(&result));
   return RnnDescriptor(result);
 }
-PersistentRnnPlan CreatePersistentRnnPlan(cudnnRNNDescriptor_t rnn_desc,
-                                          int batch_size,
-                                          cudnnDataType_t data_type) {
+
+port::StatusOr<PersistentRnnPlan> CreatePersistentRnnPlan(
+    cudnnRNNDescriptor_t rnn_desc, int batch_size, cudnnDataType_t data_type) {
   cudnnPersistentRNNPlan_t result;
-  CHECK_CUDNN_OK(
+  RETURN_IF_CUDNN_ERROR(
       cudnnCreatePersistentRNNPlan(rnn_desc, batch_size, data_type, &result));
-  return PersistentRnnPlan(result);
+  return port::StatusOr<PersistentRnnPlan>(PersistentRnnPlan(result));
 }
 
 // Turns a BatchDescriptor structure into a cudnn tensor handle within a
@@ -1042,12 +1042,19 @@ class CudnnRnnDescriptor : public dnn::RnnDescriptor {
         /*mode=*/rnn_mode, /*algo=*/rnn_algo,
         /*dataType=*/compute_type));
 
+    port::StatusOr<PersistentRnnPlan> rnn_plan_wrapper;
     PersistentRnnPlan rnn_plan;
     if (rnn_algo == CUDNN_RNN_ALGO_PERSIST_DYNAMIC) {
       CHECK_GE(batch_size, 0);
-      rnn_plan = CreatePersistentRnnPlan(rnn_desc.get(), batch_size, data_type);
-      RETURN_IF_CUDNN_ERROR(
-          cudnnSetPersistentRNNPlan(rnn_desc.get(), rnn_plan.get()));
+      rnn_plan_wrapper =
+          CreatePersistentRnnPlan(rnn_desc.get(), batch_size, data_type);
+      if (!rnn_plan_wrapper.ok()) {
+        return port::StatusOr<CudnnRnnDescriptor>(rnn_plan_wrapper.status());
+      } else {
+        rnn_plan = rnn_plan_wrapper.ConsumeValueOrDie();
+        RETURN_IF_CUDNN_ERROR(
+            cudnnSetPersistentRNNPlan(rnn_desc.get(), rnn_plan.get()));
+      }
     }
 
     // Create the params handle.
