@@ -107,7 +107,7 @@ string FormatNodeForError(const Node& node) {
 }
 
 string FormatNodeDefForError(const NodeDef& node_def) {
-  LOG(ERROR) << "Error in the node: " << SummarizeNodeDef(node_def);
+  VLOG(1) << "Error in the node: " << SummarizeNodeDef(node_def);
   return errors::FormatNodeNameForError(node_def.name());
 }
 
