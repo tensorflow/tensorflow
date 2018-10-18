@@ -99,6 +99,14 @@ cc_library(
 )
 
 cc_library(
+    name = "common",
+    srcs = [],
+    hdrs = [
+      "driver/xla_ipu_common.h",
+    ],
+)
+
+cc_library(
     name = "driver",
     srcs = [
         "driver/compiler.cc",
@@ -147,6 +155,7 @@ cc_library(
         "driver/visitor_subcomputation.h",
     ],
     deps = [
+        ":common",
         ":optimizers",
         ":protos_cc_impl",
         "//tensorflow/compiler/xla:xla_headers_lib",
@@ -253,10 +262,9 @@ cc_library(
     srcs = [
         "driver/xla_ipu_backend.cc",
     ],
-    hdrs = [
-        "driver/xla_ipu_common.h",
-    ],
+    hdrs = [],
     deps = [
+        ":common",
         "//tensorflow/compiler/tf2xla:xla_compiler",
         "//tensorflow/core:framework_headers_lib",
         "//third_party/eigen3",

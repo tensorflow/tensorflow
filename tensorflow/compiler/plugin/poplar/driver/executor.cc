@@ -118,6 +118,7 @@ se::host::HostStream* AsPoplarStream(se::Stream* stream) {
 
 PoplarExecutor::PoplarExecutor()
     : ordinal_(0),
+      current_engine_(nullptr),
       device_open_(false),
       poplar_device_(poplar::Device::createCPUDevice()),
       poplar_device_hash_(0) {}
@@ -855,6 +856,7 @@ Status PoplarExecutor::MoveDeviceToHost() {
   Json::Value root;
   root["tensors"] = Json::Value(Json::arrayValue);
   uint64 total_size = 0;
+  uint64 total_count = 0;
 
   for (const auto& tc : allocations_) {
     // Set up streams
@@ -867,6 +869,7 @@ Status PoplarExecutor::MoveDeviceToHost() {
       tensor["size"] = Json::Value::UInt64(tc->size);
       root["tensors"].append(tensor);
       total_size += tc->size;
+      total_count++;
     }
   }
   root["total_size"] = Json::Value::UInt64(total_size);
@@ -874,27 +877,28 @@ Status PoplarExecutor::MoveDeviceToHost() {
   std::string json_msg = Json::writeString(json_builder, root);
 
   // perform device -> host read
-  try {
-    current_engine_->run(PoplarProgramType::DEVICE_TO_HOST);
-  } catch (const std::logic_error& e) {
-    return PoplarExceptionToTensorflowStatus("[Device to host] ", e);
-  }
-
-  if (current_config_.profiling().enable_io_trace()) {
-    AddDeviceToHostEventRecord(json_msg);
-  }
-
-  // Post process upload
-  for (const auto& tc : allocations_) {
-    if (tc->on_device == true && !tc->output_handle.empty()) {
-      PostProcessBuffer(tc);
+  if (total_count > 0) {
+    try {
+      current_engine_->run(PoplarProgramType::DEVICE_TO_HOST);
+    } catch (const std::logic_error& e) {
+      return PoplarExceptionToTensorflowStatus("[Device to host] ", e);
     }
 
-    tc->on_device = false;
-    tc->output_handle.clear();
-    tc->input_handle.clear();
-  }
+    if (current_config_.profiling().enable_io_trace()) {
+      AddDeviceToHostEventRecord(json_msg);
+    }
 
+    // Post process upload
+    for (const auto& tc : allocations_) {
+      if (tc->on_device == true && !tc->output_handle.empty()) {
+        PostProcessBuffer(tc);
+      }
+
+      tc->on_device = false;
+      tc->output_handle.clear();
+      tc->input_handle.clear();
+    }
+  }
   return Status::OK();
 }
 
@@ -996,6 +1000,15 @@ void PoplarExecutor::PostProcessStreamedVariablesDeviceToHost() {
   }
 }
 
+void PoplarExecutor::AboutToFreeEngine(poplar::Engine* engine) {
+  if (current_engine_ != nullptr) {
+    std::lock_guard<std::recursive_mutex> g(mutex_);
+    if (engine == current_engine_) {
+      current_engine_ = NULL;
+    }
+  }
+}
+
 StatusOr<se::DeviceMemoryBase> PoplarExecutor::ExecuteEngine(
     perftools::gputools::StreamExecutor* executor,
     xla::poplarplugin::PoplarExecutable& executable,
@@ -1003,7 +1016,7 @@ StatusOr<se::DeviceMemoryBase> PoplarExecutor::ExecuteEngine(
   const auto& input_output_aliasing_map =
       executable.GetInputOutputAliasingMap();
   const auto& output_shape = executable.result_shape();
-  const auto& engine = executable.Engine();
+  poplar::Engine* engine = executable.Engine();
 
   perftools::gputools::DeviceMemoryBase retbuf;
 

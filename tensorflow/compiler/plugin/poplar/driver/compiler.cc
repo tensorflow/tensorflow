@@ -332,7 +332,7 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::RunBackend(
   std::vector<const HloInstruction*> instruction_order;
   TF_ASSIGN_OR_RETURN(instruction_order, Scheduler::schedule(entry));
 
-  std::shared_ptr<poplar::Engine> engine;
+  std::unique_ptr<poplar::Engine> engine;
   std::vector<poplar::program::Program> progs;
   EntryVisitor visitor(graph, resources,
                        poplarExecutor->AlwaysRearrangeCopiesOnTheHost());

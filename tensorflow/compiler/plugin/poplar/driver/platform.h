@@ -43,6 +43,10 @@ namespace tensorflow {
 class IpuTraceEvent;
 }
 
+namespace poplar {
+class Engine;
+}
+
 namespace xla {
 namespace poplarplugin {
 
@@ -80,6 +84,8 @@ class PoplarPlatform : public se::Platform {
   Status ConfigurePoplarDevice(int, const tensorflow::IPUOptions& opts);
 
   Status GetCompilerEvents(std::list<tensorflow::IpuTraceEvent>& out);
+
+  void AboutToFreeEngine(poplar::Engine* engine);
 
  private:
   // This platform's name.

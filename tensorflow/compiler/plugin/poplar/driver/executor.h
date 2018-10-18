@@ -295,6 +295,8 @@ class PoplarExecutor : public se::internal::StreamExecutorInterface {
 
   bool HaveCachedExecutable(const std::string& filename) const;
 
+  void AboutToFreeEngine(poplar::Engine* engine);
+
  private:
   struct TensorControl {
     size_t size = 0;
@@ -439,7 +441,7 @@ class PoplarExecutor : public se::internal::StreamExecutorInterface {
 
   std::recursive_mutex mutex_;
 
-  std::shared_ptr<poplar::Engine> current_engine_;
+  poplar::Engine* current_engine_;
 
   bool device_open_;
 

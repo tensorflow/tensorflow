@@ -18,6 +18,8 @@ limitations under the License.
 
 #include "tensorflow/compiler/plugin/poplar/driver/executable.h"
 #include "tensorflow/compiler/plugin/poplar/driver/executable.pb.h"
+#include "tensorflow/compiler/plugin/poplar/driver/platform.h"
+#include "tensorflow/compiler/plugin/poplar/driver/xla_ipu_common.h"
 
 namespace xla {
 namespace poplarplugin {
@@ -26,7 +28,7 @@ PoplarExecutable::PoplarExecutable(
     std::unique_ptr<HloModule> hlo_module,
     std::unique_ptr<HloProfilePrinterData> profile_printer,
     std::unique_ptr<HloProfileIndexMap> profile_index_map,
-    std::shared_ptr<poplar::Engine> engine,
+    std::unique_ptr<poplar::Engine> engine,
     const InputOutputAliasingMap& input_output_aliasing_map,
     const bool is_constant_graph,
     std::vector<std::vector<Literal>> literal_output, const bool is_remap_graph,
@@ -35,13 +37,22 @@ PoplarExecutable::PoplarExecutable(
                  std::move(profile_index_map)),
       poplar_engine_(std::move(engine)),
       input_output_aliasing_map_(std::move(input_output_aliasing_map)),
-      is_constant_graph_(is_constant_graph),
       literal_output_(std::move(literal_output)),
-      is_remap_graph_(is_remap_graph),
+      is_constant_graph_(is_constant_graph),
       remaped_output_(std::move(remaped_output)),
+      is_remap_graph_(is_remap_graph),
       execution_count_(0) {}
 
-PoplarExecutable::~PoplarExecutable() {}
+PoplarExecutable::~PoplarExecutable() {
+  if (poplar_engine_.get() != nullptr) {
+    auto platform =
+        se::MultiPlatformManager::PlatformWithName(tensorflow::PLATFORM_NAME);
+    if (platform.ok()) {
+      auto* p = static_cast<PoplarPlatform*>(platform.ValueOrDie());
+      p->AboutToFreeEngine(poplar_engine_.get());
+    }
+  }
+}
 
 StatusOr<ScopedShapedBuffer> PoplarExecutable::ExecuteOnStream(
     const ServiceExecutableRunOptions* run_options,
