@@ -911,6 +911,11 @@ class DistributionStrategy(object):
     raise NotImplementedError("must be implemented in descendants")
 
   @property
+  def num_replicas_in_sync(self):
+    """Returns number of replicas over which gradients are aggregated."""
+    raise NotImplementedError("must be implemented in descendants")
+
+  @property
   def worker_devices(self):
     """Returns the list of devices used to run `call_for_each_tower()` calls."""
     # TODO(josh11b): More docstring

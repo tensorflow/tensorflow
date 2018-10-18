@@ -278,3 +278,8 @@ class CollectiveAllReduceStrategy(mirrored_strategy.MirroredStrategy):
   @property
   def should_save_summary(self):
     return self._is_chief
+
+  @property
+  def num_replicas_in_sync(self):
+    return len(self._devices) * self._num_workers
+
