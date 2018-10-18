@@ -630,7 +630,6 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
       return x * x
 
     with ops.device('cpu:0'):
-      f(constant_op.constant(1.0))  # pre-build the defun
       context.enable_run_metadata()
       f(constant_op.constant(1.0))
     run_metadata = context.export_run_metadata()
@@ -645,6 +644,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     # arbitrarily many (placeholders, return identities, etc, might be included
     # or not in the future, so shouldn't be tested for exactly.
     self.assertGreaterEqual(len(cpu_stats.node_stats), 2)
+    self.assertEqual(len(run_metadata.partition_graphs), 1)
 
   def testGraphModeCaptureVariable(self):
     with context.graph_mode(), self.cached_session() as sess:
