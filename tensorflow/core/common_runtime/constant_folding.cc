@@ -250,12 +250,9 @@ bool IsConstantFoldable(
   // constant-fold functions.
   // TODO(phawkins): allow constant-folding for functions; functions may
   // be arbitrarily expensive to execute.
-  if (!FindKernelDef(DeviceType(DEVICE_CPU), n->def(), /*def=*/nullptr,
-                     /*kernel_class_name=*/nullptr)
-           .ok()) {
+  if (!KernelDefAvailable(DeviceType(DEVICE_CPU), n->def())) {
     return false;
   }
-
   return true;
 }
 
