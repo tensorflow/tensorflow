@@ -1033,7 +1033,7 @@ Status FindKernelRegistration(const DeviceType& device_type,
       if (*reg != nullptr) {
         return errors::InvalidArgument(
             "Multiple OpKernel registrations match NodeDef '",
-            SummarizeNodeDef(node_def), "': '",
+            FormatNodeDefForError(node_def), "': '",
             ProtoShortDebugString((*reg)->def), "' and '",
             ProtoShortDebugString(iter->second.def), "'");
       }
@@ -1058,7 +1058,7 @@ Status FindKernelDef(const DeviceType& device_type, const NodeDef& node_def,
     Status s = errors::NotFound(
         "No registered '", node_def.op(), "' OpKernel for ",
         DeviceTypeString(device_type), " devices compatible with node ",
-        SummarizeNodeDef(node_def));
+        FormatNodeDefForError(node_def));
     if (was_attr_mismatch) {
       errors::AppendToMessage(
           &s, " (OpKernel was found, but attributes didn't match)");
@@ -1184,7 +1184,7 @@ Status CreateOpKernel(DeviceType device_type, DeviceBase* device,
     s.Update(errors::NotFound("No registered '", node_def.op(),
                               "' OpKernel for ", DeviceTypeString(device_type),
                               " devices compatible with node ",
-                              SummarizeNodeDef(node_def)));
+                              FormatNodeDefForError(node_def)));
     if (was_attr_mismatch) {
       errors::AppendToMessage(
           &s, " (OpKernel was found, but attributes didn't match)");
@@ -1199,7 +1199,7 @@ Status CreateOpKernel(DeviceType device_type, DeviceBase* device,
   DataTypeVector outputs;
   s.Update(InOutTypesForNode(node_def, *op_def, &inputs, &outputs));
   if (!s.ok()) {
-    errors::AppendToMessage(&s, " for node: ", SummarizeNodeDef(node_def));
+    errors::AppendToMessage(&s, " for node: ", FormatNodeDefForError(node_def));
     return s;
   }
 

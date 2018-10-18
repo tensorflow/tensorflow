@@ -529,7 +529,7 @@ Status Graph::UpdateEdge(Node* new_src, int new_src_index, Node* dst,
   const Edge* e = FindEdge(dst, dst_index);
   if (e == nullptr) {
     return errors::InvalidArgument("Couldn't find edge to ",
-                                   dst->DebugString());
+                                   FormatNodeForError(*dst));
   }
   RemoveEdge(e);
   AddEdge(new_src, new_src_index, dst, dst_index);

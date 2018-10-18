@@ -696,8 +696,8 @@ Status CreateMultipleNextIterationInputsError(Node* merge) {
     }
   }
   return errors::InvalidArgument(
-      "Multiple NextIteration inputs to merge node ", SummarizeNode(*merge),
-      ": \n", absl::StrJoin(backedges, "\n"),
+      "Multiple NextIteration inputs to merge node ",
+      FormatNodeForError(*merge), ": \n", absl::StrJoin(backedges, "\n"),
       "\nMerge nodes can have at most one incoming NextIteration edge.");
 }
 
