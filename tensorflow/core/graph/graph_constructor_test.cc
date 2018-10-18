@@ -3229,6 +3229,32 @@ TEST_F(GraphConstructorTest, ImportGraphDef_ValidateDefaultDevice) {
   }
 }
 
+TEST_F(GraphConstructorTest, ImportGraphDef_ValidateDefaultDeviceWithAlreadyPresentedDevice) {
+  std::string orig_device = "some dev";
+  std::string gdef_ascii(
+      R"EOF(
+      node { name: 'test_input' op: 'TestInput' device: 'some dev' }
+      node { name: 'test_op' op: 'TestMul' input: [ 'test_input:0', 'test_input:1' ] device: 'some dev' }
+      )EOF");
+
+  GraphDef gdef;
+  CHECK(protobuf::TextFormat::ParseFromString(gdef_ascii, &gdef));
+
+  ImportGraphDefOptions options;
+  std::string dev = "/gpu:13";
+  options.default_device = dev;
+  options.return_nodes = std::vector<std::string>{"test_input", "test_op"};
+
+  ImportGraphDefResults res;
+
+  TF_EXPECT_OK(ImportGraphDef(options, gdef, &graph_, NULL, &res));
+  EXPECT_EQ(res.return_nodes.size(), options.return_nodes.size());
+  for (auto node: res.return_nodes) {
+    // since we already have device in graph_def, import should not be able to overwrite that, let's check that
+    EXPECT_EQ(node->requested_device(), orig_device);
+  }
+}
+
 TEST_F(GraphConstructorTest, ImportGraphDef_UnknownOps) {
   const string pb_ascii = "node { name: 'op_from_contrib' op: 'OpFromContrib'}";
   // Try load twice to check for two parts of the error message. We cannot check
