@@ -419,7 +419,10 @@ void Export(const TocoFlags& toco_flags, const Model& model,
 
       params.quantize_weights = toco_flags.post_training_quantize();
 
-      toco::tflite::Export(model, output_file_contents, params);
+      auto status = toco::tflite::Export(model, output_file_contents, params);
+      if (!status.ok()) {
+        LOG(QFATAL) << status.error_message();
+      }
     } break;
     case GRAPHVIZ_DOT:
       DumpGraphviz(model, output_file_contents);
