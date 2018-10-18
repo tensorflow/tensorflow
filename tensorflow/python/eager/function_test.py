@@ -88,7 +88,7 @@ class DefunnedMiniModel(MiniModel):
 
 
 @test_util.with_c_shapes
-class FunctionTest(test.TestCase):
+class FunctionTest(test.TestCase, parameterized.TestCase):
 
   def testBasic(self):
     matmul = function.defun(math_ops.matmul)
@@ -2149,7 +2149,7 @@ class FunctionTest(test.TestCase):
           t = constant_op.constant([[1.0, 2.0], [3.0, 4.0]])
           add(t, t)
 
-  def testRegisterFunction(self):
+  def testRegisterPolymorphicFunction(self):
     @function.defun
     def add(x, y):
       return math_ops.add(x, y)
@@ -2210,6 +2210,65 @@ class FunctionTest(test.TestCase):
         for i in range(len(functions)):
           self.assertEquals(captured_function_names[i],
                             functions[i].definition.signature.name)
+
+  @parameterized.named_parameters(
+      dict(testcase_name='Defun',
+           function_decorator=function.defun),
+      dict(testcase_name='DefFunction',
+           function_decorator=def_function.function))
+  def testRegisterConcreteFunction(self, function_decorator):
+    @function_decorator
+    def py_add(x, y):
+      return math_ops.add(x, y)
+
+    py_add(array_ops.ones([]), array_ops.ones([]))
+    add = py_add.get_concrete_function(
+        tensor_spec.TensorSpec(None, dtypes.float32),
+        tensor_spec.TensorSpec(None, dtypes.float32))
+
+    @function_decorator
+    def py_composite(x, y):
+      return x, add(x, y)
+
+    py_composite(array_ops.ones([]), array_ops.ones([]))
+    composite = py_composite.get_concrete_function(
+        tensor_spec.TensorSpec(None, dtypes.float32),
+        tensor_spec.TensorSpec(None, dtypes.float32))
+
+    with context.graph_mode(), self.cached_session():
+      with ops.get_default_graph().as_default():
+        t = constant_op.constant([[1.0, 2.0], [3.0, 4.0]])
+        function.register_concrete(composite)
+
+        graph = ops.get_default_graph()
+        # pylint: disable=protected-access
+        self.assertEqual(len(graph._functions), 6)
+        # two sets of functions, each of them are (inference, forward, backward)
+        functions = list(graph._functions.values())
+        captured_function_names = [
+            f.definition.signature.name for f in functions
+        ]
+        expected_func_name_regex = [
+            '.*inference.*py_composite.*',
+            '.*inference.*py_add.*',
+            '.*forward.*py_composite.*',
+            '.*forward.*py_add.*',
+            '.*inference.*backward.*py_composite.*',
+            '.*inference.*backward.*py_add.*',
+        ]
+        for expected, found in zip(
+            expected_func_name_regex,
+            captured_function_names):
+          self.assertRegexpMatches(found, expected)
+
+        composite_t, composite_double = composite(t, t)
+        double = add(t, t)
+        self.assertAllEqual([[2, 4], [6, 8]], self.evaluate(double))
+        self.assertAllEqual([[2, 4], [6, 8]], self.evaluate(composite_double))
+        self.assertAllEqual([[1, 2], [3, 4]], self.evaluate(composite_t))
+        # Make sure the pre registered function is used, and no other function
+        # is added.
+        self.assertEqual(len(graph._functions), 6)
 
   def testRegisterFunctionWithInputSignature(self):
     def matmul(x, y):
