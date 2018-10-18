@@ -354,8 +354,10 @@ TEST_F(XlaCompilerTest, HasSaneErrorOnNonCompileTimeConstantInputToReshape) {
   EXPECT_TRUE(
       absl::StrContains(status.error_message(), "depends on a parameter"))
       << status.error_message();
-  EXPECT_TRUE(
-      absl::StrContains(status.error_message(), "[[{{node C}} = Reshape"))
+  EXPECT_TRUE(absl::StrContains(status.error_message(), "{{node C}}"))
+      << status.error_message();
+  EXPECT_TRUE(absl::StrContains(status.error_message(),
+                                "must be a compile-time constant"))
       << status.error_message();
 }
 

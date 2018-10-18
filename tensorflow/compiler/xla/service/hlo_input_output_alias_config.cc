@@ -157,10 +157,11 @@ Status HloInputOutputAliasConfig::Verify(const HloModule& module) const {
                                     const ShapeIndex& param_index) -> Status {
     const HloInstruction* root = entry->root_instruction();
 
+    TF_RET_CHECK(0 <= param_number);
+    TF_RET_CHECK(entry->num_parameters() > param_number);
     const Shape& param_shape =
         entry->parameter_instruction(param_number)->shape();
     const Shape& output_shape = root->shape();
-    TF_RET_CHECK(entry->num_parameters() > param_number);
     TF_RET_CHECK(ShapeUtil::IndexIsValid(param_shape, param_index));
     TF_RET_CHECK(ShapeUtil::IndexIsValid(output_shape, output_index));
 

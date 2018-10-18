@@ -715,8 +715,14 @@ TfLiteStatus EvalFloat(
     TfLiteTensor* activation_state, TfLiteTensor* cell_state,
     TfLiteTensor* output) {
   TF_LITE_ASSERT(input->dims->size >= 2 && input->dims->size <= 3);
-  const int max_time = (input->dims->size == 2) ? 1 : input->dims->data[0];
-  const int n_batch = input->dims->data[input->dims->size - 2];
+  int max_time, n_batch;
+  if (input->dims->size == 3) {
+    max_time = (time_major) ? input->dims->data[0] : input->dims->data[1];
+    n_batch = (time_major) ? input->dims->data[1] : input->dims->data[0];
+  } else {
+    max_time = 1;
+    n_batch = input->dims->data[0];
+  }
   const int n_input = input->dims->data[input->dims->size - 1];
   const int aux_input_size =
       (aux_input) ? aux_input->dims->data[aux_input->dims->size - 1] : 0;
@@ -821,6 +827,9 @@ TfLiteStatus EvalFloat(
         // backwards.
         const int t_rel = forward_sequence ? t : max_time - t - 1;
         const float* input_ptr = input->data.f + t_rel * input_step;
+        if (aux_input) {
+          aux_input_ptr = aux_input->data.f + t_rel * input_step;
+        }
         float* output_ptr_time =
             output->data.f + t_rel * output_step + output_offset;
 
@@ -874,9 +883,15 @@ TfLiteStatus EvalHybrid(
     TfLiteTensor* cell_state_quantized, TfLiteTensor* output_state,
     TfLiteTensor* cell_state, TfLiteTensor* output) {
   TF_LITE_ASSERT(input->dims->size >= 2 && input->dims->size <= 3);
-  const int max_time = (input->dims->size == 2) ? 1 : input->dims->data[0];
-  const int n_batch = input->dims->data[input->dims->size - 2];
   const int n_input = input->dims->data[input->dims->size - 1];
+  int max_time, n_batch;
+  if (input->dims->size == 2) {
+    max_time = 1;
+    n_batch = input->dims->data[0];
+  } else {
+    max_time = (time_major) ? input->dims->data[0] : input->dims->data[1];
+    n_batch = (time_major) ? input->dims->data[1] : input->dims->data[0];
+  }
   const int aux_input_size =
       (aux_input) ? aux_input->dims->data[aux_input->dims->size - 1] : 0;
   // n_cell and n_output will be the same size when there is no projection.
@@ -1078,6 +1093,9 @@ TfLiteStatus EvalHybrid(
         // backwards.
         const int t_rel = forward_sequence ? t : max_time - t - 1;
         const float* input_ptr = input->data.f + t_rel * input_step;
+        if (aux_input) {
+          aux_input_ptr = aux_input->data.f + t_rel * input_step;
+        }
         float* output_ptr =
             output->data.f + t_rel * output_step + output_offset;
 

@@ -81,10 +81,6 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
-    name: "InteractiveSession"
-    mtype: "<type \'type\'>"
-  }
-  member {
     name: "LogMessage"
     mtype: "<class \'google.protobuf.pyext.cpp_message.GeneratedProtocolMessageType\'>"
   }
@@ -123,10 +119,6 @@ tf_module {
   member {
     name: "RunOptions"
     mtype: "<class \'google.protobuf.pyext.cpp_message.GeneratedProtocolMessageType\'>"
-  }
-  member {
-    name: "Session"
-    mtype: "<type \'type\'>"
   }
   member {
     name: "SessionLog"
@@ -757,10 +749,6 @@ tf_module {
     argspec: "args=[\'bytes\', \'out_type\', \'little_endian\', \'name\'], varargs=None, keywords=None, defaults=[\'True\', \'None\'], "
   }
   member_method {
-    name: "delete_session_tensor"
-    argspec: "args=[\'handle\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
-  }
-  member_method {
     name: "dequantize"
     argspec: "args=[\'input\', \'min_range\', \'max_range\', \'mode\', \'name\'], varargs=None, keywords=None, defaults=[\'MIN_COMBINED\', \'None\'], "
   }
@@ -939,18 +927,6 @@ tf_module {
   member_method {
     name: "get_default_graph"
     argspec: "args=[], varargs=None, keywords=None, defaults=None"
-  }
-  member_method {
-    name: "get_default_session"
-    argspec: "args=[], varargs=None, keywords=None, defaults=None"
-  }
-  member_method {
-    name: "get_session_handle"
-    argspec: "args=[\'data\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
-  }
-  member_method {
-    name: "get_session_tensor"
-    argspec: "args=[\'handle\', \'dtype\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
     name: "gradients"

@@ -162,7 +162,9 @@ class TestCase(test.TestCase):
       namer = FakeNamer()
     program_ctx = converter.ProgramContext(
         options=converter.ConversionOptions(
-            recursive=recursive, strip_decorators=strip_decorators),
+            recursive=recursive,
+            strip_decorators=strip_decorators,
+            verbose=True),
         partial_types=None,
         autograph_module=None,
         uncompiled_modules=config.DEFAULT_UNCOMPILED_MODULES)

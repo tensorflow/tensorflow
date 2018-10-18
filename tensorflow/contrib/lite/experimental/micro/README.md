@@ -90,7 +90,8 @@ To understand what's happening here, try running the same depthwise convolution 
 
 ```
 tensorflow/contrib/lite/experimental/micro/testing/test_bluepill_binary.sh \
-tensorflow/contrib/lite/experimental/micro/tools/make/gen/bluepill_cortex-m3/bin/tensorflow/contrib/lite/experimental/micro/kernels/depthwise_conv_test
+tensorflow/contrib/lite/experimental/micro/tools/make/gen/bluepill_cortex-m3/bin/tensorflow/contrib/lite/experimental/micro/kernels/depthwise_conv_test \
+'~~~ALL TESTS PASSED~~~'
 
 ```
 

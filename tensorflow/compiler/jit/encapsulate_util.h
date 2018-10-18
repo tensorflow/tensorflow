@@ -44,6 +44,77 @@ Status PerformStaticShapeInferenceBeforeEncapsulation(
     Graph* g, const string& xla_computation_attr_name,
     const string& outside_compilation_attr_name);
 
+// Attribute indicating that some ops in this node's XLA computation has control
+// dependency on this node. Attribute value will always be "true".
+extern const char kXlaConnectedToXlaComputationAttrName[];
+
+// Attribute indicating that this node has control dependency on some ops in
+// this node's XLA computation. Attribute value will always be "true".
+extern const char kXlaConnectedFromXlaComputationAttrName[];
+
+// Attribute indicating that some ops in other XLA computation has control
+// dependency on this node. Attribute value will be a list of string (XLA
+// computation names).
+extern const char kXlaConnectedToOtherXlaComputationAttrName[];
+
+// Attribute indicating that this node has control dependency on some ops in
+// other XLA computation. Attribute value will be a list of string (XLA
+// computation names).
+extern const char kXlaConnectedFromOtherXlaComputationAttrName[];
+
+// Attribute indicating that this node has control dependencies on some other
+// nodes. Attribute value will be a list of string (node names).
+extern const char kXlaControlDependenciesAttrName[];
+
+// Attribute indicating that this is an Identity node added to act as a bridge
+// between different XLA computations. Attribute value will be string (source
+// node name).
+extern const char kBridgeSourceNodeAttrName[];
+
+// Attribute indicating that this is an Placeholder node added to act as a
+// temporary input node for an outside compilation node. Attribute value will be
+// string (original input node name).
+extern const char kOutsideCompilationToHostOriginalNodeAttrName[];
+
+// Attribute indicating that this is an Placeholder node added to act as a
+// temporary input node for an outside compilation node. Attribute value will be
+// int (src_output for original edge).
+extern const char kOutsideCompilationToHostSrcOutputAttrName[];
+
+// Attribute indicating that this is an Placeholder node added to act as a
+// temporary input node for an host node. Attribute value will be string
+// (original input node name).
+extern const char kHostToOutsideCompilationOriginalNodeAttrName[];
+
+// Attribute indicating that this is an Placeholder node added to act as a
+// temporary input node for a host node. Attribute value will be int (src_output
+// for original edge).
+extern const char kHostToOutsideCompilationSrcOutputAttrName[];
+
+// Preprocesses the graph for encapsulation. It will perform the following
+// operations in order:
+//
+// 1a. For control edges between outside compilation and its XLA computation,
+//     add attr "kXlaConnected{From, To}XlaComputationAttrName = true" to the
+//     outside compilation node.
+// 1b. For control edges between outside compilation and another XLA
+//     computation, add attr "kXlaConnected{From, To}OtherXlaComputationAttrName
+//     = XLA computation node name" to the outside compilation node.
+// 1c. For control edges between different outside compilations, remove the edge
+//     and add attr "kXlaControlDependenciesAttrName = src node name" to dst
+//     node.
+// 1d. For control edges between outside compilation and host computation,
+//     remove the edge and add attr "kXlaControlDependenciesAttrName = src node
+//     name" to dst node.
+// 2. For data edges between different XLA computations, if either src or dst
+//    is outside compilation, add an Identity node in between the edge. The
+//    identity node will have attr kBridgeSourceNodeAttrName.
+// 3. For data edges between outside compilation and host computation, remove
+//    the edge and create a Placeholder node as dst node's input.
+Status PreprocessForEncapsulation(Graph* g,
+                                  const string& xla_computation_attr_name,
+                                  const string& outside_compilation_attr_name);
+
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_COMPILER_JIT_ENCAPSULATE_UTIL_H_

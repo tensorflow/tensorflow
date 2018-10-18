@@ -1537,6 +1537,13 @@ def _convert_identity(pfor_input, op_type, op_func):
   return wrap(op_func(*[x.t for x in pfor_input.inputs]), True)
 
 
+@RegisterPFor("IdentityN")
+def _convert_identity_n(pfor_input):
+  outputs = array_ops.identity_n([x.t for x in pfor_input.inputs])
+  return [wrap(out, inp.is_stacked) for out, inp in
+          zip(outputs, pfor_input.inputs)]
+
+
 @RegisterPFor("Reshape")
 def _convert_reshape(pfor_input):
   t = pfor_input.stacked_input(0)

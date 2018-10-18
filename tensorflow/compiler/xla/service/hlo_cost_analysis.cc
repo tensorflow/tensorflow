@@ -674,7 +674,18 @@ Status HloCostAnalysis::HandleGather(const HloInstruction* gather) {
 }
 
 Status HloCostAnalysis::HandleScatter(const HloInstruction* scatter) {
-  // TODO(b/32945756): Compute the properties of the sub-computation.
+  current_properties_[kBytesAccessedKey] =
+      GetShapeSize(scatter->operand(2)->shape()) * 2 +
+      GetShapeSize(scatter->operand(1)->shape());
+  const int64 element_count =
+      ShapeUtil::ElementsIn(scatter->operand(2)->shape());
+  TF_ASSIGN_OR_RETURN(const Properties sub_properties,
+                      ProcessSubcomputation(scatter->to_apply()));
+  for (const auto& property : sub_properties) {
+    if (property.first != kBytesAccessedKey) {
+      current_properties_[property.first] = property.second * element_count;
+    }
+  }
   return Status::OK();
 }
 

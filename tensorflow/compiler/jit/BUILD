@@ -84,6 +84,7 @@ cc_library(
         "//tensorflow/compiler/xla/service:cpu_plugin",  # buildcleaner: keep
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:lib",
+        "@com_google_absl//absl/memory",
     ],
     alwayslink = 1,
 )
@@ -101,6 +102,7 @@ cc_library(
         "//tensorflow/compiler/xla/service:gpu_plugin",  # buildcleaner: keep
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:lib",
+        "@com_google_absl//absl/memory",
     ],
     alwayslink = 1,
 )
@@ -116,7 +118,7 @@ cc_library(
         "//tensorflow/compiler/tf2xla:xla_compiler",
         "//tensorflow/compiler/tf2xla/kernels:xla_ops",
         "//tensorflow/compiler/xla/service:interpreter_plugin",  # buildcleaner: keep
-        "//tensorflow/core:lib",
+        "@com_google_absl//absl/memory",
     ],
     alwayslink = 1,
 )
@@ -411,7 +413,11 @@ cc_library(
     hdrs = ["encapsulate_util.h"],
     deps = [
         ":shape_inference",
+        "//tensorflow/compiler/tf2xla:tf2xla_util",
+        "//tensorflow/core:framework",
         "//tensorflow/core:graph",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:optional",
     ],
@@ -440,6 +446,7 @@ cc_library(
         "deadness_analysis_internal.h",
         "encapsulate_subgraphs_pass.cc",
         "encapsulate_xla_computations_pass.cc",
+        "extract_outside_compilation_pass.cc",
         "mark_for_compilation_pass.cc",
         "mark_for_compilation_pass_test_helper.cc",
         "partially_decluster_pass.cc",
@@ -449,12 +456,14 @@ cc_library(
         "deadness_analysis.h",
         "encapsulate_subgraphs_pass.h",
         "encapsulate_xla_computations_pass.h",
+        "extract_outside_compilation_pass.h",
         "mark_for_compilation_pass.h",
         "mark_for_compilation_pass_test_helper.h",
         "partially_decluster_pass.h",
     ],
     deps = [
         ":common",
+        ":encapsulate_util",
         ":shape_inference_helpers",
         ":union_find",
         ":xla_cluster_util",
@@ -467,6 +476,7 @@ cc_library(
         "//tensorflow/compiler/jit/ops:xla_ops",
         "//tensorflow/compiler/tf2xla:dump_graph",
         "//tensorflow/compiler/tf2xla:resource_operation_table",
+        "//tensorflow/compiler/tf2xla:tf2xla_util",
         "//tensorflow/compiler/tf2xla:xla_compiler",
         "//tensorflow/compiler/tf2xla/cc:xla_jit_ops",
         "//tensorflow/compiler/xla:status_macros",
@@ -564,12 +574,14 @@ tf_cc_test(
         "build_xla_ops_pass_test.cc",
         "encapsulate_subgraphs_pass_test.cc",
         "encapsulate_xla_computations_pass_test.cc",
+        "extract_outside_compilation_pass_test.cc",
         "mark_for_compilation_pass_test.cc",
         "partially_decluster_pass_test.cc",
     ],
     deps = [
         ":common",
         ":compilation_passes",
+        ":encapsulate_util",
         ":node_matchers",
         ":xla_cluster_util",
         ":xla_cpu_device",
@@ -579,6 +591,7 @@ tf_cc_test(
         "//tensorflow/cc:function_ops",
         "//tensorflow/cc:ops",
         "//tensorflow/cc:resource_variable_ops",
+        "//tensorflow/cc:scope",
         "//tensorflow/cc:sendrecv_ops",
         "//tensorflow/compiler/jit/kernels:xla_ops",
         "//tensorflow/compiler/tf2xla:test_util",
@@ -590,6 +603,7 @@ tf_cc_test(
         "//tensorflow/core:framework",
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",

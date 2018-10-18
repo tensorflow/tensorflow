@@ -51,6 +51,9 @@ namespace {
 // Mark functions that were created as a result of function specialization.
 constexpr char kGrapplerSpecializedFuncAttr[] = "_GrapplerSpecializedFunc";
 
+// Name of the attribute that defines the function for indirect function calls.
+constexpr char kFuncAttrName[] = "f";
+
 constexpr char kNoInlineAttr[] = "_noinline";
 
 bool AttrIsTrue(const FunctionDef& func, const string& attr) {
@@ -63,6 +66,43 @@ bool MarkedSpecialized(const FunctionDef& func) {
 
 bool MarkedNoInline(const FunctionDef& func) {
   return AttrIsTrue(func, kNoInlineAttr);
+}
+
+// There are two ways of calling a Tensorflow function:
+//
+// 1. Direct function call: node.op() is the name of the function.
+//
+// 2. Indirect function call: the function name is passed through a node
+//    attribute, and special Tensorflow kernels are responsible for calling the
+//    function through the FunctionLibraryRuntime. Example: PartitionedCallOp.
+
+// Check if func_node.op() matches the name in FunctionDef signature.
+bool IsDirectFunctionCall(const FunctionDef& func, const NodeDef& func_node) {
+  return func_node.op() == func.signature().name();
+}
+
+// Check if func_node has function attribute with a function name matching
+// FunctionDef signature.
+bool IsIndirectFunctionCall(const FunctionDef& func, const NodeDef& func_node) {
+  auto* func_attr = AttrSlice(func_node).Find(kFuncAttrName);
+  return func_attr != nullptr && func_attr->has_func() &&
+         func_attr->func().name() == func.signature().name();
+}
+
+AttrSlice FunctionInstantiationAttributes(const FunctionDef& func,
+                                          const NodeDef& func_node) {
+  if (IsDirectFunctionCall(func, func_node)) {
+    return AttrSlice(func_node);
+
+  } else if (IsIndirectFunctionCall(func, func_node)) {
+    auto* func_attr = AttrSlice(func_node).Find(kFuncAttrName);
+    return AttrSlice(&func_attr->func().attr());
+
+  } else {
+    LOG(WARNING) << "Can't resolve function instantiation attributes: "
+                 << SummarizeNodeDef(func_node);
+    return AttrSlice();
+  }
 }
 
 // Find unique name for the specialized function. Collision can happen if
@@ -169,11 +209,16 @@ struct FunctionSpecializationSignature {
 
 struct FunctionSpecialization {
   string specialized_func_name;
+  // True if the function caller node is in GrapplerItem fetch set.
+  bool is_in_fetch_set;
   // Names of the tensors that were pushed down into the function body.
   gtl::FlatSet<string> const_inputs;
   // Control dependencies of pushed down const inputs have to be attached to
   // function caller node.
   gtl::FlatSet<string> control_deps;
+  // Output tensors (ports) that consumed by other nodes in the graph or in a
+  // GrapplerItem fetch set.
+  gtl::FlatSet<int> active_outputs;
   // Mapping from original function output port to the output port of
   // specialized function. If function specialization changes the number of
   // function outputs it's required to update all node consumers.
@@ -517,32 +562,32 @@ Status PushDownConstInputs(const NodeDef& func_node,
 
 // Remove inputs that were pushed into the function body, and attach their
 // control dependencies to the function caller node.
-void RemovePushedDownConstInputs(const gtl::FlatSet<string>& const_inputs,
-                                 const gtl::FlatSet<string>& control_deps,
+void RemovePushedDownConstInputs(const FunctionSpecialization& specialization,
                                  NodeDef* specialized_func_node) {
   // Nothing to do if it was no const inputs to the function node.
-  if (const_inputs.empty()) return;
+  if (specialization.const_inputs.empty()) return;
 
   // Keep only non-const inputs.
   std::vector<string> keep_inputs;
   const auto& inputs = specialized_func_node->input();
   std::copy_if(inputs.begin(), inputs.end(), std::back_inserter(keep_inputs),
                [&](const string& input) {
-                 return const_inputs.find(input) == const_inputs.end();
+                 return specialization.const_inputs.find(input) ==
+                        specialization.const_inputs.end();
                });
 
   specialized_func_node->clear_input();
   for (const auto& keep : keep_inputs) specialized_func_node->add_input(keep);
 
   // Attach control dependencies of pushed down const input to the caller node.
-  if (!control_deps.empty()) {
+  if (!specialization.control_deps.empty()) {
     gtl::FlatSet<string> existing_control_deps;
 
     for (const string& input : keep_inputs) {
       existing_control_deps.insert(AsControlDependency(NodeName(input)));
     }
 
-    for (const string& ctrl : control_deps) {
+    for (const string& ctrl : specialization.control_deps) {
       if (existing_control_deps.find(ctrl) == existing_control_deps.end()) {
         VLOG(3) << "Forward control dependency: input=" << ctrl;
         specialized_func_node->add_input(ctrl);
@@ -551,10 +596,118 @@ void RemovePushedDownConstInputs(const gtl::FlatSet<string>& const_inputs,
   }
 }
 
+// Remove Tin type parameters for pushed down const inputs.
+void RemovePushedDownConstInputTypes(
+    const FunctionSpecialization& specialization, const NodeDef& func_node,
+    NodeDef* specialized_func_node) {
+  // Nothing to do if it was no const inputs to the function node.
+  if (specialization.const_inputs.empty()) return;
+
+  // Make sure that original function caller has Tin attribute.
+  const AttrValue* tin = AttrSlice(func_node).Find("Tin");
+  if (tin == nullptr || !tin->has_list()) return;
+
+  // Clear input types for the specialized node.
+  auto* attr = specialized_func_node->mutable_attr();
+  (*attr)["Tin"].mutable_list()->clear_type();
+
+  // Keep types of non-const inputs.
+  for (int i = 0; i < func_node.input_size(); ++i) {
+    const string& input = func_node.input(i);
+    if (IsControlInput(input)) break;
+
+    if (specialization.const_inputs.find(input) ==
+        specialization.const_inputs.end()) {
+      DataType dt = tin->list().type(i);
+      (*attr)["Tin"].mutable_list()->add_type(dt);
+    }
+  }
+}
+
+// Remove Tout type parameters for pruned function outputs.
+void RemoveUnusedOutputsTypes(const FunctionSpecialization& specialization,
+                              const NodeDef& func_node,
+                              NodeDef* specialized_func_node) {
+  // Make sure that original function caller has Tout attribute.
+  const AttrValue* tout = AttrSlice(func_node).Find("Tout");
+  if (tout == nullptr || !tout->has_list()) return;
+
+  // Nothing to do if all outputs are active.
+  if (specialization.active_outputs.size() == tout->list().type_size()) return;
+
+  // Clear input types for the specialized node.
+  auto* attr = specialized_func_node->mutable_attr();
+  (*attr)["Tout"].mutable_list()->clear_type();
+
+  // Keep output types of active outputs only.
+  for (int i = 0; i < tout->list().type_size(); ++i) {
+    if (specialization.active_outputs.find(i) !=
+        specialization.active_outputs.end()) {
+      DataType dt = tout->list().type(i);
+      (*attr)["Tout"].mutable_list()->add_type(dt);
+    }
+  }
+}
+
+Status UpdateSpecializedFunctionCallSite(const FunctionDef& func,
+                                         const NodeDef& func_node,
+                                         const string& specialized_func_name,
+                                         NodeDef* specialized_func_node) {
+  if (IsDirectFunctionCall(func, func_node)) {
+    specialized_func_node->set_op(specialized_func_name);
+
+  } else if (IsIndirectFunctionCall(func, func_node)) {
+    auto* attr = specialized_func_node->mutable_attr();
+    (*attr)[kFuncAttrName].mutable_func()->set_name(specialized_func_name);
+
+  } else {
+    return errors::InvalidArgument("Unknown function call site");
+  }
+
+  return Status::OK();
+}
+
+// Update a graph node created from the original function caller node, to the
+// function specialization. Function specialization might change the number of
+// inputs and outputs, so we have to make sure that graph node is updated
+// accordingly.
+Status UpdateSpecializedFunctionNode(
+    const FunctionDef& func, const NodeDef& func_node,
+    const FunctionSpecialization& specialization,
+    NodeDef* specialized_func_node) {
+  // Function called indirectly via custom kernel (e.g. PartitionedCallOp).
+  bool is_indirect_call = IsIndirectFunctionCall(func, func_node);
+
+  // 1. Call the specialized function instead of original one.
+  TF_RETURN_IF_ERROR(UpdateSpecializedFunctionCallSite(
+      func, func_node, specialization.specialized_func_name,
+      specialized_func_node));
+
+  // 2. Remove inputs corresponding to the pushed down consts.
+  RemovePushedDownConstInputs(specialization, specialized_func_node);
+
+  // 3. Update input types for the indirect function calls.
+  if (is_indirect_call) {
+    RemovePushedDownConstInputTypes(specialization, func_node,
+                                    specialized_func_node);
+  }
+
+  // 4. Update output types for the indirect function call. It's unsafe to
+  // change the number of outputs for the fetch nodes, so we just skip them.
+  if (is_indirect_call && !specialization.is_in_fetch_set) {
+    RemoveUnusedOutputsTypes(specialization, func_node, specialized_func_node);
+  }
+
+  // 5. Remove custom gradient annotation.
+  specialized_func_node->mutable_attr()->erase("_gradient_op_type");
+
+  return Status::OK();
+}
+
 Status InitializeFunctionSpecializationSignature(
     const NodeDef& func_node, const FunctionDef& func,
-    const AttrValueMap& func_attr, const FunctionOptimizerContext& ctx,
-    FunctionSpecializationSignature* sig) {
+    const AttrSlice& func_instantiation_attr,
+    const FunctionOptimizerContext& ctx, FunctionSpecializationSignature* sig) {
   DCHECK(sig->const_inputs.empty());
   DCHECK(sig->active_outputs.empty());
 
@@ -562,13 +715,14 @@ Status InitializeFunctionSpecializationSignature(
   sig->is_in_fetch_set = ctx.IsFetchNode(func_node.name());
   sig->active_outputs = GetActiveOutputs(func_node, ctx);
 
-  TF_RETURN_IF_ERROR(
-      InstantiationTypeParameters(func, func_attr, &sig->type_parameters));
-  TF_RETURN_IF_ERROR(
-      InstantiationBodyParameters(func, func_attr, &sig->body_parameters));
+  TF_RETURN_IF_ERROR(InstantiationTypeParameters(func, func_instantiation_attr,
+                                                 &sig->type_parameters));
+  TF_RETURN_IF_ERROR(InstantiationBodyParameters(func, func_instantiation_attr,
+                                                 &sig->body_parameters));
 
   for (int i = 0; i < func_node.input_size(); ++i) {
     const string& input = func_node.input(i);
+    if (IsControlInput(input)) break;
     if (ctx.IsTrulyConst(input)) {
       sig->const_inputs.emplace(i, input);
     }
@@ -581,15 +735,14 @@ Status SpecializeFunction(const NodeDef& func_node, const FunctionDef& func,
                           const int graph_def_version,
                           FunctionOptimizerContext* ctx,
                           GraphDef* optimized_graph) {
-  VLOG(2) << "Specialize function instantiation: "
-          << SummarizeNodeDef(func_node);
+  VLOG(2) << "Specialize function call: " << SummarizeNodeDef(func_node);
 
-  const std::unordered_map<string, AttrValue> func_attr(
-      func_node.attr().begin(), func_node.attr().end());
+  const AttrSlice func_instantiation_attr =
+      FunctionInstantiationAttributes(func, func_node);
 
   FunctionSpecializationSignature signature;
   TF_RETURN_IF_ERROR(InitializeFunctionSpecializationSignature(
-      func_node, func, func_attr, *ctx, &signature));
+      func_node, func, func_instantiation_attr, *ctx, &signature));
 
   // Check if function was already specialized for identical context.
   const FunctionSpecialization* already_specialized =
@@ -603,11 +756,9 @@ Status SpecializeFunction(const NodeDef& func_node, const FunctionDef& func,
     // Add a function call node for the specialized function.
     NodeDef* specialized_func_node = optimized_graph->add_node();
     *specialized_func_node = func_node;
-    specialized_func_node->set_op(already_specialized->specialized_func_name);
 
-    RemovePushedDownConstInputs(already_specialized->const_inputs,
-                                already_specialized->control_deps,
-                                specialized_func_node);
+    TF_RETURN_IF_ERROR(UpdateSpecializedFunctionNode(
+        func, func_node, *already_specialized, specialized_func_node));
 
     ctx->AddOutputMapping(specialized_func_node->name(), *already_specialized);
 
@@ -620,8 +771,8 @@ Status SpecializeFunction(const NodeDef& func_node, const FunctionDef& func,
   // Make a GrapplerFunctionItem and convert it back to FunctionDef after
   // pushing all constant inputs into the function body.
   GrapplerFunctionItem item;
-  TF_RETURN_IF_ERROR(MakeGrapplerFunctionItem(func, func_attr, flib,
-                                              graph_def_version, &item));
+  TF_RETURN_IF_ERROR(MakeGrapplerFunctionItem(func, func_instantiation_attr,
+                                              flib, graph_def_version, &item));
 
   // Push const inputs into the function body, and keep track of their control
   // dependencies.
@@ -657,14 +808,14 @@ Status SpecializeFunction(const NodeDef& func_node, const FunctionDef& func,
   // Add a function call node for the specialized function.
   NodeDef* specialized_func_node = optimized_graph->add_node();
   *specialized_func_node = func_node;
-  specialized_func_node->set_op(specialized_func_name);
-
-  // Update specialized node to remove inputs for pushed down consts.
-  RemovePushedDownConstInputs(const_inputs, control_deps,
-                              specialized_func_node);
 
   FunctionSpecialization func_specialization = {
-      specialized_func_name, const_inputs, control_deps, output_mapping};
+      specialized_func_name, signature.is_in_fetch_set, const_inputs,
+      control_deps,          signature.active_outputs,  output_mapping};
+
+  TF_RETURN_IF_ERROR(UpdateSpecializedFunctionNode(
+      func, func_node, func_specialization, specialized_func_node));
+
   ctx->AddSpecializedFunction(signature, func_specialization);
   ctx->AddOutputMapping(specialized_func_node->name(), func_specialization);
 
@@ -718,12 +869,19 @@ Status InlineFunction(const NodeDef& func_node, const FunctionDef& func,
                       const int graph_def_version, GraphDef* optimized_graph) {
   VLOG(2) << "Inline function instantiation: " << SummarizeNodeDef(func_node);
 
-  const std::unordered_map<string, AttrValue> func_attr(
-      func_node.attr().begin(), func_node.attr().end());
+  // Specialized function call kernels might have behavior that is not
+  // representable in a graph (e.g. runtime ops device placing).
+  if (!IsDirectFunctionCall(func, func_node)) {
+    return errors::InvalidArgument("Can't inline indirect function call");
+  }
+
+  const AttrSlice func_instantiation_attr =
+      FunctionInstantiationAttributes(func, func_node);
 
   GrapplerFunctionItem item;
-  Status item_status = MakeGrapplerFunctionItem(
-      func, func_attr, ctx.function_library(), graph_def_version, &item);
+  Status item_status = MakeGrapplerFunctionItem(func, func_instantiation_attr,
+                                                ctx.function_library(),
+                                                graph_def_version, &item);
 
   if (!item_status.ok()) {
     return errors::InvalidArgument("Failed to inline function ", func_node.op(),
@@ -919,7 +1077,7 @@ Status FunctionOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
   bool specialize_func = options_.enable_function_specialization;
 
   for (const NodeDef& node : item.graph.node()) {
-    const string func_name = node.op();
+    const string op_name = node.op();
 
     // Each node optimization can modify optimized graph only by adding new
     // nodes, we can check node size to make sure that graph was not modified.
@@ -945,8 +1103,11 @@ Status FunctionOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
     }                                                              \
   } while (0)
 
-    // 1. Inline symbolic gradients into the optimized graph.
-    if (func_name == "SymbolicGradient" && inline_gradients) {
+    // ---------------------------------------------------------------------- //
+    // 1. Inline symbolic gradients into the optimized graph.                 //
+    // ---------------------------------------------------------------------- //
+
+    if (op_name == "SymbolicGradient" && inline_gradients) {
       // Inline symbolic gradients only if the corresponding function is inlined
       const auto* f_attr = gtl::FindOrNull(node.attr(), "f");
       string f_name = f_attr != nullptr ? f_attr->func().name() : "";
@@ -957,11 +1118,14 @@ Status FunctionOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
       }
     }
 
-    // 2. Check if a node op is a function call.
-    const FunctionDef* func = ctx.function_library().Find(func_name);
+    // ---------------------------------------------------------------------- //
+    // 2. Inline or specialize direct function calls.                         //
+    // ---------------------------------------------------------------------- //
+
+    const FunctionDef* func = ctx.function_library().Find(op_name);
     if (func != nullptr) {
       // 2a. Inline it if it's allowed to do so.
-      if (inline_func && ctx.IsInlinedFunction(func_name)) {
+      if (inline_func && ctx.IsInlinedFunction(op_name)) {
         // Inline function body into the optimized graph}
         TF_SKIP_ERROR_IF_GRAPH_UNMODIFIED(
             InlineFunction(node, *func, ctx, item.graph.versions().producer(),
@@ -970,7 +1134,7 @@ Status FunctionOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
       }
 
       // Do not specialize if function has custom gradient.
-      const string grad_func = ctx.function_library().FindGradient(func_name);
+      const string grad_func = ctx.function_library().FindGradient(op_name);
 
       // 2b. Specialize it to it's instantiation context if can't be inlined,
       // and it has something worth specializing.
@@ -987,6 +1151,42 @@ Status FunctionOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
       }
     }
 
+    // ---------------------------------------------------------------------- //
+    // 3. Specialize indirect function calls through the PartitionedCallOp.   //
+    // ---------------------------------------------------------------------- //
+
+    bool is_partitioned_call =
+        IsPartitionedCall(node) || IsStatefulPartitionedCall(node);
+
+    // We can only specialize PartitionedCall ops. Inlining is not supported.
+    if (is_partitioned_call && specialize_func) {
+      const AttrValue* func_attr = AttrSlice(node).Find("f");
+      string indirect_func_name =
+          (func_attr != nullptr && func_attr->has_func())
+              ? func_attr->func().name()
+              : "";
+      const FunctionDef* indirect_func =
+          ctx.function_library().Find(indirect_func_name);
+
+      if (indirect_func != nullptr) {
+        // Do not specialize if function has custom gradient.
+        const string grad_func =
+            ctx.function_library().FindGradient(indirect_func_name);
+
+        // Specialize it to it's instantiation context.
+        bool specialization_worthy =
+            IsParametrized(*indirect_func) || HasTrulyConstInputs(node, ctx) ||
+            HasUnusedOutputs(node, *indirect_func, ctx);
+        if (grad_func.empty() && specialization_worthy) {
+          TF_SKIP_ERROR_IF_GRAPH_UNMODIFIED(SpecializeFunction(
+              node, *indirect_func, item.graph.versions().producer(), &ctx,
+              optimized_graph));
+          continue;
+        }
+      }
+    }
+
+    // ---------------------------------------------------------------------- //
     // If we reached this point, node was not handled by any of the stages
     // (inline, specialize), simply add a copy to the graph.
     add_node_copy();
@@ -1006,7 +1206,7 @@ Status FunctionOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
         int from = mapping.first;
         int to = mapping.second;
 
-        // Find the output port corresponding to the old output position.
+        // Get the output port corresponding to the old output position.
         GraphView::OutputPort from_port =
             optimized_graph_view.GetOutputPort(node_name, from);
 

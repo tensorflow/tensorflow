@@ -98,6 +98,12 @@ class MirroredTwoDeviceDistributionTest(strategy_test_lib.DistributionTestBase):
       self.skipTest("Not GPU test")
     self.assertEqual(2, self._get_distribution_strategy().num_towers)
 
+  def testNumReplicasInSync(self):
+    if not GPU_TEST:
+      self.skipTest("Not GPU test")
+    self.assertEqual(2, self._get_distribution_strategy().
+                     num_replicas_in_sync)
+
   @test_util.run_in_graph_and_eager_modes
   def testCallAndMergeExceptions(self):
     if not GPU_TEST:
@@ -1429,7 +1435,6 @@ class MirroredStrategyDefunTest(test.TestCase):
       self.assertAllEqual([0.5], updated_var_values[1])
 
 
-
 class MultiWorkerMirroredStrategyTest(
     multi_worker_test_base.MultiWorkerTestBase,
     strategy_test_lib.DistributionTestBase):
@@ -1441,6 +1446,12 @@ class MultiWorkerMirroredStrategyTest(
     strategy = mirrored_strategy.MirroredStrategy(num_gpus=context.num_gpus())
     strategy.configure(cluster_spec=cluster_spec)
     return strategy
+
+  def test_num_replicas_in_sync(self):
+    strategy = self._get_distribution_strategy()
+    # We calculate the total number of gpus across the workers(2) specified in
+    # the cluster spec.
+    self.assertEqual(context.num_gpus() * 2, strategy.num_replicas_in_sync)
 
   def testMinimizeLossGraph(self):
     self._test_minimize_loss_graph(self._get_distribution_strategy(),
