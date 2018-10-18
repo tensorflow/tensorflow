@@ -115,6 +115,30 @@ class OptimizeDatasetTest(test_base.DatasetTestBase):
       sess.run(init_op, {input_t: np.ones([1, 512, 1024, 1025], np.int32)})
       sess.run(get_next)
 
+  def testOptimizationNestedDataset(self):
+
+    def flat_map_fn(_):
+      dataset = dataset_ops.Dataset.from_tensors(0)
+      dataset = dataset.apply(optimization.assert_next(["MemoryCacheImpl"]))
+      dataset = dataset.skip(0)  # Should be removed by noop elimination
+      dataset = dataset.cache()
+      return dataset
+
+    dataset = dataset_ops.Dataset.range(1)
+    dataset = dataset.flat_map(flat_map_fn)
+
+    options = dataset_ops.Options()
+    options.experimental_noop_elimination = True
+    dataset = dataset.with_options(options)
+
+    iterator = dataset.make_one_shot_iterator()
+    get_next = iterator.get_next()
+
+    with self.cached_session() as sess:
+      self.assertEquals(0, sess.run(get_next))
+      with self.assertRaises(errors.OutOfRangeError):
+        sess.run(get_next)
+
 
 if __name__ == "__main__":
   test.main()
