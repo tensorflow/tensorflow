@@ -78,6 +78,10 @@ def while_loop(cond, body, loop_vars, shape_invariants=None, name=None):
 
     flattened_shapes = [tensor_shape.scalar()] + flattened_shapes
 
+    # Automatic control dependencies are added in defuns, but not in v1
+    # graphs. Propagate that behavior here.
+    add_control_dependencies = util.in_defun()
+
     # Build a `cond` wrapper that can handle the extra counter loop_var.
     def wrapped_cond(unused_loop_counter, *loop_vars):
       return cond(*loop_vars)
@@ -88,7 +92,8 @@ def while_loop(cond, body, loop_vars, shape_invariants=None, name=None):
     ]
     cond_graph = function.func_graph_from_py_func(
         cond_name, wrapped_cond, flattened_loop_vars, {}, signature=signature,
-        func_graph=util.WhileCondFuncGraph(cond_name))
+        func_graph=util.WhileCondFuncGraph(cond_name),
+        add_control_dependencies=add_control_dependencies)
 
     # Add external_captures of cond to the list of loop vars.
     # Note that external tensors will be treated as loop invariants, i.e.,
@@ -128,7 +133,8 @@ def while_loop(cond, body, loop_vars, shape_invariants=None, name=None):
     ]
     body_graph = function.func_graph_from_py_func(
         body_name, wrapped_body, flattened_loop_vars, {}, signature=signature,
-        func_graph=util.WhileBodyFuncGraph(body_name))
+        func_graph=util.WhileBodyFuncGraph(body_name),
+        add_control_dependencies=add_control_dependencies)
     # Add external captures of body to the list of loop vars.
     # Note that external tensors will be treated as loop invariants, i.e.,
     # the value of that tensor in each iteration is the same as it was at the
@@ -186,6 +192,14 @@ def while_loop(cond, body, loop_vars, shape_invariants=None, name=None):
 
     _copy_handle_data(body_graph.outputs, outputs)
     _maybe_set_lowering_attr(outputs[0].op)
+
+    # Return identities for each output of the While op, rather than the output
+    # of the While op directly. This makes pruning work if the output of
+    # while_loop() is fetched: the lowering pass converts the While outputs into
+    # IdentityN outputs, which if fetched will cause all ops in the body to be
+    # run (since it takes all exit ops as input). After lowering, each output
+    # identity op will end up with only the appropriate exit op as input.
+    outputs = tuple(array_ops.identity(t) for t in outputs)
 
   # First var is loop counter.
   if num_outputs == 1:

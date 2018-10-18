@@ -246,7 +246,7 @@ class WhileV2Test(test.TestCase, parameterized.TestCase):
 
     # Forward pass.
     ret = while_loop_v2(lambda v, u: v < 8., lambda v, u: (v * v, u), [x, y])
-    while_op = ret[0].op
+    while_op = ret[0].op.inputs[0].op
     # Get the TensorList output of While op containing the accumulated values
     # of y.
     # while_op.inputs: [counter_arg, x_arg, y_arg, *accumulators]
@@ -271,7 +271,7 @@ class WhileV2Test(test.TestCase, parameterized.TestCase):
     """Helper function testDefaultName."""
     output = while_v2.while_loop(lambda i: i < 3, lambda i: i + 1,
                                  [constant_op.constant(0)])
-    while_op = output.op
+    while_op = output.op.inputs[0].op
     self.assertEqual(while_op.type, "While")
     return while_op
 
