@@ -1947,15 +1947,29 @@ tensorflow::Status ConvertQuantize(OpConverterParams* params) {
     params->outputs->push_back(inputs.at(0));
     return tensorflow::Status::OK();
   }
-  nvinfer1::ITensor* tensor = const_cast<nvinfer1::ITensor*>(inputs.at(0).tensor());
-  // Min
-  TRT_ShapedWeights weights_min = inputs.at(1).weights();
-  auto weights_min_ptr = static_cast<float*>(const_cast<void*>(weights_min.GetValues()));
-  float min_range = weights_min_ptr[0];
-  // Max
-  TRT_ShapedWeights weights_max = inputs.at(2).weights();
-  auto weights_max_ptr = static_cast<float*>(const_cast<void*>(weights_max.GetValues()));
-  float max_range = weights_max_ptr[0];
+  float min_range = 0.0f;
+  float max_range = 0.0f;
+  if (inputs.size() == 1) {
+    // Get ranges from attributes
+    TFAttrs attrs(node_def);
+    min_range = attrs.get<float>("min");
+    max_range = attrs.get<float>("max");
+  } else if (inputs.size() == 3) {
+    // Get ranges from inputs
+    // Min
+    TRT_ShapedWeights weights_min = inputs.at(1).weights();
+    auto weights_min_ptr = static_cast<float*>(const_cast<void*>(
+        weights_min.GetValues()));
+    min_range = weights_min_ptr[0];
+    // Max
+    TRT_ShapedWeights weights_max = inputs.at(2).weights();
+    auto weights_max_ptr = static_cast<float*>(const_cast<void*>(
+        weights_max.GetValues()));
+    max_range = weights_max_ptr[0];
+  } else {
+    return tensorflow::errors::InvalidArgument(
+        "Expected 1 or 3 inputs for quantize node, at ", node_def.name());
+  }
   // Store ranges for tensor
   params->converter->ProvideQuantizationRange(tensor, min_range, max_range);
   // Sometimes, TRT may not quantize a tensor, either because it chooses to
@@ -3016,6 +3030,7 @@ void Converter::RegisterOpConverters() {
   op_registry_["QuantizeAndDequantizeV2"] = ConvertQuantize;
   op_registry_["QuantizeAndDequantizeV3"] = ConvertQuantize;
   op_registry_["FakeQuantWithMinMaxVars"] = ConvertQuantize;
+  op_registry_["FakeQuantWithMinMaxArgs"] = ConvertQuantize;
 #endif
 
   plugin_converter_ = ConvertPlugin;

@@ -139,6 +139,7 @@ Status TrtCandidateSelector::IsTensorRTCandidate(const tensorflow::Node* node, i
     "QuantizeAndDequantizeV2",
     "QuantizeAndDequantizeV3",
     "FakeQuantWithMinMaxVars",
+    "FakeQuantWithMinMaxArgs",
   };
   if (precision_mode == INT8MODE &&
       quantize_ops.count(node->type_string())) {

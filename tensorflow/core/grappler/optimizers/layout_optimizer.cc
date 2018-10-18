@@ -121,6 +121,7 @@ std::set<string> GetOpsFormatAgnostic() {
                                           "Exp",
                                           "Expm1",
                                           "FakeQuantWithMinMaxVars",
+                                          "FakeQuantWithMinMaxArgs",
                                           "Fill",
                                           "Floor",
                                           "FloorDiv",
