@@ -86,7 +86,7 @@ build --define=grpc_no_ares=true
 
 # Modular TF build options
 build:dynamic_kernels --define=dynamic_loaded_kernels=true
-build:dynamic_kernels -DAUTOLOAD_DYNAMIC_KERNELS
+build:dynamic_kernels --copt=-DAUTOLOAD_DYNAMIC_KERNELS
 
 # Default paths for TF_SYSTEM_LIBS
 build --define=PREFIX=/usr
