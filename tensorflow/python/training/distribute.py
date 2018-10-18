@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Class DistributionStrategy, TowerContext, and supporting APIs."""
+"""Class DistributionStrategy, ReplicaContext, and supporting APIs."""
 
 from __future__ import absolute_import
 from __future__ import division
@@ -83,10 +83,10 @@ def get_loss_reduction():
 # Internal API for validating the current thread mode
 
 
-def _require_cross_tower_context(distribution_strategy):
-  """Verify in cross-tower context for `distribution_strategy`."""
+def _require_cross_replica_context(distribution_strategy):
+  """Verify in cross-replica context for `distribution_strategy`."""
   context = _get_per_thread_mode()
-  if context.cross_tower_context is distribution_strategy: return
+  if context.cross_replica_context is distribution_strategy: return
   # We have an error to report, figure out the right message.
   if context.distribution_strategy is not distribution_strategy:
     if (context.distribution_strategy is
@@ -98,24 +98,24 @@ def _require_cross_tower_context(distribution_strategy):
       raise RuntimeError(
           "Mixing different DistributionStrategy objects: %s is not %s" %
           (context.distribution_strategy, distribution_strategy))
-  assert context.cross_tower_context is None
-  raise RuntimeError("Method requires being in cross-tower context, use "
-                     "get_tower_context().merge_call()")
+  assert context.cross_replica_context is None
+  raise RuntimeError("Method requires being in cross-replica context, use "
+                     "get_replica_context().merge_call()")
 
 
-def require_tower_context(tower_ctx):
-  """Verify in `tower_ctx` tower context."""
+def require_replica_context(replica_ctx):
+  """Verify in `replica_ctx` replica context."""
   context = _get_per_thread_mode()
-  if context.tower_context is tower_ctx: return
+  if context.replica_context is replica_ctx: return
   # We have an error to report, figure out the right message.
-  if context.tower_context is None:
-    raise RuntimeError("Need to be inside `call_for_each_tower()`")
-  if context.distribution_strategy is tower_ctx.distribution_strategy:
-    # Two different TowerContexts with the same DistributionStrategy.
-    raise RuntimeError("Mismatching tower context.")
+  if context.replica_context is None:
+    raise RuntimeError("Need to be inside `call_for_each_replica()`")
+  if context.distribution_strategy is replica_ctx.distribution_strategy:
+    # Two different ReplicaContexts with the same DistributionStrategy.
+    raise RuntimeError("Mismatching replica context.")
   raise RuntimeError(
       "Mismatching DistributionStrategy objects: %s is not %s." %
-      (context.distribution_strategy, tower_ctx.distribution_strategy))
+      (context.distribution_strategy, replica_ctx.distribution_strategy))
 
 
 def _require_distribution_strategy_scope(distribution_strategy):
@@ -147,7 +147,7 @@ class _CurrentDistributionContext(object):
                var_creator_scope,
                var_scope=None,
                default_device=None):
-    self._context = distribution_strategy_context._CrossTowerThreadMode(  # pylint: disable=protected-access
+    self._context = distribution_strategy_context._CrossReplicaThreadMode(  # pylint: disable=protected-access
         distribution_strategy)
     self._var_creator_scope = var_creator_scope
     self._var_scope = var_scope
@@ -216,12 +216,12 @@ class DistributionStrategy(object):
     across multiple devices.
     Note: we only support data parallelism for now, but
     hope to add support for model parallelism in the future.
-  * A _tower_ is one copy of the model, running on one slice of the
+  * A _replica_ is one copy of the model, running on one slice of the
     input data.
   * _Synchronous_, or more commonly _sync_, training is where the
-    updates from each tower are aggregated together before updating
+    updates from each replica are aggregated together before updating
     the model variables. This is in contrast to _asynchronous_, or
-    _async_ training, where each tower updates the model variables
+    _async_ training, where each replica updates the model variables
     independently.
   * Furthermore you might run your computation on multiple devices
     on one machine (or "host"), or on multiple machines/hosts.
@@ -233,7 +233,7 @@ class DistributionStrategy(object):
   To distribute an algorithm, we might use some of these ingredients:
 
   * Parameter servers: These are hosts that hold a single copy of
-    parameters/variables. All towers that want to operate on a variable
+    parameters/variables. All replicas that want to operate on a variable
     retrieve it at the beginning of a step and send an update to be
     applied at the end of the step. Can support either sync or async
     training.
@@ -243,7 +243,7 @@ class DistributionStrategy(object):
   * Reductions and Allreduce: A _reduction_ is some method of
     aggregating multiple values into one value, like "sum" or
     "mean". If doing sync training, we will perform a reduction on the
-    gradients to a parameter from all towers before applying the
+    gradients to a parameter from all replicas before applying the
     update. Allreduce is an algorithm for performing a reduction on
     values from multiple devices and making the result available on
     all of those devices.
@@ -257,7 +257,7 @@ class DistributionStrategy(object):
     This code should work as before, even if some of the layers, etc.
     used by that code are written to be distribution-aware. This is done
     by having a default `DistributionStrategy` that gives ordinary behavior,
-    and by default being in a single tower context.
+    and by default being in a single replica context.
   * Ordinary model code that you want to run using a specific
     `DistributionStrategy`. This can be as simple as:
 
@@ -265,16 +265,16 @@ class DistributionStrategy(object):
     with my_distribution.scope():
       iterator = my_distribution.distribute_dataset(
           dataset).make_one_shot_iterator()
-      tower_train_ops = my_distribution.call_for_each_tower(
-          tower_fn, iterator.get_next())
-      train_op = tf.group(my_distribution.unwrap(tower_train_ops))
+      replica_train_ops = my_distribution.call_for_each_replica(
+          replica_fn, iterator.get_next())
+      train_op = tf.group(my_distribution.unwrap(replica_train_ops))
     ```
 
-    This takes an ordinary `dataset` and `tower_fn` and runs it
+    This takes an ordinary `dataset` and `replica_fn` and runs it
     distributed using a particular `DistributionStrategy` in
-    `my_distribution`. Any variables created in `tower_fn` are created
+    `my_distribution`. Any variables created in `replica_fn` are created
     using `my_distribution`'s policy, and library functions called by
-    `tower_fn` can use the `get_tower_context()` API to get enhanced
+    `replica_fn` can use the `get_replica_context()` API to get enhanced
     behavior in this case.
 
     You can also create an initializable iterator instead of a one-shot
@@ -293,37 +293,37 @@ class DistributionStrategy(object):
   Lower-level concepts:
 
   * Wrapped values: In order to represent values parallel across devices
-    (either towers or the devices associated with a particular value), we
+    (either replicas or the devices associated with a particular value), we
     wrap them in a "PerDevice" or "Mirrored" object that contains a map
     from device to values. "PerDevice" is used when the value may be
     different across devices, and "Mirrored" when the value are the same.
   * Unwrapping and merging: Consider calling a function `fn` on
-    multiple devices, like `call_for_each_tower(fn, w)` with an
+    multiple devices, like `call_for_each_replica(fn, w)` with an
     argument `w` that is a wrapped value. This means `w` will have a
-    map taking tower device `d0` to `w0`, tower device `d1` to `w1`,
-    etc. `call_for_each_tower()` unwraps `w` before calling `fn`, so
+    map taking replica device `d0` to `w0`, replica device `d1` to `w1`,
+    etc. `call_for_each_replica()` unwraps `w` before calling `fn`, so
     it calls `fn(w0)` on `d0`, `fn(w1)` on `d1`, etc.  It then merges
     the return values from `fn()`, which can possibly result in
     wrapped values. For example, let's say `fn()` returns a tuple with
-    three components: `(x, a, v0)` from tower 0, `(x, b, v1)` on tower 1,
+    three components: `(x, a, v0)` from replica 0, `(x, b, v1)` on replica 1,
     etc. If the first component is the same object `x` from every
-    tower, then the first component of the merged result will also be
+    replica, then the first component of the merged result will also be
     `x`. If the second component is different (`a`, `b`, ...)  from
-    each tower, then the merged value will have a wrapped map from
-    tower device to the different values. If the third component is
+    each replica, then the merged value will have a wrapped map from
+    replica device to the different values. If the third component is
     the members of a mirrored variable (`v` maps `d0` to `v0`, `d1` to
     `v1`, etc.), then the merged result will be that mirrored variable
     (`v`).
-  * Tower context vs. Cross-tower context: _tower context_ is when we
-    are in some function that is being called once for each tower.
-    Otherwise we are in cross-tower context, which is useful for
+  * Replica context vs. Cross-replica context: _replica context_ is when we
+    are in some function that is being called once for each replica.
+    Otherwise we are in cross-replica context, which is useful for
     calling `DistributionStrategy` methods which operate across the
-    towers (like `reduce()`). By default you start in a tower context
-    (the default "single tower context") and then some methods can
+    replicas (like `reduce()`). By default you start in a replica context
+    (the default "single replica context") and then some methods can
     switch you back and forth, as described below.
-  * Worker devices vs. parameter devices: Most tower computations will
+  * Worker devices vs. parameter devices: Most replica computations will
     happen on worker devices. Since we don't yet support model
-    parallelism, there will be one worker device per tower. When using
+    parallelism, there will be one worker device per replica. When using
     parameter servers (see above), the set of devices holding
     variables may be different, otherwise the parameter devices might
     match the worker devices.
@@ -341,87 +341,87 @@ class DistributionStrategy(object):
   called _locality_ that says what values are compatible with which
   APIs:
 
-  * T: different value for each tower (e.g. a PerDevice-wrapped value).
-  * M: value is "mirrored" across towers, i.e. there are copies with the
-    same value on each tower (e.g. a Mirrored-wrapped value).
+  * T: different value for each replica (e.g. a PerDevice-wrapped value).
+  * M: value is "mirrored" across replicas, i.e. there are copies with the
+    same value on each replica (e.g. a Mirrored-wrapped value).
   * V(`v`): value is "mirrored" across all the devices which have a
     copy of variable `v` (also a Mirrored-wrapped value, but over
     parameter devices instead of worker devices).
   * N: value is "mirrored" across all the "non-slot" devices
 
-  Rules for methods with respect to locality and single-tower vs.
-  cross-tower context:
+  Rules for methods with respect to locality and single-replica vs.
+  cross-replica context:
 
-  * `with d.scope()`: default single-tower context -> cross-tower context for
-    `d`
-  * `with d.colocate_vars_with(v)`: in tower/cross-tower context, variables
+  * `with d.scope()`: default single-replica context -> cross-replica context
+    for `d`
+  * `with d.colocate_vars_with(v)`: in replica/cross-replica context, variables
     will be created with locality V(`v`). That is, if we write
     `with d.colocate_vars_with(v1): v2 = tf.get_variable(...)`, then
     `v2` will have locality V(`v1`), i.e. locality V(`v2`) will equal
     V(`v1`).
   * `with d.colocate_vars_with(d.non_slot_devices(...))`: in
-    tower/cross-tower context, variables will be created with locality N
-  * `v = tf.get_variable(...)`: in tower/cross-tower context, creates
+    replica/cross-replica context, variables will be created with locality N
+  * `v = tf.get_variable(...)`: in replica/cross-replica context, creates
     a variable (which by definition will have locality V(`v`), though
     will match another locality if inside a `colocate_vars_with`
     scope).
-  * `d.distribute_dataset(dataset).make_one_shot_iterator()`: in cross-tower
+  * `d.distribute_dataset(dataset).make_one_shot_iterator()`: in cross-replica
     context, produces an iterator with locality T
-  * `d.broadcast(t)`: in cross-tower context, produces a value with locality M
-  * `d.broadcast(t, v)`: in cross-tower context, produces a value with
+  * `d.broadcast(t)`: in cross-replica context, produces a value with locality M
+  * `d.broadcast(t, v)`: in cross-replica context, produces a value with
     locality V(`v`)
-  * `d.call_for_each_tower(fn, ...)`: in cross-tower context, runs
-    `fn()` in a tower context (and so may call `get_tower_context()` and
-    use its API, including `merge_call()` to get back to cross-tower
-    context), once for each tower. May use values with locality T or
+  * `d.call_for_each_replica(fn, ...)`: in cross-replica context, runs
+    `fn()` in a replica context (and so may call `get_replica_context()` and
+    use its API, including `merge_call()` to get back to cross-replica
+    context), once for each replica. May use values with locality T or
     M, and any variable.
-  * `d.reduce(m, t, t)`: in cross-tower context, accepts t with locality T
+  * `d.reduce(m, t, t)`: in cross-replica context, accepts t with locality T
     and produces a value with locality M.
-  * `d.reduce(m, t, v)`: in cross-tower context, accepts t with
+  * `d.reduce(m, t, v)`: in cross-replica context, accepts t with
     locality T and produces a value with locality V(`v`).
   * `d.batch_reduce(m, [(t, v)]): see `d.reduce()`
-  * `d.update(v, fn, ...)`: in cross-tower context, runs `fn()` once
+  * `d.update(v, fn, ...)`: in cross-replica context, runs `fn()` once
     for each device `v` is copied to, all inputs should have locality
     V(`v`), output will have locality V(`v`) as well.
-  * `d.update_non_slot(d.non_slot_devices(), fn)`: in cross-tower
+  * `d.update_non_slot(d.non_slot_devices(), fn)`: in cross-replica
     context, like `d.update()` except with locality N.
   * `d.read_var(v)`: Gets the (read-only) value of the variable `v` (on
     the device determined by the current device scope), aggregating
-    across towers for tower-local variables. Frequently, this will be
+    across replicas for replica-local variables. Frequently, this will be
     done automatically when using `v` in an expression or fetching it in
-    a cross-tower context, but this function can be used to force that
+    a cross-replica context, but this function can be used to force that
     conversion happens at a particular point in time (for example, to
     add the result of the conversion to a graph collection).
 
   The standard pattern for updating variables is to:
 
   1. Wrap your input dataset in `d.distribute_dataset()` and create an iterator.
-  2. Define each tower `d.call_for_each_tower()` up to the point of
+  2. Define each replica `d.call_for_each_replica()` up to the point of
      getting a list of gradient, variable pairs.
   3. Call `d.reduce(VariableAggregation.SUM, t, v)` or `d.batch_reduce()` to sum
      the gradients (with locality T) into values with locality V(`v`).
   4. Call `d.update(v)` for each variable to update its value.
 
   Steps 3 and 4 are done automatically by class `Optimizer` if you call
-  its `apply_gradients` method in a tower context. Otherwise you can
-  manually call its `_distributed_apply` method in a cross-tower context.
+  its `apply_gradients` method in a replica context. Otherwise you can
+  manually call its `_distributed_apply` method in a cross-replica context.
 
-  Another thing you might want to do in the middle of your tower function
+  Another thing you might want to do in the middle of your replica function
   is an all-reduce of some intermediate value, using `d.reduce()` or
   `d.batch_reduce()`. You simply provide the same tensor as the input and
   destination.
 
-  Layers should expect to be called in a tower context, and can use
-  the `get_tower_context()` function to get a `TowerContext` object. The
-  `TowerContext` object has a `merge_call()` method for entering
-  cross-tower context where you can use `reduce()` (or
+  Layers should expect to be called in a replica context, and can use
+  the `get_replica_context()` function to get a `ReplicaContext` object. The
+  `ReplicaContext` object has a `merge_call()` method for entering
+  cross-replica context where you can use `reduce()` (or
   `batch_reduce()`) and then optionally `update()` to update state.
 
   You may use this API whether or not a `DistributionStrategy` is
   being used, since there is a default implementation of
-  `TowerContext` and `DistributionStrategy`. Or you can use the
-  `get_tower_context().is_single_tower` property to run different code
-  in the distributed vs. single tower cases.
+  `ReplicaContext` and `DistributionStrategy`. Or you can use the
+  `get_replica_context().is_single_replica` property to run different code
+  in the distributed vs. single replica cases.
   """
 
   # TODO(josh11b): Raise an exception if variable partitioning requested before
@@ -430,8 +430,8 @@ class DistributionStrategy(object):
   # TODO(josh11b): `map()`
   # TODO(josh11b): ClusterSpec/ClusterResolver
   # TODO(josh11b): Partitioned computations, state; sharding
-  # TODO(josh11b): Model parallelism: "towers" with multiple devices; shuffling
-  # TODO(josh11b): List of towers with their worker and parameter devices
+  # TODO(josh11b): Model parallelism: "replicas" with multiple devices; shuffling
+  # TODO(josh11b): List of replicas with their worker and parameter devices
   #   (where the parameter devices may overlap in the ps case).
 
   def __init__(self):
@@ -445,13 +445,13 @@ class DistributionStrategy(object):
 
     Inside a `with distribution_strategy.scope():` code block, this thread
     will use a variable creator set by `distribution_strategy`, and will
-    enter its "cross-tower context".
+    enter its "cross-replica context".
 
     Returns:
       A context manager.
     """
     if distribution_strategy_context.has_distribution_strategy():
-      _require_cross_tower_context(self)
+      _require_cross_replica_context(self)
       return _SameScopeAgainContext(self)
 
     def creator_with_resource_vars(*args, **kwargs):
@@ -480,14 +480,14 @@ class DistributionStrategy(object):
   def read_var(self, v):
     """Reads the value of a variable.
 
-    Returns the aggregate value of a tower-local variable, or the
+    Returns the aggregate value of a replica-local variable, or the
     (read-only) value of any other variable.
 
     Args:
       v: A variable allocated within the scope of this `DistributionStrategy`.
 
     Returns:
-      A tensor representing the value of `v`, aggregated across towers if
+      A tensor representing the value of `v`, aggregated across replicas if
       necessary.
     """
     raise NotImplementedError("must be implemented in descendants")
@@ -548,9 +548,9 @@ class DistributionStrategy(object):
   # Dataset API such as make_one_shot_iterator and make_initializable_iterator.
   # Extend to implement more functionality of datasets.
   def distribute_dataset(self, dataset_fn):
-    """Return a `dataset` split across all towers.
+    """Return a `dataset` split across all replicas.
 
-    Suitable for providing input to for `call_for_each_tower()` by creating an
+    Suitable for providing input to for `call_for_each_replica()` by creating an
     iterator:
 
     ```
@@ -559,15 +559,15 @@ class DistributionStrategy(object):
     with distribution_strategy.scope():
       distributed_dataset = distribution_strategy.distribute_dataset(dataset_fn)
       iterator = distributed_dataset.make_one_shot_iterator()
-      tower_results = distribution_strategy.call_for_each_tower(
-          tower_fn, iterator.get_next())
+      replica_results = distribution_strategy.call_for_each_replica(
+          replica_fn, iterator.get_next())
     ```
 
     Args:
       dataset_fn: A function that returns a `tf.data.Dataset`.
 
     Returns:
-      A `PerDeviceDataset` that will produce data for each tower.
+      A `PerDeviceDataset` that will produce data for each replica.
     """
     raise NotImplementedError("must be implemented in descendants")
 
@@ -584,7 +584,7 @@ class DistributionStrategy(object):
       A value mirrored to `destinations` devices.
     """
     # TODO(josh11b): More docstring
-    _require_cross_tower_context(self)
+    _require_cross_replica_context(self)
     return self._broadcast(tensor, destinations)
 
   def _broadcast(self, tensor, destinations):
@@ -645,8 +645,8 @@ class DistributionStrategy(object):
         look like `def step_fn(context, x, y)`. If the iterator returns a single
         value say `return x` then the value is passed as is; the step_fn
         signature would look like `def step_fn(context, x)`.
-        Typically, `fn` will use `call_for_each_tower` method of the strategy
-        to distribute the computation over multiple towers.
+        Typically, `fn` will use `call_for_each_replica` method of the strategy
+        to distribute the computation over multiple replicas.
       iterator: Iterator of a dataset that represents the input for `fn`. The
         caller is responsible for initializing the iterator as needed.
       iterations: (Optional) Number of iterations that `fn` should be run.
@@ -666,7 +666,7 @@ class DistributionStrategy(object):
         - non_tensor_outputs: A dictionatry containing anything that was set by
           `fn` by calling `context.set_non_tensor_output`.
     """
-    _require_cross_tower_context(self)
+    _require_cross_replica_context(self)
     return self._run_steps_on_dataset(fn, iterator, iterations,
                                       initial_loop_values)
 
@@ -674,43 +674,43 @@ class DistributionStrategy(object):
                             initial_loop_values):
     raise NotImplementedError("must be implemented in descendants")
 
-  def call_for_each_tower(self, fn, *args, **kwargs):
-    """Run `fn` once per tower.
+  def call_for_each_replica(self, fn, *args, **kwargs):
+    """Run `fn` once per replica.
 
-    `fn` may call `tf.get_tower_context()` to access methods such as
-    `tower_id()` and `merge_call()`.
+    `fn` may call `tf.get_replica_context()` to access methods such as
+    `replica_id()` and `merge_call()`.
 
-    `merge_call()` is used to communicate between the towers and
-    re-enter the cross-tower context. All towers pause their execution
+    `merge_call()` is used to communicate between the replicas and
+    re-enter the cross-replica context. All replicas pause their execution
     having encountered a `merge_call()` call. After that the
     `merge_fn`-function is executed. Its results are then unwrapped and
-    given back to each tower call. After that execution resumes until
+    given back to each replica call. After that execution resumes until
     `fn` is complete or encounters another `merge_call()`.  Example:
 
     ```python
-    # Called once in "cross-tower" context.
-    def merge_fn(distribution, three_plus_tower_id):
-      # sum the values across towers
-      return sum(distribution.unwrap(three_plus_tower_id))
+    # Called once in "cross-replica" context.
+    def merge_fn(distribution, three_plus_replica_id):
+      # sum the values across replicas
+      return sum(distribution.unwrap(three_plus_replica_id))
 
-    # Called once per tower in `distribution`, in a "tower" context.
+    # Called once per replica in `distribution`, in a "replica" context.
     def fn(three):
-      tower_ctx = tf.get_tower_context()
-      v = three + tower_ctx.tower_id
-      # Computes the sum of the `v` values across all towers.
-      s = tower_ctx.merge_call(merge_fn, v)
+      replica_ctx = tf.get_replica_context()
+      v = three + replica_ctx.replica_id
+      # Computes the sum of the `v` values across all replicas.
+      s = replica_ctx.merge_call(merge_fn, v)
       return s + v
 
     with distribution.scope():
-      # in "cross-tower" context
+      # in "cross-replica" context
       ...
-      merged_results = distribution.call_for_each_tower(fn, 3)
-      # merged_results has the values from every tower execution of `fn`.
+      merged_results = distribution.call_for_each_replica(fn, 3)
+      # merged_results has the values from every replica execution of `fn`.
       print(distribution.unwrap(merged_results))  # Prints a list
     ```
 
     Args:
-      fn: function to run (will be run once per tower).
+      fn: function to run (will be run once per replica).
       *args: positional arguments for `fn`
       **kwargs: keyword arguments for `fn`.
           `"run_concurrently"`: Boolean indicating whether executions of `fn`
@@ -718,22 +718,73 @@ class DistributionStrategy(object):
              `True`.
 
     Returns:
-      Merged return value of `fn` across all towers.
+      Merged return value of `fn` across all replicas.
     """
-    _require_cross_tower_context(self)
+    _require_cross_replica_context(self)
+    return self._call_for_each_tower(fn, *args, **kwargs)
+
+  def call_for_each_tower(self, fn, *args, **kwargs):
+    """Run `fn` once per replica. DEPRECATED.
+
+    DEPRECATED: Use `call_for_each_replica` instead.
+
+    `fn` may call `tf.get_replica_context()` to access methods such as
+    `replica_id()` and `merge_call()`.
+
+    `merge_call()` is used to communicate between the replicas and
+    re-enter the cross-replica context. All replicas pause their execution
+    having encountered a `merge_call()` call. After that the
+    `merge_fn`-function is executed. Its results are then unwrapped and
+    given back to each replica call. After that execution resumes until
+    `fn` is complete or encounters another `merge_call()`.  Example:
+
+    ```python
+    # Called once in "cross-replica" context.
+    def merge_fn(distribution, three_plus_replica_id):
+      # sum the values across replicas
+      return sum(distribution.unwrap(three_plus_replica_id))
+
+    # Called once per replica in `distribution`, in a "replica" context.
+    def fn(three):
+      replica_ctx = tf.get_replica_context()
+      v = three + replica_ctx.replica_id
+      # Computes the sum of the `v` values across all replicas.
+      s = replica_ctx.merge_call(merge_fn, v)
+      return s + v
+
+    with distribution.scope():
+      # in "cross-replica" context
+      ...
+      merged_results = distribution.call_for_each_replica(fn, 3)
+      # merged_results has the values from every replica execution of `fn`.
+      print(distribution.unwrap(merged_results))  # Prints a list
+    ```
+
+    Args:
+      fn: function to run (will be run once per replica).
+      *args: positional arguments for `fn`
+      **kwargs: keyword arguments for `fn`.
+          `"run_concurrently"`: Boolean indicating whether executions of `fn`
+             can be run concurrently (under eager execution only), defaults to
+             `True`.
+
+    Returns:
+      Merged return value of `fn` across all replicas.
+    """
+    _require_cross_replica_context(self)
     return self._call_for_each_tower(fn, *args, **kwargs)
 
   def _call_for_each_tower(self, fn, *args, **kwargs):
     raise NotImplementedError("must be implemented in descendants")
 
   def reduce(self, aggregation, value, destinations):
-    """Combine (via e.g. sum or mean) values across towers.
+    """Combine (via e.g. sum or mean) values across replicas.
 
     Args:
       aggregation: Indicates how a variable will be aggregated. Accepted values
         are `tf.VariableAggregation.SUM`, `tf.VariableAggregation.MEAN`,
-        `tf.VariableAggregation.ONLY_FIRST_TOWER`.
-      value: A per-device value with one value per tower.
+        `tf.VariableAggregation.ONLY_FIRST_REPLICA`.
+      value: A per-device value with one value per replica.
       destinations: A mirrored variable, a per-device tensor, a device string,
         or list of device strings. The return value will be copied to all
         destination devices (or all the devices where the `destinations` value
@@ -745,11 +796,11 @@ class DistributionStrategy(object):
     # TODO(josh11b): More docstring
     # TODO(josh11b): Return an unwrapped value if colocate_with is a
     # single device.
-    _require_cross_tower_context(self)
+    _require_cross_replica_context(self)
     assert aggregation in [
         variable_scope.VariableAggregation.SUM,
         variable_scope.VariableAggregation.MEAN,
-        variable_scope.VariableAggregation.ONLY_FIRST_TOWER
+        variable_scope.VariableAggregation.ONLY_FIRST_REPLICA
     ]
     return self._reduce(aggregation, value, destinations)
 
@@ -762,7 +813,7 @@ class DistributionStrategy(object):
     Args:
       aggregation: Indicates how a variable will be aggregated. Accepted values
         are `tf.VariableAggregation.SUM`, `tf.VariableAggregation.MEAN`,
-        `tf.VariableAggregation.ONLY_FIRST_TOWER`.
+        `tf.VariableAggregation.ONLY_FIRST_REPLICA`.
       value_destination_pairs: A sequence of (value, destinations)
         pairs. See `reduce()` for a description.
 
@@ -770,11 +821,11 @@ class DistributionStrategy(object):
       A list of mirrored values, one per pair in `value_destination_pairs`.
     """
     # TODO(josh11b): More docstring
-    _require_cross_tower_context(self)
+    _require_cross_replica_context(self)
     assert aggregation in [
         variable_scope.VariableAggregation.SUM,
         variable_scope.VariableAggregation.MEAN,
-        variable_scope.VariableAggregation.ONLY_FIRST_TOWER
+        variable_scope.VariableAggregation.ONLY_FIRST_REPLICA
     ]
     return self._batch_reduce(aggregation, value_destination_pairs)
 
@@ -813,14 +864,14 @@ class DistributionStrategy(object):
         specified, the return value will be unwrapped.
 
     Returns:
-      By default, the merged return value of `fn` across all towers.  The merged
-      result has dependencies to make sure that if it is evaluated at all, the
-      side effects (updates) will happen on every tower. If instead
+      By default, the merged return value of `fn` across all replicas.  The
+      merged result has dependencies to make sure that if it is evaluated at
+      all, the side effects (updates) will happen on every replica. If instead
       "grouped=False" is specified, this function will return a nest of lists
-      where each list has an element per tower, and the caller is responsible
+      where each list has an element per replica, and the caller is responsible
       for ensuring all elements are executed.
     """
-    _require_cross_tower_context(self)
+    _require_cross_replica_context(self)
     options = {"grouped": kwargs.pop("grouped", True)}
     return self._update(var, options, fn, *args, **kwargs)
 
@@ -841,7 +892,7 @@ class DistributionStrategy(object):
     Returns:
       Return value of `fn`, possibly merged across devices.
     """
-    _require_cross_tower_context(self)
+    _require_cross_replica_context(self)
     options = {"grouped": kwargs.pop("grouped", True)}
     return self._update_non_slot(colocate_with, options, fn, *args, **kwargs)
 
@@ -852,7 +903,7 @@ class DistributionStrategy(object):
     """Returns the list of all per-device values contained in `value`.
 
     Args:
-      value: A value returned by `call_for_each_tower()` or a variable
+      value: A value returned by `call_for_each_replica()` or a variable
         created in `scope()`.
 
     Returns:
@@ -865,7 +916,7 @@ class DistributionStrategy(object):
     """Returns the container that this per-device `value` belongs to.
 
     Args:
-      value: A value returned by `call_for_each_tower()` or a variable
+      value: A value returned by `call_for_each_replica()` or a variable
         created in `scope()`.
 
     Returns:
@@ -892,13 +943,19 @@ class DistributionStrategy(object):
     return v
 
   @property
-  def is_single_tower(self):
-    """Returns whether there is a single tower or multiple.
+  def is_single_replica(self):
+    """Returns whether there is a single replica or multiple.
 
     Returns:
-      A boolean. If `True`, `call_for_each_tower(fn)` will only call `fn` once.
-      If `False`, `call_for_each_tower(fn)` may call `fn` multiple times.
+      A boolean. If `True`, `call_for_each_replica(fn)` will only call
+      `fn` once.  If `False`, `call_for_each_replica(fn)` may call
+      `fn` multiple times.
     """
+    return self.is_single_tower
+
+  @property
+  def is_single_tower(self):
+    """DEPRECATED: Use `is_single_replica` instead."""
     raise NotImplementedError("must be implemented in descendants")
 
   @property
@@ -906,8 +963,16 @@ class DistributionStrategy(object):
     return self._require_static_shapes
 
   @property
+  def num_replicas(self):
+    """Returns number of replicas, for purposes of averaging across replicas."""
+    return self.num_towers
+
+  @property
   def num_towers(self):
-    """Returns number of towers, for purposes of averaging across towers."""
+    """Returns number of replicas, for purposes of averaging across replicas.
+
+    DEPRECATED: use `num_replicas` instead.
+    """
     raise NotImplementedError("must be implemented in descendants")
 
   @property
@@ -917,7 +982,8 @@ class DistributionStrategy(object):
 
   @property
   def worker_devices(self):
-    """Returns the list of devices used to run `call_for_each_tower()` calls."""
+    """Returns the list of devices used to run `call_for_each_replica()` calls.
+    """
     # TODO(josh11b): More docstring
     raise NotImplementedError("must be implemented in descendants")
 
@@ -944,7 +1010,7 @@ class DistributionStrategy(object):
   def worker_device_index(self):
     """An object mapping worker device to an id.
 
-    This might be passed as an argument to `call_for_each_tower()`, as in:
+    This might be passed as an argument to `call_for_each_replica()`, as in:
 
     ```
     with distribution_strategy.scope():
@@ -953,14 +1019,14 @@ class DistributionStrategy(object):
         # device_id is an integer. `fn` is being executed on device:
         #    distribution_strategy.worker_devices[device_id].
 
-      distribution_strategy.call_for_each_tower(
+      distribution_strategy.call_for_each_replica(
           fn, distribution_strategy.worker_device_index)
     ```
 
     Returns:
-      An index object, or the integer 0 if there is only a single tower.
+      An index object, or the integer 0 if there is only a single replica.
     """
-    _require_cross_tower_context(self)
+    _require_cross_replica_context(self)
     return self._worker_device_index()
 
   def _worker_device_index(self):
@@ -1000,14 +1066,14 @@ class DistributionStrategy(object):
 
 
 # A note about the difference between the context managers
-# `TowerContext` (defined here) and `_CurrentDistributionContext`
+# `ReplicaContext` (defined here) and `_CurrentDistributionContext`
 # (defined above) used by `DistributionStrategy.scope()`:
 #
-# * a TowerContext is only present during a `call_for_each_tower()`
+# * a ReplicaContext is only present during a `call_for_each_replica()`
 #   call (except during a `merge_run` call) and in such a scope it
-#   will be returned by calls to `get_tower_context()`.  Implementers of new
+#   will be returned by calls to `get_replica_context()`.  Implementers of new
 #   DistributionStrategy descendants will frequently also need to
-#   define a descendant of TowerContext, and are responsible for
+#   define a descendant of ReplicaContext, and are responsible for
 #   entering and exiting this context.
 #
 # * DistributionStrategy.scope() sets up a variable_creator scope that
@@ -1017,15 +1083,21 @@ class DistributionStrategy(object):
 #   anticipated need to define descendants of _CurrentDistributionContext.
 #   It sets the current DistributionStrategy for purposes of
 #   `get_distribution_strategy()` and `has_distribution_strategy()`
-#   and switches the thread mode to a "cross-tower context".
-class TowerContext(object):
-  """DistributionStrategy API inside a `call_for_each_tower()` call."""
+#   and switches the thread mode to a "cross-replica context".
+class ReplicaContext(object):
+  """DistributionStrategy API inside a `call_for_each_replica()` call."""
 
-  def __init__(self, distribution_strategy, tower_id):
+  def __init__(self, distribution_strategy, replica_id=None, tower_id=None):
+    """`tower_id` is deprecated, use `replica_id` instead."""
+    if tower_id is not None:
+      replica_id = tower_id
+    assert replica_id is not None
     self._distribution_strategy = distribution_strategy
-    self._thread_context = distribution_strategy_context._InTowerThreadMode(  # pylint: disable=protected-access
+    self._thread_context = distribution_strategy_context._InReplicaThreadMode(  # pylint: disable=protected-access
         self)
-    self._tower_id = tower_id
+    self._replica_id = replica_id
+    # We keep a copy in _tower_id to ease the replica->tower transition.
+    self._tower_id = replica_id  # DEPRECATED
 
   def __enter__(self):
     _push_per_thread_mode(self._thread_context)
@@ -1034,19 +1106,19 @@ class TowerContext(object):
     _pop_per_thread_mode()
 
   def merge_call(self, merge_fn, *args, **kwargs):
-    """Merge args across towers and run `merge_fn` in a cross-tower context.
+    """Merge args across replicas and run `merge_fn` in a cross-replica context.
 
     This allows communication and coordination when there are multiple calls
     to a model function triggered by a call to
-    `distribution.call_for_each_tower(model_fn, ...)`.
+    `distribution.call_for_each_replica(model_fn, ...)`.
 
-    See `MirroredDistribution.call_for_each_tower()` for an explanation.
+    See `MirroredDistribution.call_for_each_replica()` for an explanation.
 
     Otherwise, this is equivalent to:
 
     ```
     distribution = get_distribution_strategy()
-    with cross-tower-context(distribution):
+    with cross-replica-context(distribution):
       return merge_fn(distribution, *args, **kwargs)
     ```
 
@@ -1061,13 +1133,13 @@ class TowerContext(object):
       The return value of `merge_fn`, except for `PerDevice` values which are
       unpacked.
     """
-    require_tower_context(self)
+    require_replica_context(self)
     return self._merge_call(merge_fn, *args, **kwargs)
 
   def _merge_call(self, merge_fn, *args, **kwargs):
-    """Default implementation for single tower."""
+    """Default implementation for single replica."""
     _push_per_thread_mode(  # thread-local, so not needed with multiple threads
-        distribution_strategy_context._CrossTowerThreadMode(  # pylint: disable=protected-access
+        distribution_strategy_context._CrossReplicaThreadMode(  # pylint: disable=protected-access
             self._distribution_strategy))
     try:
       return merge_fn(self._distribution_strategy, *args, **kwargs)
@@ -1075,21 +1147,35 @@ class TowerContext(object):
       _pop_per_thread_mode()
 
   @property
-  def is_single_tower(self):
-    """Returns whether there is a single tower or multiple."""
-    require_tower_context(self)
-    return self._distribution_strategy.is_single_tower
+  def is_single_replica(self):
+    """Returns whether there is a single replica or multiple."""
+    require_replica_context(self)
+    return self._distribution_strategy.is_single_replica
 
   @property
   def num_towers(self):
-    """Returns number of towers, for purposes of averaging across towers."""
-    return self._distribution_strategy.num_towers
+    """Returns number of replicas, for purposes of averaging across replicas.
+
+    DEPRECATED: use `num_replicas` instead.
+    """
+    return self._distribution_strategy.num_replicas
+
+  @property
+  def num_replicas(self):
+    """Returns number of replicas, for purposes of averaging across replicas."""
+    return self._distribution_strategy.num_replicas
+
+  @property
+  def replica_id(self):
+    """Which replica is being defined, a number from 0 to `num_replicas - 1`."""
+    require_replica_context(self)
+    return self._replica_id
 
   @property
   def tower_id(self):
-    """Which tower is being defined, a number from 0 to `num_towers - 1`."""
-    require_tower_context(self)
-    return self._tower_id
+    """DEPRECATED: Use `replica_id` instead."""
+    require_replica_context(self)
+    return self._replica_id
 
   @property
   def distribution_strategy(self):
@@ -1098,13 +1184,13 @@ class TowerContext(object):
 
   @property
   def device(self):
-    """The device this tower is to be executed on, as a string."""
-    require_tower_context(self)
+    """The device this replica is to be executed on, as a string."""
+    require_replica_context(self)
     return device_util.current()
 
   # TODO(josh11b): Implement `start_all_reduce(method, t)` for efficient
   # all-reduce. It would return a function returning the result of reducing `t`
-  # across all towers. The caller would wait to call this function until they
+  # across all replicas. The caller would wait to call this function until they
   # needed the reduce result, allowing an efficient implementation:
   # * With eager execution, the reduction could be performed asynchronously
   #   in the background, not blocking until the result was needed.
@@ -1147,7 +1233,7 @@ class _DefaultDistributionStrategy(DistributionStrategy):
   def _call_for_each_tower(self, fn, *args, **kwargs):
     # We don't run `fn` in multiple threads in _DefaultDistributionStrategy.
     kwargs.pop("run_concurrently", None)
-    with TowerContext(self, tower_id=0):
+    with ReplicaContext(self, replica_id=0):
       return fn(*args, **kwargs)
 
   def _reduce(self, aggregation, value, destinations):
@@ -1172,8 +1258,8 @@ class _DefaultDistributionStrategy(DistributionStrategy):
       else:
         return nest.map_structure(self._unwrap, result)
 
-  def read_var(self, tower_local_var):
-    return array_ops.identity(tower_local_var)
+  def read_var(self, replica_local_var):
+    return array_ops.identity(replica_local_var)
 
   def _unwrap(self, distributed_value):
     return [distributed_value]
@@ -1214,7 +1300,7 @@ class _DefaultDistributionStrategy(DistributionStrategy):
 
 @deprecation.deprecated(None,
                         "Use v.assign_add(amount) instead. You may need to set "
-                        "aggregation=tf.VariableAggregation.ONLY_FIRST_TOWER "
+                        "aggregation=tf.VariableAggregation.ONLY_FIRST_REPLICA "
                         "when creating the variable.")
 def increment_var(v, amount=1):
   """`v += amount`, distributed-aware version."""
@@ -1224,8 +1310,8 @@ def increment_var(v, amount=1):
   def merge_fn(dist, vm):
     return dist.update(vm, update)
 
-  tower_context = distribution_strategy_context.get_tower_context()
-  return tower_context.merge_call(merge_fn, v)
+  replica_context = distribution_strategy_context.get_replica_context()
+  return replica_context.merge_call(merge_fn, v)
 
 
 # ------------------------------------------------------------------------------
@@ -1253,3 +1339,10 @@ resource_variable_ops._from_proto_fn = _from_proto_fn
 _push_per_thread_mode = distribution_strategy_context._push_per_thread_mode  # pylint: disable=protected-access
 _get_per_thread_mode = distribution_strategy_context._get_per_thread_mode  # pylint: disable=protected-access
 _pop_per_thread_mode = distribution_strategy_context._pop_per_thread_mode  # pylint: disable=protected-access
+
+
+#-------------------------------------------------------------------------------
+# For compatibility during the tower -> replica transistion.
+_require_cross_tower_context = _require_cross_replica_context
+require_tower_context = require_replica_context
+TowerContext = ReplicaContext
