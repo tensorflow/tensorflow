@@ -106,6 +106,7 @@ class XlaOpRegistry {
 
   // Registers `device_name` for XLA compilation, using information from
   // `registration`.
+  // Does nothing if a registration for `device_name` already exists.
   static void RegisterCompilationDevice(const string& device_name,
                                         const DeviceRegistration& registration);
 
