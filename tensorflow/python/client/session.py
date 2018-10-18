@@ -1471,7 +1471,7 @@ class BaseSession(SessionInterface):
     return BaseSession._Callable(self, callable_options)
 
 
-@tf_export('Session')
+@tf_export(v1=['Session'])
 class Session(BaseSession):
   """A class for running TensorFlow operations.
 
@@ -1626,7 +1626,7 @@ class Session(BaseSession):
     tf_session.TF_Reset(target, containers, config)
 
 
-@tf_export('InteractiveSession')
+@tf_export(v1=['InteractiveSession'])
 class InteractiveSession(BaseSession):
   """A TensorFlow `Session` for use in interactive contexts, such as a shell.
 
