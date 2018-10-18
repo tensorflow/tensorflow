@@ -33,7 +33,7 @@ _override_helper = ops._override_helper
 # pylint: enable=protected-access
 
 
-@tf_export("SparseTensor")
+@tf_export("sparse.SparseTensor", "SparseTensor")
 class SparseTensor(_TensorLike):
   """Represents a sparse tensor.
 
@@ -245,7 +245,7 @@ class SparseTensor(_TensorLike):
 SparseTensorValue = collections.namedtuple(
     "SparseTensorValue", ["indices", "values", "dense_shape"])
 tf_export("SparseTensorValue")(SparseTensorValue)
-pywrap_tensorflow.RegisterSparseTensorValueClass(SparseTensorValue)
+pywrap_tensorflow.RegisterType("SparseTensorValue", SparseTensorValue)
 
 
 @tf_export("convert_to_tensor_or_sparse_tensor")

@@ -308,6 +308,8 @@ class EstimatorSpec(
     for key, value in six.iteritems(eval_metric_ops):
       if isinstance(value, Metric):
         vars_to_add.update(value.variables)
+        # Convert Metric instances to (value_tensor, update_op) tuple.
+        eval_metric_ops[key] = (value.result(), value.updates[0])
     # Remove variables that are in the local variables collection already.
     vars_to_add = vars_to_add.difference(local_vars)
     for v in vars_to_add:
@@ -466,13 +468,13 @@ class _TPUEstimatorSpec(
 
 
 def _check_is_tensor_or_operation(x, name):
-  if not (isinstance(x, ops.Operation) or isinstance(x, ops.Tensor)):
+  if not (isinstance(x, ops.Operation) or ops.is_dense_tensor_like(x)):
     raise TypeError('{} must be Operation or Tensor, given: {}'.format(name, x))
 
 
 def _check_is_tensor(x, tensor_name):
   """Returns `x` if it is a `Tensor`, raises TypeError otherwise."""
-  if not isinstance(x, ops.Tensor):
+  if not ops.is_dense_tensor_like(x):
     raise TypeError('{} must be Tensor, given: {}'.format(tensor_name, x))
   return x
 

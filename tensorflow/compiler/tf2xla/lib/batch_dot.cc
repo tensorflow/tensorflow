@@ -100,16 +100,6 @@ xla::XlaOp BatchDot(xla::XlaOp x, xla::XlaOp y, bool transpose_x,
     precision_proto.add_operand_precision(precision);
     precision_proto.add_operand_precision(precision);
 
-    // If there are no batch dimensions, use a regular Dot.
-    // TODO(b/69062148) Remove this code when Dot emitters can be passed
-    // dimensions to transpose directly (i.e. without requiring a Transpose
-    // HLO).
-    if (batch_dimension_numbers.empty()) {
-      auto lhs = transpose_x ? xla::Transpose(x, {1, 0}) : x;
-      auto rhs = transpose_y ? xla::Transpose(y, {1, 0}) : y;
-      return xla::Dot(lhs, rhs, &precision_proto);
-    }
-
     xla::DotDimensionNumbers dot_dnums;
     dot_dnums.add_lhs_contracting_dimensions(x_inner_dim);
     dot_dnums.add_rhs_contracting_dimensions(y_inner_dim);

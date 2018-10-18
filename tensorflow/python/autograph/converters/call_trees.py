@@ -85,14 +85,15 @@ class FunctionNamer(object):
 class CallTreeTransformer(converter.Base):
   """Transforms the call tree by renaming transformed symbols."""
 
-  def _resolve_name(self, node):
+  def _resolve_decorator_name(self, node):
     """Used to resolve decorator info."""
     if isinstance(node, gast.Call):
-      return self._resolve_name(node.func)
+      return self._resolve_decorator_name(node.func)
     if isinstance(node, gast.Name):
-      return self.ctx.namespace.get(node.id)
+      # TODO(mdan): Add test coverage for this branch.
+      return self.ctx.info.namespace.get(node.id)
     if isinstance(node, gast.Attribute):
-      parent = self._resolve_name(node.value)
+      parent = self._resolve_decorator_name(node.value)
       if parent is not None:
         return getattr(parent, node.attr)
       return None
@@ -135,13 +136,25 @@ class CallTreeTransformer(converter.Base):
     # The decorators themselves are not to be converted.
     # If present, the decorators should appear as static functions.
     target_entity = self._try_resolve_target(node.func)
+
     if target_entity is not None:
+
+      # This may be reached when "calling" a callable attribute of an object.
+      # For example:
+      #
+      #   self.fc = tf.keras.layers.Dense()
+      #   self.fc()
+      #
+      for mod in self.ctx.program.uncompiled_modules:
+        if target_entity.__module__.startswith(mod[0] + '.'):
+          return False
+
       # This attribute is set by the decorator itself.
       # TODO(mdan): This may not play nicely with other wrapping decorators.
       if hasattr(target_entity, '__pyct_is_compile_decorator'):
         return False
 
-      if target_entity in self.ctx.program.autograph_decorators:
+      if target_entity in self.ctx.program.options.strip_decorators:
         return False
 
       # Inspect the target function decorators. If any include a @convert
@@ -158,9 +171,9 @@ class CallTreeTransformer(converter.Base):
         return True
 
       for dec in target_node.decorator_list:
-        decorator_fn = self._resolve_name(dec)
+        decorator_fn = self._resolve_decorator_name(dec)
         if (decorator_fn is not None and
-            decorator_fn in self.ctx.program.autograph_decorators):
+            decorator_fn in self.ctx.program.options.strip_decorators):
           return False
 
     return True
@@ -238,9 +251,20 @@ class CallTreeTransformer(converter.Base):
     # Before we could convert all the time though, we'd need a reasonable
     # caching mechanism.
     template = """
-      ag__.converted_call(func, True, False, False, {}, args)
+      ag__.converted_call(func, owner, options, args)
     """
-    call_expr = templates.replace(template, func=node.func, args=node.args)
+    if isinstance(node.func, gast.Attribute):
+      func = gast.Str(node.func.attr)
+      owner = node.func.value
+    else:
+      func = node.func
+      owner = parser.parse_expression('None')
+    call_expr = templates.replace(
+        template,
+        func=func,
+        owner=owner,
+        options=self.ctx.program.options.to_ast(self.ctx.info.namespace),
+        args=node.args)
     new_call = call_expr[0].value
     # TODO(mdan): Improve the template mechanism to better support this.
     new_call.keywords = node.keywords
@@ -269,7 +293,7 @@ class CallTreeTransformer(converter.Base):
     # consider it graph ready.
     if anno.hasanno(node.func, 'live_val'):
       target_entity = anno.getanno(node.func, 'live_val')
-      if target_entity in self.ctx.program.autograph_decorators:
+      if target_entity in self.ctx.program.options.strip_decorators:
         if len(node.args) < 1:
           raise ValueError(
               'Found call to decorator function "%s", but it had no arguments. '
@@ -311,7 +335,7 @@ class CallTreeTransformer(converter.Base):
         # ensure that they return the correct value.
         return node
 
-      if self.ctx.program.recursive:
+      if self.ctx.program.options.recursive:
         node = self._insert_dynamic_conversion(node)
     return node
 

@@ -82,6 +82,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/jit/resource_operation_safety_analysis.h"
 
+#include "absl/container/flat_hash_set.h"
 #include "absl/memory/memory.h"
 #include "absl/strings/str_join.h"
 #include "absl/types/optional.h"
@@ -89,8 +90,6 @@ limitations under the License.
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/graph/algorithm.h"
 #include "tensorflow/core/graph/tensor_id.h"
-#include "tensorflow/core/lib/gtl/flatmap.h"
-#include "tensorflow/core/lib/gtl/flatset.h"
 #include "tensorflow/core/lib/hash/hash.h"
 #include "tensorflow/core/util/ptr_util.h"
 
@@ -177,7 +176,7 @@ string ResourceOpToString(const ResourceOp& resource_op) {
 // point.
 class ResourceOpSet {
  private:
-  using Impl = gtl::FlatSet<ResourceOp>;
+  using Impl = absl::flat_hash_set<ResourceOp>;
 
  public:
   ResourceOpSet() = default;

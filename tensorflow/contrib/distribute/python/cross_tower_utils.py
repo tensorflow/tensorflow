@@ -221,9 +221,12 @@ def split_grads_by_size(threshold_size, device_grads):
   return small_grads, large_grads
 
 
-# threading.Lock() cannot be pickled and therefore cannot be a field of
-# CollectiveKeys.
+# threading.Lock() and threading.local() cannot be pickled and therefore cannot
+# be a field of CollectiveKeys. Right now _thread_local is not necessary to be
+# an instance member of CollectiveKeys since we always create a new thread for
+# each tower.
 _lock = threading.Lock()
+_thread_local = threading.local()
 
 
 # TODO(yuefengz): use random key starts to avoid reusing keys?
@@ -266,14 +269,12 @@ class CollectiveKeys(object):
     # For instance keys without ids
     self._instance_key_start = instance_key_start
 
-    self._thread_local = threading.local()
-
   def _get_thread_local_object(self):
     # We make instance key without key ids thread local so that it will work
     # with MirroredStrategy and distribute coordinator.
-    if not hasattr(self._thread_local, 'instance_key'):
-      self._thread_local.instance_key = self._instance_key_start
-    return self._thread_local
+    if not hasattr(_thread_local, 'instance_key'):
+      _thread_local.instance_key = self._instance_key_start
+    return _thread_local
 
   def get_group_key(self, devices):
     """Returns a group key for the set of devices.

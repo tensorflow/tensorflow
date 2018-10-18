@@ -1,6 +1,10 @@
 licenses(["notice"])  # Apache 2.0
 
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
+load(
+    "//tensorflow/core:platform/default/build_config.bzl",
+    "tf_protos_grappler",
+)
 
 cc_library(
     name = "scc",
@@ -208,5 +212,30 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
+    ],
+)
+
+cc_library(
+    name = "symbolic_shapes",
+    srcs = ["symbolic_shapes.cc"],
+    hdrs = ["symbolic_shapes.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+    ] + tf_protos_grappler(),
+)
+
+tf_cc_test(
+    name = "symbolic_shapes_test",
+    srcs = ["symbolic_shapes_test.cc"],
+    deps = [
+        ":symbolic_shapes",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
     ],
 )

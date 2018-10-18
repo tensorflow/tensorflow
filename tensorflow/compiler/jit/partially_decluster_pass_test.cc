@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/cc/ops/standard_ops.h"
 #include "tensorflow/compiler/jit/defs.h"
 #include "tensorflow/compiler/jit/xla_cluster_util.h"
+#include "tensorflow/compiler/tf2xla/cc/ops/xla_ops.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "tensorflow/core/framework/node_def_util.h"
@@ -60,9 +61,9 @@ class FakeBinaryOp : public OpKernel {
   void Compute(OpKernelContext* ctx) override { CHECK(false); }
 };
 
-class FakeResourceVarUpdateOp : public OpKernel {
+class FakeResourceUpdateOp : public OpKernel {
  public:
-  explicit FakeResourceVarUpdateOp(OpKernelConstruction* context)
+  explicit FakeResourceUpdateOp(OpKernelConstruction* context)
       : OpKernel(context) {}
 
   void Compute(OpKernelContext* ctx) override { CHECK(false); }
@@ -74,10 +75,9 @@ REGISTER_KERNEL_BUILDER(Name("FakeBinary")
                             .HostMemory("host_out"),
                         FakeBinaryOp);
 
-REGISTER_KERNEL_BUILDER(Name("FakeResourceVarUpdate")
-                            .Device(DEVICE_CPU)
-                            .HostMemory("something_else"),
-                        FakeResourceVarUpdateOp);
+REGISTER_KERNEL_BUILDER(
+    Name("FakeResourceUpdate").Device(DEVICE_CPU).HostMemory("something_else"),
+    FakeResourceUpdateOp);
 
 Status PartiallyDecluster(std::unique_ptr<Graph>* graph) {
   FixupSourceAndSinkEdges(graph->get());
@@ -404,6 +404,37 @@ TEST(PartiallyDeclusterPassTest, DontDeclusterXlaDeviceOps) {
   for (Device* d : devices) {
     delete d;
   }
+}
+
+TEST(PartiallyDeclusterPassTest, DontDeclusterNonTensorFlowOps) {
+  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+  Output dynamic_slice_operand =
+      ops::Placeholder(s.WithOpName("dynamic_slice_operand"), DT_INT32,
+                       ops::Placeholder::Attrs{});
+  Output dynamic_slice_begin = ops::Placeholder(
+      s.WithOpName("dynamic_slice_begin"), DT_INT32, ops::Placeholder::Attrs{});
+  Output dynamic_slice_size = ops::Placeholder(
+      s.WithOpName("dynamic_slice_size"), DT_INT32, ops::Placeholder::Attrs{});
+  Output dynamic_slice =
+      ops::XlaDynamicSlice(s.WithOpName("dynamic_slice"), dynamic_slice_operand,
+                           dynamic_slice_begin, dynamic_slice_size);
+
+  Output reshape_input = ops::Placeholder(s.WithOpName("reshape_input"),
+                                          DT_FLOAT, ops::Placeholder::Attrs{});
+  Output reshape =
+      ops::Reshape(s.WithOpName("reshape"), reshape_input, dynamic_slice);
+
+  AddToCluster({dynamic_slice.node(), reshape.node()}, "cluster_0");
+
+  std::unique_ptr<Graph> graph = absl::make_unique<Graph>(OpRegistry::Global());
+  TF_ASSERT_OK(s.ToGraph(graph.get()));
+
+  Node* n = FindNodeByName(*graph, "dynamic_slice");
+  ASSERT_NE(n, nullptr);
+
+  TF_ASSERT_OK(PartiallyDecluster(&graph));
+
+  EXPECT_EQ(GetXlaClusterForNode(*n), "cluster_0");
 }
 
 }  // namespace

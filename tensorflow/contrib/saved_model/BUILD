@@ -78,23 +78,6 @@ py_test(
     ],
 )
 
-py_test(
-    name = "signature_def_utils_test",
-    size = "small",
-    srcs = ["python/saved_model/signature_def_utils_test.py"],
-    srcs_version = "PY2AND3",
-    deps = [
-        ":saved_model_py",
-        "//tensorflow/core:protos_all_py",
-        "//tensorflow/python:array_ops",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:framework_for_generated_wrappers",
-        "//tensorflow/python/saved_model:signature_constants",
-        "//tensorflow/python/saved_model:signature_def_utils",
-        "//tensorflow/python/saved_model:utils",
-    ],
-)
-
 py_library(
     name = "keras_saved_model",
     srcs = ["python/saved_model/keras_saved_model.py"],
@@ -109,10 +92,7 @@ py_library(
         "//tensorflow/python:platform",
         "//tensorflow/python:saver",
         "//tensorflow/python:util",
-        "//tensorflow/python/estimator",
-        "//tensorflow/python/estimator:export",
-        "//tensorflow/python/estimator:keras",
-        "//tensorflow/python/estimator:model_fn",
+        "//tensorflow/python/estimator:estimator_py",
         "//tensorflow/python/keras:engine",
         "//tensorflow/python/saved_model",
     ],
@@ -128,6 +108,7 @@ py_test(
         ":keras_saved_model",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:training",
+        "//tensorflow/python/estimator:estimator_py",
         "//tensorflow/python/keras",
         "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",

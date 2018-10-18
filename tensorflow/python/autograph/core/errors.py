@@ -208,7 +208,6 @@ def rewrite_tf_runtime_error(error, source_map):
   """
   try:
     cleaned_traceback = _cut_traceback_loops(source_map, error.op.traceback)
-    # cleaned_traceback = error.op.traceback
     cleaned_traceback = _rewrite_tb(source_map, cleaned_traceback)
 
     op_name = error.op.name

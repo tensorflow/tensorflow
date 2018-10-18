@@ -14,14 +14,33 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/contrib/lite/c/c_api_internal.h"
+#ifndef TF_LITE_STATIC_MEMORY
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#endif  // TF_LITE_STATIC_MEMORY
 
 int TfLiteIntArrayGetSizeInBytes(int size) {
   static TfLiteIntArray dummy;
   return sizeof(dummy) + sizeof(dummy.data[0]) * size;
 }
+
+int TfLiteIntArrayEqual(TfLiteIntArray* a, TfLiteIntArray* b) {
+  if (a == b) return 1;
+  if (a == NULL || b == NULL) return 0;
+  return TfLiteIntArrayEqualsArray(a, b->size, b->data);
+}
+
+int TfLiteIntArrayEqualsArray(TfLiteIntArray* a, int b_size, int b_data[]) {
+  if (a == NULL) return (b_size == 0);
+  if (a->size != b_size) return 0;
+  int i = 0;
+  for (; i < a->size; i++)
+    if (a->data[i] != b_data[i]) return 0;
+  return 1;
+}
+
+#ifndef TF_LITE_STATIC_MEMORY
 
 TfLiteIntArray* TfLiteIntArrayCreate(int size) {
   TfLiteIntArray* ret =
@@ -38,16 +57,6 @@ void TfLiteIntArrayPrint(const char* s, TfLiteIntArray* a) {
     printf(" %d", a->data[i]);
   }
   printf("]\n");
-}
-
-int TfLiteIntArrayEqual(TfLiteIntArray* a, TfLiteIntArray* b) {
-  if (a == b) return 1;
-  if (a == NULL || b == NULL) return 0;
-  if (a->size != b->size) return 0;
-  int i = 0;
-  for (; i < a->size; i++)
-    if (a->data[i] != b->data[i]) return 0;
-  return 1;
 }
 
 TfLiteIntArray* TfLiteIntArrayCopy(TfLiteIntArray* src) {
@@ -102,3 +111,4 @@ void TfLiteTensorRealloc(size_t num_bytes, TfLiteTensor* tensor) {
   }
   tensor->bytes = num_bytes;
 }
+#endif  // TF_LITE_STATIC_MEMORY

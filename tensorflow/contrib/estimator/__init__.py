@@ -76,7 +76,7 @@ _allowed_symbols = [
     'stop_if_no_decrease_hook',
     'build_raw_supervised_input_receiver_fn',
     'build_supervised_input_receiver_fn_from_input_fn',
-    'SavedModelEstimator'
+    'SavedModelEstimator',
     'DNNClassifierWithLayerAnnotations',
     'DNNRegressorWithLayerAnnotations',
 ]

@@ -35,10 +35,35 @@ from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import session_run_hook
 from tensorflow.python.training import training_util
 
+_WATCHDOG = None
+
 
 class CoordinatorShutdownException(Exception):
   """Raised when the coordinator needs to shutdown."""
   pass
+
+
+def _make_heartbeat_op(session, device, request_ph):
+  """Return a heartbeat op or None if heartbeats are not supported by device."""
+  try:
+    # Test if we can connect in a isolated graph + session
+    with ops.Graph().as_default():
+      with session_lib.Session(target=session.sess_str) as temp_session:
+        with ops.device(device):
+          heartbeat_op = tpu_ops.worker_heartbeat('')
+          options = config_pb2.RunOptions(timeout_in_ms=5000)
+          temp_session.run(heartbeat_op, options=options)
+  except errors.InvalidArgumentError as _:
+    logging.warning('Error running heartbeat on %s', device)
+    return None
+  except errors.DeadlineExceededError as _:
+    logging.warning('Timeout connecting to %s when testing heartbeat', device)
+    return None
+
+  # If we successfully connected and pinged the worker, go ahead and construct
+  # the operation.
+  with ops.device(device):
+    return tpu_ops.worker_heartbeat(request_ph)
 
 
 class WorkerHeartbeatManager(object):
@@ -72,30 +97,27 @@ class WorkerHeartbeatManager(object):
         name='worker_heartbeat_request', dtype=dtypes.string)
 
     heartbeat_ops = []
+    kept_devices = []
     for device in devices:
-      with ops.device(device):
-        heartbeat_ops.append(tpu_ops.worker_heartbeat(request_placeholder))
+      heartbeat_op = _make_heartbeat_op(session, device, request_placeholder)
+      if heartbeat_op is not None:
+        kept_devices.append(device)
+        heartbeat_ops.append(heartbeat_op)
+      else:
+        logging.warning('Heartbeat support not available for %s', device)
 
-    return WorkerHeartbeatManager(session, devices, heartbeat_ops,
+    return WorkerHeartbeatManager(session, kept_devices, heartbeat_ops,
                                   request_placeholder)
 
-  def heartbeat_supported(self):
-    """Returns True if heartbeat operations are supported on all workers."""
-    try:
-      # Send ping to verify worker has heartbeat support.
-      self.ping()
-      return True
-    except errors.InvalidArgumentError as _:
-      return False
+  def num_workers(self):
+    return len(self._devices)
 
   def configure(self, message):
     """Configure heartbeat manager for all devices.
 
     Args:
       message: `event_pb2.WorkerHeartbeatRequest`
-
     Returns: `None`
-
     """
     logging.info('Configuring worker heartbeat: %s',
                  text_format.MessageToString(message))
@@ -155,7 +177,7 @@ class WorkerHeartbeatManager(object):
 def all_worker_devices(session):
   """Return a list of devices for each worker in the system."""
   devices = session.list_devices()
-  return [device.name for device in devices if 'CPU' in device.name]
+  return [device.name for device in devices if ':CPU:' in device.name]
 
 
 class WatchdogManager(threading.Thread):
@@ -184,7 +206,6 @@ class WatchdogManager(threading.Thread):
     """Initialize a watchdog manager.
 
     Args:
-
       session: Session connected to worker devices.  A cloned session and graph
         will be created for managing worker pings.
       devices: Set of devices to monitor.  If none, all workers will be
@@ -237,6 +258,22 @@ class WatchdogManager(threading.Thread):
       time.sleep(self.ping_interval)
 
 
+def start_worker_watchdog(session,
+                          devices=None,
+                          ping_interval=60,
+                          shutdown_timeout=3600):
+  """Start global worker watchdog to shutdown workers on coordinator exit."""
+  global _WATCHDOG
+  if _WATCHDOG is None:
+    # Ensure we can send a few pings before we timeout!
+    ping_interval = min(shutdown_timeout / 10., ping_interval)
+    logging.info('Enabling watchdog timer with %d second timeout',
+                 shutdown_timeout)
+    _WATCHDOG = WatchdogManager(session, devices, ping_interval,
+                                shutdown_timeout)
+    _WATCHDOG.configure_and_run()
+
+
 class GracefulShutdownHook(session_run_hook.SessionRunHook):
   """Session hook that watches for shutdown events.
 
@@ -277,16 +314,14 @@ class GracefulShutdownHook(session_run_hook.SessionRunHook):
           target=training_session.sess_str, graph=self._graph)
       self._workers = WorkerHeartbeatManager.from_devices(
           self._session, all_worker_devices(self._session))
-      self._heartbeat_supported = self._workers.heartbeat_supported()
+      self._heartbeat_supported = self._workers.num_workers() > 0
       if self._heartbeat_supported:
         self._workers.configure(
             event_pb2.WorkerHeartbeatRequest(
                 shutdown_mode=event_pb2.WAIT_FOR_COORDINATOR))
       else:
         logging.warn(
-            'Worker heartbeats not supported by all workers.  No failure '
-            'handling will be enabled.'
-        )
+            'No workers support hearbeats. Failure handling will be disabled.')
 
   def saver(self):
     if self._saver:
@@ -303,8 +338,7 @@ class GracefulShutdownHook(session_run_hook.SessionRunHook):
       logging.error(
           'Multiple savers in the SAVERS collection.  On-demand checkpointing '
           'will be disabled. Pass an explicit `saver` to the constructor to '
-          'override this behavior.'
-      )
+          'override this behavior.')
       return None
 
     return savers[0]

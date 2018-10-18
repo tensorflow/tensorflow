@@ -23,9 +23,9 @@ import math
 import numpy as np
 
 from tensorflow.compiler.tests import xla_test
-from tensorflow.contrib import stateless
 from tensorflow.python.framework import dtypes
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import stateless_random_ops as stateless
 from tensorflow.python.ops.distributions import special_math
 from tensorflow.python.platform import test
 
@@ -34,7 +34,7 @@ class StatelessRandomOpsTest(xla_test.XLATestCase):
   """Test cases for stateless random-number generator operators."""
 
   def _random_types(self):
-    return [dtypes.float32]
+    return self.float_types & {dtypes.float32, dtypes.float64}
 
   def testDeterminism(self):
     # Stateless values should be equal iff the seeds are equal (roughly)
@@ -91,7 +91,7 @@ class StatelessRandomOpsTest(xla_test.XLATestCase):
     with self.cached_session() as sess, self.test_scope():
       for dtype in self._random_types():
         seed_t = array_ops.placeholder(dtypes.int32, shape=[2])
-        x = stateless.stateless_random_uniform(
+        x = stateless.stateless_random_normal(
             shape=[10000], seed=seed_t, dtype=dtype)
         y = sess.run(x, {seed_t: [0x12345678, 0xabcdef12]})
         self.assertTrue(np.all(np.isfinite(y)))
@@ -124,8 +124,7 @@ class StatelessRandomOpsTest(xla_test.XLATestCase):
         self.assertTrue(self._anderson_darling(y) < 2.492)
 
   def testTruncatedNormalIsInRange(self):
-    # TODO(b/34339814): implement inverse erf support for non-F32 types.
-    for dtype in [dtypes.float32]:
+    for dtype in self._random_types():
       with self.cached_session() as sess, self.test_scope():
         seed_t = array_ops.placeholder(dtypes.int32, shape=[2])
         n = 10000000
@@ -159,7 +158,7 @@ class StatelessRandomOpsTest(xla_test.XLATestCase):
         # Department of Scientific Computing website. Florida State University.
         expected_mean = mu + (normal_pdf(alpha) - normal_pdf(beta)) / z * sigma
         actual_mean = np.mean(y)
-        self.assertAllClose(actual_mean, expected_mean, atol=2e-4)
+        self.assertAllClose(actual_mean, expected_mean, atol=5e-4)
 
         expected_median = mu + probit(
             (normal_cdf(alpha) + normal_cdf(beta)) / 2.) * sigma

@@ -215,7 +215,7 @@ def _generate_saved_model_for_half_plus_two(export_dir,
           sess, [tf.saved_model.tag_constants.SERVING],
           signature_def_map=signature_def_map,
           assets_collection=tf.get_collection(tf.GraphKeys.ASSET_FILEPATHS),
-          legacy_init_op=tf.group(assign_filename_op))
+          main_op=tf.group(assign_filename_op))
   builder.save(as_text)
 
 

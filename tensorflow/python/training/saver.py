@@ -622,6 +622,19 @@ class BaseSaverBuilder(object):
           yield BaseSaverBuilder.ResourceVariableSaveable(
               variable, variable._save_slice_info.spec, name)
       # pylint: enable=protected-access
+    elif isinstance(op, checkpointable.CheckpointableBase) and not isinstance(
+        op, variables.Variable):
+      # pylint: disable=protected-access
+      for attr, factory in op._gather_saveables_for_checkpoint().items():
+        if attr == checkpointable.VARIABLE_VALUE_KEY:
+          # Keep original name for classes masquerading as variables.
+          full_name = name
+        else:
+          full_name = name + "_" + attr
+        op = (factory(full_name) if callable(factory) else factory)
+        for op in BaseSaverBuilder.SaveableObjectsForOp(op, op.name):
+          yield op
+      # pylint: enable=protected-access
     else:
       # A variable or tensor.
       if context.executing_eagerly():

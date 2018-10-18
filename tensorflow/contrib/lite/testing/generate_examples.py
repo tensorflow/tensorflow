@@ -81,9 +81,9 @@ parser.add_argument(
     action="store_true",
     help="Include intermediate graphdefs in the output zip files.")
 parser.add_argument(
-    "--run_with_extended",
+    "--run_with_flex",
     action="store_true",
-    help="Whether the TFLite Extended converter is being used.")
+    help="Whether the TFLite Flex converter is being used.")
 
 RANDOM_SEED = 342
 TEST_INPUT_DEPTH = 3
@@ -339,11 +339,11 @@ def toco_convert(graph_def_str, input_tensors, output_tensors,
     graphdef_file.flush()
 
     # TODO(aselle): Switch this to subprocess at some point.
-    if "pb2lite" in bin_path and FLAGS.run_with_extended:
+    if "pb2lite" in bin_path and FLAGS.run_with_flex:
       opts = ("--input_arrays={0} --output_arrays={1}".format(
           ",".join(input_arrays), ",".join(output_tensors)))
-    elif FLAGS.run_with_extended:
-      opts += " --allow_eager_ops --force_eager_ops"
+    elif FLAGS.run_with_flex:
+      opts += " --allow_flex_ops --force_flex_ops"
     cmd = ("%s --input_file=%s --output_file=%s %s > %s 2>&1" %
            (bin_path, graphdef_file.name, output_file.name, opts,
             stdout_file.name))
@@ -762,8 +762,11 @@ def make_constant_tests(zip_path):
         dtype=parameters["dtype"],
         name="input1",
         shape=parameters["input_shape"])
-    out = tf.constant(
+    constant = tf.constant(
         create_tensor_data(parameters["dtype"], parameters["input_shape"]))
+    # This maximum node is here to avoid the situation where a graph output is
+    # a constant, which is an error in toco.
+    out = tf.maximum(dummy_input, constant)
     return [dummy_input], [out]
 
   def build_inputs(parameters, sess, inputs, outputs):
@@ -1434,6 +1437,7 @@ def make_depthwiseconv_tests(zip_path):
           "input_shape": [[1, 3, 4, 3], [1, 10, 10, 3]],
           "filter_size": [[1, 1], [1, 2], [3, 3]],
           "strides": [[1, 1, 1, 1], [1, 3, 3, 1]],
+          "dilations": [[1, 1, 1, 1], [1, 3, 2, 1], [1, 2, 2, 1]],
           "channel_multiplier": [1, 2],
           "rate": [[1, 1]],
           "padding": ["SAME", "VALID"],
@@ -1444,6 +1448,7 @@ def make_depthwiseconv_tests(zip_path):
           "input_shape": [[1, 3, 4, 3]],
           "filter_size": [[1, 1]],
           "strides": [[1, 1, 2, 1]],  # TF needs [1, x, x, 1]
+          "dilations": [[1, 1, 1, 1], [1, 2, 2, 1]],
           "channel_multiplier": [2],
           "rate": [[2, 2]],  #  Only [1, 1] is supported
           "padding": ["SAME"],
@@ -2547,7 +2552,6 @@ def make_arg_min_max_tests(zip_path):
       "input_dtype": [tf.float32, tf.int32],
       "input_shape": [[], [1, 1, 1, 3], [2, 3, 4, 5], [2, 3, 3], [5, 5], [10]],
       "output_type": [tf.int32, tf.int64],
-      "axis_is_last_dim": [True, False],
       "is_arg_max": [True],
   }]
 
@@ -2557,10 +2561,7 @@ def make_arg_min_max_tests(zip_path):
         dtype=parameters["input_dtype"],
         name="input",
         shape=parameters["input_shape"])
-    if parameters["axis_is_last_dim"]:
-      axis = len(parameters["input_shape"]) - 1
-    else:
-      axis = random.randint(0, max(len(parameters["input_shape"]) - 2, 0))
+    axis = random.randint(0, max(len(parameters["input_shape"]) - 1, 0))
     if parameters["is_arg_max"]:
       out = tf.arg_max(input_value, axis, output_type=parameters["output_type"])
     else:
@@ -2822,6 +2823,38 @@ def make_neg_tests(zip_path):
         name="input",
         shape=parameters["input_shape"])
     out = tf.negative(input_tensor)
+    return [input_tensor], [out]
+
+  def build_inputs(parameters, sess, inputs, outputs):
+    values = create_tensor_data(parameters["input_dtype"],
+                                parameters["input_shape"])
+    return [values], sess.run(outputs, feed_dict=dict(zip(inputs, [values])))
+
+  make_zip_of_tests(zip_path, test_parameters, build_graph, build_inputs)
+
+
+def make_zeros_like_tests(zip_path):
+  """Make a set of tests to do zeros_like."""
+
+  test_parameters = [{
+      "input_dtype": [tf.float32, tf.int32, tf.int64],
+      "input_shape": [[], [1], [1, 2], [5, 6, 7, 8], [3, 4, 5, 6]],
+  }]
+
+  def build_graph(parameters):
+    """Build the zeros_like op testing graph."""
+    input_tensor = tf.placeholder(
+        dtype=parameters["input_dtype"],
+        name="input",
+        shape=parameters["input_shape"])
+    zeros = tf.zeros_like(input_tensor)
+    # This maximum node is so that toco can perform the constants-propagation
+    # through the above zeros_like, which it can't do if the output of the
+    # zeros_like as an output of the whole graphs (graph outputs can't be
+    # constants). If toco does not perform such constants-propagation then
+    # the resulting tflite graph retains the zeros_like as a Fill op, which
+    # is unsupported by TFLite, even as a custom op.
+    out = tf.maximum(zeros, input_tensor)
     return [input_tensor], [out]
 
   def build_inputs(parameters, sess, inputs, outputs):
@@ -3306,7 +3339,7 @@ def main(unused_args):
   # list of valid conversion modes is defined in
   # generated_test_conversion_modes() in build_def.bzl.
   test_function = ("make_%s_tests" % (out.replace(".zip", "").replace(
-      "pb2lite", "").replace("toco-extended", "").rstrip("_")))
+      "pb2lite", "").replace("toco-flex", "").rstrip("_")))
   if test_function not in globals():
     raise RuntimeError("Can't find a test function to create %r. Tried %r" %
                        (out, test_function))

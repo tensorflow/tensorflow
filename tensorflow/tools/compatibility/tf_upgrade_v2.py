@@ -120,10 +120,18 @@ Simple usage:
   report_filename = args.report_filename
   files_processed = 0
   if args.input_file:
+    if not args.output_file:
+      raise ValueError(
+          "--outfile=<output file> argument is required when converting a "
+          "single file.")
     files_processed, report_text, errors = upgrade.process_file(
         args.input_file, args.output_file)
     files_processed = 1
   elif args.input_tree:
+    if not args.output_tree:
+      raise ValueError(
+          "--outtree=<output directory> argument is required when converting a "
+          "file tree.")
     files_processed, report_text, errors = upgrade.process_tree(
         args.input_tree, args.output_tree, args.copy_other_files)
   else:

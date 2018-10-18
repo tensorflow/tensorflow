@@ -376,7 +376,7 @@ class ExportTest(test_util.TensorFlowTestCase):
                         "  } "
                         "} ", example)
 
-      with self.test_session() as sess:
+      with self.cached_session() as sess:
         sparse_result = sess.run(
             serving_input_receiver.features,
             feed_dict={

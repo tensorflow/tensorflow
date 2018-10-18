@@ -27,9 +27,6 @@ limitations under the License.
 #ifndef TFLITE_MCU
 #include "tensorflow/contrib/lite/nnapi_delegate.h"
 #endif
-#if defined(TFLITE_EXTENDED)
-#include "tensorflow/contrib/lite/delegates/eager/delegate.h"
-#endif
 #include "tensorflow/contrib/lite/version.h"
 
 namespace tflite {
@@ -42,6 +39,25 @@ ErrorReporter* ValidateErrorReporter(ErrorReporter* e) {
 }  // namespace
 
 const char* kEmptyTensorName = "";
+
+// Normally we'd use ABSL_HAVE_ATTRIBUTE_WEAK and ABSL_ATTRIBUTE_WEAK, but
+// we avoid the absl dependency for binary size reasons.
+#ifdef __has_attribute
+#define TFLITE_HAS_ATTRIBUTE(x) __has_attribute(x)
+#else
+#define TFLITE_HAS_ATTRIBUTE(x) 0
+#endif
+
+#if TFLITE_HAS_ATTRIBUTE(weak) || (defined(__GNUC__) && !defined(__clang__))
+// Using weak symbols for the flex delegate allows automatic injection of the
+// delegate simply by adding it as a dependency. See also the strong override in
+// lite/delegates/flex/delegate.cc.
+__attribute__((weak)) Interpreter::TfLiteDelegatePtr AcquireFlexDelegate() {
+  return Interpreter::TfLiteDelegatePtr(nullptr, [](TfLiteDelegate*) {});
+}
+#else
+Interpreter::TfLiteDelegatePtr (*AcquireFlexDelegate)() = nullptr;
+#endif
 
 #ifndef TFLITE_MCU
 // Loads a model from `filename`. If `mmap_file` is true then use mmap,
@@ -189,6 +205,13 @@ std::vector<int> FlatBufferIntArrayToVector(T* flat_array) {
   return ret;
 }
 
+// Used to determine how the op data parsing function creates its working space.
+class MallocDataAllocator : public BuiltinDataAllocator {
+ public:
+  void* Allocate(size_t size) override { return malloc(size); }
+  void Deallocate(void* data) override { free(data); }
+};
+
 }  // namespace
 
 TfLiteStatus InterpreterBuilder::ParseNodes(
@@ -234,8 +257,9 @@ TfLiteStatus InterpreterBuilder::ParseNodes(
           op->custom_options()->size(), nullptr, registration);
     } else {
       void* builtin_data = nullptr;
-      TF_LITE_ENSURE_STATUS(
-          ParseOpData(op, op_type, error_reporter_, &builtin_data));
+      MallocDataAllocator malloc_allocator;
+      TF_LITE_ENSURE_STATUS(ParseOpData(op, op_type, error_reporter_,
+                                        &malloc_allocator, &builtin_data));
       interpreter->AddNodeWithParameters(
           FlatBufferIntArrayToVector(op->inputs()),
           FlatBufferIntArrayToVector(op->outputs()), nullptr, 0, builtin_data,
@@ -360,6 +384,33 @@ TfLiteStatus InterpreterBuilder::ParseTensors(
   return status;
 }
 
+TfLiteStatus InterpreterBuilder::ApplyDelegates(Interpreter* interpreter) {
+  // TODO(b/117561550): Move flex delegate application to the OpResolver.
+  if (AcquireFlexDelegate == nullptr) {
+    return kTfLiteOk;
+  }
+
+  bool has_flex_op = false;
+  for (const auto* registration : flatbuffer_op_index_to_registration_) {
+    if ((registration->builtin_code == BuiltinOperator_CUSTOM) &&
+        IsFlexOp(registration->custom_name)) {
+      has_flex_op = true;
+      break;
+    }
+  }
+
+  if (!has_flex_op) {
+    return kTfLiteOk;
+  }
+
+  if (auto flex_delegate = AcquireFlexDelegate()) {
+    return interpreter->ModifyGraphWithDelegate(std::move(flex_delegate),
+                                                /*allow_dynamic_tensors=*/true);
+  }
+
+  return kTfLiteOk;
+}
+
 TfLiteStatus InterpreterBuilder::operator()(
     std::unique_ptr<Interpreter>* interpreter) {
   return operator()(interpreter, /*num_threads=*/-1);
@@ -442,13 +493,8 @@ TfLiteStatus InterpreterBuilder::operator()(
   }
   (**interpreter).SetVariables(std::move(variables));
 
-#if defined(TFLITE_EXTENDED)
-  if (auto delegate = EagerDelegate::Create()) {
-    (**interpreter)
-        .ModifyGraphWithDelegate(std::move(delegate),
-                                 /*allow_dynamic_tensors=*/true);
-  }
-#endif
+  if (ApplyDelegates(interpreter->get()) != kTfLiteOk)
+    return cleanup_and_error();
 
   return kTfLiteOk;
 }

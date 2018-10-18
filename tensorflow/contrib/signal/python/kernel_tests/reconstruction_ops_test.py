@@ -55,7 +55,7 @@ class ReconstructionOpsTest(test.TestCase):
     signal = constant_op.constant(np.ones((3, 5)), dtype=dtypes.int64)
     reconstruction = reconstruction_ops.overlap_and_add(signal, 2)
 
-    with self.test_session(use_gpu=True) as sess:
+    with self.session(use_gpu=True) as sess:
       output = sess.run(reconstruction)
 
       expected_output = np.array([1, 1, 2, 2, 3, 2, 2, 1, 1])
@@ -86,7 +86,7 @@ class ReconstructionOpsTest(test.TestCase):
         (make_input(4), [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12], 4),
     ]
 
-    with self.test_session(use_gpu=True):
+    with self.session(use_gpu=True):
       for signal, expected, frame_hop in configurations:
         reconstruction = reconstruction_ops.overlap_and_add(
             np.array(signal), frame_hop).eval()
@@ -98,7 +98,7 @@ class ReconstructionOpsTest(test.TestCase):
                                   dtype=dtypes.int64)
     reconstruction = reconstruction_ops.overlap_and_add(signal, self.frame_hop)
 
-    with self.test_session(use_gpu=True) as sess:
+    with self.session(use_gpu=True) as sess:
       output = sess.run(reconstruction)
       string_output = [np.base_repr(x, self.bases[0]) for x in output]
 
@@ -108,7 +108,7 @@ class ReconstructionOpsTest(test.TestCase):
     signal = constant_op.constant(self.powers, dtype=dtypes.int64)
     reconstruction = reconstruction_ops.overlap_and_add(signal, self.frame_hop)
 
-    with self.test_session(use_gpu=True) as sess:
+    with self.session(use_gpu=True) as sess:
       output = sess.run(reconstruction)
 
       accumulator = True
@@ -124,7 +124,7 @@ class ReconstructionOpsTest(test.TestCase):
     signal = constant_op.constant(input_matrix, dtype=dtypes.float32)
     reconstruction = reconstruction_ops.overlap_and_add(signal, self.frame_hop)
 
-    with self.test_session(use_gpu=True) as sess:
+    with self.session(use_gpu=True) as sess:
       output = sess.run(reconstruction)
 
       string_output = [np.base_repr(int(x), self.bases[0]) for x in
@@ -143,8 +143,8 @@ class ReconstructionOpsTest(test.TestCase):
         ((2, 2, 2, 10, 128), 125),
     ]
 
-    for shape, frame_hop in configurations:
-      with self.test_session(use_gpu=True) as sess:
+    with self.session(use_gpu=True) as sess:
+      for shape, frame_hop in configurations:
         signal = array_ops.zeros(shape)
         reconstruction = reconstruction_ops.overlap_and_add(signal, frame_hop)
         loss = math_ops.reduce_sum(reconstruction)
@@ -155,7 +155,7 @@ class ReconstructionOpsTest(test.TestCase):
         self.assertTrue((gradient == 1.0).all())
 
   def test_gradient_batch(self):
-    with self.test_session(use_gpu=True) as sess:
+    with self.session(use_gpu=True) as sess:
       signal = array_ops.zeros((2, 10, 10))
       frame_hop = 10
       reconstruction = reconstruction_ops.overlap_and_add(signal, frame_hop)
@@ -177,7 +177,7 @@ class ReconstructionOpsTest(test.TestCase):
       self.assertAllEqual(expected_gradient, gradient)
 
   def test_gradient_numerical(self):
-    with self.test_session(use_gpu=True):
+    with self.session(use_gpu=True):
       shape = (2, 10, 10)
       framed_signal = array_ops.zeros(shape)
       frame_hop = 10

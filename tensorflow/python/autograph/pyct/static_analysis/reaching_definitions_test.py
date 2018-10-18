@@ -238,6 +238,41 @@ class DefinitionInfoTest(test.TestCase):
     self.assertSameDef(creation, mutation)
     self.assertSameDef(creation, use)
 
+  def test_deletion_partial(self):
+
+    def test_fn(a):
+      a = 0
+      if a:
+        del a
+      else:
+        a = 1
+      return a
+
+    node = self._parse_and_analyze(test_fn)
+    fn_body = node.body[0].body
+
+    first_def = fn_body[0].targets[0]
+    second_def = fn_body[1].orelse[0].targets[0]
+    use = fn_body[2].value
+    self.assertNotSameDef(use, first_def)
+    self.assertSameDef(use, second_def)
+
+  def test_deletion_total(self):
+
+    def test_fn(a):
+      if a:
+        a = 0
+      else:
+        a = 1
+      del a
+      return a
+
+    node = self._parse_and_analyze(test_fn)
+    fn_body = node.body[0].body
+
+    use = fn_body[2].value
+    self.assertHasDefs(use, 0)
+
   def test_replacement(self):
 
     def foo(a):

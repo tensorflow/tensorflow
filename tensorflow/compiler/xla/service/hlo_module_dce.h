@@ -28,7 +28,7 @@ namespace xla {
 // Sweeps through live instructions which cross computation boundaries (kWhile),
 // and removes code at dead shape indices.
 //
-class HloModuleDCE : public HloPassInterface {
+class HloModuleDCE : public HloModulePass {
  public:
   ~HloModuleDCE() override {}
   absl::string_view name() const override { return "hlo-module-dce"; }

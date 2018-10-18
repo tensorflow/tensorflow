@@ -90,6 +90,11 @@ XlaOpRegistry::~XlaOpRegistry() = default;
                  << " have incompatible compile time constant inputs.";
     return false;
   }
+  if (x.is_metadata_op != y.is_metadata_op) {
+    LOG(WARNING) << "Registrations of " << x.name
+                 << " have incompatible values for is_metadata_op.";
+    return false;
+  }
   return true;
 }
 
@@ -350,6 +355,20 @@ XlaOpRegistry::CompileTimeConstantInputs(const string& op) {
   return &it->second.front()->compile_time_constant_inputs;
 }
 
+/*static*/ bool XlaOpRegistry::IsMetadataOp(const string& op) {
+  XlaOpRegistry& registry = Instance();
+  mutex_lock lock(registry.mutex_);
+  auto it = registry.ops_.find(op);
+  if (it == registry.ops_.end() || it->second.empty()) {
+    return false;
+  }
+
+  // The test in IsCompatible ensures that if there are multiple matching
+  // registrations for this op name, they all have the same value of
+  // is_metadata_op, so only the first match is returned.
+  return it->second.front()->is_metadata_op;
+}
+
 std::vector<string> XlaOpRegistry::BackendNames() {
   std::vector<string> names;
   XlaOpRegistry& registry = Instance();
@@ -429,6 +448,11 @@ XlaOpRegistrationBuilder& XlaOpRegistrationBuilder::TypeConstraint(
 XlaOpRegistrationBuilder& XlaOpRegistrationBuilder::CompileTimeConstInput(
     absl::string_view input_name) {
   registration_->compile_time_constant_inputs.emplace(input_name);
+  return *this;
+}
+
+XlaOpRegistrationBuilder& XlaOpRegistrationBuilder::IsMetadataOp() {
+  registration_->is_metadata_op = true;
   return *this;
 }
 

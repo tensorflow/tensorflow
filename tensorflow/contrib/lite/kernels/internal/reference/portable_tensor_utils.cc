@@ -55,7 +55,7 @@ void PortableSymmetricQuantizeFloats(const float* values, const int size,
     return;
   }
   *scaling_factor = range / kScale;
-  const float scaling_factor_inv = 1.0f / *scaling_factor;
+  const float scaling_factor_inv = kScale / range;
   for (int i = 0; i < size; ++i) {
     const int32_t quantized_value =
         static_cast<int32_t>(TfLiteRound(values[i] * scaling_factor_inv));

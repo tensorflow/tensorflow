@@ -523,6 +523,12 @@ Status FunctionalizeLoop(const FunctionLibraryDefinition* lookup_library,
   builder.Attr("T", arg_types);
   builder.Attr("cond", cond_name);
   builder.Attr("body", body_name);
+  string outside_compilation;
+  if (GetNodeAttr(frame->loop_cond->def(), kXlaOutsideCompilationAttrName,
+                  &outside_compilation)
+          .ok()) {
+    builder.Attr(kXlaOutsideCompilationAttrName, outside_compilation);
+  }
   std::vector<NodeDefBuilder::NodeOut> inputs;
   for (int i = 0; i < frame->args.size(); ++i) {
     const Arg& arg = frame->args[i];

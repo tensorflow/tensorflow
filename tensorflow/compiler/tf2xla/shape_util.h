@@ -35,6 +35,11 @@ Status XLAShapeToTensorShape(const xla::Shape& shape,
 Status TensorShapeToXLAShape(DataType dtype, const TensorShape& tensor_shape,
                              xla::Shape* shape);
 
+// Converts a TensorShape into the equivalent XLA Shape proto, taking an
+// xla::PrimitiveType to specify the element type.  This never fails.
+xla::Shape TensorShapeToXLAShape(xla::PrimitiveType type,
+                                 const TensorShape& tensor_shape);
+
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_COMPILER_TF2XLA_SHAPE_UTIL_H_

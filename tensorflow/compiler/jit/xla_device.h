@@ -151,6 +151,12 @@ class XlaDevice : public LocalDevice {
   // information for GPU and TPU devices.
   Status UseGpuDeviceInfo() LOCKS_EXCLUDED(mu_);
 
+  // Instructs this XlaDevice to return 'sync_on_completion' for
+  // RequiresSyncOnCompletion().
+  void SetRequiresSyncOnCompletion(bool sync_on_completion) LOCKS_EXCLUDED(mu_);
+
+  bool RequiresSyncOnCompletion() const override LOCKS_EXCLUDED(mu_);
+
  private:
   xla::LocalClient* client() const;
   Allocator* GetAllocatorLocked(AllocatorAttributes attr)
@@ -165,7 +171,7 @@ class XlaDevice : public LocalDevice {
   static Status GetMetadataFromDevice(DeviceBase* device,
                                       const XlaDevice::Metadata** metadata);
 
-  mutex mu_;
+  mutable mutex mu_;
   // The metadata of this XlaDevice.
   const Metadata xla_metadata_;
   // Which hardware device in the client's platform this XlaDevice controls.
@@ -207,6 +213,10 @@ class XlaDevice : public LocalDevice {
 
   // Thread pool used for running closures
   std::unique_ptr<thread::ThreadPool> thread_pool_;
+
+  // True if the device requires XlaDevice::Sync to be called on completion
+  // regardless of status.
+  bool sync_on_completion_ GUARDED_BY(mu_) = false;
 };
 
 // Builds OpKernel registrations on 'device' for the JIT operators

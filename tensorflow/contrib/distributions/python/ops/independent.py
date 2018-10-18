@@ -70,7 +70,8 @@ class Independent(distribution_lib.Distribution):
   #### Examples
 
   ```python
-  tfd = tf.contrib.distributions
+  import tensorflow_probability as tfp
+  tfd = tfp.distributions
 
   # Make independent distribution from a 2-batch Normal.
   ind = tfd.Independent(

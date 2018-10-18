@@ -133,6 +133,21 @@ class CallTreesTest(converter_testing.TestCase):
         result_tensor = result.test_fn(constant_op.constant(1))
         self.assertEquals(sess.run(result_tensor), 3)
 
+  def test_call_to_decorated_function(self):
+
+    def decorator(f):
+      return f
+
+    @decorator
+    def called_fn(a):
+      return a
+
+    def test_fn(a):
+      return called_fn(a)
+
+    node, ctx = self.prepare(test_fn, {'called_fn': called_fn})
+    node = call_trees.transform(node, ctx)
+
 
 if __name__ == '__main__':
   test.main()

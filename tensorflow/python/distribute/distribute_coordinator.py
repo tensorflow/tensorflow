@@ -126,7 +126,7 @@ class _WorkerContext(object):
         replicated training.
       task_id: an integer indicating id of the corresponding task. It can be
         None if it is local training or in-graph replicated training.
-      session_config: an optional @{tf.ConfigProto} object.
+      session_config: an optional `tf.ConfigProto` object.
       rpc_layer: optional string specifying the RPC protocol for communication
         with worker masters. If None or empty, hosts in the `cluster_spec` will
         be used directly.
@@ -685,7 +685,7 @@ def run_distribute_coordinator(worker_fn,
       in a cluster. If not set or empty, fall back to local training.
     task_type: the current task type, optional if this is a client.
     task_id: the current task id, optional if this is a client.
-    session_config: an optional @{tf.ConfigProto} object which will be passed
+    session_config: an optional `tf.ConfigProto` object which will be passed
       to `strategy`'s `configure` method and used to create a session.
     rpc_layer: optional string, the protocol for RPC, e.g. "grpc".
 

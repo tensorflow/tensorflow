@@ -308,6 +308,7 @@ tf_cc_test(
         "//tensorflow/cc:function_ops",
         "//tensorflow/cc:ops",
         "//tensorflow/core:core_cpu_internal",
+        "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:math_ops_op_lib",
         "//tensorflow/core:protos_all_cc",
@@ -611,6 +612,7 @@ cc_library(
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",
+        "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
     ],
@@ -634,6 +636,7 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:ops",
         "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/strings",
     ],
 )
@@ -648,6 +651,7 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/strings",
     ],
 )
@@ -658,5 +662,6 @@ cc_library(
     hdrs = ["side_effect_util.h"],
     deps = [
         "//tensorflow/core:core_cpu",
+        "@com_google_absl//absl/strings",
     ],
 )

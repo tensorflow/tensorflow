@@ -294,7 +294,7 @@ class InMemoryEvaluatorHookTest(test.TestCase):
 
     def model_fn(features, labels, mode):
       _, _ = features, labels
-      w = variables.Variable(
+      w = variables.VariableV1(
           initial_value=[0.],
           trainable=False,
           collections=[ops.GraphKeys.SAVEABLE_OBJECTS])

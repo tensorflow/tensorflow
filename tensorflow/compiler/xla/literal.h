@@ -203,6 +203,10 @@ class LiteralBase {
   // Returns the count of the elements in the array at the given shape index in
   // this literal.
   int64 element_count(const ShapeIndex& index = {}) const {
+    if (index.empty()) {
+      // Common case, avoid GetSubshape().
+      return ShapeUtil::ElementsIn(shape());
+    }
     return ShapeUtil::ElementsIn(ShapeUtil::GetSubshape(shape(), index));
   }
 
@@ -852,9 +856,9 @@ class BorrowingLiteral : public LiteralBase {
 
 template <typename NativeT>
 absl::Span<const NativeT> LiteralBase::Piece::data() const {
-  CHECK(ShapeUtil::IsArray(subshape())) << ShapeUtil::HumanString(subshape());
-  CHECK_EQ(subshape().element_type(),
-           primitive_util::NativeToPrimitiveType<NativeT>())
+  DCHECK(ShapeUtil::IsArray(subshape())) << ShapeUtil::HumanString(subshape());
+  DCHECK_EQ(subshape().element_type(),
+            primitive_util::NativeToPrimitiveType<NativeT>())
       << "Attempting to access "
       << PrimitiveType_Name(primitive_util::NativeToPrimitiveType<NativeT>())
       << " type, but literal element type is "
@@ -865,9 +869,9 @@ absl::Span<const NativeT> LiteralBase::Piece::data() const {
 
 template <typename NativeT>
 absl::Span<NativeT> LiteralBase::Piece::data() {
-  CHECK(ShapeUtil::IsArray(subshape())) << ShapeUtil::HumanString(subshape());
-  CHECK_EQ(subshape().element_type(),
-           primitive_util::NativeToPrimitiveType<NativeT>())
+  DCHECK(ShapeUtil::IsArray(subshape())) << ShapeUtil::HumanString(subshape());
+  DCHECK_EQ(subshape().element_type(),
+            primitive_util::NativeToPrimitiveType<NativeT>())
       << "Attempting to access "
       << PrimitiveType_Name(primitive_util::NativeToPrimitiveType<NativeT>())
       << " type, but literal element type is "

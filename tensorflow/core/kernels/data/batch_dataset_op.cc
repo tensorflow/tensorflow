@@ -21,7 +21,7 @@ namespace tensorflow {
 namespace data {
 namespace {
 
-// See documentation in ../ops/dataset_ops.cc for a high-level
+// See documentation in ../../ops/dataset_ops.cc for a high-level
 // description of the following op.
 
 class BatchDatasetOp : public UnaryDatasetOpKernel {
@@ -117,7 +117,7 @@ class BatchDatasetOp : public UnaryDatasetOpKernel {
           : DatasetIterator<Dataset>(params) {}
 
       Status Initialize(IteratorContext* ctx) override {
-        SetMetadata(ctx, "batch_size", dataset()->batch_size_);
+        AddConstantParameter(ctx, "batch_size", dataset()->batch_size_);
         return dataset()->input_->MakeIterator(ctx, prefix(), &input_impl_);
       }
 

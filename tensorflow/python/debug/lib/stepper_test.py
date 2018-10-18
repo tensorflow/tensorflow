@@ -36,8 +36,8 @@ from tensorflow.python.training import gradient_descent
 class StepperTest(test_util.TensorFlowTestCase):
 
   def setUp(self):
-    self.a = variables.Variable(2.0, name="a")
-    self.b = variables.Variable(3.0, name="b")
+    self.a = variables.VariableV1(2.0, name="a")
+    self.b = variables.VariableV1(3.0, name="b")
 
     self.c = math_ops.multiply(self.a, self.b, name="c")  # Should be 6.0.
     self.d = math_ops.multiply(self.a, self.a, name="d")  # Should be 4.0.
@@ -49,7 +49,7 @@ class StepperTest(test_util.TensorFlowTestCase):
 
     # The there nodes x, y and z form a graph with "cross-links" in. I.e., x
     # and y are both direct inputs to z, but x is also a direct input to y.
-    self.x = variables.Variable(2.0, name="x")  # Should be 2.0
+    self.x = variables.VariableV1(2.0, name="x")  # Should be 2.0
     self.y = math_ops.negative(self.x, name="y")  # Should be -2.0.
 
     self.z = math_ops.multiply(self.x, self.y, name="z")  # Should be -4.0.
@@ -580,7 +580,7 @@ class StepperTestWithPlaceHolders(test_util.TensorFlowTestCase):
 class StepperAssignAddTest(test_util.TensorFlowTestCase):
 
   def setUp(self):
-    self.v = variables.Variable(10.0, name="v")
+    self.v = variables.VariableV1(10.0, name="v")
     self.p = math_ops.add(self.v, self.v, name="p")
     self.q = math_ops.multiply(self.p, self.p, name="q")
     self.delta = constant_op.constant(2.0, name="delta")
@@ -711,9 +711,9 @@ class StepperBackwardRunTest(test_util.TensorFlowTestCase):
     Construct a backward graph using the GradientDescentOptimizer.
     """
 
-    self.a = variables.Variable(1.0, name="a")
-    self.b = variables.Variable(2.0, name="b")
-    self.c = variables.Variable(4.0, name="c")
+    self.a = variables.VariableV1(1.0, name="a")
+    self.b = variables.VariableV1(2.0, name="b")
+    self.c = variables.VariableV1(4.0, name="c")
     self.d = math_ops.multiply(self.a, self.b, name="d")
     self.e = math_ops.multiply(self.b, self.c, name="e")
     self.f = math_ops.multiply(self.d, self.e, name="f")

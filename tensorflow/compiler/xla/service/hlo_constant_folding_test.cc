@@ -242,5 +242,25 @@ TEST_F(HloConstantFoldingTest, ConstantFoldReduceNoLayout) {
   EXPECT_THAT(module().entry_computation()->root_instruction(), op::Reduce());
 }
 
+const char* const kConstantFoldLargePad = R"(
+  HloModule ConstantFoldLargePad
+
+  ENTRY r {
+    a = f32[1,1,1] constant(f32[1,1,1]{{{7}}})
+    b = f32[] constant(42)
+    ROOT pad = f32[2048,2048,128] pad(a, b), padding=1024_1023x1024_1023x64_63
+  })";
+
+TEST_F(HloConstantFoldingTest, DoesNotFoldLargePad) {
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(kConstantFoldLargePad));
+  HloConstantFolding const_folder;
+  TF_ASSERT_OK_AND_ASSIGN(bool result, const_folder.Run(module.get()));
+  EXPECT_FALSE(result);
+
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              op::Pad(op::Constant(), op::Constant()));
+}
+
 }  // namespace
 }  // namespace xla

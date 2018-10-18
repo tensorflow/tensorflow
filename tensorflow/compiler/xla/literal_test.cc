@@ -224,6 +224,16 @@ TEST_F(LiteralUtilTest, CreateSparse) {
             absl::Span<const int64>(expected_indices.data(),
                                     expected_indices.num_elements()));
   EXPECT_EQ(literal.data<int64>(), absl::Span<const int64>(expected_values));
+
+  // Serialize then deserialize and verify the resulting literal.
+  TF_ASSERT_OK_AND_ASSIGN(Literal literal_from_proto,
+                          Literal::CreateFromProto(literal.ToProto()));
+
+  EXPECT_EQ(literal_from_proto.sparse_indices()->data(),
+            absl::Span<const int64>(expected_indices.data(),
+                                    expected_indices.num_elements()));
+  EXPECT_EQ(literal_from_proto.data<int64>(),
+            absl::Span<const int64>(expected_values));
 }
 
 TEST_F(LiteralUtilTest, LiteralR4F32ProjectedStringifies) {
