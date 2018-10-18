@@ -479,8 +479,7 @@ TEST(RawApiTest, CompileWithXlaReturnShapes) {
                                      xla_program_shape.result().layout()));
 }
 
-// Disabled because of failure on TPU (b/117876141)
-TEST(RawApiTest, DISABLED_DotGeneralWithLayoutTest) {
+TEST(RawApiTest, DotGeneralWithLayoutTest) {
   auto layout = xla::LayoutUtil::MakeLayout({0, 1});
 
   xrt::XLAAllocation p0;
