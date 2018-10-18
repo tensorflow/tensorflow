@@ -442,6 +442,10 @@ class ParameterServerStrategy(distribute_lib.DistributionStrategy):
     return len(self._compute_devices)
 
   @property
+  def num_replicas_in_sync(self):
+    return len(self._compute_devices)
+
+  @property
   def worker_devices(self):
     # Make a copy to prevent users from accidentally mutating our copy.
     return list(self._compute_devices)

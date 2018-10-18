@@ -365,7 +365,7 @@ class MirroredStrategy(distribute_lib.DistributionStrategy):
     self._cross_tower_ops = cross_tower_ops
     self._prefetch_on_device = prefetch_on_device
     self._auto_shard_dataset = auto_shard_dataset
-    # Rememeber num GPUs which might be needed by `configure` method.
+    # Remember num GPUs which might be needed by `configure` method.
     if num_gpus is not None and num_gpus_per_worker is not None:
       raise ValueError(
           "You cannot specify both `num_gpus` and `num_gpus_per_worker`.")
@@ -685,6 +685,10 @@ class MirroredStrategy(distribute_lib.DistributionStrategy):
 
   @property
   def num_towers(self):
+    return len(self._devices)
+
+  @property
+  def num_replicas_in_sync(self):
     return len(self._devices)
 
   def _worker_device_index(self):
