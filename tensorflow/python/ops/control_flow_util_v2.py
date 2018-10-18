@@ -72,3 +72,20 @@ def create_new_tf_function(func_graph):
       func_graph.name, func_graph, func_graph.inputs, func_graph.outputs, {})
   func.add_to_graph(func_graph.outer_graph)
   return func_graph.name
+
+
+def unique_fn_name(scope, name):
+  """Returns a unique name to use for a control flow function.
+
+  Args:
+    scope: A name scope string.
+    name: An identifier for this function (e.g. "true", "body").
+
+  Returns:
+    A string, the name to use for the function.
+  """
+  return ("%s%s_%s" % (scope, name, ops.uid())).replace("/", "_")
+
+
+def unique_grad_fn_name(forward_name):
+  return "%s_grad_%s" % (forward_name, ops.uid())
