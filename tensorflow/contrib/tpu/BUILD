@@ -173,6 +173,7 @@ tf_custom_op_py_library(
     deps = [
         ":profiler",
         ":tpu_ops",
+        "//tensorflow/contrib/compiler:xla",
         "//tensorflow/contrib/util:util_py",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_for_generated_wrappers",
@@ -259,6 +260,7 @@ py_library(
         "//tensorflow/compiler/xla/experimental/xla_sharding",
         "//tensorflow/compiler/xla/python_api:xla_shape",
         "//tensorflow/contrib/cluster_resolver:tpu_cluster_resolver_py",
+        "//tensorflow/contrib/compiler:xla",
         "//tensorflow/contrib/tpu/proto:compilation_result_proto_py",
         "//tensorflow/contrib/tpu/proto:optimization_parameters_proto_py",
         "//tensorflow/contrib/tpu/proto:topology_proto_py",
@@ -348,17 +350,6 @@ tf_py_test(
     name = "tpu_infeed_test",
     size = "small",
     srcs = ["python/tpu/tpu_infeed_test.py"],
-    additional_deps = [
-        ":tpu",
-        "//tensorflow/python:framework",
-        "//tensorflow/python:framework_test_lib",
-    ],
-)
-
-tf_py_test(
-    name = "tpu_function_test",
-    size = "small",
-    srcs = ["python/tpu/tpu_function_test.py"],
     additional_deps = [
         ":tpu",
         "//tensorflow/python:framework",
