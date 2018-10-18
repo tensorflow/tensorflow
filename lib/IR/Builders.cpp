@@ -149,6 +149,11 @@ ElementsAttr *Builder::getSplatElementsAttr(VectorOrTensorType *type,
   return SplatElementsAttr::get(type, elt);
 }
 
+ElementsAttr *Builder::getDenseElementsAttr(VectorOrTensorType *type,
+                                            ArrayRef<char> data) {
+  return DenseElementsAttr::get(type, data);
+}
+
 //===----------------------------------------------------------------------===//
 // Affine Expressions, Affine Maps, and Integet Sets.
 //===----------------------------------------------------------------------===//

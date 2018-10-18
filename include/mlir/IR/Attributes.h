@@ -46,14 +46,14 @@ public:
     Function,
 
     SplatElements,
+    DenseIntElements,
+    DenseFPElements,
     FIRST_ELEMENTS_ATTR = SplatElements,
-    LAST_ELEMENTS_ATTR = SplatElements,
+    LAST_ELEMENTS_ATTR = DenseFPElements,
   };
 
   /// Return the classification for this attribute.
-  Kind getKind() const {
-    return kind;
-  }
+  Kind getKind() const { return kind; }
 
   /// Return true if this field is, or contains, a function attribute.
   bool isOrContainsFunction() const { return isOrContainsFunctionCache; }
@@ -74,8 +74,8 @@ private:
   /// This field is true if this is, or contains, a function attribute.
   bool isOrContainsFunctionCache : 1;
 
-  Attribute(const Attribute&) = delete;
-  void operator=(const Attribute&) = delete;
+  Attribute(const Attribute &) = delete;
+  void operator=(const Attribute &) = delete;
 };
 
 inline raw_ostream &operator<<(raw_ostream &os, const Attribute &attr) {
@@ -87,14 +87,13 @@ class BoolAttr : public Attribute {
 public:
   static BoolAttr *get(bool value, MLIRContext *context);
 
-  bool getValue() const {
-    return value;
-  }
+  bool getValue() const { return value; }
 
   /// Methods for support type inquiry through isa, cast, and dyn_cast.
   static bool classof(const Attribute *attr) {
     return attr->getKind() == Kind::Bool;
   }
+
 private:
   BoolAttr(bool value)
       : Attribute(Kind::Bool, /*isOrContainsFunction=*/false), value(value) {}
@@ -106,14 +105,13 @@ class IntegerAttr : public Attribute {
 public:
   static IntegerAttr *get(int64_t value, MLIRContext *context);
 
-  int64_t getValue() const {
-    return value;
-  }
+  int64_t getValue() const { return value; }
 
   /// Methods for support type inquiry through isa, cast, and dyn_cast.
   static bool classof(const Attribute *attr) {
     return attr->getKind() == Kind::Integer;
   }
+
 private:
   IntegerAttr(int64_t value)
       : Attribute(Kind::Integer, /*isOrContainsFunction=*/false), value(value) {
@@ -130,14 +128,13 @@ public:
   // correctness, otherwise constant folding will be done with host math.  This
   // is completely incorrect for BF16 and other datatypes, and subtly wrong
   // for float32.
-  double getValue() const {
-    return value;
-  }
+  double getValue() const { return value; }
 
   /// Methods for support type inquiry through isa, cast, and dyn_cast.
   static bool classof(const Attribute *attr) {
     return attr->getKind() == Kind::Float;
   }
+
 private:
   FloatAttr(double value)
       : Attribute(Kind::Float, /*isOrContainsFunction=*/false), value(value) {}
@@ -149,14 +146,13 @@ class StringAttr : public Attribute {
 public:
   static StringAttr *get(StringRef bytes, MLIRContext *context);
 
-  StringRef getValue() const {
-    return value;
-  }
+  StringRef getValue() const { return value; }
 
   /// Methods for support type inquiry through isa, cast, and dyn_cast.
   static bool classof(const Attribute *attr) {
     return attr->getKind() == Kind::String;
   }
+
 private:
   StringAttr(StringRef value)
       : Attribute(Kind::String, /*isOrContainsFunction=*/false), value(value) {}
@@ -168,21 +164,20 @@ private:
 /// type homogenous given that attributes don't, in general, carry types.
 class ArrayAttr : public Attribute {
 public:
-  static ArrayAttr *get(ArrayRef<Attribute*> value, MLIRContext *context);
+  static ArrayAttr *get(ArrayRef<Attribute *> value, MLIRContext *context);
 
-  ArrayRef<Attribute*> getValue() const {
-    return value;
-  }
+  ArrayRef<Attribute *> getValue() const { return value; }
 
   /// Methods for support type inquiry through isa, cast, and dyn_cast.
   static bool classof(const Attribute *attr) {
     return attr->getKind() == Kind::Array;
   }
+
 private:
   ArrayAttr(ArrayRef<Attribute *> value, bool isOrContainsFunction)
       : Attribute(Kind::Array, isOrContainsFunction), value(value) {}
   ~ArrayAttr() = delete;
-  ArrayRef<Attribute*> value;
+  ArrayRef<Attribute *> value;
 };
 
 class AffineMapAttr : public Attribute {
@@ -288,6 +283,98 @@ private:
   SplatElementsAttr(VectorOrTensorType *type, Attribute *elt)
       : ElementsAttr(Kind::SplatElements, type), elt(elt) {}
   Attribute *elt;
+};
+
+/// An attribute represents a reference to a dense vector or tensor object.
+///
+/// This class is designed to store elements with any bit widths equal or less
+/// than 64.
+class DenseElementsAttr : public ElementsAttr {
+public:
+  /// It assumes the elements in the input array have been truncated to the bits
+  /// width specified by the element type (note all float type are 64 bits).
+  /// When the value is retrieved, the bits are read from the storage and extend
+  /// to 64 bits if necessary.
+  static DenseElementsAttr *get(VectorOrTensorType *type, ArrayRef<char> data);
+
+  // TODO: Read the data from the attribute list and compress them
+  // to a character array. Then call the above method to construct the
+  // attribute.
+  static DenseElementsAttr *get(VectorOrTensorType *type,
+                                ArrayRef<Attribute *> values);
+
+  void getValues(SmallVectorImpl<Attribute *> &values) const;
+
+  ArrayRef<char> getRawData() const { return data; }
+
+  /// Method for support type inquiry through isa, cast and dyn_cast.
+  static bool classof(const Attribute *attr) {
+    return attr->getKind() == Kind::DenseIntElements ||
+           attr->getKind() == Kind::DenseFPElements;
+  }
+
+protected:
+  DenseElementsAttr(Kind kind, VectorOrTensorType *type, ArrayRef<char> data)
+      : ElementsAttr(kind, type), data(data) {}
+
+private:
+  ArrayRef<char> data;
+};
+
+/// An attribute represents a reference to a dense integer vector or tensor
+/// object.
+class DenseIntElementsAttr : public DenseElementsAttr {
+public:
+  DenseIntElementsAttr(VectorOrTensorType *type, ArrayRef<char> data,
+                       size_t bitsWidth)
+      : DenseElementsAttr(Kind::DenseIntElements, type, data),
+        bitsWidth(bitsWidth) {}
+
+  // TODO: returns APInts instead of IntegerAttr.
+  void getValues(SmallVectorImpl<Attribute *> &values) const;
+
+  APInt getValue(ArrayRef<int> indices) const;
+
+  /// Writes the lowest `bitWidth` bits of `value` to the bit position `bitPos`
+  /// in array `rawData`.
+  static void writeBits(char *rawData, size_t bitPos, size_t bitWidth,
+                        uint64_t value);
+
+  /// Reads the next `bitWidth` bits from the bit position `bitPos` in array
+  /// `rawData` and return them as the lowest bits of an uint64 integer.
+  static uint64_t readBits(const char *rawData, size_t bitPos,
+                           size_t bitsWidth);
+
+  /// Method for support type inquiry through isa, cast and dyn_cast.
+  static bool classof(const Attribute *attr) {
+    return attr->getKind() == Kind::DenseIntElements;
+  }
+
+private:
+  ~DenseIntElementsAttr() = delete;
+
+  size_t bitsWidth;
+};
+
+/// An attribute represents a reference to a dense float vector or tensor
+/// object. Each element is stored as a double.
+class DenseFPElementsAttr : public DenseElementsAttr {
+public:
+  DenseFPElementsAttr(VectorOrTensorType *type, ArrayRef<char> data)
+      : DenseElementsAttr(Kind::DenseFPElements, type, data) {}
+
+  // TODO: returns APFPs instead of FloatAttr.
+  void getValues(SmallVectorImpl<Attribute *> &values) const;
+
+  APFloat getValue(ArrayRef<int> indices) const;
+
+  /// Method for support type inquiry through isa, cast and dyn_cast.
+  static bool classof(const Attribute *attr) {
+    return attr->getKind() == Kind::DenseFPElements;
+  }
+
+private:
+  ~DenseFPElementsAttr() = delete;
 };
 } // end namespace mlir.
 

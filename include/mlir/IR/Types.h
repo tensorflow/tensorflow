@@ -92,6 +92,10 @@ public:
   /// Return true if this is an integer type with the specified width.
   bool isInteger(unsigned width) const;
 
+  /// Return the bitwidth of this type. For vector or tensor types, returns the
+  /// element type's bitwidth.
+  unsigned getBitWidth() const;
+
   // Convenience factories.
   static IntegerType *getInteger(unsigned width, MLIRContext *ctx);
   static FloatType *getBF16(MLIRContext *ctx);
@@ -293,6 +297,10 @@ class VectorOrTensorType : public Type {
 public:
   Type *getElementType() const { return elementType; }
 
+  /// If this is ranked tensor or vector type, return the number of elements. If
+  /// it is an unranked tensor or vector, abort.
+  unsigned getNumElements() const;
+
   /// If this is ranked tensor or vector type, return the rank. If it is an
   /// unranked tensor, return -1.
   int getRank() const;
@@ -466,7 +474,6 @@ static bool isValidTensorElementType(Type *type) {
   return isa<FloatType>(type) || isa<VectorType>(type) ||
          isa<IntegerType>(type) || isa<OtherType>(type);
 }
-
 } // end namespace mlir
 
 #endif  // MLIR_IR_TYPES_H

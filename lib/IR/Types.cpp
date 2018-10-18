@@ -17,13 +17,35 @@
 
 #include "mlir/IR/Types.h"
 #include "mlir/IR/AffineMap.h"
-#include "llvm/Support/raw_ostream.h"
 #include "mlir/Support/STLExtras.h"
+#include "llvm/Support/raw_ostream.h"
 using namespace mlir;
 
+unsigned Type::getBitWidth() const {
+  switch (getKind()) {
+    // TODO: Currently the IR uses host double type to store all the float
+    // datatypes. This is completely incorrect for BF16 and other datatypes.
+    // We have to fix this once APFloat is used in the IR.
+  case Type::Kind::BF16:
+  case Type::Kind::F16:
+  case Type::Kind::F32:
+  case Type::Kind::F64:
+    return 64;
+  case Type::Kind::Integer:
+    return cast<IntegerType>(this)->getWidth();
+  case Type::Kind::Vector:
+  case Type::Kind::RankedTensor:
+  case Type::Kind::UnrankedTensor:
+    return cast<VectorOrTensorType>(this)->getElementType()->getBitWidth();
+    // TODO: Handle more types.
+  default:
+    llvm_unreachable("unexpected type");
+  }
+}
+
 IntegerType::IntegerType(unsigned width, MLIRContext *context)
-  : Type(Kind::Integer, context), width(width) {
-    assert(width <= kMaxWidth && "admissible integer bitwidth exceeded");
+    : Type(Kind::Integer, context), width(width) {
+  assert(width <= kMaxWidth && "admissible integer bitwidth exceeded");
 }
 
 FloatType::FloatType(Kind kind, MLIRContext *context) : Type(kind, context) {}
@@ -32,25 +54,39 @@ OtherType::OtherType(Kind kind, MLIRContext *context) : Type(kind, context) {}
 
 FunctionType::FunctionType(Type *const *inputsAndResults, unsigned numInputs,
                            unsigned numResults, MLIRContext *context)
-  : Type(Kind::Function, context, numInputs),
-    numResults(numResults), inputsAndResults(inputsAndResults) {
-}
+    : Type(Kind::Function, context, numInputs), numResults(numResults),
+      inputsAndResults(inputsAndResults) {}
 
 VectorOrTensorType::VectorOrTensorType(Kind kind, MLIRContext *context,
                                        Type *elementType, unsigned subClassData)
     : Type(kind, context, subClassData), elementType(elementType) {}
 
+unsigned VectorOrTensorType::getNumElements() const {
+  switch (getKind()) {
+  case Kind::Vector:
+  case Kind::RankedTensor: {
+    auto shape = getShape();
+    unsigned num = 1;
+    for (auto dim : shape)
+      num *= dim;
+    return num;
+  }
+  default:
+    llvm_unreachable("not a VectorOrTensorType or not ranked");
+  }
+}
+
 /// If this is ranked tensor or vector type, return the rank. If it is an
 /// unranked tensor, return -1.
 int VectorOrTensorType::getRank() const {
   switch (getKind()) {
-  default:
-    llvm_unreachable("not a VectorOrTensorType");
   case Kind::Vector:
   case Kind::RankedTensor:
     return getShape().size();
   case Kind::UnrankedTensor:
     return -1;
+  default:
+    llvm_unreachable("not a VectorOrTensorType");
   }
 }
 
@@ -60,7 +96,7 @@ int VectorOrTensorType::getDimSize(unsigned i) const {
   case Kind::RankedTensor:
     return getShape()[i];
   default:
-    llvm_unreachable("not a VectorOrTensorType");
+    llvm_unreachable("not a VectorOrTensorType or not ranked");
   }
 }
 
@@ -94,14 +130,13 @@ TensorType::TensorType(Kind kind, Type *elementType, MLIRContext *context)
 
 RankedTensorType::RankedTensorType(ArrayRef<int> shape, Type *elementType,
                                    MLIRContext *context)
-  : TensorType(Kind::RankedTensor, elementType, context),
-    shapeElements(shape.data()) {
+    : TensorType(Kind::RankedTensor, elementType, context),
+      shapeElements(shape.data()) {
   setSubclassData(shape.size());
 }
 
 UnrankedTensorType::UnrankedTensorType(Type *elementType, MLIRContext *context)
-  : TensorType(Kind::UnrankedTensor, elementType, context) {
-}
+    : TensorType(Kind::UnrankedTensor, elementType, context) {}
 
 MemRefType::MemRefType(ArrayRef<int> shape, Type *elementType,
                        ArrayRef<AffineMap> affineMapList, unsigned memorySpace,

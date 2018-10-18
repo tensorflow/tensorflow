@@ -41,8 +41,7 @@ namespace mlir {
 template <typename ForwardIterator, typename UnaryFunctor,
           typename NullaryFunctor>
 inline void interleave(ForwardIterator begin, ForwardIterator end,
-                       UnaryFunctor each_fn,
-                       NullaryFunctor between_fn) {
+                       UnaryFunctor each_fn, NullaryFunctor between_fn) {
   if (begin == end)
     return;
   each_fn(*begin);
@@ -57,6 +56,11 @@ template <typename Container, typename UnaryFunctor, typename NullaryFunctor>
 inline void interleave(const Container &c, UnaryFunctor each_fn,
                        NullaryFunctor between_fn) {
   interleave(c.begin(), c.end(), each_fn, between_fn);
+}
+
+template <typename T, template <typename> class Container, typename raw_ostream>
+inline void interleaveComma(const Container<T> &c, raw_ostream &os) {
+  interleave(c.begin(), c.end(), [&](T a) { os << a; }, [&]() { os << ", "; });
 }
 
 } // end namespace mlir
@@ -80,8 +84,7 @@ static inline unsigned llvm_combineHashValue(unsigned a, unsigned b) {
 }
 
 namespace llvm {
-template<typename ...Ts>
-struct DenseMapInfo<std::tuple<Ts...> > {
+template <typename... Ts> struct DenseMapInfo<std::tuple<Ts...>> {
   typedef std::tuple<Ts...> Tuple;
 
   static inline Tuple getEmptyKey() {
@@ -92,34 +95,34 @@ struct DenseMapInfo<std::tuple<Ts...> > {
     return Tuple(DenseMapInfo<Ts>::getTombstoneKey()...);
   }
 
-  template<unsigned I>
-  static unsigned getHashValueImpl(const Tuple& values, std::false_type) {
+  template <unsigned I>
+  static unsigned getHashValueImpl(const Tuple &values, std::false_type) {
     typedef typename std::tuple_element<I, Tuple>::type EltType;
-    std::integral_constant<bool, I+1 == sizeof...(Ts)> atEnd;
+    std::integral_constant<bool, I + 1 == sizeof...(Ts)> atEnd;
     return llvm_combineHashValue(
-             DenseMapInfo<EltType>::getHashValue(std::get<I>(values)),
-             getHashValueImpl<I+1>(values, atEnd));
+        DenseMapInfo<EltType>::getHashValue(std::get<I>(values)),
+        getHashValueImpl<I + 1>(values, atEnd));
   }
 
-  template<unsigned I>
-  static unsigned getHashValueImpl(const Tuple& values, std::true_type) {
+  template <unsigned I>
+  static unsigned getHashValueImpl(const Tuple &values, std::true_type) {
     return 0;
   }
 
-  static unsigned getHashValue(const std::tuple<Ts...>& values) {
+  static unsigned getHashValue(const std::tuple<Ts...> &values) {
     std::integral_constant<bool, 0 == sizeof...(Ts)> atEnd;
     return getHashValueImpl<0>(values, atEnd);
   }
 
-  template<unsigned I>
+  template <unsigned I>
   static bool isEqualImpl(const Tuple &lhs, const Tuple &rhs, std::false_type) {
     typedef typename std::tuple_element<I, Tuple>::type EltType;
-    std::integral_constant<bool, I+1 == sizeof...(Ts)> atEnd;
-    return DenseMapInfo<EltType>::isEqual(std::get<I>(lhs), std::get<I>(rhs))
-           && isEqualImpl<I+1>(lhs, rhs, atEnd);
+    std::integral_constant<bool, I + 1 == sizeof...(Ts)> atEnd;
+    return DenseMapInfo<EltType>::isEqual(std::get<I>(lhs), std::get<I>(rhs)) &&
+           isEqualImpl<I + 1>(lhs, rhs, atEnd);
   }
 
-  template<unsigned I>
+  template <unsigned I>
   static bool isEqualImpl(const Tuple &lhs, const Tuple &rhs, std::true_type) {
     return true;
   }

@@ -296,6 +296,7 @@ protected:
   void printAffineMapReference(AffineMap affineMap);
   void printIntegerSetId(int integerSetId) const;
   void printIntegerSetReference(IntegerSet integerSet);
+  void printDenseElementsAttr(const DenseElementsAttr *attr);
 
   /// This enum is used to represent the binding stength of the enclosing
   /// context that an AffineExprStorage is being printed in, so we can
@@ -457,6 +458,16 @@ void ModulePrinter::printAttribute(const Attribute *attr) {
     }
     break;
   }
+  case Attribute::Kind::DenseIntElements:
+  case Attribute::Kind::DenseFPElements: {
+    auto *eltsAttr = cast<DenseElementsAttr>(attr);
+    os << "dense<";
+    printType(eltsAttr->getType());
+    os << ", ";
+    printDenseElementsAttr(eltsAttr);
+    os << '>';
+    break;
+  }
   case Attribute::Kind::SplatElements: {
     auto *elementsAttr = cast<SplatElementsAttr>(attr);
     os << "splat<";
@@ -467,6 +478,59 @@ void ModulePrinter::printAttribute(const Attribute *attr) {
     break;
   }
   }
+}
+
+void ModulePrinter::printDenseElementsAttr(const DenseElementsAttr *attr) {
+  auto *type = attr->getType();
+  auto shape = type->getShape();
+  auto rank = type->getRank();
+
+  SmallVector<Attribute *, 16> elements;
+  attr->getValues(elements);
+
+  // Special case for degenerate tensors.
+  if (elements.empty()) {
+    for (int i = 0; i < rank; ++i)
+      os << '[';
+    for (int i = 0; i < rank; ++i)
+      os << ']';
+    return;
+  }
+
+  // We use a mixed-radix counter to iterate through the shape. When we bump a
+  // non-least-significant digit, we emit a close bracket. When we next emit an
+  // element we re-open all closed brackets.
+
+  // The mixed-radix counter, with radices in 'shape'.
+  SmallVector<unsigned, 4> counter(rank, 0);
+  // The number of brackets that have been opened and not closed.
+  unsigned openBrackets = 0;
+
+  auto bumpCounter = [&]() {
+    // Bump the least significant digit.
+    ++counter[rank - 1];
+    // Iterate backwards bubbling back the increment.
+    for (unsigned i = rank - 1; i > 0; --i)
+      if (counter[i] >= shape[i]) {
+        // Index 'i' is rolled over. Bump (i-1) and close a bracket.
+        counter[i] = 0;
+        ++counter[i - 1];
+        --openBrackets;
+        os << ']';
+      }
+  };
+
+  for (unsigned idx = 0, e = elements.size(); idx != e; ++idx) {
+    if (idx != 0)
+      os << ", ";
+    while (openBrackets++ < rank)
+      os << '[';
+    openBrackets = rank;
+    printAttribute(elements[idx]);
+    bumpCounter();
+  }
+  while (openBrackets-- > 0)
+    os << ']';
 }
 
 void ModulePrinter::printType(const Type *type) {

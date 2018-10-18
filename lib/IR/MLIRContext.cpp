@@ -32,6 +32,7 @@
 #include "mlir/IR/Types.h"
 #include "mlir/Support/MathExtras.h"
 #include "mlir/Support/STLExtras.h"
+#include "llvm/ADT/APInt.h"
 #include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/StringMap.h"
 #include "llvm/Support/Allocator.h"
@@ -180,6 +181,22 @@ struct AttributeListKeyInfo : DenseMapInfo<AttributeListStorage *> {
   }
 };
 
+struct DenseElementsAttrInfo : DenseMapInfo<DenseElementsAttr *> {
+  using KeyTy = std::pair<VectorOrTensorType *, ArrayRef<char>>;
+  using DenseMapInfo<DenseElementsAttr *>::getHashValue;
+  using DenseMapInfo<DenseElementsAttr *>::isEqual;
+
+  static unsigned getHashValue(KeyTy key) {
+    return hash_combine(
+        key.first, hash_combine_range(key.second.begin(), key.second.end()));
+  }
+
+  static bool isEqual(const KeyTy &lhs, const DenseElementsAttr *rhs) {
+    if (rhs == getEmptyKey() || rhs == getTombstoneKey())
+      return false;
+    return lhs == std::make_pair(rhs->getType(), rhs->getRawData());
+  }
+};
 } // end anonymous namespace.
 
 namespace mlir {
@@ -277,6 +294,9 @@ public:
   DenseMap<const Function *, FunctionAttr *> functionAttrs;
   DenseMap<std::pair<VectorOrTensorType *, Attribute *>, SplatElementsAttr *>
       splatElementsAttrs;
+  using DenseElementsAttrSet =
+      DenseSet<DenseElementsAttr *, DenseElementsAttrInfo>;
+  DenseElementsAttrSet denseElementsAttrs;
 
 public:
   MLIRContextImpl() : filenames(locationAllocator), identifiers(allocator) {}
@@ -796,6 +816,139 @@ AttributeListStorage *AttributeListStorage::get(ArrayRef<NamedAttribute> attrs,
   std::uninitialized_copy(attrs.begin(), attrs.end(),
                           result->getTrailingObjects<NamedAttribute>());
   return *existing.first = result;
+}
+
+DenseElementsAttr *DenseElementsAttr::get(VectorOrTensorType *type,
+                                          ArrayRef<char> data) {
+  auto bitsRequired = (long)type->getBitWidth() * type->getNumElements();
+  assert((bitsRequired <= data.size() * 8L) &&
+         "Input data bit size should be larger than that type requires");
+
+  auto &impl = type->getContext()->getImpl();
+
+  // Look to see if this constant is already defined.
+  DenseElementsAttrInfo::KeyTy key({type, data});
+  auto existing = impl.denseElementsAttrs.insert_as(nullptr, key);
+
+  // If we already have it, return that value.
+  if (!existing.second)
+    return *existing.first;
+
+  // Otherwise, allocate a new one, unique it and return it.
+  auto *eltType = type->getElementType();
+  switch (eltType->getKind()) {
+  case Type::Kind::BF16:
+  case Type::Kind::F16:
+  case Type::Kind::F32:
+  case Type::Kind::F64: {
+    auto *result = impl.allocator.Allocate<DenseFPElementsAttr>();
+    auto *copy = (char *)impl.allocator.Allocate(data.size(), 64);
+    std::uninitialized_copy(data.begin(), data.end(), copy);
+    new (result) DenseFPElementsAttr(type, {copy, data.size()});
+    return *existing.first = result;
+  }
+  case Type::Kind::Integer: {
+    auto width = cast<IntegerType>(eltType)->getWidth();
+    auto *result = impl.allocator.Allocate<DenseIntElementsAttr>();
+    auto *copy = (char *)impl.allocator.Allocate(data.size(), 64);
+    std::uninitialized_copy(data.begin(), data.end(), copy);
+    new (result) DenseIntElementsAttr(type, {copy, data.size()}, width);
+    return *existing.first = result;
+  }
+  default:
+    llvm_unreachable("unexpected element type");
+  }
+}
+
+/// Writes the lowest `bitWidth` bits of `value` to bit position `bitPos`
+/// starting from `rawData`.
+void DenseIntElementsAttr::writeBits(char *data, size_t bitPos, size_t bitWidth,
+                                     uint64_t value) {
+  // Read the destination bytes which will be written to.
+  uint64_t dst = 0;
+  auto dstData = reinterpret_cast<char *>(&dst);
+  auto endPos = bitPos + bitWidth;
+  auto start = data + bitPos / 8;
+  auto end = data + endPos / 8 + (endPos % 8 != 0);
+  std::copy(start, end, dstData);
+
+  // Clean up the invalid bits in the destination bytes.
+  dst &= ~(-1UL << (bitPos % 8));
+
+  // Get the valid bits of the source value, shift them to right position,
+  // then add them to the destination bytes.
+  value <<= bitPos % 8;
+  dst |= value;
+
+  // Write the destination bytes back.
+  ArrayRef<char> range({dstData, (size_t)(end - start)});
+  std::copy(range.begin(), range.end(), start);
+}
+
+/// Reads the next `bitWidth` bits from the bit position `bitPos` of `rawData`
+/// and put them in the lowest bits.
+uint64_t DenseIntElementsAttr::readBits(const char *rawData, size_t bitPos,
+                                        size_t bitsWidth) {
+  uint64_t dst = 0;
+  auto dstData = reinterpret_cast<char *>(&dst);
+  auto endPos = bitPos + bitsWidth;
+  auto start = rawData + bitPos / 8;
+  auto end = rawData + endPos / 8 + (endPos % 8 != 0);
+  std::copy(start, end, dstData);
+
+  dst >>= bitPos % 8;
+  dst &= ~(-1UL << bitsWidth);
+  return dst;
+}
+
+void DenseElementsAttr::getValues(SmallVectorImpl<Attribute *> &values) const {
+  switch (getKind()) {
+  case Attribute::Kind::DenseIntElements:
+    cast<DenseIntElementsAttr>(this)->getValues(values);
+    return;
+  case Attribute::Kind::DenseFPElements:
+    cast<DenseFPElementsAttr>(this)->getValues(values);
+    return;
+  default:
+    llvm_unreachable("unexpected element type");
+  }
+}
+
+void DenseIntElementsAttr::getValues(
+    SmallVectorImpl<Attribute *> &values) const {
+  auto elementNum = getType()->getNumElements();
+  auto context = getType()->getContext();
+  values.reserve(elementNum);
+  if (bitsWidth == 64) {
+    ArrayRef<int64_t> vs(
+        {reinterpret_cast<const int64_t *>(getRawData().data()),
+         getRawData().size() / 8});
+    for (auto value : vs) {
+      auto *attr = IntegerAttr::get(value, context);
+      values.push_back(attr);
+    }
+  } else {
+    const auto *rawData = getRawData().data();
+    for (size_t pos = 0; pos < elementNum * bitsWidth; pos += bitsWidth) {
+      uint64_t bits = readBits(rawData, pos, bitsWidth);
+      APInt value(bitsWidth, bits, /*isSigned=*/true);
+      auto *attr = IntegerAttr::get(value.getSExtValue(), context);
+      values.push_back(attr);
+    }
+  }
+}
+
+void DenseFPElementsAttr::getValues(
+    SmallVectorImpl<Attribute *> &values) const {
+  auto elementNum = getType()->getNumElements();
+  auto context = getType()->getContext();
+  ArrayRef<double> vs({reinterpret_cast<const double *>(getRawData().data()),
+                       getRawData().size() / 8});
+  values.reserve(elementNum);
+  for (auto v : vs) {
+    auto *attr = FloatAttr::get(v, context);
+    values.push_back(attr);
+  }
 }
 
 ElementsAttr *SplatElementsAttr::get(VectorOrTensorType *type, Attribute *elt) {

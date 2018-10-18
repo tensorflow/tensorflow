@@ -35,6 +35,8 @@
 #include "mlir/IR/OperationSet.h"
 #include "mlir/IR/StmtVisitor.h"
 #include "mlir/IR/Types.h"
+#include "mlir/Support/STLExtras.h"
+#include "llvm/ADT/APInt.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/Support/MemoryBuffer.h"
 #include "llvm/Support/PrettyStackTrace.h"
@@ -205,6 +207,8 @@ public:
   AffineMap parseAffineMapReference();
   IntegerSet parseIntegerSetInline();
   IntegerSet parseIntegerSetReference();
+  ElementsAttr *parseDenseElementsAttr(VectorOrTensorType *type);
+  VectorOrTensorType *parseVectorOrTensorType();
 
 private:
   // The Parser is subclassed and reinstantiated.  Do not add additional
@@ -624,6 +628,144 @@ ParseResult Parser::parseTypeList(SmallVectorImpl<Type *> &elements) {
 // Attribute parsing.
 //===----------------------------------------------------------------------===//
 
+namespace {
+class TensorLiteralParser {
+public:
+  TensorLiteralParser(Parser &p, Type *eltTy)
+      : p(p), eltTy(eltTy), currBitPos(0), bitsWidth(eltTy->getBitWidth()) {}
+
+  ParseResult parse() { return parseList(shape); }
+
+  ArrayRef<char> getValues() const {
+    return {reinterpret_cast<const char *>(storage.data()), storage.size() * 8};
+  }
+
+  ArrayRef<int> getShape() const { return shape; }
+
+private:
+  /// Parse either a single element or a list of elements. Return the dimensions
+  /// of the parsed sub-tensor in dims.
+  ParseResult parseElementOrList(llvm::SmallVectorImpl<int> &dims);
+
+  /// Parse a list of either lists or elements, returning the dimensions of the
+  /// parsed sub-tensors in dims. For example:
+  ///   parseList([1, 2, 3]) -> Success, [3]
+  ///   parseList([[1, 2], [3, 4]]) -> Success, [2, 2]
+  ///   parseList([[1, 2], 3]) -> Failure
+  ///   parseList([[1, [2, 3]], [4, [5]]]) -> Failure
+  ParseResult parseList(llvm::SmallVectorImpl<int> &dims);
+
+  void addToStorage(uint64_t value) {
+    if (bitsWidth == 64)
+      storage.push_back(value);
+
+    if (currBitPos + bitsWidth > storage.size() * 64)
+      storage.push_back(0L);
+
+    auto *rawData = reinterpret_cast<char *>(storage.data());
+    DenseIntElementsAttr::writeBits(rawData, currBitPos, bitsWidth, value);
+    currBitPos += bitsWidth;
+  }
+
+  Parser &p;
+  Type *eltTy;
+  size_t currBitPos;
+  size_t bitsWidth;
+  SmallVector<int, 4> shape;
+  std::vector<uint64_t> storage;
+};
+} // namespace
+
+/// Parse either a single element or a list of elements. Return the dimensions
+/// of the parsed sub-tensor in dims.
+ParseResult
+TensorLiteralParser::parseElementOrList(llvm::SmallVectorImpl<int> &dims) {
+  switch (p.getToken().getKind()) {
+  case Token::l_square:
+    return parseList(dims);
+  case Token::floatliteral:
+  case Token::integer:
+  case Token::minus: {
+    auto *result = p.parseAttribute();
+    if (!result)
+      return p.emitError("expected tensor element");
+    // check result matches the element type.
+    switch (eltTy->getKind()) {
+    case Type::Kind::BF16:
+    case Type::Kind::F16:
+    case Type::Kind::F32:
+    case Type::Kind::F64: {
+      if (!isa<FloatAttr>(result))
+        return p.emitError("expected tensor literal element has float type");
+      double value = cast<FloatAttr>(result)->getValue();
+      addToStorage(*(uint64_t *)(&value));
+      break;
+    }
+    case Type::Kind::Integer: {
+      if (!isa<IntegerAttr>(result))
+        return p.emitError("expected tensor literal element has integer type");
+      auto value = cast<IntegerAttr>(result)->getValue();
+      // If we couldn't successfully round trip the value, it means some bits
+      // are truncated and we should give up here.
+      llvm::APInt apint(bitsWidth, (uint64_t)value, /*isSigned=*/true);
+      if (apint.getSExtValue() != value)
+        return p.emitError("tensor literal element has more bits than that "
+                           "specified in the type");
+      addToStorage((uint64_t)value);
+      break;
+    }
+    default:
+      return p.emitError("expected integer or float tensor element");
+    }
+    break;
+  }
+  default:
+    return p.emitError("expected '[' or scalar constant inside tensor literal");
+  }
+  return ParseSuccess;
+}
+
+/// Parse a list of either lists or elements, returning the dimensions of the
+/// parsed sub-tensors in dims. For example:
+///   parseList([1, 2, 3]) -> Success, [3]
+///   parseList([[1, 2], [3, 4]]) -> Success, [2, 2]
+///   parseList([[1, 2], 3]) -> Failure
+///   parseList([[1, [2, 3]], [4, [5]]]) -> Failure
+ParseResult TensorLiteralParser::parseList(llvm::SmallVectorImpl<int> &dims) {
+  p.consumeToken(Token::l_square);
+
+  auto checkDims = [&](const llvm::SmallVectorImpl<int> &prevDims,
+                       const llvm::SmallVectorImpl<int> &newDims) {
+    if (prevDims == newDims)
+      return ParseSuccess;
+    return p.emitError("tensor literal is invalid; ranks are not consistent "
+                       "between elements");
+  };
+
+  bool first = true;
+  llvm::SmallVector<int, 4> newDims;
+  unsigned size = 0;
+  auto parseCommaSeparatedList = [&]() {
+    llvm::SmallVector<int, 4> thisDims;
+    if (parseElementOrList(thisDims))
+      return ParseFailure;
+    ++size;
+    if (!first)
+      return checkDims(newDims, thisDims);
+    newDims = thisDims;
+    first = false;
+    return ParseSuccess;
+  };
+  if (p.parseCommaSeparatedListUntil(Token::r_square, parseCommaSeparatedList))
+    return ParseFailure;
+
+  // Return the sublists' dimensions with 'size' prepended.
+  dims.clear();
+  dims.push_back(size);
+  dims.insert(dims.end(), newDims.begin(), newDims.end());
+  return ParseSuccess;
+}
+
 /// Given a parsed reference to a function name like @foo and a type that it
 /// corresponds to, resolve it to a concrete function object (possibly
 /// synthesizing a forward reference) or emit an error and return null on
@@ -659,7 +801,7 @@ Function *Parser::resolveFunctionReference(StringRef nameStr, SMLoc nameLoc,
 ///                    | type
 ///                    | `[` (attribute-value (`,` attribute-value)*)? `]`
 ///                    | function-id `:` function-type
-///                    | `splat<` (tensor-type | vector-type)`,`
+///                    | (`splat<` | `dense<`) (tensor-type | vector-type)`,`
 ///                          attribute-value `>`
 ///
 Attribute *Parser::parseAttribute() {
@@ -757,23 +899,12 @@ Attribute *Parser::parseAttribute() {
 
   case Token::kw_splat: {
     consumeToken(Token::kw_splat);
-    if (parseToken(Token::less, "Expected '<' after 'elements'"))
+    if (parseToken(Token::less, "expected '<' after 'splat'"))
       return nullptr;
 
-    auto *type = dyn_cast<VectorOrTensorType>(parseType());
-    if (!type) {
-      return (
-          emitError("expected elements literal has a tensor or vector type"),
-          nullptr);
-    }
-
-    if (parseToken(Token::comma, "Expected ','"))
+    auto *type = parseVectorOrTensorType();
+    if (!type)
       return nullptr;
-
-    if (!type->hasStaticShape() || type->getRank() == -1) {
-      return (emitError("tensor literals must be ranked and have static shape"),
-              nullptr);
-    }
 
     switch (getToken().getKind()) {
     case Token::floatliteral:
@@ -785,18 +916,74 @@ Attribute *Parser::parseAttribute() {
       return builder.getSplatElementsAttr(type, scalar);
     }
     default:
-      return (
-          emitError("expected '[' or scalar constant inside tensor literal"),
-          nullptr);
+      return (emitError("expected scalar constant inside tensor literal"),
+              nullptr);
     }
   }
+  case Token::kw_dense: {
+    consumeToken(Token::kw_dense);
+    if (parseToken(Token::less, "expected '<' after 'dense'"))
+      return nullptr;
 
+    auto *type = parseVectorOrTensorType();
+    if (!type)
+      return nullptr;
+
+    switch (getToken().getKind()) {
+    case Token::l_square: {
+      auto attr = parseDenseElementsAttr(type);
+      if (!attr)
+        return nullptr;
+      if (parseToken(Token::greater, "expected '>'"))
+        return nullptr;
+      return attr;
+    }
+    default:
+      return (emitError("expected '[' to start dense tensor literal"), nullptr);
+    }
+  }
   default: {
     if (Type *type = parseType())
       return builder.getTypeAttr(type);
     return nullptr;
   }
   }
+}
+
+ElementsAttr *Parser::parseDenseElementsAttr(VectorOrTensorType *type) {
+  auto *eltTy = type->getElementType();
+  TensorLiteralParser literalParser(*this, eltTy);
+  if (literalParser.parse())
+    return nullptr;
+  if (literalParser.getShape() != type->getShape()) {
+    std::string str;
+    llvm::raw_string_ostream s(str);
+    s << "inferred shape of elements literal ([";
+    interleaveComma(literalParser.getShape(), s);
+    s << "]) does not match type ([";
+    interleaveComma(type->getShape(), s);
+    s << "])";
+    return (emitError(s.str()), nullptr);
+  }
+  return builder.getDenseElementsAttr(type, literalParser.getValues());
+}
+
+VectorOrTensorType *Parser::parseVectorOrTensorType() {
+  auto *type = dyn_cast<VectorOrTensorType>(parseType());
+  if (!type) {
+    return (emitError("expected elements literal has a tensor or vector type"),
+            nullptr);
+  }
+
+  if (parseToken(Token::comma, "expected ','"))
+    return nullptr;
+
+  if (!type->hasStaticShape() || type->getRank() == -1) {
+    return (emitError("tensor literals must be ranked and have static shape"),
+            nullptr);
+  }
+
+  return type;
 }
 
 /// Attribute dictionary.
@@ -848,8 +1035,8 @@ enum AffineLowPrecOp {
   Sub
 };
 
-/// Higher precedence ops - all at the same precedence level. HNoOp is false in
-/// the boolean sense.
+/// Higher precedence ops - all at the same precedence level. HNoOp is false
+/// in the boolean sense.
 enum AffineHighPrecOp {
   /// Null value.
   HNoOp,
@@ -957,8 +1144,8 @@ AffineExpr AffineParser::getBinaryAffineOpExpr(AffineLowPrecOp op,
   }
 }
 
-/// Consume this token if it is a lower precedence affine op (there are only two
-/// precedence levels).
+/// Consume this token if it is a lower precedence affine op (there are only
+/// two precedence levels).
 AffineLowPrecOp AffineParser::consumeIfLowPrecOp() {
   switch (getToken().getKind()) {
   case Token::plus:
@@ -1103,8 +1290,8 @@ AffineExpr AffineParser::parseIntegerExpr() {
 //  Eg: for an expression without parentheses (like i + j + k + l), each
 //  of the four identifiers is an operand. For i + j*k + l, j*k is not an
 //  operand expression, it's an op expression and will be parsed via
-//  parseAffineHighPrecOpExpression(). However, for i + (j*k) + -l, (j*k) and -l
-//  are valid operands that will be parsed by this function.
+//  parseAffineHighPrecOpExpression(). However, for i + (j*k) + -l, (j*k) and
+//  -l are valid operands that will be parsed by this function.
 AffineExpr AffineParser::parseAffineOperandExpr(AffineExpr lhs) {
   switch (getToken().getKind()) {
   case Token::bare_identifier:
@@ -1148,13 +1335,13 @@ AffineExpr AffineParser::parseAffineOperandExpr(AffineExpr lhs) {
 ///
 /// llhs: the affine expression appearing on the left of the one being parsed.
 /// This function will return ((llhs llhsOp lhs) op rhs) if llhs is non null,
-/// and lhs op rhs otherwise; if there is no rhs, llhs llhsOp lhs is returned if
-/// llhs is non-null; otherwise lhs is returned. This is to deal with left
+/// and lhs op rhs otherwise; if there is no rhs, llhs llhsOp lhs is returned
+/// if llhs is non-null; otherwise lhs is returned. This is to deal with left
 /// associativity.
 ///
 /// Eg: when the expression is e1 + e2*e3 + e4, with e1 as llhs, this function
-/// will return the affine expr equivalent of (e1 + (e2*e3)) + e4, where (e2*e3)
-/// will be parsed using parseAffineHighPrecOpExpr().
+/// will return the affine expr equivalent of (e1 + (e2*e3)) + e4, where
+/// (e2*e3) will be parsed using parseAffineHighPrecOpExpr().
 AffineExpr AffineParser::parseAffineLowPrecOpExpr(AffineExpr llhs,
                                                   AffineLowPrecOp llhsOp) {
   AffineExpr lhs;
@@ -1208,16 +1395,16 @@ AffineExpr AffineParser::parseAffineLowPrecOpExpr(AffineExpr llhs,
 ///                | bare-id
 ///                | integer-literal
 ///
-/// Additional conditions are checked depending on the production. For eg., one
-/// of the operands for `*` has to be either constant/symbolic; the second
+/// Additional conditions are checked depending on the production. For eg.,
+/// one of the operands for `*` has to be either constant/symbolic; the second
 /// operand for floordiv, ceildiv, and mod has to be a positive integer.
 AffineExpr AffineParser::parseAffineExpr() {
   return parseAffineLowPrecOpExpr(nullptr, AffineLowPrecOp::LNoOp);
 }
 
-/// Parse a dim or symbol from the lists appearing before the actual expressions
-/// of the affine map. Update our state to store the dimensional/symbolic
-/// identifier.
+/// Parse a dim or symbol from the lists appearing before the actual
+/// expressions of the affine map. Update our state to store the
+/// dimensional/symbolic identifier.
 ParseResult AffineParser::parseIdentifierDefinition(AffineExpr idExpr) {
   if (getToken().isNot(Token::bare_identifier))
     return emitError("expected bare identifier");
@@ -1288,9 +1475,9 @@ AffineMap AffineParser::parseAffineMapInline() {
     return res;
   };
 
-  // Parse a multi-dimensional affine expression (a comma-separated list of 1-d
-  // affine expressions); the list cannot be empty.
-  // Grammar: multi-dim-affine-expr ::= `(` affine-expr (`,` affine-expr)* `)
+  // Parse a multi-dimensional affine expression (a comma-separated list of
+  // 1-d affine expressions); the list cannot be empty. Grammar:
+  // multi-dim-affine-expr ::= `(` affine-expr (`,` affine-expr)* `)
   if (parseCommaSeparatedListUntil(Token::r_paren, parseElt, false))
     return AffineMap::Invalid();
 
@@ -1357,8 +1544,8 @@ AffineMap Parser::parseAffineMapReference() {
 //===----------------------------------------------------------------------===//
 
 namespace {
-/// This class contains parser state that is common across CFG and ML functions,
-/// notably for dealing with operations and SSA values.
+/// This class contains parser state that is common across CFG and ML
+/// functions, notably for dealing with operations and SSA values.
 class FunctionParser : public Parser {
 public:
   enum class Kind { CFGFunc, MLFunc };
@@ -1371,15 +1558,15 @@ public:
 
   /// This represents a use of an SSA value in the program.  The first two
   /// entries in the tuple are the name and result number of a reference.  The
-  /// third is the location of the reference, which is used in case this ends up
-  /// being a use of an undefined value.
+  /// third is the location of the reference, which is used in case this ends
+  /// up being a use of an undefined value.
   struct SSAUseInfo {
     StringRef name;  // Value name, e.g. %42 or %abc
     unsigned number; // Number, specified with #12
     SMLoc loc;       // Location of first definition or use.
   };
 
-  /// Given a reference to an SSA value and its type, return a reference.  This
+  /// Given a reference to an SSA value and its type, return a reference. This
   /// returns null on failure.
   SSAValue *resolveSSAUse(SSAUseInfo useInfo, Type *type);
 
@@ -1442,8 +1629,9 @@ SSAValue *FunctionParser::createForwardReferencePlaceholder(SMLoc loc,
   // Forward references are always created as instructions, even in ML
   // functions, because we just need something with a def/use chain.
   //
-  // We create these placeholders as having an empty name, which we know cannot
-  // be created through normal user input, allowing us to distinguish them.
+  // We create these placeholders as having an empty name, which we know
+  // cannot be created through normal user input, allowing us to distinguish
+  // them.
   auto name = OperationName("placeholder", getContext());
   auto *inst = OperationInst::create(getEncodedSourceLocation(loc), name,
                                      /*operands=*/{}, type,
@@ -1512,9 +1700,9 @@ ParseResult FunctionParser::addDefinition(SSAUseInfo useInfo, SSAValue *value) {
                        "previously defined here");
     }
 
-    // If it was a forward reference, update everything that used it to use the
-    // actual definition instead, delete the forward ref, and remove it from our
-    // set of forward references we track.
+    // If it was a forward reference, update everything that used it to use
+    // the actual definition instead, delete the forward ref, and remove it
+    // from our set of forward references we track.
     existing->replaceAllUsesWith(value);
     existing->getDefiningInst()->destroy();
     forwardReferencePlaceholders.erase(existing);
@@ -1528,7 +1716,8 @@ ParseResult FunctionParser::addDefinition(SSAUseInfo useInfo, SSAValue *value) {
 /// After the function is finished parsing, this function checks to see if
 /// there are any remaining issues.
 ParseResult FunctionParser::finalizeFunction(Function *func, SMLoc loc) {
-  // Check for any forward references that are left.  If we find any, error out.
+  // Check for any forward references that are left.  If we find any, error
+  // out.
   if (!forwardReferencePlaceholders.empty()) {
     SmallVector<std::pair<const char *, SSAValue *>, 4> errors;
     // Iteration over the map isn't deterministic, so sort by source location.
@@ -1825,9 +2014,9 @@ public:
     return !(result = parser.parseType());
   }
 
-  /// Parse an arbitrary attribute and return it in result.  This also adds the
-  /// attribute to the specified attribute list with the specified name.  this
-  /// captures the location of the attribute in 'loc' if it is non-null.
+  /// Parse an arbitrary attribute and return it in result.  This also adds
+  /// the attribute to the specified attribute list with the specified name.
+  /// this captures the location of the attribute in 'loc' if it is non-null.
   bool parseAttribute(Attribute *&result, const char *attrName,
                       SmallVectorImpl<NamedAttribute> &attrs) override {
     result = parser.parseAttribute();
@@ -1997,7 +2186,8 @@ Operation *FunctionParser::parseCustomOperation(
 
   consumeToken();
 
-  // If the custom op parser crashes, produce some indication to help debugging.
+  // If the custom op parser crashes, produce some indication to help
+  // debugging.
   std::string opNameStr = opName.str();
   llvm::PrettyStackTraceFormat fmt("MLIR Parser: custom op parser '%s'",
                                    opNameStr.c_str());
@@ -2176,7 +2366,8 @@ ParseResult CFGFunctionParser::parseBasicBlock() {
   if (parseToken(Token::colon, "expected ':' after basic block name"))
     return ParseFailure;
 
-  // Set the insertion point to the block we want to insert new operations into.
+  // Set the insertion point to the block we want to insert new operations
+  // into.
   builder.setInsertionPoint(block);
 
   auto createOpFunc = [&](const OperationState &result) -> Operation * {
@@ -2218,7 +2409,8 @@ ParseResult CFGFunctionParser::parseBranchBlockAndUseList(
 ///   terminator-stmt ::= `br` bb-id branch-use-list?
 ///   branch-use-list ::= `(` ssa-use-list `)` ':' type-list-no-parens
 ///   terminator-stmt ::=
-///     `cond_br` ssa-use `,` bb-id branch-use-list? `,` bb-id branch-use-list?
+///     `cond_br` ssa-use `,` bb-id branch-use-list? `,` bb-id
+///     branch-use-list?
 ///   terminator-stmt ::= `return` ssa-use-and-type-list?
 ///
 TerminatorInst *CFGFunctionParser::parseTerminator() {
@@ -2471,9 +2663,9 @@ MLFunctionParser::parseDimAndSymbolList(SmallVectorImpl<MLValue *> &operands,
 
 // Loop bound.
 ///
-///  lower-bound ::= `max`? affine-map dim-and-symbol-use-list | shorthand-bound
-///  upper-bound ::= `min`? affine-map dim-and-symbol-use-list | shorthand-bound
-///  shorthand-bound ::= ssa-id | `-`? integer-literal
+///  lower-bound ::= `max`? affine-map dim-and-symbol-use-list |
+///  shorthand-bound upper-bound ::= `min`? affine-map dim-and-symbol-use-list
+///  | shorthand-bound shorthand-bound ::= ssa-id | `-`? integer-literal
 ///
 ParseResult MLFunctionParser::parseBound(SmallVectorImpl<MLValue *> &operands,
                                          AffineMap &map, bool isLower) {
@@ -2532,8 +2724,8 @@ ParseResult MLFunctionParser::parseBound(SmallVectorImpl<MLValue *> &operands,
 ///  affine-constraint ::= affine-expr `>=` `0`
 ///                      | affine-expr `==` `0`
 ///
-/// isEq is set to true if the parsed constraint is an equality, false if it is
-/// an inequality (greater than or equal).
+/// isEq is set to true if the parsed constraint is an equality, false if it
+/// is an inequality (greater than or equal).
 ///
 AffineExpr AffineParser::parseAffineConstraint(bool *isEq) {
   AffineExpr expr = parseAffineExpr();
@@ -2568,9 +2760,11 @@ AffineExpr AffineParser::parseAffineConstraint(bool *isEq) {
 
 /// Parse an integer set definition.
 ///  integer-set-inline
-///                ::= dim-and-symbol-id-lists `:` affine-constraint-conjunction
+///                ::= dim-and-symbol-id-lists `:`
+///                affine-constraint-conjunction
 ///  affine-constraint-conjunction ::= /*empty*/
-///                                 | affine-constraint (`,` affine-constraint)*
+///                                 | affine-constraint (`,`
+///                                 affine-constraint)*
 ///
 IntegerSet AffineParser::parseIntegerSetInline() {
   unsigned numDims = 0, numSymbols = 0;
@@ -2859,11 +3053,12 @@ ModuleParser::parseMLArgumentList(SmallVectorImpl<Type *> &argTypes,
   return parseCommaSeparatedListUntil(Token::r_paren, parseElt);
 }
 
-/// Parse a function signature, starting with a name and including the parameter
-/// list.
+/// Parse a function signature, starting with a name and including the
+/// parameter list.
 ///
 ///   argument-list ::= type (`,` type)* | /*empty*/ | ml-argument-list
-///   function-signature ::= function-id `(` argument-list `)` (`->` type-list)?
+///   function-signature ::= function-id `(` argument-list `)` (`->`
+///   type-list)?
 ///
 ParseResult
 ModuleParser::parseFunctionSignature(StringRef &name, FunctionType *&type,
@@ -2963,7 +3158,8 @@ ParseResult ModuleParser::parseCFGFunc() {
     return ParseFailure;
   }
 
-  // Okay, the CFG function signature was parsed correctly, create the function.
+  // Okay, the CFG function signature was parsed correctly, create the
+  // function.
   auto *function =
       new CFGFunction(getEncodedSourceLocation(loc), name, type, attrs);
   getModule()->getFunctions().push_back(function);
@@ -2979,7 +3175,8 @@ ParseResult ModuleParser::parseCFGFunc() {
 /// ML function declarations.
 ///
 ///   ml-func ::= `mlfunc` ml-func-signature
-///              (`attributes` attribute-dict)? `{` ml-stmt* ml-return-stmt `}`
+///              (`attributes` attribute-dict)? `{` ml-stmt* ml-return-stmt
+///              `}`
 ///
 ParseResult ModuleParser::parseMLFunc() {
   consumeToken(Token::kw_mlfunc);
@@ -2997,7 +3194,8 @@ ParseResult ModuleParser::parseMLFunc() {
     return ParseFailure;
   }
 
-  // Okay, the ML function signature was parsed correctly, create the function.
+  // Okay, the ML function signature was parsed correctly, create the
+  // function.
   auto *function =
       MLFunction::create(getEncodedSourceLocation(loc), name, type, attrs);
   getModule()->getFunctions().push_back(function);
@@ -3019,9 +3217,9 @@ ParseResult ModuleParser::parseMLFunc() {
   return parser.parseFunctionBody();
 }
 
-/// Given an attribute that could refer to a function attribute in the remapping
-/// table, walk it and rewrite it to use the mapped function.  If it doesn't
-/// refer to anything in the table, then it is returned unmodified.
+/// Given an attribute that could refer to a function attribute in the
+/// remapping table, walk it and rewrite it to use the mapped function.  If it
+/// doesn't refer to anything in the table, then it is returned unmodified.
 static Attribute *
 remapFunctionAttrs(Attribute *input,
                    DenseMap<FunctionAttr *, FunctionAttr *> &remappingTable,
@@ -3097,8 +3295,8 @@ ParseResult ModuleParser::finalizeModule() {
   if (remappingTable.empty())
     return ParseSuccess;
 
-  // Otherwise, walk the entire module replacing uses of one attribute set with
-  // the correct ones.
+  // Otherwise, walk the entire module replacing uses of one attribute set
+  // with the correct ones.
   for (auto &fn : *getModule()) {
     if (auto *cfgFn = dyn_cast<CFGFunction>(&fn)) {
       for (auto &bb : *cfgFn) {
@@ -3147,8 +3345,8 @@ ParseResult ModuleParser::parseModule() {
       return finalizeModule();
 
     // If we got an error token, then the lexer already emitted an error, just
-    // stop.  Someday we could introduce error recovery if there was demand for
-    // it.
+    // stop.  Someday we could introduce error recovery if there was demand
+    // for it.
     case Token::error:
       return ParseFailure;
 
@@ -3183,7 +3381,8 @@ ParseResult ModuleParser::parseModule() {
 //===----------------------------------------------------------------------===//
 
 /// This parses the file specified by the indicated SourceMgr and returns an
-/// MLIR module if it was valid.  If not, it emits diagnostics and returns null.
+/// MLIR module if it was valid.  If not, it emits diagnostics and returns
+/// null.
 Module *mlir::parseSourceFile(const llvm::SourceMgr &sourceMgr,
                               MLIRContext *context) {
 
@@ -3195,16 +3394,16 @@ Module *mlir::parseSourceFile(const llvm::SourceMgr &sourceMgr,
     return nullptr;
   }
 
-  // Make sure the parse module has no other structural problems detected by the
-  // verifier.
+  // Make sure the parse module has no other structural problems detected by
+  // the verifier.
   if (module->verify())
     return nullptr;
 
   return module.release();
 }
 
-/// This parses the program string to a MLIR module if it was valid. If not, it
-/// emits diagnostics and returns null.
+/// This parses the program string to a MLIR module if it was valid. If not,
+/// it emits diagnostics and returns null.
 Module *mlir::parseSourceString(StringRef moduleStr, MLIRContext *context) {
   auto memBuffer = MemoryBuffer::getMemBuffer(moduleStr);
   if (!memBuffer)

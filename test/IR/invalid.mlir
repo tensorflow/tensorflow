@@ -628,3 +628,64 @@ mlfunc @calls(%arg0 : i32) {
 // expected-error@+2 {{expected SSA operand}}
 cfgfunc@n(){b(
 // -----
+
+cfgfunc @elementsattr_non_tensor_type() -> () {
+bb0:
+  "foo"(){bar: dense<i32, [4]>} : () -> () // expected-error {{expected elements literal has a tensor or vector type}}
+}
+
+// -----
+
+cfgfunc @elementsattr_non_ranked() -> () {
+bb0:
+  "foo"(){bar: dense<tensor<?xi32>, [4]>} : () -> () // expected-error {{tensor literals must be ranked and have static shape}}
+}
+
+// -----
+
+cfgfunc @elementsattr_shape_mismatch() -> () {
+bb0:
+  "foo"(){bar: dense<tensor<5xi32>, [4]>} : () -> () // expected-error {{inferred shape of elements literal ([1]) does not match type ([5])}}
+}
+
+// -----
+
+cfgfunc @elementsattr_invalid() -> () {
+bb0:
+  "foo"(){bar: dense<tensor<2xi32>, [4, [5]]>} : () -> () // expected-error {{tensor literal is invalid; ranks are not consistent between elements}}
+}
+
+// -----
+
+cfgfunc @elementsattr_badtoken() -> () {
+bb0:
+  "foo"(){bar: dense<tensor<1xi32>, [tf_opaque]>} : () -> () // expected-error {{expected '[' or scalar constant inside tensor literal}}
+}
+
+// -----
+
+cfgfunc @elementsattr_floattype1() -> () {
+bb0:
+  "foo"(){bar: dense<tensor<1xi32>, [4.0]>} : () -> () // expected-error {{expected tensor literal element has integer type}}
+}
+
+// -----
+
+cfgfunc @elementsattr_floattype2() -> () {
+bb0:
+  "foo"(){bar: dense<tensor<1xf32>, [4]>} : () -> () // expected-error {{expected tensor literal element has float type}}
+}
+
+// -----
+
+cfgfunc @elementsattr_toolarge1() -> () {
+bb0:
+  "foo"(){bar: dense<tensor<1xi8>, [777]>} : () -> () // expected-error {{tensor literal element has more bits than that specified in the type}}
+}
+
+// -----
+
+cfgfunc @elementsattr_toolarge2() -> () {
+bb0:
+  "foo"(){bar: dense<tensor<1xi8>, [-777]>} : () -> () // expected-error {{tensor literal element has more bits than that specified in the type}}
+}

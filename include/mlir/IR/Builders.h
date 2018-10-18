@@ -100,6 +100,8 @@ public:
   TypeAttr *getTypeAttr(Type *type);
   FunctionAttr *getFunctionAttr(const Function *value);
   ElementsAttr *getSplatElementsAttr(VectorOrTensorType *type, Attribute *elt);
+  ElementsAttr *getDenseElementsAttr(VectorOrTensorType *type,
+                                     ArrayRef<char> data);
 
   // Affine expressions and affine maps.
   AffineExpr getAffineDimExpr(unsigned position);
