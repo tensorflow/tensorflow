@@ -248,11 +248,7 @@ TEST_F(OpSetsTest, TfSelectOnly) {
   SetAllowedOpSets({kSelectTfOps});
   EXPECT_THAT(ImportExport({"Add", "AdjustHue", "UnrollAndFold"}),
               ElementsAre());
-
-  // TODO(b/117845348): Add should be recognized as a flex op, which should be
-  // OK even if we don't specify --allow_custom_ops
-  // EXPECT_THAT(ImportExport({"Add"}), ElementsAre("custom:FlexAdd"));
-  EXPECT_THAT(ImportExport({"Add"}), ElementsAre());
+  EXPECT_THAT(ImportExport({"Add"}), ElementsAre("custom:FlexAdd"));
 
   // --target_op_set=SELECT_TF_OPS --allow_custom_ops
   SetAllowedOpSets({kSelectTfOps, kCustomOps});
@@ -266,12 +262,8 @@ TEST_F(OpSetsTest, BuiltinsAndTfSelect) {
   SetAllowedOpSets({kTfLiteBuiltins, kSelectTfOps});
   EXPECT_THAT(ImportExport({"Add", "AdjustHue", "UnrollAndFold"}),
               ElementsAre());
-
-  // TODO(b/117845348): AdjustHue should be recognized as a flex op,
-  // which should be OK even if we don't specify --allow_custom_ops
-  // EXPECT_THAT(ImportExport({"Add", "AdjustHue"}),
-  //            ElementsAre("builtin:ADD", "custom:FlexAdjustHue"));
-  EXPECT_THAT(ImportExport({"Add", "AdjustHue"}), ElementsAre());
+  EXPECT_THAT(ImportExport({"Add", "AdjustHue"}),
+              ElementsAre("builtin:ADD", "custom:FlexAdjustHue"));
 
   // --target_op_set=TFLITE_BUILTINS,SELECT_TF_OPS --allow_custom_ops
   SetAllowedOpSets({kTfLiteBuiltins, kSelectTfOps, kCustomOps});
