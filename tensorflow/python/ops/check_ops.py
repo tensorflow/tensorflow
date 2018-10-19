@@ -309,24 +309,25 @@ def _binary_assert(sym, opname, op_func, static_func,
       condition = math_ops.reduce_all(test_op)
       if condition:
         return
-      else:
-        # Default to printing 3 elements like control_flow_ops.Assert (used
-        # by graph mode) does. Also treat negative values as "print
-        # everything" for consistency with Tensor::SummarizeValue().
-        if summarize is None:
-          summarize = 3
-        elif summarize < 0:
-          summarize = 1e9 # Code below will find exact size of x and y.
+      
+      # If we get here, the assertion has failed.
+      # Default to printing 3 elements like control_flow_ops.Assert (used
+      # by graph mode) does. Also treat negative values as "print
+      # everything" for consistency with Tensor::SummarizeValue().
+      if summarize is None:
+        summarize = 3
+      elif summarize < 0:
+        summarize = 1e9 # Code below will find exact size of x and y.
 
-        if data is None:
-          data = _make_assert_msg_data(sym, x, y, summarize, test_op)
-  
-        if message is not None:
-          data = [message] + list(data)
-  
-        raise errors.InvalidArgumentError(
-            node_def=None, op=None, 
-            message=('\n'.join([_pretty_print(d, summarize) for d in data])))
+      if data is None:
+        data = _make_assert_msg_data(sym, x, y, summarize, test_op)
+
+      if message is not None:
+        data = [message] + list(data)
+
+      raise errors.InvalidArgumentError(
+          node_def=None, op=None, 
+          message=('\n'.join([_pretty_print(d, summarize) for d in data])))
 
     else:   # not context.executing_eagerly()
       if data is None:

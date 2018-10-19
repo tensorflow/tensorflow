@@ -513,7 +513,7 @@ class AssertLessTest(test.TestCase):
     with context.graph_mode():
       with self.assertRaisesRegexp(errors.InvalidArgumentError,
                                    "Custom error message"):
-        check_ops.assert_none_equal(1, 1, message="Custom error message")
+        check_ops.assert_less(1, 1, message="Custom error message")
 
 
 class AssertLessEqualTest(test.TestCase):
