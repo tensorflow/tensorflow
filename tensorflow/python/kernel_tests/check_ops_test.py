@@ -140,8 +140,7 @@ Corresponding y values:
 First 6 elements of x:
 \[2 2 3 3 6 6\]
 First 6 elements of y:
-\[20  2  3 30 60  6\]
-"""
+\[20  2  3 30 60  6\]"""
     expected_error_msg_default = r"""big does not equal small
 Condition x == y did not hold.
 Indices of first 3 different values:
@@ -155,8 +154,7 @@ Corresponding y values:
 First 3 elements of x:
 \[2 2 3\]
 First 3 elements of y:
-\[20  2  3\]
-"""
+\[20  2  3\]"""
     expected_error_msg_short = r"""big does not equal small
 Condition x == y did not hold.
 Indices of first 2 different values:
@@ -169,8 +167,7 @@ Corresponding y values:
 First 2 elements of x:
 \[2 2\]
 First 2 elements of y:
-\[20  2\]
-"""
+\[20  2\]"""
     with context.eager_mode():
       big = constant_op.constant([[2, 2], [3, 3], [6, 6]])
       small = constant_op.constant([[20, 2], [3, 30], [60, 6]])
@@ -302,11 +299,17 @@ class AssertNoneEqualTest(test.TestCase):
       x = check_ops.assert_none_equal(t1, t2)
       assert x is None
 
+  def test_static_check_in_graph_mode(self):
+    with context.graph_mode():
+      with self.assertRaisesRegexp(errors.InvalidArgumentError,
+                                   "Custom error message"):
+        check_ops.assert_none_equal(1, 1, message="Custom error message")
+
   def test_error_message_eager(self):
     # Note that the following three strings are regexes
-    expected_error_msg_full = r"""0.0, 1.0, 2.0, 3.0, 4.0, 5.0"""
-    expected_error_msg_default = r"""0.0, 1.0, 2.0, \.\.\."""
-    expected_error_msg_short = r"""0.0, 1.0, \.\.\."""
+    expected_error_msg_full = r"""\[0\. 1\. 2\. 3\. 4\. 5\.\]"""
+    expected_error_msg_default = r"""\[0\. 1\. 2\.\]"""
+    expected_error_msg_short = r"""\[0\. 1\.\]"""
     with context.eager_mode():
       t = constant_op.constant(
           np.array(range(6)), shape=[2, 3], dtype=np.float32)
@@ -506,6 +509,12 @@ class AssertLessTest(test.TestCase):
       x = check_ops.assert_less(t1, t2)
       assert x is None
 
+  def test_static_check_in_graph_mode(self):
+    with context.graph_mode():
+      with self.assertRaisesRegexp(errors.InvalidArgumentError,
+                                   "Custom error message"):
+        check_ops.assert_none_equal(1, 1, message="Custom error message")
+
 
 class AssertLessEqualTest(test.TestCase):
 
@@ -569,6 +578,12 @@ class AssertLessEqualTest(test.TestCase):
       out = array_ops.identity(larry)
     self.evaluate(out)
 
+  def test_static_check_in_graph_mode(self):
+    with context.graph_mode():
+      with self.assertRaisesRegexp(errors.InvalidArgumentError,
+                                   "Custom error message"):
+        check_ops.assert_less_equal(1, 0, message="Custom error message")
+
 
 class AssertGreaterTest(test.TestCase):
 
@@ -629,6 +644,12 @@ class AssertGreaterTest(test.TestCase):
     with ops.control_dependencies([check_ops.assert_greater(larry, curly)]):
       out = array_ops.identity(larry)
     self.evaluate(out)
+
+  def test_static_check_in_graph_mode(self):
+    with context.graph_mode():
+      with self.assertRaisesRegexp(errors.InvalidArgumentError,
+                                   "Custom error message"):
+        check_ops.assert_greater(0, 1, message="Custom error message")
 
 
 class AssertGreaterEqualTest(test.TestCase):
@@ -695,6 +716,12 @@ class AssertGreaterEqualTest(test.TestCase):
       out = array_ops.identity(larry)
     self.evaluate(out)
 
+  def test_static_check_in_graph_mode(self):
+    with context.graph_mode():
+      with self.assertRaisesRegexp(errors.InvalidArgumentError,
+                                   "Custom error message"):
+        check_ops.assert_greater_equal(0, 1, message="Custom error message")
+
 
 class AssertNegativeTest(test.TestCase):
 
@@ -734,6 +761,12 @@ class AssertNegativeTest(test.TestCase):
       out = array_ops.identity(empty)
     self.evaluate(out)
 
+  def test_static_check_in_graph_mode(self):
+    with context.graph_mode():
+      with self.assertRaisesRegexp(errors.InvalidArgumentError,
+                                   "Custom error message"):
+        check_ops.assert_negative(1, message="Custom error message")
+
 
 class AssertPositiveTest(test.TestCase):
 
@@ -772,6 +805,12 @@ class AssertPositiveTest(test.TestCase):
     with ops.control_dependencies([check_ops.assert_positive(empty)]):
       out = array_ops.identity(empty)
     self.evaluate(out)
+
+  def test_static_check_in_graph_mode(self):
+    with context.graph_mode():
+      with self.assertRaisesRegexp(errors.InvalidArgumentError,
+                                   "Custom error message"):
+        check_ops.assert_positive(-1, message="Custom error message")
 
 
 class EnsureShapeTest(test.TestCase):
@@ -1281,6 +1320,13 @@ class AssertNonNegativeTest(test.TestCase):
       out = array_ops.identity(empty)
     self.evaluate(out)
 
+  def test_static_check_in_graph_mode(self):
+    with context.graph_mode():
+      with self.assertRaisesRegexp(errors.InvalidArgumentError,
+                                   "Custom error message"):
+        check_ops.assert_non_negative(-1, message="Custom error message")
+
+
 
 class AssertNonPositiveTest(test.TestCase):
 
@@ -1309,6 +1355,13 @@ class AssertNonPositiveTest(test.TestCase):
     with ops.control_dependencies([check_ops.assert_non_positive(empty)]):
       out = array_ops.identity(empty)
     self.evaluate(out)
+
+  def test_static_check_in_graph_mode(self):
+    with context.graph_mode():
+      with self.assertRaisesRegexp(errors.InvalidArgumentError,
+                                   "Custom error message"):
+        check_ops.assert_non_positive(1, message="Custom error message")
+
 
 
 class AssertIntegerTest(test.TestCase):

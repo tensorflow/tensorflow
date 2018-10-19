@@ -5151,35 +5151,39 @@ class IdentityCategoricalColumnTest(test.TestCase):
 
   def test_get_sparse_tensors_with_inputs_too_small(self):
     column = fc.categorical_column_with_identity(key='aaa', num_buckets=3)
-    inputs = sparse_tensor.SparseTensorValue(
+    inputs_value = sparse_tensor.SparseTensorValue(
         indices=((0, 0), (1, 0), (1, 1)),
         values=(1, -1, 0),
         dense_shape=(2, 2))
+    inputs_placeholder = array_ops.sparse_placeholder(dtypes.int32)
     id_weight_pair = column.get_sparse_tensors(
         fc.FeatureTransformationCache({
-            'aaa': inputs
+            'aaa': inputs_placeholder
         }), None)
     self.assertIsNone(id_weight_pair.weight_tensor)
-    with _initialized_session():
+    with _initialized_session() as sess:
       with self.assertRaisesRegexp(
-          errors.OpError, 'assert_greater_or_equal_0'):
-        id_weight_pair.id_tensor.eval()
+          errors.OpError, 'Negative bucket index'):
+        sess.run(id_weight_pair.id_tensor,
+                 feed_dict={inputs_placeholder: inputs_value})
 
   def test_get_sparse_tensors_with_inputs_too_big(self):
     column = fc.categorical_column_with_identity(key='aaa', num_buckets=3)
-    inputs = sparse_tensor.SparseTensorValue(
+    inputs_value = sparse_tensor.SparseTensorValue(
         indices=((0, 0), (1, 0), (1, 1)),
         values=(1, 99, 0),
         dense_shape=(2, 2))
+    inputs_placeholder = array_ops.sparse_placeholder(dtypes.int32)
     id_weight_pair = column.get_sparse_tensors(
         fc.FeatureTransformationCache({
-            'aaa': inputs
+            'aaa': inputs_placeholder
         }), None)
     self.assertIsNone(id_weight_pair.weight_tensor)
-    with _initialized_session():
+    with _initialized_session() as sess:
       with self.assertRaisesRegexp(
-          errors.OpError, 'assert_less_than_num_buckets'):
-        id_weight_pair.id_tensor.eval()
+          errors.OpError, 'exceeds number of buckets'):
+        sess.run(id_weight_pair.id_tensor,
+                 feed_dict={inputs_placeholder: inputs_value})
 
   def test_get_sparse_tensors_with_default_value(self):
     column = fc.categorical_column_with_identity(
