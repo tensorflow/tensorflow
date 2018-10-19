@@ -97,6 +97,7 @@ tf_cc_test(
     name = "delegate_test",
     size = "small",
     srcs = ["delegate_test.cc"],
+    tags = ["no_gpu"],  # GPU + flex is not officially supported.
     deps = [
         ":delegate",
         ":test_util",
@@ -171,6 +172,7 @@ tf_cc_test(
     name = "kernel_test",
     size = "small",
     srcs = ["kernel_test.cc"],
+    tags = ["no_gpu"],  # GPU + flex is not officially supported.
     deps = [
         ":delegate_data",
         ":kernel",
