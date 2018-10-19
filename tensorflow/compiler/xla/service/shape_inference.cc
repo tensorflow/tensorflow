@@ -2359,6 +2359,52 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
   return ShapeUtil::MakeShape(operand.element_type(), dimensions);
 }
 
+/* static */ StatusOr<Shape> ShapeInference::InferBroadcastShape(
+    const Shape& operand_shape, const Shape& output_shape,
+    absl::Span<const int64> broadcast_dimensions) {
+  TF_RETURN_IF_ERROR(ExpectArray(operand_shape, "operand of broadcast"));
+  TF_RETURN_IF_ERROR(ExpectArray(output_shape, "operand of broadcast"));
+  const int64 operand_rank = ShapeUtil::Rank(operand_shape);
+  const int64 output_rank = ShapeUtil::Rank(output_shape);
+  if (operand_rank > output_rank) {
+    return InvalidArgument(
+        "InDim style broadcast must be to an equal or higher ranked shape; "
+        "operand rank: %lld; output rank: %lld",
+        operand_rank, output_rank);
+  }
+  if (operand_rank != broadcast_dimensions.size()) {
+    return InvalidArgument(
+        "Size of broadcast_dimensions has to match operand's rank; operand "
+        "rank: %lld, size of broadcast_dimensions %u.",
+        operand_rank, broadcast_dimensions.size());
+  }
+  for (int64 i = 0; i < operand_rank; i++) {
+    if (broadcast_dimensions[i] < 0 || broadcast_dimensions[i] >= output_rank) {
+      return InvalidArgument("Broadcast dimension %lld is out of bound",
+                             broadcast_dimensions[i]);
+    }
+    if (operand_shape.dimensions(i) !=
+            output_shape.dimensions(broadcast_dimensions[i]) &&
+        operand_shape.dimensions(i) != 1) {
+      return InvalidArgument(
+          "Input dimension should be either 1 or equal to the output dimension "
+          "it's broadcasting into; the %lldth operand dimension is %lld, the "
+          "%lldth output dimension is %lld.",
+          i, operand_shape.dimensions(i), broadcast_dimensions[i],
+          output_shape.dimensions(broadcast_dimensions[i]));
+    }
+    // Make sure the broadcast dimensions are listed in a strictly increasing
+    // order.
+    if (i > 0 && broadcast_dimensions[i - 1] >= broadcast_dimensions[i]) {
+      return InvalidArgument(
+          "Broadcast dimensions order is wrong: %d comes after %d.",
+          broadcast_dimensions[i], broadcast_dimensions.at(i - 1));
+    }
+  }
+
+  return output_shape;
+}
+
 /* static */ StatusOr<Shape> ShapeInference::InferReshapeShape(
     const Shape& operand, absl::Span<const int64> dimensions,
     absl::Span<const int64> new_sizes) {
