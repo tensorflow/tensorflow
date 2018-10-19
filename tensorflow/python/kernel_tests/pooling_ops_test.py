@@ -817,9 +817,10 @@ class PoolingTest(test.TestCase):
           cpu_val, gpu_val, half_rtol=0.01, half_atol=0.01)
 
   def testMaxPoolingWithArgmax(self):
-    tensor_input = [1.0, 1.0, 1.0, 1.0, 0.0, 1.0, 1.0, 1.0, 1.0]
+    tensor_input = [1.0, 1.0, 1.0, 1.0, 0.0, 1.0, 1.0, 1.0, 1.0,
+                    1.0, 1.0, 1.0, 1.0, 0.0, 1.0, 1.0, 1.0, 1.0]
     with self.session(use_gpu=True) as sess:
-      t = constant_op.constant(tensor_input, shape=[1, 3, 3, 1])
+      t = constant_op.constant(tensor_input, shape=[2, 3, 3, 1])
       out_op, argmax_op = nn_ops.max_pool_with_argmax(
           t,
           ksize=[1, 2, 2, 1],
@@ -829,18 +830,23 @@ class PoolingTest(test.TestCase):
       out, argmax = sess.run([out_op, argmax_op])
       self.assertShapeEqual(out, out_op)
       self.assertShapeEqual(argmax, argmax_op)
-      self.assertAllClose(out.ravel(), [1.0, 1.0, 1.0, 1.0])
-      self.assertAllEqual(argmax.ravel(), [0, 1, 3, 5])
+      self.assertAllClose(out.ravel(), [1.0, 1.0, 1.0, 1.0,
+                                        1.0, 1.0, 1.0, 1.0])
+      self.assertAllEqual(argmax.ravel(), [0, 1, 3, 5,
+                                           9, 10, 12, 14])
 
   def testMaxPoolingGradWithArgmax(self):
-    orig_input = [1.0, 1.0, 1.0, 1.0, 0.0, 1.0, 1.0, 1.0, 1.0]
-    tensor_input = [11.0, 12.0, 13.0, 14.0]
-    tensor_argmax = list(np.array([0, 1, 3, 5], dtype=np.int64))
+    orig_input = [1.0, 1.0, 1.0, 1.0, 0.0, 1.0, 1.0, 1.0, 1.0,
+                  1.0, 1.0, 1.0, 1.0, 0.0, 1.0, 1.0, 1.0, 1.0]
+    tensor_input = [11.0, 12.0, 13.0, 14.0,
+                    21.0, 22.0, 23.0, 24.0]
+    tensor_argmax = list(np.array([0, 1, 3, 5,
+                                   9, 10, 12, 14], dtype=np.int64))
     with self.session(use_gpu=True):
-      orig_in = constant_op.constant(orig_input, shape=[1, 3, 3, 1])
-      t = constant_op.constant(tensor_input, shape=[1, 2, 2, 1])
+      orig_in = constant_op.constant(orig_input, shape=[2, 3, 3, 1])
+      t = constant_op.constant(tensor_input, shape=[2, 2, 2, 1])
       argmax = constant_op.constant(
-          tensor_argmax, shape=[1, 2, 2, 1], dtype=dtypes.int64)
+          tensor_argmax, shape=[2, 2, 2, 1], dtype=dtypes.int64)
       out_op = gen_nn_ops.max_pool_grad_with_argmax(
           orig_in,
           t,
@@ -850,20 +856,24 @@ class PoolingTest(test.TestCase):
           padding="VALID")
       out = self.evaluate(out_op).flatten()
       self.assertAllClose(out,
-                          [11.0, 12.0, 0.0, 13.0, 0.0, 14.0, 0.0, 0.0, 0.0])
+                          [11.0, 12.0, 0.0, 13.0, 0.0, 14.0, 0.0, 0.0, 0.0,
+                           21.0, 22.0, 0.0, 23.0, 0.0, 24.0, 0.0, 0.0, 0.0])
 
   def testMaxPoolingGradGradWithArgmax(self):
     # MaxPoolWithArgMax is implemented only on CUDA.
     if not test.is_gpu_available(cuda_only=True):
       return
-    orig_input = [1.0, 1.0, 1.0, 1.0, 0.0, 1.0, 1.0, 1.0, 1.0]
-    tensor_input = [11.0, 12.0, 13.0, 14.0, 15.0, 16.0, 17.0, 18.0, 19.0]
-    tensor_argmax = list(np.array([0, 1, 3, 5], dtype=np.int64))
+    orig_input = [1.0, 1.0, 1.0, 1.0, 0.0, 1.0, 1.0, 1.0, 1.0,
+                  1.0, 1.0, 1.0, 1.0, 0.0, 1.0, 1.0, 1.0, 1.0]
+    tensor_input = [11.0, 12.0, 13.0, 14.0, 15.0, 16.0, 17.0, 18.0, 19.0,
+                    21.0, 22.0, 23.0, 24.0, 25.0, 26.0, 27.0, 28.0, 29.0]
+    tensor_argmax = list(np.array([0, 1, 3, 5,
+                                   9, 10, 12, 14], dtype=np.int64))
     with self.session(use_gpu=True):
-      orig_in = constant_op.constant(orig_input, shape=[1, 3, 3, 1])
-      t = constant_op.constant(tensor_input, shape=[1, 3, 3, 1])
+      orig_in = constant_op.constant(orig_input, shape=[2, 3, 3, 1])
+      t = constant_op.constant(tensor_input, shape=[2, 3, 3, 1])
       argmax = constant_op.constant(
-          tensor_argmax, shape=[1, 2, 2, 1], dtype=dtypes.int64)
+          tensor_argmax, shape=[2, 2, 2, 1], dtype=dtypes.int64)
       out_op = gen_nn_ops.max_pool_grad_grad_with_argmax(
           orig_in,
           t,
@@ -872,7 +882,8 @@ class PoolingTest(test.TestCase):
           strides=[1, 1, 1, 1],
           padding="VALID")
       out = self.evaluate(out_op).flatten()
-      self.assertAllClose(out, [11.0, 12.0, 14.0, 16.0])
+      self.assertAllClose(out, [11.0, 12.0, 14.0, 16.0,
+                                21.0, 22.0, 24.0, 26.0])
 
   def _ConstructAndTestGradient(self,
                                 pool_func,
