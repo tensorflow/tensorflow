@@ -427,6 +427,16 @@ TfLiteStatus ParseOpData(const Operator* op, BuiltinOperator op_type,
       *builtin_data = reinterpret_cast<void*>(params);
       break;
     }
+    case BuiltinOperator_RESIZE_NEAREST_NEIGHBOR: {
+      auto* params =
+          allocator->AllocatePOD<TfLiteResizeNearestNeighborParams>();
+      if (auto* schema_params =
+              op->builtin_options_as_ResizeNearestNeighborOptions()) {
+        params->align_corners = schema_params->align_corners();
+      }
+      *builtin_data = reinterpret_cast<void*>(params);
+      break;
+    }
     case BuiltinOperator_RESHAPE: {
       auto* params = allocator->AllocatePOD<TfLiteReshapeParams>();
       if (auto* schema_params = op->builtin_options_as_ReshapeOptions()) {

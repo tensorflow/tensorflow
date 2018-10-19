@@ -181,6 +181,7 @@ enum BuiltinOperator : byte {
   FILL = 94,
   FLOOR_MOD = 95,
   RANGE = 96,
+  RESIZE_NEAREST_NEIGHBOR = 97,
 }
 
 // Options for the builtin operators.
@@ -258,6 +259,7 @@ union BuiltinOptions {
   UnidirectionalSequenceLSTMOptions,
   FloorModOptions,
   RangeOptions,
+  ResizeNearestNeighborOptions
 }
 
 enum Padding : byte { SAME, VALID }
@@ -424,6 +426,10 @@ table BidirectionalSequenceLSTMOptions {
 table ResizeBilinearOptions {
   new_height: int (deprecated);
   new_width: int (deprecated);
+  align_corners: bool;
+}
+
+table ResizeNearestNeighborOptions {
   align_corners: bool;
 }
 
