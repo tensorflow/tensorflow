@@ -832,6 +832,11 @@ def set_server_def(server_def):
   context().set_server_def(server_def)
 
 
+def add_function(fdef):
+  """Add a function definition to the context."""
+  context().add_function(fdef)
+
+
 # Not every user creates a Context via context.context()
 # (for example, enable_eager_execution in python/framework/ops.py),
 # but they do all import this file.  Note that IS_IN_GRAPH_MODE and

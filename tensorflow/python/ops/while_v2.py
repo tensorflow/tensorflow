@@ -26,8 +26,8 @@ from __future__ import print_function
 import collections
 
 from tensorflow.core.framework import attr_value_pb2
-from tensorflow.python.eager import function
 from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import func_graph as func_graph_module
 from tensorflow.python.framework import function_def_to_graph
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
@@ -90,7 +90,7 @@ def while_loop(cond, body, loop_vars, shape_invariants=None, name=None):
         tensor_spec.TensorSpec(shape, t.dtype)
         for shape, t in zip(flattened_shapes, flattened_loop_vars)
     ]
-    cond_graph = function.func_graph_from_py_func(
+    cond_graph = func_graph_module.func_graph_from_py_func(
         cond_name, wrapped_cond, flattened_loop_vars, {}, signature=signature,
         func_graph=util.WhileCondFuncGraph(cond_name),
         add_control_dependencies=add_control_dependencies)
@@ -131,7 +131,7 @@ def while_loop(cond, body, loop_vars, shape_invariants=None, name=None):
         tensor_spec.TensorSpec(shape, t.dtype)
         for shape, t in zip(flattened_shapes, flattened_loop_vars)
     ]
-    body_graph = function.func_graph_from_py_func(
+    body_graph = func_graph_module.func_graph_from_py_func(
         body_name, wrapped_body, flattened_loop_vars, {}, signature=signature,
         func_graph=util.WhileBodyFuncGraph(body_name),
         add_control_dependencies=add_control_dependencies)
@@ -248,7 +248,7 @@ def _WhileGrad(op, *grads):  # pylint: disable=invalid-name
 
   loop_vars = args + body_grad_graph.external_captures
   grad_cond_name = util.unique_grad_fn_name(op.get_attr("cond").name)
-  cond_grad_graph = function.func_graph_from_py_func(
+  cond_grad_graph = func_graph_module.func_graph_from_py_func(
       grad_cond_name, grad_cond, loop_vars, {},
       func_graph=util.WhileCondFuncGraph(grad_cond_name))
 
@@ -319,7 +319,7 @@ def _create_grad_func(func_graph, grads, name, while_op):
 
   # Note: The returned function does not have `args` in the list of
   # `external_captures`.
-  grad_func_graph = function.func_graph_from_py_func(
+  grad_func_graph = func_graph_module.func_graph_from_py_func(
       name,
       lambda *args: _grad_fn(func_graph, args),
       args, {},
@@ -340,7 +340,7 @@ def _grad_fn(func_graph, args):
   `func_graph` by differentiating `func_graph`'s outputs w.r.t. its inputs.
 
   Args:
-    func_graph: function.FuncGraph. The corresponding forward-pass function.
+    func_graph: FuncGraph. The corresponding forward-pass function.
     args: The input arguments. args[0] - Loop counter args[1] - Total number of
       iterations.
       args[2:] - Incoming gradients for `func_graph.outputs`.
@@ -431,7 +431,7 @@ def _get_accumulator(tensor):
     A variant tensor in the same graph as `tensor` or None if no accumulator is
     found.
   """
-  assert isinstance(tensor.graph, function.FuncGraph)
+  assert isinstance(tensor.graph, func_graph_module.FuncGraph)
 
   def get_func_graph_output(t):
     """Returns t or Identity(t) whichever exists in graph outputs else None."""
@@ -620,7 +620,7 @@ def _get_tensor_convertible_shape(shape):
 
 
 def _graph_name(graph):
-  if isinstance(graph, function.FuncGraph):
+  if isinstance(graph, func_graph_module.FuncGraph):
     return graph.name
   return "Base"
 

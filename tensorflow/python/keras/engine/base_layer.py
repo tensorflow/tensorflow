@@ -27,8 +27,8 @@ import numpy as np
 from six.moves import zip  # pylint: disable=redefined-builtin
 
 from tensorflow.python.eager import context
-from tensorflow.python.eager import function as eager_function
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import func_graph
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
@@ -990,7 +990,7 @@ class Layer(checkpointable.CheckpointableBase):
       self.build(input_shape)
 
       with context.graph_mode():
-        graph = eager_function.FuncGraph('graph')
+        graph = func_graph.FuncGraph('graph')
         with graph.as_default():
           if isinstance(input_shape, list):
             inputs = [generate_placeholders_from_shape(shape)
