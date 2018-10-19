@@ -309,6 +309,7 @@ TEST_F(CudnnConvRewriterTest, BackwardInputConvolveEvenPadding) {
     EXPECT_EQ(3, window_dim.padding_low());
     EXPECT_EQ(3, window_dim.padding_high());
     EXPECT_EQ(1, window_dim.stride());
+    EXPECT_EQ(1, window_dim.base_dilation());
   }
 }
 
@@ -438,6 +439,7 @@ TEST_F(CudnnConvRewriterTest, BackwardInputConvolveUnevenPaddingOnGradients) {
     EXPECT_EQ(0, window_dim.padding_low());
     EXPECT_EQ(0, window_dim.padding_high());
     EXPECT_EQ(2, window_dim.stride());
+    EXPECT_EQ(1, window_dim.base_dilation());
   }
 }
 
