@@ -239,6 +239,7 @@ cc_library(
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/kernels:variable_ops",
+        "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/memory",
     ],
 )

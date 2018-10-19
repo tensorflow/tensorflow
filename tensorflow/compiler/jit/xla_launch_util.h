@@ -18,6 +18,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_JIT_XLA_LAUNCH_UTIL_H_
 #define TENSORFLOW_COMPILER_JIT_XLA_LAUNCH_UTIL_H_
 
+#include "absl/base/thread_annotations.h"
 #include "tensorflow/compiler/jit/xla_compilation_cache.h"
 #include "tensorflow/compiler/jit/xla_tensor.h"
 #include "tensorflow/compiler/tf2xla/xla_compiler.h"
@@ -34,17 +35,68 @@ limitations under the License.
 namespace tensorflow {
 class XlaAllocator;
 
-// Takes a snapshot of the values of resource variable arguments, whose
-// indices are specified in `variables` argument. We snapshot tensors that back
+// Takes a snapshot of the values of resource variable arguments, whose indices
+// are specified in `variable_indices` argument. We snapshot tensors that back
 // resource variables since concurrent updates may modify the shape, and it is
 // important that the shapes used for compilation match the true shapes of the
 // buffers.
 //
+// We snapshot the entire set of resource variables as one atomic operation.
+// This models Read->* dependencies between resource variable operations.  See
+// jit/resource_operation_safety_analysis for details.
+//
 // Returns a map of TensorFlow argument index to resource variable. If a
 // resource variable is not initialized, the corresponding OptionalTensor
 // will have its `present` field set to false.
-std::map<int, OptionalTensor> SnapshotResourceVariables(
-    OpKernelContext* ctx, absl::Span<const int> variables);
+Status SnapshotResourceVariables(OpKernelContext* ctx,
+                                 absl::Span<const int> variable_indices,
+                                 std::map<int, OptionalTensor>* result);
+
+// Information about the state of a variable passed as input to the _XlaCompile
+// and _XlaRun operators.  Unlocks the resource variable and decrements its
+// refcount on destruction.
+class VariableInfo {
+ public:
+  explicit VariableInfo(int index, Var* var);
+  VariableInfo(VariableInfo&& other);
+
+  VariableInfo& operator=(VariableInfo&& other);
+
+  VariableInfo(const VariableInfo&) = delete;
+  VariableInfo& operator=(const VariableInfo&) = delete;
+
+  // The index of the DT_RESOURCE input to the _XlaCompile/_XlaRun operator.
+  // Note that the indices can be different between _XlaCompile and _XlaRun.
+  int index() const { return index_; }
+
+  // A pointer to the resource variable.  May be null if this VariableInfo is
+  // "empty", i.e. it does not track a resource variable.
+  Var* var() const { return var_; }
+
+  // Returns true if the resource variable lock was successfully acquired by
+  // this thread.
+  bool lock_held() const { return lock_held_; }
+  void set_lock_held() { lock_held_ = true; }
+
+  ~VariableInfo();
+
+ private:
+  int index_;
+  Var* var_;
+
+  // We can't use a optional<mutex_lock> here because it confuses the compiler's
+  // thread safety analysis. Instead we use a boolean flag and release the lock
+  // in the VariableInfo destructor.
+  bool lock_held_ = false;
+};
+
+// Acquires the mutexes for all the variables in `variables` using a
+// deadlock-safe protocol (acquire the mutexes in increasing-address order).
+//
+// `variables` is allowed to contain instances that don't track a resource
+// variable (i.e. variables[i].var() can be null for some i).
+Status LockVariables(absl::Span<VariableInfo> variables)
+    EXCLUSIVE_LOCK_FUNCTION();
 
 // Adapter class that wraps a Tensorflow allocator as an XLA allocator.
 // Assumes that the Tensorflow allocator permits asynchronous deallocation:
@@ -99,7 +151,13 @@ class XlaComputationLaunchContext {
                       const std::map<int, OptionalTensor>& variables,
                       int missing_ctx_input_prefix);
 
-  // Given the XLA output in `output`, populate all outputs of `ctx`.
+  // Given the XLA output in `output`, populate all outputs of `ctx`.  Also
+  // writes out the resource variable updates.
+  //
+  // Updates to all resource variables are written in a single atomic operation.
+  // This models *->Write dependencies between resource variable operations.
+  // See jit/resource_operation_safety_analysis for details.
+  //
   //
   // Assumes that the first `missing_ctx_input_prefix` inputs to the kernel are
   // missing and adjusts input indices accordingly.
