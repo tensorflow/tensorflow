@@ -930,7 +930,8 @@ def func_graph_from_py_func(name,
                             func_graph=None,
                             experimental_autograph=False,
                             add_control_dependencies=True,
-                            arg_names=None):
+                            arg_names=None,
+                            op_return_value=None):
   """Returns a `FuncGraph` generated from `python_func`.
 
   Args:
@@ -954,6 +955,9 @@ def func_graph_from_py_func(name,
       execute.
     arg_names: Optional list of argument names, used to give input placeholders
       recognizable names.
+    op_return_value: Optional. A Tensor. If set and `python_func` returns
+      Operations, those return values will be replaced with this value. If not
+      set, returning an Operation triggers an error.
 
   Returns:
     A FuncGraph.
@@ -962,6 +966,8 @@ def func_graph_from_py_func(name,
     TypeError: If any of `python_func`'s return values is neither `None` nor a
       `Tensor`.
   """
+  if op_return_value is not None:
+    assert isinstance(op_return_value, ops.Tensor), op_return_value
   if func_graph is None:
     func_graph = FuncGraph(name)
   assert isinstance(func_graph, FuncGraph)
@@ -989,17 +995,24 @@ def func_graph_from_py_func(name,
         func_kwargs, nest.flatten(func_kwargs))
 
     def convert(x):
-      """Converts an argument to a Tensor."""
+      """Converts a function output to a Tensor."""
       if x is None:
         return None
-      try:
-        x = ops.convert_to_tensor_or_indexed_slices(x)
-      except (ValueError, TypeError):
-        raise TypeError(
-            "To be compatible with tf.contrib.eager.defun, Python functions "
-            "must return zero or more Tensors; in compilation of %s, found "
-            "return value of type %s, which is not a Tensor." %
-            (str(python_func), type(x)))
+      if op_return_value is not None and isinstance(x, ops.Operation):
+        # TODO(b/79881896): we currently can't capture external control deps, so
+        # this won't work if x needs to be captured (i.e. if python_func returns
+        # captured Operations).
+        with ops.control_dependencies([x]):
+          x = array_ops.identity(op_return_value)
+      else:
+        try:
+          x = ops.convert_to_tensor_or_indexed_slices(x)
+        except (ValueError, TypeError):
+          raise TypeError(
+              "To be compatible with tf.contrib.eager.defun, Python functions "
+              "must return zero or more Tensors; in compilation of %s, found "
+              "return value of type %s, which is not a Tensor." %
+              (str(python_func), type(x)))
       if add_control_dependencies:
         x = a.mark_as_return(x)
       return x
