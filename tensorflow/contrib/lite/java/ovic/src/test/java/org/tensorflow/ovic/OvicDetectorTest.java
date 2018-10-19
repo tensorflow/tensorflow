@@ -40,14 +40,10 @@ public final class OvicDetectorTest {
   private MappedByteBuffer model = null;
   private ByteBuffer testImage = null;
 
-  private static final float IMAGE_MEAN = 128f;
-  private static final float IMAGE_STD = 128f;
-
-  private Boolean quantizedInput = null;
   private static final String LABELS_PATH =
       "tensorflow/contrib/lite/java/ovic/src/testdata/coco_labels.txt";
   private static final String MODEL_PATH =
-      "external/tflite_mobilenet_ssd_quant/detect.tflite";
+      "external/tflite_ovic_testdata/detect.lite";
   private static final String TEST_IMAGE_PATH =
       "external/tflite_ovic_testdata/test_image_224.jpg";
   private static final int GROUNDTRUTH = 1 /* Person */;
@@ -64,7 +60,6 @@ public final class OvicDetectorTest {
 
       // Create detector.
       detector = new OvicDetector(labelsInputStream, model);
-      quantizedInput = detector.quantizedInput();
 
       // Load test image and convert into byte buffer.
       File imageFile = new File(TEST_IMAGE_PATH);
@@ -91,28 +86,15 @@ public final class OvicDetectorTest {
     return fileChannel.map(FileChannel.MapMode.READ_ONLY, startOffset, declaredLength);
   }
 
-  private ByteBuffer toByteBuffer(BufferedImage image) {
-    ByteBuffer imgData;
-    if (quantizedInput) {
-      imgData = ByteBuffer.allocateDirect(image.getHeight() * image.getWidth() * 3);
-    } else {
-      imgData = ByteBuffer.allocateDirect(image.getHeight() * image.getWidth() * 12);
-    }
+  private static ByteBuffer toByteBuffer(BufferedImage image) {
+    ByteBuffer imgData = ByteBuffer.allocateDirect(image.getHeight() * image.getWidth() * 3);
     imgData.order(ByteOrder.nativeOrder());
     for (int y = 0; y < image.getHeight(); y++) {
       for (int x = 0; x < image.getWidth(); x++) {
         int pixelValue = image.getRGB(x, y);
-        if (quantizedInput) {
-          // Quantized model
-          imgData.put((byte) ((pixelValue >> 16) & 0xFF));
-          imgData.put((byte) ((pixelValue >> 8) & 0xFF));
-          imgData.put((byte) (pixelValue & 0xFF));
-        } else {
-          // Float model
-          imgData.putFloat((((pixelValue >> 16) & 0xFF) - IMAGE_MEAN) / IMAGE_STD);
-          imgData.putFloat((((pixelValue >> 8) & 0xFF) - IMAGE_MEAN) / IMAGE_STD);
-          imgData.putFloat(((pixelValue & 0xFF) - IMAGE_MEAN) / IMAGE_STD);
-        }
+        imgData.put((byte) ((pixelValue >> 16) & 0xFF));
+        imgData.put((byte) ((pixelValue >> 8) & 0xFF));
+        imgData.put((byte) (pixelValue & 0xFF));
       }
     }
     return imgData;
