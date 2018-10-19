@@ -294,6 +294,8 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::RunBackend(
     pipeline.AddPass<ConvolutionClassifier>(resources.annotations);
     pipeline.AddPass<HloDCE>();
     pipeline.AddPass<WhileLoopConstantSinking>();
+    pipeline.AddPass<HloPassFix<AlgebraicSimplifier>>(
+        false, [](const Shape&, const Shape&) { return false; }, false, false);
     pipeline.AddPass<HloPassFix<FuseMaxPool>>(resources.annotations);
     pipeline.AddPass<HloPassFix<FuseOpsLate>>(resources.annotations);
     pipeline.AddPass<FuseWideConst>(resources.annotations);

@@ -27,6 +27,7 @@ static const std::vector<FusedGraphInfo> fuse_info = {
     {"depthwise_filter", 14}, {"conv_with_reverse", 0},
     {"conv_with_reverse", 0}, {"depthwise_conv", 0},
     {"trunc_norm", 1},        {"trunc_norm", 1},
+    {"avg_pool", 1},
 };
 
 /*
@@ -293,6 +294,14 @@ static const std::vector<HloMatcherPattern> patterns = {
      {HloOpcode::kConstant, true, 0, nullptr, {}},   // 2
      {HloOpcode::kConstant, true, 0, nullptr, {}},   // 1
      {HloOpcode::kConstant, true, 0, nullptr, {}}},  // 1.41421354
+
+    // Average pool (valid) - broadcast
+    {{HloOpcode::kDivide, true, 0, IsAveragePool, {1, 3}},
+     {HloOpcode::kReduceWindow, true, 0, Is2DReductionWindow, {5, 2}},
+     {HloOpcode::kConstant, true, 0, IsConstantZero, {}},
+     {HloOpcode::kBroadcast, true, 0, nullptr, {4}},
+     {HloOpcode::kConstant, true, 0, nullptr, {}},
+     {HloOpcode::kParameter, false, 0, nullptr, {}}},
 };
 
 FuseOpsEarly::FuseOpsEarly(struct CompilerAnnotations& annotations)
