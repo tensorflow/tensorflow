@@ -20,6 +20,7 @@ limitations under the License.
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/shape_inference.h"
 #include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/io/buffered_inputstream.h"
 #include "tensorflow/core/lib/io/inputbuffer.h"
@@ -85,26 +86,24 @@ class SequentialAvroRecordReader {
   // 'reader_schema' are avro reader options
   // 'buffer_size' size of the buffer reading from files
   //
-  SequentialAvroRecordReader(RandomAccessFile* file, const uint64 file_size,
+  SequentialAvroRecordReader(RandomAccessFile* p_file, const uint64 file_size,
                              const string& filename,
                              const string& reader_schema,
                              const int64 buffer_size)
-    : initialized_(false),
+    : p_file_(p_file),
       filename_(filename),
-      file_buffer_(file_size, '\0'),
-      input_buffer_size_(buffer_size),
-      input_buffer_(new io::InputBuffer(file, buffer_size)),
+      file_size_(file_size),
       reader_schema_str_(reader_schema),
       file_reader_(nullptr, AvroFileReaderDestructor),
       reader_schema_(nullptr, AvroSchemaDestructor),
       writer_schema_(nullptr, AvroSchemaDestructor),
       p_reader_iface_(nullptr, AvroValueInterfaceDestructor),
       p_writer_iface_(nullptr, AvroValueInterfaceDestructor),
-      reader_value_(new avro_value_t, AvroValueDestructor),
-      writer_value_(new avro_value_t, AvroValueDestructor) {
+      p_reader_value_(new avro_value_t, AvroValueDestructor),
+      p_writer_value_(new avro_value_t, AvroValueDestructor) {
       // Initialize the iface to null for the destructor
-      reader_value_.get()->iface = nullptr;
-      writer_value_.get()->iface = nullptr;
+      p_reader_value_.get()->iface = nullptr;
+      p_writer_value_.get()->iface = nullptr;
   }
   // Call for startup of work after construction. Loads data into memory and
   // sets up the avro file reader
@@ -112,13 +111,17 @@ class SequentialAvroRecordReader {
   Status OnWorkStartup() {
     // Clear the error message, so we won't get a wrong message
     avro_set_error("");
-    Status status;
 
     // Read the file into memory via the gfile API so we can accept
     // files on S3, HDFS, etc.
-    TF_RETURN_IF_ERROR(CreateAndLoadFileIntoBuffer(input_buffer_size_));
-    FILE* fp = fmemopen(static_cast<void*>(const_cast<char*>(file_buffer_.data())),
-                        file_buffer_.size(), "r");
+    char* file_data = new (std::nothrow) char[file_size_];
+    if (file_data == nullptr) {
+        return Status(errors::InvalidArgument("Unable to allocate ", file_size_,
+                                              " B on memory in avro reader."));
+    }
+    StringPiece result;
+    TF_RETURN_IF_ERROR(p_file_->Read(0, file_size_, &result, file_data));
+    FILE* fp = fmemopen(static_cast<void*>(file_data), file_size_, "r");
     if (fp == nullptr) {
       return Status(errors::InvalidArgument("Unable to open file ", filename_,
                                             " on memory in avro reader."));
@@ -139,7 +142,6 @@ class SequentialAvroRecordReader {
     // resolution
     bool do_resolution = false;
     if (reader_schema_str_.length() > 0) {
-
       avro_schema_t reader_schema_tmp;
 
       // Create value to read into using the provided schema
@@ -158,7 +160,7 @@ class SequentialAvroRecordReader {
       // Create reader class
       p_reader_iface_.reset(avro_generic_class_from_schema(reader_schema_.get()));
       // Create instance for reader class
-      if (avro_generic_value_new(p_reader_iface_.get(), reader_value_.get()) != 0) {
+      if (avro_generic_value_new(p_reader_iface_.get(), p_reader_value_.get()) != 0) {
         return Status(errors::InvalidArgument(
             "Unable to value for user-supplied schema. ", avro_strerror()));
       }
@@ -166,28 +168,26 @@ class SequentialAvroRecordReader {
       p_writer_iface_.reset(avro_resolved_writer_new(writer_schema_.get(), reader_schema_.get()));
       if (p_writer_iface_.get() == nullptr) {
         // Cleanup
-        //avro_value_decref(&reader_value_);
         return Status(errors::InvalidArgument("Schemas are incompatible. ",
                                               avro_strerror()));
       }
       // Create instance for resolved writer class
-      if (avro_resolved_writer_new_value(p_writer_iface_.get(), writer_value_.get()) !=
+      if (avro_resolved_writer_new_value(p_writer_iface_.get(), p_writer_value_.get()) !=
           0) {
         // Cleanup
-        //avro_value_decref(reader_value_);
         return Status(
             errors::InvalidArgument("Unable to create resolved writer."));
       }
-      avro_resolved_writer_set_dest(writer_value_.get(), reader_value_.get());
+      avro_resolved_writer_set_dest(p_writer_value_.get(), p_reader_value_.get());
     } else {
       p_writer_iface_.reset(avro_generic_class_from_schema(writer_schema_.get()));
-      if (avro_generic_value_new(p_writer_iface_.get(), writer_value_.get()) != 0) {
+      if (avro_generic_value_new(p_writer_iface_.get(), p_writer_value_.get()) != 0) {
         return Status(errors::InvalidArgument(
             "Unable to create instance for generic class."));
       }
-      // The reader_value_ is the same as the writer_value_ in the case we do
+      // The p_reader_value_ is the same as the p_writer_value_ in the case we do
       // not need to resolve the schema
-      avro_value_copy_ref(reader_value_.get(), writer_value_.get());
+      avro_value_copy_ref(p_reader_value_.get(), p_writer_value_.get());
     }
 
     return Status::OK();
@@ -199,15 +199,15 @@ class SequentialAvroRecordReader {
   //
   Status ReadRecord(string* record) {
     bool at_end =
-      avro_file_reader_read_value(file_reader_.get(), writer_value_.get()) != 0;
+      avro_file_reader_read_value(file_reader_.get(), p_writer_value_.get()) != 0;
     size_t len;
-    if (avro_value_sizeof(reader_value_.get(), &len)) {
+    if (avro_value_sizeof(p_reader_value_.get(), &len)) {
       return Status(errors::InvalidArgument("Could not find size of value, ",
                                             avro_strerror()));
     }
     record->resize(len);
     avro_writer_t mem_writer = avro_writer_memory(record->data(), len);
-    if (avro_value_write(mem_writer, reader_value_.get())) {
+    if (avro_value_write(mem_writer, p_reader_value_.get())) {
       avro_writer_free(mem_writer);
       return Status(errors::InvalidArgument("Unable to write value to memory."));
     }
@@ -216,63 +216,31 @@ class SequentialAvroRecordReader {
   }
 
  private:
-  // Loads file contents into file_buffer_
-  //
-  // 'read_buffer_size' buffer size when reading file contents
-  //
-  Status CreateAndLoadFileIntoBuffer(int64 read_buffer_size) {
-    int64 total_bytes_read = 0;
-    Status status;
-
-    // While we still need to read data
-    char* buffer = const_cast<char*>(file_buffer_.data());
-    while (total_bytes_read < file_buffer_.size()) {
-      size_t bytes_read;
-      status = input_buffer_->ReadNBytes(read_buffer_size, buffer,
-                                         &bytes_read);
-      total_bytes_read += bytes_read;
-      buffer += bytes_read;
-      // If we are at the end of the file
-      if (errors::IsOutOfRange(status)) {
-        break;
-      } else if (!status.ok()) {
-        return status;
-      }
-    }
-
-    CHECK_EQ(total_bytes_read, file_buffer_.size());
-    return Status::OK();
-  }
-
-  bool initialized_;                               // Has been initialized
-  const string filename_;                          // Name of the file
-  std::string file_buffer_;                        // The data buffer
-  const size_t input_buffer_size_;
-  std::unique_ptr<io::InputBuffer> input_buffer_;  // input buffer used to load
-                                                   // from random access file
+  const RandomAccessFile* p_file_;  // Pointer to file
+  const string filename_;           // Name of the file
+  const uint64 file_size_;          // Size of files in B
   const string reader_schema_str_;  // User supplied string to read this avro
                                     // file
 
   using AvroFileReaderUPtr = std::unique_ptr<struct avro_file_reader_t_,
                                              void(*)(avro_file_reader_t)>;
   AvroFileReaderUPtr file_reader_;  // Avro file reader
-  // TODO: Use std::remove_pointer
+
   using AvroSchemaUPtr = std::unique_ptr<struct avro_obj_t,
                                          void(*)(avro_schema_t)>;
   AvroSchemaUPtr reader_schema_;  // Schema to read, set only when doing schema
                                   // resolution
   AvroSchemaUPtr writer_schema_; // Schema that the file was written with
+
   using AvroValueInterfacePtr = std::unique_ptr<avro_value_iface_t,
                                                 void(*)(avro_value_iface_t*)>;
   AvroValueInterfacePtr p_reader_iface_;  // Reader class info to create instances
   AvroValueInterfacePtr p_writer_iface_;  // Writer class info to create instances
 
   using AvroValueUPtr = std::unique_ptr<avro_value_t, void(*)(avro_value_t*)>;
-  AvroValueUPtr reader_value_; // Reader value, unequal from writer value when
-                               // doing schema resolution
-  AvroValueUPtr writer_value_; // Writer value
-  //avro_value_t reader_value_;
-  //avro_value_t writer_value_;
+  AvroValueUPtr p_reader_value_; // Reader value, unequal from writer value for
+                                 // schema resolution
+  AvroValueUPtr p_writer_value_; // Writer value
 };
 
 class AvroRecordDatasetOp : public DatasetOpKernel {
