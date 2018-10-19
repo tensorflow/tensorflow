@@ -902,8 +902,13 @@ StatusOr<Shape> ParseShapeStringInternal(absl::string_view* s) {
     return Status::OK();
   }
 
-  int64 shape_size = [&shape]() {
-    if (LayoutUtil::IsSparseArray(shape)) {
+  // We can only reason about some aspects of array's shape if it has a valid
+  // layout, these aspects will be ignored otherwise.
+  bool shape_has_valid_layout = LayoutUtil::HasLayout(shape) &&
+                                LayoutUtil::ValidateLayoutInShape(shape).ok();
+
+  int64 shape_size = [&]() {
+    if (shape_has_valid_layout && LayoutUtil::IsSparseArray(shape)) {
       int64 max_sparse_elements = LayoutUtil::MaxSparseElements(shape.layout());
       if (max_sparse_elements < 0) {
         return max_sparse_elements;
@@ -939,8 +944,9 @@ StatusOr<Shape> ParseShapeStringInternal(absl::string_view* s) {
       return dense_shape_size;
     }
 
-    bool is_padded =
-        LayoutUtil::IsDenseArray(shape) && LayoutUtil::IsPadded(shape);
+    bool is_padded = shape_has_valid_layout &&
+                     LayoutUtil::IsDenseArray(shape) &&
+                     LayoutUtil::IsPadded(shape);
     absl::Span<const int64> shape_max_dimensions =
         is_padded ? LayoutUtil::PaddedDimensions(shape)
                   : AsInt64Slice(shape.dimensions());
