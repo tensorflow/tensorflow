@@ -236,7 +236,6 @@ def _make_assert_msg_data(sym, x, y, summarize, test_op):
       data.append('Corresponding y values:')
       data.append(y_vals.numpy().reshape((-1,))[:num_vals])
     
-  if summarize > 0:
     # reshape((-1,)) is the fastest way to get a flat array view.
     x_np = x.numpy().reshape((-1,))
     y_np = y.numpy().reshape((-1,))
