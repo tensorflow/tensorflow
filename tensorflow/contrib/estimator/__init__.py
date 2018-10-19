@@ -58,7 +58,6 @@ _allowed_symbols = [
     'multi_label_head',
     'poisson_regression_head',
     'regression_head',
-    'BaselineEstimator',
     'DNNEstimator',
     'DNNLinearCombinedEstimator',
     'LinearEstimator',
