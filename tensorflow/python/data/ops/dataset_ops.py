@@ -1476,7 +1476,7 @@ class Options(object):
         result.append(exp_opt)
 
     if getattr(self, "experimental_numa_aware"):
-      result.append("map_and_batch_numa_aware_replacement")
+      result.append("make_numa_aware")
     if getattr(self, "experimental_deterministic") is False:
       result.append("make_sloppy")
     return result

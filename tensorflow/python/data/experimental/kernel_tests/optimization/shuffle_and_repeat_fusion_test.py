@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Tests for the experimental input pipeline ops."""
+"""Tests for the `ShuffleAndRepeatFusion` optimization."""
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
@@ -24,40 +24,24 @@ from tensorflow.python.framework import errors
 from tensorflow.python.platform import test
 
 
-class AssertNextDatasetTest(test_base.DatasetTestBase):
+class ShuffleAndRepeatFusionTest(test_base.DatasetTestBase):
 
-  def testAssertNext(self):
-    dataset = dataset_ops.Dataset.from_tensors(0).apply(
-        optimization.assert_next(["Map"])).map(lambda x: x)
+  def testShuffleAndRepeatFusion(self):
+    dataset = dataset_ops.Dataset.range(10).apply(
+        optimization.assert_next(["ShuffleAndRepeat"])).shuffle(10).repeat(2)
+    options = dataset_ops.Options()
+    options.experimental_shuffle_and_repeat_fusion = True
+    dataset = dataset.with_options(options)
     iterator = dataset.make_one_shot_iterator()
     get_next = iterator.get_next()
 
     with self.cached_session() as sess:
-      self.assertEqual(0, sess.run(get_next))
-
-  def testAssertNextInvalid(self):
-    dataset = dataset_ops.Dataset.from_tensors(0).apply(
-        optimization.assert_next(["Whoops"])).map(lambda x: x)
-    iterator = dataset.make_one_shot_iterator()
-    get_next = iterator.get_next()
-
-    with self.cached_session() as sess:
-      with self.assertRaisesRegexp(
-          errors.InvalidArgumentError,
-          "Asserted Whoops transformation at offset 0 but encountered "
-          "Map transformation instead."):
-        sess.run(get_next)
-
-  def testAssertNextShort(self):
-    dataset = dataset_ops.Dataset.from_tensors(0).apply(
-        optimization.assert_next(["Map", "Whoops"])).map(lambda x: x)
-    iterator = dataset.make_one_shot_iterator()
-    get_next = iterator.get_next()
-
-    with self.cached_session() as sess:
-      with self.assertRaisesRegexp(
-          errors.InvalidArgumentError,
-          "Asserted next 2 transformations but encountered only 1."):
+      for _ in range(2):
+        results = []
+        for _ in range(10):
+          results.append(sess.run(get_next))
+        self.assertAllEqual([x for x in range(10)], sorted(results))
+      with self.assertRaises(errors.OutOfRangeError):
         sess.run(get_next)
 
 

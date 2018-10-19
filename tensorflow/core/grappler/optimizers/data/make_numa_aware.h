@@ -13,22 +13,20 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_CORE_GRAPPLER_OPTIMIZERS_DATA_MAP_AND_BATCH_NUMA_AWARE_REPLACEMENT_H_
-#define TENSORFLOW_CORE_GRAPPLER_OPTIMIZERS_DATA_MAP_AND_BATCH_NUMA_AWARE_REPLACEMENT_H_
+#ifndef TENSORFLOW_CORE_GRAPPLER_OPTIMIZERS_DATA_MAKE_NUMA_AWARE_H_
+#define TENSORFLOW_CORE_GRAPPLER_OPTIMIZERS_DATA_MAKE_NUMA_AWARE_H_
 
 #include "tensorflow/core/grappler/optimizers/custom_graph_optimizer.h"
 
 namespace tensorflow {
 namespace grappler {
 
-class MapAndBatchNumaAwareReplacement : public CustomGraphOptimizer {
+class MakeNumaAware : public CustomGraphOptimizer {
  public:
-  MapAndBatchNumaAwareReplacement() = default;
-  ~MapAndBatchNumaAwareReplacement() override = default;
+  MakeNumaAware() = default;
+  ~MakeNumaAware() override = default;
 
-  string name() const override {
-    return "map_and_batch_numa_aware_replacement";
-  }
+  string name() const override { return "make_numa_aware"; }
 
   Status Init(
       const tensorflow::RewriterConfig_CustomGraphOptimizer* config) override {
@@ -45,4 +43,4 @@ class MapAndBatchNumaAwareReplacement : public CustomGraphOptimizer {
 }  // namespace grappler
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_CORE_GRAPPLER_OPTIMIZERS_DATA_MAP_AND_BATCH_NUMA_AWARE_REPLACEMENT_H_
+#endif  // TENSORFLOW_CORE_GRAPPLER_OPTIMIZERS_DATA_MAKE_NUMA_AWARE_H_
