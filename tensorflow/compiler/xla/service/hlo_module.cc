@@ -330,9 +330,10 @@ StatusOr<std::unique_ptr<HloModule>> HloModule::CreateFromProto(
   }
   TF_RET_CHECK(module->entry_computation_ != nullptr);
 
-  TF_ASSIGN_OR_RETURN(module->input_output_alias_config_,
-                      HloInputOutputAliasConfig::CreateFromProto(
-                          result_shape, proto.input_output_alias()));
+  TF_ASSIGN_OR_RETURN(
+      module->input_output_alias_config_,
+      HloInputOutputAliasConfig::CreateFromProto(
+          entry->ComputeProgramShape().result(), proto.input_output_alias()));
 
   // Because we didn't uniquify the names or the ids, double-check that the
   // instruction and computation names and ids are unique from the proto.
