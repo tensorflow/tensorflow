@@ -322,6 +322,7 @@ namespace functor {
 
 TF_CALL_GPU_ALL_TYPES(DECLARE_GPU_SPECS);
 TF_CALL_int8(DECLARE_GPU_SPECS);
+TF_CALL_uint8(DECLARE_GPU_SPECS);
 }  // namespace functor
 
 // Registration of the GPU implementations.
@@ -355,6 +356,7 @@ TF_CALL_int8(DECLARE_GPU_SPECS);
 
 TF_CALL_GPU_ALL_TYPES(REGISTER_GPU_KERNEL);
 TF_CALL_int8(REGISTER_GPU_KERNEL);
+TF_CALL_uint8(REGISTER_GPU_KERNEL);
 
 // A special GPU kernel for int32.
 // TODO(b/25387198): Also enable int32 in device memory. This kernel
