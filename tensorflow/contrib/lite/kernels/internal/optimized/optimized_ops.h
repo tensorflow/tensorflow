@@ -5753,6 +5753,76 @@ inline void TransposeConv(
   Gemm(filter_matrix_map.transpose(), im2col_matrix_map, &output_matrix_map);
 }
 
+// Integer-only version of ResizeNearestNeighbor. Since scales are represented
+// in fixed-point and thus approximated, |in_x| or |in_y| may differ from the
+// reference version. Debug checks are in place to test if this occurs.
+inline void ResizeNearestNeighbor(
+    const tflite::ResizeNearestNeighborParams& op_params,
+    const RuntimeShape& unextended_input_shape, const uint8* input_data,
+    const RuntimeShape& output_size_shape, const int32* output_size_data,
+    const RuntimeShape& unextended_output_shape, uint8* output_data) {
+  // Align corners = true is not supported.
+  TFLITE_DCHECK(!op_params.align_corners);
+  TFLITE_DCHECK_LE(unextended_input_shape.DimensionsCount(), 4);
+  TFLITE_DCHECK_LE(unextended_output_shape.DimensionsCount(), 4);
+
+  const RuntimeShape input_shape =
+      RuntimeShape::ExtendedShape(4, unextended_input_shape);
+  const RuntimeShape output_shape =
+      RuntimeShape::ExtendedShape(4, unextended_output_shape);
+
+  int32 batches = MatchingDim(input_shape, 0, output_shape, 0);
+  int32 input_height = input_shape.Dims(1);
+  int32 input_width = input_shape.Dims(2);
+  int32 depth = MatchingDim(input_shape, 3, output_shape, 3);
+
+  // The Tensorflow version of this op allows resize on the width and height
+  // axis only.
+  TFLITE_DCHECK_EQ(output_size_shape.FlatSize(), 2);
+  int32 output_height = output_size_data[0];
+  int32 output_width = output_size_data[1];
+
+  // Convert scales to fixed-point with 16 fractional bits. We add 1 as an
+  // error factor and to avoid zero scales. For example, with input_height = 1,
+  // output_height = 3, the float scaling factor would be non-zero at 1/3.
+  // With fixed-point, this is zero.
+  int32 height_scale = (input_height << 16) / output_height + 1;
+  int32 width_scale = (input_width << 16) / output_width + 1;
+
+  const int col_offset = input_shape.Dims(3);
+  const int row_offset = input_shape.Dims(2) * col_offset;
+  const int batch_offset = input_shape.Dims(1) * row_offset;
+
+  const uint8* input_ptr = input_data;
+  uint8* output_ptr = output_data;
+  for (int b = 0; b < batches; ++b) {
+    for (int y = 0; y < output_height; ++y) {
+      int32 in_y = std::min((y * height_scale) >> 16, input_height - 1);
+      // Check offset calculation is the same as the reference version. See
+      // function comment for details. We check using a non-float version of:
+      // TFLITE_DCHECK_EQ(in_y, std::floor(y * (static_cast<float>(input_height)
+      //                                            / output_height)));
+      TFLITE_DCHECK_LT(y * input_height, output_height + in_y * output_height);
+      TFLITE_DCHECK_GE(y * input_height, in_y * output_height);
+      const uint8* y_input_ptr = input_ptr + in_y * row_offset;
+      for (int x = 0; x < output_width; ++x) {
+        int32 in_x = std::min((x * width_scale) >> 16, input_width - 1);
+        // Check offset calculation is the same as the reference version. See
+        // function comment for details. We check using a non-float version of:
+        // TFLITE_DCHECK_EQ(in_y,
+        //                  std::floor(y * (static_cast<float>(input_width)
+        //                                      / output_width)));
+        TFLITE_DCHECK_LT(x * input_width, output_width + in_x * output_width);
+        TFLITE_DCHECK_GE(x * input_width, in_x * output_width);
+        const uint8* x_input_ptr = y_input_ptr + in_x * col_offset;
+        memcpy(output_ptr, x_input_ptr, depth);
+        output_ptr += depth;
+      }
+    }
+    input_ptr += batch_offset;
+  }
+}
+
 }  // namespace optimized_ops
 }  // namespace tflite
 
