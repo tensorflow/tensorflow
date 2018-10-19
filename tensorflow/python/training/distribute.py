@@ -31,7 +31,6 @@ from tensorflow.python.ops.losses import losses_impl
 from tensorflow.python.platform import tf_logging
 from tensorflow.python.training import device_util
 from tensorflow.python.training import distribution_strategy_context
-from tensorflow.python.util import deprecation
 from tensorflow.python.util import nest
 
 
@@ -1291,27 +1290,6 @@ class _DefaultDistributionStrategy(DistributionStrategy):
   def _worker_device_index(self):
     raise RuntimeError("worker_device_index() method unsupported by "
                        "_DefaultDistributionStrategy.")
-
-
-# ------------------------------------------------------------------------------
-# Deprecated, use v.assign_add(amount) instead.  Internal API, so expect
-# it to be deleted soon.
-
-
-@deprecation.deprecated(None,
-                        "Use v.assign_add(amount) instead. You may need to set "
-                        "aggregation=tf.VariableAggregation.ONLY_FIRST_REPLICA "
-                        "when creating the variable.")
-def increment_var(v, amount=1):
-  """`v += amount`, distributed-aware version."""
-  def update(vu):
-    return vu.assign_add(amount, read_value=False)
-
-  def merge_fn(dist, vm):
-    return dist.update(vm, update)
-
-  replica_context = distribution_strategy_context.get_replica_context()
-  return replica_context.merge_call(merge_fn, v)
 
 
 # ------------------------------------------------------------------------------
