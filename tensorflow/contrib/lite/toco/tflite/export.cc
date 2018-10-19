@@ -138,10 +138,8 @@ OperatorKey GetOperatorKey(
         static_cast<const TensorFlowUnsupportedOperator&>(op);
     const auto tensorflow_op = unsupported_op.tensorflow_op;
 
-    // TODO(b/113715895): When `allow_flex_ops` is on, for now there's no way
-    // to populate a regular custom op. We need to find a way to fix this.
     if (ShouldExportAsFlexOp(allow_flex_ops, unsupported_op.tensorflow_op)) {
-      key.is_custom_op = true;
+      key.is_custom_op = false;
       key.is_flex_op = true;
       key.flex_tensorflow_op = tensorflow_op;
       key.custom_code =
