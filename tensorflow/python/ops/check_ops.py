@@ -1136,6 +1136,25 @@ def _get_diff_for_monotonic_comparison(x):
     v1=['debugging.is_numeric_tensor', 'is_numeric_tensor'])
 @deprecation.deprecated_endpoints('is_numeric_tensor')
 def is_numeric_tensor(tensor):
+  """Returns `True` if the elements of `tensor` are numbers.
+  
+  Specifically, returns `True` if the dtype of `tensor` is one of the following:
+
+  * `tf.float32`
+  * `tf.float64`
+  * `tf.int8`
+  * `tf.int16`
+  * `tf.int32`
+  * `tf.int64`
+  * `tf.uint8`
+  * `tf.qint8`
+  * `tf.qint32`
+  * `tf.quint8`
+  * `tf.complex64`
+
+  Returns `False` if `tensor` is of a non-numeric type or if `tensor` is not 
+  a `tf.Tensor` object.
+  """
   return isinstance(tensor, ops.Tensor) and tensor.dtype in NUMERIC_TYPES
 
 
@@ -1283,6 +1302,18 @@ def assert_same_float_dtype(tensors=None, dtype=None):
     'debugging.assert_scalar', v1=['debugging.assert_scalar', 'assert_scalar'])
 @deprecation.deprecated_endpoints('assert_scalar')
 def assert_scalar(tensor, name=None):
+  """Statically checks whether a tensor is zero-dimensional.
+
+  Args:
+    tensor: Value to test.
+    name: A name for this operation (optional).  Defaults to "assert_scalar".
+
+  Raises:
+    ValueError: If `tensor`'s shape has more than zero dimensions.
+  
+  Returns:
+    The input `tensor`, possibly converted to a `tf.Tensor`
+  """
   with ops.name_scope(name, 'assert_scalar', [tensor]) as name_scope:
     tensor = ops.convert_to_tensor(tensor, name=name_scope)
     shape = tensor.get_shape()
