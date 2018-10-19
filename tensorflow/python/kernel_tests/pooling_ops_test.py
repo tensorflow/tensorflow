@@ -817,9 +817,10 @@ class PoolingTest(test.TestCase):
           cpu_val, gpu_val, half_rtol=0.01, half_atol=0.01)
 
   def testMaxPoolingWithArgmax(self):
-    tensor_input = [1.0, 1.0, 1.0, 1.0, 0.0, 1.0, 1.0, 1.0, 1.0]
+    tensor_input = [1.0, 1.0, 1.0, 1.0, 0.0, 1.0, 1.0, 1.0, 1.0,
+                    1.0, 1.0, 1.0, 1.0, 0.0, 1.0, 1.0, 1.0, 1.0]
     with self.session(use_gpu=True) as sess:
-      t = constant_op.constant(tensor_input, shape=[1, 3, 3, 1])
+      t = constant_op.constant(tensor_input, shape=[2, 3, 3, 1])
       out_op, argmax_op = nn_ops.max_pool_with_argmax(
           t,
           ksize=[1, 2, 2, 1],
@@ -829,8 +830,10 @@ class PoolingTest(test.TestCase):
       out, argmax = sess.run([out_op, argmax_op])
       self.assertShapeEqual(out, out_op)
       self.assertShapeEqual(argmax, argmax_op)
-      self.assertAllClose(out.ravel(), [1.0, 1.0, 1.0, 1.0])
-      self.assertAllEqual(argmax.ravel(), [0, 1, 3, 5])
+      self.assertAllClose(out.ravel(), [1.0, 1.0, 1.0, 1.0,
+                                        1.0, 1.0, 1.0, 1.0])
+      self.assertAllEqual(argmax.ravel(), [0, 1, 3, 5,
+                                           9, 10, 12, 14])
 
   def testMaxPoolingGradWithArgmax(self):
     orig_input = [1.0, 1.0, 1.0, 1.0, 0.0, 1.0, 1.0, 1.0, 1.0]
