@@ -161,6 +161,7 @@ cuda_py_test(
         "//tensorflow/python:math_ops",
         "//tensorflow/python:resource_variable_ops",
     ],
+    shard_count = 10,
 )
 
 py_library(

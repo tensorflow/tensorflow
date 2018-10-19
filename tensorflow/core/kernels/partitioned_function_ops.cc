@@ -530,6 +530,18 @@ class PartitionedCallOp : public AsyncOpKernel {
     TF_RETURN_IF_ERROR(ConvertGraphDefToGraph(
         GraphConstructorOptions(), out_graph, optimized_graph.get()));
 
+    // Copy optimized functions back to the overlay lib.
+    if (flib) {
+      for (const FunctionDef& fdef : out_graph.library().function()) {
+        const string& func_name = fdef.signature().name();
+        if (flib->Contains(func_name)) {
+          TF_RETURN_IF_ERROR(flib->ReplaceFunction(func_name, fdef));
+        } else {
+          TF_RETURN_IF_ERROR(flib->AddFunctionDef(fdef));
+        }
+      }
+    }
+
     *graph = std::move(optimized_graph);
 
     // The graph conversion sets the requested device names but not the
