@@ -86,7 +86,7 @@ void PrintInterpreterState(Interpreter* interpreter) {
   for (int tensor_index = 0; tensor_index < interpreter->tensors_size();
        tensor_index++) {
     TfLiteTensor* tensor = interpreter->tensor(tensor_index);
-    printf("Tensor %3d %-20s %10s %15s %10zu bytes (%4.1f MB) ", tensor_index,
+    printf("Tensor %3d %-20s %10s %15s %10zu bytes (%4.1f MB) shape:", tensor_index,
            tensor->name, TensorTypeName(tensor->type),
            AllocTypeName(tensor->allocation_type), tensor->bytes,
            (static_cast<float>(tensor->bytes) / (1 << 20)));
