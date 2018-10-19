@@ -1515,7 +1515,7 @@ cuda_py_test(
         "//tensorflow/python:while_v2",
     ],
     shard_count = 16,
-    tags = ["no_oss"],  # TODO(b/117928656)
+    tags = ["no_gpu"],  # TODO(b/117928656)
 )
 
 tf_py_test(
