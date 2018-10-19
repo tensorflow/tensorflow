@@ -1557,6 +1557,8 @@ std::vector<std::unique_ptr<BaseOperator>> BuildOperatorList(
       "LOGICAL_NOT", OperatorType::kLogicalNot));
   ops.emplace_back(new SimpleOperator<FloorDivOperator>(
       "FLOOR_DIV", OperatorType::kFloorDiv));
+  ops.emplace_back(new SimpleOperator<FloorModOperator>(
+      "FLOOR_MOD", OperatorType::kFloorMod));
   // Element-wise operator
   ops.push_back(
       MakeUnique<SimpleOperator<SinOperator>>("SIN", OperatorType::kSin));

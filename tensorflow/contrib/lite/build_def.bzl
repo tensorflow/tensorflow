@@ -233,6 +233,7 @@ def generated_test_models():
         "expand_dims",
         "floor",
         "floor_div",
+        "floor_mod",
         "fully_connected",
         "fused_batch_norm",
         "gather",

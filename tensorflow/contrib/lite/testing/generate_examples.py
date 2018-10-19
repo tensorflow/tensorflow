@@ -1119,6 +1119,10 @@ def make_floor_div_tests(zip_path):
   make_binary_op_tests(zip_path, tf.floor_div)
 
 
+def make_floor_mod_tests(zip_path):
+  make_binary_op_tests(zip_path, tf.floormod)
+
+
 def make_gather_tests(zip_path):
   """Make a set of tests to do gather."""
 
