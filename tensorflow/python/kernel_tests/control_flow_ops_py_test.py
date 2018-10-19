@@ -741,8 +741,9 @@ class ControlFlowTest(test.TestCase):
       ]
       self.assertAllEqual(dense_gv, [0.0, 2.0])
 
+  # TODO(b/117945658): reenable
   @test_util.run_in_graph_and_eager_modes
-  def testCondAutoControlDeps(self):
+  def DISABLED_testCondAutoControlDeps(self):
 
     def branch_fn():
       logging_ops.print_v2("A")
@@ -789,8 +790,9 @@ class ControlFlowTest(test.TestCase):
         self.assertEqual(self.evaluate(nested_cond()), 10)
       self.assertEqual(printed.contents(), "A\nB\nC\n")
 
+  # TODO(b/117945658): reenable
   @test_util.run_in_graph_and_eager_modes
-  def testWhileAutoControlDeps(self):
+  def DISABLED_testWhileAutoControlDeps(self):
 
     def cond(i, unused_x):
       logging_ops.print_v2("A")
