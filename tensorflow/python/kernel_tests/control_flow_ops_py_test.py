@@ -741,7 +741,7 @@ class ControlFlowTest(test.TestCase):
       ]
       self.assertAllEqual(dense_gv, [0.0, 2.0])
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testCondAutoControlDeps(self):
 
     def branch_fn():
@@ -788,6 +788,61 @@ class ControlFlowTest(test.TestCase):
       with self.captureWritesToStream(sys.stderr) as printed:
         self.assertEqual(self.evaluate(nested_cond()), 10)
       self.assertEqual(printed.contents(), "A\nB\nC\n")
+
+  @test_util.run_in_graph_and_eager_modes
+  def testWhileAutoControlDeps(self):
+
+    def cond(i, unused_x):
+      logging_ops.print_v2("A")
+      return i < 2
+
+    def body(i, x):
+      logging_ops.print_v2("B")
+      with ops.control_dependencies([logging_ops.print_v2("C")]):
+        x = array_ops.identity(x)
+      with ops.control_dependencies([logging_ops.print_v2("D")]):
+        return i + 1, x
+
+    def build_while():
+      return control_flow_ops.while_loop(
+          cond, body, [constant_op.constant(0), constant_op.constant(0)])
+
+    def build_nested_while():
+      return control_flow_ops.cond(
+          constant_op.constant(True), build_while, lambda: (0, 0))
+
+    # In v1 graph mode, pruning should make only "D" print.
+    if not context.executing_eagerly():
+      with self.cached_session():
+        with self.captureWritesToStream(sys.stderr) as printed:
+          self.assertEqual(build_while()[0].eval(), 2)
+        self.assertEqual(printed.contents(), "D\nD\n")
+
+        with self.captureWritesToStream(sys.stderr) as printed:
+          self.assertEqual(build_nested_while()[0].eval(), 2)
+        self.assertEqual(printed.contents(), "D\nD\n")
+
+    # In defuns, all prints should execute in program order.
+    # This doesn't work with legacy control flow.
+    if control_flow_ops.ENABLE_WHILE_V2:
+
+      @eager_function.defun
+      def while_loop():
+        return build_while()[0]
+
+      with self.captureWritesToStream(sys.stderr) as printed:
+        self.assertEqual(self.evaluate(while_loop()), 2)
+      self.assertEqual(printed.contents(), "A\nB\nC\nD\nA\nB\nC\nD\nA\n")
+
+      @eager_function.defun
+      def nested_while_loop():
+        return build_nested_while()[0]
+
+      # TODO(b/117840611): calling nested_while_loop fails in eager
+      if not context.executing_eagerly():
+        with self.captureWritesToStream(sys.stderr) as printed:
+          self.assertEqual(self.evaluate(nested_while_loop()), 2)
+        self.assertEqual(printed.contents(), "A\nB\nC\nD\nA\nB\nC\nD\nA\n")
 
   # Microbenchmark: 256,000 iterations/s.
   @test_util.disable_control_flow_v2("b/116630618 (Times out)")

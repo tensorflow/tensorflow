@@ -141,6 +141,7 @@ OperatorKey GetOperatorKey(
     // TODO(b/113715895): When `allow_flex_ops` is on, for now there's no way
     // to populate a regular custom op. We need to find a way to fix this.
     if (ShouldExportAsFlexOp(allow_flex_ops, unsupported_op.tensorflow_op)) {
+      key.is_custom_op = true;
       key.is_flex_op = true;
       key.flex_tensorflow_op = tensorflow_op;
       key.custom_code =
@@ -406,13 +407,13 @@ Offset<Vector<Offset<Buffer>>> ExportBuffers(
   return builder->CreateVector(buffer_vector);
 }
 
-void Export(const Model& model, string* output_file_contents,
-            const ExportParams& params) {
+tensorflow::Status Export(const Model& model, string* output_file_contents,
+                          const ExportParams& params) {
   const auto ops_by_type = BuildOperatorByTypeMap(params.allow_flex_ops);
-  Export(model, output_file_contents, params, ops_by_type);
+  return Export(model, output_file_contents, params, ops_by_type);
 }
 
-void Export(
+tensorflow::Status Export(
     const Model& model, string* output_file_contents,
     const ExportParams& params,
     const std::map<OperatorType, std::unique_ptr<BaseOperator>>& ops_by_type) {
@@ -471,14 +472,14 @@ void Export(
         custom_ops_final = custom_ops;
       }
 
-      LOG(QFATAL)
-          << "Some of the operators in the model are not supported by "
-             "the standard TensorFlow Lite runtime. If you have a custom "
-             "implementation for them you can disable this error with "
-             "--allow_custom_ops, or by setting allow_custom_ops=True "
-             "when calling tf.contrib.lite.TFLiteConverter(). Here is a list "
-             "of operators for which  you will need custom implementations: "
-          << absl::StrJoin(custom_ops_final, ", ") << ".";
+      return tensorflow::errors::InvalidArgument(absl::StrCat(
+          "Some of the operators in the model are not supported by the "
+          "standard TensorFlow Lite runtime. If you have a custom "
+          "implementation for them you can disable this error with "
+          "--allow_custom_ops, or by setting allow_custom_ops=True when "
+          "calling tf.contrib.lite.TFLiteConverter(). Here is a list of "
+          "operators for which  you will need custom implementations: ",
+          absl::StrJoin(custom_ops_final, ", "), "."));
     }
 
     std::set<string> unsupported_control_flow_ops;
@@ -490,16 +491,17 @@ void Export(
       }
     }
     if (!unsupported_control_flow_ops.empty()) {
-      LOG(QFATAL)
-          << "TensorFlow Lite currently doesn't support control flow ops: "
-          << absl::StrJoin(unsupported_control_flow_ops, ", ") << ".";
+      return tensorflow::errors::InvalidArgument(absl::StrCat(
+          "TensorFlow Lite currently doesn't support control flow ops: ",
+          absl::StrJoin(unsupported_control_flow_ops, ", "), "."));
     }
   }
 
   if (!unsupported_flex_ops.empty()) {
-    LOG(QFATAL) << "Some of the operators in the model are not supported by "
-                   "TensorFlow Flex runtime: "
-                << absl::StrJoin(unsupported_flex_ops, ", ") << ".";
+    return tensorflow::errors::InvalidArgument(
+        absl::StrCat("Some of the operators in the model are not supported by "
+                     "TensorFlow Flex runtime: ",
+                     absl::StrJoin(unsupported_flex_ops, ", "), "."));
   }
 
   std::set<int32_t> variable_tensor_indices;
@@ -534,12 +536,15 @@ void Export(
     const ::tflite::Model* input_model = ::tflite::GetModel(buffer);
     if (::tflite::optimize::QuantizeWeights(&q_builder, input_model) !=
         kTfLiteOk) {
-      LOG(QFATAL) << "Quantize weights transformation failed.";
+      return tensorflow::errors::InvalidArgument(
+          "Quantize weights transformation failed.");
     }
     WriteModelToString(q_builder, output_file_contents);
   } else {
     WriteModelToString(builder, output_file_contents);
   }
+
+  return tensorflow::Status();
 }
 
 }  // namespace tflite

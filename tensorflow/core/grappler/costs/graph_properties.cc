@@ -1285,15 +1285,6 @@ class SymbolicShapeRefiner {
     // Integer tensors of rank one can also be interpreted as a shape
     // provided all their values are >= -1.
     if (IsIntegerVector(tensor)) {
-#if 0
-      ShapeHandle tensor_shape = ic->Vector(tensor.NumElements());
-      ShapeHandle shp;
-      // Note that MakeShapeFromTensor filters out invalid values (e.g., < -1).
-      if (ic->MakeShapeFromTensor(&tensor, tensor_shape, &shp).ok()) {
-        *tensors_as_shapes = shp;
-        return true;
-      }
-#else
       bool has_values_smaller_than_minus_1 = false;
       std::vector<DimensionHandle> dims;
       for (int i = 0; i < tensor.NumElements(); i++) {
@@ -1305,7 +1296,6 @@ class SymbolicShapeRefiner {
       if (!has_values_smaller_than_minus_1) {
         *tensors_as_shapes = ic->MakeShape(dims);
       }
-#endif
     } else if (IsIntegerScalar(tensor)) {
       // Scalar constant.
       int64 value = tensor.dtype() == DT_INT32 ? tensor.flat<int32>()(0)

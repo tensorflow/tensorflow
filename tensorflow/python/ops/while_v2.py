@@ -67,8 +67,8 @@ def while_loop(cond, body, loop_vars, shape_invariants=None, name=None):
 
   with ops.name_scope(name) as scope:
     with ops.name_scope(None):
-      cond_name = _get_unique_name(("%scond" % scope).replace("/", "_"))
-      body_name = _get_unique_name(("%sbody" % scope).replace("/", "_"))
+      cond_name = util.unique_fn_name(scope, "cond")
+      body_name = util.unique_fn_name(scope, "body")
 
     num_outputs = len(flattened_loop_vars)
 
@@ -77,6 +77,10 @@ def while_loop(cond, body, loop_vars, shape_invariants=None, name=None):
                           ] + flattened_loop_vars
 
     flattened_shapes = [tensor_shape.scalar()] + flattened_shapes
+
+    # Automatic control dependencies are added in defuns, but not in v1
+    # graphs. Propagate that behavior here.
+    add_control_dependencies = util.in_defun()
 
     # Build a `cond` wrapper that can handle the extra counter loop_var.
     def wrapped_cond(unused_loop_counter, *loop_vars):
@@ -88,7 +92,8 @@ def while_loop(cond, body, loop_vars, shape_invariants=None, name=None):
     ]
     cond_graph = function.func_graph_from_py_func(
         cond_name, wrapped_cond, flattened_loop_vars, {}, signature=signature,
-        func_graph=util.WhileCondFuncGraph(cond_name))
+        func_graph=util.WhileCondFuncGraph(cond_name),
+        add_control_dependencies=add_control_dependencies)
 
     # Add external_captures of cond to the list of loop vars.
     # Note that external tensors will be treated as loop invariants, i.e.,
@@ -128,7 +133,8 @@ def while_loop(cond, body, loop_vars, shape_invariants=None, name=None):
     ]
     body_graph = function.func_graph_from_py_func(
         body_name, wrapped_body, flattened_loop_vars, {}, signature=signature,
-        func_graph=util.WhileBodyFuncGraph(body_name))
+        func_graph=util.WhileBodyFuncGraph(body_name),
+        add_control_dependencies=add_control_dependencies)
     # Add external captures of body to the list of loop vars.
     # Note that external tensors will be treated as loop invariants, i.e.,
     # the value of that tensor in each iteration is the same as it was at the
@@ -187,6 +193,14 @@ def while_loop(cond, body, loop_vars, shape_invariants=None, name=None):
     _copy_handle_data(body_graph.outputs, outputs)
     _maybe_set_lowering_attr(outputs[0].op)
 
+    # Return identities for each output of the While op, rather than the output
+    # of the While op directly. This makes pruning work if the output of
+    # while_loop() is fetched: the lowering pass converts the While outputs into
+    # IdentityN outputs, which if fetched will cause all ops in the body to be
+    # run (since it takes all exit ops as input). After lowering, each output
+    # identity op will end up with only the appropriate exit op as input.
+    outputs = tuple(array_ops.identity(t) for t in outputs)
+
   # First var is loop counter.
   if num_outputs == 1:
     return outputs[1]
@@ -213,7 +227,7 @@ def _WhileGrad(op, *grads):  # pylint: disable=invalid-name
 
   body_grad_graph, args = _create_grad_func(
       body_graph, grads,
-      _get_unique_name("%s_grad" % body_graph.name), op)
+      util.unique_grad_fn_name(body_graph.name), op)
 
   intermediate_tensors = _get_intermediates(body_grad_graph)
 
@@ -233,7 +247,7 @@ def _WhileGrad(op, *grads):  # pylint: disable=invalid-name
     return counter < max_iters
 
   loop_vars = args + body_grad_graph.external_captures
-  grad_cond_name = _get_unique_name("%s_grad_cond" % op.name)
+  grad_cond_name = util.unique_grad_fn_name(op.get_attr("cond").name)
   cond_grad_graph = function.func_graph_from_py_func(
       grad_cond_name, grad_cond, loop_vars, {},
       func_graph=util.WhileCondFuncGraph(grad_cond_name))
@@ -247,7 +261,7 @@ def _WhileGrad(op, *grads):  # pylint: disable=invalid-name
       util.create_new_tf_function(cond_grad_graph),
       util.create_new_tf_function(body_grad_graph),
       output_shapes=[t.shape for t in body_grad_graph.outputs],
-      name=_get_unique_name("%s_grad" % op.name))
+      name="%s_grad" % op.name)
 
   _copy_handle_data(body_grad_graph.outputs, outputs)
   _maybe_set_lowering_attr(outputs[0].op)
@@ -448,20 +462,6 @@ def _get_accumulator(tensor):
     if accum_input_idx == accum_output_idx:
       return output
   return None
-
-
-# TODO(srbs): Add to common utils for cond_v2 and while_v2.
-def _get_unique_name(name):
-  """Returns a name that is unique in the root graph of `func_graph`.
-
-  Args:
-    name: String to uniquify.
-
-  Returns:
-    A string.
-  """
-  with ops.init_scope():
-    return ops.get_default_graph().unique_name(name)
 
 
 class _WhileBodyGradFuncGraph(util.WhileBodyFuncGraph):

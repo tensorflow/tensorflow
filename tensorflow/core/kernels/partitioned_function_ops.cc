@@ -183,6 +183,13 @@ class PartitionedCallOp : public AsyncOpKernel {
         OP_REQUIRES_OK_ASYNC(
             ctx, PartitionHelper(device_set, std::move(graph), &subgraphs),
             done);
+        if (ctx->graph_collector() != nullptr) {
+          for (const auto& pair : subgraphs) {
+            GraphDef def;
+            pair.second->ToGraphDef(&def);
+            ctx->graph_collector()->CollectGraph(def);
+          }
+        }
         optimization_options.graph = nullptr;
         optimization_options.device_set = nullptr;
         optimization_options.partition_graphs = &subgraphs;

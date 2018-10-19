@@ -52,15 +52,8 @@ def cond_v2(pred, true_fn, false_fn, name="cond"):
     name = "cond"
 
   with ops.name_scope(name) as scope:
-    with ops.name_scope(None):
-      # Find the outer most graph for uniquing function names.
-      # TODO(jpienaar): Make this work in eager mode.
-      graph = ops.get_default_graph()
-      while isinstance(graph, function.FuncGraph):
-        graph = graph.outer_graph
-
-      true_name = graph.unique_name(("%strue" % scope).replace("/", "_"))
-      false_name = graph.unique_name(("%sfalse" % scope).replace("/", "_"))
+    true_name = util.unique_fn_name(scope, "true")
+    false_name = util.unique_fn_name(scope, "false")
 
     # Automatic control dependencies are added in defuns, but not in v1
     # graphs. Propagate that behavior here.
@@ -156,9 +149,9 @@ def _IfGrad(op, *grads):  # pylint: disable=invalid-name
   # graphs. These functions will capture tensors from the forward pass
   # functions.
   true_grad_graph = _create_grad_func(
-      true_graph, grads, _get_grad_fn_name(true_graph))
+      true_graph, grads, util.unique_grad_fn_name(true_graph.name))
   false_grad_graph = _create_grad_func(
-      false_graph, grads, _get_grad_fn_name(false_graph))
+      false_graph, grads, util.unique_grad_fn_name(false_graph.name))
 
   assert ([t.dtype for t in true_grad_graph.outputs] ==
           [t.dtype for t in false_grad_graph.outputs])
@@ -453,24 +446,6 @@ def _create_dummy_params(func_graph, template_tensors):
   with func_graph.as_default():
     return [gen_functional_ops.fake_param(dtype=t.dtype, shape=t.shape)
             for t in template_tensors]
-
-
-def _get_grad_fn_name(func_graph):
-  """Returns a unique name to use for the grad function of `func_graph`.
-
-  Ensures this name is unique in the entire hierarchy.
-
-  Args:
-    func_graph: The FuncGraph.
-
-  Returns:
-    A string, the name to use for the gradient function.
-  """
-  name = "%s_grad" % func_graph.name
-  outer_most_graph = func_graph
-  while isinstance(outer_most_graph, function.FuncGraph):
-    outer_most_graph = outer_most_graph.outer_graph
-  return outer_most_graph.unique_name(name)
 
 
 def _check_same_outputs(true_graph, false_graph):

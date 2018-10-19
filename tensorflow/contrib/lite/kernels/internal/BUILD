@@ -615,6 +615,22 @@ cc_test(
 )
 
 cc_test(
+    name = "resize_nearest_neighbor_test",
+    srcs = ["resize_nearest_neighbor_test.cc"],
+    tags = [
+        "no_oss",
+        "tflite_not_portable",
+    ],
+    deps = [
+        ":optimized_base",
+        ":reference_base",
+        ":test_util",
+        ":types",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
     name = "softmax_quantized_test",
     timeout = "long",
     srcs = [

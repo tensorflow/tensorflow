@@ -48,17 +48,20 @@ Status KernelAndDevice::Init(const NodeDef& ndef, FunctionLibraryRuntime* flib,
 
 Status KernelAndDevice::Run(std::vector<Tensor>* inputs,
                             std::vector<Tensor>* outputs, NodeExecStats* stats,
-                            StepStats* step_stats) {
+                            StepStats* step_stats,
+                            GraphCollector* graph_collector) {
   ScopedStepContainer step_container(0, [this](const string& name) {
     device_->resource_manager()->Cleanup(name).IgnoreError();
   });
-  return this->Run(&step_container, inputs, outputs, stats, step_stats);
+  return this->Run(&step_container, inputs, outputs, stats, step_stats,
+                   graph_collector);
 }
 
 Status KernelAndDevice::Run(ScopedStepContainer* step_container,
                             std::vector<Tensor>* inputs,
                             std::vector<Tensor>* outputs, NodeExecStats* stats,
-                            StepStats* step_stats) {
+                            StepStats* step_stats,
+                            GraphCollector* graph_collector) {
   gtl::InlinedVector<TensorValue, 4> input_vector;
   for (Tensor& t : *inputs) {
     input_vector.push_back(TensorValue(&t));
@@ -87,6 +90,7 @@ Status KernelAndDevice::Run(ScopedStepContainer* step_container,
     step_stats_collector.reset(new StepStatsCollector(step_stats));
     params.track_allocations = true;
     params.stats_collector = step_stats_collector.get();
+    params.graph_collector = graph_collector;
   }
   if (runner_ == nullptr) {
     params.runner = &default_runner_;

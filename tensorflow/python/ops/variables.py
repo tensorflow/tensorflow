@@ -79,28 +79,42 @@ class VariableSynchronization(enum.Enum):
   ON_READ = 3
 
 
-@tf_export("VariableAggregation")
-class VariableAggregation(enum.Enum):
+@tf_export("VariableAggregation", v1=[])
+class VariableAggregationV2(enum.Enum):
   """Indicates how a distributed variable will be aggregated.
 
   `tf.contrib.distribute.DistributionStrategy` distributes a model by making
-  multiple copies (called "towers") acting data-parallel on different elements
+  multiple copies (called "replicas") acting data-parallel on different elements
   of the input batch. When performing some variable-update operation, say
   `var.assign_add(x)`, in a model, we need to resolve how to combine the
-  different values for `x` computed in the different towers.
+  different values for `x` computed in the different replicas.
 
   * `NONE`: This is the default, giving an error if you use a
-    variable-update operation with multiple towers.
-  * `SUM`: Add the updates across towers.
-  * `MEAN`: Take the arithmetic mean ("average") of the updates across towers.
-  * `ONLY_FIRST_TOWER`: This is for when every tower is performing the same
+    variable-update operation with multiple replicas.
+  * `SUM`: Add the updates across replicas.
+  * `MEAN`: Take the arithmetic mean ("average") of the updates across replicas.
+  * `ONLY_FIRST_REPLICA`: This is for when every replica is performing the same
     update, but we only want to perform the update once. Used, e.g., for the
     global step counter.
   """
   NONE = 0
   SUM = 1
   MEAN = 2
-  ONLY_FIRST_TOWER = 3
+  ONLY_FIRST_REPLICA = 3
+
+
+@tf_export(v1=["VariableAggregation"])
+class VariableAggregation(enum.Enum):
+  NONE = 0
+  SUM = 1
+  MEAN = 2
+  ONLY_FIRST_REPLICA = 3
+  ONLY_FIRST_TOWER = 3  # DEPRECATED
+
+
+VariableAggregation.__doc__ = (
+    VariableAggregationV2.__doc__ +
+    "* `ONLY_FIRST_TOWER`: Deprecated alias for `ONLY_FIRST_REPLICA`.\n  ")
 
 
 class VariableMetaclass(type):

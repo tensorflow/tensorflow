@@ -62,11 +62,12 @@ class KernelAndDevice {
 
   // TODO(ashankar): Handle list-valued inputs.
   Status Run(std::vector<Tensor>* inputs, std::vector<Tensor>* outputs,
-             NodeExecStats* stats, StepStats* step_stats);
+             NodeExecStats* stats, StepStats* step_stats,
+             GraphCollector* graph_collector);
 
   Status Run(ScopedStepContainer* step_container, std::vector<Tensor>* inputs,
              std::vector<Tensor>* outputs, NodeExecStats* stats,
-             StepStats* step_stats);
+             StepStats* step_stats, GraphCollector* graph_collector);
 
   const OpKernel* kernel() const { return kernel_.get(); }
 

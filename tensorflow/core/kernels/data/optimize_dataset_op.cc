@@ -113,6 +113,16 @@ class OptimizeDatasetOp : public UnaryDatasetOpKernel {
       // using the optimized function library.
       TF_RETURN_IF_ERROR(
           ctx->function_library()->Clone(&flib_def_, &pflr_, &lib_));
+
+      // Some functions may have been modified without having their names
+      // changed (for example, nested dataset graphs from FlatMap or
+      // Interleave). To avoid name conflicts, we remove these functions from
+      // flib_def_ before adding the optimized function library.
+      for (const FunctionDef& fd : graph_def.library().function()) {
+        if (flib_def_->Find(fd.signature().name()) != nullptr) {
+          TF_RETURN_IF_ERROR(flib_def_->RemoveFunction(fd.signature().name()));
+        }
+      }
       TF_RETURN_IF_ERROR(flib_def_->AddLibrary(graph_def.library()));
 
       Graph graph(OpRegistry::Global());
