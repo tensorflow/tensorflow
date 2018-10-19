@@ -5,6 +5,10 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
+    name: "BaselineEstimator"
+    mtype: "<type \'type\'>"
+  }
+  member {
     name: "BaselineRegressor"
     mtype: "<type \'type\'>"
   }
