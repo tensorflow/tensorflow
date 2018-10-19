@@ -50,8 +50,8 @@ from tensorflow.python.util.tf_export import tf_export
 # Aliases for some automatically-generated names.
 linspace = gen_math_ops.lin_space
 
-arg_max = deprecation.deprecated(None, "Use `argmax` instead")(arg_max)  # pylint: disable=used-before-assignment
-arg_min = deprecation.deprecated(None, "Use `argmin` instead")(arg_min)  # pylint: disable=used-before-assignment
+arg_max = deprecation.deprecated(None, "Use `tf.math.argmax` instead")(arg_max)  # pylint: disable=used-before-assignment
+arg_min = deprecation.deprecated(None, "Use `tf.math.argmin` instead")(arg_min)  # pylint: disable=used-before-assignment
 tf_export("arg_max")(arg_max)
 tf_export("arg_min")(arg_min)
 
@@ -115,6 +115,10 @@ def argmin(input,
 def abs(x, name=None):  # pylint: disable=redefined-builtin
   r"""Computes the absolute value of a tensor.
 
+  Given a tensor of integer or floating-point values, this operation returns a 
+  tensor of the same type, where each element contains the absolute value of the 
+  corresponding element in the input.
+
   Given a tensor `x` of complex numbers, this operation returns a tensor of type
   `float32` or `float64` that is the absolute value of each element in `x`. All
   elements in `x` must be complex numbers of the form \\(a + bj\\). The
@@ -130,8 +134,8 @@ def abs(x, name=None):  # pylint: disable=redefined-builtin
     name: A name for the operation (optional).
 
   Returns:
-    A `Tensor` or `SparseTensor` the same size and type as `x` with absolute
-      values.
+    A `Tensor` or `SparseTensor` the same size, type, and sparsity as `x` with 
+      absolute values.
     Note, for `complex64` or `complex128` input, the returned `Tensor` will be
       of type `float32` or `float64`, respectively.
   """
@@ -568,8 +572,8 @@ def angle(input, name=None):
   For example:
 
   ```
-  # tensor 'input' is [-2.25 + 4.75j, 3.25 + 5.75j]
-  tf.angle(input) ==> [2.0132, 1.056]
+  # tensor 'input' is [-2.25 + 4.75j, 3.25 + 5.75j], in `complex64` format
+  tf.angle(input) ==> array([2.0131705, 1.056345 ], dtype=float32)
   ```
 
   Args:
@@ -2142,9 +2146,18 @@ def _as_indexed_slices_list(inputs, optimize=True):
 def add_n(inputs, name=None):
   """Adds all input tensors element-wise.
 
+  This op buffers all inputs in memory and does not execute until all inputs
+  are available. Use `tf.math.accumulate_n` if you need to avoid this buffering
+  behavior; for example, if you need to sum hundreds of tensors.
+
+  This op does not [broadcast](
+  https://docs.scipy.org/doc/numpy-1.13.0/user/basics.broadcasting.html)
+  its inputs. If you need broadcasting, use `tf.math.add` (or the `+` operator)
+  instead.
+
   Args:
-    inputs: A list of `Tensor` or `IndexedSlices` objects, each with same shape
-      and type.
+    inputs: A list of `tf.Tensor` or `tf.IndexedSlices` objects, each with same
+      shape and type.
     name: A name for the operation (optional).
 
   Returns:
@@ -2181,10 +2194,11 @@ def accumulate_n(inputs, shape=None, tensor_dtype=None, name=None):
   Optionally, pass `shape` and `tensor_dtype` for shape and type checking,
   otherwise, these are inferred.
 
-  `tf.math.accumulate_n` performs the same operation as `tf.add_n`, but does not
-  wait for all of its inputs to be ready before beginning to sum. This can
-  save memory if inputs are ready at different times, since minimum temporary
-  storage is proportional to the output size rather than the inputs size.
+  `accumulate_n` performs the same operation as `tf.math.add_n`, but 
+  does not wait for all of its inputs to be ready before beginning to sum. 
+  This approach can save memory if inputs are ready at different times, since 
+  minimum temporary storage is proportional to the output size rather than the 
+  inputs' size.
 
   `accumulate_n` is differentiable (but wasn't previous to TensorFlow 1.7).
 
@@ -2203,8 +2217,13 @@ def accumulate_n(inputs, shape=None, tensor_dtype=None, name=None):
 
   Args:
     inputs: A list of `Tensor` objects, each with same shape and type.
-    shape: Shape of elements of `inputs`.
-    tensor_dtype: The type of `inputs`.
+    shape: Expected shape of elements of `inputs` (optional). 
+      Also controls the output shape of this op, which may affect type 
+      inference in other ops.
+      A value of `None` means "infer the input shape from the shapes in 
+      `inputs`".
+    tensor_dtype: Expected data type of `inputs` (optional).
+      A value of `None` means "infer the input dtype from `inputs[0]`".
     name: A name for the operation (optional).
 
   Returns:

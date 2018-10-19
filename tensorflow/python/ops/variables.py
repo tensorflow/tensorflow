@@ -2715,7 +2715,7 @@ def global_variables(scope=None):
 @tf_export(v1=["all_variables"])
 @deprecated("2017-03-02", "Please use tf.global_variables instead.")
 def all_variables():
-  """See `tf.global_variables`."""
+  """Use `tf.global_variables` instead."""
   return global_variables()
 
 
