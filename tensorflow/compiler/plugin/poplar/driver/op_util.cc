@@ -331,6 +331,8 @@ Status PoplarExceptionToTensorflowStatus(const std::string& prefix,
     return tensorflow::errors::ResourceExhausted(prefix, e.what());
   } catch (const poplar::index_error& e) {
     return tensorflow::errors::OutOfRange(prefix, e.what());
+  } catch (const poplar::poplar_error& e) {
+    return tensorflow::errors::Internal(prefix, e.what());
   }
 
   return tensorflow::errors::Unknown(prefix, e.what());
