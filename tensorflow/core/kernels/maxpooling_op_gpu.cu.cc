@@ -170,7 +170,7 @@ __global__ void MaxPoolForwardNHWC(const int nthreads, const dtype* bottom_data,
     }
     top_data[index] = maxval;
     if (mask != nullptr) {
-      mask[index] = maxidx;
+      mask[index] = maxidx + n * height * width * channels;
     }
   }
 }
@@ -239,9 +239,7 @@ __global__ void MaxPoolBackward(const int nthreads, const dtype* top_diff,
                                 const int64* mask, const int top_offset,
                                 const int bottom_offset, dtype* bottom_diff) {
   CUDA_1D_KERNEL_LOOP(index, nthreads) {
-    int image_id = (index / top_offset);
-    CudaAtomicAdd(bottom_diff + image_id * bottom_offset + mask[index],
-                  top_diff[index]);
+    CudaAtomicAdd(bottom_diff + mask[index], top_diff[index]);
   }
 }
 
