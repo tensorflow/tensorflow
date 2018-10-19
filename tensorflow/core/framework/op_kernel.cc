@@ -704,10 +704,10 @@ Status OpKernelContext::allocate_output(int index, const TensorShape& shape,
   const DataType type = params_->op_kernel->output_type(index);
   DCHECK(!IsRefType(type));
   DCHECK(mutable_output(index) == nullptr);
-  Tensor* output_tensor = new Tensor();
-  Status s = allocate_tensor(type, shape, output_tensor, attr);
+  auto output_tensor = MakeUnique<Tensor>();
+  Status s = allocate_tensor(type, shape, output_tensor.get(), attr);
   if (s.ok()) {
-    outputs_[index] = TensorValue(output_tensor);
+    outputs_[index] = TensorValue(output_tensor.release());
     *output = outputs_[index].tensor;
   }
   return s;
