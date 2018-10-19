@@ -281,6 +281,17 @@ Status FullVisitor::HandlePad(HloInstruction* inst) {
   return Status::OK();
 }
 
+Status FullVisitor::HandleSort(HloInstruction* inst) {
+  VLOG(1) << "Processing " << inst->name();
+
+  TF_ASSIGN_OR_RETURN(auto prog,
+                      CreateSort(graph_, resources_, inst, tensor_map));
+
+  sequence.add(prog);
+
+  return Status::OK();
+}
+
 Status FullVisitor::Postprocess(HloInstruction* inst) {
   if (!ShapeUtil::IsTuple(inst->shape())) {
     auto outs = FindInstructionOutputs(tensor_map, inst);

@@ -86,13 +86,13 @@ using ::tensorflow::strings::StrCat;
 namespace xla {
 namespace poplarplugin {
 namespace {
-std::string GetPathToGraphProgFile() {
+std::string GetPathToGraphProgFile(std::string filename) {
   Dl_info dlInfo;
   static const void* dummy;
   if (dladdr(&dummy, &dlInfo)) {
     std::string path(dlInfo.dli_fname);
     path = path.substr(0, path.find_last_of('/') + 1);
-    path = path + "../compiler/plugin/poplar/tf.gp";
+    path = path + "../compiler/plugin/poplar/" + filename;
     if (access(path.c_str(), R_OK) != -1) {
       return path;
     }
@@ -103,7 +103,7 @@ std::string GetPathToGraphProgFile() {
     char buf[256];
     getcwd(buf, 255);
     std::string path(buf);
-    path = path + "/tensorflow/compiler/plugin/poplar/tf.gp";
+    path = path + "/tensorflow/compiler/plugin/poplar/" + filename;
     if (access(path.c_str(), R_OK) != -1) {
       return path;
     }
@@ -253,7 +253,8 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::RunBackend(
   std::lock_guard<std::mutex> g(static_mu_);
 
   poplar::Graph graph(dev);
-  graph.addCodelets(GetPathToGraphProgFile());
+  graph.addCodelets(GetPathToGraphProgFile("tf.gp"));
+  graph.addCodelets(GetPathToGraphProgFile("heap_sort.gp"));
   poplin::addCodelets(graph);
   popnn::addCodelets(graph);
   popops::addCodelets(graph);
