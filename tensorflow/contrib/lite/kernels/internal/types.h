@@ -921,6 +921,10 @@ struct ResizeBilinearParams {
   bool align_corners;
 };
 
+struct ResizeNearestNeighborParams {
+  bool align_corners;
+};
+
 struct SliceParams {
   int8 begin_count;
   int32 begin[4];
