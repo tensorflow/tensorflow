@@ -104,7 +104,7 @@ class SplitOp : public XlaOpKernel {
   }
 };
 
-REGISTER_XLA_OP(Name("Split").CompileTimeConstInput("split_dim"), SplitOp);
+REGISTER_XLA_OP(Name("Split").CompileTimeConstantInput("split_dim"), SplitOp);
 
 class SplitVOp : public XlaOpKernel {
  public:
@@ -207,8 +207,8 @@ class SplitVOp : public XlaOpKernel {
 };
 
 REGISTER_XLA_OP(Name("SplitV")
-                    .CompileTimeConstInput("split_dim")
-                    .CompileTimeConstInput("size_splits"),
+                    .CompileTimeConstantInput("split_dim")
+                    .CompileTimeConstantInput("size_splits"),
                 SplitVOp);
 
 }  // namespace

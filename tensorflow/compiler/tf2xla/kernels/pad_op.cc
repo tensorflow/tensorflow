@@ -83,8 +83,8 @@ class PadOp : public XlaOpKernel {
   }
 };
 
-REGISTER_XLA_OP(Name("Pad").CompileTimeConstInput("paddings"), PadOp);
-REGISTER_XLA_OP(Name("PadV2").CompileTimeConstInput("paddings"), PadOp);
+REGISTER_XLA_OP(Name("Pad").CompileTimeConstantInput("paddings"), PadOp);
+REGISTER_XLA_OP(Name("PadV2").CompileTimeConstantInput("paddings"), PadOp);
 
 }  // namespace
 }  // namespace tensorflow

@@ -126,7 +126,7 @@ class TileOp : public XlaOpKernel {
   TF_DISALLOW_COPY_AND_ASSIGN(TileOp);
 };
 
-REGISTER_XLA_OP(Name("Tile").CompileTimeConstInput("multiples"), TileOp);
+REGISTER_XLA_OP(Name("Tile").CompileTimeConstantInput("multiples"), TileOp);
 
 }  // namespace
 }  // namespace tensorflow

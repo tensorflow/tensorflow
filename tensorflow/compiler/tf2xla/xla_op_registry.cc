@@ -445,7 +445,7 @@ XlaOpRegistrationBuilder& XlaOpRegistrationBuilder::TypeConstraint(
   return *this;
 }
 
-XlaOpRegistrationBuilder& XlaOpRegistrationBuilder::CompileTimeConstInput(
+XlaOpRegistrationBuilder& XlaOpRegistrationBuilder::CompileTimeConstantInput(
     absl::string_view input_name) {
   registration_->compile_time_constant_inputs.emplace(input_name);
   return *this;
