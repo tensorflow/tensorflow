@@ -22,6 +22,8 @@ limitations under the License.
 #include "tensorflow/contrib/lite/interpreter.h"
 #include "tensorflow/contrib/lite/kernels/register.h"
 #include "tensorflow/contrib/lite/model.h"
+#include "tensorflow/contrib/lite/optional_debug_tools.h"
+
 
 #ifdef __cplusplus
 extern "C" {
@@ -161,6 +163,11 @@ int32_t TFL_InterpreterGetOutputTensorCount(
 const TFL_Tensor* TFL_InterpreterGetOutputTensor(
     const TFL_Interpreter* interpreter, int32_t output_index) {
   return interpreter->impl->tensor(interpreter->impl->outputs()[output_index]);
+}
+
+void TFL_InterpreterPrintState(
+    const TFL_Interpreter* interpreter) {
+  tflite::PrintInterpreterState(interpreter->impl.get());
 }
 
 TFL_Type TFL_TensorType(const TFL_Tensor* tensor) { return tensor->type; }

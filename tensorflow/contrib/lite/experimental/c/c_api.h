@@ -167,6 +167,10 @@ TFL_CAPI_EXPORT extern int32_t TFL_InterpreterGetOutputTensorCount(
 TFL_CAPI_EXPORT extern const TFL_Tensor* TFL_InterpreterGetOutputTensor(
     const TFL_Interpreter* interpreter, int32_t output_index);
 
+// Prints a dump of what tensors and what nodes are in the interpreter.
+TFL_CAPI_EXPORT extern void TFL_InterpreterPrintState(
+    const TFL_Interpreter* interpreter);
+
 // --------------------------------------------------------------------------
 // TFL_Tensor wraps data associated with a graph tensor.
 //
