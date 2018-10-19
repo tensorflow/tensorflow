@@ -175,6 +175,10 @@
 // CHECK: #map{{[0-9]+}} = (d0) -> (-2, 1, -1)
 #map51 = (i) -> (-5 floordiv 3, -5 mod 3, -5 ceildiv 3)
 
+// Parenthesis ellision.
+// CHECK: #map{{[0-9]+}} = (d0) -> (d0 * 16 - (d0 + 1) + 15)
+#map52 = (d0) -> (16*d0 + ((d0 + 1) * -1) + 15)
+
 // CHECK: extfunc @f0(memref<2x4xi8, #map{{[0-9]+}}, 1>)
 extfunc @f0(memref<2x4xi8, #map0, 1>)
 
@@ -345,3 +349,6 @@ extfunc @f50(memref<100x100xi8, #map50>)
 
 // CHECK: extfunc @f51(memref<1xi8, #map{{[0-9]+}}>)
 extfunc @f51(memref<1xi8, #map51>)
+
+// CHECK: extfunc @f52(memref<1xi8, #map{{[0-9]+}}>)
+extfunc @f52(memref<1xi8, #map52>)

@@ -723,7 +723,11 @@ void ModulePrinter::printAffineExprInternal(
         if (rrhs.getValue() == -1) {
           printAffineExprInternal(binOp.getLHS(), BindingStrength::Weak);
           os << " - ";
-          printAffineExprInternal(rhs.getLHS(), BindingStrength::Weak);
+          if (rhs.getLHS().getKind() == AffineExprKind::Add) {
+            printAffineExprInternal(rhs.getLHS(), BindingStrength::Strong);
+          } else {
+            printAffineExprInternal(rhs.getLHS(), BindingStrength::Weak);
+          }
 
           if (enclosingTightness == BindingStrength::Strong)
             os << ')';
