@@ -241,7 +241,7 @@ static Status CompileToLocalExecutable(
   // this is more obviously correct.)
   core::ScopedUnref cache_ref(cache);
 
-  *variables = SnapshotResourceVariables(ctx, resources);
+  TF_RETURN_IF_ERROR(SnapshotResourceVariables(ctx, resources, variables));
   *client = static_cast<xla::LocalClient*>(cache->client());
 
   XlaCompiler::Options options;
