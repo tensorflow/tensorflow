@@ -11,20 +11,46 @@
 #include "tensorflow/compiler/plugin/poplar/driver/tensor.h"
 #include "tensorflow/compiler/xla/test.h"
 
+#include <dlfcn.h>
+#include <stdlib.h>
+#include <unistd.h>
 #include <algorithm>
+#include <fstream>
 #include <iostream>
 #include <iterator>
 #include <random>
-
-static const std::string codelet_name =
-    "/home/jakeh/dev/tensorflowview/tensorflow/tensorflow/compiler/plugin/"
-    "poplar/vertices/heap_sort.cpp";
 
 using namespace poplar;
 using namespace poplar::program;
 
 namespace xla {
 namespace poplarplugin {
+
+static std::string GetPathToGraphProgFile(std::string filename) {
+  Dl_info dlInfo;
+  static const void* dummy;
+  if (dladdr(&dummy, &dlInfo)) {
+    std::string path(dlInfo.dli_fname);
+    path = path.substr(0, path.find_last_of('/') + 1);
+    path = path + "../compiler/plugin/poplar/" + filename;
+    if (access(path.c_str(), R_OK) != -1) {
+      return path;
+    }
+  }
+
+  // This is for unit tests
+  {
+    char buf[256];
+    getcwd(buf, 255);
+    std::string path(buf);
+    path = path + "/tensorflow/compiler/plugin/poplar/" + filename;
+    if (access(path.c_str(), R_OK) != -1) {
+      return path;
+    }
+  }
+
+  return "";
+}
 
 template <typename T>
 static std::vector<T> iota(std::size_t count) {
@@ -62,7 +88,7 @@ TEST(Sort, OneDimension) {
   Device device = ipuModel.createDevice();
   Graph graph(device);
   popops::addCodelets(graph);
-  graph.addCodelets(codelet_name);
+  graph.addCodelets(GetPathToGraphProgFile("heap_sort.gp"));
 
   const std::size_t tensor_size = 1024;
 
@@ -97,7 +123,7 @@ TEST(SortInt, OneDimension) {
   Device device = ipuModel.createDevice();
   Graph graph(device);
   popops::addCodelets(graph);
-  graph.addCodelets(codelet_name);
+  graph.addCodelets(GetPathToGraphProgFile("heap_sort.gp"));
 
   const std::size_t tensor_size = 1024;
 
@@ -132,7 +158,7 @@ TEST(SortKV, OneDimension) {
   Device device = ipuModel.createDevice();
   Graph graph(device);
   popops::addCodelets(graph);
-  graph.addCodelets(codelet_name);
+  graph.addCodelets(GetPathToGraphProgFile("heap_sort.gp"));
 
   const std::size_t tensor_size = 1024;
 
@@ -172,7 +198,7 @@ TEST(Sort, TwoDimension) {
   Device device = ipuModel.createDevice();
   Graph graph(device);
   popops::addCodelets(graph);
-  graph.addCodelets(codelet_name);
+  graph.addCodelets(GetPathToGraphProgFile("heap_sort.gp"));
 
   const std::size_t tensor_size = 32;
 
@@ -214,7 +240,7 @@ TEST(Sort, ThreeDimension) {
   Device device = ipuModel.createDevice();
   Graph graph(device);
   popops::addCodelets(graph);
-  graph.addCodelets(codelet_name);
+  graph.addCodelets(GetPathToGraphProgFile("heap_sort.gp"));
 
   const std::size_t tensor_size = 64;
 
