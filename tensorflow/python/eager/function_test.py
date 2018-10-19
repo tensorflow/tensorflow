@@ -57,8 +57,6 @@ from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
-from tensorflow.python.training import adam
-from tensorflow.python.training import momentum
 from tensorflow.python.training import training_ops
 from tensorflow.python.util import compat
 from tensorflow.python.util import nest
@@ -317,7 +315,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
       c = constant_op.constant([[2.]])
       f_c = f(c)
       g, = gradients_impl.gradients(f_c, c)
-      self.assertTrue(isinstance(g, ops.IndexedSlices))
+      self.assertIsInstance(g, ops.IndexedSlices)
 
     outer()
 
@@ -853,7 +851,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
         return indexed_slice
 
       output = f()
-      self.assertTrue(isinstance(output, ops.IndexedSlices))
+      self.assertIsInstance(output, ops.IndexedSlices)
       self.assertAllEqual(indexed_slice.values, output.values)
       self.assertAllEqual(indexed_slice.indices, output.indices)
       self.assertAllEqual(indexed_slice.dense_shape, output.dense_shape)
@@ -882,7 +880,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
 
     def validate(arg):
       output = f(arg)
-      self.assertTrue(isinstance(output, ops.IndexedSlices))
+      self.assertIsInstance(output, ops.IndexedSlices)
       self.assertAllEqual(arg.values, output.values)
       self.assertAllEqual(arg.indices, output.indices)
       self.assertAllEqual(arg.dense_shape, output.dense_shape)
@@ -1483,8 +1481,8 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     clipped_list, global_norm = clip_by_global_norm(t_list,
                                                     constant_op.constant(.2))
     for t in clipped_list:
-      self.assertTrue(isinstance(t, ops.Tensor))
-    self.assertTrue(isinstance(global_norm, ops.Tensor))
+      self.assertIsInstance(t, ops.Tensor)
+    self.assertIsInstance(global_norm, ops.Tensor)
 
   def testNestedSequenceInputs(self):
 
@@ -1505,7 +1503,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     self.assertAllEqual(ret[0][0], 2)
     self.assertAllEqual(ret[0][1][0][0], 8)
     self.assertAllEqual(ret[0][1][0][1], 4)
-    self.assertTrue(isinstance(ret[0][1][0], tuple))
+    self.assertIsInstance(ret[0][1][0], tuple)
     self.assertAllEqual(ret[0][1][1], 6)
     self.assertAllEqual(ret[0][2], 10)
     self.assertAllEqual(ret[1], 15)
@@ -2185,17 +2183,17 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
                                    expected_func_name_regex[i])
 
         # Check the forward and backward function has the correct attributes.
-        self.assertEquals(
+        self.assertEqual(
             functions[1].definition.attr['backward_function_name'].s,
             functions[2].name)
-        self.assertEquals(
+        self.assertEqual(
             functions[2].definition.attr['forward_function_name'].s,
             functions[1].name)
 
-        self.assertEquals(
+        self.assertEqual(
             functions[4].definition.attr['backward_function_name'].s,
             functions[5].name)
-        self.assertEquals(
+        self.assertEqual(
             functions[5].definition.attr['forward_function_name'].s,
             functions[4].name)
 
@@ -2208,8 +2206,8 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
         self.assertEqual(len(graph._functions), 6)
         functions = list(graph._functions.values())
         for i in range(len(functions)):
-          self.assertEquals(captured_function_names[i],
-                            functions[i].definition.signature.name)
+          self.assertEqual(captured_function_names[i],
+                           functions[i].definition.signature.name)
 
   @parameterized.named_parameters(
       dict(testcase_name='Defun',
@@ -2388,10 +2386,10 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
       y_value = sess.run(y)
 
       if test.is_gpu_available():
-        self.assertEquals(y_value, 5.0)
+        self.assertEqual(y_value, 5.0)
       else:
         # Grappler fallback to use the CPU impl even called with GPU function.
-        self.assertEquals(y_value, 3.0)
+        self.assertEqual(y_value, 3.0)
 
   def testDefunFunctionSeparateGraphs(self):
     with context.graph_mode():
@@ -2454,7 +2452,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
   def testDecoratedMethodInspect(self):
     m = DefunnedMiniModel()
     fullargspec = tf_inspect.getfullargspec(m.call)
-    self.assertTrue('training' in fullargspec.args)
+    self.assertIn('training', fullargspec.args)
 
   def testDecoratedMethodGetConcreteFunction(self):
     m = DefunnedMiniModel()
@@ -2470,249 +2468,6 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
         m, array_ops.ones([1, 2]), training=False)
     DefunnedMiniModel.call.get_concrete_function(
         m, inputs=array_ops.ones([1, 2]), training=True)
-
-
-@test_util.with_c_shapes
-class AutomaticControlDependenciesTest(test.TestCase):
-
-  def testBasic(self):
-    with context.graph_mode(), self.cached_session():
-      v = resource_variable_ops.ResourceVariable(1.0)
-      variables.global_variables_initializer().run()
-      with function.AutomaticControlDependencies() as c:
-        v.assign(v + 1)
-        v.assign(2 * v)
-        val = v.read_value()
-        val = c.mark_as_return(val)
-      self.assertAllEqual(val.eval(), 4.0)
-
-  def testCondMustRun(self):
-    with context.graph_mode(), self.cached_session():
-      v = resource_variable_ops.ResourceVariable(1.0)
-      variables.global_variables_initializer().run()
-      p = array_ops.placeholder(dtype=dtypes.bool)
-      with function.AutomaticControlDependencies() as c:
-
-        def true_fn():
-          v.assign(v + 1)
-          return 0.0
-
-        def false_fn():
-          v.assign(v + 4)
-          return 1.0
-
-        control_flow_ops.cond(p, true_fn, false_fn)
-        val = v.read_value()
-        val = c.mark_as_return(val)
-      self.assertAllEqual(val.eval(feed_dict={p: False}), 5.0)
-      self.assertAllEqual(val.eval(feed_dict={p: True}), 6.0)
-
-  def testCondMustRunSeparateRead(self):
-    with context.graph_mode(), self.cached_session():
-      v = resource_variable_ops.ResourceVariable(1.0)
-      variables.global_variables_initializer().run()
-      p = array_ops.placeholder(dtype=dtypes.bool)
-      with function.AutomaticControlDependencies() as c:
-
-        def true_fn():
-          v.assign(v + 1)
-          return 0.0
-
-        def false_fn():
-          v.assign(v + 4)
-          return 1.0
-
-        control_flow_ops.cond(p, true_fn, false_fn)
-        one = constant_op.constant(1.0)
-        one = c.mark_as_return(one)
-      one.eval(feed_dict={p: False})
-      self.assertAllEqual(v.read_value().eval(), 5.0)
-      one.eval(feed_dict={p: True})
-      self.assertAllEqual(v.read_value().eval(), 6.0)
-
-  def testCondNested(self):
-    with context.graph_mode(), self.cached_session():
-      v = resource_variable_ops.ResourceVariable(1.0)
-      variables.global_variables_initializer().run()
-      p = array_ops.placeholder(dtype=dtypes.bool)
-      q = array_ops.placeholder(dtype=dtypes.bool)
-      with function.AutomaticControlDependencies() as c:
-
-        def true_fn():
-          v.assign(v + 1, name='true')
-          return 1.0
-
-        def false_fn():
-
-          def inner_true_fn():
-            v.assign(v * 2, name='false_true')
-            return 2.0
-
-          def inner_false_fn():
-            v.assign(v * 3, name='false_false')
-            return 3.0
-
-          control_flow_ops.cond(q, inner_true_fn, inner_false_fn)
-          return 1.0
-
-        control_flow_ops.cond(p, true_fn, false_fn)
-        with ops.name_scope('final'):
-          val = v.read_value()
-        val = c.mark_as_return(val)
-      self.assertAllEqual(val.eval(feed_dict={p: False, q: False}), 3.0)
-      self.assertAllEqual(val.eval(feed_dict={p: False, q: True}), 6.0)
-      self.assertAllEqual(val.eval(feed_dict={p: True, q: True}), 7.0)
-      self.assertAllEqual(val.eval(feed_dict={p: True, q: False}), 8.0)
-
-  def testCondOneBranch(self):
-    with context.graph_mode(), self.cached_session():
-      v = resource_variable_ops.ResourceVariable(1.0)
-      variables.global_variables_initializer().run()
-      p = array_ops.placeholder(dtype=dtypes.bool)
-      with function.AutomaticControlDependencies() as c:
-
-        def true_fn():
-          return 0.0
-
-        def false_fn():
-          v.assign(v + 4)
-          return 1.0
-
-        control_flow_ops.cond(p, true_fn, false_fn)
-        val = v.read_value()
-        val = c.mark_as_return(val)
-      self.assertAllEqual(val.eval(feed_dict={p: False}), 5.0)
-      self.assertAllEqual(val.eval(feed_dict={p: True}), 5.0)
-
-  def testCondOneBranchUpdateBefore(self):
-    with context.graph_mode(), self.cached_session():
-      v = resource_variable_ops.ResourceVariable(1.0)
-      variables.global_variables_initializer().run()
-      p = array_ops.placeholder(dtype=dtypes.bool)
-      with function.AutomaticControlDependencies() as c:
-        v.assign(v * 2)
-
-        def true_fn():
-          return 0.0
-
-        def false_fn():
-          v.assign(v + 4)
-          return 1.0
-
-        control_flow_ops.cond(p, true_fn, false_fn)
-        val = v.read_value()
-        val = c.mark_as_return(val)
-      self.assertAllEqual(val.eval(feed_dict={p: False}), 6.0)
-      self.assertAllEqual(val.eval(feed_dict={p: True}), 12.0)
-
-  def testCondOneBranchUpdateAfter(self):
-    with context.graph_mode(), self.cached_session():
-      v = resource_variable_ops.ResourceVariable(1.0)
-      variables.global_variables_initializer().run()
-      p = array_ops.placeholder(dtype=dtypes.bool)
-      with function.AutomaticControlDependencies() as c:
-
-        def true_fn():
-          return 0.0
-
-        def false_fn():
-          v.assign(v + 4)
-          return 1.0
-
-        control_flow_ops.cond(p, true_fn, false_fn)
-        v.assign(v * 2)
-        val = v.read_value()
-        val = c.mark_as_return(val)
-      self.assertAllEqual(val.eval(feed_dict={p: False}), 10.0)
-      self.assertAllEqual(val.eval(feed_dict={p: True}), 20.0)
-
-  def testDefunWhileLoopWithCapturedLoopVars(self):
-    n = 3
-    x = constant_op.constant(list(range(n)))
-
-    @function.defun
-    def loop():
-      c = lambda i, x: i < n
-      b = lambda i, x: (i + 1, x + 1)
-      i, out = control_flow_ops.while_loop(c, b, (0, x))
-      return i, out
-
-    i, out = loop()
-    self.assertEqual(int(i), 3)
-    self.assertAllEqual(out, [3, 4, 5])
-
-  def testDecorator(self):
-    with context.graph_mode(), self.cached_session():
-      v = resource_variable_ops.ResourceVariable(1.0)
-      variables.global_variables_initializer().run()
-
-      @function.automatic_control_dependencies
-      def f():
-        v.assign(v + 1)
-        v.assign(2 * v)
-        return v.read_value()
-
-      self.assertAllEqual(f().eval(), 4.0)
-
-  def testOptimizerInDefun(self):
-    def loss(v):
-      return v**2
-
-    optimizer = momentum.MomentumOptimizer(learning_rate=1.0, momentum=1.0)
-
-    @function.defun
-    def train():
-      self.v = resource_variable_ops.ResourceVariable(1.0)
-      grad = backprop.implicit_grad(loss)(self.v)
-      optimizer.apply_gradients(grad)
-      return self.v.read_value()
-
-    value = train()
-    self.assertEqual(value.numpy(), -1.0)
-
-  def testReturningNonTensorRaisesError(self):
-    optimizer = momentum.MomentumOptimizer(learning_rate=1.0, momentum=1.0)
-    optimizer.apply_gradients = function.defun(optimizer.apply_gradients)
-    v = resource_variable_ops.ResourceVariable(1.0)
-    grad = backprop.implicit_grad(lambda v: v**2)(v)
-
-    with self.assertRaisesRegexp(TypeError,
-                                 '.*must return zero or more Tensors.*'):
-      # TODO(akshayka): We might want to allow defun-ing Python functions
-      # that return operations (and just execute the op instead of running it).
-      optimizer.apply_gradients(grad)
-
-  # TODO(b/111663004): This should work when the outer context is graph
-  # building.
-  def testOptimizerNonSlotVarsInDefunNoError(self):
-    def loss(v):
-      return v**2
-
-    optimizer = adam.AdamOptimizer(learning_rate=1.0)
-
-    @function.defun
-    def train():
-      self.v = resource_variable_ops.ResourceVariable(1.0)
-      grad = backprop.implicit_grad(loss)(self.v)
-      optimizer.apply_gradients(grad)
-      return self.v.read_value()
-
-    train()
-
-  def testOptimizerInDefunWithCapturedVariable(self):
-    v = resource_variable_ops.ResourceVariable(1.0)
-    def loss():
-      return v**2
-
-    optimizer = momentum.MomentumOptimizer(learning_rate=1.0, momentum=1.0)
-
-    @function.defun
-    def train():
-      grad = backprop.implicit_grad(loss)()
-      optimizer.apply_gradients(grad)
-
-    train()
-    self.assertEqual(v.numpy(), -1.0)
 
   def testFunctionModifiesInputList(self):
     # Tests on `list` methods that do in place modification, except `list.sort`

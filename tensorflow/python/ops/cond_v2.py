@@ -26,7 +26,7 @@ from __future__ import print_function
 import collections
 
 from tensorflow.core.framework import attr_value_pb2
-from tensorflow.python.eager import function
+from tensorflow.python.framework import func_graph as func_graph_module
 from tensorflow.python.framework import function_def_to_graph
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
@@ -60,12 +60,12 @@ def cond_v2(pred, true_fn, false_fn, name="cond"):
     add_control_dependencies = util.in_defun()
     pred = ops.convert_to_tensor(pred)
 
-    true_graph = function.func_graph_from_py_func(
+    true_graph = func_graph_module.func_graph_from_py_func(
         true_name, true_fn, [], {},
         func_graph=util.CondBranchFuncGraph(true_name),
         add_control_dependencies=add_control_dependencies,
         op_return_value=pred)
-    false_graph = function.func_graph_from_py_func(
+    false_graph = func_graph_module.func_graph_from_py_func(
         false_name, false_fn, [], {},
         func_graph=util.CondBranchFuncGraph(false_name),
         add_control_dependencies=add_control_dependencies,
@@ -241,7 +241,7 @@ def _grad_fn(func_graph, grads):
   func_graph's outputs w.r.t. its inputs.
 
   Args:
-    func_graph: function.FuncGraph. The corresponding forward-pass function.
+    func_graph: FuncGraph. The corresponding forward-pass function.
     grads: The list of input gradient Tensors.
 
   Returns:
@@ -280,7 +280,7 @@ def _grad_fn(func_graph, grads):
 
 def _create_grad_func(func_graph, grads, name):
   """Returns the FuncGraph representation of _grad_fn."""
-  return function.func_graph_from_py_func(
+  return func_graph_module.func_graph_from_py_func(
       name, lambda: _grad_fn(func_graph, grads), [], {},
       func_graph=util.CondBranchFuncGraph(name))
 
@@ -299,8 +299,8 @@ def _resolve_grad_inputs(cond_graph, grad_graph):
      `cond_graph.outer_graph` is also correctly captured.
 
   Args:
-    cond_graph: function.FuncGraph. The forward-pass function.
-    grad_graph: function.FuncGraph. The gradients function.
+    cond_graph: FuncGraph. The forward-pass function.
+    grad_graph: FuncGraph. The gradients function.
 
   Returns:
     A list of inputs tensors to be passed to grad_graph.
@@ -371,8 +371,8 @@ def _pad_params(true_graph, false_graph, true_params, false_params):
   There is no merging of params.
 
   Args:
-    true_graph: function.FuncGraph
-    false_graph: function.FuncGraph
+    true_graph: FuncGraph
+    false_graph: FuncGraph
     true_params: a list of Tensors from true_graph
     false_params: a list of Tensors from false_graph
 
@@ -397,8 +397,8 @@ def _make_inputs_match(true_graph, false_graph, true_inputs, false_inputs):
   graph to avoid duplicating shared arguments.
 
   Args:
-    true_graph: function.FuncGraph
-    false_graph: function.FuncGraph
+    true_graph: FuncGraph
+    false_graph: FuncGraph
     true_inputs: a list of Tensors in the outer graph. The inputs for
       true_graph.
     false_inputs: a list of Tensors in the outer graph. The inputs for
@@ -440,7 +440,7 @@ def _create_dummy_params(func_graph, template_tensors):
   """Creates tensors in func_graph to represent template_tensors.
 
   Args:
-    func_graph: function.FuncGraph.
+    func_graph: FuncGraph.
     template_tensors: a list of tensors in the outer graph.
 
   Returns:

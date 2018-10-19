@@ -22,9 +22,10 @@ from __future__ import print_function
 from tensorflow.python.eager import context
 from tensorflow.python.eager import function
 from tensorflow.python.framework import ops
+from tensorflow.python.framework.func_graph import FuncGraph
 
 
-class CondBranchFuncGraph(function.FuncGraph):
+class CondBranchFuncGraph(FuncGraph):
   """FuncGraph for branches of tf.cond().
 
   This is used to distinguish cond branches from other functions.
@@ -32,7 +33,7 @@ class CondBranchFuncGraph(function.FuncGraph):
   pass
 
 
-class WhileCondFuncGraph(function.FuncGraph):
+class WhileCondFuncGraph(FuncGraph):
   """FuncGraph for the condition of tf.while_loop().
 
   This is used to distinguish while conditions from other functions.
@@ -40,7 +41,7 @@ class WhileCondFuncGraph(function.FuncGraph):
   pass
 
 
-class WhileBodyFuncGraph(function.FuncGraph):
+class WhileBodyFuncGraph(FuncGraph):
   """FuncGraph for the body of tf.while_loop().
 
   This is used to distinguish while bodies from other functions.
@@ -56,14 +57,14 @@ def in_defun():
   while (isinstance(graph, CondBranchFuncGraph) or
          isinstance(graph, WhileBodyFuncGraph)):
     graph = graph.outer_graph
-  return isinstance(graph, function.FuncGraph)
+  return isinstance(graph, FuncGraph)
 
 
 def create_new_tf_function(func_graph):
   """Converts func_graph to a TF_Function and adds it to the current graph.
 
   Args:
-    func_graph: function.FuncGraph
+    func_graph: FuncGraph
 
   Returns:
     The name of the new TF_Function.
