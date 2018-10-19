@@ -426,29 +426,36 @@ Status AlgebraicSimplifierVisitor::HandleAdd(HloInstruction* add) {
 Status AlgebraicSimplifierVisitor::HandleAnd(HloInstruction* logical_and) {
   HloInstruction *lhs, *rhs;
   CHECK(Match(logical_and, m::And(m::Op(&lhs), m::Op(&rhs))));
+  // Simplify logical and
+  if (ShapeUtil::HasPrimitiveType(lhs->shape(), xla::PRED) &&
+      ShapeUtil::HasPrimitiveType(rhs->shape(), xla::PRED)) {
+    // A && True => A
+    VLOG(10) << "trying transform [A && True => A]: "
+             << logical_and->ToString();
+    if (IsAll(rhs, 1) && ReplaceInstructionIfSameShape(logical_and, lhs)) {
+      return Status::OK();
+    }
+    // True && A => A
+    VLOG(10) << "trying transform [True && A => A]: "
+             << logical_and->ToString();
+    if (IsAll(lhs, 1) && ReplaceInstructionIfSameShape(logical_and, rhs)) {
+      return Status::OK();
+    }
 
-  // A && True => A
-  VLOG(10) << "trying transform [A && True => A]: " << logical_and->ToString();
-  if (IsAll(rhs, 1) && ReplaceInstructionIfSameShape(logical_and, lhs)) {
-    return Status::OK();
-  }
-  // True && A => A
-  VLOG(10) << "trying transform [True && A => A]: " << logical_and->ToString();
-  if (IsAll(lhs, 1) && ReplaceInstructionIfSameShape(logical_and, rhs)) {
-    return Status::OK();
-  }
+    // A && False => False
+    VLOG(10) << "trying transform [A && False => False]: "
+             << logical_and->ToString();
+    if (IsAll(rhs, 0) && ReplaceInstructionIfSameShape(logical_and, rhs)) {
+      return Status::OK();
+    }
 
-  // A && False => False
-  VLOG(10) << "trying transform [A && False => False]: "
-           << logical_and->ToString();
-  if (IsAll(rhs, 0) && ReplaceInstructionIfSameShape(logical_and, rhs)) {
-    return Status::OK();
-  }
+    // False && A => False
+    VLOG(10) << "trying transform [False && A => False]: "
+             << logical_and->ToString();
+    if (IsAll(lhs, 0) && ReplaceInstructionIfSameShape(logical_and, lhs)) {
+      return Status::OK();
+    }
 
-  // False && A => False
-  VLOG(10) << "trying transform [False && A => False]: "
-           << logical_and->ToString();
-  if (IsAll(lhs, 0) && ReplaceInstructionIfSameShape(logical_and, lhs)) {
     return Status::OK();
   }
 
@@ -1041,35 +1048,35 @@ StatusOr<HloInstruction*> AlgebraicSimplifierVisitor::OptimizeDotOfGather(
 
   // Optimize either dot(DS(ctA), ctB)) or dot(ctB, DS(ctA)).
   // Currently a Gather is a DynamicSlice.
-  auto is_dynamic_slice_constant_combination =
-      [](HloInstruction* a, HloInstruction* b, int a_contracting_dimension) {
-        // First operand is a DynamicSlice(Constant).
-        if (a->opcode() != HloOpcode::kDynamicSlice) {
-          return false;
-        }
-        auto* dynamic_slice_op = a->operand(0);
-        if (dynamic_slice_op->opcode() != HloOpcode::kConstant) {
-          return false;
-        }
-        // Second operand is a Constant.
-        if (b->opcode() != HloOpcode::kConstant) {
-          return false;
-        }
-        // The DynamicSlice output is a vector.
-        const Shape& dynamic_slice_shape = a->shape();
-        if (dynamic_slice_shape.dimensions(1 - a_contracting_dimension) != 1) {
-          return false;
-        }
-        // Constant size is the same before and after slice in the contracting
-        // dimension, otherwise we either must precompute for all possible slice
-        // indices or dot is invalid.
-        const Shape& dynamic_slice_op_shape = dynamic_slice_op->shape();
-        if (dynamic_slice_op_shape.dimensions(a_contracting_dimension) !=
-            dynamic_slice_shape.dimensions(a_contracting_dimension)) {
-          return false;
-        }
-        return true;
-      };
+  auto is_dynamic_slice_constant_combination = [](
+      HloInstruction* a, HloInstruction* b, int a_contracting_dimension) {
+    // First operand is a DynamicSlice(Constant).
+    if (a->opcode() != HloOpcode::kDynamicSlice) {
+      return false;
+    }
+    auto* dynamic_slice_op = a->operand(0);
+    if (dynamic_slice_op->opcode() != HloOpcode::kConstant) {
+      return false;
+    }
+    // Second operand is a Constant.
+    if (b->opcode() != HloOpcode::kConstant) {
+      return false;
+    }
+    // The DynamicSlice output is a vector.
+    const Shape& dynamic_slice_shape = a->shape();
+    if (dynamic_slice_shape.dimensions(1 - a_contracting_dimension) != 1) {
+      return false;
+    }
+    // Constant size is the same before and after slice in the contracting
+    // dimension, otherwise we either must precompute for all possible slice
+    // indices or dot is invalid.
+    const Shape& dynamic_slice_op_shape = dynamic_slice_op->shape();
+    if (dynamic_slice_op_shape.dimensions(a_contracting_dimension) !=
+        dynamic_slice_shape.dimensions(a_contracting_dimension)) {
+      return false;
+    }
+    return true;
+  };
 
   HloInstruction* lhs = dot->mutable_operand(0);
   HloInstruction* rhs = dot->mutable_operand(1);
@@ -1265,28 +1272,36 @@ Status AlgebraicSimplifierVisitor::HandleOr(HloInstruction* logical_or) {
   HloInstruction *lhs, *rhs;
   CHECK(Match(logical_or, m::Or(m::Op(&lhs), m::Op(&rhs))));
 
-  // A || True => True
-  VLOG(10) << "trying transform [A || True => True]: "
-           << logical_or->ToString();
-  if (IsAll(rhs, 1) && ReplaceInstructionIfSameShape(logical_or, rhs)) {
-    return Status::OK();
-  }
-  // True || A => True
-  VLOG(10) << "trying transform [True || A => True]: "
-           << logical_or->ToString();
-  if (IsAll(lhs, 1) && ReplaceInstructionIfSameShape(logical_or, lhs)) {
-    return Status::OK();
-  }
+  // Simplify logical or
+  if (ShapeUtil::HasPrimitiveType(lhs->shape(), xla::PRED) &&
+      ShapeUtil::HasPrimitiveType(rhs->shape(), xla::PRED)) {
+    // A || True => True
+    VLOG(10) << "trying transform [A || True => True]: "
+             << logical_or->ToString();
+    if (IsAll(rhs, 1) && ReplaceInstructionIfSameShape(logical_or, rhs)) {
+      return Status::OK();
+    }
+    // True || A => True
+    VLOG(10) << "trying transform [True || A => True]: "
+             << logical_or->ToString();
+    if (IsAll(lhs, 1) && ReplaceInstructionIfSameShape(logical_or, lhs)) {
+      return Status::OK();
+    }
 
-  // A || False => A
-  VLOG(10) << "trying transform [A || False => A]: " << logical_or->ToString();
-  if (IsAll(rhs, 0) && ReplaceInstructionIfSameShape(logical_or, lhs)) {
-    return Status::OK();
-  }
+    // A || False => A
+    VLOG(10) << "trying transform [A || False => A]: "
+             << logical_or->ToString();
+    if (IsAll(rhs, 0) && ReplaceInstructionIfSameShape(logical_or, lhs)) {
+      return Status::OK();
+    }
 
-  // False || A => A
-  VLOG(10) << "trying transform [False || A => A]: " << logical_or->ToString();
-  if (IsAll(lhs, 0) && ReplaceInstructionIfSameShape(logical_or, rhs)) {
+    // False || A => A
+    VLOG(10) << "trying transform [False || A => A]: "
+             << logical_or->ToString();
+    if (IsAll(lhs, 0) && ReplaceInstructionIfSameShape(logical_or, rhs)) {
+      return Status::OK();
+    }
+
     return Status::OK();
   }
 
