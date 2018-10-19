@@ -58,15 +58,18 @@ def cond_v2(pred, true_fn, false_fn, name="cond"):
     # Automatic control dependencies are added in defuns, but not in v1
     # graphs. Propagate that behavior here.
     add_control_dependencies = util.in_defun()
+    pred = ops.convert_to_tensor(pred)
 
     true_graph = function.func_graph_from_py_func(
         true_name, true_fn, [], {},
         func_graph=util.CondBranchFuncGraph(true_name),
-        add_control_dependencies=add_control_dependencies)
+        add_control_dependencies=add_control_dependencies,
+        op_return_value=pred)
     false_graph = function.func_graph_from_py_func(
         false_name, false_fn, [], {},
         func_graph=util.CondBranchFuncGraph(false_name),
-        add_control_dependencies=add_control_dependencies)
+        add_control_dependencies=add_control_dependencies,
+        op_return_value=pred)
     _check_same_outputs(true_graph, false_graph)
 
     # Add inputs to true_graph and false_graph to make them match. Note that
