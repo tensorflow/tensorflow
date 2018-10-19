@@ -176,27 +176,49 @@ public:
     return OpPointer<OpClass>(OpClass(nullptr));
   }
 
-  /// The getAs methods perform a dynamic cast from an Operation (like
+  /// The dyn_cast methods perform a dynamic cast from an Operation (like
   /// OperationInst and OperationStmt) to a typed Op like DimOp.  This returns
   /// a null OpPointer on failure.
-  template <typename OpClass>
-  OpPointer<OpClass> getAs() {
-    bool isMatch = OpClass::isClassFor(this);
-    return OpPointer<OpClass>(OpClass(isMatch ? this : nullptr));
+  template <typename OpClass> OpPointer<OpClass> dyn_cast() {
+    if (isa<OpClass>()) {
+      return cast<OpClass>();
+    } else {
+      return OpPointer<OpClass>(OpClass(nullptr));
+    }
   }
 
-  /// The getAs methods perform a dynamic cast from an Operation (like
+  /// The dyn_cast methods perform a dynamic cast from an Operation (like
   /// OperationInst and OperationStmt) to a typed Op like DimOp.  This returns
   /// a null ConstOpPointer on failure.
-  template <typename OpClass>
-  ConstOpPointer<OpClass> getAs() const {
-    bool isMatch = OpClass::isClassFor(this);
-    return ConstOpPointer<OpClass>(OpClass(isMatch ? this : nullptr));
+  template <typename OpClass> ConstOpPointer<OpClass> dyn_cast() const {
+    if (isa<OpClass>()) {
+      return cast<OpClass>();
+    } else {
+      return ConstOpPointer<OpClass>(OpClass(nullptr));
+    }
+  }
+
+  /// The cast methods perform a cast from an Operation (like
+  /// OperationInst and OperationStmt) to a typed Op like DimOp.  This aborts
+  /// if the parameter to the template isn't an instance of the template type
+  /// argument.
+  template <typename OpClass> OpPointer<OpClass> cast() {
+    assert(isa<OpClass>() && "cast<Ty>() argument of incompatible type!");
+    return OpPointer<OpClass>(OpClass(this));
+  }
+
+  /// The cast methods perform a cast from an Operation (like
+  /// OperationInst and OperationStmt) to a typed Op like DimOp.  This aborts
+  /// if the parameter to the template isn't an instance of the template type
+  /// argument.
+  template <typename OpClass> ConstOpPointer<OpClass> cast() const {
+    assert(isa<OpClass>() && "cast<Ty>() argument of incompatible type!");
+    return ConstOpPointer<OpClass>(OpClass(this));
   }
 
   /// The is methods return true if the operation is a typed op (like DimOp) of
   /// of the given class.
-  template <typename OpClass> bool is() const {
+  template <typename OpClass> bool isa() const {
     return OpClass::isClassFor(this);
   }
 

@@ -70,7 +70,7 @@ void ComposeAffineMaps::walk(StmtListType::iterator Start,
 }
 
 void ComposeAffineMaps::visitOperationStmt(OperationStmt *opStmt) {
-  if (auto affineApplyOp = opStmt->getAs<AffineApplyOp>()) {
+  if (auto affineApplyOp = opStmt->dyn_cast<AffineApplyOp>()) {
     forwardSubstitute(affineApplyOp);
     bool allUsesEmpty = true;
     for (auto *result : affineApplyOp->getOperation()->getResults()) {

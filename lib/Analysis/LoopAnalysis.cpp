@@ -145,7 +145,7 @@ static bool isAccessInvariant(MLValue *input, MemRefType *memRefType,
   assert(affineApplyOps.size() == 1 &&
          "CompositionAffineMapsPass must have "
          "been run: there should be at most one AffineApplyOp");
-  auto composeOp = affineApplyOps[0]->getAs<AffineApplyOp>();
+  auto composeOp = affineApplyOps[0]->cast<AffineApplyOp>();
   return !AffineValueMap(*composeOp).isFunctionOf(dim, input);
 }
 
@@ -186,8 +186,8 @@ bool mlir::isVectorizableLoop(const ForStmt &loop) {
   auto &matches = loadAndStores.match(forStmt);
   for (auto ls : matches) {
     auto *op = cast<OperationStmt>(ls.first);
-    auto load = op->getAs<LoadOp>();
-    auto store = op->getAs<StoreOp>();
+    auto load = op->dyn_cast<LoadOp>();
+    auto store = op->dyn_cast<StoreOp>();
     bool contiguous = load ? isContiguousAccess(forStmt, load)
                            : isContiguousAccess(forStmt, store);
     if (!contiguous) {

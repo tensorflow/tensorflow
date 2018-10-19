@@ -977,16 +977,16 @@ protected:
 
     // Give constant integers special names.
     if (auto *op = value->getDefiningOperation()) {
-      if (auto intOp = op->getAs<ConstantIntOp>()) {
+      if (auto intOp = op->dyn_cast<ConstantIntOp>()) {
         // i1 constants get special names.
         if (intOp->getType()->isInteger(1)) {
           specialName << (intOp->getValue() ? "true" : "false");
         } else {
           specialName << 'c' << intOp->getValue() << '_' << *intOp->getType();
         }
-      } else if (auto intOp = op->getAs<ConstantIndexOp>()) {
+      } else if (auto intOp = op->dyn_cast<ConstantIndexOp>()) {
         specialName << 'c' << intOp->getValue();
-      } else if (auto constant = op->getAs<ConstantOp>()) {
+      } else if (auto constant = op->dyn_cast<ConstantOp>()) {
         if (isa<FunctionAttr>(constant->getValue()))
           specialName << 'f';
         else

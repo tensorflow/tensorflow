@@ -35,8 +35,8 @@ using namespace mlir;
 // Temporary utility: will be replaced when this is modeled through
 // side-effects/op traits. TODO(b/117228571)
 static bool isMemRefDereferencingOp(const Operation &op) {
-  if (op.is<LoadOp>() || op.is<StoreOp>() || op.is<DmaStartOp>() ||
-      op.is<DmaWaitOp>())
+  if (op.isa<LoadOp>() || op.isa<StoreOp>() || op.isa<DmaStartOp>() ||
+      op.isa<DmaWaitOp>())
     return true;
   return false;
 }
@@ -175,8 +175,8 @@ mlir::createComposedAffineApplyOp(MLFuncBuilder *builder, Location *loc,
   AffineValueMap valueMap(map, operands);
 
   for (auto *opStmt : affineApplyOps) {
-    assert(opStmt->is<AffineApplyOp>());
-    auto affineApplyOp = opStmt->getAs<AffineApplyOp>();
+    assert(opStmt->isa<AffineApplyOp>());
+    auto affineApplyOp = opStmt->cast<AffineApplyOp>();
     // Forward substitute 'affineApplyOp' into 'valueMap'.
     valueMap.forwardSubstitute(*affineApplyOp);
   }
@@ -231,7 +231,7 @@ OperationStmt *mlir::createAffineComputationSlice(OperationStmt *opStmt) {
   subOperands.reserve(opStmt->getNumOperands());
   for (auto *operand : opStmt->getOperands()) {
     auto *defStmt = operand->getDefiningStmt();
-    if (defStmt && defStmt->is<AffineApplyOp>()) {
+    if (defStmt && defStmt->isa<AffineApplyOp>()) {
       subOperands.push_back(operand);
     }
   }
@@ -307,7 +307,7 @@ void mlir::forwardSubstitute(OpPointer<AffineApplyOp> affineApplyOp) {
       auto *useStmt = use.getOwner();
       auto *useOpStmt = dyn_cast<OperationStmt>(useStmt);
       // Skip if use is not AffineApplyOp.
-      if (useOpStmt == nullptr || !useOpStmt->is<AffineApplyOp>())
+      if (useOpStmt == nullptr || !useOpStmt->isa<AffineApplyOp>())
         continue;
       // Advance iterator past 'opStmt' operands which also use 'result'.
       while (it != result->use_end() && it->getOwner() == useStmt)
@@ -315,7 +315,7 @@ void mlir::forwardSubstitute(OpPointer<AffineApplyOp> affineApplyOp) {
 
       MLFuncBuilder builder(useOpStmt);
       // Initialize AffineValueMap with 'affineApplyOp' which uses 'result'.
-      auto oldAffineApplyOp = useOpStmt->getAs<AffineApplyOp>();
+      auto oldAffineApplyOp = useOpStmt->cast<AffineApplyOp>();
       AffineValueMap valueMap(*oldAffineApplyOp);
       // Forward substitute 'result' at index 'i' into 'valueMap'.
       valueMap.forwardSubstituteSingle(*affineApplyOp, resultIndex);

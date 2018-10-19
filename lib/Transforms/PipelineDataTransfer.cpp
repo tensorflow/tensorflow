@@ -61,8 +61,8 @@ MLFunctionPass *mlir::createPipelineDataTransferPass() {
 // Temporary utility: will be replaced when DmaStart/DmaFinish abstract op's are
 // added.  TODO(b/117228571)
 static unsigned getTagMemRefPos(const OperationStmt &dmaStmt) {
-  assert(dmaStmt.is<DmaStartOp>() || dmaStmt.is<DmaWaitOp>());
-  if (dmaStmt.is<DmaStartOp>()) {
+  assert(dmaStmt.isa<DmaStartOp>() || dmaStmt.isa<DmaWaitOp>());
+  if (dmaStmt.isa<DmaStartOp>()) {
     // Second to last operand.
     return dmaStmt.getNumOperands() - 2;
   }
@@ -166,12 +166,12 @@ static void findMatchingStartFinishStmts(
     if (!opStmt)
       continue;
     // Collect DMA finish statements.
-    if (opStmt->is<DmaWaitOp>()) {
+    if (opStmt->isa<DmaWaitOp>()) {
       dmaFinishStmts.push_back(opStmt);
       continue;
     }
     OpPointer<DmaStartOp> dmaStartOp;
-    if (!(dmaStartOp = opStmt->getAs<DmaStartOp>()))
+    if (!(dmaStartOp = opStmt->dyn_cast<DmaStartOp>()))
       continue;
     // Only DMAs incoming into higher memory spaces.
     // TODO(bondhugula): outgoing DMAs.
@@ -197,8 +197,8 @@ static void findMatchingStartFinishStmts(
   // For each start statement, we look for a matching finish statement.
   for (auto *dmaStartStmt : dmaStartStmts) {
     for (auto *dmaFinishStmt : dmaFinishStmts) {
-      if (checkTagMatch(dmaStartStmt->getAs<DmaStartOp>(),
-                        dmaFinishStmt->getAs<DmaWaitOp>())) {
+      if (checkTagMatch(dmaStartStmt->cast<DmaStartOp>(),
+                        dmaFinishStmt->cast<DmaWaitOp>())) {
         startWaitPairs.push_back({dmaStartStmt, dmaFinishStmt});
         break;
       }
@@ -235,7 +235,7 @@ PassResult PipelineDataTransfer::runOnForStmt(ForStmt *forStmt) {
   for (auto &pair : startWaitPairs) {
     auto *dmaStartStmt = pair.first;
     const MLValue *oldMemRef = cast<MLValue>(dmaStartStmt->getOperand(
-        dmaStartStmt->getAs<DmaStartOp>()->getFasterMemPos()));
+        dmaStartStmt->cast<DmaStartOp>()->getFasterMemPos()));
     if (!doubleBuffer(oldMemRef, forStmt)) {
       // Normally, double buffering should not fail because we already checked
       // that there are no uses outside.
@@ -264,7 +264,7 @@ PassResult PipelineDataTransfer::runOnForStmt(ForStmt *forStmt) {
   DenseMap<const Statement *, unsigned> stmtDelayMap;
   for (auto &pair : startWaitPairs) {
     auto *dmaStartStmt = pair.first;
-    assert(dmaStartStmt->is<DmaStartOp>());
+    assert(dmaStartStmt->isa<DmaStartOp>());
     stmtDelayMap[dmaStartStmt] = 0;
     // Set shifts for DMA start stmt's affine operand computation slices to 0.
     if (auto *slice = mlir::createAffineComputationSlice(dmaStartStmt)) {

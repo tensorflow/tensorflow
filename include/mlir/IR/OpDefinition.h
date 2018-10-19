@@ -207,8 +207,8 @@ public:
   static bool constantFoldHook(const Operation *op,
                                ArrayRef<Attribute *> operands,
                                SmallVectorImpl<Attribute *> &results) {
-    return op->getAs<ConcreteType>()->constantFold(operands, results,
-                                                   op->getContext());
+    return op->cast<ConcreteType>()->constantFold(operands, results,
+                                                  op->getContext());
   }
 
   /// Op implementations can implement this hook.  It should attempt to constant
@@ -241,7 +241,7 @@ public:
                                ArrayRef<Attribute *> operands,
                                SmallVectorImpl<Attribute *> &results) {
     auto *result =
-        op->getAs<ConcreteType>()->constantFold(operands, op->getContext());
+        op->cast<ConcreteType>()->constantFold(operands, op->getContext());
     if (!result)
       return true;
 
@@ -679,7 +679,7 @@ public:
   /// This is the hook used by the AsmPrinter to emit this to the .mlir file.
   /// Op implementations should provide a print method.
   static void printAssembly(const Operation *op, OpAsmPrinter *p) {
-    auto opPointer = op->getAs<ConcreteType>();
+    auto opPointer = op->dyn_cast<ConcreteType>();
     assert(opPointer &&
            "op's name does not match name of concrete type instantiated with");
     opPointer->print(p);
@@ -694,7 +694,7 @@ public:
   /// diagnostic subsystem and returns true.
   static bool verifyInvariants(const Operation *op) {
     return BaseVerifier<Traits<ConcreteType>...>::verifyTrait(op) ||
-           op->getAs<ConcreteType>()->verify();
+           op->cast<ConcreteType>()->verify();
   }
 
   // Returns the properties of an operation by combining the properties of the

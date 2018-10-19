@@ -53,7 +53,7 @@ bool ConstantFold::foldOperation(Operation *op,
 
   // If this operation is already a constant, just remember it for cleanup
   // later, and don't try to fold it.
-  if (auto constant = op->getAs<ConstantOp>()) {
+  if (auto constant = op->dyn_cast<ConstantOp>()) {
     existingConstants.push_back(constant);
     return true;
   }
@@ -64,7 +64,7 @@ bool ConstantFold::foldOperation(Operation *op,
   for (auto *operand : op->getOperands()) {
     Attribute *operandCst = nullptr;
     if (auto *operandOp = operand->getDefiningOperation()) {
-      if (auto operandConstantOp = operandOp->getAs<ConstantOp>())
+      if (auto operandConstantOp = operandOp->dyn_cast<ConstantOp>())
         operandCst = operandConstantOp->getValue();
     }
     operandConstants.push_back(operandCst);

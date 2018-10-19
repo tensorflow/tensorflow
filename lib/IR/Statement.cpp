@@ -98,10 +98,10 @@ const MLValue *Statement::getOperand(unsigned idx) const {
 bool MLValue::isValidDim() const {
   if (auto *stmt = getDefiningStmt()) {
     // Top level statement or constant operation is ok.
-    if (stmt->getParentStmt() == nullptr || stmt->is<ConstantOp>())
+    if (stmt->getParentStmt() == nullptr || stmt->isa<ConstantOp>())
       return true;
     // Affine apply operation is ok if all of its operands are ok.
-    if (auto op = stmt->getAs<AffineApplyOp>())
+    if (auto op = stmt->dyn_cast<AffineApplyOp>())
       return op->isValidDim();
     return false;
   }
@@ -116,10 +116,10 @@ bool MLValue::isValidDim() const {
 bool MLValue::isValidSymbol() const {
   if (auto *stmt = getDefiningStmt()) {
     // Top level statement or constant operation is ok.
-    if (stmt->getParentStmt() == nullptr || stmt->is<ConstantOp>())
+    if (stmt->getParentStmt() == nullptr || stmt->isa<ConstantOp>())
       return true;
     // Affine apply operation is ok if all of its operands are ok.
-    if (auto op = stmt->getAs<AffineApplyOp>())
+    if (auto op = stmt->dyn_cast<AffineApplyOp>())
       return op->isValidSymbol();
     return false;
   }
@@ -291,7 +291,7 @@ MLIRContext *OperationStmt::getContext() const {
   return findFunction()->getContext();
 }
 
-bool OperationStmt::isReturn() const { return is<ReturnOp>(); }
+bool OperationStmt::isReturn() const { return isa<ReturnOp>(); }
 
 //===----------------------------------------------------------------------===//
 // ForStmt
@@ -444,7 +444,7 @@ bool ForStmt::constantFoldBound(bool lower) {
   for (const auto *operand : boundOperands) {
     Attribute *operandCst = nullptr;
     if (auto *operandOp = operand->getDefiningOperation()) {
-      if (auto operandConstantOp = operandOp->getAs<ConstantOp>())
+      if (auto operandConstantOp = operandOp->dyn_cast<ConstantOp>())
         operandCst = operandConstantOp->getValue();
     }
     operandConstants.push_back(operandCst);

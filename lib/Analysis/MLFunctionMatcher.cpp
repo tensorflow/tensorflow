@@ -250,7 +250,7 @@ MLFunctionMatcher Red(MutableArrayRef<MLFunctionMatcher> children) {
 
 FilterFunctionType isLoadOrStore = [](Statement *stmt) {
   auto *opStmt = dyn_cast<OperationStmt>(stmt);
-  return opStmt && (opStmt->is<LoadOp>() || opStmt->is<StoreOp>());
+  return opStmt && (opStmt->isa<LoadOp>() || opStmt->isa<StoreOp>());
 };
 MLFunctionMatcher LoadStores() {
   return MLFunctionMatcher(Statement::Kind::Operation, {}, isLoadOrStore);

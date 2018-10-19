@@ -71,64 +71,64 @@ Operation::~Operation() {}
 
 /// Return the context this operation is associated with.
 MLIRContext *Operation::getContext() const {
-  if (auto *inst = dyn_cast<OperationInst>(this))
+  if (auto *inst = llvm::dyn_cast<OperationInst>(this))
     return inst->getContext();
-  return cast<OperationStmt>(this)->getContext();
+  return llvm::cast<OperationStmt>(this)->getContext();
 }
 
 /// The source location the operation was defined or derived from.  Note that
 /// it is possible for this pointer to be null.
 Location *Operation::getLoc() const {
-  if (auto *inst = dyn_cast<OperationInst>(this))
+  if (auto *inst = llvm::dyn_cast<OperationInst>(this))
     return inst->getLoc();
-  return cast<OperationStmt>(this)->getLoc();
+  return llvm::cast<OperationStmt>(this)->getLoc();
 }
 
 /// Return the function this operation is defined in.
 Function *Operation::getOperationFunction() {
-  if (auto *inst = dyn_cast<OperationInst>(this))
+  if (auto *inst = llvm::dyn_cast<OperationInst>(this))
     return inst->getFunction();
-  return cast<OperationStmt>(this)->findFunction();
+  return llvm::cast<OperationStmt>(this)->findFunction();
 }
 
 /// Return the number of operands this operation has.
 unsigned Operation::getNumOperands() const {
-  if (auto *inst = dyn_cast<OperationInst>(this))
+  if (auto *inst = llvm::dyn_cast<OperationInst>(this))
     return inst->getNumOperands();
 
-  return cast<OperationStmt>(this)->getNumOperands();
+  return llvm::cast<OperationStmt>(this)->getNumOperands();
 }
 
 SSAValue *Operation::getOperand(unsigned idx) {
-  if (auto *inst = dyn_cast<OperationInst>(this))
+  if (auto *inst = llvm::dyn_cast<OperationInst>(this))
     return inst->getOperand(idx);
 
-  return cast<OperationStmt>(this)->getOperand(idx);
+  return llvm::cast<OperationStmt>(this)->getOperand(idx);
 }
 
 void Operation::setOperand(unsigned idx, SSAValue *value) {
-  if (auto *inst = dyn_cast<OperationInst>(this)) {
-    inst->setOperand(idx, cast<CFGValue>(value));
+  if (auto *inst = llvm::dyn_cast<OperationInst>(this)) {
+    inst->setOperand(idx, llvm::cast<CFGValue>(value));
   } else {
-    auto *stmt = cast<OperationStmt>(this);
-    stmt->setOperand(idx, cast<MLValue>(value));
+    auto *stmt = llvm::cast<OperationStmt>(this);
+    stmt->setOperand(idx, llvm::cast<MLValue>(value));
   }
 }
 
 /// Return the number of results this operation has.
 unsigned Operation::getNumResults() const {
-  if (auto *inst = dyn_cast<OperationInst>(this))
+  if (auto *inst = llvm::dyn_cast<OperationInst>(this))
     return inst->getNumResults();
 
-  return cast<OperationStmt>(this)->getNumResults();
+  return llvm::cast<OperationStmt>(this)->getNumResults();
 }
 
 /// Return the indicated result.
 SSAValue *Operation::getResult(unsigned idx) {
-  if (auto *inst = dyn_cast<OperationInst>(this))
+  if (auto *inst = llvm::dyn_cast<OperationInst>(this))
     return inst->getResult(idx);
 
-  return cast<OperationStmt>(this)->getResult(idx);
+  return llvm::cast<OperationStmt>(this)->getResult(idx);
 }
 
 /// Return true if there are no users of any results of this operation.

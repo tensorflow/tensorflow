@@ -45,8 +45,7 @@ struct SimplifyXMinusX : public Pattern {
 
   std::pair<PatternBenefit, std::unique_ptr<PatternState>>
   match(Operation *op) const override {
-    // TODO: Rename getAs -> dyn_cast, and add a cast<> method.
-    auto subi = op->getAs<SubIOp>();
+    auto subi = op->dyn_cast<SubIOp>();
     assert(subi && "Matcher should have produced this");
 
     if (subi->getOperand(0) == subi->getOperand(1))
@@ -61,8 +60,7 @@ struct SimplifyXMinusX : public Pattern {
   // compiler error), it is emitted through the normal MLIR diagnostic
   // hooks and the IR is left in a valid state.
   virtual void rewrite(Operation *op, FuncBuilder &builder) const override {
-    // TODO: Rename getAs -> dyn_cast, and add a cast<> method.
-    auto subi = op->getAs<SubIOp>();
+    auto subi = op->dyn_cast<SubIOp>();
     assert(subi && "Matcher should have produced this");
 
     auto result =
@@ -172,7 +170,7 @@ void Canonicalizer::simplifyFunction(std::vector<Operation *> &worklist,
     for (auto *operand : op->getOperands()) {
       Attribute *operandCst = nullptr;
       if (auto *operandOp = operand->getDefiningOperation()) {
-        if (auto operandConstantOp = operandOp->getAs<ConstantOp>())
+        if (auto operandConstantOp = operandOp->dyn_cast<ConstantOp>())
           operandCst = operandConstantOp->getValue();
       }
       operandConstants.push_back(operandCst);

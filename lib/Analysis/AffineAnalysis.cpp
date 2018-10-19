@@ -322,11 +322,11 @@ void mlir::getReachableAffineApplyOps(
     auto *opStmt = state.value->getDefiningStmt();
     // Note: getDefiningStmt will return nullptr if the operand is not an
     // OperationStmt (i.e. ForStmt), which is a terminator for the search.
-    if (opStmt == nullptr || !opStmt->is<AffineApplyOp>()) {
+    if (opStmt == nullptr || !opStmt->isa<AffineApplyOp>()) {
       worklist.pop_back();
       continue;
     }
-    if (auto affineApplyOp = opStmt->getAs<AffineApplyOp>()) {
+    if (auto affineApplyOp = opStmt->dyn_cast<AffineApplyOp>()) {
       if (state.operandIndex == 0) {
         // Pre-Visit: Add 'opStmt' to reachable sequence.
         affineApplyOps.push_back(opStmt);
