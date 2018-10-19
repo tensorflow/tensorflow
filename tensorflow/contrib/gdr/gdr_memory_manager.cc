@@ -268,6 +268,8 @@ Status GdrMemoryManager::Init() {
   for (int numa_idx = 0; numa_idx < port::NUMANumNodes(); ++numa_idx) {
     GPUProcessState::singleton()->AddCUDAHostAllocVisitor(numa_idx,
                                                           alloc_visitor);
+    GPUProcessState::singleton()->AddCUDAHostFreeVisitor(numa_idx,
+                                                         free_visitor);
   }
   if (IsGDRAvailable()) {
     SubAllocator::Visitor cuda_alloc_visitor = [this](void* ptr, int gpu_id,
@@ -278,8 +280,6 @@ Status GdrMemoryManager::Init() {
     for (int numa_idx = 0; numa_idx < port::NUMANumNodes(); ++numa_idx) {
       GPUProcessState::singleton()->AddGPUAllocVisitor(numa_idx,
                                                        cuda_alloc_visitor);
-      GPUProcessState::singleton()->AddCUDAHostFreeVisitor(numa_idx,
-                                                           free_visitor);
     }
     LOG(INFO) << "Instrumenting GPU allocator(s) for all numas ";
   }
