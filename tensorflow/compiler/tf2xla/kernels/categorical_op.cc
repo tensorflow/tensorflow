@@ -91,7 +91,7 @@ class CategoricalOp : public XlaOpKernel {
 };
 
 // TODO(b/68769717): Rename this sampler to Categorical.
-REGISTER_XLA_OP(Name("Multinomial").CompileTimeConstInput("num_samples"),
+REGISTER_XLA_OP(Name("Multinomial").CompileTimeConstantInput("num_samples"),
                 CategoricalOp);
 
 }  // anonymous namespace

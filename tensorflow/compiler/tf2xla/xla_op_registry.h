@@ -264,7 +264,8 @@ class XlaOpRegistrationBuilder {
   XlaOpRegistrationBuilder& AllowResourceTypes();
 
   // Mark 'input_name' as an argument whose value must be known at compile-time.
-  XlaOpRegistrationBuilder& CompileTimeConstInput(absl::string_view input_name);
+  XlaOpRegistrationBuilder& CompileTimeConstantInput(
+      absl::string_view input_name);
 
   // Mark this op as a "metadata" op, one that only looks at the shapes of its
   // operands and not their values.
