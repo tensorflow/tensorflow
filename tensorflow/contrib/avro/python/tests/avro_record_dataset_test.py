@@ -259,7 +259,7 @@ class AvroRecordDatasetTest(test_util.TensorFlowTestCase):
         """
         with self.test_session() as sess:
             dataset = AvroRecordDataset(
-                filenames=[self.filename], schema=reader_schema)
+                filenames=[self.filename], reader_schema=reader_schema)
             iterator = dataset.make_initializable_iterator()
             next_element = iterator.get_next()
             sess.run(iterator.initializer)
@@ -285,7 +285,7 @@ class AvroRecordDatasetTest(test_util.TensorFlowTestCase):
         with self.test_session(config=config) as sess:
 
             dataset = AvroRecordDataset(
-                filenames=[self.filename], schema=reader_schema)
+                filenames=[self.filename], reader_schema=reader_schema)
             iterator = dataset.make_initializable_iterator()
             next_element = iterator.get_next()
 

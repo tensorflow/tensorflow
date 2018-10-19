@@ -63,6 +63,16 @@ void AvroValueInterfaceDestructor(avro_value_iface_t * iface)  {
   avro_value_iface_decref(iface);
 }
 
+void AvroValueDestructor(avro_value_t * value) {
+    // This is unnecessary clunky because avro's free assumes that
+    // the iface ptr is initialized which is only the case once used
+    if (value->iface != nullptr) {
+      avro_value_decref(value);
+    } else {
+      // free the container
+      free(value);
+    }
+}
 
 // This reader is not thread safe
 class SequentialAvroRecordReader {
@@ -89,43 +99,15 @@ class SequentialAvroRecordReader {
       reader_schema_(nullptr, AvroSchemaDestructor),
       writer_schema_(nullptr, AvroSchemaDestructor),
       p_reader_iface_(nullptr, AvroValueInterfaceDestructor),
-      p_writer_iface_(nullptr, AvroValueInterfaceDestructor) {}
-
-  virtual ~SequentialAvroRecordReader() {
-    // Guard against clean-up of non-initialized instances
-    if (initialized_) {
-      avro_value_decref(&reader_value_);
-      avro_value_decref(&writer_value_);
-    }
-  }
-  // Reads the next record into the string record
-  //
-  // 'record' pointer to the string where to load the record in
-  //
-  // returns Status about this operation
-  //
-  Status ReadRecord(string* record) {
-    bool at_end =
-      avro_file_reader_read_value(file_reader_.get(), &writer_value_) != 0;
-    // Are writer_value_ and reader_value_ aliases to the same thing???
-    size_t len;
-    if (avro_value_sizeof(&reader_value_, &len)) {
-      return Status(errors::InvalidArgument("Could not find size of value, ",
-                                            avro_strerror()));
-    }
-    record->resize(len);
-    avro_writer_t mem_writer = avro_writer_memory(record->data(), len);
-    if (avro_value_write(mem_writer, &reader_value_)) {
-      avro_writer_free(mem_writer);
-      return Status(errors::InvalidArgument("Unable to write value to memory."));
-    }
-    avro_writer_free(mem_writer);
-    return at_end ? errors::OutOfRange("eof") : Status::OK();
+      p_writer_iface_(nullptr, AvroValueInterfaceDestructor),
+      reader_value_(new avro_value_t, AvroValueDestructor),
+      writer_value_(new avro_value_t, AvroValueDestructor) {
+      // Initialize the iface to null for the destructor
+      reader_value_.get()->iface = nullptr;
+      writer_value_.get()->iface = nullptr;
   }
   // Call for startup of work after construction. Loads data into memory and
   // sets up the avro file reader
-  //
-  // returns Status about this operation
   //
   Status OnWorkStartup() {
     // Clear the error message, so we won't get a wrong message
@@ -159,6 +141,7 @@ class SequentialAvroRecordReader {
     if (reader_schema_str_.length() > 0) {
 
       avro_schema_t reader_schema_tmp;
+
       // Create value to read into using the provided schema
       if (avro_schema_from_json_length(reader_schema_str_.data(),
                                        reader_schema_str_.length(),
@@ -175,7 +158,7 @@ class SequentialAvroRecordReader {
       // Create reader class
       p_reader_iface_.reset(avro_generic_class_from_schema(reader_schema_.get()));
       // Create instance for reader class
-      if (avro_generic_value_new(p_reader_iface_.get(), &reader_value_) != 0) {
+      if (avro_generic_value_new(p_reader_iface_.get(), reader_value_.get()) != 0) {
         return Status(errors::InvalidArgument(
             "Unable to value for user-supplied schema. ", avro_strerror()));
       }
@@ -183,34 +166,53 @@ class SequentialAvroRecordReader {
       p_writer_iface_.reset(avro_resolved_writer_new(writer_schema_.get(), reader_schema_.get()));
       if (p_writer_iface_.get() == nullptr) {
         // Cleanup
-        avro_value_decref(&reader_value_);
+        //avro_value_decref(&reader_value_);
         return Status(errors::InvalidArgument("Schemas are incompatible. ",
                                               avro_strerror()));
       }
       // Create instance for resolved writer class
-      if (avro_resolved_writer_new_value(p_writer_iface_.get(), &writer_value_) !=
+      if (avro_resolved_writer_new_value(p_writer_iface_.get(), writer_value_.get()) !=
           0) {
         // Cleanup
-        avro_value_decref(&reader_value_);
+        //avro_value_decref(reader_value_);
         return Status(
             errors::InvalidArgument("Unable to create resolved writer."));
       }
-      avro_resolved_writer_set_dest(&writer_value_, &reader_value_);
+      avro_resolved_writer_set_dest(writer_value_.get(), reader_value_.get());
     } else {
       p_writer_iface_.reset(avro_generic_class_from_schema(writer_schema_.get()));
-      if (avro_generic_value_new(p_writer_iface_.get(), &writer_value_) != 0) {
+      if (avro_generic_value_new(p_writer_iface_.get(), writer_value_.get()) != 0) {
         return Status(errors::InvalidArgument(
             "Unable to create instance for generic class."));
       }
       // The reader_value_ is the same as the writer_value_ in the case we do
       // not need to resolve the schema
-      avro_value_copy_ref(&reader_value_, &writer_value_);
+      avro_value_copy_ref(reader_value_.get(), writer_value_.get());
     }
 
-    // We initialized this avro record reader
-    initialized_ = true;
-
     return Status::OK();
+  }
+  // Reads the next record into the string record. Note, `OnWorkStartup` must
+  // be called before calling this method
+  //
+  // 'record' a string holding the serialized version of the record
+  //
+  Status ReadRecord(string* record) {
+    bool at_end =
+      avro_file_reader_read_value(file_reader_.get(), writer_value_.get()) != 0;
+    size_t len;
+    if (avro_value_sizeof(reader_value_.get(), &len)) {
+      return Status(errors::InvalidArgument("Could not find size of value, ",
+                                            avro_strerror()));
+    }
+    record->resize(len);
+    avro_writer_t mem_writer = avro_writer_memory(record->data(), len);
+    if (avro_value_write(mem_writer, reader_value_.get())) {
+      avro_writer_free(mem_writer);
+      return Status(errors::InvalidArgument("Unable to write value to memory."));
+    }
+    avro_writer_free(mem_writer);
+    return at_end ? errors::OutOfRange("eof") : Status::OK();
   }
 
  private:
@@ -243,7 +245,7 @@ class SequentialAvroRecordReader {
   }
 
   bool initialized_;                               // Has been initialized
-  const string filename_;                                // Name of the file
+  const string filename_;                          // Name of the file
   std::string file_buffer_;                        // The data buffer
   const size_t input_buffer_size_;
   std::unique_ptr<io::InputBuffer> input_buffer_;  // input buffer used to load
@@ -264,9 +266,13 @@ class SequentialAvroRecordReader {
                                                 void(*)(avro_value_iface_t*)>;
   AvroValueInterfacePtr p_reader_iface_;  // Reader class info to create instances
   AvroValueInterfacePtr p_writer_iface_;  // Writer class info to create instances
-  avro_value_t reader_value_;  // Reader value, unequal from writer value when
+
+  using AvroValueUPtr = std::unique_ptr<avro_value_t, void(*)(avro_value_t*)>;
+  AvroValueUPtr reader_value_; // Reader value, unequal from writer value when
                                // doing schema resolution
-  avro_value_t writer_value_;  // Writer value
+  AvroValueUPtr writer_value_; // Writer value
+  //avro_value_t reader_value_;
+  //avro_value_t writer_value_;
 };
 
 class AvroRecordDatasetOp : public DatasetOpKernel {

@@ -34,7 +34,7 @@ _DEFAULT_READER_BUFFER_SIZE_BYTES = 256 * 1024  # 256 KB
 class AvroRecordDataset(Dataset):
     """A `Dataset` comprising records from one or more Avro files."""
 
-    def __init__(self, filenames, schema=None, buffer_size=None):
+    def __init__(self, filenames, reader_schema=None, buffer_size=None):
         """Creates a `AvroRecordDataset`.
         Args:
           filenames: A `tf.string` tensor containing one or more filenames.
@@ -47,8 +47,8 @@ class AvroRecordDataset(Dataset):
         # Force the type to string even if filenames is an empty list.
         self._filenames = ops.convert_to_tensor(
             filenames, dtypes.string, name="filenames")
-        self._schema = convert.optional_param_to_tensor(
-            "reader_schema", schema, argument_default="",
+        self._reader_schema = convert.optional_param_to_tensor(
+            "reader_schema", reader_schema, argument_default="",
             argument_dtype=dtypes.string)
         self._buffer_size = convert.optional_param_to_tensor(
             "buffer_size",
@@ -56,7 +56,7 @@ class AvroRecordDataset(Dataset):
             argument_default=_DEFAULT_READER_BUFFER_SIZE_BYTES)
 
     def _as_variant_tensor(self):
-        return avro_record_dataset(self._filenames, self._schema,
+        return avro_record_dataset(self._filenames, self._reader_schema,
                                    self._buffer_size)
 
     @property
