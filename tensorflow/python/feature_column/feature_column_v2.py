@@ -537,8 +537,8 @@ class LinearModel(Layer):
 
         with `sparse_combiner` as "mean", the linear model outputs conceptly are
         ```
-        y_0 = 1.0 / 2.0 * ( w_a + w_ b) + w_c + b_0
-        y_1 = w_d + 1.0 / 3.0 * ( w_e + w_ f + w_g) + b_1
+        y_0 = 1.0 / 3.0 * ( w_a + w_ b + w_c) + b_0
+        y_1 = 1.0 / 4.0 * ( w_d + w_e + w_ f + w_g) + b_1
         ```
         where `y_i` is the output, `b_i` is the bias, and `w_x` is the weight
         assigned to the presence of `x` in the input features.
