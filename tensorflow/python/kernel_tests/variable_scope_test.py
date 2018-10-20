@@ -1720,8 +1720,8 @@ class PartitionInfoTest(test.TestCase):
 
 class VariableScopeMultithreadedTest(test.TestCase):
 
-  # TODO(mihaimaruseac): Not wrapping these as they cause timeouts if wrapped
   @test_util.run_in_graph_and_eager_modes
+  @run_inside_wrap_function_in_eager_mode
   def testTwoThreadsDisjointScopeEntry(self):
 
     def thread_fn(i, graph):
@@ -1750,8 +1750,8 @@ class VariableScopeMultithreadedTest(test.TestCase):
     threads[1].start()
     threads[1].join()
 
-  # TODO(mihaimaruseac): Not wrapping these as they cause timeouts if wrapped
   @test_util.run_in_graph_and_eager_modes
+  @run_inside_wrap_function_in_eager_mode
   def testTwoThreadsNestedScopeEntry(self):
 
     def thread_fn(i, graph, run_event, pause_event):
@@ -1789,8 +1789,8 @@ class VariableScopeMultithreadedTest(test.TestCase):
     threads[0].join()
     threads[1].join()
 
-  # TODO(mihaimaruseac): Not wrapping these as they cause timeouts if wrapped
   @test_util.run_in_graph_and_eager_modes
+  @run_inside_wrap_function_in_eager_mode
   def testReenterMainScope(self):
 
     def thread_fn(graph, main_thread_scope):
