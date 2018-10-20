@@ -1063,6 +1063,67 @@ class EstimatorTrainTest(test.TestCase):
       self.assertEqual(0, mock_sess.call_args[1]['save_summaries_steps'])
       self.assertIsNone(mock_sess.call_args[1]['log_step_count_steps'])
 
+  def test_master_hooks_single_replica(self):
+    tf_config = json.dumps({
+        'cluster': {
+            run_config.TaskType.MASTER: ['localhost:1234']
+        },
+        'task': {
+            'type': run_config.TaskType.MASTER,
+            'index': 0
+        }
+    })
+    with test.mock.patch.dict('os.environ', {'TF_CONFIG': tf_config}):
+      est = estimator.Estimator(
+          model_fn=model_fn_global_step_incrementer,
+          config=run_config.RunConfig(
+              save_summary_steps=100, log_step_count_steps=200))
+
+    with test.mock.patch.object(training,
+                                'MonitoredTrainingSession') as mock_sess:
+      est.train(dummy_input_fn, steps=1)
+      self.assertFalse(
+          any(
+              isinstance(hook, basic_session_run_hooks.SummarySaverHook)
+              for hook in mock_sess.call_args[1]['hooks']))
+      self.assertFalse(
+          any(
+              isinstance(hook, basic_session_run_hooks.StepCounterHook)
+              for hook in mock_sess.call_args[1]['hooks']))
+      self.assertEqual(100, mock_sess.call_args[1]['save_summaries_steps'])
+      self.assertEqual(200, mock_sess.call_args[1]['log_step_count_steps'])
+
+  def test_master_hooks_single_replica_with_ps(self):
+    tf_config = json.dumps({
+        'cluster': {
+            run_config.TaskType.MASTER: ['localhost:1234'],
+            run_config.TaskType.PS: ['localhost: 1235'],
+        },
+        'task': {
+            'type': run_config.TaskType.MASTER,
+            'index': 0
+        }
+    })
+    with test.mock.patch.dict('os.environ', {'TF_CONFIG': tf_config}):
+      est = estimator.Estimator(
+          model_fn=model_fn_global_step_incrementer,
+          config=run_config.RunConfig(
+              save_summary_steps=100, log_step_count_steps=200))
+
+    with test.mock.patch.object(training,
+                                'MonitoredTrainingSession') as mock_sess:
+      est.train(dummy_input_fn, steps=1)
+      self.assertFalse(
+          any(
+              isinstance(hook, basic_session_run_hooks.SummarySaverHook)
+              for hook in mock_sess.call_args[1]['hooks']))
+      self.assertFalse(
+          any(
+              isinstance(hook, basic_session_run_hooks.StepCounterHook)
+              for hook in mock_sess.call_args[1]['hooks']))
+      self.assertEqual(100, mock_sess.call_args[1]['save_summaries_steps'])
+      self.assertEqual(200, mock_sess.call_args[1]['log_step_count_steps'])
+
 
 def _model_fn_with_eval_metric_ops(features, labels, mode, params):
   _, _ = features, labels
