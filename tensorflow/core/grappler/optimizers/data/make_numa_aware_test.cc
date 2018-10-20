@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/grappler/optimizers/data/map_and_batch_numa_aware_replacement.h"
+#include "tensorflow/core/grappler/optimizers/data/make_numa_aware.h"
 
 #include "tensorflow/core/framework/attr_value_util.h"
 #include "tensorflow/core/framework/function_testlib.h"
@@ -29,7 +29,7 @@ namespace tensorflow {
 namespace grappler {
 namespace {
 
-TEST(MapAndBatchNumaAwareReplacementTest, ReplaceSimple) {
+TEST(MakeNumaAwareTest, ReplaceSimple) {
   using test::function::NDef;
   GrapplerItem item;
   item.graph = test::function::GDef(
@@ -52,7 +52,7 @@ TEST(MapAndBatchNumaAwareReplacementTest, ReplaceSimple) {
           test::function::XTimesTwo(),
       });
 
-  MapAndBatchNumaAwareReplacement optimizer;
+  MakeNumaAware optimizer;
   GraphDef output;
   TF_ASSERT_OK(optimizer.Optimize(nullptr, item, &output));
 
@@ -86,7 +86,7 @@ TEST(MapAndBatchNumaAawareReplacementTest, ReplaceWithExtraChild) {
           test::function::XTimesTwo(),
       });
 
-  MapAndBatchNumaAwareReplacement optimizer;
+  MakeNumaAware optimizer;
   GraphDef output;
   TF_ASSERT_OK(optimizer.Optimize(nullptr, item, &output));
 

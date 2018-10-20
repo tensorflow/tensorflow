@@ -828,6 +828,50 @@ Status ShapeVerifier::CheckVariadicShape(const HloInstruction* instruction) {
                         instruction->opcode(), instruction->operands()));
 }
 
+Status ShapeVerifier::VerifyEntryComputationLayout(const HloModule& module) {
+  const HloComputation* computation = module.entry_computation();
+  const auto& layout = module.entry_computation_layout();
+  const ShapeLayout& result_layout = layout.result_layout();
+
+  TF_RETURN_IF_ERROR(
+      ShapeUtil::ValidateShapeWithOptionalLayout(result_layout.shape()));
+
+  TF_RETURN_IF_ERROR(VerifyNotSparse(result_layout.shape()));
+
+  if (!ShapeUtil::Compatible(computation->root_instruction()->shape(),
+                             result_layout.shape())) {
+    return InternalError(
+        "Shape of the root instruction of entry computation (%s) should be "
+        "compatible to one specified in module's entry computation layout (%s)",
+        ShapeUtil::HumanString(computation->root_instruction()->shape()),
+        ShapeUtil::HumanString(result_layout.shape()));
+  }
+
+  if (computation->num_parameters() != layout.parameter_count()) {
+    return InternalError(
+        "Number of parameters in entry computation layout (%d) must be same "
+        "as number of parameters of entry computation computation (%d)",
+        layout.parameter_count(), computation->num_parameters());
+  }
+
+  for (int i = 0; i < computation->num_parameters(); ++i) {
+    const HloInstruction* parameter = computation->parameter_instruction(i);
+    TF_RETURN_IF_ERROR(
+        ShapeUtil::ValidateShapeWithOptionalLayout(layout.parameter_shape(i)));
+    TF_RETURN_IF_ERROR(VerifyNotSparse(layout.parameter_shape(i)));
+    if (!ShapeUtil::Compatible(parameter->shape(), layout.parameter_shape(i))) {
+      return InternalError(
+          "Shape of the entry computation parameter %d is %s should be "
+          "compatible to the one specified in module's entry computation "
+          "layout %s",
+          i, ShapeUtil::HumanString(parameter->shape()),
+          ShapeUtil::HumanString(layout.parameter_shape(i)));
+    }
+  }
+
+  return Status::OK();
+}
+
 string ComputationsToString(absl::Span<HloComputation* const> computations) {
   return absl::StrJoin(computations, ",",
                        [](string* s, const HloComputation* computation) {
@@ -920,52 +964,6 @@ Status VerifyEntryAndExitShapes(const HloModule& module) {
           ShapeUtil::HumanString(param->shape()));
     }
   }
-  return Status::OK();
-}
-
-// Verifies that entry computation layout matches characteristics of
-// entry computation.
-Status CheckEntryComputationLayout(const HloModule& module) {
-  const HloComputation* computation = module.entry_computation();
-  const auto& layout = module.entry_computation_layout();
-  const ShapeLayout& result_layout = layout.result_layout();
-
-  TF_RETURN_IF_ERROR(
-      ShapeUtil::ValidateShapeWithOptionalLayout(result_layout.shape()));
-
-  TF_RETURN_IF_ERROR(VerifyNotSparse(result_layout.shape()));
-
-  if (!ShapeUtil::Compatible(computation->root_instruction()->shape(),
-                             result_layout.shape())) {
-    return InternalError(
-        "Shape of the root instruction of entry computation (%s) should be "
-        "compatible to one specified in module's entry computation layout (%s)",
-        ShapeUtil::HumanString(computation->root_instruction()->shape()),
-        ShapeUtil::HumanString(result_layout.shape()));
-  }
-
-  if (computation->num_parameters() != layout.parameter_count()) {
-    return InternalError(
-        "Number of parameters in entry computation layout (%d) must be same "
-        "as number of parameters of entry computation computation (%d)",
-        layout.parameter_count(), computation->num_parameters());
-  }
-
-  for (int i = 0; i < computation->num_parameters(); ++i) {
-    const HloInstruction* parameter = computation->parameter_instruction(i);
-    TF_RETURN_IF_ERROR(
-        ShapeUtil::ValidateShapeWithOptionalLayout(layout.parameter_shape(i)));
-    TF_RETURN_IF_ERROR(VerifyNotSparse(layout.parameter_shape(i)));
-    if (!ShapeUtil::Compatible(parameter->shape(), layout.parameter_shape(i))) {
-      return InternalError(
-          "Shape of the entry computation parameter %d is %s should be "
-          "compatible to the one specified in module's entry computation "
-          "layout %s",
-          i, ShapeUtil::HumanString(parameter->shape()),
-          ShapeUtil::HumanString(layout.parameter_shape(i)));
-    }
-  }
-
   return Status::OK();
 }
 
@@ -1363,8 +1361,8 @@ StatusOr<bool> HloVerifier::Run(HloModule* module) {
   TF_RETURN_IF_ERROR(VerifyHloStructure(module));
   TF_RETURN_IF_ERROR(VerifySendsAndRecvs(*module));
 
+  std::unique_ptr<ShapeVerifier> shape_verifier = shape_verifier_factory_();
   for (auto* computation : module->computations()) {
-    std::unique_ptr<ShapeVerifier> shape_verifier = shape_verifier_factory_();
     TF_RETURN_IF_ERROR(computation->Accept(shape_verifier.get()));
 
     InstructionVerifier instruction_verifier(
@@ -1372,7 +1370,7 @@ StatusOr<bool> HloVerifier::Run(HloModule* module) {
     TF_RETURN_IF_ERROR(computation->Accept(&instruction_verifier));
   }
 
-  TF_RETURN_IF_ERROR(CheckEntryComputationLayout(*module));
+  TF_RETURN_IF_ERROR(shape_verifier->VerifyEntryComputationLayout(*module));
   TF_RETURN_IF_ERROR(VerifyEntryAndExitShapes(*module));
 
   // If the module has a schedule, it must be valid.

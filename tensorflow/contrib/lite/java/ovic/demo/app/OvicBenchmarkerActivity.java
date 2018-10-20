@@ -95,7 +95,7 @@ public class OvicBenchmarkerActivity extends Activity {
       benchmarker = new OvicDetectorBenchmarker(WALL_TIME);
       labelPath = "coco_labels.txt";
       testImagePath = "test_image_224.jpg";
-      modelPath = "detect.tflite";
+      modelPath = "detect.lite";
     }
     AssetManager am = getAssets();
     AssetFileDescriptor fileDescriptor = am.openFd(modelPath);

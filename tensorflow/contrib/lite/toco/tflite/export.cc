@@ -138,10 +138,8 @@ OperatorKey GetOperatorKey(
         static_cast<const TensorFlowUnsupportedOperator&>(op);
     const auto tensorflow_op = unsupported_op.tensorflow_op;
 
-    // TODO(b/113715895): When `allow_flex_ops` is on, for now there's no way
-    // to populate a regular custom op. We need to find a way to fix this.
     if (ShouldExportAsFlexOp(allow_flex_ops, unsupported_op.tensorflow_op)) {
-      key.is_custom_op = true;
+      key.is_custom_op = false;
       key.is_flex_op = true;
       key.flex_tensorflow_op = tensorflow_op;
       key.custom_code =
@@ -472,14 +470,30 @@ tensorflow::Status Export(
         custom_ops_final = custom_ops;
       }
 
-      return tensorflow::errors::InvalidArgument(absl::StrCat(
-          "Some of the operators in the model are not supported by the "
-          "standard TensorFlow Lite runtime. If you have a custom "
-          "implementation for them you can disable this error with "
-          "--allow_custom_ops, or by setting allow_custom_ops=True when "
-          "calling tf.contrib.lite.TFLiteConverter(). Here is a list of "
-          "operators for which  you will need custom implementations: ",
-          absl::StrJoin(custom_ops_final, ", "), "."));
+      if (params.allow_flex_ops) {
+        return tensorflow::errors::InvalidArgument(absl::StrCat(
+            "Some of the operators in the model are not supported by "
+            "the standard TensorFlow Lite runtime and are not recognized by "
+            "TensorFlow. If you have a custom "
+            "implementation for them you can disable this error with "
+            "--allow_custom_ops, or by setting allow_custom_ops=True "
+            "when calling tf.contrib.lite.TFLiteConverter(). Here is a list "
+            "of operators for which you will need custom implementations: ",
+            absl::StrJoin(custom_ops_final, ", "), "."));
+      } else {
+        return tensorflow::errors::InvalidArgument(absl::StrCat(
+            "Some of the operators in the model are not supported by "
+            "the standard TensorFlow Lite runtime. If those are native "
+            "TensorFlow operators, you might be able to use the extended "
+            "runtime by passing --allow_flex_ops, or by setting "
+            "converter_mode=TOCO_FLEX when calling "
+            "tf.contrib.lite.TFLiteConverter(). Otherwise, if you have a "
+            "custom implementation for them you can disable this error with "
+            "--allow_custom_ops, or by setting allow_custom_ops=True "
+            "when calling tf.contrib.lite.TFLiteConverter(). Here is a list "
+            "of operators for which you will need custom implementations: ",
+            absl::StrJoin(custom_ops_final, ", "), "."));
+      }
     }
 
     std::set<string> unsupported_control_flow_ops;

@@ -52,6 +52,16 @@ else:
 if _toco_from_proto_bin and not _os.path.exists(_toco_from_proto_bin):
   _toco_from_proto_bin = "toco_from_protos"
 
+def _try_convert_to_unicode(output):
+  if output is None:
+    return u""
+
+  if isinstance(output, bytes):
+    try:
+      return output.decode()
+    except UnicodeDecodeError:
+      pass
+  return output
 
 class ConverterMode(enum.Enum):
   """Enum class defining the converters available to generate TFLite models.
@@ -145,6 +155,8 @@ def toco_convert_protos(model_flags_str, toco_flags_str, input_data_str):
       with open(output_filename, "rb") as fp:
         return fp.read()
     else:
+      stdout = _try_convert_to_unicode(stdout)
+      stderr = _try_convert_to_unicode(stderr)
       raise RuntimeError(
           "TOCO failed see console for info.\n%s\n%s\n" % (stdout, stderr))
   finally:

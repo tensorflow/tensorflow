@@ -148,6 +148,7 @@ TEST_F(OperatorTest, SimpleOperators) {
                                                 OperatorType::kSquare);
   CheckSimpleOperator<TensorFlowZerosLikeOperator>("ZEROS_LIKE",
                                                    OperatorType::kZerosLike);
+  CheckSimpleOperator<FloorModOperator>("FLOOR_MOD", OperatorType::kFloorMod);
 }
 
 TEST_F(OperatorTest, BuiltinAdd) {

@@ -36,6 +36,8 @@ from tensorflow.python.framework import ops as ops_lib
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import test_util
 from tensorflow.python.keras import testing_utils
+from tensorflow.python.keras.engine import network as keras_network
+from tensorflow.python.layers import base as base_layers
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gradients_impl
@@ -125,6 +127,28 @@ class TensorArrayStateRNNCell(rnn_cell_impl.RNNCell):
   def call(self, input_, state, scope=None):
     new_array = state[1].write(state[0], input_)
     return (input_, (state[0] + 1, new_array))
+
+
+class KerasNetworkTFRNNs(keras_network.Network):
+
+  def __init__(self, name=None):
+    super(KerasNetworkTFRNNs, self).__init__(name=name)
+    self._cell = rnn_cell_impl.MultiRNNCell(
+        [rnn_cell_impl.LSTMCell(1) for _ in range(2)])
+
+  def call(self, inputs):
+    return self._cell(inputs, self._cell.get_initial_state(inputs))
+
+
+class KerasNetworkKerasRNNs(keras_network.Network):
+
+  def __init__(self, name=None):
+    super(KerasNetworkKerasRNNs, self).__init__(name=name)
+    self._cell = keras.layers.StackedRNNCells(
+        [keras.layers.LSTMCell(1) for _ in range(2)])
+
+  def call(self, inputs):
+    return self._cell(inputs, self._cell.get_initial_state(inputs))
 
 
 class RNNTest(test.TestCase):
@@ -634,6 +658,31 @@ class RNNTest(test.TestCase):
         model.set_weights(weights)
         y_np_2 = model.predict(x_np)
         self.assertAllClose(y_np, y_np_2, atol=1e-4)
+
+  def testRNNCellActsLikeKerasRNNCellInProperScope(self):
+    with base_layers.keras_style_scope():
+      kn1 = KerasNetworkTFRNNs(name="kn1")
+      kn2 = KerasNetworkKerasRNNs(name="kn2")
+
+      z = array_ops.zeros((2, 3))
+
+      kn1(z)
+      kn2(z)
+
+      # pylint: disable=protected-access
+      self.assertTrue(all("kn1" in v.name for v in kn1._cell.variables))
+      self.assertTrue(all("kn2" in v.name for v in kn2._cell.variables))
+
+      kn1_new = KerasNetworkTFRNNs(name="kn1_new")
+      kn2_new = KerasNetworkKerasRNNs(name="kn2_new")
+
+      kn2_new(z)
+      # Most importantly, this doesn't fail due to variable scope reuse issues.
+      kn1_new(z)
+
+      self.assertTrue(all("kn1_new" in v.name for v in kn1_new._cell.variables))
+      self.assertTrue(all("kn2_new" in v.name for v in kn2_new._cell.variables))
+
 
 ######### Benchmarking RNN code
 

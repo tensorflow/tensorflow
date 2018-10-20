@@ -151,6 +151,7 @@ java_test(
     visibility = ["//visibility:private"],
     deps = [
         ":tensorflowlitelib",
+        "//tensorflow/contrib/lite/java/src/test/native:libtensorflowlite_test_jni.so",
         "@com_google_truth",
         "@junit",
     ],

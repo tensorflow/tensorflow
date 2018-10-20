@@ -15,7 +15,6 @@ py_library(
     srcs = ["__init__.py"],
     srcs_version = "PY2AND3",
     deps = [
-        ":baseline",
         ":boosted_trees",
         ":dnn",
         ":dnn_linear_combined",
@@ -35,17 +34,6 @@ py_library(
         ":saved_model_estimator",
         "//tensorflow:tensorflow_py_no_contrib",
         "//tensorflow/python/estimator:estimator_py",
-    ],
-)
-
-py_library(
-    name = "baseline",
-    srcs = ["python/estimator/baseline.py"],
-    srcs_version = "PY2AND3",
-    deps = [
-        ":expect_tensorflow_estimator_installed",
-        "//tensorflow/python/estimator",
-        "//tensorflow/python/estimator:baseline",
     ],
 )
 

@@ -409,14 +409,9 @@ void Export(const TocoFlags& toco_flags, const Model& model,
     case TFLITE: {
       toco::tflite::ExportParams params;
 
-      // Always allow custom ops when flex ops are allowed.
-      if (toco_flags.force_flex_ops() || toco_flags.allow_flex_ops()) {
-        params.allow_flex_ops = true;
-        params.allow_custom_ops = true;
-      } else if (allow_custom_ops) {
-        params.allow_custom_ops = true;
-      }
-
+      params.allow_flex_ops =
+          toco_flags.force_flex_ops() || toco_flags.allow_flex_ops();
+      params.allow_custom_ops = allow_custom_ops;
       params.quantize_weights = toco_flags.post_training_quantize();
 
       auto status = toco::tflite::Export(model, output_file_contents, params);

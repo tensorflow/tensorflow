@@ -98,12 +98,19 @@ class _EagerContext(threading.local):
     self.ones_rank_cache = _EagerTensorCache()
     self.zeros_cache = _EagerTensorCache()
     self.execution_mode = None
-    self.rewriter_config = None
+
+    # An empty string corresponds to turning all default grappler optimizations
+    # on.
+    base_config = rewriter_config_pb2.RewriterConfig()
+
+    # TODO(b/117959922): Turn this back on once the bug is fixed.
+    base_config.function_optimization = rewriter_config_pb2.RewriterConfig.OFF
+
     if config is not None and config.HasField(
         "graph_options") and config.graph_options.HasField("rewrite_options"):
-      self.rewriter_config = (
-          config.graph_options.rewrite_options.SerializeToString())
+      base_config.Merge(config.graph_options.rewrite_options)
 
+    self.rewriter_config = base_config.SerializeToString()
 
 
 ContextSwitch = collections.namedtuple(
@@ -830,6 +837,11 @@ def rewriter_config(rewriter_config_):
 
 def set_server_def(server_def):
   context().set_server_def(server_def)
+
+
+def add_function(fdef):
+  """Add a function definition to the context."""
+  context().add_function(fdef)
 
 
 # Not every user creates a Context via context.context()

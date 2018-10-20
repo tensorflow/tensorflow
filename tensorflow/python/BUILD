@@ -864,6 +864,42 @@ py_library(
 )
 
 py_library(
+    name = "func_graph",
+    srcs = ["framework/func_graph.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":auto_control_deps",
+        ":framework_ops",
+        "//tensorflow/python/autograph",
+        "//tensorflow/python/eager:context",
+        "//tensorflow/python/eager:graph_only_ops",
+        "//tensorflow/python/eager:tape",
+    ],
+)
+
+py_library(
+    name = "auto_control_deps",
+    srcs = ["framework/auto_control_deps.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":control_flow_ops",
+        ":framework_ops",
+        ":util",
+    ],
+)
+
+py_test(
+    name = "auto_control_deps_test",
+    size = "small",
+    srcs = ["framework/auto_control_deps_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":auto_control_deps",
+        ":client_testlib",
+    ],
+)
+
+py_library(
     name = "random_seed",
     srcs = ["framework/random_seed.py"],
     srcs_version = "PY2AND3",

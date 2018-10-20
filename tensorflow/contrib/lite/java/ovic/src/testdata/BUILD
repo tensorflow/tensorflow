@@ -4,6 +4,7 @@ licenses(["notice"])  # Apache 2.0
 filegroup(
     name = "ovic_testdata",
     srcs = [
+        "@tflite_ovic_testdata//:detect.lite",
         "@tflite_ovic_testdata//:float_model.lite",
         "@tflite_ovic_testdata//:low_res_model.lite",
         "@tflite_ovic_testdata//:quantized_model.lite",

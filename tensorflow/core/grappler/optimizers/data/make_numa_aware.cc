@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/grappler/optimizers/data/map_and_batch_numa_aware_replacement.h"
+#include "tensorflow/core/grappler/optimizers/data/make_numa_aware.h"
 
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/grappler/clusters/cluster.h"
@@ -27,19 +27,18 @@ namespace tensorflow {
 namespace grappler {
 namespace {
 
-NodeDef MakeNumaAware(const NodeDef& node, MutableGraphView* graph) {
+NodeDef MakeNumaAwareNode(const NodeDef& node, MutableGraphView* graph) {
   NodeDef numa_aware_node = node;
-  graph_utils::SetUniqueGraphNodeName("map_and_batch_numa_aware",
-                                      graph->GetGraph(), &numa_aware_node);
+  graph_utils::SetUniqueGraphNodeName("make_numa_aware", graph->GetGraph(),
+                                      &numa_aware_node);
   numa_aware_node.set_op("ExperimentalNumaMapAndBatchDataset");
   return numa_aware_node;
 }
 
 }  // namespace
 
-Status MapAndBatchNumaAwareReplacement::Optimize(Cluster* cluster,
-                                                 const GrapplerItem& item,
-                                                 GraphDef* output) {
+Status MakeNumaAware::Optimize(Cluster* cluster, const GrapplerItem& item,
+                               GraphDef* output) {
   *output = item.graph;
   MutableGraphView graph(output);
   std::set<string> nodes_to_delete;
@@ -47,7 +46,7 @@ Status MapAndBatchNumaAwareReplacement::Optimize(Cluster* cluster,
   for (const NodeDef& node : item.graph.node()) {
     if (node.op() != "MapAndBatchDatasetV2") continue;
 
-    auto* numa_node = graph.AddNode(MakeNumaAware(node, &graph));
+    auto* numa_node = graph.AddNode(MakeNumaAwareNode(node, &graph));
     graph.ReplaceInput(node, *numa_node);
     nodes_to_delete.insert(node.name());
   }
@@ -55,8 +54,7 @@ Status MapAndBatchNumaAwareReplacement::Optimize(Cluster* cluster,
   return Status::OK();
 }
 
-REGISTER_GRAPH_OPTIMIZER_AS(MapAndBatchNumaAwareReplacement,
-                            "map_and_batch_numa_aware_replacement");
+REGISTER_GRAPH_OPTIMIZER_AS(MakeNumaAware, "make_numa_aware");
 
 }  // namespace grappler
 }  // namespace tensorflow

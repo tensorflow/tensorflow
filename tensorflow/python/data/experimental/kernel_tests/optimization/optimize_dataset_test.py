@@ -12,14 +12,13 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Tests for the experimental input pipeline ops."""
+"""Tests for the private `_OptimizeDataset` transformation."""
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
 import numpy as np
 
-from tensorflow.python.data.experimental.ops import batching
 from tensorflow.python.data.experimental.ops import optimization
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
@@ -32,55 +31,10 @@ from tensorflow.python.platform import test
 
 class OptimizeDatasetTest(test_base.DatasetTestBase):
 
-  def testOptimizationDefault(self):
-    dataset = dataset_ops.Dataset.range(10).apply(
-        optimization.assert_next(["Map",
-                                  "Batch"])).map(lambda x: x * x).batch(10)
-    iterator = dataset.with_options(
-        dataset_ops.Options()).make_one_shot_iterator()
-    get_next = iterator.get_next()
-
-    with self.cached_session() as sess:
-      self.assertAllEqual([x * x for x in range(10)], sess.run(get_next))
-      with self.assertRaises(errors.OutOfRangeError):
-        sess.run(get_next)
-
-  def testOptimizationFusion(self):
-    dataset = dataset_ops.Dataset.range(10).apply(
-        optimization.assert_next(
-            ["MapAndBatch"])).map(lambda x: x * x).batch(10)
-    options = dataset_ops.Options()
-    options.experimental_map_and_batch_fusion = True
-    dataset = dataset.with_options(options)
-    iterator = dataset.make_one_shot_iterator()
-    get_next = iterator.get_next()
-
-    with self.cached_session() as sess:
-      self.assertAllEqual([x * x for x in range(10)], sess.run(get_next))
-      with self.assertRaises(errors.OutOfRangeError):
-        sess.run(get_next)
-
-  def testNumaAwareRewrite(self):
-    dataset = dataset_ops.Dataset.range(10).apply(
-        optimization.assert_next(["NumaMapAndBatch"])).apply(
-            batching.map_and_batch(lambda x: x * x, 10))
-    options = dataset_ops.Options()
-    options.experimental_numa_aware = True
-    dataset = dataset.with_options(options)
-    iterator = dataset.make_one_shot_iterator()
-    get_next = iterator.get_next()
-
-    with self.cached_session() as sess:
-      self.assertAllEqual([x * x for x in range(10)], sess.run(get_next))
-      with self.assertRaises(errors.OutOfRangeError):
-        sess.run(get_next)
-
   def testOptimizationStatefulFunction(self):
     dataset = dataset_ops.Dataset.range(10).map(
         lambda _: random_ops.random_uniform([])).batch(10)
-    options = dataset_ops.Options()
-    options.experimental_map_and_batch_fusion = True
-    dataset = dataset.with_options(options)
+    dataset = dataset_ops._OptimizeDataset(dataset, [])
     iterator = dataset.make_one_shot_iterator()
     get_next = iterator.get_next()
 
@@ -90,9 +44,7 @@ class OptimizeDatasetTest(test_base.DatasetTestBase):
   def testOptimizationLargeInputFromTensor(self):
     input_t = array_ops.placeholder(dtypes.int32, (None, None, None))
     dataset = dataset_ops.Dataset.from_tensors(input_t)
-    options = dataset_ops.Options()
-    options.experimental_map_and_batch_fusion = True
-    dataset = dataset.with_options(options)
+    dataset = dataset_ops._OptimizeDataset(dataset, [])
     iterator = dataset.make_initializable_iterator()
     init_op = iterator.initializer
     get_next = iterator.get_next()
@@ -104,9 +56,7 @@ class OptimizeDatasetTest(test_base.DatasetTestBase):
   def testOptimizationLargeInputFromTensorSlices(self):
     input_t = array_ops.placeholder(dtypes.int32, (None, None, None, None))
     dataset = dataset_ops.Dataset.from_tensor_slices(input_t)
-    options = dataset_ops.Options()
-    options.experimental_map_and_batch_fusion = True
-    dataset = dataset.with_options(options)
+    dataset = dataset_ops._OptimizeDataset(dataset, [])
     iterator = dataset.make_initializable_iterator()
     init_op = iterator.initializer
     get_next = iterator.get_next()
@@ -126,11 +76,7 @@ class OptimizeDatasetTest(test_base.DatasetTestBase):
 
     dataset = dataset_ops.Dataset.range(1)
     dataset = dataset.flat_map(flat_map_fn)
-
-    options = dataset_ops.Options()
-    options.experimental_noop_elimination = True
-    dataset = dataset.with_options(options)
-
+    dataset = dataset_ops._OptimizeDataset(dataset, ["noop_elimination"])
     iterator = dataset.make_one_shot_iterator()
     get_next = iterator.get_next()
 

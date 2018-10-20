@@ -540,6 +540,49 @@ class TestDistributionStrategyWithDatasets(test.TestCase,
                 validation_data=dataset, validation_steps=2)
       model.predict(get_predict_dataset(distribution), steps=2)
 
+  @combinations.generate(strategy_combinations())
+  def test_model_interleaved_eval_same_as_direct_eval(self, distribution):
+    with self.cached_session():
+      loss = 'mse'
+
+      user_controlled_model = get_model()
+      user_controlled_optimizer = gradient_descent.GradientDescentOptimizer(
+          0.001)
+      user_controlled_metrics = ['mae', keras.metrics.CategoricalAccuracy()]
+      user_controlled_model.compile(user_controlled_optimizer, loss,
+                                    metrics=user_controlled_metrics,
+                                    distribute=distribution)
+
+      interleaved_model = get_model()
+      interleaved_optimizer = gradient_descent.GradientDescentOptimizer(0.001)
+      interleaved_metrics = ['mae', keras.metrics.CategoricalAccuracy()]
+      interleaved_model.compile(interleaved_optimizer, loss,
+                                metrics=interleaved_metrics,
+                                distribute=distribution)
+
+      dataset = get_dataset(distribution)
+
+      # Call fit with validation interleaved
+      interleaved_output = interleaved_model.fit(dataset, epochs=2,
+                                                 steps_per_epoch=2, verbose=0,
+                                                 validation_data=dataset,
+                                                 validation_steps=2)
+
+      # Manually control the validation running after each epoch.
+      user_controlled_output = []
+      for _ in range(2):
+        user_controlled_model.fit(
+            dataset, epochs=1, steps_per_epoch=2, verbose=0)
+        user_controlled_output.append(
+            user_controlled_model.evaluate(dataset, steps=2))
+
+      self.assertEqual(interleaved_output.history['val_loss'],
+                       [x[0] for x in user_controlled_output])
+      self.assertEqual(interleaved_output.history['val_mean_absolute_error'],
+                       [x[1] for x in user_controlled_output])
+      self.assertEqual(interleaved_output.history['val_categorical_accuracy'],
+                       [x[2] for x in user_controlled_output])
+
   # TODO(priyag): Enable this test for TPU. Currently tuples/dict don't work
   # as clone_model's input_tensors argument only seems to accept list and not
   # tuples or dict.

@@ -28,9 +28,13 @@ namespace xla {
 // TODO(b/26024837): Check output shape for all instruction types.
 class ShapeVerifier : public DfsHloVisitor {
  public:
-  explicit ShapeVerifier(bool layout_sensitive, bool allow_mixed_precision)
+  ShapeVerifier(bool layout_sensitive, bool allow_mixed_precision)
       : layout_sensitive_(layout_sensitive),
         allow_mixed_precision_(allow_mixed_precision) {}
+
+  // Verifies that entry computation layout matches parameters and root shape of
+  // the module's entry computation.
+  virtual Status VerifyEntryComputationLayout(const HloModule& module);
 
   Status Preprocess(HloInstruction* hlo) override;
 

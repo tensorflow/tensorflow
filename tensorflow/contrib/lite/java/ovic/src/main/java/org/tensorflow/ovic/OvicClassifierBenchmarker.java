@@ -57,7 +57,6 @@ public final class OvicClassifierBenchmarker extends OvicBenchmarker {
       int [] inputDims = classifier.getInputDims();
       imgHeight = inputDims[1];
       imgWidth = inputDims[2];
-      quantizedInput = true;
       // Only accept QUANTIZED_UINT8 input.
       imgData = ByteBuffer.allocateDirect(DIM_BATCH_SIZE * imgHeight * imgWidth * DIM_PIXEL_SIZE);
       imgData.order(ByteOrder.nativeOrder());

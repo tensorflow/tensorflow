@@ -2087,6 +2087,7 @@ tf_kernel_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:resource_variable_ops_op_lib",
+        "@com_google_absl//absl/strings",
     ],
 )
 
