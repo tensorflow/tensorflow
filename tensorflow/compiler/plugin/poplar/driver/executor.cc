@@ -858,30 +858,28 @@ Status PoplarExecutor::MoveDeviceToHost() {
   uint64 total_size = 0;
   uint64 total_count = 0;
 
-  for (const auto& tc : allocations_) {
-    // Set up streams
-    if (tc->on_device == true && !tc->output_handle.empty()) {
-      void* buf(static_cast<void*>(tc->data));
-      current_engine_->connectStream(tc->output_handle, buf);
+  try {
+    for (const auto& tc : allocations_) {
+      // Set up streams
+      if (tc->on_device == true && !tc->output_handle.empty()) {
+        void* buf(static_cast<void*>(tc->data));
+        current_engine_->connectStream(tc->output_handle, buf);
 
-      Json::Value tensor;
-      tensor["name"] = Json::Value(tc->output_handle);
-      tensor["size"] = Json::Value::UInt64(tc->size);
-      root["tensors"].append(tensor);
-      total_size += tc->size;
-      total_count++;
+        Json::Value tensor;
+        tensor["name"] = Json::Value(tc->output_handle);
+        tensor["size"] = Json::Value::UInt64(tc->size);
+        root["tensors"].append(tensor);
+        total_size += tc->size;
+        total_count++;
+      }
     }
-  }
-  root["total_size"] = Json::Value::UInt64(total_size);
-  Json::StreamWriterBuilder json_builder;
-  std::string json_msg = Json::writeString(json_builder, root);
+    root["total_size"] = Json::Value::UInt64(total_size);
+    Json::StreamWriterBuilder json_builder;
+    std::string json_msg = Json::writeString(json_builder, root);
 
-  // perform device -> host read
-  if (total_count > 0) {
-    try {
+    // perform device -> host read
+    if (total_count > 0) {
       current_engine_->run(PoplarProgramType::DEVICE_TO_HOST);
-    } catch (const std::logic_error& e) {
-      return PoplarExceptionToTensorflowStatus("[Device to host] ", e);
     }
 
     if (current_config_.profiling().enable_io_trace()) {
@@ -898,6 +896,8 @@ Status PoplarExecutor::MoveDeviceToHost() {
       tc->output_handle.clear();
       tc->input_handle.clear();
     }
+  } catch (const std::logic_error& e) {
+    return PoplarExceptionToTensorflowStatus("[Device to host] ", e);
   }
   return Status::OK();
 }
