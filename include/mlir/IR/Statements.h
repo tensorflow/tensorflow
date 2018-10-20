@@ -347,11 +347,6 @@ public:
     return value->getKind() == SSAValueKind::ForStmt;
   }
 
-  /// Folds the specified (lower or upper) bound to a constant if possible
-  /// considering its operands. Returns false if the folding happens, true
-  /// otherwise.
-  bool constantFoldBound(bool lower = true);
-
 private:
   // Affine map for the lower bound.
   AffineMap lbMap;

@@ -16,11 +16,11 @@
 // =============================================================================
 
 #include "mlir/IR/Builders.h"
-#include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/CFGFunction.h"
 #include "mlir/IR/StmtVisitor.h"
 #include "mlir/Transforms/Pass.h"
 #include "mlir/Transforms/Passes.h"
+#include "mlir/Transforms/Utils.h"
 
 using namespace mlir;
 
@@ -143,10 +143,9 @@ void ConstantFold::visitOperationStmt(OperationStmt *stmt) {
   }
 }
 
-// Override the walker's for statement visit for constant folding.
-void ConstantFold::visitForStmt(ForStmt *stmt) {
-  stmt->constantFoldBound(/*lower=*/true);
-  stmt->constantFoldBound(/*lower=*/false);
+// Override the walker's 'for' statement visit for constant folding.
+void ConstantFold::visitForStmt(ForStmt *forStmt) {
+  constantFoldBounds(forStmt);
 }
 
 PassResult ConstantFold::runOnMLFunction(MLFunction *f) {

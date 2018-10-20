@@ -426,51 +426,6 @@ bool ForStmt::matchingBoundOperandList() const {
   return true;
 }
 
-/// Folds the specified (lower or upper) bound to a constant if possible
-/// considering its operands. Returns false if the folding happens, true
-/// otherwise.
-bool ForStmt::constantFoldBound(bool lower) {
-  // Check if the bound is already a constant.
-  if (lower && hasConstantLowerBound())
-    return true;
-  if (!lower && hasConstantUpperBound())
-    return true;
-
-  // Check to see if each of the operands is the result of a constant.  If so,
-  // get the value.  If not, ignore it.
-  SmallVector<Attribute *, 8> operandConstants;
-  auto boundOperands =
-      lower ? getLowerBoundOperands() : getUpperBoundOperands();
-  for (const auto *operand : boundOperands) {
-    Attribute *operandCst = nullptr;
-    if (auto *operandOp = operand->getDefiningOperation()) {
-      if (auto operandConstantOp = operandOp->dyn_cast<ConstantOp>())
-        operandCst = operandConstantOp->getValue();
-    }
-    operandConstants.push_back(operandCst);
-  }
-
-  AffineMap boundMap = lower ? getLowerBoundMap() : getUpperBoundMap();
-  assert(boundMap.getNumResults() >= 1 &&
-         "bound maps should have at least one result");
-  SmallVector<Attribute *, 4> foldedResults;
-  if (boundMap.constantFold(operandConstants, foldedResults))
-    return true;
-
-  // Compute the max or min as applicable over the results.
-  assert(!foldedResults.empty() && "bounds should have at least one result");
-  auto maxOrMin = cast<IntegerAttr>(foldedResults[0])->getValue();
-  for (unsigned i = 1; i < foldedResults.size(); i++) {
-    auto foldedResult = cast<IntegerAttr>(foldedResults[i])->getValue();
-    maxOrMin = lower ? std::max(maxOrMin, foldedResult)
-                     : std::min(maxOrMin, foldedResult);
-  }
-  lower ? setConstantLowerBound(maxOrMin) : setConstantUpperBound(maxOrMin);
-
-  // Return false on success.
-  return false;
-}
-
 //===----------------------------------------------------------------------===//
 // IfStmt
 //===----------------------------------------------------------------------===//

@@ -25,8 +25,8 @@
 #include "mlir/Analysis/AffineAnalysis.h"
 #include "mlir/Analysis/AffineStructures.h"
 #include "mlir/IR/Builders.h"
-#include "mlir/IR/BuiltinOps.h"
 #include "mlir/StandardOps/StandardOps.h"
+#include "mlir/Support/MathExtras.h"
 #include "llvm/ADT/DenseMap.h"
 
 using namespace mlir;
@@ -338,4 +338,57 @@ void mlir::forwardSubstitute(OpPointer<AffineApplyOp> affineApplyOp) {
       cast<OperationStmt>(oldAffineApplyOp->getOperation())->eraseFromBlock();
     }
   }
+}
+
+/// Folds the specified (lower or upper) bound to a constant if possible
+/// considering its operands. Returns false if the folding happens for any of
+/// the bounds, true otherwise.
+bool mlir::constantFoldBounds(ForStmt *forStmt) {
+  auto foldLowerOrUpperBound = [forStmt](bool lower) {
+    // Check if the bound is already a constant.
+    if (lower && forStmt->hasConstantLowerBound())
+      return true;
+    if (!lower && forStmt->hasConstantUpperBound())
+      return true;
+
+    // Check to see if each of the operands is the result of a constant.  If so,
+    // get the value.  If not, ignore it.
+    SmallVector<Attribute *, 8> operandConstants;
+    auto boundOperands = lower ? forStmt->getLowerBoundOperands()
+                               : forStmt->getUpperBoundOperands();
+    for (const auto *operand : boundOperands) {
+      Attribute *operandCst = nullptr;
+      if (auto *operandOp = operand->getDefiningOperation()) {
+        if (auto operandConstantOp = operandOp->dyn_cast<ConstantOp>())
+          operandCst = operandConstantOp->getValue();
+      }
+      operandConstants.push_back(operandCst);
+    }
+
+    AffineMap boundMap =
+        lower ? forStmt->getLowerBoundMap() : forStmt->getUpperBoundMap();
+    assert(boundMap.getNumResults() >= 1 &&
+           "bound maps should have at least one result");
+    SmallVector<Attribute *, 4> foldedResults;
+    if (boundMap.constantFold(operandConstants, foldedResults))
+      return true;
+
+    // Compute the max or min as applicable over the results.
+    assert(!foldedResults.empty() && "bounds should have at least one result");
+    auto maxOrMin = cast<IntegerAttr>(foldedResults[0])->getValue();
+    for (unsigned i = 1; i < foldedResults.size(); i++) {
+      auto foldedResult = cast<IntegerAttr>(foldedResults[i])->getValue();
+      maxOrMin = lower ? std::max(maxOrMin, foldedResult)
+                       : std::min(maxOrMin, foldedResult);
+    }
+    lower ? forStmt->setConstantLowerBound(maxOrMin)
+          : forStmt->setConstantUpperBound(maxOrMin);
+
+    // Return false on success.
+    return false;
+  };
+
+  bool ret = foldLowerOrUpperBound(/*lower=*/true);
+  ret &= foldLowerOrUpperBound(/*lower=*/false);
+  return ret;
 }

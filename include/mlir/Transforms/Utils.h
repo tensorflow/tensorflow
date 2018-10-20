@@ -31,6 +31,7 @@
 
 namespace mlir {
 
+class ForStmt;
 class Location;
 class MLFuncBuilder;
 class MLValue;
@@ -95,6 +96,10 @@ OperationStmt *createAffineComputationSlice(OperationStmt *opStmt);
 // NOTE: This method may modify users of results of this operation.
 // TODO(mlir-team): extend this for SSAValue / CFGFunctions.
 void forwardSubstitute(OpPointer<AffineApplyOp> affineApplyOp);
+
+/// Folds the lower and upper bounds of a 'for' stmt to constants if possible.
+/// Returns false if the folding happens for at least one bound, true otherwise.
+bool constantFoldBounds(ForStmt *forStmt);
 
 } // end namespace mlir
 
