@@ -103,8 +103,7 @@ Status XlaDeviceContext::TransferLiteralToDevice(const Tensor& host_tensor,
     auto event = std::make_shared<se::Event>(stream_->parent());
     TF_RET_CHECK(event->Init()) << "Event failed to initialize!";
     host_to_device_stream_->ThenRecordEvent(event.get());
-    xla_tensor->SetDefinitionEvent(std::move(event),
-                                   host_to_device_stream_.get());
+    xla_tensor->SetDefinedOn(host_to_device_stream_.get(), std::move(event));
   }
   // Unref the host tensor, and capture the literal shared_ptr too so it goes
   // out of scope when the lambda completes.
@@ -226,7 +225,11 @@ void XlaDeviceContext::CopyDeviceTensorToCPU(const Tensor* device_tensor,
   void* dst_ptr = DMAHelper::base(cpu_tensor);
   XlaTensor* xla_tensor = XlaTensor::FromTensor(device_tensor);
 
-  xla_tensor->WaitForDefinitionEventOnStream(device_to_host_stream_.get());
+  if (se::Event* event =
+          xla_tensor->GetDefinitionEvent(device_to_host_stream_.get())) {
+    device_to_host_stream_->ThenWaitFor(event);
+    xla_tensor->SetDefinedOn(device_to_host_stream_.get());
+  }
 
   Status status;
   if (transfer_as_literal_) {
@@ -280,7 +283,11 @@ void XlaDeviceContext::CopyDeviceTensorToDevice(const Tensor& src_tensor,
       }
     }
 
-    xla_src->WaitForDefinitionEventOnStream(device_to_device_stream.get());
+    if (se::Event* event =
+            xla_src->GetDefinitionEvent(device_to_device_stream.get())) {
+      device_to_device_stream->ThenWaitFor(event);
+      xla_src->SetDefinedOn(device_to_device_stream.get());
+    }
 
     auto from_iter = xla_src->shaped_buffer().buffers().begin();
     auto to_iter = xla_dst->shaped_buffer().buffers().begin();
@@ -294,8 +301,7 @@ void XlaDeviceContext::CopyDeviceTensorToDevice(const Tensor& src_tensor,
       auto event = std::make_shared<se::Event>(stream_->parent());
       TF_RET_CHECK(event->Init()) << "Event failed to initialize";
       device_to_device_stream->ThenRecordEvent(event.get());
-      xla_dst->SetDefinitionEvent(std::move(event),
-                                  device_to_device_stream.get());
+      xla_dst->SetDefinedOn(device_to_device_stream.get(), std::move(event));
     }
     return Status::OK();
   }();

@@ -73,10 +73,10 @@ Status XlaTensor::AllocateShapedBuffer(DataType dtype, const TensorShape& shape,
   return Status::OK();
 }
 
-void XlaTensor::WaitForDefinitionEventOnStream(se::Stream* stream) {
+se::Event* XlaTensor::GetDefinitionEvent(se::Stream* stream) {
   mutex_lock lock(mu_);
   if (!definition_event_) {
-    return;
+    return nullptr;
   }
 
   // The set of defined streams is expected to be very small indeed (usually
@@ -84,19 +84,22 @@ void XlaTensor::WaitForDefinitionEventOnStream(se::Stream* stream) {
   if (std::find(streams_defined_on_.begin(), streams_defined_on_.end(),
                 stream) != streams_defined_on_.end()) {
     // stream is in streams_defined_on_; it doesn't need to be waited on.
-    return;
+    return nullptr;
   }
 
-  stream->ThenWaitFor(definition_event_.get());
-  streams_defined_on_.push_back(stream);
+  return definition_event_.get();
 }
 
-void XlaTensor::SetDefinitionEvent(std::shared_ptr<se::Event> event,
-                                   se::Stream* stream) {
-  DCHECK(!definition_event_);
+void XlaTensor::SetDefinedOn(se::Stream* stream,
+                             std::shared_ptr<se::Event> event) {
+  mutex_lock lock(mu_);
+  definition_event_ = std::move(event);
+  streams_defined_on_ = {stream};
+}
+
+void XlaTensor::SetDefinedOn(se::Stream* stream) {
   mutex_lock lock(mu_);
   streams_defined_on_.push_back(stream);
-  definition_event_ = std::move(event);
 }
 
 // The pointer tag, OR-ed into the XlaTensor's address to distinguish it from
