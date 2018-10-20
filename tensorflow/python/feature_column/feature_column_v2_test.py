@@ -3419,8 +3419,8 @@ class FeatureLayerTest(test.TestCase):
     self.assertEqual(1 + 3 + 5, net.shape[1])
     with _initialized_session() as sess:
 
-      # Each row is formed by concatenating `embedded_body_style`,
-      # `one_hot_body_style`, and `price` in order.
+      # Each row is formed by concatenating `one_hot_body_style`,
+      # `embedded_country`, and `price` in order.
       self.assertAllEqual(
           [[0., 0., 1., 11., 12., 13., 14., 15., 11.],
            [1., 0., 0., 1., 2., 3., 4., 5., 12.]],
