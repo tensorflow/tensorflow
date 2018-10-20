@@ -2654,33 +2654,33 @@ class PartitionedVariable(object):
       value_list = array_ops.split(value, size_splits_list, axis=partition_ix)
 
     op_list = [
-        assign_fn(var, value_list[idx], idx)
+        assign_fn(var, value_list[idx])
         for idx, var in enumerate(self._variable_list)
     ]
     return op_list
 
   def assign(self, value, use_locking=False, name=None, read_value=True):
-    assign_fn = lambda var, r_value, idx: var.assign(
+    assign_fn = lambda var, r_value: var.assign(
         r_value, use_locking=use_locking,
-        name="%s_%d" % (name, idx), read_value=read_value)
+        name=name, read_value=read_value)
     assign_list = self._apply_assign_fn(assign_fn, value)
     if read_value:
       return assign_list
     return [assign.op for assign in assign_list]
 
   def assign_add(self, value, use_locking=False, name=None, read_value=True):
-    assign_fn = lambda var, r_value, idx: var.assign_add(
+    assign_fn = lambda var, r_value: var.assign_add(
         r_value, use_locking=use_locking,
-        name="%s_%d" % (name, idx), read_value=read_value)
+        name=name, read_value=read_value)
     assign_list = self._apply_assign_fn(assign_fn, value)
     if read_value:
       return assign_list
     return [assign.op for assign in assign_list]
 
   def assign_sub(self, value, use_locking=False, name=None, read_value=True):
-    assign_fn = lambda var, r_value, idx: var.assign_sub(
+    assign_fn = lambda var, r_value: var.assign_sub(
         r_value, use_locking=use_locking,
-        name="%s_%d" % (name, idx), read_value=read_value)
+        name=name, read_value=read_value)
     assign_list = self._apply_assign_fn(assign_fn, value)
     if read_value:
       return assign_list
