@@ -33,21 +33,3 @@ GatherTest.testHigherRank # Bad
 MatrixTriangularSolveOpTest.testBatch # Arithmetic precision?
 XlaOpsTest.testShiftRightLogical # using UINT32
 XlaOpsTest.testShiftRightArithmetic # using UINT32
-ScatterNdTest # scatter
-SegmentReductionOpsTest # scatter
-SparseToDenseTest # scatter
-VariableOpsTest.testScatterAdd # scatter
-VariableOpsTest.testScatterAddScalar
-VariableOpsTest.testScatterNdUpdateAddOps
-VariableOpsTest.testScatterNdAddOps
-VariableOpsTest.testScatterMulScalar
-VariableOpsTest.testScatterMul
-VariableOpsTest.testScatterUpdate
-VariableOpsTest.testScatterSubScalar
-VariableOpsTest.testScatterSub
-VariableOpsTest.testScatterMinScalar
-VariableOpsTest.testScatterMin
-VariableOpsTest.testScatterMaxScalar
-VariableOpsTest.testScatterMax
-VariableOpsTest.testScatterDivScalar
-VariableOpsTest.testScatterDiv

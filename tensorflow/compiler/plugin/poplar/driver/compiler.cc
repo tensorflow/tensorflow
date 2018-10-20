@@ -60,6 +60,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_tfgraph_builder.h"
 #include "tensorflow/compiler/xla/service/inliner.h"
 #include "tensorflow/compiler/xla/service/reshape_mover.h"
+#include "tensorflow/compiler/xla/service/scatter_expander.h"
 #include "tensorflow/compiler/xla/service/tuple_simplifier.h"
 #include "tensorflow/compiler/xla/service/while_loop_constant_sinking.h"
 #include "tensorflow/compiler/xla/service/zero_sized_hlo_elimination.h"
@@ -273,6 +274,7 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::RunBackend(
     HloPassPipeline pipeline("IPU");
     pipeline.AddPass<BatchNormExpander>(true, true, true);
     pipeline.AddPass<GatherExpander>();
+    pipeline.AddPass<ScatterExpander>();
     pipeline.AddPass<DotDecomposer>();
     pipeline.AddPass<HloPassFix<FuseOpsEarly>>(resources.annotations);
     pipeline.AddPass<HloCSE>(false);
