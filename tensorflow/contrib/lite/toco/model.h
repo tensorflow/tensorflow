@@ -152,7 +152,6 @@ enum class OperatorType : uint8 {
   kCTCBeamSearchDecoder,
   kUnpack,
   kZerosLike,
-  kResizeNearestNeighbor
 };
 
 // Helper to deal with TensorFlow arrays using a different ordering of
@@ -1662,21 +1661,6 @@ struct ArgMinOperator : Operator {
 // TensorFlow equivalent: ResizeBilinear
 struct ResizeBilinearOperator : Operator {
   ResizeBilinearOperator() : Operator(OperatorType::kResizeBilinear) {}
-
-  bool align_corners = false;
-};
-
-// ResizeNearestNeighborOperator operator. It resizes input images with nearest
-// neighbor interpolation. It does not support align_corners at the moment.
-//
-// Inputs:
-//   inputs[0]: required: the input array
-//   inputs[1]: required: the new image size
-//
-// TensorFlow equivalent: ResizeNearestNeighbor
-struct ResizeNearestNeighborOperator : Operator {
-  ResizeNearestNeighborOperator()
-      : Operator(OperatorType::kResizeNearestNeighbor) {}
 
   bool align_corners = false;
 };

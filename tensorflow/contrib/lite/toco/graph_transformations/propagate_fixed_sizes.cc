@@ -866,34 +866,6 @@ void ProcessResizeBilinearOperator(Model* model, ResizeBilinearOperator* op) {
                          output_shape[1], input_data_shape.dims(3)}));
 }
 
-void ProcessResizeNearestNeighborOperator(Model* model,
-                                          ResizeNearestNeighborOperator* op) {
-  CHECK_EQ(op->inputs.size(), 2);
-  CHECK_EQ(op->outputs.size(), 1);
-
-  if (!model->GetArray(op->inputs[0]).has_shape() ||
-      !model->GetArray(op->inputs[1]).has_shape()) {
-    return;
-  }
-  const auto& input_data_shape = model->GetArray(op->inputs[0]).shape();
-
-  const string& output_size_name = op->inputs[1];
-  const auto& output_size_array = model->GetArray(output_size_name);
-  CHECK(output_size_array.data_type == ArrayDataType::kInt32);
-  CHECK(output_size_array.has_shape());
-  const auto& output_size_shape = output_size_array.shape();
-  CHECK_EQ(output_size_shape.dimensions_count(), 1);
-  CHECK_EQ(output_size_shape.dims(0), 2);
-  if (!output_size_array.buffer) {
-    return;
-  }
-  std::vector<int32> output_shape =
-      output_size_array.GetBuffer<ArrayDataType::kInt32>().data;
-  model->GetArray(op->outputs[0])
-      .copy_shape(Shape({input_data_shape.dims(0), output_shape[0],
-                         output_shape[1], input_data_shape.dims(3)}));
-}
-
 void ProcessLstmCellOperator(Model* model, LstmCellOperator* op) {
   // Only required for compact LstmCell with default NUM_INPUTS of inputs.
   if (op->inputs.size() != LstmCellOperator::NUM_INPUTS) return;
@@ -1870,10 +1842,6 @@ void ProcessUnpackOperator(Model* model, UnpackOperator* op) {
     case OperatorType::kResizeBilinear:
       ProcessResizeBilinearOperator(model,
                                     static_cast<ResizeBilinearOperator*>(op));
-      break;
-    case OperatorType::kResizeNearestNeighbor:
-      ProcessResizeNearestNeighborOperator(
-          model, static_cast<ResizeNearestNeighborOperator*>(op));
       break;
     case OperatorType::kUnidirectionalSequenceLstm:
       ProcessUnidirectionalSequenceLstmOperator(

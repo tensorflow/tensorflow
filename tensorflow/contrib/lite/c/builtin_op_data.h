@@ -211,10 +211,6 @@ typedef struct {
 } TfLiteResizeBilinearParams;
 
 typedef struct {
-  bool align_corners;
-} TfLiteResizeNearestNeighborParams;
-
-typedef struct {
 } TfLitePadParams;
 
 typedef struct {

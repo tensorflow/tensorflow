@@ -88,9 +88,6 @@ struct BidirectionalSequenceLSTMOptionsT;
 struct ResizeBilinearOptions;
 struct ResizeBilinearOptionsT;
 
-struct ResizeNearestNeighborOptions;
-struct ResizeNearestNeighborOptionsT;
-
 struct CallOptions;
 struct CallOptionsT;
 
@@ -412,12 +409,11 @@ enum BuiltinOperator {
   BuiltinOperator_FILL = 94,
   BuiltinOperator_FLOOR_MOD = 95,
   BuiltinOperator_RANGE = 96,
-  BuiltinOperator_RESIZE_NEAREST_NEIGHBOR = 97,
   BuiltinOperator_MIN = BuiltinOperator_ADD,
-  BuiltinOperator_MAX = BuiltinOperator_RESIZE_NEAREST_NEIGHBOR
+  BuiltinOperator_MAX = BuiltinOperator_RANGE
 };
 
-inline const BuiltinOperator (&EnumValuesBuiltinOperator())[97] {
+inline const BuiltinOperator (&EnumValuesBuiltinOperator())[96] {
   static const BuiltinOperator values[] = {
     BuiltinOperator_ADD,
     BuiltinOperator_AVERAGE_POOL_2D,
@@ -514,8 +510,7 @@ inline const BuiltinOperator (&EnumValuesBuiltinOperator())[97] {
     BuiltinOperator_ZEROS_LIKE,
     BuiltinOperator_FILL,
     BuiltinOperator_FLOOR_MOD,
-    BuiltinOperator_RANGE,
-    BuiltinOperator_RESIZE_NEAREST_NEIGHBOR
+    BuiltinOperator_RANGE
   };
   return values;
 }
@@ -619,7 +614,6 @@ inline const char * const *EnumNamesBuiltinOperator() {
     "FILL",
     "FLOOR_MOD",
     "RANGE",
-    "RESIZE_NEAREST_NEIGHBOR",
     nullptr
   };
   return names;
@@ -705,12 +699,11 @@ enum BuiltinOptions {
   BuiltinOptions_UnidirectionalSequenceLSTMOptions = 71,
   BuiltinOptions_FloorModOptions = 72,
   BuiltinOptions_RangeOptions = 73,
-  BuiltinOptions_ResizeNearestNeighborOptions = 74,
   BuiltinOptions_MIN = BuiltinOptions_NONE,
-  BuiltinOptions_MAX = BuiltinOptions_ResizeNearestNeighborOptions
+  BuiltinOptions_MAX = BuiltinOptions_RangeOptions
 };
 
-inline const BuiltinOptions (&EnumValuesBuiltinOptions())[75] {
+inline const BuiltinOptions (&EnumValuesBuiltinOptions())[74] {
   static const BuiltinOptions values[] = {
     BuiltinOptions_NONE,
     BuiltinOptions_Conv2DOptions,
@@ -785,8 +778,7 @@ inline const BuiltinOptions (&EnumValuesBuiltinOptions())[75] {
     BuiltinOptions_BidirectionalSequenceRNNOptions,
     BuiltinOptions_UnidirectionalSequenceLSTMOptions,
     BuiltinOptions_FloorModOptions,
-    BuiltinOptions_RangeOptions,
-    BuiltinOptions_ResizeNearestNeighborOptions
+    BuiltinOptions_RangeOptions
   };
   return values;
 }
@@ -867,7 +859,6 @@ inline const char * const *EnumNamesBuiltinOptions() {
     "UnidirectionalSequenceLSTMOptions",
     "FloorModOptions",
     "RangeOptions",
-    "ResizeNearestNeighborOptions",
     nullptr
   };
   return names;
@@ -1172,10 +1163,6 @@ template<> struct BuiltinOptionsTraits<FloorModOptions> {
 
 template<> struct BuiltinOptionsTraits<RangeOptions> {
   static const BuiltinOptions enum_value = BuiltinOptions_RangeOptions;
-};
-
-template<> struct BuiltinOptionsTraits<ResizeNearestNeighborOptions> {
-  static const BuiltinOptions enum_value = BuiltinOptions_ResizeNearestNeighborOptions;
 };
 
 struct BuiltinOptionsUnion {
@@ -1792,14 +1779,6 @@ struct BuiltinOptionsUnion {
   const RangeOptionsT *AsRangeOptions() const {
     return type == BuiltinOptions_RangeOptions ?
       reinterpret_cast<const RangeOptionsT *>(value) : nullptr;
-  }
-  ResizeNearestNeighborOptionsT *AsResizeNearestNeighborOptions() {
-    return type == BuiltinOptions_ResizeNearestNeighborOptions ?
-      reinterpret_cast<ResizeNearestNeighborOptionsT *>(value) : nullptr;
-  }
-  const ResizeNearestNeighborOptionsT *AsResizeNearestNeighborOptions() const {
-    return type == BuiltinOptions_ResizeNearestNeighborOptions ?
-      reinterpret_cast<const ResizeNearestNeighborOptionsT *>(value) : nullptr;
   }
 };
 
@@ -3783,60 +3762,6 @@ inline flatbuffers::Offset<ResizeBilinearOptions> CreateResizeBilinearOptions(
 }
 
 flatbuffers::Offset<ResizeBilinearOptions> CreateResizeBilinearOptions(flatbuffers::FlatBufferBuilder &_fbb, const ResizeBilinearOptionsT *_o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
-
-struct ResizeNearestNeighborOptionsT : public flatbuffers::NativeTable {
-  typedef ResizeNearestNeighborOptions TableType;
-  bool align_corners;
-  ResizeNearestNeighborOptionsT()
-      : align_corners(false) {
-  }
-};
-
-struct ResizeNearestNeighborOptions FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
-  typedef ResizeNearestNeighborOptionsT NativeTableType;
-  enum {
-    VT_ALIGN_CORNERS = 4
-  };
-  bool align_corners() const {
-    return GetField<uint8_t>(VT_ALIGN_CORNERS, 0) != 0;
-  }
-  bool Verify(flatbuffers::Verifier &verifier) const {
-    return VerifyTableStart(verifier) &&
-           VerifyField<uint8_t>(verifier, VT_ALIGN_CORNERS) &&
-           verifier.EndTable();
-  }
-  ResizeNearestNeighborOptionsT *UnPack(const flatbuffers::resolver_function_t *_resolver = nullptr) const;
-  void UnPackTo(ResizeNearestNeighborOptionsT *_o, const flatbuffers::resolver_function_t *_resolver = nullptr) const;
-  static flatbuffers::Offset<ResizeNearestNeighborOptions> Pack(flatbuffers::FlatBufferBuilder &_fbb, const ResizeNearestNeighborOptionsT* _o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
-};
-
-struct ResizeNearestNeighborOptionsBuilder {
-  flatbuffers::FlatBufferBuilder &fbb_;
-  flatbuffers::uoffset_t start_;
-  void add_align_corners(bool align_corners) {
-    fbb_.AddElement<uint8_t>(ResizeNearestNeighborOptions::VT_ALIGN_CORNERS, static_cast<uint8_t>(align_corners), 0);
-  }
-  explicit ResizeNearestNeighborOptionsBuilder(flatbuffers::FlatBufferBuilder &_fbb)
-        : fbb_(_fbb) {
-    start_ = fbb_.StartTable();
-  }
-  ResizeNearestNeighborOptionsBuilder &operator=(const ResizeNearestNeighborOptionsBuilder &);
-  flatbuffers::Offset<ResizeNearestNeighborOptions> Finish() {
-    const auto end = fbb_.EndTable(start_);
-    auto o = flatbuffers::Offset<ResizeNearestNeighborOptions>(end);
-    return o;
-  }
-};
-
-inline flatbuffers::Offset<ResizeNearestNeighborOptions> CreateResizeNearestNeighborOptions(
-    flatbuffers::FlatBufferBuilder &_fbb,
-    bool align_corners = false) {
-  ResizeNearestNeighborOptionsBuilder builder_(_fbb);
-  builder_.add_align_corners(align_corners);
-  return builder_.Finish();
-}
-
-flatbuffers::Offset<ResizeNearestNeighborOptions> CreateResizeNearestNeighborOptions(flatbuffers::FlatBufferBuilder &_fbb, const ResizeNearestNeighborOptionsT *_o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
 
 struct CallOptionsT : public flatbuffers::NativeTable {
   typedef CallOptions TableType;
@@ -6802,9 +6727,6 @@ struct Operator FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
   const RangeOptions *builtin_options_as_RangeOptions() const {
     return builtin_options_type() == BuiltinOptions_RangeOptions ? static_cast<const RangeOptions *>(builtin_options()) : nullptr;
   }
-  const ResizeNearestNeighborOptions *builtin_options_as_ResizeNearestNeighborOptions() const {
-    return builtin_options_type() == BuiltinOptions_ResizeNearestNeighborOptions ? static_cast<const ResizeNearestNeighborOptions *>(builtin_options()) : nullptr;
-  }
   const flatbuffers::Vector<uint8_t> *custom_options() const {
     return GetPointer<const flatbuffers::Vector<uint8_t> *>(VT_CUSTOM_OPTIONS);
   }
@@ -7126,10 +7048,6 @@ template<> inline const FloorModOptions *Operator::builtin_options_as<FloorModOp
 
 template<> inline const RangeOptions *Operator::builtin_options_as<RangeOptions>() const {
   return builtin_options_as_RangeOptions();
-}
-
-template<> inline const ResizeNearestNeighborOptions *Operator::builtin_options_as<ResizeNearestNeighborOptions>() const {
-  return builtin_options_as_ResizeNearestNeighborOptions();
 }
 
 struct OperatorBuilder {
@@ -8234,32 +8152,6 @@ inline flatbuffers::Offset<ResizeBilinearOptions> CreateResizeBilinearOptions(fl
   struct _VectorArgs { flatbuffers::FlatBufferBuilder *__fbb; const ResizeBilinearOptionsT* __o; const flatbuffers::rehasher_function_t *__rehasher; } _va = { &_fbb, _o, _rehasher}; (void)_va;
   auto _align_corners = _o->align_corners;
   return tflite::CreateResizeBilinearOptions(
-      _fbb,
-      _align_corners);
-}
-
-inline ResizeNearestNeighborOptionsT *ResizeNearestNeighborOptions::UnPack(const flatbuffers::resolver_function_t *_resolver) const {
-  auto _o = new ResizeNearestNeighborOptionsT();
-  UnPackTo(_o, _resolver);
-  return _o;
-}
-
-inline void ResizeNearestNeighborOptions::UnPackTo(ResizeNearestNeighborOptionsT *_o, const flatbuffers::resolver_function_t *_resolver) const {
-  (void)_o;
-  (void)_resolver;
-  { auto _e = align_corners(); _o->align_corners = _e; };
-}
-
-inline flatbuffers::Offset<ResizeNearestNeighborOptions> ResizeNearestNeighborOptions::Pack(flatbuffers::FlatBufferBuilder &_fbb, const ResizeNearestNeighborOptionsT* _o, const flatbuffers::rehasher_function_t *_rehasher) {
-  return CreateResizeNearestNeighborOptions(_fbb, _o, _rehasher);
-}
-
-inline flatbuffers::Offset<ResizeNearestNeighborOptions> CreateResizeNearestNeighborOptions(flatbuffers::FlatBufferBuilder &_fbb, const ResizeNearestNeighborOptionsT *_o, const flatbuffers::rehasher_function_t *_rehasher) {
-  (void)_rehasher;
-  (void)_o;
-  struct _VectorArgs { flatbuffers::FlatBufferBuilder *__fbb; const ResizeNearestNeighborOptionsT* __o; const flatbuffers::rehasher_function_t *__rehasher; } _va = { &_fbb, _o, _rehasher}; (void)_va;
-  auto _align_corners = _o->align_corners;
-  return tflite::CreateResizeNearestNeighborOptions(
       _fbb,
       _align_corners);
 }
@@ -10072,10 +9964,6 @@ inline bool VerifyBuiltinOptions(flatbuffers::Verifier &verifier, const void *ob
       auto ptr = reinterpret_cast<const RangeOptions *>(obj);
       return verifier.VerifyTable(ptr);
     }
-    case BuiltinOptions_ResizeNearestNeighborOptions: {
-      auto ptr = reinterpret_cast<const ResizeNearestNeighborOptions *>(obj);
-      return verifier.VerifyTable(ptr);
-    }
     default: return false;
   }
 }
@@ -10386,10 +10274,6 @@ inline void *BuiltinOptionsUnion::UnPack(const void *obj, BuiltinOptions type, c
       auto ptr = reinterpret_cast<const RangeOptions *>(obj);
       return ptr->UnPack(resolver);
     }
-    case BuiltinOptions_ResizeNearestNeighborOptions: {
-      auto ptr = reinterpret_cast<const ResizeNearestNeighborOptions *>(obj);
-      return ptr->UnPack(resolver);
-    }
     default: return nullptr;
   }
 }
@@ -10688,10 +10572,6 @@ inline flatbuffers::Offset<void> BuiltinOptionsUnion::Pack(flatbuffers::FlatBuff
       auto ptr = reinterpret_cast<const RangeOptionsT *>(value);
       return CreateRangeOptions(_fbb, ptr, _rehasher).Union();
     }
-    case BuiltinOptions_ResizeNearestNeighborOptions: {
-      auto ptr = reinterpret_cast<const ResizeNearestNeighborOptionsT *>(value);
-      return CreateResizeNearestNeighborOptions(_fbb, ptr, _rehasher).Union();
-    }
     default: return 0;
   }
 }
@@ -10988,10 +10868,6 @@ inline BuiltinOptionsUnion::BuiltinOptionsUnion(const BuiltinOptionsUnion &u) FL
     }
     case BuiltinOptions_RangeOptions: {
       value = new RangeOptionsT(*reinterpret_cast<RangeOptionsT *>(u.value));
-      break;
-    }
-    case BuiltinOptions_ResizeNearestNeighborOptions: {
-      value = new ResizeNearestNeighborOptionsT(*reinterpret_cast<ResizeNearestNeighborOptionsT *>(u.value));
       break;
     }
     default:
@@ -11363,11 +11239,6 @@ inline void BuiltinOptionsUnion::Reset() {
     }
     case BuiltinOptions_RangeOptions: {
       auto ptr = reinterpret_cast<RangeOptionsT *>(value);
-      delete ptr;
-      break;
-    }
-    case BuiltinOptions_ResizeNearestNeighborOptions: {
-      auto ptr = reinterpret_cast<ResizeNearestNeighborOptionsT *>(value);
       delete ptr;
       break;
     }

@@ -385,16 +385,6 @@ TEST_F(OperatorTest, ResizeBilinear) {
   EXPECT_EQ(op.align_corners, output_toco_op->align_corners);
 }
 
-TEST_F(OperatorTest, ResizeNearestNeighbor) {
-  ResizeNearestNeighborOperator op;
-  op.align_corners = true;
-  auto output_toco_op =
-      SerializeAndDeserialize(GetOperator("RESIZE_NEAREST_NEIGHBOR",
-                                          OperatorType::kResizeNearestNeighbor),
-                              op);
-  EXPECT_EQ(op.align_corners, output_toco_op->align_corners);
-}
-
 TEST_F(OperatorTest, Svdf) {
   SvdfOperator op;
   op.fused_activation_function = FusedActivationFunctionType::kRelu;
