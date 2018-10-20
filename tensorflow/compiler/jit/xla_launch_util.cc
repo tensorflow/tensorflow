@@ -266,7 +266,10 @@ void XlaComputationLaunchContext::PopulateInputs(
       CHECK(stream) << "Must have a stream available when using XLA tensors!";
       XlaTensor* xla_tensor = XlaTensor::FromTensor(t);
       CHECK(xla_tensor);
-      xla_tensor->WaitForDefinitionEventOnStream(stream);
+      if (se::Event* event = xla_tensor->GetDefinitionEvent(stream)) {
+        stream->ThenWaitFor(event);
+        xla_tensor->SetDefinedOn(stream);
+      }
     }
 
     const xla::Shape on_device_shape =
@@ -394,7 +397,7 @@ Status XlaComputationLaunchContext::PopulateOutputs(
             xla_tensor->set_shaped_buffer(ScopedShapedBuffer(
                 ExtractSubShapedBuffer(&output, output_num, xla_allocator_)));
             if (use_multiple_streams_) {
-              xla_tensor->SetDefinitionEvent(definition_event, stream);
+              xla_tensor->SetDefinedOn(stream, definition_event);
             }
           } else {
             // xla_tensor wasn't valid, which must mean this is a zero-element
@@ -460,7 +463,7 @@ Status XlaComputationLaunchContext::PopulateOutputs(
       xla_tensor->set_shaped_buffer(
           ExtractSubShapedBuffer(&output, output_num, xla_allocator_));
       if (use_multiple_streams_) {
-        xla_tensor->SetDefinitionEvent(definition_event, stream);
+        xla_tensor->SetDefinedOn(stream, definition_event);
       }
       *variable_infos[i].var()->tensor() = output_tensor;
     } else {

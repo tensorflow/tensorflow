@@ -88,17 +88,23 @@ class XlaTensor {
     host_tensor_.reset(new Tensor(tensor));
   }
 
-  // Adds synchronization events to 'stream' that wait for this tensor to be
-  // defined on 'stream'. Does nothing if the tensor is already defined on that
-  // stream.
-  void WaitForDefinitionEventOnStream(se::Stream* stream);
+  // If the tensor's content is not yet defined on 'stream', and there exists an
+  // se::Event declaring when the tensor's content is defined, return it.
+  // Otherwise, return nullptr. If this function returns nullptr then the
+  // tensor's content can be read on 'stream' without additional
+  // synchronization.
+  se::Event* GetDefinitionEvent(se::Stream* stream);
 
-  // Sets the definition event of the tensor to 'event', and promises that the
-  // tensor has already been defined on stream.
-  // It is an error to call SetDefinitionEvent() twice, or to call
-  // SetDefinitionEvent() after WaitForDefinitionEventOnStream() has been
-  // called.
-  void SetDefinitionEvent(std::shared_ptr<se::Event> event, se::Stream* stream);
+  // Assert that the tensor's content is defined on 'stream' by the time 'event'
+  // triggers.
+  void SetDefinedOn(se::Stream* stream, std::shared_ptr<se::Event> event);
+
+  // Assert that the tensor's content is defined on 'stream'. This version does
+  // not provide an event, and must be called *after* SetDefinedOn(Stream,
+  // Event). This call can be read as an assertion that the definition event has
+  // been waited on by 'stream', so further calls to GetDefinitionEvent(stream)
+  // do not need to also wait on the event.
+  void SetDefinedOn(se::Stream* stream);
 
   // Convert from a raw pointer to an XlaTensor, removing the pointer tag.
   static XlaTensor* FromOpaquePointer(void* ptr);
