@@ -36,7 +36,6 @@ namespace tensorflow {
 REGISTER_OP("AvroRecordDataset")
     .Input("filenames: string")
     .Input("reader_schema: string")
-    .Input("buffer_size: int64")
     .Output("handle: variant")
     .SetIsStateful()
     .SetShapeFn(shape_inference::ScalarShape)
@@ -45,7 +44,6 @@ Creates a dataset that emits the avro records from one or more files.
 filenames: A scalar or vector containing the name(s) of the file(s) to be
   read.
 reader_schema: Reader schema used for schema resolution.
-buffer_size: The size of the buffer used when reading avro files into memory
 )doc");
 
 void AvroFileReaderDestructor(avro_file_reader_t reader) {
@@ -84,12 +82,10 @@ class SequentialAvroRecordReader {
   // 'file_size' is the size of the file
   // 'filename' is the name of the file
   // 'reader_schema' are avro reader options
-  // 'buffer_size' size of the buffer reading from files
   //
   SequentialAvroRecordReader(RandomAccessFile* p_file, const uint64 file_size,
                              const string& filename,
-                             const string& reader_schema,
-                             const int64 buffer_size)
+                             const string& reader_schema)
     : p_file_(p_file),
       filename_(filename),
       file_size_(file_size),
@@ -206,12 +202,13 @@ class SequentialAvroRecordReader {
                                             avro_strerror()));
     }
     record->resize(len);
-    avro_writer_t mem_writer = avro_writer_memory(record->data(), len);
-    if (avro_value_write(mem_writer, p_reader_value_.get())) {
-      avro_writer_free(mem_writer);
+    std::unique_ptr<struct avro_writer_t_, void(*)(avro_writer_t)> mem_writer(
+      avro_writer_memory(record->data(), len),
+      [](avro_writer_t writer) { avro_writer_free(writer); });
+
+    if (avro_value_write(mem_writer.get(), p_reader_value_.get())) {
       return Status(errors::InvalidArgument("Unable to write value to memory."));
     }
-    avro_writer_free(mem_writer);
     return at_end ? errors::OutOfRange("eof") : Status::OK();
   }
 
@@ -264,26 +261,17 @@ class AvroRecordDatasetOp : public DatasetOpKernel {
     OP_REQUIRES_OK(ctx, ParseScalarArgument<string>(ctx, "reader_schema",
       &reader_schema_str));
 
-    int64 buffer_size = -1;
-    OP_REQUIRES_OK(
-        ctx, ParseScalarArgument<int64>(ctx, "buffer_size", &buffer_size));
-    OP_REQUIRES(ctx, buffer_size >= 256,
-                errors::InvalidArgument("`buffer_size` must be >= 256 B"));
-
-    *output = new Dataset(ctx, std::move(filenames), reader_schema_str,
-      buffer_size);
+    *output = new Dataset(ctx, std::move(filenames), reader_schema_str);
   }
 
  private:
   class Dataset : public DatasetBase {
    public:
     explicit Dataset(OpKernelContext* ctx, std::vector<string> filenames,
-                     const string& reader_schema_str,
-                     const int64 buffer_size)
+                     const string& reader_schema_str)
         : DatasetBase(DatasetContext(ctx)),
           filenames_(std::move(filenames)),
-          reader_schema_str_(reader_schema_str),
-          buffer_size_(buffer_size) {}
+          reader_schema_str_(reader_schema_str) {}
 
     std::unique_ptr<IteratorBase> MakeIteratorInternal(const string& prefix) const
         override {
@@ -311,48 +299,6 @@ class AvroRecordDatasetOp : public DatasetOpKernel {
 
       // TODO(fraudies): Implement me, below is a copy of the code from the
       // protobuf example reader
-      /*
-      Node* input_graph_node = nullptr;
-      TF_RETURN_IF_ERROR(b->AddInputDataset(ctx, input_, &input_graph_node));
-
-      Node* num_parallle_calls_node;
-      std::vector<Node*> dense_defaults_nodes;
-      dense_defaults_nodes.reserve(dense_defaults_.size());
-
-      TF_RETURN_IF_ERROR(
-          b->AddScalar(num_parallel_calls_, &num_parallle_calls_node));
-
-      for (const Tensor& dense_default : dense_defaults_) {
-        Node* node;
-        TF_RETURN_IF_ERROR(b->AddTensor(dense_default, &node));
-        dense_defaults_nodes.emplace_back(node);
-      }
-
-      AttrValue sparse_keys_attr;
-      AttrValue dense_keys_attr;
-      AttrValue sparse_types_attr;
-      AttrValue dense_attr;
-      AttrValue dense_shapes_attr;
-
-      b->BuildAttrValue(sparse_keys_, &sparse_keys_attr);
-      b->BuildAttrValue(dense_keys_, &dense_keys_attr);
-      b->BuildAttrValue(sparse_types_, &sparse_types_attr);
-      b->BuildAttrValue(dense_types_, &dense_attr);
-      b->BuildAttrValue(dense_shapes_, &dense_shapes_attr);
-
-      TF_RETURN_IF_ERROR(b->AddDataset(this,
-                                       {
-                                           {0, input_graph_node},
-                                           {1, num_parallle_calls_node},
-                                       },
-                                       {{2, dense_defaults_nodes}},
-                                       {{"sparse_keys", sparse_keys_attr},
-                                        {"dense_keys", dense_keys_attr},
-                                        {"sparse_types", sparse_types_attr},
-                                        {"Tdense", dense_attr},
-                                        {"dense_shapes", dense_shapes_attr}},
-                                       output));
-                                       */
       return Status::OK();
    }
 
@@ -407,7 +353,7 @@ class AvroRecordDatasetOp : public DatasetOpKernel {
 
           reader_.reset(new SequentialAvroRecordReader(
               file_.get(), file_size, next_filename,
-              dataset()->reader_schema_str_, dataset()->buffer_size_));
+              dataset()->reader_schema_str_));
           TF_RETURN_IF_ERROR(reader_->OnWorkStartup());
         } while (true);
       }
@@ -424,7 +370,6 @@ class AvroRecordDatasetOp : public DatasetOpKernel {
 
     const std::vector<string> filenames_;
     const string reader_schema_str_;
-    const int64 buffer_size_;
   };
 };
 
