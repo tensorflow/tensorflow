@@ -32,7 +32,7 @@ class AssignOpTest(test.TestCase):
   def _initAssignFetch(self, x, y, use_gpu=False):
     """Initialize a param to init and update it with y."""
     super(AssignOpTest, self).setUp()
-    with self.test_session(use_gpu=use_gpu):
+    with self.cached_session(use_gpu=use_gpu):
       p = variables.Variable(x)
       assign = state_ops.assign(p, y)
       p.initializer.run()
@@ -41,7 +41,7 @@ class AssignOpTest(test.TestCase):
 
   def _initAssignAddFetch(self, x, y, use_gpu=False):
     """Initialize a param to init, and compute param += y."""
-    with self.test_session(use_gpu=use_gpu):
+    with self.cached_session(use_gpu=use_gpu):
       p = variables.Variable(x)
       add = state_ops.assign_add(p, y)
       p.initializer.run()
@@ -50,7 +50,7 @@ class AssignOpTest(test.TestCase):
 
   def _initAssignSubFetch(self, x, y, use_gpu=False):
     """Initialize a param to init, and compute param -= y."""
-    with self.test_session(use_gpu=use_gpu):
+    with self.cached_session(use_gpu=use_gpu):
       p = variables.Variable(x)
       sub = state_ops.assign_sub(p, y)
       p.initializer.run()

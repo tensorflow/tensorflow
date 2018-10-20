@@ -28,9 +28,13 @@ namespace xla {
 // TODO(b/26024837): Check output shape for all instruction types.
 class ShapeVerifier : public DfsHloVisitor {
  public:
-  explicit ShapeVerifier(bool layout_sensitive, bool allow_mixed_precision)
+  ShapeVerifier(bool layout_sensitive, bool allow_mixed_precision)
       : layout_sensitive_(layout_sensitive),
         allow_mixed_precision_(allow_mixed_precision) {}
+
+  // Verifies that entry computation layout matches parameters and root shape of
+  // the module's entry computation.
+  virtual Status VerifyEntryComputationLayout(const HloModule& module);
 
   Status Preprocess(HloInstruction* hlo) override;
 
@@ -121,6 +125,13 @@ class ShapeVerifier : public DfsHloVisitor {
   string StringifyShape(const Shape& s) {
     return layout_sensitive_ ? ShapeUtil::HumanStringWithLayout(s)
                              : ShapeUtil::HumanString(s);
+  }
+
+  // Helpers that switch on allow_mixed_precision_.
+  bool SameElementType(const Shape& a, const Shape& b) {
+    return allow_mixed_precision_
+               ? ShapeUtil::SameElementTypeIgnoringFpPrecision(a, b)
+               : ShapeUtil::SameElementType(a, b);
   }
 
   // Checks that the given operand of the given instruction is of type TOKEN.

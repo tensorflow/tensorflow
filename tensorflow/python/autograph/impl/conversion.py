@@ -347,16 +347,17 @@ def node_to_graph(node, context, rewrite_errors=True):
   # dealing with the extra loop increment operation that the for
   # canonicalization creates.
   node = converter.apply_(node, context, continue_statements)
-  context.info.namespace['len'] = len
   node = converter.apply_(node, context, return_statements)
-  node = converter.apply_(node, context, lists)
-  node = converter.apply_(node, context, slices)
+  if context.program.options.uses(converter.Feature.LISTS):
+    node = converter.apply_(node, context, lists)
+    node = converter.apply_(node, context, slices)
   node = converter.apply_(node, context, builtin_functions)
   node = converter.apply_(node, context, call_trees)
   node = converter.apply_(node, context, control_flow)
   node = converter.apply_(node, context, conditional_expressions)
   node = converter.apply_(node, context, logical_expressions)
-  node = converter.apply_(node, context, side_effect_guards)
+  if context.program.options.uses(converter.Feature.AUTO_CONTROL_DEPS):
+    node = converter.apply_(node, context, side_effect_guards)
   node = converter.apply_(node, context, function_scopes)
   if rewrite_errors:
     node = converter.apply_(node, context, error_handlers)

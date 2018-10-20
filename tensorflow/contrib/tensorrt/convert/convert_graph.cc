@@ -115,7 +115,8 @@ bool IsTensorRTCandidate(const tensorflow::Node* node) {
     "Sqrt",
     "Abs",
     "Neg",
-#if NV_TENSORRT_MAJOR > 3
+    "Transpose",
+    "Reshape",
     "MatMul",
     "BatchMatMul",
     "Softmax",
@@ -126,7 +127,6 @@ bool IsTensorRTCandidate(const tensorflow::Node* node) {
     "Prod",
     "Max",
     "Min",
-#endif
     // TODO(ben,jie): ...
   };
   // LINT.ThenChange(//tensorflow/contrib/tensorrt/convert/convert_nodes.cc)

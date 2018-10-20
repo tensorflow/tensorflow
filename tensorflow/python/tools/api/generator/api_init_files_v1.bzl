@@ -59,6 +59,7 @@ TENSORFLOW_API_INIT_FILES_V1 = [
     "keras/wrappers/__init__.py",
     "keras/wrappers/scikit_learn/__init__.py",
     "layers/__init__.py",
+    "layers/experimental/__init__.py",
     "linalg/__init__.py",
     "logging/__init__.py",
     "losses/__init__.py",
@@ -91,5 +92,6 @@ TENSORFLOW_API_INIT_FILES_V1 = [
     "train/__init__.py",
     "train/queue_runner/__init__.py",
     "user_ops/__init__.py",
+    "version/__init__.py",
     # END GENERATED FILES
 ]

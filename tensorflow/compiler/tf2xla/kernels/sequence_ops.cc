@@ -137,9 +137,9 @@ class RangeOp : public XlaOpKernel {
 };
 
 REGISTER_XLA_OP(Name("Range")
-                    .CompileTimeConstInput("start")
-                    .CompileTimeConstInput("limit")
-                    .CompileTimeConstInput("delta"),
+                    .CompileTimeConstantInput("start")
+                    .CompileTimeConstantInput("limit")
+                    .CompileTimeConstantInput("delta"),
                 RangeOp);
 
 class LinSpaceOp : public XlaOpKernel {
@@ -210,9 +210,9 @@ class LinSpaceOp : public XlaOpKernel {
 };
 
 REGISTER_XLA_OP(Name("LinSpace")
-                    .CompileTimeConstInput("start")
-                    .CompileTimeConstInput("stop")
-                    .CompileTimeConstInput("num"),
+                    .CompileTimeConstantInput("start")
+                    .CompileTimeConstantInput("stop")
+                    .CompileTimeConstantInput("num"),
                 LinSpaceOp);
 
 }  // namespace

@@ -175,7 +175,14 @@ Status Service::CreateChannelHandle(const CreateChannelHandleRequest* arg,
 
 Status Service::Unregister(const UnregisterRequest* arg,
                            UnregisterResponse* result) {
-  return allocation_tracker_.Unregister(arg->data());
+  Status status;
+  for (auto& data : arg->data()) {
+    Status unregister_status = allocation_tracker_.Unregister(data);
+    if (!unregister_status.ok() && status.ok()) {
+      status = unregister_status;
+    }
+  }
+  return status;
 }
 
 // Deconstructs a previously-allocated global handle.

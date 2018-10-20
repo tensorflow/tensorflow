@@ -23,6 +23,7 @@ from multiprocessing.pool import ThreadPool
 import sys
 import weakref
 
+from absl.testing import parameterized
 import numpy
 
 from tensorflow.core.protobuf import config_pb2
@@ -30,6 +31,7 @@ from tensorflow.core.protobuf import rewriter_config_pb2
 from tensorflow.python import keras
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
+from tensorflow.python.eager import def_function
 from tensorflow.python.eager import function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -55,11 +57,10 @@ from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
-from tensorflow.python.training import adam
-from tensorflow.python.training import momentum
 from tensorflow.python.training import training_ops
 from tensorflow.python.util import compat
 from tensorflow.python.util import nest
+from tensorflow.python.util import tf_inspect
 
 
 class MiniModel(keras_training.Model):
@@ -85,7 +86,7 @@ class DefunnedMiniModel(MiniModel):
 
 
 @test_util.with_c_shapes
-class FunctionTest(test.TestCase):
+class FunctionTest(test.TestCase, parameterized.TestCase):
 
   def testBasic(self):
     matmul = function.defun(math_ops.matmul)
@@ -236,6 +237,9 @@ class FunctionTest(test.TestCase):
     self.assertSequenceEqual(outputs, expected)
 
   def testExecutingManyStatelessDefunsConcurrently(self):
+    # TODO(nareshmodi): Re-enable this test when grappler is faster, or
+    # simply disable grappler for this test.
+    self.skipTest('Very slow with grappler enabled, in fastbuild mode.')
 
     @function.defun
     def stateless(x):
@@ -265,6 +269,9 @@ class FunctionTest(test.TestCase):
     self.assertEqual(float(v.read_value()), 0.0)
 
   def testExecutingManyStatefulDefunsConcurrently(self):
+    # TODO(nareshmodi): Re-enable this test when grappler is faster, or
+    # simply disable grappler for this test.
+    self.skipTest('Very slow with grappler enabled, in fastbuild mode.')
 
     v = resource_variable_ops.ResourceVariable(1.0)
 
@@ -314,7 +321,7 @@ class FunctionTest(test.TestCase):
       c = constant_op.constant([[2.]])
       f_c = f(c)
       g, = gradients_impl.gradients(f_c, c)
-      self.assertTrue(isinstance(g, ops.IndexedSlices))
+      self.assertIsInstance(g, ops.IndexedSlices)
 
     outer()
 
@@ -620,6 +627,29 @@ class FunctionTest(test.TestCase):
     # Ensure that v is watched again.
     self.assertAllEqual(backprop.implicit_grad(f)()[0][0], 2.0)
 
+  def testRunMetadata(self):
+
+    @function.defun
+    def f(x):
+      return x * x
+
+    with ops.device('cpu:0'):
+      context.enable_run_metadata()
+      f(constant_op.constant(1.0))
+    run_metadata = context.export_run_metadata()
+    context.disable_run_metadata()
+    step_stats = run_metadata.step_stats
+    self.assertGreater(len(step_stats.dev_stats), 0)
+    cpu_stats = step_stats.dev_stats[0]
+    self.assertEqual('/job:localhost/replica:0/task:0/device:CPU:0',
+                     cpu_stats.device)
+    # Testing for at least 2 because the function call should generate at most
+    # one entry in the step_stats; the ops inside function can generate
+    # arbitrarily many (placeholders, return identities, etc, might be included
+    # or not in the future, so shouldn't be tested for exactly.
+    self.assertGreaterEqual(len(cpu_stats.node_stats), 2)
+    self.assertEqual(len(run_metadata.partition_graphs), 1)
+
   def testGraphModeCaptureVariable(self):
     with context.graph_mode(), self.cached_session() as sess:
 
@@ -827,7 +857,7 @@ class FunctionTest(test.TestCase):
         return indexed_slice
 
       output = f()
-      self.assertTrue(isinstance(output, ops.IndexedSlices))
+      self.assertIsInstance(output, ops.IndexedSlices)
       self.assertAllEqual(indexed_slice.values, output.values)
       self.assertAllEqual(indexed_slice.indices, output.indices)
       self.assertAllEqual(indexed_slice.dense_shape, output.dense_shape)
@@ -856,7 +886,7 @@ class FunctionTest(test.TestCase):
 
     def validate(arg):
       output = f(arg)
-      self.assertTrue(isinstance(output, ops.IndexedSlices))
+      self.assertIsInstance(output, ops.IndexedSlices)
       self.assertAllEqual(arg.values, output.values)
       self.assertAllEqual(arg.indices, output.indices)
       self.assertAllEqual(arg.dense_shape, output.dense_shape)
@@ -1457,8 +1487,8 @@ class FunctionTest(test.TestCase):
     clipped_list, global_norm = clip_by_global_norm(t_list,
                                                     constant_op.constant(.2))
     for t in clipped_list:
-      self.assertTrue(isinstance(t, ops.Tensor))
-    self.assertTrue(isinstance(global_norm, ops.Tensor))
+      self.assertIsInstance(t, ops.Tensor)
+    self.assertIsInstance(global_norm, ops.Tensor)
 
   def testNestedSequenceInputs(self):
 
@@ -1479,7 +1509,7 @@ class FunctionTest(test.TestCase):
     self.assertAllEqual(ret[0][0], 2)
     self.assertAllEqual(ret[0][1][0][0], 8)
     self.assertAllEqual(ret[0][1][0][1], 4)
-    self.assertTrue(isinstance(ret[0][1][0], tuple))
+    self.assertIsInstance(ret[0][1][0], tuple)
     self.assertAllEqual(ret[0][1][1], 6)
     self.assertAllEqual(ret[0][2], 10)
     self.assertAllEqual(ret[1], 15)
@@ -2123,7 +2153,7 @@ class FunctionTest(test.TestCase):
           t = constant_op.constant([[1.0, 2.0], [3.0, 4.0]])
           add(t, t)
 
-  def testRegisterFunction(self):
+  def testRegisterPolymorphicFunction(self):
     @function.defun
     def add(x, y):
       return math_ops.add(x, y)
@@ -2159,17 +2189,17 @@ class FunctionTest(test.TestCase):
                                    expected_func_name_regex[i])
 
         # Check the forward and backward function has the correct attributes.
-        self.assertEquals(
+        self.assertEqual(
             functions[1].definition.attr['backward_function_name'].s,
             functions[2].name)
-        self.assertEquals(
+        self.assertEqual(
             functions[2].definition.attr['forward_function_name'].s,
             functions[1].name)
 
-        self.assertEquals(
+        self.assertEqual(
             functions[4].definition.attr['backward_function_name'].s,
             functions[5].name)
-        self.assertEquals(
+        self.assertEqual(
             functions[5].definition.attr['forward_function_name'].s,
             functions[4].name)
 
@@ -2182,8 +2212,67 @@ class FunctionTest(test.TestCase):
         self.assertEqual(len(graph._functions), 6)
         functions = list(graph._functions.values())
         for i in range(len(functions)):
-          self.assertEquals(captured_function_names[i],
-                            functions[i].definition.signature.name)
+          self.assertEqual(captured_function_names[i],
+                           functions[i].definition.signature.name)
+
+  @parameterized.named_parameters(
+      dict(testcase_name='Defun',
+           function_decorator=function.defun),
+      dict(testcase_name='DefFunction',
+           function_decorator=def_function.function))
+  def testRegisterConcreteFunction(self, function_decorator):
+    @function_decorator
+    def py_add(x, y):
+      return math_ops.add(x, y)
+
+    py_add(array_ops.ones([]), array_ops.ones([]))
+    add = py_add.get_concrete_function(
+        tensor_spec.TensorSpec(None, dtypes.float32),
+        tensor_spec.TensorSpec(None, dtypes.float32))
+
+    @function_decorator
+    def py_composite(x, y):
+      return x, add(x, y)
+
+    py_composite(array_ops.ones([]), array_ops.ones([]))
+    composite = py_composite.get_concrete_function(
+        tensor_spec.TensorSpec(None, dtypes.float32),
+        tensor_spec.TensorSpec(None, dtypes.float32))
+
+    with context.graph_mode(), self.cached_session():
+      with ops.get_default_graph().as_default():
+        t = constant_op.constant([[1.0, 2.0], [3.0, 4.0]])
+        function.register_concrete(composite)
+
+        graph = ops.get_default_graph()
+        # pylint: disable=protected-access
+        self.assertEqual(len(graph._functions), 6)
+        # two sets of functions, each of them are (inference, forward, backward)
+        functions = list(graph._functions.values())
+        captured_function_names = [
+            f.definition.signature.name for f in functions
+        ]
+        expected_func_name_regex = [
+            '.*inference.*py_composite.*',
+            '.*inference.*py_add.*',
+            '.*forward.*py_composite.*',
+            '.*forward.*py_add.*',
+            '.*inference.*backward.*py_composite.*',
+            '.*inference.*backward.*py_add.*',
+        ]
+        for expected, found in zip(
+            expected_func_name_regex,
+            captured_function_names):
+          self.assertRegexpMatches(found, expected)
+
+        composite_t, composite_double = composite(t, t)
+        double = add(t, t)
+        self.assertAllEqual([[2, 4], [6, 8]], self.evaluate(double))
+        self.assertAllEqual([[2, 4], [6, 8]], self.evaluate(composite_double))
+        self.assertAllEqual([[1, 2], [3, 4]], self.evaluate(composite_t))
+        # Make sure the pre registered function is used, and no other function
+        # is added.
+        self.assertEqual(len(graph._functions), 6)
 
   def testRegisterFunctionWithInputSignature(self):
     def matmul(x, y):
@@ -2303,10 +2392,10 @@ class FunctionTest(test.TestCase):
       y_value = sess.run(y)
 
       if test.is_gpu_available():
-        self.assertEquals(y_value, 5.0)
+        self.assertEqual(y_value, 5.0)
       else:
         # Grappler fallback to use the CPU impl even called with GPU function.
-        self.assertEquals(y_value, 3.0)
+        self.assertEqual(y_value, 3.0)
 
   def testDefunFunctionSeparateGraphs(self):
     with context.graph_mode():
@@ -2338,248 +2427,53 @@ class FunctionTest(test.TestCase):
         self.assertEqual(len(maybe_add._function_cache), 3)
         self.assertEqual(len(add._function_cache), 2)
 
+  def testDecoratedMethod(self):
+    m = DefunnedMiniModel()
+    instance_call_one = m.call(array_ops.ones([1, 2]), training=True)
+    instance_call_two = m.call(
+        inputs=array_ops.ones([1, 2]), training=True)
+    class_call = DefunnedMiniModel.call(m, array_ops.ones([1, 2]),
+                                        training=True)
+    self.assertAllEqual(instance_call_one, instance_call_two)
+    self.assertAllEqual(instance_call_one, class_call)
 
-@test_util.with_c_shapes
-class AutomaticControlDependenciesTest(test.TestCase):
+  def testDecoratedMethodUniquePolymorphicFuncPerInstance(self):
+    m = DefunnedMiniModel()
+    n = DefunnedMiniModel()
 
-  def testBasic(self):
-    with context.graph_mode(), self.cached_session():
-      v = resource_variable_ops.ResourceVariable(1.0)
-      variables.global_variables_initializer().run()
-      with function.AutomaticControlDependencies() as c:
-        v.assign(v + 1)
-        v.assign(2 * v)
-        val = v.read_value()
-        val = c.mark_as_return(val)
-      self.assertAllEqual(val.eval(), 4.0)
+    class_method_one = DefunnedMiniModel.call
+    class_method_two = DefunnedMiniModel.call
 
-  def testCondMustRun(self):
-    with context.graph_mode(), self.cached_session():
-      v = resource_variable_ops.ResourceVariable(1.0)
-      variables.global_variables_initializer().run()
-      p = array_ops.placeholder(dtype=dtypes.bool)
-      with function.AutomaticControlDependencies() as c:
+    m_method_one = m.call
+    m_method_two = m.call
 
-        def true_fn():
-          v.assign(v + 1)
-          return 0.0
+    n_method_one = n.call
+    n_method_two = n.call
 
-        def false_fn():
-          v.assign(v + 4)
-          return 1.0
+    self.assertEqual(class_method_one, class_method_two)
+    self.assertEqual(m_method_one, m_method_two)
+    self.assertEqual(n_method_one, n_method_two)
+    self.assertNotEqual(m.call, n.call)
 
-        control_flow_ops.cond(p, true_fn, false_fn)
-        val = v.read_value()
-        val = c.mark_as_return(val)
-      self.assertAllEqual(val.eval(feed_dict={p: False}), 5.0)
-      self.assertAllEqual(val.eval(feed_dict={p: True}), 6.0)
+  def testDecoratedMethodInspect(self):
+    m = DefunnedMiniModel()
+    fullargspec = tf_inspect.getfullargspec(m.call)
+    self.assertIn('training', fullargspec.args)
 
-  def testCondMustRunSeparateRead(self):
-    with context.graph_mode(), self.cached_session():
-      v = resource_variable_ops.ResourceVariable(1.0)
-      variables.global_variables_initializer().run()
-      p = array_ops.placeholder(dtype=dtypes.bool)
-      with function.AutomaticControlDependencies() as c:
+  def testDecoratedMethodGetConcreteFunction(self):
+    m = DefunnedMiniModel()
+    instance_call_one = m.call.get_concrete_function(
+        array_ops.ones([1, 2]), training=False)
+    instance_call_two = m.call.get_concrete_function(
+        inputs=array_ops.ones([1, 2]), training=False)
+    self.assertAllEqual(instance_call_one(array_ops.ones([1, 2])),
+                        instance_call_two(array_ops.ones([1, 2])))
 
-        def true_fn():
-          v.assign(v + 1)
-          return 0.0
-
-        def false_fn():
-          v.assign(v + 4)
-          return 1.0
-
-        control_flow_ops.cond(p, true_fn, false_fn)
-        one = constant_op.constant(1.0)
-        one = c.mark_as_return(one)
-      one.eval(feed_dict={p: False})
-      self.assertAllEqual(v.read_value().eval(), 5.0)
-      one.eval(feed_dict={p: True})
-      self.assertAllEqual(v.read_value().eval(), 6.0)
-
-  def testCondNested(self):
-    with context.graph_mode(), self.cached_session():
-      v = resource_variable_ops.ResourceVariable(1.0)
-      variables.global_variables_initializer().run()
-      p = array_ops.placeholder(dtype=dtypes.bool)
-      q = array_ops.placeholder(dtype=dtypes.bool)
-      with function.AutomaticControlDependencies() as c:
-
-        def true_fn():
-          v.assign(v + 1, name='true')
-          return 1.0
-
-        def false_fn():
-
-          def inner_true_fn():
-            v.assign(v * 2, name='false_true')
-            return 2.0
-
-          def inner_false_fn():
-            v.assign(v * 3, name='false_false')
-            return 3.0
-
-          control_flow_ops.cond(q, inner_true_fn, inner_false_fn)
-          return 1.0
-
-        control_flow_ops.cond(p, true_fn, false_fn)
-        with ops.name_scope('final'):
-          val = v.read_value()
-        val = c.mark_as_return(val)
-      self.assertAllEqual(val.eval(feed_dict={p: False, q: False}), 3.0)
-      self.assertAllEqual(val.eval(feed_dict={p: False, q: True}), 6.0)
-      self.assertAllEqual(val.eval(feed_dict={p: True, q: True}), 7.0)
-      self.assertAllEqual(val.eval(feed_dict={p: True, q: False}), 8.0)
-
-  def testCondOneBranch(self):
-    with context.graph_mode(), self.cached_session():
-      v = resource_variable_ops.ResourceVariable(1.0)
-      variables.global_variables_initializer().run()
-      p = array_ops.placeholder(dtype=dtypes.bool)
-      with function.AutomaticControlDependencies() as c:
-
-        def true_fn():
-          return 0.0
-
-        def false_fn():
-          v.assign(v + 4)
-          return 1.0
-
-        control_flow_ops.cond(p, true_fn, false_fn)
-        val = v.read_value()
-        val = c.mark_as_return(val)
-      self.assertAllEqual(val.eval(feed_dict={p: False}), 5.0)
-      self.assertAllEqual(val.eval(feed_dict={p: True}), 5.0)
-
-  def testCondOneBranchUpdateBefore(self):
-    with context.graph_mode(), self.cached_session():
-      v = resource_variable_ops.ResourceVariable(1.0)
-      variables.global_variables_initializer().run()
-      p = array_ops.placeholder(dtype=dtypes.bool)
-      with function.AutomaticControlDependencies() as c:
-        v.assign(v * 2)
-
-        def true_fn():
-          return 0.0
-
-        def false_fn():
-          v.assign(v + 4)
-          return 1.0
-
-        control_flow_ops.cond(p, true_fn, false_fn)
-        val = v.read_value()
-        val = c.mark_as_return(val)
-      self.assertAllEqual(val.eval(feed_dict={p: False}), 6.0)
-      self.assertAllEqual(val.eval(feed_dict={p: True}), 12.0)
-
-  def testCondOneBranchUpdateAfter(self):
-    with context.graph_mode(), self.cached_session():
-      v = resource_variable_ops.ResourceVariable(1.0)
-      variables.global_variables_initializer().run()
-      p = array_ops.placeholder(dtype=dtypes.bool)
-      with function.AutomaticControlDependencies() as c:
-
-        def true_fn():
-          return 0.0
-
-        def false_fn():
-          v.assign(v + 4)
-          return 1.0
-
-        control_flow_ops.cond(p, true_fn, false_fn)
-        v.assign(v * 2)
-        val = v.read_value()
-        val = c.mark_as_return(val)
-      self.assertAllEqual(val.eval(feed_dict={p: False}), 10.0)
-      self.assertAllEqual(val.eval(feed_dict={p: True}), 20.0)
-
-  def testDefunWhileLoopWithCapturedLoopVars(self):
-    n = 3
-    x = constant_op.constant(list(range(n)))
-
-    @function.defun
-    def loop():
-      c = lambda i, x: i < n
-      b = lambda i, x: (i + 1, x + 1)
-      i, out = control_flow_ops.while_loop(c, b, (0, x))
-      return i, out
-
-    i, out = loop()
-    self.assertEqual(int(i), 3)
-    self.assertAllEqual(out, [3, 4, 5])
-
-  def testDecorator(self):
-    with context.graph_mode(), self.cached_session():
-      v = resource_variable_ops.ResourceVariable(1.0)
-      variables.global_variables_initializer().run()
-
-      @function.automatic_control_dependencies
-      def f():
-        v.assign(v + 1)
-        v.assign(2 * v)
-        return v.read_value()
-
-      self.assertAllEqual(f().eval(), 4.0)
-
-  def testOptimizerInDefun(self):
-    def loss(v):
-      return v**2
-
-    optimizer = momentum.MomentumOptimizer(learning_rate=1.0, momentum=1.0)
-
-    @function.defun
-    def train():
-      self.v = resource_variable_ops.ResourceVariable(1.0)
-      grad = backprop.implicit_grad(loss)(self.v)
-      optimizer.apply_gradients(grad)
-      return self.v.read_value()
-
-    value = train()
-    self.assertEqual(value.numpy(), -1.0)
-
-  def testReturningNonTensorRaisesError(self):
-    optimizer = momentum.MomentumOptimizer(learning_rate=1.0, momentum=1.0)
-    optimizer.apply_gradients = function.defun(optimizer.apply_gradients)
-    v = resource_variable_ops.ResourceVariable(1.0)
-    grad = backprop.implicit_grad(lambda v: v**2)(v)
-
-    with self.assertRaisesRegexp(TypeError,
-                                 '.*must return zero or more Tensors.*'):
-      # TODO(akshayka): We might want to allow defun-ing Python functions
-      # that return operations (and just execute the op instead of running it).
-      optimizer.apply_gradients(grad)
-
-  # TODO(b/111663004): This should work when the outer context is graph
-  # building.
-  def testOptimizerNonSlotVarsInDefunNoError(self):
-    def loss(v):
-      return v**2
-
-    optimizer = adam.AdamOptimizer(learning_rate=1.0)
-
-    @function.defun
-    def train():
-      self.v = resource_variable_ops.ResourceVariable(1.0)
-      grad = backprop.implicit_grad(loss)(self.v)
-      optimizer.apply_gradients(grad)
-      return self.v.read_value()
-
-    train()
-
-  def testOptimizerInDefunWithCapturedVariable(self):
-    v = resource_variable_ops.ResourceVariable(1.0)
-    def loss():
-      return v**2
-
-    optimizer = momentum.MomentumOptimizer(learning_rate=1.0, momentum=1.0)
-
-    @function.defun
-    def train():
-      grad = backprop.implicit_grad(loss)()
-      optimizer.apply_gradients(grad)
-
-    train()
-    self.assertEqual(v.numpy(), -1.0)
+    # Also make sure get_concrete_function works on the class method
+    DefunnedMiniModel.call.get_concrete_function(
+        m, array_ops.ones([1, 2]), training=False)
+    DefunnedMiniModel.call.get_concrete_function(
+        m, inputs=array_ops.ones([1, 2]), training=True)
 
   def testFunctionModifiesInputList(self):
     # Tests on `list` methods that do in place modification, except `list.sort`
@@ -2756,6 +2650,192 @@ class AutomaticControlDependenciesTest(test.TestCase):
     self.assertEqual(2, len(weak_variables))
     del m
     self.assertEqual([], list(weak_variables))
+
+
+@parameterized.named_parameters(
+    dict(testcase_name='Defun', function_decorator=function.defun),
+    dict(testcase_name='DefFunction', function_decorator=def_function.function))
+class ArgumentNamingTests(test.TestCase, parameterized.TestCase):
+  """Tests for recognizable export signatures from concrete functions."""
+
+  def testBasic(self, function_decorator):
+    @function_decorator
+    def fn(a, b):
+      return a + b, a * b
+    # Call the function to make def_function happy
+    fn(array_ops.ones([]), array_ops.ones([]))
+
+    fn_op = fn.get_concrete_function(
+        tensor_spec.TensorSpec(shape=(None,), dtype=dtypes.float32),
+        tensor_spec.TensorSpec(shape=(), dtype=dtypes.float32))
+    self.assertEqual(
+        ['a', 'b'],
+        [inp.op.name for inp in fn_op.inputs])
+    self.assertEqual(
+        [b'a', b'b'],
+        [inp.op.get_attr('_user_specified_name') for inp in fn_op.inputs])
+    self.assertEqual(2, len(fn_op.graph.structured_outputs))
+
+  def testDictReturned(self, function_decorator):
+    @function_decorator
+    def fn(x, z=(1., 2.), y=3.):
+      z1, z2 = z
+      return {'alpha': x + y + z1, 'beta': x * y + z2}
+    # Call the function to make def_function happy
+    fn(array_ops.ones([]))
+
+    fn_op = fn.get_concrete_function(
+        x=tensor_spec.TensorSpec(shape=(None,), dtype=dtypes.float32),
+        y=tensor_spec.TensorSpec(shape=(), dtype=dtypes.float32))
+    self.assertEqual(
+        ['x', 'y'],
+        [inp.op.name for inp in fn_op.inputs])
+    self.assertEqual(
+        [b'x', b'y'],
+        [inp.op.get_attr('_user_specified_name') for inp in fn_op.inputs])
+    self.assertEqual({'alpha', 'beta'},
+                     set(fn_op.graph.structured_outputs.keys()))
+
+    fn_op2 = fn.get_concrete_function(
+        z=(tensor_spec.TensorSpec(shape=(None,), dtype=dtypes.float32),
+           tensor_spec.TensorSpec(shape=(), dtype=dtypes.float32)),
+        y=tensor_spec.TensorSpec(shape=(), dtype=dtypes.float32, name='custom'),
+        x=4.)
+    self.assertEqual(
+        ['z', 'z_1', 'custom'],
+        [inp.op.name for inp in fn_op2.inputs])
+    self.assertEqual(
+        [b'z', b'z', b'custom'],
+        [inp.op.get_attr('_user_specified_name') for inp in fn_op2.inputs])
+
+    fn_op3 = fn.get_concrete_function(
+        tensor_spec.TensorSpec(shape=(), dtype=dtypes.float32, name='custom'),
+        z=(tensor_spec.TensorSpec(shape=(None,), dtype=dtypes.float32),
+           tensor_spec.TensorSpec(shape=(), dtype=dtypes.float32)),
+        y=tensor_spec.TensorSpec(shape=(), dtype=dtypes.float32, name='custom'))
+    self.assertEqual(
+        ['custom', 'z', 'z_1', 'custom_1'],
+        [inp.op.name for inp in fn_op3.inputs])
+    self.assertEqual(
+        [b'custom', b'z', b'z', b'custom'],
+        [inp.op.get_attr('_user_specified_name') for inp in fn_op3.inputs])
+
+  def testMethod(self, function_decorator):
+    class HasMethod(object):
+
+      @function_decorator
+      def method(self, x):
+        return x
+
+    has_method = HasMethod()
+    # Call the function to make def_function happy
+    HasMethod.method(has_method, array_ops.ones([]))
+    class_op = HasMethod.method.get_concrete_function(
+        has_method, tensor_spec.TensorSpec(shape=(), dtype=dtypes.float32))
+    self.assertEqual(
+        ['x'],
+        [inp.op.name for inp in class_op.inputs])
+    self.assertEqual(
+        [b'x'],
+        [inp.op.get_attr('_user_specified_name') for inp in class_op.inputs])
+    # Call the function to make def_function happy
+    has_method.method(array_ops.ones([]))
+    method_op = has_method.method.get_concrete_function(
+        tensor_spec.TensorSpec(shape=(), dtype=dtypes.float32))
+    self.assertEqual(
+        ['x'],
+        [inp.op.name for inp in method_op.inputs])
+    self.assertEqual(
+        [b'x'],
+        [inp.op.get_attr('_user_specified_name') for inp in method_op.inputs])
+    # TODO(allenl): It should be possible to override names when exporting. Do
+    # TensorSpec names need to go in cache keys? Or maybe get_concrete_function
+    # should always retrace?
+    self.skipTest('Not working')
+    method_op = has_method.method.get_concrete_function(
+        tensor_spec.TensorSpec(shape=(), dtype=dtypes.float32, name='y'))
+    self.assertEqual(
+        ['y'],
+        [inp.op.name for inp in method_op.inputs])
+    self.assertEqual(
+        [b'y'],
+        [inp.op.get_attr('_user_specified_name') for inp in method_op.inputs])
+
+  def testMethodSignature(self, function_decorator):
+
+    class HasMethod(object):
+
+      @function_decorator(
+          input_signature=(tensor_spec.TensorSpec(
+              shape=None, dtype=dtypes.float64, name='y'),))
+      def method(self, x):
+        hash(self)  # No weak proxies passed as `self`
+        return x
+
+    has_method = HasMethod()
+    # Call the function to make def_function happy
+    has_method.method(array_ops.ones([], dtype=dtypes.float64))
+    method_op = has_method.method.get_concrete_function()
+    self.assertEqual(
+        ['y'],
+        [inp.op.name for inp in method_op.inputs])
+    self.assertEqual(
+        [b'y'],
+        [inp.op.get_attr('_user_specified_name') for inp in method_op.inputs])
+    method_op2 = has_method.method.get_concrete_function()
+    self.assertEqual(
+        ['y'],
+        [inp.op.name for inp in method_op2.inputs])
+    self.assertEqual(
+        [b'y'],
+        [inp.op.get_attr('_user_specified_name') for inp in method_op2.inputs])
+
+  def testVariadic(self, function_decorator):
+    @function_decorator
+    def variadic_fn(x, *args, **kwargs):
+      return x + math_ops.add_n(list(args) + list(kwargs.values()))
+
+    # Call the function to make def_function happy
+    variadic_fn(array_ops.ones([]), array_ops.ones([]))
+    variadic_op = variadic_fn.get_concrete_function(
+        tensor_spec.TensorSpec(shape=(), dtype=dtypes.float32),
+        tensor_spec.TensorSpec(shape=None, dtype=dtypes.float32, name='y'),
+        tensor_spec.TensorSpec(shape=(), dtype=dtypes.float32),
+        tensor_spec.TensorSpec(shape=(), dtype=dtypes.float32),
+        z=tensor_spec.TensorSpec(shape=(), dtype=dtypes.float32),
+        zz=tensor_spec.TensorSpec(shape=(), dtype=dtypes.float32, name='cust'))
+    self.assertEqual(
+        ['x', 'y', 'args', 'args_1', 'z', 'cust'],
+        [inp.op.name for inp in variadic_op.inputs])
+    self.assertEqual(
+        [b'x', b'y', b'args', b'args', b'z', b'cust'],
+        [inp.op.get_attr('_user_specified_name')
+         for inp in variadic_op.inputs])
+
+  def testVariadicInputSignature(self, function_decorator):
+    @function_decorator(
+        input_signature=(
+            tensor_spec.TensorSpec(shape=None, dtype=dtypes.float32),
+            tensor_spec.TensorSpec(shape=None, dtype=dtypes.float32, name='y'),
+            tensor_spec.TensorSpec(shape=(), dtype=dtypes.float32),
+            tensor_spec.TensorSpec(shape=(), dtype=dtypes.float32),
+        ))
+    def variadic_fn(x, *args):
+      return x + math_ops.add_n(list(args))
+
+    # Call the function to make def_function happy
+    variadic_fn(array_ops.ones([]), array_ops.ones([]),
+                array_ops.ones([]), array_ops.ones([]))
+    variadic_op = variadic_fn.get_concrete_function()
+    self.assertIn(b'variadic_fn', variadic_op.name)
+    self.assertEqual(
+        ['x', 'y', 'args', 'args_1'],
+        [inp.op.name for inp in variadic_op.inputs])
+    self.assertEqual(
+        [b'x', b'y', b'args', b'args'],
+        [inp.op.get_attr('_user_specified_name')
+         for inp in variadic_op.inputs])
+
 
 if __name__ == '__main__':
   ops.enable_eager_execution(

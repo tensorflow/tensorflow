@@ -85,14 +85,15 @@ class FunctionNamer(object):
 class CallTreeTransformer(converter.Base):
   """Transforms the call tree by renaming transformed symbols."""
 
-  def _resolve_name(self, node):
+  def _resolve_decorator_name(self, node):
     """Used to resolve decorator info."""
     if isinstance(node, gast.Call):
-      return self._resolve_name(node.func)
+      return self._resolve_decorator_name(node.func)
     if isinstance(node, gast.Name):
-      return self.ctx.namespace.get(node.id)
+      # TODO(mdan): Add test coverage for this branch.
+      return self.ctx.info.namespace.get(node.id)
     if isinstance(node, gast.Attribute):
-      parent = self._resolve_name(node.value)
+      parent = self._resolve_decorator_name(node.value)
       if parent is not None:
         return getattr(parent, node.attr)
       return None
@@ -170,7 +171,7 @@ class CallTreeTransformer(converter.Base):
         return True
 
       for dec in target_node.decorator_list:
-        decorator_fn = self._resolve_name(dec)
+        decorator_fn = self._resolve_decorator_name(dec)
         if (decorator_fn is not None and
             decorator_fn in self.ctx.program.options.strip_decorators):
           return False
@@ -307,28 +308,21 @@ class CallTreeTransformer(converter.Base):
         target_fqn = anno.getanno(node.func, 'fqn')
       else:
         target_fqn = None
+
       if self._function_is_compilable(target_entity):
         node = self._rename_compilable_function(node)
       elif target_fqn and target_fqn in KNOWN_NUMPY_FUNCTIONS:
         # TODO(mdan): Should we replace these with equivalent TF ops instead?
         node = self._wrap_to_py_func_single_return(
             node, KNOWN_NUMPY_FUNCTIONS[target_fqn].dtype)
+      elif inspect_utils.isbuiltin(target_entity):
+        # Note: Any builtin that passed the builtins converter is assumed to be
+        # safe for graph mode.
+        return node
       else:
         raise NotImplementedError(
             'py_func with return values (unknown function)')
     else:
-      if anno.hasanno(node.func, anno.Basic.QN):
-        # Special-case a few builtins that otherwise go undetected. This
-        # normally doesn't pose a problem, but the dict built-in doesn't
-        # work with inspect.getargspec which is required for dynamic functions.
-        # Note: expecting this is resilient to aliasing (e.g.
-        # dict = an_evil_dict), because in those cases the regular mechanisms
-        # process a simple user function.
-        qn = anno.getanno(node.func, anno.Basic.QN)
-        # Add items to this list as needed.
-        if str(qn) in ('dict',):
-          return node
-
       if ast_util.matches(node, 'super(_)'):
         # super() calls are preserved. The class conversion mechanism will
         # ensure that they return the correct value.

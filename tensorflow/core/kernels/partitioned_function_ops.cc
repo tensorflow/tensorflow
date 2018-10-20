@@ -183,6 +183,13 @@ class PartitionedCallOp : public AsyncOpKernel {
         OP_REQUIRES_OK_ASYNC(
             ctx, PartitionHelper(device_set, std::move(graph), &subgraphs),
             done);
+        if (ctx->graph_collector() != nullptr) {
+          for (const auto& pair : subgraphs) {
+            GraphDef def;
+            pair.second->ToGraphDef(&def);
+            ctx->graph_collector()->CollectGraph(def);
+          }
+        }
         optimization_options.graph = nullptr;
         optimization_options.device_set = nullptr;
         optimization_options.partition_graphs = &subgraphs;
@@ -242,6 +249,12 @@ class PartitionedCallOp : public AsyncOpKernel {
         int index = attr_value->i();
         TF_RETURN_IF_ERROR(node->attrs().Find("T", &attr_value));
         DataType dtype = attr_value->type();
+        if (dtype != args[index].dtype()) {
+          return errors::InvalidArgument("For argument ", index, " expected ",
+                                         DataTypeString(dtype), " tensor, got ",
+                                         DataTypeString(args[index].dtype()),
+                                         " instead.");
+        }
         if (dtype == DT_RESOURCE) {
           const ResourceHandle& handle = args[index].flat<ResourceHandle>()(0);
           node->set_assigned_device_name(handle.device());
@@ -516,6 +529,18 @@ class PartitionedCallOp : public AsyncOpKernel {
     std::unique_ptr<Graph> optimized_graph(new Graph(OpRegistry::Global()));
     TF_RETURN_IF_ERROR(ConvertGraphDefToGraph(
         GraphConstructorOptions(), out_graph, optimized_graph.get()));
+
+    // Copy optimized functions back to the overlay lib.
+    if (flib) {
+      for (const FunctionDef& fdef : out_graph.library().function()) {
+        const string& func_name = fdef.signature().name();
+        if (flib->Contains(func_name)) {
+          TF_RETURN_IF_ERROR(flib->ReplaceFunction(func_name, fdef));
+        } else {
+          TF_RETURN_IF_ERROR(flib->AddFunctionDef(fdef));
+        }
+      }
+    }
 
     *graph = std::move(optimized_graph);
 

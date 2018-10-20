@@ -1,7 +1,7 @@
 path: "tensorflow.estimator.LatestExporter"
 tf_class {
-  is_instance: "<class \'tensorflow.python.estimator.exporter.LatestExporter\'>"
-  is_instance: "<class \'tensorflow.python.estimator.exporter.Exporter\'>"
+  is_instance: "<class \'tensorflow_estimator.python.estimator.exporter.LatestExporter\'>"
+  is_instance: "<class \'tensorflow_estimator.python.estimator.exporter.Exporter\'>"
   is_instance: "<type \'object\'>"
   member {
     name: "name"

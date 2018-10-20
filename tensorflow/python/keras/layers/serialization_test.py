@@ -19,9 +19,11 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.python import keras
+from tensorflow.python.framework import test_util as tf_test_util
 from tensorflow.python.platform import test
 
 
+@tf_test_util.run_all_in_graph_and_eager_modes
 class LayerSerializationTest(test.TestCase):
 
   def test_serialize_deserialize(self):

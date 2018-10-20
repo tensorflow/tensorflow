@@ -322,7 +322,7 @@ message CreateChannelHandleResponse {
 }
 
 message UnregisterRequest {
-  GlobalDataHandle data = 1;
+  repeated GlobalDataHandle data = 1;
 }
 
 message UnregisterResponse {

@@ -440,6 +440,13 @@ class ParameterServerStrategyTest(ParameterServerStrategyTestBase,
         num_workers=3, num_ps=2)
     cls._default_target = 'grpc://' + cls._cluster_spec[WORKER][0]
 
+  def test_num_replicas_in_sync(self):
+    distribution = parameter_server_strategy.ParameterServerStrategy(
+        num_gpus_per_worker=2)
+    # All the devices on a given worker are in sync which in this case is the
+    # number of gpus on each worker.
+    self.assertEqual(2, distribution.num_replicas_in_sync)
+
   def testDeviceAssignmentLocalCPU(self):
     distribution = parameter_server_strategy.ParameterServerStrategy(
         num_gpus_per_worker=0)

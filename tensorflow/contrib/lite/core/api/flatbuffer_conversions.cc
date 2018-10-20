@@ -399,11 +399,11 @@ TfLiteStatus ParseOpData(const Operator* op, BuiltinOperator op_type,
             parse_activation(seq_lstm_params->fused_activation_function());
         params->cell_clip = seq_lstm_params->cell_clip();
         params->proj_clip = seq_lstm_params->proj_clip();
+        params->time_major = seq_lstm_params->time_major();
       }
       *builtin_data = reinterpret_cast<void*>(params);
       break;
     }
-
     case BuiltinOperator_BIDIRECTIONAL_SEQUENCE_LSTM: {
       auto params =
           allocator->AllocatePOD<TfLiteBidirectionalSequenceLSTMParams>();

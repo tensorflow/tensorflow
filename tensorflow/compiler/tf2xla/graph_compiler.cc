@@ -164,7 +164,7 @@ Status GraphCompiler::Compile() {
       outputs[o] = op_context.release_output(o);
       if (outputs[o].tensor == nullptr) {
         return errors::Internal("Missing xla_context ", o, "-th output from ",
-                                SummarizeNode(*n));
+                                FormatNodeForError(*n));
       }
     }
   }

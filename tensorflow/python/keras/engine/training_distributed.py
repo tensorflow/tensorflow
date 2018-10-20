@@ -18,7 +18,10 @@
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
+
+import enum
 import numpy as np
+
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import tensor_shape
@@ -35,6 +38,11 @@ from tensorflow.python.training import distribute as distribute_lib
 from tensorflow.python.util import nest
 
 
+# TODO(sourabhbajaj): Check if we can merge the test and prediction graphs
+class _Mode(enum.Enum):
+  TRAIN = 'train'
+  TEST = 'test'
+  PREDICT = 'predict'
 # TODO(priyag, sourabhbajaj): Refactor this file to address code duplication.
 
 
@@ -78,7 +86,7 @@ def fit_loop(
   if current_strategy.__class__.__name__ == 'TPUStrategy':
     return _experimental_fit_loop(
         model, iterator, epochs, verbose, callbacks, initial_epoch,
-        steps_per_epoch)
+        steps_per_epoch, val_iterator, validation_steps)
 
   if not model._grouped_model:
     clone_model_on_towers(model, current_strategy, make_callback_model=True)
@@ -215,7 +223,9 @@ def _experimental_fit_loop(
     verbose=1,
     callbacks=None,
     initial_epoch=0,
-    steps_per_epoch=None):
+    steps_per_epoch=None,
+    val_iterator=None,
+    validation_steps=None):
   """Fit loop for training with TPU DistributionStrategy.
 
   Arguments:
@@ -229,6 +239,10 @@ def _experimental_fit_loop(
       steps_per_epoch: Total number of steps (batches of samples)
           before declaring one epoch finished and starting the
           next epoch. Ignored with the default value of `None`.
+      val_iterator: Iterator for validation data.
+      validation_steps: Number of steps to run validation for
+          (only if doing validation from data tensors).
+          Ignored with the default value of `None`.
 
   Returns:
       Returns `None`.
@@ -249,6 +263,7 @@ def _experimental_fit_loop(
 
   # TODO(priyag, sourabhbajaj): This should likely not be hardcoded here.
   K.set_learning_phase(1)
+  out_labels = model.metrics_names or []
 
   def step_fn(ctx, inputs, targets):
     """Clones the model and calls make_train_function."""
@@ -260,11 +275,12 @@ def _experimental_fit_loop(
         current_strategy,
         make_callback_model=True,
         inputs=inputs,
-        targets=targets)
+        targets=targets,
+        mode=_Mode.TRAIN)
 
     (grouped_inputs, grouped_outputs, grouped_updates,
      grouped_session_args) = current_strategy.call_for_each_tower(
-         _per_device_train_function, model._grouped_model)
+         _per_device_train_function, model._grouped_model_train)
     (all_inputs, all_outputs, all_updates,
      all_session_args) = distributed_training_utils.unwrap_values(
          current_strategy, grouped_inputs, grouped_outputs,
@@ -275,7 +291,6 @@ def _experimental_fit_loop(
         name='distributed_train_function',
         **all_session_args)
 
-    out_labels = model.metrics_names or []
     for label, output in zip(out_labels, combined_fn.outputs):
       if label == 'loss':
         aggregation = distribute_lib.get_loss_reduction()
@@ -312,23 +327,23 @@ def _experimental_fit_loop(
   train_op = ctx.run_op
   output_tensors = ctx.last_step_outputs
 
+  do_validation = bool(validation_steps)
+
   # Copy the weights from the original model to each of the replicated models.
   orig_model_weights = model.get_weights()
   with current_strategy.scope():
-    distributed_model = current_strategy.unwrap(model._grouped_model)[0]
+    distributed_model = current_strategy.unwrap(model._grouped_model_train)[0]
     distributed_training_utils.set_weights(
         current_strategy, distributed_model, orig_model_weights)
   callbacks = cbks.configure_callbacks(
       callbacks,
       model,
-      do_validation=False,
+      do_validation=do_validation,
       val_inputs=None,
       val_targets=None,
       epochs=epochs,
       steps_per_epoch=steps_per_epoch,
       verbose=verbose)
-  # TODO(priyag, sourabhbajaj): Add callbacks support for per step callback
-  # TODO(priyag, sourabhbajaj): Add validation.
 
   # Calculate the steps each time on the device.
   steps_to_run = [current_strategy.steps_per_run] * (
@@ -364,6 +379,28 @@ def _experimental_fit_loop(
       if callbacks.model.stop_training:
         break
 
+    if do_validation:
+      logging.info('Running validation at fit epoch: %s', epoch)
+
+      # Since we create a new clone from the original model we need to copy
+      # the weights back to the original model before we can run validation.
+      with current_strategy.scope():
+        updated_weights = current_strategy.unwrap(
+            model._grouped_model_train)[0].get_weights()
+        model.set_weights(updated_weights)
+
+      val_outs = _experimental_test_loop(
+          model,
+          val_iterator,
+          steps=validation_steps,
+          verbose=verbose,
+          initialize_finalize_strategy=False)
+      if not isinstance(val_outs, list):
+        val_outs = [val_outs]
+      # Same labels assumed.
+      for label, val_out in zip(out_labels, val_outs):
+        epoch_logs['val_' + label] = val_out
+
     callbacks.on_epoch_end(epoch, epoch_logs)
     if callbacks.model.stop_training:
       break
@@ -372,7 +409,7 @@ def _experimental_fit_loop(
   # Copy the weights back from the replicated model to the original model.
   with current_strategy.scope():
     updated_weights = current_strategy.unwrap(
-        model._grouped_model)[0].get_weights()
+        model._grouped_model_train)[0].get_weights()
     model.set_weights(updated_weights)
 
   K.get_session().run(current_strategy.finalize())
@@ -489,7 +526,8 @@ def test_loop(model, iterator, verbose=0, steps=None):
     return outs
 
 
-def _experimental_test_loop(model, iterator, verbose=0, steps=None):
+def _experimental_test_loop(model, iterator, verbose=0, steps=None,
+                            initialize_finalize_strategy=True):
   """Test loop for evaluating with TPU DistributionStrategy.
 
   Arguments:
@@ -499,6 +537,8 @@ def _experimental_test_loop(model, iterator, verbose=0, steps=None):
       steps: Total number of steps (batches of samples)
           before declaring predictions finished.
           Ignored with the default value of `None`.
+      initialize_finalize_strategy: Should the strategy initialize and finalize
+          functions be called.
 
   Returns:
       Scalar loss (if the model has a single output and no metrics)
@@ -507,7 +547,8 @@ def _experimental_test_loop(model, iterator, verbose=0, steps=None):
       the display labels for the outputs.
   """
   current_strategy = model._distribution_strategy
-  K.get_session().run(current_strategy.initialize())
+  if initialize_finalize_strategy:
+    K.get_session().run(current_strategy.initialize())
 
   def _per_device_test_function(model):
     model._make_test_function()
@@ -529,11 +570,12 @@ def _experimental_test_loop(model, iterator, verbose=0, steps=None):
         current_strategy,
         make_callback_model=False,
         inputs=inputs,
-        targets=targets)
+        targets=targets,
+        mode=_Mode.TEST)
 
     (grouped_inputs, grouped_outputs, grouped_updates,
      grouped_session_args) = current_strategy.call_for_each_tower(
-         _per_device_test_function, model._grouped_model)
+         _per_device_test_function, model._grouped_model_test)
 
     (all_inputs, all_outputs, all_updates,
      all_session_args) = distributed_training_utils.unwrap_values(
@@ -579,7 +621,7 @@ def _experimental_test_loop(model, iterator, verbose=0, steps=None):
   # Copy the weights from the original model to each of the replicated models.
   orig_model_weights = model.get_weights()
   with current_strategy.scope():
-    distributed_model = current_strategy.unwrap(model._grouped_model)[0]
+    distributed_model = current_strategy.unwrap(model._grouped_model_test)[0]
     distributed_training_utils.set_weights(
         current_strategy, distributed_model, orig_model_weights)
 
@@ -594,7 +636,8 @@ def _experimental_test_loop(model, iterator, verbose=0, steps=None):
   for i in range(len(outs)):
     outs[i] /= (steps)
 
-  K.get_session().run(current_strategy.finalize())
+  if initialize_finalize_strategy:
+    K.get_session().run(current_strategy.finalize())
 
   if len(outs) == 1:
     return outs[0]
@@ -732,11 +775,12 @@ def _experimental_predict_loop(model, iterator, verbose=0, steps=None):
         model,
         current_strategy,
         make_callback_model=False,
-        inputs=inputs)
+        inputs=inputs,
+        mode=_Mode.PREDICT)
 
     (grouped_inputs, grouped_outputs, grouped_updates,
      grouped_session_args) = current_strategy.call_for_each_tower(
-         _per_device_predict_function, model._grouped_model)
+         _per_device_predict_function, model._grouped_model_predict)
 
     (all_inputs, all_outputs, all_updates,
      all_session_args) = distributed_training_utils.unwrap_values(
@@ -779,7 +823,7 @@ def _experimental_predict_loop(model, iterator, verbose=0, steps=None):
   # Copy the weights from the original model to each of the replicated models.
   orig_model_weights = model.get_weights()
   with current_strategy.scope():
-    distributed_model = current_strategy.unwrap(model._grouped_model)[0]
+    distributed_model = current_strategy.unwrap(model._grouped_model_predict)[0]
     distributed_training_utils.set_weights(
         current_strategy, distributed_model, orig_model_weights)
 
@@ -833,14 +877,22 @@ def _clone_and_build_model(model, inputs=None, targets=None):
   return cloned_model
 
 
-def clone_model_on_towers(
-    model, strategy, make_callback_model=False, inputs=None, targets=None):
+def clone_model_on_towers(model, strategy, make_callback_model=False,
+                          inputs=None, targets=None, mode=None):
   """Create a cloned model on each tower."""
   with strategy.scope():
-    model._grouped_model = strategy.call_for_each_tower(
+    grouped_model = strategy.call_for_each_tower(
         _clone_and_build_model, model, inputs, targets)
+    if mode is _Mode.TRAIN:
+      model._grouped_model_train = grouped_model
+    elif mode is _Mode.TEST:
+      model._grouped_model_test = grouped_model
+    elif mode is _Mode.PREDICT:
+      model._grouped_model_predict = grouped_model
+    else:
+      model._grouped_model = grouped_model
   if make_callback_model:
-    model._make_callback_model()
+    model._make_callback_model(grouped_model)
 
 
 def _aggregate_metrics_across_towers(num_devices, out_labels,

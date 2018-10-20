@@ -26,16 +26,16 @@ from __future__ import print_function
 import collections
 
 from tensorflow.core.framework import attr_value_pb2
-from tensorflow.python.eager import function
 from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import func_graph as func_graph_module
 from tensorflow.python.framework import function_def_to_graph
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import cond_v2
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import control_flow_util
+from tensorflow.python.ops import control_flow_util_v2 as util
 from tensorflow.python.ops import custom_gradient
 from tensorflow.python.ops import gen_functional_ops
 from tensorflow.python.ops import gradients_impl
@@ -67,8 +67,8 @@ def while_loop(cond, body, loop_vars, shape_invariants=None, name=None):
 
   with ops.name_scope(name) as scope:
     with ops.name_scope(None):
-      cond_name = _get_unique_name(("%scond" % scope).replace("/", "_"))
-      body_name = _get_unique_name(("%sbody" % scope).replace("/", "_"))
+      cond_name = util.unique_fn_name(scope, "cond")
+      body_name = util.unique_fn_name(scope, "body")
 
     num_outputs = len(flattened_loop_vars)
 
@@ -78,6 +78,10 @@ def while_loop(cond, body, loop_vars, shape_invariants=None, name=None):
 
     flattened_shapes = [tensor_shape.scalar()] + flattened_shapes
 
+    # Automatic control dependencies are added in defuns, but not in v1
+    # graphs. Propagate that behavior here.
+    add_control_dependencies = util.in_defun()
+
     # Build a `cond` wrapper that can handle the extra counter loop_var.
     def wrapped_cond(unused_loop_counter, *loop_vars):
       return cond(*loop_vars)
@@ -86,8 +90,10 @@ def while_loop(cond, body, loop_vars, shape_invariants=None, name=None):
         tensor_spec.TensorSpec(shape, t.dtype)
         for shape, t in zip(flattened_shapes, flattened_loop_vars)
     ]
-    cond_graph = function.func_graph_from_py_func(
-        cond_name, wrapped_cond, flattened_loop_vars, {}, signature=signature)
+    cond_graph = func_graph_module.func_graph_from_py_func(
+        cond_name, wrapped_cond, flattened_loop_vars, {}, signature=signature,
+        func_graph=util.WhileCondFuncGraph(cond_name),
+        add_control_dependencies=add_control_dependencies)
 
     # Add external_captures of cond to the list of loop vars.
     # Note that external tensors will be treated as loop invariants, i.e.,
@@ -125,8 +131,10 @@ def while_loop(cond, body, loop_vars, shape_invariants=None, name=None):
         tensor_spec.TensorSpec(shape, t.dtype)
         for shape, t in zip(flattened_shapes, flattened_loop_vars)
     ]
-    body_graph = function.func_graph_from_py_func(
-        body_name, wrapped_body, flattened_loop_vars, {}, signature=signature)
+    body_graph = func_graph_module.func_graph_from_py_func(
+        body_name, wrapped_body, flattened_loop_vars, {}, signature=signature,
+        func_graph=util.WhileBodyFuncGraph(body_name),
+        add_control_dependencies=add_control_dependencies)
     # Add external captures of body to the list of loop vars.
     # Note that external tensors will be treated as loop invariants, i.e.,
     # the value of that tensor in each iteration is the same as it was at the
@@ -177,13 +185,21 @@ def while_loop(cond, body, loop_vars, shape_invariants=None, name=None):
                          flattened_loop_vars[1:1 + num_outputs])
     outputs = gen_functional_ops._while(
         flattened_loop_vars,
-        cond_v2._create_new_tf_function(cond_graph),
-        cond_v2._create_new_tf_function(body_graph),
+        util.create_new_tf_function(cond_graph),
+        util.create_new_tf_function(body_graph),
         output_shapes=[t.shape for t in body_graph.outputs],
         name=scope)
 
     _copy_handle_data(body_graph.outputs, outputs)
     _maybe_set_lowering_attr(outputs[0].op)
+
+    # Return identities for each output of the While op, rather than the output
+    # of the While op directly. This makes pruning work if the output of
+    # while_loop() is fetched: the lowering pass converts the While outputs into
+    # IdentityN outputs, which if fetched will cause all ops in the body to be
+    # run (since it takes all exit ops as input). After lowering, each output
+    # identity op will end up with only the appropriate exit op as input.
+    outputs = tuple(array_ops.identity(t) for t in outputs)
 
   # First var is loop counter.
   if num_outputs == 1:
@@ -211,7 +227,7 @@ def _WhileGrad(op, *grads):  # pylint: disable=invalid-name
 
   body_grad_graph, args = _create_grad_func(
       body_graph, grads,
-      _get_unique_name("%s_grad" % body_graph.name), op)
+      util.unique_grad_fn_name(body_graph.name), op)
 
   intermediate_tensors = _get_intermediates(body_grad_graph)
 
@@ -231,9 +247,10 @@ def _WhileGrad(op, *grads):  # pylint: disable=invalid-name
     return counter < max_iters
 
   loop_vars = args + body_grad_graph.external_captures
-  cond_grad_graph = function.func_graph_from_py_func(
-      _get_unique_name("%s_grad_cond" % op.name),
-      grad_cond, loop_vars, {})
+  grad_cond_name = util.unique_grad_fn_name(op.get_attr("cond").name)
+  cond_grad_graph = func_graph_module.func_graph_from_py_func(
+      grad_cond_name, grad_cond, loop_vars, {},
+      func_graph=util.WhileCondFuncGraph(grad_cond_name))
 
   assert len(loop_vars) == len(body_grad_graph.inputs)
   assert len(loop_vars) == len(body_grad_graph.outputs)
@@ -241,10 +258,10 @@ def _WhileGrad(op, *grads):  # pylint: disable=invalid-name
 
   outputs = gen_functional_ops._while(
       loop_vars,
-      cond_v2._create_new_tf_function(cond_grad_graph),
-      cond_v2._create_new_tf_function(body_grad_graph),
+      util.create_new_tf_function(cond_grad_graph),
+      util.create_new_tf_function(body_grad_graph),
       output_shapes=[t.shape for t in body_grad_graph.outputs],
-      name=_get_unique_name("%s_grad" % op.name))
+      name="%s_grad" % op.name)
 
   _copy_handle_data(body_grad_graph.outputs, outputs)
   _maybe_set_lowering_attr(outputs[0].op)
@@ -302,7 +319,7 @@ def _create_grad_func(func_graph, grads, name, while_op):
 
   # Note: The returned function does not have `args` in the list of
   # `external_captures`.
-  grad_func_graph = function.func_graph_from_py_func(
+  grad_func_graph = func_graph_module.func_graph_from_py_func(
       name,
       lambda *args: _grad_fn(func_graph, args),
       args, {},
@@ -323,7 +340,7 @@ def _grad_fn(func_graph, args):
   `func_graph` by differentiating `func_graph`'s outputs w.r.t. its inputs.
 
   Args:
-    func_graph: function.FuncGraph. The corresponding forward-pass function.
+    func_graph: FuncGraph. The corresponding forward-pass function.
     args: The input arguments. args[0] - Loop counter args[1] - Total number of
       iterations.
       args[2:] - Incoming gradients for `func_graph.outputs`.
@@ -414,7 +431,7 @@ def _get_accumulator(tensor):
     A variant tensor in the same graph as `tensor` or None if no accumulator is
     found.
   """
-  assert isinstance(tensor.graph, function.FuncGraph)
+  assert isinstance(tensor.graph, func_graph_module.FuncGraph)
 
   def get_func_graph_output(t):
     """Returns t or Identity(t) whichever exists in graph outputs else None."""
@@ -447,21 +464,7 @@ def _get_accumulator(tensor):
   return None
 
 
-# TODO(srbs): Add to common utils for cond_v2 and while_v2.
-def _get_unique_name(name):
-  """Returns a name that is unique in the root graph of `func_graph`.
-
-  Args:
-    name: String to uniquify.
-
-  Returns:
-    A string.
-  """
-  with ops.init_scope():
-    return ops.get_default_graph().unique_name(name)
-
-
-class _WhileBodyGradFuncGraph(function.FuncGraph):
+class _WhileBodyGradFuncGraph(util.WhileBodyFuncGraph):
   """FuncGraph for the gradient function of the body of a While op.
 
   Contains the logic for capturing the tensors from the body of the forward
@@ -617,7 +620,7 @@ def _get_tensor_convertible_shape(shape):
 
 
 def _graph_name(graph):
-  if isinstance(graph, function.FuncGraph):
+  if isinstance(graph, func_graph_module.FuncGraph):
     return graph.name
   return "Base"
 

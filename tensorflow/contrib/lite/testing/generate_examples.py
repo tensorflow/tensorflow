@@ -1119,6 +1119,10 @@ def make_floor_div_tests(zip_path):
   make_binary_op_tests(zip_path, tf.floor_div)
 
 
+def make_floor_mod_tests(zip_path):
+  make_binary_op_tests(zip_path, tf.floormod)
+
+
 def make_gather_tests(zip_path):
   """Make a set of tests to do gather."""
 
@@ -2552,7 +2556,6 @@ def make_arg_min_max_tests(zip_path):
       "input_dtype": [tf.float32, tf.int32],
       "input_shape": [[], [1, 1, 1, 3], [2, 3, 4, 5], [2, 3, 3], [5, 5], [10]],
       "output_type": [tf.int32, tf.int64],
-      "axis_is_last_dim": [True, False],
       "is_arg_max": [True],
   }]
 
@@ -2562,10 +2565,7 @@ def make_arg_min_max_tests(zip_path):
         dtype=parameters["input_dtype"],
         name="input",
         shape=parameters["input_shape"])
-    if parameters["axis_is_last_dim"]:
-      axis = len(parameters["input_shape"]) - 1
-    else:
-      axis = random.randint(0, max(len(parameters["input_shape"]) - 2, 0))
+    axis = random.randint(0, max(len(parameters["input_shape"]) - 1, 0))
     if parameters["is_arg_max"]:
       out = tf.arg_max(input_value, axis, output_type=parameters["output_type"])
     else:

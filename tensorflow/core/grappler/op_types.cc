@@ -73,6 +73,14 @@ bool IsBitcast(const NodeDef& node) { return node.op() == "Bitcast"; }
 
 bool IsCast(const NodeDef& node) { return node.op() == "Cast"; }
 
+// TODO(rmlarsen): Add support for "QuantizeDownAndShrinkRange", "Requantize",
+// "CompareAndBitpack", "Bucketize" etc.
+bool IsCastLike(const NodeDef& node) {
+  static const gtl::FlatSet<string>* const kCastLikeOps =
+      CHECK_NOTNULL((new gtl::FlatSet<string>{"Cast"}));
+  return kCastLikeOps->count(node.op()) > 0;
+}
+
 bool IsCheckNumerics(const NodeDef& node) {
   return node.op() == "CheckNumerics";
 }
@@ -216,15 +224,17 @@ bool IsHistogramSummary(const NodeDef& node) {
 
 bool IsIdentity(const NodeDef& node) {
   const auto& op = node.op();
-  if (op == "IdentityN" && node.attr().at("T").list().type_size() == 1) {
-    return true;
-  }
   return op == "Identity" || op == "RefIdentity";
 }
 
 bool IsIdentityN(const NodeDef& node) {
   const auto& op = node.op();
   return op == "IdentityN";
+}
+
+bool IsIdentityNSingleInput(const NodeDef& node) {
+  return IsIdentityN(node) && node.attr().count("T") != 0 &&
+         node.attr().at("T").list().type_size() == 1;
 }
 
 bool IsIgamma(const NodeDef& node) { return node.op() == "Igamma"; }
@@ -296,6 +306,10 @@ bool IsPack(const NodeDef& node) { return node.op() == "Pack"; }
 bool IsPad(const NodeDef& node) {
   const auto& op = node.op();
   return op == "Pad" || op == "PadV2";
+}
+
+bool IsPartitionedCall(const NodeDef& node) {
+  return node.op() == "PartitionedCall";
 }
 
 bool IsPlaceholder(const NodeDef& node) {
@@ -414,6 +428,10 @@ bool IsStackPushOp(const NodeDef& node) {
 }
 bool IsStackPopOp(const NodeDef& node) {
   return node.op() == "StackPop" || node.op() == "StackPopV2";
+}
+
+bool IsStatefulPartitionedCall(const NodeDef& node) {
+  return node.op() == "StatefulPartitionedCall";
 }
 
 bool IsStopGradient(const NodeDef& node) {
@@ -630,8 +648,15 @@ bool IsValuePreserving(const NodeDef& node) {
       CHECK_NOTNULL((new gtl::FlatSet<string>{
           "InvertPermutation",
           "Reverse",
+          "ReverseV2",
           "Roll",
           "Transpose",
+          "DepthToSpace",
+          "SpaceToDepth",
+          "BatchToSpace",
+          "BatchToSpaceND",
+          "SpaceToBatch",
+          "SpaceToBatchND",
       }));
   return IsValueAndOrderPreserving(node) ||
          kValuePreservingOps->count(node.op()) > 0;

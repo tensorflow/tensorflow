@@ -1537,6 +1537,13 @@ def _convert_identity(pfor_input, op_type, op_func):
   return wrap(op_func(*[x.t for x in pfor_input.inputs]), True)
 
 
+@RegisterPFor("IdentityN")
+def _convert_identity_n(pfor_input):
+  outputs = array_ops.identity_n([x.t for x in pfor_input.inputs])
+  return [wrap(out, inp.is_stacked) for out, inp in
+          zip(outputs, pfor_input.inputs)]
+
+
 @RegisterPFor("Reshape")
 def _convert_reshape(pfor_input):
   t = pfor_input.stacked_input(0)
@@ -1607,6 +1614,15 @@ def _convert_split(pfor_input):
   num_split = pfor_input.get_attr("num_split")
   split_dim += math_ops.cast(split_dim >= 0, dtypes.int32)
   return [wrap(x, True) for x in array_ops.split(t, num_split, axis=split_dim)]
+
+
+@RegisterPFor("SplitV")
+def _convert_split_v(pfor_input):
+  t = pfor_input.stacked_input(0)
+  splits = pfor_input.unstacked_input(1)
+  split_dim = pfor_input.unstacked_input(2)
+  split_dim += math_ops.cast(split_dim >= 0, dtypes.int32)
+  return [wrap(x, True) for x in array_ops.split(t, splits, axis=split_dim)]
 
 
 @RegisterPFor("Transpose")

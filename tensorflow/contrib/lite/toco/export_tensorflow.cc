@@ -1311,6 +1311,18 @@ void ConvertFloorDivOperator(const Model& model, const FloorDivOperator& src_op,
       GetTensorFlowDataType(model, src_op.inputs[0]));
 }
 
+void ConvertFloorModOperator(const Model& model, const FloorModOperator& src_op,
+                             GraphDef* tensorflow_graph) {
+  tensorflow::NodeDef* floor_mod_op = tensorflow_graph->add_node();
+  floor_mod_op->set_op("FloorMod");
+  floor_mod_op->set_name(src_op.outputs[0]);
+  DCHECK_EQ(src_op.inputs.size(), 2);
+  *floor_mod_op->add_input() = src_op.inputs[0];
+  *floor_mod_op->add_input() = src_op.inputs[1];
+  (*floor_mod_op->mutable_attr())["T"].set_type(
+      GetTensorFlowDataType(model, src_op.inputs[0]));
+}
+
 void ConvertExpandDimsOperator(const Model& model,
                                const ExpandDimsOperator& src_op,
                                GraphDef* tensorflow_graph) {
@@ -2196,6 +2208,9 @@ void ConvertOperator(const Model& model, const Operator& src_op,
                         tensorflow_graph);
   } else if (src_op.type == OperatorType::kFloorDiv) {
     ConvertFloorDivOperator(model, static_cast<const FloorDivOperator&>(src_op),
+                            tensorflow_graph);
+  } else if (src_op.type == OperatorType::kFloorMod) {
+    ConvertFloorModOperator(model, static_cast<const FloorModOperator&>(src_op),
                             tensorflow_graph);
   } else if (src_op.type == OperatorType::kExpandDims) {
     ConvertExpandDimsOperator(model,

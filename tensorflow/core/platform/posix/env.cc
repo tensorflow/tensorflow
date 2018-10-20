@@ -123,7 +123,7 @@ class PosixEnv : public Env {
     string bin_path = this->GetExecutablePath();
     string runfiles_path = bin_path + ".runfiles/org_tensorflow";
     Status s = this->IsDirectory(runfiles_path);
-    if (!s.ok()) {
+    if (s.ok()) {
       return runfiles_path;
     } else {
       return bin_path.substr(0, bin_path.find_last_of("/\\"));

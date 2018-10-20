@@ -302,6 +302,30 @@ class AssertNoneEqualTest(test.TestCase):
       x = check_ops.assert_none_equal(t1, t2)
       assert x is None
 
+  def test_error_message_eager(self):
+    # Note that the following three strings are regexes
+    expected_error_msg_full = r"""0.0, 1.0, 2.0, 3.0, 4.0, 5.0"""
+    expected_error_msg_default = r"""0.0, 1.0, 2.0, \.\.\."""
+    expected_error_msg_short = r"""0.0, 1.0, \.\.\."""
+    with context.eager_mode():
+      t = constant_op.constant(
+          np.array(range(6)), shape=[2, 3], dtype=np.float32)
+      with self.assertRaisesRegexp(errors.InvalidArgumentError,
+                                   expected_error_msg_full):
+        check_ops.assert_none_equal(
+            t, t, message="This is the error message.", summarize=10)
+      with self.assertRaisesRegexp(errors.InvalidArgumentError,
+                                   expected_error_msg_full):
+        check_ops.assert_none_equal(
+            t, t, message="This is the error message.", summarize=-1)
+      with self.assertRaisesRegexp(errors.InvalidArgumentError,
+                                   expected_error_msg_default):
+        check_ops.assert_none_equal(t, t, message="This is the error message.")
+      with self.assertRaisesRegexp(errors.InvalidArgumentError,
+                                   expected_error_msg_short):
+        check_ops.assert_none_equal(
+            t, t, message="This is the error message.", summarize=2)
+
 
 class AssertAllCloseTest(test.TestCase):
 

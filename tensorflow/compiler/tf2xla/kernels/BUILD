@@ -40,6 +40,7 @@ tf_kernel_library(
         "dynamic_stitch_op.cc",
         "elu_op.cc",
         "extract_image_patches_op.cc",
+        "fake_param_op.cc",
         "fake_quantize_ops.cc",
         "fft_ops.cc",
         "fill_op.cc",

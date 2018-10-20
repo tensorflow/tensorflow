@@ -497,6 +497,7 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
           /*aux_input_to_output_weights=*/nullptr, input_gate_bias,
           forget_gate_bias, cell_bias, output_gate_bias, projection_weights,
           projection_bias, params, /*forward_sequence=*/true,
+          /*time_major=*/true,
           /*output_offset=*/0, scratch_buffer, activation_state, cell_state,
           output);
     }
@@ -524,8 +525,9 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
           /*aux_input_to_output_weights=*/nullptr, input_gate_bias,
           forget_gate_bias, cell_bias, output_gate_bias, projection_weights,
           projection_bias, params, /*forward_sequence=*/true,
-          /*output_offset=*/0, scratch_buffer, scaling_factors,
-          prod_scaling_factors, recovered_cell_weights, input_quantized,
+          /*time_major=*/true, /*output_offset=*/0, scratch_buffer,
+          scaling_factors, prod_scaling_factors, recovered_cell_weights,
+          input_quantized,
           /*aux_input_quantized=*/nullptr, activation_state_quantized,
           cell_state_quantized, activation_state, cell_state, output);
     }

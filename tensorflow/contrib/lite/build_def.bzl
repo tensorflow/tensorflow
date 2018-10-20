@@ -108,6 +108,7 @@ def tflite_jni_binary(
         linkscript = LINKER_SCRIPT,
         linkshared = 1,
         linkstatic = 1,
+        testonly = 0,
         deps = []):
     """Builds a jni binary for TFLite."""
     linkopts = linkopts + [
@@ -121,6 +122,7 @@ def tflite_jni_binary(
         linkstatic = linkstatic,
         deps = deps + [linkscript],
         linkopts = linkopts,
+        testonly = testonly,
     )
 
 def tflite_cc_shared_object(
@@ -233,6 +235,7 @@ def generated_test_models():
         "expand_dims",
         "floor",
         "floor_div",
+        "floor_mod",
         "fully_connected",
         "fused_batch_norm",
         "gather",

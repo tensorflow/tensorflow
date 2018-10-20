@@ -441,7 +441,6 @@ class TPUStrategy(one_device_strategy.OneDeviceStrategy):
       return val
     return [val]
 
-
   @property
   def num_towers(self):
     return self._num_cores_override or self._tpu_metadata.num_cores
@@ -453,6 +452,10 @@ class TPUStrategy(one_device_strategy.OneDeviceStrategy):
   @property
   def num_towers_per_host(self):
     return self._tpu_metadata.num_of_cores_per_host
+
+  @property
+  def num_replicas_in_sync(self):
+    return self.num_towers
 
   @property
   def between_graph(self):

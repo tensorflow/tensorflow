@@ -18,6 +18,7 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.data.ops import iterator_ops
 from tensorflow.python.data.util import nest
 from tensorflow.python.data.util import sparse
 from tensorflow.python.eager import context
@@ -165,7 +166,7 @@ class MultiDeviceIterator(object):
       # TODO(rohanj): Fix this. Tracking bug: b/116467184
       raise RuntimeError("MultiDeviceIterator is not currently supported in "
                          "Eager mode.")
-    self._dataset = dataset
+    self._dataset = dataset._apply_options()  # pylint: disable=protected-access
     self._devices = devices
     self._source_device = source_device
     self._source_device_tensor = ops.convert_to_tensor(source_device)
@@ -223,6 +224,16 @@ class MultiDeviceIterator(object):
     for device in self._devices:
       with ops.device(device):
         result.append(self._device_iterators[i].get_next())
+      i += 1
+    return result
+
+  def get_next_as_optional(self):
+    result = []
+    i = 0
+    for device in self._devices:
+      with ops.device(device):
+        result.append(iterator_ops.get_next_as_optional(
+            self._device_iterators[i]))
       i += 1
     return result
 

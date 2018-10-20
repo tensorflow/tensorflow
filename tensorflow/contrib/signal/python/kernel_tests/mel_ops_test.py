@@ -137,7 +137,7 @@ class LinearToMelTest(test.TestCase):
         # Settings used by Tacotron (https://arxiv.org/abs/1703.10135).
         (80, 1025, 24000.0, 80.0, 12000.0, dtypes.float64)
     ]
-    with self.test_session(use_gpu=True):
+    with self.session(use_gpu=True):
       for config in configs:
         mel_matrix_np = spectrogram_to_mel_matrix(*config)
         mel_matrix = mel_ops.linear_to_mel_weight_matrix(*config)
@@ -178,7 +178,7 @@ class LinearToMelTest(test.TestCase):
         self.assertEqual(1, len(rewritten_graph.node))
 
   def test_num_spectrogram_bins_dynamic(self):
-    with self.test_session(use_gpu=True):
+    with self.session(use_gpu=True):
       num_spectrogram_bins = array_ops.placeholder(shape=(),
                                                    dtype=dtypes.int32)
       mel_matrix_np = spectrogram_to_mel_matrix(

@@ -246,7 +246,7 @@ class WhileV2Test(test.TestCase, parameterized.TestCase):
 
     # Forward pass.
     ret = while_loop_v2(lambda v, u: v < 8., lambda v, u: (v * v, u), [x, y])
-    while_op = ret[0].op
+    while_op = ret[0].op.inputs[0].op
     # Get the TensorList output of While op containing the accumulated values
     # of y.
     # while_op.inputs: [counter_arg, x_arg, y_arg, *accumulators]
@@ -266,6 +266,39 @@ class WhileV2Test(test.TestCase, parameterized.TestCase):
     _, val = list_ops.tensor_list_pop_back(grad_output,
                                            element_dtype=dtypes.float32)
     MatchShape(val.shape)
+
+  def _createWhile(self, name):
+    """Helper function testDefaultName."""
+    output = while_v2.while_loop(lambda i: i < 3, lambda i: i + 1,
+                                 [constant_op.constant(0)])
+    while_op = output.op.inputs[0].op
+    self.assertEqual(while_op.type, "While")
+    return while_op
+
+  def testDefaultName(self):
+    with ops.Graph().as_default():
+      while_op = self._createWhile(None)
+      self.assertEqual(while_op.name, "while")
+      self.assertRegexpMatches(
+          while_op.get_attr("cond").name, r"while_cond_\d*")
+      self.assertRegexpMatches(
+          while_op.get_attr("body").name, r"while_body_\d*")
+
+    with ops.Graph().as_default():
+      with ops.name_scope("foo"):
+        while1_op = self._createWhile("")
+        self.assertEqual(while1_op.name, "foo/while")
+        self.assertRegexpMatches(
+            while1_op.get_attr("cond").name, r"foo_while_cond_\d*")
+        self.assertRegexpMatches(
+            while1_op.get_attr("body").name, r"foo_while_body_\d*")
+
+        while2_op = self._createWhile(None)
+        self.assertEqual(while2_op.name, "foo/while_1")
+        self.assertRegexpMatches(
+            while2_op.get_attr("cond").name, r"foo_while_1_cond_\d*")
+        self.assertRegexpMatches(
+            while2_op.get_attr("body").name, r"foo_while_1_body_\d*")
 
 
 def ScalarShape():

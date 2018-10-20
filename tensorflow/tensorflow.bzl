@@ -1482,9 +1482,9 @@ check_deps = rule(
     },
 )
 
-# Helper to build a dynamic library (.so) from the sources containing
-# implementations of custom ops and kernels.
-def tf_custom_op_library(name, srcs = [], gpu_srcs = [], deps = [], linkopts = []):
+def tf_custom_op_library(name, srcs = [], gpu_srcs = [], deps = [], linkopts = [], **kwargs):
+    """Helper to build a dynamic library (.so) from the sources containing implementations of custom ops and kernels.
+    """
     cuda_deps = [
         clean_dep("//tensorflow/core:stream_executor_headers_lib"),
         "@local_config_cuda//cuda:cuda_headers",
@@ -1502,6 +1502,7 @@ def tf_custom_op_library(name, srcs = [], gpu_srcs = [], deps = [], linkopts = [
             copts = _cuda_copts() + if_tensorrt(["-DGOOGLE_TENSORRT=1"]),
             features = if_cuda(["-use_header_modules"]),
             deps = deps + if_cuda_is_configured(cuda_deps) + if_rocm_is_configured(rocm_deps),
+            **kwargs
         )
         cuda_deps.extend([":" + basename + "_gpu"])
         rocm_deps.extend([":" + basename + "_gpu"])
@@ -1528,6 +1529,7 @@ def tf_custom_op_library(name, srcs = [], gpu_srcs = [], deps = [], linkopts = [
             clean_dep("//tensorflow:windows"): [],
             clean_dep("//tensorflow:darwin"): [],
         }),
+        **kwargs
     )
 
 register_extension_info(
@@ -1543,7 +1545,7 @@ def tf_custom_op_py_library(
         srcs_version = "PY2AND3",
         visibility = None,
         deps = []):
-    kernels = kernels  # unused argument
+    _ignore = [kernels]
     native.py_library(
         name = name,
         data = dso,
@@ -1801,22 +1803,29 @@ def cuda_py_test(
         flaky = 0,
         xla_enabled = False,
         grpc_enabled = False):
-    test_tags = tags + tf_cuda_tests_tags()
-    tf_py_test(
-        name = name,
-        size = size,
-        srcs = srcs,
-        data = data,
-        main = main,
-        args = args,
-        tags = test_tags,
-        shard_count = shard_count,
-        additional_deps = additional_deps,
-        kernels = kernels,
-        flaky = flaky,
-        xla_enabled = xla_enabled,
-        grpc_enabled = grpc_enabled,
-    )
+    if main == None:
+        main = name + ".py"
+    for config in ["cpu", "gpu"]:
+        test_name = name
+        test_tags = tags
+        if config == "gpu":
+            test_name += "_gpu"
+            test_tags = test_tags + tf_cuda_tests_tags()
+        tf_py_test(
+            name = test_name,
+            size = size,
+            srcs = srcs,
+            data = data,
+            main = main,
+            args = args,
+            tags = test_tags,
+            shard_count = shard_count,
+            additional_deps = additional_deps,
+            kernels = kernels,
+            flaky = flaky,
+            xla_enabled = xla_enabled,
+            grpc_enabled = grpc_enabled,
+        )
 
 register_extension_info(
     extension_name = "cuda_py_test",
