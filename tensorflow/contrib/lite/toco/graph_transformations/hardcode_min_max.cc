@@ -411,7 +411,6 @@ bool HardcodeMinMaxForLstmCell(Model* model, Operator* op) {
       break;
 
     case OperatorType::kResizeBilinear:
-    case OperatorType::kResizeNearestNeighbor:
     case OperatorType::kSlice:
     case OperatorType::kStridedSlice:
     case OperatorType::kSqueeze:
