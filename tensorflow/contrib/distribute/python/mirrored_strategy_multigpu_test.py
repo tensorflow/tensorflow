@@ -1448,6 +1448,9 @@ class MultiWorkerMirroredStrategyTest(
     return strategy
 
   def test_num_replicas_in_sync(self):
+    if not GPU_TEST:
+      self.skipTest("Not GPU test")
+
     strategy = self._get_distribution_strategy()
     # We calculate the total number of gpus across the workers(2) specified in
     # the cluster spec.
