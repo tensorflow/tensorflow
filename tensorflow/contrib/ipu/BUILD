@@ -113,6 +113,22 @@ tf_py_test(
     ],
 )
 
+tf_py_test(
+    name = "sort_op_test",
+    size = "medium",
+    srcs = ["python/sort_op_test.py"],
+    additional_deps = [
+        ":ipu",
+        "//tensorflow:tensorflow_py",
+        "//tensorflow/contrib/compiler:xla",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:platform",
+        "//tensorflow/python:state_ops",
+        "//tensorflow/python:variables",
+    ],
+)
+
 test_suite(
     name = "all_tests",
     tests = [
@@ -121,6 +137,7 @@ test_suite(
         "conditional_test",
         "mapping_test",
         "while_loop_test",
+        "sort_op_test"
     ],
 )
 

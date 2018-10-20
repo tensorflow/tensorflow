@@ -16,7 +16,6 @@ EagerTest # Eager test crashing
 EagerFunctionTest # Eager function test crashing
 ExcessivePaddingTest # Eager test crashing
 CategoricalTest.testSamplingCorrectness # Failing due to input size to poplibs reduction
-XlaSortOpTest # No Sort op
 Pooling3DTest.testMaxPoolGradValidPadding1_1_3d  # 3D grad_grad
 Pooling3DTest.testMaxPoolGradValidPadding2_1_6_3d  # 3D grad_grad
 Pooling3DTest.testMaxPoolGradValidPadding2_2_3d  # 3D grad_grad
@@ -32,7 +31,6 @@ UnaryOpsTest.testAllTypeOps # Need bitwise reductions
 QrOpTest.testLarge2000x2000 # Assertion in reduction
 GatherTest.testHigherRank # Bad
 MatrixTriangularSolveOpTest.testBatch # Arithmetic precision?
-NonMaxSuppressionTest # Don't support sort
 XlaOpsTest.testShiftRightLogical # using UINT32
 XlaOpsTest.testShiftRightArithmetic # using UINT32
 ScatterNdTest # scatter

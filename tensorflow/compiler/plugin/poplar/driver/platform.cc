@@ -129,6 +129,19 @@ Status PoplarPlatform::GetCompilerEvents(
   return Status::OK();
 }
 
+void PoplarPlatform::AboutToFreeEngine(poplar::Engine* engine) {
+  for (int ordinal = 0; ordinal < VisibleDeviceCount(); ordinal++) {
+    auto executor = ExecutorForDevice(ordinal);
+
+    if (executor.ok()) {
+      auto* e =
+          static_cast<PoplarExecutor*>(executor.ValueOrDie()->implementation());
+
+      e->AboutToFreeEngine(engine);
+    }
+  }
+}
+
 static void InitializePoplarPlatform() {
   std::unique_ptr<se::Platform> platform(new PoplarPlatform);
   SE_CHECK_OK(se::MultiPlatformManager::RegisterPlatform(std::move(platform)));

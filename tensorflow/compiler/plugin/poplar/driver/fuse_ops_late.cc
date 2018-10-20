@@ -43,7 +43,6 @@ static const std::vector<FusedGraphInfo> fuse_info = {
     {"avg_pool", 1},
     {"avg_pool", 1},
     {"avg_pool", 1},
-    {"avg_pool", 1},
     {"bias_apply", 0, true},
     {"conv_scaled_inplace", 4, true},
     {"conv_scaled_inplace", 4, true},
@@ -184,14 +183,6 @@ static const std::vector<HloMatcherPattern> patterns = {
     {{HloOpcode::kDivide, true, 0, IsAveragePool, {1, 3}},
      {HloOpcode::kReduceWindow, true, 0, Is2DReductionWindow, {4, 2}},
      {HloOpcode::kConstant, true, 0, IsConstantZero, {}},
-     {HloOpcode::kConstant, true, 0, nullptr, {}},
-     {HloOpcode::kParameter, false, 0, nullptr, {}}},
-
-    // Average pool (valid) - broadcast
-    {{HloOpcode::kDivide, true, 0, IsAveragePool, {1, 3}},
-     {HloOpcode::kReduceWindow, true, 0, Is2DReductionWindow, {5, 2}},
-     {HloOpcode::kConstant, true, 0, IsConstantZero, {}},
-     {HloOpcode::kBroadcast, true, 0, nullptr, {4}},
      {HloOpcode::kConstant, true, 0, nullptr, {}},
      {HloOpcode::kParameter, false, 0, nullptr, {}}},
 

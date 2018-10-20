@@ -16,6 +16,14 @@ genrule(
     cmd = "$(location @local_config_poplar//poplar:popc) -DNDEBUG -O3 -I . -o $@ $<",
 )
 
+genrule(
+    name = "tf_sort",
+    srcs = ["vertices/heap_sort.cpp"],
+    outs = ["heap_sort.gp"],
+    tools = ["@local_config_poplar//poplar:popc"],
+    cmd = "$(location @local_config_poplar//poplar:popc) -DNDEBUG -O3 -I . -o $@ $<",
+)
+
 tf_proto_library(
     name = "protos",
     srcs = [
@@ -99,6 +107,14 @@ cc_library(
 )
 
 cc_library(
+    name = "common",
+    srcs = [],
+    hdrs = [
+      "driver/xla_ipu_common.h",
+    ],
+)
+
+cc_library(
     name = "driver",
     srcs = [
         "driver/compiler.cc",
@@ -124,6 +140,7 @@ cc_library(
         "driver/visitor_arithmetic_expr.cc",
         "driver/visitor_map.cc",
         "driver/visitor_subcomputation.cc",
+        "driver/sort_ops.cc",
     ],
     hdrs = [
         "driver/compiler.h",
@@ -147,6 +164,7 @@ cc_library(
         "driver/visitor_subcomputation.h",
     ],
     deps = [
+        ":common",
         ":optimizers",
         ":protos_cc_impl",
         "//tensorflow/compiler/xla:xla_headers_lib",
@@ -241,6 +259,7 @@ cc_library(
     ],
     data = [
         ":tf_graph_program",
+        ":tf_sort",
         ":protos_py",
         "@local_config_poplar//poplar:poplar_lib",
     ],
@@ -253,10 +272,9 @@ cc_library(
     srcs = [
         "driver/xla_ipu_backend.cc",
     ],
-    hdrs = [
-        "driver/xla_ipu_common.h",
-    ],
+    hdrs = [],
     deps = [
+        ":common",
         "//tensorflow/compiler/tf2xla:xla_compiler",
         "//tensorflow/core:framework_headers_lib",
         "//third_party/eigen3",
@@ -303,6 +321,19 @@ tf_cc_test(
 tf_cc_test(
     name = "dynamic_slice_layout_test",
     srcs = ["tests/dynamic_slice_layout_test.cc"],
+    extra_copts = [
+        "-fexceptions",
+    ],
+    deps = [
+        ":poplar_lib",
+        "//tensorflow/compiler/xla/service:hlo_matchers",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+    ],
+)
+
+tf_cc_test(
+    name = "sort_op_test",
+    srcs = ["tests/sort_op_test.cc"],
     extra_copts = [
         "-fexceptions",
     ],
@@ -796,6 +827,7 @@ test_suite(
         "cache_graph_test",
         "scheduler_test",
         "dynamic_slice_layout_test",
+        "sort_op_test",
         "while_loop_to_repeat_simplify_test",
     ],
 )

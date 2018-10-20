@@ -348,6 +348,19 @@ StatusOr<poplar::program::Program> CreatePaddingReduceWindow(
     poplar::Graph& graph, CompilerResources& res, const HloInstruction* inst,
     const xla::Shape& output, TensorMap& tensor_map);
 
+StatusOr<poplar::program::Program> CreateSort(poplar::Graph& graph,
+                                              CompilerResources& res,
+                                              const HloInstruction* inst,
+                                              TensorMap& tensor_map);
+
+StatusOr<poplar::program::Sequence> CreateSort(
+    poplar::Graph& graph, poplar::Tensor input, const int64 dimension,
+    const std::string& debug_name = "");
+
+StatusOr<poplar::program::Sequence> CreateSort(
+    poplar::Graph& graph, poplar::Tensor key, poplar::Tensor value,
+    const int64 dimension, const std::string& debug_name = "");
+
 /* Optimization tests */
 
 bool IsPoplibsPool(const HloInstruction*, const HloComputation*);

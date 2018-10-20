@@ -68,6 +68,8 @@ class FullVisitor : public BaseVisitor {
 
   Status HandlePad(HloInstruction* inst) override;
 
+  Status HandleSort(HloInstruction* inst) override;
+
   Status Postprocess(HloInstruction* inst) override;
 };
 

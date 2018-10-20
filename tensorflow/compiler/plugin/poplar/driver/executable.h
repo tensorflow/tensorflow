@@ -45,7 +45,7 @@ class PoplarExecutable : public Executable {
   PoplarExecutable(std::unique_ptr<HloModule> hlo_module,
                    std::unique_ptr<HloProfilePrinterData> hlo_profile_printer,
                    std::unique_ptr<HloProfileIndexMap> hlo_profile_index_map,
-                   std::shared_ptr<poplar::Engine> engine,
+                   std::unique_ptr<poplar::Engine> engine,
                    const InputOutputAliasingMap& input_output_aliasing_map,
                    const bool is_constant_graph,
                    std::vector<std::vector<Literal>> literal_output,
@@ -73,9 +73,7 @@ class PoplarExecutable : public Executable {
     return input_output_aliasing_map_;
   }
 
-  const std::shared_ptr<poplar::Engine>& Engine() const {
-    return poplar_engine_;
-  }
+  poplar::Engine* Engine() const { return poplar_engine_.get(); }
 
   const std::vector<std::vector<Literal>>& LiteralValue() const {
     return literal_output_;
@@ -99,7 +97,7 @@ class PoplarExecutable : public Executable {
  private:
   friend class GraphCompileIoMapTest;
 
-  std::shared_ptr<poplar::Engine> poplar_engine_;
+  std::unique_ptr<poplar::Engine> poplar_engine_;
   InputOutputAliasingMap input_output_aliasing_map_;
   std::vector<std::vector<Literal>> literal_output_;
   const bool is_constant_graph_;
