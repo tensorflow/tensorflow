@@ -3029,14 +3029,14 @@ class FeatureLayerTest(test.TestCase):
 
   def test_bare_column(self):
     with ops.Graph().as_default():
-      features = features = {'a': [0.]}
+      features = {'a': [0.]}
       net = fc.FeatureLayer(fc.numeric_column('a'))(features)
       with _initialized_session():
         self.assertAllClose([[0.]], net.eval())
 
   def test_column_generator(self):
     with ops.Graph().as_default():
-      features = features = {'a': [0.], 'b': [1.]}
+      features = {'a': [0.], 'b': [1.]}
       columns = (fc.numeric_column(key) for key in features)
       net = fc.FeatureLayer(columns)(features)
       with _initialized_session():
@@ -3632,14 +3632,14 @@ class FunctionalInputLayerTest(test.TestCase):
 
   def test_bare_column(self):
     with ops.Graph().as_default():
-      features = features = {'a': [0.]}
+      features = {'a': [0.]}
       net = fc_old.input_layer(features, fc.numeric_column('a'))
       with _initialized_session():
         self.assertAllClose([[0.]], net.eval())
 
   def test_column_generator(self):
     with ops.Graph().as_default():
-      features = features = {'a': [0.], 'b': [1.]}
+      features = {'a': [0.], 'b': [1.]}
       columns = (fc.numeric_column(key) for key in features)
       net = fc_old.input_layer(features, columns)
       with _initialized_session():
