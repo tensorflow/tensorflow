@@ -95,7 +95,7 @@ def _padded_split(tensor, pieces):
   shape = tensor.shape
   if 1 != len(shape):
     raise ValueError("input tensor must be 1D")
-  tensor_len = shape[0].value
+  tensor_len = shape.dims[0].value
   with ops.colocate_with(tensor):
     if tensor_len % pieces != 0:
       # pad to an even length
@@ -176,7 +176,7 @@ def _ragged_split(tensor, pieces):
   shape = tensor.shape
   if 1 != len(shape):
     raise ValueError("input tensor must be 1D")
-  tensor_len = shape[0].value
+  tensor_len = shape.dims[0].value
   chunk_size = tensor_len // pieces
   with ops.colocate_with(tensor):
     if tensor_len != (pieces * chunk_size):

@@ -28,6 +28,7 @@ from tensorflow.contrib.timeseries.python.timeseries.feature_keys import TrainEv
 from tensorflow.python.feature_column import feature_column
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
@@ -712,7 +713,7 @@ class SequentialTimeSeriesModel(TimeSeriesModel):
         `outputs` and computed in state_update_fn.
     """
     times = ops.convert_to_tensor(times, dtype=dtypes.int64)
-    window_static_shape = times.get_shape()[1].value
+    window_static_shape = tensor_shape.dimension_value(times.shape[1])
     if self._static_unrolling_window_size_threshold is None:
       static_unroll = False
     else:
@@ -789,7 +790,7 @@ class SequentialTimeSeriesModel(TimeSeriesModel):
         [_window_size_tensor_array(self.dtype) for _ in outputs]]
     if static_unroll:
       arguments = initial_loop_arguments
-      for step_number in range(times.get_shape()[1].value):
+      for step_number in range(tensor_shape.dimension_value(times.shape[1])):
         arguments = _state_update_step(
             array_ops.constant(step_number, dtypes.int32), *arguments[1:],
             reuse=(step_number > 0))  # Variable sharing between steps

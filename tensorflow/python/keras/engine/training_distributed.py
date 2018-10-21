@@ -23,6 +23,7 @@ import enum
 import numpy as np
 
 from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.keras import backend as K
@@ -32,6 +33,7 @@ from tensorflow.python.keras import optimizers
 from tensorflow.python.keras.engine import distributed_training_utils
 from tensorflow.python.keras.utils.generic_utils import Progbar
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import distribute as distribute_lib
@@ -863,6 +865,17 @@ def _clone_and_build_model(model, inputs=None, targets=None):
   else:
     optimizer_config = model.optimizer.get_config()
     optimizer = model.optimizer.__class__.from_config(optimizer_config)
+
+  # Recast all low precision outputs back to float32 since we only casted
+  # the inputs to bfloat16 and not targets. This is done so that we can preserve
+  # precision when calculating the loss value.
+  def _upcast_low_precision_outputs(output):
+    if output.dtype == dtypes.bfloat16:
+      return math_ops.cast(output, dtypes.float32)
+    else:
+      return output
+  cloned_model.outputs = [_upcast_low_precision_outputs(o)
+                          for o in cloned_model.outputs]
 
   if isinstance(targets, tuple):
     targets = nest.flatten(targets)

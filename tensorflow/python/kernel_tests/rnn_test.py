@@ -201,15 +201,15 @@ class RNNTest(test.TestCase):
       inputs = array_ops.placeholder(dtypes.float32, shape=(None, 4, 5))
       # - Without initial_state
       outputs, state = rnn.dynamic_rnn(cell, inputs, dtype=dtypes.float32)
-      self.assertEqual(None, outputs.shape[0].value)
-      self.assertEqual(None, state.shape[0].value)
+      self.assertEqual(None, outputs.shape.dims[0].value)
+      self.assertEqual(None, state.shape.dims[0].value)
       # - With initial_state
       outputs, state = rnn.dynamic_rnn(
           cell,
           inputs,
           initial_state=array_ops.placeholder(dtypes.float32, shape=(None, 5)))
-      self.assertEqual(None, outputs.shape[0].value)
-      self.assertEqual(None, state.shape[0].value)
+      self.assertEqual(None, outputs.shape.dims[0].value)
+      self.assertEqual(None, state.shape.dims[0].value)
 
   @test_util.run_in_graph_and_eager_modes
   def testScalarStateIsAccepted(self):

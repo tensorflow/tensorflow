@@ -1448,7 +1448,7 @@ class _ModelFnWrapper(object):
       raise TypeError('TPUEstimatorSpec.predictions must be dict of Tensors.')
 
     for (key, tensor) in predictions.items():
-      if tensor.shape[0].value is None:
+      if tensor.shape.dims[0].value is None:
         raise ValueError(
             'The tensor with key ({}) in TPUEstimatorSpec.predictions has '
             'dynamic shape (should be static). Tensor: {}'.format(key, tensor))

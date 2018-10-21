@@ -198,7 +198,7 @@ def bucket_by_sequence_length(element_length_func,
       for shape in nest.flatten(shapes):
         shape = tensor_shape.TensorShape(shape)
         shape = [
-            none_filler if d.value is None else d
+            none_filler if tensor_shape.dimension_value(d) is None else d
             for d in shape
         ]
         padded.append(shape)

@@ -1166,7 +1166,7 @@ class TestTrainingWithDataTensors(test.TestCase):
           np.zeros((2, 3)), shape=tensor_shape.TensorShape([None, 3]))
       targets = array_ops.placeholder_with_default(
           np.zeros((2, 4)), shape=tensor_shape.TensorShape([None, 4]))
-      self.assertEqual(inputs.shape[0].value, None)
+      self.assertEqual(inputs.shape.dims[0].value, None)
       model.fit(inputs, targets, epochs=1, steps_per_epoch=2, verbose=0)
       model.evaluate(inputs, targets, steps=2, verbose=0)
       model.predict(inputs, steps=2)

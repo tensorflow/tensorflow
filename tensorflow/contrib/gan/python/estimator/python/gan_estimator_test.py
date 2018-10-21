@@ -37,6 +37,7 @@ from tensorflow.python.estimator.estimator import WarmStartSettings
 from tensorflow.python.estimator.inputs import numpy_io
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework.errors_impl import NotFoundError
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
@@ -54,7 +55,8 @@ from tensorflow.python.training import training_util
 def generator_fn(noise_dict, mode):
   del mode
   noise = noise_dict['x']
-  return layers.fully_connected(noise, noise.shape[1].value)
+  return layers.fully_connected(noise, tensor_shape.dimension_value(
+      noise.shape[1]))
 
 
 def discriminator_fn(data, unused_conditioning, mode):

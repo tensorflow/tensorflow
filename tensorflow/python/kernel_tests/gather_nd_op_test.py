@@ -26,6 +26,7 @@ from tensorflow.python.client import session
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import variables
@@ -195,7 +196,7 @@ class GatherNdTest(test.TestCase):
     gather_nd_t = array_ops.gather_nd(params, indices)
     shape = gather_nd_t.get_shape()
     self.assertEqual(None, shape.ndims)
-    self.assertEqual(None, shape[0].value)
+    self.assertEqual(None, tensor_shape.dimension_value(shape[0]))
 
   def testBadIndicesCPU(self):
     with self.session(use_gpu=False):

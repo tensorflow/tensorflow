@@ -3753,11 +3753,12 @@ def _safe_embedding_lookup_sparse(embedding_weights,
                                            sparse_weights]) as scope:
     # Reshape higher-rank sparse ids and weights to linear segment ids.
     original_shape = sparse_ids.dense_shape
-    original_rank_dim = sparse_ids.dense_shape.get_shape()[0]
+    original_rank_dim = tensor_shape.dimension_value(
+        sparse_ids.dense_shape.get_shape()[0])
     original_rank = (
         array_ops.size(original_shape)
-        if original_rank_dim.value is None
-        else original_rank_dim.value)
+        if original_rank_dim is None
+        else original_rank_dim)
     sparse_ids = sparse_ops.sparse_reshape(sparse_ids, [
         math_ops.reduce_prod(
             array_ops.slice(original_shape, [0], [original_rank - 1])),
@@ -3811,7 +3812,8 @@ def _safe_embedding_lookup_sparse(embedding_weights,
             array_ops.slice(array_ops.shape(result), [1], [-1])
         ], 0))
     final_result.set_shape(tensor_shape.unknown_shape(
-        (original_rank_dim - 1).value).concatenate(result.get_shape()[1:]))
+        (tensor_shape.Dimension(original_rank_dim) - 1).value).concatenate(
+            result.get_shape()[1:]))
     return final_result
 
 
@@ -4040,19 +4042,30 @@ class IndicatorColumn(
 
 
 def _verify_static_batch_size_equality(tensors, columns):
+  """Verify equality between static batch sizes.
+
+  Args:
+    tensors: iterable of input tensors.
+    columns: Corresponding feature columns.
+
+  Raises:
+    ValueError: in case of mismatched batch sizes.
+  """
   # bath_size is a tf.Dimension object.
   expected_batch_size = None
   for i in range(0, len(tensors)):
-    if tensors[i].shape[0].value is not None:
+    batch_size = tensor_shape.Dimension(tensor_shape.dimension_value(
+        tensors[i].shape[0]))
+    if batch_size.value is not None:
       if expected_batch_size is None:
         bath_size_column_index = i
-        expected_batch_size = tensors[i].shape[0]
-      elif not expected_batch_size.is_compatible_with(tensors[i].shape[0]):
+        expected_batch_size = batch_size
+      elif not expected_batch_size.is_compatible_with(batch_size):
         raise ValueError(
             'Batch size (first dimension) of each feature must be same. '
             'Batch size of columns ({}, {}): ({}, {})'.format(
                 columns[bath_size_column_index].name, columns[i].name,
-                expected_batch_size, tensors[i].shape[0]))
+                expected_batch_size, batch_size))
 
 
 class SequenceCategoricalColumn(

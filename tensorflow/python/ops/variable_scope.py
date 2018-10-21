@@ -711,7 +711,7 @@ class _VariableStore(object):
 
     vs = []
     num_slices = partitions[slice_dim]
-    num_slices_with_excess = shape[slice_dim].value % num_slices
+    num_slices_with_excess = shape.dims[slice_dim].value % num_slices
 
     slice_offset = [0] * shape.ndims
 
