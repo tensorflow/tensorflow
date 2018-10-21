@@ -160,7 +160,7 @@ class HistogramFixedWidthTest(test.TestCase):
       hist = histogram_ops.histogram_fixed_width(
           values, value_range, nbins=placeholder)
       self.assertEquals(hist.shape.ndims, 1)
-      self.assertIs(hist.shape[0].value, None)
+      self.assertIs(hist.shape.dims[0].value, None)
       self.assertEqual(dtypes.int32, hist.dtype)
       self.assertAllClose(expected_bin_counts, hist.eval({placeholder: 5}))
 

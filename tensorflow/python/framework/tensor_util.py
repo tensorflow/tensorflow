@@ -930,7 +930,7 @@ def constant_value_as_shape(tensor):  # pylint: disable=invalid-name
     except TypeError:  # Could come from slicing prev.
       pass
 
-  ret = tensor_shape.unknown_shape(shape[0].value)
+  ret = tensor_shape.unknown_shape(shape.dims[0].value)
   value = constant_value(tensor)
   if value is not None:
     ret = ret.merge_with(

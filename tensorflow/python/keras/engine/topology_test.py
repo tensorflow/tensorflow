@@ -938,10 +938,10 @@ class DeferredModeTest(test.TestCase):
     x = base_layer.DeferredTensor(shape=(None, 2),
                                   dtype='float32',
                                   name='x')
-    self.assertEqual(str(x),
-                     'DeferredTensor(\'x\', shape=(?, 2), dtype=float32)')
-    self.assertEqual(repr(x),
-                     '<DeferredTensor \'x\' shape=(?, 2) dtype=float32>')
+    self.assertEqual(str(x).replace('?', 'None'),
+                     'DeferredTensor(\'x\', shape=(None, 2), dtype=float32)')
+    self.assertEqual(repr(x).replace('?', 'None'),
+                     '<DeferredTensor \'x\' shape=(None, 2) dtype=float32>')
 
   @test_util.run_in_graph_and_eager_modes()
   def testSimpleNetworkBuilding(self):
