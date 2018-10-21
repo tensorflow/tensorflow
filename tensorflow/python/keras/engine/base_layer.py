@@ -664,6 +664,12 @@ class Layer(checkpointable.CheckpointableBase):
     """
     input_list = nest.flatten(inputs)
 
+    if context.executing_eagerly():
+      # Accept NumPy inputs by converting to Tensors when executing eagerly.
+      if all([isinstance(x, np.ndarray) for x in input_list]):
+        inputs = nest.map_structure(ops.convert_to_tensor, inputs)
+        input_list = nest.flatten(inputs)
+
     build_graph = not context.executing_eagerly()
     # TODO(fchollet, allenl): Make deferred mode work with subclassed Models
     # which don't use an "inputs" argument.

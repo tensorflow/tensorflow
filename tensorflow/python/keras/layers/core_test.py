@@ -21,6 +21,7 @@ from __future__ import print_function
 import numpy as np
 
 from tensorflow.python import keras
+from tensorflow.python.eager import context
 from tensorflow.python.framework import test_util as tf_test_util
 from tensorflow.python.keras import testing_utils
 from tensorflow.python.ops import math_ops
@@ -307,6 +308,18 @@ class CoreLayersTest(test.TestCase):
       })
 
       layer = keras.layers.Lambda.from_config(config)
+
+  @tf_test_util.run_in_graph_and_eager_modes
+  def test_numpy_inputs(self):
+    if context.executing_eagerly():
+      layer = keras.layers.RepeatVector(2)
+      x = np.ones((10, 10))
+      self.assertAllEqual(np.ones((10, 2, 10)), layer(x))
+
+      layer = keras.layers.Concatenate()
+      x, y = np.ones((10, 10)), np.ones((10, 10))
+      self.assertAllEqual(np.ones((10, 20)), layer([x, y]))
+
 
 if __name__ == '__main__':
   test.main()
