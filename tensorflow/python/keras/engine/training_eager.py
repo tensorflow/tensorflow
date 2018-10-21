@@ -32,6 +32,7 @@ from tensorflow.python.keras import backend
 from tensorflow.python.keras import callbacks as cbks
 from tensorflow.python.keras.engine import training_utils
 from tensorflow.python.keras.utils import generic_utils
+from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import tf_logging as logging
 
 
@@ -126,13 +127,10 @@ def _model_loss(model, inputs, targets, sample_weights=None, training=False):
 
     total_loss = backend.mean(total_loss)
     # Add regularization losses
-    custom_losses = []
-    for layer in model.layers:
-      if layer.losses:
-        custom_losses += layer.losses
-
+    custom_losses = model.losses
     if custom_losses:
-      total_loss += sum(custom_losses)
+      total_loss += math_ops.add_n(custom_losses)
+    model._clear_losses()
 
   return outs, total_loss, loss_metrics, masks
 

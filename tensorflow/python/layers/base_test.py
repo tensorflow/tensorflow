@@ -157,11 +157,6 @@ class BaseLayerTest(test.TestCase):
     self.assertEqual(
         len(ops.get_collection(ops.GraphKeys.REGULARIZATION_LOSSES)), 3)
 
-  def testNoEagerActivityRegularizer(self):
-    with context.eager_mode():
-      with self.assertRaisesRegexp(ValueError, 'activity_regularizer'):
-        core_layers.Dense(1, activity_regularizer=lambda *args, **kwargs: 0.)
-
   @test_util.run_in_graph_and_eager_modes
   def testCall(self):
 

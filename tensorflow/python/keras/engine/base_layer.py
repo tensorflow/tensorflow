@@ -152,12 +152,7 @@ class Layer(checkpointable.CheckpointableBase):
 
     self._init_set_name(name)
 
-    activity_regularizer = kwargs.pop('activity_regularizer', None)
-    if activity_regularizer and context.executing_eagerly():
-      raise ValueError(
-          ('Activity regularization is not supported when executing eagerly. '
-           'Got activity_regularizer=%s') % (activity_regularizer,))
-    self._activity_regularizer = activity_regularizer
+    self._activity_regularizer = kwargs.pop('activity_regularizer', None)
     self._trainable_weights = []
     self._non_trainable_weights = []
     self._updates = []
@@ -165,9 +160,8 @@ class Layer(checkpointable.CheckpointableBase):
     # regularizers.
     self._callable_losses = []
     # A list of Tensors containing activity regularizers and losses manually
-    # added through `add_loss`. Empty when executing eagerly.
+    # added through `add_loss`.
     self._losses = []
-    self._in_call = False  # Flag for error checking in add_loss
     self._dtype = None if dtype is None else dtypes.as_dtype(dtype).name
     self._call_fn_args = function_utils.fn_args(self.call)
     self._compute_previous_mask = ('mask' in self._call_fn_args or
@@ -401,11 +395,11 @@ class Layer(checkpointable.CheckpointableBase):
       losses: Loss tensor, or list/tuple of tensors. Rather than tensors, losses
         may also be zero-argument callables which create a loss tensor. Only
         callable losses are supported when executing eagerly.
-      inputs: If anything other than None is passed, it signals the losses
-        are conditional on some of the layer's inputs,
-        and thus they should only be run where these inputs are available.
-        This is the case for activity regularization losses, for instance.
-        If `None` is passed, the losses are assumed
+      inputs: Ignored when executing eagerly. If anything other than None is
+        passed, it signals the losses are conditional on some of the layer's
+        inputs, and thus they should only be run where these inputs are
+        available. This is the case for activity regularization losses, for
+        instance. If `None` is passed, the losses are assumed
         to be unconditional, and will apply across all dataflows of the layer
         (e.g. weight regularization losses).
 
@@ -413,20 +407,6 @@ class Layer(checkpointable.CheckpointableBase):
       RuntimeError: If called in Eager mode with a `Tensor` rather than a
         callable, or if `inputs` is not None.
     """
-    executing_eagerly = context.executing_eagerly()
-    if executing_eagerly:
-      if inputs is not None:
-        raise RuntimeError(
-            'Activity regularization (via the "inputs" argument to '
-            'Layer.add_loss) is not supported when executing eagerly. Consider '
-            'returning activity regularization losses from a Model\'s call() '
-            'method.')
-      if getattr(self, '_in_call', False):
-        # TODO(psv): Support activity regularization and a way to reset losses.
-        raise RuntimeError(
-            'Adding losses inside a Layer\'s call() method is not currently '
-            'supported when executing eagerly. Please file a feature request '
-            'if you need this limitation lifted.')
     losses = generic_utils.to_list(losses)
 
     def _tag_unconditional(loss):
@@ -444,10 +424,6 @@ class Layer(checkpointable.CheckpointableBase):
         self._callable_losses.append(
             functools.partial(_tag_unconditional, loss))
       else:
-        if executing_eagerly:
-          raise RuntimeError(
-              'Layer.add_loss only supported for zero-argument lambdas when '
-              'executing eagerly.')
         self._losses.append(_tag_unconditional(loss))
 
   def get_losses_for(self, inputs):
@@ -711,13 +687,6 @@ class Layer(checkpointable.CheckpointableBase):
 
     with ops.name_scope(self._name_scope()):
       if not self.built:
-        if not build_graph:
-          # Activity regularization is currently unsupported in Eager mode.
-          if self._activity_regularizer:
-            raise ValueError(
-                'activity_regularizer currently unsupported with '
-                'eager execution enabled. Found an activity_regularizer in '
-                '%s(%s).' % (self.__class__.__name__, self))
         if not build_graph and not in_deferred_mode:
           for x in input_list:
             if hasattr(x, '_keras_history'):
@@ -753,9 +722,7 @@ class Layer(checkpointable.CheckpointableBase):
         self._assert_input_compatibility(inputs)
 
       if not in_deferred_mode:
-        self._in_call = True
         outputs = self.call(inputs, *args, **kwargs)
-        self._in_call = False
         if outputs is None:
           raise ValueError('A layer\'s `call` method should return a Tensor '
                            'or a list of Tensors, not None (layer: ' +
@@ -777,12 +744,15 @@ class Layer(checkpointable.CheckpointableBase):
           outputs = outputs[0]
 
       if build_graph:
-        self._handle_activity_regularization(inputs, outputs)
         self._set_mask_metadata(inputs, outputs, previous_mask)
+
+      if not in_deferred_mode:
+        self._handle_activity_regularization(inputs, outputs)
 
       if in_deferred_mode or build_graph and have_all_keras_metadata(inputs):
         inputs, outputs = self._set_connectivity_metadata_(
             inputs, outputs, args, kwargs)
+
       if context.executing_eagerly():
         return outputs
 
