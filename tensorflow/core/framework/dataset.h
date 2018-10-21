@@ -313,7 +313,6 @@ class IteratorContext {
     return &params_.runner;
   }
 
-
   std::shared_ptr<const FunctionLibraryDefinition> function_library() {
     return params_.function_library;
   }
@@ -827,20 +826,6 @@ class BackgroundWorker {
 };
 
 }  // namespace data
-
-// TODO(b/114112161): Remove these aliases when all users have moved over to the
-// `tensorflow::data` namespace.
-using data::DatasetBase;
-using data::DatasetContext;
-using data::DatasetIterator;
-using data::DatasetOpKernel;
-using data::IteratorBase;
-using data::IteratorContext;
-using data::IteratorStateReader;
-using data::IteratorStateWriter;
-using data::SerializationContext;
-using data::UnaryDatasetOpKernel;
-
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_CORE_FRAMEWORK_DATASET_H_
