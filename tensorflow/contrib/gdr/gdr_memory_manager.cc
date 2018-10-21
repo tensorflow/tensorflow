@@ -282,7 +282,7 @@ Status GdrMemoryManager::Init() {
       GPUProcessState::singleton()->AddGPUAllocVisitor(numa_idx,
                                                        cuda_alloc_visitor);
     }
-    VLOG(INFO) << "Instrumenting GPU allocator(s) for all Numas";
+    VLOG(1) << "Instrumenting GPU allocator(s) for all Numas";
   }
 #endif  // GOOGLE_CUDA
   return Status::OK();
