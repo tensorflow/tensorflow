@@ -373,9 +373,7 @@ void ModulePrinter::print(const Module *module) {
 
 /// Print a floating point value in a way that the parser will be able to
 /// round-trip losslessly.
-static void printFloatValue(double value, raw_ostream &os) {
-  APFloat apValue(value);
-
+static void printFloatValue(const APFloat &apValue, raw_ostream &os) {
   // We would like to output the FP constant value in exponential notation,
   // but we cannot do this if doing so will lose precision.  Check here to
   // make sure that we only output it in exponential format if we can parse
@@ -394,25 +392,15 @@ static void printFloatValue(double value, raw_ostream &os) {
              (strValue[1] >= '0' && strValue[1] <= '9'))) &&
            "[-+]?[0-9] regex does not match!");
     // Reparse stringized version!
-    if (APFloat(APFloat::IEEEdouble(), strValue).convertToDouble() == value) {
+    if (APFloat(APFloat::IEEEdouble(), strValue).bitwiseIsEqual(apValue)) {
       os << strValue;
       return;
     }
   }
 
-  // Otherwise, print it in a hexadecimal form.  Convert it to an integer so we
-  // can print it out using integer math.
-  union {
-    double doubleValue;
-    uint64_t integerValue;
-  };
-  doubleValue = value;
-  os << "0x";
-  // Print out 16 nibbles worth of hex digit.
-  for (unsigned i = 0; i != 16; ++i) {
-    os << llvm::hexdigit(integerValue >> 60);
-    integerValue <<= 4;
-  }
+  SmallVector<char, 16> str;
+  apValue.toString(str);
+  os << str;
 }
 
 void ModulePrinter::printFunctionReference(const Function *func) {

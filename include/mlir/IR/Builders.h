@@ -96,6 +96,7 @@ public:
   BoolAttr *getBoolAttr(bool value);
   IntegerAttr *getIntegerAttr(int64_t value);
   FloatAttr *getFloatAttr(double value);
+  FloatAttr *getFloatAttr(const APFloat &value);
   StringAttr *getStringAttr(StringRef bytes);
   ArrayAttr *getArrayAttr(ArrayRef<Attribute *> value);
   AffineMapAttr *getAffineMapAttr(AffineMap map);

@@ -238,7 +238,7 @@ Attribute *ConstantOp::constantFold(ArrayRef<Attribute *> operands,
 }
 
 void ConstantFloatOp::build(Builder *builder, OperationState *result,
-                            double value, FloatType *type) {
+                            const APFloat &value, FloatType *type) {
   ConstantOp::build(builder, result, builder->getFloatAttr(value), type);
 }
 

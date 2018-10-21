@@ -20,7 +20,8 @@
 
 #include "mlir/IR/AffineMap.h"
 #include "mlir/Support/LLVM.h"
-#include "llvm/ADT/ArrayRef.h"
+#include "llvm/ADT/APFloat.h"
+#include "llvm/Support/TrailingObjects.h"
 
 namespace mlir {
 class Function;
@@ -121,15 +122,15 @@ private:
   int64_t value;
 };
 
-class FloatAttr : public Attribute {
+class FloatAttr final : public Attribute,
+                        public llvm::TrailingObjects<FloatAttr, uint64_t> {
 public:
   static FloatAttr *get(double value, MLIRContext *context);
+  static FloatAttr *get(const APFloat &value, MLIRContext *context);
 
-  // TODO: This should really be implemented in terms of APFloat for
-  // correctness, otherwise constant folding will be done with host math.  This
-  // is completely incorrect for BF16 and other datatypes, and subtly wrong
-  // for float32.
-  double getValue() const { return value; }
+  APFloat getValue() const;
+
+  double getDouble() const { return getValue().convertToDouble(); }
 
   /// Methods for support type inquiry through isa, cast, and dyn_cast.
   static bool classof(const Attribute *attr) {
@@ -137,10 +138,18 @@ public:
   }
 
 private:
-  FloatAttr(double value)
-      : Attribute(Kind::Float, /*isOrContainsFunction=*/false), value(value) {}
+  FloatAttr(const llvm::fltSemantics &semantics, size_t numObjects)
+      : Attribute(Kind::Float, /*isOrContainsFunction=*/false),
+        semantics(semantics), numObjects(numObjects) {}
+  FloatAttr(const FloatAttr &value) = delete;
   ~FloatAttr() = delete;
-  double value;
+
+  size_t numTrailingObjects(OverloadToken<uint64_t>) const {
+    return numObjects;
+  }
+
+  const llvm::fltSemantics &semantics;
+  size_t numObjects;
 };
 
 class StringAttr : public Attribute {

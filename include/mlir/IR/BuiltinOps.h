@@ -116,10 +116,10 @@ protected:
 class ConstantFloatOp : public ConstantOp {
 public:
   /// Builds a constant float op producing a float of the specified type.
-  static void build(Builder *builder, OperationState *result, double value,
-                    FloatType *type);
+  static void build(Builder *builder, OperationState *result,
+                    const APFloat &value, FloatType *type);
 
-  double getValue() const {
+  APFloat getValue() const {
     return getAttrOfType<FloatAttr>("value")->getValue();
   }
 

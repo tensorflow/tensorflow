@@ -32,7 +32,6 @@
 #include "mlir/IR/Types.h"
 #include "mlir/Support/MathExtras.h"
 #include "mlir/Support/STLExtras.h"
-#include "llvm/ADT/APInt.h"
 #include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/StringMap.h"
 #include "llvm/Support/Allocator.h"
@@ -144,6 +143,21 @@ struct MemRefTypeKeyInfo : DenseMapInfo<MemRefType *> {
       return false;
     return lhs == std::make_tuple(rhs->getElementType(), rhs->getShape(),
                                   rhs->getAffineMaps(), rhs->getMemorySpace());
+  }
+};
+
+struct FloatAttrKeyInfo : DenseMapInfo<FloatAttr *> {
+  // Float attributes are uniqued based on wrapped APFloat.
+  using KeyTy = APFloat;
+  using DenseMapInfo<FloatAttr *>::getHashValue;
+  using DenseMapInfo<FloatAttr *>::isEqual;
+
+  static unsigned getHashValue(KeyTy key) { return llvm::hash_value(key); }
+
+  static bool isEqual(const KeyTy &lhs, const FloatAttr *rhs) {
+    if (rhs == getEmptyKey() || rhs == getTombstoneKey())
+      return false;
+    return lhs.bitwiseIsEqual(rhs->getValue());
   }
 };
 
@@ -282,7 +296,7 @@ public:
   // Attribute uniquing.
   BoolAttr *boolAttrs[2] = {nullptr};
   DenseMap<int64_t, IntegerAttr *> integerAttrs;
-  DenseMap<int64_t, FloatAttr *> floatAttrs;
+  DenseSet<FloatAttr *, FloatAttrKeyInfo> floatAttrs;
   StringMap<StringAttr *> stringAttrs;
   using ArrayAttrSet = DenseSet<ArrayAttr *, ArrayAttrKeyInfo>;
   ArrayAttrSet arrayAttrs;
@@ -638,21 +652,36 @@ IntegerAttr *IntegerAttr::get(int64_t value, MLIRContext *context) {
 }
 
 FloatAttr *FloatAttr::get(double value, MLIRContext *context) {
-  // We hash based on the bit representation of the double to ensure we don't
-  // merge things like -0.0 and 0.0 in the hash comparison.
-  union {
-    double floatValue;
-    int64_t intValue;
-  };
-  floatValue = value;
+  return get(APFloat(value), context);
+}
 
-  auto *&result = context->getImpl().floatAttrs[intValue];
-  if (result)
-    return result;
+FloatAttr *FloatAttr::get(const APFloat &value, MLIRContext *context) {
+  auto &impl = context->getImpl();
 
-  result = context->getImpl().allocator.Allocate<FloatAttr>();
-  new (result) FloatAttr(value);
-  return result;
+  // Look to see if the float attribute has been created already.
+  auto existing = impl.floatAttrs.insert_as(nullptr, value);
+
+  // If it has been created, return it.
+  if (!existing.second)
+    return *existing.first;
+
+  // If it doesn't, create one, unique it and return it.
+  const auto &apint = value.bitcastToAPInt();
+  // Here one word's bitwidth equals to that of uint64_t.
+  auto elements = ArrayRef<uint64_t>(apint.getRawData(), apint.getNumWords());
+
+  auto byteSize = FloatAttr::totalSizeToAlloc<uint64_t>(elements.size());
+  auto rawMem = impl.allocator.Allocate(byteSize, alignof(FloatAttr));
+  auto result = ::new (rawMem) FloatAttr(value.getSemantics(), elements.size());
+  std::uninitialized_copy(elements.begin(), elements.end(),
+                          result->getTrailingObjects<uint64_t>());
+  return *existing.first = result;
+}
+
+APFloat FloatAttr::getValue() const {
+  auto val = APInt(APFloat::getSizeInBits(semantics),
+                   {getTrailingObjects<uint64_t>(), numObjects});
+  return APFloat(semantics, val);
 }
 
 StringAttr *StringAttr::get(StringRef bytes, MLIRContext *context) {

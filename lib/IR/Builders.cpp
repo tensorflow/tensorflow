@@ -121,6 +121,10 @@ IntegerAttr *Builder::getIntegerAttr(int64_t value) {
 }
 
 FloatAttr *Builder::getFloatAttr(double value) {
+  return FloatAttr::get(APFloat(value), context);
+}
+
+FloatAttr *Builder::getFloatAttr(const APFloat &value) {
   return FloatAttr::get(value, context);
 }
 

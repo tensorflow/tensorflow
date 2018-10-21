@@ -699,7 +699,7 @@ TensorLiteralParser::parseElementOrList(llvm::SmallVectorImpl<int> &dims) {
     case Type::Kind::F64: {
       if (!isa<FloatAttr>(result))
         return p.emitError("expected tensor literal element has float type");
-      double value = cast<FloatAttr>(result)->getValue();
+      double value = cast<FloatAttr>(result)->getDouble();
       addToStorage(*(uint64_t *)(&value));
       break;
     }
@@ -823,7 +823,7 @@ Attribute *Parser::parseAttribute() {
       return (emitError("floating point value too large for attribute"),
               nullptr);
     consumeToken(Token::floatliteral);
-    return builder.getFloatAttr(val.getValue());
+    return builder.getFloatAttr(APFloat(val.getValue()));
   }
   case Token::integer: {
     auto val = getToken().getUInt64IntegerValue();
@@ -848,7 +848,7 @@ Attribute *Parser::parseAttribute() {
         return (emitError("floating point value too large for attribute"),
                 nullptr);
       consumeToken(Token::floatliteral);
-      return builder.getFloatAttr(-val.getValue());
+      return builder.getFloatAttr(APFloat(-val.getValue()));
     }
 
     return (emitError("expected constant integer or floating point value"),
