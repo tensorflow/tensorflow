@@ -135,7 +135,7 @@ class Network(base_layer.Layer):
 
     # Private attributes to implement compatibility with Layer.
     self._updates = []  # Used in symbolic mode only.
-    self._losses = []   # Used in symbolic mode only.
+    self._losses = []
     self._scope = None  # Never used.
     self._reuse = None  # Never used.
     if context.executing_eagerly():
@@ -453,12 +453,6 @@ class Network(base_layer.Layer):
           'assign variables to attributes and they will show up in the weights '
           'and variables properties.')
 
-  def add_loss(self, *args, **kwargs):
-    if context.executing_eagerly():
-      raise NotImplementedError('`add_loss` is not supported on Networks '
-                                'when eager execution is enabled.')
-    super(Network, self).add_loss(*args, **kwargs)
-
   @property
   def uses_learning_phase(self):
     return any(
@@ -585,12 +579,23 @@ class Network(base_layer.Layer):
   @property
   def _unfiltered_losses(self):
     losses = []
+    losses.extend(self._losses)
     for layer in self.layers:
       if isinstance(layer, Network):
         losses += layer._unfiltered_losses
       else:
         losses += layer.losses
     return losses
+
+  @checkpointable.no_automatic_dependency_tracking
+  def _clear_losses(self):
+    """Used every step in eager to reset losses."""
+    self._losses = []
+    for layer in self.layers:
+      if isinstance(layer, Network):
+        layer._clear_losses()
+      else:
+        layer._losses = []
 
   @property
   def updates(self):
