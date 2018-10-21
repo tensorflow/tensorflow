@@ -519,7 +519,7 @@ def _raw_nested_shape(nested_shape):
 
   def _raw_shape(shape):
     if isinstance(shape, tensor_shape.TensorShape) and shape.ndims is not None:
-      return [x.value for x in shape]
+      return [x.value for x in shape.dims]
     else:
       return None
 

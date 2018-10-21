@@ -280,9 +280,7 @@ class CoreLayersTest(test.TestCase):
 
     l = keras.layers.Lambda(lambda_fn, output_shape=(None, 10))
     output_shape = l.compute_output_shape((5, 10, 20))
-    # Dimension(None) != Dimension(None), so check
-    # str representations for equality.
-    self.assertAllEqual(('5', '?', '10'), tuple([str(s) for s in output_shape]))
+    self.assertAllEqual([5, None, 10], output_shape.as_list())
 
   @tf_test_util.run_in_graph_and_eager_modes
   def test_lambda_output_shape_function_multiple_outputs(self):

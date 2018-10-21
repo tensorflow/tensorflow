@@ -20,6 +20,7 @@ from __future__ import print_function
 
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_shape
 from tensorflow.python.layers import core as layers
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
@@ -183,7 +184,8 @@ class RealNVP(bijector.Bijector):
 
   def _cache_input_depth(self, x):
     if self._input_depth is None:
-      self._input_depth = x.shape.with_rank_at_least(1)[-1].value
+      self._input_depth = tensor_shape.dimension_value(
+          x.shape.with_rank_at_least(1)[-1])
       if self._input_depth is None:
         raise NotImplementedError(
             "Rightmost dimension must be known prior to graph execution.")

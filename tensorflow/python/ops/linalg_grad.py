@@ -101,7 +101,7 @@ def _QrGrad(op, dq, dr):
   if (r.shape.ndims is None or r.shape.as_list()[-2] is None or
       r.shape.as_list()[-1] is None):
     raise NotImplementedError("QrGrad not implemented with dynamic shapes.")
-  if r.shape[-2].value != r.shape[-1].value:
+  if r.shape.dims[-2].value != r.shape.dims[-1].value:
     raise NotImplementedError("QrGrad not implemented when ncols > nrows "
                               "or full_matrices is true and ncols != nrows.")
 
@@ -305,14 +305,14 @@ def _SvdGrad(op, grad_s, grad_u, grad_v):
         "compute_uv=True.")
   grad_u_shape = grad_u.get_shape().with_rank_at_least(2)
   grad_v_shape = grad_v.get_shape().with_rank_at_least(2)
-  m = a_shape[-2].merge_with(grad_u_shape[-2])
-  n = a_shape[-1].merge_with(grad_v_shape[-2])
+  m = a_shape.dims[-2].merge_with(grad_u_shape[-2])
+  n = a_shape.dims[-1].merge_with(grad_v_shape[-2])
   batch_shape = a_shape[:-2].merge_with(grad_u_shape[:-2]).merge_with(
       grad_v_shape[:-2])
   a_shape = batch_shape.concatenate([m, n])
 
-  m = a_shape[-2].value
-  n = a_shape[-1].value
+  m = a_shape.dims[-2].value
+  n = a_shape.dims[-1].value
   # TODO(rmlarsen): Make this work with placeholders.
   if m is None or n is None:
     raise NotImplementedError(

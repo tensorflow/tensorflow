@@ -1267,8 +1267,8 @@ def _ReductionDims(x, axis, reduction_indices):
     if rank is not None:
       return constant_op.constant(np.arange(rank), dtype=dtypes.int32)
     if (isinstance(x, sparse_tensor.SparseTensor) and
-        x.dense_shape.get_shape().is_fully_defined()):
-      rank = x.dense_shape.get_shape()[0].value  # sparse.dense_shape is 1-D.
+        x.dense_shape.shape.is_fully_defined()):
+      rank = x.dense_shape.shape.dims[0].value  # sparse.dense_shape is 1-D.
       return constant_op.constant(np.arange(rank), dtype=dtypes.int32)
 
     # Otherwise, we rely on Range and Rank to do the right thing at run-time.

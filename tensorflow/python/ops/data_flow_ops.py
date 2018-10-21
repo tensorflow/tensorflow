@@ -376,10 +376,16 @@ class QueueBase(object):
 
       # NOTE(mrry): Not using a shape function because we need access to
       # the `QueueBase` object.
-      batch_dim = vals[0].get_shape().with_rank_at_least(1)[0]
+      # NOTE(fchollet): the code that follow is verbose because it needs to be
+      # compatible with both TF v1 TensorShape behavior and TF v2 behavior.
+      batch_dim = tensor_shape.dimension_value(
+          vals[0].get_shape().with_rank_at_least(1)[0])
+      batch_dim = tensor_shape.Dimension(batch_dim)
       for val, shape in zip(vals, self._shapes):
-        batch_dim = batch_dim.merge_with(
+        val_batch_dim = tensor_shape.dimension_value(
             val.get_shape().with_rank_at_least(1)[0])
+        val_batch_dim = tensor_shape.Dimension(val_batch_dim)
+        batch_dim = batch_dim.merge_with(val_batch_dim)
         val.get_shape()[1:].assert_is_compatible_with(shape)
 
       return gen_data_flow_ops.queue_enqueue_many_v2(

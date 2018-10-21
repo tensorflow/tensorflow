@@ -125,7 +125,8 @@ def foldl(fn, elems, initializer=None, parallel_iterations=10, back_prop=True,
     elems_flat = [
         ops.convert_to_tensor(elem, name="elem") for elem in nest.flatten(elems)
     ]
-    n = elems_flat[0].shape[0].value or array_ops.shape(elems_flat[0])[0]
+    n = (tensor_shape.dimension_value(elems_flat[0].shape[0])
+         or array_ops.shape(elems_flat[0])[0])
 
     elems_ta = nest.map_structure(create_ta, elems)
 
@@ -232,7 +233,8 @@ def foldr(fn, elems, initializer=None, parallel_iterations=10, back_prop=True,
     elems_flat = [
         ops.convert_to_tensor(elem, name="elem") for elem in nest.flatten(elems)
     ]
-    n = elems_flat[0].shape[0].value or array_ops.shape(elems_flat[0])[0]
+    n = (tensor_shape.dimension_value(elems_flat[0].shape[0])
+         or array_ops.shape(elems_flat[0])[0])
 
     elems_ta = nest.map_structure(create_ta, elems)
 
@@ -446,7 +448,8 @@ def map_fn(fn, elems, dtype=None, parallel_iterations=None, back_prop=True,
         raise ValueError(
             "elements in elems must be 1+ dimensional Tensors, not scalars"
         )
-    n = static_shape[0].value or array_ops.shape(elems_flat[0])[0]
+    n = (tensor_shape.dimension_value(static_shape[0])
+         or array_ops.shape(elems_flat[0])[0])
 
     # TensorArrays are always flat
     elems_ta = [
@@ -495,9 +498,11 @@ def map_fn(fn, elems, dtype=None, parallel_iterations=None, back_prop=True,
         maximum_iterations=n)
     results_flat = [r.stack() for r in r_a]
 
-    n_static = elems_flat[0].get_shape().with_rank_at_least(1)[0]
+    n_static = tensor_shape.Dimension(tensor_shape.dimension_value(
+        elems_flat[0].get_shape().with_rank_at_least(1)[0]))
     for elem in elems_flat[1:]:
-      n_static.merge_with(elem.get_shape().with_rank_at_least(1)[0])
+      n_static.merge_with(tensor_shape.Dimension(tensor_shape.dimension_value(
+          elem.get_shape().with_rank_at_least(1)[0])))
     for r in results_flat:
       r.set_shape(tensor_shape.TensorShape(n_static).concatenate(
           r.get_shape()[1:]))
@@ -644,7 +649,8 @@ def scan(fn, elems, initializer=None, parallel_iterations=10, back_prop=True,
         ops.convert_to_tensor(elem, name="elem") for elem in elems_flat]
 
     # Convert elems to tensor array. n may be known statically.
-    n = elems_flat[0].shape[0].value or array_ops.shape(elems_flat[0])[0]
+    n = (tensor_shape.dimension_value(elems_flat[0].shape[0])
+         or array_ops.shape(elems_flat[0])[0])
 
     # TensorArrays are always flat
     elems_ta = [
@@ -720,9 +726,11 @@ def scan(fn, elems, initializer=None, parallel_iterations=10, back_prop=True,
 
     results_flat = [r.stack() for r in r_a]
 
-    n_static = elems_flat[0].get_shape().with_rank_at_least(1)[0]
+    n_static = tensor_shape.Dimension(tensor_shape.dimension_value(
+        elems_flat[0].get_shape().with_rank_at_least(1)[0]))
     for elem in elems_flat[1:]:
-      n_static.merge_with(elem.get_shape().with_rank_at_least(1)[0])
+      n_static.merge_with(tensor_shape.Dimension(tensor_shape.dimension_value(
+          elem.get_shape().with_rank_at_least(1)[0])))
     for r in results_flat:
       r.set_shape(tensor_shape.TensorShape(n_static).concatenate(
           r.get_shape()[1:]))

@@ -1598,9 +1598,11 @@ class TensorSliceDataset(DatasetSource):
       ])
       flat_tensors = nest.flatten(tensors)
 
-    batch_dim = flat_tensors[0].get_shape()[0]
+    batch_dim = tensor_shape.Dimension(tensor_shape.dimension_value(
+        flat_tensors[0].get_shape()[0]))
     for t in flat_tensors[1:]:
-      batch_dim.assert_is_compatible_with(t.get_shape()[0])
+      batch_dim.assert_is_compatible_with(tensor_shape.Dimension(
+          tensor_shape.dimension_value(t.get_shape()[0])))
     self._tensors = sparse.serialize_many_sparse_tensors(tensors)
     self._output_classes = sparse.get_classes(tensors)
     self._output_shapes = nest.pack_sequence_as(
@@ -1650,7 +1652,7 @@ class SparseTensorSliceDataset(DatasetSource):
   def output_shapes(self):
     indices_shape = self._sparse_tensor.indices.get_shape()
     shape_shape = self._sparse_tensor.dense_shape.get_shape()
-    rank = (indices_shape[1] - 1).merge_with(shape_shape[0] - 1)
+    rank = (indices_shape.dims[1] - 1).merge_with(shape_shape.dims[0] - 1)
     num_values = tensor_shape.Dimension(None)
     return (tensor_shape.TensorShape([num_values, rank]),
             tensor_shape.TensorShape([num_values]),

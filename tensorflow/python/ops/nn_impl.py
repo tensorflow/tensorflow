@@ -528,8 +528,8 @@ def separable_conv2d(input,
         pointwise_filter, name="pointwise_filter")
 
     pointwise_filter_shape = pointwise_filter.get_shape().with_rank(4)
-    pointwise_filter_shape[0].assert_is_compatible_with(1)
-    pointwise_filter_shape[1].assert_is_compatible_with(1)
+    pointwise_filter_shape.dims[0].assert_is_compatible_with(1)
+    pointwise_filter_shape.dims[1].assert_is_compatible_with(1)
 
     if rate is None:
       rate = [1, 1]
@@ -595,10 +595,10 @@ def sufficient_statistics(x, axes, shift=None, keep_dims=False, name=None):
   with ops.name_scope(name, "sufficient_statistics", [x, shift]):
     x = ops.convert_to_tensor(x, name="x")
     x_shape = x.get_shape()
-    if all(x_shape[d].value is not None for d in axes):
+    if all(x_shape.dims[d].value is not None for d in axes):
       counts = 1
       for d in axes:
-        counts *= x_shape[d].value
+        counts *= x_shape.dims[d].value
       counts = constant_op.constant(counts, dtype=x.dtype)
     else:  # shape needs to be inferred at runtime.
       x_dims = array_ops.gather(

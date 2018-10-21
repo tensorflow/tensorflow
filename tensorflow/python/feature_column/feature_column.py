@@ -3401,16 +3401,16 @@ def _verify_static_batch_size_equality(tensors, columns):
   # bath_size is a tf.Dimension object.
   expected_batch_size = None
   for i in range(0, len(tensors)):
-    if tensors[i].shape[0].value is not None:
+    if tensors[i].shape.dims[0].value is not None:
       if expected_batch_size is None:
         bath_size_column_index = i
-        expected_batch_size = tensors[i].shape[0]
-      elif not expected_batch_size.is_compatible_with(tensors[i].shape[0]):
+        expected_batch_size = tensors[i].shape.dims[0]
+      elif not expected_batch_size.is_compatible_with(tensors[i].shape.dims[0]):
         raise ValueError(
             'Batch size (first dimension) of each feature must be same. '
             'Batch size of columns ({}, {}): ({}, {})'.format(
                 columns[bath_size_column_index].name, columns[i].name,
-                expected_batch_size, tensors[i].shape[0]))
+                expected_batch_size, tensors[i].shape.dims[0]))
 
 
 def _sequence_length_from_sparse_tensor(sp_tensor, num_elements=1):

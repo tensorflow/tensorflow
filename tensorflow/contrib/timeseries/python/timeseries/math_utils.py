@@ -262,8 +262,8 @@ def batch_times_matrix(batch, matrix, adj_x=False, adj_y=False):
   assert matrix.get_shape().ndims == 2
   if adj_x:
     batch = array_ops.transpose(batch, [0, 2, 1])
-  batch_dimension = batch.get_shape()[0].value
-  first_dimension = batch.get_shape()[1].value
+  batch_dimension = batch.get_shape().dims[0].value
+  first_dimension = batch.get_shape().dims[1].value
   tensor_batch_shape = array_ops.shape(batch)
   if batch_dimension is None:
     batch_dimension = tensor_batch_shape[0]

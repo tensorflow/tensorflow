@@ -119,7 +119,7 @@ class UnstackOpTest(test.TestCase):
   def testCannotInferNumFromNoneShape(self):
     x = array_ops.placeholder(np.float32, shape=(None,))
     with self.assertRaisesRegexp(ValueError,
-                                 r'Cannot infer num from shape \(\?,\)'):
+                                 r'Cannot infer num from shape \((\?|None),\)'):
       array_ops.unstack(x)
 
   def testAgainstNumpy(self):
