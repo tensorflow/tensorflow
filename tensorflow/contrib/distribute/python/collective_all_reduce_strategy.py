@@ -232,7 +232,22 @@ class CollectiveAllReduceStrategy(mirrored_strategy.MirroredStrategy):
       self._initialize_multi_worker(self._num_gpus_per_worker, cluster_spec,
                                     task_type, task_id)
 
-    if not session_config or not self._cluster_spec:
+    if not session_config:
+      return
+
+    # Enable the scoped allocator optimization for CollectiveOps.  This
+    # optimization converts many small all-reduces into fewer larger
+    # all-reduces.
+    rewrite_options = session_config.graph_options.rewrite_options
+    rewrite_options.scoped_allocator_optimization = (
+        rewriter_config_pb2.RewriterConfig.ON)
+    # We turn on ScopedAllocator only for CollectiveReduce op, i.e. enable_op =
+    # ["CollectiveReduce"].  Since we can't assign to a repeated proto field, we
+    # clear and then append.
+    del rewrite_options.scoped_allocator_opts.enable_op[:]
+    rewrite_options.scoped_allocator_opts.enable_op.append("CollectiveReduce")
+
+    if not self._cluster_spec:
       return
 
     assert self._task_type
@@ -254,14 +269,6 @@ class CollectiveAllReduceStrategy(mirrored_strategy.MirroredStrategy):
     del session_config.device_filters[:]
     session_config.device_filters.append(
         "/job:%s/task:%d" % (self._task_type, self._task_id))
-
-    # The scoped_allocator_optimization is to optimize graphs for collective
-    # ops.
-    rewrite_options = session_config.graph_options.rewrite_options
-    rewrite_options.scoped_allocator_optimization = (
-        rewriter_config_pb2.RewriterConfig.ON)
-    del rewrite_options.scoped_allocator_opts.enable_op[:]
-    rewrite_options.scoped_allocator_opts.enable_op.append("CollectiveReduce")
 
   @property
   def between_graph(self):
