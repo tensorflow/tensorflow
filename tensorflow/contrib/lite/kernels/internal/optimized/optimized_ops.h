@@ -5428,6 +5428,9 @@ void TypedMemset(void* ptr, T value, size_t num) {
   }
 }
 
+// This makes heavy use of Offset, along with conditional branches. There may be
+// opportunities for improvement.
+//
 // There are two versions of pad: Pad and PadV2.  In PadV2 there is a second
 // scalar input that provides the padding value.  Therefore pad_value_ptr can be
 // equivalent to a simple input1_data.  For Pad, it should point to a zero
@@ -5440,7 +5443,7 @@ inline void PadImpl(const tflite::PadParams& op_params,
                     const RuntimeShape& input_shape, const T* input_data,
                     const P* pad_value_ptr, const RuntimeShape& output_shape,
                     T* output_data) {
-  gemmlowp::ScopedProfilingLabel label("Pad");
+  gemmlowp::ScopedProfilingLabel label("Pad4DSlowImpl");
   const RuntimeShape ext_input_shape =
       RuntimeShape::ExtendedShape(4, input_shape);
   const RuntimeShape ext_output_shape =
@@ -5569,6 +5572,66 @@ inline void Pad(const tflite::PadParams& op_params,
                 int32* output_data) {
   PadImpl(op_params, input_shape, input_data, pad_value_ptr, output_shape,
           output_data);
+}
+
+// TODO(b/117643175): Optimize. (This is an introductory copy of standard Pad.)
+//
+// This pad requires that (a) left and right paddings are in the 4D patterns
+// {0, h_pad, w_pad, 0}, and (b) memset can be used: *pad_value_ptr == 0 and/or
+// T is uint8.
+//
+// There are two versions of pad: Pad and PadV2.  In PadV2 there is a second
+// scalar input that provides the padding value.  Therefore pad_value_ptr can be
+// equivalent to a simple input1_data.  For Pad, it should point to a zero
+// value.
+//
+// Note that two typenames are required, so that T=P=int32 is considered a
+// specialization distinct from P=int32.
+template <typename T, typename P>
+inline void PadImageStyleMemset(const tflite::PadParams& op_params,
+                                const RuntimeShape& input_shape,
+                                const T* input_data, const P* pad_value_ptr,
+                                const RuntimeShape& output_shape,
+                                T* output_data) {
+  gemmlowp::ScopedProfilingLabel label("PadImageStyle");
+  // TODO(b/117643175): Remove indirection to generic implementation, replace
+  // with optimized.
+  PadImpl(op_params, input_shape, input_data, pad_value_ptr, output_shape,
+          output_data);
+}
+
+template <typename T, typename P>
+inline void PadImageStyle(const tflite::PadParams& op_params,
+                          const RuntimeShape& input_shape, const T* input_data,
+                          const P* pad_value_ptr,
+                          const RuntimeShape& output_shape, T* output_data) {
+  TFLITE_ASSERT_FALSE;
+}
+
+template <typename P>
+inline void PadImageStyle(const tflite::PadParams& op_params,
+                          const RuntimeShape& input_shape,
+                          const uint8* input_data, const P* pad_value_ptr,
+                          const RuntimeShape& output_shape,
+                          uint8* output_data) {
+  PadImageStyleMemset(op_params, input_shape, input_data, pad_value_ptr,
+                      output_shape, output_data);
+}
+
+template <typename P>
+inline void PadImageStyle(const tflite::PadParams& op_params,
+                          const RuntimeShape& input_shape,
+                          const float* input_data, const P* pad_value_ptr,
+                          const RuntimeShape& output_shape,
+                          float* output_data) {
+  const float converted_pad_value = static_cast<float>(*pad_value_ptr);
+  if (converted_pad_value == 0.0f) {
+    PadImageStyleMemset(op_params, input_shape, input_data, pad_value_ptr,
+                        output_shape, output_data);
+  } else {
+    PadImpl(op_params, input_shape, input_data, pad_value_ptr, output_shape,
+            output_data);
+  }
 }
 
 template <typename T>
