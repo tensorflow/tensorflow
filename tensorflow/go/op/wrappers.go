@@ -12184,6 +12184,117 @@ func Assert(scope *Scope, condition tf.Output, data []tf.Output, optional ...Ass
 	return scope.AddOperation(opspec)
 }
 
+// CudnnRNNBackpropAttr is an optional argument to CudnnRNNBackprop.
+type CudnnRNNBackpropAttr func(optionalAttr)
+
+// CudnnRNNBackpropRnnMode sets the optional rnn_mode attribute to value.
+// If not specified, defaults to "lstm"
+func CudnnRNNBackpropRnnMode(value string) CudnnRNNBackpropAttr {
+	return func(m optionalAttr) {
+		m["rnn_mode"] = value
+	}
+}
+
+// CudnnRNNBackpropInputMode sets the optional input_mode attribute to value.
+// If not specified, defaults to "linear_input"
+func CudnnRNNBackpropInputMode(value string) CudnnRNNBackpropAttr {
+	return func(m optionalAttr) {
+		m["input_mode"] = value
+	}
+}
+
+// CudnnRNNBackpropDirection sets the optional direction attribute to value.
+// If not specified, defaults to "unidirectional"
+func CudnnRNNBackpropDirection(value string) CudnnRNNBackpropAttr {
+	return func(m optionalAttr) {
+		m["direction"] = value
+	}
+}
+
+// CudnnRNNBackpropDropout sets the optional dropout attribute to value.
+// If not specified, defaults to 0
+func CudnnRNNBackpropDropout(value float32) CudnnRNNBackpropAttr {
+	return func(m optionalAttr) {
+		m["dropout"] = value
+	}
+}
+
+// CudnnRNNBackpropSeed sets the optional seed attribute to value.
+// If not specified, defaults to 0
+func CudnnRNNBackpropSeed(value int64) CudnnRNNBackpropAttr {
+	return func(m optionalAttr) {
+		m["seed"] = value
+	}
+}
+
+// CudnnRNNBackpropSeed2 sets the optional seed2 attribute to value.
+// If not specified, defaults to 0
+func CudnnRNNBackpropSeed2(value int64) CudnnRNNBackpropAttr {
+	return func(m optionalAttr) {
+		m["seed2"] = value
+	}
+}
+
+// Backprop step of CudnnRNN.
+//
+// Compute the backprop of both data and weights in a RNN.
+//
+// rnn_mode: Indicates the type of the RNN model.
+// input_mode: Indicate whether there is a linear projection between the input and
+//     the actual computation before the first layer. 'skip_input' is only allowed
+//     when input_size == num_units; 'auto_select' implies 'skip_input' when
+//     input_size == num_units; otherwise, it implies 'linear_input'.
+// direction: Indicates whether a bidirectional model will be used. Should be
+//   "unidirectional" or "bidirectional".
+// dropout: Dropout probability. When set to 0., dropout is disabled.
+// seed: The 1st part of a seed to initialize dropout.
+// seed2: The 2nd part of a seed to initialize dropout.
+// input: A 3-D tensor with the shape of [seq_length, batch_size, input_size].
+// input_h: A 3-D tensor with the shape of [num_layer * dir, batch_size,
+//     num_units].
+// input_c: For LSTM, a 3-D tensor with the shape of
+//     [num_layer * dir, batch, num_units]. For other models, it is ignored.
+// params: A 1-D tensor that contains the weights and biases in an opaque layout.
+//     The size must be created through CudnnRNNParamsSize, and initialized
+//     separately. Note that they might not be compatible across different
+//     generations. So it is a good idea to save and restore
+// output: A 3-D tensor with the shape of [seq_length, batch_size,
+//     dir * num_units].
+// output_h: The same shape has input_h.
+// output_c: The same shape as input_c for LSTM. An empty tensor for other models.
+// output_backprop: A 3-D tensor with the same shape as output in the forward pass.
+// output_h_backprop: A 3-D tensor with the same shape as output_h in the forward
+//     pass.
+// output_c_backprop: A 3-D tensor with the same shape as output_c in the forward
+//     pass.
+// reserve_space: The same reserve_space produced in for forward operation.
+// input_backprop: The backprop to input in the forward pass. Has the same shape
+//     as input.
+// input_h_backprop: The backprop to input_h in the forward pass. Has the same
+//     shape as input_h.
+// input_c_backprop: The backprop to input_c in the forward pass. Has the same
+//     shape as input_c.
+// params_backprop: The backprop to the params buffer in the forward pass. Has the
+//     same shape as params.
+func CudnnRNNBackprop(scope *Scope, input tf.Output, input_h tf.Output, input_c tf.Output, params tf.Output, output tf.Output, output_h tf.Output, output_c tf.Output, output_backprop tf.Output, output_h_backprop tf.Output, output_c_backprop tf.Output, reserve_space tf.Output, optional ...CudnnRNNBackpropAttr) (input_backprop tf.Output, input_h_backprop tf.Output, input_c_backprop tf.Output, params_backprop tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "CudnnRNNBackprop",
+		Input: []tf.Input{
+			input, input_h, input_c, params, output, output_h, output_c, output_backprop, output_h_backprop, output_c_backprop, reserve_space,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0), op.Output(1), op.Output(2), op.Output(3)
+}
+
 // Split a `SparseTensor` into `num_split` tensors along one dimension.
 //
 // If the `shape[split_dim]` is not an integer multiple of `num_split`. Slices
@@ -16660,46 +16771,6 @@ func MatrixSolveLs(scope *Scope, matrix tf.Output, rhs tf.Output, l2_regularizer
 	return op.Output(0)
 }
 
-// Computes the matrix square root of one or more square matrices:
-//
-// matmul(sqrtm(A), sqrtm(A)) = A
-//
-// The input matrix should be invertible. If the input matrix is real,
-// it should have no eigenvalues which are real and negative
-// (pairs of complex conjugate eigenvalues are allowed).
-//
-// The matrix square root is computed by first reducing the matrix to
-// quasi-triangular form with the real Schur decomposition. The square root
-// of the quasi-triangular matrix is then computed directly. Details of
-// the algorithm can be found in: Nicholas J. Higham, "Computing real
-// square roots of a real matrix", Linear Algebra Appl., 1987.
-//
-// The input is a tensor of shape `[..., M, M]` whose inner-most 2 dimensions
-// form square matrices. The output is a tensor of the same shape as the input
-// containing the matrix square root for all input submatrices `[..., :, :]`.
-//
-// Arguments:
-//	input: Shape is `[..., M, M]`.
-//
-// Returns Shape is `[..., M, M]`.
-//
-// @compatibility(scipy)
-// Equivalent to scipy.linalg.sqrtm
-// @end_compatibility
-func MatrixSquareRoot(scope *Scope, input tf.Output) (output tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	opspec := tf.OpSpec{
-		Type: "MatrixSquareRoot",
-		Input: []tf.Input{
-			input,
-		},
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
 // MaxPool3DAttr is an optional argument to MaxPool3D.
 type MaxPool3DAttr func(optionalAttr)
 
@@ -18022,117 +18093,6 @@ func ResourceApplyAddSign(scope *Scope, var_ tf.Output, m tf.Output, lr tf.Outpu
 		Attrs: attrs,
 	}
 	return scope.AddOperation(opspec)
-}
-
-// CudnnRNNBackpropAttr is an optional argument to CudnnRNNBackprop.
-type CudnnRNNBackpropAttr func(optionalAttr)
-
-// CudnnRNNBackpropRnnMode sets the optional rnn_mode attribute to value.
-// If not specified, defaults to "lstm"
-func CudnnRNNBackpropRnnMode(value string) CudnnRNNBackpropAttr {
-	return func(m optionalAttr) {
-		m["rnn_mode"] = value
-	}
-}
-
-// CudnnRNNBackpropInputMode sets the optional input_mode attribute to value.
-// If not specified, defaults to "linear_input"
-func CudnnRNNBackpropInputMode(value string) CudnnRNNBackpropAttr {
-	return func(m optionalAttr) {
-		m["input_mode"] = value
-	}
-}
-
-// CudnnRNNBackpropDirection sets the optional direction attribute to value.
-// If not specified, defaults to "unidirectional"
-func CudnnRNNBackpropDirection(value string) CudnnRNNBackpropAttr {
-	return func(m optionalAttr) {
-		m["direction"] = value
-	}
-}
-
-// CudnnRNNBackpropDropout sets the optional dropout attribute to value.
-// If not specified, defaults to 0
-func CudnnRNNBackpropDropout(value float32) CudnnRNNBackpropAttr {
-	return func(m optionalAttr) {
-		m["dropout"] = value
-	}
-}
-
-// CudnnRNNBackpropSeed sets the optional seed attribute to value.
-// If not specified, defaults to 0
-func CudnnRNNBackpropSeed(value int64) CudnnRNNBackpropAttr {
-	return func(m optionalAttr) {
-		m["seed"] = value
-	}
-}
-
-// CudnnRNNBackpropSeed2 sets the optional seed2 attribute to value.
-// If not specified, defaults to 0
-func CudnnRNNBackpropSeed2(value int64) CudnnRNNBackpropAttr {
-	return func(m optionalAttr) {
-		m["seed2"] = value
-	}
-}
-
-// Backprop step of CudnnRNN.
-//
-// Compute the backprop of both data and weights in a RNN.
-//
-// rnn_mode: Indicates the type of the RNN model.
-// input_mode: Indicate whether there is a linear projection between the input and
-//     the actual computation before the first layer. 'skip_input' is only allowed
-//     when input_size == num_units; 'auto_select' implies 'skip_input' when
-//     input_size == num_units; otherwise, it implies 'linear_input'.
-// direction: Indicates whether a bidirectional model will be used. Should be
-//   "unidirectional" or "bidirectional".
-// dropout: Dropout probability. When set to 0., dropout is disabled.
-// seed: The 1st part of a seed to initialize dropout.
-// seed2: The 2nd part of a seed to initialize dropout.
-// input: A 3-D tensor with the shape of [seq_length, batch_size, input_size].
-// input_h: A 3-D tensor with the shape of [num_layer * dir, batch_size,
-//     num_units].
-// input_c: For LSTM, a 3-D tensor with the shape of
-//     [num_layer * dir, batch, num_units]. For other models, it is ignored.
-// params: A 1-D tensor that contains the weights and biases in an opaque layout.
-//     The size must be created through CudnnRNNParamsSize, and initialized
-//     separately. Note that they might not be compatible across different
-//     generations. So it is a good idea to save and restore
-// output: A 3-D tensor with the shape of [seq_length, batch_size,
-//     dir * num_units].
-// output_h: The same shape has input_h.
-// output_c: The same shape as input_c for LSTM. An empty tensor for other models.
-// output_backprop: A 3-D tensor with the same shape as output in the forward pass.
-// output_h_backprop: A 3-D tensor with the same shape as output_h in the forward
-//     pass.
-// output_c_backprop: A 3-D tensor with the same shape as output_c in the forward
-//     pass.
-// reserve_space: The same reserve_space produced in for forward operation.
-// input_backprop: The backprop to input in the forward pass. Has the same shape
-//     as input.
-// input_h_backprop: The backprop to input_h in the forward pass. Has the same
-//     shape as input_h.
-// input_c_backprop: The backprop to input_c in the forward pass. Has the same
-//     shape as input_c.
-// params_backprop: The backprop to the params buffer in the forward pass. Has the
-//     same shape as params.
-func CudnnRNNBackprop(scope *Scope, input tf.Output, input_h tf.Output, input_c tf.Output, params tf.Output, output tf.Output, output_h tf.Output, output_c tf.Output, output_backprop tf.Output, output_h_backprop tf.Output, output_c_backprop tf.Output, reserve_space tf.Output, optional ...CudnnRNNBackpropAttr) (input_backprop tf.Output, input_h_backprop tf.Output, input_c_backprop tf.Output, params_backprop tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	attrs := map[string]interface{}{}
-	for _, a := range optional {
-		a(attrs)
-	}
-	opspec := tf.OpSpec{
-		Type: "CudnnRNNBackprop",
-		Input: []tf.Input{
-			input, input_h, input_c, params, output, output_h, output_c, output_backprop, output_h_backprop, output_c_backprop, reserve_space,
-		},
-		Attrs: attrs,
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0), op.Output(1), op.Output(2), op.Output(3)
 }
 
 // UpperBoundAttr is an optional argument to UpperBound.
@@ -25999,6 +25959,35 @@ func DatasetToGraph(scope *Scope, input_dataset tf.Output) (graph tf.Output) {
 	return op.Output(0)
 }
 
+// Convert JSON-encoded Example records to binary protocol buffer strings.
+//
+// This op translates a tensor containing Example records, encoded using
+// the [standard JSON
+// mapping](https://developers.google.com/protocol-buffers/docs/proto3#json),
+// into a tensor containing the same records encoded as binary protocol
+// buffers. The resulting tensor can then be fed to any of the other
+// Example-parsing ops.
+//
+// Arguments:
+//	json_examples: Each string is a JSON object serialized according to the JSON
+// mapping of the Example proto.
+//
+// Returns Each string is a binary Example protocol buffer corresponding
+// to the respective element of `json_examples`.
+func DecodeJSONExample(scope *Scope, json_examples tf.Output) (binary_examples tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "DecodeJSONExample",
+		Input: []tf.Input{
+			json_examples,
+		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
 // SvdAttr is an optional argument to Svd.
 type SvdAttr func(optionalAttr)
 
@@ -29217,35 +29206,6 @@ func MapSize(scope *Scope, dtypes []tf.DataType, optional ...MapSizeAttr) (size 
 		Type: "MapSize",
 
 		Attrs: attrs,
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
-// Convert JSON-encoded Example records to binary protocol buffer strings.
-//
-// This op translates a tensor containing Example records, encoded using
-// the [standard JSON
-// mapping](https://developers.google.com/protocol-buffers/docs/proto3#json),
-// into a tensor containing the same records encoded as binary protocol
-// buffers. The resulting tensor can then be fed to any of the other
-// Example-parsing ops.
-//
-// Arguments:
-//	json_examples: Each string is a JSON object serialized according to the JSON
-// mapping of the Example proto.
-//
-// Returns Each string is a binary Example protocol buffer corresponding
-// to the respective element of `json_examples`.
-func DecodeJSONExample(scope *Scope, json_examples tf.Output) (binary_examples tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	opspec := tf.OpSpec{
-		Type: "DecodeJSONExample",
-		Input: []tf.Input{
-			json_examples,
-		},
 	}
 	op := scope.AddOperation(opspec)
 	return op.Output(0)
