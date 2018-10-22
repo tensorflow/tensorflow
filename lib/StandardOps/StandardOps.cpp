@@ -35,8 +35,9 @@ using namespace mlir;
 StandardOpsDialect::StandardOpsDialect(MLIRContext *context)
     : Dialect(/*opPrefix=*/"", context) {
   addOperations<AddFOp, AddIOp, AllocOp, CallOp, CallIndirectOp, DeallocOp,
-                DimOp, DmaStartOp, DmaWaitOp, ExtractElementOp, LoadOp, MulFOp,
-                MulIOp, ShapeCastOp, StoreOp, SubFOp, SubIOp>();
+                DimOp, DmaStartOp, DmaWaitOp, ExtractElementOp, LoadOp,
+                MemRefCastOp, MulFOp, MulIOp, ShapeCastOp, StoreOp, SubFOp,
+                SubIOp>();
 }
 
 //===----------------------------------------------------------------------===//
@@ -630,6 +631,43 @@ bool LoadOp::verify() const {
 }
 
 //===----------------------------------------------------------------------===//
+// MemRefCastOp
+//===----------------------------------------------------------------------===//
+
+bool MemRefCastOp::verify() const {
+  auto *opType = dyn_cast<MemRefType>(getOperand()->getType());
+  auto *resType = dyn_cast<MemRefType>(getType());
+  if (!opType || !resType)
+    return emitOpError("requires input and result types to be memrefs");
+
+  if (opType == resType)
+    return emitOpError("requires the input and result type to be different");
+
+  if (opType->getElementType() != resType->getElementType())
+    return emitOpError(
+        "requires input and result element types to be the same");
+
+  if (opType->getAffineMaps() != resType->getAffineMaps())
+    return emitOpError("requires input and result mappings to be the same");
+
+  if (opType->getMemorySpace() != resType->getMemorySpace())
+    return emitOpError(
+        "requires input and result memory spaces to be the same");
+
+  // They must have the same rank, and any specified dimensions must match.
+  if (opType->getRank() != resType->getRank())
+    return emitOpError("requires input and result ranks to match");
+
+  for (unsigned i = 0, e = opType->getRank(); i != e; ++i) {
+    int opDim = opType->getDimSize(i), resultDim = resType->getDimSize(i);
+    if (opDim != -1 && resultDim != -1 && opDim != resultDim)
+      return emitOpError("requires static dimensions to match");
+  }
+
+  return false;
+}
+
+//===----------------------------------------------------------------------===//
 // MulFOp
 //===----------------------------------------------------------------------===//
 
@@ -675,12 +713,6 @@ Attribute *MulIOp::constantFold(ArrayRef<Attribute *> operands,
 // ShapeCastOp
 //===----------------------------------------------------------------------===//
 
-void ShapeCastOp::build(Builder *builder, OperationState *result,
-                        SSAValue *input, Type *resultType) {
-  result->addOperands(input);
-  result->addTypes(resultType);
-}
-
 bool ShapeCastOp::verify() const {
   auto *opType = dyn_cast<TensorType>(getOperand()->getType());
   auto *resType = dyn_cast<TensorType>(getType());
@@ -712,20 +744,6 @@ bool ShapeCastOp::verify() const {
   }
 
   return false;
-}
-
-void ShapeCastOp::print(OpAsmPrinter *p) const {
-  *p << "shape_cast " << *getOperand() << " : " << *getOperand()->getType()
-     << " to " << *getType();
-}
-
-bool ShapeCastOp::parse(OpAsmParser *parser, OperationState *result) {
-  OpAsmParser::OperandType srcInfo;
-  Type *srcType, *dstType;
-  return parser->parseOperand(srcInfo) || parser->parseColonType(srcType) ||
-         parser->resolveOperand(srcInfo, srcType, result->operands) ||
-         parser->parseKeywordType("to", dstType) ||
-         parser->addTypeToList(dstType, result->types);
 }
 
 //===----------------------------------------------------------------------===//

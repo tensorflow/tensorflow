@@ -405,8 +405,32 @@ bool impl::parseBinaryOp(OpAsmParser *parser, OperationState *result) {
 }
 
 void impl::printBinaryOp(const Operation *op, OpAsmPrinter *p) {
-  *p << op->getName() << " " << *op->getOperand(0) << ", "
+  *p << op->getName() << ' ' << *op->getOperand(0) << ", "
      << *op->getOperand(1);
   p->printOptionalAttrDict(op->getAttrs());
   *p << " : " << *op->getResult(0)->getType();
+}
+
+//===----------------------------------------------------------------------===//
+// CastOp implementation
+//===----------------------------------------------------------------------===//
+
+void impl::buildCastOp(Builder *builder, OperationState *result,
+                       SSAValue *source, Type *destType) {
+  result->addOperands(source);
+  result->addTypes(destType);
+}
+
+bool impl::parseCastOp(OpAsmParser *parser, OperationState *result) {
+  OpAsmParser::OperandType srcInfo;
+  Type *srcType, *dstType;
+  return parser->parseOperand(srcInfo) || parser->parseColonType(srcType) ||
+         parser->resolveOperand(srcInfo, srcType, result->operands) ||
+         parser->parseKeywordType("to", dstType) ||
+         parser->addTypeToList(dstType, result->types);
+}
+
+void impl::printCastOp(const Operation *op, OpAsmPrinter *p) {
+  *p << op->getName() << ' ' << *op->getOperand(0) << " : "
+     << *op->getOperand(0)->getType() << " to " << *op->getResult(0)->getType();
 }

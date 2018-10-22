@@ -186,6 +186,16 @@ mlfunc @shape_cast(%arg0 : tensor<*xf32>, %arg1 : tensor<4x4xf32>, %arg2 : tenso
   return
 }
 
+// CHECK-LABEL: mlfunc @memref_cast(%arg0
+mlfunc @memref_cast(%arg0 : memref<4xf32>, %arg1 : memref<?xf32>) {
+  // CHECK: %0 = memref_cast %arg0 : memref<4xf32> to memref<?xf32>
+  %0 = memref_cast %arg0 : memref<4xf32> to memref<?xf32>
+
+  // CHECK: %1 = memref_cast %arg1 : memref<?xf32> to memref<4xf32>
+  %1 = memref_cast %arg1 : memref<?xf32> to memref<4xf32>
+  return
+}
+
 // CHECK-LABEL: mlfunc @test_dimop(%arg0
 mlfunc @test_dimop(%arg0 : tensor<4x4x?xf32>) {
   // CHECK: %0 = dim %arg0, 2 : tensor<4x4x?xf32>

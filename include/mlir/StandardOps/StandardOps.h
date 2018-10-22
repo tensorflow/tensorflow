@@ -465,6 +465,37 @@ private:
   explicit LoadOp(const Operation *state) : Op(state) {}
 };
 
+/// The "memref_cast" operation converts a memref from one type to an equivalent
+/// type with a compatible shape.  The source and destination types are
+/// when both are memref types with the same element type, affine mappings,
+/// address space, and rank but where the individual dimensions may add or
+/// remove constant dimensions from the memref type.
+///
+/// If the cast converts any dimensions from an unknown to a known size, then it
+/// acts as an assertion that fails at runtime of the dynamic dimensions
+/// disagree with resultant destination size.
+///
+/// Assert that the input dynamic shape matches the destination static shape.
+///    %2 = memref_cast %1 : memref<?x?xf32> to memref<4x4xf32>
+/// Erase static shape information, replacing it with dynamic information.
+///    %3 = memref_cast %1 : memref<4xf32> to memref<?xf32>
+///
+class MemRefCastOp : public CastOp<MemRefCastOp> {
+public:
+  static StringRef getOperationName() { return "memref_cast"; }
+
+  /// The result of a memref_cast is always a memref.
+  MemRefType *getType() const {
+    return cast<MemRefType>(getResult()->getType());
+  }
+
+  bool verify() const;
+
+private:
+  friend class Operation;
+  explicit MemRefCastOp(const Operation *state) : CastOp(state) {}
+};
+
 /// The "mulf" operation takes two operands and returns one result, each of
 /// these is required to be of the same type.  This type may be a floating point
 /// scalar type, a vector whose element type is a floating point type, or a
@@ -517,27 +548,20 @@ private:
 /// Convert from unknown rank to rank 2 with unknown dimension sizes.
 ///    %2 = shape_cast %1 : tensor<??f32> to tensor<?x?xf32>
 ///
-class ShapeCastOp : public Op<ShapeCastOp, OpTrait::OneOperand,
-                              OpTrait::OneResult, OpTrait::HasNoSideEffect> {
+class ShapeCastOp : public CastOp<ShapeCastOp> {
 public:
   static StringRef getOperationName() { return "shape_cast"; }
-
-  static void build(Builder *builder, OperationState *result, SSAValue *input,
-                    Type *resultType);
 
   /// The result of a shape_cast is always a tensor.
   TensorType *getType() const {
     return cast<TensorType>(getResult()->getType());
   }
 
-  // Hooks to customize behavior of this op.
-  static bool parse(OpAsmParser *parser, OperationState *result);
-  void print(OpAsmPrinter *p) const;
   bool verify() const;
 
 private:
   friend class Operation;
-  explicit ShapeCastOp(const Operation *state) : Op(state) {}
+  explicit ShapeCastOp(const Operation *state) : CastOp(state) {}
 };
 
 /// The "store" op writes an element to a memref specified by an index list.

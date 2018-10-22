@@ -792,6 +792,42 @@ protected:
            OpTrait::SameOperandsAndResultType, Traits...>(state) {}
 };
 
+// These functions are out-of-line implementations of the methods in CastOp,
+// which avoids them being template instantiated/duplicated.
+namespace impl {
+void buildCastOp(Builder *builder, OperationState *result, SSAValue *source,
+                 Type *destType);
+bool parseCastOp(OpAsmParser *parser, OperationState *result);
+void printCastOp(const Operation *op, OpAsmPrinter *p);
+} // namespace impl
+
+/// This template is used for operations that are cast operations, that have a
+/// single operand and single results, whose source and destination types are
+/// different.
+///
+/// From this structure, subclasses get a standard builder, parser and printer.
+///
+template <typename ConcreteType, template <typename T> class... Traits>
+class CastOp : public Op<ConcreteType, OpTrait::OneOperand, OpTrait::OneResult,
+                         OpTrait::HasNoSideEffect, Traits...> {
+public:
+  static void build(Builder *builder, OperationState *result, SSAValue *source,
+                    Type *destType) {
+    impl::buildCastOp(builder, result, source, destType);
+  }
+  static bool parse(OpAsmParser *parser, OperationState *result) {
+    return impl::parseCastOp(parser, result);
+  }
+  void print(OpAsmPrinter *p) const {
+    return impl::printCastOp(this->getOperation(), p);
+  }
+
+protected:
+  explicit CastOp(const Operation *state)
+      : Op<ConcreteType, OpTrait::OneOperand, OpTrait::OneResult,
+           OpTrait::HasNoSideEffect, Traits...>(state) {}
+};
+
 } // end namespace mlir
 
 #endif
