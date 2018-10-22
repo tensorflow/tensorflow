@@ -38,33 +38,47 @@ namespace {
 ///
 struct SimplifyXMinusX : public Pattern {
   SimplifyXMinusX(MLIRContext *context)
-      // FIXME: rename getOperationName and add a proper one.
-      : Pattern(OperationName(SubIOp::getOperationName(), context), 1) {}
+      : Pattern(SubIOp::getOperationName(), context, 1) {}
 
   std::pair<PatternBenefit, std::unique_ptr<PatternState>>
   match(Operation *op) const override {
-    auto subi = op->dyn_cast<SubIOp>();
-    assert(subi && "Matcher should have produced this");
-
+    auto subi = op->cast<SubIOp>();
     if (subi->getOperand(0) == subi->getOperand(1))
       return matchSuccess();
 
     return matchFailure();
   }
-
-  // Rewrite the IR rooted at the specified operation with the result of
-  // this pattern, generating any new operations with the specified
-  // builder.  If an unexpected error is encountered (an internal
-  // compiler error), it is emitted through the normal MLIR diagnostic
-  // hooks and the IR is left in a valid state.
   void rewrite(Operation *op, PatternRewriter &rewriter) const override {
-    auto subi = op->dyn_cast<SubIOp>();
-    assert(subi && "Matcher should have produced this");
-
+    auto subi = op->cast<SubIOp>();
     auto result =
         rewriter.create<ConstantIntOp>(op->getLoc(), 0, subi->getType());
 
     rewriter.replaceSingleResultOp(op, result);
+  }
+};
+} // end anonymous namespace.
+
+namespace {
+/// addi(x, 0) -> x
+///
+struct SimplifyAddX0 : public Pattern {
+  SimplifyAddX0(MLIRContext *context)
+      : Pattern(AddIOp::getOperationName(), context, 1) {}
+
+  std::pair<PatternBenefit, std::unique_ptr<PatternState>>
+  match(Operation *op) const override {
+    auto addi = op->cast<AddIOp>();
+    if (auto *operandOp = addi->getOperand(1)->getDefiningOperation())
+      // TODO: Support splatted zero as well.  We need a general zero pattern.
+      if (auto cst = operandOp->dyn_cast<ConstantIntOp>()) {
+        if (cst->getValue() == 0)
+          return matchSuccess();
+      }
+
+    return matchFailure();
+  }
+  void rewrite(Operation *op, PatternRewriter &rewriter) const override {
+    rewriter.replaceSingleResultOp(op, op->getOperand(0));
   }
 };
 } // end anonymous namespace.
@@ -133,30 +147,60 @@ public:
     thePass.removeFromWorklist(op);
   }
 
-  // When the root of a pattern is about to be replaced, it can trigger
-  // simplifications to its users - make sure to add them to the worklist
-  // before the root is changed.
-  void notifyRootReplaced(Operation *op) override {
-    auto *opStmt = cast<OperationStmt>(op);
-    for (auto *result : opStmt->getResults())
-      // TODO: Add a result->getUsers() iterator.
-      for (auto &user : result->getUses()) {
-        if (auto *op = dyn_cast<OperationStmt>(user.getOwner()))
-          thePass.addToWorklist(op);
-      }
-
-    // TODO: Walk the operand list dropping them as we go.  If any of them
-    // drop to zero uses, then add them to the worklist to allow them to be
-    // deleted as dead.
-  }
-
   Canonicalizer &thePass;
 };
 
 } // end anonymous namespace
 
 PassResult Canonicalizer::runOnCFGFunction(CFGFunction *f) {
-  // TODO: Add this.
+  worklist.reserve(64);
+  for (auto &bb : *f)
+    for (auto &op : bb)
+      addToWorklist(&op);
+
+  class CFGFuncRewriter : public CanonicalizerRewriter {
+  public:
+    CFGFuncRewriter(Canonicalizer &thePass, CFGFuncBuilder &builder)
+        : CanonicalizerRewriter(thePass, builder.getContext()),
+          builder(builder) {}
+
+    // Implement the hook for creating operations, and make sure that newly
+    // created ops are added to the worklist for processing.
+    Operation *createOperation(const OperationState &state) override {
+      auto *result = builder.createOperation(state);
+      thePass.addToWorklist(result);
+      return result;
+    }
+
+    // When the root of a pattern is about to be replaced, it can trigger
+    // simplifications to its users - make sure to add them to the worklist
+    // before the root is changed.
+    void notifyRootReplaced(Operation *op) override {
+      auto *opStmt = cast<OperationInst>(op);
+      for (auto *result : opStmt->getResults())
+        // TODO: Add a result->getUsers() iterator.
+        for (auto &user : result->getUses()) {
+          if (auto *op = dyn_cast<OperationInst>(user.getOwner()))
+            thePass.addToWorklist(op);
+        }
+
+      // TODO: Walk the operand list dropping them as we go.  If any of them
+      // drop to zero uses, then add them to the worklist to allow them to be
+      // deleted as dead.
+    }
+
+    void setInsertionPoint(Operation *op) override {
+      // Any new operations should be added before this instruction.
+      builder.setInsertionPoint(cast<OperationInst>(op));
+    }
+
+  private:
+    CFGFuncBuilder &builder;
+  };
+
+  CFGFuncBuilder cfgBuilder(f);
+  CFGFuncRewriter rewriter(*this, cfgBuilder);
+  simplifyFunction(worklist, rewriter);
   return success();
 }
 
@@ -179,6 +223,23 @@ PassResult Canonicalizer::runOnMLFunction(MLFunction *f) {
       return result;
     }
 
+    // When the root of a pattern is about to be replaced, it can trigger
+    // simplifications to its users - make sure to add them to the worklist
+    // before the root is changed.
+    void notifyRootReplaced(Operation *op) override {
+      auto *opStmt = cast<OperationStmt>(op);
+      for (auto *result : opStmt->getResults())
+        // TODO: Add a result->getUsers() iterator.
+        for (auto &user : result->getUses()) {
+          if (auto *op = dyn_cast<OperationStmt>(user.getOwner()))
+            thePass.addToWorklist(op);
+        }
+
+      // TODO: Walk the operand list dropping them as we go.  If any of them
+      // drop to zero uses, then add them to the worklist to allow them to be
+      // deleted as dead.
+    }
+
     void setInsertionPoint(Operation *op) override {
       // Any new operations should be added before this statement.
       builder.setInsertionPoint(cast<OperationStmt>(op));
@@ -194,13 +255,15 @@ PassResult Canonicalizer::runOnMLFunction(MLFunction *f) {
   return success();
 }
 
-// TODO: This should work on both ML and CFG functions.
 void Canonicalizer::simplifyFunction(std::vector<Operation *> &worklist,
                                      CanonicalizerRewriter &rewriter) {
+  auto *context = rewriter.getContext();
+
   // TODO: Instead of a hard coded list of patterns, ask the registered dialects
   // for their canonicalization patterns.
-
-  PatternMatcher matcher({new SimplifyXMinusX(rewriter.getContext())});
+  Pattern *patterns[] = {new SimplifyXMinusX(context),
+                         new SimplifyAddX0(context)};
+  PatternMatcher matcher(patterns);
 
   // These are scratch vectors used in the constant folding loop below.
   SmallVector<Attribute *, 8> operandConstants, resultConstants;
@@ -221,6 +284,10 @@ void Canonicalizer::simplifyFunction(std::vector<Operation *> &worklist,
 
     // TODO: If this is a constant op and if it hasn't already been added to the
     // canonical constants set, move it and remember it.
+    if (op->isa<ConstantOp>()) {
+      // Don't infinitely constant fold this operation.
+      continue;
+    }
 
     // Check to see if any operands to the instruction is constant and whether
     // the operation knows how to constant fold itself.
@@ -237,8 +304,7 @@ void Canonicalizer::simplifyFunction(std::vector<Operation *> &worklist,
     // If constant folding was successful, create the result constants, RAUW the
     // operation and remove it.
     resultConstants.clear();
-    if (!op->isa<ConstantOp>() &&
-        !op->constantFold(operandConstants, resultConstants)) {
+    if (!op->constantFold(operandConstants, resultConstants)) {
       rewriter.setInsertionPoint(op);
 
       // TODO: Put these in the entry block and unique them.
@@ -273,11 +339,6 @@ void Canonicalizer::simplifyFunction(std::vector<Operation *> &worklist,
 
     // Make sure that any new operations are inserted at this point.
     rewriter.setInsertionPoint(op);
-
-    // TODO: Need to be a bit trickier to make sure new instructions get into
-    // the worklist.
-    // TODO: Need to be careful to remove instructions from the worklist when
-    // they are eliminated by the replace method.
     match.first->rewrite(op, std::move(match.second), rewriter);
   }
 }

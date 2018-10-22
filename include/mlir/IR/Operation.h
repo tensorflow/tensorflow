@@ -29,6 +29,8 @@ template <typename OpType> class OpPointer;
 template <typename ObjectType, typename ElementType> class OperandIterator;
 template <typename ObjectType, typename ElementType> class ResultIterator;
 class Function;
+class Instruction;
+class Statement;
 
 /// Operations represent all of the arithmetic and other basic computation in
 /// MLIR.  This class is the common implementation details behind OperationInst
@@ -250,6 +252,10 @@ public:
   /// `results` vector.  If not, this returns true and `results` is unspecified.
   bool constantFold(ArrayRef<Attribute *> operands,
                     SmallVectorImpl<Attribute *> &results) const;
+
+  /// Methods for support type inquiry through isa, cast, and dyn_cast.
+  static bool classof(const Instruction *inst);
+  static bool classof(const Statement *stmt);
 
 protected:
   Operation(bool isInstruction, OperationName name,

@@ -19,7 +19,6 @@
 #include "mlir/IR/Statements.h"
 #include "mlir/StandardOps/StandardOps.h"
 #include "mlir/Transforms/PatternMatch.h"
-
 using namespace mlir;
 
 PatternBenefit::PatternBenefit(unsigned benefit) : representation(benefit) {
@@ -49,11 +48,14 @@ bool PatternBenefit::operator!=(const PatternBenefit& other) {
 // Pattern implementation
 //===----------------------------------------------------------------------===//
 
-Pattern::Pattern(OperationName rootKind, Optional<PatternBenefit> staticBenefit)
-    : rootKind(rootKind), staticBenefit(staticBenefit) {}
+Pattern::Pattern(StringRef rootName, MLIRContext *context,
+                 Optional<PatternBenefit> staticBenefit)
+    : rootKind(OperationName(rootName, context)), staticBenefit(staticBenefit) {
+}
 
-Pattern::Pattern(OperationName rootKind, unsigned staticBenefit)
-    : rootKind(rootKind), staticBenefit(staticBenefit) {}
+Pattern::Pattern(StringRef rootName, MLIRContext *context,
+                 unsigned staticBenefit)
+    : rootKind(rootName, context), staticBenefit(staticBenefit) {}
 
 Optional<PatternBenefit> Pattern::getStaticBenefit() const {
   return staticBenefit;
@@ -72,9 +74,7 @@ void Pattern::rewrite(Operation *op, PatternRewriter &rewriter) const {
 
 /// This method indicates that no match was found.
 PatternMatchResult Pattern::matchFailure() {
-  // TODO: Use a proper sentinel / discriminated union instad of -1 magic
-  // number.
-  return {-1, std::unique_ptr<PatternState>()};
+  return {PatternBenefit::impossibleToMatch(), std::unique_ptr<PatternState>()};
 }
 
 /// This method indicates that a match was found and has the specified cost.

@@ -237,6 +237,14 @@ bool Operation::constantFold(ArrayRef<Attribute *> operands,
   return true;
 }
 
+/// Methods for support type inquiry through isa, cast, and dyn_cast.
+bool Operation::classof(const Instruction *inst) {
+  return inst->getKind() == Instruction::Kind::Operation;
+}
+bool Operation::classof(const Statement *stmt) {
+  return stmt->getKind() == Statement::Kind::Operation;
+}
+
 //===----------------------------------------------------------------------===//
 // OpState trait class.
 //===----------------------------------------------------------------------===//

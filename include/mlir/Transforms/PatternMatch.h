@@ -144,10 +144,10 @@ public:
 protected:
   /// Patterns must specify the root operation name they match against, and can
   /// also optionally specify a static benefit of matching.
-  Pattern(OperationName rootKind,
+  Pattern(StringRef rootName, MLIRContext *context,
           Optional<PatternBenefit> staticBenefit = llvm::None);
 
-  Pattern(OperationName rootKind, unsigned staticBenefit);
+  Pattern(StringRef rootName, MLIRContext *context, unsigned staticBenefit);
 
 private:
   const OperationName rootKind;
