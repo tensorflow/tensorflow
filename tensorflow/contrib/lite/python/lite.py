@@ -439,24 +439,19 @@ class TFLiteConverter(object):
         "change_concat_input_ranges": self.change_concat_input_ranges,
         "allow_custom_ops": self.allow_custom_ops,
         "post_training_quantize": self.post_training_quantize,
+        "converter_mode": self.converter_mode,
         "dump_graphviz_dir": self.dump_graphviz_dir,
         "dump_graphviz_video": self.dump_graphviz_video
     }
 
     # Converts model.
     if self._has_valid_tensors():
-      converter_kwargs["converter_mode"] = self.converter_mode
       result = _toco_convert_impl(
           input_data=self._graph_def,
           input_tensors=self._input_tensors,
           output_tensors=self._output_tensors,
           **converter_kwargs)
     else:
-      # Graphs without valid tensors cannot be loaded into tf.Session since they
-      # contain TFLite operation(s) that cannot be resolved in TensorFlow.
-      if self.converter_mode != ConverterMode.DEFAULT:
-        raise ValueError("This model can only be converted with the default "
-                         "converter.")
       result = _toco_convert_graph_def(
           input_data=self._graph_def,
           input_arrays_with_shape=self._input_arrays_with_shape,
