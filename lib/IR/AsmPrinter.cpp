@@ -29,7 +29,6 @@
 #include "mlir/IR/MLFunction.h"
 #include "mlir/IR/Module.h"
 #include "mlir/IR/OpImplementation.h"
-#include "mlir/IR/OperationSet.h"
 #include "mlir/IR/Statements.h"
 #include "mlir/IR/StmtVisitor.h"
 #include "mlir/IR/Types.h"
@@ -59,12 +58,10 @@ OpAsmPrinter::~OpAsmPrinter() {}
 namespace {
 class ModuleState {
 public:
-  /// This is the operation set for the current context if it is knowable (a
-  /// context could be determined), otherwise this is null.
-  OperationSet *const operationSet;
+  /// This is the current context if it is knowable, otherwise this is null.
+  MLIRContext *const context;
 
-  explicit ModuleState(MLIRContext *context)
-      : operationSet(context ? &OperationSet::get(context) : nullptr) {}
+  explicit ModuleState(MLIRContext *context) : context(context) {}
 
   // Initializes module state, populating affine map state.
   void initialize(const Module *module);
@@ -1588,7 +1585,7 @@ void IntegerSet::dump() const {
 }
 
 void AffineExpr::print(raw_ostream &os) const {
-  ModuleState state(/*no context is known*/ nullptr);
+  ModuleState state(getContext());
   ModulePrinter(os, state).printAffineExpr(*this);
 }
 

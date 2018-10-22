@@ -28,7 +28,6 @@
 #include "mlir/IR/Identifier.h"
 #include "mlir/IR/IntegerSet.h"
 #include "mlir/IR/Location.h"
-#include "mlir/IR/OperationSet.h"
 #include "mlir/IR/Types.h"
 #include "mlir/Support/MathExtras.h"
 #include "mlir/Support/STLExtras.h"
@@ -36,6 +35,7 @@
 #include "llvm/ADT/StringMap.h"
 #include "llvm/Support/Allocator.h"
 #include "llvm/Support/raw_ostream.h"
+#include <memory>
 
 using namespace mlir;
 using namespace mlir::detail;
@@ -218,9 +218,6 @@ namespace mlir {
 /// This class is completely private to this file, so everything is public.
 class MLIRContextImpl {
 public:
-  /// This is the set of all operations that are registered with the system.
-  OperationSet operationSet;
-
   /// We put location info into this allocator, since it is generally not
   /// touched by compiler passes.
   llvm::BumpPtrAllocator locationAllocator;
@@ -241,6 +238,14 @@ public:
   /// This is the handler to use to report diagnostics, or null if not
   /// registered.
   MLIRContext::DiagnosticHandlerTy diagnosticHandler;
+
+  /// This is a list of dialects that are created referring to this context.
+  /// The MLIRContext owns the objects.
+  std::vector<std::unique_ptr<Dialect>> dialects;
+
+  /// This is a mapping from operation name to AbstractOperation for registered
+  /// operations.
+  StringMap<AbstractOperation> registeredOperations;
 
   /// These are identifiers uniqued into this MLIRContext.
   llvm::StringMap<char, llvm::BumpPtrAllocator &> identifiers;
@@ -329,11 +334,15 @@ public:
 } // end namespace mlir
 
 MLIRContext::MLIRContext() : impl(new MLIRContextImpl()) {
-  registerBuiltinOperations(this);
-  initializeAllRegisteredOps(this);
+  new BuiltinDialect(this);
+  registerAllDialects(this);
 }
 
 MLIRContext::~MLIRContext() {}
+
+//===----------------------------------------------------------------------===//
+// Diagnostic Handlers
+//===----------------------------------------------------------------------===//
 
 /// Register an issue handler with this LLVM context.  The issue handler is
 /// passed location information if present (nullptr if not) along with a
@@ -376,9 +385,38 @@ void MLIRContext::emitDiagnostic(Location *location, const llvm::Twine &message,
   exit(1);
 }
 
-/// Return the operation set associated with the specified MLIRContext object.
-OperationSet &OperationSet::get(MLIRContext *context) {
-  return context->getImpl().operationSet;
+//===----------------------------------------------------------------------===//
+// Dialect and Operation Registration
+//===----------------------------------------------------------------------===//
+
+/// Register this dialect object with the specified context.  The context
+/// takes ownership of the heap allocated dialect.
+void Dialect::registerDialect(MLIRContext *context) {
+  context->getImpl().dialects.push_back(std::unique_ptr<Dialect>(this));
+}
+
+void Dialect::addOperation(AbstractOperation opInfo) {
+  assert(opInfo.name.startswith(opPrefix) &&
+         "op name doesn't start with prefix");
+  assert(&opInfo.dialect == this && "Dialect object mismatch");
+
+  auto &impl = context->getImpl();
+  if (!impl.registeredOperations.insert({opInfo.name, opInfo}).second) {
+    llvm::errs() << "error: ops named '" << opInfo.name
+                 << "' is already registered.\n";
+    abort();
+  }
+}
+
+/// Look up the specified operation in the operation set and return a pointer
+/// to it if present.  Otherwise, return a null pointer.
+const AbstractOperation *AbstractOperation::lookup(StringRef opName,
+                                                   MLIRContext *context) {
+  auto &impl = context->getImpl();
+  auto it = impl.registeredOperations.find(opName);
+  if (it != impl.registeredOperations.end())
+    return &it->second;
+  return nullptr;
 }
 
 //===----------------------------------------------------------------------===//

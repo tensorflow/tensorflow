@@ -165,8 +165,8 @@ public:
   /// handlers that may be listening.
   void emitNote(const Twine &message) const;
 
-  /// If this operation has a registered operation description in the
-  /// OperationSet, return it.  Otherwise return null.
+  /// If this operation has a registered operation description, return it.
+  /// Otherwise return null.
   const AbstractOperation *getAbstractOperation() const {
     return getName().getAbstractOperation();
   }

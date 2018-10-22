@@ -24,12 +24,17 @@
 #define MLIR_IR_BUILTINOPS_H
 
 #include "mlir/IR/Attributes.h"
+#include "mlir/IR/Dialect.h"
 #include "mlir/IR/OpDefinition.h"
 
 namespace mlir {
 class Builder;
 class MLValue;
-class OperationSet;
+
+class BuiltinDialect : public Dialect {
+public:
+  BuiltinDialect(MLIRContext *context);
+};
 
 /// The "affine_apply" operation applies an affine map to a list of operands,
 /// yielding a list of results. The operand and result list sizes must be the
@@ -214,9 +219,6 @@ void printDimAndSymbolList(Operation::const_operand_iterator begin,
 bool parseDimAndSymbolList(OpAsmParser *parser,
                            SmallVector<SSAValue *, 4> &operands,
                            unsigned &numDims);
-
-/// Install the builtin operations in the specified MLIRContext.
-void registerBuiltinOperations(MLIRContext *ctx);
 
 } // end namespace mlir
 

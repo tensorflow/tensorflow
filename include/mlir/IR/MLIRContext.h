@@ -23,8 +23,10 @@
 #include <memory>
 
 namespace mlir {
+class AbstractOperation;
 class MLIRContextImpl;
 class Location;
+class Dialect;
 
 /// MLIRContext is the top-level object for a collection of MLIR modules.  It
 /// holds immortal uniqued objects like types, and the tables used to unique
@@ -39,12 +41,8 @@ public:
   explicit MLIRContext();
   ~MLIRContext();
 
-  // This is effectively private given that only MLIRContext.cpp can see the
-  // MLIRContextImpl type.
-  MLIRContextImpl &getImpl() const { return *impl.get(); }
-
-  // This is the interpretation of a diagnostic that is emitted to the
-  // diagnostic handler below.
+  /// This is the interpretation of a diagnostic that is emitted to the
+  /// diagnostic handler below.
   enum class DiagnosticKind { Note, Warning, Error };
 
   // Diagnostic handler registration and use.  MLIR supports the ability for the
@@ -74,8 +72,13 @@ public:
   void emitDiagnostic(Location *location, const Twine &message,
                       DiagnosticKind kind) const;
 
+  // This is effectively private given that only MLIRContext.cpp can see the
+  // MLIRContextImpl type.
+  MLIRContextImpl &getImpl() const { return *impl.get(); }
+
 private:
   const std::unique_ptr<MLIRContextImpl> impl;
+
   MLIRContext(const MLIRContext &) = delete;
   void operator=(const MLIRContext &) = delete;
 };

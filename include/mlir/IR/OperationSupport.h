@@ -28,6 +28,7 @@
 
 namespace mlir {
 class Attribute;
+class Dialect;
 class Location;
 class Operation;
 class OperationState;
@@ -54,15 +55,13 @@ enum class OperationProperty {
 /// the concrete operation types.
 class AbstractOperation {
 public:
-  template <typename T> static AbstractOperation get() {
-    return AbstractOperation(T::getOperationName(), T::getOperationProperties(),
-                             T::isClassFor, T::parseAssembly, T::printAssembly,
-                             T::verifyInvariants, T::constantFoldHook);
-  }
   using OperationProperties = uint32_t;
 
   /// This is the name of the operation.
   const StringRef name;
+
+  /// This is the dialect that this operation belongs to.
+  Dialect &dialect;
 
   /// Return true if this "op class" can match against the specified operation.
   bool (&isClassFor)(const Operation *op);
@@ -89,9 +88,23 @@ public:
     return opProperties & static_cast<OperationProperties>(property);
   }
 
+  /// Look up the specified operation in the specified MLIRContext and return a
+  /// pointer to it if present.  Otherwise, return a null pointer.
+  static const AbstractOperation *lookup(StringRef opName,
+                                         MLIRContext *context);
+
+  /// This constructor is used by Dialect objects when they register the list of
+  /// operations they contain.
+  template <typename T> static AbstractOperation get(Dialect &dialect) {
+    return AbstractOperation(T::getOperationName(), dialect,
+                             T::getOperationProperties(), T::isClassFor,
+                             T::parseAssembly, T::printAssembly,
+                             T::verifyInvariants, T::constantFoldHook);
+  }
+
 private:
   AbstractOperation(
-      StringRef name, OperationProperties opProperties,
+      StringRef name, Dialect &dialect, OperationProperties opProperties,
       bool (&isClassFor)(const Operation *op),
       bool (&parseAssembly)(OpAsmParser *parser, OperationState *result),
       void (&printAssembly)(const Operation *op, OpAsmPrinter *p),
@@ -99,9 +112,10 @@ private:
       bool (&constantFoldHook)(const Operation *op,
                                ArrayRef<Attribute *> operands,
                                SmallVectorImpl<Attribute *> &results))
-      : name(name), isClassFor(isClassFor), parseAssembly(parseAssembly),
-        printAssembly(printAssembly), verifyInvariants(verifyInvariants),
-        constantFoldHook(constantFoldHook), opProperties(opProperties) {}
+      : name(name), dialect(dialect), isClassFor(isClassFor),
+        parseAssembly(parseAssembly), printAssembly(printAssembly),
+        verifyInvariants(verifyInvariants), constantFoldHook(constantFoldHook),
+        opProperties(opProperties) {}
 
   /// The properties of the operation.
   const OperationProperties opProperties;
@@ -123,8 +137,8 @@ public:
   /// Return the name of this operation.  This always succeeds.
   StringRef getStringRef() const;
 
-  /// If this operation has a registered operation description in the
-  /// OperationSet, return it.  Otherwise return null.
+  /// If this operation has a registered operation description, return it.
+  /// Otherwise return null.
   const AbstractOperation *getAbstractOperation() const;
 
   void print(raw_ostream &os) const;

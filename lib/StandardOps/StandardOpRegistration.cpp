@@ -15,10 +15,9 @@
 // limitations under the License.
 // =============================================================================
 
-#include "mlir/IR/OperationSet.h"
 #include "mlir/StandardOps/StandardOps.h"
 
 using namespace mlir;
 
 // Static initialization for standard op registration.
-static OpInitializeRegistration StandardOps(registerStandardOperations);
+static DialectRegistration<StandardOpsDialect> StandardOps;

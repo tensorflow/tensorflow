@@ -38,7 +38,6 @@
 #include "mlir/IR/CFGFunction.h"
 #include "mlir/IR/MLFunction.h"
 #include "mlir/IR/Module.h"
-#include "mlir/IR/OperationSet.h"
 #include "mlir/IR/Statements.h"
 #include "mlir/IR/StmtVisitor.h"
 #include "llvm/ADT/ScopedHashTable.h"
@@ -86,15 +85,11 @@ public:
   bool verifyAttribute(Attribute *attr, const Operation &op);
 
 protected:
-  explicit Verifier(const Function &fn)
-      : fn(fn), operationSet(OperationSet::get(fn.getContext())) {}
+  explicit Verifier(const Function &fn) : fn(fn) {}
 
 private:
   /// The function being checked.
   const Function &fn;
-
-  /// The operation set installed in the current MLIR context.
-  OperationSet &operationSet;
 };
 } // end anonymous namespace
 

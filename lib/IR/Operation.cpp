@@ -23,7 +23,6 @@
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/OpDefinition.h"
 #include "mlir/IR/OpImplementation.h"
-#include "mlir/IR/OperationSet.h"
 #include "mlir/IR/Statements.h"
 using namespace mlir;
 
@@ -31,7 +30,7 @@ using namespace mlir;
 /// a reference to an AbstractOperation if one is known, or a uniqued Identifier
 /// if not.
 OperationName::OperationName(StringRef name, MLIRContext *context) {
-  if (auto *op = OperationSet::get(context).lookup(name))
+  if (auto *op = AbstractOperation::lookup(name, context))
     representation = op;
   else
     representation = Identifier::get(name, context);
@@ -51,6 +50,8 @@ const AbstractOperation *OperationName::getAbstractOperation() const {
 OperationName OperationName::getFromOpaquePointer(void *pointer) {
   return OperationName(RepresentationUnion::getFromOpaqueValue(pointer));
 }
+
+OpAsmParser::~OpAsmParser() {}
 
 //===----------------------------------------------------------------------===//
 // Operation class
@@ -232,6 +233,16 @@ bool Operation::constantFold(ArrayRef<Attribute *> operands,
 //===----------------------------------------------------------------------===//
 // OpState trait class.
 //===----------------------------------------------------------------------===//
+
+// The fallback for the parser is to reject the short form.
+bool OpState::parse(OpAsmParser *parser, OperationState *result) {
+  return parser->emitError(parser->getNameLoc(), "has no concise form");
+}
+
+// The fallback for the printer is to print it the longhand form.
+void OpState::print(OpAsmPrinter *p) const {
+  p->printDefaultOp(getOperation());
+}
 
 /// Emit an error about fatal conditions with this operation, reporting up to
 /// any diagnostic handlers that may be listening.  NOTE: This may terminate

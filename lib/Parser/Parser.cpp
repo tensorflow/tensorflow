@@ -32,7 +32,6 @@
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/Module.h"
 #include "mlir/IR/OpImplementation.h"
-#include "mlir/IR/OperationSet.h"
 #include "mlir/IR/StmtVisitor.h"
 #include "mlir/IR/Types.h"
 #include "mlir/Support/STLExtras.h"
@@ -62,7 +61,7 @@ class ParserState {
 public:
   ParserState(const llvm::SourceMgr &sourceMgr, Module *module)
       : context(module->getContext()), module(module), lex(sourceMgr, context),
-        curToken(lex.lexToken()), operationSet(OperationSet::get(context)) {}
+        curToken(lex.lexToken()) {}
 
   ~ParserState() {
     // Destroy the forward references upon error.
@@ -98,9 +97,6 @@ private:
 
   // This is the next token that hasn't been consumed yet.
   Token curToken;
-
-  // The active OperationSet we're parsing with.
-  OperationSet &operationSet;
 };
 } // end anonymous namespace
 
@@ -122,7 +118,6 @@ public:
   ParserState &getState() const { return state; }
   MLIRContext *getContext() const { return state.context; }
   Module *getModule() { return state.module; }
-  OperationSet &getOperationSet() const { return state.operationSet; }
   const llvm::SourceMgr &getSourceMgr() { return state.lex.getSourceMgr(); }
 
   /// Return the current token the parser is inspecting.
@@ -2279,7 +2274,7 @@ Operation *FunctionParser::parseCustomOperation(
   auto opName = getTokenSpelling();
   CustomOpAsmParser opAsmParser(opLoc, opName, *this);
 
-  auto *opDefinition = getOperationSet().lookup(opName);
+  auto *opDefinition = AbstractOperation::lookup(opName, getContext());
   if (!opDefinition) {
     opAsmParser.emitError(opLoc, "is unknown");
     return nullptr;

@@ -21,14 +21,23 @@
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/OpImplementation.h"
-#include "mlir/IR/OperationSet.h"
 #include "mlir/IR/SSAValue.h"
 #include "mlir/IR/Types.h"
 #include "mlir/Support/MathExtras.h"
 #include "mlir/Support/STLExtras.h"
 #include "llvm/Support/raw_ostream.h"
-
 using namespace mlir;
+
+//===----------------------------------------------------------------------===//
+// StandardOpsDialect
+//===----------------------------------------------------------------------===//
+
+StandardOpsDialect::StandardOpsDialect(MLIRContext *context)
+    : Dialect(/*opPrefix=*/"", context) {
+  addOperations<AddFOp, AddIOp, AllocOp, CallOp, CallIndirectOp, DeallocOp,
+                DimOp, DmaStartOp, DmaWaitOp, ExtractElementOp, LoadOp, MulFOp,
+                MulIOp, ShapeCastOp, StoreOp, SubFOp, SubIOp>();
+}
 
 //===----------------------------------------------------------------------===//
 // AddFOp
@@ -816,18 +825,4 @@ Attribute *SubIOp::constantFold(ArrayRef<Attribute *> operands,
   }
 
   return nullptr;
-}
-
-//===----------------------------------------------------------------------===//
-// Register operations.
-//===----------------------------------------------------------------------===//
-
-/// Install the standard operations in the specified MLIRContext.
-void mlir::registerStandardOperations(MLIRContext *ctx) {
-  auto &opSet = OperationSet::get(ctx);
-  opSet
-      .addOperations<AddFOp, AddIOp, AllocOp, CallOp, CallIndirectOp, DeallocOp,
-                     DimOp, DmaStartOp, DmaWaitOp, ExtractElementOp, LoadOp,
-                     MulFOp, MulIOp, ShapeCastOp, StoreOp, SubFOp, SubIOp>(
-          /*prefix=*/"");
 }

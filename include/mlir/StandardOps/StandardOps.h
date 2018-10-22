@@ -24,12 +24,17 @@
 #define MLIR_STANDARDOPS_STANDARDOPS_H
 
 #include "mlir/IR/Attributes.h"
+#include "mlir/IR/Dialect.h"
 #include "mlir/IR/OpDefinition.h"
 
 namespace mlir {
-class OperationSet;
 class Builder;
 class MLValue;
+
+class StandardOpsDialect : public Dialect {
+public:
+  StandardOpsDialect(MLIRContext *context);
+};
 
 /// The "addf" operation takes two operands and returns one result, each of
 /// these is required to be of the same type.  This type may be a floating point
@@ -616,9 +621,6 @@ private:
   friend class Operation;
   explicit SubIOp(const Operation *state) : BinaryOp(state) {}
 };
-
-/// Install the standard operations in the specified operation set.
-void registerStandardOperations(MLIRContext *ctx);
 
 } // end namespace mlir
 

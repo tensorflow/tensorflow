@@ -20,14 +20,21 @@
 #include "mlir/IR/AffineMap.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/OpImplementation.h"
-#include "mlir/IR/OperationSet.h"
 #include "mlir/IR/SSAValue.h"
 #include "mlir/IR/Types.h"
 #include "mlir/Support/MathExtras.h"
 #include "mlir/Support/STLExtras.h"
 #include "llvm/Support/raw_ostream.h"
-
 using namespace mlir;
+
+//===----------------------------------------------------------------------===//
+// BuiltinDialect
+//===----------------------------------------------------------------------===//
+
+BuiltinDialect::BuiltinDialect(MLIRContext *context)
+    : Dialect(/*opPrefix=*/"", context) {
+  addOperations<AffineApplyOp, ConstantOp, ReturnOp>();
+}
 
 void mlir::printDimAndSymbolList(Operation::const_operand_iterator begin,
                                  Operation::const_operand_iterator end,
@@ -322,13 +329,3 @@ bool ReturnOp::verify() const {
   return emitOpError("cannot occur in a CFG function");
 }
 
-//===----------------------------------------------------------------------===//
-// Register operations.
-//===----------------------------------------------------------------------===//
-
-/// Install the builtin operations in the specified MLIRContext..
-void mlir::registerBuiltinOperations(MLIRContext *ctx) {
-  auto &opSet = OperationSet::get(ctx);
-  opSet.addOperations<AffineApplyOp, ConstantOp, ReturnOp>(
-      /*prefix=*/"");
-}
