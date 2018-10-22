@@ -15,19 +15,17 @@ limitations under the License.
 
 // See docs in ../ops/nn_ops.cc.
 #ifdef INTEL_MKL
-#ifndef INTEL_MKL_ML_ONLY
 
+#include "mkldnn.hpp"
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/numeric_op.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/util/mkl_util.h"
 #include "tensorflow/core/util/tensor_format.h"
 
-#include "tensorflow/core/util/mkl_util.h"
-
-#include "mkldnn.hpp"
 using mkldnn::prop_kind;
 using mkldnn::softmax_forward;
 using mkldnn::stream;
@@ -64,12 +62,13 @@ class MklSoftmaxOp : public OpKernel {
       auto src_dims = TFShapeToMklDnnDims(src_tf_shape);
       auto output_dims = src_dims;
       memory::format layout_type;
-      // In MKL, data format passed to mkl softmax op depends on dimension of the input tensor.
-      // Here "x" data format in MKL is used for 1 dim tensor, "nc" for 2 dim tensor, 
-      // "tnc" for 3 dim tensor, "nchw" for 4 dim tensor, and "ncdhw" for 5 dim tensor.
+      // In MKL, data format passed to mkl softmax op depends on dimension of
+      // the input tensor. "x" data format in MKL is used for 1 dim tensor,
+      // "nc" for 2 dim tensor, "tnc" for 3 dim tensor, "nchw" for 4 dim tensor,
+      // and "ncdhw" for 5 dim tensor.
       // Each of the simbols has the following meaning:
       // n = batch, c = channels, t = sequence lenght, h = height,
-      // w = width, d = depth 
+      // w = width, d = depth
       switch (input_dims) {
         case 1:
           layout_type = memory::format::x;
@@ -87,9 +86,11 @@ class MklSoftmaxOp : public OpKernel {
           layout_type = memory::format::ncdhw;
           break;
         default:
-          OP_REQUIRES_OK(context, errors::Aborted("Input dims must be <= 5 and >=1"));
+          OP_REQUIRES_OK(context, errors::Aborted(
+              "Input dims must be <= 5 and >=1"));
           return;
       }
+
       // Create softmax memory for src, dst: both are defined in mkl_util.h,
       // they are wrapper
       MklDnnData<T> src(&cpu_engine);
@@ -181,5 +182,4 @@ TF_CALL_float(REGISTER_SOFTMAX_MKL_SUPPORTED_KERNELS_TYPES);
 
 }  // namespace tensorflow
 
-#endif  // INTEL_MKL_ML_ONLY
 #endif  // INTEL_MKL
