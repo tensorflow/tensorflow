@@ -259,7 +259,7 @@ def _grad_fn(func_graph, grads):
   ys = []
   grad_ys = []
   for y, grad_y in zip(func_graph.outputs, grads):
-    if not gradients_impl._IsTrainable(y):
+    if not gradients_impl.IsTrainable(y):
       continue
     ys.append(y)
     grad_ys.append(grad_y)

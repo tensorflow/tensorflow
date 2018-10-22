@@ -296,7 +296,7 @@ def _DefaultGradYs(grad_ys,
   return new_grad_ys
 
 
-def _IsTrainable(tensor):
+def IsTrainable(tensor):
   dtype = dtypes.as_dtype(tensor.dtype)
   return dtype.base_dtype in (dtypes.float16, dtypes.float32, dtypes.float64,
                               dtypes.complex64, dtypes.complex128,
@@ -304,7 +304,7 @@ def _IsTrainable(tensor):
 
 
 def _IsBackpropagatable(tensor):
-  if _IsTrainable(tensor):
+  if IsTrainable(tensor):
     return True
   dtype = dtypes.as_dtype(tensor.dtype)
   return dtype.base_dtype in (dtypes.bfloat16, dtypes.variant)
@@ -776,7 +776,7 @@ def _GradientsHelper(ys,
     if loop_state:
       loop_exits = loop_state.ProcessUnusedLoopExits(pending_count, to_ops_set)
       for y in loop_exits:
-        if _IsTrainable(y):
+        if IsTrainable(y):
           _SetGrad(grads, y, loop_state.ZerosLikeForExit(y))
           queue.append(y.op)
 
@@ -842,7 +842,7 @@ def _GradientsHelper(ys,
           # therefore dC/doutput[i] is 0.
           for i, out_grad in enumerate(out_grads):
             if (not isinstance(out_grad, ops.Tensor) and not out_grad) and (
-                (not grad_fn and is_func_call) or _IsTrainable(op.outputs[i])):
+                (not grad_fn and is_func_call) or IsTrainable(op.outputs[i])):
               # Only trainable outputs or outputs for a function call that
               # will use SymbolicGradient get a zero gradient. Gradient
               # functions should ignore the gradient for other outputs.
@@ -947,7 +947,7 @@ def _UpdatePendingAndEnqueueReady(grads, op, queue, pending_count, loop_state,
             # For an unused exit, if it has trainable outputs, backprop
             # a zero gradient. Otherwise, just ignore it.
             for y in grad_state.unused_exits:
-              if _IsTrainable(y):
+              if IsTrainable(y):
                 _SetGrad(grads, y, loop_state.ZerosLikeForExit(y))
               queue.append(y.op)
           else:

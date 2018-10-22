@@ -2312,6 +2312,30 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
         # pylint: disable=protected-access
         self.assertEqual(len(graph._functions), 3)
 
+  def testBackwardNone(self):
+    with ops.Graph().as_default():
+      model = variables.Variable(1.0, name='model')
+      count = variables.Variable(0)
+
+      @function.defun
+      def forward_pass(value):
+        count.assign_add(1)
+        residuals = value - model
+        loss = 0.5 * math_ops.reduce_mean(math_ops.pow(residuals, 2))
+        # Note: count is an integer, so its doutput will be None
+        return loss, count
+
+      def reduce_fn(x):
+        loss, count = forward_pass(x)
+        grad_only = gradients_impl.gradients(loss, model)
+        return grad_only, count
+
+      do_it = reduce_fn(constant_op.constant([7.0]))
+
+      with self.test_session() as sess:
+        sess.run([variables.global_variables_initializer()])
+        self.assertAllEqual(sess.run(do_it), [[-6.0], 1])
+
   def testCallingFunctionWithDifferentVariables(self):
 
     @function.defun
