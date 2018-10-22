@@ -77,6 +77,7 @@ class IpuXlaConvTest(test_util.TensorFlowTestCase):
 
       ok = ['progIdCopy',
             'host-exchange-local-copy-',
+            'Copy_',
             'convolution/convolution.*/Conv_3x3x3',
             'BiasAdd/call/addToChannel']
       self.assertTrue(tu.check_all_compute_sets_and_list(cs_list, ok))
@@ -110,6 +111,7 @@ class IpuXlaConvTest(test_util.TensorFlowTestCase):
 
       ok = ['progIdCopy',
             'host-exchange-local-copy-',
+            'Copy_',
             'Conv3D/convolution.*/Conv_8x8x8_stride4x4x4',
             'BiasAdd/call/addToChannel']
       self.assertTrue(tu.check_all_compute_sets_and_list(cs_list, ok))
@@ -143,6 +145,7 @@ class IpuXlaConvTest(test_util.TensorFlowTestCase):
 
       ok = ['progIdCopy',
             'host-exchange-local-copy-',
+            'Copy_',
             'Conv3D/convolution.*/Conv_1x1',
             'add/add.*/AddTo']
 # TODO = should be addToChannel T3170           'BiasAdd/call/addToChannel']

@@ -269,6 +269,7 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::RunBackend(
   }
 
   CompilerResources resources(seed + 1, poplarExecutor->GetRandomGenMode(),
+                              poplarExecutor->GetConvolutionOptions(),
                               module.get());
   {
     HloPassPipeline pipeline("IPU");

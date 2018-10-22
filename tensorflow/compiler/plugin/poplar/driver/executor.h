@@ -262,6 +262,8 @@ class PoplarExecutor : public se::internal::StreamExecutorInterface {
     return current_config_.always_rearrange_copies_on_the_host();
   }
 
+  poplar::OptionFlags GetConvolutionOptions() const { return conv_options_; }
+
   void AddCompileBeginEventRecord(const std::string& module_name,
                                   const std::string& xla_graph);
 
@@ -450,6 +452,8 @@ class PoplarExecutor : public se::internal::StreamExecutorInterface {
   int64 poplar_device_hash_;
 
   poplar::OptionFlags option_flags_;
+
+  poplar::OptionFlags conv_options_;
 
   std::list<TensorControl*> allocations_;
 

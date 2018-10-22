@@ -125,12 +125,13 @@ poplar::Tensor DoCachedConvolution(
   auto fwd_key = graph_caching_util::GetConvolutionCacheKey(
       params, ConvClassificationType::FORWARD, false);
   auto it = res.conv_graph_cache.find(fwd_key);
+
+  poplar::OptionFlags opts = res.default_conv_options;
   if (conv_type == ConvClassificationType::BACKPROP_INPUT &&
       it != res.conv_graph_cache.end()) {
     // We found a matching convolution in the forward pass. Transform the
     // weights prior to the convolution so we can reuse the existing
     // graph.
-    poplar::OptionFlags opts;
     opts.set("pass", ConvClassificationTypeToString(fwd_type));
     auto bwd_weights = poplin::createWeights(graph, params, "bwd_weights", opts,
                                              &res.convolution_cache);
@@ -151,8 +152,6 @@ poplar::Tensor DoCachedConvolution(
       auto& f = it->second;
       return f(args, prog);
     }
-
-    poplar::OptionFlags opts;
     opts.set("pass", ConvClassificationTypeToString(conv_type));
     using namespace poputil::graphfn;
     auto f = TensorFunction(graph, {input(in, "in"), input(weights, "weights")},
@@ -218,7 +217,7 @@ Status DoCachedConvolutionWithScaledAdd(
         deltas_shuffled =
             AddGroupsDimensionToWeights(params, deltas_shuffled, false);
 
-        poplar::OptionFlags opts;
+        poplar::OptionFlags opts = res.default_conv_options;
         opts.set("pass", ConvClassificationTypeToString(conv_type));
 
         auto c_out = poplin::convolution(
