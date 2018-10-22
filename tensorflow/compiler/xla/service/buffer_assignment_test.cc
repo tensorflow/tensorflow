@@ -107,6 +107,24 @@ class BufferAssignmentTest : public HloVerifiedTestBase {
         .ConsumeValueOrDie();
   }
 
+  std::unique_ptr<BufferAssignment> RunBufferAssignmentNoBuffersReuseForAdd(
+      HloModule* module, int64 alignment = 1) {
+    auto reuse_checker = [](const BufferAssignment& assignment,
+                            const BufferAllocation& alloc,
+                            const LogicalBuffer& buffer) {
+      return (buffer.instruction()->opcode() != HloOpcode::kAdd);
+    };
+    return BufferAssigner::Run(
+               module, absl::make_unique<DependencyHloOrdering>(module),
+               backend().compiler()->BufferSizeBytesFunction(),
+               [alignment](LogicalBuffer::Color) { return alignment; },
+               /*allow_input_output_aliasing=*/false,
+               /*allocate_buffers_for_constants=*/false,
+               /*colorer=*/BufferLiveness::DefaultColorer(),
+               /*reuse_checker=*/reuse_checker)
+        .ConsumeValueOrDie();
+  }
+
   std::unique_ptr<BufferAssignment> RunColoredBufferAssignment(
       HloModule* module, BufferLiveness::Colorer colorer, int64 alignment = 1) {
     return BufferAssigner::Run(
@@ -442,6 +460,56 @@ TEST_F(BufferAssignmentTest, Basic) {
   // The add node can reuse the mul node's buffer.
   const BufferAllocation& add_buffer = GetTopLevelAllocation(*buffers, add);
   EXPECT_EQ(add_buffer.index(), mul_buffer.index());
+
+  // The sub node has a valid output buffer assigned.
+  GetAssignedOutputAllocation(*buffers, sub);
+}
+
+TEST_F(BufferAssignmentTest, AddCannotReuse) {
+  // Pass in a special rule to indicate that "add" cannot reuse any buffer.
+  //
+  // paramscalar ------- (mul) -- (add) -- (sub)
+  //                     /        /        /
+  // param0[100] -------/        /        /
+  //                            /        /
+  // param1[100] --------------/--------/
+  auto builder = HloComputation::Builder(TestName());
+  auto paramscalar =
+      builder.AddInstruction(HloInstruction::CreateParameter(0, r0f32_, "p"));
+  auto broadcast = builder.AddInstruction(
+      HloInstruction::CreateBroadcast(f32vec100_, paramscalar, {}));
+  auto param0 = builder.AddInstruction(
+      HloInstruction::CreateParameter(1, f32vec100_, "p1"));
+  auto param1 = builder.AddInstruction(
+      HloInstruction::CreateParameter(2, f32vec100_, "p2"));
+  auto mul = builder.AddInstruction(HloInstruction::CreateBinary(
+      f32vec100_, HloOpcode::kMultiply, broadcast, param0));
+  auto add = builder.AddInstruction(
+      HloInstruction::CreateBinary(f32vec100_, HloOpcode::kAdd, mul, param1));
+  auto sub = builder.AddInstruction(HloInstruction::CreateBinary(
+      f32vec100_, HloOpcode::kSubtract, add, param1));
+  auto module = CreateNewVerifiedModule();
+  module->AddEntryComputation(builder.Build());
+
+  auto buffers = RunBufferAssignmentNoBuffersReuseForAdd(module.get());
+
+  // Distinct input buffers were assigned for parameters.
+  BufferAllocation paramscalar_buffer =
+      GetAssignedInputAllocation(*buffers, paramscalar);
+  BufferAllocation param0_buffer = GetAssignedInputAllocation(*buffers, param0);
+  BufferAllocation param1_buffer = GetAssignedInputAllocation(*buffers, param1);
+  EXPECT_NE(paramscalar_buffer.index(), param0_buffer.index());
+  EXPECT_NE(paramscalar_buffer.index(), param1_buffer.index());
+  EXPECT_NE(param0_buffer.index(), param1_buffer.index());
+
+  // The mul node has a valid buffer assigned, doesn't share with input.
+  const BufferAllocation& mul_buffer = GetTopLevelAllocation(*buffers, mul);
+  EXPECT_NE(mul_buffer.index(), param0_buffer.index());
+
+  // The add node cannot reuse the mul node's buffer since we told buffer
+  // assignment so.
+  const BufferAllocation& add_buffer = GetTopLevelAllocation(*buffers, add);
+  EXPECT_NE(add_buffer.index(), mul_buffer.index());
 
   // The sub node has a valid output buffer assigned.
   GetAssignedOutputAllocation(*buffers, sub);
