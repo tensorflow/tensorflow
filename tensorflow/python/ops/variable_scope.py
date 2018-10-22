@@ -852,14 +852,18 @@ class _VariableStore(object):
     if name in self._vars:
       # Here we handle the case when returning an existing variable.
       if reuse is False:
-        tb = self._vars[name].op.traceback[::-1]
+        var = self._vars[name]
+        err_msg = ("Variable %s already exists, disallowed."
+                   " Did you mean to set reuse=True or "
+                   "reuse=tf.AUTO_REUSE in VarScope?" % name)
+        # ResourceVariables don't have an op associated with so no traceback
+        if isinstance(var, resource_variable_ops.ResourceVariable):
+          raise ValueError(err_msg)
+        tb = var.op.traceback[::-1]
         # Throw away internal tf entries and only take a few lines.
         tb = [x for x in tb if "tensorflow/python" not in x[0]][:3]
-        raise ValueError("Variable %s already exists, disallowed."
-                         " Did you mean to set reuse=True or "
-                         "reuse=tf.AUTO_REUSE in VarScope? "
-                         "Originally defined at:\n\n%s" % (
-                             name, "".join(traceback.format_list(tb))))
+        raise ValueError("%s Originally defined at:\n\n%s" % (err_msg, "".join(
+            traceback.format_list(tb))))
       found_var = self._vars[name]
       if not shape.is_compatible_with(found_var.get_shape()):
         raise ValueError("Trying to share variable %s, but specified shape %s"
