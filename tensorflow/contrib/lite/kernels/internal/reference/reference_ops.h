@@ -3250,6 +3250,36 @@ inline void Pad(const tflite::PadParams& op_params,
           output_data);
 }
 
+// One could make all PadImageStyle calls simply delegate the work to the
+// ordinary Pad.  However, it is better that the reference code asserts false in
+// similar cases.
+template <typename T, typename P>
+inline void PadImageStyle(const tflite::PadParams& op_params,
+                          const RuntimeShape& input_shape, const T* input_data,
+                          const P* pad_value_ptr,
+                          const RuntimeShape& output_shape, T* output_data) {
+  TFLITE_ASSERT_FALSE;
+}
+
+template <typename P>
+inline void PadImageStyle(const tflite::PadParams& op_params,
+                          const RuntimeShape& input_shape,
+                          const uint8* input_data, const P* pad_value_ptr,
+                          const RuntimeShape& output_shape,
+                          uint8* output_data) {
+  Pad(op_params, input_shape, input_data, pad_value_ptr, output_shape,
+      output_data);
+}
+
+template <typename P>
+inline void PadImageStyle(const tflite::PadParams& op_params,
+                          const RuntimeShape& input_shape,
+                          const float* input_data, const P* pad_value_ptr,
+                          const RuntimeShape& output_shape,
+                          float* output_data) {
+  Pad(op_params, input_shape, input_data, pad_value_ptr, output_shape,
+      output_data);
+}
 template <typename T>
 inline void StridedSlice(const tflite::StridedSliceParams& op_params,
                          const RuntimeShape& unextended_input_shape,
