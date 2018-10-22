@@ -687,6 +687,7 @@ cuda_py_test(
     size = "medium",
     srcs = ["parameterized_truncated_normal_op_test.py"],
     additional_deps = [
+        "@absl_py//absl/testing:parameterized",
         "//third_party/py/numpy",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:client",
