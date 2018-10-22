@@ -419,29 +419,29 @@ def gen_selected_ops(name, model):
         tools = [tool],
     )
 
-def gen_full_model_test(conversion_modes, models, data, tags):
+def gen_full_model_test(target_ops_list, models, data, tags):
     """Generates Python test targets for testing TFLite models.
 
     Args:
-      conversion_modes: List of conversion modes to test the models on.
+      target_ops_list: List of operation sets to test the models on.
       models: List of models to test.
       data: List of BUILD targets linking the data.
       tags: Any additional tags including the test_suite tag.
     """
     options = [
-        (conversion_mode, model)
+        (target_op_sets, model)
         for model in models
-        for conversion_mode in conversion_modes
+        for target_op_sets in target_ops_list
     ]
 
-    for conversion_mode, model_name in options:
+    for target_op_sets, model_name in options:
         native.py_test(
-            name = "model_coverage_test_%s_%s" % (model_name, conversion_mode.lower()),
+            name = "model_coverage_test_%s_%s" % (model_name, target_op_sets.lower().replace(",", "_")),
             srcs = ["model_coverage_test.py"],
             main = "model_coverage_test.py",
             args = [
                 "--model_name=%s" % model_name,
-                "--converter_mode=%s" % conversion_mode,
+                "--target_ops=%s" % target_op_sets,
             ],
             data = data,
             srcs_version = "PY2AND3",
