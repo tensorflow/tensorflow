@@ -43,8 +43,11 @@ function = LazyLoader("function", globals(),
                       "tensorflow.python.eager.function")
 
 WHITELIST_COLLECTIONS = [
-    ops.GraphKeys.GLOBAL_VARIABLES, ops.GraphKeys.LOCAL_VARIABLES,
-    ops.GraphKeys.TRAINABLE_VARIABLES
+    ops.GraphKeys.GLOBAL_VARIABLES,
+    ops.GraphKeys.LOCAL_VARIABLES,
+    ops.GraphKeys.TRAINABLE_VARIABLES,
+    variable_scope._VARSTORE_KEY,  # pylint: disable=protected-access
+    variable_scope._VARSCOPESTORE_KEY  # pylint: disable=protected-access
 ]
 
 
@@ -132,18 +135,12 @@ class FuncGraph(ops.Graph):
       self._collections = graph._collections
     else:
       for collection_name in graph.get_all_collection_keys():
-        if collection_name in WHITELIST_COLLECTIONS:
-          self._collections[collection_name] = graph.get_collection_ref(
-              collection_name)
-        else:
+        if collection_name not in WHITELIST_COLLECTIONS:
           self._collections[collection_name] = graph.get_collection(
               collection_name)
-    for collection_name in [
-        variable_scope._VARSTORE_KEY,
-        variable_scope._VARSCOPESTORE_KEY  # pylint: disable=protected-access
-    ]:
-      self._collections[collection_name] = graph.get_collection_ref(
-          collection_name)
+      for collection_name in WHITELIST_COLLECTIONS:
+        self._collections[collection_name] = graph.get_collection_ref(
+            collection_name)
 
     self._variable_creator_stack = graph._variable_creator_stack
     # Inherit the graph key, since this is used for matching variables in
