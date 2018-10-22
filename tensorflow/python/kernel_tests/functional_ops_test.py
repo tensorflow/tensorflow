@@ -1154,6 +1154,20 @@ class PartitionedCallTest(test.TestCase):
               args=defined.captured_inputs, f=defined))
       self.assertAllEqual(expected, result)
 
+  # Use an invalid executor name to test the plumbing of the executor_type attr.
+  def testExecutorTypeAttrExecutorNotFound(self):
+    @function.Defun(dtypes.int32)
+    def AddFive(x):
+      return x + 5
+
+    op = functional_ops.partitioned_call(
+        args=[constant_op.constant([1, 2, 3], dtype=dtypes.int32)],
+        f=AddFive,
+        executor_type="NON_EXISTENT_EXECUTOR")
+    with self.assertRaisesRegexp(errors.NotFoundError,
+                                 "NON_EXISTENT_EXECUTOR"):
+      self.evaluate(op)
+
 
 if __name__ == "__main__":
   test.main()
