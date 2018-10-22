@@ -16087,7 +16087,7 @@ op {
 op {
   name: "MatrixSquareRoot"
   input_arg {
-    name: "matrix"
+    name: "input"
     type_attr: "T"
   }
   output_arg {
@@ -20137,6 +20137,13 @@ op {
   }
   attr {
     name: "config"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
+  attr {
+    name: "executor_type"
     type: "string"
     default_value {
       s: ""
@@ -33280,6 +33287,13 @@ op {
   }
   attr {
     name: "config"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
+  attr {
+    name: "executor_type"
     type: "string"
     default_value {
       s: ""
