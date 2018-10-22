@@ -42,6 +42,11 @@ from tensorflow.python.util.lazy_loader import LazyLoader
 function = LazyLoader("function", globals(),
                       "tensorflow.python.eager.function")
 
+WHITELIST_COLLECTIONS = [
+    ops.GraphKeys.GLOBAL_VARIABLES, ops.GraphKeys.LOCAL_VARIABLES,
+    ops.GraphKeys.TRAINABLE_VARIABLES
+]
+
 
 class FuncGraph(ops.Graph):
   """Graph representing a function body.
@@ -65,7 +70,7 @@ class FuncGraph(ops.Graph):
     seed: The graph-level random seed.
   """
 
-  def __init__(self, name):
+  def __init__(self, name, read_only_collections=True):
     """Construct a new FuncGraph.
 
     The graph will inherit its graph key, collections, seed, and distribution
@@ -73,6 +78,8 @@ class FuncGraph(ops.Graph):
 
     Args:
       name: the name of the function.
+      read_only_collections: whether to not write function graph collections
+        back to default graph. Defaults to True.
     """
     super(FuncGraph, self).__init__()
 
@@ -80,6 +87,7 @@ class FuncGraph(ops.Graph):
     self.inputs = []
     self.outputs = []
     self.structured_outputs = None
+    self._read_only_collections = read_only_collections
     self._weak_variables = []
     self.outer_graph = ops.get_default_graph()
     self.captures = collections.OrderedDict()
@@ -120,11 +128,23 @@ class FuncGraph(ops.Graph):
           or device_stack_has_callable(graph._device_function_stack)):
         # Hard-code devices from device functions in the function body
         self._device_function_stack = graph._device_function_stack.copy()
-    # TODO(b/112165328, b/112906995): summaries depend on inheriting collections
-    # from the default graph even in eager mode. It'd be nice to not have a
-    # default graph with eager execution, so hopefully this will go away when we
-    # remove collections.
-    self._collections = graph._collections
+    if not self._read_only_collections:
+      self._collections = graph._collections
+    else:
+      for collection_name in graph.get_all_collection_keys():
+        if collection_name in WHITELIST_COLLECTIONS:
+          self._collections[collection_name] = graph.get_collection_ref(
+              collection_name)
+        else:
+          self._collections[collection_name] = graph.get_collection(
+              collection_name)
+    for collection_name in [
+        variable_scope._VARSTORE_KEY,
+        variable_scope._VARSCOPESTORE_KEY  # pylint: disable=protected-access
+    ]:
+      self._collections[collection_name] = graph.get_collection_ref(
+          collection_name)
+
     self._variable_creator_stack = graph._variable_creator_stack
     # Inherit the graph key, since this is used for matching variables in
     # optimizers.

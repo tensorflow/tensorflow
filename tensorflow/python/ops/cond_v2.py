@@ -61,13 +61,17 @@ def cond_v2(pred, true_fn, false_fn, name="cond"):
     pred = ops.convert_to_tensor(pred)
 
     true_graph = func_graph_module.func_graph_from_py_func(
-        true_name, true_fn, [], {},
-        func_graph=util.CondBranchFuncGraph(true_name),
+        true_name,
+        true_fn, [], {},
+        func_graph=util.CondBranchFuncGraph(
+            true_name, read_only_collections=False),
         add_control_dependencies=add_control_dependencies,
         op_return_value=pred)
     false_graph = func_graph_module.func_graph_from_py_func(
-        false_name, false_fn, [], {},
-        func_graph=util.CondBranchFuncGraph(false_name),
+        false_name,
+        false_fn, [], {},
+        func_graph=util.CondBranchFuncGraph(
+            false_name, read_only_collections=False),
         add_control_dependencies=add_control_dependencies,
         op_return_value=pred)
     _check_same_outputs(true_graph, false_graph)
@@ -281,8 +285,9 @@ def _grad_fn(func_graph, grads):
 def _create_grad_func(func_graph, grads, name):
   """Returns the FuncGraph representation of _grad_fn."""
   return func_graph_module.func_graph_from_py_func(
-      name, lambda: _grad_fn(func_graph, grads), [], {},
-      func_graph=util.CondBranchFuncGraph(name))
+      name,
+      lambda: _grad_fn(func_graph, grads), [], {},
+      func_graph=util.CondBranchFuncGraph(name, read_only_collections=False))
 
 
 def _resolve_grad_inputs(cond_graph, grad_graph):
