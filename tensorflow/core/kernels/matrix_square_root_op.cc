@@ -51,8 +51,8 @@ class MatrixSquareRootOp : public LinearAlgebraOp<Scalar> {
 
 REGISTER_LINALG_OP("MatrixSquareRoot", (MatrixSquareRootOp<float>), float);
 REGISTER_LINALG_OP("MatrixSquareRoot", (MatrixSquareRootOp<double>), double);
-REGISTER_LINALG_OP("MatrixSquareRoot", (MatrixSquareRootOp<complex64>), 
+REGISTER_LINALG_OP("MatrixSquareRoot", (MatrixSquareRootOp<complex64>),
                    complex64);
-REGISTER_LINALG_OP("MatrixSquareRoot", (MatrixSquareRootOp<complex128>), 
+REGISTER_LINALG_OP("MatrixSquareRoot", (MatrixSquareRootOp<complex128>),
                    complex128);
-}
+}  // namespace tensorflow
