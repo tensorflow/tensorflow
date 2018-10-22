@@ -2361,6 +2361,45 @@ class DnnSupport {
     return false;
   }
 
+  // Enqueues a fused batchnorm+activation (inference) operation onto the
+  // stream.
+  //
+  // Arguments (all borrowed):
+  //
+  //  stream: borrowed pointer to the stream that the 'fusion' operation should
+  //  be enqueued onto.
+  //
+  //  x_descriptor: dimensions of the batchnorm input layer.
+  //  x_data: device memory which contains the batchnorm input.
+  //
+  //  scale_offset_mean_variance_descriptor:
+  //      dimensions of the scale/offset/mean/variance tensor.
+  //  scale_data: device memory which contains the scale input.
+  //  offset_data: device memory which contains the offset input.
+  //  mean_data: device memory which contains the mean input.
+  //  variance_data: device memory which contains the variance input.
+  //  epsilon : the epsilon value to use in batchnorm calculation
+  //
+  //  activation_mode: Type of activation to perform.
+  //
+  //  y_data: device memory region in which to place the fusion result.
+  //
+  //  output_profile_result: the output profile result for this call.
+  //         The profiling is only enabled when this is not nullptr.
+  //
+  virtual bool DoFusedBatchNormActivationInference(
+      Stream* stream, const dnn::BatchDescriptor& x_descriptor,
+      const DeviceMemory<float>& x_data,
+      const dnn::BatchDescriptor& scale_offset_mean_variance_descriptor,
+      const DeviceMemory<float>& scale_data,
+      const DeviceMemory<float>& offset_data,
+      const DeviceMemory<float>& mean_data,
+      const DeviceMemory<float>& variance_data, double epsilon,
+      dnn::ActivationMode activation_mode, DeviceMemory<float>* y_data,
+      dnn::ProfileResult* output_profile_result) {
+    return false;
+  }
+
  private:
   SE_DISALLOW_COPY_AND_ASSIGN(DnnSupport);
 };

@@ -2016,6 +2016,17 @@ class Stream {
       const dnn::BatchDescriptor& output_descriptor,
       DeviceMemory<float>* output_data);
 
+  // Fused Convolution+Bias+Activation (float)
+  Stream& ThenFusedBatchNormActivationInference(
+      const dnn::BatchDescriptor& x_descriptor,
+      const DeviceMemory<float>& x_data,
+      const dnn::BatchDescriptor& scale_offset_mean_variance_descriptor,
+      const DeviceMemory<float>& scale_data,
+      const DeviceMemory<float>& offset_data,
+      const DeviceMemory<float>& mean_data,
+      const DeviceMemory<float>& variance_data, double epsilon,
+      dnn::ActivationMode activation_mode, DeviceMemory<float>* y_data);
+
   // (Synchronously) block the host code waiting for the operations
   // entrained on the stream (enqueued to this point in program
   // execution) to complete.

@@ -48,19 +48,24 @@ namespace gpu_fusion_pass {
 
 // declaration of all the constants that are used in the gpu_fusion_pass
 // namespace
-const int kVlogLevel = 2;
+const int kVlogLevel = -1;
 
 // graph pass grouping for this fusion pass
 const OptimizationPassRegistry::Grouping kROCmFusionPassGrouping =
-    OptimizationPassRegistry::POST_PLACEMENT;
+    (getenv("TF_ROCM_FUSION_PASS_POST_PARTITIONING") == nullptr)
+        ? OptimizationPassRegistry::POST_PLACEMENT
+        : OptimizationPassRegistry::POST_PARTITIONING;
 
 // attribute name strings
 const char* kAttr_T = "T";
-const char* kAttr_strides = "strides";
-const char* kAttr_padding = "padding";
+const char* kAttr_U = "U";
+const char* kAttr_activation_mode = "activation_mode";
 const char* kAttr_data_format = "data_format";
 const char* kAttr_dilations = "dilations";
-const char* kAttr_activation_mode = "activation_mode";
+const char* kAttr_epsilon = "epsilon";
+const char* kAttr_is_training = "is_training";
+const char* kAttr_padding = "padding";
+const char* kAttr_strides = "strides";
 
 const char* kGPUDeviceStr = "GPU";
 
@@ -75,19 +80,35 @@ std::ostream& operator<<(std::ostream& out, const Node* n) {
       << ", num_input_edges : " << n->in_edges().size()
       << ", num_outputs : " << n->num_outputs()
       << ", num_output_edges : " << n->out_edges().size()
-      << ", assigned_device : "
-      << (n->has_assigned_device_name() ? n->assigned_device_name() : "None");
+      // << ", requested_device : " << n->requested_device()
+      // << ", assigned_device : "
+      // << (n->has_assigned_device_name() ? n->assigned_device_name() : "None")
+      ;
 
   return out;
 }
 
 void DumpNodeList(int lvl, string message, std::list<const Node*> nodes) {
-  VLOG(lvl) << "===========";
   VLOG(lvl) << message;
   for (auto n : nodes) {
     VLOG(lvl) << "\t" << n;
   }
-  VLOG(lvl) << "===========";
+}
+
+void DumpOutputEdges(int lvl, const Node* node) {
+  for (const Edge* e : node->out_edges()) {
+    VLOG(lvl) << "\t" << e->src_output() << " : " << e->dst()->name()
+              << e->dst()->type_string();
+  }
+}
+
+void DumpGraph(int lvl, StringPiece label, const Graph* g) {
+  VLOG(lvl) << "Graph " << label << " #nodes " << g->num_nodes() << " #edges "
+            << g->num_edges();
+
+  for (const auto& line : str_util::Split(DebugString(g), '\n')) {
+    VLOG(lvl) << "|| " << line;
+  }
 }
 
 bool isGpuDevice(StringPiece fullname) {
@@ -178,8 +199,8 @@ REGISTER_OPTIMIZATION(kROCmFusionPassGrouping,  // grouping
 // absract base class for an individual fusion operation
 class ROCmFusionOpBase {
  public:
-  ROCmFusionOpBase(Graph* g, std::set<const Node*>& fn, string n)
-      : graph_(g), fused_nodes_(fn), fusion_op_name_(n) {}
+  ROCmFusionOpBase(Graph* g, std::set<const Node*>& fn)
+      : graph_(g), fused_nodes_(fn) {}
 
   virtual ~ROCmFusionOpBase() {}
 
@@ -190,7 +211,6 @@ class ROCmFusionOpBase {
  protected:
   Graph* graph_;
   std::set<const Node*>& fused_nodes_;
-  string fusion_op_name_;
 };
 
 //----------------------------------------------------------------------
@@ -200,8 +220,7 @@ class ROCmFusionOpConvolutionBiasBatchNormActivation : public ROCmFusionOpBase {
  public:
   ROCmFusionOpConvolutionBiasBatchNormActivation(Graph* g,
                                                  std::set<const Node*>& fn)
-      : ROCmFusionOpBase(g, fn,
-                         "_ROCmFusedConvolutionBiasBatchNormActivation") {}
+      : ROCmFusionOpBase(g, fn) {}
 
   // routine to (maybe) do fusion on the given node (+ the nodes preceding
   // it). will return true if fusion was done, false otherwise
@@ -226,7 +245,7 @@ class ROCmFusionOpConvolutionBiasBatchNormActivation : public ROCmFusionOpBase {
 class ROCmFusionOpConvolutionBiasActivation : public ROCmFusionOpBase {
  public:
   ROCmFusionOpConvolutionBiasActivation(Graph* g, std::set<const Node*>& fn)
-      : ROCmFusionOpBase(g, fn, "_ROCmFusedConvolutionBiasActivation") {}
+      : ROCmFusionOpBase(g, fn) {}
 
   // routine to (maybe) do fusion on the given node (+ the nodes preceding
   // it). will return true if fusion was done, false otherwise
@@ -257,7 +276,7 @@ class ROCmFusionOpConvolutionBiasActivation : public ROCmFusionOpBase {
 class ROCmFusionOpBatchNormActivation : public ROCmFusionOpBase {
  public:
   ROCmFusionOpBatchNormActivation(Graph* g, std::set<const Node*>& fn)
-      : ROCmFusionOpBase(g, fn, "_ROCmFusedBatchNormActivation") {}
+      : ROCmFusionOpBase(g, fn) {}
 
   // routine to (maybe) do fusion on the given node (+ the nodes preceding
   // it). will return true if fusion was done, false otherwise
@@ -267,6 +286,12 @@ class ROCmFusionOpBatchNormActivation : public ROCmFusionOpBase {
   struct FusionData {
     const Node* norm;
     const Node* actv;
+
+    bool is_training;
+    DataType data_type;
+    float epsilon;
+    string data_format;
+    string activation_mode;
   };
 
   bool IsFusionEligible(const Node* n, FusionData* d);
@@ -277,8 +302,8 @@ class ROCmFusionOpBatchNormActivation : public ROCmFusionOpBase {
 //----------------------------------------------------------------------
 
 Status ROCmFusionPass::Run(const GraphOptimizationPassOptions& options) {
-  // enable the fusion pass if the env var TF_ROCM_ENABLE_FUSION is set
-  const char* enable_fusion = getenv("TF_ROCM_ENABLE_FUSION");
+  // enable the fusion pass if the env var TF_ROCM_FUSION_ENABLE is set
+  const char* enable_fusion = getenv("TF_ROCM_FUSION_ENABLE");
   if (enable_fusion != nullptr) {
     // Check if the graph is present, should be either in
     // - options.graph (for all but POST_PARTITIONING grouping)
@@ -316,7 +341,9 @@ Status ROCmFusionPass::Run(const GraphOptimizationPassOptions& options) {
 }
 
 bool ROCmFusionPass::RunPass(Graph* graph) {
-  // DumpGraph("Before running ROCmFusionPass", &**g);
+  if (getenv("TF_ROCM_FUSION_DUMP_GRAPH_BEFORE")) {
+    DumpGraph(kVlogLevel, "Before running ROCmFusionPass", &*graph);
+  }
 
   std::vector<std::unique_ptr<ROCmFusionOpBase> > fusions;
   std::set<const Node*> fused_nodes;
@@ -328,7 +355,6 @@ bool ROCmFusionPass::RunPass(Graph* graph) {
   GetPostOrder(*graph, &order);  // This will give us reverse topological sort.
 
   for (const Node* n : order) {
-    // VLOG(kVlogLevel) << n;
 
     if (fused_nodes.count(n)) {
       // We have fused already this node...skip it
@@ -347,7 +373,10 @@ bool ROCmFusionPass::RunPass(Graph* graph) {
     }
   }
 
-  // DumpGraph("After running ROCmFusionPass", &**g);
+  if (getenv("TF_ROCM_FUSION_DUMP_GRAPH_AFTER")) {
+    DumpGraph(kVlogLevel, "After running ROCmFusionPass", &*graph);
+  }
+
   return true;
 }
 
@@ -394,6 +423,7 @@ bool ROCmFusionOpConvolutionBiasBatchNormActivation::IsFusionEligible(
           d->bias = n2;
           d->norm = n3;
           d->actv = n4;
+          VLOG(kVlogLevel) << "===========";
           DumpNodeList(
               kVlogLevel,
               "Found Fusion Candidate Convolution+Bias+BatchNorm+Activation : ",
@@ -447,6 +477,7 @@ bool ROCmFusionOpConvolutionBiasActivation::IsFusionEligible(const Node* n3,
         d->conv = n1;
         d->bias = n2;
         d->actv = n3;
+        VLOG(kVlogLevel) << "===========";
         DumpNodeList(kVlogLevel,
                      "Found Fusion Candidate Convolution+Bias+Activation : ",
                      {d->conv, d->bias, d->actv});
@@ -465,9 +496,10 @@ bool ROCmFusionOpConvolutionBiasActivation::IsFusionEligible(const Node* n3,
     for (const Edge* e : d->conv->out_edges()) {
       if ((e->src_output() == 0) && (e->dst() != d->bias)) {
         VLOG(kVlogLevel)
-            << "Skipping Fusion : "
+            << "\tSkipping Fusion : "
             << "Convolution output feeds a node other the the bias node : "
             << e->dst()->name();
+        VLOG(kVlogLevel) << "===========";
         is_eligible = false;
         break;
       }
@@ -480,9 +512,10 @@ bool ROCmFusionOpConvolutionBiasActivation::IsFusionEligible(const Node* n3,
     for (const Edge* e : d->bias->out_edges()) {
       if ((e->src_output() == 0) && (e->dst() != d->actv)) {
         VLOG(kVlogLevel)
-            << "Skipping Fusion : "
+            << "\tSkipping Fusion : "
             << "Bias output feeds a node other the the activation node : "
             << e->dst()->name();
+        VLOG(kVlogLevel) << "===========";
         is_eligible = false;
         break;
       }
@@ -505,14 +538,17 @@ bool ROCmFusionOpConvolutionBiasActivation::IsFusionEligible(const Node* n3,
         d->data_type = T_conv;
         is_eligible = true;
       } else {
-        VLOG(kVlogLevel) << " DataTypes not matching for Fusion : "
+        VLOG(kVlogLevel) << "\tSkipping Fusion : "
+                         << "\t DataTypes not matching : "
                          << " " << DataType_Name(T_conv) << " "
                          << DataType_Name(T_bias) << " "
                          << DataType_Name(T_actv);
+        VLOG(kVlogLevel) << "===========";
       }
     } else {
-      VLOG(kVlogLevel) << " DataType not supported for Fusion : "
-                       << DataType_Name(T_conv);
+      VLOG(kVlogLevel) << "\tSkipping Fusion : "
+                       << " DataType not supported : " << DataType_Name(T_conv);
+      VLOG(kVlogLevel) << "===========";
     }
   }
 
@@ -524,8 +560,6 @@ bool ROCmFusionOpConvolutionBiasActivation::IsFusionEligible(const Node* n3,
     TF_CHECK_OK(GetNodeAttr(d->conv->def(), kAttr_data_format, &df_conv_str));
     TF_CHECK_OK(GetNodeAttr(d->bias->def(), kAttr_data_format, &df_bias_str));
 
-    VLOG(kVlogLevel) << "ROCmFusionPass - data_format = " << df_conv_str;
-
     TensorFormat df_conv, df_bias;
     CHECK_EQ(FormatFromString(df_conv_str, &df_conv), true);
     CHECK_EQ(FormatFromString(df_bias_str, &df_bias), true);
@@ -535,46 +569,61 @@ bool ROCmFusionOpConvolutionBiasActivation::IsFusionEligible(const Node* n3,
         d->data_format = ToString(df_conv);
         is_eligible = true;
       } else {
-        VLOG(kVlogLevel) << " Data Formats not matching for Fusion : "
+        VLOG(kVlogLevel) << "\tSkipping Fusion : "
+                         << " Data Formats not matching : "
                          << " " << ToString(df_conv) << " "
                          << ToString(df_bias);
+        VLOG(kVlogLevel) << "===========";
       }
     } else {
-      VLOG(kVlogLevel) << " Data Format not supported for Fusion : "
+      VLOG(kVlogLevel) << "\tSkipping Fusion : "
+                       << " Data Format not supported for Fusion : "
                        << ToString(df_conv);
+      VLOG(kVlogLevel) << "===========";
     }
   }
 
   // Next check if the specified stride is supported
   if (is_eligible) {
-    is_eligible = false;
 
     TF_CHECK_OK(GetNodeAttr(d->conv->def(), kAttr_strides, &d->strides));
-    is_eligible = true;
+    for (auto stride : d->strides) {
+      // MIOpen only supports stride values of 1 or 2
+      if ((stride != 1) && (stride != 2)) {
+        is_eligible = false;
+        VLOG(kVlogLevel) << "\tSkipping Fusion : "
+                         << " Stride value not supported : " << stride;
+        VLOG(kVlogLevel) << "===========";
+        break;
+      }
+    }
   }
 
   // Next check if the specified padding is supported
   if (is_eligible) {
-    is_eligible = false;
-
     TF_CHECK_OK(GetNodeAttr(d->conv->def(), kAttr_padding, &d->padding));
-    is_eligible = true;
   }
 
   // Next check if the specified dilation is supported
   if (is_eligible) {
-    is_eligible = false;
 
     TF_CHECK_OK(GetNodeAttr(d->conv->def(), kAttr_dilations, &d->dilations));
-    is_eligible = true;
+    for (auto dilation : d->dilations) {
+      // MIOpen only supports dilation value of 1
+      if (dilation != 1) {
+        is_eligible = false;
+        VLOG(kVlogLevel) << "\tSkipping Fusion : "
+                         << " Dilation value not supported for Fusion : "
+                         << dilation;
+        VLOG(kVlogLevel) << "===========";
+        break;
+      }
+    }
   }
 
   // finally check if the specified activation is supported
   if (is_eligible) {
-    is_eligible = false;
-
     d->activation_mode = d->actv->type_string();
-    is_eligible = true;
   }
 
   return is_eligible;
@@ -592,7 +641,7 @@ void ROCmFusionOpConvolutionBiasActivation::CreateFusionOp(
   string op_name =
       strings::StrCat(d->conv->name(), d->bias->name(), d->actv->name());
 
-  NodeBuilder nb(op_name, fusion_op_name_);
+  NodeBuilder nb(op_name, "_ROCmFusedConvolutionBiasActivation");
 
   // populate input data edges
   nb.Input(conv_input_edges[0]->src(), conv_input_edges[0]->src_output());
@@ -653,8 +702,9 @@ void ROCmFusionOpConvolutionBiasActivation::CreateFusionOp(
   // populate the device placement
   fusion_node->set_assigned_device_name(d->conv->assigned_device_name());
 
-  VLOG(kVlogLevel) << "Created Convolution+Bias+Activation Fusion Node: "
+  VLOG(kVlogLevel) << "\tCreated Convolution+Bias+Activation Fusion Node: "
                    << fusion_node;
+  VLOG(kVlogLevel) << "===========";
 
   // add the now redundant nodes to the set of fused nodes
   fused_nodes_.insert(d->conv);
@@ -687,14 +737,31 @@ bool ROCmFusionOpBatchNormActivation::IsFusionEligible(const Node* n2,
                                                        FusionData* d) {
   // First check whether we have the right sequence of ops
   bool is_eligible = false;
+
   if (isOpActivation(n2)) {  // activation node
     Node* n1 = nullptr;
     TF_CHECK_OK(n2->input_node(0, &n1));
     if (isOpBatchNorm(n1)) {  // preceded by a batchnorm node
       d->norm = n1;
       d->actv = n2;
-      DumpNodeList(kVlogLevel, "Found Fusion Candidate BatchNorm+Activation : ",
-                   {d->norm, d->actv});
+
+      // check the is_training attribute to determine the type of op to create
+      // (i.e. training version or inference version)
+      TF_CHECK_OK(
+          GetNodeAttr(d->norm->def(), kAttr_is_training, &d->is_training));
+
+      VLOG(kVlogLevel) << "===========";
+      if (d->is_training) {
+        DumpNodeList(kVlogLevel,
+                     "Found Fusion Candidate BatchNorm+Activation (training): ",
+                     {d->norm, d->actv});
+      } else {
+        DumpNodeList(
+            kVlogLevel,
+            "Found Fusion Candidate BatchNorm+Activation (inference): ",
+            {d->norm, d->actv});
+      }
+
       is_eligible = true;
     }
   }
@@ -704,11 +771,190 @@ bool ROCmFusionOpBatchNormActivation::IsFusionEligible(const Node* n2,
     is_eligible = false;
   }
 
+  // we currently do not support fusion for training
+
+  if (is_eligible && d->is_training) {
+    VLOG(kVlogLevel)
+        << "\tSkipping Fusion : "
+        << "is_training is set to true, fusion only supported for inference";
+    VLOG(kVlogLevel) << "===========";
+    is_eligible = false;
+  }
+
+  // Next check if the first output of batch-norm node feeds a node other then
+  // the activation node
+  if (is_eligible) {
+    for (const Edge* e : d->norm->out_edges()) {
+      if ((e->src_output() == 0) && (e->dst() != d->actv)) {
+        VLOG(kVlogLevel)
+            << "\tSkipping Fusion : "
+            << "BatchNorm output feeds a node other the the activation node : "
+            << e->dst()->name();
+        VLOG(kVlogLevel) << "===========";
+        is_eligible = false;
+        break;
+      }
+    }
+  }
+
+  // Next check if the datatype(s) are supported
+  if (is_eligible) {
+    is_eligible = false;
+
+    DataType T_norm, T_actv;
+    TF_CHECK_OK(GetNodeAttr(d->norm->def(), kAttr_T, &T_norm));
+    TF_CHECK_OK(GetNodeAttr(d->actv->def(), kAttr_T, &T_actv));
+
+    // only float type is supported for now
+    if (T_norm == DT_FLOAT) {
+      DataType U_norm = T_norm;
+      if (d->norm->type_string() == "FusedBatchNormV2") {
+        TF_CHECK_OK(GetNodeAttr(d->norm->def(), kAttr_U, &U_norm));
+      }
+
+      // datatype for batch-norm and activation must match
+      if ((T_norm == U_norm) && (T_norm == T_actv)) {
+        d->data_type = T_norm;
+        is_eligible = true;
+      } else {
+        VLOG(kVlogLevel) << "\tSkipping Fusion : "
+                         << "\t DataTypes not matching : "
+                         << " " << DataType_Name(T_norm) << " "
+                         << DataType_Name(T_actv);
+        VLOG(kVlogLevel) << "===========";
+      }
+    } else {
+      VLOG(kVlogLevel) << "\tSkipping Fusion : "
+                       << " DataType not supported : " << DataType_Name(T_norm);
+      VLOG(kVlogLevel) << "===========";
+    }
+  }
+
+  // Next check if the data format(s) are supported
+  if (is_eligible) {
+    is_eligible = false;
+
+    string df_norm_str;
+    TF_CHECK_OK(GetNodeAttr(d->norm->def(), kAttr_data_format, &df_norm_str));
+
+    TensorFormat df_norm;
+    CHECK_EQ(FormatFromString(df_norm_str, &df_norm), true);
+
+    if ((df_norm == FORMAT_NHWC) || (df_norm == FORMAT_NCHW)) {
+      d->data_format = ToString(df_norm);
+      is_eligible = true;
+    } else {
+      VLOG(kVlogLevel) << "\tSkipping Fusion : "
+                       << " Data Format not supported for Fusion : "
+                       << ToString(df_norm);
+      VLOG(kVlogLevel) << "===========";
+    }
+  }
+
+  // Next check the epsilon value is supported
+  if (is_eligible) {
+    TF_CHECK_OK(GetNodeAttr(d->norm->def(), kAttr_epsilon, &d->epsilon));
+  }
+
+  // finally check if the specified activation is supported
+  if (is_eligible) {
+    d->activation_mode = d->actv->type_string();
+  }
+
   return is_eligible;
 }
 
 void ROCmFusionOpBatchNormActivation::CreateFusionOp(const FusionData* d) {
-  // todo
+  std::vector<const Edge*> norm_input_edges;
+  TF_CHECK_OK(d->norm->input_edges(&norm_input_edges));
+
+  // create an instance of the fusion node
+  string op_name = strings::StrCat(d->norm->name(), d->actv->name());
+
+  string fusion_type = d->is_training
+                           ? "_ROCmFusedBatchNormActivationTraining"
+                           : "_ROCmFusedBatchNormActivationInference";
+
+  NodeBuilder nb(op_name, fusion_type);
+
+  // populate input data edges
+
+  // batchnorm x
+  nb.Input(norm_input_edges[0]->src(), norm_input_edges[0]->src_output());
+  // batchnorm scale
+  nb.Input(norm_input_edges[1]->src(), norm_input_edges[1]->src_output());
+  // batchnorm offset
+  nb.Input(norm_input_edges[2]->src(), norm_input_edges[2]->src_output());
+
+  if (!d->is_training) {
+    // batchnorm mean
+    nb.Input(norm_input_edges[3]->src(), norm_input_edges[3]->src_output());
+    // batchnorm variance
+    nb.Input(norm_input_edges[4]->src(), norm_input_edges[4]->src_output());
+  }
+
+  // populate attributes
+  nb.Attr(kAttr_T, d->data_type);
+  nb.Attr(kAttr_epsilon, d->epsilon);
+  nb.Attr(kAttr_data_format, d->data_format);
+  nb.Attr(kAttr_activation_mode, d->activation_mode);
+
+  // populate the device
+  nb.Device(d->norm->def().device());
+
+  // create the new fusion node
+  Node* fusion_node = nullptr;
+  TF_CHECK_OK(nb.Finalize(graph_, &fusion_node));
+
+  // populate the input control edges
+  for (const Edge* e : d->norm->in_edges()) {
+    if (e->IsControlEdge()) {
+      CHECK_NOTNULL(graph_->AddControlEdge(e->src(), fusion_node, true));
+    }
+  }
+  for (const Edge* e : d->actv->in_edges()) {
+    if (e->IsControlEdge()) {
+      CHECK_NOTNULL(graph_->AddControlEdge(e->src(), fusion_node, true));
+    }
+  }
+
+  // populate output data and control edges
+  for (const Edge* e : d->norm->out_edges()) {
+    if (e->IsControlEdge()) {
+      CHECK_NOTNULL(graph_->AddControlEdge(e->src(), fusion_node, true));
+    } else if (d->is_training) {
+      if (e->src_output() == 1) {  // batch-norm mean
+        CHECK_NOTNULL(
+            graph_->AddEdge(fusion_node, 1, e->dst(), e->dst_input()));
+      } else if (e->src_output() == 1) {  // batch-norm variance
+        CHECK_NOTNULL(
+            graph_->AddEdge(fusion_node, 2, e->dst(), e->dst_input()));
+      }
+    }
+  }
+  for (const Edge* e : d->actv->out_edges()) {
+    if (e->IsControlEdge()) {
+      CHECK_NOTNULL(graph_->AddControlEdge(e->src(), fusion_node, true));
+    } else {
+      CHECK_NOTNULL(graph_->AddEdge(fusion_node, 0, e->dst(), e->dst_input()));
+    }
+  }
+
+  // populate the device placement
+  fusion_node->set_assigned_device_name(d->norm->assigned_device_name());
+
+  VLOG(kVlogLevel) << "\tCreated BatchNorm+Activation "
+                   << (d->is_training ? "(training)" : "(inference)")
+                   << " Fusion Node: " << fusion_node;
+  VLOG(kVlogLevel) << "===========";
+
+  // add the now redundant nodes to the set of fused nodes
+  fused_nodes_.insert(d->norm);
+  fused_nodes_.insert(d->actv);
+
+  // and remove them from the graph
+  graph_->RemoveNode(const_cast<Node*>(d->norm));
+  graph_->RemoveNode(const_cast<Node*>(d->actv));
 }
 //----------------------------------------------------------------------
 
