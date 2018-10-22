@@ -369,5 +369,51 @@ ENTRY entry {
     }
   }
 }
+
+TEST_F(WhileLoopConstantSinkingTest, ConditionalMultipleSameIndexGTEs) {
+  const char* const hlo_string = R"(
+HloModule ModuleWithWhile
+
+body {
+  p_body = (f32[],f32[],f32[]) parameter(0)
+  p_body.0 = f32[] get-tuple-element((f32[],f32[],f32[]) p_body), index=0
+  const = f32[] constant(1)
+  add.0 = f32[] add(p_body.0, const)
+  p_body.1 = f32[] get-tuple-element((f32[],f32[],f32[]) p_body), index=1
+  add.1 = f32[] add(p_body.1, const)
+  p_body.2 = f32[] get-tuple-element((f32[],f32[],f32[]) p_body), index=2
+  ROOT root = (f32[],f32[],f32[]) tuple(add.0, add.1, p_body.2)
+}
+
+condition {
+  p_cond = (f32[],f32[],f32[]) parameter(0)
+  p_cond.0 = f32[] get-tuple-element((f32[],f32[],f32[]) p_cond), index=0
+  p_cond.2 = f32[] get-tuple-element((f32[],f32[],f32[]) p_cond), index=2
+  lt.0 = pred[] less-than(p_cond.0, p_cond.2)
+  p_cond.1 = f32[] get-tuple-element((f32[],f32[],f32[]) p_cond), index=1
+  p_cond.2.c = f32[] get-tuple-element((f32[],f32[],f32[]) p_cond), index=2
+  lt.1 = pred[] less-than(p_cond.1, p_cond.2.c)
+  ROOT result = pred[] and(lt.0, lt.1)
+}
+
+ENTRY entry {
+  const_0 = f32[] constant(0)
+  const_1 = f32[] constant(0)
+  const_2 = f32[] constant(12)
+  while_init = (f32[],f32[],f32[]) tuple(const_0, const_1, const_2)
+  ROOT while = (f32[],f32[],f32[]) while(while_init), condition=condition, body=body
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseHloString(hlo_string));
+  TF_ASSERT_OK_AND_ASSIGN(bool changed,
+                          WhileLoopConstantSinking{}.Run(module.get()));
+  ASSERT_TRUE(changed);
+
+  auto* while_condition = module->GetComputationWithName("condition");
+  EXPECT_THAT(while_condition->root_instruction(),
+              op::And(op::Lt(_, op::Constant()), op::Lt(_, op::Constant())));
+}
 }  // namespace
 }  // namespace xla
