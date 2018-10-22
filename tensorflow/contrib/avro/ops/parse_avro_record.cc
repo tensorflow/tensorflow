@@ -42,6 +42,8 @@ using ::tensorflow::shape_inference::ShapeHandle;
 // As boiler plate for the class I used
 // tensorflow/core/util/example_proto_helper.h and therein
 // "ParseSingleExampleAttrs".
+// As boiler plate I used tensorflow/core/util/example_proto_helper.cc and
+// therein "ParseSingleExampleAttrs"
 
 // Checks for valid type for the avro attributes; currently we support bool,
 // int, long, float, double, string.
@@ -50,7 +52,20 @@ using ::tensorflow::shape_inference::ShapeHandle;
 //
 // returns OK if any of the supported types; otherwise false.
 //
-tensorflow::Status CheckValidType(const tensorflow::DataType& dtype);
+Status CheckValidType(const DataType& dtype) {
+  switch (dtype) {
+    case DT_BOOL:
+    case DT_INT32:
+    case DT_INT64:
+    case DT_FLOAT:
+    case DT_DOUBLE:
+    case DT_STRING:
+      return Status::OK();
+    default:
+      return errors::InvalidArgument("Received input dtype: ",
+                                     DataTypeString(dtype));
+  }
+}
 
 // Check that all dense shapes are defined. Here, 'defined' means that:
 // * All shapes have at least one dimension.
@@ -60,8 +75,30 @@ tensorflow::Status CheckValidType(const tensorflow::DataType& dtype);
 //
 // returns OK if the shapes are defined; otherwise false.
 //
-tensorflow::Status CheckDenseShapeToBeDefined(
-    const std::vector<tensorflow::PartialTensorShape>& dense_shapes);
+Status CheckDenseShapeToBeDefined(
+        const std::vector<PartialTensorShape>& dense_shapes) {
+  for (int i = 0; i < dense_shapes.size(); ++i) {
+    const PartialTensorShape& dense_shape = dense_shapes[i];
+    bool shape_ok = true;
+    if (dense_shape.dims() == -1) {
+      shape_ok = false;
+    } else {
+      for (int d = 1; d < dense_shape.dims() && shape_ok; ++d) {
+        if (dense_shape.dim_size(d) == -1) {
+          shape_ok = false;
+        }
+      }
+    }
+    if (!shape_ok) {
+      return errors::InvalidArgument(
+              "dense_shapes[", i,
+              "] has unknown rank or unknown inner dimensions: ",
+              dense_shape.DebugString());
+    }
+  }
+  return Status::OK();
+}
+
 
 // Struct that holds information about dense tensors that is used during
 // parsing.
@@ -132,47 +169,6 @@ class ParseAvroAttrs {
   tensorflow::Status FinishInit();  // for context-independent parts of Init.
 };
 
-// As boiler plate I used tensorflow/core/util/example_proto_helper.cc and
-// therein "ParseSingleExampleAttrs" and
-Status CheckValidType(const DataType& dtype) {
-  switch (dtype) {
-    case DT_BOOL:
-    case DT_INT32:
-    case DT_INT64:
-    case DT_FLOAT:
-    case DT_DOUBLE:
-    case DT_STRING:
-      return Status::OK();
-    default:
-      return errors::InvalidArgument("Received input dtype: ",
-                                     DataTypeString(dtype));
-  }
-}
-
-Status CheckDenseShapeToBeDefined(
-    const std::vector<PartialTensorShape>& dense_shapes) {
-  for (int i = 0; i < dense_shapes.size(); ++i) {
-    const PartialTensorShape& dense_shape = dense_shapes[i];
-    bool shape_ok = true;
-    if (dense_shape.dims() == -1) {
-      shape_ok = false;
-    } else {
-      for (int d = 1; d < dense_shape.dims() && shape_ok; ++d) {
-        if (dense_shape.dim_size(d) == -1) {
-          shape_ok = false;
-        }
-      }
-    }
-    if (!shape_ok) {
-      return errors::InvalidArgument(
-          "dense_shapes[", i,
-          "] has unknown rank or unknown inner dimensions: ",
-          dense_shape.DebugString());
-    }
-  }
-  return Status::OK();
-}
-
 // Finishes the initialization for the attributes, which essentially checks that
 // the attributes have the correct values.
 //
@@ -195,6 +191,7 @@ Status ParseAvroAttrs::FinishInit() {
   }
   return Status::OK();
 }
+
 
 // Register the parse function when building the shared library
 // For the op I used as boiler plate: tensorflow/core/ops/parsing_ops.cc and
@@ -302,6 +299,7 @@ REGISTER_OP("ParseAvroRecord")
         TensorFlow during build. More instructions on avro:
         https://avro.apache.org/docs/1.8.1/spec.html
     )doc");
+
 
 template <typename T>
 using SmallVector = gtl::InlinedVector<T, 4>;  // Up to 4 items are stored
@@ -747,7 +745,8 @@ class ParseAvroRecordOp : public OpKernel {
   //
   // returns An instance of 'ParseAvroRecordOp'.
   //
-  explicit ParseAvroRecordOp(OpKernelConstruction* ctx) : OpKernel(ctx) {
+  explicit ParseAvroRecordOp(OpKernelConstruction* ctx) : OpKernel(ctx),
+    p_iface_(nullptr, [](avro_value_iface_t * iface){ avro_value_iface_decref(iface); }) {
     string schema;
 
     // Clear error message for avro
@@ -766,18 +765,16 @@ class ParseAvroRecordOp : public OpKernel {
                                         avro_strerror()));
 
     // Get a generic Avro class and instance of that class
-    p_iface_ = avro_generic_class_from_schema((*p_reader_schema));
-    OP_REQUIRES(ctx, p_iface_ != nullptr,
+    avro_value_iface_t* p_iface = avro_generic_class_from_schema(*p_reader_schema.get());
+    OP_REQUIRES(ctx, p_iface != nullptr,
                 errors::InvalidArgument(
                     "Unable to create class for user-supplied schema. ",
                     avro_strerror()));
+    p_iface_.reset(p_iface);
 
     // Get attributes
     OP_REQUIRES_OK(ctx, attrs_.Init(ctx));
   }
-
-  // Destructor used for clean-up of avro structures.
-  virtual ~ParseAvroRecordOp() { avro_value_iface_decref(p_iface_); }
 
   // The compute function parses the user-provided strings to pull data from the
   // avro serialized string.
@@ -985,7 +982,7 @@ class ParseAvroRecordOp : public OpKernel {
       avro_value_t value_;
 
       // Create instance for reader class
-      if (avro_generic_value_new(p_iface_, &value_)) {
+      if (avro_generic_value_new(p_iface_.get(), &value_)) {
         return errors::InvalidArgument(
             "Unable to value for user-supplied schema. ", avro_strerror());
       }
@@ -1888,7 +1885,7 @@ class ParseAvroRecordOp : public OpKernel {
         VLOG(4) << "Parsing key "
           << static_cast<AvroFieldKey*>(avro_field)->ToString();
 
-        // Make sure we have either a map or array
+        // Make sure we have a map
         TF_RETURN_IF_ERROR(field_type == AVRO_MAP
                                ? Status::OK()
                                : errors::InvalidArgument(
@@ -1980,9 +1977,11 @@ class ParseAvroRecordOp : public OpKernel {
                        // that is not the number of types)
   int max_avro_types;  // Maximum integer for Avro types (notice that is not the
                        // number of Avro types)
-  // TODO(fraudies): Use unique ptr with custom deleter to simplify code
-  avro_value_iface_t* p_iface_;  // The class information for Avro values to
-                                 // generate generic data
+
+  using AvroValueInterfacePtr = std::unique_ptr<avro_value_iface_t,
+                                                void(*)(avro_value_iface_t*)>;
+  AvroValueInterfacePtr p_iface_;  // The class information for Avro values to
+                                   // generate generic data
   ParseAvroAttrs attrs_;  // Attributes for this operator that contain number
                           // information and shape information
 };

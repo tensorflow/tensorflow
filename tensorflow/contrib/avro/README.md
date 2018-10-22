@@ -45,12 +45,11 @@ We assume the following, enforced mapping between c/c++, avro, and numpy types
 | long    | long    | int64   |
 | float   | float   | float32 |
 | double  | double  | float64 |
-| string  | string  | bytes   |
-| uint8*  | bytes   | bytes   |
+| string  | string  | string_ |
+| uint8*  | bytes   | bytes_  |
 
-Note, when using python3 the `bytes` formatting in numpy may be astounding, however, see that
-tensorflow decided not to include a separate type for string.
-See  https://github.com/tensorflow/tensorflow/issues/5552.
+Note, that `string_` may resolve to different version. E.g. when using python3 `string_` resolves to `bytes` in numpy. This may be astounding. For context see 
+https://github.com/tensorflow/tensorflow/issues/5552.
 
 
 ## Running tests
