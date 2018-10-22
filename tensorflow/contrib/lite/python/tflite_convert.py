@@ -143,8 +143,14 @@ def _convert_model(flags):
 
   if flags.allow_custom_ops:
     converter.allow_custom_ops = flags.allow_custom_ops
-  if flags.converter_mode:
-    converter.converter_mode = flags.converter_mode
+  if flags.target_ops:
+    ops_set_options = lite.OpsSet.get_options()
+    converter.target_ops = set()
+    for option in flags.target_ops.split(","):
+      if option not in ops_set_options:
+        raise ValueError("Invalid value for --target_ops. Options: "
+                         "{0}".format(",".join(ops_set_options)))
+      converter.target_ops.add(lite.OpsSet(option))
 
   if flags.post_training_quantize:
     converter.post_training_quantize = flags.post_training_quantize
@@ -377,11 +383,12 @@ def run_main(_):
             "provide these to the TensorFlow Lite runtime with a custom "
             "resolver. (default False)"))
   parser.add_argument(
-      "--converter_mode",
-      type=lite.ConverterMode,
-      choices=list(lite.ConverterMode),
-      help=("Experimental flag, subject to change. ConverterMode indicating "
-            "which converter to use. (default ConverterMode.DEFAULT)"))
+      "--target_ops",
+      type=str,
+      help=("Experimental flag, subject to change. Set of OpsSet options "
+            "indicating which converter to use. Options: {0}. One or more "
+            "option may be specified. (default set([OpsSet.TFLITE_BUILTINS]))"
+            "".format(",".join(lite.OpsSet.get_options()))))
 
   # Logging flags.
   parser.add_argument(

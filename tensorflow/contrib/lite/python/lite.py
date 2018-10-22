@@ -41,7 +41,7 @@ from google.protobuf import text_format as _text_format
 from google.protobuf.message import DecodeError
 from tensorflow.contrib.lite.python import lite_constants as constants
 from tensorflow.contrib.lite.python.convert import build_toco_convert_protos  # pylint: disable=unused-import
-from tensorflow.contrib.lite.python.convert import ConverterMode
+from tensorflow.contrib.lite.python.convert import OpsSet
 from tensorflow.contrib.lite.python.convert import tensor_name as _tensor_name
 from tensorflow.contrib.lite.python.convert import toco_convert  # pylint: disable=unused-import
 from tensorflow.contrib.lite.python.convert import toco_convert_graph_def as _toco_convert_graph_def
@@ -116,8 +116,9 @@ class TFLiteConverter(object):
       output file. (default None)
     dump_graphviz_video: Boolean indicating whether to dump the graph after
       every graph transformation. (default False)
-    converter_mode: Experimental flag, subject to change. ConverterMode
-      indicating which converter to use. (default ConverterMode.DEFAULT)
+    target_ops: Experimental flag, subject to change. Set of OpsSet
+      options indicating which converter to use.
+      (default set([OpsSet.TFLITE_BUILTINS]))
 
   Example usage:
 
@@ -183,7 +184,7 @@ class TFLiteConverter(object):
     self.post_training_quantize = False
     self.dump_graphviz_dir = None
     self.dump_graphviz_video = False
-    self.converter_mode = ConverterMode.DEFAULT
+    self.target_ops = set([OpsSet.TFLITE_BUILTINS])
 
     # Attributes are used by models that cannot be loaded into TensorFlow.
     if not self._has_valid_tensors():
@@ -394,7 +395,6 @@ class TFLiteConverter(object):
       ValueError:
         Input shape is not specified.
         None value for dimension in input_tensor.
-        ConverterMode option is unsupported for the model.
     """
     # Checks dimensions in input tensor.
     if self._has_valid_tensors():
@@ -439,7 +439,7 @@ class TFLiteConverter(object):
         "change_concat_input_ranges": self.change_concat_input_ranges,
         "allow_custom_ops": self.allow_custom_ops,
         "post_training_quantize": self.post_training_quantize,
-        "converter_mode": self.converter_mode,
+        "target_ops": self.target_ops,
         "dump_graphviz_dir": self.dump_graphviz_dir,
         "dump_graphviz_video": self.dump_graphviz_video
     }

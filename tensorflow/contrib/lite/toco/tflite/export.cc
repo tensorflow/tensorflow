@@ -486,7 +486,7 @@ tensorflow::Status Export(
             "the standard TensorFlow Lite runtime. If those are native "
             "TensorFlow operators, you might be able to use the extended "
             "runtime by passing --allow_flex_ops, or by setting "
-            "converter_mode=TOCO_FLEX when calling "
+            "target_ops=TFLITE_BUILTINS,SELECT_TF_OPS when calling "
             "tf.contrib.lite.TFLiteConverter(). Otherwise, if you have a "
             "custom implementation for them you can disable this error with "
             "--allow_custom_ops, or by setting allow_custom_ops=True "
