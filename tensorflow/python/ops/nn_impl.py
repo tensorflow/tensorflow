@@ -866,9 +866,9 @@ def fused_batch_norm(
       raise ValueError("Both 'mean' and 'variance' must be None "
                        "if is_training is True.")
   if mean is None:
-    mean = constant_op.constant([])
+    mean = constant_op.constant(dtype=x.dtype, value=[])
   if variance is None:
-    variance = constant_op.constant([])
+    variance = constant_op.constant(dtype=x.dtype, value=[])
   # Set a minimum epsilon to 1.001e-5, which is a requirement by CUDNN to
   # prevent exception (see cudnn.h).
   min_epsilon = 1.001e-5
