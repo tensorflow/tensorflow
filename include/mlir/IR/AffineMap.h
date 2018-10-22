@@ -23,8 +23,6 @@
 #ifndef MLIR_IR_AFFINE_MAP_H
 #define MLIR_IR_AFFINE_MAP_H
 
-#include <vector>
-
 #include "mlir/Support/LLVM.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/DenseMapInfo.h"
@@ -32,9 +30,7 @@
 namespace mlir {
 
 namespace detail {
-
 class AffineMapStorage;
-
 } // end namespace detail
 
 class AffineExpr;
@@ -59,6 +55,8 @@ public:
 
   /// Returns a single constant result affine map.
   static AffineMap getConstantMap(int64_t val, MLIRContext *context);
+
+  MLIRContext *getContext() const;
 
   explicit operator bool() { return map; }
   bool operator==(const AffineMap &other) const { return other.map == map; }

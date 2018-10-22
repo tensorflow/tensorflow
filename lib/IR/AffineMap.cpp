@@ -94,6 +94,8 @@ AffineMap AffineMap::getConstantMap(int64_t val, MLIRContext *context) {
              {getAffineConstantExpr(val, context)}, {});
 }
 
+MLIRContext *AffineMap::getContext() const { return getResult(0).getContext(); }
+
 bool AffineMap::isBounded() const { return !map->rangeSizes.empty(); }
 
 bool AffineMap::isIdentity() const {

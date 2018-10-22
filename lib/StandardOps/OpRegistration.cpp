@@ -1,4 +1,4 @@
-//===- StandardOpsRegistration.cpp - Register standard Op types -*- C++ -*-===//
+//===- OpRegistration.cpp - Register standard Op types --------------------===//
 //
 // Copyright 2019 The MLIR Authors.
 //
@@ -16,7 +16,6 @@
 // =============================================================================
 
 #include "mlir/StandardOps/StandardOps.h"
-
 using namespace mlir;
 
 // Static initialization for standard op registration.

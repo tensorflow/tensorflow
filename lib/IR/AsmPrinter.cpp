@@ -1595,7 +1595,7 @@ void AffineExpr::dump() const {
 }
 
 void AffineMap::print(raw_ostream &os) const {
-  ModuleState state(/*no context is known*/ nullptr);
+  ModuleState state(getContext());
   ModulePrinter(os, state).printAffineMap(*this);
 }
 

@@ -100,8 +100,10 @@ private:
 class AllocOp
     : public Op<AllocOp, OpTrait::VariadicOperands, OpTrait::OneResult> {
 public:
-  SSAValue *getMemRef() { return getOperation()->getResult(0); }
-  const SSAValue *getMemRef() const { return getOperation()->getResult(0); }
+  /// The result of an alloc is always a MemRefType.
+  MemRefType *getType() const {
+    return cast<MemRefType>(getResult()->getType());
+  }
 
   static StringRef getOperationName() { return "alloc"; }
 

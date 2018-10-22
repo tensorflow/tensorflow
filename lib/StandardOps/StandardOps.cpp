@@ -83,7 +83,7 @@ void AllocOp::build(Builder *builder, OperationState *result,
 }
 
 void AllocOp::print(OpAsmPrinter *p) const {
-  MemRefType *type = cast<MemRefType>(getMemRef()->getType());
+  MemRefType *type = getType();
   *p << "alloc";
   // Print dynamic dimension operands.
   printDimAndSymbolList(operand_begin(), operand_end(),
@@ -119,7 +119,7 @@ bool AllocOp::parse(OpAsmParser *parser, OperationState *result) {
 }
 
 bool AllocOp::verify() const {
-  auto *memRefType = dyn_cast<MemRefType>(getMemRef()->getType());
+  auto *memRefType = dyn_cast<MemRefType>(getResult()->getType());
   if (!memRefType)
     return emitOpError("result must be a memref");
 
