@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/while_util.h"
 #include "absl/algorithm/container.h"
+#include "absl/container/flat_hash_map.h"
+#include "absl/container/inlined_vector.h"
 #include "absl/strings/str_cat.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
@@ -268,14 +270,14 @@ static Shape MakeLoopStateShape(const WhileUtil::LoopStateTy& init_values) {
   return result;
 }
 
-/*static*/ std::map<int64, HloInstruction*>
+/*static*/ absl::flat_hash_map<int64, absl::InlinedVector<HloInstruction*, 1>>
 WhileUtil::GetGTEsMapForWhileConditional(
     const HloComputation& while_conditional) {
-  std::map<int64, HloInstruction*> result;
-  for (auto* inst : while_conditional.instructions()) {
-    if (inst->opcode() == HloOpcode::kGetTupleElement &&
-        inst->operand(0) == while_conditional.parameter_instruction(0)) {
-      result[inst->tuple_index()] = inst;
+  absl::flat_hash_map<int64, absl::InlinedVector<HloInstruction*, 1>> result;
+  for (HloInstruction* user :
+       while_conditional.parameter_instruction(0)->users()) {
+    if (user->opcode() == HloOpcode::kGetTupleElement) {
+      result[user->tuple_index()].push_back(user);
     }
   }
   return result;
