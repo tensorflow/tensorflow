@@ -28,7 +28,6 @@ from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variable_scope
-from tensorflow.python.ops import variables
 from tensorflow.python.training.checkpointable import base as checkpointable
 from tensorflow.python.util import nest
 from tensorflow.python.util import tf_decorator
@@ -46,7 +45,7 @@ class UnliftedInitializerVariable(resource_variable_ops.ResourceVariable):
 
   def __init__(self,  # pylint: disable=super-init-not-called
                initial_value=None,
-               trainable=True,
+               trainable=None,
                caching_device=None,
                name=None,
                dtype=None,
@@ -88,9 +87,13 @@ class UnliftedInitializerVariable(resource_variable_ops.ResourceVariable):
       RuntimeError: If called outside of a function definition.
     """
     if context.executing_eagerly():
-      raise RuntimeError(
-          "UnliftedInitializerVariable should not be created "
-          "outside of functions.")
+      # If we've been init_scope()d out of the function definition nothing to do
+      # here; we can't really do the capturing or conditional logic.
+      resource_variable_ops.ResourceVariable.__init__(
+          self, initial_value=initial_value, trainable=trainable,
+          caching_device=caching_device, name=name, dtype=dtype,
+          constraint=constraint)
+      return
     with ops.init_scope():
       if not context.executing_eagerly():
         raise RuntimeError(
@@ -108,6 +111,8 @@ class UnliftedInitializerVariable(resource_variable_ops.ResourceVariable):
       self._update_uid = initial_value.checkpoint_position.restore_uid
       initial_value = initial_value.wrapped_value
 
+    if trainable is None:
+      trainable = True
     self._trainable = trainable
     self._save_slice_info = None
     self._initial_value = None
@@ -182,14 +187,14 @@ def _defun_with_scope(scope, fn, input_signature):
 
 
 # TODO(apassos) there should be an easier way to call a concrete defun.
-def _call_concrete(fn, args, unused_kwargs):
+def _call_concrete(fn, args, kwargs):
   """Calls the given concrete function with only the tensor arguments."""
 
   def inner():
     # TODO(apassos) figure out what to do with kwargs and concrete functions.
-    return fn(*[x if isinstance(x, ops.Tensor) else x.handle
-                for x in nest.flatten(args)
-                if isinstance(x, (ops.Tensor, variables.Variable))])
+    return fn(*[t for t in nest.flatten((args, kwargs))
+                if isinstance(
+                    t, (ops.Tensor, resource_variable_ops.ResourceVariable))])
 
   return inner
 
@@ -255,6 +260,7 @@ class PolymorphicFunction(object):
     self._stateless_fn = _defun_with_scope(
         invalid_creator_scope, self._python_function, self._input_signature)
     self._stateless_fn._name = self._name  # pylint: disable=protected-access
+    return self._stateful_fn._canonicalize_function_inputs(*args, **kwds)  # pylint: disable=protected-access
 
   def __call__(self, *args, **kwds):
     """Calls the graph function."""
@@ -271,11 +277,12 @@ class PolymorphicFunction(object):
                          " decorated with tf.function.")
       return results
 
-    self._initialize(args, kwds)
+    canon_args, canon_kwds = self._initialize(args, kwds)
 
     if not self._created_variables:
       # If we did not create any variables the trace we have is good enough.
-      return _call_concrete(self._concrete_stateful_fn, args, kwds)()
+      return _call_concrete(
+          self._concrete_stateful_fn, canon_args, canon_kwds)()
 
     def fn_with_cond(*inner_args, **inner_kwds):
       """Conditionally runs initialization if it's needed."""
@@ -297,7 +304,7 @@ class PolymorphicFunction(object):
           lambda: self._stateless_fn(*inner_args, **inner_kwds),
           _call_concrete(self._concrete_stateful_fn, inner_args, inner_kwds))
 
-    return function_lib.defun(fn_with_cond)(*args, **kwds)
+    return function_lib.defun(fn_with_cond)(*canon_args, **canon_kwds)
 
   @property
   def python_function(self):
