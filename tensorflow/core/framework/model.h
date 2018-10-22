@@ -251,6 +251,14 @@ class Model {
       return ProcessingTimeLocked();
     }
 
+    // Returns a copy of this node, making a deep copy of its inputs and a
+    // shallow copy of its tunable parameters.
+    //
+    // The purpose for this method is to allow the model optimization logic to
+    // operate over immutable state while allowing concurrent model updates.
+    std::shared_ptr<Node> Snapshot(std::shared_ptr<Node> output)
+        LOCKS_EXCLUDED(mu_);
+
    private:
     enum class Type {
       BATCH = 0,
@@ -385,12 +393,15 @@ class Model {
     std::shared_ptr<Node> output_ GUARDED_BY(mu_);
   };
 
-  std::vector<std::shared_ptr<Node::Tunable>> CollectTunables()
-      SHARED_LOCKS_REQUIRED(mu_);
+  // Collects tunables in the tree rooted in the given node.
+  std::vector<std::shared_ptr<Node::Tunable>> CollectTunables(
+      std::shared_ptr<Node> node);
 
-  int64 OutputTime() SHARED_LOCKS_REQUIRED(mu_);
+  // Collects the output time for the given node.
+  int64 OutputTime(std::shared_ptr<Node> node);
 
-  int64 ProcessingTime() SHARED_LOCKS_REQUIRED(mu_);
+  // Collects the processing time for the given node.
+  int64 ProcessingTime(std::shared_ptr<Node> node);
 
   // Used for coordination between different input pipeline threads. Exclusive
   // access is required only when adding or removing nodes. Concurrent access to
