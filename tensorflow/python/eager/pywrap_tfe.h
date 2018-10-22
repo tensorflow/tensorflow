@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_PYTHON_EAGER_PYWRAP_TFE_H_
 #define TENSORFLOW_PYTHON_EAGER_PYWRAP_TFE_H_
 
+#include <iostream>
 #include <Python.h>
 
 #include "tensorflow/c/eager/c_api.h"
