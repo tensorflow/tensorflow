@@ -83,6 +83,7 @@ py_library(
         "//tensorflow/python:errors",
         "//tensorflow/python:platform",
         "//tensorflow/python:pywrap_tensorflow",
+        "//tensorflow/python:tf2",
         "//tensorflow/python:util",
     ],
 )
