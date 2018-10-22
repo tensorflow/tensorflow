@@ -165,17 +165,6 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
     )
 
     tf_http_archive(
-        name = "ortools_archive",
-        build_file = clean_dep("//third_party:ortools.BUILD"),
-        sha256 = "d025a95f78b5fc5eaa4da5f395f23d11c23cf7dbd5069f1f627f002de87b86b9",
-        strip_prefix = "or-tools-6.7.2/src",
-        urls = [
-            "https://mirror.bazel.build/github.com/google/or-tools/archive/v6.7.2.tar.gz",
-            "https://github.com/google/or-tools/archive/v6.7.2.tar.gz",
-        ],
-    )
-
-    tf_http_archive(
         name = "com_googlesource_code_re2",
         sha256 = "803c7811146edeef8f91064de37c6f19136ff01a2a8cdb3230e940b2fd9f07fe",
         strip_prefix = "re2-2018-07-01",
