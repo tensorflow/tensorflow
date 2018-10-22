@@ -26,8 +26,8 @@ def gen_api_init_files(
         api_name = "tensorflow",
         api_version = 2,
         compat_api_versions = [],
-        package = "tensorflow.python",
-        package_dep = "//tensorflow/python:no_contrib",
+        packages = ["tensorflow.python"],
+        package_deps = ["//tensorflow/python:no_contrib"],
         output_package = "tensorflow",
         output_dir = ""):
     """Creates API directory structure and __init__.py files.
@@ -64,15 +64,15 @@ def gen_api_init_files(
     if root_init_template:
         root_init_template_flag = "--root_init_template=$(location " + root_init_template + ")"
 
-    api_gen_binary_target = ("create_" + package + "_api_%d") % api_version
+    primary_package = packages[0]
+    api_gen_binary_target = ("create_" + primary_package + "_api_%d") % api_version
     native.py_binary(
         name = api_gen_binary_target,
         srcs = ["//tensorflow/python/tools/api/generator:create_python_api.py"],
         main = "//tensorflow/python/tools/api/generator:create_python_api.py",
         srcs_version = "PY2AND3",
         visibility = ["//visibility:public"],
-        deps = [
-            package_dep,
+        deps = package_deps + [
             "//tensorflow/python:util",
             "//tensorflow/python/tools/api/generator:doc_srcs",
         ],
@@ -90,7 +90,7 @@ def gen_api_init_files(
             "$(location :" + api_gen_binary_target + ") " +
             root_init_template_flag + " --apidir=$(@D)" + output_dir +
             " --apiname=" + api_name + " --apiversion=" + str(api_version) +
-            compat_api_version_flags + " --package=" + package +
+            compat_api_version_flags + " --package=" + ",".join(packages) +
             " --output_package=" + output_package + " $(OUTS)"
         ),
         srcs = srcs,

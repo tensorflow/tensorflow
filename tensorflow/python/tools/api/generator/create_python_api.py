@@ -261,15 +261,18 @@ def add_imports_for_symbol(
           id(symbol), dest_module, source_module_name, source_name, dest_name)
 
 
-def get_api_init_text(
-    package, output_package, api_name, api_version, compat_api_versions=None):
+def get_api_init_text(packages,
+                      output_package,
+                      api_name,
+                      api_version,
+                      compat_api_versions=None):
   """Get a map from destination module to __init__.py code for that module.
 
   Args:
-    package: Base python package containing python with target tf_export
+    packages: Base python packages containing python with target tf_export
       decorators.
-    output_package: Base output python package where generated API will
-      be added.
+    output_package: Base output python package where generated API will be
+      added.
     api_name: API you want to generate (e.g. `tensorflow` or `estimator`).
     api_version: API version you want to generate (1 or 2).
     compat_api_versions: Additional API versions to generate under compat/
@@ -286,10 +289,14 @@ def get_api_init_text(
   module_code_builder = _ModuleInitCodeBuilder(output_package)
   # Traverse over everything imported above. Specifically,
   # we want to traverse over TensorFlow Python modules.
+
+  def in_packages(m):
+    return any(package in m for package in packages)
+
   for module in list(sys.modules.values()):
     # Only look at tensorflow modules.
     if (not module or not hasattr(module, '__name__') or
-        module.__name__ is None or package not in module.__name__):
+        module.__name__ is None or not in_packages(module.__name__)):
       continue
     # Do not generate __init__.py files for contrib modules for now.
     if '.contrib.' in module.__name__ or module.__name__.endswith('.contrib'):
@@ -378,20 +385,14 @@ def get_module_docstring(module_name, package, api_name):
   return 'Public API for tf.%s namespace.' % module_name
 
 
-def create_api_files(
-    output_files,
-    package,
-    root_init_template,
-    output_dir,
-    output_package,
-    api_name,
-    api_version,
-    compat_api_versions):
+def create_api_files(output_files, packages, root_init_template, output_dir,
+                     output_package, api_name, api_version,
+                     compat_api_versions):
   """Creates __init__.py files for the Python API.
 
   Args:
     output_files: List of __init__.py file paths to create.
-    package: Base python package containing python with target tf_export
+    packages: Base python packages containing python with target tf_export
       decorators.
     root_init_template: Template for top-level __init__.py file.
       "# API IMPORTS PLACEHOLDER" comment in the template file will be replaced
@@ -417,8 +418,8 @@ def create_api_files(
       os.makedirs(os.path.dirname(file_path))
     open(file_path, 'a').close()
 
-  module_text_map = get_api_init_text(
-      package, output_package, api_name, api_version, compat_api_versions)
+  module_text_map = get_api_init_text(packages, output_package, api_name,
+                                      api_version, compat_api_versions)
 
   # Add imports to output files.
   missing_output_files = []
@@ -436,9 +437,8 @@ def create_api_files(
     contents = ''
     if module not in root_modules or not root_init_template:
       contents = (
-          _GENERATED_FILE_HEADER %
-          get_module_docstring(module, package, api_name) +
-          text + _GENERATED_FILE_FOOTER)
+          _GENERATED_FILE_HEADER % get_module_docstring(
+              module, packages[0], api_name) + text + _GENERATED_FILE_FOOTER)
     else:
       # Read base init file
       with open(root_init_template, 'r') as root_init_template_file:
@@ -449,8 +449,10 @@ def create_api_files(
 
   if missing_output_files:
     raise ValueError(
-        'Missing outputs for genrule:\n%s.' %
-        ',\n'.join(sorted(missing_output_files)))
+        """Missing outputs for genrule:\n%s. Be sure to add these targets to
+tensorflow/python/tools/api/generator/api_init_files_v1.bzl and
+tensorflow/python/tools/api/generator/api_init_files.bzl""" % ',\n'.join(
+    sorted(missing_output_files)))
 
 
 def main():
@@ -462,9 +464,11 @@ def main():
       'output. If multiple files are passed in, then we assume output files '
       'are listed directly as arguments.')
   parser.add_argument(
-      '--package', default=_DEFAULT_PACKAGE, type=str,
-      help='Base package that imports modules containing the target tf_export '
-           'decorators.')
+      '--packages',
+      default=_DEFAULT_PACKAGE,
+      type=str,
+      help='Base packages that import modules containing the target tf_export '
+      'decorators.')
   parser.add_argument(
       '--root_init_template', default='', type=str,
       help='Template for top level __init__.py file. '
@@ -500,10 +504,12 @@ def main():
     outputs = args.outputs
 
   # Populate `sys.modules` with modules containing tf_export().
-  importlib.import_module(args.package)
-  create_api_files(outputs, args.package, args.root_init_template,
-                   args.apidir, args.output_package, args.apiname,
-                   args.apiversion, args.compat_apiversions)
+  packages = args.packages.split(',')
+  for package in packages:
+    importlib.import_module(package)
+  create_api_files(outputs, packages, args.root_init_template, args.apidir,
+                   args.output_package, args.apiname, args.apiversion,
+                   args.compat_apiversions)
 
 
 if __name__ == '__main__':
