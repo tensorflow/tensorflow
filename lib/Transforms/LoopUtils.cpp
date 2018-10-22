@@ -30,6 +30,9 @@
 #include "mlir/IR/StmtVisitor.h"
 #include "mlir/StandardOps/StandardOps.h"
 #include "llvm/ADT/DenseMap.h"
+#include "llvm/Support/Debug.h"
+
+#define DEBUG_TYPE "LoopUtils"
 
 using namespace mlir;
 
@@ -205,12 +208,14 @@ UtilResult mlir::stmtBodySkew(ForStmt *forStmt, ArrayRef<uint64_t> delays,
   // better way to pipeline for such loops is to first tile them and extract
   // constant trip count "full tiles" before applying this.
   auto mayBeConstTripCount = getConstantTripCount(*forStmt);
-  if (!mayBeConstTripCount.hasValue())
-    return UtilResult::Failure;
+  if (!mayBeConstTripCount.hasValue()) {
+    LLVM_DEBUG(llvm::dbgs() << "non-constant trip count loop\n";);
+    return UtilResult::Success;
+  }
   uint64_t tripCount = mayBeConstTripCount.getValue();
 
   assert(isStmtwiseShiftValid(*forStmt, delays) &&
-         "dominance preservation failed\n");
+         "shifts will lead to an invalid transformation\n");
 
   unsigned numChildStmts = forStmt->getStatements().size();
 
@@ -220,8 +225,10 @@ UtilResult mlir::stmtBodySkew(ForStmt *forStmt, ArrayRef<uint64_t> delays,
     maxDelay = std::max(maxDelay, delays[i]);
   }
   // Such large delays are not the typical use case.
-  if (maxDelay >= numChildStmts)
-    return UtilResult::Failure;
+  if (maxDelay >= numChildStmts) {
+    LLVM_DEBUG(llvm::dbgs() << "stmt delays too large - unexpected\n";);
+    return UtilResult::Success;
+  }
 
   // An array of statement groups sorted by delay amount; each group has all
   // statements with the same delay in the order in which they appear in the

@@ -114,9 +114,6 @@ static bool doubleBuffer(const MLValue *oldMemRef, ForStmt *forStmt) {
 
 /// Returns false if this succeeds on at least one 'for' stmt.
 PassResult PipelineDataTransfer::runOnMLFunction(MLFunction *f) {
-  if (f->empty())
-    return PassResult::Success;
-
   // Do a post order walk so that inner loop DMAs are processed first. This is
   // necessary since 'for' statements nested within would otherwise become
   // invalid (erased) when the outer loop is pipelined (the pipelined one gets
@@ -213,7 +210,7 @@ PassResult PipelineDataTransfer::runOnForStmt(ForStmt *forStmt) {
   auto mayBeConstTripCount = getConstantTripCount(*forStmt);
   if (!mayBeConstTripCount.hasValue()) {
     LLVM_DEBUG(llvm::dbgs() << "unknown trip count loop\n");
-    return PassResult::Failure;
+    return success();
   }
 
   SmallVector<std::pair<OperationStmt *, OperationStmt *>, 4> startWaitPairs;
@@ -221,7 +218,7 @@ PassResult PipelineDataTransfer::runOnForStmt(ForStmt *forStmt) {
 
   if (startWaitPairs.empty()) {
     LLVM_DEBUG(llvm::dbgs() << "No dma start/finish pairs\n";);
-    return failure();
+    return success();
   }
 
   // Double the buffers for the higher memory space memref's.
@@ -241,7 +238,8 @@ PassResult PipelineDataTransfer::runOnForStmt(ForStmt *forStmt) {
       // that there are no uses outside.
       LLVM_DEBUG(llvm::dbgs() << "double buffering failed for: \n";);
       LLVM_DEBUG(dmaStartStmt->dump());
-      return failure();
+      // IR still in a valid state.
+      return success();
     }
   }
 
@@ -252,7 +250,7 @@ PassResult PipelineDataTransfer::runOnForStmt(ForStmt *forStmt) {
         dmaFinishStmt->getOperand(getTagMemRefPos(*dmaFinishStmt)));
     if (!doubleBuffer(oldTagMemRef, forStmt)) {
       LLVM_DEBUG(llvm::dbgs() << "tag double buffering failed\n";);
-      return failure();
+      return success();
     }
   }
 
@@ -296,14 +294,14 @@ PassResult PipelineDataTransfer::runOnForStmt(ForStmt *forStmt) {
   }
 
   if (!isStmtwiseShiftValid(*forStmt, delays)) {
-    // Violates SSA dominance.
-    LLVM_DEBUG(llvm::dbgs() << "Dominance check failed\n";);
-    return PassResult::Failure;
+    // Violates dependences.
+    LLVM_DEBUG(llvm::dbgs() << "Shifts invalid - unexpected\n";);
+    return success();
   }
 
   if (stmtBodySkew(forStmt, delays)) {
-    LLVM_DEBUG(llvm::dbgs() << "stmt body skewing failed\n";);
-    return PassResult::Failure;
+    LLVM_DEBUG(llvm::dbgs() << "stmt body skewing failed - unexpected\n";);
+    return success();
   }
 
   return success();
