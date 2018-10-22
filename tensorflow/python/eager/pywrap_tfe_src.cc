@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <cstring>
 #include <thread>
 
 #include "tensorflow/python/eager/pywrap_tfe.h"
@@ -1610,6 +1611,7 @@ std::vector<PyObject*> MakeTensorList(PyObject* tensors) {
 
 PyObject* TFE_Py_TapeGradient(PyObject* tape, PyObject* target,
                               PyObject* sources, PyObject* output_gradients,
+                              PyObject* unconnected_gradients,
                               TF_Status* status) {
   TFE_Py_Tape* tape_obj = reinterpret_cast<TFE_Py_Tape*>(tape);
   if (!tape_obj->tape->IsPersistent()) {
@@ -1657,13 +1659,29 @@ PyObject* TFE_Py_TapeGradient(PyObject* tape, PyObject* target,
     }
     return nullptr;
   }
+
+  bool unconnected_gradients_zero =
+      strcmp(TFE_GetPythonString(unconnected_gradients), "zero") == 0;
+  std::vector<PyObject*> sources_obj;
+  if (unconnected_gradients_zero) {
+    sources_obj = MakeTensorList(sources);
+  }
+
   if (!result.empty()) {
     PyObject* py_result = PyList_New(result.size());
     tensorflow::gtl::FlatSet<PyObject*> seen_results(result.size());
     for (int i = 0; i < result.size(); ++i) {
       if (result[i] == nullptr) {
-        Py_INCREF(Py_None);
-        result[i] = Py_None;
+        if (unconnected_gradients_zero) {
+          // generate a zeros tensor in the shape of sources[i]
+          tensorflow::DataType dtype = FastTensorDtype(sources_obj[i]);
+          PyTapeTensor tensor =
+              PyTapeTensor(sources_vec[i], dtype, sources_obj[i]);
+          result[i] = py_vspace->Zeros(tensor);
+        } else {
+          Py_INCREF(Py_None);
+          result[i] = Py_None;
+        }
       } else if (seen_results.find(result[i]) != seen_results.end()) {
         Py_INCREF(result[i]);
       }

@@ -176,6 +176,7 @@ void TFE_Py_TapeWatchVariable(PyObject* tape, PyObject* variable);
 // target.
 PyObject* TFE_Py_TapeGradient(PyObject* tape, PyObject* target,
                               PyObject* sources, PyObject* output_gradients,
+                              PyObject* unconnected_gradients,
                               TF_Status* status);
 
 // Execute a tensorflow operation assuming that all provided inputs are

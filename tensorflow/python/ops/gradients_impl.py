@@ -35,7 +35,6 @@ from tensorflow.python.framework import function as framework_function
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
-from tensorflow.python.framework.func_graph import FuncGraph
 from tensorflow.python.ops import array_grad  # pylint: disable=unused-import
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops  # pylint: disable=unused-import
@@ -56,7 +55,14 @@ from tensorflow.python.ops import spectral_grad  # pylint: disable=unused-import
 from tensorflow.python.ops import tensor_array_ops
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import compat
+from tensorflow.python.util.lazy_loader import LazyLoader
 from tensorflow.python.util.tf_export import tf_export
+
+# This is to avoid a circular dependency
+# backprop -> gradients_impl -> func_graph
+funct_graph = LazyLoader(
+    "func_graph", globals(),
+    "tensorflow.python.framework.func_graph")
 
 # This is to avoid a circular dependency (eager.function depends on
 # gradients_impl). This is set in eager/function.py.
@@ -449,12 +455,12 @@ def _RaiseNoGradWrtInitialLoopValError(op, from_ops, xs):
 
 
 def _IsFunction(graph):
-  return (isinstance(graph, FuncGraph) or
+  return (isinstance(graph, funct_graph.FuncGraph) or
           isinstance(graph, framework_function._FuncGraph))  # pylint: disable=protected-access
 
 
 def _Captures(func_graph):
-  if isinstance(func_graph, FuncGraph):
+  if isinstance(func_graph, funct_graph.FuncGraph):
     return func_graph.captures
   else:
     assert isinstance(func_graph, framework_function._FuncGraph)  # pylint: disable=protected-access
@@ -697,7 +703,7 @@ def _GradientsHelper(ys,
   curr_graph = src_graph
   while _IsFunction(curr_graph):
     func_graphs.append(curr_graph)
-    if isinstance(curr_graph, FuncGraph):
+    if isinstance(curr_graph, funct_graph.FuncGraph):
       curr_graph = curr_graph.outer_graph
     else:
       assert isinstance(curr_graph, framework_function._FuncGraph)  # pylint: disable=protected-access
