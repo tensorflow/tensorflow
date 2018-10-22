@@ -23,7 +23,7 @@ BasicBlock::BasicBlock() {}
 
 BasicBlock::~BasicBlock() {
   if (terminator)
-    terminator->eraseFromBlock();
+    terminator->erase();
   for (BBArgument *arg : arguments)
     delete arg;
   arguments.clear();

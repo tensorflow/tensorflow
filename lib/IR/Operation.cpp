@@ -215,6 +215,13 @@ bool Operation::emitOpError(const Twine &message) const {
   return true;
 }
 
+/// Remove this operation from its parent block and delete it.
+void Operation::erase() {
+  if (auto *inst = llvm::dyn_cast<OperationInst>(this))
+    return inst->erase();
+  return llvm::cast<OperationStmt>(this)->erase();
+}
+
 /// Attempt to constant fold this operation with the specified constant
 /// operand values.  If successful, this returns false and fills in the
 /// results vector.  If not, this returns true and results is unspecified.

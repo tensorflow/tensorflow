@@ -241,7 +241,7 @@ public:
 
     // Otherwise, the error message got emitted.  Just remove the instruction
     // we made.
-    inst->eraseFromBlock();
+    inst->erase();
     return OpPointer<OpTy>();
   }
 
@@ -388,7 +388,7 @@ public:
 
     // Otherwise, the error message got emitted.  Just remove the statement
     // we made.
-    stmt->eraseFromBlock();
+    stmt->erase();
     return OpPointer<OpTy>();
   }
 

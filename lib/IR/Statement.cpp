@@ -221,7 +221,7 @@ void llvm::ilist_traits<::mlir::Statement>::transferNodesFromList(
 
 /// Remove this statement (and its descendants) from its StmtBlock and delete
 /// all of them.
-void Statement::eraseFromBlock() {
+void Statement::erase() {
   assert(getBlock() && "Statement has no block");
   getBlock()->getStatements().erase(this);
 }

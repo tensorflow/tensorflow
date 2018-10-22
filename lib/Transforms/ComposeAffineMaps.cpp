@@ -89,7 +89,7 @@ PassResult ComposeAffineMaps::runOnMLFunction(MLFunction *f) {
   affineApplyOpsToErase.clear();
   walk(f);
   for (auto *opStmt : affineApplyOpsToErase) {
-    opStmt->eraseFromBlock();
+    opStmt->erase();
   }
   return success();
 }

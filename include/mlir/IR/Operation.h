@@ -240,6 +240,9 @@ public:
     return getAbstractOperation()->hasProperty(OperationProperty::NoSideEffect);
   }
 
+  /// Remove this operation from its parent block and delete it.
+  void erase();
+
   /// Attempt to constant fold this operation with the specified constant
   /// operand values - the elements in "operands" will correspond directly to
   /// the operands of the operation, but may be null if non-constant.  If

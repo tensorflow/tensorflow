@@ -117,7 +117,7 @@ PassResult ConstantFold::runOnCFGFunction(CFGFunction *f) {
         // side effects.  When we have side effect modeling, we should verify
         // that the operation is effect-free before we remove it.  Until then
         // this is close enough.
-        inst.eraseFromBlock();
+        inst.erase();
       }
     }
   }
@@ -126,7 +126,7 @@ PassResult ConstantFold::runOnCFGFunction(CFGFunction *f) {
   // around dead constants.  Check for them now and remove them.
   for (auto *cst : existingConstants) {
     if (cst->use_empty())
-      cst->getDefiningInst()->eraseFromBlock();
+      cst->getDefiningInst()->erase();
   }
 
   return success();
@@ -159,14 +159,14 @@ PassResult ConstantFold::runOnMLFunction(MLFunction *f) {
   // the operation is effect-free before we remove it.  Until then this is
   // close enough.
   for (auto *stmt : opStmtsToErase) {
-    stmt->eraseFromBlock();
+    stmt->erase();
   }
 
   // By the time we are done, we may have simplified a bunch of code, leaving
   // around dead constants.  Check for them now and remove them.
   for (auto *cst : existingConstants) {
     if (cst->use_empty())
-      cst->getDefiningStmt()->eraseFromBlock();
+      cst->getDefiningStmt()->erase();
   }
 
   return success();

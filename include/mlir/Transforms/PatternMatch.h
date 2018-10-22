@@ -1,4 +1,4 @@
-//===- PatternMatch.h - Base classes for pattern match ----------*- C++ -*-===//
+//===- PatternMatcher.h - PatternMatcher classes ----------------*- C++ -*-===//
 //
 // Copyright 2019 The MLIR Authors.
 //
@@ -15,8 +15,8 @@
 // limitations under the License.
 // =============================================================================
 
-#ifndef MLIR_PATTERN_MATCH_H
-#define MLIR_PATTERN_MATCH_H
+#ifndef MLIR_PATTERNMATCHER_H
+#define MLIR_PATTERNMATCHER_H
 
 #include "mlir/IR/Builders.h"
 
@@ -25,7 +25,7 @@ namespace mlir {
 class PatternRewriter;
 
 //===----------------------------------------------------------------------===//
-// Definition of Pattern and related types.
+// PatternBenefit class
 //===----------------------------------------------------------------------===//
 
 /// This class represents the benefit of a pattern match in a unitless scheme
@@ -79,6 +79,10 @@ protected:
 /// rewrite phases.
 typedef std::pair<PatternBenefit, std::unique_ptr<PatternState>>
     PatternMatchResult;
+
+//===----------------------------------------------------------------------===//
+// Pattern class
+//===----------------------------------------------------------------------===//
 
 class Pattern {
 public:
@@ -193,7 +197,7 @@ public:
     // Otherwise, the error message got emitted.  Just remove the instruction
     // we made.
     if (auto *inst = dyn_cast<OperationInst>(result.getOperation()))
-      inst->eraseFromParent();
+      inst->erase();
     else
       cast<OperationStmt>(result.getOperation())->eraseFromBlock();
 

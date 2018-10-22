@@ -55,8 +55,8 @@ public:
   /// The source location the operation was defined or derived from.
   Location *getLoc() const { return location; }
 
-  /// Remove this statement from its block and delete it.
-  void eraseFromBlock();
+  /// Remove this statement from its parent block and delete it.
+  void erase();
 
   // This is a verbose type used by the clone method below.
   using OperandMapTy =

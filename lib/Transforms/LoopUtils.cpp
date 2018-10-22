@@ -117,7 +117,7 @@ bool mlir::promoteIfSingleIteration(ForStmt *forStmt) {
   auto *block = forStmt->getBlock();
   block->getStatements().splice(StmtBlock::iterator(forStmt),
                                 forStmt->getStatements());
-  forStmt->eraseFromBlock();
+  forStmt->erase();
   return true;
 }
 
@@ -298,7 +298,7 @@ UtilResult mlir::stmtBodySkew(ForStmt *forStmt, ArrayRef<uint64_t> delays,
   }
 
   // Erase the original for stmt.
-  forStmt->eraseFromBlock();
+  forStmt->erase();
 
   if (unrollPrologueEpilogue && prologue)
     loopUnrollFull(prologue);

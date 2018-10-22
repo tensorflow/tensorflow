@@ -169,6 +169,7 @@ public:
   //===--------------------------------------------------------------------===//
 
   void destroy();
+  using Statement::erase;
 
   /// Methods for support type inquiry through isa, cast, and dyn_cast.
   static bool classof(const Statement *stmt) {

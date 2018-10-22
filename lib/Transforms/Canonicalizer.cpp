@@ -27,8 +27,6 @@
 #include "mlir/Transforms/Passes.h"
 #include "mlir/Transforms/PatternMatch.h"
 #include "llvm/ADT/DenseMap.h"
-
-#include <memory>
 using namespace mlir;
 
 //===----------------------------------------------------------------------===//
@@ -217,8 +215,7 @@ void Canonicalizer::simplifyFunction(std::vector<Operation *> &worklist,
     // If the operation has no side effects, and no users, then it is trivially
     // dead - remove it.
     if (op->hasNoSideEffect() && op->use_empty()) {
-      // FIXME: Generalize to support CFG statements as well.
-      cast<OperationStmt>(op)->eraseFromBlock();
+      op->erase();
       continue;
     }
 
@@ -256,9 +253,7 @@ void Canonicalizer::simplifyFunction(std::vector<Operation *> &worklist,
       }
 
       assert(op->hasNoSideEffect() && "Constant folded op with side effects?");
-
-      // FIXME: Generalize to support CFG statements as well.
-      cast<OperationStmt>(op)->eraseFromBlock();
+      op->erase();
       continue;
     }
 

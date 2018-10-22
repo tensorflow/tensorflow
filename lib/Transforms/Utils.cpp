@@ -153,7 +153,7 @@ bool mlir::replaceAllMemRefUsesWith(const MLValue *oldMemRef,
     for (auto *res : opStmt->getResults()) {
       res->replaceAllUsesWith(repOp->getResult(r++));
     }
-    opStmt->eraseFromBlock();
+    opStmt->erase();
   }
   return true;
 }
@@ -335,7 +335,7 @@ void mlir::forwardSubstitute(OpPointer<AffineApplyOp> affineApplyOp) {
             newAffineApplyOp->getResult(i));
       }
       // Erase 'oldAffineApplyOp'.
-      cast<OperationStmt>(oldAffineApplyOp->getOperation())->eraseFromBlock();
+      oldAffineApplyOp->getOperation()->erase();
     }
   }
 }

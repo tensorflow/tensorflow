@@ -297,7 +297,7 @@ public:
   //===--------------------------------------------------------------------===//
 
   /// Unlink this instruction from its BasicBlock and delete it.
-  void eraseFromBlock();
+  void erase();
 
   void destroy();
 
@@ -337,7 +337,7 @@ public:
   }
 
   /// Remove this terminator from its BasicBlock and delete it.
-  void eraseFromBlock();
+  void erase();
 
   /// Return the list of BasicBlockOperand operands of this terminator that
   /// this terminator holds.

@@ -120,9 +120,7 @@ void PatternRewriter::replaceSingleResultOp(
   op->getResult(0)->replaceAllUsesWith(newValue);
 
   notifyOperationRemoved(op);
-
-  // TODO: This shouldn't be statement specific.
-  cast<OperationStmt>(op)->eraseFromBlock();
+  op->erase();
 
   // TODO: Process the opsToRemoveIfDead list once we have side-effect
   // information.  Be careful about notifying clients that this is happening

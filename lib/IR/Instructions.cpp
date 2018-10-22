@@ -245,7 +245,7 @@ void llvm::ilist_traits<::mlir::OperationInst>::transferNodesFromList(
 }
 
 /// Unlink this instruction from its BasicBlock and delete it.
-void OperationInst::eraseFromBlock() {
+void OperationInst::erase() {
   assert(getBlock() && "Instruction has no parent");
   getBlock()->getOperations().erase(this);
 }
@@ -255,7 +255,7 @@ void OperationInst::eraseFromBlock() {
 //===----------------------------------------------------------------------===//
 
 /// Remove this terminator from its BasicBlock and delete it.
-void TerminatorInst::eraseFromBlock() {
+void TerminatorInst::erase() {
   assert(getBlock() && "Instruction has no parent");
   getBlock()->setTerminator(nullptr);
   destroy();
