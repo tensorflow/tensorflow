@@ -70,6 +70,7 @@ from tensorflow.python.platform import googletest
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import server_lib
 from tensorflow.python.util import compat
+from tensorflow.python.util import deprecation
 from tensorflow.python.util import memory
 from tensorflow.python.util import nest
 from tensorflow.python.util import tf_inspect
@@ -1258,6 +1259,8 @@ class TensorFlowTestCase(googletest.TestCase):
         yield cached
 
   @contextlib.contextmanager
+  @deprecation.deprecated(None, "Use `self.session()` or "
+                          "`self.cached_session()` instead.")
   def test_session(self,
                    graph=None,
                    config=None,
