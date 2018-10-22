@@ -16660,6 +16660,46 @@ func MatrixSolveLs(scope *Scope, matrix tf.Output, rhs tf.Output, l2_regularizer
 	return op.Output(0)
 }
 
+// Computes the matrix square root of one or more square matrices:
+//
+// matmul(sqrtm(A), sqrtm(A)) = A
+//
+// The input matrix should be invertible. If the input matrix is real,
+// it should have no eigenvalues which are real and negative
+// (pairs of complex conjugate eigenvalues are allowed).
+//
+// The matrix square root is computed by first reducing the matrix to
+// quasi-triangular form with the real Schur decomposition. The square root
+// of the quasi-triangular matrix is then computed directly. Details of
+// the algorithm can be found in: Nicholas J. Higham, "Computing real
+// square roots of a real matrix", Linear Algebra Appl., 1987.
+//
+// The input is a tensor of shape `[..., M, M]` whose inner-most 2 dimensions
+// form square matrices. The output is a tensor of the same shape as the input
+// containing the matrix square root for all input submatrices `[..., :, :]`.
+//
+// Arguments:
+//	input: Shape is `[..., M, M]`.
+//
+// Returns Shape is `[..., M, M]`.
+//
+// @compatibility(scipy)
+// Equivalent to scipy.linalg.sqrtm
+// @end_compatibility
+func MatrixSquareRoot(scope *Scope, input tf.Output) (output tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "MatrixSquareRoot",
+		Input: []tf.Input{
+			input,
+		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
 // MaxPool3DAttr is an optional argument to MaxPool3D.
 type MaxPool3DAttr func(optionalAttr)
 
