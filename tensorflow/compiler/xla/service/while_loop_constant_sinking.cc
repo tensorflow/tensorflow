@@ -68,12 +68,12 @@ StatusOr<bool> WhileLoopConstantSinking::TrySinkingConstantsIntoWhileLoop(
     int64 index = invariant_body_gte->tuple_index();
     const HloInstruction& invariant_value = *init_value.operand(index);
 
-    // Original value should be a constant
+    // Original value should be a constant.
     if (invariant_value.opcode() != HloOpcode::kConstant) {
       continue;
     }
 
-    // Sink into the while_body
+    // Sink into the while_body.
     // Should have at least one user that's not while_body_root.
     if (invariant_body_gte->user_count() > 1) {
       HloInstruction* constant_instr =
