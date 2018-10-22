@@ -59,7 +59,7 @@ StatusOr<bool> WhileLoopConstantSinking::TrySinkingConstantsIntoWhileLoop(
   bool changed = false;
 
   absl::flat_hash_map<int64, absl::InlinedVector<HloInstruction*, 1>>
-      invariant_conditional_gte_index_to_inst =
+      conditional_gte_index_to_insts =
           WhileUtil::GetGTEsMapForWhileConditional(*while_cond);
   std::vector<HloInstruction*> invariant_body_gtes =
       WhileUtil::GetInvariantGTEsForWhileBody(*while_body);
@@ -85,8 +85,8 @@ StatusOr<bool> WhileLoopConstantSinking::TrySinkingConstantsIntoWhileLoop(
     }
 
     // Check if there is a corresponding GTE in while_conditional.
-    auto it = invariant_conditional_gte_index_to_inst.find(index);
-    if (it == invariant_conditional_gte_index_to_inst.end()) {
+    auto it = conditional_gte_index_to_insts.find(index);
+    if (it == conditional_gte_index_to_insts.end()) {
       continue;
     }
 
