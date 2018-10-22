@@ -85,9 +85,7 @@ StatusOr<bool> WhileLoopConstantSinking::TrySinkingConstantsIntoWhileLoop(
     }
 
     // Check if there is a corresponding GTE in while_conditional.
-    absl::flat_hash_map<int64,
-                        absl::InlinedVector<HloInstruction*, 1>>::iterator it =
-        invariant_conditional_gte_index_to_inst.find(index);
+    auto it = invariant_conditional_gte_index_to_inst.find(index);
     if (it == invariant_conditional_gte_index_to_inst.end()) {
       continue;
     }
