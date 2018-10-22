@@ -250,6 +250,7 @@ bool ParseTypeValue(const string& key, PyObject* py_value, TF_Status* status,
   tensorflow::Safe_PyObjectPtr py_type_enum(
       PyObject_GetAttrString(py_value, "_type_enum"));
   if (py_type_enum == nullptr) {
+    PyErr_Clear();
     TF_SetStatus(
         status, TF_INVALID_ARGUMENT,
         tensorflow::strings::StrCat("Expecting a DType.dtype for attr ", key,
@@ -795,6 +796,13 @@ int MaybeRaiseExceptionFromTFStatus(TF_Status* status, PyObject* exception) {
     if (exception_class != nullptr) {
       tensorflow::Safe_PyObjectPtr val(
           Py_BuildValue("si", msg, TF_GetCode(status)));
+      if (PyErr_Occurred()) {
+        // NOTE: This hides the actual error (i.e. the reason `status` was not
+        // TF_OK), but there is nothing we can do at this point since we can't
+        // generate a reasonable error from the status.
+        // Consider adding a message explaining this.
+        return -1;
+      }
       PyErr_SetObject(exception_class, val.get());
       return -1;
     } else {
