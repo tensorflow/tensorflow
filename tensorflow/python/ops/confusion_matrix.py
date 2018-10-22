@@ -92,8 +92,7 @@ def remove_squeezable_dimensions(
 
 @tf_export(
     'math.confusion_matrix',
-    v1=['math.confusion_matrix', 'train.confusion_matrix',
-        'confusion_matrix'])
+    v1=['math.confusion_matrix', 'confusion_matrix'])
 @deprecation.deprecated_endpoints('confusion_matrix', 'train.confusion_matrix')
 def confusion_matrix(labels, predictions, num_classes=None, dtype=dtypes.int32,
                      name=None, weights=None):
