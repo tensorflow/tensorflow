@@ -135,9 +135,5 @@ tf_py_test(
         "//tensorflow/python:training",
     ],
     main = "python/training/slurm_cluster_resolver_test.py",
-    tags = [
-        "manual",  # TODO(b/117992844): Flaky.
-        "no_oss",
-        "notap",
-    ],
+    tags = [],
 )
