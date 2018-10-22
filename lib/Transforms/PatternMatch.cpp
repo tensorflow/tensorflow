@@ -45,6 +45,10 @@ bool PatternBenefit::operator!=(const PatternBenefit& other) {
   return !(*this == other);
 }
 
+//===----------------------------------------------------------------------===//
+// Pattern implementation
+//===----------------------------------------------------------------------===//
+
 Pattern::Pattern(OperationName rootKind, Optional<PatternBenefit> staticBenefit)
     : rootKind(rootKind), staticBenefit(staticBenefit) {}
 
@@ -58,11 +62,11 @@ Optional<PatternBenefit> Pattern::getStaticBenefit() const {
 OperationName Pattern::getRootKind() const { return rootKind; }
 
 void Pattern::rewrite(Operation *op, std::unique_ptr<PatternState> state,
-                      FuncBuilder &builder) const {
-  rewrite(op, builder);
+                      PatternRewriter &rewriter) const {
+  rewrite(op, rewriter);
 }
 
-void Pattern::rewrite(Operation *op, FuncBuilder &builder) const {
+void Pattern::rewrite(Operation *op, PatternRewriter &rewriter) const {
   llvm_unreachable("need to implement one of the rewrite functions!");
 }
 
@@ -94,16 +98,28 @@ Pattern::matchSuccess(std::unique_ptr<PatternState> state) const {
   return matchSuccess(benefit.getValue(), std::move(state));
 }
 
+//===----------------------------------------------------------------------===//
+// PatternRewriter implementation
+//===----------------------------------------------------------------------===//
+
+PatternRewriter::~PatternRewriter() {
+  // Out of line to provide a vtable anchor for the class.
+}
+
 /// This method is used as the final replacement hook for patterns that match
 /// a single result value.  In addition to replacing and removing the
 /// specified operation, clients can specify a list of other nodes that this
 /// replacement may make (perhaps transitively) dead.  If any of those ops are
 /// dead, this will remove them as well.
-void Pattern::replaceSingleResultOp(
-    Operation *op, SSAValue *newValue,
-    ArrayRef<SSAValue *> opsToRemoveIfDead) const {
+void PatternRewriter::replaceSingleResultOp(
+    Operation *op, SSAValue *newValue, ArrayRef<SSAValue *> opsToRemoveIfDead) {
+  // Notify the rewriter subclass that we're about to replace this root.
+  notifyRootReplaced(op);
+
   assert(op->getNumResults() == 1 && "op isn't a SingleResultOp!");
   op->getResult(0)->replaceAllUsesWith(newValue);
+
+  notifyOperationRemoved(op);
 
   // TODO: This shouldn't be statement specific.
   cast<OperationStmt>(op)->eraseFromBlock();
@@ -113,6 +129,10 @@ void Pattern::replaceSingleResultOp(
   // so they can be removed from worklists etc (needs a callback of some
   // sort).
 }
+
+//===----------------------------------------------------------------------===//
+// PatternMatcher implementation
+//===----------------------------------------------------------------------===//
 
 /// Find the highest benefit pattern available in the pattern set for the DAG
 /// rooted at the specified node.  This returns the pattern if found, or null
