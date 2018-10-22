@@ -58,7 +58,7 @@ std::string GetDebugName(const HloInstruction*);
 
 // Convert a poplar/poplibs exception to a Tensorflow error Status
 Status PoplarExceptionToTensorflowStatus(const std::string& prefix,
-                                         const std::logic_error& e);
+                                         const std::exception& e);
 
 StatusOr<poplin::ConvParams> GetConvolutionParameters(
     const HloInstruction* operand_op, const HloInstruction* conv_op,

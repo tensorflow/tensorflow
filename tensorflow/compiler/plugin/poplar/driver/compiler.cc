@@ -354,7 +354,7 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::RunBackend(
   } else {
     try {
       TF_RETURN_IF_ERROR(entry->AcceptOrdered(&visitor, instruction_order));
-    } catch (const std::logic_error& e) {
+    } catch (const std::exception& e) {
       return PoplarExceptionToTensorflowStatus("[Build graph] ", e);
     }
 
@@ -390,7 +390,7 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::RunBackend(
         };
 
         engine.reset(new poplar::Engine(graph, progs, opts, progress_logging));
-      } catch (const std::logic_error& e) {
+      } catch (const std::exception& e) {
         return PoplarExceptionToTensorflowStatus("[Compile engine] ", e);
       }
     }
@@ -410,7 +410,7 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::RunBackend(
         } else {
           rep.serialize(stream, poplar::SerializationFormat::JSON);
         }
-      } catch (const std::logic_error& e) {
+      } catch (const std::exception& e) {
         return PoplarExceptionToTensorflowStatus("[Compiler report] ", e);
       }
     }

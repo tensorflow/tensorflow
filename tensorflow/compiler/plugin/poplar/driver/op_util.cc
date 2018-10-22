@@ -267,7 +267,7 @@ std::string GetTensorMappingJson(const poplar::Graph& graph,
 }
 
 Status PoplarExceptionToTensorflowStatus(const std::string& prefix,
-                                         const std::logic_error& e) {
+                                         const std::exception& e) {
   /* NOTE: Reduce this list if/when Poplar errors are subclassed */
   try {
     std::rethrow_exception(std::current_exception());
