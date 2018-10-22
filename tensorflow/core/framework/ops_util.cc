@@ -17,7 +17,7 @@ limitations under the License.
 #include <cmath>
 
 #include "tensorflow/core/framework/attr_value.pb.h"
-#include "tensorflow/core/kernels/ops_util.h"
+#include "tensorflow/core/framework/ops_util.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/util/padding.h"

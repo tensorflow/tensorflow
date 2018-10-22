@@ -852,6 +852,7 @@ tf_cuda_library(
         "framework/op_def_builder.h",
         "framework/op_def_util.h",
         "framework/op_kernel.h",
+        "framework/ops_util.h",
         "framework/partial_tensor_shape.h",
         "framework/queue_interface.h",
         "framework/reader_interface.h",
