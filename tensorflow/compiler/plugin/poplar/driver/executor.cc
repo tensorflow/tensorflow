@@ -414,6 +414,14 @@ Status PoplarExecutor::ConfigurePoplarDevice(
       conv_options_.set(opt.option(), opt.value());
     }
 
+    option_flags_.list([](const std::string& opt, const std::string& val) {
+      VLOG(1) << "Engine option: " << opt << " = " << val;
+    });
+
+    conv_options_.list([](const std::string& opt, const std::string& val) {
+      VLOG(1) << "Convolution option: " << opt << " = " << val;
+    });
+
     // Cache Target hash
     std::vector<int64> poplar_target;
     const auto& target = poplar_device_.getTarget();
