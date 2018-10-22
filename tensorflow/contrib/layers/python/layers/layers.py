@@ -1823,8 +1823,8 @@ def fully_connected(inputs,
     ValueError: If x has rank less than 2 or if its last dimension is not set.
   """
   if not isinstance(num_outputs, six.integer_types):
-    raise ValueError('num_outputs should be int or long, got %s.' %
-                     (num_outputs,))
+    raise ValueError('num_outputs type should be one of %s, got %s.' % (
+        list(six.integer_types), type(num_outputs)))
 
   layer_variable_getter = _build_variable_getter({
       'bias': 'biases',
