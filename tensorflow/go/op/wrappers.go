@@ -515,6 +515,8 @@ func QuantizeAndDequantizeV2RangeGiven(value bool) QuantizeAndDequantizeV2Attr {
 //
 // output = round(clamp(value, input_min, input_max) * scale_factor) / scale_factor.
 //
+// The above round function uses half to even rounding.
+//
 //
 // Arguments:
 //	input: Tensor to quantize and then dequantize.
@@ -5397,6 +5399,21 @@ func EditDistance(scope *Scope, hypothesis_indices tf.Output, hypothesis_values 
 	return op.Output(0)
 }
 
+// Returns 0 if x == 0, and x * log(y) otherwise, elementwise.
+func Xlogy(scope *Scope, x tf.Output, y tf.Output) (z tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "Xlogy",
+		Input: []tf.Input{
+			x, y,
+		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
 // DepthwiseConv2dNativeBackpropInputAttr is an optional argument to DepthwiseConv2dNativeBackpropInput.
 type DepthwiseConv2dNativeBackpropInputAttr func(optionalAttr)
 
@@ -6017,6 +6034,23 @@ func ReaderNumWorkUnitsCompletedV2(scope *Scope, reader_handle tf.Output) (units
 		Input: []tf.Input{
 			reader_handle,
 		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// Creates a dataset that contains the elements of `input_dataset` ignoring errors.
+func ExperimentalIgnoreErrorsDataset(scope *Scope, input_dataset tf.Output, output_types []tf.DataType, output_shapes []tf.Shape) (handle tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"output_types": output_types, "output_shapes": output_shapes}
+	opspec := tf.OpSpec{
+		Type: "ExperimentalIgnoreErrorsDataset",
+		Input: []tf.Input{
+			input_dataset,
+		},
+		Attrs: attrs,
 	}
 	op := scope.AddOperation(opspec)
 	return op.Output(0)
@@ -6856,8 +6890,7 @@ func QuantizedAvgPool(scope *Scope, input tf.Output, min_input tf.Output, max_in
 	return op.Output(0), op.Output(1), op.Output(2)
 }
 
-// Extract `patches` from `input` and put them in the "depth" output
-// dimension. 3D extension of `extract_image_patches`.
+// Extract `patches` from `input` and put them in the "depth" output dimension. 3D extension of `extract_image_patches`.
 //
 // Arguments:
 //	input: 5-D Tensor with shape `[batch, in_planes, in_rows, in_cols, depth]`.
@@ -7499,6 +7532,44 @@ func MultiDeviceIteratorGetNextFromShard(scope *Scope, multi_device_iterator tf.
 	return components
 }
 
+// LeakyReluGradAttr is an optional argument to LeakyReluGrad.
+type LeakyReluGradAttr func(optionalAttr)
+
+// LeakyReluGradAlpha sets the optional alpha attribute to value.
+// If not specified, defaults to 0.2
+func LeakyReluGradAlpha(value float32) LeakyReluGradAttr {
+	return func(m optionalAttr) {
+		m["alpha"] = value
+	}
+}
+
+// Computes rectified linear gradients for a LeakyRelu operation.
+//
+// Arguments:
+//	gradients: The backpropagated gradients to the corresponding LeakyRelu operation.
+//	features: The features passed as input to the corresponding LeakyRelu operation,
+// OR the outputs of that operation (both work equivalently).
+//
+// Returns `gradients * (features > 0) + alpha * gradients * (featurs <= 0)`.
+func LeakyReluGrad(scope *Scope, gradients tf.Output, features tf.Output, optional ...LeakyReluGradAttr) (backprops tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "LeakyReluGrad",
+		Input: []tf.Input{
+			gradients, features,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
 // Deprecated. Use TensorArrayGradV3
 //
 // DEPRECATED at GraphDef version 26: Use TensorArrayWriteV3
@@ -7511,6 +7582,37 @@ func TensorArrayWriteV2(scope *Scope, handle tf.Output, index tf.Output, value t
 		Input: []tf.Input{
 			handle, index, value, flow_in,
 		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// LeakyReluAttr is an optional argument to LeakyRelu.
+type LeakyReluAttr func(optionalAttr)
+
+// LeakyReluAlpha sets the optional alpha attribute to value.
+// If not specified, defaults to 0.2
+func LeakyReluAlpha(value float32) LeakyReluAttr {
+	return func(m optionalAttr) {
+		m["alpha"] = value
+	}
+}
+
+// Computes rectified linear: `max(features, features * alpha)`.
+func LeakyRelu(scope *Scope, features tf.Output, optional ...LeakyReluAttr) (activations tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "LeakyRelu",
+		Input: []tf.Input{
+			features,
+		},
+		Attrs: attrs,
 	}
 	op := scope.AddOperation(opspec)
 	return op.Output(0)
@@ -7551,6 +7653,101 @@ func Relu6(scope *Scope, features tf.Output) (activations tf.Output) {
 	}
 	op := scope.AddOperation(opspec)
 	return op.Output(0)
+}
+
+// SdcaOptimizerV2Attr is an optional argument to SdcaOptimizerV2.
+type SdcaOptimizerV2Attr func(optionalAttr)
+
+// SdcaOptimizerV2Adaptive sets the optional adaptive attribute to value.
+//
+// value: Whether to use Adaptive SDCA for the inner loop.
+// If not specified, defaults to true
+func SdcaOptimizerV2Adaptive(value bool) SdcaOptimizerV2Attr {
+	return func(m optionalAttr) {
+		m["adaptive"] = value
+	}
+}
+
+// Distributed version of Stochastic Dual Coordinate Ascent (SDCA) optimizer for
+//
+// linear models with L1 + L2 regularization. As global optimization objective is
+// strongly-convex, the optimizer optimizes the dual objective at each step. The
+// optimizer applies each update one example at a time. Examples are sampled
+// uniformly, and the optimizer is learning rate free and enjoys linear convergence
+// rate.
+//
+// [Proximal Stochastic Dual Coordinate Ascent](http://arxiv.org/pdf/1211.2717v1.pdf).<br>
+// Shai Shalev-Shwartz, Tong Zhang. 2012
+//
+// $$Loss Objective = \sum f_{i} (wx_{i}) + (l2 / 2) * |w|^2 + l1 * |w|$$
+//
+// [Adding vs. Averaging in Distributed Primal-Dual Optimization](http://arxiv.org/abs/1502.03508).<br>
+// Chenxin Ma, Virginia Smith, Martin Jaggi, Michael I. Jordan,
+// Peter Richtarik, Martin Takac. 2015
+//
+// [Stochastic Dual Coordinate Ascent with Adaptive Probabilities](https://arxiv.org/abs/1502.08053).<br>
+// Dominik Csiba, Zheng Qu, Peter Richtarik. 2015
+//
+// Arguments:
+//	sparse_example_indices: a list of vectors which contain example indices.
+//	sparse_feature_indices: a list of vectors which contain feature indices.
+//	sparse_feature_values: a list of vectors which contains feature value
+// associated with each feature group.
+//	dense_features: a list of matrices which contains the dense feature values.
+//	example_weights: a vector which contains the weight associated with each
+// example.
+//	example_labels: a vector which contains the label/target associated with each
+// example.
+//	sparse_indices: a list of vectors where each value is the indices which has
+// corresponding weights in sparse_weights. This field maybe omitted for the
+// dense approach.
+//	sparse_weights: a list of vectors where each value is the weight associated with
+// a sparse feature group.
+//	dense_weights: a list of vectors where the values are the weights associated
+// with a dense feature group.
+//	example_state_data: a list of vectors containing the example state data.
+//	loss_type: Type of the primal loss. Currently SdcaSolver supports logistic,
+// squared and hinge losses.
+//	l1: Symmetric l1 regularization strength.
+//	l2: Symmetric l2 regularization strength.
+//	num_loss_partitions: Number of partitions of the global loss function.
+//	num_inner_iterations: Number of iterations per mini-batch.
+//
+// Returns a list of vectors containing the updated example state
+// data.a list of vectors where each value is the delta
+// weights associated with a sparse feature group.a list of vectors where the values are the delta
+// weights associated with a dense feature group.
+func SdcaOptimizerV2(scope *Scope, sparse_example_indices []tf.Output, sparse_feature_indices []tf.Output, sparse_feature_values []tf.Output, dense_features []tf.Output, example_weights tf.Output, example_labels tf.Output, sparse_indices []tf.Output, sparse_weights []tf.Output, dense_weights []tf.Output, example_state_data tf.Output, loss_type string, l1 float32, l2 float32, num_loss_partitions int64, num_inner_iterations int64, optional ...SdcaOptimizerV2Attr) (out_example_state_data tf.Output, out_delta_sparse_weights []tf.Output, out_delta_dense_weights []tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"loss_type": loss_type, "l1": l1, "l2": l2, "num_loss_partitions": num_loss_partitions, "num_inner_iterations": num_inner_iterations}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "SdcaOptimizerV2",
+		Input: []tf.Input{
+			tf.OutputList(sparse_example_indices), tf.OutputList(sparse_feature_indices), tf.OutputList(sparse_feature_values), tf.OutputList(dense_features), example_weights, example_labels, tf.OutputList(sparse_indices), tf.OutputList(sparse_weights), tf.OutputList(dense_weights), example_state_data,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	if scope.Err() != nil {
+		return
+	}
+	var idx int
+	var err error
+	out_example_state_data = op.Output(idx)
+	if out_delta_sparse_weights, idx, err = makeOutputList(op, idx, "out_delta_sparse_weights"); err != nil {
+		scope.UpdateErr("SdcaOptimizerV2", err)
+		return
+	}
+	if out_delta_dense_weights, idx, err = makeOutputList(op, idx, "out_delta_dense_weights"); err != nil {
+		scope.UpdateErr("SdcaOptimizerV2", err)
+		return
+	}
+	return out_example_state_data, out_delta_sparse_weights, out_delta_dense_weights
 }
 
 // Computes the minimum along segments of a tensor.
@@ -7891,7 +8088,7 @@ func ConcatOffset(scope *Scope, concat_dim tf.Output, shape []tf.Output) (offset
 //
 // where
 //
-// \\(gamma(a, x) = int_{0}^{x} t^{a-1} exp(-t) dt\\)
+// \\(gamma(a, x) = \\int_{0}^{x} t^{a-1} exp(-t) dt\\)
 //
 // is the lower incomplete Gamma function.
 //
@@ -8563,6 +8760,21 @@ func BiasAddGrad(scope *Scope, out_backprop tf.Output, optional ...BiasAddGradAt
 			out_backprop,
 		},
 		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// Returns 0 if x == 0, and x / y otherwise, elementwise.
+func Xdivy(scope *Scope, x tf.Output, y tf.Output) (z tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "Xdivy",
+		Input: []tf.Input{
+			x, y,
+		},
 	}
 	op := scope.AddOperation(opspec)
 	return op.Output(0)
@@ -10001,6 +10213,72 @@ func ResizeBicubic(scope *Scope, images tf.Output, size tf.Output, optional ...R
 	}
 	op := scope.AddOperation(opspec)
 	return op.Output(0)
+}
+
+// Gather ragged slices from `params` axis `0` according to `indices`.
+//
+// Outputs a `RaggedTensor` output composed from `output_dense_values` and
+// `output_nested_splits`, such that:
+//
+// ```python
+// output.shape = indices.shape + params.shape[1:]
+// output.ragged_rank = indices.shape.ndims + params.ragged_rank
+// output[i...j, d0...dn] = params[indices[i...j], d0...dn]
+// ```
+//
+// where
+//
+// * `params =
+//    ragged.from_nested_row_splits(params_dense_values, params_nested_splits)`
+//    provides the values that should be gathered.
+// * `indices` ia a dense tensor with dtype `int32` or `int64`, indicating which
+//    values should be gathered.
+// * `output =
+//    ragged.from_nested_row_splits(output_dense_values, output_nested_splits)`
+//    is the output tensor.
+//
+// (Note: This c++ op is used to implement the higher-level python
+// `tf.ragged.gather` op, which also supports ragged indices.)
+//
+//
+// Arguments:
+//	params_nested_splits: The `nested_row_splits` tensors that define the row-partitioning for the
+// `params` RaggedTensor input.
+//	params_dense_values: The `inner_values` for the `params` RaggedTensor. There was a terminology change
+// at the python level from dense_values to inner_values, so dense_values is the
+// deprecated name.
+//	indices: Indices in the outermost dimension of `params` of the values that should be
+// gathered.
+//	OUTPUT_RAGGED_RANK: The ragged rank of the output RaggedTensor. `output_nested_splits` will contain
+// this number of `row_splits` tensors. This value should equal
+// `indices.shape.ndims + params.ragged_rank - 1`.
+//
+// Returns The `nested_row_splits` tensors that define the row-partitioning for the
+// returned RaggedTensor.The `inner_values` for the returned RaggedTensor.
+func RaggedGather(scope *Scope, params_nested_splits []tf.Output, params_dense_values tf.Output, indices tf.Output, OUTPUT_RAGGED_RANK int64) (output_nested_splits []tf.Output, output_dense_values tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"OUTPUT_RAGGED_RANK": OUTPUT_RAGGED_RANK}
+	opspec := tf.OpSpec{
+		Type: "RaggedGather",
+		Input: []tf.Input{
+			tf.OutputList(params_nested_splits), params_dense_values, indices,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	if scope.Err() != nil {
+		return
+	}
+	var idx int
+	var err error
+	if output_nested_splits, idx, err = makeOutputList(op, idx, "output_nested_splits"); err != nil {
+		scope.UpdateErr("RaggedGather", err)
+		return
+	}
+	output_dense_values = op.Output(idx)
+	return output_nested_splits, output_dense_values
 }
 
 // Greedily selects a subset of bounding boxes in descending order of score,
@@ -12391,6 +12669,33 @@ func AccumulateNV2(scope *Scope, inputs []tf.Output, shape tf.Shape) (sum tf.Out
 	return op.Output(0)
 }
 
+// Outputs deterministic pseudorandom random integers from a uniform distribution.
+//
+// The generated values follow a uniform distribution in the range `[minval, maxval)`.
+//
+// The outputs are a deterministic function of `shape`, `seed`, `minval`, and `maxval`.
+//
+// Arguments:
+//	shape: The shape of the output tensor.
+//	seed: 2 seeds (shape [2]).
+//	minval: Minimum value (inclusive, scalar).
+//	maxval: Maximum value (exclusive, scalar).
+//
+// Returns Random values with specified shape.
+func StatelessRandomUniformInt(scope *Scope, shape tf.Output, seed tf.Output, minval tf.Output, maxval tf.Output) (output tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "StatelessRandomUniformInt",
+		Input: []tf.Input{
+			shape, seed, minval, maxval,
+		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
 // StatelessTruncatedNormalAttr is an optional argument to StatelessTruncatedNormal.
 type StatelessTruncatedNormalAttr func(optionalAttr)
 
@@ -12567,6 +12872,32 @@ func StatelessRandomNormal(scope *Scope, shape tf.Output, seed tf.Output, option
 			shape, seed,
 		},
 		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// Determine the script codes of a given tensor of Unicode integer code points.
+//
+// This operation converts Unicode code points to script codes corresponding to
+// each code point. Script codes correspond to International Components for
+// Unicode (ICU) UScriptCode values. See http://icu-project.org/apiref/icu4c/uscript_8h.html.
+// Returns -1 (USCRIPT_INVALID_CODE) for invalid codepoints. Output shape will
+// match input shape.
+//
+// Arguments:
+//	input: A Tensor of int32 Unicode code points.
+//
+// Returns A Tensor of int32 script codes corresponding to each input code point.
+func UnicodeScript(scope *Scope, input tf.Output) (output tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "UnicodeScript",
+		Input: []tf.Input{
+			input,
+		},
 	}
 	op := scope.AddOperation(opspec)
 	return op.Output(0)
@@ -12947,6 +13278,63 @@ func SparseMatMul(scope *Scope, a tf.Output, b tf.Output, optional ...SparseMatM
 		Input: []tf.Input{
 			a, b,
 		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// ExperimentalThreadPoolHandleAttr is an optional argument to ExperimentalThreadPoolHandle.
+type ExperimentalThreadPoolHandleAttr func(optionalAttr)
+
+// ExperimentalThreadPoolHandleMaxIntraOpParallelism sets the optional max_intra_op_parallelism attribute to value.
+//
+// value: The maximum degree of parallelism to use within operations that execute on this
+// threadpool.
+// If not specified, defaults to 1
+func ExperimentalThreadPoolHandleMaxIntraOpParallelism(value int64) ExperimentalThreadPoolHandleAttr {
+	return func(m optionalAttr) {
+		m["max_intra_op_parallelism"] = value
+	}
+}
+
+// ExperimentalThreadPoolHandleContainer sets the optional container attribute to value.
+// If not specified, defaults to ""
+func ExperimentalThreadPoolHandleContainer(value string) ExperimentalThreadPoolHandleAttr {
+	return func(m optionalAttr) {
+		m["container"] = value
+	}
+}
+
+// ExperimentalThreadPoolHandleSharedName sets the optional shared_name attribute to value.
+// If not specified, defaults to ""
+func ExperimentalThreadPoolHandleSharedName(value string) ExperimentalThreadPoolHandleAttr {
+	return func(m optionalAttr) {
+		m["shared_name"] = value
+	}
+}
+
+// Creates a dataset that uses a custom thread pool to compute `input_dataset`.
+//
+// Arguments:
+//	num_threads: The number of threads in the thread pool.
+//	display_name: A human-readable name for the threads that may be visible in some
+// visualizations.
+// threadpool.
+//
+// Returns A resource that can be consumed by one or more ExperimentalThreadPoolDataset
+// ops.
+func ExperimentalThreadPoolHandle(scope *Scope, num_threads int64, display_name string, optional ...ExperimentalThreadPoolHandleAttr) (handle tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"num_threads": num_threads, "display_name": display_name}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "ExperimentalThreadPoolHandle",
+
 		Attrs: attrs,
 	}
 	op := scope.AddOperation(opspec)
@@ -13887,6 +14275,12 @@ func FixedLengthRecordReaderV2(scope *Scope, record_bytes int64, optional ...Fix
 type StringLengthAttr func(optionalAttr)
 
 // StringLengthUnit sets the optional unit attribute to value.
+//
+// value: The unit that is counted to compute string length.  One of: `"BYTE"` (for
+// the number of bytes in each string) or `"UTF8_CHAR"` (for the number of UTF-8
+// encoded Unicode code points in each string).  Results are undefined
+// if `unit=UTF8_CHAR` and the `input` strings do not contain structurally
+// valid UTF-8.
 // If not specified, defaults to "BYTE"
 func StringLengthUnit(value string) StringLengthAttr {
 	return func(m optionalAttr) {
@@ -16294,6 +16688,21 @@ func MaxPool3DGrad(scope *Scope, orig_input tf.Output, orig_output tf.Output, gr
 			orig_input, orig_output, grad,
 		},
 		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// Returns the name of the device on which `resource` has been placed.
+func ExperimentalIteratorGetDevice(scope *Scope, resource tf.Output) (device tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "ExperimentalIteratorGetDevice",
+		Input: []tf.Input{
+			resource,
+		},
 	}
 	op := scope.AddOperation(opspec)
 	return op.Output(0)
@@ -19854,7 +20263,7 @@ func QuantizeV2RoundMode(value string) QuantizeV2Attr {
 //
 // ```
 // out[i] = (in[i] - min_range) * range(T) / (max_range - min_range)
-// if T == qint8, out[i] -= (range(T) + 1) / 2.0
+// if T == qint8: out[i] -= (range(T) + 1) / 2.0
 // ```
 //
 // here `range(T) = numeric_limits<T>::max() - numeric_limits<T>::min()`
@@ -20219,6 +20628,23 @@ func TensorArrayCloseV3(scope *Scope, handle tf.Output) (o *tf.Operation) {
 		},
 	}
 	return scope.AddOperation(opspec)
+}
+
+// Creates a dataset that contains the unique elements of `input_dataset`.
+func ExperimentalUniqueDataset(scope *Scope, input_dataset tf.Output, output_types []tf.DataType, output_shapes []tf.Shape) (handle tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"output_types": output_types, "output_shapes": output_shapes}
+	opspec := tf.OpSpec{
+		Type: "ExperimentalUniqueDataset",
+		Input: []tf.Input{
+			input_dataset,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
 }
 
 // Saves the input tensors to disk.
@@ -22329,6 +22755,29 @@ func SegmentMin(scope *Scope, data tf.Output, segment_ids tf.Output) (output tf.
 	}
 	op := scope.AddOperation(opspec)
 	return op.Output(0)
+}
+
+// Removes keys and its associated values from a table.
+//
+// The tensor `keys` must of the same type as the keys of the table. Keys not
+// already in the table are silently ignored.
+//
+// Arguments:
+//	table_handle: Handle to the table.
+//	keys: Any shape.  Keys of the elements to remove.
+//
+// Returns the created operation.
+func LookupTableRemoveV2(scope *Scope, table_handle tf.Output, keys tf.Output) (o *tf.Operation) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "LookupTableRemoveV2",
+		Input: []tf.Input{
+			table_handle, keys,
+		},
+	}
+	return scope.AddOperation(opspec)
 }
 
 // Computes the sum along segments of a tensor.
@@ -24519,7 +24968,7 @@ func DequantizeMode(value string) DequantizeAttr {
 // In 'MIN_COMBINED' mode, each value of the tensor will undergo the following:
 //
 // ```
-// if T == qint8, in[i] += (range(T) + 1)/ 2.0
+// if T == qint8: in[i] += (range(T) + 1)/ 2.0
 // out[i] = min_range + (in[i]* (max_range - min_range) / range(T))
 // ```
 // here `range(T) = numeric_limits<T>::max() - numeric_limits<T>::min()`
@@ -25573,6 +26022,47 @@ func TensorListScatter(scope *Scope, tensor tf.Output, indices tf.Output, elemen
 	return op.Output(0)
 }
 
+// Returns a `RaggedTensor` containing the specified sequences of numbers.
+//
+//
+// Returns a `RaggedTensor` `result` composed from `rt_dense_values` and
+// `rt_nested_splits`, such that
+// `result[i] = range(starts[i], limits[i], deltas[i])`.
+//
+// ```python
+// >>> (rt_nested_splits, rt_dense_values) = gen_ragged_ops.ragged_range(
+// ...     starts=[2, 5, 8], limits=[3, 5, 12], deltas=1)
+// >>> result = ragged.from_nested_row_splits(rt_dense_values, rt_nested_splits)
+// >>> print result.eval().tolist()
+// [[2],               # result[0] = range(2, 3)
+//  [],                # result[1] = range(5, 5)
+//  [8, 9, 10, 11]]    # result[2] = range(8, 12)
+// ```
+//
+// The input tensors `starts`, `limits`, and `deltas` may be scalars or vectors.
+// The vector inputs must all have the same size.  Scalar inputs are broadcast
+// to match the size of the vector inputs.
+//
+// Arguments:
+//	starts: The starts of each range.
+//	limits: The limits of each range.
+//	deltas: The deltas of each range.
+//
+// Returns The `row_splits` for the returned `RaggedTensor`.The `inner_values` for the returned `RaggedTensor`.
+func RaggedRange(scope *Scope, starts tf.Output, limits tf.Output, deltas tf.Output) (rt_nested_splits tf.Output, rt_dense_values tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "RaggedRange",
+		Input: []tf.Input{
+			starts, limits, deltas,
+		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0), op.Output(1)
+}
+
 // Deprecated, use python implementation tf.linalg.matrix_exponential.
 //
 // DEPRECATED at GraphDef version 27: Use Python implementation tf.linalg.matrix_exponential instead.
@@ -25953,6 +26443,46 @@ func DatasetToGraph(scope *Scope, input_dataset tf.Output) (graph tf.Output) {
 		Type: "DatasetToGraph",
 		Input: []tf.Input{
 			input_dataset,
+		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// Computes the matrix square root of one or more square matrices:
+//
+// matmul(sqrtm(A), sqrtm(A)) = A
+//
+// The input matrix should be invertible. If the input matrix is real, it should
+// have no eigenvalues which are real and negative (pairs of complex conjugate
+// eigenvalues are allowed).
+//
+// The matrix square root is computed by first reducing the matrix to
+// quasi-triangular form with the real Schur decomposition. The square root
+// of the quasi-triangular matrix is then computed directly. Details of
+// the algorithm can be found in: Nicholas J. Higham, "Computing real
+// square roots of a real matrix", Linear Algebra Appl., 1987.
+//
+// The input is a tensor of shape `[..., M, M]` whose inner-most 2 dimensions
+// form square matrices. The output is a tensor of the same shape as the input
+// containing the matrix square root for all input submatrices `[..., :, :]`.
+//
+// Arguments:
+//	input: Shape is `[..., M, M]`.
+//
+// Returns Shape is `[..., M, M]`.
+//
+// @compatibility(scipy)
+// Equivalent to scipy.linalg.sqrtm
+// @end_compatibility
+func MatrixSquareRoot(scope *Scope, input tf.Output) (output tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "MatrixSquareRoot",
+		Input: []tf.Input{
+			input,
 		},
 	}
 	op := scope.AddOperation(opspec)
@@ -28553,6 +29083,63 @@ func FakeParam(scope *Scope, dtype tf.DataType, shape tf.Shape) (output tf.Outpu
 	return op.Output(0)
 }
 
+// A substitute for `InterleaveDataset` on a fixed list of `N` datasets.
+//
+// Arguments:
+//	selector_input_dataset: A dataset of scalar `DT_INT64` elements that determines which of the
+// `N` data inputs should produce the next output element.
+//	data_input_datasets: `N` datasets with the same type that will be interleaved according to
+// the values of `selector_input_dataset`.
+//
+//
+func ExperimentalDirectedInterleaveDataset(scope *Scope, selector_input_dataset tf.Output, data_input_datasets []tf.Output, output_types []tf.DataType, output_shapes []tf.Shape) (handle tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"output_types": output_types, "output_shapes": output_shapes}
+	opspec := tf.OpSpec{
+		Type: "ExperimentalDirectedInterleaveDataset",
+		Input: []tf.Input{
+			selector_input_dataset, tf.OutputList(data_input_datasets),
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// Gets the next element from a FunctionBufferingResource.
+//
+// Arguments:
+//	function_buffer_resource: The FunctionBufferingResource handle.
+//	output_types: The type list for the return values.
+//
+// Returns A list of return values.
+func ExperimentalFunctionBufferingResourceGetNext(scope *Scope, function_buffer_resource tf.Output, output_types []tf.DataType) (output []tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"output_types": output_types}
+	opspec := tf.OpSpec{
+		Type: "ExperimentalFunctionBufferingResourceGetNext",
+		Input: []tf.Input{
+			function_buffer_resource,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	if scope.Err() != nil {
+		return
+	}
+	var idx int
+	var err error
+	if output, idx, err = makeOutputList(op, idx, "output"); err != nil {
+		scope.UpdateErr("ExperimentalFunctionBufferingResourceGetNext", err)
+		return
+	}
+	return output
+}
+
 //     Adds v into specified rows of x.
 //
 //     Computes y = x; y[i, :] += v; return y.
@@ -28848,6 +29435,25 @@ func StackPushV2(scope *Scope, handle tf.Output, elem tf.Output, optional ...Sta
 	return op.Output(0)
 }
 
+// Resets the FunctionBufferingResource.
+//
+// Arguments:
+//	function_buffer_resource: The FunctionBufferingResource handle.
+//
+// Returns the created operation.
+func ExperimentalFunctionBufferingResourceReset(scope *Scope, function_buffer_resource tf.Output) (o *tf.Operation) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "ExperimentalFunctionBufferingResourceReset",
+		Input: []tf.Input{
+			function_buffer_resource,
+		},
+	}
+	return scope.AddOperation(opspec)
+}
+
 // StringSplitV2Attr is an optional argument to StringSplitV2.
 type StringSplitV2Attr func(optionalAttr)
 
@@ -28908,6 +29514,29 @@ func StringSplitV2(scope *Scope, input tf.Output, sep tf.Output, optional ...Str
 	}
 	op := scope.AddOperation(opspec)
 	return op.Output(0), op.Output(1), op.Output(2)
+}
+
+// Creates a dataset that uses a custom thread pool to compute `input_dataset`.
+//
+// Arguments:
+//
+//	thread_pool: A resource produced by the ThreadPoolHandle op.
+//
+//
+func ExperimentalThreadPoolDataset(scope *Scope, input_dataset tf.Output, thread_pool tf.Output, output_types []tf.DataType, output_shapes []tf.Shape) (handle tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"output_types": output_types, "output_shapes": output_shapes}
+	opspec := tf.OpSpec{
+		Type: "ExperimentalThreadPoolDataset",
+		Input: []tf.Input{
+			input_dataset, thread_pool,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
 }
 
 // Computes softsign: `features / (abs(features) + 1)`.
@@ -29459,6 +30088,12 @@ func TensorArrayGradV2(scope *Scope, handle tf.Output, flow_in tf.Output, source
 type SubstrAttr func(optionalAttr)
 
 // SubstrUnit sets the optional unit attribute to value.
+//
+// value: The unit that is used to create the substring.  One of: `"BYTE"` (for
+// defining position and length by bytes) or `"UTF8_CHAR"` (for the UTF-8
+// encoded Unicode code points).  The default is `"BYTE"`. Results are undefined if
+// `unit=UTF8_CHAR` and the `input` strings do not contain structurally valid
+// UTF-8.
 // If not specified, defaults to "BYTE"
 func SubstrUnit(value string) SubstrAttr {
 	return func(m optionalAttr) {
