@@ -1654,9 +1654,6 @@ tensorflow::Status ConvertRangeOperator(
   op->inputs.push_back(node.input(2));
   op->outputs.push_back(node.name());
 
-  // For Flex mode. Please read the comments of the function.
-  RetainTensorFlowNodeDef(node, op);
-
   model->operators.emplace_back(op);
   return tensorflow::Status::OK();
 }

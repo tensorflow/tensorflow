@@ -510,9 +510,9 @@ TEST(OperatorKeyTest, TestFlexWithUnsupportedOp) {
 
 TEST(OperatorKeyTest, TestFlexWithPartiallySupportedOps) {
   // Test Toco-supported/TFLite-unsupported operators.
-  // TODO(ycling): The test will be broken if Range is implemented in TFLite.
-  // Find a more robust way to test the fallback logic.
-  auto op = absl::make_unique<RangeOperator>();
+  // TODO(ycling): The test will be broken if TensorFlowAssert is implemented in
+  // TFLite. Find a more robust way to test the fallback logic.
+  auto op = absl::make_unique<TensorFlowAssertOperator>();
 
   const auto ops_by_type = BuildOperatorByTypeMap();
 
@@ -521,21 +521,21 @@ TEST(OperatorKeyTest, TestFlexWithPartiallySupportedOps) {
     // will be exported.
     const auto key = details::GetOperatorKey(*op, ops_by_type, true);
     EXPECT_EQ(key.type, ::tflite::BuiltinOperator_CUSTOM);
-    EXPECT_EQ(key.custom_code, "Range");
+    EXPECT_EQ(key.custom_code, "Assert");
     EXPECT_EQ(key.version, 1);
     EXPECT_FALSE(key.is_flex_op);
   }
 
   ::tensorflow::NodeDef node_def;
-  node_def.set_name("Range");
-  node_def.set_op("Range");
+  node_def.set_name("TensorFlowAssert");
+  node_def.set_op("TensorFlowAssert");
   node_def.SerializeToString(&op->tensorflow_node_def);
 
   {
     // If NodeDef is retained in the Toco op, a Flex op will be exported.
     const auto key = details::GetOperatorKey(*op, ops_by_type, true);
     EXPECT_EQ(key.type, ::tflite::BuiltinOperator_CUSTOM);
-    EXPECT_EQ(key.custom_code, "FlexRange");
+    EXPECT_EQ(key.custom_code, "FlexAssert");
     EXPECT_EQ(key.version, 1);
     EXPECT_TRUE(key.is_flex_op);
   }

@@ -201,6 +201,7 @@ cc_library(
         "pad.cc",
         "pooling.cc",
         "pow.cc",
+        "range.cc",
         "reduce.cc",
         "relu1.cc",
         "reshape.cc",
@@ -1337,6 +1338,20 @@ tf_cc_test(
     name = "floor_mod_test",
     size = "small",
     srcs = ["floor_mod_test.cc"],
+    tags = ["tflite_not_portable_ios"],
+    deps = [
+        ":builtin_ops",
+        "//tensorflow/contrib/lite:builtin_op_data",
+        "//tensorflow/contrib/lite:framework",
+        "//tensorflow/contrib/lite/kernels:test_util",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+tf_cc_test(
+    name = "range_test",
+    size = "small",
+    srcs = ["range_test.cc"],
     tags = ["tflite_not_portable_ios"],
     deps = [
         ":builtin_ops",
