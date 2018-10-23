@@ -43,6 +43,7 @@ from tensorflow.python.keras.utils.generic_utils import to_snake_case  # pylint:
 from tensorflow.python.keras.utils.tf_utils import is_tensor_or_tensor_list  # pylint: disable=unused-import
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import init_ops
+from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variables as tf_variables
 from tensorflow.python.training.checkpointable import base as checkpointable
 from tensorflow.python.util import function_utils
@@ -619,10 +620,14 @@ class Layer(checkpointable.CheckpointableBase):
     # output, since it is output-specific.
     if self._activity_regularizer:
       output_list = nest.flatten(outputs)
-      for output in output_list:
-        with ops.name_scope('ActivityRegularizer'):
-          activity_regularization = self._activity_regularizer(output)
-        self.add_loss(activity_regularization, inputs=inputs)
+      with ops.name_scope('ActivityRegularizer'):
+        for output in output_list:
+          activity_loss = self._activity_regularizer(output)
+          batch_size = math_ops.cast(
+              array_ops.shape(output)[0], activity_loss.dtype)
+          # Make activity regularization strength batch-agnostic.
+          mean_activity_loss = activity_loss / batch_size
+          self.add_loss(mean_activity_loss, inputs=inputs)
 
   @doc_controls.for_subclass_implementers
   def call(self, inputs, **kwargs):  # pylint: disable=unused-argument
