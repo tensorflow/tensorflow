@@ -85,7 +85,6 @@ class DefunnedMiniModel(MiniModel):
     return super(DefunnedMiniModel, self).call(inputs, training=training)
 
 
-@test_util.with_c_shapes
 class FunctionTest(test.TestCase, parameterized.TestCase):
 
   def testBasic(self):
