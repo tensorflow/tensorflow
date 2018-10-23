@@ -2219,6 +2219,7 @@ py_library(
         ":array_ops",
         ":bitwise_ops",
         ":check_ops",
+        ":clip_ops",
         ":control_flow_grad",
         ":control_flow_ops",
         ":control_flow_util",
@@ -2227,6 +2228,7 @@ py_library(
         ":framework_ops",
         ":functional_ops",
         ":image_grad",
+        ":init_ops",
         ":linalg_grad",
         ":linalg_ops",
         ":logging_ops",
@@ -3196,6 +3198,25 @@ cuda_py_test(
         ":tensor_array_ops",
         ":test_ops",
         ":variable_scope",
+        "//third_party/py/numpy",
+    ],
+)
+
+cuda_py_test(
+    name = "gradients_mp_test",
+    size = "medium",
+    srcs = ["ops/gradients_mp_test.py"],
+    additional_deps = [
+        ":array_ops",
+        ":control_flow_ops",
+        ":framework_test_lib",
+        ":functional_ops",
+        ":gradients",
+        ":layers",
+        ":math_ops",
+        ":tensor_array_grad",
+        ":tensor_array_ops",
+        ":test_ops",
         "//third_party/py/numpy",
     ],
 )
