@@ -1587,7 +1587,8 @@ class Layer(checkpointable.CheckpointableBase):
     return cls(**config)
 
 
-@tf_export('keras.layers.InputSpec', 'layers.InputSpec')
+@tf_export(
+    'keras.layers.InputSpec', v1=['keras.layers.InputSpec', 'layers.InputSpec'])
 class InputSpec(object):
   """Specifies the ndim, dtype and shape of every input to a layer.
 
