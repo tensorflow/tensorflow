@@ -382,8 +382,7 @@ class GrowTreeEnsembleOp : public OpKernel {
         break;
       }
       case LearnerConfig::OBLIVIOUS_DECISION_TREE: {
-        FindBestSplitsPerPartitionOblivious(context, gains_list, splits_list,
-                                            &best_splits);
+        FindBestSplitOblivious(context, gains_list, splits_list, &best_splits);
         break;
       }
     }
@@ -475,10 +474,10 @@ class GrowTreeEnsembleOp : public OpKernel {
     }
   }
 
-  void FindBestSplitsPerPartitionOblivious(
-      OpKernelContext* const context, const OpInputList& gains_list,
-      const OpInputList& splits_list,
-      std::map<int32, SplitCandidate>* best_splits) {
+  void FindBestSplitOblivious(OpKernelContext* const context,
+                              const OpInputList& gains_list,
+                              const OpInputList& splits_list,
+                              std::map<int32, SplitCandidate>* best_splits) {
     // Find best split per partition going through every feature candidate.
     for (int64 handler_id = 0; handler_id < num_handlers_; ++handler_id) {
       const auto& gains = gains_list[handler_id].vec<float>();
@@ -651,6 +650,12 @@ class GrowTreeEnsembleOp : public OpKernel {
     if (learner_config_.growing_mode() ==
         boosted_trees::learner::LearnerConfig::WHOLE_TREE) {
       // No merging occurs when building a whole tree at a time.
+      return dest;
+    }
+
+    if (dest->leaf_case() == boosted_trees::trees::Leaf::LEAF_NOT_SET) {
+      // No merging is required. Just copy the source weights;
+      *dest = source;
       return dest;
     }
 
