@@ -217,7 +217,7 @@ def device_link(name, srcs):
             # Silence warning about including internal header.
             "__CUDA_INCLUDE_COMPILER_INTERNAL_HEADERS__",
             # Macros that need to be defined starting with CUDA 10.
-            "__NV_EXTRA_INITIALIZATION",
-            "__NV_EXTRA_FINALIZATION",
+            "__NV_EXTRA_INITIALIZATION=",
+            "__NV_EXTRA_FINALIZATION=",
         ],
     )
