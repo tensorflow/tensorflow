@@ -61,6 +61,7 @@ class IpuDevice : public XlaDevice {
         poplar_platform_(static_cast<xp::PoplarPlatform*>(platform)) {}
 
   Status Init(const tensorflow::IPUOptions& options) {
+    UseGpuDeviceInfo();
     return poplar_platform_->ConfigurePoplarDevice(ordinal_, options);
   }
 

@@ -12,9 +12,6 @@ BinaryOpsTest.testS64Comparisons # No S64
 PoolGradTest.testMaxPool # Tests MaxPoolGradGrad
 OutOfMemoryTest.testOutputOutOfMemory # Don't do out of memory yet
 WhileTest.testCountingLoopHandrolledC64 # C64
-EagerTest # Eager test crashing
-EagerFunctionTest # Eager function test crashing
-ExcessivePaddingTest # Eager test crashing
 CategoricalTest.testSamplingCorrectness # Failing due to input size to poplibs reduction
 Pooling3DTest.testMaxPoolGradValidPadding1_1_3d  # 3D grad_grad
 Pooling3DTest.testMaxPoolGradValidPadding2_1_6_3d  # 3D grad_grad
@@ -33,3 +30,31 @@ GatherTest.testHigherRank # Bad
 MatrixTriangularSolveOpTest.testBatch # Arithmetic precision?
 XlaOpsTest.testShiftRightLogical # using UINT32
 XlaOpsTest.testShiftRightArithmetic # using UINT32
+ScatterNdTest # scatter
+SegmentReductionOpsTest # scatter
+SparseToDenseTest # scatter
+VariableOpsTest.testScatterAdd # scatter
+VariableOpsTest.testScatterAddScalar
+VariableOpsTest.testScatterNdUpdateAddOps
+VariableOpsTest.testScatterNdAddOps
+VariableOpsTest.testScatterMulScalar
+VariableOpsTest.testScatterMul
+VariableOpsTest.testScatterUpdate
+VariableOpsTest.testScatterSubScalar
+VariableOpsTest.testScatterSub
+VariableOpsTest.testScatterMinScalar
+VariableOpsTest.testScatterMin
+VariableOpsTest.testScatterMaxScalar
+VariableOpsTest.testScatterMax
+VariableOpsTest.testScatterDivScalar
+VariableOpsTest.testScatterDiv
+EagerTest.testIdentityOnVariable # Copy back from device failing
+EagerTest.testAssignAddVariable
+EagerTest.testReadAssignRead
+EagerTest.testVariableGradient
+EagerTest.testMultipleVariableReads
+EagerTest.testAdam
+EagerTest.testAdamSparse
+EagerFunctionTest
+ExcessivePaddingTest.testAsFunctionInput
+ExcessivePaddingTest.testAsFunctionOutput
