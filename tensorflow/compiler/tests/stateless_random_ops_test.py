@@ -33,8 +33,11 @@ from tensorflow.python.platform import test
 class StatelessRandomOpsTest(xla_test.XLATestCase):
   """Test cases for stateless random-number generator operators."""
 
-  def _random_types(self):
-    return self.float_types & {dtypes.float32, dtypes.float64}
+  def _random_types(self, include_int=False):
+    allowed_types = {dtypes.float32, dtypes.float64}
+    if include_int:
+      allowed_types.update({dtypes.int32, dtypes.int64})
+    return self.all_tf_types & allowed_types
 
   def testDeterminism(self):
     # Stateless values should be equal iff the seeds are equal (roughly)
@@ -56,13 +59,16 @@ class StatelessRandomOpsTest(xla_test.XLATestCase):
 
   def testRandomUniformIsInRange(self):
     with self.cached_session() as sess, self.test_scope():
-      for dtype in self._random_types():
+      for dtype in self._random_types(include_int=True):
+        maxval = 1
+        if dtype.is_integer:
+          maxval = 100
         seed_t = array_ops.placeholder(dtypes.int32, shape=[2])
         x = stateless.stateless_random_uniform(
-            shape=[1000], seed=seed_t, dtype=dtype)
+            shape=[1000], seed=seed_t, maxval=maxval, dtype=dtype)
         y = sess.run(x, {seed_t: [0x12345678, 0xabcdef12]})
         self.assertTrue(np.all(y >= 0))
-        self.assertTrue(np.all(y < 1))
+        self.assertTrue(np.all(y < maxval))
 
   def _chi_squared(self, x, bins):
     """Pearson's Chi-squared test."""
@@ -75,12 +81,18 @@ class StatelessRandomOpsTest(xla_test.XLATestCase):
   def testDistributionOfStatelessRandomUniform(self):
     """Use Pearson's Chi-squared test to test for uniformity."""
     with self.cached_session() as sess, self.test_scope():
-      for dtype in self._random_types():
+      for dtype in self._random_types(include_int=True):
         seed_t = array_ops.placeholder(dtypes.int32, shape=[2])
         n = 1000
+        maxval = 1
+        if dtype.is_integer:
+          maxval = 100
         x = stateless.stateless_random_uniform(
-            shape=[n], seed=seed_t, dtype=dtype)
+            shape=[n], seed=seed_t, maxval=maxval, dtype=dtype)
         y = sess.run(x, {seed_t: [565656, 121212]})
+        if maxval > 1:
+          # Normalize y to range [0, 1).
+          y = y.astype(float) / maxval
         # Tests that the values are distributed amongst 10 bins with equal
         # probability. 16.92 is the Chi^2 value for 9 degrees of freedom with
         # p=0.05. This test is probabilistic and would be flaky if the random
