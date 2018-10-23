@@ -252,12 +252,17 @@ bool GpuInstructionFusion::ShouldFuse(HloInstruction* consumer,
     return false;
   }
 
-  // Fuse scalar constants into loop fusion nodes, this reduces the number of
+  // Fuse scalar constants into loop fusion nodes. This reduces the number of
   // parameters and makes matching scalar broadcasts easier.
-  if (ShapeUtil::IsEffectiveScalar(producer->shape()) &&
-      consumer->opcode() == HloOpcode::kFusion &&
-      producer->opcode() == HloOpcode::kConstant) {
-    return true;
+  //
+  // Don't fuse other constants: Unfused constants in GPU land can be
+  // represented as an external constant (i.e. not emitted in LLVM IR / PTX),
+  // but fused constants are handled by shrared CPU/GPU code and always emitted
+  // in the IR/PTX.  The external constant representation makes for faster
+  // compiles and significantly smaller assembly code.
+  if (producer->opcode() == HloOpcode::kConstant) {
+    return ShapeUtil::IsEffectiveScalar(producer->shape()) &&
+           consumer->opcode() == HloOpcode::kFusion;
   }
 
   if (!IsFusible(*producer) || !IsFusible(*consumer) ||
