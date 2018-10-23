@@ -208,7 +208,9 @@ py_library(
         "//cloud/vmm/testing/tests/tpu:__subpackages__",
         "//learning/brain:__subpackages__",
         "//tensorflow:__subpackages__",
-        "//third_party/cloud_tpu/models/keras:__subpackages__",
+        "//third_party/cloud_tpu/models/keras_colab:__subpackages__",
+        "//third_party/cloud_tpu/models/mnist_keras:__subpackages__",
+        "//third_party/cloud_tpu/models/resnet50_keras:__subpackages__",
     ],
     deps = [
         ":tpu_lib",

@@ -35,7 +35,6 @@ from tensorflow.python.framework import function as framework_function
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
-from tensorflow.python.framework.func_graph import FuncGraph
 from tensorflow.python.ops import array_grad  # pylint: disable=unused-import
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops  # pylint: disable=unused-import
@@ -56,7 +55,14 @@ from tensorflow.python.ops import spectral_grad  # pylint: disable=unused-import
 from tensorflow.python.ops import tensor_array_ops
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import compat
+from tensorflow.python.util.lazy_loader import LazyLoader
 from tensorflow.python.util.tf_export import tf_export
+
+# This is to avoid a circular dependency
+# backprop -> gradients_impl -> func_graph
+funct_graph = LazyLoader(
+    "func_graph", globals(),
+    "tensorflow.python.framework.func_graph")
 
 # This is to avoid a circular dependency (eager.function depends on
 # gradients_impl). This is set in eager/function.py.
@@ -290,7 +296,7 @@ def _DefaultGradYs(grad_ys,
   return new_grad_ys
 
 
-def _IsTrainable(tensor):
+def IsTrainable(tensor):
   dtype = dtypes.as_dtype(tensor.dtype)
   return dtype.base_dtype in (dtypes.float16, dtypes.float32, dtypes.float64,
                               dtypes.complex64, dtypes.complex128,
@@ -298,7 +304,7 @@ def _IsTrainable(tensor):
 
 
 def _IsBackpropagatable(tensor):
-  if _IsTrainable(tensor):
+  if IsTrainable(tensor):
     return True
   dtype = dtypes.as_dtype(tensor.dtype)
   return dtype.base_dtype in (dtypes.bfloat16, dtypes.variant)
@@ -449,12 +455,12 @@ def _RaiseNoGradWrtInitialLoopValError(op, from_ops, xs):
 
 
 def _IsFunction(graph):
-  return (isinstance(graph, FuncGraph) or
+  return (isinstance(graph, funct_graph.FuncGraph) or
           isinstance(graph, framework_function._FuncGraph))  # pylint: disable=protected-access
 
 
 def _Captures(func_graph):
-  if isinstance(func_graph, FuncGraph):
+  if isinstance(func_graph, funct_graph.FuncGraph):
     return func_graph.captures
   else:
     assert isinstance(func_graph, framework_function._FuncGraph)  # pylint: disable=protected-access
@@ -697,7 +703,7 @@ def _GradientsHelper(ys,
   curr_graph = src_graph
   while _IsFunction(curr_graph):
     func_graphs.append(curr_graph)
-    if isinstance(curr_graph, FuncGraph):
+    if isinstance(curr_graph, funct_graph.FuncGraph):
       curr_graph = curr_graph.outer_graph
     else:
       assert isinstance(curr_graph, framework_function._FuncGraph)  # pylint: disable=protected-access
@@ -770,7 +776,7 @@ def _GradientsHelper(ys,
     if loop_state:
       loop_exits = loop_state.ProcessUnusedLoopExits(pending_count, to_ops_set)
       for y in loop_exits:
-        if _IsTrainable(y):
+        if IsTrainable(y):
           _SetGrad(grads, y, loop_state.ZerosLikeForExit(y))
           queue.append(y.op)
 
@@ -836,7 +842,7 @@ def _GradientsHelper(ys,
           # therefore dC/doutput[i] is 0.
           for i, out_grad in enumerate(out_grads):
             if (not isinstance(out_grad, ops.Tensor) and not out_grad) and (
-                (not grad_fn and is_func_call) or _IsTrainable(op.outputs[i])):
+                (not grad_fn and is_func_call) or IsTrainable(op.outputs[i])):
               # Only trainable outputs or outputs for a function call that
               # will use SymbolicGradient get a zero gradient. Gradient
               # functions should ignore the gradient for other outputs.
@@ -941,7 +947,7 @@ def _UpdatePendingAndEnqueueReady(grads, op, queue, pending_count, loop_state,
             # For an unused exit, if it has trainable outputs, backprop
             # a zero gradient. Otherwise, just ignore it.
             for y in grad_state.unused_exits:
-              if _IsTrainable(y):
+              if IsTrainable(y):
                 _SetGrad(grads, y, loop_state.ZerosLikeForExit(y))
               queue.append(y.op)
           else:

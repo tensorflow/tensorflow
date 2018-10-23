@@ -123,9 +123,9 @@ class TestCase(test.TestCase):
 
     if not isinstance(converter_module, (list, tuple)):
       converter_module = (converter_module,)
-    for m in converter_module:
+    for i, m in enumerate(converter_module):
+      node = converter.standard_analysis(node, ctx, is_initial=not i)
       node = m.transform(node, ctx)
-      node = converter.standard_analysis(node, ctx, is_initial=True)
 
     with self.compiled(node, namespace, *tf_symbols) as result:
       yield result

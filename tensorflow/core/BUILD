@@ -335,6 +335,16 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "framework_bounds_check",
+    hdrs = ["framework/bounds_check.h"],
+    visibility = ["//tensorflow/core/kernels:friends"],
+    deps = [
+        "//tensorflow/core:platform_base",
+        "//third_party/eigen3",
+    ],
+)
+
 filegroup(
     name = "platform_port_hdrs",
     srcs = [
@@ -822,6 +832,7 @@ tf_cuda_library(
     hdrs = [
         "example/feature_util.h",
         "framework/allocator.h",
+        "framework/bounds_check.h",
         "framework/variant.h",
         "framework/variant_encode_decode.h",
         "framework/variant_op_registry.h",
@@ -852,6 +863,7 @@ tf_cuda_library(
         "framework/op_def_builder.h",
         "framework/op_def_util.h",
         "framework/op_kernel.h",
+        "framework/ops_util.h",
         "framework/partial_tensor_shape.h",
         "framework/queue_interface.h",
         "framework/reader_interface.h",

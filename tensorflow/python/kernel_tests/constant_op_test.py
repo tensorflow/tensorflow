@@ -341,15 +341,17 @@ class AsTensorTest(test.TestCase):
       self.assertEqual(dtypes_lib.int64, x.dtype)
       self.assertAllEqual(2, x.eval())
 
-    with self.assertRaisesRegexp(ValueError, "unknown Dimension"):
-      ops.convert_to_tensor(tensor_shape.TensorShape(None)[1])
-
-    with self.assertRaisesRegexp(ValueError, "unknown Dimension"):
-      ops.convert_to_tensor(tensor_shape.TensorShape([1, None, 64])[1])
-
-    with self.assertRaises(TypeError):
-      ops.convert_to_tensor(
-          tensor_shape.TensorShape([1, 2, 3])[1], dtype=dtypes_lib.float32)
+    shape = tensor_shape.TensorShape(None)
+    if shape._v2_behavior:
+      with self.assertRaisesRegexp(ValueError, "None values not supported"):
+        ops.convert_to_tensor(shape[1])
+      with self.assertRaisesRegexp(ValueError, "None values not supported"):
+        ops.convert_to_tensor(tensor_shape.TensorShape([1, None, 64])[1])
+    else:
+      with self.assertRaisesRegexp(ValueError, "unknown Dimension"):
+        ops.convert_to_tensor(shape[1])
+      with self.assertRaisesRegexp(ValueError, "unknown Dimension"):
+        ops.convert_to_tensor(tensor_shape.TensorShape([1, None, 64])[1])
 
 
 class IdentityOpTest(test.TestCase):
@@ -804,7 +806,12 @@ class PlaceholderTest(test.TestCase):
     self.assertEqual("<tf.Tensor 'b:0' shape=(32, 40) dtype=int32>", repr(b))
 
     c = array_ops.placeholder(dtypes_lib.qint32, shape=(32, None, 2), name="c")
-    self.assertEqual("<tf.Tensor 'c:0' shape=(32, ?, 2) dtype=qint32>", repr(c))
+    if c.shape._v2_behavior:
+      self.assertEqual(
+          "<tf.Tensor 'c:0' shape=(32, None, 2) dtype=qint32>", repr(c))
+    else:
+      self.assertEqual(
+          "<tf.Tensor 'c:0' shape=(32, ?, 2) dtype=qint32>", repr(c))
 
   def testOldGraph(self):
     # Load graph generated from earlier version of TF where

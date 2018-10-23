@@ -1007,6 +1007,13 @@ class SingleOpTest(LocalComputationTest):
     self._ExecuteAndCompareExact(
         c, expected=[[10, 20, 30, 40], [10, 20, 30, 40], [10, 20, 30, 40]])
 
+  def testBroadcastInDim(self):
+    c = self._NewComputation()
+    c.BroadcastInDim(c.Constant(NumpyArrayS32([1, 2])), [2, 2], [0])
+    self._ExecuteAndCompareExact(c, expected=[[1, 1], [2, 2]])
+    c.BroadcastInDim(c.Constant(NumpyArrayS32([1, 2])), [2, 2], [1])
+    self._ExecuteAndCompareExact(c, expected=[[1, 2], [1, 2]])
+
   def testRngNormal(self):
     shape = (2, 3)
     c = self._NewComputation()
@@ -1509,6 +1516,21 @@ class ErrorTest(LocalComputationTest):
         RuntimeError, r"Invalid argument shape.*xla_client_test.py.*"
         r"expected s32\[\], got f32\[\]",
         lambda: c.Build().CompileWithExampleArguments([self.f32_scalar_2]))
+
+
+class ComputationRootTest(LocalComputationTest):
+  """Tests related to setting the root of the computation."""
+
+  def testComputationRootDifferentFromLastOp(self):
+    c = self._NewComputation()
+    x = c.ParameterFromNumpy(NumpyArrayF32(2.0))
+    result = c.Add(x, c.ConstantF32Scalar(3.14))
+    extra = c.Add(result, c.ConstantF32Scalar(1.618))  # pylint: disable=unused-variable
+
+    arg = NumpyArrayF32(1.0)
+    compiled_c = c.Build(result).CompileWithExampleArguments([arg])
+    ans = compiled_c.Execute([arg])
+    np.testing.assert_allclose(ans, 4.14)
 
 
 if __name__ == "__main__":

@@ -791,7 +791,7 @@ class TPUMirroredVariable(checkpointable.CheckpointableBase):
       return self._get()._dense_var_to_tensor(dtype, name, as_ref)
     # pylint: enable=protected-access
     if dtype is not None and dtype != self.dtype:
-      raise NotImplementedError
+      return math_ops.cast(self.read_value(), dtype)
     if as_ref:
       return self.handle
     else:

@@ -92,8 +92,8 @@ class VariableScopeTest(test.TestCase):
     v1 = vs.get_variable("v", [1], use_resource=True)
     self.assertTrue(isinstance(v1, resource_variable_ops.ResourceVariable))
 
-  # TODO(mihaimaruseac): Not converted to use wrap_function because of
-  # AttributeError: Tensor.op is meaningless when eager execution is enabled.
+  @test_util.run_in_graph_and_eager_modes
+  @run_inside_wrap_function_in_eager_mode
   def testNameExists(self):
     vs = variable_scope._get_default_variable_store()
     # No check by default, so we can both create and get existing names.
@@ -652,8 +652,8 @@ class VariableScopeTest(test.TestCase):
       test_value(13.)  # Variable is reused hereafter.
       test_value(17.)
 
-  # TODO(mihaimaruseac): Not converted to use wrap_function because of
-  # AttributeError: Tensor.op is meaningless when eager execution is enabled.
+  @test_util.run_in_graph_and_eager_modes
+  @run_inside_wrap_function_in_eager_mode
   def testVarOpScope(self):
     with self.cached_session():
       with ops.name_scope("testVarOpScope1"):
@@ -753,8 +753,8 @@ class VariableScopeTest(test.TestCase):
           with ops.name_scope("scope2") as sc2:
             self.assertEqual(sc2, "outer_1/default/scope2/")
 
-  # TODO(mihaimaruseac): Not converted to use wrap_function because of
-  # AttributeError: Tensor.op is meaningless when eager execution is enabled.
+  @test_util.run_in_graph_and_eager_modes
+  @run_inside_wrap_function_in_eager_mode
   def testVarScopeGetVar(self):
     with self.cached_session():
       with variable_scope.variable_scope("root"):
@@ -1720,8 +1720,8 @@ class PartitionInfoTest(test.TestCase):
 
 class VariableScopeMultithreadedTest(test.TestCase):
 
-  # TODO(mihaimaruseac): Not wrapping these as they cause timeouts if wrapped
   @test_util.run_in_graph_and_eager_modes
+  @run_inside_wrap_function_in_eager_mode
   def testTwoThreadsDisjointScopeEntry(self):
 
     def thread_fn(i, graph):
@@ -1750,8 +1750,8 @@ class VariableScopeMultithreadedTest(test.TestCase):
     threads[1].start()
     threads[1].join()
 
-  # TODO(mihaimaruseac): Not wrapping these as they cause timeouts if wrapped
   @test_util.run_in_graph_and_eager_modes
+  @run_inside_wrap_function_in_eager_mode
   def testTwoThreadsNestedScopeEntry(self):
 
     def thread_fn(i, graph, run_event, pause_event):
@@ -1789,8 +1789,8 @@ class VariableScopeMultithreadedTest(test.TestCase):
     threads[0].join()
     threads[1].join()
 
-  # TODO(mihaimaruseac): Not wrapping these as they cause timeouts if wrapped
   @test_util.run_in_graph_and_eager_modes
+  @run_inside_wrap_function_in_eager_mode
   def testReenterMainScope(self):
 
     def thread_fn(graph, main_thread_scope):

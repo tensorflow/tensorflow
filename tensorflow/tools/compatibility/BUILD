@@ -33,6 +33,12 @@ py_test(
     ],
 )
 
+py_library(
+    name = "renames_v2",
+    srcs = ["renames_v2.py"],
+    srcs_version = "PY2AND3",
+)
+
 py_binary(
     name = "tf_upgrade_v2",
     srcs = [

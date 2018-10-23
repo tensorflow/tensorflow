@@ -149,7 +149,7 @@ def _is_in_keras_style_scope():
   return _KERAS_STYLE_SCOPE
 
 
-@tf_export('layers.Layer')
+@tf_export(v1=['layers.Layer'])
 class Layer(base_layer.Layer):
   """Base layer class.
 

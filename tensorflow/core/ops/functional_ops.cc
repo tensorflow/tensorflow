@@ -226,6 +226,7 @@ REGISTER_OP("PartitionedCall")
     .Attr("Tout: list(type) >= 0")
     .Attr("f: func")
     .Attr("config: string = ''")
+    .Attr("executor_type: string = ''")
     .SetShapeFn(shape_inference::UnknownShape);
 
 REGISTER_OP("StatefulPartitionedCall")
@@ -235,6 +236,7 @@ REGISTER_OP("StatefulPartitionedCall")
     .Attr("Tout: list(type) >= 0")
     .Attr("f: func")
     .Attr("config: string = ''")
+    .Attr("executor_type: string = ''")
     .SetIsStateful()
     .SetShapeFn(shape_inference::UnknownShape);
 

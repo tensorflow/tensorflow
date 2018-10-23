@@ -58,7 +58,6 @@ TENSORFLOW_API_INIT_FILES = [
     "keras/utils/__init__.py",
     "keras/wrappers/__init__.py",
     "keras/wrappers/scikit_learn/__init__.py",
-    "layers/__init__.py",
     "linalg/__init__.py",
     "logging/__init__.py",
     "losses/__init__.py",

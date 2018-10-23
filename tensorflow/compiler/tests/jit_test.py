@@ -539,6 +539,20 @@ class LazyCompilationTest(test.TestCase):
       x = array_ops.placeholder(dtypes.float32)
       y = CompiledFunction(x)
 
+      # The very first run of the cluster is always compiled (non-lazily).
+      run_metadata_for_first_run = config_pb2.RunMetadata()
+      sess.run(
+          y,
+          feed_dict={x: [2., 10., 19., 77., 100.]},
+          run_metadata=run_metadata_for_first_run,
+          options=config_pb2.RunOptions(
+              trace_level=config_pb2.RunOptions.FULL_TRACE))
+      self.assertTrue(
+          InLabels(
+              RunMetadataLabels(run_metadata_for_first_run), "_XlaCompile"))
+      self.assertTrue(
+          InLabels(RunMetadataLabels(run_metadata_for_first_run), "_XlaRun"))
+
       run_metadata_before_warmup = config_pb2.RunMetadata()
       sess.run(
           y,

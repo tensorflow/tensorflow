@@ -18,6 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import collections
 import os
 import subprocess
 
@@ -90,7 +91,7 @@ class SlurmClusterResolver(ClusterResolver):
       self._rank = int(os.environ['SLURM_PROCID'])
       num_tasks = int(os.environ['SLURM_NTASKS'])
 
-    self._jobs = jobs
+    self._jobs = collections.OrderedDict(sorted(jobs.items()))
     self._port_base = port_base
 
     # user specification overrides SLURM specification

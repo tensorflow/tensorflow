@@ -2649,7 +2649,8 @@ class PartitionedVariable(object):
     else:
       partition_ix = partition_axes[0]
       size_splits_list = [
-          var.shape[partition_ix].value for var in self._variable_list
+          tensor_shape.dimension_value(var.shape[partition_ix])
+          for var in self._variable_list
       ]
       value_list = array_ops.split(value, size_splits_list, axis=partition_ix)
 

@@ -397,8 +397,8 @@ class Function(object):
       # pylint: enable=protected-access
       # Compute the gradients using the side outputs
       side_outputs = op.outputs[num_inference_outputs:]
-      return self._backward_graph_function(
-          *(list(doutputs[:num_inference_outputs]) + list(side_outputs)))
+      args = list(doutputs[:num_inference_outputs]) + list(side_outputs)
+      return self._backward_graph_function(*[a for a in args if a is not None])
 
   @property
   def name(self):
@@ -471,12 +471,14 @@ class Function(object):
     backwards_graph = func_graph_module.FuncGraph(
         _backward_name(self._func_graph.name))
     forward_function_name = _forward_name(self._func_graph.name)
+    outputs = [x for x in self._func_graph.outputs
+               if gradients_impl.IsTrainable(x)]
     with backwards_graph.as_default():
       gradients_wrt_outputs = [
-          graph_placeholder(x.dtype, x.shape) for x in self._func_graph.outputs
+          graph_placeholder(x.dtype, x.shape) for x in outputs
       ]
       gradients_wrt_inputs = gradients_impl._GradientsHelper(  # pylint: disable=protected-access
-          self._func_graph.outputs,
+          outputs,
           self._func_graph.inputs,
           grad_ys=gradients_wrt_outputs,
           src_graph=self._func_graph,
@@ -545,6 +547,7 @@ class Function(object):
     side_outputs = outputs[self._num_outputs:]
 
     def backward_function(*args):
+      args = [a for a in args if a is not None]
       return self._backward_graph_function(*(list(args) + side_outputs))  # pylint: disable=not-callable
 
     tape.record_operation(self._forward_function.signature.name, real_outputs,

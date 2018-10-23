@@ -21,6 +21,7 @@ import math as _math
 
 from tensorflow.python.framework import dtypes as _dtypes
 from tensorflow.python.framework import ops as _ops
+from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util as _tensor_util
 from tensorflow.python.ops import array_ops as _array_ops
 from tensorflow.python.ops import gen_spectral_ops
@@ -65,7 +66,7 @@ def _maybe_pad_for_rfft(input_tensor, fft_rank, fft_length, is_reverse=False):
 
   # Edge case: skip padding empty tensors.
   if (input_tensor.shape.ndims is not None and
-      any(dim.value == 0 for dim in input_tensor.shape)):
+      any(dim.value == 0 for dim in input_tensor.shape.dims)):
     return input_tensor
 
   # If we know the shapes ahead of time, we can either skip or pre-compute the
@@ -78,10 +79,12 @@ def _maybe_pad_for_rfft(input_tensor, fft_rank, fft_length, is_reverse=False):
     if input_fft_shape.is_fully_defined():
       # In reverse, we only pad the inner-most dimension to fft_length / 2 + 1.
       if is_reverse:
-        fft_shape = fft_shape[:-1].concatenate(fft_shape[-1].value // 2 + 1)
+        fft_shape = fft_shape[:-1].concatenate(
+            fft_shape.dims[-1].value // 2 + 1)
 
       paddings = [[0, max(fft_dim.value - input_dim.value, 0)]
-                  for fft_dim, input_dim in zip(fft_shape, input_fft_shape)]
+                  for fft_dim, input_dim in zip(
+                      fft_shape.dims, input_fft_shape.dims)]
       if any(pad > 0 for _, pad in paddings):
         outer_paddings = [[0, 0]] * max((input_tensor.shape.ndims -
                                          fft_shape.ndims), 0)
@@ -214,7 +217,8 @@ def dct(input, type=2, n=None, axis=-1, norm=None, name=None):  # pylint: disabl
     # for FFTs at the moment.
     input = _ops.convert_to_tensor(input, dtype=_dtypes.float32)
 
-    axis_dim = input.shape[-1].value or _array_ops.shape(input)[-1]
+    axis_dim = (tensor_shape.dimension_value(input.shape[-1])
+                or _array_ops.shape(input)[-1])
     axis_dim_float = _math_ops.to_float(axis_dim)
     if type == 2:
       scale = 2.0 * _math_ops.exp(

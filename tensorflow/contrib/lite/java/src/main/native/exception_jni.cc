@@ -49,6 +49,7 @@ BufferErrorReporter::BufferErrorReporter(JNIEnv* env, int limit) {
                    limit);
     return;
   }
+  buffer_[0] = '\0';
   start_idx_ = 0;
   end_idx_ = limit - 1;
 }

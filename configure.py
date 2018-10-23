@@ -1182,6 +1182,7 @@ def set_tf_nccl_install_path(environ_cp):
       if is_windows() or is_cygwin():
         nccl_install_path = cygpath(nccl_install_path)
 
+      nccl_lib_path = ''
       if is_windows():
         nccl_lib_path = 'lib/x64/nccl.lib'
       elif is_linux():

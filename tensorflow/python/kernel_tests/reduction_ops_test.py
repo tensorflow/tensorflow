@@ -298,10 +298,10 @@ class SumReductionTest(BaseReductionTest):
 
     # Input shape only has known rank.
     c_known_rank = array_ops.placeholder(dtypes.float32)
-    c_known_rank.set_shape(tensor_shape.unknown_shape(ndims=3))
+    c_known_rank.set_shape(tensor_shape.unknown_shape(rank=3))
     s_known_rank = math_ops.reduce_sum(
         c_known_rank, reduction_axes, keepdims=True)
-    self.assertEqual(3, s_known_rank.get_shape().ndims)
+    self.assertEqual(3, s_known_rank.get_shape().rank)
 
     np_input = np.random.randn(3, 3, 3)
     self._compareAll(np_input, reduction_axes, {c_known_rank: np_input})
@@ -315,7 +315,7 @@ class SumReductionTest(BaseReductionTest):
                      s_unknown_indices.get_shape())
     s_unknown_indices_keep = math_ops.reduce_sum(
         c_unknown_indices, unknown_indices, keepdims=True)
-    self.assertEqual(2, s_unknown_indices_keep.get_shape().ndims)
+    self.assertEqual(2, s_unknown_indices_keep.get_shape().rank)
 
   def testWrongShapeForReductionIndices(self):
     reduction_axes = [[1], [2]]

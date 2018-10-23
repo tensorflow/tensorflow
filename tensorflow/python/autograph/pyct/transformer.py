@@ -325,6 +325,9 @@ class Base(gast.NodeTransformer):
       A list of AST node objects containing the transformed items fron nodes,
       except those nodes that have been relocated using after_visit.
     """
+    if nodes is None:
+      return None
+
     results = []
     node_destination = results
     for node in nodes:
