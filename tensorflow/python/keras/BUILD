@@ -356,7 +356,10 @@ cuda_py_test(
         "//tensorflow/python:client_testlib",
     ],
     shard_count = 2,
-    tags = ["no_windows_gpu"],
+    tags = [
+        "no_oss",  # b/117834718
+        "no_windows_gpu",
+    ],
 )
 
 py_test(
