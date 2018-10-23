@@ -396,7 +396,29 @@ class TrainingTest(test.TestCase):
     optimizer = RMSPropOptimizer(learning_rate=0.001)
     model.compile(optimizer, 'binary_crossentropy')
     loss = model.test_on_batch(x, y)
-    self.assertAlmostEqual(0.1, loss, places=3)
+    self.assertAlmostEqual(0.01, loss, places=4)
+
+  @tf_test_util.run_in_graph_and_eager_modes
+  def test_activity_regularizer_batch_independent(self):
+    inputs = keras.layers.Input(shape=(10,))
+    x = keras.layers.Dense(
+        10, activation='relu', activity_regularizer='l2')(
+            inputs)
+    outputs = keras.layers.Dense(1, activation='sigmoid')(x)
+    model = keras.Model(inputs, outputs)
+
+    optimizer = RMSPropOptimizer(learning_rate=0.001)
+    model.compile(optimizer, 'binary_crossentropy')
+
+    x = np.ones((10, 10), 'float32')
+    y = np.ones((10, 1), 'float32')
+    loss_small_batch = model.test_on_batch(x, y)
+
+    x2 = np.ones((20, 10), 'float32')
+    y2 = np.ones((20, 1), 'float32')
+    loss_big_batch = model.test_on_batch(x2, y2)
+
+    self.assertAlmostEqual(loss_small_batch, loss_big_batch, places=4)
 
   @tf_test_util.run_in_graph_and_eager_modes
   def test_activity_regularizer_in_model_call(self):
