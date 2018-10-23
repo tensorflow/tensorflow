@@ -31,28 +31,4 @@ _component_api_helper.package_hook(
 # API IMPORTS PLACEHOLDER
 
 from tensorflow.python.platform import flags  # pylint: disable=g-import-not-at-top
-
-# Make sure directory containing top level submodules is in
-# the __path__ so that "from tensorflow.foo import bar" works.
-_tf_api_dir = _os.path.dirname(_os.path.dirname(app.__file__))  # pylint: disable=undefined-variable
-if _tf_api_dir not in __path__:
-  __path__.append(_tf_api_dir)
-
-# Calls to enable and disable features.
-enable_eager_execution()  # pylint: disable=undefined-variable
-
-# These symbols appear because we import the python package which
-# in turn imports from tensorflow.core and tensorflow.python. They
-# must come from this module. So python adds these symbols for the
-# resolution to succeed.
-# pylint: disable=undefined-variable
-try:
-  del python
-  del core
-except NameError:
-  # Don't fail if these modules are not available.
-  # For e.g. this file will be originally placed under tensorflow/_api/v1 which
-  # does not have 'python', 'core' directories. Then, it will be copied
-  # to tensorflow/ which does have these two directories.
-  pass
-# pylint: enable=undefined-variable
+app.flags = flags  # pylint: disable=undefined-variable
