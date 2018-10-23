@@ -3206,7 +3206,6 @@ TEST_F(GraphConstructorTest, ImportGraphDef_ValidateColationConstraints) {
 }
 
 TEST_F(GraphConstructorTest, ImportGraphDef_ValidateDefaultDevice) {
-  std::string stored_dev = "some dev";
   std::string gdef_ascii(
       R"EOF(
       node { name: 'test_input' op: 'TestInput' }
@@ -3216,36 +3215,21 @@ TEST_F(GraphConstructorTest, ImportGraphDef_ValidateDefaultDevice) {
       )EOF");
 
   GraphDef gdef;
-  CHECK(protobuf::TextFormat::ParseFromString(gdef_ascii, &gdef));
+  ASSERT_TRUE(protobuf::TextFormat::ParseFromString(gdef_ascii, &gdef));
 
   ImportGraphDefOptions options;
-  // assign this execution device for the nodes, which do not alreadt have default device, specified in graph_def
-  // node->requested_device() should be either this assigned device, or default device from graph_def
-  std::string assigned_dev = "/gpu:13";
-  options.default_device = assigned_dev;
-
-  std::map<std::string, std::string> node_dev_map;
-  std::vector<std::string> assigned_dev_nodes = {"test_input", "test_op"};
-  std::vector<std::string> stored_dev_nodes = {"test_input_with_dev", "test_op_with_dev"};
-  options.return_nodes = assigned_dev_nodes;
-  options.return_nodes.insert(options.return_nodes.end(), stored_dev_nodes.begin(), stored_dev_nodes.end() );
-
-  for (auto node: assigned_dev_nodes) {
-    node_dev_map.insert(std::make_pair(node, assigned_dev));
-  }
-  for (auto node: stored_dev_nodes) {
-    node_dev_map.insert(std::make_pair(node, stored_dev));
-  }
-
+  options.default_device = "/gpu:13";
   ImportGraphDefResults res;
 
-  TF_EXPECT_OK(ImportGraphDef(options, gdef, &graph_, NULL, &res));
-  EXPECT_EQ(res.return_nodes.size(), options.return_nodes.size());
-  for (auto node: res.return_nodes) {
-    auto expected_dev = node_dev_map.find(node->name());
-    EXPECT_EQ(true, expected_dev != node_dev_map.end());
-    EXPECT_EQ(node->requested_device(), expected_dev->second);
+  TF_ASSERT_OK(ImportGraphDef(options, gdef, &graph_, NULL, &res));
+  std::map<string, string> node2dev;
+  for (Node* n : graph_.nodes()) {
+    node2dev[n->name()] = n->requested_device();
   }
+  EXPECT_EQ(node2dev["test_input"], "/gpu:13");
+  EXPECT_EQ(node2dev["test_op"], "/gpu:13");
+  EXPECT_EQ(node2dev["test_input_with_dev"], "some dev");
+  EXPECT_EQ(node2dev["test_op_with_dev"], "some dev");
 }
 
 TEST_F(GraphConstructorTest, ImportGraphDef_UnknownOps) {
