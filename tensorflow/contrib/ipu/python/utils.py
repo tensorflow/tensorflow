@@ -465,6 +465,24 @@ def extract_all_io_events(events):
         pass
   return result
 
+def extract_execution_state_timing_list_from_events(events):
+  """Get execution state timing lists out of the execution event trace. Any
+  execution events which have a timing list will be included in the results.
+  :param events: A list of IpuTraceEvent objects
+  :return: A list of one entry per execute event, of a tuple containing the
+           module name and the execution state timings list"""
+  result = []
+  for e in events:
+    evt = IpuTraceEvent.FromString(e)
+    if evt.type == IpuTraceEvent.EXECUTE:
+      try:
+        module = evt.execute.module_name.decode('utf-8')
+        timings = evt.execute.activity_trace.decode('utf-8')
+        result += [(module, timings)]
+      except UnicodeDecodeError:
+        pass
+  return result
+
 def get_memory_size_from_events(events):
   """Get the total memory consumption for the first compilation in the list
   of events.

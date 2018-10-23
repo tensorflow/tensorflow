@@ -3,6 +3,7 @@ from __future__ import division
 from __future__ import print_function
 
 import numpy as np
+import re
 
 from tensorflow.compiler.plugin.poplar.driver.trace_pb2 import IpuTraceEvent
 from tensorflow.compiler.plugin.poplar.ops import gen_ipu_ops
@@ -107,7 +108,7 @@ class ContribIpuOpsTest(test_util.TensorFlowTestCase):
       dump = ipu.utils.extract_all_strings_from_event_trace(e);
       self.assertTrue(len(dump) > 100)
 
-  def testIpuSimpleScope(self):
+  def testIpuSimpleScopeAndExecutionReport(self):
     def my_net(a, b):
       c = a + b
       return [c]
@@ -136,6 +137,17 @@ class ContribIpuOpsTest(test_util.TensorFlowTestCase):
       e = sess.run(events)
       evts = ipu.utils.extract_all_events(e)
       self.assertEqual(count_compile_end_events(evts), 1)
+
+      t_list = ipu.utils.extract_execution_state_timing_list_from_events(e)
+      self.assertEqual(len(t_list), 1)
+      self.assertEqual(type(t_list), list)
+      self.assertEqual(type(t_list[0]), tuple)
+      self.assertTrue(t_list[0][0].startswith("cluster"))
+
+      lines = t_list[0][1].split()
+      for l in lines:
+        m = re.match(r'\d+,\d+,\d+,\d+,\d+$', l)
+        self.assertTrue(m)
 
   def testIpuWhileScope(self):
     # 1: design is targetted at the device
