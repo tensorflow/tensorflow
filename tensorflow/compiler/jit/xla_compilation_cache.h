@@ -171,18 +171,21 @@ class XlaCompilationCache : public ResourceBase {
   absl::flat_hash_map<Signature, std::unique_ptr<Entry>, Signature::Hash> cache_
       GUARDED_BY(compile_cache_mu_);
 
-  struct CompileStats {
+  struct ClusterCompileStats {
     // Number of times the cluster has been (re-)compiled.
     int64 compile_count = 0;
+
+    // The number of times this cluster has been executed.
+    int64 execution_count = 0;
 
     // Cumulative time spent compiling the cluster.
     int64 cumulative_compile_time_us = 0;
   };
-  mutex compile_stats_mu_;
+  mutex cluster_compile_stats_mu_;
 
   // Maps cluster names to compilation statistics for said cluster.
-  absl::flat_hash_map<string, CompileStats> compile_stats_
-      GUARDED_BY(compile_stats_mu_);
+  absl::flat_hash_map<string, ClusterCompileStats> cluster_compile_stats_
+      GUARDED_BY(cluster_compile_stats_mu_);
 
   // The number of times a lazy compilation must be requested for a specific
   // signature before  we attempt to compile it.
