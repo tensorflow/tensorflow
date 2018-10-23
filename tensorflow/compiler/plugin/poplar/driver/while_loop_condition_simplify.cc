@@ -176,7 +176,7 @@ StatusOr<bool> TrySimplifyLoopCondition(HloInstruction* while_inst) {
     std::vector<HloInstruction*> matching_increments;
     TF_ASSIGN_OR_RETURN(matching_increments,
                         WhileLoopUtil::FindMatchingGTEIncrementsInsideBody(
-                            body_GTE, while_body));
+                            body_GTE, while_body, HloOpcode::kAdd));
     if (matching_increments.size() == 1) {
       GTE_to_increment[body_GTE] = matching_increments[0];
     } else {
