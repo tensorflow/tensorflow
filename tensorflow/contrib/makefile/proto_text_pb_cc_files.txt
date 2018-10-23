@@ -27,6 +27,7 @@ tensorflow/core/grappler/costs/op_performance_data.pb.cc
 tensorflow/core/lib/core/error_codes.pb.cc
 tensorflow/core/protobuf/cluster.pb.cc
 tensorflow/core/protobuf/config.pb.cc
+tensorflow/core/protobuf/eager_service.pb.cc
 tensorflow/core/protobuf/debug.pb.cc
 tensorflow/core/protobuf/device_properties.pb.cc
 tensorflow/core/protobuf/meta_graph.pb.cc

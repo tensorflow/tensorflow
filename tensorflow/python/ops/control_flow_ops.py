@@ -31,6 +31,7 @@ import six
 
 from tensorflow.core.framework import attr_value_pb2
 from tensorflow.core.protobuf import control_flow_pb2
+from tensorflow.python import tf2
 from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -71,8 +72,8 @@ cond_v2 = LazyLoader("cond_v2", globals(),
 while_v2 = LazyLoader("while_v2", globals(),
                       "tensorflow.python.ops.while_v2")
 
-ENABLE_COND_V2 = os.getenv("TF_ENABLE_COND_V2", "0") != "0"
-ENABLE_WHILE_V2 = os.getenv("TF_ENABLE_WHILE_V2", "0") != "0"
+ENABLE_COND_V2 = tf2.enabled() or os.getenv("TF_ENABLE_COND_V2", "0") != "0"
+ENABLE_WHILE_V2 = tf2.enabled() or os.getenv("TF_ENABLE_WHILE_V2", "0") != "0"
 
 # We override the 'tuple' for a control flow op, so we keep python's
 # existing 'tuple' for later use in this module.

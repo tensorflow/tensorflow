@@ -38,13 +38,13 @@ def _convert(converter, **kwargs):
   Args:
     converter: TFLiteConverter object.
     **kwargs: Additional arguments to be passed into the converter. Supported
-      flags are {"converter_mode", "post_training_quantize"}.
+      flags are {"target_ops", "post_training_quantize"}.
 
   Returns:
     The converted TFLite model in serialized format.
   """
-  if "converter_mode" in kwargs:
-    converter.converter_mode = kwargs["converter_mode"]
+  if "target_ops" in kwargs:
+    converter.target_ops = kwargs["target_ops"]
   if "post_training_quantize" in kwargs:
     converter.post_training_quantize = kwargs["post_training_quantize"]
   return converter.convert()
@@ -239,8 +239,8 @@ def test_frozen_graph_quant(filename,
       for float_tensor in float_tensors)
   has_quant_tensor = num_tensors_float != num_tensors_same_dtypes
 
-  if ("converter_mode" in kwargs and
-      kwargs["converter_mode"] == _lite.ConverterMode.TOCO_FLEX_ALL):
+  if ("target_ops" in kwargs and
+      set(kwargs["target_ops"]) == set([_lite.OpsSet.SELECT_TF_OPS])):
     if has_quant_tensor:
       raise ValueError("--post_training_quantize flag unexpectedly altered the "
                        "full Flex mode graph.")

@@ -894,7 +894,7 @@ def _get_saver_or_default():
   return saver
 
 
-@tf_export("train.Saver")
+@tf_export(v1=["train.Saver"])
 class Saver(object):
   """Saves and restores variables.
 
@@ -1599,7 +1599,7 @@ class Saver(object):
                                   export_scope=export_scope)
 
 
-@tf_export("train.import_meta_graph")
+@tf_export(v1=["train.import_meta_graph"])
 def import_meta_graph(meta_graph_or_file, clear_devices=False,
                       import_scope=None, **kwargs):
   """Recreates a Graph saved in a `MetaGraphDef` proto.
@@ -1729,7 +1729,7 @@ def _create_saver_from_imported_meta_graph(
       return None
 
 
-@tf_export("train.export_meta_graph")
+@tf_export(v1=["train.export_meta_graph"])
 def export_meta_graph(filename=None,
                       meta_info_def=None,
                       graph_def=None,

@@ -208,6 +208,16 @@ endif
 # override local versions in the source tree.
 INCLUDES += -I/usr/local/include
 
+# If `$(WITH_TFLITE_FLEX)` is `true`, this Makefile will build a library
+# for TensorFlow Lite Flex runtime.
+# Farmhash and Flatbuffer is required for TensorFlow Lite Flex runtime.
+ifeq ($(WITH_TFLITE_FLEX), true)
+	HOST_INCLUDES += -I$(MAKEFILE_DIR)/downloads/farmhash/src
+	HOST_INCLUDES += -I$(MAKEFILE_DIR)/downloads/flatbuffers/include
+	INCLUDES += -I$(MAKEFILE_DIR)/downloads/farmhash/src
+	INCLUDES += -I$(MAKEFILE_DIR)/downloads/flatbuffers/include
+endif
+
 LIBS := \
 $(TARGET_NSYNC_LIB) \
 -lstdc++ \
@@ -283,7 +293,7 @@ ifeq ($(TARGET),ANDROID)
 	else
 		ANDROID_HOST_OS_ARCH := $(ANDROID_HOST_OS_ARCH)-$(HOST_ARCH)
 	endif
-    
+
 	ifndef ANDROID_ARCH
 		ANDROID_ARCH := armeabi-v7a
 	endif
@@ -330,7 +340,7 @@ ifeq ($(TARGET),ANDROID)
 		BIN_PREFIX := x86_64-linux-android
 		MARCH_OPTION :=
 	endif
-    
+
 	ifndef NDK_ROOT
     $(error "NDK_ROOT is not defined.")
 	endif
@@ -716,6 +726,53 @@ BENCHMARK_SRCS := \
 tensorflow/core/util/reporter.cc \
 tensorflow/tools/benchmark/benchmark_model.cc \
 tensorflow/tools/benchmark/benchmark_model_main.cc
+
+# If `$(WITH_TFLITE_FLEX)` is `true`, this Makefile will build a library
+# for TensorFlow Lite Flex runtime.
+# Adding the following dependencies>
+# * TensorFlow Eager Runtime.
+# * TensorFlow Lite Runtime.
+# * TensorFlow Lite Flex Delegate.
+ifeq ($(WITH_TFLITE_FLEX), true)
+	CORE_CC_SRCS += $(wildcard tensorflow/core/common_runtime/eager/*.cc)
+	TF_LITE_CORE_CC_ALL_SRCS := \
+	$(wildcard tensorflow/contrib/lite/*.cc) \
+	$(wildcard tensorflow/contrib/lite/*.c) \
+	$(wildcard tensorflow/contrib/lite/c/*.c) \
+	$(wildcard tensorflow/contrib/lite/core/api/*.cc)
+
+	TF_LITE_CORE_CC_ALL_SRCS += \
+	$(wildcard tensorflow/contrib/lite/kernels/*.cc) \
+	$(wildcard tensorflow/contrib/lite/kernels/internal/*.cc) \
+	$(wildcard tensorflow/contrib/lite/kernels/internal/optimized/*.cc) \
+	$(wildcard tensorflow/contrib/lite/kernels/internal/reference/*.cc) \
+	$(PROFILER_SRCS) \
+	$(wildcard tensorflow/contrib/lite/kernels/*.c) \
+	$(wildcard tensorflow/contrib/lite/kernels/internal/*.c) \
+	$(wildcard tensorflow/contrib/lite/kernels/internal/optimized/*.c) \
+	$(wildcard tensorflow/contrib/lite/kernels/internal/reference/*.c) \
+	$(wildcard tensorflow/contrib/lite/delegates/flex/*.cc)
+
+	# Hack. This shouldn't be here?
+	TF_LITE_CORE_CC_ALL_SRCS += \
+	$(wildcard tensorflow/contrib/makefile/downloads/farmhash/src/farmhash.cc) \
+
+	# Remove any duplicates.
+	TF_LITE_CORE_CC_ALL_SRCS := $(sort $(TF_LITE_CORE_CC_ALL_SRCS))
+	TF_LITE_CORE_CC_EXCLUDE_SRCS := \
+	$(wildcard tensorflow/contrib/lite/*test.cc) \
+	$(wildcard tensorflow/contrib/lite/*/*test.cc) \
+	$(wildcard tensorflow/contrib/lite/*/*/*test.cc) \
+	$(wildcard tensorflow/contrib/lite/*/*/*/*test.cc) \
+	$(wildcard tensorflow/contrib/lite/kernels/test_util.cc) \
+	$(wildcard tensorflow/contrib/lite/delegates/flex/test_util.cc) \
+	$(wildcard tensorflow/contrib/lite/nnapi_delegate.cc) \
+	$(wildcard tensorflow/contrib/lite/mmap_allocation_disabled.cc)
+
+	# Filter out all the excluded files.
+	TF_LITE_CC_SRCS := $(filter-out $(TF_LITE_CORE_CC_EXCLUDE_SRCS), $(TF_LITE_CORE_CC_ALL_SRCS))
+	TF_CC_SRCS += $(TF_LITE_CC_SRCS)
+endif
 
 ifdef HEXAGON_LIBS
 	TF_CC_SRCS += \

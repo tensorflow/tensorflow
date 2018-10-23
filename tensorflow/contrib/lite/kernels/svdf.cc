@@ -147,15 +147,16 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   const int rank = params->rank;
   const int batch_size = input->dims->data[0];
   const int num_filters = weights_feature->dims->data[0];
-  TF_LITE_ASSERT_EQ(num_filters % rank, 0);
+  TF_LITE_ENSURE_EQ(context, num_filters % rank, 0);
   const int num_units = num_filters / rank;
   const int memory_size = weights_time->dims->data[1];
-  TF_LITE_ASSERT_EQ(input->dims->data[1], weights_feature->dims->data[1]);
-  TF_LITE_ASSERT_EQ(weights_time->dims->data[0], num_filters);
+  TF_LITE_ENSURE_EQ(context, input->dims->data[1],
+                    weights_feature->dims->data[1]);
+  TF_LITE_ENSURE_EQ(context, weights_time->dims->data[0], num_filters);
 
   const TfLiteTensor* bias = GetOptionalInputTensor(context, node, kBiasTensor);
   if (bias) {
-    TF_LITE_ASSERT_EQ(bias->dims->data[0], num_units);
+    TF_LITE_ENSURE_EQ(context, bias->dims->data[0], num_units);
   }
 
   TfLiteTensor* activation_state =

@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Experimental API for TensorFlow's "Eager" mode of execution."""
+"""State management for eager execution."""
 
 from __future__ import absolute_import
 from __future__ import division
@@ -27,6 +27,7 @@ import threading
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.core.protobuf import rewriter_config_pb2
 from tensorflow.python import pywrap_tensorflow
+from tensorflow.python import tf2
 from tensorflow.python.framework import c_api_util
 from tensorflow.python.framework import device as pydev
 from tensorflow.python.util import compat
@@ -37,8 +38,7 @@ from tensorflow.python.util.tf_export import tf_export
 GRAPH_MODE = 0
 EAGER_MODE = 1
 
-# Default execution mode.
-default_execution_mode = GRAPH_MODE
+default_execution_mode = EAGER_MODE if tf2.enabled() else GRAPH_MODE
 
 # Cache from (old_device_name, partial_new_device_name) -> (new_device_name,
 # new_device_spec).

@@ -138,7 +138,7 @@ if [[ ! -z "${BUILD_ARCH}" ]]; then
 fi
 
 # build the ios tensorflow libraries.
-echo "Building TensorFlow with flags: ${TF_SCRIPT_FLAGS} -f ${TF_CC_FLAGS}"
+echo "Building TensorFlow with command: ${TF_SCRIPT_FLAGS} -f ${TF_CC_FLAGS}"
 tensorflow/contrib/makefile/compile_ios_tensorflow.sh ${TF_SCRIPT_FLAGS} -f "${TF_CC_FLAGS}"
 
 # Creates a static universal library in

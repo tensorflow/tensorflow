@@ -378,6 +378,20 @@ const BufferAllocation& BufferAssignment::GetAllocation(
   return allocations_[index];
 }
 
+const BufferAllocation* BufferAssignment::GetInstructionAllocation(
+    const HloInstruction* hlo, const ShapeIndex& shape_index) const {
+  const PointsToSet& points_to_set = points_to_analysis().GetPointsToSet(hlo);
+  const LogicalBuffer* buffer = points_to_set.element(shape_index)[0];
+
+  if (!HasAllocation(*buffer)) {
+    return nullptr;
+  }
+
+  const BufferAllocation& instruction_allocation =
+      GetAssignedAllocation(*buffer);
+  return &instruction_allocation;
+}
+
 BufferAllocation* BufferAssignment::GetMutableAllocation(
     BufferAllocation::Index index) {
   return const_cast<BufferAllocation*>(&GetAllocation(index));
@@ -514,6 +528,9 @@ void BufferAssignment::AddAssignment(BufferAllocation* allocation,
   TF_CHECK_OK(points_to_analysis().VerifyBuffer(buffer));
 
   allocation->AddAssignment(buffer, offset, size);
+  if (liveness().MaybeLiveOut(buffer)) {
+    allocation->set_maybe_live_out(true);
+  }
   allocation_index_for_buffer_[&buffer] = allocation->index();
 }
 
@@ -728,9 +745,10 @@ StatusOr<std::unique_ptr<BufferAssignment>> BufferAssigner::Run(
     LogicalBuffer::SizeFunction buffer_size,
     LogicalBuffer::AlignmentFunction color_alignment,
     bool allow_input_output_aliasing, bool allocate_buffers_for_constants,
-    BufferLiveness::Colorer colorer) {
+    BufferLiveness::Colorer colorer, ReuseAllocationFunction reuse_checker) {
   BufferAssigner assigner(allow_input_output_aliasing,
-                          allocate_buffers_for_constants, std::move(colorer));
+                          allocate_buffers_for_constants, std::move(colorer),
+                          std::move(reuse_checker));
   return assigner.CreateAssignment(module, std::move(hlo_ordering),
                                    std::move(buffer_size),
                                    std::move(color_alignment));
@@ -760,6 +778,12 @@ bool BufferAssigner::MaybeAssignBuffer(BufferAllocation* allocation,
 
   if (allocation->is_readonly()) {
     VLOG(4) << "Can't assign: allocation is readonly";
+    return false;
+  }
+
+  if (reuse_checker_ != nullptr &&
+      !reuse_checker_(*assignment, *allocation, buffer)) {
+    VLOG(4) << "Can't assign: reuse_checker_(allocation, buffer) == false";
     return false;
   }
 
