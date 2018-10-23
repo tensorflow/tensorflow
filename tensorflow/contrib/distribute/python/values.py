@@ -103,9 +103,6 @@ class DistributedValues(object):
 class DistributedDelegate(DistributedValues):
   """A map from device to values; acts as the same type as the values."""
 
-  def __init__(self, index):
-    super(DistributedDelegate, self).__init__(index)
-
   def __getattr__(self, name):
     return getattr(self.get(), name)
 
@@ -188,7 +185,6 @@ class Mirrored(DistributedDelegate):
 
   def _as_graph_element(self):
     obj = self.get()
-    # pylint: disable=protected-access
     conv_fn = getattr(obj, "_as_graph_element", None)
     if conv_fn and callable(conv_fn):
       return conv_fn()
@@ -1474,13 +1470,11 @@ def value_container(val):
     If value does not belong to any container (including the case of
     container having been destroyed), returns the value itself.
   """
-  # pylint: disable=protected-access
   if (hasattr(val, "_distributed_container") and
       # DistributedVariable has _distributed_container defined
       # but we don't want to return it.
       not isinstance(val, DistributedVariable)):
-    container = val._distributed_container()
-    # pylint: disable=protected-access
+    container = val._distributed_container()  # pylint: disable=protected-access
     if container is not None:
       return container
   return val
@@ -1492,8 +1486,9 @@ class AggregatingVariable(checkpointable.CheckpointableBase):
 
   def __init__(self, v, aggregation):
     self._v = v
-    # TODO(josh11b): Set v._distributed_container?
-    # v._distributed_container = weakref.ref(self)  # pylint: disable=protected-access
+    # NOTE: We don't use "_distributed_container" here because we don't want
+    # to trigger that code path in regroup().
+    v._aggregating_container = weakref.ref(self)  # pylint: disable=protected-access
     self._aggregation = aggregation
 
   def get(self):
