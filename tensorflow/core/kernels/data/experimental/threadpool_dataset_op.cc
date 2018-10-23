@@ -127,16 +127,17 @@ class ThreadPoolDatasetOp : public UnaryDatasetOpKernel {
                                        &threadpool_resource));
     core::ScopedUnref unref_iterator(threadpool_resource);
 
-    *output = new Dataset(ctx, input, threadpool_resource);
+    *output = new Dataset(ctx, input, ctx->input(1), threadpool_resource);
   }
 
  private:
   class Dataset : public DatasetBase {
    public:
     Dataset(OpKernelContext* ctx, const DatasetBase* input,
-            ThreadPoolResource* threadpool)
+            const Tensor& resource_handle, ThreadPoolResource* threadpool)
         : DatasetBase(DatasetContext(ctx)),
           input_(input),
+          resource_handle_(resource_handle),
           threadpool_(threadpool) {
       input_->Ref();
       threadpool_->Ref();
@@ -168,8 +169,13 @@ class ThreadPoolDatasetOp : public UnaryDatasetOpKernel {
     Status AsGraphDefInternal(SerializationContext* ctx,
                               DatasetGraphDefBuilder* b,
                               Node** output) const override {
-      return errors::Unimplemented("%s does not support serialization",
-                                   DebugString());
+      Node* input_graph_node = nullptr;
+      TF_RETURN_IF_ERROR(b->AddInputDataset(ctx, input_, &input_graph_node));
+      Node* resource_handle_node = nullptr;
+      TF_RETURN_IF_ERROR(b->AddTensor(resource_handle_, &resource_handle_node));
+      TF_RETURN_IF_ERROR(b->AddDataset(
+          this, {input_graph_node, resource_handle_node}, output));
+      return Status::OK();
     }
 
    private:
@@ -205,6 +211,7 @@ class ThreadPoolDatasetOp : public UnaryDatasetOpKernel {
     };
 
     const DatasetBase* const input_;
+    const Tensor resource_handle_;
     ThreadPoolResource* const threadpool_;
   };
 };
