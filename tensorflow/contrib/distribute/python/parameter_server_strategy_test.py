@@ -28,6 +28,7 @@ from tensorflow.contrib.distribute.python import parameter_server_strategy
 from tensorflow.contrib.distribute.python import values
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.distribute import multi_worker_util
+from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
 from tensorflow.python.estimator import run_config
 from tensorflow.python.framework import constant_op
@@ -517,6 +518,19 @@ class ParameterServerStrategyWithChiefTest(ParameterServerStrategyTestBase,
                              id(get_step), get_step.__class__.__name__)))
       self.assertIs(values.AggregatingVariable, type(created_step))
       self.assertIs(values.AggregatingVariable, type(get_step))
+
+  def testValueContainer(self):
+    distribution = parameter_server_strategy.ParameterServerStrategy(
+        num_gpus_per_worker=2)
+    with ops.Graph().as_default(), distribution.scope():
+      def f():
+        with backprop.GradientTape() as tape:
+          v = variable_scope.get_variable('v', initializer=10.0)
+          _ = v * v
+        v, = tape.watched_variables()
+        w = distribution.value_container(v)
+        self.assertIs(values.AggregatingVariable, type(w))
+      distribution.call_for_each_tower(f)
 
 
 if __name__ == '__main__':

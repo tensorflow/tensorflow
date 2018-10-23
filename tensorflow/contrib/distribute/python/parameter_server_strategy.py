@@ -246,6 +246,7 @@ class ParameterServerStrategy(distribute_lib.DistributionStrategy):
                          " for variable: " + kwargs["name"])
 
       def var_creator(*args, **kwargs):
+        """Create an AggregatingVariable and fix up collections."""
         # Record what collections this variable should be added to.
         collections = kwargs.pop("collections", None)
         if collections is None:
@@ -380,7 +381,12 @@ class ParameterServerStrategy(distribute_lib.DistributionStrategy):
     return [val]
 
   def value_container(self, val):
-    return values.value_container(val)
+    if (hasattr(val, "_aggregating_container") and
+        not isinstance(val, values.AggregatingVariable)):
+      wrapper = val._aggregating_container()  # pylint: disable=protected-access
+      if wrapper is not None:
+        return wrapper
+    return val
 
   def read_var(self, var):
     # No need to distinguish between normal variables and tower-local variables.
