@@ -85,6 +85,11 @@ class OpsSet(enum.Enum):
     return [str(option) for option in list(OpsSet)]
 
 
+class ConverterError(Exception):
+  """Raised when an error occurs during model conversion."""
+  pass
+
+
 def toco_convert_protos(model_flags_str, toco_flags_str, input_data_str):
   """Convert `input_data_str` according to model and toco parameters.
 
@@ -100,14 +105,20 @@ def toco_convert_protos(model_flags_str, toco_flags_str, input_data_str):
   Returns:
     Converted model in serialized form (e.g. a TFLITE model is common).
   Raises:
+    ConverterError: When conversion fails in TFLiteConverter, usually due to
+      ops not being supported.
     RuntimeError: When conversion fails, an exception is raised with the error
       message embedded.
   """
   # TODO(aselle): When toco does not use fatal errors for failure, we can
   # switch this on.
   if not _toco_from_proto_bin:
-    return _toco_python.TocoConvert(
-        model_flags_str, toco_flags_str, input_data_str)
+    model_str = _toco_python.TocoConvert(model_flags_str, toco_flags_str,
+                                         input_data_str)
+    if not model_str:
+      raise ConverterError(
+          "TOCO returned an empty string. See console for more info.")
+    return model_str
 
   # Windows and TemporaryFile are not that useful together,
   # since you cannot have two readers/writers. So we have to
@@ -154,8 +165,8 @@ def toco_convert_protos(model_flags_str, toco_flags_str, input_data_str):
     else:
       stdout = _try_convert_to_unicode(stdout)
       stderr = _try_convert_to_unicode(stderr)
-      raise RuntimeError(
-          "TOCO failed see console for info.\n%s\n%s\n" % (stdout, stderr))
+      raise ConverterError(
+          "TOCO failed. See console for info.\n%s\n%s\n" % (stdout, stderr))
   finally:
     # Must manually cleanup files.
     for filename in [

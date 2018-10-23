@@ -86,9 +86,11 @@ PyObject* TocoConvert(PyObject* model_flags_proto_txt_raw,
       toco::Import(toco_flags, model_flags, input_contents_txt);
   toco::Transform(toco_flags, model.get());
   string output_file_contents_txt;
-  Export(toco_flags, *model, toco_flags.allow_custom_ops(),
-         &output_file_contents_txt);
-
+  auto status = Export(toco_flags, *model, toco_flags.allow_custom_ops(),
+                       &output_file_contents_txt);
+  if (!status.ok()) {
+    return TOCO_FROM_CPPSTRING_TO_PY("", 0);
+  }
   if (extended_return) {
     PyObject* dict = PyDict_New();
     PyDict_SetItemString(
