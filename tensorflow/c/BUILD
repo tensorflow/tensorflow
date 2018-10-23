@@ -126,6 +126,7 @@ tf_cuda_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_platform",
         "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/common_runtime/eager:attr_builder",
     ],
 )
 
