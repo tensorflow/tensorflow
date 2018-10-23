@@ -580,6 +580,8 @@ struct MatMulFunctor<SYCLDevice, T> {
 
 #if defined(INTEL_MKL) && defined(ENABLE_MKL)
 
+// MKL supports float, double, complex64 and complex128 types for
+// matrix-multiplication, and these kernels are registered in mkl_matmul_op.cc.
 // MKL does not support half, bfloat16, int32 and int64 types for
 // matrix-multiplication, so register the kernel to use default Eigen based
 // implementations for these types. REGISTER_CPU defines two versions - Eigen
