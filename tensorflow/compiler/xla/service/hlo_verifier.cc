@@ -389,6 +389,7 @@ Status ShapeVerifier::HandleBroadcast(HloInstruction* broadcast) {
        ++operand_dimension) {
     int64 output_dimension = broadcast->dimensions()[operand_dimension];
     TF_RET_CHECK((output_dimension < ShapeUtil::Rank(broadcast->shape())) &&
+                 output_dimension >= 0 &&
                  (broadcast->shape().dimensions(output_dimension) ==
                   operand_shape.dimensions(operand_dimension)))
         << broadcast->ToString() << " operand shape " << operand_shape;
