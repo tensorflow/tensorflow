@@ -41,13 +41,6 @@ CholeskyOpTest
 FusedBatchNormTest
 MatrixTriangularSolveOpTest.testBasic
 MatrixTriangularSolveOpTest.testBasicNotActuallyTriangular
-EagerTest.testIdentityOnVariable # Copy back from device failing
-EagerTest.testAssignAddVariable
-EagerTest.testReadAssignRead
-EagerTest.testVariableGradient
-EagerTest.testMultipleVariableReads
-EagerTest.testAdam
-EagerTest.testAdamSparse
-EagerFunctionTest
-ExcessivePaddingTest.testAsFunctionInput
-ExcessivePaddingTest.testAsFunctionOutput
+EagerFunctionTest # No registered OpKernel
+ExcessivePaddingTest.testAsFunctionInput # No registered OpKernel
+ExcessivePaddingTest.testAsFunctionOutput # No registered OpKernel

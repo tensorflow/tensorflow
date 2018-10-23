@@ -117,9 +117,7 @@ class PoplarExecutor : public se::internal::StreamExecutorInterface {
               uint64 size) override;
   bool MemcpyDeviceToDevice(se::Stream* stream, se::DeviceMemoryBase* pop_dst,
                             const se::DeviceMemoryBase& host_src,
-                            uint64 size) override {
-    return false;
-  }
+                            uint64 size) override;
 
   bool MemZero(se::Stream* stream, se::DeviceMemoryBase* location,
                uint64 size) override {
@@ -150,9 +148,7 @@ class PoplarExecutor : public se::internal::StreamExecutorInterface {
                            uint64 size) override;
   Status SynchronousMemcpyDeviceToDevice(se::DeviceMemoryBase*,
                                          const se::DeviceMemoryBase&,
-                                         uint64 size) override {
-    return xla::Unimplemented("Not implemented");
-  }
+                                         uint64 size) override;
 
   bool HostCallback(se::Stream* stream,
                     std::function<void()> callback) override;

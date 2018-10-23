@@ -211,6 +211,37 @@ Status PoplarExecutor::SynchronousMemcpy(void* host_dst,
   return Status::OK();
 }
 
+Status PoplarExecutor::SynchronousMemcpyDeviceToDevice(
+    se::DeviceMemoryBase* dst, const se::DeviceMemoryBase& src, uint64 size) {
+  TensorControl* dst_tc = reinterpret_cast<TensorControl*>(dst->opaque());
+  const TensorControl* src_tc =
+      reinterpret_cast<const TensorControl*>(src.opaque());
+  {
+    std::lock_guard<std::recursive_mutex> g(mutex_);
+    if (src_tc->on_device == true && !src_tc->output_handle.empty()) {
+      TF_RETURN_IF_ERROR(MoveDeviceToHost());
+    }
+  }
+  memcpy(dst_tc->data, src_tc->data, size);
+  {
+    std::lock_guard<std::recursive_mutex> g(mutex_);
+    dst_tc->on_device = false;
+    dst_tc->input_handle.clear();
+  }
+  return Status::OK();
+}
+
+bool PoplarExecutor::MemcpyDeviceToDevice(se::Stream* stream,
+                                          se::DeviceMemoryBase* pop_dst,
+                                          const se::DeviceMemoryBase& pop_src,
+                                          uint64 size) {
+  se::DeviceMemoryBase dst = *pop_dst;
+  AsPoplarStream(stream)->EnqueueTask([this, dst, pop_src, size]() mutable {
+    SynchronousMemcpyDeviceToDevice(&dst, pop_src, size);
+  });
+  return true;
+}
+
 bool PoplarExecutor::HostCallback(se::Stream* stream,
                                   std::function<void()> callback) {
   AsPoplarStream(stream)->EnqueueTask(callback);
