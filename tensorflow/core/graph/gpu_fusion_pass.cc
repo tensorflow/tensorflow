@@ -57,9 +57,12 @@ const OptimizationPassRegistry::Grouping kROCmFusionPassGrouping =
         : OptimizationPassRegistry::POST_PARTITIONING;
 
 // attribute name strings
+const char* kAttr_N = "N";
 const char* kAttr_T = "T";
 const char* kAttr_U = "U";
+
 const char* kAttr_activation_mode = "activation_mode";
+const char* kAttr_bop_type = "bop_type";
 const char* kAttr_data_format = "data_format";
 const char* kAttr_dilations = "dilations";
 const char* kAttr_epsilon = "epsilon";
@@ -164,6 +167,26 @@ inline bool isOpActivation(const Node* n) {
 inline bool isOpBatchNorm(const Node* n) {
   return ((n->type_string() == "FusedBatchNorm") ||
           (n->type_string() == "FusedBatchNormV2"));
+}
+
+// is this node an instance of the "Add" op?
+inline bool isOpAdd(const Node* n) { return (n->type_string() == "Add"); }
+
+// is this node an instance of the "AddN" op?
+inline bool isOpAddN(const Node* n) { return (n->type_string() == "AddN"); }
+
+// is this node an instance of the "Relu" op?
+inline bool isOpRelu(const Node* n) { return (n->type_string() == "Relu"); }
+
+// is this node an instance of the "Relu" op or the "_ROCmFusedAddRelu" op?
+inline bool isOpReluOrFusedAddRelu(const Node* n) {
+  return ((n->type_string() == "Relu") ||
+          (n->type_string() == "_ROCmFusedAddRelu"));
+}
+
+// is this node an instance of the "ReluGrad" op?
+inline bool isOpReluGrad(const Node* n) {
+  return (n->type_string() == "ReluGrad");
 }
 // Util routines - End
 
@@ -301,6 +324,58 @@ class ROCmFusionOpBatchNormActivation : public ROCmFusionOpBase {
 
 //----------------------------------------------------------------------
 
+// Add-Relu Fusion
+class ROCmFusionOpAddRelu : public ROCmFusionOpBase {
+ public:
+  ROCmFusionOpAddRelu(Graph* g, std::set<const Node*>& fn)
+      : ROCmFusionOpBase(g, fn) {}
+
+  // routine to (maybe) do fusion on the given node (+ the nodes preceding
+  // it). will return true if fusion was done, false otherwise
+  bool DoFusion(const Node* n) override;
+
+ protected:
+  struct FusionData {
+    const Node* add;
+    const Node* relu;
+
+    DataType data_type;
+  };
+
+  bool IsFusionEligible(const Node* n, FusionData* d);
+
+  void CreateFusionOp(const FusionData* d);
+};
+
+//----------------------------------------------------------------------
+
+// AddN-Relu-ReluGrad Fusion
+class ROCmFusionOpAddNReluGrad : public ROCmFusionOpBase {
+ public:
+  ROCmFusionOpAddNReluGrad(Graph* g, std::set<const Node*>& fn)
+      : ROCmFusionOpBase(g, fn) {}
+
+  // routine to (maybe) do fusion on the given node (+ the nodes preceding
+  // it). will return true if fusion was done, false otherwise
+  bool DoFusion(const Node* n) override;
+
+ protected:
+  struct FusionData {
+    const Node* addN;
+    const Node* relu;
+    const Node* reluGrad;
+
+    DataType data_type;
+    int num_addN_inputs;
+  };
+
+  bool IsFusionEligible(const Node* n, FusionData* d);
+
+  void CreateFusionOp(const FusionData* d);
+};
+
+//----------------------------------------------------------------------
+
 Status ROCmFusionPass::Run(const GraphOptimizationPassOptions& options) {
   // enable the fusion pass if the env var TF_ROCM_FUSION_ENABLE is set
   const char* enable_fusion = getenv("TF_ROCM_FUSION_ENABLE");
@@ -388,6 +463,8 @@ void ROCmFusionPass::InitializeFusions(
   fusions.emplace_back(
       new ROCmFusionOpConvolutionBiasActivation(g, fused_nodes));
   fusions.emplace_back(new ROCmFusionOpBatchNormActivation(g, fused_nodes));
+  fusions.emplace_back(new ROCmFusionOpAddRelu(g, fused_nodes));
+  fusions.emplace_back(new ROCmFusionOpAddNReluGrad(g, fused_nodes));
 }
 
 //----------------------------------------------------------------------
@@ -956,6 +1033,348 @@ void ROCmFusionOpBatchNormActivation::CreateFusionOp(const FusionData* d) {
   graph_->RemoveNode(const_cast<Node*>(d->norm));
   graph_->RemoveNode(const_cast<Node*>(d->actv));
 }
+//----------------------------------------------------------------------
+
+// ----------------------------------------------
+// ROCmFusionOpAddRelu implementation
+// ----------------------------------------------
+
+bool ROCmFusionOpAddRelu::DoFusion(const Node* n2) {
+  bool did_fusion = false;
+  FusionData d;
+  if (IsFusionEligible(n2, &d)) {
+    CreateFusionOp(&d);
+    did_fusion = true;
+  }
+  return did_fusion;
+}
+
+bool ROCmFusionOpAddRelu::IsFusionEligible(const Node* n2, FusionData* d) {
+  bool is_eligible = false;
+
+  // First check whether we have the right sequence of ops
+  if (isOpRelu(n2)) {  // "Relu" node
+    Node* n1 = nullptr;
+    TF_CHECK_OK(n2->input_node(0, &n1));
+    if (isOpAdd(n1)) {  // preceded by a "Add" op
+      d->add = n1;
+      d->relu = n2;
+
+      DumpNodeList(kVlogLevel,
+                   "Found Fusion Candidate Add+Relu: ", {d->add, d->relu});
+
+      is_eligible = true;
+    }
+  }
+
+  // ensure all the nodes are placed on the same GPU
+  if (is_eligible && !areAssignedToSameGpu({d->add, d->relu})) {
+    is_eligible = false;
+  }
+
+  // Next check if the first output of add node feeds a node other then
+  // the activation node
+  if (is_eligible) {
+    for (const Edge* e : d->add->out_edges()) {
+      if ((e->src_output() == 0) && (e->dst() != d->relu)) {
+        VLOG(kVlogLevel) << "\tSkipping Fusion : "
+                         << "Output from Add also feeds node other then Relu : "
+                         << e->dst()->name();
+        VLOG(kVlogLevel) << "===========";
+        is_eligible = false;
+        break;
+      }
+    }
+  }
+
+  // Next check if the datatype(s) are supported
+  if (is_eligible) {
+    is_eligible = false;
+
+    DataType T_add, T_relu;
+    TF_CHECK_OK(GetNodeAttr(d->add->def(), kAttr_T, &T_add));
+    TF_CHECK_OK(GetNodeAttr(d->relu->def(), kAttr_T, &T_relu));
+
+    // only float and half types are supported for now
+    if ((T_add == DT_FLOAT) || (T_add == DT_HALF)) {
+      // datatype for add and relu must match
+      if (T_add == T_relu) {
+        d->data_type = T_add;
+        is_eligible = true;
+      } else {
+        VLOG(kVlogLevel) << "\tSkipping Fusion : "
+                         << "\t DataTypes not matching : "
+                         << " " << DataType_Name(T_add) << " "
+                         << DataType_Name(T_relu);
+        VLOG(kVlogLevel) << "===========";
+      }
+    } else {
+      VLOG(kVlogLevel) << "\tSkipping Fusion : "
+                       << " DataType not supported : " << DataType_Name(T_add);
+      VLOG(kVlogLevel) << "===========";
+    }
+  }
+
+  return is_eligible;
+}
+
+void ROCmFusionOpAddRelu::CreateFusionOp(const FusionData* d) {
+  std::vector<const Edge*> add_input_edges;
+  TF_CHECK_OK(d->add->input_edges(&add_input_edges));
+
+  // create an instance of the fusion node
+  string op_name = strings::StrCat(d->add->name(), d->relu->name());
+
+  NodeBuilder nb(op_name, "_ROCmFusedAddRelu");
+
+  // populate input data edges
+
+  // add x
+  nb.Input(add_input_edges[0]->src(), add_input_edges[0]->src_output());
+  // add y
+  nb.Input(add_input_edges[1]->src(), add_input_edges[1]->src_output());
+
+  // populate attributes
+  nb.Attr(kAttr_T, d->data_type);
+
+  // populate the device
+  nb.Device(d->add->def().device());
+
+  // create the new fusion node
+  Node* fusion_node = nullptr;
+  TF_CHECK_OK(nb.Finalize(graph_, &fusion_node));
+
+  // populate the input control edges
+  for (const Edge* e : d->add->in_edges()) {
+    if (e->IsControlEdge()) {
+      CHECK_NOTNULL(graph_->AddControlEdge(e->src(), fusion_node, true));
+    }
+  }
+  for (const Edge* e : d->relu->in_edges()) {
+    if (e->IsControlEdge()) {
+      CHECK_NOTNULL(graph_->AddControlEdge(e->src(), fusion_node, true));
+    }
+  }
+
+  // populate output data and control edges
+  for (const Edge* e : d->add->out_edges()) {
+    if (e->IsControlEdge()) {
+      CHECK_NOTNULL(graph_->AddControlEdge(e->src(), fusion_node, true));
+    }
+  }
+  for (const Edge* e : d->relu->out_edges()) {
+    if (e->IsControlEdge()) {
+      CHECK_NOTNULL(graph_->AddControlEdge(e->src(), fusion_node, true));
+    } else {
+      CHECK_NOTNULL(graph_->AddEdge(fusion_node, 0, e->dst(), e->dst_input()));
+    }
+  }
+
+  // populate the device placement
+  fusion_node->set_assigned_device_name(d->add->assigned_device_name());
+
+  VLOG(kVlogLevel) << "\tCreated Add+Relu Fusion Node: " << fusion_node;
+  VLOG(kVlogLevel) << "===========";
+
+  // add the now redundant nodes to the set of fused nodes
+  fused_nodes_.insert(d->add);
+  fused_nodes_.insert(d->relu);
+
+  // and remove them from the graph
+  graph_->RemoveNode(const_cast<Node*>(d->add));
+  graph_->RemoveNode(const_cast<Node*>(d->relu));
+}
+
+//----------------------------------------------------------------------
+
+// ----------------------------------------------
+// ROCmFusionOpAddNReluGrad implementation
+// ----------------------------------------------
+
+bool ROCmFusionOpAddNReluGrad::DoFusion(const Node* n2) {
+  bool did_fusion = false;
+  FusionData d;
+  if (IsFusionEligible(n2, &d)) {
+    CreateFusionOp(&d);
+    did_fusion = true;
+  }
+  return did_fusion;
+}
+
+bool ROCmFusionOpAddNReluGrad::IsFusionEligible(const Node* n2, FusionData* d) {
+  bool is_eligible = false;
+
+  // First check whether we have the right sequence of ops
+  if (isOpReluGrad(n2)) {  // "ReluGrad" node
+
+    Node* n1_1 = nullptr;
+    TF_CHECK_OK(n2->input_node(0, &n1_1));
+
+    Node* n1_2 = nullptr;
+    TF_CHECK_OK(n2->input_node(1, &n1_2));
+
+    // VLOG(kVlogLevel) << "===========";
+    // DumpNodeList(kVlogLevel, "ReluGrad Inputs: ",
+    // 		 {n1_1, n1_2});
+    // VLOG(kVlogLevel) << "===========";
+
+    if (isOpAddN(n1_1) && isOpReluOrFusedAddRelu(n1_2)) {
+      // preceded by "AddN" and "Relu"/"_ROCmFusedAddRelu" Ops
+
+      d->addN = n1_1;
+      d->relu = n1_2;
+      d->reluGrad = n2;
+
+      DumpNodeList(kVlogLevel, "Found Fusion Candidate AddN+ReluGrad : ",
+                   {d->addN, d->reluGrad});
+
+      is_eligible = true;
+    }
+  }
+
+  // ensure all the nodes are placed on the same GPU
+  if (is_eligible && !areAssignedToSameGpu({d->addN, d->relu, d->reluGrad})) {
+    is_eligible = false;
+  }
+
+  // Next check if the first output of addN node feeds a node other then
+  // the activation node
+  if (is_eligible) {
+    for (const Edge* e : d->addN->out_edges()) {
+      if ((e->src_output() == 0) && (e->dst() != d->reluGrad)) {
+        VLOG(kVlogLevel)
+            << "\tSkipping Fusion : "
+            << "Output from AddN also feeds node other then ReluGrad : "
+            << e->dst()->name();
+        VLOG(kVlogLevel) << "===========";
+        is_eligible = false;
+        break;
+      }
+    }
+  }
+
+  // Next check if the datatype(s) are supported
+  if (is_eligible) {
+    is_eligible = false;
+
+    DataType T_addN, T_relu, T_reluGrad;
+    TF_CHECK_OK(GetNodeAttr(d->addN->def(), kAttr_T, &T_addN));
+    TF_CHECK_OK(GetNodeAttr(d->relu->def(), kAttr_T, &T_relu));
+    TF_CHECK_OK(GetNodeAttr(d->reluGrad->def(), kAttr_T, &T_reluGrad));
+
+    // only float and half types are supported for now
+    if ((T_addN == DT_FLOAT) || (T_addN == DT_HALF)) {
+      // datatype for binary-op and activation must match
+      if ((T_addN == T_relu) && (T_addN == T_reluGrad)) {
+        d->data_type = T_addN;
+        is_eligible = true;
+      } else {
+        VLOG(kVlogLevel) << "\tSkipping Fusion : "
+                         << "\t DataTypes not matching : "
+                         << " " << DataType_Name(T_addN) << " "
+                         << DataType_Name(T_relu) << " "
+                         << DataType_Name(T_reluGrad);
+        VLOG(kVlogLevel) << "===========";
+      }
+    } else {
+      VLOG(kVlogLevel) << "\tSkipping Fusion : "
+                       << " DataType not supported : " << DataType_Name(T_addN);
+      VLOG(kVlogLevel) << "===========";
+    }
+  }
+
+  // scan in the number of inputs to the AddN node
+  if (is_eligible) {
+    TF_CHECK_OK(GetNodeAttr(d->addN->def(), kAttr_N, &d->num_addN_inputs));
+    if (d->num_addN_inputs != 2) {
+      VLOG(kVlogLevel) << "\tSkipping Fusion : "
+                       << " AddN node has unsupported N value : "
+                       << d->num_addN_inputs;
+      VLOG(kVlogLevel) << "===========";
+    }
+  }
+
+  return is_eligible;
+}
+
+void ROCmFusionOpAddNReluGrad::CreateFusionOp(const FusionData* d) {
+  std::vector<const Edge*> addN_input_edges;
+  TF_CHECK_OK(d->addN->input_edges(&addN_input_edges));
+
+  std::vector<const Edge*> reluGrad_input_edges;
+  TF_CHECK_OK(d->reluGrad->input_edges(&reluGrad_input_edges));
+
+  // create an instance of the fusion node
+  string op_name = strings::StrCat(d->addN->name(), d->reluGrad->name());
+
+  NodeBuilder nb(op_name, "_ROCmFusedAddNReluGrad");
+
+  // populate input data edges
+
+  // add addN inputs
+  std::vector<NodeBuilder::NodeOut> addN_inputs;
+  for (const Edge* e : addN_input_edges) {
+    addN_inputs.push_back(NodeBuilder::NodeOut(e->src(), e->src_output()));
+  }
+  nb.Input(addN_inputs);
+
+  // add the relu output
+  CHECK_EQ(reluGrad_input_edges[1]->src(), d->relu);
+  nb.Input(reluGrad_input_edges[1]->src(),
+           reluGrad_input_edges[1]->src_output());
+
+  // populate attributes
+  nb.Attr(kAttr_T, d->data_type);
+  nb.Attr(kAttr_N, d->num_addN_inputs);
+
+  // populate the device
+  nb.Device(d->addN->def().device());
+
+  // create the new fusion node
+  Node* fusion_node = nullptr;
+  TF_CHECK_OK(nb.Finalize(graph_, &fusion_node));
+
+  // populate the input control edges
+  for (const Edge* e : d->addN->in_edges()) {
+    if (e->IsControlEdge()) {
+      CHECK_NOTNULL(graph_->AddControlEdge(e->src(), fusion_node, true));
+    }
+  }
+  for (const Edge* e : d->reluGrad->in_edges()) {
+    if (e->IsControlEdge()) {
+      CHECK_NOTNULL(graph_->AddControlEdge(e->src(), fusion_node, true));
+    }
+  }
+
+  // populate output data and control edges
+  for (const Edge* e : d->addN->out_edges()) {
+    if (e->IsControlEdge()) {
+      CHECK_NOTNULL(graph_->AddControlEdge(e->src(), fusion_node, true));
+    }
+  }
+  for (const Edge* e : d->reluGrad->out_edges()) {
+    if (e->IsControlEdge()) {
+      CHECK_NOTNULL(graph_->AddControlEdge(e->src(), fusion_node, true));
+    } else {
+      CHECK_NOTNULL(graph_->AddEdge(fusion_node, 0, e->dst(), e->dst_input()));
+    }
+  }
+
+  // populate the device placement
+  fusion_node->set_assigned_device_name(d->addN->assigned_device_name());
+
+  VLOG(kVlogLevel) << "\tCreated AddN+ReluGrad Fusion Node: " << fusion_node;
+  VLOG(kVlogLevel) << "===========";
+
+  // add the now redundant nodes to the set of fused nodes
+  fused_nodes_.insert(d->addN);
+  fused_nodes_.insert(d->reluGrad);
+
+  // and remove them from the graph
+  graph_->RemoveNode(const_cast<Node*>(d->addN));
+  graph_->RemoveNode(const_cast<Node*>(d->reluGrad));
+}
+
 //----------------------------------------------------------------------
 
 }  // namespace gpu_fusion_pass

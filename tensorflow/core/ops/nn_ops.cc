@@ -2471,7 +2471,29 @@ REGISTER_OP("_ROCmFusedBatchNormActivationInference")
       using shape_inference::ShapeHandle;
       using shape_inference::DimensionHandle;
 
-      VLOG(-1) << "SetShapFn called for _ROCmFusedBatchNormActivation";
+      ShapeHandle x;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 4, &x));
+
+      string data_format_str;
+      TF_RETURN_IF_ERROR(c->GetAttr("data_format", &data_format_str));
+
+      TensorFormat data_format;
+      FormatFromString(data_format_str, &data_format);
+
+      int channel_dim_index = GetTensorFeatureDimIndex(4, data_format);
+      DimensionHandle channel_dim = c->Dim(x, channel_dim_index);
+
+      // covers scale, offset, mean, variance
+      int number_inputs = 5;
+      for (int i = 1; i < number_inputs; ++i) {
+        ShapeHandle vec;
+        TF_RETURN_IF_ERROR(c->WithRank(c->input(i), 1, &vec));
+        TF_RETURN_IF_ERROR(c->Merge(channel_dim, c->Dim(vec, 0), &channel_dim));
+      }
+
+      ShapeHandle y;
+      TF_RETURN_IF_ERROR(c->ReplaceDim(x, channel_dim_index, channel_dim, &y));
+      c->set_output(0, y);
 
       return Status::OK();
     })
@@ -2501,7 +2523,32 @@ REGISTER_OP("_ROCmFusedBatchNormActivationTraining")
       using shape_inference::ShapeHandle;
       using shape_inference::DimensionHandle;
 
-      // VLOG(-1) << "SetShapFn called for _ROCmFusedBatchNormActivation";
+      ShapeHandle x;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 4, &x));
+
+      string data_format_str;
+      TF_RETURN_IF_ERROR(c->GetAttr("data_format", &data_format_str));
+      TensorFormat data_format;
+      FormatFromString(data_format_str, &data_format);
+
+      int channel_dim_index = GetTensorFeatureDimIndex(4, data_format);
+      DimensionHandle channel_dim = c->Dim(x, channel_dim_index);
+
+      // covers scale, offset, and if is_training is false, mean, variance
+      int number_inputs = 3;
+      for (int i = 1; i < number_inputs; ++i) {
+        ShapeHandle vec;
+        TF_RETURN_IF_ERROR(c->WithRank(c->input(i), 1, &vec));
+        TF_RETURN_IF_ERROR(c->Merge(channel_dim, c->Dim(vec, 0), &channel_dim));
+      }
+
+      ShapeHandle y;
+      TF_RETURN_IF_ERROR(c->ReplaceDim(x, channel_dim_index, channel_dim, &y));
+      c->set_output(0, y);
+
+      ShapeHandle vector_shape = c->Vector(channel_dim);
+      c->set_output(1, vector_shape);
+      c->set_output(2, vector_shape);
 
       return Status::OK();
     })
@@ -2510,6 +2557,75 @@ REGISTER_OP("_ROCmFusedBatchNormActivationTraining")
       FusedBatchNorm / FusedBatchNormV2 (training only), followed by
       any activation op (None, Sigmoid, Relu, Relu6, Tanh)
     Supports only tensors of type float.
+)doc");
+
+REGISTER_OP("_ROCmFusedAddRelu")
+
+    .Input("x: T")  // input 0 to Add
+    .Input("y: T")  // input 1 to Add
+
+    .Output("activations: T")  // output 0 from Relu
+
+    .Attr("T: {half, float}")
+
+    .SetShapeFn([](shape_inference::InferenceContext* c) {
+      using shape_inference::ShapeHandle;
+      using shape_inference::DimensionHandle;
+
+      ShapeHandle x = c->input(0);
+      ShapeHandle y = c->input(1);
+
+      // if either the shape of x or y is not known, then
+      if (!c->RankKnown(x) || !c->RankKnown(y)) {
+        // then set the shape of z to unknown
+        c->set_output(0, c->UnknownShape());
+      } else {
+        // else
+        // check that the shape of x and y matches
+        // and set the shape of z to be that of x
+
+        ShapeHandle z;
+        TF_RETURN_IF_ERROR(c->Merge(x, y, &z));
+        c->set_output(0, z);
+      }
+
+      return Status::OK();
+    })
+    .Doc(R"doc(
+    Computes a fused kernel which implements: 
+      Add op (element-wise), followed by
+      Relu Op
+    Supports only tensors of type {half, float}.
+)doc");
+
+REGISTER_OP("_ROCmFusedAddNReluGrad")
+
+    .Input("inputs: N * T")  // inputs to AddN
+    .Input("features: T")    // input 1 to ReluGrad
+
+    .Output("backprops: T")  // output 0 from ReluGrad
+
+    .Attr("T: {half, float}")
+    .Attr("N: int >= 1")
+
+    .SetShapeFn([](shape_inference::InferenceContext* c) {
+      using shape_inference::ShapeHandle;
+      using shape_inference::DimensionHandle;
+
+      ShapeHandle out = c->input(0);
+      for (int i = 1; i < c->num_inputs(); i++) {
+        TF_RETURN_IF_ERROR(c->Merge(c->input(i), out, &out));
+      }
+
+      c->set_output(0, out);
+
+      return Status::OK();
+    })
+    .Doc(R"doc(
+    Computes a fused kernel which implements: 
+      AddN Op, Relu Op followed by
+      ReluGrad Op
+    Supports only tensors of type {half, float}.
 )doc");
 
 #endif  //  TENSORFLOW_USE_ROCM
