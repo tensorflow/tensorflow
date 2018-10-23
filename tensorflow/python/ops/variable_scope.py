@@ -2195,8 +2195,9 @@ class variable_scope(object):
     try:
       return self._enter_scope_uncached()
     except:
-      if self._graph_context_manager is not None:
-        self._graph_context_manager.__exit__(*sys.exc_info())
+      if not self._building_function:
+        if self._graph_context_manager is not None:
+          self._graph_context_manager.__exit__(*sys.exc_info())
       raise
 
   def _enter_scope_uncached(self):

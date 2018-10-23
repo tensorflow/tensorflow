@@ -888,9 +888,8 @@ class VariableScopeTest(test.TestCase):
           with ops.name_scope("scope2") as sc2:
             self.assertEqual(sc2, "outer_1/default/scope2/")
 
-  # TODO(mihaimaruseac): Not converted to use wrap_function because of
-  # AttributeError: 'variable_scope' object has no attribute
-  # '_graph_context_manager'
+  @test_util.run_in_graph_and_eager_modes
+  @run_inside_wrap_function_in_eager_mode
   def testVarOpScopeReuseError(self):
     with self.cached_session():
       with self.assertRaises(ValueError):
