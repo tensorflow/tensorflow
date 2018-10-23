@@ -46,8 +46,8 @@ class MirroredOneCPUDistributionTest(strategy_test_lib.DistributionTestBase):
   def testDeviceIndex(self):
     self._test_device_index(self._get_distribution_strategy())
 
-  def testTowerId(self):
-    self._test_tower_id(self._get_distribution_strategy())
+  def testReplicaId(self):
+    self._test_replica_id(self._get_distribution_strategy())
 
   @test_util.run_in_graph_and_eager_modes
   def testCallAndMergeExceptions(self):
@@ -71,7 +71,7 @@ class VariableCreatorStackTest(test.TestCase):
         v = variable_scope.variable(1.0)
 
         # This will pause the current thread, and execute the other thread.
-        distribution_strategy_context.get_tower_context().merge_call(
+        distribution_strategy_context.get_replica_context().merge_call(
             lambda _: _)
       return v
 
@@ -83,7 +83,7 @@ class VariableCreatorStackTest(test.TestCase):
     with context.graph_mode(), \
         dist.scope(), \
         variable_scope.variable_creator_scope(main_thread_creator):
-      result = dist.call_for_each_tower(model_fn, dist.worker_device_index)
+      result = dist.call_for_each_replica(model_fn, dist.worker_device_index)
       result = dist.unwrap(result)
       expected = ["main_thread:thread_0", "main_thread:thread_1"]
       self.assertEquals(expected, result)
