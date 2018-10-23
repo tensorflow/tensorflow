@@ -419,22 +419,23 @@ def gen_selected_ops(name, model):
         tools = [tool],
     )
 
-def gen_full_model_test(target_ops_list, models, data, tags):
+def gen_model_coverage_test(model_name, data, failure_type):
     """Generates Python test targets for testing TFLite models.
 
     Args:
-      target_ops_list: List of operation sets to test the models on.
-      models: List of models to test.
+      model_name: Name of the model to test (must be also listed in the 'data'
+        dependencies)
       data: List of BUILD targets linking the data.
-      tags: Any additional tags including the test_suite tag.
+      failure_type: List of failure types (none, toco, crash, inference)
+        expected for the corresponding combinations of op sets
+        ("TFLITE_BUILTINS", "TFLITE_BUILTINS,SELECT_TF_OPS", "SELECT_TF_OPS").
     """
-    options = [
-        (target_op_sets, model)
-        for model in models
-        for target_op_sets in target_ops_list
-    ]
-
-    for target_op_sets, model_name in options:
+    i = 0
+    for target_op_sets in ["TFLITE_BUILTINS", "TFLITE_BUILTINS,SELECT_TF_OPS", "SELECT_TF_OPS"]:
+        args = []
+        if failure_type[i] != "none":
+            args.append("--failure_type=%s" % failure_type[i])
+        i = i + 1
         native.py_test(
             name = "model_coverage_test_%s_%s" % (model_name, target_op_sets.lower().replace(",", "_")),
             srcs = ["model_coverage_test.py"],
@@ -442,16 +443,14 @@ def gen_full_model_test(target_ops_list, models, data, tags):
             args = [
                 "--model_name=%s" % model_name,
                 "--target_ops=%s" % target_op_sets,
-            ],
+            ] + args,
             data = data,
             srcs_version = "PY2AND3",
             tags = [
                 "no_oss",
                 "no_windows",
                 "notap",
-                # TODO(nupurgarg): Remove manual tag when this test is running without the BUILD flag.
-                "manual",
-            ] + tags,
+            ],
             deps = [
                 "//tensorflow/contrib/lite/testing/model_coverage:model_coverage_lib",
                 "//tensorflow/contrib/lite/python:lite",
