@@ -48,7 +48,6 @@ from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.util import nest as data_nest
 from tensorflow.python.estimator import estimator as estimator_lib
 from tensorflow.python.estimator import model_fn as model_fn_lib
-from tensorflow.python.estimator import util as estimator_util
 from tensorflow.python.estimator.export import export_output as export_output_lib
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -1229,7 +1228,7 @@ class _InputPipeline(object):
     # first one.
     self._infeed_queue = infeed_queues[0]
     return enqueue_ops, [
-        estimator_util.MultiHostDatasetInitializerHook(all_dataset_initializers)
+        util_lib.MultiHostDatasetInitializerHook(all_dataset_initializers)
     ], run_infeed_loop_on_coordinator
 
   def _validate_input_pipeline(self):
