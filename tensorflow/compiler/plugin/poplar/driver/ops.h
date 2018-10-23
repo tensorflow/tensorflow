@@ -361,6 +361,10 @@ StatusOr<poplar::program::Sequence> CreateSort(
     poplar::Graph& graph, poplar::Tensor key, poplar::Tensor value,
     const int64 dimension, const std::string& debug_name = "");
 
+StatusOr<poplar::program::Program> CreateBatchNormInf(
+    poplar::Graph& graph, CompilerResources& res, const HloInstruction* inst,
+    TensorMap& tensor_map);
+
 /* Optimization tests */
 
 bool IsPoplibsPool(const HloInstruction*, const HloComputation*);

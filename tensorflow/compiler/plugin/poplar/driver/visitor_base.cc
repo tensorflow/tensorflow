@@ -432,7 +432,15 @@ Status BaseVisitor::HandleRecvDone(HloInstruction* inst) {
 }
 
 Status BaseVisitor::HandleBatchNormInference(HloInstruction* inst) {
-  return Unimplemented(inst);
+  HloBatchNormInstruction* batch_inf_inst = Cast<HloBatchNormInstruction>(inst);
+  VLOG(1) << "Processing " << inst->name();
+
+  TF_ASSIGN_OR_RETURN(auto prog,
+                      CreateBatchNormInf(graph_, resources_, inst, tensor_map));
+
+  sequence.add(prog);
+
+  return Status::OK();
 }
 
 Status BaseVisitor::HandleBatchNormTraining(HloInstruction* inst) {

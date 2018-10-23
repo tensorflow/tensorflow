@@ -24,6 +24,14 @@ genrule(
     cmd = "$(location @local_config_poplar//poplar:popc) -DNDEBUG -O3 -I . -o $@ $<",
 )
 
+genrule(
+    name = "tf_batch_norm",
+    srcs = ["vertices/batch_norm.cpp"],
+    outs = ["batch_norm.gp"],
+    tools = ["@local_config_poplar//poplar:popc"],
+    cmd = "$(location @local_config_poplar//poplar:popc) -DNDEBUG -O3 -I . -o $@ $<",
+)
+
 tf_proto_library(
     name = "protos",
     srcs = [
@@ -141,6 +149,7 @@ cc_library(
         "driver/visitor_map.cc",
         "driver/visitor_subcomputation.cc",
         "driver/sort_ops.cc",
+        "driver/batch_norm_ops.cc",
     ],
     hdrs = [
         "driver/compiler.h",
@@ -261,6 +270,7 @@ cc_library(
     data = [
         ":tf_graph_program",
         ":tf_sort",
+        ":tf_batch_norm",
         ":protos_py",
         "@local_config_poplar//poplar:poplar_lib",
     ],
