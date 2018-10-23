@@ -183,14 +183,18 @@ bool CFGFuncVerifier::verify() {
 
   // TODO: Lots to be done here, including verifying dominance information when
   // we have uses and defs.
-  // TODO: Verify the first block has no predecessors.
 
   if (fn.empty())
     return failure("cfgfunc must have at least one basic block", fn);
 
+  // Verify the first block has no predecessors.
+  auto *firstBB = &fn.front();
+  if (!firstBB->hasNoPredecessors()) {
+    return failure("first block of cfgfunc must not have predecessors", fn);
+  }
+
   // Verify that the argument list of the function and the arg list of the first
   // block line up.
-  auto *firstBB = &fn.front();
   auto fnInputTypes = fn.getType()->getInputs();
   if (fnInputTypes.size() != firstBB->getNumArguments())
     return failure("first block of cfgfunc must have " +

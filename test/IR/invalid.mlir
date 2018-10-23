@@ -110,6 +110,16 @@ bb42:
 
 // -----
 
+cfgfunc @block_first_has_predecessor() {
+// expected-error@-1 {{first block of cfgfunc must not have predecessors}}
+bb42:
+  br bb43
+bb43:
+  br bb42
+}
+
+// -----
+
 cfgfunc @illegalattrs() -> ()
   attributes { key } { // expected-error {{expected ':' in attribute list}}
 bb42:
