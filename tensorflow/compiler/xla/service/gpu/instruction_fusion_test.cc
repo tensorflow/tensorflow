@@ -748,5 +748,35 @@ TEST_F(InstructionFusionTest, FuseIntoScatter) {
               op::Scatter(op::Add(), op::Add(), op::Add()));
 }
 
+TEST_F(InstructionFusionTest, NonscalarConstantsNotFused) {
+  auto module = ParseHloString(R"(
+    HloModule test_module
+
+    add {
+      lhs = f32[] parameter(0)
+      rhs = f32[] parameter(1)
+      ROOT add = f32[] add(lhs, rhs)
+    }
+
+    ENTRY BroadcastIntoReduce {
+      constant = f32[16] constant({0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15})
+      broadcast = f32[16,16,16,16]{3,2,1,0} broadcast(constant), dimensions={0}
+      constant.1 = f32[] constant(0)
+      ROOT reduce = f32[] reduce(broadcast, constant.1), dimensions={0,1,2,3},
+                                                         to_apply=add
+    })")
+                    .ValueOrDie();
+
+  EXPECT_TRUE(GpuInstructionFusion(/*may_duplicate=*/true)
+                  .Run(module.get())
+                  .ValueOrDie());
+  // The f32[16] constant should not be fused into the reduce, but the f32[]
+  // constant should be.
+  auto* root = module->entry_computation()->root_instruction();
+  ASSERT_THAT(root, op::Fusion());
+  EXPECT_THAT(root->fused_instructions_computation()->root_instruction(),
+              op::Reduce(op::Broadcast(op::Parameter()), op::Constant()));
+}
+
 }  // namespace gpu
 }  // namespace xla
