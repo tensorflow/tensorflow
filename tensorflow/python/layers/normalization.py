@@ -26,7 +26,7 @@ from tensorflow.python.ops import init_ops
 from tensorflow.python.util.tf_export import tf_export
 
 
-@tf_export('layers.BatchNormalization')
+@tf_export(v1=['layers.BatchNormalization'])
 class BatchNormalization(keras_layers.BatchNormalization, base.Layer):
   """Batch Normalization layer from http://arxiv.org/abs/1502.03167.
 
@@ -154,7 +154,7 @@ class BatchNormalization(keras_layers.BatchNormalization, base.Layer):
     return super(BatchNormalization, self).call(inputs, training=training)
 
 
-@tf_export('layers.batch_normalization')
+@tf_export(v1=['layers.batch_normalization'])
 def batch_normalization(inputs,
                         axis=-1,
                         momentum=0.99,
