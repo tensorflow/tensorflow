@@ -77,7 +77,10 @@ std::set<string> GetOpsFormatSupported() {
       "MaxPoolGradGradV2",
       "SpaceToDepth",
       "DepthToSpace",
-      "_ROCmFusedConvolutionBiasActivation"};
+      "_ROCmFusedConvolutionBiasActivation",
+      "_ROCmFusedBatchNormActivationInference",
+      "_ROCmFusedBatchNormActivationTraining",
+  };
   return ops_format_supported;
 }
 

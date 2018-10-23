@@ -2456,7 +2456,29 @@ REGISTER_OP("_ROCmFusedBatchNormActivationInference")
       using shape_inference::ShapeHandle;
       using shape_inference::DimensionHandle;
 
-      VLOG(-1) << "SetShapFn called for _ROCmFusedBatchNormActivation";
+      ShapeHandle x;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 4, &x));
+
+      string data_format_str;
+      TF_RETURN_IF_ERROR(c->GetAttr("data_format", &data_format_str));
+
+      TensorFormat data_format;
+      FormatFromString(data_format_str, &data_format);
+
+      int channel_dim_index = GetTensorFeatureDimIndex(4, data_format);
+      DimensionHandle channel_dim = c->Dim(x, channel_dim_index);
+
+      // covers scale, offset, mean, variance
+      int number_inputs = 5;
+      for (int i = 1; i < number_inputs; ++i) {
+        ShapeHandle vec;
+        TF_RETURN_IF_ERROR(c->WithRank(c->input(i), 1, &vec));
+        TF_RETURN_IF_ERROR(c->Merge(channel_dim, c->Dim(vec, 0), &channel_dim));
+      }
+
+      ShapeHandle y;
+      TF_RETURN_IF_ERROR(c->ReplaceDim(x, channel_dim_index, channel_dim, &y));
+      c->set_output(0, y);
 
       return Status::OK();
     })
@@ -2486,7 +2508,32 @@ REGISTER_OP("_ROCmFusedBatchNormActivationTraining")
       using shape_inference::ShapeHandle;
       using shape_inference::DimensionHandle;
 
-      // VLOG(-1) << "SetShapFn called for _ROCmFusedBatchNormActivation";
+      ShapeHandle x;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 4, &x));
+
+      string data_format_str;
+      TF_RETURN_IF_ERROR(c->GetAttr("data_format", &data_format_str));
+      TensorFormat data_format;
+      FormatFromString(data_format_str, &data_format);
+
+      int channel_dim_index = GetTensorFeatureDimIndex(4, data_format);
+      DimensionHandle channel_dim = c->Dim(x, channel_dim_index);
+
+      // covers scale, offset, and if is_training is false, mean, variance
+      int number_inputs = 3;
+      for (int i = 1; i < number_inputs; ++i) {
+        ShapeHandle vec;
+        TF_RETURN_IF_ERROR(c->WithRank(c->input(i), 1, &vec));
+        TF_RETURN_IF_ERROR(c->Merge(channel_dim, c->Dim(vec, 0), &channel_dim));
+      }
+
+      ShapeHandle y;
+      TF_RETURN_IF_ERROR(c->ReplaceDim(x, channel_dim_index, channel_dim, &y));
+      c->set_output(0, y);
+
+      ShapeHandle vector_shape = c->Vector(channel_dim);
+      c->set_output(1, vector_shape);
+      c->set_output(2, vector_shape);
 
       return Status::OK();
     })
