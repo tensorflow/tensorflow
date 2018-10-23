@@ -400,8 +400,8 @@ void Transform(const TocoFlags& toco_flags, Model* model) {
   model->ops_count = ops_count;
 }
 
-void Export(const TocoFlags& toco_flags, const Model& model,
-            bool allow_custom_ops, string* output_file_contents) {
+tensorflow::Status Export(const TocoFlags& toco_flags, const Model& model,
+                          bool allow_custom_ops, string* output_file_contents) {
   switch (toco_flags.output_format()) {
     case TENSORFLOW_GRAPHDEF:
       ExportTensorFlowGraphDef(model, output_file_contents);
@@ -416,8 +416,9 @@ void Export(const TocoFlags& toco_flags, const Model& model,
 
       auto status = toco::tflite::Export(model, output_file_contents, params);
       if (!status.ok()) {
-        LOG(QFATAL) << status.error_message();
+        LOG(ERROR) << status.error_message();
       }
+      return status;
     } break;
     case GRAPHVIZ_DOT:
       DumpGraphviz(model, output_file_contents);
@@ -425,6 +426,7 @@ void Export(const TocoFlags& toco_flags, const Model& model,
     default:
       LOG(FATAL) << "Unhandled output_format";
   }
+  return tensorflow::Status();
 }
 
 }  // namespace toco
