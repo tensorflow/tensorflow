@@ -8,10 +8,11 @@ section](#contributing) for more information.
 ## Building
 
 The Dockerfiles in the `dockerfiles` directory must have their build context set
-to **the directory with this README.md** to copy in helper files. For example:
+ **in that directory** to copy in helper files. For example:
 
 ```bash
-$ docker build -f ./dockerfiles/cpu.Dockerfile -t tf .
+# Building from this README.md directory
+$ docker build -f ./dockerfiles/cpu.Dockerfile -t tf dockerfiles/
 ```
 
 Each Dockerfile has its own set of available `--build-arg`s which are documented

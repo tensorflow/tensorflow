@@ -26,5 +26,5 @@ RUN pip3 install --upgrade pip setuptools pyyaml absl-py cerberus
 WORKDIR /tf
 VOLUME ["/tf"]
 
-COPY bashrc /etc/bash.bashrc
+COPY dockerfiles/bashrc /etc/bash.bashrc
 RUN chmod a+rwx /etc/bash.bashrc
