@@ -19,6 +19,7 @@ limitations under the License.
 #include <memory>
 #include <string>
 #include <unordered_map>
+#include "absl/container/flat_hash_set.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/function.pb.h"
@@ -29,6 +30,20 @@ limitations under the License.
 
 namespace tensorflow {
 namespace grappler {
+
+// Returns a set of functions from the function library, that are reachable from
+// the nodes of the graph.
+absl::flat_hash_set<string> ReachableFunctions(
+    const FunctionLibraryDefinition& flib, const GraphDef& graph);
+absl::flat_hash_set<string> ReachableFunctions(
+    const FunctionLibraryDefinition& flib, const FunctionDef& func);
+
+// Returns a copy of FunctionLibraryDefinition with subset of functions that are
+// reachable from the nodes of the graph.
+FunctionLibraryDefinition ReachableFunctionLibraryDefinition(
+    const FunctionLibraryDefinition& flib, const GraphDef& graph);
+FunctionLibraryDefinition ReachableFunctionLibraryDefinition(
+    const FunctionLibraryDefinition& flib, const FunctionDef& func);
 
 // Depending on the function instantiation attributes, input argument to the
 // function might be a single tensor, list of tensors of the same type, or a
