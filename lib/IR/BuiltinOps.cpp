@@ -322,10 +322,24 @@ bool ReturnOp::verify() const {
     if (!block || !isa<MLFunction>(block) || &block->back() != stmt)
       return emitOpError("must be the last statement in the ML function");
 
+    // The operand number and types must match the function signature.
+    MLFunction *function = cast<MLFunction>(block);
+    const auto &results = function->getType()->getResults();
+    if (stmt->getNumOperands() != results.size())
+      return emitOpError("has " + Twine(stmt->getNumOperands()) +
+                         " operands, but enclosing function returns " +
+                         Twine(results.size()));
+
+    for (unsigned i = 0, e = results.size(); i != e; ++i)
+      if (stmt->getOperand(i)->getType() != results[i]) {
+        emitError("type of return operand " + Twine(i) +
+                  " doesn't match function result type");
+        return true;
+      }
+
     // Return success. Checking that operand types match those in the function
     // signature is performed in the ML function verifier.
     return false;
   }
   return emitOpError("cannot occur in a CFG function");
 }
-

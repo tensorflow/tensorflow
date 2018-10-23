@@ -371,8 +371,6 @@ struct MLFuncVerifier : public Verifier, public StmtWalker<MLFuncVerifier> {
     if (hadError)
       return true;
 
-    // TODO: check that operation is not a return statement unless it's
-    // the last one in the function.
     // TODO: check that loop bounds and if conditions are properly formed.
     if (verifyReturn())
       return true;
@@ -463,21 +461,6 @@ bool MLFuncVerifier::verifyReturn() {
     if (!op->isReturn())
       return failure(missingReturnMsg, fn);
 
-    // The operand number and types must match the function signature.
-    // TODO: move this verification in ReturnOp::verify() if printing
-    // of the error messages below can be made to work there.
-    const auto &results = fn.getType()->getResults();
-    if (op->getNumOperands() != results.size())
-      return failure("return has " + Twine(op->getNumOperands()) +
-                         " operands, but enclosing function returns " +
-                         Twine(results.size()),
-                     *op);
-
-    for (unsigned i = 0, e = results.size(); i != e; ++i)
-      if (op->getOperand(i)->getType() != results[i])
-        return failure("type of return operand " + Twine(i) +
-                           " doesn't match function result type",
-                       *op);
     return false;
   }
   return failure(missingReturnMsg, fn);

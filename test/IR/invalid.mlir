@@ -325,7 +325,7 @@ bb42:
 // -----
 
 mlfunc @mlfunc_resulterror() -> i32 {
-  return // expected-error {{return has 0 operands, but enclosing function returns 1}}
+  return // expected-error {{'return' op has 0 operands, but enclosing function returns 1}}
 }
 
 // -----
