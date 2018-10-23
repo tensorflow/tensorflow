@@ -167,8 +167,8 @@ TEST(SortKV, OneDimension) {
   poputil::mapTensorLinearly(graph, k);
   poputil::mapTensorLinearly(graph, v);
   graph.createHostWrite("a-write", k);
-  graph.createHostWrite("b-write", k);
-  graph.createHostRead("b-read", k);
+  graph.createHostWrite("b-write", v);
+  graph.createHostRead("b-read", v);
 
   auto prog_status = CreateSort(graph, k, v, 0);
   ASSERT_TRUE(prog_status.ok());
@@ -178,6 +178,7 @@ TEST(SortKV, OneDimension) {
   engine.load(device);
 
   auto input_buffer = iota<float>(tensor_size);
+  std::reverse(input_buffer.begin(), input_buffer.end());
   engine.writeTensor("a-write", input_buffer.data());
   std::reverse(input_buffer.begin(), input_buffer.end());
   engine.writeTensor("b-write", input_buffer.data());
@@ -187,7 +188,7 @@ TEST(SortKV, OneDimension) {
   std::vector<float> output_buffer = zeros<float>(tensor_size);
   engine.readTensor("b-read", output_buffer.data());
 
-  EXPECT_TRUE(std::is_sorted(output_buffer.begin(), output_buffer.end()));
+  EXPECT_TRUE(std::is_sorted(output_buffer.rbegin(), output_buffer.rend()));
   EXPECT_TRUE(std::is_permutation(output_buffer.begin(), output_buffer.end(),
                                   input_buffer.begin()));
 }
