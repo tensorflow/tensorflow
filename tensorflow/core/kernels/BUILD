@@ -504,8 +504,7 @@ cc_library(
     hdrs = ["bounds_check.h"],
     visibility = [":friends"],
     deps = [
-        "//tensorflow/core:framework_lite",
-        "//third_party/eigen3",
+        "//tensorflow/core:framework_bounds_check",
     ],
 )
 
