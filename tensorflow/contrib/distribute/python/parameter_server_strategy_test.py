@@ -85,7 +85,7 @@ class ParameterServerStrategyTestBase(
                            config=sess_config) as sess, \
          d.scope():
 
-      # Define a variable outside the call_for_each_tower scope. This is not
+      # Define a variable outside the call_for_each_replica scope. This is not
       # recommended.
       n = variable_scope.get_variable('n', initializer=10.0)
       self.assertEqual(n.device, '/job:ps/task:0')
@@ -96,7 +96,7 @@ class ParameterServerStrategyTestBase(
         else:
           last_part_device = (
               'device:GPU:%d' %
-              distribution_strategy_context.get_tower_context().tower_id)
+              distribution_strategy_context.get_replica_context().replica_id)
 
         a = constant_op.constant(1.0)
         b = constant_op.constant(2.0)
@@ -166,7 +166,7 @@ class ParameterServerStrategyTestBase(
         self.assertIn('/job:ps/', h.device)
         return y_add, z_add, f
 
-      y, z, f = d.call_for_each_tower(model_fn)
+      y, z, f = d.call_for_each_replica(model_fn)
       self.assertNotEqual(y, None)
       self.assertNotEqual(z, None)
       self.assertNotEqual(f, None)
@@ -190,27 +190,29 @@ class ParameterServerStrategyTestBase(
 
       def model_fn():
         if 'CPU' in compute_device:
-          tower_compute_device = '/device:CPU:0'
+          replica_compute_device = '/device:CPU:0'
         else:
-          tower_compute_device = (
+          replica_compute_device = (
               '/device:GPU:%d' %
-              distribution_strategy_context.get_tower_context().tower_id)
-        tower_compute_device = device_util.canonicalize(tower_compute_device)
+              distribution_strategy_context.get_replica_context().replica_id)
+        replica_compute_device = device_util.canonicalize(
+            replica_compute_device)
 
         if 'CPU' in variable_device:
-          tower_variable_device = '/device:CPU:0'
+          replica_variable_device = '/device:CPU:0'
         else:
-          tower_variable_device = (
+          replica_variable_device = (
               '/device:GPU:%d' %
-              distribution_strategy_context.get_tower_context().tower_id)
-        tower_variable_device = device_util.canonicalize(tower_variable_device)
+              distribution_strategy_context.get_replica_context().replica_id)
+        replica_variable_device = device_util.canonicalize(
+            replica_variable_device)
 
         a = constant_op.constant(1.0)
         b = constant_op.constant(2.0)
         c = a + b
-        self.assertEqual(a.device, tower_compute_device)
-        self.assertEqual(b.device, tower_compute_device)
-        self.assertEqual(c.device, tower_compute_device)
+        self.assertEqual(a.device, replica_compute_device)
+        self.assertEqual(b.device, replica_compute_device)
+        self.assertEqual(c.device, replica_compute_device)
 
         # The device scope is ignored for variables but not for normal ops.
         with ops.device('/device:GPU:2'):
@@ -220,7 +222,7 @@ class ParameterServerStrategyTestBase(
           x_add = x.assign_add(c)
           e = a + c
         self.assertEqual(
-            device_util.canonicalize(x.device), tower_variable_device)
+            device_util.canonicalize(x.device), replica_variable_device)
         self.assertEqual(x_add.device, x.device)
         self.assertEqual(e.device, device_util.canonicalize('/device:GPU:2'))
 
@@ -233,7 +235,7 @@ class ParameterServerStrategyTestBase(
         # non-distributed values.
         y_add = y.assign_add(array_ops.identity(x_add))
         self.assertEqual(
-            device_util.canonicalize(y.device), tower_variable_device)
+            device_util.canonicalize(y.device), replica_variable_device)
         self.assertEqual(y_add.device, y.device)
         self.assertEqual(y.device, x.device)
 
@@ -241,7 +243,7 @@ class ParameterServerStrategyTestBase(
             'z', initializer=10.0,
             aggregation=variable_scope.VariableAggregation.SUM)
         self.assertEqual(
-            device_util.canonicalize(z.device), tower_variable_device)
+            device_util.canonicalize(z.device), replica_variable_device)
 
         with ops.control_dependencies([y_add]):
           # We add an identity here to avoid complaints about summing
@@ -249,7 +251,7 @@ class ParameterServerStrategyTestBase(
           z_add = z.assign_add(array_ops.identity(y))
         with ops.control_dependencies([z_add]):
           f = z + c
-        self.assertEqual(f.device, tower_compute_device)
+        self.assertEqual(f.device, replica_compute_device)
 
         # The device scope would merge with the default worker device.
         with ops.device('/CPU:1'):
@@ -262,13 +264,13 @@ class ParameterServerStrategyTestBase(
           u = variable_scope.get_variable('u', initializer=30.0)
           h = f + 1.0
         self.assertEqual(
-            device_util.canonicalize(u.device), tower_variable_device)
+            device_util.canonicalize(u.device), replica_variable_device)
         self.assertEqual(
             device_util.canonicalize(x.device),
             device_util.canonicalize(h.device))
         return y_add, z_add, f
 
-      y, z, f = d.call_for_each_tower(model_fn)
+      y, z, f = d.call_for_each_replica(model_fn)
       self.assertNotEqual(y, None)
       self.assertNotEqual(z, None)
       self.assertNotEqual(f, None)
@@ -303,7 +305,7 @@ class ParameterServerStrategyTestBase(
             aggregation=variable_scope.VariableAggregation.SUM)
         z = variable_scope.get_variable(
             'z', initializer=30.0,
-            aggregation=variable_scope.VariableAggregation.ONLY_FIRST_TOWER)
+            aggregation=variable_scope.VariableAggregation.ONLY_FIRST_REPLICA)
 
         # We explicitly make a constant tensor here to avoid complaints about
         # summing non-distributed values.
@@ -315,7 +317,7 @@ class ParameterServerStrategyTestBase(
         train_op = control_flow_ops.group(x_add, y_add, z_add)
         return x, y, z, train_op
 
-      x, y, z, train_op = d.call_for_each_tower(model_fn)
+      x, y, z, train_op = d.call_for_each_replica(model_fn)
       train_op = d.group(train_op)
 
       if context.num_gpus() < d._num_gpus_per_worker:
@@ -343,11 +345,11 @@ class ParameterServerStrategyTestBase(
       self._finish_condition.release()
 
       x_val, y_val, z_val = sess.run([x, y, z])
-      self.assertEqual(x_val, 10.0 + 1.0 * num_workers * d.num_towers)
-      self.assertEqual(y_val, 20.0 + 1.0 * num_workers * d.num_towers)
+      self.assertEqual(x_val, 10.0 + 1.0 * num_workers * d.num_replicas)
+      self.assertEqual(y_val, 20.0 + 1.0 * num_workers * d.num_replicas)
       self.assertEqual(z_val, 30.0 + 1.0 * num_workers)
-      return (x_val == 10.0 + 1.0 * num_workers * d.num_towers and
-              y_val == 20.0 + 1.0 * num_workers * d.num_towers and
+      return (x_val == 10.0 + 1.0 * num_workers * d.num_replicas and
+              y_val == 20.0 + 1.0 * num_workers * d.num_replicas and
               z_val == 30.0 + 1.0 * num_workers)
 
   def _test_minimize_loss_graph(self, task_type, task_id, num_gpus):
@@ -387,7 +389,7 @@ class ParameterServerStrategyTestBase(
       def step():
         """Perform one optimization step."""
         # Run forward & backward to get gradients, variables list.
-        g_v = d.call_for_each_tower(grad_fn, one)
+        g_v = d.call_for_each_replica(grad_fn, one)
         # Update the variables using the gradients and the update() function.
         before_list = []
         after_list = []

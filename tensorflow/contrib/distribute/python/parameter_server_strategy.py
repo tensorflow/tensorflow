@@ -61,16 +61,16 @@ class ParameterServerStrategy(distribute_lib.DistributionStrategy):
   for a particular worker. Note that each graph and worker is independent.
   This means that while each worker will synchronously compute a single gradient
   update across all GPUs, updates between workers proceed asynchronously.
-  Operations that occur only on the first tower (such as incrementing the global
-  step), will occur on the first tower *of every worker*.
+  Operations that occur only on the first replica (such as incrementing the
+  global step), will occur on the first replica *of every worker*.
 
-  It is expected to call `call_for_each_tower(fn, *args, **kwargs)` for any
-  operations which potentially can be replicated across towers (i.e. multiple
+  It is expected to call `call_for_each_replica(fn, *args, **kwargs)` for any
+  operations which potentially can be replicated across replicas (i.e. multiple
   GPUs) even if there is only CPU or one GPU. When defining the `fn`, extra
   caution needs to be taken:
 
   1) Always use `tf.get_variable` instead of `tf.Variable` which is not able
-  to refer to the same variable on different towers.
+  to refer to the same variable on different replicas.
 
   2) It is generally not recommended to open a device scope under the strategy's
   scope. A device scope (i.e. calling `tf.device`) will be merged with or
@@ -100,7 +100,7 @@ class ParameterServerStrategy(distribute_lib.DistributionStrategy):
 
     # We typically don't need to do all-reduce in this strategy.
     self._cross_tower_ops = (
-        cross_tower_ops_lib.ReductionToOneDeviceCrossTowerOps(
+        cross_tower_ops_lib.ReductionToOneDeviceCrossDeviceOps(
             reduce_to_device=_LOCAL_CPU))
 
   def _initialize_multi_worker(self, num_gpus_per_worker, cluster_spec,
@@ -108,10 +108,10 @@ class ParameterServerStrategy(distribute_lib.DistributionStrategy):
     """Initialize devices for multiple workers.
 
     It creates variable devices and compute devices. Variables and operations
-    will be assigned to them respectively. We have one compute device per tower.
-    The variable device is a device function or device string. The default
-    variable device assigns variables to parameter servers in a round-robin
-    fashion.
+    will be assigned to them respectively. We have one compute device per
+    replica. The variable device is a device function or device string. The
+    default variable device assigns variables to parameter servers in a
+    round-robin fashion.
 
     Args:
       num_gpus_per_worker: number of local GPUs or GPUs per worker.
@@ -132,8 +132,8 @@ class ParameterServerStrategy(distribute_lib.DistributionStrategy):
     self._worker_device = "/job:%s/task:%d" % (self._task_type, self._task_id)
 
     # Define compute devices which is a list of device strings and one for each
-    # tower. When there are GPUs, replicate operations on these GPUs. Otherwise,
-    # place operations on CPU.
+    # replica. When there are GPUs, replicate operations on these GPUs.
+    # Otherwise, place operations on CPU.
     if num_gpus_per_worker > 0:
       self._compute_devices = [
           "%s/device:GPU:%d" % (self._worker_device, i)
@@ -190,8 +190,8 @@ class ParameterServerStrategy(distribute_lib.DistributionStrategy):
   def _initialize_local(self, num_gpus_per_worker):
     """Initialize internal devices for local training."""
     # Define compute devices which is a list of device strings and one for each
-    # tower. When there are GPUs, replicate operations on these GPUs. Otherwise,
-    # place operations on CPU.
+    # replica. When there are GPUs, replicate operations on these GPUs.
+    # Otherwise, place operations on CPU.
     if num_gpus_per_worker > 0:
       self._compute_devices = list(
           map("/device:GPU:{}".format, range(num_gpus_per_worker)))
@@ -234,13 +234,13 @@ class ParameterServerStrategy(distribute_lib.DistributionStrategy):
   # TODO(yuefengz): not all ops in device_setter.STANDARD_PS_OPS will go through
   # this creator, such as "MutableHashTable".
   def _create_variable(self, next_creator, *args, **kwargs):
-    if self.num_towers > 1:
+    if self.num_replicas > 1:
       aggregation = kwargs.pop("aggregation", vs.VariableAggregation.NONE)
       if aggregation not in (
           vs.VariableAggregation.NONE,
           vs.VariableAggregation.SUM,
           vs.VariableAggregation.MEAN,
-          vs.VariableAggregation.ONLY_FIRST_TOWER
+          vs.VariableAggregation.ONLY_FIRST_REPLICA
       ):
         raise ValueError("Invalid variable aggregation mode: " + aggregation +
                          " for variable: " + kwargs["name"])
@@ -288,9 +288,9 @@ class ParameterServerStrategy(distribute_lib.DistributionStrategy):
       with ops.device(self._variable_device):
         return var_creator(*args, **kwargs)
 
-  def _call_for_each_tower(self, fn, *args, **kwargs):
+  def _call_for_each_replica(self, fn, *args, **kwargs):
     # pylint: disable=protected-access
-    return mirrored_strategy._call_for_each_tower(self, fn, *args, **kwargs)
+    return mirrored_strategy._call_for_each_replica(self, fn, *args, **kwargs)
 
   def _verify_destinations_not_different_worker(self, destinations):
     if destinations is None:
@@ -308,13 +308,13 @@ class ParameterServerStrategy(distribute_lib.DistributionStrategy):
       # pylint: disable=protected-access
       return mirrored_strategy._reduce_non_distributed_value(
           self, aggregation, value, destinations)
-    if aggregation == vs.VariableAggregation.ONLY_FIRST_TOWER:
+    if aggregation == vs.VariableAggregation.ONLY_FIRST_REPLICA:
       return self.broadcast(value.get(self._compute_devices[0]), destinations)
     return self._cross_tower_ops.reduce(
         aggregation, value, destinations=destinations)
 
   def _batch_reduce(self, aggregation, value_destination_pairs):
-    if aggregation == vs.VariableAggregation.ONLY_FIRST_TOWER:
+    if aggregation == vs.VariableAggregation.ONLY_FIRST_REPLICA:
       return [self.broadcast(v.get(self._compute_devices[0]), d)
               for v, d in value_destination_pairs]
     for _, destinations in value_destination_pairs:
@@ -389,7 +389,8 @@ class ParameterServerStrategy(distribute_lib.DistributionStrategy):
     return val
 
   def read_var(self, var):
-    # No need to distinguish between normal variables and tower-local variables.
+    # No need to distinguish between normal variables and replica-local
+    # variables.
     return array_ops.identity(var)
 
   def configure(self,
@@ -444,7 +445,7 @@ class ParameterServerStrategy(distribute_lib.DistributionStrategy):
         ["/job:%s/task:%d" % (self._task_type, self._task_id), "/job:ps"])
 
   @property
-  def num_towers(self):
+  def num_replicas(self):
     return len(self._compute_devices)
 
   @property

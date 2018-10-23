@@ -358,17 +358,17 @@ def get_input_batch_params(first_x_value, batch_size, distribution_strategy):
   if not num_batches:
     raise ValueError('Please specify a batch_size that is smaller than'
                      'the number of input samples %d.' % first_x_value.shape[0])
-  # TODO(anjalisridhar): TPU currently supports using the num_towers property.
+  # TODO(anjalisridhar): TPU currently supports using the num_replicas property.
   # We might want to look into implementing worker_devices. In multi worker
-  # strategy, perhaps num_towers works better?
-  steps = num_batches // distribution_strategy.num_towers
+  # strategy, perhaps num_replicas works better?
+  steps = num_batches // distribution_strategy.num_replicas
   if not steps:
-    # TODO(anjalisridhar): Number of towers in the error message may not convey
-    # what we want to the user. Is there another terminology that we can use
-    # that is consistent across different strategies.
+    # TODO(anjalisridhar): Number of replicas in the error message may not
+    # convey what we want to the user. Is there another terminology that we can
+    # use that is consistent across different strategies?
     raise ValueError('The number of batches %d is smaller than the number '
-                     'of towers %d used for DistributionStrategy. ' %
-                     (num_batches, distribution_strategy.num_towers))
+                     'of replicas %d used for DistributionStrategy. ' %
+                     (num_batches, distribution_strategy.num_replicas))
   return steps
 
 
@@ -380,11 +380,11 @@ def get_batch_dimension(iterator):
   return dims[0] if dims else None
 
 
-def get_batch_size(num_towers, num_samples, steps):
+def get_batch_size(num_replicas, num_samples, steps):
   """Calculate and return batch size for numpy inputs.
 
   Args:
-    num_towers: Number of devices over which the model input is distributed.
+    num_replicas: Number of devices over which the model input is distributed.
     num_samples: Total number of input samples in the input numpy arrays.
     steps: Number of steps that we run the model for.
 
@@ -398,13 +398,13 @@ def get_batch_size(num_towers, num_samples, steps):
                     'Some samples will not be processed as expected.' %
                     (num_samples, steps))
   global_batch_size = num_samples // steps
-  if global_batch_size % num_towers != 0:
+  if global_batch_size % num_replicas != 0:
     logging.warning('The total number of batches per step %d is not evenly '
-                    'divisible by the number of towers %d used in '
+                    'divisible by the number of replicas %d used in '
                     'DistributionStrategy. Some samples will not be processed '
                     'as expected.' %
-                    (global_batch_size, num_towers))
-  return global_batch_size // num_towers
+                    (global_batch_size, num_replicas))
+  return global_batch_size // num_replicas
 
 
 def get_cpu_device(distribution_strategy):

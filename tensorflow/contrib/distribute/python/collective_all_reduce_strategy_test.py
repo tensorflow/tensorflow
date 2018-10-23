@@ -117,7 +117,7 @@ class CollectiveAllReduceStrategyTestBase(
       def step():
         """Perform one optimization step."""
         # Run forward & backward to get gradients, variables list.
-        g_v = d.call_for_each_tower(grad_fn, one)
+        g_v = d.call_for_each_replica(grad_fn, one)
         # Update the variables using the gradients and the update() function.
         before_list = []
         after_list = []
@@ -196,7 +196,7 @@ class CollectiveAllReduceStrategyTestBase(
          self.test_session(config=self._sess_config,
                            target=master_target) as sess:
       with d.scope():
-        train_op = d.call_for_each_tower(model_fn)
+        train_op = d.call_for_each_replica(model_fn)
         train_op = d.group(d.unwrap(train_op))
 
       sess.run(variables.global_variables_initializer())
@@ -219,7 +219,7 @@ class CollectiveAllReduceStrategyTestBase(
                 1.0, 10.0, dtype=dtypes.float32))
         return array_ops.identity(x)
 
-      x = distribution.call_for_each_tower(model_fn)
+      x = distribution.call_for_each_replica(model_fn)
       reduced_x = distribution.unwrap(
           distribution.reduce(
               variable_scope.VariableAggregation.MEAN, x,
