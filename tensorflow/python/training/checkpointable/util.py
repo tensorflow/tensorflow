@@ -969,6 +969,12 @@ class CheckpointLoadStatus(_LoadStatus):
         raise AssertionError(
             "Object not assigned a value from checkpoint: %s" % (node,))
     for checkpointable_object in list_objects(self._root_checkpointable):
+      # Remove data structures that do not contain any variables from
+      # restoration checks.
+      if (isinstance(checkpointable_object,
+                     data_structures.CheckpointableDataStructure) and
+              len(checkpointable_object.variables) == 0):
+        continue
       self._checkpoint.all_python_objects.add(checkpointable_object)
     unused_python_objects = (
         _ObjectIdentitySet(self._checkpoint.all_python_objects)
