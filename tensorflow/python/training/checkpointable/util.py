@@ -973,7 +973,7 @@ class CheckpointLoadStatus(_LoadStatus):
       # restoration checks.
       if (isinstance(checkpointable_object,
                      data_structures.CheckpointableDataStructure) and
-              not checkpointable_object._checkpoint_dependencies):
+          not checkpointable_object._checkpoint_dependencies):
         continue
       self._checkpoint.all_python_objects.add(checkpointable_object)
     unused_python_objects = (
