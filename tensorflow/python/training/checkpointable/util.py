@@ -971,9 +971,7 @@ class CheckpointLoadStatus(_LoadStatus):
     for checkpointable_object in list_objects(self._root_checkpointable):
       # Remove data structures that do not contain any variables from
       # restoration checks.
-      if (isinstance(checkpointable_object,
-                     data_structures.CheckpointableDataStructure) and
-              len(checkpointable_object.variables) == 0):
+      if not checkpointable_object._checkpoint_dependencies:
         continue
       self._checkpoint.all_python_objects.add(checkpointable_object)
     unused_python_objects = (
