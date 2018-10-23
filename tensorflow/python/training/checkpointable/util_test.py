@@ -1337,7 +1337,8 @@ class CheckpointingTests(test.TestCase):
       model = NonLayerCheckpointable()
       model.dict = {"a": 1}
       model.list = {"b": 1}
-      checkpoint.restore(save_path).assert_consumed().run_restore_ops()
+      load_status = checkpoint.restore(save_path)
+      load_status.assert_existing_objects_matched().run_restore_ops()
 
 
 class _ManualScope(tracking.Checkpointable):
