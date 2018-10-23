@@ -18,12 +18,31 @@ limitations under the License.
 
 #ifdef TENSORFLOW_USE_ROCM
 
+#include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/platform/stream_executor.h"
 #include "tensorflow/core/util/activation_mode.h"
 
 namespace tensorflow {
 
 se::dnn::ActivationMode GetDnnActivationMode(ActivationMode activation_mode);
+
+namespace rocm_kernels {
+
+void FusionAddRelu(OpKernelContext* ctx, const float* in0, const float* in1,
+                   float* out, unsigned N);
+
+void FusionAddRelu(OpKernelContext* ctx, const Eigen::half* in0,
+                   const Eigen::half* in1, Eigen::half* out, unsigned N);
+
+void FusionAddNReluGrad(OpKernelContext* ctx, const float* in0,
+                        const float* in1, const float* in2, float* out,
+                        unsigned N);
+
+void FusionAddNReluGrad(OpKernelContext* ctx, const Eigen::half* in0,
+                        const Eigen::half* in1, const Eigen::half* in2,
+                        Eigen::half* out, unsigned N);
+
+}  // namespace rocm_kernels
 
 }  // namespace tensorflow
 
