@@ -193,12 +193,14 @@ message IPUOptions {
   };
   RandomType random_type = 3;
 
-  // Options to control Poplar compilation
-  message CompilationOption {
+  // Structure for setting an idividual Poplar OptionFlag for OptionFlags
+  message PoplarOptionFlag {
     string option = 1;
     string value = 2;
   };
-  repeated CompilationOption compilation_options = 4;
+
+  // Options to control Poplar compilation
+  repeated PoplarOptionFlag compilation_options = 4;
 
   message DeviceConfig {
 
@@ -218,6 +220,9 @@ message IPUOptions {
 
   // Option controlling whether to rearrange streamed copies on the host
   bool always_rearrange_copies_on_the_host = 6;
+
+  // Options controlling the configuration of convolutions
+  repeated PoplarOptionFlag convolution_options = 7;
 };
 
 // Options passed to the graph optimizer

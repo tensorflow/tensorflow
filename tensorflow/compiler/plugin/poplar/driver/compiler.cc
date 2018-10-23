@@ -60,6 +60,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_tfgraph_builder.h"
 #include "tensorflow/compiler/xla/service/map_inliner.h"
 #include "tensorflow/compiler/xla/service/reshape_mover.h"
+#include "tensorflow/compiler/xla/service/scatter_expander.h"
 #include "tensorflow/compiler/xla/service/tuple_simplifier.h"
 #include "tensorflow/compiler/xla/service/while_loop_constant_sinking.h"
 #include "tensorflow/compiler/xla/service/zero_sized_hlo_elimination.h"
@@ -255,6 +256,7 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::RunBackend(
   poplar::Graph graph(dev);
   graph.addCodelets(GetPathToGraphProgFile("tf.gp"));
   graph.addCodelets(GetPathToGraphProgFile("heap_sort.gp"));
+  graph.addCodelets(GetPathToGraphProgFile("batch_norm.gp"));
   poplin::addCodelets(graph);
   popnn::addCodelets(graph);
   popops::addCodelets(graph);
@@ -268,11 +270,13 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::RunBackend(
   }
 
   CompilerResources resources(seed + 1, poplarExecutor->GetRandomGenMode(),
+                              poplarExecutor->GetConvolutionOptions(),
                               module.get());
   {
     HloPassPipeline pipeline("IPU");
     pipeline.AddPass<BatchNormExpander>(true, true, true);
     pipeline.AddPass<GatherExpander>();
+    pipeline.AddPass<ScatterExpander>();
     pipeline.AddPass<DotDecomposer>();
     pipeline.AddPass<HloPassFix<FuseOpsEarly>>(resources.annotations);
     pipeline.AddPass<HloCSE>(false);
@@ -351,7 +355,7 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::RunBackend(
   } else {
     try {
       TF_RETURN_IF_ERROR(entry->AcceptOrdered(&visitor, instruction_order));
-    } catch (const std::logic_error& e) {
+    } catch (const std::exception& e) {
       return PoplarExceptionToTensorflowStatus("[Build graph] ", e);
     }
 
@@ -387,7 +391,7 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::RunBackend(
         };
 
         engine.reset(new poplar::Engine(graph, progs, opts, progress_logging));
-      } catch (const std::logic_error& e) {
+      } catch (const std::exception& e) {
         return PoplarExceptionToTensorflowStatus("[Compile engine] ", e);
       }
     }
@@ -407,7 +411,7 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::RunBackend(
         } else {
           rep.serialize(stream, poplar::SerializationFormat::JSON);
         }
-      } catch (const std::logic_error& e) {
+      } catch (const std::exception& e) {
         return PoplarExceptionToTensorflowStatus("[Compiler report] ", e);
       }
     }

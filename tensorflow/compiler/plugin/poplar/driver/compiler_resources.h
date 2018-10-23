@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/compiler/plugin/poplar/driver/graph_caching_util.h"
 #include "tensorflow/compiler/plugin/poplar/driver/visitor_subcomputation.h"
 
+#include <poplar/OptionFlags.hpp>
 #include <poplin/Convolution.hpp>
 #include <poplin/MatMul.hpp>
 #include <poprand/RandomGen.hpp>
@@ -47,6 +48,8 @@ struct CompilerResources {
 
   poprand::Random random;
 
+  const poplar::OptionFlags default_conv_options;
+
   std::map<std::string, TensorMap> tensor_maps;
 
   graph_caching_util::ConvolutionGraphCache conv_graph_cache;
@@ -55,8 +58,11 @@ struct CompilerResources {
 
   graph_caching_util::WeightUpdateConvolutionGraphCache wu_graph_cache;
 
-  CompilerResources(uint64 seed, poprand::RandomGenMode mode, HloModule* module)
-      : annotations(module), random(mode, seed) {}
+  CompilerResources(uint64 seed, poprand::RandomGenMode mode,
+                    const poplar::OptionFlags& conv_options, HloModule* module)
+      : annotations(module),
+        random(mode, seed),
+        default_conv_options(conv_options) {}
 };
 
 }  // namespace poplarplugin

@@ -95,6 +95,7 @@ class IpuXlaConvTest(test_util.TensorFlowTestCase):
 
         ok = ['progIdCopy',
               'host-exchange-local-copy-',
+              'Copy_',
               'cnv3*/convolution.*/Conv_3x3',
               'ba3*/call/addToChannel']
 
@@ -170,6 +171,7 @@ class IpuXlaConvTest(test_util.TensorFlowTestCase):
 
         ok = ['progIdCopy',
               'host-exchange-local-copy-',
+              'Copy_',
               'cnv5*/convolution.*/Conv_1x1',
               'ba5*/add.*/AddTo']
         self.assertTrue(tu.check_all_compute_sets_and_list(cs_list, ok))
@@ -320,6 +322,7 @@ class IpuXlaConvTest(test_util.TensorFlowTestCase):
 
       ok = ['progIdCopy',
             'host-exchange-local-copy-',
+            'Copy_',
             'depthwise/convolution.*/Conv_1x1',
             'Copy_depthwise/convolution.*/Conv_1x1/partials_to_depthwise/convolution.*/Conv_1x1/partials[[]cloned[]]',
             'add/call*/addToChannel']

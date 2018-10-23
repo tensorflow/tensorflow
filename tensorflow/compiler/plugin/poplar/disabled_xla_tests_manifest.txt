@@ -220,7 +220,6 @@ R4ReduceWindowLargeTest POPLAR
 SliceR1LargeTest POPLAR
 SelectAndScatterTest.ParamTest POPLAR
 
-
 ScalarComputationsTest.MinPropagatesNan POPLAR // NaN passing
 ScalarComputationsTest.MaxPropagatesNan POPLAR
 ArrayElementwiseOpTest.MinF32s POPLAR
@@ -265,7 +264,5 @@ TokenHloTest.SingleTokenInstruction POPLAR
 TokenHloTest.TokenTree POPLAR
 TokenHloTest.TokenInConditional POPLAR
 TupleHloTest.NonAmbiguousTopLevelAllocation POPLAR
-
-ScatterTest POPLAR // Don't support scatter
 
 IntegerDivideOpTest.SignedOverflow POPLAR // Crashes - find out why

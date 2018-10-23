@@ -72,7 +72,8 @@ def set_compilation_options(opts, compilation_options=None):
     # Create a device with debug execution profile flag set to "compute_sets"
     opts = create_ipu_config()
     opts = set_compilation_options(opts,
-        compilation_options={"debug.executionProfile", "compute_sets"})
+        compilation_options={"debug.executionProfile": "compute_sets",
+                             "target.workerStackSizeInBytes": "64"})
 
     with tf.Session(config=tf.ConfigProto(ipu_options=opts)) as s:
       ...
@@ -89,11 +90,45 @@ def set_compilation_options(opts, compilation_options=None):
   """
   if not(isinstance(compilation_options, dict)):
     raise Exception(
-      "`compilation_options` must either be a dictionary")
+      "`compilation_options` must be a dictionary")
 
   if (compilation_options is not None):
     for (option_name, value) in compilation_options.items():
       compilation_option = opts.compilation_options.add()
+      compilation_option.option = option_name
+      compilation_option.value = value
+
+  return opts
+
+def set_convolution_options(opts, convolution_options=None):
+  """Set the IPU convolution compilation options for the session.
+  *** This is an experimental function which might be removed in the future. ***
+    ```python
+    # Create a device "tempMemoryBudget" flag set to "1000000"
+    opts = create_ipu_config()
+    opts = set_convolution_options(opts,
+        convolution_options={"tempMemoryBudget": "1000000"})
+
+    with tf.Session(config=tf.ConfigProto(ipu_options=opts)) as s:
+      ...
+    ```
+
+  Args:
+    :param opts: An IPUOptions session control protobuf.
+    :param convolution_options: A dictionary of poplar option flags for the
+                                convolutions.
+  Returns:
+
+    :return: The IPUOptions configuration protobuf, with convolution options
+             set.
+  """
+  if not(isinstance(convolution_options, dict)):
+    raise Exception(
+      "`convolution_options` must be a dictionary")
+
+  if (convolution_options is not None):
+    for (option_name, value) in convolution_options.items():
+      compilation_option = opts.convolution_options.add()
       compilation_option.option = option_name
       compilation_option.value = value
 
