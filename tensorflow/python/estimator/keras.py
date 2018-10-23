@@ -236,11 +236,12 @@ def _convert_keras_metrics_to_estimator(model):
   return eval_metric_ops
 
 
-def _create_keras_model_fn(keras_model, custom_objects=None):
+def _create_keras_model_fn(keras_model, export_as_regressor, custom_objects=None):
   """Creates model_fn for keras Estimator.
 
   Args:
     keras_model: an instance of compiled keras model.
+    export_as_regressor: Boolean. Make the output as a RegressionOutput instance.
     custom_objects: Dictionary for custom objects.
 
   Returns:
@@ -272,7 +273,17 @@ def _create_keras_model_fn(keras_model, custom_objects=None):
 
     # Get inputs to EstimatorSpec
     predictions = dict(zip(model_output_names, model.outputs))
-
+    
+    if export_as_regressor:
+      if len(model.output_names)!= 1:
+        raise ValueError("The parameter `export_as_regresssor` can only be used with a single output model")
+      else:
+        prediction = model.output
+        if prediction.dtype != K.floatx():
+          raise TypeError("The tensor must have type `tf.float32` when setting the parameter `export_as_regresssor` to True")
+        else:
+          predictions = prediction
+    
     loss = None
     train_op = None
     eval_metric_ops = None
@@ -303,7 +314,8 @@ def _create_keras_model_fn(keras_model, custom_objects=None):
         eval_metric_ops=eval_metric_ops,
         export_outputs={
             _DEFAULT_SERVING_KEY:
-            export_lib.export_output.PredictOutput(predictions)
+            export_lib.export_output.RegressionOutput(predictions) if export_as_regressor else
+            export_lib.export_output.PredictOutput(predictions) 
         })
 
   return model_fn
@@ -355,7 +367,8 @@ def model_to_estimator(keras_model=None,
                        keras_model_path=None,
                        custom_objects=None,
                        model_dir=None,
-                       config=None):
+                       config=None,
+                       export_as_regressor=False):
   """Constructs an `Estimator` instance from given keras model.
 
   For usage example, please see:
@@ -372,6 +385,8 @@ def model_to_estimator(keras_model=None,
     model_dir: Directory to save `Estimator` model parameters, graph, summary
       files for TensorBoard, etc.
     config: `RunConfig` to config `Estimator`.
+    export_as_regressor: Boolean. Indicates whether we want the output to be a RegressionOutput instance or not.
+    (Useful when exporting the model to serve it later.)
 
   Returns:
     An Estimator from given keras model.
@@ -411,7 +426,7 @@ def model_to_estimator(keras_model=None,
   config = estimator_lib.maybe_overwrite_model_dir_and_session_config(config,
                                                                       model_dir)
 
-  keras_model_fn = _create_keras_model_fn(keras_model, custom_objects)
+  keras_model_fn = _create_keras_model_fn(keras_model, export_as_regressor, custom_objects)
   if _any_weight_initialized(keras_model):
     # Warn if config passed to estimator tries to update GPUOptions. If a
     # session has already been created, the GPUOptions passed to the first
