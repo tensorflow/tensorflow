@@ -544,10 +544,13 @@ class Function(object):
     # `side_outputs` are the intermediate Tensors that were added as outputs to
     # the forward graph function so that we can compute its gradient.
     real_outputs = outputs[:self._num_outputs]
+    skip_positions = [i for i, t in enumerate(real_outputs)
+                      if not gradients_impl.IsTrainable(t)]
     side_outputs = outputs[self._num_outputs:]
 
     def backward_function(*args):
-      args = [a for a in args if a is not None]
+      args = [a for i, a in enumerate(args)
+              if a is not None and i not in skip_positions]
       return self._backward_graph_function(*(list(args) + side_outputs))  # pylint: disable=not-callable
 
     tape.record_operation(self._forward_function.signature.name, real_outputs,
