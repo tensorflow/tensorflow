@@ -54,14 +54,29 @@ def _add_deprecated_function_notice_to_docstring(doc, date, instructions):
       '(deprecated)', main_text)
 
 
-def _add_deprecated_arg_notice_to_docstring(doc, date, instructions):
+def _add_deprecated_arg_notice_to_docstring(doc, date, arg_names, instructions):
   """Adds a deprecation notice to a docstring for deprecated arguments."""
+  arg_names = list(arg_names) # Input can be dict_keys object
+  if 0 == len(arg_names):
+    arg_names_str = 'SOME ARGUMENTS ARE DEPRECATED.'
+  elif 1 == len(arg_names):
+    arg_names_str = 'THE `%s` ARGUMENT IS DEPRECATED.' % arg_names[0]
+  elif 2 == len(arg_names):
+    arg_names_str = 'THE `%s` AND `%s` ARGUMENTS ARE DEPRECATED.' % (
+        arg_names[0], arg_names[1])
+  else:
+    arg_names_copy = ['`%s`' % n for n in arg_names]
+    arg_names_copy[-1] = 'and ' + arg_names_copy[-1]
+    arg_names_str = 'THE %s ARGUMENTS ARE DEPRECATED.' % (
+        ', '.join(arg_names_copy))
+   
   return decorator_utils.add_notice_to_docstring(
       doc, instructions,
       'DEPRECATED FUNCTION ARGUMENTS',
       '(deprecated arguments)', [
-          'SOME ARGUMENTS ARE DEPRECATED. '
-          'They will be removed %s.' % (
+          '%s %s will be removed %s.' % (
+              arg_names_str,
+              'It' if 1 == len(arg_names) else 'They',
               'in a future version' if date is None else ('after %s' % date)),
           'Instructions for updating:'])
 
@@ -488,7 +503,9 @@ def deprecated_args(date, instructions, *deprecated_arg_names_or_tuples,
       return func(*args, **kwargs)
     return tf_decorator.make_decorator(func, new_func, 'deprecated',
                                        _add_deprecated_arg_notice_to_docstring(
-                                           func.__doc__, date, instructions))
+                                           func.__doc__, date, 
+                                           deprecated_arg_names.keys(), 
+                                           instructions))
   return deprecated_wrapper
 
 
@@ -553,7 +570,8 @@ def deprecated_arg_values(date, instructions, warn_once=True,
       return func(*args, **kwargs)
     return tf_decorator.make_decorator(func, new_func, 'deprecated',
                                        _add_deprecated_arg_notice_to_docstring(
-                                           func.__doc__, date, instructions))
+                                           func.__doc__, date, [], 
+                                           instructions))
   return deprecated_wrapper
 
 
