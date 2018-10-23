@@ -283,7 +283,8 @@ def merge_device(spec):
   if not isinstance(spec, DeviceSpec):
     spec = DeviceSpec.from_string(spec or "")
   def _device_function(node_def):
-    current_device = DeviceSpec.from_string(node_def.device or "")
+    current_device = node_def.device if isinstance(node_def.device, DeviceSpec) \
+                        else DeviceSpec.from_string(node_def.device or "")
     copy_spec = copy.copy(spec)
     copy_spec.merge_from(current_device)  # current_device takes precedence.
     return copy_spec
