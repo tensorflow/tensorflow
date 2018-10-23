@@ -213,6 +213,17 @@ public:
   void replaceSingleResultOp(Operation *op, SSAValue *newValue,
                              ArrayRef<SSAValue *> opsToRemoveIfDead = {});
 
+  /// This method is used as the final notification hook for patterns that end
+  /// up modifying the pattern root in place, by changing its operands.  This is
+  /// a minor efficiency win (it avoids creating a new instruction and removing
+  /// the old one) but also often allows simpler code in the client.
+  ///
+  /// The opsToRemoveIfDead list is an optional list of nodes that the rewriter
+  /// should remove if they are dead at this point.
+  ///
+  void updatedRootInPlace(Operation *op,
+                          ArrayRef<SSAValue *> opsToRemoveIfDead = {});
+
 protected:
   PatternRewriter(MLIRContext *context) : Builder(context) {}
   virtual ~PatternRewriter();
@@ -223,6 +234,10 @@ protected:
   /// This is implemented to create the specified operations and serves as a
   /// notification hook for rewriters that want to know about new operations.
   virtual Operation *createOperation(const OperationState &state) = 0;
+
+  /// Notify the pattern rewriter that the specified operation has been mutated
+  /// in place.  This is called after the mutation is done.
+  virtual void notifyRootUpdated(Operation *op) {}
 
   /// Notify the pattern rewriter that the specified operation is about to be
   /// replaced with another set of operations.  This is called before the uses

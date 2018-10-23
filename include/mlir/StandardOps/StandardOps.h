@@ -191,6 +191,7 @@ class DeallocOp
 public:
   SSAValue *getMemRef() { return getOperand(); }
   const SSAValue *getMemRef() const { return getOperand(); }
+  void setMemRef(SSAValue *value) { setOperand(value); }
 
   static StringRef getOperationName() { return "dealloc"; }
 
@@ -444,6 +445,7 @@ class LoadOp
 public:
   SSAValue *getMemRef() { return getOperand(0); }
   const SSAValue *getMemRef() const { return getOperand(0); }
+  void setMemRef(SSAValue *value) { setOperand(0, value); }
 
   llvm::iterator_range<Operation::operand_iterator> getIndices() {
     return {getOperation()->operand_begin() + 1, getOperation()->operand_end()};
@@ -584,6 +586,7 @@ public:
 
   SSAValue *getMemRef() { return getOperand(1); }
   const SSAValue *getMemRef() const { return getOperand(1); }
+  void setMemRef(SSAValue *value) { setOperand(1, value); }
 
   llvm::iterator_range<Operation::operand_iterator> getIndices() {
     return {getOperation()->operand_begin() + 2, getOperation()->operand_end()};

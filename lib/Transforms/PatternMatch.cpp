@@ -122,10 +122,25 @@ void PatternRewriter::replaceSingleResultOp(
   notifyOperationRemoved(op);
   op->erase();
 
-  // TODO: Process the opsToRemoveIfDead list once we have side-effect
-  // information.  Be careful about notifying clients that this is happening
-  // so they can be removed from worklists etc (needs a callback of some
-  // sort).
+  // TODO: Process the opsToRemoveIfDead list, removing things and calling the
+  // notifyOperationRemoved hook in the process.
+}
+
+/// This method is used as the final notification hook for patterns that end
+/// up modifying the pattern root in place, by changing its operands.  This is
+/// a minor efficiency win (it avoids creating a new instruction and removing
+/// the old one) but also often allows simpler code in the client.
+///
+/// The opsToRemoveIfDead list is an optional list of nodes that the rewriter
+/// should remove if they are dead at this point.
+///
+void PatternRewriter::updatedRootInPlace(
+    Operation *op, ArrayRef<SSAValue *> opsToRemoveIfDead) {
+  // Notify the rewriter subclass that we're about to replace this root.
+  notifyRootUpdated(op);
+
+  // TODO: Process the opsToRemoveIfDead list, removing things and calling the
+  // notifyOperationRemoved hook in the process.
 }
 
 //===----------------------------------------------------------------------===//

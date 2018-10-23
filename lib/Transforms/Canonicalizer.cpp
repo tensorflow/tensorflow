@@ -34,6 +34,35 @@ using namespace mlir;
 //===----------------------------------------------------------------------===//
 
 namespace {
+/// This is a common class used for patterns of the form
+/// "someop(memrefcast) -> someop".  It folds the source of any memref_cast
+/// into the root operation directly.
+struct MemRefCastFolder : public Pattern {
+  /// The rootOpName is the name of the root operation to match against.
+  MemRefCastFolder(StringRef rootOpName, MLIRContext *context)
+      : Pattern(rootOpName, context, 1) {}
+
+  std::pair<PatternBenefit, std::unique_ptr<PatternState>>
+  match(Operation *op) const override {
+    for (auto *operand : op->getOperands())
+      if (auto *memref = operand->getDefiningOperation())
+        if (memref->isa<MemRefCastOp>())
+          return matchSuccess();
+
+    return matchFailure();
+  }
+
+  void rewrite(Operation *op, PatternRewriter &rewriter) const override {
+    for (unsigned i = 0, e = op->getNumOperands(); i != e; ++i)
+      if (auto *memref = op->getOperand(i)->getDefiningOperation())
+        if (auto cast = memref->dyn_cast<MemRefCastOp>())
+          op->setOperand(i, cast->getOperand());
+    rewriter.updatedRootInPlace(op);
+  }
+};
+} // end anonymous namespace.
+
+namespace {
 /// subi(x,x) -> 0
 ///
 struct SimplifyXMinusX : public Pattern {
@@ -79,6 +108,77 @@ struct SimplifyAddX0 : public Pattern {
   }
   void rewrite(Operation *op, PatternRewriter &rewriter) const override {
     rewriter.replaceSingleResultOp(op, op->getOperand(0));
+  }
+};
+} // end anonymous namespace.
+
+namespace {
+/// Fold constant dimensions into an alloc instruction.
+struct SimplifyAllocConst : public Pattern {
+  SimplifyAllocConst(MLIRContext *context)
+      : Pattern(AllocOp::getOperationName(), context, 1) {}
+
+  std::pair<PatternBenefit, std::unique_ptr<PatternState>>
+  match(Operation *op) const override {
+    auto alloc = op->cast<AllocOp>();
+
+    // Check to see if any dimensions operands are constants.  If so, we can
+    // substitute and drop them.
+    for (auto *operand : alloc->getOperands())
+      if (auto *opOperation = operand->getDefiningOperation())
+        if (opOperation->isa<ConstantIndexOp>())
+          return matchSuccess();
+    return matchFailure();
+  }
+
+  void rewrite(Operation *op, PatternRewriter &rewriter) const override {
+    auto allocOp = op->cast<AllocOp>();
+    auto memrefType = allocOp->getType();
+
+    // Ok, we have one or more constant operands.  Collect the non-constant ones
+    // and keep track of the resultant memref type to build.
+    SmallVector<int, 4> newShapeConstants;
+    newShapeConstants.reserve(memrefType->getRank());
+    SmallVector<SSAValue *, 4> newOperands;
+    SmallVector<SSAValue *, 4> droppedOperands;
+
+    unsigned dynamicDimPos = 0;
+    for (unsigned dim = 0, e = memrefType->getRank(); dim < e; ++dim) {
+      int dimSize = memrefType->getDimSize(dim);
+      // If this is already static dimension, keep it.
+      if (dimSize != -1) {
+        newShapeConstants.push_back(dimSize);
+        continue;
+      }
+      auto *defOp = allocOp->getOperand(dynamicDimPos)->getDefiningOperation();
+      OpPointer<ConstantIndexOp> constantIndexOp;
+      if (defOp && (constantIndexOp = defOp->dyn_cast<ConstantIndexOp>())) {
+        // Dynamic shape dimension will be folded.
+        newShapeConstants.push_back(constantIndexOp->getValue());
+        // Record to check for zero uses later below.
+        droppedOperands.push_back(constantIndexOp);
+      } else {
+        // Dynamic shape dimension not folded; copy operand from old memref.
+        newShapeConstants.push_back(-1);
+        newOperands.push_back(allocOp->getOperand(dynamicDimPos));
+      }
+      dynamicDimPos++;
+    }
+
+    // Create new memref type (which will have fewer dynamic dimensions).
+    auto *newMemRefType = MemRefType::get(
+        newShapeConstants, memrefType->getElementType(),
+        memrefType->getAffineMaps(), memrefType->getMemorySpace());
+    assert(newOperands.size() == newMemRefType->getNumDynamicDims());
+
+    // Create and insert the alloc op for the new memref.
+    auto newAlloc =
+        rewriter.create<AllocOp>(allocOp->getLoc(), newMemRefType, newOperands);
+    // Insert a cast so we have the same type as the old alloc.
+    auto resultCast = rewriter.create<MemRefCastOp>(allocOp->getLoc(), newAlloc,
+                                                    allocOp->getType());
+
+    rewriter.replaceSingleResultOp(op, resultCast, droppedOperands);
   }
 };
 } // end anonymous namespace.
@@ -261,8 +361,16 @@ void Canonicalizer::simplifyFunction(std::vector<Operation *> &worklist,
 
   // TODO: Instead of a hard coded list of patterns, ask the registered dialects
   // for their canonicalization patterns.
-  Pattern *patterns[] = {new SimplifyXMinusX(context),
-                         new SimplifyAddX0(context)};
+  Pattern *patterns[] = {
+      new SimplifyXMinusX(context), new SimplifyAddX0(context),
+      new SimplifyAllocConst(context),
+      /// load(memrefcast) -> load
+      new MemRefCastFolder(LoadOp::getOperationName(), context),
+      /// store(memrefcast) -> store
+      new MemRefCastFolder(StoreOp::getOperationName(), context),
+      /// dealloc(memrefcast) -> dealloc
+      new MemRefCastFolder(DeallocOp::getOperationName(), context)};
+
   PatternMatcher matcher(patterns);
 
   // These are scratch vectors used in the constant folding loop below.

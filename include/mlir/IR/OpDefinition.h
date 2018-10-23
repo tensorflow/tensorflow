@@ -131,6 +131,9 @@ public:
   const Operation *getOperation() const { return state; }
   Operation *getOperation() { return state; }
 
+  /// The source location the operation was defined or derived from.
+  Location *getLoc() const { return state->getLoc(); }
+
   /// Return all of the attributes on this operation.
   ArrayRef<NamedAttribute> getAttrs() const { return state->getAttrs(); }
 
