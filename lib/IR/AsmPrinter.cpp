@@ -443,6 +443,14 @@ void ModulePrinter::printAttribute(const Attribute *attr) {
     }
     break;
   }
+  case Attribute::Kind::OpaqueElements: {
+    auto *eltsAttr = cast<OpaqueElementsAttr>(attr);
+    os << "opaque<";
+    printType(eltsAttr->getType());
+    os << ", " << '"' << "0x" << llvm::toHex(eltsAttr->getValue()) << '"'
+       << '>';
+    break;
+  }
   case Attribute::Kind::DenseIntElements:
   case Attribute::Kind::DenseFPElements: {
     auto *eltsAttr = cast<DenseElementsAttr>(attr);

@@ -106,8 +106,10 @@ public:
   ElementsAttr *getDenseElementsAttr(VectorOrTensorType *type,
                                      ArrayRef<char> data);
   ElementsAttr *getSparseElementsAttr(VectorOrTensorType *type,
-                                      DenseIntElementsAttr *indicies,
+                                      DenseIntElementsAttr *indices,
                                       DenseElementsAttr *values);
+  ElementsAttr *getOpaqueElementsAttr(VectorOrTensorType *type,
+                                      StringRef bytes);
 
   // Affine expressions and affine maps.
   AffineExpr getAffineDimExpr(unsigned position);

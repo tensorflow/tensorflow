@@ -159,9 +159,14 @@ ElementsAttr *Builder::getDenseElementsAttr(VectorOrTensorType *type,
 }
 
 ElementsAttr *Builder::getSparseElementsAttr(VectorOrTensorType *type,
-                                             DenseIntElementsAttr *indicies,
+                                             DenseIntElementsAttr *indices,
                                              DenseElementsAttr *values) {
-  return SparseElementsAttr::get(type, indicies, values);
+  return SparseElementsAttr::get(type, indices, values);
+}
+
+ElementsAttr *Builder::getOpaqueElementsAttr(VectorOrTensorType *type,
+                                             StringRef bytes) {
+  return OpaqueElementsAttr::get(type, bytes);
 }
 
 //===----------------------------------------------------------------------===//

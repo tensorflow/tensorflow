@@ -49,6 +49,7 @@ public:
     SplatElements,
     DenseIntElements,
     DenseFPElements,
+    OpaqueElements,
     SparseElements,
     FIRST_ELEMENTS_ATTR = SplatElements,
     LAST_ELEMENTS_ATTR = SparseElements,
@@ -335,11 +336,6 @@ private:
 /// object.
 class DenseIntElementsAttr : public DenseElementsAttr {
 public:
-  DenseIntElementsAttr(VectorOrTensorType *type, ArrayRef<char> data,
-                       size_t bitsWidth)
-      : DenseElementsAttr(Kind::DenseIntElements, type, data),
-        bitsWidth(bitsWidth) {}
-
   // TODO: returns APInts instead of IntegerAttr.
   void getValues(SmallVectorImpl<Attribute *> &values) const;
 
@@ -361,6 +357,12 @@ public:
   }
 
 private:
+  friend class DenseElementsAttr;
+  DenseIntElementsAttr(VectorOrTensorType *type, ArrayRef<char> data,
+                       size_t bitsWidth)
+      : DenseElementsAttr(Kind::DenseIntElements, type, data),
+        bitsWidth(bitsWidth) {}
+
   ~DenseIntElementsAttr() = delete;
 
   size_t bitsWidth;
@@ -370,9 +372,6 @@ private:
 /// object. Each element is stored as a double.
 class DenseFPElementsAttr : public DenseElementsAttr {
 public:
-  DenseFPElementsAttr(VectorOrTensorType *type, ArrayRef<char> data)
-      : DenseElementsAttr(Kind::DenseFPElements, type, data) {}
-
   // TODO: returns APFPs instead of FloatAttr.
   void getValues(SmallVectorImpl<Attribute *> &values) const;
 
@@ -384,7 +383,31 @@ public:
   }
 
 private:
+  friend class DenseElementsAttr;
+  DenseFPElementsAttr(VectorOrTensorType *type, ArrayRef<char> data)
+      : DenseElementsAttr(Kind::DenseFPElements, type, data) {}
   ~DenseFPElementsAttr() = delete;
+};
+
+/// An attribute represents a reference to a tensor constant with opaque
+/// content. This respresentation is for tensor constants which the compiler
+/// doesn't need to interpret.
+class OpaqueElementsAttr : public ElementsAttr {
+public:
+  static OpaqueElementsAttr *get(VectorOrTensorType *type, StringRef bytes);
+
+  StringRef getValue() const { return bytes; }
+
+  /// Method for support type inquiry through isa, cast and dyn_cast.
+  static bool classof(const Attribute *attr) {
+    return attr->getKind() == Kind::OpaqueElements;
+  }
+
+private:
+  OpaqueElementsAttr(VectorOrTensorType *type, StringRef bytes)
+      : ElementsAttr(Kind::OpaqueElements, type), bytes(bytes) {}
+  ~OpaqueElementsAttr() = delete;
+  StringRef bytes;
 };
 
 /// An attribute represents a reference to a sparse vector or tensor object.

@@ -41,6 +41,7 @@
 #include "llvm/Support/PrettyStackTrace.h"
 #include "llvm/Support/SMLoc.h"
 #include "llvm/Support/SourceMgr.h"
+#include <algorithm>
 
 using namespace mlir;
 using llvm::MemoryBuffer;
@@ -895,7 +896,26 @@ Attribute *Parser::parseAttribute() {
     auto *function = resolveFunctionReference(nameStr, nameLoc, fnType);
     return function ? builder.getFunctionAttr(function) : nullptr;
   }
-
+  case Token::kw_opaque: {
+    consumeToken(Token::kw_opaque);
+    if (parseToken(Token::less, "expected '<' after 'opaque'"))
+      return nullptr;
+    auto *type = parseVectorOrTensorType();
+    if (!type)
+      return nullptr;
+    auto val = getToken().getStringValue();
+    if (val.size() < 2 || val[0] != '0' || val[1] != 'x')
+      return (emitError("opaque string should start with '0x'"), nullptr);
+    val = val.substr(2);
+    if (!std::all_of(val.begin(), val.end(),
+                     [](char c) { return llvm::isHexDigit(c); })) {
+      return (emitError("opaque string only contains hex digits"), nullptr);
+    }
+    consumeToken(Token::string);
+    if (parseToken(Token::greater, "expected '>'"))
+      return nullptr;
+    return builder.getOpaqueElementsAttr(type, llvm::fromHex(val));
+  }
   case Token::kw_splat: {
     consumeToken(Token::kw_splat);
     if (parseToken(Token::less, "expected '<' after 'splat'"))

@@ -211,6 +211,23 @@ struct DenseElementsAttrInfo : DenseMapInfo<DenseElementsAttr *> {
     return lhs == std::make_pair(rhs->getType(), rhs->getRawData());
   }
 };
+
+struct OpaqueElementsAttrInfo : DenseMapInfo<OpaqueElementsAttr *> {
+  using KeyTy = std::pair<VectorOrTensorType *, StringRef>;
+  using DenseMapInfo<OpaqueElementsAttr *>::getHashValue;
+  using DenseMapInfo<OpaqueElementsAttr *>::isEqual;
+
+  static unsigned getHashValue(KeyTy key) {
+    return hash_combine(
+        key.first, hash_combine_range(key.second.begin(), key.second.end()));
+  }
+
+  static bool isEqual(const KeyTy &lhs, const OpaqueElementsAttr *rhs) {
+    if (rhs == getEmptyKey() || rhs == getTombstoneKey())
+      return false;
+    return lhs == std::make_pair(rhs->getType(), rhs->getValue());
+  }
+};
 } // end anonymous namespace.
 
 namespace mlir {
@@ -316,6 +333,9 @@ public:
   using DenseElementsAttrSet =
       DenseSet<DenseElementsAttr *, DenseElementsAttrInfo>;
   DenseElementsAttrSet denseElementsAttrs;
+  using OpaqueElementsAttrSet =
+      DenseSet<OpaqueElementsAttr *, OpaqueElementsAttrInfo>;
+  OpaqueElementsAttrSet opaqueElementsAttrs;
   DenseMap<std::tuple<Type *, DenseElementsAttr *, DenseElementsAttr *>,
            SparseElementsAttr *>
       sparseElementsAttrs;
@@ -885,6 +905,28 @@ AttributeListStorage *AttributeListStorage::get(ArrayRef<NamedAttribute> attrs,
   auto result = ::new (rawMem) AttributeListStorage(attrs.size());
   std::uninitialized_copy(attrs.begin(), attrs.end(),
                           result->getTrailingObjects<NamedAttribute>());
+  return *existing.first = result;
+}
+
+OpaqueElementsAttr *OpaqueElementsAttr::get(VectorOrTensorType *type,
+                                            StringRef bytes) {
+  assert(isValidTensorElementType(type->getElementType()) &&
+         "Input element type should be a valid tensor element type");
+
+  auto &impl = type->getContext()->getImpl();
+
+  // Look to see if this constant is already defined.
+  OpaqueElementsAttrInfo::KeyTy key({type, bytes});
+  auto existing = impl.opaqueElementsAttrs.insert_as(nullptr, key);
+
+  // If we already have it, return that value.
+  if (!existing.second)
+    return *existing.first;
+
+  // Otherwise, allocate a new one, unique it and return it.
+  auto *result = impl.allocator.Allocate<OpaqueElementsAttr>();
+  bytes = bytes.copy(impl.allocator);
+  new (result) OpaqueElementsAttr(type, bytes);
   return *existing.first = result;
 }
 

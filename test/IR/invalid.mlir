@@ -699,3 +699,17 @@ cfgfunc @elementsattr_toolarge2() -> () {
 bb0:
   "foo"(){bar: dense<tensor<1xi8>, [-777]>} : () -> () // expected-error {{tensor literal element has more bits than that specified in the type}}
 }
+
+// -----
+
+cfgfunc @elementsattr_malformed_opaque() -> () {
+bb0:
+  "foo"(){bar: opaque<tensor<1xi8>, "0xQZz123">} : () -> () // expected-error {{opaque string only contains hex digits}}
+}
+
+// -----
+
+cfgfunc @elementsattr_malformed_opaque1() -> () {
+bb0:
+  "foo"(){bar: opaque<tensor<1xi8>, "00abc">} : () -> () // expected-error {{opaque string should start with '0x'}}
+}
