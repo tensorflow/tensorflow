@@ -734,7 +734,7 @@ tensorflow/tools/benchmark/benchmark_model_main.cc
 # * TensorFlow Lite Runtime.
 # * TensorFlow Lite Flex Delegate.
 ifeq ($(WITH_TFLITE_FLEX), true)
-	CORE_CC_SRCS += $(wildcard tensorflow/core/common_runtime/eager/*.cc)
+	TF_CC_SRCS += $(wildcard tensorflow/core/common_runtime/eager/*.cc)
 	TF_LITE_CORE_CC_ALL_SRCS := \
 	$(wildcard tensorflow/contrib/lite/*.cc) \
 	$(wildcard tensorflow/contrib/lite/*.c) \
