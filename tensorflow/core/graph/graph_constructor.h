@@ -140,7 +140,7 @@ struct ImportGraphDefOptions {
   // python API.
 
   // Try to set default execution device for this grapth.
-  std::string default_device;
+  string default_device;
 };
 
 // Optional results that may be returned by ImportGraphDef.
