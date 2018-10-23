@@ -117,13 +117,23 @@ StatusOr<int64> WhileLoopUtil::CanConvertWhileToRepeat(
   const HloInstruction* init_inst =
       while_inst->operand(0)->operand(cond_tuple_index);
 
+  if (init_inst->opcode() != HloOpcode::kConstant) {
+    return xla::FailedPrecondition(err_msg);
+  }
+
   int64 initial_value;
   TF_ASSIGN_OR_RETURN(initial_value,
                       LiteralScalarInt64toInt64(init_inst->literal()));
 
+  const HloInstruction* limit_inst = c_inst->operand(1);
+
+  if (limit_inst->opcode() != HloOpcode::kConstant) {
+    return xla::FailedPrecondition(err_msg);
+  }
+
   int64 compare_value;
   TF_ASSIGN_OR_RETURN(compare_value,
-                      LiteralScalarInt64toInt64(c_inst->operand(1)->literal()));
+                      LiteralScalarInt64toInt64(limit_inst->literal()));
 
   // Find corresponding GTE in the body
   HloInstruction* body_GTE;

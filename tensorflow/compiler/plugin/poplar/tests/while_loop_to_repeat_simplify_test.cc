@@ -189,6 +189,83 @@ ENTRY entry {
   EXPECT_EQ(annotations.while_loop_num_iterations[root], 900);
 }
 
+TEST_F(WhileLoopToRepeatSimplifyTest, SingleConditionalS32_NonConstInit) {
+  const char* const hlo_string = R"(
+HloModule ModuleWithWhile
+
+body {
+  p_body = (s32[],s32[]) parameter(0)
+  p_body.0 = s32[] get-tuple-element((s32[],s32[]) p_body), index=0
+  const = s32[] constant(1)
+  add = s32[] add(p_body.0, const)
+  p_body.1 = s32[] get-tuple-element((s32[],s32[]) p_body), index=1
+  ROOT root = (s32[],s32[]) tuple(add, p_body.1)
+}
+
+condition {
+  p_cond = (s32[],s32[]) parameter(0)
+  p_cond.0 = s32[] get-tuple-element((s32[],s32[]) p_cond), index=0
+  const = s32[] constant(999)
+  ROOT result = pred[] less-than-or-equal-to(p_cond.0, const)
+}
+
+ENTRY entry {
+  const_0 = s32[] parameter(0)
+  const_1 = s32[] constant(999)
+  while_init = (s32[],s32[]) tuple(const_0, const_1)
+  ROOT while = (s32[],s32[]) while(while_init), condition=condition, body=body
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseHloString(hlo_string));
+  CompilerAnnotations annotations(module.get());
+  WhileLoopToRepeatSimplify wltrs(annotations);
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, wltrs.Run(module.get()));
+
+  // Get the trip count
+  auto* root = module.get()->entry_computation()->root_instruction();
+  EXPECT_EQ(annotations.while_loop_num_iterations[root], 0);
+}
+
+TEST_F(WhileLoopToRepeatSimplifyTest, SingleConditionalS32_NonConstDelta) {
+  const char* const hlo_string = R"(
+HloModule ModuleWithWhile
+
+body {
+  p_body = (s32[],s32[]) parameter(0)
+  p_body.0 = s32[] get-tuple-element((s32[],s32[]) p_body), index=0
+  p_body.1 = s32[] get-tuple-element((s32[],s32[]) p_body), index=1
+  add = s32[] add(p_body.0, p_body.1)
+  ROOT root = (s32[],s32[]) tuple(add, p_body.1)
+}
+
+condition {
+  p_cond = (s32[],s32[]) parameter(0)
+  p_cond.0 = s32[] get-tuple-element((s32[],s32[]) p_cond), index=0
+  const = s32[] constant(999)
+  ROOT result = pred[] less-than-or-equal-to(p_cond.0, const)
+}
+
+ENTRY entry {
+  const_0 = s32[] constant(0)
+  const_1 = s32[] parameter(0)
+  while_init = (s32[],s32[]) tuple(const_0, const_1)
+  ROOT while = (s32[],s32[]) while(while_init), condition=condition, body=body
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseHloString(hlo_string));
+  CompilerAnnotations annotations(module.get());
+  WhileLoopToRepeatSimplify wltrs(annotations);
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, wltrs.Run(module.get()));
+
+  // Get the trip count
+  auto* root = module.get()->entry_computation()->root_instruction();
+  EXPECT_EQ(annotations.while_loop_num_iterations[root], 0);
+}
+
 TEST_F(WhileLoopToRepeatSimplifyTest, SingleConditionalF32IncrementBy2) {
   const char* const hlo_string = R"(
 HloModule ModuleWithWhile
