@@ -507,7 +507,8 @@ class DeprecatedArgsTest(test.TestCase):
     self.assertEqual(
         "fn doc. (deprecated arguments)"
         "\n"
-        "\nSOME ARGUMENTS ARE DEPRECATED. They will be removed after %s."
+        "\nTHE `deprecated` ARGUMENT IS DEPRECATED. It will be removed "
+        "after %s."
         "\nInstructions for updating:\n%s"
         "\n"
         "\nArgs:"
@@ -544,7 +545,8 @@ class DeprecatedArgsTest(test.TestCase):
     self.assertEqual(
         "fn doc. (deprecated arguments)"
         "\n"
-        "\nSOME ARGUMENTS ARE DEPRECATED. They will be removed after %s."
+        "\nTHE `deprecated` ARGUMENT IS DEPRECATED. It will be removed "
+        "after %s."
         "\nInstructions for updating:\n%s" % (date, instructions), _fn.__doc__)
 
     # Assert calls without the deprecated argument log nothing.
@@ -572,7 +574,8 @@ class DeprecatedArgsTest(test.TestCase):
     self.assertEqual(
         "DEPRECATED FUNCTION ARGUMENTS"
         "\n"
-        "\nSOME ARGUMENTS ARE DEPRECATED. They will be removed after %s."
+        "\nTHE `deprecated` ARGUMENT IS DEPRECATED. It will be removed "
+        "after %s."
         "\nInstructions for updating:"
         "\n%s" % (date, instructions), _fn.__doc__)
 
@@ -586,6 +589,90 @@ class DeprecatedArgsTest(test.TestCase):
     (args, _) = mock_warning.call_args
     self.assertRegexpMatches(args[0], r"deprecated and will be removed")
     self._assert_subset(set(["after " + date, instructions]), set(args[1:]))
+
+  @test.mock.patch.object(logging, "warning", autospec=True)
+  def test_docs_multiple_deprecated_args(self, mock_warning):
+    date = "2016-07-04"
+    instructions = "This is how you update..."
+
+    @deprecation.deprecated_args(date, instructions, "deprecated1", 
+                                 "deprecated2")
+    def _fn2(arg0, arg1, deprecated1=False, deprecated2=False):
+      """fn2 doc.
+
+      Args:
+        arg0: Arg 0.
+        arg1: Arg 1.
+        deprecated1: Deprecated!
+        deprecated2: Deprecated!
+
+      Returns:
+        Sum of args.
+      """
+      if deprecated1:
+        return 1 + arg0 + arg1
+      elif deprecated2:
+        return 2 + arg0 + arg1
+      else:
+        return arg0 + arg1
+
+    @deprecation.deprecated_args(date, instructions, "deprecated1", 
+                                 "deprecated2", "deprecated3")
+    def _fn3(arg0, arg1, deprecated1=False, deprecated2=False, 
+             deprecated3=False):
+      """fn3 doc.
+
+      Args:
+        arg0: Arg 0.
+        arg1: Arg 1.
+        deprecated1: Deprecated!
+        deprecated2: Deprecated!
+        deprecated3: Deprecated!
+
+      Returns:
+        Sum of args.
+      """
+      if deprecated1:
+        return 1 + arg0 + arg1
+      elif deprecated2:
+        return 2 + arg0 + arg1
+      elif deprecated3:
+        return 3 + arg0 + arg1
+      else:
+        return arg0 + arg1
+
+    self.assertEqual(
+        "fn2 doc. (deprecated arguments)"
+        "\n"
+        "\nTHE `deprecated1` AND `deprecated2` ARGUMENTS ARE DEPRECATED. "
+        "They will be removed after %s."
+        "\nInstructions for updating:\n%s"
+        "\n"
+        "\nArgs:"
+        "\n  arg0: Arg 0."
+        "\n  arg1: Arg 1."
+        "\n  deprecated1: Deprecated!"
+        "\n  deprecated2: Deprecated!"
+        "\n"
+        "\nReturns:"
+        "\n  Sum of args." % (date, instructions), _fn2.__doc__)
+    self.assertEqual(
+        "fn3 doc. (deprecated arguments)"
+        "\n"
+        "\nTHE `deprecated1`, `deprecated2`, and `deprecated3` ARGUMENTS ARE "
+        "DEPRECATED. They will be removed after %s."
+        "\nInstructions for updating:\n%s"
+        "\n"
+        "\nArgs:"
+        "\n  arg0: Arg 0."
+        "\n  arg1: Arg 1."
+        "\n  deprecated1: Deprecated!"
+        "\n  deprecated2: Deprecated!"
+        "\n  deprecated3: Deprecated!"
+        "\n"
+        "\nReturns:"
+        "\n  Sum of args." % (date, instructions), _fn3.__doc__)
+
 
   @test.mock.patch.object(logging, "warning", autospec=True)
   def test_varargs(self, mock_warning):
