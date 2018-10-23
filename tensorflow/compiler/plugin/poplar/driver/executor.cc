@@ -151,20 +151,29 @@ void* PoplarExecutor::AllocateSubBuffer(se::DeviceMemoryBase* parent,
 
 void PoplarExecutor::Deallocate(se::DeviceMemoryBase* mem) {
   if (!mem->is_sub_buffer()) {
-    bool free = false;
     TensorControl* tc = reinterpret_cast<TensorControl*>(mem->opaque());
     {
       std::lock_guard<std::recursive_mutex> g(mutex_);
-      if (--tc->ref_count == 0) {
-        allocations_.remove(tc);
-        free = true;
+      if (tc->ref_count > 0) {
+        tc->ref_count--;
       }
     }
-    if (free) {
-      tc->~TensorControl();
-      delete[] static_cast<char*>(mem->opaque());
-    }
   }
+}
+
+void PoplarExecutor::DeferredDeallocation() {
+  std::lock_guard<std::recursive_mutex> g(mutex_);
+
+  const auto new_end =
+      std::partition(allocations_.begin(), allocations_.end(),
+                     [](TensorControl* tc) { return tc->ref_count > 0; });
+
+  std::for_each(new_end, allocations_.end(), [](TensorControl* tc) {
+    tc->~TensorControl();
+    delete[] reinterpret_cast<char*>(tc);
+  });
+
+  allocations_.erase(new_end, allocations_.end());
 }
 
 bool PoplarExecutor::Memcpy(se::Stream* stream, void* host_dst,
@@ -1047,6 +1056,7 @@ void PoplarExecutor::AboutToFreeEngine(poplar::Engine* engine) {
   if (current_engine_ != nullptr) {
     std::lock_guard<std::recursive_mutex> g(mutex_);
     if (engine == current_engine_) {
+      DeferredDeallocation();
       current_engine_ = NULL;
     }
   }
@@ -1107,6 +1117,7 @@ StatusOr<se::DeviceMemoryBase> PoplarExecutor::ExecuteEngine(
 
           executable.OnEngineLoaded();
 
+          DeferredDeallocation();
           current_engine_ = engine;
 
         } catch (const std::exception& e) {

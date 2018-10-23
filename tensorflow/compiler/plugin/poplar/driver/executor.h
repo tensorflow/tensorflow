@@ -435,6 +435,9 @@ class PoplarExecutor : public se::internal::StreamExecutorInterface {
   static void* PreProcessBuffer(InputDef& id);
   // Convers the data into the right host format
   static void PostProcessBuffer(TensorControl* tc);
+
+  void DeferredDeallocation();
+
   int ordinal_;
 
   std::recursive_mutex mutex_;
