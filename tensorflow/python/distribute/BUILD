@@ -49,9 +49,7 @@ py_test(
     srcs = ["distribute_coordinator_test.py"],
     srcs_version = "PY2AND3",
     tags = [
-        "manual",
         "no_pip",
-        "notap",
     ],
     deps = [
         ":distribute_coordinator",
