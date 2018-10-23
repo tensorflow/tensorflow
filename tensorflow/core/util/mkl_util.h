@@ -2174,14 +2174,14 @@ class MklReorderPrimitiveFactory : public MklPrimitiveFactory<T> {
       const int KIdxFirstStride = 0;
       memory::dims from_dims(from_desc.dims, &from_desc.dims[from_desc.ndims]);
       memory::dims to_dims(to_desc.dims, &to_desc.dims[to_desc.ndims]);
-      memory::dims from_strides(from_desc.layout_desc.blocking
-                                .strides[KIdxFirstStride],
-                                &from_desc.layout_desc.blocking
-                                .strides[KIdxFirstStride][from_desc.ndims]);
-      memory::dims to_strides(to_desc.layout_desc.blocking
-                              .strides[KIdxFirstStride],
-                              &to_desc.layout_desc.blocking
-                              .strides[KIdxFirstStride][to_desc.ndims]);
+      memory::dims from_strides(
+          from_desc.layout_desc.blocking.strides[KIdxFirstStride],
+          &from_desc.layout_desc.blocking
+               .strides[KIdxFirstStride][from_desc.ndims]);
+      memory::dims to_strides(
+          to_desc.layout_desc.blocking.strides[KIdxFirstStride],
+          &to_desc.layout_desc.blocking
+               .strides[KIdxFirstStride][to_desc.ndims]);
       key_creator.AddAsKey(prefix);
       key_creator.AddAsKey(static_cast<int>(from_desc.format));
       key_creator.AddAsKey(static_cast<int>(from_desc.data_type));
