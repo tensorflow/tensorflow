@@ -37,6 +37,9 @@ cuda_py_test(
     ],
     tags = [
         "noasan",  # Fix b/118130911
+        "nomsan",  # Fix b/118130911
+        "notsan",  # Fix b/118130911
+        "optonly",
     ],
 )
 
