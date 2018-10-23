@@ -30,7 +30,17 @@ _component_api_helper.package_hook(
 
 # API IMPORTS PLACEHOLDER
 
+from tensorflow.python.util.lazy_loader import LazyLoader  # pylint: disable=g-import-not-at-top
+contrib = LazyLoader('contrib', globals(), 'tensorflow.contrib')
+del LazyLoader
+# The templated code that replaces the placeholder above sometimes
+# sets the __all__ variable. If it does, we have to be sure to add
+# "contrib".
+if '__all__' in vars():
+  vars()['__all__'].append('contrib')
+
 from tensorflow.python.platform import flags  # pylint: disable=g-import-not-at-top
+app.flags = flags  # pylint: disable=undefined-variable
 
 # Make sure directory containing top level submodules is in
 # the __path__ so that "from tensorflow.foo import bar" works.
@@ -38,8 +48,6 @@ _tf_api_dir = _os.path.dirname(_os.path.dirname(app.__file__))  # pylint: disabl
 if _tf_api_dir not in __path__:
   __path__.append(_tf_api_dir)
 
-# Calls to enable and disable features.
-enable_eager_execution()  # pylint: disable=undefined-variable
 
 # These symbols appear because we import the python package which
 # in turn imports from tensorflow.core and tensorflow.python. They
