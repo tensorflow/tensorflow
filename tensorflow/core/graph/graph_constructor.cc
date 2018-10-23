@@ -113,7 +113,7 @@ class GraphConstructor {
     bool validate_colocation_constraints;
     bool validate_shape = true;
 
-    std::string default_device;
+    string default_device;
   };
 
   typedef gtl::ArraySlice<const NodeDef*> NodeDefSlice;
