@@ -734,7 +734,11 @@ tensorflow/tools/benchmark/benchmark_model_main.cc
 # * TensorFlow Lite Runtime.
 # * TensorFlow Lite Flex Delegate.
 ifeq ($(WITH_TFLITE_FLEX), true)
-	TF_CC_SRCS += $(wildcard tensorflow/core/common_runtime/eager/*.cc)
+	EAGER_CC_ALL_SRCS += $(wildcard tensorflow/core/common_runtime/eager/*.cc)
+	EAGER_CC_EXCLUDE_SRCS := $(wildcard tensorflow/core/common_runtime/eager/*test.cc)
+	EAGER_CC_SRCS := $(filter-out $(EAGER_CC_EXCLUDE_SRCS), $(EAGER_CC_ALL_SRCS))
+	TF_CC_SRCS += $(EAGER_CC_SRCS)
+
 	TF_LITE_CORE_CC_ALL_SRCS := \
 	$(wildcard tensorflow/contrib/lite/*.cc) \
 	$(wildcard tensorflow/contrib/lite/*.c) \
