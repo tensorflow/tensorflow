@@ -819,4 +819,18 @@ REGISTER_OP("NonMaxSuppressionWithOverlaps")
       return Status::OK();
     });
 
+REGISTER_OP("NonMaxSuppressionLite")
+    .Input("boxes: float")
+    .Input("scores: float")
+    .Input("max_output_size_per_class: int32")
+    .Input("max_total_size: int32")
+    .Input("iou_threshold: float")
+    .Input("score_threshold: float")
+    .Output("nmsed_boxes: float")
+    .Output("nmsed_scores: float")
+    .Output("nmsed_classes: float")
+    .Output("valid_detections: int32")
+    .Output("selected_indices: int32")
+    .SetShapeFn(NMSLiteShapeFn);   
+
 }  // namespace tensorflow
