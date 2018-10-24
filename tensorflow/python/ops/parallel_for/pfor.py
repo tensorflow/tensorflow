@@ -1924,7 +1924,8 @@ def _convert_unsortedsegmentsum(pfor_input):
   segment_offset = array_ops.reshape(segment_offset,
                                      array_ops.concat([[n], ones], axis=0))
   segment_ids += segment_offset
-  num_segments *= n
+  num_segments = math_ops.cast(num_segments, dtypes.int64) * math_ops.cast(
+      n, dtypes.int64)
   output = math_ops.unsorted_segment_sum(data, segment_ids, num_segments)
   new_output_shape = array_ops.concat(
       [[n, -1], array_ops.shape(output)[1:]], axis=0)
