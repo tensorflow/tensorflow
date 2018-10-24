@@ -27,8 +27,12 @@ from tensorflow.python.framework import meta_graph
 from tensorflow.python.framework import ops
 from tensorflow.python.grappler import tf_optimizer
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import functional_ops
 from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import list_ops
+from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import tensor_array_grad  # pylint: disable=unused-import
 from tensorflow.python.ops import while_v2
 from tensorflow.python.ops.control_flow_ops import while_loop as while_loop_v1
 from tensorflow.python.ops.while_v2 import while_loop as while_loop_v2
@@ -93,7 +97,7 @@ class WhileV2Test(test.TestCase, parameterized.TestCase):
   def testMultipleWhileLoops(self):
     x = constant_op.constant(2.)
     ret1 = while_loop_v2(lambda v: v < 4., lambda v: v * v, [x])  # x**2
-    ret2 = while_loop_v2(lambda v: v < 16., lambda v: v * v, ret1)  # x**4
+    ret2 = while_loop_v2(lambda v: v < 16., lambda v: v * v, [ret1])  # x**4
     grad = gradients_impl.gradients(ret2, [x])  # 4x**3
     grad_grad = gradients_impl.gradients(grad, [x])  # 12x**2
     with self.cached_session() as sess:
@@ -299,6 +303,19 @@ class WhileV2Test(test.TestCase, parameterized.TestCase):
             while2_op.get_attr("cond").name, r"foo_while_1_cond_\d*")
         self.assertRegexpMatches(
             while2_op.get_attr("body").name, r"foo_while_1_body_\d*")
+
+  def testWhileAndTensorArray(self):
+    old_enable_while_v2 = control_flow_ops.ENABLE_WHILE_V2
+    control_flow_ops.ENABLE_WHILE_V2 = True
+    with self.cached_session() as sess:
+      param = constant_op.constant(2.0)
+      y0 = constant_op.constant([1.0, 2.0, 3.0, 4.0, 5.0, 6.0], name="elems")
+      # map_fn uses TensorArray internally.
+      r = functional_ops.map_fn(lambda x: math_ops.multiply(x, param), y0)
+      self.assertAllClose([2.0, 4.0, 6.0, 8.0, 10.0, 12.0], sess.run(r))
+      r = gradients_impl.gradients(r, param)[0]
+      self.assertAllClose(21.0, sess.run(r))
+    control_flow_ops.ENABLE_WHILE_V2 = old_enable_while_v2
 
 
 def ScalarShape():
