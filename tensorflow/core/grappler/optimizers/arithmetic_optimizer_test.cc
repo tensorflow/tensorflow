@@ -1464,6 +1464,23 @@ TEST_F(ArithmeticOptimizerTest, ReorderTransposeReverseCast) {
   test::ExpectTensorEqual<float>(tensors_expected[0], tensors[0]);
 }
 
+TEST_F(ArithmeticOptimizerTest, ReorderTransposeCast_CheckNumericsToIdentity) {
+  tensorflow::Scope s = tensorflow::Scope::NewRootScope().WithDevice("/CPU:0");
+  Output nhwc_uint8 =
+      ops::Placeholder(s, DT_UINT8, ops::Placeholder::Shape({8, 28, 28, 3}));
+  Output nhwc_fp32 = ops::Cast(s, nhwc_uint8, DT_FLOAT);
+  Output nchw_fp32 = ops::CheckNumerics(s, nhwc_fp32, "foo");
+  Output outputs = ops::Identity(s.WithOpName("outputs"), nchw_fp32);
+
+  GrapplerItem item;
+  item.fetch = {"outputs"};
+  TF_CHECK_OK(s.ToGraphDef(&item.graph));
+
+  GraphDef output;
+  TF_EXPECT_OK(ArithmeticOptimizer().Optimize(nullptr, item, &output));
+  CompareGraphs(item.graph, output);
+}
+
 TEST_F(ArithmeticOptimizerTest, NoReorderTransposeCast_ProducerIsCast) {
   tensorflow::Scope s = tensorflow::Scope::NewRootScope().WithDevice("/CPU:0");
   Output nhwc_fp32 =
