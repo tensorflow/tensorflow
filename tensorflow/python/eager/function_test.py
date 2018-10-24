@@ -251,9 +251,6 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     self.assertSequenceEqual(outputs, expected)
 
   def testExecutingManyStatelessDefunsConcurrently(self):
-    # TODO(nareshmodi): Re-enable this test when grappler is faster, or
-    # simply disable grappler for this test.
-    self.skipTest('Very slow with grappler enabled, in fastbuild mode.')
 
     @def_function.function
     def stateless(x):
@@ -283,9 +280,6 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     self.assertEqual(float(v.read_value()), 0.0)
 
   def testExecutingManyStatefulDefunsConcurrently(self):
-    # TODO(nareshmodi): Re-enable this test when grappler is faster, or
-    # simply disable grappler for this test.
-    self.skipTest('Very slow with grappler enabled, in fastbuild mode.')
 
     v = resource_variable_ops.ResourceVariable(1.0)
 
