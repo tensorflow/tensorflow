@@ -1347,7 +1347,9 @@ def defun_with_attributes(func=None,
     attributes: A dictionary of arguments which will be added to function def as
       attributes. Currently only support primitive types as value, and only
       whitelisted attribute name is allowed. Unwhitelisted attribute name or
-      unsupported value will result into ValueError.
+      unsupported value will result into ValueError. `func_name` is also one of
+      the whitelisted argument which is a python string, and sets the name for
+      this `Function` in the graph.
     experimental_autograph: same as defun()'s experimental_autograph.
 
   Returns:
@@ -1360,7 +1362,10 @@ def defun_with_attributes(func=None,
   # TODO(apassos): deal with captured global state. Deal with control flow.
   def decorated(function):
     try:
-      name = function.__name__
+      if attributes:
+        name = attributes.pop("func_name", function.__name__)
+      else:
+        name = function.__name__
     except AttributeError:
       name = "function"
     return tf_decorator.make_decorator(
