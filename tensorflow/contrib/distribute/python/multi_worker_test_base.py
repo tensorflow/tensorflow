@@ -39,7 +39,6 @@ from tensorflow.python.platform import test
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import server_lib
 
-
 ASSIGNED_PORTS = set()
 lock = threading.Lock()
 
@@ -207,12 +206,10 @@ class MultiWorkerTestBase(test.TestCase):
     self._lock = threading.Lock()
 
   @contextlib.contextmanager
-  def test_session(self, graph=None, config=None, target=None):
+  def session(self, graph=None, config=None, target=None):
     """Create a test session with master target set to the testing cluster.
 
-    This overrides the base class' method, removes arguments that are not needed
-    by the multi-node case and creates a test session that connects to the local
-    testing cluster.
+    Creates a test session that connects to the local testing cluster.
 
     Args:
       graph: Optional graph to use during the returned session.
@@ -224,9 +221,44 @@ class MultiWorkerTestBase(test.TestCase):
       A Session object that should be used as a context manager to surround
       the graph building and execution code in a test case.
     """
-    if self.id().endswith('.test_session'):
-      self.skipTest('Not a test.')
+    config = self._create_config(config)
 
+    if target is None:
+      target = self._default_target
+    with session.Session(graph=graph, config=config, target=target) as sess:
+      yield sess
+
+  @contextlib.contextmanager
+  # TODO(b/117573461): Overwrite self.evaluate() to use this function.
+  def cached_session(self, graph=None, config=None, target=None):
+    """Create a test session with master target set to the testing cluster.
+
+    Creates a test session that connects to the local testing cluster.
+    The session is only created once per test and then reused.
+
+    Args:
+      graph: Optional graph to use during the returned session.
+      config: An optional config_pb2.ConfigProto to use to configure the
+        session.
+      target: the target of session to connect to.
+
+    Yields:
+      A Session object that should be used as a context manager to surround
+      the graph building and execution code in a test case. Note that the
+      session will live until the end of the test.
+    """
+    config = self._create_config(config)
+
+    if target is None:
+      target = self._default_target
+    if getattr(self._thread_local, 'cached_session', None) is None:
+      self._thread_local.cached_session = session.Session(
+          graph=None, config=config, target=target)
+    sess = self._thread_local.cached_session
+    with sess.graph.as_default(), sess.as_default():
+      yield sess
+
+  def _create_config(self, config):
     if config is None:
       config = config_pb2.ConfigProto(allow_soft_placement=True)
     else:
@@ -237,18 +269,8 @@ class MultiWorkerTestBase(test.TestCase):
     config.graph_options.rewrite_options.constant_folding = (
         rewriter_config_pb2.RewriterConfig.OFF)
 
-    if target is None:
-      target = self._default_target
-    if graph is None:
-      if getattr(self._thread_local, 'cached_session', None) is None:
-        self._thread_local.cached_session = session.Session(
-            graph=None, config=config, target=target)
-      sess = self._thread_local.cached_session
-      with sess.graph.as_default(), sess.as_default():
-        yield sess
-    else:
-      with session.Session(graph=graph, config=config, target=target) as sess:
-        yield sess
+    return config
+
 
   def _run_client(self, client_fn, task_type, task_id, num_gpus, *args,
                   **kwargs):

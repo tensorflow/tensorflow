@@ -81,8 +81,8 @@ class ParameterServerStrategyTestBase(
     worker_device = '/job:%s/replica:0/task:%d' % (task_type, task_id)
     d, _, sess_config = self._get_test_objects(task_type, task_id, num_gpus)
     with ops.Graph().as_default(), \
-         self.test_session(target=self._default_target,
-                           config=sess_config) as sess, \
+         self.cached_session(target=self._default_target,
+                             config=sess_config) as sess, \
          d.scope():
 
       # Define a variable outside the call_for_each_replica scope. This is not
@@ -184,8 +184,8 @@ class ParameterServerStrategyTestBase(
                                     variable_device='CPU',
                                     num_gpus=0):
     with ops.Graph().as_default(), \
-         self.test_session(target=self._default_target,
-                           config=self._sess_config) as sess, \
+         self.cached_session(target=self._default_target,
+                             config=self._sess_config) as sess, \
          d.scope():
 
       def model_fn():
@@ -292,8 +292,8 @@ class ParameterServerStrategyTestBase(
     else:
       num_workers = 1
     with ops.Graph().as_default(), \
-         self.test_session(target=master_target,
-                           config=sess_config) as sess, \
+         self.cached_session(target=master_target,
+                             config=sess_config) as sess, \
          d.scope():
 
       def model_fn():
@@ -361,8 +361,8 @@ class ParameterServerStrategyTestBase(
       num_workers += 1
 
     with ops.Graph().as_default(), \
-         self.test_session(target=master_target,
-                           config=sess_config) as sess, \
+         self.cached_session(target=master_target,
+                             config=sess_config) as sess, \
          d.scope():
       l = core.Dense(1, use_bias=False)
 
