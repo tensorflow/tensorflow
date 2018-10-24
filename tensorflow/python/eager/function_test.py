@@ -109,6 +109,21 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
       t = constant_op.constant(1.0)
       self.assertAllEqual(add(t, t).numpy(), 2.0)
 
+  def testFuncName(self):
+
+    @function.defun_with_attributes(attributes={'func_name': 'multiply'})
+    def add(x, y):
+      _ = x * y
+      return x + y
+
+    @function.defun
+    def add_2(x, y):
+      _ = x * y
+      return x + y
+
+    self.assertEqual(add._name, 'multiply')
+    self.assertEqual(add_2._name, 'add_2')
+
   def testBasicGraphMode(self):
     matmul = def_function.function(math_ops.matmul)
 
@@ -2861,9 +2876,14 @@ class ArgumentNamingTests(test.TestCase, parameterized.TestCase):
          for inp in variadic_op.inputs])
 
 
-class DefunCollectionTest(test.TestCase):
+class DefunCollectionTest(test.TestCase, parameterized.TestCase):
 
-  def testCollectionValueAccess(self):
+  @parameterized.named_parameters(
+      dict(testcase_name='Defun', function_decorator=function.defun),
+      dict(
+          testcase_name='DefFunction',
+          function_decorator=def_function.function))
+  def testCollectionValueAccess(self, function_decorator):
     """Read values from graph collections inside of defun."""
     with ops.Graph().as_default() as g:
       with self.session(graph=g):
@@ -2872,7 +2892,7 @@ class DefunCollectionTest(test.TestCase):
         ops.add_to_collection('x', x)
         ops.add_to_collection('y', y)
 
-        @function.defun
+        @function_decorator
         def fn():
           x_const = constant_op.constant(ops.get_collection('x')[0])
           y_const = constant_op.constant(ops.get_collection('y')[0])
@@ -2885,13 +2905,18 @@ class DefunCollectionTest(test.TestCase):
         self.assertEquals(ops.get_collection('y'), [5])
         self.assertEquals(ops.get_collection('z'), [])
 
-  def testCollectionVariableValueAccess(self):
+  @parameterized.named_parameters(
+      dict(testcase_name='Defun', function_decorator=function.defun),
+      dict(
+          testcase_name='DefFunction',
+          function_decorator=def_function.function))
+  def testCollectionVariableValueAccess(self, function_decorator):
     """Read variable value from graph collections inside of defun."""
     with ops.Graph().as_default() as g:
       with self.session(graph=g):
         v = resource_variable_ops.ResourceVariable(1.0)
 
-        @function.defun
+        @function_decorator
         def f():
           return v.read_value()
 

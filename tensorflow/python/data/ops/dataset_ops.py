@@ -1815,7 +1815,9 @@ class StructuredFunctionWrapper(object):
     # TODO(b/110122868): Enable this support for all `tf.data` functions.
     self._nested_dataset_support = experimental_nested_dataset_support
 
-    @eager_function.defun(input_signature=self._defun_args())
+    @eager_function.defun_with_attributes(
+        input_signature=self._defun_args(),
+        attributes={"func_name": self._func_name})
     def tf_data_structured_function_wrapper(*args):
       """Wrapper for passing nested structures to and from tf.data functions."""
       flat_args = []
