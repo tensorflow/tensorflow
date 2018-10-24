@@ -542,32 +542,6 @@ private:
   explicit MulIOp(const Operation *state) : BinaryOp(state) {}
 };
 
-/// The "shape_cast" operation converts a tensor from one type to an equivalent
-/// type without changing any data elements.  The source and destination types
-/// must both be tensor types with the same element type, and the source and
-/// destination types may not be the same.  They must either have the same rank,
-/// or one may be an unknown rank.  The operation is invalid if converting to a
-/// mismatching constant dimension.
-///
-/// Convert from unknown rank to rank 2 with unknown dimension sizes.
-///    %2 = shape_cast %1 : tensor<??f32> to tensor<?x?xf32>
-///
-class ShapeCastOp : public CastOp<ShapeCastOp> {
-public:
-  static StringRef getOperationName() { return "shape_cast"; }
-
-  /// The result of a shape_cast is always a tensor.
-  TensorType *getType() const {
-    return cast<TensorType>(getResult()->getType());
-  }
-
-  bool verify() const;
-
-private:
-  friend class Operation;
-  explicit ShapeCastOp(const Operation *state) : CastOp(state) {}
-};
-
 /// The "store" op writes an element to a memref specified by an index list.
 /// The arity of indices is the rank of the memref (i.e. if the memref being
 /// stored to is of rank 3, then 3 indices are required for the store following
@@ -649,6 +623,32 @@ public:
 private:
   friend class Operation;
   explicit SubIOp(const Operation *state) : BinaryOp(state) {}
+};
+
+/// The "tensor_cast" operation converts a tensor from one type to an equivalent
+/// type without changing any data elements.  The source and destination types
+/// must both be tensor types with the same element type, and the source and
+/// destination types may not be the same.  They must either have the same rank,
+/// or one may be an unknown rank.  The operation is invalid if converting to a
+/// mismatching constant dimension.
+///
+/// Convert from unknown rank to rank 2 with unknown dimension sizes.
+///    %2 = tensor_cast %1 : tensor<??f32> to tensor<?x?xf32>
+///
+class TensorCastOp : public CastOp<TensorCastOp> {
+public:
+  static StringRef getOperationName() { return "tensor_cast"; }
+
+  /// The result of a tensor_cast is always a tensor.
+  TensorType *getType() const {
+    return cast<TensorType>(getResult()->getType());
+  }
+
+  bool verify() const;
+
+private:
+  friend class Operation;
+  explicit TensorCastOp(const Operation *state) : CastOp(state) {}
 };
 
 } // end namespace mlir

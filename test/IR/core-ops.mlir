@@ -169,19 +169,19 @@ mlfunc @extract_element(%arg0 : tensor<*xi32>, %arg1 : tensor<4x4xf32>) -> i32 {
   return %0 : i32
 }
 
-// CHECK-LABEL: mlfunc @shape_cast(%arg0
-mlfunc @shape_cast(%arg0 : tensor<*xf32>, %arg1 : tensor<4x4xf32>, %arg2 : tensor<?x?xf32>) {
-  // CHECK: %0 = shape_cast %arg0 : tensor<*xf32> to tensor<?x?xf32>
-  %0 = shape_cast %arg0 : tensor<*xf32> to tensor<?x?xf32>
+// CHECK-LABEL: mlfunc @tensor_cast(%arg0
+mlfunc @tensor_cast(%arg0 : tensor<*xf32>, %arg1 : tensor<4x4xf32>, %arg2 : tensor<?x?xf32>) {
+  // CHECK: %0 = tensor_cast %arg0 : tensor<*xf32> to tensor<?x?xf32>
+  %0 = tensor_cast %arg0 : tensor<*xf32> to tensor<?x?xf32>
 
-  // CHECK: %1 = shape_cast %arg1 : tensor<4x4xf32> to tensor<*xf32>
-  %1 = shape_cast %arg1 : tensor<4x4xf32> to tensor<*xf32>
+  // CHECK: %1 = tensor_cast %arg1 : tensor<4x4xf32> to tensor<*xf32>
+  %1 = tensor_cast %arg1 : tensor<4x4xf32> to tensor<*xf32>
 
-  // CHECK: %2 = shape_cast %arg2 : tensor<?x?xf32> to tensor<4x?xf32>
-  %2 = shape_cast %arg2 : tensor<?x?xf32> to tensor<4x?xf32>
+  // CHECK: %2 = tensor_cast %arg2 : tensor<?x?xf32> to tensor<4x?xf32>
+  %2 = tensor_cast %arg2 : tensor<?x?xf32> to tensor<4x?xf32>
 
-  // CHECK: %3 = shape_cast %2 : tensor<4x?xf32> to tensor<?x?xf32>
-  %3 = shape_cast %2 : tensor<4x?xf32> to tensor<?x?xf32>
+  // CHECK: %3 = tensor_cast %2 : tensor<4x?xf32> to tensor<?x?xf32>
+  %3 = tensor_cast %2 : tensor<4x?xf32> to tensor<?x?xf32>
 
   return
 }

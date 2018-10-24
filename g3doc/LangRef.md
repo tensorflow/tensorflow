@@ -1847,27 +1847,27 @@ TODO: In the distant future, this will accept
 optional attributes for fast math, contraction, rounding mode, and other
 controls.
 
-#### 'shape_cast' operation {#'shape_cast'-operation}
+#### 'tensor_cast' operation {#'tensor_cast'-operation}
 
 Syntax:
 
 ``` {.mlir}
-operation ::= ssa-id `=` `shape_cast` ssa-use `:` type `to` type
+operation ::= ssa-id `=` `tensor_cast` ssa-use `:` type `to` type
 ```
 
 Examples:
 
 ``` {.mlir}
 // Convert from unknown rank to rank 2 with unknown dimension sizes.
-%2 = "shape_cast"(%1) : (tensor<*xf32>) -> tensor<?x?xf32>
-%2 = shape_cast %1 : tensor<*xf32> to tensor<?x?xf32>
+%2 = "tensor_cast"(%1) : (tensor<*xf32>) -> tensor<?x?xf32>
+%2 = tensor_cast %1 : tensor<*xf32> to tensor<?x?xf32>
 
 // Convert to a type with more known dimensions.
-%3 = "shape_cast"(%2) : (tensor<?x?xf32>) -> tensor<4x?xf32>
+%3 = "tensor_cast"(%2) : (tensor<?x?xf32>) -> tensor<4x?xf32>
 
 // Discard static dimension and rank information.
-%4 = "shape_cast"(%3) : (tensor<4x?xf32>) -> tensor<?x?xf32>
-%5 = "shape_cast"(%4) : (tensor<?x?xf32>) -> tensor<*xf32>
+%4 = "tensor_cast"(%3) : (tensor<4x?xf32>) -> tensor<?x?xf32>
+%5 = "tensor_cast"(%4) : (tensor<?x?xf32>) -> tensor<*xf32>
 ```
 
 Convert a tensor from one type to an equivalent type without changing any data

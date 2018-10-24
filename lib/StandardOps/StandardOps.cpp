@@ -36,8 +36,8 @@ StandardOpsDialect::StandardOpsDialect(MLIRContext *context)
     : Dialect(/*opPrefix=*/"", context) {
   addOperations<AddFOp, AddIOp, AllocOp, CallOp, CallIndirectOp, DeallocOp,
                 DimOp, DmaStartOp, DmaWaitOp, ExtractElementOp, LoadOp,
-                MemRefCastOp, MulFOp, MulIOp, ShapeCastOp, StoreOp, SubFOp,
-                SubIOp>();
+                MemRefCastOp, MulFOp, MulIOp, StoreOp, SubFOp, SubIOp,
+                TensorCastOp>();
 }
 
 //===----------------------------------------------------------------------===//
@@ -710,10 +710,10 @@ Attribute *MulIOp::constantFold(ArrayRef<Attribute *> operands,
 }
 
 //===----------------------------------------------------------------------===//
-// ShapeCastOp
+// TensorCastOp
 //===----------------------------------------------------------------------===//
 
-bool ShapeCastOp::verify() const {
+bool TensorCastOp::verify() const {
   auto *opType = dyn_cast<TensorType>(getOperand()->getType());
   auto *resType = dyn_cast<TensorType>(getType());
   if (!opType || !resType)
