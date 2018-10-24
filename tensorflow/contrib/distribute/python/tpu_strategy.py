@@ -21,6 +21,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import functools
+
 from tensorflow.contrib.distribute.python import cross_tower_ops as cross_tower_ops_lib
 from tensorflow.contrib.distribute.python import one_device_strategy
 from tensorflow.contrib.distribute.python import values
@@ -154,8 +156,8 @@ class TPUStrategy(one_device_strategy.OneDeviceStrategy):
 
     self._require_static_shapes = True
 
-  def _get_enqueue_op_per_host(self, host_id, iterator, input_shapes,
-                               iterations):
+  def _get_enqueue_op_per_host(self, host_id, multi_worker_iterator,
+                               input_shapes, iterations):
     """Create an enqueue op for a single host identified using host_id.
 
     The while_loop op returned will run `iterations` times and in each run
@@ -163,7 +165,7 @@ class TPUStrategy(one_device_strategy.OneDeviceStrategy):
 
     Args:
       host_id: integer, id of the host to run the enqueue ops on.
-      iterator: `tf.data` iterator to read the input data.
+      multi_worker_iterator: MultiWorkerDataIterator to read the input data.
       input_shapes: shape of inputs to be enqueue on the queue. This is same as
         the value of `nest.flatten(iterator.output_shapes)`.
       iterations: integer, number of iterations to be run; determines the
@@ -174,6 +176,10 @@ class TPUStrategy(one_device_strategy.OneDeviceStrategy):
       on the infeed queue from the host with id `host_id` for each device shard.
     """
     host = self.get_host_cpu_device(host_id)
+    # TODO(sourabhbajaj): Possibly make changes to MultiWorkerDataset
+    # to work with TPU Prefetch so clean up this code.
+    iterator = (
+        multi_worker_iterator.get_iterator(self.get_host(host_id))._iterator)  # pylint: disable=protected-access
 
     def _infeed_enqueue_ops_fn():
       """Enqueue ops for one iteration."""
@@ -212,30 +218,36 @@ class TPUStrategy(one_device_strategy.OneDeviceStrategy):
     return enqueue_op_per_host
 
   def distribute_dataset(self, dataset_fn):
-    # TODO(priyag): Perhaps distribute across cores here.
-    return self._call_dataset_fn(dataset_fn)
+    worker_map = {
+        self.get_host(hid): [self.get_host_cpu_device(hid)]
+        for hid in range(self.num_hosts)
+    }
+    return values.MultiWorkerDataset(
+        functools.partial(self._call_dataset_fn, dataset_fn), worker_map)
 
   # TODO(priyag): Deal with OutOfRange errors once b/111349762 is fixed.
   # TODO(sourabhbajaj): Remove the initial_loop_values parameter when we have
   # a mechanism to infer the outputs of `fn`. Pending b/110550782.
-  def _run_steps_on_dataset(self, fn, iterator, iterations,
+  def _run_steps_on_dataset(self, fn, multi_worker_iterator, iterations,
                             initial_loop_values=None):
 
-    shapes = nest.flatten(iterator.output_shapes)
+    output_shapes = multi_worker_iterator.output_shapes
+    shapes = nest.flatten(output_shapes)
     if any([not s.is_fully_defined() for s in shapes]):
       raise ValueError(
-          'TPU currently requires fully defined shapes. Either use '
-          'set_shape() on the input tensors or use '
-          'dataset.batch(..., drop_remainder=True).')
-    types = nest.flatten(iterator.output_types)
+          "TPU currently requires fully defined shapes. Either use "
+          "set_shape() on the input tensors or use "
+          "dataset.batch(..., drop_remainder=True).")
+    types = nest.flatten(multi_worker_iterator.output_types)
 
     enqueue_ops = [
-        self._get_enqueue_op_per_host(host_id, iterator, shapes, iterations)
+        self._get_enqueue_op_per_host(host_id, multi_worker_iterator, shapes,
+                                      iterations)
         for host_id in range(self.num_hosts)]
 
     def dequeue_fn():
       dequeued = tpu_ops.infeed_dequeue_tuple(dtypes=types, shapes=shapes)
-      return nest.pack_sequence_as(iterator.output_shapes, dequeued)
+      return nest.pack_sequence_as(output_shapes, dequeued)
 
     # Wrap `fn` for repeat.
     if initial_loop_values is None:
@@ -310,14 +322,14 @@ class TPUStrategy(one_device_strategy.OneDeviceStrategy):
   def _call_for_each_replica(self, fn, *args, **kwargs):
     # TODO(jhseu): Consider making it so call_for_each_replica implies that
     # we're in a tpu.rewrite(), and update TPUMirroredVariable accordingly.
-    kwargs.pop('run_concurrently', None)
+    kwargs.pop("run_concurrently", None)
     with one_device_strategy._OneDeviceReplicaContext(self):  # pylint: disable=protected-access
       return fn(*args, **kwargs)
 
   def initialize(self):
     if context.executing_eagerly():
       # TODO(priyag): Add appopriate call here when eager is supported for TPUs.
-      raise NotImplementedError('Eager mode not supported in TPUStrategy.')
+      raise NotImplementedError("Eager mode not supported in TPUStrategy.")
     else:
       # TODO(jhseu): We need this hack because DistributionStrategies must be
       # pickleable for copy.deepcopy(). Remove when initialize_system goes away.
@@ -332,7 +344,7 @@ class TPUStrategy(one_device_strategy.OneDeviceStrategy):
   def finalize(self):
     if context.executing_eagerly():
       # TODO(priyag): Add appopriate call here when eager is supported for TPUs.
-      raise NotImplementedError('Eager mode not supported in TPUStrategy.')
+      raise NotImplementedError("Eager mode not supported in TPUStrategy.")
     else:
       return [tpu.shutdown_system()]
 
@@ -392,7 +404,7 @@ class TPUStrategy(one_device_strategy.OneDeviceStrategy):
       assert device_util.canonicalize(devices[0]) == device_util.canonicalize(
           self.get_host_cpu_device(0))
     else:
-      raise ValueError('Multiple devices are not supported for TPUStrategy')
+      raise ValueError("Multiple devices are not supported for TPUStrategy")
 
     if aggregation == vs.VariableAggregation.ONLY_FIRST_REPLICA:
       return value[0]
@@ -481,11 +493,14 @@ class TPUStrategy(one_device_strategy.OneDeviceStrategy):
   def parameter_devices(self):
     return self._tpu_devices
 
+  def get_host(self, host_id):
+    if self._tpu_cluster_resolver.get_master() in ("", "local"):
+      return "/replica:0/task:0"
+    job_name = self._tpu_cluster_resolver.get_job_name() or "tpu_worker"
+    return "/job:%s/task:%d" % (job_name, host_id)
+
   def get_host_cpu_device(self, host_id):
-    if self._tpu_cluster_resolver.get_master() in ('', 'local'):
-      return '/replica:0/task:0/device:CPU:0'
-    job_name = self._tpu_cluster_resolver.get_job_name() or 'tpu_worker'
-    return '/job:%s/task:%d/device:CPU:0' % (job_name, host_id)
+    return self.get_host(host_id) + "/device:CPU:0"
 
   def configure(self,
                 session_config=None,
