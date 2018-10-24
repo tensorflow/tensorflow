@@ -387,7 +387,7 @@ def get_module_docstring(module_name, package, api_name):
 
 def create_api_files(output_files, packages, root_init_template, output_dir,
                      output_package, api_name, api_version,
-                     compat_api_versions):
+                     compat_api_versions, compat_init_templates):
   """Creates __init__.py files for the Python API.
 
   Args:
@@ -403,6 +403,8 @@ def create_api_files(output_files, packages, root_init_template, output_dir,
     api_version: API version to generate (`v1` or `v2`).
     compat_api_versions: Additional API versions to generate in compat/
       subdirectory.
+    compat_init_templates: List of templates for top level compat init files
+      in the same order as compat_api_versions.
 
   Raises:
     ValueError: if output_files list is missing a required file.
@@ -424,8 +426,12 @@ def create_api_files(output_files, packages, root_init_template, output_dir,
   # Add imports to output files.
   missing_output_files = []
   # Root modules are "" and "compat.v*".
-  root_modules = set(_COMPAT_MODULE_TEMPLATE % v for v in compat_api_versions)
-  root_modules.add('')
+  root_module = ''
+  compat_module_to_template = {
+      _COMPAT_MODULE_TEMPLATE % v: t
+      for v, t in zip(compat_api_versions, compat_init_templates)
+  }
+
   for module, text in module_text_map.items():
     # Make sure genrule output file list is in sync with API exports.
     if module not in module_name_to_file_path:
@@ -435,15 +441,20 @@ def create_api_files(output_files, packages, root_init_template, output_dir,
       continue
 
     contents = ''
-    if module not in root_modules or not root_init_template:
-      contents = (
-          _GENERATED_FILE_HEADER % get_module_docstring(
-              module, packages[0], api_name) + text + _GENERATED_FILE_FOOTER)
-    else:
-      # Read base init file
+    if module == root_module and root_init_template:
+      # Read base init file for root module
       with open(root_init_template, 'r') as root_init_template_file:
         contents = root_init_template_file.read()
         contents = contents.replace('# API IMPORTS PLACEHOLDER', text)
+    elif module in compat_module_to_template:
+      # Read base init file for compat module
+      with open(compat_module_to_template[module], 'r') as init_template_file:
+        contents = init_template_file.read()
+        contents = contents.replace('# API IMPORTS PLACEHOLDER', text)
+    else:
+      contents = (
+          _GENERATED_FILE_HEADER % get_module_docstring(
+              module, packages[0], api_name) + text + _GENERATED_FILE_FOOTER)
     with open(module_name_to_file_path[module], 'w') as fp:
       fp.write(contents)
 
@@ -491,6 +502,11 @@ def main():
       help='Additional versions to generate in compat/ subdirectory. '
            'If set to 0, then no additional version would be generated.')
   parser.add_argument(
+      '--compat_init_templates', default=[], type=str, action='append',
+      help='Templates for top-level __init__ files under compat modules. '
+           'The list of init file templates must be in the same order as '
+           'list of versions passed with compat_apiversions.')
+  parser.add_argument(
       '--output_package', default='tensorflow', type=str,
       help='Root output package.')
   args = parser.parse_args()
@@ -509,7 +525,7 @@ def main():
     importlib.import_module(package)
   create_api_files(outputs, packages, args.root_init_template, args.apidir,
                    args.output_package, args.apiname, args.apiversion,
-                   args.compat_apiversions)
+                   args.compat_apiversions, args.compat_init_templates)
 
 
 if __name__ == '__main__':

@@ -22,7 +22,6 @@ import collections
 import weakref
 
 from tensorflow.core.framework import attr_value_pb2
-from tensorflow.python import autograph
 from tensorflow.python.eager import context
 from tensorflow.python.eager import tape
 from tensorflow.python.eager.graph_only_ops import graph_placeholder
@@ -384,6 +383,7 @@ def func_graph_from_py_func(name,
     this_tape = tape.push_new_tape()
     try:
       if experimental_autograph:
+        from tensorflow.python import autograph  # pylint: disable=g-import-not-at-top
         func_outputs = autograph.converted_call(
             python_func, None,
             autograph.ConversionOptions(

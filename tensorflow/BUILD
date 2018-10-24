@@ -560,19 +560,23 @@ genrule(
 
 gen_api_init_files(
     name = "tf_python_api_gen_v1",
-    srcs = ["api_template.__init__.py"],
+    srcs = ["api_template_v1.__init__.py"],
     api_version = 1,
     output_dir = "_api/v1/",
     output_files = TENSORFLOW_API_INIT_FILES_V1,
     output_package = "tensorflow._api.v1",
-    root_init_template = "api_template.__init__.py",
+    root_init_template = "api_template_v1.__init__.py",
 )
 
 gen_api_init_files(
     name = "tf_python_api_gen_v2",
-    srcs = ["api_template.__init__.py"],
+    srcs = [
+        "api_template.__init__.py",
+        "compat_template_v1.__init__.py",
+    ],
     api_version = 2,
     compat_api_versions = [1],
+    compat_init_templates = ["compat_template_v1.__init__.py"],
     output_dir = "_api/v2/",
     output_files = TENSORFLOW_API_INIT_FILES_V2,
     output_package = "tensorflow._api.v2",

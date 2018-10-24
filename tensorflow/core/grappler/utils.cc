@@ -22,6 +22,7 @@ limitations under the License.
 
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/function.h"
+#include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_def.pb.h"
 #include "tensorflow/core/framework/types.h"
@@ -548,7 +549,7 @@ Status SetTensorValue(DataType dtype, int value, Tensor* tensor) {
 #undef HANDLE_CASE
 
 Status CheckAttrExists(const NodeDef& node, const string& key) {
-  if (node.attr().count(key) == 0) {
+  if (!HasNodeAttr(node, key)) {
     return errors::InvalidArgument("Node '", node.name(), "' lacks '", key,
                                    "' attr: ", node.ShortDebugString());
   }

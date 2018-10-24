@@ -389,6 +389,7 @@ Status ShapeVerifier::HandleBroadcast(HloInstruction* broadcast) {
        ++operand_dimension) {
     int64 output_dimension = broadcast->dimensions()[operand_dimension];
     TF_RET_CHECK((output_dimension < ShapeUtil::Rank(broadcast->shape())) &&
+                 output_dimension >= 0 &&
                  (broadcast->shape().dimensions(output_dimension) ==
                   operand_shape.dimensions(operand_dimension)))
         << broadcast->ToString() << " operand shape " << operand_shape;
@@ -1361,7 +1362,8 @@ StatusOr<bool> HloVerifier::Run(HloModule* module) {
   TF_RETURN_IF_ERROR(VerifyHloStructure(module));
   TF_RETURN_IF_ERROR(VerifySendsAndRecvs(*module));
 
-  std::unique_ptr<ShapeVerifier> shape_verifier = shape_verifier_factory_();
+  std::unique_ptr<ShapeVerifier> shape_verifier =
+      target_metadata_->GetVerifier();
   for (auto* computation : module->computations()) {
     TF_RETURN_IF_ERROR(computation->Accept(shape_verifier.get()));
 
@@ -1378,7 +1380,10 @@ StatusOr<bool> HloVerifier::Run(HloModule* module) {
     TF_RETURN_IF_ERROR(module->schedule().Verify());
   }
 
-  TF_RETURN_IF_ERROR(module->input_output_alias_config().Verify(*module));
+  TF_RETURN_IF_ERROR(module->input_output_alias_config().Verify(
+      *module, [this](const Shape& shape) {
+        return target_metadata_->ShapeSize(shape);
+      }));
 
   return false;
 }

@@ -300,14 +300,14 @@ def IsTrainable(tensor):
   dtype = dtypes.as_dtype(tensor.dtype)
   return dtype.base_dtype in (dtypes.float16, dtypes.float32, dtypes.float64,
                               dtypes.complex64, dtypes.complex128,
-                              dtypes.resource)
+                              dtypes.resource, dtypes.variant)
 
 
 def _IsBackpropagatable(tensor):
   if IsTrainable(tensor):
     return True
   dtype = dtypes.as_dtype(tensor.dtype)
-  return dtype.base_dtype in (dtypes.bfloat16, dtypes.variant)
+  return dtype.base_dtype == dtypes.bfloat16
 
 
 def _VerifyGeneratedGradients(grads, op):

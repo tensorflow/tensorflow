@@ -75,13 +75,13 @@ def _create_tpu_mirrored_variable(devices, real_mirrored_creator, *args,
   # synchronization settings?
 
   # Get aggregation value
-  # TODO(jhseu): Support aggregation in a tower context.
+  # TODO(jhseu): Support aggregation in a replica context.
   aggregation = kwargs.pop("aggregation", vs.VariableAggregation.NONE)
   if aggregation not in [
       vs.VariableAggregation.NONE,
       vs.VariableAggregation.SUM,
       vs.VariableAggregation.MEAN,
-      vs.VariableAggregation.ONLY_FIRST_TOWER,
+      vs.VariableAggregation.ONLY_FIRST_REPLICA,
   ]:
     raise ValueError("Invalid variable aggregation mode: {} for variable: {}"
                      .format(aggregation, kwargs["name"]))
@@ -145,8 +145,8 @@ class TPUStrategy(one_device_strategy.OneDeviceStrategy):
                   if "device:TPU:" in d.name}
     self._device_index = values.PerDevice(device_map)
     self._tpu_devices = sorted(device_map.keys())
-    # Only create variables for the number of towers we're running.
-    self._tpu_devices = self._tpu_devices[:self.num_towers]
+    # Only create variables for the number of replicas we're running.
+    self._tpu_devices = self._tpu_devices[:self.num_replicas]
 
     # TODO(sourabhbajaj): Remove this once performance of running one step
     # at a time is comparable to multiple steps.
@@ -182,7 +182,7 @@ class TPUStrategy(one_device_strategy.OneDeviceStrategy):
       enqueue_ops = []
 
       with ops.device(host):
-        for _ in range(self.num_towers_per_host):
+        for _ in range(self.num_replicas_per_host):
           # Use control dependencies to ensure a deterministic ordering.
           with ops.control_dependencies(control_deps):
             inputs = nest.flatten(iterator.get_next())
@@ -270,7 +270,7 @@ class TPUStrategy(one_device_strategy.OneDeviceStrategy):
     self._outer_control_flow_context = (
         ops.get_default_graph()._get_control_flow_context())  # pylint: disable=protected-access
 
-    replicate_inputs = [[]] * self.num_towers
+    replicate_inputs = [[]] * self.num_replicas
     replicate_outputs = tpu.replicate(iterate_on_tpu, replicate_inputs)
     del self._outer_control_flow_context
     ctx.run_op = control_flow_ops.group(replicate_outputs, enqueue_ops)
@@ -307,11 +307,11 @@ class TPUStrategy(one_device_strategy.OneDeviceStrategy):
 
     return ctx
 
-  def _call_for_each_tower(self, fn, *args, **kwargs):
-    # TODO(jhseu): Consider making it so call_for_each_tower implies that we're
-    # in a tpu.rewrite(), and update TPUMirroredVariable accordingly.
+  def _call_for_each_replica(self, fn, *args, **kwargs):
+    # TODO(jhseu): Consider making it so call_for_each_replica implies that
+    # we're in a tpu.rewrite(), and update TPUMirroredVariable accordingly.
     kwargs.pop('run_concurrently', None)
-    with one_device_strategy._OneDeviceTowerContext(self):  # pylint: disable=protected-access
+    with one_device_strategy._OneDeviceReplicaContext(self):  # pylint: disable=protected-access
       return fn(*args, **kwargs)
 
   def initialize(self):
@@ -352,7 +352,7 @@ class TPUStrategy(one_device_strategy.OneDeviceStrategy):
           if i > 0:
             # Give replicas meaningful distinct names:
             var0name = index[devices[0]].name.split(":")[0]
-            # We append a / to variable names created on towers with id > 0 to
+            # We append a / to variable names created on replicas with id > 0 to
             # ensure that we ignore the name scope and instead use the given
             # name as the absolute name of the variable.
             kwargs["name"] = "%s/replica_%d/" % (var0name, i)
@@ -378,7 +378,7 @@ class TPUStrategy(one_device_strategy.OneDeviceStrategy):
     if values._enclosing_tpu_context() is not None:  # pylint: disable=protected-access
       if aggregation == vs.VariableAggregation.MEAN:
         # TODO(jhseu):  Revisit once we support model-parallelism.
-        value *= (1. / self.num_towers)
+        value *= (1. / self.num_replicas)
       elif aggregation != vs.VariableAggregation.SUM:
         raise NotImplementedError(
             "Currently only support sum & mean in TPUStrategy.")
@@ -394,7 +394,7 @@ class TPUStrategy(one_device_strategy.OneDeviceStrategy):
     else:
       raise ValueError('Multiple devices are not supported for TPUStrategy')
 
-    if aggregation == vs.VariableAggregation.ONLY_FIRST_TOWER:
+    if aggregation == vs.VariableAggregation.ONLY_FIRST_REPLICA:
       return value[0]
     output = math_ops.add_n(value)
     if aggregation == vs.VariableAggregation.MEAN:
@@ -442,7 +442,7 @@ class TPUStrategy(one_device_strategy.OneDeviceStrategy):
     return [val]
 
   @property
-  def num_towers(self):
+  def num_replicas(self):
     return self._num_cores_override or self._tpu_metadata.num_cores
 
   @property
@@ -450,12 +450,12 @@ class TPUStrategy(one_device_strategy.OneDeviceStrategy):
     return self._tpu_metadata.num_hosts
 
   @property
-  def num_towers_per_host(self):
+  def num_replicas_per_host(self):
     return self._tpu_metadata.num_of_cores_per_host
 
   @property
   def num_replicas_in_sync(self):
-    return self.num_towers
+    return self.num_replicas
 
   @property
   def between_graph(self):

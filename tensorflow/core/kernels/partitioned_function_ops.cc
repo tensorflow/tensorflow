@@ -27,6 +27,7 @@ limitations under the License.
 #include "tensorflow/core/grappler/clusters/virtual_cluster.h"
 #include "tensorflow/core/grappler/grappler_item.h"
 #include "tensorflow/core/grappler/optimizers/meta_optimizer.h"
+#include "tensorflow/core/grappler/utils/functions.h"
 #include "tensorflow/core/protobuf/rewriter_config.pb.h"
 #include "tensorflow/core/util/ptr_util.h"
 #include "tensorflow/core/util/reffed_status_callback.h"
@@ -516,7 +517,10 @@ class PartitionedCallOp : public AsyncOpKernel {
     (*graph)->ToGraphDef(&item.graph);
 
     if (flib) {
-      *item.graph.mutable_library() = flib->ToProto();
+      // Copy only functions that are reachable from the graph.
+      *item.graph.mutable_library() =
+          grappler::ReachableFunctionLibraryDefinition(*flib, item.graph)
+              .ToProto();
     }
 
     tensorflow::GraphDef out_graph;

@@ -1452,6 +1452,8 @@ void BufferAssigner::BuildColocatedBufferSets(
       buffer_liveness.points_to_analysis();
 
   // Set up colocated buffer set for input and output.
+  VLOG(4) << "Input/Output Alias Config: ";
+  VLOG(4) << module->input_output_alias_config();
   module->input_output_alias_config().ForEachAlias(
       [&](const ShapeIndex& output_index, int64 param_number,
           const ShapeIndex& param_index) {
@@ -1598,6 +1600,13 @@ void BufferAssigner::BuildColocatedBufferSets(
     return;
   }
 
+  int64 i = 0;
+  for (const auto& colocated_set : *colocated_buffer_sets) {
+    VLOG(4) << "Colocated set " << i++ << ":";
+    for (const auto& buffer : colocated_set) {
+      VLOG(4) << "  " << buffer->ToString();
+    }
+  }
   // Try to find more coalescing opportunities among the colocated buffer sets.
   //
   // TODO(b/32491382): We should be able to remove this by using the

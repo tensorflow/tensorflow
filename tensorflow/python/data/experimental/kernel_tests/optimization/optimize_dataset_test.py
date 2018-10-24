@@ -20,6 +20,7 @@ from __future__ import print_function
 import numpy as np
 
 from tensorflow.python.data.experimental.ops import optimization
+from tensorflow.python.data.experimental.ops import threadpool
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.framework import dtypes
@@ -82,6 +83,24 @@ class OptimizeDatasetTest(test_base.DatasetTestBase):
 
     with self.cached_session() as sess:
       self.assertEquals(0, sess.run(get_next))
+      with self.assertRaises(errors.OutOfRangeError):
+        sess.run(get_next)
+
+  def testOptimizationThreadPoolDataset(self):
+    dataset = dataset_ops.Dataset.range(10).batch(10)
+
+    dataset = threadpool.override_threadpool(
+        dataset,
+        threadpool.PrivateThreadPool(
+            2, display_name="private_thread_pool_%d" % 2))
+
+    dataset = dataset_ops._OptimizeDataset(dataset, [])
+    iterator = dataset.make_initializable_iterator()
+    get_next = iterator.get_next()
+
+    with self.cached_session() as sess:
+      sess.run(iterator.initializer)
+      self.assertAllEqual(list(range(10)), sess.run(get_next))
       with self.assertRaises(errors.OutOfRangeError):
         sess.run(get_next)
 

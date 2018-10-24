@@ -109,6 +109,10 @@ tf_module {
     mtype: "<type \'module\'>"
   }
   member_method {
+    name: "add_metrics"
+    argspec: "args=[\'estimator\', \'metric_fn\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
     name: "classifier_parse_example_spec"
     argspec: "args=[\'feature_columns\', \'label_key\', \'label_dtype\', \'label_default\', \'weight_column\'], varargs=None, keywords=None, defaults=[\"<dtype: \'int64\'>\", \'None\', \'None\'], "
   }

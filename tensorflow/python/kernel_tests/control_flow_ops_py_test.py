@@ -2076,7 +2076,6 @@ class ControlFlowTest(test.TestCase):
       self.assertEqual(i_val, 3)
       self.assertAllClose(x_val, 1.0)
 
-  @test_util.disable_control_flow_v2("b/116255781 (flat_args)")
   def testWhile_NestedInput(self):
     with self.cached_session() as sess:
       named = collections.namedtuple("named", ("a", "b"))
@@ -2104,7 +2103,6 @@ class ControlFlowTest(test.TestCase):
       self.assertEqual([100.0, 1.0, 102.0, 3.0, 4.0 + 100 * 2.0],
                        sess.run(r_flattened))
 
-  @test_util.disable_control_flow_v2("b/116255781(flat_args)")
   def testWhile_NestedBadArityFails(self):
     with self.cached_session():
       named = collections.namedtuple("named", ("a", "b"))
@@ -2381,11 +2379,10 @@ class ControlFlowTest(test.TestCase):
       r = gradients_impl.gradients(r, v)[0]
       self.assertAllClose(1024.0, r.eval())
 
+  @test_util.disable_control_flow_v2("b/117519152")
   def testWhileCondGrad_Simple(self):
     self._testWhileCondGrad_Simple(use_gpu=False)
-    if not control_flow_ops.ENABLE_WHILE_V2:
-      # TODO(b/117519152): Enable.
-      self._testWhileCondGrad_Simple(use_gpu=True)
+    self._testWhileCondGrad_Simple(use_gpu=True)
 
   @test_util.disable_control_flow_v2("b/117276490")
   def testWhileCondGrad_UnknownShape(self):
@@ -2522,8 +2519,7 @@ class ControlFlowTest(test.TestCase):
           c, b, [i0, constant_op.constant(0.0)])
       self.assertAllClose(600.0, sess.run(output_grad)[1])
 
-  @test_util.disable_control_flow_v2(
-      "b/116255781 (flat_args), b/115660901 (TensorArray)")
+  @test_util.disable_control_flow_v2("b/116248044 (nested while_loop)")
   def testWhileAndTensorArray(self):
     with self.cached_session() as sess:
       param = constant_op.constant(2.0)
@@ -2628,7 +2624,7 @@ class ControlFlowTest(test.TestCase):
       all_ops = x.graph.get_operations()
       self.assertFalse(any([name in op.name for op in all_ops]))
 
-  @test_util.disable_control_flow_v2("b/116255781 (flat args)")
+  @test_util.disable_control_flow_v2("b/117954949")
   def testWhileGradGradFail(self):
     theta = variables.Variable(initial_value=1.)
 
@@ -2637,8 +2633,9 @@ class ControlFlowTest(test.TestCase):
 
     result = functional_ops.scan(fn, np.array([1., 2., 3.], dtype=np.float32))
     grad_theta = gradients_impl.gradients(result, theta)
-    with self.assertRaisesRegexp(TypeError, "Second-order gradient"):
-      gradients_impl.gradients(grad_theta, theta)
+    if not control_flow_ops.ENABLE_WHILE_V2:
+      with self.assertRaisesRegexp(TypeError, "Second-order gradient"):
+        gradients_impl.gradients(grad_theta, theta)
     grad_theta_stopped = array_ops.stop_gradient(grad_theta)
     gradients_impl.gradients(grad_theta_stopped, theta)
 

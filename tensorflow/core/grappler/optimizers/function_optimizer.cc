@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <unordered_map>
 
+#include "absl/strings/string_view.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/common_runtime/process_function_library_runtime.h"
@@ -35,6 +36,7 @@ limitations under the License.
 #include "tensorflow/core/grappler/utils.h"
 #include "tensorflow/core/grappler/utils/functions.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
+#include "tensorflow/core/lib/random/random.h"
 
 namespace tensorflow {
 namespace grappler {
@@ -105,25 +107,38 @@ AttrSlice FunctionInstantiationAttributes(const FunctionDef& func,
   }
 }
 
-// Find unique name for the specialized function. Collision can happen if
-// specialized function is instantiated for the nodes with the same name (e.g.
-// inside function body of two different functions).
+// TODO(b/69972605): Replace with sanctioned absl/random API once one is
+// available.
+string RandomString(const absl::string_view alphabet, size_t len) {
+  string result(len, '\0');
+  std::generate(std::begin(result), std::end(result), [&alphabet]() {
+    return alphabet[random::New64() % alphabet.size()];
+  });
+  return result;
+}
+
+// Get unique name for the specialized function. We append a random suffix to
+// the specialized name, because we can't guarantee that the function optimizer
+// has access to full function library. For example when we are optimizing
+// functions, function library passed to the optimizer will have only reachable
+// functions, it's possible that we'll generate a conflicting function
+// specialization if we have multiple nested function calls with the same node
+// name.
 string UniqueSpecializedFunctionName(const FunctionDef& func,
-                                     const NodeDef& func_node,
-                                     const FunctionLibraryDefinition& flib) {
+                                     const NodeDef& func_node) {
   using str_util::StringReplace;
   using strings::StrCat;
 
-  string specialized_name = StrCat(func.signature().name(), "_specialized_for_",
-                                   StringReplace(func_node.name(), "/", "_",
-                                                 /*replace_all*/ true));
-  string unique_name = specialized_name;
+  static const char kAlphanum[] =
+      "0123456789"
+      "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+      "abcdefghijklmnopqrstuvwxyz";
 
-  int idx = 0;
-  while (flib.Find(unique_name)) {
-    unique_name = strings::StrCat(specialized_name, "_", ++idx);
-  }
-  return unique_name;
+  string suffix = RandomString(kAlphanum, 8);
+  return StrCat(func.signature().name(), "_specialized_for_",
+                StringReplace(func_node.name(), "/", "_",
+                              /*replace_all*/ true),
+                "_", suffix);
 }
 
 // Specialized function instantiation type parameters, body parameters, and
@@ -445,85 +460,20 @@ bool HasUnusedOutputs(const NodeDef& func_node, const FunctionDef& func,
   return active_outputs.size() != num_outputs;
 }
 
-// Return trimmed FunctionDefLibrary with functions that are reachable from
+// Return pruned FunctionDefLibrary with functions that are reachable from
 // the optimized graph.
-FunctionDefLibrary TrimFunctionLibrary(const FunctionLibraryDefinition& flib,
-                                       const GraphDef& optimized_graph) {
-  // Functions that are reachable from the optimized graph.
-  gtl::FlatSet<string> keep_funcs;
+FunctionDefLibrary PruneFunctionLibrary(const FunctionLibraryDefinition& flib,
+                                        const GraphDef& optimized_graph) {
+  FunctionLibraryDefinition pruned_flib =
+      ReachableFunctionLibraryDefinition(flib, optimized_graph);
 
-  std::vector<const FunctionDef*> func_queue;
-  func_queue.reserve(flib.num_functions());
+  int pruned_functions = static_cast<int>(pruned_flib.num_functions()) -
+                         static_cast<int>(flib.num_functions());
 
-  // Add registered and not already processed functions to the queue by name.
-  const auto add_to_func_queue = [&](const string& func_name) {
-    const FunctionDef* func = flib.Find(func_name);
-    if (func && keep_funcs.find(func_name) == keep_funcs.end()) {
-      func_queue.push_back(func);
-    }
-  };
+  VLOG(3) << "Pruned function library: " << pruned_flib.num_functions()
+          << " functions (" << pruned_functions << ")";
 
-  // Find all the functions that are reachable from the given node.
-  const auto add_node_to_func_queue = [&](const NodeDef& node) {
-    // Node itself can be a call to the function.
-    add_to_func_queue(node.op());
-
-    // Or node can have an attribute referencing a function.
-    for (const auto& attr : node.attr()) {
-      const auto& attr_value = attr.second;
-
-      // 1. AttrValue.func
-      if (attr_value.has_func()) {
-        add_to_func_queue(attr_value.func().name());
-      }
-
-      // 2. AttrValue.ListValue.func
-      if (attr_value.has_list()) {
-        for (const auto& func : attr_value.list().func()) {
-          add_to_func_queue(func.name());
-        }
-      }
-    }
-  };
-
-  // Add all functions that are directly called from the optimized graph.
-  const auto& graph_nodes = optimized_graph.node();
-  std::for_each(graph_nodes.begin(), graph_nodes.end(), add_node_to_func_queue);
-
-  // Process all reachable functions.
-  while (!func_queue.empty()) {
-    const FunctionDef* func = func_queue.back();
-    func_queue.pop_back();
-
-    const string& func_name = func->signature().name();
-    keep_funcs.insert(func_name);
-
-    // Find all the functions called from the function body.
-    const auto& func_body = func->node_def();
-    std::for_each(func_body.begin(), func_body.end(), add_node_to_func_queue);
-
-    // Check if the function has a registered gradient.
-    const string grad_func_name = flib.FindGradient(func_name);
-    if (!grad_func_name.empty()) add_to_func_queue(grad_func_name);
-  }
-
-  FunctionDefLibrary lib;
-  for (const string& func_name : keep_funcs) {
-    const FunctionDef* func = CHECK_NOTNULL(flib.Find(func_name));
-    *lib.add_function() = *func;
-
-    const string grad_func_name = flib.FindGradient(func_name);
-    if (!grad_func_name.empty()) {
-      GradientDef* gd = lib.add_gradient();
-      gd->set_function_name(func_name);
-      gd->set_gradient_func(grad_func_name);
-    }
-  }
-
-  VLOG(3) << "Trimmed function library: " << keep_funcs.size() << " functions ("
-          << static_cast<int>(keep_funcs.size() - flib.num_functions()) << ")";
-
-  return lib;
+  return pruned_flib.ToProto();
 }
 
 // Push all constant inputs of an instantiating node into the function body.
@@ -795,7 +745,7 @@ Status SpecializeFunction(const NodeDef& func_node, const FunctionDef& func,
 
   // Find a name for specialized function.
   const string specialized_func_name =
-      UniqueSpecializedFunctionName(func, func_node, flib);
+      UniqueSpecializedFunctionName(func, func_node);
 
   specialized_func.mutable_signature()->set_name(specialized_func_name);
   auto* specialized_attr = specialized_func.mutable_attr();
@@ -1061,11 +1011,8 @@ Status InlineSymbolicGradient(const NodeDef& node,
 
 Status FunctionOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
                                    GraphDef* optimized_graph) {
-  VLOG(1) << "Optimize Grappler item: id=" << item.id;
-
   // Nothing to do here.
   if (item.graph.library().function_size() == 0) {
-    VLOG(3) << "Skip Grappler item with empty function library";
     *optimized_graph = item.graph;
     return Status::OK();
   }
@@ -1223,7 +1170,7 @@ Status FunctionOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
   *optimized_graph->mutable_versions() = item.graph.versions();
   *optimized_graph->mutable_library() =
       options_.enable_trim_function_library
-          ? TrimFunctionLibrary(ctx.function_library(), *optimized_graph)
+          ? PruneFunctionLibrary(ctx.function_library(), *optimized_graph)
           : ctx.function_library().ToProto();
 
   return Status::OK();

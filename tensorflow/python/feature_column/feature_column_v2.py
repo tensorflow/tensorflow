@@ -158,6 +158,7 @@ from tensorflow.python.ops import variables
 from tensorflow.python.platform import gfile
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import checkpoint_utils
+from tensorflow.python.training.checkpointable import tracking
 from tensorflow.python.util import deprecation
 from tensorflow.python.util import nest
 
@@ -323,7 +324,6 @@ class FeatureLayer(Layer):
                feature_columns,
                trainable=True,
                name=None,
-               shared_state_manager=None,
                **kwargs):
     """Constructs a FeatureLayer.
 
@@ -337,35 +337,6 @@ class FeatureLayer(Layer):
       trainable: If `True` also add the variable to the graph collection
         `GraphKeys.TRAINABLE_VARIABLES` (see `tf.Variable`).
       name: Name to give to the FeatureLayer.
-      shared_state_manager: SharedEmbeddingStateManager that manages the state
-        of SharedEmbeddingColumns. The state of SharedEmbeddingColumns, unlike
-        regular embedding columns cannot be owned by the InputLayer itself since
-        SharedEmbeddingColumns can be shared across different InputLayers. As a
-        result users are expected to create a SharedEmbeddingStateManager object
-        which would be responsible for managing the shared state and can be
-        passed into different InputLayer objects to share state. For example,
-
-        ```python
-        sc_1, sc_2 = shared_embedding_column_v2(...)
-        sc_3, sc_4 = shared_embedding_column_v2(...)
-        ssm = SharedEmbeddingStateManager()
-        feature_layer1 = FeatureLayer([sc_1, sc_3], ...,
-                                      shared_state_manager=ssm)
-        feature_layer2 = FeatureLayer([sc_2, sc_4], ...,
-                                      shared_state_manager=ssm)
-        ```
-        now input_layer1 and input_layer2 will share variables across. If
-        sharing is not desired, one can create 2 separate
-        SharedEmbeddingStateManager objects
-
-        ```python
-        ssm1 = SharedEmbeddingStateManager()
-        ssm2 = SharedEmbeddingStateManager()
-        feature_layer1 = FeatureLayer([sc_1, sc_3], ...,
-                                      shared_state_manager=ssm1)
-        feature_layer2 = FeatureLayer([sc_2, sc_4], ...,
-                                      shared_state_manager=ssm2)
-        ```
       **kwargs: Keyword arguments to construct a layer.
 
     Raises:
@@ -376,7 +347,6 @@ class FeatureLayer(Layer):
     self._feature_columns = _normalize_feature_columns(feature_columns)
     self._feature_columns = sorted(self._feature_columns, key=lambda x: x.name)
     self._state_manager = _StateManagerImpl(self, self.trainable)
-    self._shared_state_manager = shared_state_manager
     for column in self._feature_columns:
       if not isinstance(column, DenseColumn):
         raise ValueError(
@@ -390,12 +360,9 @@ class FeatureLayer(Layer):
 
   def build(self, _):
     for column in self._feature_columns:
-      if isinstance(column, SharedEmbeddingColumn):
-        column.create_state(self._shared_state_manager)
-      else:
-        with variable_scope._pure_variable_scope(self.name):  # pylint: disable=protected-access
-          with variable_scope._pure_variable_scope(column.name):  # pylint: disable=protected-access
-            column.create_state(self._state_manager)
+      with variable_scope._pure_variable_scope(self.name):  # pylint: disable=protected-access
+        with variable_scope._pure_variable_scope(column.name):  # pylint: disable=protected-access
+          column.create_state(self._state_manager)
       super(FeatureLayer, self).build(None)
 
   def call(self, features, cols_to_output_tensors=None):
@@ -426,12 +393,8 @@ class FeatureLayer(Layer):
     for column in self._feature_columns:
       with ops.name_scope(column.name):
         ordered_columns.append(column)
-        if isinstance(column, SharedEmbeddingColumn):
-          tensor = column.get_dense_tensor(transformation_cache,
-                                           self._shared_state_manager)
-        else:
-          tensor = column.get_dense_tensor(transformation_cache,
-                                           self._state_manager)
+        tensor = column.get_dense_tensor(transformation_cache,
+                                         self._state_manager)
         num_elements = column.variable_shape.num_elements()
         batch_size = array_ops.shape(tensor)[0]
         tensor = array_ops.reshape(tensor, shape=(batch_size, num_elements))
@@ -494,7 +457,6 @@ class LinearModel(Layer):
                sparse_combiner='sum',
                trainable=True,
                name=None,
-               shared_state_manager=None,
                **kwargs):
     """Constructs a LinearModel.
 
@@ -546,8 +508,6 @@ class LinearModel(Layer):
         `GraphKeys.TRAINABLE_VARIABLES` (see `tf.Variable`).
       name: Name to give to the Linear Model. All variables and ops created will
         be scoped by this name.
-      shared_state_manager: SharedEmbeddingStateManager that manages the state
-        of SharedEmbeddingColumns. For more info, look at `FeatureLayer`.
       **kwargs: Keyword arguments to construct a layer.
 
     Raises:
@@ -568,15 +528,9 @@ class LinearModel(Layer):
     self._sparse_combiner = sparse_combiner
 
     self._state_manager = _StateManagerImpl(self, self.trainable)
-    self._shared_state_manager = shared_state_manager
     self._bias_variable = None
 
   def build(self, _):
-    # Create state for shared embedding columns.
-    for column in self._feature_columns:
-      if isinstance(column, SharedEmbeddingColumn):
-        column.create_state(self._shared_state_manager)
-
     # We need variable scopes for now because we want the variable partitioning
     # information to percolate down. We also use _pure_variable_scope's here
     # since we want to open up a name_scope in the `call` method while creating
@@ -585,8 +539,7 @@ class LinearModel(Layer):
       for column in self._feature_columns:
         with variable_scope._pure_variable_scope(column.name):  # pylint: disable=protected-access
           # Create the state for each feature column
-          if not isinstance(column, SharedEmbeddingColumn):
-            column.create_state(self._state_manager)
+          column.create_state(self._state_manager)
 
           # Create a weight variable for each column.
           if isinstance(column, CategoricalColumn):
@@ -644,18 +597,10 @@ class LinearModel(Layer):
           # manager associated with this Linear Model.
           weight_var = self._state_manager.get_variable(column, 'weights')
 
-          # The embedding weights for the SharedEmbeddingColumn are owned by
-          # the shared_state_manager and so we need to pass that in while
-          # creating the weighted sum. For all other columns, the state is owned
-          # by the Linear Model's state manager.
-          if isinstance(column, SharedEmbeddingColumn):
-            state_manager = self._shared_state_manager
-          else:
-            state_manager = self._state_manager
           weighted_sum = _create_weighted_sum(
               column=column,
               transformation_cache=transformation_cache,
-              state_manager=state_manager,
+              state_manager=self._state_manager,
               sparse_combiner=self._sparse_combiner,
               weight_var=weight_var)
           weighted_sums.append(weighted_sum)
@@ -1028,19 +973,15 @@ def shared_embedding_columns_v2(categorical_columns,
     shared_embedding_collection_name = '_'.join(c.name for c in sorted_columns)
     shared_embedding_collection_name += '_shared_embedding'
 
+  column_creator = SharedEmbeddingColumnCreator(
+      dimension, initializer, ckpt_to_load_from, tensor_name_in_ckpt,
+      num_buckets, trainable, shared_embedding_collection_name)
+
   result = []
   for column in categorical_columns:
     result.append(
-        SharedEmbeddingColumn(
-            categorical_column=column,
-            initializer=initializer,
-            dimension=dimension,
-            combiner=combiner,
-            shared_embedding_collection_name=shared_embedding_collection_name,
-            ckpt_to_load_from=ckpt_to_load_from,
-            tensor_name_in_ckpt=tensor_name_in_ckpt,
-            max_norm=max_norm,
-            trainable=trainable))
+        column_creator(
+            categorical_column=column, combiner=combiner, max_norm=max_norm))
 
   return result
 
@@ -2747,79 +2688,59 @@ class EmbeddingColumn(
         dense_tensor=dense_tensor, sequence_length=sequence_length)
 
 
-class SharedEmbeddingStateManager(Layer):
-  """A state manager that handle the state of shared embedding columns.
-
-  This can handle multiple sets of columns that share variables."""
-
-  def __init__(self, trainable=True, name=None, **kwargs):
-    """Constructs a `SharedEmbeddingStateManager`.
-
-    Args:
-      trainable: If true, variables created are trainable.
-      name: Name of the State Manager.
-      **kwargs: Keyword arguments.
-    """
-    super(SharedEmbeddingStateManager, self).__init__(
-        name=name, trainable=trainable, **kwargs)
-    self._var_dict = {}
-
-  def create_variable(self,
-                      name,
-                      shape,
-                      dtype=None,
-                      trainable=True,
-                      initializer=None):
-    """Creates a variable.
-
-    Makes sure only one var is created per `shared_collection_name`. `name` is
-    ignored here as the variable is named `shared_collection_name` instead.
-
-    Args:
-      name: Name of the variable. Not used.
-      shape: Variable shape.
-      dtype: Variable type.
-      trainable: If variable created should be trainable or not.
-      initializer: Variable initializer.
-
-    Returns:
-      A variable or partitioned variable.
-    """
-    if name in self._var_dict:
-      var = self._var_dict[name]
-      return var
-    with variable_scope.variable_scope(
-        self.name, reuse=variable_scope.AUTO_REUSE):
-      var = self.add_variable(
-          name=name,
-          shape=shape,
-          dtype=dtype,
-          trainable=self.trainable and trainable,
-          initializer=initializer,
-          use_resource=True,
-          # TODO(rohanj): Get rid of this hack once we have a mechanism for
-          # specifying a default partitioner for an entire layer. In that case,
-          # the default getter for Layers should work.
-          getter=variable_scope.get_variable)
-    self._var_dict[name] = var
-    return var
-
-  def get_variable(self, feature_column, name):
-    if name not in self._var_dict:
-      raise ValueError('Variable name: {} not recognized.'.format(name))
-    return self._var_dict[name]
-
-
-def maybe_create_shared_state_manager(feature_columns):
-  if is_feature_column_v2(feature_columns):
-    return SharedEmbeddingStateManager()
-  return None
-
-
 def _raise_shared_embedding_column_error():
   raise ValueError('SharedEmbeddingColumns are not supported in '
                    '`linear_model` or `input_layer`. Please use '
                    '`FeatureLayer` or `LinearModel` instead.')
+
+
+class SharedEmbeddingColumnCreator(tracking.Checkpointable):
+
+  def __init__(self,
+               dimension,
+               initializer,
+               ckpt_to_load_from,
+               tensor_name_in_ckpt,
+               num_buckets,
+               trainable,
+               name='shared_embedding_column_creator'):
+    self._dimension = dimension
+    self._initializer = initializer
+    self._ckpt_to_load_from = ckpt_to_load_from
+    self._tensor_name_in_ckpt = tensor_name_in_ckpt
+    self._num_buckets = num_buckets
+    self._trainable = trainable
+    self._name = name
+    # Map from graph keys to embedding_weight variables.
+    self._embedding_weights = {}
+
+  def __call__(self, categorical_column, combiner, max_norm):
+    return SharedEmbeddingColumn(categorical_column, self, combiner, max_norm)
+
+  @property
+  def embedding_weights(self):
+    key = ops.get_default_graph()._graph_key  # pylint: disable=protected-access
+    if key not in self._embedding_weights:
+      embedding_shape = (self._num_buckets, self._dimension)
+      var = variable_scope.get_variable(
+          name=self._name,
+          shape=embedding_shape,
+          dtype=dtypes.float32,
+          initializer=self._initializer,
+          trainable=self._trainable)
+
+      if self._ckpt_to_load_from is not None:
+        to_restore = var
+        if isinstance(to_restore, variables.PartitionedVariable):
+          to_restore = to_restore._get_variable_list()  # pylint: disable=protected-access
+        checkpoint_utils.init_from_checkpoint(
+            self._ckpt_to_load_from, {self._tensor_name_in_ckpt: to_restore})
+      self._embedding_weights[key] = var
+    return self._embedding_weights[key]
+
+  @property
+  def dimension(self):
+    return self._dimension
 
 
 class SharedEmbeddingColumn(
@@ -2829,9 +2750,8 @@ class SharedEmbeddingColumn(
     fc_old._SequenceDenseColumn,  # pylint: disable=protected-access
     collections.namedtuple(
         'SharedEmbeddingColumn',
-        ('categorical_column', 'dimension', 'combiner', 'initializer',
-         'shared_embedding_collection_name', 'ckpt_to_load_from',
-         'tensor_name_in_ckpt', 'max_norm', 'trainable'))):
+        ('categorical_column', 'shared_embedding_column_creator', 'combiner',
+         'max_norm'))):
   """See `embedding_column`."""
 
   @property
@@ -2842,16 +2762,6 @@ class SharedEmbeddingColumn(
   def name(self):
     """See `FeatureColumn` base class."""
     return '{}_shared_embedding'.format(self.categorical_column.name)
-
-  @property
-  def shared_collection_name(self):
-    """Returns the shared name of this column.
-
-    A group of columns share an embedding. Each one of those columns would have
-    the same `shared_collection_name` by which they could be collectively
-    referred to.
-    """
-    return self.shared_embedding_collection_name
 
   @property
   def parse_example_spec(self):
@@ -2872,25 +2782,11 @@ class SharedEmbeddingColumn(
   @property
   def variable_shape(self):
     """See `DenseColumn` base class."""
-    return tensor_shape.vector(self.dimension)
+    return tensor_shape.vector(self.shared_embedding_column_creator.dimension)
 
   @property
   def _variable_shape(self):
     return _raise_shared_embedding_column_error()
-
-  def create_state(self, state_manager):
-    """Creates the shared embedding lookup variable."""
-    if not isinstance(state_manager, SharedEmbeddingStateManager):
-      raise ValueError('Expected state_manager to be of type '
-                       'SharedEmbeddingStateManager. Obtained type: {}'.format(
-                           type(state_manager)))
-    embedding_shape = (self.categorical_column.num_buckets, self.dimension)
-    state_manager.create_variable(
-        name=self.shared_collection_name,
-        shape=embedding_shape,
-        dtype=dtypes.float32,
-        trainable=self.trainable,
-        initializer=self.initializer)
 
   def _get_dense_tensor_internal(self, transformation_cache, state_manager):
     """Private method that follows the signature of _get_dense_tensor."""
@@ -2904,16 +2800,7 @@ class SharedEmbeddingColumn(
       sparse_ids = sparse_tensors.id_tensor
       sparse_weights = sparse_tensors.weight_tensor
 
-      embedding_weights = state_manager.get_variable(
-          self, name=self.shared_collection_name)
-
-      if self.ckpt_to_load_from is not None:
-        to_restore = embedding_weights
-        if isinstance(to_restore, variables.PartitionedVariable):
-          to_restore = to_restore._get_variable_list()  # pylint: disable=protected-access
-        checkpoint_utils.init_from_checkpoint(self.ckpt_to_load_from, {
-            self.tensor_name_in_ckpt: to_restore
-        })
+      embedding_weights = self.shared_embedding_column_creator.embedding_weights
 
       # Return embedding lookup result.
       return _safe_embedding_lookup_sparse(

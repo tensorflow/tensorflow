@@ -13,7 +13,7 @@
 # limitations under the License.
 # ==============================================================================
 # pylint: disable=unidiomatic-typecheck
-"""Prototype decorator for defining graph-mode functions with eager semantics."""
+"""Prototype decorator for defining graph functions with eager semantics."""
 
 from __future__ import absolute_import
 from __future__ import division
@@ -176,16 +176,6 @@ class UnliftedInitializerVariable(resource_variable_ops.ResourceVariable):
     self._cached_shape_as_list = None
 
 
-def _defun_with_scope(scope, fn, input_signature):
-
-  def wrapped_fn(*args, **kwds):
-    with variable_scope.variable_creator_scope(scope):
-      return fn(*args, **kwds)
-
-  return function_lib.defun(tf_decorator.make_decorator(fn, wrapped_fn),
-                            input_signature=input_signature)
-
-
 # TODO(apassos) there should be an easier way to call a concrete defun.
 def _call_concrete(fn, args, kwargs):
   """Calls the given concrete function with only the tensor arguments."""
@@ -211,7 +201,9 @@ class PolymorphicFunction(object):
   def __init__(self,
                python_function,
                name,
-               input_signature=None):
+               input_signature=None,
+               autograph=False,
+               experimental_autograph_options=None):
     """Initializes a polymorphic function.
 
     Args:
@@ -220,6 +212,11 @@ class PolymorphicFunction(object):
       input_signature: a possibly nested sequence of `TensorSpec` objects
         specifying the input signature of this function. If `None`, a separate
         function is instantiated for each inferred input signature.
+      autograph: whether `python_function` should be converted to graph mode.
+        See https://www.tensorflow.org/guide/autograph for more information.
+      experimental_autograph_options: optional tuple of
+        tensorflow.autograph.Feature values. Allows enabling additional
+        conversion options when autograph is set to True.
 
     Raises:
       ValueError: if `input_signature` is not None and the `python_function`'s
@@ -227,10 +224,29 @@ class PolymorphicFunction(object):
     """
     self._python_function = python_function
     self._input_signature = input_signature
+    self._autograph = autograph
+    self._experimental_autograph_options = experimental_autograph_options
+    if self._experimental_autograph_options is not None:
+      raise NotImplementedError()
     self._created_variables = None
     self._stateful_fn = None
     self._descriptor_cache = weakref.WeakKeyDictionary()
     self._name = name
+
+  def _defun_with_scope(self, scope):
+    """Creates a defun wrapped inside a variable creator scope."""
+
+    fn = self._python_function
+
+    def wrapped_fn(*args, **kwds):
+      with variable_scope.variable_creator_scope(scope):
+        return fn(*args, **kwds)
+
+    # TODO(mdan): Pipe self._experimental_autograph_options through.
+    return function_lib.defun(
+        tf_decorator.make_decorator(fn, wrapped_fn),
+        input_signature=self._input_signature,
+        experimental_autograph=self._autograph)
 
   def _initialize(self, args, kwds):
     """Initializes, on the first call."""
@@ -243,8 +259,7 @@ class PolymorphicFunction(object):
       self._created_variables.append(weakref.ref(v))
       return v
 
-    self._stateful_fn = _defun_with_scope(
-        variable_capturing_scope, self._python_function, self._input_signature)
+    self._stateful_fn = self._defun_with_scope(variable_capturing_scope)
     self._stateful_fn._name = self._name  # pylint: disable=protected-access
 
     # Force the definition of the function for these arguments
@@ -257,8 +272,7 @@ class PolymorphicFunction(object):
           "tf.function-decorated function tried to create "
           "variables on non-first call.")
 
-    self._stateless_fn = _defun_with_scope(
-        invalid_creator_scope, self._python_function, self._input_signature)
+    self._stateless_fn = self._defun_with_scope(invalid_creator_scope)
     self._stateless_fn._name = self._name  # pylint: disable=protected-access
     return self._stateful_fn._canonicalize_function_inputs(*args, **kwds)  # pylint: disable=protected-access
 
@@ -373,7 +387,10 @@ class PolymorphicFunction(object):
     return self._descriptor_cache[instance]
 
 
-def function(func=None, input_signature=None):
+def function(func=None,
+             input_signature=None,
+             autograph=False,
+             experimental_autograph_options=None):
   """Defines a function as per the "functions, not sessions" document."""
   if input_signature is not None:
     function_lib.validate_signature(input_signature)
@@ -388,7 +405,9 @@ def function(func=None, input_signature=None):
         PolymorphicFunction(
             inner_function,
             name,
-            input_signature=input_signature))
+            input_signature=input_signature,
+            autograph=autograph,
+            experimental_autograph_options=experimental_autograph_options))
 
   # This code path is for the `foo = tf.function(foo, ...)` use case
   if func is not None:

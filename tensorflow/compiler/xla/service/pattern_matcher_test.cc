@@ -394,5 +394,42 @@ TEST(PatternMatcherTest, TestCaptureMatchedSubPatternForAnyOf) {
   EXPECT_EQ(nullptr, addend2);
 }
 
+TEST(PatternMatcherTest, TestConcat) {
+  using match::Concatenate;
+  using match::ConstantScalar;
+  using match::Op;
+  using match::Reshape;
+
+  constexpr char kModuleStr[] = R"(
+    HloModule test_module
+    ENTRY test {
+      c1 = u32[] constant(1)
+      c2 = u32[] constant(2)
+      c3 = u32[] constant(3)
+      c4 = u32[] constant(4)
+      r1 = u32[1] reshape(c1)
+      r2 = u32[1] reshape(c2)
+      r3 = u32[1] reshape(c3)
+      r4 = u32[1] reshape(c4)
+      ROOT concat = u32[4] concatenate(r1, r2, r3, r4), dimensions={0}
+    })";
+  TF_ASSERT_OK_AND_ASSIGN(auto hlo_module, ParseHloString(kModuleStr));
+  auto* root = hlo_module->entry_computation()->root_instruction();
+  ASSERT_TRUE(Match(
+      root,
+      Concatenate(Reshape(ConstantScalar(1)), Reshape(ConstantScalar(2)),
+                  Reshape(ConstantScalar(3)), Reshape(ConstantScalar(4)))));
+  ASSERT_FALSE(Match(
+      root,
+      Concatenate(Reshape(ConstantScalar(2)), Reshape(ConstantScalar(1)),
+                  Reshape(ConstantScalar(3)), Reshape(ConstantScalar(4)))));
+  ASSERT_FALSE(Match(
+      root, Concatenate(Reshape(ConstantScalar(1)), Reshape(ConstantScalar(2)),
+                        Reshape(ConstantScalar(3)))));
+  ASSERT_FALSE(Match(
+      root, Concatenate(Reshape(ConstantScalar(2)), Reshape(ConstantScalar(3)),
+                        Reshape(ConstantScalar(4)))));
+}
+
 }  // namespace
 }  // namespace xla
