@@ -572,7 +572,7 @@ def angle(input, name=None):
   For example:
 
   ```
-  # tensor 'input' is [-2.25 + 4.75j, 3.25 + 5.75j], in `complex64` format
+input = tf.constant([-2.25 + 4.75j, 3.25 + 5.75j])
   tf.angle(input) ==> array([2.0131705, 1.056345 ], dtype=float32)
   ```
 
