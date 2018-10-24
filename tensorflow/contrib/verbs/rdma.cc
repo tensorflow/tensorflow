@@ -1204,6 +1204,10 @@ void RdmaTensorResponse::SendContent(const Tensor& in, const TensorProto& proto,
         src_addr_ = src_buffer_->data();
         mr_ = RdmaMemoryMgr::Singleton().FindMemoryRegion(src_addr_,
                                                           tensor_bytes);
+        if (mr_ == nullptr && tensor_bytes) {
+          mr_ = ibv_reg_mr(channel_->adapter_->pd_, src_addr_, tensor_bytes,
+                           IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_WRITE);
+        }
       }
     } else {
       RDMA_LOG(2) << "Encoding proto: " << rm_.name_
