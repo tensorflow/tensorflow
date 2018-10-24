@@ -21,6 +21,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_parser.h"
+#include "tensorflow/compiler/xla/service/pattern_matcher.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/tests/hlo_verified_test_base.h"
 #include "tensorflow/compiler/xla/util.h"
@@ -29,6 +30,7 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 namespace {
+using match::Concatenate;
 
 class VariadicOpSplitterTest : public HloVerifiedTestBase {};
 
@@ -55,9 +57,9 @@ TEST_F(VariadicOpSplitterTest, SplitInto2) {
   auto module = CreateNewVerifiedModule();
   auto entry_computation = module->AddEntryComputation(builder.Build());
   EXPECT_TRUE(VariadicOpSplitter().Run(module.get()).ValueOrDie());
-  auto* root = entry_computation->root_instruction();
-  EXPECT_EQ(root->operand_count(), 128);
-  EXPECT_EQ(root->operand(0)->operand_count(), 128);
+  EXPECT_TRUE(Match(entry_computation->root_instruction(),
+                    Concatenate().WithNumOperands(128).WithOperand(
+                        0, Concatenate().WithNumOperands(128))));
 }
 
 TEST_F(VariadicOpSplitterTest, SplitInto3) {
@@ -70,10 +72,9 @@ TEST_F(VariadicOpSplitterTest, SplitInto3) {
   auto module = CreateNewVerifiedModule();
   auto entry_computation = module->AddEntryComputation(builder.Build());
   EXPECT_TRUE(VariadicOpSplitter().Run(module.get()).ValueOrDie());
-  auto* root = entry_computation->root_instruction();
-  EXPECT_EQ(root->operand_count(), 2);
-  EXPECT_EQ(root->operand(0)->operand_count(), 128);
-  EXPECT_EQ(root->operand(1)->operand_count(), 128);
+  EXPECT_TRUE(Match(entry_computation->root_instruction(),
+                    Concatenate(Concatenate().WithNumOperands(128),
+                                Concatenate().WithNumOperands(128))));
 }
 
 }  // namespace
