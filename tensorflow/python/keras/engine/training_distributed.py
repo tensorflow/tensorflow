@@ -91,7 +91,7 @@ def fit_loop(
         steps_per_epoch, val_iterator, validation_steps)
 
   if not model._grouped_model:
-    clone_model_on_towers(model, current_strategy, make_callback_model=True)
+    clone_model_on_replicas(model, current_strategy, make_callback_model=True)
 
   def _per_device_train_function(model):
     model._make_train_function()
@@ -185,10 +185,10 @@ def fit_loop(
         if not isinstance(outs, list):
           outs = [outs]
 
-        outs = _aggregate_metrics_across_towers(current_strategy.num_replicas,
-                                                out_labels,
-                                                model.stateful_metric_names,
-                                                outs)
+        outs = _aggregate_metrics_across_replicas(current_strategy.num_replicas,
+                                                  out_labels,
+                                                  model.stateful_metric_names,
+                                                  outs)
         for l, o in zip(out_labels, outs):
           batch_logs[l] = o
         callbacks.on_batch_end(step_index, batch_logs)
@@ -272,7 +272,7 @@ def _experimental_fit_loop(
     # TODO(priyag, sourabhbajaj): The model gets cloned every time
     # fit/test/predict is called. We should look into caching this keyed on
     # input shapes.
-    clone_model_on_towers(
+    clone_model_on_replicas(
         model,
         current_strategy,
         make_callback_model=True,
@@ -442,7 +442,7 @@ def test_loop(model, iterator, verbose=0, steps=None):
     return _experimental_test_loop(model, iterator, verbose, steps)
 
   if not model._grouped_model:
-    clone_model_on_towers(model, current_strategy)
+    clone_model_on_replicas(model, current_strategy)
 
   def _per_device_test_function(model):
     model._make_test_function()
@@ -502,7 +502,7 @@ def test_loop(model, iterator, verbose=0, steps=None):
     assert steps is not None
     for step in range(steps):
       batch_outs = distributed_test_function(ins)
-      batch_outs = _aggregate_metrics_across_towers(
+      batch_outs = _aggregate_metrics_across_replicas(
           current_strategy.num_replicas, model.metrics_names,
           model.stateful_metric_names, batch_outs)
       if isinstance(batch_outs, list):
@@ -567,7 +567,7 @@ def _experimental_test_loop(model, iterator, verbose=0, steps=None,
     # TODO(priyag, sourabhbajaj): The model gets cloned every time
     # fit/test/predict is called. We should look into caching this keyed on
     # input shapes.
-    clone_model_on_towers(
+    clone_model_on_replicas(
         model,
         current_strategy,
         make_callback_model=False,
@@ -669,7 +669,7 @@ def predict_loop(model, iterator, verbose=0, steps=None):
     return _experimental_predict_loop(model, iterator, verbose, steps)
 
   if not model._grouped_model:
-    clone_model_on_towers(model, current_strategy)
+    clone_model_on_replicas(model, current_strategy)
 
   def _per_device_predict_function(model):
     model._make_predict_function()
@@ -776,7 +776,7 @@ def _experimental_predict_loop(model, iterator, verbose=0, steps=None):
     # TODO(priyag, sourabhbajaj): The model gets cloned every time
     # fit/test/predict is called. We should look into caching this keyed on
     # input shapes.
-    clone_model_on_towers(
+    clone_model_on_replicas(
         model,
         current_strategy,
         make_callback_model=False,
@@ -893,8 +893,8 @@ def _clone_and_build_model(model, inputs=None, targets=None):
   return cloned_model
 
 
-def clone_model_on_towers(model, strategy, make_callback_model=False,
-                          inputs=None, targets=None, mode=None):
+def clone_model_on_replicas(model, strategy, make_callback_model=False,
+                            inputs=None, targets=None, mode=None):
   """Create a cloned model on each replica."""
   with strategy.scope():
     grouped_model = strategy.call_for_each_replica(
@@ -911,8 +911,8 @@ def clone_model_on_towers(model, strategy, make_callback_model=False,
     model._make_callback_model(grouped_model)
 
 
-def _aggregate_metrics_across_towers(num_devices, out_labels,
-                                     stateful_metric_names, outs):
+def _aggregate_metrics_across_replicas(num_devices, out_labels,
+                                       stateful_metric_names, outs):
   """Aggregates stateless metrics values across replicas.
 
   When using `MirroredStrategy`, the number of replicas is equal to the
