@@ -440,7 +440,7 @@ def learning_phase_scope(value):
         _GRAPH_LEARNING_PHASES[ops.get_default_graph()] = previous_value
 
 
-@tf_export('keras.backend.get_session')
+@tf_export(v1=['keras.backend.get_session'])
 def get_session():
   """Returns the TF session to be used by the backend.
 
