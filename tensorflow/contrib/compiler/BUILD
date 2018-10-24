@@ -7,6 +7,7 @@ package_group(
     includes = ["//tensorflow/compiler/jit:friends"],
     packages = [
         "//tensorflow/...",
+        "//tensorflow_models/...",
         "//third_party/py/tensor2tensor/...",
     ],
 )
