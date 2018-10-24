@@ -32,7 +32,7 @@ fi
 GEMMLOWP_URL="https://github.com/google/gemmlowp/archive/719139ce755a0f31cbf1c37f7f98adcc7fc9f425.zip"
 FLATBUFFERS_URL="https://github.com/google/flatbuffers/archive/1f5eae5d6a135ff6811724f6c57f911d1f46bb15.tar.gz"
 CMSIS_URL="https://github.com/ARM-software/CMSIS_5/archive/5.4.0.zip"
-STM32_BARE_LIB_URL="https://github.com/google/stm32_bare_lib/archive/50e0da307a2821bb54af1f57b969e6b76cb89d32.zip"
+STM32_BARE_LIB_URL="https://github.com/google/stm32_bare_lib/archive/c07d611fb0af58450c5a3e0ab4d52b47f99bc82d.zip"
 
 download_and_extract() {
   local usage="Usage: download_and_extract URL DIR"
