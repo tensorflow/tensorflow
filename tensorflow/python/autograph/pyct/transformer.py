@@ -312,7 +312,7 @@ class Base(gast.NodeTransformer):
             return node, None
 
     Args:
-      nodes: enumerable of AST node objects
+      nodes: enumerable of AST node objects. If None, the function returns None.
       before_visit: optional callable that is called before visiting each item
           in nodes
       after_visit: optional callable that takes in an AST node and
