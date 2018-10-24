@@ -30,7 +30,8 @@ class WhileLoopUtil {
   // the same index as the inst
   static StatusOr<std::vector<HloInstruction*>>
   FindMatchingGTEIncrementsInsideBody(const HloInstruction* inst,
-                                      const HloComputation* while_body);
+                                      const HloComputation* while_body,
+                                      HloOpcode opcode);
   static StatusOr<int64> CanConvertWhileToRepeat(
       const HloInstruction* while_inst);
 

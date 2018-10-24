@@ -24,8 +24,10 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/literal_util.h"
+#include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
+#include "tensorflow/compiler/xla/service/hlo_instructions.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/core/lib/core/errors.h"
@@ -281,11 +283,57 @@ Status FullVisitor::HandlePad(HloInstruction* inst) {
   return Status::OK();
 }
 
+Status FullVisitor::HandleIota(HloInstruction* inst) {
+  VLOG(1) << "Processing " << inst->name();
+  auto* iota = Cast<HloIotaInstruction>(inst);
+  poplar::Tensor t;
+  TF_ASSIGN_OR_RETURN(
+      t, AddIotaTensor(graph_, std::make_pair(inst, 0), GetOutputShape(inst),
+                       iota->iota_dimension(), resources_));
+  TF_CHECK_OK(
+      AddOutputTensor(graph_, resources_, sequence, tensor_map, inst, 0, t)
+          .status());
+  return Status::OK();
+}
+
 Status FullVisitor::HandleSort(HloInstruction* inst) {
   VLOG(1) << "Processing " << inst->name();
 
   TF_ASSIGN_OR_RETURN(auto prog,
                       CreateSort(graph_, resources_, inst, tensor_map));
+
+  sequence.add(prog);
+
+  return Status::OK();
+}
+
+Status FullVisitor::HandleBatchNormInference(HloInstruction* inst) {
+  VLOG(1) << "Processing " << inst->name();
+
+  TF_ASSIGN_OR_RETURN(auto prog,
+                      CreateBatchNormInf(graph_, resources_, inst, tensor_map));
+
+  sequence.add(prog);
+
+  return Status::OK();
+}
+
+Status FullVisitor::HandleBatchNormTraining(HloInstruction* inst) {
+  VLOG(1) << "Processing " << inst->name();
+
+  TF_ASSIGN_OR_RETURN(
+      auto prog, CreateBatchNormTraining(graph_, resources_, inst, tensor_map));
+
+  sequence.add(prog);
+
+  return Status::OK();
+}
+
+Status FullVisitor::HandleBatchNormGrad(HloInstruction* inst) {
+  VLOG(1) << "Processing " << inst->name();
+
+  TF_ASSIGN_OR_RETURN(
+      auto prog, CreateBatchNormGrad(graph_, resources_, inst, tensor_map));
 
   sequence.add(prog);
 

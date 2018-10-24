@@ -151,20 +151,29 @@ void* PoplarExecutor::AllocateSubBuffer(se::DeviceMemoryBase* parent,
 
 void PoplarExecutor::Deallocate(se::DeviceMemoryBase* mem) {
   if (!mem->is_sub_buffer()) {
-    bool free = false;
     TensorControl* tc = reinterpret_cast<TensorControl*>(mem->opaque());
     {
       std::lock_guard<std::recursive_mutex> g(mutex_);
-      if (--tc->ref_count == 0) {
-        allocations_.remove(tc);
-        free = true;
+      if (tc->ref_count > 0) {
+        tc->ref_count--;
       }
     }
-    if (free) {
-      tc->~TensorControl();
-      delete[] static_cast<char*>(mem->opaque());
-    }
   }
+}
+
+void PoplarExecutor::DeferredDeallocation() {
+  std::lock_guard<std::recursive_mutex> g(mutex_);
+
+  const auto new_end =
+      std::partition(allocations_.begin(), allocations_.end(),
+                     [](TensorControl* tc) { return tc->ref_count > 0; });
+
+  std::for_each(new_end, allocations_.end(), [](TensorControl* tc) {
+    tc->~TensorControl();
+    delete[] reinterpret_cast<char*>(tc);
+  });
+
+  allocations_.erase(new_end, allocations_.end());
 }
 
 bool PoplarExecutor::Memcpy(se::Stream* stream, void* host_dst,
@@ -209,6 +218,37 @@ Status PoplarExecutor::SynchronousMemcpy(void* host_dst,
   }
   memcpy(host_dst, tc->data, size);
   return Status::OK();
+}
+
+Status PoplarExecutor::SynchronousMemcpyDeviceToDevice(
+    se::DeviceMemoryBase* dst, const se::DeviceMemoryBase& src, uint64 size) {
+  TensorControl* dst_tc = reinterpret_cast<TensorControl*>(dst->opaque());
+  const TensorControl* src_tc =
+      reinterpret_cast<const TensorControl*>(src.opaque());
+  {
+    std::lock_guard<std::recursive_mutex> g(mutex_);
+    if (src_tc->on_device == true && !src_tc->output_handle.empty()) {
+      TF_RETURN_IF_ERROR(MoveDeviceToHost());
+    }
+  }
+  memcpy(dst_tc->data, src_tc->data, size);
+  {
+    std::lock_guard<std::recursive_mutex> g(mutex_);
+    dst_tc->on_device = false;
+    dst_tc->input_handle.clear();
+  }
+  return Status::OK();
+}
+
+bool PoplarExecutor::MemcpyDeviceToDevice(se::Stream* stream,
+                                          se::DeviceMemoryBase* pop_dst,
+                                          const se::DeviceMemoryBase& pop_src,
+                                          uint64 size) {
+  se::DeviceMemoryBase dst = *pop_dst;
+  AsPoplarStream(stream)->EnqueueTask([this, dst, pop_src, size]() mutable {
+    SynchronousMemcpyDeviceToDevice(&dst, pop_src, size);
+  });
+  return true;
 }
 
 bool PoplarExecutor::HostCallback(se::Stream* stream,
@@ -1016,6 +1056,8 @@ void PoplarExecutor::AboutToFreeEngine(poplar::Engine* engine) {
   if (current_engine_ != nullptr) {
     std::lock_guard<std::recursive_mutex> g(mutex_);
     if (engine == current_engine_) {
+      MoveDeviceToHost();
+      DeferredDeallocation();
       current_engine_ = NULL;
     }
   }
@@ -1076,6 +1118,7 @@ StatusOr<se::DeviceMemoryBase> PoplarExecutor::ExecuteEngine(
 
           executable.OnEngineLoaded();
 
+          DeferredDeallocation();
           current_engine_ = engine;
 
         } catch (const std::exception& e) {

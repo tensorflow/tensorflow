@@ -68,7 +68,15 @@ class FullVisitor : public BaseVisitor {
 
   Status HandlePad(HloInstruction* inst) override;
 
+  Status HandleIota(HloInstruction* inst) override;
+
   Status HandleSort(HloInstruction* inst) override;
+
+  Status HandleBatchNormInference(HloInstruction* inst) override;
+
+  Status HandleBatchNormTraining(HloInstruction* inst) override;
+
+  Status HandleBatchNormGrad(HloInstruction* inst) override;
 
   Status Postprocess(HloInstruction* inst) override;
 };

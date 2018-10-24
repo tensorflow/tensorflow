@@ -55,7 +55,8 @@ EagerTest.testVariableGradient
 EagerTest.testMultipleVariableReads
 EagerTest.testAdam
 EagerTest.testAdamSparse
-EagerFunctionTest
 ExcessivePaddingTest.testAsFunctionInput
 ExcessivePaddingTest.testAsFunctionOutput
-XlaPermuteOpTest # No sort
+EagerFunctionTest # No registered OpKernel
+ExcessivePaddingTest.testAsFunctionInput # No registered OpKernel
+ExcessivePaddingTest.testAsFunctionOutput # No registered OpKernel

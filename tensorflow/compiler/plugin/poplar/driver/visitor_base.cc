@@ -432,15 +432,7 @@ Status BaseVisitor::HandleRecvDone(HloInstruction* inst) {
 }
 
 Status BaseVisitor::HandleBatchNormInference(HloInstruction* inst) {
-  HloBatchNormInstruction* batch_inf_inst = Cast<HloBatchNormInstruction>(inst);
-  VLOG(1) << "Processing " << inst->name();
-
-  TF_ASSIGN_OR_RETURN(auto prog,
-                      CreateBatchNormInf(graph_, resources_, inst, tensor_map));
-
-  sequence.add(prog);
-
-  return Status::OK();
+  return Unimplemented(inst);
 }
 
 Status BaseVisitor::HandleBatchNormTraining(HloInstruction* inst) {
@@ -464,16 +456,7 @@ Status BaseVisitor::HandleAfterAll(HloInstruction* inst) {
 }
 
 Status BaseVisitor::HandleIota(HloInstruction* inst) {
-  VLOG(1) << "Processing " << inst->name();
-  auto* iota = Cast<HloIotaInstruction>(inst);
-  poplar::Tensor t;
-  TF_ASSIGN_OR_RETURN(
-      t, AddIotaTensor(graph_, std::make_pair(inst, 0), GetOutputShape(inst),
-                       iota->iota_dimension(), resources_));
-  TF_CHECK_OK(
-      AddOutputTensor(graph_, resources_, sequence, tensor_map, inst, 0, t)
-          .status());
-  return Status::OK();
+  return Unimplemented(inst);
 }
 
 Status BaseVisitor::HandleScatter(HloInstruction* inst) {

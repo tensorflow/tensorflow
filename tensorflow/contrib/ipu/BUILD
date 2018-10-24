@@ -162,3 +162,25 @@ test_suite(
         ":training_tests",
     ],
 )
+
+test_suite(
+    name = "poplar_test_suite",
+    tests = [
+      ":all_tests",
+      "//tensorflow/compiler/tests:poplar_tests",
+      "//tensorflow/compiler/xla/tests:poplar_tests",
+      "//tensorflow/compiler/plugin/poplar:all_tests",
+    ],
+)
+
+test_suite(
+    name = "poplar_ci_test_suite",
+    tests = [
+      ":all_ci_tests",
+      "//tensorflow/compiler/tests:poplar_tests",
+      "//tensorflow/compiler/tests:cpu_tests",
+      "//tensorflow/compiler/xla/tests:poplar_tests",
+      "//tensorflow/compiler/xla/tests:cpu_tests",
+      "//tensorflow/compiler/plugin/poplar:all_ci_tests",
+    ],
+)

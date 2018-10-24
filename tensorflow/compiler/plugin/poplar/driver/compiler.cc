@@ -274,7 +274,7 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::RunBackend(
                               module.get());
   {
     HloPassPipeline pipeline("IPU");
-    pipeline.AddPass<BatchNormExpander>(true, true, true);
+    pipeline.AddPass<BatchNormExpander>(true, false, true);
     pipeline.AddPass<GatherExpander>();
     pipeline.AddPass<ScatterExpander>();
     pipeline.AddPass<DotDecomposer>();
