@@ -20,6 +20,10 @@ in the Dockerfile itself.
 
 ## Running
 
+Run Docker images built locally, or run Tensorflow's publicly hosted images.
+
+### Running A Locally Built Image
+
 After building the image with the tag `tf` (for example), use `docker run` to
 run the images. Examples are below.
 
@@ -46,6 +50,26 @@ $ docker run --user $(id -u):$(id -g) -p 8888:8888 -v $(pwd):/notebooks -it tf
 
 These images do not come with the TensorFlow source code -- but the development
 images have git included, so you can `git clone` it yourself.
+
+### Running A Hosted Image
+
+Images of the Dockerfiles in the `dockerfiles` directory are also hosted on [Docker Hub](https://hub.docker.com/r/imburbank/tensorflow/ 'imburbank/tensorflow'). These hosted images can be pulled and run directly using `docker run`. Examples are below.
+
+*Images are currently hosted in a third-party repository. This section will be updated when the image location changes.*
+
+```bash
+# Volume mount (-v) is optional but highly recommended, especially for Jupyter.
+# User permissions (-u) are required if you use (-v).
+
+# CPU-based images
+$ docker run -u $(id -u):$(id -g) -v $(pwd):/my-devel -it imburbank/tensorflow
+
+# GPU-based images (set up nvidia-docker2 first)
+$ docker run --runtime=nvidia -u $(id -u):$(id -g) -v $(pwd):/my-devel -it imburbank/tensorflow:latest-gpu
+
+# Images with Jupyter run on port 8888, and needs a volume for notebooks
+$ docker run --user $(id -u):$(id -g) -p 8888:8888 -v $(pwd):/notebooks -it imburbank/tensorflow:latest-jupyter
+```
 
 ## Contributing
 
