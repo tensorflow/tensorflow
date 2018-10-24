@@ -195,7 +195,7 @@ struct Canonicalizer : public FunctionPass {
   PassResult runOnCFGFunction(CFGFunction *f) override;
   PassResult runOnMLFunction(MLFunction *f) override;
 
-  void simplifyFunction(std::vector<Operation *> &worklist,
+  void simplifyFunction(Function *currentFunction,
                         CanonicalizerRewriter &rewriter);
 
   void addToWorklist(Operation *op) {
@@ -230,6 +230,11 @@ private:
   /// if they aren't the root of a pattern.
   std::vector<Operation *> worklist;
   DenseMap<Operation *, unsigned> worklistMap;
+
+  /// As part of canonicalization, we move constants to the top of the entry
+  /// block of the current function and de-duplicate them.  This keeps track of
+  /// constants we have done this for.
+  DenseMap<std::pair<Attribute *, Type *>, Operation *> uniquedConstants;
 };
 } // end anonymous namespace
 
@@ -252,9 +257,9 @@ public:
 
 } // end anonymous namespace
 
-PassResult Canonicalizer::runOnCFGFunction(CFGFunction *f) {
+PassResult Canonicalizer::runOnCFGFunction(CFGFunction *fn) {
   worklist.reserve(64);
-  for (auto &bb : *f)
+  for (auto &bb : *fn)
     for (auto &op : bb)
       addToWorklist(&op);
 
@@ -298,16 +303,16 @@ PassResult Canonicalizer::runOnCFGFunction(CFGFunction *f) {
     CFGFuncBuilder &builder;
   };
 
-  CFGFuncBuilder cfgBuilder(f);
+  CFGFuncBuilder cfgBuilder(fn);
   CFGFuncRewriter rewriter(*this, cfgBuilder);
-  simplifyFunction(worklist, rewriter);
+  simplifyFunction(fn, rewriter);
   return success();
 }
 
-PassResult Canonicalizer::runOnMLFunction(MLFunction *f) {
+PassResult Canonicalizer::runOnMLFunction(MLFunction *fn) {
   worklist.reserve(64);
 
-  f->walk([&](OperationStmt *stmt) { addToWorklist(stmt); });
+  fn->walk([&](OperationStmt *stmt) { addToWorklist(stmt); });
 
   class MLFuncRewriter : public CanonicalizerRewriter {
   public:
@@ -349,13 +354,13 @@ PassResult Canonicalizer::runOnMLFunction(MLFunction *f) {
     MLFuncBuilder &builder;
   };
 
-  MLFuncBuilder mlBuilder(f);
+  MLFuncBuilder mlBuilder(fn);
   MLFuncRewriter rewriter(*this, mlBuilder);
-  simplifyFunction(worklist, rewriter);
+  simplifyFunction(fn, rewriter);
   return success();
 }
 
-void Canonicalizer::simplifyFunction(std::vector<Operation *> &worklist,
+void Canonicalizer::simplifyFunction(Function *currentFunction,
                                      CanonicalizerRewriter &rewriter) {
   auto *context = rewriter.getContext();
 
@@ -369,8 +374,11 @@ void Canonicalizer::simplifyFunction(std::vector<Operation *> &worklist,
       /// store(memrefcast) -> store
       new MemRefCastFolder(StoreOp::getOperationName(), context),
       /// dealloc(memrefcast) -> dealloc
-      new MemRefCastFolder(DeallocOp::getOperationName(), context)};
-
+      new MemRefCastFolder(DeallocOp::getOperationName(), context),
+      /// dma_start(memrefcast) -> dma_start
+      new MemRefCastFolder(DmaStartOp::getOperationName(), context),
+      /// dma_wait(memrefcast) -> dma_wait
+      new MemRefCastFolder(DmaWaitOp::getOperationName(), context)};
   PatternMatcher matcher(patterns);
 
   // These are scratch vectors used in the constant folding loop below.
@@ -383,17 +391,55 @@ void Canonicalizer::simplifyFunction(std::vector<Operation *> &worklist,
     if (op == nullptr)
       continue;
 
+    // If we have a constant op, unique it into the entry block.
+    if (auto constant = op->dyn_cast<ConstantOp>()) {
+      // If this constant is dead, remove it, being careful to keep
+      // uniquedConstants up to date.
+      if (constant->use_empty()) {
+        auto it =
+            uniquedConstants.find({constant->getValue(), constant->getType()});
+        if (it != uniquedConstants.end() && it->second == op)
+          uniquedConstants.erase(it);
+        constant->erase();
+        continue;
+      }
+
+      // Check to see if we already have a constant with this type and value:
+      auto &entry = uniquedConstants[std::make_pair(constant->getValue(),
+                                                    constant->getType())];
+      if (entry) {
+        // If this constant is already our uniqued one, then leave it alone.
+        if (entry == op)
+          continue;
+
+        // Otherwise replace this redundant constant with the uniqued one.  We
+        // know this is safe because we move constants to the top of the
+        // function when they are uniqued, so we know they dominate all uses.
+        constant->replaceAllUsesWith(entry->getResult(0));
+        constant->erase();
+        continue;
+      }
+
+      // If we have no entry, then we should unique this constant as the
+      // canonical version.  To ensure safe dominance, move the operation to the
+      // top of the function.
+      entry = op;
+
+      if (auto *cfgFunc = dyn_cast<CFGFunction>(currentFunction)) {
+        auto &entryBB = cfgFunc->front();
+        cast<OperationInst>(op)->moveBefore(&entryBB, entryBB.begin());
+      } else {
+        auto *mlFunc = cast<MLFunction>(currentFunction);
+        cast<OperationStmt>(op)->moveBefore(mlFunc, mlFunc->begin());
+      }
+
+      continue;
+    }
+
     // If the operation has no side effects, and no users, then it is trivially
     // dead - remove it.
     if (op->hasNoSideEffect() && op->use_empty()) {
       op->erase();
-      continue;
-    }
-
-    // TODO: If this is a constant op and if it hasn't already been added to the
-    // canonical constants set, move it and remember it.
-    if (op->isa<ConstantOp>()) {
-      // Don't infinitely constant fold this operation.
       continue;
     }
 
@@ -415,15 +461,21 @@ void Canonicalizer::simplifyFunction(std::vector<Operation *> &worklist,
     if (!op->constantFold(operandConstants, resultConstants)) {
       rewriter.setInsertionPoint(op);
 
-      // TODO: Put these in the entry block and unique them.
       for (unsigned i = 0, e = op->getNumResults(); i != e; ++i) {
         auto *res = op->getResult(i);
         if (res->use_empty()) // ignore dead uses.
           continue;
 
-        auto cst = rewriter.create<ConstantOp>(op->getLoc(), resultConstants[i],
-                                               res->getType());
-        res->replaceAllUsesWith(cst);
+        // If we already have a canonicalized version of this constant, just
+        // reuse it.  Otherwise create a new one.
+        SSAValue *cstValue;
+        auto it = uniquedConstants.find({resultConstants[i], res->getType()});
+        if (it != uniquedConstants.end())
+          cstValue = it->second->getResult(0);
+        else
+          cstValue = rewriter.create<ConstantOp>(
+              op->getLoc(), resultConstants[i], res->getType());
+        res->replaceAllUsesWith(cstValue);
       }
 
       assert(op->hasNoSideEffect() && "Constant folded op with side effects?");
@@ -449,6 +501,8 @@ void Canonicalizer::simplifyFunction(std::vector<Operation *> &worklist,
     rewriter.setInsertionPoint(op);
     match.first->rewrite(op, std::move(match.second), rewriter);
   }
+
+  uniquedConstants.clear();
 }
 
 /// Create a Canonicalizer pass.

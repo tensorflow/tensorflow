@@ -155,6 +155,9 @@ public:
   /// Return true if there are no users of any results of this operation.
   bool use_empty() const { return state->use_empty(); }
 
+  /// Remove this operation from its parent block and delete it.
+  void erase() { state->erase(); }
+
   /// Emit an error about fatal conditions with this operation, reporting up to
   /// any diagnostic handlers that may be listening.  NOTE: This may terminate
   /// the containing application, only use when the IR is in an inconsistent
@@ -487,9 +490,6 @@ public:
   }
 
   Type *getType() const { return getResult()->getType(); }
-
-  /// Return true if there are no users of any results of this operation.
-  bool use_empty() const { return getResult()->use_empty(); }
 
   /// Replace all uses of 'this' value with the new value, updating anything in
   /// the IR that uses 'this' to use the other value instead.  When this returns

@@ -180,6 +180,10 @@ void Statement::emitError(const Twine &message) const {
 // ilist_traits for Statement
 //===----------------------------------------------------------------------===//
 
+void llvm::ilist_traits<::mlir::Statement>::deleteNode(Statement *stmt) {
+  stmt->destroy();
+}
+
 StmtBlock *llvm::ilist_traits<::mlir::Statement>::getContainingBlock() {
   size_t Offset(
       size_t(&((StmtBlock *)nullptr->*StmtBlock::getSublistAccess(nullptr))));
@@ -224,6 +228,21 @@ void llvm::ilist_traits<::mlir::Statement>::transferNodesFromList(
 void Statement::erase() {
   assert(getBlock() && "Statement has no block");
   getBlock()->getStatements().erase(this);
+}
+
+/// Unlink this statement from its current block and insert it right before
+/// `existingStmt` which may be in the same or another block in the same
+/// function.
+void Statement::moveBefore(Statement *existingStmt) {
+  moveBefore(existingStmt->getBlock(), existingStmt->getIterator());
+}
+
+/// Unlink this operation instruction from its current basic block and insert
+/// it right before `iterator` in the specified basic block.
+void Statement::moveBefore(StmtBlock *block,
+                           llvm::iplist<Statement>::iterator iterator) {
+  block->getStatements().splice(iterator, getBlock()->getStatements(),
+                                getIterator());
 }
 
 //===----------------------------------------------------------------------===//

@@ -174,6 +174,9 @@ public:
   CFGFuncBuilder(CFGFunction *function)
       : Builder(function->getContext()), function(function) {}
 
+  /// Return the function this builder is referring to.
+  CFGFunction *getFunction() const { return function; }
+
   /// Reset the insertion point to no location.  Creating an operation without a
   /// set insertion point is an error, but this can still be useful when the
   /// current insertion point a builder refers to is being removed.
@@ -292,21 +295,25 @@ public:
   /// which will cause subsequent insertions to go right before it.
   MLFuncBuilder(Statement *stmt)
       // TODO: Eliminate findFunction from this.
-      : Builder(stmt->findFunction()->getContext()) {
+      : MLFuncBuilder(stmt->findFunction()) {
     setInsertionPoint(stmt);
   }
 
   MLFuncBuilder(StmtBlock *block, StmtBlock::iterator insertPoint)
       // TODO: Eliminate findFunction from this.
-      : Builder(block->findFunction()->getContext()) {
+      : MLFuncBuilder(block->findFunction()) {
     setInsertionPoint(block, insertPoint);
   }
 
   /// Create an ML function builder and set the insertion point to the start of
   /// the function.
-  MLFuncBuilder(MLFunction *func) : Builder(func->getContext()) {
+  MLFuncBuilder(MLFunction *func)
+      : Builder(func->getContext()), function(func) {
     setInsertionPoint(func, func->begin());
   }
+
+  /// Return the function this builder is referring to.
+  MLFunction *getFunction() const { return function; }
 
   /// Reset the insertion point to no location.  Creating an operation without a
   /// set insertion point is an error, but this can still be useful when the
@@ -420,6 +427,7 @@ public:
                    IntegerSet set);
 
 private:
+  MLFunction *function;
   StmtBlock *block = nullptr;
   StmtBlock::iterator insertPoint;
 };

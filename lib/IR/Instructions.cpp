@@ -76,7 +76,7 @@ MLIRContext *Instruction::getContext() const {
   return fn ? fn->getContext() : nullptr;
 }
 
-CFGFunction *Instruction::getFunction() const {
+CFGFunction *Instruction::getFunction() {
   auto *block = getBlock();
   return block ? block->getFunction() : nullptr;
 }
@@ -203,6 +203,11 @@ OperationInst::~OperationInst() {
     result.~InstResult();
 }
 
+void llvm::ilist_traits<::mlir::OperationInst>::deleteNode(
+    OperationInst *inst) {
+  inst->destroy();
+}
+
 mlir::BasicBlock *
 llvm::ilist_traits<::mlir::OperationInst>::getContainingBlock() {
   size_t Offset(
@@ -248,6 +253,22 @@ void llvm::ilist_traits<::mlir::OperationInst>::transferNodesFromList(
 void OperationInst::erase() {
   assert(getBlock() && "Instruction has no parent");
   getBlock()->getOperations().erase(this);
+}
+
+/// Unlink this operation instruction from its current basic block and insert
+/// it right before `existingInst` which may be in the same or another block
+/// in the same function.
+void OperationInst::moveBefore(OperationInst *existingInst) {
+  assert(existingInst && "Cannot move before a null instruction");
+  return moveBefore(existingInst->getBlock(), existingInst->getIterator());
+}
+
+/// Unlink this operation instruction from its current basic block and insert
+/// it right before `iterator` in the specified basic block.
+void OperationInst::moveBefore(BasicBlock *block,
+                               llvm::iplist<OperationInst>::iterator iterator) {
+  block->getOperations().splice(iterator, getBlock()->getOperations(),
+                                getIterator());
 }
 
 //===----------------------------------------------------------------------===//

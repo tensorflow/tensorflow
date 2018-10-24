@@ -120,3 +120,24 @@ mlfunc @dyn_shape_fold(%L : index, %M : index) -> memref<? x ? x f32> {
 
   return %d : memref<? x ? x f32>
 }
+
+// CHECK-LABEL: mlfunc @merge_constants
+mlfunc @merge_constants() -> (index, index) {
+  // CHECK-NEXT: %c42 = constant 42 : index
+  %0 = constant 42 : index
+  %1 = constant 42 : index
+  // CHECK-NEXT: return %c42, %c42
+  return %0, %1: index, index
+}
+
+// CHECK-LABEL: mlfunc @hoist_constant
+mlfunc @hoist_constant(%arg0 : memref<8xi32>) {
+  // CHECK-NEXT: %c42_i32 = constant 42 : i32
+  // CHECK-NEXT: for %i0 = 0 to 8 {
+  for %i0 = 0 to 8 {
+    // CHECK-NEXT: store %c42_i32, %arg0[%i0]
+    %c42_i32 = constant 42 : i32
+    store %c42_i32, %arg0[%i0] : memref<8xi32>
+  }
+  return
+}

@@ -34,6 +34,31 @@ class MLFunction;
 class StmtBlock;
 class ForStmt;
 class MLIRContext;
+} // namespace mlir
+
+//===----------------------------------------------------------------------===//
+// ilist_traits for Statement
+//===----------------------------------------------------------------------===//
+
+namespace llvm {
+
+template <> struct ilist_traits<::mlir::Statement> {
+  using Statement = ::mlir::Statement;
+  using stmt_iterator = simple_ilist<Statement>::iterator;
+
+  static void deleteNode(Statement *stmt);
+  void addNodeToList(Statement *stmt);
+  void removeNodeFromList(Statement *stmt);
+  void transferNodesFromList(ilist_traits<Statement> &otherList,
+                             stmt_iterator first, stmt_iterator last);
+
+private:
+  mlir::StmtBlock *getContainingBlock();
+};
+
+} // end namespace llvm
+
+namespace mlir {
 
 /// Statement is a basic unit of execution within an ML function.
 /// Statements can be nested within for and if statements effectively
@@ -84,6 +109,15 @@ public:
 
   /// Destroys this statement and its subclass data.
   void destroy();
+
+  /// Unlink this statement from its current block and insert it right before
+  /// `existingStmt` which may be in the same or another block in the same
+  /// function.
+  void moveBefore(Statement *existingStmt);
+
+  /// Unlink this operation instruction from its current basic block and insert
+  /// it right before `iterator` in the specified basic block.
+  void moveBefore(StmtBlock *block, llvm::iplist<Statement>::iterator iterator);
 
   void print(raw_ostream &os) const;
   void dump() const;
@@ -179,29 +213,6 @@ inline raw_ostream &operator<<(raw_ostream &os, const Statement &stmt) {
   stmt.print(os);
   return os;
 }
-} //end namespace mlir
-
-//===----------------------------------------------------------------------===//
-// ilist_traits for Statement
-//===----------------------------------------------------------------------===//
-
-namespace llvm {
-
-template <>
-struct ilist_traits<::mlir::Statement> {
-  using Statement = ::mlir::Statement;
-  using stmt_iterator = simple_ilist<Statement>::iterator;
-
-  static void deleteNode(Statement *stmt) { stmt->destroy(); }
-
-  void addNodeToList(Statement *stmt);
-  void removeNodeFromList(Statement *stmt);
-  void transferNodesFromList(ilist_traits<Statement> &otherList,
-                             stmt_iterator first, stmt_iterator last);
-private:
-  mlir::StmtBlock *getContainingBlock();
-};
-
-} // end namespace llvm
+} // end namespace mlir
 
 #endif  // MLIR_IR_STATEMENT_H

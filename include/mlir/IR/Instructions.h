@@ -34,6 +34,31 @@ class BasicBlock;
 class CFGFunction;
 class OperationInst;
 class TerminatorInst;
+} // end namespace mlir
+
+//===----------------------------------------------------------------------===//
+// ilist_traits for OperationInst
+//===----------------------------------------------------------------------===//
+
+namespace llvm {
+
+template <> struct ilist_traits<::mlir::OperationInst> {
+  using OperationInst = ::mlir::OperationInst;
+  using instr_iterator = simple_ilist<OperationInst>::iterator;
+
+  static void deleteNode(OperationInst *inst);
+  void addNodeToList(OperationInst *inst);
+  void removeNodeFromList(OperationInst *inst);
+  void transferNodesFromList(ilist_traits<OperationInst> &otherList,
+                             instr_iterator first, instr_iterator last);
+
+private:
+  mlir::BasicBlock *getContainingBlock();
+};
+
+} // end namespace llvm
+
+namespace mlir {
 
 /// The operand of a TerminatorInst contains a BasicBlock.
 using BasicBlockOperand = IROperandImpl<BasicBlock, TerminatorInst>;
@@ -53,10 +78,14 @@ public:
   Location *getLoc() const { return location; }
 
   /// Return the BasicBlock containing this instruction.
-  BasicBlock *getBlock() const { return block; }
+  const BasicBlock *getBlock() const { return block; }
+  BasicBlock *getBlock() { return block; }
 
   /// Return the CFGFunction containing this instruction.
-  CFGFunction *getFunction() const;
+  CFGFunction *getFunction();
+  const CFGFunction *getFunction() const {
+    return const_cast<Instruction *>(this)->getFunction();
+  }
 
   /// Destroy this instruction and its subclass data.
   void destroy();
@@ -299,7 +328,19 @@ public:
   /// Unlink this instruction from its BasicBlock and delete it.
   void erase();
 
+  /// Delete an instruction that is not linked into a block.
   void destroy();
+
+  /// Unlink this operation instruction from its current basic block and insert
+  /// it right before `existingInst` which may be in the same or another block
+  /// of the same function.
+  void moveBefore(OperationInst *existingInst);
+
+  /// Unlink this operation instruction from its current basic block and insert
+  /// it right before `iterator` in the specified basic block, which must be in
+  /// the same function.
+  void moveBefore(BasicBlock *block,
+                  llvm::iplist<OperationInst>::iterator iterator);
 
   /// Methods for support type inquiry through isa, cast, and dyn_cast.
   static bool classof(const Instruction *inst) {
@@ -610,29 +651,5 @@ private:
 };
 
 } // end namespace mlir
-
-//===----------------------------------------------------------------------===//
-// ilist_traits for OperationInst
-//===----------------------------------------------------------------------===//
-
-namespace llvm {
-
-template <>
-struct ilist_traits<::mlir::OperationInst> {
-  using OperationInst = ::mlir::OperationInst;
-  using instr_iterator = simple_ilist<OperationInst>::iterator;
-
-  static void deleteNode(OperationInst *inst) { inst->destroy(); }
-
-  void addNodeToList(OperationInst *inst);
-  void removeNodeFromList(OperationInst *inst);
-  void transferNodesFromList(ilist_traits<OperationInst> &otherList,
-                             instr_iterator first, instr_iterator last);
-
-private:
-  mlir::BasicBlock *getContainingBlock();
-};
-
-} // end namespace llvm
 
 #endif // MLIR_IR_INSTRUCTIONS_H
