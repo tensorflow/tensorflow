@@ -138,7 +138,10 @@ tf_cc_test(
     name = "test_util_test",
     size = "small",
     srcs = ["test_util_test.cc"],
-    tags = ["no_oss"],
+    tags = [
+        "no_oss",
+        "tflite_not_portable_ios",  # TODO(b/117786830)
+    ],
     deps = [
         ":test_util",
         "//tensorflow/contrib/lite/testing:util",

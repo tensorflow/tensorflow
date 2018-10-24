@@ -255,7 +255,10 @@ cc_library(
 cc_test(
     name = "tensor_test",
     srcs = ["tensor_test.cc"],
-    tags = ["no_oss"],
+    tags = [
+        "no_oss",
+        "tflite_not_portable_ios",  # TODO(b/117786830)
+    ],
     deps = [
         ":tensor",
         "@com_google_googletest//:gtest",
@@ -285,7 +288,10 @@ cc_library(
 cc_test(
     name = "quantization_util_test",
     srcs = ["quantization_util_test.cc"],
-    tags = ["no_oss"],
+    tags = [
+        "no_oss",
+        "tflite_not_portable_ios",  # TODO(b/117786830)
+    ],
     deps = [
         ":quantization_util",
         "@com_google_googletest//:gtest",
