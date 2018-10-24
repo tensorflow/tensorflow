@@ -39,7 +39,7 @@ class Module;
 /// NamedAttribute is used for function attribute lists, it holds an
 /// identifier for the name and a value for the attribute.  The attribute
 /// pointer should always be non-null.
-typedef std::pair<Identifier, Attribute *> NamedAttribute;
+using NamedAttribute = std::pair<Identifier, Attribute *>;
 
 /// This is the base class for all of the MLIR function types.
 class Function : public llvm::ilist_node_with_parent<Function, Module> {

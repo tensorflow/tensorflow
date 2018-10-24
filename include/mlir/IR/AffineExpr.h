@@ -71,7 +71,7 @@ enum class AffineExprKind {
 /// An AffineExpr is a POD interface to the underlying storage type pointer.
 class AffineExpr {
 public:
-  typedef detail::AffineExprStorage ImplType;
+  using ImplType = detail::AffineExprStorage;
 
   AffineExpr() : expr(nullptr) {}
   /* implicit */ AffineExpr(const ImplType *expr)
@@ -146,7 +146,7 @@ protected:
 /// the op type: see checks in the constructor.
 class AffineBinaryOpExpr : public AffineExpr {
 public:
-  typedef detail::AffineBinaryOpExprStorage ImplType;
+  using ImplType = detail::AffineBinaryOpExprStorage;
   /* implicit */ AffineBinaryOpExpr(AffineExpr::ImplType *ptr);
   AffineExpr getLHS() const;
   AffineExpr getRHS() const;
@@ -155,7 +155,7 @@ public:
 /// A dimensional identifier appearing in an affine expression.
 class AffineDimExpr : public AffineExpr {
 public:
-  typedef detail::AffineDimExprStorage ImplType;
+  using ImplType = detail::AffineDimExprStorage;
   /* implicit */ AffineDimExpr(AffineExpr::ImplType *ptr);
   unsigned getPosition() const;
 };
@@ -163,7 +163,7 @@ public:
 /// A symbolic identifier appearing in an affine expression.
 class AffineSymbolExpr : public AffineExpr {
 public:
-  typedef detail::AffineSymbolExprStorage ImplType;
+  using ImplType = detail::AffineSymbolExprStorage;
   /* implicit */ AffineSymbolExpr(AffineExpr::ImplType *ptr);
   unsigned getPosition() const;
 };
@@ -171,7 +171,7 @@ public:
 /// An integer constant appearing in affine expression.
 class AffineConstantExpr : public AffineExpr {
 public:
-  typedef detail::AffineConstantExprStorage ImplType;
+  using ImplType = detail::AffineConstantExprStorage;
   /* implicit */ AffineConstantExpr(AffineExpr::ImplType *ptr);
   int64_t getValue() const;
 };

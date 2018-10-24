@@ -44,7 +44,7 @@ class MLIRContext;
 /// is unique to this affine map.
 class AffineMap {
 public:
-  typedef detail::AffineMapStorage ImplType;
+  using ImplType = detail::AffineMapStorage;
 
   explicit AffineMap(ImplType *map = nullptr) : map(map) {}
   static AffineMap Invalid() { return AffineMap(nullptr); }

@@ -125,7 +125,7 @@ bool mlir::loopUnrollJamByFactor(ForStmt *forStmt, uint64_t unrollJamFactor) {
   // tree).
   class JamBlockGatherer : public StmtWalker<JamBlockGatherer> {
   public:
-    typedef llvm::iplist<Statement> StmtListType;
+    using StmtListType = llvm::iplist<Statement>;
 
     // Store iterators to the first and last stmt of each sub-block found.
     std::vector<std::pair<StmtBlock::iterator, StmtBlock::iterator>> subBlocks;

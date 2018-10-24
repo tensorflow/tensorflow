@@ -51,7 +51,7 @@ class MLIRContext;
 /// in the bump allocator.
 class IntegerSet {
 public:
-  typedef detail::IntegerSetStorage ImplType;
+  using ImplType = detail::IntegerSetStorage;
 
   explicit IntegerSet(ImplType *set = nullptr) : set(set) {}
 

@@ -283,7 +283,7 @@ public:
   const CFGValue *getResult(unsigned idx) const { return &getInstResult(idx); }
 
   // Support non-const result iteration.
-  typedef ResultIterator<OperationInst, CFGValue> result_iterator;
+  using result_iterator = ResultIterator<OperationInst, CFGValue>;
   result_iterator result_begin() { return result_iterator(this, 0); }
   result_iterator result_end() {
     return result_iterator(this, getNumResults());
@@ -293,8 +293,8 @@ public:
   }
 
   // Support const operand iteration.
-  typedef ResultIterator<const OperationInst, const CFGValue>
-      const_result_iterator;
+  using const_result_iterator =
+      ResultIterator<const OperationInst, const CFGValue>;
   const_result_iterator result_begin() const {
     return const_result_iterator(this, 0);
   }
@@ -473,8 +473,8 @@ public:
   // Support non-const operand iteration.
   using operand_iterator = OperandIterator<CondBranchInst, CFGValue>;
   // Support const operand iteration.
-  typedef OperandIterator<const CondBranchInst, const CFGValue>
-      const_operand_iterator;
+  using const_operand_iterator =
+      OperandIterator<const CondBranchInst, const CFGValue>;
 
   ArrayRef<InstOperand> getInstOperands() const { return operands; }
   MutableArrayRef<InstOperand> getInstOperands() { return operands; }

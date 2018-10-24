@@ -126,7 +126,7 @@ public:
   const MLValue *getResult(unsigned idx) const { return &getStmtResult(idx); }
 
   // Support non-const result iteration.
-  typedef ResultIterator<OperationStmt, MLValue> result_iterator;
+  using result_iterator = ResultIterator<OperationStmt, MLValue>;
   result_iterator result_begin() { return result_iterator(this, 0); }
   result_iterator result_end() {
     return result_iterator(this, getNumResults());
@@ -136,8 +136,8 @@ public:
   }
 
   // Support const operand iteration.
-  typedef ResultIterator<const OperationStmt, const MLValue>
-      const_result_iterator;
+  using const_result_iterator =
+      ResultIterator<const OperationStmt, const MLValue>;
   const_result_iterator result_begin() const {
     return const_result_iterator(this, 0);
   }

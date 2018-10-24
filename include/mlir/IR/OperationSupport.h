@@ -124,12 +124,12 @@ private:
 /// NamedAttribute is a used for operation attribute lists, it holds an
 /// identifier for the name and a value for the attribute.  The attribute
 /// pointer should always be non-null.
-typedef std::pair<Identifier, Attribute *> NamedAttribute;
+using NamedAttribute = std::pair<Identifier, Attribute *>;
 
 class OperationName {
 public:
-  typedef llvm::PointerUnion<Identifier, const AbstractOperation *>
-      RepresentationUnion;
+  using RepresentationUnion =
+      llvm::PointerUnion<Identifier, const AbstractOperation *>;
 
   OperationName(AbstractOperation *op) : representation(op) {}
   OperationName(StringRef name, MLIRContext *context);

@@ -64,7 +64,7 @@ public:
   //===--------------------------------------------------------------------===//
 
   /// This is the list of statements in the block.
-  typedef llvm::iplist<Statement> StmtListType;
+  using StmtListType = llvm::iplist<Statement>;
   StmtListType &getStatements() { return statements; }
   const StmtListType &getStatements() const { return statements; }
 

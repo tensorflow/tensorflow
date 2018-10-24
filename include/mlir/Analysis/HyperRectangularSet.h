@@ -46,7 +46,7 @@ class HyperRectangleList;
 /// A list of affine bounds.
 // Not using a MutableAffineMap here since numSymbols is the same as the
 // containing HyperRectangularSet's numSymbols, and its numDims is 0.
-typedef SmallVector<AffineExpr, 4> AffineBoundExprList;
+using AffineBoundExprList = SmallVector<AffineExpr, 4>;
 
 /// A HyperRectangularSet is a symbolic set of integer points contained in a
 /// hyper-rectangular space. It supports set manipulation operations
@@ -259,7 +259,7 @@ public:
   //===--------------------------------------------------------------------===//
 
   /// These are for the list of hyper-rectangular set elements.
-  typedef ::llvm::iplist<HyperRectangularSet> HyperRectangleListTy;
+  using HyperRectangleListTy = ::llvm::iplist<HyperRectangularSet>;
   HyperRectangleListTy &getRectangles() { return hyperRectangles; }
 
   // Iteration over the statements in the block.

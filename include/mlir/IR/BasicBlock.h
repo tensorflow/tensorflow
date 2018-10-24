@@ -51,7 +51,7 @@ public:
   //===--------------------------------------------------------------------===//
 
   // This is the list of arguments to the block.
-  typedef ArrayRef<BBArgument *> BBArgListType;
+  using BBArgListType = ArrayRef<BBArgument *>;
   BBArgListType getArguments() const { return arguments; }
 
   using args_iterator = BBArgListType::iterator;
@@ -78,7 +78,7 @@ public:
   //===--------------------------------------------------------------------===//
 
   /// This is the list of operations in the block.
-  typedef llvm::iplist<OperationInst> OperationListType;
+  using OperationListType = llvm::iplist<OperationInst>;
   OperationListType &getOperations() { return operations; }
   const OperationListType &getOperations() const { return operations; }
 

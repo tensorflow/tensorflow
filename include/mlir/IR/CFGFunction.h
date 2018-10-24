@@ -37,7 +37,7 @@ public:
   //===--------------------------------------------------------------------===//
 
   /// This is the list of blocks in the function.
-  typedef llvm::iplist<BasicBlock> BasicBlockListType;
+  using BasicBlockListType = llvm::iplist<BasicBlock>;
   BasicBlockListType &getBlocks() { return blocks; }
   const BasicBlockListType &getBlocks() const { return blocks; }
 

@@ -103,8 +103,8 @@ private:
 
 namespace {
 
-typedef std::function<Operation *(const OperationState &)>
-    CreateOperationFunction;
+using CreateOperationFunction =
+    std::function<Operation *(const OperationState &)>;
 
 /// This class implement support for parsing global entities like types and
 /// shared entities like SSA names.  It is intended to be subclassed by

@@ -77,8 +77,8 @@ protected:
 /// the benefit of the match, the second is a state token that can optionally
 /// be produced by a pattern match to maintain state between the match and
 /// rewrite phases.
-typedef std::pair<PatternBenefit, std::unique_ptr<PatternState>>
-    PatternMatchResult;
+using PatternMatchResult =
+    std::pair<PatternBenefit, std::unique_ptr<PatternState>>;
 
 //===----------------------------------------------------------------------===//
 // Pattern class
@@ -264,7 +264,7 @@ public:
   explicit PatternMatcher(ArrayRef<Pattern *> patterns)
       : patterns(patterns.begin(), patterns.end()) {}
 
-  typedef std::pair<Pattern *, std::unique_ptr<PatternState>> MatchResult;
+  using MatchResult = std::pair<Pattern *, std::unique_ptr<PatternState>>;
 
   /// Find the highest benefit pattern available in the pattern set for the DAG
   /// rooted at the specified node.  This returns the pattern (and any state it

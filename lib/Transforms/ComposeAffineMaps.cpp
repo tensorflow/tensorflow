@@ -46,7 +46,7 @@ struct ComposeAffineMaps : public MLFunctionPass,
   std::vector<OperationStmt *> affineApplyOpsToErase;
 
   explicit ComposeAffineMaps() {}
-  typedef llvm::iplist<Statement> StmtListType;
+  using StmtListType = llvm::iplist<Statement>;
   void walk(StmtListType::iterator Start, StmtListType::iterator End);
   void visitOperationStmt(OperationStmt *stmt);
   PassResult runOnMLFunction(MLFunction *f);

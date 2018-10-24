@@ -85,7 +85,7 @@ static inline unsigned llvm_combineHashValue(unsigned a, unsigned b) {
 
 namespace llvm {
 template <typename... Ts> struct DenseMapInfo<std::tuple<Ts...>> {
-  typedef std::tuple<Ts...> Tuple;
+  using Tuple = std::tuple<Ts...>;
 
   static inline Tuple getEmptyKey() {
     return Tuple(DenseMapInfo<Ts>::getEmptyKey()...);
@@ -97,7 +97,7 @@ template <typename... Ts> struct DenseMapInfo<std::tuple<Ts...>> {
 
   template <unsigned I>
   static unsigned getHashValueImpl(const Tuple &values, std::false_type) {
-    typedef typename std::tuple_element<I, Tuple>::type EltType;
+    using EltType = typename std::tuple_element<I, Tuple>::type;
     std::integral_constant<bool, I + 1 == sizeof...(Ts)> atEnd;
     return llvm_combineHashValue(
         DenseMapInfo<EltType>::getHashValue(std::get<I>(values)),
@@ -116,7 +116,7 @@ template <typename... Ts> struct DenseMapInfo<std::tuple<Ts...>> {
 
   template <unsigned I>
   static bool isEqualImpl(const Tuple &lhs, const Tuple &rhs, std::false_type) {
-    typedef typename std::tuple_element<I, Tuple>::type EltType;
+    using EltType = typename std::tuple_element<I, Tuple>::type;
     std::integral_constant<bool, I + 1 == sizeof...(Ts)> atEnd;
     return DenseMapInfo<EltType>::isEqual(std::get<I>(lhs), std::get<I>(rhs)) &&
            isEqualImpl<I + 1>(lhs, rhs, atEnd);

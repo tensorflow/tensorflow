@@ -38,7 +38,7 @@ public:
   MLIRContext *getContext() const { return context; }
 
   /// This is the list of functions in the module.
-  typedef llvm::iplist<Function> FunctionListType;
+  using FunctionListType = llvm::iplist<Function>;
   FunctionListType &getFunctions() { return functions; }
   const FunctionListType &getFunctions() const { return functions; }
 

@@ -31,7 +31,7 @@ struct ConstantFold : public FunctionPass, StmtWalker<ConstantFold> {
   SmallVector<SSAValue *, 8> existingConstants;
   // Operation statements that were folded and that need to be erased.
   std::vector<OperationStmt *> opStmtsToErase;
-  typedef std::function<SSAValue *(Attribute *, Type *)> ConstantFactoryType;
+  using ConstantFactoryType = std::function<SSAValue *(Attribute *, Type *)>;
 
   bool foldOperation(Operation *op,
                      SmallVectorImpl<SSAValue *> &existingConstants,

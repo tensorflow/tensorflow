@@ -80,7 +80,7 @@ PassResult LoopUnroll::runOnMLFunction(MLFunction *f) {
     std::vector<ForStmt *> loops;
 
     // This method specialized to encode custom return logic.
-    typedef llvm::iplist<Statement> StmtListType;
+    using StmtListType = llvm::iplist<Statement>;
     bool walkPostOrder(StmtListType::iterator Start,
                        StmtListType::iterator End) {
       bool hasInnerLoops = false;
