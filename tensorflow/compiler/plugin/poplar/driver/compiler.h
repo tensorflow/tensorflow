@@ -45,18 +45,27 @@ class PoplarCompiler : public Compiler {
       perftools::gputools::StreamExecutor* stream_exec,
       DeviceMemoryAllocator* device_allocator) override;
 
+  Status RunHloPassesOnModuleGroup(
+      HloModuleGroup* module_group, se::StreamExecutor* executor,
+      DeviceMemoryAllocator* device_allocator) override;
+
   StatusOr<std::unique_ptr<Executable>> RunBackend(
       std::unique_ptr<HloModule> module,
       perftools::gputools::StreamExecutor* executor,
       DeviceMemoryAllocator* device_allocator) override;
 
+  StatusOr<std::vector<std::unique_ptr<Executable>>> RunBackendOnModuleGroup(
+      std::unique_ptr<HloModuleGroup> module_group,
+      std::vector<std::vector<se::StreamExecutor*>> stream_exec,
+      DeviceMemoryAllocator* device_allocator) override;
+
   StatusOr<std::vector<std::unique_ptr<Executable>>> Compile(
-      std::vector<std::unique_ptr<HloModule>>,
-      std::vector<std::vector<perftools::gputools::StreamExecutor*>>,
+      std::unique_ptr<HloModuleGroup> module_group,
+      std::vector<std::vector<se::StreamExecutor*>> stream_exec,
       DeviceMemoryAllocator* device_allocator) override;
 
   StatusOr<std::vector<std::unique_ptr<AotCompilationResult>>>
-  CompileAheadOfTime(std::vector<std::unique_ptr<HloModule>>,
+  CompileAheadOfTime(std::unique_ptr<HloModuleGroup>,
                      const AotCompilationOptions&) override;
 
   HloCostAnalysis::ShapeSizeFunction ShapeSizeBytesFunction() const override;

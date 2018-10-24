@@ -52,13 +52,10 @@ Status DefaultPaddedShapeFn(const Tensor& tensor, xla::Shape* shape) {
 
 class IpuDevice : public XlaDevice {
  public:
-  IpuDevice(const SessionOptions& options, const DeviceAttributes& attrs,
-            int device_ordinal, const DeviceType& jit_device_name,
-            se::Platform* platform, bool transfer_as_literal)
-      : XlaDevice(options, attrs, device_ordinal, jit_device_name, platform,
-                  transfer_as_literal, false, {}, DefaultPaddedShapeFn),
-        ordinal_(device_ordinal),
-        poplar_platform_(static_cast<xp::PoplarPlatform*>(platform)) {}
+  IpuDevice(const SessionOptions& options, const XlaDevice::Options& devopts)
+      : XlaDevice(options, devopts),
+        ordinal_(devopts.device_ordinal),
+        poplar_platform_(static_cast<xp::PoplarPlatform*>(devopts.platform)) {}
 
   Status Init(const tensorflow::IPUOptions& options) {
     UseGpuDeviceInfo();
@@ -127,13 +124,14 @@ Status XlaIpuDeviceFactory::CreateDevices(const SessionOptions& options,
         break;
     }
 
-    const DeviceAttributes attrs = Device::BuildDeviceAttributes(
-        strings::StrCat(name_prefix, "/device:IPU:", ordinal),
-        DeviceType(DEVICE_XLA_IPU), Bytes(mem), DeviceLocality(),
-        target_type_name);
+    XlaDevice::Options devopts;
+    devopts.platform = platform.ValueOrDie();
+    devopts.device_name_prefix = name_prefix;
+    devopts.device_name = "IPU";
+    devopts.device_ordinal = ordinal;
+    devopts.compilation_device_name = DEVICE_IPU_XLA_JIT;
 
-    auto* device = new IpuDevice(options, attrs, ordinal,
-                                 DeviceType(DEVICE_IPU_XLA_JIT), p, false);
+    auto* device = new IpuDevice(options, devopts);
 
     TF_RETURN_IF_ERROR(device->Init(options.config.ipu_options()));
 
@@ -154,7 +152,7 @@ REGISTER_XLA_DEVICE_KERNELS(DEVICE_XLA_IPU, kIpuAllTypes);
 // Additional ops not explicitly defined by standard JIT
 REGISTER_XLA_OP(Name("ArgMax")
                     .Device(DEVICE_IPU_XLA_JIT)
-                    .CompileTimeConstInput("dimension"),
+                    .CompileTimeConstantInput("dimension"),
                 XlaArgMaxOp);
 
 REGISTER_KERNEL_BUILDER(Name("RefEnter").Device(DEVICE_IPU_XLA_JIT), NoOp);

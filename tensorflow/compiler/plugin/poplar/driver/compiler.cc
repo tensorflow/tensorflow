@@ -443,34 +443,50 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::RunBackend(
   return std::move(executable);
 }
 
-StatusOr<std::vector<std::unique_ptr<Executable>>> PoplarCompiler::Compile(
-    std::vector<std::unique_ptr<HloModule>> modules,
-    std::vector<std::vector<perftools::gputools::StreamExecutor*>> stream_execs,
+Status PoplarCompiler::RunHloPassesOnModuleGroup(
+    HloModuleGroup* module_group, se::StreamExecutor* executor,
     DeviceMemoryAllocator* device_allocator) {
-  std::vector<std::unique_ptr<Executable>> result;
-  for (size_t i = 0; i < modules.size(); i++) {
-    if (stream_execs[i].size() != 1) {
-      return Unimplemented("Model partitioning not implemented for Poplar");
-    }
+  return xla::InvalidArgument("Module groups not supported on Poplar");
+}
 
-    TF_ASSIGN_OR_RETURN(modules[i],
-                        RunHloPasses(std::move(modules[i]), stream_execs[i][0],
-                                     device_allocator));
+StatusOr<std::vector<std::unique_ptr<Executable>>>
+PoplarCompiler::RunBackendOnModuleGroup(
+    std::unique_ptr<HloModuleGroup> module_group,
+    std::vector<std::vector<se::StreamExecutor*>> stream_exec,
+    DeviceMemoryAllocator* device_allocator) {
+  return xla::InvalidArgument("Module groups not supported on Poplar");
+}
 
-    TF_ASSIGN_OR_RETURN(std::unique_ptr<Executable> executable,
-                        RunBackend(std::move(modules[i]), stream_execs[i][0],
-                                   device_allocator));
-
-    result.push_back(std::move(executable));
+StatusOr<std::vector<std::unique_ptr<Executable>>> PoplarCompiler::Compile(
+    std::unique_ptr<HloModuleGroup> module_group,
+    std::vector<std::vector<se::StreamExecutor*>> stream_exec,
+    DeviceMemoryAllocator* device_allocator) {
+  if (module_group->empty()) {
+    return std::vector<std::unique_ptr<Executable>>();
   }
-
-  return {std::move(result)};
+  if (module_group->size() > 1) {
+    return tensorflow::errors::Unimplemented(
+      "Compilation of multiple HLO modules is not supported on Poplar.");
+  }
+  if (stream_exec.size() != 1 || stream_exec[0].size() != 1) {
+    return tensorflow::errors::Unimplemented(
+      "Unexpected number of StreamExecutor's.");
+  }
+  auto hlo_modules = module_group->ConsumeModules();
+  TF_ASSIGN_OR_RETURN(auto module,
+                      RunHloPasses(std::move(hlo_modules[0]), stream_exec[0][0],
+                      device_allocator));
+  TF_ASSIGN_OR_RETURN(
+      auto executable,
+      RunBackend(std::move(module), stream_exec[0][0], device_allocator));
+  std::vector<std::unique_ptr<Executable>> ret;
+  ret.push_back(std::move(executable));
+  return std::move(ret);
 }
 
 StatusOr<std::vector<std::unique_ptr<AotCompilationResult>>>
 PoplarCompiler::CompileAheadOfTime(
-    std::vector<std::unique_ptr<HloModule>> hlo_modules,
-    const AotCompilationOptions& aot_options) {
+    std::unique_ptr<HloModuleGroup>, const AotCompilationOptions&) {
   return xla::InvalidArgument("AOT compilation not supported on Poplar");
 }
 

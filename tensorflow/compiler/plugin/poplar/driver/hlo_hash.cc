@@ -70,7 +70,7 @@ void HloHash::SerializeHloModuleProto(HloModuleProto* proto,
     CHECK_EQ(computation_proto->name(), computation->name());
     SerializeHloComputationProto(computation_proto, computation);
     if (computation->name() == module->entry_computation()->name()) {
-      *proto->mutable_program_shape() = computation_proto->program_shape();
+      *proto->mutable_host_program_shape() = computation_proto->program_shape();
     }
     serial_id++;
   }

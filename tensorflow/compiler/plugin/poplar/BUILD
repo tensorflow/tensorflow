@@ -42,7 +42,6 @@ tf_proto_library(
     default_header = True,
     j2objc_api_version = 1,
     java_api_version = 2,
-    js_api_version = 2,
 )
 
 cc_library(
