@@ -100,7 +100,7 @@ def fit_loop(
             model.train_function.updates_op,
             model.train_function.session_kwargs)
 
-  inputs, targets = _get_input_from_iterator(iterator, model)
+  inputs, targets, sample_weights = _get_input_from_iterator(iterator, model)
   with current_strategy.scope():
     # Create train ops on each of the devices when we call
     # `_per_device_train_function`.
@@ -451,7 +451,7 @@ def test_loop(model, iterator, verbose=0, steps=None):
             model.test_function.updates_op,
             model.test_function.session_kwargs)
 
-  inputs, targets = _get_input_from_iterator(iterator, model)
+  inputs, targets, sample_weights = _get_input_from_iterator(iterator, model)
   with current_strategy.scope():
     (grouped_inputs, grouped_outputs, grouped_updates,
      grouped_session_args) = current_strategy.call_for_each_replica(
@@ -678,7 +678,7 @@ def predict_loop(model, iterator, verbose=0, steps=None):
             model.predict_function.updates_op,
             model.predict_function.session_kwargs)
 
-  inputs, _ = _get_input_from_iterator(iterator, model)
+  inputs, _, _ = _get_input_from_iterator(iterator, model)
   with current_strategy.scope():
     (grouped_inputs, grouped_outputs, grouped_updates,
      grouped_session_args) = current_strategy.call_for_each_replica(
@@ -957,15 +957,20 @@ def _get_input_from_iterator(iterator, model):
   if len(nest.flatten(next_element)) == len(model.inputs):
     x = next_element
     y = None
-  else:
+    sample_weights = None
+  elif len(nest.flatten(next_element)) == (len(model.inputs) +
+                                           len(model.outputs)):
     x, y = next_element
+    sample_weights = None
+  else:
+    x, y, sample_weights = next_element
 
   # Validate that all the elements in x and y are of the same type and shape.
   # We can then pass the first element of x and y to `_standardize_weights`
   # below and be confident of the output.
-  x_values, y_values = distributed_training_utils.\
-    validate_distributed_dataset_inputs(model._distribution_strategy, x, y)
-  # TODO(sourabhbajaj): Add support for sample weights in distribution
-  # strategy.
-  model._standardize_weights(x_values, y_values)
-  return x, y
+  x_values, y_values, sample_weights_values = distributed_training_utils.\
+    validate_distributed_dataset_inputs(model._distribution_strategy, x, y,
+                                        sample_weights)
+  model._standardize_weights(x_values, y_values,
+                             sample_weight=sample_weights_values)
+  return x, y, sample_weights
