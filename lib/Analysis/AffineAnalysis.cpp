@@ -298,6 +298,30 @@ AffineExpr mlir::simplifyAffineExpr(AffineExpr expr, unsigned numDims,
   return simplifiedExpr;
 }
 
+// Flattens 'expr' into 'flattenedExpr'. Returns true on success or false
+// if 'expr' was unable to be flattened (i.e. because it was not pur affine,
+// or because it contained mod's and div's that could not be eliminated
+// without introducing local variables).
+bool mlir::getFlattenedAffineExpr(
+    AffineExpr expr, unsigned numDims, unsigned numSymbols,
+    llvm::SmallVectorImpl<int64_t> *flattenedExpr) {
+  // TODO(bondhugula): only pure affine for now. The simplification here can be
+  // extended to semi-affine maps in the future.
+  if (!expr.isPureAffine())
+    return false;
+
+  AffineExprFlattener flattener(numDims, numSymbols, expr.getContext());
+  flattener.walkPostOrder(expr);
+  // TODO(andydavis) Support local exprs.
+  if (flattener.numLocals > 0) {
+    return false;
+  }
+  for (auto v : flattener.operandExprStack.back()) {
+    flattenedExpr->push_back(v);
+  }
+  return true;
+}
+
 /// Returns the sequence of AffineApplyOp OperationStmts operation in
 /// 'affineApplyOps', which are reachable via a search starting from 'operands',
 /// and ending at operands which are not defined by AffineApplyOps.

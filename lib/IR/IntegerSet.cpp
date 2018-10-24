@@ -29,6 +29,18 @@ unsigned IntegerSet::getNumOperands() const {
 }
 unsigned IntegerSet::getNumConstraints() const { return set->numConstraints; }
 
+unsigned IntegerSet::getNumEqualities() const {
+  unsigned numEqualities = 0;
+  for (unsigned i = 0, e = getNumConstraints(); i < e; i++)
+    if (isEq(i))
+      ++numEqualities;
+  return numEqualities;
+}
+
+unsigned IntegerSet::getNumInequalities() const {
+  return getNumConstraints() - getNumEqualities();
+}
+
 ArrayRef<AffineExpr> IntegerSet::getConstraints() const {
   return set->constraints;
 }
@@ -44,3 +56,7 @@ ArrayRef<bool> IntegerSet::getEqFlags() const { return set->eqFlags; }
 /// Returns true if the idx^th constraint is an equality, false if it is an
 /// inequality.
 bool IntegerSet::isEq(unsigned idx) const { return getEqFlags()[idx]; }
+
+MLIRContext *IntegerSet::getContext() const {
+  return getConstraint(0).getContext();
+}

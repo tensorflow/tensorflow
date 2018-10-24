@@ -51,6 +51,14 @@ inline int64_t mod(int64_t lhs, int64_t rhs) {
   return lhs % rhs < 0 ? lhs % rhs + rhs : lhs % rhs;
 }
 
+/// Returns the least common multiple of 'a' and 'b'.
+inline int64_t lcm(int64_t a, int64_t b) {
+  uint64_t x = std::abs(a);
+  uint64_t y = std::abs(b);
+  int64_t lcm = (x * y) / llvm::GreatestCommonDivisor64(x, y);
+  assert((lcm >= a && lcm >= b) && "LCM overflow");
+  return lcm;
+}
 } // end namespace mlir
 
 #endif // MLIR_SUPPORT_MATHEXTRAS_H_

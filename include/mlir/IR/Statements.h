@@ -465,6 +465,10 @@ public:
   const AffineCondition getCondition() const;
 
   IntegerSet getIntegerSet() const { return set; }
+  void setIntegerSet(IntegerSet newSet) {
+    assert(newSet.getNumOperands() == operands.size());
+    set = newSet;
+  }
 
   //===--------------------------------------------------------------------===//
   // Operands

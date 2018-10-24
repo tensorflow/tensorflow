@@ -27,6 +27,7 @@
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/IntegerSet.h"
 #include "mlir/IR/MLValue.h"
+#include "mlir/Support/MathExtras.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/DenseSet.h"
 #include "llvm/Support/raw_ostream.h"
@@ -438,6 +439,286 @@ AffineMap AffineValueMap::getAffineMap() { return map.getAffineMap(); }
 
 AffineValueMap::~AffineValueMap() {}
 
+FlatAffineConstraints::FlatAffineConstraints(IntegerSet set)
+    : numReservedEqualities(0), numReservedInequalities(0), numReservedIds(0),
+      numIds(set.getNumDims() + set.getNumSymbols()), numDims(set.getNumDims()),
+      numSymbols(set.getNumSymbols()) {
+  unsigned numConstraints = set.getNumConstraints();
+  for (unsigned i = 0; i < numConstraints; ++i) {
+    AffineExpr expr = set.getConstraint(i);
+    SmallVector<int64_t, 4> flattenedExpr;
+    getFlattenedAffineExpr(expr, set.getNumDims(), set.getNumSymbols(),
+                           &flattenedExpr);
+    assert(flattenedExpr.size() == getNumCols());
+    if (set.getEqFlags()[i]) {
+      addEquality(flattenedExpr);
+    } else {
+      addInequality(flattenedExpr);
+    }
+  }
+}
+
+// Searches for a constraint with a non-zero coefficient at 'colIdx' in
+// equality (isEq=true) or inequality (isEq=false) constraints.
+// Returns true and sets row found in search in 'rowIdx'.
+// Returns false otherwise.
+static bool
+findConstraintWithNonZeroAt(const FlatAffineConstraints &constraints,
+                            unsigned colIdx, bool isEq, unsigned &rowIdx) {
+  auto at = [&](unsigned rowIdx) -> int64_t {
+    return isEq ? constraints.atEq(rowIdx, colIdx)
+                : constraints.atIneq(rowIdx, colIdx);
+  };
+  unsigned e =
+      isEq ? constraints.getNumEqualities() : constraints.getNumInequalities();
+  for (rowIdx = 0; rowIdx < e; ++rowIdx) {
+    if (at(rowIdx) != 0) {
+      return true;
+    }
+  }
+  return false;
+}
+
+// Normalizes the coefficient values across all columns in 'rowIDx' by their
+// GCD in equality or inequality contraints as specified by 'isEq'.
+static void normalizeConstraintByGCD(FlatAffineConstraints *constraints,
+                                     unsigned rowIdx, bool isEq) {
+  auto at = [&](unsigned colIdx) -> int64_t {
+    return isEq ? constraints->atEq(rowIdx, colIdx)
+                : constraints->atIneq(rowIdx, colIdx);
+  };
+  uint64_t gcd = std::abs(at(0));
+  for (unsigned j = 1; j < constraints->getNumCols(); ++j) {
+    gcd = llvm::GreatestCommonDivisor64(gcd, std::abs(at(j)));
+  }
+  if (gcd > 0 && gcd != 1) {
+    for (unsigned j = 0; j < constraints->getNumCols(); ++j) {
+      int64_t v = at(j) / static_cast<int64_t>(gcd);
+      isEq ? constraints->atEq(rowIdx, j) = v
+           : constraints->atIneq(rowIdx, j) = v;
+    }
+  }
+}
+
+// Runs the GCD test on all equality constraints. Returns 'true' if this test
+// fails on any equality. Returns 'false' otherwise.
+// This test can be used to disprove the existence of a solution. If it returns
+// true, no integer solution to the equality constraints can exist.
+//
+// GCD test definition:
+//
+// The equality constraint:
+//
+//  c_1*x_1 + c_2*x_2 + ... + c_n*x_n = c_0
+//
+// has an integer solution iff:
+//
+//  GCD of c_1, c_2, ..., c_n divides c_0.
+//
+static bool isEmptyByGCDTest(const FlatAffineConstraints &constraints) {
+  unsigned numCols = constraints.getNumCols();
+  for (unsigned i = 0, e = constraints.getNumEqualities(); i < e; ++i) {
+    uint64_t gcd = std::abs(constraints.atEq(i, 0));
+    for (unsigned j = 1; j < numCols - 1; ++j) {
+      gcd =
+          llvm::GreatestCommonDivisor64(gcd, std::abs(constraints.atEq(i, j)));
+    }
+    int64_t v = std::abs(constraints.atEq(i, numCols - 1));
+    if (gcd > 0 && (v % gcd != 0)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+// Checks all rows of equality/inequality constraints for contradictions
+// (i.e. 1 == 0), which may have surfaced after elimination.
+// Returns 'true' if a valid constraint is detected. Returns 'false' otherwise.
+static bool hasInvalidConstraint(const FlatAffineConstraints &constraints) {
+  auto check = [constraints](bool isEq) -> bool {
+    unsigned numCols = constraints.getNumCols();
+    unsigned numRows = isEq ? constraints.getNumEqualities()
+                            : constraints.getNumInequalities();
+    for (unsigned i = 0, e = numRows; i < e; ++i) {
+      unsigned j;
+      for (j = 0; j < numCols - 1; ++j) {
+        int64_t v = isEq ? constraints.atEq(i, j) : constraints.atIneq(i, j);
+        // Skip rows with non-zero variable coefficients.
+        if (v != 0)
+          break;
+      }
+      if (j < numCols - 1) {
+        continue;
+      }
+      // Check validity of constant term at 'numCols - 1' w.r.t 'isEq'.
+      // Example invalid constraints include: '1 == 0' or '-1 >= 0'
+      int64_t v = isEq ? constraints.atEq(i, numCols - 1)
+                       : constraints.atIneq(i, numCols - 1);
+      if ((isEq && v != 0) || (!isEq && v < 0)) {
+        return true;
+      }
+    }
+    return false;
+  };
+  if (check(/*isEq=*/true))
+    return true;
+  return check(/*isEq=*/false);
+}
+
+// Eliminate identifier from constraint at 'rowIdx' based on coefficient at
+// pivotRow, pivotCol. Columns in range [elimColStart, pivotCol) will not be
+// updated as they have already been eliminated.
+static void eliminateFromConstraint(FlatAffineConstraints *constraints,
+                                    unsigned rowIdx, unsigned pivotRow,
+                                    unsigned pivotCol, unsigned elimColStart,
+                                    bool isEq) {
+  // Skip if equality 'rowIdx' if same as 'pivotRow'.
+  if (isEq && rowIdx == pivotRow)
+    return;
+  auto at = [&](unsigned i, unsigned j) -> int64_t {
+    return isEq ? constraints->atEq(i, j) : constraints->atIneq(i, j);
+  };
+  int64_t leadCoeff = at(rowIdx, pivotCol);
+  // Skip if leading coefficient at 'rowIdx' is already zero.
+  if (leadCoeff == 0)
+    return;
+  int64_t pivotCoeff = constraints->atEq(pivotRow, pivotCol);
+  int64_t sign = (leadCoeff * pivotCoeff > 0) ? -1 : 1;
+  int64_t lcm = mlir::lcm(pivotCoeff, leadCoeff);
+  int64_t pivotMultiplier = sign * (lcm / std::abs(pivotCoeff));
+  int64_t rowMultiplier = lcm / std::abs(leadCoeff);
+
+  unsigned numCols = constraints->getNumCols();
+  for (unsigned j = 0; j < numCols; ++j) {
+    // Skip updating column 'j' if it was just eliminated.
+    if (j >= elimColStart && j < pivotCol)
+      continue;
+    int64_t v = pivotMultiplier * constraints->atEq(pivotRow, j) +
+                rowMultiplier * at(rowIdx, j);
+    isEq ? constraints->atEq(rowIdx, j) = v
+         : constraints->atIneq(rowIdx, j) = v;
+  }
+}
+
+// Remove coefficients in column range [colStart, colLimit) in place.
+// This removes in data in the specified column range, and copies any
+// remaining valid data into place.
+static void removeColumns(FlatAffineConstraints *constraints, unsigned colStart,
+                          unsigned colLimit, bool isEq) {
+  unsigned numCols = constraints->getNumCols();
+  unsigned newNumCols = numCols - (colLimit - colStart);
+  unsigned numRows = isEq ? constraints->getNumEqualities()
+                          : constraints->getNumInequalities();
+  for (unsigned i = 0, e = numRows; i < e; ++i) {
+    for (unsigned j = 0; j < numCols; ++j) {
+      if (j >= colStart && j < colLimit)
+        continue;
+      unsigned inputIndex = i * numCols + j;
+      unsigned outputOffset = j >= colLimit ? j - (colLimit - colStart) : j;
+      unsigned outputIndex = i * newNumCols + outputOffset;
+      assert(outputIndex <= inputIndex);
+      if (isEq) {
+        constraints->atEqIdx(outputIndex) = constraints->atEqIdx(inputIndex);
+      } else {
+        constraints->atIneqIdx(outputIndex) =
+            constraints->atIneqIdx(inputIndex);
+      }
+    }
+  }
+}
+
+// Removes coefficients in column range [colStart, colLimit),and copies any
+// remaining valid data into place, updates member variables, and resizes
+// arrays as needed.
+void FlatAffineConstraints::removeColumnRange(unsigned colStart,
+                                              unsigned colLimit) {
+  // TODO(andydavis) Make 'removeColumns' a lambda called from here.
+  // Remove eliminated columns from equalities.
+  removeColumns(this, colStart, colLimit, /*isEq=*/true);
+  // Remove eliminated columns from inequalities.
+  removeColumns(this, colStart, colLimit, /*isEq=*/false);
+  // Update members numDims, numSymbols and numIds.
+  unsigned numDimsEliminated = 0;
+  if (colStart < numDims) {
+    numDimsEliminated = std::min(numDims, colLimit) - colStart;
+  }
+  unsigned numEqualities = getNumEqualities();
+  unsigned numInequalities = getNumInequalities();
+  unsigned numColsEliminated = colLimit - colStart;
+  unsigned numSymbolsEliminated =
+      std::min(numSymbols, numColsEliminated - numDimsEliminated);
+  numDims -= numDimsEliminated;
+  numSymbols -= numSymbolsEliminated;
+  numIds = numIds - numColsEliminated;
+  equalities.resize(numEqualities * getNumCols());
+  inequalities.resize(numInequalities * getNumCols());
+}
+
+// Performs variable elimination on all identifiers, runs the GCD test on
+// all equality constraint rows, and checks the constraint validity.
+// Returns 'true' if the GCD test fails on any row, or if any invalid
+// constraint is detected. Returns 'false' otherwise.
+bool FlatAffineConstraints::isEmpty() {
+  if (eliminateIdentifiers(0, numIds) == 0)
+    return false;
+  if (isEmptyByGCDTest(*this))
+    return true;
+  if (hasInvalidConstraint(*this))
+    return true;
+  return false;
+}
+
+// Eliminates a single identifier at 'position' from equality and inequality
+// constraints. Returns 'true' if the identifier was eliminated.
+// Returns 'false' otherwise.
+bool FlatAffineConstraints::eliminateIdentifier(unsigned position) {
+  return eliminateIdentifiers(position, position + 1) == 1;
+}
+
+// Eliminates all identifer variables in column range [posStart, posLimit).
+// Returns the number of variables eliminated.
+unsigned FlatAffineConstraints::eliminateIdentifiers(unsigned posStart,
+                                                     unsigned posLimit) {
+  // Return if identifier positions to eliminate are out of range.
+  if (posStart >= posLimit || posLimit > numIds)
+    return 0;
+  unsigned pivotCol = 0;
+  for (pivotCol = posStart; pivotCol < posLimit; ++pivotCol) {
+    // Find a row which has a non-zero coefficient in column 'j'.
+    unsigned pivotRow;
+    if (!findConstraintWithNonZeroAt(*this, pivotCol, /*isEq=*/true,
+                                     pivotRow)) {
+      // No pivot row in equalities with non-zero at 'pivotCol'.
+      if (!findConstraintWithNonZeroAt(*this, pivotCol, /*isEq=*/false,
+                                       pivotRow)) {
+        // If inequalities are also non-zero in 'pivotCol' it can be eliminated.
+        continue;
+      }
+      break;
+    }
+
+    // Eliminate identifier at 'pivotCol' from each equality row.
+    for (unsigned i = 0, e = getNumEqualities(); i < e; ++i) {
+      eliminateFromConstraint(this, i, pivotRow, pivotCol, posStart,
+                              /*isEq=*/true);
+      normalizeConstraintByGCD(this, i, /*isEq=*/true);
+    }
+
+    // Eliminate identifier at 'pivotCol' from each inequality row.
+    for (unsigned i = 0, e = getNumInequalities(); i < e; ++i) {
+      eliminateFromConstraint(this, i, pivotRow, pivotCol, posStart,
+                              /*isEq=*/false);
+      normalizeConstraintByGCD(this, i, /*isEq=*/false);
+    }
+    removeEquality(pivotRow);
+  }
+  // Update position limit based on number eliminated.
+  posLimit = pivotCol;
+  // Remove eliminated columns from all constraints.
+  removeColumnRange(posStart, posLimit);
+  return posLimit - posStart;
+}
+
 void FlatAffineConstraints::addEquality(ArrayRef<int64_t> eq) {
   assert(eq.size() == getNumCols());
   unsigned offset = equalities.size();
@@ -446,3 +727,44 @@ void FlatAffineConstraints::addEquality(ArrayRef<int64_t> eq) {
     equalities[offset + i] = eq[i];
   }
 }
+
+void FlatAffineConstraints::removeEquality(unsigned pos) {
+  unsigned numEqualities = getNumEqualities();
+  assert(pos < numEqualities);
+  unsigned numCols = getNumCols();
+  unsigned outputIndex = pos * numCols;
+  unsigned inputIndex = (pos + 1) * numCols;
+  unsigned numElemsToCopy = (numEqualities - pos - 1) * numCols;
+  for (unsigned i = 0; i < numElemsToCopy; ++i) {
+    equalities[outputIndex + i] = equalities[inputIndex + i];
+  }
+  equalities.resize(equalities.size() - numCols);
+}
+
+void FlatAffineConstraints::addInequality(ArrayRef<int64_t> inEq) {
+  assert(inEq.size() == getNumCols());
+  unsigned offset = inequalities.size();
+  inequalities.resize(inequalities.size() + inEq.size());
+  for (unsigned i = 0, e = inEq.size(); i < e; i++) {
+    inequalities[offset + i] = inEq[i];
+  }
+}
+
+void FlatAffineConstraints::print(raw_ostream &os) const {
+  os << "\nConstraints:\n";
+  for (unsigned i = 0, e = getNumEqualities(); i < e; ++i) {
+    for (unsigned j = 0; j < getNumCols(); ++j) {
+      os << atEq(i, j) << " ";
+    }
+    os << "= 0\n";
+  }
+  for (unsigned i = 0, e = getNumInequalities(); i < e; ++i) {
+    for (unsigned j = 0; j < getNumCols(); ++j) {
+      os << atIneq(i, j) << " ";
+    }
+    os << ">= 0\n";
+  }
+  os << '\n';
+}
+
+void FlatAffineConstraints::dump() const { print(llvm::errs()); }

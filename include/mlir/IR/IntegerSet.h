@@ -59,6 +59,14 @@ public:
                         ArrayRef<AffineExpr> constraints,
                         ArrayRef<bool> eqFlags, MLIRContext *context);
 
+  // Returns a canonical empty IntegerSet (i.e. a set with no integer points).
+  static IntegerSet getEmptySet(unsigned numDims, unsigned numSymbols,
+                                MLIRContext *context) {
+    auto one = getAffineConstantExpr(1, context);
+    /* 1 == 0 */
+    return get(numDims, numSymbols, one, true, context);
+  }
+
   explicit operator bool() { return set; }
   bool operator==(IntegerSet other) const { return set == other.set; }
 
@@ -66,6 +74,8 @@ public:
   unsigned getNumSymbols() const;
   unsigned getNumOperands() const;
   unsigned getNumConstraints() const;
+  unsigned getNumEqualities() const;
+  unsigned getNumInequalities() const;
 
   ArrayRef<AffineExpr> getConstraints() const;
 
@@ -78,6 +88,8 @@ public:
   /// Returns true if the idx^th constraint is an equality, false if it is an
   /// inequality.
   bool isEq(unsigned idx) const;
+
+  MLIRContext *getContext() const;
 
   void print(raw_ostream &os) const;
   void dump() const;

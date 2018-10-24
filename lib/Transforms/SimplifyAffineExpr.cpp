@@ -24,6 +24,7 @@
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/MLFunction.h"
 #include "mlir/IR/Statements.h"
+#include "mlir/IR/StmtVisitor.h"
 #include "mlir/Transforms/Pass.h"
 #include "mlir/Transforms/Passes.h"
 
@@ -36,32 +37,51 @@ namespace {
 /// the MLFunction. This is mainly to test the simplifyAffineExpr method.
 //  TODO(someone): Gradually, extend this to all affine map references found in
 //  ML functions and CFG functions.
-struct SimplifyAffineExpr : public FunctionPass {
-  explicit SimplifyAffineExpr() {}
+struct SimplifyAffineStructures : public FunctionPass,
+                                  StmtWalker<SimplifyAffineStructures> {
+  explicit SimplifyAffineStructures() {}
 
   PassResult runOnMLFunction(MLFunction *f);
   // Does nothing on CFG functions for now. No reusable walkers/visitors exist
   // for this yet? TODO(someone).
   PassResult runOnCFGFunction(CFGFunction *f) { return success(); }
+
+  void visitOperationStmt(OperationStmt *stmt);
+  void visitIfStmt(IfStmt *ifStmt);
 };
 
 } // end anonymous namespace
 
 FunctionPass *mlir::createSimplifyAffineExprPass() {
-  return new SimplifyAffineExpr();
+  return new SimplifyAffineStructures();
 }
 
-PassResult SimplifyAffineExpr::runOnMLFunction(MLFunction *f) {
-  f->walkPostOrder([&](OperationStmt *opStmt) {
-    for (auto attr : opStmt->getAttrs()) {
-      if (auto *mapAttr = dyn_cast<AffineMapAttr>(attr.second)) {
-        MutableAffineMap mMap(mapAttr->getValue());
-        mMap.simplify();
-        auto map = mMap.getAffineMap();
-        opStmt->setAttr(attr.first, AffineMapAttr::get(map));
-      }
-    }
-  });
+static IntegerSet simplifyIntegerSet(IntegerSet set) {
+  FlatAffineConstraints fac(set);
+  if (fac.isEmpty())
+    return IntegerSet::getEmptySet(set.getNumDims(), set.getNumSymbols(),
+                                   set.getContext());
+  return set;
+}
 
+void SimplifyAffineStructures::visitIfStmt(IfStmt *ifStmt) {
+  auto set = ifStmt->getCondition().getSet();
+  IntegerSet simplified = simplifyIntegerSet(set);
+  ifStmt->setIntegerSet(simplified);
+}
+
+void SimplifyAffineStructures::visitOperationStmt(OperationStmt *opStmt) {
+  for (auto attr : opStmt->getAttrs()) {
+    if (auto *mapAttr = dyn_cast<AffineMapAttr>(attr.second)) {
+      MutableAffineMap mMap(mapAttr->getValue());
+      mMap.simplify();
+      auto map = mMap.getAffineMap();
+      opStmt->setAttr(attr.first, AffineMapAttr::get(map));
+    }
+  }
+}
+
+PassResult SimplifyAffineStructures::runOnMLFunction(MLFunction *f) {
+  walk(f);
   return success();
 }

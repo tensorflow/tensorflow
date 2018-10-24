@@ -248,6 +248,9 @@ public:
   explicit FlatAffineConstraints(const AffineValueMap &avm);
   explicit FlatAffineConstraints(ArrayRef<const AffineValueMap *> avmRef);
 
+  /// Creates an affine constraint system from an IntegerSet.
+  explicit FlatAffineConstraints(IntegerSet set);
+
   /// Create an affine constraint system from an IntegerValueSet.
   // TODO(bondhugula)
   explicit FlatAffineConstraints(const IntegerValueSet &set);
@@ -259,6 +262,24 @@ public:
 
   ~FlatAffineConstraints() {}
 
+  // Checks for emptiness by performing variable elimination on all identifiers,
+  // running the GCD test on each equality constraint, and checking for invalid
+  // constraints.
+  // Returns true if the GCD test fails for any equality, or if any invalid
+  // constraints are discovered on any row. Returns false otherwise.
+  // TODO(andydavis) Change this method to operate on cloned constraints.
+  bool isEmpty();
+
+  // Eliminates a single identifier at 'position' from equality and inequality
+  // constraints. Returns 'true' if the identifier was eliminated.
+  // Returns 'false' otherwise.
+  bool eliminateIdentifier(unsigned position);
+
+  // Eliminates identifiers from equality and inequality constraints
+  // in column range [posStart, posLimit).
+  // Returns the number of variables eliminated.
+  unsigned eliminateIdentifiers(unsigned posStart, unsigned posLimit);
+
   inline int64_t atEq(unsigned i, unsigned j) const {
     return equalities[i * (numIds + 1) + j];
   }
@@ -267,12 +288,28 @@ public:
     return equalities[i * (numIds + 1) + j];
   }
 
+  inline int64_t atEqIdx(unsigned linearIndex) const {
+    return equalities[linearIndex];
+  }
+
+  inline int64_t &atEqIdx(unsigned linearIndex) {
+    return equalities[linearIndex];
+  }
+
   inline int64_t atIneq(unsigned i, unsigned j) const {
     return inequalities[i * (numIds + 1) + j];
   }
 
   inline int64_t &atIneq(unsigned i, unsigned j) {
     return inequalities[i * (numIds + 1) + j];
+  }
+
+  inline int64_t atIneqIdx(unsigned linearIndex) const {
+    return inequalities[linearIndex];
+  }
+
+  inline int64_t &atIneqIdx(unsigned linearIndex) {
+    return inequalities[linearIndex];
   }
 
   inline unsigned getNumCols() const { return numIds + 1; }
@@ -323,6 +360,11 @@ public:
   void dump() const;
 
 private:
+  // Removes coefficients in column range [colStart, colLimit),and copies any
+  // remaining valid data into place, updates member variables, and resizes
+  // arrays as needed.
+  void removeColumnRange(unsigned colStart, unsigned colLimit);
+
   /// Coefficients of affine equalities (in == 0 form).
   SmallVector<int64_t, 64> equalities;
 

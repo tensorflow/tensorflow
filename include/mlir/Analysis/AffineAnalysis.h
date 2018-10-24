@@ -49,6 +49,14 @@ void getReachableAffineApplyOps(
     llvm::ArrayRef<MLValue *> operands,
     llvm::SmallVectorImpl<OperationStmt *> &affineApplyOps);
 
+/// Flattens 'expr' into 'flattenedExpr'. Returns true on success or false
+/// if 'expr' was unable to be flattened (i.e. because it was not pure affine,
+/// or because it contained mod's and div's that could not be eliminated
+/// without introducing local variables).
+bool getFlattenedAffineExpr(AffineExpr expr, unsigned numDims,
+                            unsigned numSymbols,
+                            llvm::SmallVectorImpl<int64_t> *flattenedExpr);
+
 } // end namespace mlir
 
 #endif // MLIR_ANALYSIS_AFFINE_ANALYSIS_H

@@ -22,6 +22,38 @@
 // CHECK: #map{{[0-9]+}} = (d0, d1) -> (d0 - (d0 floordiv 8) * 8, (d1 floordiv 8) * 8)
 #map6 = (d0, d1) -> (d0 mod 8, d1 - d1 mod 8)
 
+// Set for test case: test_gaussian_elimination_empty_set0
+// CHECK: @@set0 = (d0, d1) : (1 == 0)
+@@set0 = (d0, d1) : (2 == 0)
+
+// Set for test case: test_gaussian_elimination_empty_set1
+// CHECK: @@set1 = (d0, d1) : (1 == 0)
+@@set1 = (d0, d1) : (1 >= 0, -1 >= 0)
+
+// Set for test case: test_gaussian_elimination_non_empty_set2
+// CHECK: @@set2 = (d0, d1) : (d0 - 100 == 0, d1 - 10 == 0, d0 * -1 + 100 >= 0, d1 >= 0, d1 + 101 >= 0)
+@@set2 = (d0, d1) : (d0 - 100 == 0, d1 - 10 == 0, -d0 + 100 >= 0, d1 >= 0, d1 + 101 >= 0)
+
+// Set for test case: test_gaussian_elimination_empty_set3
+// CHECK: @@set3 = (d0, d1)[s0, s1] : (1 == 0)
+@@set3 = (d0, d1)[s0, s1] : (d0 - s0 == 0, d0 + s0 == 0, s0 - 1 == 0)
+
+// Set for test case: test_gaussian_elimination_non_empty_set4
+// CHECK: @@set4 = (d0, d1)[s0, s1] : (d0 * 7 + d1 * 5 + s0 * 11 + s1 == 0, d0 * 5 - d1 * 11 + s0 * 7 + s1 == 0, d0 * 11 + d1 * 7 - s0 * 5 + s1 == 0, d0 * 7 + d1 * 5 + s0 * 11 + s1 == 0)
+@@set4 = (d0, d1)[s0, s1] : (d0 * 7 + d1 * 5 + s0 * 11 + s1 == 0,
+                             d0 * 5 - d1 * 11 + s0 * 7 + s1 == 0,
+			     d0 * 11 + d1 * 7 - s0 * 5 + s1 == 0,
+			     d0 * 7 + d1 * 5 + s0 * 11 + s1 == 0)
+
+// Add invalide constraints to previous non-empty set to make it empty.
+// Set for test case: test_gaussian_elimination_empty_set5
+// CHECK: @@set5 = (d0, d1)[s0, s1] : (1 == 0)
+@@set5 = (d0, d1)[s0, s1] : (d0 * 7 + d1 * 5 + s0 * 11 + s1 == 0,
+                             d0 * 5 - d1 * 11 + s0 * 7 + s1 == 0,
+			     d0 * 11 + d1 * 7 - s0 * 5 + s1 == 0,
+			     d0 * 7 + d1 * 5 + s0 * 11 + s1 == 0,
+			     d0 - 1 == 0, d0 + 2 == 0)
+
 mlfunc @test() {
   for %n0 = 0 to 127 {
     for %n1 = 0 to 7 {
@@ -37,3 +69,80 @@ mlfunc @test() {
   return
 }
 
+// CHECK-LABEL: mlfunc @test_gaussian_elimination_empty_set0() {
+mlfunc @test_gaussian_elimination_empty_set0() {
+  for %i0 = 1 to 10 {
+    for %i1 = 1 to 100 {
+      // CHECK: @@set0(%i0, %i1)
+      if @@set0(%i0, %i1) {
+      }
+    }
+  }
+  return
+}
+
+// CHECK-LABEL: mlfunc @test_gaussian_elimination_empty_set1() {
+mlfunc @test_gaussian_elimination_empty_set1() {
+  for %i0 = 1 to 10 {
+    for %i1 = 1 to 100 {
+      // CHECK: @@set1(%i0, %i1)
+      if @@set1(%i0, %i1) {
+      }
+    }
+  }
+  return
+}
+
+// CHECK-LABEL: mlfunc @test_gaussian_elimination_non_empty_set2() {
+mlfunc @test_gaussian_elimination_non_empty_set2() {
+  for %i0 = 1 to 10 {
+    for %i1 = 1 to 100 {
+      // CHECK: @@set2(%i0, %i1)
+      if @@set2(%i0, %i1) {
+      }
+    }
+  }
+  return
+}
+
+// CHECK-LABEL: mlfunc @test_gaussian_elimination_empty_set3() {
+mlfunc @test_gaussian_elimination_empty_set3() {
+  %c7 = constant 7 : index
+  %c11 = constant 11 : index
+  for %i0 = 1 to 10 {
+    for %i1 = 1 to 100 {
+      // CHECK: @@set3(%i0, %i1)[%c7, %c11]
+      if @@set3(%i0, %i1)[%c7, %c11] {
+      }
+    }
+  }
+  return
+}
+
+// CHECK-LABEL: mlfunc @test_gaussian_elimination_non_empty_set4() {
+mlfunc @test_gaussian_elimination_non_empty_set4() {
+  %c7 = constant 7 : index
+  %c11 = constant 11 : index
+  for %i0 = 1 to 10 {
+    for %i1 = 1 to 100 {
+      // CHECK: @@set4(%i0, %i1)[%c7, %c11]
+      if @@set4(%i0, %i1)[%c7, %c11] {
+      }
+    }
+  }
+  return
+}
+
+// CHECK-LABEL: mlfunc @test_gaussian_elimination_empty_set5() {
+mlfunc @test_gaussian_elimination_empty_set5() {
+  %c7 = constant 7 : index
+  %c11 = constant 11 : index
+  for %i0 = 1 to 10 {
+    for %i1 = 1 to 100 {
+      // CHECK: @@set5(%i0, %i1)[%c7, %c11]
+      if @@set5(%i0, %i1)[%c7, %c11] {
+      }
+    }
+  }
+  return
+}
