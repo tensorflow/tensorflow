@@ -163,7 +163,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
 
   def testGraphGradientVariable(self):
     with ops.Graph().as_default(), self.cached_session():
-      v = resource_variable_ops.ResourceVariable(1.0)
+      v = variables.Variable(1.0)
 
       @def_function.function
       def f():
@@ -177,9 +177,9 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
 
   def testGraphEagerIsolation(self):
 
-    @def_function.function
+    @function.defun
     def f():
-      self.v = resource_variable_ops.ResourceVariable(1.0)
+      self.v = variables.Variable(1.0)
       return self.v.read_value()
 
     self.assertAllEqual(f(), 1.0)
@@ -677,7 +677,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
 
   def testSymbolicGradientVariableNoneNotZerosLike(self):
     with ops.Graph().as_default():
-      v = resource_variable_ops.ResourceVariable(1.0)
+      v = variables.Variable(1.0)
 
       @def_function.function
       def f(x, v):
@@ -692,7 +692,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
         self.assertEqual(dv, None)
 
   def testGraphModeManyFunctions(self):
-    with context.graph_mode(), self.cached_session():
+    with ops.Graph().as_default(), self.cached_session():
 
       @def_function.function
       def f(x):
