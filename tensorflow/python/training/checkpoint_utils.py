@@ -180,10 +180,10 @@ def init_from_checkpoint(ckpt_dir_or_file, assignment_map):
     tf.errors.OpError: If missing checkpoints or tensors in checkpoints.
     ValueError: If missing variables in current graph.
   """
-  if distribution_strategy_context.get_cross_tower_context():
+  if distribution_strategy_context.get_cross_replica_context():
     _init_from_checkpoint(None, ckpt_dir_or_file, assignment_map)
   else:
-    distribution_strategy_context.get_tower_context().merge_call(
+    distribution_strategy_context.get_replica_context().merge_call(
         _init_from_checkpoint, ckpt_dir_or_file, assignment_map)
 
 

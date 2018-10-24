@@ -33,7 +33,7 @@ from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
 from tensorflow.python.training import distribute as distribute_lib
-from tensorflow.python.training import distribution_strategy_context
+from tensorflow.python.training import distribution_strategy_context as distribute_ctx
 from tensorflow.python.training import optimizer as optimizer_v1
 from tensorflow.python.training import slot_creator
 from tensorflow.python.training.checkpointable import base as checkpointable
@@ -631,16 +631,16 @@ class OptimizerV2(optimizer_v1.Optimizer):
     # Map from graph_key to state for that graph. We use the graph_key
     # since it works in both eager and graph mode, and gives the outer
     # graph inside functions.
-    tower_context = distribution_strategy_context.get_tower_context()
-    if tower_context is None:
-      # In a cross-tower context for a DistributionStrategy, which means
-      # only one Optimizer will be created, not one per tower.
+    replica_context = distribute_ctx.get_replica_context()
+    if replica_context is None:
+      # In a cross-replica context for a DistributionStrategy, which means
+      # only one Optimizer will be created, not one per replica.
       self._per_graph_state = {}
     else:
-      # We use get_tower_context().merge_call() to get a single dict
+      # We use get_replica_context().merge_call() to get a single dict
       # shared across all model replicas when running with a
       # DistributionStrategy.
-      self._per_graph_state = tower_context.merge_call(lambda _: {})
+      self._per_graph_state = replica_context.merge_call(lambda _: {})
 
     # Hyper parameters, and whether they should be re-evaluated every step.
     self._hyper = {}
@@ -792,10 +792,9 @@ class OptimizerV2(optimizer_v1.Optimizer):
               distribute_lib.get_loss_reduction() == variable_scope
               .VariableAggregation.MEAN)
         if scale_loss_by_num_towers:
-          num_towers = distribution_strategy_context.get_distribution_strategy(
-          ).num_towers
-          if num_towers > 1:
-            loss_value *= 1. / num_towers
+          num_replicas = distribute_ctx.get_distribution_strategy().num_replicas
+          if num_replicas > 1:
+            loss_value *= 1. / num_replicas
 
       if var_list is None:
         var_list = tape.watched_variables()
@@ -805,16 +804,15 @@ class OptimizerV2(optimizer_v1.Optimizer):
       raise RuntimeError("`loss` passed to Optimizer.compute_gradients should "
                          "be a function when eager execution is enabled.")
 
-    # Scale loss for number of towers (non-callable-loss case).
+    # Scale loss for number of replicas (non-callable-loss case).
     if scale_loss_by_num_towers is None:
       scale_loss_by_num_towers = (
           distribute_lib.get_loss_reduction() == variable_scope
           .VariableAggregation.MEAN)
     if scale_loss_by_num_towers:
-      num_towers = distribution_strategy_context.get_distribution_strategy(
-      ).num_towers
-      if num_towers > 1:
-        loss *= 1. / num_towers
+      num_replicas = distribute_ctx.get_distribution_strategy().num_replicas
+      if num_replicas > 1:
+        loss *= 1. / num_replicas
 
     if gate_gradients not in [
         optimizer_v1.Optimizer.GATE_NONE, optimizer_v1.Optimizer.GATE_OP,
@@ -890,7 +888,7 @@ class OptimizerV2(optimizer_v1.Optimizer):
     if not filtered:
       raise ValueError("No gradients provided for any variable: %s." %
                        ([str(v) for _, v in grads_and_vars],))
-    return distribution_strategy_context.get_tower_context().merge_call(
+    return distribute_ctx.get_replica_context().merge_call(
         self._distributed_apply, filtered, global_step=global_step, name=name)
 
   def _get_or_create_state(self, var_list=None):
