@@ -945,9 +945,16 @@ tensorflow::Status ConvertAfterShapes(ConversionParams& params) {
                                 &graph, alloc.get(), &engine_nodes);
     // If status is ok, we successfully added the node to the graph and can
     // remove segment ops. Otherwise graph is not modified.
-    const string msg = StrCat("Engine ", engine.engine_name,
-                              " creation for segment ", i, ", composed of ",
-                              converted_segments.at(i).first.size(), " nodes");
+    string msg = StrCat("Engine ", engine.engine_name, " creation for segment ",
+                        i, ", composed of ",
+                        converted_segments.at(i).first.size(), " nodes");
+    if (VLOG_IS_ON(1)) {
+      StrAppend(&msg, " (");
+      for (const string& node_name : converted_segments.at(i).first) {
+        StrAppend(&msg, node_name, ", ");
+      }
+      StrAppend(&msg, ")");
+    }
     if (status.ok()) {
       LOG(INFO) << msg << " succeeded.";
       for (auto node_name : converted_segments.at(i).first) {
