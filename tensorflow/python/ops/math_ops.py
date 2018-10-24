@@ -572,8 +572,9 @@ def angle(input, name=None):
   For example:
 
   ```
-input = tf.constant([-2.25 + 4.75j, 3.25 + 5.75j])
-  tf.angle(input) ==> array([2.0131705, 1.056345 ], dtype=float32)
+  input = tf.constant([-2.25 + 4.75j, 3.25 + 5.75j], dtype=tf.complex64)
+  tf.angle(input).numpy()
+  # ==> array([2.0131705, 1.056345 ], dtype=float32)
   ```
 
   Args:
