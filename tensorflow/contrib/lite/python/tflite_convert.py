@@ -193,13 +193,22 @@ def _check_flags(flags, unparsed):
   if unparsed:
     output = ""
     for flag in unparsed:
-      output += _get_message_unparsed(flag, "--input_file", "--graph_def_file")
-      output += _get_message_unparsed(flag, "--savedmodel_directory",
-                                      "--saved_model_dir")
-      output += _get_message_unparsed(flag, "--std_value", "--std_dev_values")
-      output += _get_message_unparsed(flag, "--batch_size", "--input_shapes")
-      output += _get_message_unparsed(flag, "--dump_graphviz",
-                                      "--dump_graphviz_dir")
+      flag_error = ""
+      flag_error += _get_message_unparsed(flag, "--input_file",
+                                          "--graph_def_file")
+      flag_error += _get_message_unparsed(flag, "--savedmodel_directory",
+                                          "--saved_model_dir")
+      flag_error += _get_message_unparsed(flag, "--std_value",
+                                          "--std_dev_values")
+      flag_error += _get_message_unparsed(flag, "--batch_size",
+                                          "--input_shapes")
+      flag_error += _get_message_unparsed(flag, "--dump_graphviz",
+                                          "--dump_graphviz_dir")
+      if not flag_error:
+        flag_error = "\n  Unknown flag {0}".format(flag)
+
+      output += flag_error
+
     if output:
       raise ValueError(output)
 
