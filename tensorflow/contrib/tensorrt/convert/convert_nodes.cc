@@ -969,6 +969,32 @@ Status Converter::TransposeTensor(nvinfer1::ITensor* input_tensor,
   return tensorflow::Status::OK();
 }
 
+Status Converter::GetWeightRange(const TRT_ShapedWeights& weights,
+                                 float* out_min,
+                                 float* out_max) {
+  switch (weights.type_) {
+    case tensorflow::DataType::DT_FLOAT: {
+      auto inp = static_cast<float const*>(weights.GetValues());
+      auto result = std::minmax_element(inp, inp + weights.count());
+      *out_min = *result.first;
+      *out_max = *result.second;
+      break;
+    }
+    case tensorflow::DataType::DT_HALF: {
+      auto inp = static_cast<Eigen::half const*>(weights.GetValues());
+      auto result = std::minmax_element(inp, inp + weights.count());
+      *out_min = Eigen::half_impl::half_to_float(*result.first);
+      *out_max = Eigen::half_impl::half_to_float(*result.second);
+      break;
+    }
+    default:
+      return tensorflow::errors::Unimplemented(
+          "Data type not supported: " +
+          tensorflow::DataTypeString(weights.type_));
+  }
+  return tensorflow::Status::OK();
+}
+
 Status Converter::PrepareTensorForShape(const TRT_TensorOrWeights& input,
                                         const nvinfer1::Dims& dims,
                                         const nvinfer1::ITensor** tensor) {
@@ -1004,6 +1030,21 @@ Status Converter::PrepareTensorForShape(const TRT_TensorOrWeights& input,
         this->network()->addConstant(dims, input.weights().GetTrtWeights());
     TFTRT_RETURN_ERROR_IF_NULLPTR(layer, "TF-TRT Internal Reshape");
     *tensor = layer->getOutput(0);
+    // We need to set a quantization range for the output tensor of the
+    // IConstantLayer. Here we set the range to [min(weights), max(weights)].
+    float min_range = 0.0f;
+    float max_range = 0.0f;
+    TF_RETURN_IF_ERROR(
+        GetWeightRange(input.weights(), &min_range, &max_range));
+    // Avoid setting range to 0 because TRT will throw an error. If the weights
+    // are zero then the range doesn't matter: using 127.0f should ensure the
+    // quantized weight will be exactly zero.
+    if (min_range == 0.0f && max_range == 0.0f) {
+      min_range = -127.0f;
+      max_range = 127.0f;
+    }
+    ProvideQuantizationRange(const_cast<nvinfer1::ITensor*>(*tensor),
+        min_range, max_range);
   }
   return tensorflow::Status::OK();
 }
@@ -1555,6 +1596,8 @@ tensorflow::Status ConvertConv2DHelper(OpConverterParams* params, int group) {
         nvinfer1::DimsHW(padding[0].first, padding[1].first),
         nvinfer1::DimsHW(padding[0].second, padding[1].second));
     TFTRT_RETURN_ERROR_IF_NULLPTR(pad_layer, node_def.name());
+    ctx.MarkQuantizationRangesAsInferrable(
+        const_cast<nvinfer1::ITensor*>(tensor), pad_layer->getOutput(0));
     padding = {{0, 0}, {0, 0}};
     tensor = pad_layer->getOutput(0);
     VLOG(2) << "TENSOR after: " << DebugString(tensor->getDimensions());
@@ -1943,7 +1986,9 @@ tensorflow::Status ConvertActivation(OpConverterParams* params) {
 tensorflow::Status ConvertQuantize(OpConverterParams* params) {
   const auto& inputs = params->inputs;
   const auto& node_def = params->node_def;
-  if (inputs.at(0).is_weights()) {
+  if (inputs.size() > 0 && inputs.at(0).is_weights()) {
+    // TensorRT will automatically quantize weights, so we will ignore ranges
+    // for weights.
     params->outputs->push_back(inputs.at(0));
     return tensorflow::Status::OK();
   }
@@ -1952,10 +1997,19 @@ tensorflow::Status ConvertQuantize(OpConverterParams* params) {
   if (inputs.size() == 1) {
     // Get ranges from attributes
     TFAttrs attrs(node_def);
+    if (attrs.count("min") == 0 || attrs.count("max") == 0) {
+      return tensorflow::errors::InvalidArgument(
+          "Min or max attribute not found for quantize, at ", node_def.name());
+    }
     min_range = attrs.get<float>("min");
     max_range = attrs.get<float>("max");
   } else if (inputs.size() == 3) {
     // Get ranges from inputs
+    if (!inputs.at(1).is_weights() || !inputs.at(2).is_weights()) {
+      return tensorflow::errors::InvalidArgument(
+          "Min and max for quantize must be weights not tensors, at ",
+          node_def.name());
+    }
     // Min
     TRT_ShapedWeights weights_min = inputs.at(1).weights();
     auto weights_min_ptr = static_cast<float*>(const_cast<void*>(

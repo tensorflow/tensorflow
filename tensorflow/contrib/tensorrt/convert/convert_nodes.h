@@ -478,6 +478,10 @@ class Converter {
 
   void PropagateQuantizationRanges();
   
+  // Gets the min and max value in a TRT_ShapedWeights
+  Status GetWeightRange(const TRT_ShapedWeights& weights,
+                        float* out_min, float* out_max);
+
   // Registered op converters by op type.
   std::unordered_map<string, OpConverter> op_registry_;
 
