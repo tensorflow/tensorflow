@@ -27,12 +27,17 @@ import numpy as np
 
 from tensorflow.python import keras
 from tensorflow.python.eager import context
+from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import random_seed
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import rnn_cell
 from tensorflow.python.ops import special_math_ops
 from tensorflow.python.ops import state_ops
+from tensorflow.python.ops import variables as variables_lib
 from tensorflow.python.platform import test
 from tensorflow.python.training import rmsprop
 from tensorflow.python.training.checkpointable import util as checkpointable_util
@@ -995,6 +1000,49 @@ class RNNTest(test.TestCase):
         [np.zeros((batch, t, o1)),
          np.zeros((batch, t, o2, o3))])
     self.assertEqual(model.output_shape, [(None, t, o1), (None, t, o2, o3)])
+
+  def test_peephole_lstm_cell(self):
+
+    def _run_cell(cell_fn, **kwargs):
+      with self.cached_session() as sess:
+        inputs = array_ops.one_hot([1, 2, 3, 4], 4)
+        cell = cell_fn(5, **kwargs)
+        cell.build(inputs.shape)
+        initial_state = cell.get_initial_state(
+            inputs=inputs, batch_size=4, dtype=dtypes.float32)
+        inputs, _ = cell(inputs, initial_state)
+        output = inputs
+        if not context.executing_eagerly():
+          sess.run(variables_lib.global_variables_initializer())
+          output = sess.run(output)
+        return output
+
+    random_seed.set_random_seed(12345)
+    # `recurrent_activation` kwarg is set to sigmoid as that is hardcoded into
+    # rnn_cell.LSTMCell.
+    no_peephole_output = _run_cell(
+        keras.layers.LSTMCell,
+        kernel_initializer='ones',
+        recurrent_activation='sigmoid',
+        implementation=1)
+    first_implementation_output = _run_cell(
+        keras.layers.PeepholeLSTMCell,
+        kernel_initializer='ones',
+        recurrent_activation='sigmoid',
+        implementation=1)
+    second_implementation_output = _run_cell(
+        keras.layers.PeepholeLSTMCell,
+        kernel_initializer='ones',
+        recurrent_activation='sigmoid',
+        implementation=2)
+    tf_lstm_cell_output = _run_cell(
+        rnn_cell.LSTMCell,
+        use_peepholes=True,
+        initializer=init_ops.ones_initializer)
+    self.assertNotAllClose(first_implementation_output, no_peephole_output)
+    self.assertAllClose(first_implementation_output,
+                        second_implementation_output)
+    self.assertAllClose(first_implementation_output, tf_lstm_cell_output)
 
 
 class Minimal2DRNNCell(keras.layers.Layer):
