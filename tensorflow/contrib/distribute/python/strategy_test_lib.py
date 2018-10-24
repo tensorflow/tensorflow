@@ -139,7 +139,7 @@ class DistributionTestBase(test.TestCase):
     config.gpu_options.per_process_gpu_memory_fraction = 0.3
     with context.graph_mode(), \
          ops.Graph().as_default(), \
-         self.test_session(config=config) as sess, \
+         self.cached_session(config=config) as sess, \
          d.scope():
       l = core.Dense(1, use_bias=False)
 
