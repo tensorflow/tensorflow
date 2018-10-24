@@ -54,11 +54,7 @@ void GrpcEagerServiceImpl::HandleRPCsLoop() {
   void* tag;  // Matches the operation started against this cq_.
   bool ok;
 
-  while (true) {
-    if (!cq_->Next(&tag, &ok)) {
-      // The queue is shutting down.
-      break;
-    }
+  while (cq_->Next(&tag, &ok)) {
     UntypedCall<GrpcEagerServiceImpl>::Tag* callback_tag =
         static_cast<UntypedCall<GrpcEagerServiceImpl>::Tag*>(tag);
 
@@ -66,7 +62,6 @@ void GrpcEagerServiceImpl::HandleRPCsLoop() {
       callback_tag->OnCompleted(this, ok);
     } else {
       cq_->Shutdown();
-      break;
     }
   }
 }

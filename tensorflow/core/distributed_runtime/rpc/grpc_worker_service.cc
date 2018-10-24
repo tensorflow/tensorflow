@@ -142,7 +142,8 @@ class GrpcWorkerService : public AsyncServiceInterface {
         mutex_lock lock(shutdown_mu_);
         is_shutdown_ = true;
       }
-      cq_->Shutdown();
+      shutdown_alarm_ =
+          new ::grpc::Alarm(cq_.get(), gpr_now(GPR_CLOCK_MONOTONIC), nullptr);
     }
 
    private:
@@ -187,8 +188,14 @@ class GrpcWorkerService : public AsyncServiceInterface {
       while (cq_->Next(&tag, &ok)) {
         UntypedCall<GrpcWorkerServiceThread>::Tag* callback_tag =
             static_cast<UntypedCall<GrpcWorkerServiceThread>::Tag*>(tag);
-        CHECK(callback_tag);
-        callback_tag->OnCompleted(this, ok);
+
+        if (callback_tag) {
+          CHECK(callback_tag);
+          callback_tag->OnCompleted(this, ok);
+        }
+        else {
+          cq_->Shutdown();
+        }
       }
     }
 
@@ -401,6 +408,8 @@ class GrpcWorkerService : public AsyncServiceInterface {
     std::unique_ptr<::grpc::ServerCompletionQueue> cq_;
     std::unique_ptr<Thread> thread_;
     grpc::WorkerService::AsyncService* const worker_service_;
+
+    ::grpc::Alarm* shutdown_alarm_ = nullptr;
 
     mutex shutdown_mu_;
     bool is_shutdown_ GUARDED_BY(shutdown_mu_);
