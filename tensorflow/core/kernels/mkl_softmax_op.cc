@@ -90,10 +90,20 @@ class MklSoftmaxOp : public OpKernel {
           layout_type = memory::format::tnc;
           break;
         case 4:
-          layout_type = memory::format::nchw;
+          if (src_mkl_shape.IsMklTensor()) {
+            layout_type = memory::format::nhwc;
+          } 
+          else {
+            layout_type = memory::format::nchw;
+          }
           break;
         case 5:
-          layout_type = memory::format::ncdhw;
+          if (src_mkl_shape.IsMklTensor()) {
+            layout_type = memory::format::ndhwc;
+          } 
+          else {
+            layout_type = memory::format::ncdhw;
+          }
           break;
         default:
           OP_REQUIRES_OK(context, errors::Aborted("Input dims must be <= 5 and >=1"));
