@@ -197,6 +197,20 @@ def get_predict_dataset(distribution):
   return dataset
 
 
+def multi_input_output_model():
+  a = keras.layers.Input(shape=(3,), name='input_a')
+  b = keras.layers.Input(shape=(5,), name='input_b')
+  # TODO(anjalisridhar): Change the output dimension of the second Dense layer
+  # once the iterator output validation issue has been fixed.
+  dense_1 = keras.layers.Dense(7, name='dense_1')
+  dense_2 = keras.layers.Dense(7, name='dense_2')
+  c = dense_1(a)
+  d = dense_2(b)
+  e = keras.layers.Dropout(0.5, name='dropout')(c)
+  model = keras.models.Model([a, b], [d, e])
+  return model
+
+
 strategies = [combinations.default_strategy,
               combinations.one_device_strategy,
               combinations.mirrored_strategy_with_gpu_and_cpu,
@@ -478,26 +492,18 @@ class TestDistributionStrategyWithNumpyArrays(test.TestCase,
   @combinations.generate(strategy_combinations())
   def test_calling_model_with_nested_numpy_arrays(self, distribution):
     with self.cached_session():
-      a = keras.layers.Input(shape=(3,), name='input_a')
-      b = keras.layers.Input(shape=(3,), name='input_b')
-
-      dense = keras.layers.Dense(4, name='dense')
-      c = dense(a)
-      d = dense(b)
-      e = keras.layers.Dropout(0.5, name='dropout')(c)
-
-      model = keras.models.Model([a, b], [d, e])
+      model = multi_input_output_model()
 
       optimizer = gradient_descent.GradientDescentOptimizer(learning_rate=0.001)
       loss = 'mse'
       model.compile(optimizer, loss, distribute=distribution)
 
       input_a_np = np.asarray(np.random.random((64, 3)), dtype=np.float32)
-      input_b_np = np.asarray(np.random.random((64, 3)), dtype=np.float32)
+      input_b_np = np.asarray(np.random.random((64, 5)), dtype=np.float32)
       inputs = [input_a_np, input_b_np]
 
-      output_d_np = np.asarray(np.random.random((64, 4)), dtype=np.float32)
-      output_e_np = np.asarray(np.random.random((64, 4)), dtype=np.float32)
+      output_d_np = np.asarray(np.random.random((64, 7)), dtype=np.float32)
+      output_e_np = np.asarray(np.random.random((64, 7)), dtype=np.float32)
       targets = [output_d_np, output_e_np]
 
       # Call fit with validation data
@@ -516,6 +522,30 @@ class TestDistributionStrategyWithNumpyArrays(test.TestCase,
       model.predict(inputs, steps=2)
       # with batch_size
       model.predict(inputs, batch_size=8)
+
+  @combinations.generate(strategy_combinations())
+  def test_flatten_predict_outputs(self, distribution):
+    with self.cached_session():
+      model = multi_input_output_model()
+
+      optimizer = gradient_descent.GradientDescentOptimizer(learning_rate=0.001)
+      loss = 'mse'
+      model.compile(optimizer, loss, distribute=distribution)
+
+      # We take 6 input samples with each input having a dimension of 3 or 5.
+      input_a_np = np.asarray(np.random.random((6, 3)), dtype=np.float32)
+      input_b_np = np.asarray(np.random.random((6, 5)), dtype=np.float32)
+      inputs = [input_a_np, input_b_np]
+
+      outs = model.predict(inputs, steps=1)
+      # `predict` a list that is equal in length to the number of model outputs.
+      # In this test our model has two outputs and each element of `outs`
+      # corresponds to all the samples of one of the model outputs.
+      self.assertEqual(2, len(outs))
+      # Each of the output samples have a dimension of 7. We should process all
+      # the available input samples(6).
+      self.assertAllEqual([6, 7], outs[0].shape)
+      self.assertAllEqual([6, 7], outs[1].shape)
 
 
 class TestDistributionStrategyWithDatasets(test.TestCase,
@@ -588,15 +618,7 @@ class TestDistributionStrategyWithDatasets(test.TestCase,
   # tuples or dict.
   def test_fit_with_tuple_and_dict_dataset_inputs(self):
     with self.cached_session():
-      a = keras.layers.Input(shape=(3,), name='input_a')
-      b = keras.layers.Input(shape=(3,), name='input_b')
-
-      dense = keras.layers.Dense(4, name='dense')
-      c = dense(a)
-      d = dense(b)
-      e = keras.layers.Dropout(0.5, name='dropout')(c)
-
-      model = keras.models.Model([a, b], [d, e])
+      model = multi_input_output_model()
 
       optimizer = gradient_descent.GradientDescentOptimizer(learning_rate=0.001)
       loss = 'mse'
@@ -606,9 +628,9 @@ class TestDistributionStrategyWithDatasets(test.TestCase,
       model.compile(optimizer, loss, metrics=metrics, distribute=strategy)
 
       input_a_np = np.random.random((10, 3))
-      input_b_np = np.random.random((10, 3))
-      output_d_np = np.random.random((10, 4))
-      output_e_np = np.random.random((10, 4))
+      input_b_np = np.random.random((10, 5))
+      output_d_np = np.random.random((10, 7))
+      output_e_np = np.random.random((10, 7))
 
       # Test with tuples
       dataset_tuple = dataset_ops.Dataset.from_tensor_slices((
@@ -741,8 +763,9 @@ class TestDistributionStrategyWithDatasets(test.TestCase,
       predict_dataset = dataset_ops.Dataset.from_tensor_slices(inputs)
       predict_dataset = predict_dataset.repeat().batch(5)
       output = model.predict(predict_dataset, steps=10)
-      ref_output = np.ones((50, 1), dtype=np.float32)
-      self.assertArrayNear(output[0], ref_output, 1e-1)
+      # `predict` runs for 10 steps and in each step you process 100 samples.
+      ref_output = np.ones((100, 1), dtype=np.float32)
+      self.assertArrayNear(output, ref_output, 1e-1)
 
 
 class TestDistributionStrategyErrorCases(test.TestCase, parameterized.TestCase):
@@ -1006,7 +1029,6 @@ class TestDistributionStrategyCorrectness(test.TestCase,
         predict_dataset = batch_wrapper(predict_dataset,
                                         predict_batch_size, distribution)
         predict_result = model.predict(predict_dataset, steps=1)
-        predict_result = np.reshape(predict_result, (4, 1))
 
         return weights, predict_result
 

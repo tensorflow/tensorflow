@@ -712,30 +712,33 @@ def predict_loop(model, iterator, verbose=0, steps=None):
     distributed_training_utils.set_weights(
         current_strategy, distributed_model, orig_model_weights)
 
-    if steps is not None:
-      # Since we do not know how many samples we will see, we cannot
-      # pre-allocate the returned Numpy arrays. Instead, we store one array per
-      # batch seen and concatenate them upon returning.
-      unconcatenated_outs = []
-      for step in range(steps):
-        batch_outs = distributed_predict_function(ins)
-        if not isinstance(batch_outs, list):
-          batch_outs = [batch_outs]
-        if step == 0:
-          for _ in batch_outs:
-            unconcatenated_outs.append([])
-        # TODO(anjalisridhar): Should combine the outputs from multiple replicas
-        # correctly here.
-        for i, batch_out in enumerate(batch_outs):
-          unconcatenated_outs[i].append(batch_out)
-        if verbose >= 1:
-          progbar.update(step + 1)
-      if len(unconcatenated_outs) == 1:
-        return np.concatenate(unconcatenated_outs[0], axis=0)
-      return [
-          np.concatenate(unconcatenated_outs[i], axis=0)
-          for i in range(len(unconcatenated_outs))
-      ]
+    num_towers = current_strategy.num_towers
+    # Since we do not know how many samples we will see, we cannot
+    # pre-allocate the returned Numpy arrays. Instead, we store one array per
+    # batch seen and concatenate them upon returning.
+    unconcatenated_outs = []
+    assert steps is not None
+    for step in range(steps):
+      batch_outs = distributed_predict_function(ins)
+      if not isinstance(batch_outs, list):
+        batch_outs = [batch_outs]
+      if step == 0:
+        # batch_outs gives you the number of model outputs. In the distributed
+        # case this will be number of model_outputs * num_towers.
+        for _ in range(len(model.outputs)):
+          unconcatenated_outs.append([])
+      for i in range(len(model.outputs)):
+        nested_outs = batch_outs[i * num_towers:i * num_towers + num_towers]
+        outs = nest.flatten(nested_outs)
+        unconcatenated_outs[i].extend(outs)
+      if verbose >= 1:
+        progbar.update(step + 1)
+    if len(unconcatenated_outs) == 1:
+      return np.concatenate(unconcatenated_outs[0], axis=0)
+    return [
+        np.concatenate(unconcatenated_outs[i], axis=0)
+        for i in range(len(unconcatenated_outs))
+    ]
 
 
 def _experimental_predict_loop(model, iterator, verbose=0, steps=None):
