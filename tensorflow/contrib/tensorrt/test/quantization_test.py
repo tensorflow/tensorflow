@@ -43,44 +43,13 @@ def build_graph(input_name, input_dims, output_name,
   with g.as_default():
     x = array_ops.placeholder(
         dtype=dtype, shape=[None] + input_dims[1:], name=input_name)
-    x = quantize(x, 100)
-    filt1 = constant_op.constant(
-          0.3, shape=(3, 3, 1, 32), dtype=dtype, name='filt1')
-    x = nn.conv2d(x, filt1, strides=[1, 1, 1, 1], padding='VALID')
-    bias1 = constant_op.constant(0.3, shape=(32,), name="bias1", dtype=dtype)
-    x = nn.bias_add(x, bias1)
-
-    x = quantize(x, 6)
-    x = nn.relu6(x)
-    filt2 = constant_op.constant(
-          0.3, shape=(3, 3, 32, 64), dtype=dtype, name='filt2')
-    x = nn.conv2d(x, filt2, strides=[1, 1, 1, 1], padding='VALID')
-    bias2 = constant_op.constant(0.3, shape=(64,), name="bias2", dtype=dtype)
-    x = nn.bias_add(x, bias2)
-
-    x = quantize(x, 6)
-    x = nn.relu6(x)
-    x = math_ops.reduce_mean(x, [1, 2])
-    x = quantize(x, 6)
-    # FC1
-    fc_w1 = constant_op.constant(
-          0.3, shape=(64, 512), dtype=dtype, name='fc_w1')
-    x = math_ops.matmul(x, fc_w1)
-    x = quantize(x, 6)
-    fc_b1 = constant_op.constant(
-          0.3, shape=(512,), dtype=dtype, name='fc_b1')
-    x = nn.bias_add(x, fc_b1)
-    x = quantize(x, 6)
-    x = nn.relu6(x)
-    # FC2
-    fc_w2 = constant_op.constant(
-          0.3, shape=(512, 10), dtype=dtype, name='fc_w2')
-    x = math_ops.matmul(x, fc_w2)
-    x = quantize(x, 25)
-    fc_b2 = constant_op.constant(
-          0.3, shape=(10,), dtype=dtype, name='fc_b2')
-    x = nn.bias_add(x, fc_b2)
-    x = quantize(x, 25)
+    x = quantize(x, 10.0)
+    x = x + 5
+    x = quantize(x, 15.0)
+    x = x - 5
+    x = quantize(x, 10.0)
+    x = x * 0.1
+    x = quantize(x, 1.0)
     x = array_ops.identity(x, name=output_name)
   return g
 
@@ -89,7 +58,7 @@ class QuantizationMissingAllRangesTest(trt_test.TfTrtIntegrationTestBase):
   def GetParams(self):
     """Create a graph containing single segment with no quantization ranges."""
     input_name = "input"
-    input_dims = [100, 28, 28, 1]
+    input_dims = [100, 100]
     output_name = "output"
     g = build_graph(input_name, input_dims, output_name,
                     add_quantization_nodes=False)
@@ -98,7 +67,7 @@ class QuantizationMissingAllRangesTest(trt_test.TfTrtIntegrationTestBase):
         input_names=[input_name],
         input_dims=[input_dims],
         output_names=[output_name],
-        expected_output_dims=[(100, 10)])
+        expected_output_dims=[(100, 100)])
 
   def ShouldRunTest(self, run_params):
     return (run_params.precision_mode == "INT8" and
@@ -116,7 +85,7 @@ class QuantizationWithRangesTest(trt_test.TfTrtIntegrationTestBase):
   def GetParams(self):
     """Create a graph containing single segment with no quantization ranges."""
     input_name = "input"
-    input_dims = [100, 28, 28, 1]
+    input_dims = [100, 100]
     output_name = "output"
     g = build_graph(input_name, input_dims, output_name,
                     add_quantization_nodes=True)
@@ -125,7 +94,7 @@ class QuantizationWithRangesTest(trt_test.TfTrtIntegrationTestBase):
         input_names=[input_name],
         input_dims=[input_dims],
         output_names=[output_name],
-        expected_output_dims=[(100, 10)])
+        expected_output_dims=[(100, 100)])
 
   def ShouldRunTest(self, run_params):
     return (run_params.precision_mode == "INT8" and
@@ -135,12 +104,20 @@ class QuantizationWithRangesTest(trt_test.TfTrtIntegrationTestBase):
     """Return the expected engines to build."""
     return ["my_trt_op_0"]
 
+  def ExpectedAbsoluteTolerance(self, run_params):
+    """The absolute tolerance to compare floating point results."""
+    return 1.e-05 if run_params.precision_mode == "FP32" else 1.e-01
+
+  def ExpectedRelativeTolerance(self, run_params):
+    """The relative tolerance to compare floating point results."""
+    return 1.e-05 if run_params.precision_mode == "FP32" else 1.e-01
+
 class NonQuantizedPrecisionsWithRangesTest(trt_test.TfTrtIntegrationTestBase):
 
   def GetParams(self):
     """Create a graph containing single segment with no quantization ranges."""
     input_name = "input"
-    input_dims = [100, 28, 28, 1]
+    input_dims = [100, 100]
     output_name = "output"
     g = build_graph(input_name, input_dims, output_name,
                     add_quantization_nodes=True)
@@ -149,7 +126,7 @@ class NonQuantizedPrecisionsWithRangesTest(trt_test.TfTrtIntegrationTestBase):
         input_names=[input_name],
         input_dims=[input_dims],
         output_names=[output_name],
-        expected_output_dims=[(100, 10)])
+        expected_output_dims=[(100, 100)])
 
   def ShouldRunTest(self, run_params):
     return (run_params.precision_mode == "FP32" or
@@ -157,8 +134,15 @@ class NonQuantizedPrecisionsWithRangesTest(trt_test.TfTrtIntegrationTestBase):
 
   def ExpectedEnginesToBuild(self, run_params):
     """Return the expected engines to build."""
-    return ["my_trt_op_0", "my_trt_op_1", "my_trt_op_2", "my_trt_op_3",
-            "my_trt_op_4", "my_trt_op_5", "my_trt_op_6"]
+    return ["my_trt_op_0", "my_trt_op_1", "my_trt_op_2"]
+  
+  def ExpectedAbsoluteTolerance(self, run_params):
+    """The absolute tolerance to compare floating point results."""
+    return 1.e-05 if run_params.precision_mode == "FP32" else 1.e-01
+
+  def ExpectedRelativeTolerance(self, run_params):
+    """The relative tolerance to compare floating point results."""
+    return 1.e-05 if run_params.precision_mode == "FP32" else 1.e-01
 
 if __name__ == "__main__":
   test.main()

@@ -434,6 +434,10 @@ class ConverterTest : public ::testing::Test {
 
   int batch_size() const { return converter_->batch_size_; }
 
+  std::unordered_map<nvinfer1::ITensor*, float>* GetQuantizationRanges() {
+    return &quantization_ranges_;
+  }
+
  private:
   Logger logger_;
   // These members are ordered in a way such that the destruction order is:
@@ -1130,6 +1134,69 @@ TEST_F(OpConverterTest, ConvertMatMul) {
         EXPECT_THAT(output_data, ElementsAre(2, 3));
       }
     }
+}
+
+TEST_F(ConverterTest, ConvertQuantize) {
+  {
+    // Input list is empty, should fail.
+    NodeDef node_def =
+        MakeNodeDef("my_quantize", "QuantizeAndDequantizeV2", {});
+    ExpectStatus(converter_.ConvertNode(node_def), error::INVALID_ARGUMENT,
+                 "Expected 1 or 3 inputs for quantize node, at my_quantize");
+  }
+  {
+    // Missing attributes, should fail
+    converter_.Reset();
+    NodeDef node_def =
+        MakeNodeDef("my_quantize", "QuantizeAndDequantizeV2", {"input"});
+    AddTestTensor("input", {1, 2, 3});
+    ExpectStatus(converter_.ConvertNode(node_def), error::INVALID_ARGUMENT,
+        "Min or max attribute not found for quantize, at my_quantize");
+  }
+  {
+    // All inputs are tensors, should fail
+    converter_.Reset();
+    NodeDef node_def = MakeNodeDef("my_quantize", "QuantizeAndDequantizeV2",
+                                   {"input", "weights_min", "weights_max"});
+    AddTestTensor("input", {1, 2, 3});
+    AddTestTensor("weights_min", {1});
+    AddTestTensor("weights_max", {1});
+    ExpectStatus(converter_.ConvertNode(node_def), error::INVALID_ARGUMENT,
+        "Min and max for quantize must be weights not tensors, at my_quantize");
+  }
+  {
+    // Ranges set via attributes, ok.
+    converter_.Reset();
+    NodeDef node_def =
+        MakeNodeDef("my_quantize", "QuantizeAndDequantizeV2", {"input"});
+    AddTestTensor("input", {1, 2, 3});
+    AttrValue attr_min;
+    attr_min.set_f(-6.0f);
+    AttrValue attr_max;
+    attr_max.set_f(6.0f);
+    node_def.mutable_attr()->insert({"min", attr_min});
+    node_def.mutable_attr()->insert({"max", attr_max});
+    TF_EXPECT_OK(converter_.ConvertNode(node_def));
+    TRT_TensorOrWeights output = converter_.GetTensorOrWeights("my_quantize");
+    EXPECT_TRUE(output.is_tensor());
+    auto ranges = converter_.GetQuantizationRanges();
+    EXPECT_EQ((*ranges).count(output.tensor()), 1);
+    EXPECT_EQ((*ranges)[output.tensor()], 6.0f);
+  }
+  {
+    // Ranges set via inputs, ok.
+    converter_.Reset();
+    NodeDef node_def = MakeNodeDef("my_quantize", "QuantizeAndDequantizeV2",
+                                   {"input", "weights_min", "weights_max"});
+    AddTestTensor("input", {1, 2, 3});
+    AddTestWeights<float>("weights_min", DT_FLOAT, {1}, {-6.0f});
+    AddTestWeights<float>("weights_max", DT_FLOAT, {1}, {6.0f}); 
+    TF_EXPECT_OK(converter_.ConvertNode(node_def));
+    TRT_TensorOrWeights output = converter_.GetTensorOrWeights("my_quantize");
+    EXPECT_TRUE(output.is_tensor());
+    auto ranges = converter_.GetQuantizationRanges();
+    EXPECT_EQ((*ranges).count(output.tensor()), 1);
+    EXPECT_EQ((*ranges)[output.tensor()], 6.0f);
   }
 }
 
