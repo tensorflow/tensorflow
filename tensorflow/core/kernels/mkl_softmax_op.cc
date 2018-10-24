@@ -54,27 +54,36 @@ class MklSoftmaxOp : public OpKernel {
       MklDnnShape src_mkl_shape;
       GetMklShape(context, src_idx, &src_mkl_shape);
 
-      // src_dims is the dimenstion of src_tensor
-      // dim of the dst will also be same as src_dims
       auto src_tf_shape = src_mkl_shape.IsMklTensor()
                               ? src_mkl_shape.GetTfShape()
                               : src_tensor.shape();
       const int input_dims = src_tf_shape.dims();
-      auto src_dims = TFShapeToMklDnnDims(src_tf_shape);
-      memory::dims output_dims;
-      int axis;
-      if (src_mkl_shape.IsMklTensor()) {
+      // src_dims is the dimenstion of src_tensor in MKL-DNN order
+      memory::dims src_dims; 
+      int axis = input_dims -1;
+      if (input_dims == 4) {
         axis = 1;
+        src_dims = TFShapeToMklDnnDimsInNCHW(src_tf_shape, FORMAT_NHWC);
+      }
+      else if (input_dims == 5) {
+        axis = 1;
+        src_dims = TFShapeToMklDnnDimsInNCDHW(src_tf_shape, FORMAT_NHWC);
+      } 
+      else {
+        src_dims = TFShapeToMklDnnDims(src_tf_shape);
+      }
+
+      memory::dims output_dims;
+      if (src_mkl_shape.IsMklTensor()) {
         output_dims = src_mkl_shape.GetSizesAsMklDnnDims();
       }
       else {
-        axis = input_dims - 1;
-        output_dims = src_dims;
+        output_dims = TFShapeToMklDnnDims(src_tf_shape);
       }
       memory::format layout_type;
       // In MKL, data format passed to mkl softmax op depends on dimension of the input tensor.
       // Here "x" data format in MKL is used for 1 dim tensor, "nc" for 2 dim tensor, 
-      // "tnc" for 3 dim tensor, "nchw" for 4 dim tensor, and "ncdhw" for 5 dim tensor.
+      // "tnc" for 3 dim tensor, "nhwc" for 4 dim tensor, and "ndhwc" for 5 dim tensor.
       // Each of the simbols has the following meaning:
       // n = batch, c = channels, t = sequence lenght, h = height,
       // w = width, d = depth 
@@ -90,10 +99,10 @@ class MklSoftmaxOp : public OpKernel {
           layout_type = memory::format::tnc;
           break;
         case 4:
-          layout_type = memory::format::nchw;
+          layout_type = memory::format::nhwc;
           break;
         case 5:
-          layout_type = memory::format::ncdhw;
+          layout_type = memory::format::ndhwc;
           break;
         default:
           OP_REQUIRES_OK(context, errors::Aborted("Input dims must be <= 5 and >=1"));
@@ -105,9 +114,8 @@ class MklSoftmaxOp : public OpKernel {
       MklDnnData<T> dst(&cpu_engine);
 
       // If input is in MKL layout, then simply grab input layout; otherwise,
-      // construct input Tf layout. For TF layout, although input shape
-      // (src_dims) required is in MKL-DNN order, the layout is Tensorflow's
-      // layout
+      // construct input Tf layout. For TF layout, input shape
+      // (src_dims) required is in MKL-DNN order
       auto src_md =
           src_mkl_shape.IsMklTensor()
               ? src_mkl_shape.GetMklLayout()
