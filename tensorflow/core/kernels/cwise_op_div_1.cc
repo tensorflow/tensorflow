@@ -28,8 +28,8 @@ REGISTER5(BinaryOp, CPU, "DivNoNan", functor::div_no_nan, Eigen::half, float,
           double, complex64, complex128);
 
 #if GOOGLE_CUDA
-REGISTER9(BinaryOp, GPU, "Div", functor::div, float, Eigen::half, double, uint8,
-          uint16, int8, int16, int64, complex64, complex128);
+// More GPU "Div" registrations in cwise_op_div_2.cc
+REGISTER5(BinaryOp, GPU, "Div", functor::div, float, Eigen::half, double, uint8, uint16);
 REGISTER5(BinaryOp, GPU, "TruncateDiv", functor::div, uint8, uint16, int8,
           int16, int64);
 REGISTER5(BinaryOp, GPU, "RealDiv", functor::div, float, Eigen::half, double,
