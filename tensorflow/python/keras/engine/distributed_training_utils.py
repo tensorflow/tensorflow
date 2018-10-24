@@ -189,7 +189,8 @@ def validate_callbacks(input_callbacks):
                            'supported when using DistributionStrategy.')
 
 
-def validate_distributed_dataset_inputs(distribution_strategy, x, y):
+def validate_distributed_dataset_inputs(distribution_strategy, x, y,
+                                        sample_weights=None):
   """Validate all the components of a DistributedValue Dataset input.
 
   Args:
@@ -203,6 +204,9 @@ def validate_distributed_dataset_inputs(distribution_strategy, x, y):
         `MirroredStrategy` this is a PerDevice object with a tensor for each
         device set in the dict. y can also be a tuple or dict. The keys of the
         dict should match the names of the output layers of the model.
+    sample_weights: Sample weights Dataset DistributedValue object. For example,
+        when we use `MirroredStrategy` this is a PerDevice object with a tensor
+        for each device set in the dict.
 
   Returns:
     The unwrapped values list of the x and y DistributedValues inputs.
@@ -225,8 +229,14 @@ def validate_distributed_dataset_inputs(distribution_strategy, x, y):
   else:
     y_values_list = None
 
+  if sample_weights is not None:
+    sample_weights_list = validate_per_device_inputs(distribution_strategy,
+                                                     sample_weights)
+  else:
+    sample_weights_list = None
+
   # Return the unwrapped values to avoid calling `unwrap` a second time.
-  return x_values_list, y_values_list
+  return x_values_list, y_values_list, sample_weights_list
 
 
 def validate_per_device_inputs(distribution_strategy, x):

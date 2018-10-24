@@ -218,6 +218,15 @@ strategies = [combinations.default_strategy,
               combinations.tpu_strategy_one_step]
 
 
+def strategy_minus_tpu_combinations():
+  return combinations.combine(
+      distribution=[combinations.default_strategy,
+                    combinations.one_device_strategy,
+                    combinations.mirrored_strategy_with_gpu_and_cpu,
+                    combinations.mirrored_strategy_with_two_gpus],
+      mode=['graph'])
+
+
 def strategy_combinations():
   return combinations.combine(
       distribution=strategies,
@@ -523,6 +532,20 @@ class TestDistributionStrategyWithNumpyArrays(test.TestCase,
       # with batch_size
       model.predict(inputs, batch_size=8)
 
+  @combinations.generate(strategy_minus_tpu_combinations())
+  def test_numpy_with_sample_weights(self, distribution):
+    model = get_model()
+    optimizer = rmsprop.RMSPropOptimizer(learning_rate=0.001)
+    loss = 'mse'
+    model.compile(optimizer, loss, distribute=distribution)
+
+    inputs = np.zeros((10, 3), np.float32)
+    targets = np.zeros((10, 4), np.float32)
+    sample_weights = np.ones((10), np.float32)
+
+    model.fit(inputs, targets, sample_weight=sample_weights, epochs=1,
+              steps_per_epoch=2, verbose=1)
+
   @combinations.generate(strategy_combinations())
   def test_flatten_predict_outputs(self, distribution):
     with self.cached_session():
@@ -679,6 +702,25 @@ class TestDistributionStrategyWithDatasets(test.TestCase,
       model.evaluate(dataset, steps=2, verbose=1)
       model.predict(get_predict_dataset(distribution), steps=2)
 
+  @combinations.generate(strategy_minus_tpu_combinations())
+  def test_dataset_with_sample_weights(self, distribution):
+    model = get_model()
+    optimizer = rmsprop.RMSPropOptimizer(learning_rate=0.001)
+    loss = 'mse'
+    model.compile(optimizer, loss, distribute=distribution)
+
+    inputs = np.zeros((10, 3), np.float32)
+    targets = np.zeros((10, 4), np.float32)
+    sample_weights = np.ones((10), np.float32)
+    dataset = dataset_ops.Dataset.from_tensor_slices((inputs, targets,
+                                                      sample_weights))
+    dataset = dataset.repeat()
+    dataset = dataset.batch(10)
+
+    model.fit(dataset, epochs=1, steps_per_epoch=2, verbose=1)
+    model.evaluate(dataset, steps=2, verbose=1)
+    model.predict(dataset, steps=2)
+
   def test_dataset_input_shape_validation(self):
     with self.cached_session():
       model = get_model()
@@ -834,8 +876,8 @@ class TestDistributionStrategyErrorCases(test.TestCase, parameterized.TestCase):
       # Test with sample weight.
       sample_weight = np.random.random((10,))
       with self.assertRaisesRegexp(
-          NotImplementedError, '`sample_weight` is currently not supported '
-                               'when using DistributionStrategy.'):
+          ValueError, '`sample_weight` argument is not supported when input '
+                      '`x` is a dataset or a dataset iterator.'):
         model.fit(
             dataset,
             epochs=1,

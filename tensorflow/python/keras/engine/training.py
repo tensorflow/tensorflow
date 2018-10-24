@@ -792,12 +792,14 @@ class Model(Network):
       ValueError: In case of invalid user-provided data.
       RuntimeError: If the model was never compiled.
     """
-    if sample_weight is not None and sample_weight.all():
-      raise NotImplementedError('`sample_weight` is currently not supported '
-                                'when using DistributionStrategy.')
     if class_weight:
       raise NotImplementedError('`class_weight` is currently not supported '
                                 'when using DistributionStrategy.')
+
+    if (sample_weight is not None and sample_weight.all() and
+        self._distribution_strategy.__class__.__name__ == 'TPUStrategy'):
+      raise NotImplementedError('`sample_weight` is currently not supported '
+                                'when using TPUStrategy.')
 
     # Validates `steps` argument right at the beginning since we use it to
     # construct the dataset object.
@@ -824,6 +826,14 @@ class Model(Network):
             self._distribution_strategy, x)
         var_y = distributed_training_utils.get_var_for_numpy(
             self._distribution_strategy, y)
+        if sample_weight is not None:
+          var_sample_weights = distributed_training_utils.get_var_for_numpy(
+              self._distribution_strategy, sample_weight)
+
+          x = dataset_ops.Dataset.from_tensor_slices((var_x, var_y,
+                                                      var_sample_weights))
+        else:
+          x = dataset_ops.Dataset.from_tensor_slices((var_x, var_y))
 
         x = dataset_ops.Dataset.from_tensor_slices((var_x, var_y))
         # 1024 is a good buffer size since it is much larger than the average
@@ -834,6 +844,7 @@ class Model(Network):
         x = x.repeat()
         x = x.batch(batch_size, drop_remainder=drop_remainder)
         y = None
+        sample_weight = None
       else:
         # This case is for the predict call where the dataset only contains
         # inputs and no targets, i.e. it does not return a tuple
