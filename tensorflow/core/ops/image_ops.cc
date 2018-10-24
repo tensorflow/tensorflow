@@ -131,6 +131,35 @@ Status NMSShapeFn(InferenceContext* c) {
   return Status::OK();
 }
 
+Status NMSLiteShapeFn(InferenceContext* c) {
+  //Get inputs and validate ranks
+  ShapeHandle boxes;
+  //boxes is a tensor of Dimensions [batch_size, num_anchors, q, 4]
+  TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 4, &boxes));
+  ShapeHandle scores;
+  //scores is a tensor of Dimensions [batch_size, num_anchors, num_classes]
+  TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 3, &scores));
+  ShapeHandle max_output_size_per_class;
+  TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 0, &max_output_size_per_class));
+  ShapeHandle iou_threshold;
+  TF_RETURN_IF_ERROR(c->WithRank(c->input(3), 0, &iou_threshold));
+  ShapeHandle score_threshold;
+  TF_RETURN_IF_ERROR(c->WithRank(c->input(4), 0, &score_threshold));
+  DimensionHandle unused;
+  //boxes[3] is unused
+  TF_RETURN_IF_ERROR(c->WithValue(c->Dim(boxes, 3), 4, &unused));
+
+  //TODO SR Check dims of outputs here
+  c->set_output(0, c->Vector(c->UnknownDim()));
+  c->set_output(1, c->Vector(c->UnknownDim()));
+  c->set_output(2, c->Vector(c->UnknownDim()));
+  c->set_output(3, c->Vector(c->UnknownDim()));
+  c->set_output(4, c->Vector(c->UnknownDim()));
+
+  return Status::OK();
+}
+
+
 }  // namespace
 
 // --------------------------------------------------------------------------
