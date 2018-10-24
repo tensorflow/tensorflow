@@ -365,6 +365,14 @@ StatusOr<poplar::program::Program> CreateBatchNormInf(
     poplar::Graph& graph, CompilerResources& res, const HloInstruction* inst,
     TensorMap& tensor_map);
 
+StatusOr<poplar::program::Program> CreateBatchNormTraining(
+    poplar::Graph& graph, CompilerResources& res, const HloInstruction* inst,
+    TensorMap& tensor_map);
+
+StatusOr<poplar::program::Program> CreateBatchNormGrad(
+    poplar::Graph& graph, CompilerResources& res, const HloInstruction* inst,
+    TensorMap& tensor_map);
+
 /* Optimization tests */
 
 bool IsPoplibsPool(const HloInstruction*, const HloComputation*);
