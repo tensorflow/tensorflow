@@ -14,8 +14,7 @@ high-performance target-specific code.
 MLIR stands for one of "Multi-Level IR" or "Multi-dimensional Loop IR" or
 "Machine Learning IR" - the MLIR team prefers the first interpretation. This
 document defines and describes the key concepts in MLIR, and is intended to be a
-dry reference document -
-[rationale documentation](https://docs.google.com/document/d/1KoVYgp-m-dgAyKwqRne2c72j0FoxpsdNgfa9DTfWGgw/edit?usp=sharing),
+dry reference document - [rationale documentation](Rationale.md),
 [system overview documentation](https://docs.google.com/document/d/1yRqja94Da6NtKmPxSYtTx6xbUtughLANyeD7dZ7mOBM/edit#)
 and other content is hosted elsewhere.
 
@@ -552,7 +551,7 @@ hardware synthesis (where a 13 bit multiplier is a lot cheaper/smaller than a 16
 bit one).
 
 TODO: Need to decide on a representation for quantized integers
-[[initial thoughts](https://docs.google.com/document/d/1KoVYgp-m-dgAyKwqRne2c72j0FoxpsdNgfa9DTfWGgw/edit#heading=h.jcrj8wy2uni3)].
+[[initial thoughts](Rationale.md#quantized-integer-operations)].
 
 ### Floating Point Types {#floating-point-types}
 
@@ -581,9 +580,8 @@ other-type ::= `tf_control` | `tf_resource` | `tf_variant` | `tf_string`
 ```
 
 The `index` type is a signless integer whose size is equal to the natural
-machine word of the target
-[[rationale](https://docs.google.com/document/d/1KoVYgp-m-dgAyKwqRne2c72j0FoxpsdNgfa9DTfWGgw/edit#heading=h.arwn3cptpl7q)],
-and is used by the affine constructs in MLIR.
+machine word of the target [[rationale](Rationale.md#signless-types)] and is
+used by the affine constructs in MLIR.
 
 `tf_control` is used in TensorFlow graphs to represent
 [control dependence edges](https://docs.google.com/document/d/1Iey7MfrAlBWd0nrHNdnVKvIKRoo8XHsWG5g5pi1iDV4/edit?ts=5b5a0a9f#heading=h.1dv5wuya469j).
@@ -979,7 +977,7 @@ SSA IRs (like LLVM). For example, the
 [parallel copy semantics](http://citeseerx.ist.psu.edu/viewdoc/download?doi=10.1.1.524.5461&rep=rep1&type=pdf)
 of SSA is immediately apparent, and function arguments are no longer a special
 case: they become arguments to the entry block
-[[more rationale](https://docs.google.com/document/d/1KoVYgp-m-dgAyKwqRne2c72j0FoxpsdNgfa9DTfWGgw/edit#heading=h.g4uupswp6cjn)].
+[[more rationale](Rationale.md#basic-block-arguments-vs-phi-nodes)].
 
 Control flow within a CFG function is implemented with unconditional branches,
 conditional branches, and a return statement.
@@ -1761,7 +1759,7 @@ which case it returns a matching shape tensor or vector of 'i1' values.
 
 TODO: This is just an example of a comparison. We will probably end up having a
 cmpi/cmpf split, and have each of them take a condition as an attribute
-[[rationale](https://docs.google.com/document/d/1KoVYgp-m-dgAyKwqRne2c72j0FoxpsdNgfa9DTfWGgw/edit#heading=h.z6f280u1zx10)].
+[[rationale](Rationale.md#splitting-floating-point-vs-integer-operations)].
 
 #### 'constant' operation {#'constant'-operation}
 
@@ -1798,7 +1796,7 @@ Examples:
 MLIR does not allow direct references to functions in SSA operands because we
 anticipate the desire to multithread the compiler, and disallowing SSA values to
 directly reference a function simplifies this
-[[rationale](https://docs.google.com/document/d/1KoVYgp-m-dgAyKwqRne2c72j0FoxpsdNgfa9DTfWGgw/edit#bookmark=id.wyogmdcfyqpi)].
+[[rationale](Rationale.md#multithreading-the-compiler)].
 
 #### 'memref_cast' operation
 
