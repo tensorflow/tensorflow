@@ -1056,6 +1056,7 @@ void PoplarExecutor::AboutToFreeEngine(poplar::Engine* engine) {
   if (current_engine_ != nullptr) {
     std::lock_guard<std::recursive_mutex> g(mutex_);
     if (engine == current_engine_) {
+      MoveDeviceToHost();
       DeferredDeallocation();
       current_engine_ = NULL;
     }
