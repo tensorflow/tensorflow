@@ -203,10 +203,8 @@ class Base(gast.NodeTransformer):
     Args:
       entity_info: An EntityInfo object.
     """
-    self._current_origin = None
     self._lineno = 0
     self._col_offset = 0
-    # TODO(znado): remove this from the constructor of all Transformers.
     self.entity_info = entity_info
     self._enclosing_entities = []
 
@@ -426,12 +424,13 @@ class Base(gast.NodeTransformer):
           ' visit lists of nodes, use "visit_block" instead').format(type(node))
       raise ValueError(msg)
 
+    source_code = self.entity_info.source_code
+    source_file = self.entity_info.source_file
     did_enter_function = False
     local_scope_size_at_entry = len(self._local_scope_state)
     processing_expr_node = False
 
     try:
-      parent_origin = self._current_origin
       if isinstance(node, (gast.FunctionDef, gast.ClassDef, gast.Lambda)):
         did_enter_function = True
       elif isinstance(node, gast.Expr):
@@ -440,15 +439,15 @@ class Base(gast.NodeTransformer):
       if did_enter_function:
         self._enclosing_entities.append(node)
 
-      if anno.hasanno(node, anno.Basic.ORIGIN):
-        self._current_origin = anno.getanno(node, anno.Basic.ORIGIN)
+      if source_code and hasattr(node, 'lineno'):
+        self._lineno = node.lineno
+        self._col_offset = node.col_offset
 
       if processing_expr_node:
         entry_expr_value = node.value
 
       if not anno.hasanno(node, anno.Basic.SKIP_PROCESSING):
         result = super(Base, self).visit(node)
-      self._current_origin = parent_origin
 
       # Adjust for consistency: replacing the value of an Expr with
       # an Assign node removes the need for the Expr node.
@@ -470,26 +469,26 @@ class Base(gast.NodeTransformer):
             'Inconsistent local scope stack. Before entering node %s, the'
             ' stack had length %d, after exit it has length %d. This'
             ' indicates enter_local_scope and exit_local_scope are not'
-            ' well paired.' % (node, local_scope_size_at_entry,
-                               len(self._local_scope_state)))
+            ' well paired.' % (
+                node,
+                local_scope_size_at_entry,
+                len(self._local_scope_state)
+            ))
       return result
 
     except (ValueError, AttributeError, KeyError, NotImplementedError) as e:
-      if not self._current_origin:
-        raise e
-      original_file_path = self._current_origin.loc.filename
-      original_line_number = self._current_origin.loc.lineno
-      original_col_offset = self._current_origin.loc.col_offset
-      original_source_line = self._current_origin.source_code_line
-      msg = '%s: %s.' % (e.__class__.__name__, str(e))
-
+      msg = '%s: %s\nOffending source:\n%s\n\nOccurred at node:\n%s' % (
+          e.__class__.__name__, str(e), self._get_source(node),
+          pretty_printer.fmt(node, color=False))
+      if source_code:
+        line = source_code.splitlines()[self._lineno - 1]
+      else:
+        line = '<no source available>'
       # TODO(mdan): Avoid the printing of the original exception.
       # In other words, we need to find how to suppress the "During handling
       # of the above exception, another exception occurred" message.
-      six.reraise(
-          AutographParseError,
-          AutographParseError(msg, (original_file_path, original_line_number,
-                                    original_col_offset, original_source_line)),
-          sys.exc_info()[2])
-    finally:
-      self._current_origin = parent_origin
+      six.reraise(AutographParseError,
+                  AutographParseError(
+                      msg,
+                      (source_file, self._lineno, self._col_offset + 1, line)),
+                  sys.exc_info()[2])
