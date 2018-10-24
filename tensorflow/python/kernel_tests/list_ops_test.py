@@ -43,7 +43,6 @@ def scalar_shape():
   return ops.convert_to_tensor([], dtype=dtypes.int32)
 
 
-@test_util.with_c_shapes
 class ListOpsTest(test_util.TensorFlowTestCase):
 
   @test_util.run_in_graph_and_eager_modes
@@ -677,6 +676,13 @@ class ListOpsTest(test_util.TensorFlowTestCase):
           self.evaluate(outputs[1]), np.zeros((1,), dtype=dtype.as_numpy_dtype))
       self.assertAllEqual(
           self.evaluate(outputs[0]), np.zeros((2,), dtype=dtype.as_numpy_dtype))
+
+  @test_util.run_in_graph_and_eager_modes
+  def testElementShape(self):
+    l = list_ops.empty_tensor_list(
+        element_dtype=dtypes.float32, element_shape=-1)
+    shape = list_ops.tensor_list_element_shape(l, shape_type=dtypes.int32)
+    self.assertEqual(self.evaluate(shape), -1)
 
 
 if __name__ == "__main__":

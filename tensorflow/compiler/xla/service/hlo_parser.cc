@@ -1089,8 +1089,8 @@ bool HloParser::ParseInstruciontRhs(HloComputation::Builder* builder,
           absl::Span<HloInstruction* const>(operands).subspan(
               0, operands.size() / 2),
           /*init_values=*/
-          absl::Span<HloInstruction* const>(operands).subspan(
-              operands.size() / 2, operands.size()),
+          absl::Span<HloInstruction* const>(operands).subspan(operands.size() /
+                                                              2),
           *dimensions_to_reduce, *reduce_computation));
       break;
     }

@@ -180,6 +180,12 @@ bool GpuMultiOutputFusion::DoProducerConsumerMultiOutputFusion() {
         VLOG(3) << producer->name() << " is not fusible.";
         continue;
       }
+      // Never multi-output fuse constants.  To the extent that we want to fuse
+      // constants, that should be handled by the regular fusion pass.
+      if (producer->opcode() == HloOpcode::kConstant) {
+        VLOG(3) << producer->name() << " is a constant.";
+        continue;
+      }
       const bool is_loop_fusion =
           producer->opcode() == HloOpcode::kFusion &&
           producer->fusion_kind() == HloInstruction::FusionKind::kLoop;

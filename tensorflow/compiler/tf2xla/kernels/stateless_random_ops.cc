@@ -74,6 +74,58 @@ REGISTER_XLA_OP(Name("StatelessRandomUniform")
                     .TypeConstraint("Tseed", DT_INT32),
                 StatelessRandomUniformOp);
 
+class StatelessRandomUniformIntOp : public XlaOpKernel {
+ public:
+  explicit StatelessRandomUniformIntOp(OpKernelConstruction* ctx)
+      : XlaOpKernel(ctx) {
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("dtype", &dtype_));
+  }
+
+  void Compile(XlaOpKernelContext* ctx) override {
+    TensorShape shape;
+    OP_REQUIRES_OK(ctx, ctx->ConstantInputAsShape(0, &shape));
+
+    TensorShape seed_shape = ctx->InputShape(1);
+    OP_REQUIRES(ctx, seed_shape.dims() == 1 && seed_shape.dim_size(0) == 2,
+                errors::InvalidArgument("seed must have shape [2], not ",
+                                        seed_shape.DebugString()));
+    TensorShape minval_shape = ctx->InputShape(2);
+    OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(minval_shape),
+                errors::InvalidArgument("minval must be scalar, got shape ",
+                                        minval_shape.DebugString()));
+    TensorShape maxval_shape = ctx->InputShape(3);
+    OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(maxval_shape),
+                errors::InvalidArgument("minval must be scalar, got shape ",
+                                        maxval_shape.DebugString()));
+
+    xla::XlaOp seed = ctx->Input(1);
+    xla::XlaOp minval = ctx->Input(2);
+    xla::XlaOp maxval = ctx->Input(3);
+
+    xla::Shape xla_shape;
+    OP_REQUIRES_OK(ctx, TensorShapeToXLAShape(dtype_, shape, &xla_shape));
+
+    auto seed0 = xla::Reshape(xla::Slice(seed, {0}, {1}, {1}), {});
+    auto seed1 = xla::Reshape(xla::Slice(seed, {1}, {2}, {1}), {});
+
+    auto uniform =
+        xla::StatelessRngUniform({seed0, seed1}, xla_shape, minval, maxval);
+    ctx->SetOutput(0, uniform);
+  }
+
+ private:
+  DataType dtype_;
+
+  TF_DISALLOW_COPY_AND_ASSIGN(StatelessRandomUniformIntOp);
+};
+
+// TODO(phawkins): generalize to non-int32 seed types.
+REGISTER_XLA_OP(Name("StatelessRandomUniformInt")
+                    .CompileTimeConstantInput("shape")
+                    .TypeConstraint("dtype", {DT_INT32, DT_INT64})
+                    .TypeConstraint("Tseed", DT_INT32),
+                StatelessRandomUniformIntOp);
+
 class StatelessRandomNormalOp : public XlaOpKernel {
  public:
   explicit StatelessRandomNormalOp(OpKernelConstruction* ctx)

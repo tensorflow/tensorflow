@@ -15,18 +15,6 @@ limitations under the License.
 
 #include "tensorflow/contrib/lite/experimental/micro/micro_error_reporter.h"
 
-#ifdef TF_LITE_MCU_DEBUG_LOG
-#include <debug_log.h>
-#else  // TF_LITE_MCU_DEBUG_LOG
-#include <cstdint>
-#include <cstdio>
-void DebugLog(const char* s) { fprintf(stderr, "%s", s); }
-void DebugLogInt32(int32_t i) { fprintf(stderr, "%d", i); }
-void DebugLogUInt32(uint32_t i) { fprintf(stderr, "%d", i); }
-void DebugLogHex(uint32_t i) { fprintf(stderr, "0x%8x", i); }
-void DebugLogFloat(float i) { fprintf(stderr, "%f", i); }
-#endif  // TF_LITE_MCU_DEBUG_LOG
-
 namespace tflite {
 namespace {
 void DebugLogPrintf(const char* format, va_list args) {

@@ -3271,6 +3271,37 @@ def make_unpack_tests(zip_path):
   make_zip_of_tests(zip_path, test_parameters, build_graph, build_inputs)
 
 
+def make_range_tests(zip_path):
+  """Make a set of tests to do range."""
+
+  test_parameters = [{
+      "dtype": [tf.int32],
+      "offset": [10, 100, 1000],
+      "delta": [1, 2, 3, 4, -1, -2, -3, -4],
+  }]
+
+  def build_graph(parameters):
+    """Build the range op testing graph."""
+    input_tensor = tf.placeholder(
+        dtype=parameters["dtype"], name=("start"), shape=[])
+    if parameters["delta"] < 0:
+      offset = parameters["offset"] * -1
+    else:
+      offset = parameters["offset"]
+    delta = parameters["delta"]
+    limit_tensor = input_tensor + offset
+    delta_tensor = tf.constant(delta, dtype=tf.int32)
+    out = tf.range(input_tensor, limit_tensor, delta_tensor)
+    return [input_tensor], [out]
+
+  def build_inputs(parameters, sess, inputs, outputs):
+    input_value = create_scalar_data(parameters["dtype"])
+    return [input_value], sess.run(
+        outputs, feed_dict=dict(zip(inputs, [input_value])))
+
+  make_zip_of_tests(zip_path, test_parameters, build_graph, build_inputs)
+
+
 def _make_logical_tests(op):
   """Make a set of tests to do logical operations."""
 

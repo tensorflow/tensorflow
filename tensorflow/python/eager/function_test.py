@@ -85,7 +85,6 @@ class DefunnedMiniModel(MiniModel):
     return super(DefunnedMiniModel, self).call(inputs, training=training)
 
 
-@test_util.with_c_shapes
 class FunctionTest(test.TestCase, parameterized.TestCase):
 
   def testBasic(self):
@@ -109,6 +108,21 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     with context.rewriter_config(rewrites):
       t = constant_op.constant(1.0)
       self.assertAllEqual(add(t, t).numpy(), 2.0)
+
+  def testFuncName(self):
+
+    @function.defun_with_attributes(attributes={'func_name': 'multiply'})
+    def add(x, y):
+      _ = x * y
+      return x + y
+
+    @function.defun
+    def add_2(x, y):
+      _ = x * y
+      return x + y
+
+    self.assertEqual(add._name, 'multiply')
+    self.assertEqual(add_2._name, 'add_2')
 
   def testBasicGraphMode(self):
     matmul = def_function.function(math_ops.matmul)
@@ -2312,29 +2326,32 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
         # pylint: disable=protected-access
         self.assertEqual(len(graph._functions), 3)
 
+  @test_util.run_in_graph_and_eager_modes
   def testBackwardNone(self):
-    with ops.Graph().as_default():
-      model = variables.Variable(1.0, name='model')
-      count = variables.Variable(0)
+    model = variables.Variable(1.0, name='model')
+    count = variables.Variable(0)
 
-      @function.defun
-      def forward_pass(value):
-        count.assign_add(1)
-        residuals = value - model
-        loss = 0.5 * math_ops.reduce_mean(math_ops.pow(residuals, 2))
-        # Note: count is an integer, so its doutput will be None
-        return loss, count
+    @function.defun
+    def forward_pass(value):
+      count.assign_add(1)
+      residuals = value - model
+      loss = 0.5 * math_ops.reduce_mean(math_ops.pow(residuals, 2))
+      # Note: count is an integer, so its doutput will be None
+      return loss, count
 
-      def reduce_fn(x):
-        loss, count = forward_pass(x)
-        grad_only = gradients_impl.gradients(loss, model)
-        return grad_only, count
+    def reduce_fn(x):
+      if context.executing_eagerly():
+        with backprop.GradientTape() as t:
+          loss, count = forward_pass(x)
+        return t.gradient(loss, model), count
+      loss, count = forward_pass(x)
+      grad_only = gradients_impl.gradients(loss, model)
+      return grad_only, count
 
-      do_it = reduce_fn(constant_op.constant([7.0]))
+    g, _ = reduce_fn(constant_op.constant([7.0]))
 
-      with self.test_session() as sess:
-        sess.run([variables.global_variables_initializer()])
-        self.assertAllEqual(sess.run(do_it), [[-6.0], 1])
+    self.evaluate(variables.global_variables_initializer())
+    self.assertAllEqual(nest.flatten(self.evaluate(g)), [-6.0])
 
   def testCallingFunctionWithDifferentVariables(self):
 
@@ -2859,9 +2876,14 @@ class ArgumentNamingTests(test.TestCase, parameterized.TestCase):
          for inp in variadic_op.inputs])
 
 
-class DefunCollectionTest(test.TestCase):
+class DefunCollectionTest(test.TestCase, parameterized.TestCase):
 
-  def testCollectionValueAccess(self):
+  @parameterized.named_parameters(
+      dict(testcase_name='Defun', function_decorator=function.defun),
+      dict(
+          testcase_name='DefFunction',
+          function_decorator=def_function.function))
+  def testCollectionValueAccess(self, function_decorator):
     """Read values from graph collections inside of defun."""
     with ops.Graph().as_default() as g:
       with self.session(graph=g):
@@ -2870,7 +2892,7 @@ class DefunCollectionTest(test.TestCase):
         ops.add_to_collection('x', x)
         ops.add_to_collection('y', y)
 
-        @function.defun
+        @function_decorator
         def fn():
           x_const = constant_op.constant(ops.get_collection('x')[0])
           y_const = constant_op.constant(ops.get_collection('y')[0])
@@ -2883,13 +2905,18 @@ class DefunCollectionTest(test.TestCase):
         self.assertEquals(ops.get_collection('y'), [5])
         self.assertEquals(ops.get_collection('z'), [])
 
-  def testCollectionVariableValueAccess(self):
+  @parameterized.named_parameters(
+      dict(testcase_name='Defun', function_decorator=function.defun),
+      dict(
+          testcase_name='DefFunction',
+          function_decorator=def_function.function))
+  def testCollectionVariableValueAccess(self, function_decorator):
     """Read variable value from graph collections inside of defun."""
     with ops.Graph().as_default() as g:
       with self.session(graph=g):
         v = resource_variable_ops.ResourceVariable(1.0)
 
-        @function.defun
+        @function_decorator
         def f():
           return v.read_value()
 

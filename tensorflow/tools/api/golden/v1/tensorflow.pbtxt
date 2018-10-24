@@ -313,10 +313,6 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
-    name: "contrib"
-    mtype: "<class \'tensorflow.python.util.lazy_loader.LazyLoader\'>"
-  }
-  member {
     name: "data"
     mtype: "<type \'module\'>"
   }

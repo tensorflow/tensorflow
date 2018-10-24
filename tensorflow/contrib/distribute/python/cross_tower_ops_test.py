@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Tests for CrossTowerOps."""
+"""Tests for CrossDeviceOps."""
 
 from __future__ import absolute_import
 from __future__ import division
@@ -89,7 +89,7 @@ def _make_mirrored_indexed_slices(devices, values, indices, dense_shape):
 _cpu_device = "/device:CPU:0"
 
 
-class CrossTowerOpsTestBase(test.TestCase, parameterized.TestCase):
+class CrossDeviceOpsTestBase(test.TestCase, parameterized.TestCase):
 
   def _assert_indexed_slices_equal(self, left, right):
     self.assertIsInstance(left, ops.IndexedSlices)
@@ -189,22 +189,22 @@ class CrossTowerOpsTestBase(test.TestCase, parameterized.TestCase):
           _fake_mirrored(1., destinations))
 
 
-class SingleWorkerCrossTowerOpsTest(CrossTowerOpsTestBase):
+class SingleWorkerCrossDeviceOpsTest(CrossDeviceOpsTestBase):
   # TODO(yuefengz): decouple the num_gpus check from distribution in
   # combinations module so that we can pass in devices instead of a distribution
   # strategy.
   reduction_to_one_combinations = combinations.combine(
       cross_tower_ops=[
           combinations.NamedObject(
-              "DefaultReductionToOneDeviceCrossTowerOps",
-              cross_tower_ops_lib.ReductionToOneDeviceCrossTowerOps()),
+              "DefaultReductionToOneDeviceCrossDeviceOps",
+              cross_tower_ops_lib.ReductionToOneDeviceCrossDeviceOps()),
           combinations.NamedObject(
-              "ReductionToCPUDeviceCrossTowerOps",
-              cross_tower_ops_lib.ReductionToOneDeviceCrossTowerOps(
+              "ReductionToCPUDeviceCrossDeviceOps",
+              cross_tower_ops_lib.ReductionToOneDeviceCrossDeviceOps(
                   reduce_to_device=_cpu_device)),
           combinations.NamedObject(
-              "AccumulateNCrossTowerOp",
-              cross_tower_ops_lib.ReductionToOneDeviceCrossTowerOps(
+              "AccumulateNCrossDeviceOp",
+              cross_tower_ops_lib.ReductionToOneDeviceCrossDeviceOps(
                   accumulation_fn=math_ops.accumulate_n)),
       ],
       distribution=[
@@ -217,17 +217,17 @@ class SingleWorkerCrossTowerOpsTest(CrossTowerOpsTestBase):
       cross_tower_ops=[
           combinations.NamedObject(
               "AllReduce",
-              cross_tower_ops_lib.AllReduceCrossTowerOps("nccl", 1, 0, 0)),
+              cross_tower_ops_lib.AllReduceCrossDeviceOps("nccl", 1, 0, 0)),
           combinations.NamedObject(
               "HierarchicalCopy",
-              cross_tower_ops_lib.AllReduceCrossTowerOps(
+              cross_tower_ops_lib.AllReduceCrossDeviceOps(
                   "hierarchical_copy", 8, 0, 0)),
           combinations.NamedObject(
               "AllReduceNoGradientRepacking",
-              cross_tower_ops_lib.AllReduceCrossTowerOps("nccl", 0, 0, 0)),
+              cross_tower_ops_lib.AllReduceCrossDeviceOps("nccl", 0, 0, 0)),
           combinations.NamedObject(
               "HierarchicalCopyAggregateSmallTensors",
-              cross_tower_ops_lib.AllReduceCrossTowerOps(
+              cross_tower_ops_lib.AllReduceCrossDeviceOps(
                   "hierarchical_copy", 0, 100, 10))
       ],
       distribution=[combinations.mirrored_strategy_with_two_gpus],
@@ -242,14 +242,14 @@ class SingleWorkerCrossTowerOpsTest(CrossTowerOpsTestBase):
     device_links = [[1, 2, 3, 4], [0, 2, 3, 5], [0, 1, 3, 6], [0, 1, 2, 7],
                     [0, 5, 6, 7], [1, 4, 6, 7], [2, 4, 5, 7], [3, 4, 5, 6]]
     result = cross_tower_ops_lib._choose_all_reduce_algorithm(device_links)
-    self.assertIsInstance(result, cross_tower_ops_lib.AllReduceCrossTowerOps)
+    self.assertIsInstance(result, cross_tower_ops_lib.AllReduceCrossDeviceOps)
     self.assertEqual(result._all_reduce_alg, "hierarchical_copy")
     self.assertEqual(result._num_packs, 8)
 
     # if there are only 4 devices
     device_links = [[1, 2, 3, 4], [0, 2, 3, 5], [0, 1, 3, 6], [0, 1, 2, 7]]
     result = cross_tower_ops_lib._choose_all_reduce_algorithm(device_links)
-    self.assertIsInstance(result, cross_tower_ops_lib.AllReduceCrossTowerOps)
+    self.assertIsInstance(result, cross_tower_ops_lib.AllReduceCrossDeviceOps)
     self.assertEqual(result._all_reduce_alg, "nccl")
     self.assertEqual(result._num_packs, 1)
 
@@ -258,7 +258,7 @@ class SingleWorkerCrossTowerOpsTest(CrossTowerOpsTestBase):
                     [0, 1, 2, 3, 7], [0, 4, 5, 6, 7], [1, 4, 5, 6, 7],
                     [2, 4, 5, 6, 7], [3, 4, 5, 6, 7]]
     result = cross_tower_ops_lib._choose_all_reduce_algorithm(device_links)
-    self.assertIsInstance(result, cross_tower_ops_lib.AllReduceCrossTowerOps)
+    self.assertIsInstance(result, cross_tower_ops_lib.AllReduceCrossDeviceOps)
     self.assertEqual(result._all_reduce_alg, "hierarchical_copy")
     self.assertEqual(result._num_packs, 8)
 
@@ -266,7 +266,7 @@ class SingleWorkerCrossTowerOpsTest(CrossTowerOpsTestBase):
     device_links = [[0, 2, 3, 5], [0, 1, 3, 6], [0, 1, 2, 7], [0, 5, 6, 7],
                     [1, 4, 6, 7], [2, 4, 5, 7], [3, 4, 5, 6], [1, 2, 3, 4]]
     result = cross_tower_ops_lib._choose_all_reduce_algorithm(device_links)
-    self.assertIsInstance(result, cross_tower_ops_lib.AllReduceCrossTowerOps)
+    self.assertIsInstance(result, cross_tower_ops_lib.AllReduceCrossDeviceOps)
     self.assertEqual(result._all_reduce_alg, "nccl")
     self.assertEqual(result._num_packs, 1)
 
@@ -294,11 +294,11 @@ class SingleWorkerCrossTowerOpsTest(CrossTowerOpsTestBase):
       combinations.combine(
           cross_tower_ops_instance=[
               combinations.NamedObject(
-                  "ReductionToOneDeviceCrossTowerOps",
-                  cross_tower_ops_lib.ReductionToOneDeviceCrossTowerOps()),
+                  "ReductionToOneDeviceCrossDeviceOps",
+                  cross_tower_ops_lib.ReductionToOneDeviceCrossDeviceOps()),
               combinations.NamedObject(
-                  "AllReduceCrossTowerOps",
-                  cross_tower_ops_lib.AllReduceCrossTowerOps())
+                  "AllReduceCrossDeviceOps",
+                  cross_tower_ops_lib.AllReduceCrossDeviceOps())
           ],
           aggregation=[vs.VariableAggregation.SUM, vs.VariableAggregation.MEAN],
           batch_reduce=[True, False],
@@ -346,8 +346,8 @@ class SingleWorkerCrossTowerOpsTest(CrossTowerOpsTestBase):
     self._assert_values_equal(total_mirrored_without_dups, result)
 
 
-class MultiWorkerCrossTowerOpsTest(multi_worker_test_base.MultiWorkerTestBase,
-                                   CrossTowerOpsTestBase):
+class MultiWorkerCrossDeviceOpsTest(multi_worker_test_base.MultiWorkerTestBase,
+                                    CrossDeviceOpsTestBase):
 
   worker_devices = [
       "/job:worker/replica:0/task:0", "/job:worker/replica:0/task:1"

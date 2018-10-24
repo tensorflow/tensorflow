@@ -73,11 +73,14 @@ bool IsBitcast(const NodeDef& node) { return node.op() == "Bitcast"; }
 
 bool IsCast(const NodeDef& node) { return node.op() == "Cast"; }
 
-// TODO(rmlarsen): Add support for "QuantizeDownAndShrinkRange", "Requantize",
-// "CompareAndBitpack", "Bucketize" etc.
 bool IsCastLike(const NodeDef& node) {
   static const gtl::FlatSet<string>* const kCastLikeOps =
-      CHECK_NOTNULL((new gtl::FlatSet<string>{"Cast"}));
+      CHECK_NOTNULL((new gtl::FlatSet<string>{
+          "Angle", "Bucketize", "Cast", "CompareAndBitpack", "Dequantize",
+          "HistogramFixedWidth", "Imag", "IsFinite", "IsInf", "IsNan",
+          "Quantize", "QuantizeDownAndShrinkRange", "QuantizeV2",
+          "QuantizedInstanceNorm", "QuantizedRelu", "QuantizedRelu6",
+          "QuantizedReluX", "Real", "Requantize"}));
   return kCastLikeOps->count(node.op()) > 0;
 }
 

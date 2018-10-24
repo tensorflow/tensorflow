@@ -160,7 +160,7 @@ class CollectiveAllReduceStrategy(mirrored_strategy.MirroredStrategy):
           if i > 0:
             # Give replicas meaningful distinct names:
             var0name = index[devices[0]].name.split(":")[0]
-            # We append a / to variable names created on towers with id > 0 to
+            # We append a / to variable names created on replicas with id > 0 to
             # ensure that we ignore the name scope and instead use the given
             # name as the absolute name of the variable.
             kwargs["name"] = "%s/replica_%d/" % (var0name, i)
