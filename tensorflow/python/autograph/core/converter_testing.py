@@ -31,6 +31,7 @@ from tensorflow.python.autograph.core import converter
 from tensorflow.python.autograph.core import errors
 from tensorflow.python.autograph.core import function_wrapping
 from tensorflow.python.autograph.pyct import compiler
+from tensorflow.python.autograph.pyct import origin_info
 from tensorflow.python.autograph.pyct import parser
 from tensorflow.python.autograph.pyct import pretty_printer
 from tensorflow.python.autograph.pyct import transformer
@@ -176,5 +177,6 @@ class TestCase(test.TestCase):
         arg_types=arg_types,
         owner_type=owner_type)
     ctx = converter.EntityContext(namer, entity_info, program_ctx)
+    origin_info.resolve(node, source, test_fn)
     node = converter.standard_analysis(node, ctx, is_initial=True)
     return node, ctx
