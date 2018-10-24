@@ -517,10 +517,10 @@ class PartitionedCallOp : public AsyncOpKernel {
     (*graph)->ToGraphDef(&item.graph);
 
     if (flib) {
-      // TODO(ezhulenev): Prune unreachable functions to reduce copy overhead.
-      // It's unsafe to do it now, because it's possible to get conflicting
-      // specializations with the same name.
-      *item.graph.mutable_library() = flib->ToProto();
+      // Copy only functions that are reachable from the graph.
+      *item.graph.mutable_library() =
+          grappler::ReachableFunctionLibraryDefinition(*flib, item.graph)
+              .ToProto();
     }
 
     tensorflow::GraphDef out_graph;

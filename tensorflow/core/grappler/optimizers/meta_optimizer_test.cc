@@ -125,7 +125,22 @@ gtl::FlatMap<string, GrapplerItem::AllowedOptimizations>*
 
 REGISTER_GRAPH_OPTIMIZER(GrapplerItemPropertiesAccumulator);
 
-class MetaOptimizerTest : public GrapplerTest {};
+class MetaOptimizerTest : public GrapplerTest {
+ protected:
+  // Returns a first function in the library with a name starting with a given
+  // prefix.
+  const FunctionDef* FindSpecializedFunc(const FunctionLibraryDefinition& flib,
+                                         string prefix) {
+    FunctionDefLibrary proto = flib.ToProto();
+    for (const FunctionDef& func : proto.function()) {
+      const string& func_name = func.signature().name();
+      if (str_util::StartsWith(func_name, prefix)) {
+        return flib.Find(func_name);
+      }
+    }
+    return nullptr;
+  }
+};
 
 TEST_F(MetaOptimizerTest, RunsCustomOptimizer) {
   TrivialTestGraphInputYielder fake_input(4, 1, 10, false, {"CPU:0"});
@@ -218,6 +233,7 @@ TEST_F(MetaOptimizerTest, RunToggleOptimizersAndCustomGraphOptimizerTwice) {
 }
 
 TEST_F(MetaOptimizerTest, OptimizeFunctionLibrary) {
+  using str_util::StartsWith;
   using test::function::NDef;
 
   // Enable ony function optimization.
@@ -252,8 +268,8 @@ TEST_F(MetaOptimizerTest, OptimizeFunctionLibrary) {
 
   FunctionDef quadratic_func = FunctionDefHelper::Create(
       "MyQuadratic", {"x:T"}, {"z:T"}, {"T: {float, double}"},
-      {{{"square"}, "MySquare", {"x"}, {{"T", "$T"}}},
-       {{"quadratic"}, "MySquare", {"square:z"}, {{"T", "$T"}}}},
+      {{{"square_nested"}, "MySquare", {"x"}, {{"T", "$T"}}},
+       {{"quadratic"}, "MySquare", {"square_nested:z"}, {{"T", "$T"}}}},
       /* Mapping between function returns and function node outputs. */
       {{"z", "quadratic:z:0"}});
   (*quadratic_func.mutable_attr())["_noinline"].set_b(true);
@@ -293,17 +309,21 @@ TEST_F(MetaOptimizerTest, OptimizeFunctionLibrary) {
 
   // MySquare should be specialized and optimized for 3 instantiations:
   //   1. 'square' node in the main graph
-  //   2. 'square' node in the MyQuadratic specialization (not in a fetch set)
+  //   2. 'square_nested' node in the MyQuadratic specialization
   //   3. 'quadratic' node in the MyQuadratic specialization (is in a fetch set)
 
   const string optimized_1 = "MySquare_specialized_for_square";
-  const string optimized_2 = "MySquare_specialized_for_square_1";
+  const string optimized_2 = "MySquare_specialized_for_square_nested";
   const string optimized_3 = "MySquare_specialized_for_quadratic";
 
-  const FunctionDef* optimized_func_0 = optimized_flib.Find(optimized_0);
-  const FunctionDef* optimized_func_1 = optimized_flib.Find(optimized_1);
-  const FunctionDef* optimized_func_2 = optimized_flib.Find(optimized_2);
-  const FunctionDef* optimized_func_3 = optimized_flib.Find(optimized_3);
+  const FunctionDef* optimized_func_0 =
+      FindSpecializedFunc(optimized_flib, optimized_0);
+  const FunctionDef* optimized_func_1 =
+      FindSpecializedFunc(optimized_flib, optimized_1);
+  const FunctionDef* optimized_func_2 =
+      FindSpecializedFunc(optimized_flib, optimized_2);
+  const FunctionDef* optimized_func_3 =
+      FindSpecializedFunc(optimized_flib, optimized_3);
 
   ASSERT_NE(optimized_func_0, nullptr);
   ASSERT_NE(optimized_func_1, nullptr);
@@ -314,9 +334,9 @@ TEST_F(MetaOptimizerTest, OptimizeFunctionLibrary) {
   int count = 0;
   for (const NodeDef& node : output.node()) {
     if (node.name() == "square" && ++count) {
-      EXPECT_EQ("MySquare_specialized_for_square", node.op());
+      EXPECT_TRUE(StartsWith(node.op(), optimized_1));
     } else if (node.name() == "quadratic" && ++count) {
-      EXPECT_EQ("MyQuadratic_specialized_for_quadratic", node.op());
+      EXPECT_TRUE(StartsWith(node.op(), optimized_0));
     }
   }
   EXPECT_EQ(2, count);
@@ -324,10 +344,10 @@ TEST_F(MetaOptimizerTest, OptimizeFunctionLibrary) {
   // Specialized MySquare should call specialized functions.
   count = 0;
   for (const NodeDef& node : optimized_func_0->node_def()) {
-    if (node.name() == "square" && ++count) {
-      EXPECT_EQ(optimized_2, node.op());
+    if (node.name() == "square_nested" && ++count) {
+      EXPECT_TRUE(StartsWith(node.op(), optimized_2));
     } else if (node.name() == "quadratic" && ++count) {
-      EXPECT_EQ(optimized_3, node.op());
+      EXPECT_TRUE(StartsWith(node.op(), optimized_3));
     }
   }
   EXPECT_EQ(2, count);
@@ -380,6 +400,7 @@ TEST_F(MetaOptimizerTest, OptimizeFunctionLibrary) {
 }
 
 TEST_F(MetaOptimizerTest, OptimizeFunctionLibraryPruneFunctionBody) {
+  using str_util::StartsWith;
   using test::function::NDef;
 
   // Enable function optimization and pruning.
@@ -433,12 +454,14 @@ TEST_F(MetaOptimizerTest, OptimizeFunctionLibraryPruneFunctionBody) {
   // Specialized and optimized functions should be added to the graph.
   EXPECT_EQ(2, optimized_flib.num_functions());
 
-  // Expected names of the specialized and optimized functions.
+  // Expected prefixes of the specialized and optimized functions.
   const string optimized_fn1 = "MyFunc_specialized_for_fn1";
   const string optimized_fn2 = "MyFunc_specialized_for_fn2";
 
-  const FunctionDef* optimized_func_fn1 = optimized_flib.Find(optimized_fn1);
-  const FunctionDef* optimized_func_fn2 = optimized_flib.Find(optimized_fn2);
+  const FunctionDef* optimized_func_fn1 =
+      FindSpecializedFunc(optimized_flib, optimized_fn1);
+  const FunctionDef* optimized_func_fn2 =
+      FindSpecializedFunc(optimized_flib, optimized_fn2);
 
   ASSERT_NE(optimized_func_fn1, nullptr);
   ASSERT_NE(optimized_func_fn2, nullptr);
@@ -447,9 +470,9 @@ TEST_F(MetaOptimizerTest, OptimizeFunctionLibraryPruneFunctionBody) {
   int count = 0;
   for (const NodeDef& node : output.node()) {
     if (node.name() == "fn1" && ++count) {
-      EXPECT_EQ(optimized_fn1, node.op());
+      EXPECT_TRUE(StartsWith(node.op(), optimized_fn1));
     } else if (node.name() == "fn2" && ++count) {
-      EXPECT_EQ(optimized_fn2, node.op());
+      EXPECT_TRUE(StartsWith(node.op(), optimized_fn2));
     }
   }
   EXPECT_EQ(2, count);

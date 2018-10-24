@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <unordered_map>
 
+#include "absl/strings/string_view.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/common_runtime/process_function_library_runtime.h"
@@ -35,6 +36,7 @@ limitations under the License.
 #include "tensorflow/core/grappler/utils.h"
 #include "tensorflow/core/grappler/utils/functions.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
+#include "tensorflow/core/lib/random/random.h"
 
 namespace tensorflow {
 namespace grappler {
@@ -105,25 +107,38 @@ AttrSlice FunctionInstantiationAttributes(const FunctionDef& func,
   }
 }
 
-// Find unique name for the specialized function. Collision can happen if
-// specialized function is instantiated for the nodes with the same name (e.g.
-// inside function body of two different functions).
+// TODO(b/69972605): Replace with sanctioned absl/random API once one is
+// available.
+string RandomString(const absl::string_view alphabet, size_t len) {
+  string result(len, '\0');
+  std::generate(std::begin(result), std::end(result), [&alphabet]() {
+    return alphabet[random::New64() % alphabet.size()];
+  });
+  return result;
+}
+
+// Get unique name for the specialized function. We append a random suffix to
+// the specialized name, because we can't guarantee that the function optimizer
+// has access to full function library. For example when we are optimizing
+// functions, function library passed to the optimizer will have only reachable
+// functions, it's possible that we'll generate a conflicting function
+// specialization if we have multiple nested function calls with the same node
+// name.
 string UniqueSpecializedFunctionName(const FunctionDef& func,
-                                     const NodeDef& func_node,
-                                     const FunctionLibraryDefinition& flib) {
+                                     const NodeDef& func_node) {
   using str_util::StringReplace;
   using strings::StrCat;
 
-  string specialized_name = StrCat(func.signature().name(), "_specialized_for_",
-                                   StringReplace(func_node.name(), "/", "_",
-                                                 /*replace_all*/ true));
-  string unique_name = specialized_name;
+  static const char kAlphanum[] =
+      "0123456789"
+      "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+      "abcdefghijklmnopqrstuvwxyz";
 
-  int idx = 0;
-  while (flib.Find(unique_name)) {
-    unique_name = strings::StrCat(specialized_name, "_", ++idx);
-  }
-  return unique_name;
+  string suffix = RandomString(kAlphanum, 8);
+  return StrCat(func.signature().name(), "_specialized_for_",
+                StringReplace(func_node.name(), "/", "_",
+                              /*replace_all*/ true),
+                "_", suffix);
 }
 
 // Specialized function instantiation type parameters, body parameters, and
@@ -730,7 +745,7 @@ Status SpecializeFunction(const NodeDef& func_node, const FunctionDef& func,
 
   // Find a name for specialized function.
   const string specialized_func_name =
-      UniqueSpecializedFunctionName(func, func_node, flib);
+      UniqueSpecializedFunctionName(func, func_node);
 
   specialized_func.mutable_signature()->set_name(specialized_func_name);
   auto* specialized_attr = specialized_func.mutable_attr();

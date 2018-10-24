@@ -617,10 +617,10 @@ Status MakeGrapplerFunctionItem(const FunctionDef& func,
   // Instantiate function body into a statically defined graph def.
   GraphDef function_body;
 
-  // Function body shares the library with the graph that instantiated it. It's
-  // unsafe to prune unreachable functions here, because it might lead to
-  // conflicting specializations.
-  *function_body.mutable_library() = flib.ToProto();
+  // Function body shares the library with the graph that instantiated it. We
+  // keep only reachable subset of it.
+  *function_body.mutable_library() =
+      ReachableFunctionLibraryDefinition(flib, func).ToProto();
 
   // TODO(ezhulenev): support functions with tensor sequence inputs/outputs
 
