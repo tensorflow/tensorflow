@@ -65,7 +65,7 @@ class BackpropTest(test.TestCase):
     grad = backprop.gradients_function(fn, [0])(var)[0]
     grad = self.evaluate(ops.convert_to_tensor(grad))
 
-    with context.graph_mode():
+    if not context.executing_eagerly():
       tf_var = array_ops.constant(var_np, dtypes.float32)
       tf_ind1 = array_ops.constant([0, 1])
       tf_ind2 = array_ops.constant([2, 3])
@@ -199,7 +199,7 @@ class BackpropTest(test.TestCase):
     grad = backprop.implicit_grad(f)()[0][0]
     opt = training.GradientDescentOptimizer(lrn_rate)
 
-    with context.graph_mode(), self.cached_session():
+    with ops.Graph().as_default(), self.cached_session():
       tf_x = array_ops.ones((batch_size), dtypes.int64)
       # TODO(ashankar,apassos): Change to ResourceVariable.
       tf_embedding = variables.Variable(
@@ -1041,7 +1041,7 @@ class BackpropTest(test.TestCase):
       val_and_grads_fn(x, y)
 
   def testZerosCacheDoesntLeakAcrossGraphs(self):
-    with context.graph_mode():
+    with ops.Graph().as_default():
       def get_grad():
         with ops.Graph().as_default(), self.cached_session():
           t = constant_op.constant(1, dtype=dtypes.float32, shape=(10, 4))
@@ -1112,7 +1112,7 @@ class BackpropTest(test.TestCase):
     self.assertAllEqual(gradients_constants, gradients_variables)
 
   def testUnknownShapes(self):
-    with context.graph_mode():
+    with ops.Graph().as_default():
       with backprop.GradientTape() as tape:
         a = array_ops.placeholder(dtype=dtypes.float32, shape=None)
         tape.watch(a)
@@ -1122,6 +1122,24 @@ class BackpropTest(test.TestCase):
 
       with self.cached_session() as sess:
         self.assertEqual((8.0, 12.0), sess.run((b, db_da), feed_dict={a: 2.0}))
+
+  def testCustomGradientTapeGraph(self):
+    with ops.Graph().as_default(), self.cached_session():
+
+      @custom_gradient.custom_gradient
+      def f(x):
+        y = x * x
+
+        def grad(dy):
+          return [4 * dy]
+
+        return y, grad
+
+      with backprop.GradientTape() as t:
+        c = constant_op.constant(1.0)
+        t.watch(c)
+        g = f(c)
+      self.assertAllEqual(t.gradient(g, c).eval(), 4.0)
 
 
 if __name__ == '__main__':
