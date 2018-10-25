@@ -32,6 +32,7 @@ limitations under the License.
 
 #include "tensorflow/core/lib/strings/stringprintf.h"
 
+#include "absl/types/optional.h"
 #include "google/protobuf/util/message_differencer.h"
 
 #include <fstream>
@@ -101,6 +102,8 @@ namespace xla {
 namespace poplarplugin {
 
 static const char* s_cache_env_variable = "TF_POPLAR_ENGINE_CACHE";
+static const char* s_max_compilation_threads_variable =
+    "TF_POPLAR_MAX_COMPILATION_THREADS";
 
 std::string GetInputCopyHandle(int64 parameter, int64 index) {
   return tensorflow::strings::Printf("%lld.%lld", parameter, index);
@@ -306,6 +309,14 @@ static bool DeviceConfigurationsEqual(const tensorflow::IPUOptions& a,
   return google::protobuf::util::MessageDifferencer::Equivalent(a, b);
 }
 
+static absl::optional<int64> GetMaxCompilationThreads() {
+  if (const char* env_c = std::getenv(s_max_compilation_threads_variable)) {
+    std::string env(env_c);
+    return std::stoll(env);
+  }
+  return absl::nullopt;
+}
+
 Status PoplarExecutor::ConfigurePoplarDevice(
     const tensorflow::IPUOptions& cfg) {
   if (!DeviceConfigurationsEqual(cfg, current_config_) || !device_open_) {
@@ -452,6 +463,11 @@ Status PoplarExecutor::ConfigurePoplarDevice(
 
     for (const auto& opt : current_config_.convolution_options()) {
       conv_options_.set(opt.option(), opt.value());
+    }
+    auto max_compilation_threads = GetMaxCompilationThreads();
+    if (max_compilation_threads) {
+      option_flags_.set("opt.maxCompilationThreads",
+                        std::to_string(*max_compilation_threads));
     }
 
     option_flags_.list([](const std::string& opt, const std::string& val) {
