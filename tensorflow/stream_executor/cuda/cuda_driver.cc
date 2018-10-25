@@ -21,9 +21,9 @@ limitations under the License.
 #include <set>
 #include <utility>
 
+#include "absl/base/casts.h"
 #include "absl/strings/str_cat.h"
 #include "tensorflow/stream_executor/cuda/cuda_diagnostics.h"
-#include "tensorflow/stream_executor/lib/casts.h"
 #include "tensorflow/stream_executor/lib/env.h"
 #include "tensorflow/stream_executor/lib/error.h"
 #include "tensorflow/stream_executor/lib/human_readable.h"
@@ -585,11 +585,11 @@ CUDADriver::ContextGetSharedMemConfig(CudaContext* context) {
     // Note that the driver API wants the contents of this values to be stored
     // in an array of void*s, so we coerce them accordingly.
     void *option_values[] = {
-        port::bit_cast<void *>(uintptr_t(error_log_buffer_bytes)),
-        port::bit_cast<void *>(error_log_buffer.data()),
-        port::bit_cast<void *>(uintptr_t(info_log_buffer_bytes)),
-        port::bit_cast<void *>(info_log_buffer.data()),
-        port::bit_cast<void *>(uintptr_t(log_verbose))};
+        absl::bit_cast<void *>(uintptr_t(error_log_buffer_bytes)),
+        absl::bit_cast<void *>(error_log_buffer.data()),
+        absl::bit_cast<void *>(uintptr_t(info_log_buffer_bytes)),
+        absl::bit_cast<void *>(info_log_buffer.data()),
+        absl::bit_cast<void *>(uintptr_t(log_verbose))};
     CHECK(TF_ARRAYSIZE(options) == TF_ARRAYSIZE(option_values));
 
     CUresult res;
@@ -817,7 +817,7 @@ CUDADriver::ContextGetSharedMemConfig(CudaContext* context) {
 /* static */ void CUDADriver::DeviceDeallocate(CudaContext* context,
                                                void *location) {
   ScopedActivateContext activation(context);
-  CUdeviceptr pointer = port::bit_cast<CUdeviceptr>(location);
+  CUdeviceptr pointer = absl::bit_cast<CUdeviceptr>(location);
   CUresult res = cuMemFree(pointer);
   if (res != CUDA_SUCCESS) {
     LOG(ERROR) << "failed to free device memory at " << location
@@ -847,7 +847,7 @@ CUDADriver::ContextGetSharedMemConfig(CudaContext* context) {
 /* static */ void CUDADriver::UnifiedMemoryDeallocate(CudaContext *context,
                                                       void *location) {
   ScopedActivateContext activation(context);
-  CUdeviceptr pointer = port::bit_cast<CUdeviceptr>(location);
+  CUdeviceptr pointer = absl::bit_cast<CUdeviceptr>(location);
   CUresult res = cuMemFree(pointer);
   if (res != CUDA_SUCCESS) {
     LOG(ERROR) << "failed to free unified memory at " << location
@@ -1058,7 +1058,7 @@ CUDADriver::ContextGetSharedMemConfig(CudaContext* context) {
         port::Printf("failed to synchronous memcpy from device to host: %s; "
                      "host dst: %p; GPU src: %p; size: %llu=0x%llx",
                      ToString(res).c_str(), host_dst,
-                     port::bit_cast<void *>(gpu_src), size, size));
+                     absl::bit_cast<void *>(gpu_src), size, size));
   }
   VLOG(2) << "successfully sync memcpy'd d2h of " << size << " bytes to "
           << host_dst;
@@ -1075,7 +1075,7 @@ CUDADriver::ContextGetSharedMemConfig(CudaContext* context) {
     return port::InternalError(port::Printf(
         "failed to synchronous memcpy from host to device: %s; GPU dst: %p;"
         " host src: %p; size: %llu=0x%llx",
-        ToString(res).c_str(), port::bit_cast<void *>(gpu_dst), host_src, size,
+        ToString(res).c_str(), absl::bit_cast<void *>(gpu_dst), host_src, size,
         size));
   }
   VLOG(2) << "successfully enqueued sync memcpy h2d of " << size << " bytes";
@@ -1092,8 +1092,8 @@ CUDADriver::ContextGetSharedMemConfig(CudaContext* context) {
     return port::InternalError(port::Printf(
         "failed to synchronous memcpy from host to device: %s; GPU dst: %p; "
         "GPU src: %p; size: %llu=0x%llx",
-        ToString(res).c_str(), port::bit_cast<void *>(gpu_dst),
-        port::bit_cast<void *>(gpu_src), size, size));
+        ToString(res).c_str(), absl::bit_cast<void *>(gpu_dst),
+        absl::bit_cast<void *>(gpu_src), size, size));
   }
   VLOG(2) << "successfully sync memcpy'd d2d of " << size << " bytes";
   return port::Status::OK();
@@ -1110,12 +1110,13 @@ CUDADriver::ContextGetSharedMemConfig(CudaContext* context) {
     LOG(ERROR) << port::Printf(
         "failed to enqueue async memcpy from device to host: %s; host dst: %p; "
         "GPU src: %p; size: %llu=0x%llx",
-        ToString(res).c_str(), host_dst, port::bit_cast<void *>(gpu_src), size, size);
+        ToString(res).c_str(), host_dst, absl::bit_cast<void *>(gpu_src), size,
+        size);
     return false;
   }
   VLOG(2) << "successfully enqueued async memcpy d2h of " << size
-          << " bytes from " << port::bit_cast<void *>(gpu_src) << " to " << host_dst
-          << " on stream " << stream;
+          << " bytes from " << absl::bit_cast<void *>(gpu_src) << " to "
+          << host_dst << " on stream " << stream;
   return true;
 }
 
@@ -1130,7 +1131,8 @@ CUDADriver::ContextGetSharedMemConfig(CudaContext* context) {
     LOG(ERROR) << port::Printf(
         "failed to enqueue async memcpy from host to device: %s; GPU dst: %p; "
         "host src: %p; size: %llu=0x%llx",
-        ToString(res).c_str(), port::bit_cast<void *>(gpu_dst), host_src, size, size);
+        ToString(res).c_str(), absl::bit_cast<void *>(gpu_dst), host_src, size,
+        size);
     return false;
   }
   VLOG(2) << "successfully enqueued async memcpy h2d of " << size << " bytes"
@@ -1151,9 +1153,10 @@ CUDADriver::ContextGetSharedMemConfig(CudaContext* context) {
         "; GPU dst: %p on %s %s"
         "; GPU src: %p on %s %s"
         "; can access? %s; size: %llu=0x%llx",
-        ToString(result).c_str(), port::bit_cast<void *>(gpu_dst),
+        ToString(result).c_str(), absl::bit_cast<void *>(gpu_dst),
         CUDAPointerToMemorySpaceString(gpu_dst).c_str(),
-        CUDAPointerToDeviceString(gpu_dst).c_str(), port::bit_cast<void *>(gpu_src),
+        CUDAPointerToDeviceString(gpu_dst).c_str(),
+        absl::bit_cast<void *>(gpu_src),
         CUDAPointerToMemorySpaceString(gpu_src).c_str(),
         CUDAPointerToDeviceString(gpu_src).c_str(),
         CUDAPointersToCanAccessString(gpu_src, gpu_dst).c_str(), size, size);
