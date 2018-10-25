@@ -50,7 +50,7 @@ class UpdateOpDependenciesTest(test_util.TensorFlowTestCase):
             'add_1/add.*/AddTo']
       self.assertTrue(tu.check_all_compute_sets_and_list(cs_list, ok))
 
-  def testAddCopyToViewChangingShape(self):
+  def testDontInplaceWithViewChangingPeer(self):
     data_a = np.array([[10, -20], [5, 1]])
     data_b = np.array([[-12, 11], [12, -13]])
     with ops.device("/device:IPU:0"):
@@ -81,12 +81,11 @@ class UpdateOpDependenciesTest(test_util.TensorFlowTestCase):
 
       ok = ['progIdCopy',
             'host-exchange-local-copy-',
-            'Copy_XLA_Args/arg0.*_to_transpose/transpose.*.clone/OnTileCopy',
-            'add/add.*/AddTo',
+            'add/add.*/Op/Add',
             'truediv/divide.*/Op/Divide']
       self.assertTrue(tu.check_all_compute_sets_and_list(cs_list, ok))
 
-  def testAddCopyToViewChangingShape2(self):
+  def testDontInplaceWithViewChangingPeer2(self):
     data_a = np.array([[10, -10], [-5, 5]])
     data_b = np.array([[-15, 15], [25, -25]])
     data_c = 2
@@ -121,15 +120,14 @@ class UpdateOpDependenciesTest(test_util.TensorFlowTestCase):
       cs_list = tu.get_compute_sets_from_report(s)
 
       ok = ['progIdCopy',
-            'Copy_XLA_Args/arg0.*_to_transpose/transpose.*.clone/OnTileCopy',
-            'mul/multiply.*/Op/Multiply',
-            'add/add.*/AddTo',
-            'add_1/add.*/AddTo',
+            'add/add.*.clone_expression/Op/Multiply',
+            'add/add.*.clone_expression/Op/Add',
             'mul_1/multiply.*/Op/Multiply',
+            'add_1/add.*/AddTo',
             'truediv/divide.*/Op/Divide']
       self.assertTrue(tu.check_all_compute_sets_and_list(cs_list, ok))
 
-  def testAddCopyBeforeInplaceOpWithViewChangingParent(self):
+  def testDontInplaceOpWithViewChangingParent(self):
     with ops.device("/device:IPU:0"):
       pa = array_ops.placeholder(np.float32, [3])
       pb = array_ops.placeholder(np.float32, [3])
@@ -161,9 +159,8 @@ class UpdateOpDependenciesTest(test_util.TensorFlowTestCase):
       cs_list = tu.get_compute_sets_from_report(s)
 
       ok = ['progIdCopy',
-            'Copy_XLA_Args/arg0.*_to_add/add.*/OnTileCopy',
-            'add/add.*/AddTo',
-            'truediv/divide.*/Op/Divide',
+            'truediv/divide.*.clone_expression/Op/Add',
+            'truediv/divide.*.clone_expression/Op/Divide',
             'add_1/add.*/AddTo']
       self.assertTrue(tu.check_all_compute_sets_and_list(cs_list, ok))
 

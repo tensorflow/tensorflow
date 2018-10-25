@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/compiler/plugin/poplar/driver/fuse_ops_late.h"
+#include "tensorflow/compiler/plugin/poplar/driver/inplace_util.h"
 #include "tensorflow/compiler/plugin/poplar/driver/matcher_predicates.h"
 
 #include "tensorflow/core/lib/core/errors.h"
@@ -27,27 +28,29 @@ static const std::vector<FusedGraphInfo> fuse_info = {
     {"const_slice_update", 0},
     {"const_slice", 0},
     {"const_slice", 0},
-    {"relu", 0, true},
-    {"relu", 0, true},
-    {"sigmoid", 0, true},
-    {"sigmoid", 0, true},
+    {"relu", 0, InplaceUtil::InplaceHloInstructionDescription({0})},
+    {"relu", 0, InplaceUtil::InplaceHloInstructionDescription({0})},
+    {"sigmoid", 0, InplaceUtil::InplaceHloInstructionDescription({0})},
+    {"sigmoid", 0, InplaceUtil::InplaceHloInstructionDescription({0})},
     {"relugrad", 0},
     {"relugrad", 0},
     {"sigmoidgrad", 0},
     {"sigmoidgrad", 0},
-    {"biasadd", 0, true},
-    {"biasadd", 0, true},
+    {"biasadd", 0, InplaceUtil::InplaceHloInstructionDescription({0})},
+    {"biasadd", 0, InplaceUtil::InplaceHloInstructionDescription({0})},
     {"zero_pad", 0},
     {"norm_scale_add", 4},
     {"uniform_scale_add", 4},
     {"avg_pool", 1},
     {"avg_pool", 1},
     {"avg_pool", 1},
-    {"bias_apply", 0, true},
-    {"conv_scaled_inplace", 4, true},
-    {"conv_scaled_inplace", 4, true},
-    {"scaled_inplace", 0, true},
-    {"scaled_inplace", 0, true},
+    {"bias_apply", 0, InplaceUtil::InplaceHloInstructionDescription({0})},
+    {"conv_scaled_inplace", 4,
+     InplaceUtil::InplaceHloInstructionDescription({0})},
+    {"conv_scaled_inplace", 4,
+     InplaceUtil::InplaceHloInstructionDescription({0})},
+    {"scaled_inplace", 0, InplaceUtil::InplaceHloInstructionDescription({0})},
+    {"scaled_inplace", 0, InplaceUtil::InplaceHloInstructionDescription({0})},
     {"padding_reduce_window", 0},
 };
 

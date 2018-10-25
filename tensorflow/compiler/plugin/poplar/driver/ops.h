@@ -20,6 +20,7 @@
 
 #include <poplar/exceptions.hpp>
 #include <poputil/exceptions.hpp>
+#include "absl/container/inlined_vector.h"
 
 namespace poplar {
 class Graph;
@@ -88,12 +89,10 @@ poplar::Tensor AddGroupsDimensionToWeights(const poplin::ConvParams& p,
                                            const poplar::Tensor& t,
                                            bool flipped);
 
-StatusOr<poplar::Tensor> AddOutputTensor(poplar::Graph& graph,
-                                         CompilerResources& res,
-                                         poplar::program::Sequence& seq,
-                                         TensorMap& map,
-                                         const HloInstruction* inst, int64 n,
-                                         const poplar::Tensor& tensor);
+Status AddOutputTensor(poplar::Graph& graph, CompilerResources& res,
+                       poplar::program::Sequence& seq, TensorMap& map,
+                       const HloInstruction* inst, int64 n,
+                       const poplar::Tensor& tensor);
 
 /* Returns a pair of numbers representing the half-open range of indicies
  * which a particular input to a tuple represents in the flattened output.
@@ -147,12 +146,11 @@ std::string GetTensorMappingJson(const poplar::Graph& graph,
  * can no longer be in place. If that's the case, this function will add an
  * extra tensor copy and use that tensor as the input/output tensor.
  */
-StatusOr<poplar::Tensor> GetInplaceOutputTensor(poplar::Graph& graph,
-                                                CompilerResources& res,
-                                                poplar::program::Sequence& seq,
-                                                const HloInstruction* inst,
-                                                const xla::Shape& output_shape,
-                                                TensorMap& tensor_map);
+StatusOr<ArgVector> GetInplaceOutputTensors(poplar::Graph& graph,
+                                            CompilerResources& res,
+                                            poplar::program::Sequence& seq,
+                                            const HloInstruction* inst,
+                                            TensorMap& tensor_map);
 
 /* Ops */
 

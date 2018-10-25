@@ -69,8 +69,7 @@ Status FullVisitor::HandleConcatenate(HloInstruction* inst) {
     out = poplar::concat(out, t, dimension);
   }
   TF_CHECK_OK(
-      AddOutputTensor(graph_, resources_, sequence, tensor_map, inst, 0, out)
-          .status());
+      AddOutputTensor(graph_, resources_, sequence, tensor_map, inst, 0, out));
   return Status::OK();
 }
 
@@ -99,8 +98,7 @@ Status FullVisitor::HandleReverse(HloInstruction* inst) {
   TF_ASSIGN_OR_RETURN(t, FindInstructionInput(tensor_map, inst, 0));
   TF_ASSIGN_OR_RETURN(t, ReverseTensor(t, inst->dimensions()));
   TF_CHECK_OK(
-      AddOutputTensor(graph_, resources_, sequence, tensor_map, inst, 0, t)
-          .status());
+      AddOutputTensor(graph_, resources_, sequence, tensor_map, inst, 0, t));
   return Status::OK();
 }
 
@@ -136,8 +134,7 @@ Status FullVisitor::HandleBroadcast(HloInstruction* inst) {
   std::vector<size_t> dims(PoplarShapeFromXlaShape(GetOutputShape(inst)));
   out = out.reshape(dims);
   TF_CHECK_OK(
-      AddOutputTensor(graph_, resources_, sequence, tensor_map, inst, 0, out)
-          .status());
+      AddOutputTensor(graph_, resources_, sequence, tensor_map, inst, 0, out));
   return Status::OK();
 }
 
@@ -148,8 +145,7 @@ Status FullVisitor::HandleReshape(HloInstruction* inst) {
   std::vector<size_t> dims(PoplarShapeFromXlaShape(GetOutputShape(inst)));
   out = out.reshape(dims);
   TF_CHECK_OK(
-      AddOutputTensor(graph_, resources_, sequence, tensor_map, inst, 0, out)
-          .status());
+      AddOutputTensor(graph_, resources_, sequence, tensor_map, inst, 0, out));
   return Status::OK();
 }
 
@@ -161,8 +157,7 @@ Status FullVisitor::HandleTranspose(HloInstruction* inst) {
       convert_array<std::vector<unsigned>>(inst->dimensions()));
   out = out.dimShuffle(permutation);
   TF_CHECK_OK(
-      AddOutputTensor(graph_, resources_, sequence, tensor_map, inst, 0, out)
-          .status());
+      AddOutputTensor(graph_, resources_, sequence, tensor_map, inst, 0, out));
   return Status::OK();
 }
 
@@ -195,8 +190,7 @@ Status FullVisitor::HandleSlice(HloInstruction* inst) {
     }
   }
   TF_CHECK_OK(
-      AddOutputTensor(graph_, resources_, sequence, tensor_map, inst, 0, out)
-          .status());
+      AddOutputTensor(graph_, resources_, sequence, tensor_map, inst, 0, out));
   return Status::OK();
 }
 
@@ -278,8 +272,7 @@ Status FullVisitor::HandlePad(HloInstruction* inst) {
   TF_ASSIGN_OR_RETURN(pad, FindInstructionInput(tensor_map, inst, 1));
   TF_ASSIGN_OR_RETURN(out, PadTensor(inst->padding_config(), out, pad));
   TF_CHECK_OK(
-      AddOutputTensor(graph_, resources_, sequence, tensor_map, inst, 0, out)
-          .status());
+      AddOutputTensor(graph_, resources_, sequence, tensor_map, inst, 0, out));
   return Status::OK();
 }
 
@@ -291,8 +284,7 @@ Status FullVisitor::HandleIota(HloInstruction* inst) {
       t, AddIotaTensor(graph_, std::make_pair(inst, 0), GetOutputShape(inst),
                        iota->iota_dimension(), resources_));
   TF_CHECK_OK(
-      AddOutputTensor(graph_, resources_, sequence, tensor_map, inst, 0, t)
-          .status());
+      AddOutputTensor(graph_, resources_, sequence, tensor_map, inst, 0, t));
   return Status::OK();
 }
 

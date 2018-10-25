@@ -40,7 +40,6 @@ limitations under the License.
 #include "tensorflow/compiler/plugin/poplar/driver/platform_id.h"
 #include "tensorflow/compiler/plugin/poplar/driver/scheduler.h"
 #include "tensorflow/compiler/plugin/poplar/driver/tensor.h"
-#include "tensorflow/compiler/plugin/poplar/driver/update_op_dependencies.h"
 #include "tensorflow/compiler/plugin/poplar/driver/util.h"
 #include "tensorflow/compiler/plugin/poplar/driver/while_loop_condition_simplify.h"
 #include "tensorflow/compiler/plugin/poplar/driver/while_loop_to_repeat_simplify.h"
@@ -303,14 +302,14 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::RunBackend(
     pipeline.AddPass<HloPassFix<FuseMaxPool>>(resources.annotations);
     pipeline.AddPass<HloPassFix<FuseOpsLate>>(resources.annotations);
     pipeline.AddPass<FuseWideConst>(resources.annotations);
-    pipeline.AddPass<InplaceFinder>(resources.annotations);
-    pipeline.AddPass<UpdateOpDependenctOrdering>(resources.annotations);
-    pipeline.AddPass<ExpressionOutliner>(resources.annotations);
     pipeline.AddPass<HloSubcomputationUnification>();
     pipeline.AddPass<HloDCE>();
     pipeline.AddPass<WhileLoopConditionSimplify>();
     pipeline.AddPass<WhileLoopToRepeatSimplify>(resources.annotations);
     pipeline.AddPass<HloDCE>();
+    pipeline.AddPass<InplaceFinder>(resources.annotations);
+    pipeline.AddPass<ExpressionOutliner>(resources.annotations);
+    pipeline.AddPass<HloSubcomputationUnification>();
     pipeline.AddPass<ConvolutionClassifier>(resources.annotations);
     pipeline.AddPass<AllocationFinder>(resources.annotations);
 

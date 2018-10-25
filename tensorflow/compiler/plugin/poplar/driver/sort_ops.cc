@@ -31,62 +31,42 @@
 namespace xla {
 namespace poplarplugin {
 
-static poplar::Tensor duplicate(poplar::Graph& graph,
-                                poplar::program::Sequence& sequence,
-                                poplar::Tensor t) {
-  poplar::Tensor result = graph.clone(t);
-  sequence.add(poplar::program::Copy(t, result));
-
-  return result;
-}
-
 StatusOr<poplar::program::Program> CreateSort(poplar::Graph& graph,
                                               CompilerResources& res,
                                               const HloInstruction* inst,
                                               TensorMap& tensor_map) {
   const HloSortInstruction* sort = Cast<HloSortInstruction>(inst);
 
+  poplar::program::Sequence prog;
+  // Get the inplace input/outputs.
+  ArgVector inputs;
+  TF_ASSIGN_OR_RETURN(
+      inputs, GetInplaceOutputTensors(graph, res, prog, inst, tensor_map));
+
   if (sort->operand_count() == 1) {
-    TF_ASSIGN_OR_RETURN(poplar::Tensor to_sort,
-                        FindInstructionInput(tensor_map, inst, 0));
+    CHECK_EQ(inputs.size(), 1);
+    poplar::Tensor to_sort = inputs[0];
 
-    poplar::program::Sequence prog;
-    poplar::Tensor to_sort_duplicate = duplicate(graph, prog, to_sort);
-
-    TF_ASSIGN_OR_RETURN(
-        poplar::program::Sequence sort_prog,
-        CreateSort(graph, to_sort_duplicate, sort->dimensions(0)));
+    TF_ASSIGN_OR_RETURN(poplar::program::Sequence sort_prog,
+                        CreateSort(graph, to_sort, sort->dimensions(0)));
 
     prog.add(sort_prog);
-    TF_CHECK_OK(AddOutputTensor(graph, res, prog, tensor_map, inst, 0,
-                                to_sort_duplicate)
-                    .status());
-
-    return prog;
-  } else {
-    TF_ASSIGN_OR_RETURN(poplar::Tensor key,
-                        FindInstructionInput(tensor_map, inst, 0));
-    TF_ASSIGN_OR_RETURN(poplar::Tensor value,
-                        FindInstructionInput(tensor_map, inst, 1));
-
-    poplar::program::Sequence prog;
-    poplar::Tensor key_dup = duplicate(graph, prog, key);
-    poplar::Tensor value_dup = duplicate(graph, prog, value);
-
-    TF_ASSIGN_OR_RETURN(
-        poplar::program::Sequence sort_prog,
-        CreateSort(graph, key_dup, value_dup, sort->dimensions(0)));
-
-    prog.add(sort_prog);
-    TF_CHECK_OK(AddOutputTensor(graph, res, prog, tensor_map, inst, 0, key_dup)
-                    .status());
-
     TF_CHECK_OK(
-        AddOutputTensor(graph, res, prog, tensor_map, inst, 1, value_dup)
-            .status());
+        AddOutputTensor(graph, res, prog, tensor_map, inst, 0, to_sort));
+  } else {
+    CHECK_EQ(inputs.size(), 2);
+    poplar::Tensor key = inputs[0];
+    poplar::Tensor value = inputs[1];
 
-    return prog;
+    TF_ASSIGN_OR_RETURN(poplar::program::Sequence sort_prog,
+                        CreateSort(graph, key, value, sort->dimensions(0)));
+
+    prog.add(sort_prog);
+    TF_CHECK_OK(AddOutputTensor(graph, res, prog, tensor_map, inst, 0, key));
+
+    TF_CHECK_OK(AddOutputTensor(graph, res, prog, tensor_map, inst, 1, value));
   }
+  return prog;
 }
 
 static poplar::Tensor flatten_dimension(poplar::Tensor input,

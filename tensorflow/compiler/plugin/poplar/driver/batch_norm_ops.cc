@@ -69,8 +69,7 @@ StatusOr<poplar::program::Program> CreateBatchNormInf(
     out = out.dimShufflePartial({final_dim}, {dimension});
   }
 
-  TF_CHECK_OK(
-      AddOutputTensor(graph, res, seq, tensor_map, inst, 0, out).status());
+  TF_CHECK_OK(AddOutputTensor(graph, res, seq, tensor_map, inst, 0, out));
 
   return seq;
 }
@@ -130,12 +129,9 @@ StatusOr<poplar::program::Program> CreateBatchNormTraining(
     out = out.dimShufflePartial({final_dim}, {dimension});
   }
 
-  TF_CHECK_OK(
-      AddOutputTensor(graph, res, seq, tensor_map, inst, 0, out).status());
-  TF_CHECK_OK(
-      AddOutputTensor(graph, res, seq, tensor_map, inst, 1, mean).status());
-  TF_CHECK_OK(
-      AddOutputTensor(graph, res, seq, tensor_map, inst, 2, variance).status());
+  TF_CHECK_OK(AddOutputTensor(graph, res, seq, tensor_map, inst, 0, out));
+  TF_CHECK_OK(AddOutputTensor(graph, res, seq, tensor_map, inst, 1, mean));
+  TF_CHECK_OK(AddOutputTensor(graph, res, seq, tensor_map, inst, 2, variance));
 
   return seq;
 }

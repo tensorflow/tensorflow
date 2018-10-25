@@ -22,8 +22,10 @@ limitations under the License.
 #include "tensorflow/compiler/plugin/poplar/driver/allocation_finder.h"
 #include "tensorflow/compiler/plugin/poplar/driver/convolution_classifier.h"
 #include "tensorflow/compiler/plugin/poplar/driver/inplace_finder.h"
-#include "tensorflow/compiler/plugin/poplar/driver/inplace_instructions.h"
+#include "tensorflow/compiler/plugin/poplar/driver/inplace_util.h"
 #include "tensorflow/compiler/plugin/poplar/driver/input_output_aliasing_map.h"
+
+#include "absl/container/flat_hash_map.h"
 
 namespace xla {
 namespace poplarplugin {
@@ -40,7 +42,11 @@ struct CompilerAnnotations {
 
   ConvClassification classification_map;
 
-  InplaceInstructions inplace_instructions;
+  absl::flat_hash_map<const HloInstruction*,
+                      InplaceUtil::InplaceHloInstructionDescription>
+      inplace_calls;
+
+  InplaceUtil::InplaceInstructions inplace_instructions;
 
   std::map<const HloComputation*, const HloInstruction*> fusion_map;
 

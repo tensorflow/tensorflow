@@ -15,7 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/plugin/poplar/driver/single_hlo_matcher.h"
 #include "tensorflow/compiler/plugin/poplar/driver/compiler_annotations.h"
-#include "tensorflow/compiler/plugin/poplar/driver/inplace_instructions.h"
+#include "tensorflow/compiler/plugin/poplar/driver/inplace_util.h"
 
 namespace xla {
 namespace poplarplugin {
@@ -30,11 +30,13 @@ unsigned SingleHloMatcher::ReplaceNodes() {
         const OutlinedInfo outlined_info =
             OutlineExpressionFromComputation(match, name, fuse.op_index);
         replacement_count += MarkReplacedInstructions(outlined_info);
-        // Add the outlined call to inplace list if applicable
-        if (fuse.in_place) {
-          annotations_.inplace_instructions.AddTo(
-              InplaceInstructions::Priority::MEDIUM,
-              outlined_info.call_to_outlined_computation);
+
+        // If the call is inplace, then add it to the inplace map along with its
+        // inplace description.
+        if (fuse.inplace_call_description) {
+          annotations_
+              .inplace_calls[outlined_info.call_to_outlined_computation] =
+              *fuse.inplace_call_description;
         }
       }
     }
