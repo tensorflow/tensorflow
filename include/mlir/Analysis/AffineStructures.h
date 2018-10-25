@@ -275,6 +275,12 @@ public:
   // constraints are discovered on any row. Returns false otherwise.
   bool isEmpty() const;
 
+  // Runs the GCD test on all equality constraints. Returns 'true' if this test
+  // fails on any equality. Returns 'false' otherwise.
+  // This test can be used to disprove the existence of a solution. If it
+  // returns true, no integer solution to the equality constraints can exist.
+  bool isEmptyByGCDTest() const;
+
   // Eliminates a single identifier at 'position' from equality and inequality
   // constraints. Returns 'true' if the identifier was eliminated.
   // Returns 'false' otherwise.

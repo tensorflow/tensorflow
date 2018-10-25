@@ -533,37 +533,6 @@ static void normalizeConstraintByGCD(FlatAffineConstraints *constraints,
   }
 }
 
-// Runs the GCD test on all equality constraints. Returns 'true' if this test
-// fails on any equality. Returns 'false' otherwise.
-// This test can be used to disprove the existence of a solution. If it returns
-// true, no integer solution to the equality constraints can exist.
-//
-// GCD test definition:
-//
-// The equality constraint:
-//
-//  c_1*x_1 + c_2*x_2 + ... + c_n*x_n = c_0
-//
-// has an integer solution iff:
-//
-//  GCD of c_1, c_2, ..., c_n divides c_0.
-//
-static bool isEmptyByGCDTest(const FlatAffineConstraints &constraints) {
-  unsigned numCols = constraints.getNumCols();
-  for (unsigned i = 0, e = constraints.getNumEqualities(); i < e; ++i) {
-    uint64_t gcd = std::abs(constraints.atEq(i, 0));
-    for (unsigned j = 1; j < numCols - 1; ++j) {
-      gcd =
-          llvm::GreatestCommonDivisor64(gcd, std::abs(constraints.atEq(i, j)));
-    }
-    int64_t v = std::abs(constraints.atEq(i, numCols - 1));
-    if (gcd > 0 && (v % gcd != 0)) {
-      return true;
-    }
-  }
-  return false;
-}
-
 // Checks all rows of equality/inequality constraints for contradictions
 // (i.e. 1 == 0), which may have surfaced after elimination.
 // Returns 'true' if a valid constraint is detected. Returns 'false' otherwise.
@@ -692,16 +661,46 @@ void FlatAffineConstraints::removeColumnRange(unsigned colStart,
 // Returns 'true' if the GCD test fails on any row, or if any invalid
 // constraint is detected. Returns 'false' otherwise.
 bool FlatAffineConstraints::isEmpty() const {
+  if (isEmptyByGCDTest())
+    return true;
   auto tmpCst = clone();
   if (tmpCst->gaussianEliminateIds(0, numIds) < numIds) {
     for (unsigned i = 0, e = tmpCst->getNumIds(); i < e; i++)
       if (!tmpCst->FourierMotzkinEliminate(0))
         return false;
   }
-  if (isEmptyByGCDTest(*tmpCst))
-    return true;
   if (hasInvalidConstraint(*tmpCst))
     return true;
+  return false;
+}
+
+// Runs the GCD test on all equality constraints. Returns 'true' if this test
+// fails on any equality. Returns 'false' otherwise.
+// This test can be used to disprove the existence of a solution. If it returns
+// true, no integer solution to the equality constraints can exist.
+//
+// GCD test definition:
+//
+// The equality constraint:
+//
+//  c_1*x_1 + c_2*x_2 + ... + c_n*x_n = c_0
+//
+// has an integer solution iff:
+//
+//  GCD of c_1, c_2, ..., c_n divides c_0.
+//
+bool FlatAffineConstraints::isEmptyByGCDTest() const {
+  unsigned numCols = getNumCols();
+  for (unsigned i = 0, e = getNumEqualities(); i < e; ++i) {
+    uint64_t gcd = std::abs(atEq(i, 0));
+    for (unsigned j = 1; j < numCols - 1; ++j) {
+      gcd = llvm::GreatestCommonDivisor64(gcd, std::abs(atEq(i, j)));
+    }
+    int64_t v = std::abs(atEq(i, numCols - 1));
+    if (gcd > 0 && (v % gcd != 0)) {
+      return true;
+    }
+  }
   return false;
 }
 

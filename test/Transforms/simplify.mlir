@@ -170,6 +170,11 @@ mlfunc @test_fourier_motzkin(%N : index) {
       if (d0, d1, d2) : (d0 - d1 == 0, d2 - d0 >= 0, d0 - d1 - 1 >= 0)(%i, %j, %N) {
         "foo"() : () -> ()
       }
+      // CHECK: if @@set0(%i0, %i1)
+      // The set below has rational solutions but no integer solutions.
+      if (d0, d1) : (d0 * 2 -d1 * 2 -1 == 0, d0 >= 0, -d0 + 100 >= 0, d1 >= 0, -d1 + 100 >= 0)(%i, %j) {
+        "foo"() : () -> ()
+      }
     }
   }
   return
