@@ -830,6 +830,12 @@ class IteratorTest(test.TestCase, parameterized.TestCase):
     self.assertEqual(expected_output_types, iterator.output_types)
     self.assertEqual(expected_output_shapes, iterator.output_shapes)
 
+  def testIteratorGetNextName(self):
+    with ops.Graph().as_default():
+      iterator = dataset_ops.Dataset.from_tensors(37.0).make_one_shot_iterator()
+      next_element = iterator.get_next(name="overridden_name")
+      self.assertEqual("overridden_name", next_element.op.name)
+
 
 class IteratorCheckpointingTest(test.TestCase):
 

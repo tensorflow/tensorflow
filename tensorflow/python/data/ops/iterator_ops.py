@@ -418,7 +418,7 @@ class Iterator(checkpointable.CheckpointableBase):
     flat_ret = gen_dataset_ops.iterator_get_next(
         self._iterator_resource,
         output_types=self._structure._flat_types,
-        output_shapes=self._structure._flat_shapes)
+        output_shapes=self._structure._flat_shapes, name=name)
     return self._structure._from_tensor_list(flat_ret)
 
   def string_handle(self, name=None):
