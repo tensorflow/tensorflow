@@ -105,7 +105,7 @@ void WriteModelToString(const flatbuffers::FlatBufferBuilder& builder,
 
 namespace details {
 
-OperatorKey GetOperatorKey(
+OperatorKey::OperatorKey(
     const ::toco::Operator& op,
     const std::map<OperatorType, std::unique_ptr<BaseOperator>>& ops_by_type,
     bool allow_flex_ops) {
@@ -113,11 +113,9 @@ OperatorKey GetOperatorKey(
   string name = HelpfulOperatorTypeName(op);
 
   bool is_builtin = false;
-  OperatorKey key;
-
   const auto& builtin_ops = GetBuiltinOpsMap();
   if (ops_by_type.count(op.type) != 0) {
-    key.version = ops_by_type.at(op.type)->GetVersion(op);
+    version_ = ops_by_type.at(op.type)->GetVersion(op);
     name = ops_by_type.at(op.type)->name();
     is_builtin = (builtin_ops.count(name) > 0);
   }
@@ -125,13 +123,13 @@ OperatorKey GetOperatorKey(
   if (is_builtin) {
     // For TFLite supported builtin ops, find out its BuiltinOperator enum used
     // in FlatBuffer.
-    key.type = builtin_ops.at(name);
-    return key;
+    type_ = builtin_ops.at(name);
+    return;
   }
 
-  // The logic below is all for custom ops.
-  key.is_custom_op = true;
-  key.type = BuiltinOperator_CUSTOM;
+  // The logic below is all for custom ops or Flex ops.
+  is_custom_op_ = true;
+  type_ = BuiltinOperator_CUSTOM;
 
   if (op.type == OperatorType::kUnsupported) {
     const TensorFlowUnsupportedOperator& unsupported_op =
@@ -139,35 +137,35 @@ OperatorKey GetOperatorKey(
     const auto tensorflow_op = unsupported_op.tensorflow_op;
 
     if (ShouldExportAsFlexOp(allow_flex_ops, unsupported_op.tensorflow_op)) {
-      key.is_custom_op = false;
-      key.is_flex_op = true;
-      key.flex_tensorflow_op = tensorflow_op;
-      key.custom_code =
-          string(::tflite::kFlexCustomCodePrefix) + key.flex_tensorflow_op;
+      is_custom_op_ = false;
+      is_flex_op_ = true;
+      flex_tensorflow_op_ = tensorflow_op;
+      custom_code_ =
+          string(::tflite::kFlexCustomCodePrefix) + flex_tensorflow_op_;
     } else {
-      key.custom_code = tensorflow_op;
+      custom_code_ = tensorflow_op;
     }
   } else if (allow_flex_ops && !op.tensorflow_node_def.empty()) {
     // For Toco-supported/TFLite-unsupported ops, if the TensorFlow NodeDef
     // is retained in the Toco Operator, we produce a Flex op if Flex mode
     // is enabled.
-    key.is_flex_op = true;
-    key.flex_tensorflow_op = name;
-    key.custom_code =
-        string(::tflite::kFlexCustomCodePrefix) + key.flex_tensorflow_op;
+    is_custom_op_ = false;
+    is_flex_op_ = true;
+    flex_tensorflow_op_ = name;
+    custom_code_ =
+        string(::tflite::kFlexCustomCodePrefix) + flex_tensorflow_op_;
   } else {
     // If Flex is disabled or the original TensorFlow NodeDef isn't available,
     // we produce a custom op. This gives developers a chance to implemenr
     // custom ops.
-    key.custom_code = name;
+    custom_code_ = name;
   }
 
-  if (key.is_flex_op) {
-    if (IsUnsupportedFlexOp(key.flex_tensorflow_op)) {
-      key.is_unsupported_flex_op = true;
+  if (is_flex_op_) {
+    if (IsUnsupportedFlexOp(flex_tensorflow_op_)) {
+      is_unsupported_flex_op_ = true;
     }
   }
-  return key;
 }
 
 void LoadTensorsMap(const Model& model, TensorsMap* tensors_map) {
@@ -192,7 +190,7 @@ void LoadOperatorsMap(
   // First find a list of unique operator types.
   std::set<OperatorKey> keys;
   for (const auto& op : model.operators) {
-    keys.insert(GetOperatorKey(*op, ops_by_type, allow_flex_ops));
+    keys.insert(OperatorKey(*op, ops_by_type, allow_flex_ops));
   }
   // Now assign indices to them and fill in the map.
   int index = 0;
@@ -304,16 +302,16 @@ Offset<Vector<Offset<OperatorCode>>> ExportOperatorCodes(
 
   for (const auto& op : model.operators) {
     const details::OperatorKey operator_key =
-        details::GetOperatorKey(*op, ops_by_type, params.allow_flex_ops);
+        details::OperatorKey(*op, ops_by_type, params.allow_flex_ops);
     int op_index = operators_map.at(operator_key);
 
     flatbuffers::Offset<flatbuffers::String> custom_code = 0;
-    if (!operator_key.custom_code.empty()) {
-      custom_code = builder->CreateString(operator_key.custom_code);
+    if (!operator_key.custom_code().empty()) {
+      custom_code = builder->CreateString(operator_key.custom_code());
     }
 
     ordered_opcodes[op_index] = CreateOperatorCode(
-        *builder, operator_key.type, custom_code, operator_key.version);
+        *builder, operator_key.type(), custom_code, operator_key.version());
   }
 
   std::vector<Offset<OperatorCode>> opcode_vector;
@@ -348,7 +346,7 @@ Offset<Vector<Offset<Operator>>> ExportOperators(
     }
 
     const auto key =
-        details::GetOperatorKey(*op, ops_by_type, params.allow_flex_ops);
+        details::OperatorKey(*op, ops_by_type, params.allow_flex_ops);
     int op_index = operators_map.at(key);
 
     auto tflite_op_it = ops_by_type.find(op->type);
@@ -374,7 +372,7 @@ Offset<Vector<Offset<Operator>>> ExportOperators(
           variable_tensor_indices->insert(variable_tensor_index);
         }
       }
-    } else if (key.is_flex_op && !op->tensorflow_node_def.empty()) {
+    } else if (key.is_flex_op() && !op->tensorflow_node_def.empty()) {
       auto fbb = WriteFlexOpOptions(op->tensorflow_node_def);
       if (fbb) {
         options = Options::Custom(builder->CreateVector(fbb->GetBuffer()));
@@ -440,15 +438,18 @@ tensorflow::Status Export(
     }
   }
 
+  // The set of custom ops (not including Flex ops).
   std::set<string> custom_ops;
+  // The set of Flex ops which are not supported.
   std::set<string> unsupported_flex_ops;
+
   for (const auto& it : operators_map) {
     const details::OperatorKey& key = it.first;
-    if (key.is_custom_op) {
-      custom_ops.insert(key.custom_code);
+    if (key.is_custom_op()) {
+      custom_ops.insert(key.custom_code());
     }
-    if (key.is_unsupported_flex_op) {
-      unsupported_flex_ops.insert(key.flex_tensorflow_op);
+    if (key.is_unsupported_flex_op()) {
+      unsupported_flex_ops.insert(key.flex_tensorflow_op());
     }
   }
 
