@@ -449,7 +449,9 @@ class _VariableStore(object):
                                                 partitioner=partitioner,
                                                 validate_shape=validate_shape,
                                                 use_resource=use_resource,
-                                                constraint=constraint)
+                                                constraint=constraint,
+                                                synchronization=synchronization,
+                                                aggregation=aggregation)
 
       # Special case for partitioned variable to allow reuse without having to
       # specify partitioner.
@@ -467,7 +469,9 @@ class _VariableStore(object):
                                               partitioner=None,
                                               validate_shape=validate_shape,
                                               use_resource=use_resource,
-                                              constraint=constraint)
+                                              constraint=constraint,
+                                              synchronization=synchronization,
+                                              aggregation=aggregation)
 
       # Single variable case
       if "%s/part_0" % name in self._vars:
@@ -553,7 +557,9 @@ class _VariableStore(object):
                                 caching_device=None,
                                 validate_shape=True,
                                 use_resource=None,
-                                constraint=None):
+                                constraint=None,
+                                synchronization=VariableSynchronization.AUTO,
+                                aggregation=VariableAggregation.NONE):
     """Gets or creates a sharded variable list with these parameters.
 
     The `partitioner` must be a callable that accepts a fully defined
@@ -776,7 +782,9 @@ class _VariableStore(object):
             caching_device=caching_device,
             validate_shape=validate_shape,
             use_resource=use_resource,
-            constraint=constraint)
+            constraint=constraint,
+            synchronization=synchronization,
+            aggregation=aggregation)
 
       # pylint: disable=protected-access
       var._set_save_slice_info(variables.Variable.SaveSliceInfo(
@@ -1254,7 +1262,9 @@ class VariableScope(object):
                                 partitioner=None,
                                 validate_shape=True,
                                 use_resource=None,
-                                constraint=None):
+                                constraint=None,
+                                synchronization=VariableSynchronization.AUTO,
+                                aggregation=VariableAggregation.NONE):
     """Gets an existing variable with this name or create a new one."""
     if context.executing_eagerly():
       raise NotImplementedError("Partitioned variables are not yet supported "
@@ -1304,7 +1314,8 @@ class VariableScope(object):
           regularizer=regularizer, reuse=self.reuse, trainable=trainable,
           collections=collections, caching_device=caching_device,
           partitioner=partitioner, validate_shape=validate_shape,
-          use_resource=use_resource, constraint=constraint)
+          use_resource=use_resource, constraint=constraint,
+          synchronization=synchronization, aggregation=aggregation)
       # pylint: enable=protected-access
 
 
@@ -1661,7 +1672,9 @@ def _get_partitioned_variable(name,
                               partitioner=None,
                               validate_shape=True,
                               use_resource=None,
-                              constraint=None):
+                              constraint=None,
+                              synchronization=VariableSynchronization.AUTO,
+                              aggregation=VariableAggregation.NONE):
   """Gets or creates a sharded variable list with these parameters.
 
   The `partitioner` must be a callable that accepts a fully defined
@@ -1744,7 +1757,8 @@ def _get_partitioned_variable(name,
       initializer=initializer, regularizer=regularizer, trainable=trainable,
       collections=collections, caching_device=caching_device,
       partitioner=partitioner, validate_shape=validate_shape,
-      use_resource=use_resource, constraint=constraint)
+      use_resource=use_resource, constraint=constraint,
+      synchronization=synchronization, aggregation=aggregation)
   # pylint: enable=protected-access
 
 
