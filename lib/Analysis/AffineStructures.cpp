@@ -21,16 +21,17 @@
 
 #include "mlir/Analysis/AffineStructures.h"
 #include "mlir/Analysis/AffineAnalysis.h"
-#include "mlir/IR/AffineExpr.h"
 #include "mlir/IR/AffineExprVisitor.h"
-#include "mlir/IR/AffineMap.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/IntegerSet.h"
 #include "mlir/IR/MLValue.h"
 #include "mlir/Support/MathExtras.h"
-#include "llvm/ADT/DenseMap.h"
+#include "third_party/llvm/llvm/projects/google-mlir/include/mlir/Analysis/AffineStructures.h"
 #include "llvm/ADT/DenseSet.h"
+#include "llvm/Support/Debug.h"
 #include "llvm/Support/raw_ostream.h"
+
+#define DEBUG_TYPE "affine-structures"
 
 using namespace mlir;
 using namespace llvm;
@@ -439,12 +440,45 @@ AffineMap AffineValueMap::getAffineMap() { return map.getAffineMap(); }
 
 AffineValueMap::~AffineValueMap() {}
 
+//===----------------------------------------------------------------------===//
+// FlatAffineConstraints.
+//===----------------------------------------------------------------------===//
+
+// Copy constructor.
+FlatAffineConstraints::FlatAffineConstraints(
+    const FlatAffineConstraints &other) {
+  numReservedEqualities = other.numReservedEqualities;
+  numReservedInequalities = other.numReservedInequalities;
+  numIds = other.getNumIds();
+  numDims = other.getNumDimIds();
+  numSymbols = other.getNumSymbolIds();
+
+  equalities.reserve(numReservedEqualities * getNumCols());
+  inequalities.reserve(numReservedEqualities * getNumCols());
+
+  for (unsigned r = 0, e = other.getNumInequalities(); r < e; r++) {
+    addInequality(other.getInequality(r));
+  }
+  for (unsigned r = 0, e = other.getNumEqualities(); r < e; r++) {
+    addEquality(other.getEquality(r));
+  }
+}
+
+// Clones this object.
+std::unique_ptr<FlatAffineConstraints> FlatAffineConstraints::clone() const {
+  return std::make_unique<FlatAffineConstraints>(*this);
+}
+
+// Construct from an IntegerSet.
 FlatAffineConstraints::FlatAffineConstraints(IntegerSet set)
-    : numReservedEqualities(0), numReservedInequalities(0), numReservedIds(0),
+    : numReservedEqualities(set.getNumEqualities()),
+      numReservedInequalities(set.getNumInequalities()), numReservedIds(0),
       numIds(set.getNumDims() + set.getNumSymbols()), numDims(set.getNumDims()),
       numSymbols(set.getNumSymbols()) {
-  unsigned numConstraints = set.getNumConstraints();
-  for (unsigned i = 0; i < numConstraints; ++i) {
+  equalities.reserve(set.getNumEqualities() * getNumCols());
+  inequalities.reserve(set.getNumInequalities() * getNumCols());
+
+  for (unsigned i = 0, e = set.getNumConstraints(); i < e; ++i) {
     AffineExpr expr = set.getConstraint(i);
     SmallVector<int64_t, 4> flattenedExpr;
     getFlattenedAffineExpr(expr, set.getNumDims(), set.getNumSymbols(),
@@ -457,7 +491,6 @@ FlatAffineConstraints::FlatAffineConstraints(IntegerSet set)
     }
   }
 }
-
 // Searches for a constraint with a non-zero coefficient at 'colIdx' in
 // equality (isEq=true) or inequality (isEq=false) constraints.
 // Returns true and sets row found in search in 'rowIdx'.
@@ -658,12 +691,16 @@ void FlatAffineConstraints::removeColumnRange(unsigned colStart,
 // all equality constraint rows, and checks the constraint validity.
 // Returns 'true' if the GCD test fails on any row, or if any invalid
 // constraint is detected. Returns 'false' otherwise.
-bool FlatAffineConstraints::isEmpty() {
-  if (eliminateIdentifiers(0, numIds) == 0)
-    return false;
-  if (isEmptyByGCDTest(*this))
+bool FlatAffineConstraints::isEmpty() const {
+  auto tmpCst = clone();
+  if (tmpCst->gaussianEliminateIds(0, numIds) < numIds) {
+    for (unsigned i = 0, e = tmpCst->getNumIds(); i < e; i++)
+      if (!tmpCst->FourierMotzkinEliminate(0))
+        return false;
+  }
+  if (isEmptyByGCDTest(*tmpCst))
     return true;
-  if (hasInvalidConstraint(*this))
+  if (hasInvalidConstraint(*tmpCst))
     return true;
   return false;
 }
@@ -671,13 +708,13 @@ bool FlatAffineConstraints::isEmpty() {
 // Eliminates a single identifier at 'position' from equality and inequality
 // constraints. Returns 'true' if the identifier was eliminated.
 // Returns 'false' otherwise.
-bool FlatAffineConstraints::eliminateIdentifier(unsigned position) {
-  return eliminateIdentifiers(position, position + 1) == 1;
+bool FlatAffineConstraints::gaussianEliminateId(unsigned position) {
+  return gaussianEliminateIds(position, position + 1) == 1;
 }
 
 // Eliminates all identifer variables in column range [posStart, posLimit).
 // Returns the number of variables eliminated.
-unsigned FlatAffineConstraints::eliminateIdentifiers(unsigned posStart,
+unsigned FlatAffineConstraints::gaussianEliminateIds(unsigned posStart,
                                                      unsigned posLimit) {
   // Return if identifier positions to eliminate are out of range.
   if (posStart >= posLimit || posLimit > numIds)
@@ -768,3 +805,243 @@ void FlatAffineConstraints::print(raw_ostream &os) const {
 }
 
 void FlatAffineConstraints::dump() const { print(llvm::errs()); }
+
+void FlatAffineConstraints::removeDuplicates() {
+  // TODO: remove redundant constraints.
+}
+
+void FlatAffineConstraints::clearAndCopyFrom(
+    const FlatAffineConstraints &other) {
+  FlatAffineConstraints copy(other);
+  std::swap(*this, copy);
+}
+
+void FlatAffineConstraints::removeId(unsigned pos) {
+  assert(pos >= 0 && pos < getNumIds());
+
+  for (unsigned r = 0; r < getNumInequalities(); r++) {
+    for (unsigned c = pos; c < getNumCols() - 1; c++) {
+      atIneq(r, c) = atIneq(r, c + 1);
+    }
+  }
+
+  for (unsigned r = 0; r < getNumEqualities(); r++) {
+    for (unsigned c = pos; c < getNumCols() - 1; c++) {
+      atEq(r, c) = atEq(r, c + 1);
+    }
+  }
+
+  if (pos < numDims)
+    numDims--;
+  else if (pos < numSymbols)
+    numSymbols--;
+  numIds--;
+}
+
+static std::pair<unsigned, unsigned>
+getNewNumDimsSymbols(unsigned pos, const FlatAffineConstraints &cst) {
+  unsigned numDims = cst.getNumDimIds();
+  unsigned numSymbols = cst.getNumSymbolIds();
+  unsigned newNumDims, newNumSymbols;
+  if (pos < numDims) {
+    newNumDims = numDims - 1;
+    newNumSymbols = numSymbols;
+  } else if (pos < numDims + numSymbols) {
+    assert(numSymbols >= 1);
+    newNumDims = numDims;
+    newNumSymbols = numSymbols - 1;
+  } else {
+    newNumDims = numDims;
+    newNumSymbols = numSymbols;
+  }
+  return {newNumDims, newNumSymbols};
+}
+
+/// Eliminates identifier at the specified position using Fourier-Motzkin
+/// variable elimination. This technique is exact for rational spaces but
+/// conservative (in "rare" cases) for integer spaces. The operation corresponds
+/// to a projection operation yielding the (convex) set of integer points
+/// contained in the rational shadow of the set. An emptiness test that relies
+/// on this method will guarantee emptiness, i.e., it disproves the existence of
+/// a solution if it says it's empty.
+/// If a non-null isResultIntegerExact is passed, it is set to true if the
+/// result is also integer exact. If it's set to false, the obtained solution
+/// *may* not be exact, i.e., it may contain integer points that do not have an
+/// integer pre-image in the original set.
+///
+/// Eg:
+/// j >= 0, j <= i + 1
+/// i >= 0, i <= N + 1
+/// Eliminating i yields,
+///   j >= 0, 0 <= N + 1, j - 1 <= N + 1
+///
+/// If darkShadow = true, this method computes the dark shadow on elimination;
+/// the dark shadow is a convex integer subset of the exact integer shadow. A
+/// non-empty dark shadow proves the existence of an integer solution. The
+/// elimination in such a case could however be an under-approximation, and thus
+/// should not be used for scanning sets or used by itself for dependence
+/// checking.
+///
+/// Eg: 2-d set, * represents grid points, 'o' represents a point in the set.
+///            ^
+///            |
+///            | * * * * o o
+///         i  | * * o o o o
+///            | o * * * * *
+///            --------------->
+///                 j ->
+///
+/// Eliminating i from this system (projecting on the j dimension):
+/// rational shadow / integer light shadow:  1 <= j <= 6
+/// dark shadow:                             3 <= j <= 6
+/// exact integer shadow:                    j = 1 \union  3 <= j <= 6
+/// holes/splinters:                         j = 2
+///
+/// darkShadow = false, isResultIntegerExact = nullptr are default values.
+// TODO(bondhugula): a slight modification to yield dark shadow version of FM
+// (tightened), which can prove the existence of a solution if there is one.
+bool FlatAffineConstraints::FourierMotzkinEliminate(
+    unsigned pos, bool darkShadow, bool *isResultIntegerExact) {
+  assert(pos < getNumIds() && "invalid position");
+  LLVM_DEBUG(llvm::dbgs() << "FM Input:\n");
+  LLVM_DEBUG(dump());
+
+  // Check if this identifier can be eliminated through a substitution.
+  for (unsigned r = 0; r < getNumEqualities(); r++) {
+    if (atIneq(r, pos) != 0) {
+      // Use Gaussian elimination here (since we have an equality).
+      bool ret = gaussianEliminateId(pos);
+      assert(ret && "Gaussian elimination guaranteed to succeed");
+      return ret;
+    }
+  }
+
+  // Check if the identifier appears at all in any of the inequalities.
+  unsigned r, e;
+  for (r = 0, e = getNumInequalities(); r < e; r++) {
+    if (atIneq(r, pos) != 0)
+      break;
+  }
+  if (r == getNumInequalities()) {
+    // If it doesn't appear, just remove the column and return.
+    // TODO(andydavis,bondhugula): refactor removeColumns to use it from here.
+    removeId(pos);
+    LLVM_DEBUG(llvm::dbgs() << "FM output:\n");
+    LLVM_DEBUG(dump());
+    return true;
+  }
+
+  // Positions of constraints that are lower bounds on the variable.
+  SmallVector<unsigned, 4> lbIndices;
+  // Positions of constraints that are lower bounds on the variable.
+  SmallVector<unsigned, 4> ubIndices;
+  // Positions of constraints that do not involve the variable.
+  std::vector<unsigned> nbIndices;
+  nbIndices.reserve(getNumInequalities());
+
+  // Gather all lower bounds and upper bounds of the variable. Since the
+  // canonical form c_1*x_1 + c_2*x_2 + ... + c_0 >= 0, a constraint is a lower
+  // bound for x_i if c_i >= 1, and an upper bound if c_i <= -1.
+  for (unsigned r = 0, e = getNumInequalities(); r < e; r++) {
+    if (atIneq(r, pos) == 0) {
+      // Id does not appear in bound.
+      nbIndices.push_back(r);
+    } else if (atIneq(r, pos) >= 1) {
+      // Lower bound.
+      lbIndices.push_back(r);
+    } else {
+      // Upper bound.
+      ubIndices.push_back(r);
+    }
+  }
+
+  // Set the number of dimensions, symbols in the resulting system.
+  const auto &dimsSymbols = getNewNumDimsSymbols(pos, *this);
+  unsigned newNumDims = dimsSymbols.first;
+  unsigned newNumSymbols = dimsSymbols.second;
+
+  /// Create the new system which has one identifier less.
+  FlatAffineConstraints newFac(
+      lbIndices.size() * ubIndices.size() + nbIndices.size(),
+      getNumEqualities(), getNumCols() - 1, newNumDims, newNumSymbols,
+      /*numLocals=*/getNumIds() - 1 - newNumDims - newNumSymbols);
+
+  // This will be used to check if the elimination was integer exact.
+  unsigned lcmProducts = 1;
+
+  // Let x be the variable we are eliminating.
+  // For each lower bound, lb <= c_l*x, and each upper bound c_u*x <= ub, (note
+  // that c_l, c_u >= 1) we have:
+  // lb*lcm(c_l, c_u)/c_l <= lcm(c_l, c_u)*x <= ub*lcm(c_l, c_u)/c_u
+  // We thus generate a constraint:
+  // lcm(c_l, c_u)/c_l*lb <= lcm(c_l, c_u)/c_u*ub.
+  // Note if c_l = c_u = 1, all integer points captured by the resulting
+  // constraint correspond to integer points in the original system (i.e., they
+  // have integer pre-images). Hence, if the lcm's are all 1, the elimination is
+  // integer exact.
+  for (auto ubPos : ubIndices) {
+    for (auto lbPos : lbIndices) {
+      SmallVector<int64_t, 4> ineq;
+      ineq.reserve(newFac.getNumCols());
+      int64_t lbCoeff = atIneq(lbPos, pos);
+      // Note that in the comments above, ubCoeff is the negation of the
+      // coefficient in the canonical form as the view taken here is that of the
+      // term being moved to the other size of '>='.
+      int64_t ubCoeff = -atIneq(ubPos, pos);
+      // TODO(bondhugula): refactor this loop to avoid all branches inside.
+      for (unsigned l = 0, e = getNumCols(); l < e; l++) {
+        if (l == pos)
+          continue;
+        assert(lbCoeff >= 1 && ubCoeff >= 1 && "bounds wrongly identified");
+        int64_t lcm = mlir::lcm(lbCoeff, ubCoeff);
+        ineq.push_back(atIneq(ubPos, l) * (lcm / ubCoeff) +
+                       atIneq(lbPos, l) * (lcm / lbCoeff));
+        lcmProducts *= lcm;
+      }
+      if (darkShadow) {
+        // The dark shadow is a convex subset of the exact integer shadow. If
+        // there is a point here, it proves the existence of a solution.
+        ineq[ineq.size() - 1] += lbCoeff * ubCoeff - lbCoeff - ubCoeff + 1;
+      }
+      // TODO: we need to have a way to add inequalities in-place in
+      // FlatAffineConstraints instead of creating and copying over.
+      newFac.addInequality(ineq);
+    }
+  }
+
+  if (lcmProducts == 1 && isResultIntegerExact)
+    *isResultIntegerExact = 1;
+
+  // Copy over the constraints not involving this variable.
+  for (auto nbPos : nbIndices) {
+    SmallVector<int64_t, 4> ineq;
+    ineq.reserve(getNumCols() - 1);
+    for (unsigned l = 0, e = getNumCols(); l < e; l++) {
+      if (l == pos)
+        continue;
+      ineq.push_back(atIneq(nbPos, l));
+    }
+    newFac.addInequality(ineq);
+  }
+
+  assert(newFac.getNumConstraints() ==
+         lbIndices.size() * ubIndices.size() + nbIndices.size());
+
+  // Copy over the equalities.
+  for (unsigned r = 0, e = getNumEqualities(); r < e; r++) {
+    SmallVector<int64_t, 4> eq;
+    eq.reserve(newFac.getNumCols());
+    for (unsigned l = 0, e = getNumCols(); l < e; l++) {
+      if (l == pos)
+        continue;
+      eq.push_back(atEq(r, l));
+    }
+    newFac.addEquality(eq);
+  }
+
+  newFac.removeDuplicates();
+  clearAndCopyFrom(newFac);
+  LLVM_DEBUG(llvm::dbgs() << "FM output:\n");
+  LLVM_DEBUG(dump());
+  return true;
+}

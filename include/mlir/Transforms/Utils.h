@@ -48,7 +48,7 @@ class SSAValue;
 // extended to add additional indices at any position.
 bool replaceAllMemRefUsesWith(const MLValue *oldMemRef, MLValue *newMemRef,
                               llvm::ArrayRef<MLValue *> extraIndices,
-                              AffineMap indexRemap = AffineMap::Invalid());
+                              AffineMap indexRemap = AffineMap::Null());
 
 /// Creates and inserts into 'builder' a new AffineApplyOp, with the number of
 /// its results equal to the number of operands, as a composition

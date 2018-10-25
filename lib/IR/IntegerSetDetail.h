@@ -31,7 +31,6 @@ namespace detail {
 struct IntegerSetStorage {
   unsigned dimCount;
   unsigned symbolCount;
-  unsigned numConstraints;
 
   /// Array of affine constraints: a constraint is either an equality
   /// (affine_expr == 0) or an inequality (affine_expr >= 0).

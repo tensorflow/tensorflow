@@ -547,7 +547,7 @@ private:
 class AffineCondition {
 public:
   const IfStmt *getIfStmt() const { return &stmt; }
-  IntegerSet getSet() const { return set; }
+  IntegerSet getIntegerSet() const { return set; }
 
 private:
   // 'if' statement that contains this affine condition.

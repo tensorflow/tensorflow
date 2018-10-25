@@ -32,7 +32,6 @@ namespace detail {
 struct AffineMapStorage {
   unsigned numDims;
   unsigned numSymbols;
-  unsigned numResults;
 
   /// The affine expressions for this (multi-dimensional) map.
   /// TODO: use trailing objects for this.

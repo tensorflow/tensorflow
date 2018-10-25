@@ -194,7 +194,7 @@ AffineExpr Builder::getAffineConstantExpr(int64_t constant) {
 IntegerSet Builder::getIntegerSet(unsigned dimCount, unsigned symbolCount,
                                   ArrayRef<AffineExpr> constraints,
                                   ArrayRef<bool> isEq) {
-  return IntegerSet::get(dimCount, symbolCount, constraints, isEq, context);
+  return IntegerSet::get(dimCount, symbolCount, constraints, isEq);
 }
 
 AffineMap Builder::getConstantAffineMap(int64_t val) {

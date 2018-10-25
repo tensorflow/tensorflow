@@ -46,13 +46,13 @@ struct SimplifyAffineStructures : public FunctionPass,
   // for this yet? TODO(someone).
   PassResult runOnCFGFunction(CFGFunction *f) { return success(); }
 
-  void visitOperationStmt(OperationStmt *stmt);
   void visitIfStmt(IfStmt *ifStmt);
+  void visitOperationStmt(OperationStmt *opStmt);
 };
 
 } // end anonymous namespace
 
-FunctionPass *mlir::createSimplifyAffineExprPass() {
+FunctionPass *mlir::createSimplifyAffineStructuresPass() {
   return new SimplifyAffineStructures();
 }
 
@@ -65,9 +65,8 @@ static IntegerSet simplifyIntegerSet(IntegerSet set) {
 }
 
 void SimplifyAffineStructures::visitIfStmt(IfStmt *ifStmt) {
-  auto set = ifStmt->getCondition().getSet();
-  IntegerSet simplified = simplifyIntegerSet(set);
-  ifStmt->setIntegerSet(simplified);
+  auto set = ifStmt->getCondition().getIntegerSet();
+  ifStmt->setIntegerSet(simplifyIntegerSet(set));
 }
 
 void SimplifyAffineStructures::visitOperationStmt(OperationStmt *opStmt) {

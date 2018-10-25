@@ -75,7 +75,7 @@ enum Passes {
   LoopUnrollAndJam,
   PipelineDataTransfer,
   PrintCFGGraph,
-  SimplifyAffineExpr,
+  SimplifyAffineStructures,
   TFRaiseControlFlow,
   XLALower,
 };
@@ -99,7 +99,7 @@ static cl::list<Passes> passList(
                    "explicitly managed levels of the memory hierarchy"),
         clEnumValN(PrintCFGGraph, "print-cfg-graph",
                    "Print CFG graph per function"),
-        clEnumValN(SimplifyAffineExpr, "simplify-affine-expr",
+        clEnumValN(SimplifyAffineStructures, "simplify-affine-structures",
                    "Simplify affine expressions"),
         clEnumValN(TFRaiseControlFlow, "tf-raise-control-flow",
                    "Dynamic TensorFlow Switch/Match nodes to a CFG"),
@@ -206,8 +206,8 @@ static OptResult performActions(SourceMgr &sourceMgr, MLIRContext *context) {
     case PrintCFGGraph:
       pass = createPrintCFGGraphPass();
       break;
-    case SimplifyAffineExpr:
-      pass = createSimplifyAffineExprPass();
+    case SimplifyAffineStructures:
+      pass = createSimplifyAffineStructuresPass();
       break;
     case TFRaiseControlFlow:
       pass = createRaiseTFControlFlowPass();

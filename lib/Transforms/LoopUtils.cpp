@@ -46,12 +46,12 @@ AffineMap mlir::getUnrolledLoopUpperBound(const ForStmt &forStmt,
 
   // Single result lower bound map only.
   if (lbMap.getNumResults() != 1)
-    return AffineMap::Invalid();
+    return AffineMap::Null();
 
   // Sometimes, the trip count cannot be expressed as an affine expression.
   auto tripCount = getTripCountExpr(forStmt);
   if (!tripCount)
-    return AffineMap::Invalid();
+    return AffineMap::Null();
 
   AffineExpr lb(lbMap.getResult(0));
   unsigned step = forStmt.getStep();
@@ -72,12 +72,12 @@ AffineMap mlir::getCleanupLoopLowerBound(const ForStmt &forStmt,
 
   // Single result lower bound map only.
   if (lbMap.getNumResults() != 1)
-    return AffineMap::Invalid();
+    return AffineMap::Null();
 
   // Sometimes the trip count cannot be expressed as an affine expression.
   AffineExpr tripCount(getTripCountExpr(forStmt));
   if (!tripCount)
-    return AffineMap::Invalid();
+    return AffineMap::Null();
 
   AffineExpr lb(lbMap.getResult(0));
   unsigned step = forStmt.getStep();

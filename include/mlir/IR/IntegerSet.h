@@ -55,17 +55,27 @@ public:
 
   explicit IntegerSet(ImplType *set = nullptr) : set(set) {}
 
+  IntegerSet &operator=(const IntegerSet other) {
+    set = other.set;
+    return *this;
+  }
+
   static IntegerSet get(unsigned dimCount, unsigned symbolCount,
                         ArrayRef<AffineExpr> constraints,
-                        ArrayRef<bool> eqFlags, MLIRContext *context);
+                        ArrayRef<bool> eqFlags);
 
-  // Returns a canonical empty IntegerSet (i.e. a set with no integer points).
+  // Returns the canonical empty IntegerSet (i.e. a set with no integer points).
   static IntegerSet getEmptySet(unsigned numDims, unsigned numSymbols,
                                 MLIRContext *context) {
     auto one = getAffineConstantExpr(1, context);
     /* 1 == 0 */
-    return get(numDims, numSymbols, one, true, context);
+    return get(numDims, numSymbols, one, true);
   }
+
+  /// Returns true if this is the canonical integer set.
+  bool isEmptyIntegerSet() const;
+
+  static IntegerSet Null() { return IntegerSet(nullptr); }
 
   explicit operator bool() { return set; }
   bool operator==(IntegerSet other) const { return set == other.set; }
@@ -98,6 +108,8 @@ public:
 
 private:
   ImplType *set;
+  /// Sets with constraints fewer than kUniquingThreshold are uniqued.
+  constexpr static unsigned kUniquingThreshold = 4;
 };
 
 // Make AffineExpr hashable.

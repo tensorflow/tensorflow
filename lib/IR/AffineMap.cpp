@@ -121,7 +121,7 @@ int64_t AffineMap::getSingleConstantResult() const {
 
 unsigned AffineMap::getNumDims() const { return map->numDims; }
 unsigned AffineMap::getNumSymbols() const { return map->numSymbols; }
-unsigned AffineMap::getNumResults() const { return map->numResults; }
+unsigned AffineMap::getNumResults() const { return map->results.size(); }
 unsigned AffineMap::getNumInputs() const {
   return map->numDims + map->numSymbols;
 }

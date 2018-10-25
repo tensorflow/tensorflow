@@ -84,6 +84,29 @@ struct AffineMapKeyInfo : DenseMapInfo<AffineMap> {
   }
 };
 
+struct IntegerSetKeyInfo : DenseMapInfo<IntegerSet> {
+  // Integer sets are uniqued based on their dim/symbol counts, affine
+  // expressions appearing in the LHS of constraints, and eqFlags.
+  using KeyTy =
+      std::tuple<unsigned, unsigned, ArrayRef<AffineExpr>, ArrayRef<bool>>;
+  using DenseMapInfo<IntegerSet>::getHashValue;
+  using DenseMapInfo<IntegerSet>::isEqual;
+
+  static unsigned getHashValue(KeyTy key) {
+    return hash_combine(
+        std::get<0>(key), std::get<1>(key),
+        hash_combine_range(std::get<2>(key).begin(), std::get<2>(key).end()),
+        hash_combine_range(std::get<3>(key).begin(), std::get<3>(key).end()));
+  }
+
+  static bool isEqual(const KeyTy &lhs, IntegerSet rhs) {
+    if (rhs == getEmptyKey() || rhs == getTombstoneKey())
+      return false;
+    return lhs == std::make_tuple(rhs.getNumDims(), rhs.getNumSymbols(),
+                                  rhs.getConstraints(), rhs.getEqFlags());
+  }
+};
+
 struct VectorTypeKeyInfo : DenseMapInfo<VectorType *> {
   // Vectors are uniqued based on their element type and shape.
   using KeyTy = std::pair<Type *, ArrayRef<int>>;
@@ -279,6 +302,10 @@ public:
   // Affine map uniquing.
   using AffineMapSet = DenseSet<AffineMap, AffineMapKeyInfo>;
   AffineMapSet affineMaps;
+
+  // Integer set uniquing.
+  using IntegerSets = DenseSet<IntegerSet, IntegerSetKeyInfo>;
+  IntegerSets integerSets;
 
   // Affine binary op expression uniquing. Figure out uniquing of dimensional
   // or symbolic identifiers.
@@ -1132,9 +1159,8 @@ AffineMap AffineMap::get(unsigned dimCount, unsigned symbolCount,
   rangeSizes = impl.copyInto(rangeSizes);
 
   // Initialize the memory using placement new.
-  new (res) detail::AffineMapStorage{dimCount, symbolCount,
-                                     static_cast<unsigned>(results.size()),
-                                     results, rangeSizes};
+  new (res)
+      detail::AffineMapStorage{dimCount, symbolCount, results, rangeSizes};
 
   // Cache and return it.
   return *existing.first = AffineMap(res);
@@ -1412,27 +1438,45 @@ AffineExpr mlir::getAffineConstantExpr(int64_t constant, MLIRContext *context) {
 
 //===----------------------------------------------------------------------===//
 // Integer Sets: these are allocated into the bump pointer, and are immutable.
-// But they aren't uniqued like AffineMap's; there isn't an advantage to.
+// Unlike AffineMap's, these are uniqued only if they are small.
 //===----------------------------------------------------------------------===//
 
 IntegerSet IntegerSet::get(unsigned dimCount, unsigned symbolCount,
                            ArrayRef<AffineExpr> constraints,
-                           ArrayRef<bool> eqFlags, MLIRContext *context) {
-  assert(eqFlags.size() == constraints.size());
+                           ArrayRef<bool> eqFlags) {
+  // The number of constraints can't be zero.
+  assert(!constraints.empty());
+  assert(constraints.size() == eqFlags.size());
 
-  auto &impl = context->getImpl();
+  bool unique = constraints.size() < IntegerSet::kUniquingThreshold;
 
-  // Allocate them into the bump pointer.
-  auto *res = impl.allocator.Allocate<IntegerSetStorage>();
+  auto &impl = constraints[0].getContext()->getImpl();
 
-  // Copy the equalities and inequalities into the bump pointer.
-  constraints = impl.copyInto(ArrayRef<AffineExpr>(constraints));
-  eqFlags = impl.copyInto(ArrayRef<bool>(eqFlags));
+  std::pair<DenseSet<IntegerSet, IntegerSetKeyInfo>::Iterator, bool> existing;
+  if (unique) {
+    // Check if we already have this integer set.
+    auto key = std::make_tuple(dimCount, symbolCount, constraints, eqFlags);
+    existing = impl.integerSets.insert_as(IntegerSet(nullptr), key);
+
+    // If we already have it, return that value.
+    if (!existing.second)
+      return *existing.first;
+  }
+
+  // On the first use, we allocate them into the bump pointer.
+  auto *res = impl.allocator.Allocate<detail::IntegerSetStorage>();
+
+  // Copy the results and equality flags into the bump pointer.
+  constraints = impl.copyInto(constraints);
+  eqFlags = impl.copyInto(eqFlags);
 
   // Initialize the memory using placement new.
-  res = new (res) IntegerSetStorage{dimCount, symbolCount,
-                                    static_cast<unsigned>(constraints.size()),
-                                    constraints, eqFlags};
+  new (res)
+      detail::IntegerSetStorage{dimCount, symbolCount, constraints, eqFlags};
+
+  if (unique)
+    // Cache and return it.
+    return *existing.first = IntegerSet(res);
 
   return IntegerSet(res);
 }

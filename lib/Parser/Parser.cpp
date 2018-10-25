@@ -1571,17 +1571,17 @@ AffineMap AffineParser::parseAffineMapInline() {
 
   // List of dimensional identifiers.
   if (parseDimIdList(numDims))
-    return AffineMap::Invalid();
+    return AffineMap::Null();
 
   // Symbols are optional.
   if (getToken().is(Token::l_square)) {
     if (parseSymbolIdList(numSymbols))
-      return AffineMap::Invalid();
+      return AffineMap::Null();
   }
 
   if (parseToken(Token::arrow, "expected '->' or '['") ||
       parseToken(Token::l_paren, "expected '(' at start of affine map range"))
-    return AffineMap::Invalid();
+    return AffineMap::Null();
 
   SmallVector<AffineExpr, 4> exprs;
   auto parseElt = [&]() -> ParseResult {
@@ -1595,7 +1595,7 @@ AffineMap AffineParser::parseAffineMapInline() {
   // 1-d affine expressions); the list cannot be empty. Grammar:
   // multi-dim-affine-expr ::= `(` affine-expr (`,` affine-expr)* `)
   if (parseCommaSeparatedListUntil(Token::r_paren, parseElt, false))
-    return AffineMap::Invalid();
+    return AffineMap::Null();
 
   // Parse optional range sizes.
   //  range-sizes ::= (`size` `(` dim-size (`,` dim-size)* `)`)?
@@ -1607,7 +1607,7 @@ AffineMap AffineParser::parseAffineMapInline() {
     // Location of the l_paren token (if it exists) for error reporting later.
     auto loc = getToken().getLoc();
     if (parseToken(Token::l_paren, "expected '(' at start of affine map range"))
-      return AffineMap::Invalid();
+      return AffineMap::Null();
 
     auto parseRangeSize = [&]() -> ParseResult {
       auto loc = getToken().getLoc();
@@ -1624,13 +1624,13 @@ AffineMap AffineParser::parseAffineMapInline() {
     };
 
     if (parseCommaSeparatedListUntil(Token::r_paren, parseRangeSize, false))
-      return AffineMap::Invalid();
+      return AffineMap::Null();
     if (exprs.size() > rangeSizes.size())
       return (emitError(loc, "fewer range sizes than range expressions"),
-              AffineMap::Invalid());
+              AffineMap::Null());
     if (exprs.size() < rangeSizes.size())
       return (emitError(loc, "more range sizes than range expressions"),
-              AffineMap::Invalid());
+              AffineMap::Null());
   }
 
   // Parsed a valid affine map.
@@ -1647,7 +1647,7 @@ AffineMap Parser::parseAffineMapReference() {
     StringRef affineMapId = getTokenSpelling().drop_front();
     if (getState().affineMapDefinitions.count(affineMapId) == 0)
       return (emitError("undefined affine map id '" + affineMapId + "'"),
-              AffineMap::Invalid());
+              AffineMap::Null());
     consumeToken(Token::hash_identifier);
     return getState().affineMapDefinitions[affineMapId];
   }

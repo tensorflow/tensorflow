@@ -47,7 +47,7 @@ public:
   using ImplType = detail::AffineMapStorage;
 
   explicit AffineMap(ImplType *map = nullptr) : map(map) {}
-  static AffineMap Invalid() { return AffineMap(nullptr); }
+  static AffineMap Null() { return AffineMap(nullptr); }
 
   static AffineMap get(unsigned dimCount, unsigned symbolCount,
                        ArrayRef<AffineExpr> results,

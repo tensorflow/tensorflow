@@ -27,7 +27,10 @@ unsigned IntegerSet::getNumSymbols() const { return set->symbolCount; }
 unsigned IntegerSet::getNumOperands() const {
   return set->dimCount + set->symbolCount;
 }
-unsigned IntegerSet::getNumConstraints() const { return set->numConstraints; }
+
+unsigned IntegerSet::getNumConstraints() const {
+  return set->constraints.size();
+}
 
 unsigned IntegerSet::getNumEqualities() const {
   unsigned numEqualities = 0;
@@ -39,6 +42,13 @@ unsigned IntegerSet::getNumEqualities() const {
 
 unsigned IntegerSet::getNumInequalities() const {
   return getNumConstraints() - getNumEqualities();
+}
+
+bool IntegerSet::isEmptyIntegerSet() const {
+  // This will only work if uniqui'ing is on.
+  static_assert(kUniquingThreshold >= 1,
+                "uniquing threshold should be at least one");
+  return *this == getEmptySet(set->dimCount, set->symbolCount, getContext());
 }
 
 ArrayRef<AffineExpr> IntegerSet::getConstraints() const {

@@ -51,8 +51,8 @@ MLFunctionPass *createLoopUnrollPass(int unrollFactor = -1,
 /// line if provided.
 MLFunctionPass *createLoopUnrollAndJamPass(int unrollJamFactor = -1);
 
-/// Creates an affine expression simplification pass.
-FunctionPass *createSimplifyAffineExprPass();
+/// Creates an simplification pass for affine structures.
+FunctionPass *createSimplifyAffineStructuresPass();
 
 /// Creates a pass to pipeline explicit movement of data across levels of the
 /// memory hierarchy.

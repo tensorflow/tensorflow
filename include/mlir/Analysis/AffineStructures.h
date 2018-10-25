@@ -232,12 +232,16 @@ public:
   /// Construct a constraint system reserving memory for the specified number of
   /// constraints and identifiers..
   FlatAffineConstraints(unsigned numReservedInequalities,
-                        unsigned numReservedEqualities, unsigned numReservedIds)
+                        unsigned numReservedEqualities,
+                        unsigned numReservedCols, unsigned numDims = 0,
+                        unsigned numSymbols = 0, unsigned numLocals = 0)
       : numReservedEqualities(numReservedEqualities),
-        numReservedInequalities(numReservedInequalities),
-        numReservedIds(numReservedIds) {
-    equalities.reserve(numReservedIds * numReservedEqualities);
-    inequalities.reserve(numReservedIds * numReservedInequalities);
+        numReservedInequalities(numReservedInequalities), numDims(numDims),
+        numSymbols(numSymbols) {
+    assert(numReservedCols >= 1 && "minimum 1 column");
+    equalities.reserve(numReservedCols * numReservedEqualities);
+    inequalities.reserve(numReservedCols * numReservedInequalities);
+    numIds = numDims + numSymbols + numLocals;
   }
 
   explicit FlatAffineConstraints(const HyperRectangularSet &set);
@@ -255,8 +259,10 @@ public:
   // TODO(bondhugula)
   explicit FlatAffineConstraints(const IntegerValueSet &set);
 
+  FlatAffineConstraints(const FlatAffineConstraints &other);
+
   FlatAffineConstraints(ArrayRef<const AffineValueMap *> avmRef,
-                        const IntegerSet &set);
+                        IntegerSet set);
 
   FlatAffineConstraints(const MutableAffineMap &map);
 
@@ -267,23 +273,25 @@ public:
   // constraints.
   // Returns true if the GCD test fails for any equality, or if any invalid
   // constraints are discovered on any row. Returns false otherwise.
-  // TODO(andydavis) Change this method to operate on cloned constraints.
-  bool isEmpty();
+  bool isEmpty() const;
 
   // Eliminates a single identifier at 'position' from equality and inequality
   // constraints. Returns 'true' if the identifier was eliminated.
   // Returns 'false' otherwise.
-  bool eliminateIdentifier(unsigned position);
+  bool gaussianEliminateId(unsigned position);
 
   // Eliminates identifiers from equality and inequality constraints
   // in column range [posStart, posLimit).
   // Returns the number of variables eliminated.
-  unsigned eliminateIdentifiers(unsigned posStart, unsigned posLimit);
+  unsigned gaussianEliminateIds(unsigned posStart, unsigned posLimit);
 
+  // Clones this object.
+  std::unique_ptr<FlatAffineConstraints> clone() const;
+
+  /// Returns the value at the specified equality row and column.
   inline int64_t atEq(unsigned i, unsigned j) const {
     return equalities[i * (numIds + 1) + j];
   }
-
   inline int64_t &atEq(unsigned i, unsigned j) {
     return equalities[i * (numIds + 1) + j];
   }
@@ -322,11 +330,11 @@ public:
     return inequalities.size() / getNumCols();
   }
 
-  ArrayRef<int64_t> getEquality(unsigned idx) {
+  inline ArrayRef<int64_t> getEquality(unsigned idx) const {
     return ArrayRef<int64_t>(&equalities[idx * getNumCols()], getNumCols());
   }
 
-  ArrayRef<int64_t> getInequality(unsigned idx) {
+  inline ArrayRef<int64_t> getInequality(unsigned idx) const {
     return ArrayRef<int64_t>(&inequalities[idx * getNumCols()], getNumCols());
   }
 
@@ -340,13 +348,25 @@ public:
   void addSymbolId(unsigned pos);
   void addLocalId(unsigned pos);
 
+  /// Eliminates identifier at the specified position using Fourier-Motzkin
+  /// variable elimination. If the result of the elimination is integer exact,
+  /// *isResultIntegerExact is set to true. If 'darkShadow' is set to true, a
+  /// potential under approximation (subset) of the rational shadow / exact
+  /// integer shadow is computed.
+  // See implementation comments for more details.
+  bool FourierMotzkinEliminate(unsigned pos, bool darkShadow = false,
+                               bool *isResultIntegerExact = nullptr);
+
   void removeId(IdKind idKind, unsigned pos);
+  void removeId(unsigned pos);
+
+  void removeDim(unsigned pos);
 
   void removeEquality(unsigned pos);
   void removeInequality(unsigned pos);
 
   unsigned getNumConstraints() const {
-    return equalities.size() + inequalities.size();
+    return getNumInequalities() + getNumEqualities();
   }
   inline unsigned getNumIds() const { return numIds; }
   inline unsigned getNumResultDimIds() const { return numResultDims; }
@@ -355,6 +375,12 @@ public:
   inline unsigned getNumLocalIds() const {
     return numIds - numResultDims - numDims - numSymbols;
   }
+
+  /// Clears this list of constraints and copies other into it.
+  void clearAndCopyFrom(const FlatAffineConstraints &other);
+
+  // More expensive ones.
+  void removeDuplicates();
 
   void print(raw_ostream &os) const;
   void dump() const;

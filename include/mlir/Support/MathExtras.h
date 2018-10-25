@@ -23,6 +23,7 @@
 #define MLIR_SUPPORT_MATHEXTRAS_H_
 
 #include "mlir/Support/LLVM.h"
+#include "llvm/ADT/APInt.h"
 
 namespace mlir {
 

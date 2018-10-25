@@ -286,7 +286,7 @@ AffineExpr mlir::simplifyAffineExpr(AffineExpr expr, unsigned numDims,
   // TODO(bondhugula): only pure affine for now. The simplification here can be
   // extended to semi-affine maps in the future.
   if (!expr.isPureAffine())
-    return nullptr;
+    return expr;
 
   AffineExprFlattener flattener(numDims, numSymbols, expr.getContext());
   flattener.walkPostOrder(expr);
