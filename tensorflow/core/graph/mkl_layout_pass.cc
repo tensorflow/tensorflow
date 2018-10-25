@@ -22,10 +22,10 @@ limitations under the License.
 #include <memory>
 #include <queue>
 #include <set>
+#include <tuple>
 #include <unordered_set>
 #include <utility>
 #include <vector>
-#include <tuple>
 
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/common_runtime/optimization_registry.h"
@@ -513,15 +513,19 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
                       GetConv2DBackpropFilterOrBiasAddGrad});
 
     //
-    // Add rules to fuse sequences such as "Transpose (NCHW -> NHWC) + Conv2D (NHWC) + Transpose (NHWC->
+    // Add rules to fuse sequences such as "Transpose (NCHW -> NHWC) + Conv2D
+    // (NHWC) + Transpose (NHWC->
     // NCHW) " => "Conv2D (NCHW). Such patterns occur frequently in Keras.
-    // Note: we use the term "merge" is to combine (exactly) 2 nodes into one, while "fusion" is
+    // Note: we use the term "merge" is to combine (exactly) 2 nodes into one,
+    // while "fusion" is
     // for 3+ nodes situation.
     //
 
     // Transpose + Conv2d + Transpose:
-    std::vector<int> transpose_to_nhwc = { NCHW::dim::N, NCHW::dim::H, NCHW::dim::W, NCHW::dim::C };
-    std::vector<int> transpose_to_nchw = { NHWC::dim::N, NHWC::dim::C, NHWC::dim::H, NHWC::dim::W };
+    std::vector<int> transpose_to_nhwc = {NCHW::dim::N, NCHW::dim::H,
+                                          NCHW::dim::W, NCHW::dim::C};
+    std::vector<int> transpose_to_nchw = {NHWC::dim::N, NHWC::dim::C,
+                                          NHWC::dim::H, NHWC::dim::W};
     auto CheckForTransposeToNHWC =
         std::bind(CheckForTranspose, std::placeholders::_1, transpose_to_nhwc);
     auto CheckForConv2dOp =
@@ -531,13 +535,12 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
     auto FuseConv2D =
         std::bind(FuseTransposeMklOpTranspose, std::placeholders::_1,
                   std::placeholders::_2, std::placeholders::_3, "NCHW");
-    finfo_.push_back({
-      "transpose-elimination for Conv2D", {
-        CheckForTransposeToNHWC, CheckForConv2dOp, CheckForTransposeToNCHW
-      },
-      // CheckForMklOp
-      FuseConv2D, CopyAttrsConv
-    });
+    finfo_.push_back(
+        {"transpose-elimination for Conv2D",
+         {CheckForTransposeToNHWC, CheckForConv2dOp, CheckForTransposeToNCHW},
+         // CheckForMklOp
+         FuseConv2D,
+         CopyAttrsConv});
   }
 
   // Standard interface to run pass
@@ -592,20 +595,20 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
 
   // structure to specify information used in node fusion of 2+ operators
   typedef struct {
-    std::string pattern_name; // name to describe this pattern, such as
-                              // "Transpose_Mklop_Transpose".
-    std::vector<std::function<bool(const Node *)> >
-        node_checkers; // extra restriction checker for these ops
-    std::function<
-        Status(std::unique_ptr<Graph> *, std::vector<Node *> &,
-               std::function<void(const Node *, NodeBuilder *nb, bool)>)>
+    std::string pattern_name;  // name to describe this pattern, such as
+                               // "Transpose_Mklop_Transpose".
+    std::vector<std::function<bool(const Node*)> >
+        node_checkers;  // extra restriction checker for these ops
+    std::function<Status(
+        std::unique_ptr<Graph>*, std::vector<Node*>&,
+        std::function<void(const Node*, NodeBuilder* nb, bool)>)>
         fuse_func;
-    std::function<void(const Node *, NodeBuilder *nb, bool)> copy_attrs;
+    std::function<void(const Node*, NodeBuilder* nb, bool)> copy_attrs;
   } FusionInfo;
 
   //
   // dimension indices for 2D tensor.
-  // 
+  //
   struct NCHW {
     enum dim { N = 0, C = 1, H = 2, W = 3 };
   };
@@ -613,7 +616,6 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
   struct NHWC {
     enum dim { N = 0, H = 1, W = 2, C = 3 };
   };
-
 
   //
   // dimension indices for 3D tensor.
@@ -889,30 +891,29 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
   //
   // @return tuple. If we can find such nodes, the first
   // element of the tuple is a true. Otherwise, it's false.
-  std::tuple<bool, std::vector<Node *>, const MklLayoutRewritePass::FusionInfo>
-      CheckForNodeFusion(Node *n) const;
+  std::tuple<bool, std::vector<Node*>, const MklLayoutRewritePass::FusionInfo>
+  CheckForNodeFusion(Node* n) const;
 
   // Fuse nodes in the vector "nodes"
-  Status FuseNode(std::unique_ptr<Graph> *g, std::vector<Node *> &nodes,
+  Status FuseNode(std::unique_ptr<Graph>* g, std::vector<Node*>& nodes,
                   const MklLayoutRewritePass::FusionInfo fi);
 
   static Status FuseTransposeMklOpTranspose(
-      std::unique_ptr<Graph> *g, std::vector<Node *> &nodes,
-      std::function<void(const Node *, NodeBuilder *nb, bool)> copy_attrs,
+      std::unique_ptr<Graph>* g, std::vector<Node*>& nodes,
+      std::function<void(const Node*, NodeBuilder* nb, bool)> copy_attrs,
       string data_format);
 
-  static bool CheckForTranspose(const Node *node, std::vector<int> perm) {
+  static bool CheckForTranspose(const Node* node, std::vector<int> perm) {
     //
     // Check node node, to see if it's "Transpose"
     //
-    if (node->type_string() != "Transpose")
-      return false;
+    if (node->type_string() != "Transpose") return false;
 
     //
     // Check if has out control edge. If true, this is a training graph.
     // Currently we focus on inference and do no fusion in training.
     //
-    for (const Edge *e : node->out_edges()) {
+    for (const Edge* e : node->out_edges()) {
       if (e->IsControlEdge()) {
         return false;
       }
@@ -921,7 +922,7 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
     //
     // If "Transpose" has input control edges, don't fuse on it.
     //
-    for (const Edge *e : node->in_edges()) {
+    for (const Edge* e : node->in_edges()) {
       if (e->IsControlEdge()) {
         return false;
       }
@@ -930,19 +931,19 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
     //
     // If "Transpose" has multiple output data edges, also don't fuse it.
     //
-    if (node->num_outputs() > 1 || node->out_edges().size() > 1)
-      return false;
+    if (node->num_outputs() > 1 || node->out_edges().size() > 1) return false;
 
     // Check "perm" attribute, make sure it's what we want.
     //
-    for (const Edge *e : node->in_edges()) {
+    for (const Edge* e : node->in_edges()) {
       if (!e->IsControlEdge()) {
-        const Node *perm_node = e->src();
+        const Node* perm_node = e->src();
 
         const int kPermTensorIndex = 1;
-        if (perm_node->type_string() == "Const" && e->dst_input() == kPermTensorIndex) {
+        if (perm_node->type_string() == "Const" &&
+            e->dst_input() == kPermTensorIndex) {
           // we find the "perm" node, now try to retrieve its value.
-          const TensorProto *proto = nullptr;
+          const TensorProto* proto = nullptr;
           CHECK_EQ(GetNodeAttr(perm_node->def(), "value", &proto).ok(), true);
 
           DataType type;
@@ -955,23 +956,28 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
           //
           if (type == DT_INT32) {
             const int type_size = 4;
-            const int *tensor_content = reinterpret_cast<const int *>(proto->tensor_content().c_str());
-            const int tensor_content_size = proto->tensor_content().size() / type_size;
-  
-            std::vector<int> perm_value(tensor_content, tensor_content + tensor_content_size);
+            const int* tensor_content =
+                reinterpret_cast<const int*>(proto->tensor_content().c_str());
+            const int tensor_content_size =
+                proto->tensor_content().size() / type_size;
+
+            std::vector<int> perm_value(tensor_content,
+                                        tensor_content + tensor_content_size);
 
             return perm_value == perm;
 
           } else if (type == DT_INT64) {
             const int type_size = 8;
-            const long *tensor_content = reinterpret_cast<const long *>(proto->tensor_content().c_str());
-            const int tensor_content_size = proto->tensor_content().size() / type_size;
-  
-            std::vector<long> perm_value(tensor_content, tensor_content + tensor_content_size);
+            const long* tensor_content =
+                reinterpret_cast<const long*>(proto->tensor_content().c_str());
+            const int tensor_content_size =
+                proto->tensor_content().size() / type_size;
+
+            std::vector<long> perm_value(tensor_content,
+                                         tensor_content + tensor_content_size);
             std::vector<long> long_perm(perm.cbegin(), perm.cend());
 
             return perm_value == long_perm;
-
           }
 
           return false;
@@ -982,17 +988,15 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
     return false;
   }
 
-  static bool CheckForMklOp(const Node *node, string name = "") {
+  static bool CheckForMklOp(const Node* node, string name = "") {
     if (!name.empty() && node->type_string() != name) {
       return false;
     }
 
     // if mklop has multiple outputs, don't fuse it.
-    if (node->num_outputs() > 1)
-      return false;
+    if (node->num_outputs() > 1) return false;
 
-    if (node->out_edges().size() > 1)
-      return false;
+    if (node->out_edges().size() > 1) return false;
 
     DataType T;
     TF_CHECK_OK(GetNodeAttr(node->def(), "T", &T));
@@ -1255,23 +1259,23 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
   // We need operator-specific function to copy attributes because the framework
   // does not provide any generic function for it.
   // NOTE: names are alphabetically sorted.
-  static void CopyAttrsAddN(const Node *orig_node, NodeBuilder *nb,
+  static void CopyAttrsAddN(const Node* orig_node, NodeBuilder* nb,
                             bool change_format = false);
-  static void CopyAttrsBiasAddGrad(const Node *orig_node, NodeBuilder *nb,
+  static void CopyAttrsBiasAddGrad(const Node* orig_node, NodeBuilder* nb,
                                    bool change_format = false);
-  static void CopyAttrsConcat(const Node *orig_node, NodeBuilder *nb,
+  static void CopyAttrsConcat(const Node* orig_node, NodeBuilder* nb,
                               bool change_format = false);
-  static void CopyAttrsConcatV2(const Node *orig_node, NodeBuilder *nb,
+  static void CopyAttrsConcatV2(const Node* orig_node, NodeBuilder* nb,
                                 bool change_format = false);
-  static void CopyAttrsConv(const Node *orig_node, NodeBuilder *nb,
+  static void CopyAttrsConv(const Node* orig_node, NodeBuilder* nb,
                             bool change_format = false);
-  static void CopyAttrsDataType(const Node *orig_node, NodeBuilder *nb,
+  static void CopyAttrsDataType(const Node* orig_node, NodeBuilder* nb,
                                 bool change_format = false);
-  static void CopyAttrsFusedBatchNorm(const Node *orig_node, NodeBuilder *nb,
+  static void CopyAttrsFusedBatchNorm(const Node* orig_node, NodeBuilder* nb,
                                       bool change_format = false);
-  static void CopyAttrsLRN(const Node *orig_node, NodeBuilder *nb,
+  static void CopyAttrsLRN(const Node* orig_node, NodeBuilder* nb,
                            bool change_format = false);
-  static void CopyAttrsPooling(const Node *orig_node, NodeBuilder *nb,
+  static void CopyAttrsPooling(const Node* orig_node, NodeBuilder* nb,
                                bool change_format = false);
   static void CopyAttrsQuantizedPooling(const Node* orig_node, NodeBuilder* nb,
                                         bool change_format = false);
@@ -1279,15 +1283,14 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
                                        bool change_format = false);
   static void CopyAttrsQuantizedConcat(const Node* orig_node, NodeBuilder* nb,
                                        bool change_format = false);
-  static void CopyAttrsReshape(const Node *orig_node, NodeBuilder *nb,
+  static void CopyAttrsReshape(const Node* orig_node, NodeBuilder* nb,
                                bool change_format = false);
   static void CopyAttrsRequantize(const Node* orig_node, NodeBuilder* nb,
                                   bool change_format = false);
   static void CopyAttrsSlice(const Node* orig_node, NodeBuilder* nb,
                              bool change_format = false);
-  static void CopyAttrsSplit(const Node *orig_node, NodeBuilder *nb,
+  static void CopyAttrsSplit(const Node* orig_node, NodeBuilder* nb,
                              bool change_format = false);
-
 
   // Generate a graph node in graph 'g' representing a dummy Mkl tensor node,
   // using node for original node 'orig_node' and return it in '*out'.
@@ -1788,7 +1791,7 @@ void MklLayoutRewritePass::AddWorkSpaceEdgeIfNeeded(
 // Op-specific functions to copy attributes from old node to new node
 //////////////////////////////////////////////////////////////////////////
 
-void MklLayoutRewritePass::CopyAttrsConv(const Node *orig_node, NodeBuilder *nb,
+void MklLayoutRewritePass::CopyAttrsConv(const Node* orig_node, NodeBuilder* nb,
                                          bool change_format) {
   DataType T;
   string data_format;
@@ -1817,55 +1820,40 @@ void MklLayoutRewritePass::CopyAttrsConv(const Node *orig_node, NodeBuilder *nb,
     std::vector<int32> new_dilations;
     if (strides.size() == 5) {
       //
-      // "strides" and "dilations" also need to be changed according to "data_format",
+      // "strides" and "dilations" also need to be changed according to
+      // "data_format",
       // in this case, is "NDHWC" to "NCDHW".
       //
 
-      new_strides = { 
-                      strides[NDHWC::dim::N], 
-                      strides[NDHWC::dim::C],
-                      strides[NDHWC::dim::D],
-                      strides[NDHWC::dim::H],
-                      strides[NDHWC::dim::W]
-                    };
+      new_strides = {strides[NDHWC::dim::N], strides[NDHWC::dim::C],
+                     strides[NDHWC::dim::D], strides[NDHWC::dim::H],
+                     strides[NDHWC::dim::W]};
       nb->Attr("strides", new_strides);
 
-      new_dilations = { 
-                      dilations[NDHWC::dim::N], 
-                      dilations[NDHWC::dim::C],
-                      dilations[NDHWC::dim::D],
-                      dilations[NDHWC::dim::H],
-                      dilations[NDHWC::dim::W]
-                    };
+      new_dilations = {dilations[NDHWC::dim::N], dilations[NDHWC::dim::C],
+                       dilations[NDHWC::dim::D], dilations[NDHWC::dim::H],
+                       dilations[NDHWC::dim::W]};
       nb->Attr("dilations", new_dilations);
 
     } else {
       //
-      // "strides" and "dilations" also need to be changed according to "data_format",
+      // "strides" and "dilations" also need to be changed according to
+      // "data_format",
       // in this case, is "NHWC" to "NCHW".
       //
-      
-      new_strides = {
-                      strides[NHWC::dim::N],
-                      strides[NHWC::dim::C],
-                      strides[NHWC::dim::H],
-                      strides[NHWC::dim::W]
-                    };
+
+      new_strides = {strides[NHWC::dim::N], strides[NHWC::dim::C],
+                     strides[NHWC::dim::H], strides[NHWC::dim::W]};
       nb->Attr("strides", new_strides);
 
-      new_dilations = {
-                      dilations[NHWC::dim::N],
-                      dilations[NHWC::dim::C],
-                      dilations[NHWC::dim::H],
-                      dilations[NHWC::dim::W]
-                    };
+      new_dilations = {dilations[NHWC::dim::N], dilations[NHWC::dim::C],
+                       dilations[NHWC::dim::H], dilations[NHWC::dim::W]};
       nb->Attr("dilations", new_dilations);
     }
   }
 }
 
-void MklLayoutRewritePass::CopyAttrsAddN(const Node* orig_node,
-                                         NodeBuilder* nb,
+void MklLayoutRewritePass::CopyAttrsAddN(const Node* orig_node, NodeBuilder* nb,
                                          bool change_format) {
   DataType T;
   int N;
@@ -1897,8 +1885,7 @@ void MklLayoutRewritePass::CopyAttrsBiasAddGrad(const Node* orig_node,
   nb->Attr("data_format", data_format);
 }
 
-void MklLayoutRewritePass::CopyAttrsLRN(const Node* orig_node,
-                                        NodeBuilder* nb,
+void MklLayoutRewritePass::CopyAttrsLRN(const Node* orig_node, NodeBuilder* nb,
                                         bool change_format) {
   DataType T;
   int depth_radius;
@@ -2037,8 +2024,7 @@ void MklLayoutRewritePass::CopyAttrsReshape(const Node* orig_node,
 }
 
 void MklLayoutRewritePass::CopyAttrsSlice(const Node* orig_node,
-                                          NodeBuilder* nb,
-                                          bool change_format) {
+                                          NodeBuilder* nb, bool change_format) {
   DataType T;
   DataType Index;
 
@@ -2051,8 +2037,7 @@ void MklLayoutRewritePass::CopyAttrsSlice(const Node* orig_node,
 }
 
 void MklLayoutRewritePass::CopyAttrsSplit(const Node* orig_node,
-                                          NodeBuilder* nb,
-                                          bool change_format) {
+                                          NodeBuilder* nb, bool change_format) {
   DataType T;
   string data_format;
   int num_split;
@@ -2665,28 +2650,28 @@ MklLayoutRewritePass::CheckForNodeRewrite(const Node* n) const {
 //           Helper functions for node fusion
 //////////////////////////////////////////////////////////////////////////
 Status MklLayoutRewritePass::FuseTransposeMklOpTranspose(
-    std::unique_ptr<Graph> *g, std::vector<Node *> &nodes,
-    std::function<void(const Node *, NodeBuilder *nb, bool)> copy_attrs,
+    std::unique_ptr<Graph>* g, std::vector<Node*>& nodes,
+    std::function<void(const Node*, NodeBuilder* nb, bool)> copy_attrs,
     string data_format) {
-  Node *transpose_to_nhwc = nodes[0];
-  Node *mklop = nodes[1];
-  Node *transpose_to_nchw = nodes[2];
+  Node* transpose_to_nhwc = nodes[0];
+  Node* mklop = nodes[1];
+  Node* transpose_to_nchw = nodes[2];
 
   const int transpose_nhwc_num_inputs = transpose_to_nhwc->num_inputs();
-  gtl::InlinedVector<Node *, 4> transpose_nhwc_control_edges;
-  gtl::InlinedVector<std::pair<Node *, int>, 4> transpose_nhwc_in(
+  gtl::InlinedVector<Node*, 4> transpose_nhwc_control_edges;
+  gtl::InlinedVector<std::pair<Node*, int>, 4> transpose_nhwc_in(
       transpose_nhwc_num_inputs);
   FillInputs(transpose_to_nhwc, &transpose_nhwc_control_edges,
              &transpose_nhwc_in);
 
   const int mklop_num_inputs = mklop->num_inputs();
-  gtl::InlinedVector<Node *, 4> mklop_control_edges;
-  gtl::InlinedVector<std::pair<Node *, int>, 4> mklop_in(mklop_num_inputs);
+  gtl::InlinedVector<Node*, 4> mklop_control_edges;
+  gtl::InlinedVector<std::pair<Node*, int>, 4> mklop_in(mklop_num_inputs);
   FillInputs(mklop, &mklop_control_edges, &mklop_in);
 
   const int transpose_nchw_num_inputs = transpose_to_nchw->num_inputs();
-  gtl::InlinedVector<Node *, 4> transpose_nchw_control_edges;
-  gtl::InlinedVector<std::pair<Node *, int>, 4> transpose_nchw_in(
+  gtl::InlinedVector<Node*, 4> transpose_nchw_control_edges;
+  gtl::InlinedVector<std::pair<Node*, int>, 4> transpose_nchw_in(
       transpose_nchw_num_inputs);
   FillInputs(transpose_to_nhwc, &transpose_nchw_control_edges,
              &transpose_nchw_in);
@@ -2706,19 +2691,19 @@ Status MklLayoutRewritePass::FuseTransposeMklOpTranspose(
     }
   }
 
-  copy_attrs(const_cast<const Node *>(mklop), &nb, true);
+  copy_attrs(const_cast<const Node*>(mklop), &nb, true);
   nb.Attr("data_format", data_format);
 
   // Copy the device assigned to old node to new node.
   nb.Device(mklop->def().device());
 
   // Create node.
-  Node *new_node;
+  Node* new_node;
   TF_CHECK_OK(nb.Finalize(&**g, &new_node));
   CHECK_NOTNULL(new_node);
 
   // Fill outputs.
-  for (const Edge *e : transpose_to_nchw->out_edges()) {
+  for (const Edge* e : transpose_to_nchw->out_edges()) {
     if (!e->IsControlEdge()) {
       const int kConv2DWithBiasOutputSlot = 0;
       CHECK_NOTNULL((*g)->AddEdge(new_node, kConv2DWithBiasOutputSlot, e->dst(),
@@ -2736,18 +2721,17 @@ Status MklLayoutRewritePass::FuseTransposeMklOpTranspose(
   return Status::OK();
 }
 
-Status
-MklLayoutRewritePass::FuseNode(std::unique_ptr<Graph> *g,
-                               std::vector<Node *> &nodes,
-                               const MklLayoutRewritePass::FusionInfo fi) {
+Status MklLayoutRewritePass::FuseNode(
+    std::unique_ptr<Graph>* g, std::vector<Node*>& nodes,
+    const MklLayoutRewritePass::FusionInfo fi) {
   return fi.fuse_func(g, nodes, fi.copy_attrs);
 }
 
-std::tuple<bool, std::vector<Node *>, const MklLayoutRewritePass::FusionInfo>
-MklLayoutRewritePass::CheckForNodeFusion(Node *a) const {
+std::tuple<bool, std::vector<Node*>, const MklLayoutRewritePass::FusionInfo>
+MklLayoutRewritePass::CheckForNodeFusion(Node* a) const {
   bool found_pattern = false;
-  std::vector<Node *> nodes;
-  const FusionInfo *fi_ptr = nullptr;
+  std::vector<Node*> nodes;
+  const FusionInfo* fi_ptr = nullptr;
 
   for (auto fi = finfo_.begin(); fi != finfo_.end(); ++fi) {
     assert(fi->ops.size() == fi->node_checkers.size());
@@ -2760,7 +2744,7 @@ MklLayoutRewritePass::CheckForNodeFusion(Node *a) const {
     //
 
     // Initialize "current_node" as node "a".
-    Node *current_node = a;
+    Node* current_node = a;
     for (auto node_index = 0; node_index < fi->node_checkers.size();
          ++node_index) {
       // Make sure current node meet the requirement of corresponding node
@@ -2781,9 +2765,9 @@ MklLayoutRewritePass::CheckForNodeFusion(Node *a) const {
         // Find current node's direct descendant, which will be used in next
         // iteration.
         auto check_next_node = fi->node_checkers[node_index + 1];
-        for (const Edge *e : current_node->out_edges()) {
+        for (const Edge* e : current_node->out_edges()) {
           if (!e->IsControlEdge()) {
-            Node *candidate_node = e->dst();
+            Node* candidate_node = e->dst();
 
             if (check_next_node(candidate_node) == false) {
               current_node = nullptr;
@@ -2933,7 +2917,7 @@ bool MklLayoutRewritePass::RunPass(std::unique_ptr<Graph>* g) {
 
   order.clear();
   GetReversePostOrder(**g, &order);  // This will give us topological sort.
-  for (Node *n : order) {
+  for (Node* n : order) {
     // If node is not an op or it cannot run on CPU device, then skip.
     if (!n->IsOp() || !CanOpRunOnCPUDevice(n)) {
       continue;
@@ -2941,7 +2925,7 @@ bool MklLayoutRewritePass::RunPass(std::unique_ptr<Graph>* g) {
 
     auto check_result = CheckForNodeFusion(n);
     bool found_pattern = std::get<0>(check_result);
-    std::vector<Node *> nodes = std::get<1>(check_result);
+    std::vector<Node*> nodes = std::get<1>(check_result);
     const FusionInfo fi = std::get<2>(check_result);
 
     // if "found_pattern" is true, we can do the fusion.
