@@ -20,10 +20,10 @@ The test data (models and images) should be downloaded automatically for you by 
 Note: all commands should be called from your tensorflow installation folder (under this folder you should find `tensorflow/contrib/lite`).
 
 
-* Download the [testdata package](https://storage.googleapis.com/download.tensorflow.org/data/ovic.zip):
+* Download the [testdata package](https://storage.googleapis.com/download.tensorflow.org/data/ovic_2018_10_23.zip):
 
 ```sh
-curl -L https://storage.googleapis.com/download.tensorflow.org/data/ovic.zip -o /tmp/ovic.zip
+curl -L https://storage.googleapis.com/download.tensorflow.org/data/ovic_2018_10_23.zip -o /tmp/ovic.zip
 ```
 
 * Unzip the package into the testdata folder:
@@ -44,7 +44,7 @@ bazel test --cxxopt=--std=c++11 //tensorflow/contrib/lite/java/ovic:OvicDetector
 
 ### Test your submissions
 
-Once you have a submission that follows the instructions from the [competition site](https://rebootingcomputing.ieee.org/home/sitemap/14-lpirc/80-low-power-image-recognition-challenge-lpirc-2018), you can verify it in two ways:
+Once you have a submission that follows the instructions from the [competition site](https://gdoc.pub/doc/e/2PACX-1vSFTEMAE_N6RgtidT-4DVTje6f6HRJv7Q_zaCab5H66BFyqEiZ8PsUfD_-YmBE7_z67qDiNgk-CJqeE), you can verify it in two ways:
 
 #### Validate using randomly generated images
 
@@ -99,7 +99,7 @@ filegroup(
 
 * Modify `OvicClassifierTest.java` and `OvicDetectorTest.java` to test your model.
 
-Change `TEST_IMAGE_PATH` to `my_test_image.jpg`. Change either `FLOAT_MODEL_PATH` or `QUANTIZED_MODEL_PATH` to `my_model.lite` depending on whether your model runs inference in float or [8-bit](https://www.tensorflow.org/performance/quantization).
+Change `TEST_IMAGE_PATH` to `my_test_image.jpg`. Change either `FLOAT_MODEL_PATH` or `QUANTIZED_MODEL_PATH` to `my_model.lite` depending on whether your model runs inference in float or [8-bit](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/contrib/quantize).
 
 Now you can run the bazel tests to catch any runtime issues with the submission.
 
@@ -154,11 +154,20 @@ my_model.lite: Average latency=158.6ms after 20 runs.
 
 Note: the benchmarking results can be quite different depending on the background processes running on the phone. A few things that help stabilize the app's readings are placing the phone on a cooling plate, restarting the phone, and shutting down internet access.
 
-| Model                | Pixel 1 latency (ms)  | Pixel 2 latency (ms) |
+| Classification Model | Pixel 1 latency (ms)  | Pixel 2 latency (ms) |
 | -------------------- |:---------------------:| --------------------:|
 |  float_model.lite    | 120                   | 155                  |
 | quantized_model.lite | 85                    | 74                   |
 |  low_res_model.lite  | 4.2                   | 4.0                  |
 
+
+| Detection Model      | Pixel 2 latency (ms)  |
+| -------------------- |:---------------------:|
+|  detect.lite         | 331                   |
+| quantized_detect.lite| 95                    |
+
+
 Since Pixel 2 has excellent support for 8-bit quantized models, we strongly recommend you to check out the [quantization training tutorial](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/contrib/quantize).
+
+The detection models above are both single-shot models (i.e. no object proposal generation) using TfLite's *fast* version of Non-Max-Suppression (NMS). The fast NMS is significant faster than the regular NMS (used by the ObjectDetectionAPI in training) at the expense of about 1% mAP for the listed models.
 
