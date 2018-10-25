@@ -5451,8 +5451,8 @@ inline void PadImpl(const tflite::PadParams& op_params,
   TFLITE_DCHECK_LE(op_params.left_padding_count, 4);
   TFLITE_DCHECK_LE(op_params.right_padding_count, 4);
 
-  // Runtime calls are currently fixed at 4 dimensions. Copy inputs so
-  // we can pad them to 4 dims (yes, we are "padding the padding").
+  // Pad kernels are limited to max 4 dimensions. Copy inputs so we can pad them
+  // to 4 dims (yes, we are "padding the padding").
   std::vector<int> left_padding_copy(4, 0);
   const int left_padding_extend = 4 - op_params.left_padding_count;
   for (int i = 0; i < op_params.left_padding_count; ++i) {
@@ -5594,10 +5594,106 @@ inline void PadImageStyleMemset(const tflite::PadParams& op_params,
                                 const RuntimeShape& output_shape,
                                 T* output_data) {
   gemmlowp::ScopedProfilingLabel label("PadImageStyle");
-  // TODO(b/117643175): Remove indirection to generic implementation, replace
-  // with optimized.
-  PadImpl(op_params, input_shape, input_data, pad_value_ptr, output_shape,
-          output_data);
+  const RuntimeShape ext_input_shape =
+      RuntimeShape::ExtendedShape(4, input_shape);
+  const RuntimeShape ext_output_shape =
+      RuntimeShape::ExtendedShape(4, output_shape);
+  TFLITE_DCHECK_LE(op_params.left_padding_count, 4);
+  TFLITE_DCHECK_LE(op_params.right_padding_count, 4);
+
+  // Pad kernels are limited to max 4 dimensions. Copy inputs so we can pad them
+  // to 4 dims (yes, we are "padding the padding").
+  std::vector<int> left_padding_copy(4, 0);
+  const int left_padding_extend = 4 - op_params.left_padding_count;
+  for (int i = 0; i < op_params.left_padding_count; ++i) {
+    left_padding_copy[left_padding_extend + i] = op_params.left_padding[i];
+  }
+  std::vector<int> right_padding_copy(4, 0);
+  const int right_padding_extend = 4 - op_params.right_padding_count;
+  for (int i = 0; i < op_params.right_padding_count; ++i) {
+    right_padding_copy[right_padding_extend + i] = op_params.right_padding[i];
+  }
+  // The following padding restrictions are contractual requirements, and
+  // embody what it means for a padding op to be "image-style".
+  TFLITE_DCHECK_EQ(left_padding_copy[0], 0);
+  TFLITE_DCHECK_EQ(left_padding_copy[3], 0);
+  TFLITE_DCHECK_EQ(right_padding_copy[0], 0);
+  TFLITE_DCHECK_EQ(right_padding_copy[3], 0);
+
+  const int batch = MatchingDim(ext_input_shape, 0, ext_output_shape, 0);
+  const int output_height = ext_output_shape.Dims(1);
+  const int output_width = ext_output_shape.Dims(2);
+  const int input_height = ext_input_shape.Dims(1);
+  const int input_width = ext_input_shape.Dims(2);
+  const int depth = MatchingDim(ext_input_shape, 3, ext_output_shape, 3);
+
+  const int left_h_padding = left_padding_copy[1];
+  const int left_w_padding = left_padding_copy[2];
+  const int right_h_padding = right_padding_copy[1];
+  const int right_w_padding = right_padding_copy[2];
+
+  TFLITE_DCHECK_EQ(output_height,
+                   input_height + left_h_padding + right_h_padding);
+  TFLITE_DCHECK_EQ(output_width,
+                   input_width + left_w_padding + right_w_padding);
+
+  const T pad_value = *pad_value_ptr;
+  const int top_block_size = left_h_padding * output_width * depth;
+  const size_t num_top_block_bytes = top_block_size * sizeof(T);
+  const int bottom_block_size = right_h_padding * output_width * depth;
+  const size_t num_bottom_block_bytes = bottom_block_size * sizeof(T);
+  const int left_blocks_size = left_w_padding * depth;
+  const size_t num_left_block_bytes = left_blocks_size * sizeof(T);
+  const int right_blocks_size = right_w_padding * depth;
+  const size_t num_right_block_bytes = right_blocks_size * sizeof(T);
+  const int inner_line_size = input_width * depth;
+  const size_t num_inner_line_bytes = inner_line_size * sizeof(T);
+
+  if (input_height == 0) {
+    memset(output_data, pad_value,
+           num_top_block_bytes + num_bottom_block_bytes);
+  } else {
+    for (int i = 0; i < batch; ++i) {
+      // For each image in the batch, apply the top padding, then iterate
+      // through rows, then apply the bottom padding.
+      //
+      // By unwinding one iteration, we can combine the first left-margin
+      // padding with the top padding, and the last right-margin padding with
+      // the bottom padding.
+      memset(output_data, pad_value,
+             num_top_block_bytes + num_left_block_bytes);
+      output_data += top_block_size + left_blocks_size;
+      memcpy(output_data, input_data, num_inner_line_bytes);
+      input_data += inner_line_size;
+      output_data += inner_line_size;
+      // One iteration unwound.
+      // Unwinding this loop affords the opportunity to reorder the loop work
+      // and hence combine memset() calls.
+      //
+      // Before unwinding:
+      // for (int j = 0; j < input_height; ++j) {
+      //   // Pad on left, copy central data, pad on right.
+      //   memset(output_data, pad_value, num_left_block_bytes);
+      //   output_data += left_blocks_size;
+      //   memcpy(output_data, input_data, num_inner_line_bytes);
+      //   input_data += inner_line_size;
+      //   output_data += inner_line_size;
+      //   memset(output_data, pad_value, num_right_block_bytes);
+      //   output_data += right_blocks_size;
+      // }
+      for (int j = 1; j < input_height; ++j) {
+        memset(output_data, pad_value,
+               num_right_block_bytes + num_left_block_bytes);
+        output_data += right_blocks_size + left_blocks_size;
+        memcpy(output_data, input_data, num_inner_line_bytes);
+        input_data += inner_line_size;
+        output_data += inner_line_size;
+      }
+      memset(output_data, pad_value,
+             num_right_block_bytes + num_bottom_block_bytes);
+      output_data += right_blocks_size + bottom_block_size;
+    }
+  }
 }
 
 template <typename T, typename P>
