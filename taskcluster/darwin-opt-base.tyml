@@ -46,6 +46,7 @@ payload:
         export TASKCLUSTER_TASK_DIR="$(pwd)" &&
         export LC_ALL=C &&
         export MACOSX_DEPLOYMENT_TARGET=10.10 &&
+        export HOMEBREW_NO_AUTO_UPDATE=1 &&
         mkdir -p $TASKCLUSTER_TASK_DIR/DeepSpeech/ &&
         env &&
         git clone --quiet ${event.head.repo.url} $TASKCLUSTER_TASK_DIR/DeepSpeech/tf/ &&
@@ -54,7 +55,8 @@ payload:
         $TASKCLUSTER_TASK_DIR/DeepSpeech/tf/tc-setup.sh &&
         $TASKCLUSTER_TASK_DIR/DeepSpeech/tf/tc-build.sh &&
         $TASKCLUSTER_TASK_DIR/DeepSpeech/tf/tc-package.sh ;
-        cd $TASKCLUSTER_TASK_DIR/../ && rm -fr tc-workdir/
+        export TASKCLUSTER_TASK_EXIT_CODE=$? &&
+        cd $TASKCLUSTER_TASK_DIR/../ && rm -fr tc-workdir/ && exit $TASKCLUSTER_TASK_EXIT_CODE
 
   artifacts:
     - type: "directory"
