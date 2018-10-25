@@ -1,21 +1,15 @@
 #include <algorithm>
 
+#include "absl/strings/str_cat.h"
+
 #include "tensorflow/compiler/plugin/poplar/driver/classification_predicates.h"
 #include "tensorflow/compiler/plugin/poplar/driver/compiler_resources.h"
-#include "tensorflow/compiler/plugin/poplar/driver/inplace_util.h"
 #include "tensorflow/compiler/plugin/poplar/driver/ops.h"
 #include "tensorflow/compiler/plugin/poplar/driver/tensor.h"
 #include "tensorflow/compiler/plugin/poplar/driver/util.h"
-#include "tensorflow/compiler/plugin/poplar/driver/vertex_templates.h"
-
-#include "tensorflow/compiler/xla/service/hlo_computation.h"
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
-
-#include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/util/bcast.h"
-#include "tensorflow/stream_executor/lib/strcat.h"
 
 #include <poplar/Engine.hpp>
 #include <poplar/Graph.hpp>
@@ -26,7 +20,7 @@
 #include <popops/ElementWise.hpp>
 #include <popops/ScaledAdd.hpp>
 
-namespace se = ::stream_executor;
+using ::absl::StrCat;
 
 namespace xla {
 namespace poplarplugin {
@@ -88,8 +82,8 @@ StatusOr<popops::expr::UnaryOpType> LookupUnaryFn(const HloInstruction* inst) {
     }
   }
 
-  return tensorflow::errors::Unknown(se::port::StrCat(
-      "[Poplar] Invalid opcode lookup ", HloOpcodeString(opcode)));
+  return tensorflow::errors::Unknown(StrCat("[Poplar] Invalid opcode lookup ",
+                                            HloOpcodeString(opcode)));
 }
 
 StatusOr<popops::expr::BinaryOpType> LookupBinaryFn(
@@ -152,8 +146,8 @@ StatusOr<popops::expr::BinaryOpType> LookupBinaryFn(
     }
   }
 
-  return tensorflow::errors::Unknown(se::port::StrCat(
-      "[Poplar] Invalid opcode lookup ", HloOpcodeString(opcode)));
+  return tensorflow::errors::Unknown(StrCat("[Poplar] Invalid opcode lookup ",
+                                            HloOpcodeString(opcode)));
 }
 
 static std::string GetMatMulPass(const HloInstruction* inst,

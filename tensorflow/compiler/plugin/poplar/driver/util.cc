@@ -1,13 +1,8 @@
-#include <algorithm>
-#include <limits>
-#include <string>
-
 #include "tensorflow/compiler/plugin/poplar/driver/util.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/shape_util.h"
-#include "tensorflow/stream_executor/lib/strcat.h"
 
 namespace xla {
 namespace poplarplugin {

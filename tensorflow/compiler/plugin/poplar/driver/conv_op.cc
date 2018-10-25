@@ -1,5 +1,7 @@
 #include <algorithm>
 
+#include "absl/strings/str_cat.h"
+
 #include "tensorflow/compiler/plugin/poplar/driver/compiler_resources.h"
 #include "tensorflow/compiler/plugin/poplar/driver/convolution_classifier.h"
 #include "tensorflow/compiler/plugin/poplar/driver/graph_caching_util.h"
@@ -15,14 +17,12 @@
 
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/util/bcast.h"
-#include "tensorflow/stream_executor/lib/strcat.h"
 
 #include <poplin/Convolution.hpp>
 #include <popops/Reduce.hpp>
 #include <popops/ScaledAdd.hpp>
 
-#include <poplar/Engine.hpp>
-#include <poplar/Graph.hpp>
+using ::absl::StrCat;
 
 namespace xla {
 namespace poplarplugin {

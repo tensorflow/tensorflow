@@ -11,7 +11,6 @@
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/stream_executor/lib/strcat.h"
 
 #include <poplar/Engine.hpp>
 #include <poplar/Graph.hpp>

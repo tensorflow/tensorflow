@@ -29,7 +29,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/stream_executor/lib/strcat.h"
 
 #include <stddef.h>
 #include <string.h>
@@ -45,8 +44,6 @@ limitations under the License.
 #include <poplar/GraphElements.hpp>
 #include <poplar/Tensor.hpp>
 #include <poplar/exceptions.hpp>
-
-namespace se = ::stream_executor;
 
 namespace xla {
 namespace poplarplugin {

@@ -16,6 +16,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "absl/strings/str_cat.h"
+
 #include "tensorflow/compiler/plugin/poplar/driver/visitor_arithmetic_expr.h"
 #include "tensorflow/compiler/plugin/poplar/driver/compiler_resources.h"
 #include "tensorflow/compiler/plugin/poplar/driver/ops.h"
@@ -26,12 +28,12 @@ limitations under the License.
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 
-#include "tensorflow/stream_executor/lib/strcat.h"
-
 #include "tensorflow/core/lib/core/errors.h"
 
 #include <map>
 #include <popops/ElementWise.hpp>
+
+using ::absl::StrCat;
 
 namespace xla {
 namespace poplarplugin {
@@ -61,7 +63,7 @@ ArithmeticExprVisitor::FindExpressionInput(const HloInstruction* inst) {
   } else {
     auto it = expressions_map_.find(inst);
     if (it == expressions_map_.end()) {
-      return tensorflow::errors::Unknown(se::port::StrCat(
+      return tensorflow::errors::Unknown(StrCat(
           "[Poplar] Couldn't find expression for %s", inst->name()));
     }
     return it->second->clone();

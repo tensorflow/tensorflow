@@ -16,24 +16,17 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "absl/strings/str_cat.h"
+
 #include "tensorflow/compiler/plugin/poplar/driver/visitor_subcomputation.h"
 #include "tensorflow/compiler/plugin/poplar/driver/compiler_resources.h"
 #include "tensorflow/compiler/plugin/poplar/driver/ops.h"
 #include "tensorflow/compiler/plugin/poplar/driver/tensor.h"
 #include "tensorflow/compiler/plugin/poplar/driver/util.h"
 
-#include "tensorflow/compiler/xla/service/hlo_computation.h"
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
-#include "tensorflow/compiler/xla/shape_util.h"
-#include "tensorflow/compiler/xla/status_macros.h"
-
-#include "tensorflow/stream_executor/lib/strcat.h"
-
-#include "tensorflow/core/lib/core/errors.h"
-
 #include <poplar/Tensor.hpp>
 
-namespace se = ::stream_executor;
+using ::absl::StrCat;
 
 namespace xla {
 namespace poplarplugin {
@@ -105,7 +98,7 @@ Status SubComputationVisitor::HandleParameter(HloInstruction* inst) {
         TF_CHECK_OK(AddOutputTensor(graph_, resources_, sequence, tensor_map,
                                     inst, i, out));
       } else {
-        auto name = se::port::StrCat(GetDebugName(inst), "_in_", i);
+        auto name = StrCat(GetDebugName(inst), "_in_", i);
         poplar::Tensor out = graph_.clone(t, name);
         inputs.push_back(out);
         TF_CHECK_OK(AddOutputTensor(graph_, resources_, sequence, tensor_map,

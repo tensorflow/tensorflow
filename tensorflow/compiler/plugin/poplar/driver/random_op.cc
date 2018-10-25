@@ -1,16 +1,12 @@
 #include <algorithm>
 
 #include "tensorflow/compiler/plugin/poplar/driver/compiler_resources.h"
-#include "tensorflow/compiler/plugin/poplar/driver/ops.h"
 #include "tensorflow/compiler/plugin/poplar/driver/tensor.h"
-#include "tensorflow/compiler/plugin/poplar/driver/vertex_templates.h"
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
-#include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
-#include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/stream_executor/lib/strcat.h"
 
 #include <poprand/RandomGen.hpp>
+
+using tensorflow::strings::StrCat;
 
 namespace xla {
 namespace poplarplugin {

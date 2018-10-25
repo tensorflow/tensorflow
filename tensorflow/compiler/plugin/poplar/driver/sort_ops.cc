@@ -6,27 +6,10 @@
 #include "tensorflow/compiler/plugin/poplar/driver/util.h"
 #include "tensorflow/compiler/plugin/poplar/driver/vertex_templates.h"
 
-#include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
-#include "tensorflow/compiler/xla/service/hlo_computation.h"
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_instructions.h"
-#include "tensorflow/compiler/xla/service/hlo_opcode.h"
-#include "tensorflow/compiler/xla/service/hlo_query.h"
-#include "tensorflow/compiler/xla/shape_util.h"
-#include "tensorflow/compiler/xla/status_macros.h"
-#include "tensorflow/compiler/xla/window_util.h"
-#include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/util/bcast.h"
-#include "tensorflow/stream_executor/lib/strcat.h"
 
-#include <poplar/Engine.hpp>
-#include <poplar/Graph.hpp>
-#include <popnn/Pooling.hpp>
-#include <popnn/PoolingDef.hpp>
 #include <popops/ElementWise.hpp>
-#include <popops/Pad.hpp>
-#include <popops/Reduce.hpp>
 
 namespace xla {
 namespace poplarplugin {

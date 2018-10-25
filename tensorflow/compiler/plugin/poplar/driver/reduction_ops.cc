@@ -1,32 +1,23 @@
 #include <algorithm>
 #include <limits>
 
+#include "absl/strings/str_cat.h"
+
 #include "tensorflow/compiler/plugin/poplar/driver/ops.h"
 #include "tensorflow/compiler/plugin/poplar/driver/tensor.h"
 #include "tensorflow/compiler/plugin/poplar/driver/util.h"
 #include "tensorflow/compiler/plugin/poplar/driver/vertex_templates.h"
 
-#include "tensorflow/compiler/xla/literal_util.h"
-#include "tensorflow/compiler/xla/service/hlo_computation.h"
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
-#include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/hlo_query.h"
-#include "tensorflow/compiler/xla/shape_util.h"
-#include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/window_util.h"
-#include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/util/bcast.h"
-#include "tensorflow/stream_executor/lib/strcat.h"
 
-#include <poplar/Engine.hpp>
-#include <poplar/Graph.hpp>
 #include <popnn/Pooling.hpp>
 #include <popnn/PoolingDef.hpp>
 #include <popops/ElementWise.hpp>
 #include <popops/Pad.hpp>
 #include <popops/Reduce.hpp>
 
-namespace se = ::stream_executor;
+using ::absl::StrCat;
 
 namespace xla {
 namespace poplarplugin {
@@ -561,7 +552,7 @@ StatusOr<poplar::program::Program> CreateSimpleSelectAndScatter(
   std::vector<std::size_t> poplar_shape = operand.shape();
   poplar_shape.push_back(1);
 
-  auto name = se::port::StrCat(GetDebugName(inst), "_partial");
+  auto name = StrCat(GetDebugName(inst), "_partial");
   poplar::Tensor extended_operand = operand.reshape(poplar_shape);
   poplar::Tensor partial = graph.clone(extended_operand, name);
 

@@ -21,6 +21,8 @@ limitations under the License.
 #include <unistd.h>
 #include <fstream>
 
+#include "absl/strings/str_cat.h"
+
 #include "tensorflow/compiler/plugin/poplar/driver/compiler.h"
 
 #include "tensorflow/compiler/plugin/poplar/driver/allocation_finder.h"
@@ -69,7 +71,6 @@ limitations under the License.
 
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/random/random.h"
-#include "tensorflow/core/lib/strings/strcat.h"
 
 #include <poplar/exceptions.hpp>
 #include <poputil/exceptions.hpp>
@@ -81,7 +82,7 @@ limitations under the License.
 
 namespace se = ::stream_executor;
 
-using ::tensorflow::strings::StrCat;
+using ::absl::StrCat;
 
 namespace xla {
 namespace poplarplugin {

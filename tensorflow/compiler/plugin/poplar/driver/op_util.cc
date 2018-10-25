@@ -1,18 +1,16 @@
 #include "include/json/json.h"
 
+#include "absl/container/inlined_vector.h"
+#include "absl/strings/str_cat.h"
+
 #include "tensorflow/compiler/plugin/poplar/driver/compiler_resources.h"
 #include "tensorflow/compiler/plugin/poplar/driver/inplace_util.h"
-#include "tensorflow/compiler/plugin/poplar/driver/ops.h"
-#include "tensorflow/compiler/plugin/poplar/driver/tensor.h"
 #include "tensorflow/compiler/plugin/poplar/driver/util.h"
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
-#include "tensorflow/stream_executor/lib/strcat.h"
 
 #include <algorithm>
 #include <limits>
-#include "absl/container/inlined_vector.h"
 
-namespace se = ::stream_executor;
+using ::absl::StrCat;
 
 namespace xla {
 namespace poplarplugin {
@@ -53,7 +51,7 @@ StatusOr<poplar::Tensor> FindInstructionInput(const TensorMap& map,
   const HloInstruction* operand = inst->operand(input);
   OutVector outputs = FindInstructionOutputs(map, operand);
   if (outputs.size() == 0) {
-    return tensorflow::errors::Unknown(se::port::StrCat(
+    return tensorflow::errors::Unknown(StrCat(
         "[Poplar] Couldn't find input ", input, " for ", inst->name()));
   }
   return outputs[0];
@@ -126,7 +124,7 @@ Status AddOutputTensor(poplar::Graph& graph, CompilerResources& res,
   auto p = std::make_pair(inst->name(), n);
   auto it = map.find(p);
   if (it != map.end()) {
-    return tensorflow::errors::Unknown(se::port::StrCat(
+    return tensorflow::errors::Unknown(StrCat(
         "[Poplar] Ouptut Tensor for ", GetDebugName(inst), " already exists"));
   }
   map[p] = tensor;

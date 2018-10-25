@@ -20,18 +20,6 @@ limitations under the License.
 #include "tensorflow/compiler/plugin/poplar/driver/ops.h"
 #include "tensorflow/compiler/plugin/poplar/driver/tensor.h"
 
-#include "tensorflow/compiler/xla/service/hlo_computation.h"
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
-#include "tensorflow/compiler/xla/shape_util.h"
-#include "tensorflow/compiler/xla/status.h"
-#include "tensorflow/compiler/xla/status_macros.h"
-
-#include "tensorflow/stream_executor/lib/strcat.h"
-
-#include "tensorflow/core/lib/core/errors.h"
-
-#include <poplar/Tensor.hpp>
-
 namespace xla {
 namespace poplarplugin {
 
