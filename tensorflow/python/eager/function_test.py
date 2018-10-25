@@ -2709,6 +2709,24 @@ class ArgumentNamingTests(test.TestCase, parameterized.TestCase):
         [inp.op.get_attr('_user_specified_name') for inp in fn_op.inputs])
     self.assertEqual(2, len(fn_op.graph.structured_outputs))
 
+  def testVariable(self, function_decorator):
+    @function_decorator
+    def fn(a, b):
+      return a + b, a * b
+    # Call the function to make def_function happy
+    fn(array_ops.ones([]), array_ops.ones([]))
+
+    fn_op = fn.get_concrete_function(
+        tensor_spec.TensorSpec(shape=(None,), dtype=dtypes.float32),
+        variables.Variable(1.))
+    self.assertEqual(
+        ['a', 'b'],
+        [inp.op.name for inp in fn_op.inputs])
+    self.assertEqual(
+        [b'a', b'b'],
+        [inp.op.get_attr('_user_specified_name') for inp in fn_op.inputs])
+    self.assertEqual(2, len(fn_op.graph.structured_outputs))
+
   def testDictReturned(self, function_decorator):
     @function_decorator
     def fn(x, z=(1., 2.), y=3.):
