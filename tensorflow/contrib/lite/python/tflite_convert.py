@@ -30,13 +30,15 @@ from tensorflow.python.platform import app
 
 
 def _parse_array(values, type_fn=str):
-  if values:
+  if values is not None:
     return [type_fn(val) for val in values.split(",") if val]
+  return None
 
 
 def _parse_set(values):
-  if values:
-    return set(values.split(","))
+  if values is not None:
+    return set([item for item in values.split(",") if item])
+  return None
 
 
 def _get_toco_converter(flags):
@@ -298,8 +300,8 @@ def run_main(_):
       "--saved_model_tag_set",
       type=str,
       help=("Comma-separated set of tags identifying the MetaGraphDef within "
-            "the SavedModel to analyze. All tags must be present. "
-            "(default \"serve\")"))
+            "the SavedModel to analyze. All tags must be present. In order to "
+            "pass in an empty tag set, pass in \"\". (default \"serve\")"))
   parser.add_argument(
       "--saved_model_signature_key",
       type=str,
