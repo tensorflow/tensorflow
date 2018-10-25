@@ -50,8 +50,8 @@ class MklSoftmaxOp : public OpKernel {
       // src_tensor now points to the 0-th input of global data struct "context"
       size_t src_idx = 0;
       const Tensor& src_tensor = MklGetInput(context, src_idx);
-      const int input_dims = src_tensor.dims();
-
+      //const int input_dims = src_tensor.dims();
+      //  printf("input_dims = %d\n", input_dims);
       // Add: get MklShape
       MklDnnShape src_mkl_shape;
       GetMklShape(context, src_idx, &src_mkl_shape);
@@ -61,6 +61,7 @@ class MklSoftmaxOp : public OpKernel {
       auto src_tf_shape = src_mkl_shape.IsMklTensor()
                               ? src_mkl_shape.GetTfShape()
                               : src_tensor.shape();
+      const int input_dims = src_tf_shape.dims();
       auto src_dims = TFShapeToMklDnnDims(src_tf_shape);
       auto output_dims = src_dims;
       memory::format layout_type;
