@@ -149,6 +149,7 @@ cc_library(
         "//tensorflow/core/grappler:op_types",
         "//tensorflow/core/grappler:utils",
         "//tensorflow/core/grappler/utils:functions",
+        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -561,6 +562,7 @@ tf_cuda_cc_test(
         "//tensorflow/core/grappler:utils",
         "//tensorflow/core/grappler/inputs:trivial_test_graph_input_yielder",
         "//tensorflow/core/grappler/utils:grappler_test",
+        "@com_google_absl//absl/strings",
     ],
 )
 

@@ -17,6 +17,8 @@ limitations under the License.
 
 #include <unordered_map>
 
+#include "absl/strings/str_replace.h"
+#include "absl/strings/substitute.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/common_runtime/process_function_library_runtime.h"
@@ -103,27 +105,6 @@ AttrSlice FunctionInstantiationAttributes(const FunctionDef& func,
                  << SummarizeNodeDef(func_node);
     return AttrSlice();
   }
-}
-
-// Find unique name for the specialized function. Collision can happen if
-// specialized function is instantiated for the nodes with the same name (e.g.
-// inside function body of two different functions).
-string UniqueSpecializedFunctionName(const FunctionDef& func,
-                                     const NodeDef& func_node,
-                                     const FunctionLibraryDefinition& flib) {
-  using str_util::StringReplace;
-  using strings::StrCat;
-
-  string specialized_name = StrCat(func.signature().name(), "_specialized_for_",
-                                   StringReplace(func_node.name(), "/", "_",
-                                                 /*replace_all*/ true));
-  string unique_name = specialized_name;
-
-  int idx = 0;
-  while (flib.Find(unique_name)) {
-    unique_name = strings::StrCat(specialized_name, "_", ++idx);
-  }
-  return unique_name;
 }
 
 // Specialized function instantiation type parameters, body parameters, and
@@ -235,7 +216,8 @@ class FunctionOptimizerContext {
  public:
   explicit FunctionOptimizerContext(RewriterConfig::Toggle opt_level,
                                     const GrapplerItem& item)
-      : graph_version_(item.graph.versions().producer()),
+      : grappler_item_id_(item.id),
+        graph_version_(item.graph.versions().producer()),
         function_library_(OpRegistry::Global(), item.graph.library()),
         // GraphView doesn't not modify the graph or the nodes.
         graph_view_(const_cast<GraphDef*>(&item.graph)) {
@@ -263,6 +245,8 @@ class FunctionOptimizerContext {
   }
 
   const GraphView& graph_view() const { return graph_view_; }
+
+  const string& grappler_item_id() const { return grappler_item_id_; }
 
   const gtl::FlatSet<string>& fetch_tensors() const { return fetch_tensors_; }
 
@@ -371,6 +355,7 @@ class FunctionOptimizerContext {
     }
   }
 
+  const string grappler_item_id_;
   const int graph_version_;
   FunctionLibraryDefinition function_library_;
 
@@ -666,6 +651,20 @@ Status InitializeFunctionSpecializationSignature(
   return Status::OK();
 }
 
+// Create a name for the function specialization. The name of the function, name
+// of the node instantiating it, and a Grappler item id should generate unique
+// function name. Meta optimizer might create multiple Grappler items for the
+// same graph when optimizing functions, but it's guaranteed that they all will
+// have unique ids.
+string SpecializedFunctionName(const FunctionOptimizerContext& ctx,
+                               const FunctionDef& func,
+                               const NodeDef& func_node) {
+  return absl::Substitute("$0_specialized_for_$1_at_$2",
+                          func.signature().name(),
+                          absl::StrReplaceAll(func_node.name(), {{"/", "_"}}),
+                          ctx.grappler_item_id());
+}
+
 Status SpecializeFunction(const NodeDef& func_node, const FunctionDef& func,
                           const int graph_def_version,
                           FunctionOptimizerContext* ctx,
@@ -730,7 +729,12 @@ Status SpecializeFunction(const NodeDef& func_node, const FunctionDef& func,
 
   // Find a name for specialized function.
   const string specialized_func_name =
-      UniqueSpecializedFunctionName(func, func_node, flib);
+      SpecializedFunctionName(*ctx, func, func_node);
+  if (flib.Contains(specialized_func_name)) {
+    // NOTE(ezhulenev): This should never happen. If it happens, it's a sign of
+    // a serious internal error, that must be investigated.
+    return errors::Internal("Created duplicate function specialization");
+  }
 
   specialized_func.mutable_signature()->set_name(specialized_func_name);
   auto* specialized_attr = specialized_func.mutable_attr();
