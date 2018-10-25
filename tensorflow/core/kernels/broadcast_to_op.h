@@ -16,12 +16,13 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_KERNELS_BROADCAST_TO_OP_H_
 #define TENSORFLOW_CORE_KERNELS_BROADCAST_TO_OP_H_
 
+#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/framework/types.h"
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "tensorflow/core/kernels/fill_functor.h"
 
 namespace tensorflow {
 
@@ -45,6 +46,28 @@ struct BroadcastTo {
       broadcast[i] = 1;                                                       \
     }                                                                         \
   }
+
+#define HANDLE_BROADCAST_FROM_SCALAR()                              \
+  if (std::is_same<Eigen::GpuDevice, Device>::value) {              \
+    FillFunctor<Device, T>()(d, output_tensor.flat<T>(),            \
+                             input_tensor.scalar<T>());             \
+  } else {                                                          \
+    output.device(d) = output.constant(input_tensor.scalar<T>()()); \
+  }
+
+#define HANDLE_BROADCAST_CASE(dim_i)                                  \
+  case dim_i: {                                                       \
+    if (std::is_same<Eigen::GpuDevice, Device>::value &&              \
+        output_tensor.NumElements() < kint32max &&                    \
+        input_tensor.NumElements() < kint32max) {                     \
+      auto input = input_tensor.tensor<T, dim_i>();                   \
+      To32Bit(output).device(d) =                                     \
+          To32Bit(input).reshape(reshape).broadcast(broadcast);       \
+    } else {                                                          \
+      auto input = input_tensor.tensor<T, dim_i>();                   \
+      output.device(d) = input.reshape(reshape).broadcast(broadcast); \
+    }                                                                 \
+  } break;
 
     if (output_shape.num_elements() == 0) {
       return;
@@ -74,12 +97,9 @@ struct BroadcastTo {
         auto output = output_tensor.tensor<T, 1>();
         switch (input_shape.dims()) {
           case 0: {
-            output.device(d) = output.constant(input_tensor.scalar<T>()());
+            HANDLE_BROADCAST_FROM_SCALAR();
           } break;
-          case 1: {
-            auto input = input_tensor.tensor<T, 1>();
-            output.device(d) = input.broadcast(broadcast);
-          } break;
+            HANDLE_BROADCAST_CASE(1);
           default:
             ctx->CtxFailure(errors::InvalidArgument(
                 "invalid shape to broadcast from ", input_shape.DebugString(),
@@ -96,16 +116,10 @@ struct BroadcastTo {
         auto output = output_tensor.tensor<T, 2>();
         switch (input_shape.dims()) {
           case 0: {
-            output.device(d) = output.constant(input_tensor.scalar<T>()());
+            HANDLE_BROADCAST_FROM_SCALAR();
           } break;
-          case 1: {
-            auto input = input_tensor.tensor<T, 1>();
-            output.device(d) = input.reshape(reshape).broadcast(broadcast);
-          } break;
-          case 2: {
-            auto input = input_tensor.tensor<T, 2>();
-            output.device(d) = input.broadcast(broadcast);
-          } break;
+            HANDLE_BROADCAST_CASE(1);
+            HANDLE_BROADCAST_CASE(2);
           default:
             ctx->CtxFailure(errors::InvalidArgument(
                 "invalid shape to broadcast from ", input_shape.DebugString(),
@@ -122,20 +136,11 @@ struct BroadcastTo {
         auto output = output_tensor.tensor<T, 3>();
         switch (input_shape.dims()) {
           case 0: {
-            output.device(d) = output.constant(input_tensor.scalar<T>()());
+            HANDLE_BROADCAST_FROM_SCALAR();
           } break;
-          case 1: {
-            auto input = input_tensor.tensor<T, 1>();
-            output.device(d) = input.reshape(reshape).broadcast(broadcast);
-          } break;
-          case 2: {
-            auto input = input_tensor.tensor<T, 2>();
-            output.device(d) = input.reshape(reshape).broadcast(broadcast);
-          } break;
-          case 3: {
-            auto input = input_tensor.tensor<T, 3>();
-            output.device(d) = input.broadcast(broadcast);
-          } break;
+            HANDLE_BROADCAST_CASE(1);
+            HANDLE_BROADCAST_CASE(2);
+            HANDLE_BROADCAST_CASE(3);
           default:
             ctx->CtxFailure(errors::InvalidArgument(
                 "invalid shape to broadcast from ", input_shape.DebugString(),
@@ -151,24 +156,12 @@ struct BroadcastTo {
         auto output = output_tensor.tensor<T, 4>();
         switch (input_shape.dims()) {
           case 0: {
-            output.device(d) = output.constant(input_tensor.scalar<T>()());
+            HANDLE_BROADCAST_FROM_SCALAR();
           } break;
-          case 1: {
-            auto input = input_tensor.tensor<T, 1>();
-            output.device(d) = input.reshape(reshape).broadcast(broadcast);
-          } break;
-          case 2: {
-            auto input = input_tensor.tensor<T, 2>();
-            output.device(d) = input.reshape(reshape).broadcast(broadcast);
-          } break;
-          case 3: {
-            auto input = input_tensor.tensor<T, 3>();
-            output.device(d) = input.reshape(reshape).broadcast(broadcast);
-          } break;
-          case 4: {
-            auto input = input_tensor.tensor<T, 4>();
-            output.device(d) = input.broadcast(broadcast);
-          } break;
+            HANDLE_BROADCAST_CASE(1);
+            HANDLE_BROADCAST_CASE(2);
+            HANDLE_BROADCAST_CASE(3);
+            HANDLE_BROADCAST_CASE(4);
           default:
             ctx->CtxFailure(errors::InvalidArgument(
                 "invalid shape to broadcast from ", input_shape.DebugString(),
@@ -184,28 +177,13 @@ struct BroadcastTo {
         auto output = output_tensor.tensor<T, 5>();
         switch (input_shape.dims()) {
           case 0: {
-            output.device(d) = output.constant(input_tensor.scalar<T>()());
+            HANDLE_BROADCAST_FROM_SCALAR();
           } break;
-          case 1: {
-            auto input = input_tensor.tensor<T, 1>();
-            output.device(d) = input.reshape(reshape).broadcast(broadcast);
-          } break;
-          case 2: {
-            auto input = input_tensor.tensor<T, 2>();
-            output.device(d) = input.reshape(reshape).broadcast(broadcast);
-          } break;
-          case 3: {
-            auto input = input_tensor.tensor<T, 3>();
-            output.device(d) = input.reshape(reshape).broadcast(broadcast);
-          } break;
-          case 4: {
-            auto input = input_tensor.tensor<T, 4>();
-            output.device(d) = input.reshape(reshape).broadcast(broadcast);
-          } break;
-          case 5: {
-            auto input = input_tensor.tensor<T, 5>();
-            output.device(d) = input.broadcast(broadcast);
-          } break;
+            HANDLE_BROADCAST_CASE(1);
+            HANDLE_BROADCAST_CASE(2);
+            HANDLE_BROADCAST_CASE(3);
+            HANDLE_BROADCAST_CASE(4);
+            HANDLE_BROADCAST_CASE(5);
           default:
             ctx->CtxFailure(errors::InvalidArgument(
                 "invalid shape to broadcast from ", input_shape.DebugString(),
