@@ -457,53 +457,57 @@ TEST_F(MklLayoutPassTest, NodeMerge_Conv2DWithBias_ConvBpropInput_FilterFwd) {
 
 TEST_F(MklLayoutPassTest, NodeMerge_TransposeConv2DTranspose_Positive) {
   InitGraph(
-    "node { name: 'Input0' op: 'Input'}"
-    "node { name: 'Input1' op: 'Input'}"
-    "node { name: 'Const0' op: 'Const'"
-    "  attr {"
-    "   key: 'dtype'"
-    "   value {"
-    "     type: DT_INT32"
-    "   }"
-    "  }"
-    " attr {"
-    "   key: 'value'"
-    "   value {"
-    "     tensor {"
-    "       dtype: DT_INT32"
-    "       tensor_shape {"
-    "         dim {"
-    "           size: 4"
-    "         }"
-    "       }"
-    "       tensor_content: '\\000\\000\\000\\000\\002\\000\\000\\000\\003\\000\\000\\000\\001\\000\\000\\000'"
-    "     }"
-    "   }"
-    " }"
-    "}"
-    "node { name: 'Const1' op: 'Const'"
-    "  attr {"
-    "   key: 'dtype'"
-    "   value {"
-    "     type: DT_INT32"
-    "   }"
-    "  }"
-    " attr {"
-    "   key: 'value'"
-    "   value {"
-    "     tensor {"
-    "       dtype: DT_INT32"
-    "       tensor_shape {"
-    "         dim {"
-    "           size: 4"
-    "         }"
-    "       }"
-    "       tensor_content: '\\000\\000\\000\\000\\003\\000\\000\\000\\001\\000\\000\\000\\002\\000\\000\\000'"
-    "     }"
-    "   }"
-    " }"
-    "}"
-    "node {              \
+      "node { name: 'Input0' op: 'Input'}"
+      "node { name: 'Input1' op: 'Input'}"
+      "node { name: 'Const0' op: 'Const'"
+      "  attr {"
+      "   key: 'dtype'"
+      "   value {"
+      "     type: DT_INT32"
+      "   }"
+      "  }"
+      " attr {"
+      "   key: 'value'"
+      "   value {"
+      "     tensor {"
+      "       dtype: DT_INT32"
+      "       tensor_shape {"
+      "         dim {"
+      "           size: 4"
+      "         }"
+      "       }"
+      "       tensor_content: "
+      "'\\000\\000\\000\\000\\002\\000\\000\\000\\003\\000\\000\\000\\001\\000"
+      "\\000\\000'"
+      "     }"
+      "   }"
+      " }"
+      "}"
+      "node { name: 'Const1' op: 'Const'"
+      "  attr {"
+      "   key: 'dtype'"
+      "   value {"
+      "     type: DT_INT32"
+      "   }"
+      "  }"
+      " attr {"
+      "   key: 'value'"
+      "   value {"
+      "     tensor {"
+      "       dtype: DT_INT32"
+      "       tensor_shape {"
+      "         dim {"
+      "           size: 4"
+      "         }"
+      "       }"
+      "       tensor_content: "
+      "'\\000\\000\\000\\000\\003\\000\\000\\000\\001\\000\\000\\000\\002\\000"
+      "\\000\\000'"
+      "     }"
+      "   }"
+      " }"
+      "}"
+      "node {              \
       name: 'Transpose0' \
       op: 'Transpose'    \
       input: 'Input0'    \
@@ -520,8 +524,8 @@ TEST_F(MklLayoutPassTest, NodeMerge_TransposeConv2DTranspose_Positive) {
           type: DT_INT32 \
         }                \
       }                  \
-    }"                   
-    "node {                 \
+    }"
+      "node {                 \
       name: 'Conv2D'        \
       op: 'Conv2D'          \
       input: 'Transpose0'   \
@@ -573,7 +577,7 @@ TEST_F(MklLayoutPassTest, NodeMerge_TransposeConv2DTranspose_Positive) {
         }                       \
       }                         \
     }"
-    "node {              \
+      "node {              \
       name: 'Transpose1' \
       op: 'Transpose'    \
       input: 'Conv2D'    \
@@ -591,65 +595,71 @@ TEST_F(MklLayoutPassTest, NodeMerge_TransposeConv2DTranspose_Positive) {
         }                \
       }                  \
     }"
-    "node { name: 'Relu' op: 'Relu'"
+      "node { name: 'Relu' op: 'Relu'"
       " attr { key: 'T'                value { type: DT_FLOAT } }"
       " input: ['Transpose1'] }");
   EXPECT_EQ(DoMklLayoutOptimizationPass(),
             "Const0(Const);Const1(Const);"
             "Conv2D(_MklConv2D);DMT/_0(Const);DMT/_1(Const);Input0(Input);"
-            "Input1(Input);Relu(_MklRelu)|Conv2D->Relu;Conv2D:2->Relu:1;DMT/_0->Conv2D:2;DMT/_1->Conv2D:3;Input0->Conv2D;"
-            "Input0:control->DMT/_0:control;Input0:control->DMT/_1:control;Input1->Conv2D:1");
+            "Input1(Input);Relu(_MklRelu)|Conv2D->Relu;Conv2D:2->Relu:1;DMT/"
+            "_0->Conv2D:2;DMT/_1->Conv2D:3;Input0->Conv2D;"
+            "Input0:control->DMT/_0:control;Input0:control->DMT/"
+            "_1:control;Input1->Conv2D:1");
 }
 
 TEST_F(MklLayoutPassTest, NodeMerge_TransposeConv2DTranspose_Negative) {
   InitGraph(
-    "node { name: 'Input0' op: 'Input'}"
-    "node { name: 'Input1' op: 'Input'}"
-    "node { name: 'Const0' op: 'Const'"
-    "  attr {"
-    "   key: 'dtype'"
-    "   value {"
-    "     type: DT_INT32"
-    "   }"
-    "  }"
-    " attr {"
-    "   key: 'value'"
-    "   value {"
-    "     tensor {"
-    "       dtype: DT_INT32"
-    "       tensor_shape {"
-    "         dim {"
-    "           size: 4"
-    "         }"
-    "       }"
-    "       tensor_content: '\\000\\000\\000\\000\\002\\000\\000\\000\\003\\000\\000\\000\\001\\000\\000\\000'"
-    "     }"
-    "   }"
-    " }"
-    "}"
-    "node { name: 'Const1' op: 'Const'"
-    "  attr {"
-    "   key: 'dtype'"
-    "   value {"
-    "     type: DT_INT32"
-    "   }"
-    "  }"
-    " attr {"
-    "   key: 'value'"
-    "   value {"
-    "     tensor {"
-    "       dtype: DT_INT32"
-    "       tensor_shape {"
-    "         dim {"
-    "           size: 4"
-    "         }"
-    "       }"
-    "       tensor_content: '\\000\\000\\000\\000\\002\\000\\000\\000\\003\\000\\000\\000\\001\\000\\000\\000'"
-    "     }"
-    "   }"
-    " }"
-    "}"
-    "node {              \
+      "node { name: 'Input0' op: 'Input'}"
+      "node { name: 'Input1' op: 'Input'}"
+      "node { name: 'Const0' op: 'Const'"
+      "  attr {"
+      "   key: 'dtype'"
+      "   value {"
+      "     type: DT_INT32"
+      "   }"
+      "  }"
+      " attr {"
+      "   key: 'value'"
+      "   value {"
+      "     tensor {"
+      "       dtype: DT_INT32"
+      "       tensor_shape {"
+      "         dim {"
+      "           size: 4"
+      "         }"
+      "       }"
+      "       tensor_content: "
+      "'\\000\\000\\000\\000\\002\\000\\000\\000\\003\\000\\000\\000\\001\\000"
+      "\\000\\000'"
+      "     }"
+      "   }"
+      " }"
+      "}"
+      "node { name: 'Const1' op: 'Const'"
+      "  attr {"
+      "   key: 'dtype'"
+      "   value {"
+      "     type: DT_INT32"
+      "   }"
+      "  }"
+      " attr {"
+      "   key: 'value'"
+      "   value {"
+      "     tensor {"
+      "       dtype: DT_INT32"
+      "       tensor_shape {"
+      "         dim {"
+      "           size: 4"
+      "         }"
+      "       }"
+      "       tensor_content: "
+      "'\\000\\000\\000\\000\\002\\000\\000\\000\\003\\000\\000\\000\\001\\000"
+      "\\000\\000'"
+      "     }"
+      "   }"
+      " }"
+      "}"
+      "node {              \
       name: 'Transpose0' \
       op: 'Transpose'    \
       input: 'Input0'    \
@@ -666,8 +676,8 @@ TEST_F(MklLayoutPassTest, NodeMerge_TransposeConv2DTranspose_Negative) {
           type: DT_INT32 \
         }                \
       }                  \
-    }"                   
-    "node {                 \
+    }"
+      "node {                 \
       name: 'Conv2D'        \
       op: 'Conv2D'          \
       input: 'Transpose0'   \
@@ -719,7 +729,7 @@ TEST_F(MklLayoutPassTest, NodeMerge_TransposeConv2DTranspose_Negative) {
         }                       \
       }                         \
     }"
-    "node {              \
+      "node {              \
       name: 'Transpose1' \
       op: 'Transpose'    \
       input: 'Conv2D'    \
@@ -737,17 +747,21 @@ TEST_F(MklLayoutPassTest, NodeMerge_TransposeConv2DTranspose_Negative) {
         }                \
       }                  \
     }"
-    "node { name: 'Relu' op: 'Relu'"
+      "node { name: 'Relu' op: 'Relu'"
       " attr { key: 'T'                value { type: DT_FLOAT } }"
       " input: ['Transpose1'] }");
-  EXPECT_EQ(DoMklLayoutOptimizationPass(),
-            "Const0(Const);Const1(Const);"
-            "Conv2D(_MklConv2D);DMT/_0(Const);DMT/_1(Const);DMT/_2(Const);"
-            "Input0(Input);Input1(Input);Relu(_MklRelu);"
-            "Transpose0(Transpose);Transpose1(Transpose)|Const0->Transpose0:1;Const1->Transpose1:1;"
-            "Conv2D->Transpose1;DMT/_0->Conv2D:2;DMT/_1->Conv2D:3;DMT/_2->Relu:1;Input0->Transpose0;"
-            "Input1->Conv2D:1;Transpose0->Conv2D;Transpose0:control->DMT/_0:control;"
-            "Transpose0:control->DMT/_1:control;Transpose1->Relu;Transpose1:control->DMT/_2:control");
+  EXPECT_EQ(
+      DoMklLayoutOptimizationPass(),
+      "Const0(Const);Const1(Const);"
+      "Conv2D(_MklConv2D);DMT/_0(Const);DMT/_1(Const);DMT/_2(Const);"
+      "Input0(Input);Input1(Input);Relu(_MklRelu);"
+      "Transpose0(Transpose);Transpose1(Transpose)|Const0->Transpose0:1;Const1-"
+      ">Transpose1:1;"
+      "Conv2D->Transpose1;DMT/_0->Conv2D:2;DMT/_1->Conv2D:3;DMT/"
+      "_2->Relu:1;Input0->Transpose0;"
+      "Input1->Conv2D:1;Transpose0->Conv2D;Transpose0:control->DMT/_0:control;"
+      "Transpose0:control->DMT/"
+      "_1:control;Transpose1->Relu;Transpose1:control->DMT/_2:control");
 }
 
 /////////////////////////////////////////////////////////////////////
