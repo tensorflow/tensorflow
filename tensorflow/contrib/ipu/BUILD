@@ -181,6 +181,8 @@ test_suite(
       "//tensorflow/compiler/tests:cpu_tests",
       "//tensorflow/compiler/xla/tests:poplar_tests",
       "//tensorflow/compiler/xla/tests:cpu_tests",
+      "//tensorflow/compiler/xla/client:all",
+      "//tensorflow/compiler/xla/service:all",
       "//tensorflow/compiler/plugin/poplar:all_ci_tests",
     ],
 )
