@@ -1831,7 +1831,15 @@ class CondContext(ControlFlowContext):
       result.op._set_control_flow_context(self)
       # pylint: enable=protected-access
 
-      self._values.add(result.name)
+      # Mark Switch output as seen by this context and any outer contexts,
+      # just like what we do for normal op outputs in _AddOpInternal() below.
+      ctxt = self
+      while ctxt is not None:
+        # pylint: disable=protected-access
+        ctxt._values.add(result.name)
+        ctxt = ctxt._outer_context
+        # pylint: enable=protected-access
+
       self._external_values[val.name] = result
     return result
 
