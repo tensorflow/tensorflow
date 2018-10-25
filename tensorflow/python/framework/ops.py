@@ -4021,6 +4021,72 @@ class Graph(object):
 
   # pylint: enable=g-doc-return-or-yield,line-too-long
 
+  def absolute_name_scope(self, name):
+    """Builds an absolute name_scope relative to the current_scope.
+    This is helpful to reuse nested name scopes.
+    Especially useful when structuring graphs for visualization in TensorBoard.
+
+    See `name_scope` documentation for details on how name scopes work.
+
+    E.g. The following will happen when using a regular `name_scope`:
+
+    ```python
+    with tf.name_scope('outer'):
+      with tf.name_scope('inner'):
+        print(tf.constant(1)) # Will print outer/inner/Const:0
+    with tf.name_scope('outer'):
+      with tf.name_scope('inner'):
+        print(tf.constant(1)) # Will print outer/inner_1/Const:0
+    ```
+
+    With `absolute_name_scope`:
+
+    ```python
+    with tf.absolute_name_scope('outer'):
+      with tf.absolute_name_scope('inner'):
+        print(tf.constant(1)) # Will print outer/inner/Const:0
+    with tf.absolute_name_scope('outer'):
+      with tf.absolute_name_scope('inner'):
+        print(tf.constant(1)) # Will print outer/inner/Const_1:0
+    ```
+
+    Note: When interleaving `absolute_name_scope` with `name_scope` the regular
+    `name_scope` will break the absolute naming.
+
+    ```python
+    with tf.absolute_name_scope('abs_outer'):
+        with tf.name_scope('name_inner'):
+          with tf.absolute_name_scope('abs_inner'):
+            print(tf.constant(1))
+            # Will print abs_outer/name_inner/abs_inner/Const:0
+    with tf.absolute_name_scope('abs_outer'):
+      with tf.name_scope('name_inner'):
+        with tf.absolute_name_scope('abs_inner'):
+          print(tf.constant(1))
+          # Will print abs_outer/name_inner_1/abs_inner/Const:0
+    ```
+
+    Args:
+      name: A name for the scope.
+
+    Returns:
+      A context manager that installs `name` as a new name scope.
+
+    Raises:
+      ValueError: If `name` is not a valid scope name, according to the rules
+        above.
+    ```
+    """
+    current_scope = self.get_name_scope()
+    if not current_scope:
+      if name.endswith('/'):
+        name_scope = self.name_scope(name)
+      else:
+        name_scope = self.name_scope('{}/'.format(name))
+    else:
+      name_scope = self.name_scope('{}/{}/'.format(current_scope, name))
+    return name_scope
+
   def unique_name(self, name, mark_as_used=True):
     """Return a unique operation name for `name`.
 
