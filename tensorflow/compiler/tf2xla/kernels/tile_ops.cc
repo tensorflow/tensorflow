@@ -16,6 +16,7 @@ limitations under the License.
 // XLA-specific Tile Op.
 
 #include <vector>
+#include "absl/algorithm/container.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/tf2xla/lib/broadcast.h"
 #include "tensorflow/compiler/tf2xla/type_util.h"
@@ -51,6 +52,14 @@ class TileOp : public XlaOpKernel {
                     "Expected multiples argument to be a vector of length ",
                     input_shape.dims(), " but got length ",
                     multiples_shape.dim_size(0)));
+    const int input_dims = input_shape.dims();
+    auto input = ctx->Input(0);
+    // If input is a scalar then multiples has 0 elements and this is
+    // a NoOp.
+    if (input_dims == 0) {
+      ctx->SetOutput(0, input);
+      return;
+    }
 
     std::vector<int64> multiples;
     OP_REQUIRES_OK(ctx, ctx->ConstantInputAsIntVector("multiples", &multiples));
@@ -60,6 +69,36 @@ class TileOp : public XlaOpKernel {
                   errors::InvalidArgument("Expected multiples[", i,
                                           "] >= 0, but got ", output_dims[i]));
       output_dims[i] = input_shape.dim_size(i) * multiples[i];
+    }
+
+    // If all multiples are 1, than the input is the same as the output.
+    if (absl::c_all_of(multiples,
+                       [](int64 multiple) { return multiple == 1; })) {
+      ctx->SetOutput(0, input);
+      return;
+    }
+
+    bool can_tile_with_implicit_broadcast = true;
+    for (int i = 0; i < input_dims; ++i) {
+      int64 multiple = multiples[i];
+      // If the multiple and input dimension are not 1, then tile cannot be
+      // implemented with a single hlo broadcast.
+      if (multiple != 1 && input_shape.dim_size(i) != 1) {
+        can_tile_with_implicit_broadcast = false;
+      }
+    }
+
+    if (can_tile_with_implicit_broadcast) {
+      // Create a constant Zero the size of the output shape to leverage binary
+      // operation broadcast semantics.
+      auto broadcasted_zero = xla::Broadcast(
+          XlaHelpers::Zero(ctx->builder(), ctx->input_type(0)), output_dims);
+      if (ctx->input_type(0) == DT_BOOL) {
+        ctx->SetOutput(0, xla::Or(broadcasted_zero, input));
+      } else {
+        ctx->SetOutput(0, xla::Add(broadcasted_zero, input));
+      }
+      return;
     }
 
     auto result = BroadcastTo(ctx->Input("input"), output_dims);
