@@ -175,22 +175,23 @@ class MklEltwiseFwdPrimitive : public MklPrimitive {
 template <typename T>
 class MklEltwiseFwdPrimitiveFactory : public MklPrimitiveFactory<T> {
  public:
-  static MklEltwiseFwdPrimitive<T>* Get(
+  static std::shared_ptr<MklEltwiseFwdPrimitive<T>> Get(
       const MklEltwiseFwdParams<T>& fwdParams) {
-    MklEltwiseFwdPrimitive<T>* eltwise_forward = nullptr;
-
     auto src_fmt =
         static_cast<mkldnn::memory::format>(fwdParams.src_md.data.format);
 
     // Get a eltwise fwd primitive from the cached pool
-    eltwise_forward = static_cast<MklEltwiseFwdPrimitive<T>*>(
-        MklEltwiseFwdPrimitiveFactory<T>::GetInstance().GetEltwiseFwd(fwdParams,
-                                                                      src_fmt));
-    if (eltwise_forward == nullptr) {
-      eltwise_forward = new MklEltwiseFwdPrimitive<T>(fwdParams);
+    std::shared_ptr<MklEltwiseFwdPrimitive<T>> eltwise_forward =
+        std::pointer_static_cast<MklEltwiseFwdPrimitive<T>>(
+            MklEltwiseFwdPrimitiveFactory<T>::GetInstance().GetEltwiseFwd(
+                fwdParams, src_fmt));
+
+    if (!eltwise_forward) {
+      eltwise_forward.reset(new MklEltwiseFwdPrimitive<T>(fwdParams));
       MklEltwiseFwdPrimitiveFactory<T>::GetInstance().SetEltwiseFwd(
           fwdParams, src_fmt, eltwise_forward);
     }
+
     return eltwise_forward;
   }
 
@@ -216,14 +217,15 @@ class MklEltwiseFwdPrimitiveFactory : public MklPrimitiveFactory<T> {
     return key_creator.GetKey();
   }
 
-  MklPrimitive* GetEltwiseFwd(const MklEltwiseFwdParams<T>& fwdParams,
-                              memory::format src_fmt) {
+  std::shared_ptr<MklPrimitive> GetEltwiseFwd(
+      const MklEltwiseFwdParams<T>& fwdParams, memory::format src_fmt) {
     string key = CreateKey(fwdParams, src_fmt);
     return this->GetOp(key);
   }
 
   void SetEltwiseFwd(const MklEltwiseFwdParams<T>& fwdParams,
-                     memory::format src_fmt, MklPrimitive* op) {
+                     memory::format src_fmt,
+                     std::shared_ptr<MklPrimitive> op) {
     string key = CreateKey(fwdParams, src_fmt);
     this->SetOp(key, op);
   }
@@ -393,25 +395,25 @@ class MklEltwiseBwdPrimitiveFactory : public MklPrimitiveFactory<T> {
   ~MklEltwiseBwdPrimitiveFactory() {}
 
  public:
-  static MklEltwiseBwdPrimitive<T>* Get(
+  static std::shared_ptr<MklEltwiseBwdPrimitive<T>> Get(
       const MklEltwiseBwdParams<T>& bwdParams) {
-    MklEltwiseBwdPrimitive<T>* eltwise_backward = nullptr;
-
     auto src_fmt =
         static_cast<mkldnn::memory::format>(bwdParams.common_md.data.format);
     auto diff_dst_fmt =
         static_cast<mkldnn::memory::format>(bwdParams.common_md.data.format);
 
     // try to find a suitable one in pool
-    eltwise_backward = static_cast<MklEltwiseBwdPrimitive<T>*>(
-        MklEltwiseBwdPrimitiveFactory<T>::GetInstance().GetEltwiseBwd(
-            bwdParams, src_fmt, diff_dst_fmt));
+    std::shared_ptr<MklEltwiseBwdPrimitive<T>> eltwise_backward =
+        std::static_pointer_cast<MklEltwiseBwdPrimitive<T>>(
+            MklEltwiseBwdPrimitiveFactory<T>::GetInstance().GetEltwiseBwd(
+                bwdParams, src_fmt, diff_dst_fmt));
 
-    if (eltwise_backward == nullptr) {
-      eltwise_backward = new MklEltwiseBwdPrimitive<T>(bwdParams);
+    if (!eltwise_backward) {
+      eltwise_backward.reset(new MklEltwiseBwdPrimitive<T>(bwdParams));
       MklEltwiseBwdPrimitiveFactory<T>::GetInstance().SetEltwiseBwd(
           bwdParams, src_fmt, diff_dst_fmt, eltwise_backward);
     }
+
     return eltwise_backward;
   }
 
@@ -436,7 +438,7 @@ class MklEltwiseBwdPrimitiveFactory : public MklPrimitiveFactory<T> {
     return key_creator.GetKey();
   }
 
-  MklPrimitive* GetEltwiseBwd(const MklEltwiseBwdParams<T>& bwdParams,
+  std::shared_ptr<MklPrimitive> GetEltwiseBwd(const MklEltwiseBwdParams<T>& bwdParams,
                               const memory::format& src_fmt,
                               const memory::format& diff_dst_fmt) {
     string key = CreateKey(bwdParams, src_fmt, diff_dst_fmt);
@@ -445,7 +447,8 @@ class MklEltwiseBwdPrimitiveFactory : public MklPrimitiveFactory<T> {
 
   void SetEltwiseBwd(const MklEltwiseBwdParams<T>& bwdParams,
                      const memory::format& src_fmt,
-                     const memory::format& diff_dst_fmt, MklPrimitive* op) {
+                     const memory::format& diff_dst_fmt,
+                     std::shared_ptr<MklPrimitive> op) {
     string key = CreateKey(bwdParams, src_fmt, diff_dst_fmt);
     this->SetOp(key, op);
   }
@@ -819,7 +822,7 @@ class MklReluOpBase : public OpKernel {
       // get a eltwise fwd from primitive pool
       MklEltwiseFwdParams<T> fwdParams(src_dims, src_md, alg_kind, alpha_,
                                        beta_);
-      MklEltwiseFwdPrimitive<T>* eltwise_fwd =
+      std::shared_ptr<MklEltwiseFwdPrimitive<T>> eltwise_fwd =
           MklEltwiseFwdPrimitiveFactory<T>::Get(fwdParams);
 
       // prepare for execuation
@@ -976,7 +979,7 @@ class MklReluGradOpBase : public OpKernel {
 
       MklEltwiseBwdParams<T> bwdParams(src_dims, common_md, alg_kind, alpha_,
                                        beta_);
-      MklEltwiseBwdPrimitive<T>* eltwise_bwd =
+      std::shared_ptr<MklEltwiseBwdPrimitive<T>> eltwise_bwd =
           MklEltwiseBwdPrimitiveFactory<T>::Get(bwdParams);
       auto eltwise_bwd_pd = eltwise_bwd->GetEltwiseBwdPd();
 

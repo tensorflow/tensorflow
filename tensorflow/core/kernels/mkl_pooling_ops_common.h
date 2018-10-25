@@ -152,19 +152,18 @@ class MklPoolingFwdPrimitive : public MklPrimitive {
 template <typename T>
 class MklPoolingFwdPrimitiveFactory : public MklPrimitiveFactory<T> {
  public:
-  static MklPoolingFwdPrimitive<T>* Get(const MklPoolingParams& fwdParams) {
-    MklPoolingFwdPrimitive<T>* pooling_forward = nullptr;
-
+  static std::shared_ptr<MklPoolingFwdPrimitive<T>> Get(const MklPoolingParams& fwdParams) {
     // Get pooling primitive from the pool
-    pooling_forward = static_cast<MklPoolingFwdPrimitive<T>*>(
-        MklPoolingFwdPrimitiveFactory<T>::GetInstance().GetPoolingFwd(
-            fwdParams));
+    std::shared_ptr<MklPoolingFwdPrimitive<T>> pooling_forward =
+      std::static_pointer_cast<MklPoolingFwdPrimitive<T>>(
+        MklPoolingFwdPrimitiveFactory<T>::GetInstance().GetPoolingFwd(fwdParams));
 
-    if (pooling_forward == nullptr) {
-      pooling_forward = new MklPoolingFwdPrimitive<T>(fwdParams);
+    if (!pooling_forward) {
+      pooling_forward.reset(new MklPoolingFwdPrimitive<T>(fwdParams));
       MklPoolingFwdPrimitiveFactory<T>::GetInstance().SetPoolingFwd(
           fwdParams, pooling_forward);
     }
+
     return pooling_forward;
   }
 
@@ -196,12 +195,12 @@ class MklPoolingFwdPrimitiveFactory : public MklPrimitiveFactory<T> {
     return key_creator.GetKey();
   }
 
-  MklPrimitive* GetPoolingFwd(const MklPoolingParams& fwdParams) {
+  std::shared_ptr<MklPrimitive> GetPoolingFwd(const MklPoolingParams& fwdParams) {
     string key = CreateKey(fwdParams);
     return this->GetOp(key);
   }
 
-  void SetPoolingFwd(const MklPoolingParams& fwdParams, MklPrimitive* op) {
+  void SetPoolingFwd(const MklPoolingParams& fwdParams, std::shared_ptr<MklPrimitive> op) {
     string key = CreateKey(fwdParams);
     this->SetOp(key, op);
   }
@@ -304,19 +303,19 @@ class MklPoolingBwdPrimitive : public MklPrimitive {
 template <typename T>
 class MklPoolingBwdPrimitiveFactory : public MklPrimitiveFactory<T> {
  public:
-  static MklPoolingBwdPrimitive<T>* Get(const MklPoolingParams& bwdParams) {
-    MklPoolingBwdPrimitive<T>* pooling_backward = nullptr;
-
+  static std::shared_ptr<MklPoolingBwdPrimitive<T>> Get(const MklPoolingParams& bwdParams) {
     // Find a pooling backward primitive from the pool
-    // If it does not exist, create a new one
-    pooling_backward = static_cast<MklPoolingBwdPrimitive<T>*>(
-        MklPoolingBwdPrimitiveFactory<T>::GetInstance().GetPoolingBwd(
-            bwdParams));
-    if (pooling_backward == nullptr) {
-      pooling_backward = new MklPoolingBwdPrimitive<T>(bwdParams);
+	// If it does not exist, create a new one
+    std::shared_ptr<MklPoolingBwdPrimitive<T>> pooling_backward =
+      std::static_pointer_cast<MklPoolingBwdPrimitive<T>>(
+        MklPoolingBwdPrimitiveFactory<T>::GetInstance().GetPoolingBwd(bwdParams));
+
+    if (!pooling_backward) {
+      pooling_backward.reset(new MklPoolingBwdPrimitive<T>(bwdParams));
       MklPoolingBwdPrimitiveFactory<T>::GetInstance().SetPoolingBwd(
           bwdParams, pooling_backward);
     }
+
     return pooling_backward;
   }
 
@@ -347,12 +346,12 @@ class MklPoolingBwdPrimitiveFactory : public MklPrimitiveFactory<T> {
     return key_creator.GetKey();
   }
 
-  MklPrimitive* GetPoolingBwd(const MklPoolingParams& bwdParams) {
+  std::shared_ptr<MklPrimitive> GetPoolingBwd(const MklPoolingParams& bwdParams) {
     string key = CreateKey(bwdParams);
     return this->GetOp(key);
   }
 
-  void SetPoolingBwd(const MklPoolingParams& bwdParams, MklPrimitive* op) {
+  void SetPoolingBwd(const MklPoolingParams& bwdParams, std::shared_ptr<MklPrimitive> op) {
     string key = CreateKey(bwdParams);
     this->SetOp(key, op);
   }

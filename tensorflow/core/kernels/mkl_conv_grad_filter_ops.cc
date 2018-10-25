@@ -290,20 +290,20 @@ class MklConvBwdFilterPrimitive : public MklPrimitive {
 template <typename T>
 class MklConvBwdFilterPrimitiveFactory : public MklPrimitiveFactory<T> {
  public:
-  static MklConvBwdFilterPrimitive<T>* Get(
+  static std::shared_ptr<MklConvBwdFilterPrimitive<T>> Get(
       const MklConvBwdFilterParams& convBwdFilterDims, bool do_not_cache) {
-    MklConvBwdFilterPrimitive<T>* conv_bwd_filter = nullptr;
+    std::shared_ptr<MklConvBwdFilterPrimitive<T>> conv_bwd_filter(nullptr);
 
     if (do_not_cache) { /* Create new primitive always */
-      conv_bwd_filter = new MklConvBwdFilterPrimitive<T>(convBwdFilterDims);
+      conv_bwd_filter.reset(new MklConvBwdFilterPrimitive<T>(convBwdFilterDims));
     } else {
       // look into the pool for reusable primitive
-      conv_bwd_filter = dynamic_cast<MklConvBwdFilterPrimitive<T>*> (
+      conv_bwd_filter = std::static_pointer_cast<MklConvBwdFilterPrimitive<T>>(
         MklConvBwdFilterPrimitiveFactory<T>::GetInstance().GetConvBwdFilter(
             convBwdFilterDims));
 
-     if (conv_bwd_filter == nullptr) {
-       conv_bwd_filter = new MklConvBwdFilterPrimitive<T>(convBwdFilterDims);
+     if (!conv_bwd_filter) {
+       conv_bwd_filter.reset(new MklConvBwdFilterPrimitive<T>(convBwdFilterDims));
        MklConvBwdFilterPrimitiveFactory<T>::GetInstance().SetConvBwdFilter(
             convBwdFilterDims, conv_bwd_filter);
       }
@@ -336,14 +336,14 @@ class MklConvBwdFilterPrimitiveFactory : public MklPrimitiveFactory<T> {
     return key_creator.GetKey();
   }
 
-  MklPrimitive* GetConvBwdFilter(
+  std::shared_ptr<MklPrimitive> GetConvBwdFilter(
       const MklConvBwdFilterParams& convBwdFilterDims) {
     string key = CreateKey(convBwdFilterDims);
     return this->GetOp(key);
   }
 
   void SetConvBwdFilter(const MklConvBwdFilterParams& convBwdFilterDims,
-                        MklPrimitive* op) {
+                        std::shared_ptr<MklPrimitive> op) {
     string key = CreateKey(convBwdFilterDims);
     this->SetOp(key, op);
   }
@@ -455,7 +455,6 @@ class MklConvCustomBackpropFilterOp
       }
       for (int i = 0; i < dilations.size(); i++) dilations[i] -= 1;
 
-      MklConvBwdFilterPrimitive<T>* conv_bwd_filter = nullptr;
       MklConvBwdFilterParams convBwdFilterDims(fwd_src_dims, fwd_filter_dims,
           diff_bias_dims, diff_dst_dims, strides, dilations, padding_left,
           padding_right, TFPaddingToMklDnnPadding(this->padding_));
@@ -464,8 +463,9 @@ class MklConvCustomBackpropFilterOp
       // created. So we don't cache conv backward primitives when the env
       // variable TF_MKL_OPTIMIZE_PRIMITIVE_MEMUSE is set to true.
       bool do_not_cache = MklPrimitiveFactory<T>::IsPrimitiveMemOptEnabled();
-      conv_bwd_filter = MklConvBwdFilterPrimitiveFactory<T>::Get(
-          convBwdFilterDims, do_not_cache);
+      std::shared_ptr<MklConvBwdFilterPrimitive<T>> conv_bwd_filter =
+          MklConvBwdFilterPrimitiveFactory<T>::Get(convBwdFilterDims,
+                                                   do_not_cache);
       auto bwd_filter_pd = conv_bwd_filter->GetPrimitiveDesc();
 
       // allocate output tensors: diff_fitler and diff_bias (w bias)
@@ -557,9 +557,6 @@ class MklConvCustomBackpropFilterOp
       if (diff_filter_reorder_required) {
         diff_filter.InsertReorderToUserMem();
       }
-
-      // delete primitive since it is not cached.
-      if (do_not_cache) delete conv_bwd_filter;
     } catch (mkldnn::error& e) {
       string error_msg = "Status: " + std::to_string(e.status) +
                          ", message: " + string(e.message) + ", in file " +

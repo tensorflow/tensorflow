@@ -570,7 +570,6 @@ class MklMaxPoolingOp : public MklPoolingForwardOpBase<T> {
                              &padding_left, &padding_right, is_pool2d);
 
       // Get a pooling op from the cached pool
-      MklPoolingFwdPrimitive<T>* pooling_fwd = nullptr;
       prop_kind pooling_prop_kind;
       bool int8_forward_inference =
           std::is_same<T, qint8>::value || std::is_same<T, quint8>::value;
@@ -581,7 +580,8 @@ class MklMaxPoolingOp : public MklPoolingForwardOpBase<T> {
       MklPoolingParams fwdParams(src_dims, output_dims_mkl_order, filter_dims,
                                  strides, padding_left, padding_right,
                                  algorithm::pooling_max, pooling_prop_kind);
-      pooling_fwd = MklPoolingFwdPrimitiveFactory<T>::Get(fwdParams);
+      std::shared_ptr<MklPoolingFwdPrimitive<T>> pooling_fwd =
+          MklPoolingFwdPrimitiveFactory<T>::Get(fwdParams);
 
       // allocate output tensor
       this->AllocateOutputTensor(context, *(pooling_fwd->GetPoolingFwdPd()),
@@ -734,7 +734,7 @@ class MklMaxPoolingGradOp : public MklPoolingBackwardOpBase<T> {
           orig_input_dims_mkl_order, output_dims_mkl_order, filter_dims,
           strides, padding_left, padding_right, algorithm::pooling_max,
           prop_kind::forward_training);
-      MklPoolingBwdPrimitive<T>* pooling_bwd =
+      std::shared_ptr<MklPoolingBwdPrimitive<T>> pooling_bwd =
           MklPoolingBwdPrimitiveFactory<T>::Get(bwdParams);
 
       // allocate output tensor and memory primitive

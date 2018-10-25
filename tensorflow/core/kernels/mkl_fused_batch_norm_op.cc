@@ -875,17 +875,19 @@ class MklFusedBatchNormFwdPrimitive : public MklPrimitive {
 template <typename T>
 class MklFusedBatchNormFwdPrimitiveFactory : public MklPrimitiveFactory<T> {
  public:
-  static MklFusedBatchNormFwdPrimitive<T>* Get(
+  static std::shared_ptr<MklFusedBatchNormFwdPrimitive<T>> Get(
       const MklBatchNormFwdParams& fwdParams) {
-    auto bn_fwd = static_cast<MklFusedBatchNormFwdPrimitive<T>*>(
-        MklFusedBatchNormFwdPrimitiveFactory<T>::GetInstance().GetBatchNormFwd(
-            fwdParams));
+    std::shared_ptr<MklFusedBatchNormFwdPrimitive<T>> bn_fwd =
+        std::pointer_static_cast<MklFusedBatchNormFwdPrimitive<T>>(
+            MklFusedBatchNormFwdPrimitiveFactory<T>::GetInstance().GetBatchNormFwd(
+                fwdParams));
 
-    if (bn_fwd == nullptr) {
-      bn_fwd = new MklFusedBatchNormFwdPrimitive<T>(fwdParams);
+    if (!bn_fwd) {
+      bn_fwd.reset(new MklFusedBatchNormFwdPrimitive<T>(fwdParams));
       MklFusedBatchNormFwdPrimitiveFactory<T>::GetInstance().SetBatchNormFwd(
           fwdParams, bn_fwd);
     }
+
     return bn_fwd;
   }
 
@@ -909,13 +911,13 @@ class MklFusedBatchNormFwdPrimitiveFactory : public MklPrimitiveFactory<T> {
     return key_creator.GetKey();
   }
 
-  MklPrimitive* GetBatchNormFwd(const MklBatchNormFwdParams& fwdParams) {
+  std::shared_ptr<MklPrimitive> GetBatchNormFwd(const MklBatchNormFwdParams& fwdParams) {
     string key = CreateKey(fwdParams);
     return this->GetOp(key);
   }
 
   void SetBatchNormFwd(const MklBatchNormFwdParams& fwdParams,
-                       MklPrimitive* op) {
+                       std::shared_ptr<MklPrimitive> op) {
     string key = CreateKey(fwdParams);
     this->SetOp(key, op);
   }
@@ -1099,16 +1101,19 @@ class MklFusedBatchNormBwdPrimitive : public MklPrimitive {
 template <typename T>
 class MklFusedBatchNormBwdPrimitiveFactory : public MklPrimitiveFactory<T> {
  public:
-  static MklFusedBatchNormBwdPrimitive<T>* Get(
+  static std::shared_ptr<MklFusedBatchNormBwdPrimitive<T>> Get(
       const MklBatchNormBwdParams& bwdParams) {
-    auto bn_bwd = static_cast<MklFusedBatchNormBwdPrimitive<T>*>(
-        MklFusedBatchNormBwdPrimitiveFactory<T>::GetInstance().GetBatchNormBwd(
-            bwdParams));
-    if (bn_bwd == nullptr) {
-      bn_bwd = new MklFusedBatchNormBwdPrimitive<T>(bwdParams);
+    std::shared_ptr<MklFusedBatchNormBwdPrimitive<T>> bn_bwd =
+        std::pointer_static_cast<MklFusedBatchNormBwdPrimitive<T>>(
+            MklFusedBatchNormBwdPrimitiveFactory<T>::GetInstance().GetBatchNormBwd(
+                bwdParams));
+
+    if (!bn_bwd) {
+      bn_bwd.reset(new MklFusedBatchNormBwdPrimitive<T>(bwdParams));
       MklFusedBatchNormBwdPrimitiveFactory<T>::GetInstance().SetBatchNormBwd(
           bwdParams, bn_bwd);
     }
+
     return bn_bwd;
   }
 
@@ -1133,13 +1138,13 @@ class MklFusedBatchNormBwdPrimitiveFactory : public MklPrimitiveFactory<T> {
     return key_creator.GetKey();
   }
 
-  MklPrimitive* GetBatchNormBwd(const MklBatchNormBwdParams& bwdParams) {
+  std::shared_ptr<MklPrimitive> GetBatchNormBwd(const MklBatchNormBwdParams& bwdParams) {
     string key = CreateKey(bwdParams);
     return this->GetOp(key);
   }
 
   void SetBatchNormBwd(const MklBatchNormBwdParams& bwdParams,
-                       MklPrimitive* op) {
+                       std::shared_ptr<MklPrimitive> op) {
     string key = CreateKey(bwdParams);
     this->SetOp(key, op);
   }
@@ -1291,7 +1296,7 @@ class MklFusedBatchNormOp : public OpKernel {
 
       // get batchnorm op from the pool
       MklBatchNormFwdParams fwdParams(src_dims, depth_, epsilon_, is_training_);
-      MklFusedBatchNormFwdPrimitive<T>* bn_fwd =
+      std::shared_ptr<MklFusedBatchNormFwdPrimitive<T>> bn_fwd =
           MklFusedBatchNormFwdPrimitiveFactory<T>::Get(fwdParams);
 
       // check if reorder is needed for src, weights, mean, variance
@@ -1608,7 +1613,7 @@ class MklFusedBatchNormGradOp : public OpKernel {
 
       MklBatchNormBwdParams bwdParams(src_dims, diff_dst_dims, depth_, epsilon_,
                                       is_training_);
-      MklFusedBatchNormBwdPrimitive<T>* bn_bwd =
+      std::shared_ptr<MklFusedBatchNormBwdPrimitive<T>> bn_bwd =
           MklFusedBatchNormBwdPrimitiveFactory<T>::Get(bwdParams);
 
       // check if src/diff_dst need to be reordered
