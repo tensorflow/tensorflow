@@ -254,12 +254,10 @@ class _PrefetchToDeviceEagerIterator(iterator_ops.EagerIterator):
     # TODO(b/77291417): Fix
     with context.execution_mode(context.SYNC):
       with ops.device(self._device):
-        ret = ged_ops.experimental_function_buffering_resource_get_next(
+        flat_ret = ged_ops.experimental_function_buffering_resource_get_next(
             function_buffer_resource=self._buffering_resource,
             output_types=self._flat_output_types)
-      return sparse.deserialize_sparse_tensors(
-          nest.pack_sequence_as(self._output_types, ret), self._output_types,
-          self._output_shapes, self._output_classes)
+      return self._element_structure._from_tensor_list(flat_ret)
 # pylint: enable=protected-access
 
 
