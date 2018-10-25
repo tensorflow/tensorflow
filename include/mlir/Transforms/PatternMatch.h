@@ -254,15 +254,17 @@ protected:
 // PatternMatcher class
 //===----------------------------------------------------------------------===//
 
-/// This class manages optimization an execution of a group of patterns, and
-/// provides an API for finding the best match against a given node.
+/// This is a vector that owns the patterns inside of it.
+using OwningPatternList = std::vector<std::unique_ptr<Pattern>>;
+
+/// This class manages optimization and execution of a group of patterns,
+/// providing an API for finding the best match against a given node.
 ///
 class PatternMatcher {
 public:
-  /// Create a PatternMatch with the specified set of patterns.  This takes
-  /// ownership of the patterns in question.
-  explicit PatternMatcher(ArrayRef<Pattern *> patterns)
-      : patterns(patterns.begin(), patterns.end()) {}
+  /// Create a PatternMatch with the specified set of patterns.
+  explicit PatternMatcher(OwningPatternList &&patterns)
+      : patterns(std::move(patterns)) {}
 
   using MatchResult = std::pair<Pattern *, std::unique_ptr<PatternState>>;
 
@@ -271,14 +273,24 @@ public:
   /// needs) if found, or null if there are no matches.
   MatchResult findMatch(Operation *op);
 
-  ~PatternMatcher() { llvm::DeleteContainerPointers(patterns); }
-
 private:
   PatternMatcher(const PatternMatcher &) = delete;
   void operator=(const PatternMatcher &) = delete;
 
-  std::vector<Pattern *> patterns;
+  /// The group of patterns that are matched for optimization through this
+  /// matcher.
+  std::vector<std::unique_ptr<Pattern>> patterns;
 };
+
+//===----------------------------------------------------------------------===//
+// Pattern-driven rewriters
+//===----------------------------------------------------------------------===//
+
+/// Rewrite the specified function by repeatedly applying the highest benefit
+/// patterns in a greedy work-list driven manner.
+///
+void applyPatternsGreedily(Function *fn, OwningPatternList &&patterns);
+
 } // end namespace mlir
 
 #endif // MLIR_PATTERN_MATCH_H

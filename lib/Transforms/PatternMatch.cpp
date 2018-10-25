@@ -159,7 +159,7 @@ auto PatternMatcher::findMatch(Operation *op) -> MatchResult {
   MatchResult bestMatch = {nullptr, nullptr};
   Optional<PatternBenefit> bestBenefit;
 
-  for (auto *pattern : patterns) {
+  for (auto &pattern : patterns) {
     // Ignore patterns that are for the wrong root.
     if (pattern->getRootKind() != op->getName())
       continue;
@@ -188,7 +188,7 @@ auto PatternMatcher::findMatch(Operation *op) -> MatchResult {
 
     // Okay we found a match that is better than our previous one, remember it.
     bestBenefit = benefit;
-    bestMatch = {pattern, std::move(result.second)};
+    bestMatch = {pattern.get(), std::move(result.second)};
   }
 
   // If we found any match, return it.
