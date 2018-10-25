@@ -26,7 +26,7 @@ aar_with_jni(
 
 # EXPERIMENTAL: AAR target that supports TensorFlow op execution with TFLite.
 aar_with_jni(
-    name = "tensorflow-lite-flex",
+    name = "tensorflow-lite-with-select-tf-ops",
     android_library = ":tensorflowlite_flex",
 )
 
