@@ -3662,12 +3662,15 @@ py_library(
     ],
 )
 
+# Placeholder for intenal nest_test comments.
 py_test(
     name = "util_nest_test",
     size = "small",
     srcs = ["util/nest_test.py"],
     main = "util/nest_test.py",
     srcs_version = "PY2AND3",
+    visibility = visibility + [
+    ],
     deps = [
         ":array_ops",
         ":client_testlib",
