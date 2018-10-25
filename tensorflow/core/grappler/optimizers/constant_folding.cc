@@ -731,6 +731,12 @@ bool ConstantFolding::IsFoldable(const NodeDef& node) const {
       nodes_whitelist_.find(node.name()) == nodes_whitelist_.end()) {
     return false;
   }
+  // `FakeParam` op is used as a placeholder in If branch function. It doesn't
+  // have a valid output when executed.
+  if (IsFakeParam(node)) {
+    return false;
+  }
+
   // Skip control flow nodes, they can't be folded.
   if (ModifiesFrameInfo(node)) {
     return false;
