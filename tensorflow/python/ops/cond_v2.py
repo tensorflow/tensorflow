@@ -468,6 +468,10 @@ def _check_same_outputs(true_graph, false_graph):
         "  true_fn: %s\n"
         "  false_fn: %s" % (true_output_types, false_output_types))
 
+  # Make sure both structured outputs for both graphs have the same structure
+  nest.assert_same_structure(true_graph.structured_outputs, 
+                             false_graph.structured_outputs)
+
 
 def _get_output_shapes(true_graph_outputs, false_graph_outputs):
   output_shapes = [
