@@ -98,6 +98,11 @@ bool ComputeFillArray(Model* model, FillOperator* op) {
         return ::tensorflow::Status::OK();
       }
       break;
+    case ArrayDataType::kComplex64:
+      if (!ComputeFillArray<ArrayDataType::kComplex64>(model, op)) {
+        return ::tensorflow::Status::OK();
+      }
+      break;
     default:
       LOG(FATAL) << "Unsupported data type given to Fill op with output \""
                  << op->outputs[0] << "\"";

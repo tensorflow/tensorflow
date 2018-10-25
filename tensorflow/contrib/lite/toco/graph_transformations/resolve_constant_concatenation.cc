@@ -198,6 +198,10 @@ void SetMinMaxForConcatenedArray(GraphTransformation* transformation,
       ConcatenateTensorBuffers<ArrayDataType::kString>(
           input_arrays, concatenation_axis, &concatenated_array);
       break;
+    case ArrayDataType::kComplex64:
+      ConcatenateTensorBuffers<ArrayDataType::kComplex64>(
+          input_arrays, concatenation_axis, &concatenated_array);
+      break;
     default:
       LOG(FATAL) << "ArrayDataType not supported";
   }

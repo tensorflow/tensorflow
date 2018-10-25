@@ -158,6 +158,9 @@ void StridedSlice(StridedSliceOperator const& op, Array const& input_array,
     case ArrayDataType::kInt64:
       StridedSlice<ArrayDataType::kInt64>(*op, input_array, &output_array);
       break;
+    case ArrayDataType::kComplex64:
+      StridedSlice<ArrayDataType::kComplex64>(*op, input_array, &output_array);
+      break;
     default:
       LOG(FATAL)
           << "Unsupported data type input to StridedSlice op with output \""

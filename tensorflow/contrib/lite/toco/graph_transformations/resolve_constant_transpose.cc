@@ -159,6 +159,10 @@ void Transpose(Model* model, const Array& input_array,
       Transpose<ArrayDataType::kInt64>(model, input_array, op->perm,
                                        &output_array);
       break;
+    case ArrayDataType::kComplex64:
+      Transpose<ArrayDataType::kComplex64>(model, input_array, op->perm,
+                                           &output_array);
+      break;
     default:
       LOG(FATAL) << "Unsupported data type given to Transpose op with output \""
                  << op->outputs[0] << "\"";

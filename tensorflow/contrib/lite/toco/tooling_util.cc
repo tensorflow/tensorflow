@@ -87,6 +87,8 @@ string ArrayDataTypeName(ArrayDataType data_type) {
       return "String";
     case ArrayDataType::kBool:
       return "Bool";
+    case ArrayDataType::kComplex64:
+      return "Complex64";
     case ArrayDataType::kNone:
       return "None";
     default:
@@ -799,6 +801,9 @@ bool CompareConstantArrays(const Array& lhs_array, const Array& rhs_array) {
       return CompareArrayBuffers<ArrayDataType::kUint64>(lhs_array, rhs_array);
     case ArrayDataType::kString:
       return CompareArrayBuffers<ArrayDataType::kString>(lhs_array, rhs_array);
+    case ArrayDataType::kComplex64:
+      return CompareArrayBuffers<ArrayDataType::kComplex64>(lhs_array,
+                                                            rhs_array);
     default:
       LOG(FATAL) << "Unsupported data type: "
                  << ArrayDataTypeName(lhs_array.data_type);
@@ -1411,6 +1416,9 @@ void CloneArray(Model* model, const string& source_array_name,
     case ArrayDataType::kString:
       CopyArrayBuffer<ArrayDataType::kString>(source_array, &target_array);
       break;
+    case ArrayDataType::kComplex64:
+      CopyArrayBuffer<ArrayDataType::kComplex64>(source_array, &target_array);
+      break;
     default:
       LOG(FATAL) << "Unsupported data type: "
                  << ArrayDataTypeName(source_array.data_type);
@@ -1717,6 +1725,8 @@ int ElementSize(ArrayDataType data_type) {
     case ArrayDataType::kInt64:
       return 8;
     case ArrayDataType::kUint64:
+      return 8;
+    case ArrayDataType::kComplex64:
       return 8;
 
     // Usually not critical limitation because strings are only input and/or
@@ -2206,6 +2216,8 @@ ArrayDataType ConvertIODataTypeToArrayDataType(IODataType type) {
       return ArrayDataType::kBool;
     case STRING:
       return ArrayDataType::kString;
+    case COMPLEX64:
+      return ArrayDataType::kComplex64;
     default:
       return ArrayDataType::kNone;
   }
