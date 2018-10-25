@@ -574,10 +574,14 @@ def _num_elements(grad):
   raise ValueError("`grad` not a Tensor or IndexedSlices.")
 
 
+def _cast_constant(value, dtype):
+  return math_ops.cast(constant_op.constant(value), dtype)
+
+
 def _fast_fill(value, shape, dtype):
   return array_ops.fill(
-      constant_op.constant(shape, dtype=dtypes.int32),
-      constant_op.constant(value, dtype=dtype))
+      _cast_constant(shape, dtype=dtypes.int32),
+      _cast_constant(value, dtype=dtype))
 
 
 def _zeros(shape, dtype):
@@ -605,7 +609,7 @@ def _ones(shape, dtype):
     return array_ops.ones(shape, dtype)
 
   if shape == ():  # pylint: disable=g-explicit-bool-comparison
-    return constant_op.constant(1, dtype=dtype)
+    return _cast_constant(1, dtype=dtype)
   return _fast_fill(1, shape, dtype)
 
 
