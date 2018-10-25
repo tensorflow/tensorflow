@@ -65,10 +65,29 @@ class ROCmFusionKernelAddRelu : public OpKernel {
     auto out_data = AsDeviceMemory(out->template flat<T>().data(),
                                    out->template flat<T>().size());
 
-    rocm_kernels::FusionAddRelu(ctx, static_cast<const T*>(in0_data.opaque()),
-                                static_cast<const T*>(in1_data.opaque()),
-                                static_cast<T*>(out_data.opaque()),
-                                in0.NumElements());
+    if (in0.IsSameSize(in1)) {
+      rocm_kernels::FusionAddRelu(ctx, static_cast<const T*>(in0_data.opaque()),
+                                  static_cast<const T*>(in1_data.opaque()),
+                                  static_cast<T*>(out_data.opaque()),
+                                  in0.NumElements());
+    } else {
+      int in0_dims = in0.dims();
+      int in1_dims = in1.dims();
+      if ((in1_dims == 1) &&
+          (in0.dim_size(in0_dims - 1) == in1.dim_size(in1_dims - 1))) {
+        // simple broadcast
+        rocm_kernels::FusionAddReluBcast(
+            ctx, static_cast<const T*>(in0_data.opaque()),
+            static_cast<const T*>(in1_data.opaque()),
+            static_cast<T*>(out_data.opaque()), in0.NumElements(),
+            in1.NumElements());
+      } else {
+        // non-trivial broadcast...bail for now
+        LOG(FATAL) << "AddRelu - broadcast not supported: "
+                   << "\tin0.shape() = " << in0.shape()
+                   << "\tin1.shape() = " << in1.shape();
+      }
+    }
   }
 };
 
@@ -106,11 +125,18 @@ class ROCmFusionKernelAddNReluGrad : public OpKernel {
     auto out_data = AsDeviceMemory(out->template flat<T>().data(),
                                    out->template flat<T>().size());
 
-    rocm_kernels::FusionAddNReluGrad(
-        ctx, static_cast<const T*>(in0_data.opaque()),
-        static_cast<const T*>(in1_data.opaque()),
-        static_cast<const T*>(in2_data.opaque()),
-        static_cast<T*>(out_data.opaque()), in0.NumElements());
+    if (in0.IsSameSize(in1) && in0.IsSameSize(in2)) {
+      rocm_kernels::FusionAddNReluGrad(
+          ctx, static_cast<const T*>(in0_data.opaque()),
+          static_cast<const T*>(in1_data.opaque()),
+          static_cast<const T*>(in2_data.opaque()),
+          static_cast<T*>(out_data.opaque()), in0.NumElements());
+    } else {
+      LOG(FATAL) << "AddNReluGrad - shape mismatch: "
+                 << "\tin0.shape() = " << in0.shape()
+                 << "\tin1.shape() = " << in1.shape()
+                 << "\tin2.shape() = " << in2.shape();
+    }
   }
 
  private:

@@ -34,6 +34,13 @@ void FusionAddRelu(OpKernelContext* ctx, const float* in0, const float* in1,
 void FusionAddRelu(OpKernelContext* ctx, const Eigen::half* in0,
                    const Eigen::half* in1, Eigen::half* out, unsigned N);
 
+void FusionAddReluBcast(OpKernelContext* ctx, const float* in0,
+                        const float* in1, float* out, unsigned N, unsigned M);
+
+void FusionAddReluBcast(OpKernelContext* ctx, const Eigen::half* in0,
+                        const Eigen::half* in1, Eigen::half* out, unsigned N,
+                        unsigned M);
+
 void FusionAddNReluGrad(OpKernelContext* ctx, const float* in0,
                         const float* in1, const float* in2, float* out,
                         unsigned N);
