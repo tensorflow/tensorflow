@@ -713,6 +713,10 @@ def tf_gen_op_wrapper_py(
         deps = [
             clean_dep("//tensorflow/python:framework_for_generated_wrappers_v2"),
         ],
+        # Instruct build_cleaner to try to avoid using this rule; typically ops
+        # creators will provide their own tf_custom_op_py_library based target
+        # that wraps this one.
+        tags = ["avoid_dep"],
     )
 
 # Define a bazel macro that creates cc_test for tensorflow.
