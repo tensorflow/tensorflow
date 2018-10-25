@@ -129,7 +129,10 @@ class MapAndBatchDatasetOp : public UnaryDatasetOpKernel {
             out_tensors->push_back(captured_inputs[indices[i] - num_args]);
           }
         }
-        done(Status::OK());
+        // Run the `done` callback on a threadpool thread, because it will
+        // potentially do a lot of copying work, and we want to run that
+        // concurrently with the next invocation.
+        (*ctx->runner())(std::bind(std::move(done), Status::OK()));
       };
     }
 
