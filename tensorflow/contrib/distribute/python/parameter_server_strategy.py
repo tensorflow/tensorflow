@@ -231,6 +231,9 @@ class ParameterServerStrategy(distribute_lib.DistributionStrategy):
       destinations = self._compute_devices
     return self._cross_tower_ops.broadcast(tensor, destinations)
 
+  def _allow_variable_partition(self):
+    return True if not context.executing_eagerly() else False
+
   # TODO(yuefengz): not all ops in device_setter.STANDARD_PS_OPS will go through
   # this creator, such as "MutableHashTable".
   def _create_variable(self, next_creator, *args, **kwargs):
