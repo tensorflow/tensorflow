@@ -21,8 +21,7 @@
 
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinOps.h"
-#include "mlir/StandardOps/StandardOps.h"
-#include "mlir/Transforms/PatternMatch.h"
+#include "mlir/IR/PatternMatch.h"
 #include "llvm/ADT/DenseMap.h"
 using namespace mlir;
 

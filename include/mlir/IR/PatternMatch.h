@@ -1,4 +1,4 @@
-//===- PatternMatcher.h - PatternMatcher classes ----------------*- C++ -*-===//
+//===- PatternMatch.h - PatternMatcher classes -------==---------*- C++ -*-===//
 //
 // Copyright 2019 The MLIR Authors.
 //

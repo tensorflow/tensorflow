@@ -26,6 +26,7 @@
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/Identifier.h"
 #include "llvm/ADT/PointerUnion.h"
+#include <memory>
 
 namespace mlir {
 class Dialect;
@@ -35,8 +36,12 @@ class OperationState;
 class OpAsmParser;
 class OpAsmParserResult;
 class OpAsmPrinter;
+class Pattern;
 class SSAValue;
 class Type;
+
+/// This is a vector that owns the patterns inside of it.
+using OwningPatternList = std::vector<std::unique_ptr<Pattern>>;
 
 enum class OperationProperty {
   /// This bit is set for an operation if it is a commutative operation: that
@@ -83,7 +88,12 @@ public:
   bool (&constantFoldHook)(const Operation *op, ArrayRef<Attribute> operands,
                            SmallVectorImpl<Attribute> &results);
 
-  // Returns whether the operation has a particular property.
+  /// This hook returns any canonicalization pattern rewrites that the operation
+  /// supports, for use by the canonicalization pass.
+  void (&getCanonicalizationPatterns)(OwningPatternList &results,
+                                      MLIRContext *context);
+
+  /// Returns whether the operation has a particular property.
   bool hasProperty(OperationProperty property) const {
     return opProperties & static_cast<OperationProperties>(property);
   }
@@ -96,10 +106,10 @@ public:
   /// This constructor is used by Dialect objects when they register the list of
   /// operations they contain.
   template <typename T> static AbstractOperation get(Dialect &dialect) {
-    return AbstractOperation(T::getOperationName(), dialect,
-                             T::getOperationProperties(), T::isClassFor,
-                             T::parseAssembly, T::printAssembly,
-                             T::verifyInvariants, T::constantFoldHook);
+    return AbstractOperation(
+        T::getOperationName(), dialect, T::getOperationProperties(),
+        T::isClassFor, T::parseAssembly, T::printAssembly, T::verifyInvariants,
+        T::constantFoldHook, T::getCanonicalizationPatterns);
   }
 
 private:
@@ -111,10 +121,13 @@ private:
       bool (&verifyInvariants)(const Operation *op),
       bool (&constantFoldHook)(const Operation *op,
                                ArrayRef<Attribute> operands,
-                               SmallVectorImpl<Attribute> &results))
+                               SmallVectorImpl<Attribute> &results),
+      void (&getCanonicalizationPatterns)(OwningPatternList &results,
+                                          MLIRContext *context))
       : name(name), dialect(dialect), isClassFor(isClassFor),
         parseAssembly(parseAssembly), printAssembly(printAssembly),
         verifyInvariants(verifyInvariants), constantFoldHook(constantFoldHook),
+        getCanonicalizationPatterns(getCanonicalizationPatterns),
         opProperties(opProperties) {}
 
   /// The properties of the operation.

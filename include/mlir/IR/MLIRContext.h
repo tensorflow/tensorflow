@@ -21,6 +21,7 @@
 #include "mlir/Support/LLVM.h"
 #include <functional>
 #include <memory>
+#include <vector>
 
 namespace mlir {
 class AbstractOperation;
@@ -40,6 +41,14 @@ class MLIRContext {
 public:
   explicit MLIRContext();
   ~MLIRContext();
+
+  /// Return information about all registered IR dialects.
+  std::vector<Dialect *> getRegisteredDialects() const;
+
+  /// Return information about all registered operations.  This isn't very
+  /// efficient: typically you should ask the operations about their properties
+  /// directly.
+  std::vector<AbstractOperation *> getRegisteredOperations() const;
 
   /// This is the interpretation of a diagnostic that is emitted to the
   /// diagnostic handler below.

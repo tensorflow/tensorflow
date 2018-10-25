@@ -175,9 +175,14 @@ public:
   /// handlers that may be listening.
   void emitNote(const Twine &message) const;
 
-protected:
   // These are default implementations of customization hooks.
+public:
+  /// This hook returns any canonicalization pattern rewrites that the operation
+  /// supports, for use by the canonicalization pass.
+  static void getCanonicalizationPatterns(OwningPatternList &results,
+                                          MLIRContext *context) {}
 
+protected:
   /// If the concrete type didn't implement a custom verifier hook, just fall
   /// back to this one which accepts everything.
   bool verify() const { return false; }

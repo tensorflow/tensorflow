@@ -21,6 +21,7 @@
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/OpImplementation.h"
+#include "mlir/IR/PatternMatch.h"
 #include "mlir/IR/SSAValue.h"
 #include "mlir/IR/Types.h"
 #include "mlir/Support/MathExtras.h"
@@ -39,6 +40,39 @@ StandardOpsDialect::StandardOpsDialect(MLIRContext *context)
                 MemRefCastOp, MulFOp, MulIOp, StoreOp, SubFOp, SubIOp,
                 TensorCastOp>();
 }
+
+//===----------------------------------------------------------------------===//
+// Common canonicalization pattern support logic
+//===----------------------------------------------------------------------===//
+
+namespace {
+/// This is a common class used for patterns of the form
+/// "someop(memrefcast) -> someop".  It folds the source of any memref_cast
+/// into the root operation directly.
+struct MemRefCastFolder : public Pattern {
+  /// The rootOpName is the name of the root operation to match against.
+  MemRefCastFolder(StringRef rootOpName, MLIRContext *context)
+      : Pattern(rootOpName, context, 1) {}
+
+  std::pair<PatternBenefit, std::unique_ptr<PatternState>>
+  match(Operation *op) const override {
+    for (auto *operand : op->getOperands())
+      if (auto *memref = operand->getDefiningOperation())
+        if (memref->isa<MemRefCastOp>())
+          return matchSuccess();
+
+    return matchFailure();
+  }
+
+  void rewrite(Operation *op, PatternRewriter &rewriter) const override {
+    for (unsigned i = 0, e = op->getNumOperands(); i != e; ++i)
+      if (auto *memref = op->getOperand(i)->getDefiningOperation())
+        if (auto cast = memref->dyn_cast<MemRefCastOp>())
+          op->setOperand(i, cast->getOperand());
+    rewriter.updatedRootInPlace(op);
+  }
+};
+} // end anonymous namespace.
 
 //===----------------------------------------------------------------------===//
 // AddFOp
@@ -70,6 +104,36 @@ Attribute AddIOp::constantFold(ArrayRef<Attribute> operands,
   }
 
   return nullptr;
+}
+
+namespace {
+/// addi(x, 0) -> x
+///
+struct SimplifyAddX0 : public Pattern {
+  SimplifyAddX0(MLIRContext *context)
+      : Pattern(AddIOp::getOperationName(), context, 1) {}
+
+  std::pair<PatternBenefit, std::unique_ptr<PatternState>>
+  match(Operation *op) const override {
+    auto addi = op->cast<AddIOp>();
+    if (auto *operandOp = addi->getOperand(1)->getDefiningOperation())
+      // TODO: Support splatted zero as well.  We need a general zero pattern.
+      if (auto cst = operandOp->dyn_cast<ConstantIntOp>()) {
+        if (cst->getValue() == 0)
+          return matchSuccess();
+      }
+
+    return matchFailure();
+  }
+  void rewrite(Operation *op, PatternRewriter &rewriter) const override {
+    rewriter.replaceSingleResultOp(op, op->getOperand(0));
+  }
+};
+} // end anonymous namespace.
+
+void AddIOp::getCanonicalizationPatterns(OwningPatternList &results,
+                                         MLIRContext *context) {
+  results.push_back(std::make_unique<SimplifyAddX0>(context));
 }
 
 //===----------------------------------------------------------------------===//
@@ -146,6 +210,82 @@ bool AllocOp::verify() const {
       return emitOpError("requires operands to be of type Index");
   }
   return false;
+}
+
+namespace {
+/// Fold constant dimensions into an alloc instruction.
+struct SimplifyAllocConst : public Pattern {
+  SimplifyAllocConst(MLIRContext *context)
+      : Pattern(AllocOp::getOperationName(), context, 1) {}
+
+  std::pair<PatternBenefit, std::unique_ptr<PatternState>>
+  match(Operation *op) const override {
+    auto alloc = op->cast<AllocOp>();
+
+    // Check to see if any dimensions operands are constants.  If so, we can
+    // substitute and drop them.
+    for (auto *operand : alloc->getOperands())
+      if (auto *opOperation = operand->getDefiningOperation())
+        if (opOperation->isa<ConstantIndexOp>())
+          return matchSuccess();
+    return matchFailure();
+  }
+
+  void rewrite(Operation *op, PatternRewriter &rewriter) const override {
+    auto allocOp = op->cast<AllocOp>();
+    auto memrefType = allocOp->getType();
+
+    // Ok, we have one or more constant operands.  Collect the non-constant ones
+    // and keep track of the resultant memref type to build.
+    SmallVector<int, 4> newShapeConstants;
+    newShapeConstants.reserve(memrefType->getRank());
+    SmallVector<SSAValue *, 4> newOperands;
+    SmallVector<SSAValue *, 4> droppedOperands;
+
+    unsigned dynamicDimPos = 0;
+    for (unsigned dim = 0, e = memrefType->getRank(); dim < e; ++dim) {
+      int dimSize = memrefType->getDimSize(dim);
+      // If this is already static dimension, keep it.
+      if (dimSize != -1) {
+        newShapeConstants.push_back(dimSize);
+        continue;
+      }
+      auto *defOp = allocOp->getOperand(dynamicDimPos)->getDefiningOperation();
+      OpPointer<ConstantIndexOp> constantIndexOp;
+      if (defOp && (constantIndexOp = defOp->dyn_cast<ConstantIndexOp>())) {
+        // Dynamic shape dimension will be folded.
+        newShapeConstants.push_back(constantIndexOp->getValue());
+        // Record to check for zero uses later below.
+        droppedOperands.push_back(constantIndexOp);
+      } else {
+        // Dynamic shape dimension not folded; copy operand from old memref.
+        newShapeConstants.push_back(-1);
+        newOperands.push_back(allocOp->getOperand(dynamicDimPos));
+      }
+      dynamicDimPos++;
+    }
+
+    // Create new memref type (which will have fewer dynamic dimensions).
+    auto *newMemRefType = MemRefType::get(
+        newShapeConstants, memrefType->getElementType(),
+        memrefType->getAffineMaps(), memrefType->getMemorySpace());
+    assert(newOperands.size() == newMemRefType->getNumDynamicDims());
+
+    // Create and insert the alloc op for the new memref.
+    auto newAlloc =
+        rewriter.create<AllocOp>(allocOp->getLoc(), newMemRefType, newOperands);
+    // Insert a cast so we have the same type as the old alloc.
+    auto resultCast = rewriter.create<MemRefCastOp>(allocOp->getLoc(), newAlloc,
+                                                    allocOp->getType());
+
+    rewriter.replaceSingleResultOp(op, resultCast, droppedOperands);
+  }
+};
+} // end anonymous namespace.
+
+void AllocOp::getCanonicalizationPatterns(OwningPatternList &results,
+                                          MLIRContext *context) {
+  results.push_back(std::make_unique<SimplifyAllocConst>(context));
 }
 
 //===----------------------------------------------------------------------===//
@@ -310,6 +450,13 @@ bool DeallocOp::verify() const {
   return false;
 }
 
+void DeallocOp::getCanonicalizationPatterns(OwningPatternList &results,
+                                            MLIRContext *context) {
+  /// dealloc(memrefcast) -> dealloc
+  results.push_back(
+      std::make_unique<MemRefCastFolder>(getOperationName(), context));
+}
+
 //===----------------------------------------------------------------------===//
 // DimOp
 //===----------------------------------------------------------------------===//
@@ -465,6 +612,13 @@ bool DmaStartOp::parse(OpAsmParser *parser, OperationState *result) {
   return false;
 }
 
+void DmaStartOp::getCanonicalizationPatterns(OwningPatternList &results,
+                                             MLIRContext *context) {
+  /// dma_start(memrefcast) -> dma_start
+  results.push_back(
+      std::make_unique<MemRefCastFolder>(getOperationName(), context));
+}
+
 // ---------------------------------------------------------------------------
 // DmaWaitOp
 // ---------------------------------------------------------------------------
@@ -507,6 +661,13 @@ bool DmaWaitOp::parse(OpAsmParser *parser, OperationState *result) {
                              "tag memref rank not equal to indices count");
 
   return false;
+}
+
+void DmaWaitOp::getCanonicalizationPatterns(OwningPatternList &results,
+                                            MLIRContext *context) {
+  /// dma_wait(memrefcast) -> dma_wait
+  results.push_back(
+      std::make_unique<MemRefCastFolder>(getOperationName(), context));
 }
 
 //===----------------------------------------------------------------------===//
@@ -630,6 +791,13 @@ bool LoadOp::verify() const {
   return false;
 }
 
+void LoadOp::getCanonicalizationPatterns(OwningPatternList &results,
+                                         MLIRContext *context) {
+  /// load(memrefcast) -> load
+  results.push_back(
+      std::make_unique<MemRefCastFolder>(getOperationName(), context));
+}
+
 //===----------------------------------------------------------------------===//
 // MemRefCastOp
 //===----------------------------------------------------------------------===//
@@ -710,43 +878,6 @@ Attribute MulIOp::constantFold(ArrayRef<Attribute> operands,
 }
 
 //===----------------------------------------------------------------------===//
-// TensorCastOp
-//===----------------------------------------------------------------------===//
-
-bool TensorCastOp::verify() const {
-  auto *opType = dyn_cast<TensorType>(getOperand()->getType());
-  auto *resType = dyn_cast<TensorType>(getType());
-  if (!opType || !resType)
-    return emitOpError("requires input and result types to be tensors");
-
-  if (opType == resType)
-    return emitOpError("requires the input and result type to be different");
-
-  if (opType->getElementType() != resType->getElementType())
-    return emitOpError(
-        "requires input and result element types to be the same");
-
-  // If the source or destination are unranked, then the cast is valid.
-  auto *opRType = dyn_cast<RankedTensorType>(opType);
-  auto *resRType = dyn_cast<RankedTensorType>(resType);
-  if (!opRType || !resRType)
-    return false;
-
-  // If they are both ranked, they have to have the same rank, and any specified
-  // dimensions must match.
-  if (opRType->getRank() != resRType->getRank())
-    return emitOpError("requires input and result ranks to match");
-
-  for (unsigned i = 0, e = opRType->getRank(); i != e; ++i) {
-    int opDim = opRType->getDimSize(i), resultDim = resRType->getDimSize(i);
-    if (opDim != -1 && resultDim != -1 && opDim != resultDim)
-      return emitOpError("requires static dimensions to match");
-  }
-
-  return false;
-}
-
-//===----------------------------------------------------------------------===//
 // StoreOp
 //===----------------------------------------------------------------------===//
 
@@ -813,6 +944,13 @@ bool StoreOp::verify() const {
   return false;
 }
 
+void StoreOp::getCanonicalizationPatterns(OwningPatternList &results,
+                                          MLIRContext *context) {
+  /// store(memrefcast) -> store
+  results.push_back(
+      std::make_unique<MemRefCastFolder>(getOperationName(), context));
+}
+
 //===----------------------------------------------------------------------===//
 // SubFOp
 //===----------------------------------------------------------------------===//
@@ -843,4 +981,71 @@ Attribute SubIOp::constantFold(ArrayRef<Attribute> operands,
   }
 
   return nullptr;
+}
+
+namespace {
+/// subi(x,x) -> 0
+///
+struct SimplifyXMinusX : public Pattern {
+  SimplifyXMinusX(MLIRContext *context)
+      : Pattern(SubIOp::getOperationName(), context, 1) {}
+
+  std::pair<PatternBenefit, std::unique_ptr<PatternState>>
+  match(Operation *op) const override {
+    auto subi = op->cast<SubIOp>();
+    if (subi->getOperand(0) == subi->getOperand(1))
+      return matchSuccess();
+
+    return matchFailure();
+  }
+  void rewrite(Operation *op, PatternRewriter &rewriter) const override {
+    auto subi = op->cast<SubIOp>();
+    auto result =
+        rewriter.create<ConstantIntOp>(op->getLoc(), 0, subi->getType());
+
+    rewriter.replaceSingleResultOp(op, result);
+  }
+};
+} // end anonymous namespace.
+
+void SubIOp::getCanonicalizationPatterns(OwningPatternList &results,
+                                         MLIRContext *context) {
+  results.push_back(std::make_unique<SimplifyXMinusX>(context));
+}
+
+//===----------------------------------------------------------------------===//
+// TensorCastOp
+//===----------------------------------------------------------------------===//
+
+bool TensorCastOp::verify() const {
+  auto *opType = dyn_cast<TensorType>(getOperand()->getType());
+  auto *resType = dyn_cast<TensorType>(getType());
+  if (!opType || !resType)
+    return emitOpError("requires input and result types to be tensors");
+
+  if (opType == resType)
+    return emitOpError("requires the input and result type to be different");
+
+  if (opType->getElementType() != resType->getElementType())
+    return emitOpError(
+        "requires input and result element types to be the same");
+
+  // If the source or destination are unranked, then the cast is valid.
+  auto *opRType = dyn_cast<RankedTensorType>(opType);
+  auto *resRType = dyn_cast<RankedTensorType>(resType);
+  if (!opRType || !resRType)
+    return false;
+
+  // If they are both ranked, they have to have the same rank, and any specified
+  // dimensions must match.
+  if (opRType->getRank() != resRType->getRank())
+    return emitOpError("requires input and result ranks to match");
+
+  for (unsigned i = 0, e = opRType->getRank(); i != e; ++i) {
+    int opDim = opRType->getDimSize(i), resultDim = resRType->getDimSize(i);
+    if (opDim != -1 && resultDim != -1 && opDim != resultDim)
+      return emitOpError("requires static dimensions to match");
+  }
+
+  return false;
 }

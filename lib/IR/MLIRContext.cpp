@@ -32,6 +32,7 @@
 #include "mlir/IR/Types.h"
 #include "mlir/Support/MathExtras.h"
 #include "mlir/Support/STLExtras.h"
+#include "third_party/llvm/llvm/include/llvm/ADT/STLExtras.h"
 #include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/StringMap.h"
 #include "llvm/Support/Allocator.h"
@@ -440,10 +441,42 @@ void MLIRContext::emitDiagnostic(Location *location, const llvm::Twine &message,
 // Dialect and Operation Registration
 //===----------------------------------------------------------------------===//
 
+/// Return information about all registered IR dialects.
+std::vector<Dialect *> MLIRContext::getRegisteredDialects() const {
+  std::vector<Dialect *> result;
+  result.reserve(getImpl().dialects.size());
+  for (auto &dialect : getImpl().dialects)
+    result.push_back(dialect.get());
+  return result;
+}
+
 /// Register this dialect object with the specified context.  The context
 /// takes ownership of the heap allocated dialect.
 void Dialect::registerDialect(MLIRContext *context) {
   context->getImpl().dialects.push_back(std::unique_ptr<Dialect>(this));
+}
+
+/// Return information about all registered operations.  This isn't very
+/// efficient, typically you should ask the operations about their properties
+/// directly.
+std::vector<AbstractOperation *> MLIRContext::getRegisteredOperations() const {
+  // We just have the operations in a non-deterministic hash table order.  Dump
+  // into a temporary array, then sort it by operation name to get a stable
+  // ordering.
+  StringMap<AbstractOperation> &registeredOps = getImpl().registeredOperations;
+
+  std::vector<std::pair<StringRef, AbstractOperation *>> opsToSort;
+  opsToSort.reserve(registeredOps.size());
+  for (auto &elt : registeredOps)
+    opsToSort.push_back({elt.first(), &elt.second});
+
+  llvm::array_pod_sort(opsToSort.begin(), opsToSort.end());
+
+  std::vector<AbstractOperation *> result;
+  result.reserve(opsToSort.size());
+  for (auto &elt : opsToSort)
+    result.push_back(elt.second);
+  return result;
 }
 
 void Dialect::addOperation(AbstractOperation opInfo) {

@@ -73,6 +73,9 @@ public:
   Attribute constantFold(ArrayRef<Attribute> operands,
                          MLIRContext *context) const;
 
+  static void getCanonicalizationPatterns(OwningPatternList &results,
+                                          MLIRContext *context);
+
 private:
   friend class Operation;
   explicit AddIOp(const Operation *state) : BinaryOp(state) {}
@@ -113,6 +116,8 @@ public:
   bool verify() const;
   static bool parse(OpAsmParser *parser, OperationState *result);
   void print(OpAsmPrinter *p) const;
+  static void getCanonicalizationPatterns(OwningPatternList &results,
+                                          MLIRContext *context);
 
 private:
   friend class Operation;
@@ -200,6 +205,8 @@ public:
   bool verify() const;
   static bool parse(OpAsmParser *parser, OperationState *result);
   void print(OpAsmPrinter *p) const;
+  static void getCanonicalizationPatterns(OwningPatternList &results,
+                                          MLIRContext *context);
 
 private:
   friend class Operation;
@@ -340,6 +347,8 @@ public:
   static StringRef getOperationName() { return "dma_start"; }
   static bool parse(OpAsmParser *parser, OperationState *result);
   void print(OpAsmPrinter *p) const;
+  static void getCanonicalizationPatterns(OwningPatternList &results,
+                                          MLIRContext *context);
 
 protected:
   friend class ::mlir::Operation;
@@ -364,11 +373,11 @@ class DmaWaitOp
     : public Op<DmaWaitOp, OpTrait::VariadicOperands, OpTrait::ZeroResult> {
 public:
   static StringRef getOperationName() { return "dma_wait"; }
-  static bool parse(OpAsmParser *parser, OperationState *result);
-  void print(OpAsmPrinter *p) const;
 
   // Returns the Tag MemRef associated with the DMA operation being waited on.
   const SSAValue *getTagMemRef() const { return getOperand(0); }
+  SSAValue *getTagMemRef() { return getOperand(0); }
+
   // Returns the tag memref index for this DMA operation.
   llvm::iterator_range<Operation::const_operand_iterator>
   getTagIndices() const {
@@ -385,6 +394,11 @@ public:
   const SSAValue *getNumElements() const {
     return getOperand(1 + getTagMemRefRank());
   }
+
+  static bool parse(OpAsmParser *parser, OperationState *result);
+  void print(OpAsmPrinter *p) const;
+  static void getCanonicalizationPatterns(OwningPatternList &results,
+                                          MLIRContext *context);
 
 protected:
   friend class ::mlir::Operation;
@@ -463,6 +477,8 @@ public:
   bool verify() const;
   static bool parse(OpAsmParser *parser, OperationState *result);
   void print(OpAsmPrinter *p) const;
+  static void getCanonicalizationPatterns(OwningPatternList &results,
+                                          MLIRContext *context);
 
 private:
   friend class Operation;
@@ -580,6 +596,9 @@ public:
   static bool parse(OpAsmParser *parser, OperationState *result);
   void print(OpAsmPrinter *p) const;
 
+  static void getCanonicalizationPatterns(OwningPatternList &results,
+                                          MLIRContext *context);
+
 private:
   friend class Operation;
   explicit StoreOp(const Operation *state) : Op(state) {}
@@ -619,6 +638,9 @@ public:
 
   Attribute constantFold(ArrayRef<Attribute> operands,
                          MLIRContext *context) const;
+
+  static void getCanonicalizationPatterns(OwningPatternList &results,
+                                          MLIRContext *context);
 
 private:
   friend class Operation;

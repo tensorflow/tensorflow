@@ -15,10 +15,9 @@
 // limitations under the License.
 // =============================================================================
 
+#include "mlir/IR/PatternMatch.h"
 #include "mlir/IR/SSAValue.h"
 #include "mlir/IR/Statements.h"
-#include "mlir/StandardOps/StandardOps.h"
-#include "mlir/Transforms/PatternMatch.h"
 using namespace mlir;
 
 PatternBenefit::PatternBenefit(unsigned benefit) : representation(benefit) {
