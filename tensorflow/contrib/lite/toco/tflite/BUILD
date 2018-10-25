@@ -14,6 +14,8 @@ cc_library(
     name = "operator",
     srcs = [
         "operator.cc",
+        "whitelisted_flex_ops.cc",
+        "whitelisted_flex_ops.h",
     ],
     hdrs = [
         "builtin_operator.h",

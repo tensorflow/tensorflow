@@ -246,15 +246,17 @@ TEST_F(OpSetsTest, BuiltinsOnly) {
 TEST_F(OpSetsTest, TfSelectOnly) {
   // --target_op_set=SELECT_TF_OPS
   SetAllowedOpSets({kSelectTfOps});
-  EXPECT_THAT(ImportExport({"Add", "AdjustHue", "UnrollAndFold"}),
-              ElementsAre());
+  EXPECT_THAT(
+      ImportExport({"Add", "AdjustHue", "RandomUniform", "UnrollAndFold"}),
+      ElementsAre());
   EXPECT_THAT(ImportExport({"Add"}), ElementsAre("custom:FlexAdd"));
 
   // --target_op_set=SELECT_TF_OPS --allow_custom_ops
   SetAllowedOpSets({kSelectTfOps, kCustomOps});
-  EXPECT_THAT(ImportExport({"Add", "AdjustHue", "UnrollAndFold"}),
-              ElementsAre("custom:FlexAdd", "custom:FlexAdjustHue",
-                          "custom:UnrollAndFold"));
+  EXPECT_THAT(
+      ImportExport({"Add", "AdjustHue", "RandomUniform", "UnrollAndFold"}),
+      ElementsAre("custom:AdjustHue", "custom:FlexAdd",
+                  "custom:FlexRandomUniform", "custom:UnrollAndFold"));
 }
 
 TEST_F(OpSetsTest, BuiltinsAndTfSelect) {
@@ -262,14 +264,15 @@ TEST_F(OpSetsTest, BuiltinsAndTfSelect) {
   SetAllowedOpSets({kTfLiteBuiltins, kSelectTfOps});
   EXPECT_THAT(ImportExport({"Add", "AdjustHue", "UnrollAndFold"}),
               ElementsAre());
-  EXPECT_THAT(ImportExport({"Add", "AdjustHue"}),
-              ElementsAre("builtin:ADD", "custom:FlexAdjustHue"));
+  EXPECT_THAT(ImportExport({"Add", "RandomUniform"}),
+              ElementsAre("builtin:ADD", "custom:FlexRandomUniform"));
 
   // --target_op_set=TFLITE_BUILTINS,SELECT_TF_OPS --allow_custom_ops
   SetAllowedOpSets({kTfLiteBuiltins, kSelectTfOps, kCustomOps});
-  EXPECT_THAT(ImportExport({"Add", "AdjustHue", "UnrollAndFold"}),
-              ElementsAre("builtin:ADD", "custom:FlexAdjustHue",
-                          "custom:UnrollAndFold"));
+  EXPECT_THAT(
+      ImportExport({"Add", "AdjustHue", "RandomUniform", "UnrollAndFold"}),
+      ElementsAre("builtin:ADD", "custom:AdjustHue", "custom:FlexRandomUniform",
+                  "custom:UnrollAndFold"));
 }
 
 // This test is based on a hypothetical scenario that dilation is supported
@@ -501,11 +504,13 @@ TEST(OperatorKeyTest, TestFlexWithUnsupportedOp) {
   const auto key = details::GetOperatorKey(*op, ops_by_type, true);
 
   EXPECT_EQ(key.type, ::tflite::BuiltinOperator_CUSTOM);
-  EXPECT_EQ(key.custom_code, "FlexHashTableV2");
+  EXPECT_EQ(key.custom_code, "HashTableV2");
   EXPECT_EQ(key.version, 1);
-  EXPECT_TRUE(key.is_flex_op);
-  // The control flow ops should be marked as unsupported.
-  EXPECT_TRUE(key.is_unsupported_flex_op);
+  // While HashTableV2 is excluded from the whitelisted flex op list, eventually
+  // it won't be, and the following expectations will need to change as the op
+  // is explicitly blacklisted due to lack of asset support.
+  EXPECT_FALSE(key.is_flex_op);
+  EXPECT_FALSE(key.is_unsupported_flex_op);
 }
 
 TEST(OperatorKeyTest, TestFlexWithPartiallySupportedOps) {
