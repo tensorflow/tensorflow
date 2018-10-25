@@ -1123,24 +1123,22 @@ class BackpropTest(test.TestCase):
       with self.cached_session() as sess:
         self.assertEqual((8.0, 12.0), sess.run((b, db_da), feed_dict={a: 2.0}))
 
-  def testCustomGradientTapeGraph(self):
-    with ops.Graph().as_default(), self.cached_session():
+  @test_util.run_in_graph_and_eager_modes
+  def testCustomGradientInEagerAndGraph(self):
+    @custom_gradient.custom_gradient
+    def f(x):
+      y = x * x
 
-      @custom_gradient.custom_gradient
-      def f(x):
-        y = x * x
+      def grad(dy):
+        return [4 * dy]
 
-        def grad(dy):
-          return [4 * dy]
+      return y, grad
 
-        return y, grad
-
-      with backprop.GradientTape() as t:
-        c = constant_op.constant(1.0)
-        t.watch(c)
-        g = f(c)
-      self.assertAllEqual(t.gradient(g, c).eval(), 4.0)
-
+    with backprop.GradientTape() as t:
+      c = constant_op.constant(1.0)
+      t.watch(c)
+      g = f(c)
+    self.assertAllEqual(self.evaluate(t.gradient(g, c)), 4.0)
 
 if __name__ == '__main__':
   test.main()
