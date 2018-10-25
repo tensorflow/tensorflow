@@ -205,9 +205,7 @@ class ROCmFusionPass : public GraphOptimizationPass {
 
  private:
   void InitializeFusions(
-      std::vector<std::unique_ptr<ROCmFusionOpBase> >& fusions, Graph* g,
-      std::set<const Node*>& fused_nodes);
-
+      std::vector<std::unique_ptr<ROCmFusionOpBase> >& fusions, Graph* g);
 };
 
 // Register the ROCmFusionPass with the registry.
@@ -222,18 +220,16 @@ REGISTER_OPTIMIZATION(kROCmFusionPassGrouping,  // grouping
 // absract base class for an individual fusion operation
 class ROCmFusionOpBase {
  public:
-  ROCmFusionOpBase(Graph* g, std::set<const Node*>& fn)
-      : graph_(g), fused_nodes_(fn) {}
+  ROCmFusionOpBase(Graph* g) : graph_(g) {}
 
   virtual ~ROCmFusionOpBase() {}
 
   // routine to (maybe) do fusion on the given node (+ the nodes preceding
   // it). will return true if fusion was done, false otherwise
-  virtual bool DoFusion(const Node* n) = 0;
+  virtual bool DoFusion(const Node* n, std::set<const Node*>& fused_nodes) = 0;
 
  protected:
   Graph* graph_;
-  std::set<const Node*>& fused_nodes_;
 };
 
 //----------------------------------------------------------------------
@@ -241,13 +237,12 @@ class ROCmFusionOpBase {
 // Convolution-Bias-BatchNorm-Activation Fusion
 class ROCmFusionOpConvolutionBiasBatchNormActivation : public ROCmFusionOpBase {
  public:
-  ROCmFusionOpConvolutionBiasBatchNormActivation(Graph* g,
-                                                 std::set<const Node*>& fn)
-      : ROCmFusionOpBase(g, fn) {}
+  ROCmFusionOpConvolutionBiasBatchNormActivation(Graph* g)
+      : ROCmFusionOpBase(g) {}
 
   // routine to (maybe) do fusion on the given node (+ the nodes preceding
   // it). will return true if fusion was done, false otherwise
-  bool DoFusion(const Node* n) override;
+  bool DoFusion(const Node* n, std::set<const Node*>& fused_nodes) override;
 
  protected:
   struct FusionData {
@@ -259,7 +254,7 @@ class ROCmFusionOpConvolutionBiasBatchNormActivation : public ROCmFusionOpBase {
 
   bool IsFusionEligible(const Node* n, FusionData* d);
 
-  void CreateFusionOp(const FusionData* d);
+  void CreateFusionOp(const FusionData* d, std::set<const Node*>& fused_nodes);
 };
 
 //----------------------------------------------------------------------
@@ -267,12 +262,11 @@ class ROCmFusionOpConvolutionBiasBatchNormActivation : public ROCmFusionOpBase {
 // Convolution-Bias-Activation Fusion
 class ROCmFusionOpConvolutionBiasActivation : public ROCmFusionOpBase {
  public:
-  ROCmFusionOpConvolutionBiasActivation(Graph* g, std::set<const Node*>& fn)
-      : ROCmFusionOpBase(g, fn) {}
+  ROCmFusionOpConvolutionBiasActivation(Graph* g) : ROCmFusionOpBase(g) {}
 
   // routine to (maybe) do fusion on the given node (+ the nodes preceding
   // it). will return true if fusion was done, false otherwise
-  bool DoFusion(const Node* n) override;
+  bool DoFusion(const Node* n, std::set<const Node*>& fused_nodes) override;
 
  protected:
   struct FusionData {
@@ -290,7 +284,7 @@ class ROCmFusionOpConvolutionBiasActivation : public ROCmFusionOpBase {
 
   bool IsFusionEligible(const Node* n, FusionData* d);
 
-  void CreateFusionOp(const FusionData* d);
+  void CreateFusionOp(const FusionData* d, std::set<const Node*>& fused_nodes);
 };
 
 //----------------------------------------------------------------------
@@ -298,12 +292,11 @@ class ROCmFusionOpConvolutionBiasActivation : public ROCmFusionOpBase {
 // BatchNorm-Activation Fusion
 class ROCmFusionOpBatchNormActivation : public ROCmFusionOpBase {
  public:
-  ROCmFusionOpBatchNormActivation(Graph* g, std::set<const Node*>& fn)
-      : ROCmFusionOpBase(g, fn) {}
+  ROCmFusionOpBatchNormActivation(Graph* g) : ROCmFusionOpBase(g) {}
 
   // routine to (maybe) do fusion on the given node (+ the nodes preceding
   // it). will return true if fusion was done, false otherwise
-  bool DoFusion(const Node* n) override;
+  bool DoFusion(const Node* n, std::set<const Node*>& fused_nodes) override;
 
  protected:
   struct FusionData {
@@ -319,7 +312,7 @@ class ROCmFusionOpBatchNormActivation : public ROCmFusionOpBase {
 
   bool IsFusionEligible(const Node* n, FusionData* d);
 
-  void CreateFusionOp(const FusionData* d);
+  void CreateFusionOp(const FusionData* d, std::set<const Node*>& fused_nodes);
 };
 
 //----------------------------------------------------------------------
@@ -327,12 +320,11 @@ class ROCmFusionOpBatchNormActivation : public ROCmFusionOpBase {
 // Add-Relu Fusion
 class ROCmFusionOpAddRelu : public ROCmFusionOpBase {
  public:
-  ROCmFusionOpAddRelu(Graph* g, std::set<const Node*>& fn)
-      : ROCmFusionOpBase(g, fn) {}
+  ROCmFusionOpAddRelu(Graph* g) : ROCmFusionOpBase(g) {}
 
   // routine to (maybe) do fusion on the given node (+ the nodes preceding
   // it). will return true if fusion was done, false otherwise
-  bool DoFusion(const Node* n) override;
+  bool DoFusion(const Node* n, std::set<const Node*>& fused_nodes) override;
 
  protected:
   struct FusionData {
@@ -344,7 +336,7 @@ class ROCmFusionOpAddRelu : public ROCmFusionOpBase {
 
   bool IsFusionEligible(const Node* n, FusionData* d);
 
-  void CreateFusionOp(const FusionData* d);
+  void CreateFusionOp(const FusionData* d, std::set<const Node*>& fused_nodes);
 };
 
 //----------------------------------------------------------------------
@@ -352,12 +344,11 @@ class ROCmFusionOpAddRelu : public ROCmFusionOpBase {
 // AddN-Relu-ReluGrad Fusion
 class ROCmFusionOpAddNReluGrad : public ROCmFusionOpBase {
  public:
-  ROCmFusionOpAddNReluGrad(Graph* g, std::set<const Node*>& fn)
-      : ROCmFusionOpBase(g, fn) {}
+  ROCmFusionOpAddNReluGrad(Graph* g) : ROCmFusionOpBase(g) {}
 
   // routine to (maybe) do fusion on the given node (+ the nodes preceding
   // it). will return true if fusion was done, false otherwise
-  bool DoFusion(const Node* n) override;
+  bool DoFusion(const Node* n, std::set<const Node*>& fused_nodes) override;
 
  protected:
   struct FusionData {
@@ -371,7 +362,7 @@ class ROCmFusionOpAddNReluGrad : public ROCmFusionOpBase {
 
   bool IsFusionEligible(const Node* n, FusionData* d);
 
-  void CreateFusionOp(const FusionData* d);
+  void CreateFusionOp(const FusionData* d, std::set<const Node*>& fused_nodes);
 };
 
 //----------------------------------------------------------------------
@@ -421,30 +412,27 @@ bool ROCmFusionPass::RunPass(Graph* graph) {
   }
 
   std::vector<std::unique_ptr<ROCmFusionOpBase> > fusions;
-  std::set<const Node*> fused_nodes;
 
   // Initialize a vector of all the fusion operations we currently support
-  InitializeFusions(fusions, graph, fused_nodes);
+  InitializeFusions(fusions, graph);
 
-  std::vector<Node*> order;
-  GetPostOrder(*graph, &order);  // This will give us reverse topological sort.
+  for (auto& fusion : fusions) {
+    std::vector<Node*> order;
+    GetPostOrder(*graph,
+                 &order);  // This will give us reverse topological sort.
 
-  for (const Node* n : order) {
+    std::set<const Node*> fused_nodes;
 
-    if (fused_nodes.count(n)) {
-      // We have fused already this node...skip it
-      // Note that we are traversing nodes in reverse topological order, and
-      // matches are found by comparing node sequences from back to front, so
-      // we will hit nodes that we have already fused into a fusion operation.
-      continue;
-    }
-
-    for (auto& fusion : fusions) {
-      if (fusion->DoFusion(n)) {
-        // bail out after the first successful fusion ...
-        // cannot do more than one fusions on a op
-        break;
+    for (const Node* n : order) {
+      if (fused_nodes.count(n)) {
+        // We have fused already this node...skip it
+        // Note that we are traversing nodes in reverse topological order, and
+        // matches are found by comparing node sequences from back to front, so
+        // we will hit nodes that we have already fused into a fusion operation.
+        continue;
       }
+
+      fusion->DoFusion(n, fused_nodes);
     }
   }
 
@@ -456,15 +444,26 @@ bool ROCmFusionPass::RunPass(Graph* graph) {
 }
 
 void ROCmFusionPass::InitializeFusions(
-    std::vector<std::unique_ptr<ROCmFusionOpBase> >& fusions, Graph* g,
-    std::set<const Node*>& fused_nodes) {
-  fusions.emplace_back(
-      new ROCmFusionOpConvolutionBiasBatchNormActivation(g, fused_nodes));
-  fusions.emplace_back(
-      new ROCmFusionOpConvolutionBiasActivation(g, fused_nodes));
-  fusions.emplace_back(new ROCmFusionOpBatchNormActivation(g, fused_nodes));
-  fusions.emplace_back(new ROCmFusionOpAddRelu(g, fused_nodes));
-  fusions.emplace_back(new ROCmFusionOpAddNReluGrad(g, fused_nodes));
+    std::vector<std::unique_ptr<ROCmFusionOpBase> >& fusions, Graph* g) {
+  if (!getenv("TF_ROCM_FUSION_DISABLE_CBNA")) {
+    fusions.emplace_back(new ROCmFusionOpConvolutionBiasBatchNormActivation(g));
+  }
+
+  if (!getenv("TF_ROCM_FUSION_DISABLE_CBA")) {
+    fusions.emplace_back(new ROCmFusionOpConvolutionBiasActivation(g));
+  }
+
+  if (!getenv("TF_ROCM_FUSION_DISABLE_BNA")) {
+    fusions.emplace_back(new ROCmFusionOpBatchNormActivation(g));
+  }
+
+  if (!getenv("TF_ROCM_FUSION_DISABLE_ADDRELU")) {
+    fusions.emplace_back(new ROCmFusionOpAddRelu(g));
+  }
+
+  if (!getenv("TF_ROCM_FUSION_DISABLE_ADDNRELUGRAD")) {
+    fusions.emplace_back(new ROCmFusionOpAddNReluGrad(g));
+  }
 }
 
 //----------------------------------------------------------------------
@@ -472,11 +471,12 @@ void ROCmFusionPass::InitializeFusions(
 // -------------------------------------------------------------
 // ROCmFusionOpConvolutionBiasBatchNormActivation implementation
 // -------------------------------------------------------------
-bool ROCmFusionOpConvolutionBiasBatchNormActivation::DoFusion(const Node* n4) {
+bool ROCmFusionOpConvolutionBiasBatchNormActivation::DoFusion(
+    const Node* n4, std::set<const Node*>& fused_nodes) {
   bool did_fusion = false;
   FusionData d;
   if (IsFusionEligible(n4, &d)) {
-    CreateFusionOp(&d);
+    CreateFusionOp(&d, fused_nodes);
     did_fusion = true;
   }
   return did_fusion;
@@ -521,7 +521,7 @@ bool ROCmFusionOpConvolutionBiasBatchNormActivation::IsFusionEligible(
 }
 
 void ROCmFusionOpConvolutionBiasBatchNormActivation::CreateFusionOp(
-    const FusionData* d) {
+    const FusionData* d, std::set<const Node*>& fused_nodes) {
   // todo
 }
 //----------------------------------------------------------------------
@@ -529,11 +529,12 @@ void ROCmFusionOpConvolutionBiasBatchNormActivation::CreateFusionOp(
 // ----------------------------------------------------
 // ROCmFusionOpConvolutionBiasActivation implementation
 // ----------------------------------------------------
-bool ROCmFusionOpConvolutionBiasActivation::DoFusion(const Node* n3) {
+bool ROCmFusionOpConvolutionBiasActivation::DoFusion(
+    const Node* n3, std::set<const Node*>& fused_nodes) {
   bool did_fusion = false;
   FusionData d;
   if (IsFusionEligible(n3, &d)) {
-    CreateFusionOp(&d);
+    CreateFusionOp(&d, fused_nodes);
     did_fusion = true;
   }
   return did_fusion;
@@ -707,7 +708,7 @@ bool ROCmFusionOpConvolutionBiasActivation::IsFusionEligible(const Node* n3,
 }
 
 void ROCmFusionOpConvolutionBiasActivation::CreateFusionOp(
-    const FusionData* d) {
+    const FusionData* d, std::set<const Node*>& fused_nodes) {
   std::vector<const Edge*> conv_input_edges;
   TF_CHECK_OK(d->conv->input_edges(&conv_input_edges));
 
@@ -784,9 +785,9 @@ void ROCmFusionOpConvolutionBiasActivation::CreateFusionOp(
   VLOG(kVlogLevel) << "===========";
 
   // add the now redundant nodes to the set of fused nodes
-  fused_nodes_.insert(d->conv);
-  fused_nodes_.insert(d->bias);
-  fused_nodes_.insert(d->actv);
+  fused_nodes.insert(d->conv);
+  fused_nodes.insert(d->bias);
+  fused_nodes.insert(d->actv);
 
   // and remove them from the graph
   graph_->RemoveNode(const_cast<Node*>(d->conv));
@@ -800,11 +801,12 @@ void ROCmFusionOpConvolutionBiasActivation::CreateFusionOp(
 // ROCmFusionOpBatchNormActivation implementation
 // ----------------------------------------------
 
-bool ROCmFusionOpBatchNormActivation::DoFusion(const Node* n2) {
+bool ROCmFusionOpBatchNormActivation::DoFusion(
+    const Node* n2, std::set<const Node*>& fused_nodes) {
   bool did_fusion = false;
   FusionData d;
   if (IsFusionEligible(n2, &d)) {
-    CreateFusionOp(&d);
+    CreateFusionOp(&d, fused_nodes);
     did_fusion = true;
   }
   return did_fusion;
@@ -941,7 +943,8 @@ bool ROCmFusionOpBatchNormActivation::IsFusionEligible(const Node* n2,
   return is_eligible;
 }
 
-void ROCmFusionOpBatchNormActivation::CreateFusionOp(const FusionData* d) {
+void ROCmFusionOpBatchNormActivation::CreateFusionOp(
+    const FusionData* d, std::set<const Node*>& fused_nodes) {
   std::vector<const Edge*> norm_input_edges;
   TF_CHECK_OK(d->norm->input_edges(&norm_input_edges));
 
@@ -1026,8 +1029,8 @@ void ROCmFusionOpBatchNormActivation::CreateFusionOp(const FusionData* d) {
   VLOG(kVlogLevel) << "===========";
 
   // add the now redundant nodes to the set of fused nodes
-  fused_nodes_.insert(d->norm);
-  fused_nodes_.insert(d->actv);
+  fused_nodes.insert(d->norm);
+  fused_nodes.insert(d->actv);
 
   // and remove them from the graph
   graph_->RemoveNode(const_cast<Node*>(d->norm));
@@ -1039,11 +1042,12 @@ void ROCmFusionOpBatchNormActivation::CreateFusionOp(const FusionData* d) {
 // ROCmFusionOpAddRelu implementation
 // ----------------------------------------------
 
-bool ROCmFusionOpAddRelu::DoFusion(const Node* n2) {
+bool ROCmFusionOpAddRelu::DoFusion(const Node* n2,
+                                   std::set<const Node*>& fused_nodes) {
   bool did_fusion = false;
   FusionData d;
   if (IsFusionEligible(n2, &d)) {
-    CreateFusionOp(&d);
+    CreateFusionOp(&d, fused_nodes);
     did_fusion = true;
   }
   return did_fusion;
@@ -1118,7 +1122,8 @@ bool ROCmFusionOpAddRelu::IsFusionEligible(const Node* n2, FusionData* d) {
   return is_eligible;
 }
 
-void ROCmFusionOpAddRelu::CreateFusionOp(const FusionData* d) {
+void ROCmFusionOpAddRelu::CreateFusionOp(const FusionData* d,
+                                         std::set<const Node*>& fused_nodes) {
   std::vector<const Edge*> add_input_edges;
   TF_CHECK_OK(d->add->input_edges(&add_input_edges));
 
@@ -1177,8 +1182,8 @@ void ROCmFusionOpAddRelu::CreateFusionOp(const FusionData* d) {
   VLOG(kVlogLevel) << "===========";
 
   // add the now redundant nodes to the set of fused nodes
-  fused_nodes_.insert(d->add);
-  fused_nodes_.insert(d->relu);
+  fused_nodes.insert(d->add);
+  fused_nodes.insert(d->relu);
 
   // and remove them from the graph
   graph_->RemoveNode(const_cast<Node*>(d->add));
@@ -1191,11 +1196,12 @@ void ROCmFusionOpAddRelu::CreateFusionOp(const FusionData* d) {
 // ROCmFusionOpAddNReluGrad implementation
 // ----------------------------------------------
 
-bool ROCmFusionOpAddNReluGrad::DoFusion(const Node* n2) {
+bool ROCmFusionOpAddNReluGrad::DoFusion(const Node* n2,
+                                        std::set<const Node*>& fused_nodes) {
   bool did_fusion = false;
   FusionData d;
   if (IsFusionEligible(n2, &d)) {
-    CreateFusionOp(&d);
+    CreateFusionOp(&d, fused_nodes);
     did_fusion = true;
   }
   return did_fusion;
@@ -1297,7 +1303,8 @@ bool ROCmFusionOpAddNReluGrad::IsFusionEligible(const Node* n2, FusionData* d) {
   return is_eligible;
 }
 
-void ROCmFusionOpAddNReluGrad::CreateFusionOp(const FusionData* d) {
+void ROCmFusionOpAddNReluGrad::CreateFusionOp(
+    const FusionData* d, std::set<const Node*>& fused_nodes) {
   std::vector<const Edge*> addN_input_edges;
   TF_CHECK_OK(d->addN->input_edges(&addN_input_edges));
 
@@ -1367,8 +1374,8 @@ void ROCmFusionOpAddNReluGrad::CreateFusionOp(const FusionData* d) {
   VLOG(kVlogLevel) << "===========";
 
   // add the now redundant nodes to the set of fused nodes
-  fused_nodes_.insert(d->addN);
-  fused_nodes_.insert(d->reluGrad);
+  fused_nodes.insert(d->addN);
+  fused_nodes.insert(d->reluGrad);
 
   // and remove them from the graph
   graph_->RemoveNode(const_cast<Node*>(d->addN));
