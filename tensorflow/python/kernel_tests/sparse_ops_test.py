@@ -657,6 +657,7 @@ class SparseReduceTest(test_util.TensorFlowTestCase):
     self._compare(sp_t, reduction_axes, ndims, True, False)
     self._compare(sp_t, reduction_axes, ndims, True, True)
 
+
   def testSimpleAndRandomInputs(self):
     if np.__version__ == "1.13.0":
       self.skipTest("numpy 1.13.0 bug")
@@ -721,6 +722,45 @@ class SparseReduceTest(test_util.TensorFlowTestCase):
                                                       reduced,
                                                       reduced.eval().shape)
         self.assertLess(err, 1e-3)
+
+  def _testSparseReduceSumShape(self, sp_t, reduction_axes, ndims, keep_dims):
+    densified = sparse_ops.sparse_tensor_to_dense(sp_t).eval()
+
+    np_ans = densified
+    if reduction_axes is None:
+      np_ans = np.sum(np_ans, keepdims=keep_dims)
+    else:
+      if not isinstance(reduction_axes, list):  # Single scalar.
+        reduction_axes = [reduction_axes]
+      reduction_axes = np.array(reduction_axes).astype(np.int32)
+      # Handles negative axes.
+      reduction_axes = (reduction_axes + ndims) % ndims
+      # Loop below depends on sorted.
+      reduction_axes.sort()
+      for ra in reduction_axes.ravel()[::-1]:
+        np_ans = np.sum(np_ans, axis=ra, keepdims=keep_dims)
+
+    tf_ans = sparse_ops.sparse_reduce_sum(sp_t, reduction_axes, keep_dims)
+    self.assertAllEqual(np_ans.shape, tf_ans.get_shape().as_list())
+
+  def testSparseReduceSumShape(self):
+    sp_t = sparse_tensor.SparseTensor(self.ind, self.vals, self.dense_shape)
+
+    with self.session(use_gpu=False):
+      self._testSparseReduceSumShape(sp_t, None, ndims=2, keep_dims=False)
+      self._testSparseReduceSumShape(sp_t, None, ndims=2, keep_dims=True)
+      self._testSparseReduceSumShape(sp_t, 0, ndims=2, keep_dims=False)
+      self._testSparseReduceSumShape(sp_t, 0, ndims=2, keep_dims=True)
+      self._testSparseReduceSumShape(sp_t, [1], ndims=2, keep_dims=False)
+      self._testSparseReduceSumShape(sp_t, [1], ndims=2, keep_dims=True)
+      self._testSparseReduceSumShape(sp_t, [0, 1], ndims=2, keep_dims=False)
+      self._testSparseReduceSumShape(sp_t, [0, 1], ndims=2, keep_dims=True)
+      self._testSparseReduceSumShape(sp_t, [1, 0], ndims=2, keep_dims=False)
+      self._testSparseReduceSumShape(sp_t, [1, 0], ndims=2, keep_dims=True)
+      self._testSparseReduceSumShape(sp_t, [-1], ndims=2, keep_dims=False)
+      self._testSparseReduceSumShape(sp_t, [-1], ndims=2, keep_dims=True)
+      self._testSparseReduceSumShape(sp_t, [1, -2], ndims=2, keep_dims=False)
+      self._testSparseReduceSumShape(sp_t, [1, -2], ndims=2, keep_dims=True)
 
 
 class SparseMathOpsTest(test_util.TensorFlowTestCase):
