@@ -141,21 +141,39 @@ Status NMSLiteShapeFn(InferenceContext* c) {
   TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 3, &scores));
   ShapeHandle max_output_size_per_class;
   TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 0, &max_output_size_per_class));
+  ShapeHandle max_total_size;
+  TF_RETURN_IF_ERROR(c->WithRank(c->input(3), 0, &max_total_size));
   ShapeHandle iou_threshold;
-  TF_RETURN_IF_ERROR(c->WithRank(c->input(3), 0, &iou_threshold));
+  TF_RETURN_IF_ERROR(c->WithRank(c->input(4), 0, &iou_threshold));
   ShapeHandle score_threshold;
-  TF_RETURN_IF_ERROR(c->WithRank(c->input(4), 0, &score_threshold));
+  TF_RETURN_IF_ERROR(c->WithRank(c->input(5), 0, &score_threshold));
+
   DimensionHandle unused;
-  //boxes[3] is unused
+  //boxes[1] and scores[1] are both num_anchors
+  TF_RETURN_IF_ERROR(c->Merge(c->Dim(boxes, 1), c->Dim(scores, 1), &unused));
+  // The boxes[3] is 4.
   TF_RETURN_IF_ERROR(c->WithValue(c->Dim(boxes, 3), 4, &unused));
 
-  //TODO SR Check dims of outputs here
-  c->set_output(0, c->Vector(c->UnknownDim()));
-  c->set_output(1, c->Vector(c->UnknownDim()));
-  c->set_output(2, c->Vector(c->UnknownDim()));
-  c->set_output(3, c->Vector(c->UnknownDim()));
-  c->set_output(4, c->Vector(c->UnknownDim()));
+  bool pad_to_max;
+  TF_RETURN_IF_ERROR(c->GetAttr("pad_to_max_total_size", &pad_to_max));
+  if(pad_to_max) {
+    DimensionHandle output_dim;
+    DimensionHandle batch_dim = c->UnknownDim();
 
+    TF_RETURN_IF_ERROR(c->MakeDimForScalarInput(3, &output_dim));
+    c->set_output(0, c->MakeShape({batch_dim, output_dim, 4}));
+    c->set_output(1, c->MakeShape({batch_dim, output_dim}));
+    c->set_output(2, c->MakeShape({batch_dim, output_dim}));
+    c->set_output(4, c->MakeShape({batch_dim, output_dim}));
+  }
+  else {
+    //TODO SR Can all the outputs be unknowndim?
+    c->set_output(0, c->Vector(c->UnknownDim()));
+    c->set_output(1, c->Vector(c->UnknownDim()));
+    c->set_output(2, c->Vector(c->UnknownDim()));
+    c->set_output(3, c->Vector(c->UnknownDim()));
+    c->set_output(4, c->Vector(c->UnknownDim()));
+  }
   return Status::OK();
 }
 
@@ -860,6 +878,7 @@ REGISTER_OP("NonMaxSuppressionLite")
     .Output("nmsed_classes: float")
     .Output("valid_detections: int32")
     .Output("selected_indices: int32")
+    .Attr("pad_to_max_total_size: bool = false")
     .SetShapeFn(NMSLiteShapeFn);   
 
 }  // namespace tensorflow
