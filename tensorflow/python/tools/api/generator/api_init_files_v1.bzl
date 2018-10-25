@@ -44,6 +44,7 @@ TENSORFLOW_API_INIT_FILES_V1 = [
     "keras/datasets/mnist/__init__.py",
     "keras/datasets/reuters/__init__.py",
     "keras/estimator/__init__.py",
+    "keras/experimental/__init__.py",
     "keras/initializers/__init__.py",
     "keras/layers/__init__.py",
     "keras/losses/__init__.py",

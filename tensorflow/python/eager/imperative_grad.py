@@ -21,7 +21,7 @@ from __future__ import print_function
 import collections
 
 from tensorflow.python import pywrap_tensorflow
-from tensorflow.python.ops import gradients_impl
+from tensorflow.python.ops.unconnected_gradients import UnconnectedGradients
 from tensorflow.python.util import compat
 
 VSpace = collections.namedtuple("VSpace", [
@@ -34,7 +34,7 @@ def imperative_grad(
     target,
     sources,
     output_gradients=None,
-    unconnected_gradients=gradients_impl.UnconnectedGradients.NONE):
+    unconnected_gradients=UnconnectedGradients.NONE):
   """Computes gradients from the imperatively defined tape on top of the stack.
 
   Works by filtering the tape, computing how many downstream usages are of each
@@ -59,8 +59,7 @@ def imperative_grad(
     RuntimeError: if something goes wrong.
   """
   try:
-    unconnected_gradients = gradients_impl.UnconnectedGradients(
-        unconnected_gradients)
+    unconnected_gradients = UnconnectedGradients(unconnected_gradients)
   except ValueError:
     raise ValueError(
         "Unknown value for unconnected_gradients: %r" % unconnected_gradients)

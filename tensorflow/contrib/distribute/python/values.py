@@ -1101,6 +1101,18 @@ class PerDeviceDataIterator(object):
 
     return regroup(index)
 
+  @property
+  def output_classes(self):
+    return self._iterator.output_classes
+
+  @property
+  def output_shapes(self):
+    return self._iterator.output_shapes
+
+  @property
+  def output_types(self):
+    return self._iterator.output_types
+
 
 class PerDeviceDataset(object):
   """Like `tf.data.Dataset` split devices, producing `PerDevice` data."""
@@ -1178,6 +1190,17 @@ class MultiWorkerDataIterator(object):
   def initializer(self):
     return control_flow_ops.group(
         [iterator.initializer for iterator in self._iterators.values()])
+
+  def get_iterator(self, worker):
+    return self._iterators.get(worker)
+
+  @property
+  def output_shapes(self):
+    return self._iterators.values()[0].output_shapes
+
+  @property
+  def output_types(self):
+    return self._iterators.values()[0].output_types
 
   def get_next(self, name=None):
     """Scatter the input across hosts and devices."""

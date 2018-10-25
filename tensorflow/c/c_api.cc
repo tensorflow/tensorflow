@@ -1942,6 +1942,10 @@ void TF_ImportGraphDefOptionsSetPrefix(TF_ImportGraphDefOptions* opts,
                                        const char* prefix) {
   opts->opts.prefix = prefix;
 }
+void TF_ImportGraphDefOptionsSetDefaultDevice(TF_ImportGraphDefOptions* opts,
+                                              const char* device) {
+  opts->opts.default_device = device;
+}
 
 void TF_ImportGraphDefOptionsSetUniquifyNames(TF_ImportGraphDefOptions* opts,
                                               unsigned char uniquify_names) {

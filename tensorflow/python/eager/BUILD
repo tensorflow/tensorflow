@@ -279,10 +279,10 @@ py_library(
         "//tensorflow/python:dtypes",
         "//tensorflow/python:errors",
         "//tensorflow/python:framework_ops",
-        "//tensorflow/python:gradients_impl",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:pywrap_tensorflow",
         "//tensorflow/python:tensor_shape",
+        "//tensorflow/python:unconnected_gradients",
         "//tensorflow/python:util",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:execute",
@@ -375,8 +375,8 @@ py_library(
     srcs = ["imperative_grad.py"],
     srcs_version = "PY2AND3",
     deps = [
-        "//tensorflow/python:gradients_impl",
         "//tensorflow/python:pywrap_tensorflow",
+        "//tensorflow/python:unconnected_gradients",
         "//tensorflow/python:util",
     ],
 )

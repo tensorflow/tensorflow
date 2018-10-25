@@ -25,7 +25,6 @@ limitations under the License.
 #include "tensorflow/stream_executor/kernel_cache_config.h"
 #include "tensorflow/stream_executor/stream_executor_internal.h"
 #include "tensorflow/stream_executor/cuda/cuda_driver.h"
-#include "tensorflow/stream_executor/lib/casts.h"
 #include "tensorflow/stream_executor/platform/port.h"
 #include "tensorflow/stream_executor/platform/logging.h"
 #include "cuda/include/cuda.h"

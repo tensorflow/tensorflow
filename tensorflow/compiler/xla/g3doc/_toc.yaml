@@ -1,0 +1,16 @@
+toc:
+- heading: XLA
+- title: XLA overview
+  path: /extend/xla/
+- title: Broadcasting semantics
+  path: /extend/xla/broadcasting
+- title: Developing a new backend for XLA
+  path: /extend/xla/developing_new_backend
+- title: Using JIT compilation
+  path: /extend/xla/jit
+- title: Operation semantics
+  path: /extend/xla/operation_semantics
+- title: Shapes and layout
+  path: /extend/xla/shapes
+- title: Using AOT compilation
+  path: /extend/xla/tfcompile

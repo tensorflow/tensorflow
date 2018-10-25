@@ -754,6 +754,81 @@ StatusOr<std::unique_ptr<BufferAssignment>> BufferAssigner::Run(
                                    std::move(color_alignment));
 }
 
+namespace {
+
+// a and b are in different subcomputations. Check for the case
+// where a is inside the while body, and b is outside, part of the same while's
+// init-operand or while-result.
+bool MayInterfereAcrossSubcomputations(BufferAssignment* assignment,
+                                       const LogicalBuffer& a_buffer,
+                                       const LogicalBuffer& b_buffer) {
+  auto call_graph = assignment->liveness().hlo_ordering().call_graph();
+  const HloInstruction* a_ancestor;
+  const HloInstruction* b_ancestor;
+  std::tie(a_ancestor, b_ancestor) =
+      call_graph.NearestAncestorsInSameComputation(a_buffer.instruction(),
+                                                   b_buffer.instruction());
+  if (a_ancestor == nullptr) {
+    // No common ancestor.
+    return true;
+  }
+  if (a_ancestor->opcode() == HloOpcode::kWhile &&
+      call_graph.InstructionIsNestedIn(a_buffer.instruction(),
+                                       a_ancestor->while_body())) {
+    const PointsToSet& init_set =
+        assignment->liveness().points_to_analysis().GetPointsToSet(
+            a_ancestor->operand(0));
+    if (init_set.ContainsBuffer(b_buffer)) {
+      VLOG(4) << "Can't interfere: " << a_buffer << " and " << b_buffer
+              << " (part of while-operand)";
+      return false;
+    }
+    const PointsToSet& while_set =
+        assignment->liveness().points_to_analysis().GetPointsToSet(a_ancestor);
+    if (while_set.ContainsBuffer(b_buffer)) {
+      VLOG(4) << "Can't interfere: " << a_buffer << " and " << b_buffer
+              << " (part of while)";
+      return false;
+    }
+  }
+  return true;
+}
+
+// Return true, if a and b can't possibly interfere (and therefore further
+// checking for interference can be skipped). This function checks for special
+// cases where copy insertion guarantees no interference, but the regular buffer
+// liveness is too conservative:
+//
+// Operations inside a while-body can't interfere with operations outside the
+// while op if their last use is at the while-loop itself as part of the
+// while-init op, or the while-result.  For ops that are live across a
+// while-loop, copy insertion will already insert the necessary copies to avoid
+// such interference.
+//
+// This allows sharing buffers in cases like this:
+// init = {...}
+// while (init):
+//  p = param(0)
+//  gte = get-tuple-element(p), index=i
+//  t1 = op1 (gte)
+//  t2 = op2 (t1)
+//  ROOT tuple = {..., t2, ...}
+//
+// where t1 and t2 can share the same buffer.
+bool MaySkipInterferenceCheck(BufferAssignment* assignment,
+                              const LogicalBuffer& a_buffer,
+                              const LogicalBuffer& b_buffer) {
+  if (a_buffer.instruction()->parent() == b_buffer.instruction()->parent()) {
+    // Ops within the same computation are not handled here. Assume that they
+    // may interfere.
+    return false;
+  }
+  return !MayInterfereAcrossSubcomputations(assignment, a_buffer, b_buffer) ||
+         !MayInterfereAcrossSubcomputations(assignment, b_buffer, a_buffer);
+}
+
+}  // namespace
+
 bool BufferAssigner::MaybeAssignBuffer(BufferAllocation* allocation,
                                        const LogicalBuffer& buffer,
                                        BufferAssignment* assignment) {
@@ -794,6 +869,9 @@ bool BufferAssigner::MaybeAssignBuffer(BufferAllocation* allocation,
 
   for (const auto& buffer_offset_size : allocation->assigned_buffers()) {
     const LogicalBuffer& assigned_buffer = *buffer_offset_size.first;
+    if (MaySkipInterferenceCheck(assignment, buffer, assigned_buffer)) {
+      continue;
+    }
     if (assignment->liveness().MayInterfere(assigned_buffer, buffer)) {
       VLOG(4) << "Can't assign: assignee " << assigned_buffer
               << " may interfere with " << buffer;

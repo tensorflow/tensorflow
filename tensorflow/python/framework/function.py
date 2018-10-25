@@ -875,7 +875,7 @@ def func_graph_from_py_func(func, arg_names, arg_types, name=None,
       if not isinstance(outputs, (list, tuple)):
         outputs = (outputs,)
       if any([_ is None for _ in outputs]):
-        raise ValueError("Function can not return None.")
+        raise ValueError("Function %s can not return None." % name)
     # Ensures each output is a Tensor in the function graph.
     outputs = [ops.convert_to_tensor(t) for t in outputs]
     outputs = [func_graph.capture(t) if t.graph is not func_graph else t

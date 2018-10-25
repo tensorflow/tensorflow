@@ -658,7 +658,7 @@ class OptimizerV2(optimizer_v1.Optimizer):
                name=None,
                grad_loss=None,
                stop_gradients=None,
-               scale_loss_by_num_towers=None):
+               scale_loss_by_num_replicas=None):
     """Add operations to minimize `loss` by updating `var_list`.
 
     This method simply combines calls `compute_gradients()` and
@@ -683,8 +683,8 @@ class OptimizerV2(optimizer_v1.Optimizer):
       grad_loss: Optional. A `Tensor` holding the gradient computed for `loss`.
       stop_gradients: Optional. A Tensor or list of tensors not to differentiate
         through.
-      scale_loss_by_num_towers: Optional boolean. If true, scale the loss down
-        by the number of towers. By default, auto-detects whether this is
+      scale_loss_by_num_replicas: Optional boolean. If true, scale the loss down
+        by the number of replicas. By default, auto-detects whether this is
         needed.
 
     Returns:
@@ -713,7 +713,7 @@ class OptimizerV2(optimizer_v1.Optimizer):
         colocate_gradients_with_ops=colocate_gradients_with_ops,
         grad_loss=grad_loss,
         stop_gradients=stop_gradients,
-        scale_loss_by_num_towers=scale_loss_by_num_towers)
+        scale_loss_by_num_replicas=scale_loss_by_num_replicas)
 
     vars_with_grad = [v for g, v in grads_and_vars if g is not None]
     if not vars_with_grad:
@@ -733,7 +733,7 @@ class OptimizerV2(optimizer_v1.Optimizer):
                         colocate_gradients_with_ops=False,
                         grad_loss=None,
                         stop_gradients=None,
-                        scale_loss_by_num_towers=None):
+                        scale_loss_by_num_replicas=None):
     """Compute gradients of `loss` for the variables in `var_list`.
 
     This is the first part of `minimize()`.  It returns a list
@@ -758,8 +758,8 @@ class OptimizerV2(optimizer_v1.Optimizer):
       grad_loss: Optional. A `Tensor` holding the gradient computed for `loss`.
       stop_gradients: Optional. A Tensor or list of tensors not to differentiate
         through.
-      scale_loss_by_num_towers: Optional boolean. If true, scale the loss down
-        by the number of towers. By default, auto-detects whether this is
+      scale_loss_by_num_replicas: Optional boolean. If true, scale the loss down
+        by the number of replicas. By default, auto-detects whether this is
         needed.
 
     Returns:
@@ -784,14 +784,14 @@ class OptimizerV2(optimizer_v1.Optimizer):
           tape.watch(var_list)
         loss_value = loss()
 
-        # Scale loss for number of towers (callable-loss case). In this case,
+        # Scale loss for number of replicas (callable-loss case). In this case,
         # we have to be careful to call distribute_lib.get_loss_reduction()
         # *after* loss() is evaluated, so we know what loss reduction it uses.
-        if scale_loss_by_num_towers is None:
-          scale_loss_by_num_towers = (
+        if scale_loss_by_num_replicas is None:
+          scale_loss_by_num_replicas = (
               distribute_lib.get_loss_reduction() == variable_scope
               .VariableAggregation.MEAN)
-        if scale_loss_by_num_towers:
+        if scale_loss_by_num_replicas:
           num_replicas = distribute_ctx.get_distribution_strategy().num_replicas
           if num_replicas > 1:
             loss_value *= 1. / num_replicas
@@ -805,11 +805,11 @@ class OptimizerV2(optimizer_v1.Optimizer):
                          "be a function when eager execution is enabled.")
 
     # Scale loss for number of replicas (non-callable-loss case).
-    if scale_loss_by_num_towers is None:
-      scale_loss_by_num_towers = (
+    if scale_loss_by_num_replicas is None:
+      scale_loss_by_num_replicas = (
           distribute_lib.get_loss_reduction() == variable_scope
           .VariableAggregation.MEAN)
-    if scale_loss_by_num_towers:
+    if scale_loss_by_num_replicas:
       num_replicas = distribute_ctx.get_distribution_strategy().num_replicas
       if num_replicas > 1:
         loss *= 1. / num_replicas

@@ -206,6 +206,8 @@ bool IsExit(const NodeDef& node) {
 
 bool IsExp(const NodeDef& node) { return node.op() == "Exp"; }
 
+bool IsFakeParam(const NodeDef& node) { return node.op() == "FakeParam"; }
+
 bool IsFill(const NodeDef& node) { return node.op() == "Fill"; }
 
 bool IsFloorDiv(const NodeDef& node) { return node.op() == "FloorDiv"; }

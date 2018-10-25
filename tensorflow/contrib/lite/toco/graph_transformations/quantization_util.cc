@@ -118,6 +118,7 @@ void ChooseQuantizationParamsForArrayAndQuantizedDataType(
           ArrayDataType::kUint64>(array, quantization_params);
       break;
     case ArrayDataType::kFloat:
+    case ArrayDataType::kComplex64:
     case ArrayDataType::kNone:
     default:
       LOG(FATAL) << "Unhandled final quantization type "

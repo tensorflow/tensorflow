@@ -183,7 +183,6 @@ XlaOp StatelessRngUniform(std::array<XlaOp, 2> seeds, const Shape& shape,
   XlaBuilder* builder = seeds[0].builder();
   PrimitiveType type = shape.element_type();
   switch (type) {
-    // TODO(b/117806053): support bfloat16.
     case F32: {
       auto bits = StatelessRngUniformU32(seeds, shape);
       return StatelessRngUniformF32(bits, minval, maxval);
