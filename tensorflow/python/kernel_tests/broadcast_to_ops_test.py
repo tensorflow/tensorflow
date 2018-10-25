@@ -21,7 +21,6 @@ import numpy as np
 
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
-from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gradient_checker
@@ -70,6 +69,13 @@ class BroadcastToTest(test_util.TensorFlowTestCase):
       v_np = np.broadcast_to(x, [3, 3])
       self.assertAllEqual(v_tf.eval(), v_np)
 
+  def testBroadcastScalarToNonScalar(self):
+    with self.session(use_gpu=True):
+      x = np.array(1.0, dtype=np.float)
+      v_tf = array_ops.broadcast_to(constant_op.constant(1.0), [2, 3, 4])
+      v_np = np.broadcast_to(x, [2, 3, 4])
+      self.assertAllEqual(v_tf.eval(), v_np)
+
   def testBroadcastToShapeTypeAndInference(self):
     for dtype in [dtypes.int32, dtypes.int64]:
       with self.cached_session(use_gpu=True):
@@ -84,15 +90,12 @@ class BroadcastToTest(test_util.TensorFlowTestCase):
         self.assertAllEqual(shape, v_np.shape)
 
   def testGradientForScalar(self):
-    # TODO(alextp): There is a bug with broadcast_to on GPU from scalars,
-    # hence we make this test cpu-only.
-    with ops.device("cpu:0"):
-      x = constant_op.constant(1, dtype=dtypes.float32)
-      v = array_ops.broadcast_to(x, [2, 4, 3])
-      out = 2 * v
-      with self.cached_session():
-        err = gradient_checker.compute_gradient_error(x, x.get_shape(),
-                                                      out, out.get_shape())
+    x = constant_op.constant(1, dtype=dtypes.float32)
+    v = array_ops.broadcast_to(x, [2, 4, 3])
+    out = 2 * v
+    with self.cached_session():
+      err = gradient_checker.compute_gradient_error(x, x.get_shape(), out,
+                                                    out.get_shape())
     self.assertLess(err, 1e-4)
 
   def testGradientWithSameRank(self):
