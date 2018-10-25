@@ -795,10 +795,13 @@ cc_library(
     }),
     visibility = ["//visibility:public"],
     deps = [
+        ":function_ops_op_lib",
+        ":functional_ops_op_lib",
         ":lib",
         ":lib_internal",
         ":protos_all_cc",
         "//tensorflow/core/platform/default/build_config:gtest",
+        "//tensorflow/core/kernels:required",
     ] + tf_additional_test_deps(),
 )
 
@@ -1434,6 +1437,7 @@ tf_cuda_library(
         ":example_parser_configuration",
         ":gpu_runtime",
         ":lib",
+        ":ops",
     ],
 )
 
@@ -2961,13 +2965,8 @@ tf_cuda_library(
     copts = tf_copts(),
     deps = [
         ":framework",
-        ":framework_internal",
-        ":function_ops_op_lib",
-        ":functional_grad",
-        ":functional_ops_op_lib",
         ":graph",
         ":lib",
-        ":lib_internal",
         ":proto_text",
         ":protos_all_cc",
         "//tensorflow/core/grappler:grappler_item",
@@ -2975,8 +2974,13 @@ tf_cuda_library(
         "//tensorflow/core/grappler/clusters:virtual_cluster",
         "//tensorflow/core/grappler/optimizers:meta_optimizer",
         "//third_party/eigen3",
+    ] + mkl_deps() + tf_additional_core_deps() + if_static([
+        ":core_cpu_impl",
+        ":function_ops_op_lib",
+        ":functional_grad",
+        ":functional_ops_op_lib",
         "//tensorflow/core/kernels:required",
-    ] + mkl_deps() + tf_additional_core_deps() + if_static([":core_cpu_impl"]),
+    ]),
     alwayslink = 1,
 )
 
