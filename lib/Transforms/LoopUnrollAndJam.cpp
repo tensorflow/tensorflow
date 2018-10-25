@@ -66,7 +66,7 @@ static llvm::cl::opt<unsigned>
 namespace {
 /// Loop unroll jam pass. Currently, this just unroll jams the first
 /// outer loop in an MLFunction.
-struct LoopUnrollAndJam : public MLFunctionPass {
+struct LoopUnrollAndJam : public FunctionPass {
   Optional<unsigned> unrollJamFactor;
   static const unsigned kDefaultUnrollJamFactor = 4;
 
@@ -78,7 +78,7 @@ struct LoopUnrollAndJam : public MLFunctionPass {
 };
 } // end anonymous namespace
 
-MLFunctionPass *mlir::createLoopUnrollAndJamPass(int unrollJamFactor) {
+FunctionPass *mlir::createLoopUnrollAndJamPass(int unrollJamFactor) {
   return new LoopUnrollAndJam(
       unrollJamFactor == -1 ? None : Optional<unsigned>(unrollJamFactor));
 }

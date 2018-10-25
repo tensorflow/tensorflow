@@ -39,7 +39,7 @@ static cl::list<unsigned> clVirtualVectorSize(
 
 namespace {
 
-struct Vectorize : public MLFunctionPass {
+struct Vectorize : public FunctionPass {
   PassResult runOnMLFunction(MLFunction *f) override;
 
   // Thread-safe RAII contexts local to pass, BumpPtrAllocator freed on exit.
@@ -73,4 +73,4 @@ PassResult Vectorize::runOnMLFunction(MLFunction *f) {
   return PassResult::Success;
 }
 
-MLFunctionPass *mlir::createVectorizePass() { return new Vectorize(); }
+FunctionPass *mlir::createVectorizePass() { return new Vectorize(); }

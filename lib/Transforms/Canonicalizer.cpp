@@ -34,20 +34,9 @@ namespace {
 
 /// Canonicalize operations in functions.
 struct Canonicalizer : public FunctionPass {
-  PassResult runOnCFGFunction(CFGFunction *f) override;
-  PassResult runOnMLFunction(MLFunction *f) override;
-  PassResult runOnFunction(Function *fn);
+  PassResult runOnFunction(Function *fn) override;
 };
 } // end anonymous namespace
-
-
-PassResult Canonicalizer::runOnCFGFunction(CFGFunction *fn) {
-  return runOnFunction(fn);
-}
-
-PassResult Canonicalizer::runOnMLFunction(MLFunction *fn) {
-  return runOnFunction(fn);
-}
 
 PassResult Canonicalizer::runOnFunction(Function *fn) {
   auto *context = fn->getContext();

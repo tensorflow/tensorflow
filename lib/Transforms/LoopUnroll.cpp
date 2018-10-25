@@ -52,7 +52,7 @@ namespace {
 /// full unroll threshold was specified, in which case, fully unrolls all loops
 /// with trip count less than the specified threshold. The latter is for testing
 /// purposes, especially for testing outer loop unrolling.
-struct LoopUnroll : public MLFunctionPass {
+struct LoopUnroll : public FunctionPass {
   Optional<unsigned> unrollFactor;
   Optional<bool> unrollFull;
 
@@ -61,12 +61,13 @@ struct LoopUnroll : public MLFunctionPass {
       : unrollFactor(unrollFactor), unrollFull(unrollFull) {}
 
   PassResult runOnMLFunction(MLFunction *f) override;
+
   /// Unroll this for stmt. Returns false if nothing was done.
   bool runOnForStmt(ForStmt *forStmt);
 };
 } // end anonymous namespace
 
-MLFunctionPass *mlir::createLoopUnrollPass(int unrollFactor, int unrollFull) {
+FunctionPass *mlir::createLoopUnrollPass(int unrollFactor, int unrollFull) {
   return new LoopUnroll(unrollFactor == -1 ? None
                                            : Optional<unsigned>(unrollFactor),
                         unrollFull == -1 ? None : Optional<bool>(unrollFull));

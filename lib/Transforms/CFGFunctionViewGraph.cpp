@@ -73,7 +73,7 @@ void mlir::CFGFunction::viewGraph() const {
 }
 
 namespace {
-struct PrintCFGPass : public CFGFunctionPass {
+struct PrintCFGPass : public FunctionPass {
   PrintCFGPass(llvm::raw_ostream &os, bool shortNames, const llvm::Twine &title)
       : os(os), shortNames(shortNames), title(title) {}
   PassResult runOnCFGFunction(CFGFunction *function) override {
@@ -88,8 +88,8 @@ private:
 };
 } // namespace
 
-CFGFunctionPass *mlir::createPrintCFGGraphPass(llvm::raw_ostream &os,
-                                               bool shortNames,
-                                               const llvm::Twine &title) {
+FunctionPass *mlir::createPrintCFGGraphPass(llvm::raw_ostream &os,
+                                            bool shortNames,
+                                            const llvm::Twine &title) {
   return new PrintCFGPass(os, shortNames, title);
 }

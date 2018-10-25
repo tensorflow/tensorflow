@@ -41,10 +41,10 @@ struct SimplifyAffineStructures : public FunctionPass,
                                   StmtWalker<SimplifyAffineStructures> {
   explicit SimplifyAffineStructures() {}
 
-  PassResult runOnMLFunction(MLFunction *f);
+  PassResult runOnMLFunction(MLFunction *f) override;
   // Does nothing on CFG functions for now. No reusable walkers/visitors exist
   // for this yet? TODO(someone).
-  PassResult runOnCFGFunction(CFGFunction *f) { return success(); }
+  PassResult runOnCFGFunction(CFGFunction *f) override { return success(); }
 
   void visitIfStmt(IfStmt *ifStmt);
   void visitOperationStmt(OperationStmt *opStmt);

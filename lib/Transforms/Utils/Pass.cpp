@@ -23,19 +23,31 @@
 #include "mlir/IR/CFGFunction.h"
 #include "mlir/IR/MLFunction.h"
 #include "mlir/IR/Module.h"
-
 using namespace mlir;
+
+/// Out of line virtual method to ensure vtables and metadata are emitted to a
+/// single .o file.
+void Pass::anchor() {}
+
+/// Out of line virtual method to ensure vtables and metadata are emitted to a
+/// single .o file.
+void ModulePass::anchor() {}
 
 /// Function passes walk a module and look at each function with their
 /// corresponding hooks and terminates upon error encountered.
 PassResult FunctionPass::runOnModule(Module *m) {
   for (auto &fn : *m) {
-    if (auto *mlFunc = dyn_cast<MLFunction>(&fn))
-      if (runOnMLFunction(mlFunc))
-        return failure();
-    if (auto *cfgFunc = dyn_cast<CFGFunction>(&fn))
-      if (runOnCFGFunction(cfgFunc))
-        return failure();
+    if (runOnFunction(&fn))
+      return failure();
   }
+  return success();
+}
+
+PassResult FunctionPass::runOnFunction(Function *fn) {
+  if (auto *mlFunc = dyn_cast<MLFunction>(fn))
+    return runOnMLFunction(mlFunc);
+  if (auto *cfgFunc = dyn_cast<CFGFunction>(fn))
+    return runOnCFGFunction(cfgFunc);
+
   return success();
 }

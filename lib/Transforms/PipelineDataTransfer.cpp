@@ -39,7 +39,7 @@ using namespace mlir;
 
 namespace {
 
-struct PipelineDataTransfer : public MLFunctionPass,
+struct PipelineDataTransfer : public FunctionPass,
                               StmtWalker<PipelineDataTransfer> {
   PassResult runOnMLFunction(MLFunction *f) override;
   PassResult runOnForStmt(ForStmt *forStmt);
@@ -53,7 +53,7 @@ struct PipelineDataTransfer : public MLFunctionPass,
 
 /// Creates a pass to pipeline explicit movement of data across levels of the
 /// memory hierarchy.
-MLFunctionPass *mlir::createPipelineDataTransferPass() {
+FunctionPass *mlir::createPipelineDataTransferPass() {
   return new PipelineDataTransfer();
 }
 

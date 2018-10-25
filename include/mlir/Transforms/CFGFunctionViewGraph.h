@@ -41,9 +41,9 @@ llvm::raw_ostream &writeGraph(llvm::raw_ostream &os,
                               bool shortNames = false, const Twine &title = "");
 
 /// Creates a pass to print CFG graphs.
-CFGFunctionPass *createPrintCFGGraphPass(llvm::raw_ostream &os = llvm::errs(),
-                                         bool shortNames = false,
-                                         const llvm::Twine &title = "");
+FunctionPass *createPrintCFGGraphPass(llvm::raw_ostream &os = llvm::errs(),
+                                      bool shortNames = false,
+                                      const llvm::Twine &title = "");
 
 } // end namespace mlir
 

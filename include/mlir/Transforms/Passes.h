@@ -28,7 +28,6 @@
 namespace mlir {
 
 class FunctionPass;
-class MLFunctionPass;
 class ModulePass;
 
 /// Creates a constant folding pass.
@@ -39,27 +38,26 @@ FunctionPass *createCanonicalizerPass();
 
 /// Creates a pass to vectorize loops, operations and data types using a
 /// target-independent, n-D virtual vector abstraction.
-MLFunctionPass *createVectorizePass();
+FunctionPass *createVectorizePass();
 
 /// Creates a loop unrolling pass. Default option or command-line options take
 /// effect if -1 is passed as parameter.
-MLFunctionPass *createLoopUnrollPass(int unrollFactor = -1,
-                                     int unrollFull = -1);
+FunctionPass *createLoopUnrollPass(int unrollFactor = -1, int unrollFull = -1);
 
 /// Creates a loop unroll jam pass to unroll jam by the specified factor. A
 /// factor of -1 lets the pass use the default factor or the one on the command
 /// line if provided.
-MLFunctionPass *createLoopUnrollAndJamPass(int unrollJamFactor = -1);
+FunctionPass *createLoopUnrollAndJamPass(int unrollJamFactor = -1);
 
 /// Creates an simplification pass for affine structures.
 FunctionPass *createSimplifyAffineStructuresPass();
 
 /// Creates a pass to pipeline explicit movement of data across levels of the
 /// memory hierarchy.
-MLFunctionPass *createPipelineDataTransferPass();
+FunctionPass *createPipelineDataTransferPass();
 
 /// Creates a pass which composes all affine maps applied to loads and stores.
-MLFunctionPass *createComposeAffineMapsPass();
+FunctionPass *createComposeAffineMapsPass();
 
 /// Replaces all ML functions in the module with equivalent CFG functions.
 /// Function references are appropriately patched to refer to the newly
