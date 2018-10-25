@@ -443,7 +443,8 @@ ConvolutionDescriptor::ConvolutionDescriptor(int ndims)
       dilation_rates_(ndims, 1),
       pad_alignment_(PadAlignment::kDefault),
       group_count_(1),
-      ndims_(ndims) {}
+      ndims_(ndims),
+      convolution_not_crosscorr_(false) {}
 
 ConvolutionDescriptor::ConvolutionDescriptor()
     : ConvolutionDescriptor(/*ndims=*/2) {}
