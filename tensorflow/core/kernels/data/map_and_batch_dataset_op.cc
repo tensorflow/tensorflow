@@ -18,10 +18,10 @@ limitations under the License.
 #include <utility>
 
 #include "tensorflow/core/common_runtime/function.h"
+#include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/kernels/data/captured_function.h"
-#include "tensorflow/core/kernels/data/dataset.h"
 #include "tensorflow/core/kernels/data/dataset_utils.h"
 #include "tensorflow/core/kernels/inplace_ops_functor.h"
 #include "tensorflow/core/lib/core/blocking_counter.h"

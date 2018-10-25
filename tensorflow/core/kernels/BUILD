@@ -6573,22 +6573,6 @@ tf_kernel_library(
     ],
 )
 
-cc_library(
-    name = "captured_function",
-    hdrs = ["captured_function.h"],
-    deps = [
-        "//tensorflow/core/kernels/data:captured_function",
-    ],
-)
-
-cc_library(
-    name = "dataset",
-    hdrs = ["dataset.h"],
-    deps = [
-        "//tensorflow/core/kernels/data:dataset",
-    ],
-)
-
 tf_kernel_library(
     name = "dataset_ops",
     deps = [
