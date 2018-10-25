@@ -748,13 +748,13 @@ class SparseReduceTest(test_util.TensorFlowTestCase):
 
     with self.session(use_gpu=False):
       for keep_dims in [True, False]:
-        self._testSparseReduceSumShape(sp_t, None, ndims=2, keep_dims=keep_dims)
-        self._testSparseReduceSumShape(sp_t, 0, ndims=2, keep_dims=keep_dims)
-        self._testSparseReduceSumShape(sp_t, [1], ndims=2, keep_dims=keep_dims)
-        self._testSparseReduceSumShape(sp_t, [0, 1], ndims=2, keep_dims=keep_dims)
-        self._testSparseReduceSumShape(sp_t, [1, 0], ndims=2, keep_dims=keep_dims)
-        self._testSparseReduceSumShape(sp_t, [-1], ndims=2, keep_dims=keep_dims)
-        self._testSparseReduceSumShape(sp_t, [1, -2], ndims=2, keep_dims=keep_dims)
+        self._testSparseReduceSumShape(sp_t, None, 2, keep_dims)
+        self._testSparseReduceSumShape(sp_t, 0, 2, keep_dims)
+        self._testSparseReduceSumShape(sp_t, [1], 2, keep_dims)
+        self._testSparseReduceSumShape(sp_t, [0, 1], 2, keep_dims)
+        self._testSparseReduceSumShape(sp_t, [1, 0], 2, keep_dims)
+        self._testSparseReduceSumShape(sp_t, [-1], 2, keep_dims)
+        self._testSparseReduceSumShape(sp_t, [1, -2], 2, keep_dims)
 
 
 class SparseMathOpsTest(test_util.TensorFlowTestCase):
