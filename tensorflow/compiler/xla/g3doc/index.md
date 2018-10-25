@@ -56,13 +56,15 @@ We had several objectives for XLA to work with TensorFlow:
 The input language to XLA is called "HLO IR", or just HLO (High Level
 Optimizer). The semantics of HLO are described on the
 [Operation Semantics](./operation_semantics.md) page. It
-is most convenient to think of HLO as a [compiler
-IR](https://en.wikipedia.org/wiki/Intermediate_representation).
+is most convenient to think of HLO as a
+[compiler IR](https://en.wikipedia.org/wiki/Intermediate_representation).
 
 XLA takes graphs ("computations") defined in HLO and compiles them into machine
 instructions for various architectures. XLA is modular in the sense that it is
-easy to slot in an alternative backend to [target some novel HW architecture](./developing_new_backend.md). The CPU backend for x64 and ARM64 as
-well as the NVIDIA GPU backend are in the TensorFlow source tree.
+easy to slot in an alternative backend to
+[target some novel HW architecture](./developing_new_backend.md).
+The CPU backend for x64 and ARM64 as well as the NVIDIA GPU backend are in the
+TensorFlow source tree.
 
 The following diagram shows the compilation process in XLA:
 
