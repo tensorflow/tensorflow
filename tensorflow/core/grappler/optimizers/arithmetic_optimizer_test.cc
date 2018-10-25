@@ -1364,6 +1364,54 @@ TEST_F(ArithmeticOptimizerTest, ReorderTransposeCast_ProducerIsCast) {
   test::ExpectTensorEqual<float>(tensors_expected[0], tensors[0]);
 }
 
+TEST_F(ArithmeticOptimizerTest, ReorderS2DCast_ProducerIsCast) {
+  // TODO(jingyue): Evaluate S2D+Cast on GPU as well. We can't simply put nodes
+  // under a /GPU:0 scope, because this test would fail if the testing machine
+  // doesn't have a GPU. Maybe EvaluateNodes should allow soft placement?
+  tensorflow::Scope s = tensorflow::Scope::NewRootScope().WithDevice("/CPU:0");
+  Output outputs =
+      ops::Placeholder(s, DT_UINT8, ops::Placeholder::Shape({8, 28, 28, 3}));
+  outputs = ops::Cast(s, outputs, DT_FLOAT);
+  outputs = ops::SpaceToDepth(s, outputs, 2);
+  outputs = ops::Identity(s.WithOpName("outputs"), outputs);
+
+  GrapplerItem item;
+  item.fetch = {"outputs"};
+  TF_CHECK_OK(s.ToGraphDef(&item.graph));
+
+  auto input_t = GenerateRandomTensor<DT_UINT8>(TensorShape({8, 28, 28, 3}));
+  auto tensors_expected =
+      EvaluateNodes(item.graph, item.fetch, {{"Placeholder", input_t}});
+  EXPECT_EQ(1, tensors_expected.size());
+
+  GraphDef output;
+  ArithmeticOptimizer optimizer;
+  OptimizeAndPrune(&optimizer, &item, &output);
+
+  LOG(INFO) << output.DebugString();
+
+  const NodeDef* s2d_node = nullptr;
+  for (const NodeDef& node : output.node()) {
+    if (node.op() == "SpaceToDepth") {
+      EXPECT_EQ(s2d_node, nullptr);
+      EXPECT_EQ(DT_UINT8, node.attr().at("T").type());
+      s2d_node = &node;
+    }
+  }
+  EXPECT_NE(s2d_node, nullptr);
+
+  for (const NodeDef& node : output.node()) {
+    if (node.op() == "Cast") {
+      EXPECT_EQ(NodeName(node.input(0)), s2d_node->name());
+    }
+  }
+
+  auto tensors =
+      EvaluateNodes(item.graph, item.fetch, {{"Placeholder", input_t}});
+  EXPECT_EQ(1, tensors.size());
+  test::ExpectTensorEqual<float>(tensors_expected[0], tensors[0]);
+}
+
 TEST_F(ArithmeticOptimizerTest, ReorderTransposeCast_ProducerIsTranspose) {
   tensorflow::Scope s = tensorflow::Scope::NewRootScope().WithDevice("/CPU:0");
   Output nhwc_fp32 =
