@@ -32,6 +32,20 @@ std::vector<Matcher<float>> ArrayFloatNear(const std::vector<float>& values,
   return matchers;
 }
 
+std::vector<Matcher<std::complex<float>>> ArrayComplex64Near(
+    const std::vector<std::complex<float>>& values, float max_abs_error) {
+  std::vector<Matcher<std::complex<float>>> matchers;
+  matchers.reserve(values.size());
+  for (const std::complex<float>& v : values) {
+    matchers.emplace_back(
+        AllOf(::testing::Property(&std::complex<float>::real,
+                                  FloatNear(v.real(), max_abs_error)),
+              ::testing::Property(&std::complex<float>::imag,
+                                  FloatNear(v.imag(), max_abs_error))));
+  }
+  return matchers;
+}
+
 int SingleOpModel::AddInput(const TensorData& t, bool is_variable) {
   int id = AddTensor<float>(t, {}, is_variable);
   inputs_.push_back(id);

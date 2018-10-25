@@ -28,6 +28,7 @@ namespace toco {
 
 using tensorflow::AttrValue;
 using tensorflow::DT_BOOL;
+using tensorflow::DT_COMPLEX64;
 using tensorflow::DT_FLOAT;
 using tensorflow::DT_INT32;
 using tensorflow::DT_INT64;
@@ -141,6 +142,12 @@ class ShapeImportTest : public ::testing::TestWithParam<tensorflow::DataType> {
           t.add_bool_val(i % 2);
         }
         break;
+      case DT_COMPLEX64:
+        for (int64_t i = 0; i < num_elements; ++i) {
+          t.add_scomplex_val(i / 10000.0);
+          t.add_scomplex_val(-i / 10000.0);
+        }
+        break;
       default:
         break;
     }
@@ -171,7 +178,7 @@ class TypeImportTest : public ::testing::TestWithParam<
 };
 
 std::vector<tensorflow::DataType> TestTypes() {
-  return {DT_FLOAT, DT_INT32, DT_INT64, DT_BOOL, DT_QUINT8};
+  return {DT_FLOAT, DT_INT32, DT_INT64, DT_BOOL, DT_QUINT8, DT_COMPLEX64};
 }
 
 TEST_P(ShapeImportTest, ShapeElementIsNegative) {
@@ -218,6 +225,24 @@ TEST_P(ShapeImportTest, ValidShapeButZeroElements) {
 }
 INSTANTIATE_TEST_CASE_P(ValidShapeButZeroElements, ShapeImportTest,
                         ::testing::ValuesIn(TestTypes()));
+
+TEST_P(ShapeImportTest, Complex64ConstNode) {
+  NodeDef node;
+  BuildConstNode({1, 2, 3}, DT_COMPLEX64, 6, &node);
+  Model model;
+  EXPECT_TRUE(ImportNode(node, &model).ok());
+  const auto& array = model.GetArray("Node1");
+  EXPECT_EQ(ArrayDataType::kComplex64, array.data_type);
+  EXPECT_EQ(6, array.GetBuffer<ArrayDataType::kComplex64>().Length());
+  int64_t i = 0;
+  for (const auto& datum : array.GetBuffer<ArrayDataType::kComplex64>().data) {
+    EXPECT_EQ(i / 10000.0f, std::real(datum));
+    EXPECT_EQ(-i / 10000.0f, std::imag(datum));
+    i++;
+  }
+}
+INSTANTIATE_TEST_CASE_P(Complex64ConstNode, ShapeImportTest,
+                        ::testing::ValuesIn({DT_COMPLEX64}));
 
 std::vector<std::pair<tensorflow::DataType, ArrayDataType>> UnaryTestTypes() {
   return {{DT_FLOAT, ArrayDataType::kFloat},
