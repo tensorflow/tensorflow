@@ -25,6 +25,7 @@ from __future__ import print_function
 from tensorflow.python.autograph import operators
 from tensorflow.python.autograph import utils
 from tensorflow.python.autograph.core.converter import ConversionOptions
+from tensorflow.python.autograph.core.converter import Feature
 from tensorflow.python.autograph.core.errors import GraphConstructionError
 from tensorflow.python.autograph.core.errors import improved_errors
 from tensorflow.python.autograph.core.errors import TfRuntimeError
@@ -44,6 +45,7 @@ from tensorflow.python.util.all_util import remove_undocumented
 _allowed_symbols = [
     # Main API
     'ConversionOptions',
+    'Feature',
     'RunMode',
     'convert',
     'converted_call',

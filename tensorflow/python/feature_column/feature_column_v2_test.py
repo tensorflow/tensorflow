@@ -3242,8 +3242,6 @@ class FeatureLayerTest(test.TestCase):
     embedding_column_b, embedding_column_a = fc.shared_embedding_columns_v2(
         [categorical_column_b, categorical_column_a],
         dimension=embedding_dimension)
-    shared_state_manager = fc.SharedEmbeddingStateManager(
-        name='shared_feature_layer')
 
     with ops.Graph().as_default():
       features = {
@@ -3259,17 +3257,13 @@ class FeatureLayerTest(test.TestCase):
                   dense_shape=(2, 2)),
       }
       all_cols = [embedding_column_a, embedding_column_b]
-      fc.FeatureLayer(
-          all_cols, shared_state_manager=shared_state_manager)(
-              features)
-      fc.FeatureLayer(
-          all_cols, shared_state_manager=shared_state_manager)(
-              features)
+      fc.FeatureLayer(all_cols)(features)
+      fc.FeatureLayer(all_cols)(features)
       # Make sure that only 1 variable gets created in this case.
       self.assertEqual(1, len(
           ops.get_collection(ops.GraphKeys.GLOBAL_VARIABLES)))
       self.assertItemsEqual(
-          ['shared_feature_layer/aaa_bbb_shared_embedding:0'],
+          ['aaa_bbb_shared_embedding:0'],
           [v.name for v in ops.get_collection(ops.GraphKeys.GLOBAL_VARIABLES)])
 
   def test_multiple_layers_with_same_shared_embedding_column_diff_graphs(self):
@@ -3284,8 +3278,6 @@ class FeatureLayerTest(test.TestCase):
     all_cols = [embedding_column_a, embedding_column_b]
 
     with ops.Graph().as_default():
-      shared_state_manager1 = fc.SharedEmbeddingStateManager(
-          name='shared_feature_layer')
       features = {
           'aaa':
               sparse_tensor.SparseTensor(
@@ -3298,16 +3290,12 @@ class FeatureLayerTest(test.TestCase):
                   values=(1, 2, 1),
                   dense_shape=(2, 2)),
       }
-      fc.FeatureLayer(
-          all_cols, shared_state_manager=shared_state_manager1)(
-              features)
+      fc.FeatureLayer(all_cols)(features)
       # Make sure that only 1 variable gets created in this case.
       self.assertEqual(1, len(
           ops.get_collection(ops.GraphKeys.GLOBAL_VARIABLES)))
 
     with ops.Graph().as_default():
-      shared_state_manager2 = fc.SharedEmbeddingStateManager(
-          name='shared_feature_layer')
       features1 = {
           'aaa':
               sparse_tensor.SparseTensor(
@@ -3321,14 +3309,12 @@ class FeatureLayerTest(test.TestCase):
                   dense_shape=(2, 2)),
       }
 
-      fc.FeatureLayer(
-          all_cols, shared_state_manager=shared_state_manager2)(
-              features1)
+      fc.FeatureLayer(all_cols)(features1)
       # Make sure that only 1 variable gets created in this case.
       self.assertEqual(1, len(
           ops.get_collection(ops.GraphKeys.GLOBAL_VARIABLES)))
       self.assertItemsEqual(
-          ['shared_feature_layer/aaa_bbb_shared_embedding:0'],
+          ['aaa_bbb_shared_embedding:0'],
           [v.name for v in ops.get_collection(ops.GraphKeys.GLOBAL_VARIABLES)])
 
   def test_with_numpy_input_fn(self):
@@ -6490,22 +6476,8 @@ class SharedEmbeddingColumnTest(test.TestCase):
         dimension=embedding_dimension)
     self.assertIs(categorical_column_a, embedding_column_a.categorical_column)
     self.assertIs(categorical_column_b, embedding_column_b.categorical_column)
-    self.assertEqual(embedding_dimension, embedding_column_a.dimension)
-    self.assertEqual(embedding_dimension, embedding_column_b.dimension)
-    self.assertEqual('mean', embedding_column_a.combiner)
-    self.assertEqual('mean', embedding_column_b.combiner)
-    self.assertIsNone(embedding_column_a.ckpt_to_load_from)
-    self.assertIsNone(embedding_column_b.ckpt_to_load_from)
-    self.assertEqual('aaa_bbb_shared_embedding',
-                     embedding_column_a.shared_collection_name)
-    self.assertEqual('aaa_bbb_shared_embedding',
-                     embedding_column_b.shared_collection_name)
-    self.assertIsNone(embedding_column_a.tensor_name_in_ckpt)
-    self.assertIsNone(embedding_column_b.tensor_name_in_ckpt)
     self.assertIsNone(embedding_column_a.max_norm)
     self.assertIsNone(embedding_column_b.max_norm)
-    self.assertTrue(embedding_column_a.trainable)
-    self.assertTrue(embedding_column_b.trainable)
     self.assertEqual('aaa_shared_embedding', embedding_column_a.name)
     self.assertEqual('bbb_shared_embedding', embedding_column_b.name)
     self.assertEqual((embedding_dimension,), embedding_column_a.variable_shape)
@@ -6535,22 +6507,8 @@ class SharedEmbeddingColumnTest(test.TestCase):
         trainable=False)
     self.assertIs(categorical_column_a, embedding_column_a.categorical_column)
     self.assertIs(categorical_column_b, embedding_column_b.categorical_column)
-    self.assertEqual(embedding_dimension, embedding_column_a.dimension)
-    self.assertEqual(embedding_dimension, embedding_column_b.dimension)
-    self.assertEqual('my_combiner', embedding_column_a.combiner)
-    self.assertEqual('my_combiner', embedding_column_b.combiner)
-    self.assertEqual('shared_embedding_collection_name',
-                     embedding_column_a.shared_collection_name)
-    self.assertEqual('shared_embedding_collection_name',
-                     embedding_column_b.shared_collection_name)
-    self.assertEqual('my_ckpt', embedding_column_a.ckpt_to_load_from)
-    self.assertEqual('my_ckpt', embedding_column_b.ckpt_to_load_from)
-    self.assertEqual('my_ckpt_tensor', embedding_column_a.tensor_name_in_ckpt)
-    self.assertEqual('my_ckpt_tensor', embedding_column_b.tensor_name_in_ckpt)
     self.assertEqual(42., embedding_column_a.max_norm)
     self.assertEqual(42., embedding_column_b.max_norm)
-    self.assertFalse(embedding_column_a.trainable)
-    self.assertFalse(embedding_column_b.trainable)
     self.assertEqual('aaa_shared_embedding', embedding_column_a.name)
     self.assertEqual('bbb_shared_embedding', embedding_column_b.name)
     self.assertEqual((embedding_dimension,), embedding_column_a.variable_shape)
@@ -6585,14 +6543,7 @@ class SharedEmbeddingColumnTest(test.TestCase):
           'aaa': parsing_ops.VarLenFeature(dtypes.int64)
       }, embedding_column_a.categorical_column.parse_example_spec)
 
-      self.assertEqual(embedding_dimension, embedding_column_a.dimension)
-      self.assertEqual('my_combiner', embedding_column_a.combiner)
-      self.assertEqual('shared_embedding_collection_name',
-                       embedding_column_a.shared_collection_name)
-      self.assertEqual('my_ckpt', embedding_column_a.ckpt_to_load_from)
-      self.assertEqual('my_ckpt_tensor', embedding_column_a.tensor_name_in_ckpt)
       self.assertEqual(42., embedding_column_a.max_norm)
-      self.assertFalse(embedding_column_a.trainable)
       self.assertEqual('aaa_shared_embedding', embedding_column_a.name)
       self.assertEqual((embedding_dimension,),
                        embedding_column_a.variable_shape)
@@ -6755,19 +6706,16 @@ class SharedEmbeddingColumnTest(test.TestCase):
         [categorical_column_a, categorical_column_b],
         dimension=embedding_dimension,
         initializer=_initializer)
-    state_manager = fc.SharedEmbeddingStateManager(name='shared_feature_layer')
-    embedding_column_a.create_state(state_manager)
-    embedding_column_b.create_state(state_manager)
 
     # Provide sparse input and get dense result.
     embedding_lookup_a = embedding_column_a.get_dense_tensor(
-        fc.FeatureTransformationCache(input_features), state_manager)
+        fc.FeatureTransformationCache(input_features), None)
     embedding_lookup_b = embedding_column_b.get_dense_tensor(
-        fc.FeatureTransformationCache(input_features), state_manager)
+        fc.FeatureTransformationCache(input_features), None)
 
     # Assert expected embedding variable and lookups.
     global_vars = ops.get_collection(ops.GraphKeys.GLOBAL_VARIABLES)
-    self.assertItemsEqual(('shared_feature_layer/aaa_bbb_shared_embedding:0',),
+    self.assertItemsEqual(('aaa_bbb_shared_embedding:0',),
                           tuple([v.name for v in global_vars]))
     embedding_var = global_vars[0]
     with _initialized_session():
@@ -6821,15 +6769,12 @@ class SharedEmbeddingColumnTest(test.TestCase):
         [categorical_column_a, categorical_column_b],
         dimension=embedding_dimension,
         initializer=_initializer)
-    state_manager = fc.SharedEmbeddingStateManager()
-    embedding_column_a.create_state(state_manager)
-    embedding_column_b.create_state(state_manager)
 
     # Provide sparse input and get dense result.
     embedding_lookup_a = embedding_column_a.get_dense_tensor(
-        fc.FeatureTransformationCache(input_features), state_manager)
+        fc.FeatureTransformationCache(input_features), None)
     embedding_lookup_b = embedding_column_b.get_dense_tensor(
-        fc.FeatureTransformationCache(input_features), state_manager)
+        fc.FeatureTransformationCache(input_features), None)
 
     with _initialized_session() as sess:
       sess.run([embedding_lookup_a, embedding_lookup_b], feed_dict=feed_dict)
@@ -6867,9 +6812,7 @@ class SharedEmbeddingColumnTest(test.TestCase):
         initializer=_initializer)
 
     with ops.Graph().as_default():
-      model = fc.LinearModel(
-          (embedding_column_a, embedding_column_b),
-          shared_state_manager=fc.SharedEmbeddingStateManager())
+      model = fc.LinearModel((embedding_column_a, embedding_column_b))
       predictions = model({
           categorical_column_a.name: input_a,
           categorical_column_b.name: input_b
@@ -6880,7 +6823,7 @@ class SharedEmbeddingColumnTest(test.TestCase):
       expected_var_names = (
           'linear_model/bias_weights:0',
           'linear_model/aaa_shared_embedding/weights:0',
-          'shared_embedding_state_manager/aaa_bbb_shared_embedding:0',
+          'aaa_bbb_shared_embedding:0',
           'linear_model/bbb_shared_embedding/weights:0',
       )
       self.assertItemsEqual(
@@ -6892,8 +6835,7 @@ class SharedEmbeddingColumnTest(test.TestCase):
       }
       self.assertItemsEqual(expected_var_names, trainable_vars.keys())
       bias = trainable_vars['linear_model/bias_weights:0']
-      embedding_weights = trainable_vars[
-          'shared_embedding_state_manager/aaa_bbb_shared_embedding:0']
+      embedding_weights = trainable_vars['aaa_bbb_shared_embedding:0']
       linear_weights_a = trainable_vars[
           'linear_model/aaa_shared_embedding/weights:0']
       linear_weights_b = trainable_vars[
@@ -7003,8 +6945,6 @@ class SharedEmbeddingColumnTest(test.TestCase):
         dimension=embedding_dimension,
         initializer=_initializer,
         trainable=trainable)
-    shared_state_manager = fc.SharedEmbeddingStateManager(
-        name='shared_feature_layer')
 
     features = {
         'aaa': sparse_input_a,
@@ -7016,22 +6956,19 @@ class SharedEmbeddingColumnTest(test.TestCase):
     # Provide sparse input and get dense result.
     feature_layer = fc.FeatureLayer(
         feature_columns=(embedding_column_b, embedding_column_a,
-                         embedding_column_c, embedding_column_d),
-        shared_state_manager=shared_state_manager)(
-            features)
+                         embedding_column_c, embedding_column_d))(
+                             features)
 
     # Assert expected embedding variable and lookups.
     global_vars = ops.get_collection(ops.GraphKeys.GLOBAL_VARIABLES)
-    self.assertItemsEqual([
-        'shared_feature_layer/aaa_bbb_shared_embedding:0',
-        'shared_feature_layer/ccc_ddd_shared_embedding:0'
-    ], tuple([v.name for v in global_vars]))
+    self.assertItemsEqual(
+        ['aaa_bbb_shared_embedding:0', 'ccc_ddd_shared_embedding:0'],
+        tuple([v.name for v in global_vars]))
     trainable_vars = ops.get_collection(ops.GraphKeys.TRAINABLE_VARIABLES)
     if trainable:
-      self.assertItemsEqual([
-          'shared_feature_layer/aaa_bbb_shared_embedding:0',
-          'shared_feature_layer/ccc_ddd_shared_embedding:0'
-      ], tuple([v.name for v in trainable_vars]))
+      self.assertItemsEqual(
+          ['aaa_bbb_shared_embedding:0', 'ccc_ddd_shared_embedding:0'],
+          tuple([v.name for v in trainable_vars]))
     else:
       self.assertItemsEqual([], tuple([v.name for v in trainable_vars]))
     shared_embedding_vars = global_vars
@@ -7044,55 +6981,6 @@ class SharedEmbeddingColumnTest(test.TestCase):
 
   def test_feature_layer_no_trainable(self):
     self._test_feature_layer(trainable=False)
-
-
-class SharedEmbeddingStateManagerTest(test.TestCase):
-
-  def test_basic(self):
-    categorical_column_a = fc.categorical_column_with_identity(
-        key='aaa', num_buckets=3)
-    categorical_column_b = fc.categorical_column_with_identity(
-        key='bbb', num_buckets=3)
-    fc.shared_embedding_columns_v2(
-        [categorical_column_a, categorical_column_b], dimension=2)
-    shared_state_manager = fc.SharedEmbeddingStateManager(
-        name='shared_feature_layer')
-    var_a = shared_state_manager.create_variable('aaa_bbb_shared_embedding',
-                                                 [5, 10])
-    var_b = shared_state_manager.create_variable('aaa_bbb_shared_embedding',
-                                                 [5, 10])
-    self.assertEqual(var_a, var_b)
-    self.assertEqual('shared_feature_layer/aaa_bbb_shared_embedding:0',
-                     var_a.name)
-    self.assertIsInstance(var_a, variables_lib.Variable)
-
-  def test_multiple_sets(self):
-    categorical_column_a = fc.categorical_column_with_identity(
-        key='aaa', num_buckets=3)
-    categorical_column_b = fc.categorical_column_with_identity(
-        key='bbb', num_buckets=3)
-    categorical_column_c = fc.categorical_column_with_identity(
-        key='ccc', num_buckets=3)
-    categorical_column_d = fc.categorical_column_with_identity(
-        key='ddd', num_buckets=3)
-
-    fc.shared_embedding_columns_v2(
-        [categorical_column_a, categorical_column_b], dimension=2)
-    fc.shared_embedding_columns_v2(
-        [categorical_column_c, categorical_column_d], dimension=2)
-    shared_state_manager = fc.SharedEmbeddingStateManager(
-        name='shared_feature_layer')
-    var_a = shared_state_manager.create_variable('aaa_bbb_shared_embedding',
-                                                 [5, 10])
-    var_c = shared_state_manager.create_variable('ccc_ddd_shared_embedding',
-                                                 [5, 10])
-    self.assertIsInstance(var_a, variables_lib.Variable)
-    self.assertIsInstance(var_c, variables_lib.Variable)
-    self.assertNotEquals(var_a, var_c)
-    self.assertEqual('shared_feature_layer/aaa_bbb_shared_embedding:0',
-                     var_a.name)
-    self.assertEqual('shared_feature_layer/ccc_ddd_shared_embedding:0',
-                     var_c.name)
 
 
 class WeightedCategoricalColumnTest(test.TestCase):

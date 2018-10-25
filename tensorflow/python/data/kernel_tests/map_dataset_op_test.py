@@ -26,6 +26,7 @@ from absl.testing import parameterized
 import numpy as np
 
 from tensorflow.core.framework import attr_value_pb2
+from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.client import session
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
@@ -36,6 +37,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import data_flow_ops
 from tensorflow.python.ops import functional_ops
 from tensorflow.python.ops import lookup_ops
@@ -46,6 +48,40 @@ from tensorflow.python.ops import sparse_ops
 from tensorflow.python.ops import string_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.platform import test
+
+
+def _make_coordinated_sloppy_dataset(num_elements, num_parallel_calls):
+  """Produces a dataset iterator and events to control the order of elements.
+
+  Args:
+    num_elements: the number of input elements
+    num_parallel_calls: the degree of map parallelism
+
+  Returns:
+    A dataset iterator (represented as `get_next` op) and events that can be
+    used to control the order of output elements.
+  """
+
+  # Set up threading events used to sequence when items are produced that
+  # are subsequently interleaved. These events allow us to deterministically
+  # simulate slowdowns and force sloppiness.
+  coordination_events = {i: threading.Event() for i in range(num_elements)}
+
+  def map_py_fn(x):
+    coordination_events[x].wait()
+    coordination_events[x].clear()
+    return x * x
+
+  def map_fn(x):
+    return script_ops.py_func(map_py_fn, [x], x.dtype)
+
+  options = dataset_ops.Options()
+  options.experimental_deterministic = False
+  dataset = dataset_ops.Dataset.range(num_elements).map(
+      map_fn, num_parallel_calls).with_options(options)
+  iterator = dataset.make_one_shot_iterator()
+  next_element = iterator.get_next()
+  return next_element, coordination_events
 
 
 class MapDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
@@ -513,6 +549,136 @@ class MapDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
       with self.assertRaises(errors.OutOfRangeError):
         sess.run(get_next)
 
+  def testCaseAndCondInMap(self):
+
+    def control_map_fn(x, y):
+
+      def multiply():
+        return x * 2
+
+      def divide():
+        return x // 2
+
+      def defaults_two():
+        return control_flow_ops.cond(
+            math_ops.equal(math_ops.mod(x, 2), 0),
+            multiply,
+            divide,
+            name="cond_mult")
+
+      pred_fn_pairs = {
+          math_ops.logical_or(math_ops.equal(y, 2), math_ops.equal(y, 3)):
+              defaults_two,
+      }
+
+      return control_flow_ops.case(
+          pred_fn_pairs, default=multiply, exclusive=True)
+
+    def build_dataset(row, num):
+      iterator = (
+          dataset_ops.Dataset.from_tensor_slices(row).map(
+              lambda x: control_map_fn(x, num)).make_initializable_iterator())
+      init_op = iterator.initializer
+      get_next = iterator.get_next()
+      return init_op, get_next
+
+    with self.cached_session() as sess:
+      row = np.arange(6)
+      for num in [2, 3, 4]:
+        init_op, get_next = build_dataset(row, num)
+        sess.run(init_op)
+        for i in range(6):
+          self.assertEqual(
+              (i // 2 if i % 2 else i * 2) if (num == 2 or num == 3) else i * 2,
+              sess.run(get_next))
+        with self.assertRaises(errors.OutOfRangeError):
+          sess.run(get_next)
+
+  def testCaseInWhileInMap(self):
+
+    def control_map_fn(x, y):
+
+      def multiply():
+        return x * 2
+
+      def divide():
+        return x // 2
+
+      pred_fn_pairs = {
+          math_ops.logical_or(math_ops.equal(y, 2), math_ops.equal(y, 3)):
+              divide,
+      }
+
+      return control_flow_ops.case(
+          pred_fn_pairs, default=multiply, exclusive=True)
+
+    def build_dataset(row, num):
+      # pylint: disable=g-long-lambda
+      iterator = (
+          dataset_ops.Dataset.from_tensors(row).map(
+              lambda elems: functional_ops.map_fn(lambda x:
+                                                  control_map_fn(x, num), elems)
+              ).make_initializable_iterator())
+      init_op = iterator.initializer
+      get_next = iterator.get_next()
+      return init_op, get_next
+
+    with self.cached_session() as sess:
+      row = np.arange(6)
+      for num in [2, 3, 4]:
+        init_op, get_next = build_dataset(row, num)
+        sess.run(init_op)
+        self.assertAllEqual(
+            [x // 2 if (num == 2 or num == 3) else x * 2 for x in row],
+            sess.run(get_next))
+        with self.assertRaises(errors.OutOfRangeError):
+          sess.run(get_next)
+
+  def testCaseAndCondInWhileInMap(self):
+
+    def control_map_fn(x, y):
+
+      def multiply():
+        return x * 2
+
+      def divide():
+        return x // 2
+
+      def defaults_two():
+        return control_flow_ops.cond(
+            math_ops.equal(math_ops.mod(x, 2), 0),
+            multiply,
+            divide,
+            name="cond_mult")
+
+      pred_fn_pairs = {
+          math_ops.logical_or(math_ops.equal(y, 2), math_ops.equal(y, 3)):
+              defaults_two,
+      }
+
+      return control_flow_ops.case(
+          pred_fn_pairs, default=multiply, exclusive=True)
+
+    row = np.arange(6)
+    num = 2
+    # pylint: disable=g-long-lambda
+    iterator = (
+        dataset_ops.Dataset.from_tensors(row).map(
+            lambda elems: functional_ops.map_fn(lambda x:
+                                                control_map_fn(x, num), elems)
+            ).make_initializable_iterator())
+    # pylint: enable=g-long-lambda
+    init_op = iterator.initializer
+    get_next = iterator.get_next()
+
+    with self.cached_session() as sess:
+      sess.run(init_op)
+      self.assertAllEqual([(x // 2 if x % 2 else x * 2) if
+                           (num == 2 or num == 3) else x * 2 for x in row],
+                          sess.run(get_next))
+      with self.assertRaises(errors.OutOfRangeError):
+        sess.run(get_next)
+
   def testPrefetch(self):
     # We will use this event to test that `_map_py_func()` has been
     # invoked a certain number of times (6 times, to be exact) after
@@ -819,6 +985,49 @@ class MapDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
     with self.cached_session() as sess:
       sess.run(iterator.initializer, feed_dict={captured_t: 42})
       self.assertEqual(42, sess.run(get_next))
+
+  @parameterized.named_parameters(
+      ("1", 1, 1),
+      ("2", 10, 1),
+      ("3", 10, 10),
+      ("4", 100, 1),
+      ("5", 100, 10),
+      ("6", 100, 100),
+  )
+  def testSloppyInterleaveInOrder(self, num_elements, num_parallel_calls):
+    get_next, coordination_events = _make_coordinated_sloppy_dataset(
+        num_elements, num_parallel_calls)
+    config = config_pb2.ConfigProto(
+        inter_op_parallelism_threads=num_parallel_calls + 1,
+        use_per_session_threads=True)
+    with self.cached_session(config=config) as sess:
+      for i in range(num_elements):
+        coordination_events[i].set()
+        self.assertEqual(i * i, sess.run(get_next))
+      with self.assertRaises(errors.OutOfRangeError):
+        sess.run(get_next)
+
+  @parameterized.named_parameters(
+      ("1", 10, 10),
+      ("2", 100, 10),
+      ("3", 100, 100),
+  )
+  def testSloppyInterleaveOutOfOrder(self, num_elements, num_parallel_calls):
+    get_next, coordination_events = _make_coordinated_sloppy_dataset(
+        num_elements, num_parallel_calls)
+    config = config_pb2.ConfigProto(
+        inter_op_parallelism_threads=num_parallel_calls + 1,
+        use_per_session_threads=True)
+    with self.cached_session(config=config) as sess:
+      elements = [x for x in range(num_elements)]
+      for i in [1, 4, 7]:
+        elements[i], elements[i + 1] = elements[i + 1], elements[i]
+
+      for element in elements:
+        coordination_events[element].set()
+        self.assertEqual(element * element, sess.run(get_next))
+      with self.assertRaises(errors.OutOfRangeError):
+        sess.run(get_next)
 
 
 class MapDatasetBenchmark(test.Benchmark):

@@ -69,6 +69,7 @@ class AsyncCheckpointSaverHook(basic_session_run_hooks.CheckpointSaverHook):
       raise ValueError("You cannot provide both saver and scaffold.")
     self._saver = saver
     self._save_thread = None
+    self._write_graph_thread = None
     self._checkpoint_dir = checkpoint_dir
     self._save_path = os.path.join(checkpoint_dir, checkpoint_basename)
     self._scaffold = scaffold
@@ -97,9 +98,13 @@ class AsyncCheckpointSaverHook(basic_session_run_hooks.CheckpointSaverHook):
     # We do write graph and saver_def at the first call of before_run.
     # We cannot do this in begin, since we let other hooks to change graph and
     # add variables in begin. Graph is finalized after all begin calls.
-    training_util.write_graph(
-        ops.get_default_graph().as_graph_def(add_shapes=True),
-        self._checkpoint_dir, "graph.pbtxt")
+    def _write_graph_fn(self):
+      training_util.write_graph(
+          ops.get_default_graph().as_graph_def(add_shapes=True),
+          self._checkpoint_dir, "graph.pbtxt")
+    self._write_graph_thread = threading.Thread(target=_write_graph_fn)
+    self._write_graph_thread.start()
+
     saver_def = self._get_saver().saver_def if self._get_saver() else None
     graph = ops.get_default_graph()
     meta_graph_def = meta_graph.create_meta_graph_def(
@@ -114,20 +119,20 @@ class AsyncCheckpointSaverHook(basic_session_run_hooks.CheckpointSaverHook):
     return SessionRunArgs(self._global_step_tensor)
 
   def after_run(self, run_context, run_values):
-    stale_global_step = run_values.results
-    if self._timer.should_trigger_for_step(stale_global_step +
-                                           self._steps_per_run):
-      # get the real value after train op.
-      global_step = run_context.session.run(self._global_step_tensor)
-      if self._timer.should_trigger_for_step(global_step):
-        self._timer.update_last_triggered_step(global_step)
-        if self._save(run_context.session, global_step):
-          run_context.request_stop()
+    global_step = run_context.session.run(self._global_step_tensor)
+    if self._timer.should_trigger_for_step(global_step):
+      self._timer.update_last_triggered_step(global_step)
+      logging.info("Triggering checkpoint. %s", global_step)
+      if self._save(run_context.session, global_step):
+        run_context.request_stop()
 
   def end(self, session):
     if self._save_thread:
       logging.info("Waiting for any pending checkpoints to finish.")
       self._save_thread.join()
+    if self._write_graph_thread:
+      logging.info("Waiting for any pending write_graph to finish.")
+      self._write_graph_thread.join()
 
     last_step = session.run(self._global_step_tensor)
 

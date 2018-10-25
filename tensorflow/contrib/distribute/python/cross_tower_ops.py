@@ -111,7 +111,8 @@ def _validate_value_destination_pairs(value_destination_pairs):
   return True
 
 
-# TODO(yuefengz): consider calling this function in the caller of CrossTowerOps.
+# TODO(yuefengz): consider calling this function in the caller of
+# CrossDeviceOps.
 def get_devices_from(destinations):
   if isinstance(destinations, value_lib.DistributedValues):
     return list(destinations.devices)
@@ -182,8 +183,8 @@ def _simple_reduce(per_device_value, reduce_to_device, accumulation_fn,
   return reduced
 
 
-class CrossTowerOps(object):
-  """Base class for cross-tower reduction and broadcasting algorithms."""
+class CrossDeviceOps(object):
+  """Base class for cross-device reduction and broadcasting algorithms."""
 
   def __init__(self):
     pass
@@ -222,7 +223,7 @@ class CrossTowerOps(object):
       aggregation: Indicates how a variable will be aggregated. Accepted values
         are `tf.VariableAggregation.SUM`, `tf.VariableAggregation.MEAN`.
       value_destination_pairs: a list or a tuple of tuples of PerDevice objects
-        (or tensors with device set if there is one tower) and destinations.
+        (or tensors with device set if there is one device) and destinations.
 
     Returns:
       a list of Mirrored objects.
@@ -267,7 +268,7 @@ class CrossTowerOps(object):
     return _simple_broadcast(tensor, destinations)
 
 
-class ReductionToOneDeviceCrossTowerOps(CrossTowerOps):
+class ReductionToOneDeviceCrossDeviceOps(CrossDeviceOps):
   """Always do reduction to one device first and then do broadcasting.
 
     Batch reduction is done by reduction on each element one by one.
@@ -283,7 +284,7 @@ class ReductionToOneDeviceCrossTowerOps(CrossTowerOps):
     """
     self.reduce_to_device = reduce_to_device
     self.accumulation_fn = accumulation_fn
-    super(ReductionToOneDeviceCrossTowerOps, self).__init__()
+    super(ReductionToOneDeviceCrossDeviceOps, self).__init__()
 
   def _reduce(self, aggregation, per_device_value, destinations):
     if check_destinations(destinations):
@@ -383,20 +384,20 @@ class ConcatAndSplitPacker(object):
   def pack(self, grouped_grads_and_vars):
     """Pack tensors."""
     self.grouped_grads_and_vars = grouped_grads_and_vars
-    self.all_tower_shapes = []
-    self.all_tower_sizes = []
+    self.all_device_shapes = []
+    self.all_device_sizes = []
 
     device_grad_packs = []
-    for tower_grads_and_vars in grouped_grads_and_vars:
-      with ops.colocate_with(tower_grads_and_vars[0][0]):
+    for device_grads_and_vars in grouped_grads_and_vars:
+      with ops.colocate_with(device_grads_and_vars[0][0]):
         # Flatten all the grads.
         flat_grads = [
-            array_ops.reshape(g, [-1]) for g, _ in tower_grads_and_vars
+            array_ops.reshape(g, [-1]) for g, _ in device_grads_and_vars
         ]
         # Remember the original shape of all the grads.
-        tower_shapes = [array_ops.shape(g) for g, _ in tower_grads_and_vars]
+        device_shapes = [array_ops.shape(g) for g, _ in device_grads_and_vars]
         # Remember the original sizes of all the grads.
-        tower_sizes = [array_ops.size(g) for g, _ in tower_grads_and_vars]
+        device_sizes = [array_ops.size(g) for g, _ in device_grads_and_vars]
         # Concat all the flat grads into a big flat tensor.
         concat_grads = array_ops.concat(flat_grads, 0)
 
@@ -411,9 +412,9 @@ class ConcatAndSplitPacker(object):
         # all gradient shapes are defined, we use another method to get the
         # total size.
         # TODO(yuefengz): move this logic to array_ops.size.
-        if all([g.shape.is_fully_defined() for g, _ in tower_grads_and_vars]):
+        if all([g.shape.is_fully_defined() for g, _ in device_grads_and_vars]):
           total_grad_size = sum(
-              [g.shape.num_elements() for g, _ in tower_grads_and_vars])
+              [g.shape.num_elements() for g, _ in device_grads_and_vars])
         else:
           total_grad_size = array_ops.size(concat_grads)
 
@@ -427,42 +428,43 @@ class ConcatAndSplitPacker(object):
         # We should remove the need for variables in
         # aggregate_gradients_using*.
         device_grad_packs.append(zip(grad_packs, [None] * num_splits))
-        self.all_tower_shapes.append(tower_shapes)
-        self.all_tower_sizes.append(tower_sizes)
+        self.all_device_shapes.append(device_shapes)
+        self.all_device_sizes.append(device_sizes)
 
     return device_grad_packs
 
   def unpack(self, summed_device_grad_packs):
     """Reverse the pack."""
     aggregated_device_grads = []
-    for (summed_tower_grad_packs,
-         tower_grads_and_vars, tower_shapes, tower_sizes) in zip(
+    for (summed_device_grad_packs,
+         device_grads_and_vars, device_shapes, device_sizes) in zip(
              summed_device_grad_packs, self.grouped_grads_and_vars,
-             self.all_tower_shapes, self.all_tower_sizes):
+             self.all_device_shapes, self.all_device_sizes):
       # pylint: enable=line-too-long
       # Reverse the packing operations in the previous steps. Form the
       # summed gradients back into their original shapes.
-      with ops.colocate_with(summed_tower_grad_packs[0][0]):
+      with ops.colocate_with(summed_device_grad_packs[0][0]):
         # Form a list of the summed grad packs.
-        device_grad_packs = [g for g, _ in summed_tower_grad_packs]
+        device_grad_packs = [g for g, _ in summed_device_grad_packs]
 
         # Concat them back into a big flat tensor.
         device_grads_concat = array_ops.concat(device_grad_packs, 0)
 
         # Split the tensors back into their original sizes.
-        grads_with_sizes = array_ops.split(device_grads_concat, tower_sizes)
+        grads_with_sizes = array_ops.split(device_grads_concat, device_sizes)
 
         # Reshape the tensors back into their original shapes.
         grads_with_shapes = [
             array_ops.reshape(grad, shape)
-            for shape, grad in zip(tower_shapes, grads_with_sizes)
+            for shape, grad in zip(device_shapes, grads_with_sizes)
         ]
 
         # Form the list with the original list of variables.
-        summed_tower_grads = [
-            (g, v) for g, (_, v) in zip(grads_with_shapes, tower_grads_and_vars)
+        summed_device_grads = [
+            (g, v) for g, (_, v) in zip(grads_with_shapes,
+                                        device_grads_and_vars)
         ]
-        aggregated_device_grads.append(summed_tower_grads)
+        aggregated_device_grads.append(summed_device_grads)
     return aggregated_device_grads
 
 
@@ -494,11 +496,11 @@ class AggregateSmallTensorPacker(object):
     """Aggregate small tensors."""
     if (self.agg_small_grads_max_bytes > 0 and
         self.agg_small_grads_max_group > 0):
-      tower_grads, self.packing = cross_tower_utils.pack_small_tensors(
+      device_grads, self.packing = cross_tower_utils.pack_small_tensors(
           grouped_grads_and_vars,
           max_bytes=self.agg_small_grads_max_bytes,
           max_group=self.agg_small_grads_max_group)
-    return tower_grads
+    return device_grads
 
   def unpack(self, summed_device_grad_packs):
     """Reverse the aggregation process."""
@@ -531,7 +533,7 @@ def _unpack_tensors(reduced, tensor_packer=None):
   return reduced
 
 
-class AllReduceCrossTowerOps(CrossTowerOps):
+class AllReduceCrossDeviceOps(CrossDeviceOps):
   """Reduction using all reduce."""
 
   def __init__(self,
@@ -539,7 +541,7 @@ class AllReduceCrossTowerOps(CrossTowerOps):
                num_packs=1,
                agg_small_grads_max_bytes=0,
                agg_small_grads_max_group=10):
-    """All-reduce implementation of CrossTowerOps.
+    """All-reduce implementation of CrossDeviceOps.
 
     Before performing all-reduce, tensors will be repacked or aggregated for
     more efficient cross-device transportation:
@@ -563,7 +565,7 @@ class AllReduceCrossTowerOps(CrossTowerOps):
     self._num_packs = num_packs
     self._agg_small_grads_max_bytes = agg_small_grads_max_bytes
     self._agg_small_grads_max_group = agg_small_grads_max_group
-    super(AllReduceCrossTowerOps, self).__init__()
+    super(AllReduceCrossDeviceOps, self).__init__()
 
   def _reduce(self, aggregation, per_device_value, destinations):
     contains_indexed_slices = cross_tower_utils.contains_indexed_slices(
@@ -641,11 +643,15 @@ class AllReduceCrossTowerOps(CrossTowerOps):
                                       aggregation)
 
 
+# For compatibility with code using the old name of `AllReduceCrossDeviceOps`.
+AllReduceCrossTowerOps = AllReduceCrossDeviceOps
+
+
 AllReduceSpecTuple = collections.namedtuple("AllReduceSpecTuple",
                                             "alg shards limit")
 
 
-class MultiWorkerAllReduce(AllReduceCrossTowerOps):
+class MultiWorkerAllReduce(AllReduceCrossDeviceOps):
   """All-reduce algorithms for distributed TensorFlow."""
 
   def __init__(self,
@@ -680,9 +686,9 @@ class MultiWorkerAllReduce(AllReduceCrossTowerOps):
         "nccl" all-reduce and other tensors will be applied a 2-shard
         "pscpu/pscpu" algorithm. The third elements should be in increasing
         order across tuples and end with -1 which indicates infinity.
-      num_packs: see AllReduceCrossTowerOps.
-      agg_small_grads_max_bytes: see AllReduceCrossTowerOps.
-      agg_small_grads_max_group: see AllReduceCrossTowerOps.
+      num_packs: see AllReduceCrossDeviceOps.
+      agg_small_grads_max_bytes: see AllReduceCrossDeviceOps.
+      agg_small_grads_max_group: see AllReduceCrossDeviceOps.
     """
     self._worker_devices = worker_devices
     self._num_gpus_per_worker = num_gpus_per_worker
@@ -769,8 +775,8 @@ class MultiWorkerAllReduce(AllReduceCrossTowerOps):
 
 
 # TODO(yuefengz): support in-graph collective all-reduce.
-class CollectiveAllReduce(CrossTowerOps):
-  """All-reduce cross tower ops using collective ops.
+class CollectiveAllReduce(CrossDeviceOps):
+  """All-reduce cross device ops using collective ops.
 
   In the between-graph replicated training, it will still do all-reduces across
   all workers and then put results on the right destinations.
@@ -856,9 +862,9 @@ class CollectiveAllReduce(CrossTowerOps):
         logging.INFO, "Collective All-reduce invoked with batches size = %d, "
         "num_workers = %d" % (len(per_device_values), self._num_workers), 10)
 
-    grouped_by_tower = _group_value_by_device(per_device_values)
+    grouped_by_device = _group_value_by_device(per_device_values)
 
-    grouped_by_var = list(zip(*grouped_by_tower))
+    grouped_by_var = list(zip(*grouped_by_device))
     # grouped_by_var is grouped by variables and takes the following format:
     # [((grad0_gpu0, v0_gpu0), (grad0_gpu1, v0_gpu1), (grad0_gpu2, v0_gpu2) ..),
     #  ((grad1_gpu0, v1_gpu0), (grad1_gpu1, v1_gpu1), (grad1_gpu0, v1_gpu2) ..),
@@ -883,9 +889,9 @@ class CollectiveAllReduce(CrossTowerOps):
             result.append([g, v])
           reduced_gv_list.append(result)
 
-    new_tower_grads = [list(x) for x in zip(*reduced_gv_list)]
+    new_device_grads = [list(x) for x in zip(*reduced_gv_list)]
     return _ungroup_and_make_mirrored(
-        new_tower_grads,
+        new_device_grads,
         per_device_values[0].devices,
         aggregation,
         num_between_graph_workers=self._num_workers)
@@ -913,15 +919,15 @@ def _choose_all_reduce_algorithm(device_links):
   if _has_dgx1_like_links(device_links):
     logging.info("Configured hierarchical_copy with num_packs=%d",
                  len(device_links))
-    return AllReduceCrossTowerOps(
+    return AllReduceCrossDeviceOps(
         "hierarchical_copy", num_packs=len(device_links))
   else:
     logging.info("Configured nccl all-reduce.")
-    return AllReduceCrossTowerOps("nccl", num_packs=1)
+    return AllReduceCrossDeviceOps("nccl", num_packs=1)
 
 
 def choose_the_best(devices, session_config=None):
-  """Find the best subclass of CrossTowerOps given a tensorflow session.
+  """Find the best subclass of CrossDeviceOps given a tensorflow session.
 
   Args:
     devices: a list of devices passed for distribute strategy.
@@ -929,7 +935,7 @@ def choose_the_best(devices, session_config=None):
       deciesion based on all local devices.
 
   Returns:
-    a subclass of CrossTowerOps.
+    a subclass of CrossDeviceOps.
   """
   requested_devices = set([device_util.canonicalize(d) for d in devices])
   machine_devices = device_lib.list_local_devices(session_config=session_config)
@@ -944,12 +950,12 @@ def choose_the_best(devices, session_config=None):
   if len(using_devices) != len(requested_devices):
     logging.warning("Not all devices in distribute strategy are visible by "
                     "TensorFlow sessions.")
-    return ReductionToOneDeviceCrossTowerOps()
+    return ReductionToOneDeviceCrossDeviceOps()
 
   if any([d.device_type.lower() != "gpu" for d in using_devices]):
     logging.warning("Not all devices in DistributionStrategy are visible to "
                     "TensorFlow session.")
-    return ReductionToOneDeviceCrossTowerOps()
+    return ReductionToOneDeviceCrossDeviceOps()
 
   device_links = [[] for _ in range(len(using_devices))]
   for i, device in enumerate(using_devices):

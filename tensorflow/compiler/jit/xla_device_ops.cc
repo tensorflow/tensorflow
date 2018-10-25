@@ -83,6 +83,13 @@ void XlaAssignVariableOp::ComputeAsync(OpKernelContext* context,
   }
 
   // Need to copy, but maybe we can re-use variable's buffer?
+  //
+  // Caution: the correctness of this is subtle. The device-to-device stream
+  // waits for the compute stream before transferring, so we know that there are
+  // no outstanding compute users of the existing tensor. Further, we know that
+  // a host<->device copy would hold a reference to the tensor until the
+  // transfer is complete, so this case cannot be triggered if there is still an
+  // outstanding transfer.
   if (!XlaTensor::RefCountIsOne(*variable->tensor()) ||
       !variable->tensor()->shape().IsSameSize(value.shape())) {
     // Copy to new buffer

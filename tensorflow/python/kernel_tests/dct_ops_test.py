@@ -114,7 +114,7 @@ class DCTOpsTest(test.TestCase):
   def test_random(self):
     """Test randomly generated batches of data."""
     with spectral_ops_test_util.fft_kernel_label_map():
-      with self.test_session(use_gpu=True):
+      with self.session(use_gpu=True):
         for shape in ([1], [2], [3], [10], [2, 20], [2, 3, 25]):
           signals = np.random.rand(*shape).astype(np.float32)
           for norm in (None, "ortho"):

@@ -29,6 +29,11 @@ easy_install3 -U pip==9.0.3
 pip2 install wheel==0.31.1
 pip3 install wheel==0.31.1
 
+# Install last working version of setuptools. This must happen before we install
+# absl-py, which uses install_requires notation introduced in setuptools 20.5.
+pip2 install --upgrade setuptools==39.1.0
+pip3 install --upgrade setuptools==39.1.0
+
 pip2 install virtualenv
 pip3 install virtualenv
 
@@ -112,10 +117,6 @@ pip3 install --upgrade gast
 pip2 install --upgrade termcolor
 pip3 install --upgrade termcolor
 
-# Install last working version of setuptools.
-pip2 install --upgrade setuptools==39.1.0
-pip3 install --upgrade setuptools==39.1.0
-
 # Keras
 pip2 install keras_applications==1.0.6 --no-deps
 pip3 install keras_applications==1.0.6 --no-deps
@@ -127,7 +128,3 @@ pip3 install --upgrade h5py==2.8.0
 # Estimator
 pip2 install tensorflow_estimator --no-deps
 pip3 install tensorflow_estimator --no-deps
-
-# Install last working version of setuptools.
-pip2 install --upgrade setuptools==39.1.0
-pip3 install --upgrade setuptools==39.1.0

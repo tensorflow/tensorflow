@@ -117,7 +117,7 @@ def result_wrapper(result_fn):
   Result computation is an idempotent operation that simply calculates the
   metric value using the state variables.
 
-  If metric state variables are distributed across towers/devices and
+  If metric state variables are distributed across replicas/devices and
   `result()` is requested from the context of one device - This function wraps
   `result()` in a distribution strategy `merge_call()`. With this,
   the metric state variables will be aggregated across devices.
@@ -132,8 +132,8 @@ def result_wrapper(result_fn):
 
   def decorated(metric_obj, *args):
     """Decorated function with merge_call."""
-    tower_context = distribution_strategy_context.get_tower_context()
-    if tower_context is None:  # if in cross tower context already
+    replica_context = distribution_strategy_context.get_replica_context()
+    if replica_context is None:  # if in cross replica context already
       result_t = result_fn(*args)
     else:
       # TODO(psv): Test distribution of metrics using different distribution
@@ -148,8 +148,8 @@ def result_wrapper(result_fn):
         return distribution.unwrap(merge_fn)[0](*args)
 
       # Wrapping result in merge_call. merge_call is used when we want to leave
-      # tower mode and compute a value in cross tower mode.
-      result_t = tower_context.merge_call(merge_fn_wrapper, result_fn, *args)
+      # replica mode and compute a value in cross replica mode.
+      result_t = replica_context.merge_call(merge_fn_wrapper, result_fn, *args)
     check_is_tensor_or_operation(result_t,
                                  'Metric {0}\'s result'.format(metric_obj.name))
     return result_t

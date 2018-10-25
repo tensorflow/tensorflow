@@ -130,8 +130,8 @@ class CheckpointingTests(test.TestCase):
         # non-Layer dependency of the model
         "model/_non_layer/a_variable",
         # The optimizer creates two non-slot variables
-        "optimizer/beta_1_power",
-        "optimizer/beta_2_power",
+        "optimizer/beta1_power",
+        "optimizer/beta2_power",
         # Slot variables
         "model/_second/kernel/.OPTIMIZER_SLOT/optimizer/m",
         "model/_second/kernel/.OPTIMIZER_SLOT/optimizer/v",
@@ -145,7 +145,6 @@ class CheckpointingTests(test.TestCase):
         name + suffix for name in expected_checkpoint_names]
     # The optimizer and Dense layers also save get_config() JSON
     expected_checkpoint_names.extend([
-        "optimizer/.ATTRIBUTES/OBJECT_CONFIG_JSON",
         "model/_second/.ATTRIBUTES/OBJECT_CONFIG_JSON",
         "model/_named_dense/.ATTRIBUTES/OBJECT_CONFIG_JSON"
     ])
@@ -163,20 +162,20 @@ class CheckpointingTests(test.TestCase):
         "my_model/dense/kernel",
         named_variables["model/_named_dense/kernel" + suffix].full_name)
     self.assertEqual(
-        "beta_1_power",
-        named_variables["optimizer/beta_1_power" + suffix].full_name)
+        "beta1_power",
+        named_variables["optimizer/beta1_power" + suffix].full_name)
     self.assertEqual(
-        "beta_2_power",
-        named_variables["optimizer/beta_2_power" + suffix].full_name)
+        "beta2_power",
+        named_variables["optimizer/beta2_power" + suffix].full_name)
     # Spot check the generated protocol buffers.
     self.assertEqual("optimizer",
                      serialized_graph.nodes[0].children[1].local_name)
     optimizer_node = serialized_graph.nodes[serialized_graph.nodes[0].children[
         1].node_id]
-    self.assertEqual("beta_1_power", optimizer_node.children[0].local_name)
+    self.assertEqual("beta1_power", optimizer_node.children[0].local_name)
     self.assertEqual(
-        "beta_1_power", serialized_graph.nodes[
-            optimizer_node.children[0].node_id].attributes[0].full_name)
+        "beta1_power", serialized_graph.nodes[optimizer_node.children[0]
+                                              .node_id].attributes[0].full_name)
     self.assertEqual(
         "my_model/dense/kernel",
         serialized_graph.nodes[optimizer_node.slot_variables[0]
@@ -337,7 +336,7 @@ class CheckpointingTests(test.TestCase):
     checkpoint_directory = self.get_temp_dir()
     checkpoint_prefix = os.path.join(checkpoint_directory, "ckpt")
     for training_continuation in range(3):
-      with ops.Graph().as_default(), self.session(
+      with ops.Graph().as_default(), self.test_session(
           graph=ops.get_default_graph()), test_util.device(use_gpu=True):
         model = MyModel()
         optimizer = adam.AdamOptimizer(0.001)
@@ -370,7 +369,7 @@ class CheckpointingTests(test.TestCase):
     checkpoint_directory = self.get_temp_dir()
     checkpoint_prefix = os.path.join(checkpoint_directory, "ckpt")
     for training_continuation in range(3):
-      with ops.Graph().as_default(), self.session(
+      with ops.Graph().as_default(), self.test_session(
           graph=ops.get_default_graph()), test_util.device(use_gpu=True):
         model = MyModel()
         # Don't actually train so we can test variable values
@@ -479,7 +478,7 @@ class CheckpointingTests(test.TestCase):
     no_slot_status.run_restore_ops()
     self.assertEqual(12., self.evaluate(new_root.var))
     new_root.optimizer = adam.AdamOptimizer(0.1)
-    with self.assertRaisesRegexp(AssertionError, "beta_1_power"):
+    with self.assertRaisesRegexp(AssertionError, "beta1_power"):
       slot_status.assert_consumed()
     self.assertEqual(12., self.evaluate(new_root.var))
     if context.executing_eagerly():
@@ -688,7 +687,7 @@ class CheckpointCompatibilityTests(test.TestCase):
     checkpoint_prefix = os.path.join(checkpoint_directory, "ckpt")
     with context.graph_mode():
       save_graph = ops.Graph()
-      with save_graph.as_default(), self.session(
+      with save_graph.as_default(), self.test_session(
           graph=save_graph) as session:
         root = self._initialized_model()
         name_saver = core_saver.Saver()
@@ -733,7 +732,7 @@ class CheckpointCompatibilityTests(test.TestCase):
     checkpoint_prefix = os.path.join(checkpoint_directory, "ckpt")
     with context.graph_mode():
       save_graph = ops.Graph()
-      with save_graph.as_default(), self.session(
+      with save_graph.as_default(), self.test_session(
           graph=save_graph) as session:
         root = self._initialized_model()
         save_path = root.save(
@@ -752,8 +751,7 @@ class CheckpointCompatibilityTests(test.TestCase):
       save_path = root.save(file_prefix=checkpoint_prefix)
     with context.graph_mode():
       save_graph = ops.Graph()
-      with save_graph.as_default(), self.session(
-          graph=save_graph):
+      with save_graph.as_default(), self.test_session(graph=save_graph):
         root = self._initialized_model()
         self._set_sentinels(root)
         root.restore(save_path).assert_consumed().run_restore_ops()

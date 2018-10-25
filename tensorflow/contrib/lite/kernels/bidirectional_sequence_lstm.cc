@@ -876,6 +876,7 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
       params->merge_outputs ? fw_recurrent_to_output_weights->dims->data[1] : 0;
   const auto actual_bw_output = params->merge_outputs ? fw_output : bw_output;
 
+  // TODO(mirkov): add batch_major support (http://b/117326122).
   switch (fw_input_to_output_weights->type) {
     case kTfLiteFloat32: {
       TfLiteStatus fw_pass_status = lstm_eval::EvalFloat(
@@ -889,8 +890,8 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
           fw_aux_input_to_output_weights, fw_input_gate_bias,
           fw_forget_gate_bias, fw_cell_bias, fw_output_gate_bias,
           fw_projection_weights, fw_projection_bias, &lstm_params,
-          /*forward_sequence=*/true, /*output_offset=*/0, fw_scratch_buffer,
-          fw_activation_state, fw_cell_state, fw_output);
+          /*forward_sequence=*/true, /*time_major=*/true, /*output_offset=*/0,
+          fw_scratch_buffer, fw_activation_state, fw_cell_state, fw_output);
       TF_LITE_ENSURE_OK(context, fw_pass_status);
 
       TfLiteStatus bw_pass_status = lstm_eval::EvalFloat(
@@ -904,8 +905,9 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
           bw_aux_input_to_output_weights, bw_input_gate_bias,
           bw_forget_gate_bias, bw_cell_bias, bw_output_gate_bias,
           bw_projection_weights, bw_projection_bias, &lstm_params,
-          /*forward_sequence=*/false, bw_output_offset, bw_scratch_buffer,
-          bw_activation_state, bw_cell_state, actual_bw_output);
+          /*forward_sequence=*/false, /*time_major=*/true, bw_output_offset,
+          bw_scratch_buffer, bw_activation_state, bw_cell_state,
+          actual_bw_output);
       TF_LITE_ENSURE_OK(context, bw_pass_status);
       return kTfLiteOk;
     }
@@ -942,11 +944,11 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
           fw_aux_input_to_output_weights, fw_input_gate_bias,
           fw_forget_gate_bias, fw_cell_bias, fw_output_gate_bias,
           fw_projection_weights, fw_projection_bias, &lstm_params,
-          /*forward_sequence=*/true, /*output_offset=*/0, fw_scratch_buffer,
-          scaling_factors, prod_scaling_factors, recovered_cell_weights,
-          input_quantized, aux_input_quantized, fw_activation_state_quantized,
-          fw_cell_state_quantized, fw_activation_state, fw_cell_state,
-          fw_output);
+          /*forward_sequence=*/true, /*time_major=*/true, /*output_offset=*/0,
+          fw_scratch_buffer, scaling_factors, prod_scaling_factors,
+          recovered_cell_weights, input_quantized, aux_input_quantized,
+          fw_activation_state_quantized, fw_cell_state_quantized,
+          fw_activation_state, fw_cell_state, fw_output);
       TF_LITE_ENSURE_OK(context, fw_pass_status);
 
       TfLiteStatus bw_pass_status = lstm_eval::EvalHybrid(
@@ -955,16 +957,16 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
           bw_recurrent_to_input_weights, bw_recurrent_to_forget_weights,
           bw_recurrent_to_cell_weights, bw_recurrent_to_output_weights,
           bw_cell_to_input_weights, bw_cell_to_forget_weights,
-          bw_cell_to_output_weights, aux_input, fw_aux_input_to_input_weights,
-          fw_aux_input_to_forget_weights, fw_aux_input_to_cell_weights,
-          fw_aux_input_to_output_weights, bw_input_gate_bias,
+          bw_cell_to_output_weights, aux_input, bw_aux_input_to_input_weights,
+          bw_aux_input_to_forget_weights, bw_aux_input_to_cell_weights,
+          bw_aux_input_to_output_weights, bw_input_gate_bias,
           bw_forget_gate_bias, bw_cell_bias, bw_output_gate_bias,
           bw_projection_weights, bw_projection_bias, &lstm_params,
-          /*forward_sequence=*/false, bw_output_offset, bw_scratch_buffer,
-          scaling_factors, prod_scaling_factors, recovered_cell_weights,
-          input_quantized, aux_input_quantized, bw_activation_state_quantized,
-          bw_cell_state_quantized, bw_activation_state, bw_cell_state,
-          actual_bw_output);
+          /*forward_sequence=*/false, /*time_major=*/true, bw_output_offset,
+          bw_scratch_buffer, scaling_factors, prod_scaling_factors,
+          recovered_cell_weights, input_quantized, aux_input_quantized,
+          bw_activation_state_quantized, bw_cell_state_quantized,
+          bw_activation_state, bw_cell_state, actual_bw_output);
       TF_LITE_ENSURE_OK(context, bw_pass_status);
       return kTfLiteOk;
     }

@@ -26,6 +26,7 @@ from tensorflow.python.compat import compat
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework.ops import internal_convert_to_tensor
 from tensorflow.python.framework.ops import name_scope
 from tensorflow.python.ops import array_ops
@@ -427,14 +428,15 @@ class SdcaModel(object):
           dim_0_size = self._get_first_dimension_size_statically(
               w, num_partitions)
 
-          if dim_0_size.value:
-            num_total_ids = constant_op.constant(dim_0_size.value,
-                                                 flat_ids.dtype)
+          if tensor_shape.dimension_value(dim_0_size):
+            num_total_ids = constant_op.constant(
+                tensor_shape.dimension_value(dim_0_size),
+                flat_ids.dtype)
           else:
             dim_0_sizes = []
             for p in range(num_partitions):
-              if w[p].get_shape()[0].value is not None:
-                dim_0_sizes.append(w[p].get_shape()[0].value)
+              if tensor_shape.dimension_value(w[p].shape[0]) is not None:
+                dim_0_sizes.append(tensor_shape.dimension_value(w[p].shape[0]))
               else:
                 with ops.colocate_with(w[p]):
                   dim_0_sizes.append(array_ops.shape(w[p])[0])

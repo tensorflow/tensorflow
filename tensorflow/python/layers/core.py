@@ -28,7 +28,7 @@ from tensorflow.python.ops import init_ops
 from tensorflow.python.util.tf_export import tf_export
 
 
-@tf_export('layers.Dense')
+@tf_export(v1=['layers.Dense'])
 class Dense(keras_layers.Dense, base.Layer):
   """Densely-connected layer class.
 
@@ -109,7 +109,7 @@ class Dense(keras_layers.Dense, base.Layer):
                                 **kwargs)
 
 
-@tf_export('layers.dense')
+@tf_export(v1=['layers.dense'])
 def dense(
     inputs, units,
     activation=None,
@@ -184,7 +184,7 @@ def dense(
   return layer.apply(inputs)
 
 
-@tf_export('layers.Dropout')
+@tf_export(v1=['layers.Dropout'])
 class Dropout(keras_layers.Dropout, base.Layer):
   """Applies Dropout to the input.
 
@@ -223,7 +223,7 @@ class Dropout(keras_layers.Dropout, base.Layer):
     return super(Dropout, self).call(inputs, training=training)
 
 
-@tf_export('layers.dropout')
+@tf_export(v1=['layers.dropout'])
 def dropout(inputs,
             rate=0.5,
             noise_shape=None,
@@ -265,7 +265,7 @@ def dropout(inputs,
   return layer.apply(inputs, training=training)
 
 
-@tf_export('layers.Flatten')
+@tf_export(v1=['layers.Flatten'])
 class Flatten(keras_layers.Flatten, base.Layer):
   """Flattens an input tensor while preserving the batch axis (axis 0).
 
@@ -291,7 +291,7 @@ class Flatten(keras_layers.Flatten, base.Layer):
   pass
 
 
-@tf_export('layers.flatten')
+@tf_export(v1=['layers.flatten'])
 def flatten(inputs, name=None, data_format='channels_last'):
   """Flattens an input tensor while preserving the batch axis (axis 0).
 

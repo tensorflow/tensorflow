@@ -101,6 +101,9 @@ void Pack(Model* model, PackOperator const& op) {
     case ArrayDataType::kInt64:
       Pack<ArrayDataType::kInt64>(model, *op);
       break;
+    case ArrayDataType::kComplex64:
+      Pack<ArrayDataType::kComplex64>(model, *op);
+      break;
     default:
       LOG(FATAL) << "Unsupported data type given to Pack op with output \""
                  << op->outputs[0] << "\"";

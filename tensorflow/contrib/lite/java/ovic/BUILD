@@ -39,6 +39,7 @@ java_binary(
     tags = ["no_oss"],
     deps = [
         "//tensorflow/contrib/lite/java/ovic:ovicbenchmarkerlib_java",
+        "//tensorflow/contrib/lite/java/ovic:ovicdetectionbenchmarkerlib_java",
     ],
 )
 
@@ -84,7 +85,6 @@ java_test(
     data = [
         "//tensorflow/contrib/lite/java/ovic/src/testdata:coco_labels.txt",
         "//tensorflow/contrib/lite/java/ovic/src/testdata:ovic_testdata",
-        "@tflite_mobilenet_ssd_quant//:detect.tflite",
     ],
     javacopts = JAVACOPTS,
     tags = ["no_oss"],

@@ -27,8 +27,12 @@ from tensorflow.python.framework import meta_graph
 from tensorflow.python.framework import ops
 from tensorflow.python.grappler import tf_optimizer
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import functional_ops
 from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import list_ops
+from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import tensor_array_grad  # pylint: disable=unused-import
 from tensorflow.python.ops import while_v2
 from tensorflow.python.ops.control_flow_ops import while_loop as while_loop_v1
 from tensorflow.python.ops.while_v2 import while_loop as while_loop_v2
@@ -93,7 +97,7 @@ class WhileV2Test(test.TestCase, parameterized.TestCase):
   def testMultipleWhileLoops(self):
     x = constant_op.constant(2.)
     ret1 = while_loop_v2(lambda v: v < 4., lambda v: v * v, [x])  # x**2
-    ret2 = while_loop_v2(lambda v: v < 16., lambda v: v * v, ret1)  # x**4
+    ret2 = while_loop_v2(lambda v: v < 16., lambda v: v * v, [ret1])  # x**4
     grad = gradients_impl.gradients(ret2, [x])  # 4x**3
     grad_grad = gradients_impl.gradients(grad, [x])  # 12x**2
     with self.cached_session() as sess:
@@ -246,7 +250,7 @@ class WhileV2Test(test.TestCase, parameterized.TestCase):
 
     # Forward pass.
     ret = while_loop_v2(lambda v, u: v < 8., lambda v, u: (v * v, u), [x, y])
-    while_op = ret[0].op
+    while_op = ret[0].op.inputs[0].op
     # Get the TensorList output of While op containing the accumulated values
     # of y.
     # while_op.inputs: [counter_arg, x_arg, y_arg, *accumulators]
@@ -266,6 +270,52 @@ class WhileV2Test(test.TestCase, parameterized.TestCase):
     _, val = list_ops.tensor_list_pop_back(grad_output,
                                            element_dtype=dtypes.float32)
     MatchShape(val.shape)
+
+  def _createWhile(self, name):
+    """Helper function testDefaultName."""
+    output = while_v2.while_loop(lambda i: i < 3, lambda i: i + 1,
+                                 [constant_op.constant(0)])
+    while_op = output.op.inputs[0].op
+    self.assertEqual(while_op.type, "While")
+    return while_op
+
+  def testDefaultName(self):
+    with ops.Graph().as_default():
+      while_op = self._createWhile(None)
+      self.assertEqual(while_op.name, "while")
+      self.assertRegexpMatches(
+          while_op.get_attr("cond").name, r"while_cond_\d*")
+      self.assertRegexpMatches(
+          while_op.get_attr("body").name, r"while_body_\d*")
+
+    with ops.Graph().as_default():
+      with ops.name_scope("foo"):
+        while1_op = self._createWhile("")
+        self.assertEqual(while1_op.name, "foo/while")
+        self.assertRegexpMatches(
+            while1_op.get_attr("cond").name, r"foo_while_cond_\d*")
+        self.assertRegexpMatches(
+            while1_op.get_attr("body").name, r"foo_while_body_\d*")
+
+        while2_op = self._createWhile(None)
+        self.assertEqual(while2_op.name, "foo/while_1")
+        self.assertRegexpMatches(
+            while2_op.get_attr("cond").name, r"foo_while_1_cond_\d*")
+        self.assertRegexpMatches(
+            while2_op.get_attr("body").name, r"foo_while_1_body_\d*")
+
+  def testWhileAndTensorArray(self):
+    old_enable_while_v2 = control_flow_ops.ENABLE_WHILE_V2
+    control_flow_ops.ENABLE_WHILE_V2 = True
+    with self.cached_session() as sess:
+      param = constant_op.constant(2.0)
+      y0 = constant_op.constant([1.0, 2.0, 3.0, 4.0, 5.0, 6.0], name="elems")
+      # map_fn uses TensorArray internally.
+      r = functional_ops.map_fn(lambda x: math_ops.multiply(x, param), y0)
+      self.assertAllClose([2.0, 4.0, 6.0, 8.0, 10.0, 12.0], sess.run(r))
+      r = gradients_impl.gradients(r, param)[0]
+      self.assertAllClose(21.0, sess.run(r))
+    control_flow_ops.ENABLE_WHILE_V2 = old_enable_while_v2
 
 
 def ScalarShape():

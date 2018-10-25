@@ -36,7 +36,7 @@ namespace tensorflow {
 namespace data {
 namespace {
 
-// See documentation in ../ops/dataset_ops.cc for a high-level
+// See documentation in ../../ops/dataset_ops.cc for a high-level
 // description of the following op.
 class OptimizeDatasetOp : public UnaryDatasetOpKernel {
  public:
@@ -113,6 +113,16 @@ class OptimizeDatasetOp : public UnaryDatasetOpKernel {
       // using the optimized function library.
       TF_RETURN_IF_ERROR(
           ctx->function_library()->Clone(&flib_def_, &pflr_, &lib_));
+
+      // Some functions may have been modified without having their names
+      // changed (for example, nested dataset graphs from FlatMap or
+      // Interleave). To avoid name conflicts, we remove these functions from
+      // flib_def_ before adding the optimized function library.
+      for (const FunctionDef& fd : graph_def.library().function()) {
+        if (flib_def_->Find(fd.signature().name()) != nullptr) {
+          TF_RETURN_IF_ERROR(flib_def_->RemoveFunction(fd.signature().name()));
+        }
+      }
       TF_RETURN_IF_ERROR(flib_def_->AddLibrary(graph_def.library()));
 
       Graph graph(OpRegistry::Global());
@@ -214,6 +224,17 @@ class OptimizeDatasetOp : public UnaryDatasetOpKernel {
       // moment (e.g. because we have no cost model for dataset ops).
       if (optimizations_.empty()) {
         rewriter_config.add_optimizers("non-existent");
+      } else {
+        // If we apply custom dataset optimizers, explicitly trigger a subset of
+        // standard grappler optimizations to further optimize modified dataset
+        // graphs (e.g. performing constant folding on merged functions,
+        // removing unused graph nodes)
+        // TODO(b/118175421): This should be part of the tf.data optimization
+        // pass manager.
+        for (const auto& optimizer : {"pruning", "function", "constfold",
+                                      "shape", "arithmetic", "dependency"}) {
+          rewriter_config.add_optimizers(optimizer);
+        }
       }
       tensorflow::grappler::ItemConfig item_config;
       item_config.apply_optimizations = true;

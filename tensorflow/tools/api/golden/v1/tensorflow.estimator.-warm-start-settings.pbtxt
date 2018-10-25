@@ -1,7 +1,7 @@
 path: "tensorflow.estimator.WarmStartSettings"
 tf_class {
-  is_instance: "<class \'tensorflow.python.estimator.estimator.WarmStartSettings\'>"
-  is_instance: "<class \'tensorflow.python.estimator.estimator.WarmStartSettings\'>"
+  is_instance: "<class \'tensorflow_estimator.python.estimator.estimator.WarmStartSettings\'>"
+  is_instance: "<class \'tensorflow_estimator.python.estimator.estimator.WarmStartSettings\'>"
   is_instance: "<type \'tuple\'>"
   member {
     name: "ckpt_to_initialize_from"

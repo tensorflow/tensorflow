@@ -74,7 +74,7 @@ class Conv3DTest(test.TestCase):
     # during the conv3d.
     x1 = [f * 1.0 / total_size_tensor for f in range(1, total_size_tensor + 1)]
     x2 = [f * 1.0 / total_size_filter for f in range(1, total_size_filter + 1)]
-    with self.test_session(use_gpu=use_gpu):
+    with self.cached_session(use_gpu=use_gpu):
       t1 = constant_op.constant(x1, shape=tensor_in_sizes, dtype=dtype)
       t2 = constant_op.constant(x2, shape=filter_in_sizes, dtype=dtype)
 
@@ -133,7 +133,7 @@ class Conv3DTest(test.TestCase):
     # numbers from 1.
     x1 = [f * 1.0 for f in range(1, total_size_tensor + 1)]
     x2 = [f * 1.0 for f in range(1, total_size_filter + 1)]
-    with self.test_session(use_gpu=use_gpu):
+    with self.cached_session(use_gpu=use_gpu):
       t1 = constant_op.constant(x1, shape=tensor_in_sizes)
       t2 = constant_op.constant(x2, shape=filter_in_sizes)
       if isinstance(stride, collections.Iterable):
@@ -413,7 +413,7 @@ class Conv3DTest(test.TestCase):
       elif data_type == dtypes.float16:
         tolerance = 1e-3
 
-      with self.test_session(use_gpu=use_gpu):
+      with self.cached_session(use_gpu=use_gpu):
         orig_input_tensor = constant_op.constant(
             input_data, shape=input_shape, dtype=data_type, name="input")
         filter_tensor = constant_op.constant(
@@ -659,7 +659,7 @@ class Conv3DTest(test.TestCase):
     # because we currently do not have a CPU implementation for arbitrary
     # dilation rates.
     if default_dilations or use_gpu:
-      with self.test_session(use_gpu=use_gpu) as sess:
+      with self.cached_session(use_gpu=use_gpu) as sess:
         if data_format == "NCDHW":
           input_sizes = test_util.NHWCToNCHW(input_sizes)
         t1 = constant_op.constant(x1, shape=input_sizes)

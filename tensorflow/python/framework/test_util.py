@@ -70,6 +70,7 @@ from tensorflow.python.platform import googletest
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import server_lib
 from tensorflow.python.util import compat
+from tensorflow.python.util import deprecation
 from tensorflow.python.util import memory
 from tensorflow.python.util import nest
 from tensorflow.python.util import tf_inspect
@@ -1258,6 +1259,8 @@ class TensorFlowTestCase(googletest.TestCase):
         yield cached
 
   @contextlib.contextmanager
+  @deprecation.deprecated(None, "Use `self.session()` or "
+                          "`self.cached_session()` instead.")
   def test_session(self,
                    graph=None,
                    config=None,
@@ -1702,7 +1705,7 @@ class TensorFlowTestCase(googletest.TestCase):
     self.assertGreater(np.min(a), comparison_target)
 
   def assertAllLess(self, a, comparison_target):
-    """Assert element values are all greater than a target value.
+    """Assert element values are all less than a target value.
 
     Args:
       a: The numpy `ndarray`, or anything that can be converted into a
@@ -1713,7 +1716,7 @@ class TensorFlowTestCase(googletest.TestCase):
     self.assertLess(np.max(a), comparison_target)
 
   def assertAllGreaterEqual(self, a, comparison_target):
-    """Assert element values are all greater than a target value.
+    """Assert element values are all greater than or equal to a target value.
 
     Args:
       a: The numpy `ndarray`, or anything that can be converted into a
@@ -1724,7 +1727,7 @@ class TensorFlowTestCase(googletest.TestCase):
     self.assertGreaterEqual(np.min(a), comparison_target)
 
   def assertAllLessEqual(self, a, comparison_target):
-    """Assert element values are all greater than a target value.
+    """Assert element values are all less than or equal to a target value.
 
     Args:
       a: The numpy `ndarray`, or anything that can be converted into a

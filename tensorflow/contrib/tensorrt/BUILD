@@ -326,6 +326,34 @@ tf_cuda_cc_test(
     ]),
 )
 
+tf_cuda_cc_test(
+    name = "convert_nodes_test",
+    size = "medium",
+    srcs = ["convert/convert_nodes_test.cc"],
+    tags = [
+        "no_cuda_on_cpu_tap",
+        "no_windows",
+        "nomac",
+    ],
+    deps = [
+        ":trt_logging",
+        ":trt_conversion",
+        ":trt_plugins",
+        "@com_google_googletest//:gtest",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:core_cpu_base",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+    ] + if_tensorrt([
+        "@local_config_cuda//cuda:cuda_headers",
+        "@local_config_tensorrt//:nv_infer",
+    ]),
+)
+
 # Library for the segmenting portion of TensorRT operation creation
 cc_library(
     name = "segment",
@@ -455,6 +483,7 @@ cuda_py_tests(
         "test/multi_connection_neighbor_engine_test.py",
         "test/neighboring_engine_test.py",
         "test/rank_two_test.py",
+        "test/reshape_transpose_test.py",
         "test/vgg_block_nchw_test.py",
         "test/vgg_block_test.py",
     ],

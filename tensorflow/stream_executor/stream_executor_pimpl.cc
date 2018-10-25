@@ -22,6 +22,7 @@ limitations under the License.
 #include <atomic>
 #include <utility>
 
+#include "absl/strings/str_cat.h"
 #include "tensorflow/core/util/env_var.h"
 #include "tensorflow/stream_executor/blas.h"
 #include "tensorflow/stream_executor/fft.h"
@@ -45,7 +46,7 @@ namespace {
 
 string StackTraceIfVLOG10() {
   if (VLOG_IS_ON(10)) {
-    return port::StrCat(" ", port::CurrentStackTrace(), "\n");
+    return absl::StrCat(" ", port::CurrentStackTrace(), "\n");
   } else {
     return "";
   }
@@ -501,13 +502,13 @@ port::StatusOr<DeviceMemoryBase> StreamExecutor::GetUntypedSymbol(
   if (static_cast<bool>(module_handle)) {
     return port::Status(
         port::error::NOT_FOUND,
-        port::StrCat("Check if module containing symbol ", symbol_name,
+        absl::StrCat("Check if module containing symbol ", symbol_name,
                      " is loaded (module_handle = ",
                      reinterpret_cast<uintptr_t>(module_handle.id()), ")"));
   } else {
     return port::Status(
         port::error::NOT_FOUND,
-        port::StrCat("Check if kernel using the symbol is loaded: ",
+        absl::StrCat("Check if kernel using the symbol is loaded: ",
                      symbol_name));
   }
 }

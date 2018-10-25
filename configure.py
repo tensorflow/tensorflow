@@ -1182,6 +1182,7 @@ def set_tf_nccl_install_path(environ_cp):
       if is_windows() or is_cygwin():
         nccl_install_path = cygpath(nccl_install_path)
 
+      nccl_lib_path = ''
       if is_windows():
         nccl_lib_path = 'lib/x64/nccl.lib'
       elif is_linux():
@@ -1667,6 +1668,8 @@ def main():
   config_info_line('gdr', 'Build with GDR support.')
   config_info_line('verbs', 'Build with libverbs support.')
   config_info_line('ngraph', 'Build with Intel nGraph support.')
+  config_info_line('dynamic_kernels',
+                   '(Experimental) Build kernels into separate shared objects.')
 
   print('Preconfigured Bazel build configs to DISABLE default on features:')
   config_info_line('noaws', 'Disable AWS S3 filesystem support.')

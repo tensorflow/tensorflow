@@ -32,14 +32,13 @@ cc_binary(
     deps = [
         ":benchmark_tflite_model_lib",
         ":logging",
-        "//tensorflow/contrib/lite/testing:init_tensorflow",
     ],
 )
 
 cc_binary(
     name = "benchmark_model_plus_flex",
     srcs = [
-        "benchmark_main.cc",
+        "benchmark_plus_flex_main.cc",
     ],
     copts = common_copts,
     linkopts = tflite_linkopts() + select({
@@ -87,6 +86,9 @@ cc_test(
     name = "command_line_flags_test",
     srcs = ["command_line_flags_test.cc"],
     copts = common_copts,
+    tags = [
+        "tflite_not_portable_ios",  # TODO(b/117786830)
+    ],
     visibility = ["//visibility:private"],
     deps = [
         ":command_line_flags",

@@ -26,6 +26,7 @@ from tensorflow.contrib.all_reduce.python import all_reduce as ar
 from tensorflow.core.framework import types_pb2
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
@@ -116,7 +117,7 @@ class AllReduceTest(test_util.TensorFlowTestCase):
     # same number outputs as inputs
     self.assertEqual(len(output_tensors), len(input_tensors))
     num_chunks = 2 * len(input_tensors)
-    tlen = input_tensors[0].shape[0].value
+    tlen = tensor_shape.dimension_value(input_tensors[0].shape[0])
     for otl in output_tensors:
       self.assertEqual(len(otl), num_chunks)
       for ot in otl:

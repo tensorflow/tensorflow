@@ -211,20 +211,6 @@ tf_cc_test(
 )
 
 tf_cc_test(
-    name = "cudnn_fused_conv_rewriter_test",
-    srcs = ["cudnn_fused_conv_rewriter_test.cc"],
-    tags = tf_cuda_tests_tags(),
-    deps = [
-        ":gpu_codegen_test",
-        "//tensorflow/compiler/xla/service:hlo_parser",
-        "//tensorflow/compiler/xla/tests:hlo_test_base",
-        "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
-        "@com_google_absl//absl/strings",
-    ],
-)
-
-tf_cc_test(
     name = "gpu_atomic_test",
     srcs = ["gpu_atomic_test.cc"],
     tags = tf_cuda_tests_tags(),

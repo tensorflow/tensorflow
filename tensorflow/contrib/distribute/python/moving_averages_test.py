@@ -39,26 +39,26 @@ all_combinations = combinations.combine(
 class AssignMovingAveragesTest(test.TestCase, parameterized.TestCase):
 
   @combinations.generate(all_combinations)
-  def testTowerModeWithoutZeroDebias(self, distribution):
-    tower_id = [0]
+  def testReplicaModeWithoutZeroDebias(self, distribution):
+    replica_id = [0]
 
-    def tower_fn():
+    def replica_fn():
       var = variables.Variable([10.0, 11.0])
-      val = constant_op.constant([1.0 + tower_id[0], 2.0 - tower_id[0]])
-      tower_id[0] += 1
+      val = constant_op.constant([1.0 + replica_id[0], 2.0 - replica_id[0]])
+      replica_id[0] += 1
       decay = 0.25
       assign = moving_averages.assign_moving_average(
           var, val, decay, zero_debias=False)
       return var, assign
 
     with distribution.scope(), self.cached_session() as sess:
-      var, assign = distribution.call_for_each_tower(tower_fn)
+      var, assign = distribution.call_for_each_replica(replica_fn)
       variables.global_variables_initializer().run()
       self.assertAllClose([10.0, 11.0], var.eval())
       sess.run(distribution.unwrap(assign))
-      # Mean of val across calls to tower_fn().
-      average_val = [1.0 + 0.5 * (tower_id[0] - 1),
-                     2.0 - 0.5 * (tower_id[0] - 1)]
+      # Mean of val across calls to replica_fn().
+      average_val = [1.0 + 0.5 * (replica_id[0] - 1),
+                     2.0 - 0.5 * (replica_id[0] - 1)]
       val_weight = 1.0 - 0.25
       self.assertAllClose(
           [10.0 * 0.25 + average_val[0] * val_weight,
@@ -66,29 +66,29 @@ class AssignMovingAveragesTest(test.TestCase, parameterized.TestCase):
           var.eval())
 
   @combinations.generate(all_combinations)
-  def testTowerMode(self, distribution):
-    tower_id = [0]
+  def testReplicaMode(self, distribution):
+    replica_id = [0]
 
-    def tower_fn():
+    def replica_fn():
       var = variables.Variable([0.0, 0.0])
-      val = constant_op.constant([1.0 + tower_id[0], 2.0 - tower_id[0]])
-      tower_id[0] += 1
+      val = constant_op.constant([1.0 + replica_id[0], 2.0 - replica_id[0]])
+      replica_id[0] += 1
       decay = 0.25
       assign = moving_averages.assign_moving_average(var, val, decay)
       return var, assign.op
 
     with distribution.scope(), self.cached_session() as sess:
-      var, assign_op = distribution.call_for_each_tower(tower_fn)
+      var, assign_op = distribution.call_for_each_replica(replica_fn)
       variables.global_variables_initializer().run()
       self.assertAllClose([0.0, 0.0], var.eval())
       sess.run(distribution.unwrap(assign_op))
-      # Mean of val across calls to tower_fn().
-      average_val = [1.0 + 0.5 * (tower_id[0] - 1),
-                     2.0 - 0.5 * (tower_id[0] - 1)]
+      # Mean of val across calls to replica_fn().
+      average_val = [1.0 + 0.5 * (replica_id[0] - 1),
+                     2.0 - 0.5 * (replica_id[0] - 1)]
       self.assertAllClose(average_val, var.eval())
 
   @combinations.generate(all_combinations)
-  def testCrossTowerWithoutZeroDebias(self, distribution):
+  def testCrossDeviceWithoutZeroDebias(self, distribution):
     with distribution.scope(), self.cached_session() as sess:
       var = variables.Variable([10.0, 11.0])
       val = constant_op.constant([1.0, 2.0])
@@ -116,7 +116,7 @@ class AssignMovingAveragesTest(test.TestCase, parameterized.TestCase):
           var.eval())
 
   @combinations.generate(all_combinations)
-  def testCrossTower(self, distribution):
+  def testCrossDevice(self, distribution):
     with distribution.scope(), self.cached_session() as sess:
       var = variables.Variable([0.0, 0.0])
       val = array_ops.placeholder(dtypes.float32)

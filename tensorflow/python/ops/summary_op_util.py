@@ -44,13 +44,13 @@ _INVALID_TAG_CHARACTERS = re.compile(r'[^-/\w\.]')
 
 
 def skip_summary():
-  # If using multiple towers in distributed strategy, skip summaries on all
-  # towers except the first one (tower_id=0).
+  # If using multiple replicas in distributed strategy, skip summaries on all
+  # replicas except the first one (replica_id=0).
   # TODO(priyag): Add a new optional argument that will provide multiple
-  # alternatives to override default behavior. (e.g. run on last tower,
-  # compute sum or mean across towers).
-  tower_context = distribution_strategy_context.get_tower_context()
-  return tower_context and tower_context.tower_id > 0
+  # alternatives to override default behavior. (e.g. run on last replica,
+  # compute sum or mean across replicas).
+  replica_context = distribution_strategy_context.get_replica_context()
+  return replica_context and replica_context.replica_id > 0
 
 
 def clean_tag(name):

@@ -807,7 +807,7 @@ class WarmStartingUtilTest(test.TestCase):
     def _partitioner(shape, dtype):  # pylint:disable=unused-argument
       # Partition each var into 2 equal slices.
       partitions = [1] * len(shape)
-      partitions[0] = min(2, shape[0].value)
+      partitions[0] = min(2, shape.dims[0].value)
       return partitions
 
     # New graph, new session with warm-starting.
@@ -933,7 +933,7 @@ class WarmStartingUtilTest(test.TestCase):
     def _partitioner(shape, dtype):  # pylint:disable=unused-argument
       # Partition each var into 2 equal slices.
       partitions = [1] * len(shape)
-      partitions[0] = min(2, shape[0].value)
+      partitions[0] = min(2, shape.dims[0].value)
       return partitions
 
     # New graph, new session with warm-starting.
@@ -993,7 +993,7 @@ class WarmStartingUtilTest(test.TestCase):
     def _partitioner(shape, dtype):  # pylint:disable=unused-argument
       # Partition each var into 2 equal slices.
       partitions = [1] * len(shape)
-      partitions[0] = min(2, shape[0].value)
+      partitions[0] = min(2, shape.dims[0].value)
       return partitions
 
     # Create feature columns.
@@ -1063,7 +1063,7 @@ class WarmStartingUtilTest(test.TestCase):
     def _partitioner(shape, dtype):  # pylint:disable=unused-argument
       # Partition each var into 2 equal slices.
       partitions = [1] * len(shape)
-      partitions[0] = min(2, shape[0].value)
+      partitions[0] = min(2, shape.dims[0].value)
       return partitions
 
     # Create feature columns.

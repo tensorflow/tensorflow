@@ -18,6 +18,7 @@ limitations under the License.
 #include <unordered_map>
 #include <unordered_set>
 
+#include "absl/algorithm/container.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/graph/algorithm.h"
@@ -67,25 +68,18 @@ Status BackwardsConstAnalysis(const Graph& g,
     }
 
     // Mark any compile-time constant operator arguments as const.
-    const std::unordered_set<string>* const_inputs =
-        XlaOpRegistry::CompileTimeConstantInputs(node->type_string());
-    if (!const_inputs || const_inputs->empty()) return;
+    std::vector<int> const_input_idxs;
+    status = XlaOpRegistry::CompileTimeConstantInputs(
+        node->def(), node->op_def(), &const_input_idxs);
 
-    NameRangeMap input_name_ranges;
-    status =
-        NameRangesForNode(*node, node->op_def(), &input_name_ranges, nullptr);
-    if (!status.ok()) return;
+    if (!status.ok()) {
+      return;
+    }
 
-    for (const string& input : *const_inputs) {
-      auto name_range = input_name_ranges.find(input);
-      if (name_range == input_name_ranges.end()) continue;
-
-      for (Edge const* edge : node->in_edges()) {
-        if (edge->dst_input() >= name_range->second.first &&
-            edge->dst_input() < name_range->second.second &&
-            edge_filter(*edge)) {
-          (*compile_time_const_nodes)[edge->src()->id()] = true;
-        }
+    for (Edge const* edge : node->in_edges()) {
+      if (absl::c_binary_search(const_input_idxs, edge->dst_input()) &&
+          edge_filter(*edge)) {
+        (*compile_time_const_nodes)[edge->src()->id()] = true;
       }
     }
   };

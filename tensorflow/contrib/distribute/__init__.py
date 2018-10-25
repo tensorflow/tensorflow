@@ -48,6 +48,7 @@ _allowed_symbols = [
     'DistributionStrategy',
     'MirroredStrategy',
     'Monitor',
+    'MultiWorkerAllReduce',
     'OneDeviceStrategy',
     'ParameterServerStrategy',
     'ReductionToOneDeviceCrossTowerOps',

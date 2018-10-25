@@ -54,16 +54,22 @@ TfLiteStatus TfLiteTypeSizeOf(TfLiteType type, size_t* size,
 }
 
 TfLiteStatus BytesRequired(const tflite::Tensor& flatbuffer_tensor,
-                           size_t dims_size, size_t* bytes,
+                           size_t dims_size, size_t* bytes, size_t* type_size,
                            ErrorReporter* error_reporter) {
   TfLiteType tf_lite_type;
   TF_LITE_ENSURE_STATUS(ConvertTensorType(flatbuffer_tensor.type(),
                                           &tf_lite_type, error_reporter));
-  size_t type_size;
   TF_LITE_ENSURE_STATUS(
-      TfLiteTypeSizeOf(tf_lite_type, &type_size, error_reporter));
-  *bytes = dims_size * type_size;
+      TfLiteTypeSizeOf(tf_lite_type, type_size, error_reporter));
+  *bytes = dims_size * (*type_size);
   return kTfLiteOk;
+}
+
+uint8_t* AlignPointerRoundUp(uint8_t* data, size_t alignment) {
+  size_t data_as_size_t = reinterpret_cast<size_t>(data);
+  uint8_t* aligned_result = reinterpret_cast<uint8_t*>(
+      ((data_as_size_t + (alignment - 1)) / alignment) * alignment);
+  return aligned_result;
 }
 
 }  // namespace
@@ -84,8 +90,10 @@ TfLiteStatus SimpleTensorAllocator::AllocateTensor(
       if (size_t array_size = array->size()) {
         result->data.raw =
             const_cast<char*>(reinterpret_cast<const char*>(array->data()));
+        size_t type_size;
         TF_LITE_ENSURE_STATUS(BytesRequired(flatbuffer_tensor, array_size,
-                                            &result->bytes, error_reporter));
+                                            &result->bytes, &type_size,
+                                            error_reporter));
       }
     }
   }
@@ -96,9 +104,12 @@ TfLiteStatus SimpleTensorAllocator::AllocateTensor(
     for (int n = 0; n < flatbuffer_tensor.shape()->Length(); ++n) {
       data_size *= flatbuffer_tensor.shape()->Get(n);
     }
+    size_t type_size;
     TF_LITE_ENSURE_STATUS(BytesRequired(flatbuffer_tensor, data_size,
-                                        &result->bytes, error_reporter));
-    result->data.raw = reinterpret_cast<char*>(AllocateMemory(result->bytes));
+                                        &result->bytes, &type_size,
+                                        error_reporter));
+    result->data.raw =
+        reinterpret_cast<char*>(AllocateMemory(result->bytes, type_size));
     if (result->data.raw == nullptr) {
       const char* tensor_name = flatbuffer_tensor.name()->c_str();
       if (tensor_name == nullptr) {
@@ -112,8 +123,8 @@ TfLiteStatus SimpleTensorAllocator::AllocateTensor(
     }
     result->allocation_type = kTfLiteArenaRw;
   }
-  result->dims = reinterpret_cast<TfLiteIntArray*>(
-      AllocateMemory(sizeof(int) * (flatbuffer_tensor.shape()->Length() + 1)));
+  result->dims = reinterpret_cast<TfLiteIntArray*>(AllocateMemory(
+      sizeof(int) * (flatbuffer_tensor.shape()->Length() + 1), sizeof(int)));
   result->dims->size = flatbuffer_tensor.shape()->Length();
   for (int n = 0; n < flatbuffer_tensor.shape()->Length(); ++n) {
     result->dims->data[n] = flatbuffer_tensor.shape()->Get(n);
@@ -135,15 +146,17 @@ TfLiteStatus SimpleTensorAllocator::AllocateTensor(
   return kTfLiteOk;
 }
 
-uint8_t* SimpleTensorAllocator::AllocateMemory(size_t size) {
-  if ((data_size_ + size) > data_size_max_) {
+uint8_t* SimpleTensorAllocator::AllocateMemory(size_t size, size_t alignment) {
+  uint8_t* current_data = data_ + data_size_;
+  uint8_t* aligned_result = AlignPointerRoundUp(current_data, alignment);
+  uint8_t* next_free = aligned_result + size;
+  size_t aligned_size = (next_free - current_data);
+  if ((data_size_ + aligned_size) > data_size_max_) {
     // TODO(petewarden): Add error reporting beyond returning null!
     return nullptr;
   }
-  uint8_t* result = data_;
-  data_ += size;
-  data_size_ += size;
-  return result;
+  data_size_ += aligned_size;
+  return aligned_result;
 }
 
 }  // namespace tflite

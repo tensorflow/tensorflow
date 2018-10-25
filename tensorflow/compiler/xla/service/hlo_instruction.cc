@@ -510,21 +510,24 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
       TF_RET_CHECK(proto.operand_ids_size() == 1)
           << "Domain instruction should have 1 operands but sees "
           << proto.operand_ids_size();
-      TF_RET_CHECK(proto.has_domain_entry_sharding())
-          << "Domain instruction must domain_entry_sharding";
-      TF_RET_CHECK(proto.has_domain_exit_sharding())
-          << "Domain instruction must domain_exit_sharding";
-      TF_ASSIGN_OR_RETURN(
-          HloSharding entry_hlo_sharding,
-          HloSharding::FromProto(proto.domain_entry_sharding()));
-      TF_ASSIGN_OR_RETURN(HloSharding exit_hlo_sharding,
-                          HloSharding::FromProto(proto.domain_exit_sharding()));
+      std::shared_ptr<const HloSharding> entry_hlo_sharding;
+      std::shared_ptr<const HloSharding> exit_hlo_sharding;
+      if (proto.has_domain_entry_sharding()) {
+        TF_ASSIGN_OR_RETURN(
+            HloSharding sharding,
+            HloSharding::FromProto(proto.domain_entry_sharding()));
+        entry_hlo_sharding = std::make_shared<const HloSharding>(sharding);
+      }
+      if (proto.has_domain_exit_sharding()) {
+        TF_ASSIGN_OR_RETURN(
+            HloSharding sharding,
+            HloSharding::FromProto(proto.domain_exit_sharding()));
+        exit_hlo_sharding = std::make_shared<const HloSharding>(sharding);
+      }
       instruction = absl::make_unique<HloDomainInstruction>(
           proto.shape(), operands(0),
-          absl::make_unique<ShardingMetadata>(
-              std::make_shared<const HloSharding>(entry_hlo_sharding)),
-          absl::make_unique<ShardingMetadata>(
-              std::make_shared<const HloSharding>(exit_hlo_sharding)));
+          absl::make_unique<ShardingMetadata>(entry_hlo_sharding),
+          absl::make_unique<ShardingMetadata>(exit_hlo_sharding));
       break;
     }
     default: {

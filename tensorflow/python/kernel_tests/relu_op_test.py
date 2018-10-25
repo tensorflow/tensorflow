@@ -57,7 +57,7 @@ class ReluTest(test.TestCase):
 
   def _testRelu(self, np_features, use_gpu=False):
     np_relu = self._npRelu(np_features)
-    with self.test_session(use_gpu=use_gpu):
+    with self.cached_session(use_gpu=use_gpu):
       relu = nn_ops.relu(np_features)
       tf_relu = relu.eval()
     self.assertAllClose(np_relu, tf_relu)
@@ -77,7 +77,7 @@ class ReluTest(test.TestCase):
     if not test.is_gpu_available(cuda_only=True):
       return
     np_relu = self._npRelu(np_inputs)
-    with self.test_session(use_gpu=True):
+    with self.cached_session(use_gpu=True):
       relu = nn_ops.relu(constant_op.constant(np_inputs, dtypes.qint8))
       if np_inputs.size % 4 == 0:
         tf_relu = relu.eval()
@@ -124,7 +124,7 @@ class ReluTest(test.TestCase):
   # Instead of relying on compute_gradient_error, we compare the fp16 analytical
   # gradient against their fp32 counterpart.
   def testGradientFloat16(self):
-    with self.test_session(use_gpu=True) as sess:
+    with self.session(use_gpu=True) as sess:
       # Randomly construct a 1D shape from [1, 40)
       shape = random_ops.random_uniform(
           [1], minval=1, maxval=40, dtype=dtypes.int32)
@@ -230,7 +230,7 @@ class Relu6Test(test.TestCase):
 
   def _testRelu6(self, np_features, use_gpu=False):
     np_relu6 = self._npRelu6(np_features)
-    with self.test_session(use_gpu=use_gpu):
+    with self.cached_session(use_gpu=use_gpu):
       relu6 = nn_ops.relu6(np_features)
       tf_relu6 = relu6.eval()
     self.assertAllClose(np_relu6, tf_relu6)
@@ -417,7 +417,7 @@ class EluTest(test.TestCase):
 
   def _testElu(self, np_features, use_gpu=False):
     np_elu = self._npElu(np_features)
-    with self.test_session(use_gpu=use_gpu):
+    with self.cached_session(use_gpu=use_gpu):
       elu = nn_ops.elu(np_features)
       tf_elu = elu.eval()
     self.assertAllClose(np_elu, tf_elu)
@@ -519,7 +519,7 @@ class SeluTest(test.TestCase):
 
   def _testSelu(self, np_features, use_gpu=False):
     np_selu = self._npSelu(np_features)
-    with self.test_session(use_gpu=use_gpu):
+    with self.cached_session(use_gpu=use_gpu):
       selu = nn_ops.selu(np_features)
       tf_selu = selu.eval()
     self.assertAllClose(np_selu, tf_selu)
@@ -605,7 +605,7 @@ class CreluTest(test.TestCase):
     np_crelu = np.concatenate((np_relu, np_neg_relu),
                               len(np_features.shape) - 1)
 
-    with self.test_session(use_gpu=use_gpu):
+    with self.cached_session(use_gpu=use_gpu):
       crelu = nn_ops.crelu(np_features)
       tf_relu = crelu.eval()
 

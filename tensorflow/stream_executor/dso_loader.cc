@@ -23,12 +23,12 @@ limitations under the License.
 #include <initializer_list>
 #include <vector>
 
+#include "absl/strings/str_cat.h"
 #include "tensorflow/core/platform/load_library.h"
 #include "tensorflow/stream_executor/lib/env.h"
 #include "tensorflow/stream_executor/lib/error.h"
 #include "tensorflow/stream_executor/lib/path.h"
 #include "tensorflow/stream_executor/lib/str_util.h"
-#include "tensorflow/stream_executor/lib/strcat.h"
 #include "tensorflow/stream_executor/lib/stringprintf.h"
 #include "tensorflow/stream_executor/platform/logging.h"
 #include "tensorflow/stream_executor/platform/port.h"
@@ -145,7 +145,7 @@ static mutex& GetRpathMutex() {
 #endif
     ;
     return port::Status(port::error::FAILED_PRECONDITION,
-                        port::StrCat("could not dlopen DSO: ", path,
+                        absl::StrCat("could not dlopen DSO: ", path,
                                      "; dlerror: ", s.error_message()));
   }
   LOG(INFO) << "successfully opened CUDA library " << path << " locally";

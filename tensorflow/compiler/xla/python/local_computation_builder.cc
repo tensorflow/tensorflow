@@ -343,6 +343,12 @@ LocalOp LocalComputationBuilder::Parameter(int64 parameter_number,
   return xla::Parameter(&builder_, parameter_number, shape, name);
 }
 
+StatusOr<LocalComputation*> LocalComputationBuilder::BuildWithRoot(
+    const LocalOp& root) {
+  TF_ASSIGN_OR_RETURN(XlaComputation computation, builder_.Build(root.op()));
+  return new LocalComputation(std::move(computation));
+}
+
 StatusOr<Shape> LocalComputationBuilder::GetShape(const LocalOp& operand) {
   return builder_.GetShape(operand.op());
 }
@@ -369,6 +375,12 @@ LocalOp LocalComputationBuilder::ConstantLiteral(const Literal& literal) {
 LocalOp LocalComputationBuilder::Broadcast(
     const LocalOp& operand, absl::Span<const int64> broadcast_sizes) {
   return xla::Broadcast(operand.op(), broadcast_sizes);
+}
+
+LocalOp LocalComputationBuilder::BroadcastInDim(
+    const LocalOp& operand, const Shape& shape,
+    absl::Span<const int64> broadcast_dimensions) {
+  return xla::BroadcastInDim(operand.op(), shape, broadcast_dimensions);
 }
 
 LocalOp LocalComputationBuilder::Pad(const LocalOp& operand,

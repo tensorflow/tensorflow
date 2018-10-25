@@ -133,6 +133,10 @@ inline void Gather(const Array& input_array, int input_rank,
       Gather<ArrayDataType::kInt64>(input_array, op->input_rank, coords_array,
                                     &output_array);
       break;
+    case ArrayDataType::kComplex64:
+      Gather<ArrayDataType::kComplex64>(input_array, op->input_rank,
+                                        coords_array, &output_array);
+      break;
     default:
       LOG(FATAL) << "Unsupported data type given to Gather op with output \""
                  << op->outputs[0] << "\"";

@@ -100,15 +100,15 @@ def overlap_and_add(signal, frame_step, name=None):
     # frame_step is less than or equal to frame_length.
     frame_step_static = tensor_util.constant_value(frame_step)
     if (frame_step_static is not None and signal.shape.ndims is not None and
-        signal.shape[-1].value is not None):
-      if frame_step_static > signal.shape[-1].value:
+        signal.shape.dims[-1].value is not None):
+      if frame_step_static > signal.shape.dims[-1].value:
         raise ValueError(
             "frame_step (%d) must be less than or equal to "
             "frame_length (%d)" % (
-                frame_step_static, signal.shape[-1].value))
+                frame_step_static, signal.shape.dims[-1].value))
       # If frame_length is equal to frame_step, there's no overlap so just
       # reshape the tensor.
-      if frame_step_static == signal.shape[-1].value:
+      if frame_step_static == signal.shape.dims[-1].value:
         return array_ops.reshape(signal, array_ops.concat(
             [outer_dimensions, [-1]], 0))
 
