@@ -43,7 +43,7 @@ public final class OvicDetectorTest {
   private static final String LABELS_PATH =
       "tensorflow/contrib/lite/java/ovic/src/testdata/coco_labels.txt";
   private static final String MODEL_PATH =
-      "external/tflite_ovic_testdata/detect.lite";
+      "external/tflite_ovic_testdata/quantized_detect.lite";
   private static final String TEST_IMAGE_PATH =
       "external/tflite_ovic_testdata/test_image_224.jpg";
   private static final int GROUNDTRUTH = 1 /* Person */;

@@ -771,11 +771,11 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
     tf_http_archive(
         name = "tflite_ovic_testdata",
         build_file = clean_dep("//third_party:tflite_ovic_testdata.BUILD"),
-        sha256 = "7b11d7ba4968548b851aaf6c8aa3e5447e838b98fee6dd19bed68df525cbf2ba",
+        sha256 = "21288dccc517acee47fa9648d4d3da28bf0fef5381911ed7b4d2ee36366ffa20",
         strip_prefix = "ovic",
         urls = [
-            "https://mirror.bazel.build/storage.googleapis.com/download.tensorflow.org/data/ovic_2018_10_18.zip",
-            "https://storage.googleapis.com/download.tensorflow.org/data/ovic_2018_10_18.zip",
+            "https://mirror.bazel.build/storage.googleapis.com/download.tensorflow.org/data/ovic_2018_10_23.zip",
+            "https://storage.googleapis.com/download.tensorflow.org/data/ovic_2018_10_23.zip",
         ],
     )
 
