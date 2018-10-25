@@ -1808,8 +1808,7 @@ class StructuredFunctionWrapper(object):
         ".", "_")[:-2] if len(transformation_name) > 2 else ""
     self._func_name = "_".join([
         readable_transformation_name,
-        function_utils.get_func_name(func),
-        str(ops.uid())
+        function_utils.get_func_name(func)
     ])
 
     # TODO(b/110122868): Enable this support for all `tf.data` functions.
