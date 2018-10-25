@@ -16,8 +16,11 @@ limitations under the License.
 #include "tensorflow/core/grappler/optimizers/data/vectorization_utils.h"
 
 #include "tensorflow/core/framework/function.h"
+#include "tensorflow/core/framework/graph_to_functiondef.h"
+#include "tensorflow/core/graph/node_builder.h"
 #include "tensorflow/core/grappler/optimizers/data/function_utils.h"
 #include "tensorflow/core/grappler/optimizers/data/graph_utils.h"
+#include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/tools/graph_transforms/transform_utils.h"
@@ -940,6 +943,181 @@ TEST(VectorizerTest, VectorizeAdd) {
   EXPECT_TRUE(
       !function_utils::ContainsFunctionNodeWithOp("MapDefun", *vectorized));
 }
+
+// Wraps inner function with a MapDefun node.
+Status WrapFunctionWithMapDefun(const FunctionDef& inner, FunctionDef* result) {
+  Graph graph(OpRegistry::Global());
+  std::vector<NodeBuilder::NodeOut> inputs;
+  inputs.reserve(inner.signature().input_arg_size());
+  for (int i = 0; i < inner.signature().input_arg_size(); ++i) {
+    Node* arg;
+    TF_RETURN_IF_ERROR(NodeBuilder(strings::StrCat("arg", i), "_Arg")
+                           .Attr("T", inner.signature().input_arg(i).type())
+                           .Attr("index", i)
+                           .Finalize(&graph, &arg));
+    inputs.push_back(arg);
+  }
+
+  DataTypeVector output_types;
+  output_types.reserve(inner.signature().output_arg_size());
+  for (const auto& output_arg : inner.signature().output_arg()) {
+    output_types.push_back(output_arg.type());
+  }
+
+  Node* map_defun_node;
+  NameAttrList func_attr;
+  func_attr.set_name(inner.signature().name());
+  TF_RETURN_IF_ERROR(
+      NodeBuilder("map_defun", "MapDefun")
+          .Input(inputs)
+          .Input(std::vector<NodeBuilder::NodeOut>({}))  // captured
+          .Attr("f", func_attr)
+          .Attr("output_types", output_types)
+          .Attr("output_shapes", std::vector<PartialTensorShape>(
+                                     inner.signature().output_arg_size()))
+          .Finalize(&graph, &map_defun_node));
+
+  for (size_t i = 0; i < map_defun_node->num_outputs(); ++i) {
+    Node* ret;
+    TF_RETURN_IF_ERROR(NodeBuilder(strings::StrCat("ret", i), "_Retval")
+                           .Input(map_defun_node, i)
+                           .Attr("index", static_cast<int>(i))
+                           .Finalize(&graph, &ret));
+  }
+
+  return GraphToFunctionDef(graph, "outer_function", result);
+}
+
+// Tests that a function which applies a cwise op can be vectorized completely.
+Status CwiseTestHelper(DataType input_type, const string& op_type,
+                       size_t arity) {
+  // Note that this checks that the cwise op vectorizer is successful, but does
+  // not check that the transformed function is correct (i.e. produces the same
+  // output as the unvectorized map defun). For the latter, the tests are in
+  // tensorflow/python/data/experimental/kernel_tests/optimization/
+  // map_vectorization_test.py
+
+  FunctionDef inner;
+  // Create inner function with a single operation of type op_type. The output
+  // type attr of the function is inferred by NodeBuilder.
+  Node *op, *retval;
+  Graph graph(OpRegistry::Global());
+
+  auto node_builder = NodeBuilder("op", op_type);
+  for (size_t i = 0; i < arity; ++i) {
+    Node* arg;
+    TF_RETURN_IF_ERROR(NodeBuilder(strings::StrCat("arg", i), "_Arg")
+                           .Attr("T", input_type)
+                           .Attr("index", static_cast<int>(i))
+                           .Finalize(&graph, &arg));
+
+    node_builder = node_builder.Input(arg);
+  }
+  TF_RETURN_IF_ERROR(node_builder.Finalize(&graph, &op));
+
+  TF_RETURN_IF_ERROR(NodeBuilder("ret", "_Retval")
+                         .Input(op)
+                         .Attr("index", 0)
+                         .Finalize(&graph, &retval));
+
+  TF_RETURN_IF_ERROR(GraphToFunctionDef(graph, "inner_function", &inner));
+
+  FunctionDef outer;
+  TF_RETURN_IF_ERROR(WrapFunctionWithMapDefun(inner, &outer));
+
+  const NodeDef* map_defun = &outer.node_def(0);
+
+  FunctionDefLibrary lib;
+  FunctionDef* vectorized;
+  *lib.add_function() = outer;
+  *lib.add_function() = inner;
+  TF_RETURN_IF_ERROR(VectorizeMapDefun(outer, *map_defun, &lib, &vectorized));
+
+  return function_utils::ContainsFunctionNodeWithOp("MapDefun", *vectorized)
+             ? errors::Internal(
+                   "Test for cwise vectorizer for op \"", op_type,
+                   "\" failed. The function was not fully vectorized.")
+             : Status::OK();
+}
+
+class BitwiseUnaryTest : public ::testing::TestWithParam<const char*> {};
+
+TEST_P(BitwiseUnaryTest, VectorizeCwiseBitwiseUnary) {
+  TF_EXPECT_OK(CwiseTestHelper(DT_INT32, GetParam(), 1));
+}
+
+INSTANTIATE_TEST_CASE_P(Test, BitwiseUnaryTest, ::testing::Values("Invert"));
+
+class LogicalUnaryTest : public ::testing::TestWithParam<const char*> {};
+
+TEST_P(LogicalUnaryTest, VectorizeCwiseLogicalUnary) {
+  TF_EXPECT_OK(CwiseTestHelper(DT_BOOL, GetParam(), 1));
+}
+
+INSTANTIATE_TEST_CASE_P(Test, LogicalUnaryTest,
+                        ::testing::Values("LogicalNot"));
+
+class ComplexUnaryTest : public ::testing::TestWithParam<const char*> {};
+
+TEST_P(ComplexUnaryTest, VectorizeCwiseComplexUnary) {
+  TF_EXPECT_OK(CwiseTestHelper(DT_COMPLEX64, GetParam(), 1));
+}
+
+INSTANTIATE_TEST_CASE_P(Test, ComplexUnaryTest,
+                        ::testing::Values("Angle", "ComplexAbs", "Conj", "Imag",
+                                          "Real"));
+
+class RealUnaryTest : public ::testing::TestWithParam<const char*> {};
+
+TEST_P(RealUnaryTest, VectorizeCwiseRealUnary) {
+  TF_EXPECT_OK(CwiseTestHelper(DT_FLOAT, GetParam(), 1));
+}
+
+INSTANTIATE_TEST_CASE_P(
+    Test, RealUnaryTest,
+    ::testing::Values("Abs", "Acos", "Acosh", "Asin", "Asinh", "Atan", "Atanh",
+                      "BesselI0e", "BesselI1e", "Ceil", "Cos", "Cosh",
+                      "Digamma", "Elu", "Erf", "Erfc", "Exp", "Expm1", "Floor",
+                      "Inv", "IsFinite", "IsInf", "Lgamma", "Log", "Log1p",
+                      "Neg", "Reciprocal", "Relu", "Relu6", "Rint", "Round",
+                      "Rsqrt", "Selu", "Sigmoid", "Sign", "Sin", "Sinh",
+                      "Softplus", "Softsign", "Sqrt", "Square", "Tanh", "Tan"));
+
+class BitwiseBinaryTest : public ::testing::TestWithParam<const char*> {};
+
+TEST_P(BitwiseBinaryTest, VectorizeCwiseBitwiseBinary) {
+  TF_EXPECT_OK(CwiseTestHelper(DT_INT32, GetParam(), 2));
+}
+
+INSTANTIATE_TEST_CASE_P(Test, BitwiseBinaryTest,
+                        ::testing::Values("BitwiseAnd", "BitwiseOr",
+                                          "BitwiseXor", "LeftShift",
+                                          "RightShift"));
+
+class LogicalBinaryTest : public ::testing::TestWithParam<const char*> {};
+
+TEST_P(LogicalBinaryTest, VectorizeCwiseLogicalBinary) {
+  TF_EXPECT_OK(CwiseTestHelper(DT_BOOL, GetParam(), 2));
+}
+
+INSTANTIATE_TEST_CASE_P(Test, LogicalBinaryTest,
+                        ::testing::Values("LogicalAnd", "LogicalOr"));
+
+class RealBinaryTest : public ::testing::TestWithParam<const char*> {};
+
+TEST_P(RealBinaryTest, VectorizeCwiseRealBinary) {
+  TF_EXPECT_OK(CwiseTestHelper(DT_FLOAT, GetParam(), 2));
+}
+
+INSTANTIATE_TEST_CASE_P(
+    Test, RealBinaryTest,
+    ::testing::Values("Add", "AddV2", "Atan2", "Complex", "Div", "DivNoNan",
+                      "Equal", "FloorDiv", "FloorMod", "Greater",
+                      "GreaterEqual", "Igamma", "Igammac", "IgammaGradA",
+                      "Less", "LessEqual", "Maximum", "Minimum", "Mod", "Mul",
+                      "NotEqual", "Polygamma", "Pow", "RealDiv",
+                      "SquaredDifference", "Sub", "TruncateDiv", "TruncateMod",
+                      "Zeta"));
 
 // Before:
 //
