@@ -113,7 +113,6 @@ tf_kernel_library(
         "//tensorflow/core:lib_internal",
         "//tensorflow/core/kernels:inplace_ops",
         "//tensorflow/core/kernels/data:captured_function",
-        "//tensorflow/core/kernels/data:dataset",
         "@com_google_absl//absl/memory",
     ],
 )
