@@ -1611,8 +1611,11 @@ inline memory::desc CreateBlockedMemDescHelper(const memory::dims& dim,
   return memory::desc(md);
 }
 
+class MklReorderPrimitive;
+
 template <typename T>
-inline primitive FindOrCreateReorder(const memory* from, const memory* to);
+inline std::shared_ptr<MklReorderPrimitive> FindOrCreateReorder(const memory* from, const memory* to);
+
 /*
  * Class to represent all the resources corresponding to a tensor in TensorFlow
  * that are required to execute an operation (such as Convolution).
@@ -1648,6 +1651,7 @@ class MklDnnData {
       cpu_allocator()->DeallocateRaw(allocated_buffer_);
     }
     cpu_engine_ = nullptr;  // We don't own this.
+    // TODO(mavrov): What about deallocating allocated_buffer_ ???
     delete (user_memory_);
     delete (reorder_memory_);
     delete (op_md_);
@@ -1888,8 +1892,9 @@ class MklDnnData {
       // primitive reuse don't allow two same reorder prim in
       // one stream, so submit it immediately
       reorder_memory_ = new memory(op_pd);
+      std::shared_ptr<MklReorderPrimitive> reorder_primitive = FindOrCreateReorder<T>(user_memory_, reorder_memory_);
       std::vector<primitive> net;
-      net.push_back(FindOrCreateReorder<T>(user_memory_, reorder_memory_));
+      net.push_back(reorder_primitive->GetPrimitive());
       stream(stream::kind::eager).submit(net).wait();
       return true;
     }
@@ -1932,9 +1937,10 @@ class MklDnnData {
       // TODO(nhasabni): can we remove dynamic memory allocation?
       // primitive reuse don't allow two same reorder prim in
       // one stream, so submit it immediately
-      std::vector<primitive> net;
       reorder_memory_ = new memory(op_pd, reorder_data_handle);
-      net.push_back(FindOrCreateReorder<T>(user_memory_, reorder_memory_));
+      std::shared_ptr<MklReorderPrimitive> reorder_primitive = FindOrCreateReorder<T>(user_memory_, reorder_memory_);
+      std::vector<primitive> net;
+      net.push_back(reorder_primitive->GetPrimitive());
       stream(stream::kind::eager).submit(net).wait();
       return true;
     }
@@ -2013,8 +2019,9 @@ class MklDnnData {
     CHECK_NOTNULL(reorder_memory_);
     // primitive reuse don't allow two same reorder prim in
     // one stream, so submit it immediately
+    std::shared_ptr<MklReorderPrimitive> reorder_primitive = FindOrCreateReorder<T>(reorder_memory_, user_memory_);
     std::vector<primitive> net;
-    net.push_back(FindOrCreateReorder<T>(reorder_memory_, user_memory_));
+    net.push_back(reorder_primitive->GetPrimitive());
     stream(stream::kind::eager).submit(net).wait();
   }
 };
@@ -2038,7 +2045,11 @@ class MklPrimitiveFactory {
 
   ~MklPrimitiveFactory() {}
 
-  MklPrimitive* GetOp(const string& key) {
+  std::shared_ptr<MklPrimitive> GetOp(const string& key) {
+    if (!IsPrimitiveMemReuseEnabled()) {
+      return nullptr;
+    }
+
     auto& map = MklPrimitiveFactory<T>::GetHashMap();
     auto stream_iter = map.find(key);
     if (stream_iter == map.end()) {
@@ -2049,7 +2060,11 @@ class MklPrimitiveFactory {
     }
   }
 
-  void SetOp(const string& key, MklPrimitive* op) {
+  void SetOp(const string& key, std::shared_ptr<MklPrimitive> op) {
+    if (!IsPrimitiveMemReuseEnabled()) {
+      return;
+    }
+
     auto& map = MklPrimitiveFactory<T>::GetHashMap();
     auto stream_iter = map.find(key);
 
@@ -2074,9 +2089,17 @@ class MklPrimitiveFactory {
     return is_primitive_mem_opt_enabled;
   }
 
+  /// Function to check whether primitive memory reuse is enabled
+  static inline bool IsPrimitiveMemReuseEnabled() {
+    bool is_primitive_mem_reuse_enabled = true;
+    TF_CHECK_OK(ReadBoolFromEnvVar("TF_MKL_REUSE_PRIMITIVE_MEMORY", true,
+                                   &is_primitive_mem_reuse_enabled));
+    return is_primitive_mem_reuse_enabled;
+  }
+
  private:
-  static inline std::unordered_map<string, MklPrimitive*>& GetHashMap() {
-    static thread_local std::unordered_map<string, MklPrimitive*> map_;
+  static inline std::unordered_map<string, std::shared_ptr<MklPrimitive>>& GetHashMap() {
+    static thread_local std::unordered_map<string, std::shared_ptr<MklPrimitive>> map_;
     return map_;
   }
 };
@@ -2168,11 +2191,12 @@ class MklReorderPrimitive : public MklPrimitive {
 template <typename T>
 class MklReorderPrimitiveFactory : public MklPrimitiveFactory<T> {
  public:
-  static MklReorderPrimitive* Get(const memory* from, const memory* to) {
-    auto reorderPrim = static_cast<MklReorderPrimitive*>(
-        MklReorderPrimitiveFactory<T>::GetInstance().GetReorder(from, to));
-    if (reorderPrim == nullptr) {
-      reorderPrim = new MklReorderPrimitive(from, to);
+  static std::shared_ptr<MklReorderPrimitive> Get(const memory* from, const memory* to) {
+    std::shared_ptr<MklReorderPrimitive> reorderPrim =
+    	std::static_pointer_cast<MklReorderPrimitive>(
+    		MklReorderPrimitiveFactory<T>::GetInstance().GetReorder(from, to));
+    if (!reorderPrim) {
+      reorderPrim.reset(new MklReorderPrimitive(from, to));
       MklReorderPrimitiveFactory<T>::GetInstance().SetReorder(from, to,
                                                               reorderPrim);
     }
@@ -2216,12 +2240,12 @@ class MklReorderPrimitiveFactory : public MklPrimitiveFactory<T> {
     return key_creator.GetKey();
   }
 
-  MklPrimitive* GetReorder(const memory* from, const memory* to) {
+  std::shared_ptr<MklPrimitive> GetReorder(const memory* from, const memory* to) {
     string key = CreateKey(from, to);
     return this->GetOp(key);
   }
 
-  void SetReorder(const memory* from, const memory* to, MklPrimitive* op) {
+  void SetReorder(const memory* from, const memory* to, std::shared_ptr<MklPrimitive> op) {
     string key = CreateKey(from, to);
     this->SetOp(key, op);
   }
@@ -2232,12 +2256,10 @@ class MklReorderPrimitiveFactory : public MklPrimitiveFactory<T> {
 /// get primitive from pool if it is cached.
 /// Returns the primitive.
 template <typename T>
-inline primitive FindOrCreateReorder(const memory* from, const memory* to) {
+inline std::shared_ptr<MklReorderPrimitive> FindOrCreateReorder(const memory* from, const memory* to) {
   CHECK_NOTNULL(from);
   CHECK_NOTNULL(to);
-  MklReorderPrimitive* reorder_prim =
-      MklReorderPrimitiveFactory<T>::Get(from, to);
-  return *reorder_prim->GetPrimitive();
+  return MklReorderPrimitiveFactory<T>::Get(from, to);
 }
 
 // utility function to determine if it is conv 1x1 and stride != 1
