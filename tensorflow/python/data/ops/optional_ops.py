@@ -176,6 +176,21 @@ class OptionalStructure(structure.Structure):
   def from_value(value):
     return OptionalStructure(value.value_structure)
 
+  def _to_legacy_output_types(self):
+    raise NotImplementedError("The `output_types` property is not supported on "
+                              "structured objects containing an `Optional`. "
+                              "Use the corresponding `structure` property.")
+
+  def _to_legacy_output_shapes(self):
+    raise NotImplementedError("The `output_shapes` property is not supported on"
+                              " structured objects containing an `Optional`. "
+                              "Use the corresponding `structure` property.")
+
+  def _to_legacy_output_classes(self):
+    raise NotImplementedError("The `output_classes` property is not supported "
+                              "on structured objects containing an `Optional`. "
+                              "Use the corresponding `structure` property.")
+
 
 # pylint: disable=protected-access
 structure.Structure._register_custom_converter(Optional,
