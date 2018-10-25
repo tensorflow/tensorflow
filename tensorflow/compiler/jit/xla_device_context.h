@@ -44,9 +44,9 @@ class XlaDeviceAllocator : public Allocator {
 };
 
 // Helper class for managing data transfers between host and XLA devices.
-class XlaTransferManager {
+class XlaDeviceContext : public DeviceContext {
  public:
-  explicit XlaTransferManager(
+  explicit XlaDeviceContext(
       std::shared_ptr<se::Stream> compute_stream,
       std::shared_ptr<se::Stream> host_to_device_stream,
       std::shared_ptr<se::Stream> device_to_host_stream,
@@ -55,10 +55,11 @@ class XlaTransferManager {
       thread::ThreadPool* thread_pool);
 
   void CopyCPUTensorToDevice(const Tensor* cpu_tensor, Device* device,
-                             Tensor* device_tensor, StatusCallback done) const;
+                             Tensor* device_tensor,
+                             StatusCallback done) const override;
   void CopyDeviceTensorToCPU(const Tensor* device_tensor,
                              absl::string_view tensor_name, Device* device,
-                             Tensor* cpu_tensor, StatusCallback done);
+                             Tensor* cpu_tensor, StatusCallback done) override;
 
   void CopyDeviceTensorToDevice(const Tensor& src_tensor, Tensor* dst_tensor,
                                 const StatusCallback& done);
@@ -92,34 +93,6 @@ class XlaTransferManager {
 
   // Thread pool used for running closures
   thread::ThreadPool* thread_pool_;
-};
-
-// DeviceContext for operators assigned to XlaDevice devices. The
-// implementation must inherit from DeviceContext but otherwise just
-// wraps the methods in XlaTransferManager.
-class XlaDeviceContext : public DeviceContext {
- public:
-  explicit XlaDeviceContext(
-      std::shared_ptr<se::Stream> compute_stream,
-      std::shared_ptr<se::Stream> host_to_device_stream,
-      std::shared_ptr<se::Stream> device_to_host_stream,
-      xla::LocalClient* client, bool transfer_as_literal,
-      XlaCompiler::ShapeRepresentationFn shape_representation_fn,
-      thread::ThreadPool* thread_pool);
-
-  void CopyCPUTensorToDevice(const Tensor* cpu_tensor, Device* device,
-                             Tensor* device_tensor,
-                             StatusCallback done) const override;
-  void CopyDeviceTensorToCPU(const Tensor* device_tensor,
-                             absl::string_view tensor_name, Device* device,
-                             Tensor* cpu_tensor, StatusCallback done) override;
-  void CopyDeviceTensorToDevice(const Tensor& src_tensor, Tensor* dst_tensor,
-                                const StatusCallback& done);
-
-  se::Stream* stream() const override { return manager_.stream(); }
-
- private:
-  XlaTransferManager manager_;
 };
 
 }  // namespace tensorflow

@@ -1952,7 +1952,7 @@ class LSTMCell(Layer):
           for the recurrent step.
           Default: hard sigmoid (`hard_sigmoid`).
           If you pass `None`, no activation is applied
-          (ie. "linear" activation: `a(x) = x`).x
+          (ie. "linear" activation: `a(x) = x`).
       use_bias: Boolean, whether the layer uses a bias vector.
       kernel_initializer: Initializer for the `kernel` weights matrix,
           used for the linear transformation of the inputs.
@@ -2072,6 +2072,29 @@ class LSTMCell(Layer):
       self.bias = None
     self.built = True
 
+  def _compute_carry_and_output(self, x, h_tm1, c_tm1):
+    """Computes carry and output using split kernels."""
+    x_i, x_f, x_c, x_o = x
+    h_tm1_i, h_tm1_f, h_tm1_c, h_tm1_o = h_tm1
+    i = self.recurrent_activation(
+        x_i + K.dot(h_tm1_i, self.recurrent_kernel[:, :self.units]))
+    f = self.recurrent_activation(x_f + K.dot(
+        h_tm1_f, self.recurrent_kernel[:, self.units:self.units * 2]))
+    c = f * c_tm1 + i * self.activation(x_c + K.dot(
+        h_tm1_c, self.recurrent_kernel[:, self.units * 2:self.units * 3]))
+    o = self.recurrent_activation(
+        x_o + K.dot(h_tm1_o, self.recurrent_kernel[:, self.units * 3:]))
+    return c, o
+
+  def _compute_carry_and_output_fused(self, z, c_tm1):
+    """Computes carry and output using fused kernels."""
+    z0, z1, z2, z3 = z
+    i = self.recurrent_activation(z0)
+    f = self.recurrent_activation(z1)
+    c = f * c_tm1 + i * self.activation(z2)
+    o = self.recurrent_activation(z3)
+    return c, o
+
   def call(self, inputs, states, training=None):
     if 0 < self.dropout < 1 and self._dropout_mask is None:
       self._dropout_mask = _generate_dropout_mask(
@@ -2126,16 +2149,9 @@ class LSTMCell(Layer):
         h_tm1_f = h_tm1
         h_tm1_c = h_tm1
         h_tm1_o = h_tm1
-      i = self.recurrent_activation(
-          x_i + K.dot(h_tm1_i, self.recurrent_kernel[:, :self.units]))
-      f = self.recurrent_activation(
-          x_f + K.dot(h_tm1_f,
-                      self.recurrent_kernel[:, self.units: self.units * 2]))
-      c = f * c_tm1 + i * self.activation(
-          x_c + K.dot(h_tm1_c,
-                      self.recurrent_kernel[:, self.units * 2: self.units * 3]))
-      o = self.recurrent_activation(
-          x_o + K.dot(h_tm1_o, self.recurrent_kernel[:, self.units * 3:]))
+      x = (x_i, x_f, x_c, x_o)
+      h_tm1 = (h_tm1_i, h_tm1_f, h_tm1_c, h_tm1_o)
+      c, o = self._compute_carry_and_output(x, h_tm1, c_tm1)
     else:
       if 0. < self.dropout < 1.:
         inputs *= dp_mask[0]
@@ -2151,10 +2167,8 @@ class LSTMCell(Layer):
       z2 = z[:, 2 * self.units:3 * self.units]
       z3 = z[:, 3 * self.units:]
 
-      i = self.recurrent_activation(z0)
-      f = self.recurrent_activation(z1)
-      c = f * c_tm1 + i * self.activation(z2)
-      o = self.recurrent_activation(z3)
+      z = (z0, z1, z2, z3)
+      c, o = self._compute_carry_and_output_fused(z, c_tm1)
 
     h = o * self.activation(c)
     if 0 < self.dropout + self.recurrent_dropout:
@@ -2207,6 +2221,86 @@ class LSTMCell(Layer):
   def get_initial_state(self, inputs=None, batch_size=None, dtype=None):
     return list(_generate_zero_filled_state_for_cell(
         self, inputs, batch_size, dtype))
+
+
+@tf_export('keras.experimental.PeepholeLSTMCell')
+class PeepholeLSTMCell(LSTMCell):
+  """Equivalent to LSTMCell class but adds peephole connections.
+
+  Peephole connections allow the gates to utilize the previous internal state as
+  well as the previous hidden state (which is what LSTMCell is limited to).
+  This allows PeepholeLSTMCell to better learn precise timings over LSTMCell.
+
+  From [Gers et al.](http://www.jmlr.org/papers/volume3/gers02a/gers02a.pdf):
+
+    "We find that LSTM augmented by 'peephole connections' from its internal
+    cells to its multiplicative gates can learn the fine distinction between
+    sequences of spikes spaced either 50 or 49 time steps apart without the help
+    of any short training exemplars."
+
+  The peephole implementation is based on:
+
+    https://research.google.com/pubs/archive/43905.pdf
+
+  Hasim Sak, Andrew Senior, and Francoise Beaufays.
+  "Long short-term memory recurrent neural network architectures for
+   large scale acoustic modeling." INTERSPEECH, 2014.
+
+  Example:
+
+  ```python
+      # Create 2 PeepholeLSTMCells
+      peephole_lstm_cells = [PeepholeLSTMCell(size) for size in [128, 256]]
+      # Create a layer composed sequentially of the peephole LSTM cells.
+      layer = RNN(peephole_lstm_cells)
+      input = keras.Input((timesteps, input_dim))
+      output = layer(input)
+  ```
+  """
+
+  def build(self, input_shape):
+    super(PeepholeLSTMCell, self).build(input_shape)
+    # The following are the weight matrices for the peephole connections. These
+    # are multiplied with the previous internal state during the computation of
+    # carry and output.
+    self.input_gate_peephole_weights = self.add_weight(
+        shape=(self.units,),
+        name='input_gate_peephole_weights',
+        initializer=self.kernel_initializer)
+    self.forget_gate_peephole_weights = self.add_weight(
+        shape=(self.units,),
+        name='forget_gate_peephole_weights',
+        initializer=self.kernel_initializer)
+    self.output_gate_peephole_weights = self.add_weight(
+        shape=(self.units,),
+        name='output_gate_peephole_weights',
+        initializer=self.kernel_initializer)
+
+  def _compute_carry_and_output(self, x, h_tm1, c_tm1):
+    x_i, x_f, x_c, x_o = x
+    h_tm1_i, h_tm1_f, h_tm1_c, h_tm1_o = h_tm1
+    i = self.recurrent_activation(
+        x_i + K.dot(h_tm1_i, self.recurrent_kernel[:, :self.units]) +
+        self.input_gate_peephole_weights * c_tm1)
+    f = self.recurrent_activation(x_f + K.dot(
+        h_tm1_f, self.recurrent_kernel[:, self.units:self.units * 2]) +
+                                  self.forget_gate_peephole_weights * c_tm1)
+    c = f * c_tm1 + i * self.activation(x_c + K.dot(
+        h_tm1_c, self.recurrent_kernel[:, self.units * 2:self.units * 3]))
+    o = self.recurrent_activation(
+        x_o + K.dot(h_tm1_o, self.recurrent_kernel[:, self.units * 3:]) +
+        self.output_gate_peephole_weights * c)
+    return c, o
+
+  def _compute_carry_and_output_fused(self, z, c_tm1):
+    z0, z1, z2, z3 = z
+    i = self.recurrent_activation(z0 +
+                                  self.input_gate_peephole_weights * c_tm1)
+    f = self.recurrent_activation(z1 +
+                                  self.forget_gate_peephole_weights * c_tm1)
+    c = f * c_tm1 + i * self.activation(z2)
+    o = self.recurrent_activation(z3 + self.output_gate_peephole_weights * c)
+    return c, o
 
 
 @tf_export('keras.layers.LSTM')

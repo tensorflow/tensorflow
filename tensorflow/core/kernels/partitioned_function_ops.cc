@@ -27,6 +27,7 @@ limitations under the License.
 #include "tensorflow/core/grappler/clusters/virtual_cluster.h"
 #include "tensorflow/core/grappler/grappler_item.h"
 #include "tensorflow/core/grappler/optimizers/meta_optimizer.h"
+#include "tensorflow/core/grappler/utils/functions.h"
 #include "tensorflow/core/protobuf/rewriter_config.pb.h"
 #include "tensorflow/core/util/ptr_util.h"
 #include "tensorflow/core/util/reffed_status_callback.h"
@@ -55,6 +56,7 @@ class PartitionedCallOp : public AsyncOpKernel {
         ctx, rewriter_config_.ParseFromString(rewriter_config_serialized),
         errors::InvalidArgument("Unable to parse rewriter_config string as "
                                 "tensorflow::RewriterConfig proto."));
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("executor_type", &executor_type_));
   }
 
   ~PartitionedCallOp() override {}
@@ -183,6 +185,13 @@ class PartitionedCallOp : public AsyncOpKernel {
         OP_REQUIRES_OK_ASYNC(
             ctx, PartitionHelper(device_set, std::move(graph), &subgraphs),
             done);
+        if (ctx->graph_collector() != nullptr) {
+          for (const auto& pair : subgraphs) {
+            GraphDef def;
+            pair.second->ToGraphDef(&def);
+            ctx->graph_collector()->CollectGraph(def);
+          }
+        }
         optimization_options.graph = nullptr;
         optimization_options.device_set = nullptr;
         optimization_options.partition_graphs = &subgraphs;
@@ -206,6 +215,7 @@ class PartitionedCallOp : public AsyncOpKernel {
               ctx, GraphToFunctionDef(*subgraph, unique_name, &shard), done);
           OP_REQUIRES_OK_ASYNC(ctx, overlay_lib->AddFunctionDef(shard), done);
           FunctionLibraryRuntime::InstantiateOptions opts;
+          opts.executor_type = executor_type_;
           opts.target = target;
           opts.overlay_lib = overlay_lib;
           FHandle handle;
@@ -242,6 +252,12 @@ class PartitionedCallOp : public AsyncOpKernel {
         int index = attr_value->i();
         TF_RETURN_IF_ERROR(node->attrs().Find("T", &attr_value));
         DataType dtype = attr_value->type();
+        if (dtype != args[index].dtype()) {
+          return errors::InvalidArgument("For argument ", index, " expected ",
+                                         DataTypeString(dtype), " tensor, got ",
+                                         DataTypeString(args[index].dtype()),
+                                         " instead.");
+        }
         if (dtype == DT_RESOURCE) {
           const ResourceHandle& handle = args[index].flat<ResourceHandle>()(0);
           node->set_assigned_device_name(handle.device());
@@ -501,6 +517,9 @@ class PartitionedCallOp : public AsyncOpKernel {
     (*graph)->ToGraphDef(&item.graph);
 
     if (flib) {
+      // TODO(ezhulenev): Prune unreachable functions to reduce copy overhead.
+      // It's unsafe to do it now, because it's possible to get conflicting
+      // specializations with the same name.
       *item.graph.mutable_library() = flib->ToProto();
     }
 
@@ -517,6 +536,18 @@ class PartitionedCallOp : public AsyncOpKernel {
     TF_RETURN_IF_ERROR(ConvertGraphDefToGraph(
         GraphConstructorOptions(), out_graph, optimized_graph.get()));
 
+    // Copy optimized functions back to the overlay lib.
+    if (flib) {
+      for (const FunctionDef& fdef : out_graph.library().function()) {
+        const string& func_name = fdef.signature().name();
+        if (flib->Contains(func_name)) {
+          TF_RETURN_IF_ERROR(flib->ReplaceFunction(func_name, fdef));
+        } else {
+          TF_RETURN_IF_ERROR(flib->AddFunctionDef(fdef));
+        }
+      }
+    }
+
     *graph = std::move(optimized_graph);
 
     // The graph conversion sets the requested device names but not the
@@ -532,6 +563,7 @@ class PartitionedCallOp : public AsyncOpKernel {
 
   NameAttrList func_;
   RewriterConfig rewriter_config_;
+  string executor_type_;
   // Contains maps from device names to handles of function partitions, keyed by
   // FunctionLibraryRuntime pointers. (Because this kernel may be instantiated
   // for a stateful op, different invocations of it may use different

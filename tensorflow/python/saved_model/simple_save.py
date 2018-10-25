@@ -81,6 +81,6 @@ def simple_save(session, export_dir, inputs, outputs, legacy_init_op=None):
       tags=[tag_constants.SERVING],
       signature_def_map=signature_def_map,
       assets_collection=ops.get_collection(ops.GraphKeys.ASSET_FILEPATHS),
-      legacy_init_op=legacy_init_op,
+      main_op=legacy_init_op,
       clear_devices=True)
   b.save()

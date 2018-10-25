@@ -758,7 +758,8 @@ class UnidirectionalSequenceLstm
         *builder, /*fused_activation_function=*/
         ::tflite::ActivationFunctionType_TANH,
         /*cell_clip=*/0.0,
-        /*proj_clip=*/0.0);
+        /*proj_clip=*/0.0,
+        /*time_major=*/true);
   }
 
   void ReadOptions(const TfLiteOptions& options,
@@ -1556,6 +1557,10 @@ std::vector<std::unique_ptr<BaseOperator>> BuildOperatorList(
       "LOGICAL_NOT", OperatorType::kLogicalNot));
   ops.emplace_back(new SimpleOperator<FloorDivOperator>(
       "FLOOR_DIV", OperatorType::kFloorDiv));
+  ops.emplace_back(new SimpleOperator<FloorModOperator>(
+      "FLOOR_MOD", OperatorType::kFloorMod));
+  ops.emplace_back(
+      new SimpleOperator<RangeOperator>("RANGE", OperatorType::kRange));
   // Element-wise operator
   ops.push_back(
       MakeUnique<SimpleOperator<SinOperator>>("SIN", OperatorType::kSin));

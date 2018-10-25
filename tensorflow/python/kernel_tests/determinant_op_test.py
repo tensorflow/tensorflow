@@ -62,7 +62,7 @@ class DeterminantOpTest(test.TestCase):
         atol=5e-5)
 
   def _compareDeterminant(self, matrix_x):
-    with self.test_session(use_gpu=True):
+    with self.cached_session(use_gpu=True):
       self._compareDeterminantBase(matrix_x,
                                    linalg_ops.matrix_determinant(matrix_x))
       self._compareLogDeterminantBase(
@@ -150,7 +150,7 @@ class DeterminantOpTest(test.TestCase):
     self._compareDeterminant(np.empty([2, 0, 0]))
 
   def testConcurrentExecutesWithoutError(self):
-    with self.test_session(use_gpu=True) as sess:
+    with self.session(use_gpu=True) as sess:
       matrix1 = random_ops.random_normal([5, 5], seed=42)
       matrix2 = random_ops.random_normal([5, 5], seed=42)
       det1 = linalg_ops.matrix_determinant(matrix1)

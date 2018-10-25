@@ -52,30 +52,42 @@ else:
 if _toco_from_proto_bin and not _os.path.exists(_toco_from_proto_bin):
   _toco_from_proto_bin = "toco_from_protos"
 
+def _try_convert_to_unicode(output):
+  if output is None:
+    return u""
 
-class ConverterMode(enum.Enum):
-  """Enum class defining the converters available to generate TFLite models.
+  if isinstance(output, bytes):
+    try:
+      return output.decode()
+    except UnicodeDecodeError:
+      pass
+  return output
+
+
+class OpsSet(enum.Enum):
+  """Enum class defining the sets of ops available to generate TFLite models.
 
   WARNING: Experimental interface, subject to change.
   """
-  # Convert model using TOCO such that all ops are TensorFlow Lite native ops.
-  #
-  # This is the only supported mode for any models that contain operations that
-  # cannot be resolved in TensorFlow.
-  DEFAULT = "DEFAULT"
+  # Convert model using TensorFlow Lite builtin ops.
+  TFLITE_BUILTINS = "TFLITE_BUILTINS"
 
-  # Convert model using TOCO such that only unsupported operations are
-  # represented as TensorFlow ops.
+  # Convert model using TensorFlow ops. Not all TensorFlow ops are available.
   # WARNING: Experimental interface, subject to change.
-  TOCO_FLEX = "TOCO_FLEX"
-
-  # Convert model using TOCO such that all operations are represented as
-  # TensorFlow ops.
-  # WARNING: Experimental interface, subject to change.
-  TOCO_FLEX_ALL = "TOCO_FLEX_ALL"
+  SELECT_TF_OPS = "SELECT_TF_OPS"
 
   def __str__(self):
     return self.value
+
+  @staticmethod
+  def get_options():
+    """Returns a list of OpsSet options as a list of strings."""
+    return [str(option) for option in list(OpsSet)]
+
+
+class ConverterError(Exception):
+  """Raised when an error occurs during model conversion."""
+  pass
 
 
 def toco_convert_protos(model_flags_str, toco_flags_str, input_data_str):
@@ -93,14 +105,20 @@ def toco_convert_protos(model_flags_str, toco_flags_str, input_data_str):
   Returns:
     Converted model in serialized form (e.g. a TFLITE model is common).
   Raises:
+    ConverterError: When conversion fails in TFLiteConverter, usually due to
+      ops not being supported.
     RuntimeError: When conversion fails, an exception is raised with the error
       message embedded.
   """
   # TODO(aselle): When toco does not use fatal errors for failure, we can
   # switch this on.
   if not _toco_from_proto_bin:
-    return _toco_python.TocoConvert(
-        model_flags_str, toco_flags_str, input_data_str)
+    model_str = _toco_python.TocoConvert(model_flags_str, toco_flags_str,
+                                         input_data_str)
+    if not model_str:
+      raise ConverterError(
+          "TOCO returned an empty string. See console for more info.")
+    return model_str
 
   # Windows and TemporaryFile are not that useful together,
   # since you cannot have two readers/writers. So we have to
@@ -145,8 +163,10 @@ def toco_convert_protos(model_flags_str, toco_flags_str, input_data_str):
       with open(output_filename, "rb") as fp:
         return fp.read()
     else:
-      raise RuntimeError(
-          "TOCO failed see console for info.\n%s\n%s\n" % (stdout, stderr))
+      stdout = _try_convert_to_unicode(stdout)
+      stderr = _try_convert_to_unicode(stderr)
+      raise ConverterError(
+          "TOCO failed. See console for info.\n%s\n%s\n" % (stdout, stderr))
   finally:
     # Must manually cleanup files.
     for filename in [
@@ -177,7 +197,7 @@ def build_toco_convert_protos(input_tensors,
                               post_training_quantize=False,
                               dump_graphviz_dir=None,
                               dump_graphviz_video=False,
-                              converter_mode=ConverterMode.DEFAULT,
+                              target_ops=None,
                               allow_nonexistent_arrays=False):
   """Builds protocol buffers describing a conversion of a model using TOCO.
 
@@ -233,10 +253,11 @@ def build_toco_convert_protos(input_tensors,
       output file. (default None)
     dump_graphviz_video: Boolean indicating whether to dump the graph after
       every graph transformation. (default False)
-    converter_mode: Experimental flag, subject to change. ConverterMode
-      indicating which converter to use. (default ConverterMode.DEFAULT)
+    target_ops: Experimental flag, subject to change. Set of OpsSet
+      options indicating which converter to use.
+      (default set([OpsSet.TFLITE_BUILTINS]))
     allow_nonexistent_arrays: Allow specifying array names that don't exist
-      or are unused in the final graph.  (default False)
+      or are unused in the final graph. (default False)
 
   Returns:
     model_flags, toco_flags: two protocol buffers describing the conversion
@@ -265,11 +286,12 @@ def build_toco_convert_protos(input_tensors,
   if dump_graphviz_dir:
     toco.dump_graphviz_dir = dump_graphviz_dir
   toco.dump_graphviz_include_video = dump_graphviz_video
-  if converter_mode == ConverterMode.TOCO_FLEX:
-    toco.allow_flex_ops = True
-  elif converter_mode == ConverterMode.TOCO_FLEX_ALL:
-    toco.allow_flex_ops = True
-    toco.force_flex_ops = True
+  if target_ops:
+    if set(target_ops) == set([OpsSet.TFLITE_BUILTINS, OpsSet.SELECT_TF_OPS]):
+      toco.allow_flex_ops = True
+    elif set(target_ops) == set([OpsSet.SELECT_TF_OPS]):
+      toco.allow_flex_ops = True
+      toco.force_flex_ops = True
 
   model = _model_flags_pb2.ModelFlags()
   model.change_concat_input_ranges = change_concat_input_ranges

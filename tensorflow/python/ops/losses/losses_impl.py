@@ -205,7 +205,7 @@ def compute_weighted_loss(
   Reduction.validate(reduction)
   with ops.name_scope(scope, "weighted_loss", (losses, weights)):
     # Save the `reduction` argument for loss normalization when distributing
-    # to multiple towers.
+    # to multiple replicas.
     # TODO(josh11b): Associate it with the returned op for more precision.
     ops.get_default_graph()._last_loss_reduction = reduction  # pylint: disable=protected-access
 

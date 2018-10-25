@@ -315,6 +315,7 @@ py_library(
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:distributed_framework_test_lib",
         "//tensorflow/python:session",
+        "//tensorflow/python:util",
         "//tensorflow/python/estimator:estimator_py",
         "//third_party/py/numpy",
     ],
@@ -723,6 +724,7 @@ cuda_py_test(
     shard_count = 16,
     tags = [
         "multi_and_single_gpu",
+        "no_oss",  # TODO(b/117919883): Fix python error.
         "no_pip",
         "no_windows_gpu",
         "notsan",

@@ -245,6 +245,16 @@ class ArrayTest(PForTest):
 
     self._test_loop_fn(loop_fn, 3, loop_fn_dtypes=[dtypes.float32] * 5)
 
+  def test_split_v(self):
+    x = random_ops.random_uniform([3, 6, 3])
+
+    def loop_fn(i):
+      x1 = array_ops.gather(x, i)
+      return (array_ops.split(x1, [2, 1, 3], axis=0),
+              array_ops.split(x1, [3], axis=-1))
+
+    self._test_loop_fn(loop_fn, 3, loop_fn_dtypes=[dtypes.float32] * 4)
+
   def test_transpose(self):
     x = random_ops.random_uniform([3, 2, 3, 4])
 
@@ -290,6 +300,14 @@ class ArrayTest(PForTest):
       # pylint: enable=cell-var-from-loop
 
       self._test_loop_fn(loop_fn, 3, loop_fn_dtypes=[dtypes.float32] * 3)
+
+  def test_identity_n(self):
+    x = random_ops.random_uniform([3, 4])
+
+    def loop_fn(i):
+      return array_ops.identity_n([x, array_ops.gather(x, i)])
+
+    self._test_loop_fn(loop_fn, 3, loop_fn_dtypes=[dtypes.float32] * 2)
 
   def test_strided_slice(self):
     x = random_ops.random_uniform([3, 3, 4, 4, 2, 2, 2])

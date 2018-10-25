@@ -155,7 +155,33 @@ ENTRY main {
   TF_ASSERT_OK(config.SetUpAlias(/*output_index=*/{1}, /*param_number=*/0,
                                  /*param_index=*/{}));
 
-  ASSERT_IS_NOT_OK(config.Verify(*module));
+  ASSERT_IS_NOT_OK(config.Verify(*module, [](const Shape& shape) {
+    return ShapeUtil::ByteSizeOf(shape);
+  }));
+}
+
+TEST_F(HloInputOutputAliasConfigTest, SizesMustMatch) {
+  const string module_str = R"(
+HloModule TEST
+
+ENTRY main {
+  a = f32[] parameter(0)
+  b = f32[4096] parameter(1)
+  ROOT root = (f32[], f32[4096]) tuple(%a, %b)
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseHloString(module_str));
+
+  HloInputOutputAliasConfig config(
+      module->entry_computation()->root_instruction()->shape());
+
+  TF_ASSERT_OK(config.SetUpAlias(/*output_index=*/{1}, /*param_number=*/0,
+                                 /*param_index=*/{}));
+
+  ASSERT_IS_NOT_OK(config.Verify(*module, [](const Shape& shape) {
+    return ShapeUtil::ByteSizeOf(shape);
+  }));
 }
 
 TEST_F(HloInputOutputAliasConfigTest, OutputDoNotAliasTwice) {

@@ -34,7 +34,7 @@ class ArgMaxTest(test.TestCase):
                expected_values,
                use_gpu=False,
                expected_err_re=None):
-    with self.test_session(use_gpu=use_gpu):
+    with self.session(use_gpu=use_gpu):
       ans = method(x, axis=axis)
       if expected_err_re is None:
         tf_ans = ans.eval()
@@ -77,7 +77,7 @@ class ArgMaxTest(test.TestCase):
   def testFloatInt32Output(self):
     x = np.asarray(100 * np.random.randn(200), dtype=np.float32)
     expected_values = x.argmax()
-    with self.test_session(use_gpu=True):
+    with self.session(use_gpu=True):
       ans = math_ops.argmax(x, axis=0, output_type=dtypes.int32)
       tf_ans = ans.eval()
       self.assertEqual(np.int32, tf_ans.dtype)
@@ -85,7 +85,7 @@ class ArgMaxTest(test.TestCase):
       # the values don't have a range that exceeds 32-bit integers.
       self.assertAllEqual(tf_ans, expected_values)
     expected_values = x.argmin()
-    with self.test_session(use_gpu=True):
+    with self.session(use_gpu=True):
       ans = math_ops.argmin(x, axis=0, output_type=dtypes.int32)
       tf_ans = ans.eval()
       self.assertEqual(np.int32, tf_ans.dtype)

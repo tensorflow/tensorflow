@@ -17,6 +17,7 @@ limitations under the License.
 #include "flatbuffers/flexbuffers.h"
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "tensorflow/contrib/lite/toco/model.h"
 #include "tensorflow/contrib/lite/toco/tooling_util.h"
 
 #include "tensorflow/core/framework/attr_value.pb.h"
@@ -148,6 +149,8 @@ TEST_F(OperatorTest, SimpleOperators) {
                                                 OperatorType::kSquare);
   CheckSimpleOperator<TensorFlowZerosLikeOperator>("ZEROS_LIKE",
                                                    OperatorType::kZerosLike);
+  CheckSimpleOperator<FloorModOperator>("FLOOR_MOD", OperatorType::kFloorMod);
+  CheckSimpleOperator<RangeOperator>("RANGE", OperatorType::kRange);
 }
 
 TEST_F(OperatorTest, BuiltinAdd) {

@@ -57,7 +57,7 @@ bool RemoveInput(NodeDef* node, const string& input, NodeMap* node_map) {
 }  // namespace
 
 bool DependencyOptimizer::SafeToRemoveIdentity(const NodeDef& node) const {
-  if (!IsIdentity(node)) {
+  if (!IsIdentity(node) && !IsIdentityNSingleInput(node)) {
     return true;
   }
 
@@ -136,7 +136,7 @@ bool DependencyOptimizer::SafeToConvertToNoOp(const NodeDef& node) const {
 bool DependencyOptimizer::BypassingNodeIsBeneficial(
     const NodeDef& node, const std::vector<NodeDef*>& input_nodes,
     const std::vector<NodeDef*>& output_nodes) const {
-  const bool is_identity = IsIdentity(node);
+  const bool is_identity = IsIdentity(node) || IsIdentityNSingleInput(node);
   const int num_outputs = output_nodes.size();
   const int num_inputs = node.input_size();
 
@@ -193,7 +193,7 @@ void DependencyOptimizer::OptimizeNode(int node_idx,
                                        std::set<int>* nodes_to_delete) {
   NodeDef* node = optimized_graph_->mutable_node(node_idx);
   const bool is_noop = IsNoOp(*node);
-  const bool is_identity = IsIdentity(*node);
+  const bool is_identity = IsIdentity(*node) || IsIdentityNSingleInput(*node);
   const string node_name = node->name();
   // Constant nodes with no input control dependency are always executed early,
   // so we can prune all their output control dependencies.
@@ -415,8 +415,8 @@ Status DependencyOptimizer::OptimizeDependencies() {
   std::set<int> nodes_to_delete;
   for (int i = 0; i < optimized_graph_->node_size(); ++i) {
     const NodeDef& node = optimized_graph_->node(i);
-    if (IsNoOp(node) || IsIdentity(node) || IsConstant(node) ||
-        SafeToConvertToNoOp(node)) {
+    if (IsNoOp(node) || IsIdentity(node) || IsIdentityNSingleInput(node) ||
+        IsConstant(node) || SafeToConvertToNoOp(node)) {
       nodes_to_simplify.PushBack(i);
     }
   }

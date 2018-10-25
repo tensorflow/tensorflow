@@ -322,11 +322,9 @@ def tf_proto_library_cc(
         dart_api_version = 2,
         java_api_version = 2,
         py_api_version = 2,
-        js_api_version = 2,
         js_codegen = "jspb",
         default_header = False):
     js_codegen = js_codegen  # unused argument
-    js_api_version = js_api_version  # unused argument
     native.filegroup(
         name = name + "_proto_srcs",
         srcs = srcs + tf_deps(protodeps, "_proto_srcs"),
@@ -442,12 +440,11 @@ def tf_proto_library(
         j2objc_api_version = 1,
         java_api_version = 2,
         py_api_version = 2,
-        js_api_version = 2,
         js_codegen = "jspb",
         provide_cc_alias = False,
         default_header = False):
     """Make a proto library, possibly depending on other proto libraries."""
-    _ignore = (js_api_version, js_codegen, provide_cc_alias)
+    _ignore = (js_codegen, provide_cc_alias)
 
     tf_proto_library_cc(
         name = name,
@@ -583,6 +580,9 @@ def tf_additional_device_tracer_cuda_deps():
     return []
 
 def tf_additional_device_tracer_deps():
+    return []
+
+def tf_additional_device_tracer_test_flags():
     return []
 
 def tf_additional_libdevice_data():

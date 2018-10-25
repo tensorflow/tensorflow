@@ -23,6 +23,7 @@ import imp
 
 import six
 
+from tensorflow.python import lib
 from tensorflow.python.autograph.pyct import inspect_utils
 from tensorflow.python.platform import test
 
@@ -145,6 +146,14 @@ class InspectUtilsTest(test.TestCase):
     self.assertEqual(inspect_utils.getqualifiedname(ns, foo), 'foo')
     self.assertEqual(inspect_utils.getqualifiedname(ns, bar), 'bar')
     self.assertEqual(inspect_utils.getqualifiedname(ns, baz), 'bar.baz')
+
+  def test_getqualifiedname_finds_via_parent_module(self):
+    # TODO(mdan): This test is vulnerable to change in the lib module.
+    # A better way to forge modules should be found.
+    self.assertEqual(
+        inspect_utils.getqualifiedname(
+            lib.__dict__, lib.io.file_io.FileIO, max_depth=1),
+        'io.file_io.FileIO')
 
   def test_getmethodclass(self):
 

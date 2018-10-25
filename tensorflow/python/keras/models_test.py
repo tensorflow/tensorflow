@@ -254,8 +254,11 @@ class TestCloneAndBuildModel(test.TestCase):
     keras.backend.clear_session()
 
     with self.cached_session():
+      with self.assertRaisesRegexp(ValueError, 'has not been compiled'):
+        models.clone_and_build_model(model, compile_clone=True)
+
       # With placeholder creation
-      new_model = models.clone_and_build_model(model, compile_clone=True)
+      new_model = models.clone_and_build_model(model, compile_clone=False)
       with self.assertRaisesRegexp(RuntimeError, 'must compile'):
         new_model.evaluate(inp, out)
       with self.assertRaisesRegexp(RuntimeError, 'must compile'):
@@ -268,7 +271,7 @@ class TestCloneAndBuildModel(test.TestCase):
       target_a = keras.Input(shape=(4,))
       new_model = models.clone_and_build_model(model, input_tensors=input_a,
                                                target_tensors=[target_a],
-                                               compile_clone=True)
+                                               compile_clone=False)
       with self.assertRaisesRegexp(RuntimeError, 'must compile'):
         new_model.evaluate(inp, out)
       with self.assertRaisesRegexp(RuntimeError, 'must compile'):
@@ -395,6 +398,23 @@ class TestCloneAndBuildModel(test.TestCase):
 
   def test_replace_keras_optimizer_iterations_variable(self):
     self.assert_optimizer_iterations_increases('adam')
+
+  def test_clone_and_build_sequential_model_without_inputs_defined(self):
+    with self.cached_session():
+      model = keras.models.Sequential()
+      model.add(keras.layers.Dense(4))
+      model.add(keras.layers.BatchNormalization())
+      model.add(keras.layers.Dropout(0.5))
+      model.add(keras.layers.Dense(4))
+      model.compile('rmsprop', 'mse',
+                    metrics=['acc', metrics.categorical_accuracy])
+    self._clone_and_build_test_helper(model, False)
+
+    with self.cached_session():
+      inp = np.random.random((10, 4))
+      out = np.random.random((10, 4))
+      model.train_on_batch(inp, out)
+    self._clone_and_build_test_helper(model, False)
 
 
 if __name__ == '__main__':

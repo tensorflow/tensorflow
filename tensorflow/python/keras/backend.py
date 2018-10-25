@@ -440,7 +440,7 @@ def learning_phase_scope(value):
         _GRAPH_LEARNING_PHASES[ops.get_default_graph()] = previous_value
 
 
-@tf_export('keras.backend.get_session')
+@tf_export(v1=['keras.backend.get_session'])
 def get_session():
   """Returns the TF session to be used by the backend.
 
@@ -826,6 +826,9 @@ def placeholder(shape=None, ndim=None, dtype=None, sparse=False, name=None):
       sparse: Boolean, whether the placeholder should have a sparse type.
       name: Optional name string for the placeholder.
 
+  Raises:
+      ValueError: If called with eager execution.
+
   Returns:
       Tensor instance (with Keras metadata included).
 
@@ -837,6 +840,9 @@ def placeholder(shape=None, ndim=None, dtype=None, sparse=False, name=None):
       <tf.Tensor 'Placeholder_4:0' shape=(2, 4, 5) dtype=float32>
   ```
   """
+  if context.executing_eagerly():
+    raise ValueError(
+        '`keras.backend.placeholder` is not supported with eager execution.')
   if dtype is None:
     dtype = floatx()
   if not shape:
@@ -1007,7 +1013,7 @@ def eval(x):
              [ 3.,  4.]], dtype=float32)
   ```
   """
-  return to_dense(x).eval(session=get_session())
+  return get_value(to_dense(x))
 
 
 @tf_export('keras.backend.zeros')
@@ -3060,8 +3066,11 @@ def function(inputs, outputs, updates=None, **kwargs):
       Output values as Numpy arrays.
 
   Raises:
-      ValueError: if invalid kwargs are passed in.
+      ValueError: if invalid kwargs are passed in or if in eager execution.
   """
+  if context.executing_eagerly():
+    raise ValueError(
+        '`keras.backend.function` is not supported with eager execution.')
   if kwargs:
     for key in kwargs:
       if (key not in tf_inspect.getfullargspec(session_module.Session.run)[0]
@@ -4256,6 +4265,8 @@ def separable_conv2d(x,
     data_format = image_data_format()
   if data_format not in {'channels_first', 'channels_last'}:
     raise ValueError('Unknown data_format: ' + str(data_format))
+  if len(strides) != 2:
+    raise ValueError('`strides` must be a tuple of 2 integers.')
 
   x, tf_data_format = _preprocess_conv2d_input(x, data_format)
   padding = _preprocess_padding(padding)
@@ -4462,6 +4473,10 @@ def pool2d(x,
     data_format = image_data_format()
   if data_format not in {'channels_first', 'channels_last'}:
     raise ValueError('Unknown data_format: ' + str(data_format))
+  if len(pool_size) != 2:
+    raise ValueError('`pool_size` must be a tuple of 2 integers.')
+  if len(strides) != 2:
+    raise ValueError('`strides` must be a tuple of 2 integers.')
 
   x, tf_data_format = _preprocess_conv2d_input(x, data_format)
   padding = _preprocess_padding(padding)

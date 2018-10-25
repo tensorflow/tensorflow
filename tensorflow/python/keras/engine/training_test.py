@@ -361,6 +361,79 @@ class TrainingTest(test.TestCase):
       with self.assertRaises(ValueError):
         model.compile(optimizer, loss=None)
 
+  @tf_test_util.run_in_graph_and_eager_modes
+  def test_activity_regularizer_fit(self):
+    loss = {}
+    for reg in [None, 'l2']:
+      inputs = keras.layers.Input(shape=(10,))
+      x = keras.layers.Dense(
+          10, activation='relu', activity_regularizer=reg)(
+              inputs)
+      outputs = keras.layers.Dense(1, activation='sigmoid')(x)
+      model = keras.Model(inputs, outputs)
+
+      x = np.ones((10, 10), 'float32')
+      y = np.ones((10, 1), 'float32')
+
+      optimizer = RMSPropOptimizer(learning_rate=0.001)
+      model.compile(optimizer, 'binary_crossentropy')
+      model.fit(x, y, batch_size=2, epochs=5)
+      loss[reg] = model.evaluate(x, y)
+    self.assertLess(loss[None], loss['l2'])
+
+  @tf_test_util.run_in_graph_and_eager_modes
+  def test_activity_regularizer_loss_value(self):
+    inputs = keras.layers.Input(shape=(10,))
+    outputs = keras.layers.Dense(
+        1,
+        kernel_initializer=keras.initializers.zeros(),
+        bias_initializer=keras.initializers.ones(),
+        activity_regularizer='l2')(
+            inputs)
+    model = keras.Model(inputs, outputs)
+    x = np.ones((10, 10), 'float32')
+    y = np.ones((10, 1), 'float32')
+    optimizer = RMSPropOptimizer(learning_rate=0.001)
+    model.compile(optimizer, 'binary_crossentropy')
+    loss = model.test_on_batch(x, y)
+    self.assertAlmostEqual(0.01, loss, places=4)
+
+  @tf_test_util.run_in_graph_and_eager_modes
+  def test_activity_regularizer_batch_independent(self):
+    inputs = keras.layers.Input(shape=(10,))
+    x = keras.layers.Dense(
+        10, activation='relu', activity_regularizer='l2')(
+            inputs)
+    outputs = keras.layers.Dense(1, activation='sigmoid')(x)
+    model = keras.Model(inputs, outputs)
+
+    optimizer = RMSPropOptimizer(learning_rate=0.001)
+    model.compile(optimizer, 'binary_crossentropy')
+
+    x = np.ones((10, 10), 'float32')
+    y = np.ones((10, 1), 'float32')
+    loss_small_batch = model.test_on_batch(x, y)
+
+    x2 = np.ones((20, 10), 'float32')
+    y2 = np.ones((20, 1), 'float32')
+    loss_big_batch = model.test_on_batch(x2, y2)
+
+    self.assertAlmostEqual(loss_small_batch, loss_big_batch, places=4)
+
+  @tf_test_util.run_in_graph_and_eager_modes
+  def test_activity_regularizer_in_model_call(self):
+
+    class MyModel(keras.Model):
+
+      def call(self, inputs):
+        self.add_loss(inputs)
+        return inputs
+
+    x = ops.convert_to_tensor(1.)
+    model = MyModel()
+    _ = model(x)
+    self.assertEqual(1, len(model.losses))
+
   def test_training_on_sparse_data_with_dense_placeholders(self):
     if scipy_sparse is None:
       return
@@ -1166,7 +1239,7 @@ class TestTrainingWithDataTensors(test.TestCase):
           np.zeros((2, 3)), shape=tensor_shape.TensorShape([None, 3]))
       targets = array_ops.placeholder_with_default(
           np.zeros((2, 4)), shape=tensor_shape.TensorShape([None, 4]))
-      self.assertEqual(inputs.shape[0].value, None)
+      self.assertEqual(inputs.shape.dims[0].value, None)
       model.fit(inputs, targets, epochs=1, steps_per_epoch=2, verbose=0)
       model.evaluate(inputs, targets, steps=2, verbose=0)
       model.predict(inputs, steps=2)

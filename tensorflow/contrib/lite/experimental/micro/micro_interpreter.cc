@@ -82,7 +82,7 @@ MicroInterpreter::MicroInterpreter(const Model* model,
   context_.tensors_size = tensors_->Length();
   context_.tensors =
       reinterpret_cast<TfLiteTensor*>(tensor_allocator_->AllocateMemory(
-          sizeof(TfLiteTensor) * context_.tensors_size));
+          sizeof(TfLiteTensor) * context_.tensors_size, 4));
   for (int i = 0; i < subgraph_->inputs()->Length(); ++i) {
     const int tensor_index = subgraph_->inputs()->Get(i);
     const auto* tensor = tensors_->Get(tensor_index);
@@ -94,10 +94,10 @@ MicroInterpreter::MicroInterpreter(const Model* model,
     }
   }
 
-  int* first_created = reinterpret_cast<int*>(
-      tensor_allocator_->AllocateMemory(sizeof(int) * tensors_->Length()));
-  int* last_used = reinterpret_cast<int*>(
-      tensor_allocator_->AllocateMemory(sizeof(int) * tensors_->Length()));
+  int* first_created = reinterpret_cast<int*>(tensor_allocator_->AllocateMemory(
+      sizeof(int) * tensors_->Length(), sizeof(int)));
+  int* last_used = reinterpret_cast<int*>(tensor_allocator_->AllocateMemory(
+      sizeof(int) * tensors_->Length(), sizeof(int)));
   for (int i = 0; i < tensors_->Length(); ++i) {
     first_created[i] = -1;
     last_used[i] = -1;

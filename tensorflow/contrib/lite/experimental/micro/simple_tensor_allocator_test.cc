@@ -121,7 +121,7 @@ TF_LITE_MICRO_TEST(TestTooLarge) {
   uint8_t arena[arena_size];
   tflite::SimpleTensorAllocator allocator(arena, arena_size);
 
-  const tflite::Tensor* tensor = tflite::Create1dTensor(10000);
+  const tflite::Tensor* tensor = tflite::Create1dTensor(2000);
   const flatbuffers::Vector<flatbuffers::Offset<tflite::Buffer>>* buffers =
       tflite::CreateBuffers();
 
@@ -137,8 +137,33 @@ TF_LITE_MICRO_TEST(TestJustFits) {
   uint8_t arena[arena_size];
   tflite::SimpleTensorAllocator allocator(arena, arena_size);
 
-  uint8_t* result = allocator.AllocateMemory(arena_size);
+  uint8_t* result = allocator.AllocateMemory(arena_size, 1);
   TF_LITE_MICRO_EXPECT_NE(nullptr, result);
+}
+
+TF_LITE_MICRO_TEST(TestAligned) {
+  constexpr size_t arena_size = 1024;
+  uint8_t arena[arena_size];
+  tflite::SimpleTensorAllocator allocator(arena, arena_size);
+
+  uint8_t* result = allocator.AllocateMemory(1, 1);
+  TF_LITE_MICRO_EXPECT_NE(nullptr, result);
+
+  result = allocator.AllocateMemory(16, 4);
+  TF_LITE_MICRO_EXPECT_NE(nullptr, result);
+  TF_LITE_MICRO_EXPECT_EQ(0, reinterpret_cast<size_t>(result) & 3);
+}
+
+TF_LITE_MICRO_TEST(TestMultipleTooLarge) {
+  constexpr size_t arena_size = 1024;
+  uint8_t arena[arena_size];
+  tflite::SimpleTensorAllocator allocator(arena, arena_size);
+
+  uint8_t* result = allocator.AllocateMemory(768, 1);
+  TF_LITE_MICRO_EXPECT_NE(nullptr, result);
+
+  result = allocator.AllocateMemory(768, 1);
+  TF_LITE_MICRO_EXPECT_EQ(nullptr, result);
 }
 
 TF_LITE_MICRO_TESTS_END

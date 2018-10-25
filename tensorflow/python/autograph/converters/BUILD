@@ -84,7 +84,6 @@ py_test(
 
 py_test(
     name = "call_trees_test",
-    size = "large",
     srcs = ["call_trees_test.py"],
     srcs_version = "PY2AND3",
     tags = ["no_windows"],
@@ -228,6 +227,7 @@ py_test(
     name = "error_handlers_test",
     srcs = ["error_handlers_test.py"],
     srcs_version = "PY2AND3",
+    tags = ["no_windows"],
     deps = [
         ":converters",
         "//tensorflow/python:client_testlib",

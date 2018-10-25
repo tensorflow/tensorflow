@@ -312,7 +312,7 @@ StatusOr<std::vector<DeviceHandle>> Client::GetDeviceHandles(
 
 Status Client::Unregister(const GlobalData& data) {
   UnregisterRequest request;
-  *request.mutable_data() = data.handle();
+  *request.add_data() = data.handle();
   UnregisterResponse response;
 
   VLOG(1) << "making unregister request";

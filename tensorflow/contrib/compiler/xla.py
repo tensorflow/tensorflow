@@ -23,7 +23,6 @@ import contextlib
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
 from tensorflow.compiler.jit.ops import xla_ops
-from tensorflow.contrib.tpu.python.tpu import tpu_function
 from tensorflow.core.framework import attr_value_pb2
 from tensorflow.python.estimator import model_fn as model_fn_lib
 from tensorflow.python.framework import ops
@@ -35,6 +34,7 @@ from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import compat
 from tensorflow.python.util import function_utils
 from tensorflow.python.util import tf_decorator
+from tensorflow.python.util import tf_inspect
 
 _XLA_COMPILE_ATTR = '_xla_compile_id'
 _MAX_WARNING_LINES = 5
@@ -266,7 +266,7 @@ def _compile_internal(computation, inputs=None):
   inputs = [ops.convert_to_tensor(x) for x in inputs]
   input_arity = len(inputs)
 
-  arg_error = tpu_function.check_function_argument_count(
+  arg_error = check_function_argument_count(
       computation, input_arity, infeed_queue=None)
   if arg_error is not None:
     raise TypeError(
@@ -645,3 +645,51 @@ def estimator_model_fn(target_model_fn=None):
     return tf_decorator.make_decorator(function, _ModelFnWrapper(function))
 
   return decorated(target_model_fn) if target_model_fn else decorated
+
+
+def check_function_argument_count(func, input_arity, infeed_queue):
+  """Validate the number of input arguments to an XLA function.
+
+  Args:
+    func: the Python function that will be called to generate the body of an XLA
+      computation graph.
+    input_arity: the number of explicit arguments supplied by the caller.
+    infeed_queue: if not None, the infeed queue that will supply
+      additional arguments to the function.
+
+  Returns:
+    None if function can be called with the supplied number of
+      arguments, or an error string if it cannot.
+  """
+  def format_error(complaint, quantity):
+    return '%s %d argument%s' % (complaint, quantity, ''
+                                 if quantity == 1 else 's')
+
+  num_args_supplied = input_arity
+  if infeed_queue is not None:
+    num_args_supplied += infeed_queue.number_of_tuple_elements
+  arg_spec = tf_inspect.getargspec(func)
+  num_func_args = len(arg_spec.args)
+  if arg_spec.defaults is None:
+    num_func_defaults = 0
+  else:
+    num_func_defaults = len(arg_spec.defaults)
+  min_func_args = num_func_args - num_func_defaults
+  if num_args_supplied < min_func_args:
+    # The required number of arguments is not enough to call the function.
+    if num_func_defaults == 0 and arg_spec.varargs is None:
+      return format_error('exactly', num_func_args)
+    else:
+      return format_error('at least', min_func_args)
+  if arg_spec.varargs is None and num_args_supplied > num_func_args:
+    # The required number of arguments is too many to call the function.
+    if num_func_defaults == 0:
+      return format_error('exactly', num_func_args)
+    else:
+      return format_error('at most', num_func_args)
+  # Reaching here means either
+  # 1) There are varargs, func can accept any number of arguments greater than
+  # the minimum.
+  # 2) Number of supplied arguments falls in range of acceptable argument count
+  # of func.
+  return None

@@ -71,7 +71,10 @@ static Status TensorListDeviceCopy(
   to->tensors.reserve(from.tensors.size());
   for (const Tensor& t : from.tensors) {
     Tensor tmp(t.dtype());
-    TF_RETURN_IF_ERROR(copy(t, &tmp));
+    // Do not copy uninitialized tensors.
+    if (t.dtype() != DT_INVALID) {
+      TF_RETURN_IF_ERROR(copy(t, &tmp));
+    }
     to->tensors.push_back(tmp);
   }
   return Status::OK();
@@ -274,13 +277,22 @@ class TensorListElementShape : public OpKernel {
                     "list. Saw: '",
                     c->input(0).scalar<Variant>()().DebugString(), "'"));
     Tensor* result;
-    OP_REQUIRES_OK(c, c->allocate_output(
-                          0, TensorShape{l->element_shape.dims()}, &result));
-    for (int i = 0; i < l->element_shape.dims(); ++i) {
+    if (l->element_shape.unknown_rank()) {
+      OP_REQUIRES_OK(c, c->allocate_output(0, TensorShape({}), &result));
       if (result->dtype() == DT_INT32) {
-        result->flat<int32>()(i) = l->element_shape.dim_size(i);
+        result->scalar<int32>()() = -1;
       } else {
-        result->flat<int64>()(i) = l->element_shape.dim_size(i);
+        result->scalar<int64>()() = -1;
+      }
+    } else {
+      OP_REQUIRES_OK(c, c->allocate_output(
+                            0, TensorShape{l->element_shape.dims()}, &result));
+      for (int i = 0; i < l->element_shape.dims(); ++i) {
+        if (result->dtype() == DT_INT32) {
+          result->flat<int32>()(i) = l->element_shape.dim_size(i);
+        } else {
+          result->flat<int64>()(i) = l->element_shape.dim_size(i);
+        }
       }
     }
   }
@@ -449,9 +461,16 @@ class TensorListSetItem : public OpKernel {
                 errors::InvalidArgument("Trying to modify element ", index,
                                         " in a list with ", l->tensors.size(),
                                         " elements."));
+    const Tensor& value = c->input(2);
+    OP_REQUIRES(c, l->element_shape.IsCompatibleWith(value.shape()),
+                errors::InvalidArgument(
+                    "Tried to set a tensor with incompatible shape at a "
+                    "list index. Item element shape: ",
+                    value.shape().DebugString(),
+                    " list shape: ", l->element_shape.DebugString()));
     TensorList output;
     output = *l;
-    output.tensors[index] = c->input(2);
+    output.tensors[index] = value;
     Tensor* result;
     AllocatorAttributes attr;
     attr.set_on_host(true);

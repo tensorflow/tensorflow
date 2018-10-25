@@ -36,11 +36,8 @@ namespace tensorflow {
 namespace data {
 namespace {
 
-// See documentation in ../ops/dataset_ops.cc for a high-level
+// See documentation in ../../ops/dataset_ops.cc for a high-level
 // description of the following op.
-
-// TODO(b/116852688): Make coordination between the performance model and this
-// transformation more robust.
 class MapAndBatchDatasetOp : public UnaryDatasetOpKernel {
  public:
   using MapAndBatchIteratorFunction =

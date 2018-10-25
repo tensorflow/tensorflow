@@ -57,9 +57,10 @@ class CreatePythonApiTest(test.TestCase):
 
   def testFunctionImportIsAdded(self):
     imports = create_python_api.get_api_init_text(
-        package=create_python_api._DEFAULT_PACKAGE,
+        packages=[create_python_api._DEFAULT_PACKAGE],
         output_package='tensorflow',
-        api_name='tensorflow', api_version=1)
+        api_name='tensorflow',
+        api_version=1)
     expected_import = (
         'from tensorflow.python.test_module '
         'import test_op as test_op1')
@@ -78,9 +79,10 @@ class CreatePythonApiTest(test.TestCase):
 
   def testClassImportIsAdded(self):
     imports = create_python_api.get_api_init_text(
-        package=create_python_api._DEFAULT_PACKAGE,
+        packages=[create_python_api._DEFAULT_PACKAGE],
         output_package='tensorflow',
-        api_name='tensorflow', api_version=2)
+        api_name='tensorflow',
+        api_version=2)
     expected_import = ('from tensorflow.python.test_module '
                        'import TestClass')
     self.assertTrue(
@@ -89,9 +91,10 @@ class CreatePythonApiTest(test.TestCase):
 
   def testConstantIsAdded(self):
     imports = create_python_api.get_api_init_text(
-        package=create_python_api._DEFAULT_PACKAGE,
+        packages=[create_python_api._DEFAULT_PACKAGE],
         output_package='tensorflow',
-        api_name='tensorflow', api_version=1)
+        api_name='tensorflow',
+        api_version=1)
     expected = ('from tensorflow.python.test_module '
                 'import _TEST_CONSTANT')
     self.assertTrue(expected in str(imports),
@@ -99,7 +102,7 @@ class CreatePythonApiTest(test.TestCase):
 
   def testCompatModuleIsAdded(self):
     imports = create_python_api.get_api_init_text(
-        package=create_python_api._DEFAULT_PACKAGE,
+        packages=[create_python_api._DEFAULT_PACKAGE],
         output_package='tensorflow',
         api_name='tensorflow',
         api_version=2,

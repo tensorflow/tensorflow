@@ -48,7 +48,6 @@ from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.util import nest as data_nest
 from tensorflow.python.estimator import estimator as estimator_lib
 from tensorflow.python.estimator import model_fn as model_fn_lib
-from tensorflow.python.estimator import util as estimator_util
 from tensorflow.python.estimator.export import export_output as export_output_lib
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -1229,7 +1228,7 @@ class _InputPipeline(object):
     # first one.
     self._infeed_queue = infeed_queues[0]
     return enqueue_ops, [
-        estimator_util.MultiHostDatasetInitializerHook(all_dataset_initializers)
+        util_lib.MultiHostDatasetInitializerHook(all_dataset_initializers)
     ], run_infeed_loop_on_coordinator
 
   def _validate_input_pipeline(self):
@@ -1448,7 +1447,7 @@ class _ModelFnWrapper(object):
       raise TypeError('TPUEstimatorSpec.predictions must be dict of Tensors.')
 
     for (key, tensor) in predictions.items():
-      if tensor.shape[0].value is None:
+      if tensor.shape.dims[0].value is None:
         raise ValueError(
             'The tensor with key ({}) in TPUEstimatorSpec.predictions has '
             'dynamic shape (should be static). Tensor: {}'.format(key, tensor))
@@ -2609,10 +2608,6 @@ class TPUEstimator(estimator_lib.Estimator):
               total_loss,
               math_ops.cast(iterations_per_loop_var, dtype=total_loss.dtype))
 
-          # Creates a dummy metric update_op for all metrics. Estimator expects
-          # all metrics in eval_metric_ops have update_op and calls them one by
-          # one. The real metric update_ops are invoked in a separated thread.
-          # So, here give Estimator the dummy op for all metrics.
           with ops.control_dependencies([mean_loss]):
             # After TPU evaluation computation is done (the mean_loss tensor),
             # reads all variables back from TPU and updates the eval step
@@ -2620,16 +2615,30 @@ class TPUEstimator(estimator_lib.Estimator):
             internal_ops_to_run = _sync_variables_ops(ctx)
             internal_ops_to_run.append(
                 _increase_eval_step_op(iterations_per_loop_var))
-            with ops.control_dependencies(internal_ops_to_run):
-              dummy_update_op = control_flow_ops.no_op()
 
           host_call_ret = host_calls.create_tpu_hostcall()
           eval_metric_ops = {}
           eval_update_ops = []
 
-          for k, v in host_call_ret.get('eval_metrics', {}).items():
-            eval_metric_ops[k] = (v[0], dummy_update_op)
-            eval_update_ops.append(v[1])
+          eval_metrics = host_call_ret.get('eval_metrics', {})
+          if eval_metrics:
+            # Creates a dummy metric update_op for all metrics. Estimator
+            # expects all metrics in `eval_metric_ops` have update_op and calls
+            # them one by one. The real metric update_ops are invoked in a
+            # separated thread. So, here give Estimator the dummy op for all
+            # metrics.
+            with ops.control_dependencies(internal_ops_to_run):
+              dummy_update_op = control_flow_ops.no_op()
+
+            for k, v in eval_metrics.items():
+              eval_metric_ops[k] = (v[0], dummy_update_op)
+              eval_update_ops.append(v[1])
+          else:
+            # If no eval metrics are passed, create an identity node for the
+            # loss and add `internal_ops_to_run` to its dependencies. So
+            # `internal_ops_to_run` can be executed.
+            with ops.control_dependencies(internal_ops_to_run):
+              mean_loss = array_ops.identity(mean_loss)
 
           if 'host_call' not in host_call_ret:
             host_ops = []

@@ -20,6 +20,7 @@ from __future__ import print_function
 
 import copy
 import re
+import sys
 
 import numpy as np
 
@@ -32,6 +33,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import io_ops
 
 
 def _create_tensor(value, device=None, dtype=None):
@@ -241,6 +243,12 @@ class TFETensorTest(test_util.TensorFlowTestCase):
       with self.assertRaisesRegexp(
           RuntimeError, "Can't copy Tensor with type string to device"):
         _create_tensor("test string")
+
+  def testInvalidUTF8ProducesReasonableError(self):
+    if sys.version_info[0] < 3:
+      self.skipTest("Test is only valid in python3.")
+    with self.assertRaises(UnicodeDecodeError):
+      io_ops.read_file(b"\xff")
 
 
 class TFETensorUtilTest(test_util.TensorFlowTestCase):

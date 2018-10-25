@@ -103,7 +103,10 @@ def list_variables(ckpt_dir_or_file):
 
 @tf_export("train.init_from_checkpoint")
 def init_from_checkpoint(ckpt_dir_or_file, assignment_map):
-  """Initializes current variables with tensors loaded from given checkpoint.
+  """Replaces `tf.Variable` initializers so they load from a checkpoint file.
+
+  Values are not loaded immediately, but when the initializer is run
+  (typically by running a `tf.global_variables_initializer` op).
 
   Note: This overrides default initialization ops of specified variables and
   redefines dtype.
@@ -180,10 +183,10 @@ def init_from_checkpoint(ckpt_dir_or_file, assignment_map):
     tf.errors.OpError: If missing checkpoints or tensors in checkpoints.
     ValueError: If missing variables in current graph.
   """
-  if distribution_strategy_context.get_cross_tower_context():
+  if distribution_strategy_context.get_cross_replica_context():
     _init_from_checkpoint(None, ckpt_dir_or_file, assignment_map)
   else:
-    distribution_strategy_context.get_tower_context().merge_call(
+    distribution_strategy_context.get_replica_context().merge_call(
         _init_from_checkpoint, ckpt_dir_or_file, assignment_map)
 
 

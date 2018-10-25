@@ -27,6 +27,7 @@ from tensorflow.python import keras as _keras
 from tensorflow.python.client import session as _session
 from tensorflow.python.framework.importer import import_graph_def as _import_graph_def
 from tensorflow.python.lib.io import file_io as _file_io
+from tensorflow.python.saved_model import loader as _loader
 from tensorflow.python.saved_model import signature_constants as _signature_constants
 from tensorflow.python.saved_model import tag_constants as _tag_constants
 
@@ -37,13 +38,13 @@ def _convert(converter, **kwargs):
   Args:
     converter: TFLiteConverter object.
     **kwargs: Additional arguments to be passed into the converter. Supported
-      flags are {"converter_mode", "post_training_quantize"}.
+      flags are {"target_ops", "post_training_quantize"}.
 
   Returns:
     The converted TFLite model in serialized format.
   """
-  if "converter_mode" in kwargs:
-    converter.converter_mode = kwargs["converter_mode"]
+  if "target_ops" in kwargs:
+    converter.target_ops = kwargs["target_ops"]
   if "post_training_quantize" in kwargs:
     converter.post_training_quantize = kwargs["post_training_quantize"]
   return converter.convert()
@@ -144,7 +145,7 @@ def evaluate_saved_model(directory, tag_set, signature_key):
     if signature_key is None:
       signature_key = _signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY
 
-    meta_graph = _convert_saved_model.get_meta_graph_def(directory, tag_set)
+    meta_graph = _loader.load(sess, tag_set, directory)
     signature_def = _convert_saved_model.get_signature_def(
         meta_graph, signature_key)
     inputs, outputs = _convert_saved_model.get_inputs_outputs(signature_def)
@@ -238,8 +239,8 @@ def test_frozen_graph_quant(filename,
       for float_tensor in float_tensors)
   has_quant_tensor = num_tensors_float != num_tensors_same_dtypes
 
-  if ("converter_mode" in kwargs and
-      kwargs["converter_mode"] == _lite.ConverterMode.TOCO_FLEX_ALL):
+  if ("target_ops" in kwargs and
+      set(kwargs["target_ops"]) == set([_lite.OpsSet.SELECT_TF_OPS])):
     if has_quant_tensor:
       raise ValueError("--post_training_quantize flag unexpectedly altered the "
                        "full Flex mode graph.")
@@ -276,7 +277,11 @@ def test_frozen_graph(filename,
   compare_models_random_data(tflite_model, tf_eval_func)
 
 
-def test_saved_model(directory, tag_set=None, signature_key=None, **kwargs):
+def test_saved_model(directory,
+                     input_shapes=None,
+                     tag_set=None,
+                     signature_key=None,
+                     **kwargs):
   """Validates the TensorFlow SavedModel converts to a TFLite model.
 
   Converts the TensorFlow SavedModel to TFLite and checks the accuracy of the
@@ -284,13 +289,20 @@ def test_saved_model(directory, tag_set=None, signature_key=None, **kwargs):
 
   Args:
     directory: SavedModel directory to convert.
+    input_shapes: Dict of strings representing input tensor names to list of
+      integers representing input shapes (e.g., {"foo" : [1, 16, 16, 3]}).
+      Automatically determined when input shapes is None (e.g., {"foo" : None}).
+        (default None)
     tag_set: Set of tags identifying the MetaGraphDef within the SavedModel to
       analyze. All tags in the tag set must be present.
     signature_key: Key identifying SignatureDef containing inputs and outputs.
     **kwargs: Additional arguments to be passed into the converter.
   """
-  converter = _lite.TFLiteConverter.from_saved_model(directory, tag_set,
-                                                     signature_key)
+  converter = _lite.TFLiteConverter.from_saved_model(
+      directory,
+      input_shapes=input_shapes,
+      tag_set=tag_set,
+      signature_key=signature_key)
   tflite_model = _convert(converter, **kwargs)
 
   tf_eval_func = evaluate_saved_model(directory, tag_set, signature_key)

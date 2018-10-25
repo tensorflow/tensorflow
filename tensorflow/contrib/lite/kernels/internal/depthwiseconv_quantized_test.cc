@@ -33,7 +33,6 @@ namespace tflite {
 namespace {
 
 // Runs the DepthwiseConv and compares against the reference implementation.
-template <FusedActivationFunctionType Ac>
 int TestOneDepthwiseConvWithGivenOutputShift(
     const std::uint8_t* input_data, const RuntimeShape& input_shape,
     std::int32_t input_offset, const std::uint8_t* filter_data,
@@ -115,7 +114,6 @@ int TestOneDepthwiseConvWithGivenOutputShift(
 // guessing wrong would mean that all the values get saturated so the test
 // becomes
 // vacuous. So we just bisect our way to reasonable output_shift values.
-template <FusedActivationFunctionType Ac>
 void TestOneDepthwiseConvBisectOutputShift(
     const std::uint8_t* input_data, const RuntimeShape& input_shape,
     std::int32_t input_offset, const std::uint8_t* filter_data,
@@ -130,7 +128,7 @@ void TestOneDepthwiseConvBisectOutputShift(
       << "Bisection failed ?!?!";
   int output_shift_bisect_midpoint =
       (output_activation_bisect_start + output_activation_bisect_end) / 2;
-  int bisect_result = TestOneDepthwiseConvWithGivenOutputShift<Ac>(
+  int bisect_result = TestOneDepthwiseConvWithGivenOutputShift(
       input_data, input_shape, input_offset, filter_data, filter_shape,
       filter_offset, bias_data, bias_shape, stride, pad_width, pad_height,
       depth_multiplier, output_offset, output_multiplier,
@@ -157,7 +155,7 @@ void TestOneDepthwiseConvBisectOutputShift(
   int new_output_activation_bisect_end = bisect_result == 1
                                              ? output_activation_bisect_end
                                              : output_shift_bisect_midpoint;
-  TestOneDepthwiseConvBisectOutputShift<Ac>(
+  TestOneDepthwiseConvBisectOutputShift(
       input_data, input_shape, input_offset, filter_data, filter_shape,
       filter_offset, bias_data, bias_shape, stride, pad_width, pad_height,
       depth_multiplier, output_offset, output_multiplier,
@@ -165,7 +163,6 @@ void TestOneDepthwiseConvBisectOutputShift(
       output_activation_min, output_activation_max, output_shape);
 }
 
-template <FusedActivationFunctionType Ac>
 void TestOneDepthwiseConv(
     const std::uint8_t* input_data, const RuntimeShape& input_shape,
     std::int32_t input_offset, const std::uint8_t* filter_data,
@@ -175,36 +172,11 @@ void TestOneDepthwiseConv(
     std::int32_t output_offset, std::int32_t output_multiplier,
     std::int32_t output_activation_min, std::int32_t output_activation_max,
     const RuntimeShape& output_shape) {
-  TestOneDepthwiseConvBisectOutputShift<Ac>(
+  TestOneDepthwiseConvBisectOutputShift(
       input_data, input_shape, input_offset, filter_data, filter_shape,
       filter_offset, bias_data, bias_shape, stride, pad_width, pad_height,
       depth_multiplier, output_offset, output_multiplier, 0, 32,
       output_activation_min, output_activation_max, output_shape);
-}
-
-void TestOneDepthwiseConv(
-    FusedActivationFunctionType Ac, const std::uint8_t* input_data,
-    const RuntimeShape& input_shape, std::int32_t input_offset,
-    const std::uint8_t* filter_data, const RuntimeShape& filter_shape,
-    std::int32_t filter_offset, const std::int32_t* bias_data,
-    const RuntimeShape& bias_shape, int stride, int pad_width, int pad_height,
-    int depth_multiplier, std::int32_t output_offset,
-    std::int32_t output_multiplier, std::int32_t output_activation_min,
-    std::int32_t output_activation_max, const RuntimeShape& output_shape) {
-#define TOCO_HANDLE_CASE(AC_TYPE)                                            \
-  if (AC_TYPE == Ac) {                                                       \
-    TestOneDepthwiseConv<AC_TYPE>(                                           \
-        input_data, input_shape, input_offset, filter_data, filter_shape,    \
-        filter_offset, bias_data, bias_shape, stride, pad_width, pad_height, \
-        depth_multiplier, output_offset, output_multiplier,                  \
-        output_activation_min, output_activation_max, output_shape);         \
-    return;                                                                  \
-  }
-  TOCO_HANDLE_CASE(FusedActivationFunctionType::kNone)
-  TOCO_HANDLE_CASE(FusedActivationFunctionType::kRelu)
-  TOCO_HANDLE_CASE(FusedActivationFunctionType::kRelu1)
-  TOCO_HANDLE_CASE(FusedActivationFunctionType::kRelu6)
-#undef TOCO_HANDLE_CASE
 }
 
 bool TryTestDepthwiseConv(int batch, int input_depth, int input_width,
@@ -223,13 +195,9 @@ bool TryTestDepthwiseConv(int batch, int input_depth, int input_width,
   if (output_depth > kMaxSupportedOutputDepth) {
     return false;
   }
-  const auto ac = RandomElement(std::vector<FusedActivationFunctionType>(
-      {FusedActivationFunctionType::kNone, FusedActivationFunctionType::kRelu,
-       FusedActivationFunctionType::kRelu6,
-       FusedActivationFunctionType::kRelu1}));
   int output_activation_min = 0;
   int output_activation_max = 255;
-  if (ac != FusedActivationFunctionType::kNone && UniformRandomInt(0, 1)) {
+  if (UniformRandomInt(0, 1)) {
     output_activation_min = UniformRandomInt(0, 50);
     output_activation_max = UniformRandomInt(200, 255);
   }
@@ -259,8 +227,8 @@ bool TryTestDepthwiseConv(int batch, int input_depth, int input_width,
   FillRandom(&input_data);
   FillRandom(&filter_data);
   FillRandom(&bias_data, -10000, 10000);
-  TestOneDepthwiseConv(ac, input_data.data(), input_shape_inference,
-                       input_offset, filter_data.data(), filter_shape_inference,
+  TestOneDepthwiseConv(input_data.data(), input_shape_inference, input_offset,
+                       filter_data.data(), filter_shape_inference,
                        filter_offset, bias_data.data(), bias_shape_inference,
                        stride, pad_width, pad_height, depth_multiplier,
                        output_offset, output_multiplier, output_activation_min,

@@ -1,6 +1,6 @@
-# Benchmarker for LPIRC Workshop at CVPR 2018
+# OVIC Benchmarker for NIPS 2018
 
-This folder contains building code for track one of the [Low Power ImageNet Recognition Challenge workshop at CVPR 2018.](https://rebootingcomputing.ieee.org/home/sitemap/14-lpirc/80-low-power-image-recognition-challenge-lpirc-2018)
+This folder contains the SDK for track one of the [Low Power ImageNet Recognition Challenge workshop at NIPS 2018.](https://lpirc.ecn.purdue.edu/)
 
 ## Pre-requisite
 
@@ -38,6 +38,8 @@ You can run test with Bazel as below. This helps to ensure that the installation
 
 ```sh
 bazel test --cxxopt=--std=c++11 //tensorflow/contrib/lite/java/ovic:OvicClassifierTest --cxxopt=-Wno-all --test_output=all
+
+bazel test --cxxopt=--std=c++11 //tensorflow/contrib/lite/java/ovic:OvicDetectorTest --cxxopt=-Wno-all --test_output=all
 ```
 
 ### Test your submissions
@@ -46,11 +48,11 @@ Once you have a submission that follows the instructions from the [competition s
 
 #### Validate using randomly generated images
 
-You can call the validator binary below to verify that your model fits the format requirements. This often helps you to catch size mismatches (e.g. output should be [1, 1001] instead of [1,1,1,1001]). Let say the submission file is located at `/path/to/my_model.lite`, then call:
+You can call the validator binary below to verify that your model fits the format requirements. This often helps you to catch size mismatches (e.g. output for classification should be [1, 1001] instead of [1,1,1,1001]). Let say the submission file is located at `/path/to/my_model.lite`, then call:
 
 ```sh
 bazel build --cxxopt=--std=c++11 //tensorflow/contrib/lite/java/ovic:ovic_validator --cxxopt=-Wno-all
-bazel-bin/tensorflow/contrib/lite/java/ovic/ovic_validator /path/to/my_model.lite
+bazel-bin/tensorflow/contrib/lite/java/ovic/ovic_validator /path/to/my_model.lite classify
 ```
 
 Successful validation should print the following message to terminal:
@@ -59,6 +61,9 @@ Successful validation should print the following message to terminal:
 Successfully validated /path/to/my_model.lite.
 
 ```
+
+To validate detection models, use the same command but provide "detect" as the second argument instead of "classify".
+
 
 #### Test that the model produces sensible outcomes
 
@@ -80,6 +85,7 @@ The test images can be found at `tensorflow/contrib/lite/java/ovic/src/testdata/
 filegroup(
     name = "ovic_testdata",
     srcs = [
+        "@tflite_ovic_testdata//:detect.lite",
         "@tflite_ovic_testdata//:float_model.lite",
         "@tflite_ovic_testdata//:low_res_model.lite",
         "@tflite_ovic_testdata//:quantized_model.lite",
@@ -91,7 +97,7 @@ filegroup(
     ...
 ```
 
-* Modify `OvicClassifierTest.java` to test your model.
+* Modify `OvicClassifierTest.java` and `OvicDetectorTest.java` to test your model.
 
 Change `TEST_IMAGE_PATH` to `my_test_image.jpg`. Change either `FLOAT_MODEL_PATH` or `QUANTIZED_MODEL_PATH` to `my_model.lite` depending on whether your model runs inference in float or [8-bit](https://www.tensorflow.org/performance/quantization).
 
@@ -138,7 +144,7 @@ bazel build -c opt --cxxopt=--std=c++11 --cxxopt=-Wno-all //tensorflow/contrib/l
 adb install -r bazel-bin/tensorflow/contrib/lite/java/ovic/demo/app/ovic_benchmarker_binary.apk
 ```
 
-Start the app and click the `Start` button in dark green. The button should turn bright green, signaling that the experiment is running. The benchmarking results will be displayed after about the `WALL_TIME` you specified above. For example:
+Start the app and pick a task by clicking either the `CLF` button for classification or the `DET` button for detection. The button should turn bright green, signaling that the experiment is running. The benchmarking results will be displayed after about the `WALL_TIME` you specified above. For example:
 
 ```
 my_model.lite: Average latency=158.6ms after 20 runs.
@@ -154,5 +160,5 @@ Note: the benchmarking results can be quite different depending on the backgroun
 | quantized_model.lite | 85                    | 74                   |
 |  low_res_model.lite  | 4.2                   | 4.0                  |
 
-Since Pixel 2 has excellent support for 8-bit quantized models, we strongly recommend you to check out the [quantization training tutorial](https://www.tensorflow.org/performance/quantization).
+Since Pixel 2 has excellent support for 8-bit quantized models, we strongly recommend you to check out the [quantization training tutorial](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/contrib/quantize).
 

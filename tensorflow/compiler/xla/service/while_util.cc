@@ -225,7 +225,8 @@ static Shape MakeLoopStateShape(const WhileUtil::LoopStateTy& init_values) {
 /*static*/ StatusOr<WhileUtil::LoopStateTy> WhileUtil::MakeCountedLoop(
     HloComputation* computation, int32 trip_count,
     const WhileUtil::LoopStateTy& init_values,
-    const WhileUtil::LoopBodyGeneratorTy& loop_body_generator) {
+    const WhileUtil::LoopBodyGeneratorTy& loop_body_generator,
+    const OpMetadata& metadata) {
   CHECK_GE(trip_count, 0);
 
   Shape loop_state_shape = MakeLoopStateShape(init_values);
@@ -242,6 +243,7 @@ static Shape MakeLoopStateShape(const WhileUtil::LoopStateTy& init_values) {
       computation->AddInstruction(HloInstruction::CreateWhile(
           loop_state_shape, module->AddEmbeddedComputation(std::move(cond)),
           module->AddEmbeddedComputation(std::move(body)), init_tuple));
+  while_instr->set_metadata(metadata);
 
   std::vector<HloInstruction*> result;
   for (int64 i = 0, e = init_values.size(); i < e; i++) {

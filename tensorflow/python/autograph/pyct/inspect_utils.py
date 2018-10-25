@@ -29,15 +29,26 @@ import six
 from tensorflow.python.util import tf_inspect
 
 
+# These functions test negative for isinstance(*, types.BuiltinFunctionType)
+# and inspect.isbuiltin, and are generally not visible in globals().
+SPECIAL_BUILTINS = {
+    'dict': dict,
+    'float': float,
+    'int': int,
+    'len': len,
+    'print': print,
+    'range': range,
+    'tuple': tuple
+}
+
+if six.PY2:
+  SPECIAL_BUILTINS['xrange'] = xrange
+
+
 def isbuiltin(f):
   """Returns True if the argument is a built-in function."""
-  # Note these return false for isinstance(f, types.BuiltinFunctionType) so we
-  # need to specifically check for them.
-  if f in (range, int, float):
+  if f in SPECIAL_BUILTINS.values():
     return True
-  if six.PY2:
-    if f in (xrange,):
-      return True
   if isinstance(f, types.BuiltinFunctionType):
     return True
   if tf_inspect.isbuiltin(f):
@@ -70,6 +81,9 @@ def getnamespace(f):
 def getqualifiedname(namespace, object_, max_depth=2):
   """Returns the name by which a value can be referred to in a given namespace.
 
+  If the object defines a parent module, the function attempts to use it to
+  locate the object.
+
   This function will recurse inside modules, but it will not search objects for
   attributes. The recursion depth is controlled by max_depth.
 
@@ -89,6 +103,18 @@ def getqualifiedname(namespace, object_, max_depth=2):
     # TODO(mdan): Prefer the symbol that matches the value type name.
     if object_ is value:
       return name
+
+  # If an object is not found, try to search its parent modules.
+  parent = tf_inspect.getmodule(object_)
+  if (parent is not None and parent is not object_ and
+      parent is not namespace):
+    # No limit to recursion depth because of the guard above.
+    parent_name = getqualifiedname(namespace, parent, max_depth=0)
+    if parent_name is not None:
+      name_in_parent = getqualifiedname(parent.__dict__, object_, max_depth=0)
+      assert name_in_parent is not None, (
+          'An object should always be found in its owner module')
+      return '{}.{}'.format(parent_name, name_in_parent)
 
   # TODO(mdan): Use breadth-first search and avoid visiting modules twice.
   if max_depth:

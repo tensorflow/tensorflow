@@ -106,9 +106,10 @@ class ConjugateTransposeOp : public TransposeOp {
       : TransposeOp(ctx, /*conjugate=*/true) {}
 };
 
-REGISTER_XLA_OP(Name("Transpose").CompileTimeConstInput("perm"), TransposeOp);
+REGISTER_XLA_OP(Name("Transpose").CompileTimeConstantInput("perm"),
+                TransposeOp);
 
-REGISTER_XLA_OP(Name("ConjugateTranspose").CompileTimeConstInput("perm"),
+REGISTER_XLA_OP(Name("ConjugateTranspose").CompileTimeConstantInput("perm"),
                 ConjugateTransposeOp);
 
 // InvertPermutation frequently forms part of the gradient of Transpose.
@@ -153,7 +154,7 @@ class InvertPermutationOp : public XlaOpKernel {
 
 REGISTER_XLA_OP(Name("InvertPermutation")
                     .TypeConstraint("T", DT_INT32)
-                    .CompileTimeConstInput("x"),
+                    .CompileTimeConstantInput("x"),
                 InvertPermutationOp);
 
 }  // namespace

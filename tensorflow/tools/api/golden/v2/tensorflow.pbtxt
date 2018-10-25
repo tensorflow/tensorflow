@@ -9,14 +9,6 @@ tf_module {
     mtype: "<class \'google.protobuf.pyext.cpp_message.GeneratedProtocolMessageType\'>"
   }
   member {
-    name: "COMPILER_VERSION"
-    mtype: "<type \'str\'>"
-  }
-  member {
-    name: "CXX11_ABI_FLAG"
-    mtype: "<type \'int\'>"
-  }
-  member {
     name: "ConditionalAccumulator"
     mtype: "<type \'type\'>"
   }
@@ -57,24 +49,8 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
-    name: "GIT_VERSION"
-    mtype: "<type \'str\'>"
-  }
-  member {
     name: "GPUOptions"
     mtype: "<class \'google.protobuf.pyext.cpp_message.GeneratedProtocolMessageType\'>"
-  }
-  member {
-    name: "GRAPH_DEF_VERSION"
-    mtype: "<type \'int\'>"
-  }
-  member {
-    name: "GRAPH_DEF_VERSION_MIN_CONSUMER"
-    mtype: "<type \'int\'>"
-  }
-  member {
-    name: "GRAPH_DEF_VERSION_MIN_PRODUCER"
-    mtype: "<type \'int\'>"
   }
   member {
     name: "GradientTape"
@@ -105,16 +81,8 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
-    name: "InteractiveSession"
-    mtype: "<type \'type\'>"
-  }
-  member {
     name: "LogMessage"
     mtype: "<class \'google.protobuf.pyext.cpp_message.GeneratedProtocolMessageType\'>"
-  }
-  member {
-    name: "MONOLITHIC_BUILD"
-    mtype: "<type \'int\'>"
   }
   member {
     name: "MetaGraphDef"
@@ -151,10 +119,6 @@ tf_module {
   member {
     name: "RunOptions"
     mtype: "<class \'google.protobuf.pyext.cpp_message.GeneratedProtocolMessageType\'>"
-  }
-  member {
-    name: "Session"
-    mtype: "<type \'type\'>"
   }
   member {
     name: "SessionLog"
@@ -201,12 +165,12 @@ tf_module {
     mtype: "<class \'enum.EnumMeta\'>"
   }
   member {
-    name: "VERSION"
-    mtype: "<type \'str\'>"
-  }
-  member {
     name: "VarLenFeature"
     mtype: "<type \'type\'>"
+  }
+  member {
+    name: "Variable"
+    mtype: "<class \'tensorflow.python.ops.variables.VariableMetaclass\'>"
   }
   member {
     name: "VariableAggregation"
@@ -247,10 +211,6 @@ tf_module {
   member {
     name: "constant_initializer"
     mtype: "<type \'type\'>"
-  }
-  member {
-    name: "contrib"
-    mtype: "<class \'tensorflow.python.util.lazy_loader.LazyLoader\'>"
   }
   member {
     name: "data"
@@ -346,10 +306,6 @@ tf_module {
   }
   member {
     name: "keras"
-    mtype: "<type \'module\'>"
-  }
-  member {
-    name: "layers"
     mtype: "<type \'module\'>"
   }
   member {
@@ -511,6 +467,10 @@ tf_module {
   member {
     name: "variant"
     mtype: "<class \'tensorflow.python.framework.dtypes.DType\'>"
+  }
+  member {
+    name: "version"
+    mtype: "<type \'module\'>"
   }
   member {
     name: "zeros_initializer"
@@ -781,10 +741,6 @@ tf_module {
     argspec: "args=[\'bytes\', \'out_type\', \'little_endian\', \'name\'], varargs=None, keywords=None, defaults=[\'True\', \'None\'], "
   }
   member_method {
-    name: "delete_session_tensor"
-    argspec: "args=[\'handle\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
-  }
-  member_method {
     name: "dequantize"
     argspec: "args=[\'input\', \'min_range\', \'max_range\', \'mode\', \'name\'], varargs=None, keywords=None, defaults=[\'MIN_COMBINED\', \'None\'], "
   }
@@ -963,18 +919,6 @@ tf_module {
   member_method {
     name: "get_default_graph"
     argspec: "args=[], varargs=None, keywords=None, defaults=None"
-  }
-  member_method {
-    name: "get_default_session"
-    argspec: "args=[], varargs=None, keywords=None, defaults=None"
-  }
-  member_method {
-    name: "get_session_handle"
-    argspec: "args=[\'data\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
-  }
-  member_method {
-    name: "get_session_tensor"
-    argspec: "args=[\'handle\', \'dtype\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
     name: "gradients"
@@ -1167,6 +1111,10 @@ tf_module {
   member_method {
     name: "matrix_solve"
     argspec: "args=[\'matrix\', \'rhs\', \'adjoint\', \'name\'], varargs=None, keywords=None, defaults=[\'False\', \'None\'], "
+  }
+  member_method {
+    name: "matrix_square_root"
+    argspec: "args=[\'input\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
     name: "matrix_triangular_solve"
@@ -1727,6 +1675,10 @@ tf_module {
   member_method {
     name: "variable_axis_size_partitioner"
     argspec: "args=[\'max_shard_bytes\', \'axis\', \'bytes_per_string_element\', \'max_shards\'], varargs=None, keywords=None, defaults=[\'0\', \'16\', \'None\'], "
+  }
+  member_method {
+    name: "variable_creator_scope"
+    argspec: "args=[\'variable_creator\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "where"

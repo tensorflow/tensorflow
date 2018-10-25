@@ -56,9 +56,15 @@ bool IsRepeatOne(const NodeDef& repeat_node, const GraphView& graph) {
   return IsConstNodeWithValue(*graph.GetNode(repeat_node.input(1)), 1);
 }
 
+bool IsPrefetchZero(const NodeDef& prefetch_node, const GraphView& graph) {
+  if (prefetch_node.op() != "PrefetchDataset") return false;
+  // We are looking only for prefetch(0) nodes.
+  return IsConstNodeWithValue(*graph.GetNode(prefetch_node.input(1)), 0);
+}
+
 bool IsNoOp(const NodeDef& node, const GraphView& graph) {
   return IsTakeAll(node, graph) || IsSkipNone(node, graph) ||
-         IsRepeatOne(node, graph);
+         IsRepeatOne(node, graph) || IsPrefetchZero(node, graph);
 }
 
 }  // namespace

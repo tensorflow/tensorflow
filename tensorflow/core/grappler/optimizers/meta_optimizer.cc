@@ -431,12 +431,14 @@ Status MetaOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
     return Status::OK();
   }
 
-  // 2. Optimize function library
-  FunctionLibraryDefinition flib(OpRegistry::Global(),
-                                 optimized_graph->library());
+  // 2. Optimize functions reachable from the optimized graph.
+  FunctionLibraryDefinition flib = ReachableFunctionLibraryDefinition(
+      FunctionLibraryDefinition(OpRegistry::Global(),
+                                optimized_graph->library()),
+      *optimized_graph);
 
   // Find functions for which we might need to compute a gradient at runtime.
-  gtl::FlatSet<string> differentiable_functions;
+  absl::flat_hash_set<string> differentiable_functions;
   for (const NodeDef& node : optimized_graph->node()) {
     if (IsSymbolicGradient(node)) {
       const auto* f_attr = gtl::FindOrNull(node.attr(), "f");
@@ -445,7 +447,7 @@ Status MetaOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
   }
 
   // Optimize each function only once.
-  std::unordered_set<string> optimized_funcs;
+  absl::flat_hash_set<string> optimized_funcs;
   bool optimize_function_library = true;
 
   while (optimize_function_library) {
@@ -455,6 +457,9 @@ Status MetaOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
       GRAPPLER_RETURN_IF_DEADLINE_EXCEEDED();
 
       const string& func_name = func.signature().name();
+
+      // Skip functions that are not reachable from the optimized graph.
+      if (!flib.Contains(func_name)) continue;
 
       // Skip already optimized functions.
       if (optimized_funcs.find(func_name) != optimized_funcs.end()) continue;

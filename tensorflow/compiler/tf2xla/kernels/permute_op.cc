@@ -90,9 +90,9 @@ class DataFormatVecPermuteOp : public XlaOpKernel {
   TF_DISALLOW_COPY_AND_ASSIGN(DataFormatVecPermuteOp);
 };
 
-// TODO(b/115384656): Support DT_INT64.
-REGISTER_XLA_OP(Name("DataFormatVecPermute").TypeConstraint("T", DT_INT32),
-                DataFormatVecPermuteOp);
+REGISTER_XLA_OP(
+    Name("DataFormatVecPermute").TypeConstraint("T", {DT_INT32, DT_INT64}),
+    DataFormatVecPermuteOp);
 
 }  // namespace
 }  // namespace tensorflow
