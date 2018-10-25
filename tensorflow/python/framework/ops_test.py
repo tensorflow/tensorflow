@@ -1064,6 +1064,87 @@ class NameTest(test_util.TensorFlowTestCase):
       self.assertEqual("bar/FloatOutput_2",
                        g.create_op("FloatOutput", [], [dtypes.float32]).name)
 
+  def testAbsoluteNameScope(self):
+    g = ops.Graph()
+    with g.as_default():
+      # abs_scope>abs_scope
+      with g.absolute_name_scope('abs_outer'):
+        with g.absolute_name_scope('abs_inner'):
+          self.assertEqual(
+              'abs_outer/abs_inner/FloatOutput',
+              g.create_op("FloatOutput", [], [dtypes.float32]).name)
+      with g.absolute_name_scope('abs_outer'):
+        with g.absolute_name_scope('abs_inner'):
+          self.assertEqual(
+              'abs_outer/abs_inner/FloatOutput_1',
+              g.create_op("FloatOutput", [], [dtypes.float32]).name)
+
+    g = ops.Graph()
+    with g.as_default():
+      # name_scope>abs_scope
+      with g.name_scope('name_outer'):
+        with g.absolute_name_scope('abs_inner'):
+          self.assertEqual(
+              'name_outer/abs_inner/FloatOutput',
+              g.create_op("FloatOutput", [], [dtypes.float32]).name)
+      with g.name_scope('name_outer'):
+        with g.absolute_name_scope('abs_inner'):
+          self.assertEqual(
+              'name_outer_1/abs_inner/FloatOutput',
+              g.create_op("FloatOutput", [], [dtypes.float32]).name)
+
+    g = ops.Graph()
+    with g.as_default():
+      # abs_scope>name_scope
+      with g.absolute_name_scope('abs_outer'):
+        with g.name_scope('name_inner'):
+          self.assertEqual(
+              'abs_outer/name_inner/FloatOutput',
+              g.create_op("FloatOutput", [], [dtypes.float32]).name)
+      with g.absolute_name_scope('abs_outer'):
+        with g.name_scope('name_inner'):
+          self.assertEqual(
+              'abs_outer/name_inner_1/FloatOutput',
+              g.create_op("FloatOutput", [], [dtypes.float32]).name)
+
+    g = ops.Graph()
+    with g.as_default():
+      # abs_scope>abs_scope>abs_scope
+      with g.absolute_name_scope('abs_outer'):
+        with g.absolute_name_scope('abs_middle'):
+          with g.absolute_name_scope('abs_inner'):
+            self.assertEqual(
+                'abs_outer/abs_middle/abs_inner/FloatOutput',
+                g.create_op("FloatOutput", [], [dtypes.float32]).name)
+      with g.absolute_name_scope('abs_outer'):
+        with g.absolute_name_scope('abs_middle'):
+          with g.absolute_name_scope('abs_inner'):
+            self.assertEqual(
+                'abs_outer/abs_middle/abs_inner/FloatOutput_1',
+                g.create_op("FloatOutput", [], [dtypes.float32]).name)
+
+    g = ops.Graph()
+    with g.as_default():
+      # abs_scope>name_scope>abs_scope
+      with g.absolute_name_scope('abs_outer'):
+        with g.name_scope('name_inner'):
+          with g.absolute_name_scope('abs_inner'):
+            self.assertEqual(
+                'abs_outer/name_inner/abs_inner/FloatOutput',
+                g.create_op("FloatOutput", [], [dtypes.float32]).name)
+      with g.absolute_name_scope('abs_outer'):
+        with g.name_scope('name_inner'):
+          with g.absolute_name_scope('abs_inner'):
+            self.assertEqual(
+                'abs_outer/name_inner_1/abs_inner/FloatOutput',
+                g.create_op("FloatOutput", [], [dtypes.float32]).name)
+      with g.absolute_name_scope('abs_outer'):
+        with g.name_scope('name_inner'):
+          with g.absolute_name_scope('abs_inner'):
+            self.assertEqual(
+                'abs_outer/name_inner_2/abs_inner/FloatOutput',
+                g.create_op("FloatOutput", [], [dtypes.float32]).name)
+
 
 class DeviceTest(test_util.TensorFlowTestCase):
 
