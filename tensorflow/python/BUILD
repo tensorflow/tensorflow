@@ -2203,6 +2203,7 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         ":gradients_impl",
+        ":unconnected_gradients",
         "//tensorflow/python/eager:function",
         "//tensorflow/python/eager:tape",
     ],
@@ -2240,6 +2241,7 @@ py_library(
         ":spectral_grad",
         ":tensor_array_ops",
         ":tensor_util",
+        ":unconnected_gradients",
         ":util",
         ":variable_scope",
         "//tensorflow/core:protos_all_py",
@@ -2247,6 +2249,15 @@ py_library(
         "//tensorflow/python/eager:tape",
         "//third_party/py/numpy",
         "@six_archive//:six",
+    ],
+)
+
+py_library(
+    name = "unconnected_gradients",
+    srcs = ["ops/unconnected_gradients.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":util",
     ],
 )
 
