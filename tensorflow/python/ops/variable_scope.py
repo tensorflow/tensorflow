@@ -1205,7 +1205,16 @@ class VariableScope(object):
       if use_resource is None:
         use_resource = self._use_resource
 
-    full_name = self.name + "/" + name if self.name else name
+    # This allows the variable scope name to be used as the variable name if
+    # this function is invoked with an empty name arg, for backward
+    # compatibility with create_partitioned_variables().
+    full_name_list = []
+    if self.name:
+      full_name_list.append(self.name)
+    if name is not None:
+      full_name_list.append(name)
+    full_name = "/".join(full_name_list)
+
     # Variable names only depend on variable_scope (full_name here),
     # not name_scope, so we reset it below for the time of variable creation.
     with ops.name_scope(None):
