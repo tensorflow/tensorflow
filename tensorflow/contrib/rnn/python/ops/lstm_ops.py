@@ -596,6 +596,7 @@ class LSTMBlockFusedCell(LSTMBlockWrapper):
                cell_clip=None,
                use_peephole=False,
                reuse=None,
+               dtype=None,
                name="lstm_fused_cell"):
     """Initialize the LSTM cell.
 
@@ -607,12 +608,14 @@ class LSTMBlockFusedCell(LSTMBlockWrapper):
       reuse: (optional) boolean describing whether to reuse variables in an
         existing scope.  If not `True`, and the existing scope already has the
         given variables, an error is raised.
+      dtype: the dtype of variables of this layer.
       name: String, the name of the layer. Layers with the same name will
         share weights, but to avoid mistakes we require reuse=True in such
         cases.  By default this is "lstm_cell", for variable-name compatibility
         with `tf.nn.rnn_cell.LSTMCell`.
     """
-    super(LSTMBlockFusedCell, self).__init__(_reuse=reuse, name=name)
+    super(LSTMBlockFusedCell, self).__init__(
+        _reuse=reuse, name=name, dtype=dtype)
     self._num_units = num_units
     self._forget_bias = forget_bias
     self._cell_clip = cell_clip if cell_clip is not None else -1
