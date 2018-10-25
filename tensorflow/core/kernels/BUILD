@@ -4513,6 +4513,7 @@ cc_library(
         ":string_strip_op",
         ":string_to_hash_bucket_op",
         ":substr_op",
+        ":unicode_ops",
         ":unicode_script_op",
     ],
 )
@@ -4676,6 +4677,19 @@ tf_kernel_library(
     name = "as_string_op",
     prefix = "as_string_op",
     deps = STRING_DEPS,
+)
+
+tf_kernel_library(
+    name = "unicode_ops",
+    prefix = "unicode_ops",
+    deps = [
+        ":string_util",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core:string_ops_op_lib",
+        "@icu//:common",
+    ],
 )
 
 tf_kernel_library(
@@ -5558,6 +5572,7 @@ filegroup(
             "regex_full_match_op.cc",
             "regex_replace_op.cc",
             "unicode_script_op.cc",
+            "unicode_ops.cc",
             # Ops that are inherently incompatible with Android (e.g. tied to x86 platform).
             "mkl_*",
             "xsmm_*",
