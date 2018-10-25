@@ -35,13 +35,26 @@ Status ComputeShortCircuitIndices(OpKernelContext* ctx,
     }
   });
 
+  // If the function contains any stateful operations, we conservatively execute
+  // the entire function.
+  if (ctx->function_library()->IsStateful(func.name())) {
+    indices->clear();
+    return Status::OK();
+  }
+
   const FunctionBody* fn_body =
       ctx->function_library()->GetFunctionBody(fn_handle);
   indices->resize(fn_body->ret_nodes.size());
+
   for (size_t i = 0; i < fn_body->ret_nodes.size(); ++i) {
     Node* ret_node = fn_body->ret_nodes[i];
     Node* ret_input_node;
     TF_RETURN_IF_ERROR(ret_node->input_node(0, &ret_input_node));
+
+    while (ret_input_node->def().op() == "Identity") {
+      TF_RETURN_IF_ERROR(ret_input_node->input_node(0, &ret_input_node));
+    }
+
     if (ret_input_node->def().op() == FunctionLibraryDefinition::kArgOp) {
       TF_RETURN_IF_ERROR(
           GetNodeAttr(ret_input_node->def(), "index", &((*indices)[i])));
