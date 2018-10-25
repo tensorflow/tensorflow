@@ -71,8 +71,8 @@ void SimplifyAffineStructures::visitIfStmt(IfStmt *ifStmt) {
 
 void SimplifyAffineStructures::visitOperationStmt(OperationStmt *opStmt) {
   for (auto attr : opStmt->getAttrs()) {
-    if (auto *mapAttr = dyn_cast<AffineMapAttr>(attr.second)) {
-      MutableAffineMap mMap(mapAttr->getValue());
+    if (auto mapAttr = attr.second.dyn_cast<AffineMapAttr>()) {
+      MutableAffineMap mMap(mapAttr.getValue());
       mMap.simplify();
       auto map = mMap.getAffineMap();
       opStmt->setAttr(attr.first, AffineMapAttr::get(map));

@@ -93,23 +93,23 @@ public:
   UnrankedTensorType *getTensorType(Type *elementType);
 
   // Attributes.
-  BoolAttr *getBoolAttr(bool value);
-  IntegerAttr *getIntegerAttr(int64_t value);
-  FloatAttr *getFloatAttr(double value);
-  FloatAttr *getFloatAttr(const APFloat &value);
-  StringAttr *getStringAttr(StringRef bytes);
-  ArrayAttr *getArrayAttr(ArrayRef<Attribute *> value);
-  AffineMapAttr *getAffineMapAttr(AffineMap map);
-  TypeAttr *getTypeAttr(Type *type);
-  FunctionAttr *getFunctionAttr(const Function *value);
-  ElementsAttr *getSplatElementsAttr(VectorOrTensorType *type, Attribute *elt);
-  ElementsAttr *getDenseElementsAttr(VectorOrTensorType *type,
-                                     ArrayRef<char> data);
-  ElementsAttr *getSparseElementsAttr(VectorOrTensorType *type,
-                                      DenseIntElementsAttr *indices,
-                                      DenseElementsAttr *values);
-  ElementsAttr *getOpaqueElementsAttr(VectorOrTensorType *type,
-                                      StringRef bytes);
+
+  BoolAttr getBoolAttr(bool value);
+  IntegerAttr getIntegerAttr(int64_t value);
+  FloatAttr getFloatAttr(double value);
+  FloatAttr getFloatAttr(const APFloat &value);
+  StringAttr getStringAttr(StringRef bytes);
+  ArrayAttr getArrayAttr(ArrayRef<Attribute> value);
+  AffineMapAttr getAffineMapAttr(AffineMap map);
+  TypeAttr getTypeAttr(Type *type);
+  FunctionAttr getFunctionAttr(const Function *value);
+  ElementsAttr getSplatElementsAttr(VectorOrTensorType *type, Attribute elt);
+  ElementsAttr getDenseElementsAttr(VectorOrTensorType *type,
+                                    ArrayRef<char> data);
+  ElementsAttr getSparseElementsAttr(VectorOrTensorType *type,
+                                     DenseIntElementsAttr indices,
+                                     DenseElementsAttr values);
+  ElementsAttr getOpaqueElementsAttr(VectorOrTensorType *type, StringRef bytes);
 
   // Affine expressions and affine maps.
   AffineExpr getAffineDimExpr(unsigned position);

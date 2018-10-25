@@ -148,7 +148,7 @@ ArrayRef<NamedAttribute> Operation::getAttrs() const {
 
 /// If an attribute exists with the specified name, change it to the new
 /// value.  Otherwise, add a new attribute with the specified name/value.
-void Operation::setAttr(Identifier name, Attribute *value) {
+void Operation::setAttr(Identifier name, Attribute value) {
   assert(value && "attributes may never be null");
   auto origAttrs = getAttrs();
 
@@ -225,8 +225,8 @@ void Operation::erase() {
 /// Attempt to constant fold this operation with the specified constant
 /// operand values.  If successful, this returns false and fills in the
 /// results vector.  If not, this returns true and results is unspecified.
-bool Operation::constantFold(ArrayRef<Attribute *> operands,
-                             SmallVectorImpl<Attribute *> &results) const {
+bool Operation::constantFold(ArrayRef<Attribute> operands,
+                             SmallVectorImpl<Attribute> &results) const {
   // If we have a registered operation definition matching this one, use it to
   // try to constant fold the operation.
   if (auto *abstractOp = getAbstractOperation())

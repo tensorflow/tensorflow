@@ -123,7 +123,7 @@ private:
   void visitIfStmt(const IfStmt *ifStmt);
   void visitOperationStmt(const OperationStmt *opStmt);
   void visitType(const Type *type);
-  void visitAttribute(const Attribute *attr);
+  void visitAttribute(Attribute attr);
   void visitOperation(const Operation *op);
 
   DenseMap<AffineMap, int> affineMapIds;
@@ -150,11 +150,11 @@ void ModuleState::visitType(const Type *type) {
   }
 }
 
-void ModuleState::visitAttribute(const Attribute *attr) {
-  if (auto *mapAttr = dyn_cast<AffineMapAttr>(attr)) {
-    recordAffineMapReference(mapAttr->getValue());
-  } else if (auto *arrayAttr = dyn_cast<ArrayAttr>(attr)) {
-    for (auto elt : arrayAttr->getValue()) {
+void ModuleState::visitAttribute(Attribute attr) {
+  if (auto mapAttr = attr.dyn_cast<AffineMapAttr>()) {
+    recordAffineMapReference(mapAttr.getValue());
+  } else if (auto arrayAttr = attr.dyn_cast<ArrayAttr>()) {
+    for (auto elt : arrayAttr.getValue()) {
       visitAttribute(elt);
     }
   }
@@ -268,7 +268,7 @@ public:
 
   void print(const Module *module);
   void printFunctionReference(const Function *func);
-  void printAttribute(const Attribute *attr);
+  void printAttribute(Attribute attr);
   void printType(const Type *type);
   void print(const Function *fn);
   void print(const ExtFunction *fn);
@@ -293,7 +293,7 @@ protected:
   void printAffineMapReference(AffineMap affineMap);
   void printIntegerSetId(int integerSetId) const;
   void printIntegerSetReference(IntegerSet integerSet);
-  void printDenseElementsAttr(const DenseElementsAttr *attr);
+  void printDenseElementsAttr(DenseElementsAttr attr);
 
   /// This enum is used to represent the binding stength of the enclosing
   /// context that an AffineExprStorage is being printed in, so we can
@@ -404,36 +404,36 @@ void ModulePrinter::printFunctionReference(const Function *func) {
   os << '@' << func->getName();
 }
 
-void ModulePrinter::printAttribute(const Attribute *attr) {
-  switch (attr->getKind()) {
+void ModulePrinter::printAttribute(Attribute attr) {
+  switch (attr.getKind()) {
   case Attribute::Kind::Bool:
-    os << (cast<BoolAttr>(attr)->getValue() ? "true" : "false");
+    os << (attr.cast<BoolAttr>().getValue() ? "true" : "false");
     break;
   case Attribute::Kind::Integer:
-    os << cast<IntegerAttr>(attr)->getValue();
+    os << attr.cast<IntegerAttr>().getValue();
     break;
   case Attribute::Kind::Float:
-    printFloatValue(cast<FloatAttr>(attr)->getValue(), os);
+    printFloatValue(attr.cast<FloatAttr>().getValue(), os);
     break;
   case Attribute::Kind::String:
     os << '"';
-    printEscapedString(cast<StringAttr>(attr)->getValue(), os);
+    printEscapedString(attr.cast<StringAttr>().getValue(), os);
     os << '"';
     break;
   case Attribute::Kind::Array:
     os << '[';
-    interleaveComma(cast<ArrayAttr>(attr)->getValue(),
-                    [&](Attribute *attr) { printAttribute(attr); });
+    interleaveComma(attr.cast<ArrayAttr>().getValue(),
+                    [&](Attribute attr) { printAttribute(attr); });
     os << ']';
     break;
   case Attribute::Kind::AffineMap:
-    printAffineMapReference(cast<AffineMapAttr>(attr)->getValue());
+    printAffineMapReference(attr.cast<AffineMapAttr>().getValue());
     break;
   case Attribute::Kind::Type:
-    printType(cast<TypeAttr>(attr)->getValue());
+    printType(attr.cast<TypeAttr>().getValue());
     break;
   case Attribute::Kind::Function: {
-    auto *function = cast<FunctionAttr>(attr)->getValue();
+    auto *function = attr.cast<FunctionAttr>().getValue();
     if (!function) {
       os << "<<FUNCTION ATTR FOR DELETED FUNCTION>>";
     } else {
@@ -444,53 +444,52 @@ void ModulePrinter::printAttribute(const Attribute *attr) {
     break;
   }
   case Attribute::Kind::OpaqueElements: {
-    auto *eltsAttr = cast<OpaqueElementsAttr>(attr);
+    auto eltsAttr = attr.cast<OpaqueElementsAttr>();
     os << "opaque<";
-    printType(eltsAttr->getType());
-    os << ", " << '"' << "0x" << llvm::toHex(eltsAttr->getValue()) << '"'
-       << '>';
+    printType(eltsAttr.getType());
+    os << ", " << '"' << "0x" << llvm::toHex(eltsAttr.getValue()) << '"' << '>';
     break;
   }
   case Attribute::Kind::DenseIntElements:
   case Attribute::Kind::DenseFPElements: {
-    auto *eltsAttr = cast<DenseElementsAttr>(attr);
+    auto eltsAttr = attr.cast<DenseElementsAttr>();
     os << "dense<";
-    printType(eltsAttr->getType());
+    printType(eltsAttr.getType());
     os << ", ";
     printDenseElementsAttr(eltsAttr);
     os << '>';
     break;
   }
   case Attribute::Kind::SplatElements: {
-    auto *elementsAttr = cast<SplatElementsAttr>(attr);
+    auto elementsAttr = attr.cast<SplatElementsAttr>();
     os << "splat<";
-    printType(elementsAttr->getType());
+    printType(elementsAttr.getType());
     os << ", ";
-    printAttribute(elementsAttr->getValue());
+    printAttribute(elementsAttr.getValue());
     os << '>';
     break;
   }
   case Attribute::Kind::SparseElements: {
-    auto *elementsAttr = cast<SparseElementsAttr>(attr);
+    auto elementsAttr = attr.cast<SparseElementsAttr>();
     os << "sparse<";
-    printType(elementsAttr->getType());
+    printType(elementsAttr.getType());
     os << ", ";
-    printDenseElementsAttr(elementsAttr->getIndices());
+    printDenseElementsAttr(elementsAttr.getIndices());
     os << ", ";
-    printDenseElementsAttr(elementsAttr->getValues());
+    printDenseElementsAttr(elementsAttr.getValues());
     os << '>';
     break;
   }
   }
 }
 
-void ModulePrinter::printDenseElementsAttr(const DenseElementsAttr *attr) {
-  auto *type = attr->getType();
+void ModulePrinter::printDenseElementsAttr(DenseElementsAttr attr) {
+  auto *type = attr.getType();
   auto shape = type->getShape();
   auto rank = type->getRank();
 
-  SmallVector<Attribute *, 16> elements;
-  attr->getValues(elements);
+  SmallVector<Attribute, 16> elements;
+  attr.getValues(elements);
 
   // Special case for degenerate tensors.
   if (elements.empty()) {
@@ -934,9 +933,7 @@ public:
   // Implement OpAsmPrinter.
   raw_ostream &getStream() const { return os; }
   void printType(const Type *type) { ModulePrinter::printType(type); }
-  void printAttribute(const Attribute *attr) {
-    ModulePrinter::printAttribute(attr);
-  }
+  void printAttribute(Attribute attr) { ModulePrinter::printAttribute(attr); }
   void printAffineMap(AffineMap map) {
     return ModulePrinter::printAffineMapReference(map);
   }
@@ -980,7 +977,7 @@ protected:
       } else if (auto intOp = op->dyn_cast<ConstantIndexOp>()) {
         specialName << 'c' << intOp->getValue();
       } else if (auto constant = op->dyn_cast<ConstantOp>()) {
-        if (isa<FunctionAttr>(constant->getValue()))
+        if (constant->getValue().isa<FunctionAttr>())
           specialName << 'f';
         else
           specialName << "cst";
@@ -1570,7 +1567,7 @@ void ModulePrinter::print(const MLFunction *fn) {
 
 void Attribute::print(raw_ostream &os) const {
   ModuleState state(/*no context is known*/ nullptr);
-  ModulePrinter(os, state).printAttribute(this);
+  ModulePrinter(os, state).printAttribute(*this);
 }
 
 void Attribute::dump() const { print(llvm::errs()); }

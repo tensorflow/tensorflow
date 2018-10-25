@@ -195,7 +195,7 @@ public:
   // Attribute parsing.
   Function *resolveFunctionReference(StringRef nameStr, SMLoc nameLoc,
                                      FunctionType *type);
-  Attribute *parseAttribute();
+  Attribute parseAttribute();
 
   ParseResult parseAttributeDict(SmallVectorImpl<NamedAttribute> &attributes);
 
@@ -204,8 +204,8 @@ public:
   AffineMap parseAffineMapReference();
   IntegerSet parseIntegerSetInline();
   IntegerSet parseIntegerSetReference();
-  DenseElementsAttr *parseDenseElementsAttr(VectorOrTensorType *type);
-  DenseElementsAttr *parseDenseElementsAttr(Type *eltType, bool isVector);
+  DenseElementsAttr parseDenseElementsAttr(VectorOrTensorType *type);
+  DenseElementsAttr parseDenseElementsAttr(Type *eltType, bool isVector);
   VectorOrTensorType *parseVectorOrTensorType();
 
 private:
@@ -684,7 +684,7 @@ TensorLiteralParser::parseElementOrList(llvm::SmallVectorImpl<int> &dims) {
   case Token::floatliteral:
   case Token::integer:
   case Token::minus: {
-    auto *result = p.parseAttribute();
+    auto result = p.parseAttribute();
     if (!result)
       return p.emitError("expected tensor element");
     // check result matches the element type.
@@ -693,16 +693,16 @@ TensorLiteralParser::parseElementOrList(llvm::SmallVectorImpl<int> &dims) {
     case Type::Kind::F16:
     case Type::Kind::F32:
     case Type::Kind::F64: {
-      if (!isa<FloatAttr>(result))
+      if (!result.isa<FloatAttr>())
         return p.emitError("expected tensor literal element has float type");
-      double value = cast<FloatAttr>(result)->getDouble();
+      double value = result.cast<FloatAttr>().getDouble();
       addToStorage(*(uint64_t *)(&value));
       break;
     }
     case Type::Kind::Integer: {
-      if (!isa<IntegerAttr>(result))
+      if (!result.isa<IntegerAttr>())
         return p.emitError("expected tensor literal element has integer type");
-      auto value = cast<IntegerAttr>(result)->getValue();
+      auto value = result.cast<IntegerAttr>().getValue();
       // If we couldn't successfully round trip the value, it means some bits
       // are truncated and we should give up here.
       llvm::APInt apint(bitsWidth, (uint64_t)value, /*isSigned=*/true);
@@ -804,7 +804,7 @@ Function *Parser::resolveFunctionReference(StringRef nameStr, SMLoc nameLoc,
 ///                    | `sparse<` (tensor-type | vector-type)`,`
 ///                          attribute-value`, ` attribute-value `>`
 ///
-Attribute *Parser::parseAttribute() {
+Attribute Parser::parseAttribute() {
   switch (getToken().getKind()) {
   case Token::kw_true:
     consumeToken(Token::kw_true);
@@ -859,7 +859,7 @@ Attribute *Parser::parseAttribute() {
 
   case Token::l_square: {
     consumeToken(Token::l_square);
-    SmallVector<Attribute *, 4> elements;
+    SmallVector<Attribute, 4> elements;
 
     auto parseElt = [&]() -> ParseResult {
       elements.push_back(parseAttribute());
@@ -928,7 +928,7 @@ Attribute *Parser::parseAttribute() {
     case Token::floatliteral:
     case Token::integer:
     case Token::minus: {
-      auto *scalar = parseAttribute();
+      auto scalar = parseAttribute();
       if (parseToken(Token::greater, "expected '>'"))
         return nullptr;
       return builder.getSplatElementsAttr(type, scalar);
@@ -973,7 +973,7 @@ Attribute *Parser::parseAttribute() {
     case Token::l_square: {
       /// Parse indices
       auto *indicesEltType = builder.getIntegerType(32);
-      auto *indices =
+      auto indices =
           parseDenseElementsAttr(indicesEltType, isa<VectorType>(type));
 
       if (parseToken(Token::comma, "expected ','"))
@@ -981,12 +981,12 @@ Attribute *Parser::parseAttribute() {
 
       /// Parse values.
       auto *valuesEltType = type->getElementType();
-      auto *values =
+      auto values =
           parseDenseElementsAttr(valuesEltType, isa<VectorType>(type));
 
       /// Sanity check.
-      auto *indicesType = indices->getType();
-      auto *valuesType = values->getType();
+      auto *indicesType = indices.getType();
+      auto *valuesType = values.getType();
       auto sameShape = (indicesType->getRank() == 1) ||
                        (type->getRank() == indicesType->getDimSize(1));
       auto sameElementNum =
@@ -1009,7 +1009,7 @@ Attribute *Parser::parseAttribute() {
 
       // Build the sparse elements attribute by the indices and values.
       return builder.getSparseElementsAttr(
-          type, cast<DenseIntElementsAttr>(indices), values);
+          type, indices.cast<DenseIntElementsAttr>(), values);
     }
     default:
       return (emitError("expected '[' to start sparse tensor literal"),
@@ -1035,8 +1035,7 @@ Attribute *Parser::parseAttribute() {
 ///
 /// This method returns a constructed dense elements attribute with the shape
 /// from the parsing result.
-DenseElementsAttr *Parser::parseDenseElementsAttr(Type *eltType,
-                                                  bool isVector) {
+DenseElementsAttr Parser::parseDenseElementsAttr(Type *eltType, bool isVector) {
   TensorLiteralParser literalParser(*this, eltType);
   if (literalParser.parse())
     return nullptr;
@@ -1047,8 +1046,8 @@ DenseElementsAttr *Parser::parseDenseElementsAttr(Type *eltType,
   } else {
     type = builder.getTensorType(literalParser.getShape(), eltType);
   }
-  return (DenseElementsAttr *)builder.getDenseElementsAttr(
-      type, literalParser.getValues());
+  return builder.getDenseElementsAttr(type, literalParser.getValues())
+      .cast<DenseElementsAttr>();
 }
 
 /// Dense elements attribute.
@@ -1061,7 +1060,7 @@ DenseElementsAttr *Parser::parseDenseElementsAttr(Type *eltType,
 /// This method compares the shapes from the parsing result and that from the
 /// input argument. It returns a constructed dense elements attribute if both
 /// match.
-DenseElementsAttr *Parser::parseDenseElementsAttr(VectorOrTensorType *type) {
+DenseElementsAttr Parser::parseDenseElementsAttr(VectorOrTensorType *type) {
   auto *eltTy = type->getElementType();
   TensorLiteralParser literalParser(*this, eltTy);
   if (literalParser.parse())
@@ -1076,8 +1075,8 @@ DenseElementsAttr *Parser::parseDenseElementsAttr(VectorOrTensorType *type) {
     s << "])";
     return (emitError(s.str()), nullptr);
   }
-  return (DenseElementsAttr *)builder.getDenseElementsAttr(
-      type, literalParser.getValues());
+  return builder.getDenseElementsAttr(type, literalParser.getValues())
+      .cast<DenseElementsAttr>();
 }
 
 /// Vector or tensor type for elements attribute.
@@ -2133,7 +2132,7 @@ public:
   /// Parse an arbitrary attribute and return it in result.  This also adds
   /// the attribute to the specified attribute list with the specified name.
   /// this captures the location of the attribute in 'loc' if it is non-null.
-  bool parseAttribute(Attribute *&result, const char *attrName,
+  bool parseAttribute(Attribute &result, const char *attrName,
                       SmallVectorImpl<NamedAttribute> &attrs) override {
     result = parser.parseAttribute();
     if (!result)
@@ -3336,27 +3335,27 @@ ParseResult ModuleParser::parseMLFunc() {
 /// Given an attribute that could refer to a function attribute in the
 /// remapping table, walk it and rewrite it to use the mapped function.  If it
 /// doesn't refer to anything in the table, then it is returned unmodified.
-static Attribute *
-remapFunctionAttrs(Attribute *input,
-                   DenseMap<FunctionAttr *, FunctionAttr *> &remappingTable,
+static Attribute
+remapFunctionAttrs(Attribute input,
+                   DenseMap<Attribute, FunctionAttr> &remappingTable,
                    MLIRContext *context) {
   // Most attributes are trivially unrelated to function attributes, skip them
   // rapidly.
-  if (!input->isOrContainsFunction())
+  if (!input.isOrContainsFunction())
     return input;
 
   // If we have a function attribute, remap it.
-  if (auto *fnAttr = dyn_cast<FunctionAttr>(input)) {
+  if (auto fnAttr = input.dyn_cast<FunctionAttr>()) {
     auto it = remappingTable.find(fnAttr);
     return it != remappingTable.end() ? it->second : input;
   }
 
   // Otherwise, we must have an array attribute, remap the elements.
-  auto *arrayAttr = cast<ArrayAttr>(input);
-  SmallVector<Attribute *, 8> remappedElts;
+  auto arrayAttr = input.cast<ArrayAttr>();
+  SmallVector<Attribute, 8> remappedElts;
   bool anyChange = false;
-  for (auto *elt : arrayAttr->getValue()) {
-    auto *newElt = remapFunctionAttrs(elt, remappingTable, context);
+  for (auto elt : arrayAttr.getValue()) {
+    auto newElt = remapFunctionAttrs(elt, remappingTable, context);
     remappedElts.push_back(newElt);
     anyChange |= (elt != newElt);
   }
@@ -3370,11 +3369,11 @@ remapFunctionAttrs(Attribute *input,
 /// Remap function attributes to resolve forward references to their actual
 /// definition.
 static void remapFunctionAttrsInOperation(
-    Operation *op, DenseMap<FunctionAttr *, FunctionAttr *> &remappingTable) {
+    Operation *op, DenseMap<Attribute, FunctionAttr> &remappingTable) {
   for (auto attr : op->getAttrs()) {
     // Do the remapping, if we got the same thing back, then it must contain
     // functions that aren't getting remapped.
-    auto *newVal =
+    auto newVal =
         remapFunctionAttrs(attr.second, remappingTable, op->getContext());
     if (newVal == attr.second)
       continue;
@@ -3391,7 +3390,7 @@ static void remapFunctionAttrsInOperation(
 ParseResult ModuleParser::finalizeModule() {
 
   // Resolve all forward references, building a remapping table of attributes.
-  DenseMap<FunctionAttr *, FunctionAttr *> remappingTable;
+  DenseMap<Attribute, FunctionAttr> remappingTable;
   for (auto forwardRef : getState().functionForwardRefs) {
     auto name = forwardRef.first;
 
@@ -3428,13 +3427,13 @@ ParseResult ModuleParser::finalizeModule() {
       continue;
 
     struct MLFnWalker : public StmtWalker<MLFnWalker> {
-      MLFnWalker(DenseMap<FunctionAttr *, FunctionAttr *> &remappingTable)
+      MLFnWalker(DenseMap<Attribute, FunctionAttr> &remappingTable)
           : remappingTable(remappingTable) {}
       void visitOperationStmt(OperationStmt *opStmt) {
         remapFunctionAttrsInOperation(opStmt, remappingTable);
       }
 
-      DenseMap<FunctionAttr *, FunctionAttr *> &remappingTable;
+      DenseMap<Attribute, FunctionAttr> &remappingTable;
     };
 
     MLFnWalker(remappingTable).walk(mlFn);

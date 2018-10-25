@@ -86,13 +86,13 @@ bool AffineApplyOp::parse(OpAsmParser *parser, OperationState *result) {
   auto &builder = parser->getBuilder();
   auto *affineIntTy = builder.getIndexType();
 
-  AffineMapAttr *mapAttr;
+  AffineMapAttr mapAttr;
   unsigned numDims;
   if (parser->parseAttribute(mapAttr, "map", result->attributes) ||
       parseDimAndSymbolList(parser, result->operands, numDims) ||
       parser->parseOptionalAttributeDict(result->attributes))
     return true;
-  auto map = mapAttr->getValue();
+  auto map = mapAttr.getValue();
 
   if (map.getNumDims() != numDims ||
       numDims + map.getNumSymbols() != result->operands.size()) {
@@ -113,12 +113,12 @@ void AffineApplyOp::print(OpAsmPrinter *p) const {
 
 bool AffineApplyOp::verify() const {
   // Check that affine map attribute was specified.
-  auto *affineMapAttr = getAttrOfType<AffineMapAttr>("map");
+  auto affineMapAttr = getAttrOfType<AffineMapAttr>("map");
   if (!affineMapAttr)
     return emitOpError("requires an affine map");
 
   // Check input and output dimensions match.
-  auto map = affineMapAttr->getValue();
+  auto map = affineMapAttr.getValue();
 
   // Verify that operand count matches affine map dimension and symbol count.
   if (getNumOperands() != map.getNumDims() + map.getNumSymbols())
@@ -155,8 +155,8 @@ bool AffineApplyOp::isValidSymbol() const {
   return true;
 }
 
-bool AffineApplyOp::constantFold(ArrayRef<Attribute *> operandConstants,
-                                 SmallVectorImpl<Attribute *> &results,
+bool AffineApplyOp::constantFold(ArrayRef<Attribute> operandConstants,
+                                 SmallVectorImpl<Attribute> &results,
                                  MLIRContext *context) const {
   auto map = getAffineMap();
   if (map.constantFold(operandConstants, results))
@@ -171,21 +171,21 @@ bool AffineApplyOp::constantFold(ArrayRef<Attribute *> operandConstants,
 
 /// Builds a constant op with the specified attribute value and result type.
 void ConstantOp::build(Builder *builder, OperationState *result,
-                       Attribute *value, Type *type) {
+                       Attribute value, Type *type) {
   result->addAttribute("value", value);
   result->types.push_back(type);
 }
 
 void ConstantOp::print(OpAsmPrinter *p) const {
-  *p << "constant " << *getValue();
+  *p << "constant " << getValue();
   p->printOptionalAttrDict(getAttrs(), /*elidedAttrs=*/"value");
 
-  if (!isa<FunctionAttr>(getValue()))
+  if (!getValue().isa<FunctionAttr>())
     *p << " : " << *getType();
 }
 
 bool ConstantOp::parse(OpAsmParser *parser, OperationState *result) {
-  Attribute *valueAttr;
+  Attribute valueAttr;
   Type *type;
 
   if (parser->parseAttribute(valueAttr, "value", result->attributes) ||
@@ -194,8 +194,8 @@ bool ConstantOp::parse(OpAsmParser *parser, OperationState *result) {
 
   // 'constant' taking a function reference doesn't get a redundant type
   // specifier.  The attribute itself carries it.
-  if (auto *fnAttr = dyn_cast<FunctionAttr>(valueAttr))
-    return parser->addTypeToList(fnAttr->getValue()->getType(), result->types);
+  if (auto fnAttr = valueAttr.dyn_cast<FunctionAttr>())
+    return parser->addTypeToList(fnAttr.getValue()->getType(), result->types);
 
   return parser->parseColonType(type) ||
          parser->addTypeToList(type, result->types);
@@ -204,32 +204,32 @@ bool ConstantOp::parse(OpAsmParser *parser, OperationState *result) {
 /// The constant op requires an attribute, and furthermore requires that it
 /// matches the return type.
 bool ConstantOp::verify() const {
-  auto *value = getValue();
+  auto value = getValue();
   if (!value)
     return emitOpError("requires a 'value' attribute");
 
   auto *type = this->getType();
   if (isa<IntegerType>(type) || type->isIndex()) {
-    if (!isa<IntegerAttr>(value))
+    if (!value.isa<IntegerAttr>())
       return emitOpError(
           "requires 'value' to be an integer for an integer result type");
     return false;
   }
 
   if (isa<FloatType>(type)) {
-    if (!isa<FloatAttr>(value))
+    if (!value.isa<FloatAttr>())
       return emitOpError("requires 'value' to be a floating point constant");
     return false;
   }
 
   if (type->isTFString()) {
-    if (!isa<StringAttr>(value))
+    if (!value.isa<StringAttr>())
       return emitOpError("requires 'value' to be a string constant");
     return false;
   }
 
   if (isa<FunctionType>(type)) {
-    if (!isa<FunctionAttr>(value))
+    if (!value.isa<FunctionAttr>())
       return emitOpError("requires 'value' to be a function reference");
     return false;
   }
@@ -238,8 +238,8 @@ bool ConstantOp::verify() const {
       "requires a result type that aligns with the 'value' attribute");
 }
 
-Attribute *ConstantOp::constantFold(ArrayRef<Attribute *> operands,
-                                    MLIRContext *context) const {
+Attribute ConstantOp::constantFold(ArrayRef<Attribute> operands,
+                                   MLIRContext *context) const {
   assert(operands.empty() && "constant has no operands");
   return getValue();
 }

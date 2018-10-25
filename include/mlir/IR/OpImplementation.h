@@ -69,7 +69,7 @@ public:
   }
   virtual void printType(const Type *type) = 0;
   virtual void printFunctionReference(const Function *func) = 0;
-  virtual void printAttribute(const Attribute *attr) = 0;
+  virtual void printAttribute(Attribute attr) = 0;
   virtual void printAffineMap(AffineMap map) = 0;
   virtual void printAffineExpr(AffineExpr expr) = 0;
 
@@ -100,8 +100,8 @@ inline OpAsmPrinter &operator<<(OpAsmPrinter &p, const Type &type) {
   return p;
 }
 
-inline OpAsmPrinter &operator<<(OpAsmPrinter &p, const Attribute &attr) {
-  p.printAttribute(&attr);
+inline OpAsmPrinter &operator<<(OpAsmPrinter &p, Attribute attr) {
+  p.printAttribute(attr);
   return p;
 }
 
@@ -210,24 +210,24 @@ public:
   /// Parse an arbitrary attribute and return it in result.  This also adds the
   /// attribute to the specified attribute list with the specified name.  this
   /// captures the location of the attribute in 'loc' if it is non-null.
-  virtual bool parseAttribute(Attribute *&result, const char *attrName,
+  virtual bool parseAttribute(Attribute &result, const char *attrName,
                               SmallVectorImpl<NamedAttribute> &attrs) = 0;
 
   /// Parse an attribute of a specific kind, capturing the location into `loc`
   /// if specified.
   template <typename AttrType>
-  bool parseAttribute(AttrType *&result, const char *attrName,
+  bool parseAttribute(AttrType &result, const char *attrName,
                       SmallVectorImpl<NamedAttribute> &attrs) {
     llvm::SMLoc loc;
     getCurrentLocation(&loc);
 
     // Parse any kind of attribute.
-    Attribute *attr;
+    Attribute attr;
     if (parseAttribute(attr, attrName, attrs))
       return true;
 
     // Check for the right kind of attribute.
-    result = dyn_cast<AttrType>(attr);
+    result = attr.dyn_cast<AttrType>();
     if (!result) {
       emitError(loc, "invalid kind of constant specified");
       return true;

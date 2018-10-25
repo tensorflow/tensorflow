@@ -79,7 +79,7 @@ private:
   /// As part of canonicalization, we move constants to the top of the entry
   /// block of the current function and de-duplicate them.  This keeps track of
   /// constants we have done this for.
-  DenseMap<std::pair<Attribute *, Type *>, Operation *> uniquedConstants;
+  DenseMap<std::pair<Attribute, Type *>, Operation *> uniquedConstants;
 };
 }; // end anonymous namespace
 
@@ -107,7 +107,7 @@ public:
 void GreedyPatternRewriteDriver::simplifyFunction(Function *currentFunction,
                                                   WorklistRewriter &rewriter) {
   // These are scratch vectors used in the constant folding loop below.
-  SmallVector<Attribute *, 8> operandConstants, resultConstants;
+  SmallVector<Attribute, 8> operandConstants, resultConstants;
 
   while (!worklist.empty()) {
     auto *op = popFromWorklist();
@@ -175,7 +175,7 @@ void GreedyPatternRewriteDriver::simplifyFunction(Function *currentFunction,
     // the operation knows how to constant fold itself.
     operandConstants.clear();
     for (auto *operand : op->getOperands()) {
-      Attribute *operandCst = nullptr;
+      Attribute operandCst;
       if (auto *operandOp = operand->getDefiningOperation()) {
         if (auto operandConstantOp = operandOp->dyn_cast<ConstantOp>())
           operandCst = operandConstantOp->getValue();

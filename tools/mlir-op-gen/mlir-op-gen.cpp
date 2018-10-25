@@ -154,7 +154,7 @@ void OpEmitter::emitAttrGetters() {
        << val.getName() << "() const {\n";
     os << "    return this->getAttrOfType<"
        << attr.getValueAsString("AttrType").trim() << ">(\"" << name
-       << "\")->getValue();\n  }\n";
+       << "\").getValue();\n  }\n";
   }
 }
 
@@ -207,9 +207,9 @@ void OpEmitter::emitVerifier() {
   // Verify the attributes have the correct type.
   for (const auto attr : attrs) {
     auto name = attr.first->getName();
-    os << "    if (!dyn_cast_or_null<"
-       << attr.second->getValueAsString("AttrType") << ">(this->getAttr(\""
-       << name << "\"))) return emitOpError(\"requires "
+    os << "    if (!this->getAttr(\"" << name << "\").dyn_cast_or_null<"
+       << attr.second->getValueAsString("AttrType") << ">("
+       << ")) return emitOpError(\"requires "
        << attr.second->getValueAsString("PrimitiveType").trim()
        << " attribute '" << name << "'\");\n";
   }

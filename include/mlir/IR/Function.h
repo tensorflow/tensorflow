@@ -24,12 +24,12 @@
 #ifndef MLIR_IR_FUNCTION_H
 #define MLIR_IR_FUNCTION_H
 
+#include "mlir/IR/Attributes.h"
 #include "mlir/IR/Identifier.h"
 #include "mlir/Support/LLVM.h"
 #include "llvm/ADT/ilist.h"
 
 namespace mlir {
-class Attribute;
 class AttributeListStorage;
 class FunctionType;
 class Location;
@@ -39,7 +39,7 @@ class Module;
 /// NamedAttribute is used for function attribute lists, it holds an
 /// identifier for the name and a value for the attribute.  The attribute
 /// pointer should always be non-null.
-using NamedAttribute = std::pair<Identifier, Attribute *>;
+using NamedAttribute = std::pair<Identifier, Attribute>;
 
 /// This is the base class for all of the MLIR function types.
 class Function : public llvm::ilist_node_with_parent<Function, Module> {

@@ -23,11 +23,11 @@
 #ifndef MLIR_IR_OPERATION_SUPPORT_H
 #define MLIR_IR_OPERATION_SUPPORT_H
 
+#include "mlir/IR/Attributes.h"
 #include "mlir/IR/Identifier.h"
 #include "llvm/ADT/PointerUnion.h"
 
 namespace mlir {
-class Attribute;
 class Dialect;
 class Location;
 class Operation;
@@ -80,8 +80,8 @@ public:
   /// This hook implements a constant folder for this operation.  It returns
   /// true if folding failed, or returns false and fills in `results` on
   /// success.
-  bool (&constantFoldHook)(const Operation *op, ArrayRef<Attribute *> operands,
-                           SmallVectorImpl<Attribute *> &results);
+  bool (&constantFoldHook)(const Operation *op, ArrayRef<Attribute> operands,
+                           SmallVectorImpl<Attribute> &results);
 
   // Returns whether the operation has a particular property.
   bool hasProperty(OperationProperty property) const {
@@ -110,8 +110,8 @@ private:
       void (&printAssembly)(const Operation *op, OpAsmPrinter *p),
       bool (&verifyInvariants)(const Operation *op),
       bool (&constantFoldHook)(const Operation *op,
-                               ArrayRef<Attribute *> operands,
-                               SmallVectorImpl<Attribute *> &results))
+                               ArrayRef<Attribute> operands,
+                               SmallVectorImpl<Attribute> &results))
       : name(name), dialect(dialect), isClassFor(isClassFor),
         parseAssembly(parseAssembly), printAssembly(printAssembly),
         verifyInvariants(verifyInvariants), constantFoldHook(constantFoldHook),
@@ -124,7 +124,7 @@ private:
 /// NamedAttribute is a used for operation attribute lists, it holds an
 /// identifier for the name and a value for the attribute.  The attribute
 /// pointer should always be non-null.
-using NamedAttribute = std::pair<Identifier, Attribute *>;
+using NamedAttribute = std::pair<Identifier, Attribute>;
 
 class OperationName {
 public:
@@ -204,7 +204,7 @@ public:
     types.append(newTypes.begin(), newTypes.end());
   }
 
-  void addAttribute(StringRef name, Attribute *attr) {
+  void addAttribute(StringRef name, Attribute attr) {
     attributes.push_back({Identifier::get(name, context), attr});
   }
 };

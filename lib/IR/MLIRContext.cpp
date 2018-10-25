@@ -18,6 +18,7 @@
 #include "mlir/IR/MLIRContext.h"
 #include "AffineExprDetail.h"
 #include "AffineMapDetail.h"
+#include "AttributeDetail.h"
 #include "AttributeListStorage.h"
 #include "IntegerSetDetail.h"
 #include "mlir/IR/AffineExpr.h"
@@ -169,35 +170,35 @@ struct MemRefTypeKeyInfo : DenseMapInfo<MemRefType *> {
   }
 };
 
-struct FloatAttrKeyInfo : DenseMapInfo<FloatAttr *> {
+struct FloatAttrKeyInfo : DenseMapInfo<FloatAttributeStorage *> {
   // Float attributes are uniqued based on wrapped APFloat.
   using KeyTy = APFloat;
-  using DenseMapInfo<FloatAttr *>::getHashValue;
-  using DenseMapInfo<FloatAttr *>::isEqual;
+  using DenseMapInfo<FloatAttributeStorage *>::getHashValue;
+  using DenseMapInfo<FloatAttributeStorage *>::isEqual;
 
   static unsigned getHashValue(KeyTy key) { return llvm::hash_value(key); }
 
-  static bool isEqual(const KeyTy &lhs, const FloatAttr *rhs) {
+  static bool isEqual(const KeyTy &lhs, const FloatAttributeStorage *rhs) {
     if (rhs == getEmptyKey() || rhs == getTombstoneKey())
       return false;
     return lhs.bitwiseIsEqual(rhs->getValue());
   }
 };
 
-struct ArrayAttrKeyInfo : DenseMapInfo<ArrayAttr *> {
+struct ArrayAttrKeyInfo : DenseMapInfo<ArrayAttributeStorage *> {
   // Array attributes are uniqued based on their elements.
-  using KeyTy = ArrayRef<Attribute *>;
-  using DenseMapInfo<ArrayAttr *>::getHashValue;
-  using DenseMapInfo<ArrayAttr *>::isEqual;
+  using KeyTy = ArrayRef<Attribute>;
+  using DenseMapInfo<ArrayAttributeStorage *>::getHashValue;
+  using DenseMapInfo<ArrayAttributeStorage *>::isEqual;
 
   static unsigned getHashValue(KeyTy key) {
     return hash_combine_range(key.begin(), key.end());
   }
 
-  static bool isEqual(const KeyTy &lhs, const ArrayAttr *rhs) {
+  static bool isEqual(const KeyTy &lhs, const ArrayAttributeStorage *rhs) {
     if (rhs == getEmptyKey() || rhs == getTombstoneKey())
       return false;
-    return lhs == rhs->getValue();
+    return lhs == rhs->value;
   }
 };
 
@@ -218,37 +219,39 @@ struct AttributeListKeyInfo : DenseMapInfo<AttributeListStorage *> {
   }
 };
 
-struct DenseElementsAttrInfo : DenseMapInfo<DenseElementsAttr *> {
+struct DenseElementsAttrInfo : DenseMapInfo<DenseElementsAttributeStorage *> {
   using KeyTy = std::pair<VectorOrTensorType *, ArrayRef<char>>;
-  using DenseMapInfo<DenseElementsAttr *>::getHashValue;
-  using DenseMapInfo<DenseElementsAttr *>::isEqual;
+  using DenseMapInfo<DenseElementsAttributeStorage *>::getHashValue;
+  using DenseMapInfo<DenseElementsAttributeStorage *>::isEqual;
 
   static unsigned getHashValue(KeyTy key) {
     return hash_combine(
         key.first, hash_combine_range(key.second.begin(), key.second.end()));
   }
 
-  static bool isEqual(const KeyTy &lhs, const DenseElementsAttr *rhs) {
+  static bool isEqual(const KeyTy &lhs,
+                      const DenseElementsAttributeStorage *rhs) {
     if (rhs == getEmptyKey() || rhs == getTombstoneKey())
       return false;
-    return lhs == std::make_pair(rhs->getType(), rhs->getRawData());
+    return lhs == std::make_pair(rhs->type, rhs->data);
   }
 };
 
-struct OpaqueElementsAttrInfo : DenseMapInfo<OpaqueElementsAttr *> {
+struct OpaqueElementsAttrInfo : DenseMapInfo<OpaqueElementsAttributeStorage *> {
   using KeyTy = std::pair<VectorOrTensorType *, StringRef>;
-  using DenseMapInfo<OpaqueElementsAttr *>::getHashValue;
-  using DenseMapInfo<OpaqueElementsAttr *>::isEqual;
+  using DenseMapInfo<OpaqueElementsAttributeStorage *>::getHashValue;
+  using DenseMapInfo<OpaqueElementsAttributeStorage *>::isEqual;
 
   static unsigned getHashValue(KeyTy key) {
     return hash_combine(
         key.first, hash_combine_range(key.second.begin(), key.second.end()));
   }
 
-  static bool isEqual(const KeyTy &lhs, const OpaqueElementsAttr *rhs) {
+  static bool isEqual(const KeyTy &lhs,
+                      const OpaqueElementsAttributeStorage *rhs) {
     if (rhs == getEmptyKey() || rhs == getTombstoneKey())
       return false;
-    return lhs == std::make_pair(rhs->getType(), rhs->getValue());
+    return lhs == std::make_pair(rhs->type, rhs->bytes);
   }
 };
 } // end anonymous namespace.
@@ -343,28 +346,29 @@ public:
   MemRefTypeSet memrefs;
 
   // Attribute uniquing.
-  BoolAttr *boolAttrs[2] = {nullptr};
-  DenseMap<int64_t, IntegerAttr *> integerAttrs;
-  DenseSet<FloatAttr *, FloatAttrKeyInfo> floatAttrs;
-  StringMap<StringAttr *> stringAttrs;
-  using ArrayAttrSet = DenseSet<ArrayAttr *, ArrayAttrKeyInfo>;
+  BoolAttributeStorage *boolAttrs[2] = {nullptr};
+  DenseMap<int64_t, IntegerAttributeStorage *> integerAttrs;
+  DenseSet<FloatAttributeStorage *, FloatAttrKeyInfo> floatAttrs;
+  StringMap<StringAttributeStorage *> stringAttrs;
+  using ArrayAttrSet = DenseSet<ArrayAttributeStorage *, ArrayAttrKeyInfo>;
   ArrayAttrSet arrayAttrs;
-  DenseMap<AffineMap, AffineMapAttr *> affineMapAttrs;
-  DenseMap<Type *, TypeAttr *> typeAttrs;
+  DenseMap<AffineMap, AffineMapAttributeStorage *> affineMapAttrs;
+  DenseMap<Type *, TypeAttributeStorage *> typeAttrs;
   using AttributeListSet =
       DenseSet<AttributeListStorage *, AttributeListKeyInfo>;
   AttributeListSet attributeLists;
-  DenseMap<const Function *, FunctionAttr *> functionAttrs;
-  DenseMap<std::pair<VectorOrTensorType *, Attribute *>, SplatElementsAttr *>
+  DenseMap<const Function *, FunctionAttributeStorage *> functionAttrs;
+  DenseMap<std::pair<VectorOrTensorType *, Attribute>,
+           SplatElementsAttributeStorage *>
       splatElementsAttrs;
   using DenseElementsAttrSet =
-      DenseSet<DenseElementsAttr *, DenseElementsAttrInfo>;
+      DenseSet<DenseElementsAttributeStorage *, DenseElementsAttrInfo>;
   DenseElementsAttrSet denseElementsAttrs;
   using OpaqueElementsAttrSet =
-      DenseSet<OpaqueElementsAttr *, OpaqueElementsAttrInfo>;
+      DenseSet<OpaqueElementsAttributeStorage *, OpaqueElementsAttrInfo>;
   OpaqueElementsAttrSet opaqueElementsAttrs;
-  DenseMap<std::tuple<Type *, DenseElementsAttr *, DenseElementsAttr *>,
-           SparseElementsAttr *>
+  DenseMap<std::tuple<Type *, Attribute, Attribute>,
+           SparseElementsAttributeStorage *>
       sparseElementsAttrs;
 
 public:
@@ -716,31 +720,36 @@ MemRefType *MemRefType::get(ArrayRef<int> shape, Type *elementType,
 // Attribute uniquing
 //===----------------------------------------------------------------------===//
 
-BoolAttr *BoolAttr::get(bool value, MLIRContext *context) {
+BoolAttr BoolAttr::get(bool value, MLIRContext *context) {
   auto *&result = context->getImpl().boolAttrs[value];
   if (result)
     return result;
 
-  result = context->getImpl().allocator.Allocate<BoolAttr>();
-  new (result) BoolAttr(value);
+  result = context->getImpl().allocator.Allocate<BoolAttributeStorage>();
+  new (result) BoolAttributeStorage{{Attribute::Kind::Bool,
+                                     /*isOrContainsFunction=*/false},
+                                    value};
   return result;
 }
 
-IntegerAttr *IntegerAttr::get(int64_t value, MLIRContext *context) {
+IntegerAttr IntegerAttr::get(int64_t value, MLIRContext *context) {
   auto *&result = context->getImpl().integerAttrs[value];
   if (result)
     return result;
 
-  result = context->getImpl().allocator.Allocate<IntegerAttr>();
-  new (result) IntegerAttr(value);
+  result = context->getImpl().allocator.Allocate<IntegerAttributeStorage>();
+  new (result) IntegerAttributeStorage{{Attribute::Kind::Integer,
+                                        /*isOrContainsFunction=*/false},
+                                       value};
+  result->value = value;
   return result;
 }
 
-FloatAttr *FloatAttr::get(double value, MLIRContext *context) {
+FloatAttr FloatAttr::get(double value, MLIRContext *context) {
   return get(APFloat(value), context);
 }
 
-FloatAttr *FloatAttr::get(const APFloat &value, MLIRContext *context) {
+FloatAttr FloatAttr::get(const APFloat &value, MLIRContext *context) {
   auto &impl = context->getImpl();
 
   // Look to see if the float attribute has been created already.
@@ -755,33 +764,35 @@ FloatAttr *FloatAttr::get(const APFloat &value, MLIRContext *context) {
   // Here one word's bitwidth equals to that of uint64_t.
   auto elements = ArrayRef<uint64_t>(apint.getRawData(), apint.getNumWords());
 
-  auto byteSize = FloatAttr::totalSizeToAlloc<uint64_t>(elements.size());
-  auto rawMem = impl.allocator.Allocate(byteSize, alignof(FloatAttr));
-  auto result = ::new (rawMem) FloatAttr(value.getSemantics(), elements.size());
+  auto byteSize =
+      FloatAttributeStorage::totalSizeToAlloc<uint64_t>(elements.size());
+  auto rawMem =
+      impl.allocator.Allocate(byteSize, alignof(FloatAttributeStorage));
+  auto result = ::new (rawMem) FloatAttributeStorage{
+      {Attribute::Kind::Float, /*isOrContainsFunction=*/false},
+      {},
+      value.getSemantics(),
+      elements.size()};
   std::uninitialized_copy(elements.begin(), elements.end(),
                           result->getTrailingObjects<uint64_t>());
   return *existing.first = result;
 }
 
-APFloat FloatAttr::getValue() const {
-  auto val = APInt(APFloat::getSizeInBits(semantics),
-                   {getTrailingObjects<uint64_t>(), numObjects});
-  return APFloat(semantics, val);
-}
-
-StringAttr *StringAttr::get(StringRef bytes, MLIRContext *context) {
+StringAttr StringAttr::get(StringRef bytes, MLIRContext *context) {
   auto it = context->getImpl().stringAttrs.insert({bytes, nullptr}).first;
 
   if (it->second)
     return it->second;
 
-  auto result = context->getImpl().allocator.Allocate<StringAttr>();
-  new (result) StringAttr(it->first());
+  auto result = context->getImpl().allocator.Allocate<StringAttributeStorage>();
+  new (result) StringAttributeStorage{{Attribute::Kind::String,
+                                       /*isOrContainsFunction=*/false},
+                                      it->first()};
   it->second = result;
   return result;
 }
 
-ArrayAttr *ArrayAttr::get(ArrayRef<Attribute *> value, MLIRContext *context) {
+ArrayAttr ArrayAttr::get(ArrayRef<Attribute> value, MLIRContext *context) {
   auto &impl = context->getImpl();
 
   // Look to see if we already have this.
@@ -792,60 +803,65 @@ ArrayAttr *ArrayAttr::get(ArrayRef<Attribute *> value, MLIRContext *context) {
     return *existing.first;
 
   // On the first use, we allocate them into the bump pointer.
-  auto *result = impl.allocator.Allocate<ArrayAttr>();
+  auto *result = impl.allocator.Allocate<ArrayAttributeStorage>();
 
   // Copy the elements into the bump pointer.
   value = impl.copyInto(value);
 
   // Check to see if any of the elements have a function attr.
   bool hasFunctionAttr = false;
-  for (auto *elt : value)
-    if (elt->isOrContainsFunction()) {
+  for (auto elt : value)
+    if (elt.isOrContainsFunction()) {
       hasFunctionAttr = true;
       break;
     }
 
   // Initialize the memory using placement new.
-  new (result) ArrayAttr(value, hasFunctionAttr);
+  new (result)
+      ArrayAttributeStorage{{Attribute::Kind::Array, hasFunctionAttr}, value};
 
   // Cache and return it.
   return *existing.first = result;
 }
 
-AffineMapAttr *AffineMapAttr::get(AffineMap value) {
+AffineMapAttr AffineMapAttr::get(AffineMap value) {
   auto *context = value.getResult(0).getContext();
   auto &result = context->getImpl().affineMapAttrs[value];
   if (result)
     return result;
 
-  result = context->getImpl().allocator.Allocate<AffineMapAttr>();
-  new (result) AffineMapAttr(value);
+  result = context->getImpl().allocator.Allocate<AffineMapAttributeStorage>();
+  new (result) AffineMapAttributeStorage{{Attribute::Kind::AffineMap,
+                                          /*isOrContainsFunction=*/false},
+                                         value};
   return result;
 }
 
-TypeAttr *TypeAttr::get(Type *type, MLIRContext *context) {
+TypeAttr TypeAttr::get(Type *type, MLIRContext *context) {
   auto *&result = context->getImpl().typeAttrs[type];
   if (result)
     return result;
 
-  result = context->getImpl().allocator.Allocate<TypeAttr>();
-  new (result) TypeAttr(type);
+  result = context->getImpl().allocator.Allocate<TypeAttributeStorage>();
+  new (result) TypeAttributeStorage{{Attribute::Kind::Type,
+                                     /*isOrContainsFunction=*/false},
+                                    type};
   return result;
 }
 
-FunctionAttr *FunctionAttr::get(const Function *value, MLIRContext *context) {
+FunctionAttr FunctionAttr::get(const Function *value, MLIRContext *context) {
   assert(value && "Cannot get FunctionAttr for a null function");
 
   auto *&result = context->getImpl().functionAttrs[value];
   if (result)
     return result;
 
-  result = context->getImpl().allocator.Allocate<FunctionAttr>();
-  new (result) FunctionAttr(const_cast<Function *>(value));
+  result = context->getImpl().allocator.Allocate<FunctionAttributeStorage>();
+  new (result) FunctionAttributeStorage{{Attribute::Kind::Function,
+                                         /*isOrContainsFunction=*/true},
+                                        const_cast<Function *>(value)};
   return result;
 }
-
-FunctionType *FunctionAttr::getType() const { return getValue()->getType(); }
 
 /// This function is used by the internals of the Function class to null out
 /// attributes refering to functions that are about to be deleted.
@@ -935,30 +951,29 @@ AttributeListStorage *AttributeListStorage::get(ArrayRef<NamedAttribute> attrs,
   return *existing.first = result;
 }
 
-OpaqueElementsAttr *OpaqueElementsAttr::get(VectorOrTensorType *type,
-                                            StringRef bytes) {
-  assert(isValidTensorElementType(type->getElementType()) &&
-         "Input element type should be a valid tensor element type");
-
+SplatElementsAttr SplatElementsAttr::get(VectorOrTensorType *type,
+                                         Attribute elt) {
   auto &impl = type->getContext()->getImpl();
 
-  // Look to see if this constant is already defined.
-  OpaqueElementsAttrInfo::KeyTy key({type, bytes});
-  auto existing = impl.opaqueElementsAttrs.insert_as(nullptr, key);
+  // Look to see if we already have this.
+  auto *&result = impl.splatElementsAttrs[{type, elt}];
 
   // If we already have it, return that value.
-  if (!existing.second)
-    return *existing.first;
+  if (result)
+    return result;
 
-  // Otherwise, allocate a new one, unique it and return it.
-  auto *result = impl.allocator.Allocate<OpaqueElementsAttr>();
-  bytes = bytes.copy(impl.allocator);
-  new (result) OpaqueElementsAttr(type, bytes);
-  return *existing.first = result;
+  // Otherwise, allocate them into the bump pointer.
+  result = impl.allocator.Allocate<SplatElementsAttributeStorage>();
+  new (result) SplatElementsAttributeStorage{{{Attribute::Kind::SplatElements,
+                                               /*isOrContainsFunction=*/false},
+                                              type},
+                                             elt};
+
+  return result;
 }
 
-DenseElementsAttr *DenseElementsAttr::get(VectorOrTensorType *type,
-                                          ArrayRef<char> data) {
+DenseElementsAttr DenseElementsAttr::get(VectorOrTensorType *type,
+                                         ArrayRef<char> data) {
   auto bitsRequired = (long)type->getBitWidth() * type->getNumElements();
   (void)(bitsRequired);
   assert((bitsRequired <= data.size() * 8L) &&
@@ -981,18 +996,25 @@ DenseElementsAttr *DenseElementsAttr::get(VectorOrTensorType *type,
   case Type::Kind::F16:
   case Type::Kind::F32:
   case Type::Kind::F64: {
-    auto *result = impl.allocator.Allocate<DenseFPElementsAttr>();
+    auto *result = impl.allocator.Allocate<DenseFPElementsAttributeStorage>();
     auto *copy = (char *)impl.allocator.Allocate(data.size(), 64);
     std::uninitialized_copy(data.begin(), data.end(), copy);
-    new (result) DenseFPElementsAttr(type, {copy, data.size()});
+    new (result) DenseFPElementsAttributeStorage{
+        {{{Attribute::Kind::DenseFPElements, /*isOrContainsFunction=*/false},
+          type},
+         {copy, data.size()}}};
     return *existing.first = result;
   }
   case Type::Kind::Integer: {
-    auto width = cast<IntegerType>(eltType)->getWidth();
-    auto *result = impl.allocator.Allocate<DenseIntElementsAttr>();
+    auto width = ::cast<IntegerType>(eltType)->getWidth();
+    auto *result = impl.allocator.Allocate<DenseIntElementsAttributeStorage>();
     auto *copy = (char *)impl.allocator.Allocate(data.size(), 64);
     std::uninitialized_copy(data.begin(), data.end(), copy);
-    new (result) DenseIntElementsAttr(type, {copy, data.size()}, width);
+    new (result) DenseIntElementsAttributeStorage{
+        {{{Attribute::Kind::DenseIntElements, /*isOrContainsFunction=*/false},
+          type},
+         {copy, data.size()}},
+        width};
     return *existing.first = result;
   }
   default:
@@ -1000,118 +1022,33 @@ DenseElementsAttr *DenseElementsAttr::get(VectorOrTensorType *type,
   }
 }
 
-/// Writes the lowest `bitWidth` bits of `value` to bit position `bitPos`
-/// starting from `rawData`.
-void DenseIntElementsAttr::writeBits(char *data, size_t bitPos, size_t bitWidth,
-                                     uint64_t value) {
-  // Read the destination bytes which will be written to.
-  uint64_t dst = 0;
-  auto dstData = reinterpret_cast<char *>(&dst);
-  auto endPos = bitPos + bitWidth;
-  auto start = data + bitPos / 8;
-  auto end = data + endPos / 8 + (endPos % 8 != 0);
-  std::copy(start, end, dstData);
+OpaqueElementsAttr OpaqueElementsAttr::get(VectorOrTensorType *type,
+                                           StringRef bytes) {
+  assert(isValidTensorElementType(type->getElementType()) &&
+         "Input element type should be a valid tensor element type");
 
-  // Clean up the invalid bits in the destination bytes.
-  dst &= ~(-1UL << (bitPos % 8));
-
-  // Get the valid bits of the source value, shift them to right position,
-  // then add them to the destination bytes.
-  value <<= bitPos % 8;
-  dst |= value;
-
-  // Write the destination bytes back.
-  ArrayRef<char> range({dstData, (size_t)(end - start)});
-  std::copy(range.begin(), range.end(), start);
-}
-
-/// Reads the next `bitWidth` bits from the bit position `bitPos` of `rawData`
-/// and put them in the lowest bits.
-uint64_t DenseIntElementsAttr::readBits(const char *rawData, size_t bitPos,
-                                        size_t bitsWidth) {
-  uint64_t dst = 0;
-  auto dstData = reinterpret_cast<char *>(&dst);
-  auto endPos = bitPos + bitsWidth;
-  auto start = rawData + bitPos / 8;
-  auto end = rawData + endPos / 8 + (endPos % 8 != 0);
-  std::copy(start, end, dstData);
-
-  dst >>= bitPos % 8;
-  dst &= ~(-1UL << bitsWidth);
-  return dst;
-}
-
-void DenseElementsAttr::getValues(SmallVectorImpl<Attribute *> &values) const {
-  switch (getKind()) {
-  case Attribute::Kind::DenseIntElements:
-    cast<DenseIntElementsAttr>(this)->getValues(values);
-    return;
-  case Attribute::Kind::DenseFPElements:
-    cast<DenseFPElementsAttr>(this)->getValues(values);
-    return;
-  default:
-    llvm_unreachable("unexpected element type");
-  }
-}
-
-void DenseIntElementsAttr::getValues(
-    SmallVectorImpl<Attribute *> &values) const {
-  auto elementNum = getType()->getNumElements();
-  auto context = getType()->getContext();
-  values.reserve(elementNum);
-  if (bitsWidth == 64) {
-    ArrayRef<int64_t> vs(
-        {reinterpret_cast<const int64_t *>(getRawData().data()),
-         getRawData().size() / 8});
-    for (auto value : vs) {
-      auto *attr = IntegerAttr::get(value, context);
-      values.push_back(attr);
-    }
-  } else {
-    const auto *rawData = getRawData().data();
-    for (size_t pos = 0; pos < elementNum * bitsWidth; pos += bitsWidth) {
-      uint64_t bits = readBits(rawData, pos, bitsWidth);
-      APInt value(bitsWidth, bits, /*isSigned=*/true);
-      auto *attr = IntegerAttr::get(value.getSExtValue(), context);
-      values.push_back(attr);
-    }
-  }
-}
-
-void DenseFPElementsAttr::getValues(
-    SmallVectorImpl<Attribute *> &values) const {
-  auto elementNum = getType()->getNumElements();
-  auto context = getType()->getContext();
-  ArrayRef<double> vs({reinterpret_cast<const double *>(getRawData().data()),
-                       getRawData().size() / 8});
-  values.reserve(elementNum);
-  for (auto v : vs) {
-    auto *attr = FloatAttr::get(v, context);
-    values.push_back(attr);
-  }
-}
-
-SplatElementsAttr *SplatElementsAttr::get(VectorOrTensorType *type,
-                                          Attribute *elt) {
   auto &impl = type->getContext()->getImpl();
 
-  // Look to see if we already have this.
-  auto *&result = impl.splatElementsAttrs[{type, elt}];
+  // Look to see if this constant is already defined.
+  OpaqueElementsAttrInfo::KeyTy key({type, bytes});
+  auto existing = impl.opaqueElementsAttrs.insert_as(nullptr, key);
 
   // If we already have it, return that value.
-  if (result)
-    return result;
+  if (!existing.second)
+    return *existing.first;
 
-  // Otherwise, allocate them into the bump pointer.
-  result = impl.allocator.Allocate<SplatElementsAttr>();
-  new (result) SplatElementsAttr(type, elt);
-
-  return result;
+  // Otherwise, allocate a new one, unique it and return it.
+  auto *result = impl.allocator.Allocate<OpaqueElementsAttributeStorage>();
+  bytes = bytes.copy(impl.allocator);
+  new (result) OpaqueElementsAttributeStorage{
+      {{Attribute::Kind::OpaqueElements, /*isOrContainsFunction=*/false}, type},
+      bytes};
+  return *existing.first = result;
 }
 
-SparseElementsAttr *SparseElementsAttr::get(VectorOrTensorType *type,
-                                            DenseIntElementsAttr *indices,
-                                            DenseElementsAttr *values) {
+SparseElementsAttr SparseElementsAttr::get(VectorOrTensorType *type,
+                                           DenseIntElementsAttr indices,
+                                           DenseElementsAttr values) {
   auto &impl = type->getContext()->getImpl();
 
   // Look to see if we already have this.
@@ -1123,8 +1060,12 @@ SparseElementsAttr *SparseElementsAttr::get(VectorOrTensorType *type,
     return result;
 
   // Otherwise, allocate them into the bump pointer.
-  result = impl.allocator.Allocate<SparseElementsAttr>();
-  new (result) SparseElementsAttr(type, indices, values);
+  result = impl.allocator.Allocate<SparseElementsAttributeStorage>();
+  new (result) SparseElementsAttributeStorage{{{Attribute::Kind::SparseElements,
+                                                /*isOrContainsFunction=*/false},
+                                               type},
+                                              indices,
+                                              values};
 
   return result;
 }

@@ -113,33 +113,31 @@ public:
   ArrayRef<NamedAttribute> getAttrs() const;
 
   /// Return the specified attribute if present, null otherwise.
-  Attribute *getAttr(Identifier name) const {
+  Attribute getAttr(Identifier name) const {
     for (auto elt : getAttrs())
       if (elt.first == name)
         return elt.second;
     return nullptr;
   }
 
-  Attribute *getAttr(StringRef name) const {
+  Attribute getAttr(StringRef name) const {
     for (auto elt : getAttrs())
       if (elt.first.is(name))
         return elt.second;
     return nullptr;
   }
 
-  template <typename AttrClass>
-  AttrClass *getAttrOfType(Identifier name) const {
-    return dyn_cast_or_null<AttrClass>(getAttr(name));
+  template <typename AttrClass> AttrClass getAttrOfType(Identifier name) const {
+    return getAttr(name).dyn_cast_or_null<AttrClass>();
   }
 
-  template <typename AttrClass>
-  AttrClass *getAttrOfType(StringRef name) const {
-    return dyn_cast_or_null<AttrClass>(getAttr(name));
+  template <typename AttrClass> AttrClass getAttrOfType(StringRef name) const {
+    return getAttr(name).dyn_cast_or_null<AttrClass>();
   }
 
   /// If the an attribute exists with the specified name, change it to the new
   /// value.  Otherwise, add a new attribute with the specified name/value.
-  void setAttr(Identifier name, Attribute *value);
+  void setAttr(Identifier name, Attribute value);
 
   enum class RemoveResult {
     Removed, NotFound
@@ -250,8 +248,8 @@ public:
   /// the operands of the operation, but may be null if non-constant.  If
   /// constant folding is successful, this returns false and fills in the
   /// `results` vector.  If not, this returns true and `results` is unspecified.
-  bool constantFold(ArrayRef<Attribute *> operands,
-                    SmallVectorImpl<Attribute *> &results) const;
+  bool constantFold(ArrayRef<Attribute> operands,
+                    SmallVectorImpl<Attribute> &results) const;
 
   /// Methods for support type inquiry through isa, cast, and dyn_cast.
   static bool classof(const Instruction *inst);

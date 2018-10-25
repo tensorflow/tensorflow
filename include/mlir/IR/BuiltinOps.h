@@ -60,7 +60,7 @@ public:
 
   /// Returns the affine map to be applied by this operation.
   AffineMap getAffineMap() const {
-    return getAttrOfType<AffineMapAttr>("map")->getValue();
+    return getAttrOfType<AffineMapAttr>("map").getValue();
   }
 
   /// Returns true if the result of this operation can be used as dimension id.
@@ -75,8 +75,8 @@ public:
   static bool parse(OpAsmParser *parser, OperationState *result);
   void print(OpAsmPrinter *p) const;
   bool verify() const;
-  bool constantFold(ArrayRef<Attribute *> operands,
-                    SmallVectorImpl<Attribute *> &results,
+  bool constantFold(ArrayRef<Attribute> operandConstants,
+                    SmallVectorImpl<Attribute> &results,
                     MLIRContext *context) const;
 
 private:
@@ -94,10 +94,10 @@ class ConstantOp : public Op<ConstantOp, OpTrait::ZeroOperands,
                              OpTrait::OneResult, OpTrait::HasNoSideEffect> {
 public:
   /// Builds a constant op with the specified attribute value and result type.
-  static void build(Builder *builder, OperationState *result, Attribute *value,
+  static void build(Builder *builder, OperationState *result, Attribute value,
                     Type *type);
 
-  Attribute *getValue() const { return getAttr("value"); }
+  Attribute getValue() const { return getAttr("value"); }
 
   static StringRef getOperationName() { return "constant"; }
 
@@ -105,8 +105,8 @@ public:
   static bool parse(OpAsmParser *parser, OperationState *result);
   void print(OpAsmPrinter *p) const;
   bool verify() const;
-  Attribute *constantFold(ArrayRef<Attribute *> operands,
-                          MLIRContext *context) const;
+  Attribute constantFold(ArrayRef<Attribute> operands,
+                         MLIRContext *context) const;
 
 protected:
   friend class Operation;
@@ -125,7 +125,7 @@ public:
                     const APFloat &value, FloatType *type);
 
   APFloat getValue() const {
-    return getAttrOfType<FloatAttr>("value")->getValue();
+    return getAttrOfType<FloatAttr>("value").getValue();
   }
 
   static bool isClassFor(const Operation *op);
@@ -152,7 +152,7 @@ public:
                     Type *type);
 
   int64_t getValue() const {
-    return getAttrOfType<IntegerAttr>("value")->getValue();
+    return getAttrOfType<IntegerAttr>("value").getValue();
   }
 
   static bool isClassFor(const Operation *op);
@@ -173,7 +173,7 @@ public:
   static void build(Builder *builder, OperationState *result, int64_t value);
 
   int64_t getValue() const {
-    return getAttrOfType<IntegerAttr>("value")->getValue();
+    return getAttrOfType<IntegerAttr>("value").getValue();
   }
 
   static bool isClassFor(const Operation *op);

@@ -30,10 +30,32 @@ class MLIRContext;
 class Type;
 class VectorOrTensorType;
 
+namespace detail {
+
+struct AttributeStorage;
+struct BoolAttributeStorage;
+struct IntegerAttributeStorage;
+struct FloatAttributeStorage;
+struct StringAttributeStorage;
+struct ArrayAttributeStorage;
+struct AffineMapAttributeStorage;
+struct TypeAttributeStorage;
+struct FunctionAttributeStorage;
+struct ElementsAttributeStorage;
+struct SplatElementsAttributeStorage;
+struct DenseElementsAttributeStorage;
+struct DenseIntElementsAttributeStorage;
+struct DenseFPElementsAttributeStorage;
+struct OpaqueElementsAttributeStorage;
+struct SparseElementsAttributeStorage;
+
+} // namespace detail
+
 /// Attributes are known-constant values of operations and functions.
 ///
 /// Instances of the Attribute class are immutable, uniqued, immortal, and owned
-/// by MLIRContext.  As such, they are passed around by raw non-const pointer.
+/// by MLIRContext.  As such, an Attribute is a POD interface to an underlying
+/// storage pointer.
 class Attribute {
 public:
   enum class Kind {
@@ -55,177 +77,151 @@ public:
     LAST_ELEMENTS_ATTR = SparseElements,
   };
 
+  typedef detail::AttributeStorage ImplType;
+
+  Attribute() : attr(nullptr) {}
+  /* implicit */ Attribute(const ImplType *attr)
+      : attr(const_cast<ImplType *>(attr)) {}
+
+  Attribute(const Attribute &other) : attr(other.attr) {}
+  Attribute &operator=(Attribute other) {
+    attr = other.attr;
+    return *this;
+  }
+
+  bool operator==(Attribute other) const { return attr == other.attr; }
+  bool operator!=(Attribute other) const { return !(*this == other); }
+  explicit operator bool() const { return attr; }
+
+  bool operator!() const { return attr == nullptr; }
+
+  template <typename U> bool isa() const;
+  template <typename U> U dyn_cast() const;
+  template <typename U> U dyn_cast_or_null() const;
+  template <typename U> U cast() const;
+
   /// Return the classification for this attribute.
-  Kind getKind() const { return kind; }
+  Kind getKind() const;
 
   /// Return true if this field is, or contains, a function attribute.
-  bool isOrContainsFunction() const { return isOrContainsFunctionCache; }
+  bool isOrContainsFunction() const;
 
   /// Print the attribute.
   void print(raw_ostream &os) const;
   void dump() const;
 
+  friend ::llvm::hash_code hash_value(Attribute arg);
+
 protected:
-  explicit Attribute(Kind kind, bool isOrContainsFunction)
-      : kind(kind), isOrContainsFunctionCache(isOrContainsFunction) {}
-  ~Attribute() {}
-
-private:
-  /// Classification of the subclass, used for type checking.
-  Kind kind : 8;
-
-  /// This field is true if this is, or contains, a function attribute.
-  bool isOrContainsFunctionCache : 1;
-
-  Attribute(const Attribute &) = delete;
-  void operator=(const Attribute &) = delete;
+  ImplType *attr;
 };
 
-inline raw_ostream &operator<<(raw_ostream &os, const Attribute &attr) {
+inline raw_ostream &operator<<(raw_ostream &os, Attribute attr) {
   attr.print(os);
   return os;
 }
 
 class BoolAttr : public Attribute {
 public:
-  static BoolAttr *get(bool value, MLIRContext *context);
+  typedef detail::BoolAttributeStorage ImplType;
+  BoolAttr() = default;
+  /* implicit */ BoolAttr(Attribute::ImplType *ptr);
 
-  bool getValue() const { return value; }
+  static BoolAttr get(bool value, MLIRContext *context);
+
+  bool getValue() const;
 
   /// Methods for support type inquiry through isa, cast, and dyn_cast.
-  static bool classof(const Attribute *attr) {
-    return attr->getKind() == Kind::Bool;
-  }
-
-private:
-  BoolAttr(bool value)
-      : Attribute(Kind::Bool, /*isOrContainsFunction=*/false), value(value) {}
-  ~BoolAttr() = delete;
-  bool value;
+  static bool kindof(Kind kind) { return kind == Kind::Bool; }
 };
 
 class IntegerAttr : public Attribute {
 public:
-  static IntegerAttr *get(int64_t value, MLIRContext *context);
+  typedef detail::IntegerAttributeStorage ImplType;
+  IntegerAttr() = default;
+  /* implicit */ IntegerAttr(Attribute::ImplType *ptr);
 
-  int64_t getValue() const { return value; }
+  static IntegerAttr get(int64_t value, MLIRContext *context);
+
+  int64_t getValue() const;
 
   /// Methods for support type inquiry through isa, cast, and dyn_cast.
-  static bool classof(const Attribute *attr) {
-    return attr->getKind() == Kind::Integer;
-  }
-
-private:
-  IntegerAttr(int64_t value)
-      : Attribute(Kind::Integer, /*isOrContainsFunction=*/false), value(value) {
-  }
-  ~IntegerAttr() = delete;
-  int64_t value;
+  static bool kindof(Kind kind) { return kind == Kind::Integer; }
 };
 
-class FloatAttr final : public Attribute,
-                        public llvm::TrailingObjects<FloatAttr, uint64_t> {
+class FloatAttr final : public Attribute {
 public:
-  static FloatAttr *get(double value, MLIRContext *context);
-  static FloatAttr *get(const APFloat &value, MLIRContext *context);
+  typedef detail::FloatAttributeStorage ImplType;
+  FloatAttr() = default;
+  /* implicit */ FloatAttr(Attribute::ImplType *ptr);
+
+  static FloatAttr get(double value, MLIRContext *context);
+  static FloatAttr get(const APFloat &value, MLIRContext *context);
 
   APFloat getValue() const;
 
-  double getDouble() const { return getValue().convertToDouble(); }
+  double getDouble() const;
 
   /// Methods for support type inquiry through isa, cast, and dyn_cast.
-  static bool classof(const Attribute *attr) {
-    return attr->getKind() == Kind::Float;
-  }
-
-private:
-  FloatAttr(const llvm::fltSemantics &semantics, size_t numObjects)
-      : Attribute(Kind::Float, /*isOrContainsFunction=*/false),
-        semantics(semantics), numObjects(numObjects) {}
-  FloatAttr(const FloatAttr &value) = delete;
-  ~FloatAttr() = delete;
-
-  size_t numTrailingObjects(OverloadToken<uint64_t>) const {
-    return numObjects;
-  }
-
-  const llvm::fltSemantics &semantics;
-  size_t numObjects;
+  static bool kindof(Kind kind) { return kind == Kind::Float; }
 };
 
 class StringAttr : public Attribute {
 public:
-  static StringAttr *get(StringRef bytes, MLIRContext *context);
+  typedef detail::StringAttributeStorage ImplType;
+  StringAttr() = default;
+  /* implicit */ StringAttr(Attribute::ImplType *ptr);
 
-  StringRef getValue() const { return value; }
+  static StringAttr get(StringRef bytes, MLIRContext *context);
+
+  StringRef getValue() const;
 
   /// Methods for support type inquiry through isa, cast, and dyn_cast.
-  static bool classof(const Attribute *attr) {
-    return attr->getKind() == Kind::String;
-  }
-
-private:
-  StringAttr(StringRef value)
-      : Attribute(Kind::String, /*isOrContainsFunction=*/false), value(value) {}
-  ~StringAttr() = delete;
-  StringRef value;
+  static bool kindof(Kind kind) { return kind == Kind::String; }
 };
 
 /// Array attributes are lists of other attributes.  They are not necessarily
 /// type homogenous given that attributes don't, in general, carry types.
 class ArrayAttr : public Attribute {
 public:
-  static ArrayAttr *get(ArrayRef<Attribute *> value, MLIRContext *context);
+  typedef detail::ArrayAttributeStorage ImplType;
+  ArrayAttr() = default;
+  /* implicit */ ArrayAttr(Attribute::ImplType *ptr);
 
-  ArrayRef<Attribute *> getValue() const { return value; }
+  static ArrayAttr get(ArrayRef<Attribute> value, MLIRContext *context);
+
+  ArrayRef<Attribute> getValue() const;
 
   /// Methods for support type inquiry through isa, cast, and dyn_cast.
-  static bool classof(const Attribute *attr) {
-    return attr->getKind() == Kind::Array;
-  }
-
-private:
-  ArrayAttr(ArrayRef<Attribute *> value, bool isOrContainsFunction)
-      : Attribute(Kind::Array, isOrContainsFunction), value(value) {}
-  ~ArrayAttr() = delete;
-  ArrayRef<Attribute *> value;
+  static bool kindof(Kind kind) { return kind == Kind::Array; }
 };
 
 class AffineMapAttr : public Attribute {
 public:
-  static AffineMapAttr *get(AffineMap value);
+  typedef detail::AffineMapAttributeStorage ImplType;
+  AffineMapAttr() = default;
+  /* implicit */ AffineMapAttr(Attribute::ImplType *ptr);
 
-  AffineMap getValue() const { return value; }
+  static AffineMapAttr get(AffineMap value);
+
+  AffineMap getValue() const;
 
   /// Methods for support type inquiry through isa, cast, and dyn_cast.
-  static bool classof(const Attribute *attr) {
-    return attr->getKind() == Kind::AffineMap;
-  }
-
-private:
-  AffineMapAttr(AffineMap value)
-      : Attribute(Kind::AffineMap, /*isOrContainsFunction=*/false),
-        value(value) {}
-  ~AffineMapAttr() = delete;
-  AffineMap value;
+  static bool kindof(Kind kind) { return kind == Kind::AffineMap; }
 };
 
 class TypeAttr : public Attribute {
 public:
-  static TypeAttr *get(Type *type, MLIRContext *context);
+  typedef detail::TypeAttributeStorage ImplType;
+  TypeAttr() = default;
+  /* implicit */ TypeAttr(Attribute::ImplType *ptr);
 
-  Type *getValue() const { return value; }
+  static TypeAttr get(Type *type, MLIRContext *context);
+
+  Type *getValue() const;
 
   /// Methods for support type inquiry through isa, cast, and dyn_cast.
-  static bool classof(const Attribute *attr) {
-    return attr->getKind() == Kind::Type;
-  }
-
-private:
-  TypeAttr(Type *value)
-      : Attribute(Kind::Type, /*isOrContainsFunction=*/false), value(value) {}
-  ~TypeAttr() = delete;
-  Type *value;
+  static bool kindof(Kind kind) { return kind == Kind::Type; }
 };
 
 /// A function attribute represents a reference to a function object.
@@ -237,63 +233,53 @@ private:
 /// remain in MLIRContext.
 class FunctionAttr : public Attribute {
 public:
-  static FunctionAttr *get(const Function *value, MLIRContext *context);
+  typedef detail::FunctionAttributeStorage ImplType;
+  FunctionAttr() = default;
+  /* implicit */ FunctionAttr(Attribute::ImplType *ptr);
 
-  Function *getValue() const { return value; }
+  static FunctionAttr get(const Function *value, MLIRContext *context);
+
+  Function *getValue() const;
 
   FunctionType *getType() const;
 
   /// Methods for support type inquiry through isa, cast, and dyn_cast.
-  static bool classof(const Attribute *attr) {
-    return attr->getKind() == Kind::Function;
-  }
+  static bool kindof(Kind kind) { return kind == Kind::Function; }
 
   /// This function is used by the internals of the Function class to null out
   /// attributes refering to functions that are about to be deleted.
   static void dropFunctionReference(Function *value);
-
-private:
-  FunctionAttr(Function *value)
-      : Attribute(Kind::Function, /*isOrContainsFunction=*/true), value(value) {
-  }
-  ~FunctionAttr() = delete;
-  Function *value;
 };
 
 /// A base attribute represents a reference to a vector or tensor constant.
 class ElementsAttr : public Attribute {
 public:
-  ElementsAttr(Kind kind, VectorOrTensorType *type)
-      : Attribute(kind, /*isOrContainsFunction=*/false), type(type) {}
+  typedef detail::ElementsAttributeStorage ImplType;
+  ElementsAttr() = default;
+  /* implicit */ ElementsAttr(Attribute::ImplType *ptr);
 
-  VectorOrTensorType *getType() const { return type; }
+  VectorOrTensorType *getType() const;
 
   /// Method for support type inquiry through isa, cast and dyn_cast.
-  static bool classof(const Attribute *attr) {
-    return attr->getKind() >= Kind::FIRST_ELEMENTS_ATTR &&
-           attr->getKind() <= Kind::LAST_ELEMENTS_ATTR;
+  static bool kindof(Kind kind) {
+    return kind >= Kind::FIRST_ELEMENTS_ATTR &&
+           kind <= Kind::LAST_ELEMENTS_ATTR;
   }
-
-private:
-  VectorOrTensorType *type;
 };
 
 /// An attribute represents a reference to a splat vecctor or tensor constant,
 /// meaning all of the elements have the same value.
 class SplatElementsAttr : public ElementsAttr {
 public:
-  static SplatElementsAttr *get(VectorOrTensorType *type, Attribute *elt);
-  Attribute *getValue() const { return elt; }
+  typedef detail::SplatElementsAttributeStorage ImplType;
+  SplatElementsAttr() = default;
+  /* implicit */ SplatElementsAttr(Attribute::ImplType *ptr);
+
+  static SplatElementsAttr get(VectorOrTensorType *type, Attribute elt);
+  Attribute getValue() const;
 
   /// Method for support type inquiry through isa, cast and dyn_cast.
-  static bool classof(const Attribute *attr) {
-    return attr->getKind() == Kind::SplatElements;
-  }
-
-private:
-  SplatElementsAttr(VectorOrTensorType *type, Attribute *elt)
-      : ElementsAttr(Kind::SplatElements, type), elt(elt) {}
-  Attribute *elt;
+  static bool kindof(Kind kind) { return kind == Kind::SplatElements; }
 };
 
 /// An attribute represents a reference to a dense vector or tensor object.
@@ -302,42 +288,42 @@ private:
 /// than 64.
 class DenseElementsAttr : public ElementsAttr {
 public:
+  typedef detail::DenseElementsAttributeStorage ImplType;
+  DenseElementsAttr() = default;
+  /* implicit */ DenseElementsAttr(Attribute::ImplType *ptr);
+
   /// It assumes the elements in the input array have been truncated to the bits
   /// width specified by the element type (note all float type are 64 bits).
   /// When the value is retrieved, the bits are read from the storage and extend
   /// to 64 bits if necessary.
-  static DenseElementsAttr *get(VectorOrTensorType *type, ArrayRef<char> data);
+  static DenseElementsAttr get(VectorOrTensorType *type, ArrayRef<char> data);
 
   // TODO: Read the data from the attribute list and compress them
   // to a character array. Then call the above method to construct the
   // attribute.
-  static DenseElementsAttr *get(VectorOrTensorType *type,
-                                ArrayRef<Attribute *> values);
+  static DenseElementsAttr get(VectorOrTensorType *type,
+                               ArrayRef<Attribute> values);
 
-  void getValues(SmallVectorImpl<Attribute *> &values) const;
+  void getValues(SmallVectorImpl<Attribute> &values) const;
 
-  ArrayRef<char> getRawData() const { return data; }
+  ArrayRef<char> getRawData() const;
 
   /// Method for support type inquiry through isa, cast and dyn_cast.
-  static bool classof(const Attribute *attr) {
-    return attr->getKind() == Kind::DenseIntElements ||
-           attr->getKind() == Kind::DenseFPElements;
+  static bool kindof(Kind kind) {
+    return kind == Kind::DenseIntElements || kind == Kind::DenseFPElements;
   }
-
-protected:
-  DenseElementsAttr(Kind kind, VectorOrTensorType *type, ArrayRef<char> data)
-      : ElementsAttr(kind, type), data(data) {}
-
-private:
-  ArrayRef<char> data;
 };
 
 /// An attribute represents a reference to a dense integer vector or tensor
 /// object.
 class DenseIntElementsAttr : public DenseElementsAttr {
 public:
+  typedef detail::DenseIntElementsAttributeStorage ImplType;
+  DenseIntElementsAttr() = default;
+  /* implicit */ DenseIntElementsAttr(Attribute::ImplType *ptr);
+
   // TODO: returns APInts instead of IntegerAttr.
-  void getValues(SmallVectorImpl<Attribute *> &values) const;
+  void getValues(SmallVectorImpl<Attribute> &values) const;
 
   APInt getValue(ArrayRef<unsigned> indices) const;
 
@@ -352,41 +338,24 @@ public:
                            size_t bitsWidth);
 
   /// Method for support type inquiry through isa, cast and dyn_cast.
-  static bool classof(const Attribute *attr) {
-    return attr->getKind() == Kind::DenseIntElements;
-  }
-
-private:
-  friend class DenseElementsAttr;
-  DenseIntElementsAttr(VectorOrTensorType *type, ArrayRef<char> data,
-                       size_t bitsWidth)
-      : DenseElementsAttr(Kind::DenseIntElements, type, data),
-        bitsWidth(bitsWidth) {}
-
-  ~DenseIntElementsAttr() = delete;
-
-  size_t bitsWidth;
+  static bool kindof(Kind kind) { return kind == Kind::DenseIntElements; }
 };
 
 /// An attribute represents a reference to a dense float vector or tensor
 /// object. Each element is stored as a double.
 class DenseFPElementsAttr : public DenseElementsAttr {
 public:
+  typedef detail::DenseFPElementsAttributeStorage ImplType;
+  DenseFPElementsAttr() = default;
+  /* implicit */ DenseFPElementsAttr(Attribute::ImplType *ptr);
+
   // TODO: returns APFPs instead of FloatAttr.
-  void getValues(SmallVectorImpl<Attribute *> &values) const;
+  void getValues(SmallVectorImpl<Attribute> &values) const;
 
   APFloat getValue(ArrayRef<unsigned> indices) const;
 
   /// Method for support type inquiry through isa, cast and dyn_cast.
-  static bool classof(const Attribute *attr) {
-    return attr->getKind() == Kind::DenseFPElements;
-  }
-
-private:
-  friend class DenseElementsAttr;
-  DenseFPElementsAttr(VectorOrTensorType *type, ArrayRef<char> data)
-      : DenseElementsAttr(Kind::DenseFPElements, type, data) {}
-  ~DenseFPElementsAttr() = delete;
+  static bool kindof(Kind kind) { return kind == Kind::DenseFPElements; }
 };
 
 /// An attribute represents a reference to a tensor constant with opaque
@@ -394,20 +363,16 @@ private:
 /// doesn't need to interpret.
 class OpaqueElementsAttr : public ElementsAttr {
 public:
-  static OpaqueElementsAttr *get(VectorOrTensorType *type, StringRef bytes);
+  typedef detail::OpaqueElementsAttributeStorage ImplType;
+  OpaqueElementsAttr() = default;
+  /* implicit */ OpaqueElementsAttr(Attribute::ImplType *ptr);
 
-  StringRef getValue() const { return bytes; }
+  static OpaqueElementsAttr get(VectorOrTensorType *type, StringRef bytes);
+
+  StringRef getValue() const;
 
   /// Method for support type inquiry through isa, cast and dyn_cast.
-  static bool classof(const Attribute *attr) {
-    return attr->getKind() == Kind::OpaqueElements;
-  }
-
-private:
-  OpaqueElementsAttr(VectorOrTensorType *type, StringRef bytes)
-      : ElementsAttr(Kind::OpaqueElements, type), bytes(bytes) {}
-  ~OpaqueElementsAttr() = delete;
-  StringRef bytes;
+  static bool kindof(Kind kind) { return kind == Kind::OpaqueElements; }
 };
 
 /// An attribute represents a reference to a sparse vector or tensor object.
@@ -427,32 +392,67 @@ private:
 ///  [0, 0, 0, 0]].
 class SparseElementsAttr : public ElementsAttr {
 public:
-  static SparseElementsAttr *get(VectorOrTensorType *type,
-                                 DenseIntElementsAttr *indices,
-                                 DenseElementsAttr *values);
+  typedef detail::SparseElementsAttributeStorage ImplType;
+  SparseElementsAttr() = default;
+  /* implicit */ SparseElementsAttr(Attribute::ImplType *ptr);
 
-  DenseIntElementsAttr *getIndices() const { return indices; }
+  static SparseElementsAttr get(VectorOrTensorType *type,
+                                DenseIntElementsAttr indices,
+                                DenseElementsAttr values);
 
-  DenseElementsAttr *getValues() const { return values; }
+  DenseIntElementsAttr getIndices() const;
+
+  DenseElementsAttr getValues() const;
 
   /// Return the value at the given index.
-  Attribute *getValue(ArrayRef<unsigned> index) const;
+  Attribute getValue(ArrayRef<unsigned> index) const;
 
   /// Method for support type inquiry through isa, cast and dyn_cast.
-  static bool classof(const Attribute *attr) {
-    return attr->getKind() == Kind::SparseElements;
-  }
-
-private:
-  SparseElementsAttr(VectorOrTensorType *type, DenseIntElementsAttr *indices,
-                     DenseElementsAttr *values)
-      : ElementsAttr(Kind::SparseElements, type), indices(indices),
-        values(values) {}
-  ~SparseElementsAttr() = delete;
-
-  DenseIntElementsAttr *const indices;
-  DenseElementsAttr *const values;
+  static bool kindof(Kind kind) { return kind == Kind::SparseElements; }
 };
+
+template <typename U> bool Attribute::isa() const {
+  assert(attr && "isa<> used on a null attribute.");
+  return U::kindof(getKind());
+}
+template <typename U> U Attribute::dyn_cast() const {
+  return isa<U>() ? U(attr) : U(nullptr);
+}
+template <typename U> U Attribute::dyn_cast_or_null() const {
+  return (attr && isa<U>()) ? U(attr) : U(nullptr);
+}
+template <typename U> U Attribute::cast() const {
+  assert(isa<U>());
+  return U(attr);
+}
+
+// Make Attribute hashable.
+inline ::llvm::hash_code hash_value(Attribute arg) {
+  return ::llvm::hash_value(arg.attr);
+}
+
 } // end namespace mlir.
+
+namespace llvm {
+
+// Attribute hash just like pointers
+template <> struct DenseMapInfo<mlir::Attribute> {
+  static mlir::Attribute getEmptyKey() {
+    auto pointer = llvm::DenseMapInfo<void *>::getEmptyKey();
+    return mlir::Attribute(static_cast<mlir::Attribute::ImplType *>(pointer));
+  }
+  static mlir::Attribute getTombstoneKey() {
+    auto pointer = llvm::DenseMapInfo<void *>::getTombstoneKey();
+    return mlir::Attribute(static_cast<mlir::Attribute::ImplType *>(pointer));
+  }
+  static unsigned getHashValue(mlir::Attribute val) {
+    return mlir::hash_value(val);
+  }
+  static bool isEqual(mlir::Attribute LHS, mlir::Attribute RHS) {
+    return LHS == RHS;
+  }
+};
+
+} // namespace llvm
 
 #endif

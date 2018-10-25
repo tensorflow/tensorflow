@@ -138,17 +138,16 @@ public:
   ArrayRef<NamedAttribute> getAttrs() const { return state->getAttrs(); }
 
   /// Return an attribute with the specified name.
-  Attribute *getAttr(StringRef name) const { return state->getAttr(name); }
+  Attribute getAttr(StringRef name) const { return state->getAttr(name); }
 
   /// If the operation has an attribute of the specified type, return it.
-  template <typename AttrClass>
-  AttrClass *getAttrOfType(StringRef name) const {
-    return dyn_cast_or_null<AttrClass>(getAttr(name));
+  template <typename AttrClass> AttrClass getAttrOfType(StringRef name) const {
+    return getAttr(name).dyn_cast_or_null<AttrClass>();
   }
 
   /// If the an attribute exists with the specified name, change it to the new
   /// value.  Otherwise, add a new attribute with the specified name/value.
-  void setAttr(Identifier name, Attribute *value) {
+  void setAttr(Identifier name, Attribute value) {
     state->setAttr(name, value);
   }
 
@@ -211,8 +210,8 @@ public:
   /// true if folding failed, or returns false and fills in `results` on
   /// success.
   static bool constantFoldHook(const Operation *op,
-                               ArrayRef<Attribute *> operands,
-                               SmallVectorImpl<Attribute *> &results) {
+                               ArrayRef<Attribute> operands,
+                               SmallVectorImpl<Attribute> &results) {
     return op->cast<ConcreteType>()->constantFold(operands, results,
                                                   op->getContext());
   }
@@ -226,8 +225,8 @@ public:
   ///
   /// If not overridden, this fallback implementation always fails to fold.
   ///
-  bool constantFold(ArrayRef<Attribute *> operands,
-                    SmallVectorImpl<Attribute *> &results,
+  bool constantFold(ArrayRef<Attribute> operands,
+                    SmallVectorImpl<Attribute> &results,
                     MLIRContext *context) const {
     return true;
   }
@@ -244,9 +243,9 @@ public:
   /// true if folding failed, or returns false and fills in `results` on
   /// success.
   static bool constantFoldHook(const Operation *op,
-                               ArrayRef<Attribute *> operands,
-                               SmallVectorImpl<Attribute *> &results) {
-    auto *result =
+                               ArrayRef<Attribute> operands,
+                               SmallVectorImpl<Attribute> &results) {
+    auto result =
         op->cast<ConcreteType>()->constantFold(operands, op->getContext());
     if (!result)
       return true;
@@ -511,8 +510,8 @@ public:
   ///
   /// If not overridden, this fallback implementation always fails to fold.
   ///
-  Attribute *constantFold(ArrayRef<Attribute *> operands,
-                          MLIRContext *context) const {
+  Attribute constantFold(ArrayRef<Attribute> operands,
+                         MLIRContext *context) const {
     return nullptr;
   }
 };

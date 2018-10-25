@@ -44,13 +44,13 @@ StandardOpsDialect::StandardOpsDialect(MLIRContext *context)
 // AddFOp
 //===----------------------------------------------------------------------===//
 
-Attribute *AddFOp::constantFold(ArrayRef<Attribute *> operands,
-                                MLIRContext *context) const {
+Attribute AddFOp::constantFold(ArrayRef<Attribute> operands,
+                               MLIRContext *context) const {
   assert(operands.size() == 2 && "addf takes two operands");
 
-  if (auto *lhs = dyn_cast_or_null<FloatAttr>(operands[0])) {
-    if (auto *rhs = dyn_cast_or_null<FloatAttr>(operands[1]))
-      return FloatAttr::get(lhs->getValue() + rhs->getValue(), context);
+  if (auto lhs = operands[0].dyn_cast_or_null<FloatAttr>()) {
+    if (auto rhs = operands[1].dyn_cast_or_null<FloatAttr>())
+      return FloatAttr::get(lhs.getValue() + rhs.getValue(), context);
   }
 
   return nullptr;
@@ -60,13 +60,13 @@ Attribute *AddFOp::constantFold(ArrayRef<Attribute *> operands,
 // AddIOp
 //===----------------------------------------------------------------------===//
 
-Attribute *AddIOp::constantFold(ArrayRef<Attribute *> operands,
-                                MLIRContext *context) const {
+Attribute AddIOp::constantFold(ArrayRef<Attribute> operands,
+                               MLIRContext *context) const {
   assert(operands.size() == 2 && "addi takes two operands");
 
-  if (auto *lhs = dyn_cast_or_null<IntegerAttr>(operands[0])) {
-    if (auto *rhs = dyn_cast_or_null<IntegerAttr>(operands[1]))
-      return IntegerAttr::get(lhs->getValue() + rhs->getValue(), context);
+  if (auto lhs = operands[0].dyn_cast_or_null<IntegerAttr>()) {
+    if (auto rhs = operands[1].dyn_cast_or_null<IntegerAttr>())
+      return IntegerAttr::get(lhs.getValue() + rhs.getValue(), context);
   }
 
   return nullptr;
@@ -192,12 +192,12 @@ void CallOp::print(OpAsmPrinter *p) const {
 
 bool CallOp::verify() const {
   // Check that the callee attribute was specified.
-  auto *fnAttr = getAttrOfType<FunctionAttr>("callee");
+  auto fnAttr = getAttrOfType<FunctionAttr>("callee");
   if (!fnAttr)
     return emitOpError("requires a 'callee' function attribute");
 
   // Verify that the operand and result types match the callee.
-  auto *fnType = fnAttr->getValue()->getType();
+  auto *fnType = fnAttr.getValue()->getType();
   if (fnType->getNumInputs() != getNumOperands())
     return emitOpError("incorrect number of operands for callee");
 
@@ -329,7 +329,7 @@ void DimOp::print(OpAsmPrinter *p) const {
 
 bool DimOp::parse(OpAsmParser *parser, OperationState *result) {
   OpAsmParser::OperandType operandInfo;
-  IntegerAttr *indexAttr;
+  IntegerAttr indexAttr;
   Type *type;
 
   return parser->parseOperand(operandInfo) || parser->parseComma() ||
@@ -346,7 +346,7 @@ bool DimOp::verify() const {
   auto indexAttr = getAttrOfType<IntegerAttr>("index");
   if (!indexAttr)
     return emitOpError("requires an integer attribute named 'index'");
-  uint64_t index = (uint64_t)indexAttr->getValue();
+  uint64_t index = (uint64_t)indexAttr.getValue();
 
   auto *type = getOperand()->getType();
   if (auto *tensorType = dyn_cast<RankedTensorType>(type)) {
@@ -365,8 +365,8 @@ bool DimOp::verify() const {
   return false;
 }
 
-Attribute *DimOp::constantFold(ArrayRef<Attribute *> operands,
-                               MLIRContext *context) const {
+Attribute DimOp::constantFold(ArrayRef<Attribute> operands,
+                              MLIRContext *context) const {
   // Constant fold dim when the size along the index referred to is a constant.
   auto *opType = getOperand()->getType();
   int indexSize = -1;
@@ -671,13 +671,13 @@ bool MemRefCastOp::verify() const {
 // MulFOp
 //===----------------------------------------------------------------------===//
 
-Attribute *MulFOp::constantFold(ArrayRef<Attribute *> operands,
-                                MLIRContext *context) const {
+Attribute MulFOp::constantFold(ArrayRef<Attribute> operands,
+                               MLIRContext *context) const {
   assert(operands.size() == 2 && "mulf takes two operands");
 
-  if (auto *lhs = dyn_cast_or_null<FloatAttr>(operands[0])) {
-    if (auto *rhs = dyn_cast_or_null<FloatAttr>(operands[1]))
-      return FloatAttr::get(lhs->getValue() * rhs->getValue(), context);
+  if (auto lhs = operands[0].dyn_cast_or_null<FloatAttr>()) {
+    if (auto rhs = operands[1].dyn_cast_or_null<FloatAttr>())
+      return FloatAttr::get(lhs.getValue() * rhs.getValue(), context);
   }
 
   return nullptr;
@@ -687,23 +687,23 @@ Attribute *MulFOp::constantFold(ArrayRef<Attribute *> operands,
 // MulIOp
 //===----------------------------------------------------------------------===//
 
-Attribute *MulIOp::constantFold(ArrayRef<Attribute *> operands,
-                                MLIRContext *context) const {
+Attribute MulIOp::constantFold(ArrayRef<Attribute> operands,
+                               MLIRContext *context) const {
   assert(operands.size() == 2 && "muli takes two operands");
 
-  if (auto *lhs = dyn_cast_or_null<IntegerAttr>(operands[0])) {
+  if (auto lhs = operands[0].dyn_cast_or_null<IntegerAttr>()) {
     // 0*x == 0
-    if (lhs->getValue() == 0)
+    if (lhs.getValue() == 0)
       return lhs;
 
-    if (auto *rhs = dyn_cast_or_null<IntegerAttr>(operands[1]))
+    if (auto rhs = operands[1].dyn_cast_or_null<IntegerAttr>())
       // TODO: Handle the overflow case.
-      return IntegerAttr::get(lhs->getValue() * rhs->getValue(), context);
+      return IntegerAttr::get(lhs.getValue() * rhs.getValue(), context);
   }
 
   // x*0 == 0
-  if (auto *rhs = dyn_cast_or_null<IntegerAttr>(operands[1]))
-    if (rhs->getValue() == 0)
+  if (auto rhs = operands[1].dyn_cast_or_null<IntegerAttr>())
+    if (rhs.getValue() == 0)
       return rhs;
 
   return nullptr;
@@ -817,13 +817,13 @@ bool StoreOp::verify() const {
 // SubFOp
 //===----------------------------------------------------------------------===//
 
-Attribute *SubFOp::constantFold(ArrayRef<Attribute *> operands,
-                                MLIRContext *context) const {
+Attribute SubFOp::constantFold(ArrayRef<Attribute> operands,
+                               MLIRContext *context) const {
   assert(operands.size() == 2 && "subf takes two operands");
 
-  if (auto *lhs = dyn_cast_or_null<FloatAttr>(operands[0])) {
-    if (auto *rhs = dyn_cast_or_null<FloatAttr>(operands[1]))
-      return FloatAttr::get(lhs->getValue() - rhs->getValue(), context);
+  if (auto lhs = operands[0].dyn_cast_or_null<FloatAttr>()) {
+    if (auto rhs = operands[1].dyn_cast_or_null<FloatAttr>())
+      return FloatAttr::get(lhs.getValue() - rhs.getValue(), context);
   }
 
   return nullptr;
@@ -833,13 +833,13 @@ Attribute *SubFOp::constantFold(ArrayRef<Attribute *> operands,
 // SubIOp
 //===----------------------------------------------------------------------===//
 
-Attribute *SubIOp::constantFold(ArrayRef<Attribute *> operands,
-                                MLIRContext *context) const {
+Attribute SubIOp::constantFold(ArrayRef<Attribute> operands,
+                               MLIRContext *context) const {
   assert(operands.size() == 2 && "subi takes two operands");
 
-  if (auto *lhs = dyn_cast_or_null<IntegerAttr>(operands[0])) {
-    if (auto *rhs = dyn_cast_or_null<IntegerAttr>(operands[1]))
-      return IntegerAttr::get(lhs->getValue() - rhs->getValue(), context);
+  if (auto lhs = operands[0].dyn_cast_or_null<IntegerAttr>()) {
+    if (auto rhs = operands[1].dyn_cast_or_null<IntegerAttr>())
+      return IntegerAttr::get(lhs.getValue() - rhs.getValue(), context);
   }
 
   return nullptr;

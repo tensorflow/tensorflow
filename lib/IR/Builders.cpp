@@ -112,60 +112,60 @@ UnrankedTensorType *Builder::getTensorType(Type *elementType) {
 // Attributes.
 //===----------------------------------------------------------------------===//
 
-BoolAttr *Builder::getBoolAttr(bool value) {
+BoolAttr Builder::getBoolAttr(bool value) {
   return BoolAttr::get(value, context);
 }
 
-IntegerAttr *Builder::getIntegerAttr(int64_t value) {
+IntegerAttr Builder::getIntegerAttr(int64_t value) {
   return IntegerAttr::get(value, context);
 }
 
-FloatAttr *Builder::getFloatAttr(double value) {
+FloatAttr Builder::getFloatAttr(double value) {
   return FloatAttr::get(APFloat(value), context);
 }
 
-FloatAttr *Builder::getFloatAttr(const APFloat &value) {
+FloatAttr Builder::getFloatAttr(const APFloat &value) {
   return FloatAttr::get(value, context);
 }
 
-StringAttr *Builder::getStringAttr(StringRef bytes) {
+StringAttr Builder::getStringAttr(StringRef bytes) {
   return StringAttr::get(bytes, context);
 }
 
-ArrayAttr *Builder::getArrayAttr(ArrayRef<Attribute *> value) {
+ArrayAttr Builder::getArrayAttr(ArrayRef<Attribute> value) {
   return ArrayAttr::get(value, context);
 }
 
-AffineMapAttr *Builder::getAffineMapAttr(AffineMap map) {
+AffineMapAttr Builder::getAffineMapAttr(AffineMap map) {
   return AffineMapAttr::get(map);
 }
 
-TypeAttr *Builder::getTypeAttr(Type *type) {
+TypeAttr Builder::getTypeAttr(Type *type) {
   return TypeAttr::get(type, context);
 }
 
-FunctionAttr *Builder::getFunctionAttr(const Function *value) {
+FunctionAttr Builder::getFunctionAttr(const Function *value) {
   return FunctionAttr::get(value, context);
 }
 
-ElementsAttr *Builder::getSplatElementsAttr(VectorOrTensorType *type,
-                                            Attribute *elt) {
+ElementsAttr Builder::getSplatElementsAttr(VectorOrTensorType *type,
+                                           Attribute elt) {
   return SplatElementsAttr::get(type, elt);
 }
 
-ElementsAttr *Builder::getDenseElementsAttr(VectorOrTensorType *type,
-                                            ArrayRef<char> data) {
+ElementsAttr Builder::getDenseElementsAttr(VectorOrTensorType *type,
+                                           ArrayRef<char> data) {
   return DenseElementsAttr::get(type, data);
 }
 
-ElementsAttr *Builder::getSparseElementsAttr(VectorOrTensorType *type,
-                                             DenseIntElementsAttr *indices,
-                                             DenseElementsAttr *values) {
+ElementsAttr Builder::getSparseElementsAttr(VectorOrTensorType *type,
+                                            DenseIntElementsAttr indices,
+                                            DenseElementsAttr values) {
   return SparseElementsAttr::get(type, indices, values);
 }
 
-ElementsAttr *Builder::getOpaqueElementsAttr(VectorOrTensorType *type,
-                                             StringRef bytes) {
+ElementsAttr Builder::getOpaqueElementsAttr(VectorOrTensorType *type,
+                                            StringRef bytes) {
   return OpaqueElementsAttr::get(type, bytes);
 }
 

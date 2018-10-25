@@ -82,7 +82,7 @@ public:
   }
 
   bool verifyOperation(const Operation &op);
-  bool verifyAttribute(Attribute *attr, const Operation &op);
+  bool verifyAttribute(Attribute attr, const Operation &op);
 
 protected:
   explicit Verifier(const Function &fn) : fn(fn) {}
@@ -94,26 +94,26 @@ private:
 } // end anonymous namespace
 
 // Check that function attributes are all well formed.
-bool Verifier::verifyAttribute(Attribute *attr, const Operation &op) {
-  if (!attr->isOrContainsFunction())
+bool Verifier::verifyAttribute(Attribute attr, const Operation &op) {
+  if (!attr.isOrContainsFunction())
     return false;
 
   // If we have a function attribute, check that it is non-null and in the
   // same module as the operation that refers to it.
-  if (auto *fnAttr = dyn_cast<FunctionAttr>(attr)) {
-    if (!fnAttr->getValue())
+  if (auto fnAttr = attr.dyn_cast<FunctionAttr>()) {
+    if (!fnAttr.getValue())
       return failure("attribute refers to deallocated function!", op);
 
-    if (fnAttr->getValue()->getModule() != fn.getModule())
+    if (fnAttr.getValue()->getModule() != fn.getModule())
       return failure("attribute refers to function '" +
-                         Twine(fnAttr->getValue()->getName()) +
+                         Twine(fnAttr.getValue()->getName()) +
                          "' defined in another module!",
                      op);
     return false;
   }
 
   // Otherwise, we must have an array attribute, remap the elements.
-  for (auto *elt : cast<ArrayAttr>(attr)->getValue()) {
+  for (auto elt : attr.cast<ArrayAttr>().getValue()) {
     if (verifyAttribute(elt, op))
       return true;
   }

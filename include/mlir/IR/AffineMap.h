@@ -95,8 +95,8 @@ public:
   /// Folds the results of the application of an affine map on the provided
   /// operands to a constant if possible. Returns false if the folding happens,
   /// true otherwise.
-  bool constantFold(ArrayRef<Attribute *> operandConstants,
-                    SmallVectorImpl<Attribute *> &results) const;
+  bool constantFold(ArrayRef<Attribute> operandConstants,
+                    SmallVectorImpl<Attribute> &results) const;
 
   friend ::llvm::hash_code hash_value(AffineMap arg);
 

@@ -49,8 +49,8 @@ class AddFOp
 public:
   static StringRef getOperationName() { return "addf"; }
 
-  Attribute *constantFold(ArrayRef<Attribute *> operands,
-                          MLIRContext *context) const;
+  Attribute constantFold(ArrayRef<Attribute> operands,
+                         MLIRContext *context) const;
 
 private:
   friend class Operation;
@@ -70,8 +70,8 @@ class AddIOp
 public:
   static StringRef getOperationName() { return "addi"; }
 
-  Attribute *constantFold(ArrayRef<Attribute *> operands,
-                          MLIRContext *context) const;
+  Attribute constantFold(ArrayRef<Attribute> operands,
+                         MLIRContext *context) const;
 
 private:
   friend class Operation;
@@ -134,7 +134,7 @@ public:
                     ArrayRef<SSAValue *> operands);
 
   Function *getCallee() const {
-    return getAttrOfType<FunctionAttr>("callee")->getValue();
+    return getAttrOfType<FunctionAttr>("callee").getValue();
   }
 
   // Hooks to customize behavior of this op.
@@ -218,13 +218,13 @@ public:
   static void build(Builder *builder, OperationState *result,
                     SSAValue *memrefOrTensor, unsigned index);
 
-  Attribute *constantFold(ArrayRef<Attribute *> operands,
-                          MLIRContext *context) const;
+  Attribute constantFold(ArrayRef<Attribute> operands,
+                         MLIRContext *context) const;
 
   /// This returns the dimension number that the 'dim' is inspecting.
   unsigned getIndex() const {
     return static_cast<unsigned>(
-        getAttrOfType<IntegerAttr>("index")->getValue());
+        getAttrOfType<IntegerAttr>("index").getValue());
   }
 
   static StringRef getOperationName() { return "dim"; }
@@ -513,8 +513,8 @@ class MulFOp
 public:
   static StringRef getOperationName() { return "mulf"; }
 
-  Attribute *constantFold(ArrayRef<Attribute *> operands,
-                          MLIRContext *context) const;
+  Attribute constantFold(ArrayRef<Attribute> operands,
+                         MLIRContext *context) const;
 
 private:
   friend class Operation;
@@ -534,8 +534,8 @@ class MulIOp
 public:
   static StringRef getOperationName() { return "muli"; }
 
-  Attribute *constantFold(ArrayRef<Attribute *> operands,
-                          MLIRContext *context) const;
+  Attribute constantFold(ArrayRef<Attribute> operands,
+                         MLIRContext *context) const;
 
 private:
   friend class Operation;
@@ -597,8 +597,8 @@ class SubFOp : public BinaryOp<SubFOp, OpTrait::ResultsAreFloatLike,
 public:
   static StringRef getOperationName() { return "subf"; }
 
-  Attribute *constantFold(ArrayRef<Attribute *> operands,
-                          MLIRContext *context) const;
+  Attribute constantFold(ArrayRef<Attribute> operands,
+                         MLIRContext *context) const;
 
 private:
   friend class Operation;
@@ -617,8 +617,8 @@ class SubIOp : public BinaryOp<SubIOp, OpTrait::ResultsAreIntegerLike,
 public:
   static StringRef getOperationName() { return "subi"; }
 
-  Attribute *constantFold(ArrayRef<Attribute *> operands,
-                          MLIRContext *context) const;
+  Attribute constantFold(ArrayRef<Attribute> operands,
+                         MLIRContext *context) const;
 
 private:
   friend class Operation;
