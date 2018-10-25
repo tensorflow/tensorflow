@@ -74,8 +74,7 @@ Status EntryVisitor::HandleParameter(HloInstruction* inst) {
     }
 
     TF_CHECK_OK(
-        AddOutputTensor(graph_, resources_, seq, tensor_map, inst, i, out)
-            .status());
+        AddOutputTensor(graph_, resources_, seq, tensor_map, inst, i, out));
   }
   return Status::OK();
 }

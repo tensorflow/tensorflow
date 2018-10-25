@@ -16,9 +16,8 @@
 #include "tensorflow/compiler/plugin/poplar/driver/compiler_annotations.h"
 #include "tensorflow/compiler/plugin/poplar/driver/fuse_ops_late.h"
 #include "tensorflow/compiler/plugin/poplar/driver/inplace_finder.h"
-#include "tensorflow/compiler/plugin/poplar/driver/inplace_instructions.h"
+// #include "tensorflow/compiler/plugin/poplar/driver/inplace_instructions.h"
 #include "tensorflow/compiler/plugin/poplar/driver/scheduler.h"
-#include "tensorflow/compiler/plugin/poplar/driver/update_op_dependencies.h"
 #include "tensorflow/compiler/plugin/poplar/driver/util.h"
 
 #include "tensorflow/compiler/xla/service/hlo_parser.h"
@@ -60,8 +59,7 @@ ENTRY c1 {
   InplaceFinder inplaceFinder(annotations);
   EXPECT_TRUE(inplaceFinder.Run(module0).ValueOrDie());
 
-  auto inplace_instructions = annotations.inplace_instructions.GetPrioritySet(
-      InplaceInstructions::Priority::HIGH);
+  auto inplace_instructions = annotations.inplace_instructions;
 
   EXPECT_THAT(inplace_instructions.size(), 1);
 
@@ -117,8 +115,7 @@ ENTRY c1 {
   EXPECT_TRUE(inplaceFinder.Run(module0).ValueOrDie());
 
   std::set<std::string> in_place_ops = {"u0_b", "u1_b"};
-  auto inplace_instructions = annotations.inplace_instructions.GetPrioritySet(
-      InplaceInstructions::Priority::HIGH);
+  auto inplace_instructions = annotations.inplace_instructions;
 
   EXPECT_THAT(inplace_instructions.size(), 2);
   for (const auto* inst : inplace_instructions) {
@@ -158,16 +155,12 @@ ENTRY c1 {
   EXPECT_TRUE(inplaceFinder.Run(module0).ValueOrDie());
 
   std::set<std::string> in_place_ops = {"u0", "u1"};
-  auto inplace_instructions = annotations.inplace_instructions.GetPrioritySet(
-      InplaceInstructions::Priority::HIGH);
+  auto inplace_instructions = annotations.inplace_instructions;
 
   EXPECT_THAT(inplace_instructions.size(), 2);
   for (const auto* inst : inplace_instructions) {
     EXPECT_THAT(in_place_ops.count(inst->name()), 1);
   }
-
-  UpdateOpDependenctOrdering updateOpDependenctOrdering(annotations);
-  EXPECT_TRUE(updateOpDependenctOrdering.Run(module0).ValueOrDie());
 
   std::vector<const HloInstruction*> instruction_order =
       Scheduler::schedule(entry).ValueOrDie();
@@ -224,16 +217,12 @@ TEST_F(HloInplaceDependencyTest, MultipleUpdateInPlacePeers) {
   EXPECT_TRUE(inplaceFinder.Run(module0).ValueOrDie());
 
   std::set<std::string> in_place_ops = {"u0", "u1"};
-  auto& inplace_instructions = annotations.inplace_instructions.GetPrioritySet(
-      InplaceInstructions::Priority::HIGH);
+  auto& inplace_instructions = annotations.inplace_instructions;
+  // Only one of the binary ops can be update in place
+  EXPECT_THAT(inplace_instructions.size(), 1);
 
-  EXPECT_THAT(inplace_instructions.size(), 2);
-  for (const auto* inst : inplace_instructions) {
-    EXPECT_THAT(in_place_ops.count(inst->name()), 1);
-  }
-
-  UpdateOpDependenctOrdering updateOpDependenctOrdering(annotations);
-  EXPECT_TRUE(updateOpDependenctOrdering.Run(module0).ValueOrDie());
+  auto* inst = *(inplace_instructions.begin());
+  EXPECT_TRUE(inst->name() == "u1" || inst->name() == "u0");
 
   std::vector<const HloInstruction*> instruction_order =
       Scheduler::schedule(entry).ValueOrDie();
@@ -252,12 +241,6 @@ TEST_F(HloInplaceDependencyTest, MultipleUpdateInPlacePeers) {
   EXPECT_TRUE(order.at("p1") < order.at("u1"));
   EXPECT_TRUE(order.at("u0") < order.at("root"));
   EXPECT_TRUE(order.at("u1") < order.at("root"));
-
-  // Only one of the binary ops can be update in place
-  EXPECT_THAT(inplace_instructions.size(), 1);
-
-  auto* inst = *(inplace_instructions.begin());
-  EXPECT_TRUE(inst->name() == "u1" || inst->name() == "u0");
 }
 
 TEST_F(HloInplaceDependencyTest, MultipleInplaceWithInterdependency) {
@@ -287,16 +270,13 @@ TEST_F(HloInplaceDependencyTest, MultipleInplaceWithInterdependency) {
   EXPECT_TRUE(inplaceFinder.Run(module0).ValueOrDie());
 
   std::set<std::string> in_place_ops = {"u0", "u1"};
-  auto& inplace_instructions = annotations.inplace_instructions.GetPrioritySet(
-      InplaceInstructions::Priority::HIGH);
+  auto& inplace_instructions = annotations.inplace_instructions;
 
-  EXPECT_THAT(inplace_instructions.size(), 2);
-  for (const auto* inst : inplace_instructions) {
-    EXPECT_THAT(in_place_ops.count(inst->name()), 1);
-  }
+  // Only one of the binary ops can be update in place
+  EXPECT_THAT(inplace_instructions.size(), 1);
 
-  UpdateOpDependenctOrdering updateOpDependenctOrdering(annotations);
-  EXPECT_TRUE(updateOpDependenctOrdering.Run(module0).ValueOrDie());
+  auto* inst = *(inplace_instructions.begin());
+  EXPECT_THAT(inst->name(), "u1");
 
   std::vector<const HloInstruction*> instruction_order =
       Scheduler::schedule(entry).ValueOrDie();
@@ -313,12 +293,6 @@ TEST_F(HloInplaceDependencyTest, MultipleInplaceWithInterdependency) {
   EXPECT_TRUE(order.at("p1") < order.at("u0"));
   EXPECT_TRUE(order.at("u0") < order.at("u1"));
   EXPECT_TRUE(order.at("u1") < order.at("root"));
-
-  // Only one of the binary ops can be update in place
-  ASSERT_THAT(inplace_instructions.size(), 1);
-
-  auto* inst = *(inplace_instructions.begin());
-  EXPECT_THAT(inst->name(), "u1");
 }
 
 TEST_F(HloInplaceDependencyTest, MultipleInplaceWithRightOrder) {
@@ -351,16 +325,12 @@ TEST_F(HloInplaceDependencyTest, MultipleInplaceWithRightOrder) {
   EXPECT_TRUE(inplaceFinder.Run(module0).ValueOrDie());
 
   std::set<std::string> in_place_ops = {"u0", "u1"};
-  auto& inplace_instructions = annotations.inplace_instructions.GetPrioritySet(
-      InplaceInstructions::Priority::HIGH);
+  auto& inplace_instructions = annotations.inplace_instructions;
 
   EXPECT_THAT(inplace_instructions.size(), 2);
   for (const auto* inst : inplace_instructions) {
     EXPECT_THAT(in_place_ops.count(inst->name()), 1);
   }
-
-  UpdateOpDependenctOrdering updateOpDependenctOrdering(annotations);
-  EXPECT_TRUE(updateOpDependenctOrdering.Run(module0).ValueOrDie());
 
   std::vector<const HloInstruction*> instruction_order =
       Scheduler::schedule(entry).ValueOrDie();
@@ -378,9 +348,6 @@ TEST_F(HloInplaceDependencyTest, MultipleInplaceWithRightOrder) {
   EXPECT_TRUE(order.at("p2") < order.at("u1"));
   EXPECT_TRUE(order.at("u0") < order.at("u1"));
   EXPECT_TRUE(order.at("u1") < order.at("root"));
-
-  // Both inplace_instructions are still inplace
-  ASSERT_THAT(inplace_instructions.size(), 2);
 }
 
 TEST_F(HloInplaceDependencyTest, InplaceCorrectDependencies) {
@@ -408,18 +375,13 @@ TEST_F(HloInplaceDependencyTest, InplaceCorrectDependencies) {
 
   InplaceFinder inplaceFinder(annotations);
   EXPECT_TRUE(inplaceFinder.Run(module0).ValueOrDie());
+  auto& inplace_instructions = annotations.inplace_instructions;
 
-  std::set<std::string> in_place_ops = {"u0", "u1"};
-  auto& inplace_instructions = annotations.inplace_instructions.GetPrioritySet(
-      InplaceInstructions::Priority::HIGH);
+  // Only u1 is inplace
+  EXPECT_THAT(inplace_instructions.size(), 1);
 
-  EXPECT_THAT(inplace_instructions.size(), 2);
-  for (const auto* inst : inplace_instructions) {
-    EXPECT_THAT(in_place_ops.count(inst->name()), 1);
-  }
-
-  UpdateOpDependenctOrdering updateOpDependenctOrdering(annotations);
-  EXPECT_TRUE(updateOpDependenctOrdering.Run(module0).ValueOrDie());
+  auto* inst = *(inplace_instructions.begin());
+  EXPECT_THAT(inst->name(), "u1");
 
   std::vector<const HloInstruction*> instruction_order =
       Scheduler::schedule(entry).ValueOrDie();
@@ -436,12 +398,6 @@ TEST_F(HloInplaceDependencyTest, InplaceCorrectDependencies) {
   EXPECT_TRUE(order.at("p1") < order.at("u0"));
   EXPECT_TRUE(order.at("u0") < order.at("u1"));
   EXPECT_TRUE(order.at("u1") < order.at("root"));
-
-  // Both inplace_instructions are still inplace
-  ASSERT_THAT(inplace_instructions.size(), 1);
-
-  auto* inst = *(inplace_instructions.begin());
-  EXPECT_THAT(inst->name(), "u1");
 }
 
 TEST_F(HloInplaceDependencyTest, InplaceInputOuputStreamedAndResourceVariable) {
@@ -471,35 +427,17 @@ TEST_F(HloInplaceDependencyTest, InplaceInputOuputStreamedAndResourceVariable) {
   EXPECT_TRUE(inplaceFinder.Run(module0).ValueOrDie());
 
   std::set<std::string> in_place_ops_high = {"u1"};
-  auto& inplace_instructions_high =
-      annotations.inplace_instructions.GetPrioritySet(
-          InplaceInstructions::Priority::HIGH);
-  EXPECT_THAT(inplace_instructions_high.size(), 1);
-  for (const auto* inst : inplace_instructions_high) {
-    EXPECT_THAT(in_place_ops_high.count(inst->name()), 1);
-  }
-
-  std::set<std::string> in_place_ops_low = {"u0"};
-  auto& inplace_instructions_low =
-      annotations.inplace_instructions.GetPrioritySet(
-          InplaceInstructions::Priority::LOW);
-  EXPECT_THAT(inplace_instructions_low.size(), 1);
-  for (const auto* inst : inplace_instructions_low) {
-    EXPECT_THAT(in_place_ops_low.count(inst->name()), 1);
-  }
-
-  UpdateOpDependenctOrdering updateOpDependenctOrdering(annotations);
-  EXPECT_TRUE(updateOpDependenctOrdering.Run(module0).ValueOrDie());
+  auto& inplace_instructions = annotations.inplace_instructions;
   // Expect that only the high priority instruction got inplaced
-  ASSERT_THAT(inplace_instructions_high.size(), 2);
+  EXPECT_THAT(inplace_instructions.size(), 2);
 
   std::set<std::string> in_place_ops = {"u0", "u1"};
-  for (auto i : inplace_instructions_high) {
+  for (auto i : inplace_instructions) {
     EXPECT_TRUE(in_place_ops.count(i->name()));
   }
 }
 
-TEST_F(HloInplaceDependencyTest, InplaceLowPriority) {
+TEST_F(HloInplaceDependencyTest, InplaceElementwiseBinary) {
   std::string hlo = R"(
     HloModule top
 
@@ -520,26 +458,10 @@ TEST_F(HloInplaceDependencyTest, InplaceLowPriority) {
   InplaceFinder inplaceFinder(annotations);
   EXPECT_TRUE(inplaceFinder.Run(module0).ValueOrDie());
 
-  auto& inplace_instructions_high =
-      annotations.inplace_instructions.GetPrioritySet(
-          InplaceInstructions::Priority::HIGH);
-  EXPECT_THAT(inplace_instructions_high.size(), 0);
+  auto& inplace_instructions = annotations.inplace_instructions;
+  EXPECT_THAT(inplace_instructions.size(), 1);
 
-  std::set<std::string> in_place_ops_low = {"u0"};
-  auto& inplace_instructions_low =
-      annotations.inplace_instructions.GetPrioritySet(
-          InplaceInstructions::Priority::LOW);
-  EXPECT_THAT(inplace_instructions_low.size(), 1);
-  for (const auto* inst : inplace_instructions_low) {
-    EXPECT_THAT(in_place_ops_low.count(inst->name()), 1);
-  }
-
-  UpdateOpDependenctOrdering updateOpDependenctOrdering(annotations);
-  EXPECT_TRUE(updateOpDependenctOrdering.Run(module0).ValueOrDie());
-  // Expect that the instruction got inplaced
-  ASSERT_THAT(inplace_instructions_high.size(), 1);
-
-  auto* inst = *(inplace_instructions_high.begin());
+  auto* inst = *(inplace_instructions.begin());
   EXPECT_THAT(inst->name(), "u0");
 }
 
@@ -571,41 +493,43 @@ ENTRY c1 {
   InplaceFinder inplaceFinder(annotations);
   EXPECT_TRUE(inplaceFinder.Run(module0).ValueOrDie());
 
-  // Make sure that the only inplace instruction is a call to scaled add to in a
-  // high set because of the metadata.
-  auto inplace_instructions_high =
-      annotations.inplace_instructions.GetPrioritySet(
-          InplaceInstructions::Priority::HIGH);
+  // Make sure that the only inplace instruction is a call to scaled add to.
 
-  EXPECT_THAT(inplace_instructions_high.size(), 1);
-  EXPECT_THAT(annotations.inplace_instructions
-                  .GetPrioritySet(InplaceInstructions::Priority::MEDIUM)
-                  .size(),
-              0);
-  EXPECT_THAT(annotations.inplace_instructions
-                  .GetPrioritySet(InplaceInstructions::Priority::LOW)
-                  .size(),
-              0);
+  auto& inplace_instructions = annotations.inplace_instructions;
+  EXPECT_THAT(inplace_instructions.size(), 1);
 
   EXPECT_TRUE(module0->entry_computation()->root_instruction() ==
-              *inplace_instructions_high.begin());
+              *inplace_instructions.begin());
   EXPECT_TRUE(IsPopOpsCall(module0->entry_computation()->root_instruction(),
                            "scaled_inplace"));
 }
 
-TEST_F(HloInplaceDependencyTest, ScaledInplaceMediumPriority) {
-  std::string hlo = R"(
-HloModule top
+TEST_F(HloInplaceDependencyTest, InplaceInsideWhile) {
+  const char* const hlo = R"(
+HloModule ModuleWithWhile
 
-ENTRY c1 {
-  a = f32[20] parameter(0)
-  b = f32[20] parameter(1)
-  c = f32[] constant(2)
-  c_bcast = f32[20] broadcast(f32[] %c), dimensions={}
-  bc = f32[20] multiply(%b, %c_bcast)
-  ROOT res = f32[20] add(%a, %bc)
+body {
+  p_body = (s32[],s32[]) parameter(0)
+  p_body.0 = s32[] get-tuple-element((s32[],s32[]) p_body), index=0
+  const = s32[] constant(1)
+  add = s32[] add(p_body.0, const)
+  p_body.1 = s32[] get-tuple-element((s32[],s32[]) p_body), index=1
+  ROOT root = (s32[],s32[]) tuple(add, p_body.1)
 }
 
+condition {
+  p_cond = (s32[],s32[]) parameter(0)
+  p_cond.0 = s32[] get-tuple-element((s32[],s32[]) p_cond), index=0
+  const = s32[] constant(10)
+  ROOT result = pred[] less-than(p_cond.0, const)
+}
+
+ENTRY entry {
+  const_0 = s32[] constant(0)
+  const_1 = s32[] constant(10)
+  while_init = (s32[],s32[]) tuple(const_0, const_1)
+  ROOT while = (s32[],s32[]) while(while_init), condition=condition, body=body
+}
 )";
 
   auto module =
@@ -615,31 +539,17 @@ ENTRY c1 {
 
   CompilerAnnotations annotations(module0);
 
-  FuseOpsLate fuseOpsLate(annotations);
-  EXPECT_TRUE(fuseOpsLate.Run(module0).ValueOrDie());
   InplaceFinder inplaceFinder(annotations);
   EXPECT_TRUE(inplaceFinder.Run(module0).ValueOrDie());
 
-  // Make sure that the only inplace instruction is a call to scaled add to in
-  // the medium set.
-  auto inplace_instructions_medium =
-      annotations.inplace_instructions.GetPrioritySet(
-          InplaceInstructions::Priority::MEDIUM);
+  // Make sure that the only inplace instruction is a call to scaled add to.
 
-  EXPECT_THAT(inplace_instructions_medium.size(), 1);
-  EXPECT_THAT(annotations.inplace_instructions
-                  .GetPrioritySet(InplaceInstructions::Priority::HIGH)
-                  .size(),
-              0);
-  EXPECT_THAT(annotations.inplace_instructions
-                  .GetPrioritySet(InplaceInstructions::Priority::LOW)
-                  .size(),
-              0);
+  auto& inplace_instructions = annotations.inplace_instructions;
+  EXPECT_THAT(inplace_instructions.size(), 1);
 
-  EXPECT_TRUE(module0->entry_computation()->root_instruction() ==
-              *inplace_instructions_medium.begin());
-  EXPECT_TRUE(IsPopOpsCall(module0->entry_computation()->root_instruction(),
-                           "scaled_inplace"));
+  // Make sure "add" in while loop body is inplace
+  auto* inst = *(inplace_instructions.begin());
+  EXPECT_THAT(inst->name(), "add");
 }
 
 }  // namespace

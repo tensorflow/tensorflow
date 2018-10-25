@@ -18,6 +18,9 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/hlo_pass_interface.h"
 
+#include "absl/types/optional.h"
+#include "tensorflow/compiler/plugin/poplar/driver/inplace_util.h"
+
 namespace xla {
 
 class HloModule;
@@ -69,8 +72,12 @@ struct HloMatcherMatched {
 struct FusedGraphInfo {
   FusedGraphInfo(const char* name, const char op_index)
       : name(name), op_index(op_index) {}
-  FusedGraphInfo(const char* name, const char op_index, const bool in_place)
-      : name(name), op_index(op_index), in_place(in_place) {}
+  FusedGraphInfo(const char* name, const char op_index,
+                 const InplaceUtil::InplaceHloInstructionDescription
+                     inplace_call_description)
+      : name(name),
+        op_index(op_index),
+        inplace_call_description(inplace_call_description) {}
   // The names to give the extracted fused graphs
   const char* name;
 
@@ -78,8 +85,9 @@ struct FusedGraphInfo {
   // copied to the kCall instruction.
   const char op_index;
 
-  // Specifies whether the generated op is inplace
-  const bool in_place = false;
+  // Inplace description
+  absl::optional<InplaceUtil::InplaceHloInstructionDescription>
+      inplace_call_description;
 };
 
 using HloMatcherPattern = std::vector<HloMatcherNode>;

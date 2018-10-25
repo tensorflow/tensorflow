@@ -15,7 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/plugin/poplar/driver/expression_outliner.h"
 #include "tensorflow/compiler/plugin/poplar/driver/compiler_annotations.h"
-#include "tensorflow/compiler/plugin/poplar/driver/inplace_instructions.h"
+#include "tensorflow/compiler/plugin/poplar/driver/inplace_util.h"
 #include "tensorflow/compiler/plugin/poplar/driver/util.h"
 
 #include "tensorflow/core/lib/core/errors.h"
@@ -101,7 +101,7 @@ StatusOr<bool> ExpressionOutliner::Run(HloModule* module) {
   std::list<HloInstruction*> all_ops;
   for (auto* inst : comp->MakeInstructionPostOrder()) {
     if (IsPopopsElementwise(inst) && inst->user_count() == 1 &&
-        !annotations_.inplace_instructions.IsInPlace(inst) &&
+        !annotations_.inplace_instructions.count(inst) &&
         inst->control_predecessors().size() == 0 &&
         inst->control_successors().size() == 0) {
       bool add_op = true;
@@ -182,7 +182,7 @@ StatusOr<bool> ExpressionOutliner::Run(HloModule* module) {
         bool ok_to_outline =
             (std::find(all_ops.begin(), all_ops.end(), op) != all_ops.end());
 
-        if (annotations_.inplace_instructions.IsInPlace(op)) {
+        if (annotations_.inplace_instructions.count(op)) {
           ok_to_outline = false;
         }
 

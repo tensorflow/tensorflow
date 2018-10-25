@@ -2,7 +2,7 @@
 
 #include "tensorflow/compiler/plugin/poplar/driver/classification_predicates.h"
 #include "tensorflow/compiler/plugin/poplar/driver/compiler_resources.h"
-#include "tensorflow/compiler/plugin/poplar/driver/inplace_instructions.h"
+#include "tensorflow/compiler/plugin/poplar/driver/inplace_util.h"
 #include "tensorflow/compiler/plugin/poplar/driver/ops.h"
 #include "tensorflow/compiler/plugin/poplar/driver/tensor.h"
 #include "tensorflow/compiler/plugin/poplar/driver/util.h"
@@ -185,8 +185,7 @@ StatusOr<poplar::program::Program> CreateUnaryElementwiseOp(
 
   TF_ASSIGN_OR_RETURN(out, BroadcastTensor(out, output_shape));
 
-  TF_CHECK_OK(
-      AddOutputTensor(graph, res, seq, tensor_map, inst, 0, out).status());
+  TF_CHECK_OK(AddOutputTensor(graph, res, seq, tensor_map, inst, 0, out));
 
   return seq;
 }
@@ -201,12 +200,15 @@ StatusOr<poplar::program::Program> CreateBinaryElementwiseOp(
   poplar::Tensor in1;
   TF_ASSIGN_OR_RETURN(in1, FindInstructionInput(tensor_map, inst, 1));
 
-  if (res.annotations.inplace_instructions.IsInPlace(inst) &&
+  if (res.annotations.inplace_instructions.count(inst) &&
       (in0.shape() == in1.shape())) {
     poplar::program::Sequence seq;
-    poplar::Tensor in0;
-    TF_ASSIGN_OR_RETURN(in0, GetInplaceOutputTensor(graph, res, seq, inst,
-                                                    output_shape, tensor_map));
+    ArgVector inputs;
+    TF_ASSIGN_OR_RETURN(
+        inputs, GetInplaceOutputTensors(graph, res, seq, inst, tensor_map));
+    CHECK_EQ(inputs.size(), 1);
+    poplar::Tensor in0 = inputs[0];
+
     // Call the inplace op
     switch (inst->opcode()) {
       case HloOpcode::kAdd: {
@@ -226,8 +228,7 @@ StatusOr<poplar::program::Program> CreateBinaryElementwiseOp(
       }
     }
 
-    TF_CHECK_OK(
-        AddOutputTensor(graph, res, seq, tensor_map, inst, 0, in0).status());
+    TF_CHECK_OK(AddOutputTensor(graph, res, seq, tensor_map, inst, 0, in0));
 
     return seq;
 
@@ -296,8 +297,7 @@ StatusOr<poplar::program::Program> CreateBinaryElementwiseOp(
 
     out = out.reshape(PoplarShapeFromXlaShape(output_shape));
 
-    TF_CHECK_OK(
-        AddOutputTensor(graph, res, seq, tensor_map, inst, 0, out).status());
+    TF_CHECK_OK(AddOutputTensor(graph, res, seq, tensor_map, inst, 0, out));
 
     return seq;
   }
@@ -307,10 +307,11 @@ StatusOr<poplar::program::Program> CreateScaledInplace(
     poplar::Graph& graph, CompilerResources& res, const HloInstruction* inst,
     const xla::Shape& output_shape, TensorMap& tensor_map) {
   poplar::program::Sequence seq;
-
-  poplar::Tensor in0;
-  TF_ASSIGN_OR_RETURN(in0, GetInplaceOutputTensor(graph, res, seq, inst,
-                                                  output_shape, tensor_map));
+  ArgVector inputs;
+  TF_ASSIGN_OR_RETURN(
+      inputs, GetInplaceOutputTensors(graph, res, seq, inst, tensor_map));
+  CHECK_EQ(inputs.size(), 1);
+  poplar::Tensor in0 = inputs[0];
 
   poplar::Tensor in1;
   TF_ASSIGN_OR_RETURN(in1, FindInstructionInput(tensor_map, inst, 1));
@@ -338,8 +339,7 @@ StatusOr<poplar::program::Program> CreateScaledInplace(
                                      root_inst->name().c_str());
     }
   }
-  TF_CHECK_OK(
-      AddOutputTensor(graph, res, seq, tensor_map, inst, 0, in0).status());
+  TF_CHECK_OK(AddOutputTensor(graph, res, seq, tensor_map, inst, 0, in0));
 
   return seq;
 }
@@ -402,8 +402,7 @@ StatusOr<poplar::program::Program> CreateMatMulForDotOp(
 
   out = out.reshape(PoplarShapeFromXlaShape(output_shape));
 
-  TF_CHECK_OK(
-      AddOutputTensor(graph, res, seq, tensor_map, inst, 0, out).status());
+  TF_CHECK_OK(AddOutputTensor(graph, res, seq, tensor_map, inst, 0, out));
 
   return seq;
 }
@@ -438,8 +437,7 @@ StatusOr<poplar::program::Program> CreateSelectOp(
     poplar::Tensor out = popops::map(graph, popops::expr::TernaryOpType::SELECT,
                                      i0, i1, p, seq, GetDebugName(inst));
 
-    TF_CHECK_OK(
-        AddOutputTensor(graph, res, seq, tensor_map, inst, i, out).status());
+    TF_CHECK_OK(AddOutputTensor(graph, res, seq, tensor_map, inst, i, out));
   }
 
   return seq;
@@ -463,8 +461,7 @@ StatusOr<poplar::program::Program> CreateCastOp(poplar::Graph& graph,
 
   TF_ASSIGN_OR_RETURN(out, BroadcastTensor(out, output_shape));
 
-  TF_CHECK_OK(
-      AddOutputTensor(graph, res, seq, tensor_map, inst, 0, out).status());
+  TF_CHECK_OK(AddOutputTensor(graph, res, seq, tensor_map, inst, 0, out));
 
   return seq;
 }
@@ -498,8 +495,7 @@ StatusOr<poplar::program::Program> CreateClampOp(poplar::Graph& graph,
 
   TF_ASSIGN_OR_RETURN(out, BroadcastTensor(out, output_shape));
 
-  TF_CHECK_OK(
-      AddOutputTensor(graph, res, seq, tensor_map, inst, 0, out).status());
+  TF_CHECK_OK(AddOutputTensor(graph, res, seq, tensor_map, inst, 0, out));
 
   return seq;
 }
@@ -510,15 +506,16 @@ StatusOr<poplar::program::Program> CreateReluOp(poplar::Graph& graph,
                                                 const xla::Shape& output_shape,
                                                 TensorMap& tensor_map) {
   poplar::program::Sequence seq;
-  poplar::Tensor t;
-  TF_ASSIGN_OR_RETURN(t, GetInplaceOutputTensor(graph, res, seq, inst,
-                                                output_shape, tensor_map));
+  ArgVector inputs;
+  TF_ASSIGN_OR_RETURN(
+      inputs, GetInplaceOutputTensors(graph, res, seq, inst, tensor_map));
+  CHECK_EQ(inputs.size(), 1);
+  poplar::Tensor t = inputs[0];
   popnn::relu(graph, t, seq, GetDebugName(inst));
 
   TF_ASSIGN_OR_RETURN(t, BroadcastTensor(t, output_shape));
 
-  TF_CHECK_OK(
-      AddOutputTensor(graph, res, seq, tensor_map, inst, 0, t).status());
+  TF_CHECK_OK(AddOutputTensor(graph, res, seq, tensor_map, inst, 0, t));
 
   return seq;
 }
@@ -539,8 +536,7 @@ StatusOr<poplar::program::Program> CreateReluGradOp(
 
   TF_ASSIGN_OR_RETURN(t, BroadcastTensor(t, output_shape));
 
-  TF_CHECK_OK(
-      AddOutputTensor(graph, res, seq, tensor_map, inst, 0, t).status());
+  TF_CHECK_OK(AddOutputTensor(graph, res, seq, tensor_map, inst, 0, t));
 
   return seq;
 }
@@ -549,16 +545,17 @@ StatusOr<poplar::program::Program> CreateSigmoidOp(
     poplar::Graph& graph, CompilerResources& res, const HloInstruction* inst,
     const xla::Shape& output_shape, TensorMap& tensor_map) {
   poplar::program::Sequence seq;
-  poplar::Tensor t;
-  TF_ASSIGN_OR_RETURN(t, GetInplaceOutputTensor(graph, res, seq, inst,
-                                                output_shape, tensor_map));
+  ArgVector inputs;
+  TF_ASSIGN_OR_RETURN(
+      inputs, GetInplaceOutputTensors(graph, res, seq, inst, tensor_map));
+  CHECK_EQ(inputs.size(), 1);
+  poplar::Tensor t = inputs[0];
 
   popnn::sigmoid(graph, t, seq, GetDebugName(inst));
 
   TF_ASSIGN_OR_RETURN(t, BroadcastTensor(t, output_shape));
 
-  TF_CHECK_OK(
-      AddOutputTensor(graph, res, seq, tensor_map, inst, 0, t).status());
+  TF_CHECK_OK(AddOutputTensor(graph, res, seq, tensor_map, inst, 0, t));
 
   return seq;
 }
@@ -579,8 +576,7 @@ StatusOr<poplar::program::Program> CreateSigmoidGradOp(
 
   TF_ASSIGN_OR_RETURN(t, BroadcastTensor(t, output_shape));
 
-  TF_CHECK_OK(
-      AddOutputTensor(graph, res, seq, tensor_map, inst, 0, t).status());
+  TF_CHECK_OK(AddOutputTensor(graph, res, seq, tensor_map, inst, 0, t));
 
   return seq;
 }

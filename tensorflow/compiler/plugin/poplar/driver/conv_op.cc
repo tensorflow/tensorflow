@@ -242,9 +242,8 @@ poplar::Tensor AddGroupsDimensionToWeights(const poplin::ConvParams& p,
     chan_div[out_dim] = out.dim(out_dim) / p.getNumOutputChansPerConvGroup();
 
     // OI... ->(GO)(GI)...
-    out = out.reshapePartial(0, 2,
-                             {chan_div[0], out.dim(0) / chan_div[0],
-                              chan_div[1], out.dim(1) / chan_div[1]});
+    out = out.reshapePartial(0, 2, {chan_div[0], out.dim(0) / chan_div[0],
+                                    chan_div[1], out.dim(1) / chan_div[1]});
 
     // (GO)(GI)... -> (GG)OI...
     out = out.dimShufflePartial({2}, {1});
@@ -288,8 +287,7 @@ StatusOr<poplar::program::Program> CreateConv2D(poplar::Graph& graph,
 
   out = ShuffleConvolutionOutputToTensorflow(conv, out);
 
-  TF_CHECK_OK(
-      AddOutputTensor(graph, res, prog, tensor_map, inst, 0, out).status());
+  TF_CHECK_OK(AddOutputTensor(graph, res, prog, tensor_map, inst, 0, out));
 
   return prog;
 }
@@ -326,8 +324,7 @@ StatusOr<poplar::program::Program> Create2DConvWithReverse(
 
   out = ShuffleConvolutionOutputToTensorflow(conv, out);
 
-  TF_CHECK_OK(
-      AddOutputTensor(graph, res, prog, tensor_map, inst, 0, out).status());
+  TF_CHECK_OK(AddOutputTensor(graph, res, prog, tensor_map, inst, 0, out));
 
   return prog;
 }
@@ -375,8 +372,7 @@ StatusOr<poplar::program::Program> CreateDepthwiseBackpropFilter(
 
   out = ShuffleConvolutionOutputToTensorflow(conv, out);
 
-  TF_CHECK_OK(
-      AddOutputTensor(graph, res, prog, tensor_map, inst, 0, out).status());
+  TF_CHECK_OK(AddOutputTensor(graph, res, prog, tensor_map, inst, 0, out));
 
   return prog;
 }
@@ -390,9 +386,11 @@ StatusOr<poplar::program::Program> CreateConvScaledInplace(
   poplar::program::Sequence prog;
 
   // Find the weights tensor
-  poplar::Tensor w;
-  TF_ASSIGN_OR_RETURN(w, GetInplaceOutputTensor(graph, res, prog, inst,
-                                                output_shape, tensor_map));
+  ArgVector inputs;
+  TF_ASSIGN_OR_RETURN(
+      inputs, GetInplaceOutputTensors(graph, res, prog, inst, tensor_map));
+  CHECK_EQ(inputs.size(), 1);
+  poplar::Tensor w = inputs[0];
 
   // Find the input tensor
   poplar::Tensor in;
@@ -408,8 +406,7 @@ StatusOr<poplar::program::Program> CreateConvScaledInplace(
   TF_CHECK_OK(graph_caching_util::DoCachedConvolutionWithScaledAdd(
       graph, res, w, in, deltas, params, prog, root, conv));
 
-  TF_CHECK_OK(
-      AddOutputTensor(graph, res, prog, tensor_map, inst, 0, w).status());
+  TF_CHECK_OK(AddOutputTensor(graph, res, prog, tensor_map, inst, 0, w));
 
   return prog;
 }
@@ -430,8 +427,7 @@ StatusOr<poplar::program::Program> CreateBiasAddOp(
   poplar::program::Sequence prog;
   poplin::addBias(graph, shuffled_in, bias, prog, GetDebugName(inst));
 
-  TF_CHECK_OK(
-      AddOutputTensor(graph, res, prog, tensor_map, inst, 0, in).status());
+  TF_CHECK_OK(AddOutputTensor(graph, res, prog, tensor_map, inst, 0, in));
   return prog;
 }
 
@@ -470,8 +466,7 @@ StatusOr<poplar::program::Program> ConvBiasApply(poplar::Graph& graph,
                            {popops::Operation::ADD, -learning_rate, true}, prog,
                            GetDebugName(inst));
 
-  TF_CHECK_OK(
-      AddOutputTensor(graph, res, prog, tensor_map, inst, 0, biases).status());
+  TF_CHECK_OK(AddOutputTensor(graph, res, prog, tensor_map, inst, 0, biases));
 
   return prog;
 }

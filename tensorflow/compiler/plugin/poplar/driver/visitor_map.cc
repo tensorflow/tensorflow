@@ -41,10 +41,8 @@ MapVisitor::MapVisitor(poplar::Graph& graph, CompilerResources& res,
 
 Status MapVisitor::HandleParameter(HloInstruction* inst) {
   VLOG(1) << "Processing " << inst->name();
-  poplar::Tensor out;
   TF_CHECK_OK(AddOutputTensor(graph_, resources_, sequence, tensor_map, inst, 0,
-                              operands_[inst->parameter_number()])
-                  .status());
+                              operands_[inst->parameter_number()]));
   return Status::OK();
 }
 

@@ -15,7 +15,8 @@ limitations under the License.
 
 #include "tensorflow/compiler/plugin/poplar/driver/inplace_finder.h"
 #include "tensorflow/compiler/plugin/poplar/driver/compiler_annotations.h"
-#include "tensorflow/compiler/plugin/poplar/driver/inplace_instructions.h"
+#include "tensorflow/compiler/plugin/poplar/driver/inplace_util.h"
+#include "tensorflow/compiler/plugin/poplar/driver/inplace_util.h"
 #include "tensorflow/compiler/plugin/poplar/driver/util.h"
 
 #include "tensorflow/compiler/xla/service/hlo_module.h"
@@ -24,9 +25,10 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 
+#include <deque>
+
 namespace xla {
 namespace poplarplugin {
-
 void InplaceFinder::RouteFinder(HloInstruction* inst,
                                 const std::vector<int64>& stack) {
   std::vector<int64> new_stack;
@@ -112,10 +114,17 @@ void InplaceFinder::RouteFinder(HloInstruction* inst,
 }
 
 StatusOr<bool> InplaceFinder::Run(HloModule* module) {
+  bool changed = false;
   for (auto* comp : module->computations()) {
     if (IsPopOpsCall(comp)) {
       continue;
     }
+
+    // The reachability map is used for adding and finding control dependencies
+    // in order to allow for inplace ops to be executed after other instructions
+    // which are using the inplace input.
+    std::unique_ptr<HloReachabilityMap> reachability_map =
+        comp->ComputeReachability();
 
     // For each input
     const auto& params = comp->parameter_instructions();
@@ -127,49 +136,61 @@ StatusOr<bool> InplaceFinder::Run(HloModule* module) {
     // For each route in map
     for (auto& r : routes) {
       for (auto& inst : r.second) {
+        if (!InplaceUtil::IsInPlace(inst, annotations_,
+                                    reachability_map.get())) {
+          continue;
+        }
         switch (inst->opcode()) {
           case HloOpcode::kAdd:
           case HloOpcode::kDynamicUpdateSlice:
           case HloOpcode::kMultiply:
           case HloOpcode::kSubtract:
-            inplace_instructions.AddTo(InplaceInstructions::Priority::HIGH,
-                                       inst);
-            break;
           case HloOpcode::kCall:
-            // Inplace calls are always in medium priority, so move them
-            inplace_instructions.MovePriority(
-                InplaceInstructions::Priority::MEDIUM,
-                InplaceInstructions::Priority::HIGH, inst);
+            annotations_.inplace_instructions.insert(inst);
+            changed = true;
           default:
             break;
         }
       }
     }
-
+    // Get all possible remaining inplace instructions, giving higher priority
+    // to outlined poplibs calls.
+    std::deque<HloInstruction*> inplace_instructions_queue;
     for (auto* inst : comp->MakeInstructionPostOrder()) {
+      // Skip instructions already inplace.
+      if (annotations_.inplace_instructions.count(inst)) {
+        continue;
+      }
+
       switch (inst->opcode()) {
+        case HloOpcode::kCall:
+          inplace_instructions_queue.push_front(inst);
+          changed = true;
+          break;
         case HloOpcode::kAdd:
         case HloOpcode::kSubtract:
-          if (!inplace_instructions.IsIn(InplaceInstructions::Priority::HIGH,
-                                         inst)) {
-            inplace_instructions.AddTo(InplaceInstructions::Priority::LOW,
-                                       inst);
-          }
+          inplace_instructions_queue.push_back(inst);
+          changed = true;
           break;
         default:
           break;
       }
     }
 
+    for (auto* inst : inplace_instructions_queue) {
+      if (InplaceUtil::IsInPlace(inst, annotations_, reachability_map.get())) {
+        annotations_.inplace_instructions.insert(inst);
+      }
+    }
     routes.clear();
     current_route.clear();
   }
 
-  return true;
+  return changed;
 }
 
 InplaceFinder::InplaceFinder(CompilerAnnotations& annotations)
-    : inplace_instructions(annotations.inplace_instructions) {}
+    : annotations_(annotations) {}
 
 }  // namespace poplarplugin
 }  // namespace xla
