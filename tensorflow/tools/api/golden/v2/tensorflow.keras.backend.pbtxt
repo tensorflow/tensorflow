@@ -189,10 +189,6 @@ tf_module {
     argspec: "args=[\'reference\', \'indices\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
-    name: "get_session"
-    argspec: "args=[], varargs=None, keywords=None, defaults=None"
-  }
-  member_method {
     name: "get_uid"
     argspec: "args=[\'prefix\'], varargs=None, keywords=None, defaults=[\'\'], "
   }

@@ -56,7 +56,7 @@ REQUIRED_PACKAGES = [
     'numpy >= 1.13.3',
     'six >= 1.10.0',
     'protobuf >= 3.6.1',
-    'tensorboard >= 1.11.0, < 1.12.0',
+    'tensorboard >= 1.12.0, < 1.13.0',
     'tensorflow_estimator >= 1.10.0',
     'termcolor >= 1.1.0',
 ]
@@ -86,7 +86,7 @@ else:
 if 'tf_nightly' in project_name:
   for i, pkg in enumerate(REQUIRED_PACKAGES):
     if 'tensorboard' in pkg:
-      REQUIRED_PACKAGES[i] = 'tb-nightly >= 1.12.0a0, < 1.13.0a0'
+      REQUIRED_PACKAGES[i] = 'tb-nightly >= 1.13.0a0, < 1.14.0a0'
       break
 
 # weakref.finalize and enum were introduced in Python 3.4

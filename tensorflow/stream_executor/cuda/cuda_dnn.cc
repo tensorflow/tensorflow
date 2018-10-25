@@ -19,6 +19,7 @@ limitations under the License.
 #include <memory>
 #include <utility>
 
+#include "absl/strings/str_cat.h"
 #include "third_party/eigen3/Eigen/Core"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/strings/stringprintf.h"
@@ -36,7 +37,6 @@ limitations under the License.
 #include "tensorflow/stream_executor/lib/error.h"
 #include "tensorflow/stream_executor/lib/initialize.h"
 #include "tensorflow/stream_executor/lib/mathutil.h"
-#include "tensorflow/stream_executor/lib/strcat.h"
 #include "tensorflow/stream_executor/lib/stringpiece.h"
 #include "tensorflow/stream_executor/lib/threadpool.h"
 #include "tensorflow/stream_executor/platform/logging.h"
@@ -127,7 +127,7 @@ string ToString(cudnnStatus_t status) {
       return "CUDNN_STATUS_RUNTIME_FP_OVERFLOW";
 #endif
     default:
-      return port::StrCat("<unknown cudnn status: ", static_cast<int>(status),
+      return absl::StrCat("<unknown cudnn status: ", static_cast<int>(status),
                           ">");
   }
 }
@@ -351,7 +351,7 @@ port::Status CudnnSupport::Init() {
     CudnnVersion loaded_version;
     TF_RETURN_IF_ERROR(GetLoadedCudnnVersion(&loaded_version));
     if (!IsSourceCompatibleWithCudnnLibrary(source_version, loaded_version)) {
-      const tensorflow::string error = port::StrCat(
+      const tensorflow::string error = absl::StrCat(
           "Loaded runtime CuDNN library: ", loaded_version.ToString(),
           " but source was compiled with: ", source_version.ToString(),
           ".  CuDNN library major and minor version needs to match or have "
@@ -384,7 +384,7 @@ port::Status CudnnSupport::Init() {
   }
 
   return port::Status(port::error::INTERNAL,
-                      port::StrCat("cudnn library could not create a handle: ",
+                      absl::StrCat("cudnn library could not create a handle: ",
                                    ToString(status)));
 }
 

@@ -417,6 +417,11 @@ Status TensorListZerosLike(OpKernelContext* c, const TensorList& x,
 
 #undef DTYPE_CASE
 
+      case DT_INVALID: {
+        // Uninitialized tensor in the TensorList.
+        out_tensor = Tensor(DT_INVALID);
+        break;
+      }
       case DataTypeToEnum<Variant>::value: {
         const TensorList* inner_x = t.scalar<Variant>()().get<TensorList>();
         if (inner_x == nullptr) {

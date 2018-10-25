@@ -288,6 +288,7 @@ def function_to_graph(f,
 
   node, source = parser.parse_entity(f)
   node = node.body[0]
+  # TODO(znado): Place inside standard_analysis.
   origin_info.resolve(node, source, f)
   namespace = inspect_utils.getnamespace(f)
   _add_self_references(namespace, program_ctx.autograph_module)

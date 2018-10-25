@@ -114,7 +114,7 @@ class CrossDeviceOpsTestBase(test.TestCase, parameterized.TestCase):
         self.assertEqual([v.numpy() for v in left._index.values()],
                          list(right._index.values()))
       else:
-        with self.test_session() as sess:
+        with self.cached_session() as sess:
           self.assertEqual(
               sess.run(list(left._index.values())), list(right._index.values()))
 
@@ -474,7 +474,7 @@ class MultiWorkerCollectiveAllReduceTest(
       worker_device = "/job:%s/task:%d" % (task_type, task_id)
     with ops.Graph().as_default(), \
          ops.device(worker_device), \
-         self.test_session(target=master_target) as sess:
+         self.cached_session(target=master_target) as sess:
       # Collective ops doesn't support scalar tensors, so we have to construct
       # 1-d tensors.
       values = [constant_op.constant([float(d)]) for d in range(len(devices))]

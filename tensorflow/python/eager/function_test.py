@@ -163,7 +163,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
 
   def testGraphGradientVariable(self):
     with ops.Graph().as_default(), self.cached_session():
-      v = resource_variable_ops.ResourceVariable(1.0)
+      v = variables.Variable(1.0)
 
       @def_function.function
       def f():
@@ -177,9 +177,9 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
 
   def testGraphEagerIsolation(self):
 
-    @def_function.function
+    @function.defun
     def f():
-      self.v = resource_variable_ops.ResourceVariable(1.0)
+      self.v = variables.Variable(1.0)
       return self.v.read_value()
 
     self.assertAllEqual(f(), 1.0)
@@ -251,9 +251,6 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     self.assertSequenceEqual(outputs, expected)
 
   def testExecutingManyStatelessDefunsConcurrently(self):
-    # TODO(nareshmodi): Re-enable this test when grappler is faster, or
-    # simply disable grappler for this test.
-    self.skipTest('Very slow with grappler enabled, in fastbuild mode.')
 
     @def_function.function
     def stateless(x):
@@ -283,9 +280,6 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     self.assertEqual(float(v.read_value()), 0.0)
 
   def testExecutingManyStatefulDefunsConcurrently(self):
-    # TODO(nareshmodi): Re-enable this test when grappler is faster, or
-    # simply disable grappler for this test.
-    self.skipTest('Very slow with grappler enabled, in fastbuild mode.')
 
     v = resource_variable_ops.ResourceVariable(1.0)
 
@@ -683,7 +677,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
 
   def testSymbolicGradientVariableNoneNotZerosLike(self):
     with ops.Graph().as_default():
-      v = resource_variable_ops.ResourceVariable(1.0)
+      v = variables.Variable(1.0)
 
       @def_function.function
       def f(x, v):
@@ -698,7 +692,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
         self.assertEqual(dv, None)
 
   def testGraphModeManyFunctions(self):
-    with context.graph_mode(), self.cached_session():
+    with ops.Graph().as_default(), self.cached_session():
 
       @def_function.function
       def f(x):
@@ -2707,6 +2701,24 @@ class ArgumentNamingTests(test.TestCase, parameterized.TestCase):
     fn_op = fn.get_concrete_function(
         tensor_spec.TensorSpec(shape=(None,), dtype=dtypes.float32),
         tensor_spec.TensorSpec(shape=(), dtype=dtypes.float32))
+    self.assertEqual(
+        ['a', 'b'],
+        [inp.op.name for inp in fn_op.inputs])
+    self.assertEqual(
+        [b'a', b'b'],
+        [inp.op.get_attr('_user_specified_name') for inp in fn_op.inputs])
+    self.assertEqual(2, len(fn_op.graph.structured_outputs))
+
+  def testVariable(self, function_decorator):
+    @function_decorator
+    def fn(a, b):
+      return a + b, a * b
+    # Call the function to make def_function happy
+    fn(array_ops.ones([]), array_ops.ones([]))
+
+    fn_op = fn.get_concrete_function(
+        tensor_spec.TensorSpec(shape=(None,), dtype=dtypes.float32),
+        variables.Variable(1.))
     self.assertEqual(
         ['a', 'b'],
         [inp.op.name for inp in fn_op.inputs])
