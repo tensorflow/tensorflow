@@ -863,7 +863,7 @@ TEST_F(NonMaxSuppressionWithOverlapsOpTest, TestEmptyInput) {
 
 class NonMaxSuppressionLiteOpTest : public OpsTestBase {
  protected:
-  void MakeOp() {
+  void MakeOp(bool pad_to_max_total_size = false) {
     TF_EXPECT_OK(NodeDefBuilder("non_max_suppression_lite_op", 
                                 "NonMaxSuppressionLite")
                      .Input(FakeInput(DT_FLOAT))
@@ -872,6 +872,7 @@ class NonMaxSuppressionLiteOpTest : public OpsTestBase {
                      .Input(FakeInput(DT_INT32))
                      .Input(FakeInput(DT_FLOAT))
                      .Input(FakeInput(DT_FLOAT))
+                     .Attr("pad_to_max_total_size", pad_to_max_total_size)
                      .Finalize(node_def()));
     TF_EXPECT_OK(InitOp());
   }
@@ -1152,8 +1153,9 @@ TEST_F(NonMaxSuppressionLiteOpTest,
        0, 20, 2, 22, 0, 20.2f, 2, 22.2f, 0, 200,   2, 202
        });
   AddInputFromArray<float>(TensorShape({2, 6, 2}), 
-       {0.1f, 0.9f, 0.75f, 0.8f, 0.6f, 0.3f, 0.95f, 0.1f, 0.5f, 0.5f, 0.3f, 0.1f, 
-       0.1f, 0.9f, 0.75f, 0.8f, 0.6f, 0.3f, 0.95f, 0.1f, 0.5f, 0.5f, 0.3f, 0.1f}); 
+      {0.1f, 0.9f, 0.75f, 0.8f, 0.6f, 0.3f, 0.95f, 0.1f, 0.5f, 0.5f, 0.3f, 0.1f, 
+       0.1f, 0.9f, 0.75f, 0.8f, 0.6f, 0.3f, 0.95f, 0.1f, 0.5f, 0.5f, 0.3f, 0.1f
+       }); 
   AddInputFromArray<int>(TensorShape({}), {3});
   AddInputFromArray<int>(TensorShape({}), {3});
   AddInputFromArray<float>(TensorShape({}), {.5f});
@@ -1184,6 +1186,49 @@ TEST_F(NonMaxSuppressionLiteOpTest,
 }
 
 TEST_F(NonMaxSuppressionLiteOpTest, 
+        TestSelectFromTwoBatchesTwoClassesWithScoreThresholdPadded) {
+  MakeOp(true);
+  AddInputFromArray<float>(
+      TensorShape({2, 6, 1, 4}),
+      {0, 0,  1, 1,  0, 0.1f,  1, 1.1f,  0, -0.1f, 1, 0.9f,
+       0, 10, 1, 11, 0, 10.1f, 1, 11.1f, 0, 100,   1, 101,
+       0, 0,  2, 2,  0, 0.2f,  2, 2.2f,  0, -0.2f, 2, 1.9f,
+       0, 20, 2, 22, 0, 20.2f, 2, 22.2f, 0, 200,   2, 202
+       });
+  AddInputFromArray<float>(TensorShape({2, 6, 2}), 
+      {0.1f, 0.9f, 0.75f, 0.8f, 0.6f, 0.3f, 0.95f, 0.1f, 0.5f, 0.5f, 0.3f, 0.1f, 
+       0.1f, 0.9f, 0.75f, 0.8f, 0.6f, 0.3f, 0.95f, 0.1f, 0.5f, 0.5f, 0.3f, 0.1f
+       }); 
+  AddInputFromArray<int>(TensorShape({}), {3});
+  AddInputFromArray<int>(TensorShape({}), {3});
+  AddInputFromArray<float>(TensorShape({}), {.5f});
+  AddInputFromArray<float>(TensorShape({}), {0.8f});
+  TF_ASSERT_OK(RunOpKernel());
+  
+  //boxes
+  Tensor expected_boxes(allocator(), DT_FLOAT, TensorShape({2, 3, 4}));
+  test::FillValues<float>(&expected_boxes, {0, 10, 1, 11 ,0, 0, 1, 1, 
+          0, 0, 0, 0, 0, 20, 2, 22, 0, 0, 2, 2, 0, 0, 0, 0});
+  test::ExpectTensorEqual<float>(expected_boxes, *GetOutput(0));
+  //scores
+  Tensor expected_scores(allocator(), DT_FLOAT, TensorShape({2, 3}));
+  test::FillValues<float>(&expected_scores, {0.95, 0.9, 0, 0.95, 0.9, 0});
+  test::ExpectTensorEqual<float>(expected_scores, *GetOutput(1));
+  //classes
+  Tensor expected_classes(allocator(), DT_FLOAT, TensorShape({2, 3}));
+  test::FillValues<float>(&expected_classes, {0, 1, 0, 0, 1, 0});
+  test::ExpectTensorEqual<float>(expected_classes, *GetOutput(2));
+  // valid
+  Tensor expected_valid_d(allocator(), DT_INT32, TensorShape({2}));
+  test::FillValues<int>(&expected_valid_d, {2, 2});
+  test::ExpectTensorEqual<int>(expected_valid_d, *GetOutput(3));
+  // indices
+  Tensor expected_indices(allocator(), DT_INT32, TensorShape({2, 3}));
+  test::FillValues<int>(&expected_indices, {3, 0, 0, 3, 0, 0});
+  test::ExpectTensorEqual<int>(expected_indices, *GetOutput(4));
+}
+
+TEST_F(NonMaxSuppressionLiteOpTest, 
         TestSelectFromTwoBatchesTwoClassesTotalSize) {
   MakeOp();
   AddInputFromArray<float>(
@@ -1195,7 +1240,8 @@ TEST_F(NonMaxSuppressionLiteOpTest,
        });
   AddInputFromArray<float>(TensorShape({2, 6, 2}), 
       {0.1f, 0.9f, 0.75f, 0.8f, 0.6f, 0.3f, 0.95f, 0.1f, 0.5f, 0.5f, 0.3f, 0.1f, 
-      0.1f, 0.9f, 0.75f, 0.8f, 0.6f, 0.3f, 0.95f, 0.1f, 0.5f, 0.5f, 0.3f, 0.1f}); 
+       0.1f, 0.9f, 0.75f, 0.8f, 0.6f, 0.3f, 0.95f, 0.1f, 0.5f, 0.5f, 0.3f, 0.1f
+       }); 
   AddInputFromArray<int>(TensorShape({}), {3});
   //Total size per batch is more than size per class
   AddInputFromArray<int>(TensorShape({}), {5});
@@ -1244,8 +1290,9 @@ TEST_F(NonMaxSuppressionLiteOpTest,
       0, 20.2f, 2, 22.2f, 0, 20.2f, 2, 22.2f, 0, 200, 2, 202, 0, 200, 2, 202});
 
   AddInputFromArray<float>(TensorShape({2, 6, 2}), 
-       {0.1f, 0.9f, 0.75f, 0.8f, 0.6f, 0.3f, 0.95f, 0.1f, 0.5f, 0.5f, 0.3f, 0.1f, 
-       0.1f, 0.9f, 0.75f, 0.8f, 0.6f, 0.3f, 0.95f, 0.1f, 0.5f, 0.5f, 0.3f, 0.1f}); 
+      {0.1f, 0.9f, 0.75f, 0.8f, 0.6f, 0.3f, 0.95f, 0.1f, 0.5f, 0.5f, 0.3f, 0.1f, 
+       0.1f, 0.9f, 0.75f, 0.8f, 0.6f, 0.3f, 0.95f, 0.1f, 0.5f, 0.5f, 0.3f, 0.1f
+       }); 
   AddInputFromArray<int>(TensorShape({}), {3});
   AddInputFromArray<int>(TensorShape({}), {3});
   AddInputFromArray<float>(TensorShape({}), {.5f});

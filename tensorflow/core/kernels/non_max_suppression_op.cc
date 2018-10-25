@@ -97,9 +97,7 @@ static inline void ParseAndCheckNMSLiteBoxSizes(OpKernelContext* context,
   OP_REQUIRES(context, box_check,
               errors::InvalidArgument(
                   "third dimension of boxes must be either 1 or num classes"));
-  // Num_boxes * q where q is either 1 or num_classes
-  // TODO check if this should take num_classes into account
-  *num_boxes = boxes.dim_size(1); //*boxes.dim_size(2);
+  *num_boxes = boxes.dim_size(1); 
   OP_REQUIRES(context, boxes.dim_size(3) == 4,
               errors::InvalidArgument("boxes must have 4 columns"));
 }
@@ -228,9 +226,10 @@ void BatchedNonMaxSuppressionOp(OpKernelContext* context,
                            const Tensor& inp_boxes, const Tensor& inp_scores, 
                            int num_boxes, 
                            const Tensor& max_size_per_class, 
-                           const Tensor& max_total_size, 
+                           const int total_size_per_batch, 
                            const float score_threshold, 
-                           const float iou_threshold) {
+                           const float iou_threshold,
+                           bool pad_to_max_total_size = false) {
 
   int q = inp_boxes.dim_size(2);
   int num_classes = inp_scores.dim_size(2);
@@ -251,7 +250,6 @@ void BatchedNonMaxSuppressionOp(OpKernelContext* context,
   int max_detections = 0;
   //perform non_max_suppression operation for each batch independently
   for (int batch = 0; batch < num_batches; ++batch) {
-    std::cout << " iteration " << batch <<std::endl;
     // dims of per_batch_boxes [num_boxes, q, 4]
     //Tensor per_batch_boxes = inp_boxes.SubSlice(batch);
     Tensor per_batch_boxes = inp_boxes.Slice(batch, batch+1);
@@ -288,7 +286,6 @@ void BatchedNonMaxSuppressionOp(OpKernelContext* context,
             //Get the boxes per class. boxes_data_vec dims is [num_boxes, 4]
             boxes_data_vec.push_back(boxesData[box * q * 4 + 
                   class_idx * 4 + cid]);
-            //std::cout << " Pushing box_data " << boxes_data_vec[boxes_data_vec.size()-1] << std::endl;
           }
           else 
               boxes_data_vec.push_back(boxesData[box * 4 + cid]);
@@ -315,7 +312,6 @@ void BatchedNonMaxSuppressionOp(OpKernelContext* context,
       std::priority_queue<Candidate, std::deque<Candidate>, decltype(cmp)>
         candidate_priority_queue(cmp);
       for (int i = 0; i < scores_data.size(); ++i) {
-          //std::cout << "scores_data "<< scores_data[i] << std::endl;
         if (scores_data[i] > score_threshold) {
           candidate_priority_queue.emplace(Candidate({i, scores_data[i]}));
         }
@@ -328,11 +324,10 @@ void BatchedNonMaxSuppressionOp(OpKernelContext* context,
       const Tensor const_boxes = boxes;
       typename TTypes<float, 2>::ConstTensor boxes_data = 
         const_boxes.tensor<float, 2>();
-      LOG(ERROR) << " boxes data " << boxes.DebugString();
+      //LOG(ERROR) << " boxes data " << boxes.DebugString();
       while (selected.size() < output_size && !candidate_priority_queue.empty())
       {
         next_candidate = candidate_priority_queue.top();
-        //std::cout << " next_candidate " << next_candidate.box_index << std::endl;
         candidate_priority_queue.pop();
 
         // Overlapping boxes are likely to have similar scores,
@@ -342,7 +337,6 @@ void BatchedNonMaxSuppressionOp(OpKernelContext* context,
         for (int j = selected.size() - 1; j >= 0; --j) {
           if (IOUGreaterThanThreshold(boxes_data, next_candidate.box_index, 
               selected[j], iou_threshold)) {
-              //std::cout << " Dont select. box id is " << selected[j] << " idx " << j <<std::endl;  
             should_select = false;
             break;
           }
@@ -350,7 +344,6 @@ void BatchedNonMaxSuppressionOp(OpKernelContext* context,
 
         if (should_select) {
           selected.push_back(next_candidate.box_index);
-          //std::cout << " select box_index " << next_candidate.box_index << std::endl;
           //Add the selected box to the result candidate. Sorted by score
           int id = next_candidate.box_index;
           ResultCandidate rc = {next_candidate.box_index, next_candidate.score,
@@ -361,18 +354,16 @@ void BatchedNonMaxSuppressionOp(OpKernelContext* context,
       }
 
     }
-    int total_size_per_batch = max_total_size.scalar<int>()();
-    std::cout << " pq size " << result_candidate_pq.size() << std::endl;
-
     if (total_size_per_batch > 0)
       max_detections = std::min((int) result_candidate_pq.size(), 
         total_size_per_batch);
     else max_detections = (int) result_candidate_pq.size();
 
-    std::cout << " max_detections " << max_detections << std::endl;
     final_valid_detections.push_back(max_detections);
-    // Pick the top max_total_size values 
-    while(total_size_per_batch > 0 && !result_candidate_pq.empty())
+
+    int curr_total_size = total_size_per_batch;
+    // Pick the top total_size_per_batch values 
+    while(curr_total_size > 0 && !result_candidate_pq.empty())
     {
       ResultCandidate next_candidate = result_candidate_pq.top();
       result_candidate_pq.pop();
@@ -384,9 +375,19 @@ void BatchedNonMaxSuppressionOp(OpKernelContext* context,
       nmsed_scores[batch].push_back(next_candidate.score);
       nmsed_classes[batch].push_back(next_candidate.class_idx);
       selected_indices[batch].push_back(next_candidate.box_index);
-      total_size_per_batch--;
+      curr_total_size--;
     }
-            
+
+    if(pad_to_max_total_size) {
+      nmsed_boxes[batch].resize(total_size_per_batch * 4, 0);
+      nmsed_scores[batch].resize(total_size_per_batch, 0);
+      nmsed_classes[batch].resize(total_size_per_batch, 0);
+      selected_indices[batch].resize(total_size_per_batch, 0);
+    }
+  }
+
+  if(pad_to_max_total_size) { 
+    max_detections = total_size_per_batch;
   }
 
   Tensor* nmsed_boxes_t = nullptr;
@@ -414,7 +415,7 @@ void BatchedNonMaxSuppressionOp(OpKernelContext* context,
 
   Tensor* selected_indices_t = nullptr;
   OP_REQUIRES_OK(context,
-                 context->allocate_output(4, scores_shape, &selected_indices_t));
+                context->allocate_output(4, scores_shape, &selected_indices_t));
   auto selected_indices_flat = selected_indices_t->template flat<int>();
   for (int i = 0; i < num_batches; ++i) {
     valid_detections_flat(i) = final_valid_detections[i];
@@ -428,9 +429,9 @@ void BatchedNonMaxSuppressionOp(OpKernelContext* context,
       }
     }
   }
-  LOG(ERROR) << " boxes " << nmsed_boxes_t->DebugString();
-  LOG(ERROR) << " Scores " << nmsed_scores_t->DebugString();
-  LOG(ERROR) << " classes " << nmsed_classes_t->DebugString();
+  //LOG(ERROR) << " boxes " << nmsed_boxes_t->DebugString();
+  //LOG(ERROR) << " Scores " << nmsed_scores_t->DebugString();
+  //LOG(ERROR) << " classes " << nmsed_classes_t->DebugString();
 }
 
 }  // namespace
@@ -677,12 +678,14 @@ template <typename Device>
 class NonMaxSuppressionLiteOp : public OpKernel {
  public:
   explicit NonMaxSuppressionLiteOp(OpKernelConstruction* context)
-      : OpKernel(context) {}
+      : OpKernel(context) {
+    OP_REQUIRES_OK(context, context->GetAttr("pad_to_max_total_size",
+                                             &pad_to_max_total_size_));
+  }
 
   void Compute(OpKernelContext* context) override {
     // boxes: [batch_size, num_anchors, q, 4]
     const Tensor& boxes = context->input(0);
-    LOG(ERROR) << " inp_boxes " << boxes.DebugString();
     // scores: [batch_size, num_anchors, num_classes]
     const Tensor& scores = context->input(1);
     OP_REQUIRES(context, (boxes.dim_size(0) == scores.dim_size(0)),
@@ -701,6 +704,7 @@ class NonMaxSuppressionLiteOp : public OpKernel {
         context, TensorShapeUtils::IsScalar(max_total_size.shape()),
         errors::InvalidArgument("max_total_size must be 0-D, got shape ",
                                 max_total_size.shape().DebugString()));
+    const int max_total_size_per_batch = max_total_size.scalar<int>()();
     // iou_threshold: scalar
     const Tensor& iou_threshold = context->input(4);
     OP_REQUIRES(context, TensorShapeUtils::IsScalar(iou_threshold.shape()),
@@ -722,13 +726,17 @@ class NonMaxSuppressionLiteOp : public OpKernel {
     const int num_classes = scores.dim_size(2);
     ParseAndCheckNMSLiteBoxSizes(context, boxes, &num_boxes, num_classes);
     CheckNMSLiteScoreSizes(context, num_boxes, scores);
+
     if (!context->status().ok()) {
       return;
     }
     BatchedNonMaxSuppressionOp(context, boxes, scores, num_boxes, 
-                               max_output_size, max_total_size, 
-                               score_threshold_val, iou_threshold_val);
+                               max_output_size, max_total_size_per_batch, 
+                               score_threshold_val, iou_threshold_val, 
+                               pad_to_max_total_size_);
   }
+ private:
+  bool pad_to_max_total_size_;
 };
 
 
