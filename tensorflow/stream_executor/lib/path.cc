@@ -14,7 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/stream_executor/lib/path.h"
-#include "tensorflow/stream_executor/lib/strcat.h"
+#include "absl/strings/str_cat.h"
 
 namespace stream_executor {
 namespace port {
@@ -39,15 +39,15 @@ string JoinPathImpl(std::initializer_list<port::StringPiece> paths) {
 
     if (result[result.size() - 1] == '/') {
       if (IsAbsolutePath(path)) {
-        StrAppend(&result, path.substr(1));
+        absl::StrAppend(&result, path.substr(1));
       } else {
-        StrAppend(&result, path);
+        absl::StrAppend(&result, path);
       }
     } else {
       if (IsAbsolutePath(path)) {
-        StrAppend(&result, path);
+        absl::StrAppend(&result, path);
       } else {
-        StrAppend(&result, "/", path);
+        absl::StrAppend(&result, "/", path);
       }
     }
   }

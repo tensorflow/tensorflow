@@ -21,6 +21,7 @@ limitations under the License.
 #include <set>
 #include <utility>
 
+#include "absl/strings/str_cat.h"
 #include "tensorflow/stream_executor/cuda/cuda_diagnostics.h"
 #include "tensorflow/stream_executor/lib/casts.h"
 #include "tensorflow/stream_executor/lib/env.h"
@@ -31,7 +32,6 @@ limitations under the License.
 #include "tensorflow/stream_executor/lib/ptr_util.h"
 #include "tensorflow/stream_executor/lib/stacktrace.h"
 #include "tensorflow/stream_executor/lib/static_threadlocal.h"
-#include "tensorflow/stream_executor/lib/strcat.h"
 #include "tensorflow/stream_executor/lib/stringprintf.h"
 #include "tensorflow/stream_executor/lib/threadpool.h"
 #include "tensorflow/stream_executor/platform/logging.h"
@@ -109,13 +109,13 @@ class CreatedContexts {
 string ToString(CUresult result) {
   const char *error_name;
   if (cuGetErrorName(result, &error_name)) {
-    return port::StrCat("UNKNOWN ERROR (", static_cast<int>(result), ")");
+    return absl::StrCat("UNKNOWN ERROR (", static_cast<int>(result), ")");
   }
   const char *error_string;
   if (cuGetErrorString(result, &error_string)) {
     return error_name;
   }
-  return port::StrCat(error_name, ": ", error_string);
+  return absl::StrCat(error_name, ": ", error_string);
 }
 
 // Returns the current context and checks that it is in the set of CUDA contexts
@@ -241,7 +241,7 @@ namespace {
 string CUDAPointerToDeviceString(CUdeviceptr pointer) {
   auto value = CUDADriver::GetPointerDevice(pointer);
   if (value.ok()) {
-    return port::StrCat(value.ValueOrDie());
+    return absl::StrCat(value.ValueOrDie());
   }
   LOG(ERROR) << "could not query device: " << value.status();
   return "?";
@@ -300,7 +300,7 @@ static port::Status InternalInit() {
   LOG(ERROR) << "failed call to cuInit: " << ToString(res);
   Diagnostician::LogDiagnosticInformation();
   return port::Status(port::error::ABORTED,
-                      port::StrCat("failed call to cuInit: ", ToString(res)));
+                      absl::StrCat("failed call to cuInit: ", ToString(res)));
 }
 
 }  // namespace
@@ -330,7 +330,7 @@ static port::Status InternalInit() {
 
   return port::Status(
       port::error::INTERNAL,
-      port::StrCat("failed call to cuDeviceGet: ", ToString(res)));
+      absl::StrCat("failed call to cuDeviceGet: ", ToString(res)));
 }
 
 /* static */ bool CUDADriver::GetDeviceName(CUdevice device,
@@ -439,9 +439,9 @@ bool DeviceOptionsToContextFlags(const DeviceOptions &device_options,
   if (res == CUDA_ERROR_OUT_OF_MEMORY) {
     uint64 total_memory;
     if (GetDeviceTotalMemory(device, &total_memory)) {
-      port::StrAppend(&message, "; total memory reported: ", total_memory);
+      absl::StrAppend(&message, "; total memory reported: ", total_memory);
     } else {
-      port::StrAppend(&message, "; could not query total memory");
+      absl::StrAppend(&message, "; could not query total memory");
     }
   }
 
@@ -504,7 +504,7 @@ CUDADriver::ContextGetSharedMemConfig(CudaContext* context) {
                << ", result: " << ToString(result);
     return port::Status(
         port::error::INTERNAL,
-        port::StrCat("failed to get shared memory config: ", ToString(result)));
+        absl::StrCat("failed to get shared memory config: ", ToString(result)));
   }
   return shared_mem_config;
 }
@@ -522,7 +522,7 @@ CUDADriver::ContextGetSharedMemConfig(CudaContext* context) {
                << ", result: " << ToString(result);
     return port::Status(
         port::error::INTERNAL,
-        port::StrCat("failed to set shared memory config: ", ToString(result)));
+        absl::StrCat("failed to set shared memory config: ", ToString(result)));
   }
   return port::Status::OK();
 }
@@ -758,7 +758,7 @@ CUDADriver::ContextGetSharedMemConfig(CudaContext* context) {
 
   return port::Status(
       port::error::INTERNAL,
-      port::StrCat("failed to get device for context: ", ToString(result)));
+      absl::StrCat("failed to get device for context: ", ToString(result)));
 }
 
 /* static */ bool CUDADriver::CreateStream(CudaContext *context,
@@ -1023,7 +1023,7 @@ CUDADriver::ContextGetSharedMemConfig(CudaContext* context) {
   CUresult res = cuStreamSynchronize(stream);
   if (res != CUDA_SUCCESS) {
     port::Status status = port::InternalError(
-        port::StrCat("could not synchronize on CUDA stream: ", ToString(res)));
+        absl::StrCat("could not synchronize on CUDA stream: ", ToString(res)));
     LOG(ERROR) << status << " :: " << port::CurrentStackTrace();
     return status;
   }
@@ -1190,7 +1190,7 @@ CUDADriver::ContextGetSharedMemConfig(CudaContext* context) {
   } else {
     return port::Status(
         port::error::FAILED_PRECONDITION,
-        port::StrCat("could not create CUDA event: ", ToString(res)));
+        absl::StrCat("could not create CUDA event: ", ToString(res)));
   }
 }
 
@@ -1220,7 +1220,7 @@ CUDADriver::ContextGetSharedMemConfig(CudaContext* context) {
 
   return port::Status(
       port::error::INTERNAL,
-      port::StrCat("failed to query device pointer for context: ",
+      absl::StrCat("failed to query device pointer for context: ",
                    ToString(result)));
 }
 
@@ -1238,13 +1238,13 @@ CUDADriver::ContextGetSharedMemConfig(CudaContext* context) {
       default:
         return port::Status(
             port::error::INTERNAL,
-            port::StrCat("unknown memory space provided by CUDA API: ", value));
+            absl::StrCat("unknown memory space provided by CUDA API: ", value));
     }
   }
 
   return port::Status(
       port::error::INTERNAL,
-      port::StrCat("failed to query device pointer for memory space: ",
+      absl::StrCat("failed to query device pointer for memory space: ",
                    ToString(result)));
 }
 
@@ -1306,7 +1306,7 @@ static port::StatusOr<T> GetSimpleAttribute(CUdevice device,
   if (result != CUDA_SUCCESS) {
     return port::Status(
         port::error::NOT_FOUND,
-        port::StrCat("could not retrieve CUDA device attribute (", attribute,
+        absl::StrCat("could not retrieve CUDA device attribute (", attribute,
                      "): ", ToString(result)));
   }
   T converted = value;
