@@ -34,7 +34,7 @@ class StatelessRandomOpsTest(xla_test.XLATestCase):
   """Test cases for stateless random-number generator operators."""
 
   def _random_types(self, include_int=False):
-    allowed_types = {dtypes.float32, dtypes.float64}
+    allowed_types = {dtypes.float32, dtypes.float64, dtypes.bfloat16}
     if include_int:
       allowed_types.update({dtypes.int32, dtypes.int64})
     return self.all_tf_types & allowed_types
@@ -49,6 +49,11 @@ class StatelessRandomOpsTest(xla_test.XLATestCase):
       ]:
         for shape in (), (3,), (2, 5):
           for dtype in self._random_types():
+            # Skip bfloat16. The result of bfloat16 is truncated from 32-bit
+            # result. With different seeds, the 32-bit results are different,
+            # but the truncated 16-bit results might be the same.
+            if dtype == dtypes.bfloat16:
+              continue
             pure = stateless_op(shape, seed=seed_t, dtype=dtype)
             values = [(seed, pure.eval(feed_dict={
                 seed_t: seed
@@ -133,7 +138,7 @@ class StatelessRandomOpsTest(xla_test.XLATestCase):
         # The constant 2.492 is the 5% critical value for the Anderson-Darling
         # test where the mean and variance are known. This test is probabilistic
         # so to avoid flakiness the seed is fixed.
-        self.assertTrue(self._anderson_darling(y) < 2.492)
+        self.assertTrue(self._anderson_darling(y.astype(float)) < 2.492)
 
   def testTruncatedNormalIsInRange(self):
     for dtype in self._random_types():
@@ -169,6 +174,7 @@ class StatelessRandomOpsTest(xla_test.XLATestCase):
         # Burkardt, John. "The Truncated Normal Distribution".
         # Department of Scientific Computing website. Florida State University.
         expected_mean = mu + (normal_pdf(alpha) - normal_pdf(beta)) / z * sigma
+        y = y.astype(float)
         actual_mean = np.mean(y)
         self.assertAllClose(actual_mean, expected_mean, atol=5e-4)
 
@@ -181,8 +187,8 @@ class StatelessRandomOpsTest(xla_test.XLATestCase):
             (alpha * normal_pdf(alpha) - beta * normal_pdf(beta)) / z) - (
                 (normal_pdf(alpha) - normal_pdf(beta)) / z)**2)
         actual_variance = np.var(y)
-        self.assertAllClose(actual_variance, expected_variance, rtol=1e-3)
-
+        self.assertAllClose(actual_variance, expected_variance,
+                            rtol=5e-3 if dtype == dtypes.bfloat16 else 1e-3)
 
 
 if __name__ == '__main__':
