@@ -1028,7 +1028,7 @@ Arguments | Type    | Semantics
 `rhs`     | `XlaOp` | right-hand-side operand: array of type T
 
 The arguments' shapes have to be either similar or compatible. See the
-[broadcasting](../../performance/xla/broadcasting.md) documentation about what it means for shapes to
+[broadcasting](broadcasting.md) documentation about what it means for shapes to
 be compatible. The result of an operation has a shape which is the result of
 broadcasting the two input arrays. In this variant, operations between arrays of
 different ranks are *not* supported, unless one of the operands is a scalar.
@@ -1056,7 +1056,7 @@ the dimensions of the higher-rank shape. The unmapped dimensions of the expanded
 shape are filled with dimensions of size one. Degenerate-dimension broadcasting
 then broadcasts the shapes along these degenerate dimensions to equalize the
 shapes of both operands. The semantics are described in detail on the
-[broadcasting page](../../performance/xla/broadcasting.md).
+[broadcasting page](broadcasting.md).
 
 ## Element-wise comparison operations
 
@@ -1079,7 +1079,7 @@ Arguments | Type    | Semantics
 `rhs`     | `XlaOp` | right-hand-side operand: array of type T
 
 The arguments' shapes have to be either similar or compatible. See the
-[broadcasting](../../performance/xla/broadcasting.md) documentation about what it means for shapes to
+[broadcasting](broadcasting.md) documentation about what it means for shapes to
 be compatible. The result of an operation has a shape which is the result of
 broadcasting the two input arrays with the element type `PRED`. In this variant,
 operations between arrays of different ranks are *not* supported, unless one of
@@ -1096,7 +1096,7 @@ matrix to a vector).
 
 The additional `broadcast_dimensions` operand is a slice of integers specifying
 the dimensions to use for broadcasting the operands. The semantics are described
-in detail on the [broadcasting page](../../performance/xla/broadcasting.md).
+in detail on the [broadcasting page](broadcasting.md).
 
 ## Element-wise unary functions
 
@@ -2071,10 +2071,9 @@ shape of the output array. The array `pred` must have the same dimensionality as
 
 For each element `P` of `pred`, the corresponding element of the output array is
 taken from `on_true` if the value of `P` is `true`, and from `on_false` if the
-value of `P` is `false`. As a restricted form of [broadcasting]
-(broadcasting.md), `pred` can be a scalar of type `PRED`. In this case, the
-output array is taken wholly from `on_true` if `pred` is `true`, and from
-`on_false` if `pred` is `false`.
+value of `P` is `false`. As a restricted form of [broadcasting](broadcasting.md),
+`pred` can be a scalar of type `PRED`. In this case, the output array is taken
+wholly from `on_true` if `pred` is `true`, and from `on_false` if `pred` is `false`.
 
 Example with non-scalar `pred`:
 
