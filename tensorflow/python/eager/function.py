@@ -481,8 +481,7 @@ class Function(object):
           outputs,
           self._func_graph.inputs,
           grad_ys=gradients_wrt_outputs,
-          src_graph=self._func_graph,
-          unconnected_gradients=gradients_impl.UnconnectedGradients.NONE)
+          src_graph=self._func_graph)
 
     backwards_graph_captures = list(backwards_graph.captures.keys())
 

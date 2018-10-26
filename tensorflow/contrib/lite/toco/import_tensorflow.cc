@@ -51,6 +51,7 @@ limitations under the License.
 
 using tensorflow::AttrValue;
 using tensorflow::DT_BOOL;
+using tensorflow::DT_COMPLEX64;
 using tensorflow::DT_FLOAT;
 using tensorflow::DT_INT32;
 using tensorflow::DT_INT64;
@@ -186,6 +187,8 @@ ArrayDataType ConvertDataType(tensorflow::DataType dtype) {
     return ArrayDataType::kInt64;
   else if (dtype == DT_STRING)
     return ArrayDataType::kString;
+  else if (dtype == DT_COMPLEX64)
+    return ArrayDataType::kComplex64;
   else
     LOG(INFO) << "Unsupported data type in placeholder op: " << dtype;
   return ArrayDataType::kNone;
@@ -254,6 +257,48 @@ tensorflow::Status ImportFloatArray(const TensorProto& input_tensor,
                      ") nor float_val (", input_tensor.float_val_size(),
                      ") have the right dimensions (", input_flat_size,
                      ") for this float tensor"));
+  }
+  return tensorflow::Status::OK();
+}
+
+tensorflow::Status ImportComplex64Array(const TensorProto& input_tensor,
+                                        Array* output_array) {
+  CHECK_EQ(input_tensor.dtype(), DT_COMPLEX64);
+  const auto& input_shape = input_tensor.tensor_shape();
+  CHECK_LE(input_shape.dim_size(), 4);
+  int input_flat_size;
+  auto status = ImportShape(input_shape.dim(), &input_flat_size,
+                            output_array->mutable_shape());
+  if (!status.ok()) return status;
+
+  auto& output_complex_data =
+      output_array->GetMutableBuffer<ArrayDataType::kComplex64>().data;
+  output_complex_data.resize(RequiredBufferSizeForShape(output_array->shape()),
+                             std::complex<float>(0.f, 0.f));
+  CHECK_GE(output_complex_data.size(), input_flat_size);
+  if (input_tensor.scomplex_val_size() == 2) {
+    for (int i = 0; i < input_flat_size; i++) {
+      output_complex_data[i] = std::complex<float>(
+          input_tensor.scomplex_val(0), input_tensor.scomplex_val(1));
+    }
+  } else if (input_tensor.scomplex_val_size() == 2 * input_flat_size) {
+    for (int i = 0; i < input_flat_size; ++i) {
+      output_complex_data[i] =
+          std::complex<float>(input_tensor.scomplex_val(2 * i),
+                              input_tensor.scomplex_val(2 * i + 1));
+    }
+  } else if (input_tensor.tensor_content().size() ==
+             input_flat_size * sizeof(std::complex<float>)) {
+    toco::port::CopyToBuffer(
+        input_tensor.tensor_content(),
+        reinterpret_cast<char*>(output_complex_data.data()));
+  } else {
+    return tensorflow::errors::InvalidArgument(absl::StrCat(
+        "Neither input_content (",
+        input_tensor.tensor_content().size() / sizeof(std::complex<float>),
+        ") nor scomplex_val (", input_tensor.scomplex_val_size(),
+        ") have the right dimensions (", input_flat_size,
+        ") for this complex64 tensor"));
   }
   return tensorflow::Status::OK();
 }
@@ -536,6 +581,10 @@ tensorflow::Status ConvertConstOperator(
     case DT_BOOL:
       array.data_type = ArrayDataType::kBool;
       status = ImportBoolArray(tensor, &array);
+      break;
+    case DT_COMPLEX64:
+      array.data_type = ArrayDataType::kComplex64;
+      status = ImportComplex64Array(tensor, &array);
       break;
     default:
       array.data_type = ArrayDataType::kNone;

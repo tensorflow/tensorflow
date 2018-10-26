@@ -131,8 +131,11 @@ class PartitionedCallOp : public AsyncOpKernel {
                              "find cached function partitions; "
                              "this indicates a bug."),
             done);
-        FunctionLibraryDefinition* overlay_lib =
-            new FunctionLibraryDefinition(*lib->GetFunctionLibraryDefinition());
+        // We do not need a full function library in the overlay, we just keep a
+        // subset that is reachable from the instantiated function.
+        FunctionLibraryDefinition* overlay_lib = new FunctionLibraryDefinition(
+            grappler::ReachableFunctionLibraryDefinition(
+                *lib->GetFunctionLibraryDefinition(), fbody->fdef));
         overlay_libs_.emplace(lib, overlay_lib);
 
         GraphOptimizationPassOptions optimization_options;
@@ -517,9 +520,6 @@ class PartitionedCallOp : public AsyncOpKernel {
     (*graph)->ToGraphDef(&item.graph);
 
     if (flib) {
-      // TODO(ezhulenev): Prune unreachable functions to reduce copy overhead.
-      // It's unsafe to do it now, because it's possible to get conflicting
-      // specializations with the same name.
       *item.graph.mutable_library() = flib->ToProto();
     }
 

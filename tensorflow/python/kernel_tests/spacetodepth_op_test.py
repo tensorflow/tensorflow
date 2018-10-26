@@ -36,12 +36,12 @@ class SpaceToDepthTest(test.TestCase):
 
   def _testOne(self, inputs, block_size, outputs, dtype=dtypes.float32):
     input_nhwc = math_ops.cast(inputs, dtype)
-    with self.cached_session(use_gpu=False):
+    with self.session(use_gpu=False):
       # test NHWC (default) on CPU
       x_tf = array_ops.space_to_depth(input_nhwc, block_size)
       self.assertAllEqual(x_tf.eval(), outputs)
     if test.is_gpu_available():
-      with self.cached_session(use_gpu=True):
+      with self.session(force_gpu=True):
         # test NHWC (default) on GPU
         x_tf = array_ops.space_to_depth(input_nhwc, block_size)
         self.assertAllEqual(x_tf.eval(), outputs)
@@ -56,13 +56,9 @@ class SpaceToDepthTest(test.TestCase):
     x_np = [[[[1], [2]], [[3], [4]]]]
     block_size = 2
     x_out = [[[[1, 2, 3, 4]]]]
-    self._testOne(x_np, block_size, x_out)
+    for dtype in [dtypes.float32, dtypes.float16, dtypes.uint8]:
+      self._testOne(x_np, block_size, x_out, dtype=dtype)
 
-  def testBasicFloat16(self):
-    x_np = [[[[1], [2]], [[3], [4]]]]
-    block_size = 2
-    x_out = [[[[1, 2, 3, 4]]]]
-    self._testOne(x_np, block_size, x_out, dtype=dtypes.float16)
 
   # Tests for larger input dimensions. To make sure elements are
   # correctly ordered spatially.

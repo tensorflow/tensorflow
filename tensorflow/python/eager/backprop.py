@@ -35,9 +35,9 @@ from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.ops import gen_math_ops
-from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import resource_variable_ops
+from tensorflow.python.ops.unconnected_gradients import UnconnectedGradients
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import nest
 from tensorflow.python.util import tf_contextlib
@@ -574,10 +574,14 @@ def _num_elements(grad):
   raise ValueError("`grad` not a Tensor or IndexedSlices.")
 
 
+def _cast_constant(value, dtype):
+  return math_ops.cast(constant_op.constant(value), dtype)
+
+
 def _fast_fill(value, shape, dtype):
   return array_ops.fill(
-      constant_op.constant(shape, dtype=dtypes.int32),
-      constant_op.constant(value, dtype=dtype))
+      _cast_constant(shape, dtype=dtypes.int32),
+      _cast_constant(value, dtype=dtype))
 
 
 def _zeros(shape, dtype):
@@ -605,7 +609,7 @@ def _ones(shape, dtype):
     return array_ops.ones(shape, dtype)
 
   if shape == ():  # pylint: disable=g-explicit-bool-comparison
-    return constant_op.constant(1, dtype=dtype)
+    return _cast_constant(1, dtype=dtype)
   return _fast_fill(1, shape, dtype)
 
 
@@ -855,7 +859,7 @@ class GradientTape(object):
                target,
                sources,
                output_gradients=None,
-               unconnected_gradients=gradients_impl.UnconnectedGradients.NONE):
+               unconnected_gradients=UnconnectedGradients.NONE):
     """Computes the gradient using operations recorded in context of this tape.
 
     Args:

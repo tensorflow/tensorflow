@@ -201,8 +201,7 @@ class MultiDeviceIterator(object):
     # into the device side from its input. It might be useful in rewriting.
     # Create the per device iterators.
     self._device_iterators = []
-    i = 0
-    for device in self._devices:
+    for i, device in enumerate(self._devices):
       ds = _PerDeviceGenerator(
           i, self._multi_device_iterator_resource, self._incarnation_id,
           self._source_device_tensor, device, self._dataset.output_shapes,
@@ -211,7 +210,6 @@ class MultiDeviceIterator(object):
         ds = ds.prefetch(prefetch_buffer_size)
       with ops.device(device):
         self._device_iterators.append(ds.make_initializable_iterator())
-      i += 1
 
     device_iterator_initializers = [
         iterator.initializer for iterator in self._device_iterators
@@ -220,21 +218,17 @@ class MultiDeviceIterator(object):
 
   def get_next(self):
     result = []
-    i = 0
-    for device in self._devices:
+    for i, device in enumerate(self._devices):
       with ops.device(device):
         result.append(self._device_iterators[i].get_next())
-      i += 1
     return result
 
   def get_next_as_optional(self):
     result = []
-    i = 0
-    for device in self._devices:
+    for i, device in enumerate(self._devices):
       with ops.device(device):
         result.append(iterator_ops.get_next_as_optional(
             self._device_iterators[i]))
-      i += 1
     return result
 
   @property

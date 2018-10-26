@@ -139,7 +139,8 @@ class Compiler {
   // Optimizes a HLO module group, a set of module which runs concurrently on
   // multiple devices potentially communicating data between the modules.
   virtual Status RunHloPassesOnModuleGroup(
-      HloModuleGroup* module_group, se::StreamExecutor* executor,
+      HloModuleGroup* module_group,
+      absl::Span<se::StreamExecutor* const> executors,
       DeviceMemoryAllocator* device_allocator) = 0;
 
   // Compiles the HLO module for execution on a device given by the executor,

@@ -61,9 +61,6 @@ class XlaDeviceContext : public DeviceContext {
                              absl::string_view tensor_name, Device* device,
                              Tensor* cpu_tensor, StatusCallback done) override;
 
-  void CopyDeviceTensorToDevice(const Tensor& src_tensor, Tensor* dst_tensor,
-                                const StatusCallback& done);
-
   se::Stream* stream() const { return stream_.get(); }
 
  private:

@@ -246,15 +246,17 @@ TEST_F(OpSetsTest, BuiltinsOnly) {
 TEST_F(OpSetsTest, TfSelectOnly) {
   // --target_op_set=SELECT_TF_OPS
   SetAllowedOpSets({kSelectTfOps});
-  EXPECT_THAT(ImportExport({"Add", "AdjustHue", "UnrollAndFold"}),
-              ElementsAre());
+  EXPECT_THAT(
+      ImportExport({"Add", "AdjustHue", "RandomUniform", "UnrollAndFold"}),
+      ElementsAre());
   EXPECT_THAT(ImportExport({"Add"}), ElementsAre("custom:FlexAdd"));
 
   // --target_op_set=SELECT_TF_OPS --allow_custom_ops
   SetAllowedOpSets({kSelectTfOps, kCustomOps});
-  EXPECT_THAT(ImportExport({"Add", "AdjustHue", "UnrollAndFold"}),
-              ElementsAre("custom:FlexAdd", "custom:FlexAdjustHue",
-                          "custom:UnrollAndFold"));
+  EXPECT_THAT(
+      ImportExport({"Add", "AdjustHue", "RandomUniform", "UnrollAndFold"}),
+      ElementsAre("custom:AdjustHue", "custom:FlexAdd",
+                  "custom:FlexRandomUniform", "custom:UnrollAndFold"));
 }
 
 TEST_F(OpSetsTest, BuiltinsAndTfSelect) {
@@ -262,14 +264,15 @@ TEST_F(OpSetsTest, BuiltinsAndTfSelect) {
   SetAllowedOpSets({kTfLiteBuiltins, kSelectTfOps});
   EXPECT_THAT(ImportExport({"Add", "AdjustHue", "UnrollAndFold"}),
               ElementsAre());
-  EXPECT_THAT(ImportExport({"Add", "AdjustHue"}),
-              ElementsAre("builtin:ADD", "custom:FlexAdjustHue"));
+  EXPECT_THAT(ImportExport({"Add", "RandomUniform"}),
+              ElementsAre("builtin:ADD", "custom:FlexRandomUniform"));
 
   // --target_op_set=TFLITE_BUILTINS,SELECT_TF_OPS --allow_custom_ops
   SetAllowedOpSets({kTfLiteBuiltins, kSelectTfOps, kCustomOps});
-  EXPECT_THAT(ImportExport({"Add", "AdjustHue", "UnrollAndFold"}),
-              ElementsAre("builtin:ADD", "custom:FlexAdjustHue",
-                          "custom:UnrollAndFold"));
+  EXPECT_THAT(
+      ImportExport({"Add", "AdjustHue", "RandomUniform", "UnrollAndFold"}),
+      ElementsAre("builtin:ADD", "custom:AdjustHue", "custom:FlexRandomUniform",
+                  "custom:UnrollAndFold"));
 }
 
 // This test is based on a hypothetical scenario that dilation is supported
@@ -434,11 +437,11 @@ TEST(OperatorKeyTest, TestBuiltinOp) {
   auto op = absl::make_unique<ConvOperator>();
 
   const auto ops_by_type = BuildOperatorByTypeMap();
-  const auto key = details::GetOperatorKey(*op, ops_by_type, false);
+  const auto key = details::OperatorKey(*op, ops_by_type, false);
 
-  EXPECT_EQ(key.type, ::tflite::BuiltinOperator_CONV_2D);
-  EXPECT_EQ(key.custom_code, "");
-  EXPECT_EQ(key.version, 1);
+  EXPECT_EQ(key.type(), ::tflite::BuiltinOperator_CONV_2D);
+  EXPECT_EQ(key.custom_code(), "");
+  EXPECT_EQ(key.version(), 1);
 }
 
 TEST(OperatorKeyTest, TestCustomOp) {
@@ -446,11 +449,11 @@ TEST(OperatorKeyTest, TestCustomOp) {
   op->tensorflow_op = "MyCrazyCustomOp";
 
   const auto ops_by_type = BuildOperatorByTypeMap();
-  const auto key = details::GetOperatorKey(*op, ops_by_type, false);
+  const auto key = details::OperatorKey(*op, ops_by_type, false);
 
-  EXPECT_EQ(key.type, ::tflite::BuiltinOperator_CUSTOM);
-  EXPECT_EQ(key.custom_code, "MyCrazyCustomOp");
-  EXPECT_EQ(key.version, 1);
+  EXPECT_EQ(key.type(), ::tflite::BuiltinOperator_CUSTOM);
+  EXPECT_EQ(key.custom_code(), "MyCrazyCustomOp");
+  EXPECT_EQ(key.version(), 1);
 }
 
 TEST(OperatorKeyTest, TestFlexOp) {
@@ -459,22 +462,24 @@ TEST(OperatorKeyTest, TestFlexOp) {
 
   const auto ops_by_type = BuildOperatorByTypeMap();
   {
-    const auto key = details::GetOperatorKey(*op, ops_by_type, false);
+    const auto key = details::OperatorKey(*op, ops_by_type, false);
     // It shouldn't be converted to Flex op if `allow_flex_op` is false.
-    EXPECT_EQ(key.type, ::tflite::BuiltinOperator_CUSTOM);
-    EXPECT_EQ(key.custom_code, "BatchMatMul");
-    EXPECT_EQ(key.version, 1);
-    EXPECT_FALSE(key.is_flex_op);
+    EXPECT_EQ(key.type(), ::tflite::BuiltinOperator_CUSTOM);
+    EXPECT_EQ(key.custom_code(), "BatchMatMul");
+    EXPECT_EQ(key.version(), 1);
+    EXPECT_TRUE(key.is_custom_op());
+    EXPECT_FALSE(key.is_flex_op());
   }
 
   {
     // Verify that the custom op name is prefixed by "Flex" and `is_flex_op`
     // is true.
-    const auto key = details::GetOperatorKey(*op, ops_by_type, true);
-    EXPECT_EQ(key.type, ::tflite::BuiltinOperator_CUSTOM);
-    EXPECT_EQ(key.custom_code, "FlexBatchMatMul");
-    EXPECT_EQ(key.version, 1);
-    EXPECT_TRUE(key.is_flex_op);
+    const auto key = details::OperatorKey(*op, ops_by_type, true);
+    EXPECT_EQ(key.type(), ::tflite::BuiltinOperator_CUSTOM);
+    EXPECT_EQ(key.custom_code(), "FlexBatchMatMul");
+    EXPECT_EQ(key.version(), 1);
+    EXPECT_FALSE(key.is_custom_op());
+    EXPECT_TRUE(key.is_flex_op());
   }
 }
 
@@ -483,14 +488,15 @@ TEST(OperatorKeyTest, TestFlexWithControlFlowOp) {
   op->tensorflow_op = "Merge";
 
   const auto ops_by_type = BuildOperatorByTypeMap();
-  const auto key = details::GetOperatorKey(*op, ops_by_type, true);
+  const auto key = details::OperatorKey(*op, ops_by_type, true);
 
-  EXPECT_EQ(key.type, ::tflite::BuiltinOperator_CUSTOM);
-  EXPECT_EQ(key.custom_code, "FlexMerge");
-  EXPECT_EQ(key.version, 1);
-  EXPECT_TRUE(key.is_flex_op);
+  EXPECT_EQ(key.type(), ::tflite::BuiltinOperator_CUSTOM);
+  EXPECT_EQ(key.custom_code(), "FlexMerge");
+  EXPECT_EQ(key.version(), 1);
+  EXPECT_FALSE(key.is_custom_op());
+  EXPECT_TRUE(key.is_flex_op());
   // The control flow ops should be marked as unsupported.
-  EXPECT_TRUE(key.is_unsupported_flex_op);
+  EXPECT_TRUE(key.is_unsupported_flex_op());
 }
 
 TEST(OperatorKeyTest, TestFlexWithUnsupportedOp) {
@@ -498,14 +504,16 @@ TEST(OperatorKeyTest, TestFlexWithUnsupportedOp) {
   op->tensorflow_op = "HashTableV2";
 
   const auto ops_by_type = BuildOperatorByTypeMap();
-  const auto key = details::GetOperatorKey(*op, ops_by_type, true);
+  const auto key = details::OperatorKey(*op, ops_by_type, true);
 
-  EXPECT_EQ(key.type, ::tflite::BuiltinOperator_CUSTOM);
-  EXPECT_EQ(key.custom_code, "FlexHashTableV2");
-  EXPECT_EQ(key.version, 1);
-  EXPECT_TRUE(key.is_flex_op);
-  // The control flow ops should be marked as unsupported.
-  EXPECT_TRUE(key.is_unsupported_flex_op);
+  EXPECT_EQ(key.type(), ::tflite::BuiltinOperator_CUSTOM);
+  EXPECT_EQ(key.custom_code(), "HashTableV2");
+  EXPECT_EQ(key.version(), 1);
+  // While HashTableV2 is excluded from the whitelisted flex op list, eventually
+  // it won't be, and the following expectations will need to change as the op
+  // is explicitly blacklisted due to lack of asset support.
+  EXPECT_FALSE(key.is_flex_op());
+  EXPECT_FALSE(key.is_unsupported_flex_op());
 }
 
 TEST(OperatorKeyTest, TestFlexWithPartiallySupportedOps) {
@@ -519,11 +527,12 @@ TEST(OperatorKeyTest, TestFlexWithPartiallySupportedOps) {
   {
     // If NodeDef isn't retained in the Toco op, a regular custom op
     // will be exported.
-    const auto key = details::GetOperatorKey(*op, ops_by_type, true);
-    EXPECT_EQ(key.type, ::tflite::BuiltinOperator_CUSTOM);
-    EXPECT_EQ(key.custom_code, "Assert");
-    EXPECT_EQ(key.version, 1);
-    EXPECT_FALSE(key.is_flex_op);
+    const auto key = details::OperatorKey(*op, ops_by_type, true);
+    EXPECT_EQ(key.type(), ::tflite::BuiltinOperator_CUSTOM);
+    EXPECT_EQ(key.custom_code(), "Assert");
+    EXPECT_EQ(key.version(), 1);
+    EXPECT_TRUE(key.is_custom_op());
+    EXPECT_FALSE(key.is_flex_op());
   }
 
   ::tensorflow::NodeDef node_def;
@@ -533,11 +542,12 @@ TEST(OperatorKeyTest, TestFlexWithPartiallySupportedOps) {
 
   {
     // If NodeDef is retained in the Toco op, a Flex op will be exported.
-    const auto key = details::GetOperatorKey(*op, ops_by_type, true);
-    EXPECT_EQ(key.type, ::tflite::BuiltinOperator_CUSTOM);
-    EXPECT_EQ(key.custom_code, "FlexAssert");
-    EXPECT_EQ(key.version, 1);
-    EXPECT_TRUE(key.is_flex_op);
+    const auto key = details::OperatorKey(*op, ops_by_type, true);
+    EXPECT_EQ(key.type(), ::tflite::BuiltinOperator_CUSTOM);
+    EXPECT_EQ(key.custom_code(), "FlexAssert");
+    EXPECT_EQ(key.version(), 1);
+    EXPECT_FALSE(key.is_custom_op());
+    EXPECT_TRUE(key.is_flex_op());
   }
 }
 

@@ -49,10 +49,10 @@ class XlaDeviceDummyOp : public OpKernel {
   void Compute(OpKernelContext* ctx) override;
 };
 
-class XlaAssignVariableOp : public AsyncOpKernel {
+class XlaAssignVariableOp : public OpKernel {
  public:
   explicit XlaAssignVariableOp(OpKernelConstruction* c);
-  void ComputeAsync(OpKernelContext* context, DoneCallback done) override;
+  void Compute(OpKernelContext* context) override;
 
  private:
   DataType dtype_;

@@ -89,8 +89,8 @@ PyObject* TocoConvert(PyObject* model_flags_proto_txt_raw,
   auto status = Export(toco_flags, *model, toco_flags.allow_custom_ops(),
                        &output_file_contents_txt);
   if (!status.ok()) {
-    fprintf(stderr, "Toco failure: %s\n", status.error_message().c_str());
-    return TOCO_FROM_CPPSTRING_TO_PY("", 0);
+    PyErr_SetString(PyExc_Exception, status.error_message().c_str());
+    return nullptr;
   }
   if (extended_return) {
     PyObject* dict = PyDict_New();

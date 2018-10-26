@@ -234,6 +234,26 @@ TEST(PadOpTest, SimpleConstImageStyleTest) {
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1, 4, 4, 1}));
 }
 
+// Optimized versions may choose to handle zero-sized images differently.
+TEST(PadOpTest, ZeroHeightConstImageStyleTest) {
+  PadOpConstModel m({TensorType_FLOAT32, {1, 0, 2, 1}}, {4, 2},
+                    {0, 0, 1, 1, 1, 1, 0, 0}, {TensorType_FLOAT32});
+  // Nothing to SetInput().
+  m.Invoke();
+  EXPECT_THAT(m.GetOutput(), ElementsAreArray({0, 0, 0, 0, 0, 0, 0, 0}));
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1, 2, 4, 1}));
+}
+
+// Optimized versions may choose to handle zero-sized images differently.
+TEST(PadOpTest, ZeroWidthConstImageStyleTest) {
+  PadOpConstModel m({TensorType_FLOAT32, {1, 2, 0, 1}}, {4, 2},
+                    {0, 0, 1, 1, 1, 1, 0, 0}, {TensorType_FLOAT32});
+  // Nothing to SetInput().
+  m.Invoke();
+  EXPECT_THAT(m.GetOutput(), ElementsAreArray({0, 0, 0, 0, 0, 0, 0, 0}));
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1, 4, 2, 1}));
+}
+
 TEST(PadOpTest, SimpleConst1DTest) {
   PadOpConstModel m({TensorType_FLOAT32, {2}}, {1, 2}, {1, 2},
                     {TensorType_FLOAT32});

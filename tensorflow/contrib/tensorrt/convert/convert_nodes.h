@@ -192,16 +192,13 @@ class TRT_ShapedWeights {
   // TODO(aaroey): use rvalue reference.
   TRT_ShapedWeights(const TRT_ShapedWeights& rhs);
 
-  nvinfer1::Weights GetWeightsForTRT() const;
+  nvinfer1::Weights GetTrtWeights() const;
 
   const void* GetValues() const { return values_; }
 
   int64_t count() const;
 
   size_t size_bytes() const;
-
-  // Default converter
-  operator nvinfer1::Weights() const { return GetWeightsForTRT(); }
 
   string DebugString() const;
 

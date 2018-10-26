@@ -51,6 +51,10 @@ ln -s /usr/local/bin/pip3.6 /usr/local/bin/pip3
 
 pip3 install --upgrade pip
 
+# Install last working version of setuptools. This must happen before we install
+# absl-py, which uses install_requires notation introduced in setuptools 20.5.
+pip3 install --upgrade setuptools==39.1.0
+
 pip3 install --upgrade virtualenv
 
 set -e
@@ -97,8 +101,6 @@ pip3 install --upgrade astor
 pip3 install --upgrade gast
 pip3 install --upgrade termcolor
 
-# Install last working version of setuptools.
-pip3 install --upgrade setuptools==39.1.0
 pip3 install --upgrade h5py==2.8.0
 
 # Keras
