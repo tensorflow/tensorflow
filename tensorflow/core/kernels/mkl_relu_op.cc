@@ -182,7 +182,7 @@ class MklEltwiseFwdPrimitiveFactory : public MklPrimitiveFactory<T> {
 
     // Get a eltwise fwd primitive from the cached pool
     std::shared_ptr<MklEltwiseFwdPrimitive<T>> eltwise_forward =
-        std::pointer_static_cast<MklEltwiseFwdPrimitive<T>>(
+        std::static_pointer_cast<MklEltwiseFwdPrimitive<T>>(
             MklEltwiseFwdPrimitiveFactory<T>::GetInstance().GetEltwiseFwd(
                 fwdParams, src_fmt));
 
