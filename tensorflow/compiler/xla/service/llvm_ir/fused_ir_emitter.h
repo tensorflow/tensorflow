@@ -52,7 +52,8 @@ namespace xla {
 // same length.
 class FusedIrEmitter : public DfsHloVisitorWithDefault {
  public:
-  using Generator = llvm_ir::ElementGenerator;
+  using IndexedGenerator = llvm_ir::ElementGenerator;
+  using NonIndexedGenerator = std::function<StatusOr<llvm::Value*>()>;
 
   FusedIrEmitter(absl::Span<const llvm_ir::IrArray> parameter_arrays,
                  ElementalIrEmitter* elemental_emitter)
@@ -76,17 +77,10 @@ class FusedIrEmitter : public DfsHloVisitorWithDefault {
   Status FinishVisit(HloInstruction* root) override;
 
   // Returns the generator function for the root of the fused computation.
-  Generator GetRootGenerator() const;
+  IndexedGenerator GetRootGenerator() const;
 
   // Returns the generator function for the given instruction.
-  Generator GetGenerator(const HloInstruction* instruction) const;
-
-  // Returns the ir value for instruction 'hlo'.
-  llvm::Value* GetIrValueForGTE(const HloInstruction* hlo) const {
-    auto it = gte_values_.find(hlo);
-    CHECK(it != gte_values_.end());
-    return it->second;
-  }
+  IndexedGenerator GetGenerator(const HloInstruction* instruction) const;
 
   void SetTiledParameterInfo(const llvm_ir::TiledParameterInfo* info) {
     tiled_parameter_info_ = info;
@@ -106,19 +100,23 @@ class FusedIrEmitter : public DfsHloVisitorWithDefault {
   llvm::IRBuilder<>* b_;
   llvm::Module* module_;
 
-  // Map from instruction pointers to functions to generate elements of their
-  // outputs
-  std::unordered_map<const HloInstruction*, Generator> generators_;
+  // Map from instructions to functions that generate code for the output
+  // elements. If an instruction is a GetTupleElement instruction, the
+  // instruction produces non-tuple result.
+  std::unordered_map<const HloInstruction*, IndexedGenerator>
+      indexed_generators_;
+
+  // Map from tuple-result-producing GetTupleELement instructions to functions
+  // that generate the base pointers for the output elements. This is used to
+  // support the translation of nested GetTupleElement instructions.
+  std::unordered_map<const HloInstruction*, NonIndexedGenerator>
+      non_indexed_generators_;
 
   // Cache of generated values, lest we regenerate an element of a node with
   // multiple outgoing edges
   std::unordered_map<const HloInstruction*,
                      std::map<std::vector<llvm::Value*>, llvm::Value*>>
       generated_value_cache_;
-
-  // Stores ir values required to emit fused (and possibly nested)
-  // GetTupleElement instructions.
-  std::unordered_map<const HloInstruction*, llvm::Value*> gte_values_;
 };
 
 }  // namespace xla
