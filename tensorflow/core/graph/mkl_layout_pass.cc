@@ -903,7 +903,7 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
       string data_format);
 
   static bool CheckForTranspose(const Node* node, std::vector<int> perm) {
-    // Check node node, to see if it's "Transpose"
+    // Check if node's type is "Transpose"
     if (node->type_string() != "Transpose") return false;
 
     // Check if has out control edge. If true, this is a training graph.
