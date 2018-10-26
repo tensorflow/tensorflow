@@ -308,11 +308,6 @@ tensorflow/contrib/model_pruning/examples
 tensorflow/contrib/model_pruning/examples/cifar10
 tensorflow/contrib/model_pruning/python
 tensorflow/contrib/model_pruning/python/layers
-tensorflow/contrib/nccl
-tensorflow/contrib/nccl/kernels
-tensorflow/contrib/nccl/ops
-tensorflow/contrib/nccl/python
-tensorflow/contrib/nccl/python/ops
 tensorflow/contrib/nearest_neighbor
 tensorflow/contrib/nearest_neighbor/kernels
 tensorflow/contrib/nearest_neighbor/ops

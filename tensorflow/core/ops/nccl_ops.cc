@@ -29,21 +29,7 @@ REGISTER_OP("NcclAllReduce")
     .Attr("num_devices: int")
     .Attr("shared_name: string")
     .SetIsStateful()
-    .SetShapeFn(shape_inference::UnchangedShape)
-    .Doc(R"doc(
-Outputs a tensor containing the reduction across all input tensors passed to ops
-within the same `shared_name.
-
-The graph should be constructed so if one op runs with shared_name value `c`,
-then `num_devices` ops will run with shared_name value `c`.  Failure to do so
-will cause the graph execution to fail to complete.
-
-input: the input to the reduction
-data: the value of the reduction across all `num_devices` devices.
-reduction: the reduction operation to perform.
-num_devices: The number of devices participating in this reduction.
-shared_name: Identifier that shared between ops of the same reduction.
-)doc");
+    .SetShapeFn(shape_inference::UnchangedShape);
 
 // Note: This op has no kernel implementation, but is replaced by
 // _NcclReduceSend and _NcclReduceRecv during graph optimization stage.
@@ -54,17 +40,7 @@ REGISTER_OP("NcclReduce")
     .Attr("T: {half, float, float64, int32, int64}")
     .Attr("num_devices: int")
     .SetIsStateful()
-    .SetShapeFn(shape_inference::UnchangedShape)
-    .Doc(R"doc(
-Reduces `input` from `num_devices` using `reduction` to a single device.
-
-The graph should be constructed so that all inputs have a valid device
-assignment, and the op itself is assigned one of these devices.
-
-input: The input to the reduction.
-data: the value of the reduction across all `num_devices` devices.
-reduction: the reduction operation to perform.
-    )doc");
+    .SetShapeFn(shape_inference::UnchangedShape);
 
 REGISTER_OP("_NcclReduceSend")
     .Input("input: T")
@@ -121,17 +97,7 @@ REGISTER_OP("NcclBroadcast")
     .Attr("T: {half, float, float64, int32, int64}")
     .Attr("shape: shape")
     .SetIsStateful()
-    .SetShapeFn(shape_inference::UnchangedShape)
-    .Doc(R"doc(
-Sends `input` to all devices that are connected to the output.
-
-The graph should be constructed so that all ops connected to the output have a
-valid device assignment, and the op itself is assigned one of these devices.
-
-input: The input to the broadcast.
-output: The same as input.
-shape: The shape of the input tensor.
-    )doc");
+    .SetShapeFn(shape_inference::UnchangedShape);
 
 REGISTER_OP("_NcclBroadcastSend")
     .Input("input: T")

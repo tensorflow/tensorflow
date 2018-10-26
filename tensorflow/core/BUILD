@@ -1068,6 +1068,7 @@ tf_gen_op_libs(
         "logging_ops",
         "manip_ops",
         "math_ops",
+        "nccl_ops",
         "nn_ops",
         "no_op",
         "parsing_ops",
@@ -1216,6 +1217,7 @@ cc_library(
         ":lookup_ops_op_lib",
         ":manip_ops_op_lib",
         ":math_ops_op_lib",
+        ":nccl_ops_op_lib",
         ":nn_ops_op_lib",
         ":no_op_op_lib",
         ":parsing_ops_op_lib",
@@ -1395,6 +1397,7 @@ cc_library(
         "//tensorflow/core/kernels:fact_op",
         "//tensorflow/core/kernels:array_not_windows",
         "//tensorflow/core/kernels:math_not_windows",
+        "//tensorflow/core/kernels:nccl_kernels",
         "//tensorflow/core/kernels:quantized_ops",
         "//tensorflow/core/kernels/neon:neon_depthwise_conv_op",
     ]) + if_mkl([
