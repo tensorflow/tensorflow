@@ -37,9 +37,6 @@ load(
     tags = tags + [
         "gen_zip_test",
         "no_oss",
-        "noasan",  # b/118502200
-        "notsan",
-        "nomsan",
         "tflite_not_portable_intentional",
     ],
     test_name = test_name,
