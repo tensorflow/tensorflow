@@ -20,6 +20,8 @@ limitations under the License.
 #include <memory>
 #include <string>
 #include <vector>
+#include <utility>
+#include <set>
 
 #include "absl/memory/memory.h"
 #include "tensorflow/c/c_api.h"
@@ -234,6 +236,67 @@ tensorflow::Status UpdateTFE_ContextWithServerDef(
   return tensorflow::Status::OK();
 #undef LOG_AND_RETURN_IF_ERROR
 }
+
+tensorflow::Status OpInferSingleInputAttrs(TFE_Op* op,
+                                           TFE_TensorHandle* input) {
+  TFE_OpInferenceContext* ictx = op->inference_ctx;
+  const std::string& type_attr =
+      ictx->op_def->input_arg(ictx->input_idx++).type_attr();
+  if (!type_attr.empty() && ictx->attrs.find(type_attr) == ictx->attrs.cend()) {
+    op->operation.MutableAttrs()->Set(type_attr, input->handle->dtype);
+    ictx->attrs.insert(type_attr);
+  }
+  return tensorflow::Status::OK();
+}
+
+void OpInferSingleTypeInputListAttrs(TFE_Op* op,
+                                     const tensorflow::OpDef_ArgDef& input_def,
+                                     TFE_TensorHandle** inputs,
+                                     int num_inputs) {
+  TFE_OpInferenceContext* ictx = op->inference_ctx;
+  if (ictx->attrs.find(input_def.number_attr()) == ictx->attrs.cend()) {
+    op->operation.MutableAttrs()->Set(input_def.number_attr(), num_inputs);
+    ictx->attrs.insert(input_def.number_attr());
+  }
+  if (ictx->attrs.find(input_def.type_attr()) == ictx->attrs.cend()) {
+    op->operation.MutableAttrs()->Set(input_def.type_attr(),
+        inputs[0]->handle->dtype);
+    ictx->attrs.insert(input_def.type_attr());
+  }
+}
+
+void OpInferMixedTypeInputListAttrs(TFE_Op* op,
+                                    const tensorflow::OpDef_ArgDef& input_def,
+                                    TFE_TensorHandle** inputs, int num_inputs) {
+  TFE_OpInferenceContext* ictx = op->inference_ctx;
+  if (ictx->attrs.find(input_def.type_list_attr()) == ictx->attrs.cend()) {
+    std::unique_ptr<tensorflow::DataType[]> dtypes(
+        new tensorflow::DataType[num_inputs]);
+    for (int i = 0; i < num_inputs; ++i) {
+      dtypes[i] = inputs[i]->handle->dtype;
+    }
+    op->operation.MutableAttrs()->Set(input_def.type_list_attr(),
+        tensorflow::gtl::ArraySlice<const tensorflow::DataType>(
+            dtypes.get(), num_inputs));
+    ictx->attrs.insert(input_def.type_list_attr());
+  }
+}
+
+tensorflow::Status OpInferInputListAttrs(TFE_Op* op, TFE_TensorHandle** inputs,
+                                         int num_inputs) {
+  TFE_OpInferenceContext* ictx = op->inference_ctx;
+  const auto& input_def = ictx->op_def->input_arg(ictx->input_idx++);
+  if (!input_def.type_list_attr().empty()) {
+    OpInferMixedTypeInputListAttrs(op, input_def, inputs, num_inputs);
+  } else if (!input_def.type_attr().empty()
+      && !input_def.number_attr().empty()) {
+    OpInferSingleTypeInputListAttrs(op, input_def, inputs, num_inputs);
+  } else {
+    return tensorflow::errors::InvalidArgument("Invalid input list definition");
+  }
+  return tensorflow::Status::OK();
+}
+
 }  // namespace
 
 extern "C" {
@@ -249,9 +312,15 @@ void TFE_ContextOptionsSetAsync(TFE_ContextOptions* options,
                                 unsigned char enable) {
   options->async = enable;
 }
+
 void TFE_ContextOptionsSetDevicePlacementPolicy(
     TFE_ContextOptions* options, TFE_ContextDevicePlacementPolicy policy) {
   options->policy = policy;
+}
+
+void TFE_ContextOptionsSetInferInputAttrs(TFE_ContextOptions* options,
+                                          unsigned char enable) {
+  options->input_attrs_inference = enable;
 }
 
 TF_CAPI_EXPORT extern void TFE_ContextSetAsyncForThread(TFE_Context* ctx,
@@ -276,7 +345,8 @@ TFE_Context* TFE_NewContext(const TFE_ContextOptions* opts, TF_Status* status) {
 
   return new TFE_Context(opts->session_options.options, opts->policy,
                          opts->async, device_mgr.release(),
-                         /*device_mgr_owned*/ true, r);
+                         /*device_mgr_owned*/ true, r,
+                         opts->input_attrs_inference);
 }
 
 TFE_Context* TFE_NewContextFromSession(const TFE_ContextOptions* opts,
@@ -288,7 +358,7 @@ TFE_Context* TFE_NewContextFromSession(const TFE_ContextOptions* opts,
       new tensorflow::IntraProcessRendezvous(device_mgr);
   return new TFE_Context(opts->session_options.options, opts->policy,
                          opts->async, device_mgr, /*device_mgr_owned*/ false,
-                         r);
+                         r, opts->input_attrs_inference);
 }
 
 void TFE_DeleteContext(TFE_Context* ctx) { delete ctx; }
@@ -503,12 +573,24 @@ TFE_Op* TFE_NewOp(TFE_Context* ctx, const char* op_or_function_name,
           "registered in the binary running in this process.");
       return nullptr;
     }
-    return new TFE_Op(ctx, name, is_function, types);
+    if (!is_function && ctx->input_attrs_inference) {
+      const tensorflow::OpDef* op_def;
+      status->status = tensorflow::OpDefForOp(op_or_function_name, &op_def);
+      TF_RETURN_IF_ERROR(status->status);
+      return new TFE_Op(ctx, name, is_function, types,
+          new TFE_OpInferenceContext(op_def));
+    }
+    return new TFE_Op(ctx, name, is_function, types, nullptr);
   }
   return nullptr;
 }
 
-void TFE_DeleteOp(TFE_Op* op) { delete op; }
+void TFE_DeleteOp(TFE_Op* op) {
+  if (op->inference_ctx != nullptr) {
+    delete op->inference_ctx;
+  }
+  delete op;
+}
 
 void TFE_OpSetDevice(TFE_Op* op, const char* device_name, TF_Status* status) {
   status->status = op->operation.SetDevice(device_name);
@@ -529,8 +611,21 @@ void TFE_OpSetXLACompilation(TFE_Op* op, unsigned char enable) {
 #endif  // TENSORFLOW_EAGER_USE_XLA
 }
 
-void TFE_OpAddInput(TFE_Op* op, TFE_TensorHandle* h, TF_Status* status) {
-  op->operation.AddInput(h->handle);
+void TFE_OpAddInput(TFE_Op* op, TFE_TensorHandle* input, TF_Status* status) {
+  op->operation.AddInput(input->handle);
+  if (op->inference_ctx != nullptr) {
+    status->status = OpInferSingleInputAttrs(op, input);
+  }
+}
+
+void TFE_OpAddInputList(TFE_Op* op, TFE_TensorHandle** inputs, int num_inputs,
+                        TF_Status* status) {
+  for (int i = 0; i < num_inputs; ++i) {
+    op->operation.AddInput(inputs[i]->handle);
+  }
+  if (op->inference_ctx != nullptr && num_inputs > 0) {
+    status->status = OpInferInputListAttrs(op, inputs, num_inputs);
+  }
 }
 
 TF_AttrType TFE_OpGetAttrType(TFE_Op* op, const char* attr_name,
