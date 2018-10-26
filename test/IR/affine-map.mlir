@@ -185,8 +185,8 @@ extfunc @f0(memref<2x4xi8, #map0, 1>)
 // CHECK: extfunc @f1(memref<2x4xi8, #map{{[0-9]+}}, 1>)
 extfunc @f1(memref<2x4xi8, #map1, 1>)
 
-// CHECK: extfunc @f2(memref<2xi8, #map{{[0-9]+}}, 1>)
-extfunc @f2(memref<2xi8, #map2, 1>)
+// CHECK: extfunc @f2(memref<i8, #map{{[0-9]+}}, 1>)
+extfunc @f2(memref<i8, #map2, 1>)
 
 // CHECK: extfunc @f3(memref<2x4xi8, #map{{[0-9]+}}, 1>)
 extfunc @f3(memref<2x4xi8, #map3, 1>)
@@ -299,8 +299,8 @@ extfunc @f33(memref<2x4xi8, #map33, 1>)
 // CHECK: extfunc @f34(memref<2x4xi8, #map{{[0-9]+}}, 1>)
 extfunc @f34(memref<2x4xi8, #map34, 1>)
 
-// CHECK: extfunc @f35(memref<2x4xi8, #map{{[0-9]+}}, 1>)
-extfunc @f35(memref<2x4xi8, #map35, 1>)
+// CHECK: extfunc @f35(memref<2x4x4xi8, #map{{[0-9]+}}, 1>)
+extfunc @f35(memref<2x4x4xi8, #map35, 1>)
 
 // CHECK: extfunc @f36(memref<2x4xi8, #map{{[0-9]+}}, 1>)
 extfunc @f36(memref<2x4xi8, #map36, 1>)

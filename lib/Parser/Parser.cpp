@@ -529,6 +529,7 @@ Type *Parser::parseMemRefType() {
   SmallVector<AffineMap, 2> affineMapComposition;
   unsigned memorySpace = 0;
   bool parsedMemorySpace = false;
+  auto compositionLoc = getToken().getLoc();
 
   auto parseElt = [&]() -> ParseResult {
     if (getToken().is(Token::integer)) {
@@ -563,6 +564,13 @@ Type *Parser::parseMemRefType() {
   } else {
     if (parseToken(Token::greater, "expected ',' or '>' in memref type"))
       return nullptr;
+  }
+
+  if (!affineMapComposition.empty() &&
+      affineMapComposition.front().getNumDims() != dimensions.size()) {
+    emitError(compositionLoc,
+              "affine map dimension count must equal memref rank");
+    return nullptr;
   }
 
   return MemRefType::get(dimensions, elementType, affineMapComposition,

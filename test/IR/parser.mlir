@@ -67,8 +67,8 @@ extfunc @vectors(vector<1 x f32>, vector<2x4xf32>)
 extfunc @tensors(tensor<* x f32>, tensor<* x vector<2x4xf32>>,
                  tensor<1x?x4x?x?xi32>, tensor<i8>)
 
-// CHECK: extfunc @memrefs(memref<1x?x4x?x?xi32, #map{{[0-9]+}}>, memref<i8, #map{{[0-9]+}}>)
-extfunc @memrefs(memref<1x?x4x?x?xi32, #map0>, memref<i8, #map1>)
+// CHECK: extfunc @memrefs(memref<1x?x4x?x?xi32, #map{{[0-9]+}}>, memref<8xi8, #map{{[0-9]+}}>)
+extfunc @memrefs(memref<1x?x4x?x?xi32, #map0>, memref<8xi8, #map1>)
 
 // Test memref affine map compositions.
 
@@ -89,8 +89,8 @@ extfunc @memrefs3(memref<2x4x8xi8, (d0, d1, d2) -> (d0, d1, d2)>)
 // CHECK: extfunc @memrefs33(memref<2x4x8xi8, #map{{[0-9]+}}, #map{{[0-9]+}}, 1>)
 extfunc @memrefs33(memref<2x4x8xi8, (d0, d1, d2) -> (d0, d1, d2), (d0, d1, d2) -> (d1, d0, d2), 1>)
 
-// CHECK: extfunc @functions((memref<1x?x4x?x?xi32, #map0>, memref<i8, #map1>) -> (), () -> ())
-extfunc @functions((memref<1x?x4x?x?xi32, #map0, 0>, memref<i8, #map1, 0>) -> (), ()->())
+// CHECK: extfunc @functions((memref<1x?x4x?x?xi32, #map0>, memref<8xi8, #map1>) -> (), () -> ())
+extfunc @functions((memref<1x?x4x?x?xi32, #map0, 0>, memref<8xi8, #map1, 0>) -> (), ()->())
 
 // CHECK-LABEL: cfgfunc @simpleCFG(i32, f32) -> i1 {
 cfgfunc @simpleCFG(i32, f32) -> i1 {
