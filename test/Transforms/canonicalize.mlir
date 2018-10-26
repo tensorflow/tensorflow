@@ -28,15 +28,19 @@ mlfunc @dim(%arg0 : tensor<8x4xf32>) -> index {
   return %0 : index
 }
 
-// CHECK-LABEL: mlfunc @test_associative
-mlfunc @test_associative(%arg0: i32) -> i32 {
+// CHECK-LABEL: mlfunc @test_commutative
+mlfunc @test_commutative(%arg0: i32) -> (i32, i32) {
   // CHECK: %c42_i32 = constant 42 : i32
-  // CHECK-NEXT: %0 = addi %arg0, %c42_i32 : i32
-  // CHECK-NEXT: return %0
-
   %c42_i32 = constant 42 : i32
+  // CHECK-NEXT: %0 = addi %arg0, %c42_i32 : i32
   %y = addi %c42_i32, %arg0 : i32
-  return %y: i32
+
+  // This should not be swapped.
+  // CHECK-NEXT: %1 = subi %c42_i32, %arg0 : i32
+  %z = subi %c42_i32, %arg0 : i32
+
+  // CHECK-NEXT: return %0, %1
+  return %y, %z: i32, i32
 }
 
 // CHECK-LABEL: mlfunc @trivial_dce
@@ -141,3 +145,16 @@ mlfunc @hoist_constant(%arg0 : memref<8xi32>) {
   }
   return
 }
+
+// CHECK-LABEL: mlfunc @const_fold_propagate
+mlfunc @const_fold_propagate() -> memref<?x?xf32> {
+  %VT_i = constant 512 : index
+
+  %VT_i_s = affine_apply (d0) -> (d0 floordiv  8) (%VT_i)
+  %VT_k_l = affine_apply (d0) -> (d0 floordiv  16) (%VT_i)
+
+  // CHECK: = alloc() : memref<64x32xf32>
+  %Av = alloc(%VT_i_s, %VT_k_l) : memref<?x?xf32>
+  return %Av : memref<?x?xf32>
+ }
+

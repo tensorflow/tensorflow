@@ -33,9 +33,6 @@ Some important things to think about w.r.t. canonicalization patterns:
     canonicalize "x + x" into "x * 2", because this reduces the number of uses
     of x by one.
 
-TODO: These patterns are currently defined directly in the canonicalization
-pass, but they will be split out soon.
-
 ## Globally Applied Rules
 
 These transformation are applied to all levels of IR:

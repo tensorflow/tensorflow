@@ -202,6 +202,28 @@ void GreedyPatternRewriteDriver::simplifyFunction(Function *currentFunction,
         else
           cstValue = rewriter.create<ConstantOp>(
               op->getLoc(), resultConstants[i], res->getType());
+
+        // Add all the users of the result to the worklist so we make sure to
+        // revisit them.
+        //
+        // TODO: This is super gross. SSAValue use iterators should have an
+        // "owner" that can be downcasted to operation and other things.  This
+        // will require a rejiggering of the class hierarchies.
+        if (auto *stmt = dyn_cast<OperationStmt>(op)) {
+          // TODO: Add a result->getUsers() iterator.
+          for (auto &operand : stmt->getResult(i)->getUses()) {
+            if (auto *op = dyn_cast<OperationStmt>(operand.getOwner()))
+              addToWorklist(op);
+          }
+        } else {
+          auto *inst = cast<OperationInst>(op);
+          // TODO: Add a result->getUsers() iterator.
+          for (auto &operand : inst->getResult(i)->getUses()) {
+            if (auto *op = dyn_cast<OperationInst>(operand.getOwner()))
+              addToWorklist(op);
+          }
+        }
+
         res->replaceAllUsesWith(cstValue);
       }
 
@@ -210,10 +232,10 @@ void GreedyPatternRewriteDriver::simplifyFunction(Function *currentFunction,
       continue;
     }
 
-    // If this is an associative binary operation with a constant on the LHS,
-    // move it to the right side.
+    // If this is a commutative binary operation with a constant on the left
+    // side move it to the right side.
     if (operandConstants.size() == 2 && operandConstants[0] &&
-        !operandConstants[1]) {
+        !operandConstants[1] && op->isCommutative()) {
       auto *newLHS = op->getOperand(1);
       op->setOperand(1, op->getOperand(0));
       op->setOperand(0, newLHS);
