@@ -354,6 +354,7 @@ public:
   using ArrayAttrSet = DenseSet<ArrayAttributeStorage *, ArrayAttrKeyInfo>;
   ArrayAttrSet arrayAttrs;
   DenseMap<AffineMap, AffineMapAttributeStorage *> affineMapAttrs;
+  DenseMap<IntegerSet, IntegerSetAttributeStorage *> integerSetAttrs;
   DenseMap<Type *, TypeAttributeStorage *> typeAttrs;
   using AttributeListSet =
       DenseSet<AttributeListStorage *, AttributeListKeyInfo>;
@@ -867,6 +868,19 @@ AffineMapAttr AffineMapAttr::get(AffineMap value) {
   new (result) AffineMapAttributeStorage{{Attribute::Kind::AffineMap,
                                           /*isOrContainsFunction=*/false},
                                          value};
+  return result;
+}
+
+IntegerSetAttr IntegerSetAttr::get(IntegerSet value) {
+  auto *context = value.getConstraint(0).getContext();
+  auto &result = context->getImpl().integerSetAttrs[value];
+  if (result)
+    return result;
+
+  result = context->getImpl().allocator.Allocate<IntegerSetAttributeStorage>();
+  new (result) IntegerSetAttributeStorage{{Attribute::Kind::IntegerSet,
+                                           /*isOrContainsFunction=*/false},
+                                          value};
   return result;
 }
 

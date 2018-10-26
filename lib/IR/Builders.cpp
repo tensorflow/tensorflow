@@ -140,6 +140,10 @@ AffineMapAttr Builder::getAffineMapAttr(AffineMap map) {
   return AffineMapAttr::get(map);
 }
 
+IntegerSetAttr Builder::getIntegerSetAttr(IntegerSet set) {
+  return IntegerSetAttr::get(set);
+}
+
 TypeAttr Builder::getTypeAttr(Type *type) {
   return TypeAttr::get(type, context);
 }

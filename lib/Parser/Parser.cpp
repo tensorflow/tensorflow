@@ -201,6 +201,7 @@ public:
 
   // Polyhedral structures.
   void parseAffineStructureInline(AffineMap *map, IntegerSet *set);
+  void parseAffineStructureReference(AffineMap *map, IntegerSet *set);
   AffineMap parseAffineMapInline();
   AffineMap parseAffineMapReference();
   IntegerSet parseIntegerSetInline();
@@ -873,10 +874,16 @@ Attribute Parser::parseAttribute() {
   }
   case Token::hash_identifier:
   case Token::l_paren: {
-    // Try to parse affine map reference.
-    if (auto affineMap = parseAffineMapReference())
-      return builder.getAffineMapAttr(affineMap);
-    return (emitError("expected constant attribute value"), nullptr);
+    // Try to parse an affine map or an integer set reference.
+    AffineMap map;
+    IntegerSet set;
+    parseAffineStructureReference(&map, &set);
+    if (map)
+      return builder.getAffineMapAttr(map);
+    if (set)
+      return builder.getIntegerSetAttr(set);
+    return (emitError("expected affine map or integer set attribute value"),
+            nullptr);
   }
 
   case Token::at_identifier: {
@@ -1718,18 +1725,76 @@ AffineMap Parser::parseAffineMapInline() {
   return map;
 }
 
-AffineMap Parser::parseAffineMapReference() {
-  if (getToken().is(Token::hash_identifier)) {
-    // Parse affine map identifier and verify that it exists.
-    StringRef affineMapId = getTokenSpelling().drop_front();
-    if (getState().affineMapDefinitions.count(affineMapId) == 0)
-      return (emitError("undefined affine map id '" + affineMapId + "'"),
-              AffineMap::Null());
-    consumeToken(Token::hash_identifier);
-    return getState().affineMapDefinitions[affineMapId];
+/// Parse either an affine map reference or integer set reference.
+///
+///  affine-structure ::= affine-structure-id | affine-structure-inline
+///  affine-structure-id ::= `#` suffix-id
+///
+///  affine-structure ::= affine-map | integer-set
+///
+void Parser::parseAffineStructureReference(AffineMap *map, IntegerSet *set) {
+  assert((map || set) && "both map and set are non-null");
+  if (getToken().isNot(Token::hash_identifier)) {
+    // Try to parse inline affine map or integer set.
+    return parseAffineStructureInline(map, set);
   }
-  // Try to parse inline affine map.
-  return parseAffineMapInline();
+
+  // Parse affine map / integer set identifier and verify that it exists.
+  // Note that an id can't be in both affineMapDefinitions and
+  // integerSetDefinitions since they use the same sigil '#'.
+  StringRef affineStructId = getTokenSpelling().drop_front();
+  if (getState().affineMapDefinitions.count(affineStructId) > 0) {
+    consumeToken(Token::hash_identifier);
+    if (map)
+      *map = getState().affineMapDefinitions[affineStructId];
+    if (set)
+      *set = IntegerSet::Null();
+    return;
+  }
+
+  if (getState().integerSetDefinitions.count(affineStructId) > 0) {
+    consumeToken(Token::hash_identifier);
+    if (set)
+      *set = getState().integerSetDefinitions[affineStructId];
+    if (map)
+      *map = AffineMap::Null();
+    return;
+  }
+
+  // The id isn't among any of the recorded definitions.
+  // Emit the right message depending on what the caller expected.
+  if (map && !set)
+    emitError("undefined affine map id '" + affineStructId + "'");
+  else if (set && !map)
+    emitError("undefined integer set id '" + affineStructId + "'");
+  else if (set && map)
+    emitError("undefined affine map or integer set id '" + affineStructId +
+              "'");
+
+  if (map)
+    *map = AffineMap::Null();
+  if (set)
+    *set = IntegerSet::Null();
+}
+
+/// Parse a reference to an integer set.
+///  affine-map ::= affine-map-id | affine-map-inline
+///  affine-map-id ::= `#` suffix-id
+///
+AffineMap Parser::parseAffineMapReference() {
+  AffineMap map;
+  parseAffineStructureReference(&map, nullptr);
+  return map;
+}
+
+/// Parse a reference to an integer set.
+///  integer-set ::= integer-set-id | integer-set-inline
+///  integer-set-id ::= `#` suffix-id
+///
+IntegerSet Parser::parseIntegerSetReference() {
+  IntegerSet set;
+  parseAffineStructureReference(nullptr, &set);
+  return set;
 }
 
 //===----------------------------------------------------------------------===//
@@ -2991,24 +3056,6 @@ IntegerSet Parser::parseIntegerSetInline() {
   IntegerSet set;
   AffineParser(state).parseAffineStructureInline(nullptr, &set);
   return set;
-}
-
-/// Parse a reference to an integer set.
-///  integer-set ::= integer-set-id | integer-set-inline
-///  integer-set-id ::= `#` suffix-id
-///
-IntegerSet Parser::parseIntegerSetReference() {
-  if (getToken().is(Token::hash_identifier)) {
-    // Parse integer set identifier and verify that it exists.
-    StringRef integerSetId = getTokenSpelling().drop_front(1);
-    if (getState().integerSetDefinitions.count(integerSetId) == 0)
-      return (emitError("undefined integer set id '" + integerSetId + "'"),
-              IntegerSet());
-    consumeToken(Token::hash_identifier);
-    return getState().integerSetDefinitions[integerSetId];
-  }
-  // Try to parse an inline integer set definition.
-  return parseIntegerSetInline();
 }
 
 /// If statement.

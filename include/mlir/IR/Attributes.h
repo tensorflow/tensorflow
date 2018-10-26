@@ -19,11 +19,13 @@
 #define MLIR_IR_ATTRIBUTES_H
 
 #include "mlir/IR/AffineMap.h"
+#include "mlir/IR/IntegerSet.h"
 #include "mlir/Support/LLVM.h"
 #include "llvm/ADT/APFloat.h"
 #include "llvm/Support/TrailingObjects.h"
 
 namespace mlir {
+
 class Function;
 class FunctionType;
 class MLIRContext;
@@ -39,6 +41,7 @@ struct FloatAttributeStorage;
 struct StringAttributeStorage;
 struct ArrayAttributeStorage;
 struct AffineMapAttributeStorage;
+struct IntegerSetAttributeStorage;
 struct TypeAttributeStorage;
 struct FunctionAttributeStorage;
 struct ElementsAttributeStorage;
@@ -66,6 +69,7 @@ public:
     Type,
     Array,
     AffineMap,
+    IntegerSet,
     Function,
 
     SplatElements,
@@ -208,6 +212,20 @@ public:
 
   /// Methods for support type inquiry through isa, cast, and dyn_cast.
   static bool kindof(Kind kind) { return kind == Kind::AffineMap; }
+};
+
+class IntegerSetAttr : public Attribute {
+public:
+  typedef detail::IntegerSetAttributeStorage ImplType;
+  IntegerSetAttr() = default;
+  /* implicit */ IntegerSetAttr(Attribute::ImplType *ptr);
+
+  static IntegerSetAttr get(IntegerSet value);
+
+  IntegerSet getValue() const;
+
+  /// Methods for support type inquiry through isa, cast, and dyn_cast.
+  static bool kindof(Kind kind) { return kind == Kind::IntegerSet; }
 };
 
 class TypeAttr : public Attribute {

@@ -17,7 +17,9 @@
 
 #include "mlir/IR/Attributes.h"
 #include "AttributeDetail.h"
+#include "mlir/IR/AffineMap.h"
 #include "mlir/IR/Function.h"
+#include "mlir/IR/IntegerSet.h"
 #include "mlir/IR/Types.h"
 
 using namespace mlir;
@@ -62,6 +64,12 @@ ArrayRef<Attribute> ArrayAttr::getValue() const {
 AffineMapAttr::AffineMapAttr(Attribute::ImplType *ptr) : Attribute(ptr) {}
 
 AffineMap AffineMapAttr::getValue() const {
+  return static_cast<ImplType *>(attr)->value;
+}
+
+IntegerSetAttr::IntegerSetAttr(Attribute::ImplType *ptr) : Attribute(ptr) {}
+
+IntegerSet IntegerSetAttr::getValue() const {
   return static_cast<ImplType *>(attr)->value;
 }
 

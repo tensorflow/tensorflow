@@ -33,10 +33,16 @@
 // CHECK: #map{{[0-9]+}} = (d0)[s0] -> (d0 + s0, d0 - s0)
 #bound_map2 = (i)[s] -> (i + s, i - s)
 
-// CHECK-DAG: #set0 = (d0)[s0, s1] : (d0 >= 0, d0 * -1 + s0 >= 0, s0 - 5 == 0, d0 * -1 + s1 + 1 >= 0)
+// CHECK-DAG: #set{{[0-9]+}} = (d0)[s0, s1] : (d0 >= 0, d0 * -1 + s0 >= 0, s0 - 5 == 0, d0 * -1 + s1 + 1 >= 0)
 #set0 = (i)[N, M] : (i >= 0, -i + N >= 0, N - 5 == 0, -i + M + 1 >= 0)
 
-// CHECK-DAG: #set1 = (d0)[s0] : (d0 - 2 >= 0, d0 * -1 + 4 >= 0)
+// CHECK-DAG: #set{{[0-9]+}} = (d0, d1)[s0] : (d0 >= 0, d1 >= 0)
+#set1 = (d0, d1)[s0] : (d0 >= 0, d1 >= 0)
+
+// CHECK-DAG: #set{{[0-9]+}} = (d0) : (d0 - 1 == 0)
+#set2 = (d0) : (d0 - 1 == 0)
+
+// CHECK-DAG: #set{{[0-9]+}} = (d0)[s0] : (d0 - 2 >= 0, d0 * -1 + 4 >= 0)
 
 // CHECK: extfunc @foo(i32, i64) -> f32
 extfunc @foo(i32, i64) -> f32
@@ -290,6 +296,15 @@ bb42:       // CHECK: bb0:
 
   // CHECK: "foo"() {map12: [#map{{[0-9]+}}, #map{{[0-9]+}}]}
   "foo"() {map12: [#map1, #map2]} : () -> ()
+
+  // CHECK: "foo"() {set1: #set{{[0-9]+}}}
+  "foo"() {set1: #set1} : () -> ()
+
+  // CHECK: "foo"() {set2: #set{{[0-9]+}}}
+  "foo"() {set2: (d0, d1, d2) : (d0 >= 0, d1 >= 0, d2 - d1 == 0)} : () -> ()
+
+  // CHECK: "foo"() {set12: [#set{{[0-9]+}}, #set{{[0-9]+}}]}
+  "foo"() {set12: [#set1, #set2]} : () -> ()
 
   // CHECK: "foo"() {cfgfunc: [], d: 1.000000e-09, i123: 7, if: "foo"} : () -> ()
   "foo"() {if: "foo", cfgfunc: [], i123: 7, d: 1.e-9} : () -> ()

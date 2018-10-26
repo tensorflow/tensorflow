@@ -76,6 +76,11 @@ struct AffineMapAttributeStorage : public AttributeStorage {
   AffineMap value;
 };
 
+// An attribute representing a reference to an integer set.
+struct IntegerSetAttributeStorage : public AttributeStorage {
+  IntegerSet value;
+};
+
 /// An attribute representing a reference to a type.
 struct TypeAttributeStorage : public AttributeStorage {
   Type *value;

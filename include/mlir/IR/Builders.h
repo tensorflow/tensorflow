@@ -101,6 +101,7 @@ public:
   StringAttr getStringAttr(StringRef bytes);
   ArrayAttr getArrayAttr(ArrayRef<Attribute> value);
   AffineMapAttr getAffineMapAttr(AffineMap map);
+  IntegerSetAttr getIntegerSetAttr(IntegerSet set);
   TypeAttr getTypeAttr(Type *type);
   FunctionAttr getFunctionAttr(const Function *value);
   ElementsAttr getSplatElementsAttr(VectorOrTensorType *type, Attribute elt);

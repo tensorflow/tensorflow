@@ -153,6 +153,8 @@ void ModuleState::visitType(const Type *type) {
 void ModuleState::visitAttribute(Attribute attr) {
   if (auto mapAttr = attr.dyn_cast<AffineMapAttr>()) {
     recordAffineMapReference(mapAttr.getValue());
+  } else if (auto setAttr = attr.dyn_cast<IntegerSetAttr>()) {
+    recordIntegerSetReference(setAttr.getValue());
   } else if (auto arrayAttr = attr.dyn_cast<ArrayAttr>()) {
     for (auto elt : arrayAttr.getValue()) {
       visitAttribute(elt);
@@ -428,6 +430,9 @@ void ModulePrinter::printAttribute(Attribute attr) {
     break;
   case Attribute::Kind::AffineMap:
     printAffineMapReference(attr.cast<AffineMapAttr>().getValue());
+    break;
+  case Attribute::Kind::IntegerSet:
+    printIntegerSetReference(attr.cast<IntegerSetAttr>().getValue());
     break;
   case Attribute::Kind::Type:
     printType(attr.cast<TypeAttr>().getValue());
