@@ -553,6 +553,9 @@ public:
   Attribute constantFold(ArrayRef<Attribute> operands,
                          MLIRContext *context) const;
 
+  static void getCanonicalizationPatterns(OwningPatternList &results,
+                                          MLIRContext *context);
+
 private:
   friend class Operation;
   explicit MulIOp(const Operation *state) : BinaryOp(state) {}

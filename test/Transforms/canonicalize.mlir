@@ -58,6 +58,14 @@ mlfunc @addi_zero(%arg0: i32) -> i32 {
   return %y: i32
 }
 
+// CHECK-LABEL: mlfunc @muli_one
+mlfunc @muli_one(%arg0: i32) -> i32 {
+  // CHECK-NEXT: return %arg0
+  %c0_i32 = constant 1 : i32
+  %y = muli %c0_i32, %arg0 : i32
+  return %y: i32
+}
+
 // CHECK-LABEL: mlfunc @memref_cast_folding
 mlfunc @memref_cast_folding(%arg0: memref<4 x f32>, %arg1: f32) -> f32 {
   %1 = memref_cast %arg0: memref<4xf32> to memref<?xf32>

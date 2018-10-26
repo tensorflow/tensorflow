@@ -882,6 +882,36 @@ Attribute MulIOp::constantFold(ArrayRef<Attribute> operands,
   return nullptr;
 }
 
+namespace {
+/// muli(x, 1) -> x
+///
+struct SimplifyMulX1 : public Pattern {
+  SimplifyMulX1(MLIRContext *context)
+      : Pattern(MulIOp::getOperationName(), context, 1) {}
+
+  std::pair<PatternBenefit, std::unique_ptr<PatternState>>
+  match(Operation *op) const override {
+    auto muli = op->cast<MulIOp>();
+    if (auto *operandOp = muli->getOperand(1)->getDefiningOperation())
+      // TODO: Support splatted one as well.  We need a general one pattern.
+      if (auto cst = operandOp->dyn_cast<ConstantIntOp>()) {
+        if (cst->getValue() == 1)
+          return matchSuccess();
+      }
+
+    return matchFailure();
+  }
+  void rewrite(Operation *op, PatternRewriter &rewriter) const override {
+    rewriter.replaceSingleResultOp(op, op->getOperand(0));
+  }
+};
+} // end anonymous namespace.
+
+void MulIOp::getCanonicalizationPatterns(OwningPatternList &results,
+                                         MLIRContext *context) {
+  results.push_back(std::make_unique<SimplifyMulX1>(context));
+}
+
 //===----------------------------------------------------------------------===//
 // StoreOp
 //===----------------------------------------------------------------------===//
