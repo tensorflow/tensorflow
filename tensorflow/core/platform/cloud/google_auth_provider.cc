@@ -135,8 +135,7 @@ Status GoogleAuthProvider::GetToken(string* t) {
   mutex_lock lock(mu_);
   const uint64 now_sec = env_->NowSeconds();
 
-  if (!current_token_.empty() &&
-      now_sec + kExpirationTimeMarginSec < expiration_timestamp_sec_) {
+  if (now_sec + kExpirationTimeMarginSec < expiration_timestamp_sec_) {
     *t = current_token_;
     return Status::OK();
   }
