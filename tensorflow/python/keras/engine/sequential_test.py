@@ -269,9 +269,8 @@ class TestSequential(test.TestCase, parameterized.TestCase):
     self.assertIn('build_input_shape', config)
 
     new_model = keras.models.Sequential.from_config(config)
-    self.assertTrue(new_model.built)
-    self.assertEqual(len(model.layers), 2)
-    self.assertEqual(len(model.weights), 4)
+    self.assertEqual(len(new_model.layers), 2)
+    self.assertEqual(len(new_model.weights), 4)
 
   @tf_test_util.run_in_graph_and_eager_modes
   def test_sequential_shape_inference_deferred(self):
