@@ -318,6 +318,9 @@ def to_graph(e,
       compiled_module.__dict__[key] = val
   compiled = getattr(compiled_module, name)
 
+  if tf_inspect.isfunction(e):
+    compiled.__defaults__ = e.__defaults__
+
   # Need this so the source_mapping attribute is available for the context
   # manager to access for runtime errors.
   #
