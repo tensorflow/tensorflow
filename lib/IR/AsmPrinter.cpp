@@ -337,7 +337,7 @@ void ModulePrinter::printAffineMapReference(AffineMap affineMap) {
 
 // Prints integer set identifier.
 void ModulePrinter::printIntegerSetId(int integerSetId) const {
-  os << "@@set" << integerSetId;
+  os << "#set" << integerSetId;
 }
 
 void ModulePrinter::printIntegerSetReference(IntegerSet integerSet) {

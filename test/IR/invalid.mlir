@@ -604,27 +604,27 @@ mlfunc @invalid_bound_map(%N : i32) {
 }
 
 // -----
-@@set0 = (i)[N] : (i >= 0, N - i >= 0)
+#set0 = (i)[N] : (i >= 0, N - i >= 0)
 
 mlfunc @invalid_if_operands1(%N : index) {
   for %i = 1 to 10 {
-    if @@set0(%i) {
+    if #set0(%i) {
     // expected-error@-1 {{symbol operand count and integer set symbol count must match}}
 
 // -----
-@@set0 = (i)[N] : (i >= 0, N - i >= 0)
+#set0 = (i)[N] : (i >= 0, N - i >= 0)
 
 mlfunc @invalid_if_operands2(%N : index) {
   for %i = 1 to 10 {
-    if @@set0()[%N] {
+    if #set0()[%N] {
     // expected-error@-1 {{dim operand count and integer set dim count must match}}
 
 // -----
-@@set0 = (i)[N] : (i >= 0, N - i >= 0)
+#set0 = (i)[N] : (i >= 0, N - i >= 0)
 
 mlfunc @invalid_if_operands3(%N : index) {
   for %i = 1 to 10 {
-    if @@set0(%i)[%i] {
+    if #set0(%i)[%i] {
     // expected-error@-1 {{value '%i' cannot be used as a symbol}}
 
 // -----

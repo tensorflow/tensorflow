@@ -22,31 +22,31 @@
 // CHECK: #map{{[0-9]+}} = (d0, d1) -> (d0 - (d0 floordiv 8) * 8, (d1 floordiv 8) * 8)
 #map6 = (d0, d1) -> (d0 mod 8, d1 - d1 mod 8)
 
-// CHECK: @@set0 = (d0, d1) : (1 == 0)
-// CHECK: @@set1 = (d0, d1) : (d0 - 100 == 0, d1 - 10 == 0, d0 * -1 + 100 >= 0, d1 >= 0, d1 + 101 >= 0)
-// CHECK: @@set2 = (d0, d1)[s0, s1] : (1 == 0)
-// CHECK: @@set3 = (d0, d1)[s0, s1] : (d0 * 7 + d1 * 5 + s0 * 11 + s1 == 0, d0 * 5 - d1 * 11 + s0 * 7 + s1 == 0, d0 * 11 + d1 * 7 - s0 * 5 + s1 == 0, d0 * 7 + d1 * 5 + s0 * 11 + s1 == 0)
-// CHECK: @@set4 = (d0) : (1 == 0)
-// CHECK: @@set5 = (d0)[s0, s1] : (1 == 0)
-// CHECK: @@set6 = (d0, d1, d2) : (1 == 0)
+// CHECK: #set0 = (d0, d1) : (1 == 0)
+// CHECK: #set1 = (d0, d1) : (d0 - 100 == 0, d1 - 10 == 0, d0 * -1 + 100 >= 0, d1 >= 0, d1 + 101 >= 0)
+// CHECK: #set2 = (d0, d1)[s0, s1] : (1 == 0)
+// CHECK: #set3 = (d0, d1)[s0, s1] : (d0 * 7 + d1 * 5 + s0 * 11 + s1 == 0, d0 * 5 - d1 * 11 + s0 * 7 + s1 == 0, d0 * 11 + d1 * 7 - s0 * 5 + s1 == 0, d0 * 7 + d1 * 5 + s0 * 11 + s1 == 0)
+// CHECK: #set4 = (d0) : (1 == 0)
+// CHECK: #set5 = (d0)[s0, s1] : (1 == 0)
+// CHECK: #set6 = (d0, d1, d2) : (1 == 0)
 
 // Set for test case: test_gaussian_elimination_non_empty_set2
-// @@set2 = (d0, d1) : (d0 - 100 == 0, d1 - 10 == 0, d0 * -1 + 100 >= 0, d1 >= 0, d1 + 101 >= 0)
-@@set2 = (d0, d1) : (d0 - 100 == 0, d1 - 10 == 0, -d0 + 100 >= 0, d1 >= 0, d1 + 101 >= 0)
+// #set2 = (d0, d1) : (d0 - 100 == 0, d1 - 10 == 0, d0 * -1 + 100 >= 0, d1 >= 0, d1 + 101 >= 0)
+#set2 = (d0, d1) : (d0 - 100 == 0, d1 - 10 == 0, -d0 + 100 >= 0, d1 >= 0, d1 + 101 >= 0)
 
 // Set for test case: test_gaussian_elimination_empty_set3
-// @@set3 = (d0, d1)[s0, s1] : (1 == 0)
-@@set3 = (d0, d1)[s0, s1] : (d0 - s0 == 0, d0 + s0 == 0, s0 - 1 == 0)
+// #set3 = (d0, d1)[s0, s1] : (1 == 0)
+#set3 = (d0, d1)[s0, s1] : (d0 - s0 == 0, d0 + s0 == 0, s0 - 1 == 0)
 
 // Set for test case: test_gaussian_elimination_non_empty_set4
-@@set4 = (d0, d1)[s0, s1] : (d0 * 7 + d1 * 5 + s0 * 11 + s1 == 0,
+#set4 = (d0, d1)[s0, s1] : (d0 * 7 + d1 * 5 + s0 * 11 + s1 == 0,
                              d0 * 5 - d1 * 11 + s0 * 7 + s1 == 0,
 			     d0 * 11 + d1 * 7 - s0 * 5 + s1 == 0,
 			     d0 * 7 + d1 * 5 + s0 * 11 + s1 == 0)
 
 // Add invalid constraints to previous non-empty set to make it empty.
 // Set for test case: test_gaussian_elimination_empty_set5
-@@set5 = (d0, d1)[s0, s1] : (d0 * 7 + d1 * 5 + s0 * 11 + s1 == 0,
+#set5 = (d0, d1)[s0, s1] : (d0 * 7 + d1 * 5 + s0 * 11 + s1 == 0,
                              d0 * 5 - d1 * 11 + s0 * 7 + s1 == 0,
 			     d0 * 11 + d1 * 7 - s0 * 5 + s1 == 0,
 			     d0 * 7 + d1 * 5 + s0 * 11 + s1 == 0,
@@ -71,7 +71,7 @@ mlfunc @test() {
 mlfunc @test_gaussian_elimination_empty_set0() {
   for %i0 = 1 to 10 {
     for %i1 = 1 to 100 {
-      // CHECK: @@set0(%i0, %i1)
+      // CHECK: #set0(%i0, %i1)
       if (d0, d1) : (2 == 0)(%i0, %i1) {
       }
     }
@@ -83,7 +83,7 @@ mlfunc @test_gaussian_elimination_empty_set0() {
 mlfunc @test_gaussian_elimination_empty_set1() {
   for %i0 = 1 to 10 {
     for %i1 = 1 to 100 {
-      // CHECK: @@set0(%i0, %i1)
+      // CHECK: #set0(%i0, %i1)
       if (d0, d1) : (1 >= 0, -1 >= 0) (%i0, %i1) {
       }
     }
@@ -95,8 +95,8 @@ mlfunc @test_gaussian_elimination_empty_set1() {
 mlfunc @test_gaussian_elimination_non_empty_set2() {
   for %i0 = 1 to 10 {
     for %i1 = 1 to 100 {
-      // CHECK: @@set1(%i0, %i1)
-      if @@set2(%i0, %i1) {
+      // CHECK: #set1(%i0, %i1)
+      if #set2(%i0, %i1) {
       }
     }
   }
@@ -109,8 +109,8 @@ mlfunc @test_gaussian_elimination_empty_set3() {
   %c11 = constant 11 : index
   for %i0 = 1 to 10 {
     for %i1 = 1 to 100 {
-      // CHECK: @@set2(%i0, %i1)[%c7, %c11]
-      if @@set3(%i0, %i1)[%c7, %c11] {
+      // CHECK: #set2(%i0, %i1)[%c7, %c11]
+      if #set3(%i0, %i1)[%c7, %c11] {
       }
     }
   }
@@ -123,8 +123,8 @@ mlfunc @test_gaussian_elimination_non_empty_set4() {
   %c11 = constant 11 : index
   for %i0 = 1 to 10 {
     for %i1 = 1 to 100 {
-      // CHECK: @@set3(%i0, %i1)[%c7, %c11]
-      if @@set4(%i0, %i1)[%c7, %c11] {
+      // CHECK: #set3(%i0, %i1)[%c7, %c11]
+      if #set4(%i0, %i1)[%c7, %c11] {
       }
     }
   }
@@ -137,8 +137,8 @@ mlfunc @test_gaussian_elimination_empty_set5() {
   %c11 = constant 11 : index
   for %i0 = 1 to 10 {
     for %i1 = 1 to 100 {
-      // CHECK: @@set2(%i0, %i1)[%c7, %c11]
-      if @@set5(%i0, %i1)[%c7, %c11] {
+      // CHECK: #set2(%i0, %i1)[%c7, %c11]
+      if #set5(%i0, %i1)[%c7, %c11] {
       }
     }
   }
@@ -149,28 +149,28 @@ mlfunc @test_gaussian_elimination_empty_set5() {
 mlfunc @test_fourier_motzkin(%N : index) {
   for %i = 0 to 10 {
     for %j = 0 to 10 {
-      // CHECK: if @@set0(%i0, %i1)
+      // CHECK: if #set0(%i0, %i1)
       if (d0, d1) : (d0 - d1 >= 0, d1 - d0 - 1 >= 0)(%i, %j) {
         "foo"() : () -> ()
       }
-      // CHECK: if @@set4(%i0)
+      // CHECK: if #set4(%i0)
       if (d0) : (d0 >= 0, -d0 - 1 >= 0)(%i) {
         "bar"() : () -> ()
       }
-      // CHECK: if @@set4(%i0)
+      // CHECK: if #set4(%i0)
       if (d0) : (d0 >= 0, -d0 - 1 >= 0)(%i) {
         "foo"() : () -> ()
       }
-      // CHECK: if @@set5(%i0)[%arg0, %arg0]
+      // CHECK: if #set5(%i0)[%arg0, %arg0]
       if (d0)[s0, s1] : (d0 >= 0, -d0 + s0 - 1 >= 0, -s0 >= 0)(%i)[%N, %N] {
         "bar"() : () -> ()
       }
-      // CHECK: if @@set6(%i0, %i1, %arg0)
+      // CHECK: if #set6(%i0, %i1, %arg0)
       // The set below implies d0 = d1; so d1 >= d0, but d0 >= d1 + 1.
       if (d0, d1, d2) : (d0 - d1 == 0, d2 - d0 >= 0, d0 - d1 - 1 >= 0)(%i, %j, %N) {
         "foo"() : () -> ()
       }
-      // CHECK: if @@set0(%i0, %i1)
+      // CHECK: if #set0(%i0, %i1)
       // The set below has rational solutions but no integer solutions.
       if (d0, d1) : (d0 * 2 -d1 * 2 -1 == 0, d0 >= 0, -d0 + 100 >= 0, d1 >= 0, -d1 + 100 >= 0)(%i, %j) {
         "foo"() : () -> ()

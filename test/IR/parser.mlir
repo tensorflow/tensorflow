@@ -33,10 +33,10 @@
 // CHECK: #map{{[0-9]+}} = (d0)[s0] -> (d0 + s0, d0 - s0)
 #bound_map2 = (i)[s] -> (i + s, i - s)
 
-// CHECK-DAG: @@set0 = (d0)[s0, s1] : (d0 >= 0, d0 * -1 + s0 >= 0, s0 - 5 == 0, d0 * -1 + s1 + 1 >= 0)
-@@set0 = (i)[N, M] : (i >= 0, -i + N >= 0, N - 5 == 0, -i + M + 1 >= 0)
+// CHECK-DAG: #set0 = (d0)[s0, s1] : (d0 >= 0, d0 * -1 + s0 >= 0, s0 - 5 == 0, d0 * -1 + s1 + 1 >= 0)
+#set0 = (i)[N, M] : (i >= 0, -i + N >= 0, N - 5 == 0, -i + M + 1 >= 0)
 
-// CHECK-DAG: @@set1 = (d0)[s0] : (d0 - 2 >= 0, d0 * -1 + 4 >= 0)
+// CHECK-DAG: #set1 = (d0)[s0] : (d0 - 2 >= 0, d0 * -1 + 4 >= 0)
 
 // CHECK: extfunc @foo(i32, i64) -> f32
 extfunc @foo(i32, i64) -> f32
@@ -241,12 +241,12 @@ mlfunc @loop_bounds(%N : index) {
 mlfunc @ifstmt(%N: index) {
   %c = constant 200 : index // CHECK   %c200 = constant 200
   for %i = 1 to 10 {   	        // CHECK   for %i0 = 1 to 10 {
-    if @@set0(%i)[%N, %c] {     // CHECK     if @@set0(%i0)[%arg0, %c200] {
+    if #set0(%i)[%N, %c] {     // CHECK     if #set0(%i0)[%arg0, %c200] {
       %x = constant 1 : i32
        // CHECK: %c1_i32 = constant 1 : i32
       %y = "add"(%x, %i) : (i32, index) -> i32 // CHECK: %0 = "add"(%c1_i32, %i0) : (i32, index) -> i32
       %z = "mul"(%y, %y) : (i32, i32) -> i32 // CHECK: %1 = "mul"(%0, %0) : (i32, i32) -> i32
-    } else if (i)[N] : (i - 2 >= 0, 4 - i >= 0)(%i)[%N]  {      // CHECK     } else if (@@set1(%i0)[%arg0]) {
+    } else if (i)[N] : (i - 2 >= 0, 4 - i >= 0)(%i)[%N]  {      // CHECK     } else if (#set1(%i0)[%arg0]) {
       // CHECK: %c1 = constant 1 : index
       %u = constant 1 : index
       // CHECK: %2 = affine_apply #map{{.*}}(%i0, %i0)[%c1]
@@ -262,7 +262,7 @@ mlfunc @ifstmt(%N: index) {
 mlfunc @simple_ifstmt(%N: index) {
   %c = constant 200 : index // CHECK   %c200 = constant 200
   for %i = 1 to 10 {   	        // CHECK   for %i0 = 1 to 10 {
-    if @@set0(%i)[%N, %c] {     // CHECK     if @@set0(%i0)[%arg0, %c200] {
+    if #set0(%i)[%N, %c] {     // CHECK     if #set0(%i0)[%arg0, %c200] {
       %x = constant 1 : i32
        // CHECK: %c1_i32 = constant 1 : i32
       %y = "add"(%x, %i) : (i32, index) -> i32 // CHECK: %0 = "add"(%c1_i32, %i0) : (i32, index) -> i32

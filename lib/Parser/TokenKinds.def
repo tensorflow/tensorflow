@@ -52,10 +52,8 @@ TOK_MARKER(error)
 // Identifiers.
 TOK_IDENTIFIER(bare_identifier)      // foo
 TOK_IDENTIFIER(at_identifier)        // @foo
-TOK_IDENTIFIER(double_at_identifier) // @@foo
 TOK_IDENTIFIER(hash_identifier)      // #foo
 TOK_IDENTIFIER(percent_identifier)   // %foo
-// TODO: @@foo, etc.
 
 // Literals
 TOK_LITERAL(floatliteral)               // 2.0

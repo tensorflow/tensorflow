@@ -57,7 +57,6 @@ private:
   Token lexComment();
   Token lexBareIdentifierOrKeyword(const char *tokStart);
   Token lexAtIdentifier(const char *tokStart);
-  Token lexDoubleAtIdentifier(const char *tokStart);
   Token lexPrefixedIdentifier(const char *tokStart);
   Token lexNumber(const char *tokStart);
   Token lexString(const char *tokStart);
