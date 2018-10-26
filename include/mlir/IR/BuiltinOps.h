@@ -23,6 +23,7 @@
 #ifndef MLIR_IR_BUILTINOPS_H
 #define MLIR_IR_BUILTINOPS_H
 
+#include "mlir/IR/AffineMap.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/Dialect.h"
 #include "mlir/IR/OpDefinition.h"

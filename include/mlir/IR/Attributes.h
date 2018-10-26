@@ -18,16 +18,15 @@
 #ifndef MLIR_IR_ATTRIBUTES_H
 #define MLIR_IR_ATTRIBUTES_H
 
-#include "mlir/IR/AffineMap.h"
-#include "mlir/IR/IntegerSet.h"
 #include "mlir/Support/LLVM.h"
 #include "llvm/ADT/APFloat.h"
-#include "llvm/Support/TrailingObjects.h"
+#include "llvm/ADT/DenseMapInfo.h"
 
 namespace mlir {
-
+class AffineMap;
 class Function;
 class FunctionType;
+class IntegerSet;
 class MLIRContext;
 class Type;
 class VectorOrTensorType;

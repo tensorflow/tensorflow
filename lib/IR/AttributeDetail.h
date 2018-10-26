@@ -22,8 +22,11 @@
 #ifndef ATTRIBUTEDETAIL_H_
 #define ATTRIBUTEDETAIL_H_
 
+#include "mlir/IR/AffineMap.h"
 #include "mlir/IR/Attributes.h"
+#include "mlir/IR/IntegerSet.h"
 #include "mlir/IR/MLIRContext.h"
+#include "llvm/Support/TrailingObjects.h"
 
 namespace mlir {
 namespace detail {
