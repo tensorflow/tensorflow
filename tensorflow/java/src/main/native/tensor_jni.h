@@ -92,6 +92,14 @@ JNIEXPORT void JNICALL Java_org_tensorflow_Tensor_setValue(JNIEnv *, jclass,
 
 /*
  * Class:     org_tensorflow_Tensor
+ * Method:    setArray
+ * Signature: (JLjava/lang/Object;)V
+ */
+JNIEXPORT void JNICALL Java_org_tensorflow_Tensor_setArray(JNIEnv *, jclass,
+                                                           jlong, jobject);
+
+/*
+ * Class:     org_tensorflow_Tensor
  * Method:    scalarFloat
  * Signature: (J)F
  *

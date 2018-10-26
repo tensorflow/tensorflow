@@ -225,6 +225,74 @@ public final class Tensor<T> implements AutoCloseable {
   }
 
   /**
+   * Create a {@link Integer} Tensor with data from the given array.
+   *
+   * <p>Creates a Tensor with the given shape by copying elements from the array into the tensor.
+   * On Android this method is preferred over {@link #create(long[], java.nio.IntBuffer) create}
+   * due to Android's ByteBuffer performance issues.
+   *
+   * @param shape the tensor shape.
+   * @param data an array containing the tensor data.
+   * @throws IllegalArgumentException If the tensor shape is not compatible with the array
+   */
+  public static Tensor<Integer> create(long[] shape, int[] data) {
+    Tensor<Integer> t = allocateForBuffer(DataType.INT32, shape, data.length);
+    setArray(t.nativeHandle, data);
+    return t;
+  }
+
+  /**
+   * Create a {@link Float} Tensor with data from the given array.
+   *
+   * <p>Creates a Tensor with the given shape by copying elements from the array into the tensor.
+   * On Android this method is preferred over {@link #create(long[], java.nio.FloatBuffer) create}
+   * due to Android's ByteBuffer performance issues.
+   *
+   * @param shape the tensor shape.
+   * @param data an array containing the tensor data.
+   * @throws IllegalArgumentException If the tensor shape is not compatible with the array
+   */
+  public static Tensor<Float> create(long[] shape, float[] data) {
+    Tensor<Float> t = allocateForBuffer(DataType.FLOAT, shape, data.length);
+    setArray(t.nativeHandle, data);
+    return t;
+  }
+
+  /**
+   * Create a {@link Double} Tensor with data from the given array.
+   *
+   * <p>Creates a Tensor with the given shape by copying elements from the array into the tensor.
+   * On Android this method is preferred over {@link #create(long[], java.nio.DoubleBuffer) create}
+   * due to Android's ByteBuffer performance issues.
+   *
+   * @param shape the tensor shape.
+   * @param data an array containing the tensor data.
+   * @throws IllegalArgumentException If the tensor shape is not compatible with the array
+   */
+  public static Tensor<Double> create(long[] shape, double[] data) {
+    Tensor<Double> t = allocateForBuffer(DataType.DOUBLE, shape, data.length);
+    setArray(t.nativeHandle, data);
+    return t;
+  }
+
+  /**
+   * Create an {@link Long} Tensor with data from the given array.
+   *
+   * <p>Creates a Tensor with the given shape by copying elements from the array into the tensor.
+   * On Android this method is preferred over {@link #create(long[], java.nio.LongBuffer) create}
+   * due to Android's ByteBuffer performance issues.
+   *
+   * @param shape the tensor shape.
+   * @param data an array containing the tensor data.
+   * @throws IllegalArgumentException If the tensor shape is not compatible with the array
+   */
+  public static Tensor<Long> create(long[] shape, long[] data) {
+    Tensor<Long> t = allocateForBuffer(DataType.INT64, shape, data.length);
+    setArray(t.nativeHandle, data);
+    return t;
+  }
+
+  /**
    * Create a Tensor of any type with data from the given buffer.
    *
    * <p>Creates a Tensor with the provided shape of any type where the tensor's data has been
@@ -763,6 +831,8 @@ public final class Tensor<T> implements AutoCloseable {
   private static native long[] shape(long handle);
 
   private static native void setValue(long handle, Object value);
+
+  private static native void setArray(long handle, Object value);
 
   private static native float scalarFloat(long handle);
 

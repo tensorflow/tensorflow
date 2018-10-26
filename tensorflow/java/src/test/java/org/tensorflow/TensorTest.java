@@ -133,6 +133,23 @@ public class TensorTest {
         long[] actual = new long[longs.length];
         assertArrayEquals(longs, t.copyTo(actual));
       }
+
+      try (Tensor<Double> t = Tensor.create(shape, doubles)) {
+        double[] actual = new double[doubles.length];
+        assertArrayEquals(doubles, t.copyTo(actual), EPSILON);
+      }
+      try (Tensor<Float> t = Tensor.create(shape, floats)) {
+        float[] actual = new float[floats.length];
+        assertArrayEquals(floats, t.copyTo(actual), EPSILON_F);
+      }
+      try (Tensor<Integer> t = Tensor.create(shape, ints)) {
+        int[] actual = new int[ints.length];
+        assertArrayEquals(ints, t.copyTo(actual));
+      }
+      try (Tensor<Long> t = Tensor.create(shape, longs)) {
+        long[] actual = new long[longs.length];
+        assertArrayEquals(longs, t.copyTo(actual));
+      }
     }
 
     // validate shape-checking
@@ -154,6 +171,28 @@ public class TensorTest {
         // expected
       }
       try (Tensor<Long> t = Tensor.create(new long[longs.length + 1], LongBuffer.wrap(longs))) {
+        fail("should have failed on incompatible buffer");
+      } catch (IllegalArgumentException e) {
+        // expected
+      }
+
+      try (Tensor<Double> t =
+          Tensor.create(new long[doubles.length + 1], doubles)) {
+        fail("should have failed on incompatible buffer");
+      } catch (IllegalArgumentException e) {
+        // expected
+      }
+      try (Tensor<Float> t = Tensor.create(new long[floats.length + 1], floats)) {
+        fail("should have failed on incompatible buffer");
+      } catch (IllegalArgumentException e) {
+        // expected
+      }
+      try (Tensor<Integer> t = Tensor.create(new long[ints.length + 1], ints)) {
+        fail("should have failed on incompatible buffer");
+      } catch (IllegalArgumentException e) {
+        // expected
+      }
+      try (Tensor<Long> t = Tensor.create(new long[longs.length + 1], longs)) {
         fail("should have failed on incompatible buffer");
       } catch (IllegalArgumentException e) {
         // expected

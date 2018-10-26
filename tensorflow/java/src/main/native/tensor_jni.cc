@@ -536,6 +536,16 @@ JNIEXPORT void JNICALL Java_org_tensorflow_Tensor_setValue(JNIEnv* env,
   }
 }
 
+JNIEXPORT void JNICALL Java_org_tensorflow_Tensor_setArray(JNIEnv* env,
+                                                           jclass clazz,
+                                                           jlong handle,
+                                                           jobject array) {
+  TF_Tensor* t = requireHandle(env, handle);
+  if (t == nullptr) return;
+  write1DArray(env, static_cast<jarray>(array),
+               TF_TensorType(t), TF_TensorData(t), TF_TensorByteSize(t));
+}
+
 #define DEFINE_GET_SCALAR_METHOD(jtype, dtype, method_suffix)                  \
   JNIEXPORT jtype JNICALL Java_org_tensorflow_Tensor_scalar##method_suffix(    \
       JNIEnv* env, jclass clazz, jlong handle) {                               \
