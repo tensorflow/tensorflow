@@ -104,9 +104,9 @@ class RangeDatasetOp : public DatasetOpKernel {
           *end_of_sequence = true;
           return Status::OK();
         }
-        Tensor value_tensor(ctx->allocator({}), DT_INT64, {});
-        value_tensor.scalar<int64>()() = next_;
-        out_tensors->emplace_back(std::move(value_tensor));
+        out_tensors->emplace_back(ctx->allocator({}), DT_INT64,
+                                  TensorShape({}));
+        out_tensors->back().scalar<int64>()() = next_;
         *end_of_sequence = false;
         next_ += dataset()->step_;
 
