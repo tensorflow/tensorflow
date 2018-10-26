@@ -2113,6 +2113,14 @@ using ConverterType = tensorflow::Status (*)(
     Model* model);
 using ConverterMapType = std::unordered_map<std::string, ConverterType>;
 
+ConverterMapType GetTensorFlowNodeConverterMapForFlex() {
+  return std::unordered_map<std::string, ConverterType>({
+      // We need to let TCO convert Placeholder information into
+      // array data, so that the data types are correct.
+      {"Placeholder", ConvertPlaceholderOperator},
+  });
+}
+
 ConverterMapType GetTensorFlowNodeConverterMap() {
   return std::unordered_map<std::string, ConverterType>({
       {"Add", ConvertSimpleOperator<AddOperator, 2>},
@@ -2269,6 +2277,8 @@ std::unique_ptr<Model> ImportTensorFlowGraphDef(
   // converted to TFLite Flex ops.
   if (!tf_import_flags.import_all_ops_as_unsupported) {
     converter_map = internal::GetTensorFlowNodeConverterMap();
+  } else {
+    converter_map = internal::GetTensorFlowNodeConverterMapForFlex();
   }
 
   for (auto node : inlined_graph.node()) {
