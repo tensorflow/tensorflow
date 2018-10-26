@@ -592,7 +592,7 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
     std::function<Node*(const Node*)> get_node_to_be_merged;
   } MergeInfo;
 
-  // structure to specify information used in node fusion of 2+ operators
+  // structure to specify information used in node fusion of 3+ operators
   typedef struct {
     std::string pattern_name;  // name to describe this pattern, such as
                                // "Transpose_Mklop_Transpose".
