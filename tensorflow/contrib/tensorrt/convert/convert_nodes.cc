@@ -337,7 +337,7 @@ TRT_ShapedWeights::TRT_ShapedWeights(const TRT_ShapedWeights& rhs)
 
 int64_t TRT_ShapedWeights::count() const { return TrtDimsNumElements(shape_); }
 
-nvinfer1::Weights TRT_ShapedWeights::GetWeightsForTRT() const {
+nvinfer1::Weights TRT_ShapedWeights::GetTrtWeights() const {
   nvinfer1::DataType trt_type(nvinfer1::DataType::kFLOAT);
   TF_CHECK_OK(ConvertDType(type_, &trt_type));
   return nvinfer1::Weights{trt_type, values_, values_ == nullptr ? 0 : count()};
@@ -706,7 +706,7 @@ Status Converter::PrepareTensorForShape(const TRT_TensorOrWeights& input,
     }
   } else {
     nvinfer1::IConstantLayer* layer =
-        this->network()->addConstant(dims, input.weights());
+        this->network()->addConstant(dims, input.weights().GetTrtWeights());
     TFTRT_RETURN_ERROR_IF_NULLPTR(layer, "TF-TRT Internal Reshape");
     *tensor = layer->getOutput(0);
   }
@@ -1069,8 +1069,9 @@ tensorflow::Status BinaryTensorOpWeight(
   }
 
   nvinfer1::IScaleLayer* layer = ctx.network()->addScale(
-      *const_cast<nvinfer1::ITensor*>(tensor), scale_mode, shift_weights,
-      scale_weights, power_weights);
+      *const_cast<nvinfer1::ITensor*>(tensor), scale_mode,
+      shift_weights.GetTrtWeights(), scale_weights.GetTrtWeights(),
+      power_weights.GetTrtWeights());
   TFTRT_RETURN_ERROR_IF_NULLPTR(layer, node_def.name());
 
   const nvinfer1::ITensor* output_tensor = layer->getOutput(0);
@@ -1171,9 +1172,9 @@ tensorflow::Status ConvertConv2DHelper(
     VLOG(2) << "TENSOR after: " << DebugString(tensor->getDimensions());
   }
 
-  nvinfer1::IConvolutionLayer* layer =
-      ctx.network()->addConvolution(*const_cast<nvinfer1::ITensor*>(tensor),
-                                    noutput, kernel_size, weights, biases);
+  nvinfer1::IConvolutionLayer* layer = ctx.network()->addConvolution(
+      *const_cast<nvinfer1::ITensor*>(tensor), noutput, kernel_size,
+      weights.GetTrtWeights(), biases.GetTrtWeights());
   TFTRT_RETURN_ERROR_IF_NULLPTR(layer, node_def.name());
 
   layer->setStride(stride);
@@ -1556,9 +1557,9 @@ tensorflow::Status ConvertScale(Converter& ctx,
     mode = nvinfer1::ScaleMode::kUNIFORM;
   }
 
-  nvinfer1::IScaleLayer* layer =
-      ctx.network()->addScale(*const_cast<nvinfer1::ITensor*>(tensor), mode,
-                              weights, empty_weights, empty_weights);
+  nvinfer1::IScaleLayer* layer = ctx.network()->addScale(
+      *const_cast<nvinfer1::ITensor*>(tensor), mode, weights.GetTrtWeights(),
+      empty_weights.GetTrtWeights(), empty_weights.GetTrtWeights());
   TFTRT_RETURN_ERROR_IF_NULLPTR(layer, node_def.name());
 
   nvinfer1::ITensor* output_tensor = layer->getOutput(0);
@@ -2185,9 +2186,9 @@ tensorflow::Status ConvertFusedBatchNorm(
                                           : nvinfer1::ScaleMode::kCHANNEL;
   nvinfer1::IScaleLayer* layer =
       ctx.network()->addScale(*const_cast<nvinfer1::ITensor*>(tensor), mode,
-                              combined_offset_weights.GetWeightsForTRT(),
-                              combined_scale_weights.GetWeightsForTRT(),
-                              dummy_power_weights.GetWeightsForTRT());
+                              combined_offset_weights.GetTrtWeights(),
+                              combined_scale_weights.GetTrtWeights(),
+                              dummy_power_weights.GetTrtWeights());
   TFTRT_RETURN_ERROR_IF_NULLPTR(layer, node_def.name());
   nvinfer1::ITensor* output_tensor = layer->getOutput(0);
   outputs->push_back(TRT_TensorOrWeights(output_tensor));
@@ -2224,7 +2225,8 @@ tensorflow::Status ConvertMatMulHelper(
       ctx.PrepareTensorForShape(tensor_input, input_dim, &tensor));
 
   nvinfer1::IFullyConnectedLayer* layer = ctx.network()->addFullyConnected(
-      *const_cast<nvinfer1::ITensor*>(tensor), noutput, weights, biases);
+      *const_cast<nvinfer1::ITensor*>(tensor), noutput, weights.GetTrtWeights(),
+      biases.GetTrtWeights());
   TFTRT_RETURN_ERROR_IF_NULLPTR(layer, node_name);
   output_tensor = layer->getOutput(0);
 

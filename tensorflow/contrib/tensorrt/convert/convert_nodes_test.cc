@@ -125,7 +125,7 @@ TEST(TRT_ShapedWeights_Test, Basic) {
     float raw_weights[10];
     TRT_ShapedWeights weights(DT_FLOAT, raw_weights, GetTestDims({2, 5}));
 
-    nvinfer1::Weights trt_weights = weights.GetWeightsForTRT();
+    nvinfer1::Weights trt_weights = weights.GetTrtWeights();
     EXPECT_EQ(nvinfer1::DataType::kFLOAT, trt_weights.type);
     EXPECT_EQ(static_cast<void*>(raw_weights), trt_weights.values);
     EXPECT_EQ(10, trt_weights.count);
@@ -138,7 +138,7 @@ TEST(TRT_ShapedWeights_Test, Basic) {
     int32 raw_weights = 0;
     TRT_ShapedWeights weights(DT_INT32, &raw_weights, GetTestDims({1, 1, 1}));
 
-    nvinfer1::Weights trt_weights = weights.GetWeightsForTRT();
+    nvinfer1::Weights trt_weights = weights.GetTrtWeights();
     EXPECT_EQ(nvinfer1::DataType::kINT32, trt_weights.type);
     EXPECT_EQ(static_cast<void*>(&raw_weights), trt_weights.values);
     EXPECT_EQ(1, trt_weights.count);
@@ -150,7 +150,7 @@ TEST(TRT_ShapedWeights_Test, Basic) {
   {
     TRT_ShapedWeights weights(DT_FLOAT);
 
-    nvinfer1::Weights trt_weights = weights.GetWeightsForTRT();
+    nvinfer1::Weights trt_weights = weights.GetTrtWeights();
     EXPECT_EQ(nvinfer1::DataType::kFLOAT, trt_weights.type);
     EXPECT_EQ(nullptr, trt_weights.values);
     EXPECT_EQ(0, trt_weights.count);
@@ -317,7 +317,7 @@ TEST_F(ConverterTest, GetTempWeights) {
   TRT_ShapedWeights weights =
       converter_.GetTempWeights(DT_FLOAT, GetTestDims({2, 3}));
 
-  nvinfer1::Weights trt_weights = weights.GetWeightsForTRT();
+  nvinfer1::Weights trt_weights = weights.GetTrtWeights();
   EXPECT_EQ(nvinfer1::DataType::kFLOAT, trt_weights.type);
   EXPECT_NE(nullptr, trt_weights.values);
   EXPECT_EQ(6, trt_weights.count);
