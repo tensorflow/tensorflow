@@ -924,7 +924,9 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
     // If "Transpose" has multiple output data edges, also don't fuse it.
     if (node->num_outputs() > 1 || node->out_edges().size() > 1) return false;
 
-    // Check "perm" attribute, make sure it's what we want.
+    // We compared the tensor containing the permutation order ("perm_node")
+    // with our desired order ("perm"). If they're exactly match, this check
+    // succeed and returns true.
     for (const Edge* e : node->in_edges()) {
       if (!e->IsControlEdge()) {
         const Node* perm_node = e->src();
@@ -934,7 +936,7 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
             e->dst_input() == kPermTensorIndex) {
           // we find the "perm" node, now try to retrieve its value.
           const TensorProto* proto = nullptr;
-          CHECK(GetNodeAttr(perm_node->def(), "value", &proto).ok());
+          CHECK_EQ(GetNodeAttr(perm_node->def(), "value", &proto).ok(), true);
 
           DataType type;
           GetNodeAttr(perm_node->def(), "dtype", &type);
