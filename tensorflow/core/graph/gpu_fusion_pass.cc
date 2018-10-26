@@ -37,6 +37,7 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/util/env_var.h"
 #include "tensorflow/core/util/tensor_format.h"
 
 #include "tensorflow/core/graph/gpu_fusion_pass.h"
@@ -50,11 +51,24 @@ namespace gpu_fusion_pass {
 // namespace
 const int kVlogLevel = -1;
 
+// an adapter on the util version of the ReadBoolFromEnvVar routine
+// this version better suits the usage of the routine in this file.
+// main modifications are
+// 1. default value is hard-coded to false
+// 2. return value is the bool
+//    - true if env-var value is set to 1/true
+//    - false if env-var value is either not set or set to any other value
+bool ReadBoolFromEnvVar(const char* env_var_name) {
+  bool value = false;
+  tensorflow::ReadBoolFromEnvVar(env_var_name, false, &value);
+  return value;
+}
+
 // graph pass grouping for this fusion pass
 const OptimizationPassRegistry::Grouping kROCmFusionPassGrouping =
-    (getenv("TF_ROCM_FUSION_PASS_POST_PARTITIONING") == nullptr)
-        ? OptimizationPassRegistry::POST_PLACEMENT
-        : OptimizationPassRegistry::POST_PARTITIONING;
+    ReadBoolFromEnvVar("TF_ROCM_FUSION_PASS_POST_PARTITIONING")
+        ? OptimizationPassRegistry::POST_PARTITIONING
+        : OptimizationPassRegistry::POST_PLACEMENT;
 
 // attribute name strings
 const char* kAttr_N = "N";
@@ -369,8 +383,7 @@ class ROCmFusionOpAddNReluGrad : public ROCmFusionOpBase {
 
 Status ROCmFusionPass::Run(const GraphOptimizationPassOptions& options) {
   // enable the fusion pass if the env var TF_ROCM_FUSION_ENABLE is set
-  const char* enable_fusion = getenv("TF_ROCM_FUSION_ENABLE");
-  if (enable_fusion != nullptr) {
+  if (ReadBoolFromEnvVar("TF_ROCM_FUSION_ENABLE")) {
     // Check if the graph is present, should be either in
     // - options.graph (for all but POST_PARTITIONING grouping)
     // - options.partition_graphs (for POST_PARTITIONING_grouping)
@@ -407,7 +420,7 @@ Status ROCmFusionPass::Run(const GraphOptimizationPassOptions& options) {
 }
 
 bool ROCmFusionPass::RunPass(Graph* graph) {
-  if (getenv("TF_ROCM_FUSION_DUMP_GRAPH_BEFORE")) {
+  if (ReadBoolFromEnvVar("TF_ROCM_FUSION_DUMP_GRAPH_BEFORE")) {
     DumpGraph(kVlogLevel, "Before running ROCmFusionPass", &*graph);
   }
 
@@ -436,7 +449,7 @@ bool ROCmFusionPass::RunPass(Graph* graph) {
     }
   }
 
-  if (getenv("TF_ROCM_FUSION_DUMP_GRAPH_AFTER")) {
+  if (ReadBoolFromEnvVar("TF_ROCM_FUSION_DUMP_GRAPH_AFTER")) {
     DumpGraph(kVlogLevel, "After running ROCmFusionPass", &*graph);
   }
 
@@ -445,23 +458,23 @@ bool ROCmFusionPass::RunPass(Graph* graph) {
 
 void ROCmFusionPass::InitializeFusions(
     std::vector<std::unique_ptr<ROCmFusionOpBase> >& fusions, Graph* g) {
-  if (!getenv("TF_ROCM_FUSION_DISABLE_CBNA")) {
+  if (!ReadBoolFromEnvVar("TF_ROCM_FUSION_DISABLE_CBNA")) {
     fusions.emplace_back(new ROCmFusionOpConvolutionBiasBatchNormActivation(g));
   }
 
-  if (!getenv("TF_ROCM_FUSION_DISABLE_CBA")) {
+  if (!ReadBoolFromEnvVar("TF_ROCM_FUSION_DISABLE_CBA")) {
     fusions.emplace_back(new ROCmFusionOpConvolutionBiasActivation(g));
   }
 
-  if (!getenv("TF_ROCM_FUSION_DISABLE_BNA")) {
+  if (!ReadBoolFromEnvVar("TF_ROCM_FUSION_DISABLE_BNA")) {
     fusions.emplace_back(new ROCmFusionOpBatchNormActivation(g));
   }
 
-  if (!getenv("TF_ROCM_FUSION_DISABLE_ADDRELU")) {
+  if (!ReadBoolFromEnvVar("TF_ROCM_FUSION_DISABLE_ADDRELU")) {
     fusions.emplace_back(new ROCmFusionOpAddRelu(g));
   }
 
-  if (!getenv("TF_ROCM_FUSION_DISABLE_ADDNRELUGRAD")) {
+  if (!ReadBoolFromEnvVar("TF_ROCM_FUSION_DISABLE_ADDNRELUGRAD")) {
     fusions.emplace_back(new ROCmFusionOpAddNReluGrad(g));
   }
 }
