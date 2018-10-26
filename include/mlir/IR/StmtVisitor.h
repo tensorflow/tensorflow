@@ -212,7 +212,7 @@ public:
   // and try visiting the subtype.  All of this should be inlined perfectly,
   // because there are no virtual functions to get in the way.
 
-  // When visiting a specific stmt directly during a walk, these  methods get
+  // When visiting a specific stmt directly during a walk, these methods get
   // called. These are typically O(1) complexity and shouldn't be recursively
   // processing their descendants in some way. When using RetTy, all of these
   // need to be overridden.

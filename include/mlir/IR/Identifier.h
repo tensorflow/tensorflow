@@ -52,14 +52,10 @@ public:
   const char *c_str() const { return pointer; }
 
   /// Return a pointer to the start of the string data.
-  const char *data() const {
-    return pointer;
-  }
+  const char *data() const { return pointer; }
 
   /// Return the number of bytes in this string.
-  unsigned size() const {
-    return ::strlen(pointer);
-  }
+  unsigned size() const { return ::strlen(pointer); }
 
   /// Return true if this identifier is the specified string.
   bool is(StringRef string) const { return strref().equals(string); }

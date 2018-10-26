@@ -311,7 +311,7 @@ protected:
   }
 };
 
-/// This class provides the API for ops that are known to have exactly one
+/// This class provides the API for ops that are known to have no
 /// SSA operand.
 template <typename ConcreteType>
 class ZeroOperands : public TraitBase<ConcreteType, ZeroOperands> {
@@ -473,7 +473,7 @@ public:
   }
 };
 
-/// This class provides return value APIs for ops that are known to have a
+/// This class provides return value APIs for ops that are known to have
 /// zero results.
 template <typename ConcreteType>
 class ZeroResult : public TraitBase<ConcreteType, ZeroResult> {
