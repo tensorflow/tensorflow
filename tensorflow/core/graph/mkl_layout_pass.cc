@@ -2657,7 +2657,7 @@ Status MklLayoutRewritePass::FuseTransposeMklOpTranspose(
   gtl::InlinedVector<Node*, 4> transpose_nchw_control_edges;
   gtl::InlinedVector<std::pair<Node*, int>, 4> transpose_nchw_in(
       transpose_nchw_num_inputs);
-  FillInputs(transpose_to_nhwc, &transpose_nchw_control_edges,
+  FillInputs(transpose_to_nchw, &transpose_nchw_control_edges,
              &transpose_nchw_in);
 
   // We will use the node name of Conv2d as the name of new node
