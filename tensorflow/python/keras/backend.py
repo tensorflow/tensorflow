@@ -65,6 +65,7 @@ from tensorflow.python.util.tf_export import tf_export
 
 py_all = all
 py_sum = sum
+py_any = any
 
 # INTERNAL UTILS
 
@@ -1597,21 +1598,23 @@ def batch_dot(x, y, axes=None):
     y = permute_dimensions(y, pattern)
 
   # reshape to closest broadcastable shape
-  x_shape = tf.shape(x)
-  y_shape = tf.shape(y)
+  x_shape = array_ops.shape(x)
+  y_shape = array_ops.shape(y)
 
-  new_x_shape = tf.concat([x_shape, tf.ones_like(y_shape[2:])], 0)
-  new_y_shape = tf.concat([y_shape[:2], tf.ones_like(x_shape[2:]), y_shape[2:]], 0)
+  new_x_shape = concatenate([x_shape, ones_like(y_shape[2:])], 0)
+  new_y_shape = concatenate([y_shape[:2], ones_like(x_shape[2:]),
+                             y_shape[2:]], 0)
 
   x = reshape(x, new_x_shape)
   y = reshape(y, new_y_shape)
 
-  result = tf.reduce_sum(x * y, 1)
+  result = math_ops.reduce_sum(x * y, 1)
 
   if ndim(result) == 1:
-    result = tf.expand_dims(result, -1)
+    result = expand_dims(result, -1)
 
   return result
+
 
 @tf_export('keras.backend.transpose')
 def transpose(x):

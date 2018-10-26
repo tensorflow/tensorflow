@@ -290,54 +290,46 @@ class BackendLinearAlgebraTest(test.TestCase):
 
   def test_batch_dot(self):
     test_cases = []
-    test_cases.append([(None, 3, 4, 5), (None, 2, 3, 4), (2, 3)])
-    test_cases.append([(None, 3, 4, 5), (None, 2, 4), 2])
-    test_cases.append([(None, 3, 4), (None, 2, 3, 4), (2, 3)])
-    test_cases.append([(None, 4, 3), (None, 3, 5), (2, 1)])
-    test_cases.append([(None, 4), (None, 3, 4), (1, 2)])
-    test_cases.append([(None, 4), (None, 4), None])
+    test_cases.append([(7, 3, 4, 5), (7, 2, 3, 4), (2, 3)])
+    test_cases.append([(7, 3, 4, 5), (7, 2, 4), 2])
+    test_cases.append([(7, 3, 4), (7, 2, 3, 4), (2, 3)])
+    test_cases.append([(7, 4, 3), (7, 3, 5), (2, 1)])
+    test_cases.append([(7, 4), (7, 3, 4), (1, 2)])
+    test_cases.append([(7, 4), (7, 4), None])
 
-    batch_size = 7
+    def np_batch_dot(x, y, axes):
+      if axes is None:
+        if y.ndim == 2:
+          axes = [x.ndim - 1, y.ndim - 1]
+        else:
+          axes = [x.ndim - 1, y.ndim - 2]
+      elif isinstance(axes, int):
+        axes = [axes, axes]
+      else:
+        axes = list(axes)
 
-    def batch_shape(shape):
-      return (batch_size, ) + shape[1:]
+      if axes[0] < 0:
+        axes[0] += x.ndim
+      if axes[1] < 0:
+        axes[1] += y.ndim
 
-    def random(shape):
-      return np.random.random(batch_shape(shape))
+      result = []
+      for xi, yi in zip(x, y):
+        result.append(np.tensordot(xi, yi, [axes[0] - 1, axes[1] - 1]))
+      result = np.array(result)
+
+      if result.ndim == 1:
+        result = np.expand_dims(result, -1)
+
+      return result
 
     for x_shape, y_shape, axes in test_cases:
-      x_np = random(x_shape)
-      y_np = random(y_shape)
-
-      # normalize axes arg to [int, int]
-      if axes is None:
-        if y_np.ndim == 2:
-          norm_axes = [len(x_shape) - 1, len(y_shape) - 1]
-        else:
-          norm_axes = [len(x_shape) - 1, len(y_shape) - 2]
-      elif isinstance(axes, int):
-        norm_axes = [axes, axes]
-      else:
-        norm_axes = list(axes)
-      
-      if norm_axes[0] < 0:
-        norm_axes[0] += len(x_shape)
-      if norm_axes[1] < 0:
-        norm_axes[1] += len(y_shape)
-
-      # build expected array in numpy
-      z_np = []
-      for xi, yi in zip(z_np, y_np):
-        z_np.append(np.tensordot(xi, yi, (norm_axes[0] - 1, norm_axes[1] - 1)))
-      z_np = np.array(z_np)
-      if z_np.ndim == 1:
-        z_np = np.expand_dims(z_np, -1)
-
-      x = keras.backend.variable(x_np)
-      y = keras.backend.variable(y_np)
-      z = keras.backend.batch_dot(x, y)
-
-      self.assertAllClose(keras.backend.eval(z), z_np)
+      compare_two_inputs_op_to_numpy(keras.backend.batch_dot,
+                                     np_batch_dot,
+                                     x_shape,
+                                     y_shape,
+                                     keras_args=[axes],
+                                     np_args=[axes])
 
   def test_reduction_ops(self):
     ops_to_test = [
