@@ -256,7 +256,7 @@ class StudentT(distribution.Distribution):
     gamma_sample = random_ops.random_gamma(
         [n],
         0.5 * df,
-        beta=0.5,
+        beta=2,
         dtype=self.dtype,
         seed=distribution_util.gen_new_seed(seed, salt="student_t"))
     samples = normal_sample * math_ops.rsqrt(gamma_sample / df)
