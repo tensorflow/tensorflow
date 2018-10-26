@@ -317,6 +317,8 @@ class BackendLinearAlgebraTest(test.TestCase):
           norm_axes = [len(x_shape) - 1, len(y_shape) - 2]
       elif isinstance(axes, int):
         norm_axes = [axes, axes]
+      else:
+        norm_axes = list(axes)
       
       if norm_axes[0] < 0:
         norm_axes[0] += len(x_shape)
@@ -328,6 +330,8 @@ class BackendLinearAlgebraTest(test.TestCase):
       for xi, yi in zip(z_np, y_np):
         z_np.append(np.tensordot(xi, yi, (norm_axes[0] - 1, norm_axes[1] - 1)))
       z_np = np.array(z_np)
+      if z_np.ndim == 1:
+        z_np = np.expand_dims(z_np, -1)
 
       x = keras.backend.variable(x_np)
       y = keras.backend.variable(y_np)
