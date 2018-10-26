@@ -1821,8 +1821,6 @@ void MklLayoutRewritePass::CopyAttrsConv(const Node* orig_node, NodeBuilder* nb,
       new_dilations = {dilations[NDHWC::dim::N], dilations[NDHWC::dim::C],
                        dilations[NDHWC::dim::D], dilations[NDHWC::dim::H],
                        dilations[NDHWC::dim::W]};
-      nb->Attr("dilations", new_dilations);
-
     } else {
       // "strides" and "dilations" also need to be changed according to
       // "data_format",
@@ -1834,8 +1832,8 @@ void MklLayoutRewritePass::CopyAttrsConv(const Node* orig_node, NodeBuilder* nb,
 
       new_dilations = {dilations[NHWC::dim::N], dilations[NHWC::dim::C],
                        dilations[NHWC::dim::H], dilations[NHWC::dim::W]};
-      nb->Attr("dilations", new_dilations);
     }
+    nb->Attr("dilations", new_dilations);
   }
 }
 
