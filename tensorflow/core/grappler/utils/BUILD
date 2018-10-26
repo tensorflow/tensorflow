@@ -101,6 +101,7 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/grappler:graph_view",
+        "@com_google_absl//absl/container:flat_hash_map",
     ],
 )
 
