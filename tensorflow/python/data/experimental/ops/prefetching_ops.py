@@ -24,10 +24,11 @@ from tensorflow.python.data.ops import iterator_ops
 from tensorflow.python.data.util import nest
 from tensorflow.python.data.util import sparse
 from tensorflow.python.eager import context
+from tensorflow.python.eager import function
 from tensorflow.python.framework import device as framework_device
 from tensorflow.python.framework import dtypes
-from tensorflow.python.framework import function
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_spec
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import functional_ops
 from tensorflow.python.ops import gen_dataset_ops
@@ -126,7 +127,8 @@ class _PrefetchToDeviceIterator(object):
           shared_name, self._input_dataset.output_classes)
     input_iterator_handle = self._input_iterator.string_handle()
 
-    @function.Defun(dtypes.string)
+    @function.defun(input_signature=[tensor_spec.TensorSpec([], dtypes.string)])
+    # handle is a scalar `tf.Tensor` of type `tf.string`
     def _prefetch_fn(handle):
       """Prefetches one element from `input_iterator`."""
       remote_iterator = iterator_ops.Iterator.from_string_handle(
@@ -141,7 +143,7 @@ class _PrefetchToDeviceIterator(object):
 
     with ops.device(device):
       self._buffering_resource = function_buffering_resource(
-          f=_prefetch_fn,
+          f=_prefetch_fn.get_concrete_function(),
           target_device=iterator_device,
           string_arg=input_iterator_handle,
           buffer_size=buffer_size,
@@ -225,7 +227,7 @@ class _PrefetchToDeviceEagerIterator(iterator_ops.EagerIterator):
 
     self._device = device
 
-    @function.Defun(dtypes.string)
+    @function.defun(input_signature=[tensor_spec.TensorSpec([], dtypes.string)])
     def _prefetch_fn(handle):
       """Prefetches one element from `input_iterator`."""
       remote_iterator = iterator_ops.Iterator.from_string_handle(
@@ -233,11 +235,11 @@ class _PrefetchToDeviceEagerIterator(iterator_ops.EagerIterator):
       ret = remote_iterator.get_next()
       return nest.flatten(sparse.serialize_sparse_tensors(ret))
 
-    _prefetch_fn.add_to_graph(None)
+    self._prefetch_fn = _prefetch_fn.get_concrete_function()
 
     with ops.device(device):
       self._buffering_resource = function_buffering_resource(
-          f=_prefetch_fn,
+          f=self._prefetch_fn,
           output_types=self._flat_output_types,
           target_device=ged_ops.experimental_iterator_get_device(
               self._resource),
@@ -402,7 +404,7 @@ class _CopyToDeviceDataset(dataset_ops.UnaryDataset):
         sparse.as_dense_types(self._input_dataset.output_types,
                               self._input_dataset.output_classes))
 
-    @function.Defun()
+    @function.defun()
     def _init_func():
       """Creates an iterator for the input dataset.
 
@@ -418,18 +420,18 @@ class _CopyToDeviceDataset(dataset_ops.UnaryDataset):
           [gen_dataset_ops.make_iterator(ds_variant, resource)]):
         return gen_dataset_ops.iterator_to_string_handle(resource)
 
-    @function.Defun()
+    @function.defun()
     def _remote_init_func():
       return functional_ops.remote_call(
           target=self._source_device,
-          args=_init_func.captured_inputs,
+          args=_init_func.get_concrete_function().captured_inputs,
           Tout=[dtypes.string],
-          f=_init_func)
+          f=_init_func.get_concrete_function())
 
-    self._init_func = _remote_init_func
-    self._init_captured_args = _remote_init_func.captured_inputs
+    self._init_func = _remote_init_func.get_concrete_function()
+    self._init_captured_args = self._init_func.captured_inputs
 
-    @function.Defun(dtypes.string)
+    @function.defun(input_signature=[tensor_spec.TensorSpec([], dtypes.string)])
     def _next_func(string_handle):
       """Calls get_next for created iterator.
 
@@ -445,18 +447,19 @@ class _CopyToDeviceDataset(dataset_ops.UnaryDataset):
       ret = iterator.get_next()
       return nest.flatten(sparse.serialize_sparse_tensors(ret))
 
-    @function.Defun(dtypes.string)
+    @function.defun(input_signature=[tensor_spec.TensorSpec([], dtypes.string)])
     def _remote_next_func(string_handle):
       return functional_ops.remote_call(
           target=self._source_device,
-          args=[string_handle] + _next_func.captured_inputs,
+          args=[string_handle] +
+          _next_func.get_concrete_function().captured_inputs,
           Tout=self._flat_output_types,
-          f=_next_func)
+          f=_next_func.get_concrete_function())
 
-    self._next_func = _remote_next_func
-    self._next_captured_args = _remote_next_func.captured_inputs
+    self._next_func = _remote_next_func.get_concrete_function()
+    self._next_captured_args = self._next_func.captured_inputs
 
-    @function.Defun(dtypes.string)
+    @function.defun(input_signature=[tensor_spec.TensorSpec([], dtypes.string)])
     def _finalize_func(string_handle):
       """Destroys the iterator resource created.
 
@@ -474,21 +477,22 @@ class _CopyToDeviceDataset(dataset_ops.UnaryDataset):
               iterator_resource, ignore_lookup_error=True)]):
         return array_ops.constant(0, dtypes.int64)
 
-    @function.Defun(dtypes.string)
+    @function.defun(input_signature=[tensor_spec.TensorSpec([], dtypes.string)])
     def _remote_finalize_func(string_handle):
       return functional_ops.remote_call(
           target=self._source_device,
-          args=[string_handle] + _finalize_func.captured_inputs,
+          args=[string_handle] +
+          _finalize_func.get_concrete_function().captured_inputs,
           Tout=[dtypes.int64],
-          f=_finalize_func)
+          f=_finalize_func.get_concrete_function())
 
-    self._finalize_func = _remote_finalize_func
-    self._finalize_captured_args = _remote_finalize_func.captured_inputs
+    self._finalize_func = _remote_finalize_func.get_concrete_function()
+    self._finalize_captured_args = self._finalize_func.captured_inputs
 
     g = ops.get_default_graph()
-    _remote_init_func.add_to_graph(g)
-    _remote_next_func.add_to_graph(g)
-    _remote_finalize_func.add_to_graph(g)
+    self._init_func.add_to_graph(g)
+    self._next_func.add_to_graph(g)
+    self._finalize_func.add_to_graph(g)
     # pylint: enable=protected-scope
 
   # The one_shot_iterator implementation needs a 0 arg _make_dataset function
