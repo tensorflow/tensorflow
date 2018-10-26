@@ -935,14 +935,14 @@ class ControlFlowTest(test.TestCase):
       r = isum(s, maximum_iterations=3)
       self.assertAllEqual([1 + 3, 2 + 3, 3 + 3, 4 + 3, 5 + 3], r.eval())
 
-  @test_util.disable_control_flow_v2("b/116339888 (non-tensor loop var)")
+  @test_util.disable_control_flow_v2("b/115776323 (max_iters)")
   def testWhileWithMaximumIterationsAndSingleArgument(self):
     with self.cached_session():
       r = control_flow_ops.while_loop(
           lambda i: i < 3, lambda i: i + 1, [0], maximum_iterations=1)
       self.assertEqual(1, r.eval())
 
-  @test_util.disable_control_flow_v2("b/116339888 (non-tensor loop var)")
+  @test_util.disable_control_flow_v2("b/115776323 (max_iters)")
   def testSingleNestedMaximumIterationsWhileLoopGradientInXLAContext(self):
     v = constant_op.constant(1.0)
 
@@ -968,7 +968,7 @@ class ControlFlowTest(test.TestCase):
     # Should execute without issue.
     self.assertEqual(3, self.evaluate(loop_execute))
 
-  @test_util.disable_control_flow_v2("b/116339888 (non-tensor loop var)")
+  @test_util.disable_control_flow_v2("b/115776323 (max_iters)")
   def testInvalidMaximumIterationsWhileLoopGradientInXLAContext(self):
     v = constant_op.constant(1.0)
 
@@ -1247,7 +1247,6 @@ class ControlFlowTest(test.TestCase):
       r = r[1] * array_ops.ones([8, 8])
       self.assertAllEqual(np.ones((8, 8)), r.eval())
 
-  @test_util.disable_control_flow_v2("b/116339888 (non-tensor loop var)")
   def testWhileWithNonTensorInput_Scalar(self):
     with self.cached_session():
       n = 0
@@ -1256,7 +1255,6 @@ class ControlFlowTest(test.TestCase):
       r = control_flow_ops.while_loop(c, b, [n], parallel_iterations=20)
       self.assertEqual(10000, r.eval())
 
-  @test_util.disable_control_flow_v2("b/116339888 (non-tensor loop var)")
   def testWhileWithNonTensorInput_Vector(self):
     with self.cached_session():
       n = np.array([0])  # Note, [0] would not work here; that is a list
@@ -2056,7 +2054,6 @@ class ControlFlowTest(test.TestCase):
                                       [tensor_shape.unknown_shape()])
       self.assertAllClose(9.0, r.eval(feed_dict={x: 1.0}))
 
-  @test_util.disable_control_flow_v2("b/116339888 (non-tensor loop var)")
   def testCondGradInNestedWhiles(self):
 
     def outer_body(i, x):
