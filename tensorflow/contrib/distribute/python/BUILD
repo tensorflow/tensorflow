@@ -594,7 +594,6 @@ py_library(
     deps = [
         ":values",
         "//tensorflow/contrib/all_reduce:all_reduce_py",
-        "//tensorflow/contrib/nccl:nccl_py",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:collective_ops",
         "//tensorflow/python:device",
@@ -602,6 +601,7 @@ py_library(
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:gradients",
         "//tensorflow/python:math_ops",
+        "//tensorflow/python:nccl_ops",
     ],
 )
 
