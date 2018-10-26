@@ -92,14 +92,16 @@ class ExportTest(test.TestCase):
 
   def test_nested_inputs(self):
     root = tracking.Checkpointable()
-    root.f = def_function.function(lambda x: 2. * x[0])
-    root.f([constant_op.constant(1.)])
-    to_export = root.f.get_concrete_function(
-        [constant_op.constant(1.), constant_op.constant(2.)])
-    export_dir = os.path.join(self.get_temp_dir(), "saved_model")
+    root.f = def_function.function(
+        lambda x: 2. * x[0],
+        input_signature=([tensor_spec.TensorSpec(None, dtypes.float32),
+                          tensor_spec.TensorSpec(None, dtypes.float32)],))
+    root.f([constant_op.constant(1.), constant_op.constant(1.)])
+    # Concrete functions must always have uniquely named Tensor inputs. Export
+    # relies on this.
     with self.assertRaisesRegexp(
-        ValueError, "non-unique argument names"):
-      export.export(root, export_dir, to_export)
+        ValueError, "two arguments named 'x'"):
+      root.f.get_concrete_function()
 
   def test_nested_outputs(self):
     root = tracking.Checkpointable()

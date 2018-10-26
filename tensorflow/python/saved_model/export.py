@@ -55,8 +55,7 @@ def _canonicalize_signatures(signatures):
              "`input_signature=` specified when constructed, or must be "
              "converted to concrete functions using "
              "`f.get_concrete_function(...)`.").format(signature_function))
-      signature_function = signature_function.get_concrete_function(
-          *input_signature)
+      signature_function = signature_function.get_concrete_function()
     elif not isinstance(signature_function, function.Function):
       raise ValueError(
           ("Expected a TensorFlow function to generate a signature for, but "
@@ -147,7 +146,7 @@ def _generate_signatures(signature_functions):
     # function, but these exterior placeholders allow Session-based APIs to call
     # the function using feeds and fetches which name Tensors in the MetaGraph.
     exterior_placeholders = {}
-    args = []
+    kwargs = {}
     for placeholder in func.inputs:
       user_input_name = compat.as_str_any(
           placeholder.op.get_attr("_user_specified_name"))
@@ -157,6 +156,8 @@ def _generate_signatures(signature_functions):
       # confusing to call. Instead, we throw an exception telling the user to
       # specify explicit names.
       if user_input_name != placeholder.op.name:
+        # This should be unreachable, since concrete functions may not be
+        # generated with non-unique argument names.
         raise ValueError(
             ("Got non-flat/non-unique argument names for SavedModel "
              "signature '{}': more than one argument to '{}' was named '{}'. "
@@ -173,9 +174,9 @@ def _generate_signatures(signature_functions):
           dtype=placeholder.dtype,
           name="{}_{}".format(signature_key, user_input_name))
       exterior_placeholders[user_input_name] = arg_placeholder
-      args.append(arg_placeholder)
+      kwargs[user_input_name] = arg_placeholder
     outputs = _normalize_outputs(
-        func(*args), func.name, signature_key)
+        func(**kwargs), func.name, signature_key)
     signatures[signature_key] = signature_def_utils.build_signature_def(
         _tensor_dict_to_tensorinfo(exterior_placeholders),
         _tensor_dict_to_tensorinfo(outputs))

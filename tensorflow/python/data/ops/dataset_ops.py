@@ -1927,19 +1927,24 @@ class StructuredFunctionWrapper(object):
         nest.flatten(self._input_classes)):
       # TODO(b/110122868): Add a registration mechanism for new component types.
       if input_class is sparse_tensor_lib.SparseTensor:
+        # Give TensorSpec objects unique names to satisfy error checking in
+        # get_concrete_function.
         ret.append(
             tensor_spec.TensorSpec(
-                tensor_shape.TensorShape(None), dtypes.variant))
+                tensor_shape.TensorShape(None), dtypes.variant,
+                name="arg_{}".format(len(ret))))
       elif isinstance(input_class, _NestedDatasetComponent):
         if not self._nested_dataset_support:
           raise NotImplementedError(
               "The %s transformation does not currently support nested "
               "datasets as inputs." % self._transformation_name)
         ret.append(
-            tensor_spec.TensorSpec(tensor_shape.scalar(), dtypes.variant))
+            tensor_spec.TensorSpec(tensor_shape.scalar(), dtypes.variant,
+                                   name="arg_{}".format(len(ret))))
       else:
         assert isinstance(input_type, dtypes.DType)
-        ret.append(tensor_spec.TensorSpec(input_shape, input_type))
+        ret.append(tensor_spec.TensorSpec(input_shape, input_type,
+                                          name="arg_{}".format(len(ret))))
     return ret
 
   @property

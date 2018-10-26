@@ -228,14 +228,23 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
       ((a, b),) = mats
       return matmul(a, b)
 
+    with self.assertRaisesRegexp(ValueError, "two arguments named 'mats'"):
+      sq.get_concrete_function(
+          [(tensor_spec.TensorSpec((None, None), dtypes.float32),
+            tensor_spec.TensorSpec((None, None), dtypes.float32))])
     sq_op = sq.get_concrete_function(
-        [(tensor_spec.TensorSpec((None, None), dtypes.float32),
-          tensor_spec.TensorSpec((None, None), dtypes.float32))])
+        [(tensor_spec.TensorSpec((None, None), dtypes.float32,
+                                 name='first_mat'),
+          tensor_spec.TensorSpec((None, None), dtypes.float32,
+                                 name='second_mat'))])
     self.assertEqual([None, None], sq_op.output_shapes.as_list())
 
     t1 = constant_op.constant([[1.0, 2.0], [3.0, 4.0]])
     t2 = constant_op.constant([[1.4, 2.4], [3.4, 4.4]])
-    out = sq_op(t1, t2)  # Flattened structure for inputs to the graph function
+    with self.assertRaisesRegexp(
+        TypeError, 'bound to Tensors within nested structures'):
+      sq_op(t1, t2)
+    out = sq_op(first_mat=t1, second_mat=t2)
     self.assertAllEqual(out, math_ops.matmul(t1, t2).numpy())
 
   def testExecutingStatelessDefunConcurrently(self):
@@ -343,10 +352,11 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
       return matmul(inputs.a['a'], inputs.b['b'])
 
     t = constant_op.constant([[1.0, 2.0], [3.0, 4.0]])
-    inputs = pair({'a': t}, {'b': t})
-    sq_op = a_times_b.get_concrete_function(inputs)
+    sq_op = a_times_b.get_concrete_function(
+        pair(dict(a=tensor_spec.TensorSpec([2, 2], dtypes.float32, 'a')),
+             dict(b=tensor_spec.TensorSpec([2, 2], dtypes.float32, 'b'))))
     self.assertEqual(sq_op.output_shapes, tensor_shape.TensorShape([2, 2]))
-    out = sq_op(inputs)
+    out = sq_op(a=t, b=t)
     self.assertAllEqual(out, math_ops.matmul(t, t).numpy())
 
   def testNestedOutputGraphFunction(self):
@@ -1805,9 +1815,13 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     signature = [tensor_spec.TensorSpec(shape=(2,), dtype=dtypes.float32)]
     defined = function.defun(foo, input_signature=signature)
     a = array_ops.ones([2])
-    out = defined(a)
+    self.assertAllEqual(a, defined(a))
     self.assertEqual(len(defined._function_cache), 1)
-    self.assertAllEqual(out, a)
+    self.assertAllEqual(a, defined.get_concrete_function()(a))
+    self.assertAllEqual(a, defined.get_concrete_function(a)(a))
+    self.assertAllEqual(a, defined.get_concrete_function(
+        tensor_spec.TensorSpec((2,), dtype=dtypes.float32))(a))
+    self.assertEqual(len(defined._function_cache), 1)
 
     def bar(a):
       self.assertEqual(a._shape_tuple(), (2, None))
@@ -1917,6 +1931,11 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     with self.assertRaisesRegexp(ValueError,
                                  'Structure of Python function inputs.*'):
       defined()
+
+    with self.assertRaisesRegexp(ValueError,
+                                 'inputs incompatible with input_signature'):
+      defined.get_concrete_function(
+          tensor_spec.TensorSpec(shape=(3,), dtype=dtypes.float32))
 
   def testInputSignatureForFunctionWithNonTensorInputsNotAllowed(self):
 
@@ -2708,6 +2727,12 @@ class ArgumentNamingTests(test.TestCase, parameterized.TestCase):
         [b'a', b'b'],
         [inp.op.get_attr('_user_specified_name') for inp in fn_op.inputs])
     self.assertEqual(2, len(fn_op.graph.structured_outputs))
+    self.assertAllClose(
+        [3., 2.],
+        fn_op(constant_op.constant(1.), constant_op.constant(2.)))
+    self.assertAllClose(
+        [3., 2.],
+        fn_op(a=constant_op.constant(1.), b=constant_op.constant(2.)))
 
   def testVariable(self, function_decorator):
     @function_decorator
@@ -2747,28 +2772,38 @@ class ArgumentNamingTests(test.TestCase, parameterized.TestCase):
     self.assertEqual({'alpha', 'beta'},
                      set(fn_op.graph.structured_outputs.keys()))
 
+    with self.assertRaisesRegexp(ValueError, "two arguments named 'z'"):
+      fn.get_concrete_function(
+          z=(tensor_spec.TensorSpec(shape=(None,), dtype=dtypes.float32),
+             tensor_spec.TensorSpec(shape=(), dtype=dtypes.float32)),
+          y=tensor_spec.TensorSpec(shape=(), dtype=dtypes.float32,
+                                   name='custom'),
+          x=4.)
     fn_op2 = fn.get_concrete_function(
-        z=(tensor_spec.TensorSpec(shape=(None,), dtype=dtypes.float32),
-           tensor_spec.TensorSpec(shape=(), dtype=dtypes.float32)),
+        z=(tensor_spec.TensorSpec(shape=(None,), dtype=dtypes.float32,
+                                  name='z_first'),
+           tensor_spec.TensorSpec(shape=(), dtype=dtypes.float32,
+                                  name='z_second')),
         y=tensor_spec.TensorSpec(shape=(), dtype=dtypes.float32, name='custom'),
         x=4.)
     self.assertEqual(
-        ['z', 'z_1', 'custom'],
+        ['z_first', 'z_second', 'custom'],
         [inp.op.name for inp in fn_op2.inputs])
     self.assertEqual(
-        [b'z', b'z', b'custom'],
+        [b'z_first', b'z_second', b'custom'],
         [inp.op.get_attr('_user_specified_name') for inp in fn_op2.inputs])
 
     fn_op3 = fn.get_concrete_function(
         tensor_spec.TensorSpec(shape=(), dtype=dtypes.float32, name='custom'),
-        z=(tensor_spec.TensorSpec(shape=(None,), dtype=dtypes.float32),
-           tensor_spec.TensorSpec(shape=(), dtype=dtypes.float32)),
-        y=tensor_spec.TensorSpec(shape=(), dtype=dtypes.float32, name='custom'))
+        z=(tensor_spec.TensorSpec(shape=(None,), dtype=dtypes.float32,
+                                  name='z1'),
+           tensor_spec.TensorSpec(shape=(), dtype=dtypes.float32, name='z2')),
+        y=tensor_spec.TensorSpec(shape=(), dtype=dtypes.float32))
     self.assertEqual(
-        ['custom', 'z', 'z_1', 'custom_1'],
+        ['custom', 'z1', 'z2', 'y'],
         [inp.op.name for inp in fn_op3.inputs])
     self.assertEqual(
-        [b'custom', b'z', b'z', b'custom'],
+        [b'custom', b'z1', b'z2', b'y'],
         [inp.op.get_attr('_user_specified_name') for inp in fn_op3.inputs])
 
   def testMethod(self, function_decorator):
@@ -2852,14 +2887,15 @@ class ArgumentNamingTests(test.TestCase, parameterized.TestCase):
         tensor_spec.TensorSpec(shape=(), dtype=dtypes.float32),
         tensor_spec.TensorSpec(shape=None, dtype=dtypes.float32, name='y'),
         tensor_spec.TensorSpec(shape=(), dtype=dtypes.float32),
-        tensor_spec.TensorSpec(shape=(), dtype=dtypes.float32),
+        tensor_spec.TensorSpec(shape=(), dtype=dtypes.float32,
+                               name='second_variadic'),
         z=tensor_spec.TensorSpec(shape=(), dtype=dtypes.float32),
         zz=tensor_spec.TensorSpec(shape=(), dtype=dtypes.float32, name='cust'))
     self.assertEqual(
-        ['x', 'y', 'args', 'args_1', 'z', 'cust'],
+        ['x', 'y', 'args', 'second_variadic', 'z', 'cust'],
         [inp.op.name for inp in variadic_op.inputs])
     self.assertEqual(
-        [b'x', b'y', b'args', b'args', b'z', b'cust'],
+        [b'x', b'y', b'args', b'second_variadic', b'z', b'cust'],
         [inp.op.get_attr('_user_specified_name')
          for inp in variadic_op.inputs])
 
@@ -2869,7 +2905,7 @@ class ArgumentNamingTests(test.TestCase, parameterized.TestCase):
             tensor_spec.TensorSpec(shape=None, dtype=dtypes.float32),
             tensor_spec.TensorSpec(shape=None, dtype=dtypes.float32, name='y'),
             tensor_spec.TensorSpec(shape=(), dtype=dtypes.float32),
-            tensor_spec.TensorSpec(shape=(), dtype=dtypes.float32),
+            tensor_spec.TensorSpec(shape=(), dtype=dtypes.float32, name='z'),
         ))
     def variadic_fn(x, *args):
       return x + math_ops.add_n(list(args))
@@ -2880,10 +2916,10 @@ class ArgumentNamingTests(test.TestCase, parameterized.TestCase):
     variadic_op = variadic_fn.get_concrete_function()
     self.assertIn(b'variadic_fn', variadic_op.name)
     self.assertEqual(
-        ['x', 'y', 'args', 'args_1'],
+        ['x', 'y', 'args', 'z'],
         [inp.op.name for inp in variadic_op.inputs])
     self.assertEqual(
-        [b'x', b'y', b'args', b'args'],
+        [b'x', b'y', b'args', b'z'],
         [inp.op.get_attr('_user_specified_name')
          for inp in variadic_op.inputs])
 
