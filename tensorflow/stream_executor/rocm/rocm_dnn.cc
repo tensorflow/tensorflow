@@ -267,21 +267,6 @@ uint64 GetHashValue(miopenConvolutionDescriptor_t conv_desc) {
   return hashValue;
 }
 
-uint64 GetHashValue(miopenActivationDescriptor_t actv_desc) {
-  miopenActivationMode_t mode = miopenActivationPASTHRU;
-  double alpha = 0.0, beta = 0.0, gamma = 0.0;
-  miopenGetActivationDescriptor(actv_desc, &mode, &alpha, &beta, &gamma);
-
-  uint64 hashValue = tensorflow::hash<int>()(mode);
-  hashValue =
-      tensorflow::Hash64Combine(hashValue, tensorflow::hash<double>()(alpha));
-  hashValue =
-      tensorflow::Hash64Combine(hashValue, tensorflow::hash<double>()(beta));
-  hashValue =
-      tensorflow::Hash64Combine(hashValue, tensorflow::hash<double>()(gamma));
-
-  return hashValue;
-}
 
 // class to implement a cache of compiled fusion plans
 class CachedFusionPlans {
@@ -771,38 +756,38 @@ class ScopedActivationDescriptor {
  public:
   ScopedActivationDescriptor(ROCMExecutor* parent,
                              dnn::ActivationMode activation_mode)
-      : parent_(parent), handle_(nullptr) {
+      : parent_(parent),
+        handle_(nullptr),
+        miopen_activation_mode_(miopenActivationPASTHRU),
+        alpha_(0.0),
+        beta_(0.0),
+        gamma_(0.0) {
     miopenStatus_t status =
         wrap::miopenCreateActivationDescriptor(parent_, &handle_);
     if (status != miopenStatusSuccess) {
       LOG(FATAL) << "call to miopenCreateActivationDescriptor failed: "
                  << ToString(status);
     } else {
-      miopenActivationMode_t miopen_activation_mode = miopenActivationPASTHRU;
-      double alpha = 0;
-      double beta = 0;
-      double gamma = 0;
-
       switch (activation_mode) {
         case dnn::ActivationMode::kNone:
-          miopen_activation_mode = miopenActivationPASTHRU;
+          miopen_activation_mode_ = miopenActivationPASTHRU;
           break;
 
         case dnn::ActivationMode::kSigmoid:
-          miopen_activation_mode = miopenActivationLOGISTIC;
+          miopen_activation_mode_ = miopenActivationLOGISTIC;
           break;
 
         case dnn::ActivationMode::kRelu:
-          miopen_activation_mode = miopenActivationRELU;
+          miopen_activation_mode_ = miopenActivationRELU;
           break;
 
         case dnn::ActivationMode::kRelu6:
-          miopen_activation_mode = miopenActivationRELU;
-          alpha = 6.0;
+          miopen_activation_mode_ = miopenActivationRELU;
+          alpha_ = 6.0;
           break;
 
         case dnn::ActivationMode::kTanh:
-          miopen_activation_mode = miopenActivationTANH;
+          miopen_activation_mode_ = miopenActivationTANH;
           break;
 
         default:
@@ -813,7 +798,7 @@ class ScopedActivationDescriptor {
       }
 
       status = wrap::miopenSetActivationDescriptor(
-          parent_, handle_, miopen_activation_mode, alpha, beta, gamma);
+          parent_, handle_, miopen_activation_mode_, alpha_, beta_, gamma_);
       if (status != miopenStatusSuccess) {
         LOG(FATAL) << "call to miopenSetActivationDescriptor failed: "
                    << ToString(status);
@@ -832,11 +817,34 @@ class ScopedActivationDescriptor {
 
   miopenActivationDescriptor_t handle() const { return handle_; }
 
+  uint64 GetHashValue() {
+    uint64 hashValue = tensorflow::hash<int>()(miopen_activation_mode_);
+    hashValue = tensorflow::Hash64Combine(hashValue,
+                                          tensorflow::hash<double>()(alpha_));
+    hashValue =
+        tensorflow::Hash64Combine(hashValue, tensorflow::hash<double>()(beta_));
+    hashValue = tensorflow::Hash64Combine(hashValue,
+                                          tensorflow::hash<double>()(gamma_));
+
+    return hashValue;
+  }
+
  private:
   ROCMExecutor* parent_;                 // Parent executor. Not owned.
   miopenActivationDescriptor_t handle_;  // Owned.
 
   SE_DISALLOW_COPY_AND_ASSIGN(ScopedActivationDescriptor);
+
+ public:
+  // caching these values here to avoid calling miopenGetActivationDescriptor
+  // to do the same. miopenGetActivationDescriptor gets called twice during each
+  // call to execute a fusion plan (that involves the activation op)...once call
+  // during calculating hashvalue for the fusion op, and another before calling
+  // SetOpArgs for the activation op
+  miopenActivationMode_t miopen_activation_mode_;
+  double alpha_;
+  double beta_;
+  double gamma_;
 };
 
 // base class for all fusion plan implementations to derive from
@@ -984,7 +992,7 @@ class ScopedFusionPlanConvolutionBiasActivation : public ScopedFusionPlanBase {
       miopenTensorDescriptor_t filter_descriptor,
       miopenConvolutionDescriptor_t conv_descriptor,
       miopenTensorDescriptor_t bias_descriptor,
-      miopenActivationDescriptor_t activation_descriptor)
+      ScopedActivationDescriptor& activation_descriptor)
       : ScopedFusionPlanBase(parent, miopen_handle, miopenVerticalFusion,
                              input_descriptor) {
     uint64 hash = GetFusionOpHashValue(input_descriptor, filter_descriptor,
@@ -1010,19 +1018,10 @@ class ScopedFusionPlanConvolutionBiasActivation : public ScopedFusionPlanBase {
                    << ToString(status);
       }
 
-      miopenActivationMode_t activation_mode;
-      double alpha, beta, gamma;
-      status = wrap::miopenGetActivationDescriptor(
-          parent_, activation_descriptor, &activation_mode, &alpha, &beta,
-          &gamma);
-      if (status != miopenStatusSuccess) {
-        LOG(FATAL) << "call to miopenGetActivationDescriptor failed: "
-                   << ToString(status);
-      }
-
       miopenFusionOpDescriptor_t actv_op;
-      status = wrap::miopenCreateOpActivationForward(parent_, fusion_plan_,
-                                                     &actv_op, activation_mode);
+      status = wrap::miopenCreateOpActivationForward(
+          parent_, fusion_plan_, &actv_op,
+          activation_descriptor.miopen_activation_mode_);
       if (status != miopenStatusSuccess) {
         LOG(FATAL) << "call to miopenCreateOpActivationForward failed: "
                    << ToString(status);
@@ -1060,22 +1059,13 @@ class ScopedFusionPlanConvolutionBiasActivation : public ScopedFusionPlanBase {
   }
 
   miopenStatus_t SetActivationArgs(
-      miopenActivationDescriptor_t activation_descriptor) {
-    miopenActivationMode_t activ_mode;
-    double activ_alpha, activ_beta, activ_gamma;
-    miopenStatus_t status = wrap::miopenGetActivationDescriptor(
-        parent_, activation_descriptor, &activ_mode, &activ_alpha, &activ_beta,
-        &activ_gamma);
-    if (status != miopenStatusSuccess) {
-      LOG(FATAL) << "call to miopenGetActivationDescriptor failed: "
-                 << ToString(status);
-    }
-
+      ScopedActivationDescriptor& activation_descriptor) {
     float alpha = 1.0;
     float beta = 0.0;
 
     return ScopedFusionPlanBase::SetActivationArgs(
-        k_actv_op_idx, &alpha, &beta, activ_alpha, activ_beta, activ_gamma);
+        k_actv_op_idx, &alpha, &beta, activation_descriptor.alpha_,
+        activation_descriptor.beta_, activation_descriptor.gamma_);
   }
 
   uint64 GetFusionOpHashValue(
@@ -1083,7 +1073,7 @@ class ScopedFusionPlanConvolutionBiasActivation : public ScopedFusionPlanBase {
       miopenTensorDescriptor_t filter_descriptor,
       miopenConvolutionDescriptor_t conv_descriptor,
       miopenTensorDescriptor_t bias_descriptor,
-      miopenActivationDescriptor_t activation_descriptor) {
+      ScopedActivationDescriptor& activation_descriptor) {
     uint64 hashValue = tensorflow::Hash64("ConvolutionBiasActivation");
     hashValue =
         tensorflow::Hash64Combine(hashValue, GetHashValue(input_descriptor));
@@ -1094,7 +1084,7 @@ class ScopedFusionPlanConvolutionBiasActivation : public ScopedFusionPlanBase {
     hashValue =
         tensorflow::Hash64Combine(hashValue, GetHashValue(bias_descriptor));
     hashValue = tensorflow::Hash64Combine(hashValue,
-                                          GetHashValue(activation_descriptor));
+                                          activation_descriptor.GetHashValue());
     return hashValue;
   }
 
@@ -1114,7 +1104,7 @@ class ScopedFusionPlanBatchNormActivationInference
       ROCMExecutor* parent, miopenHandle_t miopen_handle,
       miopenTensorDescriptor_t input_descriptor,
       miopenTensorDescriptor_t scale_offset_mean_variance_descriptor,
-      miopenActivationDescriptor_t activation_descriptor)
+      ScopedActivationDescriptor& activation_descriptor)
       : ScopedFusionPlanBase(parent, miopen_handle, miopenVerticalFusion,
                              input_descriptor) {
     uint64 hash = GetFusionOpHashValue(input_descriptor,
@@ -1135,19 +1125,10 @@ class ScopedFusionPlanBatchNormActivationInference
                    << ToString(status);
       }
 
-      miopenActivationMode_t activation_mode;
-      double alpha, beta, gamma;
-      status = wrap::miopenGetActivationDescriptor(
-          parent_, activation_descriptor, &activation_mode, &alpha, &beta,
-          &gamma);
-      if (status != miopenStatusSuccess) {
-        LOG(FATAL) << "call to miopenGetActivationDescriptor failed: "
-                   << ToString(status);
-      }
-
       miopenFusionOpDescriptor_t actv_op;
-      status = wrap::miopenCreateOpActivationForward(parent_, fusion_plan_,
-                                                     &actv_op, activation_mode);
+      status = wrap::miopenCreateOpActivationForward(
+          parent_, fusion_plan_, &actv_op,
+          activation_descriptor.miopen_activation_mode_);
       if (status != miopenStatusSuccess) {
         LOG(FATAL) << "call to miopenCreateOpActivationForward failed: "
                    << ToString(status);
@@ -1182,28 +1163,19 @@ class ScopedFusionPlanBatchNormActivationInference
   }
 
   miopenStatus_t SetActivationArgs(
-      miopenActivationDescriptor_t activation_descriptor) {
-    miopenActivationMode_t activ_mode;
-    double activ_alpha, activ_beta, activ_gamma;
-    miopenStatus_t status = wrap::miopenGetActivationDescriptor(
-        parent_, activation_descriptor, &activ_mode, &activ_alpha, &activ_beta,
-        &activ_gamma);
-    if (status != miopenStatusSuccess) {
-      LOG(FATAL) << "call to miopenGetActivationDescriptor failed: "
-                 << ToString(status);
-    }
-
+      ScopedActivationDescriptor& activation_descriptor) {
     float alpha = 1.0;
     float beta = 0.0;
 
     return ScopedFusionPlanBase::SetActivationArgs(
-        k_actv_op_idx, &alpha, &beta, activ_alpha, activ_beta, activ_gamma);
+        k_actv_op_idx, &alpha, &beta, activation_descriptor.alpha_,
+        activation_descriptor.beta_, activation_descriptor.gamma_);
   }
 
   uint64 GetFusionOpHashValue(
       miopenTensorDescriptor_t input_descriptor,
       miopenTensorDescriptor_t scale_offset_mean_variance_descriptor,
-      miopenActivationDescriptor_t activation_descriptor) {
+      ScopedActivationDescriptor& activation_descriptor) {
     uint64 hashValue = tensorflow::Hash64("BatchNormActivationInference");
     hashValue =
         tensorflow::Hash64Combine(hashValue, GetHashValue(input_descriptor));
@@ -1212,7 +1184,7 @@ class ScopedFusionPlanBatchNormActivationInference
         hashValue, GetHashValue(scale_offset_mean_variance_descriptor));
 
     hashValue = tensorflow::Hash64Combine(hashValue,
-                                          GetHashValue(activation_descriptor));
+                                          activation_descriptor.GetHashValue());
     return hashValue;
   }
 
@@ -4171,13 +4143,9 @@ bool MIOpenSupport::DoFusedConvolutionBiasActivationImpl(
   ScopedActivationDescriptor activation_desc{parent_, activation_mode};
 
   ScopedFusionPlanConvolutionBiasActivation fusion_plan{
-      parent_,
-      ToHandle(dnn_handle_),
-      conv_input_nd.handle(),
-      filter.handle(),
-      conv.handle(),
-      bias_nd.handle(),
-      activation_desc.handle()};
+      parent_,         ToHandle(dnn_handle_), conv_input_nd.handle(),
+      filter.handle(), conv.handle(),         bias_nd.handle(),
+      activation_desc};
 
   bool retval = false;
 
@@ -4202,7 +4170,7 @@ bool MIOpenSupport::DoFusedConvolutionBiasActivationImpl(
     }
 
     if (status == miopenStatusSuccess) {
-      status = fusion_plan.SetActivationArgs(activation_desc.handle());
+      status = fusion_plan.SetActivationArgs(activation_desc);
     }
 
     if (status == miopenStatusSuccess) {
@@ -4273,7 +4241,7 @@ bool MIOpenSupport::DoFusedBatchNormActivationInferenceImpl(
 
   ScopedFusionPlanBatchNormActivationInference fusion_plan{
       parent_, ToHandle(dnn_handle_), x_nd.handle(),
-      scale_offset_mean_variance_nd.handle(), activation_desc.handle()};
+      scale_offset_mean_variance_nd.handle(), activation_desc};
 
   bool retval = false;
 
@@ -4296,7 +4264,7 @@ bool MIOpenSupport::DoFusedBatchNormActivationInferenceImpl(
     }
 
     if (status == miopenStatusSuccess) {
-      status = fusion_plan.SetActivationArgs(activation_desc.handle());
+      status = fusion_plan.SetActivationArgs(activation_desc);
     }
 
     if (status == miopenStatusSuccess) {
