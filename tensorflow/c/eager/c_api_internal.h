@@ -25,6 +25,7 @@ limitations under the License.
 #include <string>
 #include <thread>
 #include <vector>
+#include <set>
 
 #include "tensorflow/c/c_api.h"
 #include "tensorflow/c/c_api_internal.h"
@@ -60,19 +61,22 @@ struct TFE_ContextOptions {
   // true if async execution is enabled.
   bool async = false;
   TFE_ContextDevicePlacementPolicy policy{TFE_DEVICE_PLACEMENT_SILENT};
+  bool input_attrs_inference = false;
 };
 
 struct TFE_Context {
   TFE_Context(const tensorflow::SessionOptions& opts,
               TFE_ContextDevicePlacementPolicy default_policy, bool async,
               const tensorflow::DeviceMgr* device_mgr, bool device_mgr_owned,
-              tensorflow::Rendezvous* rendezvous)
+              tensorflow::Rendezvous* rendezvous, bool input_attrs_inference)
       : context(opts,
                 static_cast<tensorflow::ContextDevicePlacementPolicy>(
                     default_policy),
-                async, device_mgr, device_mgr_owned, rendezvous) {}
+                async, device_mgr, device_mgr_owned, rendezvous),
+        input_attrs_inference(input_attrs_inference) {}
 
   tensorflow::EagerContext context;
+  bool input_attrs_inference;
 };
 
 struct TFE_TensorHandle {
@@ -99,12 +103,24 @@ struct TFE_TensorDebugInfo {
   std::vector<tensorflow::int64> dev_dims;
 };
 
+struct TFE_OpInferenceContext {
+  explicit TFE_OpInferenceContext(const tensorflow::OpDef* op_def)
+      : op_def(op_def) {}
+
+  const tensorflow::OpDef* op_def;  // op definition from protobuf
+  int input_idx = 0;                // index of the next input to be added
+  std::set<std::string> attrs;      // attributes inferred so far
+};
+
 struct TFE_Op {
   TFE_Op(TFE_Context* ctx, const char* op, bool is_function,
-         const tensorflow::AttrTypeMap* t)
-      : operation(&ctx->context, op, is_function, t) {}
+         const tensorflow::AttrTypeMap* t,
+         TFE_OpInferenceContext* inference_ctx)
+      : operation(&ctx->context, op, is_function, t),
+        inference_ctx(inference_ctx) {}
 
   tensorflow::EagerOperation operation;
+  TFE_OpInferenceContext* inference_ctx = nullptr;
 };
 
 struct TFE_ProfilerContext {
