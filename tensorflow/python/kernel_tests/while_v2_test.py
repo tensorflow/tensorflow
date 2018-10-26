@@ -33,6 +33,7 @@ from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import list_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import tensor_array_grad  # pylint: disable=unused-import
+from tensorflow.python.ops import tensor_array_ops
 from tensorflow.python.ops import while_v2
 from tensorflow.python.ops.control_flow_ops import while_loop as while_loop_v1
 from tensorflow.python.ops.while_v2 import while_loop as while_loop_v2
@@ -316,6 +317,65 @@ class WhileV2Test(test.TestCase, parameterized.TestCase):
       r = gradients_impl.gradients(r, param)[0]
       self.assertAllClose(21.0, sess.run(r))
     control_flow_ops.ENABLE_WHILE_V2 = old_enable_while_v2
+
+  def testNestedWhile(self):
+    # Compute sum of geometric progression: n^0 + n^1 + ... + n^m
+    # We compute the pow using a while loop.
+    n = constant_op.constant(3.)
+    m = constant_op.constant(5.)
+    sum_of_powers = constant_op.constant(0.)
+
+    def Body(i, previous_sum):
+      prod = constant_op.constant(1.)
+      return i - 1., previous_sum + while_loop_v2(
+          lambda c, _: c > 0, lambda c, v: (c - 1., v * n), [i, prod])[1]
+
+    result = while_loop_v2(lambda i, _: i >= 0, Body, [m, sum_of_powers])[1]
+    grad = gradients_impl.gradients(result, [n])
+    with self.cached_session() as sess:
+      self.assertEqual(sess.run(result), 364.)
+      self.assertSequenceEqual(sess.run(grad), [547.])
+
+  def testIdentityNodeInBody(self):
+
+    def Body(v):
+      v = array_ops.identity(v)
+      v = array_ops.identity(v)
+      return v * v
+
+    x = constant_op.constant(2.)
+    ret = while_loop_v2(lambda v: v < 8., Body, [x])
+    grad = gradients_impl.gradients(ret, [x])
+    with self.cached_session() as sess:
+      self.assertEqual(sess.run(ret), 16.)
+      self.assertSequenceEqual(sess.run(grad), [32.])
+
+  def testNestedWhileAndTensorArray(self):
+    n = constant_op.constant(3.0)
+
+    def Body(row, ta, n):
+
+      def InnerBody(row, col, ta, n):
+        # Note: row and col are 1-based.
+        ta = ta.write(
+            math_ops.cast(n * (row - 1.) + col - 1., dtypes.int32), row * col)
+        return row, col + 1., ta, n
+
+      # TODO(b/118457764): Remove n from loop_vars from both loops once fixed.
+      ta = while_loop_v2(lambda _, col, _1, n: col <= n, InnerBody,
+                         [row, constant_op.constant(1.), ta, n])[2]
+      return row + 1., ta, n
+
+    ta = tensor_array_ops.TensorArray(dtype=dtypes.float32, size=9)
+    ta = while_loop_v2(lambda row, _, _1: row <= n, Body,
+                       [constant_op.constant(1.), ta, n])[1]
+
+    output = array_ops.reshape(ta.stack(), [3, 3])
+    self.assertAllEqual(
+        self.evaluate(output), [[1., 2., 3.], [2., 4., 6.], [3., 6., 9.]])
+    # TODO(b/117675481): This does not work with current TA. Enable with new TA.
+    # grad = gradients_impl.gradients(output, [n])
+    # self.assertEqual(self.evaluate(grad), 3.5)
 
 
 def ScalarShape():
