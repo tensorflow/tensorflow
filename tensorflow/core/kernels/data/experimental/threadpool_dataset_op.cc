@@ -47,6 +47,8 @@ class ThreadPoolResource : public ResourceBase {
     }
   }
 
+  int32 NumThreads() { return thread_pool_.NumThreads(); }
+
   string DebugString() override { return "ThreadPoolResource"; }
 
  private:
@@ -196,6 +198,7 @@ class ThreadPoolDatasetOp : public UnaryDatasetOpKernel {
         params.runner = [pool](std::function<void()> c) {
           pool->Schedule(std::move(c));
         };
+        params.runner_threadpool_size = pool->NumThreads();
         IteratorContext iter_ctx(params);
         return input_impl_->GetNext(&iter_ctx, out_tensors, end_of_sequence);
       }
