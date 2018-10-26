@@ -62,6 +62,8 @@ def while_loop(cond, body, loop_vars, shape_invariants=None, name=None):
   # TensorArrays before calling `cond` and `body`. See `wrapped_cond` and
   # `wrapped_body` below.
   loop_vars = list(_tensor_array_to_flow(orig_loop_vars))
+  loop_vars = nest.map_structure(
+      ops.internal_convert_to_tensor_or_indexed_slices, loop_vars)
   if shape_invariants is not None:
     nest.assert_same_structure(orig_loop_vars, shape_invariants)
   else:
