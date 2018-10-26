@@ -941,7 +941,7 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
           DataType type;
           GetNodeAttr(perm_node->def(), "dtype", &type);
 
-          // Here we directly access to the "tensor_context", rather than
+          // Here we directly access to the "tensor_content", rather than
           // "int_val". This is because we find "int_val" is
           // not set properly under some circumstances.
           if (type == DT_INT32) {
