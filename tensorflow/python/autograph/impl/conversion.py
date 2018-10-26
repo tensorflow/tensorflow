@@ -24,6 +24,7 @@ import gast
 
 from tensorflow.python.autograph import operators
 from tensorflow.python.autograph import utils
+from tensorflow.python.autograph.converters import arg_defaults
 from tensorflow.python.autograph.converters import asserts
 from tensorflow.python.autograph.converters import break_statements
 from tensorflow.python.autograph.converters import builtin_functions
@@ -342,6 +343,7 @@ def node_to_graph(node, context, rewrite_errors=True):
 
   if context.program.options.uses(converter.Feature.DECORATORS):
     node = converter.apply_(node, context, decorators)
+  node = converter.apply_(node, context, arg_defaults)
   node = converter.apply_(node, context, directives)
   node = converter.apply_(node, context, break_statements)
   node = converter.apply_(node, context, asserts)
