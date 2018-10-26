@@ -2267,7 +2267,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     with context.graph_mode(), self.cached_session():
       with ops.get_default_graph().as_default():
         t = constant_op.constant([[1.0, 2.0], [3.0, 4.0]])
-        function.register_concrete(composite)
+        composite.add_to_graph(register_gradient_functions=True)
 
         graph = ops.get_default_graph()
         # pylint: disable=protected-access
