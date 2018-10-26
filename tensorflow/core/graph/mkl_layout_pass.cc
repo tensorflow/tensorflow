@@ -2722,7 +2722,6 @@ MklLayoutRewritePass::CheckForNodeFusion(Node* a) const {
   const FusionInfo* fi_ptr = nullptr;
 
   for (auto fi = finfo_.begin(); fi != finfo_.end(); ++fi) {
-    assert(fi->ops.size() == fi->node_checkers.size());
     nodes.clear();
     fi_ptr = &*fi;
     //
