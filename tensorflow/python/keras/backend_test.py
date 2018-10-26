@@ -309,14 +309,19 @@ class BackendLinearAlgebraTest(test.TestCase):
       x_np = random(x_shape)
       y_np = random(y_shape)
 
-      # normalize axes arg to tuple(int, int)
+      # normalize axes arg to [int, int]
       if axes is None:
         if y_np.ndim == 2:
-          norm_axes = (len(x_shape) - 1, len(y_shape) - 1)
+          norm_axes = [len(x_shape) - 1, len(y_shape) - 1]
         else:
-          norm_axes = (len(x_shape) - 1, len(y_shape) - 2)
+          norm_axes = [len(x_shape) - 1, len(y_shape) - 2]
       elif isinstance(axes, int):
-        norm_axes = (axes, axes)
+        norm_axes = [axes, axes]
+      
+      if norm_axes[0] < 0:
+        norm_axes[0] += len(x_shape)
+      if norm_axes[1] < 0:
+        norm_axes[1] += len(y_shape)
 
       # build expected array in numpy
       z_np = []
