@@ -903,37 +903,28 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
       string data_format);
 
   static bool CheckForTranspose(const Node* node, std::vector<int> perm) {
-    //
     // Check node node, to see if it's "Transpose"
-    //
     if (node->type_string() != "Transpose") return false;
 
-    //
     // Check if has out control edge. If true, this is a training graph.
     // Currently we focus on inference and do no fusion in training.
-    //
     for (const Edge* e : node->out_edges()) {
       if (e->IsControlEdge()) {
         return false;
       }
     }
 
-    //
     // If "Transpose" has input control edges, don't fuse on it.
-    //
     for (const Edge* e : node->in_edges()) {
       if (e->IsControlEdge()) {
         return false;
       }
     }
 
-    //
     // If "Transpose" has multiple output data edges, also don't fuse it.
-    //
     if (node->num_outputs() > 1 || node->out_edges().size() > 1) return false;
 
     // Check "perm" attribute, make sure it's what we want.
-    //
     for (const Edge* e : node->in_edges()) {
       if (!e->IsControlEdge()) {
         const Node* perm_node = e->src();
@@ -948,11 +939,9 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
           DataType type;
           GetNodeAttr(perm_node->def(), "dtype", &type);
 
-          //
           // Here we directly access to the "tensor_context", rather than
           // "int_val". This is because we find "int_val" is
           // not set properly under some circumstances.
-          //
           if (type == DT_INT32) {
             const int type_size = 4;
             const int* tensor_content =
