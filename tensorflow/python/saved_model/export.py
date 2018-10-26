@@ -139,7 +139,7 @@ def _generate_signatures(signature_functions):
   """
   signatures = {}
   for signature_key, func in sorted(signature_functions.items()):
-    function.register_concrete(func)
+    func.add_to_graph(register_gradient_functions=True)
     # `exterior_placeholders` holds placeholders which are outside the function
     # body, directly contained in a MetaGraph of the SavedModel. The function
     # body itself contains nearly identical placeholders used when running the
