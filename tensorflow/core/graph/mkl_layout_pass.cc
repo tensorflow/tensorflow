@@ -592,12 +592,12 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
     std::function<Node*(const Node*)> get_node_to_be_merged;
   } MergeInfo;
 
-  // structure to specify information used in node fusion of 3+ operators
+  // Structure to specify information used in node fusion of 3+ operators
   typedef struct {
-    std::string pattern_name;  // name to describe this pattern, such as
+    std::string pattern_name;  // Name to describe this pattern, such as
                                // "Transpose_Mklop_Transpose".
     std::vector<std::function<bool(const Node*)> >
-        node_checkers;  // extra restriction checker for these ops
+        node_checkers;  // Extra restriction checker for these ops
     std::function<Status(
         std::unique_ptr<Graph>*, std::vector<Node*>&,
         std::function<void(const Node*, NodeBuilder* nb, bool)>)>
@@ -606,7 +606,7 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
   } FusionInfo;
 
   //
-  // dimension indices for 2D tensor.
+  // Dimension indices for 2D tensor.
   //
   struct NCHW {
     enum dim { N = 0, C = 1, H = 2, W = 3 };
