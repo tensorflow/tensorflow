@@ -222,7 +222,6 @@ class CorrectnessTest(test.TestCase):
     history = model.fit(iterator, epochs=1, steps_per_epoch=10)
     self.assertEqual(np.around(history.history['loss'][-1], decimals=4), 0.6173)
 
-  @tf_test_util.run_in_graph_and_eager_modes
   def test_loss_in_call(self):
 
     class HasLoss(keras.layers.Layer):
@@ -232,7 +231,7 @@ class CorrectnessTest(test.TestCase):
         return x
 
     layer = HasLoss()
-    layer(1.)
+    layer(1.)  # Plain-value inputs are only valid in eager mode.
     self.assertEqual(1, len(layer.losses))
 
 
