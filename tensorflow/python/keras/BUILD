@@ -779,6 +779,18 @@ py_test(
 )
 
 py_test(
+    name = "base_layer_test",
+    size = "small",
+    srcs = ["engine/base_layer_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":keras",
+        "//tensorflow/python:client_testlib",
+        "//third_party/py/numpy",
+    ],
+)
+
+py_test(
     name = "saving_test",
     size = "medium",
     srcs = ["engine/saving_test.py"],
