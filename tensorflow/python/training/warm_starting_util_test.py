@@ -30,6 +30,7 @@ from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
+from tensorflow.python.training import checkpoint_utils
 from tensorflow.python.training import saver as saver_lib
 from tensorflow.python.training import warm_starting_util as ws_util
 
@@ -121,7 +122,9 @@ class WarmStartingUtilTest(test.TestCase):
       with self.session(graph=g) as sess:
         fruit_weights = variable_scope.get_variable(
             "fruit_weights", initializer=[[0.], [0.], [0.], [0.]])
-        ws_util._warm_start_var(fruit_weights, self.get_temp_dir())
+        prev_tensor_name, var = ws_util._get_var_info(fruit_weights)
+        checkpoint_utils.init_from_checkpoint(self.get_temp_dir(),
+                                              {prev_tensor_name: var})
         sess.run(variables.global_variables_initializer())
         self.assertAllClose(prev_val, fruit_weights.eval(sess))
 
@@ -137,7 +140,9 @@ class WarmStartingUtilTest(test.TestCase):
       with self.session(graph=g) as sess:
         fruit_weights = variable_scope.get_variable(
             "fruit_weights", initializer=[[0.], [0.], [0.], [0.]])
-        ws_util._warm_start_var(fruit_weights, self.get_temp_dir())
+        prev_tensor_name, var = ws_util._get_var_info(fruit_weights)
+        checkpoint_utils.init_from_checkpoint(self.get_temp_dir(),
+                                              {prev_tensor_name: var})
         sess.run(variables.global_variables_initializer())
         self.assertAllClose(prev_val, fruit_weights.eval(sess))
 
@@ -154,7 +159,9 @@ class WarmStartingUtilTest(test.TestCase):
             partitioner=lambda shape, dtype: [2, 1])
         self.assertTrue(
             isinstance(fruit_weights, variables.PartitionedVariable))
-        ws_util._warm_start_var(fruit_weights, self.get_temp_dir())
+        prev_tensor_name, var = ws_util._get_var_info(fruit_weights)
+        checkpoint_utils.init_from_checkpoint(self.get_temp_dir(),
+                                              {prev_tensor_name: var})
         sess.run(variables.global_variables_initializer())
         fruit_weights = fruit_weights._get_variable_list()
         new_val = np.concatenate(
@@ -178,10 +185,10 @@ class WarmStartingUtilTest(test.TestCase):
             partitioner=lambda shape, dtype: [2, 1])
         self.assertTrue(
             isinstance(fruit_weights, variables.PartitionedVariable))
-        ws_util._warm_start_var(
-            fruit_weights,
-            self.get_temp_dir(),
-            prev_tensor_name="old_scope/fruit_weights")
+        prev_tensor_name, var = ws_util._get_var_info(
+            fruit_weights, prev_tensor_name="old_scope/fruit_weights")
+        checkpoint_utils.init_from_checkpoint(self.get_temp_dir(),
+                                              {prev_tensor_name: var})
         sess.run(variables.global_variables_initializer())
         fruit_weights = fruit_weights._get_variable_list()
         new_val = np.concatenate(
