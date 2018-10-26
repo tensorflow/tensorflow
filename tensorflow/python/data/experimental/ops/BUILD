@@ -345,9 +345,12 @@ py_library(
     deps = [
         "//tensorflow/python:experimental_dataset_ops_gen",
         "//tensorflow/python:framework_ops",
+        "//tensorflow/python:tensor_spec",
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/data/util:nest",
         "//tensorflow/python/data/util:sparse",
+        "//tensorflow/python/eager:context",
+        "//tensorflow/python/eager:function",
     ],
 )
 
