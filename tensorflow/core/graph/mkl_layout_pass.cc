@@ -2698,6 +2698,10 @@ Status MklLayoutRewritePass::FuseTransposeMklOpTranspose(
   // Copy device assigned to old node to new node.
   new_node->set_assigned_device_name(mklop->assigned_device_name());
 
+  // Copy requested_device and assigned_device_name_index
+  new_node->set_requested_device(mklop->requested_device());
+  new_node->set_assigned_device_name_index(mklop->assigned_device_name_index());
+
   (*g)->RemoveNode(transpose_to_nhwc);
   (*g)->RemoveNode(mklop);
   (*g)->RemoveNode(transpose_to_nchw);
