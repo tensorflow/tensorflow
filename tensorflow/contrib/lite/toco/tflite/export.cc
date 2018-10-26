@@ -438,6 +438,8 @@ tensorflow::Status Export(
     }
   }
 
+  // The set of used builtin ops.
+  std::set<string> builtin_ops;
   // The set of custom ops (not including Flex ops).
   std::set<string> custom_ops;
   // The set of Flex ops which are not supported.
@@ -450,6 +452,10 @@ tensorflow::Status Export(
     }
     if (key.is_unsupported_flex_op()) {
       unsupported_flex_ops.insert(key.flex_tensorflow_op());
+    }
+    if (!key.is_custom_op() && !key.is_flex_op() &&
+        !key.is_unsupported_flex_op()) {
+      builtin_ops.insert(EnumNameBuiltinOperator(key.type()));
     }
   }
 
@@ -471,18 +477,32 @@ tensorflow::Status Export(
         custom_ops_final = custom_ops;
       }
 
+      auto please_report_bug_message = []() {
+        return "We are continually in the process of adding support to "
+               "TensorFlow Lite for more ops. It would be helpful if you could "
+               "inform us of how this conversion went by opening a github "
+               "issue at "
+               "https://github.com/tensorflow/tensorflow/issues/new?template="
+               "40-tflite-op-request.md\n and pasting the following:\n\n";
+      };
+
       if (params.allow_flex_ops) {
         return tensorflow::errors::InvalidArgument(absl::StrCat(
+            please_report_bug_message(),
             "Some of the operators in the model are not supported by "
             "the standard TensorFlow Lite runtime and are not recognized by "
             "TensorFlow. If you have a custom "
             "implementation for them you can disable this error with "
             "--allow_custom_ops, or by setting allow_custom_ops=True "
             "when calling tf.contrib.lite.TFLiteConverter(). Here is a list "
+            "of builtin operators you are using: ",
+            absl::StrJoin(builtin_ops, ", "),
+            ". Here is a list "
             "of operators for which you will need custom implementations: ",
             absl::StrJoin(custom_ops_final, ", "), "."));
       } else {
         return tensorflow::errors::InvalidArgument(absl::StrCat(
+            please_report_bug_message(),
             "Some of the operators in the model are not supported by "
             "the standard TensorFlow Lite runtime. If those are native "
             "TensorFlow operators, you might be able to use the extended "
@@ -492,6 +512,9 @@ tensorflow::Status Export(
             "custom implementation for them you can disable this error with "
             "--allow_custom_ops, or by setting allow_custom_ops=True "
             "when calling tf.contrib.lite.TFLiteConverter(). Here is a list "
+            "of builtin operators you are using: ",
+            absl::StrJoin(builtin_ops, ", "),
+            ". Here is a list "
             "of operators for which you will need custom implementations: ",
             absl::StrJoin(custom_ops_final, ", "), "."));
       }
