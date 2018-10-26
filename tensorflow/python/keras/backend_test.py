@@ -289,12 +289,46 @@ class BackendLinearAlgebraTest(test.TestCase):
     self.assertEqual(xy.get_shape().as_list(), [32, 28, 4])
 
   def test_batch_dot(self):
-    x = keras.backend.ones(shape=(32, 20, 1))
-    y = keras.backend.ones(shape=(32, 30, 20))
-    xy = keras.backend.batch_dot(x, y, axes=[1, 2])
-    self.assertEqual(xy.get_shape().as_list(), [32, 1, 30])
+    test_cases = []
+    test_cases.append([(None, 3, 4, 5), (None, 2, 3, 4), (2, 3)])
+    test_cases.append([(None, 3, 4, 5), (None, 2, 4), 2])
+    test_cases.append([(None, 3, 4), (None, 2, 3, 4), (2, 3)])
+    test_cases.append([(None, 4, 3), (None, 3, 5), (2, 1)])
+    test_cases.append([(None, 4), (None, 3, 4), (1, 2)])
+    test_cases.append([(None, 4), (None, 4), None])
 
-    # TODO(fchollet): insufficiently tested.
+    batch_size = 7
+
+    def batch_shape(shape):
+      return (batch_size, ) + shape[1:]
+
+    def random(shape):
+      return np.random.random(batch_shape(shape))
+
+    for x_shape, y_shape, axes in test_cases:
+      x_np = random(x_shape)
+      y_np = random(y_shape)
+
+      # normalize axes arg to tuple(int, int)
+      if axes is None:
+        if y_np.ndim == 2:
+          norm_axes = (len(x_shape) - 1, len(y_shape) - 1)
+        else:
+          norm_axes = (len(x_shape) - 1, len(y_shape) - 2)
+      elif isinstance(axes, int):
+        norm_axes = (axes, axes)
+
+      # build expected array in numpy
+      z_np = []
+      for xi, yi in zip(z_np, y_np):
+        z_np.append(np.tensordot(xi, yi, (norm_axes[0] - 1, norm_axes[1] - 1)))
+      z_np = np.array(z_np)
+
+      x = keras.backend.variable(x_np)
+      y = keras.backend.variable(y_np)
+      z = keras.backend.batch_dot(x, y)
+
+      self.assertAllClose(keras.backend.eval(z), z_np)
 
   def test_reduction_ops(self):
     ops_to_test = [
