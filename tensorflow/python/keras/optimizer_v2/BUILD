@@ -7,7 +7,7 @@ licenses(["notice"])  # Apache 2.0
 
 exports_files(["LICENSE"])
 
-load("//tensorflow:tensorflow.bzl", "cuda_py_test")
+load("//tensorflow:tensorflow.bzl", "gpu_py_test")
 
 py_library(
     name = "optimizer_v2",
@@ -29,7 +29,7 @@ py_library(
     ],
 )
 
-cuda_py_test(
+gpu_py_test(
     name = "gradient_descent_test",
     size = "medium",
     srcs = ["gradient_descent_test.py"],
@@ -47,7 +47,7 @@ cuda_py_test(
     ],
 )
 
-cuda_py_test(
+gpu_py_test(
     name = "optimizer_v2_test",
     size = "medium",
     srcs = ["optimizer_v2_test.py"],

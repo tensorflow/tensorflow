@@ -435,11 +435,7 @@ cc_library(
     ],
 )
 
-<<<<<<< HEAD
-tf_gpu_only_cc_test(
-=======
-tf_cuda_cc_test(
->>>>>>> upstream/master
+tf_gpu_cc_test(
     name = "memory_optimizer_test",
     srcs = ["memory_optimizer_test.cc"],
     tags = ["no_cuda_on_cpu_tap"],  # Do not re-enable again without actually testing.

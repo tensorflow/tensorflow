@@ -855,11 +855,9 @@ def tf_gpu_cc_test(
         }),
         suffix = "_gpu",
         tags = tags + tf_gpu_tests_tags(),
-        deps = deps + if_cuda([
+        deps = deps + [ 
             clean_dep("//tensorflow/core:gpu_runtime"),
-        ]) + if_rocm([
-            clean_dep("//tensorflow/core:gpu_runtime"),
-        ]),
+        ],
     )
 
 register_extension_info(

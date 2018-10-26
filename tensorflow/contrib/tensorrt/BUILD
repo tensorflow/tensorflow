@@ -326,7 +326,7 @@ tf_gpu_cc_test(
     ]),
 )
 
-tf_cuda_cc_test(
+tf_gpu_cc_test(
     name = "convert_nodes_test",
     size = "medium",
     srcs = ["convert/convert_nodes_test.cc"],

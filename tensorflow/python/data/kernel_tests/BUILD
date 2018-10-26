@@ -291,8 +291,6 @@ tf_py_test(
     ],
 )
 
-gpu_py_test(
-=======
 tf_py_test(
     name = "matching_files_dataset_op_test",
     size = "small",
@@ -309,8 +307,7 @@ tf_py_test(
     ],
 )
 
-cuda_py_test(
->>>>>>> upstream/master
+gpu_py_test(
     name = "multi_device_iterator_test",
     size = "medium",
     srcs = ["multi_device_iterator_test.py"],
