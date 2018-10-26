@@ -186,10 +186,10 @@ class UnliftedInitializerVariable(resource_variable_ops.ResourceVariable):
       with ops.init_scope():
         shared_name = ops._name_from_scope_name(name)
         shared_name = "%s_%d" % (shared_name, ops.uid())
-      # Use attr_scope and device(None) to simulate the behavior of
-      # colocate_with when the variable we want to colocate with doesn't
-      # yet exist.
-      initial_value = ops.convert_to_tensor(initial_value)
+      with ops.name_scope("Initializer"), ops.device(None):
+        initial_value = ops.convert_to_tensor(
+            initial_value() if init_from_fn else initial_value,
+            name="initial_value", dtype=dtype)
       with ops.init_scope():
         self._handle = resource_variable_ops.eager_safe_variable_handle(
             shape=initial_value.get_shape(),
@@ -197,10 +197,6 @@ class UnliftedInitializerVariable(resource_variable_ops.ResourceVariable):
             shared_name=shared_name,
             name=name,
             graph_mode=self._in_graph_mode)
-      with ops.name_scope("Initializer"), ops.device(None):
-        initial_value = ops.convert_to_tensor(
-            initial_value() if init_from_fn else initial_value,
-            name="initial_value", dtype=dtype)
       self._shape = initial_value.shape
       self._unique_id = shared_name
       self._handle_name = shared_name + ":0"

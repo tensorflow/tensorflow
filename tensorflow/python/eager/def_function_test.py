@@ -69,6 +69,18 @@ class DefFunctionTest(test.TestCase):
     self.assertAllEqual(fn(constant_op.constant(1.0)), 2.0)
     self.assertAllEqual(fn(constant_op.constant(3.0)), 6.0)
 
+  def testFunctionInitializer(self):
+
+    state = []
+
+    @def_function.function
+    def fn(x):
+      if not state:
+        state.append(variables.Variable(lambda: 2.0))
+      return state[0] * x
+
+    self.assertAllEqual(fn(constant_op.constant(1.0)), 2.0)
+
   def testVariableInitializerNotConstant(self):
 
     state = []
