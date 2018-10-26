@@ -108,6 +108,11 @@ Status XlaDeviceContext::TransferLiteralToDevice(const Tensor& host_tensor,
   }
   // Unref the host tensor, and capture the literal shared_ptr too so it goes
   // out of scope when the lambda completes.
+  // We don't defer the call to done() onto the stream here, and the reasons why
+  // this is correct are subtle. We assume that:
+  // a) all consumers of the device tensor will wait for its definition event.
+  // b) if the tensor is destroyed, then the memory allocator will not hand out
+  //    the same buffers until the transfer has completed.
   host_to_device_stream_->ThenDoHostCallback([ref, literal]() { ref.Unref(); });
 
   return Status::OK();
