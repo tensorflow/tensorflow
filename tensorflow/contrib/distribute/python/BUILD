@@ -473,9 +473,10 @@ cuda_py_test(
 
 cuda_py_test(
     name = "estimator_training_test",
-    size = "enormous",
+    size = "large",
     srcs = ["estimator_training_test.py"],
     additional_deps = [
+        ":collective_all_reduce_strategy",
         ":combinations",
         ":mirrored_strategy",
         ":multi_worker_test_base",
@@ -645,7 +646,6 @@ py_library(
 
 cuda_py_test(
     name = "cross_tower_ops_test",
-    size = "large",
     srcs = ["cross_tower_ops_test.py"],
     additional_deps = [
         ":combinations",
