@@ -445,8 +445,7 @@ void CollectiveParamResolverLocal::CompleteDefaultRanking(
   ir->shared.instance.task_names = new_task_names;
   if (VLOG_IS_ON(2)) {
     string buf;
-    for (const auto& d : cp->instance.device_names)
-      strings::StrAppend(&buf, "\n", d);
+    for (const auto& d : new_device_names) strings::StrAppend(&buf, "\n", d);
     VLOG(2) << "Optimized device order for " << ir->shared.name << ": " << buf;
   }
 }
