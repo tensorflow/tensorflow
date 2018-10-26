@@ -955,7 +955,6 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
                                         tensor_content + tensor_content_size);
 
             return perm_value == perm;
-
           } else if (type == DT_INT64) {
             const int type_size = 8;
             const long* tensor_content =
@@ -969,12 +968,10 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
 
             return perm_value == long_perm;
           }
-
           return false;
         }
       }
     }
-
     return false;
   }
 
