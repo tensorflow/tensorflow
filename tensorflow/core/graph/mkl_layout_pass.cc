@@ -516,7 +516,7 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
     // Add rules to fuse sequences such as "Transpose (NCHW -> NHWC) + Conv2D
     // (NHWC) + Transpose (NHWC->
     // NCHW)" into "Conv2D (NCHW)". Such patterns occur frequently in Keras.
-    // Note: we use the term "merge" is to combine (exactly) 2 nodes into one,
+    // Note: we use the term "merge" to combine (exactly) 2 nodes into one,
     // while "fusion" is
     // for 3+ nodes situation.
     //
