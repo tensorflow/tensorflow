@@ -59,7 +59,7 @@ class SoftmaxTest(test.TestCase):
     # this bug in future.
     name = "arbitrary"
     np_softmax = self._npSoftmax(np_features, dim=dim, log=log)
-    with self.test_session(use_gpu=use_gpu):
+    with self.cached_session(use_gpu=use_gpu):
       if log:
         tf_softmax = nn_ops.log_softmax(np_features, axis=dim, name=name)
       else:
@@ -111,7 +111,7 @@ class SoftmaxTest(test.TestCase):
       type = np.float64  # pylint: disable=redefined-builtin
     max = np.finfo(type).max  # pylint: disable=redefined-builtin
     features = np.array([[1., 1., 1., 1.], [max, 1., 2., 3.]]).astype(type)
-    with self.test_session(use_gpu=use_gpu):
+    with self.cached_session(use_gpu=use_gpu):
       tf_log_softmax = nn_ops.log_softmax(features)
       out = tf_log_softmax.eval()
     self.assertAllClose(
@@ -230,7 +230,7 @@ class SoftmaxTest(test.TestCase):
       np_softmax = self._npSoftmax(ones)
 
       for use_gpu in [True, False]:
-        with self.test_session(use_gpu=use_gpu) as sess:
+        with self.cached_session(use_gpu=use_gpu) as sess:
           x = array_ops.placeholder(dtypes.float32)
           y = nn_ops.softmax(x)
           tf_softmax = sess.run(y, feed_dict={x: ones})

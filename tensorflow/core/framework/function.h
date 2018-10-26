@@ -294,7 +294,7 @@ class FunctionCallFrame : public CallFrameInterface {
 class FunctionLibraryDefinition : public OpRegistryInterface {
  public:
   // Note: This constructor grabs `lib_def`'s lock in shared mode.
-  explicit FunctionLibraryDefinition(const FunctionLibraryDefinition& lib_def);
+  FunctionLibraryDefinition(const FunctionLibraryDefinition& lib_def);
   FunctionLibraryDefinition(const OpRegistryInterface* default_registry,
                             const FunctionDefLibrary& lib_def);
   ~FunctionLibraryDefinition() override;

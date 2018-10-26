@@ -96,6 +96,7 @@ std::map<string, string> kBrokenTests = {
     // activation=True. The tests are failing since Relu doesn't support int32.
     {R"(^\/div.*activation=True.*dtype=tf\.int32)", "112968789"},
     {R"(^\/floor_div.*activation=True.*dtype=tf\.int32)", "112968789"},
+    {R"(^\/floor_mod.*activation=True.*dtype=tf\.int32)", "112968789"},
 };
 
 // Allows test data to be unarchived into a temporary directory and makes

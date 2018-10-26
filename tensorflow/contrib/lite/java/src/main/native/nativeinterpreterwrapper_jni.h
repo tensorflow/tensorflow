@@ -225,6 +225,16 @@ Java_org_tensorflow_lite_NativeInterpreterWrapper_resizeInput(
 
 /*
  *  Class:     org_tensorflow_lite_NativeInterpreterWrapper
+ *  Method:    applyDelegate
+ *  Signature: (JJJ)V
+ */
+JNIEXPORT void JNICALL
+Java_org_tensorflow_lite_NativeInterpreterWrapper_applyDelegate(
+    JNIEnv* env, jclass clazz, jlong interpreter_handle, jlong error_handle,
+    jlong delegate_handle);
+
+/*
+ *  Class:     org_tensorflow_lite_NativeInterpreterWrapper
  *  Method:
  *  Signature: (JJJ)
  */

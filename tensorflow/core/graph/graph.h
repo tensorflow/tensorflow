@@ -167,6 +167,7 @@ class Node {
   bool IsCollective() const { return class_ == NC_COLLECTIVE; }
 
   bool IsMetadata() const { return class_ == NC_METADATA; }
+  bool IsFakeParam() const { return class_ == NC_FAKE_PARAM; }
 
   template <typename T>
   void AddAttr(const string& name, const T& val) {
@@ -243,6 +244,7 @@ class Node {
     NC_METADATA,
     NC_SCOPED_ALLOCATOR,
     NC_COLLECTIVE,
+    NC_FAKE_PARAM,
     NC_OTHER  // Not a special kind of node
   };
 

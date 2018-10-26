@@ -29,9 +29,9 @@ from six.moves import zip  # pylint: disable=redefined-builtin
 
 from tensorflow.python import pywrap_tensorflow
 from tensorflow.python.eager import context
-from tensorflow.python.eager import function as eager_function
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import errors_impl
+from tensorflow.python.framework import func_graph
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.keras import backend
@@ -135,7 +135,8 @@ class Network(base_layer.Layer):
 
     # Private attributes to implement compatibility with Layer.
     self._updates = []  # Used in symbolic mode only.
-    self._losses = []   # Used in symbolic mode only.
+    self._losses = []
+    self._eager_losses = []
     self._scope = None  # Never used.
     self._reuse = None  # Never used.
     if context.executing_eagerly():
@@ -169,23 +170,6 @@ class Network(base_layer.Layer):
     else:
       self.outputs = [outputs]
 
-    # User-provided argument validation.
-    if context.executing_eagerly():
-      # Check that all inputs/outputs are DeferredTensors.
-      for tensor in self.inputs:
-        if not isinstance(tensor, base_layer.DeferredTensor):  # pylint: disable=protected-access
-          raise TypeError('When eager execution is enabled, '
-                          'inputs must come from a call to '
-                          '`tf.keras.Input` (called after '
-                          'tf.enable_eager_execution()). '
-                          'Received invalid input: ' + str(tensor))
-      for tensor in self.outputs:
-        if not isinstance(tensor, base_layer.DeferredTensor):  # pylint: disable=protected-access
-          raise TypeError('When eager execution is enabled, '
-                          'outputs must come from a call to '
-                          'a layer (called after '
-                          'tf.enable_eager_execution()). '
-                          'Received invalid output: ' + str(tensor))
     # Check for redundancy in inputs.
     if len(set(self.inputs)) != len(self.inputs):
       raise ValueError('The list of inputs passed to the model '
@@ -312,6 +296,13 @@ class Network(base_layer.Layer):
     self.outputs = []
     self.inputs = []
     self.built = False
+    self._static_graph_friendly = True
+
+  @property
+  def _is_static_graph_friendly(self):
+    if self._is_graph_network:
+      return all(layer._is_static_graph_friendly for layer in self.layers)
+    return self._static_graph_friendly
 
   def _determine_call_convention(self, call_argspec):
     """Decides how `self.call()` is invoked. See base_layer.CallConvention."""
@@ -453,12 +444,6 @@ class Network(base_layer.Layer):
           'assign variables to attributes and they will show up in the weights '
           'and variables properties.')
 
-  def add_loss(self, *args, **kwargs):
-    if context.executing_eagerly():
-      raise NotImplementedError('`add_loss` is not supported on Networks '
-                                'when eager execution is enabled.')
-    super(Network, self).add_loss(*args, **kwargs)
-
   @property
   def uses_learning_phase(self):
     return any(
@@ -585,12 +570,26 @@ class Network(base_layer.Layer):
   @property
   def _unfiltered_losses(self):
     losses = []
+    if context.executing_eagerly():
+      losses.extend(self._eager_losses)
+    else:
+      losses.extend(self._losses)
     for layer in self.layers:
       if isinstance(layer, Network):
         losses += layer._unfiltered_losses
       else:
         losses += layer.losses
     return losses
+
+  @checkpointable.no_automatic_dependency_tracking
+  def _clear_losses(self):
+    """Used every step in eager to reset losses."""
+    self._eager_losses = []
+    for layer in self.layers:
+      if isinstance(layer, Network):
+        layer._clear_losses()
+      else:
+        layer._eager_losses = []
 
   @property
   def updates(self):
@@ -791,7 +790,7 @@ class Network(base_layer.Layer):
       # and graph building, the variables created after building the model in
       # a Graph are still valid when executing eagerly.
       with context.graph_mode():
-        graph = eager_function.FuncGraph('graph')
+        graph = func_graph.FuncGraph('graph')
         with graph.as_default():
           if isinstance(input_shape, list):
             x = [base_layer.generate_placeholders_from_shape(shape)
@@ -1674,7 +1673,8 @@ class Network(base_layer.Layer):
 
 
 def _is_hdf5_filepath(filepath):
-  return filepath.endswith('.h5') or filepath.endswith('.keras')
+  return (filepath.endswith('.h5') or filepath.endswith('.keras') or
+          filepath.endswith('.hdf5'))
 
 
 def _make_node_key(layer_name, node_index):

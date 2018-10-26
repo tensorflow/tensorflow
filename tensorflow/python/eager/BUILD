@@ -27,6 +27,7 @@ cc_library(
         "//tensorflow/c/eager:c_api",
         "//tensorflow/c/eager:c_api_internal",
         "//tensorflow/c/eager:tape",
+        "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/python:cpp_python_util",
@@ -83,6 +84,7 @@ py_library(
         "//tensorflow/python:errors",
         "//tensorflow/python:platform",
         "//tensorflow/python:pywrap_tensorflow",
+        "//tensorflow/python:tf2",
         "//tensorflow/python:util",
     ],
 )
@@ -148,9 +150,11 @@ gpu_py_test(
     additional_deps = [
         ":backprop",
         ":context",
+        ":def_function",
         ":function",
         ":tape",
         ":test",
+        "@absl_py//absl/testing:parameterized",
         "//tensorflow/python:test_ops",
         "//tensorflow/python:clip_ops",
         "//tensorflow/python:init_ops",
@@ -159,6 +163,7 @@ gpu_py_test(
         "//tensorflow/python:math_ops",
         "//tensorflow/python:resource_variable_ops",
     ],
+    shard_count = 10,
 )
 
 py_library(
@@ -250,10 +255,10 @@ py_library(
         "//tensorflow/python:dtypes",
         "//tensorflow/python:errors",
         "//tensorflow/python:framework_ops",
+        "//tensorflow/python:func_graph",
         "//tensorflow/python:gradients_impl",
         "//tensorflow/python:graph_to_function_def",
         "//tensorflow/python:util",
-        "//tensorflow/python/autograph",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:core",
         "//tensorflow/python/eager:execute",
@@ -278,6 +283,7 @@ py_library(
         "//tensorflow/python:math_ops",
         "//tensorflow/python:pywrap_tensorflow",
         "//tensorflow/python:tensor_shape",
+        "//tensorflow/python:unconnected_gradients",
         "//tensorflow/python:util",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:execute",
@@ -369,6 +375,11 @@ py_library(
     name = "imperative_grad",
     srcs = ["imperative_grad.py"],
     srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow/python:pywrap_tensorflow",
+        "//tensorflow/python:unconnected_gradients",
+        "//tensorflow/python:util",
+    ],
 )
 
 gpu_py_test(
@@ -393,6 +404,7 @@ py_library(
     name = "def_function",
     srcs = ["def_function.py"],
     srcs_version = "PY2AND3",
+    visibility = ["//tensorflow:internal"],
     deps = [
         ":context",
         ":function",
@@ -420,6 +432,7 @@ py_library(
     name = "wrap_function",
     srcs = ["wrap_function.py"],
     srcs_version = "PY2AND3",
+    visibility = ["//tensorflow:internal"],
     deps = [
         ":context",
         ":function",

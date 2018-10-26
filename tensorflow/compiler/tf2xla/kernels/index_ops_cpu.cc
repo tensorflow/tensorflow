@@ -130,7 +130,7 @@ class ArgMaxCustomCallOp : public XlaOpKernel {
 REGISTER_XLA_OP(Name("ArgMax")
                     .TypeConstraint("T", DT_FLOAT)
                     .Device(DEVICE_CPU_XLA_JIT)
-                    .CompileTimeConstInput("dimension"),
+                    .CompileTimeConstantInput("dimension"),
                 ArgMaxCustomCallOp);
 
 }  // namespace

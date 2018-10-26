@@ -22,8 +22,7 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
-from tensorflow.python.keras.optimizer_v2 import optimizer_v2
-from tensorflow.python.keras.optimizer_v2 import sgd
+from tensorflow.python.keras.optimizer_v2 import gradient_descent
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import clip_ops
 from tensorflow.python.ops import gradients_impl
@@ -46,7 +45,7 @@ class OptimizerTest(test.TestCase):
       # Tensor.
       global_step = resource_variable_ops.ResourceVariable(
           array_ops.zeros([], dtypes.int64), name='global_step_%d' % i)
-      sgd_op = sgd.SGD(3.0)
+      sgd_op = gradient_descent.SGD(3.0)
 
       self.evaluate(variables.global_variables_initializer())
       # Fetch params to validate initial values
@@ -67,7 +66,7 @@ class OptimizerTest(test.TestCase):
         cost = 5 * var0 + 3 * var1
         global_step = variables.Variable(
             array_ops.zeros([], dtypes.int64), name='global_step')
-        sgd_op = sgd.SGD(3.0)
+        sgd_op = gradient_descent.SGD(3.0)
         opt_op = sgd_op.minimize(
             cost,
             global_step, [var0, var1],
@@ -93,7 +92,7 @@ class OptimizerTest(test.TestCase):
         grad_loss = constant_op.constant([42, -42], dtype=dtype)
         global_step = variables.Variable(
             array_ops.zeros([], dtypes.int64), name='global_step')
-        sgd_op = sgd.SGD(3.0)
+        sgd_op = gradient_descent.SGD(3.0)
         opt_op = sgd_op.minimize(
             cost, global_step, [var0, var1], grad_loss=grad_loss)
 
@@ -120,43 +119,43 @@ class OptimizerTest(test.TestCase):
             [3.0, 4.0], dtype=dtype, trainable=False, name='b')
         return 5 * var0 + var1
       # pylint: enable=cell-var-from-loop
-      sgd_op = sgd.SGD(3.0)
+      sgd_op = gradient_descent.SGD(3.0)
       with self.assertRaisesRegexp(ValueError, 'No.*variables'):
         sgd_op.minimize(loss)
 
   @test_util.run_in_graph_and_eager_modes
   def testNoGradients(self):
-    for i, dtype in enumerate([dtypes.half, dtypes.float32, dtypes.float64]):
+    for _, dtype in enumerate([dtypes.half, dtypes.float32, dtypes.float64]):
       var0 = resource_variable_ops.ResourceVariable([1.0, 2.0], dtype=dtype)
       var1 = resource_variable_ops.ResourceVariable([3.0, 4.0], dtype=dtype)
       # pylint: disable=cell-var-from-loop
       def loss():
         return 5 * var0
       # pylint: enable=cell-var-from-loop
-      sgd_op = sgd.SGD(3.0)
+      sgd_op = gradient_descent.SGD(3.0)
       with self.assertRaisesRegexp(ValueError, 'No gradients'):
         # var1 has no gradient
         sgd_op.minimize(loss, var_list=[var1])
 
   @test_util.run_in_graph_and_eager_modes
   def testNoGradientsForAnyVariables_Minimize(self):
-    for i, dtype in enumerate([dtypes.half, dtypes.float32, dtypes.float64]):
+    for _, dtype in enumerate([dtypes.half, dtypes.float32, dtypes.float64]):
       var0 = resource_variable_ops.ResourceVariable([1.0, 2.0], dtype=dtype)
       var1 = resource_variable_ops.ResourceVariable([3.0, 4.0], dtype=dtype)
       def loss():
         return constant_op.constant(5.0)
 
-      sgd_op = sgd.SGD(3.0)
+      sgd_op = gradient_descent.SGD(3.0)
       with self.assertRaisesRegexp(ValueError,
                                    'No gradients provided for any variable'):
         sgd_op.minimize(loss, var_list=[var0, var1])
 
   @test_util.run_in_graph_and_eager_modes
   def testNoGradientsForAnyVariables_ApplyGradients(self):
-    for i, dtype in enumerate([dtypes.half, dtypes.float32, dtypes.float64]):
+    for _, dtype in enumerate([dtypes.half, dtypes.float32, dtypes.float64]):
       var0 = resource_variable_ops.ResourceVariable([1.0, 2.0], dtype=dtype)
       var1 = resource_variable_ops.ResourceVariable([3.0, 4.0], dtype=dtype)
-      sgd_op = sgd.SGD(3.0)
+      sgd_op = gradient_descent.SGD(3.0)
       with self.assertRaisesRegexp(ValueError,
                                    'No gradients provided for any variable'):
         sgd_op.apply_gradients([(None, var0), (None, var1)])
@@ -169,7 +168,7 @@ class OptimizerTest(test.TestCase):
       def loss():
         return 5 * var0 + 3 * var1  # pylint: disable=cell-var-from-loop
 
-      sgd_op = sgd.SGD(3.0)
+      sgd_op = gradient_descent.SGD(3.0)
       grads_and_vars = sgd_op.compute_gradients(loss, [var0, var1])
       # Convert gradients to tf.Variables
       converted_grads = [
@@ -204,7 +203,7 @@ class OptimizerTest(test.TestCase):
     def f():
       return x * x
 
-    sgd_op = sgd.SGD(3.0)
+    sgd_op = gradient_descent.SGD(3.0)
     grads_and_vars = sgd_op.compute_gradients(f, [x])
     self.assertEqual(1, len(grads_and_vars))
     grad, x_as_var = grads_and_vars[0]
@@ -221,7 +220,7 @@ class OptimizerTest(test.TestCase):
       cost = 5 * var0 + 3 * var1
       global_step = variables.Variable(
           array_ops.zeros([], dtypes.int64), name='global_step')
-      sgd_op = sgd.SGD(3.0)
+      sgd_op = gradient_descent.SGD(3.0)
       opt_op = sgd_op.minimize(cost, global_step, [var0, var1])
       self.assertTrue(opt_op in ops.get_collection(ops.GraphKeys.TRAIN_OP))
 
@@ -236,7 +235,7 @@ class OptimizerTest(test.TestCase):
       cost = 5 * var0 + 3 * var1
       global_step = variables.Variable(
           array_ops.zeros([], dtypes.int64), name='global_step')
-      sgd_op = sgd.SGD(3.0)
+      sgd_op = gradient_descent.SGD(3.0)
       opt_op = sgd_op.minimize(cost, global_step, [var0, var1])
 
       variables.global_variables_initializer().run()
@@ -248,29 +247,6 @@ class OptimizerTest(test.TestCase):
       # Validate updated params
       self.assertAllClose([-0.1, -0.1], var0.eval())
       self.assertAllClose([0., 0.], var1.eval())
-
-  def testStopGradients(self):
-    with self.cached_session():
-      var0 = variables.Variable([1.0, 2.0], name='var0')
-      var1 = variables.Variable([3.0, 4.0], name='var1')
-      var0_id = array_ops.identity(var0)
-      cost = 5 * var0_id + 3 * var1
-      sgd_op = sgd.SGD(3.0)
-      grads_and_vars = sgd_op.compute_gradients(cost, [var0, var1],
-                                                stop_gradients=[var0_id])
-      grad_dict = {var.op.name: grad for grad, var in grads_and_vars}
-      self.assertIsNone(grad_dict['var0'])
-      self.assertIsNotNone(grad_dict['var1'])
-
-  def testDoNotOverrideCreateSlots(self):
-    class ShouldNotOverrideCreateSlots(optimizer_v2.OptimizerV2):
-
-      def _create_slots(self, var_list):
-        """In OptimizerV2 _create_slots was renamed _create_vars."""
-        return var_list
-
-    with self.assertRaises(RuntimeError):
-      ShouldNotOverrideCreateSlots('name')
 
 
 if __name__ == '__main__':

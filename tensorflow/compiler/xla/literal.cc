@@ -283,6 +283,9 @@ Status MutableLiteralBase::CopyElementFrom(const LiteralSlice& src_literal,
   if (!proto.has_shape()) {
     return InvalidArgument("LiteralProto has no shape");
   }
+  if (ShapeUtil::HasPrimitiveType(proto.shape(), OPAQUE)) {
+    return InvalidArgument("Literal shape cannot include OPAQUE sub-shape");
+  }
   if (!LayoutUtil::HasLayout(proto.shape())) {
     return InvalidArgument("LiteralProto has no layout");
   }

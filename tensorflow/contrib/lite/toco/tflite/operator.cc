@@ -21,6 +21,7 @@ limitations under the License.
 #include "tensorflow/contrib/lite/toco/tflite/custom_operator.h"
 #include "tensorflow/contrib/lite/toco/tflite/simple_operator.h"
 #include "tensorflow/contrib/lite/toco/tflite/types.h"
+#include "tensorflow/contrib/lite/toco/tflite/whitelisted_flex_ops.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/op.h"
@@ -758,7 +759,8 @@ class UnidirectionalSequenceLstm
         *builder, /*fused_activation_function=*/
         ::tflite::ActivationFunctionType_TANH,
         /*cell_clip=*/0.0,
-        /*proj_clip=*/0.0);
+        /*proj_clip=*/0.0,
+        /*time_major=*/true);
   }
 
   void ReadOptions(const TfLiteOptions& options,
@@ -1556,6 +1558,10 @@ std::vector<std::unique_ptr<BaseOperator>> BuildOperatorList(
       "LOGICAL_NOT", OperatorType::kLogicalNot));
   ops.emplace_back(new SimpleOperator<FloorDivOperator>(
       "FLOOR_DIV", OperatorType::kFloorDiv));
+  ops.emplace_back(new SimpleOperator<FloorModOperator>(
+      "FLOOR_MOD", OperatorType::kFloorMod));
+  ops.emplace_back(
+      new SimpleOperator<RangeOperator>("RANGE", OperatorType::kRange));
   // Element-wise operator
   ops.push_back(
       MakeUnique<SimpleOperator<SinOperator>>("SIN", OperatorType::kSin));
@@ -1607,12 +1613,23 @@ bool ShouldExportAsFlexOp(bool allow_flex_ops,
     return false;
   }
   // Check if we can find the `OpDef` for the TensorFlow op. If we can find
-  // it, export the op as an Flex op. Otherwise, export it as a regular custom
-  // op.
+  // it and it has been whitelisted, export the op as an Flex op. Otherwise,
+  // export it as a regular custom op.
   const tensorflow::OpDef* op_def = nullptr;
-  return tensorflow::OpRegistry::Global()
-      ->LookUpOpDef(tensorflow_op_name, &op_def)
-      .ok();
+  if (!tensorflow::OpRegistry::Global()
+           ->LookUpOpDef(tensorflow_op_name, &op_def)
+           .ok()) {
+    return false;
+  }
+
+  if (!IsWhitelistedFlexOp(tensorflow_op_name)) {
+    LOG(WARNING) << "Op " << tensorflow_op_name
+                 << " is a valid TensorFlow op but has not been whitelisted for"
+                    " the TensorFlow Lite flex op set.";
+    return false;
+  }
+
+  return true;
 }
 
 }  // namespace tflite

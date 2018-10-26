@@ -108,6 +108,7 @@ load(
     "tf_additional_device_tracer_cuda_deps",
     "tf_additional_device_tracer_deps",
     "tf_additional_device_tracer_srcs",
+    "tf_additional_device_tracer_test_flags",
     "tf_additional_gdr_lib_defines",
     "tf_additional_human_readable_json_deps",
     "tf_additional_lib_defines",
@@ -336,6 +337,16 @@ cc_library(
     deps = [
         ":lib_platform",
         "//tensorflow/core/platform/default/build_config:base",
+    ],
+)
+
+cc_library(
+    name = "framework_bounds_check",
+    hdrs = ["framework/bounds_check.h"],
+    visibility = ["//tensorflow/core/kernels:friends"],
+    deps = [
+        "//tensorflow/core:platform_base",
+        "//third_party/eigen3",
     ],
 )
 
@@ -789,10 +800,13 @@ cc_library(
     }),
     visibility = ["//visibility:public"],
     deps = [
+        ":function_ops_op_lib",
+        ":functional_ops_op_lib",
         ":lib",
         ":lib_internal",
         ":protos_all_cc",
         "//tensorflow/core/platform/default/build_config:gtest",
+        "//tensorflow/core/kernels:required",
     ] + tf_additional_test_deps(),
 )
 
@@ -826,6 +840,7 @@ tf_gpu_library(
     hdrs = [
         "example/feature_util.h",
         "framework/allocator.h",
+        "framework/bounds_check.h",
         "framework/variant.h",
         "framework/variant_encode_decode.h",
         "framework/variant_op_registry.h",
@@ -856,6 +871,7 @@ tf_gpu_library(
         "framework/op_def_builder.h",
         "framework/op_def_util.h",
         "framework/op_kernel.h",
+        "framework/ops_util.h",
         "framework/partial_tensor_shape.h",
         "framework/queue_interface.h",
         "framework/reader_interface.h",
@@ -1162,6 +1178,7 @@ cc_library(
     name = "ragged_ops",
     deps = [
         ":ragged_array_ops_op_lib",
+        ":ragged_conversion_ops_op_lib",
         ":ragged_math_ops_op_lib",
     ],
 )
@@ -1169,6 +1186,7 @@ cc_library(
 tf_gen_op_libs(
     op_lib_names = [
         "ragged_array_ops",
+        "ragged_conversion_ops",
         "ragged_math_ops",
     ],
 )
@@ -1428,6 +1446,7 @@ tf_gpu_library(
         ":example_parser_configuration",
         ":gpu_runtime",
         ":lib",
+        ":ops",
     ],
 )
 
@@ -2969,13 +2988,8 @@ tf_gpu_library(
     copts = tf_copts(),
     deps = [
         ":framework",
-        ":framework_internal",
-        ":function_ops_op_lib",
-        ":functional_grad",
-        ":functional_ops_op_lib",
         ":graph",
         ":lib",
-        ":lib_internal",
         ":proto_text",
         ":protos_all_cc",
         "//tensorflow/core/grappler:grappler_item",
@@ -2983,8 +2997,13 @@ tf_gpu_library(
         "//tensorflow/core/grappler/clusters:virtual_cluster",
         "//tensorflow/core/grappler/optimizers:meta_optimizer",
         "//third_party/eigen3",
+    ] + mkl_deps() + tf_additional_core_deps() + if_static([
+        ":core_cpu_impl",
+        ":function_ops_op_lib",
+        ":functional_grad",
+        ":functional_ops_op_lib",
         "//tensorflow/core/kernels:required",
-    ] + mkl_deps() + tf_additional_core_deps() + if_static([":core_cpu_impl"]),
+    ]),
     alwayslink = 1,
 )
 
@@ -4689,7 +4708,8 @@ tf_cc_test_gpu(
     name = "device_tracer_test",
     size = "small",
     srcs = ["platform/device_tracer_test.cc"],
-    args = ["--heap_check=local"],
+    args =
+        ["--heap_check=local"] + tf_additional_device_tracer_test_flags(),
     linkstatic = tf_kernel_tests_linkstatic(),
     tags = tf_gpu_tests_tags() + ["nomac"],
     deps = [

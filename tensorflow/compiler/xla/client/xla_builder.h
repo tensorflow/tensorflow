@@ -339,23 +339,6 @@ class XlaBuilder {
   XlaOp Broadcast(const XlaOp& operand,
                   absl::Span<const int64> broadcast_sizes);
 
-  // Performs in-dimension-style broadcast.
-  //
-  // Operand specifies the input to be broadcast. "shape" is expected output
-  // shape. "broadcast_dimensions" are the dimensions to be broadcasting into.
-  // Dimension numbers in broadcast_dimensions map to individual dimensions
-  // of the operand, and specify what dimension of the output shape they
-  // should be broadcast.
-  // e.g.
-  // Say operand = [1, 2], i.e., a 1D tensor with 2 elements.
-  // and dimension of shape is [2,2].
-  // Specifying {1} as brodcast_dimension will generate output
-  // [1 , 2]
-  // [1 , 2]
-  // On the other hand, specifying {0} as broadcast_dimension
-  // will generate output
-  // [1 , 1]
-  // [2 , 2]
   XlaOp BroadcastInDim(const XlaOp& operand, const Shape& shape,
                        const absl::Span<const int64> broadcast_dimensions);
 
@@ -1480,23 +1463,21 @@ XlaOp ConstantR1(XlaBuilder* builder, int64 length, NativeT value);
 //   output[i0, ..., iN, j0, ..., jM] = operand[j0, ..., jM]
 XlaOp Broadcast(const XlaOp& operand, absl::Span<const int64> broadcast_sizes);
 
-// Performs in-dimension-style broadcast.
+// This op broadcasts the `operand` to an output with the given `shape`.
+// `broadcast_dimensions` are the dimensions to be broadcasting into, i.e., the
+// i'th dimension of the operand is mapped to the broadcast_dimensions[i]'th
+// dimension of the output. This also requires that the i'th input dimension is
+// either 1 or is the same as the output dimension it's broadcasting into.
 //
-// Operand specifies the input to be broadcast. "shape" is expected output
-// shape. "broadcast_dimensions" are the dimensions to be broadcasting into.
-// Dimension numbers in broadcast_dimensions map to individual dimensions
-// of the operand, and specify what dimension of the output shape they
-// should be broadcast.
-// e.g.
-// Say operand = [1, 2], i.e., a 1D tensor with 2 elements.
-// and dimension of shape is [2,2].
-// Specifying {1} as brodcast_dimension will generate output
-// [1 , 2]
-// [1 , 2]
-// On the other hand, specifying {0} as broadcast_dimension
-// will generate output
-// [1 , 1]
-// [2 , 2]
+// For example, say operand = {1, 2}, i.e., a 1D tensor in shape s32[2]; the
+// output shape is s32[2,2]:
+// - Specifying {1} as brodcast_dimension will generate output
+//   {{1, 2},
+//    {1, 2}}
+// - On the other hand, specifying {0} as broadcast_dimension
+//   will generate output
+//   {{1 , 1},
+//    {2 , 2}}
 XlaOp BroadcastInDim(const XlaOp& operand, const Shape& shape,
                      const absl::Span<const int64> broadcast_dimensions);
 

@@ -147,6 +147,11 @@ bool Slice(SliceOperator const& op, Array const& input_array,
         return ::tensorflow::Status::OK();
       }
       break;
+    case ArrayDataType::kComplex64:
+      if (!Slice<ArrayDataType::kComplex64>(*op, input_array, &output_array)) {
+        return ::tensorflow::Status::OK();
+      }
+      break;
     default:
       LOG(FATAL) << "Unsupported data type input to Slice op with output \""
                  << op->outputs[0] << "\"";

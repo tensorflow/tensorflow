@@ -29,7 +29,7 @@ namespace {
 template <typename T>
 bool AreAllBufferElementsZero(const std::vector<T>& buffer_data) {
   for (auto x : buffer_data) {
-    if (x != 0) {
+    if (x != T()) {
       return false;
     }
   }
@@ -42,7 +42,7 @@ void FillArrayWithZeros(Array* array) {
   std::vector<DataType<Type>>& data = array->GetMutableBuffer<Type>().data;
   data.resize(RequiredBufferSizeForShape(array->shape()));
   for (size_t i = 0; i < data.size(); i++) {
-    data[i] = 0;
+    data[i] = DataType<Type>();
   }
 }
 
@@ -138,6 +138,15 @@ void FillArrayWithZeros(Array* array) {
         return ::tensorflow::Status::OK();
       }
       FillArrayWithZeros<ArrayDataType::kInt64>(&output_array);
+    } break;
+    case ArrayDataType::kComplex64: {
+      const auto& constant_input_data =
+          constant_input_array.GetBuffer<ArrayDataType::kComplex64>().data;
+      if (!AreAllBufferElementsZero<DataType<ArrayDataType::kComplex64>>(
+              constant_input_data)) {
+        return ::tensorflow::Status::OK();
+      }
+      FillArrayWithZeros<ArrayDataType::kComplex64>(&output_array);
     } break;
     default:
       AddMessageF(

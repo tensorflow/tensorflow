@@ -59,7 +59,7 @@ class RandomUniformOp : public XlaOpKernel {
 };
 
 // XXX
-//REGISTER_XLA_OP(Name("RandomUniform").CompileTimeConstInput("shape"),
+//REGISTER_XLA_OP(Name("RandomUniform").CompileTimeConstantInput("shape"),
 //                RandomUniformOp);
 
 class RandomShuffleOp : public XlaOpKernel {
@@ -230,7 +230,7 @@ class RandomUniformIntOp : public XlaOpKernel {
 };
 
 // XXX
-//REGISTER_XLA_OP(Name("RandomUniformInt").CompileTimeConstInput("shape"),
+//REGISTER_XLA_OP(Name("RandomUniformInt").CompileTimeConstantInput("shape"),
 //                RandomUniformIntOp);
 
 class RandomStandardNormalOp : public XlaOpKernel {
@@ -259,7 +259,7 @@ class RandomStandardNormalOp : public XlaOpKernel {
   TF_DISALLOW_COPY_AND_ASSIGN(RandomStandardNormalOp);
 };
 
-REGISTER_XLA_OP(Name("RandomStandardNormal").CompileTimeConstInput("shape"),
+REGISTER_XLA_OP(Name("RandomStandardNormal").CompileTimeConstantInput("shape"),
                 RandomStandardNormalOp);
 
 class TruncatedNormalOp : public XlaOpKernel {
@@ -286,7 +286,7 @@ class TruncatedNormalOp : public XlaOpKernel {
 
 // XXX
 //REGISTER_XLA_OP(Name("TruncatedNormal")
-//                    .CompileTimeConstInput("shape")
+//                    .CompileTimeConstantInput("shape")
 //                    .TypeConstraint("dtype", DT_FLOAT),
 //                TruncatedNormalOp);
 

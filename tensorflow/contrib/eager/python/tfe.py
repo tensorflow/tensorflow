@@ -25,6 +25,7 @@ To use, at program startup, call `tf.enable_eager_execution()`.
 
 @@py_func
 @@defun
+@@function
 @@make_template
 @@implicit_gradients
 @@implicit_value_and_gradients
@@ -101,7 +102,7 @@ from tensorflow.contrib.eager.python.saver import get_optimizer_variables
 from tensorflow.contrib.eager.python.saver import restore_variables_on_create
 from tensorflow.contrib.eager.python.saver import Saver
 from tensorflow.python.eager import backprop
-from tensorflow.python.eager import function
+from tensorflow.python.eager import function as _function_lib
 from tensorflow.python.eager.context import DEVICE_PLACEMENT_EXPLICIT
 from tensorflow.python.eager.context import DEVICE_PLACEMENT_WARN
 from tensorflow.python.eager.context import DEVICE_PLACEMENT_SILENT
@@ -115,6 +116,7 @@ from tensorflow.python.eager.context import SYNC
 from tensorflow.python.eager.context import ASYNC
 from tensorflow.python.eager.context import num_gpus
 from tensorflow.python.eager.context import set_server_def
+from tensorflow.python.eager.def_function import function
 from tensorflow.python.eager.execution_callbacks import add_execution_callback
 from tensorflow.python.eager.execution_callbacks import clear_execution_callbacks
 from tensorflow.python.eager.execution_callbacks import inf_callback
@@ -138,7 +140,7 @@ from tensorflow.python.training.checkpointable.util import Checkpoint
 from tensorflow.python.util.all_util import remove_undocumented
 
 py_func = script_ops.eager_py_func
-defun = function.defun
+defun = _function_lib.defun
 make_template = template.make_template_internal
 implicit_gradients = backprop.implicit_grad
 implicit_value_and_gradients = backprop.implicit_val_and_grad

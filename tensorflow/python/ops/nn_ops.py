@@ -402,7 +402,7 @@ class _WithSpaceToBatch(object):
     if not dilation_rate.get_shape().is_fully_defined():
       raise ValueError("rate must have known shape")
 
-    num_spatial_dims = rate_shape[0].value
+    num_spatial_dims = rate_shape.dims[0].value
 
     if data_format is not None and data_format.startswith("NC"):
       starting_spatial_dim = 2
@@ -510,7 +510,7 @@ class _WithSpaceToBatch(object):
 
     # Recover channel information for output shape if channels are not last.
     if self.data_format is not None and self.data_format.startswith("NC"):
-      if not result_converted.shape[1].value and filter is not None:
+      if not result_converted.shape.dims[1].value and filter is not None:
         output_shape = result_converted.shape.as_list()
         output_shape[1] = filter.shape[-1]
         result_converted.set_shape(output_shape)
@@ -711,12 +711,12 @@ def convolution(
   It is required that 1 <= N <= 3.
 
   Args:
-    input: An N-D `Tensor` of type `T`, of shape
+    input: An (N+2)-D `Tensor` of type `T`, of shape
       `[batch_size] + input_spatial_shape + [in_channels]` if data_format does
       not start with "NC" (default), or
       `[batch_size, in_channels] + input_spatial_shape` if data_format starts
       with "NC".
-    filter: An N-D `Tensor` with the same type as `input` and shape
+    filter: An (N+2)-D `Tensor` with the same type as `input` and shape
       `spatial_filter_shape + [in_channels, out_channels]`.
     padding: A string, either `"VALID"` or `"SAME"`. The padding algorithm.
     strides: Optional.  Sequence of N ints >= 1.  Specifies the output stride.
@@ -828,10 +828,11 @@ class Convolution(object):
           "filter tensor must have rank %d" % (num_spatial_dims + 2))
 
     if data_format is None or not data_format.startswith("NC"):
-      input_channels_dim = input_shape[num_spatial_dims + 1]
+      input_channels_dim = tensor_shape.dimension_at_index(
+          input_shape, num_spatial_dims + 1)
       spatial_dims = range(1, num_spatial_dims + 1)
     else:
-      input_channels_dim = input_shape[1]
+      input_channels_dim = tensor_shape.dimension_at_index(input_shape, 1)
       spatial_dims = range(2, num_spatial_dims + 2)
 
     if not input_channels_dim.is_compatible_with(
@@ -1225,7 +1226,8 @@ def conv2d_transpose(
     value = ops.convert_to_tensor(value, name="value")
     filter = ops.convert_to_tensor(filter, name="filter")  # pylint: disable=redefined-builtin
     axis = 3 if data_format == "NHWC" else 1
-    if not value.get_shape()[axis].is_compatible_with(filter.get_shape()[3]):
+    if not value.get_shape().dims[axis].is_compatible_with(
+        filter.get_shape()[3]):
       raise ValueError("input channels does not match filter's input channels, "
                        "{} != {}".format(value.get_shape()[axis],
                                          filter.get_shape()[3]))
@@ -1237,7 +1239,8 @@ def conv2d_transpose(
 
     if isinstance(output_shape, (list, np.ndarray)):
       # output_shape's shape should be == [4] if reached this point.
-      if not filter.get_shape()[2].is_compatible_with(output_shape[axis]):
+      if not filter.get_shape().dims[2].is_compatible_with(
+          output_shape[axis]):
         raise ValueError(
             "output_shape does not match filter's output channels, "
             "{} != {}".format(output_shape[axis],
@@ -1304,7 +1307,7 @@ def atrous_conv2d_transpose(value,
                       [value, filters, output_shape]) as name:
     value = ops.convert_to_tensor(value, name="value")
     filters = ops.convert_to_tensor(filters, name="filters")
-    if not value.get_shape()[3].is_compatible_with(filters.get_shape()[3]):
+    if not value.get_shape().dims[3].is_compatible_with(filters.get_shape()[3]):
       raise ValueError(
           "value's input channels does not match filters' input channels, "
           "{} != {}".format(value.get_shape()[3],
@@ -1328,7 +1331,7 @@ def atrous_conv2d_transpose(value,
 
     if isinstance(output_shape, (list, np.ndarray)):
       # output_shape's shape should be == [4] if reached this point.
-      if not filters.get_shape()[2].is_compatible_with(output_shape[3]):
+      if not filters.get_shape().dims[2].is_compatible_with(output_shape[3]):
         raise ValueError(
             "output_shape does not match filter's output channels, "
             "{} != {}".format(output_shape[3],
@@ -1449,7 +1452,8 @@ def conv3d_transpose(
     value = ops.convert_to_tensor(value, name="value")
     filter = ops.convert_to_tensor(filter, name="filter")  # pylint: disable=redefined-builtin
     axis = 1 if data_format == "NCDHW" else 4
-    if not value.get_shape()[axis].is_compatible_with(filter.get_shape()[4]):
+    if not value.get_shape().dims[axis].is_compatible_with(
+        filter.get_shape()[4]):
       raise ValueError("input channels does not match filter's input channels, "
                        "{} != {}".format(value.get_shape()[axis],
                                          filter.get_shape()[4]))
@@ -1461,7 +1465,8 @@ def conv3d_transpose(
 
     if isinstance(output_shape, (list, np.ndarray)):
       # output_shape's shape should be == [5] if reached this point.
-      if not filter.get_shape()[3].is_compatible_with(output_shape[axis]):
+      if not filter.get_shape().dims[3].is_compatible_with(
+          output_shape[axis]):
         raise ValueError(
             "output_shape does not match filter's output channels, "
             "{} != {}".format(output_shape[axis],
@@ -1766,13 +1771,9 @@ def _ensure_xent_args(name, sentinel, labels, logits):
     raise ValueError("Both labels and logits must be provided.")
 
 
-@tf_export("nn.softmax_cross_entropy_with_logits_v2")
-def softmax_cross_entropy_with_logits_v2(
-    _sentinel=None,  # pylint: disable=invalid-name
-    labels=None,
-    logits=None,
-    dim=-1,
-    name=None):
+@tf_export("nn.softmax_cross_entropy_with_logits",
+           v1=["nn.softmax_cross_entropy_with_logits_v2"])
+def softmax_cross_entropy_with_logits_v2(labels, logits, dim=-1, name=None):
   """Computes softmax cross entropy between `logits` and `labels`.
 
   Measures the probability error in discrete classification tasks in which the
@@ -1807,7 +1808,6 @@ def softmax_cross_entropy_with_logits_v2(
   this function.**
 
   Args:
-    _sentinel: Used to prevent positional parameters. Internal, do not use.
     labels: Each vector along the class dimension should hold a valid
       probability distribution e.g. for the case in which labels are of shape
       `[batch_size, num_classes]`, each row of `labels[i]` must be a valid
@@ -1821,9 +1821,6 @@ def softmax_cross_entropy_with_logits_v2(
     same as `logits` and its shape is the same as `labels` except that it does
     not have the last dimension of `labels`.
   """
-  _ensure_xent_args("softmax_cross_entropy_with_logits", _sentinel, labels,
-                    logits)
-
   # TODO(pcmurray) Raise an error when the labels do not sum to 1. Note: This
   # could break users who call this with bad labels, but disregard the bad
   # results.
@@ -1895,7 +1892,7 @@ See `tf.nn.softmax_cross_entropy_with_logits_v2`.
 """
 
 
-@tf_export("nn.softmax_cross_entropy_with_logits")
+@tf_export(v1=["nn.softmax_cross_entropy_with_logits"])
 @deprecation.deprecated(date=None, instructions=_XENT_DEPRECATION)
 def softmax_cross_entropy_with_logits(
     _sentinel=None,  # pylint: disable=invalid-name
@@ -2532,14 +2529,16 @@ def conv1d_transpose(
     else:
       raise ValueError("data_format must be \"NWC\" or \"NCW\".")
 
-    if not value.get_shape()[axis].is_compatible_with(filter.get_shape()[2]):
+    if not value.get_shape().dims[axis].is_compatible_with(
+        filter.get_shape()[2]):
       raise ValueError("input channels does not match filter's input channels, "
                        "{} != {}".format(value.get_shape()[axis],
                                          filter.get_shape()[2]))
 
     if isinstance(output_shape, (list, np.ndarray)):
       # output_shape's shape should be == [3] if reached this point.
-      if not filter.get_shape()[1].is_compatible_with(output_shape[axis]):
+      if not filter.get_shape().dims[1].is_compatible_with(
+          output_shape[axis]):
         raise ValueError(
             "output_shape does not match filter's output channels, "
             "{} != {}".format(output_shape[axis],

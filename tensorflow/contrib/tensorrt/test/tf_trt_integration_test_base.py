@@ -49,7 +49,7 @@ RunParams = namedtuple(
 ConversionParams = namedtuple("ConversionParams", [
     "max_batch_size", "max_workspace_size_bytes", "precision_mode",
     "minimum_segment_size", "is_dynamic_op", "maximum_cached_engines",
-    "cached_engine_batch_sizes"
+    "cached_engine_batch_sizes", "rewriter_config"
 ])
 
 PRECISION_MODES = ["FP32", "FP16", "INT8"]
@@ -138,7 +138,8 @@ class TfTrtIntegrationTestBase(test_util.TensorFlowTestCase):
         minimum_segment_size=2,
         is_dynamic_op=run_params.dynamic_engine,
         maximum_cached_engines=1,
-        cached_engine_batch_sizes=None)
+        cached_engine_batch_sizes=None,
+        rewriter_config=None)
 
   def ShouldRunTest(self, run_params):
     """Whether to run the test."""
@@ -200,12 +201,15 @@ class TfTrtIntegrationTestBase(test_util.TensorFlowTestCase):
   def _GetConfigProto(self, run_params, graph_state):
     """Get config proto based on specific settings."""
     if graph_state != GraphState.ORIGINAL and run_params.use_optimizer:
-      trt_params = self.GetConversionParams(run_params)
+      conversion_params = self.GetConversionParams(run_params)
       rewriter_cfg = trt_convert.tensorrt_rewriter_config(
-          trt_params.max_batch_size, trt_params.max_workspace_size_bytes,
-          trt_params.precision_mode, trt_params.minimum_segment_size,
-          trt_params.is_dynamic_op, trt_params.maximum_cached_engines,
-          trt_params.cached_engine_batch_sizes)
+          conversion_params.rewriter_config, conversion_params.max_batch_size,
+          conversion_params.max_workspace_size_bytes,
+          conversion_params.precision_mode,
+          conversion_params.minimum_segment_size,
+          conversion_params.is_dynamic_op,
+          conversion_params.maximum_cached_engines,
+          conversion_params.cached_engine_batch_sizes)
 
       graph_options = config_pb2.GraphOptions(rewrite_options=rewriter_cfg)
     else:
@@ -285,18 +289,19 @@ class TfTrtIntegrationTestBase(test_util.TensorFlowTestCase):
   def _GetTrtGraphDef(self, run_params, gdef):
     """Return trt converted graphdef."""
     params = self._GetParamsCached()
-    trt_params = self.GetConversionParams(run_params)
-    logging.info(trt_params)
+    conversion_params = self.GetConversionParams(run_params)
+    logging.info(conversion_params)
     return trt_convert.create_inference_graph(
         input_graph_def=gdef,
         outputs=params.input_names + params.output_names,
-        max_batch_size=trt_params.max_batch_size,
-        max_workspace_size_bytes=trt_params.max_workspace_size_bytes,
-        precision_mode=trt_params.precision_mode,
-        minimum_segment_size=trt_params.minimum_segment_size,
-        is_dynamic_op=trt_params.is_dynamic_op,
-        maximum_cached_engines=trt_params.maximum_cached_engines,
-        cached_engine_batch_sizes=trt_params.cached_engine_batch_sizes)
+        max_batch_size=conversion_params.max_batch_size,
+        max_workspace_size_bytes=conversion_params.max_workspace_size_bytes,
+        precision_mode=conversion_params.precision_mode,
+        minimum_segment_size=conversion_params.minimum_segment_size,
+        is_dynamic_op=conversion_params.is_dynamic_op,
+        maximum_cached_engines=conversion_params.maximum_cached_engines,
+        cached_engine_batch_sizes=conversion_params.cached_engine_batch_sizes,
+        rewriter_config=conversion_params.rewriter_config)
 
   def _WriteGraph(self, run_params, gdef, graph_state):
     if graph_state == GraphState.ORIGINAL:

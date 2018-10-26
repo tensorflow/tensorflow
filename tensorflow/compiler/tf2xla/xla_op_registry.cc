@@ -18,6 +18,7 @@ limitations under the License.
 #include <functional>
 #include <memory>
 
+#include "tensorflow/compiler/jit/xla_cluster_util.h"
 #include "tensorflow/compiler/tf2xla/type_util.h"
 #include "tensorflow/compiler/tf2xla/xla_context.h"
 #include "tensorflow/compiler/xla/client/client_library.h"
@@ -341,18 +342,69 @@ std::vector<const KernelDef*> XlaOpRegistry::DeviceKernels(
   return ops;
 }
 
-/* static */ const std::unordered_set<string>*
-XlaOpRegistry::CompileTimeConstantInputs(const string& op) {
-  XlaOpRegistry& registry = Instance();
-  mutex_lock lock(registry.mutex_);
-  auto it = registry.ops_.find(op);
-  if (it == registry.ops_.end() || it->second.empty()) {
-    return nullptr;
+/* static */ Status XlaOpRegistry::CompileTimeConstantInputs(
+    const NodeDef& node_def, const OpKernel* op_kernel, const OpDef* op_def,
+    std::vector<int>* result) {
+  result->clear();
+
+  DCHECK(op_def != nullptr || op_kernel != nullptr);
+
+  std::unordered_set<string> compile_time_constant_inputs_from_attr;
+  std::vector<string> compile_time_constant_inputs_vect_from_attr;
+
+  const std::unordered_set<string>* compile_time_constant_inputs;
+
+  if (GetNodeAttr(node_def, kXlaCompileTimeConstantInputsAttr,
+                  &compile_time_constant_inputs_vect_from_attr)
+          .ok()) {
+    absl::c_copy(compile_time_constant_inputs_vect_from_attr,
+                 std::inserter(compile_time_constant_inputs_from_attr,
+                               compile_time_constant_inputs_from_attr.end()));
+    compile_time_constant_inputs = &compile_time_constant_inputs_from_attr;
+  } else {
+    const string& op = node_def.op();
+
+    XlaOpRegistry& registry = Instance();
+    mutex_lock lock(registry.mutex_);
+    auto it = registry.ops_.find(op);
+    if (it == registry.ops_.end() || it->second.empty()) {
+      return Status::OK();
+    } else {
+      // The test in IsCompatible ensures that if there are multiple matching
+      // registrations for this op name, they all have the same value of
+      // compile_time_constant_inputs, so only the first match is returned.
+      //
+      // TODO(sanjoy): This can probably be a std::vector<string>.
+      compile_time_constant_inputs =
+          &it->second.front()->compile_time_constant_inputs;
+    }
   }
-  // The test in IsCompatible ensures that if there are multiple matching
-  // registrations for this op name, they all have the same value of
-  // compile_time_constant_inputs, so only the first match is returned.
-  return &it->second.front()->compile_time_constant_inputs;
+
+  for (const string& input : *compile_time_constant_inputs) {
+    if (op_def) {
+      NameRangeMap input_name_ranges;
+      TF_RETURN_IF_ERROR(
+          NameRangesForNode(node_def, *op_def, &input_name_ranges, nullptr));
+      auto name_range = input_name_ranges.find(input);
+      if (name_range == input_name_ranges.end()) {
+        continue;
+      }
+
+      for (int i = name_range->second.first; i < name_range->second.second;
+           i++) {
+        result->push_back(i);
+      }
+    } else {
+      int start, stop;
+      TF_CHECK_OK(op_kernel->InputRange(input, &start, &stop));
+      for (int i = start; i < stop; ++i) {
+        result->push_back(i);
+      }
+    }
+  }
+
+  absl::c_sort(*result);
+  return Status::OK();
 }
 
 /*static*/ bool XlaOpRegistry::IsMetadataOp(const string& op) {
@@ -445,7 +497,7 @@ XlaOpRegistrationBuilder& XlaOpRegistrationBuilder::TypeConstraint(
   return *this;
 }
 
-XlaOpRegistrationBuilder& XlaOpRegistrationBuilder::CompileTimeConstInput(
+XlaOpRegistrationBuilder& XlaOpRegistrationBuilder::CompileTimeConstantInput(
     absl::string_view input_name) {
   registration_->compile_time_constant_inputs.emplace(input_name);
   return *this;

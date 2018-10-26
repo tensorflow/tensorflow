@@ -143,7 +143,7 @@ void NodeBuilder::AddIndexError(const Node* node, int i) {
     errors_.emplace_back(strings::StrCat(
         "Attempt to add output ", i, " of ", node->name(), " not in range [0, ",
         node->num_outputs(), ") to node with type ",
-        def_builder_.op_def().name(), ". Node: ", node->DebugString()));
+        def_builder_.op_def().name(), ". Node: ", FormatNodeForError(*node)));
   }
 }
 

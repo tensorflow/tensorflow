@@ -867,9 +867,9 @@ tf_xla_py_test(
     tags = ["optonly"],
     deps = [
         ":xla_test",
-        "//tensorflow/contrib/stateless",
         "//tensorflow/python:framework",
         "//tensorflow/python:platform_test",
+        "//tensorflow/python:stateless_random_ops",
     ],
 )
 

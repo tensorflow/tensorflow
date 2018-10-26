@@ -31300,6 +31300,18 @@ op {
   }
 }
 op {
+  name: "MatchingFilesDataset"
+  input_arg {
+    name: "patterns"
+    type: DT_STRING
+  }
+  output_arg {
+    name: "handle"
+    type: DT_VARIANT
+  }
+  is_stateful: true
+}
+op {
   name: "MatrixBandPart"
   input_arg {
     name: "input"
@@ -31684,6 +31696,29 @@ op {
     type: "bool"
     default_value {
       b: true
+    }
+  }
+}
+op {
+  name: "MatrixSquareRoot"
+  input_arg {
+    name: "input"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "output"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_DOUBLE
+        type: DT_FLOAT
+        type: DT_COMPLEX64
+        type: DT_COMPLEX128
+      }
     }
   }
 }
@@ -38815,6 +38850,61 @@ op {
   }
 }
 op {
+  name: "ParallelInterleaveDatasetV2"
+  input_arg {
+    name: "input_dataset"
+    type: DT_VARIANT
+  }
+  input_arg {
+    name: "other_arguments"
+    type_list_attr: "Targuments"
+  }
+  input_arg {
+    name: "cycle_length"
+    type: DT_INT64
+  }
+  input_arg {
+    name: "block_length"
+    type: DT_INT64
+  }
+  input_arg {
+    name: "num_parallel_calls"
+    type: DT_INT64
+  }
+  output_arg {
+    name: "handle"
+    type: DT_VARIANT
+  }
+  attr {
+    name: "f"
+    type: "func"
+  }
+  attr {
+    name: "Targuments"
+    type: "list(type)"
+    has_minimum: true
+  }
+  attr {
+    name: "output_types"
+    type: "list(type)"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "output_shapes"
+    type: "list(shape)"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "sloppy"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
+}
+op {
   name: "ParallelMapDataset"
   input_arg {
     name: "input_dataset"
@@ -38939,6 +39029,60 @@ op {
     type: "bool"
     default_value {
       b: true
+    }
+  }
+}
+op {
+  name: "ParallelMapDataset"
+  input_arg {
+    name: "input_dataset"
+    type: DT_VARIANT
+  }
+  input_arg {
+    name: "other_arguments"
+    type_list_attr: "Targuments"
+  }
+  input_arg {
+    name: "num_parallel_calls"
+    type: DT_INT32
+  }
+  output_arg {
+    name: "handle"
+    type: DT_VARIANT
+  }
+  attr {
+    name: "f"
+    type: "func"
+  }
+  attr {
+    name: "Targuments"
+    type: "list(type)"
+    has_minimum: true
+  }
+  attr {
+    name: "output_types"
+    type: "list(type)"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "output_shapes"
+    type: "list(shape)"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "use_inter_op_parallelism"
+    type: "bool"
+    default_value {
+      b: true
+    }
+  }
+  attr {
+    name: "sloppy"
+    type: "bool"
+    default_value {
+      b: false
     }
   }
 }
@@ -39219,6 +39363,83 @@ op {
     type: "list(shape)"
     has_minimum: true
     minimum: 1
+  }
+}
+op {
+  name: "ParseExampleDataset"
+  input_arg {
+    name: "input_dataset"
+    type: DT_VARIANT
+  }
+  input_arg {
+    name: "num_parallel_calls"
+    type: DT_INT64
+  }
+  input_arg {
+    name: "dense_defaults"
+    type_list_attr: "Tdense"
+  }
+  output_arg {
+    name: "handle"
+    type: DT_VARIANT
+  }
+  attr {
+    name: "sparse_keys"
+    type: "list(string)"
+    has_minimum: true
+  }
+  attr {
+    name: "dense_keys"
+    type: "list(string)"
+    has_minimum: true
+  }
+  attr {
+    name: "sparse_types"
+    type: "list(type)"
+    has_minimum: true
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_INT64
+        type: DT_STRING
+      }
+    }
+  }
+  attr {
+    name: "Tdense"
+    type: "list(type)"
+    has_minimum: true
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_INT64
+        type: DT_STRING
+      }
+    }
+  }
+  attr {
+    name: "dense_shapes"
+    type: "list(shape)"
+    has_minimum: true
+  }
+  attr {
+    name: "output_types"
+    type: "list(type)"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "output_shapes"
+    type: "list(shape)"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "sloppy"
+    type: "bool"
+    default_value {
+      b: false
+    }
   }
 }
 op {
@@ -39744,6 +39965,45 @@ op {
   }
   attr {
     name: "config"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
+}
+op {
+  name: "PartitionedCall"
+  input_arg {
+    name: "args"
+    type_list_attr: "Tin"
+  }
+  output_arg {
+    name: "output"
+    type_list_attr: "Tout"
+  }
+  attr {
+    name: "Tin"
+    type: "list(type)"
+    has_minimum: true
+  }
+  attr {
+    name: "Tout"
+    type: "list(type)"
+    has_minimum: true
+  }
+  attr {
+    name: "f"
+    type: "func"
+  }
+  attr {
+    name: "config"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
+  attr {
+    name: "executor_type"
     type: "string"
     default_value {
       s: ""
@@ -44234,6 +44494,40 @@ op {
         type: DT_INT64
       }
     }
+  }
+}
+op {
+  name: "RaggedTensorToSparse"
+  input_arg {
+    name: "rt_nested_splits"
+    type: DT_INT64
+    number_attr: "RAGGED_RANK"
+  }
+  input_arg {
+    name: "rt_dense_values"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "sparse_indices"
+    type: DT_INT64
+  }
+  output_arg {
+    name: "sparse_values"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "sparse_dense_shape"
+    type: DT_INT64
+  }
+  attr {
+    name: "RAGGED_RANK"
+    type: "int"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "T"
+    type: "type"
   }
 }
 op {
@@ -71239,6 +71533,46 @@ op {
   is_stateful: true
 }
 op {
+  name: "StatefulPartitionedCall"
+  input_arg {
+    name: "args"
+    type_list_attr: "Tin"
+  }
+  output_arg {
+    name: "output"
+    type_list_attr: "Tout"
+  }
+  attr {
+    name: "Tin"
+    type: "list(type)"
+    has_minimum: true
+  }
+  attr {
+    name: "Tout"
+    type: "list(type)"
+    has_minimum: true
+  }
+  attr {
+    name: "f"
+    type: "func"
+  }
+  attr {
+    name: "config"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
+  attr {
+    name: "executor_type"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
+  is_stateful: true
+}
+op {
   name: "StatelessIf"
   input_arg {
     name: "cond"
@@ -76294,6 +76628,60 @@ op {
   output_arg {
     name: "output"
     type: DT_INT32
+  }
+}
+op {
+  name: "UnicodeTranscode"
+  input_arg {
+    name: "input"
+    type: DT_STRING
+  }
+  output_arg {
+    name: "output"
+    type: DT_STRING
+  }
+  attr {
+    name: "input_encoding"
+    type: "string"
+  }
+  attr {
+    name: "output_encoding"
+    type: "string"
+    allowed_values {
+      list {
+        s: "UTF-8"
+        s: "UTF-16-BE"
+        s: "UTF-32-BE"
+      }
+    }
+  }
+  attr {
+    name: "errors"
+    type: "string"
+    default_value {
+      s: "replace"
+    }
+    allowed_values {
+      list {
+        s: "strict"
+        s: "replace"
+        s: "ignore"
+      }
+    }
+  }
+  attr {
+    name: "replacement_char"
+    type: "int"
+    default_value {
+      i: 65533
+    }
+  }
+  attr {
+    name: "replace_control_characters"
+    type: "bool"
+    default_value {
+      b: false
+    }
   }
 }
 op {

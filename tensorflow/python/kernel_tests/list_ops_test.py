@@ -43,7 +43,6 @@ def scalar_shape():
   return ops.convert_to_tensor([], dtype=dtypes.int32)
 
 
-@test_util.with_c_shapes
 class ListOpsTest(test_util.TensorFlowTestCase):
 
   @test_util.run_in_graph_and_eager_modes
@@ -473,6 +472,19 @@ class ListOpsTest(test_util.TensorFlowTestCase):
     with self.assertRaises(errors.InvalidArgumentError):
       self.evaluate(list_ops.tensor_list_set_item(l, 20, 3.0))
 
+  def testSetItemWithMismatchedShapeFails(self):
+    with self.cached_session() as sess:
+      ph = array_ops.placeholder(dtypes.float32)
+      c = constant_op.constant([1.0, 2.0])
+      l = list_ops.tensor_list_from_tensor(c, element_shape=scalar_shape())
+      # Set a placeholder with unknown shape to satisfy the shape inference
+      # at graph building time.
+      l = list_ops.tensor_list_set_item(l, 0, ph)
+      l_0 = list_ops.tensor_list_get_item(l, 0, element_dtype=dtypes.float32)
+      with self.assertRaisesRegexp(errors.InvalidArgumentError,
+                                   "incompatible shape"):
+        sess.run(l_0, {ph: [3.0]})
+
   @test_util.run_in_graph_and_eager_modes
   def testResourceVariableScatterGather(self):
     c = constant_op.constant([1.0, 2.0], dtype=dtypes.float32)
@@ -625,7 +637,7 @@ class ListOpsTest(test_util.TensorFlowTestCase):
               (2,), dtype=dtype.as_numpy_dtype))
 
   @test_util.run_in_graph_and_eager_modes
-  def testZerosLikeVariant(self):
+  def testZerosLikeNested(self):
     for dtype in (dtypes.uint8, dtypes.uint16, dtypes.int8, dtypes.int16,
                   dtypes.int32, dtypes.int64, dtypes.float16, dtypes.float32,
                   dtypes.float64, dtypes.complex64, dtypes.complex128,
@@ -664,6 +676,31 @@ class ListOpsTest(test_util.TensorFlowTestCase):
           self.evaluate(outputs[1]), np.zeros((1,), dtype=dtype.as_numpy_dtype))
       self.assertAllEqual(
           self.evaluate(outputs[0]), np.zeros((2,), dtype=dtype.as_numpy_dtype))
+
+  @test_util.run_in_graph_and_eager_modes
+  def testElementShape(self):
+    l = list_ops.empty_tensor_list(
+        element_dtype=dtypes.float32, element_shape=-1)
+    shape = list_ops.tensor_list_element_shape(l, shape_type=dtypes.int32)
+    self.assertEqual(self.evaluate(shape), -1)
+
+  def testZerosLikeUninitialized(self):
+    l0 = list_ops.tensor_list_reserve(
+        scalar_shape(), 3, element_dtype=dtypes.float32)
+    l1 = list_ops.tensor_list_set_item(l0, 0, 1.)  # [1., _, _]
+    zeros_1 = array_ops.zeros_like(l1)  # [0., _, _]
+    l2 = list_ops.tensor_list_set_item(l1, 2, 2.)  # [1., _, 2.]
+    zeros_2 = array_ops.zeros_like(l2)  # [0., _, 0.]
+
+    # Gather indices with zeros in `zeros_1`.
+    res_1 = list_ops.tensor_list_gather(
+        zeros_1, [0], element_dtype=dtypes.float32)
+    # Gather indices with zeros in `zeros_2`.
+    res_2 = list_ops.tensor_list_gather(
+        zeros_2, [0, 2], element_dtype=dtypes.float32)
+
+    self.assertAllEqual(self.evaluate(res_1), [0.])
+    self.assertAllEqual(self.evaluate(res_2), [0., 0.])
 
 
 if __name__ == "__main__":

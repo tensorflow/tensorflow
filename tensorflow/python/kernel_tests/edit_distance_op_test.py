@@ -68,7 +68,7 @@ class EditDistanceTest(test.TestCase):
     ]
 
     # SparseTensorValue inputs.
-    with ops.Graph().as_default() as g, self.test_session(g):
+    with ops.Graph().as_default() as g, self.session(g):
       # hypothesis and truth are (index, value, shape) tuples
       self._testEditDistanceST(
           hypothesis_st=sparse_tensor.SparseTensorValue(
@@ -81,7 +81,7 @@ class EditDistanceTest(test.TestCase):
           expected_err_re=expected_err_re)
 
     # SparseTensor inputs.
-    with ops.Graph().as_default() as g, self.test_session(g):
+    with ops.Graph().as_default() as g, self.session(g):
       # hypothesis and truth are (index, value, shape) tuples
       self._testEditDistanceST(
           hypothesis_st=sparse_tensor.SparseTensor(

@@ -99,7 +99,7 @@ class SparseTensorsMapTest(test.TestCase):
       self.assertAllEqual(combined_shape, [2, 5, 6])
 
   def testFeedAddTakeMany(self):
-    with self.test_session(use_gpu=False) as sess:
+    with self.session(use_gpu=False) as sess:
       sp_input = self._SparseTensorPlaceholder()
       input0_val = self._SparseTensorValue_5x6(np.arange(6))
       input1_val = self._SparseTensorValue_3x4(np.arange(6))
@@ -125,7 +125,7 @@ class SparseTensorsMapTest(test.TestCase):
       self.assertAllEqual(combined_shape, [2, 5, 6])
 
   def testAddManyTakeManyRoundTrip(self):
-    with self.test_session(use_gpu=False) as sess:
+    with self.session(use_gpu=False) as sess:
       # N == 4 because shape_value == [4, 5]
       indices_value = np.array([[0, 0], [0, 1], [2, 0]], dtype=np.int64)
       values_value = np.array([b"a", b"b", b"c"])
@@ -147,7 +147,7 @@ class SparseTensorsMapTest(test.TestCase):
       self.assertAllEqual(roundtrip_value.dense_shape, shape_value)
 
   def testDeserializeFailsInconsistentRank(self):
-    with self.test_session(use_gpu=False) as sess:
+    with self.session(use_gpu=False) as sess:
       sp_input = self._SparseTensorPlaceholder()
       input0_val = self._SparseTensorValue_5x6(np.arange(6))
       input1_val = self._SparseTensorValue_1x1x1()
@@ -168,7 +168,7 @@ class SparseTensorsMapTest(test.TestCase):
         sess.run(sp_roundtrip)
 
   def testTakeManyFailsWrongInputOp(self):
-    with self.test_session(use_gpu=False) as sess:
+    with self.session(use_gpu=False) as sess:
       input_val = self._SparseTensorValue_5x6(np.arange(6))
       handle = add_sparse_to_tensors_map(input_val)
       handle_value = sess.run(handle)

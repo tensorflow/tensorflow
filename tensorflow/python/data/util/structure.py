@@ -217,6 +217,18 @@ class Structure(object):
     """
     _STRUCTURE_CONVERSION_FUNCTION_REGISTRY[type_object] = converter_fn
 
+  @abc.abstractmethod
+  def _to_legacy_output_types(self):
+    raise NotImplementedError("Structure._to_legacy_output_types()")
+
+  @abc.abstractmethod
+  def _to_legacy_output_shapes(self):
+    raise NotImplementedError("Structure._to_legacy_output_shapes()")
+
+  @abc.abstractmethod
+  def _to_legacy_output_classes(self):
+    raise NotImplementedError("Structure._to_legacy_output_classes()")
+
 
 # NOTE(mrry): The following classes make extensive use of non-public methods of
 # their base class, so we disable the protected-access lint warning once here.
@@ -295,6 +307,18 @@ class NestedStructure(Structure):
     ]
     return NestedStructure(nest.pack_sequence_as(value, flat_nested_structure))
 
+  def _to_legacy_output_types(self):
+    return nest.map_structure(
+        lambda s: s._to_legacy_output_types(), self._nested_structure)
+
+  def _to_legacy_output_shapes(self):
+    return nest.map_structure(
+        lambda s: s._to_legacy_output_shapes(), self._nested_structure)
+
+  def _to_legacy_output_classes(self):
+    return nest.map_structure(
+        lambda s: s._to_legacy_output_classes(), self._nested_structure)
+
 
 class TensorStructure(Structure):
   """Represents structural information about a `tf.Tensor`."""
@@ -334,6 +358,15 @@ class TensorStructure(Structure):
   def from_value(value):
     return TensorStructure(value.dtype, value.shape)
 
+  def _to_legacy_output_types(self):
+    return self._dtype
+
+  def _to_legacy_output_shapes(self):
+    return self._shape
+
+  def _to_legacy_output_classes(self):
+    return ops.Tensor
+
 
 class SparseTensorStructure(Structure):
   """Represents structural information about a `tf.SparseTensor`."""
@@ -372,3 +405,12 @@ class SparseTensorStructure(Structure):
     return SparseTensorStructure(
         sparse_tensor.dtype,
         tensor_util.constant_value_as_shape(sparse_tensor.dense_shape))
+
+  def _to_legacy_output_types(self):
+    return self._dtype
+
+  def _to_legacy_output_shapes(self):
+    return self._dense_shape
+
+  def _to_legacy_output_classes(self):
+    return sparse_tensor_lib.SparseTensor

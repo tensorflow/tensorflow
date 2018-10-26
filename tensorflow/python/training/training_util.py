@@ -129,7 +129,7 @@ def create_global_step(graph=None):
           dtype=dtypes.int64,
           initializer=init_ops.zeros_initializer(),
           trainable=False,
-          aggregation=variables.VariableAggregation.ONLY_FIRST_TOWER,
+          aggregation=variables.VariableAggregation.ONLY_FIRST_REPLICA,
           collections=[ops.GraphKeys.GLOBAL_VARIABLES,
                        ops.GraphKeys.GLOBAL_STEP])
   # Create in proper graph and base name_scope.
@@ -140,7 +140,7 @@ def create_global_step(graph=None):
         dtype=dtypes.int64,
         initializer=init_ops.zeros_initializer(),
         trainable=False,
-        aggregation=variables.VariableAggregation.ONLY_FIRST_TOWER,
+        aggregation=variables.VariableAggregation.ONLY_FIRST_REPLICA,
         collections=[ops.GraphKeys.GLOBAL_VARIABLES,
                      ops.GraphKeys.GLOBAL_STEP])
 

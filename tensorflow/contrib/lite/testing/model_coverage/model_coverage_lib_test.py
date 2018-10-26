@@ -97,7 +97,7 @@ class EvaluateFrozenGraph(test.TestCase):
     filename = self._getQuantizedModel()
     model_coverage.test_frozen_graph_quant(
         filename, ['inputA'], ['output'],
-        converter_mode=lite.ConverterMode.TOCO_FLEX_ALL)
+        target_ops=set([lite.OpsSet.SELECT_TF_OPS]))
 
 
 class EvaluateSavedModel(test.TestCase):
@@ -151,12 +151,14 @@ class EvaluateKerasModel(test.TestCase):
 
     model_coverage.test_keras_model(keras_file, post_training_quantize=True)
 
-  def testConverterMode(self):
+  def testTargetOps(self):
     model = self._getSingleInputKerasModel()
     keras_file = self._saveKerasModel(model)
 
     model_coverage.test_keras_model(
-        keras_file, converter_mode=lite.ConverterMode.TOCO_FLEX)
+        keras_file,
+        target_ops=set([lite.OpsSet.TFLITE_BUILTINS,
+                        lite.OpsSet.SELECT_TF_OPS]))
 
 
 if __name__ == '__main__':

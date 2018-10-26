@@ -131,6 +131,8 @@ class EagerContext {
 
   Device* HostCPU() { return devices_[0]; }
 
+  GraphCollector* GetGraphCollector() { return &graph_collector_; }
+
   uint64 NextId() { return executor_.NextId(); }
 
   void ExecutorAdd(EagerNode* node) { executor_.Add(node); }
@@ -249,6 +251,7 @@ class EagerContext {
   std::atomic<bool> should_store_metadata_{false};
   mutex metadata_mu_;
   RunMetadata run_metadata_ GUARDED_BY(metadata_mu_);
+  GraphCollector graph_collector_;
   const bool log_device_placement_;
   // EagerExecutor for async execution.
   EagerExecutor executor_;

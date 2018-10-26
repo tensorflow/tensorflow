@@ -18,10 +18,10 @@ limitations under the License.
 #include <utility>
 
 #include "tensorflow/core/common_runtime/function.h"
+#include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/kernels/data/captured_function.h"
-#include "tensorflow/core/kernels/data/dataset.h"
 #include "tensorflow/core/kernels/data/dataset_utils.h"
 #include "tensorflow/core/kernels/inplace_ops_functor.h"
 #include "tensorflow/core/lib/core/blocking_counter.h"
@@ -36,11 +36,8 @@ namespace tensorflow {
 namespace data {
 namespace {
 
-// See documentation in ../ops/dataset_ops.cc for a high-level
+// See documentation in ../../ops/dataset_ops.cc for a high-level
 // description of the following op.
-
-// TODO(b/116852688): Make coordination between the performance model and this
-// transformation more robust.
 class MapAndBatchDatasetOp : public UnaryDatasetOpKernel {
  public:
   using MapAndBatchIteratorFunction =
@@ -132,7 +129,10 @@ class MapAndBatchDatasetOp : public UnaryDatasetOpKernel {
             out_tensors->push_back(captured_inputs[indices[i] - num_args]);
           }
         }
-        done(Status::OK());
+        // Run the `done` callback on a threadpool thread, because it will
+        // potentially do a lot of copying work, and we want to run that
+        // concurrently with the next invocation.
+        (*ctx->runner())(std::bind(std::move(done), Status::OK()));
       };
     }
 

@@ -95,6 +95,9 @@ namespace toco {
     case ArrayDataType::kString:
       CopyArrayBuffer<ArrayDataType::kString>(input_array, &output_array);
       break;
+    case ArrayDataType::kComplex64:
+      CopyArrayBuffer<ArrayDataType::kComplex64>(input_array, &output_array);
+      break;
     default:
       LOG(FATAL) << "Unsupported data type: "
                  << ArrayDataTypeName(input_array.data_type);

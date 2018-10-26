@@ -317,9 +317,9 @@ class DistributeCoordinatorTestBase(test.TestCase):
     with ops.device("/job:ps/task:0"):
       # TODO(yuefengz): investigate why not using resource variable will make
       # the test flaky.
-      x = variable_scope.get_variable("x", initializer=10.0, use_resource=True)
+      x = variable_scope.get_variable("xx", initializer=10.0, use_resource=True)
     with ops.device("/job:ps/task:1"):
-      y = variable_scope.get_variable("y", initializer=20.0, use_resource=True)
+      y = variable_scope.get_variable("yy", initializer=20.0, use_resource=True)
 
     x_add = x.assign_add(2.0)
     y_sub = y.assign_sub(2.0)

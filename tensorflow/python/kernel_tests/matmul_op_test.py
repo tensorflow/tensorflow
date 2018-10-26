@@ -72,7 +72,7 @@ def _GetMatMulTest(a_np_, b_np_, use_static_shape_, **kwargs_):
     # np.matrix(a_np_) * np.matrix(b_np_)
     effective_a_np = _GetTransposedMatrices(a_np_, "a", kwargs_)
     effective_b_np = _GetTransposedMatrices(b_np_, "b", kwargs_)
-    with self.test_session(use_gpu=use_gpu) as sess:
+    with self.session(use_gpu=use_gpu) as sess:
       if use_static_shape_:
         a = constant_op.constant(effective_a_np)
         b = constant_op.constant(effective_b_np)
@@ -115,7 +115,7 @@ def _GetMatMulGradientTest(a_np_, b_np_, use_static_shape_, **kwargs_):
     epsilon = np.finfo(a_np_.dtype).eps
     delta = epsilon**(1.0 / 3.0)
     tol = 20 * delta
-    with self.test_session(use_gpu=True):
+    with self.session(use_gpu=True):
       a = constant_op.constant(effective_a_np)
       b = constant_op.constant(effective_b_np)
       res = math_ops.matmul(a, b, **kwargs_)

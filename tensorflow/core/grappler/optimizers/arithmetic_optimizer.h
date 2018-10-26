@@ -73,7 +73,7 @@ class ArithmeticOptimizer : public GraphOptimizer {
     bool remove_redundant_bitcast = true;
     bool remove_redundant_cast = true;
     bool remove_redundant_reshape = true;
-    bool reorder_cast_and_transpose = true;
+    bool reorder_cast_like_and_value_preserving = true;
     bool replace_mul_with_square = true;
     bool simplify_aggregation = true;
     bool convert_pow = true;

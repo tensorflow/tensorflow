@@ -64,8 +64,8 @@ def _interpolate_bilinear(grid,
     query_type = query_points.dtype
     grid_type = grid.dtype
 
-    if (len(query_points.get_shape()) != 3 or
-        query_points.get_shape()[2].value != 2):
+    if (query_points.shape.rank != 3 or
+        query_points.shape.dims[2].value != 2):
       msg = ('Query points must be 3 dimensional and size 2 in dim 2. Received '
              'size: ')
       raise ValueError(msg + str(query_points.get_shape()))

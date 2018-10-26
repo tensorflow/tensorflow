@@ -62,16 +62,10 @@ public final class OvicDetectorBenchmarker extends OvicBenchmarker {
     try {
       Log.i(TAG, "Creating detector.");
       detector = new OvicDetector(labelInputStream, model);
-      quantizedInput = detector.quantizedInput();
       int[] inputDims = detector.getInputDims();
       imgHeight = inputDims[1];
       imgWidth = inputDims[2];
-      if (quantizedInput) {
-        imgData = ByteBuffer.allocateDirect(DIM_BATCH_SIZE * imgHeight * imgWidth * DIM_PIXEL_SIZE);
-      } else {
-        imgData =
-            ByteBuffer.allocateDirect(DIM_BATCH_SIZE * imgHeight * imgWidth * DIM_PIXEL_SIZE * 4);
-      }
+      imgData = ByteBuffer.allocateDirect(DIM_BATCH_SIZE * imgHeight * imgWidth * DIM_PIXEL_SIZE);
       imgData.order(ByteOrder.nativeOrder());
       intValues = new int[imgHeight * imgWidth];
       benchmarkStarted = false;

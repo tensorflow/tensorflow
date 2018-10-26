@@ -134,10 +134,10 @@ class SparseTensor(_TensorLike):
     dense_shape_shape = dense_shape.get_shape().with_rank(1)
 
     # Assert number of rows in indices match the number of elements in values.
-    indices_shape[0].merge_with(values_shape[0])
+    indices_shape.dims[0].merge_with(values_shape.dims[0])
     # Assert number of columns in indices matches the number of elements in
     # dense_shape.
-    indices_shape[1].merge_with(dense_shape_shape[0])
+    indices_shape.dims[1].merge_with(dense_shape_shape.dims[0])
 
   def get_shape(self):
     """Get the `TensorShape` representing the shape of the dense tensor.

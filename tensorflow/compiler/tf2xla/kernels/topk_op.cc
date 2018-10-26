@@ -59,7 +59,7 @@ class TopKOp : public XlaOpKernel {
   bool sorted_;
 };
 
-REGISTER_XLA_OP(Name("TopKV2").CompileTimeConstInput("k").TypeConstraint(
+REGISTER_XLA_OP(Name("TopKV2").CompileTimeConstantInput("k").TypeConstraint(
                     "T", {DT_UINT32, DT_INT32, DT_FLOAT, DT_BFLOAT16}),
                 TopKOp);
 

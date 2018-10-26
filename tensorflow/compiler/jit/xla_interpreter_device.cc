@@ -15,6 +15,7 @@ limitations under the License.
 
 // Registers the XLA_INTERPRETER device which exposes the XLA Interpreter.
 
+#include "absl/memory/memory.h"
 #include "tensorflow/compiler/jit/kernels/xla_ops.h"
 #include "tensorflow/compiler/jit/xla_device.h"
 #include "tensorflow/compiler/jit/xla_device_ops.h"
@@ -36,7 +37,7 @@ class XlaInterpreterDeviceFactory : public DeviceFactory {
 };
 
 Status XlaInterpreterDeviceFactory::CreateDevices(
-    const SessionOptions& options, const string& name_prefix,
+    const SessionOptions& session_options, const string& name_prefix,
     std::vector<Device*>* devices) {
   static XlaDeviceOpRegistrations* registrations = RegisterXlaDeviceKernels(
       DEVICE_XLA_INTERPRETER, DEVICE_INTERPRETER_XLA_JIT);
@@ -47,16 +48,23 @@ Status XlaInterpreterDeviceFactory::CreateDevices(
   registration.requires_compilation = true;
   registration.enable_jit_by_default = false;
   registration.compile_resource_ops = true;
+  XlaOpRegistry::RegisterCompilationDevice(DEVICE_XLA_INTERPRETER,
+                                           registration);
 
-  std::unique_ptr<XlaDevice> device;
-  TF_RETURN_IF_ERROR(XlaDevice::Create("Interpreter", DEVICE_XLA_INTERPRETER, 0,
-                                       DEVICE_INTERPRETER_XLA_JIT, options,
-                                       name_prefix, registration,
-                                       /*transfer_as_literal=*/false,
-                                       /*use_multiple_streams=*/false,
-                                       /*shape_representation_fn=*/{},
-                                       /*padded_shape_fn=*/{}, &device));
+  TF_ASSIGN_OR_RETURN(
+      auto platform, se::MultiPlatformManager::PlatformWithName("Interpreter"));
+
+  XlaDevice::Options options;
+  options.platform = platform;
+  options.device_name_prefix = name_prefix;
+  options.device_name = DEVICE_XLA_INTERPRETER;
+  options.device_ordinal = 0;
+  options.compilation_device_name = DEVICE_INTERPRETER_XLA_JIT;
+  options.transfer_as_literal = false;
+  options.use_multiple_streams = false;
+  auto device = absl::make_unique<XlaDevice>(session_options, options);
   devices->push_back(device.release());
+
   return Status::OK();
 }
 

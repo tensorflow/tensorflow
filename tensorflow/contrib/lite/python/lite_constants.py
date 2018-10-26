@@ -28,6 +28,7 @@ INT32 = _types_pb2.INT32
 INT64 = _types_pb2.INT64
 STRING = _types_pb2.STRING
 QUANTIZED_UINT8 = _types_pb2.QUANTIZED_UINT8
+COMPLEX64 = _types_pb2.COMPLEX64
 TENSORFLOW_GRAPHDEF = _toco_flags_pb2.TENSORFLOW_GRAPHDEF
 TFLITE = _toco_flags_pb2.TFLITE
 GRAPHVIZ_DOT = _toco_flags_pb2.GRAPHVIZ_DOT
@@ -45,6 +46,7 @@ _allowed_symbols = [
     "INT64",
     "STRING",
     "QUANTIZED_UINT8",
+    "COMPLEX64",
     "TENSORFLOW_GRAPHDEF",
     "TFLITE",
     "GRAPHVIZ_DOT",

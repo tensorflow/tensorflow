@@ -121,13 +121,17 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
       (time_major) ? input->dims->data[0] : input->dims->data[1];
   const int fw_num_units = fw_input_weights->dims->data[0];
   const int bw_num_units = bw_input_weights->dims->data[0];
-  TF_LITE_ASSERT_EQ(input->dims->data[2], fw_input_weights->dims->data[1]);
-  TF_LITE_ASSERT_EQ(input->dims->data[2], bw_input_weights->dims->data[1]);
-  TF_LITE_ASSERT_EQ(fw_input_weights->dims->data[0], fw_bias->dims->data[0]);
-  TF_LITE_ASSERT_EQ(bw_input_weights->dims->data[0], bw_bias->dims->data[0]);
-  TF_LITE_ASSERT_EQ(fw_recurrent_weights->dims->data[0],
+  TF_LITE_ENSURE_EQ(context, input->dims->data[2],
+                    fw_input_weights->dims->data[1]);
+  TF_LITE_ENSURE_EQ(context, input->dims->data[2],
+                    bw_input_weights->dims->data[1]);
+  TF_LITE_ENSURE_EQ(context, fw_input_weights->dims->data[0],
                     fw_bias->dims->data[0]);
-  TF_LITE_ASSERT_EQ(bw_recurrent_weights->dims->data[1],
+  TF_LITE_ENSURE_EQ(context, bw_input_weights->dims->data[0],
+                    bw_bias->dims->data[0]);
+  TF_LITE_ENSURE_EQ(context, fw_recurrent_weights->dims->data[0],
+                    fw_bias->dims->data[0]);
+  TF_LITE_ENSURE_EQ(context, bw_recurrent_weights->dims->data[1],
                     bw_bias->dims->data[0]);
   TF_LITE_ENSURE_EQ(context, NumDimensions(fw_hidden_state), 2);
   TF_LITE_ENSURE_EQ(context, fw_hidden_state->dims->data[0], batch_size);

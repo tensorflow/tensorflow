@@ -43,6 +43,7 @@ from tensorflow.python.ops.gen_functional_ops import remote_call
 # pylint: enable=unused-import
 from tensorflow.python.ops.gen_functional_ops import symbolic_gradient
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.util import compat
 from tensorflow.python.util import nest
 from tensorflow.python.util.tf_export import tf_export
 
@@ -125,7 +126,8 @@ def foldl(fn, elems, initializer=None, parallel_iterations=10, back_prop=True,
     elems_flat = [
         ops.convert_to_tensor(elem, name="elem") for elem in nest.flatten(elems)
     ]
-    n = elems_flat[0].shape[0].value or array_ops.shape(elems_flat[0])[0]
+    n = (tensor_shape.dimension_value(elems_flat[0].shape[0])
+         or array_ops.shape(elems_flat[0])[0])
 
     elems_ta = nest.map_structure(create_ta, elems)
 
@@ -232,7 +234,8 @@ def foldr(fn, elems, initializer=None, parallel_iterations=10, back_prop=True,
     elems_flat = [
         ops.convert_to_tensor(elem, name="elem") for elem in nest.flatten(elems)
     ]
-    n = elems_flat[0].shape[0].value or array_ops.shape(elems_flat[0])[0]
+    n = (tensor_shape.dimension_value(elems_flat[0].shape[0])
+         or array_ops.shape(elems_flat[0])[0])
 
     elems_ta = nest.map_structure(create_ta, elems)
 
@@ -446,7 +449,8 @@ def map_fn(fn, elems, dtype=None, parallel_iterations=None, back_prop=True,
         raise ValueError(
             "elements in elems must be 1+ dimensional Tensors, not scalars"
         )
-    n = static_shape[0].value or array_ops.shape(elems_flat[0])[0]
+    n = (tensor_shape.dimension_value(static_shape[0])
+         or array_ops.shape(elems_flat[0])[0])
 
     # TensorArrays are always flat
     elems_ta = [
@@ -495,9 +499,11 @@ def map_fn(fn, elems, dtype=None, parallel_iterations=None, back_prop=True,
         maximum_iterations=n)
     results_flat = [r.stack() for r in r_a]
 
-    n_static = elems_flat[0].get_shape().with_rank_at_least(1)[0]
+    n_static = tensor_shape.Dimension(tensor_shape.dimension_value(
+        elems_flat[0].get_shape().with_rank_at_least(1)[0]))
     for elem in elems_flat[1:]:
-      n_static.merge_with(elem.get_shape().with_rank_at_least(1)[0])
+      n_static.merge_with(tensor_shape.Dimension(tensor_shape.dimension_value(
+          elem.get_shape().with_rank_at_least(1)[0])))
     for r in results_flat:
       r.set_shape(tensor_shape.TensorShape(n_static).concatenate(
           r.get_shape()[1:]))
@@ -644,7 +650,8 @@ def scan(fn, elems, initializer=None, parallel_iterations=10, back_prop=True,
         ops.convert_to_tensor(elem, name="elem") for elem in elems_flat]
 
     # Convert elems to tensor array. n may be known statically.
-    n = elems_flat[0].shape[0].value or array_ops.shape(elems_flat[0])[0]
+    n = (tensor_shape.dimension_value(elems_flat[0].shape[0])
+         or array_ops.shape(elems_flat[0])[0])
 
     # TensorArrays are always flat
     elems_ta = [
@@ -720,9 +727,11 @@ def scan(fn, elems, initializer=None, parallel_iterations=10, back_prop=True,
 
     results_flat = [r.stack() for r in r_a]
 
-    n_static = elems_flat[0].get_shape().with_rank_at_least(1)[0]
+    n_static = tensor_shape.Dimension(tensor_shape.dimension_value(
+        elems_flat[0].get_shape().with_rank_at_least(1)[0]))
     for elem in elems_flat[1:]:
-      n_static.merge_with(elem.get_shape().with_rank_at_least(1)[0])
+      n_static.merge_with(tensor_shape.Dimension(tensor_shape.dimension_value(
+          elem.get_shape().with_rank_at_least(1)[0])))
     for r in results_flat:
       r.set_shape(tensor_shape.TensorShape(n_static).concatenate(
           r.get_shape()[1:]))
@@ -982,7 +991,6 @@ def For(start,
 
 _rewriter_config_optimizer_disabled = None
 
-
 def _get_disabled_rewriter_config():
   global _rewriter_config_optimizer_disabled
   if _rewriter_config_optimizer_disabled is None:
@@ -992,7 +1000,8 @@ def _get_disabled_rewriter_config():
   return _rewriter_config_optimizer_disabled
 
 
-def partitioned_call(args, f, tout=None, executing_eagerly=None, config=None):
+def partitioned_call(args, f, tout=None, executing_eagerly=None, config=None,
+                     executor_type=None):
   """Executes a function while respecting device annotations.
 
   Currently, only those functions that execute within the same address space
@@ -1009,6 +1018,9 @@ def partitioned_call(args, f, tout=None, executing_eagerly=None, config=None):
     config: (Optional) A tensorflow::RewriterConfig proto, serialized. If
       `None`, all optimizations are disabled. Currently only handled for eager
       defined functions.
+    executor_type: (Optional) A string for the name of the executor to be used
+      in the function call. If not set, or set to an empty string, the default
+      tensorflow executor will be used.
 
   Returns:
     The list of `Tensor`s returned by invoking `f(args)`. If the function does
@@ -1025,13 +1037,16 @@ def partitioned_call(args, f, tout=None, executing_eagerly=None, config=None):
   if config is None:
     config = _get_disabled_rewriter_config()
 
+  if executor_type is None:
+    executor_type = ""
+
   if executing_eagerly or len(tout):
     if f.stateful_ops:
       outputs = gen_functional_ops.stateful_partitioned_call(
-          args=args, Tout=tout, f=f, config=config)
+          args=args, Tout=tout, f=f, config=config, executor_type=executor_type)
     else:
       outputs = gen_functional_ops.partitioned_call(
-          args=args, Tout=tout, f=f, config=config)
+          args=args, Tout=tout, f=f, config=config, executor_type=executor_type)
     return outputs if outputs else None
 
   # The generated binding returns an empty list for functions that don't
@@ -1044,6 +1059,8 @@ def partitioned_call(args, f, tout=None, executing_eagerly=None, config=None):
       list=attr_value_pb2.AttrValue.ListValue(type=tout))
   func_attr = attr_value_pb2.AttrValue(
       func=attr_value_pb2.NameAttrList(name=f.name))
+  executor_type_attr = attr_value_pb2.AttrValue(
+      s=compat.as_bytes(executor_type))
 
   # When running in graph mode, the graph and function graphs are optimized
   # (i.e. run through grappler) per the session options, so we can disable any
@@ -1063,7 +1080,8 @@ def partitioned_call(args, f, tout=None, executing_eagerly=None, config=None):
           "Tin": tin_attr,
           "Tout": tout_attr,
           "f": func_attr,
-          "config": rewriter_config
+          "config": rewriter_config,
+          "executor_type": executor_type_attr,
       })
   outputs = op.outputs
   return outputs if outputs else op
