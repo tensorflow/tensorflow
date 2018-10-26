@@ -958,6 +958,7 @@ cc_library(
     deps = [
         ":ragged_gather_op",
         ":ragged_range_op",
+        ":ragged_tensor_to_sparse_kernel",
     ],
 )
 
@@ -967,15 +968,6 @@ tf_kernel_library(
     deps = [
         "//tensorflow/core:framework",
         "//tensorflow/core:ragged_array_ops_op_lib",
-    ],
-)
-
-tf_kernel_library(
-    name = "ragged_range_op",
-    srcs = ["ragged_range_op.cc"],
-    deps = [
-        "//tensorflow/core:framework",
-        "//tensorflow/core:ragged_math_ops_op_lib",
     ],
 )
 
@@ -994,6 +986,15 @@ tf_cc_test(
     ],
 )
 
+tf_kernel_library(
+    name = "ragged_range_op",
+    srcs = ["ragged_range_op.cc"],
+    deps = [
+        "//tensorflow/core:framework",
+        "//tensorflow/core:ragged_math_ops_op_lib",
+    ],
+)
+
 tf_cc_test(
     name = "ragged_range_op_test",
     srcs = ["ragged_range_op_test.cc"],
@@ -1001,6 +1002,31 @@ tf_cc_test(
         ":ragged_range_op",
         "//tensorflow/core:framework",
         "//tensorflow/core:ragged_math_ops_op_lib",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+        "//tensorflow/core/kernels:ops_testutil",
+    ],
+)
+
+tf_kernel_library(
+    name = "ragged_tensor_to_sparse_kernel",
+    srcs = ["ragged_tensor_to_sparse_kernel.cc"],
+    deps = [
+        "//tensorflow/core:framework",
+        "//tensorflow/core:ragged_conversion_ops_op_lib",
+    ],
+)
+
+tf_cc_test(
+    name = "ragged_tensor_to_sparse_kernel_test",
+    size = "small",
+    srcs = ["ragged_tensor_to_sparse_kernel_test.cc"],
+    deps = [
+        ":ragged_tensor_to_sparse_kernel",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:ragged_conversion_ops_op_lib",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
