@@ -586,7 +586,6 @@ tf_cc_test(
         ":node_matchers",
         ":xla_cluster_util",
         ":xla_cpu_device",
-        ":xla_gpu_device",
         "//tensorflow/cc:cc_ops",
         "//tensorflow/cc:cc_ops_internal",
         "//tensorflow/cc:function_ops",
@@ -600,6 +599,7 @@ tf_cc_test(
         "//tensorflow/compiler/tf2xla/cc:xla_jit_ops",
         "//tensorflow/compiler/tf2xla/cc:xla_ops",
         "//tensorflow/compiler/tf2xla/kernels:xla_ops",
+        "//tensorflow/compiler/xla/service:platform_util",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",
         "//tensorflow/core:framework_internal",
@@ -612,7 +612,9 @@ tf_cc_test(
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
-    ],
+    ] + if_cuda_is_configured([
+        ":xla_gpu_device",
+    ]),
 )
 
 tf_cc_test(
