@@ -57,16 +57,8 @@ struct BroadcastTo {
 
 #define HANDLE_BROADCAST_CASE(dim_i)                                  \
   case dim_i: {                                                       \
-    if (std::is_same<Eigen::GpuDevice, Device>::value &&              \
-        output_tensor.NumElements() < kint32max &&                    \
-        input_tensor.NumElements() < kint32max) {                     \
-      auto input = input_tensor.tensor<T, dim_i>();                   \
-      To32Bit(output).device(d) =                                     \
-          To32Bit(input).reshape(reshape).broadcast(broadcast);       \
-    } else {                                                          \
       auto input = input_tensor.tensor<T, dim_i>();                   \
       output.device(d) = input.reshape(reshape).broadcast(broadcast); \
-    }                                                                 \
   } break;
 
     if (output_shape.num_elements() == 0) {
