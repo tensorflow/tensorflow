@@ -1810,12 +1810,9 @@ void MklLayoutRewritePass::CopyAttrsConv(const Node* orig_node, NodeBuilder* nb,
     std::vector<int32> new_strides;
     std::vector<int32> new_dilations;
     if (strides.size() == 5) {
-      //
       // "strides" and "dilations" also need to be changed according to
       // "data_format",
       // in this case, is "NDHWC" to "NCDHW".
-      //
-
       new_strides = {strides[NDHWC::dim::N], strides[NDHWC::dim::C],
                      strides[NDHWC::dim::D], strides[NDHWC::dim::H],
                      strides[NDHWC::dim::W]};
@@ -1827,11 +1824,9 @@ void MklLayoutRewritePass::CopyAttrsConv(const Node* orig_node, NodeBuilder* nb,
       nb->Attr("dilations", new_dilations);
 
     } else {
-      //
       // "strides" and "dilations" also need to be changed according to
       // "data_format",
       // in this case, is "NHWC" to "NCHW".
-      //
 
       new_strides = {strides[NHWC::dim::N], strides[NHWC::dim::C],
                      strides[NHWC::dim::H], strides[NHWC::dim::W]};
