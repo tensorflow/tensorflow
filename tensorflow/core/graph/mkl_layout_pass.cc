@@ -976,6 +976,8 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
   }
 
   static bool CheckForMklOp(const Node* node, string name = "") {
+    if (node == nullptr) return false;
+    
     if (!name.empty() && node->type_string() != name) {
       return false;
     }
