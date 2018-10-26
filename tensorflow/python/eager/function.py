@@ -291,6 +291,8 @@ class Function(object):
       ValueError: If number of input_placeholders is not equal to the number
         of function inputs.
     """
+    self._arg_keywords = None
+    self._num_positional_args = None
     self._func_graph = func_graph
     self._captured_inputs = list(self._func_graph.captures.keys())
     self._num_outputs = len(self._func_graph.outputs)
@@ -305,11 +307,81 @@ class Function(object):
     self._signature = signature
     self._gradient_name = None
 
-  def __call__(self, *args):
+  def __call__(self, *args, **kwargs):
     """Executes the wrapped function.
 
     Args:
-      *args: a list of Tensors or Variables.
+      *args: Tensors or Variables. Positional arguments are only accepted when
+        they correspond one-to-one with arguments of the traced Python function.
+      **kwargs: Tensors or Variables specified by name. When
+        `get_concrete_function` was called to create this `Function`, each
+        Tensor input was given a name, defaulting to the name of the Python
+        function's argument but possibly overridden by the `name=` argument to
+        `tf.TensorSpec`. These names become the argument names for the concrete
+        function.
+
+    Returns:
+      The result of applying the TF function on the given Tensors.
+
+    Raises:
+      AssertionError: If this `Function` was not created through
+        `get_concrete_function`.
+      ValueError: If arguments contains anything other than Tensors or
+        Variables.
+      TypeError: For invalid positional/keyword argument combinations.
+    """
+    if self._arg_keywords is None or self._num_positional_args is None:
+      if self._signature:
+        if kwargs:
+          raise NotImplementedError(
+              "Keyword arguments not supported when calling a "
+              "wrap_function-decorated function.")
+        return self._call_flat(args)
+      raise AssertionError(
+          "Tried to call a concrete function obtained from an interal API "
+          "through the public interface. Use get_concrete_function instead.")
+    if len(args) > self._num_positional_args:
+      raise TypeError(
+          ("Expected at most {} positional arguments ({}), got {}. When "
+           "calling a concrete function, positional arguments may not be bound "
+           "to Tensors within nested structures.").format(
+               self._num_positional_args,
+               self._arg_keywords[:self._num_positional_args],
+               args))
+    args = list(args)
+    for keyword in self._arg_keywords[len(args):]:
+      args.append(kwargs.pop(compat.as_str(keyword)))
+    if kwargs:
+      positional_arg_keywords = set(self._arg_keywords[:len(args)])
+      for unused_key in kwargs:
+        if unused_key in positional_arg_keywords:
+          raise TypeError("Got two values for keyword '{}'.".format(unused_key))
+      raise TypeError("Keyword arguments {} unknown.".format(kwargs.keys()))
+    return self._call_flat(args)
+
+  def _filtered_call(self, args, kwargs):
+    """Executes the function, filtering arguments from the Python function.
+
+    Objects aside from Tensors and Variables are ignored.
+
+    Args:
+      args: Canonicalized positional arguments of the Python function.
+      kwargs: Canonicalized keyword arguments of the Python function.
+
+    Returns:
+      The result of applying the function on the Tensors/Variables contained in
+      `args` and `kwargs`.
+    """
+    return self._call_flat(
+        (t for t in nest.flatten((args, kwargs))
+         if isinstance(
+             t, (ops.Tensor, resource_variable_ops.ResourceVariable))))
+
+  def _call_flat(self, args):
+    """Executes the wrapped function.
+
+    Args:
+      args: a list of Tensors or Variables.
 
     Returns:
       The result of applying the TF function to `args`.
@@ -324,7 +396,7 @@ class Function(object):
         tape.variable_accessed(v)
 
     tensor_inputs = []
-    for i, arg in enumerate(nest.flatten(args)):
+    for i, arg in enumerate(args):
       if isinstance(arg, resource_variable_ops.ResourceVariable):
         if arg.trainable:
           tape.variable_accessed(arg)
@@ -398,7 +470,8 @@ class Function(object):
       # Compute the gradients using the side outputs
       side_outputs = op.outputs[num_inference_outputs:]
       args = list(doutputs[:num_inference_outputs]) + list(side_outputs)
-      return self._backward_graph_function(*[a for a in args if a is not None])
+      return self._backward_graph_function._call_flat(  # pylint: disable=protected-access
+          (a for a in args if a is not None))
 
   @property
   def name(self):
@@ -550,7 +623,8 @@ class Function(object):
     def backward_function(*args):
       args = [a for i, a in enumerate(args)
               if a is not None and i not in skip_positions]
-      return self._backward_graph_function(*(list(args) + side_outputs))  # pylint: disable=not-callable
+      return self._backward_graph_function._call_flat(  # pylint: disable=protected-access
+          list(args) + side_outputs)
 
     tape.record_operation(self._forward_function.signature.name, real_outputs,
                           args, backward_function)
@@ -694,27 +768,92 @@ class PolymorphicFunction(object):
 
   def __call__(self, *args, **kwargs):
     """Calls a graph function specialized to the inputs."""
-    graph_function, inputs = self._maybe_define_function(args, kwargs)
-    return graph_function(*inputs)
+    graph_function, args, kwargs = self._maybe_define_function(args, kwargs)
+    return graph_function._filtered_call(args, kwargs)  # pylint: disable=protected-access
 
   @property
   def python_function(self):
     """Returns the wrapped Python function."""
     return self._python_function
 
+  def _get_concrete_function_internal(self, *args, **kwargs):
+    """Bypasses error checking when getting a graph function."""
+    if self._input_signature:
+      args, kwargs = None, None
+    graph_function, _, _ = self._maybe_define_function(args, kwargs)
+    return graph_function
+
   def get_concrete_function(self, *args, **kwargs):
     """Returns a `Function` object specialized to inputs and execution context.
-
-    `args` and `kwargs` are ignored if this `PolymorphicFunction` was created
-    with an `input_signature`.
 
     Args:
       *args: inputs to specialize on.
       **kwargs: inputs to specialize on.
     """
     if self._input_signature:
+      if kwargs:
+        raise ValueError("Cannot define a TensorFlow function from a Python "
+                         "function with keyword arguments when "
+                         "input_signature is provided.")
+      if args:
+        # If args are provided, they must match the input signature.
+        try:
+          nest.assert_same_structure(self._input_signature, args)
+        except (ValueError, TypeError):
+          raise ValueError("Structure of Python function inputs does not match "
+                           "input_signature.")
+        flat_inputs = nest.flatten(args)
+        if any(not isinstance(arg, (ops.Tensor, tensor_spec.TensorSpec))
+               for arg in flat_inputs):
+          raise ValueError("When input_signature is provided, all inputs to "
+                           "the Python function must be Tensors or "
+                           "tf.TensorSpec objects.")
+        if any(not spec.is_compatible_with(other)
+               for spec, other in zip(self._flat_input_signature, flat_inputs)):
+          raise ValueError("Python inputs incompatible with input_signature: "
+                           "inputs (%s), input_signature (%s)" %
+                           (str(args), str(self._input_signature)))
       args, kwargs = None, None
-    graph_function, _ = self._maybe_define_function(args, kwargs)
+    graph_function, args, kwargs = self._maybe_define_function(args, kwargs)
+    if self._input_signature:
+      args = self._input_signature
+      kwargs = {}
+    seen_names = set()
+    captured = frozenset(graph_function.graph.internal_captures)
+    allowed_positional = 0
+    if args:
+      for outer_arg in args:
+        # TODO(allenl): Consider allowing arguments with defaults in the Python
+        # function's signature to be passed as positional arguments to the
+        # concrete function.
+        if not isinstance(
+            outer_arg,
+            (ops.Tensor, resource_variable_ops.ResourceVariable,
+             tensor_spec.TensorSpec)):
+          break
+        allowed_positional += 1
+    # pylint: disable=protected-access
+    graph_function._num_positional_args = allowed_positional
+    graph_function._arg_keywords = []
+    # pylint: enable=protected-access
+    for arg in graph_function.graph.inputs:
+      if arg in captured:
+        break
+      user_arg_name = arg.op.get_attr("_user_specified_name")
+      if user_arg_name in seen_names:
+        raise ValueError(
+            ("Unable to construct a concrete function for {} since some "
+             "arguments do not have unique names. Got two arguments named "
+             "'{}'. When constructing a concrete TensorFlow function from a "
+             "Python function which takes nested structures or variadic "
+             "positional arguments, pass unique names to tf.TensorSpec objects "
+             "used to identify these Tensor inputs. These names may then be "
+             "used as keyword arguments to the concrete function.")
+            .format(
+                self._python_function,
+                compat.as_str(arg.op.get_attr("_user_specified_name"))))
+      seen_names.add(user_arg_name)
+      graph_function._arg_keywords.append(user_arg_name)  # pylint: disable=protected-access
     return graph_function
 
   def __get__(self, instance, owner):
@@ -930,10 +1069,7 @@ class PolymorphicFunction(object):
                 arg_names=arg_names),
             self._function_attributes)
         self._function_cache[cache_key] = graph_function
-      return graph_function, [
-          t for t in nest.flatten((args, kwargs))
-          if isinstance(t, (ops.Tensor, resource_variable_ops.ResourceVariable))
-      ]
+      return graph_function, args, kwargs
 
 
 def register_concrete(func):
