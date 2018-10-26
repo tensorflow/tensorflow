@@ -548,6 +548,9 @@ StatusOr<std::unique_ptr<HloModule>> NVPTXCompiler::RunHloPasses(
                                    /*is_expensive=*/true);
   TF_RETURN_IF_ERROR(
       OptimizeHloModule(module.get(), stream_exec, device_allocator, this));
+
+  TF_RETURN_IF_ERROR(PrepareHloModuleForIrEmitting(module.get()));
+
   return std::move(module);
 }
 
@@ -557,8 +560,6 @@ StatusOr<std::unique_ptr<Executable>> NVPTXCompiler::RunBackend(
   XLA_SCOPED_LOGGING_TIMER("NVPTXCompiler::RunBackend");
 
   TF_RET_CHECK(stream_exec != nullptr);
-
-  TF_RETURN_IF_ERROR(PrepareHloModuleForIrEmitting(module.get()));
 
   llvm::LLVMContext llvm_context;
   std::string buffer;
