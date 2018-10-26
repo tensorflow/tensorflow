@@ -256,17 +256,17 @@ private:
 // source memref, destination memref, and the tag memref have the same
 // restrictions as any load/store in MLFunctions.
 //
-// For example, a DmaStartOp operation that transfers one 8x128xf32
-// (%size = 1024) chunk of data from memref '%src' in HBM (memory space 0)
-// at indices [%i, %j] to memref '%dst' in VMEM (memory space 2) at
-// indices [%k, %l], would be specified as follows:
+// For example, a DmaStartOp operation that transfers 256 elements of a memref
+// '%src' in memory space 0 at indices [%i, %j] to memref '%dst' in memory space
+// 1 at indices [%k, %l], would be specified as follows:
 //
-//   %tag = alloc() : memref<1 x i32, (d0) -> (d0), 4>
+//   %num_elements = constant 256
 //   %idx = constant 0 : index
-//   dma_start %src[%i, %j], %dst[%k, %l], %size, %tag[%idx] :
-//     memref<40 x 8 x vector<8x128xf32>, (d0) -> (d0), 0>,
-//     memref<2 x 4 x vector<8x128xf32>, (d0) -> (d0), 2>,
-//     memref<1 x i32>, (d0) -> (d0), 4>
+//   %tag = alloc() : memref<1 x i32, (d0) -> (d0), 4>
+//   dma_start %src[%i, %j], %dst[%k, %l], %num_elements, %tag[%idx] :
+//     memref<40 x 128 x f32>, (d0) -> (d0), 0>,
+//     memref<2 x 1024 x f32>, (d0) -> (d0), 1>,
+//     memref<1 x i32>, (d0) -> (d0), 2>
 //
 // TODO(andydavis) Consider replacing src/dst memref indices with view memrefs.
 class DmaStartOp
@@ -361,13 +361,13 @@ protected:
 // %num_elements is the number of elements associated with the DMA operation.
 // For example:
 //
-//   dma_start %src[%i, %j], %dst[%k, %l], %tag[%index] :
-//     memref<3 x vector<8x128xf32>, (d0) -> (d0), 0>,
-//     memref<1 x vector<8x128xf32>, (d0) -> (d0), 2>
-//     memref<1 x i32>, (d0) -> (d0), 4>
+//   dma_start %src[%i, %j], %dst[%k, %l], %num_elements, %tag[%index] :
+//     memref<2048 x f32>, (d0) -> (d0), 0>,
+//     memref<256 x f32>, (d0) -> (d0), 1>
+//     memref<1 x i32>, (d0) -> (d0), 2>
 //   ...
 //   ...
-//   dma_wait %tag[%index], %num_elements : memref<1 x i32, (d0) -> (d0), 4>
+//   dma_wait %tag[%index], %num_elements : memref<1 x i32, (d0) -> (d0), 2>
 //
 class DmaWaitOp
     : public Op<DmaWaitOp, OpTrait::VariadicOperands, OpTrait::ZeroResult> {
