@@ -723,6 +723,14 @@ MemRefType *MemRefType::get(ArrayRef<int> shape, Type *elementType,
   auto *context = elementType->getContext();
   auto &impl = context->getImpl();
 
+  // Drop the affine map composition if comprises a single unbounded identity
+  // map (the absence of map composition is considered as implicit identity).
+  if (affineMapComposition.size() == 1 &&
+      affineMapComposition.front().isIdentity() &&
+      !affineMapComposition.front().isBounded()) {
+    affineMapComposition = affineMapComposition.drop_front();
+  }
+
   // Look to see if we already have this memref type.
   auto key =
       std::make_tuple(elementType, shape, affineMapComposition, memorySpace);

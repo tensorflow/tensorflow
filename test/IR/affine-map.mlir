@@ -1,9 +1,10 @@
 // RUN: mlir-opt %s | FileCheck %s
 
-// CHECK: #map{{[0-9]+}} = (d0, d1) -> (d0, d1)
+// Identity maps used in trivial compositions in MemRefs are optimized away.
+// CHECK-NOT: #map{{[0-9]+}} = (d0, d1) -> (d0, d1)
 #map0 = (i, j) -> (i, j)
 
-// CHECK: #map{{[0-9]+}} = (d0, d1)[s0] -> (d0, d1)
+// CHECK-NOT: #map{{[0-9]+}} = (d0, d1)[s0] -> (d0, d1)
 #map1 = (i, j)[s0] -> (i, j)
 
 // CHECK: #map{{[0-9]+}} = () -> (0)
@@ -179,10 +180,12 @@
 // CHECK: #map{{[0-9]+}} = (d0) -> (d0 * 16 - (d0 + 1) + 15)
 #map52 = (d0) -> (16*d0 + ((d0 + 1) * -1) + 15)
 
-// CHECK: extfunc @f0(memref<2x4xi8, #map{{[0-9]+}}, 1>)
+// Single identity maps are removed.
+// CHECK: extfunc @f0(memref<2x4xi8, 1>)
 extfunc @f0(memref<2x4xi8, #map0, 1>)
 
-// CHECK: extfunc @f1(memref<2x4xi8, #map{{[0-9]+}}, 1>)
+// Single identity maps are removed.
+// CHECK: extfunc @f1(memref<2x4xi8, 1>)
 extfunc @f1(memref<2x4xi8, #map1, 1>)
 
 // CHECK: extfunc @f2(memref<i8, #map{{[0-9]+}}, 1>)

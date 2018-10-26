@@ -1,7 +1,7 @@
 // RUN: mlir-translate -mlir-to-mlir %s | FileCheck %s
 
-// CHECK-DAG: #map{{[0-9]+}} = (d0, d1, d2, d3, d4)[s0] -> (d0, d1, d2, d3, d4)
-#map0 = (d0, d1, d2, d3, d4)[s0] -> (d0, d1, d2, d3, d4)
+// CHECK-DAG: #map{{[0-9]+}} = (d0, d1, d2, d3, d4)[s0] -> (d0, d1, d2, d4, d3)
+#map0 = (d0, d1, d2, d3, d4)[s0] -> (d0, d1, d2, d4, d3)
 
 // CHECK-DAG: #map{{[0-9]+}} = (d0) -> (d0)
 #map1 = (d0) -> (d0)
@@ -67,12 +67,12 @@ extfunc @vectors(vector<1 x f32>, vector<2x4xf32>)
 extfunc @tensors(tensor<* x f32>, tensor<* x vector<2x4xf32>>,
                  tensor<1x?x4x?x?xi32>, tensor<i8>)
 
-// CHECK: extfunc @memrefs(memref<1x?x4x?x?xi32, #map{{[0-9]+}}>, memref<8xi8, #map{{[0-9]+}}>)
-extfunc @memrefs(memref<1x?x4x?x?xi32, #map0>, memref<8xi8, #map1>)
+// CHECK: extfunc @memrefs(memref<1x?x4x?x?xi32, #map{{[0-9]+}}>, memref<8xi8, #map{{[0-9]+}}, #map{{[0-9]+}}>)
+extfunc @memrefs(memref<1x?x4x?x?xi32, #map0>, memref<8xi8, #map1, #map1>)
 
 // Test memref affine map compositions.
 
-// CHECK: extfunc @memrefs2(memref<2x4x8xi8, #map{{[0-9]+}}, 1>)
+// CHECK: extfunc @memrefs2(memref<2x4x8xi8, 1>)
 extfunc @memrefs2(memref<2x4x8xi8, #map2, 1>)
 
 // CHECK: extfunc @memrefs23(memref<2x4x8xi8, #map{{[0-9]+}}, #map{{[0-9]+}}>)
@@ -83,13 +83,28 @@ extfunc @memrefs234(memref<2x4x8xi8, #map2, #map3, #map4, 3>)
 
 // Test memref inline affine map compositions.
 
-// CHECK: extfunc @memrefs3(memref<2x4x8xi8, #map{{[0-9]+}}>)
+// CHECK: extfunc @memrefs3(memref<2x4x8xi8>)
 extfunc @memrefs3(memref<2x4x8xi8, (d0, d1, d2) -> (d0, d1, d2)>)
 
 // CHECK: extfunc @memrefs33(memref<2x4x8xi8, #map{{[0-9]+}}, #map{{[0-9]+}}, 1>)
 extfunc @memrefs33(memref<2x4x8xi8, (d0, d1, d2) -> (d0, d1, d2), (d0, d1, d2) -> (d1, d0, d2), 1>)
 
-// CHECK: extfunc @functions((memref<1x?x4x?x?xi32, #map0>, memref<8xi8, #map1>) -> (), () -> ())
+// CHECK: extfunc @memrefs_drop_triv_id_inline(memref<2xi8>)
+extfunc @memrefs_drop_triv_id_inline(memref<2xi8, (d0) -> (d0)>)
+
+// CHECK: extfunc @memrefs_drop_triv_id_inline0(memref<2xi8>)
+extfunc @memrefs_drop_triv_id_inline0(memref<2xi8, (d0) -> (d0), 0>)
+
+// CHECK: extfunc @memrefs_drop_triv_id_inline1(memref<2xi8, 1>)
+extfunc @memrefs_drop_triv_id_inline1(memref<2xi8, (d0) -> (d0), 1>)
+
+// These maps appeared before, so they must be uniqued and hoisted to the beginning.
+// Identity map should not be removed because of the composition.
+// CHECK: extfunc @memrefs_compose_with_id(memref<2x2xi8, #map{{[0-9]+}}, #map{{[0-9]+}}>)
+extfunc @memrefs_compose_with_id(memref<2x2xi8, (d0, d1) -> (d0, d1),
+                                        (d0, d1) -> (d1, d0)>)
+
+// CHECK: extfunc @functions((memref<1x?x4x?x?xi32, #map0>, memref<8xi8>) -> (), () -> ())
 extfunc @functions((memref<1x?x4x?x?xi32, #map0, 0>, memref<8xi8, #map1, 0>) -> (), ()->())
 
 // CHECK-LABEL: cfgfunc @simpleCFG(i32, f32) -> i1 {
