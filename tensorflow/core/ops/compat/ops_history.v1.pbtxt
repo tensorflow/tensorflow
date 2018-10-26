@@ -44497,6 +44497,40 @@ op {
   }
 }
 op {
+  name: "RaggedTensorToSparse"
+  input_arg {
+    name: "rt_nested_splits"
+    type: DT_INT64
+    number_attr: "RAGGED_RANK"
+  }
+  input_arg {
+    name: "rt_dense_values"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "sparse_indices"
+    type: DT_INT64
+  }
+  output_arg {
+    name: "sparse_values"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "sparse_dense_shape"
+    type: DT_INT64
+  }
+  attr {
+    name: "RAGGED_RANK"
+    type: "int"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "T"
+    type: "type"
+  }
+}
+op {
   name: "RandomCrop"
   input_arg {
     name: "image"
