@@ -26,6 +26,8 @@ limitations under the License.
 #include <unordered_set>
 #include <utility>
 #include <vector>
+#include <stack>
+#include <set>
 
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/common_runtime/optimization_registry.h"
@@ -2717,12 +2719,9 @@ Status MklLayoutRewritePass::FuseNode(
 
 std::tuple<bool, std::vector<Node*>, const MklLayoutRewritePass::FusionInfo>
 MklLayoutRewritePass::CheckForNodeFusion(Node* a) const {
-  bool found_pattern = false;
-  std::vector<Node*> nodes;
   const FusionInfo* fi_ptr = nullptr;
 
   for (auto fi = finfo_.begin(); fi != finfo_.end(); ++fi) {
-    nodes.clear();
     fi_ptr = &*fi;
     //
     // Make sure node "a" and its succeding nodes (b, c ...), match the pattern
@@ -2730,51 +2729,60 @@ MklLayoutRewritePass::CheckForNodeFusion(Node* a) const {
     // aka. "a->b->c" matches "op1->op2->op3"
     //
 
-    // Initialize "current_node" as node "a".
-    Node* current_node = a;
-    for (auto node_index = 0; node_index < fi->node_checkers.size();
-         ++node_index) {
-      // Make sure current node meet the requirement of corresponding node
-      // checker.
-      auto check_node = fi->node_checkers[node_index];
-      if (current_node == nullptr ||
-          (check_node && check_node(current_node) == false)) {
-        found_pattern = false;
-        nodes.clear();
-        break;
-      }
+    std::stack<Node *, std::vector<Node *>> work_stack;
+    std::set<Node *> visited_nodes;
+    auto node_checker = fi->node_checkers.begin();
 
-      // Add current_node to "fusion_nodes":
-      nodes.push_back(current_node);
+    Node *current_node = nullptr;
+    if (a != nullptr) {
+      work_stack.push(a);
+    }
 
-      // If current node is not the last node we want to check, check next node.
-      if (node_index != fi->node_checkers.size() - 1) {
-        // Find current node's direct descendant, which will be used in next
-        // iteration.
-        auto check_next_node = fi->node_checkers[node_index + 1];
-        for (const Edge* e : current_node->out_edges()) {
+    while (!work_stack.empty()) {
+      current_node = work_stack.top();
+
+      if ((*node_checker)(current_node)){
+        if (node_checker == (fi->node_checkers.end() - 1)) {
+          // We find a match, break and return.
+          std::vector<Node *> nodes;
+          while (!work_stack.empty()) {
+            nodes.insert(nodes.begin(), work_stack.top());
+            work_stack.pop();
+          }
+          
+          return make_tuple(true, nodes, *fi_ptr);
+        }
+
+        bool all_succ_has_been_visited = true;
+        for (const Edge *e : current_node->out_edges()) {
           if (!e->IsControlEdge()) {
-            Node* candidate_node = e->dst();
+            Node *candidate_node = e->dst();
 
-            if (check_next_node(candidate_node) == false) {
-              current_node = nullptr;
-            } else {
-              current_node = candidate_node;
+            // If the candidate node has not been visited, push it to stack.
+            if (visited_nodes.find(candidate_node) == visited_nodes.end()) {
+              work_stack.push(candidate_node);
+              ++ node_checker;
+              all_succ_has_been_visited = false;
               break;
+            }
+
+            // All successor nodes of current node has been visited (no match found),
+            // pop the stack and mark current node as "visited".
+            if (all_succ_has_been_visited) {
+              visited_nodes.insert(current_node);
+              work_stack.pop();
+              -- node_checker;
             }
           }
         }
       } else {
-        found_pattern = true;
+        // current node doesn't match, just break and stack will help us roll back.
+        break;
       }
-    }
-
-    if (found_pattern == true) {
-      break;
     }
   }
 
-  return make_tuple(found_pattern, nodes, *fi_ptr);
+  return make_tuple(false, std::vector<Node *>(), *fi_ptr);
 }
 
 ///////////////////////////////////////////////////////////////////////////////
