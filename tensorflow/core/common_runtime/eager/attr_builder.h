@@ -96,7 +96,7 @@ class AttrBuilder {
   template <class T>
   AttrBuilder& Set(StringPiece attr_name, T&& value) {
     MayBeInitializeNodeDef();
-    SetInAttrValueMap(node_def_->mutable_attr(), attr_name, value);
+    SetInAttrValueMap(node_def_->mutable_attr(), string(attr_name), value);
     return *this;
   }
 
@@ -107,7 +107,7 @@ class AttrBuilder {
 
  private:
   template <class T>
-  using AttrVec = tensorflow::gtl::InlinedVector<std::pair<StringPiece, T>, 2>;
+  using AttrVec = tensorflow::gtl::InlinedVector<std::pair<string, T>, 2>;
 
   void MayBeInitializeNodeDef();
   // Fill `m` with the attr-value pairs set via AttrBuilder::Set() so far, as
@@ -119,7 +119,7 @@ class AttrBuilder {
   void FillAttrValueMap(AttrValueMap* m, bool include_those_in_node_def) const;
 
   template <class T>
-  void SetInAttrValueMap(AttrValueMap* m, StringPiece attr_name,
+  void SetInAttrValueMap(AttrValueMap* m, const string& attr_name,
                          T&& value) const {
     DCHECK(!node_def_finalized_)
         << "Calling SetInAttrValueMap after BuildNodeDef.";
@@ -128,12 +128,12 @@ class AttrBuilder {
     AttrValue attr_value;
     if (found == nullptr) {
       SetAttrValue(value, &attr_value);
-      m->insert(AttrValueMap::value_type(string(attr_name), attr_value));
+      m->insert(AttrValueMap::value_type(attr_name, attr_value));
     } else {
       // TODO(ashankar): Do what is done in
       // NodeDefBuilder::CheckInconsistency(attr_name, *found, attr_value);
       SetAttrValue(std::forward<T>(value), &attr_value);
-      (*m)[string(attr_name)] = attr_value;
+      (*m)[attr_name] = attr_value;
     }
   }
 
