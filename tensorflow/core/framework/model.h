@@ -39,7 +39,7 @@ struct SharedState {
  public:
   explicit SharedState(int64 value, std::shared_ptr<mutex> mu,
                        std::shared_ptr<condition_variable> cond_var)
-      : value(value), mu(std::move(mu)), cond_var(std::move(cond_var)) {}
+      : mu(std::move(mu)), cond_var(std::move(cond_var)), value(value) {}
 
   std::shared_ptr<mutex> mu;
   std::shared_ptr<condition_variable> cond_var;
