@@ -952,6 +952,28 @@ Status MarkForCompilationPass::RunImpl(
         continue;
       }
 
+      // If any of the consumer's producers are on a different device, do not
+      // cluster these nodes. This prevents other work on this device from being
+      // delayed by work on other devices. We consider predecessors of the
+      // entire cluster rather than just the inputs to the node to prevent the
+      // cluster still being combined in cases where the 'to' cluster has
+      // multiple dependencies on the 'from' cluster and another dependency
+      // leads to a merging of the clusters.
+      //
+      // TODO(b/117085735): We probably want to handle the reciprocal of this
+      // case where a cluster is producing data for multiple devices.
+      bool found_split = false;
+      for (const auto& in_id : cycles.Predecessors(to)) {
+        if (in_id >= graph->num_node_ids()) continue;
+
+        Node* in = graph->FindNodeId(in_id);
+        if (compilation_candidates.find(in) != compilation_candidates.cend() &&
+            in->assigned_device_name() != node_to->assigned_device_name()) {
+          found_split = true;
+        }
+      }
+      if (found_split) continue;
+
       // If contracting the edge would create a cycle, bail out.
       // However, just because we can't merge the clusters now does not mean
       // we won't be able to merge them in the future.
