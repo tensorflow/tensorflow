@@ -6851,51 +6851,6 @@ func Cast(scope *Scope, x tf.Output, DstT tf.DataType, optional ...CastAttr) (y 
 	return op.Output(0)
 }
 
-// MaxAttr is an optional argument to Max.
-type MaxAttr func(optionalAttr)
-
-// MaxKeepDims sets the optional keep_dims attribute to value.
-//
-// value: If true, retain reduced dimensions with length 1.
-// If not specified, defaults to false
-func MaxKeepDims(value bool) MaxAttr {
-	return func(m optionalAttr) {
-		m["keep_dims"] = value
-	}
-}
-
-// Computes the maximum of elements across dimensions of a tensor.
-//
-// Reduces `input` along the dimensions given in `axis`. Unless
-// `keep_dims` is true, the rank of the tensor is reduced by 1 for each entry in
-// `axis`. If `keep_dims` is true, the reduced dimensions are
-// retained with length 1.
-//
-// Arguments:
-//	input: The tensor to reduce.
-//	axis: The dimensions to reduce. Must be in the range
-// `[-rank(input), rank(input))`.
-//
-// Returns The reduced tensor.
-func Max(scope *Scope, input tf.Output, axis tf.Output, optional ...MaxAttr) (output tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	attrs := map[string]interface{}{}
-	for _, a := range optional {
-		a(attrs)
-	}
-	opspec := tf.OpSpec{
-		Type: "Max",
-		Input: []tf.Input{
-			input, axis,
-		},
-		Attrs: attrs,
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
 // Quantized Batch normalization.
 //
 // This op is deprecated and will be removed in the future. Prefer
@@ -10201,6 +10156,163 @@ func ParseExample(scope *Scope, serialized tf.Output, names tf.Output, sparse_ke
 	return sparse_indices, sparse_values, sparse_shapes, dense_values
 }
 
+// CudnnRNNAttr is an optional argument to CudnnRNN.
+type CudnnRNNAttr func(optionalAttr)
+
+// CudnnRNNRnnMode sets the optional rnn_mode attribute to value.
+// If not specified, defaults to "lstm"
+func CudnnRNNRnnMode(value string) CudnnRNNAttr {
+	return func(m optionalAttr) {
+		m["rnn_mode"] = value
+	}
+}
+
+// CudnnRNNInputMode sets the optional input_mode attribute to value.
+// If not specified, defaults to "linear_input"
+func CudnnRNNInputMode(value string) CudnnRNNAttr {
+	return func(m optionalAttr) {
+		m["input_mode"] = value
+	}
+}
+
+// CudnnRNNDirection sets the optional direction attribute to value.
+// If not specified, defaults to "unidirectional"
+func CudnnRNNDirection(value string) CudnnRNNAttr {
+	return func(m optionalAttr) {
+		m["direction"] = value
+	}
+}
+
+// CudnnRNNDropout sets the optional dropout attribute to value.
+// If not specified, defaults to 0
+func CudnnRNNDropout(value float32) CudnnRNNAttr {
+	return func(m optionalAttr) {
+		m["dropout"] = value
+	}
+}
+
+// CudnnRNNSeed sets the optional seed attribute to value.
+// If not specified, defaults to 0
+func CudnnRNNSeed(value int64) CudnnRNNAttr {
+	return func(m optionalAttr) {
+		m["seed"] = value
+	}
+}
+
+// CudnnRNNSeed2 sets the optional seed2 attribute to value.
+// If not specified, defaults to 0
+func CudnnRNNSeed2(value int64) CudnnRNNAttr {
+	return func(m optionalAttr) {
+		m["seed2"] = value
+	}
+}
+
+// CudnnRNNIsTraining sets the optional is_training attribute to value.
+// If not specified, defaults to true
+func CudnnRNNIsTraining(value bool) CudnnRNNAttr {
+	return func(m optionalAttr) {
+		m["is_training"] = value
+	}
+}
+
+// A RNN backed by cuDNN.
+//
+// Computes the RNN from the input and initial states, with respect to the params
+// buffer.
+//
+// rnn_mode: Indicates the type of the RNN model.
+// input_mode: Indicate whether there is a linear projection between the input and
+//   the actual computation before the first layer. 'skip_input' is only allowed
+//   when input_size == num_units; 'auto_select' implies 'skip_input' when
+//   input_size == num_units; otherwise, it implies 'linear_input'.
+// direction: Indicates whether a bidirectional model will be used. Should be
+//   "unidirectional" or "bidirectional".
+// dropout: Dropout probability. When set to 0., dropout is disabled.
+// seed: The 1st part of a seed to initialize dropout.
+// seed2: The 2nd part of a seed to initialize dropout.
+// input: A 3-D tensor with the shape of [seq_length, batch_size, input_size].
+// input_h: A 3-D tensor with the shape of [num_layer * dir, batch_size,
+//     num_units].
+// input_c: For LSTM, a 3-D tensor with the shape of
+//     [num_layer * dir, batch, num_units]. For other models, it is ignored.
+// params: A 1-D tensor that contains the weights and biases in an opaque layout.
+//     The size must be created through CudnnRNNParamsSize, and initialized
+//     separately. Note that they might not be compatible across different
+//     generations. So it is a good idea to save and restore
+// output: A 3-D tensor with the shape of [seq_length, batch_size,
+//     dir * num_units].
+// output_h: The same shape has input_h.
+// output_c: The same shape as input_c for LSTM. An empty tensor for other models.
+// is_training: Indicates whether this operation is used for inferenece or
+//   training.
+// reserve_space: An opaque tensor that can be used in backprop calculation. It
+//   is only produced if is_training is false.
+func CudnnRNN(scope *Scope, input tf.Output, input_h tf.Output, input_c tf.Output, params tf.Output, optional ...CudnnRNNAttr) (output tf.Output, output_h tf.Output, output_c tf.Output, reserve_space tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "CudnnRNN",
+		Input: []tf.Input{
+			input, input_h, input_c, params,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0), op.Output(1), op.Output(2), op.Output(3)
+}
+
+// DecodeCompressedAttr is an optional argument to DecodeCompressed.
+type DecodeCompressedAttr func(optionalAttr)
+
+// DecodeCompressedCompressionType sets the optional compression_type attribute to value.
+//
+// value: A scalar containing either (i) the empty string (no
+// compression), (ii) "ZLIB", or (iii) "GZIP".
+// If not specified, defaults to ""
+func DecodeCompressedCompressionType(value string) DecodeCompressedAttr {
+	return func(m optionalAttr) {
+		m["compression_type"] = value
+	}
+}
+
+// Decompress strings.
+//
+// This op decompresses each element of the `bytes` input `Tensor`, which
+// is assumed to be compressed using the given `compression_type`.
+//
+// The `output` is a string `Tensor` of the same shape as `bytes`,
+// each element containing the decompressed data from the corresponding
+// element in `bytes`.
+//
+// Arguments:
+//	bytes: A Tensor of string which is compressed.
+//
+// Returns A Tensor with the same shape as input `bytes`, uncompressed
+// from bytes.
+func DecodeCompressed(scope *Scope, bytes tf.Output, optional ...DecodeCompressedAttr) (output tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "DecodeCompressed",
+		Input: []tf.Input{
+			bytes,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
 // DecodeRawAttr is an optional argument to DecodeRaw.
 type DecodeRawAttr func(optionalAttr)
 
@@ -10434,6 +10546,71 @@ func NonMaxSuppressionV2(scope *Scope, boxes tf.Output, scores tf.Output, max_ou
 		Type: "NonMaxSuppressionV2",
 		Input: []tf.Input{
 			boxes, scores, max_output_size, iou_threshold,
+		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// Check if the input matches the regex pattern.
+//
+// The input is a string tensor of any shape. The pattern is a scalar
+// string tensor which is applied to every element of the input tensor.
+// The boolean values (True or False) of the output tensor indicate
+// if the input matches the regex pattern provided.
+//
+// The pattern follows the re2 syntax (https://github.com/google/re2/wiki/Syntax)
+//
+// Arguments:
+//	input: A string tensor of the text to be processed.
+//	pattern: A scalar string tensor containing the regular expression to match the input.
+//
+// Returns A bool tensor with the same shape as `input`.
+func RegexFullMatch(scope *Scope, input tf.Output, pattern tf.Output) (output tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "RegexFullMatch",
+		Input: []tf.Input{
+			input, pattern,
+		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// Says whether the targets are in the top `K` predictions.
+//
+// This outputs a `batch_size` bool array, an entry `out[i]` is `true` if the
+// prediction for the target class is among the top `k` predictions among
+// all predictions for example `i`. Note that the behavior of `InTopK` differs
+// from the `TopK` op in its handling of ties; if multiple classes have the
+// same prediction value and straddle the top-`k` boundary, all of those
+// classes are considered to be in the top `k`.
+//
+// More formally, let
+//
+//   \\(predictions_i\\) be the predictions for all classes for example `i`,
+//   \\(targets_i\\) be the target class for example `i`,
+//   \\(out_i\\) be the output for example `i`,
+//
+// $$out_i = predictions_{i, targets_i} \in TopKIncludingTies(predictions_i)$$
+//
+// Arguments:
+//	predictions: A `batch_size` x `classes` tensor.
+//	targets: A `batch_size` vector of class ids.
+//	k: Number of top elements to look at for computing precision.
+//
+// Returns Computed precision at `k` as a `bool Tensor`.
+func InTopKV2(scope *Scope, predictions tf.Output, targets tf.Output, k tf.Output) (precision tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "InTopKV2",
+		Input: []tf.Input{
+			predictions, targets, k,
 		},
 	}
 	op := scope.AddOperation(opspec)
@@ -15151,71 +15328,6 @@ func BatchDataset(scope *Scope, input_dataset tf.Output, batch_size tf.Output, o
 			input_dataset, batch_size,
 		},
 		Attrs: attrs,
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
-// Check if the input matches the regex pattern.
-//
-// The input is a string tensor of any shape. The pattern is a scalar
-// string tensor which is applied to every element of the input tensor.
-// The boolean values (True or False) of the output tensor indicate
-// if the input matches the regex pattern provided.
-//
-// The pattern follows the re2 syntax (https://github.com/google/re2/wiki/Syntax)
-//
-// Arguments:
-//	input: A string tensor of the text to be processed.
-//	pattern: A scalar string tensor containing the regular expression to match the input.
-//
-// Returns A bool tensor with the same shape as `input`.
-func RegexFullMatch(scope *Scope, input tf.Output, pattern tf.Output) (output tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	opspec := tf.OpSpec{
-		Type: "RegexFullMatch",
-		Input: []tf.Input{
-			input, pattern,
-		},
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
-// Says whether the targets are in the top `K` predictions.
-//
-// This outputs a `batch_size` bool array, an entry `out[i]` is `true` if the
-// prediction for the target class is among the top `k` predictions among
-// all predictions for example `i`. Note that the behavior of `InTopK` differs
-// from the `TopK` op in its handling of ties; if multiple classes have the
-// same prediction value and straddle the top-`k` boundary, all of those
-// classes are considered to be in the top `k`.
-//
-// More formally, let
-//
-//   \\(predictions_i\\) be the predictions for all classes for example `i`,
-//   \\(targets_i\\) be the target class for example `i`,
-//   \\(out_i\\) be the output for example `i`,
-//
-// $$out_i = predictions_{i, targets_i} \in TopKIncludingTies(predictions_i)$$
-//
-// Arguments:
-//	predictions: A `batch_size` x `classes` tensor.
-//	targets: A `batch_size` vector of class ids.
-//	k: Number of top elements to look at for computing precision.
-//
-// Returns Computed precision at `k` as a `bool Tensor`.
-func InTopKV2(scope *Scope, predictions tf.Output, targets tf.Output, k tf.Output) (precision tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	opspec := tf.OpSpec{
-		Type: "InTopKV2",
-		Input: []tf.Input{
-			predictions, targets, k,
-		},
 	}
 	op := scope.AddOperation(opspec)
 	return op.Output(0)
@@ -20743,23 +20855,6 @@ func TensorArrayCloseV3(scope *Scope, handle tf.Output) (o *tf.Operation) {
 	return scope.AddOperation(opspec)
 }
 
-// Creates a dataset that contains the unique elements of `input_dataset`.
-func ExperimentalUniqueDataset(scope *Scope, input_dataset tf.Output, output_types []tf.DataType, output_shapes []tf.Shape) (handle tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	attrs := map[string]interface{}{"output_types": output_types, "output_shapes": output_shapes}
-	opspec := tf.OpSpec{
-		Type: "ExperimentalUniqueDataset",
-		Input: []tf.Input{
-			input_dataset,
-		},
-		Attrs: attrs,
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
 // Saves the input tensors to disk.
 //
 // The size of `tensor_names` must match the number of tensors in `data`. `data[i]`
@@ -22661,6 +22756,68 @@ func QuantizeDownAndShrinkRange(scope *Scope, input tf.Output, input_min tf.Outp
 	}
 	op := scope.AddOperation(opspec)
 	return op.Output(0), op.Output(1), op.Output(2)
+}
+
+// MaxAttr is an optional argument to Max.
+type MaxAttr func(optionalAttr)
+
+// MaxKeepDims sets the optional keep_dims attribute to value.
+//
+// value: If true, retain reduced dimensions with length 1.
+// If not specified, defaults to false
+func MaxKeepDims(value bool) MaxAttr {
+	return func(m optionalAttr) {
+		m["keep_dims"] = value
+	}
+}
+
+// Computes the maximum of elements across dimensions of a tensor.
+//
+// Reduces `input` along the dimensions given in `axis`. Unless
+// `keep_dims` is true, the rank of the tensor is reduced by 1 for each entry in
+// `axis`. If `keep_dims` is true, the reduced dimensions are
+// retained with length 1.
+//
+// Arguments:
+//	input: The tensor to reduce.
+//	axis: The dimensions to reduce. Must be in the range
+// `[-rank(input), rank(input))`.
+//
+// Returns The reduced tensor.
+func Max(scope *Scope, input tf.Output, axis tf.Output, optional ...MaxAttr) (output tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "Max",
+		Input: []tf.Input{
+			input, axis,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// Creates a dataset that contains the unique elements of `input_dataset`.
+func ExperimentalUniqueDataset(scope *Scope, input_dataset tf.Output, output_types []tf.DataType, output_shapes []tf.Shape) (handle tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"output_types": output_types, "output_shapes": output_shapes}
+	opspec := tf.OpSpec{
+		Type: "ExperimentalUniqueDataset",
+		Input: []tf.Input{
+			input_dataset,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
 }
 
 // ArgMinAttr is an optional argument to ArgMin.
@@ -32312,163 +32469,6 @@ func FusedBatchNormGradV2(scope *Scope, y_backprop tf.Output, x tf.Output, scale
 	}
 	op := scope.AddOperation(opspec)
 	return op.Output(0), op.Output(1), op.Output(2), op.Output(3), op.Output(4)
-}
-
-// DecodeCompressedAttr is an optional argument to DecodeCompressed.
-type DecodeCompressedAttr func(optionalAttr)
-
-// DecodeCompressedCompressionType sets the optional compression_type attribute to value.
-//
-// value: A scalar containing either (i) the empty string (no
-// compression), (ii) "ZLIB", or (iii) "GZIP".
-// If not specified, defaults to ""
-func DecodeCompressedCompressionType(value string) DecodeCompressedAttr {
-	return func(m optionalAttr) {
-		m["compression_type"] = value
-	}
-}
-
-// Decompress strings.
-//
-// This op decompresses each element of the `bytes` input `Tensor`, which
-// is assumed to be compressed using the given `compression_type`.
-//
-// The `output` is a string `Tensor` of the same shape as `bytes`,
-// each element containing the decompressed data from the corresponding
-// element in `bytes`.
-//
-// Arguments:
-//	bytes: A Tensor of string which is compressed.
-//
-// Returns A Tensor with the same shape as input `bytes`, uncompressed
-// from bytes.
-func DecodeCompressed(scope *Scope, bytes tf.Output, optional ...DecodeCompressedAttr) (output tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	attrs := map[string]interface{}{}
-	for _, a := range optional {
-		a(attrs)
-	}
-	opspec := tf.OpSpec{
-		Type: "DecodeCompressed",
-		Input: []tf.Input{
-			bytes,
-		},
-		Attrs: attrs,
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
-// CudnnRNNAttr is an optional argument to CudnnRNN.
-type CudnnRNNAttr func(optionalAttr)
-
-// CudnnRNNRnnMode sets the optional rnn_mode attribute to value.
-// If not specified, defaults to "lstm"
-func CudnnRNNRnnMode(value string) CudnnRNNAttr {
-	return func(m optionalAttr) {
-		m["rnn_mode"] = value
-	}
-}
-
-// CudnnRNNInputMode sets the optional input_mode attribute to value.
-// If not specified, defaults to "linear_input"
-func CudnnRNNInputMode(value string) CudnnRNNAttr {
-	return func(m optionalAttr) {
-		m["input_mode"] = value
-	}
-}
-
-// CudnnRNNDirection sets the optional direction attribute to value.
-// If not specified, defaults to "unidirectional"
-func CudnnRNNDirection(value string) CudnnRNNAttr {
-	return func(m optionalAttr) {
-		m["direction"] = value
-	}
-}
-
-// CudnnRNNDropout sets the optional dropout attribute to value.
-// If not specified, defaults to 0
-func CudnnRNNDropout(value float32) CudnnRNNAttr {
-	return func(m optionalAttr) {
-		m["dropout"] = value
-	}
-}
-
-// CudnnRNNSeed sets the optional seed attribute to value.
-// If not specified, defaults to 0
-func CudnnRNNSeed(value int64) CudnnRNNAttr {
-	return func(m optionalAttr) {
-		m["seed"] = value
-	}
-}
-
-// CudnnRNNSeed2 sets the optional seed2 attribute to value.
-// If not specified, defaults to 0
-func CudnnRNNSeed2(value int64) CudnnRNNAttr {
-	return func(m optionalAttr) {
-		m["seed2"] = value
-	}
-}
-
-// CudnnRNNIsTraining sets the optional is_training attribute to value.
-// If not specified, defaults to true
-func CudnnRNNIsTraining(value bool) CudnnRNNAttr {
-	return func(m optionalAttr) {
-		m["is_training"] = value
-	}
-}
-
-// A RNN backed by cuDNN.
-//
-// Computes the RNN from the input and initial states, with respect to the params
-// buffer.
-//
-// rnn_mode: Indicates the type of the RNN model.
-// input_mode: Indicate whether there is a linear projection between the input and
-//   the actual computation before the first layer. 'skip_input' is only allowed
-//   when input_size == num_units; 'auto_select' implies 'skip_input' when
-//   input_size == num_units; otherwise, it implies 'linear_input'.
-// direction: Indicates whether a bidirectional model will be used. Should be
-//   "unidirectional" or "bidirectional".
-// dropout: Dropout probability. When set to 0., dropout is disabled.
-// seed: The 1st part of a seed to initialize dropout.
-// seed2: The 2nd part of a seed to initialize dropout.
-// input: A 3-D tensor with the shape of [seq_length, batch_size, input_size].
-// input_h: A 3-D tensor with the shape of [num_layer * dir, batch_size,
-//     num_units].
-// input_c: For LSTM, a 3-D tensor with the shape of
-//     [num_layer * dir, batch, num_units]. For other models, it is ignored.
-// params: A 1-D tensor that contains the weights and biases in an opaque layout.
-//     The size must be created through CudnnRNNParamsSize, and initialized
-//     separately. Note that they might not be compatible across different
-//     generations. So it is a good idea to save and restore
-// output: A 3-D tensor with the shape of [seq_length, batch_size,
-//     dir * num_units].
-// output_h: The same shape has input_h.
-// output_c: The same shape as input_c for LSTM. An empty tensor for other models.
-// is_training: Indicates whether this operation is used for inferenece or
-//   training.
-// reserve_space: An opaque tensor that can be used in backprop calculation. It
-//   is only produced if is_training is false.
-func CudnnRNN(scope *Scope, input tf.Output, input_h tf.Output, input_c tf.Output, params tf.Output, optional ...CudnnRNNAttr) (output tf.Output, output_h tf.Output, output_c tf.Output, reserve_space tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	attrs := map[string]interface{}{}
-	for _, a := range optional {
-		a(attrs)
-	}
-	opspec := tf.OpSpec{
-		Type: "CudnnRNN",
-		Input: []tf.Input{
-			input, input_h, input_c, params,
-		},
-		Attrs: attrs,
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0), op.Output(1), op.Output(2), op.Output(3)
 }
 
 // Creates a TensorArray for storing multiple gradients of values in the given handle.
