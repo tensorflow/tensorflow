@@ -1081,6 +1081,19 @@ class NameTest(test_util.TensorFlowTestCase):
 
     g = ops.Graph()
     with g.as_default():
+      # abs_scope>abs_scope with `as abs_inner`
+      with g.absolute_name_scope('abs_outer'):
+        with g.absolute_name_scope('abs_inner') as abs_inner:
+          self.assertEqual(
+              'abs_outer/abs_inner/FloatOutput',
+              g.create_op("FloatOutput", [], [dtypes.float32]).name)
+      with g.absolute_name_scope(abs_inner):
+        self.assertEqual(
+            'abs_outer/abs_inner/FloatOutput_1',
+            g.create_op("FloatOutput", [], [dtypes.float32]).name)
+
+    g = ops.Graph()
+    with g.as_default():
       # name_scope>abs_scope
       with g.name_scope('name_outer'):
         with g.absolute_name_scope('abs_inner'):
