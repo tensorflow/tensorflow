@@ -155,15 +155,6 @@ test_suite(
 )
 
 test_suite(
-    name = "all_ci_tests",
-    tests = [
-        ":all_tests",
-        ":size_speed_tests",
-        ":training_tests",
-    ],
-)
-
-test_suite(
     name = "poplar_test_suite",
     tests = [
       ":all_tests",
@@ -176,13 +167,10 @@ test_suite(
 test_suite(
     name = "poplar_ci_test_suite",
     tests = [
-      ":all_ci_tests",
-      "//tensorflow/compiler/tests:poplar_tests",
-      "//tensorflow/compiler/tests:cpu_tests",
-      "//tensorflow/compiler/xla/tests:poplar_tests",
-      "//tensorflow/compiler/xla/tests:cpu_tests",
-      "//tensorflow/compiler/xla/client:all",
-      "//tensorflow/compiler/xla/service:all",
-      "//tensorflow/compiler/plugin/poplar:all_ci_tests",
+      ":poplar_test_suite",
+      ":size_speed_tests",
+      ":training_tests",
+      #"//tensorflow/compiler/tests:cpu_tests",
+      #"//tensorflow/compiler/xla/tests:cpu_tests",
     ],
 )
