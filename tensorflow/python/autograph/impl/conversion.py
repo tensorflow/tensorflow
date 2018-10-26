@@ -340,7 +340,8 @@ def node_to_graph(node, context, rewrite_errors=True):
   # TODO(mdan): Is it feasible to reconstruct intermediate source code?
   context.info.source_code = None
 
-  node = converter.apply_(node, context, decorators)
+  if context.program.options.uses(converter.Feature.DECORATORS):
+    node = converter.apply_(node, context, decorators)
   node = converter.apply_(node, context, directives)
   node = converter.apply_(node, context, break_statements)
   node = converter.apply_(node, context, asserts)
