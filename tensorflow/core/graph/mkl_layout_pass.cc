@@ -897,6 +897,8 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
   Status FuseNode(std::unique_ptr<Graph>* g, std::vector<Node*>& nodes,
                   const MklLayoutRewritePass::FusionInfo fi);
 
+  // Fuse tranpose(to "NHWC") + mklop("NHWC") + transpose(to "NCHW") into mklop("NCHW").
+  // Here "mklop" can be any MKL-DNN supported op, such as Conv2D.
   static Status FuseTransposeMklOpTranspose(
       std::unique_ptr<Graph>* g, std::vector<Node*>& nodes,
       std::function<void(const Node*, NodeBuilder* nb, bool)> copy_attrs,
@@ -977,7 +979,7 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
 
   static bool CheckForMklOp(const Node* node, string name = "") {
     if (node == nullptr) return false;
-    
+
     if (!name.empty() && node->type_string() != name) {
       return false;
     }
