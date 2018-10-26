@@ -1492,12 +1492,16 @@ cc_library(
         ":test",
         ":testlib_ops",
         "//tensorflow/cc:scope",
-        "//tensorflow/core/kernels:cast_op",
-        "//tensorflow/core/kernels:constant_op",
         "//tensorflow/core/kernels:ops_testutil",
         "//tensorflow/core/kernels:ops_util",
-        "//tensorflow/core/kernels:random_ops",
-    ],
+    ] + if_dynamic_kernels(
+        [],
+        otherwise = [
+            "//tensorflow/core/kernels:cast_op",
+            "//tensorflow/core/kernels:constant_op",
+            "//tensorflow/core/kernels:random_ops",
+        ],
+    ),
 )
 
 cc_library(
