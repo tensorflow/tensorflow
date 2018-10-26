@@ -149,7 +149,8 @@ StatusOr<Shape> MakeShapeWithLayoutInternal(
     return InvalidArgument("Unsupported element type: %s",
                            PrimitiveType_Name(element_type));
   }
-  Shape shape = ShapeUtil::MakeShape(element_type, dimensions);
+  TF_ASSIGN_OR_RETURN(Shape shape,
+                      ShapeUtil::MakeValidatedShape(element_type, dimensions));
   auto min2maj = shape.mutable_layout()->mutable_minor_to_major();
   min2maj->Clear();
   for (int64 value : minor_to_major) {
@@ -648,7 +649,8 @@ StatusOr<Shape> ParseShapeStringInternal(absl::string_view* s) {
       result = ShapeUtil::MakeTokenShape();
     } else if (format_string.empty() && layout_string.empty()) {
       // Create a shape without a layout set.
-      result = ShapeUtil::MakeShape(primitive_type, dimensions);
+      TF_ASSIGN_OR_RETURN(
+          result, ShapeUtil::MakeValidatedShape(primitive_type, dimensions));
     } else if (format_string == "sparse") {
       TF_ASSIGN_OR_RETURN(int64 max_elements, string_to_int64(layout_string));
       result = ShapeUtil::MakeShapeWithSparseLayout(primitive_type, dimensions,
