@@ -436,7 +436,7 @@ class FreezeSavedModelTestTrainGraph(test_util.TensorFlowTestCase):
 
     # Export SavedModel
     saved_model_dir = os.path.join(self.get_temp_dir(), "mnist_savedmodel")
-    classifier.export_savedmodel(saved_model_dir, pred_input_fn)
+    classifier.export_saved_model(saved_model_dir, pred_input_fn)
 
     # Convert to tflite and test output
     saved_model_name = os.listdir(saved_model_dir)[0]
