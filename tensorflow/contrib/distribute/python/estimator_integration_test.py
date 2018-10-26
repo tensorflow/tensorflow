@@ -126,8 +126,8 @@ class DNNLinearCombinedClassifierIntegrationTest(test.TestCase,
     feature_spec = feature_column.make_parse_example_spec(feature_columns)
     serving_input_receiver_fn = export.build_parsing_serving_input_receiver_fn(
         feature_spec)
-    export_dir = estimator.export_savedmodel(tempfile.mkdtemp(),
-                                             serving_input_receiver_fn)
+    export_dir = estimator.export_saved_model(tempfile.mkdtemp(),
+                                              serving_input_receiver_fn)
     self.assertTrue(gfile.Exists(export_dir))
 
   def tearDown(self):
