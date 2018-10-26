@@ -579,9 +579,9 @@ bool SchedulingPass(Cluster* cluster, GrapplerItem* item) {
     }
 
     // Compute a topological ordering for the node fanin.
-    std::unordered_map<NodeDef*, int> topo_order;
+    std::unordered_map<const NodeDef*, int> topo_order;
     ReverseDfs(view, {node}, nullptr,
-               [&topo_order](NodeDef* n) {
+               [&topo_order](const NodeDef* n) {
                  int topo_index = topo_order.size();
                  topo_order[n] = topo_index;
                },
