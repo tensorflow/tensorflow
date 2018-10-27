@@ -309,6 +309,21 @@ class ApiTest(test.TestCase):
       x = compiled_fn(constant_op.constant([4, 8]), 4)
       self.assertListEqual([1, 2], sess.run(x).tolist())
 
+  def test_to_graph_with_defaults(self):
+
+    foo = 4
+
+    def test_fn(x, s=foo):
+      while tf.reduce_sum(x) > s:
+        x //= 2
+      return x
+
+    compiled_fn = api.to_graph(test_fn)
+
+    with self.cached_session() as sess:
+      x = compiled_fn(constant_op.constant([4, 8]))
+      self.assertListEqual([1, 2], sess.run(x).tolist())
+
   def test_to_code_basic(self):
 
     def test_fn(x, s):

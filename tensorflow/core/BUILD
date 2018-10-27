@@ -95,6 +95,7 @@ load("//tensorflow:tensorflow.bzl", "tf_cc_test_gpu")
 load("//tensorflow:tensorflow.bzl", "tf_cc_tests_gpu")
 load("//tensorflow:tensorflow.bzl", "tf_cuda_cc_test")
 load("//tensorflow:tensorflow.bzl", "tf_version_info_genrule")
+load("//tensorflow:tensorflow.bzl", "if_not_tx2_llvm_or_windows_cuda")
 load("//tensorflow:tensorflow.bzl", "tf_cuda_only_cc_test")
 
 # For platform specific build config
@@ -1068,6 +1069,7 @@ tf_gen_op_libs(
         "logging_ops",
         "manip_ops",
         "math_ops",
+        "nccl_ops",
         "nn_ops",
         "no_op",
         "parsing_ops",
@@ -1173,6 +1175,7 @@ cc_library(
     name = "ragged_ops",
     deps = [
         ":ragged_array_ops_op_lib",
+        ":ragged_conversion_ops_op_lib",
         ":ragged_math_ops_op_lib",
     ],
 )
@@ -1180,6 +1183,7 @@ cc_library(
 tf_gen_op_libs(
     op_lib_names = [
         "ragged_array_ops",
+        "ragged_conversion_ops",
         "ragged_math_ops",
     ],
 )
@@ -1214,6 +1218,7 @@ cc_library(
         ":lookup_ops_op_lib",
         ":manip_ops_op_lib",
         ":math_ops_op_lib",
+        ":nccl_ops_op_lib",
         ":nn_ops_op_lib",
         ":no_op_op_lib",
         ":parsing_ops_op_lib",
@@ -1389,7 +1394,9 @@ cc_library(
         "//tensorflow/core/kernels:summary_kernels",
         "//tensorflow/core/kernels:training_ops",
         "//tensorflow/core/kernels:word2vec_kernels",
-    ] + tf_additional_cloud_kernel_deps() + if_not_windows([
+    ] + tf_additional_cloud_kernel_deps() + if_not_tx2_llvm_or_windows_cuda([
+        "//tensorflow/core/kernels:nccl_kernels",
+    ]) + if_not_windows([
         "//tensorflow/core/kernels:fact_op",
         "//tensorflow/core/kernels:array_not_windows",
         "//tensorflow/core/kernels:math_not_windows",
@@ -1490,12 +1497,16 @@ cc_library(
         ":test",
         ":testlib_ops",
         "//tensorflow/cc:scope",
-        "//tensorflow/core/kernels:cast_op",
-        "//tensorflow/core/kernels:constant_op",
         "//tensorflow/core/kernels:ops_testutil",
         "//tensorflow/core/kernels:ops_util",
-        "//tensorflow/core/kernels:random_ops",
-    ],
+    ] + if_dynamic_kernels(
+        [],
+        otherwise = [
+            "//tensorflow/core/kernels:cast_op",
+            "//tensorflow/core/kernels:constant_op",
+            "//tensorflow/core/kernels:random_ops",
+        ],
+    ),
 )
 
 cc_library(
@@ -4362,6 +4373,7 @@ tf_cc_test(
         "//tensorflow/cc:cc_ops_internal",
         "//tensorflow/cc:function_ops",
         "//tensorflow/cc:functional_ops",
+        "//tensorflow/cc:sendrecv_ops",
         "//tensorflow/core/kernels:cast_op",
         "//tensorflow/core/kernels:cwise_op",
         "//tensorflow/core/kernels:function_ops",
@@ -4369,6 +4381,7 @@ tf_cc_test(
         "//tensorflow/core/kernels:random_ops",
         "//tensorflow/core/kernels:shape_ops",
         "//third_party/eigen3",
+        "@com_google_absl//absl/strings",
     ],
 )
 

@@ -19,11 +19,11 @@ limitations under the License.
 #include <random>
 #include <vector>
 
-#include "tensorflow/contrib/nccl/kernels/nccl_manager.h"
 #include "tensorflow/core/common_runtime/device_factory.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_device.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
+#include "tensorflow/core/nccl/nccl_manager.h"
 #include "tensorflow/core/platform/test.h"
 
 namespace tensorflow {

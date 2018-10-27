@@ -19,14 +19,13 @@ from __future__ import division
 from __future__ import print_function
 
 from functools import partial
-import os
 import numpy as np
 
-from tensorflow.contrib import nccl
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gradients
+from tensorflow.python.ops import nccl_ops
 from tensorflow.python.platform import test
 
 
@@ -52,7 +51,7 @@ def _NcclBroadcast(tensors, devices):
   sender = np.random.randint(0, len(devices))
   with ops.device(devices[sender]):
     tensor = array_ops.identity(tensors[0])
-    broadcast = nccl.broadcast(tensor)
+    broadcast = nccl_ops.broadcast(tensor)
   return _DeviceTensors([broadcast] * len(devices), devices)
 
 
@@ -61,7 +60,6 @@ class NcclTestCase(test.TestCase):
   def _Test(self,
             nccl_reduce,
             numpy_fn,
-            dtypes=[np.float16, np.float32, np.int32, np.int64, np.float64],
             device_sets=(['/device:GPU:1', '/device:GPU:2', '/device:GPU:0'],
                          ['/device:GPU:1', '/device:GPU:0'])):
     """Tests that nccl_reduce does the same as reduction with numpy_fn.
@@ -74,10 +72,7 @@ class NcclTestCase(test.TestCase):
           two.
       device_sets: Tuple of virtual devices to run test on.
     """
-    # Enable NCCL printouts.
-    os.environ["NCCL_DEBUG"] = "INFO"
-
-    for dtype in dtypes:
+    for dtype in [np.float16, np.float32, np.int32, np.int64, np.float64]:
       # Create session inside outer loop to test use of
       # same communicator across multiple sessions.
       with self.test_session(use_gpu=True) as sess:
@@ -129,36 +124,36 @@ class NcclTestCase(test.TestCase):
           reduce_tensors, inputs, losses, colocate_gradients_with_ops=True)
       return [g for g in grads if g is not None]
 
-    # int types are considered not 'trainable' and no gradients are generated.
-    self._Test(_Gradient, numpy_fn, dtypes=[np.float16, np.float32, np.float64])
+    self._Test(_Gradient, numpy_fn)
 
 
 class AllReduceTest(NcclTestCase):
 
   def testAllReduce(self):
-    self._Test(partial(_NcclAllReduce, nccl.all_sum), lambda x, y: x + y)
-    self._Test(partial(_NcclAllReduce, nccl.all_prod), lambda x, y: x * y)
-    self._Test(partial(_NcclAllReduce, nccl.all_min), np.minimum)
-    self._Test(partial(_NcclAllReduce, nccl.all_max), np.maximum)
+    self._Test(partial(_NcclAllReduce, nccl_ops.all_sum), lambda x, y: x + y)
+    self._Test(partial(_NcclAllReduce, nccl_ops.all_prod), lambda x, y: x * y)
+    self._Test(partial(_NcclAllReduce, nccl_ops.all_min), np.minimum)
+    self._Test(partial(_NcclAllReduce, nccl_ops.all_max), np.maximum)
 
   def testAllSumGrad(self):
     self._TestGradient(
-        partial(_NcclAllReduce, nccl.all_sum), lambda x, y: x + y)
+        partial(_NcclAllReduce, nccl_ops.all_sum), lambda x, y: x + y)
 
   def testErrors(self):
     with self.assertRaisesRegexp(ValueError, 'Device assignment required'):
-      nccl.all_sum([array_ops.identity(np.random.random_sample((3, 4)))])
+      nccl_ops.all_sum([array_ops.identity(np.random.random_sample((3, 4)))])
     with self.assertRaisesRegexp(ValueError, 'Must pass >0 tensors'):
-      nccl.all_sum([])
+      nccl_ops.all_sum([])
 
 
 class SingleReduceTest(NcclTestCase):
 
   def testSum(self):
-    self._Test(partial(_NcclReduce, nccl.reduce_sum), lambda x, y: x + y)
+    self._Test(partial(_NcclReduce, nccl_ops.reduce_sum), lambda x, y: x + y)
 
   def testSumGrad(self):
-    self._TestGradient(partial(_NcclReduce, nccl.reduce_sum), lambda x, y: x)
+    self._TestGradient(partial(_NcclReduce, nccl_ops.reduce_sum),
+                       lambda x, y: x)
 
 
 class BroadcastTest(NcclTestCase):
@@ -189,8 +184,8 @@ class CombinedTest(NcclTestCase):
   """Test all-reduce vs. single-reduce plus broadcast in one session.run."""
 
   def _Combined(self, tensors, devices):
-    all_reduce_tensors = _NcclAllReduce(nccl.all_sum, tensors, devices)
-    single_reduce_tensors = _NcclReduce(nccl.reduce_sum, tensors, devices)
+    all_reduce_tensors = _NcclAllReduce(nccl_ops.all_sum, tensors, devices)
+    single_reduce_tensors = _NcclReduce(nccl_ops.reduce_sum, tensors, devices)
     broadcast_tensors = _NcclBroadcast(single_reduce_tensors, devices)
     return all_reduce_tensors + broadcast_tensors
 

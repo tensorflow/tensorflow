@@ -360,6 +360,7 @@ Status BuildComputation(
     const std::vector<int>& arg_cores,
     const std::vector<XlaContext::Retval>& retvals,
     const std::vector<std::unique_ptr<XlaResource>>& resources,
+    std::unique_ptr<xla::XlaOp> token_output,
     bool return_updated_values_for_all_resources, bool always_return_tuple,
     xla::XlaBuilder* builder, xla::XlaComputation* computation,
     int* num_computation_outputs, int* num_nonconst_outputs,
@@ -444,6 +445,11 @@ Status BuildComputation(
       handle = xla::GetTupleElement(xla::Tuple(builder, {handle}), 0);
       elems.push_back(handle);
     }
+  }
+
+  // If we have token output, append it as the last one.
+  if (token_output) {
+    elems.push_back(*token_output);
   }
 
   *num_computation_outputs = elems.size();
@@ -774,6 +780,7 @@ Status XlaCompiler::CompileGraph(const XlaCompiler::CompileOptions& options,
 
   std::vector<XlaCompiler::Argument> real_args(args);
   int token_input_index = -1;
+  std::unique_ptr<xla::XlaOp> token_output;
   if (options.add_token_input_output) {
     // Add extra token input.
     token_input_index = real_args.size();
@@ -826,8 +833,7 @@ Status XlaCompiler::CompileGraph(const XlaCompiler::CompileOptions& options,
       TF_RETURN_IF_ERROR(token_or.status());
       token_inputs.push_back(token_or.ValueOrDie());
     }
-    TF_RETURN_IF_ERROR(
-        context->AppendTokenRetval(xla::AfterAll(&builder, token_inputs)));
+    token_output.reset(new xla::XlaOp(xla::AfterAll(&builder, token_inputs)));
   }
   TF_RETURN_IF_ERROR(PopNodeTokenMapping());
 
@@ -837,7 +843,7 @@ Status XlaCompiler::CompileGraph(const XlaCompiler::CompileOptions& options,
   result->outputs.resize(context->retvals().size());
   TF_RETURN_IF_ERROR(BuildComputation(
       real_args, arg_cores, context->retvals(), context->resources(),
-      options.return_updated_values_for_all_resources,
+      std::move(token_output), options.return_updated_values_for_all_resources,
       options.always_return_tuple, &builder, result->computation.get(),
       &num_computation_outputs, &num_nonconst_outputs, &result->outputs,
       &result->resource_updates));

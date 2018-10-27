@@ -17,6 +17,7 @@ filegroup(
 py_library(
     name = "converters",
     srcs = [
+        "arg_defaults.py",
         "asserts.py",
         "break_statements.py",
         "builtin_functions.py",
@@ -44,6 +45,17 @@ py_library(
         "//tensorflow/python/autograph/pyct",
         "//tensorflow/python/autograph/pyct/static_analysis",
         "@gast_archive//:gast",
+    ],
+)
+
+py_test(
+    name = "arg_defaults_test",
+    srcs = ["arg_defaults_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":converters",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python/autograph/core:test_lib",
     ],
 )
 

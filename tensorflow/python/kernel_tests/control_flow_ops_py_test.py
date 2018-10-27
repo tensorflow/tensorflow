@@ -935,15 +935,14 @@ class ControlFlowTest(test.TestCase):
       r = isum(s, maximum_iterations=3)
       self.assertAllEqual([1 + 3, 2 + 3, 3 + 3, 4 + 3, 5 + 3], r.eval())
 
-  @test_util.disable_control_flow_v2("b/116339888 (non-tensor loop var)")
+  @test_util.disable_control_flow_v2("b/115776323 (max_iters)")
   def testWhileWithMaximumIterationsAndSingleArgument(self):
     with self.cached_session():
       r = control_flow_ops.while_loop(
           lambda i: i < 3, lambda i: i + 1, [0], maximum_iterations=1)
       self.assertEqual(1, r.eval())
 
-  @test_util.disable_control_flow_v2(
-      "b/116248044 (nested), b/115920078 (gradients)")
+  @test_util.disable_control_flow_v2("b/115776323 (max_iters)")
   def testSingleNestedMaximumIterationsWhileLoopGradientInXLAContext(self):
     v = constant_op.constant(1.0)
 
@@ -969,7 +968,7 @@ class ControlFlowTest(test.TestCase):
     # Should execute without issue.
     self.assertEqual(3, self.evaluate(loop_execute))
 
-  @test_util.disable_control_flow_v2("b/116248044 (nested while_loop)")
+  @test_util.disable_control_flow_v2("b/115776323 (max_iters)")
   def testInvalidMaximumIterationsWhileLoopGradientInXLAContext(self):
     v = constant_op.constant(1.0)
 
@@ -1046,8 +1045,7 @@ class ControlFlowTest(test.TestCase):
         r"while loop context '' \(currently defined in 'cond/.+'\)"):
       _ = gradients_impl.gradients(loop, v)
 
-  @test_util.disable_control_flow_v2(
-      "b/116248044 (nesting), b/115776323 (max_iters)")
+  @test_util.disable_control_flow_v2("b/115776323 (max_iters)")
   def testNestedWhileLoopWithMaxItersFromOuterContextInXLAContext(self):
     v = constant_op.constant(1.0)
 
@@ -1249,7 +1247,6 @@ class ControlFlowTest(test.TestCase):
       r = r[1] * array_ops.ones([8, 8])
       self.assertAllEqual(np.ones((8, 8)), r.eval())
 
-  @test_util.disable_control_flow_v2("b/116339888 (non-tensor loop var)")
   def testWhileWithNonTensorInput_Scalar(self):
     with self.cached_session():
       n = 0
@@ -1258,7 +1255,6 @@ class ControlFlowTest(test.TestCase):
       r = control_flow_ops.while_loop(c, b, [n], parallel_iterations=20)
       self.assertEqual(10000, r.eval())
 
-  @test_util.disable_control_flow_v2("b/116339888 (non-tensor loop var)")
   def testWhileWithNonTensorInput_Vector(self):
     with self.cached_session():
       n = np.array([0])  # Note, [0] would not work here; that is a list
@@ -1379,7 +1375,6 @@ class ControlFlowTest(test.TestCase):
       r = control_flow_ops.while_loop(c, b, [n])
       self.assertEqual(225, r.eval())
 
-  @test_util.disable_control_flow_v2("b/116248044 (nested while)")
   def testNestedWhile_1(self):
     self._testNestedWhile_1(use_gpu=False)
     self._testNestedWhile_1(use_gpu=True)
@@ -1412,7 +1407,6 @@ class ControlFlowTest(test.TestCase):
           outer_c, outer_b, [s0], parallel_iterations=1)
       self.assertEqual(1048576.0, r.eval())
 
-  @test_util.disable_control_flow_v2("b/116248044 (nested while)")
   def testNestedWhile_2(self):
     self._testNestedWhile_2(use_gpu=False)
     self._testNestedWhile_2(use_gpu=True)
@@ -1791,7 +1785,6 @@ class ControlFlowTest(test.TestCase):
       self.assertEqual(55, var_b.eval())
       self.assertEqual(10, var_a.eval())
 
-  @test_util.disable_control_flow_v2("b/116742472 (resource accumulator)")
   def testWhileQueue_1(self):
     with self.cached_session():
       q = data_flow_ops.FIFOQueue(-1, dtypes.int32)
@@ -1959,6 +1952,7 @@ class ControlFlowTest(test.TestCase):
       self.assertAllClose(216.0, grad_a_val)
       self.assertAllClose(81.0, grad_v_val)
 
+  @test_util.disable_control_flow_v2("b/116630618 (parallel_iters: times out)")
   def testWhileGrad_Mul(self):
     self._testWhileGrad_Mul(use_gpu=False, p_iters=1)
     self._testWhileGrad_Mul(use_gpu=False, p_iters=10)
@@ -1988,9 +1982,13 @@ class ControlFlowTest(test.TestCase):
       r = gradients_impl.gradients(r, v)[0]
       self.assertAllClose(512.0, r.eval())
 
-  @test_util.disable_control_flow_v2("b/116248044 (nested while)")
   def testNestedWhileCondWhileGrad(self):
+    if control_flow_ops.ENABLE_WHILE_V2 and test_util.is_gpu_available():
+      self.skipTest("b/118459209")
     self._testNestedWhileCondWhileGrad(use_gpu=False)
+
+  @test_util.disable_control_flow_v2("b/118459209")
+  def testNestedWhileCondWhileGradGpu(self):
     self._testNestedWhileCondWhileGrad(use_gpu=True)
 
   @test_util.disable_control_flow_v2("b/116823782")
@@ -2040,7 +2038,6 @@ class ControlFlowTest(test.TestCase):
           "loop invariants or wrt the input parameters to the loop body."):
         control_flow_ops.while_loop(lambda i, x: i < 3, body, [0, y])
 
-  @test_util.disable_control_flow_v2("b/116248044 (nested while)")
   def testWhileGradInWhile(self):
     with self.cached_session():
       n = ops.convert_to_tensor(1.0, name="n")
@@ -2057,7 +2054,6 @@ class ControlFlowTest(test.TestCase):
                                       [tensor_shape.unknown_shape()])
       self.assertAllClose(9.0, r.eval(feed_dict={x: 1.0}))
 
-  @test_util.disable_control_flow_v2("b/116248044 (nested while)")
   def testCondGradInNestedWhiles(self):
 
     def outer_body(i, x):
@@ -2286,12 +2282,10 @@ class ControlFlowTest(test.TestCase):
       r = gradients_impl.gradients(r, v)[0]
       self.assertAllClose(8.0, r.eval())
 
-  @test_util.disable_control_flow_v2("b/116248044 (nested)")
   def testNestedWhileGrad_Simple(self):
     self._testNestedWhileGrad_Simple(use_gpu=False)
     self._testNestedWhileGrad_Simple(use_gpu=True)
 
-  @test_util.disable_control_flow_v2("b/116248044 (nested)")
   def testNestedWhileGrad_SerialInner(self):
     with self.cached_session():
       v = constant_op.constant(1.0)
@@ -2315,7 +2309,6 @@ class ControlFlowTest(test.TestCase):
       r = gradients_impl.gradients(r, v)[0]
       self.assertAllClose(256.0, r.eval())
 
-  @test_util.disable_control_flow_v2("b/116248044 (nested)")
   def testNestedWhileGrad_ParallelInner(self):
     with self.cached_session():
       v = constant_op.constant(1.0)
@@ -2339,8 +2332,8 @@ class ControlFlowTest(test.TestCase):
       r = gradients_impl.gradients(r, v)[0]
       self.assertAllClose(512.0, r.eval())
 
-  @test_util.disable_control_flow_v2(
-      "Nested loops and TensorArrays not supported")
+  @test_util.disable_control_flow_v2("unsupported: resource creation in body. "
+                                     "Enable with new TAs b/117675481")
   def testNestedWhileGrad_ParallelIterations(self):
     # Make sure the stack pushes and pops of an inner loop are executed in
     # the sequential order of the iterations of its outer loop.
@@ -2519,7 +2512,8 @@ class ControlFlowTest(test.TestCase):
           c, b, [i0, constant_op.constant(0.0)])
       self.assertAllClose(600.0, sess.run(output_grad)[1])
 
-  @test_util.disable_control_flow_v2("b/116248044 (nested while_loop)")
+  @test_util.disable_control_flow_v2("unsupported: resource creation in body. "
+                                     "Enable with new TAs b/117675481")
   def testWhileAndTensorArray(self):
     with self.cached_session() as sess:
       param = constant_op.constant(2.0)

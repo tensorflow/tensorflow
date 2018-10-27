@@ -96,6 +96,9 @@ class Feature(Enum):
 
   AUTO_CONTROL_DEPS = (
       'Insert of control dependencies in the generated code.')
+  DECORATORS = (
+      'Allow decorators in local functions. Note that special decorators, '
+      ' like ag.convert or tf.function are allowed regardless of this toggle.')
   LISTS = 'Convert list idioms, like initializers, slices, append, etc.'
 
   def __repr__(self):
@@ -132,7 +135,7 @@ class ConversionOptions(object):
     self.strip_decorators = strip_decorators or ()
     self.force_conversion = force_conversion
 
-    if not isinstance(optional_features, (set, list, tuple)):
+    if isinstance(optional_features, Feature):
       optional_features = (optional_features,)
     optional_features = frozenset(optional_features)
     self.optional_features = optional_features

@@ -473,9 +473,10 @@ cuda_py_test(
 
 cuda_py_test(
     name = "estimator_training_test",
-    size = "enormous",
+    size = "large",
     srcs = ["estimator_training_test.py"],
     additional_deps = [
+        ":collective_all_reduce_strategy",
         ":combinations",
         ":mirrored_strategy",
         ":multi_worker_test_base",
@@ -594,7 +595,6 @@ py_library(
     deps = [
         ":values",
         "//tensorflow/contrib/all_reduce:all_reduce_py",
-        "//tensorflow/contrib/nccl:nccl_py",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:collective_ops",
         "//tensorflow/python:device",
@@ -602,6 +602,7 @@ py_library(
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:gradients",
         "//tensorflow/python:math_ops",
+        "//tensorflow/python:nccl_ops",
     ],
 )
 
@@ -645,7 +646,6 @@ py_library(
 
 cuda_py_test(
     name = "cross_tower_ops_test",
-    size = "large",
     srcs = ["cross_tower_ops_test.py"],
     additional_deps = [
         ":combinations",

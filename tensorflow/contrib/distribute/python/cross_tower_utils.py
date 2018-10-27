@@ -21,7 +21,6 @@ from __future__ import print_function
 import collections as pycoll
 import threading
 
-from tensorflow.contrib import nccl
 from tensorflow.contrib.all_reduce.python import all_reduce
 from tensorflow.contrib.distribute.python import values as value_lib
 from tensorflow.python.framework import device as pydev
@@ -31,6 +30,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import collective_ops
 from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import nccl_ops
 
 
 def aggregate_gradients_using_nccl(replica_grads):
@@ -38,7 +38,7 @@ def aggregate_gradients_using_nccl(replica_grads):
   agg_all_g_and_v = []
   for single_g_and_v in zip(*replica_grads):
     single_grads = [g for g, _ in single_g_and_v]
-    agg_grads = nccl.all_sum(single_grads)
+    agg_grads = nccl_ops.all_sum(single_grads)
     agg_all_g_and_v.append(
         [(g, v) for g, (_, v) in zip(agg_grads, single_g_and_v)])
 
@@ -376,7 +376,7 @@ def sum_grad_and_var_all_reduce(grad_and_vars,
     #   ((grad0_gpu0, var0_gpu0), ... , (grad0_gpuN, var0_gpuN))
     scaled_grads = [g for g, _ in grad_and_vars]
     if alg == 'nccl':
-      summed_grads = nccl.all_sum(scaled_grads)
+      summed_grads = nccl_ops.all_sum(scaled_grads)
     elif alg == 'xring':
       summed_grads = all_reduce.build_ring_all_reduce(
           scaled_grads, num_workers, num_shards, gpu_indices, math_ops.add)

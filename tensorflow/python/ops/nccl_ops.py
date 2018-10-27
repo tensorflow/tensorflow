@@ -19,15 +19,11 @@ from __future__ import print_function
 
 import threading
 
-from tensorflow.contrib.nccl.ops import gen_nccl_ops
-from tensorflow.contrib.util import loader
-from tensorflow.python.eager import context
 from tensorflow.python.framework import device
 from tensorflow.python.framework import ops
-from tensorflow.python.platform import resource_loader
+from tensorflow.python.ops import gen_nccl_ops
 
 
-_nccl_ops_so = None
 _module_lock = threading.Lock()
 _shared_name_counter = 0
 
@@ -182,7 +178,6 @@ def broadcast(tensor):
     A tensor with the value of `src_tensor`, which can be used as input to
     ops on other GPU devices.
   """
-  _validate_and_load_nccl_so()
   _check_device(tensor)
 
   with ops.device(tensor.device):
@@ -214,7 +209,6 @@ def _apply_all_reduce(reduction, tensors):
   """Helper function for all_* functions."""
   if not tensors:
     raise ValueError('Must pass >0 tensors to all reduce operations')
-  _validate_and_load_nccl_so()
 
   shared_name = _get_shared_name()
   res = []
@@ -236,7 +230,6 @@ def _apply_reduce(reduction, tensors):
   """Helper function for reduce_* functions."""
   if not tensors:
     raise ValueError('Must pass >0 tensors to reduce operations')
-  _validate_and_load_nccl_so()
 
   for t in tensors:
     _check_device(t)
@@ -262,27 +255,3 @@ def _check_device(tensor, expected=None):
     raise ValueError('Device assignment required for nccl collective ops')
   if expected and expected != tensor.device:
     raise ValueError('Expected device %s, got %s' % (expected, tensor.device))
-
-
-def _maybe_load_nccl_ops_so():
-  """Loads nccl ops so if it hasn't been loaded already."""
-
-  with _module_lock:
-    global _nccl_ops_so
-    if not _nccl_ops_so:
-      _nccl_ops_so = loader.load_op_library(
-          resource_loader.get_path_to_datafile('_nccl_ops.so'))
-
-
-def _validate_and_load_nccl_so():
-  """Validates calling context and loads nccl ops so file.
-
-  Raises:
-    ValueError: Ops are not supported.
-    errors_impl.NotFoundError: nccl library is not installed.
-  """
-
-  if context.executing_eagerly():
-    raise ValueError('Nccl ops are not supported in eager mode')
-
-  _maybe_load_nccl_ops_so()
