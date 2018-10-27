@@ -29,11 +29,11 @@ limitations under the License.
 #include <memory>
 #include <vector>
 
+#include "absl/strings/str_cat.h"
 #include "tensorflow/stream_executor/lib/process_state.h"
 #include "tensorflow/stream_executor/lib/error.h"
 #include "tensorflow/stream_executor/lib/status.h"
 #include "tensorflow/stream_executor/lib/str_util.h"
-#include "tensorflow/stream_executor/lib/strcat.h"
 #include "tensorflow/stream_executor/lib/stringpiece.h"
 #include "tensorflow/stream_executor/lib/stringprintf.h"
 #include "tensorflow/stream_executor/platform/logging.h"
@@ -99,7 +99,7 @@ port::StatusOr<DriverVersion> StringToDriverVersion(const string &value) {
 // -- class Diagnostician
 
 string Diagnostician::GetDevNodePath(int dev_node_ordinal) {
-  return port::StrCat("/dev/kfd", dev_node_ordinal);
+  return absl::StrCat("/dev/kfd", dev_node_ordinal);
 }
 
 void Diagnostician::LogDiagnosticInformation() {
@@ -194,7 +194,7 @@ port::StatusOr<DriverVersion> Diagnostician::FindKernelModuleVersion(
   if (offset == string::npos) {
     return port::Status{
         port::error::NOT_FOUND,
-        port::StrCat("could not find kernel module information in "
+        absl::StrCat("could not find kernel module information in "
                      "driver version file contents: \"",
                      driver_version_file_contents, "\"")};
   }

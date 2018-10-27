@@ -18,6 +18,7 @@ limitations under the License.
 #include <functional>
 #include <memory>
 
+#include "absl/strings/str_cat.h"
 #include "third_party/eigen3/Eigen/Core"
 #include "tensorflow/stream_executor/rocm/rocm_activation.h"
 #include "tensorflow/stream_executor/rocm/rocm_diagnostics.h"
@@ -31,7 +32,6 @@ limitations under the License.
 #include "tensorflow/stream_executor/lib/env.h"
 #include "tensorflow/stream_executor/lib/error.h"
 #include "tensorflow/stream_executor/lib/initialize.h"
-#include "tensorflow/stream_executor/lib/strcat.h"
 #include "tensorflow/stream_executor/lib/stringpiece.h"
 #include "tensorflow/stream_executor/lib/threadpool.h"
 #include "tensorflow/stream_executor/platform/logging.h"
@@ -92,7 +92,7 @@ string ToString(miopenStatus_t status) {
     case miopenStatusUnknownError:
       return "miopenStatusUnknownError";
     default:
-      return port::StrCat("<unknown miopen status: ", static_cast<int>(status),
+      return absl::StrCat("<unknown miopen status: ", static_cast<int>(status),
                           ">");
   }
 }
@@ -440,7 +440,7 @@ port::Status MIOpenSupport::Init() {
   }
 
   return port::Status{port::error::INTERNAL,
-                      port::StrCat("miopen library could not create a handle: ",
+                      absl::StrCat("miopen library could not create a handle: ",
                                    ToString(status))};
 }
 
@@ -1270,7 +1270,7 @@ class MixinBase<void> {};
 
 #define ROCM_RETURN_IF_FAIL(STATUS, ...)                                 \
   if (!SE_PREDICT_TRUE((STATUS) == miopenStatusSuccess)) {               \
-    string error_msg = port::StrCat(ToString(STATUS), " ", __VA_ARGS__); \
+    string error_msg = absl::StrCat(ToString(STATUS), " ", __VA_ARGS__); \
     SetFailure(port::Status(port::error::UNKNOWN, error_msg));           \
     LOG(ERROR) << error_msg;                                             \
     return;                                                              \
@@ -1442,7 +1442,7 @@ class MIOpenRnnSequenceTensorDescriptor
     miopenTensorDescriptor_t handle = nullptr;
     if (seq_length <= 0) {
       string error_msg =
-          port::StrCat("sequence length must be positive: ", seq_length);
+          absl::StrCat("sequence length must be positive: ", seq_length);
       LOG(ERROR) << error_msg;
       SetFailure(port::Status(port::error::UNKNOWN, error_msg));
       return;

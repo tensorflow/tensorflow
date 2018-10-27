@@ -21,8 +21,9 @@ limitations under the License.
 #include <set>
 #include <utility>
 
+#include "absl/base/casts.h"
+#include "absl/strings/str_cat.h"
 #include "tensorflow/stream_executor/rocm/rocm_diagnostics.h"
-#include "tensorflow/stream_executor/lib/casts.h"
 #include "tensorflow/stream_executor/lib/env.h"
 #include "tensorflow/stream_executor/lib/error.h"
 #include "tensorflow/stream_executor/lib/human_readable.h"
@@ -30,7 +31,6 @@ limitations under the License.
 #include "tensorflow/stream_executor/lib/threadpool.h"
 #include "tensorflow/stream_executor/lib/stacktrace.h"
 #include "tensorflow/stream_executor/lib/static_threadlocal.h"
-#include "tensorflow/stream_executor/lib/strcat.h"
 #include "tensorflow/stream_executor/lib/stringprintf.h"
 #include "tensorflow/stream_executor/platform/logging.h"
 #include "tensorflow/stream_executor/platform/mutex.h"
@@ -90,7 +90,7 @@ string ToString(hipError_t result) {
     OSTREAM_ROCM_ERROR(PeerAccessUnsupported)
     OSTREAM_ROCM_ERROR(Unknown)  // Unknown internal error to ROCM.
     default:
-      return port::StrCat("hipError_t(", static_cast<int>(result), ")");
+      return absl::StrCat("hipError_t(", static_cast<int>(result), ")");
   }
 #pragma GCC diagnostic pop
 }
@@ -209,7 +209,7 @@ namespace {
 string ROCMPointerToDeviceString(hipDeviceptr_t pointer) {
   auto value = ROCMDriver::GetPointerDevice(pointer);
   if (value.ok()) {
-    return port::StrCat(value.ValueOrDie());
+    return absl::StrCat(value.ValueOrDie());
   }
   LOG(ERROR) << "could not query device: " << value.status();
   return "?";
@@ -272,7 +272,7 @@ static port::Status InternalInit() {
   LOG(ERROR) << "failed call to hipInit: " << ToString(res);
   Diagnostician::LogDiagnosticInformation();
   return port::Status{port::error::ABORTED,
-                      port::StrCat("failed call to hipInit: ", ToString(res))};
+                      absl::StrCat("failed call to hipInit: ", ToString(res))};
 }
 
 }  // namespace
@@ -302,7 +302,7 @@ static port::Status InternalInit() {
 
   return port::Status{
       port::error::INTERNAL,
-      port::StrCat("failed call to hipDeviceGet: ", ToString(res))};
+      absl::StrCat("failed call to hipDeviceGet: ", ToString(res))};
 }
 
 /* static */ bool ROCMDriver::GetDeviceName(hipDevice_t device,
@@ -364,7 +364,7 @@ ROCMDriver::DeviceGetSharedMemConfig(int device_ordinal) {
                << ", result: " << ToString(result);
     return port::Status{
         port::error::INTERNAL,
-        port::StrCat("failed to get shared memory config: ", ToString(result))};
+        absl::StrCat("failed to get shared memory config: ", ToString(result))};
   }
   return shared_mem_config;
 }
@@ -380,7 +380,7 @@ ROCMDriver::DeviceGetSharedMemConfig(int device_ordinal) {
                << ", result: " << ToString(result);
     return port::Status{
         port::error::INTERNAL,
-        port::StrCat("failed to set shared memory config: ", ToString(result))};
+        absl::StrCat("failed to set shared memory config: ", ToString(result))};
   }
   return port::Status::OK();
 }
@@ -451,7 +451,7 @@ ROCMDriver::DeviceGetSharedMemConfig(int device_ordinal) {
                                                       uint32 value,
                                                       size_t uint32_count) {
   ScopedActivateContext activation{device_ordinal};
-  void * pointer = port::bit_cast<void *>(location);
+  void * pointer = absl::bit_cast<void *>(location);
   unsigned char valueC = static_cast<unsigned char>(value);
   uint32_t value32 = (valueC << 24) | (valueC << 16) | (valueC << 8) | (valueC) ;
   assert (value32 == value); // if mismatch this indicates case where hipMemsetAsyc can't emulate hipMemSetD32
@@ -485,7 +485,7 @@ ROCMDriver::DeviceGetSharedMemConfig(int device_ordinal) {
                                                        size_t uint32_count,
                                                        hipStream_t stream) {
   ScopedActivateContext activation{device_ordinal};
-  void * pointer = port::bit_cast<void *>(location);
+  void * pointer = absl::bit_cast<void *>(location);
 
   // FIXME - need to set a 32-bit value here
   unsigned char valueC = static_cast<unsigned char>(value);
@@ -612,7 +612,7 @@ ROCMDriver::DeviceGetSharedMemConfig(int device_ordinal) {
 /* static */ void ROCMDriver::DeviceDeallocate(int device_ordinal,
                                                void *location) {
   ScopedActivateContext activation{device_ordinal};
-  hipDeviceptr_t pointer = port::bit_cast<hipDeviceptr_t>(location);
+  hipDeviceptr_t pointer = absl::bit_cast<hipDeviceptr_t>(location);
   hipError_t res = hipFree(pointer);
   if (res != hipSuccess) {
     LOG(ERROR) << "failed to free device memory at " << location
@@ -787,7 +787,7 @@ ROCMDriver::DeviceGetSharedMemConfig(int device_ordinal) {
   hipError_t res = hipStreamSynchronize(stream);
   if (res != hipSuccess) {
     port::Status status = port::InternalError(
-        port::StrCat("could not synchronize on ROCM stream: ", ToString(res)));
+        absl::StrCat("could not synchronize on ROCM stream: ", ToString(res)));
     LOG(ERROR) << status << " :: " << port::CurrentStackTrace();
     return status;
   }
@@ -822,7 +822,7 @@ ROCMDriver::DeviceGetSharedMemConfig(int device_ordinal) {
         port::Printf("failed to synchronous memcpy from device to host: %s; "
                      "host dst: %p; GPU src: %p; size: %llu=0x%llx",
                      ToString(res).c_str(), host_dst,
-                     port::bit_cast<void *>(gpu_src), size, size));
+                     absl::bit_cast<void *>(gpu_src), size, size));
   }
   VLOG(2) << "successfully sync memcpy'd d2h of " << size << " bytes to "
           << host_dst;
@@ -839,7 +839,7 @@ ROCMDriver::DeviceGetSharedMemConfig(int device_ordinal) {
     return port::InternalError(port::Printf(
         "failed to synchronous memcpy from host to device: %s; GPU dst: %p;"
         " host src: %p; size: %llu=0x%llx",
-        ToString(res).c_str(), port::bit_cast<void *>(gpu_dst), host_src, size,
+        ToString(res).c_str(), absl::bit_cast<void *>(gpu_dst), host_src, size,
         size));
   }
   VLOG(2) << "successfully enqueued sync memcpy h2d of " << size << " bytes";
@@ -856,8 +856,8 @@ ROCMDriver::DeviceGetSharedMemConfig(int device_ordinal) {
     return port::InternalError(port::Printf(
         "failed to synchronous memcpy from host to device: %s; GPU dst: %p; "
         "GPU src: %p; size: %llu=0x%llx",
-        ToString(res).c_str(), port::bit_cast<void *>(gpu_dst),
-        port::bit_cast<void *>(gpu_src), size, size));
+        ToString(res).c_str(), absl::bit_cast<void *>(gpu_dst),
+        absl::bit_cast<void *>(gpu_src), size, size));
   }
   VLOG(2) << "successfully sync memcpy'd d2d of " << size << " bytes";
   return port::Status::OK();
@@ -874,11 +874,11 @@ ROCMDriver::DeviceGetSharedMemConfig(int device_ordinal) {
     LOG(ERROR) << port::Printf(
         "failed to enqueue async memcpy from device to host: %s; host dst: %p; "
         "GPU src: %p; size: %llu=0x%llx",
-        ToString(res).c_str(), host_dst, port::bit_cast<void *>(gpu_src), size, size);
+        ToString(res).c_str(), host_dst, absl::bit_cast<void *>(gpu_src), size, size);
     return false;
   }
   VLOG(2) << "successfully enqueued async memcpy d2h of " << size
-          << " bytes from " << port::bit_cast<void *>(gpu_src) << " to " << host_dst
+          << " bytes from " << absl::bit_cast<void *>(gpu_src) << " to " << host_dst
           << " on stream " << stream;
   return true;
 }
@@ -894,7 +894,7 @@ ROCMDriver::DeviceGetSharedMemConfig(int device_ordinal) {
     LOG(ERROR) << port::Printf(
         "failed to enqueue async memcpy from host to device: %s; GPU dst: %p; "
         "host src: %p; size: %llu=0x%llx",
-        ToString(res).c_str(), port::bit_cast<void *>(gpu_dst), host_src, size, size);
+        ToString(res).c_str(), absl::bit_cast<void *>(gpu_dst), host_src, size, size);
     return false;
   }
   VLOG(2) << "successfully enqueued async memcpy h2d of " << size << " bytes"
@@ -915,9 +915,9 @@ ROCMDriver::DeviceGetSharedMemConfig(int device_ordinal) {
         "; GPU dst: %p on %s %s"
         "; GPU src: %p on %s %s"
         "; can access? %s; size: %llu=0x%llx",
-        ToString(result).c_str(), port::bit_cast<void *>(gpu_dst),
+        ToString(result).c_str(), absl::bit_cast<void *>(gpu_dst),
         ROCMPointerToMemorySpaceString(gpu_dst).c_str(),
-        ROCMPointerToDeviceString(gpu_dst).c_str(), port::bit_cast<void *>(gpu_src),
+        ROCMPointerToDeviceString(gpu_dst).c_str(), absl::bit_cast<void *>(gpu_src),
         ROCMPointerToMemorySpaceString(gpu_src).c_str(),
         ROCMPointerToDeviceString(gpu_src).c_str(),
         ROCMPointersToCanAccessString(gpu_src, gpu_dst).c_str(), size, size);
@@ -954,7 +954,7 @@ ROCMDriver::DeviceGetSharedMemConfig(int device_ordinal) {
   } else {
     return port::Status{
         port::error::FAILED_PRECONDITION,
-        port::StrCat("could not create ROCM event: ", ToString(res))};
+        absl::StrCat("could not create ROCM event: ", ToString(res))};
   }
 }
 
@@ -985,13 +985,13 @@ ROCMDriver::DeviceGetSharedMemConfig(int device_ordinal) {
       default:
         return port::Status{
             port::error::INTERNAL,
-            port::StrCat("unknown memory space provided by ROCM API: ", value)};
+            absl::StrCat("unknown memory space provided by ROCM API: ", value)};
     }
   }
 
   return port::Status{
       port::error::INTERNAL,
-      port::StrCat("failed to query device pointer for memory space: ",
+      absl::StrCat("failed to query device pointer for memory space: ",
                    ToString(result))};
 }
 
@@ -1024,7 +1024,7 @@ ROCMDriver::DeviceGetSharedMemConfig(int device_ordinal) {
   if (result != hipSuccess) {
     return port::Status{
       port::error::INTERNAL,
-	port::StrCat("failed to get device for pointer: ", ToString(result))};
+	absl::StrCat("failed to get device for pointer: ", ToString(result))};
   }
 
   hipDevice_t device;
@@ -1032,7 +1032,7 @@ ROCMDriver::DeviceGetSharedMemConfig(int device_ordinal) {
   if (result != hipSuccess) {
     return port::Status{
       port::error::INTERNAL,
-	port::StrCat("failed to get device for pointer: ", ToString(result))};
+	absl::StrCat("failed to get device for pointer: ", ToString(result))};
   }
   
   return device;
@@ -1062,7 +1062,7 @@ static port::StatusOr<T> GetSimpleAttribute(hipDevice_t device,
   if (result != hipSuccess) {
     return port::Status{
         port::error::NOT_FOUND,
-        port::StrCat("could not retrieve ROCM device attribute (", attribute,
+        absl::StrCat("could not retrieve ROCM device attribute (", attribute,
                      "): ", ToString(result))};
   }
   T converted = value;
