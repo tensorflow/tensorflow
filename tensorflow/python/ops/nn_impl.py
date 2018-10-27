@@ -328,7 +328,7 @@ def swish(features):
   return features * math_ops.sigmoid(features)
 
 
-@tf_export("nn.l2_normalize")
+@tf_export("math.l2_normalize", "linalg.l2_normalize", "nn.l2_normalize")
 @deprecated_args(None, "dim is deprecated, use axis instead", "dim")
 def l2_normalize(x, axis=None, epsilon=1e-12, name=None, dim=None):
   """Normalizes along dimension `axis` using an L2 norm.
@@ -360,7 +360,7 @@ def l2_normalize(x, axis=None, epsilon=1e-12, name=None, dim=None):
     return math_ops.multiply(x, x_inv_norm, name=name)
 
 
-@tf_export("nn.zero_fraction")
+@tf_export("math.zero_fraction", "nn.zero_fraction")
 def zero_fraction(value, name=None):
   """Returns the fraction of zeros in `value`.
 
@@ -528,8 +528,8 @@ def separable_conv2d(input,
         pointwise_filter, name="pointwise_filter")
 
     pointwise_filter_shape = pointwise_filter.get_shape().with_rank(4)
-    pointwise_filter_shape[0].assert_is_compatible_with(1)
-    pointwise_filter_shape[1].assert_is_compatible_with(1)
+    pointwise_filter_shape.dims[0].assert_is_compatible_with(1)
+    pointwise_filter_shape.dims[1].assert_is_compatible_with(1)
 
     if rate is None:
       rate = [1, 1]
@@ -595,10 +595,10 @@ def sufficient_statistics(x, axes, shift=None, keep_dims=False, name=None):
   with ops.name_scope(name, "sufficient_statistics", [x, shift]):
     x = ops.convert_to_tensor(x, name="x")
     x_shape = x.get_shape()
-    if all(x_shape[d].value is not None for d in axes):
+    if all(x_shape.dims[d].value is not None for d in axes):
       counts = 1
       for d in axes:
-        counts *= x_shape[d].value
+        counts *= x_shape.dims[d].value
       counts = constant_op.constant(counts, dtype=x.dtype)
     else:  # shape needs to be inferred at runtime.
       x_dims = array_ops.gather(
@@ -689,7 +689,7 @@ def moments(
     # Compute true mean while keeping the dims for proper broadcasting.
     mean = math_ops.reduce_mean(y, axes, keepdims=True, name="mean")
     # sample variance, not unbiased variance
-    # Note: stop_gradient does not change the gradient that gets 
+    # Note: stop_gradient does not change the gradient that gets
     #       backpropagated to the mean from the variance calculation,
     #       because that gradient is zero
     variance = math_ops.reduce_mean(

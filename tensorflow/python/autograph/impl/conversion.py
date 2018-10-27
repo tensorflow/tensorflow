@@ -24,6 +24,7 @@ import gast
 
 from tensorflow.python.autograph import operators
 from tensorflow.python.autograph import utils
+from tensorflow.python.autograph.converters import arg_defaults
 from tensorflow.python.autograph.converters import asserts
 from tensorflow.python.autograph.converters import break_statements
 from tensorflow.python.autograph.converters import builtin_functions
@@ -34,22 +35,25 @@ from tensorflow.python.autograph.converters import control_flow
 from tensorflow.python.autograph.converters import decorators
 from tensorflow.python.autograph.converters import directives
 from tensorflow.python.autograph.converters import error_handlers
+from tensorflow.python.autograph.converters import function_scopes
 from tensorflow.python.autograph.converters import lists
 from tensorflow.python.autograph.converters import logical_expressions
-from tensorflow.python.autograph.converters import name_scopes
 from tensorflow.python.autograph.converters import return_statements
 from tensorflow.python.autograph.converters import side_effect_guards
 from tensorflow.python.autograph.converters import slices
 from tensorflow.python.autograph.core import config
 from tensorflow.python.autograph.core import converter
 from tensorflow.python.autograph.core import errors
+from tensorflow.python.autograph.core import function_wrapping
 from tensorflow.python.autograph.pyct import ast_util
+from tensorflow.python.autograph.pyct import compiler
 from tensorflow.python.autograph.pyct import inspect_utils
 from tensorflow.python.autograph.pyct import origin_info
 from tensorflow.python.autograph.pyct import parser
 from tensorflow.python.autograph.pyct import qual_names
 from tensorflow.python.autograph.pyct import templates
 from tensorflow.python.autograph.pyct import transformer
+from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import tf_inspect
 
 
@@ -104,6 +108,9 @@ def entity_to_graph(o, program_ctx, arg_values, arg_types):
   Raises:
     ValueError: if the entity type is not supported.
   """
+  if program_ctx.options.verbose:
+    logging.info('Converting {}'.format(o))
+
   if tf_inspect.isclass(o):
     node, name, ns = class_to_graph(o, program_ctx)
   elif tf_inspect.isfunction(o):
@@ -144,7 +151,11 @@ def entity_to_graph(o, program_ctx, arg_values, arg_types):
 
   program_ctx.add_to_cache(o, node)
 
-  if program_ctx.recursive:
+  if program_ctx.options.verbose:
+    logging.info('Compiled output of {}:\n\n{}\n'.format(
+        o, compiler.ast_to_source(node)))
+
+  if program_ctx.options.recursive:
     while True:
       candidate = None
       for obj in program_ctx.name_map.keys():
@@ -255,7 +266,9 @@ def _add_self_references(namespace, autograph_module):
     # internal modules.
     ag_internal = imp.new_module('autograph')
     ag_internal.converted_call = autograph_module.converted_call
+    ag_internal.ConversionOptions = converter.ConversionOptions
     ag_internal.utils = utils
+    ag_internal.function_scope = function_wrapping.function_scope
     ag_internal.rewrite_graph_construction_error = (
         errors.rewrite_graph_construction_error)
     # TODO(mdan): Add safeguards against name clashes.
@@ -276,6 +289,7 @@ def function_to_graph(f,
 
   node, source = parser.parse_entity(f)
   node = node.body[0]
+  # TODO(znado): Place inside standard_analysis.
   origin_info.resolve(node, source, f)
   namespace = inspect_utils.getnamespace(f)
   _add_self_references(namespace, program_ctx.autograph_module)
@@ -327,7 +341,9 @@ def node_to_graph(node, context, rewrite_errors=True):
   # TODO(mdan): Is it feasible to reconstruct intermediate source code?
   context.info.source_code = None
 
-  node = converter.apply_(node, context, decorators)
+  if context.program.options.uses(converter.Feature.DECORATORS):
+    node = converter.apply_(node, context, decorators)
+  node = converter.apply_(node, context, arg_defaults)
   node = converter.apply_(node, context, directives)
   node = converter.apply_(node, context, break_statements)
   node = converter.apply_(node, context, asserts)
@@ -335,17 +351,18 @@ def node_to_graph(node, context, rewrite_errors=True):
   # dealing with the extra loop increment operation that the for
   # canonicalization creates.
   node = converter.apply_(node, context, continue_statements)
-  context.info.namespace['len'] = len
   node = converter.apply_(node, context, return_statements)
-  node = converter.apply_(node, context, lists)
-  node = converter.apply_(node, context, slices)
+  if context.program.options.uses(converter.Feature.LISTS):
+    node = converter.apply_(node, context, lists)
+    node = converter.apply_(node, context, slices)
   node = converter.apply_(node, context, builtin_functions)
   node = converter.apply_(node, context, call_trees)
   node = converter.apply_(node, context, control_flow)
   node = converter.apply_(node, context, conditional_expressions)
   node = converter.apply_(node, context, logical_expressions)
-  node = converter.apply_(node, context, side_effect_guards)
-  node = converter.apply_(node, context, name_scopes)
+  if context.program.options.uses(converter.Feature.AUTO_CONTROL_DEPS):
+    node = converter.apply_(node, context, side_effect_guards)
+  node = converter.apply_(node, context, function_scopes)
   if rewrite_errors:
     node = converter.apply_(node, context, error_handlers)
   return node

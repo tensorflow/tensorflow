@@ -46,25 +46,21 @@ Java_org_tensorflow_lite_NativeInterpreterWrapper_allocateTensors(
 
 /*
  *  Class:     org_tensorflow_lite_NativeInterpreterWrapper
- *  Method:    getInputTensor
- *  Signature: (JI)J
+ *  Method:    getInputTensorIndex
+ *  Signature: (JI)I
  */
-JNIEXPORT jlong JNICALL
-Java_org_tensorflow_lite_NativeInterpreterWrapper_getInputTensor(JNIEnv* env,
-                                                                 jclass clazz,
-                                                                 jlong handle,
-                                                                 jint index);
+JNIEXPORT jint JNICALL
+Java_org_tensorflow_lite_NativeInterpreterWrapper_getInputTensorIndex(
+    JNIEnv* env, jclass clazz, jlong handle, jint input_index);
 
 /*
  *  Class:     org_tensorflow_lite_NativeInterpreterWrapper
- *  Method:    getOutputTensor
- *  Signature: (JI)J
+ *  Method:    getOutputTensorIndex
+ *  Signature: (JI)I
  */
-JNIEXPORT jlong JNICALL
-Java_org_tensorflow_lite_NativeInterpreterWrapper_getOutputTensor(JNIEnv* env,
-                                                                  jclass clazz,
-                                                                  jlong handle,
-                                                                  jint index);
+JNIEXPORT jint JNICALL
+Java_org_tensorflow_lite_NativeInterpreterWrapper_getOutputTensorIndex(
+    JNIEnv* env, jclass clazz, jlong handle, jint output_index);
 
 /*
  *  Class:     org_tensorflow_lite_NativeInterpreterWrapper
@@ -116,6 +112,15 @@ Java_org_tensorflow_lite_NativeInterpreterWrapper_useNNAPI(JNIEnv* env,
                                                            jclass clazz,
                                                            jlong handle,
                                                            jboolean state);
+
+/*
+ *  Class:     org_tensorflow_lite_NativeInterpreterWrapper
+ *  Method:
+ *  Signature: (JZ)V
+ */
+JNIEXPORT void JNICALL
+Java_org_tensorflow_lite_NativeInterpreterWrapper_allowFp16PrecisionForFp32(
+    JNIEnv* env, jclass clazz, jlong handle, jboolean allow);
 
 /*
  *  Class:     org_tensorflow_lite_NativeInterpreterWrapper
@@ -217,6 +222,16 @@ JNIEXPORT jboolean JNICALL
 Java_org_tensorflow_lite_NativeInterpreterWrapper_resizeInput(
     JNIEnv* env, jclass clazz, jlong interpreter_handle, jlong error_handle,
     jint input_idx, jintArray dims);
+
+/*
+ *  Class:     org_tensorflow_lite_NativeInterpreterWrapper
+ *  Method:    applyDelegate
+ *  Signature: (JJJ)V
+ */
+JNIEXPORT void JNICALL
+Java_org_tensorflow_lite_NativeInterpreterWrapper_applyDelegate(
+    JNIEnv* env, jclass clazz, jlong interpreter_handle, jlong error_handle,
+    jlong delegate_handle);
 
 /*
  *  Class:     org_tensorflow_lite_NativeInterpreterWrapper

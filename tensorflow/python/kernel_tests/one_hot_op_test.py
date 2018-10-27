@@ -34,7 +34,7 @@ class OneHotTest(test.TestCase):
                   expected_err_re=None,
                   raises=None,
                   **inputs):
-    with self.test_session(use_gpu=use_gpu):
+    with self.cached_session(use_gpu=use_gpu):
       if raises is not None:
         with self.assertRaises(raises):
           array_ops.one_hot(**inputs)

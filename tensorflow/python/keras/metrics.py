@@ -28,6 +28,7 @@ import types
 import weakref
 import six
 
+from tensorflow.python.compat import compat
 from tensorflow.python.eager import context
 from tensorflow.python.eager import function
 from tensorflow.python.framework import dtypes
@@ -71,6 +72,22 @@ def check_is_tensor_or_operation(x, name):
         name, x))
 
 
+def clone_metric(metric):
+  """Returns a clone of the metric if stateful, otherwise returns it as is."""
+  if isinstance(metric, Metric):
+    return metric.__class__.from_config(metric.get_config())
+  return metric
+
+
+def clone_metrics(metrics):
+  """Clones the given metric list/dict."""
+  if metrics is None:
+    return None
+  if isinstance(metrics, dict):
+    return {key: clone_metric(value) for key, value in metrics.items()}
+  return [clone_metric(metric) for metric in metrics]
+
+
 def update_state_wrapper(update_state_fn):
   """Decorator to wrap metric `update_state()` with `add_update()`.
 
@@ -100,7 +117,7 @@ def result_wrapper(result_fn):
   Result computation is an idempotent operation that simply calculates the
   metric value using the state variables.
 
-  If metric state variables are distributed across towers/devices and
+  If metric state variables are distributed across replicas/devices and
   `result()` is requested from the context of one device - This function wraps
   `result()` in a distribution strategy `merge_call()`. With this,
   the metric state variables will be aggregated across devices.
@@ -115,8 +132,8 @@ def result_wrapper(result_fn):
 
   def decorated(metric_obj, *args):
     """Decorated function with merge_call."""
-    tower_context = distribution_strategy_context.get_tower_context()
-    if tower_context is None:  # if in cross tower context already
+    replica_context = distribution_strategy_context.get_replica_context()
+    if replica_context is None:  # if in cross replica context already
       result_t = result_fn(*args)
     else:
       # TODO(psv): Test distribution of metrics using different distribution
@@ -131,8 +148,8 @@ def result_wrapper(result_fn):
         return distribution.unwrap(merge_fn)[0](*args)
 
       # Wrapping result in merge_call. merge_call is used when we want to leave
-      # tower mode and compute a value in cross tower mode.
-      result_t = tower_context.merge_call(merge_fn_wrapper, result_fn, *args)
+      # replica mode and compute a value in cross replica mode.
+      result_t = replica_context.merge_call(merge_fn_wrapper, result_fn, *args)
     check_is_tensor_or_operation(result_t,
                                  'Metric {0}\'s result'.format(metric_obj.name))
     return result_t
@@ -156,20 +173,29 @@ def weakmethod(method):
 
 
 def safe_div(numerator, denominator):
-  """Divides two tensors element-wise, returning 0 if the denominator is <= 0.
+  """Computes a safe divide which returns 0 if the denominator is zero.
+
+  Note that the function contains an additional conditional check that is
+  necessary for avoiding situations where the loss is zero causing NaNs to
+  creep into the gradient computation.
 
   Args:
-    numerator: A `Tensor`.
-    denominator: A `Tensor`, with dtype matching `numerator`.
+    numerator: An arbitrary `Tensor`.
+    denominator: A `Tensor` whose shape matches `numerator` and whose values are
+      assumed to be non-negative.
 
   Returns:
-    0 if `denominator` <= 0, else `numerator` / `denominator`
+    The element-wise value of the numerator divided by the denominator.
   """
-  t = math_ops.truediv(numerator, denominator)
-  zero = array_ops.zeros_like(t, dtype=denominator.dtype)
-  condition = math_ops.greater(denominator, zero)
-  zero = math_ops.cast(zero, t.dtype)
-  return array_ops.where(condition, t, zero)
+  if compat.forward_compatible(2018, 11, 1):
+    return math_ops.div_no_nan(numerator, denominator)
+  return array_ops.where(
+      math_ops.greater(denominator, 0),
+      math_ops.div(numerator,
+                   array_ops.where(
+                       math_ops.equal(denominator, 0),
+                       array_ops.ones_like(denominator), denominator)),
+      array_ops.zeros_like(numerator))
 
 
 def squeeze_or_expand_dimensions(y_pred, y_true, sample_weight):
@@ -199,7 +225,6 @@ def squeeze_or_expand_dimensions(y_pred, y_true, sample_weight):
     # squeeze last dim of `y_pred` or `y_true` if their rank differs by 1
     y_true, y_pred = confusion_matrix.remove_squeezable_dimensions(
         y_true, y_pred)
-    y_pred.get_shape().assert_is_compatible_with(y_true.get_shape())
 
   if sample_weight is None:
     return y_pred, y_true, None
@@ -342,19 +367,14 @@ class Metric(Layer):
       # weak reference. This is to remove reference cycle that is created here.
       # This is not an issue in python versions > 3.
       if context.executing_eagerly():
-        update_state = weakmethod(obj.update_state)
-      else:
-        update_state = function.defun(obj.update_state)
+        obj.update_state = weakmethod(obj.update_state)
       obj.update_state = weakmethod(
-          types.MethodType(update_state_wrapper(update_state), obj))
+          types.MethodType(update_state_wrapper(obj.update_state), obj))
       result = weakmethod(obj.result)
       obj.result = weakmethod(types.MethodType(result_wrapper(result), obj))
     else:
-      # Converting update_state_fn() into a graph function, so that
-      # we can return a single op that performs all of the variable updates.
-      defuned_update_state_fn = function.defun(obj.update_state)
       obj.update_state = types.MethodType(
-          update_state_wrapper(defuned_update_state_fn), obj)
+          update_state_wrapper(obj.update_state), obj)
       obj.result = types.MethodType(result_wrapper(obj.result), obj)
 
     return obj
@@ -475,6 +495,9 @@ class Mean(Metric):
     Args:
       values: Per-example value.
       sample_weight: Optional weighting of each example. Defaults to 1.
+
+    Returns:
+      Update op.
     """
     values = math_ops.cast(values, self._dtype)
     if sample_weight is None:
@@ -501,8 +524,9 @@ class Mean(Metric):
     values = math_ops.reduce_sum(values)
 
     # Update state variables
-    state_ops.assign_add(self.total, values)
-    state_ops.assign_add(self.count, num_values)
+    update_total_op = state_ops.assign_add(self.total, values)
+    update_count_op = state_ops.assign_add(self.count, num_values)
+    return control_flow_ops.group(update_total_op, update_count_op)
 
   def result(self):
     return safe_div(self.total, self.count)
@@ -536,6 +560,9 @@ class MeanMetricWrapper(Mean):
       sample_weight: Optional weighting of each example. Defaults to 1. Can be
         a `Tensor` whose rank is either 0, or the same rank as `y_true`,
         and must be broadcastable to `y_true`.
+
+    Returns:
+      Update op.
     """
     y_true = math_ops.cast(y_true, self._dtype)
     y_pred = math_ops.cast(y_pred, self._dtype)
@@ -543,7 +570,7 @@ class MeanMetricWrapper(Mean):
         y_pred, y_true, sample_weight)
 
     matches = self._fn(y_true, y_pred, **self._fn_kwargs)
-    super(MeanMetricWrapper, self).update_state(
+    return super(MeanMetricWrapper, self).update_state(
         matches, sample_weight=sample_weight)
 
   def get_config(self):
@@ -600,6 +627,23 @@ class CategoricalAccuracy(MeanMetricWrapper):
         categorical_accuracy, name, dtype=dtype)
 
 
+class SparseCategoricalAccuracy(MeanMetricWrapper):
+  """Calculates how often predictions matches integer labels.
+
+  This metric creates two local variables, `total` and `count` that are used to
+  compute the frequency with which `y_pred` matches `y_true`. This frequency is
+  ultimately returned as `sparse categorical accuracy`: an idempotent operation
+  that simply divides `total` by `count`.
+
+  If `sample_weight` is `None`, weights default to 1.
+  Use `sample_weight` of 0 to mask values.
+  """
+
+  def __init__(self, name='sparse_categorical_accuracy', dtype=None):
+    super(SparseCategoricalAccuracy, self).__init__(
+        sparse_categorical_accuracy, name, dtype=dtype)
+
+
 @tf_export('keras.metrics.binary_accuracy')
 def binary_accuracy(y_true, y_pred, threshold=0.5):
   threshold = math_ops.cast(threshold, y_pred.dtype)
@@ -615,14 +659,17 @@ def categorical_accuracy(y_true, y_pred):
       K.floatx())
 
 
+@tf_export('keras.metrics.sparse_categorical_accuracy')
 def sparse_categorical_accuracy(y_true, y_pred):
-  y_true = math_ops.reduce_max(y_true, axis=-1)
+  # If the shape of y_true is (num_samples, 1), squeeze to (num_samples,)
+  if (len(K.int_shape(y_true)) == len(K.int_shape(y_pred))):
+    y_true = array_ops.squeeze(y_true, [-1])
   y_pred = math_ops.argmax(y_pred, axis=-1)
 
-  # If the expected labels are float, we need to cast the int returned by
-  # argmax to compare.
-  if K.dtype(y_true) == K.floatx():
-    y_pred = math_ops.cast(y_pred, K.floatx())
+  # If the predicted output and actual output types don't match, force cast them
+  # to match.
+  if K.dtype(y_pred) != K.dtype(y_true):
+    y_pred = math_ops.cast(y_pred, K.dtype(y_true))
 
   return math_ops.cast(math_ops.equal(y_true, y_pred), K.floatx())
 
@@ -635,11 +682,11 @@ def top_k_categorical_accuracy(y_true, y_pred, k=5):
 
 @tf_export('keras.metrics.sparse_top_k_categorical_accuracy')
 def sparse_top_k_categorical_accuracy(y_true, y_pred, k=5):
-  return K.mean(
-      nn.in_top_k(y_pred,
-                  math_ops.cast(math_ops.reduce_max(y_true, axis=-1), 'int32'),
-                  k),
-      axis=-1)
+  # If the shape of y_true is (num_samples, 1), squeeze to (num_samples,)
+  if (len(K.int_shape(y_true)) == len(K.int_shape(y_pred))):
+    y_true = array_ops.squeeze(y_true, [-1])
+
+  return K.mean(nn.in_top_k(y_pred, math_ops.cast(y_true, 'int32'), k), axis=-1)
 
 # Aliases
 

@@ -27,6 +27,7 @@ limitations under the License.
 #include <memory>
 #include <tuple>
 
+#include "absl/types/span.h"
 #include "tensorflow/stream_executor/device_memory.h"
 #include "tensorflow/stream_executor/lib/array_slice.h"
 #include "tensorflow/stream_executor/lib/status.h"
@@ -67,7 +68,7 @@ enum class DimIndex : int {
 };
 
 // Helper functions to make methods more readable.
-inline int64 GetDim(const std::vector<int64>& data, DimIndex dim) {
+inline int64 GetDim(absl::Span<const int64> data, DimIndex dim) {
   return data.rbegin()[static_cast<int64>(dim)];
 }
 
@@ -447,7 +448,9 @@ class FilterDescriptor {
   }
 
   FilterLayout layout() const { return layout_; }
-  std::vector<int64> input_filter_dims() const { return input_filter_dims_; }
+  absl::Span<const int64> input_filter_dims() const {
+    return input_filter_dims_;
+  }
 
  private:
   int64 output_feature_map_count_;
@@ -578,9 +581,9 @@ class ConvolutionDescriptor {
   int group_count() const { return group_count_; }
   int ndims() const { return ndims_; }
 
-  std::vector<int64> strides() const { return filter_strides_; }
-  std::vector<int64> dilations() const { return dilation_rates_; }
-  std::vector<int64> padding() const { return zero_padding_; }
+  absl::Span<const int64> strides() const { return filter_strides_; }
+  absl::Span<const int64> dilations() const { return dilation_rates_; }
+  absl::Span<const int64> padding() const { return zero_padding_; }
 
  private:
   // Stored as: .. y, x.
@@ -693,9 +696,9 @@ class PoolingDescriptor {
   int64 vertical_stride() const { return GetDim(strides_, DimIndex::Y); }
   int64 horizontal_stride() const { return GetDim(strides_, DimIndex::X); }
   int64 stride(DimIndex dim) const { return GetDim(strides_, dim); }
-  std::vector<int64> window() const { return window_; }
-  std::vector<int64> padding() const { return padding_; }
-  std::vector<int64> strides() const { return strides_; }
+  absl::Span<const int64> window() const { return window_; }
+  absl::Span<const int64> padding() const { return padding_; }
+  absl::Span<const int64> strides() const { return strides_; }
   bool propagate_nans() const { return propagate_nans_; }
 
  private:
@@ -873,7 +876,7 @@ class NormalizeDescriptor {
 
 // Describes a kind of non-linearity (threshold-like mathematical function).
 enum class ActivationMode {
-  kNone,
+  kNone = 0,
   kSigmoid,
   // Rectified linear activation: f(x) = x < 0 ? 0 : x
   kRelu,
@@ -885,6 +888,8 @@ enum class ActivationMode {
   kTanh,
   // Like ReluX, but passes all values in the range [-X,X].
   kBandPass,
+
+  kNumActivationModes,  // Always in the end.
 };
 
 // Returns a string representation of the given activation mode.

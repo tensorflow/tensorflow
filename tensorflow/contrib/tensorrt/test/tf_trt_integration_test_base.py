@@ -30,7 +30,6 @@ from tensorflow.contrib.tensorrt.python import trt_convert
 from tensorflow.contrib.tensorrt.python.ops import trt_engine_op
 # pylint: enable=unused-import
 from tensorflow.core.protobuf import config_pb2
-from tensorflow.core.protobuf import rewriter_config_pb2
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import graph_io
 from tensorflow.python.framework import importer
@@ -50,7 +49,7 @@ RunParams = namedtuple(
 ConversionParams = namedtuple("ConversionParams", [
     "max_batch_size", "max_workspace_size_bytes", "precision_mode",
     "minimum_segment_size", "is_dynamic_op", "maximum_cached_engines",
-    "cached_engine_batches"
+    "cached_engine_batch_sizes", "rewriter_config"
 ])
 
 PRECISION_MODES = ["FP32", "FP16", "INT8"]
@@ -135,11 +134,12 @@ class TfTrtIntegrationTestBase(test_util.TensorFlowTestCase):
             dims[0] for dims in self._GetParamsCached().input_dims if len(dims)
         ]),
         max_workspace_size_bytes=1 << 25,
-        precision_mode=self._ToBytes(run_params.precision_mode),
+        precision_mode=run_params.precision_mode,
         minimum_segment_size=2,
         is_dynamic_op=run_params.dynamic_engine,
         maximum_cached_engines=1,
-        cached_engine_batches=None)
+        cached_engine_batch_sizes=None,
+        rewriter_config=None)
 
   def ShouldRunTest(self, run_params):
     """Whether to run the test."""
@@ -180,11 +180,11 @@ class TfTrtIntegrationTestBase(test_util.TensorFlowTestCase):
 
   def ExpectedAbsoluteTolerance(self, run_params):
     """The absolute tolerance to compare floating point results."""
-    return 1.e-06 if run_params.precision_mode == "FP32" else 1.e-03
+    return 1.e-05 if run_params.precision_mode == "FP32" else 1.e-02
 
   def ExpectedRelativeTolerance(self, run_params):
     """The relative tolerance to compare floating point results."""
-    return 1.e-06 if run_params.precision_mode == "FP32" else 1.e-03
+    return 1.e-05 if run_params.precision_mode == "FP32" else 1.e-02
 
   def _GetParamsCached(self):
     if self._trt_test_params is None:
@@ -201,23 +201,15 @@ class TfTrtIntegrationTestBase(test_util.TensorFlowTestCase):
   def _GetConfigProto(self, run_params, graph_state):
     """Get config proto based on specific settings."""
     if graph_state != GraphState.ORIGINAL and run_params.use_optimizer:
-      rewriter_cfg = rewriter_config_pb2.RewriterConfig()
-      rewriter_cfg.optimizers.extend(["constfold", "layout"])
-      custom_op = rewriter_cfg.custom_optimizers.add()
-      custom_op.name = "TensorRTOptimizer"
-      trt_params = self.GetConversionParams(run_params)
-      custom_op.parameter_map["max_batch_size"].i = trt_params.max_batch_size
-      custom_op.parameter_map["max_workspace_size_bytes"].i = (
-          trt_params.max_workspace_size_bytes)
-      custom_op.parameter_map["precision_mode"].s = trt_params.precision_mode
-      custom_op.parameter_map["minimum_segment_size"].i = (
-          trt_params.minimum_segment_size)
-      custom_op.parameter_map["is_dynamic_op"].b = trt_params.is_dynamic_op
-      custom_op.parameter_map["maximum_cached_engines"].i = (
-          trt_params.maximum_cached_engines)
-      if trt_params.cached_engine_batches:
-        custom_op.parameter_map["cached_engine_batches"].list.i.extend(
-            trt_params.cached_engine_batches)
+      conversion_params = self.GetConversionParams(run_params)
+      rewriter_cfg = trt_convert.tensorrt_rewriter_config(
+          conversion_params.rewriter_config, conversion_params.max_batch_size,
+          conversion_params.max_workspace_size_bytes,
+          conversion_params.precision_mode,
+          conversion_params.minimum_segment_size,
+          conversion_params.is_dynamic_op,
+          conversion_params.maximum_cached_engines,
+          conversion_params.cached_engine_batch_sizes)
 
       graph_options = config_pb2.GraphOptions(rewrite_options=rewriter_cfg)
     else:
@@ -297,18 +289,19 @@ class TfTrtIntegrationTestBase(test_util.TensorFlowTestCase):
   def _GetTrtGraphDef(self, run_params, gdef):
     """Return trt converted graphdef."""
     params = self._GetParamsCached()
-    trt_params = self.GetConversionParams(run_params)
-    logging.info(trt_params)
+    conversion_params = self.GetConversionParams(run_params)
+    logging.info(conversion_params)
     return trt_convert.create_inference_graph(
         input_graph_def=gdef,
         outputs=params.input_names + params.output_names,
-        max_batch_size=trt_params.max_batch_size,
-        max_workspace_size_bytes=trt_params.max_workspace_size_bytes,
-        precision_mode=trt_params.precision_mode,
-        minimum_segment_size=trt_params.minimum_segment_size,
-        is_dynamic_op=trt_params.is_dynamic_op,
-        maximum_cached_engines=trt_params.maximum_cached_engines,
-        cached_engine_batches=trt_params.cached_engine_batches)
+        max_batch_size=conversion_params.max_batch_size,
+        max_workspace_size_bytes=conversion_params.max_workspace_size_bytes,
+        precision_mode=conversion_params.precision_mode,
+        minimum_segment_size=conversion_params.minimum_segment_size,
+        is_dynamic_op=conversion_params.is_dynamic_op,
+        maximum_cached_engines=conversion_params.maximum_cached_engines,
+        cached_engine_batch_sizes=conversion_params.cached_engine_batch_sizes,
+        rewriter_config=conversion_params.rewriter_config)
 
   def _WriteGraph(self, run_params, gdef, graph_state):
     if graph_state == GraphState.ORIGINAL:
@@ -426,6 +419,7 @@ class TfTrtIntegrationTestBase(test_util.TensorFlowTestCase):
     if not self.ShouldRunTest(run_params):
       return
     assert run_params.precision_mode in PRECISION_MODES
+    np.random.seed(12345)
 
     params = self._GetParamsCached()
     input_gdef = params.gdef

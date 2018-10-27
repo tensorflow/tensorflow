@@ -22,11 +22,12 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/container/flat_hash_map.h"
 #include "absl/memory/memory.h"
 #include "tensorflow/compiler/xla/map_util.h"
+#include "tensorflow/compiler/xla/service/fusion_queue.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/lib/gtl/flatmap.h"
 #include "tensorflow/core/platform/logging.h"
 
 namespace xla {
@@ -188,13 +189,20 @@ bool InstructionFusion::EffectivelyAtMostUnary(HloInstruction* hlo) {
 
 bool InstructionFusion::CanFuseOnAllPaths(
     HloInstruction* producer, HloInstruction* consumer,
-    const HloInstructionSet& do_not_duplicate) {
+    const HloInstructionSet& do_not_fuse,
+    absl::flat_hash_map<std::pair<HloInstruction*, HloInstruction*>, bool>*
+        result_cache) {
   if (consumer == producer) {
     return true;
   }
   if (!consumer->IsFusible()) {
     return false;
   }
+  auto cache_it = result_cache->find(std::make_pair(producer, consumer));
+  if (cache_it != result_cache->end()) {
+    return cache_it->second;
+  }
+  bool result = true;
   for (int64 i = 0, e = consumer->operand_count(); i < e; ++i) {
     auto* consumer_operand = consumer->mutable_operand(i);
     // If the operand is not on a path to the producer, it doesn't matter
@@ -202,20 +210,23 @@ bool InstructionFusion::CanFuseOnAllPaths(
     if (!reachability_->IsReachable(producer, consumer_operand)) {
       continue;
     }
-    if (do_not_duplicate.count(consumer_operand) > 0 ||
-        !ShouldFuse(consumer, i)) {
-      return false;
+    if (do_not_fuse.count(consumer_operand) > 0 || !ShouldFuse(consumer, i)) {
+      result = false;
+      break;
     }
     // The producer is reachable from consumer_operand which means we need
     // to be able to fuse consumer_operand into consumer in order for
     // producer to be fusible into consumer on all paths.
     // Perform the recursive step: make sure producer can be fused into
     // consumer_operand on all paths.
-    if (!CanFuseOnAllPaths(producer, consumer_operand, do_not_duplicate)) {
-      return false;
+    if (!CanFuseOnAllPaths(producer, consumer_operand, do_not_fuse,
+                           result_cache)) {
+      result = false;
+      break;
     }
   }
-  return true;
+  result_cache->emplace(std::make_pair(producer, consumer), result);
+  return result;
 }
 
 InstructionFusion::HloInstructionSet
@@ -231,6 +242,8 @@ InstructionFusion::ComputeGloballyUnfusible(
   // fusing operations that require duplication later depending on
   // is_expensive_().
   HloInstructionSet do_not_duplicate;
+  absl::flat_hash_map<std::pair<HloInstruction*, HloInstruction*>, bool>
+      can_fuse_on_all_paths_result_cache;
   for (HloInstruction* consumer : post_order) {
     for (HloInstruction* producer : consumer->operands()) {
       if (do_not_duplicate.count(producer) > 0) {
@@ -286,7 +299,8 @@ InstructionFusion::ComputeGloballyUnfusible(
       // A will be not allowed to be fused into B, as it cannot be fused via
       // all paths.
       if (producer->IsFusible() &&
-          CanFuseOnAllPaths(producer, consumer, do_not_duplicate)) {
+          CanFuseOnAllPaths(producer, consumer, do_not_duplicate,
+                            &can_fuse_on_all_paths_result_cache)) {
         continue;
       }
       do_not_duplicate.insert(producer);
@@ -417,7 +431,7 @@ class ReversePostOrderFusionQueue : public FusionQueue {
 
  private:
   std::vector<HloInstruction*> post_order_;
-  tensorflow::gtl::FlatMap<HloInstruction*, int> post_order_index_;
+  absl::flat_hash_map<HloInstruction*, int> post_order_index_;
 };
 
 }  // namespace

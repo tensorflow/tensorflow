@@ -18,6 +18,7 @@ exports_files(["LICENSE"])
 
 load("//tensorflow:tensorflow.bzl", "cuda_py_test")
 load("//tensorflow:tensorflow.bzl", "py_test")
+load("//tensorflow:tensorflow.bzl", "py_binary")
 load("//tensorflow:tensorflow.bzl", "if_not_windows")
 
 py_library(
@@ -614,7 +615,7 @@ cuda_py_test(
 
 py_test(
     name = "framework_test",
-    size = "small",
+    size = "medium",
     srcs = ["wrappers/framework_test.py"],
     srcs_version = "PY2AND3",
     deps = [

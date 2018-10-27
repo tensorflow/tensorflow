@@ -73,16 +73,32 @@ class PaddingType(enum.Enum):
 
 def _convert_padding_type_to_pad_values(padding_type, lhs_dims, rhs_dims,
                                         window_strides):
-  """Maps PaddingType (VALID or SAME) to pad values (list of pairs of ints)."""
+  """Maps PaddingType or string to pad values (list of pairs of ints)."""
+  if not isinstance(padding_type, (str, PaddingType)):
+    msg = 'padding_type must be str or PaddingType, got {}.'
+    raise TypeError(msg.format(type(padding_type)))
+
+  if isinstance(padding_type, str):
+    if padding_type.upper() == 'VALID':
+      padding_type = PaddingType.VALID
+    elif padding_type.upper() == 'SAME':
+      padding_type = PaddingType.SAME
+    else:
+      msg = 'Unknown padding type string: expected "VALID" or "SAME", got {}.'
+      raise ValueError(msg.format(padding_type))
+
   if padding_type == PaddingType.VALID:
     return [(0, 0)] * len(window_strides)
-
-  out_shape = np.ceil(np.true_divide(lhs_dims, window_strides)).astype(int)
-  pad_sizes = [max((out_size - 1) * stride + filter_size - in_size, 0)
-               for out_size, stride, filter_size, in_size
-               in zip(out_shape, window_strides, rhs_dims, lhs_dims)]
-  return [(pad_size // 2, pad_size - pad_size // 2)
-          for pad_size in pad_sizes]
+  elif padding_type == PaddingType.SAME:
+    out_shape = np.ceil(np.true_divide(lhs_dims, window_strides)).astype(int)
+    pad_sizes = [max((out_size - 1) * stride + filter_size - in_size, 0)
+                 for out_size, stride, filter_size, in_size
+                 in zip(out_shape, window_strides, rhs_dims, lhs_dims)]
+    return [(pad_size // 2, pad_size - pad_size // 2)
+            for pad_size in pad_sizes]
+  else:
+    msg = 'Unexpected PaddingType value: {}'
+    raise ValueError(msg.format(padding_type))
 
 
 _UNARY_OPS = [
@@ -554,8 +570,12 @@ class ComputationBuilder(object):
     self._client = c_api.LocalComputationBuilder(name.encode('utf8'))
     self._parameter_numbering = itertools.count()
 
-  def Build(self):
-    return LocalComputation(self._client.Build(), is_compiled=False)
+  def Build(self, root=None):
+    if root is not None:
+      return LocalComputation(self._client.BuildWithRoot(root),
+                              is_compiled=False)
+    else:
+      return LocalComputation(self._client.Build(), is_compiled=False)
 
   def SetOpMetadata(self, op_metadata):
     """Set metadata for operations that are about to be enqueued."""
@@ -699,6 +719,21 @@ class ComputationBuilder(object):
       A LocalOp representing the added broadcast op.
     """
     return self._client.Broadcast(operand, sizes)
+
+  def BroadcastInDim(self, operand, shape, broadcast_dimensions):
+    """Enqueues a broadcast-in-dimensions operation onto the computation.
+
+    Args:
+      operand: the operand LocalOp to broadcast.
+      shape: tuple of integers, the expected output shape.
+      broadcast_dimensions: tuple of integers identifying which dimensions
+        of the output are to be broadcast into.
+
+    Returns:
+      A LocalOp representing the added broadcast-in-dimensions op.
+    """
+    xla_shape = Shape.array_shape(self.GetShape(operand).element_type(), shape)
+    return self._client.BroadcastInDim(operand, xla_shape, broadcast_dimensions)
 
   def Concatenate(self, operands, dimension):
     """Enqueues a concatenate operation onto the computation.
@@ -995,7 +1030,30 @@ class ComputationBuilder(object):
         window_strides)
     return self._client.ReduceWindowWithGeneralPadding(
         operand, init_value, computation_to_apply.c_local_computation,
-        window_dimensions, window_strides, pads)
+        window_dimensions, window_strides, (), (), pads)
+
+  def ReduceWindowWithGeneralPadding(
+      self, operand, init_value, computation_to_apply, window_dimensions,
+      window_strides, base_dilations, window_dilations, padding):
+    """Enqueues a windowed reduction operation onto the computation.
+
+    Args:
+      operand: reduction operand (LocalOp).
+      init_value: reduction initial value (LocalOp).
+      computation_to_apply: a binary reduction function (Computation).
+      window_dimensions: dimensions of window (sequence of integers).
+      window_strides: strides for window (sequence of integers).
+      base_dilations: dilations for the base (sequence of integers).
+      window_dilations: dilations for window (sequence of integers).
+      padding: length-N array-like of pairs of integers of (low, high) padding.
+
+    Returns:
+      A LocalOp representing the added ReduceWindow op.
+    """
+    return self._client.ReduceWindowWithGeneralPadding(
+        operand, init_value, computation_to_apply.c_local_computation,
+        window_dimensions, window_strides, base_dilations, window_dilations,
+        padding)
 
   def RngNormal(self, mu, sigma, dims):
     """Enqueues an RngNormal operation onto the computation.
@@ -1109,7 +1167,7 @@ class ComputationBuilder(object):
       dimension_numbers = GetDotDimensionsFromLists(dimension_numbers)
     return self._client.DotGeneral(lhs, rhs, dimension_numbers)
 
-  def Conv(self, lhs, rhs, window_strides, padding):
+  def Conv(self, lhs, rhs, window_strides, padding, feature_group_count=1):
     """Enqueues a Conv operation onto the computation.
 
     Args:
@@ -1117,18 +1175,19 @@ class ComputationBuilder(object):
       rhs: LocalOp for the rank N+2 array of kernel weights.
       window_strides: length-N array-like of integer kernel strides.
       padding: PaddingType representing either 'SAME' or 'VALID' padding.
+      feature_group_count: number of feature groups for grouped convolution.
 
     Returns: a LocalOp representing the Conv operation.
     """
     pads = _convert_padding_type_to_pad_values(
         padding, self.GetShape(lhs).dimensions()[2:],
         self.GetShape(rhs).dimensions()[2:], window_strides)
-    dimension_numbers = self._GetConvDimensionNumbers(len(window_strides))
-    return self._client.ConvGeneralDilated(lhs, rhs, window_strides, pads, (),
-                                           (), dimension_numbers)
+    return self.ConvGeneralDilated(
+        lhs, rhs, window_strides, pads, (), (),
+        dimension_numbers=None, feature_group_count=feature_group_count)
 
   def ConvWithGeneralPadding(self, lhs, rhs, window_strides, padding,
-                             lhs_dilation, rhs_dilation):
+                             lhs_dilation, rhs_dilation, feature_group_count=1):
     """Enqueues a ConvWithGeneralPadding operation onto the computation.
 
     Args:
@@ -1138,14 +1197,14 @@ class ComputationBuilder(object):
       padding: length-N array-like of pairs of integers of (low, high) padding.
       lhs_dilation: length-N array-like of dilation factors.
       rhs_dilation: length-N array-like of dilation factors.
+      feature_group_count: number of feature groups for grouped convolution.
 
     Returns:
       A ComputationdataHandle representing the added ConvWithGeneralPadding op.
     """
-    dimension_numbers = self._GetConvDimensionNumbers(len(window_strides))
-    return self._client.ConvGeneralDilated(lhs, rhs, window_strides, padding,
-                                           lhs_dilation, rhs_dilation,
-                                           dimension_numbers)
+    return self.ConvGeneralDilated(
+        lhs, rhs, window_strides, padding, lhs_dilation, rhs_dilation,
+        dimension_numbers=None, feature_group_count=feature_group_count)
 
   def _GetConvDimensionNumbers(self, num_spatial_dims):
     """Create ConvolutionDimensionNumbers proto for convolutions."""
@@ -1163,7 +1222,8 @@ class ComputationBuilder(object):
     return dimension_numbers
 
   def ConvGeneralDilated(self, lhs, rhs, window_strides, padding, lhs_dilation,
-                         rhs_dilation, dimension_numbers):
+                         rhs_dilation, dimension_numbers=None,
+                         feature_group_count=1):
     """Enqueues a ConvGeneralDilated operation onto the computation.
 
     Args:
@@ -1173,10 +1233,11 @@ class ComputationBuilder(object):
       padding: length-N array-like of pairs of integers of (low, high) padding.
       lhs_dilation: length-N array-like of integer dilation factors.
       rhs_dilation: length-N array-like of integer dilation factors.
-      dimension_numbers: either an xla_data_pb2.ConvolutionDimensionNumbers or a
-        triple (lhs_spec, rhs_spec, out_spec) where each element is a string of
-        length N+2 identifying by position (1) batch dimensions in lhs, rhs, and
-        the output with the character 'N', (2) feature dimensions in lhs and the
+      dimension_numbers: optional, either an
+        xla_data_pb2.ConvolutionDimensionNumbers proto instance or a tuple
+        (lhs_spec, rhs_spec, out_spec) where each element is a string of length
+        N+2 identifying by position (1) batch dimensions in lhs, rhs, and the
+        output with the character 'N', (2) feature dimensions in lhs and the
         output with the character 'C', (3) input and output feature dimensions
         in rhs with the characters 'I' and 'O' respectively, and (4) spatial
         dimension correspondences between lhs, rhs, and the output using any
@@ -1189,12 +1250,16 @@ class ComputationBuilder(object):
         spatial dimension character labels according to the order in which the
         labels appear in the rhs_spec string, so that window_strides[0] is
         matched with the dimension corresponding to the first character
-        appearing in rhs_spec that is not 'I' or 'O'.
+        appearing in rhs_spec that is not 'I' or 'O'. By default, use the same
+        dimension numbering as Conv and ConvWithGeneralPadding.
+      feature_group_count: number of feature groups for grouped convolution.
 
     Returns: a LocalOp representing the ConvGenralDilated operation.
     """
-    if not isinstance(dimension_numbers,
-                      xla_data_pb2.ConvolutionDimensionNumbers):
+    if dimension_numbers is None:
+      dimension_numbers = self._GetConvDimensionNumbers(len(window_strides))
+    elif not isinstance(dimension_numbers,
+                        xla_data_pb2.ConvolutionDimensionNumbers):
       lhs_spec, rhs_spec, out_spec = dimension_numbers
       dimension_numbers = xla_data_pb2.ConvolutionDimensionNumbers()
 
@@ -1215,7 +1280,8 @@ class ComputationBuilder(object):
                  key=lambda i: rhs_spec.index(out_spec[i])))
     return self._client.ConvGeneralDilated(lhs, rhs, window_strides, padding,
                                            lhs_dilation, rhs_dilation,
-                                           dimension_numbers)
+                                           dimension_numbers,
+                                           feature_group_count)
 
   def Sort(self, operand, dimension=-1):
     """Enqueues a sort operation onto the computation."""

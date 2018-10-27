@@ -212,6 +212,7 @@ class DetectReturnInUnsupportedControlFlow(gast.NodeVisitor):
 
   def __init__(self):
     self.cant_return = False
+    self.function_level = 0
     super(DetectReturnInUnsupportedControlFlow, self).__init__()
 
   def visit_While(self, node):
@@ -229,6 +230,12 @@ class DetectReturnInUnsupportedControlFlow(gast.NodeVisitor):
     self.generic_visit(node)
     self.cant_return = False
 
+  def visit_FunctionDef(self, node):
+    if not self.function_level:
+      self.function_level += 1
+      self.generic_visit(node)
+      self.function_level -= 1
+
   def visit_Return(self, node):
     if self.cant_return:
       raise ValueError(
@@ -242,12 +249,19 @@ class DetectReturnInConditional(gast.NodeVisitor):
 
   def __init__(self):
     self.cant_return = False
+    self.function_level = 0
     super(DetectReturnInConditional, self).__init__()
 
   def visit_If(self, node):
     self.cant_return = True
     self.generic_visit(node)
     self.cant_return = False
+
+  def visit_FunctionDef(self, node):
+    if not self.function_level:
+      self.function_level += 1
+      self.generic_visit(node)
+      self.function_level -= 1
 
   def visit_Return(self, node):
     if self.cant_return:

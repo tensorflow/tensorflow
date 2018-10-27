@@ -178,14 +178,28 @@ def register_session_run_conversion_functions(
     feed_function_for_partial_run: A callable for specifying tensor values to
       feed when setting up a partial run, which takes a `tensor_type` type
       object as input, and returns a list of Tensors.
+
+  Raises:
+    ValueError: If `tensor_type` has already been registered.
   """
   for conversion_function in _REGISTERED_EXPANSIONS:
     if issubclass(conversion_function[0], tensor_type):
-      raise ValueError('%s has already been registered so ignore it.',
+      raise ValueError('%s has already been registered so ignore it.' %
                        tensor_type)
-      return
+
   _REGISTERED_EXPANSIONS.insert(0, (tensor_type, fetch_function, feed_function,
                                     feed_function_for_partial_run))
+
+
+def _is_attrs_instance(obj):
+  """Returns True if the given obj is an instance of attrs-decorated class."""
+  return getattr(obj.__class__, '__attrs_attrs__', None) is not None
+
+
+def _get_attrs_values(obj):
+  """Returns the list of values from an attrs instance."""
+  attrs = getattr(obj.__class__, '__attrs_attrs__')
+  return [getattr(obj, a.name) for a in attrs]
 
 
 class _FetchMapper(object):
@@ -247,6 +261,8 @@ class _FetchMapper(object):
       return _ListFetchMapper(fetch)
     elif isinstance(fetch, collections.Mapping):
       return _DictFetchMapper(fetch)
+    elif _is_attrs_instance(fetch):
+      return _AttrsFetchMapper(fetch)
     else:
       # Look for a handler in the registered expansions.
       for tensor_type, fetch_fn, _, _ in _REGISTERED_EXPANSIONS:
@@ -396,6 +412,32 @@ class _DictFetchMapper(_FetchMapper):
     for k, m, vi in zip(self._keys, self._mappers, self._value_indices):
       results[k] = m.build_results([values[j] for j in vi])
     return results
+
+
+class _AttrsFetchMapper(_FetchMapper):
+  """Fetch mapper for attrs decorated classes."""
+
+  def __init__(self, fetches):
+    """Creates a _AttrsFetchMapper.
+
+    Args:
+      fetches: An instance of an attrs decorated class.
+    """
+    values = _get_attrs_values(fetches)
+    self._fetch_type = type(fetches)
+    self._mappers = [
+        _FetchMapper.for_fetch(fetch) for fetch in values
+    ]
+    self._unique_fetches, self._value_indices = _uniquify_fetches(self._mappers)
+
+  def unique_fetches(self):
+    return self._unique_fetches
+
+  def build_results(self, values):
+    results = []
+    for m, vi in zip(self._mappers, self._value_indices):
+      results.append(m.build_results([values[j] for j in vi]))
+    return self._fetch_type(*results)
 
 
 class _FetchHandler(object):
@@ -1241,7 +1283,7 @@ class BaseSession(SessionInterface):
   # Old format: [[Node: <node_name> = ...]]
   # New format: [[{{node <node_name>}} = ...]]
   _NODEDEF_NAME_RE = re.compile(
-      r'\[\[(Node: )?(\{\{node )?([^\} ]*)(\}\})?\s*=')
+      r'\[\[(Node: )?(\{\{node )?([^\} ]*)(\}\})?\s*=*')
 
   def _do_run(self, handle, target_list, fetch_list, feed_dict, options,
               run_metadata):
@@ -1429,7 +1471,7 @@ class BaseSession(SessionInterface):
     return BaseSession._Callable(self, callable_options)
 
 
-@tf_export('Session')
+@tf_export(v1=['Session'])
 class Session(BaseSession):
   """A class for running TensorFlow operations.
 
@@ -1584,7 +1626,7 @@ class Session(BaseSession):
     tf_session.TF_Reset(target, containers, config)
 
 
-@tf_export('InteractiveSession')
+@tf_export(v1=['InteractiveSession'])
 class InteractiveSession(BaseSession):
   """A TensorFlow `Session` for use in interactive contexts, such as a shell.
 

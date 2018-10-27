@@ -22,6 +22,7 @@ limitations under the License.
 #include <string>
 
 #include "absl/algorithm/container.h"
+#include "absl/container/flat_hash_set.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
@@ -33,7 +34,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/window_util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/lib/gtl/flatset.h"
 #include "tensorflow/core/lib/math/math_util.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/protobuf.h"
@@ -207,7 +207,7 @@ StatusOr<Shape> InferWindowOutputShape(const Shape& base_shape,
         padded_dilated_base, dilated_window, dim.stride());
   }
 
-  return ShapeUtil::MakeShape(element_type, output_dimensions);
+  return ShapeUtil::MakeValidatedShape(element_type, output_dimensions);
 }
 
 }  // namespace
@@ -577,7 +577,7 @@ Status ValidateDotDimensionNumbers(
   // Check that dimension numbers are unique.
   auto dims_unique = [](absl::Span<const int64> contracting_dims,
                         absl::Span<const int64> batch_dims) -> bool {
-    tensorflow::gtl::FlatSet<int64> dim_set;
+    absl::flat_hash_set<int64> dim_set;
     auto is_unique = [&dim_set](int64 i) -> bool {
       return dim_set.insert(i).second;
     };
@@ -919,6 +919,9 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
   switch (opcode) {
     case HloOpcode::kMaximum:
     case HloOpcode::kMinimum:
+      return InferElementwiseBinaryOpShape(opcode, lhs, rhs,
+                                           broadcast_dimensions);
+
     case HloOpcode::kSubtract:
     case HloOpcode::kAdd:
     case HloOpcode::kAtan2:
@@ -929,6 +932,12 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
     case HloOpcode::kShiftLeft:
     case HloOpcode::kShiftRightArithmetic:
     case HloOpcode::kShiftRightLogical:
+      if (lhs.element_type() == PRED || rhs.element_type() == PRED) {
+        return InvalidArgument(
+            "Expected element type in shape to be arithmetic type for "
+            "operation %s; got PRED.",
+            HloOpcodeString(opcode));
+      }
       return InferElementwiseBinaryOpShape(opcode, lhs, rhs,
                                            broadcast_dimensions);
 
@@ -1029,17 +1038,22 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
     case HloOpcode::kSort: {
       if (operand_shapes.size() == 1) {
         return *operand_shapes[0];
-      } else if (operand_shapes.size() == 2) {
-        if (!ShapeUtil::SameDimensions(*operand_shapes[0],
-                                       *operand_shapes[1])) {
-          return InvalidArgument(
-              "Sort keys and values dimensions must match. "
-              "Keys shape is: %s\n, Values shape is: %s",
-              ShapeUtil::HumanString(*operand_shapes[0]),
-              ShapeUtil::HumanString(*operand_shapes[1]));
+      } else {
+        for (int64 operand = 1; operand < operand_shapes.size(); ++operand) {
+          if (!ShapeUtil::SameDimensions(*operand_shapes[0],
+                                         *operand_shapes[operand])) {
+            return InvalidArgument(
+                "Sort keys and values dimensions must match. "
+                "Keys shape is: %s\n, Values shape (operand index %lld) is: %s",
+                ShapeUtil::HumanString(*operand_shapes[0]), operand,
+                ShapeUtil::HumanString(*operand_shapes[operand]));
+          }
         }
-        return ShapeUtil::MakeTupleShape(
-            {*operand_shapes[0], *operand_shapes[1]});
+        std::vector<Shape> operand_shape_values;
+        for (const Shape* operand_shape : operand_shapes) {
+          operand_shape_values.push_back(*operand_shape);
+        }
+        return ShapeUtil::MakeTupleShape(operand_shape_values);
       }
       return InvalidArgument("Unexpected number of operands for sort");
     }
@@ -1557,6 +1571,11 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
   TF_RETURN_IF_ERROR(ExpectArray(lhs, "lhs of convolution"));
   TF_RETURN_IF_ERROR(ExpectArray(rhs, "rhs of convolution"));
 
+  if (feature_group_count <= 0) {
+    return InvalidArgument(
+        "feature_group_count must be a positive number, got %d",
+        feature_group_count);
+  }
   if (!ShapeUtil::SameElementTypeIgnoringFpPrecision(lhs, rhs)) {
     return InvalidArgument(
         "Convolution with different element types: %s and %s.",
@@ -1566,8 +1585,16 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
       dnums.kernel_spatial_dimensions_size()) {
     return InvalidArgument(
         "Both arguments to convolution must have same number of dimensions.\n"
-        "Window: %s",
-        window.DebugString());
+        "Numbers: %s",
+        dnums.DebugString());
+  }
+
+  if (dnums.input_spatial_dimensions_size() !=
+      dnums.output_spatial_dimensions_size()) {
+    return InvalidArgument(
+        "Both input and output of convolution must have same number of "
+        "dimensions.\nNumbers: %s",
+        dnums.DebugString());
   }
 
   const int num_spatial_dims = dnums.input_spatial_dimensions_size();
@@ -1586,8 +1613,8 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
   }
   if (ShapeUtil::Rank(rhs) != num_dims) {
     return InvalidArgument(
-        "The RHS argument to a convolution should have rank %d; lhs: %s.",
-        num_dims, ShapeUtil::HumanString(lhs));
+        "The RHS argument to a convolution should have rank %d; rhs: %s.",
+        num_dims, ShapeUtil::HumanString(rhs));
   }
   TF_DCHECK_OK(ShapeUtil::ValidateShapeWithOptionalLayout(lhs));
   TF_DCHECK_OK(ShapeUtil::ValidateShapeWithOptionalLayout(rhs));
@@ -1662,13 +1689,15 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
   const int64 kernel_output_features =
       rhs.dimensions(dnums.kernel_output_feature_dimension());
 
-  if (input_features != kernel_input_features * feature_group_count) {
+  if (input_features % feature_group_count != 0 ||
+      input_features / feature_group_count != kernel_input_features) {
     return InvalidArgument(
-        "Expected LHS feature dimension (value %d) to match RHS "
-        "input feature dimension * feature_group_count (value %d); "
+        "Expected LHS feature dimension (value %d) to be a multiple of "
+        "feature_group_count (value %d), and LHS feature dimension / "
+        "feature_group_count = RHS feature dimension (value %d); "
         "got <conv>(%s, %s)\n"
         "Dimension numbers: {%s}.",
-        input_features, kernel_input_features * feature_group_count,
+        input_features, feature_group_count, kernel_input_features,
         ShapeUtil::HumanString(lhs), ShapeUtil::HumanString(rhs),
         dnums.DebugString());
   }
@@ -2336,6 +2365,52 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
   return ShapeUtil::MakeShape(operand.element_type(), dimensions);
 }
 
+/* static */ StatusOr<Shape> ShapeInference::InferBroadcastShape(
+    const Shape& operand_shape, const Shape& output_shape,
+    absl::Span<const int64> broadcast_dimensions) {
+  TF_RETURN_IF_ERROR(ExpectArray(operand_shape, "operand of broadcast"));
+  TF_RETURN_IF_ERROR(ExpectArray(output_shape, "operand of broadcast"));
+  const int64 operand_rank = ShapeUtil::Rank(operand_shape);
+  const int64 output_rank = ShapeUtil::Rank(output_shape);
+  if (operand_rank > output_rank) {
+    return InvalidArgument(
+        "InDim style broadcast must be to an equal or higher ranked shape; "
+        "operand rank: %lld; output rank: %lld",
+        operand_rank, output_rank);
+  }
+  if (operand_rank != broadcast_dimensions.size()) {
+    return InvalidArgument(
+        "Size of broadcast_dimensions has to match operand's rank; operand "
+        "rank: %lld, size of broadcast_dimensions %u.",
+        operand_rank, broadcast_dimensions.size());
+  }
+  for (int64 i = 0; i < operand_rank; i++) {
+    if (broadcast_dimensions[i] < 0 || broadcast_dimensions[i] >= output_rank) {
+      return InvalidArgument("Broadcast dimension %lld is out of bound",
+                             broadcast_dimensions[i]);
+    }
+    if (operand_shape.dimensions(i) !=
+            output_shape.dimensions(broadcast_dimensions[i]) &&
+        operand_shape.dimensions(i) != 1) {
+      return InvalidArgument(
+          "Input dimension should be either 1 or equal to the output dimension "
+          "it's broadcasting into; the %lldth operand dimension is %lld, the "
+          "%lldth output dimension is %lld.",
+          i, operand_shape.dimensions(i), broadcast_dimensions[i],
+          output_shape.dimensions(broadcast_dimensions[i]));
+    }
+    // Make sure the broadcast dimensions are listed in a strictly increasing
+    // order.
+    if (i > 0 && broadcast_dimensions[i - 1] >= broadcast_dimensions[i]) {
+      return InvalidArgument(
+          "Broadcast dimensions order is wrong: %d comes after %d.",
+          broadcast_dimensions[i], broadcast_dimensions.at(i - 1));
+    }
+  }
+
+  return output_shape;
+}
+
 /* static */ StatusOr<Shape> ShapeInference::InferReshapeShape(
     const Shape& operand, absl::Span<const int64> dimensions,
     absl::Span<const int64> new_sizes) {
@@ -2379,7 +2454,9 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
       !std::is_permutation(dimensions.begin(), dimensions.end(),
                            indices.begin())) {
     return InvalidArgument(
-        "Transpose dimensions not a permutation of the operand dimensions.");
+        "Transpose dimensions [%s] are not a permutation of the operand "
+        "dimensions (operand shape is %s).",
+        StrJoin(dimensions, ","), ShapeUtil::HumanString(operand));
   }
 
   // Permute(dimensions,input) computes output[dimensions[i]]=input[i]. However,

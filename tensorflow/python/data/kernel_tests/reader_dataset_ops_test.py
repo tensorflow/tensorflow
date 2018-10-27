@@ -21,6 +21,7 @@ import gzip
 import os
 import zlib
 
+from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import iterator_ops
 from tensorflow.python.data.ops import readers
@@ -46,7 +47,7 @@ except ImportError:
   psutil_import_succeeded = False
 
 
-class TextLineDatasetTest(test.TestCase):
+class TextLineDatasetTest(test_base.DatasetTestBase):
 
   def _lineText(self, f, l):
     return compat.as_bytes("%d: %d" % (f, l))
@@ -199,7 +200,7 @@ class TextLineDatasetTest(test.TestCase):
       self.assertNotIn(filename, [open_file.path for open_file in open_files])
 
 
-class FixedLengthRecordReaderTest(test.TestCase):
+class FixedLengthRecordReaderTest(test_base.DatasetTestBase):
 
   def setUp(self):
     super(FixedLengthRecordReaderTest, self).setUp()
@@ -621,7 +622,7 @@ class FixedLengthRecordReaderTest(test.TestCase):
           sess.run(get_next_op)
 
 
-class TFRecordDatasetTest(test.TestCase):
+class TFRecordDatasetTest(test_base.DatasetTestBase):
 
   def setUp(self):
     super(TFRecordDatasetTest, self).setUp()

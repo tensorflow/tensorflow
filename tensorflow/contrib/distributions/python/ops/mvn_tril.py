@@ -77,13 +77,14 @@ class MultivariateNormalTriL(
   ```
 
   Trainable (batch) lower-triangular matrices can be created with
-  `tf.contrib.distributions.matrix_diag_transform()` and/or
-  `tf.contrib.distributions.fill_triangular()`
+  `tfp.distributions.matrix_diag_transform()` and/or
+  `tfp.distributions.fill_triangular()`
 
   #### Examples
 
   ```python
-  tfd = tf.contrib.distributions
+  import tensorflow_probability as tfp
+  tfd = tfp.distributions
 
   # Initialize a single 3-variate Gaussian.
   mu = [1., 2, 3]

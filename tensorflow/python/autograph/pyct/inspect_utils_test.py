@@ -19,9 +19,11 @@ from __future__ import division
 from __future__ import print_function
 
 from functools import wraps
+import imp
 
 import six
 
+from tensorflow.python import lib
 from tensorflow.python.autograph.pyct import inspect_utils
 from tensorflow.python.platform import test
 
@@ -126,6 +128,32 @@ class InspectUtilsTest(test.TestCase):
     self.assertEqual(ns['closed_over_list'], closed_over_list)
     self.assertEqual(ns['closed_over_primitive'], closed_over_primitive)
     self.assertTrue('local_var' not in ns)
+
+  def test_getqualifiedname(self):
+    foo = object()
+    qux = imp.new_module('quxmodule')
+    bar = imp.new_module('barmodule')
+    baz = object()
+    bar.baz = baz
+
+    ns = {
+        'foo': foo,
+        'bar': bar,
+        'qux': qux,
+    }
+
+    self.assertIsNone(inspect_utils.getqualifiedname(ns, inspect_utils))
+    self.assertEqual(inspect_utils.getqualifiedname(ns, foo), 'foo')
+    self.assertEqual(inspect_utils.getqualifiedname(ns, bar), 'bar')
+    self.assertEqual(inspect_utils.getqualifiedname(ns, baz), 'bar.baz')
+
+  def test_getqualifiedname_finds_via_parent_module(self):
+    # TODO(mdan): This test is vulnerable to change in the lib module.
+    # A better way to forge modules should be found.
+    self.assertEqual(
+        inspect_utils.getqualifiedname(
+            lib.__dict__, lib.io.file_io.FileIO, max_depth=1),
+        'io.file_io.FileIO')
 
   def test_getmethodclass(self):
 
@@ -271,6 +299,38 @@ class InspectUtilsTest(test.TestCase):
     self.assertTrue(inspect_utils.isbuiltin(int))
     self.assertTrue(inspect_utils.isbuiltin(len))
     self.assertFalse(inspect_utils.isbuiltin(function_decorator))
+
+  def test_super_wrapper_for_dynamic_attrs(self):
+
+    a = object()
+    b = object()
+
+    class Base(object):
+
+      def __init__(self):
+        self.a = a
+
+    class Subclass(Base):
+
+      def __init__(self):
+        super(Subclass, self).__init__()
+        self.b = b
+
+    base = Base()
+    sub = Subclass()
+
+    sub_super = super(Subclass, sub)
+    sub_super_wrapped = inspect_utils.SuperWrapperForDynamicAttrs(sub_super)
+
+    self.assertIs(base.a, a)
+    self.assertIs(sub.a, a)
+
+    self.assertFalse(hasattr(sub_super, 'a'))
+    self.assertIs(sub_super_wrapped.a, a)
+
+    # TODO(mdan): Is this side effect harmful? Can it be avoided?
+    # Note that `b` was set in `Subclass.__init__`.
+    self.assertIs(sub_super_wrapped.b, b)
 
 
 if __name__ == '__main__':

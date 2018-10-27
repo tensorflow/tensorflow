@@ -95,7 +95,7 @@ class ReshapeOp : public XlaOpKernel {
   }
 };
 
-REGISTER_XLA_OP(Name("Reshape").CompileTimeConstInput("shape"), ReshapeOp);
+REGISTER_XLA_OP(Name("Reshape").CompileTimeConstantInput("shape"), ReshapeOp);
 
 }  // namespace
 }  // namespace tensorflow

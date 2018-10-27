@@ -29,7 +29,7 @@ SparseIndexArray::SparseIndexArray(int64 max_indices, int64 rank,
   CHECK_GT(rank_, 0);
   CHECK_EQ(indices_.size() % rank_, 0)
       << "indices_.size(): " << indices_.size() << ", rank_: " << rank_;
-  CHECK_LT(index_count(), max_indices_);
+  CHECK_LE(index_count(), max_indices_);
 }
 
 SparseIndexArray::SparseIndexArray(int64 max_indices, int64 rank,

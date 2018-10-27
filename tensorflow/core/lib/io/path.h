@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_CORE_LIB_IO_PATH_H_
 
 #include "tensorflow/core/lib/core/stringpiece.h"
+#include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
 namespace io {

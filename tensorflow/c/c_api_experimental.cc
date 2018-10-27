@@ -17,12 +17,14 @@ limitations under the License.
 
 #include "tensorflow/c/c_api_internal.h"
 #include "tensorflow/compiler/jit/legacy_flags/mark_for_compilation_pass_flags.h"
+#include "tensorflow/core/common_runtime/eager/attr_builder.h"
 #include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/graph/node_builder.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/platform.h"
 #include "tensorflow/core/protobuf/config.pb.h"
+#include "tensorflow/core/protobuf/tensorflow_server.pb.h"
 
 using tensorflow::FunctionDef;
 using tensorflow::Node;
@@ -8508,6 +8510,20 @@ void TF_EnqueueNamedTensor(TF_Session* session, int tensor_id,
   VLOG(1) << "Enqueuing is done.";
 }
 
+TF_Buffer* TFE_GetServerDef(const char* text_proto, TF_Status* status) {
+  tensorflow::ServerDef server_def;
+  if (!tensorflow::protobuf::TextFormat::ParseFromString(text_proto,
+                                                         &server_def)) {
+    status->status = tensorflow::errors::Internal(
+        "Invalid text proto for ServerDef: ", text_proto);
+    return nullptr;
+  }
+  status->status = tensorflow::Status();
+  TF_Buffer* ret = TF_NewBuffer();
+  TF_CHECK_OK(MessageToBuffer(server_def, ret));
+  return ret;
+}
+
 TFE_Context* TFE_CreateContextFromSession(TF_Session* session,
                                           TF_Status* status) {
   auto* opts = TFE_NewContextOptions();
@@ -8704,4 +8720,58 @@ TFE_TensorHandle* TFE_DequeueVariantTensor(TF_Session* session, int tensor_id,
       queue_deleter(queue, TFE_DeleteTensorHandle);
 
   return createTFEDequeue(ctx, TF_VARIANT, queue, status);
+}
+
+static void CheckOk(TF_Status* status) {
+  CHECK_EQ(TF_GetCode(status), TF_OK) << TF_Message(status);
+}
+
+void TFE_TensorHandlePrintDebugString(TFE_TensorHandle* handle) {
+  auto* status = TF_NewStatus();
+  TF_Tensor* t = TFE_TensorHandleResolve(handle, status);
+  CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+
+  tensorflow::Tensor dst;
+  TF_CHECK_OK(TF_TensorToTensor(t, &dst));
+  LOG(INFO) << dst.DebugString();
+
+  TF_DeleteTensor(t);
+  TF_DeleteStatus(status);
+}
+
+TF_CAPI_EXPORT extern void TF_MakeInternalErrorStatus(TF_Status* status,
+                                                      const char* errMsg) {
+  status->status = tensorflow::errors::Internal(errMsg);
+}
+
+// This builder is used in the eager API to build a NodeDef.
+struct TF_AttrBuilder : public tensorflow::AttrBuilder {
+  using tensorflow::AttrBuilder::AttrBuilder;
+};
+
+TF_AttrBuilder* TF_NewAttrBuilder(const char* op_name) {
+  return new TF_AttrBuilder(op_name);
+}
+
+void TF_DeleteAttrBuilder(TF_AttrBuilder* builder) { delete builder; }
+
+void TF_AttrBuilderSetType(TF_AttrBuilder* builder, const char* attr_name,
+                           TF_DataType value) {
+  builder->Set(attr_name, static_cast<tensorflow::DataType>(value));
+}
+
+void TF_AttrBuilderSetTypeList(TF_AttrBuilder* builder, const char* attr_name,
+                               const TF_DataType* values, int num_values) {
+  builder->Set(
+      attr_name,
+      tensorflow::gtl::ArraySlice<const tensorflow::DataType>(
+          reinterpret_cast<const tensorflow::DataType*>(values), num_values));
+}
+
+void TF_AttrBuilderCheckCanRunOnDevice(TF_AttrBuilder* builder,
+                                       const char* device_type,
+                                       TF_Status* status) {
+  status->status = tensorflow::FindKernelDef(
+      tensorflow::DeviceType(device_type), builder->BuildNodeDef(),
+      /* def = */ nullptr, /* kernel_class_name = */ nullptr);
 }

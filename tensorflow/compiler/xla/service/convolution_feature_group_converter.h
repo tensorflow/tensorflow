@@ -25,7 +25,7 @@ namespace xla {
 
 // A pass which rewrites convolutions with feature_group_count > 1 into
 // convolutions with feature_group_count = 1.
-class ConvolutionFeatureGroupConverter : public HloPassInterface {
+class ConvolutionFeatureGroupConverter : public HloModulePass {
  public:
   ConvolutionFeatureGroupConverter() {}
 

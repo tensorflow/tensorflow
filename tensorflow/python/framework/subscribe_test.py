@@ -212,8 +212,8 @@ class SubscribeTest(test_util.TensorFlowTestCase):
 
   def testSubscribeVariable(self):
     """Confirm that variables can be subscribed."""
-    v1 = variables.Variable(0.0)
-    v2 = variables.Variable(4.0)
+    v1 = variables.VariableV1(0.0)
+    v2 = variables.VariableV1(4.0)
     add = math_ops.add(v1, v2)
     assign_v1 = v1.assign(3.0)
 

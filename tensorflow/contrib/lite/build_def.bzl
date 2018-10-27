@@ -108,6 +108,7 @@ def tflite_jni_binary(
         linkscript = LINKER_SCRIPT,
         linkshared = 1,
         linkstatic = 1,
+        testonly = 0,
         deps = []):
     """Builds a jni binary for TFLite."""
     linkopts = linkopts + [
@@ -121,6 +122,7 @@ def tflite_jni_binary(
         linkstatic = linkstatic,
         deps = deps + [linkscript],
         linkopts = linkopts,
+        testonly = testonly,
     )
 
 def tflite_cc_shared_object(
@@ -212,7 +214,8 @@ def json_to_tflite(name, src, out):
 
 # This is the master list of generated examples that will be made into tests. A
 # function called make_XXX_tests() must also appear in generate_examples.py.
-# Disable a test by commenting it out. If you do, add a link to a bug or issue.
+# Disable a test by adding it to the blacklists specified in
+# generated_test_models_failing().
 def generated_test_models():
     return [
         "add",
@@ -232,6 +235,7 @@ def generated_test_models():
         "expand_dims",
         "floor",
         "floor_div",
+        "floor_mod",
         "fully_connected",
         "fused_batch_norm",
         "gather",
@@ -263,6 +267,7 @@ def generated_test_models():
         "padv2",
         "prelu",
         "pow",
+        "range",
         "reduce_any",
         "reduce_max",
         "reduce_min",
@@ -275,7 +280,7 @@ def generated_test_models():
         "rsqrt",
         "shape",
         "sigmoid",
-        "sin",
+        #"sin", # b/118502200
         "slice",
         "softmax",
         "space_to_batch_nd",
@@ -291,31 +296,58 @@ def generated_test_models():
         "tile",
         "topk",
         "transpose",
-        #"transpose_conv",   # disabled due to b/111213074
+        "transpose_conv",
         "unpack",
         "where",
+        "zeros_like",
     ]
+
+# List of models that fail generated tests for the conversion mode.
+# If you have to disable a test, please add here with a link to the appropriate
+# bug or issue.
+def generated_test_models_failing(conversion_mode):
+    if conversion_mode == "toco-flex":
+        # TODO(b/117328698): Fix and enable the known flex failures.
+        return [
+            "lstm",
+            "split",
+            "unpack",
+        ]
+
+    return []
 
 def generated_test_conversion_modes():
     """Returns a list of conversion modes."""
 
     # TODO(nupurgarg): Add "pb2lite" when it's in open source. b/113614050.
-    return ["toco-extended", ""]
+    return ["toco-flex", ""]
 
 def generated_test_models_all():
     """Generates a list of all tests with the different converters.
 
     Returns:
-      List of tuples representing (conversion mode, name of test).
+      List of tuples representing:
+            (conversion mode, name of test, test tags, test args).
     """
     conversion_modes = generated_test_conversion_modes()
     tests = generated_test_models()
     options = []
     for conversion_mode in conversion_modes:
+        failing_tests = generated_test_models_failing(conversion_mode)
         for test in tests:
+            tags = []
+            args = []
+            if test in failing_tests:
+                tags.append("notap")
+                tags.append("manual")
             if conversion_mode:
                 test += "_%s" % conversion_mode
-            options.append((conversion_mode, test))
+
+            # Flex conversion shouldn't suffer from the same conversion bugs
+            # listed for the default TFLite kernel backend.
+            if conversion_mode == "toco-flex":
+                args.append("--ignore_known_bugs=false")
+            options.append((conversion_mode, test, tags, args))
     return options
 
 def gen_zip_test(name, test_name, conversion_mode, **kwargs):
@@ -334,14 +366,7 @@ def gen_zip_test(name, test_name, conversion_mode, **kwargs):
         # TODO(nupurgarg): Comment in when pb2lite is in open source. b/113614050.
         # if conversion_mode == "pb2lite":
         #     toco = "//tensorflow/contrib/lite/experimental/pb2lite:pb2lite"
-        flags = "--ignore_toco_errors --run_with_extended"
-        kwargs["tags"].append("skip_already_failing")
-        kwargs["tags"].append("no_oss")
-
-        # TODO(b/115504899): Re-enable asan, msan and tsan tests.
-        kwargs["tags"].append("noasan")
-        kwargs["tags"].append("nomsan")
-        kwargs["tags"].append("notsan")
+        flags = "--ignore_toco_errors --run_with_flex"
 
     gen_zipped_test_file(
         name = "zip_%s" % test_name,
@@ -394,3 +419,42 @@ def gen_selected_ops(name, model):
               (tool, model, out, tflite_path[2:]),
         tools = [tool],
     )
+
+def gen_model_coverage_test(model_name, data, failure_type):
+    """Generates Python test targets for testing TFLite models.
+
+    Args:
+      model_name: Name of the model to test (must be also listed in the 'data'
+        dependencies)
+      data: List of BUILD targets linking the data.
+      failure_type: List of failure types (none, toco, crash, inference)
+        expected for the corresponding combinations of op sets
+        ("TFLITE_BUILTINS", "TFLITE_BUILTINS,SELECT_TF_OPS", "SELECT_TF_OPS").
+    """
+    i = 0
+    for target_op_sets in ["TFLITE_BUILTINS", "TFLITE_BUILTINS,SELECT_TF_OPS", "SELECT_TF_OPS"]:
+        args = []
+        if failure_type[i] != "none":
+            args.append("--failure_type=%s" % failure_type[i])
+        i = i + 1
+        native.py_test(
+            name = "model_coverage_test_%s_%s" % (model_name, target_op_sets.lower().replace(",", "_")),
+            srcs = ["model_coverage_test.py"],
+            main = "model_coverage_test.py",
+            args = [
+                "--model_name=%s" % model_name,
+                "--target_ops=%s" % target_op_sets,
+            ] + args,
+            data = data,
+            srcs_version = "PY2AND3",
+            tags = [
+                "no_oss",
+                "no_windows",
+                "notap",
+            ],
+            deps = [
+                "//tensorflow/contrib/lite/testing/model_coverage:model_coverage_lib",
+                "//tensorflow/contrib/lite/python:lite",
+                "//tensorflow/python:client_testlib",
+            ],
+        )

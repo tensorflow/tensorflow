@@ -21,6 +21,7 @@ import functools
 import os
 import warnings
 
+from absl.testing import parameterized
 import numpy as np
 
 from tensorflow.core.protobuf import cluster_pb2
@@ -30,12 +31,14 @@ from tensorflow.python.compat import compat as forward_compat
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import iterator_ops
 from tensorflow.python.data.ops import readers
+from tensorflow.python.data.util import structure
 from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import function
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import functional_ops
@@ -53,7 +56,7 @@ from tensorflow.python.training.checkpointable import util as checkpointable_uti
 from tensorflow.python.util import compat
 
 
-class IteratorTest(test.TestCase):
+class IteratorTest(test.TestCase, parameterized.TestCase):
 
   def testNoGradients(self):
     component = constant_op.constant([1.])
@@ -148,9 +151,9 @@ class IteratorTest(test.TestCase):
     #
     # The test below would fail if cname were the same across both
     # sessions.
-    for i in range(2):
+    for j in range(2):
       with session.Session(server.target) as sess:
-        cname = "iteration%d" % i
+        cname = "iteration%d" % j
         with ops.container(cname):
           get_next = within_container()
 
@@ -573,7 +576,7 @@ class IteratorTest(test.TestCase):
           f=_remote_fn,
           target=target_placeholder)
 
-    with self.test_session(config=worker_config) as sess:
+    with self.session(config=worker_config) as sess:
       elem = sess.run(
           remote_op,
           feed_dict={
@@ -779,8 +782,8 @@ class IteratorTest(test.TestCase):
         iterator.get_next()
     self.assertEqual(100 - iterator_ops.GET_NEXT_CALL_WARNING_THRESHOLD, len(w))
     for warning in w:
-      self.assertTrue(
-          iterator_ops.GET_NEXT_CALL_WARNING_MESSAGE in str(warning.message))
+      self.assertIn(
+          iterator_ops.GET_NEXT_CALL_WARNING_MESSAGE, str(warning.message))
 
   def testEagerIteratorAsync(self):
     with context.eager_mode(), context.execution_mode(context.ASYNC):
@@ -789,6 +792,49 @@ class IteratorTest(test.TestCase):
       for foo in dataset:
         self.assertEqual(val, foo.numpy())
         val += 1
+
+  # pylint: disable=g-long-lambda
+  @parameterized.named_parameters(
+      ("Tensor", lambda: constant_op.constant(37.0),
+       structure.TensorStructure(dtypes.float32, []),
+       ops.Tensor, dtypes.float32, []),
+      ("SparseTensor", lambda: sparse_tensor.SparseTensor(
+          indices=[[0]], values=constant_op.constant([0], dtype=dtypes.int32),
+          dense_shape=[1]),
+       structure.SparseTensorStructure(dtypes.int32, [1]),
+       sparse_tensor.SparseTensor, dtypes.int32, [1]),
+      ("Nest", lambda: {
+          "a": constant_op.constant(37.0),
+          "b": (constant_op.constant(["Foo"]), constant_op.constant("Bar"))},
+       structure.NestedStructure({
+           "a": structure.TensorStructure(dtypes.float32, []),
+           "b": (structure.TensorStructure(dtypes.string, [1]),
+                 structure.TensorStructure(dtypes.string, []))}),
+       {"a": ops.Tensor, "b": (ops.Tensor, ops.Tensor)},
+       {"a": dtypes.float32, "b": (dtypes.string, dtypes.string)},
+       {"a": [], "b": ([1], [])}),
+  )
+  def testIteratorStructure(self, tf_value_fn, expected_element_structure,
+                            expected_output_classes, expected_output_types,
+                            expected_output_shapes):
+    tf_value = tf_value_fn()
+    iterator = dataset_ops.Dataset.from_tensors(
+        tf_value).make_one_shot_iterator()
+
+    self.assertTrue(expected_element_structure.is_compatible_with(
+        iterator._element_structure))
+    self.assertTrue(iterator._element_structure.is_compatible_with(
+        expected_element_structure))
+
+    self.assertEqual(expected_output_classes, iterator.output_classes)
+    self.assertEqual(expected_output_types, iterator.output_types)
+    self.assertEqual(expected_output_shapes, iterator.output_shapes)
+
+  def testIteratorGetNextName(self):
+    with ops.Graph().as_default():
+      iterator = dataset_ops.Dataset.from_tensors(37.0).make_one_shot_iterator()
+      next_element = iterator.get_next(name="overridden_name")
+      self.assertEqual("overridden_name", next_element.op.name)
 
 
 class IteratorCheckpointingTest(test.TestCase):

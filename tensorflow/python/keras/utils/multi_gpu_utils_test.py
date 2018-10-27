@@ -48,7 +48,7 @@ class TestMultiGPUModel(test.TestCase):
     if not check_if_compatible_devices(gpus=gpus):
       return
 
-    with self.test_session():
+    with self.cached_session():
       model = keras.models.Sequential()
       model.add(keras.layers.Dense(hidden_dim,
                                    input_shape=(input_dim,)))
@@ -78,7 +78,7 @@ class TestMultiGPUModel(test.TestCase):
     if not check_if_compatible_devices(gpus=gpus):
       return
 
-    with self.test_session():
+    with self.cached_session():
       input_a = keras.Input((input_dim_a,))
       input_b = keras.Input((input_dim_b,))
       a = keras.layers.Dense(hidden_dim)(input_a)
@@ -105,7 +105,7 @@ class TestMultiGPUModel(test.TestCase):
     if not check_if_compatible_devices(gpus=2):
       return
 
-    with self.test_session():
+    with self.cached_session():
       input_shape = (1000, 10)
       model = keras.models.Sequential()
       model.add(keras.layers.Dense(10,
@@ -144,7 +144,7 @@ class TestMultiGPUModel(test.TestCase):
     if not check_if_compatible_devices(gpus=gpus):
       return
 
-    with self.test_session():
+    with self.cached_session():
       input_shape = (num_samples,) + shape
       x_train = np.random.randint(0, 255, input_shape)
       y_train = np.random.randint(0, num_classes, (input_shape[0],))
@@ -186,7 +186,7 @@ class TestMultiGPUModel(test.TestCase):
     if not check_if_compatible_devices(gpus=gpus):
       return
 
-    with self.test_session():
+    with self.cached_session():
       inputs = keras.Input((4, 3))
       init_state = keras.Input((3,))
       outputs = keras.layers.SimpleRNN(
@@ -197,6 +197,32 @@ class TestMultiGPUModel(test.TestCase):
       parallel_model = keras.utils.multi_gpu_model(model, gpus=gpus)
       parallel_model.compile(loss='mean_squared_error', optimizer='adam')
       parallel_model.train_on_batch(x, y)
+
+  def test_multi_gpu_with_siamese_network(self):
+    gpus = 2
+
+    if not check_if_compatible_devices(gpus=gpus):
+      return
+
+    with self.cached_session():
+      input_shape = (3,)
+      nested_model = keras.models.Sequential([
+          keras.layers.Dense(32, input_shape=input_shape),
+          keras.layers.Dense(1)
+      ], name='nested')
+
+      input1 = keras.Input(input_shape)
+      input2 = keras.Input(input_shape)
+      score1 = nested_model(input1)
+      score2 = nested_model(input2)
+      score_sum = keras.layers.Add(name='add')([score1, score2])
+
+      siamese = keras.models.Model(inputs=[input1, input2],
+                                   outputs=[score_sum, score1, score2],
+                                   name='siamese')
+      parallel_siamese = keras.utils.multi_gpu_model(siamese, gpus)
+      self.assertEqual(parallel_siamese.output_names,
+                       ['add', 'nested_1', 'nested_2'])
 
 if __name__ == '__main__':
   test.main()

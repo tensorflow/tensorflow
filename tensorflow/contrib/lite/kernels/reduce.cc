@@ -215,7 +215,7 @@ TfLiteStatus PrepareAny(TfLiteContext* context, TfLiteNode* node) {
   return PrepareSimple(context, node);
 }
 
-TfLiteStatus PrepareMean(TfLiteContext* context, TfLiteNode* node) {
+TfLiteStatus PrepareMeanOrSum(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE_OK(context, PrepareSimple(context, node));
 
   // reduce_mean requires a buffer to store intermediate sum result.
@@ -274,7 +274,7 @@ TfLiteStatus EvalMean(TfLiteContext* context, TfLiteNode* node) {
         } else {
           TF_LITE_ENSURE(
               context,
-              reference_ops::Mean<>(
+              reference_ops::QuantizedMeanOrSum<>(
                   GetTensorData<uint8_t>(op_context.input),
                   op_context.input->params.zero_point,
                   op_context.input->params.scale, op_context.input->dims->data,
@@ -286,7 +286,7 @@ TfLiteStatus EvalMean(TfLiteContext* context, TfLiteNode* node) {
                   GetTensorData<int>(op_context.axis), num_axis,
                   op_context.params->keep_dims, GetTensorData<int>(temp_index),
                   GetTensorData<int>(resolved_axis),
-                  GetTensorData<int>(temp_sum)));
+                  GetTensorData<int>(temp_sum), /*compute_sum=*/false));
         }
         break;
       default:
@@ -416,19 +416,57 @@ TfLiteStatus EvalGeneric(TfLiteContext* context, TfLiteNode* node) {
   }
 }
 
+TfLiteStatus EvalSum(TfLiteContext* context, TfLiteNode* node) {
+  OpContext op_context(context, node);
+  const auto& input = op_context.input;
+  const auto& output = op_context.output;
+  if (input->type != kTfLiteUInt8 ||
+      (input->params.scale == output->params.scale &&
+       input->params.zero_point == output->params.zero_point)) {
+    return EvalGeneric<kReference, kSum>(context, node);
+  } else {
+    // Rescaling 8bit reduce sum.
+    int num_axis = static_cast<int>(NumElements(op_context.axis));
+    TfLiteTensor* temp_index = GetTemporary(context, node, /*index=*/0);
+    TfLiteTensor* resolved_axis = GetTemporary(context, node, /*index=*/1);
+    TfLiteTensor* temp_sum = GetTemporary(context, node, /*index=*/2);
+    // Resize the output tensor if the output tensor is dynamic.
+    if (IsDynamicTensor(op_context.output)) {
+      TF_LITE_ENSURE_OK(context,
+                        ResizeTempAxis(context, &op_context, resolved_axis));
+      TF_LITE_ENSURE_OK(context, ResizeOutputTensor(context, &op_context));
+      TF_LITE_ENSURE_OK(context, ResizeTempSum(context, &op_context, temp_sum));
+    }
+
+    TF_LITE_ENSURE(
+        context,
+        reference_ops::QuantizedMeanOrSum<>(
+            GetTensorData<uint8_t>(op_context.input),
+            op_context.input->params.zero_point, op_context.input->params.scale,
+            op_context.input->dims->data, op_context.input->dims->size,
+            GetTensorData<uint8_t>(op_context.output),
+            op_context.output->params.zero_point,
+            op_context.output->params.scale, op_context.output->dims->data,
+            op_context.output->dims->size, GetTensorData<int>(op_context.axis),
+            num_axis, op_context.params->keep_dims,
+            GetTensorData<int>(temp_index), GetTensorData<int>(resolved_axis),
+            GetTensorData<int32>(temp_sum), /*compute_sum=*/true));
+  }
+
+  return kTfLiteOk;
+}
 }  // namespace reduce
 
 TfLiteRegistration* Register_MEAN_REF() {
   static TfLiteRegistration r = {reduce::Init, reduce::Free,
-                                 reduce::PrepareMean,
+                                 reduce::PrepareMeanOrSum,
                                  reduce::EvalMean<reduce::kReference>};
   return &r;
 }
 
 TfLiteRegistration* Register_SUM_REF() {
-  static TfLiteRegistration r = {
-      reduce::Init, reduce::Free, reduce::PrepareSimple,
-      reduce::EvalGeneric<reduce::kReference, reduce::kSum>};
+  static TfLiteRegistration r = {reduce::Init, reduce::Free,
+                                 reduce::PrepareMeanOrSum, reduce::EvalSum};
   return &r;
 }
 

@@ -45,6 +45,20 @@ class ListTest(test.TestCase):
     with self.cached_session() as sess:
       self.assertAllEqual(sess.run(t), [3, 4, 5])
 
+  def test_tf_tensor_list_new_empty(self):
+    l = data_structures.tf_tensor_list_new([],
+                                           element_dtype=dtypes.int32,
+                                           element_shape=())
+    t = list_ops.tensor_list_stack(l, element_dtype=dtypes.int32)
+    with self.cached_session() as sess:
+      self.assertAllEqual(sess.run(t), [])
+
+  def test_tf_tensor_list_new_from_tensor(self):
+    l = data_structures.tf_tensor_list_new(constant_op.constant([3, 4, 5]))
+    t = list_ops.tensor_list_stack(l, element_dtype=dtypes.int32)
+    with self.cached_session() as sess:
+      self.assertAllEqual(sess.run(t), [3, 4, 5])
+
   def test_tf_tensor_list_new_illegal_input(self):
     with self.assertRaises(ValueError):
       data_structures.tf_tensor_list_new([3, 4.0])
@@ -56,9 +70,8 @@ class ListTest(test.TestCase):
     with self.assertRaises(ValueError):
       data_structures.tf_tensor_list_new([3, 4], element_shape=(2,))
     with self.assertRaises(ValueError):
-      data_structures.tf_tensor_list_new([], element_shape=(2,))
-    with self.assertRaises(ValueError):
-      data_structures.tf_tensor_list_new([], element_dtype=dtypes.float32)
+      data_structures.tf_tensor_list_new(
+          constant_op.constant([1, 2, 3]), element_shape=[1])
 
   def test_tf_tensor_array_new(self):
     l = data_structures.tf_tensor_array_new([3, 4, 5])
@@ -140,6 +153,18 @@ class ListTest(test.TestCase):
     with self.cached_session() as sess:
       t = data_structures.list_stack(l, opts)
       self.assertAllEqual(sess.run(t), sess.run(initial_list))
+
+  def test_stack_tensor_list_empty(self):
+    l = list_ops.empty_tensor_list(
+        element_shape=-1,
+        element_dtype=dtypes.variant)
+
+    opts = data_structures.ListStackOpts(
+        element_dtype=dtypes.int32, original_call=None)
+
+    # TODO(mdan): Allow stacking empty lists if the dtype and shape are known.
+    with self.assertRaises(ValueError):
+      data_structures.list_stack(l, opts)
 
   def test_stack_fallback(self):
 

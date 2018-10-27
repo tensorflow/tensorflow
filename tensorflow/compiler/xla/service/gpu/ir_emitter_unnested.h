@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_SERVICE_GPU_IR_EMITTER_UNNESTED_H_
 
 #include "tensorflow/compiler/xla/service/gpu/ir_emitter.h"
+#include "tensorflow/compiler/xla/service/gpu/sequential_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/thunk.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/kernel_tiling.h"
 
@@ -76,6 +77,7 @@ class IrEmitterUnnested : public IrEmitter {
   Status HandleInfeed(HloInstruction* xla_infeed) override;
   Status HandleOutfeed(HloInstruction* outfeed) override;
   Status HandleRng(HloInstruction* random) override;
+  Status HandleScatter(HloInstruction* scatter) override;
   Status HandleSelect(HloInstruction* select) override;
   Status HandleSort(HloInstruction* sort) override;
   Status HandleTupleSelect(HloInstruction* tuple_select) override;
@@ -96,10 +98,10 @@ class IrEmitterUnnested : public IrEmitter {
   Status EmitConstantGlobals();
 
  private:
-  // Builds the appropriate thunk for the instruction hlo and returns the owning
-  // pointer to it. The caller needs to make sure `inst` outlives the lifetime
-  // of the returned Thunk object.
-  std::unique_ptr<Thunk> BuildThunk(const HloInstruction* hlo);
+  // Add a owning Thunk object to the thunk sequence.
+  void AddThunkToThunkSequence(std::unique_ptr<Thunk> thunk) {
+    thunk_sequence_->emplace_back(std::move(thunk));
+  }
 
   // Builds the prototype of the IR kernel for `inst` and adds it to the module.
   // This kernel takes as arguments pointers to the given buffer allocations.
@@ -124,8 +126,8 @@ class IrEmitterUnnested : public IrEmitter {
   // [height x width], but can be bitcast to [height x width] with "height"
   // being the major dimension.
   Status EmitColumnReduction(
-      int64 height, int64 width, HloInstruction* reduce,
-      const Shape& input_shape,
+      KernelThunk* kernel_thunk, int64 height, int64 width,
+      HloInstruction* reduce, const Shape& input_shape,
       absl::Span<const llvm_ir::ElementGenerator> input_gens,
       absl::Span<const llvm_ir::ElementGenerator> init_value_gens,
       absl::Span<HloComputation* const> reducers,
@@ -139,8 +141,8 @@ class IrEmitterUnnested : public IrEmitter {
   // [depth x height x width], but can be bitcast to [depth x height x width]
   // with "depth" being the most major dimension.
   Status EmitRowReduction(
-      int64 depth, int64 height, int64 width, HloInstruction* reduce,
-      const Shape& input_shape,
+      KernelThunk* kernel_thunk, int64 depth, int64 height, int64 width,
+      HloInstruction* reduce, const Shape& input_shape,
       absl::Span<const llvm_ir::ElementGenerator> input_gens,
       absl::Span<const llvm_ir::ElementGenerator> init_value_gens,
       absl::Span<HloComputation* const> reducers,
@@ -150,7 +152,8 @@ class IrEmitterUnnested : public IrEmitter {
 
   // Emits code that reduces a tensor of arbitrary rank to a scalar.
   Status EmitReductionToScalar(
-      HloInstruction* reduce, const Shape& input_shape,
+      KernelThunk* kernel_thunk, HloInstruction* reduce,
+      const Shape& input_shape,
       absl::Span<const llvm_ir::ElementGenerator> input_gens,
       absl::Span<const llvm_ir::ElementGenerator> init_value_gens,
       absl::Span<HloComputation* const> reducers,
@@ -175,7 +178,8 @@ class IrEmitterUnnested : public IrEmitter {
   //
   // Prerequisite: `IsReductionToVector(*reduce)`
   Status EmitReductionToVector(
-      HloInstruction* reduce, const Shape& input_shape,
+      KernelThunk* kernel_thunk, HloInstruction* reduce,
+      const Shape& input_shape,
       absl::Span<const llvm_ir::ElementGenerator> input_gens,
       absl::Span<const llvm_ir::ElementGenerator> init_value_gens,
       absl::Span<const int64> dimensions_to_reduce,
@@ -183,6 +187,14 @@ class IrEmitterUnnested : public IrEmitter {
       absl::Span<const ShapeIndex> reduce_output_shapes,
       absl::Span<const std::pair<llvm_ir::ElementGenerator, ShapeIndex>>
           extra_output_gens);
+
+  // Emits code for an in-place scatter, modifying `thunk`s launch dimensions in
+  // the process. `scatter` may be fused, scatter indices are taken from
+  // `scatter_indices_gen`, updates from`updates_gen`. The output buffer is
+  // expected to have the operand values in it already.
+  Status EmitScatter(Thunk* thunk, HloInstruction* scatter,
+                     const llvm_ir::ElementGenerator& scatter_indices_gen,
+                     const llvm_ir::ElementGenerator& updates_gen);
 
   // Returns true if a 0-2-1 tiling algorithm is already used to emit the kernel
   // for the hlo instruction.

@@ -268,6 +268,11 @@ class TestUtilTest(test_util.TensorFlowTestCase):
       self.assertAllClose(7, 7 + 1e-5)
 
   @test_util.run_in_graph_and_eager_modes
+  def testAllCloseList(self):
+    with self.assertRaisesRegexp(AssertionError, r"not close dif"):
+      self.assertAllClose([0], [1])
+
+  @test_util.run_in_graph_and_eager_modes
   def testAllCloseDictToNonDict(self):
     with self.assertRaisesRegexp(ValueError, r"Can't compare dict to non-dict"):
       self.assertAllClose(1, {"a": 1})
@@ -356,6 +361,7 @@ class TestUtilTest(test_util.TensorFlowTestCase):
     b = [1, 2]
     self.assertArrayNear(a, b, 0.001)
 
+  @test_util.skip_if(True)  # b/117665998
   def testForceGPU(self):
     with self.assertRaises(errors.InvalidArgumentError):
       with self.test_session(force_gpu=True):
@@ -451,6 +457,9 @@ class TestUtilTest(test_util.TensorFlowTestCase):
     self.evaluate(variables.global_variables_initializer())
     self.assertAllEqual([120] * 3, k)
     self.assertAllEqual([20] * 3, j)
+
+    with self.assertRaisesRegexp(AssertionError, r"not equal lhs"):
+      self.assertAllEqual([0] * 3, k)
 
   @test_util.run_in_graph_and_eager_modes
   def testAssertNotAllClose(self):

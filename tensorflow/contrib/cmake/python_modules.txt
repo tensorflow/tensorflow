@@ -132,10 +132,8 @@ tensorflow/contrib/cudnn_rnn/python
 tensorflow/contrib/cudnn_rnn/python/layers
 tensorflow/contrib/cudnn_rnn/python/ops
 tensorflow/contrib/data
-tensorflow/contrib/data/kernels
 tensorflow/contrib/data/python
 tensorflow/contrib/data/python/kernel_tests
-tensorflow/contrib/data/python/kernel_tests/serialization
 tensorflow/contrib/data/python/ops
 tensorflow/contrib/decision_trees
 tensorflow/contrib/decision_trees/proto
@@ -207,6 +205,8 @@ tensorflow/contrib/integrate/python
 tensorflow/contrib/integrate/python/ops
 tensorflow/contrib/kafka/python
 tensorflow/contrib/kafka/python/ops
+tensorflow/contrib/ignite/python
+tensorflow/contrib/ignite/python/ops
 tensorflow/contrib/keras
 tensorflow/contrib/keras/api
 tensorflow/contrib/keras/api/keras
@@ -273,9 +273,6 @@ tensorflow/contrib/libsvm
 tensorflow/contrib/libsvm/python
 tensorflow/contrib/libsvm/python/kernel_tests
 tensorflow/contrib/libsvm/python/ops
-tensorflow/contrib/linalg
-tensorflow/contrib/linalg/python
-tensorflow/contrib/linalg/python/ops
 tensorflow/contrib/linear_optimizer
 tensorflow/contrib/linear_optimizer/kernels
 tensorflow/contrib/linear_optimizer/kernels/g3doc
@@ -311,11 +308,6 @@ tensorflow/contrib/model_pruning/examples
 tensorflow/contrib/model_pruning/examples/cifar10
 tensorflow/contrib/model_pruning/python
 tensorflow/contrib/model_pruning/python/layers
-tensorflow/contrib/nccl
-tensorflow/contrib/nccl/kernels
-tensorflow/contrib/nccl/ops
-tensorflow/contrib/nccl/python
-tensorflow/contrib/nccl/python/ops
 tensorflow/contrib/nearest_neighbor
 tensorflow/contrib/nearest_neighbor/kernels
 tensorflow/contrib/nearest_neighbor/ops
@@ -409,7 +401,6 @@ tensorflow/contrib/summary
 tensorflow/contrib/tensorboard
 tensorflow/contrib/tensorboard/plugins
 tensorflow/contrib/tensorboard/plugins/projector
-tensorflow/contrib/tensorboard/plugins/trace
 # TODO(sami): Add cmake implementations.
 # tensorflow/contrib/tensorrt/python
 # tensorflow/contrib/tensorrt/python/ops

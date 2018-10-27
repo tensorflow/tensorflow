@@ -384,10 +384,31 @@ TEST(DeadnessAnalysisTest, OrOfAnd) {
   EXPECT_FALSE(result->HasInputsWithMismatchingDeadness(*add2.node()));
 }
 
-TEST(DeadnessAnalysisTest, NEGATIVE_AndOrDistributive) {
-  // This demonstrates one of the weaknesses in the current approach -- since we
-  // only do some basic simplifications we can't see that "(A|B)&C" ==
-  // "(A&C)|(B&C)".
+TEST(DeadnessAnalysisTest, AndOrDistributiveSimplified) {
+  // (*A | (~*A & ((~*B & ~*A) | (~*A & *B)))) == #true
+  Scope root = Scope::NewRootScope().ExitOnError();
+
+  ops::Switch sw_0 = CreateSwitch(root, "A");
+  ops::Switch sw_1 = CreateSwitch(root, "B");
+  Output add0 =
+      ops::Add(root.WithOpName("and0"), sw_0.output_false, sw_1.output_true);
+  Output add1 =
+      ops::Add(root.WithOpName("and1"), sw_0.output_false, sw_1.output_false);
+  ops::Merge or2(root.WithOpName("or2"), {add0, add1});
+  Output add3 =
+      ops::Add(root.WithOpName("and3"), or2.output, sw_0.output_false);
+  ops::Merge or4(root.WithOpName("or4"), {add3, sw_0.output_true});
+
+  std::unique_ptr<DeadnessAnalysis> result;
+  TF_ASSERT_OK(AnalyzeDeadness(root.graph(), &result));
+
+  PredicateMapTy predicate_map;
+  TF_ASSERT_OK(ComputePredicates(*root.graph(), &predicate_map));
+  EXPECT_EQ(predicate_map[ControlOutputFor(or4.output)], "#true");
+}
+
+TEST(DeadnessAnalysisTest, AndOrDistributive) {
+  // (A|B)&C == (A&C)|(B&C)
   Scope root = Scope::NewRootScope().ExitOnError();
 
   ops::Switch sw_0 = CreateSwitch(root, "0");
@@ -408,7 +429,7 @@ TEST(DeadnessAnalysisTest, NEGATIVE_AndOrDistributive) {
   std::unique_ptr<DeadnessAnalysis> result;
   TF_ASSERT_OK(AnalyzeDeadness(root.graph(), &result));
 
-  EXPECT_TRUE(result->HasInputsWithMismatchingDeadness(*add2.node()));
+  EXPECT_FALSE(result->HasInputsWithMismatchingDeadness(*add3.node()));
 }
 
 TEST(DeadnessAnalysisTest, Ternary) {

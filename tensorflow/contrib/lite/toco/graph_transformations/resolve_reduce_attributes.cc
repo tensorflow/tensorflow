@@ -39,23 +39,37 @@ bool ResolveAttributes(Model* model, T* op) {
   return true;
 }
 
-bool ResolveReduceAttributes::Run(Model* model, std::size_t op_index) {
+::tensorflow::Status ResolveReduceAttributes::Run(Model* model,
+                                                  std::size_t op_index,
+                                                  bool* modified) {
+  *modified = false;
   Operator* op = model->operators[op_index].get();
   switch (op->type) {
     case OperatorType::kMean:
-      return ResolveAttributes(model, static_cast<MeanOperator*>(op));
+      *modified = ResolveAttributes(model, static_cast<MeanOperator*>(op));
+      return ::tensorflow::Status::OK();
     case OperatorType::kSum:
-      return ResolveAttributes(model, static_cast<TensorFlowSumOperator*>(op));
+      *modified =
+          ResolveAttributes(model, static_cast<TensorFlowSumOperator*>(op));
+      return ::tensorflow::Status::OK();
     case OperatorType::kReduceProd:
-      return ResolveAttributes(model, static_cast<TensorFlowProdOperator*>(op));
+      *modified =
+          ResolveAttributes(model, static_cast<TensorFlowProdOperator*>(op));
+      return ::tensorflow::Status::OK();
     case OperatorType::kReduceMin:
-      return ResolveAttributes(model, static_cast<TensorFlowMinOperator*>(op));
+      *modified =
+          ResolveAttributes(model, static_cast<TensorFlowMinOperator*>(op));
+      return ::tensorflow::Status::OK();
     case OperatorType::kReduceMax:
-      return ResolveAttributes(model, static_cast<TensorFlowMaxOperator*>(op));
+      *modified =
+          ResolveAttributes(model, static_cast<TensorFlowMaxOperator*>(op));
+      return ::tensorflow::Status::OK();
     case OperatorType::kAny:
-      return ResolveAttributes(model, static_cast<TensorFlowMaxOperator*>(op));
+      *modified =
+          ResolveAttributes(model, static_cast<TensorFlowMaxOperator*>(op));
+      return ::tensorflow::Status::OK();
     default:
-      return false;
+      return ::tensorflow::Status::OK();
   }
 }
 

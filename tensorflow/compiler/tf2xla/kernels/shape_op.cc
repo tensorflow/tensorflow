@@ -44,7 +44,7 @@ class ShapeOp : public XlaOpKernel {
   DataType out_dtype_;
 };
 
-REGISTER_XLA_OP(Name("Shape").CompilationOnly(), ShapeOp);
+REGISTER_XLA_OP(Name("Shape").CompilationOnly().IsMetadataOp(), ShapeOp);
 
 class ShapeNOp : public XlaOpKernel {
  public:
@@ -66,7 +66,7 @@ class ShapeNOp : public XlaOpKernel {
  private:
   DataType out_dtype_;
 };
-REGISTER_XLA_OP(Name("ShapeN").CompilationOnly(), ShapeNOp);
+REGISTER_XLA_OP(Name("ShapeN").CompilationOnly().IsMetadataOp(), ShapeNOp);
 
 class RankOp : public XlaOpKernel {
  public:
@@ -82,7 +82,7 @@ class RankOp : public XlaOpKernel {
   }
 };
 
-REGISTER_XLA_OP(Name("Rank").CompilationOnly(), RankOp);
+REGISTER_XLA_OP(Name("Rank").CompilationOnly().IsMetadataOp(), RankOp);
 
 class SizeOp : public XlaOpKernel {
  public:
@@ -101,7 +101,7 @@ class SizeOp : public XlaOpKernel {
   }
 };
 
-REGISTER_XLA_OP(Name("Size").CompilationOnly(), SizeOp);
+REGISTER_XLA_OP(Name("Size").CompilationOnly().IsMetadataOp(), SizeOp);
 
 class ExpandDimsOp : public XlaOpKernel {
  public:
@@ -151,7 +151,8 @@ class ExpandDimsOp : public XlaOpKernel {
     ctx->SetOutput(0, xla::Reshape(ctx->Input(0), new_shape));
   }
 };
-REGISTER_XLA_OP(Name("ExpandDims").CompileTimeConstInput("dim"), ExpandDimsOp);
+REGISTER_XLA_OP(Name("ExpandDims").CompileTimeConstantInput("dim"),
+                ExpandDimsOp);
 
 class SqueezeOp : public XlaOpKernel {
  public:

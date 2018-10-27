@@ -186,7 +186,7 @@ class WithShapeTest(test.TestCase):
           unexpected_shapes)
 
   def test_with_shape_2x2_with_partial_expected_shape(self):
-    with self.test_session():
+    with self.cached_session():
       value = [[42, 43], [44, 45]]
       actual_shape = [2, 2]
       tensor = constant_op.constant(value, shape=actual_shape)
@@ -218,7 +218,6 @@ class WithShapeTest(test.TestCase):
         self.assertRaisesRegexp(errors_impl.OpError, "Wrong shape",
                                 tensor_2x2.eval, {tensor_no_shape: [42.0]})
 
-  @test_util.enable_c_shapes
   def test_with_shape_partial(self):
     with self.cached_session():
       tensor_partial_shape = array_ops.placeholder(dtypes.float32)

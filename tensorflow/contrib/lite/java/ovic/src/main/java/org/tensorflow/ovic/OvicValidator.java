@@ -30,30 +30,45 @@ public class OvicValidator {
   private static void printUsage(PrintStream s) {
     s.println("Java program that validates a submission model.");
     s.println();
-    s.println("Usage: ovic_validator <submission file>");
+    s.println("Usage: ovic_validator <submission file> [<task>]");
     s.println();
     s.println("Where:");
-    s.println("<submission file> is the model in TfLite format;");
+    s.println("<submission file> is the model in TfLite format,");
+    s.println("<task> is the type of the task: \"classify\" (default) or \"detect\";");
   }
 
   public static void main(String[] args) {
-    if (args.length != 1) {
+    if (args.length != 2) {
       printUsage(System.err);
       System.exit(1);
     }
+    final String modelFile = args[0];
+    final String taskString = args[1];
+    final boolean isDetection = taskString.equals("detect");
+    // Label file for detection is never used, so the same label file is used for both tasks.
     final String labelPath =
         "tensorflow/contrib/lite/java/ovic/src/testdata/labels.txt";
 
-    final String modelFile = args[0];
     try {
+      MappedByteBuffer model = loadModelFile(modelFile);
       File labelsfile = new File(labelPath);
       InputStream labelsInputStream = new FileInputStream(labelsfile);
-      MappedByteBuffer model = loadModelFile(modelFile);
-      OvicClassifier classifier = new OvicClassifier(labelsInputStream, model);
-      ByteBuffer imgData = createByteBufferForClassifier(classifier);
-      OvicSingleImageResult testResult = classifier.classifyByteBuffer(imgData);
-      if (testResult.topKClasses.isEmpty()) {
-        throw new RuntimeException("Failed to return top K predictions.");
+
+      if (isDetection) {
+        OvicDetector detector = new OvicDetector(labelsInputStream, model);
+        int[] inputDims = detector.getInputDims();
+        ByteBuffer imgData = createByteBuffer(inputDims[1], inputDims[2]);
+        if (!detector.detectByteBuffer(imgData, /*imageId=*/ 0)) {
+          throw new RuntimeException("Failed to return detections.");
+        }
+      } else {
+        OvicClassifier classifier = new OvicClassifier(labelsInputStream, model);
+        int[] inputDims = classifier.getInputDims();
+        ByteBuffer imgData = createByteBuffer(inputDims[1], inputDims[2]);
+        OvicClassificationResult testResult = classifier.classifyByteBuffer(imgData);
+        if (testResult.topKClasses.isEmpty()) {
+          throw new RuntimeException("Failed to return top K predictions.");
+        }
       }
       System.out.printf("Successfully validated %s.%n", modelFile);
     } catch (Exception e) {
@@ -62,13 +77,7 @@ public class OvicValidator {
     }
   }
 
-  private static ByteBuffer createByteBufferForClassifier(OvicClassifier classifier) {
-    if (classifier == null) {
-      throw new RuntimeException("Cannot create image buffer with the classifier.");
-    }
-    int[] inputDims = classifier.getInputDims();
-    int imgHeight = inputDims[1];
-    int imgWidth = inputDims[2];
+  private static ByteBuffer createByteBuffer(int imgWidth, int imgHeight) {
     ByteBuffer imgData = ByteBuffer.allocateDirect(imgHeight * imgWidth * 3);
     imgData.order(ByteOrder.nativeOrder());
     Random rand = new Random();

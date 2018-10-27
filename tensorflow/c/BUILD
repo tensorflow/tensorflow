@@ -6,11 +6,12 @@ licenses(["notice"])  # Apache 2.0
 load(
     "//tensorflow:tensorflow.bzl",
     "tf_cc_test",
-    "tf_cuda_cc_test",
     "tf_copts",
     "tf_cuda_library",
     "tf_custom_op_library",
+    "tf_kernel_library",
 )
+load("//tensorflow:tensorflow.bzl", "tf_cuda_cc_test")
 
 # -----------------------------------------------------------------------------
 # Public targets
@@ -125,6 +126,7 @@ tf_cuda_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_platform",
         "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/common_runtime/eager:attr_builder",
     ],
 )
 
@@ -197,9 +199,9 @@ tf_cuda_cc_test(
     size = "small",
     srcs = ["c_api_test.cc"],
     data = [
-        ":test_op.so",
         "//tensorflow/cc/saved_model:saved_model_half_plus_two",
     ],
+    kernels = [":test_op_kernel"],
     linkopts = select({
         "//tensorflow:darwin": ["-headerpad_max_install_names"],
         "//conditions:default": [],
@@ -246,6 +248,7 @@ tf_cc_test(
         ":c_api_experimental",
         ":c_test_util",
         "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
     ],
@@ -282,6 +285,16 @@ tf_cc_test(
 tf_custom_op_library(
     name = "test_op.so",
     srcs = ["test_op.cc"],
+)
+
+tf_kernel_library(
+    name = "test_op_kernel",
+    srcs = ["test_op.cc"],
+    deps = [
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+    ],
+    alwayslink = 1,
 )
 
 # -----------------------------------------------------------------------------

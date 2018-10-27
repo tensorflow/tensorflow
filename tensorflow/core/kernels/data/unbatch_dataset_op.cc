@@ -12,16 +12,16 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/tensor.h"
-#include "tensorflow/core/kernels/data/dataset.h"
 #include "tensorflow/core/util/batch_util.h"
 
 namespace tensorflow {
 namespace data {
 namespace {
 
-// See documentation in ../ops/dataset_ops.cc for a high-level
+// See documentation in ../../ops/dataset_ops.cc for a high-level
 // description of the following op.
 
 class UnbatchDatasetOp : public UnaryDatasetOpKernel {
@@ -41,11 +41,16 @@ class UnbatchDatasetOp : public UnaryDatasetOpKernel {
         : DatasetBase(DatasetContext(ctx)), input_(input) {
       input_->Ref();
       for (const PartialTensorShape& shape : input->output_shapes()) {
-        gtl::InlinedVector<int64, 4> partial_dim_sizes;
-        for (int i = 1; i < shape.dims(); ++i) {
-          partial_dim_sizes.push_back(shape.dim_size(i));
+        if (!shape.unknown_rank()) {
+          gtl::InlinedVector<int64, 4> partial_dim_sizes;
+          for (int i = 1; i < shape.dims(); ++i) {
+            partial_dim_sizes.push_back(shape.dim_size(i));
+          }
+          shapes_.emplace_back(std::move(partial_dim_sizes));
+        } else {
+          // If the input shape is unknown, the output shape will be unknown.
+          shapes_.emplace_back();
         }
-        shapes_.emplace_back(std::move(partial_dim_sizes));
       }
     }
 

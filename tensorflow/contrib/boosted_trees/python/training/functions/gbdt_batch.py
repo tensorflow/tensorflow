@@ -22,7 +22,6 @@ import collections
 import copy
 
 from tensorflow.contrib import learn
-from tensorflow.contrib import stateless
 from tensorflow.contrib.boosted_trees.lib.learner.batch import categorical_split_handler
 from tensorflow.contrib.boosted_trees.lib.learner.batch import ordinal_split_handler
 from tensorflow.contrib.boosted_trees.proto import learner_pb2
@@ -44,6 +43,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import stateless_random_ops as stateless
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
 from tensorflow.python.ops.losses import losses
@@ -402,13 +402,13 @@ class GradientBoostedDecisionTreeModel(object):
     self._feature_columns = feature_columns
     self._learner_config_serialized = learner_config.SerializeToString()
     self._num_quantiles = num_quantiles
-    self._max_tree_depth = variables.Variable(
+    self._max_tree_depth = variables.VariableV1(
         initial_value=self._learner_config.constraints.max_tree_depth)
-    self._attempted_trees = variables.Variable(
+    self._attempted_trees = variables.VariableV1(
         initial_value=array_ops.zeros([], dtypes.int64),
         trainable=False,
         name="attempted_trees")
-    self._finalized_trees = variables.Variable(
+    self._finalized_trees = variables.VariableV1(
         initial_value=array_ops.zeros([], dtypes.int64),
         trainable=False,
         name="finalized_trees")
@@ -770,28 +770,28 @@ class GradientBoostedDecisionTreeModel(object):
         fc_name_idx += 1
 
       # Create ensemble stats variables.
-      num_layer_examples = variables.Variable(
+      num_layer_examples = variables.VariableV1(
           initial_value=array_ops.zeros([], dtypes.int64),
           name="num_layer_examples",
           trainable=False)
-      num_layer_steps = variables.Variable(
+      num_layer_steps = variables.VariableV1(
           initial_value=array_ops.zeros([], dtypes.int64),
           name="num_layer_steps",
           trainable=False)
-      num_layers = variables.Variable(
+      num_layers = variables.VariableV1(
           initial_value=array_ops.zeros([], dtypes.int64),
           name="num_layers",
           trainable=False)
-      active_tree = variables.Variable(
+      active_tree = variables.VariableV1(
           initial_value=array_ops.zeros([], dtypes.int64),
           name="active_tree",
           trainable=False)
-      active_layer = variables.Variable(
+      active_layer = variables.VariableV1(
           initial_value=array_ops.zeros([], dtypes.int64),
           name="active_layer",
           trainable=False)
       # Variable that becomes false once bias centering is done.
-      continue_centering = variables.Variable(
+      continue_centering = variables.VariableV1(
           initial_value=self._center_bias,
           name="continue_centering",
           trainable=False)

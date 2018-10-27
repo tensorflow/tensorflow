@@ -15,6 +15,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CONTRIB_LITE_EXPERIMENTAL_C_C_API_H_
 #define TENSORFLOW_CONTRIB_LITE_EXPERIMENTAL_C_C_API_H_
 
+#include <stdarg.h>
 #include <stdint.h>
 
 // Eventually the various C APIs defined in context.h will be migrated into
@@ -52,8 +53,9 @@ limitations under the License.
 extern "C" {
 #endif  // __cplusplus
 
-typedef TfLiteTensor TFL_Tensor;
+typedef TfLiteRegistration TFL_Registration;
 typedef TfLiteStatus TFL_Status;
+typedef TfLiteTensor TFL_Tensor;
 typedef TfLiteType TFL_Type;
 
 // --------------------------------------------------------------------------
@@ -84,6 +86,17 @@ TFL_CAPI_EXPORT extern void TFL_DeleteInterpreterOptions(
 // Sets the number of CPU threads to use for the interpreter.
 TFL_CAPI_EXPORT extern void TFL_InterpreterOptionsSetNumThreads(
     TFL_InterpreterOptions* options, int32_t num_threads);
+
+// Sets a custom error reporter for interpreter execution.
+//
+// * `reporter` takes the provided `user_data` object, as well as a C-style
+//   format string and arg list (see also vprintf).
+// * `user_data` is optional. If provided, it is owned by the client and must
+//   remain valid for the duration of the interpreter lifetime.
+TFL_CAPI_EXPORT extern void TFL_InterpreterOptionsSetErrorReporter(
+    TFL_InterpreterOptions* options,
+    void (*reporter)(void* user_data, const char* format, va_list args),
+    void* user_data);
 
 // --------------------------------------------------------------------------
 // TFL_Interpreter provides inference from a provided model.

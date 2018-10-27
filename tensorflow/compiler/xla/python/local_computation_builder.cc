@@ -343,6 +343,12 @@ LocalOp LocalComputationBuilder::Parameter(int64 parameter_number,
   return xla::Parameter(&builder_, parameter_number, shape, name);
 }
 
+StatusOr<LocalComputation*> LocalComputationBuilder::BuildWithRoot(
+    const LocalOp& root) {
+  TF_ASSIGN_OR_RETURN(XlaComputation computation, builder_.Build(root.op()));
+  return new LocalComputation(std::move(computation));
+}
+
 StatusOr<Shape> LocalComputationBuilder::GetShape(const LocalOp& operand) {
   return builder_.GetShape(operand.op());
 }
@@ -369,6 +375,12 @@ LocalOp LocalComputationBuilder::ConstantLiteral(const Literal& literal) {
 LocalOp LocalComputationBuilder::Broadcast(
     const LocalOp& operand, absl::Span<const int64> broadcast_sizes) {
   return xla::Broadcast(operand.op(), broadcast_sizes);
+}
+
+LocalOp LocalComputationBuilder::BroadcastInDim(
+    const LocalOp& operand, const Shape& shape,
+    absl::Span<const int64> broadcast_dimensions) {
+  return xla::BroadcastInDim(operand.op(), shape, broadcast_dimensions);
 }
 
 LocalOp LocalComputationBuilder::Pad(const LocalOp& operand,
@@ -469,9 +481,11 @@ LocalOp LocalComputationBuilder::ConvGeneralDilated(
     absl::Span<const int64> window_strides,
     absl::Span<const std::pair<int64, int64>> padding,
     absl::Span<const int64> lhs_dilation, absl::Span<const int64> rhs_dilation,
-    const ConvolutionDimensionNumbers& dimension_numbers) {
+    const ConvolutionDimensionNumbers& dimension_numbers,
+    int64 feature_group_count) {
   return xla::ConvGeneralDilated(lhs.op(), rhs.op(), window_strides, padding,
-                                 lhs_dilation, rhs_dilation, dimension_numbers);
+                                 lhs_dilation, rhs_dilation, dimension_numbers,
+                                 feature_group_count);
 }
 
 LocalOp LocalComputationBuilder::ConvertElementType(
@@ -530,10 +544,13 @@ LocalOp LocalComputationBuilder::ReduceWindowWithGeneralPadding(
     const LocalComputation& local_computation,
     absl::Span<const int64> window_dimensions,
     absl::Span<const int64> window_strides,
+    absl::Span<const int64> base_dilations,
+    absl::Span<const int64> window_dilations,
     absl::Span<const std::pair<int64, int64>> padding) {
   return xla::ReduceWindowWithGeneralPadding(
       operand.op(), init_value.op(), local_computation.computation(),
-      window_dimensions, window_strides, padding);
+      window_dimensions, window_strides, base_dilations, window_dilations,
+      padding);
 }
 
 LocalOp LocalComputationBuilder::RngNormal(const LocalOp& mu,
@@ -567,13 +584,13 @@ StatusOr<bool> LocalComputationBuilder::IsConstant(const LocalOp& operand) {
 }
 
 LocalOp LocalComputationBuilder::Sort(const LocalOp& operand, int64 dimension) {
-  return xla::Sort(operand.op(), absl::nullopt, dimension);
+  return xla::Sort(operand.op(), {}, dimension);
 }
 
 LocalOp LocalComputationBuilder::SortKeyVal(const LocalOp& keys,
                                             const LocalOp& values,
                                             int64 dimension) {
-  return xla::Sort(keys.op(), values.op(), dimension);
+  return xla::Sort(keys.op(), {values.op()}, dimension);
 }
 
 StatusOr<LocalComputation*> LocalComputationBuilder::BuildConstantSubGraph(

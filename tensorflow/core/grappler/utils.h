@@ -17,10 +17,12 @@ limitations under the License.
 #define TENSORFLOW_CORE_GRAPPLER_UTILS_H_
 
 #include <functional>
-#include <unordered_map>
+#include <iterator>
+#include <set>
 #include <unordered_set>
+#include <utility>
 #include <vector>
-
+#include "absl/types/span.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -28,8 +30,10 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/core/threadpool.h"
+#include "tensorflow/core/lib/gtl/flatmap.h"
+#include "tensorflow/core/lib/gtl/flatset.h"
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
-#include "tensorflow/core/lib/strings/scanner.h"
+#include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
 namespace grappler {
@@ -58,8 +62,8 @@ class NodeMap {
 
  private:
   const std::set<NodeDef*> empty_set_;
-  std::unordered_map<string, NodeDef*> nodes_;
-  std::unordered_map<string, std::set<NodeDef*>> outputs_;
+  gtl::FlatMap<string, NodeDef*> nodes_;
+  gtl::FlatMap<string, std::set<NodeDef*>> outputs_;
 };
 
 // A vector with a set. The set stores the same elements as the vector, and
@@ -91,7 +95,7 @@ class SetVector {
   void Reserve(int64 size) { vector_.reserve(size); }
 
  private:
-  std::unordered_set<T, Hash> set_;
+  gtl::FlatSet<T, Hash> set_;
   std::vector<T> vector_;
 };
 
@@ -102,44 +106,103 @@ bool IsControlInput(const string& name);
 // True iff 'name1' and 'name2' refer to the same input.
 bool IsSameInput(const string& name1, const string& name2);
 
+// Returns the trailing position number (or zero if no number is present) if
+// NodeName(input_name) is equal to node_name. Returns -1 for control inputs.
+// Returns -2 if NodeName(input_name) is not equal to node_name.
+// Note: This function is used very heavily, and this hand-optimized
+// version is 3-4x faster than the version using Scanner, which it replaced.
+// This is worth the reduction in readability.
+inline int NodePositionIfSameNode(const string& input_name,
+                                  const string& node_name) {
+  if (input_name.empty()) return -2;
+  const bool is_ctrl = input_name[0] == '^';
+  auto input_it = is_ctrl ? input_name.begin() + 1 : input_name.begin();
+  auto node_it = node_name.begin();
+  if (node_name.empty() ||
+      std::distance(input_it, input_name.end()) < node_name.size()) {
+    return -2;
+  }
+  while (node_it != node_name.end()) {
+    if (*input_it++ != *node_it++) {
+      return -2;
+    }
+  }
+  if (input_it == input_name.end()) {
+    return is_ctrl ? -1 : 0;
+  } else if (*input_it++ == ':') {
+    StringPiece remaining(&(*input_it),
+                          std::distance(input_it, input_name.end()));
+    int position;
+    if (!strings::safe_strto32(remaining, &position)) {
+      return -2;
+    }
+    return is_ctrl ? -1 : position;
+  } else {
+    return -2;
+  }
+}
+
 // Return the node name corresponding to 'name' if name is valid, or the empty
 // string otherwise.
-string NodeName(const string& name);
+inline StringPiece NodeNameAsStringPiece(const string& name) {
+  static const string empty;
+  if (name.empty()) return StringPiece(empty);
+  const auto begin_it = name[0] == '^' ? name.begin() + 1 : name.begin();
+  auto end_it = begin_it;
+  while (end_it != name.end() && *end_it != ':') {
+    ++end_it;
+  }
+  if (end_it != name.end() && *end_it != ':') {
+    return StringPiece(empty);
+  }
+  return StringPiece(&(*begin_it), std::distance(begin_it, end_it));
+}
 
-// Get the trailing position number ":{digits}" (if any) of a node name.
-int NodePosition(const string& name);
+// Return the node name corresponding to 'name' if name is valid, or the empty
+// string otherwise.
+inline string NodeName(const string& name) {
+  return string(NodeNameAsStringPiece(name));
+}
 
+// Returns the node name and position in a single call.
 inline StringPiece ParseNodeNameAsStringPiece(const string& name,
                                               int* position) {
-  // Strip the prefix '^' (if any), and strip the trailing ":{digits} (if any)
-  // to get a node name.
-  strings::Scanner scan(name);
-  scan.ZeroOrOneLiteral("^")
-      .RestartCapture()
-      .One(strings::Scanner::LETTER_DIGIT_DOT_UNDERSCORE)
-      .Any(strings::Scanner::LETTER_DIGIT_DASH_DOT_SLASH_UNDERSCORE);
-  StringPiece capture;
-  StringPiece remaining;
-  if (scan.Peek(':') != ':' || !scan.GetResult(&remaining, &capture)) {
+  static const string empty;
+  if (name.empty()) {
     *position = 0;
-    static const string empty;
     return StringPiece(empty);
-  } else {
-    if (name[0] == '^') {
-      *position = -1;
-    } else if (remaining.empty()) {
-      *position = 0;
-    } else {
-      // Skip the first ':' character.
-      CHECK(strings::safe_strto32(remaining.substr(1), position));
-    }
-    return capture;
   }
+  const bool is_ctrl = name[0] == '^';
+  const auto begin_it = is_ctrl ? name.begin() + 1 : name.begin();
+  *position = is_ctrl ? -1 : 0;
+  auto end_it = begin_it;
+  while (end_it != name.end() && *end_it != ':') {
+    ++end_it;
+  }
+  const StringPiece node_name(&(*begin_it), std::distance(begin_it, end_it));
+  if (end_it != name.end()) {
+    if (*end_it != ':') {
+      return StringPiece(empty);
+    } else if (!is_ctrl) {
+      ++end_it;
+      StringPiece remaining(&(*end_it), std::distance(end_it, name.end()));
+      if (!strings::safe_strto32(remaining, position)) {
+        return StringPiece(empty);
+      }
+    }
+  }
+  return node_name;
 }
 
 // Returns the node name and position in a single call.
 inline string ParseNodeName(const string& name, int* position) {
   return string(ParseNodeNameAsStringPiece(name, position));
+}
+
+inline int NodePosition(const string& name) {
+  int position;
+  ParseNodeNameAsStringPiece(name, &position);
+  return position;
 }
 
 // Add a prefix to a node name with a custom delimiter.
@@ -185,6 +248,12 @@ int NumNonControlDataOutputs(const NodeDef& node, const NodeMap& node_map);
 
 // Removes redundant control inputs from node.
 void DedupControlInputs(NodeDef* node);
+
+// Returns an error if an attribute with the given key does not exist in node.
+Status CheckAttrExists(const NodeDef& node, const string& key);
+
+// Returns an error if attributes with the given keys do not exist in node.
+Status CheckAttrsExist(const NodeDef& node, absl::Span<const string> keys);
 
 // Returns the data type in attribute `attr_name` of `node`. If that attribute
 // doesn't exist, returns DT_INVALID.
@@ -273,7 +342,7 @@ class SimpleGraphView {
  private:
   const GraphDef* graph_;  // Not owned.
   std::vector<string> index_to_name_;
-  std::unordered_map<string, int> name_to_index_;
+  gtl::FlatMap<string, int> name_to_index_;
   std::vector<gtl::InlinedVector<int, 4>> inputs_;
   std::vector<gtl::InlinedVector<int, 2>> outputs_;
 };

@@ -57,8 +57,15 @@ def ast_to_source(node, indentation='  '):
 
   # In some versions of Python, literals may appear as actual values. This
   # ensures everything is string.
-  code = map(str, generator.result)
-  code = astor.source_repr.pretty_source(code).lstrip()
+  code = ''.join(map(str, generator.result))
+
+  # Strip leading blank lines.
+  code_lines = code.split('\n')
+  trimmed_code_lines = []
+  for l in code_lines:
+    if l.rstrip() or trimmed_code_lines:
+      trimmed_code_lines.append(l)
+  code = '\n'.join(trimmed_code_lines)
 
   return code
 
@@ -108,7 +115,7 @@ def ast_to_object(nodes,
       indices = (-1,)
 
     if include_source_map:
-      source_map = origin_info.source_map(nodes, source, f.name, indices)
+      source_map = origin_info.create_source_map(nodes, source, f.name, indices)
 
   # TODO(mdan): Try flush() and delete=False instead.
   if delete_on_exit:

@@ -141,7 +141,7 @@ comment: 9
     run_metadata = config_pb2.RunMetadata()
 
     num_iters = 5
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       i = constant_op.constant(0)
       c = lambda i: math_ops.less(i, num_iters)
       b = lambda i: math_ops.add(i, 1)

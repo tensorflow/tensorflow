@@ -117,6 +117,8 @@ Offset<Vector<Offset<Operator>>> InterpreterWriter::ExportOperators(
 
 Offset<Vector<Offset<Tensor>>> InterpreterWriter::ExportTensors(
     FlatBufferBuilder* fbb) {
+  // Initialized to -1.
+  // A value of -1 means this tensor will not be exported.
   tensor_to_written_tensor_.resize(interpreter_->tensors_size(), -1);
 
   std::vector<Offset<Tensor>> tensors;
@@ -135,15 +137,17 @@ Offset<Vector<Offset<Tensor>>> InterpreterWriter::ExportTensors(
   int curr_output_index = 0;
   for (int tensor_index = 0; tensor_index < interpreter_->tensors_size();
        tensor_index++) {
-    if (!tensor_is_temporary[tensor_index]) {
+    // Temporary tensors and unused tensors will not be written.
+    if (!tensor_is_temporary[tensor_index] &&
+        unused_tensors_.find(tensor_index) == unused_tensors_.end()) {
       tensor_to_written_tensor_[tensor_index] = curr_output_index++;
     }
   }
 
   for (int tensor_index = 0; tensor_index < interpreter_->tensors_size();
        ++tensor_index) {
-    // Skip temporaries.
-    if (tensor_is_temporary[tensor_index]) continue;
+    // Tensor not exported.
+    if (tensor_to_written_tensor_[tensor_index] == -1) continue;
 
     if (TfLiteTensor* tensor = interpreter_->tensor(tensor_index)) {
       // We only need to convert non temporaries
@@ -215,7 +219,9 @@ std::vector<int> InterpreterWriter::RemapTensorIndicesToWritten(
   std::vector<int> output;
   output.reserve(input.size());
   for (int x : input) {
-    output.push_back(tensor_to_written_tensor_[x]);
+    if (tensor_to_written_tensor_[x] != -1) {
+      output.push_back(tensor_to_written_tensor_[x]);
+    }
   }
   return output;
 }

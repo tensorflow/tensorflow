@@ -17,7 +17,6 @@ limitations under the License.
 #define TENSORFLOW_CORE_FRAMEWORK_NODE_DEF_UTIL_H_
 
 #include <string>
-#include <unordered_map>
 #include <vector>
 
 #include "tensorflow/core/framework/attr_value_util.h"
@@ -249,6 +248,10 @@ const string& GetNodeAttrString(const AttrSlice& attrs, StringPiece attr_name);
 // REQUIRES: ValidateOpDef(op_def).ok()
 Status InputTypeForNode(const NodeDef& node_def, const OpDef& op_def,
                         int input_port, DataType* input_type);
+// Computes the input types for a specific node.
+// REQUIRES: ValidateOpDef(op_def).ok()
+Status InputTypesForNode(const NodeDef& node_def, const OpDef& op_def,
+                         DataTypeVector* inputs);
 // Computes the output type for a specific node output.
 // REQUIRES: ValidateOpDef(op_def).ok()
 Status OutputTypeForNode(const NodeDef& node_def, const OpDef& op_def,
@@ -261,6 +264,10 @@ Status OutputTypesForNode(const NodeDef& node_def, const OpDef& op_def,
 // REQUIRES: ValidateOpDef(op_def).ok()
 Status InOutTypesForNode(const NodeDef& node_def, const OpDef& op_def,
                          DataTypeVector* inputs, DataTypeVector* outputs);
+// Computes the number of outputs for a specific node.
+// REQUIRES: ValidateOpDef(op_def).ok()
+Status NumOutputsForNode(const NodeDef& node_def, const OpDef& op_def,
+                         int* num_outputs);
 
 // Validates that the NodeDef:
 // * Defines all expected attrs from the OpDef.

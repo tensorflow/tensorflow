@@ -230,6 +230,7 @@ def _get_default_private_map():
       'tf.contrib.autograph': ['utils', 'operators'],
       'tf.test': ['mock'],
       'tf.compat': ['v1', 'v2'],
+      'tf.contrib.estimator': ['python'],
   }
 
 
@@ -453,7 +454,11 @@ def update_id_tags_inplace(src_dir):
 EXCLUDED = set(['__init__.py', 'OWNERS', 'README.txt'])
 
 
-def replace_refs(src_dir, output_dir, reference_resolver, file_pattern='*.md'):
+def replace_refs(src_dir,
+                 output_dir,
+                 reference_resolver,
+                 file_pattern='*.md',
+                 api_docs_relpath='api_docs'):
   """Fix @{} references in all files under `src_dir` matching `file_pattern`.
 
   A matching directory structure, with the modified files is
@@ -472,12 +477,13 @@ def replace_refs(src_dir, output_dir, reference_resolver, file_pattern='*.md'):
     reference_resolver: A `parser.ReferenceResolver` to make the replacements.
     file_pattern: Only replace references in files matching file_patters,
       using fnmatch. Non-matching files are copied unchanged.
+    api_docs_relpath: Relative-path string to the api_docs, from the src_dir.
   """
   # Iterate through all the source files and process them.
   for dirpath, _, filenames in os.walk(src_dir):
+    depth = os.path.relpath(src_dir, start=dirpath)
     # How to get from `dirpath` to api_docs/python/
-    relative_path_to_root = os.path.relpath(
-        path=os.path.join(src_dir, 'api_docs/python'), start=dirpath)
+    relative_path_to_root = os.path.join(depth, api_docs_relpath, 'python')
 
     # Make the directory under output_dir.
     new_dir = os.path.join(output_dir,
@@ -497,7 +503,8 @@ def replace_refs(src_dir, output_dir, reference_resolver, file_pattern='*.md'):
       full_out_path = os.path.join(output_dir, suffix)
       # Copy files that do not match the file_pattern, unmodified.
       if not fnmatch.fnmatch(base_name, file_pattern):
-        shutil.copyfile(full_in_path, full_out_path)
+        if full_in_path != full_out_path:
+          shutil.copyfile(full_in_path, full_out_path)
         continue
 
       with open(full_in_path, 'rb') as f:

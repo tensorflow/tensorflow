@@ -91,6 +91,8 @@ tensorflow/core/kernels/cwise_op_square.cc
 tensorflow/core/kernels/cwise_op_squared_difference.cc
 tensorflow/core/kernels/cwise_op_sub.cc
 tensorflow/core/kernels/cwise_op_tanh.cc
+tensorflow/core/kernels/cwise_op_xdivy.cc
+tensorflow/core/kernels/cwise_op_xlogy.cc
 tensorflow/core/kernels/cwise_ops_common.cc
 tensorflow/core/kernels/data_format_ops.cc
 tensorflow/core/kernels/decode_bmp_op.cc
@@ -152,7 +154,6 @@ tensorflow/core/kernels/mirror_pad_op_cpu_impl_5.cc
 tensorflow/core/kernels/no_op.cc
 tensorflow/core/kernels/non_max_suppression_op.cc
 tensorflow/core/kernels/one_hot_op.cc
-tensorflow/core/kernels/ops_util.cc
 tensorflow/core/kernels/pack_op.cc
 tensorflow/core/kernels/pad_op.cc
 tensorflow/core/kernels/padding_fifo_queue.cc
@@ -253,6 +254,7 @@ tensorflow/core/kernels/strided_slice_op_inst_5.cc
 tensorflow/core/kernels/strided_slice_op_inst_6.cc
 tensorflow/core/kernels/strided_slice_op_inst_7.cc
 tensorflow/core/kernels/string_join_op.cc
+tensorflow/core/kernels/string_util.cc
 tensorflow/core/kernels/tensor_array.cc
 tensorflow/core/kernels/tensor_array_ops.cc
 tensorflow/core/kernels/tile_functor_cpu.cc

@@ -24,7 +24,7 @@ namespace xla {
 namespace {
 
 // Pass which strips control dependencies from all instructions in the module.
-class ControlDepRemover : public HloPassInterface {
+class ControlDepRemover : public HloModulePass {
  public:
   ControlDepRemover() = default;
   absl::string_view name() const override { return "control-dep-remover"; }

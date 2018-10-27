@@ -67,8 +67,8 @@ class BCastArgsOp : public XlaOpKernel {
   TF_DISALLOW_COPY_AND_ASSIGN(BCastArgsOp);
 };
 REGISTER_XLA_OP(Name("BroadcastArgs")
-                    .CompileTimeConstInput("s0")
-                    .CompileTimeConstInput("s1"),
+                    .CompileTimeConstantInput("s0")
+                    .CompileTimeConstantInput("s1"),
                 BCastArgsOp);
 
 // Given shapes of two tensors, computes the reduction indices for the
@@ -126,8 +126,8 @@ class BCastGradArgsOp : public XlaOpKernel {
 };
 
 REGISTER_XLA_OP(Name("BroadcastGradientArgs")
-                    .CompileTimeConstInput("s0")
-                    .CompileTimeConstInput("s1"),
+                    .CompileTimeConstantInput("s0")
+                    .CompileTimeConstantInput("s1"),
                 BCastGradArgsOp);
 
 }  // namespace

@@ -37,12 +37,12 @@ class DepthToSpaceTest(test.TestCase):
 
   def _testOne(self, inputs, block_size, outputs, dtype=dtypes.float32):
     input_nhwc = math_ops.cast(inputs, dtype)
-    with self.test_session(use_gpu=False):
+    with self.cached_session(use_gpu=False):
       # test NHWC (default) on CPU
       x_tf = array_ops.depth_to_space(input_nhwc, block_size)
       self.assertAllEqual(x_tf.eval(), outputs)
     if test.is_gpu_available():
-      with self.test_session(use_gpu=True):
+      with self.cached_session(use_gpu=True):
         # test NHWC (default) on GPU
         x_tf = array_ops.depth_to_space(input_nhwc, block_size)
         self.assertAllEqual(x_tf.eval(), outputs)
@@ -102,13 +102,13 @@ class DepthToSpaceTest(test.TestCase):
     input_nhwc = array_ops.ones([batch_size, 2, 3, 12])
     x_out = array_ops.ones([batch_size, 4, 6, 3])
 
-    with self.test_session(use_gpu=False):
+    with self.cached_session(use_gpu=False):
       # test NHWC (default) on CPU
       x_tf = array_ops.depth_to_space(input_nhwc, block_size)
       self.assertAllEqual(x_tf.shape, x_out.shape)
       x_tf.eval()
     if test.is_gpu_available():
-      with self.test_session(use_gpu=True):
+      with self.cached_session(use_gpu=True):
         # test NHWC (default) on GPU
         x_tf = array_ops.depth_to_space(input_nhwc, block_size)
         self.assertAllEqual(x_tf.shape, x_out.shape)
@@ -276,7 +276,7 @@ class DepthToSpaceTest(test.TestCase):
       expected = self.depthToSpaceUsingTranspose(t, block_size, data_format)
       actual = array_ops.depth_to_space(t, block_size, data_format=data_format)
 
-    with self.test_session(use_gpu=use_gpu) as sess:
+    with self.session(use_gpu=use_gpu) as sess:
       actual_vals, expected_vals = sess.run([actual, expected])
       self.assertTrue(np.array_equal(actual_vals, expected_vals))
 
@@ -314,7 +314,7 @@ class DepthToSpaceGradientTest(test.TestCase):
       return
 
     assert 4 == x.ndim
-    with self.test_session(use_gpu=True):
+    with self.cached_session(use_gpu=True):
       tf_x = ops.convert_to_tensor(x)
       tf_y = array_ops.depth_to_space(tf_x, block_size, data_format=data_format)
 

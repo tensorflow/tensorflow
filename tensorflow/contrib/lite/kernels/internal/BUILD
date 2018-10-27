@@ -43,6 +43,24 @@ cc_library(
         "compatibility.h",
         "types.h",
     ],
+    deps = [
+        "//tensorflow/contrib/lite/kernels:op_macros",
+        "@com_google_absl//absl/base:core_headers",
+    ],
+)
+
+cc_library(
+    name = "legacy_types",
+    srcs = [],
+    hdrs = [
+        "compatibility.h",
+        "legacy_types.h",
+        "types.h",
+    ],
+    deps = [
+        "//tensorflow/contrib/lite/kernels:op_macros",
+        "@com_google_absl//absl/base:core_headers",
+    ],
 )
 
 config_setting(
@@ -194,6 +212,7 @@ cc_library(
         ":strided_slice_logic",
         ":tensor_utils",
         ":types",
+        ":legacy_types",
         ":legacy_reference_base",
         ":round",
         "//third_party/eigen3",
@@ -236,7 +255,10 @@ cc_library(
 cc_test(
     name = "tensor_test",
     srcs = ["tensor_test.cc"],
-    tags = ["no_oss"],
+    tags = [
+        "no_oss",
+        "tflite_not_portable_ios",  # TODO(b/117786830)
+    ],
     deps = [
         ":tensor",
         "@com_google_googletest//:gtest",
@@ -259,13 +281,17 @@ cc_library(
     deps = [
         ":round",
         ":types",
+        "//tensorflow/contrib/lite/kernels:op_macros",
     ],
 )
 
 cc_test(
     name = "quantization_util_test",
     srcs = ["quantization_util_test.cc"],
-    tags = ["no_oss"],
+    tags = [
+        "no_oss",
+        "tflite_not_portable_ios",  # TODO(b/117786830)
+    ],
     deps = [
         ":quantization_util",
         "@com_google_googletest//:gtest",
@@ -290,7 +316,9 @@ cc_library(
         "common.h",
         "reference/depthwiseconv_float.h",
         "reference/depthwiseconv_uint8.h",
+        "reference/fully_connected.h",
         "reference/reference_ops.h",
+        "reference/softmax.h",
     ],
     deps = [
         ":quantization_util",
@@ -299,6 +327,7 @@ cc_library(
         ":types",
         "@gemmlowp",
         "//tensorflow/contrib/lite/c:c_api_internal",
+        "//tensorflow/contrib/lite/kernels:op_macros",
     ] + select({
         ":haswell": tflite_deps_intel,
         ":ios_x86_64": tflite_deps_intel,
@@ -319,16 +348,20 @@ cc_library(
         "common.h",
         "reference/depthwiseconv_float.h",
         "reference/depthwiseconv_uint8.h",
+        "reference/fully_connected.h",
         "reference/legacy_reference_ops.h",
         "reference/reference_ops.h",
+        "reference/softmax.h",
     ],
     deps = [
         ":quantization_util",
         ":round",
         ":strided_slice_logic",
+        ":legacy_types",
         ":types",
         "@gemmlowp",
         "//tensorflow/contrib/lite/c:c_api_internal",
+        "//tensorflow/contrib/lite/kernels:op_macros",
     ] + select({
         ":haswell": tflite_deps_intel,
         ":ios_x86_64": tflite_deps_intel,
@@ -458,9 +491,10 @@ cc_library(
     ],
     copts = NEON_FLAGS_IF_APPLICABLE,
     deps = [
-        "//tensorflow/contrib/lite/kernels:activation_functor",
+        "@com_google_absl//absl/base:core_headers",
         "//tensorflow/contrib/lite/c:c_api_internal",
         "@arm_neon_2_x86_sse",
+        "//tensorflow/contrib/lite/kernels:op_macros",
         "@gemmlowp",
     ] + select({
         ":arm": [
@@ -573,6 +607,22 @@ cc_test(
 cc_test(
     name = "resize_bilinear_test",
     srcs = ["resize_bilinear_test.cc"],
+    tags = [
+        "no_oss",
+        "tflite_not_portable",
+    ],
+    deps = [
+        ":optimized_base",
+        ":reference_base",
+        ":test_util",
+        ":types",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "resize_nearest_neighbor_test",
+    srcs = ["resize_nearest_neighbor_test.cc"],
     tags = [
         "no_oss",
         "tflite_not_portable",

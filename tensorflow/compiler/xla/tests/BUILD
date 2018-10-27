@@ -29,6 +29,10 @@ load("//tensorflow/compiler/xla/tests:build_defs.bzl", "generate_backend_suites"
 load("//tensorflow/compiler/xla/tests:build_defs.bzl", "generate_backend_test_macros")
 load("//tensorflow:tensorflow.bzl", "tf_cc_binary")
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
+load(
+    "//tensorflow/core:platform/default/build_config_root.bzl",
+    "tf_cuda_tests_tags",
+)
 
 # Generate test_suites for all backends, named "${backend}_tests".
 generate_backend_suites()
@@ -150,8 +154,28 @@ cc_library(
         "//tensorflow/compiler/xla/service:hlo_parser",
         "//tensorflow/compiler/xla/service:hlo_verifier",
         "//tensorflow/core:lib",
-        "//tensorflow/core:test",
+        "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/memory",
+    ],
+)
+
+tf_cc_test(
+    name = "hlo_verified_test_base_test",
+    srcs = ["hlo_verified_test_base_test.cc"],
+    deps = [
+        ":hlo_test_base",
+        ":hlo_verified_test_base",
+        ":test_macros_cpu",
+        ":test_utils",
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla/client:xla_builder",
+        "//tensorflow/compiler/xla/client:xla_computation",
+        "//tensorflow/compiler/xla/service:hlo",
+        "//tensorflow/compiler/xla/service:hlo_parser",
+        "//tensorflow/compiler/xla/service:hlo_verifier",
+        "//tensorflow/compiler/xla/tests:xla_internal_test_main",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:test",
     ],
 )
 
@@ -398,6 +422,7 @@ xla_test(
         "//tensorflow/core:regexp_internal",
         "//tensorflow/core:test",
         "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/strings",
     ],
 )
@@ -451,7 +476,9 @@ xla_test(
     name = "params_test",
     srcs = ["params_test.cc"],
     shard_count = 30,
-    tags = ["optonly"],
+    tags = [
+        "optonly",
+    ],
     deps = [
         "//tensorflow/compiler/xla:array2d",
         "//tensorflow/compiler/xla:literal",
@@ -1797,7 +1824,7 @@ xla_test(
 tf_cc_test(
     name = "llvm_compiler_test",
     srcs = ["llvm_compiler_test.cc"],
-    tags = ["requires-gpu-sm35"],
+    tags = tf_cuda_tests_tags(),
     deps = [
         "//tensorflow/compiler/xla:literal_util",
         "//tensorflow/compiler/xla:test_helpers",
@@ -2096,7 +2123,7 @@ tf_cc_test(
     name = "sample_file_test",
     srcs = ["sample_file_test.cc"],
     data = ["isolated_convolution.hlo"],
-    tags = ["requires-gpu-sm35"],
+    tags = tf_cuda_tests_tags(),
     deps = [
         ":hlo_test_base",
         "//tensorflow/compiler/xla:test",
@@ -2121,11 +2148,11 @@ xla_test(
         ":test_utils",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla/client:xla_builder",
-        "//tensorflow/compiler/xla/client:xla_computation",
         "//tensorflow/compiler/xla/service:hlo_parser",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
         "//tensorflow/core:lib",
         "//tensorflow/core:test",
+        "@com_google_absl//absl/container:flat_hash_set",
     ],
 )
 
@@ -2142,5 +2169,23 @@ xla_test(
         ":client_library_test_base",
         ":xla_internal_test_main",
         "//tensorflow/core:lib",
+    ],
+)
+
+tf_cc_test(
+    name = "multiple_devices_on_host_test",
+    srcs = ["multiple_devices_on_host_test.cc"],
+    args = ["--xla_force_host_platform_device_count=4"],
+    deps = [
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:test",
+        "//tensorflow/compiler/xla/client:client_library",
+        "//tensorflow/compiler/xla/client:xla_builder",
+        "//tensorflow/compiler/xla/service:cpu_plugin",
+        "//tensorflow/compiler/xla/service:platform_util",
+        "//tensorflow/compiler/xla/tests:xla_internal_test_main",  # fixdeps: keep
+        "//tensorflow/core:lib",
+        "//tensorflow/core:test",
+        "@com_google_absl//absl/synchronization",
     ],
 )

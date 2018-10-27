@@ -16,6 +16,7 @@ py_library(
         "__init__.py",
         "python/training/adamax.py",
         "python/training/addsign.py",
+        "python/training/agn_optimizer.py",
         "python/training/drop_stale_gradient_optimizer.py",
         "python/training/elastic_average_optimizer.py",
         "python/training/external_optimizer.py",
@@ -242,6 +243,27 @@ tf_py_test(
     grpc_enabled = True,
     tags = [
         "no_oss",  # Flaky due to port collisions
+    ],
+)
+
+tf_py_test(
+    name = "agn_optimizer_test",
+    srcs = ["python/training/agn_optimizer_test.py"],
+    additional_deps = [
+        ":opt_py",
+        "//tensorflow/python:client",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:variables",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:platform",
+        "//tensorflow/python:training",
+        "//tensorflow/python:ops",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//third_party/py/numpy",
+    ],
+    tags = [
+        "notap",  # this test launches a local server
     ],
 )
 

@@ -29,7 +29,7 @@ namespace {
 template <typename T>
 bool AreAllBufferElementsZero(const std::vector<T>& buffer_data) {
   for (auto x : buffer_data) {
-    if (x != 0) {
+    if (x != T()) {
       return false;
     }
   }
@@ -42,7 +42,7 @@ void FillArrayWithZeros(Array* array) {
   std::vector<DataType<Type>>& data = array->GetMutableBuffer<Type>().data;
   data.resize(RequiredBufferSizeForShape(array->shape()));
   for (size_t i = 0; i < data.size(); i++) {
-    data[i] = 0;
+    data[i] = DataType<Type>();
   }
 }
 
@@ -51,23 +51,30 @@ void FillArrayWithZeros(Array* array) {
 // Removes a multiplication by array of constant zeros by making the output
 // array an array of constant zeros and removing the input arrays if they are no
 // longer needed.
-bool ResolveMultiplyByZero::Run(Model* model, std::size_t op_index) {
+::tensorflow::Status ResolveMultiplyByZero::Run(Model* model,
+                                                std::size_t op_index,
+                                                bool* modified) {
+  *modified = false;
   const auto mul_it = model->operators.begin() + op_index;
   auto* mul_op = mul_it->get();
   if (mul_op->type != OperatorType::kMul) {
-    return false;
+    return ::tensorflow::Status::OK();
   }
   const auto& output_array_name = mul_op->outputs[0];
   auto& output_array = model->GetArray(output_array_name);
 
+  if (!IsDiscardableArray(*model, output_array_name)) {
+    return ::tensorflow::Status::OK();
+  }
+
   if (output_array.data_type == ArrayDataType::kNone) {
     // Yield until the output type has been set by PropagateArrayDataTypes
-    return false;
+    return ::tensorflow::Status::OK();
   }
 
   // Yield if the output shape is not known yet.
   if (!output_array.has_shape()) {
-    return false;
+    return ::tensorflow::Status::OK();
   }
 
   // This transformation only handles the case where one operand is all 0's and
@@ -79,12 +86,12 @@ bool ResolveMultiplyByZero::Run(Model* model, std::size_t op_index) {
   };
   if (!is_input_constant[0] && !is_input_constant[1]) {
     // Neither input is constant, so nothing we can resolve here.
-    return false;
+    return ::tensorflow::Status::OK();
   }
   if (is_input_constant[0] && is_input_constant[1]) {
     // Both inputs are constants. That's a job for constants propagation, not
     // for us to handle here.
-    return false;
+    return ::tensorflow::Status::OK();
   }
   const int index_of_constant_input = is_input_constant[0] ? 0 : 1;
   const int index_of_variable_input = is_input_constant[0] ? 1 : 0;
@@ -101,7 +108,7 @@ bool ResolveMultiplyByZero::Run(Model* model, std::size_t op_index) {
           constant_input_array.GetBuffer<ArrayDataType::kFloat>().data;
       if (!AreAllBufferElementsZero<DataType<ArrayDataType::kFloat>>(
               constant_input_data)) {
-        return false;
+        return ::tensorflow::Status::OK();
       }
       FillArrayWithZeros<ArrayDataType::kFloat>(&output_array);
     } break;
@@ -110,7 +117,7 @@ bool ResolveMultiplyByZero::Run(Model* model, std::size_t op_index) {
           constant_input_array.GetBuffer<ArrayDataType::kUint8>().data;
       if (!AreAllBufferElementsZero<DataType<ArrayDataType::kUint8>>(
               constant_input_data)) {
-        return false;
+        return ::tensorflow::Status::OK();
       }
       FillArrayWithZeros<ArrayDataType::kUint8>(&output_array);
     } break;
@@ -119,7 +126,7 @@ bool ResolveMultiplyByZero::Run(Model* model, std::size_t op_index) {
           constant_input_array.GetBuffer<ArrayDataType::kInt32>().data;
       if (!AreAllBufferElementsZero<DataType<ArrayDataType::kInt32>>(
               constant_input_data)) {
-        return false;
+        return ::tensorflow::Status::OK();
       }
       FillArrayWithZeros<ArrayDataType::kInt32>(&output_array);
     } break;
@@ -128,30 +135,34 @@ bool ResolveMultiplyByZero::Run(Model* model, std::size_t op_index) {
           constant_input_array.GetBuffer<ArrayDataType::kInt64>().data;
       if (!AreAllBufferElementsZero<DataType<ArrayDataType::kInt64>>(
               constant_input_data)) {
-        return false;
+        return ::tensorflow::Status::OK();
       }
       FillArrayWithZeros<ArrayDataType::kInt64>(&output_array);
+    } break;
+    case ArrayDataType::kComplex64: {
+      const auto& constant_input_data =
+          constant_input_array.GetBuffer<ArrayDataType::kComplex64>().data;
+      if (!AreAllBufferElementsZero<DataType<ArrayDataType::kComplex64>>(
+              constant_input_data)) {
+        return ::tensorflow::Status::OK();
+      }
+      FillArrayWithZeros<ArrayDataType::kComplex64>(&output_array);
     } break;
     default:
       AddMessageF(
           "Cannot resolve multiply by 0 because of unsupported data type\n");
-      return false;
+      return ::tensorflow::Status::OK();
   }
 
   // Erase input arrays to the multiply if no longer used
-  if (IsDiscardableArray(*model, mul_op->inputs[0]) &&
-      CountOpsWithInput(*model, mul_op->inputs[0]) == 1) {
-    model->EraseArray(mul_op->inputs[0]);
-  }
-  if (IsDiscardableArray(*model, mul_op->inputs[1]) &&
-      CountOpsWithInput(*model, mul_op->inputs[1]) == 1) {
-    model->EraseArray(mul_op->inputs[1]);
-  }
+  DeleteArrayIfUsedOnce(mul_op->inputs[0], model);
+  DeleteArrayIfUsedOnce(mul_op->inputs[1], model);
 
   // Erase the multiply operator.
   model->operators.erase(mul_it);
 
-  return true;
+  *modified = true;
+  return ::tensorflow::Status::OK();
 }
 
 }  // namespace toco

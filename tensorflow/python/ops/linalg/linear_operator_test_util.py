@@ -184,7 +184,7 @@ class LinearOperatorDerivedClassTest(test.TestCase):
     for use_placeholder in self._use_placeholder_options:
       for build_info in self._operator_build_infos:
         for dtype in self._dtypes_to_test:
-          with self.test_session(graph=ops.Graph()) as sess:
+          with self.session(graph=ops.Graph()) as sess:
             sess.graph.seed = random_seed.DEFAULT_GRAPH_SEED
             operator, mat = self._operator_and_matrix(
                 build_info, dtype, use_placeholder=use_placeholder)
@@ -199,7 +199,7 @@ class LinearOperatorDerivedClassTest(test.TestCase):
     for use_placeholder in self._use_placeholder_options:
       for build_info in self._operator_build_infos:
         for dtype in self._dtypes_to_test:
-          with self.test_session(graph=ops.Graph()) as sess:
+          with self.session(graph=ops.Graph()) as sess:
             sess.graph.seed = random_seed.DEFAULT_GRAPH_SEED
             operator, mat = self._operator_and_matrix(
                 build_info, dtype, use_placeholder=use_placeholder)
@@ -215,7 +215,7 @@ class LinearOperatorDerivedClassTest(test.TestCase):
     for use_placeholder in self._use_placeholder_options:
       for build_info in self._operator_build_infos:
         for dtype in self._dtypes_to_test:
-          with self.test_session(graph=ops.Graph()) as sess:
+          with self.session(graph=ops.Graph()) as sess:
             sess.graph.seed = random_seed.DEFAULT_GRAPH_SEED
             operator, mat = self._operator_and_matrix(
                 build_info, dtype, use_placeholder=use_placeholder)
@@ -240,7 +240,7 @@ class LinearOperatorDerivedClassTest(test.TestCase):
         for dtype in self._dtypes_to_test:
           for adjoint in self._adjoint_options:
             for adjoint_arg in self._adjoint_arg_options:
-              with self.test_session(graph=ops.Graph()) as sess:
+              with self.session(graph=ops.Graph()) as sess:
                 sess.graph.seed = random_seed.DEFAULT_GRAPH_SEED
                 operator, mat = self._operator_and_matrix(
                     build_info, dtype, use_placeholder=use_placeholder)
@@ -283,7 +283,7 @@ class LinearOperatorDerivedClassTest(test.TestCase):
         for dtype in self._dtypes_to_test:
           for adjoint in self._adjoint_options:
             for adjoint_arg in self._adjoint_arg_options:
-              with self.test_session(graph=ops.Graph()) as sess:
+              with self.session(graph=ops.Graph()) as sess:
                 sess.graph.seed = random_seed.DEFAULT_GRAPH_SEED
                 operator, mat = self._operator_and_matrix(
                     build_info, dtype, use_placeholder=use_placeholder)
@@ -319,7 +319,7 @@ class LinearOperatorDerivedClassTest(test.TestCase):
     for use_placeholder in self._use_placeholder_options:
       for build_info in self._operator_build_infos:
         for dtype in self._dtypes_to_test:
-          with self.test_session(graph=ops.Graph()) as sess:
+          with self.session(graph=ops.Graph()) as sess:
             sess.graph.seed = random_seed.DEFAULT_GRAPH_SEED
             operator, mat = self._operator_and_matrix(
                 build_info, dtype, use_placeholder=use_placeholder)
@@ -335,7 +335,7 @@ class LinearOperatorDerivedClassTest(test.TestCase):
     for use_placeholder in self._use_placeholder_options:
       for build_info in self._operator_build_infos:
         for dtype in self._dtypes_to_test:
-          with self.test_session(graph=ops.Graph()) as sess:
+          with self.session(graph=ops.Graph()) as sess:
             sess.graph.seed = random_seed.DEFAULT_GRAPH_SEED
             operator, mat = self._operator_and_matrix(
                 build_info, dtype, use_placeholder=use_placeholder)
@@ -353,7 +353,7 @@ class LinearOperatorDerivedClassTest(test.TestCase):
     for use_placeholder in self._use_placeholder_options:
       for build_info in self._operator_build_infos:
         for dtype in self._dtypes_to_test:
-          with self.test_session(graph=ops.Graph()) as sess:
+          with self.session(graph=ops.Graph()) as sess:
             sess.graph.seed = random_seed.DEFAULT_GRAPH_SEED
             operator, mat = self._operator_and_matrix(
                 build_info, dtype, use_placeholder=use_placeholder)

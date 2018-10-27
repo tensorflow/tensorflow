@@ -118,10 +118,11 @@ class ConcatV2Op : public ConcatBaseOp {
       : ConcatBaseOp(c, /* axis_index */ c->num_inputs() - 1) {}
 };
 
-REGISTER_XLA_OP(Name("Concat").CompileTimeConstInput("concat_dim"), ConcatOp);
+REGISTER_XLA_OP(Name("Concat").CompileTimeConstantInput("concat_dim"),
+                ConcatOp);
 REGISTER_XLA_OP(Name("ConcatV2")
                     .TypeConstraint("Tidx", DT_INT32)
-                    .CompileTimeConstInput("axis"),
+                    .CompileTimeConstantInput("axis"),
                 ConcatV2Op);
 
 class ConcatOffsetOp : public XlaOpKernel {
@@ -207,8 +208,8 @@ class ConcatOffsetOp : public XlaOpKernel {
 };
 
 REGISTER_XLA_OP(Name("ConcatOffset")
-                    .CompileTimeConstInput("concat_dim")
-                    .CompileTimeConstInput("shape"),
+                    .CompileTimeConstantInput("concat_dim")
+                    .CompileTimeConstantInput("shape"),
                 ConcatOffsetOp);
 
 }  // namespace

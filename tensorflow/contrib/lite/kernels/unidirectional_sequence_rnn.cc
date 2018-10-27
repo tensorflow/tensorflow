@@ -73,10 +73,13 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   const int max_time =
       (time_major) ? input->dims->data[0] : input->dims->data[1];
   const int num_units = input_weights->dims->data[0];
-  TF_LITE_ASSERT_EQ(input->dims->data[2], input_weights->dims->data[1]);
-  TF_LITE_ASSERT_EQ(input_weights->dims->data[0], bias->dims->data[0]);
-  TF_LITE_ASSERT_EQ(recurrent_weights->dims->data[0], bias->dims->data[0]);
-  TF_LITE_ASSERT_EQ(recurrent_weights->dims->data[1], bias->dims->data[0]);
+  TF_LITE_ENSURE_EQ(context, input->dims->data[2],
+                    input_weights->dims->data[1]);
+  TF_LITE_ENSURE_EQ(context, input_weights->dims->data[0], bias->dims->data[0]);
+  TF_LITE_ENSURE_EQ(context, recurrent_weights->dims->data[0],
+                    bias->dims->data[0]);
+  TF_LITE_ENSURE_EQ(context, recurrent_weights->dims->data[1],
+                    bias->dims->data[0]);
   TF_LITE_ENSURE_EQ(context, input->type, kTfLiteFloat32);
   TF_LITE_ENSURE_EQ(context, input_weights->type, recurrent_weights->type);
   TF_LITE_ENSURE_EQ(context, NumDimensions(hidden_state), 2);
@@ -125,9 +128,10 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
     TfLiteTensor* scaling_factors = GetTemporary(context, node, /*index=*/2);
     scaling_factors->type = kTfLiteFloat32;
     scaling_factors->allocation_type = kTfLiteArenaRw;
-    TfLiteIntArray* scaling_factors_size = TfLiteIntArrayCreate(1);
-    scaling_factors_size->data[0] = batch_size;
-    if (!TfLiteIntArrayEqual(scaling_factors->dims, scaling_factors_size)) {
+    int scaling_dims[1] = {batch_size};
+    if (!TfLiteIntArrayEqualsArray(scaling_factors->dims, 1, scaling_dims)) {
+      TfLiteIntArray* scaling_factors_size = TfLiteIntArrayCreate(1);
+      scaling_factors_size->data[0] = batch_size;
       TF_LITE_ENSURE_OK(context, context->ResizeTensor(context, scaling_factors,
                                                        scaling_factors_size));
     }
@@ -166,10 +170,10 @@ TfLiteStatus EvalFloat(const TfLiteTensor* input,
           input->data.f + s * input_size * batch_size;
       float* output_ptr_batch = output->data.f + s * num_units * batch_size;
 
-      kernel_utils::RnnBatchStep(input_ptr_batch, input_weights_ptr,
-                                 recurrent_weights_ptr, bias_ptr, input_size,
-                                 num_units, batch_size, params->activation,
-                                 hidden_state_ptr_batch, output_ptr_batch);
+      kernel_utils::RnnBatchStep(
+          input_ptr_batch, input_weights_ptr, recurrent_weights_ptr, bias_ptr,
+          input_size, num_units, batch_size, num_units, params->activation,
+          hidden_state_ptr_batch, output_ptr_batch);
     }
   } else {
     // For each batch
@@ -185,8 +189,8 @@ TfLiteStatus EvalFloat(const TfLiteTensor* input,
 
         kernel_utils::RnnBatchStep(
             input_ptr_batch, input_weights_ptr, recurrent_weights_ptr, bias_ptr,
-            input_size, num_units, /*batch_size=*/1, params->activation,
-            hidden_state_ptr_batch, output_ptr_batch);
+            input_size, num_units, /*batch_size=*/1, num_units,
+            params->activation, hidden_state_ptr_batch, output_ptr_batch);
       }
     }
   }
@@ -237,8 +241,8 @@ TfLiteStatus EvalHybrid(
       kernel_utils::RnnBatchStep(
           input_ptr_batch, input_weights_ptr, input_weights_scale,
           recurrent_weights_ptr, recurrent_weights_scale, bias_ptr, input_size,
-          num_units, batch_size, params->activation, quantized_input_ptr,
-          quantized_hidden_state_ptr, scaling_factors_ptr,
+          num_units, batch_size, num_units, params->activation,
+          quantized_input_ptr, quantized_hidden_state_ptr, scaling_factors_ptr,
           hidden_state_ptr_batch, output_ptr_batch);
     }
   } else {
@@ -256,8 +260,8 @@ TfLiteStatus EvalHybrid(
         kernel_utils::RnnBatchStep(
             input_ptr_batch, input_weights_ptr, input_weights_scale,
             recurrent_weights_ptr, recurrent_weights_scale, bias_ptr,
-            input_size, num_units, /*batch_size=*/1, params->activation,
-            quantized_input_ptr, quantized_hidden_state_ptr,
+            input_size, num_units, /*batch_size=*/1, num_units,
+            params->activation, quantized_input_ptr, quantized_hidden_state_ptr,
             scaling_factors_ptr, hidden_state_ptr_batch, output_ptr_batch);
       }
     }

@@ -26,13 +26,12 @@ limitations under the License.
 
 namespace tflite {
 
-// Creates a Dims struct from a set of dimensions.
-Dims<4> MakeDimsForInference(int depth, int width, int height, int batch);
-
 // Computes output and padding dimensions.
-bool ComputeConvSizes(Dims<4> input_dims, int output_depth, int filter_width,
-                      int filter_height, int stride, PaddingType padding_type,
-                      Dims<4>* output_dims, int* pad_width, int* pad_height);
+bool ComputeConvSizes(const RuntimeShape& input_shape, int output_depth,
+                      int filter_width, int filter_height, int stride,
+                      int dilation_width_factor, int dilation_height_factor,
+                      PaddingType padding_type, RuntimeShape* output_shape,
+                      int* pad_width, int* pad_height);
 
 // Returns a mt19937 random engine.
 std::mt19937& RandomEngine();

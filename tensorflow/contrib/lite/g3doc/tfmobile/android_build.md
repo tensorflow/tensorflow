@@ -1,5 +1,21 @@
-
 # Building TensorFlow on Android
+
+Warning: We expect to deprecate TensorFlow Mobile in early 2019
+
+<div class="caution">
+  <p>
+    <a href="../">TensorFlow Lite</a> is our main mobile and embedded offering. We are
+    working hard to close the feature gap between TensorFlow Mobile and
+    TensorFlow Lite. We expect to deprecate TensorFlow Mobile in early 2019. We
+    will give ample notice to our users when we get to that point and will
+    provide help and support to ensure easy migrations.
+  </p>
+  <p>
+    In the meantime, please use TensorFlow Lite. If you have a feature request,
+    such as a missing op, please post to our <a
+    href="https://github.com/tensorflow/tensorflow/issues">GitHub</a>.
+  </p>
+</div>
 
 To get you started working with TensorFlow on Android, we'll walk through two
 ways to build our TensorFlow mobile demos and deploying them on an Android
@@ -93,7 +109,7 @@ requires some knowledge of build systems and Android developer tools, but we'll
 guide you through the basics here.
 
 - First, follow our instructions for
-  <a href="http://www.tensorflow.org/install/install_sources">installing from sources</a>.
+  <a href="http://www.tensorflow.org/install/source">installing from sources</a>.
   This will also guide you through installing Bazel and cloning the
   TensorFlow code.
 

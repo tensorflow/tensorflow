@@ -149,7 +149,8 @@ StatusOr<Shape> MakeShapeWithLayoutInternal(
     return InvalidArgument("Unsupported element type: %s",
                            PrimitiveType_Name(element_type));
   }
-  Shape shape = ShapeUtil::MakeShape(element_type, dimensions);
+  TF_ASSIGN_OR_RETURN(Shape shape,
+                      ShapeUtil::MakeValidatedShape(element_type, dimensions));
   auto min2maj = shape.mutable_layout()->mutable_minor_to_major();
   min2maj->Clear();
   for (int64 value : minor_to_major) {
@@ -216,9 +217,14 @@ StatusOr<Shape> MakeShapeWithLayoutInternal(
 
 /* static */ Shape ShapeUtil::MakeShape(PrimitiveType element_type,
                                         absl::Span<const int64> dimensions) {
+  return MakeValidatedShape(element_type, dimensions).ValueOrDie();
+}
+
+/* static */ StatusOr<Shape> ShapeUtil::MakeValidatedShape(
+    PrimitiveType element_type, absl::Span<const int64> dimensions) {
   CHECK(IsArrayPrimitiveType(element_type));
   Shape result;
-  PopulateShape(element_type, dimensions, &result);
+  TF_RETURN_IF_ERROR(PopulateShape(element_type, dimensions, &result));
   return result;
 }
 
@@ -256,16 +262,16 @@ ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(
   return MakeShapeWithDescendingLayout(shape.element_type(), dims);
 }
 
-/* static */ void ShapeUtil::PopulateShape(PrimitiveType element_type,
-                                           absl::Span<const int64> dimensions,
-                                           Shape* shape) {
+/* static */ Status ShapeUtil::PopulateShape(PrimitiveType element_type,
+                                             absl::Span<const int64> dimensions,
+                                             Shape* shape) {
   shape->Clear();
   shape->set_element_type(element_type);
   for (int64 dimension : dimensions) {
     shape->add_dimensions(dimension);
   }
   LayoutUtil::SetToDefaultLayout(shape);
-  TF_DCHECK_OK(ValidateShape(*shape));
+  return ValidateShape(*shape);
 }
 
 /* static */ Shape ShapeUtil::MakeTupleShape(absl::Span<const Shape> shapes) {
@@ -422,8 +428,11 @@ ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(
 }
 
 /* static */ int64 ShapeUtil::ElementsIn(const Shape& shape) {
-  CHECK(IsArray(shape)) << ShapeUtil::HumanString(shape);
-  CHECK_EQ(shape.dimensions_size(), Rank(shape));
+  DCHECK(IsArray(shape)) << ShapeUtil::HumanString(shape);
+  DCHECK_EQ(shape.dimensions_size(), Rank(shape));
+  if (shape.dimensions().size() == 1) {
+    return shape.dimensions()[0];
+  }
   return std::accumulate<decltype(shape.dimensions().begin()), int64>(
       shape.dimensions().begin(), shape.dimensions().end(), 1LL,
       std::multiplies<int64>());
@@ -441,12 +450,26 @@ ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(
   return count;
 }
 
+/* static */ bool ShapeUtil::HasPrimitiveType(const Shape& shape,
+                                              PrimitiveType primitive_type) {
+  if (shape.element_type() == primitive_type) {
+    return true;
+  }
+  for (const Shape& element_shape : shape.tuple_shapes()) {
+    if (HasPrimitiveType(element_shape, primitive_type)) {
+      return true;
+    }
+  }
+  return false;
+}
+
 /* static */ bool ShapeUtil::IsZeroElementArray(const Shape& shape) {
   return ShapeUtil::IsArray(shape) && ElementsIn(shape) == 0;
 }
 
-/* static */ bool ShapeUtil::IsScalarF32(const Shape& shape) {
-  return shape.element_type() == F32 && Rank(shape) == 0;
+/* static */ bool ShapeUtil::IsScalarWithElementType(
+    const Shape& shape, PrimitiveType element_type) {
+  return IsScalar(shape) && shape.element_type() == element_type;
 }
 
 namespace {
@@ -580,7 +603,8 @@ StatusOr<Shape> ParseShapeStringInternal(absl::string_view* s) {
   // we convert in to the RE2-consumable type and then consume the corresponding
   // amount from our string_view type.
   static LazyRE2 shape_pattern = {
-      "^(\\w*\\d*)\\[([\\d,]*)\\](?:\\s*(dense|sparse)?\\s*{([\\d,]+)})?"};
+      "^(\\w*\\d*)\\[([\\d,\\s]*)\\](?:\\s*(dense|sparse)?\\s*{([\\d,\\s]+)})"
+      "?"};
   tensorflow::RegexpStringPiece s_consumable(s->data(), s->size());
   if (RE2::Consume(&s_consumable, *shape_pattern, &element_type_string,
                    &dimensions_string, &format_string, &layout_string)) {
@@ -625,7 +649,8 @@ StatusOr<Shape> ParseShapeStringInternal(absl::string_view* s) {
       result = ShapeUtil::MakeTokenShape();
     } else if (format_string.empty() && layout_string.empty()) {
       // Create a shape without a layout set.
-      result = ShapeUtil::MakeShape(primitive_type, dimensions);
+      TF_ASSIGN_OR_RETURN(
+          result, ShapeUtil::MakeValidatedShape(primitive_type, dimensions));
     } else if (format_string == "sparse") {
       TF_ASSIGN_OR_RETURN(int64 max_elements, string_to_int64(layout_string));
       result = ShapeUtil::MakeShapeWithSparseLayout(primitive_type, dimensions,
@@ -768,6 +793,9 @@ StatusOr<Shape> ParseShapeStringInternal(absl::string_view* s) {
     return byte_size;
   } else if (shape.element_type() == TOKEN) {
     return 0;
+  } else if (shape.element_type() == OPAQUE) {
+    CHECK_GT(pointer_size, 0);
+    return pointer_size;
   }
   LOG(FATAL) << PrimitiveType_Name(shape.element_type())
              << " primitive type has no definitive size";
@@ -815,7 +843,8 @@ StatusOr<Shape> ParseShapeStringInternal(absl::string_view* s) {
 
 /* static */ Status ShapeUtil::ValidateShapeWithOptionalLayoutInternal(
     const Shape& shape) {
-  if (shape.element_type() == PRIMITIVE_TYPE_INVALID) {
+  if (shape.element_type() == PRIMITIVE_TYPE_INVALID ||
+      !PrimitiveType_IsValid(shape.element_type())) {
     return InvalidArgument("shape has invalid element type: %s",
                            shape.ShortDebugString());
   }
@@ -852,11 +881,8 @@ StatusOr<Shape> ParseShapeStringInternal(absl::string_view* s) {
     return Status::OK();
   }
 
-  if (Rank(shape) != shape.dimensions_size()) {
-    return InvalidArgument(
-        "shape's rank is mismatched with dimension count; rank=%d "
-        "dimensions_size=%d",
-        Rank(shape), shape.dimensions_size());
+  if (LayoutUtil::IsSparseArray(shape) && Rank(shape) == 0) {
+    return InvalidArgument("sparse arrays must have rank > 0");
   }
   for (int64 i = 0; i < Rank(shape); ++i) {
     int64 dimension = shape.dimensions(i);
@@ -878,8 +904,13 @@ StatusOr<Shape> ParseShapeStringInternal(absl::string_view* s) {
     return Status::OK();
   }
 
-  int64 shape_size = [&shape]() {
-    if (LayoutUtil::IsSparseArray(shape)) {
+  // We can only reason about some aspects of array's shape if it has a valid
+  // layout, these aspects will be ignored otherwise.
+  bool shape_has_valid_layout = LayoutUtil::HasLayout(shape) &&
+                                LayoutUtil::ValidateLayoutInShape(shape).ok();
+
+  int64 shape_size = [&]() {
+    if (shape_has_valid_layout && LayoutUtil::IsSparseArray(shape)) {
       int64 max_sparse_elements = LayoutUtil::MaxSparseElements(shape.layout());
       if (max_sparse_elements < 0) {
         return max_sparse_elements;
@@ -915,7 +946,13 @@ StatusOr<Shape> ParseShapeStringInternal(absl::string_view* s) {
       return dense_shape_size;
     }
 
-    for (int64 dim : shape.dimensions()) {
+    bool is_padded = shape_has_valid_layout &&
+                     LayoutUtil::IsDenseArray(shape) &&
+                     LayoutUtil::IsPadded(shape);
+    absl::Span<const int64> shape_max_dimensions =
+        is_padded ? LayoutUtil::PaddedDimensions(shape)
+                  : AsInt64Slice(shape.dimensions());
+    for (int64 dim : shape_max_dimensions) {
       dense_shape_size = MultiplyWithoutOverflow(dense_shape_size, dim);
       if (dense_shape_size < 0) {
         return dense_shape_size;
@@ -937,11 +974,10 @@ StatusOr<Shape> ParseShapeStringInternal(absl::string_view* s) {
 
 /* static */ Status ShapeUtil::ValidateShapeWithOptionalLayout(
     const Shape& shape) {
-  if (LayoutUtil::HasLayout(shape)) {
-    // Since a layout is present, upgrade to the full set of invariant checks.
-    return ValidateShape(shape);
-  }
-  return ValidateShapeWithOptionalLayoutInternal(shape);
+  TF_RETURN_IF_ERROR(ValidateShapeWithOptionalLayoutInternal(shape));
+
+  return LayoutUtil::ValidateLayoutInShape(shape,
+                                           /*allow_missing_layouts=*/true);
 }
 
 /* static */ Status ShapeUtil::ValidateShape(const Shape& shape) {
@@ -961,7 +997,7 @@ StatusOr<Shape> ParseShapeStringInternal(absl::string_view* s) {
                                           ShapeIndexView index) {
   const Shape* subshape = &shape;
   for (auto i : index) {
-    if (!IsTuple(*subshape) || i >= subshape->tuple_shapes_size()) {
+    if (!IsTuple(*subshape) || i >= subshape->tuple_shapes_size() || i < 0) {
       return false;
     }
     subshape = &subshape->tuple_shapes(i);
@@ -1589,7 +1625,11 @@ ShapeUtil::DimensionsUnmodifiedByReshape(const Shape& input_shape,
   Shape output_shape_with_layout = MakeShapeWithLayout(
       output_shape.element_type(), AsInt64Slice(output_shape.dimensions()),
       output_layout);
-  CHECK(ReshapeIsBitcast(input_shape, output_shape_with_layout));
+  CHECK(ReshapeIsBitcast(input_shape, output_shape_with_layout))
+      << "reshape is not a bitcast for input_shape: "
+      << ShapeUtil::HumanStringWithLayout(input_shape)
+      << " and output_shape_with_layout: "
+      << ShapeUtil::HumanStringWithLayout(output_shape_with_layout);
   return output_shape_with_layout;
 }
 
@@ -1631,7 +1671,7 @@ ShapeUtil::DimensionsUnmodifiedByReshape(const Shape& input_shape,
 }
 
 std::ostream& operator<<(std::ostream& out, const Shape& shape) {
-  out << ShapeUtil::HumanString(shape);
+  out << ShapeUtil::HumanStringWithLayout(shape);
   return out;
 }
 

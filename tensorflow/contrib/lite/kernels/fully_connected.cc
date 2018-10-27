@@ -55,7 +55,7 @@ struct OpData {
   int32_t output_activation_min;
   int32_t output_activation_max;
   // The index of the temporary tensor where the quantized inputs are cached.
-  int input_quantized_index;
+  int scratch_tensor_index;
 };
 
 constexpr int kInputTensor = 0;
@@ -63,7 +63,6 @@ constexpr int kWeightsTensor = 1;
 constexpr int kBiasTensor = 2;
 constexpr int kOutputTensor = 0;
 constexpr int kShuffledInputWorkspaceTensor = 1;
-constexpr int kScratchBufferTensor = 1;
 
 void* Init(TfLiteContext* context, const char* buffer, size_t length) {
   // This is a builtin op, so we don't use the contents in 'buffer', if any.
@@ -71,7 +70,8 @@ void* Init(TfLiteContext* context, const char* buffer, size_t length) {
   // Eval().
   gemm_support::IncrementUsageCounter(context);
   auto* op_data = new OpData();
-  context->AddTensors(context, 1, &op_data->input_quantized_index);
+  context->AddTensors(context, /*tensors_to_add=*/2,
+                      &op_data->scratch_tensor_index);
   return op_data;
 }
 
@@ -134,11 +134,10 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   // buffer to store the intermediate quantized values.
   if (input->type == kTfLiteFloat32 && filter->type == kTfLiteUInt8) {
     TfLiteIntArrayFree(node->temporaries);
-    node->temporaries = TfLiteIntArrayCreate(1);
-    node->temporaries->data[0] = data->input_quantized_index;
+    node->temporaries = TfLiteIntArrayCreate(2);
+    node->temporaries->data[0] = data->scratch_tensor_index;
 
-    TfLiteTensor* input_quantized =
-        &context->tensors[node->temporaries->data[0]];
+    TfLiteTensor* input_quantized = GetTemporary(context, node, /*index=*/0);
     input_quantized->type = kTfLiteUInt8;
     input_quantized->allocation_type = kTfLiteArenaRw;
 
@@ -147,6 +146,17 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
       TfLiteIntArray* input_quantized_size = TfLiteIntArrayCopy(input->dims);
       TF_LITE_ENSURE_OK(context, context->ResizeTensor(context, input_quantized,
                                                        input_quantized_size));
+    }
+    node->temporaries->data[1] = data->scratch_tensor_index + 1;
+    TfLiteTensor* scaling_factors = GetTemporary(context, node, /*index=*/1);
+    scaling_factors->type = kTfLiteFloat32;
+    scaling_factors->allocation_type = kTfLiteArenaRw;
+    int scaling_dims[1] = {batch_size};
+    if (!TfLiteIntArrayEqualsArray(scaling_factors->dims, 1, scaling_dims)) {
+      TfLiteIntArray* scaling_factors_size = TfLiteIntArrayCreate(1);
+      scaling_factors_size->data[0] = batch_size;
+      TF_LITE_ENSURE_OK(context, context->ResizeTensor(context, scaling_factors,
+                                                       scaling_factors_size));
     }
   }
 
@@ -192,13 +202,11 @@ TfLiteStatus EvalPie(TfLiteContext* context, TfLiteNode* node,
   return kTfLiteOk;
 }
 
-TfLiteStatus EvalPieQuantized(TfLiteContext* context, TfLiteNode* node,
-                              TfLiteFullyConnectedParams* params, OpData* data,
-                              const TfLiteTensor* input,
-                              const TfLiteTensor* filter,
-                              const TfLiteTensor* bias,
-                              TfLiteTensor* input_quantized,
-                              TfLiteTensor* output) {
+TfLiteStatus EvalHybrid(TfLiteContext* context, TfLiteNode* node,
+                        TfLiteFullyConnectedParams* params, OpData* data,
+                        const TfLiteTensor* input, const TfLiteTensor* filter,
+                        const TfLiteTensor* bias, TfLiteTensor* input_quantized,
+                        TfLiteTensor* scaling_factors, TfLiteTensor* output) {
   // Check the types for this hybrid Op.
   TF_LITE_ENSURE_EQ(context, input->type, kTfLiteFloat32);
   TF_LITE_ENSURE_EQ(context, filter->type, kTfLiteUInt8);
@@ -231,31 +239,29 @@ TfLiteStatus EvalPieQuantized(TfLiteContext* context, TfLiteNode* node,
   }
 
   // Quantize input from float to uint8 + quantization params (scaling factor).
-  float min, max;
-  float* scaling_factors = new float[batch_size];
+  float unused_min, unused_max;
+  float* scaling_factors_ptr = scaling_factors->data.f;
+  int8_t* quant_data = reinterpret_cast<int8_t*>(input_quantized->data.uint8);
 
   // Quantize each batch independently.
   for (int b = 0; b < batch_size; ++b) {
     const int offset = b * input_size;
-    tensor_utils::SymmetricQuantizeFloats(
-        input->data.f + offset, input_size,
-        reinterpret_cast<int8_t*>(input_quantized->data.uint8) + offset, &min,
-        &max, &scaling_factors[b]);
+    tensor_utils::SymmetricQuantizeFloats(input->data.f + offset, input_size,
+                                          quant_data + offset, &unused_min,
+                                          &unused_max, &scaling_factors_ptr[b]);
     // Incorporate scaling of the filter.
-    scaling_factors[b] *= filter->params.scale;
+    scaling_factors_ptr[b] *= filter->params.scale;
   }
 
   // Compute output += weight * quantized_input
   tensor_utils::MatrixBatchVectorMultiplyAccumulate(
       reinterpret_cast<int8_t*>(filter->data.uint8), num_units, input_size,
-      reinterpret_cast<int8_t*>(input_quantized->data.uint8), scaling_factors,
-      batch_size, output->data.f, /*result_stride=*/1);
+      quant_data, scaling_factors_ptr, batch_size, output->data.f,
+      /*result_stride=*/1);
 
   // Apply activation function to floats.
   tensor_utils::ApplyActivationToVector(output->data.f, batch_size * num_units,
                                         params->activation, output->data.f);
-  delete[] scaling_factors;
-
   return kTfLiteOk;
 }
 
@@ -281,15 +287,23 @@ TfLiteStatus EvalQuantized(TfLiteContext* context, TfLiteNode* node,
   int32_t input_offset = -input->params.zero_point;
   int32_t filter_offset = -filter->params.zero_point;
   int32_t output_offset = output->params.zero_point;
-#define TF_LITE_FULLY_CONNECTED(type, output_data_type)                     \
-  type::FullyConnected(                                                     \
-      GetTensorData<uint8_t>(input), GetTensorDims(input), input_offset,    \
-      GetTensorData<uint8_t>(filter), GetTensorDims(filter), filter_offset, \
-      GetTensorData<int32_t>(bias), GetTensorDims(bias), output_offset,     \
-      data->output_multiplier, data->output_shift,                          \
-      data->output_activation_min, data->output_activation_max,             \
-      GetTensorData<output_data_type>(output), GetTensorDims(output),       \
-      gemm_context)
+#define TF_LITE_FULLY_CONNECTED(type, output_data_type)                  \
+  {                                                                      \
+    FullyConnectedParams op_params;                                      \
+    op_params.input_offset = input_offset;                               \
+    op_params.weights_offset = filter_offset;                            \
+    op_params.output_offset = output_offset;                             \
+    op_params.output_multiplier = data->output_multiplier;               \
+    op_params.output_shift = -data->output_shift;                        \
+    op_params.quantized_activation_min = data->output_activation_min;    \
+    op_params.quantized_activation_max = data->output_activation_max;    \
+    type::FullyConnected(                                                \
+        op_params, GetTensorShape(input), GetTensorData<uint8_t>(input), \
+        GetTensorShape(filter), GetTensorData<uint8_t>(filter),          \
+        GetTensorShape(bias), GetTensorData<int32_t>(bias),              \
+        GetTensorShape(output), GetTensorData<output_data_type>(output), \
+        gemm_context);                                                   \
+  }
   if (kernel_type == kReference) {
     switch (output->type) {
       case kTfLiteUInt8:
@@ -306,10 +320,10 @@ TfLiteStatus EvalQuantized(TfLiteContext* context, TfLiteNode* node,
     }
   } else if (kernel_type == kPie && input->type == kTfLiteFloat32) {
     // Pie currently only supports quantized models and float inputs/outputs.
-    TfLiteTensor* input_quantized =
-        &context->tensors[node->temporaries->data[0]];
-    return EvalPieQuantized(context, node, params, data, input, filter, bias,
-                            input_quantized, output);
+    TfLiteTensor* input_quantized = GetTemporary(context, node, /*index=*/0);
+    TfLiteTensor* scaling_factors = GetTemporary(context, node, /*index=*/1);
+    return EvalHybrid(context, node, params, data, input, filter, bias,
+                      input_quantized, scaling_factors, output);
   } else {
     switch (output->type) {
       case kTfLiteUInt8:
@@ -349,15 +363,20 @@ TfLiteStatus EvalShuffledQuantized(TfLiteContext* context, TfLiteNode* node,
     return kTfLiteError;
   }
 
-#define TF_LITE_SHUFFLED_FULLY_CONNECTED(type)                  \
-  type::ShuffledFullyConnected(                                 \
-      GetTensorData<uint8_t>(input), GetTensorDims(input),      \
-      GetTensorData<uint8_t>(filter), GetTensorDims(filter),    \
-      GetTensorData<int32_t>(bias), GetTensorDims(bias),        \
-      data->output_multiplier, data->output_shift,              \
-      data->output_activation_min, data->output_activation_max, \
-      GetTensorData<int16_t>(output), GetTensorDims(output),    \
-      GetTensorData<uint8_t>(shuffled_input_workspace), gemm_context)
+#define TF_LITE_SHUFFLED_FULLY_CONNECTED(type)                           \
+  {                                                                      \
+    FullyConnectedParams op_params;                                      \
+    op_params.output_multiplier = data->output_multiplier;               \
+    op_params.output_shift = -data->output_shift;                        \
+    op_params.quantized_activation_min = data->output_activation_min;    \
+    op_params.quantized_activation_max = data->output_activation_max;    \
+    type::ShuffledFullyConnected(                                        \
+        op_params, GetTensorShape(input), GetTensorData<uint8_t>(input), \
+        GetTensorShape(filter), GetTensorData<uint8_t>(filter),          \
+        GetTensorShape(bias), GetTensorData<int32_t>(bias),              \
+        GetTensorShape(output), GetTensorData<int16_t>(output),          \
+        GetTensorData<uint8_t>(shuffled_input_workspace), gemm_context); \
+  }
   if (kernel_type == kReference) {
     TF_LITE_SHUFFLED_FULLY_CONNECTED(reference_ops);
   } else {
@@ -376,12 +395,17 @@ TfLiteStatus EvalFloat(TfLiteContext* context, TfLiteNode* node,
   float output_activation_min, output_activation_max;
   CalculateActivationRange(params->activation, &output_activation_min,
                            &output_activation_max);
-#define TF_LITE_FULLY_CONNECTED(type)                                       \
-  type::FullyConnected(GetTensorData<float>(input), GetTensorDims(input),   \
-                       GetTensorData<float>(filter), GetTensorDims(filter), \
-                       GetTensorData<float>(bias), GetTensorDims(bias),     \
-                       output_activation_min, output_activation_max,        \
-                       GetTensorData<float>(output), GetTensorDims(output))
+#define TF_LITE_FULLY_CONNECTED(type)                                         \
+  {                                                                           \
+    FullyConnectedParams op_params;                                           \
+    op_params.float_activation_min = output_activation_min;                   \
+    op_params.float_activation_max = output_activation_max;                   \
+    type::FullyConnected(op_params, GetTensorShape(input),                    \
+                         GetTensorData<float>(input), GetTensorShape(filter), \
+                         GetTensorData<float>(filter), GetTensorShape(bias),  \
+                         GetTensorData<float>(bias), GetTensorShape(output),  \
+                         GetTensorData<float>(output));                       \
+  }
   if (kernel_type == kReference) {
     TF_LITE_FULLY_CONNECTED(reference_ops);
   } else if (kernel_type == kPie) {

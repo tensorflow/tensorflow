@@ -43,6 +43,15 @@ BufferErrorReporter* convertLongToErrorReporter(JNIEnv* env, jlong handle) {
   return reinterpret_cast<BufferErrorReporter*>(handle);
 }
 
+TfLiteDelegate* convertLongToDelegate(JNIEnv* env, jlong handle) {
+  if (handle == 0) {
+    throwException(env, kIllegalArgumentException,
+                   "Internal error: Invalid handle to delegate.");
+    return nullptr;
+  }
+  return reinterpret_cast<TfLiteDelegate*>(handle);
+}
+
 std::vector<int> convertJIntArrayToVector(JNIEnv* env, jintArray inputs) {
   int size = static_cast<int>(env->GetArrayLength(inputs));
   std::vector<int> outputs(size, 0);
@@ -58,7 +67,6 @@ std::vector<int> convertJIntArrayToVector(JNIEnv* env, jintArray inputs) {
   env->ReleaseIntArrayElements(inputs, ptr, JNI_ABORT);
   return outputs;
 }
-
 
 int getDataType(TfLiteType data_type) {
   switch (data_type) {
@@ -160,26 +168,20 @@ Java_org_tensorflow_lite_NativeInterpreterWrapper_allocateTensors(
   }
 }
 
-JNIEXPORT jlong JNICALL
-Java_org_tensorflow_lite_NativeInterpreterWrapper_getInputTensor(JNIEnv* env,
-                                                                 jclass clazz,
-                                                                 jlong handle,
-                                                                 jint index) {
+JNIEXPORT jint JNICALL
+Java_org_tensorflow_lite_NativeInterpreterWrapper_getInputTensorIndex(
+    JNIEnv* env, jclass clazz, jlong handle, jint input_index) {
   tflite::Interpreter* interpreter = convertLongToInterpreter(env, handle);
   if (interpreter == nullptr) return 0;
-  return reinterpret_cast<jlong>(
-      interpreter->tensor(interpreter->inputs()[index]));
+  return interpreter->inputs()[input_index];
 }
 
-JNIEXPORT jlong JNICALL
-Java_org_tensorflow_lite_NativeInterpreterWrapper_getOutputTensor(JNIEnv* env,
-                                                                  jclass clazz,
-                                                                  jlong handle,
-                                                                  jint index) {
+JNIEXPORT jint JNICALL
+Java_org_tensorflow_lite_NativeInterpreterWrapper_getOutputTensorIndex(
+    JNIEnv* env, jclass clazz, jlong handle, jint output_index) {
   tflite::Interpreter* interpreter = convertLongToInterpreter(env, handle);
   if (interpreter == nullptr) return 0;
-  return reinterpret_cast<jlong>(
-      interpreter->tensor(interpreter->outputs()[index]));
+  return interpreter->outputs()[output_index];
 }
 
 JNIEXPORT jint JNICALL
@@ -234,10 +236,18 @@ Java_org_tensorflow_lite_NativeInterpreterWrapper_useNNAPI(JNIEnv* env,
 }
 
 JNIEXPORT void JNICALL
+Java_org_tensorflow_lite_NativeInterpreterWrapper_allowFp16PrecisionForFp32(
+    JNIEnv* env, jclass clazz, jlong handle, jboolean allow) {
+  tflite::Interpreter* interpreter = convertLongToInterpreter(env, handle);
+  if (interpreter == nullptr) return;
+  interpreter->SetAllowFp16PrecisionForFp32(static_cast<bool>(allow));
+}
+
+JNIEXPORT void JNICALL
 Java_org_tensorflow_lite_NativeInterpreterWrapper_numThreads(JNIEnv* env,
-                                                           jclass clazz,
-                                                           jlong handle,
-                                                           jint num_threads) {
+                                                             jclass clazz,
+                                                             jlong handle,
+                                                             jint num_threads) {
   tflite::Interpreter* interpreter = convertLongToInterpreter(env, handle);
   if (interpreter == nullptr) return;
   interpreter->SetNumThreads(static_cast<int>(num_threads));
@@ -334,16 +344,8 @@ Java_org_tensorflow_lite_NativeInterpreterWrapper_createInterpreter(
                    error_reporter->CachedErrorMessage());
     return 0;
   }
-  // allocates memory
-  status = interpreter->AllocateTensors();
-  if (status != kTfLiteOk) {
-    throwException(
-        env, kIllegalStateException,
-        "Internal error: Unexpected failure when preparing tensor allocations:"
-        " %s",
-        error_reporter->CachedErrorMessage());
-    return 0;
-  }
+  // Note that tensor allocation is performed explicitly by the owning Java
+  // NativeInterpreterWrapper instance.
   return reinterpret_cast<jlong>(interpreter.release());
 }
 
@@ -446,6 +448,31 @@ Java_org_tensorflow_lite_NativeInterpreterWrapper_resizeInput(
     }
   }
   return is_changed ? JNI_TRUE : JNI_FALSE;
+}
+
+JNIEXPORT void JNICALL
+Java_org_tensorflow_lite_NativeInterpreterWrapper_applyDelegate(
+    JNIEnv* env, jclass clazz, jlong interpreter_handle, jlong error_handle,
+    jlong delegate_handle) {
+  tflite::Interpreter* interpreter =
+      convertLongToInterpreter(env, interpreter_handle);
+  if (interpreter == nullptr) return;
+
+  BufferErrorReporter* error_reporter =
+      convertLongToErrorReporter(env, error_handle);
+  if (error_reporter == nullptr) return;
+
+  TfLiteDelegate* delegate = convertLongToDelegate(env, delegate_handle);
+  if (delegate == nullptr) return;
+
+  TfLiteStatus status =
+      interpreter->ModifyGraphWithDelegate(delegate,
+                                           /* allow_dynamic_tensors= */ true);
+  if (status != kTfLiteOk) {
+    throwException(env, kIllegalArgumentException,
+                   "Internal error: Failed to apply delegate: %s",
+                   error_reporter->CachedErrorMessage());
+  }
 }
 
 JNIEXPORT void JNICALL Java_org_tensorflow_lite_NativeInterpreterWrapper_delete(
