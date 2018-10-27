@@ -225,6 +225,24 @@ class StandardizeWeightsTest(keras_parameterized.TestCase):
     expected = sample_weights * np.array([0.5, 1., 0.5, 0.5, 1.5])
     self.assertAllClose(weights, expected)
 
+  @tf_test_util.run_in_graph_and_eager_modes
+  def test_dataset_with_class_weight(self):
+    model = testing_utils.get_small_functional_mlp(1, 4, input_dim=3)
+    optimizer = RMSPropOptimizer(learning_rate=0.001)
+    loss = 'mse'
+    metrics = ['mae', metrics_module.CategoricalAccuracy()]
+    model.compile(optimizer, loss, metrics=metrics)
+
+    inputs = np.zeros((10, 3), np.float32)
+    targets = np.zeros((10, 4), np.float32)
+    dataset = dataset_ops.Dataset.from_tensor_slices((inputs, targets))
+    dataset = dataset.repeat(100)
+    dataset = dataset.batch(10)
+    class_weight_np = np.array([0.25, 0.25, 0.25, 0.25])
+    class_weight = dict(enumerate(class_weight_np))
+
+    model.fit(dataset, epochs=1, steps_per_epoch=2, verbose=1,
+              class_weight=class_weight)
 
 if __name__ == '__main__':
   test.main()
