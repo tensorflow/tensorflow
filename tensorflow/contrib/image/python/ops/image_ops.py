@@ -126,6 +126,59 @@ def translate(images, translations, interpolation="NEAREST", name=None):
         interpolation=interpolation)
 
 
+def scale(images, scales, interpolation="NEAREST", name=None):
+  """Scale image(s) counterclockwise by the passed scale factor(s).
+
+  Args:
+    images: A tensor of shape (num_images, num_rows, num_columns, num_channels)
+       (NHWC), (num_rows, num_columns, num_channels) (HWC), or
+       (num_rows, num_columns) (HW). The rank must be statically known (the
+       shape is not `TensorShape(None)`.
+    scales: A scalar value to scale all images by, or (if images has rank 4)
+       a vector of length num_images, with a scale for each image in the batch.
+    interpolation: Interpolation mode. Supported values: "NEAREST", "BILINEAR".
+    name: The name of the op.
+
+  Returns:
+    Image(s) with the same type and shape as `images`, scale by the given
+    scale factor(s). Empty space due to the scaling will be filled with zeros.
+
+  Raises:
+    TypeError: If `image` is an invalid type.
+  """
+  with ops.name_scope(name, "scale"):
+    image_or_images = ops.convert_to_tensor(images)
+    if image_or_images.dtype.base_dtype not in _IMAGE_DTYPES:
+      raise TypeError("Invalid dtype %s." % image_or_images.dtype)
+    elif image_or_images.get_shape().ndims is None:
+      raise TypeError("image_or_images rank must be statically known")
+    elif len(image_or_images.get_shape()) == 2:
+      images = image_or_images[None, :, :, None]
+    elif len(image_or_images.get_shape()) == 3:
+      images = image_or_images[None, :, :, :]
+    elif len(image_or_images.get_shape()) == 4:
+      images = image_or_images
+    else:
+      raise TypeError("Images should have rank between 2 and 4.")
+
+    image_height = math_ops.cast(array_ops.shape(images)[1],
+                                 dtypes.float32)[None]
+    image_width = math_ops.cast(array_ops.shape(images)[2],
+                                dtypes.float32)[None]
+    output = transform(
+        images,
+        scales_to_projective_transforms(scales, image_height, image_width),
+        interpolation=interpolation)
+    if image_or_images.get_shape().ndims is None:
+      raise TypeError("image_or_images rank must be statically known")
+    elif len(image_or_images.get_shape()) == 2:
+      return output[0, :, :, 0]
+    elif len(image_or_images.get_shape()) == 3:
+      return output[0, :, :, :]
+    else:
+      return output
+
+
 def angles_to_projective_transforms(angles,
                                     image_height,
                                     image_width,
@@ -214,6 +267,48 @@ def translations_to_projective_transforms(translations, name=None):
             array_ops.ones((num_translations, 1), dtypes.float32),
             -translations[:, 1, None],
             array_ops.zeros((num_translations, 2), dtypes.float32),
+        ],
+        axis=1)
+
+
+def scales_to_projective_transforms(scales,
+                                    image_height,
+                                    image_width,
+                                    name=None):
+  """Returns projective transform(s) for the given scales(s).
+  Args:
+    scales: A scalar value to scale all images by, or (for batches of images)
+        vector of length num_images, with a scale for each image in the batch. 
+        The rank must be statically known (the shape is not `TensorShape(None)`.
+    image_height: Height of the image(s) to be transformed.
+    image_width: Width of the image(s) to be transformed.
+  Returns:
+    A tensor of shape (num_images, 8). Projective transforms which can be given
+      to `tf.contrib.image.transform`.
+  """
+  with ops.name_scope(name, "scales_to_projective_transforms"):
+    scale_or_scales = ops.convert_to_tensor(
+        scales, name="scales", dtype=dtypes.float32)
+    if len(scale_or_scales.get_shape()) == 0:  # pylint: disable=g-explicit-length-test
+      scales = scale_or_scales[None]
+    elif len(scale_or_scales.get_shape()) == 1:
+      scales = scale_or_scales
+    else:
+      raise TypeError("Scales should have rank 0 or 1.")
+    inv_scales = 1.0 / scales
+
+    x_offset = (1.0 - inv_scales) * image_width / 2.0
+    y_offset = (1.0 - inv_scales) * image_height / 2.0
+    num_scales = array_ops.shape(scales)[0]
+    return array_ops.concat(
+        values=[
+            inv_scales[:, None],
+            array_ops.zeros((num_scales, 1), dtypes.float32),
+            x_offset[:, None],
+            array_ops.zeros((num_scales, 1), dtypes.float32),
+            inv_scales[:, None],
+            y_offset[:, None],
+            array_ops.zeros((num_scales, 2), dtypes.float32),
         ],
         axis=1)
 

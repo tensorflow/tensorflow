@@ -106,6 +106,22 @@ class ImageOpsTest(test_util.TensorFlowTestCase):
                              [1, 0, 1, 0],
                              [0, 0, 0, 0]])
 
+  def test_scale(self):
+    for dtype in _DTYPES:
+      with self.cached_session():
+        image = constant_op.constant(
+            [[1, 1, 1, 1],
+             [1, 1, 1, 1],
+             [0, 0, 0, 0],
+             [0, 0, 0, 0]], dtype=dtype)
+        scaler = constant_op.constant([.5], dtypes.float32)
+        image_scaled = image_ops.scale(image, scaler)
+        self.assertAllEqual(image_scaled.eval(),
+                            [[0, 0, 0, 0],
+                             [0, 1, 1, 0],
+                             [0, 0, 0, 0],
+                             [0, 0, 0, 0]])
+
   def test_compose(self):
     for dtype in _DTYPES:
       with self.cached_session():
