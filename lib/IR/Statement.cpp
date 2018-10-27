@@ -63,19 +63,6 @@ void Statement::destroy() {
   }
 }
 
-/// Return the context this operation is associated with.
-MLIRContext *Statement::getContext() const {
-  // Work a bit to avoid calling findFunction() and getting its context.
-  switch (getKind()) {
-  case Kind::Operation:
-    return cast<OperationStmt>(this)->getContext();
-  case Kind::For:
-    return cast<ForStmt>(this)->getContext();
-  case Kind::If:
-    return cast<IfStmt>(this)->getContext();
-  }
-}
-
 Statement *Statement::getParentStmt() const {
   return block ? block->getContainingStmt() : nullptr;
 }

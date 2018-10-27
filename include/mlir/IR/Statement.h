@@ -64,21 +64,16 @@ namespace mlir {
 /// Statements can be nested within for and if statements effectively
 /// forming a tree. Child statements are organized into statement blocks
 /// represented by a 'StmtBlock' class.
-class Statement : public llvm::ilist_node_with_parent<Statement, StmtBlock> {
+class Statement : public IROperandOwner,
+                  public llvm::ilist_node_with_parent<Statement, StmtBlock> {
 public:
   enum class Kind {
-    Operation,
-    For,
-    If
+    Operation = (int)IROperandOwner::Kind::OperationStmt,
+    For = (int)IROperandOwner::Kind::ForStmt,
+    If = (int)IROperandOwner::Kind::IfStmt,
   };
 
-  Kind getKind() const { return kind; }
-
-  /// Return the context this operation is associated with.
-  MLIRContext *getContext() const;
-
-  /// The source location the operation was defined or derived from.
-  Location *getLoc() const { return location; }
+  Kind getKind() const { return (Kind)IROperandOwner::getKind(); }
 
   /// Remove this statement from its parent block and delete it.
   void erase();
@@ -187,23 +182,22 @@ public:
   /// handlers that may be listening.
   void emitNote(const Twine &message) const;
 
-protected:
-  Statement(Kind kind, Location *location) : kind(kind), location(location) {
-    assert(location && "location should never be null");
+  /// Methods for support type inquiry through isa, cast, and dyn_cast.
+  static bool classof(const IROperandOwner *ptr) {
+    return ptr->getKind() <= IROperandOwner::Kind::STMT_LAST;
   }
+
+protected:
+  Statement(Kind kind, Location *location)
+      : IROperandOwner((IROperandOwner::Kind)kind, location) {}
 
   // Statements are deleted through the destroy() member because this class
   // does not have a virtual destructor.
   ~Statement();
 
 private:
-  Kind kind;
   /// The statement block that containts this statement.
   StmtBlock *block = nullptr;
-
-  /// This holds information about the source location the operation was defined
-  /// or derived from.
-  Location *location;
 
   // allow ilist_traits access to 'block' field.
   friend struct llvm::ilist_traits<Statement>;

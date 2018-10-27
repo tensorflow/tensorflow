@@ -30,7 +30,7 @@ namespace mlir {
 class MLIRContext;
 
 /// Location objects represent source locations information in MLIR.
-class Location {
+class alignas(8) Location {
 public:
   enum class Kind {
     /// This represents an unknown location.

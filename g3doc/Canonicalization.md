@@ -33,9 +33,14 @@ Some important things to think about w.r.t. canonicalization patterns:
     canonicalize "x + x" into "x * 2", because this reduces the number of uses
     of x by one.
 
+*   It is always good to eliminate operations entirely when possible, e.g. by
+    folding known identities (like "x + 0 = x").
+
 ## Globally Applied Rules
 
 These transformation are applied to all levels of IR:
+
+*   Elimination of instructions that have no side effects and have no uses.
 
 *   Constant folding - e.g. "(addi 1, 2)" to "3". Constand folding hooks are
     specified by operations.

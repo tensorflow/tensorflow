@@ -65,17 +65,16 @@ using BasicBlockOperand = IROperandImpl<BasicBlock, TerminatorInst>;
 
 /// Instruction is the root of the operation and terminator instructions in the
 /// hierarchy.
-class Instruction {
+class Instruction : public IROperandOwner {
 public:
-  enum class Kind { Operation, Branch, CondBranch, Return };
+  enum class Kind {
+    Operation = (int)IROperandOwner::Kind::OperationInst,
+    Branch = (int)IROperandOwner::Kind::BranchInst,
+    CondBranch = (int)IROperandOwner::Kind::CondBranchInst,
+    Return = (int)IROperandOwner::Kind::ReturnInst
+  };
 
-  Kind getKind() const { return kind; }
-
-  /// Return the context this operation is associated with.
-  MLIRContext *getContext() const;
-
-  /// The source location the operation was defined or derived from.
-  Location *getLoc() const { return location; }
+  Kind getKind() const { return (Kind)IROperandOwner::getKind(); }
 
   /// Return the BasicBlock containing this instruction.
   const BasicBlock *getBlock() const { return block; }
@@ -165,10 +164,14 @@ public:
   /// handlers that may be listening.
   void emitNote(const Twine &message) const;
 
-protected:
-  Instruction(Kind kind, Location *location) : kind(kind), location(location) {
-    assert(location && "location can never be null");
+  /// Methods for support type inquiry through isa, cast, and dyn_cast.
+  static bool classof(const IROperandOwner *ptr) {
+    return ptr->getKind() >= IROperandOwner::Kind::INST_FIRST;
   }
+
+protected:
+  Instruction(Kind kind, Location *location)
+      : IROperandOwner((IROperandOwner::Kind)kind, location) {}
 
   // Instructions are deleted through the destroy() member because this class
   // does not have a virtual destructor.  A vtable would bloat the size of
@@ -177,12 +180,7 @@ protected:
   ~Instruction();
 
 private:
-  Kind kind;
   BasicBlock *block = nullptr;
-
-  /// This holds information about the source location the instruction was
-  /// defined or derived from.
-  Location *location;
 
   friend struct llvm::ilist_traits<OperationInst>;
   friend class BasicBlock;

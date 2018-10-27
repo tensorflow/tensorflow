@@ -70,12 +70,6 @@ void OperationInst::destroy() {
   free(this);
 }
 
-/// Return the context this operation is associated with.
-MLIRContext *Instruction::getContext() const {
-  auto *fn = getFunction();
-  return fn ? fn->getContext() : nullptr;
-}
-
 CFGFunction *Instruction::getFunction() {
   auto *block = getBlock();
   return block ? block->getFunction() : nullptr;

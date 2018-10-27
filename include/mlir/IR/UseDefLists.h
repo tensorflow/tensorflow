@@ -22,6 +22,8 @@
 #ifndef MLIR_IR_USEDEFLISTS_H
 #define MLIR_IR_USEDEFLISTS_H
 
+#include "mlir/IR/Location.h"
+#include "llvm/ADT/PointerIntPair.h"
 #include "llvm/ADT/iterator_range.h"
 
 namespace mlir {
@@ -68,12 +70,53 @@ private:
   IROperand *firstUse = nullptr;
 };
 
+/// Subclasses of IROperandOwner can be the owner of an IROperand.  In practice
+/// this is the common base between Instruction and Statement.
+class IROperandOwner {
+public:
+  enum class Kind {
+    OperationStmt,
+    ForStmt,
+    IfStmt,
+    OperationInst,
+    BranchInst,
+    CondBranchInst,
+    ReturnInst,
+
+    /// These enums define ranges used for classof implementations.
+    STMT_LAST = IfStmt,
+    INST_FIRST = OperationInst,
+  };
+
+  Kind getKind() const { return locationAndKind.getInt(); }
+
+  /// The source location the operation was defined or derived from.
+  Location *getLoc() const { return locationAndKind.getPointer(); }
+
+  /// Return the context this operation is associated with.
+  MLIRContext *getContext() const;
+
+protected:
+  IROperandOwner(Kind kind, Location *location)
+      : locationAndKind(location, kind) {
+    assert(getLoc() && "location should never be null");
+  }
+
+private:
+  /// This holds information about the source location the operation was defined
+  /// or derived from, along with the kind of subclass this is.
+  llvm::PointerIntPair<Location *, 3, Kind> locationAndKind;
+};
+
 /// A reference to a value, suitable for use as an operand of an instruction,
 /// statement, etc.
 class IROperand {
 public:
-  IROperand() {}
-  IROperand(IRObjectWithUseList *value) : value(value) { insertIntoCurrent(); }
+  IROperand(IROperandOwner *owner) : owner(owner) {}
+  IROperand(IROperandOwner *owner, IRObjectWithUseList *value)
+      : value(value), owner(owner) {
+    insertIntoCurrent();
+  }
 
   /// Return the current value being used by this operand.
   IRObjectWithUseList *get() const { return value; }
@@ -86,6 +129,11 @@ public:
     value = newValue;
     insertIntoCurrent();
   }
+
+  /// Return the owner of this operand, for example, the OperationStmt that
+  /// contains a StmtOperand.
+  IROperandOwner *getOwner() { return owner; }
+  const IROperandOwner *getOwner() const { return owner; }
 
   /// \brief Remove this use of the operand.
   void drop() {
@@ -104,7 +152,7 @@ public:
 
   /// We support a move constructor so IROperand's can be in vectors, but this
   /// shouldn't be used by general clients.
-  IROperand(IROperand &&other) {
+  IROperand(IROperand &&other) : owner(other.owner) {
     other.removeFromCurrent();
     value = other.value;
     other.value = nullptr;
@@ -124,6 +172,10 @@ private:
 
   /// This points to the previous link in the use-chain.
   IROperand **back = nullptr;
+
+  /// The owner of this operand, for example, the OperationStmt that contains a
+  /// StmtOperand.
+  IROperandOwner *const owner;
 
   /// Operands are not copyable or assignable.
   IROperand(const IROperand &use) = delete;
@@ -152,9 +204,8 @@ private:
 template <typename IRValueTy, typename IROwnerTy>
 class IROperandImpl : public IROperand {
 public:
-  IROperandImpl(IROwnerTy *owner) : owner(owner) {}
-  IROperandImpl(IROwnerTy *owner, IRValueTy *value)
-      : IROperand(value), owner(owner) {}
+  IROperandImpl(IROwnerTy *owner) : IROperand(owner) {}
+  IROperandImpl(IROwnerTy *owner, IRValueTy *value) : IROperand(owner, value) {}
 
   /// Return the current value being used by this operand.
   IRValueTy *get() const { return (IRValueTy *)IROperand::get(); }
@@ -163,20 +214,17 @@ public:
   void set(IRValueTy *newValue) { IROperand::set(newValue); }
 
   /// Return the user that owns this use.
-  IROwnerTy *getOwner() { return owner; }
-  const IROwnerTy *getOwner() const { return owner; }
+  IROwnerTy *getOwner() { return (IROwnerTy *)IROperand::getOwner(); }
+  const IROwnerTy *getOwner() const {
+    return (IROwnerTy *)IROperand::getOwner();
+  }
 
   /// Return which operand this is in the operand list of the User.
   // TODO:  unsigned getOperandNumber() const;
 
   /// We support a move constructor so IROperand's can be in vectors, but this
   /// shouldn't be used by general clients.
-  IROperandImpl(IROperandImpl &&other)
-      : IROperand(std::move(other)), owner(other.owner) {}
-
-private:
-  /// The owner of this operand.
-  IROwnerTy *const owner;
+  IROperandImpl(IROperandImpl &&other) : IROperand(std::move(other)) {}
 };
 
 /// An iterator over all uses of a ValueBase.
@@ -189,11 +237,7 @@ public:
   OperandType *operator->() const { return current; }
   OperandType &operator*() const { return *current; }
 
-  template <typename SFINAE_Owner = OwnerType>
-  typename std::enable_if<!std::is_void<OwnerType>::value, SFINAE_Owner *>::type
-  getUser() const {
-    return current->getOwner();
-  }
+  OwnerType *getUser() const { return current->getOwner(); }
 
   SSAValueUseIterator &operator++() {
     assert(current && "incrementing past end()!");

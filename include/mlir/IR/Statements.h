@@ -172,8 +172,8 @@ public:
   using Statement::erase;
 
   /// Methods for support type inquiry through isa, cast, and dyn_cast.
-  static bool classof(const Statement *stmt) {
-    return stmt->getKind() == Kind::Operation;
+  static bool classof(const IROperandOwner *ptr) {
+    return ptr->getKind() == IROperandOwner::Kind::OperationStmt;
   }
   static bool classof(const Operation *op) {
     return op->getOperationKind() == OperationKind::Statement;
@@ -333,8 +333,8 @@ public:
   using Statement::print;
 
   /// Methods for support type inquiry through isa, cast, and dyn_cast.
-  static bool classof(const Statement *stmt) {
-    return stmt->getKind() == Kind::For;
+  static bool classof(const IROperandOwner *ptr) {
+    return ptr->getKind() == IROperandOwner::Kind::ForStmt;
   }
 
   static bool classof(const StmtBlock *block) {
@@ -518,8 +518,8 @@ public:
   MLIRContext *getContext() const;
 
   /// Methods for support type inquiry through isa, cast, and dyn_cast.
-  static bool classof(const Statement *stmt) {
-    return stmt->getKind() == Kind::If;
+  static bool classof(const IROperandOwner *ptr) {
+    return ptr->getKind() == IROperandOwner::Kind::IfStmt;
   }
 
 private:

@@ -64,6 +64,31 @@ Function *SSAValue::getFunction() {
 }
 
 //===----------------------------------------------------------------------===//
+// IROperandOwner implementation.
+//===----------------------------------------------------------------------===//
+
+/// Return the context this operation is associated with.
+MLIRContext *IROperandOwner::getContext() const {
+  switch (getKind()) {
+  case Kind::OperationStmt:
+    return cast<OperationStmt>(this)->getContext();
+  case Kind::ForStmt:
+    return cast<ForStmt>(this)->getContext();
+  case Kind::IfStmt:
+    return cast<IfStmt>(this)->getContext();
+
+  case Kind::OperationInst:
+  case Kind::BranchInst:
+  case Kind::CondBranchInst:
+  case Kind::ReturnInst:
+    // If we have an instruction, we can efficiently get this from the function
+    // the instruction is in.
+    auto *fn = cast<Instruction>(this)->getFunction();
+    return fn ? fn->getContext() : nullptr;
+  }
+}
+
+//===----------------------------------------------------------------------===//
 // CFGValue implementation.
 //===----------------------------------------------------------------------===//
 
