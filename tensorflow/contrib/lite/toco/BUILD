@@ -331,7 +331,6 @@ cc_library(
         "//tensorflow/core:core_cpu_lib",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
-        "//tensorflow/core:ops",
         "//tensorflow/core:protos_all_cc",
     ] + select({
         # Placeholder for internal darwin rule.
@@ -348,6 +347,7 @@ tf_cc_test(
         "//tensorflow/core:framework",
         "//tensorflow/core:graph",
         "//tensorflow/core:lib",
+        "//tensorflow/core:ops",
         "//tensorflow/core:protos_all_cc",
         "@com_google_googletest//:gtest_main",
     ],
@@ -408,8 +408,11 @@ tf_cc_binary(
         ":toco_port",
         ":toco_tooling",
         ":types_proto_cc",
-        "//tensorflow/core:lib",
         "@com_google_absl//absl/strings",
+        "//tensorflow/core:lib",
+        # We cannot embed the core:ops dependency directly into :toco_tooling as
+        # it can conflict with downstream deps when toco is used as a library.
+        "//tensorflow/core:ops",
     ],
 )
 

@@ -147,15 +147,16 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   const int rank = params->rank;
   const int batch_size = input->dims->data[0];
   const int num_filters = weights_feature->dims->data[0];
-  TF_LITE_ASSERT_EQ(num_filters % rank, 0);
+  TF_LITE_ENSURE_EQ(context, num_filters % rank, 0);
   const int num_units = num_filters / rank;
   const int memory_size = weights_time->dims->data[1];
-  TF_LITE_ASSERT_EQ(input->dims->data[1], weights_feature->dims->data[1]);
-  TF_LITE_ASSERT_EQ(weights_time->dims->data[0], num_filters);
+  TF_LITE_ENSURE_EQ(context, input->dims->data[1],
+                    weights_feature->dims->data[1]);
+  TF_LITE_ENSURE_EQ(context, weights_time->dims->data[0], num_filters);
 
   const TfLiteTensor* bias = GetOptionalInputTensor(context, node, kBiasTensor);
   if (bias) {
-    TF_LITE_ASSERT_EQ(bias->dims->data[0], num_units);
+    TF_LITE_ENSURE_EQ(context, bias->dims->data[0], num_units);
   }
 
   TfLiteTensor* activation_state =
@@ -216,9 +217,10 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
     TfLiteTensor* scaling_factors = GetTemporary(context, node, /*index=*/2);
     scaling_factors->type = kTfLiteFloat32;
     scaling_factors->allocation_type = kTfLiteArenaRw;
-    TfLiteIntArray* scaling_factors_size = TfLiteIntArrayCreate(1);
-    scaling_factors_size->data[0] = batch_size;
-    if (!TfLiteIntArrayEqual(scaling_factors->dims, scaling_factors_size)) {
+    int scaling_dims[1] = {batch_size};
+    if (!TfLiteIntArrayEqualsArray(scaling_factors->dims, 1, scaling_dims)) {
+      TfLiteIntArray* scaling_factors_size = TfLiteIntArrayCreate(1);
+      scaling_factors_size->data[0] = batch_size;
       TF_LITE_ENSURE_OK(context, context->ResizeTensor(context, scaling_factors,
                                                        scaling_factors_size));
     }

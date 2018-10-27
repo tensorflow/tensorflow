@@ -125,6 +125,36 @@ class TrainingTest(test.TestCase):
     model.train_on_batch(inputs, targets)
     model.test_on_batch(inputs, targets)
 
+  def test_model_fit_and_validation_with_missing_arg_errors(self):
+    x = keras.layers.Input(shape=(3,), name='input')
+    y = keras.layers.Dense(4, name='dense')(x)
+    model = keras.Model(x, y)
+    model.compile(optimizer=RMSPropOptimizer(learning_rate=0.001), loss='mse')
+
+    x = keras.backend.zeros(shape=(10, 3))
+    y = keras.backend.zeros(shape=(10, 4))
+    dataset = dataset_ops.Dataset.from_tensor_slices((x, y)).repeat(10).batch(5)
+    iterator = dataset.make_one_shot_iterator()
+    validation_dataset = dataset_ops.Dataset.from_tensor_slices(
+        (x, y)).repeat(10).batch(5)
+    validation_iterator = validation_dataset.make_one_shot_iterator()
+
+    with self.assertRaisesRegexp(
+        ValueError, r'specify .* `steps_per_epoch`'):
+      model.fit(iterator, epochs=1, verbose=0)
+    with self.assertRaisesRegexp(
+        ValueError, r'provide either `batch_size` or `validation_steps`'):
+      model.fit(iterator, steps_per_epoch=2, epochs=1, verbose=0,
+                validation_data=(x, y))
+    with self.assertRaisesRegexp(
+        ValueError, r'provide either `batch_size` or `validation_steps`'):
+      model.fit(iterator, steps_per_epoch=2, epochs=1, verbose=0,
+                validation_data=validation_dataset)
+    with self.assertRaisesRegexp(
+        ValueError, r'provide either `batch_size` or `validation_steps`'):
+      model.fit(iterator, steps_per_epoch=2, epochs=1, verbose=0,
+                validation_data=validation_iterator)
+
   def test_generator_methods(self):
     model = keras.Sequential()
     model.add(keras.layers.Dense(4, input_shape=(3,)))
@@ -191,6 +221,18 @@ class CorrectnessTest(test.TestCase):
     iterator = dataset.make_one_shot_iterator()
     history = model.fit(iterator, epochs=1, steps_per_epoch=10)
     self.assertEqual(np.around(history.history['loss'][-1], decimals=4), 0.6173)
+
+  def test_loss_in_call(self):
+
+    class HasLoss(keras.layers.Layer):
+
+      def call(self, x):
+        self.add_loss(x)
+        return x
+
+    layer = HasLoss()
+    layer(1.)  # Plain-value inputs are only valid in eager mode.
+    self.assertEqual(1, len(layer.losses))
 
 
 if __name__ == '__main__':

@@ -333,11 +333,9 @@ bool TRTEngineOp::ExecuteTrtEngine(
       case nvinfer1::DataType::kINT8:
         LOG(ERROR) << "INT8 inputs are not supported yet!";
         return kRetry;
-#if NV_TENSORRT_MAJOR > 3
       case nvinfer1::DataType::kINT32:
         buffers[binding_index] = (void*)(input_tensor.flat<int32>().data());
         break;
-#endif
       default:
         LOG(ERROR) << "Unknown TRT data type: " << int(dtype);
         return kRetry;
@@ -387,12 +385,10 @@ bool TRTEngineOp::ExecuteTrtEngine(
       case nvinfer1::DataType::kINT8:
         LOG(WARNING) << "int8 is not supported yet!";
         return kRetry;
-#if NV_TENSORRT_MAJOR > 3
       case nvinfer1::DataType::kINT32:
         buffers[binding_index] =
             reinterpret_cast<void*>(output_tensor->flat<int32>().data());
         break;
-#endif
       default:
         LOG(WARNING) << "Unknown TRT data type: " << static_cast<int>(dtype);
         return kRetry;
@@ -457,13 +453,11 @@ TRTEngineOp::EngineCtxPair& TRTEngineOp::GetEngine(int batch_size,
       return null_pair;
     }
     TrtUniquePtrType<IRuntime> infer(nvinfer1::createInferRuntime(logger));
-#if NV_TENSORRT_MAJOR > 3
     auto allocator = GetAllocator(ctx);
     if (allocator == nullptr) {
       return null_pair;
     }
     infer->setGpuAllocator(allocator);
-#endif
     TrtUniquePtrType<nvinfer1::ICudaEngine> static_engine(
         infer->deserializeCudaEngine(serialized_segment_.c_str(),
                                      serialized_segment_.size(),
@@ -487,12 +481,10 @@ TRTEngineOp::EngineCtxPair& TRTEngineOp::GetEngine(int batch_size,
   if (engine_it == engine_map_.end() &&
       engine_map_.size() < (size_t)max_cached_engines_) {
     nvinfer1::IGpuAllocator* allocator = nullptr;
-#if NV_TENSORRT_MAJOR > 3
     allocator = GetAllocator(ctx);
     if (allocator == nullptr) {
       return null_pair;
     }
-#endif
     std::vector<tensorflow::PartialTensorShape> shapes;
     for (int i = 0; i < ctx->num_inputs(); ++i) {
       shapes.emplace_back(ctx->input(i).shape());
@@ -565,21 +557,22 @@ tensorflow::Status TRTEngineOp::AllocateCalibrationResources(
       new TRTInt8Calibrator(device_buffers_, batch_size, name()));
   const string label(name());
   auto segment_graph = &segment_graph_;
-  const int cuda_gpu_id = ctx->device()->tensorflow_gpu_device_info()->gpu_id;
-  if (cuda_gpu_id < 0) {
+  const int platform_gpu_id =
+      ctx->device()->tensorflow_gpu_device_info()->gpu_id;
+  if (platform_gpu_id < 0) {
     LOG(ERROR) << "Can't get gpu_device_info from context->device()";
     return tensorflow::errors::InvalidArgument(
         "Context->device doesn't contain device info!");
   }
   const int64 workspace_size_bytes = workspace_size_;
   cres->thr_.reset(new std::thread([cres, label, segment_graph, shapes,
-                                    cuda_gpu_id, workspace_size_bytes]() {
-    VLOG(0) << "Starting calibration thread on device " << cuda_gpu_id
+                                    platform_gpu_id, workspace_size_bytes]() {
+    VLOG(0) << "Starting calibration thread on device " << platform_gpu_id
             << ", Calibration Resource @ " << cres;
-    auto err = cudaSetDevice(cuda_gpu_id);
+    auto err = cudaSetDevice(platform_gpu_id);
     if (err != cudaSuccess) {
       // TODO(aaroey): should return error here.
-      LOG(ERROR) << "Couldn't set cuda device to " << cuda_gpu_id
+      LOG(ERROR) << "Couldn't set cuda device to " << platform_gpu_id
                  << " in calibration thread";
     }
     // ConvertGraphDefToEngine() will try to build the engine. This thread

@@ -13,20 +13,25 @@
 # limitations under the License.
 # ==============================================================================
 """Tests for common utilities in this package."""
-
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
-
+from tensorflow.contrib.layers.python.layers import layers
 from tensorflow.contrib.quantize.python import common
 from tensorflow.python.client import session
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
+from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import googletest
+
+batch_norm = layers.batch_norm
+conv2d = layers.conv2d
 
 
 class CommonTest(test_util.TensorFlowTestCase):
@@ -86,6 +91,56 @@ class CommonTest(test_util.TensorFlowTestCase):
   def _CheckOpHasInputs(self, op, inputs):
     for i in inputs:
       self.assertIn(i, op.inputs)
+
+  def testBatchNormScope(self):
+    batch_size, height, width, depth = 5, 128, 128, 3
+    g = ops.Graph()
+    with g.as_default():
+      inputs = array_ops.zeros((batch_size, height, width, depth))
+      stride = 1
+      out_depth = 32
+      scope = ''
+      node = conv2d(
+          inputs,
+          out_depth, [2, 2],
+          stride=stride,
+          padding='SAME',
+          weights_initializer=self._WeightInit(0.09),
+          activation_fn=None,
+          normalizer_fn=batch_norm,
+          normalizer_params=self._BatchNormParams(False),
+          scope=scope)
+
+      node = nn_ops.relu(node, name='Relu6')
+    bn_list = common.BatchNormGroups(g)
+    with open('/tmp/common_test.pbtxt', 'w') as f:
+      f.write(str(g.as_graph_def()))
+
+  # Exactly one batch norm layer with empty scope should be found
+    self.assertEqual(len(bn_list), 1)
+    self.assertEqual(bn_list[0], '')
+
+  def _BatchNormParams(self, fused=False, force_updates=False):
+    params = {
+        'center': True,
+        'scale': True,
+        'decay': 1.0 - 0.003,
+        'fused': fused
+    }
+    return params
+
+  def _WeightInit(self, stddev):
+    """Returns a truncated normal variable initializer.
+
+    Function is defined purely to shorten the name so that it stops wrapping.
+
+    Args:
+      stddev: Standard deviation of normal variable.
+
+    Returns:
+      An initializer that initializes with a truncated normal variable.
+    """
+    return init_ops.truncated_normal_initializer(stddev=stddev, seed=1234)
 
 
 if __name__ == '__main__':

@@ -237,6 +237,15 @@ def sequential_model(uses_learning_phase):
   return model
 
 
+def sequential_model_without_input_shape(uses_learning_phase):
+  model = keras.models.Sequential()
+  model.add(keras.layers.Dense(2))
+  model.add(keras.layers.Dense(3))
+  if uses_learning_phase:
+    model.add(LayerWithLearningPhase())
+  return model
+
+
 def load_model(sess, path, mode):
   tags = model_fn_lib.EXPORT_TAG_MAP[mode]
   sig_def_key = (signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY
@@ -260,16 +269,45 @@ class TestModelSavedModelExport(test.TestCase, parameterized.TestCase):
     return os.path.join(temp_dir, dirname)
 
   @parameterized.parameters(
-      (functional_model, True, training_module.AdadeltaOptimizer(), True),
-      (functional_model, True, training_module.AdadeltaOptimizer(), False),
-      (functional_model, False, None, False),
-      (sequential_model, True, training_module.AdadeltaOptimizer(), True),
-      (sequential_model, True, training_module.AdadeltaOptimizer(), False),
-      (sequential_model, False, None, False))
+      {
+          'model_builder': functional_model,
+          'uses_learning_phase': True,
+          'optimizer': training_module.AdadeltaOptimizer(),
+          'train_before_export': True},
+      {
+          'model_builder': functional_model,
+          'uses_learning_phase': True,
+          'optimizer': training_module.AdadeltaOptimizer(),
+          'train_before_export': False},
+      {
+          'model_builder': functional_model,
+          'uses_learning_phase': False,
+          'optimizer': None,
+          'train_before_export': False},
+      {
+          'model_builder': sequential_model,
+          'uses_learning_phase': True,
+          'optimizer': training_module.AdadeltaOptimizer(),
+          'train_before_export': True},
+      {
+          'model_builder': sequential_model,
+          'uses_learning_phase': True,
+          'optimizer': training_module.AdadeltaOptimizer(),
+          'train_before_export': False},
+      {
+          'model_builder': sequential_model,
+          'uses_learning_phase': False,
+          'optimizer': None,
+          'train_before_export': False},
+      {
+          'model_builder': sequential_model_without_input_shape,
+          'uses_learning_phase': True,
+          'optimizer': training_module.AdadeltaOptimizer(),
+          'train_before_export': False})
   def testSaveAndLoadSavedModelExport(
       self, model_builder, uses_learning_phase, optimizer, train_before_export):
     saved_model_path = self._save_model_dir()
-    with self.test_session(graph=ops.Graph()):
+    with self.session(graph=ops.Graph()):
       input_arr = np.random.random((1, 3))
       target_arr = np.random.random((1, 3))
 
@@ -424,6 +462,13 @@ class TestModelSavedModelExport(test.TestCase, parameterized.TestCase):
         errors.InternalError, 'Model and clone must use the same variables.'):
       keras_saved_model._assert_same_non_optimizer_objects(
           model, model_graph, clone, clone_graph)
+
+  def testSaveSeqModelWithoutInputShapesRaisesError(self):
+    """A Sequential model that hasn't been built should raise an error."""
+    model = sequential_model_without_input_shape(True)
+    with self.assertRaisesRegexp(
+        ValueError, 'must be built'):
+      keras_saved_model.save_keras_model(model, '')
 
 
 if __name__ == '__main__':

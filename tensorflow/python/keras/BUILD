@@ -62,6 +62,7 @@ py_library(
         ":backend",
         ":engine",
         ":layers",
+        "//tensorflow/python/keras/optimizer_v2:optimizer_v2",
         "//tensorflow/python/saved_model",
         "//tensorflow/python:training",
     ],
@@ -355,7 +356,10 @@ cuda_py_test(
         "//tensorflow/python:client_testlib",
     ],
     shard_count = 2,
-    tags = ["no_windows_gpu"],
+    tags = [
+        "no_oss",  # b/117834718
+        "no_windows_gpu",
+    ],
 )
 
 py_test(
@@ -381,12 +385,11 @@ py_test(
     ],
 )
 
-py_test(
+cuda_py_test(
     name = "embeddings_test",
     size = "medium",
     srcs = ["layers/embeddings_test.py"],
-    srcs_version = "PY2AND3",
-    deps = [
+    additional_deps = [
         ":keras",
         "//tensorflow/python:client_testlib",
     ],
@@ -695,6 +698,19 @@ py_test(
 )
 
 py_test(
+    name = "training_generator_test",
+    size = "enormous",
+    srcs = ["engine/training_generator_test.py"],
+    srcs_version = "PY2AND3",
+    tags = ["notsan"],
+    deps = [
+        ":keras",
+        "//tensorflow/python:client_testlib",
+        "//third_party/py/numpy",
+    ],
+)
+
+py_test(
     name = "feature_columns_integration_test",
     size = "small",
     srcs = ["engine/feature_columns_integration_test.py"],
@@ -755,6 +771,18 @@ py_test(
     tags = [
         "no-internal-py3",
     ],
+    deps = [
+        ":keras",
+        "//tensorflow/python:client_testlib",
+        "//third_party/py/numpy",
+    ],
+)
+
+py_test(
+    name = "base_layer_test",
+    size = "small",
+    srcs = ["engine/base_layer_test.py"],
+    srcs_version = "PY2AND3",
     deps = [
         ":keras",
         "//tensorflow/python:client_testlib",

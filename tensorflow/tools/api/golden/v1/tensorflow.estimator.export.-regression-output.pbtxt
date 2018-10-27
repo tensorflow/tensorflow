@@ -1,7 +1,7 @@
 path: "tensorflow.estimator.export.RegressionOutput"
 tf_class {
-  is_instance: "<class \'tensorflow.python.estimator.export.export_output.RegressionOutput\'>"
-  is_instance: "<class \'tensorflow.python.estimator.export.export_output.ExportOutput\'>"
+  is_instance: "<class \'tensorflow_estimator.python.estimator.export.export_output.RegressionOutput\'>"
+  is_instance: "<class \'tensorflow_estimator.python.estimator.export.export_output.ExportOutput\'>"
   is_instance: "<type \'object\'>"
   member {
     name: "value"

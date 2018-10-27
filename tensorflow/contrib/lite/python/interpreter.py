@@ -129,6 +129,23 @@ class Interpreter(object):
 
     return details
 
+  def get_tensor_details(self):
+    """Gets tensor details for every tensor with valid tensor details.
+
+    Tensors where required information about the tensor is not found are not
+    added to the list. This includes temporary tensors without a name.
+
+    Returns:
+      A list of dictionaries containing tensor information.
+    """
+    tensor_details = []
+    for idx in range(self._interpreter.NumTensors()):
+      try:
+        tensor_details.append(self._get_tensor_details(idx))
+      except ValueError:
+        pass
+    return tensor_details
+
   def get_input_details(self):
     """Gets model input details.
 
@@ -206,6 +223,7 @@ class Interpreter(object):
 
     Usage:
 
+    ```
     interpreter.allocate_tensors()
     input = interpreter.tensor(interpreter.get_input_details()[0]["index"])
     output = interpreter.tensor(interpreter.get_output_details()[0]["index"])
@@ -213,6 +231,7 @@ class Interpreter(object):
       input().fill(3.)
       interpreter.invoke()
       print("inference %s" % output())
+    ```
 
     Notice how this function avoids making a numpy array directly. This is
     because it is important to not hold actual numpy views to the data longer
@@ -223,12 +242,14 @@ class Interpreter(object):
 
     WRONG:
 
+    ```
     input = interpreter.tensor(interpreter.get_input_details()[0]["index"])()
     output = interpreter.tensor(interpreter.get_output_details()[0]["index"])()
     interpreter.allocate_tensors()  # This will throw RuntimeError
     for i in range(10):
       input.fill(3.)
       interpreter.invoke()  # this will throw RuntimeError since input,output
+    ```
 
     Args:
       tensor_index: Tensor index of tensor to get. This value can be gotten from
@@ -253,5 +274,5 @@ class Interpreter(object):
     self._ensure_safe()
     self._interpreter.Invoke()
 
-  def reset_all_variables_to_zero(self):
-    return self._interpreter.ResetVariableTensorsToZero()
+  def reset_all_variables(self):
+    return self._interpreter.ResetVariableTensors()

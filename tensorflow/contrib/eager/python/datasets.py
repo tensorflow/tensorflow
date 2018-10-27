@@ -18,7 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.contrib.data.python.ops import prefetching_ops
+from tensorflow.python.data.experimental.ops import prefetching_ops
 from tensorflow.python.data.ops import iterator_ops
 from tensorflow.python.eager import context
 from tensorflow.python.framework import ops
@@ -54,7 +54,7 @@ class Iterator(iterator_ops.EagerIterator):
     """
     if isinstance(dataset, prefetching_ops._PrefetchToDeviceDataset):  # pylint: disable=protected-access
       raise TypeError(
-          "`tf.contrib.data.prefetch_to_device()` is not compatible with "
+          "`tf.data.experimental.prefetch_to_device()` is not compatible with "
           "`tf.contrib.eager.Iterator`. Use `for ... in dataset:` to iterate "
           "over the dataset instead.")
 

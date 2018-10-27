@@ -200,7 +200,7 @@ class VBN(object):
       del reduction_axes[axis]
 
       self._broadcast_shape = [1] * len(input_shape)
-      self._broadcast_shape[axis] = input_shape[axis].value
+      self._broadcast_shape[axis] = input_shape.dims[axis]
 
       self._example_reduction_axes = list(range(ndims))
       del self._example_reduction_axes[max(axis, self._batch_axis)]

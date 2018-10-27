@@ -109,25 +109,24 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   if (axis_value < 0) {
     axis_value += NumDimensions(op_context.input);
   }
-  axis_value = RemapDim(NumDimensions(op_context.input), axis_value);
 
   // TODO(ahentz): Our usage of VectorOfTensors could be optimized by
   // calculating it in Prepare, unless we defer shape calculation.
   // TODO(ahentz): We can improve the optimized_ops version to handle other
   // cases too.
-#define TF_LITE_SPLIT(scalar)                                                  \
-  VectorOfTensors<scalar> all_outputs(*context, *node->outputs);               \
-  if (axis_value == NumDimensions(op_context.input)) {                         \
-    optimized_ops::TensorFlowSplit<FusedActivationFunctionType::kNone,         \
-                                   scalar>(                                    \
-        GetTensorData<scalar>(op_context.input),                               \
-        GetTensorDims(op_context.input), NumOutputs(node), all_outputs.data(), \
-        all_outputs.dims());                                                   \
-  } else {                                                                     \
-    reference_ops::TensorFlowSplit<scalar>(                                    \
-        GetTensorData<scalar>(op_context.input),                               \
-        GetTensorDims(op_context.input), axis_value, NumOutputs(node),         \
-        all_outputs.data(), all_outputs.dims());                               \
+#define TF_LITE_SPLIT(scalar)                                         \
+  VectorOfTensors<scalar> all_outputs(*context, *node->outputs);      \
+  tflite::SplitParams op_params;                                      \
+  op_params.num_split = NumOutputs(node);                             \
+  op_params.axis = axis_value;                                        \
+  if (axis_value == 0) {                                              \
+    optimized_ops::Split(op_params, GetTensorShape(op_context.input), \
+                         GetTensorData<scalar>(op_context.input),     \
+                         all_outputs.shapes(), all_outputs.data());   \
+  } else {                                                            \
+    reference_ops::Split(op_params, GetTensorShape(op_context.input), \
+                         GetTensorData<scalar>(op_context.input),     \
+                         all_outputs.shapes(), all_outputs.data());   \
   }
   switch (op_context.input->type) {
     case kTfLiteFloat32: {

@@ -34,9 +34,8 @@ limitations under the License.
 #endif
 
 #ifdef INTEL_MKL_ML_ONLY
-// Using pragma message since #warning doesn't work with all compilers
-#pragma message("Compiling for INTEL MKL ML only will be deprecated soon.")
-#pragma message("Please use MKL DNN (the default option for --config=mkl)")
+#error \
+    "Compiling for INTEL MKL ML only is no longer supported.Please use MKL DNN (the default option for --config=mkl)"
 #endif
 
 #ifdef INTEL_MKL_ML_ONLY
@@ -2056,8 +2055,8 @@ class MklPrimitiveFactory {
   /// Fuction to check whether primitive memory optimization is enabled
   static inline bool IsPrimitiveMemOptEnabled() {
     bool is_primitive_mem_opt_enabled = true;
-    TF_CHECK_OK(ReadBoolFromEnvVar("TF_MKL_OPTIMIZE_PRIMITVE_MEMUSE", true,
-          &is_primitive_mem_opt_enabled));
+    TF_CHECK_OK(ReadBoolFromEnvVar("TF_MKL_OPTIMIZE_PRIMITIVE_MEMUSE", true,
+                                   &is_primitive_mem_opt_enabled));
     return is_primitive_mem_opt_enabled;
   }
 
@@ -2112,9 +2111,8 @@ static inline memory::format get_desired_format(int channel,
     fmt_desired = is_2d ? memory::format::nChw16c : memory::format::nCdhw16c;
   } else if (port::TestCPUFeature(port::CPUFeature::AVX2) &&
              (channel % 8) == 0) {
-    fmt_desired = is_2d
-                      ? memory::format::nChw8c
-                      : memory::format::ncdhw;  //not support avx2 for 3d yet.
+    fmt_desired = is_2d ? memory::format::nChw8c
+                        : memory::format::ncdhw;  // no avx2 support for 3d yet.
   } else {
     fmt_desired = is_2d ? memory::format::nchw : memory::format::ncdhw;
   }
@@ -2188,15 +2186,26 @@ class MklReorderPrimitiveFactory : public MklPrimitiveFactory<T> {
       FactoryKeyCreator key_creator;
       auto const &from_desc =  from->get_primitive_desc().desc().data;
       auto const &to_desc =  to->get_primitive_desc().desc().data;
+      const int KIdxFirstStride = 0;
       memory::dims from_dims(from_desc.dims, &from_desc.dims[from_desc.ndims]);
       memory::dims to_dims(to_desc.dims, &to_desc.dims[to_desc.ndims]);
+      memory::dims from_strides(
+          from_desc.layout_desc.blocking.strides[KIdxFirstStride],
+          &from_desc.layout_desc.blocking
+               .strides[KIdxFirstStride][from_desc.ndims]);
+      memory::dims to_strides(
+          to_desc.layout_desc.blocking.strides[KIdxFirstStride],
+          &to_desc.layout_desc.blocking
+               .strides[KIdxFirstStride][to_desc.ndims]);
       key_creator.AddAsKey(prefix);
       key_creator.AddAsKey(static_cast<int>(from_desc.format));
       key_creator.AddAsKey(static_cast<int>(from_desc.data_type));
       key_creator.AddAsKey(from_dims);
+      key_creator.AddAsKey(from_strides);
       key_creator.AddAsKey(static_cast<int>(to_desc.format));
       key_creator.AddAsKey(static_cast<int>(to_desc.data_type));
       key_creator.AddAsKey(to_dims);
+      key_creator.AddAsKey(to_strides);
       return key_creator.GetKey();
     }
 
@@ -2226,7 +2235,8 @@ inline primitive FindOrCreateReorder(const memory* from, const memory* to) {
 
 // utility function to determine if it is conv 1x1 and stride != 1
 // for purpose of temporarily disabling primitive reuse
-inline bool IsConv1x1StrideNot1(memory::dims filter_dims, memory::dims strides) {
+inline bool IsConv1x1StrideNot1(memory::dims filter_dims,
+                                memory::dims strides) {
   if (filter_dims.size() != 4 || strides.size() != 2) return false;
 
   return ((filter_dims[2] == 1) && (filter_dims[3] == 1) &&

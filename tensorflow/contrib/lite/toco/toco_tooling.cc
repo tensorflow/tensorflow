@@ -101,7 +101,6 @@ void MakeGeneralGraphTransformationsSet(
   transformations->Add(new ResolveTensorFlowSwitch);
   transformations->Add(new ResolveTensorFlowConcat);
   transformations->Add(new ResolveMultiplyByZero);
-  transformations->Add(new IdentifyDilatedConv);
   transformations->Add(new IdentifyL2Normalization);
   transformations->Add(new IdentifyL2Pool);
   transformations->Add(new IdentifyRelu1);
@@ -199,7 +198,7 @@ std::unique_ptr<Model> Import(const TocoFlags& toco_flags,
               : (toco_flags.output_format() != TENSORFLOW_GRAPHDEF);
 
       tf_import_flags.import_all_ops_as_unsupported =
-          toco_flags.force_eager_ops();
+          toco_flags.force_flex_ops();
 
       model = ImportTensorFlowGraphDef(model_flags, tf_import_flags,
                                        input_file_contents);
@@ -282,6 +281,14 @@ void Transform(const TocoFlags& toco_flags, Model* model) {
     }
   }
   transformations.Add(new ResolveConstantConcatenation);
+  // TODO(b/116063589): TF GraphDef doesn't support dilations on its depthwise
+  // conv, so we need to make sure we don't convert to dilated depthwise conv
+  // when outputing to TF GraphDef.
+  auto* identify_dilated_conv = new IdentifyDilatedConv;
+  if (output_format == TENSORFLOW_GRAPHDEF) {
+    identify_dilated_conv->set_identify_depthwise_conv(false);
+  }
+  transformations.Add(identify_dilated_conv);
   RunGraphTransformations(model, "general graph transformations",
                           transformations);
 
@@ -367,9 +374,7 @@ void Transform(const TocoFlags& toco_flags, Model* model) {
   }
 
   // Deduplicate large constant arrays.
-  if (toco_flags.has_dedupe_array_min_size_bytes()) {
-    DedupeConstantArrays(model, toco_flags.dedupe_array_min_size_bytes());
-  }
+  DedupeConstantArrays(model, toco_flags.dedupe_array_min_size_bytes());
 
   LogDump(kLogLevelModelChanged, "AFTER TRANSFORMATIONS", *model);
 
@@ -395,8 +400,8 @@ void Transform(const TocoFlags& toco_flags, Model* model) {
   model->ops_count = ops_count;
 }
 
-void Export(const TocoFlags& toco_flags, const Model& model,
-            bool allow_custom_ops, string* output_file_contents) {
+tensorflow::Status Export(const TocoFlags& toco_flags, const Model& model,
+                          bool allow_custom_ops, string* output_file_contents) {
   switch (toco_flags.output_format()) {
     case TENSORFLOW_GRAPHDEF:
       ExportTensorFlowGraphDef(model, output_file_contents);
@@ -404,17 +409,16 @@ void Export(const TocoFlags& toco_flags, const Model& model,
     case TFLITE: {
       toco::tflite::ExportParams params;
 
-      // Always allow custom ops when eager ops are allowed.
-      if (toco_flags.force_eager_ops() || toco_flags.allow_eager_ops()) {
-        params.allow_eager_ops = true;
-        params.allow_custom_ops = true;
-      } else if (allow_custom_ops) {
-        params.allow_custom_ops = true;
-      }
-
+      params.allow_flex_ops =
+          toco_flags.force_flex_ops() || toco_flags.allow_flex_ops();
+      params.allow_custom_ops = allow_custom_ops;
       params.quantize_weights = toco_flags.post_training_quantize();
 
-      toco::tflite::Export(model, output_file_contents, params);
+      auto status = toco::tflite::Export(model, output_file_contents, params);
+      if (!status.ok()) {
+        LOG(ERROR) << status.error_message();
+      }
+      return status;
     } break;
     case GRAPHVIZ_DOT:
       DumpGraphviz(model, output_file_contents);
@@ -422,6 +426,7 @@ void Export(const TocoFlags& toco_flags, const Model& model,
     default:
       LOG(FATAL) << "Unhandled output_format";
   }
+  return tensorflow::Status();
 }
 
 }  // namespace toco

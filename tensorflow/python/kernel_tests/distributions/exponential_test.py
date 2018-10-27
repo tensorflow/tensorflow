@@ -65,6 +65,13 @@ class ExponentialTest(test.TestCase):
     self.assertAllClose(self.evaluate(log_pdf), expected_log_pdf)
     self.assertAllClose(self.evaluate(pdf), np.exp(expected_log_pdf))
 
+  def testExponentialLogPDFBoundary(self):
+    # Check that Log PDF is finite at 0.
+    rate = np.array([0.1, 0.5, 1., 2., 5., 10.], dtype=np.float32)
+    exponential = exponential_lib.Exponential(rate=rate)
+    log_pdf = exponential.log_prob(0.)
+    self.assertAllClose(np.log(rate), self.evaluate(log_pdf))
+
   def testExponentialCDF(self):
     batch_size = 6
     lam = constant_op.constant([2.0] * batch_size)
@@ -80,6 +87,22 @@ class ExponentialTest(test.TestCase):
       return
     expected_cdf = stats.expon.cdf(x, scale=1 / lam_v)
     self.assertAllClose(self.evaluate(cdf), expected_cdf)
+
+  def testExponentialLogSurvival(self):
+    batch_size = 7
+    lam = constant_op.constant([2.0] * batch_size)
+    lam_v = 2.0
+    x = np.array([2.5, 2.5, 4.0, 0.1, 1.0, 2.0, 10.0], dtype=np.float32)
+
+    exponential = exponential_lib.Exponential(rate=lam)
+
+    log_survival = exponential.log_survival_function(x)
+    self.assertEqual(log_survival.get_shape(), (7,))
+
+    if not stats:
+      return
+    expected_log_survival = stats.expon.logsf(x, scale=1 / lam_v)
+    self.assertAllClose(self.evaluate(log_survival), expected_log_survival)
 
   def testExponentialMean(self):
     lam_v = np.array([1.0, 4.0, 2.5])

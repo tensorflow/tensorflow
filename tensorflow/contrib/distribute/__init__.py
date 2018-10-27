@@ -12,7 +12,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Prototype of a distributed computation library for TF."""
+"""A distributed computation library for TF.
+
+See [tensorflow/contrib/distribute/README.md](
+https://www.tensorflow.org/code/tensorflow/contrib/distribute/README.md)
+for overview and examples.
+"""
 
 from __future__ import absolute_import
 from __future__ import division
@@ -43,6 +48,7 @@ _allowed_symbols = [
     'DistributionStrategy',
     'MirroredStrategy',
     'Monitor',
+    'MultiWorkerAllReduce',
     'OneDeviceStrategy',
     'ParameterServerStrategy',
     'ReductionToOneDeviceCrossTowerOps',

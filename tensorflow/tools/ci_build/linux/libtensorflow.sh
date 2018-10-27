@@ -27,5 +27,8 @@ SUFFIX="-cpu-linux-"
 if [ "${TF_NEED_CUDA}" == "1" ]; then
   SUFFIX="-gpu-linux-"
 fi
+if [ "${TF_NEED_ROCM}" == "1" ]; then
+  SUFFIX="-rocm-linux-"
+fi
 
 build_libtensorflow_tarball "${SUFFIX}$(uname -m)"

@@ -111,9 +111,10 @@ class SliceOp : public XlaOpKernel {
   }
 };
 
-REGISTER_XLA_OP(
-    Name("Slice").CompileTimeConstInput("begin").CompileTimeConstInput("size"),
-    SliceOp);
+REGISTER_XLA_OP(Name("Slice")
+                    .CompileTimeConstantInput("begin")
+                    .CompileTimeConstantInput("size"),
+                SliceOp);
 
 }  // namespace
 }  // namespace tensorflow

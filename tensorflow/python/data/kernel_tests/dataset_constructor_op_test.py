@@ -23,6 +23,7 @@ import numpy as np
 
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.client import session
+from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.util import nest
 from tensorflow.python.framework import dtypes
@@ -36,7 +37,7 @@ from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.platform import test
 
 
-class DatasetConstructorTest(test.TestCase):
+class DatasetConstructorTest(test_base.DatasetTestBase):
 
   def testFromTensors(self):
     """Test a dataset that represents a single tuple of tensors."""
@@ -57,11 +58,6 @@ class DatasetConstructorTest(test.TestCase):
         self.assertAllEqual(component, result_component)
       with self.assertRaises(errors.OutOfRangeError):
         sess.run(get_next)
-
-  def assertSparseValuesEqual(self, a, b):
-    self.assertAllEqual(a.indices, b.indices)
-    self.assertAllEqual(a.values, b.values)
-    self.assertAllEqual(a.dense_shape, b.dense_shape)
 
   def testFromTensorsSparse(self):
     """Test a dataset that represents a single tuple of tensors."""

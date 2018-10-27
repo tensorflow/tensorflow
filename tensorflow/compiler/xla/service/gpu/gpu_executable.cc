@@ -19,6 +19,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/memory/memory.h"
 #include "tensorflow/compiler/xla/map_util.h"
 #include "tensorflow/compiler/xla/service/gpu/buffer_allocations.h"
@@ -197,7 +198,7 @@ GpuExecutable::ResolveConstantGlobals(se::StreamExecutor* executor) {
   }
   module_spec.AddCudaPtxInMemory(ptx().c_str());
 
-  tensorflow::gtl::FlatMap<int64, se::DeviceMemoryBase> globals;
+  absl::flat_hash_map<int64, se::DeviceMemoryBase> globals;
   se::ModuleHandle module_handle;
   executor->LoadModule(module_spec, &module_handle);
 

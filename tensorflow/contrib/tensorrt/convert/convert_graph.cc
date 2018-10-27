@@ -115,7 +115,8 @@ bool IsTensorRTCandidate(const tensorflow::Node* node) {
     "Sqrt",
     "Abs",
     "Neg",
-#if NV_TENSORRT_MAJOR > 3
+    "Transpose",
+    "Reshape",
     "MatMul",
     "BatchMatMul",
     "Softmax",
@@ -126,7 +127,6 @@ bool IsTensorRTCandidate(const tensorflow::Node* node) {
     "Prod",
     "Max",
     "Min",
-#endif
     // TODO(ben,jie): ...
   };
   // LINT.ThenChange(//tensorflow/contrib/tensorrt/convert/convert_nodes.cc)
@@ -678,7 +678,7 @@ tensorflow::Status CreateTRTNode(const std::vector<EngineInfo>& infos, int pos,
 // Function to construct a funcdef from the segment and add it to the graph.
 tensorflow::Status RegisterSegmentFunctionToFunctionLibrary(
     tensorflow::Graph* graph, const tensorflow::GraphDef& segment,
-    const string& name) {
+    const string& engine_name) {
   tensorflow::Graph sgraph(graph->flib_def());
   tensorflow::GraphConstructorOptions gcopts;
   TF_RETURN_IF_ERROR(
@@ -761,9 +761,9 @@ tensorflow::Status RegisterSegmentFunctionToFunctionLibrary(
   tensorflow::FunctionDefLibrary fdeflib;
   auto native_segment = fdeflib.add_function();
   TF_RETURN_IF_ERROR(tensorflow::GraphToFunctionDef(
-      sgraph, StrCat(name, "_native_segment"), native_segment));
+      sgraph, StrCat(engine_name, "_native_segment"), native_segment));
   if (VLOG_IS_ON(7)) {
-    VLOG(7) << name << " Function_Def ";
+    VLOG(7) << engine_name << " Function_Def ";
     VLOG(7) << native_segment->DebugString();
   }
   VLOG(1) << "Adding funcdef to graphlib";
@@ -780,12 +780,12 @@ std::pair<int, tensorflow::Allocator*> GetDeviceAndAllocator(
     // If device is not set, use the first found GPU device for the conversion.
     for (int tf_gpu_id_value = 0; tf_gpu_id_value < 100; ++tf_gpu_id_value) {
       TfGpuId tf_gpu_id(tf_gpu_id_value);
-      CudaGpuId cuda_gpu_id;
-      Status s = GpuIdManager::TfToCudaGpuId(tf_gpu_id, &cuda_gpu_id);
+      PlatformGpuId platform_gpu_id;
+      Status s = GpuIdManager::TfToPlatformGpuId(tf_gpu_id, &platform_gpu_id);
       if (s.ok()) {
         VLOG(1) << "Found TF GPU " << tf_gpu_id.value() << " at cuda device "
-                << cuda_gpu_id.value();
-        cuda_device_id = cuda_gpu_id.value();
+                << platform_gpu_id.value();
+        cuda_device_id = platform_gpu_id.value();
         GPUOptions gpu_options;
         // If the TF to Cuda gpu id mapping exist, the device and corresponding
         // allocator must have been initialized already, so the
@@ -945,9 +945,16 @@ tensorflow::Status ConvertAfterShapes(ConversionParams& params) {
                                 &graph, alloc.get(), &engine_nodes);
     // If status is ok, we successfully added the node to the graph and can
     // remove segment ops. Otherwise graph is not modified.
-    const string msg = StrCat("Engine ", engine.engine_name,
-                              " creation for segment ", i, ", composed of ",
-                              converted_segments.at(i).first.size(), " nodes");
+    string msg = StrCat("Engine ", engine.engine_name, " creation for segment ",
+                        i, ", composed of ",
+                        converted_segments.at(i).first.size(), " nodes");
+    if (VLOG_IS_ON(1)) {
+      StrAppend(&msg, " (");
+      for (const string& node_name : converted_segments.at(i).first) {
+        StrAppend(&msg, node_name, ", ");
+      }
+      StrAppend(&msg, ")");
+    }
     if (status.ok()) {
       LOG(INFO) << msg << " succeeded.";
       for (auto node_name : converted_segments.at(i).first) {

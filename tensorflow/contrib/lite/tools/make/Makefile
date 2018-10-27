@@ -30,6 +30,7 @@ INCLUDES := \
 -I$(MAKEFILE_DIR)/../../../../../../ \
 -I$(MAKEFILE_DIR)/downloads/ \
 -I$(MAKEFILE_DIR)/downloads/eigen \
+-I$(MAKEFILE_DIR)/downloads/absl \
 -I$(MAKEFILE_DIR)/downloads/gemmlowp \
 -I$(MAKEFILE_DIR)/downloads/neon_2_sse \
 -I$(MAKEFILE_DIR)/downloads/farmhash/src \

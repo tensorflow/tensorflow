@@ -44,12 +44,24 @@ struct PadContext {
     }
     output = GetOutput(context, node, 0);
     dims = NumDimensions(input);
+
+    resizing_category = ResizingCategory::kGenericResize;
+    const int paddings_total = GetTensorShape(paddings).FlatSize();
+    const int32* paddings_data = GetTensorData<int32>(paddings);
+    // Paddings will be a n,2 array, and we need to detect 4D arrays with the
+    // pattern { {0,0}, {a, b}, {c, d}, {0,0} }.
+    if (IsConstantTensor(paddings) && paddings_total == 8 &&
+        (paddings_data[0] == 0 && paddings_data[1] == 0) &&
+        (paddings_data[6] == 0 && paddings_data[7] == 0)) {
+      resizing_category = ResizingCategory::kImageStyle;
+    }
   }
   const TfLiteTensor* constant_values;
   const TfLiteTensor* input;
   const TfLiteTensor* paddings;
   TfLiteTensor* output;
   int dims;
+  ResizingCategory resizing_category;
 };
 
 // Resizes output array based on the input size and padding size. This function
@@ -134,31 +146,39 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
     after_padding.push_back(paddings_data[idx * 2 + 1]);
   }
 
-#define TF_LITE_PAD(type, scalar, pad_value)                             \
-  TF_LITE_ENSURE(context, before_padding.size() <= 4);                   \
-  TF_LITE_ENSURE(context, after_padding.size() <= 4);                    \
-  tflite::PadParams op_params;                                           \
-  op_params.left_padding_count = before_padding.size();                  \
-  op_params.right_padding_count = after_padding.size();                  \
-  for (int i = 0; i < op_context.dims; ++i) {                            \
-    op_params.left_padding[i] = before_padding[op_context.dims - 1 - i]; \
-    op_params.right_padding[i] = after_padding[op_context.dims - 1 - i]; \
-  }                                                                      \
-  const scalar pad_value_copy = pad_value;                               \
-                                                                         \
-  type::Pad(op_params, GetTensorShape(op_context.input),                 \
-            GetTensorData<scalar>(op_context.input), &pad_value_copy,    \
-            GetTensorShape(op_context.output),                           \
-            GetTensorData<scalar>(op_context.output))
+#define TF_LITE_PAD(type, op_name, scalar, pad_value)                     \
+  TF_LITE_ENSURE(context, before_padding.size() <= 4);                    \
+  TF_LITE_ENSURE(context, after_padding.size() <= 4);                     \
+  tflite::PadParams op_params;                                            \
+  op_params.left_padding_count = before_padding.size();                   \
+  op_params.right_padding_count = after_padding.size();                   \
+  for (int i = 0; i < op_context.dims; ++i) {                             \
+    op_params.left_padding[i] = before_padding[op_context.dims - 1 - i];  \
+    op_params.right_padding[i] = after_padding[op_context.dims - 1 - i];  \
+  }                                                                       \
+  const scalar pad_value_copy = pad_value;                                \
+                                                                          \
+  type::op_name(op_params, GetTensorShape(op_context.input),              \
+                GetTensorData<scalar>(op_context.input), &pad_value_copy, \
+                GetTensorShape(op_context.output),                        \
+                GetTensorData<scalar>(op_context.output))
   switch (op_context.input->type) {
     case kTfLiteFloat32: {
       float pad_value = op_context.constant_values == nullptr
                             ? 0.f
                             : *GetTensorData<float>(op_context.constant_values);
       if (kernel_type == kReference) {
-        TF_LITE_PAD(reference_ops, float, pad_value);
+        if (op_context.resizing_category == ResizingCategory::kImageStyle) {
+          TF_LITE_PAD(reference_ops, PadImageStyle, float, pad_value);
+        } else {
+          TF_LITE_PAD(reference_ops, Pad, float, pad_value);
+        }
       } else if (kernel_type == kGenericOptimized) {
-        TF_LITE_PAD(optimized_ops, float, pad_value);
+        if (op_context.resizing_category == ResizingCategory::kImageStyle) {
+          TF_LITE_PAD(optimized_ops, PadImageStyle, float, pad_value);
+        } else {
+          TF_LITE_PAD(optimized_ops, Pad, float, pad_value);
+        }
       }
     } break;
     case kTfLiteUInt8: {
@@ -181,9 +201,17 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
         pad_value = *GetTensorData<uint8_t>(op_context.constant_values);
       }
       if (kernel_type == kReference) {
-        TF_LITE_PAD(reference_ops, uint8_t, pad_value);
+        if (op_context.resizing_category == ResizingCategory::kImageStyle) {
+          TF_LITE_PAD(reference_ops, PadImageStyle, uint8_t, pad_value);
+        } else {
+          TF_LITE_PAD(reference_ops, Pad, uint8_t, pad_value);
+        }
       } else if (kernel_type == kGenericOptimized) {
-        TF_LITE_PAD(optimized_ops, uint8_t, pad_value);
+        if (op_context.resizing_category == ResizingCategory::kImageStyle) {
+          TF_LITE_PAD(optimized_ops, PadImageStyle, uint8_t, pad_value);
+        } else {
+          TF_LITE_PAD(optimized_ops, Pad, uint8_t, pad_value);
+        }
       }
     } break;
     case kTfLiteInt32: {
@@ -192,9 +220,9 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
               ? 0
               : *GetTensorData<int32_t>(op_context.constant_values);
       if (kernel_type == kReference) {
-        TF_LITE_PAD(reference_ops, int32_t, pad_value);
+        TF_LITE_PAD(reference_ops, Pad, int32_t, pad_value);
       } else if (kernel_type == kGenericOptimized) {
-        TF_LITE_PAD(optimized_ops, int32_t, pad_value);
+        TF_LITE_PAD(optimized_ops, Pad, int32_t, pad_value);
       }
     } break;
     case kTfLiteInt64: {
@@ -203,9 +231,9 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
               ? 0L
               : *GetTensorData<int64_t>(op_context.constant_values);
       if (kernel_type == kReference) {
-        TF_LITE_PAD(reference_ops, int64_t, pad_value);
+        TF_LITE_PAD(reference_ops, Pad, int64_t, pad_value);
       } else if (kernel_type == kGenericOptimized) {
-        TF_LITE_PAD(optimized_ops, int64_t, pad_value);
+        TF_LITE_PAD(optimized_ops, Pad, int64_t, pad_value);
       }
     } break;
     default:

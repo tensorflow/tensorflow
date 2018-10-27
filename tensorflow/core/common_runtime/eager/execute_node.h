@@ -34,6 +34,7 @@ class ExecuteNode : public EagerNode {
   ExecuteNode(uint64 id, EagerContext* ctx, Device* op_device,
               const tensorflow::gtl::InlinedVector<TensorHandle*, 4>& inputs,
               KernelAndDevice* kernel, NodeExecStats* maybe_stats,
+              StepStats* maybe_step_stats, GraphCollector* graph_collector,
               const DataTypeVector& output_dtypes,
               const tensorflow::gtl::InlinedVector<TensorHandle*, 2>& retvals)
       : EagerNode(id),
@@ -42,6 +43,8 @@ class ExecuteNode : public EagerNode {
         inputs_(inputs),
         kernel_(kernel),
         maybe_stats_(maybe_stats),
+        maybe_step_stats_(maybe_step_stats),
+        graph_collector_(graph_collector),
         retvals_(retvals) {
     for (auto handle : inputs_) {
       handle->Ref();
@@ -61,9 +64,9 @@ class ExecuteNode : public EagerNode {
   }
 
   tensorflow::Status Run() override {
-    const Status status =
-        EagerExecute(ctx_, op_device_, inputs_, kernel_, maybe_stats_.get(),
-                     retvals_.begin(), retvals_.size());
+    const Status status = EagerExecute(
+        ctx_, op_device_, inputs_, kernel_, maybe_stats_.get(),
+        maybe_step_stats_, graph_collector_, retvals_.begin(), retvals_.size());
     if (status.ok()) {
       return status;
     } else {
@@ -80,6 +83,8 @@ class ExecuteNode : public EagerNode {
   tensorflow::gtl::InlinedVector<TensorHandle*, 4> inputs_;
   tensorflow::KernelAndDevice* kernel_;
   std::unique_ptr<NodeExecStats> maybe_stats_;
+  StepStats* maybe_step_stats_;
+  tensorflow::GraphCollector* graph_collector_;
   tensorflow::gtl::InlinedVector<TensorHandle*, 2> retvals_;
 };
 

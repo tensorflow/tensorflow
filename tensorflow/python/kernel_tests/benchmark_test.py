@@ -64,7 +64,7 @@ class TestReportingBenchmark(test.Benchmark):
                 "other_key": "string"})
 
   def benchmark_times_an_op(self):
-    with session.Session() as sess:
+    with session.Session(config=benchmark.benchmark_config()) as sess:
       a = constant_op.constant(0.0)
       a_plus_a = a + a
       return self.run_op_benchmark(

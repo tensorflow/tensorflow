@@ -18,8 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from functools import wraps
-
+import functools
 from enum import Enum
 
 from tensorflow.python.autograph.core import config
@@ -49,19 +48,27 @@ def convert(recursive=False, verbose=False):
 
   Args:
     recursive: bool, whether to recursively convert any functions or classes
-        that the converted function may use.
+      that the converted function may use.
     verbose: bool, whether to output the compiled code in the logs.
 
   Returns:
     Callable, a decorator that converts the given function into an equivalent
     function that uses TensorFlow ops.
   """
+
   def decorator(f):
     """Decorator implementation."""
 
-    @wraps(f)
+    @functools.wraps(f)
     def wrapper(*args, **kwargs):
-      return converted_call(f, recursive, verbose, True, {}, *args, **kwargs)
+      return converted_call(
+          f, None,
+          converter.ConversionOptions(
+              recursive=recursive,
+              verbose=verbose,
+              force_conversion=True,
+              optional_features=converter.Feature.ALL,
+          ), *args, **kwargs)
 
     wrapper = tf_decorator.make_decorator(f, wrapper)
 
@@ -95,10 +102,10 @@ def do_not_convert(run_as=RunMode.GRAPH, return_dtypes=None):
 
   Args:
     run_as: RunMode, specifies how to use the function in TensorFlow.
-    return_dtypes: Optional[Iterable[
-        Union[tf.DType, utils.py_func.MatchDType]]], the return data types of
-        the converted function, if run_as is RunMode.PY_FUNC. Ignored otherwise.
-        May be set to None if the function has no return values.
+    return_dtypes: Optional[Iterable[ Union[tf.DType,
+      utils.py_func.MatchDType]]], the return data types of the converted
+      function, if run_as is RunMode.PY_FUNC. Ignored otherwise. May be set to
+      None if the function has no return values.
 
   Returns:
     Callable, a decorator that wraps the original function.
@@ -107,11 +114,11 @@ def do_not_convert(run_as=RunMode.GRAPH, return_dtypes=None):
   def decorator(f):
     """Decorator implementation."""
 
-    @wraps(f)
+    @functools.wraps(f)
     def graph_wrapper(*args, **kwargs):
       return f(*args, **kwargs)
 
-    @wraps(f)
+    @functools.wraps(f)
     def py_func_wrapper(*args, **kwargs):
       if kwargs:
         raise NotImplementedError('RunMode.PY_FUNC does not yet support kwargs')
@@ -135,12 +142,28 @@ def do_not_convert(run_as=RunMode.GRAPH, return_dtypes=None):
 
 
 # TODO(mdan): Move to a private, undocumented module.
-def converted_call(f, recursive, verbose, force_conversion, arg_types, *args,
-                   **kwargs):
+def converted_call(f, owner, options, *args, **kwargs):
   """Compiles a function call inline. For internal use only."""
+  if options.verbose:
+    logging.info('Converted call: {}; owner: {}'.format(f, owner))
+
+  if owner is not None:
+    if not isinstance(f, str):
+      raise ValueError(
+          'When owner is specified, the function name must be specified as'
+          ' a string: {}'.format(f))
+
+    # Special case when the owner is a 'super' object. In that case lookups of
+    # dynamic attributes won't work. See
+    # inspect_utils.SuperWrapperForDynamicAttrs.
+    if isinstance(owner, super):
+      owner = inspect_utils.SuperWrapperForDynamicAttrs(owner)
+
+    f = getattr(owner, f)
+
   # TODO(mdan): This needs cleanup.
   # In particular, we may want to avoid renaming functions altogether.
-  if not force_conversion and conversion.is_whitelisted_for_graph(f):
+  if not options.force_conversion and conversion.is_whitelisted_for_graph(f):
     return f(*args, **kwargs)
 
   unknown_arg_value = object()  # Sentinel for arguments of unknown value
@@ -152,12 +175,24 @@ def converted_call(f, recursive, verbose, force_conversion, arg_types, *args,
     # Regular functions
     target_entity = f
     arg_map_target = f
-    effective_args = args
     f_class = inspect_utils.getmethodclass(f)
 
     if f_class is not None:
+      # If this is a method call, it may or may not include self.
+      #
+      # Example when self is included:
+      #   converted_call(to_graph(foo.bar), foo)
+      #
+      # Example when self is not included:
+      #   super(...).foo(args)
+      #
+      if owner is not None and (not args or args[0] is not owner):
+        effective_args = (owner,) + args
+      else:
+        effective_args = args
       partial_types = (f_class,)
     else:
+      effective_args = args
       partial_types = ()
 
   elif tf_inspect.isclass(f):
@@ -178,13 +213,12 @@ def converted_call(f, recursive, verbose, force_conversion, arg_types, *args,
     NotImplementedError('unknown callable type "%s"' % type(f))
 
   arg_values = tf_inspect.getcallargs(arg_map_target, *args, **kwargs)
+  arg_types = {}
   for name, arg in arg_values.items():
     if arg is unknown_arg_value:
       continue
     arg_class = arg.__class__
-    # If arg_value_hints specifies any name, use that instead.
-    if name not in arg_types:
-      arg_types[name] = (arg_class.__name__, arg_class)
+    arg_types[name] = (arg_class.__name__, arg_class)
 
   # When called from within a decorator, this is the only indication that
   # the function is a method - it appears that the decorator is applied
@@ -199,23 +233,27 @@ def converted_call(f, recursive, verbose, force_conversion, arg_types, *args,
 
   converted_f = to_graph(
       target_entity,
-      recursive=recursive,
-      verbose=verbose,
+      recursive=options.recursive,
+      verbose=options.verbose,
       arg_values=arg_values,
       arg_types=arg_types,
-      partial_types=partial_types)
+      partial_types=partial_types,
+      strip_decorators=options.strip_decorators,
+      optional_features=options.optional_features)
   return converted_f(*effective_args, **kwargs)
 
 
 # TODO(mdan): Rename: to_ops?
-# TODO(mdan): Looki into overloading as function and decorator, like tfe.defun.
+# TODO(mdan): Look into overloading as function and decorator, like tfe.defun?
 # TODO(mdan): Remove partial_types.
 def to_graph(e,
              recursive=True,
              verbose=False,
              arg_values=None,
              arg_types=None,
-             partial_types=None):
+             partial_types=None,
+             strip_decorators=None,
+             optional_features=converter.Feature.ALL):
   """Converts a Python entity into equivalent code that uses TensorFlow ops.
 
   Supported Python entities include:
@@ -227,13 +265,17 @@ def to_graph(e,
   Args:
     e: Union[Callable, Type], the Python entity to convert.
     recursive: bool, whether to recursively convert any functions that the
-        converted function may call.
+      converted function may call.
     verbose: bool, whether to output the compiled code in the logs.
     arg_values: Optional[Dict[Text, Any]], value hints for symbols including
-        function arguments.
+      function arguments.
     arg_types: Optional[Dict[Text, Type]], type hints for symbols including
-        function arguments.
+      function arguments.
     partial_types: Set[Type], reserved for internal use.
+    strip_decorators: Tuple[Callable], same as
+      ConversionOptions.strip_decorators.
+    optional_features: Union[Feature, Set[Feature]], same as
+      ConversionOptions.optional_features.
 
   Returns:
     Union[Callable, Type], the converted entity, which is the same kind as e
@@ -243,9 +285,16 @@ def to_graph(e,
   Raises:
     ValueError: If the entity could not be converted.
   """
+  if strip_decorators is None:
+    strip_decorators = ()
+  strip_decorators += (convert, do_not_convert, converted_call)
+
   program_ctx = converter.ProgramContext(
-      recursive=recursive,
-      autograph_decorators=(convert, do_not_convert, converted_call),
+      options=converter.ConversionOptions(
+          recursive=recursive,
+          verbose=verbose,
+          strip_decorators=strip_decorators,
+          optional_features=optional_features),
       partial_types=partial_types,
       autograph_module=tf_inspect.getmodule(to_graph),
       uncompiled_modules=config.DEFAULT_UNCOMPILED_MODULES)
@@ -253,9 +302,10 @@ def to_graph(e,
                                                   arg_types)
 
   nodes = []
-  for dep in reversed(tuple(program_ctx.dependency_cache.values())):
-    nodes.extend(dep)
-  compiled_module, compiled_src = compiler.ast_to_object(
+  for dep in reversed(program_ctx.conversion_order):
+    nodes.extend(program_ctx.dependency_cache[dep])
+
+  compiled_module, _ = compiler.ast_to_object(
       nodes,
       source_prefix=program_ctx.required_imports,
       include_source_map=True)
@@ -267,6 +317,9 @@ def to_graph(e,
     if key not in compiled_module.__dict__:
       compiled_module.__dict__[key] = val
   compiled = getattr(compiled_module, name)
+
+  if tf_inspect.isfunction(e):
+    compiled.__defaults__ = e.__defaults__
 
   # Need this so the source_mapping attribute is available for the context
   # manager to access for runtime errors.
@@ -282,9 +335,6 @@ def to_graph(e,
                      (compiled, source_map_attribute_name))
   setattr(compiled, source_map_attribute_name,
           compiled_module.__dict__['ag_source_map__'])
-
-  if verbose:
-    logging.info('Compiled output of %s:\n\n%s\n', e, compiled_src)
 
   return compiled
 
@@ -302,11 +352,11 @@ def to_code(e,
   Args:
     e: Union[Callable, Type], the Python entity to convert.
     recursive: bool, whether to recursively convert any functions that the
-        converted function may call.
+      converted function may call.
     arg_values: Optional[Dict[Text, Any]], value hints for symbols including
-        function arguments.
+      function arguments.
     arg_types: Optional[Dict[Text, Type]], type hints for symbols including
-        function arguments.
+      function arguments.
     partial_types: Set[Type], reserved for internal use.
     indentation: Text, when to use for each level of indentation.
 
@@ -314,15 +364,16 @@ def to_code(e,
     Text, the converted code.
   """
   program_ctx = converter.ProgramContext(
-      recursive=recursive,
-      autograph_decorators=(convert, do_not_convert, converted_call),
+      options=converter.ConversionOptions(
+          recursive=recursive,
+          strip_decorators=(convert, do_not_convert, converted_call)),
       partial_types=partial_types,
       autograph_module=tf_inspect.getmodule(to_graph),
       uncompiled_modules=config.DEFAULT_UNCOMPILED_MODULES)
   conversion.entity_to_graph(e, program_ctx, arg_values, arg_types)
 
   code = '\n'.join(
-      compiler.ast_to_source(dep, indentation)
-      for dep in reversed(tuple(program_ctx.dependency_cache.values())))
+      compiler.ast_to_source(program_ctx.dependency_cache[dep], indentation)
+      for dep in reversed(program_ctx.conversion_order))
 
   return program_ctx.required_imports + '\n\n' + code

@@ -65,7 +65,7 @@ pip install -U tf-nightly
 Then import the `autograph` module from `tf.contrib`:
 
 ```
-from tensorflow.contrib import autograph as ag
+from tensorflow.python import autograph as ag
 ```
 
 ### Related links

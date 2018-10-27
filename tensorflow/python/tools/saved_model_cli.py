@@ -15,7 +15,7 @@
 """Command-line interface to inspect and execute a graph in a SavedModel.
 
 For detailed usages and examples, please refer to:
-https://www.tensorflow.org/guide/saved_model_cli
+https://www.tensorflow.org/guide/saved_model#cli_to_inspect_and_execute_savedmodel
 
 """
 
@@ -33,7 +33,6 @@ import numpy as np
 
 from six import integer_types
 from tensorflow.contrib.saved_model.python.saved_model import reader
-from tensorflow.contrib.saved_model.python.saved_model import signature_def_utils
 from tensorflow.core.example import example_pb2
 from tensorflow.core.framework import types_pb2
 from tensorflow.python.client import session
@@ -46,7 +45,7 @@ from tensorflow.python.saved_model import loader
 from tensorflow.python.tools import saved_model_utils
 
 # Set of ops to blacklist.
-_OP_BLACKLIST = set(['WriteFile', 'ReadFile'])
+_OP_BLACKLIST = set(['WriteFile', 'ReadFile', 'PrintV2'])
 
 
 def _show_tag_sets(saved_model_dir):
@@ -97,8 +96,7 @@ def _get_inputs_tensor_info_from_meta_graph_def(meta_graph_def,
   Returns:
     A dictionary that maps input tensor keys to TensorInfos.
   """
-  return signature_def_utils.get_signature_def_by_key(meta_graph_def,
-                                                      signature_def_key).inputs
+  return meta_graph_def.signature_def[signature_def_key].inputs
 
 
 def _get_outputs_tensor_info_from_meta_graph_def(meta_graph_def,
@@ -116,8 +114,7 @@ def _get_outputs_tensor_info_from_meta_graph_def(meta_graph_def,
   Returns:
     A dictionary that maps output tensor keys to TensorInfos.
   """
-  return signature_def_utils.get_signature_def_by_key(meta_graph_def,
-                                                      signature_def_key).outputs
+  return meta_graph_def.signature_def[signature_def_key].outputs
 
 
 def _show_inputs_outputs(saved_model_dir, tag_set, signature_def_key, indent=0):
@@ -270,7 +267,8 @@ def scan_meta_graph_def(meta_graph_def):
 
 def run_saved_model_with_feed_dict(saved_model_dir, tag_set, signature_def_key,
                                    input_tensor_key_feed_dict, outdir,
-                                   overwrite_flag, worker=None, tf_debug=False):
+                                   overwrite_flag, worker=None, init_tpu=False,
+                                   tf_debug=False):
   """Runs SavedModel and fetch all outputs.
 
   Runs the input dictionary through the MetaGraphDef within a SavedModel
@@ -290,6 +288,8 @@ def run_saved_model_with_feed_dict(saved_model_dir, tag_set, signature_def_key,
         the same name exists.
     worker: If provided, the session will be run on the worker.  Valid worker
         specification is a bns or gRPC path.
+    init_tpu: If true, the TPU system will be initialized after the session
+        is created.
     tf_debug: A boolean flag to use TensorFlow Debugger (TFDBG) to observe the
         intermediate Tensor values and runtime GraphDefs while running the
         SavedModel.
@@ -331,6 +331,12 @@ def run_saved_model_with_feed_dict(saved_model_dir, tag_set, signature_def_key,
   ]
 
   with session.Session(worker, graph=ops_lib.Graph()) as sess:
+    if init_tpu:
+      print('Initializing TPU System ...')
+      # This is needed for freshly started worker, or if the job
+      # restarts after a preemption.
+      sess.run(tf.contrib.tpu.initialize_system())
+
     loader.load(sess, tag_set.split(','), saved_model_dir)
 
     if tf_debug:
@@ -635,7 +641,7 @@ def run(args):
   run_saved_model_with_feed_dict(args.dir, args.tag_set, args.signature_def,
                                  tensor_key_feed_dict, args.outdir,
                                  args.overwrite, worker=args.worker,
-                                 tf_debug=args.tf_debug)
+                                 init_tpu=args.init_tpu, tf_debug=args.tf_debug)
 
 
 def scan(args):
@@ -778,6 +784,12 @@ def create_parser():
       default=None,
       help='if specified, a Session will be run on the worker. '
            'Valid worker specification is a bns or gRPC path.')
+  parser_run.add_argument(
+      '--init_tpu',
+      action='store_true',
+      default=None,
+      help='if specified, tpu.initialize_system will be called on the Session. '
+           'This option should be only used if the worker is a TPU job.')
   parser_run.set_defaults(func=run)
 
   # scan command

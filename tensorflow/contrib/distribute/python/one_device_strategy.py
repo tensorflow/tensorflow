@@ -117,10 +117,10 @@ class OneDeviceStrategy(distribute_lib.DistributionStrategy):
     ctx._set_last_step_outputs(last_step_tensor_outputs_dict)  # pylint: disable=protected-access
     return ctx
 
-  def _call_for_each_tower(self, fn, *args, **kwargs):
+  def _call_for_each_replica(self, fn, *args, **kwargs):
     # We don't run `fn` in multiple threads in OneDeviceStrategy.
     kwargs.pop("run_concurrently", None)
-    with ops.device(self._device), _OneDeviceTowerContext(self):
+    with ops.device(self._device), _OneDeviceReplicaContext(self):
       return fn(*args, **kwargs)
 
   def map(self, map_over, fn, *args, **kwargs):
@@ -141,18 +141,25 @@ class OneDeviceStrategy(distribute_lib.DistributionStrategy):
       else:
         assert False
 
-  def _update(self, var, fn, *args, **kwargs):
-    with ops.device(self._device), distribute_lib.UpdateContext(self._device):
-      return fn(var, *args, **kwargs)
+  def _update(self, var, options, fn, *args, **kwargs):
+    # The implementations of _update() and _update_non_slot() are identical
+    # except _update() passes `var` as the first argument to `fn()`.
+    return self._update_non_slot(var, options, fn, var, *args, **kwargs)
 
-  def _update_non_slot(self, colocate_with, fn, *args, **kwargs):
+  def _update_non_slot(self, colocate_with, options, fn, *args, **kwargs):
     del colocate_with
+    should_group = options.pop("grouped")
+    assert not options  # Validate that we are processing all of the options.
     with ops.device(self._device), distribute_lib.UpdateContext(self._device):
-      return fn(*args, **kwargs)
+      result = fn(*args, **kwargs)
+      if should_group:
+        return result
+      else:
+        return nest.map_structure(self._unwrap, result)
 
-  def read_var(self, tower_local_var):
-    """Read the aggregate value of a tower-local variable."""
-    return array_ops.identity(tower_local_var)
+  def read_var(self, replica_local_var):
+    """Read the aggregate value of a replica-local variable."""
+    return array_ops.identity(replica_local_var)
 
   def _unwrap(self, value):
     return [value]
@@ -161,11 +168,7 @@ class OneDeviceStrategy(distribute_lib.DistributionStrategy):
     return value
 
   @property
-  def is_single_tower(self):
-    return True
-
-  @property
-  def num_towers(self):
+  def num_replicas(self):
     return 1
 
   @property
@@ -184,11 +187,11 @@ class OneDeviceStrategy(distribute_lib.DistributionStrategy):
     return 0
 
 
-class _OneDeviceTowerContext(distribute_lib.TowerContext):
+class _OneDeviceReplicaContext(distribute_lib.ReplicaContext):
 
   def __init__(self, distribution_strategy):
-    distribute_lib.TowerContext.__init__(
-        self, distribution_strategy, tower_id=0)
+    distribute_lib.ReplicaContext.__init__(
+        self, distribution_strategy, replica_id=0)
 
   @property
   def device(self):

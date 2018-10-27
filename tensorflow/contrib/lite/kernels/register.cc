@@ -119,12 +119,15 @@ TfLiteRegistration* Register_LOGICAL_NOT();
 TfLiteRegistration* Register_UNPACK();
 TfLiteRegistration* Register_FLOOR_DIV();
 TfLiteRegistration* Register_SQUARE();
+TfLiteRegistration* Register_ZEROS_LIKE();
+TfLiteRegistration* Register_FLOOR_MOD();
+TfLiteRegistration* Register_RANGE();
 
 TfLiteStatus UnsupportedTensorFlowOp(TfLiteContext* context, TfLiteNode* node) {
   context->ReportError(
       context,
       "Regular TensorFlow ops are not supported by this interpreter. Make sure "
-      "you invoke the Eager delegate before inference.");
+      "you invoke the Flex delegate before inference.");
   return kTfLiteError;
 }
 
@@ -135,13 +138,13 @@ const TfLiteRegistration* BuiltinOpResolver::FindOp(tflite::BuiltinOperator op,
 
 const TfLiteRegistration* BuiltinOpResolver::FindOp(const char* op,
                                                     int version) const {
-  // Return the NULL Op for all ops whose name start with "Eager", allowing
+  // Return the NULL Op for all ops whose name start with "Flex", allowing
   // the interpreter to delegate their execution.
-  if (IsEagerOp(op)) {
+  if (IsFlexOp(op)) {
     static TfLiteRegistration null_op{
         nullptr, nullptr, &UnsupportedTensorFlowOp,
         nullptr, nullptr, BuiltinOperator_CUSTOM,
-        "Eager", 1};
+        "Flex",  1};
     return &null_op;
   }
   return MutableOpResolver::FindOp(op, version);
@@ -157,7 +160,9 @@ BuiltinOpResolver::BuiltinOpResolver() {
   AddBuiltin(BuiltinOperator_MAX_POOL_2D, Register_MAX_POOL_2D());
   AddBuiltin(BuiltinOperator_L2_POOL_2D, Register_L2_POOL_2D());
   AddBuiltin(BuiltinOperator_CONV_2D, Register_CONV_2D());
-  AddBuiltin(BuiltinOperator_DEPTHWISE_CONV_2D, Register_DEPTHWISE_CONV_2D());
+  AddBuiltin(BuiltinOperator_DEPTHWISE_CONV_2D, Register_DEPTHWISE_CONV_2D(),
+             /* min_version */ 1,
+             /* max_version */ 2);
   AddBuiltin(BuiltinOperator_SVDF, Register_SVDF());
   AddBuiltin(BuiltinOperator_RNN, Register_RNN());
   AddBuiltin(BuiltinOperator_BIDIRECTIONAL_SEQUENCE_RNN,
@@ -245,6 +250,9 @@ BuiltinOpResolver::BuiltinOpResolver() {
   AddBuiltin(BuiltinOperator_UNPACK, Register_UNPACK());
   AddBuiltin(BuiltinOperator_FLOOR_DIV, Register_FLOOR_DIV());
   AddBuiltin(BuiltinOperator_SQUARE, Register_SQUARE());
+  AddBuiltin(BuiltinOperator_ZEROS_LIKE, Register_ZEROS_LIKE());
+  AddBuiltin(BuiltinOperator_FLOOR_MOD, Register_FLOOR_MOD());
+  AddBuiltin(BuiltinOperator_RANGE, Register_RANGE());
 
   // TODO(andrewharp, ahentz): Move these somewhere more appropriate so that
   // custom ops aren't always included by default.

@@ -84,6 +84,9 @@ FunctionDef NonZero();
 // x: T -> bool.
 FunctionDef IsZero();
 
+// x: T -> int64
+FunctionDef RandomUniform();
+
 // x:T, y:T -> y:T, x:T
 FunctionDef Swap();
 

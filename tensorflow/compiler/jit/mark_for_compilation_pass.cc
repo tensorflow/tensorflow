@@ -21,6 +21,7 @@ limitations under the License.
 #include <unordered_map>
 #include <unordered_set>
 
+#include "absl/container/flat_hash_set.h"
 #include "tensorflow/compiler/jit/deadness_analysis.h"
 #include "tensorflow/compiler/jit/defs.h"
 #include "tensorflow/compiler/jit/graphcycles/graphcycles.h"
@@ -42,7 +43,6 @@ limitations under the License.
 #include "tensorflow/core/graph/control_flow.h"
 #include "tensorflow/core/kernels/bounds_check.h"
 #include "tensorflow/core/lib/gtl/cleanup.h"
-#include "tensorflow/core/lib/gtl/flatset.h"
 #include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/public/version.h"
 
@@ -365,10 +365,13 @@ bool IsXlaFusable(const NodeDef& node) {
   return elementwise_ops->count(node.op()) > 0;
 }
 
+// Nodes that XLA can compile are put in `candidates`.  Nodes put in
+// `isolated_nodes` must either be unclustered or be put in trivial single-node
+// clusters.
 Status FindCompilationCandidates(
     const Graph& graph, FunctionLibraryDefinition* flib_def, Env* env,
     const std::function<bool(const Node*, const DeviceType&)>& is_compilable_fn,
-    OrderedNodeSet* candidates) {
+    OrderedNodeSet* candidates, absl::flat_hash_set<Node*>* isolated_nodes) {
   OptimizerOptions opts;
   std::unique_ptr<ProcessFunctionLibraryRuntime> pflr(
       new ProcessFunctionLibraryRuntime(nullptr, env, TF_GRAPH_DEF_VERSION,
@@ -411,6 +414,8 @@ Status FindCompilationCandidates(
     DeviceType device_type("");
     TF_RETURN_IF_ERROR(
         DeviceToDeviceType(node->assigned_device_name(), &device_type));
+    VLOG(4) << "Device type for " << node->name() << ": "
+            << device_type.type_string();
 
     if (is_compilable_fn && !is_compilable_fn(node, device_type)) {
       // is_compilable_fn has already logged the reason if it returned false.
@@ -439,19 +444,56 @@ Status FindCompilationCandidates(
               << node->type_string();
       continue;
     }
-    if (compile_time_const_nodes[node->id()] &&
-        !registration->requires_compilation) {
+    if (compile_time_const_nodes[node->id()]) {
       const OpDef* op_def;
       TF_RETURN_IF_ERROR(
           graph.op_registry()->LookUpOpDef(node->type_string(), &op_def));
       if (op_def->is_stateful()) {
-        // We need to be able to constant fold the nodes in
-        // compile_time_const_nodes given constant inputs (required by XLA) and
-        // therefore can't auto-cluster stateful ops since these can never be
-        // constant folded.
-        VLOG(2) << "Rejecting " << node->name()
-                << ": must-be-constant stateful op";
-        continue;
+        // It is easiest to demonstrate the problem we're trying to solve with
+        // an example.  Say we have this graph:
+        //
+        //   shape = RandomUniformInt();
+        //   reshape = Reshape(input, shape)
+        //
+        // Both RandomUniformInt and Reshape are compilable by XLA so, absent
+        // any other reason, we will try to put both shape and reshape in the
+        // same cluster.  However, since XLA only supports statically shaped
+        // values, it will expect to be able to constant fold `shape` to get a
+        // static shape for `reshape`.  This is a problem because side-effecting
+        // ops like RandomUniformInt() cannot be constant folded.  We fix this
+        // by putting `shape` and `reshape` in different clusters, which results
+        // in us recompiling `reshape`'s cluster for every new value of `shape`,
+        // making `reshape` statically sized within each compilation.  We
+        // simplify the solution even further by disallowing operations like
+        // `shape` from being part of *any* non-trivial cluster.  They're either
+        // not compiled by XLA altogether or, if assigned to an XLA_* device
+        // with "must compile" semantics, compiled into a trivial single-op
+        // cluster.  This approach leaves some room for improvement, and we can
+        // consider implementing a more aggressive data-flow-analysis based
+        // solution in the future if needed.
+        //
+        // One ugly problem we have to contend with: certain sets of ops *have*
+        // to be in the same cluster because values flowing between them have
+        // types that can't be live-in or live-out of a cluster.  These ops are:
+        //
+        //  - TensorArray ops operating on the same TensorArray instance.
+        //  - Stack ops operating on the same Stack instance.
+        //
+        // To work around this we avoid isolating these specific ops.  Because
+        // of this concession it is unsound to auto-cluster them because then
+        // we'd create clusters we could not compile (because we can't constant
+        // fold, say, a TensorArrayRead or a StackPopV2).  But we don't
+        // auto-cluster these operations today so we're good for now.
+        const XlaResourceOpInfo* op_info =
+            GetResourceOpInfoForOp(node->type_string());
+        bool is_tensor_array_or_stack_op =
+            op_info && op_info->resource_kind() != XlaResourceKind::kVariable;
+        if (!is_tensor_array_or_stack_op) {
+          VLOG(2) << "Isolating " << node->name()
+                  << ": must-be-constant stateful op";
+          isolated_nodes->insert(node);
+          // Keep going and execute all the other checks.
+        }
       }
     }
     // We don't auto-cluster functional control flow nodes containing resource
@@ -807,11 +849,12 @@ Status MarkForCompilationPass::RunImpl(
   Graph* graph = options.graph->get();
 
   OrderedNodeSet compilation_candidates;
+  absl::flat_hash_set<Node*> isolated_nodes;
   TF_RETURN_IF_ERROR(FindCompilationCandidates(
       *graph, options.flib_def,
       (options.session_options != nullptr) ? options.session_options->env
                                            : Env::Default(),
-      is_compilable_fn, &compilation_candidates));
+      is_compilable_fn, &compilation_candidates, &isolated_nodes));
 
   if (compilation_candidates.empty()) {
     VLOG(2) << "No compilable candidates";
@@ -856,6 +899,11 @@ Status MarkForCompilationPass::RunImpl(
           "Found control flow node in clustering worklist: ",
           node_from->type_string());
     }
+
+    if (isolated_nodes.count(node_from)) {
+      continue;
+    }
+
     string from_scope;
     string to_scope;
     for (int to : cycles.Successors(from)) {
@@ -871,6 +919,9 @@ Status MarkForCompilationPass::RunImpl(
       }
       if (node_from->assigned_device_name() !=
           node_to->assigned_device_name()) {
+        continue;
+      }
+      if (isolated_nodes.count(node_to)) {
         continue;
       }
       // Look for an _XlaScope on both nodes.  If both nodes have a
@@ -901,6 +952,28 @@ Status MarkForCompilationPass::RunImpl(
         continue;
       }
 
+      // If any of the consumer's producers are on a different device, do not
+      // cluster these nodes. This prevents other work on this device from being
+      // delayed by work on other devices. We consider predecessors of the
+      // entire cluster rather than just the inputs to the node to prevent the
+      // cluster still being combined in cases where the 'to' cluster has
+      // multiple dependencies on the 'from' cluster and another dependency
+      // leads to a merging of the clusters.
+      //
+      // TODO(b/117085735): We probably want to handle the reciprocal of this
+      // case where a cluster is producing data for multiple devices.
+      bool found_split = false;
+      for (const auto& in_id : cycles.Predecessors(to)) {
+        if (in_id >= graph->num_node_ids()) continue;
+
+        Node* in = graph->FindNodeId(in_id);
+        if (compilation_candidates.find(in) != compilation_candidates.cend() &&
+            in->assigned_device_name() != node_to->assigned_device_name()) {
+          found_split = true;
+        }
+      }
+      if (found_split) continue;
+
       // If contracting the edge would create a cycle, bail out.
       // However, just because we can't merge the clusters now does not mean
       // we won't be able to merge them in the future.
@@ -930,6 +1003,11 @@ Status MarkForCompilationPass::RunImpl(
 
   // Names for each cluster.
   std::unordered_map<int, string> cluster_names;
+
+  if (flags->tf_xla_clustering_debug) {
+    dump_graph::DumpGraphToFile("before_mark_for_compilation", **options.graph,
+                                options.flib_def);
+  }
 
   // Mark clusters for compilation that:
   // * are placed on a device that requires compilation (an XlaDevice),

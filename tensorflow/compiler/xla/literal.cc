@@ -283,9 +283,14 @@ Status MutableLiteralBase::CopyElementFrom(const LiteralSlice& src_literal,
   if (!proto.has_shape()) {
     return InvalidArgument("LiteralProto has no shape");
   }
+  if (ShapeUtil::HasPrimitiveType(proto.shape(), OPAQUE)) {
+    return InvalidArgument("Literal shape cannot include OPAQUE sub-shape");
+  }
   if (!LayoutUtil::HasLayout(proto.shape())) {
     return InvalidArgument("LiteralProto has no layout");
   }
+
+  TF_RETURN_IF_ERROR(ShapeUtil::ValidateShapeWithOptionalLayout(proto.shape()));
 
   Literal literal(proto.shape());
 
@@ -725,16 +730,34 @@ Literal LiteralBase::Slice(absl::Span<const int64> start_indices,
       ShapeUtil::MakeShapeWithLayout(shape().element_type(), result_dimensions,
                                      LayoutUtil::MinorToMajor(shape()));
   switch (result_shape.element_type()) {
-    case F32:
-      return SliceInternal<float>(result_shape, start_indices);
-    case BF16:
-      return SliceInternal<bfloat16>(result_shape, start_indices);
-    case C64:
-      return SliceInternal<complex64>(result_shape, start_indices);
-    case S32:
-      return SliceInternal<int32>(result_shape, start_indices);
+    case PRED:
+      return SliceInternal<bool>(result_shape, start_indices);
+    case U8:
+      return SliceInternal<uint8>(result_shape, start_indices);
+    case U16:
+      return SliceInternal<uint16>(result_shape, start_indices);
     case U32:
       return SliceInternal<uint32>(result_shape, start_indices);
+    case U64:
+      return SliceInternal<uint64>(result_shape, start_indices);
+    case S8:
+      return SliceInternal<int8>(result_shape, start_indices);
+    case S16:
+      return SliceInternal<int16>(result_shape, start_indices);
+    case S32:
+      return SliceInternal<int32>(result_shape, start_indices);
+    case S64:
+      return SliceInternal<int64>(result_shape, start_indices);
+    case F16:
+      return SliceInternal<half>(result_shape, start_indices);
+    case BF16:
+      return SliceInternal<bfloat16>(result_shape, start_indices);
+    case F32:
+      return SliceInternal<float>(result_shape, start_indices);
+    case F64:
+      return SliceInternal<double>(result_shape, start_indices);
+    case C64:
+      return SliceInternal<complex64>(result_shape, start_indices);
     default:
       LOG(FATAL) << "not yet implemented: "
                  << PrimitiveType_Name(result_shape.element_type());
@@ -1850,6 +1873,24 @@ Status LiteralBase::Piece::CopyFromProto(const LiteralProto& proto) {
   TF_RET_CHECK(LayoutUtil::HasLayout(proto.shape()));
   TF_RET_CHECK(ShapeUtil::Equal(proto.shape(), subshape()));
 
+  if (LayoutUtil::IsSparseArray(subshape())) {
+    // Compute the number of elements (indices) in the sparse shape and reserve
+    // the necessary space in spare_indices.
+    TF_RET_CHECK(ShapeUtil::Rank(subshape()) != 0)
+        << "Scalar shapes cannot be sparse";
+    TF_RET_CHECK(proto.sparse_indices_size() % ShapeUtil::Rank(subshape()) == 0)
+        << "Unexpected number of indices in proto ("
+        << proto.sparse_indices_size() << ") for shape of rank "
+        << ShapeUtil::Rank(subshape());
+    const int64 index_count =
+        proto.sparse_indices_size() / ShapeUtil::Rank(subshape());
+    sparse_indices()->Resize(index_count);
+
+    // Copy the indices from the proto into the SparseIndexArray object.
+    TF_RETURN_IF_ERROR(CopyFromRepeatedField(sparse_indices()->mutable_data(),
+                                             proto.sparse_indices()));
+  }
+
   switch (subshape().element_type()) {
     case PRED:
       TF_RETURN_IF_ERROR(CopyFromRepeatedField(data<bool>(), proto.preds()));
@@ -1907,11 +1948,11 @@ Status LiteralBase::Piece::CopyFromProto(const LiteralProto& proto) {
       }
     } break;
     case TUPLE:
-      LOG(FATAL) << "Should not be called on tuple shapes: "
-                 << ShapeUtil::HumanString(subshape());
-      break;
+      return InvalidArgument("Should not be called on tuple shapes: %s",
+                             ShapeUtil::HumanString(subshape()));
     default:
-      LOG(FATAL) << "Unhandled primitive type " << subshape().element_type();
+      return InvalidArgument("Is called on unsupported shape: %s",
+                             ShapeUtil::HumanString(subshape()));
   }
   return Status::OK();
 }

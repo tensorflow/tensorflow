@@ -17,6 +17,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/container/flat_hash_map.h"
 #include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_split.h"
@@ -32,7 +33,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/tests/test_macros.h"
 #include "tensorflow/compiler/xla/tests/test_utils.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
-#include "tensorflow/core/lib/gtl/flatmap.h"
 #include "tensorflow/core/platform/regexp.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/types.h"
@@ -83,7 +83,7 @@ struct ParsedProfileOutputLine {
 
 Status ParseOneProfileOutputLine(
     const string& line, bool expect_hlo,
-    gtl::FlatMap<string, ParsedProfileOutputLine>* parsed_results,
+    absl::flat_hash_map<string, ParsedProfileOutputLine>* parsed_results,
     absl::Span<const absl::string_view> opcodes_to_ignore = {}) {
   string separator = "[^:]*:: +";
   string match_percentage = R"(\d+\.\d*% +\d+Σ)";
@@ -208,7 +208,7 @@ XLA_TEST_F(HloProfileTest, ProfileSingleComputation) {
   std::vector<string> profile_output_lines =
       absl::StrSplit(profile_output, '\n');
 
-  gtl::FlatMap<string, ParsedProfileOutputLine> parsed_profile_lines;
+  absl::flat_hash_map<string, ParsedProfileOutputLine> parsed_profile_lines;
 
   TF_ASSERT_OK(ParseOneProfileOutputLine(
       profile_output_lines[1], /*expect_hlo=*/false, &parsed_profile_lines));
@@ -314,7 +314,7 @@ XLA_TEST_F(HloProfileTest, ProfileWhileComputation) {
 
   ASSERT_NE(while_body_profile_end, profile_output_lines.end());
 
-  gtl::FlatMap<string, ParsedProfileOutputLine> parsed_profile_lines;
+  absl::flat_hash_map<string, ParsedProfileOutputLine> parsed_profile_lines;
 
   for (auto while_body_profile_i = while_body_profile_start + 1;
        while_body_profile_i != while_body_profile_end; while_body_profile_i++) {

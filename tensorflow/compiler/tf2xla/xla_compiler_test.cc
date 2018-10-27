@@ -354,8 +354,10 @@ TEST_F(XlaCompilerTest, HasSaneErrorOnNonCompileTimeConstantInputToReshape) {
   EXPECT_TRUE(
       absl::StrContains(status.error_message(), "depends on a parameter"))
       << status.error_message();
-  EXPECT_TRUE(
-      absl::StrContains(status.error_message(), "[[{{node C}} = Reshape"))
+  EXPECT_TRUE(absl::StrContains(status.error_message(), "{{node C}}"))
+      << status.error_message();
+  EXPECT_TRUE(absl::StrContains(status.error_message(),
+                                "must be a compile-time constant"))
       << status.error_message();
 }
 
@@ -1256,23 +1258,30 @@ TEST_F(XlaCompilerTest, TokenInputAndOutput) {
   TF_ASSERT_OK(status);
   EXPECT_TRUE(FixupSourceAndSinkEdges(graph.get()));
 
-  const std::vector<XlaCompiler::Argument> empty_args;
+  std::vector<XlaCompiler::Argument> args(1);
+  args[0].kind = XlaCompiler::Argument::kResource;
+  args[0].resource_kind = XlaResource::kVariable;
+  args[0].initialized = true;
+  args[0].type = DT_INT32;
+  args[0].shape = TensorShape({2, 2});
+
   {
     // The case for entry computation: we don't add token input/output. Instead,
     // we use CreateToken HLO to create the entry token.
     XlaCompiler::CompileOptions options;
     options.is_entry_computation = true;
     options.add_token_input_output = false;
+    options.return_updated_values_for_all_resources = true;
     XlaCompiler compiler(DefaultOptions());
 
     std::unique_ptr<Graph> graph_copy(new Graph(OpRegistry::Global()));
     CopyGraph(*graph, graph_copy.get());
     XlaCompiler::CompilationResult result;
     TF_ASSERT_OK(compiler.CompileGraph(options, "NoOp", std::move(graph_copy),
-                                       empty_args, &result));
-    EXPECT_EQ(result.xla_input_shapes.size(), 0);
+                                       args, &result));
+    EXPECT_EQ(result.xla_input_shapes.size(), 1);
     EXPECT_TRUE(xla::ShapeUtil::IsTuple(result.xla_output_shape));
-    EXPECT_EQ(xla::ShapeUtil::TupleElementCount(result.xla_output_shape), 0);
+    EXPECT_EQ(xla::ShapeUtil::TupleElementCount(result.xla_output_shape), 1);
   }
   {
     // The case for non-entry computation (e.g. while loop body). We add token
@@ -1280,19 +1289,20 @@ TEST_F(XlaCompilerTest, TokenInputAndOutput) {
     XlaCompiler::CompileOptions options;
     options.is_entry_computation = false;
     options.add_token_input_output = true;
+    options.return_updated_values_for_all_resources = true;
     XlaCompiler compiler(DefaultOptions());
 
     std::unique_ptr<Graph> graph_copy(new Graph(OpRegistry::Global()));
     CopyGraph(*graph, graph_copy.get());
     XlaCompiler::CompilationResult result;
     TF_ASSERT_OK(compiler.CompileGraph(options, "NoOp", std::move(graph_copy),
-                                       empty_args, &result));
-    EXPECT_EQ(result.xla_input_shapes.size(), 1);
-    EXPECT_TRUE(xla::ShapeUtil::IsToken(result.xla_input_shapes[0]));
+                                       args, &result));
+    EXPECT_EQ(result.xla_input_shapes.size(), 2);
+    EXPECT_TRUE(xla::ShapeUtil::IsToken(result.xla_input_shapes[1]));
     EXPECT_TRUE(xla::ShapeUtil::IsTuple(result.xla_output_shape));
-    EXPECT_EQ(xla::ShapeUtil::TupleElementCount(result.xla_output_shape), 1);
+    EXPECT_EQ(xla::ShapeUtil::TupleElementCount(result.xla_output_shape), 2);
     EXPECT_TRUE(xla::ShapeUtil::IsToken(
-        xla::ShapeUtil::GetTupleElementShape(result.xla_output_shape, 0)));
+        xla::ShapeUtil::GetTupleElementShape(result.xla_output_shape, 1)));
   }
 }
 

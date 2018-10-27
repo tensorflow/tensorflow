@@ -45,9 +45,14 @@ ENV ANDROID_NDK_FILENAME android-ndk-r14b-linux-x86_64.zip
 ENV ANDROID_NDK_URL https://dl.google.com/android/repository/${ANDROID_NDK_FILENAME}
 ENV ANDROID_NDK_HOME ${ANDROID_DEV_HOME}/ndk
 ENV PATH ${PATH}:${ANDROID_NDK_HOME}
+# Workaround for b/117156972: inject missing #include into NDK versions of
+# futex.h.
 RUN cd ${ANDROID_DEV_HOME} && \
     wget -q ${ANDROID_NDK_URL} && \
     unzip ${ANDROID_NDK_FILENAME} -d ${ANDROID_DEV_HOME} && \
+    sed -i 15i"#include <linux/compiler.h>" ${ANDROID_DEV_HOME}/android-ndk-r14b/platforms/android-14/arch-arm/usr/include/linux/futex.h && \
+    sed -i 15i"#include <linux/compiler.h>" ${ANDROID_DEV_HOME}/android-ndk-r14b/platforms/android-14/arch-mips/usr/include/linux/futex.h && \
+    sed -i 15i"#include <linux/compiler.h>" ${ANDROID_DEV_HOME}/android-ndk-r14b/platforms/android-14/arch-x86/usr/include/linux/futex.h && \
     rm ${ANDROID_NDK_FILENAME} && \
     bash -c "ln -s ${ANDROID_DEV_HOME}/android-ndk-* ${ANDROID_NDK_HOME}"
 

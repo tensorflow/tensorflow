@@ -93,8 +93,8 @@ TEST_F(GoogleAuthProviderTest, EnvironmentVariable_Caching) {
 
   std::shared_ptr<HttpRequest::Factory> fakeHttpRequestFactory =
       std::make_shared<FakeHttpRequestFactory>(&requests);
-  auto metadataClient =
-      std::make_shared<ComputeEngineMetadataClient>(fakeHttpRequestFactory, 0);
+  auto metadataClient = std::make_shared<ComputeEngineMetadataClient>(
+      fakeHttpRequestFactory, RetryConfig(0 /* init_delay_time_us */));
   GoogleAuthProvider provider(std::unique_ptr<OAuthClient>(oauth_client),
                               metadataClient, &env);
   oauth_client->return_token = "fake-token";
@@ -129,8 +129,8 @@ TEST_F(GoogleAuthProviderTest, GCloudRefreshToken) {
   FakeEnv env;
   std::shared_ptr<HttpRequest::Factory> fakeHttpRequestFactory =
       std::make_shared<FakeHttpRequestFactory>(&requests);
-  auto metadataClient =
-      std::make_shared<ComputeEngineMetadataClient>(fakeHttpRequestFactory, 0);
+  auto metadataClient = std::make_shared<ComputeEngineMetadataClient>(
+      fakeHttpRequestFactory, RetryConfig(0 /* init_delay_time_us */));
 
   GoogleAuthProvider provider(std::unique_ptr<OAuthClient>(oauth_client),
                               metadataClient, &env);
@@ -178,8 +178,8 @@ TEST_F(GoogleAuthProviderTest, RunningOnGCE) {
   FakeEnv env;
   std::shared_ptr<HttpRequest::Factory> fakeHttpRequestFactory =
       std::make_shared<FakeHttpRequestFactory>(&requests);
-  auto metadataClient =
-      std::make_shared<ComputeEngineMetadataClient>(fakeHttpRequestFactory, 0);
+  auto metadataClient = std::make_shared<ComputeEngineMetadataClient>(
+      fakeHttpRequestFactory, RetryConfig(0 /* init_delay_time_us */));
   GoogleAuthProvider provider(std::unique_ptr<OAuthClient>(oauth_client),
                               metadataClient, &env);
 
@@ -206,8 +206,8 @@ TEST_F(GoogleAuthProviderTest, OverrideForTesting) {
   FakeEnv env;
   std::shared_ptr<HttpRequest::Factory> fakeHttpRequestFactory =
       std::make_shared<FakeHttpRequestFactory>(&empty_requests);
-  auto metadataClient =
-      std::make_shared<ComputeEngineMetadataClient>(fakeHttpRequestFactory, 0);
+  auto metadataClient = std::make_shared<ComputeEngineMetadataClient>(
+      fakeHttpRequestFactory, RetryConfig(0 /* init_delay_time_us */));
   GoogleAuthProvider provider(std::unique_ptr<OAuthClient>(oauth_client),
                               metadataClient, &env);
 
@@ -228,8 +228,8 @@ TEST_F(GoogleAuthProviderTest, NothingAvailable) {
   FakeEnv env;
   std::shared_ptr<HttpRequest::Factory> fakeHttpRequestFactory =
       std::make_shared<FakeHttpRequestFactory>(&requests);
-  auto metadataClient =
-      std::make_shared<ComputeEngineMetadataClient>(fakeHttpRequestFactory, 0);
+  auto metadataClient = std::make_shared<ComputeEngineMetadataClient>(
+      fakeHttpRequestFactory, RetryConfig(0 /* init_delay_time_us */));
   GoogleAuthProvider provider(std::unique_ptr<OAuthClient>(oauth_client),
                               metadataClient, &env);
 

@@ -100,6 +100,12 @@ class NodeBuilder {
   // "assigned device" in the Node).
   NodeBuilder& Device(StringPiece device_spec);
 
+  // Sets the device name in the "assigned device" field in tensorflow::Node.
+  NodeBuilder& AssignedDevice(StringPiece device);
+
+  // Sets the _XlaCluster attribute in created node to `xla_cluster`.
+  NodeBuilder& XlaCluster(StringPiece xla_cluster);
+
   // Set the value of an attr.  attr_name must match the name of one of
   // attrs defined by the Op, and value must have the corresponding type
   // (see SetAttrValue() in ../framework/attr_value_util.h for legal
@@ -141,6 +147,7 @@ class NodeBuilder {
   std::vector<NodeOut> inputs_;
   std::vector<Node*> control_inputs_;
   std::vector<string> errors_;
+  string assigned_device_;
 };
 
 // IMPLEMENTATION -------------------------------------------------------------

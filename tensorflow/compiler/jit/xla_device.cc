@@ -125,40 +125,16 @@ Status DefaultPaddedShapeFn(const Tensor& tensor, xla::Shape* shape) {
   return Status::OK();
 }
 
-}  // namespace
-
-/* static */ Status XlaDevice::Create(
-    const string& platform_name, const string& device_name, int device_ordinal,
-    const string& jit_device_name, const SessionOptions& options,
-    const string& name_prefix,
-    const XlaOpRegistry::DeviceRegistration& registration,
-    bool transfer_as_literal, bool use_multiple_streams,
-    const XlaCompiler::ShapeRepresentationFn& shape_representation_fn,
-    const PaddedShapeFn& padded_shape_fn, std::unique_ptr<XlaDevice>* device) {
-  VLOG(1) << "XlaDevice::Create " << platform_name << " " << device_name << ":"
-          << device_ordinal;
-
-  // These are no-ops if they have already been done previously for
-  // this device_name/compilation_device_name pair.
-  XlaOpRegistry::RegisterCompilationDevice(device_name, registration);
-
-  auto platform = se::MultiPlatformManager::PlatformWithName(platform_name);
-  if (!platform.ok()) {
-    return platform.status();
-  }
-
-  const DeviceAttributes attrs = Device::BuildDeviceAttributes(
+static DeviceAttributes BuildXlaDeviceAttributes(const string& name_prefix,
+                                                 const string& device_name,
+                                                 int device_ordinal) {
+  return Device::BuildDeviceAttributes(
       absl::StrCat(name_prefix, "/device:", device_name, ":", device_ordinal),
       DeviceType(device_name), Bytes(16ULL << 30), DeviceLocality(),
       absl::StrCat("device: ", device_name, " device"));
-
-  device->reset(
-      new XlaDevice(options, attrs, device_ordinal, DeviceType(jit_device_name),
-                    platform.ValueOrDie(), transfer_as_literal,
-                    use_multiple_streams, shape_representation_fn,
-                    padded_shape_fn ? padded_shape_fn : DefaultPaddedShapeFn));
-  return Status::OK();
 }
+
+}  // namespace
 
 XlaDevice::Metadata::Metadata(
     int device_ordinal, se::Platform* platform, const DeviceType& device_type,
@@ -209,24 +185,27 @@ const DeviceType& XlaDevice::Metadata::jit_device_type() const {
   return GetMetadataFromDevice(ctx->device(), metadata);
 }
 
-XlaDevice::XlaDevice(
-    const SessionOptions& options, const DeviceAttributes& attrs,
-    int device_ordinal, const DeviceType& jit_device_name,
-    se::Platform* platform, bool transfer_as_literal, bool use_multiple_streams,
-    const XlaCompiler::ShapeRepresentationFn& shape_representation_fn,
-    const PaddedShapeFn& padded_shape_fn)
-    : LocalDevice(options, attrs),
-      xla_metadata_(device_ordinal, platform, jit_device_name,
-                    shape_representation_fn, padded_shape_fn,
-                    use_multiple_streams),
-      device_ordinal_(device_ordinal),
-      jit_device_name_(jit_device_name),
-      platform_(platform),
-      use_multiple_streams_(use_multiple_streams),
-      transfer_as_literal_(transfer_as_literal),
-      shape_representation_fn_(shape_representation_fn) {
-  VLOG(1) << "Created XLA device " << jit_device_name << " " << this;
-  thread_pool_.reset(new thread::ThreadPool(options.env, "xla_device",
+XlaDevice::XlaDevice(const SessionOptions& session_options,
+                     const Options& options)
+    : LocalDevice(session_options,
+                  BuildXlaDeviceAttributes(options.device_name_prefix,
+                                           options.device_name,
+                                           options.device_ordinal)),
+      xla_metadata_(options.device_ordinal, options.platform,
+                    DeviceType(options.compilation_device_name),
+                    options.shape_representation_fn,
+                    options.padded_shape_fn ? options.padded_shape_fn
+                                            : DefaultPaddedShapeFn,
+                    options.use_multiple_streams),
+      device_ordinal_(options.device_ordinal),
+      jit_device_name_(options.compilation_device_name),
+      platform_(options.platform),
+      use_multiple_streams_(options.use_multiple_streams),
+      transfer_as_literal_(options.transfer_as_literal),
+      shape_representation_fn_(options.shape_representation_fn) {
+  VLOG(1) << "Created XLA device " << options.compilation_device_name << " "
+          << this;
+  thread_pool_.reset(new thread::ThreadPool(session_options.env, "xla_device",
                                             /*num_threads=*/1));
 }
 
@@ -373,7 +352,7 @@ Status XlaDevice::FillContextMap(const Graph* graph,
 void XlaDevice::Compute(OpKernel* op_kernel, OpKernelContext* context) {
   VLOG(2) << "XlaDevice::Compute " << op_kernel->name() << ":"
           << op_kernel->type_string();
-  TracingDevice::Compute(op_kernel, context);
+  op_kernel->Compute(context);
 }
 
 void XlaDevice::ComputeAsync(AsyncOpKernel* op_kernel, OpKernelContext* context,
@@ -432,6 +411,16 @@ Status XlaDevice::MakeTensorFromProto(const TensorProto& tensor_proto,
   }
   VLOG(2) << "Allocated tensor at " << DMAHelper::base(tensor);
   return status;
+}
+
+void XlaDevice::SetRequiresSyncOnCompletion(bool sync_on_completion) {
+  mutex_lock lock(mu_);
+  sync_on_completion_ = sync_on_completion;
+}
+
+bool XlaDevice::RequiresSyncOnCompletion() const {
+  mutex_lock lock(mu_);
+  return sync_on_completion_;
 }
 
 XlaDeviceOpRegistrations* RegisterXlaDeviceKernels(const char* device,

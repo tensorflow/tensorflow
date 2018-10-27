@@ -29,7 +29,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 
-_BIAS_FEATURE_ID = -1
+_BIAS_FEATURE_ID = int(dtypes.int64.min)
 
 
 class EqualitySplitHandler(base_split_handler.BaseSplitHandler):

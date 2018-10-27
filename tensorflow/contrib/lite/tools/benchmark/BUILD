@@ -36,11 +36,11 @@ cc_binary(
 )
 
 cc_binary(
-    name = "benchmark_model_plus_eager",
+    name = "benchmark_model_plus_flex",
     srcs = [
-        "benchmark_main.cc",
+        "benchmark_plus_flex_main.cc",
     ],
-    copts = common_copts + ["-DTFLITE_EXTENDED"],
+    copts = common_copts,
     linkopts = tflite_linkopts() + select({
         "//tensorflow:android": [
             "-pie",  # Android 5.0 and later supports only PIE
@@ -49,8 +49,10 @@ cc_binary(
         "//conditions:default": [],
     }),
     deps = [
-        ":benchmark_tflite_model_plus_eager_lib",
+        ":benchmark_tflite_model_lib",
         ":logging",
+        "//tensorflow/contrib/lite/delegates/flex:delegate",
+        "//tensorflow/contrib/lite/testing:init_tensorflow",
     ],
 )
 
@@ -84,6 +86,9 @@ cc_test(
     name = "command_line_flags_test",
     srcs = ["command_line_flags_test.cc"],
     copts = common_copts,
+    tags = [
+        "tflite_not_portable_ios",  # TODO(b/117786830)
+    ],
     visibility = ["//visibility:private"],
     deps = [
         ":command_line_flags",
@@ -105,25 +110,6 @@ cc_library(
         ":logging",
         "//tensorflow/contrib/lite:framework",
         "//tensorflow/contrib/lite:string_util",
-        "//tensorflow/contrib/lite/kernels:builtin_ops",
-        "//tensorflow/contrib/lite/profiling:profile_summarizer",
-    ],
-)
-
-cc_library(
-    name = "benchmark_tflite_model_plus_eager_lib",
-    srcs = [
-        "benchmark_tflite_model.cc",
-        "logging.h",
-    ],
-    hdrs = ["benchmark_tflite_model.h"],
-    copts = common_copts + ["-DTFLITE_EXTENDED"],
-    deps = [
-        ":benchmark_model_lib",
-        ":logging",
-        "//tensorflow/contrib/lite:framework",
-        "//tensorflow/contrib/lite:string_util",
-        "//tensorflow/contrib/lite/delegates/eager:delegate",
         "//tensorflow/contrib/lite/kernels:builtin_ops",
         "//tensorflow/contrib/lite/profiling:profile_summarizer",
     ],

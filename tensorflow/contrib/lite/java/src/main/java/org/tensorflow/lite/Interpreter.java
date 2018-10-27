@@ -18,7 +18,9 @@ package org.tensorflow.lite;
 import java.io.File;
 import java.nio.ByteBuffer;
 import java.nio.MappedByteBuffer;
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import org.checkerframework.checker.nullness.qual.NonNull;
 
@@ -56,16 +58,58 @@ import org.checkerframework.checker.nullness.qual.NonNull;
  */
 public final class Interpreter implements AutoCloseable {
 
+  /** An options class for controlling runtime interpreter behavior. */
+  public static class Options {
+    public Options() {}
+
+    /**
+     * Sets the number of threads to be used for ops that support multi-threading. Defaults to a
+     * platform-dependent value.
+     */
+    public Options setNumThreads(int numThreads) {
+      this.numThreads = numThreads;
+      return this;
+    }
+
+    /** Sets whether to use NN API (if available) for op execution. Defaults to false (disabled). */
+    public Options setUseNNAPI(boolean useNNAPI) {
+      this.useNNAPI = useNNAPI;
+      return this;
+    }
+
+    /**
+     * Sets whether to allow float16 precision for FP32 calculation when possible. Defaults to false
+     * (disallow).
+     * WARNING: This is an experimental API and subject to change.
+     */
+    public Options setAllowFp16PrecisionForFp32(boolean allow) {
+      this.allowFp16PrecisionForFp32 = allow;
+      return this;
+    }
+
+    /**
+     * Adds a {@link Delegate} to be applied during interpreter creation.
+     *
+     * <p>WARNING: This is an experimental interface that is subject to change.
+     */
+    public Options addDelegate(Delegate delegate) {
+      delegates.add(delegate);
+      return this;
+    }
+
+    int numThreads = -1;
+    boolean useNNAPI = false;
+    boolean allowFp16PrecisionForFp32 = false;
+    final List<Delegate> delegates = new ArrayList<>();
+  }
+
   /**
    * Initializes a {@code Interpreter}
    *
    * @param modelFile: a File of a pre-trained TF Lite model.
    */
   public Interpreter(@NonNull File modelFile) {
-    if (modelFile == null) {
-      return;
-    }
-    wrapper = new NativeInterpreterWrapper(modelFile.getAbsolutePath());
+    this(modelFile, /*options = */ null);
   }
 
   /**
@@ -73,12 +117,22 @@ public final class Interpreter implements AutoCloseable {
    *
    * @param modelFile: a file of a pre-trained TF Lite model
    * @param numThreads: number of threads to use for inference
+   * @deprecated Prefer using the {@link #Interpreter(File,Options)} constructor. This method will
+   *     be removed in a future release.
    */
+  @Deprecated
   public Interpreter(@NonNull File modelFile, int numThreads) {
-    if (modelFile == null) {
-      return;
-    }
-    wrapper = new NativeInterpreterWrapper(modelFile.getAbsolutePath(), numThreads);
+    this(modelFile, new Options().setNumThreads(numThreads));
+  }
+
+  /**
+   * Initializes a {@code Interpreter} and specifies the number of threads used for inference.
+   *
+   * @param modelFile: a file of a pre-trained TF Lite model
+   * @param options: a set of options for customizing interpreter behavior
+   */
+  public Interpreter(@NonNull File modelFile, Options options) {
+    wrapper = new NativeInterpreterWrapper(modelFile.getAbsolutePath(), options);
   }
 
   /**
@@ -89,7 +143,7 @@ public final class Interpreter implements AutoCloseable {
    * direct {@code ByteBuffer} of nativeOrder() that contains the bytes content of a model.
    */
   public Interpreter(@NonNull ByteBuffer byteBuffer) {
-    wrapper = new NativeInterpreterWrapper(byteBuffer);
+    this(byteBuffer, /* options= */ null);
   }
 
   /**
@@ -99,9 +153,13 @@ public final class Interpreter implements AutoCloseable {
    * <p>The ByteBuffer should not be modified after the construction of a {@code Interpreter}. The
    * {@code ByteBuffer} can be either a {@code MappedByteBuffer} that memory-maps a model file, or a
    * direct {@code ByteBuffer} of nativeOrder() that contains the bytes content of a model.
+   *
+   * @deprecated Prefer using the {@link #Interpreter(ByteBuffer,Options)} constructor. This method
+   *     will be removed in a future release.
    */
+  @Deprecated
   public Interpreter(@NonNull ByteBuffer byteBuffer, int numThreads) {
-    wrapper = new NativeInterpreterWrapper(byteBuffer, numThreads);
+    this(byteBuffer, new Options().setNumThreads(numThreads));
   }
 
   /**
@@ -109,20 +167,25 @@ public final class Interpreter implements AutoCloseable {
    *
    * <p>The {@code MappedByteBuffer} should remain unchanged after the construction of a {@code
    * Interpreter}.
+   *
+   * @deprecated Prefer using the {@link #Interpreter(ByteBuffer,Options)} constructor. This method
+   *     will be removed in a future release.
    */
+  @Deprecated
   public Interpreter(@NonNull MappedByteBuffer mappedByteBuffer) {
-    wrapper = new NativeInterpreterWrapper(mappedByteBuffer);
+    this(mappedByteBuffer, /* options= */ null);
   }
 
   /**
-   * Initializes a {@code Interpreter} with a {@code MappedByteBuffer} to the model file and
-   * specifies the number of threads used for inference.
+   * Initializes a {@code Interpreter} with a {@code ByteBuffer} of a model file and a set of custom
+   * {@link #Options}.
    *
-   * <p>The {@code MappedByteBuffer} should remain unchanged after the construction of a {@code
-   * Interpreter}.
+   * <p>The ByteBuffer should not be modified after the construction of a {@code Interpreter}. The
+   * {@code ByteBuffer} can be either a {@code MappedByteBuffer} that memory-maps a model file, or a
+   * direct {@code ByteBuffer} of nativeOrder() that contains the bytes content of a model.
    */
-  public Interpreter(@NonNull MappedByteBuffer mappedByteBuffer, int numThreads) {
-    wrapper = new NativeInterpreterWrapper(mappedByteBuffer, numThreads);
+  public Interpreter(@NonNull ByteBuffer byteBuffer, Options options) {
+    wrapper = new NativeInterpreterWrapper(byteBuffer, options);
   }
 
   /**
@@ -232,20 +295,34 @@ public final class Interpreter implements AutoCloseable {
 
   /**
    * Returns native inference timing.
-   * <p>IllegalArgumentException will be thrown if the model is not initialized by the
-   * {@link Interpreter}.
+   *
+   * <p>IllegalArgumentException will be thrown if the model is not initialized by the {@link
+   * Interpreter}.
    */
   public Long getLastNativeInferenceDurationNanoseconds() {
     checkNotClosed();
     return wrapper.getLastNativeInferenceDurationNanoseconds();
   }
 
-  /** Turns on/off Android NNAPI for hardware acceleration when it is available. */
+  /**
+   * Turns on/off Android NNAPI for hardware acceleration when it is available.
+   *
+   * @deprecated Prefer using {@link Options#setUseNNAPI(boolean)} directly for enabling NN API.
+   *     This method will be removed in a future release.
+   */
+  @Deprecated
   public void setUseNNAPI(boolean useNNAPI) {
     checkNotClosed();
     wrapper.setUseNNAPI(useNNAPI);
   }
 
+  /**
+   * Sets the number of threads to be used for ops that support multi-threading.
+   *
+   * @deprecated Prefer using {@link Options#setNumThreads(int)} directly for controlling thread
+   *     multi-threading. This method will be removed in a future release.
+   */
+  @Deprecated
   public void setNumThreads(int numThreads) {
     checkNotClosed();
     wrapper.setNumThreads(numThreads);

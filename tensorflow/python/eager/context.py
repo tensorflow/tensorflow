@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Experimental API for TensorFlow's "Eager" mode of execution."""
+"""State management for eager execution."""
 
 from __future__ import absolute_import
 from __future__ import division
@@ -25,7 +25,9 @@ import random
 import threading
 
 from tensorflow.core.protobuf import config_pb2
+from tensorflow.core.protobuf import rewriter_config_pb2
 from tensorflow.python import pywrap_tensorflow
+from tensorflow.python import tf2
 from tensorflow.python.framework import c_api_util
 from tensorflow.python.framework import device as pydev
 from tensorflow.python.util import compat
@@ -36,8 +38,7 @@ from tensorflow.python.util.tf_export import tf_export
 GRAPH_MODE = 0
 EAGER_MODE = 1
 
-# Default execution mode.
-default_execution_mode = GRAPH_MODE
+default_execution_mode = EAGER_MODE if tf2.enabled() else GRAPH_MODE
 
 # Cache from (old_device_name, partial_new_device_name) -> (new_device_name,
 # new_device_spec).
@@ -84,7 +85,7 @@ class _EagerTensorCache(object):
 class _EagerContext(threading.local):
   """Thread local eager context."""
 
-  def __init__(self):
+  def __init__(self, config=None):
     super(_EagerContext, self).__init__()
     self.device_spec = pydev.DeviceSpec.from_string("")
     self.device_name = self.device_spec.to_string()
@@ -97,6 +98,19 @@ class _EagerContext(threading.local):
     self.ones_rank_cache = _EagerTensorCache()
     self.zeros_cache = _EagerTensorCache()
     self.execution_mode = None
+
+    # An empty string corresponds to turning all default grappler optimizations
+    # on.
+    base_config = rewriter_config_pb2.RewriterConfig()
+
+    # TODO(b/117959922): Turn this back on once the bug is fixed.
+    base_config.function_optimization = rewriter_config_pb2.RewriterConfig.OFF
+
+    if config is not None and config.HasField(
+        "graph_options") and config.graph_options.HasField("rewrite_options"):
+      base_config.Merge(config.graph_options.rewrite_options)
+
+    self.rewriter_config = base_config.SerializeToString()
 
 
 ContextSwitch = collections.namedtuple(
@@ -191,7 +205,7 @@ class Context(object):
     Raises:
      ValueError: If execution_mode is not valid.
     """
-    self._eager_context = _EagerContext()
+    self._eager_context = _EagerContext(config)
     self._context_switches = _ContextSwitchStack(self.executing_eagerly())
     self._context_handle = None
     self._context_devices = None
@@ -361,6 +375,36 @@ class Context(object):
       if mode == EAGER_MODE:
         self.context_switches.pop()
 
+  @tf_contextlib.contextmanager
+  def rewriter_config(self, rewriter_config_=None):
+    """A context manager to allow setting the grappler rewrite options.
+
+    Args:
+      rewriter_config_: A tensorflow.RewriterConfig proto object.
+
+    Yields:
+      Nothing.
+
+    Raises:
+      ValueError: if rewriter_config is not a tensorflow.RewriterConfig proto.
+    """
+    if rewriter_config_ is None or not isinstance(
+        rewriter_config_, rewriter_config_pb2.RewriterConfig):
+      raise ValueError("Must pass a rewriter_config proto")
+
+    ctx = self._eager_context
+    old_rewriter_config = ctx.rewriter_config
+    ctx.rewriter_config = rewriter_config_.SerializeToString()
+    try:
+      yield
+    finally:
+      ctx.rewriter_config = old_rewriter_config
+
+  @property
+  def rewriter_config_string(self):
+    """Returns the serialized rewriter_config for the current thread."""
+    return self._eager_context.rewriter_config
+
   def executing_eagerly(self):
     """Returns True if current thread has eager executing enabled."""
     return self._eager_context.is_eager
@@ -420,6 +464,10 @@ class Context(object):
     Raises:
       ValueError: If name is not a string or is an invalid device name.
     """
+    devices = self._context_devices
+    if devices is None:
+      self._initialize_handle_and_devices()
+      devices = self._context_devices
     eager_context = self._eager_context
     old_device_name = eager_context.device_name
     old_device_spec = eager_context.device_spec
@@ -440,8 +488,7 @@ class Context(object):
         if old_device_name:
           new_device_spec = copy.copy(old_device_spec)
         else:
-          new_device_spec = pydev.DeviceSpec.from_string(
-              "/job:localhost/replica:0/task:0/device:CPU:0")
+          new_device_spec = pydev.DeviceSpec.from_string(devices[0])
         new_device_spec.merge_from(device_spec)
       else:
         new_device_spec = pydev.DeviceSpec.from_string("")
@@ -783,8 +830,18 @@ def export_run_metadata():
   return context().export_run_metadata()
 
 
+def rewriter_config(rewriter_config_):
+  """Context manager for setting the grappler rewrite config."""
+  return context().rewriter_config(rewriter_config_)
+
+
 def set_server_def(server_def):
   context().set_server_def(server_def)
+
+
+def add_function(fdef):
+  """Add a function definition to the context."""
+  context().add_function(fdef)
 
 
 # Not every user creates a Context via context.context()

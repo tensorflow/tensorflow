@@ -40,6 +40,7 @@ namespace tensorflow {
 XlaCompilationCache::XlaCompilationCache(xla::LocalClient* client,
                                          DeviceType device_type)
     : client_(client), device_type_(std::move(device_type)) {}
+
 XlaCompilationCache::~XlaCompilationCache() {
   // Ensure any use of our programs have completed by waiting for all stream
   // executors to complete.
@@ -228,37 +229,45 @@ Status XlaCompilationCache::Compile(
     const XlaCompiler::Options& options, const NameAttrList& function,
     const std::map<int, Tensor>& constant_args,
     const std::map<int, OptionalTensor>& variable_args, OpKernelContext* ctx,
-    const XlaCompiler::CompilationResult** compilation_result,
-    xla::LocalExecutable** executable,
-    const XlaCompiler::CompileOptions& compile_options) {
+    const XlaCompiler::CompileOptions& compile_options,
+    CompileMode compile_mode,
+    const XlaCompiler::CompilationResult** out_compilation_result,
+    xla::LocalExecutable** out_executable) {
+  // Set the compile threshold to 1 to implement CompileMode::kStrict.
+  int64 compile_threshold =
+      compile_mode == CompileMode::kLazy ? kDefaultCompilationThreshold : 1;
   return CompileImpl(options, function, constant_args, variable_args, ctx,
-                     compilation_result, executable, compile_options, false);
+                     compile_options, /*compile_single_op=*/false,
+                     /*compile_threshold=*/compile_threshold,
+                     out_compilation_result, out_executable);
 }
 
 Status XlaCompilationCache::CompileSingleOp(
     const XlaCompiler::Options& options,
     const std::map<int, Tensor>& constant_args,
     const std::map<int, OptionalTensor>& variable_args, OpKernelContext* ctx,
-    const XlaCompiler::CompilationResult** compilation_result,
-    xla::LocalExecutable** executable,
-    const XlaCompiler::CompileOptions& compile_options) {
+    const XlaCompiler::CompileOptions& compile_options,
+    const XlaCompiler::CompilationResult** out_compilation_result,
+    xla::LocalExecutable** out_executable) {
   const NodeDef& def = ctx->op_kernel().def();
   NameAttrList name;
   name.set_name(def.op());
   *name.mutable_attr() = def.attr();
   return CompileImpl(options, name, constant_args, variable_args, ctx,
-                     compilation_result, executable, compile_options, true);
+                     compile_options,
+                     /*compile_single_op=*/true, /*compile_threshold=*/1,
+                     out_compilation_result, out_executable);
 }
 
 Status XlaCompilationCache::CompileImpl(
     const XlaCompiler::Options& options, const NameAttrList& function,
     const std::map<int, Tensor>& constant_args,
     const std::map<int, OptionalTensor>& variable_args, OpKernelContext* ctx,
-    const XlaCompiler::CompilationResult** compilation_result,
-    xla::LocalExecutable** executable,
-    const XlaCompiler::CompileOptions& compile_options,
-    bool compile_single_op) {
-  CHECK_NE(executable, nullptr);
+    const XlaCompiler::CompileOptions& compile_options, bool compile_single_op,
+    int64 compile_threshold,
+    const XlaCompiler::CompilationResult** out_compilation_result,
+    xla::LocalExecutable** out_executable) {
+  DCHECK_NE(out_executable, nullptr);
   VLOG(2) << "XlaCompilationCache::Compile " << DebugString();
 
   if (VLOG_IS_ON(2)) {
@@ -305,13 +314,35 @@ Status XlaCompilationCache::CompileImpl(
     entry = e.get();
   }
 
+  // We always compile a cluster the very first time it is executed.  This is an
+  // optimistic guess that pays off for statically shaped TensorFlow graphs
+  // (since they get the benefit of XLA right away without waiting for warmup)
+  // and doesn't hurt much for dynamically shaped TensorFlow graphs (we "pay" at
+  // most one cluster-compilation's worth of compile time).
+  bool is_first_execution = [&] {
+    mutex_lock lock(cluster_compile_stats_mu_);
+    auto it =
+        cluster_compile_stats_.emplace(function.name(), ClusterCompileStats{})
+            .first;
+    return it->second.execution_count++ == 0;
+  }();
+
   // Acquire the cache entry lock and compile, if necessary.
   // TODO(phawkins): this locking will need to be restructured when we implement
   // cache eviction.
   mutex_lock entry_lock(entry->mu);
+  int64 current_request_count = ++entry->request_count;
   if (!entry->compiled) {
     VLOG(2) << "Compilation cache miss for signature: "
-            << SignatureDebugString(signature);
+            << SignatureDebugString(signature) << " with request count "
+            << current_request_count << " and compile threshold "
+            << compile_threshold;
+    if (!is_first_execution && current_request_count < compile_threshold) {
+      *out_compilation_result = nullptr;
+      *out_executable = nullptr;
+      return Status::OK();
+    }
+
     tensorflow::Env* env = tensorflow::Env::Default();
     const uint64 compile_start_us = env->NowMicros();
     // Do the actual JIT compilation without holding the lock (it can take
@@ -339,8 +370,8 @@ Status XlaCompilationCache::CompileImpl(
     const uint64 compile_end_us = env->NowMicros();
     const uint64 compile_time_us = compile_end_us - compile_start_us;
     {
-      mutex_lock lock(compile_stats_mu_);
-      auto it = compile_stats_.emplace(function.name(), CompileStats{}).first;
+      mutex_lock lock(cluster_compile_stats_mu_);
+      auto it = cluster_compile_stats_.find(function.name());
       it->second.compile_count++;
       it->second.cumulative_compile_time_us += compile_time_us;
       VLOG(1) << "compiled " << function.name() << " "
@@ -357,8 +388,8 @@ Status XlaCompilationCache::CompileImpl(
     }
   }
   TF_RETURN_IF_ERROR(entry->compilation_status);
-  *compilation_result = &entry->compilation_result;
-  *executable = entry->executable.get();
+  *out_compilation_result = &entry->compilation_result;
+  *out_executable = entry->executable.get();
   return Status::OK();
 }
 

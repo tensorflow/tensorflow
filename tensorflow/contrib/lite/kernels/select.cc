@@ -70,12 +70,12 @@ TfLiteStatus SelectEval(TfLiteContext* context, TfLiteNode* node) {
 
   bool is_rank_one = !HaveSameShapes(input_condition, input_x);
 
-#define TF_LITE_SELECT(type, op)                                          \
-  reference_ops::op(GetTensorData<bool>(input_condition),                 \
-                    GetTensorDims(input_condition),                       \
-                    GetTensorData<type>(input_x), GetTensorDims(input_x), \
-                    GetTensorData<type>(input_y), GetTensorDims(input_y), \
-                    GetTensorData<type>(output), GetTensorDims(output));
+#define TF_LITE_SELECT(type, op)                                           \
+  reference_ops::op(GetTensorShape(input_condition),                       \
+                    GetTensorData<bool>(input_condition),                  \
+                    GetTensorShape(input_x), GetTensorData<type>(input_x), \
+                    GetTensorShape(input_y), GetTensorData<type>(input_y), \
+                    GetTensorShape(output), GetTensorData<type>(output));
 
 #define TF_LITE_SWITCH(type, op)                                               \
   switch (type) {                                                              \

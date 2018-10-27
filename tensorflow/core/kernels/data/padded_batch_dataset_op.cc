@@ -12,17 +12,17 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_util.h"
-#include "tensorflow/core/kernels/data/dataset.h"
 #include "tensorflow/core/util/batch_util.h"
 
 namespace tensorflow {
 namespace data {
 namespace {
 
-// See documentation in ../ops/dataset_ops.cc for a high-level
+// See documentation in ../../ops/dataset_ops.cc for a high-level
 // description of the following op.
 
 class PaddedBatchDatasetOp : public UnaryDatasetOpKernel {
@@ -207,7 +207,7 @@ class PaddedBatchDatasetOp : public UnaryDatasetOpKernel {
           : DatasetIterator<Dataset>(params) {}
 
       Status Initialize(IteratorContext* ctx) override {
-        SetMetadata(ctx, "batch_size", dataset()->batch_size_);
+        AddConstantParameter(ctx, "batch_size", dataset()->batch_size_);
         return dataset()->input_->MakeIterator(ctx, prefix(), &input_impl_);
       }
 

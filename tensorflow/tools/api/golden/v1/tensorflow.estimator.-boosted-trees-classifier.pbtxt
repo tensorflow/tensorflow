@@ -1,7 +1,8 @@
 path: "tensorflow.estimator.BoostedTreesClassifier"
 tf_class {
-  is_instance: "<class \'tensorflow.python.estimator.canned.boosted_trees.BoostedTreesClassifier\'>"
-  is_instance: "<class \'tensorflow.python.estimator.estimator.Estimator\'>"
+  is_instance: "<class \'tensorflow_estimator.python.estimator.canned.boosted_trees.BoostedTreesClassifier\'>"
+  is_instance: "<class \'tensorflow_estimator.python.estimator.canned.boosted_trees._BoostedTreesBase\'>"
+  is_instance: "<class \'tensorflow_estimator.python.estimator.estimator.Estimator\'>"
   is_instance: "<type \'object\'>"
   member {
     name: "config"
@@ -30,6 +31,14 @@ tf_class {
   member_method {
     name: "evaluate"
     argspec: "args=[\'self\', \'input_fn\', \'steps\', \'hooks\', \'checkpoint_path\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'None\'], "
+  }
+  member_method {
+    name: "experimental_feature_importances"
+    argspec: "args=[\'self\', \'normalize\'], varargs=None, keywords=None, defaults=[\'False\'], "
+  }
+  member_method {
+    name: "experimental_predict_with_explanations"
+    argspec: "args=[\'self\', \'input_fn\', \'predict_keys\', \'hooks\', \'checkpoint_path\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\'], "
   }
   member_method {
     name: "export_saved_model"

@@ -26,17 +26,17 @@ namespace tflite {
 // The parameters for exporting a TFLite model.
 struct ExportParams {
   bool allow_custom_ops = false;
-  bool allow_eager_ops = false;
+  bool allow_flex_ops = false;
   bool quantize_weights = false;
 };
 
 // Transform the given tf.mini model into a TF Lite flatbuffer and deposit the
 // result in the given string.
-void Export(const Model& model, string* output_file_contents,
-            const ExportParams& params);
+tensorflow::Status Export(const Model& model, string* output_file_contents,
+                          const ExportParams& params);
 
 // Export API with custom TFLite operator mapping.
-void Export(
+tensorflow::Status Export(
     const Model& model, string* output_file_contents,
     const ExportParams& params,
     const std::map<OperatorType, std::unique_ptr<BaseOperator>>& ops_by_type);
@@ -48,7 +48,8 @@ inline void Export(const Model& model, bool allow_custom_ops,
   ExportParams params;
   params.allow_custom_ops = allow_custom_ops;
   params.quantize_weights = quantize_weights;
-  Export(model, output_file_contents, params);
+  auto status = Export(model, output_file_contents, params);
+  if (!status.ok()) LOG(QFATAL) << status.error_message();
 }
 
 // This is for backward-compatibility.
@@ -60,7 +61,8 @@ inline void Export(
   ExportParams params;
   params.allow_custom_ops = allow_custom_ops;
   params.quantize_weights = quantize_weights;
-  Export(model, output_file_contents, params, ops_by_type);
+  auto status = Export(model, output_file_contents, params, ops_by_type);
+  if (!status.ok()) LOG(QFATAL) << status.error_message();
 }
 
 // This is for backward-compatibility.
@@ -68,8 +70,8 @@ inline void Export(
 inline void Export(const Model& model, string* output_file_contents) {
   ExportParams params;
   params.allow_custom_ops = true;
-  Export(model, output_file_contents, params);
-  Export(model, true, false, output_file_contents);
+  auto status = Export(model, output_file_contents, params);
+  if (!status.ok()) LOG(QFATAL) << status.error_message();
 }
 
 namespace details {
@@ -80,38 +82,80 @@ using TensorsMap = std::unordered_map<string, int>;
 // A key to identify an operator.
 // Only when `type` is `kUnsupported`, `custom_code` is filled to
 // identify which operation is used.
-struct OperatorKey {
-  OperatorKey(OperatorType type, const std::string& custom_code, int version)
-      : type(type), custom_code(custom_code), version(version) {}
-  const OperatorType type;
-  const std::string custom_code;
-  const int version;
+class OperatorKey {
+ public:
+  OperatorKey() {}
+
+  // Construct OperatorKey by Toco op.
+  OperatorKey(
+      const ::toco::Operator& op,
+      const std::map<OperatorType, std::unique_ptr<BaseOperator>>& ops_by_type,
+      bool allow_flex_ops);
+
+  // Construct OperatorKey by type, custom code and version.
+  // Note that this construct doesn't set the additional information including
+  // `is_custom_op`, `is_flex_op`, `is_unsupported_flex_op`.
+  OperatorKey(::tflite::BuiltinOperator type, const std::string& custom_code,
+              int version)
+      : type_(type), custom_code_(custom_code), version_(version) {}
+
+  // Only `type`, `custom_code` and `version` is used to compute hash and
+  // identity.
+  ::tflite::BuiltinOperator type() const { return type_; }
+  const std::string& custom_code() const { return custom_code_; }
+  int version() const { return version_; }
+
+  // The attributes below are not used to compute hash and identity.
+  //
+  // Return true if the op is a custom op. Note it will return false for Flex
+  // ops.
+  bool is_custom_op() const { return is_custom_op_; }
+  // Return true if the op is a Flex op.
+  bool is_flex_op() const { return is_flex_op_; }
+  // Return true if the op is a Flex op but it's knwon that the op is not
+  // supported by Flex runtime.
+  bool is_unsupported_flex_op() const { return is_unsupported_flex_op_; }
+  // Return the original TensorFlow op name for a Flex op.
+  const std::string& flex_tensorflow_op() const { return flex_tensorflow_op_; }
 
   bool operator<(const OperatorKey& other) const {
-    if (type < other.type) return true;
-    else if (type > other.type)
-      return false;
-    else if (custom_code < other.custom_code)
+    if (type_ < other.type_)
       return true;
-    else if (custom_code > other.custom_code)
+    else if (type_ > other.type_)
+      return false;
+    else if (custom_code_ < other.custom_code_)
+      return true;
+    else if (custom_code_ > other.custom_code_)
       return false;
     else
-      return version < other.version;
+      return version_ < other.version_;
   }
 
   bool operator==(const OperatorKey& other) const {
-    return type == other.type && custom_code == other.custom_code &&
-           version == other.version;
+    return type_ == other.type_ && custom_code_ == other.custom_code_ &&
+           version_ == other.version_;
   }
 
   struct Hash {
     size_t operator()(const OperatorKey& key) const {
       return ::tflite::CombineHashes(
-          {std::hash<size_t>()(static_cast<size_t>(key.type)),
-           std::hash<std::string>()(key.custom_code),
-           std::hash<int>()(key.version)});
+          {std::hash<size_t>()(static_cast<size_t>(key.type())),
+           std::hash<std::string>()(key.custom_code()),
+           std::hash<int>()(key.version())});
     }
   };
+
+ private:
+  ::tflite::BuiltinOperator type_ = ::tflite::BuiltinOperator_CUSTOM;
+  std::string custom_code_;
+  int version_ = 1;
+
+  bool is_custom_op_ = false;
+  bool is_flex_op_ = false;
+  bool is_unsupported_flex_op_ = false;
+  // The original TensorFlow op name for the flex op. Filled only when
+  // `is_flex_op` is true.
+  std::string flex_tensorflow_op_;
 };
 
 // A maps from operator type to its final position in the TF Lite buffer.
@@ -121,7 +165,7 @@ void LoadTensorsMap(const Model& model, TensorsMap* tensors_map);
 void LoadOperatorsMap(
     const Model& model, OperatorsMap* operators_map,
     const std::map<OperatorType, std::unique_ptr<BaseOperator>>& ops_by_type,
-    bool allow_eager_ops);
+    bool allow_flex_ops);
 
 }  // namespace details
 }  // namespace tflite

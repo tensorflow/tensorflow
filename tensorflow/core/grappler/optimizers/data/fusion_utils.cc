@@ -22,6 +22,7 @@ limitations under the License.
 #include "tensorflow/core/grappler/mutable_graph_view.h"
 #include "tensorflow/core/grappler/op_types.h"
 #include "tensorflow/core/grappler/optimizers/custom_graph_optimizer_registry.h"
+#include "tensorflow/core/grappler/optimizers/data/function_utils.h"
 #include "tensorflow/core/grappler/optimizers/data/graph_utils.h"
 #include "tensorflow/core/grappler/utils.h"
 #include "tensorflow/core/lib/gtl/flatmap.h"
@@ -407,7 +408,7 @@ void LazyConjunctionNodes(const FunctionDef& first_function,
   auto* if_node = fused_function->add_node_def();
   // This is guaranteed to succeed.
   TF_CHECK_OK(if_builder.Finalize(if_node));
-  graph_utils::SetUniqueFunctionNodeName("cond", fused_function, if_node);
+  function_utils::SetUniqueFunctionNodeName("cond", fused_function, if_node);
 
   GetMutableOutputNode(fused_function, 0) = if_node->name() + ":output:0";
 }

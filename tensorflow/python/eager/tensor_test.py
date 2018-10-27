@@ -20,6 +20,7 @@ from __future__ import print_function
 
 import copy
 import re
+import sys
 
 import numpy as np
 
@@ -32,6 +33,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import io_ops
 
 
 def _create_tensor(value, device=None, dtype=None):
@@ -137,8 +139,8 @@ class TFETensorTest(test_util.TensorFlowTestCase):
     self.assertAllEqual(t, 1.0)
 
   def testConstantDtype(self):
-    self.assertEqual(constant_op.constant(1.0, dtype=np.int64).dtype,
-                     dtypes.int64)
+    self.assertEqual(
+        constant_op.constant(1, dtype=np.int64).dtype, dtypes.int64)
 
   def testTensorAndNumpyMatrix(self):
     expected = np.array([[1.0, 2.0], [3.0, 4.0]], np.float32)
@@ -241,6 +243,67 @@ class TFETensorTest(test_util.TensorFlowTestCase):
       with self.assertRaisesRegexp(
           RuntimeError, "Can't copy Tensor with type string to device"):
         _create_tensor("test string")
+
+  def testInvalidUTF8ProducesReasonableError(self):
+    if sys.version_info[0] < 3:
+      self.skipTest("Test is only valid in python3.")
+    with self.assertRaises(UnicodeDecodeError):
+      io_ops.read_file(b"\xff")
+
+  @test_util.run_in_graph_and_eager_modes
+  def testConvertToTensorPreferredDtypeIsRespected(self):
+    self.assertEqual(
+        ops.convert_to_tensor(0.5, preferred_dtype=dtypes.int32).dtype,
+        dtypes.float32)
+    self.assertEqual(
+        ops.convert_to_tensor(0.5, preferred_dtype=dtypes.float64).dtype,
+        dtypes.float64)
+
+  @test_util.run_in_graph_and_eager_modes
+  def testCompatibility(self):
+    # TODO(nareshmodi): uint32, uint64 are not correctly handled in graph mode.
+    integer_types = [dtypes.int8, dtypes.int16, dtypes.int32, dtypes.int64,
+                     dtypes.uint8, dtypes.uint16]
+
+    # Floats are not compatible with ints
+    for t in integer_types:
+      with self.assertRaises(TypeError):
+        constant_op.constant(0.5, dtype=t)
+
+    # Ints compatible with floats
+    self.assertEqual(
+        self.evaluate(constant_op.constant(5, dtype=dtypes.float16)), 5.0)
+    self.assertEqual(
+        self.evaluate(constant_op.constant(5, dtype=dtypes.float32)), 5.0)
+    self.assertEqual(
+        self.evaluate(constant_op.constant(5, dtype=dtypes.float64)), 5.0)
+
+    # Ints and floats are compatible with complex types
+    self.assertEqual(
+        constant_op.constant([[1.0]], dtype=dtypes.complex128).dtype,
+        dtypes.complex128)
+    self.assertEqual(
+        constant_op.constant([[1]], dtype=dtypes.complex128).dtype,
+        dtypes.complex128)
+
+    # Quantized types are not compatible with floats
+    quantized_types = [dtypes.qint16, dtypes.qint32, dtypes.qint8,
+                       dtypes.quint16, dtypes.quint8]
+
+    for t in quantized_types:
+      with self.assertRaises(TypeError):
+        constant_op.constant(0.5, dtype=t)
+
+    # TODO(b/118402529): quantized types are broken in eager.
+
+  @test_util.run_in_graph_and_eager_modes
+  def testCConvertToTensor(self):
+    with self.assertRaises(TypeError):
+      _ = constant_op.constant(0) < 0.5
+
+  @test_util.run_in_graph_and_eager_modes
+  def testConvertToTensorAllowsOverflow(self):
+    _ = ops.convert_to_tensor(123456789, dtype=dtypes.uint8)
 
 
 class TFETensorUtilTest(test_util.TensorFlowTestCase):
@@ -346,6 +409,13 @@ class TFETensorUtilTest(test_util.TensorFlowTestCase):
     self.assertIn("test_attr", instance_dir)
     instance_dir.remove("test_attr")
     self.assertEqual(instance_dir, type_dir)
+
+  def testNonRectangularPackAsConstant(self):
+    l = [array_ops.zeros((10, 1)).numpy(), array_ops.zeros(1).numpy()]
+
+    with self.assertRaisesRegexp(
+        ValueError, "non-rectangular Python sequence"):
+      constant_op.constant(l)
 
 
 if __name__ == "__main__":

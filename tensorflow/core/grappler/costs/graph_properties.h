@@ -74,6 +74,10 @@ class GraphProperties {
   // shape information.
   void ClearInputProperties(const string& node_name);
   void ClearOutputProperties(const string& node_name);
+  // Returns true if we have *any* properties.
+  bool has_properties() const {
+    return input_properties_.size() > 0 || output_properties_.size() > 0;
+  }
 
  private:
   // Relaxes shapes <shapes_and_types>, determined from an EnqueueV2 node, into

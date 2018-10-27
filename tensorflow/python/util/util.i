@@ -28,14 +28,11 @@ limitations under the License.
 // for functions in this module because they use python methods that need GIL.
 // TODO(iga): Find a way not to leak such definitions across files.
 
-%unignore tensorflow::swig::RegisterSequenceClass;
-%noexception tensorflow::swig::RegisterSequenceClass;
+%unignore tensorflow::swig::RegisterType;
+%noexception tensorflow::swig::RegisterType;
 
-%unignore tensorflow::swig::RegisterMappingClass;
-%noexception tensorflow::swig::RegisterMappingClass;
-
-%unignore tensorflow::swig::RegisterSparseTensorValueClass;
-%noexception tensorflow::swig::RegisterSparseTensorValueClass;
+%unignore tensorflow::swig::IsTensor;
+%noexception tensorflow::swig::IsTensor;
 
 %feature("docstring") tensorflow::swig::IsSequence
 """Returns a true if its input is a collections.Sequence (except strings).
@@ -64,6 +61,18 @@ Returns:
 """
 %unignore tensorflow::swig::IsMapping;
 %noexception tensorflow::swig::IsMapping;
+
+%feature("docstring") tensorflow::swig::IsAttrs
+"""Returns True iff `instance` is an instance of an `attr.s` decorated class.
+
+Args:
+  instance: An instance of a Python object.
+
+Returns:
+  True if `instance` is an instance of an `attr.s` decorated class.
+"""
+%unignore tensorflow::swig::IsAttrs;
+%noexception tensorflow::swig::IsAttrs;
 
 %feature("docstring") tensorflow::swig::SameNamedtuples
 "Returns True if the two namedtuples have the same name and fields."

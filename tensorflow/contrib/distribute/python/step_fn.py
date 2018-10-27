@@ -19,6 +19,7 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.python.eager import backprop
+from tensorflow.python.eager import context
 from tensorflow.python.training import optimizer as optimizer_lib
 
 
@@ -50,7 +51,11 @@ class StandardInputStep(Step):
   def __init__(self, dataset_fn, distribution):
     super(StandardInputStep, self).__init__(distribution)
     self._distributed_input = distribution.distribute_dataset(dataset_fn)
-    self._iterator = self._distributed_input.make_one_shot_iterator()
+    if context.executing_eagerly():
+      self._iterator = self._distributed_input.make_one_shot_iterator()
+    else:
+      # TODO(priyag): Expose initializer via some initializer property.
+      self._iterator = self._distributed_input.make_initializable_iterator()
 
 
 class StandardSingleLossStep(StandardInputStep):
@@ -95,7 +100,7 @@ class StandardSingleLossStep(StandardInputStep):
         gradients_fn = backprop.implicit_grad(self._loss_fn)
         gradients_fn = optimizer_lib.get_filtered_grad_fn(gradients_fn)
 
-        grads_and_vars = self.distribution.call_for_each_tower(
+        grads_and_vars = self.distribution.call_for_each_replica(
             gradients_fn,
             ctx, *inputs,
             run_concurrently=self._is_run_concurrently)

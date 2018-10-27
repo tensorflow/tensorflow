@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 #include <gtest/gtest.h>
-#include "flatbuffers/flexbuffers.h"  // flatbuffers
+#include "flatbuffers/flexbuffers.h"  // TF:flatbuffers
 #include "tensorflow/contrib/lite/kernels/register.h"
 #include "tensorflow/contrib/lite/kernels/test_util.h"
 

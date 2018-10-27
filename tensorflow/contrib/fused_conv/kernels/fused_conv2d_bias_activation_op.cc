@@ -111,8 +111,8 @@ class FusedConv2DBiasActivationOp : public OpKernel {
         context,
         (GetTensorDim(strides, data_format_, 'N') == 1 &&
          GetTensorDim(strides, data_format_, 'C') == 1),
-        errors::InvalidArgument("Convolutional strides are not supported in "
-                                "the batch or depth dimensions."));
+        errors::Unimplemented("Convolutional strides are not supported in "
+                              "the batch and depth dimensions."));
 
     // Assuming qint8 <--> NCHW_VECT_C, OIHW_VECT_I (int8x4) here.
     constexpr bool is_int8x4 = std::is_same<T, qint8>::value;
@@ -497,7 +497,8 @@ void LaunchFusedConv2DBiasActivationOp<GPUDevice, T, BiasType, ScaleType>::
                                 FORMAT_OIHW, filter_param.shape(), FORMAT_HWIO),
                             &maybe_transformed_filter));
     functor::TransformFilter<GPUDevice, T, int, 4>()(
-        ctx->eigen_device<GPUDevice>(), To32Bit(filter_param.tensor<T, 4>()),
+        ctx->eigen_device<GPUDevice>(), FORMAT_OIHW,
+        To32Bit(filter_param.tensor<T, 4>()),
         To32Bit(maybe_transformed_filter.tensor<T, 4>()));
     filter = &maybe_transformed_filter;
   }

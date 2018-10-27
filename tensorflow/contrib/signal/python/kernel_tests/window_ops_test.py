@@ -64,7 +64,7 @@ class WindowOpsTest(test.TestCase):
                     (dtypes.float64, 1e-9)]
 
   def _compare_window_fns(self, np_window_fn, tf_window_fn):
-    with self.test_session(use_gpu=True):
+    with self.session(use_gpu=True):
       for window_length in self._window_lengths:
         for periodic in [False, True]:
           for tf_dtype, tol in self._dtypes:

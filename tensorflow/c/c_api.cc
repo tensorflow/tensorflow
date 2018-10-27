@@ -1942,6 +1942,10 @@ void TF_ImportGraphDefOptionsSetPrefix(TF_ImportGraphDefOptions* opts,
                                        const char* prefix) {
   opts->opts.prefix = prefix;
 }
+void TF_ImportGraphDefOptionsSetDefaultDevice(TF_ImportGraphDefOptions* opts,
+                                              const char* device) {
+  opts->opts.default_device = device;
+}
 
 void TF_ImportGraphDefOptionsSetUniquifyNames(TF_ImportGraphDefOptions* opts,
                                               unsigned char uniquify_names) {
@@ -2770,6 +2774,9 @@ TF_Buffer* TF_ApiDefMapGet(TF_ApiDefMap* api_def_map, const char* name,
   }
   string name_str(name, name_len);
   const auto* api_def = api_def_map->api_def_map.GetApiDef(name_str);
+  if (api_def == nullptr) {
+    return nullptr;
+  }
 
   TF_Buffer* ret = TF_NewBuffer();
   status->status = MessageToBuffer(*api_def, ret);

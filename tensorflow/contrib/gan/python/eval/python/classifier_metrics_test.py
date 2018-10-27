@@ -86,6 +86,42 @@ def _expected_fid(real_imgs, gen_imgs):
 def _expected_trace_sqrt_product(sigma, sigma_v):
   return np.trace(scp_linalg.sqrtm(np.dot(sigma, sigma_v)))
 
+
+def _expected_kid_and_std(real_imgs, gen_imgs, max_block_size=1024):
+  n_r, dim = real_imgs.shape
+  n_g = gen_imgs.shape[0]
+
+  n_blocks = int(np.ceil(max(n_r, n_g) / max_block_size))
+
+  sizes_r = np.full(n_blocks, n_r // n_blocks)
+  to_patch = n_r - n_blocks * (n_r // n_blocks)
+  if to_patch > 0:
+    sizes_r[-to_patch:] += 1
+  inds_r = np.r_[0, np.cumsum(sizes_r)]
+  assert inds_r[-1] == n_r
+
+  sizes_g = np.full(n_blocks, n_g // n_blocks)
+  to_patch = n_g - n_blocks * (n_g // n_blocks)
+  if to_patch > 0:
+    sizes_g[-to_patch:] += 1
+  inds_g = np.r_[0, np.cumsum(sizes_g)]
+  assert inds_g[-1] == n_g
+
+  ests = []
+  for i in range(n_blocks):
+    r = real_imgs[inds_r[i]:inds_r[i + 1]]
+    g = gen_imgs[inds_g[i]:inds_g[i + 1]]
+
+    k_rr = (np.dot(r, r.T) / dim + 1)**3
+    k_rg = (np.dot(r, g.T) / dim + 1)**3
+    k_gg = (np.dot(g, g.T) / dim + 1)**3
+    ests.append(-2 * k_rg.mean() +
+                k_rr[np.triu_indices_from(k_rr, k=1)].mean() +
+                k_gg[np.triu_indices_from(k_gg, k=1)].mean())
+
+  var = np.var(ests, ddof=1) if len(ests) > 1 else np.nan
+  return np.mean(ests), np.sqrt(var / len(ests))
+
 # A dummy GraphDef string with the minimum number of Ops.
 graphdef_string = """
 node {
@@ -272,6 +308,18 @@ class ClassifierMetricsTest(test.TestCase, parameterized.TestCase):
     # Check that none of the model variables are trainable.
     self.assertListEqual([], variables.trainable_variables())
 
+  def test_kernel_inception_distance_graph(self):
+    """Test `frechet_inception_distance` graph construction."""
+    img = array_ops.ones([7, 299, 299, 3])
+    distance = _run_with_mock(classifier_metrics.kernel_inception_distance, img,
+                              img)
+
+    self.assertTrue(isinstance(distance, ops.Tensor))
+    distance.shape.assert_has_rank(0)
+
+    # Check that none of the model variables are trainable.
+    self.assertListEqual([], variables.trainable_variables())
+
   def test_run_inception_multicall(self):
     """Test that `run_inception` can be called multiple times."""
     for batch_size in (7, 3, 2):
@@ -410,6 +458,56 @@ class ClassifierMetricsTest(test.TestCase, parameterized.TestCase):
 
     # Check that the FIDs increase monotonically.
     self.assertTrue(all(fid_a < fid_b for fid_a, fid_b in zip(fids, fids[1:])))
+
+  def test_kernel_classifier_distance_value(self):
+    """Test that `kernel_classifier_distance` gives the correct value."""
+    np.random.seed(0)
+
+    test_pool_real_a = np.float32(np.random.randn(512, 256))
+    test_pool_gen_a = np.float32(np.random.randn(512, 256) * 1.1 + .05)
+
+    kid_op = _run_with_mock(
+        classifier_metrics.kernel_classifier_distance_and_std,
+        test_pool_real_a,
+        test_pool_gen_a,
+        classifier_fn=lambda x: x,
+        max_block_size=600)
+
+    with self.test_session() as sess:
+      actual_kid, actual_std = sess.run(kid_op)
+
+    expected_kid, expected_std = _expected_kid_and_std(test_pool_real_a,
+                                                       test_pool_gen_a)
+
+    self.assertAllClose(expected_kid, actual_kid, 0.001)
+    self.assertAllClose(expected_std, actual_std, 0.001)
+
+  def test_kernel_classifier_distance_block_sizes(self):
+    """Test that `kernel_classifier_distance` works with unusual max_block_size
+
+    values..
+    """
+    np.random.seed(0)
+
+    test_pool_real_a = np.float32(np.random.randn(512, 256))
+    test_pool_gen_a = np.float32(np.random.randn(768, 256) * 1.1 + .05)
+
+    max_block_size = array_ops.placeholder(dtypes.int32, shape=())
+    kid_op = _run_with_mock(
+        classifier_metrics.kernel_classifier_distance_and_std_from_activations,
+        array_ops.constant(test_pool_real_a),
+        array_ops.constant(test_pool_gen_a),
+        max_block_size=max_block_size)
+
+    for block_size in [50, 512, 1000]:
+      with self.test_session() as sess:
+        actual_kid, actual_std = sess.run(kid_op, {max_block_size: block_size})
+
+      expected_kid, expected_std = _expected_kid_and_std(
+          test_pool_real_a, test_pool_gen_a, max_block_size=block_size)
+
+      self.assertAllClose(expected_kid, actual_kid, 0.001)
+      self.assertAllClose(expected_std, actual_std, 0.001)
 
   def test_trace_sqrt_product_value(self):
     """Test that `trace_sqrt_product` gives the correct value."""

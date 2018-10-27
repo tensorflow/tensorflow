@@ -16,8 +16,6 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_PLATFORM_DEFAULT_CORD_H_
 #define TENSORFLOW_CORE_PLATFORM_DEFAULT_CORD_H_
 
-namespace absl {
-class Cord;
-}  // namespace absl
+// TODO(ebrevdo): Fill this in.
 
 #endif  // TENSORFLOW_CORE_PLATFORM_DEFAULT_CORD_H_

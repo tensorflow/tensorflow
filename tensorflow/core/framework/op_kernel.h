@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/core/framework/cancellation.h"
 #include "tensorflow/core/framework/control_flow.h"
 #include "tensorflow/core/framework/device_base.h"
+#include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/kernel_def.pb.h"
 #include "tensorflow/core/framework/kernel_def_builder.h"
 #include "tensorflow/core/framework/node_def_util.h"
@@ -372,18 +373,37 @@ class OpKernelConstruction {
 template <typename ListType, typename ElementType>
 class OpArgIterator {
  public:
-  typedef OpArgIterator<ListType, ElementType> ME;
+  using iterator_category = std::forward_iterator_tag;
+  using value_type = ElementType;
+  using pointer = ElementType*;
+  using reference = ElementType&;
+  using difference_type = ptrdiff_t;
+
   OpArgIterator(const ListType* list, int i) : list_(list), i_(i) {}
-  bool operator==(const ME& rhs) {
+
+  bool operator==(const OpArgIterator& rhs) {
     DCHECK(list_ == rhs.list_);
     return i_ == rhs.i_;
   }
-  bool operator!=(const ME& rhs) {
+
+  bool operator!=(const OpArgIterator& rhs) {
     DCHECK(list_ == rhs.list_);
     return i_ != rhs.i_;
   }
-  void operator++() { ++i_; }
-  ElementType& operator*() { return (*list_)[i_]; }
+
+  OpArgIterator operator++() {  // prefix ++it
+    ++i_;
+    return *this;
+  }
+
+  OpArgIterator operator++(int) {  // postfix it++
+    OpArgIterator old_value = *this;
+    ++i_;
+    return old_value;
+  }
+
+  reference operator*() { return (*list_)[i_]; }
+  pointer operator->() { return &(*list_)[i_]; }
 
  private:
   const ListType* const list_;
@@ -394,7 +414,7 @@ class OpArgIterator {
 // that are passed to the op as a single named argument.
 class OpInputList {
  public:
-  typedef OpArgIterator<OpInputList, const Tensor&> Iterator;
+  typedef OpArgIterator<OpInputList, const Tensor> Iterator;
   OpInputList() : ctx_(nullptr), start_(0), stop_(0) {}
   OpInputList(OpKernelContext* ctx, int start, int stop)
       : ctx_(ctx), start_(start), stop_(stop) {}
@@ -468,6 +488,17 @@ struct TensorValue {
 
   mutex* mutex_if_ref;  // nullptr if not a ref, != nullptr if a ref
   Tensor* tensor;
+};
+
+// Used to store partitioned graphs from function-calling ops.
+struct GraphCollector {
+  mutex mu;
+  std::vector<GraphDef> graphs GUARDED_BY(mu);
+
+  void CollectGraph(const GraphDef& graph) {
+    mutex_lock ml(mu);
+    graphs.push_back(graph);
+  }
 };
 
 class OpKernelContext {
@@ -570,6 +601,7 @@ class OpKernelContext {
     FunctionLibraryRuntime* function_library = nullptr;
     std::function<void(std::function<void()>)>* runner = nullptr;
     StepStatsCollectorInterface* stats_collector = nullptr;
+    GraphCollector* graph_collector = nullptr;
 
     // TensorSliceReaderCache support.
     checkpoint::TensorSliceReaderCacheWrapper* slice_reader_cache = nullptr;
@@ -691,6 +723,9 @@ class OpKernelContext {
   // status to a non-OK value and returns false.
   // Usage: if (!context->ValidateInputsAreSameShape(this)) return;
   bool ValidateInputsAreSameShape(OpKernel* op);
+
+  // If non-null, kernels should populate with any partition subgraphs created.
+  GraphCollector* graph_collector() { return params_->graph_collector; }
 
   // Input to output forwarding.
 
@@ -1285,7 +1320,8 @@ class Name : public KernelDefBuilder {
             return new __VA_ARGS__(context);                             \
           });
 
-void* GlobalKernelRegistry();
+// Checks whether a given kernel is registered on device_type.
+bool KernelDefAvailable(const DeviceType& device_type, const NodeDef& node_def);
 
 // If node_def has a corresponding kernel registered on device_type,
 // returns OK and fill in the kernel def and kernel_class_name. <def> and

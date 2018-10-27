@@ -519,7 +519,7 @@ def _raw_nested_shape(nested_shape):
 
   def _raw_shape(shape):
     if isinstance(shape, tensor_shape.TensorShape) and shape.ndims is not None:
-      return [x.value for x in shape]
+      return [x.value for x in shape.dims]
     else:
       return None
 
@@ -979,6 +979,19 @@ class WhileLoopTestCase(test_util.TensorFlowTestCase):
     # Should only return the original structure.
     r = control_flow_ops.while_loop(c, b, [i, []], return_same_structure=True)
     self.assertEqual(self.evaluate(r), [10, []])
+
+
+class AssertTest(test_util.TensorFlowTestCase):
+
+  def testAssert(self):
+    i = constant_op.constant(0)
+    c = control_flow_ops.Assert(i < 10, [i, [10], [i + 1]])
+    self.evaluate(c)
+
+    i = constant_op.constant(10)
+    c = control_flow_ops.Assert(i < 10, [i, [10], [i + 1]])
+    with self.assertRaises(errors.InvalidArgumentError):
+      self.evaluate(c)
 
 
 if __name__ == "__main__":

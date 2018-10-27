@@ -84,7 +84,7 @@ class UnaryOpsTest(xla_test.XLATestCase):
       self.assertAllClose(result[i], expected[i], rtol, atol)
 
   def testAllTypeOps(self):
-    for dtype in self.numeric_types:
+    for dtype in self.numeric_types - {np.int8, np.uint8}:
       self._assertOpOutputMatchesExpected(
           array_ops.diag, np.array([1, 2, 3, 4], dtype=dtype),
           np.array(
@@ -158,9 +158,6 @@ class UnaryOpsTest(xla_test.XLATestCase):
 
   def testFloatOps(self):
     for dtype in self.float_types:
-      # TODO(b/77694432): Half test failed on CPU, last ran on 04-06-2018.
-      if dtype == np.float16 and self.device == "XLA_CPU":
-        continue
       x = np.arange(-0.90, 0.90, 0.25)
       self._assertOpOutputMatchesExpected(
           math_ops.acos, x.astype(dtype), expected=np.arccos(x).astype(dtype))
@@ -633,7 +630,7 @@ class UnaryOpsTest(xla_test.XLATestCase):
           expected=np.array([-1, 0, -2, -17, -43], dtype=dtype))
 
   def testNumericOps(self):
-    for dtype in self.numeric_types:
+    for dtype in self.numeric_types - {np.int8, np.uint8}:
       self._assertOpOutputMatchesExpected(
           math_ops.abs,
           np.array([[2, -1]], dtype=dtype),
@@ -727,6 +724,15 @@ class UnaryOpsTest(xla_test.XLATestCase):
         lambda x: array_ops.bitcast(x, dtypes.int32),
         np.array([1e-45, 1.0], np.float32),
         expected=np.array([1, 0x3f800000], np.int32))
+    if np.int64 in self.numeric_types:
+      self._assertOpOutputMatchesExpected(
+          lambda x: array_ops.bitcast(x, dtypes.int64),
+          np.array([1, 0x100000003f800000], np.uint64),
+          expected=np.array([1, 0x100000003f800000], np.int64))
+      self._assertOpOutputMatchesExpected(
+          lambda x: array_ops.bitcast(x, dtypes.uint64),
+          np.array([1, 0x100000003f800000], np.int64),
+          expected=np.array([1, 0x100000003f800000], np.uint64))
 
   def testInvertPermutation(self):
     self._assertOpOutputMatchesExpected(

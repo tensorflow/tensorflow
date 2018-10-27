@@ -19,6 +19,7 @@ from __future__ import print_function
 
 import os
 
+from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import iterator_ops
 from tensorflow.python.framework import dtypes
@@ -34,7 +35,7 @@ from tensorflow.python.platform import gfile
 from tensorflow.python.platform import test
 
 
-class RangeDatasetTest(test.TestCase):
+class RangeDatasetTest(test_base.DatasetTestBase):
 
   def tearDown(self):
     # Remove all checkpoint files.

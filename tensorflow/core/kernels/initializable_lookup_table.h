@@ -51,6 +51,12 @@ class InitializableLookupTable : public LookupInterface {
         "Insert not supported by InitializableLookupTable implementations");
   }
 
+  // Returns errors::Unimplemented.
+  Status Remove(OpKernelContext* ctx, const Tensor& keys) final {
+    return errors::Unimplemented(
+        "Remove not supported by InitializableLookupTable implementations");
+  }
+
   Status ExportValues(OpKernelContext* context) override {
     return errors::Unimplemented(
         "ExportValues not supported by InitializableLookupTable "

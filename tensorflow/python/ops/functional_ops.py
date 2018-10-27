@@ -23,6 +23,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.core.protobuf import rewriter_config_pb2
 from tensorflow.core.framework import attr_value_pb2
 from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
@@ -41,6 +42,8 @@ from tensorflow.python.ops import variable_scope as vs
 from tensorflow.python.ops.gen_functional_ops import remote_call
 # pylint: enable=unused-import
 from tensorflow.python.ops.gen_functional_ops import symbolic_gradient
+from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.util import compat
 from tensorflow.python.util import nest
 from tensorflow.python.util.tf_export import tf_export
 
@@ -123,7 +126,8 @@ def foldl(fn, elems, initializer=None, parallel_iterations=10, back_prop=True,
     elems_flat = [
         ops.convert_to_tensor(elem, name="elem") for elem in nest.flatten(elems)
     ]
-    n = elems_flat[0].shape[0].value or array_ops.shape(elems_flat[0])[0]
+    n = (tensor_shape.dimension_value(elems_flat[0].shape[0])
+         or array_ops.shape(elems_flat[0])[0])
 
     elems_ta = nest.map_structure(create_ta, elems)
 
@@ -230,7 +234,8 @@ def foldr(fn, elems, initializer=None, parallel_iterations=10, back_prop=True,
     elems_flat = [
         ops.convert_to_tensor(elem, name="elem") for elem in nest.flatten(elems)
     ]
-    n = elems_flat[0].shape[0].value or array_ops.shape(elems_flat[0])[0]
+    n = (tensor_shape.dimension_value(elems_flat[0].shape[0])
+         or array_ops.shape(elems_flat[0])[0])
 
     elems_ta = nest.map_structure(create_ta, elems)
 
@@ -263,7 +268,7 @@ def foldr(fn, elems, initializer=None, parallel_iterations=10, back_prop=True,
 
 
 @tf_export("map_fn")
-def map_fn(fn, elems, dtype=None, parallel_iterations=10, back_prop=True,
+def map_fn(fn, elems, dtype=None, parallel_iterations=None, back_prop=True,
            swap_memory=False, infer_shape=True, name=None):
   """map on the list of tensors unpacked from `elems` on dimension 0.
 
@@ -305,6 +310,25 @@ def map_fn(fn, elems, dtype=None, parallel_iterations=10, back_prop=True,
 
   instead.
 
+  When executing eagerly, map_fn does not execute in parallel even if
+  `parallel_iterations` is set to a value > 1. You can still get the
+  performance benefits of running a function in parallel by using the
+  `tf.contrib.eager.defun` decorator,
+
+  ```python
+  # Assume the function being used in map_fn is fn.
+  # To ensure map_fn calls fn in parallel, use the defun decorator.
+  @tf.contrib.eager.defun
+  def func(tensor):
+    return tf.map_fn(fn, tensor)
+  ```
+
+  Note that if you use the defun decorator, any non-TensorFlow Python code
+  that you may have written in your function won't get executed. See
+  `tf.contrib.eager.defun` for more details. The recommendation would be to
+  debug without defun but switch to defun to get performance benefits of
+  running map_fn in parallel.
+
   Args:
     fn: The callable to be performed.  It accepts one argument, which will
       have the same (possibly nested) structure as `elems`.  Its output
@@ -317,7 +341,8 @@ def map_fn(fn, elems, dtype=None, parallel_iterations=10, back_prop=True,
       of Tensors differing from the structure of `elems`, then `dtype` is not
       optional and must have the same structure as the output of `fn`.
     parallel_iterations: (optional) The number of iterations allowed to run
-      in parallel.
+      in parallel. When graph building, the default value is 10. While executing
+      eagerly, the default value is set to 1.
     back_prop: (optional) True enables support for back propagation.
     swap_memory: (optional) True enables GPU-CPU memory swapping.
     infer_shape: (optional) False disables tests for consistent output shapes.
@@ -363,6 +388,20 @@ def map_fn(fn, elems, dtype=None, parallel_iterations=10, back_prop=True,
         " SparseTensor(input.indices, map_fn(fn, input.values), "
         "input.dense_shape)")
 
+  in_graph_mode = not context.executing_eagerly()
+  # Set the default number of parallel_iterations depending on graph/eager mode.
+  if in_graph_mode and not parallel_iterations:
+    parallel_iterations = 10
+  elif not in_graph_mode and not parallel_iterations:
+    parallel_iterations = 1
+
+  if not in_graph_mode and parallel_iterations > 1:
+    logging.log_first_n(logging.WARN, "Setting parallel_iterations > 1 has no "
+                        "effect when executing eagerly. Consider calling map_fn"
+                        " with tf.contrib.eager.defun to execute fn in "
+                        "parallel.", 1)
+    parallel_iterations = 1
+
   input_is_sequence = nest.is_sequence(elems)
   input_flatten = lambda x: nest.flatten(x) if input_is_sequence else [x]
   def input_pack(x):
@@ -381,7 +420,6 @@ def map_fn(fn, elems, dtype=None, parallel_iterations=10, back_prop=True,
 
   elems_flat = input_flatten(elems)
 
-  in_graph_mode = not context.executing_eagerly()
   with ops.name_scope(name, "map", elems_flat):
     # TODO(akshayka): Remove the in_graph_mode check once caching devices are
     # supported in Eager
@@ -411,7 +449,8 @@ def map_fn(fn, elems, dtype=None, parallel_iterations=10, back_prop=True,
         raise ValueError(
             "elements in elems must be 1+ dimensional Tensors, not scalars"
         )
-    n = static_shape[0].value or array_ops.shape(elems_flat[0])[0]
+    n = (tensor_shape.dimension_value(static_shape[0])
+         or array_ops.shape(elems_flat[0])[0])
 
     # TensorArrays are always flat
     elems_ta = [
@@ -460,9 +499,11 @@ def map_fn(fn, elems, dtype=None, parallel_iterations=10, back_prop=True,
         maximum_iterations=n)
     results_flat = [r.stack() for r in r_a]
 
-    n_static = elems_flat[0].get_shape().with_rank_at_least(1)[0]
+    n_static = tensor_shape.Dimension(tensor_shape.dimension_value(
+        elems_flat[0].get_shape().with_rank_at_least(1)[0]))
     for elem in elems_flat[1:]:
-      n_static.merge_with(elem.get_shape().with_rank_at_least(1)[0])
+      n_static.merge_with(tensor_shape.Dimension(tensor_shape.dimension_value(
+          elem.get_shape().with_rank_at_least(1)[0])))
     for r in results_flat:
       r.set_shape(tensor_shape.TensorShape(n_static).concatenate(
           r.get_shape()[1:]))
@@ -609,7 +650,8 @@ def scan(fn, elems, initializer=None, parallel_iterations=10, back_prop=True,
         ops.convert_to_tensor(elem, name="elem") for elem in elems_flat]
 
     # Convert elems to tensor array. n may be known statically.
-    n = elems_flat[0].shape[0].value or array_ops.shape(elems_flat[0])[0]
+    n = (tensor_shape.dimension_value(elems_flat[0].shape[0])
+         or array_ops.shape(elems_flat[0])[0])
 
     # TensorArrays are always flat
     elems_ta = [
@@ -685,9 +727,11 @@ def scan(fn, elems, initializer=None, parallel_iterations=10, back_prop=True,
 
     results_flat = [r.stack() for r in r_a]
 
-    n_static = elems_flat[0].get_shape().with_rank_at_least(1)[0]
+    n_static = tensor_shape.Dimension(tensor_shape.dimension_value(
+        elems_flat[0].get_shape().with_rank_at_least(1)[0]))
     for elem in elems_flat[1:]:
-      n_static.merge_with(elem.get_shape().with_rank_at_least(1)[0])
+      n_static.merge_with(tensor_shape.Dimension(tensor_shape.dimension_value(
+          elem.get_shape().with_rank_at_least(1)[0])))
     for r in results_flat:
       r.set_shape(tensor_shape.TensorShape(n_static).concatenate(
           r.get_shape()[1:]))
@@ -945,8 +989,19 @@ def For(start,
   return ret
 # pylint: enable=invalid-name,protected-access
 
+_rewriter_config_optimizer_disabled = None
 
-def partitioned_call(args, f, tout=None, executing_eagerly=None):
+def _get_disabled_rewriter_config():
+  global _rewriter_config_optimizer_disabled
+  if _rewriter_config_optimizer_disabled is None:
+    rewriter_config = rewriter_config_pb2.RewriterConfig()
+    rewriter_config.disable_meta_optimizer = True
+    _rewriter_config_optimizer_disabled = rewriter_config.SerializeToString()
+  return _rewriter_config_optimizer_disabled
+
+
+def partitioned_call(args, f, tout=None, executing_eagerly=None, config=None,
+                     executor_type=None):
   """Executes a function while respecting device annotations.
 
   Currently, only those functions that execute within the same address space
@@ -960,6 +1015,12 @@ def partitioned_call(args, f, tout=None, executing_eagerly=None):
       the signature of `f`.
     executing_eagerly: (Optional) A boolean indicating whether the context is
       executing eagerly. If `None`, fetched from the global context.
+    config: (Optional) A tensorflow::RewriterConfig proto, serialized. If
+      `None`, all optimizations are disabled. Currently only handled for eager
+      defined functions.
+    executor_type: (Optional) A string for the name of the executor to be used
+      in the function call. If not set, or set to an empty string, the default
+      tensorflow executor will be used.
 
   Returns:
     The list of `Tensor`s returned by invoking `f(args)`. If the function does
@@ -973,12 +1034,19 @@ def partitioned_call(args, f, tout=None, executing_eagerly=None):
   if executing_eagerly is None:
     executing_eagerly = context.executing_eagerly()
 
+  if config is None:
+    config = _get_disabled_rewriter_config()
+
+  if executor_type is None:
+    executor_type = ""
+
   if executing_eagerly or len(tout):
     if f.stateful_ops:
       outputs = gen_functional_ops.stateful_partitioned_call(
-          args=args, Tout=tout, f=f)
+          args=args, Tout=tout, f=f, config=config, executor_type=executor_type)
     else:
-      outputs = gen_functional_ops.partitioned_call(args=args, Tout=tout, f=f)
+      outputs = gen_functional_ops.partitioned_call(
+          args=args, Tout=tout, f=f, config=config, executor_type=executor_type)
     return outputs if outputs else None
 
   # The generated binding returns an empty list for functions that don't
@@ -991,6 +1059,13 @@ def partitioned_call(args, f, tout=None, executing_eagerly=None):
       list=attr_value_pb2.AttrValue.ListValue(type=tout))
   func_attr = attr_value_pb2.AttrValue(
       func=attr_value_pb2.NameAttrList(name=f.name))
+  executor_type_attr = attr_value_pb2.AttrValue(
+      s=compat.as_bytes(executor_type))
+
+  # When running in graph mode, the graph and function graphs are optimized
+  # (i.e. run through grappler) per the session options, so we can disable any
+  # eager-specific rewriting.
+  rewriter_config = attr_value_pb2.AttrValue(s=_get_disabled_rewriter_config())
 
   graph = ops.get_default_graph()
   f.add_to_graph(graph)
@@ -1001,6 +1076,12 @@ def partitioned_call(args, f, tout=None, executing_eagerly=None):
       tout,
       compute_shapes=False,
       name="PartitionedFunctionCall",
-      attrs={"Tin": tin_attr, "Tout": tout_attr, "f": func_attr})
+      attrs={
+          "Tin": tin_attr,
+          "Tout": tout_attr,
+          "f": func_attr,
+          "config": rewriter_config,
+          "executor_type": executor_type_attr,
+      })
   outputs = op.outputs
   return outputs if outputs else op

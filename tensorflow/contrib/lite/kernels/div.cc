@@ -81,24 +81,27 @@ template <KernelType kernel_type>
 void EvalDiv(TfLiteContext* context, TfLiteNode* node, TfLiteDivParams* params,
              const OpData* data, const TfLiteTensor* input1,
              const TfLiteTensor* input2, TfLiteTensor* output) {
-#define TF_LITE_DIV(type, opname, data_type)                            \
-  data_type output_activation_min, output_activation_max;               \
-  CalculateActivationRange(params->activation, &output_activation_min,  \
-                           &output_activation_max);                     \
-  type::opname(GetTensorData<data_type>(input1), GetTensorDims(input1), \
-               GetTensorData<data_type>(input2), GetTensorDims(input2), \
-               output_activation_min, output_activation_max,            \
-               GetTensorData<data_type>(output), GetTensorDims(output))
+#define TF_LITE_DIV(type, opname, data_type)                             \
+  tflite::ArithmeticParams op_params;                                    \
+  data_type output_activation_min, output_activation_max;                \
+  CalculateActivationRange(params->activation, &output_activation_min,   \
+                           &output_activation_max);                      \
+  SetActivationParams(output_activation_min, output_activation_max,      \
+                      &op_params);                                       \
+  type::opname(op_params, GetTensorShape(input1),                        \
+               GetTensorData<data_type>(input1), GetTensorShape(input2), \
+               GetTensorData<data_type>(input2), GetTensorShape(output), \
+               GetTensorData<data_type>(output))
   if (output->type == kTfLiteInt32) {
     if (kernel_type == kReference) {
       if (data->requires_broadcast) {
-        TF_LITE_DIV(reference_ops, BroadcastDiv, int32_t);
+        TF_LITE_DIV(reference_ops, BroadcastDiv4DSlow, int32_t);
       } else {
         TF_LITE_DIV(reference_ops, Div, int32_t);
       }
     } else {
       if (data->requires_broadcast) {
-        TF_LITE_DIV(optimized_ops, BroadcastDiv, int32_t);
+        TF_LITE_DIV(optimized_ops, BroadcastDiv4DSlow, int32_t);
       } else {
         TF_LITE_DIV(optimized_ops, Div, int32_t);
       }
@@ -106,13 +109,13 @@ void EvalDiv(TfLiteContext* context, TfLiteNode* node, TfLiteDivParams* params,
   } else if (output->type == kTfLiteFloat32) {
     if (kernel_type == kReference) {
       if (data->requires_broadcast) {
-        TF_LITE_DIV(reference_ops, BroadcastDiv, float);
+        TF_LITE_DIV(reference_ops, BroadcastDiv4DSlow, float);
       } else {
         TF_LITE_DIV(reference_ops, Div, float);
       }
     } else {
       if (data->requires_broadcast) {
-        TF_LITE_DIV(optimized_ops, BroadcastDiv, float);
+        TF_LITE_DIV(optimized_ops, BroadcastDiv4DSlow, float);
       } else {
         TF_LITE_DIV(optimized_ops, Div, float);
       }

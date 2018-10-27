@@ -28,6 +28,7 @@ namespace toco {
 
 using tensorflow::AttrValue;
 using tensorflow::DT_BOOL;
+using tensorflow::DT_COMPLEX64;
 using tensorflow::DT_FLOAT;
 using tensorflow::DT_INT32;
 using tensorflow::DT_INT64;
@@ -55,9 +56,38 @@ Status ImportNode(const NodeDef& node, Model* model) {
                                         converter);
 }
 
+Status ImportFlexNode(const NodeDef& node, Model* model) {
+  // Empty converter => all nodes are flex nodes.
+  const auto converter = internal::ConverterMapType();
+  return internal::ImportTensorFlowNode(node, TensorFlowImportFlags(), model,
+                                        converter);
+}
+
 Status ImportNode(const NodeDef& node) {
   Model model;
   return ImportNode(node, &model);
+}
+
+NodeDef BuildNode(
+    const std::string& op,
+    const std::vector<std::initializer_list<int>>& output_shapes) {
+  NodeDef node;
+  node.set_op(op);
+  node.set_name("Node1");
+  node.add_input();
+  node.set_input(0, "Node0");
+
+  AttrValue::ListValue* shapes =
+      (*node.mutable_attr())["_output_shapes"].mutable_list();
+  for (const auto& output_shape : output_shapes) {
+    tensorflow::TensorShapeProto* shape = shapes->add_shape();
+    for (int64_t output_shape_dim : output_shape) {
+      auto shape_dim = shape->add_dim();
+      shape_dim->set_size(output_shape_dim);
+    }
+  }
+
+  return node;
 }
 
 class ShapeImportTest : public ::testing::TestWithParam<tensorflow::DataType> {
@@ -112,6 +142,12 @@ class ShapeImportTest : public ::testing::TestWithParam<tensorflow::DataType> {
           t.add_bool_val(i % 2);
         }
         break;
+      case DT_COMPLEX64:
+        for (int64_t i = 0; i < num_elements; ++i) {
+          t.add_scomplex_val(i / 10000.0);
+          t.add_scomplex_val(-i / 10000.0);
+        }
+        break;
       default:
         break;
     }
@@ -142,7 +178,7 @@ class TypeImportTest : public ::testing::TestWithParam<
 };
 
 std::vector<tensorflow::DataType> TestTypes() {
-  return {DT_FLOAT, DT_INT32, DT_INT64, DT_BOOL, DT_QUINT8};
+  return {DT_FLOAT, DT_INT32, DT_INT64, DT_BOOL, DT_QUINT8, DT_COMPLEX64};
 }
 
 TEST_P(ShapeImportTest, ShapeElementIsNegative) {
@@ -190,6 +226,24 @@ TEST_P(ShapeImportTest, ValidShapeButZeroElements) {
 INSTANTIATE_TEST_CASE_P(ValidShapeButZeroElements, ShapeImportTest,
                         ::testing::ValuesIn(TestTypes()));
 
+TEST_P(ShapeImportTest, Complex64ConstNode) {
+  NodeDef node;
+  BuildConstNode({1, 2, 3}, DT_COMPLEX64, 6, &node);
+  Model model;
+  EXPECT_TRUE(ImportNode(node, &model).ok());
+  const auto& array = model.GetArray("Node1");
+  EXPECT_EQ(ArrayDataType::kComplex64, array.data_type);
+  EXPECT_EQ(6, array.GetBuffer<ArrayDataType::kComplex64>().Length());
+  int64_t i = 0;
+  for (const auto& datum : array.GetBuffer<ArrayDataType::kComplex64>().data) {
+    EXPECT_EQ(i / 10000.0f, std::real(datum));
+    EXPECT_EQ(-i / 10000.0f, std::imag(datum));
+    i++;
+  }
+}
+INSTANTIATE_TEST_CASE_P(Complex64ConstNode, ShapeImportTest,
+                        ::testing::ValuesIn({DT_COMPLEX64}));
+
 std::vector<std::pair<tensorflow::DataType, ArrayDataType>> UnaryTestTypes() {
   return {{DT_FLOAT, ArrayDataType::kFloat},
           {DT_INT32, ArrayDataType::kInt32},
@@ -213,6 +267,21 @@ TEST_P(TypeImportTest, BasicTypeInference) {
 INSTANTIATE_TEST_CASE_P(BasicTypeInference, TypeImportTest,
                         ::testing::ValuesIn(UnaryTestTypes()));
 
+TEST(ImportTest, TypeInferenceWithFixedOutputType) {
+  // Create an op that has a fixed output type (bool).
+  Model model;
+  EXPECT_TRUE(ImportNode(BuildNode("IsFinite", {{1, 2}, {2, 3}}), &model).ok());
+  ASSERT_THAT(model.operators.size(), ::testing::Ge(1));
+  ASSERT_EQ(model.operators[0]->type, OperatorType::kUnsupported);
+  const TensorFlowUnsupportedOperator* op =
+      static_cast<const TensorFlowUnsupportedOperator*>(
+          model.operators[0].get());
+
+  // The static output type should be indicated in the imported op.
+  ASSERT_THAT(op->output_data_types,
+              ::testing::ElementsAre(ArrayDataType::kBool));
+}
+
 TEST(ImportTest, FailedTypeInference) {
   // Create a unary op with no Type ("T") annotation.
   NodeDef node;
@@ -230,6 +299,60 @@ TEST(ImportTest, FailedTypeInference) {
       static_cast<const TensorFlowUnsupportedOperator*>(
           model.operators[0].get());
   ASSERT_TRUE(op->output_data_types.empty());
+}
+
+TEST(ImportTest, UnsupportedOpWithOutputShapes) {
+  // Create an unsupported op with output shapes.
+  Model model;
+  EXPECT_TRUE(ImportNode(BuildNode("Atan", {{1, 2}, {2, 3}}), &model).ok());
+  ASSERT_THAT(model.operators.size(), ::testing::Ge(1));
+  ASSERT_EQ(model.operators[0]->type, OperatorType::kUnsupported);
+  const TensorFlowUnsupportedOperator* op =
+      static_cast<const TensorFlowUnsupportedOperator*>(
+          model.operators[0].get());
+
+  // The output shapes should be imported.
+  ASSERT_EQ(op->output_shapes.size(), 2);
+  ASSERT_THAT(op->output_shapes[0].dims(), ::testing::ElementsAre(1, 2));
+  ASSERT_THAT(op->output_shapes[1].dims(), ::testing::ElementsAre(2, 3));
+}
+
+TEST(ImportTest, UnsupportedOpWithWildcardOutputShapes) {
+  // Create an unsupported op with wildcard output shapes.
+  Model model;
+  EXPECT_TRUE(ImportNode(BuildNode("Atan", {{-1, 2}}), &model).ok());
+  ASSERT_THAT(model.operators.size(), ::testing::Ge(1));
+  ASSERT_EQ(model.operators[0]->type, OperatorType::kUnsupported);
+  const TensorFlowUnsupportedOperator* op =
+      static_cast<const TensorFlowUnsupportedOperator*>(
+          model.operators[0].get());
+
+  // Wildcard shapes aren't yet supported.
+  ASSERT_TRUE(op->output_shapes.empty());
+}
+
+TEST(ImportTest, UnsupportedOpWithMultipleOutputs) {
+  NodeDef node = BuildNode("Unpack", {});
+
+  // Unpack's OpDef has a single output which gets multiplied based on the
+  // "num" attribute of the NodeDef.
+  AttrValue value_attr;
+  SetAttrValue(3, &value_attr);  // 3 outputs.
+  (*node.mutable_attr())["num"] = value_attr;
+
+  Model model;
+  EXPECT_TRUE(ImportFlexNode(node, &model).ok());
+
+  ASSERT_THAT(model.operators.size(), ::testing::Ge(1));
+  ASSERT_EQ(model.operators[0]->type, OperatorType::kUnsupported);
+  const TensorFlowUnsupportedOperator* op =
+      static_cast<const TensorFlowUnsupportedOperator*>(
+          model.operators[0].get());
+
+  ASSERT_EQ(op->outputs.size(), 3);
+  ASSERT_EQ(op->outputs[0], "Node1");
+  ASSERT_EQ(op->outputs[1], "Node1:1");
+  ASSERT_EQ(op->outputs[2], "Node1:2");
 }
 
 }  // namespace
