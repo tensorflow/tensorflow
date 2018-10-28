@@ -1,0 +1,155 @@
+//===-- op_base.td - Base op definition file ---------------*- tablegen -*-===//
+//
+// Copyright 2019 The MLIR Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//   http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+// =============================================================================
+//
+// This is the base operation definition file.
+//
+//===----------------------------------------------------------------------===//
+
+// Base class for all types.
+class Type {
+  string builder = ?;
+}
+
+// Scalar types.
+def F32 : Type {
+  let builder = "getF32Type()";
+}
+class I<int width> : Type {
+  let builder = "getIntegerType(" # width # ")";
+  int intWidth = width;
+}
+
+// Vector types.
+class Vector<Type t, list<int> dims> : Type {
+  Type elementType = t;
+  list<int> dimensions = dims;
+}
+
+// Tensor type.
+// This represents a generic tensor without constraints on elemental type,
+// rank, size.
+def Tensor : Type;
+
+// The operands of an op.
+class Operands<list<Type> types> {
+  list<Type> operandTypes = types;
+}
+
+// The result types of an op.
+class Results<list<Type> types> {
+  list<Type> returnTypes = types;
+}
+
+// Add an attribute to the generated op class.
+class Attr<Type t> {
+  Type type = t;
+
+  // Define the attribute type and primitive type in the subclass. A
+  // subclass that is defined without specifying the subclass (or
+  // attempting to use Attr directly) will result in tblgen failure.
+  code AttrType;
+  code PrimitiveType;
+}
+
+class BoolAttr : Attr<I<1>> {
+ let AttrType = [{ BoolAttr }];
+ let PrimitiveType = [{ bool }];
+}
+class F32Attr : Attr<F32> {
+ let AttrType = [{ FloatAttr }];
+ let PrimitiveType = [{ float }];
+}
+class I32Attr : Attr<I<32>> {
+ let AttrType = [{ IntegerAttr }];
+ let PrimitiveType = [{ int }];
+}
+
+// Class representing a Trait (defined in a C++ file that needs to be included
+// before the generated op definitions).
+class Traits<list<string> Traits> {
+  list<string> traits = Traits;
+}
+
+class OpProperty;
+
+//===----------------------------------------------------------------------===//
+// Op Properties.
+//
+// Note: These are hard coded into mlir-op-gen.
+//
+def Commutative   : OpProperty;   // X op Y == Y op X
+def NoSideEffect  : OpProperty;   // Sets 'HasNoSideEffects'.
+
+// Base class for Ops.
+class Op<string mnemonic, list<OpProperty> props = []> {
+  // The mnemonic of the Op.
+  string name = mnemonic;
+
+  // One-line human-readable description of what the Op does.
+  string summary = ?;
+
+  // Additional, longer human-readable description of what the Op does.
+  string description = ?;
+
+  // The list of operands of the Op. Default 0 operands.
+  list<Type> operandTypes = [];
+
+  // The list of return types of the Op. Default no return type set.
+  list<Type> returnTypes = [];
+
+  // Attribute getters can be added to the op by adding an Attr member
+  // with the name and type of the attribute. E.g., adding int attribute
+  // with name "value" and type "i32":
+  //   I32Attr value;
+
+  // Define the hooks used for building, parsing, printing, verification.
+  // Custom builder.
+  code builder = ?;
+
+  // Custom parser.
+  code parser = ?;
+
+  // Custom printer.
+  code printer = ?;
+
+  // Custom verifier.
+  code verifier = ?;
+
+  // Op properties.
+  list<OpProperty> properties = props;
+}
+
+class BinaryOp<string mnemonic, list<OpProperty> props> :
+    Op<mnemonic, props>, Operands<[Tensor, Tensor]>, Results<[Tensor]> {
+
+  // TODO(jpienaar): To autogen the builder the type of the result needs to be
+  // determined from the operands. That would (beyond trivial cases) require
+  // type propagation information.
+  let builder = [{
+    static void build(Builder *builder, OperationState *result, SSAValue *lhs,
+	              SSAValue *rhs) {
+      return impl::buildBinaryOp(builder, result, lhs, rhs);
+    }
+  }];
+
+  let parser = [{ return mlir::impl::parseBinaryOp(parser, result); }];
+  let printer = [{ return mlir::impl::printBinaryOp(getOperation(), p); }];
+}
+
+class UnaryOp<string mnemonic, list<OpProperty> props> :
+    Op<mnemonic, props>, Operands<[Tensor]>, Results<[Tensor]> {
+}
