@@ -40,7 +40,6 @@ namespace {
 struct OpData {
   int scratch_tensor_index;
   bool float_weights_time_initialized;
-
   int activation_state_tensor_index;
 };
 
