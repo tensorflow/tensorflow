@@ -914,6 +914,27 @@ class ResizeBilinear
   int GetVersion(const Operator& op) const override { return 1; }
 };
 
+class ResizeNearestNeighbor
+    : public BuiltinOperator<
+          ResizeNearestNeighborOperator, ::tflite::ResizeNearestNeighborOptions,
+          ::tflite::BuiltinOptions_ResizeNearestNeighborOptions> {
+ public:
+  using BuiltinOperator::BuiltinOperator;
+  flatbuffers::Offset<TfLiteOptions> WriteOptions(
+      const TocoOperator& op,
+      flatbuffers::FlatBufferBuilder* builder) const override {
+    return ::tflite::CreateResizeNearestNeighborOptions(*builder,
+                                                        op.align_corners);
+  }
+
+  void ReadOptions(const TfLiteOptions& options,
+                   TocoOperator* op) const override {
+    op->align_corners = options.align_corners();
+  }
+
+  int GetVersion(const Operator& op) const override { return 1; }
+};
+
 class Squeeze
     : public BuiltinOperator<SqueezeOperator, ::tflite::SqueezeOptions,
                              ::tflite::BuiltinOptions_SqueezeOptions> {
@@ -1455,6 +1476,9 @@ std::vector<std::unique_ptr<BaseOperator>> BuildOperatorList(
   ops.push_back(
       MakeUnique<ResizeBilinear>(::tflite::BuiltinOperator_RESIZE_BILINEAR,
                                  OperatorType::kResizeBilinear));
+  ops.push_back(MakeUnique<ResizeNearestNeighbor>(
+      ::tflite::BuiltinOperator_RESIZE_NEAREST_NEIGHBOR,
+      OperatorType::kResizeNearestNeighbor));
   ops.push_back(MakeUnique<Squeeze>(::tflite::BuiltinOperator_SQUEEZE,
                                     OperatorType::kSqueeze));
   ops.push_back(

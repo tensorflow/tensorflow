@@ -1970,6 +1970,36 @@ def make_resize_bilinear_tests(zip_path):
   make_zip_of_tests(zip_path, test_parameters, build_graph, build_inputs)
 
 
+def make_resize_nearest_neighbor_tests(zip_path):
+  """Make a set of tests to do resize_nearest_neighbor."""
+
+  test_parameters = [{
+      "dtype": [tf.float32, tf.int32],
+      "input_shape": [[1, 3, 4, 3], [1, 10, 2, 1]],
+      "size": [[1, 1], [4, 3], [2, 2], [5, 6]],
+      "align_corners": [False],
+  }]
+
+  def build_graph(parameters):
+    input_tensor = tf.placeholder(
+        dtype=parameters["dtype"],
+        name="input",
+        shape=parameters["input_shape"])
+    out = tf.image.resize_nearest_neighbor(
+        input_tensor,
+        size=parameters["size"],
+        align_corners=parameters["align_corners"])
+    return [input_tensor], [out]
+
+  def build_inputs(parameters, sess, inputs, outputs):
+    input_values = create_tensor_data(parameters["dtype"],
+                                      parameters["input_shape"])
+    return [input_values], sess.run(
+        outputs, feed_dict=dict(zip(inputs, [input_values])))
+
+  make_zip_of_tests(zip_path, test_parameters, build_graph, build_inputs)
+
+
 def make_sigmoid_tests(zip_path):
   """Make a set of tests to do sigmoid."""
 
