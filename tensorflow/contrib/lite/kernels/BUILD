@@ -209,6 +209,7 @@ cc_library(
         "relu1.cc",
         "reshape.cc",
         "resize_bilinear.cc",
+        "resize_nearest_neighbor.cc",
         "select.cc",
         "shape.cc",
         "skip_gram.cc",
@@ -833,6 +834,19 @@ tf_cc_test(
     name = "resize_bilinear_test",
     size = "small",
     srcs = ["resize_bilinear_test.cc"],
+    tags = ["tflite_not_portable_ios"],
+    deps = [
+        ":builtin_ops",
+        "//tensorflow/contrib/lite:framework",
+        "//tensorflow/contrib/lite/kernels:test_util",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+tf_cc_test(
+    name = "resize_nearest_neighbor_test",
+    size = "small",
+    srcs = ["resize_nearest_neighbor_test.cc"],
     tags = ["tflite_not_portable_ios"],
     deps = [
         ":builtin_ops",
