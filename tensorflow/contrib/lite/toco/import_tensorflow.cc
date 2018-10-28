@@ -1433,6 +1433,25 @@ tensorflow::Status ConvertResizeBilinearOperator(
   return tensorflow::Status::OK();
 }
 
+tensorflow::Status ConvertResizeNearestNeighborOperator(
+    const NodeDef& node, const TensorFlowImportFlags& tf_import_flags,
+    Model* model) {
+  CHECK_EQ(node.op(), "ResizeNearestNeighbor");
+  TF_QCHECK_OK(CheckInputsCount(node, tf_import_flags, 2));
+  auto* op = new ResizeNearestNeighborOperator;
+
+  op->align_corners = false;
+  if (HasAttr(node, "align_corners")) {
+    op->align_corners = GetBoolAttr(node, "align_corners");
+  }
+
+  op->inputs.push_back(node.input(0));
+  op->inputs.push_back(node.input(1));
+  op->outputs.push_back(node.name());
+  model->operators.emplace_back(op);
+  return tensorflow::Status::OK();
+}
+
 tensorflow::Status ConvertBatchNormWithGlobalNormalizationOperator(
     const NodeDef& node, const TensorFlowImportFlags& tf_import_flags,
     Model* model) {
@@ -2204,6 +2223,7 @@ ConverterMapType GetTensorFlowNodeConverterMap() {
       {"Relu6", ConvertSimpleOperator<Relu6Operator, 1>},
       {"Reshape", ConvertSimpleOperator<TensorFlowReshapeOperator, 2>},
       {"ResizeBilinear", ConvertResizeBilinearOperator},
+      {"ResizeNearestNeighbor", ConvertResizeNearestNeighborOperator},
       {"Rsqrt", ConvertSimpleOperator<TensorFlowRsqrtOperator, 1>},
       {"Select", ConvertSimpleOperator<SelectOperator, 3>},
       {"Shape", ConvertShapeOperator},
