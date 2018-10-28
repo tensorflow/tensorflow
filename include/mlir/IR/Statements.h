@@ -51,10 +51,12 @@ public:
   /// Return the context this operation is associated with.
   MLIRContext *getContext() const;
 
+  using Statement::dump;
   using Statement::emitError;
   using Statement::emitNote;
   using Statement::emitWarning;
   using Statement::getLoc;
+  using Statement::print;
 
   /// Check if this statement is a return statement.
   bool isReturn() const;

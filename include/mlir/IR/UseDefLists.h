@@ -29,6 +29,7 @@
 namespace mlir {
 
 class IROperand;
+class IROperandOwner;
 template <typename OperandType, typename OwnerType> class SSAValueUseIterator;
 
 class IRObjectWithUseList {
@@ -43,7 +44,7 @@ public:
   /// Returns true if this value has exactly one use.
   inline bool hasOneUse() const;
 
-  using use_iterator = SSAValueUseIterator<IROperand, void>;
+  using use_iterator = SSAValueUseIterator<IROperand, IROperandOwner>;
   using use_range = llvm::iterator_range<use_iterator>;
 
   inline use_iterator use_begin() const;

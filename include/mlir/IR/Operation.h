@@ -29,6 +29,7 @@ template <typename OpType> class OpPointer;
 template <typename ObjectType, typename ElementType> class OperandIterator;
 template <typename ObjectType, typename ElementType> class ResultIterator;
 class Function;
+class IROperandOwner;
 class Instruction;
 class Statement;
 
@@ -232,12 +233,16 @@ public:
 
   // Returns whether the operation is commutative.
   bool isCommutative() const {
-    return getAbstractOperation()->hasProperty(OperationProperty::Commutative);
+    if (auto *absOp = getAbstractOperation())
+      return absOp->hasProperty(OperationProperty::Commutative);
+    return false;
   }
 
   // Returns whether the operation has side-effects.
   bool hasNoSideEffect() const {
-    return getAbstractOperation()->hasProperty(OperationProperty::NoSideEffect);
+    if (auto *absOp = getAbstractOperation())
+      return absOp->hasProperty(OperationProperty::NoSideEffect);
+    return false;
   }
 
   /// Remove this operation from its parent block and delete it.
@@ -251,9 +256,13 @@ public:
   bool constantFold(ArrayRef<Attribute> operands,
                     SmallVectorImpl<Attribute> &results) const;
 
+  void print(raw_ostream &os) const;
+  void dump() const;
+
   /// Methods for support type inquiry through isa, cast, and dyn_cast.
   static bool classof(const Instruction *inst);
   static bool classof(const Statement *stmt);
+  static bool classof(const IROperandOwner *ptr);
 
 protected:
   Operation(bool isInstruction, OperationName name,
@@ -409,5 +418,17 @@ inline auto Operation::getResults() const
   return {result_begin(), result_end()};
 }
 } // end namespace mlir
+
+/// We need to teach the LLVM cast/dyn_cast etc logic how to cast from an
+/// IROperandOwner* to Operation*.  This can't be done with a simple pointer to
+/// pointer cast because the pointer adjustment depends on whether the Owner is
+/// dynamically an Instruction or Statement, because of multiple inheritance.
+namespace llvm {
+template <>
+struct cast_convert_val<mlir::Operation, mlir::IROperandOwner *,
+                        mlir::IROperandOwner *> {
+  static mlir::Operation *doit(const mlir::IROperandOwner *value);
+};
+} // namespace llvm
 
 #endif

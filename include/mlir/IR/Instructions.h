@@ -206,11 +206,13 @@ public:
                                ArrayRef<NamedAttribute> attributes,
                                MLIRContext *context);
 
+  using Instruction::dump;
   using Instruction::emitError;
   using Instruction::emitNote;
   using Instruction::emitWarning;
   using Instruction::getContext;
   using Instruction::getLoc;
+  using Instruction::print;
 
   OperationInst *clone() const;
 
@@ -341,8 +343,8 @@ public:
                   llvm::iplist<OperationInst>::iterator iterator);
 
   /// Methods for support type inquiry through isa, cast, and dyn_cast.
-  static bool classof(const Instruction *inst) {
-    return inst->getKind() == Kind::Operation;
+  static bool classof(const IROperandOwner *ptr) {
+    return ptr->getKind() == IROperandOwner::Kind::OperationInst;
   }
   static bool classof(const Operation *op) {
     return op->getOperationKind() == OperationKind::Instruction;
@@ -433,8 +435,8 @@ public:
   ArrayRef<BasicBlockOperand> getBasicBlockOperands() const { return dest; }
 
   /// Methods for support type inquiry through isa, cast, and dyn_cast.
-  static bool classof(const Instruction *inst) {
-    return inst->getKind() == Kind::Branch;
+  static bool classof(const IROperandOwner *ptr) {
+    return ptr->getKind() == IROperandOwner::Kind::BranchInst;
   }
 
 private:
@@ -479,10 +481,7 @@ public:
 
   unsigned getNumOperands() const { return operands.size(); }
 
-  //
-  // Accessors for operands to the 'true' destination
-  //
-
+  // Accessors for operands to the 'true' destination.
   CFGValue *getTrueOperand(unsigned idx) {
     return getTrueInstOperand(idx).get();
   }
@@ -530,10 +529,7 @@ public:
   /// Add a list of values to the operand list.
   void addTrueOperands(ArrayRef<CFGValue *> values);
 
-  //
-  // Accessors for operands to the 'false' destination
-  //
-
+  // Accessors for operands to the 'false' destination.
   CFGValue *getFalseOperand(unsigned idx) {
     return getFalseInstOperand(idx).get();
   }
@@ -592,8 +588,8 @@ public:
   ArrayRef<BasicBlockOperand> getBasicBlockOperands() const { return dests; }
 
   /// Methods for support type inquiry through isa, cast, and dyn_cast.
-  static bool classof(const Instruction *inst) {
-    return inst->getKind() == Kind::CondBranch;
+  static bool classof(const IROperandOwner *ptr) {
+    return ptr->getKind() == IROperandOwner::Kind::CondBranchInst;
   }
 
 private:
@@ -631,8 +627,8 @@ public:
   void destroy();
 
   /// Methods for support type inquiry through isa, cast, and dyn_cast.
-  static bool classof(const Instruction *inst) {
-    return inst->getKind() == Kind::Return;
+  static bool classof(const IROperandOwner *ptr) {
+    return ptr->getKind() == IROperandOwner::Kind::ReturnInst;
   }
 
 private:

@@ -98,6 +98,22 @@ public:
     driver.removeFromWorklist(op);
   }
 
+  // When the root of a pattern is about to be replaced, it can trigger
+  // simplifications to its users - make sure to add them to the worklist
+  // before the root is changed.
+  void notifyRootReplaced(Operation *op) override {
+    for (auto *result : op->getResults())
+      // TODO: Add a result->getUsers() iterator.
+      for (auto &user : result->getUses()) {
+        if (auto *op = dyn_cast<Operation>(user.getOwner()))
+          driver.addToWorklist(op);
+      }
+
+    // TODO: Walk the operand list dropping them as we go.  If any of them
+    // drop to zero uses, then add them to the worklist to allow them to be
+    // deleted as dead.
+  }
+
   GreedyPatternRewriteDriver &driver;
 };
 
@@ -206,22 +222,10 @@ void GreedyPatternRewriteDriver::simplifyFunction(Function *currentFunction,
         // Add all the users of the result to the worklist so we make sure to
         // revisit them.
         //
-        // TODO: This is super gross. SSAValue use iterators should have an
-        // "owner" that can be downcasted to operation and other things.  This
-        // will require a rejiggering of the class hierarchies.
-        if (auto *stmt = dyn_cast<OperationStmt>(op)) {
-          // TODO: Add a result->getUsers() iterator.
-          for (auto &operand : stmt->getResult(i)->getUses()) {
-            if (auto *op = dyn_cast<OperationStmt>(operand.getOwner()))
-              addToWorklist(op);
-          }
-        } else {
-          auto *inst = cast<OperationInst>(op);
-          // TODO: Add a result->getUsers() iterator.
-          for (auto &operand : inst->getResult(i)->getUses()) {
-            if (auto *op = dyn_cast<OperationInst>(operand.getOwner()))
-              addToWorklist(op);
-          }
+        // TODO: Add a result->getUsers() iterator.
+        for (auto &operand : op->getResult(i)->getUses()) {
+          if (auto *op = dyn_cast<Operation>(operand.getOwner()))
+            addToWorklist(op);
         }
 
         res->replaceAllUsesWith(cstValue);
@@ -268,23 +272,6 @@ static void processMLFunction(MLFunction *fn, OwningPatternList &&patterns) {
       return result;
     }
 
-    // When the root of a pattern is about to be replaced, it can trigger
-    // simplifications to its users - make sure to add them to the worklist
-    // before the root is changed.
-    void notifyRootReplaced(Operation *op) override {
-      auto *opStmt = cast<OperationStmt>(op);
-      for (auto *result : opStmt->getResults())
-        // TODO: Add a result->getUsers() iterator.
-        for (auto &user : result->getUses()) {
-          if (auto *op = dyn_cast<OperationStmt>(user.getOwner()))
-            driver.addToWorklist(op);
-        }
-
-      // TODO: Walk the operand list dropping them as we go.  If any of them
-      // drop to zero uses, then add them to the worklist to allow them to be
-      // deleted as dead.
-    }
-
     void setInsertionPoint(Operation *op) override {
       // Any new operations should be added before this statement.
       builder.setInsertionPoint(cast<OperationStmt>(op));
@@ -314,23 +301,6 @@ static void processCFGFunction(CFGFunction *fn, OwningPatternList &&patterns) {
       auto *result = builder.createOperation(state);
       driver.addToWorklist(result);
       return result;
-    }
-
-    // When the root of a pattern is about to be replaced, it can trigger
-    // simplifications to its users - make sure to add them to the worklist
-    // before the root is changed.
-    void notifyRootReplaced(Operation *op) override {
-      auto *opStmt = cast<OperationInst>(op);
-      for (auto *result : opStmt->getResults())
-        // TODO: Add a result->getUsers() iterator.
-        for (auto &user : result->getUses()) {
-          if (auto *op = dyn_cast<OperationInst>(user.getOwner()))
-            driver.addToWorklist(op);
-        }
-
-      // TODO: Walk the operand list dropping them as we go.  If any of them
-      // drop to zero uses, then add them to the worklist to allow them to be
-      // deleted as dead.
     }
 
     void setInsertionPoint(Operation *op) override {

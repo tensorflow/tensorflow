@@ -237,12 +237,44 @@ bool Operation::constantFold(ArrayRef<Attribute> operands,
   return true;
 }
 
+void Operation::print(raw_ostream &os) const {
+  if (auto *inst = llvm::dyn_cast<OperationInst>(this))
+    return inst->print(os);
+  return llvm::cast<OperationStmt>(this)->print(os);
+}
+
+void Operation::dump() const {
+  if (auto *inst = llvm::dyn_cast<OperationInst>(this))
+    return inst->dump();
+  return llvm::cast<OperationStmt>(this)->dump();
+}
+
 /// Methods for support type inquiry through isa, cast, and dyn_cast.
 bool Operation::classof(const Instruction *inst) {
   return inst->getKind() == Instruction::Kind::Operation;
 }
 bool Operation::classof(const Statement *stmt) {
   return stmt->getKind() == Statement::Kind::Operation;
+}
+bool Operation::classof(const IROperandOwner *ptr) {
+  return ptr->getKind() == IROperandOwner::Kind::OperationInst ||
+         ptr->getKind() == IROperandOwner::Kind::OperationStmt;
+}
+
+/// We need to teach the LLVM cast/dyn_cast etc logic how to cast from an
+/// IROperandOwner* to Operation*.  This can't be done with a simple pointer to
+/// pointer cast because the pointer adjustment depends on whether the Owner is
+/// dynamically an Instruction or Statement, because of multiple inheritance.
+Operation *
+llvm::cast_convert_val<mlir::Operation, mlir::IROperandOwner *,
+                       mlir::IROperandOwner *>::doit(const mlir::IROperandOwner
+                                                         *value) {
+  const Operation *op;
+  if (auto *ptr = dyn_cast<OperationStmt>(value))
+    op = ptr;
+  else
+    op = cast<OperationInst>(value);
+  return const_cast<Operation *>(op);
 }
 
 //===----------------------------------------------------------------------===//
