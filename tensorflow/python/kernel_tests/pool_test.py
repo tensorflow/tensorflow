@@ -360,15 +360,9 @@ class PoolingTest(test.TestCase):
                     strides=strides)
 
   def testGradient3D(self):
-<<<<<<< HEAD
-
     if test.is_built_with_rocm():
       self.skipTest("5D tensors are not yet supported in ROCm")
-
-    with self.test_session(use_gpu=test.is_gpu_available()):
-=======
     with self.session(use_gpu=test.is_gpu_available()):
->>>>>>> upstream/master
       for padding in ["SAME", "VALID"]:
         for pooling_type in ["AVG", "MAX"]:
           for input_shape in [[1, 3, 5, 4, 1], [1, 5, 4, 3, 1]]:

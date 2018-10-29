@@ -257,12 +257,8 @@ class CholeskyGradTest(test.TestCase):
                            dtypes=(dtypes_lib.float32, dtypes_lib.float64,
                                    dtypes_lib.complex64, dtypes_lib.complex128),
                            scalarTest=False):
-<<<<<<< HEAD
     # rocBLAS on ROCm stack does not support complex<float> GEMV yet
-    with self.test_session(use_gpu=True and not test.is_built_with_rocm()):
-=======
-    with self.session(use_gpu=True):
->>>>>>> upstream/master
+    with self.session(use_gpu=True and not test.is_built_with_rocm()):
       for shape in shapes:
         for batch in False, True:
           for dtype in dtypes:
