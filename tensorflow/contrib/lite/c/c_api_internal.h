@@ -146,6 +146,16 @@ void TfLiteIntArrayFree(TfLiteIntArray* v);
     }                                                                          \
   } while (0)
 
+#define TF_LITE_ENSURE_TYPES_EQ(context, a, b)                                 \
+  do {                                                                         \
+    if ((a) != (b)) {                                                          \
+      (context)->ReportError((context), "%s:%d %s != %s (%s != %s)", __FILE__, \
+                             __LINE__, #a, #b, TfLiteTypeGetName(a),           \
+                             TfLiteTypeGetName(b));                            \
+      return kTfLiteError;                                                     \
+    }                                                                          \
+  } while (0)
+
 #define TF_LITE_ENSURE_OK(context, status) \
   do {                                     \
     if ((status) != kTfLiteOk) {           \
@@ -170,6 +180,9 @@ typedef enum {
   kTfLiteInt16 = 7,
   kTfLiteComplex64 = 8,
 } TfLiteType;
+
+// Return the name of a given type, for error reporting purposes.
+const char* TfLiteTypeGetName(TfLiteType type);
 
 // Parameters for asymmetric quantization. Quantized values can be converted
 // back to float using:
