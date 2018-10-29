@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_JIT_EXTRACT_OUTSIDE_COMPILATION_PASS_H_
 
 #include "absl/types/optional.h"
+#include "tensorflow/compiler/jit/encapsulate_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/core/graph/graph.h"
 
@@ -90,6 +91,16 @@ Status ExtractOutsideCompilationForFunction(
     const std::map<string, int>& host_compute_core,
     FunctionLibraryDefinition* fld, std::unique_ptr<Graph>* host_graph,
     std::vector<string>* shape_inference_graphs, bool* has_outside_compilation);
+
+// Rewrites XLA computation in `clusters` to replace outside compilation nodes
+// with XlaHostCompute, and moves those outside compilations into `g`. If shapes
+// of outside compilation outputs cannot be determined now, we will store shape
+// inference graph into `fld`.
+Status ExtractOutsideCompilation(
+    const string& xla_cluster_attr_name,
+    const string& outside_compilation_attr_name,
+    const std::unordered_map<string, XlaClusterInfo>& clusters, Graph* g,
+    FunctionLibraryDefinition* fld);
 
 }  // namespace tensorflow
 
