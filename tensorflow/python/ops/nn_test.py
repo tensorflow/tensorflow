@@ -67,6 +67,26 @@ class ZeroFractionTest(test_lib.TestCase):
       y = nn_impl.zero_fraction(x).eval()
       self.assertTrue(np.isnan(y))
 
+  def testZeroFraction2_27Zeros(self):
+    sparsity = nn_impl.zero_fraction(
+        array_ops.zeros([int(2**27 * 1.01)], dtype=dtypes.int8))
+    with self.cached_session():
+      self.assertAllClose(1.0, sparsity.eval())
+
+  def testZeroFraction2_27Ones(self):
+    sparsity = nn_impl.zero_fraction(
+        array_ops.ones([int(2**27 * 1.01)], dtype=dtypes.int8))
+    with self.cached_session():
+      self.assertAllClose(0.0, sparsity.eval())
+
+  def testUnknownSize(self):
+    value = array_ops.placeholder(dtype=dtypes.float32)
+    sparsity = nn_impl.zero_fraction(value)
+    with self.cached_session() as sess:
+      self.assertAllClose(
+          0.25,
+          sess.run(sparsity, {value: [[0., 1.], [0.3, 2.]]}))
+
 
 class SoftmaxTest(test_lib.TestCase, parameterized.TestCase):
 
