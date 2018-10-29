@@ -33,7 +33,7 @@ from tensorflow.contrib.timeseries.python.timeseries import state_management
 from tensorflow.contrib.timeseries.python.timeseries import test_utils
 from tensorflow.contrib.timeseries.python.timeseries.state_space_models import state_space_model
 
-from tensorflow.python.estimator import estimator_lib
+from tensorflow.python import estimator as estimator_lib
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops

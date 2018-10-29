@@ -31,7 +31,7 @@ from tensorflow.contrib.timeseries.python.timeseries import model_utils
 from tensorflow.contrib.timeseries.python.timeseries.feature_keys import TrainEvalFeatures
 from tensorflow.contrib.timeseries.python.timeseries.state_space_models import kalman_filter
 
-from tensorflow.python.estimator import estimator_lib
+from tensorflow.python import estimator as estimator_lib
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
