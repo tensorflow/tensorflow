@@ -20,7 +20,7 @@ from __future__ import print_function
 import re
 
 from tensorflow.contrib.timeseries.python.timeseries import feature_keys
-from tensorflow.python import estimator as estimator_lib
+from tensorflow.python.estimator import estimator_lib
 from tensorflow.python.estimator.canned import head as head_lib
 from tensorflow.python.estimator.canned import metric_keys
 from tensorflow.python.estimator.export import export_lib

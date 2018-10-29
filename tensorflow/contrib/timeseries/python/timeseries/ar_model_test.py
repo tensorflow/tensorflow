@@ -29,8 +29,8 @@ from tensorflow.contrib.timeseries.python.timeseries.estimators import ARRegress
 from tensorflow.contrib.timeseries.python.timeseries.feature_keys import PredictionFeatures
 from tensorflow.contrib.timeseries.python.timeseries.feature_keys import TrainEvalFeatures
 
-from tensorflow.python import estimator as estimator_lib
 from tensorflow.python.client import session
+from tensorflow.python.estimator import estimator_lib
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import variable_scope

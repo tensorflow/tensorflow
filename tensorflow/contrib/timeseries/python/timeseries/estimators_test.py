@@ -28,8 +28,8 @@ from tensorflow.contrib.timeseries.python.timeseries import feature_keys
 from tensorflow.contrib.timeseries.python.timeseries import input_pipeline
 from tensorflow.contrib.timeseries.python.timeseries import saved_model_utils
 
-from tensorflow.python import estimator as estimator_lib
 from tensorflow.python.client import session
+from tensorflow.python.estimator import estimator_lib
 from tensorflow.python.feature_column import feature_column
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
