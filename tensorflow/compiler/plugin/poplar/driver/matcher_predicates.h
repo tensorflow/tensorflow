@@ -27,8 +27,6 @@ bool IsBiasReduce(const HloInstruction*);
 bool IsOutputFeed(const HloInstruction*);
 bool IsTfReluGradOp(const HloInstruction*);
 bool IsTrueParameter(const HloInstruction*);
-bool IsFusedReverseInputConv(const HloInstruction*);
-bool IsFusedDepthwiseConv(const HloInstruction*);
 bool Is1DVector(const HloInstruction*);
 bool IsF16(const HloInstruction*);
 bool IsF32(const HloInstruction*);

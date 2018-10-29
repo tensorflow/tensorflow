@@ -9,17 +9,6 @@
 namespace xla {
 namespace poplarplugin {
 
-static bool IsPoplibsFusion(const HloInstruction *inst,
-                            const std::string &type) {
-  const HloComputation *comp = inst->to_apply();
-  if (IsPopOpsCall(comp)) {
-    auto end = comp->name().find('.');
-    std::string name = comp->name().substr(8, end - 8);
-    return name == type;
-  }
-  return false;
-}
-
 static bool IsAllFloatValue(const HloInstruction *inst, const double value) {
   return !ShapeUtil::IsZeroElementArray(inst->shape()) &&
          inst->literal().IsAllFloat(value);
@@ -179,14 +168,6 @@ bool IsTfReluGradOp(const HloInstruction *inst) {
 
 bool IsTrueParameter(const HloInstruction *inst) {
   return inst->opcode() == HloOpcode::kParameter;
-}
-
-bool IsFusedReverseInputConv(const HloInstruction *inst) {
-  return IsPoplibsFusion(inst, "conv_with_reverse");
-}
-
-bool IsFusedDepthwiseConv(const HloInstruction *inst) {
-  return IsPoplibsFusion(inst, "depthwise_conv");
 }
 
 bool Is1DVector(const HloInstruction *inst) {
