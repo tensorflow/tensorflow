@@ -49,11 +49,12 @@ HloModule top
   EXPECT_TRUE(module_or_status.ok());
 
   auto* module = module_or_status.ValueOrDie().get();
-  auto ret = Scheduler::schedule(module->entry_computation());
 
-  ASSERT_TRUE(ret.ok());
+  Scheduler scheduler;
+  EXPECT_TRUE(scheduler.Run(module).ValueOrDie());
 
-  auto seq = ret.ValueOrDie();
+  auto s = module->schedule().sequence(module->entry_computation());
+  auto seq = s.instructions();
   ASSERT_EQ(seq.size(), 7);
   EXPECT_EQ(seq[0]->name(), "arg0");
   EXPECT_EQ(seq[1]->name(), "sin.0");
@@ -84,14 +85,15 @@ HloModule top
   EXPECT_TRUE(module_or_status.ok());
 
   auto* module = module_or_status.ValueOrDie().get();
-  auto ret = Scheduler::schedule(module->entry_computation());
 
-  ASSERT_TRUE(ret.ok());
+  Scheduler scheduler;
+  EXPECT_TRUE(scheduler.Run(module).ValueOrDie());
 
   // The HloComputation schedules non-root trees of instructions before
   // the actual root
 
-  auto seq = ret.ValueOrDie();
+  auto s = module->schedule().sequence(module->entry_computation());
+  auto seq = s.instructions();
   ASSERT_EQ(seq.size(), 5);
   EXPECT_EQ(seq[0]->name(), "const");
   EXPECT_EQ(seq[1]->name(), "sum");

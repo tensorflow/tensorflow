@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_PLUGIN_POPLAR_DRIVER_SCHEDULER_H_
 
 #include "tensorflow/compiler/xla/service/dfs_hlo_visitor_with_default.h"
+#include "tensorflow/compiler/xla/service/hlo_pass_interface.h"
 
 namespace xla {
 
@@ -30,9 +31,13 @@ namespace poplarplugin {
  * such that the minimum number of edges between instructions are live
  * at any one time.
  */
-namespace Scheduler {
+class Scheduler : public HloModulePass {
+ public:
+  Scheduler() = default;
 
-StatusOr<std::vector<const HloInstruction*>> schedule(HloComputation* comp);
+  absl::string_view name() const override { return "pop-scheduler"; }
+
+  StatusOr<bool> Run(HloModule* module) override;
 };
 
 }  // namespace poplarplugin

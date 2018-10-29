@@ -83,24 +83,30 @@ class SequenceCosts {
 
 }  // namespace
 
-StatusOr<std::vector<const HloInstruction*>> Scheduler::schedule(
-    HloComputation* comp) {
-  SequenceCosts costs;
-  costs.FindCosts(comp->root_instruction());
-  costs.AddDisconnectedInstructions(comp->MakeInstructionPostOrder());
+StatusOr<bool> Scheduler::Run(HloModule* module) {
+  HloSchedule schedule(module);
 
-  std::vector<const HloInstruction*> sequence;
-  FunctionVisitor visitor([&sequence](HloInstruction* hlo) {
-    sequence.push_back(hlo);
-    return Status::OK();
-  });
-  TF_RETURN_IF_ERROR(comp->AcceptWithOperandOrder(
-      &visitor, [&costs](const HloInstruction* a, const HloInstruction* b) {
-        return costs.Compare(a, b);
-      }));
+  for (auto* comp : module->MakeNonfusionComputations()) {
+    SequenceCosts costs;
+    costs.FindCosts(comp->root_instruction());
+    costs.AddDisconnectedInstructions(comp->MakeInstructionPostOrder());
 
-  CHECK_EQ(sequence.size(), comp->instruction_count());
-  return sequence;
+    std::vector<const HloInstruction*> sequence;
+    FunctionVisitor visitor([&sequence](HloInstruction* hlo) {
+      sequence.push_back(hlo);
+      return Status::OK();
+    });
+    TF_RETURN_IF_ERROR(comp->AcceptWithOperandOrder(
+        &visitor, [&costs](const HloInstruction* a, const HloInstruction* b) {
+          return costs.Compare(a, b);
+        }));
+
+    CHECK_EQ(sequence.size(), comp->instruction_count());
+    schedule.set_sequence(comp, sequence);
+  }
+
+  module->set_schedule(schedule);
+  return true;
 }
 
 }  // namespace poplarplugin

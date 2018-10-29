@@ -313,6 +313,7 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::RunBackend(
     pipeline.AddPass<HloSubcomputationUnification>();
     pipeline.AddPass<ConvolutionClassifier>(resources.annotations);
     pipeline.AddPass<AllocationFinder>(resources.annotations);
+    pipeline.AddPass<Scheduler>();
 
     bool ok;
     TF_ASSIGN_OR_RETURN(ok, pipeline.Run(module.get()));
@@ -336,9 +337,6 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::RunBackend(
   VLOG(1) << "Compiling main computation " << entry->name();
   XLA_VLOG_LINES(1, module->ToString());
 
-  std::vector<const HloInstruction*> instruction_order;
-  TF_ASSIGN_OR_RETURN(instruction_order, Scheduler::schedule(entry));
-
   std::unique_ptr<poplar::Engine> engine;
   std::vector<poplar::program::Program> progs;
   EntryVisitor visitor(graph, resources,
@@ -354,7 +352,9 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::RunBackend(
     VLOG(1) << "Skip engine compilation - output is constant";
   } else {
     try {
-      TF_RETURN_IF_ERROR(entry->AcceptOrdered(&visitor, instruction_order));
+      auto order = module->schedule().sequence(entry).instructions();
+
+      TF_RETURN_IF_ERROR(entry->AcceptOrdered(&visitor, order));
     } catch (const std::exception& e) {
       return PoplarExceptionToTensorflowStatus("[Build graph] ", e);
     }
@@ -466,16 +466,16 @@ StatusOr<std::vector<std::unique_ptr<Executable>>> PoplarCompiler::Compile(
   }
   if (module_group->size() > 1) {
     return tensorflow::errors::Unimplemented(
-      "Compilation of multiple HLO modules is not supported on Poplar.");
+        "Compilation of multiple HLO modules is not supported on Poplar.");
   }
   if (stream_exec.size() != 1 || stream_exec[0].size() != 1) {
     return tensorflow::errors::Unimplemented(
-      "Unexpected number of StreamExecutor's.");
+        "Unexpected number of StreamExecutor's.");
   }
   auto hlo_modules = module_group->ConsumeModules();
   TF_ASSIGN_OR_RETURN(auto module,
                       RunHloPasses(std::move(hlo_modules[0]), stream_exec[0][0],
-                      device_allocator));
+                                   device_allocator));
   TF_ASSIGN_OR_RETURN(
       auto executable,
       RunBackend(std::move(module), stream_exec[0][0], device_allocator));
@@ -485,8 +485,8 @@ StatusOr<std::vector<std::unique_ptr<Executable>>> PoplarCompiler::Compile(
 }
 
 StatusOr<std::vector<std::unique_ptr<AotCompilationResult>>>
-PoplarCompiler::CompileAheadOfTime(
-    std::unique_ptr<HloModuleGroup>, const AotCompilationOptions&) {
+PoplarCompiler::CompileAheadOfTime(std::unique_ptr<HloModuleGroup>,
+                                   const AotCompilationOptions&) {
   return xla::InvalidArgument("AOT compilation not supported on Poplar");
 }
 

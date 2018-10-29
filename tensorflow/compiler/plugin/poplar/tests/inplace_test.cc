@@ -162,8 +162,11 @@ ENTRY c1 {
     EXPECT_THAT(in_place_ops.count(inst->name()), 1);
   }
 
+  Scheduler scheduler;
+  EXPECT_TRUE(scheduler.Run(module0).ValueOrDie());
+
   std::vector<const HloInstruction*> instruction_order =
-      Scheduler::schedule(entry).ValueOrDie();
+      module0->schedule().sequence(entry).instructions();
 
   EXPECT_THAT(instruction_order.size(), 10);
 
@@ -224,9 +227,11 @@ TEST_F(HloInplaceDependencyTest, MultipleUpdateInPlacePeers) {
   auto* inst = *(inplace_instructions.begin());
   EXPECT_TRUE(inst->name() == "u1" || inst->name() == "u0");
 
-  std::vector<const HloInstruction*> instruction_order =
-      Scheduler::schedule(entry).ValueOrDie();
+  Scheduler scheduler;
+  EXPECT_TRUE(scheduler.Run(module0).ValueOrDie());
 
+  std::vector<const HloInstruction*> instruction_order =
+      module0->schedule().sequence(entry).instructions();
   EXPECT_THAT(instruction_order.size(), 5);
 
   std::map<std::string, unsigned int> order;
@@ -278,8 +283,11 @@ TEST_F(HloInplaceDependencyTest, MultipleInplaceWithInterdependency) {
   auto* inst = *(inplace_instructions.begin());
   EXPECT_THAT(inst->name(), "u1");
 
+  Scheduler scheduler;
+  EXPECT_TRUE(scheduler.Run(module0).ValueOrDie());
+
   std::vector<const HloInstruction*> instruction_order =
-      Scheduler::schedule(entry).ValueOrDie();
+      module0->schedule().sequence(entry).instructions();
 
   EXPECT_THAT(instruction_order.size(), 5);
 
@@ -332,8 +340,11 @@ TEST_F(HloInplaceDependencyTest, MultipleInplaceWithRightOrder) {
     EXPECT_THAT(in_place_ops.count(inst->name()), 1);
   }
 
+  Scheduler scheduler;
+  EXPECT_TRUE(scheduler.Run(module0).ValueOrDie());
+
   std::vector<const HloInstruction*> instruction_order =
-      Scheduler::schedule(entry).ValueOrDie();
+      module0->schedule().sequence(entry).instructions();
 
   EXPECT_THAT(instruction_order.size(), 6);
 
@@ -383,8 +394,11 @@ TEST_F(HloInplaceDependencyTest, InplaceCorrectDependencies) {
   auto* inst = *(inplace_instructions.begin());
   EXPECT_THAT(inst->name(), "u1");
 
+  Scheduler scheduler;
+  EXPECT_TRUE(scheduler.Run(module0).ValueOrDie());
+
   std::vector<const HloInstruction*> instruction_order =
-      Scheduler::schedule(entry).ValueOrDie();
+      module0->schedule().sequence(entry).instructions();
 
   EXPECT_THAT(instruction_order.size(), 5);
 
