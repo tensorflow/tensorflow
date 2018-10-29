@@ -183,7 +183,6 @@ class ParameterServerStrategyTestBase(
                                                              task_type,
                                                              task_id,
                                                              num_gpus):
-    worker_device = '/job:%s/replica:0/task:%d' % (task_type, task_id)
     d, _, sess_config = self._get_test_objects(task_type, task_id, num_gpus)
     num_shards = len(d.parameter_devices)
     partitioner = partitioned_variables.fixed_size_partitioner(num_shards)
@@ -204,20 +203,7 @@ class ParameterServerStrategyTestBase(
         self.assertEqual(var.device, '/job:ps/task:%d' % part_id)
 
       def model_fn():
-        if num_gpus == 0:
-          last_part_device = 'device:CPU:0'
-        else:
-          last_part_device = (
-              'device:GPU:%d' %
-              distribution_strategy_context.get_tower_context().tower_id)
-
-        a = constant_op.constant([1.0, 2.0])
-        b = constant_op.constant([2.0, 3.0])
-        c = a + b
-        self.assertEqual(a.device, worker_device + '/' + last_part_device)
-        self.assertEqual(b.device, worker_device + '/' + last_part_device)
-        self.assertEqual(c.device, worker_device + '/' + last_part_device)
-
+        a = constant_op.constant([3.0, 5.0])
         # The device scope is ignored for variables but not for normal ops.
         with ops.device('/job:worker/task:0'):
           x = variable_scope.get_variable(
@@ -225,16 +211,12 @@ class ParameterServerStrategyTestBase(
               initializer=constant_op.constant([10.0, 20.0]),
               aggregation=variable_scope.VariableAggregation.SUM,
               partitioner=partitioner)
-          x_add = x.assign_add(c, name="x_Add")
-          e = a + c
+          x_add = x.assign_add(a, name="x_add")
         # The variable x is on the task 1 since the device_function has been
         # called once before the model_fn.
         for part_id, var in enumerate(x):
           self.assertEqual(var.device, '/job:ps/task:%d' % part_id)
           self.assertEqual(var.device, x_add[part_id].device)
-
-        self.assertEqual(e.device,
-                         '/job:worker/replica:0/task:0/%s' % last_part_device)
 
         # The colocate_vars_with can override the distribution's device.
         with d.colocate_vars_with(x_add[0]):
@@ -251,35 +233,22 @@ class ParameterServerStrategyTestBase(
           self.assertEqual(y_add[part_id].device, var.device)
           self.assertEqual(var.device, x_add[0].device)
 
-        z = variable_scope.get_variable(
-            'z',
-            initializer=constant_op.constant([10.0, 30.0]),
-            aggregation=variable_scope.VariableAggregation.SUM,
-            partitioner=partitioner)
+        return x_add, y_add
 
-        for task_id, var in enumerate(z):
-          self.assertEqual(var.device, '/job:ps/task:%d' % task_id)
+      x, y = d.call_for_each_tower(model_fn)
 
-        with ops.control_dependencies(y_add):
-          y_list = [var for var in y]
-          y_tensor = array_ops.concat(y_list, 0)
-          z_add = z.assign_add(array_ops.identity(y_tensor))
-        with ops.control_dependencies(z_add):
-          z_list = [var for var in z]
-          z_tensor = array_ops.concat(z_list, 0)
-          f = z_tensor + c
-        self.assertEqual(f.device, worker_device + '/' + last_part_device)
-
-        return y_add, z_add, f
-
-      y, z, f = d.call_for_each_tower(model_fn)
-
-      if context.num_gpus() >= 1 and num_gpus <= 1:
+      if context.num_gpus() >= 1:
         variables.global_variables_initializer().run()
-        y_val, z_val, f_val = sess.run([y, z, f])
-        self.assertEqual(y_val, [33.0, 35.0])
-        self.assertEqual(z_val, [43.0, 65.0])
-        self.assertEqual(tuple(f_val), (46.0, 70.0))
+        x_val, y_val = sess.run([x, y])
+        if num_gpus < 1:
+          self.assertEqual(x_val, [13.0, 25.0])
+          self.assertEqual(y_val, [33.0, 35.0])
+        else:
+          x_expect = [10.0 + 3 * num_gpus, 20.0 + 5 * num_gpus]
+          y_expect = [20.0 + x_expect[0] * num_gpus,
+                      10.0 + x_expect[1] * num_gpus]
+          self.assertEqual(x_val, x_expect)
+          self.assertEqual(y_val, y_expect)          
 
   def _test_device_assignment_local(self,
                                     d,
