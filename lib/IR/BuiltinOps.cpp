@@ -222,6 +222,12 @@ bool ConstantOp::verify() const {
     return false;
   }
 
+  if (isa<VectorOrTensorType>(type)) {
+    if (!value.isa<ElementsAttr>())
+      return emitOpError("requires 'value' to be a vector/tensor constant");
+    return false;
+  }
+
   if (type->isTFString()) {
     if (!value.isa<StringAttr>())
       return emitOpError("requires 'value' to be a string constant");

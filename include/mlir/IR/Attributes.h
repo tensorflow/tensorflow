@@ -80,7 +80,8 @@ public:
     LAST_ELEMENTS_ATTR = SparseElements,
   };
 
-  typedef detail::AttributeStorage ImplType;
+  using ImplType = detail::AttributeStorage;
+  using ValueType = void;
 
   Attribute() : attr(nullptr) {}
   /* implicit */ Attribute(const ImplType *attr)
@@ -126,7 +127,9 @@ inline raw_ostream &operator<<(raw_ostream &os, Attribute attr) {
 
 class BoolAttr : public Attribute {
 public:
-  typedef detail::BoolAttributeStorage ImplType;
+  using ImplType = detail::BoolAttributeStorage;
+  using ValueType = bool;
+
   BoolAttr() = default;
   /* implicit */ BoolAttr(Attribute::ImplType *ptr);
 
@@ -140,7 +143,9 @@ public:
 
 class IntegerAttr : public Attribute {
 public:
-  typedef detail::IntegerAttributeStorage ImplType;
+  using ImplType = detail::IntegerAttributeStorage;
+  using ValueType = int64_t;
+
   IntegerAttr() = default;
   /* implicit */ IntegerAttr(Attribute::ImplType *ptr);
 
@@ -154,7 +159,9 @@ public:
 
 class FloatAttr final : public Attribute {
 public:
-  typedef detail::FloatAttributeStorage ImplType;
+  using ImplType = detail::FloatAttributeStorage;
+  using ValueType = APFloat;
+
   FloatAttr() = default;
   /* implicit */ FloatAttr(Attribute::ImplType *ptr);
 
@@ -171,7 +178,9 @@ public:
 
 class StringAttr : public Attribute {
 public:
-  typedef detail::StringAttributeStorage ImplType;
+  using ImplType = detail::StringAttributeStorage;
+  using ValueType = StringRef;
+
   StringAttr() = default;
   /* implicit */ StringAttr(Attribute::ImplType *ptr);
 
@@ -187,7 +196,9 @@ public:
 /// type homogenous given that attributes don't, in general, carry types.
 class ArrayAttr : public Attribute {
 public:
-  typedef detail::ArrayAttributeStorage ImplType;
+  using ImplType = detail::ArrayAttributeStorage;
+  using ValueType = ArrayRef<Attribute>;
+
   ArrayAttr() = default;
   /* implicit */ ArrayAttr(Attribute::ImplType *ptr);
 
@@ -201,7 +212,9 @@ public:
 
 class AffineMapAttr : public Attribute {
 public:
-  typedef detail::AffineMapAttributeStorage ImplType;
+  using ImplType = detail::AffineMapAttributeStorage;
+  using ValueType = AffineMap;
+
   AffineMapAttr() = default;
   /* implicit */ AffineMapAttr(Attribute::ImplType *ptr);
 
@@ -215,7 +228,9 @@ public:
 
 class IntegerSetAttr : public Attribute {
 public:
-  typedef detail::IntegerSetAttributeStorage ImplType;
+  using ImplType = detail::IntegerSetAttributeStorage;
+  using ValueType = IntegerSet;
+
   IntegerSetAttr() = default;
   /* implicit */ IntegerSetAttr(Attribute::ImplType *ptr);
 
@@ -229,7 +244,9 @@ public:
 
 class TypeAttr : public Attribute {
 public:
-  typedef detail::TypeAttributeStorage ImplType;
+  using ImplType = detail::TypeAttributeStorage;
+  using ValueType = Type *;
+
   TypeAttr() = default;
   /* implicit */ TypeAttr(Attribute::ImplType *ptr);
 
@@ -250,7 +267,9 @@ public:
 /// remain in MLIRContext.
 class FunctionAttr : public Attribute {
 public:
-  typedef detail::FunctionAttributeStorage ImplType;
+  using ImplType = detail::FunctionAttributeStorage;
+  using ValueType = Function *;
+
   FunctionAttr() = default;
   /* implicit */ FunctionAttr(Attribute::ImplType *ptr);
 
@@ -288,7 +307,9 @@ public:
 /// meaning all of the elements have the same value.
 class SplatElementsAttr : public ElementsAttr {
 public:
-  typedef detail::SplatElementsAttributeStorage ImplType;
+  using ImplType = detail::SplatElementsAttributeStorage;
+  using ValueType = Attribute;
+
   SplatElementsAttr() = default;
   /* implicit */ SplatElementsAttr(Attribute::ImplType *ptr);
 
@@ -305,7 +326,8 @@ public:
 /// than 64.
 class DenseElementsAttr : public ElementsAttr {
 public:
-  typedef detail::DenseElementsAttributeStorage ImplType;
+  using ImplType = detail::DenseElementsAttributeStorage;
+
   DenseElementsAttr() = default;
   /* implicit */ DenseElementsAttr(Attribute::ImplType *ptr);
 
@@ -335,7 +357,8 @@ public:
 /// object.
 class DenseIntElementsAttr : public DenseElementsAttr {
 public:
-  typedef detail::DenseIntElementsAttributeStorage ImplType;
+  using ImplType = detail::DenseIntElementsAttributeStorage;
+
   DenseIntElementsAttr() = default;
   /* implicit */ DenseIntElementsAttr(Attribute::ImplType *ptr);
 
@@ -362,7 +385,8 @@ public:
 /// object. Each element is stored as a double.
 class DenseFPElementsAttr : public DenseElementsAttr {
 public:
-  typedef detail::DenseFPElementsAttributeStorage ImplType;
+  using ImplType = detail::DenseFPElementsAttributeStorage;
+
   DenseFPElementsAttr() = default;
   /* implicit */ DenseFPElementsAttr(Attribute::ImplType *ptr);
 
@@ -380,7 +404,9 @@ public:
 /// doesn't need to interpret.
 class OpaqueElementsAttr : public ElementsAttr {
 public:
-  typedef detail::OpaqueElementsAttributeStorage ImplType;
+  using ImplType = detail::OpaqueElementsAttributeStorage;
+  using ValueType = StringRef;
+
   OpaqueElementsAttr() = default;
   /* implicit */ OpaqueElementsAttr(Attribute::ImplType *ptr);
 
@@ -409,7 +435,8 @@ public:
 ///  [0, 0, 0, 0]].
 class SparseElementsAttr : public ElementsAttr {
 public:
-  typedef detail::SparseElementsAttributeStorage ImplType;
+  using ImplType = detail::SparseElementsAttributeStorage;
+
   SparseElementsAttr() = default;
   /* implicit */ SparseElementsAttr(Attribute::ImplType *ptr);
 

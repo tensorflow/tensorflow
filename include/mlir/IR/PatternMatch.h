@@ -279,7 +279,7 @@ private:
 
   /// The group of patterns that are matched for optimization through this
   /// matcher.
-  std::vector<std::unique_ptr<Pattern>> patterns;
+  OwningPatternList patterns;
 };
 
 //===----------------------------------------------------------------------===//

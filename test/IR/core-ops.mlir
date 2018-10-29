@@ -85,6 +85,9 @@ bb42(%t: tensor<4x4x?xf32>, %f: f32, %i: i32):
   // CHECK: %f_2 = constant @affine_apply : () -> ()
   %12 = constant @affine_apply : () -> ()
 
+  // CHECK: %cst_3 = constant splat<vector<4xi32>, 0> : vector<4xi32>
+  %13 = constant splat<vector<4 x i32>, 0> : vector<4 x i32>
+
   return
 }
 

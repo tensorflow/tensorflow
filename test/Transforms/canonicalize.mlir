@@ -58,12 +58,44 @@ mlfunc @addi_zero(%arg0: i32) -> i32 {
   return %y: i32
 }
 
+// CHECK-LABEL: mlfunc @addi_zero_vector
+mlfunc @addi_zero_vector(%arg0: vector<4 x i32>) -> vector<4 x i32> {
+  // CHECK-NEXT: return %arg0
+  %c0_v4i32 = constant splat<vector<4 x i32>, 0> : vector<4 x i32>
+  %y = addi %c0_v4i32, %arg0 : vector<4 x i32>
+  return %y: vector<4 x i32>
+}
+
+// CHECK-LABEL: mlfunc @addi_zero_tensor
+mlfunc @addi_zero_tensor(%arg0: tensor<4 x 5 x i32>) -> tensor<4 x 5 x i32> {
+  // CHECK-NEXT: return %arg0
+  %c0_t45i32 = constant splat<tensor<4 x 5 x i32>, 0> : tensor<4 x 5 x i32>
+  %y = addi %arg0, %c0_t45i32 : tensor<4 x 5 x i32>
+  return %y: tensor<4 x 5 x i32>
+}
+
 // CHECK-LABEL: mlfunc @muli_one
 mlfunc @muli_one(%arg0: i32) -> i32 {
   // CHECK-NEXT: return %arg0
   %c0_i32 = constant 1 : i32
   %y = muli %c0_i32, %arg0 : i32
   return %y: i32
+}
+
+// CHECK-LABEL: mlfunc @muli_one_vector
+mlfunc @muli_one_vector(%arg0: vector<4 x i32>) -> vector<4 x i32> {
+  // CHECK-NEXT: return %arg0
+  %c1_v4i32 = constant splat<vector<4 x i32>, 1> : vector<4 x i32>
+  %y = muli %c1_v4i32, %arg0 : vector<4 x i32>
+  return %y: vector<4 x i32>
+}
+
+// CHECK-LABEL: mlfunc @muli_one_tensor
+mlfunc @muli_one_tensor(%arg0: tensor<4 x 5 x i32>) -> tensor<4 x 5 x i32> {
+  // CHECK-NEXT: return %arg0
+  %c1_t45i32 = constant splat<tensor<4 x 5 x i32>, 1> : tensor<4 x 5 x i32>
+  %y = muli %arg0, %c1_t45i32 : tensor<4 x 5 x i32>
+  return %y: tensor<4 x 5 x i32>
 }
 
 // CHECK-LABEL: mlfunc @memref_cast_folding

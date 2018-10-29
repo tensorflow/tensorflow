@@ -20,6 +20,7 @@
 #include "mlir/IR/AffineMap.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinOps.h"
+#include "mlir/IR/Matchers.h"
 #include "mlir/IR/OpImplementation.h"
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/IR/SSAValue.h"
@@ -46,6 +47,11 @@ StandardOpsDialect::StandardOpsDialect(MLIRContext *context)
 //===----------------------------------------------------------------------===//
 
 namespace {
+/// Matches a MemRefCastOp.
+inline detail::op_matcher<MemRefCastOp> m_MemRefCast() {
+  return detail::op_matcher<MemRefCastOp>();
+}
+
 /// This is a common class used for patterns of the form
 /// "someop(memrefcast) -> someop".  It folds the source of any memref_cast
 /// into the root operation directly.
@@ -57,9 +63,8 @@ struct MemRefCastFolder : public Pattern {
   std::pair<PatternBenefit, std::unique_ptr<PatternState>>
   match(Operation *op) const override {
     for (auto *operand : op->getOperands())
-      if (auto *memref = operand->getDefiningOperation())
-        if (memref->isa<MemRefCastOp>())
-          return matchSuccess();
+      if (::match(operand, m_MemRefCast()))
+        return matchSuccess();
 
     return matchFailure();
   }
@@ -116,12 +121,9 @@ struct SimplifyAddX0 : public Pattern {
   std::pair<PatternBenefit, std::unique_ptr<PatternState>>
   match(Operation *op) const override {
     auto addi = op->cast<AddIOp>();
-    if (auto *operandOp = addi->getOperand(1)->getDefiningOperation())
-      // TODO: Support splatted zero as well.  We need a general zero pattern.
-      if (auto cst = operandOp->dyn_cast<ConstantIntOp>()) {
-        if (cst->getValue() == 0)
-          return matchSuccess();
-      }
+
+    if (::match(addi->getOperand(1), m_Zero()))
+      return matchSuccess();
 
     return matchFailure();
   }
@@ -230,9 +232,8 @@ struct SimplifyAllocConst : public Pattern {
     // Check to see if any dimensions operands are constants.  If so, we can
     // substitute and drop them.
     for (auto *operand : alloc->getOperands())
-      if (auto *opOperation = operand->getDefiningOperation())
-        if (opOperation->isa<ConstantIndexOp>())
-          return matchSuccess();
+      if (::match(operand, m_ConstantIndex()))
+        return matchSuccess();
     return matchFailure();
   }
 
@@ -892,12 +893,9 @@ struct SimplifyMulX1 : public Pattern {
   std::pair<PatternBenefit, std::unique_ptr<PatternState>>
   match(Operation *op) const override {
     auto muli = op->cast<MulIOp>();
-    if (auto *operandOp = muli->getOperand(1)->getDefiningOperation())
-      // TODO: Support splatted one as well.  We need a general one pattern.
-      if (auto cst = operandOp->dyn_cast<ConstantIntOp>()) {
-        if (cst->getValue() == 1)
-          return matchSuccess();
-      }
+
+    if (::match(muli->getOperand(1), m_One()))
+      return matchSuccess();
 
     return matchFailure();
   }
