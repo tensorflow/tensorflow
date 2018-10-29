@@ -1396,6 +1396,15 @@ class KerasTPUModel(models.Model):
           self._cpu_model.target_tensors,
       )
 
+    # This flag must be disabled upon model mutation, such as changing the model
+    # layers or recompiling the model to use a different optimizer. New function
+    # definitions are generated whenever this flag is disabled, ensuring that
+    # internal graph functions are always using the current model structure.
+    #
+    # Requires declaration here because this constructor skips the
+    # Model constructor.
+    self._built_graph_functions = False
+
   def get_config(self):
     return {
         'cpu_model': self._cpu_model,

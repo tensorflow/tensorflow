@@ -20,10 +20,12 @@ from __future__ import division
 from __future__ import print_function
 
 import copy
+import threading
 
 import numpy as np
 
 from tensorflow.python.data.ops import iterator_ops
+from tensorflow.python.eager import function as eager_function
 from tensorflow.python.eager.backprop import GradientTape
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
@@ -34,6 +36,10 @@ from tensorflow.python.keras.engine import training_utils
 from tensorflow.python.keras.utils import generic_utils
 from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import tf_logging as logging
+
+
+# A lock for assigning polymorphic functions to models in a thread-safe way
+_graph_function_building_lock = threading.Lock()
 
 
 def _eager_loss_fn(outputs, targets, loss_fn, output_name):
@@ -133,6 +139,48 @@ def _model_loss(model, inputs, targets, sample_weights=None, training=False):
     model._clear_losses()
 
   return outs, total_loss, loss_metrics, masks
+
+
+def _maybe_build_graph_functions(model):
+  """Constructs polymorphic functions to use for fit, evaluate and predict."""
+  # We lock this function to ensure thread-safety in case users are
+  # hypothetically trying to call '.predict' on a model in multiple threads
+  # at once when the graph functions were never previously built.
+  with _graph_function_building_lock:
+    if not model._built_graph_functions:
+      model._eager_process_single_batch_graph_function = eager_function.defun(
+          _process_single_batch
+      )
+      model._eager_model_loss_graph_function = eager_function.defun(_model_loss)
+      model._eager_call_graph_function = eager_function.defun(model.call)
+      model._built_graph_functions = True
+
+
+def _maybe_graph_function_model_loss(
+    model,
+    inputs,
+    targets,
+    sample_weights=None,
+    training=False):
+  """Compute model loss, using defun if the model supports it."""
+  if model._can_use_graph_functions:
+    _maybe_build_graph_functions(model)
+    return model._eager_model_loss_graph_function(
+        model, inputs, targets,
+        sample_weights=sample_weights, training=training)
+  else:
+    return _model_loss(model, inputs, targets,
+                       sample_weights=sample_weights,
+                       training=training)
+
+
+def _maybe_graph_function_model_call(model, *args, **kwargs):
+  """Compute model loss, using defun if the model supports it."""
+  if model._can_use_graph_functions:
+    _maybe_build_graph_functions(model)
+    return model._eager_call_graph_function(*args, **kwargs)
+  else:
+    return model.call(*args, **kwargs)
 
 
 def iterator_fit_loop(model,
@@ -245,8 +293,9 @@ def iterator_fit_loop(model,
       })
 
     # Train model.
-    outs, loss, loss_metrics, masks = _process_single_batch(
-        model, x, y, sample_weights=sample_weights, training=True)
+    outs, loss, loss_metrics, masks = (
+        _maybe_graph_function_process_single_batch(
+            model, x, y, sample_weights=sample_weights, training=True))
     outs = generic_utils.to_list(outs)
 
     # Calculate metrics.
@@ -356,7 +405,7 @@ def iterator_test_loop(model, inputs, steps, verbose=0):
         stateful_metric_indices = []
 
     # Calculate model output, loss values.
-    loss_outs, loss, loss_metrics, masks = _model_loss(
+    loss_outs, loss, loss_metrics, masks = _maybe_graph_function_model_loss(
         model, x, y, sample_weights=sample_weights, training=False)
     metrics_results = _eager_metrics_fn(
         model, loss_outs, y, sample_weights=sample_weights, masks=masks)
@@ -427,6 +476,7 @@ def iterator_predict_loop(model, inputs, steps, verbose=0):
   outs = []
   if verbose == 1:
     progbar = generic_utils.Progbar(target=steps)
+
   for step_index in range(steps):
     # Get data from the iterator.
     try:
@@ -450,9 +500,9 @@ def iterator_predict_loop(model, inputs, steps, verbose=0):
       x = x[0]
 
     if model._expects_training_arg:
-      batch_outs = model.call(x, training=False)
+      batch_outs = _maybe_graph_function_model_call(model, x, training=False)
     else:
-      batch_outs = model.call(x)
+      batch_outs = _maybe_graph_function_model_call(model, x)
     if not isinstance(batch_outs, list):
       batch_outs = [batch_outs]
 
@@ -522,6 +572,24 @@ def _process_single_batch(model,
     return outs, loss, loss_metrics, masks
 
 
+def _maybe_graph_function_process_single_batch(
+    model,
+    inputs,
+    targets,
+    sample_weights=None,
+    training=False):
+  """Process a single batch, using defun if the model supports it."""
+  if model._can_use_graph_functions:
+    _maybe_build_graph_functions(model)
+    return model._eager_process_single_batch_graph_function(
+        model, inputs, targets, sample_weights=sample_weights,
+        training=training)
+  else:
+    return _process_single_batch(model, inputs, targets,
+                                 sample_weights=sample_weights,
+                                 training=training)
+
+
 def train_on_batch(model, inputs, targets, sample_weights=None):
   """Calculates the loss and gradient updates for one input batch.
 
@@ -550,7 +618,7 @@ def train_on_batch(model, inputs, targets, sample_weights=None):
         if val is not None else None for val in sample_weights
     ]
 
-  outs, loss, loss_metrics, masks = _process_single_batch(
+  outs, loss, loss_metrics, masks = _maybe_graph_function_process_single_batch(
       model, inputs, targets, sample_weights=sample_weights, training=True)
   if not isinstance(outs, list):
     outs = [outs]
@@ -591,7 +659,7 @@ def test_on_batch(model, inputs, targets, sample_weights=None):
         ops.convert_to_tensor(val, dtype=backend.floatx())
         if val is not None else None for val in sample_weights
     ]
-  outs, loss, loss_metrics, masks = _model_loss(
+  outs, loss, loss_metrics, masks = _maybe_graph_function_model_loss(
       model, inputs, targets, sample_weights=sample_weights, training=False)
   if not isinstance(outs, list):
     outs = [outs]
