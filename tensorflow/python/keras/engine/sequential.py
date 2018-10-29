@@ -119,6 +119,10 @@ class Sequential(Model):
       return layers[1:]
     return layers[:]
 
+  @property
+  def _is_static_graph_friendly(self):
+    return all(layer._is_static_graph_friendly for layer in self.layers)
+
   @checkpointable.no_automatic_dependency_tracking
   def add(self, layer):
     """Adds a layer instance on top of the layer stack.
@@ -186,6 +190,8 @@ class Sequential(Model):
       self._layers.append(layer)
     if self._layers:
       self._track_layers(self._layers)
+    self._can_use_graph_functions = all(
+        layer._can_use_graph_functions for layer in self.layers)
 
   @checkpointable.no_automatic_dependency_tracking
   def pop(self):
@@ -207,6 +213,8 @@ class Sequential(Model):
       self.outputs = [self.layers[-1].output]
       self._init_graph_network(self.inputs, self.outputs, name=self.name)
       self.built = True
+    self._can_use_graph_functions = all(
+        layer._can_use_graph_functions for layer in self.layers)
 
   def build(self, input_shape=None):
     if self._is_graph_network:

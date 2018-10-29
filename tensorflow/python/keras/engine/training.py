@@ -124,6 +124,11 @@ class Model(Network):
     # initializing _distribution_strategy here since it is possible to call
     # predict on a model without compiling it.
     self._distribution_strategy = None
+    # This flag must be disabled upon model mutation, such as changing the model
+    # layers or recompiling the model to use a different optimizer. New function
+    # definitions are generated whenever this flag is disabled, ensuring that
+    # internal graph functions are always using the current model structure.
+    self._built_graph_functions = False
 
   def _set_sample_weight_attributes(self, sample_weight_mode,
                                     skip_target_weighing_indices):
@@ -379,6 +384,10 @@ class Model(Network):
         ValueError: In case of invalid arguments for
             `optimizer`, `loss`, `metrics` or `sample_weight_mode`.
     """
+    # The correct graph function may have changed,
+    # already-built ones must be updated
+    self._built_graph_functions = False
+
     # Validate that arguments passed by the user to `compile` are supported by
     # DistributionStrategy.
     if distribute:
