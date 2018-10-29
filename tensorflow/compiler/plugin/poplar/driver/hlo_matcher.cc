@@ -15,8 +15,8 @@ limitations under the License.
 
 #include "absl/strings/str_cat.h"
 
-#include "tensorflow/compiler/plugin/poplar/driver/hlo_matcher.h"
 #include "tensorflow/compiler/plugin/poplar/driver/compiler_annotations.h"
+#include "tensorflow/compiler/plugin/poplar/driver/hlo_matcher.h"
 #include "tensorflow/compiler/plugin/poplar/driver/matcher_predicates.h"
 #include "tensorflow/compiler/plugin/poplar/driver/util.h"
 
@@ -35,10 +35,10 @@ HloMatcher::HloMatcher(const std::vector<HloMatcherPattern>& patterns,
                        struct CompilerAnnotations& annotations,
                        bool root_computation_only,
                        unsigned look_through_max_depth)
-    : root_computation_only_(root_computation_only),
-      look_through_max_depth_(look_through_max_depth),
+    : patterns_(std::move(patterns)),
       annotations_(annotations),
-      patterns_(std::move(patterns)) {}
+      root_computation_only_(root_computation_only),
+      look_through_max_depth_(look_through_max_depth) {}
 
 // A set of sets of ops which are all associative together
 static std::set<std::set<HloOpcode>> associative_ops_sets = {
