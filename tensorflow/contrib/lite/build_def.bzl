@@ -280,7 +280,7 @@ def generated_test_models():
         "rsqrt",
         "shape",
         "sigmoid",
-        #"sin", # b/118502200
+        "sin",
         "slice",
         "softmax",
         "space_to_batch_nd",
