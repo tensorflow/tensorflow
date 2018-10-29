@@ -24,7 +24,7 @@ from tensorflow.contrib.timeseries.python.timeseries import feature_keys
 from tensorflow.contrib.timeseries.python.timeseries import math_utils
 from tensorflow.contrib.timeseries.python.timeseries.model import ModelOutputs
 
-from tensorflow.python import estimator as estimator_lib
+from tensorflow.python.estimator import estimator_lib
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops

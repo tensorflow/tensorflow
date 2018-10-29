@@ -20,7 +20,7 @@ from __future__ import print_function
 
 from tensorflow.contrib.timeseries.examples import lstm
 
-from tensorflow.python import estimator as estimator_lib
+from tensorflow.python.estimator import estimator_lib
 from tensorflow.python.platform import test
 
 

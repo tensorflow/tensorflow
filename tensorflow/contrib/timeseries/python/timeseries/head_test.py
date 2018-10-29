@@ -36,8 +36,8 @@ from tensorflow.contrib.timeseries.python.timeseries import model
 from tensorflow.contrib.timeseries.python.timeseries import state_management
 from tensorflow.core.example import example_pb2
 
-from tensorflow.python import estimator as estimator_lib
 from tensorflow.python.client import session as session_lib
+from tensorflow.python.estimator import estimator_lib
 from tensorflow.python.feature_column import feature_column
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops

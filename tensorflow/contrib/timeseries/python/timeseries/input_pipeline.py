@@ -78,7 +78,7 @@ import numpy
 from tensorflow.contrib.timeseries.python.timeseries import feature_keys
 from tensorflow.contrib.timeseries.python.timeseries import model_utils
 
-from tensorflow.python.estimator.inputs import numpy_io
+from tensorflow.python.estimator import estimator_lib
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -256,7 +256,7 @@ class NumpyReader(TimeSeriesReader):
     # Remove the batch dimension from all features
     features = {key: numpy.squeeze(value, axis=0)
                 for key, value in self._features.items()}
-    return numpy_io.numpy_input_fn(
+    return estimator_lib.inputs.numpy_input_fn(
         x=features,
         # The first dimensions of features are the series length, since we have
         # removed the batch dimension above. We now pull out
@@ -268,7 +268,7 @@ class NumpyReader(TimeSeriesReader):
 
   def read_full(self):
     """Returns `Tensor` versions of the full Numpy arrays."""
-    features = numpy_io.numpy_input_fn(
+    features = estimator_lib.inputs.numpy_input_fn(
         x=self._features,
         batch_size=1,
         num_epochs=None,

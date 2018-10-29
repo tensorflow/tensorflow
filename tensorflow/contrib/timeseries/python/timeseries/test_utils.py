@@ -23,8 +23,8 @@ from tensorflow.contrib.timeseries.python.timeseries import input_pipeline
 from tensorflow.contrib.timeseries.python.timeseries import state_management
 from tensorflow.contrib.timeseries.python.timeseries.feature_keys import TrainEvalFeatures
 
-from tensorflow.python import estimator as estimator_lib
 from tensorflow.python.client import session
+from tensorflow.python.estimator import estimator_lib
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import random_seed
 from tensorflow.python.ops import array_ops
