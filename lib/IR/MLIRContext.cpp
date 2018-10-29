@@ -397,9 +397,9 @@ MLIRContext::~MLIRContext() {}
 // Diagnostic Handlers
 //===----------------------------------------------------------------------===//
 
-/// Register an issue handler with this LLVM context.  The issue handler is
-/// passed location information if present (nullptr if not) along with a
-/// message and a boolean that indicates whether this is an error or warning.
+/// Register an issue handler with this MLIR context.  The issue handler is
+/// passed location information along with a message and a DiagnosticKind enum
+/// value that indicates the type of the diagnostic (e.g., Warning, Error).
 void MLIRContext::registerDiagnosticHandler(
     const DiagnosticHandlerTy &handler) {
   getImpl().diagnosticHandler = handler;
