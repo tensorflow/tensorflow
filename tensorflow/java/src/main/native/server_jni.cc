@@ -18,6 +18,21 @@ limitations under the License.
 #include "tensorflow/java/src/main/native/exception_jni.h"
 #include "tensorflow/java/src/main/native/utils_jni.h"
 
+namespace {
+TF_Server* requireHandle(JNIEnv* env, jlong handle) {
+  static_assert(sizeof(jlong) >= sizeof(TF_Server*),
+                "Cannot package C object pointers as a Java long");
+  if (handle == 0) {
+    throwException(env, kIllegalStateException,
+                   "close() has been called on the Server");
+    return nullptr;
+  }
+
+  return reinterpret_cast<TF_Server*>(handle);
+}
+
+}  // namespace
+
 JNIEXPORT jlong JNICALL Java_org_tensorflow_Server_allocate(
     JNIEnv* env, jclass clazz, jbyteArray server_def) {
   TF_Status* status = TF_NewStatus();
@@ -39,14 +54,9 @@ JNIEXPORT jlong JNICALL Java_org_tensorflow_Server_allocate(
 JNIEXPORT void JNICALL Java_org_tensorflow_Server_start(JNIEnv* env,
                                                         jclass clazz,
                                                         jlong handle) {
-  if (handle == 0) {
-    throwException(env, kIllegalStateException,
-                   "close() has been called on the Server");
-    return;
-  }
-
   TF_Status* status = TF_NewStatus();
-  TF_Server* server = reinterpret_cast<TF_Server*>(handle);
+  TF_Server* server = requireHandle(env, handle);
+  if (server == nullptr) return;
 
   TF_ServerStart(server, status);
   throwExceptionIfNotOK(env, status);
@@ -57,14 +67,9 @@ JNIEXPORT void JNICALL Java_org_tensorflow_Server_start(JNIEnv* env,
 JNIEXPORT void JNICALL Java_org_tensorflow_Server_stop(JNIEnv* env,
                                                        jclass clazz,
                                                        jlong handle) {
-  if (handle == 0) {
-    throwException(env, kIllegalStateException,
-                   "close() has been called on the Server");
-    return;
-  }
-
   TF_Status* status = TF_NewStatus();
-  TF_Server* server = reinterpret_cast<TF_Server*>(handle);
+  TF_Server* server = requireHandle(env, handle);
+  if (server == nullptr) return;
 
   TF_ServerStop(server, status);
   throwExceptionIfNotOK(env, status);
@@ -75,14 +80,9 @@ JNIEXPORT void JNICALL Java_org_tensorflow_Server_stop(JNIEnv* env,
 JNIEXPORT void JNICALL Java_org_tensorflow_Server_join(JNIEnv* env,
                                                        jclass clazz,
                                                        jlong handle) {
-  if (handle == 0) {
-    throwException(env, kIllegalStateException,
-                   "close() has been called on the Server");
-    return;
-  }
-
   TF_Status* status = TF_NewStatus();
-  TF_Server* server = reinterpret_cast<TF_Server*>(handle);
+  TF_Server* server = requireHandle(env, handle);
+  if (server == nullptr) return;
 
   TF_ServerJoin(server, status);
   throwExceptionIfNotOK(env, status);
@@ -93,13 +93,8 @@ JNIEXPORT void JNICALL Java_org_tensorflow_Server_join(JNIEnv* env,
 JNIEXPORT void JNICALL Java_org_tensorflow_Server_delete(JNIEnv* env,
                                                          jclass clazz,
                                                          jlong handle) {
-  if (handle == 0) {
-    throwException(env, kIllegalStateException,
-                   "close() has been called on the Server");
-    return;
-  }
-  
-  TF_Server* server = reinterpret_cast<TF_Server*>(handle);
+  TF_Server* server = requireHandle(env, handle);
+  if (server == nullptr) return;
 
   TF_DeleteServer(server);
 }

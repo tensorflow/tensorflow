@@ -25,6 +25,9 @@ import java.util.concurrent.locks.ReentrantReadWriteLock;
  * training. A server belongs to a cluster (specified by a
  * {@code ClusterSpec}), and corresponds to a particular task in a named job.
  * The server can communicate with any other server in the same cluster.
+ * The server will not serve any requests until {@link #start()} is invoked. 
+ * The server will stop serving requests once {@link #stop()} or {@link #close()} is invoked.
+ * Be aware that {@link #close()} method stops the server if it is running.
  *
  * <p><b>WARNING:</b> A {@code Server} owns resources that <b>must</b> be
  * explicitly freed by invoking {@link #close()}.
@@ -32,8 +35,7 @@ import java.util.concurrent.locks.ReentrantReadWriteLock;
  * <p>Instances of a {@code Server} are thread-safe.
  *
  * <p>Using example:
- * <pre>
- * {@code
+ * <pre>{@code
  * ClusterDef clusterDef = ClusterDef.newBuilder()
  *   .addJob(JobDef.newBuilder()
  *   .setName("worker")
@@ -52,8 +54,7 @@ import java.util.concurrent.locks.ReentrantReadWriteLock;
  *   srv.start();
  *   srv.join();
  * }
- * }
- * </pre>
+ * }</pre>
  */
 public final class Server implements AutoCloseable {
 
@@ -68,7 +69,7 @@ public final class Server implements AutoCloseable {
     nativeHandle = allocate(serverDef);
   }
 
-  /** Starts this server. */
+  /** Starts an in-process TensorFlow server. */
   public void start() {
     lock.readLock().lock();
     try {
@@ -79,7 +80,7 @@ public final class Server implements AutoCloseable {
     }
   }
 
-  /** Stops this server. */
+  /**  Stops an in-process TensorFlow server. */
   public void stop() {
     lock.readLock().lock();
     try {
@@ -90,7 +91,7 @@ public final class Server implements AutoCloseable {
     }
   }
 
-  /** Blocks until the server has shut down (currently blocks forever). */
+  /** Blocks until the server has been successfully stopped. */
   public void join() {
     lock.readLock().lock();
     try {
@@ -101,7 +102,7 @@ public final class Server implements AutoCloseable {
     }
   }
 
-  /** Stops server and frees resources. Server is expected to be stopped before. */
+  /** Destroy an in-process TensorFlow server, frees memory. */
   @Override
   public void close() {
     lock.writeLock().lock();

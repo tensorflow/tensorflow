@@ -1673,43 +1673,28 @@ TF_CAPI_EXPORT extern TF_Buffer* TF_GetRegisteredKernelsForOp(
 // In-process TensorFlow server.
 typedef struct TF_Server TF_Server;
 
-// Creates a new server. The returned TF_Server object can be started, stopped
-// and joined using correspondent commands. After using TF_Server object should
-// be deleted using the TF_DeleteServer command to free correspondent resources.
+// Creates a new in-process TensorFlow server configured using a serialized
+// ServerDef protocol buffer provided via `proto` and `proto_len`.
 //
-// Params:
-//  proto - Serialized ServerDef protocol buffer.
-//  proto_len - Length of the proto.
-//  status - Set to OK on success and an appropriate error on failure.
+// The server will not serve any requests until TF_ServerStart is invoked.
+// The server will stop serving requests once TF_ServerStop or
+// TF_DeleteServer is invoked.
 TF_CAPI_EXPORT extern TF_Server* TF_NewServer(const void* proto,
                                               size_t proto_len,
                                               TF_Status* status);
 
-// Starts a server.
-//
-// Params:
-//  server - TF_Server object to be started.
-//  status - Set to OK on success and an appropriate error on failure.
+// Starts an in-process TensorFlow server.
 TF_CAPI_EXPORT extern void TF_ServerStart(TF_Server* server, TF_Status* status);
 
-// Stops a server.
-//
-// Params:
-//  server - TF_Server object to be stopped.
-//  status - Set to OK on success and an appropriate error on failure.
+// Stops an in-process TensorFlow server.
 TF_CAPI_EXPORT extern void TF_ServerStop(TF_Server* server, TF_Status* status);
 
-// Blocks until the server has shut down (currently blocks forever).
-//
-// Params:
-//  server - TF_Server object to be joined.
-//  status - Set to OK on success and an appropriate error on failure.
+// Blocks until the server has been successfully stopped (via TF_ServerStop or
+// TF_ServerClose).
 TF_CAPI_EXPORT extern void TF_ServerJoin(TF_Server* server, TF_Status* status);
 
-// Destroy a server, frees memory. Server is expected to be stopped before.
-//
-// Params:
-//  server - TF_Server object to be deleted.
+// Destroy an in-process TensorFlow server, frees memory. If server is running
+// it will be stopped and joined.
 TF_CAPI_EXPORT extern void TF_DeleteServer(TF_Server* server);
 
 #ifdef __cplusplus
