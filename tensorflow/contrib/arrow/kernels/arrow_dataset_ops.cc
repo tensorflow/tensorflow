@@ -215,20 +215,21 @@ class ArrowDatasetBase : public DatasetBase {
       if (current_batch_ == nullptr) {
         ResetStreamsLocked();
         *end_of_sequence = true;
-      }
+      } else {
 
-      // Assign Tensors for each column in the current row
-      ArrowConvertTensor arrow_converter(current_row_idx_, ctx);
-      for (size_t i = 0; i < this->dataset()->columns_.size(); ++i) {
-        int32 col = this->dataset()->columns_[i];
-        DataType dt = this->dataset()->output_types_[i];
-        std::shared_ptr<arrow::Array> arr = current_batch_->column(col);
-        TF_RETURN_IF_ERROR(arrow_converter.AppendTensor(arr, dt, out_tensors));
-      }
+        // Assign Tensors for each column in the current row
+        ArrowConvertTensor arrow_converter(current_row_idx_, ctx);
+        for (size_t i = 0; i < this->dataset()->columns_.size(); ++i) {
+          int32 col = this->dataset()->columns_[i];
+          DataType dt = this->dataset()->output_types_[i];
+          std::shared_ptr<arrow::Array> arr = current_batch_->column(col);
+          TF_RETURN_IF_ERROR(arrow_converter.AppendTensor(arr, dt, out_tensors));
+        }
 
-      // Increment to next row
-      ++current_row_idx_;
-      *end_of_sequence = false;
+        // Increment to next row
+        ++current_row_idx_;
+        *end_of_sequence = false;
+      }
 
       return Status::OK();
     }
