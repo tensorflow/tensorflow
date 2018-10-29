@@ -129,11 +129,14 @@ class ConversionOptions(object):
                verbose=False,
                strip_decorators=None,
                force_conversion=False,
+               internal_convert_user_code=True,
                optional_features=Feature.ALL):
     self.recursive = recursive
     self.verbose = verbose
     self.strip_decorators = strip_decorators or ()
     self.force_conversion = force_conversion
+    # TODO(mdan): Rename to conversion_recursion_depth?
+    self.internal_convert_user_code = internal_convert_user_code
 
     if isinstance(optional_features, Feature):
       optional_features = (optional_features,)
@@ -144,7 +147,7 @@ class ConversionOptions(object):
     return (Feature.ALL in self.optional_features or
             feature in self.optional_features)
 
-  def to_ast(self, namespace):
+  def to_ast(self, namespace, internal_convert_user_code=None):
     """Returns a representation of this object as an AST node.
 
     The AST node encodes a constructor that would create an object with the
@@ -153,6 +156,8 @@ class ConversionOptions(object):
     Args:
       namespace: Dict[str, Any], the namespace to use when serializing values to
         names.
+      internal_convert_user_code: Optional[bool], allows ovrriding the
+        corresponding value.
 
     Returns:
       ast.Node
@@ -163,7 +168,8 @@ class ConversionOptions(object):
           verbose=verbose_val,
           strip_decorators=strip_decorators_val,
           force_conversion=force_conversion_val,
-          optional_features=optional_features_val)
+          optional_features=optional_features_val,
+          internal_convert_user_code=internal_convert_user_code_val)
     """
 
     def as_qualified_name(o):
@@ -183,6 +189,9 @@ class ConversionOptions(object):
           for v in Feature.__members__
           if v in values)))
 
+    if internal_convert_user_code is not None:
+      internal_convert_user_code = self.internal_convert_user_code
+
     expr_ast = templates.replace(
         template,
         constructor_name=parser.parse_expression(
@@ -192,6 +201,8 @@ class ConversionOptions(object):
         strip_decorators_val=list_of_names(self.strip_decorators),
         force_conversion_val=parser.parse_expression(
             str(self.force_conversion)),
+        internal_convert_user_code_val=parser.parse_expression(
+            str(internal_convert_user_code)),
         optional_features_val=list_of_features(self.optional_features))
     return expr_ast[0].value
 
