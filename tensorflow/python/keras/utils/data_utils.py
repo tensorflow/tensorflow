@@ -533,8 +533,8 @@ class DelegateEnqueuer(object):
 
     self._instance = instance
 
-  def start(self, *args):
-    self._instance.start(*args)
+  def start(self, workers=1, max_queue_size=10):
+    self._instance.start(workers=workers, max_queue_size=max_queue_size)
 
   def is_running(self):
     return self._instance.is_running()
@@ -560,12 +560,11 @@ class GeneratorEnqueuer(DelegateEnqueuer):
       wait_time: time to sleep waiting for workers to generate data or exit
   """
 
-  def __init__(self, *args, **kwargs):
-    use_mp = kwargs.pop('use_multiprocessing')
-    if use_mp:
-      instance = MultiProcGeneratorEnqueuer(*args, **kwargs)
+  def __init__(self, generator, use_multiprocessing=False, wait_time=0.05):
+    if use_multiprocessing:
+      instance = MultiProcGeneratorEnqueuer(generator, wait_time=wait_time)
     else:
-      instance = ThreadedGeneratorEnqueuer(*args, **kwargs)
+      instance = ThreadedGeneratorEnqueuer(generator, wait_time=wait_time)
 
     super(GeneratorEnqueuer, self).__init__(instance)
 
@@ -582,12 +581,23 @@ class OrderedEnqueuer(DelegateEnqueuer):
       shuffle: whether to shuffle the data at the beginning of each epoch
   """
 
-  def __init__(self, *args, **kwargs):
-    use_mp = kwargs.pop('use_multiprocessing')
-    if use_mp:
-      instance = MultiProcOrderedEnqueuer(*args, **kwargs)
+  def __init__(
+      self,
+      sequence,
+      use_multiprocessing=False,
+      wait_time=0.05,
+      shuffle=False):
+
+    if use_multiprocessing:
+      instance = MultiProcOrderedEnqueuer(
+          sequence,
+          wait_time=wait_time,
+          shuffle=shuffle)
     else:
-      instance = ThreadedOrderedEnqueuer(*args, **kwargs)
+      instance = ThreadedOrderedEnqueuer(
+          sequence,
+          wait_time=wait_time,
+          shuffle=shuffle)
 
     super(OrderedEnqueuer, self).__init__(instance)
 
@@ -902,7 +912,7 @@ class MultiProcOrderedEnqueuer(MultiProcEnqueuer):
       wait_time: time to sleep waiting for workers to generate data or exit
   """
 
-  def __init__(self, sequence, shuffle=False, wait_time=0.05):
+  def __init__(self, sequence, wait_time=0.05, shuffle=False):
     self._sequence = sequence
     self._shuffle = shuffle
 
@@ -964,7 +974,7 @@ class ThreadedOrderedEnqueuer(ThreadedEnqueuer):
       sequence: A `tf.keras.utils.data_utils.Sequence` object.
       wait_time: time to sleep waiting for workers to generate data or exit
   """
-  def __init__(self, sequence, shuffle=False, wait_time=0.05):
+  def __init__(self, sequence, wait_time=0.05, shuffle=False):
     self._sequence = sequence
     self._shuffle = shuffle
 
