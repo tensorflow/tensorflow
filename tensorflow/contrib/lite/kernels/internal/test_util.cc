@@ -35,6 +35,11 @@ bool ComputeConvSizes(const RuntimeShape& input_shape, int output_depth,
   int output_height = 0;
   int output_width = 0;
   if (padding_type == PaddingType::kValid) {
+    // Official TF is
+    // ceil((input_height - (dilated_filter_height - 1)) / stride),
+    // implemented as
+    // floor(
+    //   (input_height - (dilated_filter_height - 1) + (stride - 1)) / stride).
     output_height = (input_height + stride - dilated_filter_height) / stride;
     output_width = (input_width + stride - dilated_filter_width) / stride;
   } else if (padding_type == PaddingType::kSame) {
