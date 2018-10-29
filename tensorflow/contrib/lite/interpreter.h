@@ -234,14 +234,16 @@ class Interpreter {
   // TODO(aselle): Create a safe ArrayHandle interface to avoid exposing this
   // read/write access to structure
   TfLiteTensor* tensor(int tensor_index) {
-    if (tensor_index >= context_.tensors_size || tensor_index < 0)
+    if (tensor_index < 0 ||
+        static_cast<size_t>(tensor_index) >= context_.tensors_size)
       return nullptr;
     return &context_.tensors[tensor_index];
   }
 
   // Get an immutable tensor data structure.
   const TfLiteTensor* tensor(int tensor_index) const {
-    if (tensor_index >= context_.tensors_size || tensor_index < 0)
+    if (tensor_index < 0 ||
+        static_cast<size_t>(tensor_index) >= context_.tensors_size)
       return nullptr;
     return &context_.tensors[tensor_index];
   }
@@ -249,7 +251,8 @@ class Interpreter {
   // Get a pointer to an operation and registration data structure if in bounds.
   const std::pair<TfLiteNode, TfLiteRegistration>* node_and_registration(
       int node_index) const {
-    if (node_index >= nodes_and_registration_.size() || node_index < 0)
+    if (node_index < 0 ||
+        static_cast<size_t>(node_index) >= nodes_and_registration_.size())
       return nullptr;
     return &nodes_and_registration_[node_index];
   }
@@ -364,19 +367,16 @@ class Interpreter {
   // it might require to copy the data from delegate buffer to raw memory.
   // WARNING: This is an experimental API and subject to change.
   TfLiteStatus EnsureTensorDataIsReadable(int tensor_index) {
-    TF_LITE_ENSURE(&context_, tensor_index < tensors_size());
-    TfLiteTensor* tensor = &tensors_[tensor_index];
-    if (tensor->data_is_stale) {
-      TF_LITE_ENSURE(&context_, tensor->delegate != nullptr);
-      TF_LITE_ENSURE(&context_,
-                     tensor->buffer_handle != kTfLiteNullBufferHandle);
+    TfLiteTensor* t = tensor(tensor_index);
+    TF_LITE_ENSURE(&context_, t != nullptr);
+    if (t->data_is_stale) {
+      TF_LITE_ENSURE(&context_, t->delegate != nullptr);
+      TF_LITE_ENSURE(&context_, t->buffer_handle != kTfLiteNullBufferHandle);
       // This can be null if the delegate doesn't use its own buffer.
-      TF_LITE_ENSURE(&context_,
-                     tensor->delegate->CopyFromBufferHandle != nullptr);
-      tensor->delegate->CopyFromBufferHandle(&context_, tensor->delegate,
-                                             tensor->buffer_handle,
-                                             tensor->data.raw, tensor->bytes);
-      tensor->data_is_stale = false;
+      TF_LITE_ENSURE(&context_, t->delegate->CopyFromBufferHandle != nullptr);
+      t->delegate->CopyFromBufferHandle(
+          &context_, t->delegate, t->buffer_handle, t->data.raw, t->bytes);
+      t->data_is_stale = false;
     }
     return kTfLiteOk;
   }
