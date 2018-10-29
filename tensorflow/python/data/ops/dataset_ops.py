@@ -2150,14 +2150,27 @@ class ConcatenateDataset(Dataset):
     super(ConcatenateDataset, self).__init__()
     self._input_dataset = input_dataset
     self._dataset_to_concatenate = dataset_to_concatenate
-    if input_dataset.output_types != dataset_to_concatenate.output_types:
+
+    self._output_types = input_dataset.output_types
+    if self._output_types != dataset_to_concatenate.output_types:
       raise TypeError(
           "Two datasets to concatenate have different types %s and %s" %
-          (input_dataset.output_types, dataset_to_concatenate.output_types))
-    if input_dataset.output_classes != dataset_to_concatenate.output_classes:
+          (self._output_types, dataset_to_concatenate.output_types))
+
+    self._output_classes = input_dataset.output_classes
+    if self._output_classes != dataset_to_concatenate.output_classes:
       raise TypeError(
           "Two datasets to concatenate have different classes %s and %s" %
-          (input_dataset.output_classes, dataset_to_concatenate.output_classes))
+          (self._output_classes, dataset_to_concatenate.output_classes))
+
+    input_shapes = self._input_dataset.output_shapes
+    self._output_shapes = nest.pack_sequence_as(input_shapes, [
+        ts1.most_specific_compatible_shape(ts2)
+        for (ts1, ts2) in zip(
+            nest.flatten(input_shapes),
+            nest.flatten(self._dataset_to_concatenate.output_shapes))
+    ])
+
     self._input_datasets = [input_dataset, dataset_to_concatenate]
 
   def _as_variant_tensor(self):
@@ -2173,20 +2186,15 @@ class ConcatenateDataset(Dataset):
 
   @property
   def output_classes(self):
-    return self._input_dataset.output_classes
+    return self._output_classes
 
   @property
   def output_shapes(self):
-    return nest.pack_sequence_as(self._input_dataset.output_shapes, [
-        ts1.most_specific_compatible_shape(ts2)
-        for (ts1, ts2) in zip(
-            nest.flatten(self._input_dataset.output_shapes),
-            nest.flatten(self._dataset_to_concatenate.output_shapes))
-    ])
+    return self._output_shapes
 
   @property
   def output_types(self):
-    return self._input_dataset.output_types
+    return self._output_types
 
 
 class RepeatDataset(UnaryDataset):
