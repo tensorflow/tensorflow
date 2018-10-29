@@ -295,33 +295,6 @@ tf_xla_py_test(
 )
 
 tf_xla_py_test(
-    name = "oom_test",
-    size = "medium",
-    srcs = ["oom_test.py"],
-    # TODO(b/80081500): Re-enable on GPU. Disabled on 2018-05-21.
-    disabled_backends = [
-        "cpu",
-        "cpu_ondemand",
-        "gpu",
-    ],
-    tags = [
-        # Allocates very large amounts of memory and does not work under TSAN.
-        "notsan",
-        "optonly",  # Times out frequently in fastbuild.
-    ],
-    deps = [
-        ":xla_test",
-        "//tensorflow/python:array_ops",
-        "//tensorflow/python:array_ops_gen",
-        "//tensorflow/python:framework",
-        "//tensorflow/python:gradient_checker",
-        "//tensorflow/python:gradients",
-        "//tensorflow/python:math_ops",
-        "//tensorflow/python:platform_test",
-    ],
-)
-
-tf_xla_py_test(
     name = "conv2d_test",
     size = "medium",
     srcs = ["conv2d_test.py"],
