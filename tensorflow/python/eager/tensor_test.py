@@ -277,6 +277,8 @@ class TFETensorTest(test_util.TensorFlowTestCase):
         self.evaluate(constant_op.constant(5, dtype=dtypes.float32)), 5.0)
     self.assertEqual(
         self.evaluate(constant_op.constant(5, dtype=dtypes.float64)), 5.0)
+    self.assertEqual(
+        self.evaluate(constant_op.constant(5, dtype=dtypes.bfloat16)), 5.0)
 
     # Ints and floats are compatible with complex types
     self.assertEqual(
