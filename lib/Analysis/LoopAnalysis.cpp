@@ -157,7 +157,7 @@ static bool isAccessInvariant(MLValue *input, MemRefType *memRefType,
 template <typename LoadOrStoreOpPointer>
 static bool isContiguousAccess(MLValue *input, LoadOrStoreOpPointer memoryOp) {
   auto indicesAsOperandIterators = memoryOp->getIndices();
-  auto *memRefType = cast<MemRefType>(memoryOp->getMemRef()->getType());
+  auto *memRefType = memoryOp->getMemRefType();
   SmallVector<MLValue *, 4> indices;
   for (auto *it : indicesAsOperandIterators) {
     indices.push_back(cast<MLValue>(it));

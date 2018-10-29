@@ -460,6 +460,9 @@ public:
   SSAValue *getMemRef() { return getOperand(0); }
   const SSAValue *getMemRef() const { return getOperand(0); }
   void setMemRef(SSAValue *value) { setOperand(0, value); }
+  MemRefType *getMemRefType() const {
+    return cast<MemRefType>(getMemRef()->getType());
+  }
 
   llvm::iterator_range<Operation::operand_iterator> getIndices() {
     return {getOperation()->operand_begin() + 1, getOperation()->operand_end()};
@@ -580,6 +583,9 @@ public:
   SSAValue *getMemRef() { return getOperand(1); }
   const SSAValue *getMemRef() const { return getOperand(1); }
   void setMemRef(SSAValue *value) { setOperand(1, value); }
+  MemRefType *getMemRefType() const {
+    return cast<MemRefType>(getMemRef()->getType());
+  }
 
   llvm::iterator_range<Operation::operand_iterator> getIndices() {
     return {getOperation()->operand_begin() + 2, getOperation()->operand_end()};

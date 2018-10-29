@@ -753,7 +753,7 @@ void LoadOp::print(OpAsmPrinter *p) const {
   p->printOperands(getIndices());
   *p << ']';
   p->printOptionalAttrDict(getAttrs());
-  *p << " : " << *getMemRef()->getType();
+  *p << " : " << *getMemRefType();
 }
 
 bool LoadOp::parse(OpAsmParser *parser, OperationState *result) {
@@ -928,7 +928,7 @@ void StoreOp::print(OpAsmPrinter *p) const {
   p->printOperands(getIndices());
   *p << ']';
   p->printOptionalAttrDict(getAttrs());
-  *p << " : " << *getMemRef()->getType();
+  *p << " : " << *getMemRefType();
 }
 
 bool StoreOp::parse(OpAsmParser *parser, OperationState *result) {
