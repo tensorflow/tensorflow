@@ -707,7 +707,7 @@ class AsyncReaderTest(test.TestCase):
     """Tests that reading does not block main execution threads."""
     config = config_pb2.ConfigProto(
         inter_op_parallelism_threads=1, intra_op_parallelism_threads=1)
-    with self.test_session(config=config) as sess:
+    with self.session(config=config) as sess:
       thread_data_t = collections.namedtuple("thread_data_t",
                                              ["thread", "queue", "output"])
       thread_data = []

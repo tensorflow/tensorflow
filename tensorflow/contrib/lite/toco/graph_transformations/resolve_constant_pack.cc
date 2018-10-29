@@ -49,39 +49,34 @@ void Pack(Model* model, PackOperator const& op) {
 
 }  // namespace
 
-bool ResolveConstantPack::Run(Model* model, std::size_t op_index) {
+::tensorflow::Status ResolveConstantPack::Run(Model* model,
+                                              std::size_t op_index,
+                                              bool* modified) {
+  *modified = false;
   auto it = model->operators.begin() + op_index;
   const auto* base_op = it->get();
   if (base_op->type != OperatorType::kPack) {
-    return false;
+    return ::tensorflow::Status::OK();
   }
   const auto* op = static_cast<const PackOperator*>(base_op);
 
   CHECK_GE(op->inputs.size(), 1);
   CHECK_EQ(op->outputs.size(), 1);
-
-  // If the output of this op is a non-discardable array such as an input_array
-  // or a state array of the model, then this is a job for RemoveUnusedOp, not
-  // for constants-propagation.
-  if (!IsDiscardableArray(*model, op->outputs[0])) {
-    return false;
-  }
-
   auto& output_array = model->GetArray(op->outputs[0]);
   if (output_array.data_type == ArrayDataType::kNone) {
     // Yield until the output type has been set by PropagateArrayDataTypes
-    return false;
+    return ::tensorflow::Status::OK();
   }
 
   if (!output_array.has_shape()) {
     // Yield until the output shape has been set by PropagateFixedShapes
-    return false;
+    return ::tensorflow::Status::OK();
   }
 
   for (const auto& input : op->inputs) {
     if (!IsConstantParameterArray(*model, input)) {
       // Yield if any input is mutable
-      return false;
+      return ::tensorflow::Status::OK();
     }
   }
 
@@ -106,6 +101,9 @@ bool ResolveConstantPack::Run(Model* model, std::size_t op_index) {
     case ArrayDataType::kInt64:
       Pack<ArrayDataType::kInt64>(model, *op);
       break;
+    case ArrayDataType::kComplex64:
+      Pack<ArrayDataType::kComplex64>(model, *op);
+      break;
     default:
       LOG(FATAL) << "Unsupported data type given to Pack op with output \""
                  << op->outputs[0] << "\"";
@@ -119,7 +117,8 @@ bool ResolveConstantPack::Run(Model* model, std::size_t op_index) {
 
   // Erase the operator
   model->operators.erase(it);
-  return true;
+  *modified = true;
+  return ::tensorflow::Status::OK();
 }
 
 }  // namespace toco

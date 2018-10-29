@@ -43,9 +43,11 @@ constexpr int kOutputTensorNumDetections = 3;
 constexpr int kNumCoordBox = 4;
 constexpr int kBatchSize = 1;
 
+constexpr int kNumDetectionsPerClass = 100;
+
 // Object Detection model produces axis-aligned boxes in two formats:
-// BoxCorner represents the upper right (xmin, ymin) and
-// lower left corner (xmax, ymax).
+// BoxCorner represents the lower left corner (xmin, ymin) and
+// the upper right corner (xmax, ymax).
 // CenterSize represents the center (xcenter, ycenter), height and width.
 // BoxCornerEncoding and CenterSizeEncoding are related as follows:
 // ycenter = y / y_scale * anchor.h + anchor.y;
@@ -77,10 +79,12 @@ static_assert(sizeof(CenterSizeEncoding) == sizeof(float) * kNumCoordBox,
 
 struct OpData {
   int max_detections;
-  int max_classes_per_detection;
+  int max_classes_per_detection;  // Fast Non-Max-Suppression
+  int detections_per_class;       // Regular Non-Max-Suppression
   float non_max_suppression_score_threshold;
   float intersection_over_union_threshold;
   int num_classes;
+  bool use_regular_non_max_suppression;
   CenterSizeEncoding scale_values;
   // Indices of Temporary tensors
   int decoded_boxes_index;
@@ -94,6 +98,15 @@ void* Init(TfLiteContext* context, const char* buffer, size_t length) {
   const flexbuffers::Map& m = flexbuffers::GetRoot(buffer_t, length).AsMap();
   op_data->max_detections = m["max_detections"].AsInt32();
   op_data->max_classes_per_detection = m["max_classes_per_detection"].AsInt32();
+  if (m["detections_per_class"].IsNull())
+    op_data->detections_per_class = kNumDetectionsPerClass;
+  else
+    op_data->detections_per_class = m["detections_per_class"].AsInt32();
+  if (m["use_regular_nms"].IsNull())
+    op_data->use_regular_non_max_suppression = false;
+  else
+    op_data->use_regular_non_max_suppression = m["use_regular_nms"].AsBool();
+
   op_data->non_max_suppression_score_threshold =
       m["nms_score_threshold"].AsFloat();
   op_data->intersection_over_union_threshold = m["nms_iou_threshold"].AsFloat();
@@ -350,19 +363,21 @@ float ComputeIntersectionOverUnion(const TfLiteTensor* decoded_boxes,
   return intersection_area / (area_i + area_j - intersection_area);
 }
 
-// NonMaxSuppressionSingleClass() is O(n^2) pairwise comparison between boxes
+// NonMaxSuppressionSingleClass() prunes out the box locations with high overlap
+// before selecting the highest scoring boxes (max_detections in number)
 // It assumes all boxes are good in beginning and sorts based on the scores.
 // If lower-scoring box has too much overlap with a higher-scoring box,
 // we get rid of the lower-scoring box.
+// Complexity is O(N^2) pairwise comparison between boxes
 TfLiteStatus NonMaxSuppressionSingleClassHelper(
     TfLiteContext* context, TfLiteNode* node, OpData* op_data,
-    const std::vector<float>& scores, std::vector<int>* selected) {
+    const std::vector<float>& scores, std::vector<int>* selected,
+    int max_detections) {
   const TfLiteTensor* input_box_encodings =
       GetInput(context, node, kInputTensorBoxEncodings);
   const TfLiteTensor* decoded_boxes =
       &context->tensors[op_data->decoded_boxes_index];
   const int num_boxes = input_box_encodings->dims->data[1];
-  const int max_detections = op_data->max_detections;
   const float non_max_suppression_score_threshold =
       op_data->non_max_suppression_score_threshold;
   const float intersection_over_union_threshold =
@@ -389,7 +404,6 @@ TfLiteStatus NonMaxSuppressionSingleClassHelper(
   sorted_indices.resize(num_scores_kept);
   DecreasingPartialArgSort(keep_scores.data(), num_scores_kept, num_scores_kept,
                            sorted_indices.data());
-
   const int num_boxes_kept = num_scores_kept;
   const int output_size = std::min(num_boxes_kept, max_detections);
   selected->clear();
@@ -424,6 +438,130 @@ TfLiteStatus NonMaxSuppressionSingleClassHelper(
       }
     }
   }
+  return kTfLiteOk;
+}
+
+// This function implements a regular version of Non Maximal Suppression (NMS)
+// for multiple classes where
+// 1) we do NMS separately for each class across all anchors and
+// 2) keep only the highest anchor scores across all classes
+// 3) The worst runtime of the regular NMS is O(K*N^2)
+// where N is the number of anchors and K the number of
+// classes.
+TfLiteStatus NonMaxSuppressionMultiClassRegularHelper(TfLiteContext* context,
+                                                      TfLiteNode* node,
+                                                      OpData* op_data,
+                                                      const float* scores) {
+  const TfLiteTensor* input_box_encodings =
+      GetInput(context, node, kInputTensorBoxEncodings);
+  const TfLiteTensor* decoded_boxes =
+      &context->tensors[op_data->decoded_boxes_index];
+
+  TfLiteTensor* detection_boxes =
+      GetOutput(context, node, kOutputTensorDetectionBoxes);
+  TfLiteTensor* detection_classes =
+      GetOutput(context, node, kOutputTensorDetectionClasses);
+  TfLiteTensor* detection_scores =
+      GetOutput(context, node, kOutputTensorDetectionScores);
+  TfLiteTensor* num_detections =
+      GetOutput(context, node, kOutputTensorNumDetections);
+
+  const int num_boxes = input_box_encodings->dims->data[1];
+  const int num_classes = op_data->num_classes;
+  const int num_detections_per_class = op_data->detections_per_class;
+  const int max_detections = op_data->max_detections;
+  // The row index offset is 1 if background class is included and 0 otherwise.
+  const int label_offset = 1;
+  TF_LITE_ENSURE(context, label_offset != -1);
+  TF_LITE_ENSURE(context, num_detections_per_class > 0);
+  const int num_classes_with_background = num_classes + label_offset;
+
+  // For each class, perform non-max suppression.
+  std::vector<float> class_scores(num_boxes);
+
+  std::vector<int> box_indices_after_regular_non_max_suppression(
+      num_boxes + max_detections);
+  std::vector<float> scores_after_regular_non_max_suppression(num_boxes +
+                                                              max_detections);
+
+  int size_of_sorted_indices = 0;
+  std::vector<int> sorted_indices;
+  sorted_indices.resize(max_detections);
+  std::vector<float> sorted_values;
+  sorted_values.resize(max_detections);
+
+  for (int col = 0; col < num_classes; col++) {
+    for (int row = 0; row < num_boxes; row++) {
+      // Get scores of boxes corresponding to all anchors for single class
+      class_scores[row] =
+          *(scores + row * num_classes_with_background + col + label_offset);
+    }
+    // Perform non-maximal suppression on single class
+    std::vector<int> selected;
+    NonMaxSuppressionSingleClassHelper(context, node, op_data, class_scores,
+                                       &selected, num_detections_per_class);
+    // Add selected indices from non-max suppression of boxes in this class
+    int output_index = size_of_sorted_indices;
+    for (int selected_index : selected) {
+      box_indices_after_regular_non_max_suppression[output_index] =
+          (selected_index * num_classes_with_background + col + label_offset);
+      scores_after_regular_non_max_suppression[output_index] =
+          class_scores[selected_index];
+      output_index++;
+    }
+    // Sort the max scores among the selected indices
+    // Get the indices for top scores
+    int num_indices_to_sort = std::min(output_index, max_detections);
+    DecreasingPartialArgSort(scores_after_regular_non_max_suppression.data(),
+                             output_index, num_indices_to_sort,
+                             sorted_indices.data());
+
+    // Copy values to temporary vectors
+    for (int row = 0; row < num_indices_to_sort; row++) {
+      int temp = sorted_indices[row];
+      sorted_indices[row] = box_indices_after_regular_non_max_suppression[temp];
+      sorted_values[row] = scores_after_regular_non_max_suppression[temp];
+    }
+    // Copy scores and indices from temporary vectors
+    for (int row = 0; row < num_indices_to_sort; row++) {
+      box_indices_after_regular_non_max_suppression[row] = sorted_indices[row];
+      scores_after_regular_non_max_suppression[row] = sorted_values[row];
+    }
+    size_of_sorted_indices = num_indices_to_sort;
+  }
+
+  // Allocate output tensors
+  for (int output_box_index = 0; output_box_index < max_detections;
+       output_box_index++) {
+    if (output_box_index < size_of_sorted_indices) {
+      const int anchor_index = floor(
+          box_indices_after_regular_non_max_suppression[output_box_index] /
+          num_classes_with_background);
+      const int class_index =
+          box_indices_after_regular_non_max_suppression[output_box_index] -
+          anchor_index * num_classes_with_background - label_offset;
+      const float selected_score =
+          scores_after_regular_non_max_suppression[output_box_index];
+      // detection_boxes
+      ReInterpretTensor<BoxCornerEncoding*>(detection_boxes)[output_box_index] =
+          ReInterpretTensor<const BoxCornerEncoding*>(
+              decoded_boxes)[anchor_index];
+      // detection_classes
+      detection_classes->data.f[output_box_index] = class_index;
+      // detection_scores
+      detection_scores->data.f[output_box_index] = selected_score;
+    } else {
+      ReInterpretTensor<BoxCornerEncoding*>(
+          detection_boxes)[output_box_index] = {0.0f, 0.0f, 0.0f, 0.0f};
+      // detection_classes
+      detection_classes->data.f[output_box_index] = 0.0f;
+      // detection_scores
+      detection_scores->data.f[output_box_index] = 0.0f;
+    }
+  }
+  num_detections->data.f[0] = size_of_sorted_indices;
+  box_indices_after_regular_non_max_suppression.clear();
+  scores_after_regular_non_max_suppression.clear();
   return kTfLiteOk;
 }
 
@@ -477,7 +615,7 @@ TfLiteStatus NonMaxSuppressionMultiClassFastHelper(TfLiteContext* context,
   // Perform non-maximal suppression on max scores
   std::vector<int> selected;
   NonMaxSuppressionSingleClassHelper(context, node, op_data, max_scores,
-                                     &selected);
+                                     &selected, op_data->max_detections);
   // Allocate output tensors
   int output_box_index = 0;
   for (const auto& selected_index : selected) {
@@ -549,8 +687,13 @@ TfLiteStatus NonMaxSuppressionMultiClass(TfLiteContext* context,
       // Unsupported type.
       return kTfLiteError;
   }
-  NonMaxSuppressionMultiClassFastHelper(context, node, op_data,
-                                        GetTensorData<float>(scores));
+  if (op_data->use_regular_non_max_suppression)
+    NonMaxSuppressionMultiClassRegularHelper(context, node, op_data,
+                                             GetTensorData<float>(scores));
+  else
+    NonMaxSuppressionMultiClassFastHelper(context, node, op_data,
+                                          GetTensorData<float>(scores));
+
   return kTfLiteOk;
 }
 

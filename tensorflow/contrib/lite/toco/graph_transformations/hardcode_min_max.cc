@@ -372,7 +372,9 @@ bool HardcodeMinMaxForLstmCell(Model* model, Operator* op) {
 }
 }  // namespace
 
-bool HardcodeMinMax::Run(Model* model, std::size_t op_index) {
+::tensorflow::Status HardcodeMinMax::Run(Model* model, std::size_t op_index,
+                                         bool* modified) {
+  *modified = false;
   auto it = model->operators.begin() + op_index;
   auto* op = it->get();
   bool changed = false;
@@ -409,6 +411,7 @@ bool HardcodeMinMax::Run(Model* model, std::size_t op_index) {
       break;
 
     case OperatorType::kResizeBilinear:
+    case OperatorType::kResizeNearestNeighbor:
     case OperatorType::kSlice:
     case OperatorType::kStridedSlice:
     case OperatorType::kSqueeze:
@@ -467,7 +470,8 @@ bool HardcodeMinMax::Run(Model* model, std::size_t op_index) {
   if (changed) {
     AddMessageF("Hardcoded min-max through %s", LogName(*op));
   }
-  return changed;
+  *modified = changed;
+  return ::tensorflow::Status::OK();
 }
 
 }  // namespace toco

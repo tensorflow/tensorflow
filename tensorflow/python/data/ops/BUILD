@@ -90,13 +90,17 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         ":dataset_ops",
+        ":iterator_ops",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:dataset_ops_gen",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:functional_ops",
+        "//tensorflow/python:tensor_spec",
         "//tensorflow/python/data/util:nest",
         "//tensorflow/python/data/util:sparse",
+        "//tensorflow/python/eager:context",
+        "//tensorflow/python/eager:function",
     ],
 )

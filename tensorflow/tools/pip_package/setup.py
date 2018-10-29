@@ -45,7 +45,7 @@ DOCLINES = __doc__.split('\n')
 # This version string is semver compatible, but incompatible with pip.
 # For pip, we will remove all '-' characters from this string, and use the
 # result for pip.
-_VERSION = '1.11.0-rc1'
+_VERSION = '1.12.0-rc0'
 
 REQUIRED_PACKAGES = [
     'absl-py >= 0.1.6',
@@ -56,7 +56,8 @@ REQUIRED_PACKAGES = [
     'numpy >= 1.13.3',
     'six >= 1.10.0',
     'protobuf >= 3.6.1',
-    'tensorboard >= 1.11.0, < 1.12.0',
+    'tensorboard >= 1.12.0, < 1.13.0',
+    'tensorflow_estimator >= 1.10.0',
     'termcolor >= 1.1.0',
 ]
 
@@ -85,7 +86,7 @@ else:
 if 'tf_nightly' in project_name:
   for i, pkg in enumerate(REQUIRED_PACKAGES):
     if 'tensorboard' in pkg:
-      REQUIRED_PACKAGES[i] = 'tb-nightly >= 1.12.0a0, < 1.13.0a0'
+      REQUIRED_PACKAGES[i] = 'tb-nightly >= 1.13.0a0, < 1.14.0a0'
       break
 
 # weakref.finalize and enum were introduced in Python 3.4
@@ -226,13 +227,14 @@ if os.name == 'nt':
 else:
   EXTENSION_NAME = 'python/_pywrap_tensorflow_internal.so'
 
-headers = (list(find_files('*.h', 'tensorflow/core')) +
-           list(find_files('*.h', 'tensorflow/stream_executor')) +
-           list(find_files('*.h', 'google/protobuf_archive/src')) +
-           list(find_files('*', 'third_party/eigen3')) +
-           list(find_files('*.h',
-                           'tensorflow/include/external/com_google_absl')) +
-           list(find_files('*', 'tensorflow/include/external/eigen_archive')))
+headers = (
+    list(find_files('*.h', 'tensorflow/core')) + list(
+        find_files('*.h', 'tensorflow/stream_executor')) +
+    list(find_files('*.h', 'google/protobuf_archive/src')) + list(
+        find_files('*', 'third_party/eigen3')) + list(
+            find_files('*.h', 'tensorflow/include/external/com_google_absl')) +
+    list(find_files('*.inc', 'tensorflow/include/external/com_google_absl')) +
+    list(find_files('*', 'tensorflow/include/external/eigen_archive')))
 
 setup(
     name=project_name,

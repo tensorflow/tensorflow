@@ -239,7 +239,7 @@ BufferAllocation::Slice BufferAllocation::GetSlice(
 
 void BufferAllocation::AddAssignment(const LogicalBuffer& buffer, int64 offset,
                                      int64 size) {
-  VLOG(4) << "Trying to add " << buffer << " to " << this;
+  VLOG(4) << "Trying to add " << buffer << " to allocation #" << index();
   CHECK(assigned_buffers_.count(&buffer) == 0)
       << "LogicalBuffer " << buffer << " already assigned to allocation "
       << index_;
@@ -378,6 +378,20 @@ const BufferAllocation& BufferAssignment::GetAllocation(
   return allocations_[index];
 }
 
+const BufferAllocation* BufferAssignment::GetInstructionAllocation(
+    const HloInstruction* hlo, const ShapeIndex& shape_index) const {
+  const PointsToSet& points_to_set = points_to_analysis().GetPointsToSet(hlo);
+  const LogicalBuffer* buffer = points_to_set.element(shape_index)[0];
+
+  if (!HasAllocation(*buffer)) {
+    return nullptr;
+  }
+
+  const BufferAllocation& instruction_allocation =
+      GetAssignedAllocation(*buffer);
+  return &instruction_allocation;
+}
+
 BufferAllocation* BufferAssignment::GetMutableAllocation(
     BufferAllocation::Index index) {
   return const_cast<BufferAllocation*>(&GetAllocation(index));
@@ -514,6 +528,9 @@ void BufferAssignment::AddAssignment(BufferAllocation* allocation,
   TF_CHECK_OK(points_to_analysis().VerifyBuffer(buffer));
 
   allocation->AddAssignment(buffer, offset, size);
+  if (liveness().MaybeLiveOut(buffer)) {
+    allocation->set_maybe_live_out(true);
+  }
   allocation_index_for_buffer_[&buffer] = allocation->index();
 }
 
@@ -728,13 +745,89 @@ StatusOr<std::unique_ptr<BufferAssignment>> BufferAssigner::Run(
     LogicalBuffer::SizeFunction buffer_size,
     LogicalBuffer::AlignmentFunction color_alignment,
     bool allow_input_output_aliasing, bool allocate_buffers_for_constants,
-    BufferLiveness::Colorer colorer) {
+    BufferLiveness::Colorer colorer, ReuseAllocationFunction reuse_checker) {
   BufferAssigner assigner(allow_input_output_aliasing,
-                          allocate_buffers_for_constants, std::move(colorer));
+                          allocate_buffers_for_constants, std::move(colorer),
+                          std::move(reuse_checker));
   return assigner.CreateAssignment(module, std::move(hlo_ordering),
                                    std::move(buffer_size),
                                    std::move(color_alignment));
 }
+
+namespace {
+
+// a and b are in different subcomputations. Check for the case
+// where a is inside the while body, and b is outside, part of the same while's
+// init-operand or while-result.
+bool MayInterfereAcrossSubcomputations(BufferAssignment* assignment,
+                                       const LogicalBuffer& a_buffer,
+                                       const LogicalBuffer& b_buffer) {
+  auto call_graph = assignment->liveness().hlo_ordering().call_graph();
+  const HloInstruction* a_ancestor;
+  const HloInstruction* b_ancestor;
+  std::tie(a_ancestor, b_ancestor) =
+      call_graph.NearestAncestorsInSameComputation(a_buffer.instruction(),
+                                                   b_buffer.instruction());
+  if (a_ancestor == nullptr) {
+    // No common ancestor.
+    return true;
+  }
+  if (a_ancestor->opcode() == HloOpcode::kWhile &&
+      call_graph.InstructionIsNestedIn(a_buffer.instruction(),
+                                       a_ancestor->while_body())) {
+    const PointsToSet& init_set =
+        assignment->liveness().points_to_analysis().GetPointsToSet(
+            a_ancestor->operand(0));
+    if (init_set.ContainsBuffer(b_buffer)) {
+      VLOG(4) << "Can't interfere: " << a_buffer << " and " << b_buffer
+              << " (part of while-operand)";
+      return false;
+    }
+    const PointsToSet& while_set =
+        assignment->liveness().points_to_analysis().GetPointsToSet(a_ancestor);
+    if (while_set.ContainsBuffer(b_buffer)) {
+      VLOG(4) << "Can't interfere: " << a_buffer << " and " << b_buffer
+              << " (part of while)";
+      return false;
+    }
+  }
+  return true;
+}
+
+// Return true, if a and b can't possibly interfere (and therefore further
+// checking for interference can be skipped). This function checks for special
+// cases where copy insertion guarantees no interference, but the regular buffer
+// liveness is too conservative:
+//
+// Operations inside a while-body can't interfere with operations outside the
+// while op if their last use is at the while-loop itself as part of the
+// while-init op, or the while-result.  For ops that are live across a
+// while-loop, copy insertion will already insert the necessary copies to avoid
+// such interference.
+//
+// This allows sharing buffers in cases like this:
+// init = {...}
+// while (init):
+//  p = param(0)
+//  gte = get-tuple-element(p), index=i
+//  t1 = op1 (gte)
+//  t2 = op2 (t1)
+//  ROOT tuple = {..., t2, ...}
+//
+// where t1 and t2 can share the same buffer.
+bool MaySkipInterferenceCheck(BufferAssignment* assignment,
+                              const LogicalBuffer& a_buffer,
+                              const LogicalBuffer& b_buffer) {
+  if (a_buffer.instruction()->parent() == b_buffer.instruction()->parent()) {
+    // Ops within the same computation are not handled here. Assume that they
+    // may interfere.
+    return false;
+  }
+  return !MayInterfereAcrossSubcomputations(assignment, a_buffer, b_buffer) ||
+         !MayInterfereAcrossSubcomputations(assignment, b_buffer, a_buffer);
+}
+
+}  // namespace
 
 bool BufferAssigner::MaybeAssignBuffer(BufferAllocation* allocation,
                                        const LogicalBuffer& buffer,
@@ -763,6 +856,12 @@ bool BufferAssigner::MaybeAssignBuffer(BufferAllocation* allocation,
     return false;
   }
 
+  if (reuse_checker_ != nullptr &&
+      !reuse_checker_(*assignment, *allocation, buffer)) {
+    VLOG(4) << "Can't assign: reuse_checker_(allocation, buffer) == false";
+    return false;
+  }
+
   if (!allocation->is_reusable()) {
     VLOG(4) << "Can't assign: allocation is not reusable";
     return false;
@@ -770,6 +869,9 @@ bool BufferAssigner::MaybeAssignBuffer(BufferAllocation* allocation,
 
   for (const auto& buffer_offset_size : allocation->assigned_buffers()) {
     const LogicalBuffer& assigned_buffer = *buffer_offset_size.first;
+    if (MaySkipInterferenceCheck(assignment, buffer, assigned_buffer)) {
+      continue;
+    }
     if (assignment->liveness().MayInterfere(assigned_buffer, buffer)) {
       VLOG(4) << "Can't assign: assignee " << assigned_buffer
               << " may interfere with " << buffer;
@@ -781,21 +883,6 @@ bool BufferAssigner::MaybeAssignBuffer(BufferAllocation* allocation,
       VLOG(4) << "Can't assign: assignee " << assigned_buffer
               << " is used at copy instruction " << buffer;
       return false;
-    }
-  }
-
-  if (allow_input_output_aliasing_ && allocation->maybe_live_out()) {
-    const HloComputation* entry_computation =
-        assignment->module_->entry_computation();
-    for (auto param : entry_computation->parameter_instructions()) {
-      for (auto& param_buffer :
-           assignment->points_to_analysis().GetBuffersDefinedByInstruction(
-               param)) {
-        if (assignment->liveness().MayInterfere(*param_buffer, buffer)) {
-          VLOG(4) << "Can't assign: Parameter interference with result";
-          return false;
-        }
-      }
     }
   }
 
@@ -1434,13 +1521,30 @@ BufferAssigner::MergeColocatedBufferSets(
 
 // Builds sets of buffers in 'colocated_buffer_sets' which should be colocated
 // in the same allocation (currently just supports kWhile, kCall, and
-// kConditional).
+// kConditional and input output aliasing).
 void BufferAssigner::BuildColocatedBufferSets(
     const HloModule* module, const BufferLiveness& buffer_liveness,
     const LogicalBuffer::SizeFunction& buffer_size,
     std::vector<ColocatedBufferSet>* colocated_buffer_sets) {
   const TuplePointsToAnalysis& points_to_analysis =
       buffer_liveness.points_to_analysis();
+
+  // Set up colocated buffer set for input and output.
+  VLOG(4) << "Input/Output Alias Config: ";
+  VLOG(4) << module->input_output_alias_config();
+  module->input_output_alias_config().ForEachAlias(
+      [&](const ShapeIndex& output_index, int64 param_number,
+          const ShapeIndex& param_index) {
+        std::vector<const LogicalBuffer*> colocated_set;
+        AddBufferToColocatedSet(module->entry_computation()->root_instruction(),
+                                output_index, points_to_analysis,
+                                &colocated_set);
+        AddBufferToColocatedSet(
+            module->entry_computation()->parameter_instruction(param_number),
+            param_index, points_to_analysis, &colocated_set);
+        AddSetToColocatedBufferSets(colocated_set, colocated_buffer_sets);
+      });
+
   for (const HloComputation* computation : module->MakeComputationPostOrder()) {
     if (computation->IsFusionComputation()) {
       continue;
@@ -1574,6 +1678,13 @@ void BufferAssigner::BuildColocatedBufferSets(
     return;
   }
 
+  int64 i = 0;
+  for (const auto& colocated_set : *colocated_buffer_sets) {
+    VLOG(4) << "Colocated set " << i++ << ":";
+    for (const auto& buffer : colocated_set) {
+      VLOG(4) << "  " << buffer->ToString();
+    }
+  }
   // Try to find more coalescing opportunities among the colocated buffer sets.
   //
   // TODO(b/32491382): We should be able to remove this by using the

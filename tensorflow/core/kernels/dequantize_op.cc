@@ -96,8 +96,6 @@ class DequantizeOp : public OpKernel {
             output);
       }
     } else if (mode_ == QUANTIZE_MODE_SCALED) {
-      // TODO(pauldonnelly): Update QuantizeAndDequantizeV2 and
-      // QuantizeAndDequantizeV3 to match this SCALED mode again.
       const float scale_factor =
           std::numeric_limits<T>::min() == 0
               ? (max_range / std::numeric_limits<T>::max())

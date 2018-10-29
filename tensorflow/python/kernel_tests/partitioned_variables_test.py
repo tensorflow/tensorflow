@@ -600,7 +600,7 @@ class PartitionedVariablesTestCase(test.TestCase):
   def testMetaGraphSaveLoad(self):
     save_prefix = os.path.join(self.get_temp_dir(), "ckpt")
     save_graph = ops.Graph()
-    with save_graph.as_default(), self.test_session(
+    with save_graph.as_default(), self.session(
         graph=save_graph) as session:
       partitioner = partitioned_variables.fixed_size_partitioner(5, axis=0)
       with variable_scope.variable_scope("root", partitioner=partitioner):
@@ -620,7 +620,7 @@ class PartitionedVariablesTestCase(test.TestCase):
             save_graph.get_tensor_by_name(v0.name + ":0"))
 
     restore_graph = ops.Graph()
-    with restore_graph.as_default(), self.test_session(
+    with restore_graph.as_default(), self.session(
         graph=restore_graph) as session:
       saver = saver_lib.import_meta_graph(save_path + ".meta")
       saver.restore(sess=session, save_path=save_path)

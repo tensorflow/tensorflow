@@ -107,6 +107,24 @@ class BufferAssignmentTest : public HloVerifiedTestBase {
         .ConsumeValueOrDie();
   }
 
+  std::unique_ptr<BufferAssignment> RunBufferAssignmentNoBuffersReuseForAdd(
+      HloModule* module, int64 alignment = 1) {
+    auto reuse_checker = [](const BufferAssignment& assignment,
+                            const BufferAllocation& alloc,
+                            const LogicalBuffer& buffer) {
+      return (buffer.instruction()->opcode() != HloOpcode::kAdd);
+    };
+    return BufferAssigner::Run(
+               module, absl::make_unique<DependencyHloOrdering>(module),
+               backend().compiler()->BufferSizeBytesFunction(),
+               [alignment](LogicalBuffer::Color) { return alignment; },
+               /*allow_input_output_aliasing=*/false,
+               /*allocate_buffers_for_constants=*/false,
+               /*colorer=*/BufferLiveness::DefaultColorer(),
+               /*reuse_checker=*/reuse_checker)
+        .ConsumeValueOrDie();
+  }
+
   std::unique_ptr<BufferAssignment> RunColoredBufferAssignment(
       HloModule* module, BufferLiveness::Colorer colorer, int64 alignment = 1) {
     return BufferAssigner::Run(
@@ -442,6 +460,56 @@ TEST_F(BufferAssignmentTest, Basic) {
   // The add node can reuse the mul node's buffer.
   const BufferAllocation& add_buffer = GetTopLevelAllocation(*buffers, add);
   EXPECT_EQ(add_buffer.index(), mul_buffer.index());
+
+  // The sub node has a valid output buffer assigned.
+  GetAssignedOutputAllocation(*buffers, sub);
+}
+
+TEST_F(BufferAssignmentTest, AddCannotReuse) {
+  // Pass in a special rule to indicate that "add" cannot reuse any buffer.
+  //
+  // paramscalar ------- (mul) -- (add) -- (sub)
+  //                     /        /        /
+  // param0[100] -------/        /        /
+  //                            /        /
+  // param1[100] --------------/--------/
+  auto builder = HloComputation::Builder(TestName());
+  auto paramscalar =
+      builder.AddInstruction(HloInstruction::CreateParameter(0, r0f32_, "p"));
+  auto broadcast = builder.AddInstruction(
+      HloInstruction::CreateBroadcast(f32vec100_, paramscalar, {}));
+  auto param0 = builder.AddInstruction(
+      HloInstruction::CreateParameter(1, f32vec100_, "p1"));
+  auto param1 = builder.AddInstruction(
+      HloInstruction::CreateParameter(2, f32vec100_, "p2"));
+  auto mul = builder.AddInstruction(HloInstruction::CreateBinary(
+      f32vec100_, HloOpcode::kMultiply, broadcast, param0));
+  auto add = builder.AddInstruction(
+      HloInstruction::CreateBinary(f32vec100_, HloOpcode::kAdd, mul, param1));
+  auto sub = builder.AddInstruction(HloInstruction::CreateBinary(
+      f32vec100_, HloOpcode::kSubtract, add, param1));
+  auto module = CreateNewVerifiedModule();
+  module->AddEntryComputation(builder.Build());
+
+  auto buffers = RunBufferAssignmentNoBuffersReuseForAdd(module.get());
+
+  // Distinct input buffers were assigned for parameters.
+  BufferAllocation paramscalar_buffer =
+      GetAssignedInputAllocation(*buffers, paramscalar);
+  BufferAllocation param0_buffer = GetAssignedInputAllocation(*buffers, param0);
+  BufferAllocation param1_buffer = GetAssignedInputAllocation(*buffers, param1);
+  EXPECT_NE(paramscalar_buffer.index(), param0_buffer.index());
+  EXPECT_NE(paramscalar_buffer.index(), param1_buffer.index());
+  EXPECT_NE(param0_buffer.index(), param1_buffer.index());
+
+  // The mul node has a valid buffer assigned, doesn't share with input.
+  const BufferAllocation& mul_buffer = GetTopLevelAllocation(*buffers, mul);
+  EXPECT_NE(mul_buffer.index(), param0_buffer.index());
+
+  // The add node cannot reuse the mul node's buffer since we told buffer
+  // assignment so.
+  const BufferAllocation& add_buffer = GetTopLevelAllocation(*buffers, add);
+  EXPECT_NE(add_buffer.index(), mul_buffer.index());
 
   // The sub node has a valid output buffer assigned.
   GetAssignedOutputAllocation(*buffers, sub);
@@ -2406,5 +2474,58 @@ TEST_F(WhileBufferAssignmentTest, WhilesDontShareEntryParamIfLiveOut) {
   EXPECT_FALSE(root_alloc->is_entry_computation_parameter());
 }
 
+TEST_F(WhileBufferAssignmentTest, WhileWithDynamicUpdateSliceShare) {
+  const char* const hlo_string = R"(
+HloModule test
+
+while_body {
+  state = (s32[], f32[1280,1,128]{2,1,0}) parameter(0)
+  constant.1 = f32[] constant(0)
+  broadcast.6 = f32[128,1,128]{2,1,0} broadcast(constant.1), dimensions={}
+  get-tuple-element.4 = f32[1280,1,128]{2,1,0} get-tuple-element(state), index=1
+  get-tuple-element.3 = s32[] get-tuple-element(state), index=0
+  constant.2 = s32[] constant(128)
+  add.5 = s32[] add(get-tuple-element.3, constant.2)
+  constant.3 = s32[3]{0} constant({0, 0, 0})
+  dynamic-update-slice.5 = f32[1280,1,128]{2,1,0} dynamic-update-slice(get-tuple-element.4, broadcast.6, constant.3)
+  dynamic-update-slice.9 = f32[1280,1,128]{2,1,0} dynamic-update-slice(dynamic-update-slice.5, broadcast.6, constant.3)
+  ROOT tuple.85 = (s32[], s32[], s32[2]{0}, f32[1280,1,128]{2,1,0}) tuple(add.5, dynamic-update-slice.9)
+}
+
+while_condition {
+  state = (s32[], f32[1280,1,128]{2,1,0}) parameter(0)
+  get-tuple-element = s32[] get-tuple-element(state), index=0
+  get-tuple-element.1 = s32[] constant(3)
+  ROOT less-than.339.338 = pred[] less-than(get-tuple-element, get-tuple-element.1)
+}
+
+ENTRY entry_computation {
+  constant.7 = s32[] constant(0)
+  copy.1 = s32[] copy(constant.7)
+  constant.6 = f32[] constant(0)
+  broadcast.6 = f32[1280,1,128]{2,1,0} broadcast(constant.6), dimensions={}
+  tuple.1 = (s32[], f32[1280,1,128]{2,1,0}) tuple(copy.1, broadcast.6)
+  while.0 = (s32[], f32[1280,1,128]{2,1,0}) while(tuple.1), condition=while_condition, body=while_body
+  ROOT get-tuple-element.2 = s32[] get-tuple-element(while.0), index=0
+}
+
+)";
+  auto module_or_status =
+      HloRunner::CreateModuleFromString(hlo_string, GetDebugOptionsForTest());
+  auto module = module_or_status.ConsumeValueOrDie();
+
+  RunCopyInsertion(module.get());
+  auto assignment = RunBufferAssignment(module.get());
+  // Get BufferAllocation for root instruction.
+  auto dus9 = FindInstruction(module.get(), "dynamic-update-slice.9");
+  auto dus9_alloc_slice =
+      assignment->GetUniqueTopLevelSlice(dus9).ConsumeValueOrDie();
+  auto dus5 = FindInstruction(module.get(), "dynamic-update-slice.5");
+  auto dus5_alloc_slice =
+      assignment->GetUniqueTopLevelSlice(dus5).ConsumeValueOrDie();
+  // Test that the two dynamic-update-slice ops share the same allocation slice.
+  EXPECT_EQ(dus9_alloc_slice.allocation(), dus5_alloc_slice.allocation());
+  EXPECT_EQ(dus9_alloc_slice, dus5_alloc_slice);
+}
 }  // namespace
 }  // namespace xla

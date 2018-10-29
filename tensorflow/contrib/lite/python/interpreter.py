@@ -223,6 +223,7 @@ class Interpreter(object):
 
     Usage:
 
+    ```
     interpreter.allocate_tensors()
     input = interpreter.tensor(interpreter.get_input_details()[0]["index"])
     output = interpreter.tensor(interpreter.get_output_details()[0]["index"])
@@ -230,6 +231,7 @@ class Interpreter(object):
       input().fill(3.)
       interpreter.invoke()
       print("inference %s" % output())
+    ```
 
     Notice how this function avoids making a numpy array directly. This is
     because it is important to not hold actual numpy views to the data longer
@@ -240,12 +242,14 @@ class Interpreter(object):
 
     WRONG:
 
+    ```
     input = interpreter.tensor(interpreter.get_input_details()[0]["index"])()
     output = interpreter.tensor(interpreter.get_output_details()[0]["index"])()
     interpreter.allocate_tensors()  # This will throw RuntimeError
     for i in range(10):
       input.fill(3.)
       interpreter.invoke()  # this will throw RuntimeError since input,output
+    ```
 
     Args:
       tensor_index: Tensor index of tensor to get. This value can be gotten from

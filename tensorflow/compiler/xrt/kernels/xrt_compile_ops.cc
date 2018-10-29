@@ -166,10 +166,22 @@ void XRTCompileOp::Compute(OpKernelContext* ctx) {
                  VLOG(1) << "Compiling XLA executable";
                  return Compile(ctx, computation_proto, program);
                }));
+  std::unique_ptr<XRTCompilationCacheEntryRef> entry;
+  OP_REQUIRES_OK(ctx, cache->Lookup(uid, &entry));
 
-  Tensor output(DT_INT64, TensorShape({}));
-  output.scalar<int64>()() = uid;
-  ctx->set_output(0, output);
+  Tensor handle_output(DT_INT64, TensorShape({}));
+  handle_output.scalar<int64>()() = uid;
+  ctx->set_output(0, handle_output);
+
+  xla::LocalExecutable* executable = entry->get().get_executable();
+  xla::ProgramShape program_shape = executable->executable()
+                                        ->module()
+                                        .config()
+                                        .entry_computation_layout()
+                                        .ComputeProgramShape();
+  Tensor program_shape_output(DT_STRING, TensorShape({1}));
+  program_shape_output.vec<string>()(0) = program_shape.SerializeAsString();
+  ctx->set_output(1, program_shape_output);
 }
 
 XRTCompileOp::~XRTCompileOp() = default;

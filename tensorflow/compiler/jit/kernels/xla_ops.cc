@@ -18,6 +18,7 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/memory/memory.h"
 #include "tensorflow/compiler/jit/defs.h"
+#include "tensorflow/compiler/jit/legacy_flags/xla_ops_common_flags.h"
 #include "tensorflow/compiler/tf2xla/shape_util.h"
 #include "tensorflow/compiler/tf2xla/tf2xla_util.h"
 #include "tensorflow/compiler/tf2xla/xla_compiler.h"
@@ -219,7 +220,7 @@ static Status BuildCompilationCache(OpKernelContext* ctx,
 static Status CompileToLocalExecutable(
     OpKernelContext* ctx, const NameAttrList& function,
     const XlaPlatformInfo& platform_info, absl::Span<const int> resources,
-    absl::Span<const int> constants, xla::LocalClient** client,
+    absl::Span<const int> constants, bool lazy, xla::LocalClient** client,
     std::map<int, OptionalTensor>* variables,
     const XlaCompiler::CompilationResult** kernel,
     xla::LocalExecutable** executable) {
@@ -241,7 +242,7 @@ static Status CompileToLocalExecutable(
   // this is more obviously correct.)
   core::ScopedUnref cache_ref(cache);
 
-  *variables = SnapshotResourceVariables(ctx, resources);
+  TF_RETURN_IF_ERROR(SnapshotResourceVariables(ctx, resources, variables));
   *client = static_cast<xla::LocalClient*>(cache->client());
 
   XlaCompiler::Options options;
@@ -277,7 +278,10 @@ static Status CompileToLocalExecutable(
   compile_options.always_return_tuple = false;
 
   return cache->Compile(options, function, constant_args, *variables, ctx,
-                        compile_options, kernel, executable);
+                        compile_options,
+                        lazy ? XlaCompilationCache::CompileMode::kLazy
+                             : XlaCompilationCache::CompileMode::kStrict,
+                        kernel, executable);
 }
 
 void XlaLocalLaunchBase::Compute(OpKernelContext* ctx) {
@@ -291,8 +295,8 @@ void XlaLocalLaunchBase::Compute(OpKernelContext* ctx) {
 
   OP_REQUIRES_OK(
       ctx, CompileToLocalExecutable(ctx, function_, platform_info_, resources_,
-                                    constants_, &client, &variables, &kernel,
-                                    &executable));
+                                    constants_, /*lazy=*/false, &client,
+                                    &variables, &kernel, &executable));
 
   se::Stream* stream =
       ctx->op_device_context() ? ctx->op_device_context()->stream() : nullptr;
@@ -394,18 +398,41 @@ XlaCompileOp::XlaCompileOp(OpKernelConstruction* ctx)
       resources_(ResourcesVector(ctx)),
       function_(FunctionAttr(ctx)) {
   OP_REQUIRES_OK(ctx, PlatformInfoFromContext(ctx, &platform_info_));
+  OP_REQUIRES_OK(ctx, ctx->GetAttr("must_compile", &must_compile_));
 }
 
 void XlaCompileOp::Compute(OpKernelContext* ctx) {
+  VLOG(3) << "XlaCompileOp " << def().name()
+          << (must_compile_ ? "(must-compile)" : "");
   xla::LocalClient* client;
   const XlaCompiler::CompilationResult* kernel;
   xla::LocalExecutable* executable;
   std::map<int, OptionalTensor> variables;
 
-  OP_REQUIRES_OK(
-      ctx, CompileToLocalExecutable(ctx, function_, platform_info_, resources_,
-                                    constants_, &client, &variables, &kernel,
-                                    &executable));
+  if (legacy_flags::GetXlaOpsCommonFlags().tf_xla_always_defer_compilation) {
+    executable = nullptr;
+  } else {
+    OP_REQUIRES_OK(ctx, CompileToLocalExecutable(
+                            ctx, function_, platform_info_, resources_,
+                            constants_, /*lazy=*/!must_compile_, &client,
+                            &variables, &kernel, &executable));
+  }
+
+  AllocatorAttributes host_alloc_attrs;
+  host_alloc_attrs.set_gpu_compatible(true);
+  host_alloc_attrs.set_on_host(true);
+  Allocator* cpu_allocator = ctx->device()->GetAllocator(host_alloc_attrs);
+
+  if (!executable) {
+    DCHECK(!must_compile_);
+    Tensor compilation_key(cpu_allocator, DT_STRING, TensorShape({}));
+
+    Tensor compilation_successful(cpu_allocator, DT_BOOL, TensorShape({}));
+    compilation_successful.scalar<bool>()() = false;
+    ctx->set_output(0, Tensor(cpu_allocator, DT_STRING, TensorShape({})));
+    ctx->set_output(1, compilation_successful);
+    return;
+  }
 
   // Each execution of an XlaCompile op creates a new XlaExecutableClosure, even
   // if it didn't have to compile the cluster because of a compilation-cache
@@ -414,13 +441,6 @@ void XlaCompileOp::Compute(OpKernelContext* ctx) {
   XlaExecutableClosureStore::KeyT key =
       XlaExecutableClosureStore::Global()->Produce(XlaExecutableClosure(
           client, executable, kernel, std::move(variables), constants_.size()));
-
-  Allocator* cpu_allocator = [&] {
-    AllocatorAttributes host_alloc_attrs;
-    host_alloc_attrs.set_gpu_compatible(true);
-    host_alloc_attrs.set_on_host(true);
-    return ctx->device()->GetAllocator(host_alloc_attrs);
-  }();
 
   Tensor compilation_key(cpu_allocator, DT_STRING, TensorShape({}));
   compilation_key.flat<string>()(0) = key;
@@ -437,6 +457,7 @@ XlaRunOp::XlaRunOp(OpKernelConstruction* ctx) : OpKernel(ctx) {
 }
 
 void XlaRunOp::Compute(OpKernelContext* ctx) {
+  VLOG(3) << "XlaRunOp " << def().name();
   Tensor key_tensor = ctx->input(ctx->num_inputs() - 1);
   const XlaExecutableClosureStore::KeyT& key = key_tensor.flat<string>()(0);
 
@@ -491,6 +512,8 @@ REGISTER_KERNEL_BUILDER(Name("_XlaCompile").Device(DEVICE_CPU), XlaCompileOp);
 REGISTER_KERNEL_BUILDER(Name("_XlaCompile")
                             .Device(DEVICE_GPU)
                             .HostMemory("constants")
+                            .HostMemory("key")
+                            .HostMemory("compilation_successful")
                             .HostMemory("resources"),
                         XlaCompileOp);
 

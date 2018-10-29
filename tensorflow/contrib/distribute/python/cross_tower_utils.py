@@ -21,7 +21,6 @@ from __future__ import print_function
 import collections as pycoll
 import threading
 
-from tensorflow.contrib import nccl
 from tensorflow.contrib.all_reduce.python import all_reduce
 from tensorflow.contrib.distribute.python import values as value_lib
 from tensorflow.python.framework import device as pydev
@@ -31,14 +30,15 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import collective_ops
 from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import nccl_ops
 
 
-def aggregate_gradients_using_nccl(tower_grads):
+def aggregate_gradients_using_nccl(replica_grads):
   """Aggregate gradients using nccl allreduce."""
   agg_all_g_and_v = []
-  for single_g_and_v in zip(*tower_grads):
+  for single_g_and_v in zip(*replica_grads):
     single_grads = [g for g, _ in single_g_and_v]
-    agg_grads = nccl.all_sum(single_grads)
+    agg_grads = nccl_ops.all_sum(single_grads)
     agg_all_g_and_v.append(
         [(g, v) for g, (_, v) in zip(agg_grads, single_g_and_v)])
 
@@ -47,17 +47,18 @@ def aggregate_gradients_using_nccl(tower_grads):
   return agg_all_g_and_v
 
 
-def aggregate_gradients_using_hierarchical_copy(avail_devices, tower_grads):
+def aggregate_gradients_using_hierarchical_copy(avail_devices, replica_grads):
   """Aggregate gradients using hierarchical copies.
 
   Args:
     avail_devices: available GPU devices.
-    tower_grads: List of lists of (gradient, variable) tuples. The outer list
-      is over towers. The inner list is over individual gradients.
+    replica_grads: List of lists of (gradient, variable) tuples. The outer list
+      is over replicas. The inner list is over individual gradients.
 
   Returns:
     The list of (aggregated_gradient, variable), where the gradient has been
-      summed across all towers and the variable is chosen from the first tower.
+      summed across all replicas and the variable is chosen from the first
+      replica.
   """
   # This only works for DGX-1 type of machine topology
   # Device peer to peer matrix
@@ -75,7 +76,7 @@ def aggregate_gradients_using_hierarchical_copy(avail_devices, tower_grads):
   # In the special case of DGX-1 machine topology, the two groups have equal
   # size.
   group_size = num_devices // 2
-  for i, single_grads in enumerate(zip(*tower_grads)):
+  for i, single_grads in enumerate(zip(*replica_grads)):
     group_0_main_device = i % num_devices
     group_1_main_device = (group_0_main_device + group_size) % num_devices
     if group_0_main_device < group_size:
@@ -130,22 +131,23 @@ def aggregate_gradients_using_hierarchical_copy(avail_devices, tower_grads):
 
 def aggregate_single_gradient_using_copy(grad_and_vars, use_mean,
                                          check_inf_nan):
-  """Calculate the average gradient for a shared variable across all towers.
+  """Calculate the average gradient for a shared variable across all replicas.
 
-  Note that this function provides a synchronization point across all towers.
+  Note that this function provides a synchronization point across all replicas.
 
   Args:
     grad_and_vars: A list or tuple of (gradient, variable) tuples. Each
       (gradient, variable) pair within the outer list represents the gradient
-      of the variable calculated for a single tower, and the number of pairs
-      equals the number of towers.
+      of the variable calculated for a single replica, and the number of pairs
+      equals the number of replicas.
     use_mean: if True, mean is taken, else sum of gradients is taken.
     check_inf_nan: check grads for nans and infs.
 
   Returns:
     The tuple ([(average_gradient, variable),], has_nan_or_inf) where the
-      gradient has been averaged across all towers. The variable is chosen from
-      the first tower. The has_nan_or_inf indicates the grads has nan or inf.
+      gradient has been averaged across all replicas. The variable is chosen
+      from the first replica. The has_nan_or_inf indicates the grads has nan or
+      inf.
   """
   grads = [g for g, _ in grad_and_vars]
   grad = math_ops.add_n(grads)
@@ -224,7 +226,7 @@ def split_grads_by_size(threshold_size, device_grads):
 # threading.Lock() and threading.local() cannot be pickled and therefore cannot
 # be a field of CollectiveKeys. Right now _thread_local is not necessary to be
 # an instance member of CollectiveKeys since we always create a new thread for
-# each tower.
+# each replica.
 _lock = threading.Lock()
 _thread_local = threading.local()
 
@@ -374,7 +376,7 @@ def sum_grad_and_var_all_reduce(grad_and_vars,
     #   ((grad0_gpu0, var0_gpu0), ... , (grad0_gpuN, var0_gpuN))
     scaled_grads = [g for g, _ in grad_and_vars]
     if alg == 'nccl':
-      summed_grads = nccl.all_sum(scaled_grads)
+      summed_grads = nccl_ops.all_sum(scaled_grads)
     elif alg == 'xring':
       summed_grads = all_reduce.build_ring_all_reduce(
           scaled_grads, num_workers, num_shards, gpu_indices, math_ops.add)
@@ -403,13 +405,13 @@ def sum_grad_and_var_all_reduce(grad_and_vars,
   return result
 
 
-def sum_gradients_all_reduce(dev_prefixes, tower_grads, num_workers, alg,
+def sum_gradients_all_reduce(dev_prefixes, replica_grads, num_workers, alg,
                              num_shards, gpu_indices):
   """Apply all-reduce algorithm over specified gradient tensors.
 
   Args:
     dev_prefixes: list of prefix strings to use to generate PS device names.
-    tower_grads: the gradients to reduce.
+    replica_grads: the gradients to reduce.
     num_workers: number of worker processes across entire job.
     alg: the all-reduce algorithm to apply.
     num_shards: alg-specific sharding factor.
@@ -435,14 +437,14 @@ def sum_gradients_all_reduce(dev_prefixes, tower_grads, num_workers, alg,
       aux_devices, num_shards if alg_contains_shuffle else 1)
   group_index = 0
   reduced_gv_list = []
-  for grad_and_vars in zip(*tower_grads):
+  for grad_and_vars in zip(*replica_grads):
     reduced_gv_list.append(
         sum_grad_and_var_all_reduce(
             grad_and_vars, num_workers, alg, gpu_indices, aux_devices
             if is_hierarchical else aux_device_groups[group_index], num_shards))
     group_index = (group_index + 1) % len(aux_device_groups)
-  new_tower_grads = [list(x) for x in zip(*reduced_gv_list)]
-  return new_tower_grads
+  new_replica_grads = [list(x) for x in zip(*reduced_gv_list)]
+  return new_replica_grads
 
 
 def extract_ranges(index_list, range_size_limit=32):
@@ -492,7 +494,7 @@ def pack_range(key, packing, grad_vars, rng):
     key: Value under which to store meta-data in packing that will be used
       later to restore the grad_var list structure.
     packing: Dict holding data describing packed ranges of small tensors.
-    grad_vars: List of (grad, var) pairs for one tower.
+    grad_vars: List of (grad, var) pairs for one replica.
     rng: A pair of integers giving the first, last indices of a consecutive
       range of tensors to be packed.
 
@@ -540,36 +542,36 @@ def unpack_grad_tuple(gv, gpt):
   return unpacked_gv
 
 
-def pack_small_tensors(tower_grads, max_bytes=0, max_group=0):
+def pack_small_tensors(replica_grads, max_bytes=0, max_group=0):
   """Concatenate small gradient tensors together for reduction.
 
   Args:
-    tower_grads: List of lists of (gradient, variable) tuples.
+    replica_grads: List of lists of (gradient, variable) tuples.
     max_bytes: Int giving max number of bytes in a tensor that
       may be considered small.
     max_group: Int giving max number of small tensors that may be
       concatenated into one new tensor.
 
   Returns:
-    new_tower_grads, packing where new_tower_grads is identical to
-      tower_grads except that all feasible small_tensors have been removed
+    new_replica_grads, packing where new_replica_grads is identical to
+      replica_grads except that all feasible small_tensors have been removed
       from their places and concatenated into larger tensors that are
-      now in the front of the list for each tower, and packing contains
-      the data necessary to restore the tower_grads structure.
+      now in the front of the list for each replica, and packing contains
+      the data necessary to restore the replica_grads structure.
 
-  Look through the first tower for gradients of the same type (float),
+  Look through the first replica for gradients of the same type (float),
   and small size, that are all sequential.  For each such group,
   replace by a new tensor that is a flattened concatenation.  Note
   that the corresponding variable will be absent, which doesn't matter
   because it isn't used during all-reduce.
 
   Requires:
-    Every gv_list in towers must have isomorphic structure including identical
+    Every gv_list in replicas must have isomorphic structure including identical
       tensor sizes and types.
   """
   small_indices = []
   large_indices = []
-  for idx, (g, _) in enumerate(tower_grads[0]):
+  for idx, (g, _) in enumerate(replica_grads[0]):
     if g.dtype == dtypes.float32 and (4 * g.shape.num_elements()) <= max_bytes:
       small_indices.append(idx)
     else:
@@ -577,11 +579,11 @@ def pack_small_tensors(tower_grads, max_bytes=0, max_group=0):
   small_ranges, small_singles = extract_ranges(
       small_indices, range_size_limit=max_group)
   large_indices = sorted(large_indices + small_singles)
-  num_gv = len(tower_grads[0])
+  num_gv = len(replica_grads[0])
   packing = {}
   if small_ranges:
-    new_tower_grads = []
-    for dev_idx, gv_list in enumerate(tower_grads):
+    new_replica_grads = []
+    for dev_idx, gv_list in enumerate(replica_grads):
       assert len(gv_list) == num_gv
       new_gv_list = []
       for r in small_ranges:
@@ -590,31 +592,31 @@ def pack_small_tensors(tower_grads, max_bytes=0, max_group=0):
                             'packing_var_placeholder'))
       for i in large_indices:
         new_gv_list.append(gv_list[i])
-      new_tower_grads.append(new_gv_list)
-    return new_tower_grads, packing
+      new_replica_grads.append(new_gv_list)
+    return new_replica_grads, packing
   else:
-    return tower_grads, None
+    return replica_grads, None
 
 
-def unpack_small_tensors(tower_grads, packing):
-  """Undo the structure alterations to tower_grads done by pack_small_tensors.
+def unpack_small_tensors(replica_grads, packing):
+  """Undo the structure alterations to replica_grads done by pack_small_tensors.
 
   Args:
-    tower_grads: List of List of (grad, var) tuples.
+    replica_grads: List of List of (grad, var) tuples.
     packing: A dict generated by pack_small_tensors describing the changes
-      it made to tower_grads.
+      it made to replica_grads.
 
   Returns:
-    new_tower_grads: identical to tower_grads except that concatenations
+    new_replica_grads: identical to replica_grads except that concatenations
       of small tensors have been split apart and returned to their original
       positions, paired with their original variables.
   """
   if not packing:
-    return tower_grads
-  new_tower_grads = []
-  num_devices = len(tower_grads)
+    return replica_grads
+  new_replica_grads = []
+  num_devices = len(replica_grads)
   num_packed = len(packing.keys()) // num_devices
-  for dev_idx, gv_list in enumerate(tower_grads):
+  for dev_idx, gv_list in enumerate(replica_grads):
     gv_list = list(gv_list)
     new_gv_list = gv_list[num_packed:]
     for i in range(num_packed):
@@ -624,8 +626,8 @@ def unpack_small_tensors(tower_grads, packing):
       for gi, idx in enumerate(gpt.indices):
         assert idx == gpt.indices[gi]
         new_gv_list.insert(idx, gv[gi])
-    new_tower_grads.append(new_gv_list)
-  return new_tower_grads
+    new_replica_grads.append(new_gv_list)
+  return new_replica_grads
 
 
 def aggregate_tensors_or_indexed_slices(values, accumulation_fn=math_ops.add_n):

@@ -339,23 +339,6 @@ class XlaBuilder {
   XlaOp Broadcast(const XlaOp& operand,
                   absl::Span<const int64> broadcast_sizes);
 
-  // Performs in-dimension-style broadcast.
-  //
-  // Operand specifies the input to be broadcast. "shape" is expected output
-  // shape. "broadcast_dimensions" are the dimensions to be broadcasting into.
-  // Dimension numbers in broadcast_dimensions map to individual dimensions
-  // of the operand, and specify what dimension of the output shape they
-  // should be broadcast.
-  // e.g.
-  // Say operand = [1, 2], i.e., a 1D tensor with 2 elements.
-  // and dimension of shape is [2,2].
-  // Specifying {1} as brodcast_dimension will generate output
-  // [1 , 2]
-  // [1 , 2]
-  // On the other hand, specifying {0} as broadcast_dimension
-  // will generate output
-  // [1 , 1]
-  // [2 , 2]
   XlaOp BroadcastInDim(const XlaOp& operand, const Shape& shape,
                        const absl::Span<const int64> broadcast_dimensions);
 
@@ -577,9 +560,10 @@ class XlaBuilder {
              absl::Span<const XlaOp> operands);
 
   // Enqueues a custom call instruction onto the computation.
-  XlaOp CustomCall(const string& call_target_name,
-                   absl::Span<const XlaOp> operands, const Shape& shape,
-                   const string& opaque);
+  XlaOp CustomCall(
+      const string& call_target_name, absl::Span<const XlaOp> operands,
+      const Shape& shape_with_layout, const string& opaque,
+      absl::optional<absl::Span<const Shape>> operand_shapes_with_layout);
 
   // The following methods enqueue element-wise binary arithmetic operations
   // onto the computation. The shapes of the operands have to match unless one
@@ -671,6 +655,8 @@ class XlaBuilder {
       const XlaComputation& computation,
       absl::Span<const int64> window_dimensions,
       absl::Span<const int64> window_strides,
+      absl::Span<const int64> base_dilations,
+      absl::Span<const int64> window_dilations,
       absl::Span<const std::pair<int64, int64>> padding);
 
   // Returns the sum of the operand value within each subgroup of replicas. All
@@ -696,7 +682,7 @@ class XlaBuilder {
   // the same channel_id, they will be 'Allreduce'd. If empty, Allreduce will
   // not be applied cross modules.
   //
-  // TODO(b/79737069): Rename this to AllReduce when it's ready to use.
+  // TODO(b/117564385): Rename this to AllReduce when it's ready to use.
   XlaOp CrossReplicaSum(
       const XlaOp& operand, const XlaComputation& computation,
       absl::Span<const ReplicaGroup> replica_groups = {},
@@ -831,12 +817,12 @@ class XlaBuilder {
   // the last dimension is chosen by default.
   //
   // If both keys and values are provided:
-  // * The keys and the values must tensors with the same dimensions. The
+  // * The keys and all values must be tensors with the same dimensions. The
   // element types of the tensors may be different.
   // * The result is a tuple that consists of a sorted tensor of keys (along the
-  // provided dimension, as above) as the first element, and a tensor with their
-  // corresponding values as the second element.
-  XlaOp Sort(XlaOp keys, absl::optional<XlaOp> values = absl::nullopt,
+  // provided dimension, as above) as the first element, and tensors with their
+  // corresponding values as the other elements.
+  XlaOp Sort(const XlaOp& keys, absl::Span<const XlaOp> values = {},
              int64 dimension = -1);
 
   // Enqueues a clamp instruction onto the computation.
@@ -1195,6 +1181,10 @@ class XlaBuilder {
   friend XlaOp CustomCall(XlaBuilder* builder, const string& call_target_name,
                           absl::Span<const XlaOp> operands, const Shape& shape,
                           const string& opaque);
+  friend XlaOp CustomCallWithLayout(
+      XlaBuilder* builder, const string& call_target_name,
+      absl::Span<const XlaOp> operands, const Shape& shape_with_layout,
+      absl::Span<const Shape> operand_shapes_with_layout, const string& opaque);
   friend XlaOp Complex(const XlaOp& real, const XlaOp& imag,
                        absl::Span<const int64> broadcast_dimensions);
   friend XlaOp Conj(const XlaOp& operand);
@@ -1245,6 +1235,8 @@ class XlaBuilder {
       const XlaComputation& computation,
       absl::Span<const int64> window_dimensions,
       absl::Span<const int64> window_strides,
+      absl::Span<const int64> base_dilations,
+      absl::Span<const int64> window_dilations,
       absl::Span<const std::pair<int64, int64>> padding);
   friend XlaOp CrossReplicaSum(const XlaOp& operand,
                                absl::Span<const ReplicaGroup> replica_groups);
@@ -1302,7 +1294,8 @@ class XlaBuilder {
   friend XlaOp Transpose(const XlaOp& operand,
                          absl::Span<const int64> permutation);
   friend XlaOp Rev(const XlaOp& operand, absl::Span<const int64> dimensions);
-  friend XlaOp Sort(XlaOp keys, absl::optional<XlaOp> values, int64 dimension);
+  friend XlaOp Sort(const XlaOp& keys, absl::Span<const XlaOp> values,
+                    int64 dimension);
   friend XlaOp Clamp(const XlaOp& min, const XlaOp& operand, const XlaOp& max);
   friend XlaOp Map(XlaBuilder* builder, absl::Span<const XlaOp> operands,
                    const XlaComputation& computation,
@@ -1470,23 +1463,21 @@ XlaOp ConstantR1(XlaBuilder* builder, int64 length, NativeT value);
 //   output[i0, ..., iN, j0, ..., jM] = operand[j0, ..., jM]
 XlaOp Broadcast(const XlaOp& operand, absl::Span<const int64> broadcast_sizes);
 
-// Performs in-dimension-style broadcast.
+// This op broadcasts the `operand` to an output with the given `shape`.
+// `broadcast_dimensions` are the dimensions to be broadcasting into, i.e., the
+// i'th dimension of the operand is mapped to the broadcast_dimensions[i]'th
+// dimension of the output. This also requires that the i'th input dimension is
+// either 1 or is the same as the output dimension it's broadcasting into.
 //
-// Operand specifies the input to be broadcast. "shape" is expected output
-// shape. "broadcast_dimensions" are the dimensions to be broadcasting into.
-// Dimension numbers in broadcast_dimensions map to individual dimensions
-// of the operand, and specify what dimension of the output shape they
-// should be broadcast.
-// e.g.
-// Say operand = [1, 2], i.e., a 1D tensor with 2 elements.
-// and dimension of shape is [2,2].
-// Specifying {1} as brodcast_dimension will generate output
-// [1 , 2]
-// [1 , 2]
-// On the other hand, specifying {0} as broadcast_dimension
-// will generate output
-// [1 , 1]
-// [2 , 2]
+// For example, say operand = {1, 2}, i.e., a 1D tensor in shape s32[2]; the
+// output shape is s32[2,2]:
+// - Specifying {1} as brodcast_dimension will generate output
+//   {{1, 2},
+//    {1, 2}}
+// - On the other hand, specifying {0} as broadcast_dimension
+//   will generate output
+//   {{1 , 1},
+//    {2 , 2}}
 XlaOp BroadcastInDim(const XlaOp& operand, const Shape& shape,
                      const absl::Span<const int64> broadcast_dimensions);
 
@@ -1728,6 +1719,17 @@ XlaOp CustomCall(XlaBuilder* builder, const string& call_target_name,
                  absl::Span<const XlaOp> operands, const Shape& shape,
                  const string& opaque = "");
 
+// Overload which constructs a custom call with fixed layouts. The operands will
+// have the layouts specified by |operand_shapes_with_layout| when provided to
+// external code, and the external code is expected to produce a result with the
+// layout specified by |shape_with_layout|. All shapes in |shape_with_layout|
+// and |operand_shapes_with_layout| must have layouts.
+XlaOp CustomCallWithLayout(XlaBuilder* builder, const string& call_target_name,
+                           absl::Span<const XlaOp> operands,
+                           const Shape& shape_with_layout,
+                           absl::Span<const Shape> operand_shapes_with_layout,
+                           const string& opaque = "");
+
 // The following methods enqueue element-wise binary arithmetic operations
 // onto the computation. The shapes of the operands have to match unless one
 // of the operands is a scalar, or an explicit broadcast dimension is given
@@ -1818,6 +1820,8 @@ XlaOp ReduceWindowWithGeneralPadding(
     const XlaComputation& computation,
     absl::Span<const int64> window_dimensions,
     absl::Span<const int64> window_strides,
+    absl::Span<const int64> base_dilations,
+    absl::Span<const int64> window_dilations,
     absl::Span<const std::pair<int64, int64>> padding);
 
 // Returns the sum of the operand value within each subgroup of replicas. All
@@ -1842,7 +1846,7 @@ XlaOp CrossReplicaSum(const XlaOp& operand,
 // same channel_id, they will be 'Allreduce'd. If empty, Allreduce will not be
 // applied cross modules.
 //
-// TODO(b/79737069): Rename this to AllReduce when it's ready to use.
+// TODO(b/117564385): Rename this to AllReduce when it's ready to use.
 XlaOp CrossReplicaSum(
     const XlaOp& operand, const XlaComputation& computation,
     absl::Span<const ReplicaGroup> replica_groups = {},
@@ -1980,12 +1984,12 @@ XlaOp Rev(const XlaOp& operand, absl::Span<const int64> dimensions);
 // the last dimension is chosen by default.
 //
 // If both keys and values are provided:
-// * The keys and the values must tensors with the same dimensions. The
+// * The keys and all values must be tensors with the same dimensions. The
 // element types of the tensors may be different.
 // * The result is a tuple that consists of a sorted tensor of keys (along the
-// provided dimension, as above) as the first element, and a tensor with their
-// corresponding values as the second element.
-XlaOp Sort(XlaOp keys, absl::optional<XlaOp> values = absl::nullopt,
+// provided dimension, as above) as the first element, and tensors with their
+// corresponding values as the other elements.
+XlaOp Sort(const XlaOp& keys, absl::Span<const XlaOp> values = {},
            int64 dimension = -1);
 
 // Enqueues a clamp instruction onto the computation.

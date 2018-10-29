@@ -15,6 +15,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CONTRIB_LITE_KERNELS_TEST_UTIL_H_
 #define TENSORFLOW_CONTRIB_LITE_KERNELS_TEST_UTIL_H_
 
+#include <complex>
 #include <vector>
 
 #include <gmock/gmock.h>
@@ -34,6 +35,11 @@ namespace tflite {
 // tolerance.
 std::vector<::testing::Matcher<float>> ArrayFloatNear(
     const std::vector<float>& values, float max_abs_error = 1e-5);
+
+// A gmock matcher that check that elements of a complex vector match to a given
+// tolerance.
+std::vector<::testing::Matcher<std::complex<float>>> ArrayComplex64Near(
+    const std::vector<std::complex<float>>& values, float max_abs_error = 1e-5);
 
 template <typename T>
 inline std::vector<T> Quantize(const std::vector<float>& data, float scale,
@@ -76,7 +82,7 @@ inline std::vector<float> Dequantize(const std::vector<T>& data, float scale,
 // A helper struct to construct test tensors. This is particularly useful for
 // quantized tensor which must have their scale and zero_point defined before
 // the actual data is known. This mimics what happens in practice: quantization
-// parameters are calculate during training.
+// parameters are calculated during training.
 struct TensorData {
   TensorType type;
   std::vector<int> shape;

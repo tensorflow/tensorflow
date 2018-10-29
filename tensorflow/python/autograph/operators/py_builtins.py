@@ -120,8 +120,8 @@ def _tf_tensor_list_len(s):
 def _tf_tensor_len(s):
   """Overload of len_ for Tensor arguments."""
   # Statically shaped tensors: length is known ahead of time.
-  if s.shape.ndims and s.shape[0].value is not None:
-    return s.shape[0].value
+  if s.shape.ndims and s.shape.dims[0].value is not None:
+    return s.shape.dims[0].value
 
   # Static shape of unknown dimensions: use dynamic shape but statically
   # chech that it's a scalar.
@@ -133,7 +133,7 @@ def _tf_tensor_len(s):
     raise ValueError(
         'len requires a non-scalar tensor, got one of shape {}'.format(shape))
 
-  if shape.shape[0].value is not None:
+  if shape.shape.dims[0].value is not None:
     return array_ops.shape(s)[0]
 
   # Fully dynamic shape: use ops.
@@ -228,5 +228,6 @@ BUILTIN_FUINCTIONS_MAP = {
     'len': len_,
     'print': print_,
     'range': range_,
+    # TODO(mdan): This might make more sense as tf.data.range.
     'xrange': range_,
 }

@@ -19,6 +19,7 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.contrib.compiler import xla
+from tensorflow.contrib.tpu.python.tpu import tpu_feed
 from tensorflow.python import summary
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import ops
@@ -174,6 +175,82 @@ class XLACompileContextTest(test.TestCase):
     op = constant_op.constant(1)
     context.Exit()
     self.assertFalse(op.graph.is_fetchable(op.op))
+
+
+class CheckFunctionArgumentCountTest(test.TestCase):
+
+  def testSimple(self):
+    """Tests that arg checker works for functions with no varargs or defaults.
+    """
+
+    def func(x, y, z):
+      return x + y + z
+
+    self.assertEqual(None, xla.check_function_argument_count(func, 3, None))
+    self.assertEqual('exactly 3 arguments',
+                     xla.check_function_argument_count(func, 2, None))
+    queue = tpu_feed.InfeedQueue(2)
+    self.assertEqual(None, xla.check_function_argument_count(func, 1, queue))
+    self.assertEqual('exactly 3 arguments',
+                     xla.check_function_argument_count(func, 2, queue))
+
+  def testDefaultArgs(self):
+    """Tests that arg checker works for a function with no varargs."""
+
+    def func(x, y, z=17):
+      return x + y + z
+
+    self.assertEqual(None, xla.check_function_argument_count(func, 3, None))
+    self.assertEqual(None, xla.check_function_argument_count(func, 2, None))
+    self.assertEqual('at least 2 arguments',
+                     xla.check_function_argument_count(func, 1, None))
+    self.assertEqual('at most 3 arguments',
+                     xla.check_function_argument_count(func, 4, None))
+    queue = tpu_feed.InfeedQueue(1)
+    self.assertEqual(None, xla.check_function_argument_count(func, 2, queue))
+    self.assertEqual(None, xla.check_function_argument_count(func, 1, queue))
+    self.assertEqual('at least 2 arguments',
+                     xla.check_function_argument_count(func, 0, queue))
+    self.assertEqual('at most 3 arguments',
+                     xla.check_function_argument_count(func, 4, queue))
+
+  def testVarArgs(self):
+    """Tests that arg checker works for a function with varargs."""
+
+    def func(x, y, *z):
+      return x + y + len(z)
+
+    self.assertEqual(None, xla.check_function_argument_count(func, 2, None))
+    self.assertEqual(None, xla.check_function_argument_count(func, 3, None))
+    self.assertEqual(None, xla.check_function_argument_count(func, 4, None))
+    self.assertEqual('at least 2 arguments',
+                     xla.check_function_argument_count(func, 1, None))
+    queue = tpu_feed.InfeedQueue(1)
+    self.assertEqual(None, xla.check_function_argument_count(func, 1, queue))
+    self.assertEqual(None, xla.check_function_argument_count(func, 2, queue))
+    self.assertEqual(None, xla.check_function_argument_count(func, 3, queue))
+    self.assertEqual('at least 2 arguments',
+                     xla.check_function_argument_count(func, 0, queue))
+
+  def testVarArgsAndDefaults(self):
+    """Tests that arg checker works for a function with varargs and defaults."""
+
+    def func(x, y, z=17, *q):  # pylint: disable=keyword-arg-before-vararg
+      return x + y + z + len(q)
+
+    self.assertEqual(None, xla.check_function_argument_count(func, 2, None))
+    self.assertEqual(None, xla.check_function_argument_count(func, 3, None))
+    self.assertEqual(None, xla.check_function_argument_count(func, 4, None))
+    self.assertEqual(None, xla.check_function_argument_count(func, 5, None))
+    self.assertEqual('at least 2 arguments',
+                     xla.check_function_argument_count(func, 1, None))
+    queue = tpu_feed.InfeedQueue(1)
+    self.assertEqual(None, xla.check_function_argument_count(func, 1, queue))
+    self.assertEqual(None, xla.check_function_argument_count(func, 2, queue))
+    self.assertEqual(None, xla.check_function_argument_count(func, 3, queue))
+    self.assertEqual(None, xla.check_function_argument_count(func, 4, queue))
+    self.assertEqual('at least 2 arguments',
+                     xla.check_function_argument_count(func, 0, queue))
 
 
 if __name__ == '__main__':

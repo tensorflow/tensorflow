@@ -308,6 +308,10 @@ class Sequential(Model):
     else:
       return (proba > 0.5).astype('int32')
 
+  def save(self, filepath, overwrite=True, include_optimizer=True):
+    from tensorflow.python.keras.models import save_model  # pylint: disable=g-import-not-at-top
+    save_model(self, filepath, overwrite, include_optimizer)
+
   def get_config(self):
     layer_configs = []
     for layer in self.layers:
@@ -340,6 +344,9 @@ class Sequential(Model):
       model.add(layer)
     if not model.inputs and build_input_shape:
       model.build(build_input_shape)
+    if not model._is_graph_network:
+      # Still needs to be built when passed input data.
+      model.built = False
     return model
 
 

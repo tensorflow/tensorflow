@@ -1,6 +1,16 @@
 # Minimum CMake required
 cmake_minimum_required(VERSION 3.5)
 
+if(WIN32)
+	if(${CMAKE_VERSION} VERSION_LESS "3.8")
+		message(WARNING "Your current cmake version is ${CMAKE_VERSION} which does not support setting the toolset architecture to x64. This may cause \"compiler out of heap space\" errors when building. Consider upgrading your cmake to > 3.8 and using the flag -Thost=x64 when running cmake.")
+	else()
+		if(NOT CMAKE_VS_PLATFORM_TOOLSET_HOST_ARCHITECTURE OR NOT "${CMAKE_VS_PLATFORM_TOOLSET_HOST_ARCHITECTURE}" STREQUAL "x64")
+			message(WARNING "Your current cmake generator is set to use 32 bit toolset architecture. This may cause \"compiler out of heap space\" errors when building. Consider using the flag -Thost=x64 when running cmake.")
+		endif()
+	endif()
+endif()
+
 # Project
 project(tensorflow C CXX)
 
@@ -89,10 +99,12 @@ if (NOT WIN32)
 
   # Options for linking other libraries
   option(systemlib_ZLIB "Use the system installed library as shared objects instead of downloading ZLIB and statically linking to it: ZLIB" OFF)
+  option(systemlib_ABSEIL_CPP "Use the system installed library as shared objects instead of downloading ABSEIL_CPP and statically linking to it: ABSEIL_CPP" OFF)
 
   option(systemlib_ALL "Turn on every possible systemlib_* options" OFF)
   if (systemlib_ALL)
     set (systemlib_ZLIB ON)
+    set (systemlib_ABSEIL_CPP ON)
   endif (systemlib_ALL)
 endif()
 
@@ -114,7 +126,7 @@ function(SHOW_VARIABLES)
 endfunction()
 
 # External dependencies
-set(CMAKE_MODULE_PATH ${PROJECT_SOURCE_DIR}/external)
+set(CMAKE_MODULE_PATH ${PROJECT_SOURCE_DIR}/external ${PROJECT_SOURCE_DIR}/modules)
 
 # Location where external projects will be downloaded
 set (DOWNLOAD_LOCATION "${CMAKE_CURRENT_BINARY_DIR}/downloads"
@@ -235,6 +247,7 @@ include(re2)
 include(cub)
 include(sqlite)
 include(double_conversion)
+include(abseil_cpp)
 if (tensorflow_BUILD_CC_TESTS)
   include(googletest)
 endif()
@@ -243,6 +256,7 @@ add_definitions(${ADD_CFLAGS})
 link_directories(${ADD_LINK_DIRECTORY})
 
 set(tensorflow_EXTERNAL_LIBRARIES
+    ${tensorflow_EXTERNAL_LIBRARIES}
     ${gif_STATIC_LIBRARIES}
     ${png_STATIC_LIBRARIES}
     ${jpeg_STATIC_LIBRARIES}
@@ -352,9 +366,7 @@ if (tensorflow_ENABLE_MKL_SUPPORT)
     list(APPEND tensorflow_EXTERNAL_LIBRARIES ${mkldnn_STATIC_LIBRARIES})
     list(APPEND tensorflow_EXTERNAL_DEPENDENCIES mkldnn_copy_shared_to_destination)
     include_directories(${mkldnn_INCLUDE_DIRS})
-  else (tensorflow_ENABLE_MKLDNN_SUPPORT)
-    add_definitions(-DINTEL_MKL_ML_ONLY)
-  endif()
+  endif(tensorflow_ENABLE_MKLDNN_SUPPORT)
 endif (tensorflow_ENABLE_MKL_SUPPORT)
 
 if (tensorflow_ENABLE_GPU)

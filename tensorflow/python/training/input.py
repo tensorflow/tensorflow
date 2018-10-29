@@ -56,7 +56,9 @@ _restore_sparse = sparse_ops._take_many_sparse_from_tensors_map
 # pylint: enable=protected-access
 
 
-@tf_export("io.match_filenames_once", "train.match_filenames_once")
+@tf_export(
+    "io.match_filenames_once",
+    v1=["io.match_filenames_once", "train.match_filenames_once"])
 @deprecation.deprecated_endpoints("train.match_filenames_once")
 def match_filenames_once(pattern, name=None):
   """Save the list of files matching pattern, so it is only computed once.
@@ -397,7 +399,7 @@ class _SparseMetaData(object):
     """
     self._sparse = sparse
     self._map_op = map_op
-    self._rank = rank
+    self._rank = tensor_shape.Dimension(rank)
 
   def __eq__(self, other):
     if self.sparse != other.sparse:
@@ -510,7 +512,7 @@ def _store_sparse_tensors(tensor_list, enqueue_many, keep_input,
   def _sparse_meta_data(t, storing_op, map_op):
     if not isinstance(t, sparse_tensor.SparseTensor):
       return _SparseMetaData(False, None, None)
-    rank = t.dense_shape.shape.with_rank(1)[0]
+    rank = t.dense_shape.shape.with_rank(1).dims[0]
     if enqueue_many:
       rank -= 1
     # If a shared map_op was provided, use that. Otherwise use the name of
@@ -604,7 +606,7 @@ def _restore_sparse_tensors(stored_list, sparse_info_list):
   tensors = [
       _restore_sparse(sparse_map_op=info.map_op,
                       sparse_handles=array_ops.squeeze(s, [1]),
-                      rank=(info.rank + 1).value)
+                      rank=tensor_shape.dimension_value(info.rank + 1))
       if info.sparse else s
       for (s, info) in zip(stored_list, sparse_info_list)]
   has_st = any(isinstance(x, sparse_tensor.SparseTensor) for x in tensors)

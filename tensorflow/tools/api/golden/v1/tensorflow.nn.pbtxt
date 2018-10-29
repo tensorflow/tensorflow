@@ -93,6 +93,10 @@ tf_module {
     argspec: "args=[\'inputs\', \'sequence_length\', \'beam_width\', \'top_paths\', \'merge_repeated\'], varargs=None, keywords=None, defaults=[\'100\', \'1\', \'True\'], "
   }
   member_method {
+    name: "ctc_beam_search_decoder_v2"
+    argspec: "args=[\'inputs\', \'sequence_length\', \'beam_width\', \'top_paths\'], varargs=None, keywords=None, defaults=[\'100\', \'1\'], "
+  }
+  member_method {
     name: "ctc_greedy_decoder"
     argspec: "args=[\'inputs\', \'sequence_length\', \'merge_repeated\'], varargs=None, keywords=None, defaults=[\'True\'], "
   }
@@ -298,7 +302,7 @@ tf_module {
   }
   member_method {
     name: "softmax_cross_entropy_with_logits_v2"
-    argspec: "args=[\'_sentinel\', \'labels\', \'logits\', \'dim\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'-1\', \'None\'], "
+    argspec: "args=[\'labels\', \'logits\', \'dim\', \'name\'], varargs=None, keywords=None, defaults=[\'-1\', \'None\'], "
   }
   member_method {
     name: "softplus"

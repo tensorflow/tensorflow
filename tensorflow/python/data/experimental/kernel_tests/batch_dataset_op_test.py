@@ -47,8 +47,8 @@ class BatchDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
     iterator = (
         dataset_ops.Dataset.from_tensor_slices(components)
         .map(lambda x: array_ops.fill([x], x)).apply(
-            batching.dense_to_sparse_batch(4, [12]))
-        .make_initializable_iterator())
+            batching.dense_to_sparse_batch(4,
+                                           [12])).make_initializable_iterator())
     init_op = iterator.initializer
     get_next = iterator.get_next()
 
@@ -73,10 +73,10 @@ class BatchDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
   def testDenseToSparseBatchDatasetWithUnknownShape(self):
     components = np.random.randint(5, size=(40,)).astype(np.int32)
     iterator = (
-        dataset_ops.Dataset.from_tensor_slices(components)
-        .map(lambda x: array_ops.fill([x, x], x)).apply(
-            batching.dense_to_sparse_batch(
-                4, [5, None])).make_initializable_iterator())
+        dataset_ops.Dataset.from_tensor_slices(components).map(
+            lambda x: array_ops.fill([x, x], x)).apply(
+                batching.dense_to_sparse_batch(
+                    4, [5, None])).make_initializable_iterator())
     init_op = iterator.initializer
     get_next = iterator.get_next()
 
@@ -90,8 +90,7 @@ class BatchDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
                              for j in range(c)
                              for z in range(c)], results.indices)
         self.assertAllEqual([
-            c
-            for c in components[start:start + 4] for _ in range(c)
+            c for c in components[start:start + 4] for _ in range(c)
             for _ in range(c)
         ], results.values)
         self.assertAllEqual([
@@ -107,14 +106,15 @@ class BatchDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
     input_tensor = array_ops.constant([[1]])
     with self.assertRaisesRegexp(ValueError, "Dimension -2 must be >= 0"):
       dataset_ops.Dataset.from_tensors(input_tensor).apply(
-          batching.dense_to_sparse_batch(4, [-2])).make_initializable_iterator()
+          batching.dense_to_sparse_batch(4,
+                                         [-2])).make_initializable_iterator()
 
   def testDenseToSparseBatchDatasetShapeErrors(self):
     input_tensor = array_ops.placeholder(dtypes.int32)
     iterator = (
         dataset_ops.Dataset.from_tensors(input_tensor).apply(
-            batching.dense_to_sparse_batch(4, [12]))
-        .make_initializable_iterator())
+            batching.dense_to_sparse_batch(4,
+                                           [12])).make_initializable_iterator())
     init_op = iterator.initializer
     get_next = iterator.get_next()
 
@@ -416,10 +416,10 @@ class BatchDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
         sess.run(next_element)
 
   def testMapAndBatchYieldsPartialBatch(self):
-    iterator = (dataset_ops.Dataset.range(10)
-                .apply(batching.map_and_batch(
-                    lambda x: array_ops.reshape(x * x, [1]), 4))
-                .make_one_shot_iterator())
+    iterator = (
+        dataset_ops.Dataset.range(10).apply(
+            batching.map_and_batch(lambda x: array_ops.reshape(x * x, [1]),
+                                   4)).make_one_shot_iterator())
     self.assertEqual([None, 1], iterator.output_shapes.as_list())
     next_element = iterator.get_next()
     with self.cached_session() as sess:
@@ -430,9 +430,10 @@ class BatchDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
         sess.run(next_element)
 
   def testMapAndBatchParallelGetNext(self):
-    iterator = (dataset_ops.Dataset.range(50000)
-                .apply(batching.map_and_batch(lambda x: x, batch_size=100))
-                .make_one_shot_iterator())
+    iterator = (
+        dataset_ops.Dataset.range(50000).apply(
+            batching.map_and_batch(lambda x: x,
+                                   batch_size=100)).make_one_shot_iterator())
     elements = []
     for _ in range(100):
       elements.append(iterator.get_next())
@@ -442,7 +443,7 @@ class BatchDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
         got.sort(key=lambda x: x[0])
         expected = []
         for j in range(100):
-          expected.append(range(i*10000+j*100, i*10000+(j+1)*100))
+          expected.append(range(i * 10000 + j * 100, i * 10000 + (j + 1) * 100))
         self.assertAllEqual(got, expected)
       with self.assertRaises(errors.OutOfRangeError):
         sess.run(elements)
@@ -451,8 +452,8 @@ class BatchDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
     iterator = (
         dataset_ops.Dataset.range(49999).apply(
             batching.map_and_batch(
-                lambda x: x, batch_size=100, drop_remainder=True))
-        .make_one_shot_iterator())
+                lambda x: x, batch_size=100,
+                drop_remainder=True)).make_one_shot_iterator())
     elements = []
     for _ in range(100):
       elements.append(iterator.get_next())
@@ -462,7 +463,7 @@ class BatchDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
         got.sort(key=lambda x: x[0])
         expected = []
         for j in range(100):
-          expected.append(range(i*10000+j*100, i*10000+(j+1)*100))
+          expected.append(range(i * 10000 + j * 100, i * 10000 + (j + 1) * 100))
         self.assertAllEqual(got, expected)
       with self.assertRaises(errors.OutOfRangeError):
         sess.run(elements)
@@ -498,8 +499,8 @@ class BatchDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
             constant_op.constant(1.0) / constant_op.constant(0.0), "oops"))
     batch_size = array_ops.placeholder(dtypes.int64, shape=[])
     iterator = (
-        dataset.apply(batching.map_and_batch(lambda x: x, batch_size))
-        .make_initializable_iterator())
+        dataset.apply(batching.map_and_batch(
+            lambda x: x, batch_size)).make_initializable_iterator())
     init_op = iterator.initializer
     with self.cached_session() as sess:
       with self.assertRaisesRegexp(errors.InvalidArgumentError, "oops"):
@@ -518,8 +519,8 @@ class BatchDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
         generator, output_types=dtypes.int32)
     batch_size = 4
     iterator = (
-        dataset.apply(batching.map_and_batch(lambda x: x, batch_size))
-        .make_initializable_iterator())
+        dataset.apply(batching.map_and_batch(
+            lambda x: x, batch_size)).make_initializable_iterator())
     init_op = iterator.initializer
     get_next = iterator.get_next()
     with self.cached_session() as sess:
@@ -597,6 +598,7 @@ class BatchDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
       ("11", b"hello", dtypes.string),
   )
   def testMapAndBatchTypes(self, element, dtype):
+
     def gen():
       yield element
 

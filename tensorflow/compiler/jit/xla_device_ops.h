@@ -49,10 +49,10 @@ class XlaDeviceDummyOp : public OpKernel {
   void Compute(OpKernelContext* ctx) override;
 };
 
-class XlaAssignVariableOp : public AsyncOpKernel {
+class XlaAssignVariableOp : public OpKernel {
  public:
   explicit XlaAssignVariableOp(OpKernelConstruction* c);
-  void ComputeAsync(OpKernelContext* context, DoneCallback done) override;
+  void Compute(OpKernelContext* context) override;
 
  private:
   DataType dtype_;
@@ -65,11 +65,13 @@ class XlaAssignVariableOp : public AsyncOpKernel {
                               .HostMemory("resources"),   \
                           KERNEL);
 
-#define REGISTER_XLA_COMPILE_KERNEL(DEVICE, KERNEL, TYPES) \
-  REGISTER_KERNEL_BUILDER(Name("_XlaCompile")              \
-                              .Device(DEVICE)              \
-                              .HostMemory("constants")     \
-                              .HostMemory("resources"),    \
+#define REGISTER_XLA_COMPILE_KERNEL(DEVICE, KERNEL, TYPES)          \
+  REGISTER_KERNEL_BUILDER(Name("_XlaCompile")                       \
+                              .Device(DEVICE)                       \
+                              .HostMemory("constants")              \
+                              .HostMemory("key")                    \
+                              .HostMemory("compilation_successful") \
+                              .HostMemory("resources"),             \
                           KERNEL);
 
 #define REGISTER_XLA_RUN_KERNEL(DEVICE, KERNEL, TYPES) \
@@ -91,6 +93,9 @@ class XlaAssignVariableOp : public AsyncOpKernel {
       ConstantOp);                                                             \
   REGISTER_KERNEL_BUILDER(                                                     \
       Name("Identity").Device(DEVICE).TypeConstraint("T", TYPES), IdentityOp); \
+  REGISTER_KERNEL_BUILDER(                                                     \
+      Name("Identity").Device(DEVICE).TypeConstraint("T", DT_STRING),          \
+      IdentityOp);                                                             \
   REGISTER_KERNEL_BUILDER(Name("IdentityN").Device(DEVICE), IdentityNOp);      \
   REGISTER_KERNEL_BUILDER(Name("Placeholder").Device(DEVICE), PlaceholderOp);  \
   REGISTER_KERNEL_BUILDER(Name("PlaceholderV2").Device(DEVICE),                \
@@ -208,6 +213,8 @@ class XlaAssignVariableOp : public AsyncOpKernel {
                               .TypeConstraint<ResourceHandle>("T")             \
                               .HostMemory("input"),                            \
                           RetvalOp);                                           \
+  REGISTER_KERNEL_BUILDER(                                                     \
+      Name(kDeviceRetOp).Device(DEVICE).TypeConstraint<int32>("T"), RetvalOp); \
                                                                                \
   REGISTER_KERNEL_BUILDER(                                                     \
       Name("RemoteCall").Device(DEVICE).HostMemory("target"), RemoteCallOp);   \

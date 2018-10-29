@@ -194,7 +194,7 @@ class GatherOp : public XlaOpKernel {
 };
 
 REGISTER_XLA_OP(Name("Gather"), GatherOp);
-REGISTER_XLA_OP(Name("GatherV2").CompileTimeConstInput("axis"), GatherOp);
+REGISTER_XLA_OP(Name("GatherV2").CompileTimeConstantInput("axis"), GatherOp);
 
 class GatherNdOp : public XlaOpKernel {
  public:

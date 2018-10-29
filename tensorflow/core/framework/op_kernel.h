@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/core/framework/cancellation.h"
 #include "tensorflow/core/framework/control_flow.h"
 #include "tensorflow/core/framework/device_base.h"
+#include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/kernel_def.pb.h"
 #include "tensorflow/core/framework/kernel_def_builder.h"
 #include "tensorflow/core/framework/node_def_util.h"
@@ -489,6 +490,17 @@ struct TensorValue {
   Tensor* tensor;
 };
 
+// Used to store partitioned graphs from function-calling ops.
+struct GraphCollector {
+  mutex mu;
+  std::vector<GraphDef> graphs GUARDED_BY(mu);
+
+  void CollectGraph(const GraphDef& graph) {
+    mutex_lock ml(mu);
+    graphs.push_back(graph);
+  }
+};
+
 class OpKernelContext {
  public:
   // The first element of a WrappedAllocator is a "base" Allocator and
@@ -589,6 +601,7 @@ class OpKernelContext {
     FunctionLibraryRuntime* function_library = nullptr;
     std::function<void(std::function<void()>)>* runner = nullptr;
     StepStatsCollectorInterface* stats_collector = nullptr;
+    GraphCollector* graph_collector = nullptr;
 
     // TensorSliceReaderCache support.
     checkpoint::TensorSliceReaderCacheWrapper* slice_reader_cache = nullptr;
@@ -710,6 +723,9 @@ class OpKernelContext {
   // status to a non-OK value and returns false.
   // Usage: if (!context->ValidateInputsAreSameShape(this)) return;
   bool ValidateInputsAreSameShape(OpKernel* op);
+
+  // If non-null, kernels should populate with any partition subgraphs created.
+  GraphCollector* graph_collector() { return params_->graph_collector; }
 
   // Input to output forwarding.
 
@@ -1304,7 +1320,8 @@ class Name : public KernelDefBuilder {
             return new __VA_ARGS__(context);                             \
           });
 
-void* GlobalKernelRegistry();
+// Checks whether a given kernel is registered on device_type.
+bool KernelDefAvailable(const DeviceType& device_type, const NodeDef& node_def);
 
 // If node_def has a corresponding kernel registered on device_type,
 // returns OK and fill in the kernel def and kernel_class_name. <def> and

@@ -167,10 +167,12 @@ class Node {
   bool IsCollective() const { return class_ == NC_COLLECTIVE; }
 
   bool IsMetadata() const { return class_ == NC_METADATA; }
+  bool IsFakeParam() const { return class_ == NC_FAKE_PARAM; }
 
   template <typename T>
   void AddAttr(const string& name, const T& val) {
     SetAttrValue(val, AddAttrHelper(name));
+    UpdateProperties();
   }
 
   void ClearAttr(const string& name);
@@ -211,6 +213,10 @@ class Node {
   // e.g. in AddAttr.
   void MaybeCopyOnWrite();
 
+  // Called after an attr has changed. Decides whether we need to update some
+  // property of the node (stored in props_).
+  void UpdateProperties();
+
   AttrValue* AddAttrHelper(const string& name);
 
   // A set of mutually exclusive classes for different kinds of nodes,
@@ -238,6 +244,7 @@ class Node {
     NC_METADATA,
     NC_SCOPED_ALLOCATOR,
     NC_COLLECTIVE,
+    NC_FAKE_PARAM,
     NC_OTHER  // Not a special kind of node
   };
 
@@ -608,6 +615,9 @@ class Graph {
                          std::vector<OutputTensor> body_inputs,
                          std::vector<OutputTensor> body_outputs,
                          WhileContext** result);
+
+  // Builds a node name to node pointer index for all nodes in the graph.
+  std::unordered_map<string, Node*> BuildNodeNameIndex() const;
 
   // TODO(josh11b): uint64 hash() const;
 

@@ -149,14 +149,6 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
-    name: "Saver"
-    mtype: "<type \'type\'>"
-  }
-  member {
-    name: "SaverDef"
-    mtype: "<class \'google.protobuf.pyext.cpp_message.GeneratedProtocolMessageType\'>"
-  }
-  member {
     name: "Scaffold"
     mtype: "<type \'type\'>"
   }
@@ -253,10 +245,6 @@ tf_module {
     argspec: "args=[\'checkpoint_prefix\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
-    name: "confusion_matrix"
-    argspec: "args=[\'labels\', \'predictions\', \'num_classes\', \'dtype\', \'name\', \'weights\'], varargs=None, keywords=None, defaults=[\'None\', \"<dtype: \'int32\'>\", \'None\', \'None\'], "
-  }
-  member_method {
     name: "cosine_decay"
     argspec: "args=[\'learning_rate\', \'global_step\', \'decay_steps\', \'alpha\', \'name\'], varargs=None, keywords=None, defaults=[\'0.0\', \'None\'], "
   }
@@ -271,10 +259,6 @@ tf_module {
   member_method {
     name: "exponential_decay"
     argspec: "args=[\'learning_rate\', \'global_step\', \'decay_steps\', \'decay_rate\', \'staircase\', \'name\'], varargs=None, keywords=None, defaults=[\'False\', \'None\'], "
-  }
-  member_method {
-    name: "export_meta_graph"
-    argspec: "args=[\'filename\', \'meta_info_def\', \'graph_def\', \'saver_def\', \'collection_list\', \'as_text\', \'graph\', \'export_scope\', \'clear_devices\', \'clear_extraneous_savers\', \'strip_default_attrs\'], varargs=None, keywords=kwargs, defaults=[\'None\', \'None\', \'None\', \'None\', \'None\', \'False\', \'None\', \'None\', \'False\', \'False\', \'False\'], "
   }
   member_method {
     name: "generate_checkpoint_state_proto"
@@ -299,10 +283,6 @@ tf_module {
   member_method {
     name: "global_step"
     argspec: "args=[\'sess\', \'global_step_tensor\'], varargs=None, keywords=None, defaults=None"
-  }
-  member_method {
-    name: "import_meta_graph"
-    argspec: "args=[\'meta_graph_or_file\', \'clear_devices\', \'import_scope\'], varargs=None, keywords=kwargs, defaults=[\'False\', \'None\'], "
   }
   member_method {
     name: "init_from_checkpoint"
@@ -331,10 +311,6 @@ tf_module {
   member_method {
     name: "load_variable"
     argspec: "args=[\'ckpt_dir_or_file\', \'name\'], varargs=None, keywords=None, defaults=None"
-  }
-  member_method {
-    name: "match_filenames_once"
-    argspec: "args=[\'pattern\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
     name: "natural_exp_decay"

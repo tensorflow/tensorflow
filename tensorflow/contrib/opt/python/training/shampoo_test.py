@@ -279,7 +279,7 @@ class ShampooTest(test.TestCase, parameterized.TestCase):
       # Update rule is var = var - lr * gg^{-0.5} * grad
       # lr = 1
       mat_g = (grad_np * grad_np)
-      new_val_np = init_var_np - np.power(mat_g + RIDGE_EPSILON, -0.5) * grad_np
+      new_val_np = init_var_np - np.power(mat_g, -0.5) * grad_np
 
       self.assertAllCloseAccordingToType(
           new_val_np, new_val, atol=TOLERANCE, rtol=TOLERANCE)
@@ -288,7 +288,7 @@ class ShampooTest(test.TestCase, parameterized.TestCase):
       new_val = sess.run(var)
 
       mat_g += (grad_np_2 * grad_np_2)
-      new_val_np -= np.power(mat_g + RIDGE_EPSILON, -0.5) * grad_np_2
+      new_val_np -= np.power(mat_g, -0.5) * grad_np_2
 
       self.assertAllCloseAccordingToType(
           new_val_np, new_val, atol=TOLERANCE, rtol=TOLERANCE)
@@ -339,7 +339,7 @@ class ShampooTest(test.TestCase, parameterized.TestCase):
 
       mat_g1 = np.sum(
           grad_np * grad_np, axis=1, keepdims=True) / grad_np.shape[0]
-      mat_left = np.power(mat_g1 + RIDGE_EPSILON, -0.25)
+      mat_left = np.power(mat_g1, -0.25)
       mat_g2 = np.dot(grad_np.transpose(), grad_np) / grad_np.shape[1]
       mat_right = np_power(mat_g2 + RIDGE_EPSILON * np.eye(size[1]), -0.25)
       new_val_np = init_var_np - np.dot(grad_np * mat_left, mat_right)
@@ -353,7 +353,7 @@ class ShampooTest(test.TestCase, parameterized.TestCase):
 
       mat_g1 += np.sum(
           grad_np_2 * grad_np_2, axis=1, keepdims=True) / grad_np_2.shape[0]
-      mat_left = np.power(mat_g1 + RIDGE_EPSILON, -0.25)
+      mat_left = np.power(mat_g1, -0.25)
       mat_g2 += np.dot(grad_np_2.transpose(), grad_np_2) / grad_np_2.shape[1]
       mat_right = np_power(mat_g2 + RIDGE_EPSILON * np.eye(size[1]), -0.25)
       new_val_np -= np.dot(grad_np_2 * mat_left, mat_right)

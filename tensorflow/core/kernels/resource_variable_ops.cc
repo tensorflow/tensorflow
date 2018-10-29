@@ -54,6 +54,7 @@ limitations under the License.
 #include <memory>
 #include <vector>
 
+#include "absl/strings/str_join.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/resource_mgr.h"
@@ -124,12 +125,21 @@ void ReadVariablesOp::Compute(OpKernelContext* ctx) {
   for (size_t i = 0; i < dtypes_.size(); ++i) {
     handles[i] = &HandleFromInput(ctx, i);
   }
-  const auto status = LookupResources(ctx, handles, &variables);
-  OP_REQUIRES(ctx, status.ok(),
-              errors::FailedPrecondition(
-                  "Error while reading resource variable. This could mean that "
-                  "the variable was uninitialized. ",
-                  status.ToString()));
+
+  OP_REQUIRES_OK(ctx, LookupResources(ctx, handles, &variables));
+
+  std::vector<string> uninitialized_vars;
+  for (int64 i = 0; i < variables.size(); i++) {
+    if (variables[i] == nullptr) {
+      uninitialized_vars.push_back(handles[i]->name());
+    }
+  }
+
+  OP_REQUIRES(
+      ctx, uninitialized_vars.empty(),
+      errors::InvalidArgument("In ReadVariableOp the following variables were "
+                              "found uninitialized: ",
+                              absl::StrJoin(uninitialized_vars, ", ")));
 
   for (size_t i = 0; i < dtypes_.size(); ++i) {
     // We're acquiring a reference to the underlying buffer while
@@ -426,6 +436,12 @@ class AssignUpdateVariableOp : public OpKernel {
     // ADD if value's refcount was 1.
     mutex_lock ml(*variable->mu());
     Tensor* var_tensor = variable->tensor();
+    OP_REQUIRES(context, var_tensor->shape().IsSameSize(value.shape()),
+                errors::InvalidArgument("Cannot update variable with shape ",
+                                        var_tensor->shape().DebugString(),
+                                        " using a Tensor with shape ",
+                                        value.shape().DebugString(),
+                                        ", shapes must be equal."));
     OP_REQUIRES_OK(context,
                    PrepareToUpdateVariable<Device, T>(context, var_tensor));
     functor::DenseUpdate<Device, T, Op> update_functor;

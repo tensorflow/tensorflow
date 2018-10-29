@@ -22,7 +22,6 @@ py_library(
     visibility = ["//tensorflow:internal"],
     deps = [
         ":input_ops",
-        ":prefetching_ops_v2",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:device_util",
@@ -31,6 +30,7 @@ py_library(
         "//tensorflow/python:resource_variable_ops",
         "//tensorflow/python:training",
         "//tensorflow/python:util",
+        "//tensorflow/python/data/ops:multi_device_iterator_ops",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/training/checkpointable:base",
         "@six_archive//:six",
@@ -315,6 +315,7 @@ py_library(
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:distributed_framework_test_lib",
         "//tensorflow/python:session",
+        "//tensorflow/python:util",
         "//tensorflow/python/estimator:estimator_py",
         "//third_party/py/numpy",
     ],
@@ -412,6 +413,24 @@ cuda_py_test(
 )
 
 cuda_py_test(
+    name = "moving_averages_test",
+    srcs = ["moving_averages_test.py"],
+    additional_deps = [
+        ":combinations",
+        "@absl_py//absl/testing:parameterized",
+        "//tensorflow/python/eager:test",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:constant_op",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:training",
+        "//tensorflow/python:variables",
+    ],
+    tags = [
+        "no_pip",
+    ],
+)
+
+cuda_py_test(
     name = "optimizer_v2_test",
     srcs = ["optimizer_v2_test.py"],
     additional_deps = [
@@ -454,9 +473,10 @@ cuda_py_test(
 
 cuda_py_test(
     name = "estimator_training_test",
-    size = "enormous",
+    size = "large",
     srcs = ["estimator_training_test.py"],
     additional_deps = [
+        ":collective_all_reduce_strategy",
         ":combinations",
         ":mirrored_strategy",
         ":multi_worker_test_base",
@@ -575,7 +595,6 @@ py_library(
     deps = [
         ":values",
         "//tensorflow/contrib/all_reduce:all_reduce_py",
-        "//tensorflow/contrib/nccl:nccl_py",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:collective_ops",
         "//tensorflow/python:device",
@@ -583,6 +602,7 @@ py_library(
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:gradients",
         "//tensorflow/python:math_ops",
+        "//tensorflow/python:nccl_ops",
     ],
 )
 
@@ -626,7 +646,6 @@ py_library(
 
 cuda_py_test(
     name = "cross_tower_ops_test",
-    size = "large",
     srcs = ["cross_tower_ops_test.py"],
     additional_deps = [
         ":combinations",
@@ -645,32 +664,6 @@ cuda_py_test(
     tags = [
         "multi_and_single_gpu",
         "no_pip",
-    ],
-)
-
-py_library(
-    name = "prefetching_ops_v2",
-    srcs = ["prefetching_ops_v2.py"],
-    deps = [
-        "//tensorflow/contrib/data/python/ops:prefetching_ops",
-        "//tensorflow/python:experimental_dataset_ops_gen",
-        "//tensorflow/python:framework_ops",
-        "//tensorflow/python/data/ops:dataset_ops",
-        "//tensorflow/python/data/util:nest",
-        "//tensorflow/python/data/util:sparse",
-    ],
-)
-
-cuda_py_test(
-    name = "prefetching_ops_v2_test",
-    srcs = ["prefetching_ops_v2_test.py"],
-    additional_deps = [
-        ":prefetching_ops_v2",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:framework_ops",
-        "//tensorflow/python:framework_test_lib",
-        "//tensorflow/python/data/ops:dataset_ops",
-        "//tensorflow/python/data/ops:iterator_ops",
     ],
 )
 
@@ -731,6 +724,7 @@ cuda_py_test(
     shard_count = 16,
     tags = [
         "multi_and_single_gpu",
+        "no_oss",  # TODO(b/117919883): Fix python error.
         "no_pip",
         "no_windows_gpu",
         "notsan",

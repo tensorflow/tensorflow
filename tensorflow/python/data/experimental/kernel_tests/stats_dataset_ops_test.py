@@ -280,7 +280,7 @@ class StatsDatasetTest(stats_dataset_test_base.StatsDatasetTestBase):
 
 class FeatureStatsDatasetTest(
     stats_dataset_test_base.StatsDatasetTestBase,
-    reader_dataset_ops_test_base.ReadBatchFeaturesTestBase):
+    reader_dataset_ops_test_base.MakeBatchedFeaturesDatasetTestBase):
 
   def testFeaturesStats(self):
     num_epochs = 5

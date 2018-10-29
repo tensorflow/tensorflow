@@ -12,15 +12,15 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/tensor.h"
-#include "tensorflow/core/kernels/data/dataset.h"
 
 namespace tensorflow {
 namespace data {
 namespace {
 
-// See documentation in ../ops/dataset_ops.cc for a high-level
+// See documentation in ../../ops/dataset_ops.cc for a high-level
 // description of the following op.
 
 class ConcatenateDatasetOp : public BinaryDatasetOpKernel {
@@ -171,16 +171,16 @@ class ConcatenateDatasetOp : public BinaryDatasetOpKernel {
 
     static PartialTensorShape MostSpecificCompatibleShape(
         const PartialTensorShape& ts1, const PartialTensorShape& ts2) {
-      PartialTensorShape output_tensorshape;
       if (ts1.dims() != ts2.dims() || ts1.unknown_rank() || ts2.unknown_rank())
-        return output_tensorshape;
+        return PartialTensorShape();
+      PartialTensorShape output_tensorshape({});
       auto dims1 = ts1.dim_sizes();
       auto dims2 = ts2.dim_sizes();
       for (int d = 0; d < ts1.dims(); d++) {
         if (dims1[d] == dims2[d])
-          output_tensorshape.Concatenate(dims1[d]);
+          output_tensorshape.AddDim(dims1[d]);
         else
-          output_tensorshape.Concatenate(-1);
+          output_tensorshape.AddDim(-1);
       }
       return output_tensorshape;
     }

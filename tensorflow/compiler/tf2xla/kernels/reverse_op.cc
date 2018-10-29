@@ -67,7 +67,7 @@ class ReverseOp : public XlaOpKernel {
   }
 };
 
-REGISTER_XLA_OP(Name("Reverse").CompileTimeConstInput("dims"), ReverseOp);
+REGISTER_XLA_OP(Name("Reverse").CompileTimeConstantInput("dims"), ReverseOp);
 
 class ReverseV2Op : public XlaOpKernel {
  public:
@@ -119,7 +119,8 @@ class ReverseV2Op : public XlaOpKernel {
   }
 };
 
-REGISTER_XLA_OP(Name("ReverseV2").CompileTimeConstInput("axis"), ReverseV2Op);
+REGISTER_XLA_OP(Name("ReverseV2").CompileTimeConstantInput("axis"),
+                ReverseV2Op);
 
 }  // namespace
 }  // namespace tensorflow

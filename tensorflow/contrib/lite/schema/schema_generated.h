@@ -79,11 +79,17 @@ struct LocalResponseNormalizationOptionsT;
 struct LSTMOptions;
 struct LSTMOptionsT;
 
+struct UnidirectionalSequenceLSTMOptions;
+struct UnidirectionalSequenceLSTMOptionsT;
+
 struct BidirectionalSequenceLSTMOptions;
 struct BidirectionalSequenceLSTMOptionsT;
 
 struct ResizeBilinearOptions;
 struct ResizeBilinearOptionsT;
+
+struct ResizeNearestNeighborOptions;
+struct ResizeNearestNeighborOptionsT;
 
 struct CallOptions;
 struct CallOptionsT;
@@ -237,6 +243,12 @@ struct ZerosLikeOptionsT;
 
 struct FillOptions;
 struct FillOptionsT;
+
+struct FloorModOptions;
+struct FloorModOptionsT;
+
+struct RangeOptions;
+struct RangeOptionsT;
 
 struct OperatorCode;
 struct OperatorCodeT;
@@ -398,11 +410,14 @@ enum BuiltinOperator {
   BuiltinOperator_SQUARE = 92,
   BuiltinOperator_ZEROS_LIKE = 93,
   BuiltinOperator_FILL = 94,
+  BuiltinOperator_FLOOR_MOD = 95,
+  BuiltinOperator_RANGE = 96,
+  BuiltinOperator_RESIZE_NEAREST_NEIGHBOR = 97,
   BuiltinOperator_MIN = BuiltinOperator_ADD,
-  BuiltinOperator_MAX = BuiltinOperator_FILL
+  BuiltinOperator_MAX = BuiltinOperator_RESIZE_NEAREST_NEIGHBOR
 };
 
-inline const BuiltinOperator (&EnumValuesBuiltinOperator())[94] {
+inline const BuiltinOperator (&EnumValuesBuiltinOperator())[97] {
   static const BuiltinOperator values[] = {
     BuiltinOperator_ADD,
     BuiltinOperator_AVERAGE_POOL_2D,
@@ -497,7 +512,10 @@ inline const BuiltinOperator (&EnumValuesBuiltinOperator())[94] {
     BuiltinOperator_REDUCE_ANY,
     BuiltinOperator_SQUARE,
     BuiltinOperator_ZEROS_LIKE,
-    BuiltinOperator_FILL
+    BuiltinOperator_FILL,
+    BuiltinOperator_FLOOR_MOD,
+    BuiltinOperator_RANGE,
+    BuiltinOperator_RESIZE_NEAREST_NEIGHBOR
   };
   return values;
 }
@@ -599,6 +617,9 @@ inline const char * const *EnumNamesBuiltinOperator() {
     "SQUARE",
     "ZEROS_LIKE",
     "FILL",
+    "FLOOR_MOD",
+    "RANGE",
+    "RESIZE_NEAREST_NEIGHBOR",
     nullptr
   };
   return names;
@@ -681,11 +702,15 @@ enum BuiltinOptions {
   BuiltinOptions_FillOptions = 68,
   BuiltinOptions_BidirectionalSequenceLSTMOptions = 69,
   BuiltinOptions_BidirectionalSequenceRNNOptions = 70,
+  BuiltinOptions_UnidirectionalSequenceLSTMOptions = 71,
+  BuiltinOptions_FloorModOptions = 72,
+  BuiltinOptions_RangeOptions = 73,
+  BuiltinOptions_ResizeNearestNeighborOptions = 74,
   BuiltinOptions_MIN = BuiltinOptions_NONE,
-  BuiltinOptions_MAX = BuiltinOptions_BidirectionalSequenceRNNOptions
+  BuiltinOptions_MAX = BuiltinOptions_ResizeNearestNeighborOptions
 };
 
-inline const BuiltinOptions (&EnumValuesBuiltinOptions())[71] {
+inline const BuiltinOptions (&EnumValuesBuiltinOptions())[75] {
   static const BuiltinOptions values[] = {
     BuiltinOptions_NONE,
     BuiltinOptions_Conv2DOptions,
@@ -757,7 +782,11 @@ inline const BuiltinOptions (&EnumValuesBuiltinOptions())[71] {
     BuiltinOptions_ZerosLikeOptions,
     BuiltinOptions_FillOptions,
     BuiltinOptions_BidirectionalSequenceLSTMOptions,
-    BuiltinOptions_BidirectionalSequenceRNNOptions
+    BuiltinOptions_BidirectionalSequenceRNNOptions,
+    BuiltinOptions_UnidirectionalSequenceLSTMOptions,
+    BuiltinOptions_FloorModOptions,
+    BuiltinOptions_RangeOptions,
+    BuiltinOptions_ResizeNearestNeighborOptions
   };
   return values;
 }
@@ -835,6 +864,10 @@ inline const char * const *EnumNamesBuiltinOptions() {
     "FillOptions",
     "BidirectionalSequenceLSTMOptions",
     "BidirectionalSequenceRNNOptions",
+    "UnidirectionalSequenceLSTMOptions",
+    "FloorModOptions",
+    "RangeOptions",
+    "ResizeNearestNeighborOptions",
     nullptr
   };
   return names;
@@ -1127,6 +1160,22 @@ template<> struct BuiltinOptionsTraits<BidirectionalSequenceLSTMOptions> {
 
 template<> struct BuiltinOptionsTraits<BidirectionalSequenceRNNOptions> {
   static const BuiltinOptions enum_value = BuiltinOptions_BidirectionalSequenceRNNOptions;
+};
+
+template<> struct BuiltinOptionsTraits<UnidirectionalSequenceLSTMOptions> {
+  static const BuiltinOptions enum_value = BuiltinOptions_UnidirectionalSequenceLSTMOptions;
+};
+
+template<> struct BuiltinOptionsTraits<FloorModOptions> {
+  static const BuiltinOptions enum_value = BuiltinOptions_FloorModOptions;
+};
+
+template<> struct BuiltinOptionsTraits<RangeOptions> {
+  static const BuiltinOptions enum_value = BuiltinOptions_RangeOptions;
+};
+
+template<> struct BuiltinOptionsTraits<ResizeNearestNeighborOptions> {
+  static const BuiltinOptions enum_value = BuiltinOptions_ResizeNearestNeighborOptions;
 };
 
 struct BuiltinOptionsUnion {
@@ -1719,6 +1768,38 @@ struct BuiltinOptionsUnion {
   const BidirectionalSequenceRNNOptionsT *AsBidirectionalSequenceRNNOptions() const {
     return type == BuiltinOptions_BidirectionalSequenceRNNOptions ?
       reinterpret_cast<const BidirectionalSequenceRNNOptionsT *>(value) : nullptr;
+  }
+  UnidirectionalSequenceLSTMOptionsT *AsUnidirectionalSequenceLSTMOptions() {
+    return type == BuiltinOptions_UnidirectionalSequenceLSTMOptions ?
+      reinterpret_cast<UnidirectionalSequenceLSTMOptionsT *>(value) : nullptr;
+  }
+  const UnidirectionalSequenceLSTMOptionsT *AsUnidirectionalSequenceLSTMOptions() const {
+    return type == BuiltinOptions_UnidirectionalSequenceLSTMOptions ?
+      reinterpret_cast<const UnidirectionalSequenceLSTMOptionsT *>(value) : nullptr;
+  }
+  FloorModOptionsT *AsFloorModOptions() {
+    return type == BuiltinOptions_FloorModOptions ?
+      reinterpret_cast<FloorModOptionsT *>(value) : nullptr;
+  }
+  const FloorModOptionsT *AsFloorModOptions() const {
+    return type == BuiltinOptions_FloorModOptions ?
+      reinterpret_cast<const FloorModOptionsT *>(value) : nullptr;
+  }
+  RangeOptionsT *AsRangeOptions() {
+    return type == BuiltinOptions_RangeOptions ?
+      reinterpret_cast<RangeOptionsT *>(value) : nullptr;
+  }
+  const RangeOptionsT *AsRangeOptions() const {
+    return type == BuiltinOptions_RangeOptions ?
+      reinterpret_cast<const RangeOptionsT *>(value) : nullptr;
+  }
+  ResizeNearestNeighborOptionsT *AsResizeNearestNeighborOptions() {
+    return type == BuiltinOptions_ResizeNearestNeighborOptions ?
+      reinterpret_cast<ResizeNearestNeighborOptionsT *>(value) : nullptr;
+  }
+  const ResizeNearestNeighborOptionsT *AsResizeNearestNeighborOptions() const {
+    return type == BuiltinOptions_ResizeNearestNeighborOptions ?
+      reinterpret_cast<const ResizeNearestNeighborOptionsT *>(value) : nullptr;
   }
 };
 
@@ -3469,6 +3550,96 @@ inline flatbuffers::Offset<LSTMOptions> CreateLSTMOptions(
 
 flatbuffers::Offset<LSTMOptions> CreateLSTMOptions(flatbuffers::FlatBufferBuilder &_fbb, const LSTMOptionsT *_o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
 
+struct UnidirectionalSequenceLSTMOptionsT : public flatbuffers::NativeTable {
+  typedef UnidirectionalSequenceLSTMOptions TableType;
+  ActivationFunctionType fused_activation_function;
+  float cell_clip;
+  float proj_clip;
+  bool time_major;
+  UnidirectionalSequenceLSTMOptionsT()
+      : fused_activation_function(ActivationFunctionType_NONE),
+        cell_clip(0.0f),
+        proj_clip(0.0f),
+        time_major(false) {
+  }
+};
+
+struct UnidirectionalSequenceLSTMOptions FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
+  typedef UnidirectionalSequenceLSTMOptionsT NativeTableType;
+  enum {
+    VT_FUSED_ACTIVATION_FUNCTION = 4,
+    VT_CELL_CLIP = 6,
+    VT_PROJ_CLIP = 8,
+    VT_TIME_MAJOR = 10
+  };
+  ActivationFunctionType fused_activation_function() const {
+    return static_cast<ActivationFunctionType>(GetField<int8_t>(VT_FUSED_ACTIVATION_FUNCTION, 0));
+  }
+  float cell_clip() const {
+    return GetField<float>(VT_CELL_CLIP, 0.0f);
+  }
+  float proj_clip() const {
+    return GetField<float>(VT_PROJ_CLIP, 0.0f);
+  }
+  bool time_major() const {
+    return GetField<uint8_t>(VT_TIME_MAJOR, 0) != 0;
+  }
+  bool Verify(flatbuffers::Verifier &verifier) const {
+    return VerifyTableStart(verifier) &&
+           VerifyField<int8_t>(verifier, VT_FUSED_ACTIVATION_FUNCTION) &&
+           VerifyField<float>(verifier, VT_CELL_CLIP) &&
+           VerifyField<float>(verifier, VT_PROJ_CLIP) &&
+           VerifyField<uint8_t>(verifier, VT_TIME_MAJOR) &&
+           verifier.EndTable();
+  }
+  UnidirectionalSequenceLSTMOptionsT *UnPack(const flatbuffers::resolver_function_t *_resolver = nullptr) const;
+  void UnPackTo(UnidirectionalSequenceLSTMOptionsT *_o, const flatbuffers::resolver_function_t *_resolver = nullptr) const;
+  static flatbuffers::Offset<UnidirectionalSequenceLSTMOptions> Pack(flatbuffers::FlatBufferBuilder &_fbb, const UnidirectionalSequenceLSTMOptionsT* _o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
+};
+
+struct UnidirectionalSequenceLSTMOptionsBuilder {
+  flatbuffers::FlatBufferBuilder &fbb_;
+  flatbuffers::uoffset_t start_;
+  void add_fused_activation_function(ActivationFunctionType fused_activation_function) {
+    fbb_.AddElement<int8_t>(UnidirectionalSequenceLSTMOptions::VT_FUSED_ACTIVATION_FUNCTION, static_cast<int8_t>(fused_activation_function), 0);
+  }
+  void add_cell_clip(float cell_clip) {
+    fbb_.AddElement<float>(UnidirectionalSequenceLSTMOptions::VT_CELL_CLIP, cell_clip, 0.0f);
+  }
+  void add_proj_clip(float proj_clip) {
+    fbb_.AddElement<float>(UnidirectionalSequenceLSTMOptions::VT_PROJ_CLIP, proj_clip, 0.0f);
+  }
+  void add_time_major(bool time_major) {
+    fbb_.AddElement<uint8_t>(UnidirectionalSequenceLSTMOptions::VT_TIME_MAJOR, static_cast<uint8_t>(time_major), 0);
+  }
+  explicit UnidirectionalSequenceLSTMOptionsBuilder(flatbuffers::FlatBufferBuilder &_fbb)
+        : fbb_(_fbb) {
+    start_ = fbb_.StartTable();
+  }
+  UnidirectionalSequenceLSTMOptionsBuilder &operator=(const UnidirectionalSequenceLSTMOptionsBuilder &);
+  flatbuffers::Offset<UnidirectionalSequenceLSTMOptions> Finish() {
+    const auto end = fbb_.EndTable(start_);
+    auto o = flatbuffers::Offset<UnidirectionalSequenceLSTMOptions>(end);
+    return o;
+  }
+};
+
+inline flatbuffers::Offset<UnidirectionalSequenceLSTMOptions> CreateUnidirectionalSequenceLSTMOptions(
+    flatbuffers::FlatBufferBuilder &_fbb,
+    ActivationFunctionType fused_activation_function = ActivationFunctionType_NONE,
+    float cell_clip = 0.0f,
+    float proj_clip = 0.0f,
+    bool time_major = false) {
+  UnidirectionalSequenceLSTMOptionsBuilder builder_(_fbb);
+  builder_.add_proj_clip(proj_clip);
+  builder_.add_cell_clip(cell_clip);
+  builder_.add_time_major(time_major);
+  builder_.add_fused_activation_function(fused_activation_function);
+  return builder_.Finish();
+}
+
+flatbuffers::Offset<UnidirectionalSequenceLSTMOptions> CreateUnidirectionalSequenceLSTMOptions(flatbuffers::FlatBufferBuilder &_fbb, const UnidirectionalSequenceLSTMOptionsT *_o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
+
 struct BidirectionalSequenceLSTMOptionsT : public flatbuffers::NativeTable {
   typedef BidirectionalSequenceLSTMOptions TableType;
   ActivationFunctionType fused_activation_function;
@@ -3612,6 +3783,60 @@ inline flatbuffers::Offset<ResizeBilinearOptions> CreateResizeBilinearOptions(
 }
 
 flatbuffers::Offset<ResizeBilinearOptions> CreateResizeBilinearOptions(flatbuffers::FlatBufferBuilder &_fbb, const ResizeBilinearOptionsT *_o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
+
+struct ResizeNearestNeighborOptionsT : public flatbuffers::NativeTable {
+  typedef ResizeNearestNeighborOptions TableType;
+  bool align_corners;
+  ResizeNearestNeighborOptionsT()
+      : align_corners(false) {
+  }
+};
+
+struct ResizeNearestNeighborOptions FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
+  typedef ResizeNearestNeighborOptionsT NativeTableType;
+  enum {
+    VT_ALIGN_CORNERS = 4
+  };
+  bool align_corners() const {
+    return GetField<uint8_t>(VT_ALIGN_CORNERS, 0) != 0;
+  }
+  bool Verify(flatbuffers::Verifier &verifier) const {
+    return VerifyTableStart(verifier) &&
+           VerifyField<uint8_t>(verifier, VT_ALIGN_CORNERS) &&
+           verifier.EndTable();
+  }
+  ResizeNearestNeighborOptionsT *UnPack(const flatbuffers::resolver_function_t *_resolver = nullptr) const;
+  void UnPackTo(ResizeNearestNeighborOptionsT *_o, const flatbuffers::resolver_function_t *_resolver = nullptr) const;
+  static flatbuffers::Offset<ResizeNearestNeighborOptions> Pack(flatbuffers::FlatBufferBuilder &_fbb, const ResizeNearestNeighborOptionsT* _o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
+};
+
+struct ResizeNearestNeighborOptionsBuilder {
+  flatbuffers::FlatBufferBuilder &fbb_;
+  flatbuffers::uoffset_t start_;
+  void add_align_corners(bool align_corners) {
+    fbb_.AddElement<uint8_t>(ResizeNearestNeighborOptions::VT_ALIGN_CORNERS, static_cast<uint8_t>(align_corners), 0);
+  }
+  explicit ResizeNearestNeighborOptionsBuilder(flatbuffers::FlatBufferBuilder &_fbb)
+        : fbb_(_fbb) {
+    start_ = fbb_.StartTable();
+  }
+  ResizeNearestNeighborOptionsBuilder &operator=(const ResizeNearestNeighborOptionsBuilder &);
+  flatbuffers::Offset<ResizeNearestNeighborOptions> Finish() {
+    const auto end = fbb_.EndTable(start_);
+    auto o = flatbuffers::Offset<ResizeNearestNeighborOptions>(end);
+    return o;
+  }
+};
+
+inline flatbuffers::Offset<ResizeNearestNeighborOptions> CreateResizeNearestNeighborOptions(
+    flatbuffers::FlatBufferBuilder &_fbb,
+    bool align_corners = false) {
+  ResizeNearestNeighborOptionsBuilder builder_(_fbb);
+  builder_.add_align_corners(align_corners);
+  return builder_.Finish();
+}
+
+flatbuffers::Offset<ResizeNearestNeighborOptions> CreateResizeNearestNeighborOptions(flatbuffers::FlatBufferBuilder &_fbb, const ResizeNearestNeighborOptionsT *_o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
 
 struct CallOptionsT : public flatbuffers::NativeTable {
   typedef CallOptions TableType;
@@ -6145,6 +6370,86 @@ inline flatbuffers::Offset<FillOptions> CreateFillOptions(
 
 flatbuffers::Offset<FillOptions> CreateFillOptions(flatbuffers::FlatBufferBuilder &_fbb, const FillOptionsT *_o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
 
+struct FloorModOptionsT : public flatbuffers::NativeTable {
+  typedef FloorModOptions TableType;
+  FloorModOptionsT() {
+  }
+};
+
+struct FloorModOptions FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
+  typedef FloorModOptionsT NativeTableType;
+  bool Verify(flatbuffers::Verifier &verifier) const {
+    return VerifyTableStart(verifier) &&
+           verifier.EndTable();
+  }
+  FloorModOptionsT *UnPack(const flatbuffers::resolver_function_t *_resolver = nullptr) const;
+  void UnPackTo(FloorModOptionsT *_o, const flatbuffers::resolver_function_t *_resolver = nullptr) const;
+  static flatbuffers::Offset<FloorModOptions> Pack(flatbuffers::FlatBufferBuilder &_fbb, const FloorModOptionsT* _o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
+};
+
+struct FloorModOptionsBuilder {
+  flatbuffers::FlatBufferBuilder &fbb_;
+  flatbuffers::uoffset_t start_;
+  explicit FloorModOptionsBuilder(flatbuffers::FlatBufferBuilder &_fbb)
+        : fbb_(_fbb) {
+    start_ = fbb_.StartTable();
+  }
+  FloorModOptionsBuilder &operator=(const FloorModOptionsBuilder &);
+  flatbuffers::Offset<FloorModOptions> Finish() {
+    const auto end = fbb_.EndTable(start_);
+    auto o = flatbuffers::Offset<FloorModOptions>(end);
+    return o;
+  }
+};
+
+inline flatbuffers::Offset<FloorModOptions> CreateFloorModOptions(
+    flatbuffers::FlatBufferBuilder &_fbb) {
+  FloorModOptionsBuilder builder_(_fbb);
+  return builder_.Finish();
+}
+
+flatbuffers::Offset<FloorModOptions> CreateFloorModOptions(flatbuffers::FlatBufferBuilder &_fbb, const FloorModOptionsT *_o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
+
+struct RangeOptionsT : public flatbuffers::NativeTable {
+  typedef RangeOptions TableType;
+  RangeOptionsT() {
+  }
+};
+
+struct RangeOptions FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
+  typedef RangeOptionsT NativeTableType;
+  bool Verify(flatbuffers::Verifier &verifier) const {
+    return VerifyTableStart(verifier) &&
+           verifier.EndTable();
+  }
+  RangeOptionsT *UnPack(const flatbuffers::resolver_function_t *_resolver = nullptr) const;
+  void UnPackTo(RangeOptionsT *_o, const flatbuffers::resolver_function_t *_resolver = nullptr) const;
+  static flatbuffers::Offset<RangeOptions> Pack(flatbuffers::FlatBufferBuilder &_fbb, const RangeOptionsT* _o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
+};
+
+struct RangeOptionsBuilder {
+  flatbuffers::FlatBufferBuilder &fbb_;
+  flatbuffers::uoffset_t start_;
+  explicit RangeOptionsBuilder(flatbuffers::FlatBufferBuilder &_fbb)
+        : fbb_(_fbb) {
+    start_ = fbb_.StartTable();
+  }
+  RangeOptionsBuilder &operator=(const RangeOptionsBuilder &);
+  flatbuffers::Offset<RangeOptions> Finish() {
+    const auto end = fbb_.EndTable(start_);
+    auto o = flatbuffers::Offset<RangeOptions>(end);
+    return o;
+  }
+};
+
+inline flatbuffers::Offset<RangeOptions> CreateRangeOptions(
+    flatbuffers::FlatBufferBuilder &_fbb) {
+  RangeOptionsBuilder builder_(_fbb);
+  return builder_.Finish();
+}
+
+flatbuffers::Offset<RangeOptions> CreateRangeOptions(flatbuffers::FlatBufferBuilder &_fbb, const RangeOptionsT *_o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
+
 struct OperatorCodeT : public flatbuffers::NativeTable {
   typedef OperatorCode TableType;
   BuiltinOperator builtin_code;
@@ -6488,6 +6793,18 @@ struct Operator FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
   const BidirectionalSequenceRNNOptions *builtin_options_as_BidirectionalSequenceRNNOptions() const {
     return builtin_options_type() == BuiltinOptions_BidirectionalSequenceRNNOptions ? static_cast<const BidirectionalSequenceRNNOptions *>(builtin_options()) : nullptr;
   }
+  const UnidirectionalSequenceLSTMOptions *builtin_options_as_UnidirectionalSequenceLSTMOptions() const {
+    return builtin_options_type() == BuiltinOptions_UnidirectionalSequenceLSTMOptions ? static_cast<const UnidirectionalSequenceLSTMOptions *>(builtin_options()) : nullptr;
+  }
+  const FloorModOptions *builtin_options_as_FloorModOptions() const {
+    return builtin_options_type() == BuiltinOptions_FloorModOptions ? static_cast<const FloorModOptions *>(builtin_options()) : nullptr;
+  }
+  const RangeOptions *builtin_options_as_RangeOptions() const {
+    return builtin_options_type() == BuiltinOptions_RangeOptions ? static_cast<const RangeOptions *>(builtin_options()) : nullptr;
+  }
+  const ResizeNearestNeighborOptions *builtin_options_as_ResizeNearestNeighborOptions() const {
+    return builtin_options_type() == BuiltinOptions_ResizeNearestNeighborOptions ? static_cast<const ResizeNearestNeighborOptions *>(builtin_options()) : nullptr;
+  }
   const flatbuffers::Vector<uint8_t> *custom_options() const {
     return GetPointer<const flatbuffers::Vector<uint8_t> *>(VT_CUSTOM_OPTIONS);
   }
@@ -6797,6 +7114,22 @@ template<> inline const BidirectionalSequenceLSTMOptions *Operator::builtin_opti
 
 template<> inline const BidirectionalSequenceRNNOptions *Operator::builtin_options_as<BidirectionalSequenceRNNOptions>() const {
   return builtin_options_as_BidirectionalSequenceRNNOptions();
+}
+
+template<> inline const UnidirectionalSequenceLSTMOptions *Operator::builtin_options_as<UnidirectionalSequenceLSTMOptions>() const {
+  return builtin_options_as_UnidirectionalSequenceLSTMOptions();
+}
+
+template<> inline const FloorModOptions *Operator::builtin_options_as<FloorModOptions>() const {
+  return builtin_options_as_FloorModOptions();
+}
+
+template<> inline const RangeOptions *Operator::builtin_options_as<RangeOptions>() const {
+  return builtin_options_as_RangeOptions();
+}
+
+template<> inline const ResizeNearestNeighborOptions *Operator::builtin_options_as<ResizeNearestNeighborOptions>() const {
+  return builtin_options_as_ResizeNearestNeighborOptions();
 }
 
 struct OperatorBuilder {
@@ -7809,6 +8142,41 @@ inline flatbuffers::Offset<LSTMOptions> CreateLSTMOptions(flatbuffers::FlatBuffe
       _kernel_type);
 }
 
+inline UnidirectionalSequenceLSTMOptionsT *UnidirectionalSequenceLSTMOptions::UnPack(const flatbuffers::resolver_function_t *_resolver) const {
+  auto _o = new UnidirectionalSequenceLSTMOptionsT();
+  UnPackTo(_o, _resolver);
+  return _o;
+}
+
+inline void UnidirectionalSequenceLSTMOptions::UnPackTo(UnidirectionalSequenceLSTMOptionsT *_o, const flatbuffers::resolver_function_t *_resolver) const {
+  (void)_o;
+  (void)_resolver;
+  { auto _e = fused_activation_function(); _o->fused_activation_function = _e; };
+  { auto _e = cell_clip(); _o->cell_clip = _e; };
+  { auto _e = proj_clip(); _o->proj_clip = _e; };
+  { auto _e = time_major(); _o->time_major = _e; };
+}
+
+inline flatbuffers::Offset<UnidirectionalSequenceLSTMOptions> UnidirectionalSequenceLSTMOptions::Pack(flatbuffers::FlatBufferBuilder &_fbb, const UnidirectionalSequenceLSTMOptionsT* _o, const flatbuffers::rehasher_function_t *_rehasher) {
+  return CreateUnidirectionalSequenceLSTMOptions(_fbb, _o, _rehasher);
+}
+
+inline flatbuffers::Offset<UnidirectionalSequenceLSTMOptions> CreateUnidirectionalSequenceLSTMOptions(flatbuffers::FlatBufferBuilder &_fbb, const UnidirectionalSequenceLSTMOptionsT *_o, const flatbuffers::rehasher_function_t *_rehasher) {
+  (void)_rehasher;
+  (void)_o;
+  struct _VectorArgs { flatbuffers::FlatBufferBuilder *__fbb; const UnidirectionalSequenceLSTMOptionsT* __o; const flatbuffers::rehasher_function_t *__rehasher; } _va = { &_fbb, _o, _rehasher}; (void)_va;
+  auto _fused_activation_function = _o->fused_activation_function;
+  auto _cell_clip = _o->cell_clip;
+  auto _proj_clip = _o->proj_clip;
+  auto _time_major = _o->time_major;
+  return tflite::CreateUnidirectionalSequenceLSTMOptions(
+      _fbb,
+      _fused_activation_function,
+      _cell_clip,
+      _proj_clip,
+      _time_major);
+}
+
 inline BidirectionalSequenceLSTMOptionsT *BidirectionalSequenceLSTMOptions::UnPack(const flatbuffers::resolver_function_t *_resolver) const {
   auto _o = new BidirectionalSequenceLSTMOptionsT();
   UnPackTo(_o, _resolver);
@@ -7866,6 +8234,32 @@ inline flatbuffers::Offset<ResizeBilinearOptions> CreateResizeBilinearOptions(fl
   struct _VectorArgs { flatbuffers::FlatBufferBuilder *__fbb; const ResizeBilinearOptionsT* __o; const flatbuffers::rehasher_function_t *__rehasher; } _va = { &_fbb, _o, _rehasher}; (void)_va;
   auto _align_corners = _o->align_corners;
   return tflite::CreateResizeBilinearOptions(
+      _fbb,
+      _align_corners);
+}
+
+inline ResizeNearestNeighborOptionsT *ResizeNearestNeighborOptions::UnPack(const flatbuffers::resolver_function_t *_resolver) const {
+  auto _o = new ResizeNearestNeighborOptionsT();
+  UnPackTo(_o, _resolver);
+  return _o;
+}
+
+inline void ResizeNearestNeighborOptions::UnPackTo(ResizeNearestNeighborOptionsT *_o, const flatbuffers::resolver_function_t *_resolver) const {
+  (void)_o;
+  (void)_resolver;
+  { auto _e = align_corners(); _o->align_corners = _e; };
+}
+
+inline flatbuffers::Offset<ResizeNearestNeighborOptions> ResizeNearestNeighborOptions::Pack(flatbuffers::FlatBufferBuilder &_fbb, const ResizeNearestNeighborOptionsT* _o, const flatbuffers::rehasher_function_t *_rehasher) {
+  return CreateResizeNearestNeighborOptions(_fbb, _o, _rehasher);
+}
+
+inline flatbuffers::Offset<ResizeNearestNeighborOptions> CreateResizeNearestNeighborOptions(flatbuffers::FlatBufferBuilder &_fbb, const ResizeNearestNeighborOptionsT *_o, const flatbuffers::rehasher_function_t *_rehasher) {
+  (void)_rehasher;
+  (void)_o;
+  struct _VectorArgs { flatbuffers::FlatBufferBuilder *__fbb; const ResizeNearestNeighborOptionsT* __o; const flatbuffers::rehasher_function_t *__rehasher; } _va = { &_fbb, _o, _rehasher}; (void)_va;
+  auto _align_corners = _o->align_corners;
+  return tflite::CreateResizeNearestNeighborOptions(
       _fbb,
       _align_corners);
 }
@@ -9151,6 +9545,52 @@ inline flatbuffers::Offset<FillOptions> CreateFillOptions(flatbuffers::FlatBuffe
       _fbb);
 }
 
+inline FloorModOptionsT *FloorModOptions::UnPack(const flatbuffers::resolver_function_t *_resolver) const {
+  auto _o = new FloorModOptionsT();
+  UnPackTo(_o, _resolver);
+  return _o;
+}
+
+inline void FloorModOptions::UnPackTo(FloorModOptionsT *_o, const flatbuffers::resolver_function_t *_resolver) const {
+  (void)_o;
+  (void)_resolver;
+}
+
+inline flatbuffers::Offset<FloorModOptions> FloorModOptions::Pack(flatbuffers::FlatBufferBuilder &_fbb, const FloorModOptionsT* _o, const flatbuffers::rehasher_function_t *_rehasher) {
+  return CreateFloorModOptions(_fbb, _o, _rehasher);
+}
+
+inline flatbuffers::Offset<FloorModOptions> CreateFloorModOptions(flatbuffers::FlatBufferBuilder &_fbb, const FloorModOptionsT *_o, const flatbuffers::rehasher_function_t *_rehasher) {
+  (void)_rehasher;
+  (void)_o;
+  struct _VectorArgs { flatbuffers::FlatBufferBuilder *__fbb; const FloorModOptionsT* __o; const flatbuffers::rehasher_function_t *__rehasher; } _va = { &_fbb, _o, _rehasher}; (void)_va;
+  return tflite::CreateFloorModOptions(
+      _fbb);
+}
+
+inline RangeOptionsT *RangeOptions::UnPack(const flatbuffers::resolver_function_t *_resolver) const {
+  auto _o = new RangeOptionsT();
+  UnPackTo(_o, _resolver);
+  return _o;
+}
+
+inline void RangeOptions::UnPackTo(RangeOptionsT *_o, const flatbuffers::resolver_function_t *_resolver) const {
+  (void)_o;
+  (void)_resolver;
+}
+
+inline flatbuffers::Offset<RangeOptions> RangeOptions::Pack(flatbuffers::FlatBufferBuilder &_fbb, const RangeOptionsT* _o, const flatbuffers::rehasher_function_t *_rehasher) {
+  return CreateRangeOptions(_fbb, _o, _rehasher);
+}
+
+inline flatbuffers::Offset<RangeOptions> CreateRangeOptions(flatbuffers::FlatBufferBuilder &_fbb, const RangeOptionsT *_o, const flatbuffers::rehasher_function_t *_rehasher) {
+  (void)_rehasher;
+  (void)_o;
+  struct _VectorArgs { flatbuffers::FlatBufferBuilder *__fbb; const RangeOptionsT* __o; const flatbuffers::rehasher_function_t *__rehasher; } _va = { &_fbb, _o, _rehasher}; (void)_va;
+  return tflite::CreateRangeOptions(
+      _fbb);
+}
+
 inline OperatorCodeT *OperatorCode::UnPack(const flatbuffers::resolver_function_t *_resolver) const {
   auto _o = new OperatorCodeT();
   UnPackTo(_o, _resolver);
@@ -9620,6 +10060,22 @@ inline bool VerifyBuiltinOptions(flatbuffers::Verifier &verifier, const void *ob
       auto ptr = reinterpret_cast<const BidirectionalSequenceRNNOptions *>(obj);
       return verifier.VerifyTable(ptr);
     }
+    case BuiltinOptions_UnidirectionalSequenceLSTMOptions: {
+      auto ptr = reinterpret_cast<const UnidirectionalSequenceLSTMOptions *>(obj);
+      return verifier.VerifyTable(ptr);
+    }
+    case BuiltinOptions_FloorModOptions: {
+      auto ptr = reinterpret_cast<const FloorModOptions *>(obj);
+      return verifier.VerifyTable(ptr);
+    }
+    case BuiltinOptions_RangeOptions: {
+      auto ptr = reinterpret_cast<const RangeOptions *>(obj);
+      return verifier.VerifyTable(ptr);
+    }
+    case BuiltinOptions_ResizeNearestNeighborOptions: {
+      auto ptr = reinterpret_cast<const ResizeNearestNeighborOptions *>(obj);
+      return verifier.VerifyTable(ptr);
+    }
     default: return false;
   }
 }
@@ -9918,6 +10374,22 @@ inline void *BuiltinOptionsUnion::UnPack(const void *obj, BuiltinOptions type, c
       auto ptr = reinterpret_cast<const BidirectionalSequenceRNNOptions *>(obj);
       return ptr->UnPack(resolver);
     }
+    case BuiltinOptions_UnidirectionalSequenceLSTMOptions: {
+      auto ptr = reinterpret_cast<const UnidirectionalSequenceLSTMOptions *>(obj);
+      return ptr->UnPack(resolver);
+    }
+    case BuiltinOptions_FloorModOptions: {
+      auto ptr = reinterpret_cast<const FloorModOptions *>(obj);
+      return ptr->UnPack(resolver);
+    }
+    case BuiltinOptions_RangeOptions: {
+      auto ptr = reinterpret_cast<const RangeOptions *>(obj);
+      return ptr->UnPack(resolver);
+    }
+    case BuiltinOptions_ResizeNearestNeighborOptions: {
+      auto ptr = reinterpret_cast<const ResizeNearestNeighborOptions *>(obj);
+      return ptr->UnPack(resolver);
+    }
     default: return nullptr;
   }
 }
@@ -10204,6 +10676,22 @@ inline flatbuffers::Offset<void> BuiltinOptionsUnion::Pack(flatbuffers::FlatBuff
       auto ptr = reinterpret_cast<const BidirectionalSequenceRNNOptionsT *>(value);
       return CreateBidirectionalSequenceRNNOptions(_fbb, ptr, _rehasher).Union();
     }
+    case BuiltinOptions_UnidirectionalSequenceLSTMOptions: {
+      auto ptr = reinterpret_cast<const UnidirectionalSequenceLSTMOptionsT *>(value);
+      return CreateUnidirectionalSequenceLSTMOptions(_fbb, ptr, _rehasher).Union();
+    }
+    case BuiltinOptions_FloorModOptions: {
+      auto ptr = reinterpret_cast<const FloorModOptionsT *>(value);
+      return CreateFloorModOptions(_fbb, ptr, _rehasher).Union();
+    }
+    case BuiltinOptions_RangeOptions: {
+      auto ptr = reinterpret_cast<const RangeOptionsT *>(value);
+      return CreateRangeOptions(_fbb, ptr, _rehasher).Union();
+    }
+    case BuiltinOptions_ResizeNearestNeighborOptions: {
+      auto ptr = reinterpret_cast<const ResizeNearestNeighborOptionsT *>(value);
+      return CreateResizeNearestNeighborOptions(_fbb, ptr, _rehasher).Union();
+    }
     default: return 0;
   }
 }
@@ -10488,6 +10976,22 @@ inline BuiltinOptionsUnion::BuiltinOptionsUnion(const BuiltinOptionsUnion &u) FL
     }
     case BuiltinOptions_BidirectionalSequenceRNNOptions: {
       value = new BidirectionalSequenceRNNOptionsT(*reinterpret_cast<BidirectionalSequenceRNNOptionsT *>(u.value));
+      break;
+    }
+    case BuiltinOptions_UnidirectionalSequenceLSTMOptions: {
+      value = new UnidirectionalSequenceLSTMOptionsT(*reinterpret_cast<UnidirectionalSequenceLSTMOptionsT *>(u.value));
+      break;
+    }
+    case BuiltinOptions_FloorModOptions: {
+      value = new FloorModOptionsT(*reinterpret_cast<FloorModOptionsT *>(u.value));
+      break;
+    }
+    case BuiltinOptions_RangeOptions: {
+      value = new RangeOptionsT(*reinterpret_cast<RangeOptionsT *>(u.value));
+      break;
+    }
+    case BuiltinOptions_ResizeNearestNeighborOptions: {
+      value = new ResizeNearestNeighborOptionsT(*reinterpret_cast<ResizeNearestNeighborOptionsT *>(u.value));
       break;
     }
     default:
@@ -10844,6 +11348,26 @@ inline void BuiltinOptionsUnion::Reset() {
     }
     case BuiltinOptions_BidirectionalSequenceRNNOptions: {
       auto ptr = reinterpret_cast<BidirectionalSequenceRNNOptionsT *>(value);
+      delete ptr;
+      break;
+    }
+    case BuiltinOptions_UnidirectionalSequenceLSTMOptions: {
+      auto ptr = reinterpret_cast<UnidirectionalSequenceLSTMOptionsT *>(value);
+      delete ptr;
+      break;
+    }
+    case BuiltinOptions_FloorModOptions: {
+      auto ptr = reinterpret_cast<FloorModOptionsT *>(value);
+      delete ptr;
+      break;
+    }
+    case BuiltinOptions_RangeOptions: {
+      auto ptr = reinterpret_cast<RangeOptionsT *>(value);
+      delete ptr;
+      break;
+    }
+    case BuiltinOptions_ResizeNearestNeighborOptions: {
+      auto ptr = reinterpret_cast<ResizeNearestNeighborOptionsT *>(value);
       delete ptr;
       break;
     }

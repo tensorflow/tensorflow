@@ -929,14 +929,15 @@ class Dense(Layer):
 
   def build(self, input_shape):
     input_shape = tensor_shape.TensorShape(input_shape)
-    if input_shape[-1].value is None:
+    if tensor_shape.dimension_value(input_shape[-1]) is None:
       raise ValueError('The last dimension of the inputs to `Dense` '
                        'should be defined. Found `None`.')
+    last_dim = tensor_shape.dimension_value(input_shape[-1])
     self.input_spec = InputSpec(min_ndim=2,
-                                axes={-1: input_shape[-1].value})
+                                axes={-1: last_dim})
     self.kernel = self.add_weight(
         'kernel',
-        shape=[input_shape[-1].value, self.units],
+        shape=[last_dim, self.units],
         initializer=self.kernel_initializer,
         regularizer=self.kernel_regularizer,
         constraint=self.kernel_constraint,
@@ -956,7 +957,7 @@ class Dense(Layer):
     self.built = True
 
   def call(self, inputs):
-    inputs = ops.convert_to_tensor(inputs, dtype=self.dtype)
+    inputs = ops.convert_to_tensor(inputs)
     rank = common_shapes.rank(inputs)
     if rank > 2:
       # Broadcasting is required for the inputs.
@@ -977,7 +978,7 @@ class Dense(Layer):
   def compute_output_shape(self, input_shape):
     input_shape = tensor_shape.TensorShape(input_shape)
     input_shape = input_shape.with_rank_at_least(2)
-    if input_shape[-1].value is None:
+    if tensor_shape.dimension_value(input_shape[-1]) is None:
       raise ValueError(
           'The innermost dimension of input_shape must be defined, but saw: %s'
           % input_shape)

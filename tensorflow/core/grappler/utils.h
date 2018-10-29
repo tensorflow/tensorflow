@@ -17,10 +17,12 @@ limitations under the License.
 #define TENSORFLOW_CORE_GRAPPLER_UTILS_H_
 
 #include <functional>
-#include <unordered_map>
+#include <iterator>
+#include <set>
 #include <unordered_set>
+#include <utility>
 #include <vector>
-
+#include "absl/types/span.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -28,7 +30,10 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/core/threadpool.h"
+#include "tensorflow/core/lib/gtl/flatmap.h"
+#include "tensorflow/core/lib/gtl/flatset.h"
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
+#include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
 namespace grappler {
@@ -57,8 +62,8 @@ class NodeMap {
 
  private:
   const std::set<NodeDef*> empty_set_;
-  std::unordered_map<string, NodeDef*> nodes_;
-  std::unordered_map<string, std::set<NodeDef*>> outputs_;
+  gtl::FlatMap<string, NodeDef*> nodes_;
+  gtl::FlatMap<string, std::set<NodeDef*>> outputs_;
 };
 
 // A vector with a set. The set stores the same elements as the vector, and
@@ -90,7 +95,7 @@ class SetVector {
   void Reserve(int64 size) { vector_.reserve(size); }
 
  private:
-  std::unordered_set<T, Hash> set_;
+  gtl::FlatSet<T, Hash> set_;
   std::vector<T> vector_;
 };
 
@@ -244,6 +249,12 @@ int NumNonControlDataOutputs(const NodeDef& node, const NodeMap& node_map);
 // Removes redundant control inputs from node.
 void DedupControlInputs(NodeDef* node);
 
+// Returns an error if an attribute with the given key does not exist in node.
+Status CheckAttrExists(const NodeDef& node, const string& key);
+
+// Returns an error if attributes with the given keys do not exist in node.
+Status CheckAttrsExist(const NodeDef& node, absl::Span<const string> keys);
+
 // Returns the data type in attribute `attr_name` of `node`. If that attribute
 // doesn't exist, returns DT_INVALID.
 DataType GetDataTypeFromAttr(const NodeDef& node, const string& attr_name);
@@ -331,7 +342,7 @@ class SimpleGraphView {
  private:
   const GraphDef* graph_;  // Not owned.
   std::vector<string> index_to_name_;
-  std::unordered_map<string, int> name_to_index_;
+  gtl::FlatMap<string, int> name_to_index_;
   std::vector<gtl::InlinedVector<int, 4>> inputs_;
   std::vector<gtl::InlinedVector<int, 2>> outputs_;
 };

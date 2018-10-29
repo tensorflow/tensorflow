@@ -145,7 +145,7 @@ def _FindFusedBatchNorms(graph):
   Args:
     graph: Graph to inspect.
 
-  Yields:
+  Returns:
     _FusedBatchNormMatches.
   """
   input_pattern = graph_matcher.OpTypePattern('*')
@@ -169,8 +169,15 @@ def _FindFusedBatchNorms(graph):
           graph_matcher.OpTypePattern('*'),
           graph_matcher.OpTypePattern('*')
       ])
+  # Identity between conv/matmul and bn
+  layer_pattern_with_identity = graph_matcher.OpTypePattern(
+      'Identity',
+      inputs=[
+          graph_matcher.OneofPattern([batch_to_space_pattern, layer_pattern])
+      ])
   layer_output_pattern = graph_matcher.OneofPattern(
-      [layer_pattern, batch_to_space_pattern])
+      [layer_pattern_with_identity, layer_pattern, batch_to_space_pattern])
+
   # MatMul has a Reshape between it and FusedBatchNorm.
   matmul_reshape_pattern = graph_matcher.OpTypePattern(
       'Reshape',
@@ -188,6 +195,11 @@ def _FindFusedBatchNorms(graph):
       'Reshape', inputs=[batch_norm_pattern,
                          graph_matcher.OpTypePattern('*')])
 
+  batch_norm_identity_pattern = graph_matcher.OpTypePattern(
+      'Identity', inputs=[batch_norm_pattern, matmul_bn_output_reshape_pattern])
+
+  bn_identity_matcher = graph_matcher.GraphMatcher(batch_norm_identity_pattern)
+
   bn_matcher = graph_matcher.GraphMatcher(
       graph_matcher.OneofPattern(
           [matmul_bn_output_reshape_pattern, batch_norm_pattern]))
@@ -200,7 +212,17 @@ def _FindFusedBatchNorms(graph):
   moving_avg_mul_matcher = graph_matcher.GraphMatcher(
       moving_average_mul_pattern)
 
-  for match_result in bn_matcher.match_graph(graph):
+  def _GetLayerMatch(match_result):
+    """Populates a layer match object containing ops/tensors for folding BNs.
+
+    Args:
+      match_result: Matched result from graph matcher
+
+    Returns:
+      layer_op: Matching conv/fc op prior to batch norm
+      BatchNormMatch: _BatchNormMatch containing all required batch norm
+      parameters.
+    """
     moving_mean_tensor = None
     moving_variance_tensor = None
     bn_decay_mean_tensor = None
@@ -208,7 +230,11 @@ def _FindFusedBatchNorms(graph):
     batch_to_space_op = None
     layer_op = match_result.get_op(layer_pattern)
     layer_tensor = match_result.get_tensor(layer_pattern)
+    bn_id_op = match_result.get_op(batch_norm_identity_pattern)
     bn_op = match_result.get_op(batch_norm_pattern)
+    if bn_id_op is None:
+      bn_id_op = bn_op
+
     batch_epsilon = bn_op.get_attr('epsilon')
 
     # In the MatMul case, the output of batch norm is reshaped back into a
@@ -219,13 +245,13 @@ def _FindFusedBatchNorms(graph):
       # If the matcher didn't match matmul_bn_output_reshape, there will be
       # another match for this 'MatMul' later, so we can skip this one.
       if output_reshape_op is None:
-        continue
+        return None, None
       output_tensor = output_reshape_op.outputs[0]
 
     # Ensure that the output tensor has consumers, otherwise this is a dangling
     # node and not a match.
     if not output_tensor.consumers():
-      continue
+      return None, None
 
     batch_to_space_op = match_result.get_op(batch_to_space_pattern)
     input_tensor = match_result.get_tensor(input_pattern)
@@ -277,7 +303,7 @@ def _FindFusedBatchNorms(graph):
       mean_tensor = match_result.get_tensor(mean_pattern)
       variance_tensor = match_result.get_tensor(variance_pattern)
 
-    yield _BatchNormMatch(
+    return layer_op, _BatchNormMatch(
         layer_op=layer_op,
         bn_op=bn_op,
         output_tensor=output_tensor,
@@ -293,6 +319,26 @@ def _FindFusedBatchNorms(graph):
         bn_decay_var_tensor=bn_decay_var_tensor,
         batch_epsilon=batch_epsilon,
         batch_to_space_op=batch_to_space_op)
+
+  layer_matches = []
+  # We use matched_layer_set to ensure that layers aren't matched multiple
+  # times.
+  matched_layer_set = set()
+  for match_result in bn_identity_matcher.match_graph(graph):
+    layer_op, layer_match = _GetLayerMatch(match_result)
+    if layer_op is not None:
+      if layer_op not in matched_layer_set:
+        matched_layer_set.add(layer_op)
+        layer_matches.append(layer_match)
+
+  for match_result in bn_matcher.match_graph(graph):
+    layer_op, layer_match = _GetLayerMatch(match_result)
+    if layer_op is not None:
+      if layer_op not in matched_layer_set:
+        matched_layer_set.add(layer_op)
+        layer_matches.append(layer_match)
+
+  return layer_matches
 
 
 def _ComputeBatchNormCorrections(context, match, freeze_batch_norm_delay):

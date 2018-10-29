@@ -35,7 +35,6 @@ from tensorflow.python.framework import function
 from tensorflow.python.framework import graph_to_function_def
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
-from tensorflow.python.framework import test_util
 from tensorflow.python.framework.errors import InvalidArgumentError
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
@@ -86,7 +85,6 @@ def _OptimizerOptions():
         yield cfg
 
 
-@test_util.with_c_shapes
 class FunctionTest(test.TestCase):
   """Test methods for verifying Function support.
 
@@ -455,7 +453,7 @@ class FunctionTest(test.TestCase):
         _ = MyFn(100.0).eval()
 
   def testWhileLoopCallsFunc(self):
-    with self.test_session(use_gpu=True) as sess:
+    with self.session(use_gpu=True) as sess:
 
       @function.Defun(dtypes.float32)
       def Times2(x):
@@ -1077,7 +1075,7 @@ class FunctionTest(test.TestCase):
       self.assertNotEqual("GuaranteeConst", fifth.consumers()[0].node_def.op)
       return output
 
-    with self.test_session(use_gpu=False) as sess:
+    with self.session(use_gpu=False) as sess:
       sess.run(var.initializer)
       _ = sess.run(CapturesGuaranteedConst(), {also_not_const: 1.0})
 
@@ -1136,7 +1134,6 @@ class FunctionTest(test.TestCase):
     self.assertAllEqual(v2, 50.)
 
 
-@test_util.with_c_shapes
 class FunctionsFromProtos(test.TestCase):
 
   def expectFunctionsEqual(self, func, grad_func=None, new_func=None):
@@ -1360,7 +1357,6 @@ class FunctionsFromProtos(test.TestCase):
                      True)
 
 
-@test_util.with_c_shapes
 class FunctionOverloadTest(test.TestCase):
 
   def testBasic(self):
@@ -1413,7 +1409,6 @@ class FunctionOverloadTest(test.TestCase):
                      "Successor of x.")
 
 
-@test_util.with_c_shapes
 class FunctionCaptureByValueTest(test.TestCase):
 
   def testCaptureByValue(self):
@@ -1443,7 +1438,6 @@ class FunctionCaptureByValueTest(test.TestCase):
       self.assertAllEqual(y.eval(), [[12.0]])
 
 
-@test_util.with_c_shapes
 class UnrollLSTMTest(test.TestCase):
   BATCH_SIZE = 16
   LSTM_DIMS = 32
@@ -1580,7 +1574,6 @@ class UnrollLSTMTest(test.TestCase):
       self.assertAllClose(d0, d3, rtol=1e-4, atol=1e-4)
 
 
-@test_util.with_c_shapes
 class FunctionInlineControlTest(test.TestCase):
 
   def testFoo(self):
@@ -1639,29 +1632,18 @@ class FunctionInlineControlTest(test.TestCase):
       self.assertEqual(MetadataHasCell(run_metadata), noinline)
 
 
-@function.Defun(*[dtypes.float32] * 3)
-def Linear(w, b, x):
-  return nn_ops.relu(math_ops.matmul(x, w) + b)
-
-
-@function.Defun(*[dtypes.float32] * 5)
-def Linear2(w1, b1, w2, b2, x):
-  return Linear(w2, b2, Linear(w1, b1, x))
-
-
-@function.Defun(*[dtypes.float32] * 3)
-def LinearWithCApi(w, b, x):
-  return nn_ops.relu(math_ops.matmul(x, w) + b)
-
-
-@function.Defun(*[dtypes.float32] * 5)
-def Linear2WithCApi(w1, b1, w2, b2, x):
-  return LinearWithCApi(w2, b2, LinearWithCApi(w1, b1, x))
-
-
 class ModuleFunctionTest(test.TestCase):
 
   def testBasic(self):
+
+    @function.Defun(*[dtypes.float32] * 3)
+    def LinearWithCApi(w, b, x):
+      return nn_ops.relu(math_ops.matmul(x, w) + b)
+
+    @function.Defun(*[dtypes.float32] * 5)
+    def Linear2WithCApi(w1, b1, w2, b2, x):
+      return LinearWithCApi(w2, b2, LinearWithCApi(w1, b1, x))
+
     with ops.Graph().as_default():
       a, b, c, d, e = [
           constant_op.constant([[_]], dtype=dtypes.float32) for _ in range(5)
@@ -1673,7 +1655,6 @@ class ModuleFunctionTest(test.TestCase):
         self.assertAllEqual([[5]], sess.run(z))
 
 
-@test_util.with_c_shapes
 class VariableHoistingTest(test.TestCase):
 
   def _testSimpleModel(self, use_forward_func, use_resource=False):

@@ -17,6 +17,7 @@ limitations under the License.
 #include "flatbuffers/flexbuffers.h"
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "tensorflow/contrib/lite/toco/model.h"
 #include "tensorflow/contrib/lite/toco/tooling_util.h"
 
 #include "tensorflow/core/framework/attr_value.pb.h"
@@ -148,6 +149,8 @@ TEST_F(OperatorTest, SimpleOperators) {
                                                 OperatorType::kSquare);
   CheckSimpleOperator<TensorFlowZerosLikeOperator>("ZEROS_LIKE",
                                                    OperatorType::kZerosLike);
+  CheckSimpleOperator<FloorModOperator>("FLOOR_MOD", OperatorType::kFloorMod);
+  CheckSimpleOperator<RangeOperator>("RANGE", OperatorType::kRange);
 }
 
 TEST_F(OperatorTest, BuiltinAdd) {
@@ -384,6 +387,16 @@ TEST_F(OperatorTest, ResizeBilinear) {
   EXPECT_EQ(op.align_corners, output_toco_op->align_corners);
 }
 
+TEST_F(OperatorTest, ResizeNearestNeighbor) {
+  ResizeNearestNeighborOperator op;
+  op.align_corners = true;
+  auto output_toco_op =
+      SerializeAndDeserialize(GetOperator("RESIZE_NEAREST_NEIGHBOR",
+                                          OperatorType::kResizeNearestNeighbor),
+                              op);
+  EXPECT_EQ(op.align_corners, output_toco_op->align_corners);
+}
+
 TEST_F(OperatorTest, Svdf) {
   SvdfOperator op;
   op.fused_activation_function = FusedActivationFunctionType::kRelu;
@@ -567,6 +580,16 @@ TEST_F(OperatorTest, TensorFlowUnsupportedWithoutAttr) {
   ::tensorflow::NodeDef output_node_def;
   output_node_def.ParseFromString(output_toco_op->tensorflow_node_def);
   EXPECT_TRUE(output_node_def.attr().empty());
+}
+
+TEST_F(OperatorTest, TestShouldExportAsFlexOp) {
+  EXPECT_FALSE(ShouldExportAsFlexOp(false, "Conv2D"));
+  EXPECT_TRUE(ShouldExportAsFlexOp(true, "Conv2D"));
+  EXPECT_TRUE(ShouldExportAsFlexOp(true, "EluGrad"));
+  EXPECT_FALSE(ShouldExportAsFlexOp(true, "MyAwesomeCustomOp"));
+  // While the RFFT op is available on desktop, it is not in the kernel
+  // set available on mobile and should be excluded.
+  EXPECT_FALSE(ShouldExportAsFlexOp(true, "RFFT"));
 }
 
 }  // namespace

@@ -83,6 +83,15 @@ TfLiteStatus CopyFromBufferHandle(TfLiteContext* context,
 }  // namespace delegate
 }  // namespace flex
 
+// Corresponding weak declaration found in lite/model.cc.
+std::unique_ptr<TfLiteDelegate, void (*)(TfLiteDelegate*)>
+AcquireFlexDelegate() {
+  return std::unique_ptr<TfLiteDelegate, void (*)(TfLiteDelegate*)>(
+      tflite::FlexDelegate::Create().release(), [](TfLiteDelegate* delegate) {
+        delete reinterpret_cast<tflite::FlexDelegate*>(delegate);
+      });
+}
+
 std::unique_ptr<FlexDelegate> FlexDelegate::Create() {
   std::unique_ptr<flex::DelegateData> delegate_data;
   if (!flex::DelegateData::Create(&delegate_data).ok()) {

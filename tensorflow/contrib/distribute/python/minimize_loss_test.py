@@ -41,6 +41,14 @@ from tensorflow.python.ops.losses import losses_impl
 
 class MinimizeLossStepTest(test.TestCase, parameterized.TestCase):
 
+  def _get_iterator(self, ds):
+    if context.executing_eagerly():
+      iterator = ds.make_one_shot_iterator()
+    else:
+      iterator = ds.make_initializable_iterator()
+      self.evaluate(iterator.initializer)
+    return iterator
+
   @combinations.generate(
       combinations.times(
           combinations.distributions_and_v1_optimizers(),
@@ -59,11 +67,10 @@ class MinimizeLossStepTest(test.TestCase, parameterized.TestCase):
       def step_fn(ctx, *inputs):
         del ctx  # Unused
         return distribution.group(
-            distribution.call_for_each_tower(
+            distribution.call_for_each_replica(
                 model_fn, *inputs, run_concurrently=layer.built))
 
-      iterator = distribution.distribute_dataset(
-          dataset_fn).make_one_shot_iterator()
+      iterator = self._get_iterator(distribution.distribute_dataset(dataset_fn))
 
       def run_step():
         return distribution.run_steps_on_dataset(
@@ -93,18 +100,17 @@ class MinimizeLossStepTest(test.TestCase, parameterized.TestCase):
           combinations.distributions_and_v1_optimizers(),
           combinations.combine(mode=["graph"], use_callable_loss=[True, False])
           + combinations.combine(mode=["eager"], use_callable_loss=[True])))
-  def testTrainNetworkByCallForEachTower(self, distribution, optimizer_fn,
-                                         use_callable_loss):
+  def testTrainNetworkByCallForEachReplica(self, distribution, optimizer_fn,
+                                           use_callable_loss):
     with distribution.scope():
       model_fn, dataset_fn, layer = minimize_loss_example(
           optimizer_fn, use_bias=True, use_callable_loss=use_callable_loss)
 
-      iterator = distribution.distribute_dataset(
-          dataset_fn).make_one_shot_iterator()
+      iterator = self._get_iterator(distribution.distribute_dataset(dataset_fn))
 
       def run_step():
         return distribution.group(
-            distribution.call_for_each_tower(
+            distribution.call_for_each_replica(
                 model_fn, iterator.get_next(), run_concurrently=layer.built))
 
       if not context.executing_eagerly():
@@ -156,11 +162,10 @@ class MinimizeLossStepTest(test.TestCase, parameterized.TestCase):
       def step_fn(ctx, *inputs):
         del ctx  # Unused
         return distribution.group(
-            distribution.call_for_each_tower(
+            distribution.call_for_each_replica(
                 model_fn, *inputs, run_concurrently=layer.built))
 
-      iterator = distribution.distribute_dataset(
-          dataset_fn).make_one_shot_iterator()
+      iterator = self._get_iterator(distribution.distribute_dataset(dataset_fn))
 
       def run_step():
         return distribution.run_steps_on_dataset(
@@ -179,11 +184,6 @@ class MinimizeLossStepTest(test.TestCase, parameterized.TestCase):
       def get_expected_variables(optimizer_fn, num_parameter_devices):
         variables_map = {
             "GradientDescent": ["dense/kernel", "dense/bias"],
-            "Adam": [
-                "dense/kernel", "dense/bias", "beta1_power", "beta2_power",
-                "dense/kernel/Adam", "dense/kernel/Adam_1", "dense/bias/Adam",
-                "dense/bias/Adam_1"
-            ],
             "Adagrad": [
                 "dense/kernel/Adagrad", "dense/kernel",
                 "dense/bias/Adagrad", "dense/bias"
@@ -210,24 +210,24 @@ class MinimizeLossStepTest(test.TestCase, parameterized.TestCase):
               combinations.combine(
                   mode=["graph", "eager"],
                   # TODO(isaprykin):  Allow False here.  Currently subsequent
-                  # towers will re-execute UPDATE_OPS of previous towers.
-                  update_ops_in_cross_tower_mode=[True])) +
+                  # replicas will re-execute UPDATE_OPS of previous replicas.
+                  update_ops_in_cross_replica_mode=[True])) +
           combinations.combine(
               distribution=[combinations.tpu_strategy],
               optimizer_fn=combinations.optimizers_v1,
               mode=["graph"],
-              update_ops_in_cross_tower_mode=[False])))
+              update_ops_in_cross_replica_mode=[False])))
   def testTrainNetworkWithBatchNorm(self, distribution, optimizer_fn, momentum,
-                                    renorm, update_ops_in_cross_tower_mode):
-    """Verifies that moving mean updates are reduced across towers."""
+                                    renorm, update_ops_in_cross_replica_mode):
+    """Verifies that moving mean updates are reduced across replicas."""
     with distribution.scope():
-      num_towers = len(distribution.worker_devices)
+      num_replicas = len(distribution.worker_devices)
       model_fn, dataset_fn, batchnorm = batchnorm_example(
           optimizer_fn,
-          batch_per_epoch=num_towers,
+          batch_per_epoch=num_replicas,
           momentum=momentum,
           renorm=renorm,
-          update_ops_in_tower_mode=not update_ops_in_cross_tower_mode)
+          update_ops_in_replica_mode=not update_ops_in_cross_replica_mode)
 
       # Make sure prefetching is disabled since that makes the
       # specific input on each device to be non deterministic, and
@@ -238,14 +238,13 @@ class MinimizeLossStepTest(test.TestCase, parameterized.TestCase):
       def step_fn(ctx, *inputs):
         del ctx  # Unused
         fetches = distribution.unwrap(
-            distribution.call_for_each_tower(
+            distribution.call_for_each_replica(
                 model_fn, *inputs, run_concurrently=batchnorm.built))
-        if update_ops_in_cross_tower_mode:
+        if update_ops_in_cross_replica_mode:
           fetches += ops.get_collection(ops.GraphKeys.UPDATE_OPS)
         return control_flow_ops.group(fetches)
 
-      iterator = distribution.distribute_dataset(
-          dataset_fn).make_one_shot_iterator()
+      iterator = self._get_iterator(distribution.distribute_dataset(dataset_fn))
 
       def run_step():
         return distribution.run_steps_on_dataset(
@@ -261,17 +260,17 @@ class MinimizeLossStepTest(test.TestCase, parameterized.TestCase):
 
       def averaged_batch_mean(i):
         # Each batch has shape [16, 8] where the ith element in jth list is
-        # (8 * j + i + tower_id * 100). So the batch mean in each tower is
-        # (60 + i + tower_id * 100). So here comes its batch mean over all
-        # towers:
-        return 60. + i + (num_towers - 1.) / 2. * 100.
+        # (8 * j + i + replica_id * 100). So the batch mean in each replica is
+        # (60 + i + replica_id * 100). So here comes its batch mean over all
+        # replicas:
+        return 60. + i + (num_replicas - 1.) / 2. * 100.
 
       for _ in range(10):
         run_step()
         moving_means = self.evaluate(batchnorm.moving_mean)
 
         # We make sure that the moving_mean is updated as if the sample mean is
-        # calculated over all towers.
+        # calculated over all replicas.
         for i, expected_moving_mean in enumerate(expected_moving_means):
           expected_moving_means[i] -= ((
               expected_moving_mean - averaged_batch_mean(i)) * (1.0 - momentum))
@@ -335,11 +334,10 @@ class MinimizeLossStepTest(test.TestCase, parameterized.TestCase):
       def step_fn(ctx, x, y):
         del ctx  # Unused
         return distribution.group(
-            distribution.call_for_each_tower(
+            distribution.call_for_each_replica(
                 model_fn, x, y, run_concurrently=False))
 
-      iterator = distribution.distribute_dataset(
-          dataset_fn).make_one_shot_iterator()
+      iterator = self._get_iterator(distribution.distribute_dataset(dataset_fn))
 
       def run_step():
         return distribution.run_steps_on_dataset(
@@ -371,10 +369,10 @@ class MinimizeLossStepTest(test.TestCase, parameterized.TestCase):
       # So unreplicated the update to w with lr=0.2 is -0.2 * -106 = 21.2
       # with sum loss reduction, or 10.6 with mean.
       if loss_reduction == losses_impl.Reduction.SUM:
-        # Note that the "distribution.num_towers" factor will go away once
-        # we split the input across towers, instead of pulling a complete
-        # batch of input per tower.
-        self.assertNear(weight, 2 + 21.2 * distribution.num_towers, 0.0001)
+        # Note that the "distribution.num_replicas" factor will go away once
+        # we split the input across replicas, instead of pulling a complete
+        # batch of input per replica.
+        self.assertNear(weight, 2 + 21.2 * distribution.num_replicas, 0.0001)
       else:
         # One of the mean loss reductions.
         self.assertNear(weight, 2 + 10.6, 0.0001)
@@ -414,26 +412,25 @@ class MinimizeLossStepTest(test.TestCase, parameterized.TestCase):
         train_op = optimizer.minimize(loss_fn)
         loss = loss_fn()
         output_context.set_last_step_output(
-            name="tower_loss_agg",
+            name="replica_loss_agg",
             output=loss,
             aggregation=variables_lib.VariableAggregation.MEAN)
         output_context.set_non_tensor_output(key1, value1)
         return (train_op, loss)
 
       def step_fn(output_context, *inputs):
-        (train_op, loss) = distribution.call_for_each_tower(
+        (train_op, loss) = distribution.call_for_each_replica(
             model_fn, output_context, *inputs, run_concurrently=False)
         output_context.set_last_step_output(
-            name="cross_tower_loss_agg",
+            name="cross_replica_loss_agg",
             output=loss,
             aggregation=variables_lib.VariableAggregation.MEAN)
         output_context.set_last_step_output(
-            name="cross_tower_loss_noagg",
+            name="cross_replica_loss_noagg",
             output=loss)
         return distribution.group(train_op)
 
-      iterator = distribution.distribute_dataset(
-          dataset_fn).make_one_shot_iterator()
+      iterator = self._get_iterator(distribution.distribute_dataset(dataset_fn))
 
       def run_step():
         initial_loss = lambda: constant_op.constant(1e7)
@@ -444,9 +441,9 @@ class MinimizeLossStepTest(test.TestCase, parameterized.TestCase):
         # it will be single tensor. Using `broadcast` followed by `unwrap`
         # gives us the desired initial value structure.
         initial_loop_values = {
-            "tower_loss_agg": initial_loss(),
-            "cross_tower_loss_agg": initial_loss(),
-            "cross_tower_loss_noagg":
+            "replica_loss_agg": initial_loss(),
+            "cross_replica_loss_agg": initial_loss(),
+            "cross_replica_loss_noagg":
             distribution.unwrap(distribution.broadcast(initial_loss()))
         }
         ctx = distribution.run_steps_on_dataset(
@@ -456,17 +453,17 @@ class MinimizeLossStepTest(test.TestCase, parameterized.TestCase):
         self.assertEqual({key1: [value1]}, ctx.non_tensor_outputs)
         self._verify_loss_output(
             initial_loss(),
-            loss_output=ctx.last_step_outputs["tower_loss_agg"],
+            loss_output=ctx.last_step_outputs["replica_loss_agg"],
             aggregated=True, distribution=distribution)
         self._verify_loss_output(
             initial_loss(),
-            loss_output=ctx.last_step_outputs["cross_tower_loss_agg"],
+            loss_output=ctx.last_step_outputs["cross_replica_loss_agg"],
             aggregated=True, distribution=distribution)
         self._verify_loss_output(
             initial_loss(),
-            loss_output=ctx.last_step_outputs["cross_tower_loss_noagg"],
+            loss_output=ctx.last_step_outputs["cross_replica_loss_noagg"],
             aggregated=False, distribution=distribution)
-        return (ctx.run_op, ctx.last_step_outputs["tower_loss_agg"])
+        return (ctx.run_op, ctx.last_step_outputs["replica_loss_agg"])
 
       self.evaluate(distribution.initialize())
       if not context.executing_eagerly():
@@ -494,7 +491,7 @@ class MinimizeLossStepTest(test.TestCase, parameterized.TestCase):
   def _verify_loss_output(self, initial_loss, loss_output, aggregated,
                           distribution):
     if not aggregated:
-      self.assertEqual(distribution.num_towers,
+      self.assertEqual(distribution.num_replicas,
                        len(distribution.unwrap(loss_output)))
       loss_output = distribution.reduce(
           aggregation=variables_lib.VariableAggregation.MEAN,

@@ -27,7 +27,7 @@ import weakref
 import six
 
 from tensorflow.contrib.distribute.python import input_ops
-from tensorflow.contrib.distribute.python import prefetching_ops_v2
+from tensorflow.python.data.ops import multi_device_iterator_ops
 from tensorflow.python.eager import context
 from tensorflow.python.eager import tape
 from tensorflow.python.framework import device as tf_device
@@ -60,13 +60,13 @@ class DistributedValues(object):
   def get(self, device=None):
     """Returns the value for the current device or raises a ValueError."""
     if device is None:
-      tower_context = distribution_strategy_context.get_tower_context()
-      if tower_context:
-        device = tower_context.device
+      replica_context = distribution_strategy_context.get_replica_context()
+      if replica_context:
+        device = replica_context.device
       else:
         device = distribute_lib.get_update_device()
         if device is None:
-          return self._get_cross_tower()
+          return self._get_cross_replica()
     device = device_util.canonicalize(device)
     try:
       return self._index[device]
@@ -102,9 +102,6 @@ class DistributedValues(object):
 
 class DistributedDelegate(DistributedValues):
   """A map from device to values; acts as the same type as the values."""
-
-  def __init__(self, index):
-    super(DistributedDelegate, self).__init__(index)
 
   def __getattr__(self, name):
     return getattr(self.get(), name)
@@ -176,11 +173,11 @@ class PerDevice(DistributedValues):
 
 
 # Note that unlike PerDevice, Mirrored values inherit from
-# DistributedDelegate and so can be used directly in cross-tower mode.
+# DistributedDelegate and so can be used directly in cross-replica mode.
 class Mirrored(DistributedDelegate):
   """Holds a map from device to values which are kept in sync."""
 
-  def _get_cross_tower(self):
+  def _get_cross_replica(self):
     device = device_util.canonicalize(device_util.current())
     if device in self._index:
       return self._index[device]
@@ -188,7 +185,6 @@ class Mirrored(DistributedDelegate):
 
   def _as_graph_element(self):
     obj = self.get()
-    # pylint: disable=protected-access
     conv_fn = getattr(obj, "_as_graph_element", None)
     if conv_fn and callable(conv_fn):
       return conv_fn()
@@ -298,10 +294,10 @@ class DistributedVariable(DistributedDelegate):
 
   @property
   def op(self):
-    # We want cross-tower code that does some var.op.X calls
+    # We want cross-replica code that does some var.op.X calls
     # to work (even if the current device isn't in self.devices), but
-    # other uses of var.op in a cross-tower context to fail.
-    if distribution_strategy_context.get_cross_tower_context():
+    # other uses of var.op in a cross-replica context to fail.
+    if distribution_strategy_context.get_cross_replica_context():
       return DistributedVarOp(self._primary_var.op.name,
                               self._primary_var.op.graph,
                               self._primary_var.op.type)
@@ -355,7 +351,7 @@ class MirroredVariable(DistributedVariable, Mirrored,
   # update several non-slot variables in one call.
   def _assign_func(self, *args, **kwargs):
     f = kwargs.pop("f")
-    if distribution_strategy_context.get_cross_tower_context():
+    if distribution_strategy_context.get_cross_replica_context():
       update_device = distribute_lib.get_update_device()
       if update_device is not None:
         # We are calling an assign function on the mirrored variable in an
@@ -363,13 +359,13 @@ class MirroredVariable(DistributedVariable, Mirrored,
         v = self.get(device=update_device)
         return f(v, *args, **kwargs)
 
-      # We are calling assign on the mirrored variable in cross tower context,
+      # We are calling assign on the mirrored variable in cross replica context,
       # use update to update the variable.
       strategy = distribution_strategy_context.get_distribution_strategy()
       return strategy.update(self, f, *args, **kwargs)
     else:
-      _assert_tower_context()
-      # We are calling an assign function on the mirrored variable in tower
+      _assert_replica_context()
+      # We are calling an assign function on the mirrored variable in replica
       # context.
       # We reduce the value we want to assign/add/sub. More details about how we
       # handle the different use cases can be found in the _reduce method.
@@ -377,7 +373,7 @@ class MirroredVariable(DistributedVariable, Mirrored,
       # value.
       if self._aggregation == vs.VariableAggregation.NONE:
         raise ValueError("You must specify an aggregation method to update a "
-                         "MirroredVariable in Tower Context.")
+                         "MirroredVariable in Replica Context.")
 
       def merge_fn(strategy, value, *other_args, **other_kwargs):
         return strategy.update(
@@ -386,7 +382,7 @@ class MirroredVariable(DistributedVariable, Mirrored,
                 aggregation=self._aggregation, value=value, destinations=self),
             *other_args, **other_kwargs)
 
-      return distribution_strategy_context.get_tower_context().merge_call(
+      return distribution_strategy_context.get_replica_context().merge_call(
           merge_fn, *args, **kwargs)
 
   def assign_sub(self, *args, **kwargs):
@@ -405,7 +401,7 @@ class MirroredVariable(DistributedVariable, Mirrored,
   def aggregation(self):
     return self._aggregation
 
-  def _get_cross_tower(self):
+  def _get_cross_replica(self):
     device = device_util.canonicalize(device_util.current())
     if device in self._index:
       return array_ops.identity(self._index[device])
@@ -413,7 +409,7 @@ class MirroredVariable(DistributedVariable, Mirrored,
 
   def _as_graph_element(self):
     # pylint: disable=protected-access
-    if distribution_strategy_context.get_cross_tower_context():
+    if distribution_strategy_context.get_cross_replica_context():
       return self._primary_var._as_graph_element()
     return self.get()._as_graph_element()
 
@@ -475,17 +471,22 @@ class TPUMirroredVariable(checkpointable.CheckpointableBase):
     self._aggregation = aggregation
     # Needed for GradientTape
     self._trainable = self._primary_var.trainable
+    # Typically like `DistributedVariable`, a `TPUMirroredVariable`'s
+    # initializer is composed of the initializers of the components variables.
+    # However, in some cases, such as when restoring from a checkpoint, we may
+    # set the _initializer_op property on the entire `TPUMirroredVariable`.
+    self._initializer_op = None
 
   def _get(self, device=None):
     """Returns the value for the current device or raises a ValueError."""
     if device is None:
-      tower_context = distribution_strategy_context.get_tower_context()
-      if tower_context:
-        device = tower_context.device
+      replica_context = distribution_strategy_context.get_replica_context()
+      if replica_context:
+        device = replica_context.device
       else:
         device = distribute_lib.get_update_device()
         if device is None:
-          return self._get_cross_tower()
+          return self._get_cross_replica()
     device = device_util.canonicalize(device)
     try:
       return self._index[device]
@@ -571,6 +572,10 @@ class TPUMirroredVariable(checkpointable.CheckpointableBase):
           ValueError("Device %s not found in %s (current device %s)" %
                      (device, self._index.keys(), device_util.current())), e)
 
+  @property
+  def device(self):
+    return self._get().device
+
   # The arguments to update() are automatically unwrapped so the update()
   # function would normally see regular variables, not MirroredVariables.
   # However, the update function can still operate on wrapped MirroredVariables
@@ -582,24 +587,24 @@ class TPUMirroredVariable(checkpointable.CheckpointableBase):
       raise ValueError("You may only assign to a TPUMirroredVariable within a "
                        "TPUStrategy.")
     f = kwargs.pop("f")
-    if distribution_strategy_context.get_cross_tower_context():
+    if distribution_strategy_context.get_cross_replica_context():
       if _enclosing_tpu_context() is not None:
         return distribution_strategy_context.get_distribution_strategy().update(
             self, f, *args, **kwargs)
 
       update_device = distribute_lib.get_update_device()
-      # We are calling update on the mirrored variable in cross tower context.
+      # We are calling update on the mirrored variable in cross replica context.
       if update_device is not None:
         # We are calling an assign function on the mirrored variable in cross
-        # tower context.
+        # replica context.
         v = self._get(device=update_device)
         return f(v, *args, **kwargs)
 
       return distribution_strategy_context.get_distribution_strategy().update(
           self, f, *args, **kwargs)
     else:
-      _assert_tower_context()
-      # We are calling an assign function on the mirrored variable in tower
+      _assert_replica_context()
+      # We are calling an assign function on the mirrored variable in replica
       # context.
       # We reduce the value we want to assign/add/sub. More details about how we
       # handle the different use cases can be found in the _reduce method.
@@ -607,7 +612,7 @@ class TPUMirroredVariable(checkpointable.CheckpointableBase):
       # value.
       if self._aggregation == vs.VariableAggregation.NONE:
         raise ValueError("You must specify an aggregation method to update a "
-                         "TPUMirroredVariable in Tower Context.")
+                         "TPUMirroredVariable in Replica Context.")
 
       def merge_fn(strategy, value, *other_args, **other_kwargs):
         return strategy.update(
@@ -616,7 +621,7 @@ class TPUMirroredVariable(checkpointable.CheckpointableBase):
                 aggregation=self._aggregation, value=value, destinations=self),
             *other_args, **other_kwargs)
 
-      return distribution_strategy_context.get_tower_context().merge_call(
+      return distribution_strategy_context.get_replica_context().merge_call(
           merge_fn, *args, **kwargs)
 
   @contextlib.contextmanager
@@ -700,8 +705,12 @@ class TPUMirroredVariable(checkpointable.CheckpointableBase):
 
   @property
   def initializer(self):
-    return control_flow_ops.group(
-        [v.initializer for v in nest.flatten(self._index)])
+    if self._initializer_op:
+      init_op = self._initializer_op
+    else:
+      init_op = control_flow_ops.group(
+          [v.initializer for v in self._index.values()])
+    return init_op
 
   @property
   def graph(self):
@@ -733,7 +742,7 @@ class TPUMirroredVariable(checkpointable.CheckpointableBase):
   def to_proto(self, export_scope=None):
     return self._primary_var.to_proto(export_scope=export_scope)
 
-  def _get_cross_tower(self):
+  def _get_cross_replica(self):
     device = device_util.canonicalize(device_util.current())
     if device in self._index:
       return self._index[device]
@@ -741,7 +750,7 @@ class TPUMirroredVariable(checkpointable.CheckpointableBase):
 
   def _as_graph_element(self):
     # pylint: disable=protected-access
-    if distribution_strategy_context.get_cross_tower_context():
+    if distribution_strategy_context.get_cross_replica_context():
       return self._primary_var._as_graph_element()
     return self._read_variable_op()
 
@@ -778,7 +787,7 @@ class TPUMirroredVariable(checkpointable.CheckpointableBase):
       return self._get()._dense_var_to_tensor(dtype, name, as_ref)
     # pylint: enable=protected-access
     if dtype is not None and dtype != self.dtype:
-      raise NotImplementedError
+      return math_ops.cast(self.read_value(), dtype)
     if as_ref:
       return self.handle
     else:
@@ -823,54 +832,54 @@ ops.register_tensor_conversion_function(TPUMirroredVariable,
 ops.register_dense_tensor_like_type(TPUMirroredVariable)
 
 
-class _TowerLocalSaveable(saver.BaseSaverBuilder.SaveableObject):
-  """Class for defining how to restore a TowerLocalVariable."""
+class _ReplicaLocalSaveable(saver.BaseSaverBuilder.SaveableObject):
+  """Class for defining how to restore a ReplicaLocalVariable."""
 
-  def __init__(self, tower_local_variable, name):
-    self._tower_local_variable = tower_local_variable
+  def __init__(self, replica_local_variable, name):
+    self._replica_local_variable = replica_local_variable
     # We use a callable so that we don't have to evaluate this expression
     # in the case where we are trying to restore instead of save.
     def tensor():
       return distribution_strategy_context.get_distribution_strategy().read_var(
-          tower_local_variable)
+          replica_local_variable)
     spec = saver.BaseSaverBuilder.SaveSpec(
         tensor=tensor,
         slice_spec="",
         name=name,
-        dtype=tower_local_variable.dtype)
-    super(_TowerLocalSaveable, self).__init__(tensor, [spec], name)
+        dtype=replica_local_variable.dtype)
+    super(_ReplicaLocalSaveable, self).__init__(tensor, [spec], name)
 
   def restore(self, restored_tensors, restored_shapes):
     """Restore the same value into all variables."""
     tensor, = restored_tensors
-    return self._tower_local_variable.assign(tensor)
+    return self._replica_local_variable.assign(tensor)
 
 
-def _assert_tower_context():
-  if not distribution_strategy_context.get_tower_context():
+def _assert_replica_context():
+  if not distribution_strategy_context.get_replica_context():
     raise RuntimeError(
-        "Tower-local variables may only be assigned in a tower context.")
+        "Replica-local variables may only be assigned in a replica context.")
 
 
-class TowerLocalVariable(DistributedVariable, PerDevice,
-                         checkpointable.CheckpointableBase):
+class ReplicaLocalVariable(DistributedVariable, PerDevice,
+                           checkpointable.CheckpointableBase):
   """Holds a map from device to variables whose values are reduced on save."""
 
   def __init__(self, index, primary_var, aggregation):
     self._primary_var = primary_var
     self._aggregation = aggregation
-    super(TowerLocalVariable, self).__init__(index)
+    super(ReplicaLocalVariable, self).__init__(index)
 
   def assign_sub(self, *args, **kwargs):
-    _assert_tower_context()
+    _assert_replica_context()
     return self.get().assign_sub(*args, **kwargs)
 
   def assign_add(self, *args, **kwargs):
-    _assert_tower_context()
+    _assert_replica_context()
     return self.get().assign_add(*args, **kwargs)
 
   def assign(self, *args, **kwargs):
-    if distribution_strategy_context.get_cross_tower_context():
+    if distribution_strategy_context.get_cross_replica_context():
       # To preserve the sum across save and restore, we have to divide the
       # total across all devices when restoring a variable that was summed
       # when saving.
@@ -881,15 +890,15 @@ class TowerLocalVariable(DistributedVariable, PerDevice,
           [_assign_on_device(d, v, tensor)
            for d, v in six.iteritems(self._index)])
     else:
-      _assert_tower_context()
+      _assert_replica_context()
       return self.get().assign(*args, **kwargs)
 
   @property
   def aggregation(self):
     return self._aggregation
 
-  def _get_cross_tower(self):
-    if self._aggregation == vs.VariableAggregation.ONLY_FIRST_TOWER:
+  def _get_cross_replica(self):
+    if self._aggregation == vs.VariableAggregation.ONLY_FIRST_REPLICA:
       return self._primary_var
     all_components = tuple(self._index.values())
     # TODO(josh11b): Use a strategy-specific method.
@@ -900,33 +909,33 @@ class TowerLocalVariable(DistributedVariable, PerDevice,
 
   def _as_graph_element(self):
     # pylint: disable=protected-access
-    if distribution_strategy_context.get_cross_tower_context():
-      return self._get_cross_tower()
+    if distribution_strategy_context.get_cross_replica_context():
+      return self._get_cross_replica()
     return self.get()._as_graph_element()
 
   def _gather_saveables_for_checkpoint(self):
     """Overrides CheckpointableBase method.
 
     This allows both name-based and object-based save and restore of
-    TowerLocalVariables.
+    ReplicaLocalVariables.
 
     Returns:
       A dictionary mapping attribute names to `SaveableObject` factories.
     """
     def _saveable_factory(name=self._common_name):
-      return _TowerLocalSaveable(self, name)
+      return _ReplicaLocalSaveable(self, name)
     return {checkpointable.VARIABLE_VALUE_KEY: _saveable_factory}
 
 
-# Register a conversion function for TowerLocalVariable which allows as_ref to
+# Register a conversion function for ReplicaLocalVariable which allows as_ref to
 # be true.
-def _tensor_conversion_tower_local(var, dtype=None, name=None, as_ref=False):
+def _tensor_conversion_replica_local(var, dtype=None, name=None, as_ref=False):
   return ops.internal_convert_to_tensor(
       var.get(), dtype=dtype, name=name, as_ref=as_ref)
 
 
-ops.register_tensor_conversion_function(TowerLocalVariable,
-                                        _tensor_conversion_tower_local)
+ops.register_tensor_conversion_function(ReplicaLocalVariable,
+                                        _tensor_conversion_replica_local)
 
 
 def _devices_match(d1, d2):
@@ -977,7 +986,7 @@ def regroup(per_device, wrap_class=PerDevice):
       break
   # Consider three cases where same_id is true:
   # * If v0 is a DistributedVariable (a MirroredVariable or
-  #   TowerLocalVariable, and same_id means it is the same across all
+  #   ReplicaLocalVariable, and same_id means it is the same across all
   #   devices), we want to return it. We check DistributedVariable
   #   specifically since it can look like it has a
   #   _distributed_container member since its members do.
@@ -992,7 +1001,7 @@ def regroup(per_device, wrap_class=PerDevice):
     return v0
 
   # Detect the case where each device has a parallel component of the
-  # same MirroredVariable (or TowerLocalVariable). In this case we
+  # same MirroredVariable (or ReplicaLocalVariable). In this case we
   # want to return the containing MirroredVariable, after a bunch of
   # sanity checking. In particular, each component should have the
   # same container, and the devices of the variables should match the
@@ -1029,7 +1038,7 @@ def select_device_mirrored(device, structured):
     if isinstance(x, DistributedValues):
       if not isinstance(x, Mirrored):
         raise TypeError(
-            "Expected value to be mirrored across towers: %s in %s." %
+            "Expected value to be mirrored across replicas: %s in %s." %
             (x, structured))
       return x.get(device)
     else:
@@ -1049,7 +1058,7 @@ def update_regroup(strategy, updates, should_group):
       g = strategy.group(u)
       if u.is_tensor_like:
         # Make sure we run all updates. Without this, something like
-        # session.run(strategy.update(...)) may only update one tower.
+        # session.run(strategy.update(...)) may only update one replica.
         index = {}
         for d in u.devices:
           with ops.device(d), ops.control_dependencies([g]):
@@ -1076,7 +1085,7 @@ class PerDeviceDataIterator(object):
   def get_next(self, name=None):
     """Scatter the input across devices."""
     if self._prefetch_on_device:
-      data_list = self._iterator.get_next(name=name)
+      data_list = self._iterator.get_next()
       index = dict(zip(self._devices, data_list))
     else:
       batch = self._iterator.get_next(name=name)
@@ -1092,6 +1101,18 @@ class PerDeviceDataIterator(object):
 
     return regroup(index)
 
+  @property
+  def output_classes(self):
+    return self._iterator.output_classes
+
+  @property
+  def output_shapes(self):
+    return self._iterator.output_shapes
+
+  @property
+  def output_types(self):
+    return self._iterator.output_types
+
 
 class PerDeviceDataset(object):
   """Like `tf.data.Dataset` split devices, producing `PerDevice` data."""
@@ -1100,17 +1121,15 @@ class PerDeviceDataset(object):
     self._devices = devices
 
     # Default to using prefetching in graph mode, unless specified.
-    # TODO(priyag): Enable prefetching in eager mode.
+    # TODO(rohanj): Enable prefetching in eager mode.
     self._prefetch_on_device = prefetch_on_device
     if self._prefetch_on_device is None:
       self._prefetch_on_device = not context.executing_eagerly()
     assert not (self._prefetch_on_device and context.executing_eagerly()), (
         "Prefetching is only supported in graph mode currently")
 
-    if self._prefetch_on_device:
-      self._dataset = dataset.apply(
-          prefetching_ops_v2.prefetch_to_devices(self._devices))
-    else:
+    self._dataset = dataset
+    if not self._prefetch_on_device:
       # TODO(priyag): If dropping remainder is not appropriate, find another
       # approach to distributing the dataset when not possible to divide evenly.
       # Possibly not an issue when we start using PartitionedDataset.
@@ -1118,15 +1137,33 @@ class PerDeviceDataset(object):
 
   def make_one_shot_iterator(self):
     """Get a one time use iterator for the distributed PerDeviceDataset."""
+    # Graph mode with one shot iterator is disabled.
+    if not context.executing_eagerly():
+      raise ValueError("Cannot create a one shot iterator. Please use "
+                       "`make_initializable_iterator()` instead.")
+    # Eager mode prefetching would error out in constructor. Only remaining
+    # case is non-prefetching in eager mode. We delegate to
+    # PerDeviceDataIterator to handle that case.
     dataset_iterator = self._dataset.make_one_shot_iterator()
-    return PerDeviceDataIterator(dataset_iterator, self._devices,
-                                 self._prefetch_on_device)
+    return PerDeviceDataIterator(
+        dataset_iterator, self._devices, prefetch_on_device=False)
 
   def make_initializable_iterator(self):
     """Get an initializable iterator for the distributed PerDeviceDataset."""
-    dataset_iterator = self._dataset.make_initializable_iterator()
-    return PerDeviceDataIterator(dataset_iterator, self._devices,
-                                 self._prefetch_on_device)
+    # Eager mode generates already initialized iterators. Hence we cannot create
+    # an initializable iterator.
+    if context.executing_eagerly():
+      raise ValueError("Cannot create initializable iterator in Eager mode. "
+                       "Please use `make_one_shot_iterator` instead.")
+    if self._prefetch_on_device:
+      dataset_iterator = multi_device_iterator_ops.MultiDeviceIterator(
+          self._dataset, self._devices)
+    else:
+      dataset_iterator = self._dataset.make_initializable_iterator()
+    return PerDeviceDataIterator(
+        dataset_iterator,
+        self._devices,
+        prefetch_on_device=self._prefetch_on_device)
 
 
 class MultiWorkerDataIterator(object):
@@ -1153,6 +1190,17 @@ class MultiWorkerDataIterator(object):
   def initializer(self):
     return control_flow_ops.group(
         [iterator.initializer for iterator in self._iterators.values()])
+
+  def get_iterator(self, worker):
+    return self._iterators.get(worker)
+
+  @property
+  def output_shapes(self):
+    return self._iterators.values()[0].output_shapes
+
+  @property
+  def output_types(self):
+    return self._iterators.values()[0].output_types
 
   def get_next(self, name=None):
     """Scatter the input across hosts and devices."""
@@ -1382,9 +1430,9 @@ class MultiStepContext(object):
       output: The tensors that should be outputted with `name`. See below for
         actual types supported.
       aggregation: Aggregation method to use to aggregate outputs from multiple
-        towers. Required if `set_last_step_output` is called in a tower context.
-        Optional in cross_tower_context.
-        When present, the outputs from all the towers are aggregated using the
+        replicas. Required if `set_last_step_output` is called in a replica context.
+        Optional in cross_replica_context.
+        When present, the outputs from all the replicas are aggregated using the
         current distribution strategy's `reduce` method. Hence, the type of
         `output` must be what's supported by the corresponding `reduce` method.
         For e.g. if using MirroredStrategy and aggregation is set, output
@@ -1394,7 +1442,7 @@ class MultiStepContext(object):
         outputs as already reduced or not.
 
     """
-    if distribution_strategy_context.get_cross_tower_context():
+    if distribution_strategy_context.get_cross_replica_context():
       self._last_step_outputs_aggregations[name] = aggregation
       if aggregation is variables_lib.VariableAggregation.NONE:
         self._last_step_outputs[name] = output
@@ -1407,12 +1455,12 @@ class MultiStepContext(object):
       def merge_fn(distribution, value):
         self._last_step_outputs[name] = distribution.reduce(
             aggregation, value, destinations="/device:CPU:0")
-        # Setting this inside the `merge_fn` because all towers share the same
+        # Setting this inside the `merge_fn` because all replicas share the same
         # context object, so it's more robust to set it only once (even if all
-        # the towers are trying to set the same value).
+        # the replicas are trying to set the same value).
         self._last_step_outputs_aggregations[name] = aggregation
 
-      distribution_strategy_context.get_tower_context().merge_call(
+      distribution_strategy_context.get_replica_context().merge_call(
           merge_fn, output)
 
   @property
@@ -1422,14 +1470,14 @@ class MultiStepContext(object):
 
   def set_non_tensor_output(self, name, output):
     """Set `output` with `name` to be captured as a non tensor output."""
-    if distribution_strategy_context.get_cross_tower_context():
+    if distribution_strategy_context.get_cross_replica_context():
       self._non_tensor_outputs[name] = output
     else:
       def merge_fn(distribution, value):
         # NOTE(priyag): For non tensor outputs, we simply return all the values
         # in a list as aggregation doesn't make sense on non tensors.
         self._non_tensor_outputs[name] = distribution.unwrap(value)
-      distribution_strategy_context.get_tower_context().merge_call(
+      distribution_strategy_context.get_replica_context().merge_call(
           merge_fn, output)
 
 
@@ -1437,7 +1485,7 @@ def value_container(val):
   """Returns the container that this per-device `value` belongs to.
 
   Args:
-    val: A value returned by `call_for_each_tower()` or a variable
+    val: A value returned by `call_for_each_replica()` or a variable
       created in `scope()`.
 
   Returns:
@@ -1445,13 +1493,11 @@ def value_container(val):
     If value does not belong to any container (including the case of
     container having been destroyed), returns the value itself.
   """
-  # pylint: disable=protected-access
   if (hasattr(val, "_distributed_container") and
       # DistributedVariable has _distributed_container defined
       # but we don't want to return it.
       not isinstance(val, DistributedVariable)):
-    container = val._distributed_container()
-    # pylint: disable=protected-access
+    container = val._distributed_container()  # pylint: disable=protected-access
     if container is not None:
       return container
   return val
@@ -1459,12 +1505,13 @@ def value_container(val):
 
 # TODO(josh11b): Descend from Variable.
 class AggregatingVariable(checkpointable.CheckpointableBase):
-  """A wrapper around a variable that aggregates updates across towers."""
+  """A wrapper around a variable that aggregates updates across replicas."""
 
   def __init__(self, v, aggregation):
     self._v = v
-    # TODO(josh11b): Set v._distributed_container?
-    # v._distributed_container = weakref.ref(self)  # pylint: disable=protected-access
+    # NOTE: We don't use "_distributed_container" here because we don't want
+    # to trigger that code path in regroup().
+    v._aggregating_container = weakref.ref(self)  # pylint: disable=protected-access
     self._aggregation = aggregation
 
   def get(self):
@@ -1475,25 +1522,25 @@ class AggregatingVariable(checkpointable.CheckpointableBase):
 
   def _assign_func(self, *args, **kwargs):
     f = kwargs.pop("f")
-    if distribution_strategy_context.get_cross_tower_context():
+    if distribution_strategy_context.get_cross_replica_context():
       update_device = distribute_lib.get_update_device()
       if update_device is not None:
         # We are calling an assign function in an update context.
         return f(self._v, *args, **kwargs)
 
-      # We are calling an assign function in cross tower context, wrap it in an
+      # We are calling an assign function in cross replica context, wrap it in an
       # update call.
       return distribution_strategy_context.get_distribution_strategy().update(
           self, f, *args, **kwargs)
     else:
-      assert distribution_strategy_context.get_tower_context()
-      # We are calling an assign function in tower context.
+      assert distribution_strategy_context.get_replica_context()
+      # We are calling an assign function in replica context.
       # We reduce the value we want to assign/add/sub. More details about how we
       # handle the different use cases can be found in the _reduce method.
       # We call the function with the reduced value.
       if self._aggregation == vs.VariableAggregation.NONE:
         raise ValueError("You must specify an aggregation method to update a "
-                         "a variable in Tower Context.")
+                         "a variable in Replica Context.")
 
       def merge_fn(strategy, value, *other_args, **other_kwargs):
         return strategy.update(
@@ -1502,7 +1549,7 @@ class AggregatingVariable(checkpointable.CheckpointableBase):
                 aggregation=self._aggregation, value=value, destinations=self),
             *other_args, **other_kwargs)
 
-      return distribution_strategy_context.get_tower_context().merge_call(
+      return distribution_strategy_context.get_replica_context().merge_call(
           merge_fn, *args, **kwargs)
 
   def assign_sub(self, *args, **kwargs):

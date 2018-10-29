@@ -19,6 +19,7 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import linalg_ops
 from tensorflow.python.ops import math_ops
@@ -275,11 +276,13 @@ class LinearOperatorLowRankUpdate(linear_operator.LinearOperator):
     batch_shape = array_ops.broadcast_static_shape(
         self.base_operator.batch_shape, uv_shape[:-2])
 
-    self.base_operator.domain_dimension.assert_is_compatible_with(
-        uv_shape[-2])
+    tensor_shape.Dimension(
+        self.base_operator.domain_dimension).assert_is_compatible_with(
+            uv_shape[-2])
 
     if self._diag_update is not None:
-      uv_shape[-1].assert_is_compatible_with(self._diag_update.get_shape()[-1])
+      tensor_shape.dimension_at_index(uv_shape, -1).assert_is_compatible_with(
+          self._diag_update.get_shape()[-1])
       array_ops.broadcast_static_shape(
           batch_shape, self._diag_update.get_shape()[:-1])
 
@@ -291,8 +294,8 @@ class LinearOperatorLowRankUpdate(linear_operator.LinearOperator):
       self._diag_inv_operator = linear_operator_diag.LinearOperatorDiag(
           1. / self._diag_update, is_positive_definite=is_diag_update_positive)
     else:
-      if self.u.get_shape()[-1].value is not None:
-        r = self.u.get_shape()[-1].value
+      if tensor_shape.dimension_value(self.u.shape[-1]) is not None:
+        r = tensor_shape.dimension_value(self.u.shape[-1])
       else:
         r = array_ops.shape(self.u)[-1]
       self._diag_operator = linear_operator_identity.LinearOperatorIdentity(

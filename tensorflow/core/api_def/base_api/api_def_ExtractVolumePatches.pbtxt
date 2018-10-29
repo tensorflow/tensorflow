@@ -42,8 +42,5 @@ We specify the size-related attributes as:
 ```
 END
   }
-  summary: <<END
-Extract `patches` from `input` and put them in the "depth" output
-dimension. 3D extension of `extract_image_patches`.
-END
+  summary: "Extract `patches` from `input` and put them in the \"depth\" output dimension. 3D extension of `extract_image_patches`."
 }

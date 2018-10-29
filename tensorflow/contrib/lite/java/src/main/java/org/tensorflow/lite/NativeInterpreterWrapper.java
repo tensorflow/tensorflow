@@ -18,7 +18,9 @@ package org.tensorflow.lite;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.MappedByteBuffer;
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -35,18 +37,9 @@ final class NativeInterpreterWrapper implements AutoCloseable {
   }
 
   NativeInterpreterWrapper(String modelPath, Interpreter.Options options) {
-    if (options == null) {
-      options = new Interpreter.Options();
-    }
-    errorHandle = createErrorReporter(ERROR_BUFFER_SIZE);
-    modelHandle = createModel(modelPath, errorHandle);
-    interpreterHandle = createInterpreter(modelHandle, errorHandle, options.numThreads);
-    isMemoryAllocated = true;
-    inputTensors = new Tensor[getInputCount(interpreterHandle)];
-    outputTensors = new Tensor[getOutputCount(interpreterHandle)];
-    if (options.allowFp16PrecisionForFp32) {
-      setAllowFp16PrecisionForFp32(options.allowFp16PrecisionForFp32);
-    }
+    long errorHandle = createErrorReporter(ERROR_BUFFER_SIZE);
+    long modelHandle = createModel(modelPath, errorHandle);
+    init(errorHandle, modelHandle, options);
   }
 
   NativeInterpreterWrapper(ByteBuffer byteBuffer) {
@@ -54,9 +47,6 @@ final class NativeInterpreterWrapper implements AutoCloseable {
   }
 
   NativeInterpreterWrapper(ByteBuffer buffer, Interpreter.Options options) {
-    if (options == null) {
-      options = new Interpreter.Options();
-    }
     if (buffer == null
         || (!(buffer instanceof MappedByteBuffer)
             && (!buffer.isDirect() || buffer.order() != ByteOrder.nativeOrder()))) {
@@ -64,19 +54,33 @@ final class NativeInterpreterWrapper implements AutoCloseable {
           "Model ByteBuffer should be either a MappedByteBuffer of the model file, or a direct "
               + "ByteBuffer using ByteOrder.nativeOrder() which contains bytes of model content.");
     }
-    modelByteBuffer = buffer;
-    errorHandle = createErrorReporter(ERROR_BUFFER_SIZE);
-    modelHandle = createModelWithBuffer(modelByteBuffer, errorHandle);
-    interpreterHandle = createInterpreter(modelHandle, errorHandle, options.numThreads);
-    isMemoryAllocated = true;
-    inputTensors = new Tensor[getInputCount(interpreterHandle)];
-    outputTensors = new Tensor[getOutputCount(interpreterHandle)];
+    this.modelByteBuffer = buffer;
+    long errorHandle = createErrorReporter(ERROR_BUFFER_SIZE);
+    long modelHandle = createModelWithBuffer(modelByteBuffer, errorHandle);
+    init(errorHandle, modelHandle, options);
+  }
+
+  private void init(long errorHandle, long modelHandle, Interpreter.Options options) {
+    if (options == null) {
+      options = new Interpreter.Options();
+    }
+    this.errorHandle = errorHandle;
+    this.modelHandle = modelHandle;
+    this.interpreterHandle = createInterpreter(modelHandle, errorHandle, options.numThreads);
+    this.inputTensors = new Tensor[getInputCount(interpreterHandle)];
+    this.outputTensors = new Tensor[getOutputCount(interpreterHandle)];
     if (options.useNNAPI) {
       setUseNNAPI(options.useNNAPI);
     }
     if (options.allowFp16PrecisionForFp32) {
       setAllowFp16PrecisionForFp32(options.allowFp16PrecisionForFp32);
     }
+    for (Delegate delegate : options.delegates) {
+      applyDelegate(interpreterHandle, errorHandle, delegate.getNativeHandle());
+      delegates.add(delegate);
+    }
+    allocateTensors(interpreterHandle, errorHandle);
+    this.isMemoryAllocated = true;
   }
 
   /** Releases resources associated with this {@code NativeInterpreterWrapper}. */
@@ -103,6 +107,7 @@ final class NativeInterpreterWrapper implements AutoCloseable {
     inputsIndexes = null;
     outputsIndexes = null;
     isMemoryAllocated = false;
+    delegates.clear();
   }
 
   /** Sets inputs, runs model inference and returns outputs. */
@@ -322,10 +327,14 @@ final class NativeInterpreterWrapper implements AutoCloseable {
   private Map<String, Integer> outputsIndexes;
 
   // Lazily constructed and populated arrays of input and output Tensor wrappers.
-  private final Tensor[] inputTensors;
-  private final Tensor[] outputTensors;
+  private Tensor[] inputTensors;
+  private Tensor[] outputTensors;
 
   private boolean isMemoryAllocated = false;
+
+  // As the Java Delegate owns the native delegate instance, we keep a strong ref to any injected
+  // delegates for safety.
+  private final List<Delegate> delegates = new ArrayList<>();
 
   private static native long allocateTensors(long interpreterHandle, long errorHandle);
 
@@ -354,6 +363,9 @@ final class NativeInterpreterWrapper implements AutoCloseable {
   private static native long createModelWithBuffer(ByteBuffer modelBuffer, long errorHandle);
 
   private static native long createInterpreter(long modelHandle, long errorHandle, int numThreads);
+
+  private static native void applyDelegate(
+      long interpreterHandle, long errorHandle, long delegateHandle);
 
   private static native void delete(long errorHandle, long modelHandle, long interpreterHandle);
 

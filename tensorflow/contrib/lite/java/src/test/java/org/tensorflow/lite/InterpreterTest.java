@@ -43,6 +43,9 @@ public final class InterpreterTest {
   private static final File MOBILENET_MODEL_FILE =
       new File("tensorflow/contrib/lite/java/src/testdata/mobilenet.tflite.bin");
 
+  private static final File FLEX_MODEL_FILE =
+      new File("tensorflow/contrib/lite/testdata/multi_add_flex.bin");
+
   @Test
   public void testInterpreter() throws Exception {
     Interpreter interpreter = new Interpreter(MODEL_FILE);
@@ -345,4 +348,83 @@ public final class InterpreterTest {
     interpreter.close();
     interpreter.close();
   }
+
+  /** Smoke test validating that flex model loading fails when the flex delegate is not linked. */
+  @Test
+  public void testFlexModel() throws Exception {
+    try {
+      new Interpreter(FLEX_MODEL_FILE);
+      fail();
+    } catch (IllegalStateException e) {
+      // Expected failure.
+    }
+  }
+
+  @Test
+  public void testDelegate() throws Exception {
+    System.loadLibrary("tensorflowlite_test_jni");
+    Delegate delegate =
+        new Delegate() {
+          @Override
+          public long getNativeHandle() {
+            return getNativeHandleForDelegate();
+          }
+        };
+    Interpreter interpreter =
+        new Interpreter(MODEL_FILE, new Interpreter.Options().addDelegate(delegate));
+
+    // The native delegate stubs out the graph with a single op that produces the scalar value 7.
+    float[] oneD = {1.23f, 6.54f, 7.81f};
+    float[][] twoD = {oneD, oneD, oneD, oneD, oneD, oneD, oneD, oneD};
+    float[][][] threeD = {twoD, twoD, twoD, twoD, twoD, twoD, twoD, twoD};
+    float[][][][] fourD = {threeD, threeD};
+    float[] output = new float[1];
+    interpreter.run(fourD, output);
+    float[] expected = {7.0f};
+    assertThat(output).usingTolerance(0.1f).containsExactly(expected).inOrder();
+
+    interpreter.close();
+  }
+
+  @Test
+  public void testInvalidDelegate() throws Exception {
+    System.loadLibrary("tensorflowlite_test_jni");
+    Delegate delegate =
+        new Delegate() {
+          @Override
+          public long getNativeHandle() {
+            return getNativeHandleForInvalidDelegate();
+          }
+        };
+    try {
+      Interpreter interpreter =
+          new Interpreter(MODEL_FILE, new Interpreter.Options().addDelegate(delegate));
+      fail();
+    } catch (IllegalArgumentException e) {
+      assertThat(e).hasMessageThat().contains("Internal error: Failed to apply delegate");
+    }
+  }
+
+  @Test
+  public void testNullDelegate() throws Exception {
+    System.loadLibrary("tensorflowlite_test_jni");
+    Delegate delegate =
+        new Delegate() {
+          @Override
+          public long getNativeHandle() {
+            return 0;
+          }
+        };
+    try {
+      Interpreter interpreter =
+          new Interpreter(MODEL_FILE, new Interpreter.Options().addDelegate(delegate));
+      fail();
+    } catch (IllegalArgumentException e) {
+      assertThat(e).hasMessageThat().contains("Internal error: Invalid handle to delegate");
+    }
+  }
+
+  private static native long getNativeHandleForDelegate();
+
+  private static native long getNativeHandleForInvalidDelegate();
 }

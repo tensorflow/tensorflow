@@ -19,9 +19,7 @@ limitations under the License.
 // non-portable function.
 #ifdef TF_LITE_MCU_DEBUG_LOG
 
-// This header is pulled in from the support library at
-// https://github.com/google/stm32_bare_lib
-#include <debug_log.h>
+#include "tensorflow/contrib/lite/experimental/micro/micro_error_reporter.h"
 
 #define DEBUG_LOG(x) \
   do {               \

@@ -72,7 +72,7 @@ def _GetMatMulTest(a_np_, b_np_, use_static_shape_, **kwargs_):
     # np.matrix(a_np_) * np.matrix(b_np_)
     effective_a_np = _GetTransposedMatrices(a_np_, "a", kwargs_)
     effective_b_np = _GetTransposedMatrices(b_np_, "b", kwargs_)
-    with self.test_session(use_gpu=use_gpu) as sess:
+    with self.session(use_gpu=use_gpu) as sess:
       if use_static_shape_:
         a = constant_op.constant(effective_a_np)
         b = constant_op.constant(effective_b_np)
@@ -102,7 +102,7 @@ class MatMulGradientTest(test_lib.TestCase):
 def _GetMatMulGradientTest(a_np_, b_np_, use_static_shape_, **kwargs_):
 
   def Test(self):
-    if not use_static_shape_ or a_np_.dtype in (np.int32, np.float16):
+    if not use_static_shape_ or a_np_.dtype in (np.int32, np.int64, np.float16):
       self.skipTest("Skipping infeasible gradient test.")
 
     # Transpose and possibly conjugate a_np_ and b_np_ according to the
@@ -115,7 +115,7 @@ def _GetMatMulGradientTest(a_np_, b_np_, use_static_shape_, **kwargs_):
     epsilon = np.finfo(a_np_.dtype).eps
     delta = epsilon**(1.0 / 3.0)
     tol = 20 * delta
-    with self.test_session(use_gpu=True):
+    with self.session(use_gpu=True):
       a = constant_op.constant(effective_a_np)
       b = constant_op.constant(effective_b_np)
       res = math_ops.matmul(a, b, **kwargs_)
@@ -214,9 +214,9 @@ if __name__ == "__main__":
   sizes = [1, 3, 5]
   trans_options = [[False, False], [True, False], [False, True]]
   for use_static_shape in [False, True]:
-    for dtype in (np.int32, np.float16, np.float32, np.float64, np.complex64,
-                  np.complex128):
-      if not use_static_shape and dtype == np.int32:
+    for dtype in (np.int32, np.int64, np.float16, np.float32, np.float64,
+                  np.complex64, np.complex128):
+      if not use_static_shape and (dtype == np.int32 or dtype == np.int64):
         # TODO(rmlarsen): Re-enable this test when we have fixed the underlying
         # bug in Windows (b/35935459).
         continue

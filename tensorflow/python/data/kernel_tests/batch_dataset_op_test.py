@@ -453,7 +453,8 @@ class PaddedBatchDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
           5, padded_shapes=shape_as_tensor)
 
     with self.assertRaisesRegexp(
-        ValueError, r'The padded shape \(\?, \?\) is not compatible with the '
+        ValueError,
+        r'The padded shape \((\?|None), (\?|None)\) is not compatible with the '
         r'corresponding input component shape \(\).'):
       shape_as_tensor = array_ops.placeholder(dtypes.int64, shape=[2])
       _ = dataset_ops.Dataset.range(10).padded_batch(

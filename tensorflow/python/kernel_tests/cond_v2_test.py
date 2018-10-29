@@ -24,6 +24,8 @@ from tensorflow.python.eager import function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import test_ops
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import cond_v2
 from tensorflow.python.ops import control_flow_ops
@@ -122,6 +124,7 @@ class CondV2Test(test.TestCase):
       self.assertEqual(sess.run(out, {pred: False}), (2.0,))
 
   def _createCond(self, name):
+    """Helper function for testDefaultName."""
     pred = constant_op.constant(True, name="pred")
     x = constant_op.constant(1.0, name="x")
 
@@ -131,28 +134,38 @@ class CondV2Test(test.TestCase):
     def false_fn():
       return x + 1
 
-    return cond_v2.cond_v2(pred, true_fn, false_fn, name=name).op
+    output = cond_v2.cond_v2(pred, true_fn, false_fn, name=name)
+    cond_op = output.op.inputs[0].op
+    self.assertEqual(cond_op.type, "If")
+    return cond_op
 
   def testDefaultName(self):
     with ops.Graph().as_default():
-      cond = self._createCond(None)
-      self.assertEqual(cond.name, "cond")
-      self.assertIn("cond_true", ops.get_default_graph()._functions)
-      self.assertIn("cond_false", ops.get_default_graph()._functions)
+      cond_op = self._createCond(None)
+      self.assertEqual(cond_op.name, "cond")
+      self.assertRegexpMatches(
+          cond_op.get_attr("then_branch").name, r"cond_true_\d*")
+      self.assertRegexpMatches(
+          cond_op.get_attr("else_branch").name, r"cond_false_\d*")
 
     with ops.Graph().as_default():
       with ops.name_scope("foo"):
-        cond = self._createCond("")
-        self.assertEqual(cond.name, "foo/cond")
-        self.assertIn("foo_cond_true", ops.get_default_graph()._functions)
-        self.assertIn("foo_cond_false", ops.get_default_graph()._functions)
+        cond1_op = self._createCond("")
+        self.assertEqual(cond1_op.name, "foo/cond")
+        self.assertRegexpMatches(
+            cond1_op.get_attr("then_branch").name, r"foo_cond_true_\d*")
+        self.assertRegexpMatches(
+            cond1_op.get_attr("else_branch").name, r"foo_cond_false_\d*")
 
-        cond2 = self._createCond(None)
-        self.assertEqual(cond2.name, "foo/cond_1")
-        self.assertIn("foo_cond_1_true", ops.get_default_graph()._functions)
-        self.assertIn("foo_cond_1_false", ops.get_default_graph()._functions)
+        cond2_op = self._createCond(None)
+        self.assertEqual(cond2_op.name, "foo/cond_1")
+        self.assertRegexpMatches(
+            cond2_op.get_attr("then_branch").name, r"foo_cond_1_true_\d*")
+        self.assertRegexpMatches(
+            cond2_op.get_attr("else_branch").name, r"foo_cond_1_false_\d*")
 
   def testDefunInCond(self):
+    self.skipTest("b/117293122")
     x = constant_op.constant(1.0, name="x")
     y = constant_op.constant(2.0, name="y")
 
@@ -172,7 +185,7 @@ class CondV2Test(test.TestCase):
     self._testCond(true_fn, false_fn, [y])
 
   def testNestedDefunInCond(self):
-    self.skipTest("b/110550782")
+    self.skipTest("b/117284369")
 
     x = constant_op.constant(1.0, name="x")
     y = constant_op.constant(2.0, name="y")
@@ -198,7 +211,7 @@ class CondV2Test(test.TestCase):
     self._testCond(true_fn, false_fn, [y])
 
   def testDoubleNestedDefunInCond(self):
-    self.skipTest("b/110550782")
+    self.skipTest("b/117284369")
 
     x = constant_op.constant(1.0, name="x")
     y = constant_op.constant(2.0, name="y")
@@ -468,7 +481,6 @@ class CondV2Test(test.TestCase):
             }), [5., 0.])
 
   def testBuildCondAndGradientInsideDefun(self):
-    self.skipTest("b/110550782")
 
     def build_graph():
       pred_outer = array_ops.placeholder(dtypes.bool, name="pred_outer")
@@ -502,29 +514,29 @@ class CondV2Test(test.TestCase):
 
       return grads, pred_outer, pred_inner
 
-    with ops.Graph().as_default():
+    with ops.Graph().as_default(), self.session(
+        graph=ops.get_default_graph()) as sess:
       grads, pred_outer, pred_inner = build_graph()
-      with self.session(graph=ops.get_default_graph()) as sess:
-        self.assertSequenceEqual(
-            sess.run(grads, {
-                pred_outer: True,
-                pred_inner: True
-            }), [0., 0.])
-        self.assertSequenceEqual(
-            sess.run(grads, {
-                pred_outer: True,
-                pred_inner: False
-            }), [0., 0.])
-        self.assertSequenceEqual(
-            sess.run(grads, {
-                pred_outer: False,
-                pred_inner: True
-            }), [4., 2.])
-        self.assertSequenceEqual(
-            sess.run(grads, {
-                pred_outer: False,
-                pred_inner: False
-            }), [5., 0.])
+      self.assertSequenceEqual(
+          sess.run(grads, {
+              pred_outer: True,
+              pred_inner: True
+          }), [0., 0.])
+      self.assertSequenceEqual(
+          sess.run(grads, {
+              pred_outer: True,
+              pred_inner: False
+          }), [0., 0.])
+      self.assertSequenceEqual(
+          sess.run(grads, {
+              pred_outer: False,
+              pred_inner: True
+          }), [4., 2.])
+      self.assertSequenceEqual(
+          sess.run(grads, {
+              pred_outer: False,
+              pred_inner: False
+          }), [5., 0.])
 
   def testSecondDerivative(self):
     with self.cached_session() as sess:
@@ -670,7 +682,7 @@ class CondV2CollectionTest(test.TestCase):
           y_const = constant_op.constant(ops.get_collection("y")[0])
           return math_ops.add(x_const, y_const)
 
-        cnd = cond_v2.cond_v2(True, fn, fn)
+        cnd = cond_v2.cond_v2(constant_op.constant(True), fn, fn)
         self.assertEquals(cnd.eval(), 7)
 
   def testCollectionTensorValueAccessInCond(self):
@@ -705,9 +717,7 @@ class CondV2CollectionTest(test.TestCase):
           z = math_ops.add(x, y)
           return math_ops.mul(x, z)
 
-        cnd = cond_v2.cond_v2(
-            True, true_fn,
-            false_fn)
+        cnd = cond_v2.cond_v2(constant_op.constant(True), true_fn, false_fn)
         self.assertEquals(cnd.eval(), 14)
 
         read_z_collection = ops.get_collection("z")
@@ -780,10 +790,12 @@ class CondV2ContainerTest(test.TestCase):
           return constant_op.constant(6.0)
 
         with ops.container("l1"):
-          cnd_true = cond_v2.cond_v2(True, true_fn, false_fn)
+          cnd_true = cond_v2.cond_v2(
+              constant_op.constant(True), true_fn, false_fn)
           self.assertEquals(cnd_true.eval(), 2)
 
-          cnd_false = cond_v2.cond_v2(False, true_fn, false_fn)
+          cnd_false = cond_v2.cond_v2(
+              constant_op.constant(False), true_fn, false_fn)
           self.assertEquals(cnd_false.eval(), 6)
 
           v4 = variables.Variable([3])
@@ -812,7 +824,8 @@ class CondV2ColocationGroupAndDeviceTest(test.TestCase):
           return c
 
         with ops.colocate_with(a.op):
-          self.assertEquals(cond_v2.cond_v2(True, fn, fn).eval(), 3)
+          self.assertEquals(
+              cond_v2.cond_v2(constant_op.constant(True), fn, fn).eval(), 3)
 
         def fn2():
           c = constant_op.constant(3.0)
@@ -821,7 +834,8 @@ class CondV2ColocationGroupAndDeviceTest(test.TestCase):
 
         with ops.colocate_with(a.op):
           with ops.colocate_with(b.op):
-            self.assertEquals(cond_v2.cond_v2(True, fn2, fn2).eval(), 3)
+            self.assertEquals(
+                cond_v2.cond_v2(constant_op.constant(True), fn2, fn2).eval(), 3)
 
   def testColocateWithInAndOutOfCond(self):
     with ops.Graph().as_default() as g:
@@ -837,14 +851,15 @@ class CondV2ColocationGroupAndDeviceTest(test.TestCase):
             return c
 
         with ops.colocate_with(a.op):
-          self.assertEquals(cond_v2.cond_v2(True, fn2, fn2).eval(), 3)
+          self.assertEquals(
+              cond_v2.cond_v2(constant_op.constant(True), fn2, fn2).eval(), 3)
 
           d = constant_op.constant([2.0], name="d")
           self.assertEqual([b"loc:@a"], d.op.colocation_groups())
 
   def testColocateWithInCondGraphPartitioning(self):
     with ops.Graph().as_default() as g:
-      with self.test_session(
+      with self.session(
           graph=g,
           config=config_pb2.ConfigProto(device_count={"CPU": 2})
       ) as sess:
@@ -858,7 +873,7 @@ class CondV2ColocationGroupAndDeviceTest(test.TestCase):
           with ops.colocate_with(b.op):
             c = math_ops.add(a, a, name="c")
           return c
-        out_cond_2 = cond_v2.cond_v2(True, fn, fn)
+        out_cond_2 = cond_v2.cond_v2(constant_op.constant(True), fn, fn)
 
         run_options = config_pb2.RunOptions(output_partition_graphs=True)
         run_metadata = config_pb2.RunMetadata()
@@ -875,24 +890,31 @@ class CondV2ColocationGroupAndDeviceTest(test.TestCase):
       with self.session(graph=g):
 
         def fn():
-          c = constant_op.constant(3.0)
-          self.assertEqual("/device:CPU:0", c.op.device)
-          return c
+          self.assertEqual("", constant_op.constant(3.0).op.device)
+          return test_ops.device_placement_op()
 
         with ops.device("/device:CPU:0"):
-          self.assertEquals(cond_v2.cond_v2(True, fn, fn).eval(), 3)
+          self.assertIn(
+              compat.as_bytes("CPU:0"),
+              self.evaluate(cond_v2.cond_v2(constant_op.constant(True),
+                                            fn, fn)))
 
         def fn2():
-          c = constant_op.constant(3.0)
-          self.assertEqual("/device:GPU:0", c.op.device)
-          return c
+          self.assertEqual("", constant_op.constant(3.0).op.device)
+          return test_ops.device_placement_op()
 
-        with ops.device("/device:GPU:0"):
-          self.assertEquals(cond_v2.cond_v2(True, fn2, fn2).eval(), 3)
+        if test_util.is_gpu_available():
+          with ops.device("/device:GPU:0"):
+            self.assertIn(
+                compat.as_bytes("GPU:0"),
+                self.evaluate(cond_v2.cond_v2(constant_op.constant(True),
+                                              fn2, fn2)))
+        else:
+          self.skipTest("Test requrires a GPU to check GPU device placement.")
 
   def testDeviceInAndOutOfCond(self):
     with ops.Graph().as_default() as g:
-      with self.test_session(
+      with self.session(
           graph=g, config=config_pb2.ConfigProto(device_count={"CPU": 2})):
 
         def fn2():
@@ -902,14 +924,15 @@ class CondV2ColocationGroupAndDeviceTest(test.TestCase):
             return c
 
         with ops.device("/device:CPU:0"):
-          self.assertEquals(cond_v2.cond_v2(True, fn2, fn2).eval(), 3)
+          self.assertEquals(
+              cond_v2.cond_v2(constant_op.constant(True), fn2, fn2).eval(), 3)
 
           d = constant_op.constant(4.0)
           self.assertEqual("/device:CPU:0", d.op.device)
 
   def testDeviceInCondGraphPartitioning(self):
     with ops.Graph().as_default() as g:
-      with self.test_session(
+      with self.session(
           graph=g,
           config=config_pb2.ConfigProto(device_count={"CPU": 2})
       ) as sess:
@@ -921,7 +944,7 @@ class CondV2ColocationGroupAndDeviceTest(test.TestCase):
 
         with ops.device("/device:CPU:0"):
           a = constant_op.constant([2.0], name="a")
-          out_cond_2 = cond_v2.cond_v2(True, fn, fn)
+          out_cond_2 = cond_v2.cond_v2(constant_op.constant(True), fn, fn)
 
         run_options = config_pb2.RunOptions(output_partition_graphs=True)
         run_metadata = config_pb2.RunMetadata()

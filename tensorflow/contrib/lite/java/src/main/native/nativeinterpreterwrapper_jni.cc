@@ -43,6 +43,15 @@ BufferErrorReporter* convertLongToErrorReporter(JNIEnv* env, jlong handle) {
   return reinterpret_cast<BufferErrorReporter*>(handle);
 }
 
+TfLiteDelegate* convertLongToDelegate(JNIEnv* env, jlong handle) {
+  if (handle == 0) {
+    throwException(env, kIllegalArgumentException,
+                   "Internal error: Invalid handle to delegate.");
+    return nullptr;
+  }
+  return reinterpret_cast<TfLiteDelegate*>(handle);
+}
+
 std::vector<int> convertJIntArrayToVector(JNIEnv* env, jintArray inputs) {
   int size = static_cast<int>(env->GetArrayLength(inputs));
   std::vector<int> outputs(size, 0);
@@ -335,16 +344,8 @@ Java_org_tensorflow_lite_NativeInterpreterWrapper_createInterpreter(
                    error_reporter->CachedErrorMessage());
     return 0;
   }
-  // allocates memory
-  status = interpreter->AllocateTensors();
-  if (status != kTfLiteOk) {
-    throwException(
-        env, kIllegalStateException,
-        "Internal error: Unexpected failure when preparing tensor allocations:"
-        " %s",
-        error_reporter->CachedErrorMessage());
-    return 0;
-  }
+  // Note that tensor allocation is performed explicitly by the owning Java
+  // NativeInterpreterWrapper instance.
   return reinterpret_cast<jlong>(interpreter.release());
 }
 
@@ -447,6 +448,31 @@ Java_org_tensorflow_lite_NativeInterpreterWrapper_resizeInput(
     }
   }
   return is_changed ? JNI_TRUE : JNI_FALSE;
+}
+
+JNIEXPORT void JNICALL
+Java_org_tensorflow_lite_NativeInterpreterWrapper_applyDelegate(
+    JNIEnv* env, jclass clazz, jlong interpreter_handle, jlong error_handle,
+    jlong delegate_handle) {
+  tflite::Interpreter* interpreter =
+      convertLongToInterpreter(env, interpreter_handle);
+  if (interpreter == nullptr) return;
+
+  BufferErrorReporter* error_reporter =
+      convertLongToErrorReporter(env, error_handle);
+  if (error_reporter == nullptr) return;
+
+  TfLiteDelegate* delegate = convertLongToDelegate(env, delegate_handle);
+  if (delegate == nullptr) return;
+
+  TfLiteStatus status =
+      interpreter->ModifyGraphWithDelegate(delegate,
+                                           /* allow_dynamic_tensors= */ true);
+  if (status != kTfLiteOk) {
+    throwException(env, kIllegalArgumentException,
+                   "Internal error: Failed to apply delegate: %s",
+                   error_reporter->CachedErrorMessage());
+  }
 }
 
 JNIEXPORT void JNICALL Java_org_tensorflow_lite_NativeInterpreterWrapper_delete(

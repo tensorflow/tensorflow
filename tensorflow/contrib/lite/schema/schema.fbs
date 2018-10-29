@@ -25,6 +25,9 @@ file_identifier "TFL3";
 // File extension of any written files.
 file_extension "tflite";
 
+// IMPORTANT: All new members of tables, enums and unions must be added at the
+// end to ensure backwards compatibility.
+
 // The type of data stored in a tensor.
 enum TensorType : byte {
   FLOAT32 = 0,
@@ -176,6 +179,9 @@ enum BuiltinOperator : byte {
   SQUARE = 92,
   ZEROS_LIKE = 93,
   FILL = 94,
+  FLOOR_MOD = 95,
+  RANGE = 96,
+  RESIZE_NEAREST_NEIGHBOR = 97,
 }
 
 // Options for the builtin operators.
@@ -250,6 +256,10 @@ union BuiltinOptions {
   FillOptions,
   BidirectionalSequenceLSTMOptions,
   BidirectionalSequenceRNNOptions,
+  UnidirectionalSequenceLSTMOptions,
+  FloorModOptions,
+  RangeOptions,
+  ResizeNearestNeighborOptions,
 }
 
 enum Padding : byte { SAME, VALID }
@@ -394,6 +404,16 @@ table LSTMOptions {
   kernel_type: LSTMKernelType = FULL;
 }
 
+// An implementation of TensorFlow dynamic_rnn with LSTMCell.
+table UnidirectionalSequenceLSTMOptions {
+  fused_activation_function:ActivationFunctionType;
+  cell_clip: float; // Optional, 0.0 means no clipping
+  proj_clip: float; // Optional, 0.0 means no clipping
+
+  // If true then first dimension is sequence, otherwise batch.
+  time_major:bool;
+}
+
 table BidirectionalSequenceLSTMOptions {
   fused_activation_function:ActivationFunctionType;
   cell_clip: float; // Optional, 0.0 means no clipping
@@ -406,6 +426,10 @@ table BidirectionalSequenceLSTMOptions {
 table ResizeBilinearOptions {
   new_height: int (deprecated);
   new_width: int (deprecated);
+  align_corners: bool;
+}
+
+table ResizeNearestNeighborOptions {
   align_corners: bool;
 }
 
@@ -608,6 +632,12 @@ table ZerosLikeOptions {
 }
 
 table FillOptions {
+}
+
+table FloorModOptions {
+}
+
+table RangeOptions {
 }
 
 // An OperatorCode can be an enum value (BuiltinOperator) if the operator is a

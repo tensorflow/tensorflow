@@ -63,21 +63,35 @@ bool IsControlFlowOp(const string& tensorflow_op) {
   return false;
 }
 
-details::OperatorKey GetOperatorKey(
-    const ::toco::Operator& op,
-    const std::map<OperatorType, std::unique_ptr<BaseOperator>>& ops_by_type,
-    bool allow_flex_ops) {
-  string custom_code;
-  if (op.type == OperatorType::kUnsupported) {
-    const TensorFlowUnsupportedOperator& unsupported_op =
-        static_cast<const TensorFlowUnsupportedOperator&>(op);
-    custom_code = unsupported_op.tensorflow_op;
+// Check if a TensorFlow Op is unsupportred by the Flex runtime.
+bool IsUnsupportedFlexOp(const string& tensorflow_op) {
+  if (IsControlFlowOp(tensorflow_op)) {
+    return true;
   }
-  int version = 1;
-  if (ops_by_type.count(op.type) != 0) {
-    version = ops_by_type.at(op.type)->GetVersion(op);
+  // `HashTableV2` isn't supported for now since it requires an additinonal
+  // initialization step.
+  // TODO(b/117651199): Support `HashTableV2` with Flex runtime.
+  if (tensorflow_op == "HashTableV2") {
+    return true;
   }
-  return details::OperatorKey(op.type, custom_code, version, allow_flex_ops);
+  return false;
+}
+
+// Map from operator name to TF Lite enum value, for all builtins.
+const std::map<string, BuiltinOperator>& GetBuiltinOpsMap() {
+  static std::map<string, BuiltinOperator>* builtin_ops = nullptr;
+  if (builtin_ops == nullptr) {
+    builtin_ops = new std::map<string, BuiltinOperator>();
+
+    for (int i = BuiltinOperator_MIN; i <= BuiltinOperator_MAX; ++i) {
+      BuiltinOperator op = static_cast<BuiltinOperator>(i);
+      string name = EnumNameBuiltinOperator(op);
+      if (op != BuiltinOperator_CUSTOM && !name.empty()) {
+        (*builtin_ops)[name] = op;
+      }
+    }
+  }
+  return *builtin_ops;
 }
 
 void WriteModelToString(const flatbuffers::FlatBufferBuilder& builder,
@@ -91,25 +105,65 @@ void WriteModelToString(const flatbuffers::FlatBufferBuilder& builder,
 
 namespace details {
 
-OperatorKey::OperatorKey(OperatorType type, const std::string& custom_code,
-                         int version, bool allow_flex_ops) {
-  this->type = type;
-  this->custom_code = custom_code;
-  this->version = version;
+OperatorKey::OperatorKey(
+    const ::toco::Operator& op,
+    const std::map<OperatorType, std::unique_ptr<BaseOperator>>& ops_by_type,
+    bool allow_flex_ops) {
+  // Get the op name (by Toco definition).
+  string name = HelpfulOperatorTypeName(op);
 
-  if (type == OperatorType::kUnsupported) {
-    // TODO(b/113715895): When `allow_flex_ops` is on, for now there's no way
-    // to populate a regular custom op. We need to find a way to fix this.
-    if (allow_flex_ops) {
-      // Memorize the original TensorFlow op name.
-      this->flex_tensorflow_op = custom_code;
-      // Prefix the custom code of the flex op.
-      this->custom_code = string(::tflite::kFlexCustomCodePrefix) + custom_code;
-      this->is_flex_op = true;
+  bool is_builtin = false;
+  const auto& builtin_ops = GetBuiltinOpsMap();
+  if (ops_by_type.count(op.type) != 0) {
+    version_ = ops_by_type.at(op.type)->GetVersion(op);
+    name = ops_by_type.at(op.type)->name();
+    is_builtin = (builtin_ops.count(name) > 0);
+  }
 
-      if (IsControlFlowOp(this->flex_tensorflow_op)) {
-        is_unsupported_flex_op = true;
-      }
+  if (is_builtin) {
+    // For TFLite supported builtin ops, find out its BuiltinOperator enum used
+    // in FlatBuffer.
+    type_ = builtin_ops.at(name);
+    return;
+  }
+
+  // The logic below is all for custom ops or Flex ops.
+  is_custom_op_ = true;
+  type_ = BuiltinOperator_CUSTOM;
+
+  if (op.type == OperatorType::kUnsupported) {
+    const TensorFlowUnsupportedOperator& unsupported_op =
+        static_cast<const TensorFlowUnsupportedOperator&>(op);
+    const auto tensorflow_op = unsupported_op.tensorflow_op;
+
+    if (ShouldExportAsFlexOp(allow_flex_ops, unsupported_op.tensorflow_op)) {
+      is_custom_op_ = false;
+      is_flex_op_ = true;
+      flex_tensorflow_op_ = tensorflow_op;
+      custom_code_ =
+          string(::tflite::kFlexCustomCodePrefix) + flex_tensorflow_op_;
+    } else {
+      custom_code_ = tensorflow_op;
+    }
+  } else if (allow_flex_ops && !op.tensorflow_node_def.empty()) {
+    // For Toco-supported/TFLite-unsupported ops, if the TensorFlow NodeDef
+    // is retained in the Toco Operator, we produce a Flex op if Flex mode
+    // is enabled.
+    is_custom_op_ = false;
+    is_flex_op_ = true;
+    flex_tensorflow_op_ = name;
+    custom_code_ =
+        string(::tflite::kFlexCustomCodePrefix) + flex_tensorflow_op_;
+  } else {
+    // If Flex is disabled or the original TensorFlow NodeDef isn't available,
+    // we produce a custom op. This gives developers a chance to implemenr
+    // custom ops.
+    custom_code_ = name;
+  }
+
+  if (is_flex_op_) {
+    if (IsUnsupportedFlexOp(flex_tensorflow_op_)) {
+      is_unsupported_flex_op_ = true;
     }
   }
 }
@@ -136,7 +190,7 @@ void LoadOperatorsMap(
   // First find a list of unique operator types.
   std::set<OperatorKey> keys;
   for (const auto& op : model.operators) {
-    keys.insert(GetOperatorKey(*op, ops_by_type, allow_flex_ops));
+    keys.insert(OperatorKey(*op, ops_by_type, allow_flex_ops));
   }
   // Now assign indices to them and fill in the map.
   int index = 0;
@@ -145,6 +199,7 @@ void LoadOperatorsMap(
     ++index;
   }
 }
+
 }  // namespace details
 
 Offset<Vector<Offset<Tensor>>> ExportTensors(
@@ -230,7 +285,7 @@ Offset<Vector<Offset<OperatorCode>>> ExportOperatorCodes(
     const Model& model,
     const std::map<OperatorType, std::unique_ptr<BaseOperator>>& ops_by_type,
     const details::OperatorsMap& operators_map, FlatBufferBuilder* builder,
-    std::set<string>* unsupported_ops, const ExportParams& params) {
+    const ExportParams& params) {
   // Map from operator name to TF Lite enum value, for all builtins.
   std::map<string, BuiltinOperator> builtin_ops;
   for (int i = BuiltinOperator_MIN; i <= BuiltinOperator_MAX; ++i) {
@@ -247,37 +302,16 @@ Offset<Vector<Offset<OperatorCode>>> ExportOperatorCodes(
 
   for (const auto& op : model.operators) {
     const details::OperatorKey operator_key =
-        GetOperatorKey(*op, ops_by_type, params.allow_flex_ops);
+        details::OperatorKey(*op, ops_by_type, params.allow_flex_ops);
     int op_index = operators_map.at(operator_key);
-    int op_version = operator_key.version;
 
-    string name = HelpfulOperatorTypeName(*op);
-    bool is_builtin = false;
-    if (ops_by_type.count(op->type) != 0) {
-      name = ops_by_type.at(op->type)->name();
-      is_builtin = (builtin_ops.count(name) > 0);
+    flatbuffers::Offset<flatbuffers::String> custom_code = 0;
+    if (!operator_key.custom_code().empty()) {
+      custom_code = builder->CreateString(operator_key.custom_code());
     }
 
-    if (is_builtin) {
-      ordered_opcodes[op_index] =
-          CreateOperatorCode(*builder, builtin_ops[name], 0, op_version);
-    } else {
-      // This could be a kUnsupported, in which case we should be
-      // able to retrieve the original Tensorflow name from the OperatorKey, or
-      // this could be a proper TOCO operator that is completely unknown to TF
-      // Lite.
-      if (!operator_key.custom_code.empty()) {
-        name = operator_key.custom_code;
-      }
-      // Either way, this is an operator that is not supported by TF Lite,
-      // so we output it as a custom op and add it to the error summary.
-      if (unsupported_ops) {
-        unsupported_ops->insert(name);
-      }
-      ordered_opcodes[op_index] =
-          CreateOperatorCode(*builder, BuiltinOperator_CUSTOM,
-                             builder->CreateString(name), op_version);
-    }
+    ordered_opcodes[op_index] = CreateOperatorCode(
+        *builder, operator_key.type(), custom_code, operator_key.version());
   }
 
   std::vector<Offset<OperatorCode>> opcode_vector;
@@ -311,8 +345,9 @@ Offset<Vector<Offset<Operator>>> ExportOperators(
       outputs.push_back(tensors_map.at(output));
     }
 
-    int op_index = operators_map.at(
-        GetOperatorKey(*op, ops_by_type, params.allow_flex_ops));
+    const auto key =
+        details::OperatorKey(*op, ops_by_type, params.allow_flex_ops);
+    int op_index = operators_map.at(key);
 
     auto tflite_op_it = ops_by_type.find(op->type);
     BaseOperator* tflite_op = tflite_op_it == ops_by_type.end()
@@ -336,6 +371,11 @@ Offset<Vector<Offset<Operator>>> ExportOperators(
           int32_t variable_tensor_index = tensors_map.at(op->inputs[i]);
           variable_tensor_indices->insert(variable_tensor_index);
         }
+      }
+    } else if (key.is_flex_op() && !op->tensorflow_node_def.empty()) {
+      auto fbb = WriteFlexOpOptions(op->tensorflow_node_def);
+      if (fbb) {
+        options = Options::Custom(builder->CreateVector(fbb->GetBuffer()));
       }
     }
     // The only supported CustomOptionFormat is FLEXBUFFERS now.
@@ -363,13 +403,13 @@ Offset<Vector<Offset<Buffer>>> ExportBuffers(
   return builder->CreateVector(buffer_vector);
 }
 
-void Export(const Model& model, string* output_file_contents,
-            const ExportParams& params) {
+tensorflow::Status Export(const Model& model, string* output_file_contents,
+                          const ExportParams& params) {
   const auto ops_by_type = BuildOperatorByTypeMap(params.allow_flex_ops);
-  Export(model, output_file_contents, params, ops_by_type);
+  return Export(model, output_file_contents, params, ops_by_type);
 }
 
-void Export(
+tensorflow::Status Export(
     const Model& model, string* output_file_contents,
     const ExportParams& params,
     const std::map<OperatorType, std::unique_ptr<BaseOperator>>& ops_by_type) {
@@ -386,9 +426,8 @@ void Export(
   Array empty_array;
   buffers_to_write.push_back(&empty_array);
 
-  std::set<string> unsupported_ops;
-  auto op_codes = ExportOperatorCodes(model, ops_by_type, operators_map,
-                                      &builder, &unsupported_ops, params);
+  auto op_codes =
+      ExportOperatorCodes(model, ops_by_type, operators_map, &builder, params);
 
   for (const auto& op : model.operators) {
     if (op->type == OperatorType::kFakeQuant) {
@@ -398,7 +437,29 @@ void Export(
                       "for --std_values and --mean_values.";
     }
   }
-  if (!unsupported_ops.empty()) {
+
+  // The set of used builtin ops.
+  std::set<string> builtin_ops;
+  // The set of custom ops (not including Flex ops).
+  std::set<string> custom_ops;
+  // The set of Flex ops which are not supported.
+  std::set<string> unsupported_flex_ops;
+
+  for (const auto& it : operators_map) {
+    const details::OperatorKey& key = it.first;
+    if (key.is_custom_op()) {
+      custom_ops.insert(key.custom_code());
+    }
+    if (key.is_unsupported_flex_op()) {
+      unsupported_flex_ops.insert(key.flex_tensorflow_op());
+    }
+    if (!key.is_custom_op() && !key.is_flex_op() &&
+        !key.is_unsupported_flex_op()) {
+      builtin_ops.insert(EnumNameBuiltinOperator(key.type()));
+    }
+  }
+
+  if (!custom_ops.empty()) {
     if (!params.allow_custom_ops) {
       // Remove ExpandDims and ReorderAxes from unimplemented list unless they
       // compose the list. Both ops are removed during graph transformations.
@@ -406,53 +467,79 @@ void Export(
       // transformation is unable to run because the output shape is not
       // defined. This causes unnecessary confusion during model conversion
       // time.
-      std::set<string> unsupported_ops_final;
-      for (const auto& op_type : unsupported_ops) {
+      std::set<string> custom_ops_final;
+      for (const auto& op_type : custom_ops) {
         if (op_type != "ReorderAxes" && op_type != "ExpandDims") {
-          unsupported_ops_final.insert(op_type);
+          custom_ops_final.insert(op_type);
         }
       }
-      if (unsupported_ops_final.empty()) {
-        unsupported_ops_final = unsupported_ops;
+      if (custom_ops_final.empty()) {
+        custom_ops_final = custom_ops;
       }
 
-      LOG(QFATAL)
-          << "Some of the operators in the model are not supported by "
-             "the standard TensorFlow Lite runtime. If you have a custom "
-             "implementation for them you can disable this error with "
-             "--allow_custom_ops, or by setting allow_custom_ops=True "
-             "when calling tf.contrib.lite.TFLiteConverter(). Here is a list "
-             "of operators for which  you will need custom implementations: "
-          << absl::StrJoin(unsupported_ops_final, ", ") << ".";
+      auto please_report_bug_message = []() {
+        return "We are continually in the process of adding support to "
+               "TensorFlow Lite for more ops. It would be helpful if you could "
+               "inform us of how this conversion went by opening a github "
+               "issue at "
+               "https://github.com/tensorflow/tensorflow/issues/new?template="
+               "40-tflite-op-request.md\n and pasting the following:\n\n";
+      };
+
+      if (params.allow_flex_ops) {
+        return tensorflow::errors::InvalidArgument(absl::StrCat(
+            please_report_bug_message(),
+            "Some of the operators in the model are not supported by "
+            "the standard TensorFlow Lite runtime and are not recognized by "
+            "TensorFlow. If you have a custom "
+            "implementation for them you can disable this error with "
+            "--allow_custom_ops, or by setting allow_custom_ops=True "
+            "when calling tf.contrib.lite.TFLiteConverter(). Here is a list "
+            "of builtin operators you are using: ",
+            absl::StrJoin(builtin_ops, ", "),
+            ". Here is a list "
+            "of operators for which you will need custom implementations: ",
+            absl::StrJoin(custom_ops_final, ", "), "."));
+      } else {
+        return tensorflow::errors::InvalidArgument(absl::StrCat(
+            please_report_bug_message(),
+            "Some of the operators in the model are not supported by "
+            "the standard TensorFlow Lite runtime. If those are native "
+            "TensorFlow operators, you might be able to use the extended "
+            "runtime by passing --allow_flex_ops, or by setting "
+            "target_ops=TFLITE_BUILTINS,SELECT_TF_OPS when calling "
+            "tf.contrib.lite.TFLiteConverter(). Otherwise, if you have a "
+            "custom implementation for them you can disable this error with "
+            "--allow_custom_ops, or by setting allow_custom_ops=True "
+            "when calling tf.contrib.lite.TFLiteConverter(). Here is a list "
+            "of builtin operators you are using: ",
+            absl::StrJoin(builtin_ops, ", "),
+            ". Here is a list "
+            "of operators for which you will need custom implementations: ",
+            absl::StrJoin(custom_ops_final, ", "), "."));
+      }
     }
 
     std::set<string> unsupported_control_flow_ops;
     // Check if unsupported ops contains control flow ops. It's impossible
     // to implement these ops as custom ops at the moment.
-    for (const auto& op : unsupported_ops) {
+    for (const auto& op : custom_ops) {
       if (IsControlFlowOp(op)) {
         unsupported_control_flow_ops.insert(op);
       }
     }
     if (!unsupported_control_flow_ops.empty()) {
-      LOG(QFATAL)
-          << "TensorFlow Lite currently doesn't support control flow ops: "
-          << absl::StrJoin(unsupported_control_flow_ops, ", ") << ".";
-    }
-  }
-
-  std::set<string> unsupported_flex_ops;
-  for (const auto& it : operators_map) {
-    const details::OperatorKey& key = it.first;
-    if (key.is_unsupported_flex_op) {
-      unsupported_flex_ops.insert(key.custom_code);
+      return tensorflow::errors::InvalidArgument(absl::StrCat(
+          "TensorFlow Lite currently doesn't support control flow ops: ",
+          absl::StrJoin(unsupported_control_flow_ops, ", "), "."));
     }
   }
 
   if (!unsupported_flex_ops.empty()) {
-    LOG(QFATAL) << "Some of the operators in the model are not supported by "
-                   "TensorFlow Flex runtime: "
-                << absl::StrJoin(unsupported_flex_ops, ", ") << ".";
+    return tensorflow::errors::InvalidArgument(
+        absl::StrCat("Some of the operators in the model are not supported by "
+                     "TensorFlow Flex runtime: ",
+                     absl::StrJoin(unsupported_flex_ops, ", "), "."));
   }
 
   std::set<int32_t> variable_tensor_indices;
@@ -487,12 +574,15 @@ void Export(
     const ::tflite::Model* input_model = ::tflite::GetModel(buffer);
     if (::tflite::optimize::QuantizeWeights(&q_builder, input_model) !=
         kTfLiteOk) {
-      LOG(QFATAL) << "Quantize weights transformation failed.";
+      return tensorflow::errors::InvalidArgument(
+          "Quantize weights transformation failed.");
     }
     WriteModelToString(q_builder, output_file_contents);
   } else {
     WriteModelToString(builder, output_file_contents);
   }
+
+  return tensorflow::Status();
 }
 
 }  // namespace tflite

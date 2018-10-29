@@ -47,13 +47,6 @@ public abstract class OvicBenchmarker {
   protected int imgHeight = 224;
   protected int imgWidth = 224;
 
-  /** Preprocess parameters (only used when input is float). */
-  protected static final float IMAGE_MEAN = 127.5f;
-  protected static final float IMAGE_STD = 127.5f;
-
-  /** Whether input is float or quantized. */
-  protected Boolean quantizedInput = null;
-
   /* Preallocated buffers for storing image data in. */
   protected int[] intValues = null;
 
@@ -131,7 +124,7 @@ public abstract class OvicBenchmarker {
    * Input buffer must be loaded in intValues and output will be placed in imgData.
   */
   protected void loadsInputToByteBuffer() {
-    if (imgData == null || intValues == null || quantizedInput == null) {
+    if (imgData == null || intValues == null) {
       throw new RuntimeException("Benchmarker is not yet ready to test.");
     }
     // Convert the image to ByteBuffer.
@@ -142,17 +135,9 @@ public abstract class OvicBenchmarker {
     for (int i = 0; i < imgHeight; ++i) {
       for (int j = 0; j < imgWidth; ++j) {
         final int pixelValue = intValues[pixel++];
-        if (quantizedInput) {
-          // Quantized model
-          imgData.put((byte) ((pixelValue >> 16) & 0xFF));
-          imgData.put((byte) ((pixelValue >> 8) & 0xFF));
-          imgData.put((byte) (pixelValue & 0xFF));
-        } else {
-          // Float model
-          imgData.putFloat((((pixelValue >> 16) & 0xFF) - IMAGE_MEAN) / IMAGE_STD);
-          imgData.putFloat((((pixelValue >> 8) & 0xFF) - IMAGE_MEAN) / IMAGE_STD);
-          imgData.putFloat(((pixelValue & 0xFF) - IMAGE_MEAN) / IMAGE_STD);
-        }
+        imgData.put((byte) ((pixelValue >> 16) & 0xFF));
+        imgData.put((byte) ((pixelValue >> 8) & 0xFF));
+        imgData.put((byte) (pixelValue & 0xFF));
       }
     }
     long endTime = SystemClock.uptimeMillis();

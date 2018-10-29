@@ -21,18 +21,8 @@ limitations under the License.
 
 namespace tensorflow {
 
-// Rewrite If ops to use switch and merge nodes instead.
-class LowerIfOpPass : public GraphOptimizationPass {
- public:
-  static const char* const kLowerUsingSwitchMergeAttr;
-
-  Status Run(const GraphOptimizationPassOptions& options) override;
-
- private:
-  // Rewrite the given If node `n` in graph `g` to use the switch-merge
-  // form. `flib` should contain the branch functions referenced by `n`.
-  Status RewriteNode(Node* n, const FunctionLibraryDefinition& flib, Graph* g);
-};
+// Replaces If node `n` with its lowered form that uses Switch and Merge nodes.
+Status RewriteIfNode(Node* n, Graph* g, const FunctionLibraryDefinition& flib);
 
 }  // namespace tensorflow
 

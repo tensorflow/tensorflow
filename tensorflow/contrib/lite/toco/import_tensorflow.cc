@@ -43,6 +43,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/graph/graph_constructor.h"
+#include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/public/session_options.h"
@@ -50,6 +51,7 @@ limitations under the License.
 
 using tensorflow::AttrValue;
 using tensorflow::DT_BOOL;
+using tensorflow::DT_COMPLEX64;
 using tensorflow::DT_FLOAT;
 using tensorflow::DT_INT32;
 using tensorflow::DT_INT64;
@@ -185,6 +187,8 @@ ArrayDataType ConvertDataType(tensorflow::DataType dtype) {
     return ArrayDataType::kInt64;
   else if (dtype == DT_STRING)
     return ArrayDataType::kString;
+  else if (dtype == DT_COMPLEX64)
+    return ArrayDataType::kComplex64;
   else
     LOG(INFO) << "Unsupported data type in placeholder op: " << dtype;
   return ArrayDataType::kNone;
@@ -253,6 +257,48 @@ tensorflow::Status ImportFloatArray(const TensorProto& input_tensor,
                      ") nor float_val (", input_tensor.float_val_size(),
                      ") have the right dimensions (", input_flat_size,
                      ") for this float tensor"));
+  }
+  return tensorflow::Status::OK();
+}
+
+tensorflow::Status ImportComplex64Array(const TensorProto& input_tensor,
+                                        Array* output_array) {
+  CHECK_EQ(input_tensor.dtype(), DT_COMPLEX64);
+  const auto& input_shape = input_tensor.tensor_shape();
+  CHECK_LE(input_shape.dim_size(), 4);
+  int input_flat_size;
+  auto status = ImportShape(input_shape.dim(), &input_flat_size,
+                            output_array->mutable_shape());
+  if (!status.ok()) return status;
+
+  auto& output_complex_data =
+      output_array->GetMutableBuffer<ArrayDataType::kComplex64>().data;
+  output_complex_data.resize(RequiredBufferSizeForShape(output_array->shape()),
+                             std::complex<float>(0.f, 0.f));
+  CHECK_GE(output_complex_data.size(), input_flat_size);
+  if (input_tensor.scomplex_val_size() == 2) {
+    for (int i = 0; i < input_flat_size; i++) {
+      output_complex_data[i] = std::complex<float>(
+          input_tensor.scomplex_val(0), input_tensor.scomplex_val(1));
+    }
+  } else if (input_tensor.scomplex_val_size() == 2 * input_flat_size) {
+    for (int i = 0; i < input_flat_size; ++i) {
+      output_complex_data[i] =
+          std::complex<float>(input_tensor.scomplex_val(2 * i),
+                              input_tensor.scomplex_val(2 * i + 1));
+    }
+  } else if (input_tensor.tensor_content().size() ==
+             input_flat_size * sizeof(std::complex<float>)) {
+    toco::port::CopyToBuffer(
+        input_tensor.tensor_content(),
+        reinterpret_cast<char*>(output_complex_data.data()));
+  } else {
+    return tensorflow::errors::InvalidArgument(absl::StrCat(
+        "Neither input_content (",
+        input_tensor.tensor_content().size() / sizeof(std::complex<float>),
+        ") nor scomplex_val (", input_tensor.scomplex_val_size(),
+        ") have the right dimensions (", input_flat_size,
+        ") for this complex64 tensor"));
   }
   return tensorflow::Status::OK();
 }
@@ -477,6 +523,30 @@ string CreateConstArray(Model* model, string const& name,
   return array_name;
 }
 
+// Retain TensorFlow NodeDef in Toco Operator.
+//
+// If an op is supported by Toco but not supported by TFLite, TFLite exporter
+// will use the retained NodeDef to populate a Flex op when Flex mode is
+// enabled.
+//
+// This can't be easily applied to all operations, because a TensorFlow node
+// may become multiple Toco operators. Thus we need to call this function in
+// operator conversion functions one by one whenever feasible.
+//
+// This may cause problems if a graph transformation rule changes parameters
+// of the node. When calling this function, please check if any existing
+// graph transformation rule will change an existing operator with the same
+// type.
+//
+// This provides a route to handle Toco-supported & TFLite-unsupported ops
+// in Flex mode. However it's not a solid solution. Eventually we should
+// get rid of this.
+// TODO(b/117327937): Implement all Toco-supported ops in TFLite, and remove
+// this function.
+void RetainTensorFlowNodeDef(const NodeDef& node, Operator* op) {
+  node.SerializeToString(&op->tensorflow_node_def);
+}
+
 tensorflow::Status ConvertConstOperator(
     const NodeDef& node, const TensorFlowImportFlags& tf_import_flags,
     Model* model) {
@@ -512,6 +582,10 @@ tensorflow::Status ConvertConstOperator(
       array.data_type = ArrayDataType::kBool;
       status = ImportBoolArray(tensor, &array);
       break;
+    case DT_COMPLEX64:
+      array.data_type = ArrayDataType::kComplex64;
+      status = ImportComplex64Array(tensor, &array);
+      break;
     default:
       array.data_type = ArrayDataType::kNone;
       // do nothing, silently ignore the Const data.
@@ -538,7 +612,8 @@ tensorflow::Status ConvertConvOperator(
 
   const auto& input_name = node.input(0);
   const auto& weights_name = node.input(1);
-  const auto& reordered_weights_name = weights_name + "_reordered";
+  const auto& reordered_weights_name =
+      AvailableArrayName(*model, weights_name + "_reordered");
   // Check if a ReorderAxesOperator was already created for these weights
   // (that happens when multiple layers share the same weights).
   const Operator* existing_reorder =
@@ -990,6 +1065,10 @@ tensorflow::Status ConvertBatchMatMulOperator(
   auto* batch_matmul = new BatchMatMulOperator;
   batch_matmul->inputs = {node.input(0), node.input(1)};
   batch_matmul->outputs = {node.name()};
+
+  // For Flex mode. Please read the comments of the function.
+  RetainTensorFlowNodeDef(node, batch_matmul);
+
   model->operators.emplace_back(batch_matmul);
   return tensorflow::Status::OK();
 }
@@ -1081,7 +1160,10 @@ tensorflow::Status ConvertUnsupportedOperator(
 
   auto* op = new TensorFlowUnsupportedOperator;
   op->tensorflow_op = node.op();
-  node.SerializeToString(&op->tensorflow_node_def);
+
+  // For Flex mode. Please read the comments of the function.
+  RetainTensorFlowNodeDef(node, op);
+
   model->operators.emplace_back(op);
 
   // Parse inputs.
@@ -1090,13 +1172,25 @@ tensorflow::Status ConvertUnsupportedOperator(
     op->inputs.push_back(node.input(i));
   }
 
-  // Parse outputs.
-  op->outputs.push_back(node.name());  // Implicit :0.
+  // Parse outputs. Name them after the node's name, plus an ordinal suffix.
+  // Note that some outputs are to be multipled by a named attribute.
   const tensorflow::OpDef* op_def = nullptr;
   if (tensorflow::OpRegistry::Global()->LookUpOpDef(node.op(), &op_def).ok()) {
-    for (int i = 1; i < op_def->output_arg_size(); ++i) {
-      op->outputs.push_back(absl::StrCat(node.name(), ":", i));
+    int next_output = 0;
+    for (int i = 0; i < op_def->output_arg_size(); ++i) {
+      string multiples = op_def->output_arg(i).number_attr();
+      int num_outputs = multiples.empty() ? 1 : GetIntAttr(node, multiples);
+      for (int j = 0; j < num_outputs; ++j) {
+        if (next_output == 0) {
+          op->outputs.push_back(node.name());  // Implicit :0.
+        } else {
+          op->outputs.push_back(absl::StrCat(node.name(), ":", next_output));
+        }
+        ++next_output;
+      }
     }
+  } else {
+    op->outputs.push_back(node.name());  // Implicit :0.
   }
 
   // Parse if the op supports quantization
@@ -1120,11 +1214,14 @@ tensorflow::Status ConvertUnsupportedOperator(
     op->output_data_types.push_back(ConvertDataType(output_type));
   } else if (op_def != nullptr) {
     for (const auto& output_arg : op_def->output_arg()) {
-      if (HasAttr(node, output_arg.type_attr())) {
+      if (output_arg.type() != tensorflow::DT_INVALID) {
+        op->output_data_types.push_back(ConvertDataType(output_arg.type()));
+      } else if (HasAttr(node, output_arg.type_attr())) {
         op->output_data_types.push_back(
             ConvertDataType(GetDataTypeAttr(node, output_arg.type_attr())));
       } else {
-        LOG(INFO) << "Op node missing output type attribute: " << node.name();
+        LOG(WARNING) << "Op node missing output type attribute: "
+                     << node.name();
         op->output_data_types.clear();
         break;
       }
@@ -1323,6 +1420,25 @@ tensorflow::Status ConvertResizeBilinearOperator(
   CHECK_EQ(node.op(), "ResizeBilinear");
   TF_QCHECK_OK(CheckInputsCount(node, tf_import_flags, 2));
   auto* op = new ResizeBilinearOperator;
+
+  op->align_corners = false;
+  if (HasAttr(node, "align_corners")) {
+    op->align_corners = GetBoolAttr(node, "align_corners");
+  }
+
+  op->inputs.push_back(node.input(0));
+  op->inputs.push_back(node.input(1));
+  op->outputs.push_back(node.name());
+  model->operators.emplace_back(op);
+  return tensorflow::Status::OK();
+}
+
+tensorflow::Status ConvertResizeNearestNeighborOperator(
+    const NodeDef& node, const TensorFlowImportFlags& tf_import_flags,
+    Model* model) {
+  CHECK_EQ(node.op(), "ResizeNearestNeighbor");
+  TF_QCHECK_OK(CheckInputsCount(node, tf_import_flags, 2));
+  auto* op = new ResizeNearestNeighborOperator;
 
   op->align_corners = false;
   if (HasAttr(node, "align_corners")) {
@@ -1605,6 +1721,7 @@ tensorflow::Status ConvertRangeOperator(
   op->inputs.push_back(node.input(1));
   op->inputs.push_back(node.input(2));
   op->outputs.push_back(node.name());
+
   model->operators.emplace_back(op);
   return tensorflow::Status::OK();
 }
@@ -1964,6 +2081,48 @@ tensorflow::Status ConvertCTCBeamSearchDecoderOperator(
   return tensorflow::Status::OK();
 }
 
+// This isn't a TensorFlow builtin op. Currently this node can only be generated
+// with TfLite OpHint API.
+tensorflow::Status ConvertUnidirectionalSequenceLstm(
+    const NodeDef& node, const TensorFlowImportFlags& tf_import_flags,
+    Model* model) {
+  DCHECK_EQ(node.op(), "UnidirectionalSequenceLstm");
+
+  auto* op = new UnidirectionalSequenceLstmOperator();
+  const auto& indices = GetListAttr(node, "_tflite_input_indices");
+  if (indices.i_size() != node.input().size()) {
+    return tensorflow::errors::InvalidArgument("Input size does not match.");
+  }
+
+  // The input size needs to be the same as the TfLite UniDirectionalSequence
+  // Lstm implementation.
+  const int kInputsSize = 20;
+
+  op->inputs.resize(kInputsSize);
+  std::vector<bool> done(kInputsSize);
+  int idx = 0;
+  for (const string& input : node.input()) {
+    int real_index = indices.i(idx);
+    op->inputs[real_index] = (input);
+    done[real_index] = true;
+    idx++;
+  }
+
+  for (int idx = 0; idx < done.size(); idx++) {
+    if (!done[idx]) {
+      string optional_name = node.name() + "_" + std::to_string(idx);
+      model->CreateOptionalArray(optional_name);
+      op->inputs[idx] = optional_name;
+    }
+  }
+
+  // There're three outputs, only the last one is required.
+  op->outputs.push_back(node.name() + ":2");
+  model->operators.emplace_back(op);
+
+  return tensorflow::Status::OK();
+}
+
 }  // namespace
 
 namespace internal {
@@ -1972,6 +2131,14 @@ using ConverterType = tensorflow::Status (*)(
     const NodeDef& node, const TensorFlowImportFlags& tf_import_flags,
     Model* model);
 using ConverterMapType = std::unordered_map<std::string, ConverterType>;
+
+ConverterMapType GetTensorFlowNodeConverterMapForFlex() {
+  return std::unordered_map<std::string, ConverterType>({
+      // We need to let TCO convert Placeholder information into
+      // array data, so that the data types are correct.
+      {"Placeholder", ConvertPlaceholderOperator},
+  });
+}
 
 ConverterMapType GetTensorFlowNodeConverterMap() {
   return std::unordered_map<std::string, ConverterType>({
@@ -2056,6 +2223,7 @@ ConverterMapType GetTensorFlowNodeConverterMap() {
       {"Relu6", ConvertSimpleOperator<Relu6Operator, 1>},
       {"Reshape", ConvertSimpleOperator<TensorFlowReshapeOperator, 2>},
       {"ResizeBilinear", ConvertResizeBilinearOperator},
+      {"ResizeNearestNeighbor", ConvertResizeNearestNeighborOperator},
       {"Rsqrt", ConvertSimpleOperator<TensorFlowRsqrtOperator, 1>},
       {"Select", ConvertSimpleOperator<SelectOperator, 3>},
       {"Shape", ConvertShapeOperator},
@@ -2083,6 +2251,7 @@ ConverterMapType GetTensorFlowNodeConverterMap() {
       {"Transpose", ConvertSimpleOperator<TransposeOperator, 2>},
       {"Unpack", ConvertUnpackOperator},
       {"ZerosLike", ConvertSimpleOperator<TensorFlowZerosLikeOperator, 1>},
+      {"UnidirectionalSequenceLstm", ConvertUnidirectionalSequenceLstm},
   });
 }
 
@@ -2128,6 +2297,8 @@ std::unique_ptr<Model> ImportTensorFlowGraphDef(
   // converted to TFLite Flex ops.
   if (!tf_import_flags.import_all_ops_as_unsupported) {
     converter_map = internal::GetTensorFlowNodeConverterMap();
+  } else {
+    converter_map = internal::GetTensorFlowNodeConverterMapForFlex();
   }
 
   for (auto node : inlined_graph.node()) {

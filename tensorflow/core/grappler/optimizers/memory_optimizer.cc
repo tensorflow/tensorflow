@@ -29,6 +29,7 @@ limitations under the License.
 #include "tensorflow/core/grappler/clusters/virtual_cluster.h"
 #include "tensorflow/core/grappler/costs/graph_memory.h"
 #include "tensorflow/core/grappler/costs/graph_properties.h"
+#include "tensorflow/core/grappler/costs/utils.h"
 #include "tensorflow/core/grappler/graph_view.h"
 #include "tensorflow/core/grappler/grappler_item.h"
 #include "tensorflow/core/grappler/op_types.h"
@@ -38,10 +39,14 @@ limitations under the License.
 #include "tensorflow/core/grappler/utils/topological_sort.h"
 #include "tensorflow/core/grappler/utils/traversal.h"
 #include "tensorflow/core/lib/math/math_util.h"
+#include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/protobuf/rewriter_config.pb.h"
+#include "tensorflow/core/util/device_name_utils.h"
 
 namespace tensorflow {
 namespace grappler {
+
+namespace {
 
 // Prefix added to nodes which are recomputed.
 const char* kRecomputedNodePrefix = "Recomputed";
@@ -574,9 +579,9 @@ bool SchedulingPass(Cluster* cluster, GrapplerItem* item) {
     }
 
     // Compute a topological ordering for the node fanin.
-    std::unordered_map<NodeDef*, int> topo_order;
+    std::unordered_map<const NodeDef*, int> topo_order;
     ReverseDfs(view, {node}, nullptr,
-               [&topo_order](NodeDef* n) {
+               [&topo_order](const NodeDef* n) {
                  int topo_index = topo_order.size();
                  topo_order[n] = topo_index;
                },
@@ -742,25 +747,6 @@ Status BuildSwapPair(NodeDef* node, int input_to_swap,
   *swap_pair = std::make_pair(swap_out_node, swap_in_node);
 
   return Status::OK();
-}
-
-static int64 EstimateSize(const OpInfo::TensorProperties& t) {
-  DataType dtype = t.dtype();
-  int64 size = DataTypeSize(dtype);
-  TensorShapeProto shape = t.shape();
-  if (shape.unknown_rank()) {
-    // Can't infer the size if the rank is unknown. It has to be at least a
-    // scalar though.
-    return size;
-  }
-  // If one of the dimensions is unknown statically, assume it's at least one.
-  for (int i = 0; i < shape.dim_size(); ++i) {
-    if (shape.dim(i).size() < 0) {
-      shape.mutable_dim(i)->set_size(1);
-    }
-  }
-  int64 num_elems = TensorShape(shape).num_elements();
-  return num_elems * size;
 }
 
 struct SwapInfo {
@@ -1149,7 +1135,7 @@ bool SwappingPass(RewriterConfig::MemOptType optimization_level,
     int64 bytes_to_swap = 0;
     for (int64 input_id : swap_info.inputs_to_swap) {
       const OpInfo::TensorProperties& t = props[input_id];
-      bytes_to_swap += EstimateSize(t);
+      bytes_to_swap += CalculateTensorSize(t);
     }
     // Let's assume we're going to swap over PCIe running at 16 GBps.
     swap_info.time_to_swap = bytes_to_swap / 16;
@@ -1225,6 +1211,20 @@ bool SwappingPass(RewriterConfig::MemOptType optimization_level,
   return updated_graph;
 }
 
+bool CrossesTaskOrCpuGpuBoundary(const NodeDef& node1, const NodeDef& node2) {
+  string task1;
+  string device1;
+  DeviceNameUtils::SplitDeviceName(node1.device(), &task1, &device1);
+  string task2;
+  string device2;
+  DeviceNameUtils::SplitDeviceName(node2.device(), &task2, &device2);
+  return task1 != task2 ||
+         (str_util::StrContains(device1, DEVICE_CPU) &&
+          str_util::StrContains(device2, DEVICE_GPU)) ||
+         (str_util::StrContains(device1, DEVICE_GPU) &&
+          str_util::StrContains(device2, DEVICE_CPU));
+}
+
 // TODO(rmlarsen): Add distributed TF test.
 Status RelaxAllocatorConstraints(GraphDef* optimized_graph) {
   std::unordered_set<string> devices;
@@ -1256,22 +1256,23 @@ Status RelaxAllocatorConstraints(GraphDef* optimized_graph) {
   TF_RETURN_IF_ERROR(graph_view.Initialize(*optimized_graph));
   for (int i : assign_nodes) {
     if (optimized_nodes.find(i) == optimized_nodes.end()) {
-      const NodeDef& node = optimized_graph->node(i);
+      const NodeDef& assign_node = optimized_graph->node(i);
       optimized_nodes.insert(i);
       std::vector<int> assign_nodes_in_fanout;
       assign_nodes_in_fanout.push_back(i);
       std::set<int> transitive_fanout;
       graph_view.DepthFirstSearch(std::unordered_set<string>{}, i,
                                   &transitive_fanout);
-      const string& assign_device = node.device();
       bool relax_constraint = true;
       // If all nodes in the transitive fanout are on the same device as the
       // assign node, there is no need to allocate the output in pinned memory.
       for (int fanout : transitive_fanout) {
         const NodeDef& fanout_node = optimized_graph->node(fanout);
         if (relax_constraint &&
-            (fanout_node.device() != assign_device || IsSend(fanout_node))) {
+            (IsSend(fanout_node) ||
+             CrossesTaskOrCpuGpuBoundary(fanout_node, assign_node))) {
           relax_constraint = false;
+          break;
         }
         if (optimized_nodes.find(fanout) == optimized_nodes.end() &&
             IsAssign(fanout_node)) {
@@ -1279,17 +1280,18 @@ Status RelaxAllocatorConstraints(GraphDef* optimized_graph) {
         }
       }
 
-      for (int assign_idx : assign_nodes_in_fanout) {
-        if (relax_constraint) {
+      if (relax_constraint) {
+        for (int assign_idx : assign_nodes_in_fanout) {
           // If all devices match in fanout of node(i) then, by transitivity,
           // they must also match in the fanout of other assign nodes
-          // node(assign_idx) in the fanout, so we can process them here,
+          // in the fanout of node(i), so we can process them here,
           // and save computing their transitive fanout later.
           optimized_nodes.insert(assign_idx);
 
           // Set an attribute telling AssignOp to ignore allocator constraints.
-          NodeDef* assign_node = optimized_graph->mutable_node(assign_idx);
-          (*assign_node
+          NodeDef* assign_node_to_relax =
+              optimized_graph->mutable_node(assign_idx);
+          (*assign_node_to_relax
                 ->mutable_attr())["_grappler_relax_allocator_constraints"]
               .set_b(true);
         }
@@ -1298,6 +1300,8 @@ Status RelaxAllocatorConstraints(GraphDef* optimized_graph) {
   }
   return Status::OK();
 }
+
+}  // namespace
 
 Status MemoryOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
                                  GraphDef* optimized_graph) {
@@ -1313,6 +1317,7 @@ Status MemoryOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
   // that simply won't fit in memory.
   bool updated_graph = true;
   for (int i = 0; i < 25 && updated_graph; ++i) {
+    GRAPPLER_RETURN_IF_DEADLINE_EXCEEDED();
     updated_graph = false;
     if ((optimization_level_ == RewriterConfig::DEFAULT_MEM_OPT ||
          optimization_level_ == RewriterConfig::SCHEDULING_HEURISTICS ||
@@ -1321,6 +1326,7 @@ Status MemoryOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
       updated_graph |= SchedulingPass(cluster, &optimized_item);
     }
 
+    GRAPPLER_RETURN_IF_DEADLINE_EXCEEDED();
     if ((optimization_level_ == RewriterConfig::DEFAULT_MEM_OPT ||
          optimization_level_ == RewriterConfig::SWAPPING_HEURISTICS ||
          optimization_level_ == RewriterConfig::HEURISTICS ||

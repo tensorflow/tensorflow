@@ -104,6 +104,11 @@ NodeBuilder& NodeBuilder::AssignedDevice(StringPiece device) {
   return *this;
 }
 
+NodeBuilder& NodeBuilder::XlaCluster(StringPiece xla_cluster) {
+  def_builder_.Attr("_XlaCluster", xla_cluster);
+  return *this;
+}
+
 Status NodeBuilder::Finalize(Graph* graph, Node** created_node) const {
   // In case of error, set *created_node to nullptr.
   if (created_node != nullptr) *created_node = nullptr;
@@ -140,10 +145,10 @@ void NodeBuilder::AddIndexError(const Node* node, int i) {
         strings::StrCat("Attempt to add nullptr Node to node with type ",
                         def_builder_.op_def().name()));
   } else {
-    errors_.emplace_back(
-        strings::StrCat("Attempt to add output ", i, " of ", node->name(),
-                        " not in range [0, ", node->num_outputs(),
-                        ") to node with type ", def_builder_.op_def().name()));
+    errors_.emplace_back(strings::StrCat(
+        "Attempt to add output ", i, " of ", node->name(), " not in range [0, ",
+        node->num_outputs(), ") to node with type ",
+        def_builder_.op_def().name(), ". Node: ", FormatNodeForError(*node)));
   }
 }
 

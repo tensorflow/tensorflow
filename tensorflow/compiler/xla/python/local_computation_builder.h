@@ -183,6 +183,9 @@ class LocalComputationBuilder {
   // Returns an owned LocalComputation to the caller on success.
   StatusOr<LocalComputation*> Build();
 
+  // Returns an owned LocalComputation to the caller on success with given root.
+  StatusOr<LocalComputation*> BuildWithRoot(const LocalOp& root);
+
   LocalOp Parameter(int64 parameter_number, const Shape& shape,
                     const string& name);
 
@@ -200,6 +203,9 @@ class LocalComputationBuilder {
 
   LocalOp Broadcast(const LocalOp& operand,
                     absl::Span<const int64> broadcast_sizes);
+
+  LocalOp BroadcastInDim(const LocalOp& operand, const Shape& shape,
+                         absl::Span<const int64> broadcast_dimensions);
 
   LocalOp Pad(const LocalOp& operand, const LocalOp& padding_value,
               const PaddingConfig& padding_config);
@@ -278,6 +284,8 @@ class LocalComputationBuilder {
       const LocalComputation& local_computation,
       absl::Span<const int64> window_dimensions,
       absl::Span<const int64> window_strides,
+      absl::Span<const int64> base_dilations,
+      absl::Span<const int64> window_dilations,
       absl::Span<const std::pair<int64, int64> > padding);
 
   LocalOp RngNormal(const LocalOp& mu, const LocalOp& sigma,
