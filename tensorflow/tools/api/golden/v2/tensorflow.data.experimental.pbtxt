@@ -10,7 +10,7 @@ tf_module {
   }
   member {
     name: "CsvDataset"
-    mtype: "<class \'abc.ABCMeta\'>"
+    mtype: "<type \'type\'>"
   }
   member {
     name: "Optional"
@@ -18,7 +18,7 @@ tf_module {
   }
   member {
     name: "RandomDataset"
-    mtype: "<class \'abc.ABCMeta\'>"
+    mtype: "<type \'type\'>"
   }
   member {
     name: "Reducer"
@@ -26,7 +26,7 @@ tf_module {
   }
   member {
     name: "SqlDataset"
-    mtype: "<class \'abc.ABCMeta\'>"
+    mtype: "<type \'type\'>"
   }
   member {
     name: "StatsAggregator"
