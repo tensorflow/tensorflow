@@ -1125,10 +1125,9 @@ Status HloEvaluator::HandleFusion(HloInstruction* fusion) {
   }
 
   HloEvaluator embedded_evaluator;
-  Literal result =
-      embedded_evaluator
-          .Evaluate<const Literal*>(*readded_computation, arg_literals)
-          .ConsumeValueOrDie();
+  Literal result;
+  TF_ASSIGN_OR_RETURN(result, embedded_evaluator.Evaluate<const Literal*>(
+      *readded_computation, arg_literals));
 
   evaluated_[fusion] = std::move(result);
   return Status::OK();
