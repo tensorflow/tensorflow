@@ -112,3 +112,28 @@ void TfLiteTensorRealloc(size_t num_bytes, TfLiteTensor* tensor) {
   tensor->bytes = num_bytes;
 }
 #endif  // TF_LITE_STATIC_MEMORY
+
+const char* TfLiteTypeGetName(TfLiteType type) {
+  switch (type) {
+    case kTfLiteNoType:
+      return "NOTYPE";
+    case kTfLiteFloat32:
+      return "FLOAT32";
+    case kTfLiteInt16:
+      return "INT16";
+    case kTfLiteInt32:
+      return "INT32";
+    case kTfLiteUInt8:
+      return "UINT8";
+    case kTfLiteInt64:
+      return "INT64";
+    case kTfLiteBool:
+      return "BOOL";
+    case kTfLiteComplex64:
+      return "COMPLEX64";
+    case kTfLiteString:
+      return "STRING";
+  }
+  return "Unknown type";
+}
+
