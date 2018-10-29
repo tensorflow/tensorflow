@@ -25,9 +25,9 @@ from __future__ import print_function
 
 import os
 from tensorflow.contrib.lite.python import convert_saved_model
+from tensorflow.python import estimator
 from tensorflow.python import keras
 from tensorflow.python.client import session
-from tensorflow.python.estimator import estimator_lib as estimator
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape

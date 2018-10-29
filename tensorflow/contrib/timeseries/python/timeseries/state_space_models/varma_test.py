@@ -25,7 +25,7 @@ from tensorflow.contrib.timeseries.python.timeseries.feature_keys import TrainEv
 from tensorflow.contrib.timeseries.python.timeseries.state_space_models import state_space_model
 from tensorflow.contrib.timeseries.python.timeseries.state_space_models import varma
 
-from tensorflow.python.estimator import estimator_lib
+from tensorflow.python import estimator as estimator_lib
 from tensorflow.python.framework import constant_op
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables

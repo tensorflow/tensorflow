@@ -29,7 +29,7 @@ from tensorflow.contrib.timeseries.python.timeseries.state_space_models import s
 from tensorflow.contrib.timeseries.python.timeseries.state_space_models import structural_ensemble
 from tensorflow.contrib.timeseries.python.timeseries.state_space_models.filtering_postprocessor import StateInterpolatingAnomalyDetector
 
-from tensorflow.python.estimator import estimator_lib
+from tensorflow.python import estimator as estimator_lib
 from tensorflow.python.estimator.canned import optimizers
 from tensorflow.python.estimator.export import export_lib
 from tensorflow.python.feature_column import feature_column

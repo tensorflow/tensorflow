@@ -4,10 +4,7 @@ licenses(["notice"])  # Apache 2.0
 
 py_library(
     name = "estimator_py",
-    srcs = [
-        "__init__.py",
-        "estimator_lib.py",
-    ],
+    srcs = ["__init__.py"],
     srcs_version = "PY2AND3",
     visibility = [
         "//tensorflow:__pkg__",
