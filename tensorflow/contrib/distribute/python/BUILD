@@ -472,6 +472,28 @@ cuda_py_test(
 )
 
 cuda_py_test(
+    name = "keras_optimizer_v2_test",
+    srcs = ["keras_optimizer_v2_test.py"],
+    additional_deps = [
+        ":combinations",
+        "@absl_py//absl/testing:parameterized",
+        "//third_party/py/numpy",
+        "//tensorflow/contrib/optimizer_v2:training",
+        "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/eager:test",
+        "//tensorflow/python/estimator:estimator_py",
+        "//tensorflow/python/feature_column",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:platform",
+        "//tensorflow/python:summary",
+    ],
+    tags = [
+        "multi_and_single_gpu",
+        "no_pip",
+    ],
+)
+
+cuda_py_test(
     name = "estimator_training_test",
     size = "large",
     srcs = ["estimator_training_test.py"],
