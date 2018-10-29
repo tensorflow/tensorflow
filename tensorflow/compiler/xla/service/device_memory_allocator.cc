@@ -52,9 +52,9 @@ Status StreamExecutorMemoryAllocator::Deallocate(int device_ordinal,
   if (!mem.is_null()) {
     TF_ASSIGN_OR_RETURN(se::StreamExecutor * stream_executor,
                         GetStreamExecutor(device_ordinal));
+    VLOG(3) << absl::StreamFormat("Freeing %p on device ordinal %d",
+                                  mem.opaque(), device_ordinal);
     stream_executor->Deallocate(&mem);
-    VLOG(3) << absl::StreamFormat("Freed %p on device ordinal %d", mem.opaque(),
-                                  device_ordinal);
   }
   return Status::OK();
 }

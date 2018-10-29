@@ -209,7 +209,7 @@ StatusOr<Literal> ReplayComputation(const HloSnapshot& module,
     run_options.set_execution_profile(&profile);
     run_options.set_allocator(&allocator);
 
-    TF_ASSIGN_OR_RETURN(auto result,
+    TF_ASSIGN_OR_RETURN(ScopedShapedBuffer result,
                         executable->Run(argument_ptrs, run_options));
     LOG(INFO) << "Done executing in "
               << static_cast<double>(profile.compute_time_ns()) / 1e9
