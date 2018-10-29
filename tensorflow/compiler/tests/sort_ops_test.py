@@ -48,12 +48,31 @@ class XlaSortOpTest(xla_test.XLATestCase):
         self.assertAllClose(v, result, rtol=1e-3)
 
   def testSort(self):
-    supported_types = set([dtypes.bfloat16.as_numpy_dtype, np.float32])
+    supported_types = set(
+        [dtypes.bfloat16.as_numpy_dtype, np.float32, np.int32, np.uint32])
     for dtype in supported_types.intersection(self.numeric_types):
       x = np.arange(101, dtype=dtype)
       np.random.shuffle(x)
       self._assertOpOutputMatchesExpected(
           xla.sort, [x], expected=[np.arange(101, dtype=dtype)])
+
+  def testKeyValueSort(self):
+    supported_key_types = set(
+        [dtypes.bfloat16.as_numpy_dtype, np.float32, np.int32, np.uint32])
+    supported_value_types = set(
+        [dtypes.bfloat16.as_numpy_dtype, np.float32, np.int32, np.uint32,
+         dtypes.int64.as_numpy_dtype, dtypes.uint64.as_numpy_dtype])
+    for key_type in supported_key_types.intersection(self.numeric_types):
+      for value_type in supported_value_types.intersection(self.numeric_types):
+        x = np.arange(101, dtype=key_type)
+        np.random.shuffle(x)
+        y = (-x).astype(value_type)
+        self._assertOpOutputMatchesExpected(
+            xla.key_value_sort, [x, y],
+            expected=[
+                np.arange(101, dtype=key_type),
+                -np.arange(101, dtype=value_type)
+            ])
 
   def testTopK(self):
     supported_types = set(

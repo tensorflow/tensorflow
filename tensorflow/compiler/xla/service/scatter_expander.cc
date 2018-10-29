@@ -392,7 +392,8 @@ StatusOr<HloInstruction*> ScatterExpander::ExpandScatter(
           [&](HloInstruction* induction_var,
               const std::vector<HloInstruction*>& loop_state) {
             return ScatterLoopBody(scatter, induction_var, loop_state);
-          });
+          },
+          scatter->metadata());
   TF_ASSIGN_OR_RETURN(std::vector<HloInstruction*> scatter_loop_result,
                       scatter_loop_result_status);
   return scatter_loop_result.front();

@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Tests for the LatencyAllEdges optimization."""
+"""Tests for the `LatencyAllEdges` optimization."""
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
@@ -25,7 +25,7 @@ from tensorflow.python.framework import errors
 from tensorflow.python.platform import test
 
 
-class OptimizeStatsDatasetTest(stats_dataset_test_base.StatsDatasetTestBase):
+class LatencyAllEdgesTest(stats_dataset_test_base.StatsDatasetTestBase):
 
   def testLatencyStatsOptimization(self):
     stats_aggregator = stats_ops.StatsAggregator()
@@ -43,7 +43,7 @@ class OptimizeStatsDatasetTest(stats_dataset_test_base.StatsDatasetTestBase):
 
     with self.cached_session() as sess:
       sess.run(iterator.initializer)
-      self.assertEqual(1 * 1, sess.run(get_next))
+      self.assertEqual(1, sess.run(get_next))
       with self.assertRaises(errors.OutOfRangeError):
         sess.run(get_next)
       summary_str = sess.run(summary_t)

@@ -245,17 +245,17 @@ bool IsConstantFoldable(
   if (n->IsSink()) {
     return false;
   }
+  if (n->IsFakeParam()) {
+    return false;
+  }
   // Since constant-folding runs on the CPU, do not attempt to constant-fold
   // operators that have no CPU kernel. Also implies that we will not
   // constant-fold functions.
   // TODO(phawkins): allow constant-folding for functions; functions may
   // be arbitrarily expensive to execute.
-  if (!FindKernelDef(DeviceType(DEVICE_CPU), n->def(), /*def=*/nullptr,
-                     /*kernel_class_name=*/nullptr)
-           .ok()) {
+  if (!KernelDefAvailable(DeviceType(DEVICE_CPU), n->def())) {
     return false;
   }
-
   return true;
 }
 
@@ -473,16 +473,16 @@ bool ReplaceTensorWithConstant(
   // 1) Do not replace another constant.
   // 2) If the destination tensor is not an int32 tensor, and has HOST_MEMORY
   // constraint, do not replace it.
-  // 3) If the size of the constant in bytes is too large (>
+  // 3) If the destination tensor is an int32 tensor, and has DEVICE_MEMORY
+  // constraint, do not replace it.
+  // 4) If the size of the constant in bytes is too large (>
   // max_constant_in_bytes), do not replace it. This prevents the size of the
   // Graph from growing too large.
-  // 4) If the constant op created does not have a kernel implementation
+  // 5) If the constant op created does not have a kernel implementation
   // for the device, do not use it.
   // TODO(keveman): Consider adding a new constant op that has a kernel
   // implementation for all types, but with HostMemory constraint on it's
   // output.
-  // 5) If the constant op for the device has different output memory type
-  // from the original op output memory type, do not replace it.
   if (tensor.first->IsConstant()) {
     return false;
   }
@@ -497,7 +497,8 @@ bool ReplaceTensorWithConstant(
       return false;
     }
     bool is_int32 = tensor.first->output_type(tensor.second) == DT_INT32;
-    if (memory_type == HOST_MEMORY && !is_int32) {
+    if ((memory_type == HOST_MEMORY && !is_int32) ||
+        (memory_type == DEVICE_MEMORY && is_int32)) {
       return false;
     }
   }
@@ -534,23 +535,6 @@ bool ReplaceTensorWithConstant(
 
   if (!NodeBuilder(builder).Finalize(graph, &constant_node).ok()) {
     return false;
-  }
-  if (partition_device && device_type != DEVICE_CPU) {
-    MemoryType original_output_memory_type;
-    if (!MemoryTypeForOutput(device_type, graph, tensor.first, tensor.second,
-                             &original_output_memory_type)
-             .ok()) {
-      return false;
-    }
-    MemoryType const_output_memory_type;
-    if (!MemoryTypeForOutput(device_type, graph, constant_node, 0,
-                             &const_output_memory_type)
-             .ok()) {
-      return false;
-    }
-    if (original_output_memory_type != const_output_memory_type) {
-      return false;
-    }
   }
   for (auto edge : edges_to_remove) {
     graph->AddEdge(constant_node, 0, edge->dst(), edge->dst_input());

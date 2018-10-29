@@ -607,7 +607,7 @@ tf_py_test(
 
 tf_py_test(
     name = "matrix_exponential_op_test",
-    size = "small",
+    size = "medium",
     srcs = ["matrix_exponential_op_test.py"],
     additional_deps = [
         "//third_party/py/numpy",
@@ -641,7 +641,7 @@ cuda_py_test(
         "//tensorflow/python:linalg_ops",
         "//tensorflow/python:math_ops",
     ],
-    tags = ["notap"],
+    tags = ["optonly"],
 )
 
 cuda_py_test(
@@ -687,6 +687,7 @@ cuda_py_test(
     size = "medium",
     srcs = ["parameterized_truncated_normal_op_test.py"],
     additional_deps = [
+        "@absl_py//absl/testing:parameterized",
         "//third_party/py/numpy",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:client",
@@ -1141,6 +1142,18 @@ cuda_py_test(
 )
 
 tf_py_test(
+    name = "unicode_transcode_op_test",
+    size = "small",
+    srcs = ["unicode_transcode_op_test.py"],
+    additional_deps = [
+        "@absl_py//absl/testing:parameterized",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:string_ops",
+    ],
+)
+
+tf_py_test(
     name = "unique_op_test",
     size = "small",
     srcs = ["unique_op_test.py"],
@@ -1172,6 +1185,7 @@ tf_py_test(
         "//tensorflow/python:variables",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:function",
+        "//tensorflow/python/eager:wrap_function",
     ],
     tags = ["no_windows"],
 )
@@ -1479,9 +1493,7 @@ cuda_py_test(
 
 cuda_py_test(
     name = "control_flow_ops_py_test",
-    # TODO(b/70473603): change this back to "small" once the C API is
-    # permanently enabled
-    size = "large",
+    size = "small",
     srcs = ["control_flow_ops_py_test.py"],
     additional_deps = [
         "//third_party/py/numpy",
@@ -1515,6 +1527,8 @@ cuda_py_test(
         "//tensorflow/python:variables",
         "//tensorflow/python:while_v2",
     ],
+    shard_count = 16,
+    tags = ["no_gpu"],  # TODO(b/117928656)
 )
 
 tf_py_test(
@@ -1528,6 +1542,21 @@ tf_py_test(
         "//tensorflow/python:control_flow_util",
         "//tensorflow/python:test_ops",
     ],
+)
+
+tf_py_test(
+    name = "control_flow_util_v2_test",
+    size = "small",
+    srcs = ["control_flow_util_v2_test.py"],
+    additional_deps = [
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:cond_v2",
+        "//tensorflow/python:constant_op",
+        "//tensorflow/python:control_flow_ops",
+        "//tensorflow/python:control_flow_util_v2",
+        "//tensorflow/python:while_v2",
+    ],
+    tags = ["no_gpu"],  # TODO(b/117796385): runs out of memory
 )
 
 cuda_py_test(
@@ -1785,6 +1814,7 @@ cuda_py_test(
     size = "medium",
     srcs = ["linalg_ops_test.py"],
     additional_deps = [
+        "@absl_py//absl/testing:parameterized",
         "//third_party/py/numpy",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
@@ -3214,7 +3244,10 @@ tf_py_test(
         "//tensorflow/python:platform",
     ],
     data = [":ackermann_op.so"],
-    tags = ["no_pip"],
+    tags = [
+        "no_pip",
+        "notap",
+    ],
 )
 
 tf_custom_op_library(
@@ -3233,7 +3266,10 @@ tf_py_test(
         "//tensorflow/python:platform",
     ],
     data = [":duplicate_op.so"],
-    tags = ["no_pip"],
+    tags = [
+        "no_pip",
+        "notap",
+    ],
 )
 
 tf_custom_op_library(
@@ -3252,15 +3288,19 @@ tf_py_test(
         "//tensorflow/python:platform",
     ],
     data = [":invalid_op.so"],
-    tags = ["no_pip"],
+    tags = [
+        "no_pip",
+        "notap",
+    ],
 )
 
-tf_py_test(
+cuda_py_test(
     name = "cond_v2_test",
     size = "medium",
     srcs = ["cond_v2_test.py"],
     additional_deps = [
         "//tensorflow/python:array_ops",
+        "//tensorflow/python:test_ops",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:cond_v2",
         "//tensorflow/python:constant_op",
@@ -3272,7 +3312,6 @@ tf_py_test(
         "//tensorflow/python:training",
     ],
     grpc_enabled = True,
-    tags = ["no_gpu"],  # TODO(b/111656070)
 )
 
 cuda_py_test(
@@ -3289,8 +3328,11 @@ cuda_py_test(
         "//tensorflow/python:dtypes",
         "//tensorflow/python:framework",
         "//tensorflow/python:framework_ops",
+        "//tensorflow/python:functional_ops",
         "//tensorflow/python:gradients_impl",
         "//tensorflow/python:list_ops",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:tensor_array_grad",
         "//tensorflow/python:tf_optimizer",
         "//tensorflow/python:while_v2",
     ],

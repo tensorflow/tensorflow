@@ -13,8 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/common_runtime/lower_while_op.h"
-#include "tensorflow/core/common_runtime/lower_if_op.h"
+#include "tensorflow/core/common_runtime/lower_if_while.h"
 
 #include "tensorflow/cc/client/client_session.h"
 #include "tensorflow/cc/framework/ops.h"
@@ -37,13 +36,11 @@ namespace tensorflow {
 namespace {
 
 Status Rewrite(std::unique_ptr<Graph>* graph) {
-  FunctionDefLibrary flib;
-  FunctionLibraryDefinition flib_def((*graph)->op_registry(), flib);
-
+  FunctionLibraryDefinition flib_def((*graph)->flib_def());
   GraphOptimizationPassOptions opt_options;
   opt_options.graph = graph;
   opt_options.flib_def = &flib_def;
-  LowerWhileOpPass pass;
+  LowerIfWhilePass pass;
   return pass.Run(opt_options);
 }
 
@@ -54,7 +51,6 @@ TEST(LowerWhileOpTest, Simple) {
   FunctionDefLibrary f_lib_proto;
   *f_lib_proto.add_function() = test::function::XTimesTwo();
   *f_lib_proto.add_function() = test::function::LessThanOrEqualToN(8);
-  FunctionLibraryDefinition f_lib(OpRegistry::Global(), f_lib_proto);
 
   Scope root = Scope::NewRootScope().ExitOnError();
   TF_ASSERT_OK(root.graph()->AddFunctionLibrary(f_lib_proto));
@@ -65,12 +61,12 @@ TEST(LowerWhileOpTest, Simple) {
   cond_func.mutable_func()->set_name("LessThanOrEqualToN");
   AttrValue body_func;
   body_func.mutable_func()->set_name("XTimesTwo");
-  TF_ASSERT_OK(NodeBuilder("while", "While", &f_lib)
+  TF_ASSERT_OK(NodeBuilder("while", "While", &root.graph()->flib_def())
                    .Input(inputs)
                    .Attr("T", {DT_INT32})
                    .Attr("cond", cond_func)
                    .Attr("body", body_func)
-                   .Attr(LowerIfOpPass::kLowerUsingSwitchMergeAttr, true)
+                   .Attr(LowerIfWhilePass::kLowerUsingSwitchMergeAttr, true)
                    .Finalize(root.graph(), &while_node));
   TF_ASSERT_OK(root.DoShapeInference(while_node));
   TF_ASSERT_OK(root.ToGraph(graph.get()));
@@ -154,7 +150,6 @@ TEST(LowerWhileOpTest, MultipleInputs) {
   FunctionDefLibrary f_lib_proto;
   *(f_lib_proto.add_function()) = test::function::XPlusOneXTimesY();
   *(f_lib_proto.add_function()) = test::function::XYXLessThanOrEqualToN(4);
-  FunctionLibraryDefinition f_lib(OpRegistry::Global(), f_lib_proto);
 
   Scope root = Scope::NewRootScope().ExitOnError();
   TF_ASSERT_OK(root.graph()->AddFunctionLibrary(f_lib_proto));
@@ -167,12 +162,12 @@ TEST(LowerWhileOpTest, MultipleInputs) {
   cond_func.mutable_func()->set_name("XYXLessThanOrEqualToN");
   AttrValue body_func;
   body_func.mutable_func()->set_name("XPlusOneXTimesY");
-  TF_ASSERT_OK(NodeBuilder("while", "While", &f_lib)
+  TF_ASSERT_OK(NodeBuilder("while", "While", &root.graph()->flib_def())
                    .Input(inputs)
                    .Attr("T", {DT_INT32, DT_INT32})
                    .Attr("cond", cond_func)
                    .Attr("body", body_func)
-                   .Attr(LowerIfOpPass::kLowerUsingSwitchMergeAttr, true)
+                   .Attr(LowerIfWhilePass::kLowerUsingSwitchMergeAttr, true)
                    .Finalize(root.graph(), &while_node));
   TF_ASSERT_OK(root.DoShapeInference(while_node));
   TF_ASSERT_OK(root.ToGraph(graph.get()));

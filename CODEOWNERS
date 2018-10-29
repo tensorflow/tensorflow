@@ -1,6 +1,7 @@
 # Where component owners are known, add them here.
 
 /tenosrflow/core/debug @caisq
+/tensorflow/core/nccl/ @azaks @csigg
 /tensorflow/core/platform/windows/ @mrry
 /tensorflow/core/platform/s3 @yongtang
 /tensorflow/go @asimshankar
@@ -46,7 +47,6 @@
 /tensorflow/contrib/losses/ @alextp @ispirmustafa
 /tensorflow/contrib/makefile/ @petewarden @satok16 @wolffg
 /tensorflow/contrib/metrics/ @alextp @honkentuber @ispirmustafa
-/tensorflow/contrib/nccl/ @cwhipkey @zheng-xq
 /tensorflow/contrib/opt/ @strategist333 @alextp
 /tensorflow/contrib/pi_examples/ @maciekcc
 /tensorflow/contrib/quantization/ @petewarden

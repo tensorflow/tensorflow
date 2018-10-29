@@ -421,7 +421,7 @@ class FromSessionTest(test_util.TensorFlowTestCase):
     # Convert model and ensure model is not None.
     converter = lite.TFLiteConverter.from_session(sess, [in_tensor],
                                                   [out_tensor])
-    converter.converter_mode = lite.ConverterMode.TOCO_FLEX_ALL
+    converter.target_ops = set([lite.OpsSet.SELECT_TF_OPS])
     tflite_model = converter.convert()
     self.assertTrue(tflite_model)
 

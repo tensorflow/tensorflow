@@ -29,6 +29,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.keras import backend as K
 from tensorflow.python.keras import models as models_lib
 from tensorflow.python.keras import optimizers
+from tensorflow.python.keras.engine import sequential
 from tensorflow.python.keras.models import model_from_json
 from tensorflow.python.lib.io import file_io
 from tensorflow.python.ops import variables
@@ -85,10 +86,21 @@ def save_keras_model(
     String path to the SavedModel folder, a subdirectory of `saved_model_path`.
 
   Raises:
-    NotImplementedError: If the passed in model is a subclassed model.
+    NotImplementedError: If the model is a subclassed model.
+    ValueError: If a Sequential model does not have input shapes defined by the
+      user, and is not built.
   """
   if not model._is_graph_network:
-    raise NotImplementedError
+    if isinstance(model, sequential.Sequential):
+      # If input shape is not directly set in the model, the exported model
+      # will assume that the inputs have the same shape as the shape the model
+      # was built model with.
+      if not model.built:
+        raise ValueError(
+            'Sequential model must be built before it can be exported.')
+    else:
+      raise NotImplementedError(
+          'Exporting subclassed models is not yet supported.')
 
   export_dir = export_helpers.get_timestamped_export_dir(saved_model_path)
   temp_export_dir = export_helpers.get_temp_export_dir(export_dir)

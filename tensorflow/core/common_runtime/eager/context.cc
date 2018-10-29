@@ -70,7 +70,9 @@ EagerContext::EagerContext(const SessionOptions& opts,
       async_default_(async),
       log_memory_(LogMemory::IsEnabled()),
       env_(opts.env),
-      use_send_tensor_rpc_(false) {
+      use_send_tensor_rpc_(false),
+      pin_small_ops_to_cpu_(ReadBoolFromEnvVar(
+          "TF_EAGER_ENABLE_SMALL_TENSOR_CPU_PINNING", true)) {
   if (device_mgr_owned) {
     local_device_manager_.reset(device_mgr);
     local_unowned_device_manager_ = nullptr;

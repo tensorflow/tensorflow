@@ -14,9 +14,9 @@ limitations under the License.
 ==============================================================================*/
 #include <utility>
 
+#include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/tensor.h"
-#include "tensorflow/core/kernels/data/dataset.h"
 #include "tensorflow/core/kernels/data/sql/driver_manager.h"
 #include "tensorflow/core/kernels/data/sql/query_connection.h"
 #include "tensorflow/core/lib/io/inputbuffer.h"
@@ -27,7 +27,7 @@ namespace tensorflow {
 namespace data {
 namespace {
 
-// See documentation in ../ops/dataset_ops.cc for a high-level
+// See documentation in ../../ops/dataset_ops.cc for a high-level
 // description of the following ops.
 
 class SqlDatasetOp : public DatasetOpKernel {

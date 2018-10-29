@@ -97,14 +97,25 @@ from tensorflow.python.platform import tf_logging as logging
 
 # TODO(b/114775106): temporary shim to optionally initialize the TPU
 # This increases the odds our session is initialized, but shouldn't be needed.
+_TEST_REWRITE_OP = None
+
+
 def _maybe_initialize_tpu(session):
   """Initialize the TPU if it has not already been initialized."""
+  global _TEST_REWRITE_OP
   try:
+    # Try to use cached version to avoid another ground of graph optimization.
+    test_rewrite_op = _TEST_REWRITE_OP
+    if (test_rewrite_op is None or
+        test_rewrite_op[0].graph != ops.get_default_graph()):
 
-    def test_op():
-      return constant_op.constant(1) + constant_op.constant(1)
+      def test_op():
+        return constant_op.constant(1) + constant_op.constant(1)
 
-    session.run(tpu.rewrite(test_op))
+      test_rewrite_op = tpu.rewrite(test_op)
+      _TEST_REWRITE_OP = test_rewrite_op
+
+    session.run(test_rewrite_op)
   except errors.FailedPreconditionError as _:
     session.run(tpu.initialize_system())
 
@@ -280,13 +291,14 @@ def _cross_replica_concat(tensor, core_id, num_cores, name):
   """
 
   input_dtype = tensor.dtype
-  if input_dtype not in [dtypes.float32, dtypes.int32]:
-    raise TypeError('For model replication, only (float32 and int32) is '
-                    'supported for model outputs and targets. Got {} for '
+  if input_dtype not in [dtypes.bfloat16, dtypes.float32, dtypes.int32]:
+    raise TypeError('For model replication, only (bfloat16, float32 and int32) '
+                    'is supported for model outputs and targets. Got {} for '
                     '{}.'.format(input_dtype, name))
 
   batch_size = tensor.shape[0]
-  mask = math_ops.to_float(math_ops.equal(range(num_cores), core_id))
+  mask = math_ops.to_float(
+      math_ops.equal(np.arange(num_cores, dtype=np.int32), core_id))
   mask = array_ops.reshape(mask, [num_cores] + [1] * tensor.shape.ndims)
   result = mask * math_ops.to_float(tensor)
   local_tensor_with_holes = array_ops.reshape(result,
@@ -361,7 +373,7 @@ def _replicated_optimizer(opt):
     return KerasCrossShardOptimizer(opt)
 
 
-def _clone_optimizer(optimizer, config=None):
+def _clone_optimizer(optimizer, config=None, worker_name=None):
   """Returns a cloned optimizer with the provided optimizer.config or config."""
   if not isinstance(optimizer, keras_optimizers.Optimizer):
     # In the first call to tpu_model(model), Keras may not have wrapped the TF
@@ -376,7 +388,10 @@ def _clone_optimizer(optimizer, config=None):
   if config is None:
     config = optimizer.get_config()
   logging.info('Cloning %s %s', optimizer.__class__.__name__, config)
-  return optimizer.__class__.from_config(config)
+  with ops.device(
+      '%s/device:CPU:0' % ('/job:%s' % worker_name if worker_name else '')):
+    # Explicitly put optimizer parameter variables on TPU worker.
+    return optimizer.__class__.from_config(config)
 
 
 class TPURewriteContext(object):
@@ -955,7 +970,8 @@ class TPUFunction(object):
               self._tpu_assignment.num_towers):
             if not self._cloned_optimizer:
               self._cloned_optimizer = _clone_optimizer(
-                  self.model.cpu_optimizer)
+                  self.model.cpu_optimizer,
+                  worker_name=self._tpu_assignment.worker_name)
 
             self._cloned_model = models.clone_model(self.model)
 
@@ -972,6 +988,12 @@ class TPUFunction(object):
                       name='model output ({})'.format(o.name))
                   for o in self._cloned_model.outputs
               ]
+              # Recast all low precision outputs back to float32 since we only
+              # casted the inputs to bfloat16 and not targets. This is done so
+              # that we can preserve precision when calculating the loss value.
+              if new_outputs and new_outputs[0].dtype == dtypes.bfloat16:
+                new_outputs = [
+                    math_ops.cast(o, dtypes.float32) for o in new_outputs]
               self._cloned_model.outputs = new_outputs
               tpu_targets = [
                   _cross_replica_concat(
@@ -1481,10 +1503,12 @@ class KerasTPUModel(models.Model):
 
       self._numpy_to_infeed_manager_list = infeed_managers
       try:
-        if not kwargs.get('_pipeline', True):
-          logging.info('Running non-pipelined training loop (`_pipeline=%s`).',
-                       kwargs['_pipeline'])
+        pipeline = kwargs.get('_pipeline', True)
+        if '_pipeline' in kwargs:
           kwargs.pop('_pipeline')
+        if not pipeline:
+          logging.info('Running non-pipelined training loop (`_pipeline=%s`).',
+                       pipeline)
           return super(KerasTPUModel, self).fit(
               x, y, batch_size, epochs, verbose, callbacks, validation_split,
               validation_data, shuffle, class_weight, sample_weight,
@@ -1998,6 +2022,9 @@ class KerasTPUModel(models.Model):
 
     logging.info('Setting weights on TPU model.')
     cloned_model.set_weights(weights)
+    if self._tpu_model.optimizer is None:
+      # tpu_model may not be compiled, e.g., loading weights and then predict.
+      return
     for k, v in six.iteritems(cpu_optimizer_config):
       opt_var = getattr(self._tpu_model.optimizer, k)
       if isinstance(opt_var, variables.Variable):
@@ -2050,6 +2077,10 @@ class KerasTPUModel(models.Model):
     # Instead, reset CPU model weights and force TPU re-initialization at the
     # next call.
     self._cpu_model.set_weights(weights)
+    self._tpu_weights_initialized = False
+
+  def load_weights(self, filepath, by_name=False):
+    self._cpu_model.load_weights(filepath, by_name)
     self._tpu_weights_initialized = False
 
 

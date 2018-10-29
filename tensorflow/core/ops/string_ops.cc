@@ -223,6 +223,7 @@ REGISTER_OP("Substr")
     .Input("len: T")
     .Output("output: string")
     .Attr("T: {int32, int64}")
+    .Attr("unit: {'BYTE', 'UTF8_CHAR'} = 'BYTE'")
     .SetShapeFn([](InferenceContext* c) {
       ShapeHandle pos_shape = c->input(1);
       ShapeHandle len_shape = c->input(2);
@@ -249,4 +250,13 @@ REGISTER_OP("UnicodeScript")
     .Output("output: int32")
     .SetShapeFn(shape_inference::UnchangedShape);
 
+REGISTER_OP("UnicodeTranscode")
+    .Input("input: string")
+    .Output("output: string")
+    .Attr("input_encoding: string")
+    .Attr("output_encoding: {'UTF-8', 'UTF-16-BE', 'UTF-32-BE'}")
+    .Attr("errors: {'strict', 'replace', 'ignore'} = 'replace'")
+    .Attr("replacement_char: int = 65533")  // 0xFFFD unicode replacement char
+    .Attr("replace_control_characters: bool = false")
+    .SetShapeFn(shape_inference::UnchangedShape);
 }  // namespace tensorflow

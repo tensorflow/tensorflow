@@ -3,7 +3,7 @@ FROM ubuntu:16.04
 LABEL maintainer="Cong Xu <cong.xu@intel.com>"
 
 # These parameters can be overridden by parameterized_docker_build.sh
-ARG TF_BUILD_VERSION=r1.9
+ARG TF_BUILD_VERSION=r1.11
 ARG PYTHON="python"
 ARG PYTHON3_DEV=""
 ARG WHL_DIR="/tmp/pip"
@@ -29,7 +29,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         openjdk-8-jdk \
         openjdk-8-jre-headless \
         wget \
-        numactl \
+        libnuma-dev \
         openssh-client \
         openssh-server \
         && \
@@ -106,6 +106,7 @@ RUN export TAG_PREFIX="v" && \
     fi
 
 RUN yes "" | ${PYTHON} configure.py
+RUN cp .bazelrc /root/.bazelrc
 
 ENV CI_BUILD_PYTHON ${PYTHON}
 
@@ -116,7 +117,8 @@ ENV CI_BUILD_PYTHON ${PYTHON}
 # --copt=-march="avx" \
 # For haswell, broadwell, or skylake
 # --copt=-march="avx2" \
-COPY .bazelrc /root/.bazelrc
+COPY .bazelrc /root/.mkl.bazelrc
+RUN echo "import /root/.mkl.bazelrc" >>/root/.bazelrc
 
 RUN tensorflow/tools/ci_build/builds/configured CPU \
     bazel --bazelrc=/root/.bazelrc build -c opt \

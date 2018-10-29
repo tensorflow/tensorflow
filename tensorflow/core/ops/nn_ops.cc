@@ -983,6 +983,21 @@ REGISTER_OP("Relu6Grad")
     .Attr("T: realnumbertype")
     .SetShapeFn(shape_inference::MergeBothInputsShapeFn);
 
+REGISTER_OP("LeakyRelu")
+    .Input("features: T")
+    .Output("activations: T")
+    .Attr("alpha: float = 0.2")
+    .Attr("T: {half, float, double} = DT_FLOAT")
+    .SetShapeFn(shape_inference::UnchangedShape);
+
+REGISTER_OP("LeakyReluGrad")
+    .Input("gradients: T")
+    .Input("features: T")
+    .Output("backprops: T")
+    .Attr("alpha: float = 0.2")
+    .Attr("T: {half, float, double} = DT_FLOAT")
+    .SetShapeFn(shape_inference::MergeBothInputsShapeFn);
+
 REGISTER_OP("Elu")
     .Input("features: T")
     .Output("activations: T")
@@ -1843,6 +1858,37 @@ REGISTER_OP("_MklReluGrad")
     .Doc(R"doc(
 MKL version of ReluGrad operator. Uses MKL DNN APIs to compute rectified
 linear gradients for Relu operation.
+
+NOTE Do not invoke this operator directly in Python. Graph rewrite pass is
+expected to invoke these operators.
+)doc");
+
+REGISTER_OP("_MklRelu6")
+    .Input("features: T")
+    .Input("mkl_features: uint8")
+    .Output("activations: T")
+    .Output("mkl_activations: uint8")
+    .Attr("T: realnumbertype")
+    .SetShapeFn(shape_inference::UnchangedShape)
+    .Doc(R"doc(
+MKL version of Relu6 operator. Uses MKL DNN APIs to implement Relu6 operator.
+
+NOTE Do not invoke this operator directly in Python. Graph rewrite pass is
+expected to invoke these operators.
+)doc");
+
+REGISTER_OP("_MklRelu6Grad")
+    .Input("gradients: T")
+    .Input("features: T")
+    .Input("mkl_gradients: uint8")
+    .Input("mkl_features: uint8")
+    .Output("backprops: T")
+    .Output("mkl_backprops: uint8")
+    .Attr("T: realnumbertype")
+    .SetShapeFn(shape_inference::MergeBothInputsShapeFn)
+    .Doc(R"doc(
+MKL version of Relu6Grad operator. Uses MKL DNN APIs to compute rectified
+linear gradients for Relu6 operation.
 
 NOTE Do not invoke this operator directly in Python. Graph rewrite pass is
 expected to invoke these operators.

@@ -160,6 +160,11 @@ def sigmoid(x):
   return nn.sigmoid(x)
 
 
+@tf_export('keras.activations.exponential')
+def exponential(x):
+  return math_ops.exp(x)
+
+
 @tf_export('keras.activations.hard_sigmoid')
 def hard_sigmoid(x):
   """Hard sigmoid activation function.

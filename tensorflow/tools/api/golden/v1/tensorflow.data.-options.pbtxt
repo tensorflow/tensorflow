@@ -7,6 +7,10 @@ tf_class {
     mtype: "<type \'property\'>"
   }
   member {
+    name: "experimental_deterministic"
+    mtype: "<type \'property\'>"
+  }
+  member {
     name: "experimental_filter_fusion"
     mtype: "<type \'property\'>"
   }
@@ -40,6 +44,10 @@ tf_class {
   }
   member {
     name: "experimental_noop_elimination"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "experimental_numa_aware"
     mtype: "<type \'property\'>"
   }
   member {

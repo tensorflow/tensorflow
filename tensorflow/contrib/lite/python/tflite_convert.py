@@ -30,13 +30,15 @@ from tensorflow.python.platform import app
 
 
 def _parse_array(values, type_fn=str):
-  if values:
+  if values is not None:
     return [type_fn(val) for val in values.split(",") if val]
+  return None
 
 
 def _parse_set(values):
-  if values:
-    return set(values.split(","))
+  if values is not None:
+    return set([item for item in values.split(",") if item])
+  return None
 
 
 def _get_toco_converter(flags):
@@ -143,8 +145,14 @@ def _convert_model(flags):
 
   if flags.allow_custom_ops:
     converter.allow_custom_ops = flags.allow_custom_ops
-  if flags.converter_mode:
-    converter.converter_mode = flags.converter_mode
+  if flags.target_ops:
+    ops_set_options = lite.OpsSet.get_options()
+    converter.target_ops = set()
+    for option in flags.target_ops.split(","):
+      if option not in ops_set_options:
+        raise ValueError("Invalid value for --target_ops. Options: "
+                         "{0}".format(",".join(ops_set_options)))
+      converter.target_ops.add(lite.OpsSet(option))
 
   if flags.post_training_quantize:
     converter.post_training_quantize = flags.post_training_quantize
@@ -292,8 +300,8 @@ def run_main(_):
       "--saved_model_tag_set",
       type=str,
       help=("Comma-separated set of tags identifying the MetaGraphDef within "
-            "the SavedModel to analyze. All tags must be present. "
-            "(default \"serve\")"))
+            "the SavedModel to analyze. All tags must be present. In order to "
+            "pass in an empty tag set, pass in \"\". (default \"serve\")"))
   parser.add_argument(
       "--saved_model_signature_key",
       type=str,
@@ -377,11 +385,12 @@ def run_main(_):
             "provide these to the TensorFlow Lite runtime with a custom "
             "resolver. (default False)"))
   parser.add_argument(
-      "--converter_mode",
-      type=lite.ConverterMode,
-      choices=list(lite.ConverterMode),
-      help=("Experimental flag, subject to change. ConverterMode indicating "
-            "which converter to use. (default ConverterMode.DEFAULT)"))
+      "--target_ops",
+      type=str,
+      help=("Experimental flag, subject to change. Set of OpsSet options "
+            "indicating which converter to use. Options: {0}. One or more "
+            "option may be specified. (default set([OpsSet.TFLITE_BUILTINS]))"
+            "".format(",".join(lite.OpsSet.get_options()))))
 
   # Logging flags.
   parser.add_argument(

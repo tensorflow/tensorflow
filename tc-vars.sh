@@ -50,9 +50,7 @@ if [ "${OS}" = "Linux" ]; then
 fi;
 
 export TF_ENABLE_XLA=0
-export TF_NEED_MKL=0
 export TF_NEED_MPI=0
-export TF_NEED_IGNITE=0
 export TF_DOWNLOAD_CLANG=0
 export TF_SET_ANDROID_WORKSPACE=0
 export TF_NEED_TENSORRT=0
@@ -98,7 +96,7 @@ TF_CUDA_FLAGS="TF_NEED_CUDA=1 TF_CUDA_CLANG=0 TF_CUDA_VERSION=9.0 TF_CUDNN_VERSI
 BAZEL_ARM_FLAGS="--config=rpi3 --config=rpi3_opt"
 BAZEL_ARM64_FLAGS="--config=rpi3-armv8 --config=rpi3-armv8_opt"
 BAZEL_CUDA_FLAGS="--config=cuda"
-BAZEL_EXTRA_FLAGS="--copt=-fvisibility=hidden"
+BAZEL_EXTRA_FLAGS="--config=noaws --config=nogcp --config=nohdfs --config=noignite --config=nokafka --copt=-fvisibility=hidden"
 
 ### Define build targets that we will re-ues in sourcing scripts.
 BUILD_TARGET_LIB_CPP_API="//tensorflow:libtensorflow_cc.so"

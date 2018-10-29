@@ -21,6 +21,7 @@ from __future__ import print_function
 
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
+from tensorflow.contrib.compiler import xla
 from tensorflow.contrib.framework.python.framework import experimental
 from tensorflow.contrib.tpu.python.ops import tpu_ops
 from tensorflow.contrib.tpu.python.tpu import tpu_function
@@ -601,7 +602,7 @@ def split_compile_and_replicate(computation,
           "input types {}, replica {} had input types {}".format(
               input_types, i, types))
 
-  arg_error = tpu_function.check_function_argument_count(
+  arg_error = xla.check_function_argument_count(
       computation, input_arity, infeed_queue)
   if arg_error is not None:
     if infeed_queue is None:

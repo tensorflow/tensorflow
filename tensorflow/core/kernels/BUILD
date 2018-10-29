@@ -270,6 +270,20 @@ cc_library(
     ],
 )
 
+tf_kernel_library(
+    name = "nccl_kernels",
+    srcs = if_cuda([
+        "nccl_ops.cc",
+    ]),
+    deps = if_cuda([
+        "@local_config_nccl//:nccl",
+        "//tensorflow/core/nccl:nccl_lib",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:gpu_headers_lib",
+        "//tensorflow/core:nccl_ops_op_lib",
+    ]),
+)
+
 tf_cuda_library(
     name = "ops_testutil",
     testonly = 1,
@@ -293,14 +307,10 @@ tf_cuda_library(
 
 cc_library(
     name = "ops_util",
-    srcs = ["ops_util.cc"],
     hdrs = ["ops_util.h"],
     copts = if_not_windows(["-Wno-sign-compare"]),
     deps = [
         "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:protos_all_cc",
-        "//third_party/eigen3",
     ],
 )
 
@@ -508,8 +518,7 @@ cc_library(
     hdrs = ["bounds_check.h"],
     visibility = [":friends"],
     deps = [
-        "//tensorflow/core:framework_lite",
-        "//third_party/eigen3",
+        "//tensorflow/core:framework_bounds_check",
     ],
 )
 
@@ -956,6 +965,87 @@ tf_kernel_library(
         ":cuda_solvers",
         "@cub_archive//:cub",
     ]) + ARRAY_DEPS,
+)
+
+cc_library(
+    name = "ragged_ops",
+    deps = [
+        ":ragged_gather_op",
+        ":ragged_range_op",
+        ":ragged_tensor_to_sparse_kernel",
+    ],
+)
+
+tf_kernel_library(
+    name = "ragged_gather_op",
+    srcs = ["ragged_gather_op.cc"],
+    deps = [
+        "//tensorflow/core:framework",
+        "//tensorflow/core:ragged_array_ops_op_lib",
+    ],
+)
+
+tf_cc_test(
+    name = "ragged_gather_op_test",
+    size = "small",
+    srcs = ["ragged_gather_op_test.cc"],
+    deps = [
+        ":ragged_gather_op",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:ragged_array_ops_op_lib",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+        "//tensorflow/core/kernels:ops_testutil",
+    ],
+)
+
+tf_kernel_library(
+    name = "ragged_range_op",
+    srcs = ["ragged_range_op.cc"],
+    deps = [
+        "//tensorflow/core:framework",
+        "//tensorflow/core:ragged_math_ops_op_lib",
+    ],
+)
+
+tf_cc_test(
+    name = "ragged_range_op_test",
+    srcs = ["ragged_range_op_test.cc"],
+    deps = [
+        ":ragged_range_op",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:ragged_math_ops_op_lib",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+        "//tensorflow/core/kernels:ops_testutil",
+    ],
+)
+
+tf_kernel_library(
+    name = "ragged_tensor_to_sparse_kernel",
+    srcs = ["ragged_tensor_to_sparse_kernel.cc"],
+    deps = [
+        "//tensorflow/core:framework",
+        "//tensorflow/core:ragged_conversion_ops_op_lib",
+    ],
+)
+
+tf_cc_test(
+    name = "ragged_tensor_to_sparse_kernel_test",
+    size = "small",
+    srcs = ["ragged_tensor_to_sparse_kernel_test.cc"],
+    deps = [
+        ":ragged_tensor_to_sparse_kernel",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:ragged_conversion_ops_op_lib",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+        "//tensorflow/core/kernels:ops_testutil",
+    ],
 )
 
 tf_kernel_library(
@@ -2032,6 +2122,7 @@ tf_kernel_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:resource_variable_ops_op_lib",
+        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -2096,6 +2187,11 @@ tf_kernel_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:functional_ops_op_lib",
         "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/grappler:grappler_item",
+        "//tensorflow/core/grappler/clusters:virtual_cluster",
+        "//tensorflow/core/grappler/optimizers:meta_optimizer",
+        "//tensorflow/core/grappler/utils:functions",
     ],
 )
 
@@ -2573,6 +2669,7 @@ cc_library(
         ":matrix_logarithm_op",
         ":matrix_solve_ls_op",
         ":matrix_solve_op",
+        ":matrix_square_root_op",
         ":matrix_triangular_solve_op",
         ":qr_op",
         ":self_adjoint_eig_op",
@@ -2679,6 +2776,12 @@ tf_kernel_library(
 tf_kernel_library(
     name = "matrix_solve_op",
     prefix = "matrix_solve_op",
+    deps = LINALG_DEPS,
+)
+
+tf_kernel_library(
+    name = "matrix_square_root_op",
+    prefix = "matrix_square_root_op",
     deps = LINALG_DEPS,
 )
 
@@ -4450,6 +4553,7 @@ cc_library(
         ":string_strip_op",
         ":string_to_hash_bucket_op",
         ":substr_op",
+        ":unicode_ops",
         ":unicode_script_op",
     ],
 )
@@ -4458,7 +4562,12 @@ cc_library(
     name = "string_util",
     srcs = ["string_util.cc"],
     hdrs = ["string_util.h"],
-    deps = ["//tensorflow/core:lib"],
+    deps = [
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "@icu//:common",
+    ],
 )
 
 STRING_DEPS = [
@@ -4608,6 +4717,19 @@ tf_kernel_library(
     name = "as_string_op",
     prefix = "as_string_op",
     deps = STRING_DEPS,
+)
+
+tf_kernel_library(
+    name = "unicode_ops",
+    prefix = "unicode_ops",
+    deps = [
+        ":string_util",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core:string_ops_op_lib",
+        "@icu//:common",
+    ],
 )
 
 tf_kernel_library(
@@ -4997,7 +5119,6 @@ filegroup(
         "eigen_volume_patch.h",
         "fifo_queue.h",
         "maxpooling_op.h",
-        "ops_util.cc",
         "ops_util.h",
         "padding_fifo_queue.h",
         "pooling_ops_common.cc",
@@ -5450,7 +5571,6 @@ filegroup(
             "*_3d*",
             "*.cu.*",
             # Ops already in android_srcs
-            "ops_util.cc",
             "pooling_ops_common.cc",
             # Ops which we are currently excluding because they are likely
             # not used on Android. Those ops also do not compile if included,
@@ -5492,6 +5612,7 @@ filegroup(
             "regex_full_match_op.cc",
             "regex_replace_op.cc",
             "unicode_script_op.cc",
+            "unicode_ops.cc",
             # Ops that are inherently incompatible with Android (e.g. tied to x86 platform).
             "mkl_*",
             "xsmm_*",
@@ -6489,22 +6610,6 @@ tf_kernel_library(
     name = "boosted_trees_ops",
     deps = [
         "//tensorflow/core/kernels/boosted_trees:boosted_trees_ops",
-    ],
-)
-
-cc_library(
-    name = "captured_function",
-    hdrs = ["captured_function.h"],
-    deps = [
-        "//tensorflow/core/kernels/data:captured_function",
-    ],
-)
-
-cc_library(
-    name = "dataset",
-    hdrs = ["dataset.h"],
-    deps = [
-        "//tensorflow/core/kernels/data:dataset",
     ],
 )
 

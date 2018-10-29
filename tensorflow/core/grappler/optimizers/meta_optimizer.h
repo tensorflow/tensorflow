@@ -28,8 +28,7 @@ namespace grappler {
 // Run the other grappler optimizers based on the specified rewriter config.
 class MetaOptimizer : public GraphOptimizer {
  public:
-  MetaOptimizer(DeviceBase* cpu_device, const RewriterConfig& cfg)
-      : cpu_device_(cpu_device), cfg_(cfg) {}
+  MetaOptimizer(DeviceBase* cpu_device, const RewriterConfig& cfg);
   ~MetaOptimizer() override = default;
 
   string name() const override { return "meta_optimizer"; };

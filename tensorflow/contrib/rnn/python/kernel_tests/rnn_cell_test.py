@@ -1120,6 +1120,71 @@ class RNNCellTest(test.TestCase):
             r"input size \(3\) must be divisible by number_of_groups \(2\)"):
           gcell(glstm_input, gcell_zero_state)
 
+  def testCFNCell(self):
+    with self.cached_session() as sess:
+      with variable_scope.variable_scope("root"):
+        x = array_ops.zeros([1, 2])
+        m = array_ops.zeros([1, 2])
+        cell = contrib_rnn_cell.CFNCell(
+            units=2,
+            kernel_initializer=initializers.Constant(0.5))
+        g, _ = cell(x, m)
+        sess.run([variables.global_variables_initializer()])
+        res = sess.run([g], {
+            x.name: np.array([[1., 1.]]),
+            m.name: np.array([[0.1, 0.1]])
+        })
+        # Smoke test
+        self.assertAllClose(res[0], [[0.17188203, 0.17188203]])
+      with variable_scope.variable_scope("other"):
+        # Test CFN with input_size != num_units.
+        x = array_ops.zeros([1, 3])
+        m = array_ops.zeros([1, 2])
+        cell = contrib_rnn_cell.CFNCell(
+            units=2,
+            kernel_initializer=initializers.Constant(0.5))
+        g, _ = cell(x, m)
+        sess.run([variables.global_variables_initializer()])
+        res = sess.run([g], {
+            x.name: np.array([[1., 1., 1.]]),
+            m.name: np.array([[0.1, 0.1]])
+        })
+        # Smoke test
+        self.assertAllClose(res[0], [[0.15535763, 0.15535763]])
+
+  def testCFNCellEndToEnd(self):
+    with self.cached_session() as sess:
+      input_shape = 10
+      output_shape = 5
+      timestep = 4
+      batch = 100
+      (x_train, y_train), _ = testing_utils.get_test_data(
+          train_samples=batch,
+          test_samples=0,
+          input_shape=(timestep, input_shape),
+          num_classes=output_shape)
+      y_train = utils.to_categorical(y_train)
+      cell = contrib_rnn_cell.CFNCell(output_shape)
+
+      inputs = array_ops.placeholder(
+          dtypes.float32, shape=(None, timestep, input_shape))
+      predict = array_ops.placeholder(
+          dtypes.float32, shape=(None, output_shape))
+
+      outputs, state = rnn.dynamic_rnn(
+          cell, inputs, dtype=dtypes.float32)
+      self.assertEqual(outputs.shape.as_list(), [None, timestep, output_shape])
+      self.assertEqual(state.shape.as_list(), [None, output_shape])
+      loss = losses.softmax_cross_entropy(predict, state)
+      train_op = training.GradientDescentOptimizer(0.001).minimize(loss)
+
+      sess.run([variables.global_variables_initializer()])
+      _, outputs, state = sess.run(
+          [train_op, outputs, state], {inputs: x_train, predict: y_train})
+
+      self.assertEqual(len(outputs), batch)
+      self.assertEqual(len(state), batch)
+
   def testMinimalRNNCell(self):
     with self.cached_session() as sess:
       with variable_scope.variable_scope(

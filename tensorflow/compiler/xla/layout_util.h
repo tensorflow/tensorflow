@@ -40,6 +40,10 @@ class LayoutUtil {
   static Layout MakeLayoutFromMajorToMinor(
       absl::Span<const int64> major_to_minor);
 
+  // Returns a layout with descending ((i.e. {n, n-1, ..., 0}) minor-to-major
+  // dimensions.
+  static Layout MakeDescendingLayout(int64 rank);
+
   // Creates a sparse layout with the given maximum number of elements. (This is
   // a convenience function for protobuf construction.)
   static Layout MakeSparseLayout(int64 max_sparse_elements);
@@ -64,8 +68,11 @@ class LayoutUtil {
   // default.
   static void SetToDefaultLayout(ProgramShape* program_shape);
 
-  // Validates that the layout within the given shape is correct.
-  static Status ValidateLayoutInShape(const Shape& shape);
+  // Validates that the layout within the given shape is correct. The check
+  // is performed for all subshapes as well. If missing layouts are allowed
+  // the check does not fail on array shapes without layouts.
+  static Status ValidateLayoutInShape(const Shape& shape,
+                                      bool allow_missing_layouts = false);
 
   // Validates that the provided layout satisfies invariants for the given
   // shape.

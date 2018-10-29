@@ -57,13 +57,14 @@ bool SupportsQuantization(const Operator& op) {
          type == OperatorType::kDepthToSpace ||
          type == OperatorType::kLstmCell || type == OperatorType::kGather ||
          type == OperatorType::kTranspose || type == OperatorType::kMean ||
-         type == OperatorType::kGreater ||
+         type == OperatorType::kEqual || type == OperatorType::kGreater ||
          type == OperatorType::kGreaterEqual || type == OperatorType::kLess ||
          type == OperatorType::kLessEqual || type == OperatorType::kSelect ||
          type == OperatorType::kArgMax || type == OperatorType::kRelu ||
          type == OperatorType::kRelu1 || type == OperatorType::kRelu6 ||
          type == OperatorType::kShape || type == OperatorType::kExpandDims ||
-         type == OperatorType::kPack || type == OperatorType::kTopK_V2;
+         type == OperatorType::kPack || type == OperatorType::kTopK_V2 ||
+         type == OperatorType::kResizeNearestNeighbor;
 }
 
 // The quantized op allows output arrays of type float using
@@ -439,7 +440,9 @@ void FixMinMaxPostQuantization(GraphTransformation* transformation,
 
 }  // namespace
 
-bool Quantize::Run(Model* model, std::size_t op_index) {
+::tensorflow::Status Quantize::Run(Model* model, std::size_t op_index,
+                                   bool* modified) {
+  *modified = false;
   // Our general "quantization" graph transformation consists in replacing
   //   QuantizedInputArrays[] ->
   //     DequantizeOperators[] ->
@@ -460,7 +463,7 @@ bool Quantize::Run(Model* model, std::size_t op_index) {
   auto& op = *model->operators[op_index];
   if (op.type == OperatorType::kDequantize ||
       op.type == OperatorType::kFakeQuant) {
-    return false;
+    return ::tensorflow::Status::OK();
   }
 
   // Our assumption here is that the input arrays are already quantized -
@@ -497,7 +500,7 @@ bool Quantize::Run(Model* model, std::size_t op_index) {
       if (!array.minmax && !array.buffer) {
         LOG(ERROR) << "Can't quantize input array " << input
                    << " because it lacks min/max info";
-        return false;
+        return ::tensorflow::Status::OK();
       }
       const auto* other_op = GetOpWithOutput(*model, input);
       if (other_op && other_op->type != OperatorType::kDequantize) {
@@ -507,7 +510,7 @@ bool Quantize::Run(Model* model, std::size_t op_index) {
             "which means that we should yield and let other ops "
             "get quantized first",
             LogName(op), input);
-        return false;
+        return ::tensorflow::Status::OK();
       }
     }
   }
@@ -672,7 +675,8 @@ bool Quantize::Run(Model* model, std::size_t op_index) {
     }
   }
 
-  return changed;
+  *modified = changed;
+  return ::tensorflow::Status::OK();
 }
 
 }  // namespace toco

@@ -23,11 +23,38 @@ namespace tensorflow {
 namespace grappler {
 namespace graph_tests_utils {
 
+// Creates a test NodeDef for FilterDataset.
+NodeDef MakeFilterNode(StringPiece name, StringPiece input_node_name,
+                       StringPiece function_name = "IsZero");
+
+// Creates a test NodeDef for MapDataset.
 NodeDef MakeMapNode(StringPiece name, StringPiece input_node_name,
                     StringPiece function_name = "XTimesTwo");
 
-NodeDef MakeFilterNode(StringPiece name, StringPiece input_node_name,
-                       StringPiece function_name = "IsZero");
+// Creates a test NodeDef for MapAndBatchDataset.
+NodeDef MakeMapAndBatchNode(StringPiece name, StringPiece input_node_name,
+                            StringPiece batch_size_node_name,
+                            StringPiece num_parallel_calls_node_name,
+                            StringPiece drop_remainder_node_name,
+                            StringPiece function_name = "XTimesTwo");
+
+// Creates a test NodeDef for ParallelInterleaveDataset.
+NodeDef MakeParallelInterleaveNode(StringPiece name,
+                                   StringPiece input_node_name,
+                                   StringPiece cycle_length_node_name,
+                                   StringPiece block_length_node_name,
+                                   StringPiece num_parallel_calls_node_name,
+                                   StringPiece function_name, bool sloppy);
+
+// Creates a test NodeDef for ParallelMapDataset.
+NodeDef MakeParallelMapNode(StringPiece name, StringPiece input_node_name,
+                            StringPiece num_parallel_calls_node_name,
+                            StringPiece function_name, bool sloppy);
+
+// Creates a test NodeDef for ParseExampleDataset.
+NodeDef MakeParseExampleNode(StringPiece name, StringPiece input_node_name,
+                             StringPiece num_parallel_calls_node_name,
+                             bool sloppy);
 
 }  // end namespace graph_tests_utils
 }  // end namespace grappler

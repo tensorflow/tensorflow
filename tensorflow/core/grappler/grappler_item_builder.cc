@@ -65,7 +65,11 @@ void InitializeTensor(DataType type, Tensor* tensor) {
     for (int i = 0; i < flat.size(); i++) {
       flat(i) = i % period;
     }
-  } else {
+  } else if (type != DT_STRING && type != DT_RESOURCE && type != DT_VARIANT) {
+    // DT_STRING, DT_RESOURCE and DT_VARIANT are not simple types according to
+    // is_simple_type<> in tensorflow/core/framework/type_traits.h, and
+    // Allocator will run non-trivial constructor/destructor for a Tensor with
+    // one of these types, so we should not memset its buffer.
     memset(const_cast<char*>(tensor->tensor_data().data()), 0,
            tensor->tensor_data().size());
   }
@@ -628,6 +632,15 @@ std::unique_ptr<GrapplerItem> GrapplerItemFromMetaGraphDef(
     }
   }
   return new_item;
+}
+
+std::unique_ptr<GrapplerItem> GrapplerItemFromMetaGraphDefFile(
+    const string& id, const string& meta_graph_file, const ItemConfig& cfg) {
+  MetaGraphDef meta_graph;
+  if (!ReadMetaGraphDefFromFile(meta_graph_file, &meta_graph).ok()) {
+    return nullptr;
+  }
+  return GrapplerItemFromMetaGraphDef(id, meta_graph, cfg);
 }
 
 }  // end namespace grappler

@@ -67,6 +67,7 @@ TfLiteRegistration* Register_PAD();
 TfLiteRegistration* Register_PADV2();
 TfLiteRegistration* Register_RESHAPE();
 TfLiteRegistration* Register_RESIZE_BILINEAR();
+TfLiteRegistration* Register_RESIZE_NEAREST_NEIGHBOR();
 TfLiteRegistration* Register_SKIP_GRAM();
 TfLiteRegistration* Register_SPACE_TO_DEPTH();
 TfLiteRegistration* Register_GATHER();
@@ -120,6 +121,8 @@ TfLiteRegistration* Register_UNPACK();
 TfLiteRegistration* Register_FLOOR_DIV();
 TfLiteRegistration* Register_SQUARE();
 TfLiteRegistration* Register_ZEROS_LIKE();
+TfLiteRegistration* Register_FLOOR_MOD();
+TfLiteRegistration* Register_RANGE();
 
 TfLiteStatus UnsupportedTensorFlowOp(TfLiteContext* context, TfLiteNode* node) {
   context->ReportError(
@@ -194,6 +197,8 @@ BuiltinOpResolver::BuiltinOpResolver() {
   AddBuiltin(BuiltinOperator_PADV2, Register_PADV2());
   AddBuiltin(BuiltinOperator_RESHAPE, Register_RESHAPE());
   AddBuiltin(BuiltinOperator_RESIZE_BILINEAR, Register_RESIZE_BILINEAR());
+  AddBuiltin(BuiltinOperator_RESIZE_NEAREST_NEIGHBOR,
+             Register_RESIZE_NEAREST_NEIGHBOR());
   AddBuiltin(BuiltinOperator_SKIP_GRAM, Register_SKIP_GRAM());
   AddBuiltin(BuiltinOperator_SPACE_TO_DEPTH, Register_SPACE_TO_DEPTH());
   AddBuiltin(BuiltinOperator_GATHER, Register_GATHER());
@@ -249,6 +254,8 @@ BuiltinOpResolver::BuiltinOpResolver() {
   AddBuiltin(BuiltinOperator_FLOOR_DIV, Register_FLOOR_DIV());
   AddBuiltin(BuiltinOperator_SQUARE, Register_SQUARE());
   AddBuiltin(BuiltinOperator_ZEROS_LIKE, Register_ZEROS_LIKE());
+  AddBuiltin(BuiltinOperator_FLOOR_MOD, Register_FLOOR_MOD());
+  AddBuiltin(BuiltinOperator_RANGE, Register_RANGE());
 
   // TODO(andrewharp, ahentz): Move these somewhere more appropriate so that
   // custom ops aren't always included by default.

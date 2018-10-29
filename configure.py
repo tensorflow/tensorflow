@@ -35,7 +35,6 @@ except ImportError:
 
 _DEFAULT_CUDA_VERSION = '9.0'
 _DEFAULT_CUDNN_VERSION = '7'
-_DEFAULT_NCCL_VERSION = '2.2'
 _DEFAULT_CUDA_COMPUTE_CAPABILITIES = '3.5,7.0'
 _DEFAULT_CUDA_PATH = '/usr/local/cuda'
 _DEFAULT_CUDA_PATH_LINUX = '/opt/cuda'
@@ -384,7 +383,9 @@ def set_build_var(environ_cp,
   var = str(int(get_var(environ_cp, var_name, query_item, enabled_by_default)))
   environ_cp[var_name] = var
   if var == '1':
-    write_to_bazelrc('build --define %s=true' % option_name)
+    write_to_bazelrc(
+        'build:%s --define %s=true' % (bazel_config_name, option_name))
+    write_to_bazelrc('build --config=%s' % bazel_config_name)
   elif bazel_config_name is not None:
     # TODO(mikecase): Migrate all users of configure.py to use --config Bazel
     # options and not to set build configs through environment variables.
@@ -496,7 +497,7 @@ def set_cc_opt_flags(environ_cp):
   elif is_windows():
     default_cc_opt_flags = '/arch:AVX'
   else:
-    default_cc_opt_flags = '-march=native'
+    default_cc_opt_flags = '-march=native -Wno-sign-compare'
   question = ('Please specify optimization flags to use during compilation when'
               ' bazel option "--config=opt" is specified [Default is %s]: '
              ) % default_cc_opt_flags
@@ -1109,18 +1110,17 @@ def set_tf_nccl_install_path(environ_cp):
     raise ValueError('Currently NCCL is only supported on Linux platforms.')
 
   ask_nccl_version = (
-      'Please specify the NCCL version you want to use. If NCCL %s is not '
-      'installed, then you can use version 1.3 that can be fetched '
-      'automatically but it may have worse performance with multiple GPUs. '
-      '[Default is %s]: ') % (_DEFAULT_NCCL_VERSION, _DEFAULT_NCCL_VERSION)
+      'Please specify the locally installed NCCL version you want to use. '
+      '[Default is to use https://github.com/nvidia/nccl]: ')
 
   for _ in range(_DEFAULT_PROMPT_ASK_ATTEMPTS):
     tf_nccl_version = get_from_env_or_user_or_default(
-        environ_cp, 'TF_NCCL_VERSION', ask_nccl_version, _DEFAULT_NCCL_VERSION)
-    tf_nccl_version = reformat_version_sequence(str(tf_nccl_version), 1)
+        environ_cp, 'TF_NCCL_VERSION', ask_nccl_version, '')
 
-    if tf_nccl_version == '1':
-      break  # No need to get install path, NCCL 1 is a GitHub repo.
+    if not tf_nccl_version:
+      break  # No need to get install path, building the open source code.
+
+    tf_nccl_version = reformat_version_sequence(str(tf_nccl_version), 1)
 
     # Look with ldconfig first if we can find the library in paths
     # like /usr/lib/x86_64-linux-gnu and the header file in the corresponding
@@ -1182,6 +1182,7 @@ def set_tf_nccl_install_path(environ_cp):
       if is_windows() or is_cygwin():
         nccl_install_path = cygpath(nccl_install_path)
 
+      nccl_lib_path = ''
       if is_windows():
         nccl_lib_path = 'lib/x64/nccl.lib'
       elif is_linux():
@@ -1231,7 +1232,6 @@ def set_tf_nccl_install_path(environ_cp):
   # Set TF_NCCL_VERSION
   environ_cp['TF_NCCL_VERSION'] = tf_nccl_version
   write_action_env_to_bazelrc('TF_NCCL_VERSION', tf_nccl_version)
-
 
 def get_native_cuda_compute_capabilities(environ_cp):
   """Get native cuda compute capabilities.
@@ -1499,14 +1499,6 @@ def set_windows_build_flags(environ_cp):
   # TODO(pcloudy): Remove this flag when upgrading Bazel to 0.16.0
   # Short object file path will be enabled by default.
   write_to_bazelrc('build --experimental_shortened_obj_file_path=true')
-  # When building zip file for some py_binary and py_test targets, don't
-  # include its dependencies. This is for:
-  #   1. Running python tests against the system installed TF pip package.
-  #   2. Avoiding redundant files in
-  #      //tensorflow/tools/pip_package:simple_console_windows,
-  #      which is a py_binary used during creating TF pip package.
-  #      See https://github.com/tensorflow/tensorflow/issues/22390
-  write_to_bazelrc('build --define=no_tensorflow_py_deps=true')
 
   if get_var(
       environ_cp, 'TF_OVERRIDE_EIGEN_STRONG_INLINE', 'Eigen strong inline',
@@ -1561,13 +1553,11 @@ def main():
     # TODO(ibiryukov): Investigate using clang as a cpu or cuda compiler on
     # Windows.
     environ_cp['TF_DOWNLOAD_CLANG'] = '0'
-    environ_cp['TF_ENABLE_XLA'] = '0'
     environ_cp['TF_NEED_MPI'] = '0'
     environ_cp['TF_SET_ANDROID_WORKSPACE'] = '0'
 
   if is_macos():
     environ_cp['TF_NEED_TENSORRT'] = '0'
-    environ_cp['TF_ENABLE_XLA'] = '0'
 
   # The numpy package on ppc64le uses OpenBLAS which has multi-threading
   # issues that lead to incorrect answers.  Set OMP_NUM_THREADS=1 at
@@ -1576,10 +1566,9 @@ def main():
   if is_ppc64le():
     write_action_env_to_bazelrc('OMP_NUM_THREADS', 1)
 
-  set_build_var(environ_cp, 'TF_NEED_IGNITE', 'Apache Ignite',
-                'with_ignite_support', True, 'ignite')
+  xla_enabled_by_default = is_linux()
   set_build_var(environ_cp, 'TF_ENABLE_XLA', 'XLA JIT', 'with_xla_support',
-                True, 'xla')
+                xla_enabled_by_default, 'xla')
 
   set_action_env_var(environ_cp, 'TF_NEED_OPENCL_SYCL', 'OpenCL SYCL', False)
   if environ_cp.get('TF_NEED_OPENCL_SYCL') == '1':
@@ -1671,19 +1660,25 @@ def main():
     create_android_ndk_rule(environ_cp)
     create_android_sdk_rule(environ_cp)
 
-  # On Windows, we don't have MKL support and the build is always monolithic.
-  # So no need to print the following message.
-  # TODO(pcloudy): remove the following if check when they make sense on Windows
-  if not is_windows():
-    print('Preconfigured Bazel build configs. You can use any of the below by '
-          'adding "--config=<>" to your build command. See .bazelrc for more '
-          'details.')
-    config_info_line('mkl', 'Build with MKL support.')
-    config_info_line('monolithic', 'Config for mostly static monolithic build.')
-    config_info_line('gdr', 'Build with GDR support.')
-    config_info_line('verbs', 'Build with libverbs support.')
-    config_info_line('ngraph', 'Build with Intel nGraph support.')
+  print('Preconfigured Bazel build configs. You can use any of the below by '
+        'adding "--config=<>" to your build command. See .bazelrc for more '
+        'details.')
+  config_info_line('mkl', 'Build with MKL support.')
+  config_info_line('monolithic', 'Config for mostly static monolithic build.')
+  config_info_line('gdr', 'Build with GDR support.')
+  config_info_line('verbs', 'Build with libverbs support.')
+  config_info_line('ngraph', 'Build with Intel nGraph support.')
+  config_info_line('dynamic_kernels',
+                   '(Experimental) Build kernels into separate shared objects.')
+
+  print('Preconfigured Bazel build configs to DISABLE default on features:')
+  config_info_line('noaws', 'Disable AWS S3 filesystem support.')
+  config_info_line('nogcp', 'Disable GCP support.')
+  config_info_line('nohdfs', 'Disable HDFS support.')
+  config_info_line('noignite', 'Disable Apacha Ignite support.')
+  config_info_line('nokafka', 'Disable Apache Kafka support.')
 
 
 if __name__ == '__main__':
   main()
+

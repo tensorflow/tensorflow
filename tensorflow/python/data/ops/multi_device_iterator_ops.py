@@ -18,12 +18,14 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.data.ops import iterator_ops
 from tensorflow.python.data.util import nest
 from tensorflow.python.data.util import sparse
 from tensorflow.python.eager import context
+from tensorflow.python.eager import function
 from tensorflow.python.framework import dtypes
-from tensorflow.python.framework import function
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_spec
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import functional_ops
@@ -49,22 +51,22 @@ class _PerDeviceGenerator(dataset_ops.Dataset):
         gen_dataset_ops.multi_device_iterator_to_string_handle(
             multi_device_iterator_resource))
 
-    @function.Defun()
+    @function.defun()
     def _init_func():
       return multi_device_iterator_string_handle
 
-    @function.Defun()
+    @function.defun()
     def _remote_init_func():
       return functional_ops.remote_call(
           target=source_device,
-          args=_init_func.captured_inputs,
+          args=_init_func.get_concrete_function().captured_inputs,
           Tout=[dtypes.string],
-          f=_init_func)
+          f=_init_func.get_concrete_function())
 
-    self._init_func = _remote_init_func
-    self._init_captured_args = _remote_init_func.captured_inputs
+    self._init_func = _remote_init_func.get_concrete_function()
+    self._init_captured_args = self._init_func.captured_inputs
 
-    @function.Defun(dtypes.string)
+    @function.defun(input_signature=[tensor_spec.TensorSpec([], dtypes.string)])
     def _next_func(string_handle):
       multi_device_iterator = (
           gen_dataset_ops.multi_device_iterator_from_string_handle(
@@ -78,31 +80,35 @@ class _PerDeviceGenerator(dataset_ops.Dataset):
           output_types=self._flat_output_types,
           output_shapes=self._flat_output_shapes)
 
-    @function.Defun(dtypes.string)
+    @function.defun_with_attributes(
+        input_signature=[tensor_spec.TensorSpec([], dtypes.string)],
+        attributes={"experimental_ints_on_device": True})
     def _remote_next_func(string_handle):
       return functional_ops.remote_call(
           target=source_device,
-          args=[string_handle] + _next_func.captured_inputs,
+          args=[string_handle] +
+          _next_func.get_concrete_function().captured_inputs,
           Tout=self._flat_output_types,
-          f=_next_func)
+          f=_next_func.get_concrete_function())
 
-    self._next_func = _remote_next_func
-    self._next_captured_args = _remote_next_func.captured_inputs
+    self._next_func = _remote_next_func.get_concrete_function()
+    self._next_captured_args = self._next_func.captured_inputs
 
-    @function.Defun(dtypes.string)
+    @function.defun(input_signature=[tensor_spec.TensorSpec([], dtypes.string)])
     def _finalize_func(unused_string_handle):
       return array_ops.constant(0, dtypes.int64)
 
-    @function.Defun(dtypes.string)
+    @function.defun(input_signature=[tensor_spec.TensorSpec([], dtypes.string)])
     def _remote_finalize_func(string_handle):
       return functional_ops.remote_call(
           target=source_device,
-          args=[string_handle] + _finalize_func.captured_inputs,
+          args=[string_handle] +
+          _finalize_func.get_concrete_function().captured_inputs,
           Tout=[dtypes.int64],
-          f=_finalize_func)
+          f=_finalize_func.get_concrete_function())
 
-    self._finalize_func = _remote_finalize_func
-    self._finalize_captured_args = _remote_finalize_func.captured_inputs
+    self._finalize_func = _remote_finalize_func.get_concrete_function()
+    self._finalize_captured_args = self._finalize_func.captured_inputs
 
   def _as_variant_tensor(self):
     with ops.device(self._target_device):
@@ -165,7 +171,7 @@ class MultiDeviceIterator(object):
       # TODO(rohanj): Fix this. Tracking bug: b/116467184
       raise RuntimeError("MultiDeviceIterator is not currently supported in "
                          "Eager mode.")
-    self._dataset = dataset
+    self._dataset = dataset._apply_options()  # pylint: disable=protected-access
     self._devices = devices
     self._source_device = source_device
     self._source_device_tensor = ops.convert_to_tensor(source_device)
@@ -200,8 +206,7 @@ class MultiDeviceIterator(object):
     # into the device side from its input. It might be useful in rewriting.
     # Create the per device iterators.
     self._device_iterators = []
-    i = 0
-    for device in self._devices:
+    for i, device in enumerate(self._devices):
       ds = _PerDeviceGenerator(
           i, self._multi_device_iterator_resource, self._incarnation_id,
           self._source_device_tensor, device, self._dataset.output_shapes,
@@ -210,7 +215,6 @@ class MultiDeviceIterator(object):
         ds = ds.prefetch(prefetch_buffer_size)
       with ops.device(device):
         self._device_iterators.append(ds.make_initializable_iterator())
-      i += 1
 
     device_iterator_initializers = [
         iterator.initializer for iterator in self._device_iterators
@@ -219,13 +223,31 @@ class MultiDeviceIterator(object):
 
   def get_next(self):
     result = []
-    i = 0
-    for device in self._devices:
+    for i, device in enumerate(self._devices):
       with ops.device(device):
         result.append(self._device_iterators[i].get_next())
-      i += 1
+    return result
+
+  def get_next_as_optional(self):
+    result = []
+    for i, device in enumerate(self._devices):
+      with ops.device(device):
+        result.append(iterator_ops.get_next_as_optional(
+            self._device_iterators[i]))
     return result
 
   @property
   def initializer(self):
     return self._initializer
+
+  @property
+  def output_types(self):
+    return self._dataset.output_types
+
+  @property
+  def output_shapes(self):
+    return self._dataset.output_shapes
+
+  @property
+  def output_classes(self):
+    return self._dataset.output_classes

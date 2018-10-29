@@ -4,6 +4,7 @@ package(default_visibility = [
 
 licenses(["notice"])  # Apache 2.0
 
+load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 load("//tensorflow/contrib/lite:build_def.bzl", "tflite_copts", "gen_selected_ops")
 
 exports_files(glob([
@@ -165,10 +166,6 @@ cc_library(
         "stderr_reporter.h",
     ],
     copts = tflite_copts(),
-    defines = select({
-        ":with_tflite_flex": ["TFLITE_FLEX"],
-        "//conditions:default": [],
-    }),
     linkopts = [
     ] + select({
         "//tensorflow:android": [
@@ -276,6 +273,7 @@ cc_test(
         "testdata/0_subgraphs.bin",
         "testdata/2_subgraphs.bin",
         "testdata/empty_model.bin",
+        "testdata/multi_add_flex.bin",
         "testdata/test_model.bin",
         "testdata/test_model_broken.bin",
     ],
@@ -283,6 +281,26 @@ cc_test(
         ":framework",
         "//tensorflow/contrib/lite/c:c_api_internal",
         "//tensorflow/contrib/lite/core/api",
+        "//tensorflow/contrib/lite/kernels:builtin_ops",
+        "//tensorflow/contrib/lite/testing:util",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+# Test model framework with the flex library linked into the target.
+tf_cc_test(
+    name = "model_flex_test",
+    size = "small",
+    srcs = ["model_flex_test.cc"],
+    data = [
+        "testdata/multi_add_flex.bin",
+    ],
+    tags = ["no_windows"],  # TODO(b/116667551): No weak symbols with MSVC.
+    deps = [
+        ":framework",
+        "//tensorflow/contrib/lite/core/api",
+        "//tensorflow/contrib/lite/delegates/flex:delegate",
+        "//tensorflow/contrib/lite/kernels:builtin_ops",
         "//tensorflow/contrib/lite/testing:util",
         "@com_google_googletest//:gtest",
     ],

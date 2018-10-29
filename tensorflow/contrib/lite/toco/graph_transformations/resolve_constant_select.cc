@@ -27,44 +27,39 @@ namespace toco {
 // This implementation is looking strictly for all-or-nothing on the select
 // condition. It's possible to enhance this by looking per-element and possibly
 // producing a Mul op.
-bool ResolveConstantSelect::Run(Model* model, std::size_t op_index) {
+::tensorflow::Status ResolveConstantSelect::Run(Model* model,
+                                                std::size_t op_index,
+                                                bool* modified) {
+  *modified = false;
   auto it = model->operators.begin() + op_index;
   const auto* base_op = it->get();
   if (base_op->type != OperatorType::kSelect) {
-    return false;
+    return ::tensorflow::Status::OK();
   }
   const auto* op = static_cast<const SelectOperator*>(base_op);
 
   CHECK_GE(op->inputs.size(), 3);
   CHECK_EQ(op->outputs.size(), 1);
-
-  // If the output of this op is a non-discardable array such as an input_array
-  // or a state array of the model, then this is a job for RemoveUnusedOp, not
-  // for constants-propagation.
-  if (!IsDiscardableArray(*model, op->outputs[0])) {
-    return false;
-  }
-
   auto& output_array = model->GetArray(op->outputs[0]);
   if (output_array.data_type == ArrayDataType::kNone) {
     // Yield until the output type has been set by PropagateArrayDataTypes.
-    return false;
+    return ::tensorflow::Status::OK();
   }
   if (!output_array.has_shape()) {
     // Yield until the output shape has been set by PropagateFixedShapes.
-    return false;
+    return ::tensorflow::Status::OK();
   }
 
   // We require the cond input to be constant.
   if (!IsConstantParameterArray(*model, op->inputs[0])) {
-    return false;
+    return ::tensorflow::Status::OK();
   }
   const Array& cond_array = model->GetArray(op->inputs[0]);
   CHECK(cond_array.data_type == ArrayDataType::kBool)
       << "Only bool conditions are supported";
   const auto& cond_data = cond_array.GetBuffer<ArrayDataType::kBool>().data;
   if (cond_data.empty()) {
-    return false;
+    return ::tensorflow::Status::OK();
   }
 
   // Check if the condition is the same for all elements.
@@ -75,12 +70,14 @@ bool ResolveConstantSelect::Run(Model* model, std::size_t op_index) {
           "Cannot resolve %s as constant; cond_array has differing "
           "per-element values",
           LogName(*op));
-      return false;
+      return ::tensorflow::Status::OK();
     }
   }
 
   // Pass-through the selected input.
-  return RemoveTrivialPassthroughOp(this, model, op_index, cond_value ? 1 : 2);
+  *modified =
+      RemoveTrivialPassthroughOp(this, model, op_index, cond_value ? 1 : 2);
+  return ::tensorflow::Status::OK();
 }
 
 }  // namespace toco

@@ -3212,6 +3212,33 @@ TEST_F(GraphConstructorTest, ImportGraphDef_ValidateColationConstraints) {
   TF_EXPECT_OK(ImportGraphDef(options, def, &graph_, nullptr));
 }
 
+TEST_F(GraphConstructorTest, ImportGraphDef_ValidateDefaultDevice) {
+  std::string gdef_ascii(
+      R"EOF(
+      node { name: 'test_input' op: 'TestInput' }
+      node { name: 'test_input_with_dev' op: 'TestInput' device: 'some dev'}
+      node { name: 'test_op' op: 'TestMul' input: [ 'test_input:0', 'test_input:1' ] }
+      node { name: 'test_op_with_dev' op: 'TestMul' input: [ 'test_input:0', 'test_input:1' ] device: 'some dev'}
+      )EOF");
+
+  GraphDef gdef;
+  ASSERT_TRUE(protobuf::TextFormat::ParseFromString(gdef_ascii, &gdef));
+
+  ImportGraphDefOptions options;
+  options.default_device = "/gpu:13";
+  ImportGraphDefResults res;
+
+  TF_ASSERT_OK(ImportGraphDef(options, gdef, &graph_, NULL, &res));
+  std::map<string, string> node2dev;
+  for (Node* n : graph_.nodes()) {
+    node2dev[n->name()] = n->requested_device();
+  }
+  EXPECT_EQ(node2dev["test_input"], "/gpu:13");
+  EXPECT_EQ(node2dev["test_op"], "/gpu:13");
+  EXPECT_EQ(node2dev["test_input_with_dev"], "some dev");
+  EXPECT_EQ(node2dev["test_op_with_dev"], "some dev");
+}
+
 TEST_F(GraphConstructorTest, ImportGraphDef_UnknownOps) {
   const string pb_ascii = "node { name: 'op_from_contrib' op: 'OpFromContrib'}";
   // Try load twice to check for two parts of the error message. We cannot check

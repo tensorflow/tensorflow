@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_JIT_BUILD_XLA_OPS_PASS_H_
 #define TENSORFLOW_COMPILER_JIT_BUILD_XLA_OPS_PASS_H_
 
+#include "absl/types/optional.h"
 #include "tensorflow/core/common_runtime/optimization_registry.h"
 #include "tensorflow/core/lib/core/status.h"
 
@@ -25,7 +26,17 @@ namespace tensorflow {
 // executes (using XLA) TF function calls marked with "_XlaCompiledKernel".
 class BuildXlaOpsPass : public GraphOptimizationPass {
  public:
+  // If enable_lazy_compilation is not nullopt then *enable_lazy_compilation
+  // overrides --tf_xla_enable_lazy_compilation flag in deciding whether lazy
+  // compilation is enabled.
+  explicit BuildXlaOpsPass(
+      absl::optional<bool> enable_lazy_compilation = absl::nullopt)
+      : enable_lazy_compilation_(enable_lazy_compilation) {}
+
   Status Run(const GraphOptimizationPassOptions& options) override;
+
+ private:
+  absl::optional<bool> enable_lazy_compilation_;
 };
 
 }  // namespace tensorflow

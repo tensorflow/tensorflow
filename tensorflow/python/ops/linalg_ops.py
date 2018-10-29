@@ -79,7 +79,8 @@ def _RegularizedGramianCholesky(matrix, l2_regularizer, first_kind):
   return gen_linalg_ops.cholesky(gramian)
 
 
-@tf_export('cholesky_solve', 'linalg.cholesky_solve')
+@tf_export(
+    'linalg.cholesky_solve', v1=['linalg.cholesky_solve', 'cholesky_solve'])
 @deprecation.deprecated_endpoints('cholesky_solve')
 def cholesky_solve(chol, rhs, name=None):
   """Solves systems of linear eqns `A X = RHS`, given Cholesky factorizations.
@@ -168,7 +169,7 @@ def eye(num_rows,
                              name=name)
 
 
-@tf_export('linalg.lstsq', 'matrix_solve_ls')
+@tf_export('linalg.lstsq', v1=['linalg.lstsq', 'matrix_solve_ls'])
 @deprecation.deprecated_endpoints('matrix_solve_ls')
 def matrix_solve_ls(matrix, rhs, l2_regularizer=0.0, fast=True, name=None):
   r"""Solves one or more linear least-squares problems.
@@ -305,7 +306,7 @@ def matrix_solve_ls(matrix, rhs, l2_regularizer=0.0, fast=True, name=None):
         matrix, rhs, l2_regularizer, fast=fast, name=name)
 
 
-@tf_export('linalg.eigh', 'self_adjoint_eig')
+@tf_export('linalg.eigh', v1=['linalg.eigh', 'self_adjoint_eig'])
 @deprecation.deprecated_endpoints('self_adjoint_eig')
 def self_adjoint_eig(tensor, name=None):
   """Computes the eigen decomposition of a batch of self-adjoint matrices.
@@ -328,7 +329,7 @@ def self_adjoint_eig(tensor, name=None):
   return e, v
 
 
-@tf_export('linalg.eigvalsh', 'self_adjoint_eigvals')
+@tf_export('linalg.eigvalsh', v1=['linalg.eigvalsh', 'self_adjoint_eigvals'])
 @deprecation.deprecated_endpoints('self_adjoint_eigvals')
 def self_adjoint_eigvals(tensor, name=None):
   """Computes the eigenvalues of one or more self-adjoint matrices.
@@ -351,7 +352,7 @@ def self_adjoint_eigvals(tensor, name=None):
   return e
 
 
-@tf_export('svd', 'linalg.svd')
+@tf_export('linalg.svd', v1=['linalg.svd', 'svd'])
 @deprecation.deprecated_endpoints('svd')
 def svd(tensor, full_matrices=False, compute_uv=True, name=None):
   r"""Computes the singular value decompositions of one or more matrices.

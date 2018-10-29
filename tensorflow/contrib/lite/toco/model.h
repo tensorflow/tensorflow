@@ -58,6 +58,7 @@ enum class OperatorType : uint8 {
   kL2Normalization,
   kL2Pool,
   kLstmCell,
+  kUnidirectionalSequenceLstm,
   kLocalResponseNormalization,
   kLog,
   kLogistic,
@@ -151,6 +152,7 @@ enum class OperatorType : uint8 {
   kCTCBeamSearchDecoder,
   kUnpack,
   kZerosLike,
+  kResizeNearestNeighbor
 };
 
 // Helper to deal with TensorFlow arrays using a different ordering of
@@ -375,6 +377,13 @@ struct Operator {
   // discarded as unused, even if from its 'outputs' member alone it
   // looks unused.
   bool unresolved_outputs = false;
+
+  // A serialized tensorflow::NodeDef string.
+  // The field is filled only when importing from TensorFlow.
+  // It's guaranteed to be filled for `TensorFlowUnsupportedOperator`.
+  // It's not guaranteed to be filled for other ops. Ops created by graph
+  // transformations won't have TensorFlow NodeDef.
+  string tensorflow_node_def;
 
  protected:
   // Constructor used by subclasses for specific OperatorType's.
@@ -626,6 +635,11 @@ struct LstmCellOperator : Operator {
       : Operator(OperatorType::kLstmCell), kernel_type(KERNEL_BASIC) {}
 
   KernelType kernel_type;
+};
+
+struct UnidirectionalSequenceLstmOperator : Operator {
+  UnidirectionalSequenceLstmOperator()
+      : Operator(OperatorType::kUnidirectionalSequenceLstm) {}
 };
 
 // Element-wise multiplication operator.
@@ -1535,8 +1549,6 @@ struct TensorFlowUnsupportedOperator : Operator {
 
   // The original TF operation type. Used for diagnostic purposes.
   string tensorflow_op;
-  // A serialized tensorflow::NodeDef string.
-  string tensorflow_node_def;
   // A boolean indicating if the unsupported op should be treated as quantized.
   bool quantized = false;
   // A boolean indicating if the unsupported op output should allow float values
@@ -1650,6 +1662,21 @@ struct ArgMinOperator : Operator {
 // TensorFlow equivalent: ResizeBilinear
 struct ResizeBilinearOperator : Operator {
   ResizeBilinearOperator() : Operator(OperatorType::kResizeBilinear) {}
+
+  bool align_corners = false;
+};
+
+// ResizeNearestNeighborOperator operator. It resizes input images with nearest
+// neighbor interpolation. It does not support align_corners at the moment.
+//
+// Inputs:
+//   inputs[0]: required: the input array
+//   inputs[1]: required: the new image size
+//
+// TensorFlow equivalent: ResizeNearestNeighbor
+struct ResizeNearestNeighborOperator : Operator {
+  ResizeNearestNeighborOperator()
+      : Operator(OperatorType::kResizeNearestNeighbor) {}
 
   bool align_corners = false;
 };

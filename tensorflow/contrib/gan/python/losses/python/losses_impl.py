@@ -355,7 +355,8 @@ def wasserstein_gradient_penalty(
       raise ValueError('`generated_data` can\'t have unknown rank.')
 
     differences = generated_data - real_data
-    batch_size = differences.shape[0].value or array_ops.shape(differences)[0]
+    batch_size = differences.shape.dims[0].value or array_ops.shape(
+        differences)[0]
     alpha_shape = [batch_size] + [1] * (differences.shape.ndims - 1)
     alpha = random_ops.random_uniform(shape=alpha_shape)
     interpolates = real_data + (alpha * differences)

@@ -24,6 +24,7 @@ from tensorflow.python.autograph import utils
 from tensorflow.python.autograph.core import config
 from tensorflow.python.autograph.core import converter
 from tensorflow.python.autograph.impl import api
+from tensorflow.python.autograph.pyct import compiler
 from tensorflow.python.autograph.impl import conversion
 from tensorflow.python.framework import constant_op
 from tensorflow.python.keras.engine import training
@@ -34,8 +35,7 @@ class ConversionTest(test.TestCase):
 
   def _simple_program_ctx(self):
     return converter.ProgramContext(
-        recursive=True,
-        autograph_decorators=(),
+        options=converter.ConversionOptions(recursive=True),
         partial_types=(),
         autograph_module=api,
         uncompiled_modules=config.DEFAULT_UNCOMPILED_MODULES)
@@ -65,6 +65,20 @@ class ConversionTest(test.TestCase):
     self.assertIsInstance(fn_node, gast.FunctionDef)
     self.assertEqual('tf__f', name)
     self.assertIs(ns['b'], b)
+
+  def test_entity_to_graph_function_with_defaults(self):
+    b = 2
+    c = 1
+    def f(a, d=c + 1):
+      return a + b + d
+
+    program_ctx = self._simple_program_ctx()
+    nodes, name, _ = conversion.entity_to_graph(f, program_ctx, None, None)
+    fn_node, _ = nodes
+    self.assertIsInstance(fn_node, gast.FunctionDef)
+    self.assertEqual('tf__f', name)
+    self.assertEqual(
+        compiler.ast_to_source(fn_node.args.defaults[0]).strip(), 'None')
 
   def test_entity_to_graph_call_tree(self):
 

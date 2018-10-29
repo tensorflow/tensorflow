@@ -264,22 +264,32 @@ def load_model(filepath, custom_objects=None, compile=True):  # pylint: disable=
       # Set optimizer weights.
       if 'optimizer_weights' in f:
         # Build train function (to get weight updates).
-        model._make_train_function()
-        optimizer_weights_group = f['optimizer_weights']
-        optimizer_weight_names = [
-            n.decode('utf8')
-            for n in optimizer_weights_group.attrs['weight_names']
-        ]
-        optimizer_weight_values = [
-            optimizer_weights_group[n] for n in optimizer_weight_names
-        ]
-        try:
-          model.optimizer.set_weights(optimizer_weight_values)
-        except ValueError:
-          logging.warning('Error in loading the saved optimizer '
-                          'state. As a result, your model is '
-                          'starting with a freshly initialized '
-                          'optimizer.')
+        # Models that aren't graph networks must wait until they are called
+        # with data to _make_train_function() and so can't load optimizer
+        # weights.
+        if model._is_graph_network:  # pylint: disable=protected-access
+          model._make_train_function()
+          optimizer_weights_group = f['optimizer_weights']
+          optimizer_weight_names = [
+              n.decode('utf8')
+              for n in optimizer_weights_group.attrs['weight_names']
+          ]
+          optimizer_weight_values = [
+              optimizer_weights_group[n] for n in optimizer_weight_names
+          ]
+          try:
+            model.optimizer.set_weights(optimizer_weight_values)
+          except ValueError:
+            logging.warning('Error in loading the saved optimizer '
+                            'state. As a result, your model is '
+                            'starting with a freshly initialized '
+                            'optimizer.')
+        else:
+          logging.warning('Sequential models without an `input_shape` '
+                          'passed to the first layer cannot reload their '
+                          'optimizer state. As a result, your model is'
+                          'starting with a freshly initialized optimizer.')
+
   finally:
     if opened_new_file:
       f.close()

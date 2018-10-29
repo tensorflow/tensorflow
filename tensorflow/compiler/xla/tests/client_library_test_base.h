@@ -188,6 +188,13 @@ class ClientLibraryTestBase : public ::testing::Test {
                                 ErrorSpec error,
                                 const Shape* shape_with_layout = nullptr);
 
+  // Build and run the computation and return the result as a literal.
+  // shape_with_layout indicates the result layout to request when calling
+  // Execute.
+  StatusOr<Literal> ComputeAndTransfer(
+      XlaBuilder* builder, absl::Span<GlobalData* const> arguments,
+      const Shape* shape_with_layout = nullptr);
+
   // ComputeAndCompare variant which returns an error status.
   Status ComputeAndCompareLiteralWithStatus(
       XlaBuilder* builder, const Literal& expected,

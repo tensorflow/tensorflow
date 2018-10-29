@@ -187,6 +187,16 @@ typedef struct {
 } TfLiteLSTMParams;
 
 typedef struct {
+  // Parameters needed for the underlying LSTM.
+  TfLiteFusedActivation activation;
+  float cell_clip;
+  float proj_clip;
+
+  // If set to true then the first dimension is time, otherwise batch.
+  bool time_major;
+} TfLiteUnidirectionalSequenceLSTMParams;
+
+typedef struct {
   // Parameters for the LSTM kernel.
   TfLiteFusedActivation activation;
   float cell_clip;
@@ -199,6 +209,10 @@ typedef struct {
 typedef struct {
   bool align_corners;
 } TfLiteResizeBilinearParams;
+
+typedef struct {
+  bool align_corners;
+} TfLiteResizeNearestNeighborParams;
 
 typedef struct {
 } TfLitePadParams;

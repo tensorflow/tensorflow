@@ -278,7 +278,7 @@ class ApiCompatibilityTest(test.TestCase):
     visitor = python_object_to_proto_visitor.PythonObjectToProtoVisitor()
 
     public_api_visitor = public_api.PublicAPIVisitor(visitor)
-    public_api_visitor.do_not_descend_map['tf'].append('contrib')
+    public_api_visitor.private_map['tf'] = ['contrib']
     public_api_visitor.do_not_descend_map['tf.GPUOptions'] = [
         'Experimental']
     if FLAGS.only_test_core_api:
@@ -330,6 +330,11 @@ class ApiCompatibilityTest(test.TestCase):
         # Skip compat.v1 and compat.v2 since they are validated
         # in separate tests.
         additional_private_map={'tf.compat': ['v1', 'v2']})
+
+    # Also check that V1 API has contrib
+    self.assertTrue(
+        'tensorflow.python.util.lazy_loader.LazyLoader'
+        in str(type(tf.contrib)))
 
   @unittest.skipUnless(
       sys.version_info.major == 2,

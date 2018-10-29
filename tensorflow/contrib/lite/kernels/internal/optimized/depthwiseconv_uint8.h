@@ -1546,33 +1546,6 @@ inline void QuantizedDepthwiseConvAccumRowGeneric(
     int16 filter_offset, int out_x_buffer_start, int out_x_buffer_end,
     int output_depth, int32* acc_buffer) {
   gemmlowp::ScopedProfilingLabel label("DepthwiseConvAccumRowGeneric (slow)");
-#ifdef TFLITE_PREVENT_SLOW_GENERIC_DEPTHWISECONV_FALLBACK
-#ifndef ALLOW_SLOW_GENERIC_DEPTHWISECONV_FALLBACK
-  LOG(FATAL)
-      << "\n\n"
-      << "*****************************************************************\n"
-      << "* This tfmini inference code was about to use the slow generic\n"
-      << "* fallback implementation for a DepthwiseConv op, and we want you\n"
-      << "* to be aware of that so that you will know why you get terrible\n"
-      << "* performance.\n"
-      << "*\n"
-      << "* If you would like to carry on with the slow code, compile\n"
-      << "* with this preprocessor token defined:\n"
-      << "* ALLOW_SLOW_GENERIC_DEPTHWISECONV_FALLBACK.\n"
-      << "*\n"
-      << "* The right thing to do, if you care about performance, is to add\n"
-      << "* a new DepthwiseConv kernel to tfmini to cover your case.\n"
-      << "* The relevant parameters defining your case are:\n"
-      << "* stride = " << stride << "\n"
-      << "* input_depth = " << input_depth << "\n"
-      << "* depth_multiplier = " << depth_multiplier << "\n"
-      << "* dilation_factor = " << dilation_factor << "\n"
-      << "*\n"
-      << "* Please do not hesitate to contact benoitjacob@ with this\n"
-      << "* information.\n"
-      << "*****************************************************************\n";
-#endif  // ALLOW_SLOW_GENERIC_DEPTHWISECONV_FALLBACK
-#endif  // TFLITE_PREVENT_SLOW_GENERIC_DEPTHWISECONV_FALLBACK
   const uint8* filter_base_ptr = filter_data;
   for (int filter_x = 0; filter_x < filter_width; ++filter_x) {
     const int out_x_loop_start = std::max(
@@ -1677,13 +1650,12 @@ inline void DepthwiseConvInitAccBuffer(int num_output_pixels, int output_depth,
   }
 }
 
-inline void DepthwiseConv(
+inline void DepthwiseConvGeneral(
     const DepthwiseParams& params, const RuntimeShape& input_shape,
     const uint8* input_data, const RuntimeShape& filter_shape,
     const uint8* filter_data, const RuntimeShape& bias_shape,
     const int32* bias_data, const RuntimeShape& output_shape,
     uint8* output_data) {
-  gemmlowp::ScopedProfilingLabel label("DepthwiseConv/8bit");
   const int stride_width = params.stride_width;
   const int stride_height = params.stride_height;
   const int pad_width = params.padding_values.width;
@@ -1698,12 +1670,6 @@ inline void DepthwiseConv(
   const int output_shift = params.output_shift;
   const int dilation_width_factor = params.dilation_width_factor;
   const int dilation_height_factor = params.dilation_height_factor;
-  TFLITE_DCHECK_GE(dilation_width_factor, 1);
-  TFLITE_DCHECK_GE(dilation_height_factor, 1);
-  TFLITE_DCHECK_EQ(input_shape.DimensionsCount(), 4);
-  TFLITE_DCHECK_EQ(filter_shape.DimensionsCount(), 4);
-  TFLITE_DCHECK_EQ(output_shape.DimensionsCount(), 4);
-  TFLITE_DCHECK_LE(output_activation_min, output_activation_max);
   const int batches = MatchingDim(input_shape, 0, output_shape, 0);
   const int output_depth = MatchingDim(filter_shape, 3, output_shape, 3);
   const int input_height = input_shape.Dims(1);
@@ -1716,24 +1682,6 @@ inline void DepthwiseConv(
 #ifdef USE_NEON
   const bool shift_left = (output_shift > 0);
   const int32 multiplier_power_of_two = shift_left ? (1 << output_shift) : 1;
-#endif
-  TFLITE_DCHECK_EQ(output_depth, input_depth * depth_multiplier);
-  TFLITE_DCHECK_EQ(bias_shape.FlatSize(), output_depth);
-
-// Enable for arm64 except for the Nvidia Linux 4 Tegra (L4T) running on
-// Jetson TX-2. This compiler does not support the offsetof() macro.
-#if defined(__aarch64__) && !defined(GOOGLE_L4T)
-  // Call kernel optimized for depthwise convolutions using 3x3 filters if
-  // parameters are supported.
-  if (Fast3x3FilterKernelSupported(
-          input_shape, filter_shape, stride_width, stride_height,
-          dilation_width_factor, dilation_height_factor, pad_width, pad_height,
-          depth_multiplier, output_shape, output_shift)) {
-    DepthwiseConv3x3Filter(params, input_shape, input_data, filter_shape,
-                           filter_data, bias_shape, bias_data, output_shape,
-                           output_data);
-    return;
-  }
 #endif
 
   static const int kAccBufferMaxSize = 2048;
@@ -1991,6 +1939,56 @@ inline void DepthwiseConv(
       }
     }
   }
+}
+
+inline void DepthwiseConv(
+    const DepthwiseParams& params, const RuntimeShape& input_shape,
+    const uint8* input_data, const RuntimeShape& filter_shape,
+    const uint8* filter_data, const RuntimeShape& bias_shape,
+    const int32* bias_data, const RuntimeShape& output_shape,
+    uint8* output_data) {
+  gemmlowp::ScopedProfilingLabel label("DepthwiseConv/8bit");
+  const int depth_multiplier = params.depth_multiplier;
+  const int32 output_activation_min = params.quantized_activation_min;
+  const int32 output_activation_max = params.quantized_activation_max;
+  const int dilation_width_factor = params.dilation_width_factor;
+  const int dilation_height_factor = params.dilation_height_factor;
+  TFLITE_DCHECK_GE(dilation_width_factor, 1);
+  TFLITE_DCHECK_GE(dilation_height_factor, 1);
+  TFLITE_DCHECK_EQ(input_shape.DimensionsCount(), 4);
+  TFLITE_DCHECK_EQ(filter_shape.DimensionsCount(), 4);
+  TFLITE_DCHECK_EQ(output_shape.DimensionsCount(), 4);
+  TFLITE_DCHECK_LE(output_activation_min, output_activation_max);
+  const int output_depth = MatchingDim(filter_shape, 3, output_shape, 3);
+  const int input_depth = input_shape.Dims(3);
+  TFLITE_DCHECK_EQ(output_depth, input_depth * depth_multiplier);
+  TFLITE_DCHECK_EQ(bias_shape.FlatSize(), output_depth);
+
+// Enable for arm64 except for the Nvidia Linux 4 Tegra (L4T) running on
+// Jetson TX-2. This compiler does not support the offsetof() macro.
+#if defined(__aarch64__) && !defined(GOOGLE_L4T)
+  const int stride_width = params.stride_width;
+  const int stride_height = params.stride_height;
+  const int pad_width = params.padding_values.width;
+  const int pad_height = params.padding_values.height;
+  const int output_shift = params.output_shift;
+
+  // Call kernel optimized for depthwise convolutions using 3x3 filters if
+  // parameters are supported.
+  if (Fast3x3FilterKernelSupported(
+          input_shape, filter_shape, stride_width, stride_height,
+          dilation_width_factor, dilation_height_factor, pad_width, pad_height,
+          depth_multiplier, output_shape, output_shift)) {
+    DepthwiseConv3x3Filter(params, input_shape, input_data, filter_shape,
+                           filter_data, bias_shape, bias_data, output_shape,
+                           output_data);
+    return;
+  }
+#endif
+
+  DepthwiseConvGeneral(params, input_shape, input_data, filter_shape,
+                       filter_data, bias_shape, bias_data, output_shape,
+                       output_data);
 }
 
 }  // namespace optimized_ops

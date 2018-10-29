@@ -23,6 +23,7 @@ import numpy as np
 from tensorflow.python import pywrap_tensorflow
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
+from tensorflow.python.eager import function
 from tensorflow.python.eager import test
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -64,7 +65,7 @@ class BackpropTest(test.TestCase):
     grad = backprop.gradients_function(fn, [0])(var)[0]
     grad = self.evaluate(ops.convert_to_tensor(grad))
 
-    with context.graph_mode():
+    if not context.executing_eagerly():
       tf_var = array_ops.constant(var_np, dtypes.float32)
       tf_ind1 = array_ops.constant([0, 1])
       tf_ind2 = array_ops.constant([2, 3])
@@ -198,7 +199,7 @@ class BackpropTest(test.TestCase):
     grad = backprop.implicit_grad(f)()[0][0]
     opt = training.GradientDescentOptimizer(lrn_rate)
 
-    with context.graph_mode(), self.cached_session():
+    with ops.Graph().as_default(), self.cached_session():
       tf_x = array_ops.ones((batch_size), dtypes.int64)
       # TODO(ashankar,apassos): Change to ResourceVariable.
       tf_embedding = variables.Variable(
@@ -257,6 +258,30 @@ class BackpropTest(test.TestCase):
       t.reset()
       loss += v * v
     self.assertAllEqual(t.gradient(loss, v), 2.0)
+
+  def testAutomaticWatchedVariables(self):
+    with backprop.GradientTape() as t:
+      self.assertEqual(0, len(t.watched_variables()))
+      v = resource_variable_ops.ResourceVariable(1.0)
+      loss = v * v
+      self.assertAllEqual([v], t.watched_variables())
+
+      t.reset()
+      self.assertEqual(0, len(t.watched_variables()))
+      loss += v * v
+      self.assertAllEqual([v], t.watched_variables())
+
+  def testExplicitWatchedVariables(self):
+    with backprop.GradientTape() as t:
+      self.assertEqual(0, len(t.watched_variables()))
+      v = resource_variable_ops.ResourceVariable(1.0)
+      t.watch(v)
+      self.assertAllEqual([v], t.watched_variables())
+
+      t.reset()
+      self.assertEqual(0, len(t.watched_variables()))
+      t.watch(v)
+      self.assertAllEqual([v], t.watched_variables())
 
   @test_util.assert_no_new_tensors
   def testGradientNone(self):
@@ -548,6 +573,17 @@ class BackpropTest(test.TestCase):
     grad = g.gradient(y, [x])[0]
     self.assertEqual(self.evaluate(grad), 6.0)
 
+  @test_util.assert_no_new_tensors
+  @test_util.run_in_graph_and_eager_modes
+  def testGadientTapeCalledOnConstantTarget(self):
+    with backprop.GradientTape() as g:
+      x = variables.Variable([3.0])
+      y = variables.Variable([2.0])
+    with self.assertRaisesRegexp(
+        ValueError,
+        'GradientTape.gradient is not supported for variable targets.'):
+      g.gradient(x, y)
+
   @test_util.run_in_graph_and_eager_modes
   def testGradientTapeWithCond(self):
     x = constant_op.constant(3.0)
@@ -676,6 +712,60 @@ class BackpropTest(test.TestCase):
     dz_dx, dz_dy = g.gradient(z, [x, y])
     self.assertEqual(self.evaluate(dz_dx), 108.0)
     self.assertEqual(self.evaluate(dz_dy), 18.0)
+
+  @test_util.assert_no_new_tensors
+  @test_util.run_in_graph_and_eager_modes
+  def testUnconnectedGradientsDefault(self):
+    x = constant_op.constant(1.0)
+    y = constant_op.constant(3.0)
+    with backprop.GradientTape() as g:
+      g.watch([x, y])
+      z = y * 2
+    dz_dx = g.gradient(z, x)
+    self.assertEqual(dz_dx, None)
+
+  @test_util.assert_no_new_tensors
+  @test_util.run_in_graph_and_eager_modes
+  def testUnconnectedGradientsZeros(self):
+    x = constant_op.constant(1.0, shape=[2, 2])
+    y = constant_op.constant(3.0)
+    with backprop.GradientTape() as g:
+      g.watch([x, y])
+      z = y * 2
+    dz_dx = g.gradient(z, x, unconnected_gradients='zero')
+    self.assertAllEqual([[0.0, 0.0], [0.0, 0.0]], self.evaluate(dz_dx))
+
+  @test_util.assert_no_new_tensors
+  @test_util.run_in_graph_and_eager_modes
+  def testUnknownUnconnectedGradientsValueGiven(self):
+    x = constant_op.constant(1.0)
+    y = constant_op.constant(1.0)
+    with backprop.GradientTape() as g:
+      g.watch([x, y])
+      z = y * 2
+    with self.assertRaisesRegexp(
+        ValueError, "Unknown value for unconnected_gradients: 'nonsense'"):
+      g.gradient(z, x, unconnected_gradients='nonsense')
+
+  @test_util.run_in_graph_and_eager_modes
+  def testUnconnectedGradientsNestedDefunZeros(self):
+
+    @function.defun
+    def f(x):
+      return x * x
+
+    @function.defun
+    def h(y):
+      z = f(y)
+      return array_ops.stop_gradient(z)
+
+    x = constant_op.constant(1.0)
+    with backprop.GradientTape() as g:
+      g.watch(x)
+      y = h(x)
+
+    dy_dx = g.gradient(y, x, unconnected_gradients='zero')
+    self.assertEqual(0.0, self.evaluate(dy_dx))
 
   @test_util.assert_no_new_tensors
   def testEmptyParamsForValueAndGradFunction(self):
@@ -951,7 +1041,7 @@ class BackpropTest(test.TestCase):
       val_and_grads_fn(x, y)
 
   def testZerosCacheDoesntLeakAcrossGraphs(self):
-    with context.graph_mode():
+    with ops.Graph().as_default():
       def get_grad():
         with ops.Graph().as_default(), self.cached_session():
           t = constant_op.constant(1, dtype=dtypes.float32, shape=(10, 4))
@@ -981,7 +1071,6 @@ class BackpropTest(test.TestCase):
     self.evaluate([x1.initializer, x2.initializer])
     self.assertIsNone(dy)
     self.assertEqual(self.evaluate(dz), 3.0)
-
 
   @test_util.run_in_graph_and_eager_modes
   def testDifferentiatingScalarCache(self):
@@ -1023,7 +1112,7 @@ class BackpropTest(test.TestCase):
     self.assertAllEqual(gradients_constants, gradients_variables)
 
   def testUnknownShapes(self):
-    with context.graph_mode():
+    with ops.Graph().as_default():
       with backprop.GradientTape() as tape:
         a = array_ops.placeholder(dtype=dtypes.float32, shape=None)
         tape.watch(a)
@@ -1034,6 +1123,22 @@ class BackpropTest(test.TestCase):
       with self.cached_session() as sess:
         self.assertEqual((8.0, 12.0), sess.run((b, db_da), feed_dict={a: 2.0}))
 
+  @test_util.run_in_graph_and_eager_modes
+  def testCustomGradientInEagerAndGraph(self):
+    @custom_gradient.custom_gradient
+    def f(x):
+      y = x * x
+
+      def grad(dy):
+        return [4 * dy]
+
+      return y, grad
+
+    with backprop.GradientTape() as t:
+      c = constant_op.constant(1.0)
+      t.watch(c)
+      g = f(c)
+    self.assertAllEqual(self.evaluate(t.gradient(g, c)), 4.0)
 
 if __name__ == '__main__':
   test.main()
