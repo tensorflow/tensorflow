@@ -31,7 +31,7 @@ from tensorflow.python.framework import tensor_shape
 
 # TODO expose arrow-cpp to tensor type
 def arrow_to_tensor_type(pa_t):
-  """Conert Arrow to Tensor dtype."""
+  """Convert Arrow to Tensor dtype."""
   if pa.types.is_int8(pa_t):
     tf_t = dtypes.int8
   elif pa.types.is_int16(pa_t):
@@ -80,8 +80,8 @@ class ArrowBaseDataset(dataset_ops.DatasetSource):
 
   @property
   def output_shapes(self):
-    # TODO what about array types?
-    return nest.map_structure(lambda _: tensor_shape.TensorShape([]), self._output_types)
+    # TODO alllow for known shapes
+    return nest.map_structure(lambda _: tensor_shape.TensorShape(None), self._output_types)
 
   @property
   def output_types(self):
