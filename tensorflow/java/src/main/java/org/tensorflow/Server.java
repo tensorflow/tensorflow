@@ -15,8 +15,6 @@ limitations under the License.
 
 package org.tensorflow;
 
-import java.util.concurrent.locks.ReadWriteLock;
-import java.util.concurrent.locks.ReentrantReadWriteLock;
 /**
  * An in-process TensorFlow server, for use in distributed training.
  *
@@ -36,6 +34,11 @@ import java.util.concurrent.locks.ReentrantReadWriteLock;
  *
  * <p>Using example:
  * <pre>{@code
+ * import org.tensorflow.Server;
+ * import org.tensorflow.distruntime.ClusterDef;
+ * import org.tensorflow.distruntime.JobDef;
+ * import org.tensorflow.distruntime.ServerDef;
+ *
  * ClusterDef clusterDef = ClusterDef.newBuilder()
  *   .addJob(JobDef.newBuilder()
  *   .setName("worker")
@@ -70,49 +73,45 @@ public final class Server implements AutoCloseable {
   }
 
   /** Starts an in-process TensorFlow server. */
-  public void start() {
-    lock.readLock().lock();
-    try {
-      start(nativeHandle);
-    }
-    finally {
-      lock.readLock().unlock();
-    }
+  public synchronized void start() {
+    start(nativeHandle);
   }
 
   /**  Stops an in-process TensorFlow server. */
-  public void stop() {
-    lock.readLock().lock();
-    try {
-      stop(nativeHandle);
-    }
-    finally {
-      lock.readLock().unlock();
-    }
+  public synchronized void stop() {
+    stop(nativeHandle);
   }
 
   /** Blocks until the server has been successfully stopped. */
   public void join() {
-    lock.readLock().lock();
-    try {
-      join(nativeHandle);
+    long handle = 0;
+    synchronized(this) {
+      handle = nativeHandle;
+      if (handle != 0) {
+        numJoining++;
+      }
     }
-    finally {
-      lock.readLock().unlock();
+    try {
+      join(handle);
+    } finally {
+      synchronized(this) {
+        if (handle != 0) {
+          numJoining--;
+        } 
+        notifyAll();
+      }
     }
   }
 
   /** Destroy an in-process TensorFlow server, frees memory. */
   @Override
-  public void close() {
-    lock.writeLock().lock();
-    try {
-      delete(nativeHandle);
-      nativeHandle = 0;
+  public synchronized void close() throws InterruptedException {
+    stop();
+    while (numJoining > 0) {
+      wait();
     }
-    finally {
-      lock.writeLock().unlock();
-    }
+    delete(nativeHandle);
+    nativeHandle = 0;
   }
 
   private static native long allocate(byte[] serverDef);
@@ -125,9 +124,9 @@ public final class Server implements AutoCloseable {
 
   private static native void delete(long nativeHandle);
 
-  private final ReadWriteLock lock = new ReentrantReadWriteLock();
-
   private long nativeHandle;
+
+  private int numJoining;
 
   static {
     TensorFlow.init();
