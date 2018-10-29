@@ -907,7 +907,7 @@ bool FlatAffineConstraints::FourierMotzkinEliminate(
 
   // Check if this identifier can be eliminated through a substitution.
   for (unsigned r = 0; r < getNumEqualities(); r++) {
-    if (atIneq(r, pos) != 0) {
+    if (atEq(r, pos) != 0) {
       // Use Gaussian elimination here (since we have an equality).
       bool ret = gaussianEliminateId(pos);
       assert(ret && "Gaussian elimination guaranteed to succeed");
