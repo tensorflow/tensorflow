@@ -23,15 +23,52 @@ limitations under the License.
 namespace tflite {
 namespace optimized_ops {
 
+// clang-format gets confused with this file and ends up formatting lines to
+// be larger than 80 characters. Turn off here and back on at the end of the
+// file.
+// clang-format off
+
+// See CategorizeDotProductKernel for definitive taxonomy.
+enum class DotProduct3x3KernelType {
+  kNone = 0,  // Parameter combination is not supported for dot product kernels.
+  kPlain,
+  kWithDepthMultiplication,
+  kWithPad0Stride2,
+  kWithPad1Stride1,
+};
+
+inline DotProduct3x3KernelType CategorizeDotProductKernel(
+    const DepthwiseParams& params) {
+  const int padding = params.padding_values.width;
+  const int stride = params.stride_width;
+  if (padding != params.padding_values.height ||
+      stride != params.stride_height) {
+    return DotProduct3x3KernelType::kNone;
+  }
+
+  if (params.depth_multiplier == 1) {
+    if (padding == 0 && stride == 1) {
+      return DotProduct3x3KernelType::kPlain;
+    } else if (padding == 0 && stride == 2) {
+      return DotProduct3x3KernelType::kWithPad0Stride2;
+    } else if (padding == 1 && stride == 1) {
+      return DotProduct3x3KernelType::kWithPad1Stride1;
+    } else {
+      return DotProduct3x3KernelType::kNone;
+    }
+  } else {
+    if (padding == 0 && stride == 1) {
+      return DotProduct3x3KernelType::kWithDepthMultiplication;
+    } else {
+      return DotProduct3x3KernelType::kNone;
+    }
+  }
+}
+
 // Enable for arm64 except for the Nvidia Linux 4 Tegra (L4T) running on
 // Jetson TX-2. This compiler does not support the offsetof() macro.
 #if defined(__aarch64__) && !defined(GOOGLE_L4T)
 #include <stddef.h>
-// clang-format gets confused with this file and ends up formatting lines to
-// be larger than 80 characters. Turn off here and back on at the end of the
-// file.
-
-// clang-format off
 
 #define DEPTHWISECONV_SHUFFLE_WORKSPACE_SIZE 10 * 10 * 64
 
