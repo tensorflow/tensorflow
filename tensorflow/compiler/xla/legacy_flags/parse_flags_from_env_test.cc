@@ -40,19 +40,6 @@ static void TestParseFlagsFromEnv(const char* msg) {
   std::vector<char*>* pargv;
   ResetFlagsFromEnvForTesting(&pargc, &pargv);
 
-  // Ensure that environment variable can be parsed when
-  // no flags are expected.
-  std::vector<tensorflow::Flag> empty_flag_list;
-  bool parsed_ok = ParseFlagsFromEnv(empty_flag_list);
-  CHECK(parsed_ok) << msg;
-  const std::vector<char*>& argv_first = *pargv;
-  CHECK_NE(argv_first[0], nullptr) << msg;
-  int i = 0;
-  while (argv_first[i] != nullptr) {
-    i++;
-  }
-  CHECK_EQ(i, *pargc) << msg;
-
   // Check that actual flags can be parsed.
   bool simple = false;
   string with_value;
@@ -66,7 +53,7 @@ static void TestParseFlagsFromEnv(const char* msg) {
       tensorflow::Flag("single_quoted", &single_quoted, ""),
       tensorflow::Flag("double_quoted", &double_quoted, ""),
   };
-  parsed_ok = ParseFlagsFromEnv(flag_list);
+  bool parsed_ok = ParseFlagsFromEnv(flag_list);
   CHECK_EQ(*pargc, 1) << msg;
   const std::vector<char*>& argv_second = *pargv;
   CHECK_NE(argv_second[0], nullptr) << msg;
@@ -92,6 +79,21 @@ TEST(ParseFlagsFromEnv, Basic) {
   // Prepare environment.
   setenv("TF_XLA_FLAGS", kTestFlagString, true /*overwrite*/);
   TestParseFlagsFromEnv("(flags in environment variable)");
+}
+
+// Test that the environent variable is parsed correctly.
+TEST(ParseFlagsFromEnv, UnrecognizedFlag) {
+  // Prepare environment.
+  setenv("TF_XLA_FLAGS", "--simple=xyz --foobar", true /*overwrite*/);
+  int* pargc;
+  std::vector<char*>* pargv;
+  ResetFlagsFromEnvForTesting(&pargc, &pargv);
+
+  string simple;
+  std::vector<tensorflow::Flag> flag_list = {
+      tensorflow::Flag("simple", &simple, ""),
+  };
+  EXPECT_FALSE(ParseFlagsFromEnv(flag_list));
 }
 
 // Test that a file named by the environent variable is parsed correctly.
