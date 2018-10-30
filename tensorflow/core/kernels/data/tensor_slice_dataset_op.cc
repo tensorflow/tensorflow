@@ -125,10 +125,11 @@ class TensorSliceDatasetOp : public DatasetOpKernel {
           out_tensors->reserve(dataset()->tensors_.size());
           for (int i = 0; i < dataset()->tensors_.size(); ++i) {
             const Tensor& t = dataset()->tensors_[i];
-            Tensor t_slice(ctx->allocator({}), t.dtype(),
-                           TensorShape(dataset()->shapes_[i].dim_sizes()));
-            TF_RETURN_IF_ERROR(batch_util::CopySliceToElement(t, &t_slice, i_));
-            out_tensors->emplace_back(std::move(t_slice));
+            out_tensors->emplace_back(
+                ctx->allocator({}), t.dtype(),
+                TensorShape(dataset()->shapes_[i].dim_sizes()));
+            TF_RETURN_IF_ERROR(
+                batch_util::CopySliceToElement(t, &out_tensors->back(), i_));
           }
           ++i_;
           *end_of_sequence = false;
