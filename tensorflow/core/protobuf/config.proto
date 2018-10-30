@@ -400,6 +400,11 @@ message ConfigProto {
     // Which executor to use, the default executor will be used
     // if it is an empty string or "DEFAULT"
     string executor_type = 3;
+
+    // Guidance to formatting of large RecvBuf fields for transfer.
+    // Any positive value sets the max chunk size.  0 defaults to 4096.
+    // Any negative value indicates no max, i.e. one chunk only.
+    int32 recv_buf_max_chunk = 4;
   };
 
   Experimental experimental = 16;
