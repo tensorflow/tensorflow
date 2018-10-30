@@ -108,7 +108,7 @@ template <typename OpClass> struct op_matcher {
 
 /// Entry point for matching a pattern over an SSAValue.
 template <typename Pattern>
-inline bool match(SSAValue *value, const Pattern &pattern) {
+inline bool matchPattern(SSAValue *value, const Pattern &pattern) {
   // TODO: handle other cases
   if (auto *op = value->getDefiningOperation())
     return const_cast<Pattern &>(pattern).match(op);
@@ -130,6 +130,11 @@ m_ConstantInt(IntegerAttr::ValueType *bind_value) {
 /// Matches a constant scalar / vector splat / tensor splat integer one.
 inline detail::constant_int_value_matcher<1> m_One() {
   return detail::constant_int_value_matcher<1>();
+}
+
+/// Matches the given OpClass.
+template <typename OpClass> inline detail::op_matcher<OpClass> m_Op() {
+  return detail::op_matcher<OpClass>();
 }
 
 /// Matches a constant scalar / vector splat / tensor splat integer zero.

@@ -47,11 +47,6 @@ StandardOpsDialect::StandardOpsDialect(MLIRContext *context)
 //===----------------------------------------------------------------------===//
 
 namespace {
-/// Matches a MemRefCastOp.
-inline detail::op_matcher<MemRefCastOp> m_MemRefCast() {
-  return detail::op_matcher<MemRefCastOp>();
-}
-
 /// This is a common class used for patterns of the form
 /// "someop(memrefcast) -> someop".  It folds the source of any memref_cast
 /// into the root operation directly.
@@ -63,7 +58,7 @@ struct MemRefCastFolder : public Pattern {
   std::pair<PatternBenefit, std::unique_ptr<PatternState>>
   match(Operation *op) const override {
     for (auto *operand : op->getOperands())
-      if (::match(operand, m_MemRefCast()))
+      if (matchPattern(operand, m_Op<MemRefCastOp>()))
         return matchSuccess();
 
     return matchFailure();
@@ -122,7 +117,7 @@ struct SimplifyAddX0 : public Pattern {
   match(Operation *op) const override {
     auto addi = op->cast<AddIOp>();
 
-    if (::match(addi->getOperand(1), m_Zero()))
+    if (matchPattern(addi->getOperand(1), m_Zero()))
       return matchSuccess();
 
     return matchFailure();
@@ -232,7 +227,7 @@ struct SimplifyAllocConst : public Pattern {
     // Check to see if any dimensions operands are constants.  If so, we can
     // substitute and drop them.
     for (auto *operand : alloc->getOperands())
-      if (::match(operand, m_ConstantIndex()))
+      if (matchPattern(operand, m_ConstantIndex()))
         return matchSuccess();
     return matchFailure();
   }
@@ -894,7 +889,7 @@ struct SimplifyMulX1 : public Pattern {
   match(Operation *op) const override {
     auto muli = op->cast<MulIOp>();
 
-    if (::match(muli->getOperand(1), m_One()))
+    if (matchPattern(muli->getOperand(1), m_One()))
       return matchSuccess();
 
     return matchFailure();
