@@ -4503,14 +4503,14 @@ bool MIOpenSupport::DoFusedConvolutionBiasActivation(
       output_profile_result);
 }
 
-template <typename T>
+template <typename T, typename U>
 bool MIOpenSupport::DoFusedBatchNormActivationInferenceImpl(
     Stream* stream,
     int miopen_type,  // Actually miopenDataType_t.
     const dnn::BatchDescriptor& x_descriptor, const DeviceMemory<T>& x_data,
     const dnn::BatchDescriptor& scale_offset_mean_variance_descriptor,
-    const DeviceMemory<T>& scale_data, const DeviceMemory<T>& offset_data,
-    const DeviceMemory<T>& mean_data, const DeviceMemory<T>& variance_data,
+    const DeviceMemory<U>& scale_data, const DeviceMemory<U>& offset_data,
+    const DeviceMemory<U>& mean_data, const DeviceMemory<U>& variance_data,
     double epsilon, dnn::ActivationMode activation_mode,
     DeviceMemory<T>* y_data, dnn::ProfileResult* output_profile_result) {
   ScopedTensorDescriptor x_nd{parent_, x_descriptor,
@@ -4588,7 +4588,7 @@ bool MIOpenSupport::DoFusedBatchNormActivationInference(
     const DeviceMemory<float>& variance_data, double epsilon,
     dnn::ActivationMode activation_mode, DeviceMemory<float>* y_data,
     dnn::ProfileResult* output_profile_result) {
-  return DoFusedBatchNormActivationInferenceImpl<float>(
+  return DoFusedBatchNormActivationInferenceImpl<float, float>(
       stream, miopenFloat, x_descriptor, x_data,
       scale_offset_mean_variance_descriptor, scale_data, offset_data, mean_data,
       variance_data, epsilon, activation_mode, y_data, output_profile_result);
@@ -4598,29 +4598,29 @@ bool MIOpenSupport::DoFusedBatchNormActivationInference(
     Stream* stream, const dnn::BatchDescriptor& x_descriptor,
     const DeviceMemory<Eigen::half>& x_data,
     const dnn::BatchDescriptor& scale_offset_mean_variance_descriptor,
-    const DeviceMemory<Eigen::half>& scale_data,
-    const DeviceMemory<Eigen::half>& offset_data,
-    const DeviceMemory<Eigen::half>& mean_data,
-    const DeviceMemory<Eigen::half>& variance_data, double epsilon,
+    const DeviceMemory<float>& scale_data,
+    const DeviceMemory<float>& offset_data,
+    const DeviceMemory<float>& mean_data,
+    const DeviceMemory<float>& variance_data, double epsilon,
     dnn::ActivationMode activation_mode, DeviceMemory<Eigen::half>* y_data,
     dnn::ProfileResult* output_profile_result) {
-  return DoFusedBatchNormActivationInferenceImpl<Eigen::half>(
+  return DoFusedBatchNormActivationInferenceImpl<Eigen::half, float>(
       stream, miopenHalf, x_descriptor, x_data,
       scale_offset_mean_variance_descriptor, scale_data, offset_data, mean_data,
       variance_data, epsilon, activation_mode, y_data, output_profile_result);
 }
 
-template <typename T>
+template <typename T, typename U>
 bool MIOpenSupport::DoFusedBatchNormActivationForwardImpl(
     Stream* stream,
     int miopen_type,  // Actually miopenDataType_t.
     const dnn::BatchDescriptor& x_descriptor, const DeviceMemory<T>& x_data,
     const dnn::BatchDescriptor& scale_offset_mean_variance_descriptor,
-    const DeviceMemory<T>& scale_data, const DeviceMemory<T>& offset_data,
+    const DeviceMemory<U>& scale_data, const DeviceMemory<U>& offset_data,
     double epsilon, dnn::ActivationMode activation_mode,
-    DeviceMemory<T>* y_data, DeviceMemory<T>* batch_mean_data,
-    DeviceMemory<T>* batch_var_data, DeviceMemory<T>* saved_mean_data,
-    DeviceMemory<T>* saved_var_data,
+    DeviceMemory<T>* y_data, DeviceMemory<U>* batch_mean_data,
+    DeviceMemory<U>* batch_var_data, DeviceMemory<U>* saved_mean_data,
+    DeviceMemory<U>* saved_var_data,
     dnn::ProfileResult* output_profile_result) {
   ScopedTensorDescriptor x_nd{parent_, x_descriptor,
                               static_cast<miopenDataType_t>(miopen_type)};
@@ -4698,7 +4698,7 @@ bool MIOpenSupport::DoFusedBatchNormActivationForward(
     DeviceMemory<float>* batch_mean_data, DeviceMemory<float>* batch_var_data,
     DeviceMemory<float>* saved_mean_data, DeviceMemory<float>* saved_var_data,
     dnn::ProfileResult* output_profile_result) {
-  return DoFusedBatchNormActivationForwardImpl<float>(
+  return DoFusedBatchNormActivationForwardImpl<float, float>(
       stream, miopenFloat, x_descriptor, x_data,
       scale_offset_mean_variance_descriptor, scale_data, offset_data, epsilon,
       activation_mode, y_data, batch_mean_data, batch_var_data, saved_mean_data,
@@ -4709,22 +4709,20 @@ bool MIOpenSupport::DoFusedBatchNormActivationForward(
     Stream* stream, const dnn::BatchDescriptor& x_descriptor,
     const DeviceMemory<Eigen::half>& x_data,
     const dnn::BatchDescriptor& scale_offset_mean_variance_descriptor,
-    const DeviceMemory<Eigen::half>& scale_data,
-    const DeviceMemory<Eigen::half>& offset_data, double epsilon,
+    const DeviceMemory<float>& scale_data,
+    const DeviceMemory<float>& offset_data, double epsilon,
     dnn::ActivationMode activation_mode, DeviceMemory<Eigen::half>* y_data,
-    DeviceMemory<Eigen::half>* batch_mean_data,
-    DeviceMemory<Eigen::half>* batch_var_data,
-    DeviceMemory<Eigen::half>* saved_mean_data,
-    DeviceMemory<Eigen::half>* saved_var_data,
+    DeviceMemory<float>* batch_mean_data, DeviceMemory<float>* batch_var_data,
+    DeviceMemory<float>* saved_mean_data, DeviceMemory<float>* saved_var_data,
     dnn::ProfileResult* output_profile_result) {
-  return DoFusedBatchNormActivationForwardImpl<Eigen::half>(
+  return DoFusedBatchNormActivationForwardImpl<Eigen::half, float>(
       stream, miopenHalf, x_descriptor, x_data,
       scale_offset_mean_variance_descriptor, scale_data, offset_data, epsilon,
       activation_mode, y_data, batch_mean_data, batch_var_data, saved_mean_data,
       saved_var_data, output_profile_result);
 }
 
-template <typename T>
+template <typename T, typename U>
 bool MIOpenSupport::DoFusedBatchNormActivationBackwardImpl(
     Stream* stream,
     int miopen_type,  // Actually miopenDataType_t.
@@ -4733,10 +4731,10 @@ bool MIOpenSupport::DoFusedBatchNormActivationBackwardImpl(
     const DeviceMemory<T>& y_act_data, dnn::ActivationMode activation_mode,
     const DeviceMemory<T>& x_bn_data,
     const dnn::BatchDescriptor& scale_offset_mean_variance_descriptor,
-    const DeviceMemory<T>& scale_data, const DeviceMemory<T>& offset_data,
-    const DeviceMemory<T>& saved_mean_data,
-    const DeviceMemory<T>& saved_var_data, DeviceMemory<T>* x_bn_backprop_data,
-    DeviceMemory<T>* scale_backprop_data, DeviceMemory<T>* offset_backprop_data,
+    const DeviceMemory<U>& scale_data, const DeviceMemory<U>& offset_data,
+    const DeviceMemory<U>& saved_mean_data,
+    const DeviceMemory<U>& saved_var_data, DeviceMemory<T>* x_bn_backprop_data,
+    DeviceMemory<U>* scale_backprop_data, DeviceMemory<U>* offset_backprop_data,
     dnn::ProfileResult* output_profile_result) {
   ScopedTensorDescriptor y_act_backprop_nd{
       parent_, y_act_backprop_descriptor,
@@ -4821,7 +4819,7 @@ bool MIOpenSupport::DoFusedBatchNormActivationBackward(
     DeviceMemory<float>* scale_backprop_data,
     DeviceMemory<float>* offset_backprop_data,
     dnn::ProfileResult* output_profile_result) {
-  return DoFusedBatchNormActivationBackwardImpl<float>(
+  return DoFusedBatchNormActivationBackwardImpl<float, float>(
       stream, miopenFloat, y_act_backprop_descriptor, y_act_backprop_data,
       y_act_data, activation_mode, x_bn_data,
       scale_offset_mean_variance_descriptor, scale_data, offset_data,
@@ -4836,15 +4834,15 @@ bool MIOpenSupport::DoFusedBatchNormActivationBackward(
     dnn::ActivationMode activation_mode,
     const DeviceMemory<Eigen::half>& x_bn_data,
     const dnn::BatchDescriptor& scale_offset_mean_variance_descriptor,
-    const DeviceMemory<Eigen::half>& scale_data,
-    const DeviceMemory<Eigen::half>& offset_data,
-    const DeviceMemory<Eigen::half>& saved_mean_data,
-    const DeviceMemory<Eigen::half>& saved_var_data,
+    const DeviceMemory<float>& scale_data,
+    const DeviceMemory<float>& offset_data,
+    const DeviceMemory<float>& saved_mean_data,
+    const DeviceMemory<float>& saved_var_data,
     DeviceMemory<Eigen::half>* x_bn_backprop_data,
-    DeviceMemory<Eigen::half>* scale_backprop_data,
-    DeviceMemory<Eigen::half>* offset_backprop_data,
+    DeviceMemory<float>* scale_backprop_data,
+    DeviceMemory<float>* offset_backprop_data,
     dnn::ProfileResult* output_profile_result) {
-  return DoFusedBatchNormActivationBackwardImpl<Eigen::half>(
+  return DoFusedBatchNormActivationBackwardImpl<Eigen::half, float>(
       stream, miopenHalf, y_act_backprop_descriptor, y_act_backprop_data,
       y_act_data, activation_mode, x_bn_data,
       scale_offset_mean_variance_descriptor, scale_data, offset_data,

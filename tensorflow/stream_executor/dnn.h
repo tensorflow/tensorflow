@@ -2404,10 +2404,10 @@ class DnnSupport {
       Stream* stream, const dnn::BatchDescriptor& x_descriptor,
       const DeviceMemory<Eigen::half>& x_data,
       const dnn::BatchDescriptor& scale_offset_mean_variance_descriptor,
-      const DeviceMemory<Eigen::half>& scale_data,
-      const DeviceMemory<Eigen::half>& offset_data,
-      const DeviceMemory<Eigen::half>& mean_data,
-      const DeviceMemory<Eigen::half>& variance_data, double epsilon,
+      const DeviceMemory<float>& scale_data,
+      const DeviceMemory<float>& offset_data,
+      const DeviceMemory<float>& mean_data,
+      const DeviceMemory<float>& variance_data, double epsilon,
       dnn::ActivationMode activation_mode, DeviceMemory<Eigen::half>* y_data,
       dnn::ProfileResult* output_profile_result) {
     return false;
@@ -2458,13 +2458,11 @@ class DnnSupport {
       Stream* stream, const dnn::BatchDescriptor& x_descriptor,
       const DeviceMemory<Eigen::half>& x_data,
       const dnn::BatchDescriptor& scale_offset_mean_variance_descriptor,
-      const DeviceMemory<Eigen::half>& scale_data,
-      const DeviceMemory<Eigen::half>& offset_data, double epsilon,
+      const DeviceMemory<float>& scale_data,
+      const DeviceMemory<float>& offset_data, double epsilon,
       dnn::ActivationMode activation_mode, DeviceMemory<Eigen::half>* y_data,
-      DeviceMemory<Eigen::half>* batch_mean_data,
-      DeviceMemory<Eigen::half>* batch_var_data,
-      DeviceMemory<Eigen::half>* saved_mean_data,
-      DeviceMemory<Eigen::half>* saved_var_data,
+      DeviceMemory<float>* batch_mean_data, DeviceMemory<float>* batch_var_data,
+      DeviceMemory<float>* saved_mean_data, DeviceMemory<float>* saved_var_data,
       dnn::ProfileResult* output_profile_result) {
     return false;
   }
@@ -2525,13 +2523,13 @@ class DnnSupport {
       dnn::ActivationMode activation_mode,
       const DeviceMemory<Eigen::half>& x_bn_data,
       const dnn::BatchDescriptor& scale_offset_mean_variance_descriptor,
-      const DeviceMemory<Eigen::half>& scale_data,
-      const DeviceMemory<Eigen::half>& offset_data,
-      const DeviceMemory<Eigen::half>& saved_mean_data,
-      const DeviceMemory<Eigen::half>& saved_var_data,
+      const DeviceMemory<float>& scale_data,
+      const DeviceMemory<float>& offset_data,
+      const DeviceMemory<float>& saved_mean_data,
+      const DeviceMemory<float>& saved_var_data,
       DeviceMemory<Eigen::half>* x_bn_backprop_data,
-      DeviceMemory<Eigen::half>* scale_backprop_data,
-      DeviceMemory<Eigen::half>* offset_backprop_data,
+      DeviceMemory<float>* scale_backprop_data,
+      DeviceMemory<float>* offset_backprop_data,
       dnn::ProfileResult* output_profile_result) {
     return false;
   }

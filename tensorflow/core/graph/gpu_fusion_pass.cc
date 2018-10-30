@@ -353,7 +353,8 @@ class ROCmFusionOpBatchNormActivationInference : public ROCmFusionOpBase {
     const Node* actv;
 
     bool is_training;
-    DataType data_type;
+    DataType data_type_T;
+    DataType data_type_U;
     float epsilon;
     string data_format;
     string activation_mode;
@@ -382,7 +383,8 @@ class ROCmFusionOpBatchNormActivationBackward : public ROCmFusionOpBase {
 
     const Node* norm_offset;
 
-    DataType data_type;
+    DataType data_type_T;
+    DataType data_type_U;
     float epsilon;
     string data_format;
     string activation_mode;
@@ -654,7 +656,7 @@ bool ROCmFusionOpConvolutionBiasActivation::IsFusionEligible(const Node* n3,
         VLOG(kVlogLevel)
             << "\tSkipping Fusion : "
             << "Convolution output feeds a node other the the bias node : "
-            << e->dst()->name();
+            << e->dst()->id() << ", " << e->dst()->name();
         VLOG(kVlogLevel) << "===========";
         is_eligible = false;
         break;
@@ -670,7 +672,7 @@ bool ROCmFusionOpConvolutionBiasActivation::IsFusionEligible(const Node* n3,
         VLOG(kVlogLevel)
             << "\tSkipping Fusion : "
             << "Bias output feeds a node other the the activation node : "
-            << e->dst()->name();
+            << e->dst()->id() << ", " << e->dst()->name();
         VLOG(kVlogLevel) << "===========";
         is_eligible = false;
         break;
@@ -937,7 +939,7 @@ bool ROCmFusionOpBatchNormActivationInference::IsFusionEligible(const Node* n2,
         VLOG(kVlogLevel)
             << "\tSkipping Fusion : "
             << "BatchNorm output feeds a node other the the activation node : "
-            << e->dst()->name();
+            << e->dst()->id() << ", " << e->dst()->name();
         VLOG(kVlogLevel) << "===========";
         is_eligible = false;
         break;
@@ -949,20 +951,38 @@ bool ROCmFusionOpBatchNormActivationInference::IsFusionEligible(const Node* n2,
   if (is_eligible) {
     is_eligible = false;
 
+    DataType U_norm = DT_FLOAT;
+    if (d->norm->type_string() == "FusedBatchNorm") {
+      TF_CHECK_OK(GetNodeAttr(d->norm->def(), kAttr_T, &U_norm));
+    } else if (d->norm->type_string() == "FusedBatchNormV2") {
+      TF_CHECK_OK(GetNodeAttr(d->norm->def(), kAttr_U, &U_norm));
+    }
+
+    if (U_norm == DT_FLOAT) {
+      d->data_type_U = U_norm;
+      is_eligible = true;
+    } else {
+      VLOG(kVlogLevel)
+          << "\tSkipping Fusion : "
+          << "BatchNorm scale/offset/mean/variance datatype not supported : "
+          << DataType_Name(U_norm);
+      VLOG(kVlogLevel) << "===========";
+    }
+  }
+
+  if (is_eligible) {
+    is_eligible = false;
+
     DataType T_norm, T_actv;
     TF_CHECK_OK(GetNodeAttr(d->norm->def(), kAttr_T, &T_norm));
     TF_CHECK_OK(GetNodeAttr(d->actv->def(), kAttr_T, &T_actv));
 
     // only float and half types are supported for now
     if ((T_norm == DT_FLOAT) || (T_norm == DT_HALF)) {
-      DataType U_norm = T_norm;
-      if (d->norm->type_string() == "FusedBatchNormV2") {
-        TF_CHECK_OK(GetNodeAttr(d->norm->def(), kAttr_U, &U_norm));
-      }
 
       // datatype for batch-norm and activation must match
-      if ((T_norm == U_norm) && (T_norm == T_actv)) {
-        d->data_type = T_norm;
+      if (T_norm == T_actv) {
+        d->data_type_T = T_norm;
         is_eligible = true;
       } else {
         VLOG(kVlogLevel) << "\tSkipping Fusion : "
@@ -1043,7 +1063,8 @@ void ROCmFusionOpBatchNormActivationInference::CreateFusionOp(
   }
 
   // populate attributes
-  nb.Attr(kAttr_T, d->data_type);
+  nb.Attr(kAttr_T, d->data_type_T);
+  nb.Attr(kAttr_U, d->data_type_U);
   nb.Attr(kAttr_epsilon, d->epsilon);
   nb.Attr(kAttr_data_format, d->data_format);
   nb.Attr(kAttr_activation_mode, d->activation_mode);
@@ -1174,7 +1195,7 @@ bool ROCmFusionOpBatchNormActivationBackward::IsFusionEligible(const Node* n2,
         VLOG(kVlogLevel) << "\tSkipping Fusion : "
                          << "ActivationGrad output feeds a node other the the "
                             "BatchNormGrad node : "
-                         << e->dst()->name();
+                         << e->dst()->id() << ", " << e->dst()->name();
         VLOG(kVlogLevel) << "===========";
         is_eligible = false;
         break;
@@ -1186,20 +1207,38 @@ bool ROCmFusionOpBatchNormActivationBackward::IsFusionEligible(const Node* n2,
   if (is_eligible) {
     is_eligible = false;
 
+    DataType U_norm_grad = DT_FLOAT;
+    if (d->norm_grad->type_string() == "FusedBatchNormGrad") {
+      TF_CHECK_OK(GetNodeAttr(d->norm_grad->def(), kAttr_T, &U_norm_grad));
+    } else if (d->norm_grad->type_string() == "FusedBatchNormGradV2") {
+      TF_CHECK_OK(GetNodeAttr(d->norm_grad->def(), kAttr_U, &U_norm_grad));
+    }
+
+    if (U_norm_grad == DT_FLOAT) {
+      d->data_type_U = U_norm_grad;
+      is_eligible = true;
+    } else {
+      VLOG(kVlogLevel) << "\tSkipping Fusion : "
+                       << "BatchNormGrad scale/offset/mean/variance datatype "
+                          "not supported : "
+                       << DataType_Name(U_norm_grad);
+      VLOG(kVlogLevel) << "===========";
+    }
+  }
+
+  if (is_eligible) {
+    is_eligible = false;
+
     DataType T_norm_grad, T_actv_grad;
     TF_CHECK_OK(GetNodeAttr(d->norm_grad->def(), kAttr_T, &T_norm_grad));
     TF_CHECK_OK(GetNodeAttr(d->actv_grad->def(), kAttr_T, &T_actv_grad));
 
     // only float and half types are supported for now
     if ((T_norm_grad == DT_FLOAT) || (T_norm_grad == DT_HALF)) {
-      DataType U_norm_grad = T_norm_grad;
-      if (d->norm_grad->type_string() == "FusedBatchNormGradV2") {
-        TF_CHECK_OK(GetNodeAttr(d->norm_grad->def(), kAttr_U, &U_norm_grad));
-      }
 
       // datatype for batch-norm and activation must match
-      if ((T_norm_grad == U_norm_grad) && (T_norm_grad == T_actv_grad)) {
-        d->data_type = T_norm_grad;
+      if (T_norm_grad == T_actv_grad) {
+        d->data_type_T = T_norm_grad;
         is_eligible = true;
       } else {
         VLOG(kVlogLevel) << "\tSkipping Fusion : "
@@ -1289,7 +1328,8 @@ void ROCmFusionOpBatchNormActivationBackward::CreateFusionOp(
            norm_grad_input_edges[4]->src_output());
 
   // populate attributes
-  nb.Attr(kAttr_T, d->data_type);
+  nb.Attr(kAttr_T, d->data_type_T);
+  nb.Attr(kAttr_U, d->data_type_U);
   nb.Attr(kAttr_epsilon, d->epsilon);
   nb.Attr(kAttr_data_format, d->data_format);
   nb.Attr(kAttr_activation_mode, d->activation_mode);
@@ -1395,9 +1435,10 @@ bool ROCmFusionOpAddRelu::IsFusionEligible(const Node* n2, FusionData* d) {
   if (is_eligible) {
     for (const Edge* e : d->add->out_edges()) {
       if ((e->src_output() == 0) && (e->dst() != d->relu)) {
-        VLOG(kVlogLevel) << "\tSkipping Fusion : "
-                         << "Output from Add also feeds node other then Relu : "
-                         << e->dst()->name();
+        VLOG(kVlogLevel)
+            << "\tSkipping Fusion : "
+            << "Output from Add also feeds a node other then Relu : "
+            << e->dst()->id() << ", " << e->dst()->name();
         VLOG(kVlogLevel) << "===========";
         is_eligible = false;
         break;
@@ -1564,8 +1605,8 @@ bool ROCmFusionOpAddNReluGrad::IsFusionEligible(const Node* n2, FusionData* d) {
       if ((e->src_output() == 0) && (e->dst() != d->reluGrad)) {
         VLOG(kVlogLevel)
             << "\tSkipping Fusion : "
-            << "Output from AddN also feeds node other then ReluGrad : "
-            << e->dst()->name();
+            << "Output from AddN also feeds a node other then ReluGrad : "
+            << e->dst()->id() << ", " << e->dst()->name();
         VLOG(kVlogLevel) << "===========";
         is_eligible = false;
         break;

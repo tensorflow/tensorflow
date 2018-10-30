@@ -46,7 +46,7 @@ typedef Eigen::GpuDevice GPUDevice;
 
 //---------------------------------------------------------------------------
 
-template <typename Device, typename T>
+template <typename Device, typename T, typename U>
 class ROCmFusionKernelBatchNormActivationInference : public OpKernel {
  public:
   explicit ROCmFusionKernelBatchNormActivationInference(
@@ -150,17 +150,17 @@ class ROCmFusionKernelBatchNormActivationInference : public OpKernel {
 
       auto x_data = AsDeviceMemory(fusion_input.template flat<T>().data(),
                                    fusion_input.template flat<T>().size());
-      auto scale_data = AsDeviceMemory(scale.template flat<T>().data(),
-                                       scale.template flat<T>().size());
+      auto scale_data = AsDeviceMemory(scale.template flat<U>().data(),
+                                       scale.template flat<U>().size());
 
-      auto offset_data = AsDeviceMemory(offset.template flat<T>().data(),
-                                        offset.template flat<T>().size());
+      auto offset_data = AsDeviceMemory(offset.template flat<U>().data(),
+                                        offset.template flat<U>().size());
 
-      auto mean_data = AsDeviceMemory(mean.template flat<T>().data(),
-                                      mean.template flat<T>().size());
+      auto mean_data = AsDeviceMemory(mean.template flat<U>().data(),
+                                      mean.template flat<U>().size());
 
-      auto variance_data = AsDeviceMemory(variance.template flat<T>().data(),
-                                          variance.template flat<T>().size());
+      auto variance_data = AsDeviceMemory(variance.template flat<U>().data(),
+                                          variance.template flat<U>().size());
 
       auto dnn_activation_mode = GetDnnActivationMode(activation_mode_);
 
@@ -203,17 +203,17 @@ REGISTER_KERNEL_BUILDER(
     Name("_ROCmFusedBatchNormActivationInference")
         .Device(DEVICE_GPU)
         .TypeConstraint<float>("T"),
-    ROCmFusionKernelBatchNormActivationInference<GPUDevice, float>);
+    ROCmFusionKernelBatchNormActivationInference<GPUDevice, float, float>);
 
-REGISTER_KERNEL_BUILDER(
-    Name("_ROCmFusedBatchNormActivationInference")
-        .Device(DEVICE_GPU)
-        .TypeConstraint<Eigen::half>("T"),
-    ROCmFusionKernelBatchNormActivationInference<GPUDevice, Eigen::half>);
+REGISTER_KERNEL_BUILDER(Name("_ROCmFusedBatchNormActivationInference")
+                            .Device(DEVICE_GPU)
+                            .TypeConstraint<Eigen::half>("T"),
+                        ROCmFusionKernelBatchNormActivationInference<
+                            GPUDevice, Eigen::half, float>);
 
 //---------------------------------------------------------------------------
 
-template <typename Device, typename T>
+template <typename Device, typename T, typename U>
 class ROCmFusionKernelBatchNormActivationForward : public OpKernel {
  public:
   explicit ROCmFusionKernelBatchNormActivationForward(OpKernelConstruction* ctx)
@@ -320,11 +320,12 @@ class ROCmFusionKernelBatchNormActivationForward : public OpKernel {
 
       auto x_data = AsDeviceMemory(fusion_input.template flat<T>().data(),
                                    fusion_input.template flat<T>().size());
-      auto scale_data = AsDeviceMemory(scale.template flat<T>().data(),
-                                       scale.template flat<T>().size());
 
-      auto offset_data = AsDeviceMemory(offset.template flat<T>().data(),
-                                        offset.template flat<T>().size());
+      auto scale_data = AsDeviceMemory(scale.template flat<U>().data(),
+                                       scale.template flat<U>().size());
+
+      auto offset_data = AsDeviceMemory(offset.template flat<U>().data(),
+                                        offset.template flat<U>().size());
 
       auto dnn_activation_mode = GetDnnActivationMode(activation_mode_);
 
@@ -332,20 +333,20 @@ class ROCmFusionKernelBatchNormActivationForward : public OpKernel {
                                    fusion_output.template flat<T>().size());
 
       auto batch_mean_data =
-          AsDeviceMemory(batch_mean->template flat<T>().data(),
-                         batch_mean->template flat<T>().size());
+          AsDeviceMemory(batch_mean->template flat<U>().data(),
+                         batch_mean->template flat<U>().size());
 
       auto batch_var_data =
-          AsDeviceMemory(batch_var->template flat<T>().data(),
-                         batch_var->template flat<T>().size());
+          AsDeviceMemory(batch_var->template flat<U>().data(),
+                         batch_var->template flat<U>().size());
 
       auto saved_mean_data =
-          AsDeviceMemory(saved_mean->template flat<T>().data(),
-                         saved_mean->template flat<T>().size());
+          AsDeviceMemory(saved_mean->template flat<U>().data(),
+                         saved_mean->template flat<U>().size());
 
       auto saved_var_data =
-          AsDeviceMemory(saved_var->template flat<T>().data(),
-                         saved_var->template flat<T>().size());
+          AsDeviceMemory(saved_var->template flat<U>().data(),
+                         saved_var->template flat<U>().size());
 
       auto* stream = ctx->op_device_context()->stream();
 
@@ -384,17 +385,17 @@ REGISTER_KERNEL_BUILDER(
     Name("_ROCmFusedBatchNormActivationForward")
         .Device(DEVICE_GPU)
         .TypeConstraint<float>("T"),
-    ROCmFusionKernelBatchNormActivationForward<GPUDevice, float>);
+    ROCmFusionKernelBatchNormActivationForward<GPUDevice, float, float>);
 
 REGISTER_KERNEL_BUILDER(
     Name("_ROCmFusedBatchNormActivationForward")
         .Device(DEVICE_GPU)
         .TypeConstraint<Eigen::half>("T"),
-    ROCmFusionKernelBatchNormActivationForward<GPUDevice, Eigen::half>);
+    ROCmFusionKernelBatchNormActivationForward<GPUDevice, Eigen::half, float>);
 
 //---------------------------------------------------------------------------
 
-template <typename Device, typename T>
+template <typename Device, typename T, typename U>
 class ROCmFusionKernelBatchNormActivationBackward : public OpKernel {
  public:
   explicit ROCmFusionKernelBatchNormActivationBackward(
@@ -523,17 +524,17 @@ class ROCmFusionKernelBatchNormActivationBackward : public OpKernel {
       auto x_bn_data = AsDeviceMemory(x_bn.template flat<T>().data(),
                                       x_bn.template flat<T>().size());
 
-      auto scale_data = AsDeviceMemory(scale.template flat<T>().data(),
-                                       scale.template flat<T>().size());
+      auto scale_data = AsDeviceMemory(scale.template flat<U>().data(),
+                                       scale.template flat<U>().size());
 
-      auto offset_data = AsDeviceMemory(offset.template flat<T>().data(),
-                                        offset.template flat<T>().size());
+      auto offset_data = AsDeviceMemory(offset.template flat<U>().data(),
+                                        offset.template flat<U>().size());
 
-      auto mean_data = AsDeviceMemory(mean.template flat<T>().data(),
-                                      mean.template flat<T>().size());
+      auto mean_data = AsDeviceMemory(mean.template flat<U>().data(),
+                                      mean.template flat<U>().size());
 
-      auto variance_data = AsDeviceMemory(variance.template flat<T>().data(),
-                                          variance.template flat<T>().size());
+      auto variance_data = AsDeviceMemory(variance.template flat<U>().data(),
+                                          variance.template flat<U>().size());
 
       auto dnn_activation_mode = GetDnnActivationMode(activation_mode_);
 
@@ -542,12 +543,12 @@ class ROCmFusionKernelBatchNormActivationBackward : public OpKernel {
                          fusion_output.template flat<T>().size());
 
       auto scale_backprop_data =
-          AsDeviceMemory(scale_backprop->template flat<T>().data(),
-                         scale_backprop->template flat<T>().size());
+          AsDeviceMemory(scale_backprop->template flat<U>().data(),
+                         scale_backprop->template flat<U>().size());
 
       auto offset_backprop_data =
-          AsDeviceMemory(offset_backprop->template flat<T>().data(),
-                         offset_backprop->template flat<T>().size());
+          AsDeviceMemory(offset_backprop->template flat<U>().data(),
+                         offset_backprop->template flat<U>().size());
 
       auto* stream = ctx->op_device_context()->stream();
 
@@ -587,13 +588,13 @@ REGISTER_KERNEL_BUILDER(
     Name("_ROCmFusedBatchNormActivationBackward")
         .Device(DEVICE_GPU)
         .TypeConstraint<float>("T"),
-    ROCmFusionKernelBatchNormActivationBackward<GPUDevice, float>);
+    ROCmFusionKernelBatchNormActivationBackward<GPUDevice, float, float>);
 
 REGISTER_KERNEL_BUILDER(
     Name("_ROCmFusedBatchNormActivationBackward")
         .Device(DEVICE_GPU)
         .TypeConstraint<Eigen::half>("T"),
-    ROCmFusionKernelBatchNormActivationBackward<GPUDevice, Eigen::half>);
+    ROCmFusionKernelBatchNormActivationBackward<GPUDevice, Eigen::half, float>);
 
 //---------------------------------------------------------------------------
 
