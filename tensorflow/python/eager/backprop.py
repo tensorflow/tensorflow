@@ -767,7 +767,10 @@ class GradientTape(object):
 
   def __del__(self):
     if self._created_eagerly:
-      context.context().end_step()
+      try:
+        context.context().end_step()
+      except AttributeError:
+        pass
 
   def watch(self, tensor):
     """Ensures that `tensor` is being traced by this tape.
