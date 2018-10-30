@@ -514,6 +514,7 @@ cuda_py_test(
         "//tensorflow/python:platform",
         "//tensorflow/python:summary",
     ],
+    shard_count = 5,
     tags = [
         "multi_and_single_gpu",
         "no_pip",
