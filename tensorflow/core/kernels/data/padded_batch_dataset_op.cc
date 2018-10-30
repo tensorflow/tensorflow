@@ -309,9 +309,10 @@ class PaddedBatchDatasetOp : public UnaryDatasetOpKernel {
 
           // 2. Copy each batch element to the appropriate location in
           // the output component tensor.
-          Tensor batch_component(ctx->allocator({}),
-                                 output_dtypes()[component_index],
-                                 batch_component_shape);
+          out_tensors->emplace_back(ctx->allocator({}),
+                                    output_dtypes()[component_index],
+                                    batch_component_shape);
+          Tensor& batch_component = out_tensors->back();
           TF_RETURN_IF_ERROR(batch_util::SetElementZero(
               &batch_component, dataset()->padding_values_[component_index]));
 
@@ -331,7 +332,6 @@ class PaddedBatchDatasetOp : public UnaryDatasetOpKernel {
                   batch_elements[i][component_index], &batch_component, i));
             }
           }
-          out_tensors->push_back(std::move(batch_component));
         }
         *end_of_sequence = false;
         return Status::OK();

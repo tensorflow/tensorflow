@@ -142,9 +142,9 @@ class TextLineDatasetOp : public DatasetOpKernel {
 
             if (s.ok()) {
               // Produce the line as output.
-              Tensor line_tensor(ctx->allocator({}), DT_STRING, {});
-              line_tensor.scalar<string>()() = line_contents;
-              out_tensors->emplace_back(std::move(line_tensor));
+              out_tensors->emplace_back(ctx->allocator({}), DT_STRING,
+                                        TensorShape({}));
+              out_tensors->back().scalar<string>()() = std::move(line_contents);
               *end_of_sequence = false;
               return Status::OK();
             } else if (!errors::IsOutOfRange(s)) {
@@ -386,9 +386,9 @@ class FixedLengthRecordDatasetOp : public DatasetOpKernel {
               TF_RETURN_IF_ERROR(
                   input_buffer_->ReadNBytes(dataset()->record_bytes_, &record));
               // Produce the record as output.
-              Tensor record_tensor(ctx->allocator({}), DT_STRING, {});
-              record_tensor.scalar<string>()() = record;
-              out_tensors->emplace_back(std::move(record_tensor));
+              out_tensors->emplace_back(ctx->allocator({}), DT_STRING,
+                                        TensorShape({}));
+              out_tensors->back().scalar<string>()() = record;
               *end_of_sequence = false;
               return Status::OK();
             }
@@ -592,13 +592,16 @@ class TFRecordDatasetOp : public DatasetOpKernel {
         do {
           // We are currently processing a file, so try to read the next record.
           if (reader_) {
-            Tensor result_tensor(ctx->allocator({}), DT_STRING, {});
-            Status s = reader_->ReadRecord(&result_tensor.scalar<string>()());
+            out_tensors->emplace_back(ctx->allocator({}), DT_STRING,
+                                      TensorShape({}));
+            Status s =
+                reader_->ReadRecord(&out_tensors->back().scalar<string>()());
             if (s.ok()) {
-              out_tensors->emplace_back(std::move(result_tensor));
               *end_of_sequence = false;
               return Status::OK();
-            } else if (!errors::IsOutOfRange(s)) {
+            }
+            out_tensors->pop_back();
+            if (!errors::IsOutOfRange(s)) {
               return s;
             }
 

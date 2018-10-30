@@ -483,9 +483,9 @@ class MapAndBatchDatasetOp : public UnaryDatasetOpKernel {
           component_shape.AppendShape(return_values->at(i).shape());
           AllocatorAttributes attr;
           attr.set_gpu_compatible(true);
-          Tensor component(ctx->allocator(attr), return_values->at(i).dtype(),
-                           component_shape);
-          result->output.emplace_back(std::move(component));
+          result->output.emplace_back(ctx->allocator(attr),
+                                      return_values->at(i).dtype(),
+                                      component_shape);
         }
         result->output_allocated = true;
       }
@@ -520,11 +520,10 @@ class MapAndBatchDatasetOp : public UnaryDatasetOpKernel {
             component_shape.set_dim(0, result->num_elements);
             AllocatorAttributes attr;
             attr.set_gpu_compatible(true);
-            Tensor component(ctx->allocator(attr), output[i].dtype(),
-                             component_shape);
-            TF_RETURN_IF_ERROR(
-                CopyPartialBatch(&component, output[i], result->num_elements));
-            out_tensors->emplace_back(std::move(component));
+            out_tensors->emplace_back(ctx->allocator(attr), output[i].dtype(),
+                                      component_shape);
+            TF_RETURN_IF_ERROR(CopyPartialBatch(&out_tensors->back(), output[i],
+                                                result->num_elements));
           }
           // Deallocate tensors allocated for the output.
           result->output.clear();
