@@ -307,11 +307,8 @@ def generated_test_models():
 # bug or issue.
 def generated_test_models_failing(conversion_mode):
     if conversion_mode == "toco-flex":
-        # TODO(b/117328698): Fix and enable the known flex failures.
         return [
-            "lstm",
-            "split",
-            "unpack",
+            "lstm",  # TODO(b/117510976): Restore when lstm flex conversion works.
         ]
 
     return []
