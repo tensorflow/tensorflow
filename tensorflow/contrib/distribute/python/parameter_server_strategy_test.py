@@ -191,8 +191,6 @@ class ParameterServerStrategyTestBase(
                              config=sess_config) as sess, \
          d.scope():
 
-      # Define a variable outside the call_for_each_tower scope. This is not
-      # recommended.
       n = variable_scope.get_variable(
           'n',
           initializer=constant_op.constant([10.0, 20.0]),
