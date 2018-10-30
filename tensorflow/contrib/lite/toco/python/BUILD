@@ -39,6 +39,7 @@ py_binary(
     srcs_version = "PY2AND3",
     deps = [
         ":tensorflow_wrap_toco",
+        "//tensorflow:tensorflow_py_no_contrib",  # Keep
         "//tensorflow/python:platform",
     ],
 )
