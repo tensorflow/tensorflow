@@ -59,6 +59,9 @@ namespace cpu {
 class IrEmitter : public DfsHloVisitorWithDefault,
                   public IrBuilderMixin<IrEmitter> {
  public:
+  using GeneratorForOperandIrArrays =
+      std::function<std::vector<llvm_ir::IrArray>()>;
+
   // Create a new LLVM IR emitter.
   //
   // hlo_module: the HLO module we are emitting IR for.
@@ -207,6 +210,11 @@ class IrEmitter : public DfsHloVisitorWithDefault,
   // Gets a list of IrArrays, one for each of hlo's operands.
   std::vector<llvm_ir::IrArray> GetIrArraysForOperandsOf(
       const HloInstruction* hlo);
+
+  GeneratorForOperandIrArrays GetGeneratorForOperandIrArrays(
+      HloInstruction* unnested_hlo) {
+    return [=]() { return GetIrArraysForOperandsOf(unnested_hlo); };
+  }
 
   // Augments IrArray with aliasing information.
   void AddAliasingInformationToIrArray(const HloInstruction& hlo,
