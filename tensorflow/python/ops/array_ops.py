@@ -168,6 +168,17 @@ setdiff1d.__doc__ = gen_array_ops.list_diff.__doc__
 def broadcast_dynamic_shape(shape_x, shape_y):
   """Returns the broadcasted dynamic shape between `shape_x` and `shape_y`.
 
+  In graph mode, this op computes the shape "dynamically" at graph execution
+  time, not statically at graph creation time.  The input shapes to this op
+  must be fully specified, with no unknown dimensions.
+  
+  For static inference of broadcast shapes with possibly unknown dimensions,
+  use `tf.broadcast_static_shape` instead.
+
+  See [the "Broadcasting semantics" section of the TensorFlow XLA guide](
+  https://www.tensorflow.org/performance/xla/broadcasting)
+  for a detailed description of TensorFlow's broadcasting semantics.
+
   Args:
     shape_x: A rank 1 integer `Tensor`, representing the shape of x.
     shape_y: A rank 1 integer `Tensor`, representing the shape of y.
@@ -182,6 +193,25 @@ def broadcast_dynamic_shape(shape_x, shape_y):
 def broadcast_static_shape(shape_x, shape_y):
   """Returns the broadcasted static shape between `shape_x` and `shape_y`.
 
+  This function performs this shape inference statically, i.e. at graph 
+  construction time.  To compute the broadcasted shape of actual tensor
+  values while running a graph, use `tf.broadcast_dynamic_shape` instead.
+  
+  If some dimensions of the input shapes are unknown, this function
+  will infer as much information as possible about the broadcasted shape.
+  For example:
+  ```python
+  tf.broadcast_static_shape(
+    tf.TensorShape([None,2,3]),
+    tf.TensorShape([2,None])
+  )
+  # ==> TensorShape([Dimension(None), Dimension(2), Dimension(3)])
+  ```
+
+  See [the "Broadcasting semantics" section of the TensorFlow XLA guide](
+  https://www.tensorflow.org/performance/xla/broadcasting)
+  for a detailed description of TensorFlow's broadcasting semantics. 
+
   Args:
     shape_x: A `TensorShape`
     shape_y: A `TensorShape`
@@ -190,7 +220,7 @@ def broadcast_static_shape(shape_x, shape_y):
     A `TensorShape` representing the broadcasted shape.
 
   Raises:
-    ValueError: If the two shapes can not be broadcasted.
+    ValueError: If the two shapes cannot be broadcasted.
   """
   return common_shapes.broadcast_shape(shape_x, shape_y)
 
@@ -1132,16 +1162,32 @@ def boolean_mask(tensor, mask, name="boolean_mask", axis=None):
   # 1-D example
   tensor = [0, 1, 2, 3]
   mask = np.array([True, False, True, False])
-  boolean_mask(tensor, mask)  # [0, 2]
+  tf.boolean_mask(tensor, mask).numpy()  
+  # ==> array([0, 2], dtype=int32)
   ```
 
-  In general, `0 < dim(mask) = K <= dim(tensor)`, and `mask`'s shape must match
-  the first K dimensions of `tensor`'s shape.  We then have:
+  In general, `0 < tf.rank(mask) = K <= tf.rank(tensor)`, and `mask`'s shape 
+  must match the first K dimensions of `tensor`'s shape.  We then have:
     `boolean_mask(tensor, mask)[i, j1,...,jd] = tensor[i1,...,iK,j1,...,jd]`
   where `(i1,...,iK)` is the ith `True` entry of `mask` (row-major order).
+  For example:
+
+  ```python
+  # 3-D tensor and 2-D mask
+  tensor = [[[1, 2],
+             [3, 4]],
+            [[5, 6],
+             [7, 8]]]
+  mask = [[True, False],
+          [False, True]]
+  tf.boolean_mask(tensor, mask).numpy()
+  # ==> array([[1, 2],
+               [7, 8]], dtype=int32)
+  ```
+
   The `axis` could be used with `mask` to indicate the axis to mask from.
-  In that case, `axis + dim(mask) <= dim(tensor)` and `mask`'s shape must match
-  the first `axis + dim(mask)` dimensions of `tensor`'s shape.
+  In that case, `axis + tf.rank(mask) <= tf.rank(tensor)` and `mask`'s shape 
+  must match the first `axis + tf.rank(mask)` dimensions of `tensor`'s shape.
 
   Args:
     tensor:  N-D tensor.
@@ -2303,7 +2349,9 @@ def batch_to_space(input, crops, block_size, name=None):  # pylint: disable=rede
   return result
 
 
-batch_to_space.__doc__ = gen_array_ops.batch_to_space.__doc__
+batch_to_space.__doc__ = gen_array_ops.batch_to_space.__doc__.replace(
+    "BatchToSpaceND", "`tf.batch_to_space_nd`").replace(
+    "SpaceToBatch", "`tf.nn.space_to_batch`")
 
 
 @tf_export("one_hot")
@@ -2689,25 +2737,27 @@ def batch_gather(params, indices, name=None):
   """Gather slices from `params` according to `indices` with leading batch dims.
 
   This operation assumes that the leading dimensions of `indices` are dense,
-  and the gathers on the axis corresponding to the last dimension of `indices`.
-  More concretely it computes:
+  and then gathers on the axis corresponding to the last dimension of `indices`.
+  More concretely, it computes:
 
+  ```
   result[i1, ..., in] = params[i1, ..., in-1, indices[i1, ..., in]]
+  ```
 
-  Therefore `params` should be a Tensor of shape [A1, ..., AN, B1, ..., BM],
+  Therefore, `params` should be a Tensor of shape [A1, ..., AN, B1, ..., BM],
   `indices` should be a Tensor of shape [A1, ..., AN-1, C] and `result` will be
-  a Tensor of size `[A1, ..., AN-1, C, B1, ..., BM]`.
+  a Tensor of shape `[A1, ..., AN-1, C, B1, ..., BM]`.
 
-  In the case in which indices is a 1D tensor, this operation is equivalent to
+  In the case where indices is a 1D tensor, this operation is equivalent to
   `tf.gather`.
 
   See also `tf.gather` and `tf.gather_nd`.
 
   Args:
     params: A Tensor. The tensor from which to gather values.
-    indices: A Tensor. Must be one of the following types: int32, int64. Index
-        tensor. Must be in range `[0, params.shape[axis]`, where `axis` is the
-        last dimension of `indices` itself.
+    indices: A Tensor. Must be one of the following types: `tf.int32`, 
+        `tf.int64`. Index tensor. Must be in range `[0, params.shape[axis]`, 
+        where `axis` is the last dimension of `indices` itself.
     name: A name for the operation (optional).
 
   Returns:

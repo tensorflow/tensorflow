@@ -474,7 +474,7 @@ REGISTER_OP("BroadcastTo")
       }
       if (c->Rank(out) < c->Rank(in)) {
         return errors::InvalidArgument("Cannot broadcast a tensor with shape ",
-                                       c->DebugString(in), " shape ",
+                                       c->DebugString(in), " to shape ",
                                        c->DebugString(out));
       }
 
@@ -490,7 +490,7 @@ REGISTER_OP("BroadcastTo")
               if (c->Value(dim) % c->Value(in_dim) != 0) {
                 return errors::InvalidArgument(
                     "Cannot broadcast a tensor with shape ", c->DebugString(in),
-                    " shape ", c->DebugString(out));
+                    " to shape ", c->DebugString(out));
               }
             }
           }

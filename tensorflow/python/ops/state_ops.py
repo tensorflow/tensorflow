@@ -622,13 +622,13 @@ def batch_scatter_update(ref, indices, updates, use_locking=True, name=None):
   `tf.scatter_update`.
 
   To avoid this operation there would be 2 alternatives:
-  1) Reshaping the variable by merging the first `ndims` dimensions. However,
-     this is not possible because `tf.reshape` returns a Tensor, which we
-     cannot use `tf.scatter_update` on.
-  2) Looping over the first `ndims` of the variable and using
+  1) Reshaping the variable by merging the first `indices.ndims` dimensions. 
+     However, this is not possible because `tf.reshape` returns a Tensor, which 
+     we cannot use `tf.scatter_update` on.
+  2) Looping over the first `indices.ndims` of the variable and using
      `tf.scatter_update` on the subtensors that result of slicing the first
-     dimension. This is a valid option for `ndims = 1`, but less efficient than
-     this implementation.
+     dimension. This is a valid option for `indices.ndims = 1`, but less 
+     efficient than this implementation.
 
   See also `tf.scatter_update` and `tf.scatter_nd_update`.
 
@@ -637,14 +637,17 @@ def batch_scatter_update(ref, indices, updates, use_locking=True, name=None):
     indices: Tensor containing indices as described above.
     updates: Tensor of updates to apply to `ref`.
     use_locking: Boolean indicating whether to lock the writing operation.
+      If True, no other updates to the variable will happen at the same time.
+      Otherwise the write behavior is undefined, but may exhibit less 
+      contention.
     name: Optional scope name string.
 
   Returns:
     Ref to `variable` after it has been modified.
 
   Raises:
-    ValueError: If the initial `ndims` of `ref`, `indices`, and `updates` are
-        not the same.
+    ValueError: If the initial `indices.ndims` of `ref`, `indices`, and 
+      `updates` are not the same.
   """
   with ops.name_scope(name):
     indices = ops.convert_to_tensor(indices, name="indices")
