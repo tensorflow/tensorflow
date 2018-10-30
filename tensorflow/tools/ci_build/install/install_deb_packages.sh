@@ -43,9 +43,9 @@ apt-get install -y --no-install-recommends \
     automake \
     build-essential \
     clang-format-3.8 \
-    curl \
+    curl
     ## TODO(yifeif) remove once ffmpeg is removed from contrib
-    ffmpeg \
+apt-get install -y --no-install-recommends ffmpeg \
     git \
     libcurl4-openssl-dev \
     libtool \
