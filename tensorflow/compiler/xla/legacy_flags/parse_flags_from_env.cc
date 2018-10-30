@@ -174,16 +174,6 @@ bool ParseFlagsFromEnv(const std::vector<tensorflow::Flag>& flag_list) {
   SetArgvFromEnv(env_argv);  // a no-op if already initialized
   bool result =
       tensorflow::Flags::Parse(&env_argv->argc, &env_argv->argv[0], flag_list);
-
-  // Fail if any flags were not recognized, ignoring argv[0], which
-  // SetArgvFromEnv ensures is always present.
-  if (result && env_argv->argc > 1) {
-    result = false;
-    for (int64 i = 1; i < env_argv->argc; ++i) {
-      LOG(ERROR) << "Unrecognized TF_XLA_FLAGS flag: " << env_argv->argv[i];
-    }
-  }
-
   env_argv_mu.unlock();
   return result;
 }
