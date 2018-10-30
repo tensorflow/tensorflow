@@ -393,7 +393,6 @@ cc_library(
         ":lib_platform",
         ":platform_base",
         "//tensorflow/core/platform/default/build_config:port",
-        "@com_google_absl//absl/base",
         "@snappy",
     ],
 )
@@ -657,7 +656,6 @@ cc_library(
         "lib/core/arena.h",
         "lib/core/bitmap.h",
         "lib/core/bits.h",
-        "lib/core/casts.h",
         "lib/core/coding.h",
         "lib/core/errors.h",
         "lib/core/notification.h",
@@ -2287,7 +2285,6 @@ cc_library(
     srcs = ["lib/png/png_io.cc"],
     hdrs = [
         "lib/bfloat16/bfloat16.h",
-        "lib/core/casts.h",
         "lib/core/stringpiece.h",
         "lib/png/png_io.h",
         "platform/byte_order.h",
@@ -2310,6 +2307,7 @@ cc_library(
         ":lib",
         ":lib_internal",
         "//tensorflow/core/platform/default/build_config:png",
+        "@com_google_absl//absl/base",
         "@com_google_absl//absl/strings",
         "@zlib_archive//:zlib",
     ],
@@ -2646,6 +2644,7 @@ tf_cuda_library(
         ":protos_all_cc",
         ":stats_calculator_portable",
         ":version_lib",
+        "@com_google_absl//absl/base",
         "//tensorflow/core/platform/default/build_config:platformlib",
         "//tensorflow/core/kernels:bounds_check",
         "//third_party/eigen3",
@@ -3328,7 +3327,6 @@ tf_cc_tests(
     size = "small",
     srcs = [
         "lib/core/arena_test.cc",
-        "lib/core/bit_cast_test.cc",
         "lib/core/bitmap_test.cc",
         "lib/core/blocking_counter_test.cc",
         "lib/core/coding_test.cc",
@@ -3534,6 +3532,7 @@ tf_cc_test(
         ":lib_internal",
         ":test",
         ":test_main",
+        "@com_google_absl//absl/base",
     ],
 )
 
@@ -3707,6 +3706,7 @@ tf_cc_tests(
         "//tensorflow/cc:while_loop",
         "//tensorflow/core/kernels:ops_util",
         "//third_party/eigen3",
+        "@com_google_absl//absl/base",
     ],
 )
 
