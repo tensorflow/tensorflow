@@ -346,6 +346,7 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::RunBackend(
   const auto is_constant_graph = GetConstantOutput(
       entry->root_instruction(), comp_layout->shape(), constant_output);
 
+  std::string map_json;
   std::vector<uint64> remaped_output;
   bool is_remap_graph = false;
   if (is_constant_graph) {
@@ -375,7 +376,7 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::RunBackend(
 
     // Generate this JSON early so that the VLOG trace can contain the output
     // whether the engine compilation completes or not
-    std::string map_json = GetTensorMappingJson(graph, resources.tensor_maps);
+    map_json = GetTensorMappingJson(graph, resources.tensor_maps);
 
     is_remap_graph = AreAllOutputsParameters(
         entry->root_instruction(), visitor.GetNonStandardParameterLayout(),
