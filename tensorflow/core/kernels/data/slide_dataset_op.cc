@@ -197,8 +197,9 @@ class SlideDatasetOp : public UnaryDatasetOpKernel {
           const Tensor& first_element = batch_elements[0][component_index];
           TensorShape batch_component_shape({num_batch_elements});
           batch_component_shape.AppendShape(first_element.shape());
-          Tensor batch_component(cpu_allocator(), first_element.dtype(),
-                                 batch_component_shape);
+          out_tensors->emplace_back(ctx->allocator({}), first_element.dtype(),
+                                    batch_component_shape);
+          Tensor& batch_component = out_tensors->back();
           // Build the output tuple component by copying one slice
           // from each input element in the batch.
           for (size_t i = 0; i < num_batch_elements; ++i) {
@@ -216,7 +217,6 @@ class SlideDatasetOp : public UnaryDatasetOpKernel {
                 std::move(batch_elements[i][component_index]), &batch_component,
                 i));
           }
-          out_tensors->emplace_back(std::move(batch_component));
         }
         *end_of_sequence = false;
         return Status::OK();

@@ -40,6 +40,7 @@ class _Merge(Layer):
 
   def __init__(self, **kwargs):
     super(_Merge, self).__init__(**kwargs)
+    self._can_use_graph_functions = True
     self.supports_masking = True
 
   def _merge_function(self, inputs):
@@ -368,6 +369,7 @@ class Concatenate(_Merge):
 
   def __init__(self, axis=-1, **kwargs):
     super(Concatenate, self).__init__(**kwargs)
+    self._can_use_graph_functions = True
     self.axis = axis
     self.supports_masking = True
     self._reshape_required = False
@@ -465,6 +467,7 @@ class Dot(_Merge):
 
   def __init__(self, axes, normalize=False, **kwargs):
     super(Dot, self).__init__(**kwargs)
+    self._can_use_graph_functions = True
     if not isinstance(axes, int):
       if not isinstance(axes, (list, tuple)):
         raise TypeError('Invalid type for `axes` - '

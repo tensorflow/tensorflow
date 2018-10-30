@@ -15,13 +15,13 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/tests/test_utils.h"
 
+#include "absl/base/casts.h"
 #include "absl/container/flat_hash_set.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/tests/local_client_test_base.h"
 #include "tensorflow/compiler/xla/tests/test_macros.h"
-#include "tensorflow/core/lib/core/casts.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 
 namespace xla {
@@ -148,7 +148,7 @@ ENTRY %sort.148.1589 (parameter.0: f32[1048576], parameter.1: s32[1048576]) -> (
 
   absl::flat_hash_set<uint32> key_set;
   for (const float& value : key_arg.data<float>()) {
-    EXPECT_TRUE(key_set.insert(tensorflow::bit_cast<uint32>(value)).second);
+    EXPECT_TRUE(key_set.insert(absl::bit_cast<uint32>(value)).second);
   }
 }
 
@@ -171,7 +171,7 @@ ENTRY %sort.148.1589 (parameter.0: s32[1048576], parameter.1: s32[1048576]) -> (
 
   absl::flat_hash_set<int32> key_set;
   for (const int32& value : key_arg.data<int32>()) {
-    EXPECT_TRUE(key_set.insert(tensorflow::bit_cast<uint32>(value)).second);
+    EXPECT_TRUE(key_set.insert(absl::bit_cast<uint32>(value)).second);
   }
 }
 

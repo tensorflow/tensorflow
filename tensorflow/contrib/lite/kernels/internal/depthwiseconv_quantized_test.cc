@@ -66,12 +66,18 @@ inline void DispatchDepthwiseConv(
       const int dilation_height_factor = params.dilation_height_factor;
 
       // Check that parameter combination is supported.
-      const bool basic_3x3_kernel_support =
+      const bool basic_3x3_kernel_supported =
           optimized_ops::Fast3x3FilterKernelSupported(
               input_shape, filter_shape, stride_width, stride_height,
               dilation_width_factor, dilation_height_factor, pad_width,
               pad_height, depth_multiplier, output_shape, output_shift);
-      ASSERT_TRUE(basic_3x3_kernel_support);
+      ASSERT_TRUE(basic_3x3_kernel_supported)
+          << "pad_width = " << params.padding_values.width
+          << " pad_height = " << params.padding_values.height
+          << " input_width = " << input_shape.Dims(1)
+          << " input_height = " << input_shape.Dims(2)
+          << " output_width = " << output_shape.Dims(1)
+          << " output_height = " << output_shape.Dims(2);
 
       // Call kernel optimized for depthwise convolutions using 3x3 filters.
       optimized_ops::DepthwiseConv3x3Filter(
@@ -81,6 +87,46 @@ inline void DispatchDepthwiseConv(
 #else
       break;
 #endif
+    }
+    case ForceKernelInvocation::kUseNeon3x3DotProduct: {
+// Enable for arm64 except for the Nvidia Linux 4 Tegra (L4T) running on
+// Jetson TX-2. This compiler does not support the offsetof() macro.
+#if defined(__ARM_FEATURE_DOTPROD) && defined(__aarch64__) && \
+    !defined(GOOGLE_L4T)
+      using optimized_ops::DotProduct3x3KernelType;
+      DotProduct3x3KernelType kernel_type =
+          optimized_ops::CategorizeDotProductKernel(params);
+      switch (kernel_type) {
+        case DotProduct3x3KernelType::kPlain:
+          // TODO(b/118430534): Implement optimized kernel.
+          optimized_ops::DepthwiseConv3x3Filter(
+              params, input_shape, input_data, filter_shape, filter_data,
+              bias_shape, bias_data, output_shape, output_data);
+          return;
+        case DotProduct3x3KernelType::kWithDepthMultiplication:
+          // TODO(b/118430338): Implement optimized kernel.
+          optimized_ops::DepthwiseConvGeneral(
+              params, input_shape, input_data, filter_shape, filter_data,
+              bias_shape, bias_data, output_shape, output_data);
+          return;
+        case DotProduct3x3KernelType::kWithPad0Stride2:
+          // TODO(b/118430338): Implement optimized kernel.
+          optimized_ops::DepthwiseConv3x3Filter(
+              params, input_shape, input_data, filter_shape, filter_data,
+              bias_shape, bias_data, output_shape, output_data);
+          return;
+        case DotProduct3x3KernelType::kWithPad1Stride1:
+          // TODO(b/118430338): Implement optimized kernel.
+          optimized_ops::DepthwiseConvGeneral(
+              params, input_shape, input_data, filter_shape, filter_data,
+              bias_shape, bias_data, output_shape, output_data);
+          return;
+        case DotProduct3x3KernelType::kNone:
+        default:
+          break;
+      }
+#endif
+      break;
     }
     case ForceKernelInvocation::kUseGenericKernel: {
       optimized_ops::DepthwiseConvGeneral(params, input_shape, input_data,
@@ -338,8 +384,8 @@ bool TryTestOneDepthwiseConv(ForceKernelInvocation forced_invocation) {
 bool TryTestOneDepthwiseConv3x3Filter(ForceKernelInvocation forced_invocation) {
   const int batch = ExponentialRandomPositiveInt(0.9f, 3, 20);
   const int input_depth = 8 * ExponentialRandomPositiveInt(0.9f, 10, 50);
-  const int input_width = ExponentialRandomPositiveInt(0.9f, 20, 200);
-  const int input_height = ExponentialRandomPositiveInt(0.9f, 20, 200);
+  int input_width = ExponentialRandomPositiveInt(0.9f, 20, 200);
+  int input_height = ExponentialRandomPositiveInt(0.9f, 20, 200);
   const int filter_width = 3;
   const int filter_height = 3;
   const int depth_multiplier = 1;
@@ -347,14 +393,53 @@ bool TryTestOneDepthwiseConv3x3Filter(ForceKernelInvocation forced_invocation) {
   // We don't support dilations in the 3x3 filter.
   const int dilation_width_factor = 1;
   const int dilation_height_factor = 1;
-  // Although the kernel supports only kValid padding, we test that kSame
-  // is using the correct code path. However, only use kSame when forcing kernel
-  // selection.
   const auto padding_type =
-      (forced_invocation == ForceKernelInvocation::kNone &&
-       UniformRandomInt(0, 1))
-          ? PaddingType::kSame
-          : PaddingType::kValid;
+      UniformRandomInt(0, 1) ? PaddingType::kSame : PaddingType::kValid;
+
+  // Adjust for, or reject, special cases.
+  if (forced_invocation != ForceKernelInvocation::kNone) {
+    // With stride == 2 and SAME, padding width and height are the left and top
+    // padding amounts. When there is an even input dimension, padding + 1 is
+    // required on the right / bottom. This is not handled by these kernels, so
+    // we bump the input dimensions.
+    if (padding_type == PaddingType::kSame && stride == 2) {
+      input_width = 2 * (input_width / 2) + 1;
+      input_height = 2 * (input_height / 2) + 1;
+    }
+
+    // The padded 3x3 kernel (with kSame) does not support input_width == 1 when
+    // input_height > 1, and vice versa.
+    if (padding_type == PaddingType::kSame &&
+        (input_width > 1) != (input_height > 1)) {
+      return false;
+    }
+  }
+
+  return TryTestDepthwiseConv(
+      forced_invocation, batch, input_depth, input_width, input_height,
+      filter_width, filter_height, depth_multiplier, stride,
+      dilation_width_factor, dilation_height_factor, padding_type);
+}
+
+// Tests with parameters suited to dot-product-NEON 3x3 filter kernels.
+bool TryTestOneNeonDot3x3(ForceKernelInvocation forced_invocation,
+                          bool test_stride, bool test_pad,
+                          bool test_depth_multiplier) {
+  const int batch = 1;
+  const int input_depth = test_depth_multiplier
+                              ? 1
+                              : 8 * ExponentialRandomPositiveInt(0.9f, 10, 50);
+  const int input_width = ExponentialRandomPositiveInt(0.9f, 20, 200);
+  const int input_height = ExponentialRandomPositiveInt(0.9f, 20, 200);
+  const int filter_width = 3;
+  const int filter_height = 3;
+  const int depth_multiplier =
+      test_depth_multiplier ? 8 * ExponentialRandomPositiveInt(0.8f, 1, 6) : 1;
+  const int stride = test_stride ? 2 : 1;
+  // We don't support dilations in the 3x3 filter.
+  const int dilation_width_factor = 1;
+  const int dilation_height_factor = 1;
+  const auto padding_type = test_pad ? PaddingType::kSame : PaddingType::kValid;
 
   return TryTestDepthwiseConv(
       forced_invocation, batch, input_depth, input_width, input_height,
@@ -369,6 +454,14 @@ void TestOneDepthwiseConv(ForceKernelInvocation forced_invocation) {
 
 void TestOneDepthwiseConv3x3Filter(ForceKernelInvocation forced_invocation) {
   while (!TryTestOneDepthwiseConv3x3Filter(forced_invocation)) {
+  }
+}
+
+void TestOneNeonDot3x3(ForceKernelInvocation forced_invocation,
+                       bool test_stride, bool test_pad,
+                       bool test_depth_multiplier) {
+  while (!TryTestOneNeonDot3x3(forced_invocation, test_stride, test_pad,
+                               test_depth_multiplier)) {
   }
 }
 
@@ -387,6 +480,13 @@ TEST(TestDepthwiseConv, TestGenericKernel) {
   }
 }
 
+TEST(TestDepthwiseConv, TestKernel3x3Filter) {
+  const int kTestsToRun = 1000;
+  for (int i = 0; i < kTestsToRun; i++) {
+    TestOneDepthwiseConv3x3Filter(ForceKernelInvocation::kNone);
+  }
+}
+
 // While the 3x3 coverage test is primarily targeted at specialized kernels, we
 // also run it against the generic kernel, optionally with fewer invocations.
 TEST(TestDepthwiseConv, TestGenericKernel3x3Filter) {
@@ -400,6 +500,43 @@ TEST(TestDepthwiseConv, TestNeon3x3Filter) {
   const int kTestsToRun = 3 * 1000;
   for (int i = 0; i < kTestsToRun; i++) {
     TestOneDepthwiseConv3x3Filter(ForceKernelInvocation::kUseNeon3x3);
+  }
+}
+
+// No stride, no depth multiplier, no pad.
+TEST(TestDepthwiseConv, TestNeonDot3x3Plain) {
+  const int kTestsToRun = 3 * 1000;
+  for (int i = 0; i < kTestsToRun; i++) {
+    TestOneNeonDot3x3(ForceKernelInvocation::kUseNeon3x3DotProduct,
+                      /*test_stride=*/false, /*test_pad=*/false,
+                      /*test_depth_multiplier=*/false);
+  }
+}
+
+TEST(TestDepthwiseConv, TestNeonDot3x3DepthMultiplier) {
+  const int kTestsToRun = 3 * 1000;
+  for (int i = 0; i < kTestsToRun; i++) {
+    TestOneNeonDot3x3(ForceKernelInvocation::kUseNeon3x3DotProduct,
+                      /*test_stride=*/false, /*test_pad=*/false,
+                      /*test_depth_multiplier=*/true);
+  }
+}
+
+TEST(TestDepthwiseConv, TestNeonDot3x3Stride2) {
+  const int kTestsToRun = 3 * 1000;
+  for (int i = 0; i < kTestsToRun; i++) {
+    TestOneNeonDot3x3(ForceKernelInvocation::kUseNeon3x3DotProduct,
+                      /*test_stride=*/true, /*test_pad=*/false,
+                      /*test_depth_multiplier=*/false);
+  }
+}
+
+TEST(TestDepthwiseConv, TestNeonDot3x3Pad1) {
+  const int kTestsToRun = 3 * 1000;
+  for (int i = 0; i < kTestsToRun; i++) {
+    TestOneNeonDot3x3(ForceKernelInvocation::kUseNeon3x3DotProduct,
+                      /*test_stride=*/false, /*test_pad=*/true,
+                      /*test_depth_multiplier=*/false);
   }
 }
 

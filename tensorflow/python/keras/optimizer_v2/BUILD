@@ -12,6 +12,7 @@ load("//tensorflow:tensorflow.bzl", "cuda_py_test")
 py_library(
     name = "optimizer_v2",
     srcs = [
+        "adam.py",
         "gradient_descent.py",
         "optimizer_v2.py",
     ],

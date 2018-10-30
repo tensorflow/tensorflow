@@ -115,6 +115,38 @@ Status PreprocessForEncapsulation(Graph* g,
                                   const string& xla_computation_attr_name,
                                   const string& outside_compilation_attr_name);
 
+// Information for XLA computation.
+struct XlaClusterInfo {
+  // XLA cluster name. It might be different from `func_name`.
+  const string cluster_name;
+  // Name and attributes of XLA computation function.
+  const NameAttrList func_name_attrs;
+  // The XLA computation node in the graph.
+  Node* node;
+  // A mapping from outside compilation cluster name to its device assignment.
+  const std::map<string, int> host_compute_core;
+};
+
+// Postprocesses the graph for encapsulation. This function reverts what
+// `PreprocessForEncapsulation` did. It will perform the following operations in
+// order:
+//
+// 1. Remove Placeholder nodes between outside compilation and host computation
+//     (created in `PreprocessForEncapsulation` step 3).
+// 2. Remove Identity nodes created in `PreprocessForEncapsulation` step 2.
+// 3a. Reconnect control edges between different outside compilations (marked by
+//     `PreprocessForEncapsulation` step 1c) and control edges between outside
+//     compilation and host computation (marked by `PreprocessForEncapsulation`
+//     step 1d).
+// 3b. Reconnect control edges between outside compilation and another XLA
+//     computation (marked by `PreprocessForEncapsulation` step 1b).
+// Notice that control edges marked by `PreprocessForEncapsulation` step 1a are
+// not handled here. They are handled in `RewriteOutsideCompilationSubgraphFn`.
+Status PostprocessForEncapsulation(
+    Graph* g, const string& xla_computation_attr_name,
+    const string& outside_compilation_attr_name,
+    const std::unordered_map<string, XlaClusterInfo>& clusters);
+
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_COMPILER_JIT_ENCAPSULATE_UTIL_H_

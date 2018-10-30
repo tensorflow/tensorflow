@@ -19,11 +19,11 @@ limitations under the License.
 #include <cmath>
 #include <vector>
 
+#include "absl/base/casts.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/util.h"
-#include "tensorflow/core/lib/core/casts.h"
 #include "tensorflow/core/platform/env.h"
 
 using absl::StrAppend;
@@ -40,8 +40,10 @@ namespace {
 template <typename FloatT, typename UnsignedT>
 Status CompareFloatsBitwiseEqual(FloatT lhs, FloatT rhs,
                                  absl::Span<const int64> multi_index) {
-  auto ulhs = tensorflow::bit_cast<UnsignedT>(lhs);
-  auto urhs = tensorflow::bit_cast<UnsignedT>(rhs);
+  // TODO(b/118627822): These are unsafe bit_casts because Eigen::Half is not
+  // trivially copyable.
+  auto ulhs = absl::bit_cast<UnsignedT>(lhs);
+  auto urhs = absl::bit_cast<UnsignedT>(rhs);
   auto lhs_double = static_cast<double>(lhs);
   auto rhs_double = static_cast<double>(rhs);
   if (ulhs != urhs) {

@@ -917,7 +917,7 @@ inline void DepthwiseConv(
   TFLITE_DCHECK_EQ(output_depth, input_depth * depth_multiplier);
   TFLITE_DCHECK_EQ(bias_shape.FlatSize(), output_depth);
 
-  static const int kAccBufferMaxSize = 2048;
+  static const int kAccBufferMaxSize = 4832;
   float acc_buffer[kAccBufferMaxSize];
   TFLITE_DCHECK_GE(kAccBufferMaxSize, output_depth);
   const int kOutputPixelsInAccBuffer = kAccBufferMaxSize / output_depth;

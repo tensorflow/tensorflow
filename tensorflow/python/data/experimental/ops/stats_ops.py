@@ -126,7 +126,7 @@ def set_stats_aggregator(stats_aggregator, tag="", counter_prefix=""):
     tag: (Optional) String, all statistics recorded for the input `dataset`
       will have given `tag` prepend with the name.
     counter_prefix: (Optional) String, all statistics recorded as `counters`
-      will have the given `prefix` for the counter. Defaults to "/tesorflow".
+      will have the given `prefix` for the counter. Defaults to "/tensorflow".
 
   Returns:
     A `Dataset` transformation function, which can be passed to
