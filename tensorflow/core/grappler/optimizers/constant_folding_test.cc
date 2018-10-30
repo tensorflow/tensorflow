@@ -2154,6 +2154,40 @@ TEST_F(ConstantFoldingTest, MergeConcat_AxisMismatch) {
   CompareGraphs(want, got);
 }
 
+TEST_F(ConstantFoldingTest, MergeConcat_PartialFolding) {
+  Scope scope = Scope::NewRootScope();
+  Output c1 = ops::Const(scope.WithOpName("c1"), 1.0f, {2, 2});
+  Output c2 = ops::Const(scope.WithOpName("c2"), 2.0f, {2, 2});
+  Output c3 = ops::Const(scope.WithOpName("c3"), 3.0f, {2, 2});
+  Output c4 = ops::Const(scope.WithOpName("c4"), 4.0f, {2, 2});
+  Output ph = ops::Placeholder(scope.WithOpName("ph"), DT_FLOAT,
+                               ops::Placeholder::Shape(TensorShape({2, 2})));
+  Output axis = ops::Const(scope.WithOpName("axis"), 0, {});
+
+  ops::Concat concat1(scope.WithOpName("concat1"), {c1, c2, ph}, axis);
+  ops::Concat concat2(scope.WithOpName("concat2"), {c3, c4, Output(concat1)},
+                      axis);
+
+  GrapplerItem item;
+  item.fetch = {"concat2"};
+  TF_CHECK_OK(scope.ToGraphDef(&item.graph));
+
+  ConstantFolding optimizer(nullptr);
+  GraphDef got;
+  Status status = optimizer.Optimize(nullptr, item, &got);
+  TF_EXPECT_OK(status);
+
+  GraphDef want;
+  AddNode("ConstantFolding/concat2_partial_split_0_0", "Const", {}, {}, &want);
+  AddNode("axis", "Const", {}, {}, &want);
+  AddNode("ph", "Placeholder", {}, {}, &want);
+  AddNode("concat2", "ConcatV2",
+          {"ConstantFolding/concat2_partial_split_0_0", "ph", "axis"}, {},
+          &want);
+
+  CompareGraphs(want, got);
+}
+
 TEST_F(ConstantFoldingTest, PaddingWithZeroSize) {
   tensorflow::Scope scope = tensorflow::Scope::NewRootScope();
 

@@ -3022,11 +3022,11 @@ bool ConstantFolding::PartialConcatConstFolding(GraphDef* optimized_graph,
     for (auto interval : constant_input_runs) {
       // Push the constant inputs in the interval to a child node than can be
       // constant folded.
-      const string new_node_name = OptimizedNodeName(
-          *node, strings::StrCat("_partial_split_", interval.first));
-      if (node_map_->NodeExists(new_node_name)) {
-        break;
-      }
+      string new_node_name = OptimizedNodeName(*node, "_partial_split");
+      do {
+        new_node_name += strings::StrCat("_", interval.first);
+      } while (node_map_->NodeExists(new_node_name));
+
       NodeDef* added_node = optimized_graph->add_node();
       *added_node = *node;
       added_node->set_name(new_node_name);
