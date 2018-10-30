@@ -50,6 +50,13 @@ from tensorflow.python.util import nest
 # to them and then pass those in as data inputs. This should probably be
 # handled in the CapturingGraph itself.
 
+# Op types that output a resource tensor representing a TensorArray handle.
+TENSOR_ARRAY_HANDLE_OPS = (
+    "TensorArrayV3",
+    "TensorArrayGradV3",
+    "TensorArrayGradWithShape",
+)
+
 
 def while_loop(cond, body, loop_vars, shape_invariants=None, name=None):
   """Like tf.while_loop, except emits a single While op."""
@@ -243,13 +250,14 @@ def _WhileGrad(op, *grads):  # pylint: disable=invalid-name
   """The gradient of a While op produced by while_loop."""
   body_graph = _get_body_graph(op)
 
-  # Set the incoming gradient of TensorArray handle to None.
-  # TODO(b/118164915): We need a way of distinguising b/w TensorArray resource
-  # handles and ResourceVariables and set the default gradient of only the
-  # TensorArray handle to None.
+  # Set the incoming gradient of TensorArray handles to None. The gradient
+  # implementation currently assumes all resource tensors correspond to float32
+  # ResourceVariables, which can lead to runtime shape errors when used with a
+  # TensorArray. This is a workaround until TensorArrays are reimplemented with
+  # TensorLists instead of resources.
   grads = [
-      None if output.dtype == dtypes.resource else g
-      for g, output in zip(grads, op.outputs)
+      None if _is_tensor_array_handle(output) else grad
+      for grad, output in zip(grads, op.outputs)
   ]
 
   # Ensure that all non-resource trainable outputs have incoming gradients.
@@ -746,6 +754,24 @@ def _graph_name(graph):
   return "Base"
 
 
+def _is_tensor_array_handle(tensor):
+  """Returns whether tensor is a TensorArray handle."""
+  if tensor.dtype != dtypes.resource:
+    return False
+
+  if tensor.op.type == "While":
+    # We assume that any resource outputs of a While op correspond to a captured
+    # resource input (as opposed to a loop variable specified by the user).
+    # NOTE(skyewm): we could actually check this, but I can't think of when you
+    # would have a resource loop variable.
+    tensor = tensor.op.inputs[tensor.value_index]
+
+  # TODO(b/118452219): add test coverage for this.
+  tensor = func_graph_module.maybe_captured(tensor)
+
+  return tensor.op.type in TENSOR_ARRAY_HANDLE_OPS
+
+
 def _pack_sequence_as(structure_with_tas, loop_vars):
   """Like `nest.pack_sequence_as` but also replaces flows with TensorArrays."""
 
@@ -783,7 +809,7 @@ def _tensor_array_to_flow(loop_vars):
 
 def _build_signature(loop_vars, shape_invariants):
   return nest.pack_sequence_as(loop_vars, [
-      tensor_spec.TensorSpec(s, t.dtype)
+      tensor_spec.TensorSpec(s, t.dtype, name=t.op.name)
       for s, t in zip(nest.flatten(shape_invariants), nest.flatten(loop_vars))
   ])
 
