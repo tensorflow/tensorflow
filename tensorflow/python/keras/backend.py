@@ -1471,18 +1471,18 @@ def batch_dot(x, y, axes=None):
   than the input. If the number of dimensions is reduced to 1,
   we use `expand_dims` to make sure that ndim is at least 2.
 
-  # Arguments
+  Arguments:
       x: Keras tensor or variable with `ndim >= 2`.
       y: Keras tensor or variable with `ndim >= 2`.
       axes: int or tupe(int, int). Target dimensions to be reduced.
 
-  # Returns
+  Returns:
       A tensor with shape equal to the concatenation of `x`'s shape
       (less the dimension that was summed over) and `y`'s shape
       (less the batch dimension and the dimension that was summed over).
       If the final rank is 1, we reshape it to `(batch_size, 1)`.
 
-  # Examples
+  Examples:
       Assume `x = [[1, 2], [3, 4]]` and `y = [[5, 6], [7, 8]]`
       `batch_dot(x, y, axes=1) = [[17], [53]]` which is the main diagonal
       of `x.dot(y.T)`, although we never have to calculate the off-diagonal
@@ -1526,7 +1526,7 @@ def batch_dot(x, y, axes=None):
   y_ndim = len(y_shape)
 
   if x_ndim < 2 or y_ndim < 2:
-    raise ValueError('Can not do batch_dot on inputs '
+    raise ValueError('Cannot do batch_dot on inputs '
                       'with rank < 2. '
                       'Received inputs with shapes ' +
                       str(x_shape) + ' and ' +
@@ -1537,7 +1537,7 @@ def batch_dot(x, y, axes=None):
 
   if x_batch_size is not None and y_batch_size is not None:
     if x_batch_size != y_batch_size:
-        raise ValueError('Can not do batch_dot on inputs '
+        raise ValueError('Cannot do batch_dot on inputs '
                           'with different batch sizes. '
                           'Received inputs with shapes ' +
                           str(x_shape) + ' and ' +
@@ -1554,21 +1554,20 @@ def batch_dot(x, y, axes=None):
 
   if py_any([isinstance(a, (list, tuple)) for a in axes]):
     raise ValueError('Multiple target dimensions are not supported. ' +
-                     'Expected: None, int, (int, int), ' +
+                     'Expected: None, int, or (int, int), ' +
                      'Provided: ' + str(axes))
 
-  # if tuple, convert to list
+  # If tuple, convert to list.
   axes = list(axes)
 
-  # convert negative indices
+  # Handle negative indices.
   if axes[0] < 0:
     axes[0] += x_ndim
   if axes[1] < 0:
     axes[1] += y_ndim
 
-  # sanity checks
   if 0 in axes:
-    raise ValueError('Can not perform batch_dot over axis 0.'
+    raise ValueError('Cannot perform batch_dot over axis 0.'
                       'If your inputs are not batched,'
                       ' add a dummy batch dimension to your '
                       'inputs using K.expand_dims(x, 0)')
@@ -1578,7 +1577,7 @@ def batch_dot(x, y, axes=None):
   d2 = y_shape[a1]
 
   if d1 is not None and d2 is not None and d1 != d2:
-    raise ValueError('Can not do batch_dot on inputs with shapes ' +
+    raise ValueError('Cannot do batch_dot on inputs with shapes ' +
                       str(x_shape) + ' and ' + str(y_shape) +
                       ' with axes=' + str(axes) + '. x.shape[%d] != '
                       'y.shape[%d] (%d != %d).' % (axes[0], axes[1], d1, d2))
