@@ -199,6 +199,7 @@ tf_cuda_cc_test(
     size = "small",
     srcs = ["c_api_test.cc"],
     data = [
+        ":test_op.so",
         "//tensorflow/cc/saved_model:saved_model_half_plus_two",
     ],
     kernels = [":test_op_kernel"],
