@@ -28,6 +28,7 @@
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/Statements.h"
 #include "mlir/StandardOps/StandardOps.h"
+#include "mlir/Support/Functional.h"
 #include "mlir/Support/MathExtras.h"
 
 using namespace mlir;
@@ -117,12 +118,8 @@ uint64_t mlir::getLargestDivisorOfTripCount(const ForStmt &forStmt) {
   return tripCountExpr.getLargestKnownDivisor();
 }
 
-/// Given a MemRef accessed by `indices` and a dimension `dim`, determines
-/// whether indices[dim] is independent of the value `input`.
-// For now we assume no layout map or identity layout map in the MemRef.
-// TODO(ntv): support more than identity layout map.
-static bool isAccessInvariant(MLValue *input, MemRefType *memRefType,
-                              ArrayRef<MLValue *> indices, unsigned dim) {
+bool mlir::isAccessInvariant(const MLValue &input, MemRefType *memRefType,
+                             ArrayRef<MLValue *> indices, unsigned dim) {
   assert(indices.size() == memRefType->getRank());
   assert(dim < indices.size());
   auto layoutMap = memRefType->getAffineMaps();
@@ -139,14 +136,26 @@ static bool isAccessInvariant(MLValue *input, MemRefType *memRefType,
 
   if (affineApplyOps.empty()) {
     // Pointer equality test because of MLValue pointer semantics.
-    return indices[dim] != input;
+    return indices[dim] != &input;
   }
 
   assert(affineApplyOps.size() == 1 &&
          "CompositionAffineMapsPass must have "
          "been run: there should be at most one AffineApplyOp");
   auto composeOp = affineApplyOps[0]->cast<AffineApplyOp>();
-  return !AffineValueMap(*composeOp).isFunctionOf(dim, input);
+  // We need yet another level of indirection because the `dim` index of the
+  // access may not correspond to the `dim` index of composeOp.
+  unsigned idx = std::numeric_limits<unsigned>::max();
+  unsigned numResults = composeOp->getNumResults();
+  for (unsigned i = 0; i < numResults; ++i) {
+    if (indices[dim] == composeOp->getResult(i)) {
+      idx = i;
+      break;
+    }
+  }
+  assert(idx < std::numeric_limits<unsigned>::max());
+  return !AffineValueMap(*composeOp)
+              .isFunctionOf(idx, &const_cast<MLValue &>(input));
 }
 
 /// Determines whether a load or a store has a contiguous access along the
@@ -155,15 +164,17 @@ static bool isAccessInvariant(MLValue *input, MemRefType *memRefType,
 // TODO(ntv): allow more advanced notions of contiguity (non-fastest varying,
 // check strides, ...).
 template <typename LoadOrStoreOpPointer>
-static bool isContiguousAccess(MLValue *input, LoadOrStoreOpPointer memoryOp) {
-  auto indicesAsOperandIterators = memoryOp->getIndices();
+static bool isContiguousAccess(const MLValue &input,
+                               LoadOrStoreOpPointer memoryOp,
+                               unsigned fastestVaryingDim) {
+  using namespace functional;
+  auto indices = map([](SSAValue *val) { return dyn_cast<MLValue>(val); },
+                     memoryOp->getIndices());
   auto *memRefType = memoryOp->getMemRefType();
-  SmallVector<MLValue *, 4> indices;
-  for (auto *it : indicesAsOperandIterators) {
-    indices.push_back(cast<MLValue>(it));
-  }
-  unsigned numIndices = indices.size();
-  for (unsigned d = 0; d < numIndices - 1; ++d) {
+  for (unsigned d = 0, numIndices = indices.size(); d < numIndices; ++d) {
+    if (fastestVaryingDim == (numIndices - 1) - d) {
+      continue;
+    }
     if (!isAccessInvariant(input, memRefType, indices, d)) {
       return false;
     }
@@ -171,25 +182,40 @@ static bool isContiguousAccess(MLValue *input, LoadOrStoreOpPointer memoryOp) {
   return true;
 }
 
-/// Checks whether all the LoadOp and StoreOp matched have access indexing
-/// functions that are are either:
-///   1. invariant along the `loop` induction variable;
-///   2. varying along the fastest varying memory dimension only.
-// TODO(ntv): Also need to check the contiguous dimension to discriminate
-// between broadcast (i.e. stride 0), stride 1 and stride > 1 and return the
-// information so we can build a cost model.
-bool mlir::isVectorizableLoop(const ForStmt &loop) {
-  // TODO(ntv): check parallel or reduction loop semantics
-  using matcher::LoadStores;
-  auto *forStmt = &const_cast<ForStmt &>(loop);
-  auto loadAndStores = LoadStores();
-  auto &matches = loadAndStores.match(forStmt);
-  for (auto ls : matches) {
+template <typename LoadOrStoreOpPointer>
+static bool isVectorElement(LoadOrStoreOpPointer memoryOp) {
+  auto *memRefType = memoryOp->getMemRefType();
+  return isa<VectorType>(memRefType->getElementType());
+}
+
+bool mlir::isVectorizableLoop(const ForStmt &loop, unsigned fastestVaryingDim) {
+  if (!matcher::isParallelLoop(loop) && !matcher::isReductionLoop(loop)) {
+    return false;
+  }
+
+  // No vectorization across conditionals for now.
+  auto conditionals = matcher::If();
+  auto *forStmt = const_cast<ForStmt *>(&loop);
+  auto conditionalsMatched = conditionals.match(forStmt);
+  if (!conditionalsMatched.empty()) {
+    return false;
+  }
+
+  auto loadAndStores = matcher::Op(matcher::isLoadOrStore);
+  auto loadAndStoresMatched = loadAndStores.match(forStmt);
+  for (auto ls : loadAndStoresMatched) {
     auto *op = cast<OperationStmt>(ls.first);
     auto load = op->dyn_cast<LoadOp>();
     auto store = op->dyn_cast<StoreOp>();
-    bool contiguous = load ? isContiguousAccess(forStmt, load)
-                           : isContiguousAccess(forStmt, store);
+    // Only scalar types are considered vectorizable, all load/store must be
+    // vectorizable for a loop to qualify as vectorizable.
+    // TODO(ntv): ponder whether we want to be more general here.
+    bool vector = load ? isVectorElement(load) : isVectorElement(store);
+    if (vector) {
+      return false;
+    }
+    bool contiguous = load ? isContiguousAccess(loop, load, fastestVaryingDim)
+                           : isContiguousAccess(loop, store, fastestVaryingDim);
     if (!contiguous) {
       return false;
     }

@@ -41,17 +41,18 @@ class Statement;
 ///   {
 ///      MLFunctionMatcherContext context;
 ///      auto gemmLike = Doall(Doall(Red(LoadStores())));
-///      auto &matches = gemmLike.match(f);
+///      auto matches = gemmLike.match(f);
 ///      // do work on matches
 ///   }  // everything is freed
 ///
-///
+
 /// Recursive abstraction for matching results.
 /// Provides iteration over the MLFunction Statement* captured by a Matcher.
 ///
 /// Implemented as a POD value-type with underlying storage pointer.
 /// The underlying storage lives in a scoped bumper allocator whose lifetime
 /// is managed by an RAII MLFunctionMatcherContext.
+/// This should be used by value everywhere.
 struct MLFunctionMatches {
   using EntryType = std::pair<Statement *, MLFunctionMatches>;
   using iterator = EntryType *;
@@ -62,6 +63,8 @@ struct MLFunctionMatches {
 
   iterator begin();
   iterator end();
+  unsigned size() { return end() - begin(); }
+  unsigned empty() { return size() == 0; }
 
   /// Appends the pair <stmt, children> to the current matches.
   void append(Statement *stmt, MLFunctionMatches children);
@@ -80,14 +83,14 @@ private:
 ///   1. recursively matches a substructure in the tree;
 ///   2. uses a filter function to refine matches with extra semantic
 ///      constraints (passed via a lambda of type FilterFunctionType);
-///   3. TODO(ntv) Optionally applies actions (lambda), in which case we will
-///      want to traverse in post orrder DFS to avoid invalidating iterators;
+///   3. TODO(ntv) Optionally applies actions (lambda).
 ///
 /// Implemented as a POD value-type with underlying storage pointer.
 /// The underlying storage lives in a scoped bumper allocator whose lifetime
 /// is managed by an RAII MLFunctionMatcherContext.
-using FilterFunctionType = std::function<bool(Statement *)>;
-static bool defaultFilterFunction(Statement *) { return true; };
+/// This should be used by value everywhere.
+using FilterFunctionType = std::function<bool(const Statement &)>;
+static bool defaultFilterFunction(const Statement &) { return true; };
 struct MLFunctionMatcher : public StmtWalker<MLFunctionMatcher> {
   MLFunctionMatcher(Statement::Kind k, MLFunctionMatcher child,
                     FilterFunctionType filter = defaultFilterFunction);
@@ -96,10 +99,12 @@ struct MLFunctionMatcher : public StmtWalker<MLFunctionMatcher> {
                     FilterFunctionType filter = defaultFilterFunction);
 
   /// Returns all the matches in `function`.
-  MLFunctionMatches &match(MLFunction *function);
+  MLFunctionMatches match(MLFunction *function);
 
   /// Returns all the matches nested under `statement`.
-  MLFunctionMatches &match(Statement *statement);
+  MLFunctionMatches match(Statement *statement);
+
+  unsigned getDepth();
 
 private:
   friend class MLFunctionMatcherContext;
@@ -109,22 +114,19 @@ private:
   MutableArrayRef<MLFunctionMatcher> getChildrenMLFunctionMatchers();
   FilterFunctionType getFilterFunction();
 
-  MLFunctionMatcher forkMLFunctionMatcher(MLFunctionMatcher tmpl);
+  MLFunctionMatcher forkMLFunctionMatcherAt(MLFunctionMatcher tmpl,
+                                            Statement *stmt);
 
-  void matchOrSkipOne(Statement *elem);
   void matchOne(Statement *elem);
 
-  void visitForStmt(ForStmt *forStmt) { matchOrSkipOne(forStmt); }
-  void visitIfStmt(IfStmt *ifStmt) { matchOrSkipOne(ifStmt); }
-  void visitOperationStmt(OperationStmt *opStmt) { matchOrSkipOne(opStmt); }
+  void visitForStmt(ForStmt *forStmt) { matchOne(forStmt); }
+  void visitIfStmt(IfStmt *ifStmt) { matchOne(ifStmt); }
+  void visitOperationStmt(OperationStmt *opStmt) { matchOne(opStmt); }
 
   /// Underlying global bump allocator managed by an MLFunctionMatcherContext.
   static llvm::BumpPtrAllocator *&allocator();
 
-  /// TODO: Pointer Pair
   MLFunctionMatcherStorage *storage;
-  /// Used to traverse children matchers by just calling `walk`.
-  bool skipOne;
 
   // By-value POD wrapper to underlying storage pointer.
   MLFunctionMatches matches;
@@ -157,11 +159,11 @@ MLFunctionMatcher For(FilterFunctionType filter, MLFunctionMatcher child);
 MLFunctionMatcher For(MutableArrayRef<MLFunctionMatcher> children = {});
 MLFunctionMatcher For(FilterFunctionType filter,
                       MutableArrayRef<MLFunctionMatcher> children = {});
-MLFunctionMatcher Doall(MLFunctionMatcher child);
-MLFunctionMatcher Doall(MutableArrayRef<MLFunctionMatcher> children = {});
-MLFunctionMatcher Red(MLFunctionMatcher child);
-MLFunctionMatcher Red(MutableArrayRef<MLFunctionMatcher> children = {});
-MLFunctionMatcher LoadStores();
+
+bool isParallelLoop(const Statement &stmt);
+bool isReductionLoop(const Statement &stmt);
+bool isLoadOrStore(const Statement &stmt);
+
 } // end namespace matcher
 } // end namespace mlir
 

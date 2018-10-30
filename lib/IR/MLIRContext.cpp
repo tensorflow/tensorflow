@@ -1033,7 +1033,7 @@ SplatElementsAttr SplatElementsAttr::get(VectorOrTensorType *type,
 DenseElementsAttr DenseElementsAttr::get(VectorOrTensorType *type,
                                          ArrayRef<char> data) {
   auto bitsRequired = (long)type->getBitWidth() * type->getNumElements();
-  (void)(bitsRequired);
+  (void)bitsRequired;
   assert((bitsRequired <= data.size() * 8L) &&
          "Input data bit size should be larger than that type requires");
 

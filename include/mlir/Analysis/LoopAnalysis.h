@@ -29,6 +29,8 @@ namespace mlir {
 
 class AffineExpr;
 class ForStmt;
+class MemRefType;
+class MLValue;
 
 /// Returns the trip count of the loop as an affine expression if the latter is
 /// expressible as an affine expression, and nullptr otherwise. The trip count
@@ -45,13 +47,18 @@ llvm::Optional<uint64_t> getConstantTripCount(const ForStmt &forStmt);
 /// this method is thus able to determine non-trivial divisors.
 uint64_t getLargestDivisorOfTripCount(const ForStmt &forStmt);
 
+/// Given a MemRef accessed by `indices` and a dimension `dim`, determines
+/// whether indices[dim] is independent of the value `input`.
+// For now we assume no layout map or identity layout map in the MemRef.
+// TODO(ntv): support more than identity layout map.
+bool isAccessInvariant(const MLValue &input, MemRefType *memRefType,
+                       llvm::ArrayRef<MLValue *> indices, unsigned dim);
+
 /// Checks whether all the LoadOp and StoreOp matched have access indexing
 /// functions that are are either:
-///   1. invariant along the loop induction variable;
-///   2. varying along the fastest varying memory dimension only.
-// TODO(ntv): return for each statement the required action to make the loop
-// vectorizable. A function over the actions will give us a cost model.
-bool isVectorizableLoop(const ForStmt &loop);
+///   1. invariant along the loop induction variable created by 'loop';
+///   2. varying along the 'fastestVaryingDim' memory dimension.
+bool isVectorizableLoop(const ForStmt &loop, unsigned fastestVaryingDim);
 
 /// Checks where SSA dominance would be violated if a for stmt's body statements
 /// are shifted by the specified shifts. This method checks if a 'def' and all

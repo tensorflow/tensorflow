@@ -33,13 +33,28 @@ struct MLFunctionMatchesStorage {
 struct MLFunctionMatcherStorage {
   MLFunctionMatcherStorage(Statement::Kind k,
                            MutableArrayRef<MLFunctionMatcher> c,
-                           FilterFunctionType filter)
-      : kind(k), childrenMLFunctionMatchers(c.begin(), c.end()),
-        filter(filter) {}
+                           FilterFunctionType filter, Statement *skip)
+      : kind(k), childrenMLFunctionMatchers(c.begin(), c.end()), filter(filter),
+        skip(skip) {}
 
   Statement::Kind kind;
   SmallVector<MLFunctionMatcher, 4> childrenMLFunctionMatchers;
   FilterFunctionType filter;
+  /// skip is needed so that we can implement match without switching on the
+  /// type of the Statement.
+  /// The idea is that a MLFunctionMatcher first checks if it matches locally
+  /// and then recursively applies its children matchers to its elem->children.
+  /// Since we want to rely on the StmtWalker impl rather than duplicate its
+  /// the logic, we allow an off-by-one traversal to account for the fact that
+  /// we write:
+  ///
+  ///  void match(Statement *elem) {
+  ///    for (auto &c : getChildrenMLFunctionMatchers()) {
+  ///      MLFunctionMatcher childMLFunctionMatcher(...);
+  ///                                             ^~~~ Needs off-by-one
+  ///                                             traversal.
+  ///
+  Statement *skip;
 };
 
 } // end namespace mlir
@@ -60,10 +75,10 @@ void MLFunctionMatches::append(Statement *stmt, MLFunctionMatches children) {
   }
 }
 MLFunctionMatches::iterator MLFunctionMatches::begin() {
-  return storage->matches.begin();
+  return storage ? storage->matches.begin() : nullptr;
 }
 MLFunctionMatches::iterator MLFunctionMatches::end() {
-  return storage->matches.end();
+  return storage ? storage->matches.end() : nullptr;
 }
 
 /// Return the combination of multiple MLFunctionMatches as a new object.
@@ -78,38 +93,29 @@ static MLFunctionMatches combine(ArrayRef<MLFunctionMatches> matches) {
 }
 
 /// Calls walk on `function`.
-MLFunctionMatches &MLFunctionMatcher::match(MLFunction *function) {
+MLFunctionMatches MLFunctionMatcher::match(MLFunction *function) {
   assert(!matches && "MLFunctionMatcher already matched!");
-  this->walk(function);
+  this->walkPostOrder(function);
   return matches;
 }
 
 /// Calls walk on `statement`.
-MLFunctionMatches &MLFunctionMatcher::match(Statement *statement) {
+MLFunctionMatches MLFunctionMatcher::match(Statement *statement) {
   assert(!matches && "MLFunctionMatcher already matched!");
-  this->walk(statement);
+  this->walkPostOrder(statement);
   return matches;
 }
 
-/// matchOrSkipOne is needed so that we can implement match without switching on
-/// the type of the Statement.
-/// The idea is that a MLFunctionMatcher first checks if it matches locally and
-/// then recursively applies its children matchers to its elem->children.
-/// Since we want to rely on the StmtWalker impl rather than duplicate its
-/// the logic, we allow an off-by-one traversal to account for the fact that
-/// we write:
-///
-///  void match(Statement *elem) {
-///    for (auto &c : getChildrenMLFunctionMatchers()) {
-///      MLFunctionMatcher childMLFunctionMatcher(...);
-///      childMLFunctionMatcher.walk(elem); <~~~ Needs off-by-one traversal.
-///
-void MLFunctionMatcher::matchOrSkipOne(Statement *elem) {
-  if (skipOne) {
-    skipOne = false;
-    return;
+unsigned MLFunctionMatcher::getDepth() {
+  auto children = getChildrenMLFunctionMatchers();
+  if (children.empty()) {
+    return 1;
   }
-  matchOne(elem);
+  unsigned depth = 0;
+  for (auto &c : children) {
+    depth = std::max(depth, c.getDepth());
+  }
+  return depth + 1;
 }
 
 /// Matches a single statement in the following way:
@@ -123,21 +129,24 @@ void MLFunctionMatcher::matchOrSkipOne(Statement *elem) {
 ///   5. TODO(ntv) Optionally applies actions (lambda), in which case we will
 ///      want to traverse in post-order DFS to avoid invalidating iterators.
 void MLFunctionMatcher::matchOne(Statement *elem) {
+  if (storage->skip == elem) {
+    return;
+  }
   // Structural filter
   if (elem->getKind() != getKind()) {
     return;
   }
   // Local custom filter function
-  if (!getFilterFunction()(elem)) {
+  if (!getFilterFunction()(*elem)) {
     return;
   }
   SmallVector<MLFunctionMatches, 8> childrenMLFunctionMatches;
   for (auto &c : getChildrenMLFunctionMatchers()) {
     /// We create a new childMLFunctionMatcher here because a matcher holds its
-    /// results So we concretely need multiple copies of a given matcher, one
+    /// results. So we concretely need multiple copies of a given matcher, one
     /// for each matching result.
-    MLFunctionMatcher childMLFunctionMatcher = forkMLFunctionMatcher(c);
-    childMLFunctionMatcher.walk(elem);
+    MLFunctionMatcher childMLFunctionMatcher = forkMLFunctionMatcherAt(c, elem);
+    childMLFunctionMatcher.walkPostOrder(elem);
     if (!childMLFunctionMatcher.matches) {
       return;
     }
@@ -153,26 +162,27 @@ llvm::BumpPtrAllocator *&MLFunctionMatcher::allocator() {
 
 MLFunctionMatcher::MLFunctionMatcher(Statement::Kind k, MLFunctionMatcher child,
                                      FilterFunctionType filter)
-    : storage(allocator()->Allocate<MLFunctionMatcherStorage>()),
-      skipOne(false) {
+    : storage(allocator()->Allocate<MLFunctionMatcherStorage>()) {
   // Initialize with placement new.
-  new (storage) MLFunctionMatcherStorage(k, {child}, filter);
+  new (storage)
+      MLFunctionMatcherStorage(k, {child}, filter, nullptr /* skip */);
 }
 
 MLFunctionMatcher::MLFunctionMatcher(
     Statement::Kind k, MutableArrayRef<MLFunctionMatcher> children,
     FilterFunctionType filter)
-    : storage(allocator()->Allocate<MLFunctionMatcherStorage>()),
-      skipOne(false) {
+    : storage(allocator()->Allocate<MLFunctionMatcherStorage>()) {
   // Initialize with placement new.
-  new (storage) MLFunctionMatcherStorage(k, children, filter);
+  new (storage)
+      MLFunctionMatcherStorage(k, children, filter, nullptr /* skip */);
 }
 
 MLFunctionMatcher
-MLFunctionMatcher::forkMLFunctionMatcher(MLFunctionMatcher tmpl) {
+MLFunctionMatcher::forkMLFunctionMatcherAt(MLFunctionMatcher tmpl,
+                                           Statement *stmt) {
   MLFunctionMatcher res(tmpl.getKind(), tmpl.getChildrenMLFunctionMatchers(),
                         tmpl.getFilterFunction());
-  res.skipOne = true;
+  res.storage->skip = stmt;
   return res;
 }
 
@@ -225,36 +235,21 @@ MLFunctionMatcher For(FilterFunctionType filter,
 }
 
 // TODO(ntv): parallel annotation on loops.
-FilterFunctionType isParallelLoop = [](Statement *stmt) {
-  auto *loop = cast<ForStmt>(stmt);
+bool isParallelLoop(const Statement &stmt) {
+  const auto *loop = cast<ForStmt>(&stmt);
   return (void *)loop || true; // loop->isParallel();
 };
-MLFunctionMatcher Doall(MLFunctionMatcher child) {
-  return MLFunctionMatcher(Statement::Kind::For, child, isParallelLoop);
-}
-MLFunctionMatcher Doall(MutableArrayRef<MLFunctionMatcher> children) {
-  return MLFunctionMatcher(Statement::Kind::For, children, isParallelLoop);
-}
 
 // TODO(ntv): reduction annotation on loops.
-FilterFunctionType isReductionLoop = [](Statement *stmt) {
-  auto *loop = cast<ForStmt>(stmt);
+bool isReductionLoop(const Statement &stmt) {
+  const auto *loop = cast<ForStmt>(&stmt);
   return (void *)loop || true; // loop->isReduction();
 };
-MLFunctionMatcher Red(MLFunctionMatcher child) {
-  return MLFunctionMatcher(Statement::Kind::For, child, isReductionLoop);
-}
-MLFunctionMatcher Red(MutableArrayRef<MLFunctionMatcher> children) {
-  return MLFunctionMatcher(Statement::Kind::For, children, isReductionLoop);
-}
 
-FilterFunctionType isLoadOrStore = [](Statement *stmt) {
-  auto *opStmt = dyn_cast<OperationStmt>(stmt);
+bool isLoadOrStore(const Statement &stmt) {
+  const auto *opStmt = dyn_cast<OperationStmt>(&stmt);
   return opStmt && (opStmt->isa<LoadOp>() || opStmt->isa<StoreOp>());
 };
-MLFunctionMatcher LoadStores() {
-  return MLFunctionMatcher(Statement::Kind::Operation, {}, isLoadOrStore);
-}
 
 } // end namespace matcher
 } // end namespace mlir
