@@ -181,7 +181,7 @@ class ParallelMapIteratorBase : public DatasetBaseIterator {
     if (!runner_thread_) {
       auto ctx_copy = std::make_shared<IteratorContext>(*ctx);
       runner_thread_.reset(ctx->env()->StartThread(
-          {}, "runner_thread",
+          {}, "tf_data_parallel_map",
           std::bind(&ParallelMapIteratorBase::RunnerThread, this, ctx_copy)));
     }
   }

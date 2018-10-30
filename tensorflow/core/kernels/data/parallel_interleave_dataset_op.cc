@@ -483,7 +483,7 @@ class ParallelInterleaveDatasetOp : public UnaryDatasetOpKernel {
           for (size_t i = 0; i < dataset()->num_threads(); ++i) {
             std::shared_ptr<IteratorContext> new_ctx(new IteratorContext(*ctx));
             worker_threads_.emplace_back(ctx->env()->StartThread(
-                {}, "worker_thread",
+                {}, strings::StrCat("tf_data_parallel_interleave_worker_", i),
                 [this, new_ctx, i]() { WorkerThread(new_ctx, i); }));
           }
         }
@@ -582,7 +582,7 @@ class ParallelInterleaveDatasetOp : public UnaryDatasetOpKernel {
             workers_[i].SetInputs(s, std::move(args));
             std::shared_ptr<IteratorContext> new_ctx(new IteratorContext(*ctx));
             worker_threads_.emplace_back(ctx->env()->StartThread(
-                {}, "worker_thread",
+                {}, strings::StrCat("tf_data_parallel_interleave_worker_", i),
                 [this, new_ctx, i]() { WorkerThread(new_ctx, i); }));
             if (i < dataset()->cycle_length_) {
               interleave_indices_.push_back(i);
@@ -1237,7 +1237,8 @@ class ParallelInterleaveDatasetV2Op : public UnaryDatasetOpKernel {
             current_elements_(params.dataset->cycle_length_),
             element_in_use_(params.dataset->cycle_length_, false),
             thread_pool_(new thread::ThreadPool(
-                Env::Default(), ThreadOptions(), "parallel_interleave",
+                Env::Default(), ThreadOptions(),
+                "tf_data_parallel_interleave_worker_pool",
                 dataset()->cycle_length_ /* num_threads */,
                 false /* low_latency_hint */)) {}
 
@@ -1402,7 +1403,7 @@ class ParallelInterleaveDatasetV2Op : public UnaryDatasetOpKernel {
         if (!runner_thread_) {
           std::shared_ptr<IteratorContext> new_ctx(new IteratorContext(*ctx));
           runner_thread_.reset(ctx->env()->StartThread(
-              {}, "runner_thread",
+              {}, "tf_data_parallel_interleave_runner",
               [this, new_ctx]() { RunnerThread(new_ctx); }));
         }
       }
