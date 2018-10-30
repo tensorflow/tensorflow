@@ -2727,6 +2727,22 @@ cuda_py_test(
 )
 
 cuda_py_test(
+    name = "huge_slice_op_test",
+    size = "medium",
+    srcs = ["huge_slice_op_test.py"],
+    additional_deps = [
+        "//third_party/py/numpy",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:errors",
+        "//tensorflow/python:framework_for_generated_wrappers",
+    ],
+    tags = [
+        "no_oss",  # Requires 4GB+ RAM
+    ],
+)
+
+cuda_py_test(
     name = "sparse_matmul_op_test",
     size = "medium",
     srcs = ["sparse_matmul_op_test.py"],
