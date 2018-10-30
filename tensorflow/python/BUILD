@@ -3223,6 +3223,7 @@ cuda_py_test(
         ":variable_scope",
         "//third_party/py/numpy",
     ],
+    tags = ["no_oss"],  # b/118709825
 )
 
 cuda_py_test(
