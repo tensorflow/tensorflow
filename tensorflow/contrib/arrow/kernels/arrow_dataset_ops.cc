@@ -223,7 +223,8 @@ class ArrowDatasetBase : public DatasetBase {
           int32 col = this->dataset()->columns_[i];
           DataType dt = this->dataset()->output_types_[i];
           std::shared_ptr<arrow::Array> arr = current_batch_->column(col);
-          TF_RETURN_IF_ERROR(arrow_converter.AppendTensor(arr, dt, out_tensors));
+          TF_RETURN_IF_ERROR(
+              arrow_converter.AppendTensor(arr, dt, out_tensors));
         }
 
         // Increment to next row
@@ -592,16 +593,26 @@ class ArrowStreamDatasetOp : public ArrowOpKernelBase {
         if (dataset()->host_ == "STDIN") {
           in_stream_ = std::make_shared<arrow::io::StdinStream>();
         } else {
+          size_t sep_pos = dataset()->host_.find(':');
+          if (sep_pos == std::string::npos ||
+              sep_pos == dataset()->host_.size()) {
+            return errors::InvalidArgument(
+                "Expected host to be in format <host>:<port> but got: " +
+                dataset()->host_);
+          }
+          std::string host_str = dataset()->host_.substr(0, sep_pos);
+          std::string port_str = dataset()->host_.substr(
+              sep_pos + 1, dataset()->host_.size() - sep_pos);
+          int port_num = std::stoi(port_str);
           int sock = 0;
           struct sockaddr_in serv_addr;
           if ((sock = socket(AF_INET, SOCK_STREAM, 0)) < 0) {
             return errors::InvalidArgument("Socket creation error");
           }
           bzero((char*)&serv_addr, sizeof(serv_addr));
-          serv_addr.sin_addr.s_addr = inet_addr(dataset()->host_.c_str());
+          serv_addr.sin_addr.s_addr = inet_addr(host_str.c_str());
           serv_addr.sin_family = AF_INET;
-          // TODO parse port with hostname
-          serv_addr.sin_port = htons(8080);
+          serv_addr.sin_port = htons(port_num);
           // if(inet_pton(AF_INET, "127.0.0.1", &serv_addr.sin_addr)<=0)
           // printf("\nInvalid address/ Address not supported \n");
           if (connect(sock, (struct sockaddr*)&serv_addr, sizeof(serv_addr)) <

@@ -144,30 +144,27 @@ class ArrowDatasetTest(test.TestCase):
     columns = tuple(range(len(arrays)))
     output_types = (dtypes.int32, dtypes.float32, dtypes.int32, dtypes.int32)
 
-    host = '127.0.0.1'
-    port_num = 8080
+    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    sock.bind(('127.0.0.1', 0))
+    sock.listen(1)
+    host_addr, port = sock.getsockname()
+    host = "%s:%s" % (host_addr, port)
 
     def run_server():
-      s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-      s.bind((host, port_num))
-      s.listen(1)
-      conn, _ = s.accept()
+      conn, _ = sock.accept()
       outfile = conn.makefile(mode='wb')
       writer = pa.RecordBatchStreamWriter(outfile, batch.schema)
       writer.write_batch(batch)
       writer.close()
-      outfile.flush()
       outfile.close()
       conn.close()
-      s.close()
+      sock.close()
 
     server = threading.Thread(target=run_server)
     server.start()
 
-    host_wport = host  # TODO + ':%' % port_num
-
     dataset = arrow_dataset_ops.ArrowStreamDataset(
-        host_wport, columns, output_types)
+        host, columns, output_types)
 
     iterator = dataset.make_one_shot_iterator()
     next_element = iterator.get_next()
