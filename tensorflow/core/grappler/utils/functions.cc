@@ -16,6 +16,7 @@ limitations under the License.
 
 #include <unordered_map>
 
+#include "absl/strings/substitute.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/function.pb.h"
@@ -617,10 +618,16 @@ Status MakeGrapplerFunctionItem(const FunctionDef& func,
   // Instantiate function body into a statically defined graph def.
   GraphDef function_body;
 
-  // Function body shares the library with the graph that instantiated it. It's
-  // unsafe to prune unreachable functions here, because it might lead to
-  // conflicting specializations.
-  *function_body.mutable_library() = flib.ToProto();
+  // Function body shares the library with the graph that instantiated it. We do
+  // not need a full copy of the function library, just the reachable subset.
+  *function_body.mutable_library() =
+      ReachableFunctionLibraryDefinition(flib, func).ToProto();
+
+  VLOG(3) << absl::Substitute(
+      "Deleted $0 unreachable functions from the Grappler function item "
+      "instantiation of $1 (library size = $2)",
+      flib.num_functions() - function_body.library().function_size(),
+      signature.name(), function_body.library().function_size());
 
   // TODO(ezhulenev): support functions with tensor sequence inputs/outputs
 
@@ -658,7 +665,7 @@ Status MakeGrapplerFunctionItem(const FunctionDef& func,
 
     InputArgExpansion input_expansion{/*input_name=*/input.name(),
                                       /*data_type=*/input_data_type,
-                                      /*is_ref*/ input.is_ref(),
+                                      /*is_ref=*/input.is_ref(),
                                       /*placeholders=*/{input.name()}};
     connectivity.RegisterInputArgExpansion(input_expansion);
     inputs.push_back(std::move(input_expansion));
