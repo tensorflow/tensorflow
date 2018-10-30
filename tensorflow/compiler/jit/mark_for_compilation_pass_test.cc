@@ -1061,5 +1061,48 @@ TEST(XlaCompilationTest, NOT_DontClusterSpreadingNodes) {
   // Improved Heuristics should prevent this probably.
   EXPECT_EQ(clusters["MatMulSource_dev0"], clusters["MatMul0_dev0"]);
 }
+
+TEST(XlaCompilationTest, ClusterStatefulRandomOpOnXlaDevice) {
+  absl::string_view xla_cpu_device =
+      "/job:worker/replica:0/task:0/device:XLA_CPU:0";
+
+  Scope root = Scope::NewRootScope().ExitOnError();
+  Output shape = ops::Const(root.WithOpName("test/shape_shape"), {200, 200});
+  Output a = ops::RandomUniform(root.WithOpName("test/a"), shape, DT_FLOAT);
+  Output b = ops::RandomUniform(root.WithOpName("test/b"), shape, DT_FLOAT);
+  Output c = ops::Add(root.WithOpName("test/c"), a, b);
+
+  std::unique_ptr<Graph> graph(new Graph(OpRegistry::Global()));
+  TF_ASSERT_OK(root.ToGraph(graph.get()));
+
+  for (Node* n : graph->nodes()) {
+    if (absl::StartsWith(n->name(), /*prefix=*/"test/")) {
+      n->set_assigned_device_name(string(xla_cpu_device));
+    }
+  }
+  TF_ASSERT_OK(MarkForCompilationPassTestHelper::MarkForCompilation(&graph));
+
+  std::unordered_map<string, string> clusters = GetClusters(*graph);
+  EXPECT_NE(clusters["test/a"], "");
+  EXPECT_NE(clusters["test/b"], "");
+  EXPECT_NE(clusters["test/c"], "");
+}
+
+TEST(XlaCompilationTest, DontAutoclusterStatefulRandomOp) {
+  Scope root = Scope::NewRootScope().ExitOnError();
+  Output shape = ops::Const(root.WithOpName("test/shape_shape"), {200, 200});
+  Output a = ops::RandomUniform(root.WithOpName("test/a"), shape, DT_FLOAT);
+  Output b = ops::RandomUniform(root.WithOpName("test/b"), shape, DT_FLOAT);
+  Output c = ops::Add(root.WithOpName("test/c"), a, b);
+
+  std::unique_ptr<Graph> graph(new Graph(OpRegistry::Global()));
+  TF_ASSERT_OK(root.ToGraph(graph.get()));
+
+  TF_ASSERT_OK(MarkForCompilationPassTestHelper::MarkForCompilation(&graph));
+
+  std::unordered_map<string, string> clusters = GetClusters(*graph);
+  EXPECT_EQ(clusters["test/a"], "");
+  EXPECT_EQ(clusters["test/b"], "");
+}
 }  // namespace
 }  // namespace tensorflow
