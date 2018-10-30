@@ -17,7 +17,8 @@ cc_library(
         ":util",
         "//tensorflow/c:c_api_internal",
         "//tensorflow/contrib/lite/c:c_api_internal",
-        "//tensorflow/contrib/lite:kernel_api",
+        "//tensorflow/contrib/lite:string",
+        "//tensorflow/contrib/lite:string_util",
     ] + select({
         "//tensorflow:android": [
             "//tensorflow/core:android_tensorflow_lib_lite",
@@ -36,6 +37,7 @@ tf_cc_test(
     deps = [
         ":buffer_map",
         "//tensorflow/contrib/lite:framework",
+        "//tensorflow/contrib/lite:string_util",
         "//tensorflow/contrib/lite:util",
         "//tensorflow/contrib/lite/testing:util",
         "@com_google_googletest//:gtest",
