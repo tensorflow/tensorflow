@@ -198,14 +198,20 @@ static port::ThreadPool* GetROCmThreadpool() {
   __macro(miopenCreateOpConvForward)                       \
   __macro(miopenCreateOpBiasForward)                       \
   __macro(miopenCreateOpActivationForward)                 \
+  __macro(miopenCreateOpActivationBackward)		   \
   __macro(miopenCreateOpBatchNormInference)		   \
+  __macro(miopenCreateOpBatchNormForward)		   \
+  __macro(miopenCreateOpBatchNormBackward)		   \
   __macro(miopenCompileFusionPlan)                         \
   __macro(miopenFusionPlanGetOp)                           \
   __macro(miopenCreateOperatorArgs)                        \
   __macro(miopenSetOpArgsConvForward)                      \
   __macro(miopenSetOpArgsBiasForward)                      \
   __macro(miopenSetOpArgsActivForward)			   \
+  __macro(miopenSetOpArgsActivBackward)			   \
   __macro(miopenSetOpArgsBatchNormInference)		   \
+  __macro(miopenSetOpArgsBatchNormForward)		   \
+  __macro(miopenSetOpArgsBatchNormBackward)		   \
   __macro(miopenExecuteFusionPlan)                         \
   __macro(miopenDestroyOperatorArgs)                       \
   __macro(miopenDestroyFusionPlan)
@@ -931,10 +937,11 @@ class ScopedFusionPlanBase {
     return status;
   }
 
-  miopenStatus_t SetBatchNormArgs(const int op_idx, const float* alpha,
-                                  const float* beta, const void* scale,
-                                  const void* offset, const void* mean,
-                                  const void* variance, double epsilon) {
+  miopenStatus_t SetBatchNormInferenceArgs(const int op_idx, const float* alpha,
+                                           const float* beta, const void* scale,
+                                           const void* offset, const void* mean,
+                                           const void* variance,
+                                           double epsilon) {
     miopenFusionOpDescriptor_t batchnorm_op;
     miopenStatus_t status = wrap::miopenFusionPlanGetOp(parent_, fusion_plan_,
                                                         op_idx, &batchnorm_op);
@@ -953,9 +960,61 @@ class ScopedFusionPlanBase {
     return status;
   }
 
-  miopenStatus_t SetActivationArgs(const int op_idx, float* alpha, float* beta,
-                                   double activ_alpha, double activ_beta,
-                                   double activ_gamma) {
+  miopenStatus_t SetBatchNormForwardArgs(const int op_idx, const float* alpha,
+                                         const float* beta, const void* scale,
+                                         const void* offset, void* runningMean,
+                                         void* runningVariance, void* savedMean,
+                                         void* savedInvVariance,
+                                         double epsilon) {
+    miopenFusionOpDescriptor_t batchnorm_op;
+    miopenStatus_t status = wrap::miopenFusionPlanGetOp(parent_, fusion_plan_,
+                                                        op_idx, &batchnorm_op);
+    if (status != miopenStatusSuccess) {
+      LOG(FATAL) << "call to miopenFusionPlanGetOp failed: "
+                 << ToString(status);
+    }
+
+    double expAvgFactor = 1.0;
+
+    status = wrap::miopenSetOpArgsBatchNormForward(
+        parent_, fusion_args_, batchnorm_op, alpha, beta, scale, offset,
+        savedMean, savedInvVariance, runningMean, runningVariance, expAvgFactor,
+        epsilon);
+    if (status != miopenStatusSuccess) {
+      LOG(FATAL) << "call to miopenSetOpArgsBatchNormForward failed: "
+                 << ToString(status);
+    }
+    return status;
+  }
+
+  miopenStatus_t SetBatchNormBackwardArgs(const int op_idx, const float* alpha,
+                                          const float* beta, const void* x,
+                                          const void* scale, const void* offset,
+                                          void* scaleGrad, void* offsetGrad,
+                                          const void* savedMean,
+                                          const void* savedInvVariance) {
+    miopenFusionOpDescriptor_t batchnorm_op;
+    miopenStatus_t status = wrap::miopenFusionPlanGetOp(parent_, fusion_plan_,
+                                                        op_idx, &batchnorm_op);
+    if (status != miopenStatusSuccess) {
+      LOG(FATAL) << "call to miopenFusionPlanGetOp failed: "
+                 << ToString(status);
+    }
+
+    status = wrap::miopenSetOpArgsBatchNormBackward(
+        parent_, fusion_args_, batchnorm_op, alpha, beta, x, scale, offset,
+        scaleGrad, offsetGrad, savedMean, savedInvVariance);
+    if (status != miopenStatusSuccess) {
+      LOG(FATAL) << "call to miopenSetOpArgsBatchNormBackward failed: "
+                 << ToString(status);
+    }
+    return status;
+  }
+
+  miopenStatus_t SetActivationForwardArgs(const int op_idx, const float* alpha,
+                                          const float* beta, double activ_alpha,
+                                          double activ_beta,
+                                          double activ_gamma) {
     miopenFusionOpDescriptor_t actv_op;
     miopenStatus_t status =
         wrap::miopenFusionPlanGetOp(parent_, fusion_plan_, op_idx, &actv_op);
@@ -969,6 +1028,29 @@ class ScopedFusionPlanBase {
                                                activ_beta, activ_gamma);
     if (status != miopenStatusSuccess) {
       LOG(FATAL) << "call to miopenSetOpArgsActivForward failed: "
+                 << ToString(status);
+    }
+    return status;
+  }
+
+  miopenStatus_t SetActivationBackwardArgs(const int op_idx, const float* alpha,
+                                           const float* beta, const void* y,
+                                           double activ_alpha,
+                                           double activ_beta,
+                                           double activ_gamma) {
+    miopenFusionOpDescriptor_t actv_op;
+    miopenStatus_t status =
+        wrap::miopenFusionPlanGetOp(parent_, fusion_plan_, op_idx, &actv_op);
+    if (status != miopenStatusSuccess) {
+      LOG(FATAL) << "call to miopenFusionPlanGetOp failed: "
+                 << ToString(status);
+    }
+
+    status = wrap::miopenSetOpArgsActivBackward(
+        parent_, fusion_args_, actv_op, alpha, beta, y, nullptr, activ_alpha,
+        activ_beta, activ_gamma);
+    if (status != miopenStatusSuccess) {
+      LOG(FATAL) << "call to miopenSetOpArgsActivBackward failed: "
                  << ToString(status);
     }
     return status;
@@ -1058,12 +1140,12 @@ class ScopedFusionPlanConvolutionBiasActivation : public ScopedFusionPlanBase {
                                              bias_data);
   }
 
-  miopenStatus_t SetActivationArgs(
+  miopenStatus_t SetActivationForwardArgs(
       ScopedActivationDescriptor& activation_descriptor) {
     float alpha = 1.0;
     float beta = 0.0;
 
-    return ScopedFusionPlanBase::SetActivationArgs(
+    return ScopedFusionPlanBase::SetActivationForwardArgs(
         k_actv_op_idx, &alpha, &beta, activation_descriptor.alpha_,
         activation_descriptor.beta_, activation_descriptor.gamma_);
   }
@@ -1152,22 +1234,23 @@ class ScopedFusionPlanBatchNormActivationInference
     }
   }
 
-  miopenStatus_t SetBatchNormArgs(const void* scale, const void* offset,
-                                  const void* mean, const void* variance,
-                                  double epsilon) {
+  miopenStatus_t SetBatchNormInferenceArgs(const void* scale,
+                                           const void* offset, const void* mean,
+                                           const void* variance,
+                                           double epsilon) {
     float alpha = 1.0;
     float beta = 0.0;
-    return ScopedFusionPlanBase::SetBatchNormArgs(k_batchnorm_op_idx, &alpha,
-                                                  &beta, scale, offset, mean,
-                                                  variance, epsilon);
+    return ScopedFusionPlanBase::SetBatchNormInferenceArgs(
+        k_batchnorm_op_idx, &alpha, &beta, scale, offset, mean, variance,
+        epsilon);
   }
 
-  miopenStatus_t SetActivationArgs(
+  miopenStatus_t SetActivationForwardArgs(
       ScopedActivationDescriptor& activation_descriptor) {
     float alpha = 1.0;
     float beta = 0.0;
 
-    return ScopedFusionPlanBase::SetActivationArgs(
+    return ScopedFusionPlanBase::SetActivationForwardArgs(
         k_actv_op_idx, &alpha, &beta, activation_descriptor.alpha_,
         activation_descriptor.beta_, activation_descriptor.gamma_);
   }
@@ -1193,6 +1276,206 @@ class ScopedFusionPlanBatchNormActivationInference
   const int k_actv_op_idx = 1;
 
   SE_DISALLOW_COPY_AND_ASSIGN(ScopedFusionPlanBatchNormActivationInference);
+};
+
+// class to represent the BatchNorm+Activation (training-forward) fusion plan
+class ScopedFusionPlanBatchNormActivationForward : public ScopedFusionPlanBase {
+ public:
+  ScopedFusionPlanBatchNormActivationForward(
+      ROCMExecutor* parent, miopenHandle_t miopen_handle,
+      miopenTensorDescriptor_t input_descriptor,
+      miopenTensorDescriptor_t scale_offset_mean_variance_descriptor,
+      ScopedActivationDescriptor& activation_descriptor)
+      : ScopedFusionPlanBase(parent, miopen_handle, miopenVerticalFusion,
+                             input_descriptor) {
+    uint64 hash = GetFusionOpHashValue(input_descriptor,
+                                       scale_offset_mean_variance_descriptor,
+                                       activation_descriptor);
+
+    bool is_compiled = CachedFusionPlans::FindOrCreate(
+        hash, parent, &fusion_plan_, miopenVerticalFusion, input_descriptor);
+
+    if (!is_compiled) {
+      miopenFusionOpDescriptor_t batchnorm_op;
+      miopenStatus_t status = wrap::miopenCreateOpBatchNormForward(
+          parent_, fusion_plan_, &batchnorm_op, miopenBNSpatial,
+          true /* runningMeanVariance */);
+
+      if (status != miopenStatusSuccess) {
+        LOG(FATAL) << "call to miopenCreateOpBatchNormForward failed: "
+                   << ToString(status);
+      }
+
+      miopenFusionOpDescriptor_t actv_op;
+      status = wrap::miopenCreateOpActivationForward(
+          parent_, fusion_plan_, &actv_op,
+          activation_descriptor.miopen_activation_mode_);
+      if (status != miopenStatusSuccess) {
+        LOG(FATAL) << "call to miopenCreateOpActivationForward failed: "
+                   << ToString(status);
+      }
+
+      status =
+          wrap::miopenCompileFusionPlan(parent_, miopen_handle_, fusion_plan_);
+      if (status != miopenStatusSuccess) {
+        VLOG(kVlogLevel)
+            << "call to miopenCompileFusionPlan (BnA forward) failed: "
+            << ToString(status);
+
+        CachedFusionPlans::markFusionPlanUnsupported(hash);
+      } else {
+        VLOG(kVlogLevel) << "Fusion Plan compile succedded (BnA forward) ";
+        fusion_plan_compiled_ = true;
+      }
+    } else {
+      // fusion plan was already compiled...check whether it failed to compile
+      fusion_plan_compiled_ = !CachedFusionPlans::isUnsupportedFusionPlan(hash);
+    }
+  }
+
+  miopenStatus_t SetBatchNormForwardArgs(const void* scale, const void* offset,
+                                         void* batch_mean, void* batch_var,
+                                         void* saved_mean, void* saved_var,
+                                         double epsilon) {
+    float alpha = 1.0;
+    float beta = 0.0;
+    return ScopedFusionPlanBase::SetBatchNormForwardArgs(
+        k_batchnorm_op_idx, &alpha, &beta, scale, offset, batch_mean, batch_var,
+        saved_mean, saved_var, epsilon);
+  }
+
+  miopenStatus_t SetActivationForwardArgs(
+      ScopedActivationDescriptor& activation_descriptor) {
+    float alpha = 1.0;
+    float beta = 0.0;
+
+    return ScopedFusionPlanBase::SetActivationForwardArgs(
+        k_actv_op_idx, &alpha, &beta, activation_descriptor.alpha_,
+        activation_descriptor.beta_, activation_descriptor.gamma_);
+  }
+
+  uint64 GetFusionOpHashValue(
+      miopenTensorDescriptor_t input_descriptor,
+      miopenTensorDescriptor_t scale_offset_mean_variance_descriptor,
+      ScopedActivationDescriptor& activation_descriptor) {
+    uint64 hashValue = tensorflow::Hash64("BatchNormActivationForward");
+    hashValue =
+        tensorflow::Hash64Combine(hashValue, GetHashValue(input_descriptor));
+
+    hashValue = tensorflow::Hash64Combine(
+        hashValue, GetHashValue(scale_offset_mean_variance_descriptor));
+
+    hashValue = tensorflow::Hash64Combine(hashValue,
+                                          activation_descriptor.GetHashValue());
+    return hashValue;
+  }
+
+ private:
+  const int k_batchnorm_op_idx = 0;
+  const int k_actv_op_idx = 1;
+
+  SE_DISALLOW_COPY_AND_ASSIGN(ScopedFusionPlanBatchNormActivationForward);
+};
+
+// class to represent the BatchNorm+Activation (training-backward) fusion plan
+class ScopedFusionPlanBatchNormActivationBackward
+    : public ScopedFusionPlanBase {
+ public:
+  ScopedFusionPlanBatchNormActivationBackward(
+      ROCMExecutor* parent, miopenHandle_t miopen_handle,
+      miopenTensorDescriptor_t input_descriptor,
+      miopenTensorDescriptor_t scale_offset_mean_variance_descriptor,
+      ScopedActivationDescriptor& activation_descriptor)
+      : ScopedFusionPlanBase(parent, miopen_handle, miopenVerticalFusion,
+                             input_descriptor) {
+    uint64 hash = GetFusionOpHashValue(input_descriptor,
+                                       scale_offset_mean_variance_descriptor,
+                                       activation_descriptor);
+
+    bool is_compiled = CachedFusionPlans::FindOrCreate(
+        hash, parent, &fusion_plan_, miopenVerticalFusion, input_descriptor);
+
+    if (!is_compiled) {
+      miopenFusionOpDescriptor_t batchnorm_op;
+      miopenStatus_t status = wrap::miopenCreateOpBatchNormBackward(
+          parent_, fusion_plan_, &batchnorm_op, miopenBNSpatial);
+
+      if (status != miopenStatusSuccess) {
+        LOG(FATAL) << "call to miopenCreateOpBatchNormBackward failed: "
+                   << ToString(status);
+      }
+
+      miopenFusionOpDescriptor_t actv_op;
+      status = wrap::miopenCreateOpActivationBackward(
+          parent_, fusion_plan_, &actv_op,
+          activation_descriptor.miopen_activation_mode_);
+      if (status != miopenStatusSuccess) {
+        LOG(FATAL) << "call to miopenCreateOpActivationBackward failed: "
+                   << ToString(status);
+      }
+
+      status =
+          wrap::miopenCompileFusionPlan(parent_, miopen_handle_, fusion_plan_);
+      if (status != miopenStatusSuccess) {
+        VLOG(kVlogLevel)
+            << "call to miopenCompileFusionPlan (BnA backward) failed: "
+            << ToString(status);
+
+        CachedFusionPlans::markFusionPlanUnsupported(hash);
+      } else {
+        VLOG(kVlogLevel) << "Fusion Plan compile succedded (BnA backward) ";
+        fusion_plan_compiled_ = true;
+      }
+    } else {
+      // fusion plan was already compiled...check whether it failed to compile
+      fusion_plan_compiled_ = !CachedFusionPlans::isUnsupportedFusionPlan(hash);
+    }
+  }
+
+  miopenStatus_t SetBatchNormBackwardArgs(const void* x, const void* scale,
+                                          const void* offset,
+                                          const void* saved_mean,
+                                          const void* saved_var,
+                                          void* scale_grad, void* offset_grad) {
+    float alpha = 1.0;
+    float beta = 0.0;
+
+    return ScopedFusionPlanBase::SetBatchNormBackwardArgs(
+        k_batchnorm_op_idx, &alpha, &beta, x, scale, offset, scale_grad,
+        offset_grad, saved_mean, saved_var);
+  }
+
+  miopenStatus_t SetActivationBackwardArgs(
+      ScopedActivationDescriptor& activation_descriptor, const void* y) {
+    float alpha = 1.0;
+    float beta = 0.0;
+
+    return ScopedFusionPlanBase::SetActivationBackwardArgs(
+        k_actv_op_idx, &alpha, &beta, y, activation_descriptor.alpha_,
+        activation_descriptor.beta_, activation_descriptor.gamma_);
+  }
+
+  uint64 GetFusionOpHashValue(
+      miopenTensorDescriptor_t input_descriptor,
+      miopenTensorDescriptor_t scale_offset_mean_variance_descriptor,
+      ScopedActivationDescriptor& activation_descriptor) {
+    uint64 hashValue = tensorflow::Hash64("BatchNormActivationBackward");
+    hashValue =
+        tensorflow::Hash64Combine(hashValue, GetHashValue(input_descriptor));
+
+    hashValue = tensorflow::Hash64Combine(
+        hashValue, GetHashValue(scale_offset_mean_variance_descriptor));
+
+    hashValue = tensorflow::Hash64Combine(hashValue,
+                                          activation_descriptor.GetHashValue());
+    return hashValue;
+  }
+
+ private:
+  const int k_batchnorm_op_idx = 0;
+  const int k_actv_op_idx = 1;
+
+  SE_DISALLOW_COPY_AND_ASSIGN(ScopedFusionPlanBatchNormActivationBackward);
 };
 
 namespace {
@@ -4170,7 +4453,7 @@ bool MIOpenSupport::DoFusedConvolutionBiasActivationImpl(
     }
 
     if (status == miopenStatusSuccess) {
-      status = fusion_plan.SetActivationArgs(activation_desc);
+      status = fusion_plan.SetActivationForwardArgs(activation_desc);
     }
 
     if (status == miopenStatusSuccess) {
@@ -4258,13 +4541,13 @@ bool MIOpenSupport::DoFusedBatchNormActivationInferenceImpl(
     miopenStatus_t status = miopenStatusSuccess;
 
     if (status == miopenStatusSuccess) {
-      fusion_plan.SetBatchNormArgs(scale_data.opaque(), offset_data.opaque(),
-                                   mean_data.opaque(), variance_data.opaque(),
-                                   epsilon);
+      fusion_plan.SetBatchNormInferenceArgs(
+          scale_data.opaque(), offset_data.opaque(), mean_data.opaque(),
+          variance_data.opaque(), epsilon);
     }
 
     if (status == miopenStatusSuccess) {
-      status = fusion_plan.SetActivationArgs(activation_desc);
+      status = fusion_plan.SetActivationForwardArgs(activation_desc);
     }
 
     if (status == miopenStatusSuccess) {
@@ -4309,6 +4592,264 @@ bool MIOpenSupport::DoFusedBatchNormActivationInference(
       stream, miopenFloat, x_descriptor, x_data,
       scale_offset_mean_variance_descriptor, scale_data, offset_data, mean_data,
       variance_data, epsilon, activation_mode, y_data, output_profile_result);
+}
+
+bool MIOpenSupport::DoFusedBatchNormActivationInference(
+    Stream* stream, const dnn::BatchDescriptor& x_descriptor,
+    const DeviceMemory<Eigen::half>& x_data,
+    const dnn::BatchDescriptor& scale_offset_mean_variance_descriptor,
+    const DeviceMemory<Eigen::half>& scale_data,
+    const DeviceMemory<Eigen::half>& offset_data,
+    const DeviceMemory<Eigen::half>& mean_data,
+    const DeviceMemory<Eigen::half>& variance_data, double epsilon,
+    dnn::ActivationMode activation_mode, DeviceMemory<Eigen::half>* y_data,
+    dnn::ProfileResult* output_profile_result) {
+  return DoFusedBatchNormActivationInferenceImpl<Eigen::half>(
+      stream, miopenHalf, x_descriptor, x_data,
+      scale_offset_mean_variance_descriptor, scale_data, offset_data, mean_data,
+      variance_data, epsilon, activation_mode, y_data, output_profile_result);
+}
+
+template <typename T>
+bool MIOpenSupport::DoFusedBatchNormActivationForwardImpl(
+    Stream* stream,
+    int miopen_type,  // Actually miopenDataType_t.
+    const dnn::BatchDescriptor& x_descriptor, const DeviceMemory<T>& x_data,
+    const dnn::BatchDescriptor& scale_offset_mean_variance_descriptor,
+    const DeviceMemory<T>& scale_data, const DeviceMemory<T>& offset_data,
+    double epsilon, dnn::ActivationMode activation_mode,
+    DeviceMemory<T>* y_data, DeviceMemory<T>* batch_mean_data,
+    DeviceMemory<T>* batch_var_data, DeviceMemory<T>* saved_mean_data,
+    DeviceMemory<T>* saved_var_data,
+    dnn::ProfileResult* output_profile_result) {
+  ScopedTensorDescriptor x_nd{parent_, x_descriptor,
+                              static_cast<miopenDataType_t>(miopen_type)};
+
+  ScopedTensorDescriptor scale_offset_mean_variance_nd{
+      parent_, scale_offset_mean_variance_descriptor,
+      static_cast<miopenDataType_t>(miopen_type)};
+
+  ScopedActivationDescriptor activation_desc{parent_, activation_mode};
+
+  ScopedFusionPlanBatchNormActivationForward fusion_plan{
+      parent_, ToHandle(dnn_handle_), x_nd.handle(),
+      scale_offset_mean_variance_nd.handle(), activation_desc};
+
+  bool retval = false;
+
+  if (fusion_plan.CompilationSucceeded()) {
+    const bool is_profiling = output_profile_result != nullptr;
+
+    std::unique_ptr<ROCMTimer> timer;
+    if (is_profiling) {
+      timer.reset(new ROCMTimer(parent_));
+      timer->Init();
+      timer->Start(AsROCMStream(stream));
+    }
+
+    miopenStatus_t status = miopenStatusSuccess;
+
+    if (status == miopenStatusSuccess) {
+      fusion_plan.SetBatchNormForwardArgs(
+          scale_data.opaque(), offset_data.opaque(), batch_mean_data->opaque(),
+          batch_mean_data->opaque(), saved_mean_data->opaque(),
+          saved_var_data->opaque(), epsilon);
+    }
+
+    if (status == miopenStatusSuccess) {
+      status = fusion_plan.SetActivationForwardArgs(activation_desc);
+    }
+
+    if (status == miopenStatusSuccess) {
+      status = fusion_plan.Execute(x_nd.handle(), x_data.opaque(),
+                                   x_nd.handle(), y_data->opaque());
+    }
+
+    if (is_profiling) {
+      timer->Stop(AsROCMStream(stream));
+      if (status == miopenStatusSuccess) {
+        output_profile_result->set_elapsed_time_in_ms(
+            timer->GetElapsedMilliseconds());
+      }
+      timer->Destroy();
+    }
+
+    if (status != miopenStatusSuccess) {
+      // Silently return when we are profiling.
+      if (!is_profiling) {
+        LOG(FATAL) << "failed to enqueue fused-convolution on stream: "
+                   << ToString(status);
+      }
+    }
+
+    retval = true;
+  }
+
+  return retval;
+}
+
+bool MIOpenSupport::DoFusedBatchNormActivationForward(
+    Stream* stream, const dnn::BatchDescriptor& x_descriptor,
+    const DeviceMemory<float>& x_data,
+    const dnn::BatchDescriptor& scale_offset_mean_variance_descriptor,
+    const DeviceMemory<float>& scale_data,
+    const DeviceMemory<float>& offset_data, double epsilon,
+    dnn::ActivationMode activation_mode, DeviceMemory<float>* y_data,
+    DeviceMemory<float>* batch_mean_data, DeviceMemory<float>* batch_var_data,
+    DeviceMemory<float>* saved_mean_data, DeviceMemory<float>* saved_var_data,
+    dnn::ProfileResult* output_profile_result) {
+  return DoFusedBatchNormActivationForwardImpl<float>(
+      stream, miopenFloat, x_descriptor, x_data,
+      scale_offset_mean_variance_descriptor, scale_data, offset_data, epsilon,
+      activation_mode, y_data, batch_mean_data, batch_var_data, saved_mean_data,
+      saved_var_data, output_profile_result);
+}
+
+bool MIOpenSupport::DoFusedBatchNormActivationForward(
+    Stream* stream, const dnn::BatchDescriptor& x_descriptor,
+    const DeviceMemory<Eigen::half>& x_data,
+    const dnn::BatchDescriptor& scale_offset_mean_variance_descriptor,
+    const DeviceMemory<Eigen::half>& scale_data,
+    const DeviceMemory<Eigen::half>& offset_data, double epsilon,
+    dnn::ActivationMode activation_mode, DeviceMemory<Eigen::half>* y_data,
+    DeviceMemory<Eigen::half>* batch_mean_data,
+    DeviceMemory<Eigen::half>* batch_var_data,
+    DeviceMemory<Eigen::half>* saved_mean_data,
+    DeviceMemory<Eigen::half>* saved_var_data,
+    dnn::ProfileResult* output_profile_result) {
+  return DoFusedBatchNormActivationForwardImpl<Eigen::half>(
+      stream, miopenHalf, x_descriptor, x_data,
+      scale_offset_mean_variance_descriptor, scale_data, offset_data, epsilon,
+      activation_mode, y_data, batch_mean_data, batch_var_data, saved_mean_data,
+      saved_var_data, output_profile_result);
+}
+
+template <typename T>
+bool MIOpenSupport::DoFusedBatchNormActivationBackwardImpl(
+    Stream* stream,
+    int miopen_type,  // Actually miopenDataType_t.
+    const dnn::BatchDescriptor& y_act_backprop_descriptor,
+    const DeviceMemory<T>& y_act_backprop_data,
+    const DeviceMemory<T>& y_act_data, dnn::ActivationMode activation_mode,
+    const DeviceMemory<T>& x_bn_data,
+    const dnn::BatchDescriptor& scale_offset_mean_variance_descriptor,
+    const DeviceMemory<T>& scale_data, const DeviceMemory<T>& offset_data,
+    const DeviceMemory<T>& saved_mean_data,
+    const DeviceMemory<T>& saved_var_data, DeviceMemory<T>* x_bn_backprop_data,
+    DeviceMemory<T>* scale_backprop_data, DeviceMemory<T>* offset_backprop_data,
+    dnn::ProfileResult* output_profile_result) {
+  ScopedTensorDescriptor y_act_backprop_nd{
+      parent_, y_act_backprop_descriptor,
+      static_cast<miopenDataType_t>(miopen_type)};
+
+  ScopedTensorDescriptor scale_offset_mean_variance_nd{
+      parent_, scale_offset_mean_variance_descriptor,
+      static_cast<miopenDataType_t>(miopen_type)};
+
+  ScopedActivationDescriptor activation_desc{parent_, activation_mode};
+
+  ScopedFusionPlanBatchNormActivationBackward fusion_plan{
+      parent_, ToHandle(dnn_handle_), y_act_backprop_nd.handle(),
+      scale_offset_mean_variance_nd.handle(), activation_desc};
+
+  bool retval = false;
+
+  if (fusion_plan.CompilationSucceeded()) {
+    const bool is_profiling = output_profile_result != nullptr;
+
+    std::unique_ptr<ROCMTimer> timer;
+    if (is_profiling) {
+      timer.reset(new ROCMTimer(parent_));
+      timer->Init();
+      timer->Start(AsROCMStream(stream));
+    }
+
+    miopenStatus_t status = miopenStatusSuccess;
+
+    if (status == miopenStatusSuccess) {
+      fusion_plan.SetBatchNormBackwardArgs(
+          x_bn_data.opaque(), scale_data.opaque(), offset_data.opaque(),
+          saved_mean_data.opaque(), saved_var_data.opaque(),
+          scale_backprop_data->opaque(), offset_backprop_data->opaque());
+    }
+
+    if (status == miopenStatusSuccess) {
+      status = fusion_plan.SetActivationBackwardArgs(activation_desc,
+                                                     y_act_data.opaque());
+    }
+
+    if (status == miopenStatusSuccess) {
+      status = fusion_plan.Execute(
+          y_act_backprop_nd.handle(), y_act_backprop_data.opaque(),
+          y_act_backprop_nd.handle(), x_bn_backprop_data->opaque());
+    }
+
+    if (is_profiling) {
+      timer->Stop(AsROCMStream(stream));
+      if (status == miopenStatusSuccess) {
+        output_profile_result->set_elapsed_time_in_ms(
+            timer->GetElapsedMilliseconds());
+      }
+      timer->Destroy();
+    }
+
+    if (status != miopenStatusSuccess) {
+      // Silently return when we are profiling.
+      if (!is_profiling) {
+        LOG(FATAL) << "failed to enqueue fused-convolution on stream: "
+                   << ToString(status);
+      }
+    }
+
+    retval = true;
+  }
+
+  return retval;
+}
+
+bool MIOpenSupport::DoFusedBatchNormActivationBackward(
+    Stream* stream, const dnn::BatchDescriptor& y_act_backprop_descriptor,
+    const DeviceMemory<float>& y_act_backprop_data,
+    const DeviceMemory<float>& y_act_data, dnn::ActivationMode activation_mode,
+    const DeviceMemory<float>& x_bn_data,
+    const dnn::BatchDescriptor& scale_offset_mean_variance_descriptor,
+    const DeviceMemory<float>& scale_data,
+    const DeviceMemory<float>& offset_data,
+    const DeviceMemory<float>& saved_mean_data,
+    const DeviceMemory<float>& saved_var_data,
+    DeviceMemory<float>* x_bn_backprop_data,
+    DeviceMemory<float>* scale_backprop_data,
+    DeviceMemory<float>* offset_backprop_data,
+    dnn::ProfileResult* output_profile_result) {
+  return DoFusedBatchNormActivationBackwardImpl<float>(
+      stream, miopenFloat, y_act_backprop_descriptor, y_act_backprop_data,
+      y_act_data, activation_mode, x_bn_data,
+      scale_offset_mean_variance_descriptor, scale_data, offset_data,
+      saved_mean_data, saved_var_data, x_bn_backprop_data, scale_backprop_data,
+      offset_backprop_data, output_profile_result);
+}
+
+bool MIOpenSupport::DoFusedBatchNormActivationBackward(
+    Stream* stream, const dnn::BatchDescriptor& y_act_backprop_descriptor,
+    const DeviceMemory<Eigen::half>& y_act_backprop_data,
+    const DeviceMemory<Eigen::half>& y_act_data,
+    dnn::ActivationMode activation_mode,
+    const DeviceMemory<Eigen::half>& x_bn_data,
+    const dnn::BatchDescriptor& scale_offset_mean_variance_descriptor,
+    const DeviceMemory<Eigen::half>& scale_data,
+    const DeviceMemory<Eigen::half>& offset_data,
+    const DeviceMemory<Eigen::half>& saved_mean_data,
+    const DeviceMemory<Eigen::half>& saved_var_data,
+    DeviceMemory<Eigen::half>* x_bn_backprop_data,
+    DeviceMemory<Eigen::half>* scale_backprop_data,
+    DeviceMemory<Eigen::half>* offset_backprop_data,
+    dnn::ProfileResult* output_profile_result) {
+  return DoFusedBatchNormActivationBackwardImpl<Eigen::half>(
+      stream, miopenHalf, y_act_backprop_descriptor, y_act_backprop_data,
+      y_act_data, activation_mode, x_bn_data,
+      scale_offset_mean_variance_descriptor, scale_data, offset_data,
+      saved_mean_data, saved_var_data, x_bn_backprop_data, scale_backprop_data,
+      offset_backprop_data, output_profile_result);
 }
 
 }  // namespace rocm

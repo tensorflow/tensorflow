@@ -2016,7 +2016,7 @@ class Stream {
       const dnn::BatchDescriptor& output_descriptor,
       DeviceMemory<float>* output_data);
 
-  // Fused Convolution+Bias+Activation (float)
+  // Fused BatchNorm+Activation (inference) (float)
   Stream& ThenFusedBatchNormActivationInference(
       const dnn::BatchDescriptor& x_descriptor,
       const DeviceMemory<float>& x_data,
@@ -2026,6 +2026,73 @@ class Stream {
       const DeviceMemory<float>& mean_data,
       const DeviceMemory<float>& variance_data, double epsilon,
       dnn::ActivationMode activation_mode, DeviceMemory<float>* y_data);
+
+  // Fused BatchNorm+Activation (inference) (Eigen::half)
+  Stream& ThenFusedBatchNormActivationInference(
+      const dnn::BatchDescriptor& x_descriptor,
+      const DeviceMemory<Eigen::half>& x_data,
+      const dnn::BatchDescriptor& scale_offset_mean_variance_descriptor,
+      const DeviceMemory<Eigen::half>& scale_data,
+      const DeviceMemory<Eigen::half>& offset_data,
+      const DeviceMemory<Eigen::half>& mean_data,
+      const DeviceMemory<Eigen::half>& variance_data, double epsilon,
+      dnn::ActivationMode activation_mode, DeviceMemory<Eigen::half>* y_data);
+
+  // Fused BatchNorm+Activation (training-fwd) (float)
+  Stream& ThenFusedBatchNormActivationForward(
+      const dnn::BatchDescriptor& x_descriptor,
+      const DeviceMemory<float>& x_data,
+      const dnn::BatchDescriptor& scale_offset_mean_variance_descriptor,
+      const DeviceMemory<float>& scale_data,
+      const DeviceMemory<float>& offset_data, double epsilon,
+      dnn::ActivationMode activation_mode, DeviceMemory<float>* y_data,
+      DeviceMemory<float>* batch_mean_data, DeviceMemory<float>* batch_var_data,
+      DeviceMemory<float>* saved_mean_data,
+      DeviceMemory<float>* saved_var_data);
+
+  // Fused BatchNorm+Activation (training-fwd) (Eigen::half)
+  Stream& ThenFusedBatchNormActivationForward(
+      const dnn::BatchDescriptor& x_descriptor,
+      const DeviceMemory<Eigen::half>& x_data,
+      const dnn::BatchDescriptor& scale_offset_mean_variance_descriptor,
+      const DeviceMemory<Eigen::half>& scale_data,
+      const DeviceMemory<Eigen::half>& offset_data, double epsilon,
+      dnn::ActivationMode activation_mode, DeviceMemory<Eigen::half>* y_data,
+      DeviceMemory<Eigen::half>* batch_mean_data,
+      DeviceMemory<Eigen::half>* batch_var_data,
+      DeviceMemory<Eigen::half>* saved_mean_data,
+      DeviceMemory<Eigen::half>* saved_var_data);
+
+  // Fused BatchNorm+Activation (training-bwd) (float)
+  Stream& ThenFusedBatchNormActivationBackward(
+      const dnn::BatchDescriptor& y_act_backprop_descriptor,
+      const DeviceMemory<float>& y_act_backprop_data,
+      const DeviceMemory<float>& y_act_data,
+      dnn::ActivationMode activation_mode, const DeviceMemory<float>& x_bn_data,
+      const dnn::BatchDescriptor& scale_offset_mean_variance_descriptor,
+      const DeviceMemory<float>& scale_data,
+      const DeviceMemory<float>& offset_data,
+      const DeviceMemory<float>& saved_mean_data,
+      const DeviceMemory<float>& saved_var_data,
+      DeviceMemory<float>* x_bn_backprop_data,
+      DeviceMemory<float>* scale_backprop_data,
+      DeviceMemory<float>* offset_backprop_data);
+
+  // Fused BatchNorm+Activation (training-bwd) (Eigen::half)
+  Stream& ThenFusedBatchNormActivationBackward(
+      const dnn::BatchDescriptor& y_act_backprop_descriptor,
+      const DeviceMemory<Eigen::half>& y_act_backprop_data,
+      const DeviceMemory<Eigen::half>& y_act_data,
+      dnn::ActivationMode activation_mode,
+      const DeviceMemory<Eigen::half>& x_bn_data,
+      const dnn::BatchDescriptor& scale_offset_mean_variance_descriptor,
+      const DeviceMemory<Eigen::half>& scale_data,
+      const DeviceMemory<Eigen::half>& offset_data,
+      const DeviceMemory<Eigen::half>& saved_mean_data,
+      const DeviceMemory<Eigen::half>& saved_var_data,
+      DeviceMemory<Eigen::half>* x_bn_backprop_data,
+      DeviceMemory<Eigen::half>* scale_backprop_data,
+      DeviceMemory<Eigen::half>* offset_backprop_data);
 
   // (Synchronously) block the host code waiting for the operations
   // entrained on the stream (enqueued to this point in program

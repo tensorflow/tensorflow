@@ -653,6 +653,72 @@ class MIOpenSupport : public dnn::DnnSupport {
       dnn::ActivationMode activation_mode, DeviceMemory<float>* y_data,
       dnn::ProfileResult* output_profile_result) override;
 
+  bool DoFusedBatchNormActivationInference(
+      Stream* stream, const dnn::BatchDescriptor& x_descriptor,
+      const DeviceMemory<Eigen::half>& x_data,
+      const dnn::BatchDescriptor& scale_mean_variance_descriptor,
+      const DeviceMemory<Eigen::half>& scale_data,
+      const DeviceMemory<Eigen::half>& offset_data,
+      const DeviceMemory<Eigen::half>& mean_data,
+      const DeviceMemory<Eigen::half>& variance_data, double epsilon,
+      dnn::ActivationMode activation_mode, DeviceMemory<Eigen::half>* y_data,
+      dnn::ProfileResult* output_profile_result) override;
+
+  bool DoFusedBatchNormActivationForward(
+      Stream* stream, const dnn::BatchDescriptor& x_descriptor,
+      const DeviceMemory<float>& x_data,
+      const dnn::BatchDescriptor& scale_offset_mean_variance_descriptor,
+      const DeviceMemory<float>& scale_data,
+      const DeviceMemory<float>& offset_data, double epsilon,
+      dnn::ActivationMode activation_mode, DeviceMemory<float>* y_data,
+      DeviceMemory<float>* batch_mean_data, DeviceMemory<float>* batch_var_data,
+      DeviceMemory<float>* saved_mean_data, DeviceMemory<float>* saved_var_data,
+      dnn::ProfileResult* output_profile_result) override;
+
+  bool DoFusedBatchNormActivationForward(
+      Stream* stream, const dnn::BatchDescriptor& x_descriptor,
+      const DeviceMemory<Eigen::half>& x_data,
+      const dnn::BatchDescriptor& scale_offset_mean_variance_descriptor,
+      const DeviceMemory<Eigen::half>& scale_data,
+      const DeviceMemory<Eigen::half>& offset_data, double epsilon,
+      dnn::ActivationMode activation_mode, DeviceMemory<Eigen::half>* y_data,
+      DeviceMemory<Eigen::half>* batch_mean_data,
+      DeviceMemory<Eigen::half>* batch_var_data,
+      DeviceMemory<Eigen::half>* saved_mean_data,
+      DeviceMemory<Eigen::half>* saved_var_data,
+      dnn::ProfileResult* output_profile_result) override;
+
+  bool DoFusedBatchNormActivationBackward(
+      Stream* stream, const dnn::BatchDescriptor& y_act_backprop_descriptor,
+      const DeviceMemory<float>& y_act_backprop_data,
+      const DeviceMemory<float>& y_act_data,
+      dnn::ActivationMode activation_mode, const DeviceMemory<float>& x_bn_data,
+      const dnn::BatchDescriptor& scale_offset_mean_variance_descriptor,
+      const DeviceMemory<float>& scale_data,
+      const DeviceMemory<float>& offset_data,
+      const DeviceMemory<float>& saved_mean_data,
+      const DeviceMemory<float>& saved_var_data,
+      DeviceMemory<float>* x_bn_backprop_data,
+      DeviceMemory<float>* scale_backprop_data,
+      DeviceMemory<float>* offset_backprop_data,
+      dnn::ProfileResult* output_profile_result) override;
+
+  bool DoFusedBatchNormActivationBackward(
+      Stream* stream, const dnn::BatchDescriptor& y_act_backprop_descriptor,
+      const DeviceMemory<Eigen::half>& y_act_backprop_data,
+      const DeviceMemory<Eigen::half>& y_act_data,
+      dnn::ActivationMode activation_mode,
+      const DeviceMemory<Eigen::half>& x_bn_data,
+      const dnn::BatchDescriptor& scale_offset_mean_variance_descriptor,
+      const DeviceMemory<Eigen::half>& scale_data,
+      const DeviceMemory<Eigen::half>& offset_data,
+      const DeviceMemory<Eigen::half>& saved_mean_data,
+      const DeviceMemory<Eigen::half>& saved_var_data,
+      DeviceMemory<Eigen::half>* x_bn_backprop_data,
+      DeviceMemory<Eigen::half>* scale_backprop_data,
+      DeviceMemory<Eigen::half>* offset_backprop_data,
+      dnn::ProfileResult* output_profile_result) override;
+
   ROCMExecutor* GetParentExecutor() { return parent_; }
 
  private:
@@ -825,6 +891,35 @@ class MIOpenSupport : public dnn::DnnSupport {
       const DeviceMemory<T>& mean_data, const DeviceMemory<T>& variance_data,
       double epsilon, dnn::ActivationMode activation_mode,
       DeviceMemory<T>* y_data, dnn::ProfileResult* output_profile_result);
+
+  template <typename T>
+  bool DoFusedBatchNormActivationForwardImpl(
+      Stream* stream,
+      int miopen_type,  // Actually miopenDataType_t.
+      const dnn::BatchDescriptor& x_descriptor, const DeviceMemory<T>& x_data,
+      const dnn::BatchDescriptor& scale_offset_mean_variance_descriptor,
+      const DeviceMemory<T>& scale_data, const DeviceMemory<T>& offset_data,
+      double epsilon, dnn::ActivationMode activation_mode,
+      DeviceMemory<T>* y_data, DeviceMemory<T>* batch_mean_data,
+      DeviceMemory<T>* batch_var_data, DeviceMemory<T>* saved_mean_data,
+      DeviceMemory<T>* saved_var_data,
+      dnn::ProfileResult* output_profile_result);
+
+  template <typename T>
+  bool DoFusedBatchNormActivationBackwardImpl(
+      Stream* stream,
+      int miopen_type,  // Actually miopenDataType_t.
+      const dnn::BatchDescriptor& y_act_backprop_descriptor,
+      const DeviceMemory<T>& y_act_backprop_data,
+      const DeviceMemory<T>& y_act_data, dnn::ActivationMode activation_mode,
+      const DeviceMemory<T>& x_bn_data,
+      const dnn::BatchDescriptor& scale_offset_mean_variance_descriptor,
+      const DeviceMemory<T>& scale_data, const DeviceMemory<T>& offset_data,
+      const DeviceMemory<T>& saved_mean_data,
+      const DeviceMemory<T>& saved_var_data,
+      DeviceMemory<T>* x_bn_backprop_data, DeviceMemory<T>* scale_backprop_data,
+      DeviceMemory<T>* offset_backprop_data,
+      dnn::ProfileResult* output_profile_result);
 
   SE_DISALLOW_COPY_AND_ASSIGN(MIOpenSupport);
 };

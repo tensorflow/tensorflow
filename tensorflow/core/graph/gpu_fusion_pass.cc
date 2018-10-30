@@ -177,10 +177,25 @@ inline bool isOpActivation(const Node* n) {
           (n->type_string() == "Relu6") || (n->type_string() == "Tanh"));
 }
 
+// is this node an instance of a activation gradient op for which we support
+// fusion for?
+inline bool isOpActivationGrad(const Node* n) {
+  return (
+      (n->type_string() == "SigmoidGrad") || (n->type_string() == "ReluGrad") ||
+      (n->type_string() == "Relu6Grad") || (n->type_string() == "TanhGrad"));
+}
+
 // is this node an instance of a batchnorm op for which we support fusion for?
 inline bool isOpBatchNorm(const Node* n) {
   return ((n->type_string() == "FusedBatchNorm") ||
           (n->type_string() == "FusedBatchNormV2"));
+}
+
+// is this node an instance of a batchnorm gradient op for which we support
+// fusion for?
+inline bool isOpBatchNormGrad(const Node* n) {
+  return ((n->type_string() == "FusedBatchNormGrad") ||
+          (n->type_string() == "FusedBatchNormGradV2"));
 }
 
 // is this node an instance of the "Add" op?
@@ -202,6 +217,24 @@ inline bool isOpReluOrFusedAddRelu(const Node* n) {
 inline bool isOpReluGrad(const Node* n) {
   return (n->type_string() == "ReluGrad");
 }
+
+// return the activation op type string from the given activation gradient node
+inline string getActivationOpType(const Node* n) {
+  string activation_type = "None";
+
+  if (n->type_string() == "SigmoidGrad") {
+    activation_type = "Sigmoid";
+  } else if (n->type_string() == "ReluGrad") {
+    activation_type = "Relu";
+  } else if (n->type_string() == "Relu6Grad") {
+    activation_type = "Relu6";
+  } else if (n->type_string() == "TanhGrad") {
+    activation_type = "Tanh";
+  }
+
+  return activation_type;
+}
+
 // Util routines - End
 
 //----------------------------------------------------------------------
@@ -241,6 +274,8 @@ class ROCmFusionOpBase {
   // routine to (maybe) do fusion on the given node (+ the nodes preceding
   // it). will return true if fusion was done, false otherwise
   virtual bool DoFusion(const Node* n, std::set<const Node*>& fused_nodes) = 0;
+
+  using NodeIndexPair = std::pair<const Node*, int>;
 
  protected:
   Graph* graph_;
@@ -303,10 +338,10 @@ class ROCmFusionOpConvolutionBiasActivation : public ROCmFusionOpBase {
 
 //----------------------------------------------------------------------
 
-// BatchNorm-Activation Fusion
-class ROCmFusionOpBatchNormActivation : public ROCmFusionOpBase {
+// BatchNorm-Activation (Inference + Training-Forward) Fusion
+class ROCmFusionOpBatchNormActivationInference : public ROCmFusionOpBase {
  public:
-  ROCmFusionOpBatchNormActivation(Graph* g) : ROCmFusionOpBase(g) {}
+  ROCmFusionOpBatchNormActivationInference(Graph* g) : ROCmFusionOpBase(g) {}
 
   // routine to (maybe) do fusion on the given node (+ the nodes preceding
   // it). will return true if fusion was done, false otherwise
@@ -318,6 +353,35 @@ class ROCmFusionOpBatchNormActivation : public ROCmFusionOpBase {
     const Node* actv;
 
     bool is_training;
+    DataType data_type;
+    float epsilon;
+    string data_format;
+    string activation_mode;
+  };
+
+  bool IsFusionEligible(const Node* n, FusionData* d);
+
+  void CreateFusionOp(const FusionData* d, std::set<const Node*>& fused_nodes);
+};
+
+//----------------------------------------------------------------------
+
+// BatchNorm-Activation (Training-Backward) Fusion
+class ROCmFusionOpBatchNormActivationBackward : public ROCmFusionOpBase {
+ public:
+  ROCmFusionOpBatchNormActivationBackward(Graph* g) : ROCmFusionOpBase(g) {}
+
+  // routine to (maybe) do fusion on the given node (+ the nodes preceding
+  // it). will return true if fusion was done, false otherwise
+  bool DoFusion(const Node* n, std::set<const Node*>& fused_nodes) override;
+
+ protected:
+  struct FusionData {
+    const Node* norm_grad;
+    const Node* actv_grad;
+
+    const Node* norm_offset;
+
     DataType data_type;
     float epsilon;
     string data_format;
@@ -467,7 +531,8 @@ void ROCmFusionPass::InitializeFusions(
   }
 
   if (!ReadBoolFromEnvVar("TF_ROCM_FUSION_DISABLE_BNA")) {
-    fusions.emplace_back(new ROCmFusionOpBatchNormActivation(g));
+    fusions.emplace_back(new ROCmFusionOpBatchNormActivationInference(g));
+    fusions.emplace_back(new ROCmFusionOpBatchNormActivationBackward(g));
   }
 
   if (!ReadBoolFromEnvVar("TF_ROCM_FUSION_DISABLE_ADDRELU")) {
@@ -774,17 +839,17 @@ void ROCmFusionOpConvolutionBiasActivation::CreateFusionOp(
   // populate output data and control edges
   for (const Edge* e : d->conv->out_edges()) {
     if (e->IsControlEdge()) {
-      CHECK_NOTNULL(graph_->AddControlEdge(e->src(), fusion_node, true));
+      CHECK_NOTNULL(graph_->AddControlEdge(fusion_node, e->dst(), true));
     }
   }
   for (const Edge* e : d->bias->out_edges()) {
     if (e->IsControlEdge()) {
-      CHECK_NOTNULL(graph_->AddControlEdge(e->src(), fusion_node, true));
+      CHECK_NOTNULL(graph_->AddControlEdge(fusion_node, e->dst(), true));
     }
   }
   for (const Edge* e : d->actv->out_edges()) {
     if (e->IsControlEdge()) {
-      CHECK_NOTNULL(graph_->AddControlEdge(e->src(), fusion_node, true));
+      CHECK_NOTNULL(graph_->AddControlEdge(fusion_node, e->dst(), true));
     } else {
       CHECK_NOTNULL(graph_->AddEdge(fusion_node, 0, e->dst(), e->dst_input()));
     }
@@ -811,10 +876,10 @@ void ROCmFusionOpConvolutionBiasActivation::CreateFusionOp(
 //----------------------------------------------------------------------
 
 // ----------------------------------------------
-// ROCmFusionOpBatchNormActivation implementation
+// ROCmFusionOpBatchNormActivationInference implementation
 // ----------------------------------------------
 
-bool ROCmFusionOpBatchNormActivation::DoFusion(
+bool ROCmFusionOpBatchNormActivationInference::DoFusion(
     const Node* n2, std::set<const Node*>& fused_nodes) {
   bool did_fusion = false;
   FusionData d;
@@ -825,8 +890,8 @@ bool ROCmFusionOpBatchNormActivation::DoFusion(
   return did_fusion;
 }
 
-bool ROCmFusionOpBatchNormActivation::IsFusionEligible(const Node* n2,
-                                                       FusionData* d) {
+bool ROCmFusionOpBatchNormActivationInference::IsFusionEligible(const Node* n2,
+                                                                FusionData* d) {
   // First check whether we have the right sequence of ops
   bool is_eligible = false;
 
@@ -844,9 +909,10 @@ bool ROCmFusionOpBatchNormActivation::IsFusionEligible(const Node* n2,
 
       VLOG(kVlogLevel) << "===========";
       if (d->is_training) {
-        DumpNodeList(kVlogLevel,
-                     "Found Fusion Candidate BatchNorm+Activation (training): ",
-                     {d->norm, d->actv});
+        DumpNodeList(
+            kVlogLevel,
+            "Found Fusion Candidate BatchNorm+Activation (training-fwd): ",
+            {d->norm, d->actv});
       } else {
         DumpNodeList(
             kVlogLevel,
@@ -860,16 +926,6 @@ bool ROCmFusionOpBatchNormActivation::IsFusionEligible(const Node* n2,
 
   // ensure all the nodes are placed on the same GPU
   if (is_eligible && !areAssignedToSameGpu({d->norm, d->actv})) {
-    is_eligible = false;
-  }
-
-  // we currently do not support fusion for training
-
-  if (is_eligible && d->is_training) {
-    VLOG(kVlogLevel)
-        << "\tSkipping Fusion : "
-        << "is_training is set to true, fusion only supported for inference";
-    VLOG(kVlogLevel) << "===========";
     is_eligible = false;
   }
 
@@ -897,8 +953,8 @@ bool ROCmFusionOpBatchNormActivation::IsFusionEligible(const Node* n2,
     TF_CHECK_OK(GetNodeAttr(d->norm->def(), kAttr_T, &T_norm));
     TF_CHECK_OK(GetNodeAttr(d->actv->def(), kAttr_T, &T_actv));
 
-    // only float type is supported for now
-    if (T_norm == DT_FLOAT) {
+    // only float and half types are supported for now
+    if ((T_norm == DT_FLOAT) || (T_norm == DT_HALF)) {
       DataType U_norm = T_norm;
       if (d->norm->type_string() == "FusedBatchNormV2") {
         TF_CHECK_OK(GetNodeAttr(d->norm->def(), kAttr_U, &U_norm));
@@ -956,7 +1012,7 @@ bool ROCmFusionOpBatchNormActivation::IsFusionEligible(const Node* n2,
   return is_eligible;
 }
 
-void ROCmFusionOpBatchNormActivation::CreateFusionOp(
+void ROCmFusionOpBatchNormActivationInference::CreateFusionOp(
     const FusionData* d, std::set<const Node*>& fused_nodes) {
   std::vector<const Edge*> norm_input_edges;
   TF_CHECK_OK(d->norm->input_edges(&norm_input_edges));
@@ -965,7 +1021,7 @@ void ROCmFusionOpBatchNormActivation::CreateFusionOp(
   string op_name = strings::StrCat(d->norm->name(), d->actv->name());
 
   string fusion_type = d->is_training
-                           ? "_ROCmFusedBatchNormActivationTraining"
+                           ? "_ROCmFusedBatchNormActivationForward"
                            : "_ROCmFusedBatchNormActivationInference";
 
   NodeBuilder nb(op_name, fusion_type);
@@ -1014,20 +1070,26 @@ void ROCmFusionOpBatchNormActivation::CreateFusionOp(
   // populate output data and control edges
   for (const Edge* e : d->norm->out_edges()) {
     if (e->IsControlEdge()) {
-      CHECK_NOTNULL(graph_->AddControlEdge(e->src(), fusion_node, true));
+      CHECK_NOTNULL(graph_->AddControlEdge(fusion_node, e->dst(), true));
     } else if (d->is_training) {
       if (e->src_output() == 1) {  // batch-norm mean
         CHECK_NOTNULL(
             graph_->AddEdge(fusion_node, 1, e->dst(), e->dst_input()));
-      } else if (e->src_output() == 1) {  // batch-norm variance
+      } else if (e->src_output() == 2) {  // batch-norm variance
         CHECK_NOTNULL(
             graph_->AddEdge(fusion_node, 2, e->dst(), e->dst_input()));
+      } else if (e->src_output() == 3) {  // saved mean
+        CHECK_NOTNULL(
+            graph_->AddEdge(fusion_node, 3, e->dst(), e->dst_input()));
+      } else if (e->src_output() == 4) {  // saved variance
+        CHECK_NOTNULL(
+            graph_->AddEdge(fusion_node, 4, e->dst(), e->dst_input()));
       }
     }
   }
   for (const Edge* e : d->actv->out_edges()) {
     if (e->IsControlEdge()) {
-      CHECK_NOTNULL(graph_->AddControlEdge(e->src(), fusion_node, true));
+      CHECK_NOTNULL(graph_->AddControlEdge(fusion_node, e->dst(), true));
     } else {
       CHECK_NOTNULL(graph_->AddEdge(fusion_node, 0, e->dst(), e->dst_input()));
     }
@@ -1037,7 +1099,7 @@ void ROCmFusionOpBatchNormActivation::CreateFusionOp(
   fusion_node->set_assigned_device_name(d->norm->assigned_device_name());
 
   VLOG(kVlogLevel) << "\tCreated BatchNorm+Activation "
-                   << (d->is_training ? "(training)" : "(inference)")
+                   << (d->is_training ? "(training-fwd)" : "(inference)")
                    << " Fusion Node: " << fusion_node;
   VLOG(kVlogLevel) << "===========";
 
@@ -1048,6 +1110,245 @@ void ROCmFusionOpBatchNormActivation::CreateFusionOp(
   // and remove them from the graph
   graph_->RemoveNode(const_cast<Node*>(d->norm));
   graph_->RemoveNode(const_cast<Node*>(d->actv));
+}
+//----------------------------------------------------------------------
+
+// ----------------------------------------------
+// ROCmFusionOpBatchNormActivationBackward implementationq
+// ----------------------------------------------
+
+bool ROCmFusionOpBatchNormActivationBackward::DoFusion(
+    const Node* n2, std::set<const Node*>& fused_nodes) {
+  bool did_fusion = false;
+  FusionData d;
+  if (IsFusionEligible(n2, &d)) {
+    CreateFusionOp(&d, fused_nodes);
+    did_fusion = true;
+  }
+  return did_fusion;
+}
+
+bool ROCmFusionOpBatchNormActivationBackward::IsFusionEligible(const Node* n2,
+                                                               FusionData* d) {
+  // First check whether we have the right sequence of ops
+  bool is_eligible = false;
+
+  if (isOpBatchNormGrad(n2)) {  // batchnorm gradient node
+    Node* n1 = nullptr;
+    TF_CHECK_OK(n2->input_node(0, &n1));
+    if (isOpActivationGrad(n1)) {  // preceded by a activation graident node
+      d->norm_grad = n2;
+      d->actv_grad = n1;
+
+      // we need to cache the offset input to the batchnorm node
+      // this is because the fused-op needs this input, and it is not present
+      // as an input on the batchnorm grad node (apparently TF does not need it)
+      const Edge* e = nullptr;
+
+      // 4th input to batchnorm grad is the saved mean from batchnorn fwd
+      TF_CHECK_OK(d->norm_grad->input_edge(3, &e));
+      const Node* norm = e->src();
+
+      // 3rd input to batchnorm fwd is the offset node we want
+      TF_CHECK_OK(norm->input_node(2, &d->norm_offset));
+
+      VLOG(kVlogLevel) << "===========";
+      DumpNodeList(
+          kVlogLevel,
+          "Found Fusion Candidate BatchNorm+Activation (training-bwd): ",
+          {d->norm_grad, d->actv_grad});
+      is_eligible = true;
+    }
+  }
+
+  // ensure all the nodes are placed on the same GPU
+  if (is_eligible && !areAssignedToSameGpu({d->norm_grad, d->actv_grad})) {
+    is_eligible = false;
+  }
+
+  // Next check if the first output of activation gradient node feeds a node
+  // other then the batch norm gradient node
+  if (is_eligible) {
+    for (const Edge* e : d->actv_grad->out_edges()) {
+      if ((e->src_output() == 0) && (e->dst() != d->norm_grad)) {
+        VLOG(kVlogLevel) << "\tSkipping Fusion : "
+                         << "ActivationGrad output feeds a node other the the "
+                            "BatchNormGrad node : "
+                         << e->dst()->name();
+        VLOG(kVlogLevel) << "===========";
+        is_eligible = false;
+        break;
+      }
+    }
+  }
+
+  // Next check if the datatype(s) are supported
+  if (is_eligible) {
+    is_eligible = false;
+
+    DataType T_norm_grad, T_actv_grad;
+    TF_CHECK_OK(GetNodeAttr(d->norm_grad->def(), kAttr_T, &T_norm_grad));
+    TF_CHECK_OK(GetNodeAttr(d->actv_grad->def(), kAttr_T, &T_actv_grad));
+
+    // only float and half types are supported for now
+    if ((T_norm_grad == DT_FLOAT) || (T_norm_grad == DT_HALF)) {
+      DataType U_norm_grad = T_norm_grad;
+      if (d->norm_grad->type_string() == "FusedBatchNormGradV2") {
+        TF_CHECK_OK(GetNodeAttr(d->norm_grad->def(), kAttr_U, &U_norm_grad));
+      }
+
+      // datatype for batch-norm and activation must match
+      if ((T_norm_grad == U_norm_grad) && (T_norm_grad == T_actv_grad)) {
+        d->data_type = T_norm_grad;
+        is_eligible = true;
+      } else {
+        VLOG(kVlogLevel) << "\tSkipping Fusion : "
+                         << "\t DataTypes not matching : "
+                         << " " << DataType_Name(T_norm_grad) << " "
+                         << DataType_Name(T_actv_grad);
+        VLOG(kVlogLevel) << "===========";
+      }
+    } else {
+      VLOG(kVlogLevel) << "\tSkipping Fusion : "
+                       << " DataType not supported : "
+                       << DataType_Name(T_norm_grad);
+      VLOG(kVlogLevel) << "===========";
+    }
+  }
+
+  // Next check if the data format(s) are supported
+  if (is_eligible) {
+    is_eligible = false;
+
+    string df_norm_grad_str;
+    TF_CHECK_OK(
+        GetNodeAttr(d->norm_grad->def(), kAttr_data_format, &df_norm_grad_str));
+
+    TensorFormat df_norm_grad;
+    CHECK_EQ(FormatFromString(df_norm_grad_str, &df_norm_grad), true);
+
+    if ((df_norm_grad == FORMAT_NHWC) || (df_norm_grad == FORMAT_NCHW)) {
+      d->data_format = ToString(df_norm_grad);
+      is_eligible = true;
+    } else {
+      VLOG(kVlogLevel) << "\tSkipping Fusion : "
+                       << " Data Format not supported for Fusion : "
+                       << ToString(df_norm_grad);
+      VLOG(kVlogLevel) << "===========";
+    }
+  }
+
+  // Next check the epsilon value is supported
+  if (is_eligible) {
+    TF_CHECK_OK(GetNodeAttr(d->norm_grad->def(), kAttr_epsilon, &d->epsilon));
+  }
+
+  // finally check if the specified activation is supported
+  if (is_eligible) {
+    d->activation_mode = getActivationOpType(d->actv_grad);
+  }
+
+  return is_eligible;
+}
+
+void ROCmFusionOpBatchNormActivationBackward::CreateFusionOp(
+    const FusionData* d, std::set<const Node*>& fused_nodes) {
+  std::vector<const Edge*> actv_grad_input_edges;
+  TF_CHECK_OK(d->actv_grad->input_edges(&actv_grad_input_edges));
+
+  std::vector<const Edge*> norm_grad_input_edges;
+  TF_CHECK_OK(d->norm_grad->input_edges(&norm_grad_input_edges));
+
+  // create an instance of the fusion node
+  string op_name = strings::StrCat(d->norm_grad->name(), d->actv_grad->name());
+
+  NodeBuilder nb(op_name, "_ROCmFusedBatchNormActivationBackward");
+
+  // populate input data edges
+
+  // activation grad gradients
+  nb.Input(actv_grad_input_edges[0]->src(),
+           actv_grad_input_edges[0]->src_output());
+  // activation grad features
+  nb.Input(actv_grad_input_edges[1]->src(),
+           actv_grad_input_edges[1]->src_output());
+
+  // batchnorm grad x
+  nb.Input(norm_grad_input_edges[1]->src(),
+           norm_grad_input_edges[1]->src_output());
+  // batchnorm grad scale
+  nb.Input(norm_grad_input_edges[2]->src(),
+           norm_grad_input_edges[2]->src_output());
+  // batchnorm offset
+  nb.Input(const_cast<Node*>(d->norm_offset), 0);
+  // batchnorm grad saved_mean
+  nb.Input(norm_grad_input_edges[3]->src(),
+           norm_grad_input_edges[3]->src_output());
+  // batchnorm grad saved_var
+  nb.Input(norm_grad_input_edges[4]->src(),
+           norm_grad_input_edges[4]->src_output());
+
+  // populate attributes
+  nb.Attr(kAttr_T, d->data_type);
+  nb.Attr(kAttr_epsilon, d->epsilon);
+  nb.Attr(kAttr_data_format, d->data_format);
+  nb.Attr(kAttr_activation_mode, d->activation_mode);
+
+  // populate the device
+  nb.Device(d->norm_grad->def().device());
+
+  // create the new fusion node
+  Node* fusion_node = nullptr;
+  TF_CHECK_OK(nb.Finalize(graph_, &fusion_node));
+
+  // populate the input control edges
+  for (const Edge* e : d->norm_grad->in_edges()) {
+    if (e->IsControlEdge()) {
+      CHECK_NOTNULL(graph_->AddControlEdge(e->src(), fusion_node, true));
+    }
+  }
+  for (const Edge* e : d->actv_grad->in_edges()) {
+    if (e->IsControlEdge()) {
+      CHECK_NOTNULL(graph_->AddControlEdge(e->src(), fusion_node, true));
+    }
+  }
+
+  // populate output data and control edges
+  for (const Edge* e : d->actv_grad->out_edges()) {
+    if (e->IsControlEdge()) {
+      CHECK_NOTNULL(graph_->AddControlEdge(fusion_node, e->dst(), true));
+    }
+  }
+  for (const Edge* e : d->norm_grad->out_edges()) {
+    if (e->IsControlEdge()) {
+      CHECK_NOTNULL(graph_->AddControlEdge(fusion_node, e->dst(), true));
+    } else {
+      if ((0 <= e->src_output()) && (e->src_output() <= 2)) {
+        CHECK_NOTNULL(graph_->AddEdge(fusion_node, e->src_output(), e->dst(),
+                                      e->dst_input()));
+      } else {
+        LOG(FATAL) << "Unexpected output connection on the BatchNormGrad node :"
+                   << d->norm_grad
+                   << ". output(idx, dest_node) :" << e->src_output() << ", "
+                   << e->dst();
+      }
+    }
+  }
+
+  // populate the device placement
+  fusion_node->set_assigned_device_name(d->norm_grad->assigned_device_name());
+
+  VLOG(kVlogLevel) << "\tCreated BatchNorm+Activation (training-bwd)"
+                   << " Fusion Node: " << fusion_node;
+  VLOG(kVlogLevel) << "===========";
+
+  // add the now redundant nodes to the set of fused nodes
+  fused_nodes.insert(d->norm_grad);
+  fused_nodes.insert(d->actv_grad);
+
+  // and remove them from the graph
+  graph_->RemoveNode(const_cast<Node*>(d->norm_grad));
+  graph_->RemoveNode(const_cast<Node*>(d->actv_grad));
 }
 //----------------------------------------------------------------------
 
@@ -1177,12 +1478,12 @@ void ROCmFusionOpAddRelu::CreateFusionOp(const FusionData* d,
   // populate output data and control edges
   for (const Edge* e : d->add->out_edges()) {
     if (e->IsControlEdge()) {
-      CHECK_NOTNULL(graph_->AddControlEdge(e->src(), fusion_node, true));
+      CHECK_NOTNULL(graph_->AddControlEdge(fusion_node, e->dst(), true));
     }
   }
   for (const Edge* e : d->relu->out_edges()) {
     if (e->IsControlEdge()) {
-      CHECK_NOTNULL(graph_->AddControlEdge(e->src(), fusion_node, true));
+      CHECK_NOTNULL(graph_->AddControlEdge(fusion_node, e->dst(), true));
     } else {
       CHECK_NOTNULL(graph_->AddEdge(fusion_node, 0, e->dst(), e->dst_input()));
     }
@@ -1369,12 +1670,12 @@ void ROCmFusionOpAddNReluGrad::CreateFusionOp(
   // populate output data and control edges
   for (const Edge* e : d->addN->out_edges()) {
     if (e->IsControlEdge()) {
-      CHECK_NOTNULL(graph_->AddControlEdge(e->src(), fusion_node, true));
+      CHECK_NOTNULL(graph_->AddControlEdge(fusion_node, e->dst(), true));
     }
   }
   for (const Edge* e : d->reluGrad->out_edges()) {
     if (e->IsControlEdge()) {
-      CHECK_NOTNULL(graph_->AddControlEdge(e->src(), fusion_node, true));
+      CHECK_NOTNULL(graph_->AddControlEdge(fusion_node, e->dst(), true));
     } else {
       CHECK_NOTNULL(graph_->AddEdge(fusion_node, 0, e->dst(), e->dst_input()));
     }

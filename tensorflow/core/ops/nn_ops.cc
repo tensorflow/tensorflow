@@ -2445,9 +2445,9 @@ REGISTER_OP("_ROCmFusedBatchNormActivationInference")
     .Input("mean: T")
     .Input("variance: T")
 
-    .Output("y: T")
+    .Output("activations: T")
 
-    .Attr("T: {float}")
+    .Attr("T: {half, float}")
     .Attr("epsilon: float = 0.0001")
     .Attr("data_format: {'NHWC', 'NCHW'} = 'NHWC'")
     .Attr("activation_mode: {'None','Sigmoid','Relu','Relu6','Tanh'} = 'None'")
@@ -2489,17 +2489,19 @@ REGISTER_OP("_ROCmFusedBatchNormActivationInference")
     Supports only tensors of type float.
 )doc");
 
-REGISTER_OP("_ROCmFusedBatchNormActivationTraining")
+REGISTER_OP("_ROCmFusedBatchNormActivationForward")
 
     .Input("x: T")
     .Input("scale: T")
     .Input("offset: T")
 
-    .Output("y: T")
-    .Output("mean: T")
-    .Output("variance: T")
+    .Output("activations: T")
+    .Output("batch_mean: T")
+    .Output("batch_variance: T")
+    .Output("saved_mean: T")
+    .Output("saved_variance: T")
 
-    .Attr("T: {float}")
+    .Attr("T: {half, float}")
     .Attr("epsilon: float = 0.0001")
     .Attr("data_format: {'NHWC', 'NCHW'} = 'NHWC'")
     .Attr("activation_mode: {'None','Sigmoid','Relu','Relu6','Tanh'} = 'None'")
@@ -2519,7 +2521,7 @@ REGISTER_OP("_ROCmFusedBatchNormActivationTraining")
       int channel_dim_index = GetTensorFeatureDimIndex(4, data_format);
       DimensionHandle channel_dim = c->Dim(x, channel_dim_index);
 
-      // covers scale, offset, and if is_training is false, mean, variance
+      // covers scale, offset
       int number_inputs = 3;
       for (int i = 1; i < number_inputs; ++i) {
         ShapeHandle vec;
@@ -2534,6 +2536,42 @@ REGISTER_OP("_ROCmFusedBatchNormActivationTraining")
       ShapeHandle vector_shape = c->Vector(channel_dim);
       c->set_output(1, vector_shape);
       c->set_output(2, vector_shape);
+      c->set_output(3, vector_shape);
+      c->set_output(4, vector_shape);
+
+      return Status::OK();
+    })
+    .Doc(R"doc(
+    Computes a fused kernel which implements: 
+      FusedBatchNorm / FusedBatchNormV2 (training only), followed by
+      any activation op (None, Sigmoid, Relu, Relu6, Tanh)
+    Supports only tensors of type float.
+)doc");
+
+REGISTER_OP("_ROCmFusedBatchNormActivationBackward")
+
+    .Input("gradients: T")
+    .Input("features: T")
+    .Input("x: T")
+    .Input("scale: T")
+    .Input("offset: T")
+    .Input("saved_mean: T")
+    .Input("saved_variance: T")
+
+    .Output("x_backprop: T")
+    .Output("scale_backprop: T")
+    .Output("offset_backprop: T")
+
+    .Attr("T: {half, float}")
+    .Attr("epsilon: float = 0.0001")
+    .Attr("data_format: {'NHWC', 'NCHW'} = 'NHWC'")
+    .Attr("activation_mode: {'None','Sigmoid','Relu','Relu6','Tanh'} = 'None'")
+
+    .SetShapeFn([](shape_inference::InferenceContext* c) {
+      using shape_inference::ShapeHandle;
+      using shape_inference::DimensionHandle;
+
+      // todo
 
       return Status::OK();
     })

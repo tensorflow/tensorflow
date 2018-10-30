@@ -79,7 +79,8 @@ std::set<string> GetOpsFormatSupported() {
       "DepthToSpace",
       "_ROCmFusedConvolutionBiasActivation",
       "_ROCmFusedBatchNormActivationInference",
-      "_ROCmFusedBatchNormActivationTraining",
+      "_ROCmFusedBatchNormActivationForward",
+      "_ROCmFusedBatchNormActivationBackward",
   };
   return ops_format_supported;
 }
