@@ -51,6 +51,10 @@ class BackendType(enum.Enum):
   XRT = 2
 
 
+BackendSpec = collections.namedtuple('Backend', ('backend_type', 'target'))
+XLA_LOCAL_BACKEND = BackendSpec(BackendType.XLA_LOCAL, 'local')
+
+
 def OpMetadataToProto(pyobj):
   proto = xla_data_pb2.OpMetadata()
   for field in _OP_METADATA_FIELDS:
@@ -211,17 +215,17 @@ class LocalBuffer(object):
   def __init__(self, c_buffer, backend):
     self.c_buffer = c_buffer
     self._backend = backend
-    if backend == BackendType.XRT:
+    if backend.backend_type == BackendType.XRT:
       self._delete = c_api.DeleteXrtAllocation
     else:
       self._delete = c_api.DeleteLocalShapedBuffer
 
   @staticmethod
-  def from_pyval(pyval, backend=BackendType.XLA_LOCAL):
+  def from_pyval(pyval, backend=XLA_LOCAL_BACKEND):
     """Allocate and copy to XLA the given python value."""
     pyval = require_numpy_array_layout(pyval)
-    if backend == BackendType.XRT:
-      cbuf = c_api.XrtAllocation.FromLiteral(pyval)
+    if backend.backend_type == BackendType.XRT:
+      cbuf = c_api.XrtAllocation.FromLiteral(pyval, backend.target)
     else:
       cbuf = c_api.LocalShapedBuffer.FromLiteral(pyval, None)
     return LocalBuffer(cbuf, backend)
@@ -237,8 +241,9 @@ class LocalBuffer(object):
   def destructure(self):
     """Assuming a tuple buffer, unpack it into constituent tuple elements."""
     assert self.c_buffer is not None
-    if self._backend == BackendType.XRT:
-      result = c_api.DestructureXrtAllocationTuple(self.c_buffer)
+    if self._backend.backend_type == BackendType.XRT:
+      result = c_api.DestructureXrtAllocationTuple(self.c_buffer,
+                                                   self._backend.target)
     else:
       result = c_api.DestructureLocalShapedBufferTuple(self.c_buffer)
     self.delete()
@@ -467,14 +472,14 @@ class LocalComputation(object):
   ComputationBuilder methods.
   """
 
-  def __init__(self, c_computation, is_compiled, backend=BackendType.XLA_LOCAL):
+  def __init__(self, c_computation, is_compiled, backend=XLA_LOCAL_BACKEND):
     self._c_computation = c_computation
     self._backend = backend
     self._is_compiled = is_compiled
 
     # Ensure a reference to C-based destructor for use in __del__.
     if is_compiled:
-      if backend == BackendType.XRT:
+      if backend.backend_type == BackendType.XRT:
         assert isinstance(c_computation, c_api.CompiledXrtComputation)
         self._delete = c_api.DeleteCompiledXrtComputation
       else:
@@ -535,8 +540,8 @@ class LocalComputation(object):
 
     compile_options = compile_options or CompileOptions()
     compile_options.result_shape = result_shape
-    if self._backend == BackendType.XRT:
-      c = self.computation.CompileForXrt(argument_shapes)
+    if self._backend.backend_type == BackendType.XRT:
+      c = self.computation.CompileForXrt(argument_shapes, self._backend.target)
     else:
       c = self.computation.Compile(argument_shapes, compile_options)
     return LocalComputation(c, is_compiled=True, backend=self._backend)
@@ -590,7 +595,7 @@ class ComputationBuilder(object):
     self._client = c_api.LocalComputationBuilder(name.encode('utf8'))
     self._parameter_numbering = itertools.count()
 
-  def Build(self, root=None, backend=BackendType.XLA_LOCAL):
+  def Build(self, root=None, backend=XLA_LOCAL_BACKEND):
     if root is not None:
       return LocalComputation(
           self._client.BuildWithRoot(root), is_compiled=False, backend=backend)
