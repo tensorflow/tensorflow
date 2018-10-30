@@ -126,10 +126,6 @@ py_test(
     name = "convert_test",
     srcs = ["convert_test.py"],
     srcs_version = "PY2AND3",
-    tags = [
-        "no-internal-py3",
-        "no_oss",
-    ],
     deps = [
         ":convert",
         ":interpreter",
@@ -173,7 +169,6 @@ py_test(
     srcs = ["convert_saved_model_test.py"],
     srcs_version = "PY2AND3",
     tags = [
-        "no_oss",
         "no_windows",
     ],
     visibility = ["//visibility:public"],
@@ -184,7 +179,6 @@ py_test(
         "//tensorflow/python:nn",
         "//tensorflow/python:platform_test",
         "//tensorflow/python:session",
-        "//tensorflow/python/estimator:estimator_py",
         "//tensorflow/python/keras",
         "//tensorflow/python/ops/losses",
         "//tensorflow/python/saved_model",

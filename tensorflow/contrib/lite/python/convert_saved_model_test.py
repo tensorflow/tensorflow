@@ -25,24 +25,16 @@ from __future__ import print_function
 
 import os
 from tensorflow.contrib.lite.python import convert_saved_model
-from tensorflow.python import keras
 from tensorflow.python.client import session
-from tensorflow.python.estimator import estimator_lib as estimator
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import test_util
-from tensorflow.python.layers import layers
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import math_ops
-from tensorflow.python.ops import nn
-from tensorflow.python.ops import random_ops
-from tensorflow.python.ops.losses import losses
 from tensorflow.python.platform import test
 from tensorflow.python.saved_model import saved_model
 from tensorflow.python.saved_model import signature_constants
 from tensorflow.python.saved_model import tag_constants
-from tensorflow.python.training import training as train
 
 
 class TensorFunctionsTest(test_util.TensorFlowTestCase):
@@ -308,151 +300,6 @@ class FreezeSavedModelTest(test_util.TensorFlowTestCase):
     self.assertEqual(self._getArrayNames(out_tensors), ["add:0"])
     self.assertEqual(self._getArrayNames(in_tensors), ["Placeholder:0"])
     self.assertEqual(self._getArrayShapes(in_tensors), [[1, 28, 28]])
-
-
-class Model(keras.Model):
-  """Model to recognize digits in the MNIST dataset.
-
-  Train and export SavedModel, used for testOnflyTrainMnistSavedModel
-
-  Network structure is equivalent to:
-  https://github.com/tensorflow/tensorflow/blob/r1.5/tensorflow/examples/tutorials/mnist/mnist_deep.py
-  and
-  https://github.com/tensorflow/models/blob/master/tutorials/image/mnist/convolutional.py
-
-  But written as a ops.keras.Model using the layers API.
-  """
-
-  def __init__(self, data_format):
-    """Creates a model for classifying a hand-written digit.
-
-    Args:
-      data_format: Either "channels_first" or "channels_last".
-        "channels_first" is typically faster on GPUs while "channels_last" is
-        typically faster on CPUs. See
-        https://www.tensorflow.org/performance/performance_guide#data_formats
-    """
-    super(Model, self).__init__()
-    self._input_shape = [-1, 28, 28, 1]
-
-    self.conv1 = layers.Conv2D(
-        32, 5, padding="same", data_format=data_format, activation=nn.relu)
-    self.conv2 = layers.Conv2D(
-        64, 5, padding="same", data_format=data_format, activation=nn.relu)
-    self.fc1 = layers.Dense(1024, activation=nn.relu)
-    self.fc2 = layers.Dense(10)
-    self.dropout = layers.Dropout(0.4)
-    self.max_pool2d = layers.MaxPooling2D(
-        (2, 2), (2, 2), padding="same", data_format=data_format)
-
-  def __call__(self, inputs, training):
-    """Add operations to classify a batch of input images.
-
-    Args:
-      inputs: A Tensor representing a batch of input images.
-      training: A boolean. Set to True to add operations required only when
-        training the classifier.
-
-    Returns:
-      A logits Tensor with shape [<batch_size>, 10].
-    """
-    y = array_ops.reshape(inputs, self._input_shape)
-    y = self.conv1(y)
-    y = self.max_pool2d(y)
-    y = self.conv2(y)
-    y = self.max_pool2d(y)
-    y = layers.flatten(y)
-    y = self.fc1(y)
-    y = self.dropout(y, training=training)
-    return self.fc2(y)
-
-
-def model_fn(features, labels, mode, params):
-  """The model_fn argument for creating an Estimator."""
-  model = Model(params["data_format"])
-  image = features
-  if isinstance(image, dict):
-    image = features["image"]
-
-  if mode == estimator.ModeKeys.PREDICT:
-    logits = model(image, training=False)
-    predictions = {
-        "classes": math_ops.argmax(logits, axis=1),
-        "probabilities": nn.softmax(logits),
-    }
-    return estimator.EstimatorSpec(
-        mode=estimator.ModeKeys.PREDICT,
-        predictions=predictions,
-        export_outputs={
-            "classify": estimator.export.PredictOutput(predictions)
-        })
-
-  elif mode == estimator.ModeKeys.TRAIN:
-    optimizer = train.AdamOptimizer(learning_rate=1e-4)
-
-    logits = model(image, training=True)
-    loss = losses.sparse_softmax_cross_entropy(labels=labels, logits=logits)
-    return estimator.EstimatorSpec(
-        mode=estimator.ModeKeys.TRAIN,
-        loss=loss,
-        train_op=optimizer.minimize(loss, train.get_or_create_global_step()))
-
-  elif mode == estimator.ModeKeys.EVAL:
-    logits = model(image, training=False)
-    loss = losses.sparse_softmax_cross_entropy(labels=labels, logits=logits)
-    return estimator.EstimatorSpec(
-        mode=estimator.ModeKeys.EVAL,
-        loss=loss,
-        eval_metric_ops={
-            "accuracy":
-                ops.metrics.accuracy(
-                    labels=labels, predictions=math_ops.argmax(logits, axis=1)),
-        })
-
-
-def dummy_input_fn():
-  image = random_ops.random_uniform([100, 784])
-  labels = random_ops.random_uniform([100, 1], maxval=9, dtype=dtypes.int32)
-  return image, labels
-
-
-class FreezeSavedModelTestTrainGraph(test_util.TensorFlowTestCase):
-
-  def testTrainedMnistSavedModel(self):
-    """Test mnist SavedModel, trained with dummy data and small steps."""
-    # Build classifier
-    classifier = estimator.Estimator(
-        model_fn=model_fn,
-        params={
-            "data_format": "channels_last"  # tflite format
-        })
-
-    # Train and pred for serving
-    classifier.train(input_fn=dummy_input_fn, steps=2)
-    image = array_ops.placeholder(dtypes.float32, [None, 28, 28])
-    pred_input_fn = estimator.export.build_raw_serving_input_receiver_fn({
-        "image": image,
-    })
-
-    # Export SavedModel
-    saved_model_dir = os.path.join(self.get_temp_dir(), "mnist_savedmodel")
-    classifier.export_saved_model(saved_model_dir, pred_input_fn)
-
-    # Convert to tflite and test output
-    saved_model_name = os.listdir(saved_model_dir)[0]
-    saved_model_final_dir = os.path.join(saved_model_dir, saved_model_name)
-
-    # TODO(zhixianyan): no need to limit output_arrays to `Softmax'
-    # once b/74205001 fixed and argmax implemented in tflite.
-    result = convert_saved_model.freeze_saved_model(
-        saved_model_dir=saved_model_final_dir,
-        input_arrays=None,
-        input_shapes=None,
-        output_arrays=["Softmax"],
-        tag_set=set([tag_constants.SERVING]),
-        signature_key=signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY)
-
-    self.assertTrue(result)
 
 
 if __name__ == "__main__":
