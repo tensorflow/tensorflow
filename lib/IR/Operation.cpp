@@ -377,7 +377,7 @@ bool OpTrait::impl::verifyAtLeastNResults(const Operation *op,
 }
 
 bool OpTrait::impl::verifySameOperandsAndResult(const Operation *op) {
-  auto *type = op->getResult(0)->getType();
+  auto type = op->getResult(0)->getType();
   for (unsigned i = 1, e = op->getNumResults(); i < e; ++i) {
     if (op->getResult(i)->getType() != type)
       return op->emitOpError(
@@ -393,19 +393,19 @@ bool OpTrait::impl::verifySameOperandsAndResult(const Operation *op) {
 
 /// If this is a vector type, or a tensor type, return the scalar element type
 /// that it is built around, otherwise return the type unmodified.
-static Type *getTensorOrVectorElementType(Type *type) {
-  if (auto *vec = dyn_cast<VectorType>(type))
-    return vec->getElementType();
+static Type getTensorOrVectorElementType(Type type) {
+  if (auto vec = type.dyn_cast<VectorType>())
+    return vec.getElementType();
 
   // Look through tensor<vector<...>> to find the underlying element type.
-  if (auto *tensor = dyn_cast<TensorType>(type))
-    return getTensorOrVectorElementType(tensor->getElementType());
+  if (auto tensor = type.dyn_cast<TensorType>())
+    return getTensorOrVectorElementType(tensor.getElementType());
   return type;
 }
 
 bool OpTrait::impl::verifyResultsAreFloatLike(const Operation *op) {
   for (auto *result : op->getResults()) {
-    if (!isa<FloatType>(getTensorOrVectorElementType(result->getType())))
+    if (!getTensorOrVectorElementType(result->getType()).isa<FloatType>())
       return op->emitOpError("requires a floating point type");
   }
 
@@ -414,7 +414,7 @@ bool OpTrait::impl::verifyResultsAreFloatLike(const Operation *op) {
 
 bool OpTrait::impl::verifyResultsAreIntegerLike(const Operation *op) {
   for (auto *result : op->getResults()) {
-    if (!isa<IntegerType>(getTensorOrVectorElementType(result->getType())))
+    if (!getTensorOrVectorElementType(result->getType()).isa<IntegerType>())
       return op->emitOpError("requires an integer type");
   }
   return false;
@@ -436,7 +436,7 @@ void impl::buildBinaryOp(Builder *builder, OperationState *result,
 
 bool impl::parseBinaryOp(OpAsmParser *parser, OperationState *result) {
   SmallVector<OpAsmParser::OperandType, 2> ops;
-  Type *type;
+  Type type;
   return parser->parseOperandList(ops, 2) ||
          parser->parseOptionalAttributeDict(result->attributes) ||
          parser->parseColonType(type) ||
@@ -448,7 +448,7 @@ void impl::printBinaryOp(const Operation *op, OpAsmPrinter *p) {
   *p << op->getName() << ' ' << *op->getOperand(0) << ", "
      << *op->getOperand(1);
   p->printOptionalAttrDict(op->getAttrs());
-  *p << " : " << *op->getResult(0)->getType();
+  *p << " : " << op->getResult(0)->getType();
 }
 
 //===----------------------------------------------------------------------===//
@@ -456,14 +456,14 @@ void impl::printBinaryOp(const Operation *op, OpAsmPrinter *p) {
 //===----------------------------------------------------------------------===//
 
 void impl::buildCastOp(Builder *builder, OperationState *result,
-                       SSAValue *source, Type *destType) {
+                       SSAValue *source, Type destType) {
   result->addOperands(source);
   result->addTypes(destType);
 }
 
 bool impl::parseCastOp(OpAsmParser *parser, OperationState *result) {
   OpAsmParser::OperandType srcInfo;
-  Type *srcType, *dstType;
+  Type srcType, dstType;
   return parser->parseOperand(srcInfo) || parser->parseColonType(srcType) ||
          parser->resolveOperand(srcInfo, srcType, result->operands) ||
          parser->parseKeywordType("to", dstType) ||
@@ -472,5 +472,5 @@ bool impl::parseCastOp(OpAsmParser *parser, OperationState *result) {
 
 void impl::printCastOp(const Operation *op, OpAsmPrinter *p) {
   *p << op->getName() << ' ' << *op->getOperand(0) << " : "
-     << *op->getOperand(0)->getType() << " to " << *op->getResult(0)->getType();
+     << op->getOperand(0)->getType() << " to " << op->getResult(0)->getType();
 }

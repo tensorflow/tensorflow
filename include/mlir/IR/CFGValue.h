@@ -66,7 +66,7 @@ public:
   }
 
 protected:
-  CFGValue(CFGValueKind kind, Type *type) : SSAValueImpl(kind, type) {}
+  CFGValue(CFGValueKind kind, Type type) : SSAValueImpl(kind, type) {}
 };
 
 /// Basic block arguments are CFG Values.
@@ -87,7 +87,7 @@ public:
 
 private:
   friend class BasicBlock; // For access to private constructor.
-  BBArgument(Type *type, BasicBlock *owner)
+  BBArgument(Type type, BasicBlock *owner)
       : CFGValue(CFGValueKind::BBArgument, type), owner(owner) {}
 
   /// The owner of this operand.
@@ -99,7 +99,7 @@ private:
 /// Instruction results are CFG Values.
 class InstResult : public CFGValue {
 public:
-  InstResult(Type *type, OperationInst *owner)
+  InstResult(Type type, OperationInst *owner)
       : CFGValue(CFGValueKind::InstResult, type), owner(owner) {}
 
   static bool classof(const SSAValue *value) {

@@ -68,29 +68,28 @@ public:
                                     unsigned column);
 
   // Types.
-  FloatType *getBF16Type();
-  FloatType *getF16Type();
-  FloatType *getF32Type();
-  FloatType *getF64Type();
+  FloatType getBF16Type();
+  FloatType getF16Type();
+  FloatType getF32Type();
+  FloatType getF64Type();
 
-  OtherType *getIndexType();
-  OtherType *getTFControlType();
-  OtherType *getTFStringType();
-  OtherType *getTFResourceType();
-  OtherType *getTFVariantType();
-  OtherType *getTFComplex64Type();
-  OtherType *getTFComplex128Type();
-  OtherType *getTFF32REFType();
+  OtherType getIndexType();
+  OtherType getTFControlType();
+  OtherType getTFStringType();
+  OtherType getTFResourceType();
+  OtherType getTFVariantType();
+  OtherType getTFComplex64Type();
+  OtherType getTFComplex128Type();
+  OtherType getTFF32REFType();
 
-  IntegerType *getIntegerType(unsigned width);
-  FunctionType *getFunctionType(ArrayRef<Type *> inputs,
-                                ArrayRef<Type *> results);
-  MemRefType *getMemRefType(ArrayRef<int> shape, Type *elementType,
-                            ArrayRef<AffineMap> affineMapComposition = {},
-                            unsigned memorySpace = 0);
-  VectorType *getVectorType(ArrayRef<int> shape, Type *elementType);
-  RankedTensorType *getTensorType(ArrayRef<int> shape, Type *elementType);
-  UnrankedTensorType *getTensorType(Type *elementType);
+  IntegerType getIntegerType(unsigned width);
+  FunctionType getFunctionType(ArrayRef<Type> inputs, ArrayRef<Type> results);
+  MemRefType getMemRefType(ArrayRef<int> shape, Type elementType,
+                           ArrayRef<AffineMap> affineMapComposition = {},
+                           unsigned memorySpace = 0);
+  VectorType getVectorType(ArrayRef<int> shape, Type elementType);
+  RankedTensorType getTensorType(ArrayRef<int> shape, Type elementType);
+  UnrankedTensorType getTensorType(Type elementType);
 
   // Attributes.
 
@@ -102,15 +101,15 @@ public:
   ArrayAttr getArrayAttr(ArrayRef<Attribute> value);
   AffineMapAttr getAffineMapAttr(AffineMap map);
   IntegerSetAttr getIntegerSetAttr(IntegerSet set);
-  TypeAttr getTypeAttr(Type *type);
+  TypeAttr getTypeAttr(Type type);
   FunctionAttr getFunctionAttr(const Function *value);
-  ElementsAttr getSplatElementsAttr(VectorOrTensorType *type, Attribute elt);
-  ElementsAttr getDenseElementsAttr(VectorOrTensorType *type,
+  ElementsAttr getSplatElementsAttr(VectorOrTensorType type, Attribute elt);
+  ElementsAttr getDenseElementsAttr(VectorOrTensorType type,
                                     ArrayRef<char> data);
-  ElementsAttr getSparseElementsAttr(VectorOrTensorType *type,
+  ElementsAttr getSparseElementsAttr(VectorOrTensorType type,
                                      DenseIntElementsAttr indices,
                                      DenseElementsAttr values);
-  ElementsAttr getOpaqueElementsAttr(VectorOrTensorType *type, StringRef bytes);
+  ElementsAttr getOpaqueElementsAttr(VectorOrTensorType type, StringRef bytes);
 
   // Affine expressions and affine maps.
   AffineExpr getAffineDimExpr(unsigned position);
@@ -366,7 +365,7 @@ public:
   /// Creates an operation given the fields.
   OperationStmt *createOperation(Location *location, OperationName name,
                                  ArrayRef<MLValue *> operands,
-                                 ArrayRef<Type *> types,
+                                 ArrayRef<Type> types,
                                  ArrayRef<NamedAttribute> attrs);
 
   /// Create operation of specific op type at the current insertion point.

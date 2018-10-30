@@ -52,9 +52,9 @@ bool mlir::replaceAllMemRefUsesWith(const MLValue *oldMemRef,
                                     MLValue *newMemRef,
                                     ArrayRef<MLValue *> extraIndices,
                                     AffineMap indexRemap) {
-  unsigned newMemRefRank = cast<MemRefType>(newMemRef->getType())->getRank();
+  unsigned newMemRefRank = newMemRef->getType().cast<MemRefType>().getRank();
   (void)newMemRefRank; // unused in opt mode
-  unsigned oldMemRefRank = cast<MemRefType>(oldMemRef->getType())->getRank();
+  unsigned oldMemRefRank = oldMemRef->getType().cast<MemRefType>().getRank();
   (void)newMemRefRank;
   if (indexRemap) {
     assert(indexRemap.getNumInputs() == oldMemRefRank);
@@ -64,8 +64,8 @@ bool mlir::replaceAllMemRefUsesWith(const MLValue *oldMemRef,
   }
 
   // Assert same elemental type.
-  assert(cast<MemRefType>(oldMemRef->getType())->getElementType() ==
-         cast<MemRefType>(newMemRef->getType())->getElementType());
+  assert(oldMemRef->getType().cast<MemRefType>().getElementType() ==
+         newMemRef->getType().cast<MemRefType>().getElementType());
 
   // Check if memref was used in a non-deferencing context.
   for (const StmtOperand &use : oldMemRef->getUses()) {
@@ -139,7 +139,7 @@ bool mlir::replaceAllMemRefUsesWith(const MLValue *oldMemRef,
                     opStmt->operand_end());
 
     // Result types don't change. Both memref's are of the same elemental type.
-    SmallVector<Type *, 8> resultTypes;
+    SmallVector<Type, 8> resultTypes;
     resultTypes.reserve(opStmt->getNumResults());
     for (const auto *result : opStmt->getResults())
       resultTypes.push_back(result->getType());

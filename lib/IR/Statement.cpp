@@ -239,7 +239,7 @@ void Statement::moveBefore(StmtBlock *block,
 /// Create a new OperationStmt with the specific fields.
 OperationStmt *OperationStmt::create(Location *location, OperationName name,
                                      ArrayRef<MLValue *> operands,
-                                     ArrayRef<Type *> resultTypes,
+                                     ArrayRef<Type> resultTypes,
                                      ArrayRef<NamedAttribute> attributes,
                                      MLIRContext *context) {
   auto byteSize = totalSizeToAlloc<StmtOperand, StmtResult>(operands.size(),
@@ -288,9 +288,9 @@ MLIRContext *OperationStmt::getContext() const {
   // If we have a result or operand type, that is a constant time way to get
   // to the context.
   if (getNumResults())
-    return getResult(0)->getType()->getContext();
+    return getResult(0)->getType().getContext();
   if (getNumOperands())
-    return getOperand(0)->getType()->getContext();
+    return getOperand(0)->getType().getContext();
 
   // In the very odd case where we have no operands or results, fall back to
   // doing a find.
@@ -474,7 +474,7 @@ MLIRContext *IfStmt::getContext() const {
   if (operands.empty())
     return findFunction()->getContext();
 
-  return getOperand(0)->getType()->getContext();
+  return getOperand(0)->getType().getContext();
 }
 
 //===----------------------------------------------------------------------===//
@@ -501,7 +501,7 @@ Statement *Statement::clone(DenseMap<const MLValue *, MLValue *> &operandMap,
     operands.push_back(remapOperand(opValue));
 
   if (auto *opStmt = dyn_cast<OperationStmt>(this)) {
-    SmallVector<Type *, 8> resultTypes;
+    SmallVector<Type, 8> resultTypes;
     resultTypes.reserve(opStmt->getNumResults());
     for (auto *result : opStmt->getResults())
       resultTypes.push_back(result->getType());

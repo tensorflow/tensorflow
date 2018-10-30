@@ -96,7 +96,7 @@ class ConstantOp : public Op<ConstantOp, OpTrait::ZeroOperands,
 public:
   /// Builds a constant op with the specified attribute value and result type.
   static void build(Builder *builder, OperationState *result, Attribute value,
-                    Type *type);
+                    Type type);
 
   Attribute getValue() const { return getAttr("value"); }
 
@@ -123,7 +123,7 @@ class ConstantFloatOp : public ConstantOp {
 public:
   /// Builds a constant float op producing a float of the specified type.
   static void build(Builder *builder, OperationState *result,
-                    const APFloat &value, FloatType *type);
+                    const APFloat &value, FloatType type);
 
   APFloat getValue() const {
     return getAttrOfType<FloatAttr>("value").getValue();
@@ -150,7 +150,7 @@ public:
   /// Build a constant int op producing an integer with the specified type,
   /// which must be an integer type.
   static void build(Builder *builder, OperationState *result, int64_t value,
-                    Type *type);
+                    Type type);
 
   int64_t getValue() const {
     return getAttrOfType<IntegerAttr>("value").getValue();

@@ -20,6 +20,7 @@
 
 #include "mlir/Support/LLVM.h"
 #include "llvm/ADT/ArrayRef.h"
+#include "llvm/ADT/DenseMapInfo.h"
 
 namespace mlir {
 class AffineMap;
@@ -27,6 +28,22 @@ class MLIRContext;
 class IntegerType;
 class FloatType;
 class OtherType;
+
+namespace detail {
+
+class TypeStorage;
+class IntegerTypeStorage;
+class FloatTypeStorage;
+struct OtherTypeStorage;
+struct FunctionTypeStorage;
+struct VectorOrTensorTypeStorage;
+struct VectorTypeStorage;
+struct TensorTypeStorage;
+struct RankedTensorTypeStorage;
+struct UnrankedTensorTypeStorage;
+struct MemRefTypeStorage;
+
+} // namespace detail
 
 /// Instances of the Type class are immutable, uniqued, immortal, and owned by
 /// MLIRContext.  As such, they are passed around by raw non-const pointer.
@@ -68,11 +85,34 @@ public:
     MemRef,
   };
 
+  using ImplType = detail::TypeStorage;
+
+  Type() : type(nullptr) {}
+  /* implicit */ Type(const ImplType *type)
+      : type(const_cast<ImplType *>(type)) {}
+
+  Type(const Type &other) : type(other.type) {}
+  Type &operator=(Type other) {
+    type = other.type;
+    return *this;
+  }
+
+  bool operator==(Type other) const { return type == other.type; }
+  bool operator!=(Type other) const { return !(*this == other); }
+  explicit operator bool() const { return type; }
+
+  bool operator!() const { return type == nullptr; }
+
+  template <typename U> bool isa() const;
+  template <typename U> U dyn_cast() const;
+  template <typename U> U dyn_cast_or_null() const;
+  template <typename U> U cast() const;
+
   /// Return the classification for this type.
-  Kind getKind() const { return kind; }
+  Kind getKind() const;
 
   /// Return the LLVMContext in which this type was uniqued.
-  MLIRContext *getContext() const { return context; }
+  MLIRContext *getContext() const;
 
   // Convenience predicates.  This is only for 'other' and floating point types,
   // derived types should use isa/dyn_cast.
@@ -97,56 +137,42 @@ public:
   unsigned getBitWidth() const;
 
   // Convenience factories.
-  static IntegerType *getInteger(unsigned width, MLIRContext *ctx);
-  static FloatType *getBF16(MLIRContext *ctx);
-  static FloatType *getF16(MLIRContext *ctx);
-  static FloatType *getF32(MLIRContext *ctx);
-  static FloatType *getF64(MLIRContext *ctx);
-  static OtherType *getIndex(MLIRContext *ctx);
-  static OtherType *getTFControl(MLIRContext *ctx);
-  static OtherType *getTFString(MLIRContext *ctx);
-  static OtherType *getTFResource(MLIRContext *ctx);
-  static OtherType *getTFVariant(MLIRContext *ctx);
-  static OtherType *getTFComplex64(MLIRContext *ctx);
-  static OtherType *getTFComplex128(MLIRContext *ctx);
-  static OtherType *getTFF32REF(MLIRContext *ctx);
+  static IntegerType getInteger(unsigned width, MLIRContext *ctx);
+  static FloatType getBF16(MLIRContext *ctx);
+  static FloatType getF16(MLIRContext *ctx);
+  static FloatType getF32(MLIRContext *ctx);
+  static FloatType getF64(MLIRContext *ctx);
+  static OtherType getIndex(MLIRContext *ctx);
+  static OtherType getTFControl(MLIRContext *ctx);
+  static OtherType getTFString(MLIRContext *ctx);
+  static OtherType getTFResource(MLIRContext *ctx);
+  static OtherType getTFVariant(MLIRContext *ctx);
+  static OtherType getTFComplex64(MLIRContext *ctx);
+  static OtherType getTFComplex128(MLIRContext *ctx);
+  static OtherType getTFF32REF(MLIRContext *ctx);
 
   /// Print the current type.
   void print(raw_ostream &os) const;
   void dump() const;
 
+  friend ::llvm::hash_code hash_value(Type arg);
+
+  unsigned getSubclassData() const;
+  void setSubclassData(unsigned val);
+
+  /// Methods for supporting PointerLikeTypeTraits.
+  const void *getAsOpaquePointer() const {
+    return static_cast<const void *>(type);
+  }
+  static Type getFromOpaquePointer(const void *pointer) {
+    return Type((ImplType *)(pointer));
+  }
+
 protected:
-  explicit Type(Kind kind, MLIRContext *context)
-      : context(context), kind(kind), subclassData(0) {}
-  explicit Type(Kind kind, MLIRContext *context, unsigned subClassData)
-      : Type(kind, context) {
-    setSubclassData(subClassData);
-  }
-
-  ~Type() {}
-
-  unsigned getSubclassData() const { return subclassData; }
-
-  void setSubclassData(unsigned val) {
-    subclassData = val;
-    // Ensure we don't have any accidental truncation.
-    assert(getSubclassData() == val && "Subclass data too large for field");
-  }
-
-private:
-  Type(const Type&) = delete;
-  void operator=(const Type&) = delete;
-  /// This refers to the MLIRContext in which this type was uniqued.
-  MLIRContext *const context;
-
-  /// Classification of the subclass, used for type checking.
-  Kind kind : 8;
-
-  // Space for subclasses to store data.
-  unsigned subclassData : 24;
+  ImplType *type;
 };
 
-inline raw_ostream &operator<<(raw_ostream &os, const Type &type) {
+inline raw_ostream &operator<<(raw_ostream &os, Type type) {
   type.print(os);
   return os;
 }
@@ -154,148 +180,138 @@ inline raw_ostream &operator<<(raw_ostream &os, const Type &type) {
 /// Integer types can have arbitrary bitwidth up to a large fixed limit.
 class IntegerType : public Type {
 public:
-  static IntegerType *get(unsigned width, MLIRContext *context);
+  using ImplType = detail::IntegerTypeStorage;
+  IntegerType() = default;
+  /* implicit */ IntegerType(Type::ImplType *ptr);
+
+  static IntegerType get(unsigned width, MLIRContext *context);
 
   /// Return the bitwidth of this integer type.
-  unsigned getWidth() const {
-    return width;
-  }
+  unsigned getWidth() const;
 
   /// Methods for support type inquiry through isa, cast, and dyn_cast.
-  static bool classof(const Type *type) {
-    return type->getKind() == Kind::Integer;
-  }
+  static bool kindof(Kind kind) { return kind == Kind::Integer; }
 
   /// Integer representation maximal bitwidth.
   static constexpr unsigned kMaxWidth = 4096;
-private:
-  unsigned width;
-  IntegerType(unsigned width, MLIRContext *context);
-  ~IntegerType() = delete;
 };
 
-inline IntegerType *Type::getInteger(unsigned width, MLIRContext *ctx) {
+inline IntegerType Type::getInteger(unsigned width, MLIRContext *ctx) {
   return IntegerType::get(width, ctx);
 }
 
 /// Return true if this is an integer type with the specified width.
 inline bool Type::isInteger(unsigned width) const {
-  if (auto *intTy = dyn_cast<IntegerType>(this))
-    return intTy->getWidth() == width;
+  if (auto intTy = dyn_cast<IntegerType>())
+    return intTy.getWidth() == width;
   return false;
 }
 
 class FloatType : public Type {
 public:
+  using ImplType = detail::FloatTypeStorage;
+  FloatType() = default;
+  /* implicit */ FloatType(Type::ImplType *ptr);
+
+  static FloatType get(Kind kind, MLIRContext *context);
+
   /// Methods for support type inquiry through isa, cast, and dyn_cast.
-  static bool classof(const Type *type) {
-    return type->getKind() >= Kind::FIRST_FLOATING_POINT_TYPE &&
-           type->getKind() <= Kind::LAST_FLOATING_POINT_TYPE;
+  static bool kindof(Kind kind) {
+    return kind >= Kind::FIRST_FLOATING_POINT_TYPE &&
+           kind <= Kind::LAST_FLOATING_POINT_TYPE;
   }
-
-  static FloatType *get(Kind kind, MLIRContext *context);
-
-private:
-  FloatType(Kind kind, MLIRContext *context);
-  ~FloatType() = delete;
 };
 
-inline FloatType *Type::getBF16(MLIRContext *ctx) {
+inline FloatType Type::getBF16(MLIRContext *ctx) {
   return FloatType::get(Kind::BF16, ctx);
 }
-inline FloatType *Type::getF16(MLIRContext *ctx) {
+inline FloatType Type::getF16(MLIRContext *ctx) {
   return FloatType::get(Kind::F16, ctx);
 }
-inline FloatType *Type::getF32(MLIRContext *ctx) {
+inline FloatType Type::getF32(MLIRContext *ctx) {
   return FloatType::get(Kind::F32, ctx);
 }
-inline FloatType *Type::getF64(MLIRContext *ctx) {
+inline FloatType Type::getF64(MLIRContext *ctx) {
   return FloatType::get(Kind::F64, ctx);
 }
 
 /// This is a type for the random collection of special base types.
 class OtherType : public Type {
 public:
-  /// Methods for support type inquiry through isa, cast, and dyn_cast.
-  static bool classof(const Type *type) {
-    return type->getKind() >= Kind::FIRST_OTHER_TYPE &&
-           type->getKind() <= Kind::LAST_OTHER_TYPE;
-  }
-  static OtherType *get(Kind kind, MLIRContext *context);
+  using ImplType = detail::OtherTypeStorage;
+  OtherType() = default;
+  /* implicit */ OtherType(Type::ImplType *ptr);
 
-private:
-  OtherType(Kind kind, MLIRContext *context);
-  ~OtherType() = delete;
+  static OtherType get(Kind kind, MLIRContext *context);
+
+  /// Methods for support type inquiry through isa, cast, and dyn_cast.
+  static bool kindof(Kind kind) {
+    return kind >= Kind::FIRST_OTHER_TYPE && kind <= Kind::LAST_OTHER_TYPE;
+  }
 };
 
-inline OtherType *Type::getIndex(MLIRContext *ctx) {
+inline OtherType Type::getIndex(MLIRContext *ctx) {
   return OtherType::get(Kind::Index, ctx);
 }
-inline OtherType *Type::getTFControl(MLIRContext *ctx) {
+inline OtherType Type::getTFControl(MLIRContext *ctx) {
   return OtherType::get(Kind::TFControl, ctx);
 }
-inline OtherType *Type::getTFResource(MLIRContext *ctx) {
+inline OtherType Type::getTFResource(MLIRContext *ctx) {
   return OtherType::get(Kind::TFResource, ctx);
 }
-inline OtherType *Type::getTFString(MLIRContext *ctx) {
+inline OtherType Type::getTFString(MLIRContext *ctx) {
   return OtherType::get(Kind::TFString, ctx);
 }
-inline OtherType *Type::getTFVariant(MLIRContext *ctx) {
+inline OtherType Type::getTFVariant(MLIRContext *ctx) {
   return OtherType::get(Kind::TFVariant, ctx);
 }
-inline OtherType *Type::getTFComplex64(MLIRContext *ctx) {
+inline OtherType Type::getTFComplex64(MLIRContext *ctx) {
   return OtherType::get(Kind::TFComplex64, ctx);
 }
-inline OtherType *Type::getTFComplex128(MLIRContext *ctx) {
+inline OtherType Type::getTFComplex128(MLIRContext *ctx) {
   return OtherType::get(Kind::TFComplex128, ctx);
 }
-inline OtherType *Type::getTFF32REF(MLIRContext *ctx) {
+inline OtherType Type::getTFF32REF(MLIRContext *ctx) {
   return OtherType::get(Kind::TFF32REF, ctx);
 }
 
 /// Function types map from a list of inputs to a list of results.
 class FunctionType : public Type {
 public:
-  static FunctionType *get(ArrayRef<Type*> inputs, ArrayRef<Type*> results,
-                           MLIRContext *context);
+  using ImplType = detail::FunctionTypeStorage;
+  FunctionType() = default;
+  /* implicit */ FunctionType(Type::ImplType *ptr);
+
+  static FunctionType get(ArrayRef<Type> inputs, ArrayRef<Type> results,
+                          MLIRContext *context);
 
   // Input types.
   unsigned getNumInputs() const { return getSubclassData(); }
 
-  Type *getInput(unsigned i) const { return getInputs()[i]; }
+  Type getInput(unsigned i) const { return getInputs()[i]; }
 
-  ArrayRef<Type*> getInputs() const {
-    return ArrayRef<Type *>(inputsAndResults, getNumInputs());
-  }
+  ArrayRef<Type> getInputs() const;
 
   // Result types.
-  unsigned getNumResults() const { return numResults; }
+  unsigned getNumResults() const;
 
-  Type *getResult(unsigned i) const { return getResults()[i]; }
+  Type getResult(unsigned i) const { return getResults()[i]; }
 
-  ArrayRef<Type*> getResults() const {
-    return ArrayRef<Type *>(inputsAndResults + getSubclassData(), numResults);
-  }
+  ArrayRef<Type> getResults() const;
 
   /// Methods for support type inquiry through isa, cast, and dyn_cast.
-  static bool classof(const Type *type) {
-    return type->getKind() == Kind::Function;
-  }
-
-private:
-  unsigned numResults;
-  Type *const *inputsAndResults;
-
-  FunctionType(Type *const *inputsAndResults, unsigned numInputs,
-               unsigned numResults, MLIRContext *context);
-  ~FunctionType() = delete;
+  static bool kindof(Kind kind) { return kind == Kind::Function; }
 };
 
 /// This is a common base class between Vector, UnrankedTensor, and RankedTensor
 /// types, because many operations work on values of these aggregate types.
 class VectorOrTensorType : public Type {
 public:
-  Type *getElementType() const { return elementType; }
+  using ImplType = detail::VectorOrTensorTypeStorage;
+  VectorOrTensorType() = default;
+  /* implicit */ VectorOrTensorType(Type::ImplType *ptr);
+
+  Type getElementType() const;
 
   /// If this is ranked tensor or vector type, return the number of elements. If
   /// it is an unranked tensor or vector, abort.
@@ -319,56 +335,40 @@ public:
   int getDimSize(unsigned i) const;
 
   /// Methods for support type inquiry through isa, cast, and dyn_cast.
-  static bool classof(const Type *type) {
-    return type->getKind() == Kind::Vector ||
-           type->getKind() == Kind::RankedTensor ||
-           type->getKind() == Kind::UnrankedTensor;
+  static bool kindof(Kind kind) {
+    return kind == Kind::Vector || kind == Kind::RankedTensor ||
+           kind == Kind::UnrankedTensor;
   }
-
-public:
-  Type *elementType;
-
-  VectorOrTensorType(Kind kind, MLIRContext *context, Type *elementType,
-                     unsigned subClassData = 0);
 };
 
 /// Vector types represent multi-dimensional SIMD vectors, and have a fixed
 /// known constant shape with one or more dimension.
 class VectorType : public VectorOrTensorType {
 public:
-  static VectorType *get(ArrayRef<int> shape, Type *elementType);
+  using ImplType = detail::VectorTypeStorage;
+  VectorType() = default;
+  /* implicit */ VectorType(Type::ImplType *ptr);
 
-  ArrayRef<int> getShape() const {
-    return ArrayRef<int>(shapeElements, getSubclassData());
-  }
+  static VectorType get(ArrayRef<int> shape, Type elementType);
+
+  ArrayRef<int> getShape() const;
 
   /// Methods for support type inquiry through isa, cast, and dyn_cast.
-  static bool classof(const Type *type) {
-    return type->getKind() == Kind::Vector;
-  }
-
-private:
-  const int *shapeElements;
-  Type *elementType;
-
-  VectorType(ArrayRef<int> shape, Type *elementType, MLIRContext *context);
-  ~VectorType() = delete;
+  static bool kindof(Kind kind) { return kind == Kind::Vector; }
 };
 
 /// Tensor types represent multi-dimensional arrays, and have two variants:
 /// RankedTensorType and UnrankedTensorType.
 class TensorType : public VectorOrTensorType {
 public:
+  using ImplType = detail::TensorTypeStorage;
+  TensorType() = default;
+  /* implicit */ TensorType(Type::ImplType *ptr);
 
   /// Methods for support type inquiry through isa, cast, and dyn_cast.
-  static bool classof(const Type *type) {
-    return type->getKind() == Kind::RankedTensor ||
-           type->getKind() == Kind::UnrankedTensor;
+  static bool kindof(Kind kind) {
+    return kind == Kind::RankedTensor || kind == Kind::UnrankedTensor;
   }
-
-protected:
-  TensorType(Kind kind, Type *elementType, MLIRContext *context);
-  ~TensorType() {}
 };
 
 /// Ranked tensor types represent multi-dimensional arrays that have a shape
@@ -376,40 +376,30 @@ protected:
 /// integer or unknown (represented -1).
 class RankedTensorType : public TensorType {
 public:
-  static RankedTensorType *get(ArrayRef<int> shape,
-                               Type *elementType);
+  using ImplType = detail::RankedTensorTypeStorage;
+  RankedTensorType() = default;
+  /* implicit */ RankedTensorType(Type::ImplType *ptr);
 
-  ArrayRef<int> getShape() const {
-    return ArrayRef<int>(shapeElements, getSubclassData());
-  }
+  static RankedTensorType get(ArrayRef<int> shape, Type elementType);
 
-  static bool classof(const Type *type) {
-    return type->getKind() == Kind::RankedTensor;
-  }
+  ArrayRef<int> getShape() const;
 
-private:
-  const int *shapeElements;
-
-  RankedTensorType(ArrayRef<int> shape, Type *elementType,
-                   MLIRContext *context);
-  ~RankedTensorType() = delete;
+  static bool kindof(Kind kind) { return kind == Kind::RankedTensor; }
 };
 
 /// Unranked tensor types represent multi-dimensional arrays that have an
 /// unknown shape.
 class UnrankedTensorType : public TensorType {
 public:
-  static UnrankedTensorType *get(Type *elementType);
+  using ImplType = detail::UnrankedTensorTypeStorage;
+  UnrankedTensorType() = default;
+  /* implicit */ UnrankedTensorType(Type::ImplType *ptr);
+
+  static UnrankedTensorType get(Type elementType);
 
   ArrayRef<int> getShape() const { return ArrayRef<int>(); }
 
-  static bool classof(const Type *type) {
-    return type->getKind() == Kind::UnrankedTensor;
-  }
-
-private:
-  UnrankedTensorType(Type *elementType, MLIRContext *context);
-  ~UnrankedTensorType() = delete;
+  static bool kindof(Kind kind) { return kind == Kind::UnrankedTensor; }
 };
 
 /// MemRef types represent a region of memory that have a shape with a fixed
@@ -418,62 +408,96 @@ private:
 /// affine map composition, represented as an array AffineMap pointers.
 class MemRefType : public Type {
 public:
+  using ImplType = detail::MemRefTypeStorage;
+  MemRefType() = default;
+  /* implicit */ MemRefType(Type::ImplType *ptr);
+
   /// Get or create a new MemRefType based on shape, element type, affine
   /// map composition, and memory space.
-  static MemRefType *get(ArrayRef<int> shape, Type *elementType,
-                         ArrayRef<AffineMap> affineMapComposition,
-                         unsigned memorySpace);
+  static MemRefType get(ArrayRef<int> shape, Type elementType,
+                        ArrayRef<AffineMap> affineMapComposition,
+                        unsigned memorySpace);
 
   unsigned getRank() const { return getShape().size(); }
 
   /// Returns an array of memref shape dimension sizes.
-  ArrayRef<int> getShape() const {
-    return ArrayRef<int>(shapeElements, getSubclassData());
-  }
+  ArrayRef<int> getShape() const;
 
   /// Return the size of the specified dimension, or -1 if unspecified.
   int getDimSize(unsigned i) const { return getShape()[i]; }
 
   /// Returns the elemental type for this memref shape.
-  Type *getElementType() const { return elementType; }
+  Type getElementType() const;
 
   /// Returns an array of affine map pointers representing the memref affine
   /// map composition.
   ArrayRef<AffineMap> getAffineMaps() const;
 
   /// Returns the memory space in which data referred to by this memref resides.
-  unsigned getMemorySpace() const { return memorySpace; }
+  unsigned getMemorySpace() const;
 
   /// Returns the number of dimensions with dynamic size.
   unsigned getNumDynamicDims() const;
 
-  static bool classof(const Type *type) {
-    return type->getKind() == Kind::MemRef;
-  }
-
-private:
-  /// The type of each scalar element of the memref.
-  Type *elementType;
-  /// An array of integers which stores the shape dimension sizes.
-  const int *shapeElements;
-  /// The number of affine maps in the 'affineMapList' array.
-  const unsigned numAffineMaps;
-  /// List of affine maps in the memref's layout/index map composition.
-  AffineMap const *affineMapList;
-  /// Memory space in which data referenced by memref resides.
-  const unsigned memorySpace;
-
-  MemRefType(ArrayRef<int> shape, Type *elementType,
-             ArrayRef<AffineMap> affineMapList, unsigned memorySpace,
-             MLIRContext *context);
-  ~MemRefType() = delete;
+  static bool kindof(Kind kind) { return kind == Kind::MemRef; }
 };
 
-/// Return true if the specified element type is ok in a tensor.
-static bool isValidTensorElementType(Type *type) {
-  return isa<FloatType>(type) || isa<VectorType>(type) ||
-         isa<IntegerType>(type) || isa<OtherType>(type);
+// Make Type hashable.
+inline ::llvm::hash_code hash_value(Type arg) {
+  return ::llvm::hash_value(arg.type);
 }
+
+template <typename U> bool Type::isa() const {
+  assert(type && "isa<> used on a null type.");
+  return U::kindof(getKind());
+}
+template <typename U> U Type::dyn_cast() const {
+  return isa<U>() ? U(type) : U(nullptr);
+}
+template <typename U> U Type::dyn_cast_or_null() const {
+  return (type && isa<U>()) ? U(type) : U(nullptr);
+}
+template <typename U> U Type::cast() const {
+  assert(isa<U>());
+  return U(type);
+}
+
+/// Return true if the specified element type is ok in a tensor.
+static bool isValidTensorElementType(Type type) {
+  return type.isa<FloatType>() || type.isa<VectorType>() ||
+         type.isa<IntegerType>() || type.isa<OtherType>();
+}
+
 } // end namespace mlir
+
+namespace llvm {
+
+// Type hash just like pointers.
+template <> struct DenseMapInfo<mlir::Type> {
+  static mlir::Type getEmptyKey() {
+    auto pointer = llvm::DenseMapInfo<void *>::getEmptyKey();
+    return mlir::Type(static_cast<mlir::Type::ImplType *>(pointer));
+  }
+  static mlir::Type getTombstoneKey() {
+    auto pointer = llvm::DenseMapInfo<void *>::getTombstoneKey();
+    return mlir::Type(static_cast<mlir::Type::ImplType *>(pointer));
+  }
+  static unsigned getHashValue(mlir::Type val) { return mlir::hash_value(val); }
+  static bool isEqual(mlir::Type LHS, mlir::Type RHS) { return LHS == RHS; }
+};
+
+/// We align TypeStorage by 8, so allow LLVM to steal the low bits.
+template <> struct PointerLikeTypeTraits<mlir::Type> {
+public:
+  static inline void *getAsVoidPointer(mlir::Type I) {
+    return const_cast<void *>(I.getAsOpaquePointer());
+  }
+  static inline mlir::Type getFromVoidPointer(void *P) {
+    return mlir::Type::getFromOpaquePointer(P);
+  }
+  enum { NumLowBitsAvailable = 3 };
+};
+
+} // namespace llvm
 
 #endif  // MLIR_IR_TYPES_H

@@ -41,7 +41,7 @@ class MLFunction final
 public:
   /// Creates a new MLFunction with the specific type.
   static MLFunction *create(Location *location, StringRef name,
-                            FunctionType *type,
+                            FunctionType type,
                             ArrayRef<NamedAttribute> attrs = {});
 
   /// Destroys this statement and its subclass data.
@@ -52,7 +52,7 @@ public:
   //===--------------------------------------------------------------------===//
 
   /// Returns number of arguments.
-  unsigned getNumArguments() const { return getType()->getInputs().size(); }
+  unsigned getNumArguments() const { return getType().getInputs().size(); }
 
   /// Gets argument.
   MLFuncArgument *getArgument(unsigned idx) {
@@ -103,13 +103,13 @@ public:
   }
 
 private:
-  MLFunction(Location *location, StringRef name, FunctionType *type,
+  MLFunction(Location *location, StringRef name, FunctionType type,
              ArrayRef<NamedAttribute> attrs = {});
 
   // This stuff is used by the TrailingObjects template.
   friend llvm::TrailingObjects<MLFunction, MLFuncArgument>;
   size_t numTrailingObjects(OverloadToken<MLFuncArgument>) const {
-    return getType()->getInputs().size();
+    return getType().getInputs().size();
   }
 
   // Internal functions to get argument list used by getArgument() methods.

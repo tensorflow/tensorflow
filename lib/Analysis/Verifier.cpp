@@ -195,7 +195,7 @@ bool CFGFuncVerifier::verify() {
 
   // Verify that the argument list of the function and the arg list of the first
   // block line up.
-  auto fnInputTypes = fn.getType()->getInputs();
+  auto fnInputTypes = fn.getType().getInputs();
   if (fnInputTypes.size() != firstBB->getNumArguments())
     return failure("first block of cfgfunc must have " +
                        Twine(fnInputTypes.size()) +
@@ -306,7 +306,7 @@ bool CFGFuncVerifier::verifyBBArguments(ArrayRef<InstOperand> operands,
 
 bool CFGFuncVerifier::verifyReturn(const ReturnInst &inst) {
   // Verify that the return operands match the results of the function.
-  auto results = fn.getType()->getResults();
+  auto results = fn.getType().getResults();
   if (inst.getNumOperands() != results.size())
     return failure("return has " + Twine(inst.getNumOperands()) +
                        " operands, but enclosing function returns " +

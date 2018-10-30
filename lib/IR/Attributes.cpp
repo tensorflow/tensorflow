@@ -75,9 +75,7 @@ IntegerSet IntegerSetAttr::getValue() const {
 
 TypeAttr::TypeAttr(Attribute::ImplType *ptr) : Attribute(ptr) {}
 
-Type *TypeAttr::getValue() const {
-  return static_cast<ImplType *>(attr)->value;
-}
+Type TypeAttr::getValue() const { return static_cast<ImplType *>(attr)->value; }
 
 FunctionAttr::FunctionAttr(Attribute::ImplType *ptr) : Attribute(ptr) {}
 
@@ -85,11 +83,11 @@ Function *FunctionAttr::getValue() const {
   return static_cast<ImplType *>(attr)->value;
 }
 
-FunctionType *FunctionAttr::getType() const { return getValue()->getType(); }
+FunctionType FunctionAttr::getType() const { return getValue()->getType(); }
 
 ElementsAttr::ElementsAttr(Attribute::ImplType *ptr) : Attribute(ptr) {}
 
-VectorOrTensorType *ElementsAttr::getType() const {
+VectorOrTensorType ElementsAttr::getType() const {
   return static_cast<ImplType *>(attr)->type;
 }
 
@@ -166,8 +164,8 @@ uint64_t DenseIntElementsAttr::readBits(const char *rawData, size_t bitPos,
 
 void DenseIntElementsAttr::getValues(SmallVectorImpl<Attribute> &values) const {
   auto bitsWidth = static_cast<ImplType *>(attr)->bitsWidth;
-  auto elementNum = getType()->getNumElements();
-  auto context = getType()->getContext();
+  auto elementNum = getType().getNumElements();
+  auto context = getType().getContext();
   values.reserve(elementNum);
   if (bitsWidth == 64) {
     ArrayRef<int64_t> vs(
@@ -192,8 +190,8 @@ DenseFPElementsAttr::DenseFPElementsAttr(Attribute::ImplType *ptr)
     : DenseElementsAttr(ptr) {}
 
 void DenseFPElementsAttr::getValues(SmallVectorImpl<Attribute> &values) const {
-  auto elementNum = getType()->getNumElements();
-  auto context = getType()->getContext();
+  auto elementNum = getType().getNumElements();
+  auto context = getType().getContext();
   ArrayRef<double> vs({reinterpret_cast<const double *>(getRawData().data()),
                        getRawData().size() / 8});
   values.reserve(elementNum);

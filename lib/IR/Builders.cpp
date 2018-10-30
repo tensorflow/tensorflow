@@ -52,59 +52,58 @@ FileLineColLoc *Builder::getFileLineColLoc(UniquedFilename filename,
 // Types.
 //===----------------------------------------------------------------------===//
 
-FloatType *Builder::getBF16Type() { return Type::getBF16(context); }
+FloatType Builder::getBF16Type() { return Type::getBF16(context); }
 
-FloatType *Builder::getF16Type() { return Type::getF16(context); }
+FloatType Builder::getF16Type() { return Type::getF16(context); }
 
-FloatType *Builder::getF32Type() { return Type::getF32(context); }
+FloatType Builder::getF32Type() { return Type::getF32(context); }
 
-FloatType *Builder::getF64Type() { return Type::getF64(context); }
+FloatType Builder::getF64Type() { return Type::getF64(context); }
 
-OtherType *Builder::getIndexType() { return Type::getIndex(context); }
+OtherType Builder::getIndexType() { return Type::getIndex(context); }
 
-OtherType *Builder::getTFControlType() { return Type::getTFControl(context); }
+OtherType Builder::getTFControlType() { return Type::getTFControl(context); }
 
-OtherType *Builder::getTFResourceType() { return Type::getTFResource(context); }
+OtherType Builder::getTFResourceType() { return Type::getTFResource(context); }
 
-OtherType *Builder::getTFVariantType() { return Type::getTFVariant(context); }
+OtherType Builder::getTFVariantType() { return Type::getTFVariant(context); }
 
-OtherType *Builder::getTFComplex64Type() {
+OtherType Builder::getTFComplex64Type() {
   return Type::getTFComplex64(context);
 }
 
-OtherType *Builder::getTFComplex128Type() {
+OtherType Builder::getTFComplex128Type() {
   return Type::getTFComplex128(context);
 }
 
-OtherType *Builder::getTFF32REFType() { return Type::getTFF32REF(context); }
+OtherType Builder::getTFF32REFType() { return Type::getTFF32REF(context); }
 
-OtherType *Builder::getTFStringType() { return Type::getTFString(context); }
+OtherType Builder::getTFStringType() { return Type::getTFString(context); }
 
-IntegerType *Builder::getIntegerType(unsigned width) {
+IntegerType Builder::getIntegerType(unsigned width) {
   return Type::getInteger(width, context);
 }
 
-FunctionType *Builder::getFunctionType(ArrayRef<Type *> inputs,
-                                       ArrayRef<Type *> results) {
+FunctionType Builder::getFunctionType(ArrayRef<Type> inputs,
+                                      ArrayRef<Type> results) {
   return FunctionType::get(inputs, results, context);
 }
 
-MemRefType *Builder::getMemRefType(ArrayRef<int> shape, Type *elementType,
-                                   ArrayRef<AffineMap> affineMapComposition,
-                                   unsigned memorySpace) {
+MemRefType Builder::getMemRefType(ArrayRef<int> shape, Type elementType,
+                                  ArrayRef<AffineMap> affineMapComposition,
+                                  unsigned memorySpace) {
   return MemRefType::get(shape, elementType, affineMapComposition, memorySpace);
 }
 
-VectorType *Builder::getVectorType(ArrayRef<int> shape, Type *elementType) {
+VectorType Builder::getVectorType(ArrayRef<int> shape, Type elementType) {
   return VectorType::get(shape, elementType);
 }
 
-RankedTensorType *Builder::getTensorType(ArrayRef<int> shape,
-                                         Type *elementType) {
+RankedTensorType Builder::getTensorType(ArrayRef<int> shape, Type elementType) {
   return RankedTensorType::get(shape, elementType);
 }
 
-UnrankedTensorType *Builder::getTensorType(Type *elementType) {
+UnrankedTensorType Builder::getTensorType(Type elementType) {
   return UnrankedTensorType::get(elementType);
 }
 
@@ -144,7 +143,7 @@ IntegerSetAttr Builder::getIntegerSetAttr(IntegerSet set) {
   return IntegerSetAttr::get(set);
 }
 
-TypeAttr Builder::getTypeAttr(Type *type) {
+TypeAttr Builder::getTypeAttr(Type type) {
   return TypeAttr::get(type, context);
 }
 
@@ -152,23 +151,23 @@ FunctionAttr Builder::getFunctionAttr(const Function *value) {
   return FunctionAttr::get(value, context);
 }
 
-ElementsAttr Builder::getSplatElementsAttr(VectorOrTensorType *type,
+ElementsAttr Builder::getSplatElementsAttr(VectorOrTensorType type,
                                            Attribute elt) {
   return SplatElementsAttr::get(type, elt);
 }
 
-ElementsAttr Builder::getDenseElementsAttr(VectorOrTensorType *type,
+ElementsAttr Builder::getDenseElementsAttr(VectorOrTensorType type,
                                            ArrayRef<char> data) {
   return DenseElementsAttr::get(type, data);
 }
 
-ElementsAttr Builder::getSparseElementsAttr(VectorOrTensorType *type,
+ElementsAttr Builder::getSparseElementsAttr(VectorOrTensorType type,
                                             DenseIntElementsAttr indices,
                                             DenseElementsAttr values) {
   return SparseElementsAttr::get(type, indices, values);
 }
 
-ElementsAttr Builder::getOpaqueElementsAttr(VectorOrTensorType *type,
+ElementsAttr Builder::getOpaqueElementsAttr(VectorOrTensorType type,
                                             StringRef bytes) {
   return OpaqueElementsAttr::get(type, bytes);
 }
@@ -296,7 +295,7 @@ OperationStmt *MLFuncBuilder::createOperation(const OperationState &state) {
 OperationStmt *MLFuncBuilder::createOperation(Location *location,
                                               OperationName name,
                                               ArrayRef<MLValue *> operands,
-                                              ArrayRef<Type *> types,
+                                              ArrayRef<Type> types,
                                               ArrayRef<NamedAttribute> attrs) {
   auto *op = OperationStmt::create(location, name, operands, types, attrs,
                                    getContext());

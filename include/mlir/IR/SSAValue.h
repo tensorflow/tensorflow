@@ -25,7 +25,6 @@
 #include "mlir/IR/Types.h"
 #include "mlir/IR/UseDefLists.h"
 #include "mlir/Support/LLVM.h"
-#include "llvm/ADT/PointerIntPair.h"
 
 namespace mlir {
 class Function;
@@ -51,7 +50,7 @@ public:
 
   SSAValueKind getKind() const { return typeAndKind.getInt(); }
 
-  Type *getType() const { return typeAndKind.getPointer(); }
+  Type getType() const { return typeAndKind.getPointer(); }
 
   /// Replace all uses of 'this' value with the new value, updating anything in
   /// the IR that uses 'this' to use the other value instead.  When this returns
@@ -93,9 +92,10 @@ public:
   void dump() const;
 
 protected:
-  SSAValue(SSAValueKind kind, Type *type) : typeAndKind(type, kind) {}
+  SSAValue(SSAValueKind kind, Type type) : typeAndKind(type, kind) {}
+
 private:
-  const llvm::PointerIntPair<Type *, 3, SSAValueKind> typeAndKind;
+  const llvm::PointerIntPair<Type, 3, SSAValueKind> typeAndKind;
 };
 
 inline raw_ostream &operator<<(raw_ostream &os, const SSAValue &value) {
@@ -127,7 +127,7 @@ public:
   inline use_range getUses() const;
 
 protected:
-  SSAValueImpl(KindTy kind, Type *type) : SSAValue((SSAValueKind)kind, type) {}
+  SSAValueImpl(KindTy kind, Type type) : SSAValue((SSAValueKind)kind, type) {}
 };
 
 // Utility functions for iterating through SSAValue uses.

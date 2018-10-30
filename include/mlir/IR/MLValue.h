@@ -73,7 +73,7 @@ public:
   }
 
 protected:
-  MLValue(MLValueKind kind, Type *type) : SSAValueImpl(kind, type) {}
+  MLValue(MLValueKind kind, Type type) : SSAValueImpl(kind, type) {}
 };
 
 /// This is the value defined by an argument of an ML function.
@@ -93,7 +93,7 @@ public:
 
 private:
   friend class MLFunction; // For access to private constructor.
-  MLFuncArgument(Type *type, MLFunction *owner)
+  MLFuncArgument(Type type, MLFunction *owner)
       : MLValue(MLValueKind::MLFuncArgument, type), owner(owner) {}
 
   /// The owner of this operand.
@@ -105,7 +105,7 @@ private:
 /// This is a value defined by a result of an operation instruction.
 class StmtResult : public MLValue {
 public:
-  StmtResult(Type *type, OperationStmt *owner)
+  StmtResult(Type type, OperationStmt *owner)
       : MLValue(MLValueKind::StmtResult, type), owner(owner) {}
 
   static bool classof(const SSAValue *value) {

@@ -77,23 +77,23 @@ static bool doubleBuffer(const MLValue *oldMemRef, ForStmt *forStmt) {
   bInner.setInsertionPoint(forStmt, forStmt->begin());
 
   // Doubles the shape with a leading dimension extent of 2.
-  auto doubleShape = [&](MemRefType *oldMemRefType) -> MemRefType * {
+  auto doubleShape = [&](MemRefType oldMemRefType) -> MemRefType {
     // Add the leading dimension in the shape for the double buffer.
-    ArrayRef<int> shape = oldMemRefType->getShape();
+    ArrayRef<int> shape = oldMemRefType.getShape();
     SmallVector<int, 4> shapeSizes(shape.begin(), shape.end());
     shapeSizes.insert(shapeSizes.begin(), 2);
 
-    auto *newMemRefType =
-        bInner.getMemRefType(shapeSizes, oldMemRefType->getElementType(), {},
-                             oldMemRefType->getMemorySpace());
+    auto newMemRefType =
+        bInner.getMemRefType(shapeSizes, oldMemRefType.getElementType(), {},
+                             oldMemRefType.getMemorySpace());
     return newMemRefType;
   };
 
-  auto *newMemRefType = doubleShape(cast<MemRefType>(oldMemRef->getType()));
+  auto newMemRefType = doubleShape(oldMemRef->getType().cast<MemRefType>());
 
   // Create and place the alloc at the top level.
   MLFuncBuilder topBuilder(forStmt->getFunction());
-  auto *newMemRef = cast<MLValue>(
+  auto newMemRef = cast<MLValue>(
       topBuilder.create<AllocOp>(forStmt->getLoc(), newMemRefType)
           ->getResult());
 

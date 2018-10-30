@@ -143,7 +143,7 @@ void Instruction::emitError(const Twine &message) const {
 /// Create a new OperationInst with the specified fields.
 OperationInst *OperationInst::create(Location *location, OperationName name,
                                      ArrayRef<CFGValue *> operands,
-                                     ArrayRef<Type *> resultTypes,
+                                     ArrayRef<Type> resultTypes,
                                      ArrayRef<NamedAttribute> attributes,
                                      MLIRContext *context) {
   auto byteSize = totalSizeToAlloc<InstOperand, InstResult>(operands.size(),
@@ -167,7 +167,7 @@ OperationInst *OperationInst::create(Location *location, OperationName name,
 
 OperationInst *OperationInst::clone() const {
   SmallVector<CFGValue *, 8> operands;
-  SmallVector<Type *, 8> resultTypes;
+  SmallVector<Type, 8> resultTypes;
 
   // Put together the operands and results.
   for (auto *operand : getOperands())

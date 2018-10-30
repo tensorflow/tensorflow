@@ -64,10 +64,10 @@ public:
   bool args_empty() const { return arguments.empty(); }
 
   /// Add one value to the operand list.
-  BBArgument *addArgument(Type *type);
+  BBArgument *addArgument(Type type);
 
   /// Add one argument to the argument list for each type specified in the list.
-  llvm::iterator_range<args_iterator> addArguments(ArrayRef<Type *> types);
+  llvm::iterator_range<args_iterator> addArguments(ArrayRef<Type> types);
 
   unsigned getNumArguments() const { return arguments.size(); }
   BBArgument *getArgument(unsigned i) { return arguments[i]; }

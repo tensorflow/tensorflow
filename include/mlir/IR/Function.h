@@ -26,6 +26,7 @@
 
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/Identifier.h"
+#include "mlir/IR/Types.h"
 #include "mlir/Support/LLVM.h"
 #include "llvm/ADT/ilist.h"
 
@@ -55,7 +56,7 @@ public:
   Identifier getName() const { return nameAndKind.getPointer(); }
 
   /// Return the type of this function.
-  FunctionType *getType() const { return type; }
+  FunctionType getType() const { return type; }
 
   /// Returns all of the attributes on this function.
   ArrayRef<NamedAttribute> getAttrs() const;
@@ -93,7 +94,7 @@ public:
   void emitNote(const Twine &message) const;
 
 protected:
-  Function(Kind kind, Location *location, StringRef name, FunctionType *type,
+  Function(Kind kind, Location *location, StringRef name, FunctionType type,
            ArrayRef<NamedAttribute> attrs = {});
   ~Function();
 
@@ -108,7 +109,7 @@ private:
   Location *location;
 
   /// The type of the function.
-  FunctionType *const type;
+  FunctionType type;
 
   /// This holds general named attributes for the function.
   AttributeListStorage *attrs;
@@ -121,7 +122,7 @@ private:
 /// defined in some other module.
 class ExtFunction : public Function {
 public:
-  ExtFunction(Location *location, StringRef name, FunctionType *type,
+  ExtFunction(Location *location, StringRef name, FunctionType type,
               ArrayRef<NamedAttribute> attrs = {});
 
   /// Methods for support type inquiry through isa, cast, and dyn_cast.

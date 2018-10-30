@@ -33,18 +33,18 @@ BasicBlock::~BasicBlock() {
 // Argument list management.
 //===----------------------------------------------------------------------===//
 
-BBArgument *BasicBlock::addArgument(Type *type) {
+BBArgument *BasicBlock::addArgument(Type type) {
   auto *arg = new BBArgument(type, this);
   arguments.push_back(arg);
   return arg;
 }
 
 /// Add one argument to the argument list for each type specified in the list.
-auto BasicBlock::addArguments(ArrayRef<Type *> types)
+auto BasicBlock::addArguments(ArrayRef<Type> types)
     -> llvm::iterator_range<args_iterator> {
   arguments.reserve(arguments.size() + types.size());
   auto initialSize = arguments.size();
-  for (auto *type : types) {
+  for (auto type : types) {
     addArgument(type);
   }
   return {arguments.data() + initialSize, arguments.data() + arguments.size()};

@@ -28,8 +28,8 @@
 using namespace mlir;
 
 Function::Function(Kind kind, Location *location, StringRef name,
-                   FunctionType *type, ArrayRef<NamedAttribute> attrs)
-    : nameAndKind(Identifier::get(name, type->getContext()), kind),
+                   FunctionType type, ArrayRef<NamedAttribute> attrs)
+    : nameAndKind(Identifier::get(name, type.getContext()), kind),
       location(location), type(type) {
   this->attrs = AttributeListStorage::get(attrs, getContext());
 }
@@ -46,7 +46,7 @@ ArrayRef<NamedAttribute> Function::getAttrs() const {
     return {};
 }
 
-MLIRContext *Function::getContext() const { return getType()->getContext(); }
+MLIRContext *Function::getContext() const { return getType().getContext(); }
 
 /// Delete this object.
 void Function::destroy() {
@@ -159,7 +159,7 @@ void Function::emitError(const Twine &message) const {
 // ExtFunction implementation.
 //===----------------------------------------------------------------------===//
 
-ExtFunction::ExtFunction(Location *location, StringRef name, FunctionType *type,
+ExtFunction::ExtFunction(Location *location, StringRef name, FunctionType type,
                          ArrayRef<NamedAttribute> attrs)
     : Function(Kind::ExtFunc, location, name, type, attrs) {}
 
@@ -167,7 +167,7 @@ ExtFunction::ExtFunction(Location *location, StringRef name, FunctionType *type,
 // CFGFunction implementation.
 //===----------------------------------------------------------------------===//
 
-CFGFunction::CFGFunction(Location *location, StringRef name, FunctionType *type,
+CFGFunction::CFGFunction(Location *location, StringRef name, FunctionType type,
                          ArrayRef<NamedAttribute> attrs)
     : Function(Kind::CFGFunc, location, name, type, attrs) {}
 
@@ -188,9 +188,9 @@ CFGFunction::~CFGFunction() {
 
 /// Create a new MLFunction with the specific fields.
 MLFunction *MLFunction::create(Location *location, StringRef name,
-                               FunctionType *type,
+                               FunctionType type,
                                ArrayRef<NamedAttribute> attrs) {
-  const auto &argTypes = type->getInputs();
+  const auto &argTypes = type.getInputs();
   auto byteSize = totalSizeToAlloc<MLFuncArgument>(argTypes.size());
   void *rawMem = malloc(byteSize);
 
@@ -204,7 +204,7 @@ MLFunction *MLFunction::create(Location *location, StringRef name,
   return function;
 }
 
-MLFunction::MLFunction(Location *location, StringRef name, FunctionType *type,
+MLFunction::MLFunction(Location *location, StringRef name, FunctionType type,
                        ArrayRef<NamedAttribute> attrs)
     : Function(Kind::MLFunc, location, name, type, attrs),
       StmtBlock(StmtBlockKind::MLFunc) {}

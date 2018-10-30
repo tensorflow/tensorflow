@@ -78,7 +78,7 @@ private:
   /// As part of canonicalization, we move constants to the top of the entry
   /// block of the current function and de-duplicate them.  This keeps track of
   /// constants we have done this for.
-  DenseMap<std::pair<Attribute, Type *>, Operation *> uniquedConstants;
+  DenseMap<std::pair<Attribute, Type>, Operation *> uniquedConstants;
 };
 }; // end anonymous namespace
 

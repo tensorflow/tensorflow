@@ -118,15 +118,15 @@ uint64_t mlir::getLargestDivisorOfTripCount(const ForStmt &forStmt) {
   return tripCountExpr.getLargestKnownDivisor();
 }
 
-bool mlir::isAccessInvariant(const MLValue &input, MemRefType *memRefType,
+bool mlir::isAccessInvariant(const MLValue &input, MemRefType memRefType,
                              ArrayRef<MLValue *> indices, unsigned dim) {
-  assert(indices.size() == memRefType->getRank());
+  assert(indices.size() == memRefType.getRank());
   assert(dim < indices.size());
-  auto layoutMap = memRefType->getAffineMaps();
-  assert(memRefType->getAffineMaps().size() <= 1);
+  auto layoutMap = memRefType.getAffineMaps();
+  assert(memRefType.getAffineMaps().size() <= 1);
   // TODO(ntv): remove dependency on Builder once we support non-identity
   // layout map.
-  Builder b(memRefType->getContext());
+  Builder b(memRefType.getContext());
   assert(layoutMap.empty() ||
          layoutMap[0] == b.getMultiDimIdentityMap(indices.size()));
   (void)layoutMap;
@@ -170,7 +170,7 @@ static bool isContiguousAccess(const MLValue &input,
   using namespace functional;
   auto indices = map([](SSAValue *val) { return dyn_cast<MLValue>(val); },
                      memoryOp->getIndices());
-  auto *memRefType = memoryOp->getMemRefType();
+  auto memRefType = memoryOp->getMemRefType();
   for (unsigned d = 0, numIndices = indices.size(); d < numIndices; ++d) {
     if (fastestVaryingDim == (numIndices - 1) - d) {
       continue;
@@ -184,8 +184,8 @@ static bool isContiguousAccess(const MLValue &input,
 
 template <typename LoadOrStoreOpPointer>
 static bool isVectorElement(LoadOrStoreOpPointer memoryOp) {
-  auto *memRefType = memoryOp->getMemRefType();
-  return isa<VectorType>(memRefType->getElementType());
+  auto memRefType = memoryOp->getMemRefType();
+  return memRefType.getElementType().template isa<VectorType>();
 }
 
 bool mlir::isVectorizableLoop(const ForStmt &loop, unsigned fastestVaryingDim) {

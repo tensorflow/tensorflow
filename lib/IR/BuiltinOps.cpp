@@ -63,7 +63,7 @@ bool mlir::parseDimAndSymbolList(OpAsmParser *parser,
   numDims = opInfos.size();
 
   // Parse the optional symbol operands.
-  auto *affineIntTy = parser->getBuilder().getIndexType();
+  auto affineIntTy = parser->getBuilder().getIndexType();
   if (parser->parseOperandList(opInfos, -1,
                                OpAsmParser::Delimiter::OptionalSquare) ||
       parser->resolveOperands(opInfos, affineIntTy, operands))
@@ -84,7 +84,7 @@ void AffineApplyOp::build(Builder *builder, OperationState *result,
 
 bool AffineApplyOp::parse(OpAsmParser *parser, OperationState *result) {
   auto &builder = parser->getBuilder();
-  auto *affineIntTy = builder.getIndexType();
+  auto affineIntTy = builder.getIndexType();
 
   AffineMapAttr mapAttr;
   unsigned numDims;
@@ -171,7 +171,7 @@ bool AffineApplyOp::constantFold(ArrayRef<Attribute> operandConstants,
 
 /// Builds a constant op with the specified attribute value and result type.
 void ConstantOp::build(Builder *builder, OperationState *result,
-                       Attribute value, Type *type) {
+                       Attribute value, Type type) {
   result->addAttribute("value", value);
   result->types.push_back(type);
 }
@@ -181,12 +181,12 @@ void ConstantOp::print(OpAsmPrinter *p) const {
   p->printOptionalAttrDict(getAttrs(), /*elidedAttrs=*/"value");
 
   if (!getValue().isa<FunctionAttr>())
-    *p << " : " << *getType();
+    *p << " : " << getType();
 }
 
 bool ConstantOp::parse(OpAsmParser *parser, OperationState *result) {
   Attribute valueAttr;
-  Type *type;
+  Type type;
 
   if (parser->parseAttribute(valueAttr, "value", result->attributes) ||
       parser->parseOptionalAttributeDict(result->attributes))
@@ -208,33 +208,33 @@ bool ConstantOp::verify() const {
   if (!value)
     return emitOpError("requires a 'value' attribute");
 
-  auto *type = this->getType();
-  if (isa<IntegerType>(type) || type->isIndex()) {
+  auto type = this->getType();
+  if (type.isa<IntegerType>() || type.isIndex()) {
     if (!value.isa<IntegerAttr>())
       return emitOpError(
           "requires 'value' to be an integer for an integer result type");
     return false;
   }
 
-  if (isa<FloatType>(type)) {
+  if (type.isa<FloatType>()) {
     if (!value.isa<FloatAttr>())
       return emitOpError("requires 'value' to be a floating point constant");
     return false;
   }
 
-  if (isa<VectorOrTensorType>(type)) {
+  if (type.isa<VectorOrTensorType>()) {
     if (!value.isa<ElementsAttr>())
       return emitOpError("requires 'value' to be a vector/tensor constant");
     return false;
   }
 
-  if (type->isTFString()) {
+  if (type.isTFString()) {
     if (!value.isa<StringAttr>())
       return emitOpError("requires 'value' to be a string constant");
     return false;
   }
 
-  if (isa<FunctionType>(type)) {
+  if (type.isa<FunctionType>()) {
     if (!value.isa<FunctionAttr>())
       return emitOpError("requires 'value' to be a function reference");
     return false;
@@ -251,19 +251,19 @@ Attribute ConstantOp::constantFold(ArrayRef<Attribute> operands,
 }
 
 void ConstantFloatOp::build(Builder *builder, OperationState *result,
-                            const APFloat &value, FloatType *type) {
+                            const APFloat &value, FloatType type) {
   ConstantOp::build(builder, result, builder->getFloatAttr(value), type);
 }
 
 bool ConstantFloatOp::isClassFor(const Operation *op) {
   return ConstantOp::isClassFor(op) &&
-         isa<FloatType>(op->getResult(0)->getType());
+         op->getResult(0)->getType().isa<FloatType>();
 }
 
 /// ConstantIntOp only matches values whose result type is an IntegerType.
 bool ConstantIntOp::isClassFor(const Operation *op) {
   return ConstantOp::isClassFor(op) &&
-         isa<IntegerType>(op->getResult(0)->getType());
+         op->getResult(0)->getType().isa<IntegerType>();
 }
 
 void ConstantIntOp::build(Builder *builder, OperationState *result,
@@ -275,14 +275,14 @@ void ConstantIntOp::build(Builder *builder, OperationState *result,
 /// Build a constant int op producing an integer with the specified type,
 /// which must be an integer type.
 void ConstantIntOp::build(Builder *builder, OperationState *result,
-                          int64_t value, Type *type) {
-  assert(isa<IntegerType>(type) && "ConstantIntOp can only have integer type");
+                          int64_t value, Type type) {
+  assert(type.isa<IntegerType>() && "ConstantIntOp can only have integer type");
   ConstantOp::build(builder, result, builder->getIntegerAttr(value), type);
 }
 
 /// ConstantIndexOp only matches values whose result type is Index.
 bool ConstantIndexOp::isClassFor(const Operation *op) {
-  return ConstantOp::isClassFor(op) && op->getResult(0)->getType()->isIndex();
+  return ConstantOp::isClassFor(op) && op->getResult(0)->getType().isIndex();
 }
 
 void ConstantIndexOp::build(Builder *builder, OperationState *result,
@@ -302,7 +302,7 @@ void ReturnOp::build(Builder *builder, OperationState *result,
 
 bool ReturnOp::parse(OpAsmParser *parser, OperationState *result) {
   SmallVector<OpAsmParser::OperandType, 2> opInfo;
-  SmallVector<Type *, 2> types;
+  SmallVector<Type, 2> types;
   llvm::SMLoc loc;
   return parser->getCurrentLocation(&loc) || parser->parseOperandList(opInfo) ||
          (!opInfo.empty() && parser->parseColonTypeList(types)) ||
@@ -330,7 +330,7 @@ bool ReturnOp::verify() const {
 
     // The operand number and types must match the function signature.
     MLFunction *function = cast<MLFunction>(block);
-    const auto &results = function->getType()->getResults();
+    const auto &results = function->getType().getResults();
     if (stmt->getNumOperands() != results.size())
       return emitOpError("has " + Twine(stmt->getNumOperands()) +
                          " operands, but enclosing function returns " +

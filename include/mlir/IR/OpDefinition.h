@@ -493,7 +493,7 @@ public:
     return this->getOperation()->getResult(0);
   }
 
-  Type *getType() const { return getResult()->getType(); }
+  Type getType() const { return getResult()->getType(); }
 
   /// Replace all uses of 'this' value with the new value, updating anything in
   /// the IR that uses 'this' to use the other value instead.  When this returns
@@ -539,7 +539,7 @@ public:
       return this->getOperation()->getResult(i);
     }
 
-    Type *getType(unsigned i) const { return getResult(i)->getType(); }
+    Type getType(unsigned i) const { return getResult(i)->getType(); }
 
     static bool verifyTrait(const Operation *op) {
       return impl::verifyNResults(op, N);
@@ -565,7 +565,7 @@ public:
       return this->getOperation()->getResult(i);
     }
 
-    Type *getType(unsigned i) const { return getResult(i)->getType(); }
+    Type getType(unsigned i) const { return getResult(i)->getType(); }
 
     static bool verifyTrait(const Operation *op) {
       return impl::verifyAtLeastNResults(op, N);
@@ -803,7 +803,7 @@ protected:
 // which avoids them being template instantiated/duplicated.
 namespace impl {
 void buildCastOp(Builder *builder, OperationState *result, SSAValue *source,
-                 Type *destType);
+                 Type destType);
 bool parseCastOp(OpAsmParser *parser, OperationState *result);
 void printCastOp(const Operation *op, OpAsmPrinter *p);
 } // namespace impl
@@ -819,7 +819,7 @@ class CastOp : public Op<ConcreteType, OpTrait::OneOperand, OpTrait::OneResult,
                          OpTrait::HasNoSideEffect, Traits...> {
 public:
   static void build(Builder *builder, OperationState *result, SSAValue *source,
-                    Type *destType) {
+                    Type destType) {
     impl::buildCastOp(builder, result, source, destType);
   }
   static bool parse(OpAsmParser *parser, OperationState *result) {

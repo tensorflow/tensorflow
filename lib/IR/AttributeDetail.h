@@ -26,6 +26,7 @@
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/IntegerSet.h"
 #include "mlir/IR/MLIRContext.h"
+#include "mlir/IR/Types.h"
 #include "llvm/Support/TrailingObjects.h"
 
 namespace mlir {
@@ -86,7 +87,7 @@ struct IntegerSetAttributeStorage : public AttributeStorage {
 
 /// An attribute representing a reference to a type.
 struct TypeAttributeStorage : public AttributeStorage {
-  Type *value;
+  Type value;
 };
 
 /// An attribute representing a reference to a function.
@@ -96,7 +97,7 @@ struct FunctionAttributeStorage : public AttributeStorage {
 
 /// A base attribute representing a reference to a vector or tensor constant.
 struct ElementsAttributeStorage : public AttributeStorage {
-  VectorOrTensorType *type;
+  VectorOrTensorType type;
 };
 
 /// An attribute representing a reference to a vector or tensor constant,

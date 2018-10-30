@@ -104,15 +104,15 @@ class AllocOp
     : public Op<AllocOp, OpTrait::VariadicOperands, OpTrait::OneResult> {
 public:
   /// The result of an alloc is always a MemRefType.
-  MemRefType *getType() const {
-    return cast<MemRefType>(getResult()->getType());
+  MemRefType getType() const {
+    return getResult()->getType().cast<MemRefType>();
   }
 
   static StringRef getOperationName() { return "alloc"; }
 
   // Hooks to customize behavior of this op.
   static void build(Builder *builder, OperationState *result,
-                    MemRefType *memrefType, ArrayRef<SSAValue *> operands = {});
+                    MemRefType memrefType, ArrayRef<SSAValue *> operands = {});
   bool verify() const;
   static bool parse(OpAsmParser *parser, OperationState *result);
   void print(OpAsmPrinter *p) const;
@@ -276,7 +276,7 @@ public:
   const SSAValue *getSrcMemRef() const { return getOperand(0); }
   // Returns the rank (number of indices) of the source MemRefType.
   unsigned getSrcMemRefRank() const {
-    return cast<MemRefType>(getSrcMemRef()->getType())->getRank();
+    return getSrcMemRef()->getType().cast<MemRefType>().getRank();
   }
   // Returns the source memerf indices for this DMA operation.
   llvm::iterator_range<Operation::const_operand_iterator>
@@ -291,13 +291,13 @@ public:
   }
   // Returns the rank (number of indices) of the destination MemRefType.
   unsigned getDstMemRefRank() const {
-    return cast<MemRefType>(getDstMemRef()->getType())->getRank();
+    return getDstMemRef()->getType().cast<MemRefType>().getRank();
   }
   unsigned getSrcMemorySpace() const {
-    return cast<MemRefType>(getSrcMemRef()->getType())->getMemorySpace();
+    return getSrcMemRef()->getType().cast<MemRefType>().getMemorySpace();
   }
   unsigned getDstMemorySpace() const {
-    return cast<MemRefType>(getDstMemRef()->getType())->getMemorySpace();
+    return getDstMemRef()->getType().cast<MemRefType>().getMemorySpace();
   }
 
   // Returns the destination memref indices for this DMA operation.
@@ -387,7 +387,7 @@ public:
 
   // Returns the rank (number of indices) of the tag memref.
   unsigned getTagMemRefRank() const {
-    return cast<MemRefType>(getTagMemRef()->getType())->getRank();
+    return getTagMemRef()->getType().cast<MemRefType>().getRank();
   }
 
   // Returns the number of elements transferred in the associated DMA operation.
@@ -460,8 +460,8 @@ public:
   SSAValue *getMemRef() { return getOperand(0); }
   const SSAValue *getMemRef() const { return getOperand(0); }
   void setMemRef(SSAValue *value) { setOperand(0, value); }
-  MemRefType *getMemRefType() const {
-    return cast<MemRefType>(getMemRef()->getType());
+  MemRefType getMemRefType() const {
+    return getMemRef()->getType().cast<MemRefType>();
   }
 
   llvm::iterator_range<Operation::operand_iterator> getIndices() {
@@ -508,8 +508,8 @@ public:
   static StringRef getOperationName() { return "memref_cast"; }
 
   /// The result of a memref_cast is always a memref.
-  MemRefType *getType() const {
-    return cast<MemRefType>(getResult()->getType());
+  MemRefType getType() const {
+    return getResult()->getType().cast<MemRefType>();
   }
 
   bool verify() const;
@@ -583,8 +583,8 @@ public:
   SSAValue *getMemRef() { return getOperand(1); }
   const SSAValue *getMemRef() const { return getOperand(1); }
   void setMemRef(SSAValue *value) { setOperand(1, value); }
-  MemRefType *getMemRefType() const {
-    return cast<MemRefType>(getMemRef()->getType());
+  MemRefType getMemRefType() const {
+    return getMemRef()->getType().cast<MemRefType>();
   }
 
   llvm::iterator_range<Operation::operand_iterator> getIndices() {
@@ -671,8 +671,8 @@ public:
   static StringRef getOperationName() { return "tensor_cast"; }
 
   /// The result of a tensor_cast is always a tensor.
-  TensorType *getType() const {
-    return cast<TensorType>(getResult()->getType());
+  TensorType getType() const {
+    return getResult()->getType().cast<TensorType>();
   }
 
   bool verify() const;

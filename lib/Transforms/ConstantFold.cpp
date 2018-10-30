@@ -31,7 +31,7 @@ struct ConstantFold : public FunctionPass, StmtWalker<ConstantFold> {
   SmallVector<SSAValue *, 8> existingConstants;
   // Operation statements that were folded and that need to be erased.
   std::vector<OperationStmt *> opStmtsToErase;
-  using ConstantFactoryType = std::function<SSAValue *(Attribute, Type *)>;
+  using ConstantFactoryType = std::function<SSAValue *(Attribute, Type)>;
 
   bool foldOperation(Operation *op,
                      SmallVectorImpl<SSAValue *> &existingConstants,
@@ -106,7 +106,7 @@ PassResult ConstantFold::runOnCFGFunction(CFGFunction *f) {
     for (auto instIt = bb.begin(), e = bb.end(); instIt != e;) {
       auto &inst = *instIt++;
 
-      auto constantFactory = [&](Attribute value, Type *type) -> SSAValue * {
+      auto constantFactory = [&](Attribute value, Type type) -> SSAValue * {
         builder.setInsertionPoint(&inst);
         return builder.create<ConstantOp>(inst.getLoc(), value, type);
       };
@@ -134,7 +134,7 @@ PassResult ConstantFold::runOnCFGFunction(CFGFunction *f) {
 
 // Override the walker's operation statement visit for constant folding.
 void ConstantFold::visitOperationStmt(OperationStmt *stmt) {
-  auto constantFactory = [&](Attribute value, Type *type) -> SSAValue * {
+  auto constantFactory = [&](Attribute value, Type type) -> SSAValue * {
     MLFuncBuilder builder(stmt);
     return builder.create<ConstantOp>(stmt->getLoc(), value, type);
   };

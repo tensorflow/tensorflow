@@ -67,7 +67,7 @@ public:
       printOperand(*it);
     }
   }
-  virtual void printType(const Type *type) = 0;
+  virtual void printType(Type type) = 0;
   virtual void printFunctionReference(const Function *func) = 0;
   virtual void printAttribute(Attribute attr) = 0;
   virtual void printAffineMap(AffineMap map) = 0;
@@ -95,8 +95,8 @@ inline OpAsmPrinter &operator<<(OpAsmPrinter &p, const SSAValue &value) {
   return p;
 }
 
-inline OpAsmPrinter &operator<<(OpAsmPrinter &p, const Type &type) {
-  p.printType(&type);
+inline OpAsmPrinter &operator<<(OpAsmPrinter &p, Type type) {
+  p.printType(type);
   return p;
 }
 
@@ -163,20 +163,20 @@ public:
   virtual bool parseComma() = 0;
 
   /// Parse a colon followed by a type.
-  virtual bool parseColonType(Type *&result) = 0;
+  virtual bool parseColonType(Type &result) = 0;
 
   /// Parse a type of a specific kind, e.g. a FunctionType.
-  template <typename TypeType> bool parseColonType(TypeType *&result) {
+  template <typename TypeType> bool parseColonType(TypeType &result) {
     llvm::SMLoc loc;
     getCurrentLocation(&loc);
 
     // Parse any kind of type.
-    Type *type;
+    Type type;
     if (parseColonType(type))
       return true;
 
     // Check for the right kind of attribute.
-    result = dyn_cast<TypeType>(type);
+    result = type.dyn_cast<TypeType>();
     if (!result) {
       emitError(loc, "invalid kind of type specified");
       return true;
@@ -186,15 +186,15 @@ public:
   }
 
   /// Parse a colon followed by a type list, which must have at least one type.
-  virtual bool parseColonTypeList(SmallVectorImpl<Type *> &result) = 0;
+  virtual bool parseColonTypeList(SmallVectorImpl<Type> &result) = 0;
 
   /// Parse a keyword followed by a type.
-  virtual bool parseKeywordType(const char *keyword, Type *&result) = 0;
+  virtual bool parseKeywordType(const char *keyword, Type &result) = 0;
 
   /// Add the specified type to the end of the specified type list and return
   /// false.  This is a helper designed to allow parse methods to be simple and
   /// chain through || operators.
-  bool addTypeToList(Type *type, SmallVectorImpl<Type *> &result) {
+  bool addTypeToList(Type type, SmallVectorImpl<Type> &result) {
     result.push_back(type);
     return false;
   }
@@ -202,7 +202,7 @@ public:
   /// Add the specified types to the end of the specified type list and return
   /// false.  This is a helper designed to allow parse methods to be simple and
   /// chain through || operators.
-  bool addTypesToList(ArrayRef<Type *> types, SmallVectorImpl<Type *> &result) {
+  bool addTypesToList(ArrayRef<Type> types, SmallVectorImpl<Type> &result) {
     result.append(types.begin(), types.end());
     return false;
   }
@@ -288,13 +288,13 @@ public:
 
   /// Resolve an operand to an SSA value, emitting an error and returning true
   /// on failure.
-  virtual bool resolveOperand(const OperandType &operand, Type *type,
+  virtual bool resolveOperand(const OperandType &operand, Type type,
                               SmallVectorImpl<SSAValue *> &result) = 0;
 
   /// Resolve a list of operands to SSA values, emitting an error and returning
   /// true on failure, or appending the results to the list on success.
   /// This method should be used when all operands have the same type.
-  virtual bool resolveOperands(ArrayRef<OperandType> operands, Type *type,
+  virtual bool resolveOperands(ArrayRef<OperandType> operands, Type type,
                                SmallVectorImpl<SSAValue *> &result) {
     for (auto elt : operands)
       if (resolveOperand(elt, type, result))
@@ -306,7 +306,7 @@ public:
   /// emitting an error and returning true on failure, or appending the results
   /// to the list on success.
   virtual bool resolveOperands(ArrayRef<OperandType> operands,
-                               ArrayRef<Type *> types, llvm::SMLoc loc,
+                               ArrayRef<Type> types, llvm::SMLoc loc,
                                SmallVectorImpl<SSAValue *> &result) {
     if (operands.size() != types.size())
       return emitError(loc, Twine(operands.size()) +
@@ -321,7 +321,7 @@ public:
   }
 
   /// Resolve a parse function name and a type into a function reference.
-  virtual bool resolveFunctionName(StringRef name, FunctionType *type,
+  virtual bool resolveFunctionName(StringRef name, FunctionType type,
                                    llvm::SMLoc loc, Function *&result) = 0;
 
   /// Emit a diagnostic at the specified location and return true.

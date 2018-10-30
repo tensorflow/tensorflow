@@ -51,7 +51,7 @@ uint64_t getLargestDivisorOfTripCount(const ForStmt &forStmt);
 /// whether indices[dim] is independent of the value `input`.
 // For now we assume no layout map or identity layout map in the MemRef.
 // TODO(ntv): support more than identity layout map.
-bool isAccessInvariant(const MLValue &input, MemRefType *memRefType,
+bool isAccessInvariant(const MLValue &input, MemRefType memRefType,
                        llvm::ArrayRef<MLValue *> indices, unsigned dim);
 
 /// Checks whether all the LoadOp and StoreOp matched have access indexing

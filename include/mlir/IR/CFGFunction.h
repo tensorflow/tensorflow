@@ -27,7 +27,7 @@ namespace mlir {
 // blocks, each of which includes instructions.
 class CFGFunction : public Function {
 public:
-  CFGFunction(Location *location, StringRef name, FunctionType *type,
+  CFGFunction(Location *location, StringRef name, FunctionType type,
               ArrayRef<NamedAttribute> attrs = {});
 
   ~CFGFunction();

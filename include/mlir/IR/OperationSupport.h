@@ -25,6 +25,7 @@
 
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/Identifier.h"
+#include "mlir/IR/Types.h"
 #include "llvm/ADT/PointerUnion.h"
 #include <memory>
 
@@ -191,7 +192,7 @@ struct OperationState {
   OperationName name;
   SmallVector<SSAValue *, 4> operands;
   /// Types of the results of this operation.
-  SmallVector<Type *, 4> types;
+  SmallVector<Type, 4> types;
   SmallVector<NamedAttribute, 4> attributes;
 
 public:
@@ -202,7 +203,7 @@ public:
       : context(context), location(location), name(name) {}
 
   OperationState(MLIRContext *context, Location *location, StringRef name,
-                 ArrayRef<SSAValue *> operands, ArrayRef<Type *> types,
+                 ArrayRef<SSAValue *> operands, ArrayRef<Type> types,
                  ArrayRef<NamedAttribute> attributes = {})
       : context(context), location(location), name(name, context),
         operands(operands.begin(), operands.end()),
@@ -213,7 +214,7 @@ public:
     operands.append(newOperands.begin(), newOperands.end());
   }
 
-  void addTypes(ArrayRef<Type *> newTypes) {
+  void addTypes(ArrayRef<Type> newTypes) {
     types.append(newTypes.begin(), newTypes.end());
   }
 

@@ -44,7 +44,7 @@ public:
   /// Create a new OperationStmt with the specific fields.
   static OperationStmt *create(Location *location, OperationName name,
                                ArrayRef<MLValue *> operands,
-                               ArrayRef<Type *> resultTypes,
+                               ArrayRef<Type> resultTypes,
                                ArrayRef<NamedAttribute> attributes,
                                MLIRContext *context);
 
@@ -329,7 +329,7 @@ public:
   //===--------------------------------------------------------------------===//
 
   /// Return the context this operation is associated with.
-  MLIRContext *getContext() const { return getType()->getContext(); }
+  MLIRContext *getContext() const { return getType().getContext(); }
 
   using Statement::dump;
   using Statement::print;

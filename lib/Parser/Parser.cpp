@@ -182,19 +182,19 @@ public:
   // as the results of their action.
 
   // Type parsing.
-  VectorType *parseVectorType();
+  VectorType parseVectorType();
   ParseResult parseXInDimensionList();
   ParseResult parseDimensionListRanked(SmallVectorImpl<int> &dimensions);
-  Type *parseTensorType();
-  Type *parseMemRefType();
-  Type *parseFunctionType();
-  Type *parseType();
-  ParseResult parseTypeListNoParens(SmallVectorImpl<Type *> &elements);
-  ParseResult parseTypeList(SmallVectorImpl<Type *> &elements);
+  Type parseTensorType();
+  Type parseMemRefType();
+  Type parseFunctionType();
+  Type parseType();
+  ParseResult parseTypeListNoParens(SmallVectorImpl<Type> &elements);
+  ParseResult parseTypeList(SmallVectorImpl<Type> &elements);
 
   // Attribute parsing.
   Function *resolveFunctionReference(StringRef nameStr, SMLoc nameLoc,
-                                     FunctionType *type);
+                                     FunctionType type);
   Attribute parseAttribute();
 
   ParseResult parseAttributeDict(SmallVectorImpl<NamedAttribute> &attributes);
@@ -206,9 +206,9 @@ public:
   AffineMap parseAffineMapReference();
   IntegerSet parseIntegerSetInline();
   IntegerSet parseIntegerSetReference();
-  DenseElementsAttr parseDenseElementsAttr(VectorOrTensorType *type);
-  DenseElementsAttr parseDenseElementsAttr(Type *eltType, bool isVector);
-  VectorOrTensorType *parseVectorOrTensorType();
+  DenseElementsAttr parseDenseElementsAttr(VectorOrTensorType type);
+  DenseElementsAttr parseDenseElementsAttr(Type eltType, bool isVector);
+  VectorOrTensorType parseVectorOrTensorType();
 
 private:
   // The Parser is subclassed and reinstantiated.  Do not add additional
@@ -299,7 +299,7 @@ ParseResult Parser::parseCommaSeparatedListUntil(
 ///   float-type ::= `f16` | `bf16` | `f32` | `f64`
 ///   other-type ::= `index` | `tf_control`
 ///
-Type *Parser::parseType() {
+Type Parser::parseType() {
   switch (getToken().getKind()) {
   default:
     return (emitError("expected type"), nullptr);
@@ -368,7 +368,7 @@ Type *Parser::parseType() {
 ///   vector-type ::= `vector` `<` const-dimension-list primitive-type `>`
 ///   const-dimension-list ::= (integer-literal `x`)+
 ///
-VectorType *Parser::parseVectorType() {
+VectorType Parser::parseVectorType() {
   consumeToken(Token::kw_vector);
 
   if (parseToken(Token::less, "expected '<' in vector type"))
@@ -402,11 +402,11 @@ VectorType *Parser::parseVectorType() {
 
   // Parse the element type.
   auto typeLoc = getToken().getLoc();
-  auto *elementType = parseType();
+  auto elementType = parseType();
   if (!elementType || parseToken(Token::greater, "expected '>' in vector type"))
     return nullptr;
 
-  if (!isa<FloatType>(elementType) && !isa<IntegerType>(elementType))
+  if (!elementType.isa<FloatType>() && !elementType.isa<IntegerType>())
     return (emitError(typeLoc, "invalid vector element type"), nullptr);
 
   return VectorType::get(dimensions, elementType);
@@ -461,7 +461,7 @@ ParseResult Parser::parseDimensionListRanked(SmallVectorImpl<int> &dimensions) {
 ///   tensor-type ::= `tensor` `<` dimension-list element-type `>`
 ///   dimension-list ::= dimension-list-ranked | `*x`
 ///
-Type *Parser::parseTensorType() {
+Type Parser::parseTensorType() {
   consumeToken(Token::kw_tensor);
 
   if (parseToken(Token::less, "expected '<' in tensor type"))
@@ -485,7 +485,7 @@ Type *Parser::parseTensorType() {
 
   // Parse the element type.
   auto typeLoc = getToken().getLoc();
-  auto *elementType = parseType();
+  auto elementType = parseType();
   if (!elementType || parseToken(Token::greater, "expected '>' in tensor type"))
     return nullptr;
 
@@ -505,7 +505,7 @@ Type *Parser::parseTensorType() {
 ///   semi-affine-map-composition ::= (semi-affine-map `,` )* semi-affine-map
 ///   memory-space ::= integer-literal /* | TODO: address-space-id */
 ///
-Type *Parser::parseMemRefType() {
+Type Parser::parseMemRefType() {
   consumeToken(Token::kw_memref);
 
   if (parseToken(Token::less, "expected '<' in memref type"))
@@ -517,12 +517,12 @@ Type *Parser::parseMemRefType() {
 
   // Parse the element type.
   auto typeLoc = getToken().getLoc();
-  auto *elementType = parseType();
+  auto elementType = parseType();
   if (!elementType)
     return nullptr;
 
-  if (!isa<IntegerType>(elementType) && !isa<FloatType>(elementType) &&
-      !isa<VectorType>(elementType))
+  if (!elementType.isa<IntegerType>() && !elementType.isa<FloatType>() &&
+      !elementType.isa<VectorType>())
     return (emitError(typeLoc, "invalid memref element type"), nullptr);
 
   // Parse semi-affine-map-composition.
@@ -581,10 +581,10 @@ Type *Parser::parseMemRefType() {
 ///
 ///   function-type ::= type-list-parens `->` type-list
 ///
-Type *Parser::parseFunctionType() {
+Type Parser::parseFunctionType() {
   assert(getToken().is(Token::l_paren));
 
-  SmallVector<Type *, 4> arguments, results;
+  SmallVector<Type, 4> arguments, results;
   if (parseTypeList(arguments) ||
       parseToken(Token::arrow, "expected '->' in function type") ||
       parseTypeList(results))
@@ -598,7 +598,7 @@ Type *Parser::parseFunctionType() {
 ///
 ///   type-list-no-parens ::=  type (`,` type)*
 ///
-ParseResult Parser::parseTypeListNoParens(SmallVectorImpl<Type *> &elements) {
+ParseResult Parser::parseTypeListNoParens(SmallVectorImpl<Type> &elements) {
   auto parseElt = [&]() -> ParseResult {
     auto elt = parseType();
     elements.push_back(elt);
@@ -615,7 +615,7 @@ ParseResult Parser::parseTypeListNoParens(SmallVectorImpl<Type *> &elements) {
 ///   type-list-parens ::= `(` `)`
 ///                      | `(` type-list-no-parens `)`
 ///
-ParseResult Parser::parseTypeList(SmallVectorImpl<Type *> &elements) {
+ParseResult Parser::parseTypeList(SmallVectorImpl<Type> &elements) {
   auto parseElt = [&]() -> ParseResult {
     auto elt = parseType();
     elements.push_back(elt);
@@ -639,8 +639,8 @@ ParseResult Parser::parseTypeList(SmallVectorImpl<Type *> &elements) {
 namespace {
 class TensorLiteralParser {
 public:
-  TensorLiteralParser(Parser &p, Type *eltTy)
-      : p(p), eltTy(eltTy), currBitPos(0), bitsWidth(eltTy->getBitWidth()) {}
+  TensorLiteralParser(Parser &p, Type eltTy)
+      : p(p), eltTy(eltTy), currBitPos(0), bitsWidth(eltTy.getBitWidth()) {}
 
   ParseResult parse() { return parseList(shape); }
 
@@ -676,7 +676,7 @@ private:
   }
 
   Parser &p;
-  Type *eltTy;
+  Type eltTy;
   size_t currBitPos;
   size_t bitsWidth;
   SmallVector<int, 4> shape;
@@ -698,7 +698,7 @@ TensorLiteralParser::parseElementOrList(llvm::SmallVectorImpl<int> &dims) {
     if (!result)
       return p.emitError("expected tensor element");
     // check result matches the element type.
-    switch (eltTy->getKind()) {
+    switch (eltTy.getKind()) {
     case Type::Kind::BF16:
     case Type::Kind::F16:
     case Type::Kind::F32:
@@ -779,7 +779,7 @@ ParseResult TensorLiteralParser::parseList(llvm::SmallVectorImpl<int> &dims) {
 /// synthesizing a forward reference) or emit an error and return null on
 /// failure.
 Function *Parser::resolveFunctionReference(StringRef nameStr, SMLoc nameLoc,
-                                           FunctionType *type) {
+                                           FunctionType type) {
   Identifier name = builder.getIdentifier(nameStr.drop_front());
 
   // See if the function has already been defined in the module.
@@ -902,10 +902,10 @@ Attribute Parser::parseAttribute() {
     if (parseToken(Token::colon, "expected ':' and function type"))
       return nullptr;
     auto typeLoc = getToken().getLoc();
-    Type *type = parseType();
+    Type type = parseType();
     if (!type)
       return nullptr;
-    auto *fnType = dyn_cast<FunctionType>(type);
+    auto fnType = type.dyn_cast<FunctionType>();
     if (!fnType)
       return (emitError(typeLoc, "expected function type"), nullptr);
 
@@ -916,7 +916,7 @@ Attribute Parser::parseAttribute() {
     consumeToken(Token::kw_opaque);
     if (parseToken(Token::less, "expected '<' after 'opaque'"))
       return nullptr;
-    auto *type = parseVectorOrTensorType();
+    auto type = parseVectorOrTensorType();
     if (!type)
       return nullptr;
     auto val = getToken().getStringValue();
@@ -937,7 +937,7 @@ Attribute Parser::parseAttribute() {
     if (parseToken(Token::less, "expected '<' after 'splat'"))
       return nullptr;
 
-    auto *type = parseVectorOrTensorType();
+    auto type = parseVectorOrTensorType();
     if (!type)
       return nullptr;
     switch (getToken().getKind()) {
@@ -959,7 +959,7 @@ Attribute Parser::parseAttribute() {
     if (parseToken(Token::less, "expected '<' after 'dense'"))
       return nullptr;
 
-    auto *type = parseVectorOrTensorType();
+    auto type = parseVectorOrTensorType();
     if (!type)
       return nullptr;
 
@@ -981,41 +981,41 @@ Attribute Parser::parseAttribute() {
     if (parseToken(Token::less, "Expected '<' after 'sparse'"))
       return nullptr;
 
-    auto *type = parseVectorOrTensorType();
+    auto type = parseVectorOrTensorType();
     if (!type)
       return nullptr;
 
     switch (getToken().getKind()) {
     case Token::l_square: {
       /// Parse indices
-      auto *indicesEltType = builder.getIntegerType(32);
+      auto indicesEltType = builder.getIntegerType(32);
       auto indices =
-          parseDenseElementsAttr(indicesEltType, isa<VectorType>(type));
+          parseDenseElementsAttr(indicesEltType, type.isa<VectorType>());
 
       if (parseToken(Token::comma, "expected ','"))
         return nullptr;
 
       /// Parse values.
-      auto *valuesEltType = type->getElementType();
+      auto valuesEltType = type.getElementType();
       auto values =
-          parseDenseElementsAttr(valuesEltType, isa<VectorType>(type));
+          parseDenseElementsAttr(valuesEltType, type.isa<VectorType>());
 
       /// Sanity check.
-      auto *indicesType = indices.getType();
-      auto *valuesType = values.getType();
-      auto sameShape = (indicesType->getRank() == 1) ||
-                       (type->getRank() == indicesType->getDimSize(1));
+      auto indicesType = indices.getType();
+      auto valuesType = values.getType();
+      auto sameShape = (indicesType.getRank() == 1) ||
+                       (type.getRank() == indicesType.getDimSize(1));
       auto sameElementNum =
-          indicesType->getDimSize(0) == valuesType->getDimSize(0);
+          indicesType.getDimSize(0) == valuesType.getDimSize(0);
       if (!sameShape || !sameElementNum) {
         std::string str;
         llvm::raw_string_ostream s(str);
         s << "expected shape ([";
-        interleaveComma(type->getShape(), s);
+        interleaveComma(type.getShape(), s);
         s << "]); inferred shape of indices literal ([";
-        interleaveComma(indicesType->getShape(), s);
+        interleaveComma(indicesType.getShape(), s);
         s << "]); inferred shape of values literal ([";
-        interleaveComma(valuesType->getShape(), s);
+        interleaveComma(valuesType.getShape(), s);
         s << "])";
         return (emitError(s.str()), nullptr);
       }
@@ -1035,7 +1035,7 @@ Attribute Parser::parseAttribute() {
             nullptr);
   }
   default: {
-    if (Type *type = parseType())
+    if (Type type = parseType())
       return builder.getTypeAttr(type);
     return nullptr;
   }
@@ -1051,12 +1051,12 @@ Attribute Parser::parseAttribute() {
 ///
 /// This method returns a constructed dense elements attribute with the shape
 /// from the parsing result.
-DenseElementsAttr Parser::parseDenseElementsAttr(Type *eltType, bool isVector) {
+DenseElementsAttr Parser::parseDenseElementsAttr(Type eltType, bool isVector) {
   TensorLiteralParser literalParser(*this, eltType);
   if (literalParser.parse())
     return nullptr;
 
-  VectorOrTensorType *type;
+  VectorOrTensorType type;
   if (isVector) {
     type = builder.getVectorType(literalParser.getShape(), eltType);
   } else {
@@ -1076,18 +1076,18 @@ DenseElementsAttr Parser::parseDenseElementsAttr(Type *eltType, bool isVector) {
 /// This method compares the shapes from the parsing result and that from the
 /// input argument. It returns a constructed dense elements attribute if both
 /// match.
-DenseElementsAttr Parser::parseDenseElementsAttr(VectorOrTensorType *type) {
-  auto *eltTy = type->getElementType();
+DenseElementsAttr Parser::parseDenseElementsAttr(VectorOrTensorType type) {
+  auto eltTy = type.getElementType();
   TensorLiteralParser literalParser(*this, eltTy);
   if (literalParser.parse())
     return nullptr;
-  if (literalParser.getShape() != type->getShape()) {
+  if (literalParser.getShape() != type.getShape()) {
     std::string str;
     llvm::raw_string_ostream s(str);
     s << "inferred shape of elements literal ([";
     interleaveComma(literalParser.getShape(), s);
     s << "]) does not match type ([";
-    interleaveComma(type->getShape(), s);
+    interleaveComma(type.getShape(), s);
     s << "])";
     return (emitError(s.str()), nullptr);
   }
@@ -1100,8 +1100,8 @@ DenseElementsAttr Parser::parseDenseElementsAttr(VectorOrTensorType *type) {
 ///   vector-or-tensor-type ::= vector-type | tensor-type
 ///
 /// This method also checks the type has static shape and ranked.
-VectorOrTensorType *Parser::parseVectorOrTensorType() {
-  auto *type = dyn_cast<VectorOrTensorType>(parseType());
+VectorOrTensorType Parser::parseVectorOrTensorType() {
+  auto type = parseType().dyn_cast<VectorOrTensorType>();
   if (!type) {
     return (emitError("expected elements literal has a tensor or vector type"),
             nullptr);
@@ -1110,7 +1110,7 @@ VectorOrTensorType *Parser::parseVectorOrTensorType() {
   if (parseToken(Token::comma, "expected ','"))
     return nullptr;
 
-  if (!type->hasStaticShape() || type->getRank() == -1) {
+  if (!type.hasStaticShape() || type.getRank() == -1) {
     return (emitError("tensor literals must be ranked and have static shape"),
             nullptr);
   }
@@ -1834,7 +1834,7 @@ public:
 
   /// Given a reference to an SSA value and its type, return a reference. This
   /// returns null on failure.
-  SSAValue *resolveSSAUse(SSAUseInfo useInfo, Type *type);
+  SSAValue *resolveSSAUse(SSAUseInfo useInfo, Type type);
 
   /// Register a definition of a value with the symbol table.
   ParseResult addDefinition(SSAUseInfo useInfo, SSAValue *value);
@@ -1845,11 +1845,11 @@ public:
 
   template <typename ResultType>
   ResultType parseSSADefOrUseAndType(
-      const std::function<ResultType(SSAUseInfo, Type *)> &action);
+      const std::function<ResultType(SSAUseInfo, Type)> &action);
 
   SSAValue *parseSSAUseAndType() {
     return parseSSADefOrUseAndType<SSAValue *>(
-        [&](SSAUseInfo useInfo, Type *type) -> SSAValue * {
+        [&](SSAUseInfo useInfo, Type type) -> SSAValue * {
           return resolveSSAUse(useInfo, type);
         });
   }
@@ -1880,7 +1880,7 @@ private:
   /// their first reference, to allow checking for use of undefined values.
   DenseMap<SSAValue *, SMLoc> forwardReferencePlaceholders;
 
-  SSAValue *createForwardReferencePlaceholder(SMLoc loc, Type *type);
+  SSAValue *createForwardReferencePlaceholder(SMLoc loc, Type type);
 
   /// Return true if this is a forward reference.
   bool isForwardReferencePlaceholder(SSAValue *value) {
@@ -1891,7 +1891,7 @@ private:
 
 /// Create and remember a new placeholder for a forward reference.
 SSAValue *FunctionParser::createForwardReferencePlaceholder(SMLoc loc,
-                                                            Type *type) {
+                                                            Type type) {
   // Forward references are always created as instructions, even in ML
   // functions, because we just need something with a def/use chain.
   //
@@ -1908,7 +1908,7 @@ SSAValue *FunctionParser::createForwardReferencePlaceholder(SMLoc loc,
 
 /// Given an unbound reference to an SSA value and its type, return the value
 /// it specifies.  This returns null on failure.
-SSAValue *FunctionParser::resolveSSAUse(SSAUseInfo useInfo, Type *type) {
+SSAValue *FunctionParser::resolveSSAUse(SSAUseInfo useInfo, Type type) {
   auto &entries = values[useInfo.name];
 
   // If we have already seen a value of this name, return it.
@@ -2057,14 +2057,14 @@ FunctionParser::parseOptionalSSAUseList(SmallVectorImpl<SSAUseInfo> &results) {
 ///   ssa-use-and-type ::= ssa-use `:` type
 template <typename ResultType>
 ResultType FunctionParser::parseSSADefOrUseAndType(
-    const std::function<ResultType(SSAUseInfo, Type *)> &action) {
+    const std::function<ResultType(SSAUseInfo, Type)> &action) {
 
   SSAUseInfo useInfo;
   if (parseSSAUse(useInfo) ||
       parseToken(Token::colon, "expected ':' and type for SSA operand"))
     return nullptr;
 
-  auto *type = parseType();
+  auto type = parseType();
   if (!type)
     return nullptr;
 
@@ -2101,7 +2101,7 @@ ParseResult FunctionParser::parseOptionalSSAUseAndTypeList(
   if (valueIDs.empty())
     return ParseSuccess;
 
-  SmallVector<Type *, 4> types;
+  SmallVector<Type, 4> types;
   if (parseToken(Token::colon, "expected ':' in operand list") ||
       parseTypeListNoParens(types))
     return ParseFailure;
@@ -2209,14 +2209,14 @@ Operation *FunctionParser::parseVerboseOperation(
   auto type = parseType();
   if (!type)
     return nullptr;
-  auto fnType = dyn_cast<FunctionType>(type);
+  auto fnType = type.dyn_cast<FunctionType>();
   if (!fnType)
     return (emitError(typeLoc, "expected function type"), nullptr);
 
-  result.addTypes(fnType->getResults());
+  result.addTypes(fnType.getResults());
 
   // Check that we have the right number of types for the operands.
-  auto operandTypes = fnType->getInputs();
+  auto operandTypes = fnType.getInputs();
   if (operandTypes.size() != operandInfos.size()) {
     auto plural = "s"[operandInfos.size() == 1];
     return (emitError(typeLoc, "expected " + llvm::utostr(operandInfos.size()) +
@@ -2253,17 +2253,17 @@ public:
     return parser.parseToken(Token::comma, "expected ','");
   }
 
-  bool parseColonType(Type *&result) override {
+  bool parseColonType(Type &result) override {
     return parser.parseToken(Token::colon, "expected ':'") ||
            !(result = parser.parseType());
   }
 
-  bool parseColonTypeList(SmallVectorImpl<Type *> &result) override {
+  bool parseColonTypeList(SmallVectorImpl<Type> &result) override {
     if (parser.parseToken(Token::colon, "expected ':'"))
       return true;
 
     do {
-      if (auto *type = parser.parseType())
+      if (auto type = parser.parseType())
         result.push_back(type);
       else
         return true;
@@ -2273,7 +2273,7 @@ public:
   }
 
   /// Parse a keyword followed by a type.
-  bool parseKeywordType(const char *keyword, Type *&result) override {
+  bool parseKeywordType(const char *keyword, Type &result) override {
     if (parser.getTokenSpelling() != keyword)
       return parser.emitError("expected '" + Twine(keyword) + "'");
     parser.consumeToken();
@@ -2396,7 +2396,7 @@ public:
   }
 
   /// Resolve a parse function name and a type into a function reference.
-  virtual bool resolveFunctionName(StringRef name, FunctionType *type,
+  virtual bool resolveFunctionName(StringRef name, FunctionType type,
                                    llvm::SMLoc loc, Function *&result) {
     result = parser.resolveFunctionReference(name, loc, type);
     return result == nullptr;
@@ -2410,7 +2410,7 @@ public:
 
   llvm::SMLoc getNameLoc() const override { return nameLoc; }
 
-  bool resolveOperand(const OperandType &operand, Type *type,
+  bool resolveOperand(const OperandType &operand, Type type,
                       SmallVectorImpl<SSAValue *> &result) override {
     FunctionParser::SSAUseInfo operandInfo = {operand.name, operand.number,
                                               operand.location};
@@ -2559,11 +2559,11 @@ ParseResult CFGFunctionParser::parseOptionalBasicBlockArgList(
     return ParseSuccess;
 
   return parseCommaSeparatedList([&]() -> ParseResult {
-    auto type = parseSSADefOrUseAndType<Type *>(
-        [&](SSAUseInfo useInfo, Type *type) -> Type * {
+    auto type = parseSSADefOrUseAndType<Type>(
+        [&](SSAUseInfo useInfo, Type type) -> Type {
           BBArgument *arg = owner->addArgument(type);
           if (addDefinition(useInfo, arg))
-            return nullptr;
+            return {};
           return type;
         });
     return type ? ParseSuccess : ParseFailure;
@@ -2908,7 +2908,7 @@ MLFunctionParser::parseDimAndSymbolList(SmallVectorImpl<MLValue *> &operands,
                      " symbol count must match");
 
   // Resolve SSA uses.
-  Type *indexType = builder.getIndexType();
+  Type indexType = builder.getIndexType();
   for (unsigned i = 0, e = opInfo.size(); i != e; ++i) {
     SSAValue *sval = resolveSSAUse(opInfo[i], indexType);
     if (!sval)
@@ -3187,9 +3187,9 @@ private:
   ParseResult parseAffineStructureDef();
 
   // Functions.
-  ParseResult parseMLArgumentList(SmallVectorImpl<Type *> &argTypes,
+  ParseResult parseMLArgumentList(SmallVectorImpl<Type> &argTypes,
                                   SmallVectorImpl<StringRef> &argNames);
-  ParseResult parseFunctionSignature(StringRef &name, FunctionType *&type,
+  ParseResult parseFunctionSignature(StringRef &name, FunctionType &type,
                                      SmallVectorImpl<StringRef> *argNames);
   ParseResult parseFunctionAttribute(SmallVectorImpl<NamedAttribute> &attrs);
   ParseResult parseExtFunc();
@@ -3248,7 +3248,7 @@ ParseResult ModuleParser::parseAffineStructureDef() {
 /// ml-argument-list ::= ml-argument (`,` ml-argument)* | /*empty*/
 ///
 ParseResult
-ModuleParser::parseMLArgumentList(SmallVectorImpl<Type *> &argTypes,
+ModuleParser::parseMLArgumentList(SmallVectorImpl<Type> &argTypes,
                                   SmallVectorImpl<StringRef> &argNames) {
   consumeToken(Token::l_paren);
 
@@ -3284,7 +3284,7 @@ ModuleParser::parseMLArgumentList(SmallVectorImpl<Type *> &argTypes,
 ///   type-list)?
 ///
 ParseResult
-ModuleParser::parseFunctionSignature(StringRef &name, FunctionType *&type,
+ModuleParser::parseFunctionSignature(StringRef &name, FunctionType &type,
                                      SmallVectorImpl<StringRef> *argNames) {
   if (getToken().isNot(Token::at_identifier))
     return emitError("expected a function identifier like '@foo'");
@@ -3295,7 +3295,7 @@ ModuleParser::parseFunctionSignature(StringRef &name, FunctionType *&type,
   if (getToken().isNot(Token::l_paren))
     return emitError("expected '(' in function signature");
 
-  SmallVector<Type *, 4> argTypes;
+  SmallVector<Type, 4> argTypes;
   ParseResult parseResult;
 
   if (argNames)
@@ -3307,7 +3307,7 @@ ModuleParser::parseFunctionSignature(StringRef &name, FunctionType *&type,
     return ParseFailure;
 
   // Parse the return type if present.
-  SmallVector<Type *, 4> results;
+  SmallVector<Type, 4> results;
   if (consumeIf(Token::arrow)) {
     if (parseTypeList(results))
       return ParseFailure;
@@ -3340,7 +3340,7 @@ ParseResult ModuleParser::parseExtFunc() {
   auto loc = getToken().getLoc();
 
   StringRef name;
-  FunctionType *type = nullptr;
+  FunctionType type;
   if (parseFunctionSignature(name, type, /*arguments*/ nullptr))
     return ParseFailure;
 
@@ -3372,7 +3372,7 @@ ParseResult ModuleParser::parseCFGFunc() {
   auto loc = getToken().getLoc();
 
   StringRef name;
-  FunctionType *type = nullptr;
+  FunctionType type;
   if (parseFunctionSignature(name, type, /*arguments*/ nullptr))
     return ParseFailure;
 
@@ -3405,7 +3405,7 @@ ParseResult ModuleParser::parseMLFunc() {
   consumeToken(Token::kw_mlfunc);
 
   StringRef name;
-  FunctionType *type = nullptr;
+  FunctionType type;
   SmallVector<StringRef, 4> argNames;
 
   auto loc = getToken().getLoc();

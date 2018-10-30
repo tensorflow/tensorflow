@@ -16,10 +16,17 @@
 // =============================================================================
 
 #include "mlir/IR/Types.h"
+#include "TypeDetail.h"
 #include "mlir/IR/AffineMap.h"
 #include "mlir/Support/STLExtras.h"
 #include "llvm/Support/raw_ostream.h"
+
 using namespace mlir;
+using namespace mlir::detail;
+
+Type::Kind Type::getKind() const { return type->kind; }
+
+MLIRContext *Type::getContext() const { return type->context; }
 
 unsigned Type::getBitWidth() const {
   switch (getKind()) {
@@ -32,34 +39,49 @@ unsigned Type::getBitWidth() const {
   case Type::Kind::F64:
     return 64;
   case Type::Kind::Integer:
-    return cast<IntegerType>(this)->getWidth();
+    return cast<IntegerType>().getWidth();
   case Type::Kind::Vector:
   case Type::Kind::RankedTensor:
   case Type::Kind::UnrankedTensor:
-    return cast<VectorOrTensorType>(this)->getElementType()->getBitWidth();
+    return cast<VectorOrTensorType>().getElementType().getBitWidth();
     // TODO: Handle more types.
   default:
     llvm_unreachable("unexpected type");
   }
 }
 
-IntegerType::IntegerType(unsigned width, MLIRContext *context)
-    : Type(Kind::Integer, context), width(width) {
-  assert(width <= kMaxWidth && "admissible integer bitwidth exceeded");
+unsigned Type::getSubclassData() const { return type->getSubclassData(); }
+void Type::setSubclassData(unsigned val) { type->setSubclassData(val); }
+
+IntegerType::IntegerType(Type::ImplType *ptr) : Type(ptr) {}
+
+unsigned IntegerType::getWidth() const {
+  return static_cast<ImplType *>(type)->width;
 }
 
-FloatType::FloatType(Kind kind, MLIRContext *context) : Type(kind, context) {}
+FloatType::FloatType(Type::ImplType *ptr) : Type(ptr) {}
 
-OtherType::OtherType(Kind kind, MLIRContext *context) : Type(kind, context) {}
+OtherType::OtherType(Type::ImplType *ptr) : Type(ptr) {}
 
-FunctionType::FunctionType(Type *const *inputsAndResults, unsigned numInputs,
-                           unsigned numResults, MLIRContext *context)
-    : Type(Kind::Function, context, numInputs), numResults(numResults),
-      inputsAndResults(inputsAndResults) {}
+FunctionType::FunctionType(Type::ImplType *ptr) : Type(ptr) {}
 
-VectorOrTensorType::VectorOrTensorType(Kind kind, MLIRContext *context,
-                                       Type *elementType, unsigned subClassData)
-    : Type(kind, context, subClassData), elementType(elementType) {}
+ArrayRef<Type> FunctionType::getInputs() const {
+  return static_cast<ImplType *>(type)->getInputs();
+}
+
+unsigned FunctionType::getNumResults() const {
+  return static_cast<ImplType *>(type)->numResults;
+}
+
+ArrayRef<Type> FunctionType::getResults() const {
+  return static_cast<ImplType *>(type)->getResults();
+}
+
+VectorOrTensorType::VectorOrTensorType(Type::ImplType *ptr) : Type(ptr) {}
+
+Type VectorOrTensorType::getElementType() const {
+  return static_cast<ImplType *>(type)->elementType;
+}
 
 unsigned VectorOrTensorType::getNumElements() const {
   switch (getKind()) {
@@ -103,11 +125,11 @@ int VectorOrTensorType::getDimSize(unsigned i) const {
 ArrayRef<int> VectorOrTensorType::getShape() const {
   switch (getKind()) {
   case Kind::Vector:
-    return cast<VectorType>(this)->getShape();
+    return cast<VectorType>().getShape();
   case Kind::RankedTensor:
-    return cast<RankedTensorType>(this)->getShape();
+    return cast<RankedTensorType>().getShape();
   case Kind::UnrankedTensor:
-    return cast<RankedTensorType>(this)->getShape();
+    return cast<RankedTensorType>().getShape();
   default:
     llvm_unreachable("not a VectorOrTensorType");
   }
@@ -118,35 +140,38 @@ bool VectorOrTensorType::hasStaticShape() const {
   return !std::any_of(dims.begin(), dims.end(), [](int i) { return i < 0; });
 }
 
-VectorType::VectorType(ArrayRef<int> shape, Type *elementType,
-                       MLIRContext *context)
-    : VectorOrTensorType(Kind::Vector, context, elementType, shape.size()),
-      shapeElements(shape.data()) {}
+VectorType::VectorType(Type::ImplType *ptr) : VectorOrTensorType(ptr) {}
 
-TensorType::TensorType(Kind kind, Type *elementType, MLIRContext *context)
-    : VectorOrTensorType(kind, context, elementType) {
-  assert(isValidTensorElementType(elementType));
+ArrayRef<int> VectorType::getShape() const {
+  return static_cast<ImplType *>(type)->getShape();
 }
 
-RankedTensorType::RankedTensorType(ArrayRef<int> shape, Type *elementType,
-                                   MLIRContext *context)
-    : TensorType(Kind::RankedTensor, elementType, context),
-      shapeElements(shape.data()) {
-  setSubclassData(shape.size());
+TensorType::TensorType(Type::ImplType *ptr) : VectorOrTensorType(ptr) {}
+
+RankedTensorType::RankedTensorType(Type::ImplType *ptr) : TensorType(ptr) {}
+
+ArrayRef<int> RankedTensorType::getShape() const {
+  return static_cast<ImplType *>(type)->getShape();
 }
 
-UnrankedTensorType::UnrankedTensorType(Type *elementType, MLIRContext *context)
-    : TensorType(Kind::UnrankedTensor, elementType, context) {}
+UnrankedTensorType::UnrankedTensorType(Type::ImplType *ptr) : TensorType(ptr) {}
 
-MemRefType::MemRefType(ArrayRef<int> shape, Type *elementType,
-                       ArrayRef<AffineMap> affineMapList, unsigned memorySpace,
-                       MLIRContext *context)
-    : Type(Kind::MemRef, context, shape.size()), elementType(elementType),
-      shapeElements(shape.data()), numAffineMaps(affineMapList.size()),
-      affineMapList(affineMapList.data()), memorySpace(memorySpace) {}
+MemRefType::MemRefType(Type::ImplType *ptr) : Type(ptr) {}
+
+ArrayRef<int> MemRefType::getShape() const {
+  return static_cast<ImplType *>(type)->getShape();
+}
+
+Type MemRefType::getElementType() const {
+  return static_cast<ImplType *>(type)->elementType;
+}
 
 ArrayRef<AffineMap> MemRefType::getAffineMaps() const {
-  return ArrayRef<AffineMap>(affineMapList, numAffineMaps);
+  return static_cast<ImplType *>(type)->getAffineMaps();
+}
+
+unsigned MemRefType::getMemorySpace() const {
+  return static_cast<ImplType *>(type)->memorySpace;
 }
 
 unsigned MemRefType::getNumDynamicDims() const {

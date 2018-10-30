@@ -202,7 +202,7 @@ public:
   /// Create a new OperationInst with the specified fields.
   static OperationInst *create(Location *location, OperationName name,
                                ArrayRef<CFGValue *> operands,
-                               ArrayRef<Type *> resultTypes,
+                               ArrayRef<Type> resultTypes,
                                ArrayRef<NamedAttribute> attributes,
                                MLIRContext *context);
 

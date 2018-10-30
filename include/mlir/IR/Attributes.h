@@ -250,9 +250,9 @@ public:
   TypeAttr() = default;
   /* implicit */ TypeAttr(Attribute::ImplType *ptr);
 
-  static TypeAttr get(Type *type, MLIRContext *context);
+  static TypeAttr get(Type type, MLIRContext *context);
 
-  Type *getValue() const;
+  Type getValue() const;
 
   /// Methods for support type inquiry through isa, cast, and dyn_cast.
   static bool kindof(Kind kind) { return kind == Kind::Type; }
@@ -277,7 +277,7 @@ public:
 
   Function *getValue() const;
 
-  FunctionType *getType() const;
+  FunctionType getType() const;
 
   /// Methods for support type inquiry through isa, cast, and dyn_cast.
   static bool kindof(Kind kind) { return kind == Kind::Function; }
@@ -294,7 +294,7 @@ public:
   ElementsAttr() = default;
   /* implicit */ ElementsAttr(Attribute::ImplType *ptr);
 
-  VectorOrTensorType *getType() const;
+  VectorOrTensorType getType() const;
 
   /// Method for support type inquiry through isa, cast and dyn_cast.
   static bool kindof(Kind kind) {
@@ -313,7 +313,7 @@ public:
   SplatElementsAttr() = default;
   /* implicit */ SplatElementsAttr(Attribute::ImplType *ptr);
 
-  static SplatElementsAttr get(VectorOrTensorType *type, Attribute elt);
+  static SplatElementsAttr get(VectorOrTensorType type, Attribute elt);
   Attribute getValue() const;
 
   /// Method for support type inquiry through isa, cast and dyn_cast.
@@ -335,12 +335,12 @@ public:
   /// width specified by the element type (note all float type are 64 bits).
   /// When the value is retrieved, the bits are read from the storage and extend
   /// to 64 bits if necessary.
-  static DenseElementsAttr get(VectorOrTensorType *type, ArrayRef<char> data);
+  static DenseElementsAttr get(VectorOrTensorType type, ArrayRef<char> data);
 
   // TODO: Read the data from the attribute list and compress them
   // to a character array. Then call the above method to construct the
   // attribute.
-  static DenseElementsAttr get(VectorOrTensorType *type,
+  static DenseElementsAttr get(VectorOrTensorType type,
                                ArrayRef<Attribute> values);
 
   void getValues(SmallVectorImpl<Attribute> &values) const;
@@ -410,7 +410,7 @@ public:
   OpaqueElementsAttr() = default;
   /* implicit */ OpaqueElementsAttr(Attribute::ImplType *ptr);
 
-  static OpaqueElementsAttr get(VectorOrTensorType *type, StringRef bytes);
+  static OpaqueElementsAttr get(VectorOrTensorType type, StringRef bytes);
 
   StringRef getValue() const;
 
@@ -440,7 +440,7 @@ public:
   SparseElementsAttr() = default;
   /* implicit */ SparseElementsAttr(Attribute::ImplType *ptr);
 
-  static SparseElementsAttr get(VectorOrTensorType *type,
+  static SparseElementsAttr get(VectorOrTensorType type,
                                 DenseIntElementsAttr indices,
                                 DenseElementsAttr values);
 

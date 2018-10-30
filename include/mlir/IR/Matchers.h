@@ -71,13 +71,13 @@ struct constant_int_op_binder {
 
   bool match(Operation *op) {
     if (auto constOp = op->dyn_cast<ConstantOp>()) {
-      auto *type = constOp->getResult()->getType();
+      auto type = constOp->getResult()->getType();
       auto attr = constOp->getAttr("value");
 
-      if (isa<IntegerType>(type)) {
+      if (type.isa<IntegerType>()) {
         return attr_value_binder<IntegerAttr>(bind_value).match(attr);
       }
-      if (isa<VectorOrTensorType>(type)) {
+      if (type.isa<VectorOrTensorType>()) {
         if (auto splatAttr = attr.dyn_cast<SplatElementsAttr>()) {
           return attr_value_binder<IntegerAttr>(bind_value)
               .match(splatAttr.getValue());
