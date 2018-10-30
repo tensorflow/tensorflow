@@ -2405,7 +2405,6 @@ cc_library(
     ]),
     hdrs = [
         "lib/bfloat16/bfloat16.h",
-        "lib/core/casts.h",
         "lib/core/stringpiece.h",
         "lib/png/png_io.h",
         "platform/byte_order.h",
