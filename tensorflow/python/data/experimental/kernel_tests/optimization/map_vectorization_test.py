@@ -289,6 +289,7 @@ def _generate_optimization_test_cases():
        base_dataset_factory),
       ("Reshape", lambda x: array_ops.reshape(x, (-1, 30)),
        base_dataset_factory),
+      ("Transpose", array_ops.transpose, base_dataset_factory),
       ("Unpack", array_ops.unstack, base_dataset_factory),
       ("UnpackNegativeAxis", lambda x: array_ops.unstack(x, axis=-1),
        base_dataset_factory),

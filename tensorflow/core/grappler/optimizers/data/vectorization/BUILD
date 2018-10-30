@@ -89,6 +89,18 @@ cc_library(
 )
 
 cc_library(
+    name = "transpose_vectorizer",
+    srcs = ["transpose_vectorizer.cc"],
+    deps = VECTORIZER_DEPS + [
+        ":vectorizer",
+        ":wrapped_tensor",
+        "//tensorflow/cc:scope",
+        "//tensorflow/core:lib",
+    ],
+    alwayslink = 1,
+)
+
+cc_library(
     name = "unpack_vectorizer",
     srcs = ["unpack_vectorizer.cc"],
     deps = VECTORIZER_DEPS,
@@ -104,6 +116,7 @@ cc_library(
         ":decode_csv_vectorizer",
         ":parse_single_example_vectorizer",
         ":reshape_vectorizer",
+        ":transpose_vectorizer",
         ":unpack_vectorizer",
         ":vectorizer",
         ":vectorizer_registry",
