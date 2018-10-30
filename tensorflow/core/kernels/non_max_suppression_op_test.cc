@@ -883,7 +883,7 @@ TEST_F(NonMaxSuppressionLiteOpTest, TestEmptyInput) {
   AddInputFromArray<float>(TensorShape({0, 0, 0, 4}), {});
   AddInputFromArray<float>(TensorShape({0, 0, 0}), {});
   AddInputFromArray<int>(TensorShape({}), {30});
-  AddInputFromArray<int>(TensorShape({}), {30});
+  AddInputFromArray<int>(TensorShape({}), {10});
   AddInputFromArray<float>(TensorShape({}), {.5f});
   AddInputFromArray<float>(TensorShape({}), {0.0f});
   TF_ASSERT_OK(RunOpKernel());
