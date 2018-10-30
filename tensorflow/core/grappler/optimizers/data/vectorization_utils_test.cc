@@ -245,10 +245,16 @@ TEST(VectorizeMapDefunTest, VectorizeWithUnvectorizableOp) {
   FunctionDef* vectorized;
   TF_EXPECT_OK(VectorizeMapDefun(outer, *map_defun, &lib, &vectorized));
 
+  ASSERT_TRUE(
+      function_utils::ContainsFunctionNodeWithOp("MapDefun", *vectorized));
   auto map_defun_node = vectorized->node_def(
       function_utils::FindFunctionNodeWithOp("MapDefun", *vectorized));
+
   // The Cast node should be converted just fine.
-  EXPECT_EQ(GetRetval(*vectorized, 1), "Cast:y:0");
+  ASSERT_TRUE(function_utils::ContainsFunctionNodeWithOp("Cast", *vectorized));
+  auto cast = vectorized->node_def(
+      function_utils::FindFunctionNodeWithOp("Cast", *vectorized));
+  EXPECT_EQ(GetRetval(*vectorized, 1), strings::StrCat(cast.name(), ":y:0"));
 
   // The inner function should only have one retval.
   FunctionLibraryDefinition lib_def(OpRegistry::Global(), lib);
@@ -1508,6 +1514,41 @@ TEST(VectorizerTest, VectorizeParseSingleExampleWithStackedDefaults) {
   EXPECT_TRUE(
       function_utils::ContainsFunctionNodeWithOp("MapDefun", *vectorized));
 }
+
+TEST(VectorizerTest, VectorizeIdentity) {
+  FunctionDef inner = FunctionDefHelper::Create(
+      /*function_name=*/"inner_function",
+      /*in_def=*/{"arg0: int32"},
+      /*out_def=*/{"ret0: int32"},
+      /*attr_def=*/{},
+      /*node_def=*/{{{"Identity"}, "Identity", {"arg0"}, {{"T", DT_INT32}}}},
+      /*ret_def=*/{{"ret0", "Identity:output:0"}});
+
+  FunctionDef outer;
+  TF_ASSERT_OK(WrapFunctionWithMapDefun(inner, &outer));
+
+  const NodeDef* map_defun = &outer.node_def(0);
+
+  FunctionDefLibrary lib;
+  *lib.add_function() = outer;
+  *lib.add_function() = inner;
+  FunctionDef* vectorized;
+  TF_ASSERT_OK(VectorizeMapDefun(outer, *map_defun, &lib, &vectorized));
+
+  EXPECT_FALSE(
+      function_utils::ContainsFunctionNodeWithOp("MapDefun", *vectorized));
+  ASSERT_TRUE(
+      function_utils::ContainsFunctionNodeWithOp("Identity", *vectorized));
+  const NodeDef& identity_node = vectorized->node_def(
+      function_utils::FindFunctionNodeWithOp("Identity", *vectorized));
+
+  EXPECT_EQ(identity_node.input(0),
+            vectorized->signature().input_arg(0).name());
+  EXPECT_EQ(GetRetval(*vectorized, 0),
+            strings::StrCat(identity_node.name(), ":output:0"));
+  EXPECT_EQ(vectorized->node_def_size(), 1);
+}
+
 }  // namespace
 }  // namespace vectorization_utils
 }  // namespace grappler
