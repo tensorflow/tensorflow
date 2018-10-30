@@ -16,6 +16,8 @@ limitations under the License.
 
 #include "tensorflow/c/c_api_internal.h"
 #include "tensorflow/contrib/lite/delegates/flex/util.h"
+#include "tensorflow/contrib/lite/string.h"
+#include "tensorflow/contrib/lite/string_util.h"
 #include "tensorflow/core/framework/allocation_description.pb.h"
 #include "tensorflow/core/framework/log_memory.h"
 
@@ -23,39 +25,7 @@ namespace tflite {
 namespace flex {
 namespace {
 // A tensor buffer that is allocated, deallocated and populated by TF Lite.
-class TfLiteTensorBuffer : public tensorflow::TensorBuffer {
- public:
-  explicit TfLiteTensorBuffer(const TfLiteTensor* tensor) {
-    len_ = tensor->bytes;
-    // TODO(ahentz): if we can guarantee that TF Lite allocated tensors with
-    // the same alignment as TensorFlow (EIGEN_MAX_ALIGN_BYTES), then we can
-    // potentially eliminate the copy below.
-    data_ =
-        tensorflow::cpu_allocator()->AllocateRaw(EIGEN_MAX_ALIGN_BYTES, len_);
-    if (data_ != nullptr) {
-      if (tensorflow::LogMemory::IsEnabled()) {
-        tensorflow::LogMemory::RecordRawAllocation(
-            "TfLiteTensorBuffer_New",
-            tensorflow::LogMemory::EXTERNAL_TENSOR_ALLOCATION_STEP_ID, len_,
-            data_, tensorflow::cpu_allocator());
-      }
-      std::memcpy(data_, tensor->data.raw, tensor->bytes);
-    }
-  }
-
-  ~TfLiteTensorBuffer() override {
-    if (tensorflow::LogMemory::IsEnabled() && data_ != nullptr) {
-      tensorflow::LogMemory::RecordRawDeallocation(
-          "TfLiteTensorBuffer_Delete",
-          tensorflow::LogMemory::EXTERNAL_TENSOR_ALLOCATION_STEP_ID, data_,
-          tensorflow::cpu_allocator(), false);
-    }
-    tensorflow::cpu_allocator()->DeallocateRaw(data_);
-  }
-
-  void* data() const override { return data_; }
-  size_t size() const override { return len_; }
-
+class BaseTfLiteTensorBuffer : public tensorflow::TensorBuffer {
   TensorBuffer* root_buffer() override { return this; }
   void FillAllocationDescription(
       tensorflow::AllocationDescription* proto) const override {
@@ -67,10 +37,89 @@ class TfLiteTensorBuffer : public tensorflow::TensorBuffer {
   // Prevents input forwarding from mutating this buffer.
   bool OwnsMemory() const override { return false; }
 
+ protected:
+  void LogAllocation() {
+    if (tensorflow::LogMemory::IsEnabled() && data() != nullptr) {
+      tensorflow::LogMemory::RecordRawAllocation(
+          "TfLiteTensorBuffer_New",
+          tensorflow::LogMemory::EXTERNAL_TENSOR_ALLOCATION_STEP_ID, size(),
+          data(), tensorflow::cpu_allocator());
+    }
+  }
+  void LogDeallocation() {
+    if (tensorflow::LogMemory::IsEnabled() && data() != nullptr) {
+      tensorflow::LogMemory::RecordRawDeallocation(
+          "TfLiteTensorBuffer_Delete",
+          tensorflow::LogMemory::EXTERNAL_TENSOR_ALLOCATION_STEP_ID, data(),
+          tensorflow::cpu_allocator(), false);
+    }
+  }
+};
+
+// A tensor buffer for most data types. Numeric types have exactly the same
+// representation in TFLITE and TF, so we just need use memcpy().
+class TfLiteTensorBuffer : public BaseTfLiteTensorBuffer {
+ public:
+  explicit TfLiteTensorBuffer(const TfLiteTensor* tensor) {
+    // TODO(ahentz): if we can guarantee that TF Lite allocated tensors with
+    // the same alignment as TensorFlow (EIGEN_MAX_ALIGN_BYTES), then we can
+    // potentially eliminate the copy below.
+    len_ = tensor->bytes;
+    data_ =
+        tensorflow::cpu_allocator()->AllocateRaw(EIGEN_MAX_ALIGN_BYTES, len_);
+
+    LogAllocation();
+
+    if (data_) {
+      std::memcpy(data_, tensor->data.raw, tensor->bytes);
+    }
+  }
+
+  ~TfLiteTensorBuffer() override {
+    LogDeallocation();
+    tensorflow::cpu_allocator()->DeallocateRaw(data_);
+  }
+
+  void* data() const override { return data_; }
+  size_t size() const override { return len_; }
+
  private:
   void* data_;
   size_t len_;
 };
+
+// A string buffer. TFLITE string tensor format is different than
+// TF's so we need perform the conversion here.
+class StringTfLiteTensorBuffer : public BaseTfLiteTensorBuffer {
+ public:
+  explicit StringTfLiteTensorBuffer(const TfLiteTensor* tensor) {
+    num_strings_ = GetStringCount(tensor->data.raw);
+    data_ = tensorflow::cpu_allocator()->Allocate<string>(num_strings_);
+
+    LogAllocation();
+
+    if (data_) {
+      string* p = data_;
+      for (size_t i = 0; i < num_strings_; ++p, ++i) {
+        auto ref = GetString(tensor->data.raw, i);
+        p->assign(ref.str, ref.len);
+      }
+    }
+  }
+
+  ~StringTfLiteTensorBuffer() override {
+    LogDeallocation();
+    tensorflow::cpu_allocator()->Deallocate<string>(data_, num_strings_);
+  }
+
+  void* data() const override { return data_; }
+  size_t size() const override { return num_strings_ * sizeof(string); }
+
+ private:
+  string* data_;
+  int num_strings_;
+};
+
 }  // namespace
 
 BufferMap::BufferMap() {}
@@ -93,9 +142,14 @@ void BufferMap::SetFromTfLite(int tensor_index, const TfLiteTensor* tensor) {
   }
   // TODO(ahentz): we assume this is a new tensor and allocate a new buffer
   // for it. This is not always the best approach. For example, this might
-  // be a reallocation after resizing tensors. In that case we would be
+  // be a reallocation after resizing tensors. In that case it would be
   // preferable to somehow reuse the buffer.
-  auto* buf = new TfLiteTensorBuffer(tensor);
+  BaseTfLiteTensorBuffer* buf;
+  if (tensor->type == kTfLiteString) {
+    buf = new StringTfLiteTensorBuffer(tensor);
+  } else {
+    buf = new TfLiteTensorBuffer(tensor);
+  }
   tensorflow::Tensor t = tensorflow::TensorCApi::MakeTensor(
       GetTensorFlowDataType(tensor->type), shape, buf);
   buf->Unref();

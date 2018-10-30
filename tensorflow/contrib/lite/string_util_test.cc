@@ -50,8 +50,20 @@ TEST(StringUtil, TestStringUtil) {
   DynamicBuffer buf1;
   buf1.AddString(s1.data(), s1.length());
   buf0.AddString(s2, 0);
-  buf0.WriteToTensor(t0);
+
+  auto new_shape = TfLiteIntArrayCreate(2);
+  new_shape->data[0] = 2;
+  new_shape->data[1] = 1;
+  buf0.WriteToTensor(t0, new_shape);
   buf1.WriteToTensor(t1);
+
+  // Check tensor shapes.
+  EXPECT_EQ(t0->dims->size, 2);
+  EXPECT_EQ(t0->dims->data[0], 2);
+  EXPECT_EQ(t0->dims->data[1], 1);
+
+  EXPECT_EQ(t1->dims->size, 1);
+  EXPECT_EQ(t1->dims->data[0], 1);
 
   // Read strings from tensors.
   ASSERT_EQ(GetStringCount(t0), 2);
