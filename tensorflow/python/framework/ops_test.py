@@ -2292,6 +2292,19 @@ class InitScopeTest(test_util.TensorFlowTestCase):
       foo_compiled()
       self.assertEqual(ops.get_name_scope(), "")
 
+  def testExecutingEagerlyOutsideFunctions(self):
+
+    @eager_function.defun
+    def f():
+      return ops.executing_eagerly_outside_functions()
+
+    with context.eager_mode():
+      self.assertTrue(ops.executing_eagerly_outside_functions())
+      self.assertTrue(f())
+      g = ops.Graph()
+      with g.as_default():
+        self.assertFalse(ops.executing_eagerly_outside_functions())
+
 
 class GraphTest(test_util.TensorFlowTestCase):
 

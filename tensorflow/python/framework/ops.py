@@ -5360,6 +5360,12 @@ def init_scope():
         outer_graph._device_function_stack = outer_device_stack  # pylint: disable=protected-access
 
 
+def executing_eagerly_outside_functions():
+  """Returns True if executing eagerly, even if inside a graph function."""
+  with init_scope():
+    return context.executing_eagerly()
+
+
 @tf_export("enable_eager_execution")
 def enable_eager_execution(config=None,
                            device_policy=None,
