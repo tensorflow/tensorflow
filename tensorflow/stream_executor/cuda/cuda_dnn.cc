@@ -37,7 +37,6 @@ limitations under the License.
 #include "tensorflow/stream_executor/lib/error.h"
 #include "tensorflow/stream_executor/lib/initialize.h"
 #include "tensorflow/stream_executor/lib/mathutil.h"
-#include "tensorflow/stream_executor/lib/stringpiece.h"
 #include "tensorflow/stream_executor/lib/threadpool.h"
 #include "tensorflow/stream_executor/platform/logging.h"
 #include "tensorflow/stream_executor/plugin_registry.h"
@@ -46,6 +45,7 @@ limitations under the License.
 #include "tensorflow/stream_executor/stream_executor_pimpl.h"
 // clang-format off
 #include "cuda/include/cudnn.h"
+#include "absl/strings/string_view.h"
 // clang-format on
 
 namespace stream_executor {
@@ -2317,7 +2317,7 @@ class CudnnEnvVar {
   static bool IsEnabledImpl() {
     const char* tf_env_var_val = getenv(EnvVar::kName);
     if (tf_env_var_val != nullptr) {
-      port::StringPiece tf_env_var_val_str(tf_env_var_val);
+      absl::string_view tf_env_var_val_str(tf_env_var_val);
       if (tf_env_var_val_str == "0") {
         return false;
       }
