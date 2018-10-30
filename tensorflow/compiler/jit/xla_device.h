@@ -188,6 +188,7 @@ class XlaDevice : public LocalDevice {
   se::Platform* const platform_;  // Not owned.
   // Memory allocator associated with this device.
   Allocator* xla_allocator_ GUARDED_BY(mu_) = nullptr;  // Not owned.
+
   // Stream associated with this device. Operations enqueued on this
   // stream are executed on the device. Operations include data
   // copying back and forth between CPU and the device, and
@@ -203,6 +204,11 @@ class XlaDevice : public LocalDevice {
   // If use_multiple_streams_, device to host transfers are performed using this
   // stream.
   std::shared_ptr<se::Stream> device_to_host_stream_ GUARDED_BY(mu_);
+  // If use_multiple_streams_, transfers between different devices are performed
+  // using these streams.
+  std::vector<std::shared_ptr<se::Stream>> device_to_device_streams_
+      GUARDED_BY(mu_);
+
   // Must we use XLA's transfer manager for correct host<->device transfers? if
   // false, we can use ThenMemcpy() instead.
   const bool transfer_as_literal_;

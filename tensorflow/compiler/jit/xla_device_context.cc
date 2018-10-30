@@ -53,13 +53,15 @@ void XlaDeviceAllocator::GetStats(AllocatorStats* stats) { stats->Clear(); }
 XlaDeviceContext::XlaDeviceContext(
     std::shared_ptr<se::Stream> compute_stream,
     std::shared_ptr<se::Stream> host_to_device_stream,
-    std::shared_ptr<se::Stream> device_to_host_stream, xla::LocalClient* client,
-    bool transfer_as_literal,
+    std::shared_ptr<se::Stream> device_to_host_stream,
+    std::vector<std::shared_ptr<se::Stream>> device_to_device_streams,
+    xla::LocalClient* client, bool transfer_as_literal,
     XlaCompiler::ShapeRepresentationFn shape_representation_fn,
     thread::ThreadPool* thread_pool)
     : stream_(std::move(compute_stream)),
       host_to_device_stream_(std::move(host_to_device_stream)),
       device_to_host_stream_(std::move(device_to_host_stream)),
+      device_to_device_streams_(std::move(device_to_device_streams)),
       client_(client),
       transfer_manager_(client->backend().transfer_manager()),
       transfer_as_literal_(transfer_as_literal),
@@ -249,6 +251,14 @@ void XlaDeviceContext::CopyDeviceTensorToCPU(const Tensor* device_tensor,
   }
 
   done(status);
+}
+
+se::Stream* XlaDeviceContext::GetDeviceToDeviceStream() {
+  DCHECK_GT(device_to_device_streams_.size(), 0);
+  absl::MutexLock lock(&mu_);
+  int stream = next_stream_;
+  next_stream_ = (next_stream_ + 1) % device_to_device_streams_.size();
+  return device_to_device_stream(stream);
 }
 
 }  // namespace tensorflow
