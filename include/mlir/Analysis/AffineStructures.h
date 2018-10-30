@@ -62,7 +62,7 @@ public:
   /// Get the AffineMap corresponding to this MutableAffineMap. Note that an
   /// AffineMap will be uniqued and stored in context, while a mutable one
   /// isn't.
-  AffineMap getAffineMap();
+  AffineMap getAffineMap() const;
 
 private:
   // Same meaning as AffineMap's fields.
@@ -162,7 +162,9 @@ public:
   unsigned getNumOperands() const;
   SSAValue *getOperand(unsigned i) const;
   ArrayRef<MLValue *> getOperands() const;
-  AffineMap getAffineMap();
+  AffineMap getAffineMap() const;
+
+  inline unsigned getNumResults() const { return map.getNumResults(); }
 
 private:
   void forwardSubstitute(const AffineApplyOp &inputOp,
@@ -206,41 +208,46 @@ private:
 /// Inequality: c_0*x_0 + c_1*x_1 + .... + c_{n-1}*x_{n-1} == 0
 /// Equality: c_0*x_0 + c_1*x_1 + .... + c_{n-1}*x_{n-1} >= 0
 ///
-/// The coefficients are stored. x_0, x_1, ... appear in the order: dimensional
-/// identifiers, symbolic identifiers, and local identifiers.  / The local
-/// identifiers correspond to local/internal variables created / temporarily and
-/// are needed to increase representational power. Local identifiers / are
-/// typically obtained when eliminating % and div constraints.
-//  Usage scenario:
-//  For a register tiling or unroll-jam, for example, if we need to check loop
-//  bounds are a multiple of say the tile size say 4:
+/// FlatAffineConstraints stores coefficients in a contiguous buffer (one buffer
+/// for equalities and one for inequalities). The size of each buffer is
+/// numReservedCols * number of inequalities (or equalities). The reserved size
+/// is numReservedCols * numReservedInequalities (or numReservedEqualities). A
+/// coefficient (r, c) lives at the location numReservedCols * r + c in the
+/// buffer. The extra space between getNumCols() and numReservedCols exists to
+/// prevent frequent movement of data when adding columns, especially at the
+/// end.
+///
+/// The identifiers x_0, x_1, ... appear in the order: dimensional identifiers,
+/// symbolic identifiers, and local identifiers.  The local identifiers
+/// correspond to local/internal variables created temporarily when converting
+/// from tree AffineExpr's that have mod's and div's and are thus needed
+/// to increase representational power.
 //
-// %lb = affine_apply #map1 (%s, %i0)
-// %ub = affine_apply #map2 (%N, %i0)
-// for %i1 = %lb to %ub
-//   ...
-//
-// Create AffineValueMap's that have result %lb, %ub (successively fwd
-// substituting all affine_apply that lead to the %lb, %ub). Create another
-// AffineValueMap: %trip_count = (%ub - %lb + 1). Create a
-// FlatAffineConstraints set using all these. Add %trip_count % 4 = 0 to this,
-// and check for feasibility.
 class FlatAffineConstraints {
 public:
   enum IdKind { Dimension, Symbol, Local };
 
-  /// Construct a constraint system reserving memory for the specified number of
-  /// constraints and identifiers..
+  /// Constructs a constraint system reserving memory for the specified number
+  /// of constraints and identifiers..
   FlatAffineConstraints(unsigned numReservedInequalities,
                         unsigned numReservedEqualities,
                         unsigned numReservedCols, unsigned numDims = 0,
                         unsigned numSymbols = 0, unsigned numLocals = 0)
-      : numReservedEqualities(numReservedEqualities),
-        numReservedInequalities(numReservedInequalities), numDims(numDims),
+      : numReservedCols(numReservedCols), numDims(numDims),
         numSymbols(numSymbols) {
-    assert(numReservedCols >= 1 && "minimum 1 column");
+    assert(numReservedCols >= numDims + numSymbols + 1);
     equalities.reserve(numReservedCols * numReservedEqualities);
     inequalities.reserve(numReservedCols * numReservedInequalities);
+    numIds = numDims + numSymbols + numLocals;
+  }
+
+  /// Constructs a constraint system with the specified number of
+  /// dimensions and symbols.
+  FlatAffineConstraints(unsigned numDims = 0, unsigned numSymbols = 0,
+                        unsigned numLocals = 0)
+      : numReservedCols(numDims + numSymbols + numLocals + 1), numDims(numDims),
+        numSymbols(numSymbols) {
+    assert(numReservedCols >= numDims + numSymbols + 1);
     numIds = numDims + numSymbols + numLocals;
   }
 
@@ -296,52 +303,50 @@ public:
 
   /// Returns the value at the specified equality row and column.
   inline int64_t atEq(unsigned i, unsigned j) const {
-    return equalities[i * (numIds + 1) + j];
+    return equalities[i * numReservedCols + j];
   }
   inline int64_t &atEq(unsigned i, unsigned j) {
-    return equalities[i * (numIds + 1) + j];
-  }
-
-  inline int64_t atEqIdx(unsigned linearIndex) const {
-    return equalities[linearIndex];
-  }
-
-  inline int64_t &atEqIdx(unsigned linearIndex) {
-    return equalities[linearIndex];
+    return equalities[i * numReservedCols + j];
   }
 
   inline int64_t atIneq(unsigned i, unsigned j) const {
-    return inequalities[i * (numIds + 1) + j];
+    return inequalities[i * numReservedCols + j];
   }
 
   inline int64_t &atIneq(unsigned i, unsigned j) {
-    return inequalities[i * (numIds + 1) + j];
+    return inequalities[i * numReservedCols + j];
   }
 
-  inline int64_t atIneqIdx(unsigned linearIndex) const {
-    return inequalities[linearIndex];
-  }
-
-  inline int64_t &atIneqIdx(unsigned linearIndex) {
-    return inequalities[linearIndex];
-  }
-
+  /// Returns the number of columns in the constraint system.
   inline unsigned getNumCols() const { return numIds + 1; }
 
   inline unsigned getNumEqualities() const {
-    return equalities.size() / getNumCols();
+    assert(equalities.size() % numReservedCols == 0 &&
+           "inconsistent equality buffer size");
+    return equalities.size() / numReservedCols;
   }
 
   inline unsigned getNumInequalities() const {
-    return inequalities.size() / getNumCols();
+    assert(inequalities.size() % numReservedCols == 0 &&
+           "inconsistent inequality buffer size");
+    return inequalities.size() / numReservedCols;
+  }
+
+  inline unsigned getNumReservedEqualities() const {
+    return equalities.capacity() / numReservedCols;
+  }
+
+  inline unsigned getNumReservedInequalities() const {
+    return inequalities.capacity() / numReservedCols;
   }
 
   inline ArrayRef<int64_t> getEquality(unsigned idx) const {
-    return ArrayRef<int64_t>(&equalities[idx * getNumCols()], getNumCols());
+    return ArrayRef<int64_t>(&equalities[idx * numReservedCols], getNumCols());
   }
 
   inline ArrayRef<int64_t> getInequality(unsigned idx) const {
-    return ArrayRef<int64_t>(&inequalities[idx * getNumCols()], getNumCols());
+    return ArrayRef<int64_t>(&inequalities[idx * numReservedCols],
+                             getNumCols());
   }
 
   AffineExpr toAffineExpr(unsigned idx, MLIRContext *context);
@@ -349,10 +354,23 @@ public:
   void addInequality(ArrayRef<int64_t> inEq);
   void addEquality(ArrayRef<int64_t> eq);
 
-  void addId(IdKind idKind, unsigned pos);
+  /// Adds a constant lower bound constraint for the specified identifier.
+  void addConstantLowerBound(unsigned pos, int64_t lb);
+  /// Adds a constant upper bound constraint for the specified identifier.
+  void addConstantUpperBound(unsigned pos, int64_t ub);
+
+  /// Sets the identifier at the specified position to a constant.
+  void setIdToConstant(unsigned pos, int64_t val);
+
+  // Add identifiers of the specified kind - specified positions are relative to
+  // the kind of identifier.
   void addDimId(unsigned pos);
   void addSymbolId(unsigned pos);
   void addLocalId(unsigned pos);
+
+  /// Add new dimensions at the specified position and with the dimensions set
+  /// to the equalities specified by the map.
+  void addDimsForMap(unsigned pos, AffineMap map);
 
   /// Eliminates identifier at the specified position using Fourier-Motzkin
   /// variable elimination. If the result of the elimination is integer exact,
@@ -403,10 +421,9 @@ private:
   /// Coefficients of affine inequalities (in >= 0 form).
   SmallVector<int64_t, 64> inequalities;
 
-  // Pre-allocated space.
-  unsigned numReservedEqualities;
-  unsigned numReservedInequalities;
-  unsigned numReservedIds;
+  /// Number of columns reserved. Actual ones in used are returned by
+  /// getNumCols().
+  unsigned numReservedCols;
 
   /// Total number of identifiers.
   unsigned numIds;
