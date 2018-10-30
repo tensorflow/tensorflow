@@ -186,7 +186,8 @@ class Dataset(object):
       An `Iterator` over the elements of this dataset.
     """
     if context.executing_eagerly():
-      return iterator_ops.EagerIterator(self)
+      dataset = self._apply_options()
+      return iterator_ops.EagerIterator(dataset)
 
     graph_level_seed, op_level_seed = core_random_seed.get_seed(None)
 
