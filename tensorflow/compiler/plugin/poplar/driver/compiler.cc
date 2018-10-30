@@ -373,6 +373,10 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::RunBackend(
       graph.outputVertexGraph(stream, progs);
     }
 
+    // Generate this JSON early so that the VLOG trace can contain the output
+    // whether the engine compilation completes or not
+    std::string map_json = GetTensorMappingJson(graph, resources.tensor_maps);
+
     is_remap_graph = AreAllOutputsParameters(
         entry->root_instruction(), visitor.GetNonStandardParameterLayout(),
         remaped_output);
@@ -415,8 +419,6 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::RunBackend(
         return PoplarExceptionToTensorflowStatus("[Compiler report] ", e);
       }
     }
-
-    std::string map_json = GetTensorMappingJson(graph, resources.tensor_maps);
 
     uint64 duration = tensorflow::Env::Default()->NowMicros() - start_micros;
 
