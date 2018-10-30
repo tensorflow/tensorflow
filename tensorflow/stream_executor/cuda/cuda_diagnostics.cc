@@ -39,9 +39,9 @@ limitations under the License.
 #include <memory>
 #include <vector>
 
+#include "absl/container/inlined_vector.h"
 #include "absl/strings/str_cat.h"
 #include "tensorflow/stream_executor/lib/error.h"
-#include "tensorflow/stream_executor/lib/inlined_vector.h"
 #include "tensorflow/stream_executor/lib/numbers.h"
 #include "tensorflow/stream_executor/lib/process_state.h"
 #include "tensorflow/stream_executor/lib/status.h"
@@ -363,7 +363,7 @@ port::StatusOr<DriverVersion> Diagnostician::FindKernelDriverVersion() {
   }
 
   static const int kContentsSize = 1024;
-  port::InlinedVector<char, 4> contents(kContentsSize);
+  absl::InlinedVector<char, 4> contents(kContentsSize);
   size_t retcode =
       fread(contents.begin(), 1, kContentsSize - 2, driver_version_file);
   if (retcode < kContentsSize - 1) {
