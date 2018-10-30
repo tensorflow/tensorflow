@@ -219,8 +219,15 @@ std::vector<int64> ReorderDims(const std::vector<int64>& input,
 // -- AlgorithmConfig
 
 string AlgorithmConfig::ToString() const {
-  return absl::StrCat(algorithm_.algo_id(), ", ",
-                      algorithm_no_scratch_.algo_id());
+  AlgorithmDesc::Index algo_id = -1;
+  if (algorithm().has_value()) {
+    algo_id = algorithm()->algo_id();
+  }
+  AlgorithmDesc::Index algo_id_no_scratch = -1;
+  if (algorithm_no_scratch().has_value()) {
+    algo_id_no_scratch = algorithm_no_scratch()->algo_id();
+  }
+  return absl::StrCat(algo_id, ", ", algo_id_no_scratch);
 }
 
 // -- BatchDescriptor
