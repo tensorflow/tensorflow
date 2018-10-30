@@ -21,6 +21,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "llvm/Support/CommandLine.h"
+#include "llvm/Support/FormatVariadic.h"
 #include "llvm/Support/PrettyStackTrace.h"
 #include "llvm/Support/Signals.h"
 #include "llvm/TableGen/Error.h"
@@ -46,6 +47,18 @@ static cl::opt<std::string> opcodeClass("opcode-enum",
 
 using AttrPair = std::pair<const RecordVal *, const Record *>;
 using AttrVector = SmallVectorImpl<AttrPair>;
+
+// Variation of method in FormatVariadic.h which takes a StringRef as input
+// instead.
+template <typename... Ts>
+inline auto formatv(StringRef fmt, Ts &&... vals) -> formatv_object<decltype(
+    std::make_tuple(detail::build_format_adapter(std::forward<Ts>(vals))...))> {
+  using ParamTuple = decltype(
+      std::make_tuple(detail::build_format_adapter(std::forward<Ts>(vals))...));
+  return llvm::formatv_object<ParamTuple>(
+      fmt,
+      std::make_tuple(detail::build_format_adapter(std::forward<Ts>(vals))...));
+}
 
 namespace {
 // Simple RAII helper for defining ifdef-undef-endif scopes.
@@ -143,18 +156,19 @@ void OpEmitter::getAttributes() {
   }
 }
 
-// TODO(jpienaar): Improve Attr specification to make adding them in the tblgen
-// file better.
 void OpEmitter::emitAttrGetters() {
   for (const auto &pair : attrs) {
     auto &val = *pair.first;
     auto &attr = *pair.second;
-    auto name = val.getName();
-    os << "  " << attr.getValueAsString("PrimitiveType").trim() << ' '
+    os << "  " << attr.getValueAsString("returnType").trim() << ' '
        << val.getName() << "() const {\n";
-    os << "    return this->getAttrOfType<"
-       << attr.getValueAsString("AttrType").trim() << ">(\"" << name
-       << "\").getValue();\n  }\n";
+
+    // Return the queried attribute with the correct return type.
+    const auto &attrVal = Twine("this->getAttrOfType<") +
+                          attr.getValueAsString("storageType").trim() + ">(\"" +
+                          val.getName() + "\").getValue()";
+    os << formatv(attr.getValueAsString("convertFromStorage"), attrVal.str())
+       << "\n  }\n";
   }
 }
 
@@ -208,10 +222,10 @@ void OpEmitter::emitVerifier() {
   for (const auto attr : attrs) {
     auto name = attr.first->getName();
     os << "    if (!this->getAttr(\"" << name << "\").dyn_cast_or_null<"
-       << attr.second->getValueAsString("AttrType") << ">("
+       << attr.second->getValueAsString("storageType").trim() << ">("
        << ")) return emitOpError(\"requires "
-       << attr.second->getValueAsString("PrimitiveType").trim()
-       << " attribute '" << name << "'\");\n";
+       << attr.second->getValueAsString("returnType").trim() << " attribute '"
+       << name << "'\");\n";
   }
 
   if (hasCustomVerify)

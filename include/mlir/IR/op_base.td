@@ -58,24 +58,33 @@ class Results<list<Type> types> {
 class Attr<Type t> {
   Type type = t;
 
-  // Define the attribute type and primitive type in the subclass. A
-  // subclass that is defined without specifying the subclass (or
-  // attempting to use Attr directly) will result in tblgen failure.
-  code AttrType;
-  code PrimitiveType;
+  // Define the storage and return type in the subclass.
+  code storageType = ?;
+  code returnType = ?;
+
+  // Define converter method to convert from the storage type to the return
+  // type. For example, the FloatAttr storage is APFloat, while the returned
+  // primitive type could be float. Similiarly a enum can be stored as a int
+  // but returned as an enum class.
+  //
+  // Format: {0} will be expanded to the attribute's value. So
+  // 'return {0}.convertToFloat();' for 'FloatAttr val' will expand to
+  // 'return getAttrOfType<FloatAttr>("val").getValue().convertToFloat();'
+  code convertFromStorage = "return {0};";
 }
 
 class BoolAttr : Attr<I<1>> {
- let AttrType = [{ BoolAttr }];
- let PrimitiveType = [{ bool }];
+ let storageType = [{ BoolAttr }];
+ let returnType = [{ bool }];
 }
 class F32Attr : Attr<F32> {
- let AttrType = [{ FloatAttr }];
- let PrimitiveType = [{ float }];
+ let storageType = [{ FloatAttr }];
+ let returnType = [{ float }];
+ let convertFromStorage = [{ return {0}.convertToFloat(); }];
 }
 class I32Attr : Attr<I<32>> {
- let AttrType = [{ IntegerAttr }];
- let PrimitiveType = [{ int }];
+ let storageType = [{ IntegerAttr }];
+ let returnType = [{ int }];
 }
 
 // Class representing a Trait (defined in a C++ file that needs to be included
