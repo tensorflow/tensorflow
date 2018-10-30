@@ -44,6 +44,7 @@ apt-get install -y --no-install-recommends \
     build-essential \
     clang-format-3.8 \
     curl \
+    ## TODO(yifeif) remove once ffmpeg is removed from contrib
     ffmpeg \
     git \
     libcurl4-openssl-dev \
@@ -60,9 +61,9 @@ apt-get install -y --no-install-recommends \
     python3-setuptools \
     rsync \
     sudo \
-    subversion \
     swig \
     unzip \
+    vim \
     wget \
     zip \
     zlib1g-dev
