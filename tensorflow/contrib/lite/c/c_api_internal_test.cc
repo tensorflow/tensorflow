@@ -65,6 +65,21 @@ TEST(IntArray, TestIntArrayEqual) {
   TfLiteIntArrayFree(d);
 }
 
+TEST(Types, TestTypeNames) {
+  auto type_name = [](TfLiteType t) {
+    return std::string(TfLiteTypeGetName(t));
+  };
+  EXPECT_EQ(type_name(kTfLiteNoType), "NOTYPE");
+  EXPECT_EQ(type_name(kTfLiteFloat32), "FLOAT32");
+  EXPECT_EQ(type_name(kTfLiteInt16), "INT16");
+  EXPECT_EQ(type_name(kTfLiteInt32), "INT32");
+  EXPECT_EQ(type_name(kTfLiteUInt8), "UINT8");
+  EXPECT_EQ(type_name(kTfLiteInt64), "INT64");
+  EXPECT_EQ(type_name(kTfLiteBool), "BOOL");
+  EXPECT_EQ(type_name(kTfLiteComplex64), "COMPLEX64");
+  EXPECT_EQ(type_name(kTfLiteString), "STRING");
+}
+
 }  // namespace tflite
 
 int main(int argc, char** argv) {
