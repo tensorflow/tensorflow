@@ -15,12 +15,12 @@ limitations under the License.
 
 #include <cmath>
 
+#include "absl/base/casts.h"
 #include "tensorflow/compiler/xla/client/lib/constants.h"
 #include "tensorflow/compiler/xla/client/lib/math.h"
 #include "tensorflow/compiler/xla/client/lib/numeric.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/util.h"
-#include "tensorflow/core/lib/core/casts.h"
 
 namespace xla {
 namespace {
@@ -149,7 +149,7 @@ XlaOp StatelessRngUniformF32(XlaOp bits, XlaOp minval, XlaOp maxval) {
   constexpr int kMantissaBits = 23;
   bits = ShiftRightLogical(
              bits, ConstantR0<uint32>(builder, kFloatBits - kMantissaBits)) |
-         ConstantR0<uint32>(builder, tensorflow::bit_cast<uint32>(1.0f));
+         ConstantR0<uint32>(builder, absl::bit_cast<uint32>(1.0f));
   auto floats = BitcastConvertType(bits, F32);
 
   // We have a floating point number in the range [1.0, 2.0).

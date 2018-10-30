@@ -22,6 +22,7 @@ limitations under the License.
 #include <numeric>
 #include <vector>
 
+#include "absl/base/casts.h"
 #include "absl/memory/memory.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
@@ -31,7 +32,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
-#include "tensorflow/core/lib/core/casts.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/hash/hash.h"
 #include "tensorflow/core/platform/logging.h"
@@ -1233,7 +1233,7 @@ typename std::enable_if<(sizeof(NativeSrcT) == sizeof(NativeDestT)),
                         Literal>::type
 BitcastBetweenNativeTypes(const LiteralBase& src_literal) {
   auto converter = [](NativeSrcT src) {
-    return tensorflow::bit_cast<NativeDestT>(src);
+    return absl::bit_cast<NativeDestT>(src);
   };
   return ConvertBetweenNativeTypesWithConverter<NativeSrcT, NativeDestT>(
       src_literal, converter);
@@ -1995,7 +1995,7 @@ string LiteralBase::GetR1U8AsString() const {
   CHECK(ShapeUtil::IsArray(shape()));
   CHECK_EQ(ShapeUtil::Rank(shape()), 1);
   CHECK_EQ(shape().element_type(), U8);
-  return string(tensorflow::bit_cast<const char*>(data<uint8>().data()),
+  return string(absl::bit_cast<const char*>(data<uint8>().data()),
                 ShapeUtil::ElementsIn(shape()));
 }
 
