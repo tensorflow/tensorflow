@@ -4,10 +4,10 @@ This examples shows how you can use TensorFlow Lite to run a 20 kilobyte neural 
 
 ## Table of Contents
 
-    * [Getting Started](#getting-started)
-    * [Getting Started on a Microcontroller](#getting-started-on-a-microcontroller)
-    * [Calculating the Input to the Neural Network](#calculating-the-input-to-the-neural-network)
-    * [Creating Your Own Model](#creating-your-own-model)
+  - [Getting Started](#getting-started)
+  - [Getting Started on a Microcontroller](#getting-started-on-a-microcontroller)
+  - [Calculating the Input to the Neural Network](#calculating-the-input-to-the-neural-network)
+  - [Creating Your Own Model](#creating-your-own-model)
 
 ## Getting Started
 
