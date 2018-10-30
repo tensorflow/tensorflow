@@ -3210,3 +3210,68 @@ def extract_glimpse_v2(
       noise=noise,
       uniform_noise=False,
       name=name)
+
+@tf_export('image.non_max_suppression_lite')
+def non_max_suppression_lite(boxes,
+                             scores,
+                             max_output_size_per_class,
+                             max_total_size,
+                             iou_threshold=0.5,
+                             score_threshold=float('-inf'),
+                             pad_to_max_total_size=False,
+                             name=None):
+  """Greedily selects a subset of bounding boxes in descending order of score.
+
+  This operation performs non_max_suppression on the inputs per batch, across
+  all classes. 
+  Prunes away boxes that have high intersection-over-union (IOU) overlap
+  with previously selected boxes.  Bounding boxes are supplied as
+  [y1, x1, y2, x2], where (y1, x1) and (y2, x2) are the coordinates of any
+  diagonal pair of box corners and the coordinates can be provided as normalized
+  (i.e., lying in the interval [0, 1]) or absolute.  Note that this algorithm
+  is agnostic to where the origin is in the coordinate system.  Note that this
+  algorithm is invariant to orthogonal transformations and translations
+  of the coordinate system; thus translating or reflections of the coordinate
+  system result in the same boxes being selected by the algorithm.
+  The output of this operation is the final boxes, scores and classes tensor 
+  returned after performing non_max_suppression.
+
+  Args:
+    boxes: A 4-D float `Tensor` of shape `[batch_size, num_boxes, q, 4]`.
+    scores: A 3-D float `Tensor` of shape `[batch_size, num_boxes, num_classes]` 
+    representing a single score corresponding to each box (each row of boxes).
+    max_output_size_per_class: A scalar integer `Tensor` representing the 
+    maximum number of boxes to be selected by non max suppression per class
+    max_total_size: A scalar representing maximum number of boxes retained over
+    all classes.
+    iou_threshold: A float representing the threshold for deciding whether boxes
+      overlap too much with respect to IOU.
+    score_threshold: A float representing the threshold for deciding when to
+      remove boxes based on score.
+    pad_to_max_total_size: If true the size of outputs is padded to
+    max_total_size per batch.
+    name: A name for the operation (optional).
+
+  Returns:
+    'nmsed_boxes': A [batch_size, max_detections, 4] float32 tensor
+      containing the non-max suppressed boxes.
+    'nmsed_scores': A [batch_size, max_detections] float32 tensor containing
+      the scores for the boxes.
+    'nmsed_classes': A [batch_size, max_detections] float32 tensor
+      containing the class for boxes.
+    'num_detections': A [batch_size] int32 tensor indicating the number of
+      valid detections per batch item. Only the top num_detections[i] entries in
+      nms_boxes[i], nms_scores[i] and nms_class[i] are valid. The rest of the
+      entries are zero paddings.
+    'selected_indices':  A [batch_size, max_detections] int32 tensor
+      containing the indices of the selected boxes
+  """
+  with ops.name_scope(name, 'non_max_suppression_lite'):
+    print(" *** calling actual non_max_suppression_lite *** ")
+    iou_threshold = ops.convert_to_tensor(iou_threshold, name='iou_threshold')
+    score_threshold = ops.convert_to_tensor(
+        score_threshold, name='score_threshold')
+    return gen_image_ops.non_max_suppression_lite(boxes, scores,
+            max_output_size_per_class, max_total_size, iou_threshold, 
+            score_threshold, pad_to_max_total_size);
+
