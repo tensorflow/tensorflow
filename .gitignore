@@ -24,7 +24,7 @@ Pods
 Podfile.lock
 *.pbxproj
 *.xcworkspacedata
-/tensorflow/contrib/lite/downloads/**
+/tensorflow/contrib/lite/tools/make/downloads/**
 /tensorflow/contrib/lite/gen/**
 /tensorflow/contrib/lite/examples/ios/simple/data/*.txt
 /tensorflow/contrib/lite/examples/ios/simple/data/*.tflite
