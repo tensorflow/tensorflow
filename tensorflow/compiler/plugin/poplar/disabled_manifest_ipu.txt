@@ -14,7 +14,6 @@ OutOfMemoryTest.testOutputOutOfMemory # Don't do out of memory yet
 WhileTest.testCountingLoopHandrolledC64 # C64
 CategoricalTest.testSamplingCorrectness # Failing due to input size to poplibs reduction
 DepthwiseConv2DTest # Failing due to input size to poplibs convolution
-XlaSortOpTest # No Sort op
 Pooling3DTest.testMaxPoolGradValidPadding1_1_3d  # 3D grad_grad
 Pooling3DTest.testMaxPoolGradValidPadding2_1_6_3d  # 3D grad_grad
 Pooling3DTest.testMaxPoolGradValidPadding2_2_3d  # 3D grad_grad
@@ -24,13 +23,11 @@ Pooling3DTest.testMaxPoolGradSamePadding2_2_3d  # 3D grad_grad
 Pooling3DTest.testMaxPoolGradSamePadding3_1_3d  # 3D grad_grad
 StatelessRandomOpsTest.testTruncatedNormalIsInRange  # Too slow
 RandomOpsTest.testTruncatedNormalIsInRange  # Too slow
-RandomOpsTest.testShuffle1d # Need to implement 'sort'
 MatrixBandPartTest  # Too slow
 UnaryOpsTest.testAllTypeOps # Need bitwise reductions
 QrOpTest.testLarge2000x2000 # Assertion in reduction
 GatherTest.testHigherRank # Bad
 MatrixTriangularSolveOpTest.testBatch # Arithmetic precision?
-NonMaxSuppressionTest # Don't support sort
 XlaOpsTest.testShiftRightLogical # using UINT32
 XlaOpsTest.testShiftRightArithmetic # using UINT32
 
