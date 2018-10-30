@@ -3267,7 +3267,6 @@ def non_max_suppression_lite(boxes,
       containing the indices of the selected boxes
   """
   with ops.name_scope(name, 'non_max_suppression_lite'):
-    print(" *** calling actual non_max_suppression_lite *** ")
     iou_threshold = ops.convert_to_tensor(iou_threshold, name='iou_threshold')
     score_threshold = ops.convert_to_tensor(
         score_threshold, name='score_threshold')

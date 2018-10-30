@@ -194,7 +194,6 @@ void DoNonMaxSuppressionOp(
     for (int j = static_cast<int>(selected.size()) - 1; j >= 0; --j) {
       if (suppress_check_fn(next_candidate.box_index, selected[j])) {
         should_select = false;
-        //std::cout << " Dont select " << std::endl;
         break;
       }
     }
@@ -202,8 +201,6 @@ void DoNonMaxSuppressionOp(
     if (should_select) {
       selected.push_back(next_candidate.box_index);
       selected_scores.push_back(next_candidate.score);
-      //std::cout << " Selected index " << next_candidate.box_index << std::endl;
-      //std::cout << " Selected score " << next_candidate.score << std::endl;
     }
   }
 
@@ -269,7 +266,6 @@ void BatchedNonMaxSuppressionOp(OpKernelContext* context,
   //perform non_max_suppression operation for each batch independently
   for (int batch = 0; batch < num_batches; ++batch) {
     // dims of per_batch_boxes [num_boxes, q, 4]
-    //Tensor per_batch_boxes = inp_boxes.SubSlice(batch);
     Tensor per_batch_boxes = inp_boxes.Slice(batch, batch+1);
     // dims of per_batch_scores [num_boxes, num_classes]
     Tensor per_batch_scores = inp_scores.Slice(batch, batch+1);
@@ -348,7 +344,6 @@ void BatchedNonMaxSuppressionOp(OpKernelContext* context,
       const Tensor const_boxes = boxes;
       typename TTypes<float, 2>::ConstTensor boxes_data = 
         const_boxes.tensor<float, 2>();
-      //LOG(ERROR) << " boxes data " << boxes.DebugString();
       while (selected.size() < output_size && !candidate_priority_queue.empty())
       {
         next_candidate = candidate_priority_queue.top();
@@ -362,7 +357,6 @@ void BatchedNonMaxSuppressionOp(OpKernelContext* context,
           if (IOUGreaterThanThreshold(boxes_data, next_candidate.box_index, 
               selected[j], iou_threshold)) {
             should_select = false;
-            //std::cout << " Dont select  for class id" << class_idx << std::endl;
             break;
           }
         }
@@ -404,60 +398,21 @@ void BatchedNonMaxSuppressionOp(OpKernelContext* context,
       nmsed_scores[batch].push_back(next_candidate.score);
       nmsed_classes[batch].push_back(next_candidate.class_idx);
       selected_indices[batch].push_back(next_candidate.box_index);
-      //std::cout << " selected index BS " << batch << " is " << next_candidate.box_index << std::endl;
-      //std::cout << " selected score is " << next_candidate.score << std::endl;
-      //std::cout << " selected class is " << next_candidate.class_idx << std::endl;
-      //std::cout << " box ymin " << next_candidate.box_coord[0] << std::endl;
-      //std::cout << " box xmin " << next_candidate.box_coord[1] << std::endl;
-      //std::cout << " box ymax " << next_candidate.box_coord[2] << std::endl;
-      //std::cout << " box xmax " << next_candidate.box_coord[3] << std::endl;
       curr_total_size--;
     }
 
     if(pad_to_max_total_size && max_detections < total_size_per_batch) {
-    //if(max_detections < total_size_per_batch) {
       nmsed_boxes[batch].resize(total_size_per_batch * 4, 0);
       nmsed_scores[batch].resize(total_size_per_batch, 0);
       nmsed_classes[batch].resize(total_size_per_batch, 0);
       selected_indices[batch].resize(total_size_per_batch, 0);
-      //max_detections = total_size_per_batch;
     }
   }
-  //Current TF implementation :
-  // If use_static_shapes is true, max_total_size is ignored and we pad to max_size_per_class
-  // Else always pad to max_total_size
 
-  //TODO make max_detections an array
-  //bool pad_to_max_detections = false;
   if (pad_to_max_total_size) { 
     max_detections = total_size_per_batch;
   }
-  //For the case where padding is set to false, and each batch has a different
-  //max_detections value, we need to pad it anyway to the max among them.
-  //else {
-  //  for (auto detect : final_valid_detections) {
-  //    if (max_detections < detect) {
-  //      max_detections = detect;
-  //      pad_to_max_detections = true;
-  //    }
-  //  }
-  //}
-  // 
-  ////TODO this is still broken because, if pad = 0 and max_detect is 
-  //// 2 and 3 for BS 0 and 1, we will try to copy 3 values
-  //if (pad_to_max_detections) {
-  //  std::cout << " **** Never tested this before!! **** " << std::endl;
-  //  for (int b = 0; b < num_batches; ++b) {
-  //    if (final_valid_detections[b] < max_detections) {
-  //      nmsed_boxes[b].resize(max_detections * 4, 0);
-  //      nmsed_scores[b].resize(max_detections, 0);
-  //      nmsed_classes[b].resize(max_detections, 0);
-  //      selected_indices[b].resize(max_detections,  0);
-  //    }
-  //  }
-  //}
 
-  //std::cout << " Max detections "<< max_detections << std::endl;
   Tensor* nmsed_boxes_t = nullptr;
   TensorShape boxes_shape({num_batches, max_detections, 4});
   OP_REQUIRES_OK(context,
@@ -497,11 +452,6 @@ void BatchedNonMaxSuppressionOp(OpKernelContext* context,
       }
     }
   }
-  //LOG(ERROR) << " boxes " << nmsed_boxes_t->DebugString();
-  //std::cout << " Scores " << nmsed_scores_t->DebugString() << std::endl;
-  //LOG(ERROR) << " classes " << nmsed_classes_t->DebugString();
-  //LOG(ERROR) << " selected_indices_t " << selected_indices_t->DebugString();
-  //LOG(ERROR) << " valid_detections_t " << valid_detections_t->DebugString();
 }
 
 }  // namespace
