@@ -258,7 +258,7 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
       if (!prefetch_thread_) {
         std::shared_ptr<IteratorContext> new_ctx(new IteratorContext(*ctx));
         prefetch_thread_.reset(ctx->env()->StartThread(
-            {}, "prefetch_thread",
+            {}, "tf_data_prefetch",
             [this, new_ctx]() { PrefetchThread(new_ctx); }));
       }
       return Status::OK();

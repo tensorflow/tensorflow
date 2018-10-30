@@ -127,7 +127,7 @@ class ModelDatasetOp : public UnaryDatasetOpKernel {
         if (!optimize_thread_) {
           std::shared_ptr<IteratorContext> new_ctx(new IteratorContext(*ctx));
           optimize_thread_.reset(ctx->env()->StartThread(
-              {}, "optimize_thread",
+              {}, "tf_data_model",
               [this, new_ctx]() { OptimizeThread(new_ctx); }));
         }
         return Status::OK();

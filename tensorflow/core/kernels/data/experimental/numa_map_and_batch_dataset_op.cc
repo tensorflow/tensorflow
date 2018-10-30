@@ -906,8 +906,7 @@ class NumaMapAndBatchDatasetOp : public UnaryDatasetOpKernel {
               new_ctx = std::make_shared<IteratorContext>(*ctx);
             }
             workers_[i]->threads.emplace_back(ctx->env()->StartThread(
-                {},
-                strings::StrCat("numa_map_and_batch_block_", i, "_thread_", j),
+                {}, strings::StrCat("tf_data_numa_map_and_batch_", i, "_", j),
                 [this, new_ctx, i, j]() { WorkerThread(new_ctx, i, j); }));
             VLOG(3) << "Worker " << i << ", " << j << " successfully started.";
           }
@@ -917,7 +916,7 @@ class NumaMapAndBatchDatasetOp : public UnaryDatasetOpKernel {
             new_ctx = std::make_shared<IteratorContext>(*ctx);
           }
           runner_thread_.reset(ctx->env()->StartThread(
-              {}, "numa_map_runner_thread",
+              {}, "tf_data_numa_map_and_batch",
               [this, new_ctx] { RunnerThread(new_ctx); }));
         }
         VLOG(3) << "All workers & runner thread started.";
