@@ -21,9 +21,6 @@ tflite_micro_cc_test(
         "yes_features_data.cc",
         "yes_features_data.h",
     ],
-    tags = [
-        "nomsan",
-    ],
     deps = [
         "//tensorflow/contrib/lite:schema_fbs_version",
         "//tensorflow/contrib/lite/experimental/micro:micro_framework",
@@ -31,5 +28,27 @@ tflite_micro_cc_test(
         "//tensorflow/contrib/lite/experimental/micro/kernels:micro_ops",
         "//tensorflow/contrib/lite/experimental/micro/testing:micro_test",
         "//tensorflow/contrib/lite/schema:schema_fbs",
+    ],
+)
+
+tflite_micro_cc_test(
+    name = "preprocessor_test",
+    srcs = [
+        "no_30ms_sample_data.cc",
+        "no_30ms_sample_data.h",
+        "no_power_spectrum_data.cc",
+        "no_power_spectrum_data.h",
+        "preprocessor.cc",
+        "preprocessor.h",
+        "preprocessor_test.cc",
+        "yes_30ms_sample_data.cc",
+        "yes_30ms_sample_data.h",
+        "yes_power_spectrum_data.cc",
+        "yes_power_spectrum_data.h",
+    ],
+    deps = [
+        "//tensorflow/contrib/lite/c:c_api_internal",
+        "//tensorflow/contrib/lite/experimental/micro:micro_framework",
+        "//tensorflow/contrib/lite/experimental/micro/testing:micro_test",
     ],
 )
