@@ -4250,7 +4250,8 @@ class Graph(object):
       A context manager that specifies the default device to use for newly
       created ops.
     """
-    self._add_device_to_stack(device_name_or_function, offset=2)
+    offset = 2 if (len(tf_stack.extract_stack()) > 2) else 1
+    self._add_device_to_stack(device_name_or_function, offset=offset)
     try:
       yield
     finally:
