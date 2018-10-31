@@ -1604,7 +1604,7 @@ Status IrEmitterUnnested::EmitReductionToVector(
   // the dimensions to keep are contiguous, by prerequisite of
   // `EmitReductionToVector`, we only need to check whether the minormost
   // dimension of the input is to keep.
-  if (input_dims_to_keep.empty()) {
+  if (ShapeUtil::IsEffectiveScalar(reduce->shape())) {
     return EmitReductionToScalar(kernel_thunk, reduce, input_shape, input_gens,
                                  init_value_gens, reducers,
                                  reduce_output_shapes, extra_output_gens);
