@@ -144,6 +144,12 @@ class ReplaceTransformer(gast.NodeTransformer):
       self._check_has_context(node)
     elif isinstance(node, (gast.Str, gast.Num)):
       pass
+    elif isinstance(node, gast.Call):
+      self._check_inner_children_have_context(node.func)
+      for a in node.args:
+        self._check_inner_children_have_context(a)
+      for k in node.keywords:
+        self._check_inner_children_have_context(k.value)
     else:
       raise ValueError('unexpected node type "%s"' % node)
 
