@@ -38,6 +38,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import bitwise_ops
 from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import clip_ops
+from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn
 from tensorflow.python.ops import parsing_ops
@@ -280,10 +281,16 @@ def _generate_optimization_test_cases():
         y for y in parse_result if not isinstance(y, sparse_tensor.SparseTensor)
     ]
 
+  def map_fn_with_cycle(x):
+    c = lambda i: math_ops.less(i, 10)
+    b = lambda i: math_ops.add(i, 1)
+    return control_flow_ops.while_loop(c, b, [x])
+
   # Misc test cases
   test_cases = [
       ("Basic", lambda x: (x, x + 1), base_dataset_factory),
       ("Broadcast", lambda x: x + rand_val, base_dataset_factory),
+      ("Cycle", map_fn_with_cycle, lambda: dataset_ops.Dataset.from_tensors(1)),
       ("Const", lambda x: 2, base_dataset_factory),
       ("Cast", lambda x: math_ops.cast(x, dtypes.float64),
        base_dataset_factory),
