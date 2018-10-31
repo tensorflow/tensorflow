@@ -2664,8 +2664,7 @@ Status MklLayoutRewritePass::FuseTransposeMklOpTranspose(
   FillInputs(transpose_to_nchw, &transpose_nchw_control_edges,
              &transpose_nchw_in);
 
-  // We will use the node name of Conv2d as the name of new node
-  // Build new node. We use same name as original node, but change the op
+  // We use same name as original node, but change the op
   // name.
   NodeBuilder nb(mklop->name(), mklop->type_string());
 
