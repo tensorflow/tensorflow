@@ -34,6 +34,7 @@ limitations under the License.
 #include "tensorflow/compiler/plugin/poplar/driver/executable.h"
 #include "tensorflow/compiler/plugin/poplar/driver/executor.h"
 #include "tensorflow/compiler/plugin/poplar/driver/expression_outliner.h"
+#include "tensorflow/compiler/plugin/poplar/driver/forward_allocation.h"
 #include "tensorflow/compiler/plugin/poplar/driver/fuse_max_pool.h"
 #include "tensorflow/compiler/plugin/poplar/driver/fuse_ops_early.h"
 #include "tensorflow/compiler/plugin/poplar/driver/fuse_ops_late.h"
@@ -314,6 +315,7 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::RunBackend(
     pipeline.AddPass<ConvolutionClassifier>(resources.annotations);
     pipeline.AddPass<AllocationFinder>(resources.annotations);
     pipeline.AddPass<Scheduler>();
+    pipeline.AddPass<ForwardAllocation>(resources.annotations);
 
     bool ok;
     TF_ASSIGN_OR_RETURN(ok, pipeline.Run(module.get()));

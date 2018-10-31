@@ -32,10 +32,16 @@ struct CompilerAnnotations;
 struct TensorTarget {
   const HloInstruction* tgt;
   int64 input_index;
-  std::vector<const HloInstruction*> path;
+  std::vector<const HloInstruction*> forward_path;
+  std::vector<const HloInstruction*> backward_path;
   TensorTarget(const HloInstruction* tgt, int64 input_index,
-               const std::vector<const HloInstruction*>& path)
-      : tgt(tgt), input_index(input_index), path(path) {}
+               const std::vector<const HloInstruction*>& forward_path,
+               const std::vector<const HloInstruction*>& backward_path)
+      : tgt(tgt),
+        input_index(input_index),
+        forward_path(forward_path),
+        backward_path(backward_path) {}
+  TensorTarget() = default;
 };
 
 using TensorSource = std::pair<const HloInstruction*, int64>;

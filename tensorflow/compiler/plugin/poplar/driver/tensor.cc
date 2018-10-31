@@ -345,14 +345,75 @@ static StatusOr<poplar::Tensor> AddRightMatMul(poplar::Graph& graph,
                                       &resources.dot_cache);
 }
 
+static poplar::Tensor PathTransform(
+    poplar::Graph& graph, poplar::Tensor in,
+    const std::vector<const HloInstruction*>& forward,
+    const std::vector<const HloInstruction*>& backward) {
+  // Now apply any transformations required by the path from the source to
+  // the target
+  if (forward.size() > 1) {
+    for (auto itr = std::next(forward.begin()); itr != forward.end(); ++itr) {
+      auto& inst = *itr;
+      switch (inst->opcode()) {
+        case HloOpcode::kTranspose: {
+          const auto permutation =
+              convert_array<std::vector<unsigned>>(inst->dimensions());
+          in = in.dimShuffle(permutation);
+          break;
+        }
+        case HloOpcode::kReshape: {
+          const auto dims = PoplarShapeFromXlaShape(inst->shape());
+          in = in.reshape(dims);
+          break;
+        }
+        case HloOpcode::kAdd: {
+          break;
+        }
+        default: {
+          const auto& name = GetDebugName(backward.front());
+          in = AddPlainTensor(graph, name, inst->shape()).ValueOrDie();
+          break;
+        }
+      }
+    }
+  }
+
+  for (auto i = backward.rbegin(); i != backward.rend(); ++i) {
+    auto& inst = *i;
+    switch (inst->opcode()) {
+      case HloOpcode::kTranspose: {
+        std::vector<unsigned> permutation(
+            convert_array<std::vector<unsigned>>(inst->dimensions()));
+        std::vector<unsigned> shuffle(permutation.size());
+        for (int d = 0; d < permutation.size(); d++) {
+          shuffle[permutation[d]] = d;
+        }
+        in = in.dimShuffle(shuffle);
+        break;
+      }
+      case HloOpcode::kReshape: {
+        std::vector<size_t> dims(
+            PoplarShapeFromXlaShape(inst->operand(0)->shape()));
+        in = in.reshape(dims);
+        break;
+      }
+      default:
+        break;
+    }
+  }
+
+  return in;
+}
+
 StatusOr<poplar::Tensor> AddTensor(poplar::Graph& graph,
                                    const TensorSource& src,
                                    const xla::Shape& shape,
                                    CompilerResources& resources) {
   const auto& name = GetDebugName(src.first);
   poplar::Tensor out;
-  auto target = resources.annotations.tensor_allocation_map.find(src);
-  if (target != resources.annotations.tensor_allocation_map.end()) {
+
+  auto target = resources.annotations.tensor_allocation_map[0].find(src);
+  if (target != resources.annotations.tensor_allocation_map[0].end()) {
     const auto* tgt = target->second.tgt;
     auto tshape = tgt->operand(target->second.input_index)->shape();
     switch (tgt->opcode()) {
@@ -455,36 +516,33 @@ StatusOr<poplar::Tensor> AddTensor(poplar::Graph& graph,
                                        tgt->name().c_str());
     }
 
-    // Now apply any transformations required by the path from the source to
-    // the target
-    const std::vector<const HloInstruction*>& path = target->second.path;
-    for (auto i = path.rbegin(); i != path.rend(); ++i) {
-      auto& inst = *i;
-      switch (inst->opcode()) {
-        case HloOpcode::kTranspose: {
-          std::vector<unsigned> permutation(
-              convert_array<std::vector<unsigned>>(inst->dimensions()));
-          std::vector<unsigned> shuffle(permutation.size());
-          for (int d = 0; d < permutation.size(); d++) {
-            shuffle[permutation[d]] = d;
-          }
-          out = out.dimShuffle(shuffle);
-          break;
-        }
-        case HloOpcode::kReshape: {
-          std::vector<size_t> dims(
-              PoplarShapeFromXlaShape(inst->operand(0)->shape()));
-          out = out.reshape(dims);
-          break;
-        }
-        default:
-          break;
-      }
-    }
+    out = PathTransform(graph, out, target->second.forward_path,
+                        target->second.backward_path);
   } else {
     TF_ASSIGN_OR_RETURN(out, AddPlainTensor(graph, name, shape));
   }
   return out;
+}
+
+StatusOr<poplar::Tensor> AddTensor(poplar::Graph& graph,
+                                   const TensorSource& src,
+                                   const xla::Shape& shape,
+                                   CompilerResources& resources,
+                                   const TensorMap& tensor_map) {
+  auto target = resources.annotations.tensor_allocation_map[1].find(
+      std::make_pair(src.first, 0));
+  if (target != resources.annotations.tensor_allocation_map[1].end()) {
+    const auto& name = GetDebugName(src.first);
+    const auto tensors = FindInstructionOutputs(tensor_map, target->second.tgt);
+
+    if (!tensors.empty()) {
+      return PathTransform(graph, graph.clone(tensors[0]),
+                           target->second.forward_path,
+                           target->second.backward_path);
+    }
+  }
+
+  return AddTensor(graph, src, shape, resources);
 }
 
 template <typename TYPE>

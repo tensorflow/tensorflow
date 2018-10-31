@@ -2,6 +2,7 @@
 #define TENSORFLOW_COMPILER_PLUGIN_POPLAR_DRIVER_TENSOR_H_
 
 #include "tensorflow/compiler/plugin/poplar/driver/allocation_finder.h"
+#include "tensorflow/compiler/plugin/poplar/driver/ops.h"
 
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
@@ -52,6 +53,12 @@ StatusOr<poplar::Tensor> AddTensor(poplar::Graph& graph,
                                    const TensorSource& src,
                                    const xla::Shape& shape,
                                    CompilerResources& resources);
+
+StatusOr<poplar::Tensor> AddTensor(poplar::Graph& graph,
+                                   const TensorSource& src,
+                                   const xla::Shape& shape,
+                                   CompilerResources& resources,
+                                   const TensorMap& tensor_map);
 
 StatusOr<poplar::Tensor> AddConstantTensor(poplar::Graph& graph,
                                            const TensorSource& src,

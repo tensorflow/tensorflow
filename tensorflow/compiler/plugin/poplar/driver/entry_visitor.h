@@ -48,6 +48,7 @@ class EntryVisitor : public FullVisitor {
                        OutVector outputs);
 
   std::set<const HloInstruction*> non_standard_parameter_layout;
+  std::set<HloInstruction*> non_standard_parameter_layout_defer;
 
   poplar::program::Sequence host_to_device;
   poplar::program::Sequence device_to_host;

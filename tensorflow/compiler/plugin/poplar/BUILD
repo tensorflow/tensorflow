@@ -48,6 +48,7 @@ cc_library(
     name = "optimizers",
     srcs = [
         "driver/allocation_finder.cc",
+        "driver/forward_allocation.cc",
         "driver/casts_elimination.cc",
         "driver/classification_predicates.cc",
         "driver/commutative_instruction_reorder_operands.cc",
@@ -74,6 +75,7 @@ cc_library(
     ],
     hdrs = [
         "driver/allocation_finder.h",
+        "driver/forward_allocation.h",
         "driver/casts_elimination.h",
         "driver/classification_predicates.h",
         "driver/commutative_instruction_reorder_operands.h",

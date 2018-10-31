@@ -27,6 +27,16 @@ namespace poplarplugin {
 Status EntryVisitor::HandleParameter(HloInstruction* inst) {
   VLOG(1) << "Processing " << inst->name();
 
+  const auto itr = resources_.annotations.tensor_allocation_map[1].find(
+      std::make_pair(inst, 0));
+
+  if (itr != resources_.annotations.tensor_allocation_map[1].end() &&
+      NotVisited(*(itr->second.tgt))) {
+    SetVisiting(*(itr->second.tgt));
+    const_cast<HloInstruction*>(itr->second.tgt)->Visit(this);  // const_cast :(
+    SetVisited(*(itr->second.tgt));
+  }
+
   const auto& in_info = resources_.annotations.input_output_aliasing_map
                             .GetEntryInputInfos()[inst->parameter_number()];
 
@@ -45,8 +55,8 @@ Status EntryVisitor::HandleParameter(HloInstruction* inst) {
         in_info.IsStreaming() ? sequence : host_to_device;
 
     poplar::Tensor out;
-    TF_ASSIGN_OR_RETURN(
-        out, AddTensor(graph_, std::make_pair(inst, i), shapes[i], resources_));
+    TF_ASSIGN_OR_RETURN(out, AddTensor(graph_, std::make_pair(inst, i),
+                                       shapes[i], resources_, tensor_map));
 
     if (!UseSyntheticData()) {
       auto fifo = graph_.addHostToDeviceFIFO(
@@ -77,7 +87,7 @@ Status EntryVisitor::HandleParameter(HloInstruction* inst) {
         AddOutputTensor(graph_, resources_, seq, tensor_map, inst, i, out));
   }
   return Status::OK();
-}
+}  // namespace poplarplugin
 
 Status EntryVisitor::FinishVisit(HloInstruction* root) {
   HloComputation* comp = root->parent();

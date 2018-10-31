@@ -38,7 +38,7 @@ struct CompilerAnnotations {
 
   InputOutputAliasingMap input_output_aliasing_map;
 
-  TensorAllocationMap tensor_allocation_map;
+  TensorAllocationMap tensor_allocation_map[2];
 
   ConvClassification classification_map;
 
