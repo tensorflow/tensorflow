@@ -173,10 +173,10 @@ def if_not_windows(a):
         "//conditions:default": a,
     })
 
-def if_windows(a):
+def if_windows(a, otherwise = []):
     return select({
         clean_dep("//tensorflow:windows"): a,
-        "//conditions:default": [],
+        "//conditions:default": otherwise,
     })
 
 def if_not_windows_cuda(a):
@@ -1999,7 +1999,7 @@ def tf_py_build_info_genrule():
         name = "py_build_info_gen",
         outs = ["platform/build_info.py"],
         cmd =
-            "$(location //tensorflow/tools/build_info:gen_build_info) --raw_generate \"$@\" --build_config " + if_cuda("cuda", "cpu"),
+            "$(location //tensorflow/tools/build_info:gen_build_info) --raw_generate \"$@\" --build_config " + if_cuda("cuda", "cpu") + if_windows(" --key_value msvcp_dll_name=msvcp140.dll", ""),
         local = 1,
         tools = [clean_dep("//tensorflow/tools/build_info:gen_build_info")],
     )
