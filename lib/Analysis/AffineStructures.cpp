@@ -493,6 +493,22 @@ FlatAffineConstraints::FlatAffineConstraints(IntegerSet set)
   }
 }
 
+void FlatAffineConstraints::reset(unsigned numReservedInequalities,
+                                  unsigned numReservedEqualities,
+                                  unsigned newNumReservedCols,
+                                  unsigned newNumDims, unsigned newNumSymbols,
+                                  unsigned newNumLocals) {
+  assert(newNumReservedCols >= 1 && "minimum 1 column");
+  numReservedCols = newNumReservedCols;
+  numDims = newNumDims;
+  numSymbols = newNumSymbols;
+  numIds = numDims + numSymbols + newNumLocals;
+  equalities.clear();
+  inequalities.clear();
+  equalities.reserve(newNumReservedCols * numReservedEqualities);
+  inequalities.reserve(newNumReservedCols * numReservedInequalities);
+}
+
 /// Adds a dimensional identifier. The added column is initialized to
 /// zero.
 void FlatAffineConstraints::addDimId(unsigned pos) {

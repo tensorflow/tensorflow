@@ -23,7 +23,7 @@
 #define MLIR_TRANSFORMS_CFGFUNCTIONVIEWGRAPH_H_
 
 #include "mlir/IR/CFGFunction.h"
-#include "mlir/Transforms/Pass.h"
+#include "mlir/Pass.h"
 #include "llvm/ADT/Twine.h"
 #include "llvm/Support/GraphWriter.h"
 #include "llvm/Support/raw_ostream.h"

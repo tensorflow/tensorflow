@@ -63,7 +63,7 @@ static AffineExpr toAffineExpr(ArrayRef<int64_t> eq, unsigned numDims,
   }
 
   // Constant term.
-  unsigned constTerm = eq[eq.size() - 1];
+  int64_t constTerm = eq[eq.size() - 1];
   if (constTerm != 0)
     expr = expr + constTerm;
   return expr;
@@ -299,7 +299,7 @@ AffineExpr mlir::simplifyAffineExpr(AffineExpr expr, unsigned numDims,
 }
 
 // Flattens 'expr' into 'flattenedExpr'. Returns true on success or false
-// if 'expr' was unable to be flattened (i.e. because it was not pur affine,
+// if 'expr' was unable to be flattened (i.e. because it was not pure affine,
 // or because it contained mod's and div's that could not be eliminated
 // without introducing local variables).
 bool mlir::getFlattenedAffineExpr(

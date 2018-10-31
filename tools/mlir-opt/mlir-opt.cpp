@@ -21,6 +21,7 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "mlir/Analysis/Passes.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/CFGFunction.h"
 #include "mlir/IR/Location.h"
@@ -28,10 +29,10 @@
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/Module.h"
 #include "mlir/Parser.h"
+#include "mlir/Pass.h"
 #include "mlir/TensorFlow/ControlFlowOps.h"
 #include "mlir/TensorFlow/Passes.h"
 #include "mlir/Transforms/CFGFunctionViewGraph.h"
-#include "mlir/Transforms/Pass.h"
 #include "mlir/Transforms/Passes.h"
 #include "mlir/XLA/Passes.h"
 #include "llvm/Support/CommandLine.h"
@@ -70,13 +71,14 @@ enum Passes {
   ComposeAffineMaps,
   ConstantFold,
   ConvertToCFG,
-  Vectorize,
+  MemRefBoundCheck,
   LoopUnroll,
   LoopUnrollAndJam,
   PipelineDataTransfer,
   PrintCFGGraph,
   SimplifyAffineStructures,
   TFRaiseControlFlow,
+  Vectorize,
   XLALower,
 };
 
@@ -90,8 +92,8 @@ static cl::list<Passes> passList(
                    "Constant fold operations in functions"),
         clEnumValN(ConvertToCFG, "convert-to-cfg",
                    "Convert all ML functions in the module to CFG ones"),
-        clEnumValN(Vectorize, "vectorize",
-                   "Vectorize to a target independent n-D vector abstraction."),
+        clEnumValN(MemRefBoundCheck, "memref-bound-check",
+                   "Convert all ML functions in the module to CFG ones"),
         clEnumValN(LoopUnroll, "loop-unroll", "Unroll loops"),
         clEnumValN(LoopUnrollAndJam, "loop-unroll-jam", "Unroll and jam loops"),
         clEnumValN(PipelineDataTransfer, "pipeline-data-transfer",
@@ -103,6 +105,8 @@ static cl::list<Passes> passList(
                    "Simplify affine expressions"),
         clEnumValN(TFRaiseControlFlow, "tf-raise-control-flow",
                    "Dynamic TensorFlow Switch/Match nodes to a CFG"),
+        clEnumValN(Vectorize, "vectorize",
+                   "Vectorize to a target independent n-D vector abstraction."),
         clEnumValN(XLALower, "xla-lower", "Lower to XLA dialect")));
 
 enum OptResult { OptSuccess, OptFailure };
@@ -191,8 +195,8 @@ static OptResult performActions(SourceMgr &sourceMgr, MLIRContext *context) {
     case ConvertToCFG:
       pass = createConvertToCFGPass();
       break;
-    case Vectorize:
-      pass = createVectorizePass();
+    case MemRefBoundCheck:
+      pass = createMemRefBoundCheckPass();
       break;
     case LoopUnroll:
       pass = createLoopUnrollPass();
@@ -211,6 +215,9 @@ static OptResult performActions(SourceMgr &sourceMgr, MLIRContext *context) {
       break;
     case TFRaiseControlFlow:
       pass = createRaiseTFControlFlowPass();
+      break;
+    case Vectorize:
+      pass = createVectorizePass();
       break;
     case XLALower:
       pass = createXLALowerPass();

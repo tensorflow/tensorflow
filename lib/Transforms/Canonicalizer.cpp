@@ -22,7 +22,7 @@
 
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/PatternMatch.h"
-#include "mlir/Transforms/Pass.h"
+#include "mlir/Pass.h"
 #include "mlir/Transforms/Passes.h"
 using namespace mlir;
 

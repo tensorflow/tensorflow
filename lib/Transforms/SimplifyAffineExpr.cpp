@@ -20,13 +20,12 @@
 //===----------------------------------------------------------------------===//
 
 #include "mlir/Analysis/AffineStructures.h"
-#include "mlir/IR/AffineMap.h"
-#include "mlir/IR/Attributes.h"
 #include "mlir/IR/MLFunction.h"
-#include "mlir/IR/Statements.h"
 #include "mlir/IR/StmtVisitor.h"
-#include "mlir/Transforms/Pass.h"
+#include "mlir/Pass.h"
 #include "mlir/Transforms/Passes.h"
+
+#define DEBUG_TYPE "simplify-affine-structure"
 
 using namespace mlir;
 using llvm::report_fatal_error;

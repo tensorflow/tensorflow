@@ -273,6 +273,11 @@ public:
 
   FlatAffineConstraints(const MutableAffineMap &map);
 
+  // Clears any existing data and reserves memory for the specified constraints.
+  void reset(unsigned numReservedInequalities, unsigned numReservedEqualities,
+             unsigned numReservedCols, unsigned numDims = 0,
+             unsigned numSymbols = 0, unsigned numLocals = 0);
+
   ~FlatAffineConstraints() {}
 
   // Checks for emptiness by performing variable elimination on all identifiers,

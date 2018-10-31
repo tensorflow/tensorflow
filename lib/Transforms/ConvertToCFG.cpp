@@ -23,7 +23,7 @@
 #include "mlir/IR/CFGFunction.h"
 #include "mlir/IR/MLFunction.h"
 #include "mlir/IR/Module.h"
-#include "mlir/Transforms/Pass.h"
+#include "mlir/Pass.h"
 #include "mlir/Transforms/Passes.h"
 #include "llvm/ADT/DenseSet.h"
 using namespace mlir;

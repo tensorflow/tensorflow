@@ -29,9 +29,9 @@
 #include "mlir/IR/MLValue.h"
 #include "mlir/IR/SSAValue.h"
 #include "mlir/IR/Types.h"
+#include "mlir/Pass.h"
 #include "mlir/StandardOps/StandardOps.h"
 #include "mlir/Support/Functional.h"
-#include "mlir/Transforms/Pass.h"
 #include "mlir/Transforms/Passes.h"
 
 #include "llvm/ADT/DenseMap.h"

@@ -31,7 +31,6 @@
 namespace mlir {
 
 class AffineExpr;
-class MLIRContext;
 class MLValue;
 class OperationStmt;
 

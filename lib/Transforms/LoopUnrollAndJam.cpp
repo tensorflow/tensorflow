@@ -50,8 +50,8 @@
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/StmtVisitor.h"
+#include "mlir/Pass.h"
 #include "mlir/Transforms/LoopUtils.h"
-#include "mlir/Transforms/Pass.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/Support/CommandLine.h"
 
