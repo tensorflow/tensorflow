@@ -64,7 +64,6 @@ TENSORFLOW_API_INIT_FILES = [
     "lite/constants/__init__.py",
     "logging/__init__.py",
     "losses/__init__.py",
-    "manip/__init__.py",
     "math/__init__.py",
     "metrics/__init__.py",
     "nn/__init__.py",

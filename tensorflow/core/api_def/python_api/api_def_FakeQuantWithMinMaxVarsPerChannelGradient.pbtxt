@@ -5,6 +5,6 @@ op {
   }
   endpoint {
     name: "fake_quant_with_min_max_vars_per_channel_gradient"
-    deprecated: true
+    deprecation_version: 2
   }
 }
