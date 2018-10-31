@@ -36,9 +36,11 @@ void TileUsingEigen(const Device& d, Tensor* out, const Tensor& in,
   auto x = in.tensor<T, NDIM>();
   auto y = out->tensor<T, NDIM>();
 
+  bool use_32bit = y.size() < Eigen::NumTraits<int>::highest();
+
   Eigen::array<Tmultiples, NDIM> b;
   for (int i = 0; i < NDIM; ++i) b[i] = broadcast_array[i];
-  if (Eigen::internal::is_same<Device, Eigen::GpuDevice>::value) {
+  if (use_32bit && Eigen::internal::is_same<Device, Eigen::GpuDevice>::value) {
     // Use 32bit indexing to speed up the computations
     To32Bit(y).device(d) = To32Bit(x).broadcast(b);
   } else {

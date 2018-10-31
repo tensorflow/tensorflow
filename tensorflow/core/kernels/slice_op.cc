@@ -300,13 +300,12 @@ DECLARE_FOR_N(int32);
 #undef DECLARE_GPU_SPEC
 }  // namespace functor
 
-#define REGISTER_GPU(type)                                     \
-  REGISTER_KERNEL_BUILDER(Name("Slice")                        \
-                              .Device(DEVICE_GPU)              \
-                              .TypeConstraint<type>("T")       \
-                              .HostMemory("begin")             \
-                              .HostMemory("size")              \
-                              .TypeConstraint<int32>("Index"), \
+#define REGISTER_GPU(type)                               \
+  REGISTER_KERNEL_BUILDER(Name("Slice")                  \
+                              .Device(DEVICE_GPU)        \
+                              .TypeConstraint<type>("T") \
+                              .HostMemory("begin")       \
+                              .HostMemory("size"),       \
                           SliceOp<GPUDevice, type>)
 
 TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU);
@@ -322,7 +321,6 @@ TF_CALL_int8(REGISTER_GPU);
 REGISTER_KERNEL_BUILDER(Name("Slice")
                             .Device(DEVICE_GPU)
                             .TypeConstraint<int32>("T")
-                            .TypeConstraint<int32>("Index")
                             .HostMemory("input")
                             .HostMemory("begin")
                             .HostMemory("size")

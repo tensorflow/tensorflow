@@ -202,6 +202,13 @@ TF_CAPI_EXPORT extern void TF_AttrBuilderSetTypeList(TF_AttrBuilder* builder,
 TF_CAPI_EXPORT extern void TF_AttrBuilderCheckCanRunOnDevice(
     TF_AttrBuilder* builder, const char* device_type, TF_Status* status);
 
+// For argument number input_index, fetch the corresponding number_attr that
+// needs to be updated with the argument length of the input list.
+// Returns nullptr if there is any problem like op_name is not found, or the
+// argument does not support this attribute type.
+TF_CAPI_EXPORT extern const char* TF_GetNumberAttrForOpListInput(
+    const char* op_name, int input_index, TF_Status* status);
+
 #ifdef __cplusplus
 } /* end extern "C" */
 #endif

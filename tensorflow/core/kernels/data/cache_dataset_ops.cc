@@ -133,6 +133,12 @@ class CacheDatasetOp : public UnaryDatasetOpKernel {
       }
 
      protected:
+      std::shared_ptr<model::Node> CreateNode(
+          IteratorContext* ctx, model::Node::Args args) const override {
+        return model::MakeKnownRatioNode(std::move(args),
+                                         /*ratio=*/1);
+      }
+
       Status SaveInternal(IteratorStateWriter* writer) override {
         mutex_lock l(mu_);
         TF_RETURN_IF_ERROR(writer->WriteScalar(full_name("mode"), mode_));
@@ -243,6 +249,12 @@ class CacheDatasetOp : public UnaryDatasetOpKernel {
         }
 
        protected:
+        std::shared_ptr<model::Node> CreateNode(
+            IteratorContext* ctx, model::Node::Args args) const override {
+          return model::MakeKnownRatioNode(std::move(args),
+                                           /*ratio=*/1);
+        }
+
         Status SaveInternal(IteratorStateWriter* writer) override {
           mutex_lock l(mu_);
           if (iteration_completed_) {
@@ -468,6 +480,12 @@ class CacheDatasetOp : public UnaryDatasetOpKernel {
         }
 
        protected:
+        std::shared_ptr<model::Node> CreateNode(
+            IteratorContext* ctx, model::Node::Args args) const override {
+          return model::MakeKnownRatioNode(std::move(args),
+                                           /*ratio=*/1);
+        }
+
         Status SaveInternal(IteratorStateWriter* writer) override {
           mutex_lock l(mu_);
           TF_RETURN_IF_ERROR(
@@ -683,6 +701,12 @@ class CacheDatasetOp : public UnaryDatasetOpKernel {
       }
 
      protected:
+      std::shared_ptr<model::Node> CreateNode(
+          IteratorContext* ctx, model::Node::Args args) const override {
+        return model::MakeKnownRatioNode(std::move(args),
+                                         /*ratio=*/1);
+      }
+
       Status SaveInternal(IteratorStateWriter* writer) override {
         mutex_lock l(mu_);
         TF_RETURN_IF_ERROR(writer->WriteScalar(full_name("mode"), mode_));
@@ -799,6 +823,12 @@ class CacheDatasetOp : public UnaryDatasetOpKernel {
         }
 
        protected:
+        std::shared_ptr<model::Node> CreateNode(
+            IteratorContext* ctx, model::Node::Args args) const override {
+          return model::MakeKnownRatioNode(std::move(args),
+                                           /*ratio=*/1);
+        }
+
         Status SaveInternal(IteratorStateWriter* writer) override {
           mutex_lock l(mu_);
           return SaveInput(writer, input_impl_);
@@ -825,6 +855,12 @@ class CacheDatasetOp : public UnaryDatasetOpKernel {
         }
 
        protected:
+        std::shared_ptr<model::Node> CreateNode(
+            IteratorContext* ctx, model::Node::Args args) const override {
+          return model::MakeKnownRatioNode(std::move(args),
+                                           /*ratio=*/1);
+        }
+
         Status SaveInternal(IteratorStateWriter* writer) override {
           mutex_lock l(mu_);
           TF_RETURN_IF_ERROR(writer->WriteScalar(full_name("index"), index_));

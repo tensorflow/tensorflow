@@ -764,7 +764,8 @@ def run_all_in_graph_and_eager_modes(cls):
   """Execute all test methods in the given class with and without eager."""
   base_decorator = run_in_graph_and_eager_modes
   for name, value in cls.__dict__.copy().items():
-    if callable(value) and name.startswith("test"):
+    if callable(value) and name.startswith(
+        "test") and not name.startswith("testSkipEager"):
       setattr(cls, name, base_decorator(value))
   return cls
 
@@ -832,7 +833,7 @@ def run_in_graph_and_eager_modes(func=None,
     if tf_inspect.isclass(f):
       raise ValueError(
           "`run_test_in_graph_and_eager_modes` only supports test methods. "
-          "Did you mean to use `run_all_tests_in_graph_and_eager_modes`?")
+          "Did you mean to use `run_all_in_graph_and_eager_modes`?")
 
     def decorated(self, **kwargs):
       try:

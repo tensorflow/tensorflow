@@ -2405,7 +2405,6 @@ cc_library(
     ]),
     hdrs = [
         "lib/bfloat16/bfloat16.h",
-        "lib/core/casts.h",
         "lib/core/stringpiece.h",
         "lib/png/png_io.h",
         "platform/byte_order.h",
@@ -2525,6 +2524,7 @@ FRAMEWORK_INTERNAL_PRIVATE_HEADERS = [
 })
 
 FRAMEWORK_INTERNAL_PUBLIC_HEADERS = [
+    "framework/model.h",  # only needed for tests
     "framework/op_segment.h",
     "framework/rendezvous.h",  # only needed for tests
     "framework/resource_var.h",
@@ -3621,6 +3621,7 @@ tf_cc_tests(
         "framework/kernel_def_builder_test.cc",
         "framework/kernel_def_util_test.cc",
         "framework/memory_types_test.cc",
+        "framework/model_test.cc",
         "framework/node_def_builder_test.cc",
         "framework/node_def_util_test.cc",
         "framework/op_compatibility_test.cc",

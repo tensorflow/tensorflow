@@ -1763,7 +1763,8 @@ class SqrtDivToRsqrtMulStage : public ArithmeticOptimizerStage {
     TF_RETURN_IF_ERROR(GetInputNode(node->input(1), &y));
     // Optimize only if divisor is a Sqrt whose output is not being consumed
     // elsewhere.
-    if (IsSqrt(*y) && (NumNonControlOutputs(*y, *ctx().node_map) == 1)) {
+    if (IsSqrt(*y) && !IsInPreserveSet(*y) &&
+        (NumNonControlOutputs(*y, *ctx().node_map) == 1)) {
       // a / sqrt(b) = a * rsqrt(b)
       node->set_op("Mul");
       y->set_op("Rsqrt");

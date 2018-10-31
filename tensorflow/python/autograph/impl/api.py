@@ -19,7 +19,14 @@ from __future__ import division
 from __future__ import print_function
 
 import functools
+import sys
+
 from enum import Enum
+
+# pylint:disable=g-bad-import-order
+import numpy as np
+# pylint:enable=g-bad-import-order
+
 
 from tensorflow.python.autograph.core import config
 from tensorflow.python.autograph.core import converter
@@ -28,6 +35,8 @@ from tensorflow.python.autograph.operators import py_builtins
 from tensorflow.python.autograph.pyct import compiler
 from tensorflow.python.autograph.pyct import inspect_utils
 from tensorflow.python.autograph.utils import py_func
+from tensorflow.python.data.util import nest
+from tensorflow.python.framework import tensor_util
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import tf_decorator
 from tensorflow.python.util import tf_inspect
@@ -243,7 +252,30 @@ def converted_call(f, owner, options, *args, **kwargs):
       partial_types=partial_types,
       strip_decorators=options.strip_decorators,
       optional_features=options.optional_features)
-  return converted_f(*effective_args, **kwargs)
+
+  result = converted_f(*effective_args, **kwargs)
+  # When converting a function, we write a tmp file and import it as a module.
+  # This leaks the module's closure. Once we've executed the converted_f module
+  # and there is no more code left to be executed, we can clean up the module.
+
+  # TODO(mdan): Look into workarounds that don't suffer from refcount leaks.
+  # Possibly attach the closure as a regular closure cell, instead of relying on
+  # module globals.
+
+  # If there are callables in the result, they will fail to find their closure
+  # when called, so only delete module if all returned types are not callable.
+  flat_results = nest.flatten(result)
+  if all(map(_is_not_callable, flat_results)):
+    del sys.modules[converted_f.__module__]
+
+  return result
+
+
+def _is_not_callable(obj):
+  # TODO(brianklee): What happens if obj is a tensor wrapping a py_func?
+  return (isinstance(obj,
+                     (int, float, complex, str, bool, np.ndarray, np.generic))
+          or tensor_util.is_tensor(obj))
 
 
 # TODO(mdan): Rename: to_ops?

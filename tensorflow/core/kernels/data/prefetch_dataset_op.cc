@@ -148,6 +148,13 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
     }
 
    protected:
+    std::shared_ptr<model::Node> CreateNode(
+        IteratorContext* ctx, model::Node::Args args) const override {
+      return model::MakeAsyncKnownRatioNode(std::move(args),
+                                            /*ratio=*/1,
+                                            /*parameters=*/{});
+    }
+
     Status SaveInternal(IteratorStateWriter* writer) override {
       // Acquire both locks to ensure that the prefetch thread and
       // all GetNext threads are blocked.
@@ -258,7 +265,7 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
       if (!prefetch_thread_) {
         std::shared_ptr<IteratorContext> new_ctx(new IteratorContext(*ctx));
         prefetch_thread_.reset(ctx->env()->StartThread(
-            {}, "prefetch_thread",
+            {}, "tf_data_prefetch",
             [this, new_ctx]() { PrefetchThread(new_ctx); }));
       }
       return Status::OK();

@@ -26,7 +26,8 @@ namespace {
 bool FindChildWithName(const MutableGraphView& graph,
                        const string& output_port_name,
                        const string& input_name) {
-  GraphView::OutputPort output_port = graph.GetOutputPort(output_port_name, 0);
+  MutableGraphView::OutputPort output_port =
+      graph.GetOutputPort(output_port_name, 0);
   auto fanout = graph.GetFanout(output_port);
   for (auto& input_port : fanout) {
     if (input_port.node->name() == input_name) return true;
@@ -59,10 +60,10 @@ TEST(MutableGraphViewTest, AddAndReplaceInput) {
   GraphDef new_graph = item.graph;
   MutableGraphView graph(&new_graph);
 
-  GraphView::InputPort input = graph.GetInputPort("AddN", 0);
+  MutableGraphView::InputPort input = graph.GetInputPort("AddN", 0);
   EXPECT_EQ("AddN", input.node->name());
   EXPECT_EQ(0, input.port_id);
-  GraphView::OutputPort fanin = graph.GetRegularFanin(input);
+  MutableGraphView::OutputPort fanin = graph.GetRegularFanin(input);
   EXPECT_EQ("Square", fanin.node->name());
   EXPECT_EQ(0, fanin.port_id);
 
@@ -89,7 +90,7 @@ TEST(MutableGraphViewTest, InsertNodes) {
   GraphDef new_graph = item.graph;
   MutableGraphView graph(&new_graph);
 
-  GraphView::InputPort input = graph.GetInputPort("AddN", 0);
+  MutableGraphView::InputPort input = graph.GetInputPort("AddN", 0);
 
   NodeDef new_node = *input.node;
   new_node.set_name("new_node");

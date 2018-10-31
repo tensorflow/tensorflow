@@ -74,7 +74,11 @@ class DynamicBuffer {
   // The function allocates space for the buffer but does NOT take ownership.
   int WriteToBuffer(char** buffer);
 
-  // Fill content into a string tensor.
+  // Fill content into a string tensor, with the given new_shape. The new
+  // shape must match the number of strings in this object.
+  void WriteToTensor(TfLiteTensor* tensor, TfLiteIntArray* new_shape);
+
+  // Fill content into a string tensor. Set shape to {num_strings}.
   void WriteToTensor(TfLiteTensor* tensor);
 
  private:

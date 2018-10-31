@@ -451,6 +451,10 @@ tensorflow::ImportNumpy();
 
 // Shape
 
+%typemap(out) const Shape& {
+  $result = numpy::PyShapeInfoFromXlaShape(*$1);
+}
+
 %typemap(out) StatusOr<Shape> {
   if ($1.ok()) {
     $result = numpy::PyShapeInfoFromXlaShape($1.ConsumeValueOrDie());
@@ -980,6 +984,7 @@ tensorflow::ImportNumpy();
 %unignore xla::swig::LocalShapedBuffer;
 %unignore xla::swig::LocalShapedBuffer::FromLiteral;
 %unignore xla::swig::LocalShapedBuffer::ToLiteral;
+%unignore xla::swig::LocalShapedBuffer::shape;
 %unignore xla::swig::LocalShapedBufferTuple;
 %unignore xla::swig::LocalShapedBufferTuple::Release;
 %unignore xla::swig::LocalShapedBufferTuple::size;

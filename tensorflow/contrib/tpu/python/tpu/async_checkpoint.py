@@ -102,7 +102,8 @@ class AsyncCheckpointSaverHook(basic_session_run_hooks.CheckpointSaverHook):
       training_util.write_graph(
           ops.get_default_graph().as_graph_def(add_shapes=True),
           self._checkpoint_dir, "graph.pbtxt")
-    self._write_graph_thread = threading.Thread(target=_write_graph_fn)
+    self._write_graph_thread = threading.Thread(target=_write_graph_fn,
+                                                args=[self])
     self._write_graph_thread.start()
 
     saver_def = self._get_saver().saver_def if self._get_saver() else None

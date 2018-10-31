@@ -16,6 +16,9 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_PYTHON_LOCAL_COMPUTATION_BUILDER_H_
 #define TENSORFLOW_COMPILER_XLA_PYTHON_LOCAL_COMPUTATION_BUILDER_H_
 
+#include <string>
+#include <vector>
+
 #include "absl/types/span.h"
 #include "tensorflow/cc/framework/ops.h"
 #include "tensorflow/cc/framework/scope.h"
@@ -110,17 +113,22 @@ StatusOr<LocalShapedBufferTuple*> DestructureLocalShapedBufferTuple(
 // graph, and an XLA shape to track the referent's shape.
 class XrtAllocation {
  public:
-  static StatusOr<XrtAllocation*> FromLiteral(const Literal& argument);
+  // Accepts a `session_target` argument, used in constructing the
+  // `tensorflow::ClientSession` instance in which allocation and deallocation
+  // graphs are run.
+  static StatusOr<XrtAllocation*> FromLiteral(const Literal& argument,
+                                              const string& session_target);
 
-  XrtAllocation(int64 handle, Shape shape);
+  XrtAllocation(int64 handle, Shape shape, const string& session_target);
   ~XrtAllocation();
   StatusOr<Literal> ToLiteral() const;
   const Shape& shape() const;
   const int64 handle() const;
 
  private:
-  int64 handle_;
-  Shape shape_;
+  const int64 handle_;
+  const Shape shape_;
+  const string session_target_;
 };
 
 // Result of a tuple destructuring operation on an XrtAllocation.
@@ -145,8 +153,12 @@ class XrtAllocationTuple {
 
 // Destructures a tuple-valued XrtAllocation into its constitutent elements
 // in XrtAllocationTuple form.
+//
+// Accepts a `session_target` argument, used in constructing the
+// `tensorflow::ClientSession` instance in which the sub-tupling graph is run,
+// and passed along in constructing each constituent XrtAllocation.
 StatusOr<XrtAllocationTuple*> DestructureXrtAllocationTuple(
-    XrtAllocation* allocation);
+    XrtAllocation* allocation, const string& session_target);
 
 // Represents a compiled computation that can be executed given handles to
 // device-allocated literals. Specifically, wraps an XLA LocalExecutable.
@@ -165,7 +177,10 @@ class CompiledLocalComputation {
 // device-allocated literals. Specifically, wraps an XRT computation handle.
 class CompiledXrtComputation {
  public:
-  CompiledXrtComputation(const ProgramShape& program_shape, int64 handle);
+  // Accepts a `session_target` argument, used in constructing the
+  // `tensorflow::ClientSession` instance in which the execution graph is run.
+  CompiledXrtComputation(const ProgramShape& program_shape, int64 handle,
+                         const string& session_target);
   ~CompiledXrtComputation();
 
   StatusOr<XrtAllocation*> Execute(
@@ -175,8 +190,9 @@ class CompiledXrtComputation {
   int64 handle() const;
 
  private:
-  ProgramShape program_shape_;
-  int64 handle_;
+  const ProgramShape program_shape_;
+  const int64 handle_;
+  const string session_target_;
 };
 
 // Wraps a XlaComputation produced by a LocalComputationBuilder. The
@@ -191,8 +207,10 @@ class LocalComputation {
       const std::vector<Shape>& argument_shapes,
       const ExecutableBuildOptions* build_options);
 
+  // Accepts a `session_target` argument, used in constructing the
+  // `tensorflow::ClientSession` instance in which the compilation graph is run.
   StatusOr<CompiledXrtComputation*> CompileForXrt(
-      const std::vector<Shape>& argument_shapes);
+      const std::vector<Shape>& argument_shapes, const string& session_target);
 
   const XlaComputation& computation() const;
 

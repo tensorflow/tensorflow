@@ -21,8 +21,11 @@ limitations under the License.
 namespace tensorflow {
 namespace grappler {
 
-void ReverseDfs(
-    const GraphView& graph_view, const std::vector<const NodeDef*>& from,
+namespace {
+
+template <typename GraphViewType>
+void ReverseDfsInternal(
+    const GraphViewType& graph_view, const std::vector<const NodeDef*>& from,
     const std::function<void(const NodeDef*)>& pre_order,
     const std::function<void(const NodeDef*)>& post_order,
     const std::function<void(const NodeDef*, const NodeDef*)>& on_back_edge) {
@@ -77,6 +80,26 @@ void ReverseDfs(
       stack.push_back(StackElem{fanin.node, false, w.node});
     }
   }
+}
+
+}  // namespace
+
+void ReverseDfs(
+    const GraphView& graph_view, const std::vector<const NodeDef*>& from,
+    const std::function<void(const NodeDef*)>& pre_order,
+    const std::function<void(const NodeDef*)>& post_order,
+    const std::function<void(const NodeDef*, const NodeDef*)>& on_back_edge) {
+  ReverseDfsInternal<GraphView>(graph_view, from, pre_order, post_order,
+                                on_back_edge);
+}
+
+void ReverseDfs(
+    const MutableGraphView& graph_view, const std::vector<const NodeDef*>& from,
+    const std::function<void(const NodeDef*)>& pre_order,
+    const std::function<void(const NodeDef*)>& post_order,
+    const std::function<void(const NodeDef*, const NodeDef*)>& on_back_edge) {
+  ReverseDfsInternal<MutableGraphView>(graph_view, from, pre_order, post_order,
+                                       on_back_edge);
 }
 
 }  // namespace grappler

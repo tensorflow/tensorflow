@@ -125,6 +125,12 @@ class GeneratorDatasetOp::Dataset : public DatasetBase {
       return s;
     }
 
+   protected:
+    std::shared_ptr<model::Node> CreateNode(
+        IteratorContext* ctx, model::Node::Args args) const override {
+      return model::MakeSourceNode(std::move(args));
+    }
+
    private:
     mutex mu_;
     bool initialized_ GUARDED_BY(mu_) = false;

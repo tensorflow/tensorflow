@@ -63,4 +63,10 @@ except NameError:
   # does not have 'python', 'core' directories. Then, it will be copied
   # to tensorflow/ which does have these two directories.
   pass
+# Similarly for compiler. Do it separately to make sure we do this even if the
+# others don't exist.
+try:
+  del compiler
+except NameError:
+  pass
 # pylint: enable=undefined-variable

@@ -30,7 +30,7 @@ limitations under the License.
 #include "tensorflow/core/framework/versions.pb.h"
 #include "tensorflow/core/graph/graph_constructor.h"
 #include "tensorflow/core/grappler/costs/utils.h"
-#include "tensorflow/core/grappler/graph_view.h"
+#include "tensorflow/core/grappler/mutable_graph_view.h"
 #include "tensorflow/core/grappler/op_types.h"
 #include "tensorflow/core/grappler/utils.h"
 #include "tensorflow/core/grappler/utils/functions.h"
@@ -456,10 +456,10 @@ class SymbolicShapeRefiner {
       const GraphView& graph,
       const std::unordered_map<string, std::unordered_set<int>>& fed_ports)
       : graph_(graph),
-        function_library_(OpRegistry::Global(), graph.GetGraph()->library()),
+        function_library_(OpRegistry::Global(), graph.graph()->library()),
         fed_ports_(fed_ports) {
-    graph_def_version_ = graph.GetGraph()->versions().producer();
-    node_to_context_.reserve(graph.GetGraph()->node_size());
+    graph_def_version_ = graph.graph()->versions().producer();
+    node_to_context_.reserve(graph.graph()->node_size());
   }
 
   const GraphView& graph() const { return graph_; }
@@ -512,7 +512,7 @@ class SymbolicShapeRefiner {
     // Placeholder with Const) don't affect one in
     // fun_to_grappler_function_item_.
     GrapplerFunctionItem grappler_function_item = it->second;
-    GraphView gv(&grappler_function_item.graph);
+    MutableGraphView gv(&grappler_function_item.graph);
 
     // Forward shapes from function input nodes to argument nodes.
     for (int i = 0; i < grappler_function_item.inputs().size(); ++i) {
@@ -532,7 +532,7 @@ class SymbolicShapeRefiner {
             "Function inputs should not contain control nodes.");
       }
 
-      NodeDef* input_node = graph_.GetNode(node_name);
+      const NodeDef* input_node = graph_.GetNode(node_name);
       if (input_node == nullptr) {
         return errors::FailedPrecondition(node_name,
                                           " was not found in the graph.");
@@ -566,7 +566,7 @@ class SymbolicShapeRefiner {
     for (int i = grappler_function_item.inputs().size() - 1; i >= 0; --i) {
       const string& input = function_node->input(i);
       const string& node_name = NodeName(input);
-      NodeDef* input_node = graph_.GetNode(node_name);
+      const NodeDef* input_node = graph_.GetNode(node_name);
       if (IsConstant(*input_node)) {
         TF_CHECK_OK(
             ReplaceInputWithConst(*input_node, i, &grappler_function_item));
@@ -1160,9 +1160,12 @@ class SymbolicShapeRefiner {
             node.attr().at("new_axis_mask").i() != 0) {
           valid = false;
         }
-        if (node.attr().count("shrink_axis_mask") > 0 &&
-            node.attr().at("shrink_axis_mask").i() != 0) {
-          valid = false;
+        int shrink_axis_mask = 0;
+        if (node.attr().count("shrink_axis_mask") > 0) {
+          shrink_axis_mask = node.attr().at("shrink_axis_mask").i();
+          // Shapes are 1D vectors, so they can only shrink along the first axis
+          // or not at all.
+          valid &= (shrink_axis_mask == 1 || shrink_axis_mask == 0);
         }
         int begin_mask = 0;
         if (node.attr().count("begin_mask") > 0) {
@@ -1182,17 +1185,28 @@ class SymbolicShapeRefiner {
                         ? slice_begin->flat<int32>()(0)
                         : slice_begin->flat<int64>()(0);
           }
-          int64 end = std::numeric_limits<int64>::max();
-          if (end_mask == 0) {
-            end =
-                (slice_end->dtype() == DT_INT32 ? slice_end->flat<int32>()(0)
-                                                : slice_end->flat<int64>()(0));
-          }
-          int64 stride = slice_stride->dtype() == DT_INT32
-                             ? slice_stride->flat<int32>()(0)
-                             : slice_stride->flat<int64>()(0);
           ShapeHandle result;
-          TF_RETURN_IF_ERROR(ic->Subshape(input, begin, end, stride, &result));
+          if (shrink_axis_mask) {
+            // Returns a Tensor of rank N-1. For 1D vectors, this is the scalar
+            // value at index |begin|. |End| and |stride| are ignored.
+            if (begin < InferenceContext::Rank(input)) {
+              result = ic->MakeShape({ic->Dim(input, begin)});
+            } else {
+              result = ic->UnknownShape();
+            }
+          } else {
+            int64 end = std::numeric_limits<int64>::max();
+            if (end_mask == 0) {
+              end = (slice_end->dtype() == DT_INT32
+                         ? slice_end->flat<int32>()(0)
+                         : slice_end->flat<int64>()(0));
+            }
+            int64 stride = slice_stride->dtype() == DT_INT32
+                               ? slice_stride->flat<int32>()(0)
+                               : slice_stride->flat<int64>()(0);
+            TF_RETURN_IF_ERROR(
+                ic->Subshape(input, begin, end, stride, &result));
+          }
           c->output_tensors_as_shapes.resize(1);
           c->output_tensors_as_shapes[0] = result;
         }
@@ -1427,8 +1441,8 @@ Status GraphProperties::UpdateMergeNode(SymbolicShapeRefiner* shape_refiner,
       continue;
     }
     ShapeHandle input = in->output(fanin.src.port_id);
-    CHECK_EQ(fanin.tgt.node, node);
-    c->SetInput(fanin.tgt.port_id, input);
+    CHECK_EQ(fanin.dst.node, node);
+    c->SetInput(fanin.dst.port_id, input);
     if (!out_initialized) {
       out_initialized = true;
       out = input;
@@ -1659,7 +1673,7 @@ Status GraphProperties::InferStatically(bool assume_valid_feeds) {
     }
   }
 
-  GraphView graph_view(const_cast<GraphDef*>(&item_.graph));
+  GraphView graph_view(&item_.graph);
 
   // List the resources and the nodes using them. Also collect the Merge nodes,
   // fed nodes, and primary inputs.
@@ -1711,10 +1725,10 @@ Status GraphProperties::InferStatically(bool assume_valid_feeds) {
   for (const auto& resource : resources) {
     for (const NodeDef* src : resource.second.first) {
       resource_handles[src] = resource.first;
-      for (const NodeDef* tgt : resource.second.second) {
+      for (const NodeDef* dst : resource.second.second) {
         // Add control edges from enqueue to dequeue nodes to ensure they are
         // processed in their logical order.
-        extra_deps.emplace_back(src, tgt);
+        extra_deps.emplace_back(src, dst);
       }
     }
   }

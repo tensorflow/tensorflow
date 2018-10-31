@@ -30,8 +30,8 @@ limitations under the License.
 #include "tensorflow/core/grappler/costs/graph_memory.h"
 #include "tensorflow/core/grappler/costs/graph_properties.h"
 #include "tensorflow/core/grappler/costs/utils.h"
-#include "tensorflow/core/grappler/graph_view.h"
 #include "tensorflow/core/grappler/grappler_item.h"
+#include "tensorflow/core/grappler/mutable_graph_view.h"
 #include "tensorflow/core/grappler/op_types.h"
 #include "tensorflow/core/grappler/optimizers/graph_rewriter.h"
 #include "tensorflow/core/grappler/optimizers/static_schedule.h"
@@ -497,7 +497,7 @@ void RecomputationRewritingPass(RewriterConfig::MemOptType optimization_level,
 
 bool SchedulingPass(Cluster* cluster, GrapplerItem* item) {
   // Look for AddN nodes (and equivalent) and record input names.
-  GraphView view(&item->graph);
+  MutableGraphView view(&item->graph);
 
   std::unordered_map<string, std::unordered_set<NodeDef*>> addn_list;
   for (NodeDef& node : *item->graph.mutable_node()) {
@@ -592,7 +592,7 @@ bool SchedulingPass(Cluster* cluster, GrapplerItem* item) {
     for (int i = 0; i < node->input_size(); ++i) {
       const string& input = node->input(i);
       const string node_name = NodeName(input);
-      NodeDef* node = view.GetNode(node_name);
+      const NodeDef* node = view.GetNode(node_name);
       input_topo_index.push_back(topo_order.at(node));
     }
     int min_input_topo_index = INT_MAX;
@@ -834,7 +834,8 @@ static const NodeDef* FindSwapInTrigger(
   return nullptr;
 }
 
-static bool IsSwappable(const GraphView& graph, GraphView::OutputPort output) {
+static bool IsSwappable(const MutableGraphView& graph,
+                        MutableGraphView::OutputPort output) {
   const NodeDef& node = *output.node;
   // There is no point in swapping out persistent tensors, since the tensor will
   // continue to use memory.
@@ -860,10 +861,10 @@ static bool IsSwappable(const GraphView& graph, GraphView::OutputPort output) {
     // If placed on the same device, these nodes are just forwarding references
     // to their input. Therefore they are swappable iff their fanin is swappable
     // or it resides on a different device.
-    GraphView::InputPort input;
+    MutableGraphView::InputPort input;
     input.node = output.node;
     input.port_id = 0;
-    GraphView::OutputPort fanin = graph.GetRegularFanin(input);
+    MutableGraphView::OutputPort fanin = graph.GetRegularFanin(input);
     if (fanin.node->device() == node.device()) {
       return IsSwappable(graph, fanin);
     }
@@ -872,19 +873,19 @@ static bool IsSwappable(const GraphView& graph, GraphView::OutputPort output) {
 }
 
 static NodeDef* FindSwapOutTrigger(
-    const NodeDef* node, int input_id, const GraphView& view,
+    const NodeDef* node, int input_id, const MutableGraphView& view,
     const std::unordered_map<const NodeDef*, Costs::NanoSeconds>&
         execution_times) {
   // Find the output port that generated the tensor to swap.
-  GraphView::InputPort swap;
+  MutableGraphView::InputPort swap;
   swap.node = const_cast<NodeDef*>(node);
   swap.port_id = input_id;
-  GraphView::OutputPort generator = view.GetRegularFanin(swap);
+  MutableGraphView::OutputPort generator = view.GetRegularFanin(swap);
   if (!generator.node) {
     return nullptr;
   }
 
-  const std::unordered_set<GraphView::InputPort, GraphView::HashPort>& fanout =
+  const absl::flat_hash_set<MutableGraphView::InputPort>& fanout =
       view.GetFanout(generator);
   NodeDef* trigger = nullptr;
   Costs::NanoSeconds earliest_fanout(Costs::NanoSeconds::infinity());
@@ -903,7 +904,7 @@ static NodeDef* FindSwapOutTrigger(
   return trigger;
 }
 
-static bool IsSwappable(GraphView::InputPort input) {
+static bool IsSwappable(MutableGraphView::InputPort input) {
   const NodeDef& node = *input.node;
 
   const OpDef* op_def;
@@ -920,9 +921,9 @@ static bool IsSwappable(GraphView::InputPort input) {
 }
 
 struct MemInfo {
-  GraphView::OutputPort port;
+  MutableGraphView::OutputPort port;
   int64 memory_used;
-  std::vector<GraphView::InputPort> uses_left;
+  std::vector<MutableGraphView::InputPort> uses_left;
   double fitness;
 
   bool operator<(const MemInfo& other) const { return fitness < other.fitness; }
@@ -993,7 +994,7 @@ static bool IdentifySwappingCandidates(
 
     std::vector<MemInfo> mem_state;
 
-    GraphView graph(&item->graph);
+    MutableGraphView graph(&item->graph);
     for (const auto& live_tensor : mem_usage.live_tensors) {
       if (live_tensor.memory_used <= 1024) {
         // Don't bother with small tensors.
@@ -1009,7 +1010,7 @@ static bool IdentifySwappingCandidates(
       if (skip_list->find(live_tensor.node) != skip_list->end()) {
         continue;
       }
-      GraphView::OutputPort port =
+      MutableGraphView::OutputPort port =
           graph.GetOutputPort(live_tensor.node, live_tensor.output_id);
       if (!IsSwappable(graph, port)) {
         continue;
@@ -1020,7 +1021,7 @@ static bool IdentifySwappingCandidates(
       Costs::Duration allocation_time = live_tensor.allocation_time;
       Costs::Duration earliest_use(Costs::Duration::infinity());
       bool valid = true;
-      for (GraphView::InputPort input : graph.GetFanout(port)) {
+      for (MutableGraphView::InputPort input : graph.GetFanout(port)) {
         // Get execution time.
         auto it = op_completion_times.find(input.node->name());
         if (it == op_completion_times.end()) {
@@ -1062,7 +1063,7 @@ static bool IdentifySwappingCandidates(
         // the values do not fit into any integral type.
         mem_info.fitness =
             MathUtil::IPow<double>((earliest_use - peak_time).count(), 2) /
-            MathUtil::IPow<double>(mem_info.uses_left.size(), 2) +
+                MathUtil::IPow<double>(mem_info.uses_left.size(), 2) +
             MathUtil::IPow<double>((allocation_time - peak_time).count(), 2);
         mem_info.fitness = -mem_info.fitness;
         mem_state.push_back(mem_info);
@@ -1073,7 +1074,8 @@ static bool IdentifySwappingCandidates(
     std::sort(mem_state.begin(), mem_state.end());
 
     for (const MemInfo& mem_info : mem_state) {
-      for (const GraphView::InputPort fanout_to_swap : mem_info.uses_left) {
+      for (const MutableGraphView::InputPort fanout_to_swap :
+           mem_info.uses_left) {
         VLOG(1) << "Will swap fanout " << fanout_to_swap.node->name() << ":"
                 << fanout_to_swap.port_id << " of tensor "
                 << mem_info.port.node->name() << ":" << mem_info.port.port_id
@@ -1150,7 +1152,7 @@ bool SwappingPass(RewriterConfig::MemOptType optimization_level,
   for (const auto& node : item->graph.node()) {
     name_map[node.name()] = &node;
   }
-  GraphView view(&item->graph);
+  MutableGraphView view(&item->graph);
 
   bool updated_graph = false;
 

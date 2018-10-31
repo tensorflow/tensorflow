@@ -214,15 +214,15 @@ class TemplatesTest(test.TestCase):
     result, _ = compiler.ast_to_object(node)
     self.assertEquals(3, result.test_fn())
 
-  def replace_as_expression(self):
+  def test_replace_as_expression(self):
     template = """
       foo(a)
     """
 
-    node = templates.replace(template, foo='bar', a='baz')
-    self.assertTrue(node is gast.Call)
+    node = templates.replace_as_expression(template, foo='bar', a='baz')
+    self.assertIsInstance(node, gast.Call)
     self.assertEqual(node.func.id, 'bar')
-    self.assertEqual(node.func.args[0].id, 'baz')
+    self.assertEqual(node.args[0].id, 'baz')
 
   def test_replace_as_expression_restrictions(self):
     template = """
@@ -231,6 +231,13 @@ class TemplatesTest(test.TestCase):
     """
     with self.assertRaises(ValueError):
       templates.replace_as_expression(template)
+
+  def test_function_call_in_list(self):
+    template = """
+        foo(bar)
+    """
+    source = parser.parse_expression('[a(b(1))]')
+    templates.replace_as_expression(template, bar=source)
 
 
 if __name__ == '__main__':

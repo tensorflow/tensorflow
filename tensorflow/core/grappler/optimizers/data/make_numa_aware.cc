@@ -29,7 +29,7 @@ namespace {
 
 NodeDef MakeNumaAwareNode(const NodeDef& node, MutableGraphView* graph) {
   NodeDef numa_aware_node = node;
-  graph_utils::SetUniqueGraphNodeName("make_numa_aware", graph->GetGraph(),
+  graph_utils::SetUniqueGraphNodeName("make_numa_aware", graph->graph(),
                                       &numa_aware_node);
   numa_aware_node.set_op("ExperimentalNumaMapAndBatchDataset");
   return numa_aware_node;

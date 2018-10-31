@@ -19,8 +19,26 @@ limitations under the License.
 namespace tensorflow {
 namespace grappler {
 
+const absl::flat_hash_set<MutableGraphView::InputPort>&
+MutableGraphView::GetFanout(const GraphView::OutputPort& port) const {
+  return GetFanout(MutableGraphView::OutputPort(const_cast<NodeDef*>(port.node),
+                                                port.port_id));
+}
+
+absl::flat_hash_set<MutableGraphView::OutputPort> MutableGraphView::GetFanin(
+    const GraphView::InputPort& port) const {
+  return GetFanin(MutableGraphView::InputPort(const_cast<NodeDef*>(port.node),
+                                              port.port_id));
+}
+
+const MutableGraphView::OutputPort MutableGraphView::GetRegularFanin(
+    const GraphView::InputPort& port) const {
+  return GetRegularFanin(MutableGraphView::InputPort(
+      const_cast<NodeDef*>(port.node), port.port_id));
+}
+
 NodeDef* MutableGraphView::AddNode(NodeDef&& node) {
-  auto* node_in_graph = GetGraph()->add_node();
+  auto* node_in_graph = graph()->add_node();
   *node_in_graph = std::move(node);
 
   AddUniqueNodeOrDie(node_in_graph);
@@ -31,7 +49,7 @@ NodeDef* MutableGraphView::AddNode(NodeDef&& node) {
 
 NodeDef* MutableGraphView::InsertNode(const NodeDef& input_node, NodeDef&& node,
                                       const int output_port_id) {
-  auto* node_in_graph = GetGraph()->add_node();
+  auto* node_in_graph = graph()->add_node();
   *node_in_graph = std::move(node);
 
   AddUniqueNodeOrDie(node_in_graph);
@@ -46,8 +64,7 @@ NodeDef* MutableGraphView::InsertNode(const NodeDef& input_node, NodeDef&& node,
 void MutableGraphView::ReplaceInput(const NodeDef& old_input,
                                     const NodeDef& new_input,
                                     const int output_port_id) {
-  GraphView::OutputPort output_port =
-      GetOutputPort(old_input.name(), output_port_id);
+  OutputPort output_port = GetOutputPort(old_input.name(), output_port_id);
   auto fanout = GetFanout(output_port);
   for (auto& input_port : fanout) {
     input_port.node->set_input(input_port.port_id, new_input.name());
@@ -57,17 +74,17 @@ void MutableGraphView::ReplaceInput(const NodeDef& old_input,
 
 void MutableGraphView::DeleteNodes(const std::set<string>& nodes_to_delete) {
   for (const string& node_name_to_delete : nodes_to_delete)
-    RemoveFanouts(MutableNodes()->at(node_name_to_delete));
+    RemoveFanouts(mutable_nodes()->at(node_name_to_delete));
   for (const string& node_name_to_delete : nodes_to_delete)
-    MutableNodes()->erase(node_name_to_delete);
-  EraseNodesFromGraph(nodes_to_delete, GetGraph());
+    mutable_nodes()->erase(node_name_to_delete);
+  EraseNodesFromGraph(nodes_to_delete, graph());
 }
 
 void MutableGraphView::RemoveFanouts(NodeDef* node) {
   for (int i = 0; i < node->input_size(); ++i) {
     OutputPort fanin;
     string fanin_name = ParseNodeName(node->input(i), &fanin.port_id);
-    fanin.node = (*MutableNodes())[fanin_name];
+    fanin.node = (*mutable_nodes())[fanin_name];
 
     InputPort input;
     input.node = node;
@@ -76,7 +93,7 @@ void MutableGraphView::RemoveFanouts(NodeDef* node) {
     else
       input.port_id = i;
 
-    (*MutableFanouts())[fanin].erase(input);
+    (*mutable_fanouts())[fanin].erase(input);
   }
 }
 

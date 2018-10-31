@@ -142,11 +142,11 @@ class ParseExampleDatasetOp : public UnaryDatasetOpKernel {
       it->second = i++;
     }
 
-    *output = new Dataset(
-        ctx, input, std::move(dense_defaults), std::move(sparse_keys_),
-        std::move(dense_keys_), std::move(key_to_output_index),
-        std::move(config), num_parallel_calls, sparse_types_, dense_types_,
-        dense_shapes_, output_types_, output_shapes_, sloppy_);
+    *output =
+        new Dataset(ctx, input, dense_defaults, sparse_keys_, dense_keys_,
+                    std::move(key_to_output_index), std::move(config),
+                    num_parallel_calls, sparse_types_, dense_types_,
+                    dense_shapes_, output_types_, output_shapes_, sloppy_);
   }
 
  private:

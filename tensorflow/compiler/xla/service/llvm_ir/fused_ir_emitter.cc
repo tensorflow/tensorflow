@@ -72,16 +72,17 @@ Status FusedIrEmitter::DefaultAction(HloInstruction* hlo) {
 }
 
 Status FusedIrEmitter::HandleConstant(HloInstruction* constant) {
-  const Literal& literal = constant->literal();
-  llvm::Constant* initializer =
-      llvm_ir::ConvertLiteralToIrConstant(literal, module_);
-  llvm::GlobalVariable* global = new llvm::GlobalVariable(
-      *b_->GetInsertBlock()->getModule(), initializer->getType(),
-      /*isConstant=*/true, llvm::GlobalValue::ExternalLinkage, initializer,
-      /*Name=*/"");
-  llvm::Constant* shape_constant = llvm::ConstantExpr::getBitCast(
-      global, llvm_ir::ShapeToIrType(literal.shape(), module_)->getPointerTo());
   indexed_generators_[constant] = [=](const IrArray::Index& index) {
+    const Literal& literal = constant->literal();
+    llvm::Constant* initializer =
+        llvm_ir::ConvertLiteralToIrConstant(literal, module_);
+    llvm::GlobalVariable* global = new llvm::GlobalVariable(
+        *b_->GetInsertBlock()->getModule(), initializer->getType(),
+        /*isConstant=*/true, llvm::GlobalValue::ExternalLinkage, initializer,
+        /*Name=*/"");
+    llvm::Constant* shape_constant = llvm::ConstantExpr::getBitCast(
+        global,
+        llvm_ir::ShapeToIrType(literal.shape(), module_)->getPointerTo());
     return IrArray(shape_constant, constant->shape())
         .EmitReadArrayElement(index, b_);
   };
@@ -105,7 +106,7 @@ Status FusedIrEmitter::HandleGetTupleElement(
             tuple_operand->name());
       }
       tuple_ptr =
-          parameter_arrays_[tuple_operand->parameter_number()].GetBasePointer();
+          GetBasePointerForFusedParameter(tuple_operand->parameter_number());
     }
 
     // Lookup tuple element pointer.
@@ -148,7 +149,7 @@ Status FusedIrEmitter::HandleParameter(HloInstruction* parameter) {
             "tiled_buffer");
       }
     }
-    return parameter_arrays_[parameter->parameter_number()]
+    return GetIrArrayForFusedParameter(parameter->parameter_number())
         .EmitReadArrayElement(index, b_);
   };
   return Status::OK();

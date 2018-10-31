@@ -58,6 +58,11 @@ TEST(CApiSimple, Smoke) {
   EXPECT_NE(TFL_TensorData(input_tensor), nullptr);
   EXPECT_STREQ(TFL_TensorName(input_tensor), "input");
 
+  TFL_QuantizationParams input_params =
+      TFL_TensorQuantizationParams(input_tensor);
+  EXPECT_EQ(input_params.scale, 0.f);
+  EXPECT_EQ(input_params.zero_point, 0);
+
   std::array<float, 2> input = {1.f, 3.f};
   ASSERT_EQ(TFL_TensorCopyFromBuffer(input_tensor, input.data(),
                                      input.size() * sizeof(float)),
@@ -75,12 +80,77 @@ TEST(CApiSimple, Smoke) {
   EXPECT_NE(TFL_TensorData(output_tensor), nullptr);
   EXPECT_STREQ(TFL_TensorName(output_tensor), "output");
 
+  TFL_QuantizationParams output_params =
+      TFL_TensorQuantizationParams(output_tensor);
+  EXPECT_EQ(output_params.scale, 0.f);
+  EXPECT_EQ(output_params.zero_point, 0);
+
   std::array<float, 2> output;
   ASSERT_EQ(TFL_TensorCopyToBuffer(output_tensor, output.data(),
                                    output.size() * sizeof(float)),
             kTfLiteOk);
   EXPECT_EQ(output[0], 3.f);
   EXPECT_EQ(output[1], 9.f);
+
+  TFL_DeleteInterpreter(interpreter);
+}
+
+TEST(CApiSimple, QuantizationParams) {
+  TFL_Model* model = TFL_NewModelFromFile(
+      "tensorflow/contrib/lite/testdata/add_quantized.bin");
+  ASSERT_NE(model, nullptr);
+
+  TFL_Interpreter* interpreter = TFL_NewInterpreter(model, nullptr);
+  ASSERT_NE(interpreter, nullptr);
+
+  TFL_DeleteModel(model);
+
+  const std::array<int, 1> input_dims = {2};
+  ASSERT_EQ(TFL_InterpreterResizeInputTensor(interpreter, 0, input_dims.data(),
+                                             input_dims.size()),
+            kTfLiteOk);
+  ASSERT_EQ(TFL_InterpreterAllocateTensors(interpreter), kTfLiteOk);
+
+  TFL_Tensor* input_tensor = TFL_InterpreterGetInputTensor(interpreter, 0);
+  ASSERT_NE(input_tensor, nullptr);
+  EXPECT_EQ(TFL_TensorType(input_tensor), kTfLiteUInt8);
+  EXPECT_EQ(TFL_TensorNumDims(input_tensor), 1);
+  EXPECT_EQ(TFL_TensorDim(input_tensor, 0), 2);
+
+  TFL_QuantizationParams input_params =
+      TFL_TensorQuantizationParams(input_tensor);
+  EXPECT_EQ(input_params.scale, 0.003922f);
+  EXPECT_EQ(input_params.zero_point, 0);
+
+  const std::array<uint8_t, 2> input = {1, 3};
+  ASSERT_EQ(TFL_TensorCopyFromBuffer(input_tensor, input.data(),
+                                     input.size() * sizeof(uint8_t)),
+            kTfLiteOk);
+
+  ASSERT_EQ(TFL_InterpreterInvoke(interpreter), kTfLiteOk);
+
+  const TFL_Tensor* output_tensor =
+      TFL_InterpreterGetOutputTensor(interpreter, 0);
+  ASSERT_NE(output_tensor, nullptr);
+
+  TFL_QuantizationParams output_params =
+      TFL_TensorQuantizationParams(output_tensor);
+  EXPECT_EQ(output_params.scale, 0.003922f);
+  EXPECT_EQ(output_params.zero_point, 0);
+
+  std::array<uint8_t, 2> output;
+  ASSERT_EQ(TFL_TensorCopyToBuffer(output_tensor, output.data(),
+                                   output.size() * sizeof(uint8_t)),
+            kTfLiteOk);
+  EXPECT_EQ(output[0], 3);
+  EXPECT_EQ(output[1], 9);
+
+  const float dequantizedOutput0 =
+      output_params.scale * (output[0] - output_params.zero_point);
+  const float dequantizedOutput1 =
+      output_params.scale * (output[1] - output_params.zero_point);
+  EXPECT_EQ(dequantizedOutput0, 0.011766f);
+  EXPECT_EQ(dequantizedOutput1, 0.035298f);
 
   TFL_DeleteInterpreter(interpreter);
 }

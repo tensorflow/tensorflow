@@ -265,8 +265,7 @@ def _add_self_references(namespace, autograph_module):
     # Craft a module that exposes parts of the external API as well as certain
     # internal modules.
     ag_internal = imp.new_module('autograph')
-    ag_internal.converted_call = autograph_module.converted_call
-    ag_internal.ConversionOptions = converter.ConversionOptions
+    ag_internal.__dict__.update(autograph_module.__dict__)
     ag_internal.utils = utils
     ag_internal.function_scope = function_wrapping.function_scope
     ag_internal.rewrite_graph_construction_error = (

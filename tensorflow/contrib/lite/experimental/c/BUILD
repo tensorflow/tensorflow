@@ -86,7 +86,10 @@ cc_test(
     name = "c_api_test",
     size = "small",
     srcs = ["c_api_test.cc"],
-    data = ["//tensorflow/contrib/lite:testdata/add.bin"],
+    data = [
+        "//tensorflow/contrib/lite:testdata/add.bin",
+        "//tensorflow/contrib/lite:testdata/add_quantized.bin",
+    ],
     deps = [
         ":c_api",
         "//tensorflow/contrib/lite:context",

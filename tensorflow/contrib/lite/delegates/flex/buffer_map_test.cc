@@ -17,6 +17,7 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "tensorflow/contrib/lite/interpreter.h"
+#include "tensorflow/contrib/lite/string_util.h"
 #include "tensorflow/contrib/lite/testing/util.h"
 #include "tensorflow/contrib/lite/util.h"
 
@@ -44,6 +45,28 @@ UniqueTfLiteTensor MakeLiteTensor(const std::vector<int>& shape,
   tensor->data.raw = nullptr;
   TfLiteTensorRealloc(data.size() * sizeof(T), tensor.get());
   memcpy(tensor->data.raw, data.data(), data.size() * sizeof(T));
+  return tensor;
+}
+
+template <>
+UniqueTfLiteTensor MakeLiteTensor<string>(const std::vector<int>& shape,
+                                          const std::vector<string>& data) {
+  auto tensor = UniqueTfLiteTensor(new TfLiteTensor, [](TfLiteTensor* t) {
+    TfLiteTensorDataFree(t);
+    TfLiteIntArrayFree(t->dims);
+    delete t;
+  });
+  tensor->allocation_type = kTfLiteDynamic;
+  tensor->type = typeToTfLiteType<string>();
+  tensor->dims = ConvertVectorToTfLiteIntArray(shape);
+  tensor->data.raw = nullptr;
+  TfLiteTensorRealloc(data.size() * sizeof(string), tensor.get());
+
+  DynamicBuffer b;
+  for (const string& s : data) {
+    b.AddString(s.data(), s.size());
+  }
+  b.WriteToTensor(tensor.get(), ConvertVectorToTfLiteIntArray(shape));
   return tensor;
 }
 
@@ -93,6 +116,24 @@ TEST(BufferMapTest, SetFromTfLite) {
   ASSERT_THAT(GetTensorShape(out_tensor), ElementsAre(1, 2, 1, 3));
 }
 
+TEST(BufferMapTest, SetFromTfLiteString) {
+  BufferMap buffer_map;
+
+  UniqueTfLiteTensor t =
+      MakeLiteTensor<string>({1, 2, 1, 3}, {"", "", "", "str1", "", ""});
+  buffer_map.SetFromTfLite(0, t.get());
+  ASSERT_TRUE(buffer_map.HasTensor(0));
+
+  EXPECT_THAT(GetTensorData<string>(buffer_map.GetTensor(0)),
+              ElementsAre("", "", "", "str1", "", ""));
+
+  // Also check details of the tensor.
+  tensorflow::Tensor out_tensor = buffer_map.GetTensor(0);
+  ASSERT_EQ(out_tensor.dtype(), tensorflow::DT_STRING);
+  ASSERT_EQ(out_tensor.NumElements(), 6);
+  ASSERT_THAT(GetTensorShape(out_tensor), ElementsAre(1, 2, 1, 3));
+}
+
 TEST(BufferMapTest, SetFromTfLiteTwice) {
   UniqueTfLiteTensor t1 =
       MakeLiteTensor<float>({1, 2, 1, 3}, {0, 0, 0, 0.123f, 0, 0});
@@ -105,6 +146,20 @@ TEST(BufferMapTest, SetFromTfLiteTwice) {
 
   EXPECT_THAT(GetTensorData<int>(buffer_map.GetTensor(0)),
               ElementsAre(0, 0, 0, 3, 0, 0, 1, 2));
+}
+
+TEST(BufferMapTest, SetFromTfLiteStringTwice) {
+  UniqueTfLiteTensor t1 =
+      MakeLiteTensor<float>({1, 2, 1, 3}, {0, 0, 0, 0.123f, 0, 0});
+  UniqueTfLiteTensor t2 =
+      MakeLiteTensor<string>({1, 2, 4}, {"", "", "", "s3", "", "", "s1", "s2"});
+
+  BufferMap buffer_map;
+  buffer_map.SetFromTfLite(0, t1.get());
+  buffer_map.SetFromTfLite(0, t2.get());
+
+  EXPECT_THAT(GetTensorData<string>(buffer_map.GetTensor(0)),
+              ElementsAre("", "", "", "s3", "", "", "s1", "s2"));
 }
 
 TEST(BufferMapTest, SetFromTensorFlow) {

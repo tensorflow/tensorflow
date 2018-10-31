@@ -76,6 +76,7 @@ py_library(
     srcs_version = "PY2AND3",
     visibility = [
         "//tensorflow:__pkg__",
+        "//tensorflow/python/estimator:__subpackages__",
         "//tensorflow/python/tools:__pkg__",
         "//tensorflow/python/tools/api/generator:__pkg__",
         "//tensorflow/tools/api/tests:__pkg__",
@@ -135,6 +136,7 @@ py_library(
         ":util",
         ":weights_broadcast_ops",
         ":while_v2",
+        "//tensorflow/contrib/lite/python:lite",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python/compat",
         "//tensorflow/python/data",
@@ -2036,6 +2038,8 @@ py_library(
     ],
 )
 
+# Note: targets depending on this should also depend on ":cond_v2" and ":while_v2".
+# See b/118513001.
 py_library(
     name = "control_flow_ops",
     srcs = ["ops/control_flow_ops.py"],
@@ -3221,6 +3225,7 @@ cuda_py_test(
         ":variable_scope",
         "//third_party/py/numpy",
     ],
+    tags = ["no_oss"],  # b/118709825
 )
 
 cuda_py_test(

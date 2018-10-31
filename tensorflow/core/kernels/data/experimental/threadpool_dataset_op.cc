@@ -206,6 +206,13 @@ class ThreadPoolDatasetOp : public UnaryDatasetOpKernel {
                                     end_of_sequence);
       }
 
+     protected:
+      std::shared_ptr<model::Node> CreateNode(
+          IteratorContext* ctx, model::Node::Args args) const override {
+        return model::MakeKnownRatioNode(std::move(args),
+                                         /*ratio=*/1);
+      }
+
      private:
       std::unique_ptr<IteratorBase> input_impl_;
     };

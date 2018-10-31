@@ -195,6 +195,7 @@ cc_library(
         "//tensorflow/core/kernels/data:iterator_ops",
         "//tensorflow/core/kernels/data:prefetch_dataset_op",
         "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/synchronization",
     ],
 )
 

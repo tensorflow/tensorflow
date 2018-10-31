@@ -146,7 +146,7 @@ class ConvertTestOpHint(test_util.TensorFlowTestCase):
     """Returns used op types in `graphdef` reachable from `output_nodes`.
 
     This is used to check that after the stub transformation the expected
-    nodes are there. Typically use this with self.assertCountEqual(...).
+    nodes are there.
 
     NOTE: this is not a exact test that the graph is the correct output, but
       it balances compact expressibility of test with sanity checking.
@@ -196,11 +196,11 @@ class ConvertTestOpHint(test_util.TensorFlowTestCase):
       stubbed_graphdef = op_hint.convert_op_hints_to_stubs(
           graph_def=sess.graph_def)
 
-      self.assertCountEqual(
+      self.assertEqual(
           self._getGraphOpTypes(
               stubbed_graphdef,
               output_nodes=[op_hint._tensor_name_base(output.name)]),
-          ["cool_activation", "Const", "Identity"])
+          set(["cool_activation", "Const", "Identity"]))
 
   def testScaleAndBiasAndIdentity(self):
     """This tests a scaled add which has 3 inputs and 2 outputs."""
@@ -223,11 +223,11 @@ class ConvertTestOpHint(test_util.TensorFlowTestCase):
       stubbed_graphdef = op_hint.convert_op_hints_to_stubs(
           graph_def=sess.graph_def)
 
-      self.assertCountEqual(
+      self.assertEqual(
           self._getGraphOpTypes(
               stubbed_graphdef,
               output_nodes=[op_hint._tensor_name_base(output.name)]),
-          ["scale_and_bias_and_identity", "Const", "Identity", "Pack"])
+          set(["scale_and_bias_and_identity", "Const", "Identity", "Pack"]))
 
   def testTwoFunctions(self):
     """Tests if two functions are converted correctly."""
@@ -248,11 +248,11 @@ class ConvertTestOpHint(test_util.TensorFlowTestCase):
       self.assertEqual(self._countIdentities(sess.graph_def.node), 5)
       stubbed_graphdef = op_hint.convert_op_hints_to_stubs(
           graph_def=sess.graph_def)
-      self.assertCountEqual(
+      self.assertEqual(
           self._getGraphOpTypes(
               stubbed_graphdef,
               output_nodes=[op_hint._tensor_name_base(output.name)]),
-          ["add_test", "Const", "Identity", "Add"])
+          set(["add_test", "Const", "Identity", "Add"]))
 
   def _get_input_index(self, x):
     return x.op.node_def.attr[op_hint.OpHint.FUNCTION_INPUT_INDEX_ATTR].i
@@ -323,11 +323,11 @@ class ConvertTestOpHint(test_util.TensorFlowTestCase):
     with self.cached_session() as sess:
       stubbed_graphdef = op_hint.convert_op_hints_to_stubs(
           graph_def=sess.graph_def)
-      self.assertCountEqual(
+      self.assertEqual(
           self._getGraphOpTypes(
               stubbed_graphdef,
               output_nodes=[op_hint._tensor_name_base(output.name)]),
-          ["agg", "Const", "Identity"])
+          set(["agg", "Const", "Identity"]))
 
 
 if __name__ == "__main__":

@@ -51,6 +51,10 @@ if sys.version_info.major == 3:
   _NORMALIZE_TYPE["<class 'abc.ABCMeta'>"] = "<type 'type'>"
   _NORMALIZE_ISINSTANCE = {
       "<class "
+      "'tensorflow.contrib.lite.python.op_hint.OpHint.OpHintArgumentTracker'>":  # pylint: disable=line-too-long
+          "<class "
+          "'tensorflow.contrib.lite.python.op_hint.OpHintArgumentTracker'>",
+      "<class "
       "'tensorflow.python.training.monitored_session._MonitoredSession.StepContext'>":  # pylint: disable=line-too-long
           "<class "
           "'tensorflow.python.training.monitored_session.StepContext'>",

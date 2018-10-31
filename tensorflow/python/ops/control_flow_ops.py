@@ -3239,7 +3239,12 @@ def while_loop(cond,
   """
   if ENABLE_WHILE_V2 and not context.executing_eagerly():
     return while_v2.while_loop(
-        cond, body, loop_vars, shape_invariants=shape_invariants, name=name)
+        cond,
+        body,
+        loop_vars,
+        shape_invariants=shape_invariants,
+        maximum_iterations=maximum_iterations,
+        name=name)
 
   with ops.name_scope(name, "while", loop_vars):
     if not loop_vars:

@@ -186,7 +186,8 @@ class Dataset(object):
       An `Iterator` over the elements of this dataset.
     """
     if context.executing_eagerly():
-      return iterator_ops.EagerIterator(self)
+      dataset = self._apply_options()
+      return iterator_ops.EagerIterator(dataset)
 
     graph_level_seed, op_level_seed = core_random_seed.get_seed(None)
 
@@ -666,7 +667,7 @@ class Dataset(object):
 
   @staticmethod
   def list_files(file_pattern, shuffle=None, seed=None):
-    """A dataset of all files matching a pattern.
+    """A dataset of all files matching one or more glob patterns.
 
     NOTE: The default behavior of this method is to return filenames in
     a non-deterministic random shuffled order. Pass a `seed` or `shuffle=False`
@@ -683,12 +684,13 @@ class Dataset(object):
         - /path/to/dir/c.py
 
     Args:
-      file_pattern: A string or scalar string `tf.Tensor`, representing
-        the filename pattern that will be matched.
+      file_pattern: A string, a list of strings, or a `tf.Tensor` of string type
+        (scalar or vector), representing the filename glob (i.e. shell wildcard)
+        pattern(s) that will be matched.
       shuffle: (Optional.) If `True`, the file names will be shuffled randomly.
         Defaults to `True`.
-      seed: (Optional.) A `tf.int64` scalar `tf.Tensor`, representing the
-        random seed that will be used to create the distribution. See
+      seed: (Optional.) A `tf.int64` scalar `tf.Tensor`, representing the random
+        seed that will be used to create the distribution. See
         `tf.set_random_seed` for behavior.
 
     Returns:
