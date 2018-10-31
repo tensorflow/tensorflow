@@ -238,10 +238,11 @@ class UnknownRatio : public Node {
 
   int64 OutputTimeLocked(std::vector<int64>* input_times) const override
       SHARED_LOCKS_REQUIRED(mu_) {
-    if (inputs_.empty() || num_elements_ == 0) {
+    if (num_elements_ == 0 || inputs_.empty() ||
+        inputs_.front()->num_elements() == 0) {
       return NanosPerElementLocked();
     }
-    // TODO(jsimsa): The current implementation that the number of input
+    // TODO(jsimsa): The current implementation assumes that the number of input
     // elements consumed per output is the same across all inputs.
     std::shared_ptr<Node> input = inputs_.front();
     double ratio = static_cast<double>(input->num_elements()) /
