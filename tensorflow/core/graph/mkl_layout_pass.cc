@@ -2735,7 +2735,7 @@ MklLayoutRewritePass::CheckForNodeFusion(Node* a) const {
     //
 
     std::stack<Node *, std::vector<Node *>> work_stack;
-    std::set<Node *> visited_nodes;
+    std::unordered_set<Node *> visited_nodes;
     auto node_checker = fi->node_checkers.begin();
 
     Node *current_node = nullptr;
