@@ -4976,7 +4976,10 @@ def _colocate_with_for_gradient(op, gradient_uid, ignore_existing=False):
         op, gradient_uid=gradient_uid, ignore_existing=ignore_existing)
 
 
-@tf_export("colocate_with")
+@deprecation.deprecated(
+    date=None,
+    instructions="Colocations handled automatically by placer.")
+@tf_export(v1=["colocate_with"])
 def colocate_with(op, ignore_existing=False):
   return _colocate_with_for_gradient(op, None, ignore_existing=ignore_existing)
 
