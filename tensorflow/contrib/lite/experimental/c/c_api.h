@@ -53,6 +53,7 @@ limitations under the License.
 extern "C" {
 #endif  // __cplusplus
 
+typedef TfLiteQuantizationParams TFL_QuantizationParams;
 typedef TfLiteRegistration TFL_Registration;
 typedef TfLiteStatus TFL_Status;
 typedef TfLiteTensor TFL_Tensor;
@@ -199,6 +200,13 @@ TFL_CAPI_EXPORT extern void* TFL_TensorData(const TFL_Tensor* tensor);
 
 // Returns the (null-terminated) name of the tensor.
 TFL_CAPI_EXPORT extern const char* TFL_TensorName(const TFL_Tensor* tensor);
+
+// Returns the parameters for asymmetric quantization. The quantization
+// parameters are only valid when the tensor type is `kTfLiteUInt8` and the
+// `scale != 0`. Quantized values can be converted back to float using:
+//    real_value = scale * (quantized_value - zero_point);
+TFL_CAPI_EXPORT extern TFL_QuantizationParams TFL_TensorQuantizationParams(
+    const TFL_Tensor* tensor);
 
 // Copies from the provided input buffer into the tensor's buffer.
 // REQUIRES: input_data_size == TFL_TensorByteSize(tensor)
