@@ -928,7 +928,6 @@ class ControlFlowTest(test.TestCase):
       r = isum(s)
       self.assertAllEqual(45, r.eval())
 
-  @test_util.disable_control_flow_v2("b/115776323 (max_iters)")
   def testWhileWithMaximumIterations(self):
     with self.cached_session():
       s = constant_op.constant([1, 2, 3, 4, 5])
@@ -1045,7 +1044,7 @@ class ControlFlowTest(test.TestCase):
         r"while loop context '' \(currently defined in 'cond/.+'\)"):
       _ = gradients_impl.gradients(loop, v)
 
-  @test_util.disable_control_flow_v2("b/115776323 (max_iters)")
+  @test_util.disable_control_flow_v2("b/118457764")
   def testNestedWhileLoopWithMaxItersFromOuterContextInXLAContext(self):
     v = constant_op.constant(1.0)
 
