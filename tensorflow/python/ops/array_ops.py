@@ -2352,7 +2352,7 @@ def batch_to_space(input, crops, block_size, name=None):  # pylint: disable=rede
 
 batch_to_space.__doc__ = gen_array_ops.batch_to_space.__doc__.replace(
     "BatchToSpaceND", "`tf.batch_to_space_nd`").replace(
-    "SpaceToBatch", "`tf.nn.space_to_batch`")
+        "SpaceToBatch", "`tf.nn.space_to_batch`")
 
 
 @tf_export("one_hot")
