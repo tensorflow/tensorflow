@@ -36,8 +36,7 @@ NodeDef MakeMapAndBatchNode(const NodeDef& map_node, const NodeDef& batch_node,
                             MutableGraphView* graph) {
   NodeDef new_node;
   new_node.set_op(kFusedOpName);
-  graph_utils::SetUniqueGraphNodeName(kFusedOpName, graph->GetGraph(),
-                                      &new_node);
+  graph_utils::SetUniqueGraphNodeName(kFusedOpName, graph->graph(), &new_node);
 
   // Set the `input` input argument.
   new_node.add_input(map_node.input(0));

@@ -14,9 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/core/grappler/utils/traversal.h"
-//#include "tensorflow/core/framework/node_def.pb.h"
-//#include "tensorflow/core/lib/core/status_test_util.h"
-//#include "tensorflow/core/platform/protobuf.h"
+
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/test.h"
 
@@ -65,8 +63,16 @@ TEST_F(TraversalTest, ReverseDfsNoLoop) {
         found_back_edge = true;
       });
 
-  EXPECT_EQ(std::vector<string>({"1", "4", "3", "2", "5", "0"}), pre_order);
-  EXPECT_EQ(std::vector<string>({"4", "5", "2", "3", "1", "0"}), post_order);
+  // Pre/Post order traversals are non deterministic because a node fanin is an
+  // absl::flat_hash_set with non deterministic traversal order.
+  using ValidTraversal = std::pair<std::vector<string>, std::vector<string>>;
+
+  std::set<ValidTraversal> valid_traversals = {
+      // pre_order                     post_order
+      {{"1", "4", "3", "2", "5", "0"}, {"4", "5", "2", "3", "1", "0"}},
+      {{"1", "3", "2", "5", "4", "0"}, {"5", "2", "3", "4", "1", "0"}}};
+
+  EXPECT_EQ(valid_traversals.count({pre_order, post_order}), 1);
   EXPECT_FALSE(found_back_edge);
 }
 
@@ -92,8 +98,17 @@ TEST_F(TraversalTest, ReverseDfsWithLoop) {
         back_edges.push_back(strings::StrCat(src->name(), "->", dst->name()));
       });
 
-  EXPECT_EQ(std::vector<string>({"6", "3", "2", "1", "5", "4"}), pre_order);
-  EXPECT_EQ(std::vector<string>({"1", "4", "5", "2", "3", "6"}), post_order);
+  // Pre/Post order traversals are non deterministic because a node fanin is an
+  // absl::flat_hash_set with non deterministic traversal order.
+  using ValidTraversal = std::pair<std::vector<string>, std::vector<string>>;
+
+  std::set<ValidTraversal> valid_traversals = {
+      // pre_order                     post_order
+      {{"6", "3", "2", "4", "5", "1"}, {"5", "4", "1", "2", "3", "6"}},
+      {{"6", "3", "2", "1", "5", "4"}, {"1", "4", "5", "2", "3", "6"}},
+      {{"6", "3", "2", "5", "4", "1"}, {"4", "5", "1", "2", "3", "6"}}};
+
+  EXPECT_EQ(valid_traversals.count({pre_order, post_order}), 1);
   EXPECT_EQ(std::vector<string>({"4->3"}), back_edges);
 }
 
