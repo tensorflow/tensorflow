@@ -514,6 +514,10 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
                       csinfo_.conv2d_grad_filter_with_bias,
                       GetConv2DBackpropFilterOrBiasAddGrad});
 
+    // The fusion patterns in "finfo_" that show up first will get applied first,
+    // for example, graph "A->B->C-D" and finfo_ is {A->B->C to ABC, A->B->C->D to ABCD},
+    // since the first gets applied first, the final graph will be ABC->D.
+
     //
     // Add rules to fuse sequences such as "Transpose (NCHW -> NHWC) + Conv2D
     // (NHWC) + Transpose (NHWC->
