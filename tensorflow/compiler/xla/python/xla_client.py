@@ -233,6 +233,9 @@ class LocalBuffer(object):
   def to_py(self):
     return self.c_buffer.ToLiteral()
 
+  def shape(self):
+    return _wrap_shape(self.c_buffer.shape())
+
   def delete(self):
     if self.c_buffer is not None:
       self._delete(self.c_buffer)
