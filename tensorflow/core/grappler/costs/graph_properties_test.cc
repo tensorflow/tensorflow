@@ -1625,32 +1625,6 @@ TEST_F(GraphPropertiesTest, StridedSlicesOfShapes) {
   EXPECT_EQ(shape_a.dim(1).size(), shape_o2.dim(0).size());
 }
 
-TEST_F(GraphPropertiesTest, StridedSliceOfShapeWithShrinkAxisMask) {
-  tensorflow::Scope scope = tensorflow::Scope::NewRootScope();
-  Output placeholder =
-      ops::Placeholder(scope.WithOpName("input_placeholder"), DT_FLOAT,
-                       ops::Placeholder::Shape(TensorShape({5, 480, 40, 1})));
-  auto input_shape = ops::Shape(scope.WithOpName("input_shape"), placeholder);
-
-  Output begin = ops::Const(scope.WithOpName("begin"), {0}, {1});
-  Output end = ops::Const(scope.WithOpName("end"), {3}, {1});
-  Output stride = ops::Const(scope.WithOpName("stride"), {1}, {1});
-
-  Output slice =
-      ops::StridedSlice(scope.WithOpName("slice"), input_shape, begin, end,
-                        stride, ops::StridedSlice::ShrinkAxisMask(1));
-
-  GrapplerItem item;
-  TF_CHECK_OK(scope.ToGraphDef(&item.graph));
-
-  // Investigate scalar value.
-  GraphProperties properties(item);
-  TF_CHECK_OK(properties.InferStatically(false));
-  const auto slice_value =
-      properties.GetOutputProperties("slice").at(0).value();
-  EXPECT_EQ(5, slice_value.int_val(0));
-}
-
 }  // namespace
 }  // namespace grappler
 }  // namespace tensorflow
