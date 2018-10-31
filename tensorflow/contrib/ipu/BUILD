@@ -87,7 +87,7 @@ tf_py_test(
 
 tf_py_test(
     name = "resnet18_nobn_test",
-    size = "medium",
+    size = "large",
     srcs = ["size_speed_tests/resnet18_nobn_test.py"],
     additional_deps = [
         ":ipu",
