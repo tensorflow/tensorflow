@@ -86,8 +86,10 @@ from tensorflow.python.framework.graph_util_impl import _extract_graph_summary
 from tensorflow.python.ops import array_ops as _array_ops
 from tensorflow.python.util import compat as _compat
 from tensorflow.python.util.all_util import remove_undocumented
+from tensorflow.python.util.tf_export import tf_export as _tf_export
 
 
+@_tf_export("lite.OpHint")
 class OpHint(object):
   """A class that helps build tflite function invocations.
 
@@ -136,14 +138,14 @@ class OpHint(object):
   # Types of aggregations
   #  stack: stacks all ophints with matching tags. i.e. for a static rnn.
   #   specifically, this is good for an input or output to a static rnn cell.
-  AGGREGATE_STACK = _compat.as_bytes("stack")
+  AGGREGATE_STACK = "stack"
   # first: only takes the first output (one with lowest sort index)
   # of matching tags. This is good for the input state to an RNN.
-  AGGREGATE_FIRST = _compat.as_bytes("first")
+  AGGREGATE_FIRST = "first"
   # aggregation last takes only the last tag (one with highest sort index).
   # This is good for an output value on the last stack item of a
   # static rnn.
-  AGGREGATE_LAST = _compat.as_bytes("last")
+  AGGREGATE_LAST = "last"
 
   class OpHintArgumentTracker(object):
     """Conceptually tracks indices of arguments of "OpHint functions".
@@ -656,7 +658,7 @@ def _find_all_hints_in_graph_def(graphdef):
     if sort == -1: sort = None
     aggregation = None
     if OpHint.FUNCTION_AGGREGATE_ATTR in attr:
-      aggregation = attr[OpHint.FUNCTION_AGGREGATE_ATTR].s
+      aggregation = _compat.as_text(attr[OpHint.FUNCTION_AGGREGATE_ATTR].s)
 
     # Add the input or output
     def put_operand(stuff, index, sort, operand, aggregation):
@@ -936,6 +938,7 @@ def _remove_redundant_stack_unstack(graph_def):
   return curr
 
 
+@_tf_export("lite.convert_op_hints_to_stubs")
 def _convert_op_hints_to_stubs_helper(
     graph_def, write_callback=lambda sess, graph_def: None):
   """Converts a graph_def to a new graph_def where all op hints are stubbed.

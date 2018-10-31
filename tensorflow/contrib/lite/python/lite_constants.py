@@ -21,6 +21,7 @@ from __future__ import print_function
 from tensorflow.contrib.lite.toco import toco_flags_pb2 as _toco_flags_pb2
 from tensorflow.contrib.lite.toco import types_pb2 as _types_pb2
 from tensorflow.python.util.all_util import remove_undocumented
+from tensorflow.python.util.tf_export import tf_export as _tf_export
 
 # Enum types from the protobuf promoted to the API
 FLOAT = _types_pb2.FLOAT
@@ -32,6 +33,16 @@ COMPLEX64 = _types_pb2.COMPLEX64
 TENSORFLOW_GRAPHDEF = _toco_flags_pb2.TENSORFLOW_GRAPHDEF
 TFLITE = _toco_flags_pb2.TFLITE
 GRAPHVIZ_DOT = _toco_flags_pb2.GRAPHVIZ_DOT
+
+_tf_export("lite.constants.FLOAT").export_constant(__name__, "FLOAT")
+_tf_export("lite.constants.INT32").export_constant(__name__, "INT32")
+_tf_export("lite.constants.INT64").export_constant(__name__, "INT64")
+_tf_export("lite.constants.STRING").export_constant(__name__, "STRING")
+_tf_export("lite.constants.QUANTIZED_UINT8").export_constant(
+    __name__, "QUANTIZED_UINT8")
+_tf_export("lite.constants.TFLITE").export_constant(__name__, "TFLITE")
+_tf_export("lite.constants.GRAPHVIZ_DOT").export_constant(
+    __name__, "GRAPHVIZ_DOT")
 
 # Currently the default mode of operation is to shell to another python process
 # to protect against crashes. However, it breaks some dependent targets because
