@@ -2770,19 +2770,22 @@ MklLayoutRewritePass::CheckForNodeFusion(Node* a) const {
               all_succ_has_been_visited = false;
               break;
             }
-
-            // All successor nodes of current node has been visited (no match found),
-            // pop the stack and mark current node as "visited".
-            if (all_succ_has_been_visited) {
-              visited_nodes.insert(current_node);
-              work_stack.pop();
-              -- node_checker;
-            }
           }
         }
+
+        // All successor nodes of current node has been visited (no match found),
+        // pop the stack and mark current node as "visited".
+        if (all_succ_has_been_visited) {
+          visited_nodes.insert(current_node);
+          work_stack.pop();
+          -- node_checker;
+        }
+
       } else {
-        // current node doesn't match, just break and stack will help us roll back.
-        break;
+        // current node doesn't match, pop stack to roll back.
+        visited_nodes.insert(current_node);
+        work_stack.pop();
+        -- node_checker;
       }
     }
   }
