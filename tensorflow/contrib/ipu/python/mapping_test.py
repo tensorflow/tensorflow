@@ -51,14 +51,16 @@ class MappingTest(test_util.TensorFlowTestCase):
 
       for e in events:
         if e.type == IpuTraceEvent.COMPILE_END:
-          tm = json.loads(e.compile_end.tensor_map.decode('utf-8'))
+          j = e.compile_end.tensor_map.decode('utf-8')
+          if len(j) > 0:
+            tm = json.loads(e.compile_end.tensor_map.decode('utf-8'))
 
-          bad_maps = []
-          for g in tm['mappings']:
-            for tensor in tm['mappings'][g]:
-              if tensor['total_elements'] > 16:
-                if tensor['tiles_used'] == 1 and tensor['constant'] == 0:
-                  bad_maps += [tensor['inst_name']]
+            bad_maps = []
+            for g in tm['mappings']:
+              for tensor in tm['mappings'][g]:
+                if tensor['total_elements'] > 16:
+                  if tensor['tiles_used'] == 1 and tensor['constant'] == 0:
+                    bad_maps += [tensor['inst_name']]
 
       self.assertEqual(len(bad_maps), 0)
 
