@@ -438,26 +438,35 @@ private:
 class FuncBuilder : public Builder {
 public:
   FuncBuilder(CFGFuncBuilder &cfgFuncBuilder)
-      : Builder(cfgFuncBuilder.getContext()), cfgFuncBuilder(&cfgFuncBuilder),
-        mlFuncBuilder(nullptr) {}
+      : Builder(cfgFuncBuilder.getContext()), builder(cfgFuncBuilder),
+        kind(Function::Kind::CFGFunc) {}
   FuncBuilder(MLFuncBuilder &mlFuncBuilder)
-      : Builder(mlFuncBuilder.getContext()), cfgFuncBuilder(nullptr),
-        mlFuncBuilder(&mlFuncBuilder) {}
+      : Builder(mlFuncBuilder.getContext()), builder(mlFuncBuilder),
+        kind(Function::Kind::MLFunc) {}
+  FuncBuilder(Operation *op) : Builder(op->getContext()) {
+    if (isa<OperationInst>(op)) {
+      builder = builderUnion(cast<OperationInst>(op));
+      kind = Function::Kind::CFGFunc;
+    } else {
+      builder = builderUnion(cast<OperationStmt>(op));
+      kind = Function::Kind::MLFunc;
+    }
+  }
 
   /// Creates an operation given the fields represented as an OperationState.
   Operation *createOperation(const OperationState &state) {
-    if (cfgFuncBuilder)
-      return cfgFuncBuilder->createOperation(state);
-    return mlFuncBuilder->createOperation(state);
+    if (kind == Function::Kind::CFGFunc)
+      return builder.cfg.createOperation(state);
+    return builder.ml.createOperation(state);
   }
 
   /// Creates operation of specific op type at the current insertion point
   /// without verifying to see if it is valid.
   template <typename OpTy, typename... Args>
   OpPointer<OpTy> create(Location *location, Args... args) {
-    if (cfgFuncBuilder)
-      return cfgFuncBuilder->create<OpTy, Args...>(location, args...);
-    return mlFuncBuilder->create<OpTy, Args...>(location, args...);
+    if (kind == Function::Kind::CFGFunc)
+      return builder.cfg.create<OpTy, Args...>(location, args...);
+    return builder.ml.create<OpTy, Args...>(location, args...);
   }
 
   /// Creates an operation of specific op type at the current insertion point.
@@ -465,26 +474,37 @@ public:
   /// and return null.
   template <typename OpTy, typename... Args>
   OpPointer<OpTy> createChecked(Location *location, Args... args) {
-    if (cfgFuncBuilder)
-      return cfgFuncBuilder->createChecked<OpTy, Args...>(location, args...);
-    return mlFuncBuilder->createChecked<OpTy, Args...>(location, args...);
+    if (kind == Function::Kind::CFGFunc)
+      return builder.cfg.createChecked<OpTy, Args...>(location, args...);
+    return builder.ml.createChecked<OpTy, Args...>(location, args...);
   }
 
   /// Set the insertion point to the specified operation. This requires that the
   /// input operation is a OperationInst when building a CFG function and a
   /// OperationStmt when building a ML function.
   void setInsertionPoint(Operation *op) {
-    if (cfgFuncBuilder)
-      cfgFuncBuilder->setInsertionPoint(cast<OperationInst>(op));
+    if (kind == Function::Kind::CFGFunc)
+      builder.cfg.setInsertionPoint(cast<OperationInst>(op));
     else
-      mlFuncBuilder->setInsertionPoint(cast<OperationStmt>(op));
+      builder.ml.setInsertionPoint(cast<OperationStmt>(op));
   }
 
 private:
-  // Wrapped builders for CFG and ML functions. Exactly one of these should be
-  // non-null.
-  CFGFuncBuilder *const cfgFuncBuilder;
-  MLFuncBuilder *const mlFuncBuilder;
+  // Wrapped builders for CFG and ML functions.
+  union builderUnion {
+    builderUnion(CFGFuncBuilder cfg) : cfg(cfg) {}
+    builderUnion(MLFuncBuilder ml) : ml(ml) {}
+    builderUnion(OperationInst *op) : cfg(op) {}
+    builderUnion(OperationStmt *op) : ml(op) {}
+    // Default initializer to allow deferring initialization of member.
+    builderUnion() {}
+
+    CFGFuncBuilder cfg;
+    MLFuncBuilder ml;
+  } builder;
+
+  // The type of builder in the builderUnion.
+  Function::Kind kind;
 };
 
 } // namespace mlir

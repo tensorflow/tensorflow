@@ -95,14 +95,15 @@ bool mlir::replaceAllMemRefUsesWith(const MLValue *oldMemRef,
     unsigned memRefOperandPos = getMemRefOperandPos();
 
     // Construct the new operation statement using this memref.
-    SmallVector<MLValue *, 8> operands;
-    operands.reserve(opStmt->getNumOperands() + extraIndices.size());
+    OperationState state(opStmt->getContext(), opStmt->getLoc(),
+                         opStmt->getName());
+    state.operands.reserve(opStmt->getNumOperands() + extraIndices.size());
     // Insert the non-memref operands.
-    operands.insert(operands.end(), opStmt->operand_begin(),
-                    opStmt->operand_begin() + memRefOperandPos);
-    operands.push_back(newMemRef);
+    state.operands.insert(state.operands.end(), opStmt->operand_begin(),
+                          opStmt->operand_begin() + memRefOperandPos);
+    state.operands.push_back(newMemRef);
 
-    MLFuncBuilder builder(opStmt);
+    FuncBuilder builder(opStmt);
     for (auto *extraIndex : extraIndices) {
       // TODO(mlir-team): An operation/SSA value should provide a method to
       // return the position of an SSA result in its defining
@@ -112,7 +113,7 @@ bool mlir::replaceAllMemRefUsesWith(const MLValue *oldMemRef,
       assert((cast<MLValue>(extraIndex)->isValidDim() ||
               cast<MLValue>(extraIndex)->isValidSymbol()) &&
              "invalid memory op index");
-      operands.push_back(cast<MLValue>(extraIndex));
+      state.operands.push_back(cast<MLValue>(extraIndex));
     }
 
     // Construct new indices. The indices of a memref come right after it, i.e.,
@@ -125,29 +126,30 @@ bool mlir::replaceAllMemRefUsesWith(const MLValue *oldMemRef,
           builder.create<AffineApplyOp>(opStmt->getLoc(), indexRemap, indices);
       // Remapped indices.
       for (auto *index : remapOp->getOperation()->getResults())
-        operands.push_back(cast<MLValue>(index));
+        state.operands.push_back(cast<MLValue>(index));
     } else {
       // No remapping specified.
       for (auto *index : indices)
-        operands.push_back(cast<MLValue>(index));
+        state.operands.push_back(cast<MLValue>(index));
     }
 
     // Insert the remaining operands unmodified.
-    operands.insert(operands.end(),
-                    opStmt->operand_begin() + memRefOperandPos + 1 +
-                        oldMemRefRank,
-                    opStmt->operand_end());
+    state.operands.insert(state.operands.end(),
+                          opStmt->operand_begin() + memRefOperandPos + 1 +
+                              oldMemRefRank,
+                          opStmt->operand_end());
 
     // Result types don't change. Both memref's are of the same elemental type.
-    SmallVector<Type, 8> resultTypes;
-    resultTypes.reserve(opStmt->getNumResults());
+    state.types.reserve(opStmt->getNumResults());
     for (const auto *result : opStmt->getResults())
-      resultTypes.push_back(result->getType());
+      state.types.push_back(result->getType());
+
+    // Attributes also do not change.
+    state.attributes.insert(state.attributes.end(), opStmt->getAttrs().begin(),
+                            opStmt->getAttrs().end());
 
     // Create the new operation.
-    auto *repOp =
-        builder.createOperation(opStmt->getLoc(), opStmt->getName(), operands,
-                                resultTypes, opStmt->getAttrs());
+    auto *repOp = builder.createOperation(state);
     // Replace old memref's deferencing op's uses.
     unsigned r = 0;
     for (auto *res : opStmt->getResults()) {
@@ -165,7 +167,7 @@ bool mlir::replaceAllMemRefUsesWith(const MLValue *oldMemRef,
 // to a collapse into a single affine apply op. The final results of the
 // composed AffineApplyOp are returned in output parameter 'results'.
 OperationStmt *
-mlir::createComposedAffineApplyOp(MLFuncBuilder *builder, Location *loc,
+mlir::createComposedAffineApplyOp(FuncBuilder *builder, Location *loc,
                                   ArrayRef<MLValue *> operands,
                                   ArrayRef<OperationStmt *> affineApplyOps,
                                   SmallVectorImpl<SSAValue *> &results) {
@@ -259,7 +261,7 @@ OperationStmt *mlir::createAffineComputationSlice(OperationStmt *opStmt) {
   if (localized)
     return nullptr;
 
-  MLFuncBuilder builder(opStmt);
+  FuncBuilder builder(opStmt);
   SmallVector<SSAValue *, 4> results;
   auto *affineApplyStmt = createComposedAffineApplyOp(
       &builder, opStmt->getLoc(), subOperands, affineApplyOps, results);
@@ -313,7 +315,7 @@ void mlir::forwardSubstitute(OpPointer<AffineApplyOp> affineApplyOp) {
       while (it != result->use_end() && it->getOwner() == useStmt)
         ++it;
 
-      MLFuncBuilder builder(useOpStmt);
+      FuncBuilder builder(useOpStmt);
       // Initialize AffineValueMap with 'affineApplyOp' which uses 'result'.
       auto oldAffineApplyOp = useOpStmt->cast<AffineApplyOp>();
       AffineValueMap valueMap(*oldAffineApplyOp);
