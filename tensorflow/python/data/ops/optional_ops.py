@@ -169,6 +169,9 @@ class OptionalStructure(structure.Structure):
         not flat_value[0].shape.is_compatible_with(tensor_shape.scalar())):
       raise ValueError(
           "OptionalStructure corresponds to a single tf.variant scalar.")
+    return self._from_compatible_tensor_list(flat_value)
+
+  def _from_compatible_tensor_list(self, flat_value):
     # pylint: disable=protected-access
     return _OptionalImpl(flat_value[0], self._value_structure)
 
