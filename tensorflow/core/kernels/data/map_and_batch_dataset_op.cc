@@ -256,13 +256,11 @@ class MapAndBatchDatasetOp : public UnaryDatasetOpKernel {
 
       Status Initialize(IteratorContext* ctx) override {
         mutex_lock l(*mu_);
-        AddConstantParameter(ctx, "batch_size", dataset()->batch_size_);
         if (num_parallel_calls_->value == kAutoTune) {
-          num_parallel_calls_->value = 1;
-          AddTunableParameter(ctx, "parallelism", num_parallel_calls_, 1,
-                              port::NumSchedulableCPUs());
-        } else {
-          AddConstantParameter(ctx, "parallelism", num_parallel_calls_->value);
+          // TODO(jsimsa): Surface the number of threads used by `ctx->runner()`
+          // and use it here for the default.
+          num_parallel_calls_->value = port::NumSchedulableCPUs();
+          num_parallel_calls_->tunable = true;
         }
         TF_RETURN_IF_ERROR(
             dataset()->input_->MakeIterator(ctx, prefix(), &input_impl_));
@@ -290,6 +288,14 @@ class MapAndBatchDatasetOp : public UnaryDatasetOpKernel {
       }
 
      protected:
+      std::shared_ptr<model::Node> CreateNode(
+          IteratorContext* ctx, model::Node::Args args) const override {
+        return model::MakeAsyncKnownRatioNode(
+            std::move(args), dataset()->batch_size_,
+            {model::MakeParameter("parallelism", num_parallel_calls_, /*min=*/1,
+                                  /*max=*/port::NumSchedulableCPUs())});
+      }
+
       Status SaveInternal(IteratorStateWriter* writer) override {
         mutex_lock l(*mu_);
         // Wait for all in-flight calls to complete.

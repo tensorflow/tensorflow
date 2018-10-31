@@ -59,13 +59,10 @@ class ParallelMapIteratorBase : public DatasetBaseIterator {
   Status Initialize(IteratorContext* ctx) override {
     mutex_lock l(*mu_);
     if (num_parallel_calls_->value == kAutoTune) {
-      num_parallel_calls_->value = 1;
       // TODO(jsimsa): Surface the number of threads used by `ctx->runner()` and
-      // use it here for the maximum.
-      AddTunableParameter(ctx, "parallelism", num_parallel_calls_, 1,
-                          port::NumSchedulableCPUs());
-    } else {
-      AddConstantParameter(ctx, "parallelism", num_parallel_calls_->value);
+      // use it here for the default.
+      num_parallel_calls_->value = port::NumSchedulableCPUs();
+      num_parallel_calls_->tunable = true;
     }
     TF_RETURN_IF_ERROR(
         input_dataset_->MakeIterator(ctx, prefix(), &input_impl_));
@@ -100,6 +97,15 @@ class ParallelMapIteratorBase : public DatasetBaseIterator {
     std::vector<Tensor> return_values;
     bool end_of_input;
   };
+
+  std::shared_ptr<model::Node> CreateNode(
+      IteratorContext* ctx, model::Node::Args args) const override {
+    return model::MakeAsyncKnownRatioNode(
+        std::move(args),
+        /*ratio=*/1,
+        {model::MakeParameter("parallelism", num_parallel_calls_, /*min=*/1,
+                              /*max=*/port::NumSchedulableCPUs())});
+  }
 
   // Used by the consumer to determine whether it needs to wait. Upon returning
   // false, `result` will point to a result to consume.

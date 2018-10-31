@@ -200,16 +200,9 @@ class NumaMapAndBatchDatasetOp : public UnaryDatasetOpKernel {
 
       Status Initialize(IteratorContext* ctx) override {
         mutex_lock l(*mu_);
-        AddConstantParameter(ctx, "batch_size", dataset()->batch_size_);
         if (num_parallel_calls_->value == kAutoTune) {
-          num_parallel_calls_->value = std::max(1, port::NUMANumNodes());
-          AddTunableParameter(ctx,
-                              /* name = */ "parallelism",
-                              /* state = */ num_parallel_calls_,
-                              /* min = */ num_parallel_calls_->value,
-                              /* max = */ port::NumSchedulableCPUs());
-        } else {
-          AddConstantParameter(ctx, "parallelism", num_parallel_calls_->value);
+          num_parallel_calls_->value = port::NumSchedulableCPUs();
+          num_parallel_calls_->tunable = true;
         }
         TF_RETURN_IF_ERROR(
             dataset()->input_->MakeIterator(ctx, prefix(), &input_impl_));
@@ -246,6 +239,14 @@ class NumaMapAndBatchDatasetOp : public UnaryDatasetOpKernel {
       }
 
      protected:
+      std::shared_ptr<model::Node> CreateNode(
+          IteratorContext* ctx, model::Node::Args args) const override {
+        return model::MakeAsyncKnownRatioNode(
+            std::move(args), dataset()->batch_size_,
+            {model::MakeParameter("parallelism", num_parallel_calls_, /*min=*/1,
+                                  /*max=*/port::NumSchedulableCPUs())});
+      }
+
       Status SaveInternal(IteratorStateWriter* writer) override {
         mutex_lock l(*mu_);
         for (size_t i = 0; i < workers_.size(); ++i) {

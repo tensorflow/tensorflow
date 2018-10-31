@@ -148,6 +148,13 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
     }
 
    protected:
+    std::shared_ptr<model::Node> CreateNode(
+        IteratorContext* ctx, model::Node::Args args) const override {
+      return model::MakeAsyncKnownRatioNode(std::move(args),
+                                            /*ratio=*/1,
+                                            /*parameters=*/{});
+    }
+
     Status SaveInternal(IteratorStateWriter* writer) override {
       // Acquire both locks to ensure that the prefetch thread and
       // all GetNext threads are blocked.

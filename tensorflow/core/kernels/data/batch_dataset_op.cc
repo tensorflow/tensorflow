@@ -117,7 +117,6 @@ class BatchDatasetOp : public UnaryDatasetOpKernel {
           : DatasetIterator<Dataset>(params) {}
 
       Status Initialize(IteratorContext* ctx) override {
-        AddConstantParameter(ctx, "batch_size", dataset()->batch_size_);
         return dataset()->input_->MakeIterator(ctx, prefix(), &input_impl_);
       }
 
@@ -199,6 +198,12 @@ class BatchDatasetOp : public UnaryDatasetOpKernel {
       }
 
      protected:
+      std::shared_ptr<model::Node> CreateNode(
+          IteratorContext* ctx, model::Node::Args args) const override {
+        return model::MakeKnownRatioNode(std::move(args),
+                                         dataset()->batch_size_);
+      }
+
       Status SaveInternal(IteratorStateWriter* writer) override {
         mutex_lock l(mu_);
         if (!input_impl_) {
