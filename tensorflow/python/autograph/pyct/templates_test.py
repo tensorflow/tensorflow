@@ -232,6 +232,13 @@ class TemplatesTest(test.TestCase):
     with self.assertRaises(ValueError):
       templates.replace_as_expression(template)
 
+  def test_function_call_in_list(self):
+    template = """
+        foo(bar)
+    """
+    source = parser.parse_expression('[a(b(1))]')
+    templates.replace_as_expression(template, bar=source)
+
 
 if __name__ == '__main__':
   test.main()
