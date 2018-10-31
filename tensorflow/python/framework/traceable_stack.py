@@ -58,14 +58,11 @@ class TraceableObject(object):
     frame_records = tf_stack.extract_stack()
     if not frame_records:
       return self.FAILURE
-    if len(frame_records) >= local_offset:
+    if len(frame_records) > local_offset:
       # Negative indexing is one-indexed instead of zero-indexed.
       negative_offset = -(local_offset + 1)
-      if len(frame_records) > local_offset:
-        self.filename, self.lineno = frame_records[negative_offset][:2]
-        return self.SUCCESS
-      else:
-        return self.FAILURE
+      self.filename, self.lineno = frame_records[negative_offset][:2]
+      return self.SUCCESS
     else:
       # If the offset is too large then we use the largest offset possible,
       # meaning we use the outermost stack frame at index 0.
