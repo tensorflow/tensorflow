@@ -1205,8 +1205,10 @@ void RdmaTensorResponse::SendContent(const Tensor& in, const TensorProto& proto,
         mr_ = RdmaMemoryMgr::Singleton().FindMemoryRegion(src_addr_,
                                                           tensor_bytes);
         if (mr_ == nullptr && tensor_bytes) {
-          mr_ = ibv_reg_mr(channel_->adapter_->pd_, src_addr_, tensor_bytes,
-                           IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_WRITE);
+          RdmaMemoryMgr::Singleton().InsertMemoryRegion(
+              src_addr_, tensor_bytes, "what should go here?");
+          mr_ = RdmaMemoryMgr::Singleton().FindMemoryRegion(src_addr_,
+                                                            tensor_bytes);
         }
       }
     } else {
