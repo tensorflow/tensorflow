@@ -1077,9 +1077,9 @@ class ScopedFusionPlanConvolutionBiasActivation : public ScopedFusionPlanBase {
       ScopedActivationDescriptor& activation_descriptor)
       : ScopedFusionPlanBase(parent, miopen_handle, miopenVerticalFusion,
                              input_descriptor) {
-    uint64 hash = GetFusionOpHashValue(input_descriptor, filter_descriptor,
-                                       conv_descriptor, bias_descriptor,
-                                       activation_descriptor);
+    uint64 hash = GetFusionOpHashValue(miopen_handle, input_descriptor,
+                                       filter_descriptor, conv_descriptor,
+                                       bias_descriptor, activation_descriptor);
 
     bool is_compiled = CachedFusionPlans::FindOrCreate(
         hash, parent, &fusion_plan_, miopenVerticalFusion, input_descriptor);
@@ -1151,12 +1151,16 @@ class ScopedFusionPlanConvolutionBiasActivation : public ScopedFusionPlanBase {
   }
 
   uint64 GetFusionOpHashValue(
-      miopenTensorDescriptor_t input_descriptor,
+      miopenHandle_t miopen_handle, miopenTensorDescriptor_t input_descriptor,
       miopenTensorDescriptor_t filter_descriptor,
       miopenConvolutionDescriptor_t conv_descriptor,
       miopenTensorDescriptor_t bias_descriptor,
       ScopedActivationDescriptor& activation_descriptor) {
     uint64 hashValue = tensorflow::Hash64("ConvolutionBiasActivation");
+
+    hashValue = tensorflow::Hash64Combine(
+        hashValue, tensorflow::hash<miopenHandle_t>()(miopen_handle));
+
     hashValue =
         tensorflow::Hash64Combine(hashValue, GetHashValue(input_descriptor));
     hashValue =
@@ -1189,7 +1193,7 @@ class ScopedFusionPlanBatchNormActivationInference
       ScopedActivationDescriptor& activation_descriptor)
       : ScopedFusionPlanBase(parent, miopen_handle, miopenVerticalFusion,
                              input_descriptor) {
-    uint64 hash = GetFusionOpHashValue(input_descriptor,
+    uint64 hash = GetFusionOpHashValue(miopen_handle, input_descriptor,
                                        scale_offset_mean_variance_descriptor,
                                        activation_descriptor);
 
@@ -1256,10 +1260,14 @@ class ScopedFusionPlanBatchNormActivationInference
   }
 
   uint64 GetFusionOpHashValue(
-      miopenTensorDescriptor_t input_descriptor,
+      miopenHandle_t miopen_handle, miopenTensorDescriptor_t input_descriptor,
       miopenTensorDescriptor_t scale_offset_mean_variance_descriptor,
       ScopedActivationDescriptor& activation_descriptor) {
     uint64 hashValue = tensorflow::Hash64("BatchNormActivationInference");
+
+    hashValue = tensorflow::Hash64Combine(
+        hashValue, tensorflow::hash<miopenHandle_t>()(miopen_handle));
+
     hashValue =
         tensorflow::Hash64Combine(hashValue, GetHashValue(input_descriptor));
 
@@ -1288,7 +1296,7 @@ class ScopedFusionPlanBatchNormActivationForward : public ScopedFusionPlanBase {
       ScopedActivationDescriptor& activation_descriptor)
       : ScopedFusionPlanBase(parent, miopen_handle, miopenVerticalFusion,
                              input_descriptor) {
-    uint64 hash = GetFusionOpHashValue(input_descriptor,
+    uint64 hash = GetFusionOpHashValue(miopen_handle, input_descriptor,
                                        scale_offset_mean_variance_descriptor,
                                        activation_descriptor);
 
@@ -1355,10 +1363,14 @@ class ScopedFusionPlanBatchNormActivationForward : public ScopedFusionPlanBase {
   }
 
   uint64 GetFusionOpHashValue(
-      miopenTensorDescriptor_t input_descriptor,
+      miopenHandle_t miopen_handle, miopenTensorDescriptor_t input_descriptor,
       miopenTensorDescriptor_t scale_offset_mean_variance_descriptor,
       ScopedActivationDescriptor& activation_descriptor) {
     uint64 hashValue = tensorflow::Hash64("BatchNormActivationForward");
+
+    hashValue = tensorflow::Hash64Combine(
+        hashValue, tensorflow::hash<miopenHandle_t>()(miopen_handle));
+
     hashValue =
         tensorflow::Hash64Combine(hashValue, GetHashValue(input_descriptor));
 
@@ -1388,7 +1400,7 @@ class ScopedFusionPlanBatchNormActivationBackward
       ScopedActivationDescriptor& activation_descriptor)
       : ScopedFusionPlanBase(parent, miopen_handle, miopenVerticalFusion,
                              input_descriptor) {
-    uint64 hash = GetFusionOpHashValue(input_descriptor,
+    uint64 hash = GetFusionOpHashValue(miopen_handle, input_descriptor,
                                        scale_offset_mean_variance_descriptor,
                                        activation_descriptor);
 
@@ -1456,10 +1468,14 @@ class ScopedFusionPlanBatchNormActivationBackward
   }
 
   uint64 GetFusionOpHashValue(
-      miopenTensorDescriptor_t input_descriptor,
+      miopenHandle_t miopen_handle, miopenTensorDescriptor_t input_descriptor,
       miopenTensorDescriptor_t scale_offset_mean_variance_descriptor,
       ScopedActivationDescriptor& activation_descriptor) {
     uint64 hashValue = tensorflow::Hash64("BatchNormActivationBackward");
+
+    hashValue = tensorflow::Hash64Combine(
+        hashValue, tensorflow::hash<miopenHandle_t>()(miopen_handle));
+
     hashValue =
         tensorflow::Hash64Combine(hashValue, GetHashValue(input_descriptor));
 
