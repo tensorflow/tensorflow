@@ -910,6 +910,9 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
     // Check if node's type is "Transpose"
     if (node->type_string() != "Transpose") return false;
 
+    // If "Transpose" has multiple output data edges, also don't fuse it.
+    if (node->num_outputs() > 1 || node->out_edges().size() > 1) return false;
+
     // Check if has out control edge. If true, this is a training graph.
     // Currently we focus on inference and do no fusion in training.
     // Note: this constraint will eventually be removed, if we enabled this fusion for training
@@ -926,9 +929,6 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
         return false;
       }
     }
-
-    // If "Transpose" has multiple output data edges, also don't fuse it.
-    if (node->num_outputs() > 1 || node->out_edges().size() > 1) return false;
 
     // We compared the tensor containing the permutation order ("perm_node")
     // with our desired order ("perm"). If they're exactly match, this check
