@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/contrib/lite/string_util.h"
 
+#include <stdlib.h>
 #include <string.h>
 #include <vector>
 #include "tensorflow/contrib/lite/c/c_api_internal.h"
