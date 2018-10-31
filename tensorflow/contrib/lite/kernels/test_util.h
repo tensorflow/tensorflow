@@ -207,7 +207,14 @@ class SingleOpModel {
   template <typename T>
   void PopulateTensor(int index, const std::initializer_list<T>& data) {
     T* v = interpreter_->typed_tensor<T>(index);
-    CHECK(v) << "No tensor with index '" << index << "'.";
+    if (!v) {
+      auto* t = interpreter_->tensor(index);
+      CHECK(t) << "No tensor with index " << index << ".";
+      CHECK(t->data.raw) << "Empty data for tensor with index " << index << ".";
+      CHECK(v) << "Type mismatch for tensor with index " << index
+               << ". Requested " << typeToTfLiteType<T>() << ", got "
+               << t->type;
+    }
     for (T f : data) {
       *v = f;
       ++v;
@@ -220,7 +227,14 @@ class SingleOpModel {
   template <typename T>
   void PopulateTensor(int index, const std::vector<T>& data) {
     T* v = interpreter_->typed_tensor<T>(index);
-    CHECK(v) << "No tensor with index '" << index << "'.";
+    if (!v) {
+      auto* t = interpreter_->tensor(index);
+      CHECK(t) << "No tensor with index " << index << ".";
+      CHECK(t->data.raw) << "Empty data for tensor with index " << index << ".";
+      CHECK(v) << "Type mismatch for tensor with index " << index
+               << ". Requested " << typeToTfLiteType<T>() << ", got "
+               << t->type;
+    }
     for (T f : data) {
       *v = f;
       ++v;
