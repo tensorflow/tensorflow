@@ -374,10 +374,6 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::RunBackend(
       graph.outputVertexGraph(stream, progs);
     }
 
-    // Generate this JSON early so that the VLOG trace can contain the output
-    // whether the engine compilation completes or not
-    map_json = GetTensorMappingJson(graph, resources.tensor_maps);
-
     is_remap_graph = AreAllOutputsParameters(
         entry->root_instruction(), visitor.GetNonStandardParameterLayout(),
         remaped_output);
@@ -386,6 +382,11 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::RunBackend(
     } else {
       try {
         VLOG(1) << "Compile engine " << module->name();
+
+        // Generate this JSON early so that the VLOG trace can contain the
+        // output
+        // whether the engine compilation completes or not
+        map_json = GetTensorMappingJson(graph, resources.tensor_maps);
 
         auto opts = poplarExecutor->GetOptionsFlags();
         auto progress_logging = [](int progress, int total) {
