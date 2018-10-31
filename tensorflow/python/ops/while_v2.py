@@ -39,6 +39,7 @@ from tensorflow.python.ops import custom_gradient
 from tensorflow.python.ops import gen_functional_ops
 from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import list_ops
+from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import tensor_array_ops
 from tensorflow.python.util import nest
 
@@ -58,8 +59,16 @@ TENSOR_ARRAY_HANDLE_OPS = (
 )
 
 
-def while_loop(cond, body, loop_vars, shape_invariants=None, name=None):
+def while_loop(cond,
+               body,
+               loop_vars,
+               shape_invariants=None,
+               maximum_iterations=None,
+               name=None):
   """Like tf.while_loop, except emits a single While op."""
+  if _is_in_xla_context() and maximum_iterations is None:
+    raise ValueError("maximum_iterations is required in XLA context.")
+
   # Keep the original loop_vars around to know which args were TensorArrays.
   orig_loop_vars = loop_vars
   # Cache its length since we use it at multiple places below.
@@ -76,6 +85,13 @@ def while_loop(cond, body, loop_vars, shape_invariants=None, name=None):
   else:
     shape_invariants = nest.map_structure(lambda t: t.shape, loop_vars)
 
+  if maximum_iterations is not None:
+    maximum_iterations = ops.convert_to_tensor(
+        maximum_iterations, name="maximum_iterations")
+    if maximum_iterations.shape.ndims != 0:
+      raise ValueError("maximum_iterations must be a scalar, saw shape: %s" %
+                       maximum_iterations.shape)
+
   if not name:
     name = "while"
 
@@ -84,8 +100,13 @@ def while_loop(cond, body, loop_vars, shape_invariants=None, name=None):
       cond_name = util.unique_fn_name(scope, "cond")
       body_name = util.unique_fn_name(scope, "body")
 
+    loop_counter = constant_op.constant(
+        0,
+        dtype=maximum_iterations.dtype
+        if maximum_iterations is not None else None,
+        name="loop_counter")
     # Add loop counter needed for computing gradients.
-    loop_vars = [constant_op.constant(0., name="loop_counter")] + loop_vars
+    loop_vars = [loop_counter] + loop_vars
 
     shape_invariants = [tensor_shape.scalar()] + shape_invariants
 
@@ -94,13 +115,18 @@ def while_loop(cond, body, loop_vars, shape_invariants=None, name=None):
     add_control_dependencies = util.in_defun()
 
     # Build a `cond` wrapper that can handle the extra counter loop_var.
-    def wrapped_cond(unused_loop_counter, *args):
+    def wrapped_cond(loop_counter, *args):
       # Convert the flow variables in `args` to TensorArrays. `args` should
       # already have the same structure as `orig_loop_vars` but currently there
       # is no nest.zip so we call `_pack_sequence_as` which flattens both
       # `orig_loop_vars` and `args`, converts flows in `args` to TensorArrays
       # and packs it into the structure of `orig_loop_vars`.
-      return cond(*_pack_sequence_as(orig_loop_vars, args))
+      if maximum_iterations is None:
+        return cond(*_pack_sequence_as(orig_loop_vars, args))
+      else:
+        return math_ops.logical_and(
+            loop_counter < maximum_iterations,
+            cond(*_pack_sequence_as(orig_loop_vars, args)))
 
     cond_graph = func_graph_module.func_graph_from_py_func(
         cond_name,
@@ -255,8 +281,19 @@ def _WhileGrad(op, *grads):  # pylint: disable=invalid-name
   # ResourceVariables, which can lead to runtime shape errors when used with a
   # TensorArray. This is a workaround until TensorArrays are reimplemented with
   # TensorLists instead of resources.
+  # Also set the incoming gradient of non-trainable inputs to None. It is
+  # possible that we receive non-None gradients for non-trainable types in
+  # nested while loops because we accumulate outputs of the inner while as
+  # variant tensors which are trainable and hence receive zeros_like tensors in
+  # the gradient pass. The non-trainable tensors then receive the popped zeros
+  # tensor from this zeros variant. The gradient for the loop vars corresponding
+  # to these tensors is None or zeros (this happens only if the loop var is
+  # accumulated as well) in _grad_fn so we reset these.
+  # TODO(b/118712257): Remove the IsTrainable filter once we can handle None
+  # output grads in _grad_fn.
   grads = [
-      None if _is_tensor_array_handle(output) else grad
+      None if _is_tensor_array_handle(output) or
+      not gradients_impl.IsTrainable(output) else grad
       for grad, output in zip(grads, op.outputs)
   ]
 
@@ -371,8 +408,9 @@ def _create_grad_func(ys, xs, grads, func_graph, name, while_op):
   """
   assert len(ys) == len(grads)
 
-  counter = constant_op.constant(0.)
   total_iters = while_op.outputs[0]
+  counter = constant_op.constant(
+      0, dtype=total_iters.dtype, name="grad_counter")
 
   args = [counter, total_iters] + list(grads)
   # Note: The returned function does not have `args` in the list of
@@ -410,7 +448,7 @@ def _grad_fn(ys, xs, args, func_graph):
     args: The input arguments.
       args[0] - Loop counter
       args[1] - Total number of iterations.
-      args[2:] - Incoming gradients for `func_graph.outputs`.
+      args[2:] - Incoming gradients for `ys`.
     func_graph: function.FuncGraph. The corresponding forward-pass function.
 
   Returns:
@@ -426,6 +464,8 @@ def _grad_fn(ys, xs, args, func_graph):
   grad_outs = gradients_impl._GradientsHelper(
       ys, xs, grad_ys=grad_ys, src_graph=func_graph)
 
+  # TODO(b/118712257): Handle the case when grad_outs has None's e.g. when there
+  # is a tf.StopGradient in the loop body.
   assert all([g is not None for g in grad_outs])
   counter = args[0]
   total_iters = args[1]
@@ -734,6 +774,14 @@ def _maybe_set_lowering_attr(op):
     # pylint: disable=protected-access
     op._set_attr("_lower_using_switch_merge", attr_value_pb2.AttrValue(b=True))
     # pylint: enable=protected-access
+
+
+# TODO(srbs): This method should be in control_flow_util but that introduces
+# a circular dependency ops -> control_flow_util -> ops.
+def _is_in_xla_context():
+  """Returns whether the current context is inside an XLA context."""
+  cur_ctxt = ops.get_default_graph()._get_control_flow_context()  # pylint: disable=protected-access
+  return control_flow_util.GetContainingXLAContext(cur_ctxt) is not None
 
 
 def _get_tensor_convertible_shape(shape):
