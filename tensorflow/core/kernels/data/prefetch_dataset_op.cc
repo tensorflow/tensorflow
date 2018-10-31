@@ -103,7 +103,7 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
     Status GetNextInternal(IteratorContext* ctx,
                            std::vector<Tensor>* out_tensors,
                            bool* end_of_sequence) override {
-      auto stats_aggregator = ctx->stats_aggregator();
+      const auto& stats_aggregator = ctx->stats_aggregator();
       {
         mutex_lock l(mu_);
         TF_RETURN_IF_ERROR(EnsurePrefetchThreadStarted(ctx));
@@ -123,7 +123,7 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
         }
 
         if (!buffer_.empty()) {
-          return Consume(out_tensors, end_of_sequence, stats_aggregator);
+          return Consume(out_tensors, end_of_sequence, ctx);
         }
 
         if (prefetch_thread_finished_) {
@@ -227,8 +227,8 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
     };
 
     Status Consume(std::vector<Tensor>* out_tensors, bool* end_of_sequence,
-                   const std::shared_ptr<StatsAggregator>& stats_aggregator)
-        EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+                   IteratorContext* ctx) EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+      const auto& stats_aggregator = ctx->stats_aggregator();
       if (stats_aggregator) {
         stats_aggregator->AddToHistogram(
             strings::StrCat(prefix_end_, "::buffer_utilization"),
