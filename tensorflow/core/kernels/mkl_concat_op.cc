@@ -134,7 +134,7 @@ class EigenConcatBaseOp : public OpKernel {
   }
 };
 // --------------------------------------------------------------------------
-//                      MKL_DNN Concat Op
+//                      Mkl Concat Op
 // --------------------------------------------------------------------------
 
 template <typename Device, typename T, AxisArgumentName AxisArgName>
