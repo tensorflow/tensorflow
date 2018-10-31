@@ -2806,6 +2806,7 @@ TF_Buffer* TF_GetRegisteredKernelsForOp(const char* name, TF_Status* status) {
 
 // TF_Server functions ----------------------------------------------
 
+#ifndef __ANDROID__
 TF_Server::TF_Server(std::unique_ptr<tensorflow::ServerInterface> server)
     : server(std::move(server)) {}
 
@@ -2838,5 +2839,6 @@ void TF_ServerJoin(TF_Server* server, TF_Status* status) {
 }
 
 void TF_DeleteServer(TF_Server* server) { delete server; }
+#endif  // __ANDROID__
 
 }  // end extern "C"

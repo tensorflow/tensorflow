@@ -54,9 +54,10 @@ JNIEXPORT jlong JNICALL Java_org_tensorflow_Server_allocate(
 JNIEXPORT void JNICALL Java_org_tensorflow_Server_start(JNIEnv* env,
                                                         jclass clazz,
                                                         jlong handle) {
-  TF_Status* status = TF_NewStatus();
   TF_Server* server = requireHandle(env, handle);
   if (server == nullptr) return;
+
+  TF_Status* status = TF_NewStatus();
 
   TF_ServerStart(server, status);
   throwExceptionIfNotOK(env, status);
@@ -67,9 +68,10 @@ JNIEXPORT void JNICALL Java_org_tensorflow_Server_start(JNIEnv* env,
 JNIEXPORT void JNICALL Java_org_tensorflow_Server_stop(JNIEnv* env,
                                                        jclass clazz,
                                                        jlong handle) {
-  TF_Status* status = TF_NewStatus();
   TF_Server* server = requireHandle(env, handle);
   if (server == nullptr) return;
+
+  TF_Status* status = TF_NewStatus();
 
   TF_ServerStop(server, status);
   throwExceptionIfNotOK(env, status);
@@ -80,9 +82,10 @@ JNIEXPORT void JNICALL Java_org_tensorflow_Server_stop(JNIEnv* env,
 JNIEXPORT void JNICALL Java_org_tensorflow_Server_join(JNIEnv* env,
                                                        jclass clazz,
                                                        jlong handle) {
-  TF_Status* status = TF_NewStatus();
   TF_Server* server = requireHandle(env, handle);
   if (server == nullptr) return;
+
+  TF_Status* status = TF_NewStatus();
 
   TF_ServerJoin(server, status);
   throwExceptionIfNotOK(env, status);
