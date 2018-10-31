@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/graph/edgeset.h"
 
+#include <set>
 #include <vector>
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/platform/test.h"
@@ -55,7 +56,7 @@ class EdgeSetTest : public ::testing::Test {
   Edge nonexistent_;
   Edge* edges_;
   EdgeSet eset_;
-  gtl::FlatSet<const Edge*> model_;
+  std::set<const Edge*> model_;
 };
 
 namespace {
