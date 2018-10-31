@@ -23,7 +23,7 @@ import sys
 # available in sys.modules
 # pylint: disable=unused-import
 from tensorflow import python as _tf_for_api_traversal
-from tensorflow.contrib.lite.python import lite as _tflite_for_api_traversal
+from tensorflow.lite.python import lite as _tflite_for_api_traversal
 # pylint: enable=unused-import
 from tensorflow.python.platform import test
 from tensorflow.python.util import tf_decorator
