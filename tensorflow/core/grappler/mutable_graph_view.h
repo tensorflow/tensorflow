@@ -24,11 +24,25 @@ namespace grappler {
 // A utility class to simplify the traversal of a GraphDef that, unlike
 // GraphView, supports updating the graph.  Note that you should not modify the
 // graph separately, because the view will get out of sync.
-class MutableGraphView : public GraphView {
- public:
-  using GraphView::GraphView;
 
-  GraphDef* GetGraph() { return MutableGraph(); }
+class MutableGraphView : public internal::GraphViewInternal<GraphDef, NodeDef> {
+ public:
+  explicit MutableGraphView(GraphDef* graph) : GraphViewInternal(graph) {
+    for (NodeDef& node : *graph->mutable_node()) AddUniqueNodeOrDie(&node);
+    for (NodeDef& node : *graph->mutable_node()) AddFanouts(&node);
+  }
+
+  // Lookup fanouts/fanins using immutable ports.
+  using GraphViewInternal::GetFanout;
+  const absl::flat_hash_set<InputPort>& GetFanout(
+      const GraphView::OutputPort& port) const;
+
+  using GraphViewInternal::GetFanin;
+  absl::flat_hash_set<OutputPort> GetFanin(
+      const GraphView::InputPort& port) const;
+
+  using GraphViewInternal::GetRegularFanin;
+  const OutputPort GetRegularFanin(const GraphView::InputPort& port) const;
 
   // Adds a new node to graph and updates the view.
   NodeDef* AddNode(NodeDef&& node);

@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <functional>
 #include "tensorflow/core/grappler/graph_view.h"
+#include "tensorflow/core/grappler/mutable_graph_view.h"
 
 namespace tensorflow {
 namespace grappler {
@@ -30,6 +31,12 @@ namespace grappler {
 // these back edges will be cut.
 void ReverseDfs(
     const GraphView& graph_view, const std::vector<const NodeDef*>& from,
+    const std::function<void(const NodeDef*)>& pre_order,
+    const std::function<void(const NodeDef*)>& post_order,
+    const std::function<void(const NodeDef*, const NodeDef*)>& on_back_edge);
+
+void ReverseDfs(
+    const MutableGraphView& graph_view, const std::vector<const NodeDef*>& from,
     const std::function<void(const NodeDef*)>& pre_order,
     const std::function<void(const NodeDef*)>& post_order,
     const std::function<void(const NodeDef*, const NodeDef*)>& on_back_edge);

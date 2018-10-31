@@ -37,7 +37,7 @@ NodeDef MakeFusedFilterNode(const NodeDef& first_filter_node,
                             const FunctionDef& fused_function,
                             MutableGraphView* graph) {
   NodeDef fused_node;
-  graph_utils::SetUniqueGraphNodeName("fused_filter", graph->GetGraph(),
+  graph_utils::SetUniqueGraphNodeName("fused_filter", graph->graph(),
                                       &fused_node);
 
   fused_node.set_op("FilterDataset");
