@@ -461,7 +461,7 @@ class IpuXlaConvTest(test_util.TensorFlowTestCase):
 
       ok = ['progIdCopy',
             'host-exchange-local-copy-',
-            'Copy_partialReduceOut_to_partialReduceOut[[]cloned[]]/OnTileCopy',
+            'Copy_',
             'DepthwiseConv2dNativeBackpropFilter/convolution.*.clone/Conv_6x6']
       self.assertTrue(tu.check_all_compute_sets_and_list(cs_list, ok))
 
@@ -496,7 +496,7 @@ class IpuXlaConvTest(test_util.TensorFlowTestCase):
       ok = ['progIdCopy',
             'host-exchange-local-copy-',
             'DepthwiseConv2dNativeBackpropFilter/convolution.*.clone/Conv_6x6',
-            'Copy_partialReduceOut_to_partialReduceOut[[]cloned[]]/OnTileCopy',
+            'Copy_',
             'Relu/call.*/Nonlinearity']
       self.assertTrue(tu.check_all_compute_sets_and_list(cs_list, ok))
 
