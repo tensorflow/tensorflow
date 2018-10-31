@@ -200,10 +200,11 @@ def broadcast_static_shape(shape_x, shape_y):
   If some dimensions of the input shapes are unknown, this function
   will infer as much information as possible about the broadcasted shape.
   For example:
+
   ```python
   tf.broadcast_static_shape(
-    tf.TensorShape([None,2,3]),
-    tf.TensorShape([2,None])
+    tf.TensorShape([None, 2, 3]),
+    tf.TensorShape([2, None])
   )
   # ==> TensorShape([Dimension(None), Dimension(2), Dimension(3)])
   ```

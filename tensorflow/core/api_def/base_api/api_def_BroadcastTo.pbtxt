@@ -27,6 +27,7 @@ to broadcast a Tensor to a shape, this op starts with the trailing dimensions
 and works its way forward.
 
 For example,
+
 ```
 >>> x = tf.constant([1, 2, 3], shape=[1, 3])
 >>> y = tf.broadcast_to(x, [3, 3])
@@ -35,8 +36,9 @@ array([[1, 2, 3],
        [1, 2, 3],
        [1, 2, 3]], dtype=int32)
 ```
+
 In the above example, the input Tensor with the shape of `[1, 3]`
-is broadcasted to output Tensor with shape of `[3, 3]`.
+is broadcasted to an output Tensor with shape of `[3, 3]`.
 
 See [the "Broadcasting semantics" section of the TensorFlow XLA guide](
 https://www.tensorflow.org/performance/xla/broadcasting)
