@@ -1820,7 +1820,6 @@ void MklLayoutRewritePass::CopyAttrsConv(const Node* orig_node, NodeBuilder* nb,
       new_strides = {strides[NDHWC::dim::N], strides[NDHWC::dim::C],
                      strides[NDHWC::dim::D], strides[NDHWC::dim::H],
                      strides[NDHWC::dim::W]};
-      nb->Attr("strides", new_strides);
 
       new_dilations = {dilations[NDHWC::dim::N], dilations[NDHWC::dim::C],
                        dilations[NDHWC::dim::D], dilations[NDHWC::dim::H],
@@ -1832,11 +1831,12 @@ void MklLayoutRewritePass::CopyAttrsConv(const Node* orig_node, NodeBuilder* nb,
 
       new_strides = {strides[NHWC::dim::N], strides[NHWC::dim::C],
                      strides[NHWC::dim::H], strides[NHWC::dim::W]};
-      nb->Attr("strides", new_strides);
+      
 
       new_dilations = {dilations[NHWC::dim::N], dilations[NHWC::dim::C],
                        dilations[NHWC::dim::H], dilations[NHWC::dim::W]};
     }
+    nb->Attr("strides", new_strides);
     nb->Attr("dilations", new_dilations);
   }
 }
