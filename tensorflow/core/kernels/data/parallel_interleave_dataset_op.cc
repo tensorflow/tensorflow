@@ -246,7 +246,6 @@ class ParallelInterleaveDatasetOp : public UnaryDatasetOpKernel {
       }
 
       Status Initialize(IteratorContext* ctx) override {
-        AddConstantParameter(ctx, "parallelism", dataset()->cycle_length_);
         TF_RETURN_IF_ERROR(
             dataset()->input_->MakeIterator(ctx, prefix(), &input_impl_));
         return dataset()->captured_func_->Instantiate(ctx);
@@ -360,6 +359,12 @@ class ParallelInterleaveDatasetOp : public UnaryDatasetOpKernel {
       }
 
      protected:
+      std::shared_ptr<model::Node> CreateNode(
+          IteratorContext* ctx, model::Node::Args args) const override {
+        return model::MakeAsyncInterleaveManyNode(std::move(args),
+                                                  /*parameters=*/{});
+      }
+
       Status SaveInternal(IteratorStateWriter* writer) override {
         // The order of locking is important here to avoid deadlock.
         mutex_lock l(mu_);
@@ -1256,13 +1261,9 @@ class ParallelInterleaveDatasetV2Op : public UnaryDatasetOpKernel {
       Status Initialize(IteratorContext* ctx) override {
         mutex_lock l(*mu_);
         if (num_parallel_calls_->value == kAutoTune) {
-          num_parallel_calls_->value = 1;
-          AddTunableParameter(ctx, "parallelism", num_parallel_calls_, 1,
-                              dataset()->cycle_length_);
-        } else {
-          AddConstantParameter(ctx, "parallelism", num_parallel_calls_->value);
+          num_parallel_calls_->value = dataset()->cycle_length_;
+          num_parallel_calls_->tunable = true;
         }
-        AddConstantParameter(ctx, "cycle_length", dataset()->cycle_length_);
         TF_RETURN_IF_ERROR(
             dataset()->input_->MakeIterator(ctx, prefix(), &input_impl_));
         return dataset()->captured_func_->Instantiate(ctx);
@@ -1306,6 +1307,14 @@ class ParallelInterleaveDatasetV2Op : public UnaryDatasetOpKernel {
         std::vector<Tensor> return_values;  // the invocation result values
         bool skip;  // if set the result should be skipped
       };
+
+      std::shared_ptr<model::Node> CreateNode(
+          IteratorContext* ctx, model::Node::Args args) const override {
+        return model::MakeAsyncInterleaveManyNode(
+            std::move(args),
+            {model::MakeParameter("parallelism", num_parallel_calls_, /*min=*/1,
+                                  /*max=*/dataset()->cycle_length_)});
+      }
 
       // Used by the consumer to determine whether it needs to wait. Upon
       // returning false, `result` will either be NULL if end of input has been

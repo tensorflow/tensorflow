@@ -419,6 +419,11 @@ class PrependFromQueueAndPaddedBatchDataset : public DatasetBase {
 
     const DatasetBase* dataset_input() const { return dataset()->input_; }
 
+    std::shared_ptr<model::Node> CreateNode(
+        IteratorContext* ctx, model::Node::Args args) const override {
+      return model::MakeKnownRatioNode(std::move(args), dataset()->batch_size_);
+    }
+
     Status SaveInternal(IteratorStateWriter* writer) override {
       return queue_->Save(this, writer);
     }

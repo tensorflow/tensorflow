@@ -91,6 +91,13 @@ class IdentityIndexedDatasetOp : public IndexedDatasetOpKernel {
         return Status::OK();
       }
 
+     protected:
+      std::shared_ptr<model::Node> CreateNode(
+          IteratorContext* ctx, model::Node::Args args) const override {
+        return model::MakeKnownRatioNode(std::move(args),
+                                         /*ratio=*/1);
+      }
+
      private:
       mutex mu_;
       uint64 cur_ GUARDED_BY(mu_);
