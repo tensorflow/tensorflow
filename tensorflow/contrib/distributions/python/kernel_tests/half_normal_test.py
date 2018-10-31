@@ -24,6 +24,7 @@ import numpy as np
 from tensorflow.contrib.distributions.python.ops import half_normal as hn_lib
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
@@ -288,9 +289,10 @@ class HalfNormalTest(test.TestCase):
 
   def testNegativeSigmaFails(self):
     with self.cached_session():
-      halfnorm = hn_lib.HalfNormal(scale=[-5.], validate_args=True, name="G")
-      with self.assertRaisesOpError("Condition x > 0 did not hold"):
-        halfnorm.mean().eval()
+      with self.assertRaisesWithPredicateMatch(errors.InvalidArgumentError,
+                                               "Condition x > 0 did not hold"):
+        halfnorm = hn_lib.HalfNormal(scale=[-5.], validate_args=True, name="G")
+        # Error detected statically; no need for halfnorm.mean().eval()
 
   def testHalfNormalShape(self):
     with self.cached_session():

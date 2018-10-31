@@ -22,6 +22,7 @@ from scipy import stats
 from tensorflow.contrib.distributions.python.ops import inverse_gamma
 from tensorflow.python.client import session
 from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import errors
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import nn_ops
 from tensorflow.python.platform import test
@@ -295,16 +296,18 @@ class InverseGammaTest(test.TestCase):
     with self.cached_session():
       alpha_v = constant_op.constant(0.0, name="alpha")
       beta_v = constant_op.constant(1.0, name="beta")
-      inv_gamma = inverse_gamma.InverseGamma(
-          concentration=alpha_v, rate=beta_v, validate_args=True)
-      with self.assertRaisesOpError("alpha"):
-        inv_gamma.mean().eval()
+      with self.assertRaisesWithPredicateMatch(errors.InvalidArgumentError,
+                                               "alpha"):
+        inv_gamma = inverse_gamma.InverseGamma(
+            concentration=alpha_v, rate=beta_v, validate_args=True)
+        # Error detected statically; no need for inv_gamma.mean().eval()
       alpha_v = constant_op.constant(1.0, name="alpha")
       beta_v = constant_op.constant(0.0, name="beta")
-      inv_gamma = inverse_gamma.InverseGamma(
-          concentration=alpha_v, rate=beta_v, validate_args=True)
-      with self.assertRaisesOpError("beta"):
-        inv_gamma.mean().eval()
+      with self.assertRaisesWithPredicateMatch(errors.InvalidArgumentError,
+                                               "beta"):
+        inv_gamma = inverse_gamma.InverseGamma(
+            concentration=alpha_v, rate=beta_v, validate_args=True)
+        # Error detected statically; no need for inv_gamma.mean().eval()
 
   def testInverseGammaWithSoftplusConcentrationRate(self):
     with self.cached_session():
