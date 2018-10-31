@@ -319,7 +319,7 @@ class TPUEmbedding(object):
       mode: `TRAINING` or `INFERENCE`.
       optimization_parameters: `AdagradParameters`, `AdamParameters`,
         `Stochasticgradientdescentparameters`. Must be set in training and must
-        not be `None` in inference.
+        be `None` in inference.
       tpu_embedding_test: A `bool`. Only used for testing.
 
     Raises:
