@@ -55,13 +55,14 @@ class _PerDeviceGenerator(dataset_ops.Dataset):
     def _init_func():
       return multi_device_iterator_string_handle
 
+    init_func_concrete = _init_func.get_concrete_function()
     @function.defun()
     def _remote_init_func():
       return functional_ops.remote_call(
           target=source_device,
-          args=_init_func.get_concrete_function().captured_inputs,
+          args=init_func_concrete.captured_inputs,
           Tout=[dtypes.string],
-          f=_init_func.get_concrete_function())
+          f=init_func_concrete)
 
     self._init_func = _remote_init_func.get_concrete_function()
     self._init_captured_args = self._init_func.captured_inputs
@@ -80,6 +81,7 @@ class _PerDeviceGenerator(dataset_ops.Dataset):
           output_types=self._flat_output_types,
           output_shapes=self._flat_output_shapes)
 
+    next_func_concrete = _next_func.get_concrete_function()
     @function.defun_with_attributes(
         input_signature=[tensor_spec.TensorSpec([], dtypes.string)],
         attributes={"experimental_ints_on_device": True})
@@ -87,9 +89,9 @@ class _PerDeviceGenerator(dataset_ops.Dataset):
       return functional_ops.remote_call(
           target=source_device,
           args=[string_handle] +
-          _next_func.get_concrete_function().captured_inputs,
+          next_func_concrete.captured_inputs,
           Tout=self._flat_output_types,
-          f=_next_func.get_concrete_function())
+          f=next_func_concrete)
 
     self._next_func = _remote_next_func.get_concrete_function()
     self._next_captured_args = self._next_func.captured_inputs
@@ -98,14 +100,15 @@ class _PerDeviceGenerator(dataset_ops.Dataset):
     def _finalize_func(unused_string_handle):
       return array_ops.constant(0, dtypes.int64)
 
+    finalize_func_concrete = _finalize_func.get_concrete_function()
     @function.defun(input_signature=[tensor_spec.TensorSpec([], dtypes.string)])
     def _remote_finalize_func(string_handle):
       return functional_ops.remote_call(
           target=source_device,
           args=[string_handle] +
-          _finalize_func.get_concrete_function().captured_inputs,
+          finalize_func_concrete.captured_inputs,
           Tout=[dtypes.int64],
-          f=_finalize_func.get_concrete_function())
+          f=finalize_func_concrete)
 
     self._finalize_func = _remote_finalize_func.get_concrete_function()
     self._finalize_captured_args = self._finalize_func.captured_inputs
