@@ -76,6 +76,7 @@ py_library(
     srcs_version = "PY2AND3",
     visibility = [
         "//tensorflow:__pkg__",
+        "//tensorflow/python/estimator:__subpackages__",
         "//tensorflow/python/tools:__pkg__",
         "//tensorflow/python/tools/api/generator:__pkg__",
         "//tensorflow/tools/api/tests:__pkg__",
@@ -135,6 +136,7 @@ py_library(
         ":util",
         ":weights_broadcast_ops",
         ":while_v2",
+        "//tensorflow/contrib/lite/python:lite",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python/compat",
         "//tensorflow/python/data",

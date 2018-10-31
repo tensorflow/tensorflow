@@ -31,6 +31,7 @@ from tensorflow.contrib.lite.toco import toco_flags_pb2 as _toco_flags_pb2
 from tensorflow.python.platform import resource_loader as _resource_loader
 from tensorflow.python.util import deprecation
 from tensorflow.python.util.lazy_loader import LazyLoader
+from tensorflow.python.util.tf_export import tf_export as _tf_export
 
 # Lazy load since some of the performance benchmark skylark rules
 # break dependencies.
@@ -90,6 +91,8 @@ class ConverterError(Exception):
   pass
 
 
+# Don't expose these for now.
+#  @_tf_export("lite.toco_convert_protos")
 def toco_convert_protos(model_flags_str, toco_flags_str, input_data_str):
   """Convert `input_data_str` according to model and toco parameters.
 
@@ -181,6 +184,8 @@ def tensor_name(x):
   return x.name.split(":")[0]
 
 
+# Don't expose these for now.
+# @_tf_export("lite.build_toco_convert_protos")
 def build_toco_convert_protos(input_tensors,
                               output_tensors,
                               inference_type=lite_constants.FLOAT,
@@ -393,6 +398,7 @@ def toco_convert_impl(input_data, input_tensors, output_tensors, *args,
   return data
 
 
+@_tf_export("lite.toco_convert")
 @deprecation.deprecated(None, "Use `lite.TFLiteConverter` instead.")
 def toco_convert(input_data, input_tensors, output_tensors, *args, **kwargs):
   """Convert a model using TOCO.

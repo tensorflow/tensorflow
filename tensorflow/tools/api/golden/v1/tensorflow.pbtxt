@@ -421,6 +421,10 @@ tf_module {
     mtype: "<type \'module\'>"
   }
   member {
+    name: "lite"
+    mtype: "<type \'module\'>"
+  }
+  member {
     name: "logging"
     mtype: "<type \'module\'>"
   }

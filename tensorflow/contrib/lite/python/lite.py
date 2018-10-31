@@ -65,8 +65,10 @@ from tensorflow.python.lib.io import file_io as _file_io
 from tensorflow.python.saved_model import signature_constants as _signature_constants
 from tensorflow.python.saved_model import tag_constants as _tag_constants
 from tensorflow.python.util import deprecation as _deprecation
+from tensorflow.python.util.tf_export import tf_export as _tf_export
 
 
+@_tf_export("lite.TFLiteConverter")
 class TFLiteConverter(object):
   """Convert a TensorFlow model into `output_format` using TOCO.
 
@@ -499,6 +501,7 @@ class TFLiteConverter(object):
       tensor.set_shape(shape)
 
 
+@_tf_export("lite.TocoConverter")
 class TocoConverter(object):
   """Convert a TensorFlow model into `output_format` using TOCO.
 

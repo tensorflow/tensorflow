@@ -20,6 +20,7 @@ from __future__ import print_function
 import sys
 import numpy as np
 from tensorflow.python.util.lazy_loader import LazyLoader
+from tensorflow.python.util.tf_export import tf_export as _tf_export
 
 # Lazy load since some of the performance benchmark skylark rules
 # break dependencies. Must use double quotes to match code internal rewrite
@@ -34,6 +35,7 @@ _interpreter_wrapper = LazyLoader(
 del LazyLoader
 
 
+@_tf_export('lite.Interpreter')
 class Interpreter(object):
   """Interpreter inferace for TF-Lite Models."""
 
