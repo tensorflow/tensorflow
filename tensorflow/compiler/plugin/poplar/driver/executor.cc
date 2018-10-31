@@ -431,6 +431,8 @@ Status PoplarExecutor::ConfigurePoplarDevice(
           if (tiles_per_ipu != 0) {
             model.tilesPerIPU = tiles_per_ipu;
           }
+          model.compileIPUCode =
+              current_config_.ipu_model_config().compile_ipu_code();
           poplar_device_ = model.createDevice();
           if (poplar_device_.attach()) {
             opened = true;

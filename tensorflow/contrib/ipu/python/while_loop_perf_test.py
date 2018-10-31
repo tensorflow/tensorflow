@@ -48,6 +48,7 @@ class WhileLoopPerfTest(test_util.TensorFlowTestCase):
       r = xla.compile(my_net, inputs=[v])
 
     cfg = ipu.utils.create_ipu_config(profiling=True)
+    cfg = ipu.utils.set_ipu_model_options(cfg, compile_ipu_code=False)
     with sl.Session(config=config_pb2.ConfigProto(ipu_options=cfg)) as sess:
 
         result = sess.run(r, {v:np.zeros([500], np.int32)})

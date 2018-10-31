@@ -54,6 +54,7 @@ def create_ipu_config(profiling=False, use_poplar_text_report=False,
   """
   opts = config_pb2.IPUOptions()
   opts.ipu_model_config.enable_ipu_model = True
+  opts.ipu_model_config.compile_ipu_code = True
 
   opts.profiling.enable_compilation_trace = profiling
   opts.profiling.enable_io_trace = profiling
@@ -131,6 +132,22 @@ def set_convolution_options(opts, convolution_options=None):
       compilation_option = opts.convolution_options.add()
       compilation_option.option = option_name
       compilation_option.value = value
+
+  return opts
+
+def set_ipu_model_options(opts, compile_ipu_code=True):
+  """Set the IPU Model options.
+
+  Args:
+    :param compile_ipu_code: Whether or not to actually compile real IPU code
+                             for modelling.
+
+  Returns:
+
+    :return: The IPUOptions configuration protobuf, with IPU model options
+             set.
+  """
+  opts.ipu_model_config.compile_ipu_code = compile_ipu_code
 
   return opts
 

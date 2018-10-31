@@ -163,6 +163,7 @@ message IPUOptions {
     bool enable_ipu_model = 1;
     int32 num_ipus = 2;
     int32 tiles_per_ipu = 3;
+    bool compile_ipu_code = 4;
   };
   IpuModelConfig ipu_model_config = 1;
 

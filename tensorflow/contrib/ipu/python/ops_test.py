@@ -39,6 +39,7 @@ class ContribIpuOpsTest(test_util.TensorFlowTestCase):
     summary = ipu.ops.ipu_compile_summary('comp', out)
 
     cfg = ipu.utils.create_ipu_config(profiling=True)
+    cfg = ipu.utils.set_ipu_model_options(cfg, compile_ipu_code=False)
     with sl.Session(config=config_pb2.ConfigProto(ipu_options=cfg)) as sess:
       fd = {
         a: [1.0],
@@ -90,6 +91,7 @@ class ContribIpuOpsTest(test_util.TensorFlowTestCase):
     events = gen_ipu_ops.ipu_event_trace()
 
     cfg = ipu.utils.create_ipu_config(profiling=True)
+    cfg = ipu.utils.set_ipu_model_options(cfg, compile_ipu_code=False)
     with sl.Session(config=config_pb2.ConfigProto(ipu_options=cfg)) as sess:
       # Discard any existing events
       sess.run(events)
@@ -122,6 +124,7 @@ class ContribIpuOpsTest(test_util.TensorFlowTestCase):
       r = xla.compile(my_net, inputs=[a, b])
 
     cfg = ipu.utils.create_ipu_config(profiling=True)
+    cfg = ipu.utils.set_ipu_model_options(cfg, compile_ipu_code=False)
     with sl.Session(config=config_pb2.ConfigProto(ipu_options=cfg)) as sess:
 
       fd = {
@@ -181,6 +184,7 @@ class ContribIpuOpsTest(test_util.TensorFlowTestCase):
       l = xla.compile(my_net, inputs=[a, b])
 
     cfg = ipu.utils.create_ipu_config()
+    cfg = ipu.utils.set_ipu_model_options(cfg, compile_ipu_code=False)
     with sl.Session(config=config_pb2.ConfigProto(ipu_options=cfg)) as sess:
       # Initialize and then discard events relating to initialization
       sess.run(variables.global_variables_initializer())
@@ -210,6 +214,7 @@ class ContribIpuOpsTest(test_util.TensorFlowTestCase):
     ipu.utils.move_variable_initialization_to_cpu()
 
     cfg = ipu.utils.create_ipu_config(profiling=True)
+    cfg = ipu.utils.set_ipu_model_options(cfg, compile_ipu_code=False)
     with sl.Session(config=config_pb2.ConfigProto(ipu_options=cfg)) as sess:
       # Discard any pending events
       sess.run(events)
