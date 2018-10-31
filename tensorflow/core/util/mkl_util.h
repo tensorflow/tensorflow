@@ -17,8 +17,8 @@ limitations under the License.
 #define TENSORFLOW_CORE_UTIL_MKL_UTIL_H_
 #ifdef INTEL_MKL
 
-#include <string>
 #include <memory>
+#include <string>
 #include <unordered_map>
 #include <utility>
 #include <vector>
@@ -54,9 +54,9 @@ limitations under the License.
 #include "tensorflow/core/platform/cpu_info.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/macros.h"
+#include "tensorflow/core/util/env_var.h"
 #include "tensorflow/core/util/padding.h"
 #include "tensorflow/core/util/tensor_format.h"
-#include "tensorflow/core/util/env_var.h"
 
 #ifndef INTEL_MKL_ML_ONLY
 #include "mkldnn.hpp"
@@ -83,7 +83,12 @@ namespace tensorflow {
 // MKL operation, and did not go through a conversion to a standard
 // Tensorflow tensor.
 
+// For use with MKL ML, has been deprecated
 typedef enum { W = 0, H = 1, C = 2, N = 3 } MklDims;
+
+// The dimensions order that MKL DNN internally uses for 2D activations
+// [Batch, Channel, Height, Width] and
+// for 2D filters [Out_Channel, In_Channel, Height, Width].
 typedef enum {
   Dim_N = 0,
   Dim_C = 1,
@@ -93,6 +98,9 @@ typedef enum {
   Dim_I = 1
 } MklDnnDims;
 
+// The dimensions order that MKL DNN internally uses for 3D activations
+// [Batch, Channel, Depth, Height, Width] and
+// for 2D filters [Out_Channel, In_Channel, Depth, Height, Width].
 typedef enum {
   Dim3d_N = 0,
   Dim3d_C = 1,
@@ -103,10 +111,13 @@ typedef enum {
   Dim3d_I = 1
 } MklDnnDims3D;
 
+// Enum used to templatize MklOp kernel implementations
+// that support both fp32 and int8 versions.
 enum class MklQuantization {
   QUANTIZED_VERSION,
   FP_VERSION,
-}; 
+};
+
 static const int kSmallBatchSize = 32;
 
 #ifdef INTEL_MKL_ML_ONLY
@@ -255,32 +266,32 @@ class MklShape {
     CHECK_EQ(dnnDelete_F32(convert), E_SUCCESS);
   }
 
-  // The following methods are used for serializing and de-serializing the
-  // contents of the mklshape object.
-  // The data is serialized in this order
-  // isMklTensor_
-  // dimension_
-  // sizes_
-  // strides_
-  // mklLayout_
-  // tfLayout_
-  // tf_to_mkl_dim_map_
+// The following methods are used for serializing and de-serializing the
+// contents of the mklshape object.
+// The data is serialized in this order
+// isMklTensor_
+// dimension_
+// sizes_
+// strides_
+// mklLayout_
+// tfLayout_
+// tf_to_mkl_dim_map_
 
 #define SIZE_OF_MKL_DNN_BUF \
   (dnnLayoutSerializationBufferSize_F32())  // Size of buffer needed to
                                             // serialize dnn_layout pointer
 
-  // Size of buffer to hold the serialized object, the size is computed as
-  // follows sizeof(isMklTensor_) + sizeof(dimension_) + sizeof(sizes_) +
-  // sizeof(strides_)
-  // + sizeof(mklLayout_ buffer) + sizeof(tfLayout_ buffer)
-  // + sizeof(tf_to_mkl_dim_map_)
+// Size of buffer to hold the serialized object, the size is computed as
+// follows sizeof(isMklTensor_) + sizeof(dimension_) + sizeof(sizes_) +
+// sizeof(strides_)
+// + sizeof(mklLayout_ buffer) + sizeof(tfLayout_ buffer)
+// + sizeof(tf_to_mkl_dim_map_)
 
 #define SIZE_OF_MKL_SERIAL_DATA(dims) \
   (2 * sizeof(size_t) + 3 * dims * sizeof(size_t) + 2 * SIZE_OF_MKL_DNN_BUF)
 
-  // First we need to define some macro for offsets into the serial buffer where
-  // different elements of Mklshape is written/read from
+// First we need to define some macro for offsets into the serial buffer where
+// different elements of Mklshape is written/read from
 
 #define IS_MKL_TENSOR_OFFSET 0
 // Location from start of buffer where isMklTensor_ is serialized
@@ -657,7 +668,6 @@ class MklDnnShape {
     }
   }
 
-
   inline void SetTfDimOrder(const size_t dimension, memory::format format) {
     TensorFormat data_format = MklDnnDataFormatToTFDataFormat(format);
     SetTfDimOrder(dimension, data_format);
@@ -786,7 +796,8 @@ inline Tensor ConvertMklToTF(OpKernelContext* context, const Tensor& mkl_tensor,
 }
 #else
 using mkldnn::stream;
-template <typename T> class MklDnnData;
+template <typename T>
+class MklDnnData;
 
 template <typename T>
 inline Tensor ConvertMklToTF(OpKernelContext* context, const Tensor& mkl_tensor,
@@ -796,11 +807,12 @@ inline Tensor ConvertMklToTF(OpKernelContext* context, const Tensor& mkl_tensor,
     if (!mkl_shape.IsMklTensor())
       return mkl_tensor;  // return input since it is already TF tensor
 
-    TensorShape output_shape = mkl_shape.GetTfShape();;
+    TensorShape output_shape = mkl_shape.GetTfShape();
+    ;
 
     // Allocate output tensor.
-    context->allocate_temp(DataTypeToEnum<T>::v(),
-        output_shape, &output_tensor);
+    context->allocate_temp(DataTypeToEnum<T>::v(), output_shape,
+                           &output_tensor);
 
     auto cpu_engine = engine(engine::cpu, 0);
     MklDnnData<T> input(&cpu_engine);
@@ -815,16 +827,16 @@ inline Tensor ConvertMklToTF(OpKernelContext* context, const Tensor& mkl_tensor,
     if (input.IsReorderNeeded(output_tf_pd)) {
       std::vector<primitive> net;
       CHECK_EQ(input.CheckReorderToOpMem(output_tf_pd, &output_tensor, &net),
-             true);
+               true);
       stream(stream::kind::eager).submit(net).wait();
     } else {
       // If not, just forward input tensor to output tensor.
       CHECK(output_tensor.CopyFrom(mkl_tensor, output_shape));
     }
   } catch (mkldnn::error& e) {
-    string error_msg = "Status: " + std::to_string(e.status) +
-                       ", message: " + string(e.message) + ", in file " +
-                       string(__FILE__) + ":" + std::to_string(__LINE__);
+    string error_msg = "Status: " + std::to_string(e.status) + ", message: " +
+                       string(e.message) + ", in file " + string(__FILE__) +
+                       ":" + std::to_string(__LINE__);
     LOG(FATAL) << "Operation received an exception: " << error_msg;
   }
   return output_tensor;
@@ -2019,8 +2031,7 @@ const mkldnn::memory::dims NONE_DIMS = {};
 template <typename T>
 class MklPrimitiveFactory {
  public:
-  MklPrimitiveFactory() {
-  }
+  MklPrimitiveFactory() {}
 
   ~MklPrimitiveFactory() {}
 
@@ -2048,8 +2059,8 @@ class MklPrimitiveFactory {
   /// For those legacy device(w/o AVX512 and AVX2),
   /// MKL-DNN GEMM will be used.
   static inline bool IsLegacyPlatform() {
-    return (!port::TestCPUFeature(port::CPUFeature::AVX512F)
-                   && !port::TestCPUFeature(port::CPUFeature::AVX2));
+    return (!port::TestCPUFeature(port::CPUFeature::AVX512F) &&
+            !port::TestCPUFeature(port::CPUFeature::AVX2));
   }
 
   /// Fuction to check whether primitive memory optimization is enabled
@@ -2070,15 +2081,13 @@ class MklPrimitiveFactory {
 // utility class for creating keys of MKL primitive pool.
 class FactoryKeyCreator {
  public:
-  FactoryKeyCreator() {
-    key_.reserve(kMaxKeyLength);
-  }
+  FactoryKeyCreator() { key_.reserve(kMaxKeyLength); }
 
   ~FactoryKeyCreator() {}
 
   void AddAsKey(const string& str) { Append(str); }
 
-  void AddAsKey(const mkldnn::memory::dims &dims) {
+  void AddAsKey(const mkldnn::memory::dims& dims) {
     for (unsigned int i = 0; i < dims.size(); i++) {
       AddAsKey<int>(dims[i]);
     }
@@ -2086,7 +2095,7 @@ class FactoryKeyCreator {
 
   template <typename T>
   void AddAsKey(const T data) {
-    auto buffer = reinterpret_cast<const char *>(&data);
+    auto buffer = reinterpret_cast<const char*>(&data);
     Append(StringPiece(buffer, sizeof(T)));
   }
 
@@ -2101,7 +2110,6 @@ class FactoryKeyCreator {
     key_.append(1, delimiter);
   }
 };
-
 
 static inline memory::format get_desired_format(int channel,
                                                 bool is_2d = true) {
@@ -2124,37 +2132,34 @@ class MklReorderPrimitive : public MklPrimitive {
   explicit MklReorderPrimitive(const memory* from, const memory* to) {
     Setup(from, to);
   }
-    ~MklReorderPrimitive() {}
+  ~MklReorderPrimitive() {}
 
-    std::shared_ptr<primitive> GetPrimitive() {
-      return context_.reorder_prim;
-    }
+  std::shared_ptr<primitive> GetPrimitive() { return context_.reorder_prim; }
 
-    void SetMemory(const memory* from, const memory* to) {
-      context_.src_mem->set_data_handle(from->get_data_handle());
-      context_.dst_mem->set_data_handle(to->get_data_handle());
-    }
+  void SetMemory(const memory* from, const memory* to) {
+    context_.src_mem->set_data_handle(from->get_data_handle());
+    context_.dst_mem->set_data_handle(to->get_data_handle());
+  }
 
  private:
-    struct ReorderContext {
-      std::shared_ptr<mkldnn::memory> src_mem;
-      std::shared_ptr<mkldnn::memory> dst_mem;
-      std::shared_ptr<primitive> reorder_prim;
-      ReorderContext():
-        src_mem(nullptr), dst_mem(nullptr), reorder_prim(nullptr) {
-      }
-    } context_;
+  struct ReorderContext {
+    std::shared_ptr<mkldnn::memory> src_mem;
+    std::shared_ptr<mkldnn::memory> dst_mem;
+    std::shared_ptr<primitive> reorder_prim;
+    ReorderContext()
+        : src_mem(nullptr), dst_mem(nullptr), reorder_prim(nullptr) {}
+  } context_;
 
-    engine cpu_engine_ = engine(engine::cpu, 0);
+  engine cpu_engine_ = engine(engine::cpu, 0);
 
-    void Setup(const memory* from, const memory* to) {
-      context_.src_mem.reset(new memory(
-            {from->get_primitive_desc().desc(), cpu_engine_}, DummyData));
-      context_.dst_mem.reset(new memory(
-            {to->get_primitive_desc().desc(), cpu_engine_}, DummyData));
-      context_.reorder_prim = std::make_shared<mkldnn::reorder>(
-          reorder(*context_.src_mem, *context_.dst_mem));
-    }
+  void Setup(const memory* from, const memory* to) {
+    context_.src_mem.reset(new memory(
+        {from->get_primitive_desc().desc(), cpu_engine_}, DummyData));
+    context_.dst_mem.reset(
+        new memory({to->get_primitive_desc().desc(), cpu_engine_}, DummyData));
+    context_.reorder_prim = std::make_shared<mkldnn::reorder>(
+        reorder(*context_.src_mem, *context_.dst_mem));
+  }
 };
 
 template <typename T>
@@ -2172,52 +2177,51 @@ class MklReorderPrimitiveFactory : public MklPrimitiveFactory<T> {
     return reorderPrim;
   }
 
-    static MklReorderPrimitiveFactory & GetInstance() {
-      static MklReorderPrimitiveFactory instance_;
-      return instance_;
-    }
+  static MklReorderPrimitiveFactory& GetInstance() {
+    static MklReorderPrimitiveFactory instance_;
+    return instance_;
+  }
 
  private:
-    MklReorderPrimitiveFactory() {}
-    ~MklReorderPrimitiveFactory() {}
+  MklReorderPrimitiveFactory() {}
+  ~MklReorderPrimitiveFactory() {}
 
-    static string CreateKey(const memory* from, const memory* to) {
-      string prefix = "reorder";
-      FactoryKeyCreator key_creator;
-      auto const &from_desc =  from->get_primitive_desc().desc().data;
-      auto const &to_desc =  to->get_primitive_desc().desc().data;
-      const int KIdxFirstStride = 0;
-      memory::dims from_dims(from_desc.dims, &from_desc.dims[from_desc.ndims]);
-      memory::dims to_dims(to_desc.dims, &to_desc.dims[to_desc.ndims]);
-      memory::dims from_strides(
-          from_desc.layout_desc.blocking.strides[KIdxFirstStride],
-          &from_desc.layout_desc.blocking
-               .strides[KIdxFirstStride][from_desc.ndims]);
-      memory::dims to_strides(
-          to_desc.layout_desc.blocking.strides[KIdxFirstStride],
-          &to_desc.layout_desc.blocking
-               .strides[KIdxFirstStride][to_desc.ndims]);
-      key_creator.AddAsKey(prefix);
-      key_creator.AddAsKey(static_cast<int>(from_desc.format));
-      key_creator.AddAsKey(static_cast<int>(from_desc.data_type));
-      key_creator.AddAsKey(from_dims);
-      key_creator.AddAsKey(from_strides);
-      key_creator.AddAsKey(static_cast<int>(to_desc.format));
-      key_creator.AddAsKey(static_cast<int>(to_desc.data_type));
-      key_creator.AddAsKey(to_dims);
-      key_creator.AddAsKey(to_strides);
-      return key_creator.GetKey();
-    }
+  static string CreateKey(const memory* from, const memory* to) {
+    string prefix = "reorder";
+    FactoryKeyCreator key_creator;
+    auto const& from_desc = from->get_primitive_desc().desc().data;
+    auto const& to_desc = to->get_primitive_desc().desc().data;
+    const int KIdxFirstStride = 0;
+    memory::dims from_dims(from_desc.dims, &from_desc.dims[from_desc.ndims]);
+    memory::dims to_dims(to_desc.dims, &to_desc.dims[to_desc.ndims]);
+    memory::dims from_strides(
+        from_desc.layout_desc.blocking.strides[KIdxFirstStride],
+        &from_desc.layout_desc.blocking
+             .strides[KIdxFirstStride][from_desc.ndims]);
+    memory::dims to_strides(
+        to_desc.layout_desc.blocking.strides[KIdxFirstStride],
+        &to_desc.layout_desc.blocking.strides[KIdxFirstStride][to_desc.ndims]);
+    key_creator.AddAsKey(prefix);
+    key_creator.AddAsKey(static_cast<int>(from_desc.format));
+    key_creator.AddAsKey(static_cast<int>(from_desc.data_type));
+    key_creator.AddAsKey(from_dims);
+    key_creator.AddAsKey(from_strides);
+    key_creator.AddAsKey(static_cast<int>(to_desc.format));
+    key_creator.AddAsKey(static_cast<int>(to_desc.data_type));
+    key_creator.AddAsKey(to_dims);
+    key_creator.AddAsKey(to_strides);
+    return key_creator.GetKey();
+  }
 
-    MklPrimitive* GetReorder(const memory* from, const memory* to) {
-      string key = CreateKey(from, to);
-      return this->GetOp(key);
-    }
+  MklPrimitive* GetReorder(const memory* from, const memory* to) {
+    string key = CreateKey(from, to);
+    return this->GetOp(key);
+  }
 
-    void SetReorder(const memory* from, const memory* to, MklPrimitive* op) {
-      string key = CreateKey(from, to);
-      this->SetOp(key, op);
-    }
+  void SetReorder(const memory* from, const memory* to, MklPrimitive* op) {
+    string key = CreateKey(from, to);
+    this->SetOp(key, op);
+  }
 };
 
 /// Fuction to find(or create) a reorder from memory pointed by
