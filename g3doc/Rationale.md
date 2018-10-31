@@ -141,18 +141,28 @@ unknown dimension can be queried using the "dim" builtin as shown below.
 Example:
 
 ``` {.mlir}
-mlfunc foo(...) { %A = alloc <8x?xf32, #lmap> (%N) ... call bar(%A) :
-(memref<8x?xf32, #lmap>) }
+mlfunc foo(...) {
+  %A = alloc <8x?xf32, #lmap> (%N)
+  ...
+  call bar(%A) : (memref<8x?xf32, #lmap>)
+}
 
 mlfunc bar(%A : memref<8x?xf32, #lmap>) {
+  // Type of %A indicates that %A has dynamic shape with 8 rows
+  // and unknown number of columns. The number of columns is queried
+  // dynamically using dim instruction.
+  %N = builtin "dim"(%A){index : 1} : (memref<8x?xf32, #lmap>) -> int
 
-// Type of %A indicates that %A has dynamic shape with 8 rows // and unknown
-number of columns. The number of columns is queried // dynamically using dim
-instruction. %N = builtin "dim"(%A){index : 1} : (memref<8x?xf32, #lmap>) -> int
-
-for %i = 0 to 15 { for %j = 0 to %N { // A[i,j] += 1 %s1 = load %A [%i, %j] :
-memref<8x?xf32, #lmap> %s2 = add %s1, 1 store %s2 to %A [%i, %j] :
-memref<8x?xf32, #lmap> } } return }
+  for %i = 0 to 15 {
+    for %j = 0 to %N {
+      // A[i,j] += 1
+      %s1 = load %A [%i, %j] : memref<8x?xf32, #lmap>
+      %s2 = add %s1, 1
+      store %s2 to %A [%i, %j] : memref<8x?xf32, #lmap>
+    }
+  }
+  return
+}
 
 ```
 
