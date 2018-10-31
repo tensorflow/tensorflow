@@ -455,7 +455,6 @@ REGISTER_OP("SparseReduceSum")
               dims.push_back(c->MakeDim(shape_vec(d)));
             }
           }
-
         }
 
         c->set_output(0, c->MakeShape(dims));
