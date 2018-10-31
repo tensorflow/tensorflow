@@ -1291,5 +1291,59 @@ ENTRY %CustomCallLayoutConstrainedTupleResult (p0: f32[4,4]) -> (f32[4,4]{1,0}, 
   ExpectTupleLayoutIs(custom_call->shape(), {{1, 0}, {0, 1}});
 }
 
+Status AssignLayoutsToComputation(
+    HloModule* module,
+    ChannelLayoutConstraints* channel_constraints = nullptr) {
+  if (!module->entry_computation_layout().result_layout().LayoutIsSet()) {
+    module->mutable_entry_computation_layout()
+        ->mutable_result_layout()
+        ->SetToDefaultLayout();
+  }
+  LayoutAssignment layout_assignment(
+      module->mutable_entry_computation_layout(),
+      LayoutAssignment::InstructionCanChangeLayout, channel_constraints);
+  return layout_assignment.Run(module).status();
+}
+
+TEST_F(LayoutAssignmentTest, OverwriteDiamondShapedConstraintsX) {
+  // Check that we handle a diamond-shaped graph correctly.
+  //      transpose
+  //       /    \
+  //     add    |
+  //       \    /
+  //        tuple
+
+  auto b = HloComputation::Builder(TestName());
+  Shape ashape = ShapeUtil::MakeShape(F32, {12, 8});
+  Shape bshape = ShapeUtil::MakeShape(F32, {8, 12});
+  auto param0 =
+      b.AddInstruction(HloInstruction::CreateParameter(0, bshape, "input"));
+  auto param1 =
+      b.AddInstruction(HloInstruction::CreateParameter(1, ashape, "input"));
+  auto transpose =
+      b.AddInstruction(HloInstruction::CreateTranspose(ashape, param0, {1, 0}));
+  auto add = b.AddInstruction(
+      HloInstruction::CreateBinary(ashape, HloOpcode::kAdd, transpose, param1));
+  b.AddInstruction(HloInstruction::CreateTuple({add, transpose}));
+  auto module = CreateNewVerifiedModule();
+  module->AddEntryComputation(b.Build());
+  Shape ashape_major = ShapeUtil::MakeShapeWithLayout(F32, {12, 8}, {1, 0});
+  Shape ashape_minor = ShapeUtil::MakeShapeWithLayout(F32, {12, 8}, {0, 1});
+  *module->mutable_entry_computation_layout()->mutable_result_layout() =
+      ShapeLayout(ShapeUtil::MakeTupleShape({ashape_major, ashape_minor}));
+  const Layout r2_dim0major = LayoutUtil::MakeLayout({1, 0});
+  ForceParameterLayout(module.get(), 0, r2_dim0major);
+  ForceParameterLayout(module.get(), 1, r2_dim0major);
+  TF_ASSERT_OK(AssignLayoutsToComputation(module.get()));
+
+  EXPECT_THAT(add->shape().layout().minor_to_major(), ElementsAre(1, 0));
+  EXPECT_THAT(add->operand(0)->shape().layout().minor_to_major(),
+              ElementsAre(1, 0));
+  EXPECT_THAT(add->operand(1)->shape().layout().minor_to_major(),
+              ElementsAre(1, 0));
+
+  EXPECT_THAT(transpose->shape().layout().minor_to_major(), ElementsAre(0, 1));
+}
+
 }  // namespace
 }  // namespace xla
