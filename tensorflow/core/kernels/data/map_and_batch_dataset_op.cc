@@ -20,6 +20,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/partial_tensor_shape.h"
+#include "tensorflow/core/framework/stats_aggregator.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/kernels/data/captured_function.h"
 #include "tensorflow/core/kernels/data/dataset_utils.h"
@@ -241,7 +242,11 @@ class MapAndBatchDatasetOp : public UnaryDatasetOpKernel {
             cond_var_(std::make_shared<condition_variable>()),
             num_parallel_calls_(std::make_shared<model::SharedState>(
                 params.dataset->num_parallel_calls_, mu_, cond_var_)),
-            map_func_(std::move(map_func)) {}
+            map_func_(std::move(map_func)) {
+        std::vector<string> components =
+            str_util::Split(params.prefix, "::", str_util::SkipEmpty());
+        prefix_end_ = components.back();
+      }
 
       ~Iterator() override {
         mutex_lock l(*mu_);
@@ -369,11 +374,18 @@ class MapAndBatchDatasetOp : public UnaryDatasetOpKernel {
         int64 num_calls;  // access guarded by owner's mutex
       };
 
-      void CallCompleted(const std::shared_ptr<BatchResult>& result)
+      void CallCompleted(const std::shared_ptr<IteratorContext>& ctx,
+                         const std::shared_ptr<BatchResult>& result)
           LOCKS_EXCLUDED(*mu_) {
         mutex_lock l(*mu_);
         num_calls_--;
         result->num_calls--;
+        const auto& stats_aggregator = ctx->stats_aggregator();
+        if (stats_aggregator) {
+          stats_aggregator->AddScalar(
+              strings::StrCat(prefix_end_, "::active_parallel_calls"),
+              static_cast<float>(num_calls_));
+        }
         cond_var_->notify_all();
       }
 
@@ -393,7 +405,7 @@ class MapAndBatchDatasetOp : public UnaryDatasetOpKernel {
           return_early = result->end_of_input || !result->status.ok();
         }
         if (return_early) {
-          CallCompleted(result);
+          CallCompleted(ctx, result);
           return;
         }
 
@@ -435,7 +447,7 @@ class MapAndBatchDatasetOp : public UnaryDatasetOpKernel {
               result->num_elements++;
             }
           }
-          CallCompleted(result);
+          CallCompleted(ctx, result);
         };
 
         // Apply the map function on `input_element`, storing the result in
@@ -580,7 +592,19 @@ class MapAndBatchDatasetOp : public UnaryDatasetOpKernel {
               num_calls_++;
             }
           }
-
+          const std::shared_ptr<StatsAggregator>& stats_aggregator =
+              ctx->stats_aggregator();
+          if (stats_aggregator) {
+            mutex_lock l(*mu_);
+            // TODO(shivaniagrawal): add `parallel_calls_utilization` in the
+            // monitoring code or as histogram at fixed time intervals.
+            stats_aggregator->AddScalar(
+                strings::StrCat(prefix_end_, "::active_parallel_calls"),
+                static_cast<float>(num_calls_));
+            stats_aggregator->AddScalar(
+                strings::StrCat(prefix_end_, "::num_parallel_calls"),
+                static_cast<float>(num_parallel_calls_->value));
+          }
           for (const auto& call : new_calls) {
             CallFunction(ctx, call.first, call.second);
           }
@@ -728,6 +752,7 @@ class MapAndBatchDatasetOp : public UnaryDatasetOpKernel {
       std::deque<std::shared_ptr<BatchResult>> batch_results_ GUARDED_BY(*mu_);
       std::unique_ptr<Thread> runner_thread_ GUARDED_BY(*mu_);
       bool cancelled_ GUARDED_BY(*mu_) = false;
+      string prefix_end_;
     };
 
     const DatasetBase* const input_;
