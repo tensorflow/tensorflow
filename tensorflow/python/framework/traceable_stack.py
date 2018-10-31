@@ -61,8 +61,11 @@ class TraceableObject(object):
     if len(frame_records) >= local_offset:
       # Negative indexing is one-indexed instead of zero-indexed.
       negative_offset = -(local_offset + 1)
-      self.filename, self.lineno = frame_records[negative_offset][:2]
-      return self.SUCCESS
+      if len(frame_records) > local_offset:
+        self.filename, self.lineno = frame_records[negative_offset][:2]
+        return self.SUCCESS
+      else:
+        return self.FAILURE
     else:
       # If the offset is too large then we use the largest offset possible,
       # meaning we use the outermost stack frame at index 0.
