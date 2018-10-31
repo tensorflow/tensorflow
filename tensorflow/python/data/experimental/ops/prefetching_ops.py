@@ -138,12 +138,14 @@ class _PrefetchToDeviceIterator(object):
       ret = remote_iterator.get_next()
       return nest.flatten(sparse.serialize_sparse_tensors(ret))
 
+    self._prefetch_fn = _prefetch_fn.get_concrete_function()
+
     iterator_device = ged_ops.experimental_iterator_get_device(
         self._input_iterator._iterator_resource)
 
     with ops.device(device):
       self._buffering_resource = function_buffering_resource(
-          f=_prefetch_fn.get_concrete_function(),
+          f=self._prefetch_fn,
           target_device=iterator_device,
           string_arg=input_iterator_handle,
           buffer_size=buffer_size,
@@ -420,13 +422,14 @@ class _CopyToDeviceDataset(dataset_ops.UnaryDataset):
           [gen_dataset_ops.make_iterator(ds_variant, resource)]):
         return gen_dataset_ops.iterator_to_string_handle(resource)
 
+    init_func_concrete = _init_func.get_concrete_function()
     @function.defun()
     def _remote_init_func():
       return functional_ops.remote_call(
           target=self._source_device,
-          args=_init_func.get_concrete_function().captured_inputs,
+          args=init_func_concrete.captured_inputs,
           Tout=[dtypes.string],
-          f=_init_func.get_concrete_function())
+          f=init_func_concrete)
 
     self._init_func = _remote_init_func.get_concrete_function()
     self._init_captured_args = self._init_func.captured_inputs
@@ -447,14 +450,15 @@ class _CopyToDeviceDataset(dataset_ops.UnaryDataset):
       ret = iterator.get_next()
       return nest.flatten(sparse.serialize_sparse_tensors(ret))
 
+    next_func_concrete = _next_func.get_concrete_function()
     @function.defun(input_signature=[tensor_spec.TensorSpec([], dtypes.string)])
     def _remote_next_func(string_handle):
       return functional_ops.remote_call(
           target=self._source_device,
           args=[string_handle] +
-          _next_func.get_concrete_function().captured_inputs,
+          next_func_concrete.captured_inputs,
           Tout=self._flat_output_types,
-          f=_next_func.get_concrete_function())
+          f=next_func_concrete)
 
     self._next_func = _remote_next_func.get_concrete_function()
     self._next_captured_args = self._next_func.captured_inputs
@@ -477,14 +481,15 @@ class _CopyToDeviceDataset(dataset_ops.UnaryDataset):
               iterator_resource, ignore_lookup_error=True)]):
         return array_ops.constant(0, dtypes.int64)
 
+    finalize_func_concrete = _finalize_func.get_concrete_function()
     @function.defun(input_signature=[tensor_spec.TensorSpec([], dtypes.string)])
     def _remote_finalize_func(string_handle):
       return functional_ops.remote_call(
           target=self._source_device,
           args=[string_handle] +
-          _finalize_func.get_concrete_function().captured_inputs,
+          finalize_func_concrete.captured_inputs,
           Tout=[dtypes.int64],
-          f=_finalize_func.get_concrete_function())
+          f=finalize_func_concrete)
 
     self._finalize_func = _remote_finalize_func.get_concrete_function()
     self._finalize_captured_args = self._finalize_func.captured_inputs
