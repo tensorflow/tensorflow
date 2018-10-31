@@ -100,7 +100,7 @@ typedef enum {
 
 // The dimensions order that MKL DNN internally uses for 3D activations
 // [Batch, Channel, Depth, Height, Width] and
-// for 2D filters [Out_Channel, In_Channel, Depth, Height, Width].
+// for 3D filters [Out_Channel, In_Channel, Depth, Height, Width].
 typedef enum {
   Dim3d_N = 0,
   Dim3d_C = 1,
