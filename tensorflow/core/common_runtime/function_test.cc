@@ -436,6 +436,57 @@ TEST_F(FunctionLibraryRuntimeTest, XTimesNInOverlayLib) {
            "Not found: Function XTimesTwo is not defined.");
 }
 
+TEST_F(FunctionLibraryRuntimeTest, XTimesNInOverlayLibAndDelayedInstantiation) {
+  using FDH = ::tensorflow::FunctionDefHelper;
+
+  Init({});
+
+  FunctionDef xt4_override = test::function::XTimesTwo();
+  xt4_override.mutable_signature()->set_name("XTimesFour");
+
+  // Call XTimesFour via PartitionedCall which delays functions instantiation
+  // to the first call to Compute/ComputeAsync.
+  FunctionDef my_xt4 = FunctionDefHelper::Create(
+      "MyXTimesFour", {"x:float"}, {"z:float"}, {},
+      {{{"x_times_four"},
+        "PartitionedCall",
+        {"x"},
+        {{"Tin", DataTypeSlice({DT_FLOAT})},
+         {"Tout", DataTypeSlice({DT_FLOAT})},
+         {"f", FDH::FunctionRef("XTimesFour", {{"T", DT_FLOAT}})}}}},
+      /* Mapping between function returns and function node outputs. */
+      {{"z", "x_times_four:output:0"}});
+
+  FunctionDefLibrary lib;
+  *lib.add_function() = test::function::XTimesTwo();
+  *lib.add_function() = test::function::XTimesFour();
+  *lib.add_function() = my_xt4;
+  std::unique_ptr<FunctionLibraryDefinition> overlay_lib(
+      new FunctionLibraryDefinition(OpRegistry::Global(), lib));
+
+  FunctionLibraryRuntime::InstantiateOptions options;
+  options.overlay_lib = overlay_lib.get();
+
+  auto x = test::AsTensor<float>({1, 2, 3, 4});
+  Tensor y;
+
+  // When we instantiate with default library overlay we should get x*4.
+  TF_CHECK_OK(InstantiateAndRun(flr0_, "MyXTimesFour", {}, options, {x}, {&y}));
+  test::ExpectTensorEqual<float>(y, test::AsTensor<float>({4, 8, 12, 16}));
+
+  // Overlay library that overrides default XTimesFour with XTimesTwo body.
+  FunctionDefLibrary lib_override;
+  *lib_override.add_function() = xt4_override;
+  *lib_override.add_function() = my_xt4;
+  std::unique_ptr<FunctionLibraryDefinition> overlay_lib_override(
+      new FunctionLibraryDefinition(OpRegistry::Global(), lib_override));
+
+  // We should call the XTimesFour override which is actually x*2.
+  options.overlay_lib = overlay_lib_override.get();
+  TF_CHECK_OK(InstantiateAndRun(flr0_, "MyXTimesFour", {}, options, {x}, {&y}));
+  test::ExpectTensorEqual<float>(y, test::AsTensor<float>({2, 4, 6, 8}));
+}
+
 TEST_F(FunctionLibraryRuntimeTest, StateHandle) {
   auto T = DT_INT32;
 
