@@ -17,7 +17,7 @@ def gen_api_init_files(
         api_version = 2,
         compat_api_versions = [],
         compat_init_templates = [],
-        packages = ["tensorflow.python", "tensorflow.contrib.lite.python.lite"],
+        packages = ["tensorflow.python", "tensorflow.lite.python.lite"],
         package_deps = ["//tensorflow/python:no_contrib"],
         output_package = "tensorflow",
         output_dir = ""):

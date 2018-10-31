@@ -1,6 +1,6 @@
 path: "tensorflow.lite.OpHint"
 tf_class {
-  is_instance: "<class \'tensorflow.contrib.lite.python.op_hint.OpHint\'>"
+  is_instance: "<class \'tensorflow.lite.python.op_hint.OpHint\'>"
   is_instance: "<type \'object\'>"
   member {
     name: "AGGREGATE_FIRST"

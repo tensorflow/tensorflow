@@ -1,6 +1,6 @@
 path: "tensorflow.lite.TocoConverter"
 tf_class {
-  is_instance: "<class \'tensorflow.contrib.lite.python.lite.TocoConverter\'>"
+  is_instance: "<class \'tensorflow.lite.python.lite.TocoConverter\'>"
   is_instance: "<type \'object\'>"
   member_method {
     name: "__init__"
