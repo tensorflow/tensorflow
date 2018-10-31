@@ -912,6 +912,8 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
 
     // Check if has out control edge. If true, this is a training graph.
     // Currently we focus on inference and do no fusion in training.
+    // Note: this constraint will eventually be removed, if we enabled this fusion for training
+    // in the future. 
     for (const Edge* e : node->out_edges()) {
       if (e->IsControlEdge()) {
         return false;
