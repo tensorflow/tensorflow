@@ -2626,28 +2626,43 @@ std::unique_ptr<Thunk> IrEmitterUnnested::BuildGemmThunk(
         rhs->shape(),               // The shape of RHS.
         inst->shape(),              // The shape of the output.
         1.0,                        // alpha.
-        inst);
+        0.0,                        // beta.
+        inst, /*implements_whole_instruction=*/true);
   }
 
   if (inst->opcode() == HloOpcode::kFusion) {
     CHECK_EQ(inst->fusion_kind(), HloInstruction::FusionKind::kOutput);
-    const HloInstruction* mul = inst->fused_expression_root();
-    const HloInstruction* dot = mul->operand(0);
-    const HloInstruction* alpha = mul->operand(1);
-    if (dot->opcode() != HloOpcode::kDot) {
-      std::swap(dot, alpha);
-    }
-    if (alpha->opcode() == HloOpcode::kBroadcast) {
-      alpha = alpha->operand(0);
-    }
-    if (alpha->opcode() == HloOpcode::kParameter) {
-      alpha = inst->operand(alpha->parameter_number());
-    }
-    // TODO(b/74185543): Remove the following if block once we support fusion
-    // with a non-constant as well. Then we will just always use the constant
-    // on the device.
-    if (alpha->opcode() == HloOpcode::kCopy) {
-      alpha = alpha->operand(0);
+    const HloInstruction* output_fused_op = inst->fused_expression_root();
+
+    double alpha_value = 1.0;
+    const HloInstruction* bias = nullptr;
+    const HloInstruction* dot = output_fused_op->operand(0);
+    if (output_fused_op->opcode() == HloOpcode::kMultiply) {
+      const HloInstruction* alpha = output_fused_op->operand(1);
+      if (dot->opcode() != HloOpcode::kDot) {
+        std::swap(dot, alpha);
+      }
+      if (alpha->opcode() == HloOpcode::kBroadcast) {
+        alpha = alpha->operand(0);
+      }
+      if (alpha->opcode() == HloOpcode::kParameter) {
+        alpha = inst->operand(alpha->parameter_number());
+      }
+      // TODO(b/74185543): Remove the following if block once we support fusion
+      // with a non-constant as well. Then we will just always use the constant
+      // on the device.
+      if (alpha->opcode() == HloOpcode::kCopy) {
+        alpha = alpha->operand(0);
+      }
+      alpha_value = GetScalarConstantAsDouble(alpha->literal());
+    } else {
+      // Fused bias add.
+      CHECK_EQ(output_fused_op->opcode(), HloOpcode::kAdd);
+      bias = output_fused_op->operand(1);
+      if (dot->opcode() != HloOpcode::kDot) {
+        std::swap(dot, bias);
+      }
+      bias = inst->operand(bias->parameter_number());
     }
 
     DCHECK(dot->opcode() == HloOpcode::kDot);
@@ -2660,15 +2675,38 @@ std::unique_ptr<Thunk> IrEmitterUnnested::BuildGemmThunk(
     const HloInstruction* rhs =
         inst->operand(rhs_parameter->parameter_number());
 
+    // The bias is passed inside the output buffer. If those buffers are shared
+    // we can just use it, otherwise copy the bias values into the output buffer
+    // first.
+    if (bias != nullptr &&
+        GetAllocationSlice(*bias) != GetAllocationSlice(*inst)) {
+      std::vector<std::unique_ptr<Thunk>> thunks;
+      thunks.push_back(absl::make_unique<DeviceToDeviceCopyThunk>(
+          /*source_buffer=*/GetAllocationSlice(*bias),
+          /*destination_buffer=*/GetAllocationSlice(*inst),
+          /*mem_size=*/ShapeUtil::ByteSizeOf(inst->shape()), nullptr));
+      thunks.push_back(absl::make_unique<GemmThunk>(
+          GetAllocationSlice(*lhs),   // The buffer assigned to LHS.
+          GetAllocationSlice(*rhs),   // The buffer assigned to RHS.
+          GetAllocationSlice(*inst),  // The output buffer.
+          lhs->shape(),               // The shape of LHS.
+          rhs->shape(),               // The shape of RHS.
+          inst->shape(),              // The shape of the output.
+          alpha_value,                // alpha.
+          1.0,                        // beta.
+          inst, /*implements_whole_instruction=*/false));
+      return absl::make_unique<SequentialThunk>(std::move(thunks), inst);
+    }
     return absl::make_unique<GemmThunk>(
-        GetAllocationSlice(*lhs),   // The buffer assigned to LHS.
-        GetAllocationSlice(*rhs),   // The buffer assigned to RHS.
-        GetAllocationSlice(*inst),  // The output buffer.
-        lhs->shape(),               // The shape of LHS.
-        rhs->shape(),               // The shape of RHS.
-        inst->shape(),              // The shape of the output.
-        GetScalarConstantAsDouble(alpha->literal()),  // alpha.
-        inst);
+        GetAllocationSlice(*lhs),     // The buffer assigned to LHS.
+        GetAllocationSlice(*rhs),     // The buffer assigned to RHS.
+        GetAllocationSlice(*inst),    // The output buffer.
+        lhs->shape(),                 // The shape of LHS.
+        rhs->shape(),                 // The shape of RHS.
+        inst->shape(),                // The shape of the output.
+        alpha_value,                  // alpha.
+        bias != nullptr ? 1.0 : 0.0,  // beta.
+        inst, /*implements_whole_instruction=*/true);
   }
 
   LOG(FATAL) << "Cannot build a GemmThunk for " << inst->ToString();
