@@ -34,6 +34,17 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
 
     # Mapping from function to the new name of the function
     self.function_renames = renames_v2.renames
+    # pylint: disable=line-too-long
+    self.function_renames.update({
+        "tf.saved_model.builder.SavedModelBuilder": "tf.compat.v1.saved_model.Builder",
+        "tf.saved_model.loader.load": "tf.compat.v1.saved_model.load",
+        "tf.saved_model.main_op.main_op": "tf.compat.v1.saved_model.main_op",
+        "tf.saved_model.main_op.main_op_with_restore": "tf.compat.v1.saved_model.main_op_with_restore",
+        "tf.saved_model.simple_save": "tf.compat.v1.saved_model.simple_save",
+        "tf.saved_model.utils.build_tensor_info": "tf.compat.v1.saved_model.build_tensor_info",
+        "tf.saved_model.utils.get_tensor_from_tensor_info": "tf.compat.v1.saved_model.get_tensor_from_tensor_info",
+    })
+    # pylint: enable=line-too-long
 
     # Variables that should be changed to functions.
     self.change_to_function = {}
