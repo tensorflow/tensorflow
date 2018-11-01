@@ -20,16 +20,42 @@ from __future__ import print_function
 
 import os
 
+from tensorflow.python.eager import backprop
 from tensorflow.python.eager import def_function
 from tensorflow.python.eager import test
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_spec
+from tensorflow.python.framework import test_util
+from tensorflow.python.keras.engine import training
+from tensorflow.python.keras.layers import core
+from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import variables
 from tensorflow.python.saved_model import export
 from tensorflow.python.saved_model import loader
 from tensorflow.python.saved_model import signature_constants
+from tensorflow.python.training import adam
 from tensorflow.python.training.checkpointable import tracking
+
+
+class _ModelWithOptimizer(training.Model):
+
+  def __init__(self):
+    super(_ModelWithOptimizer, self).__init__()
+    self.dense = core.Dense(1)
+    self.optimizer = adam.AdamOptimizer(0.01)
+
+  @def_function.function(
+      input_signature=(tensor_spec.TensorSpec([None, 2], dtypes.float32),
+                       tensor_spec.TensorSpec([None], dtypes.float32)))
+  def call(self, x, y):
+    with backprop.GradientTape() as tape:
+      loss = math_ops.reduce_mean((self.dense(x) - y) ** 2.)
+    trainable_variables = self.trainable_variables
+    gradients = tape.gradient(loss, trainable_variables)
+    self.optimizer.apply_gradients(zip(gradients, trainable_variables))
+    return {"loss": loss}
 
 
 class ExportTest(test.TestCase):
@@ -123,6 +149,48 @@ class ExportTest(test.TestCase):
     with self.assertRaisesRegexp(
         ValueError, "dictionary containing non-Tensor value"):
       export.export(root, export_dir, to_export)
+
+  def test_variable(self):
+    root = tracking.Checkpointable()
+    root.v1 = variables.Variable(3.)
+    root.v2 = variables.Variable(2.)
+    root.f = def_function.function(
+        lambda x: root.v1 * root.v2 * x)
+    root.f(constant_op.constant(1.))
+    to_export = root.f.get_concrete_function(constant_op.constant(1.))
+    export_dir = os.path.join(self.get_temp_dir(), "saved_model")
+    export.export(root, export_dir, to_export)
+    self.assertAllEqual({"output_0": 12.},
+                        self._import_and_infer(export_dir, {"x": 2.}))
+
+  def test_optimizer(self):
+    x = constant_op.constant([[3., 4.]])
+    y = constant_op.constant([2.])
+    model = _ModelWithOptimizer()
+    first_loss = model(x, y)
+    export_dir = os.path.join(self.get_temp_dir(), "saved_model")
+    export.export(model, export_dir, model.call)
+    second_loss = model(x, y)
+    self.assertNotEqual(first_loss, second_loss)
+    self.assertAllClose(
+        second_loss,
+        self._import_and_infer(export_dir, {"x": [[3., 4.]], "y": [2.]}))
+
+
+class MemoryTests(test.TestCase):
+
+  def setUp(self):
+    self._model = _ModelWithOptimizer()
+
+  @test_util.assert_no_garbage_created
+  def test_no_reference_cycles(self):
+    # TODO(allenl): Fix remaining reference cycles
+    self.skipTest("Not working")
+    x = constant_op.constant([[3., 4.]])
+    y = constant_op.constant([2.])
+    self._model(x, y)
+    export_dir = os.path.join(self.get_temp_dir(), "saved_model")
+    export.export(self._model, export_dir, self._model.call)
 
 
 if __name__ == "__main__":
