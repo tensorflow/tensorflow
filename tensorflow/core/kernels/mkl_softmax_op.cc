@@ -63,7 +63,13 @@ class MklSoftmaxOp : public OpKernel {
                               : src_tensor.shape();
       const int input_dims = src_tf_shape.dims();
       auto src_dims = TFShapeToMklDnnDims(src_tf_shape);
-      auto output_dims = src_dims;
+      memory::dims output_dims;
+      if(src_mkl_shape.IsMklTensor()) {
+        output_dims = src_mkl_shape.GetSizesAsMklDnnDims();
+      }
+      else {
+        output_dims = src_dims; //nhwc
+      }
       memory::format layout_type;
       // In MKL, data format passed to mkl softmax op depends on dimension of the input tensor.
       // Here "x" data format in MKL is used for 1 dim tensor, "nc" for 2 dim tensor, 
@@ -82,10 +88,10 @@ class MklSoftmaxOp : public OpKernel {
           layout_type = memory::format::tnc;
           break;
         case 4:
-          layout_type = memory::format::nchw;
+          layout_type = memory::format::nhwc;
           break;
         case 5:
-          layout_type = memory::format::ncdhw;
+          layout_type = memory::format::ndhwc;
           break;
         default:
           OP_REQUIRES_OK(context, errors::Aborted("Input dims must be <= 5 and >=1"));
