@@ -25,6 +25,8 @@
 #include "mlir/IR/AffineExprVisitor.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/Statements.h"
+#include "llvm/ADT/DenseMap.h"
+#include "llvm/Support/raw_ostream.h"
 
 using namespace mlir;
 
@@ -369,4 +371,476 @@ void mlir::getReachableAffineApplyOps(
       }
     }
   }
+}
+
+// Forward substitutes into 'valueMap' all AffineApplyOps reachable from the
+// operands of 'valueMap'.
+void mlir::forwardSubstituteReachableOps(AffineValueMap *valueMap) {
+  // Gather AffineApplyOps reachable from 'indices'.
+  SmallVector<OperationStmt *, 4> affineApplyOps;
+  getReachableAffineApplyOps(valueMap->getOperands(), affineApplyOps);
+  // Compose AffineApplyOps in 'affineApplyOps'.
+  for (auto *opStmt : affineApplyOps) {
+    assert(opStmt->isa<AffineApplyOp>());
+    auto affineApplyOp = opStmt->dyn_cast<AffineApplyOp>();
+    // Forward substitute 'affineApplyOp' into 'valueMap'.
+    valueMap->forwardSubstitute(*affineApplyOp);
+  }
+}
+
+// Adds loop upper and lower bound inequalities to 'domain' for each ForStmt
+// value in 'values'. Requires that the first 'numDims' MLValues in 'values'
+// are ForStmts. Returns true if lower/upper bound inequalities were
+// successfully added, returns false otherwise.
+// TODO(andydavis) Get operands for loop bounds so we can add domain
+// constraints for non-constant loop bounds.
+static bool addLoopBoundInequalities(unsigned numDims,
+                                     ArrayRef<const MLValue *> values,
+                                     FlatAffineConstraints *domain) {
+  assert(values.size() >= numDims);
+  unsigned numIds = values.size();
+  // Add InEqualties for loop bounds.
+  SmallVector<int64_t, 4> ineq;
+  ineq.resize(numIds + 1);
+  for (unsigned i = 0; i < numDims; ++i) {
+    const ForStmt *forStmt = dyn_cast<ForStmt>(values[i]);
+    if (!forStmt || !forStmt->hasConstantBounds())
+      return false;
+    // Zero fill
+    std::fill(ineq.begin(), ineq.end(), 0);
+    // TODO(andydavis, bondhugula) Add methods for addUpper/LowerBound.
+    // Add inequality for lower bound.
+    ineq[i] = 1;
+    ineq[numIds] = -forStmt->getConstantLowerBound();
+    domain->addInequality(ineq);
+    // Add inequality for upper bound.
+    ineq[i] = -1;
+    ineq[numIds] = forStmt->getConstantUpperBound();
+    domain->addInequality(ineq);
+  }
+  return true;
+}
+
+// IterationDomainContext encapsulates the state required to represent
+// the iteration domain of an OperationStmt.
+struct IterationDomainContext {
+  // Set of inequality constraint pairs, where each pair represents the
+  // upper/lower bounds of a ForStmt in the iteration domain.
+  FlatAffineConstraints domain;
+  // The number of dimension identifiers in 'values'.
+  unsigned numDims;
+  // The list of MLValues in this iteration domain, with MLValues in
+  // [0, numDims) representing dimension identifiers, and MLValues in
+  // [numDims, values.size()) representing symbol identifiers.
+  SmallVector<const MLValue *, 4> values;
+  IterationDomainContext() : numDims(0) {}
+  unsigned getNumDims() { return numDims; }
+  unsigned getNumSymbols() { return values.size() - numDims; }
+};
+
+// Computes the iteration domain for 'opStmt' and populates 'ctx', which
+// encapsulates the following state for each ForStmt in 'opStmt's iteration
+// domain:
+// *) adds inequality constraints representing the ForStmt upper/lower bounds.
+// *) adds MLValues and symbols for the ForStmt and its operands to a list.
+// TODO(andydavis) Add support for IfStmts in iteration domain.
+// TODO(andydavis) Handle non-constant loop bounds by composing affine maps
+// for each ForStmt loop bound and adding de-duped ids/symbols to iteration
+// domain context.
+// TODO(andydavis) Capture the context of the symbols. For example, check
+// if a symbol is the result of a constant operation, and set the symbol to
+// that value in FlatAffineConstraints (using setIdToConstant).
+static bool getIterationDomainContext(const OperationStmt *opStmt,
+                                      IterationDomainContext *ctx) {
+  // Walk up tree storing parent statements in 'loops'.
+  // TODO(andydavis) Extend this to gather enclosing IfStmts and consider
+  // factoring it out into a utility function.
+  SmallVector<const ForStmt *, 4> loops;
+  const auto *currStmt = opStmt->getParentStmt();
+  while (currStmt != nullptr) {
+    if (isa<IfStmt>(currStmt))
+      return false;
+    assert(isa<ForStmt>(currStmt));
+    auto *forStmt = dyn_cast<ForStmt>(currStmt);
+    loops.push_back(forStmt);
+    currStmt = currStmt->getParentStmt();
+  }
+  // Iterate through 'loops' from outer-most loop to inner-most loop.
+  // Populate 'values'.
+  ctx->values.reserve(loops.size());
+  for (int i = static_cast<int>(loops.size()) - 1; i >= 0; --i) {
+    auto *forStmt = loops[i];
+    // TODO(andydavis) Compose affine maps into lower/upper bounds of 'forStmt'
+    // and add de-duped symbols to ctx.symbols.
+    if (!forStmt->hasConstantBounds())
+      return false;
+    ctx->values.push_back(forStmt);
+    ctx->numDims++;
+  }
+  // Resize flat affine constraint system based on num dims symbols found.
+  unsigned numDims = ctx->getNumDims();
+  unsigned numSymbols = ctx->getNumSymbols();
+  ctx->domain.reset(/*newNumReservedInequalities=*/2 * numDims,
+                    /*newNumReservedEqualities=*/0,
+                    /*newNumReservedCols=*/numDims + numSymbols + 1, numDims,
+                    numSymbols);
+  return addLoopBoundInequalities(numDims, ctx->values, &ctx->domain);
+}
+
+// Builds a map from MLValue to identifier position in a new merged identifier
+// list, which is the result of merging dim/symbol lists from src/dst
+// iteration domains. The format of the new merged list is as follows:
+//
+//   [src-dim-identifiers, dst-dim-identifiers, symbol-identifiers]
+//
+// This method populates 'srcDimPosMap' and 'dstDimPosMap' with mappings from
+// operand MLValues in 'srcAccessMap'/'dstAccessMap' to the position of these
+// values in the merged list.
+// In addition, this method populates 'symbolPosMap' with mappings from
+// operand MLValues in both 'srcIterationDomainContext' and
+// 'dstIterationDomainContext' to position of these values in the merged list.
+static void buildDimAndSymbolPositionMaps(
+    const IterationDomainContext &srcIterationDomainContext,
+    const IterationDomainContext &dstIterationDomainContext,
+    const AffineValueMap &srcAccessMap, const AffineValueMap &dstAccessMap,
+    DenseMap<const MLValue *, unsigned> *srcDimPosMap,
+    DenseMap<const MLValue *, unsigned> *dstDimPosMap,
+    DenseMap<const MLValue *, unsigned> *symbolPosMap) {
+  unsigned pos = 0;
+
+  auto updatePosMap = [&](DenseMap<const MLValue *, unsigned> *posMap,
+                          ArrayRef<const MLValue *> values, unsigned start,
+                          unsigned limit) {
+    for (unsigned i = start; i < limit; ++i) {
+      auto *value = values[i];
+      auto it = posMap->find(value);
+      if (it == posMap->end()) {
+        (*posMap)[value] = pos++;
+      }
+    }
+  };
+
+  AffineMap srcMap = srcAccessMap.getAffineMap();
+  AffineMap dstMap = dstAccessMap.getAffineMap();
+
+  // Update position map with src dimension identifiers from iteration domain
+  // and access function.
+  updatePosMap(srcDimPosMap, srcIterationDomainContext.values, 0,
+               srcIterationDomainContext.numDims);
+
+  // Update position map with dst dimension identifiers from iteration domain
+  // and access function.
+  updatePosMap(dstDimPosMap, dstIterationDomainContext.values, 0,
+               dstIterationDomainContext.numDims);
+
+  // Update position map with src symbol identifiers from iteration domain
+  // and access function.
+  updatePosMap(symbolPosMap, srcIterationDomainContext.values,
+               dstIterationDomainContext.numDims,
+               srcIterationDomainContext.values.size());
+  updatePosMap(symbolPosMap, srcAccessMap.getOperands(), srcMap.getNumDims(),
+               srcMap.getNumDims() + srcMap.getNumSymbols());
+
+  // Update position map with dst symbol identifiers from iteration domain
+  // and access function.
+  updatePosMap(symbolPosMap, dstIterationDomainContext.values,
+               dstIterationDomainContext.numDims,
+               dstIterationDomainContext.values.size());
+  updatePosMap(symbolPosMap, dstAccessMap.getOperands(), dstMap.getNumDims(),
+               dstMap.getNumDims() + dstMap.getNumSymbols());
+}
+
+static unsigned getPos(const DenseMap<const MLValue *, unsigned> &posMap,
+                       const MLValue *value) {
+  auto it = posMap.find(value);
+  assert(it != posMap.end());
+  return it->second;
+}
+
+// Adds iteration domain constraints from 'ctx.domain' into 'outputFac'.
+// Uses 'dimPosMap' to map from dim operand value in 'ctx.values', to dim
+// position in 'outputFac'.
+// Uses 'symbolPosMap' to map from symbol operand value in 'ctx.values', to
+// symbol position in 'outputFac'.
+static void
+addDomainConstraints(const IterationDomainContext &ctx,
+                     const DenseMap<const MLValue *, unsigned> &dimPosMap,
+                     const DenseMap<const MLValue *, unsigned> &symbolPosMap,
+                     FlatAffineConstraints *outputFac) {
+  unsigned inputNumIneq = ctx.domain.getNumInequalities();
+  unsigned inputNumDims = ctx.domain.getNumDimIds();
+  unsigned inputNumSymbols = ctx.domain.getNumSymbolIds();
+  unsigned inputNumIds = inputNumDims + inputNumSymbols;
+
+  unsigned outputNumDims = outputFac->getNumDimIds();
+  unsigned outputNumSymbols = outputFac->getNumSymbolIds();
+  unsigned outputNumIds = outputNumDims + outputNumSymbols;
+
+  SmallVector<int64_t, 4> eq;
+  eq.resize(outputNumIds + 1);
+  for (unsigned i = 0; i < inputNumIneq; ++i) {
+    // Zero fill.
+    std::fill(eq.begin(), eq.end(), 0);
+    // Add dim identifiers.
+    for (unsigned j = 0; j < inputNumDims; ++j)
+      eq[getPos(dimPosMap, ctx.values[j])] = ctx.domain.atIneq(i, j);
+    // Add symbol identifiers.
+    for (unsigned j = inputNumDims; j < inputNumIds; ++j) {
+      eq[getPos(symbolPosMap, ctx.values[j])] = ctx.domain.atIneq(i, j);
+    }
+    // Add constant term.
+    eq[outputNumIds] = ctx.domain.atIneq(i, inputNumIds);
+    // Add inequality constraint.
+    outputFac->addInequality(eq);
+  }
+}
+
+// Adds equality constraints that equate src and dst access functions
+// represented by 'srcAccessMap' and 'dstAccessMap' for each result.
+// Requires that 'srcAccessMap' and 'dstAccessMap' have the same results count.
+// For example, given the following two accesses functions to a 2D memref:
+//
+//   Source access function:
+//     (a0 * d0 + a1 * s0 + a2, b0 * d0 + b1 * s0 + b2)
+//
+//   Destination acceses function:
+//     (c0 * d0 + c1 * s0 + c2, f0 * d0 + f1 * s0 + f2)
+//
+// This method constructs the following equality constraints in 'outputFac',
+// by equating the access functions for each result (i.e. each memref dim).
+// (notice that 'd0' for the destination access function is mapped into 'd0'
+// in the equality constraint):
+//
+//   d0      d1      s0         c
+//   --      --      --         --
+//   a0     -c0      (a1 - c1)  (a1 - c2) = 0
+//   b0     -f0      (b1 - f1)  (b1 - f2) = 0
+//
+bool addMemRefAccessConstraints(
+    const AffineValueMap &srcAccessMap, const AffineValueMap &dstAccessMap,
+    const DenseMap<const MLValue *, unsigned> &srcDimPosMap,
+    const DenseMap<const MLValue *, unsigned> &dstDimPosMap,
+    const DenseMap<const MLValue *, unsigned> &symbolPosMap,
+    FlatAffineConstraints *outputFac) {
+  AffineMap srcMap = srcAccessMap.getAffineMap();
+  AffineMap dstMap = dstAccessMap.getAffineMap();
+  assert(srcMap.getNumResults() == dstMap.getNumResults());
+  unsigned numResults = srcMap.getNumResults();
+
+  unsigned srcNumDims = srcMap.getNumDims();
+  unsigned srcNumSymbols = srcMap.getNumSymbols();
+  unsigned srcNumIds = srcNumDims + srcNumSymbols;
+  ArrayRef<MLValue *> srcOperands = srcAccessMap.getOperands();
+
+  unsigned dstNumDims = dstMap.getNumDims();
+  unsigned dstNumSymbols = dstMap.getNumSymbols();
+  unsigned dstNumIds = dstNumDims + dstNumSymbols;
+  ArrayRef<MLValue *> dstOperands = dstAccessMap.getOperands();
+
+  unsigned outputNumDims = outputFac->getNumDimIds();
+  unsigned outputNumSymbols = outputFac->getNumSymbolIds();
+  unsigned outputNumIds = outputNumDims + outputNumSymbols;
+
+  SmallVector<int64_t, 4> eq;
+  eq.resize(outputNumIds + 1);
+  SmallVector<int64_t, 4> flattenedExpr;
+  for (unsigned i = 0; i < numResults; ++i) {
+    // Zero fill.
+    std::fill(eq.begin(), eq.end(), 0);
+    // Get flattened AffineExpr for result 'i' from src access function.
+    auto srcExpr = srcMap.getResult(i);
+    flattenedExpr.clear();
+    if (!getFlattenedAffineExpr(srcExpr, srcNumDims, srcNumSymbols,
+                                &flattenedExpr))
+      return false;
+    // Add dim identifier coefficients from src access function.
+    for (unsigned j = 0, e = srcNumDims; j < e; ++j)
+      eq[getPos(srcDimPosMap, srcOperands[j])] = flattenedExpr[j];
+    // Add symbol identifiers from src access function.
+    for (unsigned j = srcNumDims; j < srcNumIds; ++j)
+      eq[getPos(symbolPosMap, srcOperands[j])] = flattenedExpr[j];
+    // Add constant term.
+    eq[outputNumIds] = flattenedExpr[srcNumIds];
+
+    // Get flattened AffineExpr for result 'i' from dst access function.
+    auto dstExpr = dstMap.getResult(i);
+    flattenedExpr.clear();
+    if (!getFlattenedAffineExpr(dstExpr, dstNumDims, dstNumSymbols,
+                                &flattenedExpr))
+      return false;
+    // Add dim identifier coefficients from dst access function.
+    for (unsigned j = 0, e = dstNumDims; j < e; ++j)
+      eq[getPos(dstDimPosMap, dstOperands[j])] = -flattenedExpr[j];
+    // Add symbol identifiers from dst access function.
+    for (unsigned j = dstNumDims; j < dstNumIds; ++j)
+      eq[getPos(symbolPosMap, dstOperands[j])] -= flattenedExpr[j];
+    // Add constant term.
+    eq[outputNumIds] -= flattenedExpr[dstNumIds];
+    // Add equality constraint.
+    outputFac->addEquality(eq);
+  }
+  return true;
+}
+
+// Populates 'accessMap' with composition of AffineApplyOps reachable from
+// indices of MemRefAccess.
+void MemRefAccess::getAccessMap(AffineValueMap *accessMap) const {
+  auto memrefType = memref->getType().cast<MemRefType>();
+  // Create identity map with same number of dimensions as 'memrefType' rank.
+  auto map = AffineMap::getMultiDimIdentityMap(memrefType.getRank(),
+                                               memref->getType().getContext());
+  // Reset 'accessMap' and 'map' and access 'indices'.
+  accessMap->reset(map, indices);
+  // Compose 'accessMap' with reachable AffineApplyOps.
+  forwardSubstituteReachableOps(accessMap);
+}
+
+// Builds a flat affine constraint system to check if there exists a dependence
+// between memref accesses 'srcAccess' and 'dstAccess'.
+// Returns 'false' if the accesses can be definitively shown not to access the
+// same element. Returns 'true' otherwise.
+//
+// The memref access dependence check is comprised of the following steps:
+// *) Compute access functions for each access. Access functions are computed
+//    using AffineValueMaps initialized with the indices from an access, then
+//    composed with AffineApplyOps reachable from operands of that access,
+//    until operands of the AffineValueMap are loop IVs or symbols.
+// *) Build iteration domain constraints for each access. Iteration domain
+//    constraints are pairs of inequality contraints representing the
+//    upper/lower loop bounds for each ForStmt in the loop nest associated
+//    with each access.
+// *) Build dimension and symbol position maps for each access, which map
+//    MLValues from access functions and iteration domains to their position
+//    in the merged constraint system build by this method.
+//
+// This method builds a constraint system with the following column format:
+//
+//  [src-dim-identifiers, dst-dim-identifiers, symbols, constant]
+//
+// For example, given the following MLIR code with with "source" and
+// "destination" accesses to the same memref labled, and symbols %M, %N, %K:
+//
+//   for %i0 = 0 to 100 {
+//     for %i1 = 0 to 50 {
+//       %a0 = affine_apply
+//         (d0, d1) -> (d0 * 2 - d1 * 4 + s1, d1 * 3 - s0) (%i0, %i1)[%M, %N]
+//       // Source memref access.
+//       store %v0, %m[%a0#0, %a0#1] : memref<4x4xf32>
+//     }
+//   }
+//
+//   for %i2 = 0 to 100 {
+//     for %i3 = 0 to 50 {
+//       %a1 = affine_apply
+//         (d0, d1) -> (d0 * 7 + d1 * 9 - s1, d1 * 11 + s0) (%i2, %i3)[%K, %M]
+//       // Destination memref access.
+//       %v1 = load %m[%a1#0, %a1#1] : memref<4x4xf32>
+//     }
+//   }
+//
+// The access functions would be the following:
+//
+//   src: (%i0 * 2 - %i1 * 4 + %N, %i1 * 3 - %M)
+//   src: (%i2 * 7 + %i3 * 9 - %M, %i3 * 11 - %K)
+//
+// The iteration domains for the src/dst accesses would be the following:
+//
+//   src: 0 <= %i0 <= 100, 0 <= %i1 <= 50
+//   dst: 0 <= %i2 <= 100, 0 <= %i3 <= 50
+//
+// The symbols by both accesses would be assigned to a canonical position order
+// which will be used in the dependence constraint system:
+//
+//   symbol name: %M  %N  %K
+//   symbol  pos:  0   1   2
+//
+// Equality constraints are built by equating each result of src/destination
+// access functions. For this example, the folloing two equality constraints
+// will be added to the dependence constraint system:
+//
+//   [src_dim0, src_dim1, dst_dim0, dst_dim1, sym0, sym1, sym2, const]
+//      2         -4        -7        -9       1      1     0     0    = 0
+//      0          3         0        -11     -1      0     1     0    = 0
+//
+// Inequality constraints from the iteration domain will be meged into
+// the dependence constraint system
+//
+//   [src_dim0, src_dim1, dst_dim0, dst_dim1, sym0, sym1, sym2, const]
+//       1         0         0         0        0     0     0     0    >= 0
+//      -1         0         0         0        0     0     0     100  >= 0
+//       0         1         0         0        0     0     0     0    >= 0
+//       0        -1         0         0        0     0     0     50   >= 0
+//       0         0         1         0        0     0     0     0    >= 0
+//       0         0        -1         0        0     0     0     100  >= 0
+//       0         0         0         1        0     0     0     0    >= 0
+//       0         0         0        -1        0     0     0     50   >= 0
+//
+//
+// TODO(andydavis) Support AffineExprs mod/floordiv/ceildiv.
+// TODO(andydavis) Add precedence order constraints for accesses that
+// share a common loop.
+bool mlir::checkMemrefAccessDependence(const MemRefAccess &srcAccess,
+                                       const MemRefAccess &dstAccess) {
+  // Return 'false' if these accesses do not acces the same memref.
+  if (srcAccess.memref != dstAccess.memref)
+    return false;
+
+  // Get composed access function for 'srcAccess'.
+  AffineValueMap srcAccessMap;
+  srcAccess.getAccessMap(&srcAccessMap);
+
+  // Get composed access function for 'dstAccess'.
+  AffineValueMap dstAccessMap;
+  dstAccess.getAccessMap(&dstAccessMap);
+
+  // Get iteration domain context for 'srcAccess'.
+  IterationDomainContext srcIterationDomainContext;
+  if (!getIterationDomainContext(srcAccess.opStmt, &srcIterationDomainContext))
+    return false;
+
+  // Get iteration domain context for 'dstAccess'.
+  IterationDomainContext dstIterationDomainContext;
+  if (!getIterationDomainContext(dstAccess.opStmt, &dstIterationDomainContext))
+    return false;
+
+  // Build dim and symbol position maps for each access from access operand
+  // MLValue to position in merged contstraint system.
+  DenseMap<const MLValue *, unsigned> srcDimPosMap;
+  DenseMap<const MLValue *, unsigned> dstDimPosMap;
+  DenseMap<const MLValue *, unsigned> symbolPosMap;
+  buildDimAndSymbolPositionMaps(
+      srcIterationDomainContext, dstIterationDomainContext, srcAccessMap,
+      dstAccessMap, &srcDimPosMap, &dstDimPosMap, &symbolPosMap);
+
+  // TODO(andydavis) Add documentation.
+  unsigned numIneq = srcIterationDomainContext.domain.getNumInequalities() +
+                     dstIterationDomainContext.domain.getNumInequalities();
+  AffineMap srcMap = srcAccessMap.getAffineMap();
+  assert(srcMap.getNumResults() == dstAccessMap.getAffineMap().getNumResults());
+  unsigned numEq = srcMap.getNumResults();
+  unsigned numDims = srcDimPosMap.size() + dstDimPosMap.size();
+  unsigned numSymbols = symbolPosMap.size();
+  unsigned numIds = numDims + numSymbols;
+  unsigned numCols = numIds + 1;
+
+  // Create flat affine constraints reserving space for 'numEq' and 'numIneq'.
+  // TODO(andydavis) better name.
+  FlatAffineConstraints constraints(numIneq, numEq, numCols, numDims,
+                                    numSymbols);
+  // Create memref access constraint by equating src/dst access functions.
+  // Note that this check is conservative, and will failure in the future
+  // when local variables for mod/div exprs are supported.
+  if (!addMemRefAccessConstraints(srcAccessMap, dstAccessMap, srcDimPosMap,
+                                  dstDimPosMap, symbolPosMap, &constraints))
+    return true;
+
+  // Add domain constraints for src access function.
+  addDomainConstraints(srcIterationDomainContext, srcDimPosMap, symbolPosMap,
+                       &constraints);
+  // Add equality constraints from 'dstConstraints'.
+  addDomainConstraints(dstIterationDomainContext, dstDimPosMap, symbolPosMap,
+                       &constraints);
+  bool isEmpty = constraints.isEmpty();
+  // Return false if the solution space is empty.
+  return !isEmpty;
 }

@@ -53,21 +53,6 @@ FunctionPass *mlir::createMemRefBoundCheckPass() {
   return new MemRefBoundCheck();
 }
 
-// Forward substitutes into 'valueMap' all AffineApplyOps reachable from the
-// operands of 'valueMap'.
-static void forwardSubstituteReachableOps(AffineValueMap *valueMap) {
-  // Gather AffineApplyOps reachable from 'indices'.
-  SmallVector<OperationStmt *, 4> affineApplyOps;
-  getReachableAffineApplyOps(valueMap->getOperands(), affineApplyOps);
-  // Compose AffineApplyOps in 'affineApplyOps'.
-  for (auto *opStmt : affineApplyOps) {
-    assert(opStmt->isa<AffineApplyOp>());
-    auto affineApplyOp = opStmt->dyn_cast<AffineApplyOp>();
-    // Forward substitute 'affineApplyOp' into 'valueMap'.
-    valueMap->forwardSubstitute(*affineApplyOp);
-  }
-}
-
 /// Returns the memory region accessed by this memref.
 // TODO(bondhugula): extend this to store's and other memref dereferencing ops.
 bool getMemoryRegion(OpPointer<LoadOp> loadOp, FlatAffineConstraints *region) {

@@ -56,6 +56,10 @@ public:
   /// Returns a single constant result affine map.
   static AffineMap getConstantMap(int64_t val, MLIRContext *context);
 
+  /// Returns an AffineMap with 'numDims' identity result dim exprs.
+  static AffineMap getMultiDimIdentityMap(unsigned numDims,
+                                          MLIRContext *context);
+
   MLIRContext *getContext() const;
 
   explicit operator bool() { return map; }

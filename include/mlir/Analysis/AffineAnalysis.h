@@ -31,6 +31,9 @@
 namespace mlir {
 
 class AffineExpr;
+class AffineValueMap;
+class ForStmt;
+class MLIRContext;
 class MLValue;
 class OperationStmt;
 
@@ -48,6 +51,10 @@ void getReachableAffineApplyOps(
     llvm::ArrayRef<MLValue *> operands,
     llvm::SmallVectorImpl<OperationStmt *> &affineApplyOps);
 
+/// Forward substitutes into 'valueMap' all AffineApplyOps reachable from the
+/// operands of 'valueMap'.
+void forwardSubstituteReachableOps(AffineValueMap *valueMap);
+
 /// Flattens 'expr' into 'flattenedExpr'. Returns true on success or false
 /// if 'expr' was unable to be flattened (i.e. because it was not pure affine,
 /// or because it contained mod's and div's that could not be eliminated
@@ -55,6 +62,22 @@ void getReachableAffineApplyOps(
 bool getFlattenedAffineExpr(AffineExpr expr, unsigned numDims,
                             unsigned numSymbols,
                             llvm::SmallVectorImpl<int64_t> *flattenedExpr);
+
+/// Checks whether two accesses to the same memref access the same element.
+/// Each access is specified using the MemRefAccess structure, which contains
+/// the operation statement, indices and memref associated with the access.
+/// Returns 'false' if it can be determined conclusively that the accesses do
+/// not access the same memref element. Returns 'true' otherwise.
+struct MemRefAccess {
+  const MLValue *memref;
+  const OperationStmt *opStmt;
+  llvm::SmallVector<MLValue *, 4> indices;
+  // Populates 'accessMap' with composition of AffineApplyOps reachable from
+  // 'indices'.
+  void getAccessMap(AffineValueMap *accessMap) const;
+};
+bool checkMemrefAccessDependence(const MemRefAccess &srcAccess,
+                                 const MemRefAccess &dstAccess);
 
 } // end namespace mlir
 

@@ -94,6 +94,15 @@ AffineMap AffineMap::getConstantMap(int64_t val, MLIRContext *context) {
              {getAffineConstantExpr(val, context)}, {});
 }
 
+AffineMap AffineMap::getMultiDimIdentityMap(unsigned numDims,
+                                            MLIRContext *context) {
+  SmallVector<AffineExpr, 4> dimExprs;
+  dimExprs.reserve(numDims);
+  for (unsigned i = 0; i < numDims; ++i)
+    dimExprs.push_back(mlir::getAffineDimExpr(i, context));
+  return get(/*dimCount=*/numDims, /*symbolCount=*/0, dimExprs, {});
+}
+
 MLIRContext *AffineMap::getContext() const { return getResult(0).getContext(); }
 
 bool AffineMap::isBounded() const { return !map->rangeSizes.empty(); }

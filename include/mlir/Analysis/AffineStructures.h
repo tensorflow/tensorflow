@@ -42,6 +42,7 @@ class HyperRectangularSet;
 /// A mutable affine map. Its affine expressions are however unique.
 struct MutableAffineMap {
 public:
+  MutableAffineMap() {}
   MutableAffineMap(AffineMap map);
 
   AffineExpr getResult(unsigned idx) const { return results[idx]; }
@@ -55,6 +56,9 @@ public:
 
   /// Returns true if the idx'th result expression is a multiple of factor.
   bool isMultipleOf(unsigned idx, int64_t factor) const;
+
+  /// Resets this MutableAffineMap with 'map'.
+  void reset(AffineMap map);
 
   /// Simplify the (result) expressions in this map using analysis (used by
   //-simplify-affine-expr pass).
@@ -120,6 +124,9 @@ private:
 // TODO(bondhugula): Some of these classes could go into separate files.
 class AffineValueMap {
 public:
+  // Creates an empty AffineValueMap (users should call 'reset' to reset map
+  // and operands).
+  AffineValueMap() {}
   AffineValueMap(const AffineApplyOp &op);
   AffineValueMap(const AffineBound &bound);
   AffineValueMap(AffineMap map);
@@ -145,6 +152,8 @@ public:
   // can be used to amortize the cost of simplification over multiple fwd
   // substitutions).
 
+  // Resets this AffineValueMap with 'map' and 'operands'.
+  void reset(AffineMap map, ArrayRef<MLValue *> operands);
   /// Return true if the idx^th result can be proved to be a multiple of
   /// 'factor', false otherwise.
   inline bool isMultipleOf(unsigned idx, int64_t factor) const;

@@ -168,11 +168,23 @@ forwardSubstituteMutableAffineMap(const AffineMapCompositionUpdate &mapUpdate,
   map->setNumDims(mapUpdate.outputNumDims);
   map->setNumSymbols(mapUpdate.outputNumSymbols);
 }
-
 MutableAffineMap::MutableAffineMap(AffineMap map)
     : numDims(map.getNumDims()), numSymbols(map.getNumSymbols()),
-      // A map always has at leat 1 result by construction
+      // A map always has at least 1 result by construction
       context(map.getResult(0).getContext()) {
+  for (auto result : map.getResults())
+    results.push_back(result);
+  for (auto rangeSize : map.getRangeSizes())
+    results.push_back(rangeSize);
+}
+
+void MutableAffineMap::reset(AffineMap map) {
+  results.clear();
+  rangeSizes.clear();
+  numDims = map.getNumDims();
+  numSymbols = map.getNumSymbols();
+  // A map always has at least 1 result by construction
+  context = map.getResult(0).getContext();
   for (auto result : map.getResults())
     results.push_back(result);
   for (auto rangeSize : map.getRangeSizes())
@@ -223,6 +235,15 @@ AffineValueMap::AffineValueMap(const AffineApplyOp &op)
 
 AffineValueMap::AffineValueMap(AffineMap map, ArrayRef<MLValue *> operands)
     : map(map) {
+  for (MLValue *operand : operands) {
+    this->operands.push_back(operand);
+  }
+}
+
+void AffineValueMap::reset(AffineMap map, ArrayRef<MLValue *> operands) {
+  this->operands.clear();
+  this->results.clear();
+  this->map.reset(map);
   for (MLValue *operand : operands) {
     this->operands.push_back(operand);
   }
