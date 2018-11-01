@@ -81,12 +81,13 @@ std::vector<int> GetLoadedTensorRTVersion() {
   return {ver_major, ver_minor, ver_patch};
 }
 
-namespace {
+TrtCandidateSelector::TrtCandidateSelector(
+    const grappler::GraphProperties& graph_properties)
+    : graph_properties_(graph_properties) {}
 
-bool IsTensorRTCandidate(const tensorflow::Node* node) {
+Status TrtCandidateSelector::IsTensorRTCandidate(const tensorflow::Node* node) {
+  // TODO(laigd): move this set to TrtNodeValidator where it should belong.
   // LINT.IfChange
-  // TODO(jie): Segmentation shouldn't associated with op name.
-  //            Split it into a registration for each kernel.
   static const std::set<string> candidate_ops = {
     "Identity",
     "Snapshot",
@@ -127,12 +128,28 @@ bool IsTensorRTCandidate(const tensorflow::Node* node) {
     "Prod",
     "Max",
     "Min",
-    // TODO(ben,jie): ...
   };
   // LINT.ThenChange(//tensorflow/contrib/tensorrt/convert/convert_nodes.cc)
-  return (candidate_ops.count(node->type_string()) ||
-          PluginFactoryTensorRT::GetInstance()->IsPlugin(node->type_string()));
+  const bool is_supported_op_type =
+      (candidate_ops.count(node->type_string()) ||
+       PluginFactoryTensorRT::GetInstance()->IsPlugin(node->type_string()));
+  if (!is_supported_op_type) {
+    return errors::Unimplemented("Op type ", node->type_string(),
+                                 " is not supported.");
+  }
+
+  std::vector<const Edge*> input_edges;
+  TF_RETURN_IF_ERROR(node->input_edges(&input_edges));
+  std::vector<std::pair<const NodeDef*, int>> input_node_and_ports;
+  for (const Edge* input_edge : input_edges) {
+    input_node_and_ports.emplace_back(&input_edge->src()->def(),
+                                      input_edge->src_output());
+  }
+  return validator_.ValidateNode(node->def(), input_node_and_ports,
+                                 graph_properties_);
 }
+
+namespace {
 
 tensorflow::Status BuildNodeMap(
     const tensorflow::Graph& graph,
@@ -846,9 +863,15 @@ tensorflow::Status ConvertAfterShapes(ConversionParams& params) {
   }
   segment_options.minimum_segment_size = params.minimum_segment_size;
   tensorflow::tensorrt::segment::SegmentNodesVector initial_segments;
+  TrtCandidateSelector candidate_selector(*params.graph_properties);
   TF_RETURN_IF_ERROR(tensorrt::segment::SegmentGraph(
-      &graph, IsTensorRTCandidate, InputEdgeValidator(*params.graph_properties),
-      OutputEdgeValidator(), segment_options, &initial_segments));
+      &graph,
+      std::bind(&TrtCandidateSelector::IsTensorRTCandidate, &candidate_selector,
+                std::placeholders::_1),
+      // Input validation is already done by TrtCandidateSelector, so we don't
+      // need to check the input edges.
+      [](const Edge* edge) { return true; }, OutputEdgeValidator(),
+      segment_options, &initial_segments));
   if (initial_segments.size() > 1) {
     VLOG(0) << "MULTIPLE tensorrt candidate conversion: "
             << initial_segments.size();
