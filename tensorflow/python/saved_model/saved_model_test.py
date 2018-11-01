@@ -1420,8 +1420,11 @@ class SavedModelTest(test.TestCase):
     sess = session.Session(graph=ops.Graph())
     with self.assertRaisesRegexp(
         errors.InvalidArgumentError,
-        ".*No OpKernel was registered to support Op \'TestAttr\' with these "
-        "attrs..*"):
+        "No OpKernel was registered to support Op 'TestAttr' used by node "
+        "test_attr \\(defined at .*\\) with these attrs: \\[.*\\]\n"
+        "Registered devices:.*\n"
+        "Registered kernels:.*"
+    ):
       loader.load(sess, ["foo"], export_dir)
 
 
