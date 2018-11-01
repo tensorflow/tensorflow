@@ -485,6 +485,16 @@ std::pair<string, AttrValue> impl::AttrLiteralHelper(
   return {int_list_attr.first, attr_value};
 }
 
+std::pair<string, AttrValue> impl::AttrLiteralHelper(
+    const std::pair<string, absl::Span<const string>>& string_list_attr) {
+  AttrValue attr_value;
+  AttrValue::ListValue* list = attr_value.mutable_list();
+  for (string s : string_list_attr.second) {
+    list->add_s(s);
+  }
+  return {string_list_attr.first, attr_value};
+}
+
 impl::NodeMatcherProperties impl::Attr(std::pair<string, AttrValue> attr) {
   impl::NodeMatcherProperties props;
   props.set_attr(std::move(attr));
