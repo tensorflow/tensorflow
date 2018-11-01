@@ -148,21 +148,6 @@ tensorflow::Status ConvertGraphDefToEngine(
     TrtUniquePtrType<nvinfer1::ICudaEngine>* engine,
     bool* convert_successfully);
 
-// Helper class for the segmenter to determine whether an input edge to the TRT
-// segment is valid.
-class InputEdgeValidator {
- public:
-  InputEdgeValidator(const grappler::GraphProperties& graph_properties)
-      : graph_properties_(graph_properties) {}
-
-  // Return true if the specified edge is eligible to be an input edge of the
-  // TRT segment.
-  bool operator()(const tensorflow::Edge* in_edge) const;
-
- private:
-  const grappler::GraphProperties& graph_properties_;
-};
-
 // Helper class for the segmenter to determine whether an output edge from the
 // TRT segment is valid.
 class OutputEdgeValidator {
@@ -245,8 +230,21 @@ class TRT_TensorOrWeights {
  public:
   TRT_TensorOrWeights() {}
 
+  // Constructor that makes it an ITensor, doesn't take ownership of 'tensor'.
+  // This is used by Converter when building the TRT network, where the ITensor
+  // is owned by the TRT network being built. See comment for 'tensor_' below.
   explicit TRT_TensorOrWeights(nvinfer1::ITensor* tensor, int batch_size = -1);
 
+  // Constructor that makes it an ITensor by creating one using provided data
+  // type and shape, and takes ownership of the created ITensor. This is used by
+  // TrtNodeValidator to encapsulate the type and shape information for
+  // validation of graph nodes, and the created ITensor is fake and temporary,
+  // and should not be used to build any TRT network. See comment for
+  // 'simple_itensor_' below.
+  explicit TRT_TensorOrWeights(nvinfer1::DataType trt_dtype,
+                               const nvinfer1::Dims& trt_dims, int batch_size);
+
+  // Constructor that makes it a TRT_TensorOrWeights.
   explicit TRT_TensorOrWeights(const TRT_ShapedWeights& weights);
 
   TRT_TensorOrWeights(const TRT_TensorOrWeights& rhs);
@@ -256,15 +254,9 @@ class TRT_TensorOrWeights {
   bool is_tensor() const { return initialized_ && is_tensor_; }
   bool is_weights() const { return initialized_ && !is_tensor_; }
 
-  nvinfer1::ITensor* tensor() {
-    CHECK(is_tensor());
-    return tensor_;
-  }
+  nvinfer1::ITensor* tensor();
 
-  const nvinfer1::ITensor* tensor() const {
-    CHECK(is_tensor());
-    return tensor_;
-  }
+  const nvinfer1::ITensor* tensor() const;
 
   TRT_ShapedWeights& weights() {
     CHECK(is_weights());
@@ -283,9 +275,25 @@ class TRT_TensorOrWeights {
   string DebugString() const;
 
  private:
+  class SimpleITensor;
+
   void set_batch_size(int batch_size) { batch_size_ = batch_size; }
 
+  // When it represents an ITensor, the ITensor can be either passed by the
+  // caller via the constructor that takes an ITensor* as parameter, or be
+  // created as a SimpleITensor.
+  //
+  // In the first case, the ITensor pointer is stored in 'tensor_' below, and
+  // the ITensor itself is not owned by this class. This method is used by
+  // Converter (e.g. AddInputTensor) and op converters during TRT network
+  // construction, where the TRT network owns the ITensor.
+  //
+  // In the second case, the created SimpleITensor is stored in
+  // 'simple_itensor_' below and is owned by this class. SimpleITensor is a fake
+  // implementation of ITensor and is used only by TrtNodeValidator to validate
+  // the graph nodes.
   nvinfer1::ITensor* tensor_ = nullptr;  // Not owned.
+  std::shared_ptr<SimpleITensor> simple_itensor_ = nullptr;
 
   // First dimension of the TF tensor (NOT tensor_) that is represented by
   // tensor_ is treated as the "batch dimension" by TRT, and tensor_'s
@@ -339,12 +347,34 @@ class TrtNodeValidator {
  public:
   TrtNodeValidator();
 
-  // Validate the node, and return ok if it's supported by the converter.
-  Status ValidateNode(const NodeDef& node_def,
-                      const std::vector<TRT_TensorOrWeights>& inputs);
+  // Validate the node, and return ok if it's supported by TRT.
+  //
+  // - 'node_def' is the node to validate.
+  // - 'input_node_and_ports' are the input NodeDefs and their output ports that
+  //   are connected to 'node_def' in the TF graph.
+  // - 'graph_properties' is the GraphProperties of the graph where 'node_def'
+  //   belongs. It is used to get the shape and data type information of a
+  //   tensor for validation purpose.
+  Status ValidateNode(
+      const NodeDef& node_def,
+      const std::vector<std::pair<const NodeDef*, int>>& input_node_and_ports,
+      const grappler::GraphProperties& graph_properties);
 
  private:
   void RegisterOpValidators();
+
+  // Convert a Const node to a TRT_TensorOrWeights.
+  Status ConvertConstToWeights(const NodeDef& const_node_def,
+                               const std::vector<TRT_TensorOrWeights>& inputs,
+                               TRT_TensorOrWeights* output);
+
+  // Convert the output tensor at 'output_port' of 'node_def' to a
+  // TRT_TensorOrWeights which will be later used as an input to other nodes and
+  // passed to ValidateNode() below.
+  Status ConvertToTensorOrWeights(
+      const NodeDef& node_def, int output_port,
+      const grappler::GraphProperties& graph_properties,
+      TRT_TensorOrWeights* tensor_or_weights);
 
   // Stores all the validators by op type. If no validator is registered for
   // specific op, it means no validation is needed and ValidateNode() will
