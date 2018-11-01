@@ -201,7 +201,6 @@ XlaDevice::XlaDevice(const SessionOptions& session_options,
       jit_device_name_(options.compilation_device_name),
       platform_(options.platform),
       use_multiple_streams_(options.use_multiple_streams),
-      transfer_as_literal_(options.transfer_as_literal),
       shape_representation_fn_(options.shape_representation_fn) {
   VLOG(1) << "Created XLA device " << options.compilation_device_name << " "
           << this;
@@ -322,8 +321,7 @@ xla::StatusOr<XlaDeviceContext*> XlaDevice::GetDeviceContextLocked() {
   device_context_ = new XlaDeviceContext(
       stream_, std::move(host_to_device_stream),
       std::move(device_to_host_stream), std::move(device_to_device_streams),
-      client(), transfer_as_literal_, shape_representation_fn_,
-      thread_pool_.get());
+      client(), shape_representation_fn_, thread_pool_.get());
   VLOG(1) << "XlaDevice " << this << " new XlaDeviceContext "
           << device_context_;
 

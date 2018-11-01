@@ -60,7 +60,6 @@ Status XlaCpuDeviceFactory::CreateDevices(const SessionOptions& session_options,
   options.device_name = DEVICE_XLA_CPU;
   options.device_ordinal = 0;
   options.compilation_device_name = DEVICE_CPU_XLA_JIT;
-  options.transfer_as_literal = false;
   options.use_multiple_streams = false;
   auto device = absl::make_unique<XlaDevice>(session_options, options);
   devices->push_back(device.release());
