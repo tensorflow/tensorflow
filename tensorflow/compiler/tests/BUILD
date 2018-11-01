@@ -489,8 +489,6 @@ tf_xla_py_test(
     name = "function_test",
     size = "small",
     srcs = ["function_test.py"],
-    # Functions are not implemented in the on-demand compilation model yet.
-    disabled_backends = "cpu_ondemand",
     deps = [
         ":xla_test",
         "//tensorflow/python:array_ops",
@@ -680,9 +678,6 @@ tf_xla_py_test(
     name = "random_ops_test",
     size = "small",
     srcs = ["random_ops_test.py"],
-    disabled_backends = [
-        "cpu_ondemand",
-    ],
     deps = [
         ":xla_test",
         "//tensorflow/python:array_ops",
@@ -713,7 +708,6 @@ tf_xla_py_test(
     name = "reduce_window_test",
     size = "small",
     srcs = ["reduce_window_test.py"],
-    disabled_backends = ["cpu_ondemand"],
     deps = [
         ":xla_test",
         "//tensorflow/compiler/tf2xla/python:xla",
@@ -952,7 +946,6 @@ tf_xla_py_test(
     name = "while_test",
     size = "small",
     srcs = ["while_test.py"],
-    disabled_backends = ["cpu_ondemand"],
     deps = [
         ":xla_test",
         "//tensorflow/compiler/tf2xla/python:xla",
@@ -1220,7 +1213,6 @@ tf_xla_py_test(
     name = "xla_ops_test",
     size = "medium",
     srcs = ["xla_ops_test.py"],
-    disabled_backends = ["cpu_ondemand"],
     deps = [
         ":xla_test",
         "//tensorflow/compiler/tf2xla/python:xla",
