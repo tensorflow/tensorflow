@@ -42,8 +42,6 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE_EQ(context, positions->type, kTfLiteInt32);
   // Assign to output the input type.
   output->type = input->type;
-  // TODO(mgubin): Only default axis == 0 is supported.
-  TF_LITE_ENSURE_EQ(context, params->axis, 0);
   // Check conditions for different types.
   switch (input->type) {
     case kTfLiteFloat32:
@@ -62,24 +60,32 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
           input->type);
       return kTfLiteError;
   }
+
+  int axis = params->axis;
+  if (axis < 0) {
+    axis += NumDimensions(input);
+  }
+  TF_LITE_ENSURE(context, 0 <= axis && axis < NumDimensions(input));
+
   const int num_dimensions =
       NumDimensions(input) + NumDimensions(positions) - 1;
-  TF_LITE_ENSURE(context, params->axis <= num_dimensions);
   TfLiteIntArray* output_shape = TfLiteIntArrayCreate(num_dimensions);
   int output_index = 0;
-  for (int i = 0; i < params->axis; ++i) {
+  for (int i = 0; i < axis; ++i) {
     output_shape->data[output_index++] = input->dims->data[i];
   }
   for (int i = 0; i < positions->dims->size; ++i) {
     output_shape->data[output_index++] = positions->dims->data[i];
   }
-  for (int i = params->axis + 1; i < input->dims->size; ++i) {
+  for (int i = axis + 1; i < input->dims->size; ++i) {
     output_shape->data[output_index++] = input->dims->data[i];
   }
   return context->ResizeTensor(context, output, output_shape);
 }
 
 TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
+  const auto* params =
+      reinterpret_cast<const TfLiteGatherParams*>(node->builtin_data);
   const TfLiteTensor* input = GetInput(context, node, kInputTensor);
   const TfLiteTensor* positions = GetInput(context, node, kInputPositions);
   TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
@@ -88,6 +94,7 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   {                                                                        \
     tflite::GatherParams op_params;                                        \
     op_params.input_rank = input_rank;                                     \
+    op_params.axis = params->axis;                                         \
     optimized_ops::Gather(                                                 \
         op_params, GetTensorShape(input), GetTensorData<data_type>(input), \
         GetTensorShape(positions), GetTensorData<index_type>(positions),   \
