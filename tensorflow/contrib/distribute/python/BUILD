@@ -517,6 +517,10 @@ cuda_py_test(
     shard_count = 5,
     tags = [
         "no_pip",
+        # TODO(b/118768923): Re-enable {a,m,t}san test.
+        "noasan",
+        "nomsan",
+        "notsan",
     ],
 )
 
