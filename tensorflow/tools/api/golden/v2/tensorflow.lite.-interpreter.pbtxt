@@ -1,6 +1,6 @@
 path: "tensorflow.lite.Interpreter"
 tf_class {
-  is_instance: "<class \'tensorflow.contrib.lite.python.interpreter.Interpreter\'>"
+  is_instance: "<class \'tensorflow.lite.python.interpreter.Interpreter\'>"
   is_instance: "<type \'object\'>"
   member_method {
     name: "__init__"

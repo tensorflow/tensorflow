@@ -591,6 +591,7 @@ cc_library(
     deps = [
         ":function_utils",
         ":graph_utils",
+        "@com_google_absl//absl/container:flat_hash_set",
         "//tensorflow/cc:ops",
         "@com_google_absl//absl/strings",
         "//tensorflow/core:core_cpu",

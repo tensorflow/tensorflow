@@ -1,6 +1,6 @@
 path: "tensorflow.lite.OpHint.OpHintArgumentTracker"
 tf_class {
-  is_instance: "<class \'tensorflow.contrib.lite.python.op_hint.OpHintArgumentTracker\'>"
+  is_instance: "<class \'tensorflow.lite.python.op_hint.OpHintArgumentTracker\'>"
   is_instance: "<type \'object\'>"
   member_method {
     name: "__init__"
