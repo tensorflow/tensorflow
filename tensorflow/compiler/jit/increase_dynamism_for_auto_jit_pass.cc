@@ -314,15 +314,18 @@ Status FindAndRewriteSlices(Graph* g, bool* changed) {
 
 Status IncreaseDynamismForAutoJitPass::Run(
     const GraphOptimizationPassOptions& options) {
+  legacy_flags::MarkForCompilationPassFlags* flags =
+      legacy_flags::GetMarkForCompilationPassFlags();
+  if (flags->tf_xla_clustering_debug) {
+    dump_graph::DumpGraphToFile("before_increase_dynamism_for_auto_jit_pass",
+                                **options.graph, options.flib_def);
+  }
+
   bool changed;
   TF_RETURN_IF_ERROR(FindAndRewriteSlices(options.graph->get(), &changed));
-  if (changed) {
-    legacy_flags::MarkForCompilationPassFlags* flags =
-        legacy_flags::GetMarkForCompilationPassFlags();
-    if (flags->tf_xla_clustering_debug) {
-      dump_graph::DumpGraphToFile("increase_dynamism_for_auto_jit_pass",
-                                  **options.graph, options.flib_def);
-    }
+  if (changed && flags->tf_xla_clustering_debug) {
+    dump_graph::DumpGraphToFile("increase_dynamism_for_auto_jit_pass",
+                                **options.graph, options.flib_def);
   }
 
   return Status::OK();
