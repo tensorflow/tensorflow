@@ -182,8 +182,9 @@ def device_link(name, srcs):
     # Generate fatbin header from all cubins.
     fatbin_hdr = name + ".fatbin.h"
     fatbinary = "@local_config_nccl//:cuda/bin/fatbinary"
-    cmd = ("PATH=$$CUDA_TOOLKIT_PATH/bin:$$PATH " +  # for bin2c
-           "$(location %s) -64 --cmdline=--compile-only --link " % fatbinary +
+    bin2c = "@local_config_nccl//:cuda/bin/bin2c"
+    cmd = ("$(location %s) -64 --cmdline=--compile-only " % fatbinary +
+           "--link --bin2c-path $$(dirname $(location %s)) " % bin2c +
            "--compress-all %s --create=%%{name}.fatbin " % " ".join(images) +
            "--embedded-fatbin=$@")
     native.genrule(
@@ -191,7 +192,7 @@ def device_link(name, srcs):
         outs = [fatbin_hdr],
         srcs = cubins,
         cmd = cmd,
-        tools = [fatbinary],
+        tools = [fatbinary, bin2c],
     )
 
     # Generate the source file #including the headers generated above.
