@@ -131,7 +131,6 @@ load(
     "tf_kernel_tests_linkstatic",
     "tf_lib_proto_compiler_deps",
     "tf_lib_proto_parsing_deps",
-    "tf_nano_proto_library",
     "tf_platform_hdrs",
     "tf_platform_srcs",
     "tf_proto_library",
@@ -248,15 +247,6 @@ tf_proto_library(
 
 tf_jspb_proto_library(
     name = "protos_all_jspb_proto",
-    visibility = ["//visibility:public"],
-    deps = [":protos_all_cc"],
-)
-
-tf_nano_proto_library(
-    name = "protos_all_nano_proto",
-    field_style = "accessors",
-    generate_equals = 1,
-    generate_intdefs = 1,
     visibility = ["//visibility:public"],
     deps = [":protos_all_cc"],
 )
