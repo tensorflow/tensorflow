@@ -1,5 +1,6 @@
 #include <algorithm>
 
+#include "tensorflow/compiler/plugin/poplar/driver/compiler_resources.h"
 #include "tensorflow/compiler/plugin/poplar/driver/ops.h"
 #include "tensorflow/compiler/plugin/poplar/driver/tensor.h"
 
@@ -16,10 +17,11 @@ namespace xla {
 namespace poplarplugin {
 
 StatusOr<poplar::program::Program> CreateBatchNormInf(
-    poplar::Graph& graph, CompilerResources& res, const HloInstruction* inst,
-    TensorMap& tensor_map) {
+    CompilerResources& res, const HloInstruction* inst, TensorMap& tensor_map) {
   const HloBatchNormInstruction* batch_inf_inst =
       Cast<HloBatchNormInstruction>(inst);
+
+  poplar::Graph& graph = GetGraph(res, inst);
 
   TF_ASSIGN_OR_RETURN(poplar::Tensor operand,
                       FindInstructionInput(tensor_map, inst, 0));
@@ -69,16 +71,17 @@ StatusOr<poplar::program::Program> CreateBatchNormInf(
     out = out.dimShufflePartial({final_dim}, {dimension});
   }
 
-  TF_CHECK_OK(AddOutputTensor(graph, res, seq, tensor_map, inst, 0, out));
+  TF_CHECK_OK(AddOutputTensor(tensor_map, inst, 0, out));
 
   return seq;
 }
 
 StatusOr<poplar::program::Program> CreateBatchNormTraining(
-    poplar::Graph& graph, CompilerResources& res, const HloInstruction* inst,
-    TensorMap& tensor_map) {
+    CompilerResources& res, const HloInstruction* inst, TensorMap& tensor_map) {
   const HloBatchNormTrainingInstruction* batch_train_inst =
       Cast<HloBatchNormTrainingInstruction>(inst);
+
+  poplar::Graph& graph = GetGraph(res, inst);
 
   TF_ASSIGN_OR_RETURN(poplar::Tensor operand,
                       FindInstructionInput(tensor_map, inst, 0));
@@ -129,16 +132,15 @@ StatusOr<poplar::program::Program> CreateBatchNormTraining(
     out = out.dimShufflePartial({final_dim}, {dimension});
   }
 
-  TF_CHECK_OK(AddOutputTensor(graph, res, seq, tensor_map, inst, 0, out));
-  TF_CHECK_OK(AddOutputTensor(graph, res, seq, tensor_map, inst, 1, mean));
-  TF_CHECK_OK(AddOutputTensor(graph, res, seq, tensor_map, inst, 2, variance));
+  TF_CHECK_OK(AddOutputTensor(tensor_map, inst, 0, out));
+  TF_CHECK_OK(AddOutputTensor(tensor_map, inst, 1, mean));
+  TF_CHECK_OK(AddOutputTensor(tensor_map, inst, 2, variance));
 
   return seq;
 }
 
 StatusOr<poplar::program::Program> CreateBatchNormGrad(
-    poplar::Graph& graph, CompilerResources& res, const HloInstruction* inst,
-    TensorMap& tensor_map) {
+    CompilerResources& res, const HloInstruction* inst, TensorMap& tensor_map) {
   const HloBatchNormGradInstruction* batch_grad_inst =
       Cast<HloBatchNormGradInstruction>(inst);
 

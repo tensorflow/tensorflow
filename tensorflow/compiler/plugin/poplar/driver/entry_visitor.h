@@ -29,9 +29,9 @@ struct CompilerResources;
  */
 class EntryVisitor : public FullVisitor {
  public:
-  EntryVisitor(poplar::Graph& graph, CompilerResources& resources,
+  EntryVisitor(CompilerResources& resources,
                const bool always_rearrange_copies_on_the_host)
-      : FullVisitor(graph, resources),
+      : FullVisitor(resources),
         always_rearrange_copies_on_the_host(
             always_rearrange_copies_on_the_host) {}
 

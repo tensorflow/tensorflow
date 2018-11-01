@@ -34,7 +34,7 @@ namespace poplarplugin {
  */
 class FullVisitor : public BaseVisitor {
  public:
-  FullVisitor(poplar::Graph& graph, CompilerResources&);
+  FullVisitor(CompilerResources&);
 
   Status HandleConcatenate(HloInstruction* inst) override;
 

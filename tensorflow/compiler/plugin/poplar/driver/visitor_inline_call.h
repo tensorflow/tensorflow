@@ -31,8 +31,7 @@ namespace poplarplugin {
 
 class InlineCallVisitor : public FullVisitor {
  public:
-  InlineCallVisitor(poplar::Graph& graph, CompilerResources& res,
-                    const ArgVectors& inputs);
+  InlineCallVisitor(CompilerResources& res, const ArgVectors& inputs);
 
   Status HandleParameter(HloInstruction* inst) override;
   Status FinishVisit(HloInstruction* inst) override;

@@ -24,14 +24,16 @@ static StatusOr<double> DoubleValueOfScalarLiteral(const xla::Literal& lit) {
 }
 
 StatusOr<poplar::program::Program> TruncatedNormal(
-    poplar::Graph& graph, CompilerResources& res, const HloInstruction* inst,
+    CompilerResources& res, const HloInstruction* inst,
     const xla::Shape& output_shape, TensorMap& tensor_map) {
+  poplar::Graph& graph = GetGraph(res, inst);
+
   poplar::Tensor out;
   TF_ASSIGN_OR_RETURN(
       out, AddTensor(graph, std::make_pair(inst, 0), output_shape, res));
 
   poplar::program::Sequence seq;
-  TF_CHECK_OK(AddOutputTensor(graph, res, seq, tensor_map, inst, 0, out));
+  TF_CHECK_OK(AddOutputTensor(tensor_map, inst, 0, out));
   res.random.truncatedNormal(graph, out, 0.0, 1.0, 1.0, seq,
                              GetDebugName(inst));
 
@@ -39,8 +41,10 @@ StatusOr<poplar::program::Program> TruncatedNormal(
 }
 
 StatusOr<poplar::program::Program> RandomNormalScale(
-    poplar::Graph& graph, CompilerResources& res, const HloInstruction* inst,
+    CompilerResources& res, const HloInstruction* inst,
     const xla::Shape& output_shape, TensorMap& tensor_map) {
+  poplar::Graph& graph = GetGraph(res, inst);
+
   const HloInstruction* root = inst->to_apply()->root_instruction();
   const HloInstruction* mean1 = root->operand(1);
   const HloInstruction* sd1 = root->operand(0)->operand(1);
@@ -61,7 +65,7 @@ StatusOr<poplar::program::Program> RandomNormalScale(
       out, AddTensor(graph, std::make_pair(inst, 0), output_shape, res));
 
   poplar::program::Sequence seq;
-  TF_CHECK_OK(AddOutputTensor(graph, res, seq, tensor_map, inst, 0, out));
+  TF_CHECK_OK(AddOutputTensor(tensor_map, inst, 0, out));
   res.random.normal(graph, out, mean1_val + mean2_val, sd1_val * sd2_val, seq,
                     GetDebugName(inst));
 
@@ -69,8 +73,10 @@ StatusOr<poplar::program::Program> RandomNormalScale(
 }
 
 StatusOr<poplar::program::Program> RandomUniformScale(
-    poplar::Graph& graph, CompilerResources& res, const HloInstruction* inst,
+    CompilerResources& res, const HloInstruction* inst,
     const xla::Shape& output_shape, TensorMap& tensor_map) {
+  poplar::Graph& graph = GetGraph(res, inst);
+
   const HloInstruction* root = inst->to_apply()->root_instruction();
   const HloInstruction* shift = root->operand(1);
   const HloInstruction* scale = root->operand(0)->operand(1);
@@ -91,7 +97,7 @@ StatusOr<poplar::program::Program> RandomUniformScale(
       out, AddTensor(graph, std::make_pair(inst, 0), output_shape, res));
 
   poplar::program::Sequence seq;
-  TF_CHECK_OK(AddOutputTensor(graph, res, seq, tensor_map, inst, 0, out));
+  TF_CHECK_OK(AddOutputTensor(tensor_map, inst, 0, out));
   res.random.uniform(graph, out, lower_val * scale_val + shift_val,
                      upper_val * scale_val + shift_val, seq,
                      GetDebugName(inst));
@@ -99,11 +105,12 @@ StatusOr<poplar::program::Program> RandomUniformScale(
   return seq;
 }
 
-StatusOr<poplar::program::Program> RandomNormal(poplar::Graph& graph,
-                                                CompilerResources& res,
+StatusOr<poplar::program::Program> RandomNormal(CompilerResources& res,
                                                 const HloInstruction* inst,
                                                 const xla::Shape& output_shape,
                                                 TensorMap& tensor_map) {
+  poplar::Graph& graph = GetGraph(res, inst);
+
   const HloInstruction* mean = inst->operand(0);
   const HloInstruction* sd = inst->operand(1);
 
@@ -117,17 +124,18 @@ StatusOr<poplar::program::Program> RandomNormal(poplar::Graph& graph,
       out, AddTensor(graph, std::make_pair(inst, 0), output_shape, res));
 
   poplar::program::Sequence seq;
-  TF_CHECK_OK(AddOutputTensor(graph, res, seq, tensor_map, inst, 0, out));
+  TF_CHECK_OK(AddOutputTensor(tensor_map, inst, 0, out));
   res.random.normal(graph, out, mean_val, sd_val, seq, GetDebugName(inst));
 
   return seq;
 }
 
-StatusOr<poplar::program::Program> RandomUniform(poplar::Graph& graph,
-                                                 CompilerResources& res,
+StatusOr<poplar::program::Program> RandomUniform(CompilerResources& res,
                                                  const HloInstruction* inst,
                                                  const xla::Shape& output_shape,
                                                  TensorMap& tensor_map) {
+  poplar::Graph& graph = GetGraph(res, inst);
+
   const HloInstruction* lower = inst->operand(0);
   const HloInstruction* upper = inst->operand(1);
 
@@ -145,7 +153,7 @@ StatusOr<poplar::program::Program> RandomUniform(poplar::Graph& graph,
       out, AddTensor(graph, std::make_pair(inst, 0), output_shape, res));
 
   poplar::program::Sequence seq;
-  TF_CHECK_OK(AddOutputTensor(graph, res, seq, tensor_map, inst, 0, out));
+  TF_CHECK_OK(AddOutputTensor(tensor_map, inst, 0, out));
   res.random.uniform(graph, out, lower_val, upper_val, seq, GetDebugName(inst));
 
   return seq;

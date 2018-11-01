@@ -35,7 +35,7 @@ struct CompilerResources;
  */
 class BaseVisitor : public DfsHloVisitor {
  public:
-  BaseVisitor(poplar::Graph& graph, CompilerResources&);
+  BaseVisitor(CompilerResources&);
 
   virtual const Shape& GetOutputShape(HloInstruction*) const;
 
@@ -151,8 +151,6 @@ class BaseVisitor : public DfsHloVisitor {
 
  protected:
   Status Unimplemented(HloInstruction* inst);
-
-  poplar::Graph& graph_;
 
   CompilerResources& resources_;
 };

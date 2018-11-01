@@ -304,6 +304,11 @@ std::string PoplarExecutor::GetDeviceTargetName() const {
   return poplar::toString(poplar_device_.getTarget().getTargetType());
 }
 
+bool PoplarExecutor::ShardingEnabled() const {
+  return (current_config_.device_config_size() > 0 &&
+          current_config_.device_config(0).shard_config());
+}
+
 static bool DeviceConfigurationsEqual(const tensorflow::IPUOptions& a,
                                       const tensorflow::IPUOptions& b) {
   return google::protobuf::util::MessageDifferencer::Equivalent(a, b);

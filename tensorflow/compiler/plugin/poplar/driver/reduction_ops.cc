@@ -255,15 +255,17 @@ static void SetPoolingParameters(const Window& window,
 }
 
 StatusOr<poplar::program::Program> CreateSimpleReduction(
-    poplar::Graph& graph, CompilerResources& res, const HloInstruction* inst,
+    CompilerResources& res, const HloInstruction* inst,
     const xla::Shape& output_shape, TensorMap& tensor_map) {
   poplar::program::Sequence seq;
   poplar::Tensor out;
 
+  poplar::Graph& graph = GetGraph(res, inst);
+
   if (ShapeUtil::IsZeroElementArray(inst->operand(0)->shape())) {
     TF_ASSIGN_OR_RETURN(out, FindInstructionInput(tensor_map, inst, 1));
     TF_ASSIGN_OR_RETURN(out, BroadcastTensor(out, inst->shape(), {}));
-    TF_CHECK_OK(AddOutputTensor(graph, res, seq, tensor_map, inst, 0, out));
+    TF_CHECK_OK(AddOutputTensor(tensor_map, inst, 0, out));
   } else {
     // Find the input tensors
     poplar::Tensor to_reduce;
@@ -298,22 +300,24 @@ StatusOr<poplar::program::Program> CreateSimpleReduction(
                          GetDebugName(inst) + "_initval");
     }
 
-    TF_CHECK_OK(AddOutputTensor(graph, res, seq, tensor_map, inst, 0, out));
+    TF_CHECK_OK(AddOutputTensor(tensor_map, inst, 0, out));
   }
 
   return seq;
 }
 
 StatusOr<poplar::program::Program> CreateSimpleWindowReduction(
-    poplar::Graph& graph, CompilerResources& res, const HloInstruction* inst,
+    CompilerResources& res, const HloInstruction* inst,
     const xla::Shape& output_shape, TensorMap& tensor_map) {
   poplar::program::Sequence seq;
   poplar::Tensor out;
 
+  poplar::Graph& graph = GetGraph(res, inst);
+
   if (ShapeUtil::IsZeroElementArray(inst->operand(0)->shape())) {
     TF_ASSIGN_OR_RETURN(out, FindInstructionInput(tensor_map, inst, 1));
     TF_ASSIGN_OR_RETURN(out, BroadcastTensor(out, inst->shape(), {}));
-    TF_CHECK_OK(AddOutputTensor(graph, res, seq, tensor_map, inst, 0, out));
+    TF_CHECK_OK(AddOutputTensor(tensor_map, inst, 0, out));
   } else {
     // Find the input tensors
     poplar::Tensor to_reduce;
@@ -402,22 +406,24 @@ StatusOr<poplar::program::Program> CreateSimpleWindowReduction(
       popops::mapInPlace(graph, op, out, init_val, seq,
                          GetDebugName(inst) + "_initval");
     }
-    TF_CHECK_OK(AddOutputTensor(graph, res, seq, tensor_map, inst, 0, out));
+    TF_CHECK_OK(AddOutputTensor(tensor_map, inst, 0, out));
   }
 
   return seq;
 }
 
 StatusOr<poplar::program::Program> CreatePoplibsWindowReduction(
-    poplar::Graph& graph, CompilerResources& res, const HloInstruction* inst,
+    CompilerResources& res, const HloInstruction* inst,
     const xla::Shape& output_shape, TensorMap& tensor_map) {
   poplar::program::Sequence prog;
   poplar::Tensor out;
 
+  poplar::Graph& graph = GetGraph(res, inst);
+
   if (ShapeUtil::IsZeroElementArray(inst->operand(0)->shape())) {
     TF_ASSIGN_OR_RETURN(out, FindInstructionInput(tensor_map, inst, 1));
     TF_ASSIGN_OR_RETURN(out, BroadcastTensor(out, inst->shape(), {}));
-    TF_CHECK_OK(AddOutputTensor(graph, res, prog, tensor_map, inst, 0, out));
+    TF_CHECK_OK(AddOutputTensor(tensor_map, inst, 0, out));
   } else {
     const HloInstruction* pooling_inst;
 
@@ -452,8 +458,7 @@ StatusOr<poplar::program::Program> CreatePoplibsWindowReduction(
     auto reduction_dims = GetReductionDims(window);
 
     if (reduction_dims.size() == 0) {
-      TF_CHECK_OK(
-          AddOutputTensor(graph, res, prog, tensor_map, inst, 0, to_reduce));
+      TF_CHECK_OK(AddOutputTensor(tensor_map, inst, 0, to_reduce));
       return prog;
     }
 
@@ -489,7 +494,6 @@ StatusOr<poplar::program::Program> CreatePoplibsWindowReduction(
 
     // What is the operation, MAX, SUM etc.
     HloInstruction* root(pooling_inst->to_apply()->root_instruction());
-    popops::Operation op = PoplibsReductionOperation(root);
 
     // What is the default base case for the op, MAX: -largest, SUM: 0, etc.
     Literal identity_literal = GetIdentityConstantLiteral(root);
@@ -513,17 +517,19 @@ StatusOr<poplar::program::Program> CreatePoplibsWindowReduction(
         GetShuffleOutputDimensionsForPoplar(window, shuffle_in);
     out = out.dimShuffle(shuffle_out);
 
-    TF_CHECK_OK(AddOutputTensor(graph, res, prog, tensor_map, inst, 0, out));
+    TF_CHECK_OK(AddOutputTensor(tensor_map, inst, 0, out));
   }
 
   return prog;
 }
 
 StatusOr<poplar::program::Program> CreateSimpleSelectAndScatter(
-    poplar::Graph& graph, CompilerResources& res, const HloInstruction* inst,
+    CompilerResources& res, const HloInstruction* inst,
     const xla::Shape& output_shape, TensorMap& tensor_map) {
   poplar::Tensor out;
   poplar::program::Sequence program_seq;
+
+  poplar::Graph& graph = GetGraph(res, inst);
 
   // Find the input tensors
   poplar::Tensor operand;
@@ -680,17 +686,18 @@ StatusOr<poplar::program::Program> CreateSimpleSelectAndScatter(
                        GetDebugName(inst) + "_initval");
   }
 
-  TF_CHECK_OK(
-      AddOutputTensor(graph, res, program_seq, tensor_map, inst, 0, out));
+  TF_CHECK_OK(AddOutputTensor(tensor_map, inst, 0, out));
 
   return program_seq;
 }
 
 StatusOr<poplar::program::Program> CreateBwdMaxPool(
-    poplar::Graph& graph, CompilerResources& res, const HloInstruction* inst,
+    CompilerResources& res, const HloInstruction* inst,
     const xla::Shape& output_shape, TensorMap& tensor_map) {
   poplar::program::Sequence seq;
   poplar::Tensor out;
+
+  poplar::Graph& graph = GetGraph(res, inst);
 
   poplar::Tensor in0;
   TF_ASSIGN_OR_RETURN(in0, FindInstructionInput(tensor_map, inst, 0));
@@ -729,14 +736,16 @@ StatusOr<poplar::program::Program> CreateBwdMaxPool(
   const auto shuffle_out =
       GetShuffleOutputDimensionsForPoplar(window, shuffle_in);
   out = out.dimShuffle(shuffle_out);
-  TF_CHECK_OK(AddOutputTensor(graph, res, seq, tensor_map, inst, 0, out));
+  TF_CHECK_OK(AddOutputTensor(tensor_map, inst, 0, out));
   return seq;
 }
 
 StatusOr<poplar::program::Program> CreatePaddingReduceWindow(
-    poplar::Graph& graph, CompilerResources& res, const HloInstruction* inst,
+    CompilerResources& res, const HloInstruction* inst,
     const xla::Shape& output, TensorMap& tensor_map) {
   poplar::program::Sequence seq;
+
+  poplar::Graph& graph = GetGraph(res, inst);
 
   const HloInstruction* root = inst->to_apply()->root_instruction();
   const Window& window(root->window());
@@ -755,7 +764,7 @@ StatusOr<poplar::program::Program> CreatePaddingReduceWindow(
 
   out = popops::pad(graph, out, paddingLower, paddingUpper, init_val);
 
-  TF_CHECK_OK(AddOutputTensor(graph, res, seq, tensor_map, inst, 0, out));
+  TF_CHECK_OK(AddOutputTensor(tensor_map, inst, 0, out));
   return seq;
 }
 

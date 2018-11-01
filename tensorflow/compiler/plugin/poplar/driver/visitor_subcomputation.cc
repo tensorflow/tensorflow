@@ -18,11 +18,11 @@ limitations under the License.
 
 #include "absl/strings/str_cat.h"
 
-#include "tensorflow/compiler/plugin/poplar/driver/visitor_subcomputation.h"
 #include "tensorflow/compiler/plugin/poplar/driver/compiler_resources.h"
 #include "tensorflow/compiler/plugin/poplar/driver/ops.h"
 #include "tensorflow/compiler/plugin/poplar/driver/tensor.h"
 #include "tensorflow/compiler/plugin/poplar/driver/util.h"
+#include "tensorflow/compiler/plugin/poplar/driver/visitor_subcomputation.h"
 
 #include <poplar/Tensor.hpp>
 
@@ -31,10 +31,9 @@ using ::absl::StrCat;
 namespace xla {
 namespace poplarplugin {
 
-SubComputationVisitor::SubComputationVisitor(poplar::Graph& graph,
-                                             CompilerResources& res,
+SubComputationVisitor::SubComputationVisitor(CompilerResources& res,
                                              const ArgVectors& inputs)
-    : FullVisitor(graph, res) {
+    : FullVisitor(res) {
   temp_inputs_ = inputs;
   inputs_.resize(temp_inputs_.size());
   input_valid_.resize(temp_inputs_.size());
@@ -76,6 +75,9 @@ static bool InputIsUnused(HloInstruction* inst,
 
 Status SubComputationVisitor::HandleParameter(HloInstruction* inst) {
   VLOG(1) << "Processing " << inst->name();
+
+  poplar::Graph& graph = GetGraph(resources_, inst);
+
   ArgVector inputs;
   std::vector<xla::Shape> shapes = FlattenedXlaShape(inst->shape());
   std::vector<bool> valid(shapes.size());
@@ -85,24 +87,21 @@ Status SubComputationVisitor::HandleParameter(HloInstruction* inst) {
     if (InputIsUnused(inst, shapes, i)) {
       valid[i] = false;
       inputs.push_back(t);
-      TF_CHECK_OK(AddOutputTensor(graph_, resources_, sequence, tensor_map,
-                                  inst, i, t));
+      TF_CHECK_OK(AddOutputTensor(tensor_map, inst, i, t));
     } else {
       valid[i] = true;
 
       if (t.containsConstant()) {
         auto src = std::make_pair(inst, i);
         poplar::Tensor out;
-        TF_ASSIGN_OR_RETURN(out, AddTensor(graph_, src, shapes[i], resources_));
+        TF_ASSIGN_OR_RETURN(out, AddTensor(graph, src, shapes[i], resources_));
         inputs.push_back(out);
-        TF_CHECK_OK(AddOutputTensor(graph_, resources_, sequence, tensor_map,
-                                    inst, i, out));
+        TF_CHECK_OK(AddOutputTensor(tensor_map, inst, i, out));
       } else {
         auto name = StrCat(GetDebugName(inst), "_in_", i);
-        poplar::Tensor out = graph_.clone(t, name);
+        poplar::Tensor out = graph.clone(t, name);
         inputs.push_back(out);
-        TF_CHECK_OK(AddOutputTensor(graph_, resources_, sequence, tensor_map,
-                                    inst, i, out));
+        TF_CHECK_OK(AddOutputTensor(tensor_map, inst, i, out));
       }
     }
   }

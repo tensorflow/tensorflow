@@ -20,6 +20,10 @@ std::string GetDebugName(const HloInstruction* inst) {
   return tf_core_name + "/" + inst->name();
 }
 
+poplar::Graph& GetGraph(CompilerResources& res, const HloInstruction* inst) {
+  return res.main_graph;
+}
+
 std::pair<int64, int64> FindTupleInputIndices(const HloInstruction* tuple,
                                               int64 n) {
   int64 start = 0;
@@ -51,8 +55,8 @@ StatusOr<poplar::Tensor> FindInstructionInput(const TensorMap& map,
   const HloInstruction* operand = inst->operand(input);
   OutVector outputs = FindInstructionOutputs(map, operand);
   if (outputs.size() == 0) {
-    return tensorflow::errors::Unknown(StrCat(
-        "[Poplar] Couldn't find input ", input, " for ", inst->name()));
+    return tensorflow::errors::Unknown(
+        StrCat("[Poplar] Couldn't find input ", input, " for ", inst->name()));
   }
   return outputs[0];
 }
@@ -117,9 +121,7 @@ StatusOr<ArgVector> GetInplaceOutputTensors(poplar::Graph& graph,
   return outs;
 }
 
-Status AddOutputTensor(poplar::Graph& graph, CompilerResources& res,
-                       poplar::program::Sequence& seq, TensorMap& map,
-                       const HloInstruction* inst, int64 n,
+Status AddOutputTensor(TensorMap& map, const HloInstruction* inst, int64 n,
                        const poplar::Tensor& tensor) {
   auto p = std::make_pair(inst->name(), n);
   auto it = map.find(p);

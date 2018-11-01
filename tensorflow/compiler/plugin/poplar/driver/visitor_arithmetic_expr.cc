@@ -18,10 +18,10 @@ limitations under the License.
 
 #include "absl/strings/str_cat.h"
 
-#include "tensorflow/compiler/plugin/poplar/driver/visitor_arithmetic_expr.h"
 #include "tensorflow/compiler/plugin/poplar/driver/compiler_resources.h"
 #include "tensorflow/compiler/plugin/poplar/driver/ops.h"
 #include "tensorflow/compiler/plugin/poplar/driver/tensor.h"
+#include "tensorflow/compiler/plugin/poplar/driver/visitor_arithmetic_expr.h"
 
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
@@ -38,10 +38,9 @@ using ::absl::StrCat;
 namespace xla {
 namespace poplarplugin {
 
-ArithmeticExprVisitor::ArithmeticExprVisitor(poplar::Graph& graph,
-                                             CompilerResources& res,
+ArithmeticExprVisitor::ArithmeticExprVisitor(CompilerResources& res,
                                              const ArgVectors& inputs)
-    : FullVisitor(graph, res), inputs_(std::move(inputs)) {}
+    : FullVisitor(res), inputs_(std::move(inputs)) {}
 
 StatusOr<std::unique_ptr<popops::expr::Expr>>
 ArithmeticExprVisitor::FindExpressionInput(const HloInstruction* inst) {
@@ -63,8 +62,8 @@ ArithmeticExprVisitor::FindExpressionInput(const HloInstruction* inst) {
   } else {
     auto it = expressions_map_.find(inst);
     if (it == expressions_map_.end()) {
-      return tensorflow::errors::Unknown(StrCat(
-          "[Poplar] Couldn't find expression for %s", inst->name()));
+      return tensorflow::errors::Unknown(
+          StrCat("[Poplar] Couldn't find expression for %s", inst->name()));
     }
     return it->second->clone();
   }
@@ -150,11 +149,13 @@ Status ArithmeticExprVisitor::HandleParameter(HloInstruction* inst) {
 }
 
 Status ArithmeticExprVisitor::FinishVisit(HloInstruction* inst) {
+  poplar::Graph& graph = GetGraph(resources_, inst);
+
   // get the expression
   std::unique_ptr<popops::expr::Expr> expr;
   TF_ASSIGN_OR_RETURN(expr, FindExpressionInput(inst));
   // map expression with the tensors
-  poplar::Tensor out = popops::map(graph_, *expr, ts_, sequence,
+  poplar::Tensor out = popops::map(graph, *expr, ts_, sequence,
                                    GetDebugName(inst) + "_expression");
   TF_ASSIGN_OR_RETURN(out, BroadcastTensor(out, GetOutputShape(inst)));
   outputs_.push_back(out);

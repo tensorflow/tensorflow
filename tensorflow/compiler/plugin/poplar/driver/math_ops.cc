@@ -82,8 +82,8 @@ StatusOr<popops::expr::UnaryOpType> LookupUnaryFn(const HloInstruction* inst) {
     }
   }
 
-  return tensorflow::errors::Unknown(StrCat("[Poplar] Invalid opcode lookup ",
-                                            HloOpcodeString(opcode)));
+  return tensorflow::errors::Unknown(
+      StrCat("[Poplar] Invalid opcode lookup ", HloOpcodeString(opcode)));
 }
 
 StatusOr<popops::expr::BinaryOpType> LookupBinaryFn(
@@ -146,8 +146,8 @@ StatusOr<popops::expr::BinaryOpType> LookupBinaryFn(
     }
   }
 
-  return tensorflow::errors::Unknown(StrCat("[Poplar] Invalid opcode lookup ",
-                                            HloOpcodeString(opcode)));
+  return tensorflow::errors::Unknown(
+      StrCat("[Poplar] Invalid opcode lookup ", HloOpcodeString(opcode)));
 }
 
 static std::string GetMatMulPass(const HloInstruction* inst,
@@ -165,8 +165,10 @@ static std::string GetMatMulPass(const HloInstruction* inst,
 }
 
 StatusOr<poplar::program::Program> CreateUnaryElementwiseOp(
-    poplar::Graph& graph, CompilerResources& res, const HloInstruction* inst,
+    CompilerResources& res, const HloInstruction* inst,
     const xla::Shape& output_shape, TensorMap& tensor_map) {
+  poplar::Graph& graph = GetGraph(res, inst);
+
   // Find the input tensor
   poplar::Tensor in;
   TF_ASSIGN_OR_RETURN(in, FindInstructionInput(tensor_map, inst, 0));
@@ -179,14 +181,16 @@ StatusOr<poplar::program::Program> CreateUnaryElementwiseOp(
 
   TF_ASSIGN_OR_RETURN(out, BroadcastTensor(out, output_shape));
 
-  TF_CHECK_OK(AddOutputTensor(graph, res, seq, tensor_map, inst, 0, out));
+  TF_CHECK_OK(AddOutputTensor(tensor_map, inst, 0, out));
 
   return seq;
 }
 
 StatusOr<poplar::program::Program> CreateBinaryElementwiseOp(
-    poplar::Graph& graph, CompilerResources& res, const HloInstruction* inst,
+    CompilerResources& res, const HloInstruction* inst,
     const xla::Shape& output_shape, TensorMap& tensor_map) {
+  poplar::Graph& graph = GetGraph(res, inst);
+
   // Find the input tensors
   poplar::Tensor in0;
   TF_ASSIGN_OR_RETURN(in0, FindInstructionInput(tensor_map, inst, 0));
@@ -222,7 +226,7 @@ StatusOr<poplar::program::Program> CreateBinaryElementwiseOp(
       }
     }
 
-    TF_CHECK_OK(AddOutputTensor(graph, res, seq, tensor_map, inst, 0, in0));
+    TF_CHECK_OK(AddOutputTensor(tensor_map, inst, 0, in0));
 
     return seq;
 
@@ -291,15 +295,17 @@ StatusOr<poplar::program::Program> CreateBinaryElementwiseOp(
 
     out = out.reshape(PoplarShapeFromXlaShape(output_shape));
 
-    TF_CHECK_OK(AddOutputTensor(graph, res, seq, tensor_map, inst, 0, out));
+    TF_CHECK_OK(AddOutputTensor(tensor_map, inst, 0, out));
 
     return seq;
   }
 }
 
 StatusOr<poplar::program::Program> CreateScaledInplace(
-    poplar::Graph& graph, CompilerResources& res, const HloInstruction* inst,
+    CompilerResources& res, const HloInstruction* inst,
     const xla::Shape& output_shape, TensorMap& tensor_map) {
+  poplar::Graph& graph = GetGraph(res, inst);
+
   poplar::program::Sequence seq;
   ArgVector inputs;
   TF_ASSIGN_OR_RETURN(
@@ -333,14 +339,16 @@ StatusOr<poplar::program::Program> CreateScaledInplace(
                                      root_inst->name().c_str());
     }
   }
-  TF_CHECK_OK(AddOutputTensor(graph, res, seq, tensor_map, inst, 0, in0));
+  TF_CHECK_OK(AddOutputTensor(tensor_map, inst, 0, in0));
 
   return seq;
 }
 
 StatusOr<poplar::program::Program> CreateMatMulForDotOp(
-    poplar::Graph& graph, CompilerResources& res, const HloInstruction* inst,
+    CompilerResources& res, const HloInstruction* inst,
     const xla::Shape& output_shape, TensorMap& tensor_map) {
+  poplar::Graph& graph = GetGraph(res, inst);
+
   // Find the input tensors
   CHECK_EQ(inst->opcode(), HloOpcode::kDot);
   poplar::Tensor in0;
@@ -396,14 +404,16 @@ StatusOr<poplar::program::Program> CreateMatMulForDotOp(
 
   out = out.reshape(PoplarShapeFromXlaShape(output_shape));
 
-  TF_CHECK_OK(AddOutputTensor(graph, res, seq, tensor_map, inst, 0, out));
+  TF_CHECK_OK(AddOutputTensor(tensor_map, inst, 0, out));
 
   return seq;
 }
 
 StatusOr<poplar::program::Program> CreateSelectOp(
-    poplar::Graph& graph, CompilerResources& res, const HloInstruction* inst,
+    CompilerResources& res, const HloInstruction* inst,
     const xla::Shape& output_shape, TensorMap& tensor_map) {
+  poplar::Graph& graph = GetGraph(res, inst);
+
   poplar::Tensor pred;
   TF_ASSIGN_OR_RETURN(pred, FindInstructionInput(tensor_map, inst, 0));
 
@@ -431,17 +441,18 @@ StatusOr<poplar::program::Program> CreateSelectOp(
     poplar::Tensor out = popops::map(graph, popops::expr::TernaryOpType::SELECT,
                                      i0, i1, p, seq, GetDebugName(inst));
 
-    TF_CHECK_OK(AddOutputTensor(graph, res, seq, tensor_map, inst, i, out));
+    TF_CHECK_OK(AddOutputTensor(tensor_map, inst, i, out));
   }
 
   return seq;
 }
 
-StatusOr<poplar::program::Program> CreateCastOp(poplar::Graph& graph,
-                                                CompilerResources& res,
+StatusOr<poplar::program::Program> CreateCastOp(CompilerResources& res,
                                                 const HloInstruction* inst,
                                                 const xla::Shape& output_shape,
                                                 TensorMap& tensor_map) {
+  poplar::Graph& graph = GetGraph(res, inst);
+
   // Find the input tensor
   poplar::Tensor in;
   TF_ASSIGN_OR_RETURN(in, FindInstructionInput(tensor_map, inst, 0));
@@ -455,16 +466,17 @@ StatusOr<poplar::program::Program> CreateCastOp(poplar::Graph& graph,
 
   TF_ASSIGN_OR_RETURN(out, BroadcastTensor(out, output_shape));
 
-  TF_CHECK_OK(AddOutputTensor(graph, res, seq, tensor_map, inst, 0, out));
+  TF_CHECK_OK(AddOutputTensor(tensor_map, inst, 0, out));
 
   return seq;
 }
 
-StatusOr<poplar::program::Program> CreateClampOp(poplar::Graph& graph,
-                                                 CompilerResources& res,
+StatusOr<poplar::program::Program> CreateClampOp(CompilerResources& res,
                                                  const HloInstruction* inst,
                                                  const xla::Shape& output_shape,
                                                  TensorMap& tensor_map) {
+  poplar::Graph& graph = GetGraph(res, inst);
+
   poplar::Tensor min;
   TF_ASSIGN_OR_RETURN(min, FindInstructionInput(tensor_map, inst, 0));
   if (!PoplarShapeMatchesXLAShape(min, output_shape)) {
@@ -489,16 +501,17 @@ StatusOr<poplar::program::Program> CreateClampOp(poplar::Graph& graph,
 
   TF_ASSIGN_OR_RETURN(out, BroadcastTensor(out, output_shape));
 
-  TF_CHECK_OK(AddOutputTensor(graph, res, seq, tensor_map, inst, 0, out));
+  TF_CHECK_OK(AddOutputTensor(tensor_map, inst, 0, out));
 
   return seq;
 }
 
-StatusOr<poplar::program::Program> CreateReluOp(poplar::Graph& graph,
-                                                CompilerResources& res,
+StatusOr<poplar::program::Program> CreateReluOp(CompilerResources& res,
                                                 const HloInstruction* inst,
                                                 const xla::Shape& output_shape,
                                                 TensorMap& tensor_map) {
+  poplar::Graph& graph = GetGraph(res, inst);
+
   poplar::program::Sequence seq;
   ArgVector inputs;
   TF_ASSIGN_OR_RETURN(
@@ -509,14 +522,16 @@ StatusOr<poplar::program::Program> CreateReluOp(poplar::Graph& graph,
 
   TF_ASSIGN_OR_RETURN(t, BroadcastTensor(t, output_shape));
 
-  TF_CHECK_OK(AddOutputTensor(graph, res, seq, tensor_map, inst, 0, t));
+  TF_CHECK_OK(AddOutputTensor(tensor_map, inst, 0, t));
 
   return seq;
 }
 
 StatusOr<poplar::program::Program> CreateReluGradOp(
-    poplar::Graph& graph, CompilerResources& res, const HloInstruction* inst,
+    CompilerResources& res, const HloInstruction* inst,
     const xla::Shape& output_shape, TensorMap& tensor_map) {
+  poplar::Graph& graph = GetGraph(res, inst);
+
   poplar::Tensor out;
   TF_ASSIGN_OR_RETURN(out, FindInstructionInput(tensor_map, inst, 0));
 
@@ -530,14 +545,16 @@ StatusOr<poplar::program::Program> CreateReluGradOp(
 
   TF_ASSIGN_OR_RETURN(t, BroadcastTensor(t, output_shape));
 
-  TF_CHECK_OK(AddOutputTensor(graph, res, seq, tensor_map, inst, 0, t));
+  TF_CHECK_OK(AddOutputTensor(tensor_map, inst, 0, t));
 
   return seq;
 }
 
 StatusOr<poplar::program::Program> CreateSigmoidOp(
-    poplar::Graph& graph, CompilerResources& res, const HloInstruction* inst,
+    CompilerResources& res, const HloInstruction* inst,
     const xla::Shape& output_shape, TensorMap& tensor_map) {
+  poplar::Graph& graph = GetGraph(res, inst);
+
   poplar::program::Sequence seq;
   ArgVector inputs;
   TF_ASSIGN_OR_RETURN(
@@ -549,14 +566,16 @@ StatusOr<poplar::program::Program> CreateSigmoidOp(
 
   TF_ASSIGN_OR_RETURN(t, BroadcastTensor(t, output_shape));
 
-  TF_CHECK_OK(AddOutputTensor(graph, res, seq, tensor_map, inst, 0, t));
+  TF_CHECK_OK(AddOutputTensor(tensor_map, inst, 0, t));
 
   return seq;
 }
 
 StatusOr<poplar::program::Program> CreateSigmoidGradOp(
-    poplar::Graph& graph, CompilerResources& res, const HloInstruction* inst,
+    CompilerResources& res, const HloInstruction* inst,
     const xla::Shape& output_shape, TensorMap& tensor_map) {
+  poplar::Graph& graph = GetGraph(res, inst);
+
   poplar::Tensor out;
   TF_ASSIGN_OR_RETURN(out, FindInstructionInput(tensor_map, inst, 0));
 
@@ -570,7 +589,7 @@ StatusOr<poplar::program::Program> CreateSigmoidGradOp(
 
   TF_ASSIGN_OR_RETURN(t, BroadcastTensor(t, output_shape));
 
-  TF_CHECK_OK(AddOutputTensor(graph, res, seq, tensor_map, inst, 0, t));
+  TF_CHECK_OK(AddOutputTensor(tensor_map, inst, 0, t));
 
   return seq;
 }

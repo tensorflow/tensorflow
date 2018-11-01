@@ -14,11 +14,12 @@
 namespace xla {
 namespace poplarplugin {
 
-StatusOr<poplar::program::Program> CreateSort(poplar::Graph& graph,
-                                              CompilerResources& res,
+StatusOr<poplar::program::Program> CreateSort(CompilerResources& res,
                                               const HloInstruction* inst,
                                               TensorMap& tensor_map) {
   const HloSortInstruction* sort = Cast<HloSortInstruction>(inst);
+
+  poplar::Graph& graph = GetGraph(res, inst);
 
   poplar::program::Sequence prog;
   // Get the inplace input/outputs.
@@ -34,8 +35,7 @@ StatusOr<poplar::program::Program> CreateSort(poplar::Graph& graph,
                         CreateSort(graph, to_sort, sort->dimensions(0)));
 
     prog.add(sort_prog);
-    TF_CHECK_OK(
-        AddOutputTensor(graph, res, prog, tensor_map, inst, 0, to_sort));
+    TF_CHECK_OK(AddOutputTensor(tensor_map, inst, 0, to_sort));
   } else {
     CHECK_EQ(inputs.size(), 2);
     poplar::Tensor key = inputs[0];
@@ -45,9 +45,9 @@ StatusOr<poplar::program::Program> CreateSort(poplar::Graph& graph,
                         CreateSort(graph, key, value, sort->dimensions(0)));
 
     prog.add(sort_prog);
-    TF_CHECK_OK(AddOutputTensor(graph, res, prog, tensor_map, inst, 0, key));
+    TF_CHECK_OK(AddOutputTensor(tensor_map, inst, 0, key));
 
-    TF_CHECK_OK(AddOutputTensor(graph, res, prog, tensor_map, inst, 1, value));
+    TF_CHECK_OK(AddOutputTensor(tensor_map, inst, 1, value));
   }
   return prog;
 }

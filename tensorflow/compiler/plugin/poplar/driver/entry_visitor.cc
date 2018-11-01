@@ -27,6 +27,8 @@ namespace poplarplugin {
 Status EntryVisitor::HandleParameter(HloInstruction* inst) {
   VLOG(1) << "Processing " << inst->name();
 
+  poplar::Graph& graph = GetGraph(resources_, inst);
+
   const auto itr = resources_.annotations.tensor_allocation_map[1].find(
       std::make_pair(inst, 0));
 
@@ -55,11 +57,11 @@ Status EntryVisitor::HandleParameter(HloInstruction* inst) {
         in_info.IsStreaming() ? sequence : host_to_device;
 
     poplar::Tensor out;
-    TF_ASSIGN_OR_RETURN(out, AddTensor(graph_, std::make_pair(inst, i),
+    TF_ASSIGN_OR_RETURN(out, AddTensor(graph, std::make_pair(inst, i),
                                        shapes[i], resources_, tensor_map));
 
     if (!UseSyntheticData()) {
-      auto fifo = graph_.addHostToDeviceFIFO(
+      auto fifo = graph.addHostToDeviceFIFO(
           GetInputCopyHandle(inst->parameter_number(), i), out.elementType(),
           out.numElements());
       seq.add(poplar::program::Copy(
@@ -78,13 +80,12 @@ Status EntryVisitor::HandleParameter(HloInstruction* inst) {
     // between runs
     if (in_info.IsResourceNotModified()) {
       poplar::Tensor non_modified_out = out;
-      out = graph_.clone(non_modified_out,
-                         GetDebugName(inst) + ".resource_not_modified_clone");
+      out = graph.clone(non_modified_out,
+                        GetDebugName(inst) + ".resource_not_modified_clone");
       sequence.add(poplar::program::Copy(non_modified_out, out));
     }
 
-    TF_CHECK_OK(
-        AddOutputTensor(graph_, resources_, seq, tensor_map, inst, i, out));
+    TF_CHECK_OK(AddOutputTensor(tensor_map, inst, i, out));
   }
   return Status::OK();
 }  // namespace poplarplugin
@@ -149,7 +150,7 @@ Status EntryVisitor::FinishVisit(HloInstruction* root) {
           ConvertFromDeviceLayout(shapes[all_outputs_flat_tensor_index],
                                   out_tensors[all_outputs_flat_tensor_index]);
       if (!UseSyntheticData()) {
-        auto fifo = graph_.addDeviceToHostFIFO(
+        auto fifo = resources_.main_graph.addDeviceToHostFIFO(
             GetOutputCopyHandle(idx, current_output_flat_tensor_index),
             out.elementType(), out.numElements());
 

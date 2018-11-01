@@ -55,8 +55,7 @@ namespace se = ::stream_executor;
 namespace xla {
 namespace poplarplugin {
 
-FullVisitor::FullVisitor(poplar::Graph& graph, CompilerResources& res)
-    : BaseVisitor(graph, res) {}
+FullVisitor::FullVisitor(CompilerResources& res) : BaseVisitor(res) {}
 
 Status FullVisitor::HandleConcatenate(HloInstruction* inst) {
   VLOG(1) << "Processing " << inst->name();
@@ -68,8 +67,7 @@ Status FullVisitor::HandleConcatenate(HloInstruction* inst) {
     TF_ASSIGN_OR_RETURN(t, FindInstructionInput(tensor_map, inst, i));
     out = poplar::concat(out, t, dimension);
   }
-  TF_CHECK_OK(
-      AddOutputTensor(graph_, resources_, sequence, tensor_map, inst, 0, out));
+  TF_CHECK_OK(AddOutputTensor(tensor_map, inst, 0, out));
   return Status::OK();
 }
 
@@ -77,8 +75,8 @@ Status FullVisitor::HandleDot(HloInstruction* inst) {
   VLOG(1) << "Processing " << inst->name();
   poplar::program::Program prog;
   TF_ASSIGN_OR_RETURN(
-      prog, CreateMatMulForDotOp(graph_, resources_, inst, GetOutputShape(inst),
-                                 tensor_map));
+      prog,
+      CreateMatMulForDotOp(resources_, inst, GetOutputShape(inst), tensor_map));
   sequence.add(prog);
   return Status::OK();
 }
@@ -86,8 +84,8 @@ Status FullVisitor::HandleDot(HloInstruction* inst) {
 Status FullVisitor::HandleConvolution(HloInstruction* inst) {
   VLOG(1) << "Processing " << inst->name();
   poplar::program::Program prog;
-  TF_ASSIGN_OR_RETURN(prog, CreateConv2D(graph_, resources_, inst,
-                                         GetOutputShape(inst), tensor_map));
+  TF_ASSIGN_OR_RETURN(
+      prog, CreateConv2D(resources_, inst, GetOutputShape(inst), tensor_map));
   sequence.add(prog);
   return Status::OK();
 }
@@ -97,8 +95,7 @@ Status FullVisitor::HandleReverse(HloInstruction* inst) {
   poplar::Tensor t;
   TF_ASSIGN_OR_RETURN(t, FindInstructionInput(tensor_map, inst, 0));
   TF_ASSIGN_OR_RETURN(t, ReverseTensor(t, inst->dimensions()));
-  TF_CHECK_OK(
-      AddOutputTensor(graph_, resources_, sequence, tensor_map, inst, 0, t));
+  TF_CHECK_OK(AddOutputTensor(tensor_map, inst, 0, t));
   return Status::OK();
 }
 
@@ -107,8 +104,8 @@ Status FullVisitor::HandleReduce(HloInstruction* inst) {
   if (IsReducableArtithmetic(inst->to_apply())) {
     poplar::program::Program prog;
     TF_ASSIGN_OR_RETURN(
-        prog, CreateSimpleReduction(graph_, resources_, inst,
-                                    GetOutputShape(inst), tensor_map));
+        prog, CreateSimpleReduction(resources_, inst, GetOutputShape(inst),
+                                    tensor_map));
     sequence.add(prog);
     return Status::OK();
   }
@@ -133,8 +130,7 @@ Status FullVisitor::HandleBroadcast(HloInstruction* inst) {
       out, BroadcastTensor(out, GetOutputShape(inst), inst->dimensions()));
   std::vector<size_t> dims(PoplarShapeFromXlaShape(GetOutputShape(inst)));
   out = out.reshape(dims);
-  TF_CHECK_OK(
-      AddOutputTensor(graph_, resources_, sequence, tensor_map, inst, 0, out));
+  TF_CHECK_OK(AddOutputTensor(tensor_map, inst, 0, out));
   return Status::OK();
 }
 
@@ -144,8 +140,7 @@ Status FullVisitor::HandleReshape(HloInstruction* inst) {
   TF_ASSIGN_OR_RETURN(out, FindInstructionInput(tensor_map, inst, 0));
   std::vector<size_t> dims(PoplarShapeFromXlaShape(GetOutputShape(inst)));
   out = out.reshape(dims);
-  TF_CHECK_OK(
-      AddOutputTensor(graph_, resources_, sequence, tensor_map, inst, 0, out));
+  TF_CHECK_OK(AddOutputTensor(tensor_map, inst, 0, out));
   return Status::OK();
 }
 
@@ -156,8 +151,7 @@ Status FullVisitor::HandleTranspose(HloInstruction* inst) {
   std::vector<unsigned> permutation(
       convert_array<std::vector<unsigned>>(inst->dimensions()));
   out = out.dimShuffle(permutation);
-  TF_CHECK_OK(
-      AddOutputTensor(graph_, resources_, sequence, tensor_map, inst, 0, out));
+  TF_CHECK_OK(AddOutputTensor(tensor_map, inst, 0, out));
   return Status::OK();
 }
 
@@ -189,8 +183,7 @@ Status FullVisitor::HandleSlice(HloInstruction* inst) {
       }
     }
   }
-  TF_CHECK_OK(
-      AddOutputTensor(graph_, resources_, sequence, tensor_map, inst, 0, out));
+  TF_CHECK_OK(AddOutputTensor(tensor_map, inst, 0, out));
   return Status::OK();
 }
 
@@ -198,8 +191,8 @@ Status FullVisitor::HandleDynamicSlice(HloInstruction* inst) {
   VLOG(1) << "Processing " << inst->name();
   poplar::program::Program prog;
   TF_ASSIGN_OR_RETURN(
-      prog, CreateDynamicSliceOp(graph_, resources_, inst, GetOutputShape(inst),
-                                 tensor_map));
+      prog,
+      CreateDynamicSliceOp(resources_, inst, GetOutputShape(inst), tensor_map));
   sequence.add(prog);
   return Status::OK();
 }
@@ -208,8 +201,8 @@ Status FullVisitor::HandleDynamicUpdateSlice(HloInstruction* inst) {
   VLOG(1) << "Processing " << inst->name();
   poplar::program::Program prog;
   TF_ASSIGN_OR_RETURN(
-      prog, CreateDynamicSliceUpdateOp(graph_, resources_, inst,
-                                       GetOutputShape(inst), tensor_map));
+      prog, CreateDynamicSliceUpdateOp(resources_, inst, GetOutputShape(inst),
+                                       tensor_map));
   sequence.add(prog);
   return Status::OK();
 }
@@ -219,7 +212,7 @@ Status FullVisitor::HandleReduceWindow(HloInstruction* inst) {
   if (IsPoplibsPool(inst, inst->to_apply())) {
     poplar::program::Program prog;
     TF_ASSIGN_OR_RETURN(
-        prog, CreatePoplibsWindowReduction(graph_, resources_, inst,
+        prog, CreatePoplibsWindowReduction(resources_, inst,
                                            GetOutputShape(inst), tensor_map));
     sequence.add(prog);
     return Status::OK();
@@ -227,7 +220,7 @@ Status FullVisitor::HandleReduceWindow(HloInstruction* inst) {
   if (IsReducableArtithmetic(inst->to_apply())) {
     poplar::program::Program prog;
     TF_ASSIGN_OR_RETURN(
-        prog, CreateSimpleWindowReduction(graph_, resources_, inst,
+        prog, CreateSimpleWindowReduction(resources_, inst,
                                           GetOutputShape(inst), tensor_map));
     sequence.add(prog);
     return Status::OK();
@@ -241,7 +234,7 @@ Status FullVisitor::HandleSelectAndScatter(HloInstruction* inst) {
     VLOG(1) << "Processing " << inst->name();
     poplar::program::Program prog;
     TF_ASSIGN_OR_RETURN(
-        prog, CreateSimpleSelectAndScatter(graph_, resources_, inst,
+        prog, CreateSimpleSelectAndScatter(resources_, inst,
                                            GetOutputShape(inst), tensor_map));
     sequence.add(prog);
     return Status::OK();
@@ -253,11 +246,11 @@ Status FullVisitor::HandleWhile(HloInstruction* inst) {
   poplar::program::Program prog;
   if (resources_.annotations.while_loop_num_iterations.count(inst)) {
     VLOG(1) << "Processing " << inst->name() << " as a repeat";
-    TF_ASSIGN_OR_RETURN(prog, CreateRepeatOp(graph_, resources_, inst,
+    TF_ASSIGN_OR_RETURN(prog, CreateRepeatOp(resources_, inst,
                                              GetOutputShape(inst), tensor_map));
   } else {
     VLOG(1) << "Processing " << inst->name();
-    TF_ASSIGN_OR_RETURN(prog, CreateWhileOp(graph_, resources_, inst,
+    TF_ASSIGN_OR_RETURN(prog, CreateWhileOp(resources_, inst,
                                             GetOutputShape(inst), tensor_map));
   }
   sequence.add(prog);
@@ -271,28 +264,27 @@ Status FullVisitor::HandlePad(HloInstruction* inst) {
   TF_ASSIGN_OR_RETURN(out, FindInstructionInput(tensor_map, inst, 0));
   TF_ASSIGN_OR_RETURN(pad, FindInstructionInput(tensor_map, inst, 1));
   TF_ASSIGN_OR_RETURN(out, PadTensor(inst->padding_config(), out, pad));
-  TF_CHECK_OK(
-      AddOutputTensor(graph_, resources_, sequence, tensor_map, inst, 0, out));
+  TF_CHECK_OK(AddOutputTensor(tensor_map, inst, 0, out));
   return Status::OK();
 }
 
 Status FullVisitor::HandleIota(HloInstruction* inst) {
   VLOG(1) << "Processing " << inst->name();
+  poplar::Graph& graph = GetGraph(resources_, inst);
+
   auto* iota = Cast<HloIotaInstruction>(inst);
   poplar::Tensor t;
   TF_ASSIGN_OR_RETURN(
-      t, AddIotaTensor(graph_, std::make_pair(inst, 0), GetOutputShape(inst),
+      t, AddIotaTensor(graph, std::make_pair(inst, 0), GetOutputShape(inst),
                        iota->iota_dimension(), resources_));
-  TF_CHECK_OK(
-      AddOutputTensor(graph_, resources_, sequence, tensor_map, inst, 0, t));
+  TF_CHECK_OK(AddOutputTensor(tensor_map, inst, 0, t));
   return Status::OK();
 }
 
 Status FullVisitor::HandleSort(HloInstruction* inst) {
   VLOG(1) << "Processing " << inst->name();
 
-  TF_ASSIGN_OR_RETURN(auto prog,
-                      CreateSort(graph_, resources_, inst, tensor_map));
+  TF_ASSIGN_OR_RETURN(auto prog, CreateSort(resources_, inst, tensor_map));
 
   sequence.add(prog);
 
@@ -303,7 +295,7 @@ Status FullVisitor::HandleBatchNormInference(HloInstruction* inst) {
   VLOG(1) << "Processing " << inst->name();
 
   TF_ASSIGN_OR_RETURN(auto prog,
-                      CreateBatchNormInf(graph_, resources_, inst, tensor_map));
+                      CreateBatchNormInf(resources_, inst, tensor_map));
 
   sequence.add(prog);
 
@@ -313,8 +305,8 @@ Status FullVisitor::HandleBatchNormInference(HloInstruction* inst) {
 Status FullVisitor::HandleBatchNormTraining(HloInstruction* inst) {
   VLOG(1) << "Processing " << inst->name();
 
-  TF_ASSIGN_OR_RETURN(
-      auto prog, CreateBatchNormTraining(graph_, resources_, inst, tensor_map));
+  TF_ASSIGN_OR_RETURN(auto prog,
+                      CreateBatchNormTraining(resources_, inst, tensor_map));
 
   sequence.add(prog);
 
@@ -324,8 +316,8 @@ Status FullVisitor::HandleBatchNormTraining(HloInstruction* inst) {
 Status FullVisitor::HandleBatchNormGrad(HloInstruction* inst) {
   VLOG(1) << "Processing " << inst->name();
 
-  TF_ASSIGN_OR_RETURN(
-      auto prog, CreateBatchNormGrad(graph_, resources_, inst, tensor_map));
+  TF_ASSIGN_OR_RETURN(auto prog,
+                      CreateBatchNormGrad(resources_, inst, tensor_map));
 
   sequence.add(prog);
 

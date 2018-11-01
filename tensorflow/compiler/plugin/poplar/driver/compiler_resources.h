@@ -38,6 +38,10 @@ using ComputationMap = std::map<const HloComputation*, SubComputationVisitor>;
 // This structure contains additional information required to lower the graph
 // from an XLA graph to a poplar graph.
 struct CompilerResources {
+  poplar::Graph main_graph;
+
+  std::vector<poplar::Graph> shard_graphs;
+
   ComputationMap computation_map;
 
   CompilerAnnotations annotations;
@@ -58,9 +62,11 @@ struct CompilerResources {
 
   graph_caching_util::WeightUpdateConvolutionGraphCache wu_graph_cache;
 
-  CompilerResources(uint64 seed, poprand::RandomGenMode mode,
+  CompilerResources(const poplar::Device& dev, uint64 seed,
+                    poprand::RandomGenMode mode,
                     const poplar::OptionFlags& conv_options, HloModule* module)
-      : annotations(module),
+      : main_graph(dev),
+        annotations(module),
         random(mode, seed),
         default_conv_options(conv_options) {}
 };

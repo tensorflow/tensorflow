@@ -80,7 +80,7 @@ StatusOr<poplar::program::Sequence> GetWhileAndRepeatAliasingCopies(
 }  // namespace
 
 static StatusOr<ComputationMap::iterator> GetOrCompileSubComputation(
-    poplar::Graph& graph, CompilerResources& res, const ArgVectors& inputs,
+    CompilerResources& res, const ArgVectors& inputs,
     const HloComputation* comp) {
   auto body(res.computation_map.find(comp));
   if (body != res.computation_map.end()) {
@@ -92,7 +92,7 @@ static StatusOr<ComputationMap::iterator> GetOrCompileSubComputation(
 
   auto compiled = res.computation_map.emplace(
       std::piecewise_construct, std::forward_as_tuple(comp),
-      std::forward_as_tuple(graph, res, inputs));
+      std::forward_as_tuple(res, inputs));
   TF_RETURN_IF_ERROR(comp->Accept(&(res.computation_map.at(comp))));
 
   return compiled.first;
@@ -137,8 +137,7 @@ StatusOr<bool> IsParallelMap(const HloInstruction* inst,
   return tester._is_ok;
 }
 
-StatusOr<poplar::program::Program> CreateParallelMap(poplar::Graph& graph,
-                                                     CompilerResources& res,
+StatusOr<poplar::program::Program> CreateParallelMap(CompilerResources& res,
                                                      const HloInstruction* inst,
                                                      const xla::Shape& output,
                                                      TensorMap& tensor_map) {
@@ -151,23 +150,23 @@ StatusOr<poplar::program::Program> CreateParallelMap(poplar::Graph& graph,
     inputs.push_back(t);
   }
 
-  MapVisitor visitor(graph, res, inputs, output);
+  MapVisitor visitor(res, inputs, output);
   TF_RETURN_IF_ERROR(inst->to_apply()->Accept(&visitor));
 
   auto outputs = visitor.outputs();
   for (size_t i = 0; i < outputs.size(); i++) {
-    TF_CHECK_OK(AddOutputTensor(graph, res, visitor.sequence, tensor_map, inst,
-                                i, outputs[i]));
+    TF_CHECK_OK(AddOutputTensor(tensor_map, inst, i, outputs[i]));
   }
 
   return visitor.sequence;
 }
 
-StatusOr<poplar::program::Program> CreateCallOp(poplar::Graph& graph,
-                                                CompilerResources& res,
+StatusOr<poplar::program::Program> CreateCallOp(CompilerResources& res,
                                                 const HloInstruction* inst,
                                                 const xla::Shape& output,
                                                 TensorMap& tensor_map) {
+  poplar::Graph& graph = GetGraph(res, inst);
+
   int64 op_count(inst->operand_count());
   HloComputation* comp = inst->to_apply();
   poplar::program::Sequence seq;
@@ -179,30 +178,30 @@ StatusOr<poplar::program::Program> CreateCallOp(poplar::Graph& graph,
   }
 
   if (StartsWith(comp->name(), "__inline")) {
-    InlineCallVisitor inline_visitor(graph, res, args);
+    InlineCallVisitor inline_visitor(res, args);
     TF_RETURN_IF_ERROR(comp->Accept(&inline_visitor));
 
     seq.add(inline_visitor.sequence);
 
     for (size_t i = 0; i < inline_visitor.outputs().size(); i++) {
       poplar::Tensor out;
-      TF_CHECK_OK(AddOutputTensor(graph, res, seq, tensor_map, inst, i,
-                                  inline_visitor.outputs()[i]));
+      TF_CHECK_OK(
+          AddOutputTensor(tensor_map, inst, i, inline_visitor.outputs()[i]));
     }
   } else if (StartsWith(comp->name(), "__arithmetic")) {
-    ArithmeticExprVisitor arithmetic_visitor(graph, res, args);
+    ArithmeticExprVisitor arithmetic_visitor(res, args);
     TF_RETURN_IF_ERROR(comp->Accept(&arithmetic_visitor));
 
     seq.add(arithmetic_visitor.sequence);
 
     for (size_t i = 0; i < arithmetic_visitor.outputs().size(); i++) {
-      TF_CHECK_OK(AddOutputTensor(graph, res, seq, tensor_map, inst, i,
+      TF_CHECK_OK(AddOutputTensor(tensor_map, inst, i,
                                   arithmetic_visitor.outputs()[i]));
     }
   } else {
     ComputationMap::iterator subcomp_visitor;
     TF_ASSIGN_OR_RETURN(subcomp_visitor,
-                        GetOrCompileSubComputation(graph, res, args, comp));
+                        GetOrCompileSubComputation(res, args, comp));
 
     for (int64 o = 0; o < op_count; o++) {
       auto& inputs = subcomp_visitor->second.inputs()[o];
@@ -223,18 +222,19 @@ StatusOr<poplar::program::Program> CreateCallOp(poplar::Graph& graph,
       poplar::Tensor o =
           graph.clone(subcomp_visitor->second.outputs()[i], name);
       seq.add(poplar::program::Copy(subcomp_visitor->second.outputs()[i], o));
-      TF_CHECK_OK(AddOutputTensor(graph, res, seq, tensor_map, inst, i, o));
+      TF_CHECK_OK(AddOutputTensor(tensor_map, inst, i, o));
     }
   }
 
   return seq;
 }
 
-StatusOr<poplar::program::Program> CreateFusionOp(poplar::Graph& graph,
-                                                  CompilerResources& res,
+StatusOr<poplar::program::Program> CreateFusionOp(CompilerResources& res,
                                                   const HloInstruction* inst,
                                                   const xla::Shape& output,
                                                   TensorMap& tensor_map) {
+  poplar::Graph& graph = GetGraph(res, inst);
+
   int64 op_count(inst->operand_count());
   HloComputation* comp = inst->fused_instructions_computation();
   poplar::program::Sequence seq;
@@ -246,34 +246,35 @@ StatusOr<poplar::program::Program> CreateFusionOp(poplar::Graph& graph,
     inputs.push_back(t);
   }
 
-  InlineCallVisitor inline_visitor(graph, res, inputs);
+  InlineCallVisitor inline_visitor(res, inputs);
   TF_RETURN_IF_ERROR(comp->Accept(&inline_visitor));
 
   seq.add(inline_visitor.sequence);
 
   for (size_t i = 0; i < inline_visitor.outputs().size(); i++) {
-    TF_CHECK_OK(AddOutputTensor(graph, res, seq, tensor_map, inst, i,
-                                inline_visitor.outputs()[i]));
+    TF_CHECK_OK(
+        AddOutputTensor(tensor_map, inst, i, inline_visitor.outputs()[i]));
   }
 
   return seq;
 }
 
-StatusOr<poplar::program::Program> CreateWhileOp(poplar::Graph& graph,
-                                                 CompilerResources& res,
+StatusOr<poplar::program::Program> CreateWhileOp(CompilerResources& res,
                                                  const HloInstruction* inst,
                                                  const xla::Shape& output,
                                                  TensorMap& tensor_map) {
+  poplar::Graph& graph = GetGraph(res, inst);
+
   ArgVectors inputs;
   inputs.push_back(FindInstructionInputs(tensor_map, inst, 0));
 
   ComputationMap::iterator body;
   TF_ASSIGN_OR_RETURN(
-      body, GetOrCompileSubComputation(graph, res, inputs, inst->while_body()));
+      body, GetOrCompileSubComputation(res, inputs, inst->while_body()));
 
   ComputationMap::iterator cond;
-  TF_ASSIGN_OR_RETURN(cond, GetOrCompileSubComputation(
-                                graph, res, inputs, inst->while_condition()));
+  TF_ASSIGN_OR_RETURN(
+      cond, GetOrCompileSubComputation(res, inputs, inst->while_condition()));
 
   unsigned int param_count = inputs[0].size();
 
@@ -326,17 +327,18 @@ StatusOr<poplar::program::Program> CreateWhileOp(poplar::Graph& graph,
     auto name = StrCat(GetDebugName(inst), "_out_", i);
     poplar::Tensor o = graph.clone(body_outputs[i], name);
     main_seq.add(poplar::program::Copy(body_outputs[i], o));
-    TF_CHECK_OK(AddOutputTensor(graph, res, main_seq, tensor_map, inst, i, o));
+    TF_CHECK_OK(AddOutputTensor(tensor_map, inst, i, o));
   }
 
   return main_seq;
 }
 
-StatusOr<poplar::program::Program> CreateRepeatOp(poplar::Graph& graph,
-                                                  CompilerResources& res,
+StatusOr<poplar::program::Program> CreateRepeatOp(CompilerResources& res,
                                                   const HloInstruction* inst,
                                                   const xla::Shape& output,
                                                   TensorMap& tensor_map) {
+  poplar::Graph& graph = GetGraph(res, inst);
+
   uint64 repeat_count;
   auto it = res.annotations.while_loop_num_iterations.find(inst);
   if (it != res.annotations.while_loop_num_iterations.end()) {
@@ -350,7 +352,7 @@ StatusOr<poplar::program::Program> CreateRepeatOp(poplar::Graph& graph,
 
   ComputationMap::iterator body;
   TF_ASSIGN_OR_RETURN(
-      body, GetOrCompileSubComputation(graph, res, inputs, inst->while_body()));
+      body, GetOrCompileSubComputation(res, inputs, inst->while_body()));
 
   unsigned int param_count = inputs[0].size();
 
@@ -384,17 +386,18 @@ StatusOr<poplar::program::Program> CreateRepeatOp(poplar::Graph& graph,
     auto name = StrCat(GetDebugName(inst), "_out_", i);
     poplar::Tensor o = graph.clone(body_outputs[i], name);
     main_seq.add(poplar::program::Copy(body_outputs[i], o));
-    TF_CHECK_OK(AddOutputTensor(graph, res, main_seq, tensor_map, inst, i, o));
+    TF_CHECK_OK(AddOutputTensor(tensor_map, inst, i, o));
   }
 
   return main_seq;
 }
 
-StatusOr<poplar::program::Program> CreateIfOp(poplar::Graph& graph,
-                                              CompilerResources& res,
+StatusOr<poplar::program::Program> CreateIfOp(CompilerResources& res,
                                               const HloInstruction* inst,
                                               const xla::Shape& output,
                                               TensorMap& tensor_map) {
+  poplar::Graph& graph = GetGraph(res, inst);
+
   poplar::Tensor pred;
   TF_ASSIGN_OR_RETURN(pred, FindInstructionInput(tensor_map, inst, 0));
 
@@ -405,14 +408,14 @@ StatusOr<poplar::program::Program> CreateIfOp(poplar::Graph& graph,
   false_inputs.push_back(FindInstructionInputs(tensor_map, inst, 2));
 
   ComputationMap::iterator true_body;
-  TF_ASSIGN_OR_RETURN(true_body,
-                      GetOrCompileSubComputation(graph, res, true_inputs,
-                                                 inst->true_computation()));
+  TF_ASSIGN_OR_RETURN(
+      true_body,
+      GetOrCompileSubComputation(res, true_inputs, inst->true_computation()));
 
   ComputationMap::iterator false_body;
-  TF_ASSIGN_OR_RETURN(false_body,
-                      GetOrCompileSubComputation(graph, res, false_inputs,
-                                                 inst->false_computation()));
+  TF_ASSIGN_OR_RETURN(
+      false_body,
+      GetOrCompileSubComputation(res, false_inputs, inst->false_computation()));
 
   poplar::program::Sequence seq;
   poplar::Tensor scalar_pred =
@@ -448,7 +451,7 @@ StatusOr<poplar::program::Program> CreateIfOp(poplar::Graph& graph,
 
   for (unsigned int i = 0; i < output_count; i++) {
     poplar::Tensor out = graph.clone(true_body->second.outputs()[i]);
-    TF_CHECK_OK(AddOutputTensor(graph, res, seq, tensor_map, inst, i, out));
+    TF_CHECK_OK(AddOutputTensor(tensor_map, inst, i, out));
 
     true_seq.add(poplar::program::Copy(true_body->second.outputs()[i], out));
     false_seq.add(poplar::program::Copy(false_body->second.outputs()[i], out));

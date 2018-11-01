@@ -254,15 +254,6 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::RunBackend(
 
   std::lock_guard<std::mutex> g(static_mu_);
 
-  poplar::Graph graph(dev);
-  graph.addCodelets(GetPathToGraphProgFile("tf.gp"));
-  graph.addCodelets(GetPathToGraphProgFile("heap_sort.gp"));
-  graph.addCodelets(GetPathToGraphProgFile("batch_norm.gp"));
-  poplin::addCodelets(graph);
-  popnn::addCodelets(graph);
-  popops::addCodelets(graph);
-  poprand::addCodelets(graph);
-
   uint64 start_micros = tensorflow::Env::Default()->NowMicros();
 
   uint64 seed = module->config().seed();
@@ -270,9 +261,29 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::RunBackend(
     seed = tensorflow::random::New64();
   }
 
-  CompilerResources resources(seed + 1, poplarExecutor->GetRandomGenMode(),
+  CompilerResources resources(dev, seed + 1, poplarExecutor->GetRandomGenMode(),
                               poplarExecutor->GetConvolutionOptions(),
                               module.get());
+
+  resources.main_graph.addCodelets(GetPathToGraphProgFile("tf.gp"));
+  resources.main_graph.addCodelets(GetPathToGraphProgFile("heap_sort.gp"));
+  resources.main_graph.addCodelets(GetPathToGraphProgFile("batch_norm.gp"));
+  poplin::addCodelets(resources.main_graph);
+  popnn::addCodelets(resources.main_graph);
+  popops::addCodelets(resources.main_graph);
+  poprand::addCodelets(resources.main_graph);
+
+  if (poplarExecutor->ShardingEnabled()) {
+    auto numIPUs = resources.main_graph.getTarget().getNumIPUs();
+    auto tilesPerIPU = resources.main_graph.getTarget().getTilesPerIPU();
+    for (unsigned ipu = 0; ipu < numIPUs; ++ipu) {
+      resources.shard_graphs.emplace_back(
+          resources.main_graph.createVirtualGraph(ipu * tilesPerIPU,
+                                                  (ipu + 1) * tilesPerIPU));
+    }
+    VLOG(1) << "Created " << numIPUs << " IPU shards";
+  }
+
   {
     HloPassPipeline pipeline("IPU");
     pipeline.AddPass<BatchNormExpander>(true, false, true);
@@ -341,7 +352,7 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::RunBackend(
 
   std::unique_ptr<poplar::Engine> engine;
   std::vector<poplar::program::Program> progs;
-  EntryVisitor visitor(graph, resources,
+  EntryVisitor visitor(resources,
                        poplarExecutor->AlwaysRearrangeCopiesOnTheHost());
 
   std::vector<std::vector<Literal>> constant_output;
@@ -373,7 +384,7 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::RunBackend(
     char* vertex_filename = getenv("TF_DUMP_VERTEX_GRAPH");
     if (vertex_filename) {
       std::ofstream stream(vertex_filename);
-      graph.outputVertexGraph(stream, progs);
+      resources.main_graph.outputVertexGraph(stream, progs);
     }
 
     is_remap_graph = AreAllOutputsParameters(
@@ -388,7 +399,8 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::RunBackend(
         // Generate this JSON early so that the VLOG trace can contain the
         // output
         // whether the engine compilation completes or not
-        map_json = GetTensorMappingJson(graph, resources.tensor_maps);
+        map_json =
+            GetTensorMappingJson(resources.main_graph, resources.tensor_maps);
 
         auto opts = poplarExecutor->GetOptionsFlags();
         auto progress_logging = [](int progress, int total) {
@@ -398,7 +410,8 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::RunBackend(
           VLOG(1) << "Poplar compilation " << progress_percent << "% complete";
         };
 
-        engine.reset(new poplar::Engine(graph, progs, opts, progress_logging));
+        engine.reset(new poplar::Engine(resources.main_graph, progs, opts,
+                                        progress_logging));
       } catch (const std::exception& e) {
         return PoplarExceptionToTensorflowStatus("[Compile engine] ", e);
       }

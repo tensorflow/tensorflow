@@ -35,8 +35,7 @@ namespace poplarplugin {
 
 class ArithmeticExprVisitor : public FullVisitor {
  public:
-  ArithmeticExprVisitor(poplar::Graph& graph, CompilerResources& res,
-                        const ArgVectors& inputs);
+  ArithmeticExprVisitor(CompilerResources& res, const ArgVectors& inputs);
 
   Status HandleElementwiseUnary(HloInstruction* inst) override;
   Status HandleElementwiseBinary(HloInstruction* inst) override;
