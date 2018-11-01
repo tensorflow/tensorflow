@@ -1134,7 +1134,7 @@ def make_gather_tests(zip_path):
       "params_shape": [[10], [1, 2, 20]],
       "indices_dtype": [tf.int32],
       "indices_shape": [[3], [5]],
-      "axis": [0, 1],
+      "axis": [-1, 0, 1],
   }]
 
   def build_graph(parameters):
@@ -1147,7 +1147,8 @@ def make_gather_tests(zip_path):
         dtype=parameters["indices_dtype"],
         name="indices",
         shape=parameters["indices_shape"])
-    out = tf.gather(params, indices, axis=parameters["axis"])
+    axis = min(len(parameters["params_shape"]), parameters["axis"])
+    out = tf.gather(params, indices, axis=axis)
     return [params, indices], [out]
 
   def build_inputs(parameters, sess, inputs, outputs):
