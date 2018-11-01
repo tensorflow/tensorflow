@@ -52,13 +52,22 @@ uint64_t getLargestDivisorOfTripCount(const ForStmt &forStmt);
 // For now we assume no layout map or identity layout map in the MemRef.
 // TODO(ntv): support more than identity layout map.
 bool isAccessInvariant(const MLValue &input, MemRefType memRefType,
-                       llvm::ArrayRef<MLValue *> indices, unsigned dim);
+                       llvm::ArrayRef<const MLValue *> indices, unsigned dim);
 
-/// Checks whether all the LoadOp and StoreOp matched have access indexing
-/// functions that are are either:
+/// Checks whether the loop is structurally vectorizable; i.e.:
+/// 1. the loop has proper dependence semantics (parallel, reduction, etc);
+/// 2. no conditionals are nested under the loop;
+/// 3. all nested load/stores are to scalar MemRefs.
+/// TODO(ntv): implement dependence semantics
+/// TODO(ntv): relax the no-conditionals restriction
+bool isVectorizableLoop(const ForStmt &loop);
+
+/// Checks whether the loop is structurally vectorizable and that all the LoadOp
+/// and StoreOp matched have access indexing functions that are are either:
 ///   1. invariant along the loop induction variable created by 'loop';
 ///   2. varying along the 'fastestVaryingDim' memory dimension.
-bool isVectorizableLoop(const ForStmt &loop, unsigned fastestVaryingDim);
+bool isVectorizableLoopAlongFastestVaryingMemRefDim(const ForStmt &loop,
+                                                    unsigned fastestVaryingDim);
 
 /// Checks where SSA dominance would be violated if a for stmt's body statements
 /// are shifted by the specified shifts. This method checks if a 'def' and all

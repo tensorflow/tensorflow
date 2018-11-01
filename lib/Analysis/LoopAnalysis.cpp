@@ -119,12 +119,12 @@ uint64_t mlir::getLargestDivisorOfTripCount(const ForStmt &forStmt) {
 }
 
 bool mlir::isAccessInvariant(const MLValue &input, MemRefType memRefType,
-                             ArrayRef<MLValue *> indices, unsigned dim) {
+                             ArrayRef<const MLValue *> indices, unsigned dim) {
   assert(indices.size() == memRefType.getRank());
   assert(dim < indices.size());
   auto layoutMap = memRefType.getAffineMaps();
   assert(memRefType.getAffineMaps().size() <= 1);
-  // TODO(ntv): remove dependency on Builder once we support non-identity
+  // TODO(ntv): remove dependence on Builder once we support non-identity
   // layout map.
   Builder b(memRefType.getContext());
   assert(layoutMap.empty() ||
@@ -132,7 +132,8 @@ bool mlir::isAccessInvariant(const MLValue &input, MemRefType memRefType,
   (void)layoutMap;
 
   SmallVector<OperationStmt *, 4> affineApplyOps;
-  getReachableAffineApplyOps({indices[dim]}, affineApplyOps);
+  getReachableAffineApplyOps({const_cast<MLValue *>(indices[dim])},
+                             affineApplyOps);
 
   if (affineApplyOps.empty()) {
     // Pointer equality test because of MLValue pointer semantics.
@@ -168,7 +169,7 @@ static bool isContiguousAccess(const MLValue &input,
                                LoadOrStoreOpPointer memoryOp,
                                unsigned fastestVaryingDim) {
   using namespace functional;
-  auto indices = map([](SSAValue *val) { return dyn_cast<MLValue>(val); },
+  auto indices = map([](const SSAValue *val) { return dyn_cast<MLValue>(val); },
                      memoryOp->getIndices());
   auto memRefType = memoryOp->getMemRefType();
   for (unsigned d = 0, numIndices = indices.size(); d < numIndices; ++d) {
@@ -188,7 +189,11 @@ static bool isVectorElement(LoadOrStoreOpPointer memoryOp) {
   return memRefType.getElementType().template isa<VectorType>();
 }
 
-bool mlir::isVectorizableLoop(const ForStmt &loop, unsigned fastestVaryingDim) {
+using VectorizableStmtFun =
+    std::function<bool(const ForStmt &, const OperationStmt &)>;
+
+static bool isVectorizableLoopWithCond(const ForStmt &loop,
+                                       VectorizableStmtFun isVectorizableStmt) {
   if (!matcher::isParallelLoop(loop) && !matcher::isReductionLoop(loop)) {
     return false;
   }
@@ -214,13 +219,30 @@ bool mlir::isVectorizableLoop(const ForStmt &loop, unsigned fastestVaryingDim) {
     if (vector) {
       return false;
     }
-    bool contiguous = load ? isContiguousAccess(loop, load, fastestVaryingDim)
-                           : isContiguousAccess(loop, store, fastestVaryingDim);
-    if (!contiguous) {
+    if (!isVectorizableStmt(loop, *op)) {
       return false;
     }
   }
   return true;
+}
+
+bool mlir::isVectorizableLoopAlongFastestVaryingMemRefDim(
+    const ForStmt &loop, unsigned fastestVaryingDim) {
+  VectorizableStmtFun fun(
+      [fastestVaryingDim](const ForStmt &loop, const OperationStmt &op) {
+        auto load = op.dyn_cast<LoadOp>();
+        auto store = op.dyn_cast<StoreOp>();
+        return load ? isContiguousAccess(loop, load, fastestVaryingDim)
+                    : isContiguousAccess(loop, store, fastestVaryingDim);
+      });
+  return isVectorizableLoopWithCond(loop, fun);
+}
+
+bool mlir::isVectorizableLoop(const ForStmt &loop) {
+  VectorizableStmtFun fun(
+      // TODO: implement me
+      [](const ForStmt &loop, const OperationStmt &op) { return true; });
+  return isVectorizableLoopWithCond(loop, fun);
 }
 
 /// Checks whether SSA dominance would be violated if a for stmt's body
