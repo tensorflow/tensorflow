@@ -151,7 +151,7 @@ def set_ipu_model_options(opts, compile_ipu_code=True):
 
   return opts
 
-def auto_select_ipus(opts, num_ipus):
+def auto_select_ipus(opts, num_ipus, sharded=False):
   """Configure the IPUs to be used by the session.
 
   The configuration describes a system consisting of multiple Tensorflow
@@ -192,6 +192,8 @@ def auto_select_ipus(opts, num_ipus):
   Args:
     :param opts: An IPUOptions session control protobuf.
     :param num_ipus: List of IPUs per Tensorflow device
+    :param sharded: Instead of many Tensorflow devices, represent the IPUs as
+                    one Tensorflow device, but with multiple shards.
   Returns:
 
     :return: The IPUOptions configuration protobuf, configured for
@@ -210,10 +212,11 @@ def auto_select_ipus(opts, num_ipus):
     for n in num_ipus:
       dev = opts.device_config.add()
       dev.auto_count = n
+      dev.shard_config = sharded
 
   return opts
 
-def select_ipus(opts, indices):
+def select_ipus(opts, indices, sharded=False):
   """Configure the IPUs to be used by the session.
 
   The configuration describes a system consisting of multiple Tensorflow
@@ -377,7 +380,9 @@ def select_ipus(opts, indices):
 
   Args:
     :param opts: An IPUOptions session control protobuf.
-    :param indicies: List of IPU configuration indicies
+    :param indicies: List of IPU configuration indicies.
+    :param sharded: Instead of many Tensorflow devices, represent the IPUs as
+                    one Tensorflow device, but with multiple shards.
   Returns:
 
     :return: The IPUOptions configuration protobuf, with a number of devices
@@ -393,6 +398,7 @@ def select_ipus(opts, indices):
   for i in indices:
     dev = opts.device_config.add()
     dev.cfg_index = i
+    dev.shard_config = True
 
   return opts
 

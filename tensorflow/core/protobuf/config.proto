@@ -214,6 +214,11 @@ message IPUOptions {
       // Set this to acquire a specific IPU hardware configuration.
       int32 cfg_index = 2;
     }
+
+    // When there are values in this list, then break the device up into several
+    // smaller virtual devices, each targetable using the IPU_REPLICATED_CORE
+    // ordinals.  The system can only support one such sharded device.
+    bool shard_config = 3;
   };
 
   // Options controlling the configuration of each IPU device

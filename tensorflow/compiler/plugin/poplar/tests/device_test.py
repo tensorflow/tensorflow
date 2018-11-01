@@ -20,24 +20,71 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import test_utils as tu
+
 from tensorflow.python.client import device_lib
 from tensorflow.python.framework import test_util
 from tensorflow.python.platform import googletest
 
+
 class IpuXlaDeviceLibTest(test_util.TensorFlowTestCase):
 
-    def testLoadDevice(self):
-        devices = device_lib.list_local_devices()
+  def testLoadDevice(self):
+    devices = device_lib.list_local_devices()
 
-        self.assertGreater(len(devices), 0)
-        self.assertEqual(devices[0].device_type, "CPU")
+    self.assertGreater(len(devices), 0)
+    self.assertEqual(devices[0].device_type, "CPU")
 
-        found_ipu = False
-        for d in devices:
-            if d.device_type == "IPU":
-                found_ipu = True
+    found_ipu = False
+    found_ipu_rep = False
+    for d in devices:
+      if d.device_type == "IPU":
+        found_ipu = True
+      if d.device_type == "IPU_REPLICATED_CORE":
+        found_ipu_rep = True
 
-        self.assertTrue(found_ipu)
+    self.assertTrue(found_ipu)
+    self.assertFalse(found_ipu_rep)
+
+  def testDeviceInSession(self):
+
+    with tu.ipu_session() as sess:
+
+      devices = sess.list_devices()
+
+      self.assertGreater(len(devices), 0)
+      self.assertEqual(devices[0].device_type, "CPU")
+
+      found_ipu = False
+      found_ipu_rep = False
+      for d in devices:
+        if d.device_type == "IPU":
+          found_ipu = True
+        if d.device_type == "IPU_REPLICATED_CORE":
+          found_ipu_rep = True
+
+      self.assertTrue(found_ipu)
+      self.assertFalse(found_ipu_rep)
+
+  def testShardedDeviceInSession(self):
+
+    with tu.ipu_session(sharded=True) as sess:
+
+      devices = sess.list_devices()
+
+      self.assertGreater(len(devices), 0)
+      self.assertEqual(devices[0].device_type, "CPU")
+
+      found_ipu = False
+      found_ipu_rep = False
+      for d in devices:
+        if d.device_type == "IPU":
+          found_ipu = True
+        if d.device_type == "IPU_REPLICATED_CORE":
+          found_ipu_rep = True
+
+      self.assertFalse(found_ipu)
+      self.assertTrue(found_ipu_rep)
 
 if __name__ == "__main__":
-    googletest.main()
+  googletest.main()

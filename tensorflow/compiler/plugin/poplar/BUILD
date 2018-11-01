@@ -486,6 +486,7 @@ py_test(
     size = "small",
     srcs = ["tests/device_test.py"],
     deps = [
+        ":ipu_ops",
         "//tensorflow/compiler/tests:xla_test",
     ],
     srcs_version = "PY2AND3",

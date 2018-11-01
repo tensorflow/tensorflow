@@ -22,7 +22,7 @@ import re
 
 @contextlib.contextmanager
 def ipu_session(compilation_trace=True, io_trace=False, execution_trace=True,
-                report_every_nth_execution=0, text_report=True):
+                report_every_nth_execution=0, text_report=True, sharded=False):
   opts = config_pb2.IPUOptions()
   opts.profiling.enable_compilation_trace = compilation_trace
   opts.profiling.enable_io_trace = io_trace
@@ -30,6 +30,12 @@ def ipu_session(compilation_trace=True, io_trace=False, execution_trace=True,
   opts.profiling.enable_poplar_reports_text = text_report
   opts.profiling.report_every_nth_execution = report_every_nth_execution
   opts.ipu_model_config.enable_ipu_model = True
+
+  if sharded:
+    dev = opts.device_config.add()
+    dev.auto_count = 2
+    dev.shard_config = True
+
   with session_lib.Session(
       config=config_pb2.ConfigProto(ipu_options=opts)) as sess:
     yield sess
