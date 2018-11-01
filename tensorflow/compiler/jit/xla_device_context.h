@@ -52,7 +52,7 @@ class XlaDeviceContext : public DeviceContext {
       std::shared_ptr<se::Stream> host_to_device_stream,
       std::shared_ptr<se::Stream> device_to_host_stream,
       std::vector<std::shared_ptr<se::Stream>> device_to_device_streams,
-      xla::LocalClient* client, bool transfer_as_literal,
+      xla::LocalClient* client,
       XlaCompiler::ShapeRepresentationFn shape_representation_fn,
       thread::ThreadPool* thread_pool);
 
@@ -83,11 +83,6 @@ class XlaDeviceContext : public DeviceContext {
   se::Stream* GetDeviceToDeviceStream();
 
  private:
-  Status TransferLiteralToDevice(const Tensor& host_tensor,
-                                 Tensor* device_tensor) const;
-  void TransferLiteralFromDevice(Tensor* host_tensor,
-                                 const Tensor& device_tensor,
-                                 const StatusCallback& done) const;
   bool UseMultipleStreams() const { return stream_ != host_to_device_stream_; }
 
   // The main compute stream of the device, used to synchronize the transfer
@@ -107,8 +102,7 @@ class XlaDeviceContext : public DeviceContext {
   xla::LocalClient* client_;
   // Transfer manager, for marshalling data to and from the device.
   xla::TransferManager* transfer_manager_;
-  // True if we must use XLA's TransferManager for correct device transfers.
-  const bool transfer_as_literal_;
+
   XlaCompiler::ShapeRepresentationFn shape_representation_fn_;
 
   // Thread pool used for running closures
