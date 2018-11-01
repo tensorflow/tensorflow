@@ -39,19 +39,12 @@ bool IsTrivialOp(const NodeDef& node, const GraphRewriter& rewriter) {
     return true;
   }
   if (IsIdentity(node) || IsIdentityNSingleInput(node)) {
-    if (rewriter.FeedsMerge(node) || rewriter.IsDrivenBySwitch(node) ||
-        rewriter.IsDrivenByControlDependency(node) ||
-        rewriter.DrivesControlDependency(node)) {
-      return false;
-    } else {
-      return true;
-    }
-  }
-  if (IsAddN(node) && NumNonControlInputs(node) <= 1) {
-    return true;
+    return !(rewriter.FeedsMerge(node) || rewriter.IsDrivenBySwitch(node) ||
+             rewriter.IsDrivenByControlDependency(node) ||
+             rewriter.DrivesControlDependency(node));
   }
 
-  return false;
+  return IsAddN(node) && NumNonControlInputs(node) <= 1;
 }
 
 absl::flat_hash_map<string, absl::flat_hash_set<int>> IdentityNTerminalPorts(
