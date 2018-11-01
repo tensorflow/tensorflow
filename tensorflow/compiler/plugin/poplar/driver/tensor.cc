@@ -345,7 +345,7 @@ static StatusOr<poplar::Tensor> AddRightMatMul(poplar::Graph& graph,
                                       &resources.dot_cache);
 }
 
-static poplar::Tensor PathTransform(
+static StatusOr<poplar::Tensor> PathTransform(
     poplar::Graph& graph, poplar::Tensor in,
     const std::vector<const HloInstruction*>& forward,
     const std::vector<const HloInstruction*>& backward) {
@@ -397,8 +397,18 @@ static poplar::Tensor PathTransform(
         in = in.reshape(dims);
         break;
       }
-      default:
+      case HloOpcode::kBroadcast: {
+        std::vector<unsigned> permutation(in.rank());
+        std::iota(permutation.begin(), permutation.end(), 0);
+        std::swap(permutation.front(), permutation[inst->dimensions(0)]);
+
+        in = in.dimShuffle(permutation);
+        in = in[0];
+      }
+      case HloOpcode::kAdd: {
         break;
+      }
+      default: { break; }
     }
   }
 
@@ -516,8 +526,9 @@ StatusOr<poplar::Tensor> AddTensor(poplar::Graph& graph,
                                        tgt->name().c_str());
     }
 
-    out = PathTransform(graph, out, target->second.forward_path,
-                        target->second.backward_path);
+    TF_ASSIGN_OR_RETURN(out,
+                        PathTransform(graph, out, target->second.forward_path,
+                                      target->second.backward_path));
   } else {
     TF_ASSIGN_OR_RETURN(out, AddPlainTensor(graph, name, shape));
   }

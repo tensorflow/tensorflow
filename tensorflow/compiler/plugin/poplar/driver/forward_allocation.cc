@@ -20,31 +20,26 @@ template <typename T>
 using Graph = absl::flat_hash_map<T, absl::flat_hash_set<T>>;
 using HloInstPtr = const HloInstruction*;
 
-static Graph<HloInstPtr> create_graph(HloInstPtr inst) {
-  Graph<HloInstPtr> result;
-
+static void create_graph(HloInstPtr inst, Graph<HloInstPtr>& result) {
   for (const auto& operand : inst->operands()) {
     result[operand].insert(inst);
 
-    for (auto& pair : create_graph(operand)) {
-      result[pair.first].merge(pair.second);
+    if (!result.contains(operand)) {
+      create_graph(operand, result);
     }
   }
-
-  return result;
 }
 
-static Graph<HloInstPtr> create_graph(const HloComputation* module) {
-  return create_graph(module->root_instruction());
+static void create_graph(const HloComputation* module,
+                         Graph<HloInstPtr>& result) {
+  return create_graph(module->root_instruction(), result);
 }
 
 static Graph<HloInstPtr> create_graph(const HloModule* module) {
   Graph<HloInstPtr> result;
 
   for (const auto& computation : module->computations()) {
-    for (auto& pair : create_graph(computation)) {
-      result[pair.first].merge(pair.second);
-    }
+    create_graph(computation, result);
   }
 
   return result;
@@ -226,14 +221,21 @@ StatusOr<bool> ForwardAllocation::Run(HloModule* module) {
             std::accumulate(std::next(itr->second.begin()), itr->second.end(),
                             *(itr->second.begin()), inst_reduction);
 
-        if (target->opcode() == HloOpcode::kConvolution ||
-            target->opcode() == HloOpcode::kDot) {
+        if (target->opcode() == HloOpcode::kConvolution) {
           auto prefix = shortest_path(g, v1, mid);
           auto suffix = shortest_path(g, target, mid);
 
           auto src = std::make_pair(prefix.front(), 0);
           auto t = TensorTarget(suffix.front(), -1, suffix, prefix);
-          tensor_allocation_map_second_pass[src] = t;
+
+          const auto is_tuple = [](HloInstPtr v) {
+            return v->shape().element_type() == TUPLE;
+          };
+
+          if (std::none_of(prefix.begin(), prefix.end(), is_tuple) &&
+              std::none_of(suffix.begin(), suffix.end(), is_tuple)) {
+            tensor_allocation_map_second_pass[src] = t;
+          }
         }
       }
     }
