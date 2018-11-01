@@ -34,6 +34,7 @@ class AffineExpr;
 class AffineValueMap;
 class ForStmt;
 class MLIRContext;
+class FlatAffineConstraints;
 class MLValue;
 class OperationStmt;
 
@@ -56,12 +57,14 @@ void getReachableAffineApplyOps(
 void forwardSubstituteReachableOps(AffineValueMap *valueMap);
 
 /// Flattens 'expr' into 'flattenedExpr'. Returns true on success or false
-/// if 'expr' was unable to be flattened (i.e. because it was not pure affine,
-/// or because it contained mod's and div's that could not be eliminated
-/// without introducing local variables).
+/// if 'expr' was unable to be flattened (i.e., semi-affine is not yet handled).
+/// 'cst' contains constraints that connect newly introduced local identifiers
+/// to existing dimensional and / symbolic identifiers. See documentation for
+/// AffineExprFlattener on how mod's and div's are flattened.
 bool getFlattenedAffineExpr(AffineExpr expr, unsigned numDims,
                             unsigned numSymbols,
-                            llvm::SmallVectorImpl<int64_t> *flattenedExpr);
+                            llvm::SmallVectorImpl<int64_t> *flattenedExpr,
+                            FlatAffineConstraints *cst = nullptr);
 
 /// Checks whether two accesses to the same memref access the same element.
 /// Each access is specified using the MemRefAccess structure, which contains

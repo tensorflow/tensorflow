@@ -1,16 +1,16 @@
 // RUN: mlir-opt %s -simplify-affine-structures | FileCheck %s
 
-// CHECK: #map{{[0-9]+}} = (d0, d1) -> (0, 0)
+// CHECK-DAG: #map{{[0-9]+}} = (d0, d1) -> (0, 0)
 #map0 = (d0, d1) -> ((d0 - d0 mod 4) mod 4, (d0 - d0 mod 128 - 64) mod 64)
-// CHECK: #map{{[0-9]+}} = (d0, d1) -> (d0 + 1, d1 * 5 + 3)
+// CHECK-DAG: #map{{[0-9]+}} = (d0, d1) -> (d0 + 1, d1 * 5 + 3)
 #map1 = (d0, d1) -> (d1 - d0 + (d0 - d1 + 1) * 2 + d1 - 1, 1 + 2*d1 + d1 + d1 + d1 + 2)
-// CHECK: #map{{[0-9]+}} = (d0, d1) -> (0, 0, 0)
+// CHECK-DAG: #map{{[0-9]+}} = (d0, d1) -> (0, 0, 0)
 #map2 = (d0, d1) -> (((d0 - d0 mod 2) * 2) mod 4, (5*d1 + 8 - (5*d1 + 4) mod 4) mod 4, 0)
-// CHECK: #map{{[0-9]+}} = (d0, d1) -> (d0 ceildiv 2, d0 + 1, (d1 * 3 + 1) ceildiv 2)
+// CHECK-DAG: #map{{[0-9]+}} = (d0, d1) -> (d0 ceildiv 2, d0 + 1, (d1 * 3 + 1) ceildiv 2)
 #map3 = (d0, d1) -> (d0 ceildiv 2, (2*d0 + 4 + 2*d0) ceildiv 4, (8*d1 + 3 + d1) ceildiv 6)
-// CHECK: #map{{[0-9]+}} = (d0, d1) -> (d0 floordiv 2, d0 * 2 + d1, (d1 + 2) floordiv 2)
+// CHECK-DAG: #map{{[0-9]+}} = (d0, d1) -> (d0 floordiv 2, d0 * 2 + d1, (d1 + 2) floordiv 2)
 #map4 = (d0, d1) -> (d0 floordiv 2, (3*d0 + 2*d1 + d0) floordiv 2, (50*d1 + 100) floordiv 100)
-// CHECK: #map{{[0-9]+}} = (d0, d1) -> (0, d0 * 5 + 3)
+// CHECK-DAG: #map{{[0-9]+}} = (d0, d1) -> (0, d0 * 5 + 3)
 #map5 = (d0, d1) -> ((4*d0 + 8*d1) ceildiv 2 mod 2, (2 + d0 + (8*d0 + 2) floordiv 2))
 // The flattening based simplification is currently regressive on modulo
 // expression simplification in the simple case (d0 mod 8 would be turn into d0
@@ -19,16 +19,16 @@
 // floordiv 8).  In general, we have a choice of using either mod or floordiv
 // to express the same expression in mathematically equivalent ways, and making that
 // choice to minimize the number of terms or to simplify arithmetic is a TODO. 
-// CHECK: #map{{[0-9]+}} = (d0, d1) -> (d0 - (d0 floordiv 8) * 8, (d1 floordiv 8) * 8)
+// CHECK-DAG: #map{{[0-9]+}} = (d0, d1) -> (d0 - (d0 floordiv 8) * 8, (d1 floordiv 8) * 8)
 #map6 = (d0, d1) -> (d0 mod 8, d1 - d1 mod 8)
 
-// CHECK: #set0 = (d0, d1) : (1 == 0)
-// CHECK: #set1 = (d0, d1) : (d0 - 100 == 0, d1 - 10 == 0, d0 * -1 + 100 >= 0, d1 >= 0, d1 + 101 >= 0)
-// CHECK: #set2 = (d0, d1)[s0, s1] : (1 == 0)
-// CHECK: #set3 = (d0, d1)[s0, s1] : (d0 * 7 + d1 * 5 + s0 * 11 + s1 == 0, d0 * 5 - d1 * 11 + s0 * 7 + s1 == 0, d0 * 11 + d1 * 7 - s0 * 5 + s1 == 0, d0 * 7 + d1 * 5 + s0 * 11 + s1 == 0)
-// CHECK: #set4 = (d0) : (1 == 0)
-// CHECK: #set5 = (d0)[s0, s1] : (1 == 0)
-// CHECK: #set6 = (d0, d1, d2) : (1 == 0)
+// CHECK-DAG: [[SET_EMPTY_2D:#set[0-9]+]] = (d0, d1) : (1 == 0)
+// CHECK-DAG: #set1 = (d0, d1) : (d0 - 100 == 0, d1 - 10 == 0, d0 * -1 + 100 >= 0, d1 >= 0, d1 + 101 >= 0)
+// CHECK-DAG: #set2 = (d0, d1)[s0, s1] : (1 == 0)
+// CHECK-DAG: #set3 = (d0, d1)[s0, s1] : (d0 * 7 + d1 * 5 + s0 * 11 + s1 == 0, d0 * 5 - d1 * 11 + s0 * 7 + s1 == 0, d0 * 11 + d1 * 7 - s0 * 5 + s1 == 0, d0 * 7 + d1 * 5 + s0 * 11 + s1 == 0)
+// CHECK-DAG: [[SET_EMPTY_1D:#set[0-9]+]] = (d0) : (1 == 0)
+// CHECK-DAG: #set5 = (d0)[s0, s1] : (1 == 0)
+// CHECK-DAG: [[SET_EMPTY_3D:#set[0-9]+]] = (d0, d1, d2) : (1 == 0)
 
 // Set for test case: test_gaussian_elimination_non_empty_set2
 // #set2 = (d0, d1) : (d0 - 100 == 0, d1 - 10 == 0, d0 * -1 + 100 >= 0, d1 >= 0, d1 + 101 >= 0)
@@ -71,7 +71,7 @@ mlfunc @test() {
 mlfunc @test_gaussian_elimination_empty_set0() {
   for %i0 = 1 to 10 {
     for %i1 = 1 to 100 {
-      // CHECK: #set0(%i0, %i1)
+      // CHECK: [[SET_EMPTY_2D]](%i0, %i1)
       if (d0, d1) : (2 == 0)(%i0, %i1) {
       }
     }
@@ -83,7 +83,7 @@ mlfunc @test_gaussian_elimination_empty_set0() {
 mlfunc @test_gaussian_elimination_empty_set1() {
   for %i0 = 1 to 10 {
     for %i1 = 1 to 100 {
-      // CHECK: #set0(%i0, %i1)
+      // CHECK: [[SET_EMPTY_2D]](%i0, %i1)
       if (d0, d1) : (1 >= 0, -1 >= 0) (%i0, %i1) {
       }
     }
@@ -145,19 +145,19 @@ mlfunc @test_gaussian_elimination_empty_set5() {
   return
 }
 
-// CHECK-LABEL: mlfunc @test_fourier_motzkin(%arg0 : index) {
-mlfunc @test_fourier_motzkin(%N : index) {
+// CHECK-LABEL: mlfunc @test_empty_set(%arg0 : index) {
+mlfunc @test_empty_set(%N : index) {
   for %i = 0 to 10 {
     for %j = 0 to 10 {
-      // CHECK: if #set0(%i0, %i1)
+      // CHECK: if [[SET_EMPTY_2D]](%i0, %i1)
       if (d0, d1) : (d0 - d1 >= 0, d1 - d0 - 1 >= 0)(%i, %j) {
         "foo"() : () -> ()
       }
-      // CHECK: if #set4(%i0)
+      // CHECK: if [[SET_EMPTY_1D]](%i0)
       if (d0) : (d0 >= 0, -d0 - 1 >= 0)(%i) {
         "bar"() : () -> ()
       }
-      // CHECK: if #set4(%i0)
+      // CHECK: if [[SET_EMPTY_1D]](%i0)
       if (d0) : (d0 >= 0, -d0 - 1 >= 0)(%i) {
         "foo"() : () -> ()
       }
@@ -165,22 +165,47 @@ mlfunc @test_fourier_motzkin(%N : index) {
       if (d0)[s0, s1] : (d0 >= 0, -d0 + s0 - 1 >= 0, -s0 >= 0)(%i)[%N, %N] {
         "bar"() : () -> ()
       }
-      // CHECK: if #set6(%i0, %i1, %arg0)
+      // CHECK: if [[SET_EMPTY_3D]](%i0, %i1, %arg0)
       // The set below implies d0 = d1; so d1 >= d0, but d0 >= d1 + 1.
       if (d0, d1, d2) : (d0 - d1 == 0, d2 - d0 >= 0, d0 - d1 - 1 >= 0)(%i, %j, %N) {
         "foo"() : () -> ()
       }
-      // CHECK: if #set0(%i0, %i1)
+      // CHECK: if [[SET_EMPTY_2D]](%i0, %i1)
       // The set below has rational solutions but no integer solutions; GCD test catches it.
-      if (d0, d1) : (d0 * 2 -d1 * 2 -1 == 0, d0 >= 0, -d0 + 100 >= 0, d1 >= 0, -d1 + 100 >= 0)(%i, %j) {
+      if (d0, d1) : (d0*2 -d1*2 - 1 == 0, d0 >= 0, -d0 + 100 >= 0, d1 >= 0, -d1 + 100 >= 0)(%i, %j) {
         "foo"() : () -> ()
       }
-      // CHECK: if #set0(%i0, %i1)
+      // CHECK: if [[SET_EMPTY_2D]](%i0, %i1)
       if (d0, d1) : (d1 == 0, d0 - 1 >= 0, - d0 - 1 >= 0)(%i, %j) {
         "foo"() : () -> ()
       }
-
     }
   }
+  // The tests below test GCDTightenInequalities().
+  for %k = 0 to 10 {
+    for %l = 0 to 10 {
+      // Empty because no multiple of 8 lies between 4 and 7.
+      // CHECK: if [[SET_EMPTY_1D]](%i2)
+      if (d0) : (8*d0 - 4 >= 0, -8*d0 + 7 >= 0)(%k) {
+        "foo"() : () -> ()
+      }
+      // Same as above but with equalities and inequalities.
+      // CHECK: if [[SET_EMPTY_2D]](%i2, %i3)
+      if (d0, d1) : (d0 - 4*d1 == 0, 4*d1 - 5 >= 0, -4*d1 + 7 >= 0)(%k, %l) {
+        "foo"() : () -> ()
+      }
+      // Same as above but with a combination of multiple identifiers. 4*d0 +
+      // 8*d1 here is a multiple of 4, and so can't lie between 9 and 11.
+      // CHECK: if [[SET_EMPTY_2D]](%i2, %i3)
+      if (d0, d1) : (4*d0 + 8*d1 - 9 >= 0, -4*d0 - 8*d1 + 11 >=  0)(%k, %l) {
+        "foo"() : () -> ()
+      }
+      // CHECK: if [[SET_EMPTY_3D]](%i2, %i2, %i3)
+      if (d0, d1, d2) : (d0 - 4*d2 == 0, d0 + 8*d1 - 9 >= 0, -d0 - 8*d1 + 11 >=  0)(%k, %k, %l) {
+        "foo"() : () -> ()
+      }
+    }
+  }
+
   return
 }

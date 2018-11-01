@@ -55,7 +55,8 @@ FunctionPass *mlir::createMemRefBoundCheckPass() {
 
 /// Returns the memory region accessed by this memref.
 // TODO(bondhugula): extend this to store's and other memref dereferencing ops.
-bool getMemoryRegion(OpPointer<LoadOp> loadOp, FlatAffineConstraints *region) {
+static bool getMemoryRegion(OpPointer<LoadOp> loadOp,
+                            FlatAffineConstraints *region) {
   OperationStmt *opStmt = dyn_cast<OperationStmt>(loadOp->getOperation());
   // Only in MLFunctions.
   if (!opStmt)
@@ -70,21 +71,20 @@ bool getMemoryRegion(OpPointer<LoadOp> loadOp, FlatAffineConstraints *region) {
     indices.push_back(cast<MLValue>(index));
   }
 
-  // Initialize 'srcValueMap' and compose with reachable AffineApplyOps.
-  AffineValueMap srcValueMap(idMap, indices);
-  forwardSubstituteReachableOps(&srcValueMap);
-  AffineMap srcMap = srcValueMap.getAffineMap();
+  // Initialize 'accessMap' and compose with reachable AffineApplyOps.
+  AffineValueMap accessMap(idMap, indices);
+  forwardSubstituteReachableOps(&accessMap);
+  AffineMap srcMap = accessMap.getAffineMap();
 
-  region->reset(8, 8, srcMap.getNumInputs() + 1, srcMap.getNumDims(),
-                srcMap.getNumSymbols());
+  region->reset(srcMap.getNumDims(), srcMap.getNumSymbols());
 
   // Add equality constraints.
-  AffineMap map = srcValueMap.getAffineMap();
+  AffineMap map = accessMap.getAffineMap();
   unsigned numDims = map.getNumDims();
   unsigned numSymbols = map.getNumSymbols();
   // Add inEqualties for loop lower/upper bounds.
   for (unsigned i = 0; i < numDims + numSymbols; ++i) {
-    if (auto *loop = dyn_cast<ForStmt>(srcValueMap.getOperand(i))) {
+    if (auto *loop = dyn_cast<ForStmt>(accessMap.getOperand(i))) {
       if (!loop->hasConstantBounds())
         return false;
       // Add lower bound and upper bounds.
@@ -92,7 +92,7 @@ bool getMemoryRegion(OpPointer<LoadOp> loadOp, FlatAffineConstraints *region) {
       region->addConstantUpperBound(i, loop->getConstantUpperBound());
     } else {
       // Has to be a valid symbol.
-      auto *symbol = cast<MLValue>(srcValueMap.getOperand(i));
+      auto *symbol = cast<MLValue>(accessMap.getOperand(i));
       assert(symbol->isValidSymbol());
       // Check if the symbols is a constant.
       if (auto *opStmt = symbol->getDefiningStmt()) {
@@ -104,12 +104,12 @@ bool getMemoryRegion(OpPointer<LoadOp> loadOp, FlatAffineConstraints *region) {
   }
 
   // Add access function equalities to connect loop IVs to data dimensions.
-  region->addDimsForMap(0, srcValueMap.getAffineMap());
+  region->composeMap(&accessMap);
 
-  // Eliminate the loop IVs.
-  for (unsigned i = 0, e = srcValueMap.getNumOperands(); i < e; i++) {
-    region->FourierMotzkinEliminate(srcMap.getNumResults());
-  }
+  // Eliminate the loop IVs and any local variables to yield the memory region
+  // involving just the memref dimensions.
+  region->projectOut(srcMap.getNumResults(),
+                     accessMap.getNumOperands() + region->getNumLocalIds());
   assert(region->getNumDimIds() == rank);
   return true;
 }
@@ -121,6 +121,8 @@ void MemRefBoundCheck::visitOperationStmt(OperationStmt *opStmt) {
     FlatAffineConstraints memoryRegion;
     if (!getMemoryRegion(loadOp, &memoryRegion))
       return;
+    LLVM_DEBUG(llvm::dbgs() << "Memory region");
+    LLVM_DEBUG(memoryRegion.dump());
     unsigned rank = loadOp->getMemRefType().getRank();
     // For each dimension, check for out of bounds.
     for (unsigned r = 0; r < rank; r++) {
@@ -129,8 +131,12 @@ void MemRefBoundCheck::visitOperationStmt(OperationStmt *opStmt) {
       // and check if the constraint system is feasible. If it is, there is at
       // least one point out of bounds.
       SmallVector<int64_t, 4> ineq(rank + 1, 0);
+      int dimSize = loadOp->getMemRefType().getDimSize(r);
+      // TODO(bondhugula): handle dynamic dim sizes.
+      if (dimSize == -1)
+        continue;
       // d_i >= memref dim size.
-      ucst.addConstantLowerBound(r, loadOp->getMemRefType().getDimSize(r));
+      ucst.addConstantLowerBound(r, dimSize);
       LLVM_DEBUG(llvm::dbgs() << "System to check for overflow:\n");
       LLVM_DEBUG(ucst.dump());
       //

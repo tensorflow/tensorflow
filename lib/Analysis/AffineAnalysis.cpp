@@ -116,6 +116,9 @@ public:
   // will be, and linearize this to std::vector<int64_t> to prevent
   // SmallVector moves on re-allocation.
   std::vector<SmallVector<int64_t, 32>> operandExprStack;
+  // Constraints connecting newly introduced local variables to existing
+  // (dimensional and symbolic) ones.
+  FlatAffineConstraints cst;
 
   inline unsigned getNumCols() const {
     return numDims + numSymbols + numLocals + 1;
@@ -141,6 +144,7 @@ public:
       : numDims(numDims), numSymbols(numSymbols), numLocals(0),
         context(context) {
     operandExprStack.reserve(8);
+    cst.reset(numDims, numSymbols, numLocals);
   }
 
   void visitMulExpr(AffineBinaryOpExpr expr) {
@@ -188,16 +192,19 @@ public:
         break;
     // If yes, modulo expression here simplifies to zero.
     if (i == lhs.size()) {
-      lhs.assign(lhs.size(), 0);
+      std::fill(lhs.begin(), lhs.end(), 0);
       return;
     }
 
-    // Add an existential quantifier. expr1 % expr2 is replaced by (expr1 -
-    // q * expr2) where q is the existential quantifier introduced.
+    // Add an existential quantifier. expr1 % c is replaced by (expr1 -
+    // q * c) where q is the existential quantifier introduced.
     auto a = toAffineExpr(lhs, numDims, numSymbols, localExprs, context);
     auto b = getAffineConstantExpr(rhsConst, context);
     addLocalId(a.floorDiv(b));
     lhs[getLocalVarStartIndex() + numLocals - 1] = -rhsConst;
+    // Update cst:  0 <= expr1 - c * expr2  <= c - 1.
+    cst.addConstantLowerBound(lhs, 0);
+    cst.addConstantUpperBound(lhs, rhsConst - 1);
   }
   void visitCeilDivExpr(AffineBinaryOpExpr expr) {
     visitDivExpr(expr, /*isCeil=*/true);
@@ -260,7 +267,22 @@ private:
     } else {
       addLocalId(a.floorDiv(b));
     }
-    lhs.assign(lhs.size(), 0);
+
+    std::vector<int64_t> bound(lhs.size(), 0);
+    bound[getLocalVarStartIndex() + numLocals - 1] = rhsConst;
+
+    if (!isCeil) {
+      // q = lhs floordiv c  <=>  c*q <= lhs <= c*q + c - 1.
+      cst.addLowerBound(lhs, bound);
+      bound[bound.size() - 1] = rhsConst - 1;
+      cst.addUpperBound(lhs, bound);
+    } else {
+      // q = lhs ceildiv c  <=>  c*q - (c - 1) <= lhs <= c*q.
+      cst.addUpperBound(lhs, bound);
+      bound[bound.size() - 1] = -(rhsConst - 1);
+      cst.addLowerBound(lhs, bound);
+    }
+    std::fill(lhs.begin(), lhs.end(), 0);
     lhs[getLocalVarStartIndex() + numLocals - 1] = 1;
   }
 
@@ -273,6 +295,7 @@ private:
     }
     localExprs.push_back(localExpr);
     numLocals++;
+    cst.addLocalId(cst.getNumLocalIds());
   }
 
   inline unsigned getConstantIndex() const { return getNumCols() - 1; }
@@ -301,12 +324,12 @@ AffineExpr mlir::simplifyAffineExpr(AffineExpr expr, unsigned numDims,
 }
 
 // Flattens 'expr' into 'flattenedExpr'. Returns true on success or false
-// if 'expr' was unable to be flattened (i.e. because it was not pure affine,
-// or because it contained mod's and div's that could not be eliminated
-// without introducing local variables).
-bool mlir::getFlattenedAffineExpr(
-    AffineExpr expr, unsigned numDims, unsigned numSymbols,
-    llvm::SmallVectorImpl<int64_t> *flattenedExpr) {
+// if 'expr' was unable to be flattened (i.e., semi-affine expression has not
+// been implemented yet).
+bool mlir::getFlattenedAffineExpr(AffineExpr expr, unsigned numDims,
+                                  unsigned numSymbols,
+                                  llvm::SmallVectorImpl<int64_t> *flattenedExpr,
+                                  FlatAffineConstraints *cst) {
   // TODO(bondhugula): only pure affine for now. The simplification here can be
   // extended to semi-affine maps in the future.
   if (!expr.isPureAffine())
@@ -314,10 +337,9 @@ bool mlir::getFlattenedAffineExpr(
 
   AffineExprFlattener flattener(numDims, numSymbols, expr.getContext());
   flattener.walkPostOrder(expr);
-  // TODO(andydavis) Support local exprs.
-  if (flattener.numLocals > 0) {
-    return false;
-  }
+  if (cst)
+    cst->clearAndCopyFrom(flattener.cst);
+
   for (auto v : flattener.operandExprStack.back()) {
     flattenedExpr->push_back(v);
   }

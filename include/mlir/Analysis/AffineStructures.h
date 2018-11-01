@@ -168,12 +168,15 @@ public:
   /// Return true if this is an identity map.
   bool isIdentity() const;
 
-  unsigned getNumOperands() const;
+  inline unsigned getNumOperands() const { return operands.size(); }
+  inline unsigned getNumDims() const { return map.getNumDims(); }
+  inline unsigned getNumSymbols() const { return map.getNumSymbols(); }
+  inline unsigned getNumResults() const { return map.getNumResults(); }
+
   SSAValue *getOperand(unsigned i) const;
   ArrayRef<MLValue *> getOperands() const;
   AffineMap getAffineMap() const;
 
-  inline unsigned getNumResults() const { return map.getNumResults(); }
 
 private:
   void forwardSubstitute(const AffineApplyOp &inputOp,
@@ -282,12 +285,19 @@ public:
 
   FlatAffineConstraints(const MutableAffineMap &map);
 
+  ~FlatAffineConstraints() {}
+
   // Clears any existing data and reserves memory for the specified constraints.
   void reset(unsigned numReservedInequalities, unsigned numReservedEqualities,
-             unsigned numReservedCols, unsigned numDims = 0,
-             unsigned numSymbols = 0, unsigned numLocals = 0);
+             unsigned numReservedCols, unsigned numDims, unsigned numSymbols,
+             unsigned numLocals = 0);
 
-  ~FlatAffineConstraints() {}
+  void reset(unsigned numDims = 0, unsigned numSymbols = 0,
+             unsigned numLocals = 0);
+
+  /// Appends constraints from 'other' into this. This is equivalent to an
+  /// intersection with no simplification of any sort attempted.
+  void append(const FlatAffineConstraints &other);
 
   // Checks for emptiness by performing variable elimination on all identifiers,
   // running the GCD test on each equality constraint, and checking for invalid
@@ -301,6 +311,14 @@ public:
   // This test can be used to disprove the existence of a solution. If it
   // returns true, no integer solution to the equality constraints can exist.
   bool isEmptyByGCDTest() const;
+
+  /// Tightens inequalities given that we are dealing with integer spaces. This
+  /// is similar to the GCD test but applied to inequalities. The constant term
+  /// can be reduced to the preceding multiple of the GCD of the coefficients,
+  /// i.e.,
+  ///  64*i - 100 >= 0  =>  64*i - 128 >= 0 (since 'i' is an integer). This is a
+  /// fast method (linear in the number of coefficients).
+  void GCDTightenInequalities();
 
   // Eliminates a single identifier at 'position' from equality and inequality
   // constraints. Returns 'true' if the identifier was eliminated.
@@ -365,13 +383,26 @@ public:
 
   AffineExpr toAffineExpr(unsigned idx, MLIRContext *context);
 
+  // Adds an inequality (>= 0) from the coefficients specified in inEq.
   void addInequality(ArrayRef<int64_t> inEq);
+  // Adds an equality from the coefficients specified in eq.
   void addEquality(ArrayRef<int64_t> eq);
 
   /// Adds a constant lower bound constraint for the specified identifier.
   void addConstantLowerBound(unsigned pos, int64_t lb);
   /// Adds a constant upper bound constraint for the specified identifier.
   void addConstantUpperBound(unsigned pos, int64_t ub);
+
+  /// Adds a lower bound expression for the specified expression.
+  void addLowerBound(ArrayRef<int64_t> expr, ArrayRef<int64_t> lb);
+
+  /// Adds an upper bound expression for the specified expression.
+  void addUpperBound(ArrayRef<int64_t> expr, ArrayRef<int64_t> ub);
+
+  /// Adds a constant lower bound constraint for the specified expression.
+  void addConstantLowerBound(ArrayRef<int64_t> expr, int64_t lb);
+  /// Adds a constant upper bound constraint for the specified expression.
+  void addConstantUpperBound(ArrayRef<int64_t> expr, int64_t ub);
 
   /// Sets the identifier at the specified position to a constant.
   void setIdToConstant(unsigned pos, int64_t val);
@@ -381,10 +412,12 @@ public:
   void addDimId(unsigned pos);
   void addSymbolId(unsigned pos);
   void addLocalId(unsigned pos);
+  void addId(IdKind kind, unsigned pos);
 
-  /// Add new dimensions at the specified position and with the dimensions set
-  /// to the equalities specified by the map.
-  void addDimsForMap(unsigned pos, AffineMap map);
+  /// Composes the affine value map with this FlatAffineConstrains, adding the
+  /// results of the map as dimensions at the specified position and with the
+  /// dimensions set to the equalities specified by the value map.
+  void composeMap(AffineValueMap *vMap, unsigned pos = 0);
 
   /// Eliminates identifier at the specified position using Fourier-Motzkin
   /// variable elimination. If the result of the elimination is integer exact,
@@ -392,8 +425,15 @@ public:
   /// potential under approximation (subset) of the rational shadow / exact
   /// integer shadow is computed.
   // See implementation comments for more details.
-  bool FourierMotzkinEliminate(unsigned pos, bool darkShadow = false,
+  void FourierMotzkinEliminate(unsigned pos, bool darkShadow = false,
                                bool *isResultIntegerExact = nullptr);
+
+  /// Projects out (aka eliminates) 'num' identifiers starting at position
+  /// 'pos'. The resulting constraint system is the shadow along the dimensions
+  /// that still exist. This method may not always be integer exact.
+  // TODO(bondhugula): deal with integer exactness when necessary - can return a
+  // value to mark exactness for example.
+  void projectOut(unsigned pos, unsigned num);
 
   void removeId(IdKind idKind, unsigned pos);
   void removeId(unsigned pos);
@@ -407,11 +447,10 @@ public:
     return getNumInequalities() + getNumEqualities();
   }
   inline unsigned getNumIds() const { return numIds; }
-  inline unsigned getNumResultDimIds() const { return numResultDims; }
   inline unsigned getNumDimIds() const { return numDims; }
   inline unsigned getNumSymbolIds() const { return numSymbols; }
   inline unsigned getNumLocalIds() const {
-    return numIds - numResultDims - numDims - numSymbols;
+    return numIds - numDims - numSymbols;
   }
 
   /// Clears this list of constraints and copies other into it.
@@ -441,9 +480,6 @@ private:
 
   /// Total number of identifiers.
   unsigned numIds;
-
-  /// Number of identifiers corresponding to real dimensions.
-  unsigned numResultDims;
 
   /// Number of identifiers corresponding to real dimensions.
   unsigned numDims;
