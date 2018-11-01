@@ -163,7 +163,7 @@ Status BFloat16ConversionFoldingVisitor::DefaultAction(HloInstruction* hlo) {
       hlo->opcode() == HloOpcode::kCustomCall ||       //
       hlo->opcode() == HloOpcode::kWhile ||            //
       hlo->opcode() == HloOpcode::kConditional ||      //
-      hlo->HasSideEffect()) {
+      hlo->HasSideEffectNoRecurse()) {
     return Status::OK();
   }
   if (hlo == computation_->root_instruction() &&

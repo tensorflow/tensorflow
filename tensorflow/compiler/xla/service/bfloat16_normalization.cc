@@ -357,7 +357,7 @@ Status BFloat16NormalizationVisitor::DefaultAction(HloInstruction* hlo) {
       hlo->opcode() == HloOpcode::kCustomCall ||       //
       hlo->opcode() == HloOpcode::kWhile ||            //
       hlo->opcode() == HloOpcode::kConditional ||      //
-      hlo->HasSideEffect()) {
+      hlo->HasSideEffectNoRecurse()) {
     return Status::OK();
   }
   // TODO(b/112040122): Correctly normalize variadic reduce.
