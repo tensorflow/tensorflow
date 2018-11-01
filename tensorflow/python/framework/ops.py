@@ -4960,7 +4960,8 @@ def container(container_name):
 def _colocate_with_for_gradient(op, gradient_uid, ignore_existing=False):
   if context.executing_eagerly():
     if op is not None:
-      op = internal_convert_to_tensor_or_indexed_slices(op)
+      if not hasattr(op, "device"):
+        op = internal_convert_to_tensor_or_indexed_slices(op)
       return device(op.device)
     else:
       return NullContextmanager()
