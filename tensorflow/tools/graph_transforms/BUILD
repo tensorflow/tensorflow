@@ -152,6 +152,7 @@ tf_cc_test(
         "fold_batch_norms_test.cc",
         "fold_constants_test.cc",
         "fold_old_batch_norms_test.cc",
+        "fold_subdivmul_batch_norms_test.cc",
         "freeze_requantization_ranges_test.cc",
         "fuse_convolutions_test.cc",
         "insert_logging_test.cc",
