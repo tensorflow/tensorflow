@@ -108,7 +108,7 @@ namespace details {
 OperatorKey::OperatorKey(
     const ::toco::Operator& op,
     const std::map<OperatorType, std::unique_ptr<BaseOperator>>& ops_by_type,
-    bool allow_flex_ops) {
+    bool enable_select_tf_ops) {
   // Get the op name (by Toco definition).
   string name = HelpfulOperatorTypeName(op);
 
@@ -136,7 +136,8 @@ OperatorKey::OperatorKey(
         static_cast<const TensorFlowUnsupportedOperator&>(op);
     const auto tensorflow_op = unsupported_op.tensorflow_op;
 
-    if (ShouldExportAsFlexOp(allow_flex_ops, unsupported_op.tensorflow_op)) {
+    if (ShouldExportAsFlexOp(enable_select_tf_ops,
+                             unsupported_op.tensorflow_op)) {
       is_custom_op_ = false;
       is_flex_op_ = true;
       flex_tensorflow_op_ = tensorflow_op;
@@ -145,7 +146,7 @@ OperatorKey::OperatorKey(
     } else {
       custom_code_ = tensorflow_op;
     }
-  } else if (allow_flex_ops && !op.tensorflow_node_def.empty()) {
+  } else if (enable_select_tf_ops && !op.tensorflow_node_def.empty()) {
     // For Toco-supported/TFLite-unsupported ops, if the TensorFlow NodeDef
     // is retained in the Toco Operator, we produce a Flex op if Flex mode
     // is enabled.
@@ -186,11 +187,11 @@ void LoadTensorsMap(const Model& model, TensorsMap* tensors_map) {
 void LoadOperatorsMap(
     const Model& model, OperatorsMap* operators_map,
     const std::map<OperatorType, std::unique_ptr<BaseOperator>>& ops_by_type,
-    bool allow_flex_ops) {
+    bool enable_select_tf_ops) {
   // First find a list of unique operator types.
   std::set<OperatorKey> keys;
   for (const auto& op : model.operators) {
-    keys.insert(OperatorKey(*op, ops_by_type, allow_flex_ops));
+    keys.insert(OperatorKey(*op, ops_by_type, enable_select_tf_ops));
   }
   // Now assign indices to them and fill in the map.
   int index = 0;
@@ -302,7 +303,7 @@ Offset<Vector<Offset<OperatorCode>>> ExportOperatorCodes(
 
   for (const auto& op : model.operators) {
     const details::OperatorKey operator_key =
-        details::OperatorKey(*op, ops_by_type, params.allow_flex_ops);
+        details::OperatorKey(*op, ops_by_type, params.enable_select_tf_ops);
     int op_index = operators_map.at(operator_key);
 
     flatbuffers::Offset<flatbuffers::String> custom_code = 0;
@@ -346,7 +347,7 @@ Offset<Vector<Offset<Operator>>> ExportOperators(
     }
 
     const auto key =
-        details::OperatorKey(*op, ops_by_type, params.allow_flex_ops);
+        details::OperatorKey(*op, ops_by_type, params.enable_select_tf_ops);
     int op_index = operators_map.at(key);
 
     auto tflite_op_it = ops_by_type.find(op->type);
@@ -405,7 +406,7 @@ Offset<Vector<Offset<Buffer>>> ExportBuffers(
 
 tensorflow::Status Export(const Model& model, string* output_file_contents,
                           const ExportParams& params) {
-  const auto ops_by_type = BuildOperatorByTypeMap(params.allow_flex_ops);
+  const auto ops_by_type = BuildOperatorByTypeMap(params.enable_select_tf_ops);
   return Export(model, output_file_contents, params, ops_by_type);
 }
 
@@ -420,7 +421,7 @@ tensorflow::Status Export(
 
   details::OperatorsMap operators_map;
   details::LoadOperatorsMap(model, &operators_map, ops_by_type,
-                            params.allow_flex_ops);
+                            params.enable_select_tf_ops);
 
   std::vector<const Array*> buffers_to_write;
   Array empty_array;
@@ -486,7 +487,7 @@ tensorflow::Status Export(
                "40-tflite-op-request.md\n and pasting the following:\n\n";
       };
 
-      if (params.allow_flex_ops) {
+      if (params.enable_select_tf_ops) {
         return tensorflow::errors::InvalidArgument(absl::StrCat(
             please_report_bug_message(),
             "Some of the operators in the model are not supported by "
@@ -506,7 +507,7 @@ tensorflow::Status Export(
             "Some of the operators in the model are not supported by "
             "the standard TensorFlow Lite runtime. If those are native "
             "TensorFlow operators, you might be able to use the extended "
-            "runtime by passing --allow_flex_ops, or by setting "
+            "runtime by passing --enable_select_tf_ops, or by setting "
             "target_ops=TFLITE_BUILTINS,SELECT_TF_OPS when calling "
             "tf.lite.TFLiteConverter(). Otherwise, if you have a "
             "custom implementation for them you can disable this error with "

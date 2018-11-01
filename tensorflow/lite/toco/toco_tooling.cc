@@ -198,7 +198,7 @@ std::unique_ptr<Model> Import(const TocoFlags& toco_flags,
               : (toco_flags.output_format() != TENSORFLOW_GRAPHDEF);
 
       tf_import_flags.import_all_ops_as_unsupported =
-          toco_flags.force_flex_ops();
+          toco_flags.force_select_tf_ops();
 
       model = ImportTensorFlowGraphDef(model_flags, tf_import_flags,
                                        input_file_contents);
@@ -409,8 +409,8 @@ tensorflow::Status Export(const TocoFlags& toco_flags, const Model& model,
     case TFLITE: {
       toco::tflite::ExportParams params;
 
-      params.allow_flex_ops =
-          toco_flags.force_flex_ops() || toco_flags.allow_flex_ops();
+      params.enable_select_tf_ops =
+          toco_flags.force_select_tf_ops() || toco_flags.enable_select_tf_ops();
       params.allow_custom_ops = allow_custom_ops;
       params.quantize_weights = toco_flags.post_training_quantize();
 
