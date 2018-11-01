@@ -751,8 +751,8 @@ StatusOr<std::unique_ptr<Executable>> NVPTXCompiler::RunBackend(
         stream_exec->GetDeviceDescription().memory_bandwidth());
     TF_RETURN_IF_ERROR(module->entry_computation()->Accept(&cost_analysis));
     profile_index_map = absl::make_unique<HloProfileIndexMap>(*module);
-    profile_printer =
-        CreateHloProfilePrinterData(*profile_index_map, cost_analysis);
+    profile_printer = CreateHloProfilePrinterData(
+        *profile_index_map, cost_analysis, entry_computation->name());
   }
 
   auto* gpu_executable = new GpuExecutable(
