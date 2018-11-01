@@ -35,11 +35,11 @@ _SCHEMA = "third_party/tensorflow/lite/schema/schema.fbs"
 
 # TODO(angerson): fix later when rules are simplified..
 _SCHEMA = resource_loader.get_path_to_datafile("../schema/schema.fbs")
-_BINARY = resource_loader.get_path_to_datafile("../../../../flatbuffers/flatc")
+_BINARY = resource_loader.get_path_to_datafile("../../../flatbuffers/flatc")
 # Account for different package positioning internal vs. external.
 if not os.path.exists(_BINARY):
   _BINARY = resource_loader.get_path_to_datafile(
-      "../../../../../flatbuffers/flatc")
+      "../../../../flatbuffers/flatc")
 
 if not os.path.exists(_SCHEMA):
   raise RuntimeError("Sorry, schema file cannot be found at %r" % _SCHEMA)
