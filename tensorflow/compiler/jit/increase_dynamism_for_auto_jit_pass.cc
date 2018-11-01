@@ -221,8 +221,8 @@ Status ConvertTensorFlowSliceToStaticShapedSlice(
                      .WithOpName("static_shaped_slice"),
                  slice_inputs_int64.input, slice_inputs_int64.begin, slice_size)
           .node();
-  std::vector<int> compile_time_const_inputs;
-  compile_time_const_inputs.push_back(2);
+  std::vector<string> compile_time_const_inputs;
+  compile_time_const_inputs.push_back("size");
   (*result)->AddAttr(kXlaCompileTimeConstantInputsAttr,
                      compile_time_const_inputs);
   return status;
