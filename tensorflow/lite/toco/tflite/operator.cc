@@ -1240,8 +1240,8 @@ std::unique_ptr<flexbuffers::Builder> WriteFlexOpOptions(
 class TensorFlowUnsupported : public BaseOperator {
  public:
   TensorFlowUnsupported(const string& name, OperatorType type,
-                        bool allow_flex_ops)
-      : BaseOperator(name, type), allow_flex_ops_(allow_flex_ops) {}
+                        bool enable_select_tf_ops)
+      : BaseOperator(name, type), enable_select_tf_ops_(enable_select_tf_ops) {}
 
   Options Serialize(const Operator& op,
                     flatbuffers::FlatBufferBuilder* builder) const override {
@@ -1272,7 +1272,7 @@ class TensorFlowUnsupported : public BaseOperator {
 
   std::unique_ptr<flexbuffers::Builder> WriteOptions(
       const TensorFlowUnsupportedOperator& op) const {
-    if (allow_flex_ops_) {
+    if (enable_select_tf_ops_) {
       return WriteFlexOpOptions(op.tensorflow_node_def);
     }
     auto fbb = absl::make_unique<flexbuffers::Builder>();
@@ -1283,7 +1283,7 @@ class TensorFlowUnsupported : public BaseOperator {
       return std::unique_ptr<flexbuffers::Builder>();
     }
 
-    if (ShouldExportAsFlexOp(allow_flex_ops_, node_def.op())) {
+    if (ShouldExportAsFlexOp(enable_select_tf_ops_, node_def.op())) {
       fbb->Vector([&]() {
         fbb->String(node_def.op());
         fbb->String(op.tensorflow_node_def);
@@ -1399,13 +1399,13 @@ class TensorFlowUnsupported : public BaseOperator {
   }
 
  private:
-  const bool allow_flex_ops_;
+  const bool enable_select_tf_ops_;
 };
 
 namespace {
 // Build a vector containing all the known operators.
 std::vector<std::unique_ptr<BaseOperator>> BuildOperatorList(
-    bool allow_flex_ops = false) {
+    bool enable_select_tf_ops = false) {
   std::vector<std::unique_ptr<BaseOperator>> ops;
   using tensorflow::MakeUnique;
   // Builtin Operators.
@@ -1522,8 +1522,9 @@ std::vector<std::unique_ptr<BaseOperator>> BuildOperatorList(
       MakeUnique<DepthToSpace>("DEPTH_TO_SPACE", OperatorType::kDepthToSpace));
   ops.push_back(MakeUnique<CTCBeamSearchDecoder>(
       "CTC_BEAM_SEARCH_DECODER", OperatorType::kCTCBeamSearchDecoder));
-  ops.push_back(MakeUnique<TensorFlowUnsupported>(
-      "TENSORFLOW_UNSUPPORTED", OperatorType::kUnsupported, allow_flex_ops));
+  ops.push_back(MakeUnique<TensorFlowUnsupported>("TENSORFLOW_UNSUPPORTED",
+                                                  OperatorType::kUnsupported,
+                                                  enable_select_tf_ops));
 
   // There operators are supported by Toco, but not by TF Lite, and has no
   // attributes.
@@ -1605,11 +1606,11 @@ std::vector<std::unique_ptr<BaseOperator>> BuildOperatorList(
 }  // namespace
 
 std::map<OperatorType, std::unique_ptr<BaseOperator>> BuildOperatorByTypeMap(
-    bool allow_flex_ops) {
+    bool enable_select_tf_ops) {
   std::map<OperatorType, std::unique_ptr<BaseOperator>> result;
 
   std::vector<std::unique_ptr<BaseOperator>> ops =
-      BuildOperatorList(allow_flex_ops);
+      BuildOperatorList(enable_select_tf_ops);
   for (auto& op : ops) {
     result[op->type()] = std::move(op);
   }
@@ -1618,11 +1619,11 @@ std::map<OperatorType, std::unique_ptr<BaseOperator>> BuildOperatorByTypeMap(
 }
 
 std::map<string, std::unique_ptr<BaseOperator>> BuildOperatorByNameMap(
-    bool allow_flex_ops) {
+    bool enable_select_tf_ops) {
   std::map<string, std::unique_ptr<BaseOperator>> result;
 
   std::vector<std::unique_ptr<BaseOperator>> ops =
-      BuildOperatorList(allow_flex_ops);
+      BuildOperatorList(enable_select_tf_ops);
   for (auto& op : ops) {
     result[op->name()] = std::move(op);
   }
@@ -1630,10 +1631,10 @@ std::map<string, std::unique_ptr<BaseOperator>> BuildOperatorByNameMap(
   return result;
 }
 
-bool ShouldExportAsFlexOp(bool allow_flex_ops,
+bool ShouldExportAsFlexOp(bool enable_select_tf_ops,
                           const string& tensorflow_op_name) {
   // If Flex ops aren't allow at all, simply return false.
-  if (!allow_flex_ops) {
+  if (!enable_select_tf_ops) {
     return false;
   }
   // Check if we can find the `OpDef` for the TensorFlow op. If we can find

@@ -27,15 +27,15 @@ namespace tflite {
 class BaseOperator;
 
 // Return a map contained all know TF Lite Operators, keyed by their names.
-// TODO(ycling): The pattern to propagate parameters (e.g. allow_flex_ops)
+// TODO(ycling): The pattern to propagate parameters (e.g. enable_select_tf_ops)
 // is ugly here. Consider refactoring.
 std::map<string, std::unique_ptr<BaseOperator>> BuildOperatorByNameMap(
-    bool allow_flex_ops = false);
+    bool enable_select_tf_ops = false);
 
 // Return a map contained all know TF Lite Operators, keyed by the type of
 // their tf.mini counterparts.
 std::map<OperatorType, std::unique_ptr<BaseOperator>> BuildOperatorByTypeMap(
-    bool allow_flex_ops = false);
+    bool enable_select_tf_ops = false);
 
 // Write the custom option FlexBuffer with a serialized TensorFlow NodeDef
 // for a Flex op.
@@ -115,7 +115,7 @@ class BaseOperator {
 
 // Helper function to determine if a unsupported TensorFlow op should be
 // exported as an Flex op or a regular custom op.
-bool ShouldExportAsFlexOp(bool allow_flex_ops,
+bool ShouldExportAsFlexOp(bool enable_select_tf_ops,
                           const string& tensorflow_op_name);
 
 }  // namespace tflite
