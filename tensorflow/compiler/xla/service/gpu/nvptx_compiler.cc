@@ -128,6 +128,7 @@ string GetLibdeviceDir(const string& config_cuda_data_dir) {
             << potential_libdevice_dir;
   }
 
+  LOG(WARNING) << "Unable to find libdevice dir. Using '.'";
   // Last resort: maybe in the current folder.
   return ".";
 }
@@ -476,9 +477,10 @@ StatusOr<std::vector<uint8>> CompilePtx(const string& ptx, int cc_major,
   tracing::ScopedActivity activity("Compile PTX", /*is_expensive=*/true);
   const string ptxas_path =
       tensorflow::io::JoinPath(tensorflow::CudaRoot(), "bin", "ptxas");
-  VLOG(2) << "Using ptxas at " << ptxas_path;
+  VLOG(2) << "Checking ptxas at " << ptxas_path;
   auto env = tensorflow::Env::Default();
   TF_RETURN_IF_ERROR(env->FileExists(ptxas_path));
+  VLOG(2) << "Using ptxas at " << ptxas_path;
 
   WarnIfBadPtxasVersion(ptxas_path);
 
@@ -544,8 +546,8 @@ StatusOr<std::unique_ptr<HloModule>> NVPTXCompiler::RunHloPasses(
     std::unique_ptr<HloModule> module, se::StreamExecutor* stream_exec,
     DeviceMemoryAllocator* device_allocator) {
   // We dump the post-optimization HLO in RunBackend so no need to dump it here.
-  VLOG(2) << "*** HLO Before Optimization";
-  XLA_VLOG_LINES(2, module->ToString());
+  VLOG(3) << "*** HLO Before Optimization";
+  XLA_VLOG_LINES(3, module->ToString());
 
   XLA_SCOPED_LOGGING_TIMER("NVPTXCompiler::RunHloPasses");
   tracing::ScopedActivity activity("HLO Transforms", module->name(),
@@ -604,8 +606,8 @@ StatusOr<std::unique_ptr<Executable>> NVPTXCompiler::RunBackend(
   // include headers, so no need for us to print them ourselves.
   XLA_VLOG_LINES(1, buffer_assignment->GetStats().ToString());
   XLA_VLOG_LINES(2, buffer_assignment->ToString());
-  VLOG(2) << "*** HLO After Optimization";
-  XLA_VLOG_LINES(2, module->ToString());
+  VLOG(3) << "*** HLO After Optimization";
+  XLA_VLOG_LINES(3, module->ToString());
   const string xla_dump_optimized_hlo_proto_to =
       module->config().debug_options().xla_dump_optimized_hlo_proto_to();
   if (!xla_dump_optimized_hlo_proto_to.empty()) {
@@ -635,10 +637,10 @@ StatusOr<std::unique_ptr<Executable>> NVPTXCompiler::RunBackend(
   string ir_module_string_before_opt;
   const bool embed_ir_in_executable =
       module->config().debug_options().xla_embed_ir_in_executable();
-  if (VLOG_IS_ON(2) || embed_ir_in_executable) {
+  if (VLOG_IS_ON(3) || embed_ir_in_executable) {
     ir_module_string_before_opt = llvm_ir::DumpModuleToString(llvm_module);
-    VLOG(2) << "LLVM module before optimizations:";
-    XLA_VLOG_LINES(2, ir_module_string_before_opt);
+    VLOG(3) << "LLVM module before optimizations:";
+    XLA_VLOG_LINES(3, ir_module_string_before_opt);
   }
 
   const string& ir_dump_directory =
@@ -682,6 +684,8 @@ StatusOr<std::unique_ptr<Executable>> NVPTXCompiler::RunBackend(
     }
     libdevice_dir = cached_libdevice_dir_;
   }
+  VLOG(2) << "Libdevice dir = " << libdevice_dir << "\n";
+
   int cc_major, cc_minor;
   if (!stream_exec->GetDeviceDescription().cuda_compute_capability(&cc_major,
                                                                    &cc_minor)) {
@@ -708,10 +712,10 @@ StatusOr<std::unique_ptr<Executable>> NVPTXCompiler::RunBackend(
   if (user_post_optimization_hook_) {
     TF_CHECK_OK(user_post_optimization_hook_(llvm_module));
   }
-  VLOG(2) << "LLVM module after optimizations:";
-  XLA_VLOG_LINES(2, llvm_ir::DumpModuleToString(llvm_module));
-  VLOG(2) << "PTX:";
-  XLA_VLOG_LINES(2, ptx);
+  VLOG(3) << "LLVM module after optimizations:";
+  XLA_VLOG_LINES(3, llvm_ir::DumpModuleToString(llvm_module));
+  VLOG(3) << "PTX:";
+  XLA_VLOG_LINES(3, ptx);
 
   // Write PTX to IR dump directory, if IR dumping was requested.
   if (!ir_dump_directory.empty()) {
@@ -735,8 +739,8 @@ StatusOr<std::unique_ptr<Executable>> NVPTXCompiler::RunBackend(
   auto thunk_schedule = absl::make_unique<ThunkSchedule>(
       ir_emitter.ConsumeThunkSequence(), std::move(stream_assignment),
       hlo_schedule->ThunkLaunchOrder());
-  VLOG(2) << "Printing the thunk schedule...";
-  XLA_VLOG_LINES(2, thunk_schedule->ToString());
+  VLOG(3) << "Printing the thunk schedule...";
+  XLA_VLOG_LINES(3, thunk_schedule->ToString());
 
   std::unique_ptr<HloProfileIndexMap> profile_index_map;
   std::unique_ptr<HloProfilePrinterData> profile_printer;
