@@ -229,8 +229,7 @@ void BatchedNonMaxSuppressionOp(OpKernelContext* context,
                            const int total_size_per_batch, 
                            const float score_threshold, 
                            const float iou_threshold,
-                           bool pad_to_max_total_size = false, 
-                           const Tensor* clip_box_window = nullptr) {
+                           bool pad_to_max_total_size = false) {
 
   int q = inp_boxes.dim_size(2);
   int num_classes = inp_scores.dim_size(2);
@@ -238,19 +237,8 @@ void BatchedNonMaxSuppressionOp(OpKernelContext* context,
   const int num_batches = inp_boxes.dim_size(0);
 
   // Default clip window of [0, 0, 1, 1] if none specified
-  bool share_clip_window = true;
   std::vector <float> clip_window{0, 0, 1, 1};
   
-  if (clip_box_window != nullptr) {
-    if (clip_box_window->dims() == 2) {
-      share_clip_window = false;
-    }
-    else {
-      auto value_clip_box = clip_box_window->unaligned_flat<float>();
-      std::copy_n(&value_clip_box(0), 4, clip_window.begin()); 
-    }
-  }
-
   // [num_batches, max_detections, 4]
   std::vector <std::vector<float>> nmsed_boxes(num_batches);
   // [num_batches, max_detections]
@@ -269,12 +257,6 @@ void BatchedNonMaxSuppressionOp(OpKernelContext* context,
     Tensor per_batch_boxes = inp_boxes.Slice(batch, batch+1);
     // dims of per_batch_scores [num_boxes, num_classes]
     Tensor per_batch_scores = inp_scores.Slice(batch, batch+1);
-
-    if (!share_clip_window) {
-      auto value_clip_box = 
-          clip_box_window->Slice(batch, batch+1).unaligned_flat<float>();
-      std::copy_n(&value_clip_box(0), 4, clip_window.begin());
-    }
 
     struct ResultCandidate {
       int box_index;

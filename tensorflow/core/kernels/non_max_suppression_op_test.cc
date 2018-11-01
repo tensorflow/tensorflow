@@ -918,8 +918,8 @@ TEST_F(NonMaxSuppressionLiteOpTest, TestSelectFromThreeClusters) {
   MakeOp();
   AddInputFromArray<float>(
       TensorShape({1, 6, 1, 4}),
-      {0, 0,  1, 1,  0, 0.1f,  1, 1.1f,  0, -0.1f, 1, 0.9f,
-       0, 10, 1, 11, 0, 10.1f, 1, 11.1f, 0, 100,   1, 101});
+      {0, 0,    0.1, 0.1, 0, 0.01f, 0.1, 0.11f, 0, -0.01, 0.1, 0.09f,
+       0, 0.11, 0.1, 0.2, 0, 0.12f, 0.1, 0.21f, 0,  0.3, 1,   0.4});
   AddInputFromArray<float>(TensorShape({1, 6, 1}), 
        {.9f, .75f, .6f, .95f, .5f, .3f});
   AddInputFromArray<int>(TensorShape({}), {3});
@@ -930,8 +930,8 @@ TEST_F(NonMaxSuppressionLiteOpTest, TestSelectFromThreeClusters) {
   
   //boxes
   Tensor expected_boxes(allocator(), DT_FLOAT, TensorShape({1, 3, 4}));
-  test::FillValues<float>(&expected_boxes, {0, 10, 1, 11 ,0, 0, 1, 1, 
-          0, 100, 1, 101});
+  test::FillValues<float>(&expected_boxes, {0, 0.11, 0.1, 0.2, 0, 0, 0.1, 0.1, 
+          0, 0.3, 1, 0.4});
   test::ExpectTensorEqual<float>(expected_boxes, *GetOutput(0));
   //scores
   Tensor expected_scores(allocator(), DT_FLOAT, TensorShape({1, 3}));
@@ -956,8 +956,8 @@ TEST_F(NonMaxSuppressionLiteOpTest,
   MakeOp();
   AddInputFromArray<float>(
       TensorShape({1, 6, 1, 4}),
-      {0, 0,  1, 1,  0, 0.1f,  1, 1.1f,  0, -0.1f, 1, 0.9f,
-       0, 10, 1, 11, 0, 10.1f, 1, 11.1f, 0, 100,   1, 101});
+      {0, 0,    0.1, 0.1, 0, 0.01f, 0.1, 0.11f, 0, -0.01, 0.1, 0.09f,
+       0, 0.11, 0.1, 0.2, 0, 0.12f, 0.1, 0.21f, 0,  0.3, 1,   0.4});
   AddInputFromArray<float>(TensorShape({1, 6, 1}), 
        {.9f, .75f, .6f, .95f, .5f, .3f});
   AddInputFromArray<int>(TensorShape({}), {3});
@@ -968,7 +968,7 @@ TEST_F(NonMaxSuppressionLiteOpTest,
   
   //boxes
   Tensor expected_boxes(allocator(), DT_FLOAT, TensorShape({1, 2, 4}));
-  test::FillValues<float>(&expected_boxes, {0, 10, 1, 11, 0, 0, 1, 1});
+  test::FillValues<float>(&expected_boxes, {0, 0.11, 0.1, 0.2, 0, 0, 0.1, 0.1});
   test::ExpectTensorEqual<float>(expected_boxes, *GetOutput(0));
   //scores
   Tensor expected_scores(allocator(), DT_FLOAT, TensorShape({1, 2}));
@@ -993,8 +993,8 @@ TEST_F(NonMaxSuppressionLiteOpTest,
   MakeOp();
   AddInputFromArray<float>(
       TensorShape({1, 6, 1, 4}),
-      {0, 0,  1, 1,  0, 0.1f,  1, 1.1f,  0, -0.1f, 1, 0.9f,
-       0, 10, 1, 11, 0, 10.1f, 1, 11.1f, 0, 100,   1, 101});
+      {0, 0,    0.1, 0.1, 0, 0.01f, 0.1, 0.11f, 0, -0.01, 0.1, 0.09f,
+       0, 0.11, 0.1, 0.2, 0, 0.12f, 0.1, 0.21f, 0,  0.3, 1,   0.4});
   AddInputFromArray<float>(TensorShape({1, 6, 1}), 
        {.1f, 0, 0, .3f, .2f, -5.0f});
   // If we ask for more boxes than we actually expect to get back;
@@ -1007,7 +1007,7 @@ TEST_F(NonMaxSuppressionLiteOpTest,
   
   //boxes
   Tensor expected_boxes(allocator(), DT_FLOAT, TensorShape({1, 2, 4}));
-  test::FillValues<float>(&expected_boxes, {0, 10, 1, 11, 0, 0, 1, 1});
+  test::FillValues<float>(&expected_boxes, {0, 0.11, 0.1, 0.2, 0, 0, 0.1, 0.1});
   test::ExpectTensorEqual<float>(expected_boxes, *GetOutput(0));
   //scores
   Tensor expected_scores(allocator(), DT_FLOAT, TensorShape({1, 2}));
@@ -1064,10 +1064,10 @@ TEST_F(NonMaxSuppressionLiteOpTest,
   MakeOp();
   AddInputFromArray<float>(
       TensorShape({2, 6, 1, 4}),
-      {0, 0,  1, 1,  0, 0.1f,  1, 1.1f,  0, -0.1f, 1, 0.9f,
-       0, 10, 1, 11, 0, 10.1f, 1, 11.1f, 0, 100,   1, 101,
-       0, 0,  2, 2,  0, 0.2f,  2, 2.2f,  0, -0.2f, 2, 1.9f,
-       0, 20, 2, 22, 0, 20.2f, 2, 22.2f, 0, 200,   2, 202
+      {0, 0,    0.1, 0.1, 0, 0.01f, 0.1, 0.11f, 0, -0.01, 0.1, 0.09f,
+       0, 0.11, 0.1, 0.2, 0, 0.12f, 0.1, 0.21f, 0,  0.3,  1,   0.4,
+       0, 0,    0.2, 0.2, 0, 0.02f, 0.2, 0.22f, 0, -0.02, 0.2, 0.19f,
+       0, 0.21, 0.2, 0.3, 0, 0.22f, 0.2, 0.31f, 0,  0.4,  1,   0.5
        });
   AddInputFromArray<float>(TensorShape({2, 6, 1}), 
        {.9f, .75f, .6f, .95f, .5f, .3f, .9f, .75f, .6f, .95f, .5f, .3f});
@@ -1079,8 +1079,8 @@ TEST_F(NonMaxSuppressionLiteOpTest,
   
   //boxes
   Tensor expected_boxes(allocator(), DT_FLOAT, TensorShape({2, 2, 4}));
-  test::FillValues<float>(&expected_boxes, {0, 10, 1, 11 ,0, 0, 1, 1, 
-          0, 20, 2, 22 ,0, 0, 2, 2});
+  test::FillValues<float>(&expected_boxes, {0, 0.11, 0.1, 0.2, 0, 0, 0.1, 0.1, 
+          0, 0.21, 0.2, 0.3, 0, 0, 0.2, 0.2});
   test::ExpectTensorEqual<float>(expected_boxes, *GetOutput(0));
   //scores
   Tensor expected_scores(allocator(), DT_FLOAT, TensorShape({2, 2}));
@@ -1105,10 +1105,10 @@ TEST_F(NonMaxSuppressionLiteOpTest,
   MakeOp();
   AddInputFromArray<float>(
       TensorShape({2, 6, 1, 4}),
-      {0, 0,  1, 1,  0, 0.1f,  1, 1.1f,  0, -0.1f, 1, 0.9f,
-       0, 10, 1, 11, 0, 10.1f, 1, 11.1f, 0, 100,   1, 101,
-       0, 0,  2, 2,  0, 0.2f,  2, 2.2f,  0, -0.2f, 2, 1.9f,
-       0, 20, 2, 22, 0, 20.2f, 2, 22.2f, 0, 200,   2, 202
+      {0, 0,    0.1, 0.1, 0, 0.01f, 0.1, 0.11f, 0, -0.01, 0.1, 0.09f,
+       0, 0.11, 0.1, 0.2, 0, 0.12f, 0.1, 0.21f, 0,  0.3,  1,   0.4,
+       0, 0,    0.2, 0.2, 0, 0.02f, 0.2, 0.22f, 0, -0.02, 0.2, 0.19f,
+       0, 0.21, 0.2, 0.3, 0, 0.22f, 0.2, 0.31f, 0,  0.4,  1,   0.5
        });
   AddInputFromArray<float>(TensorShape({2, 6, 2}), 
        {0.1f, 0.9f, 0.75f, 0.8f, 0.6f, 0.3f, 0.95f, 0.1f, 0.5f, 0.5f, 0.3f, 0.1f, 
@@ -1121,8 +1121,9 @@ TEST_F(NonMaxSuppressionLiteOpTest,
   
   //boxes
   Tensor expected_boxes(allocator(), DT_FLOAT, TensorShape({2, 3, 4}));
-  test::FillValues<float>(&expected_boxes, {0, 10, 1, 11 ,0, 0, 1, 1, 
-          0, 0.1f, 1, 1.1f, 0, 20, 2, 22 ,0, 0, 2, 2, 0, 0.2f, 2, 2.2f});
+  test::FillValues<float>(&expected_boxes, {0, 0.11, 0.1, 0.2, 0, 0, 0.1, 0.1, 
+          0, 0.01f, 0.1, 0.11f, 0, 0.21, 0.2, 0.3, 0, 0, 0.2, 0.2, 
+          0, 0.02f, 0.2, 0.22f});
   test::ExpectTensorEqual<float>(expected_boxes, *GetOutput(0));
   //scores
   Tensor expected_scores(allocator(), DT_FLOAT, TensorShape({2, 3}));
@@ -1147,10 +1148,10 @@ TEST_F(NonMaxSuppressionLiteOpTest,
   MakeOp();
   AddInputFromArray<float>(
       TensorShape({2, 6, 1, 4}),
-      {0, 0,  1, 1,  0, 0.1f,  1, 1.1f,  0, -0.1f, 1, 0.9f,
-       0, 10, 1, 11, 0, 10.1f, 1, 11.1f, 0, 100,   1, 101,
-       0, 0,  2, 2,  0, 0.2f,  2, 2.2f,  0, -0.2f, 2, 1.9f,
-       0, 20, 2, 22, 0, 20.2f, 2, 22.2f, 0, 200,   2, 202
+      {0, 0,    0.1, 0.1, 0, 0.01f, 0.1, 0.11f, 0, -0.01, 0.1, 0.09f,
+       0, 0.11, 0.1, 0.2, 0, 0.12f, 0.1, 0.21f, 0,  0.3,  1,   0.4,
+       0, 0,    0.2, 0.2, 0, 0.02f, 0.2, 0.22f, 0, -0.02, 0.2, 0.19f,
+       0, 0.21, 0.2, 0.3, 0, 0.22f, 0.2, 0.31f, 0,  0.4,  1,   0.5
        });
   AddInputFromArray<float>(TensorShape({2, 6, 2}), 
       {0.1f, 0.9f, 0.75f, 0.8f, 0.6f, 0.3f, 0.95f, 0.1f, 0.5f, 0.5f, 0.3f, 0.1f, 
@@ -1164,8 +1165,8 @@ TEST_F(NonMaxSuppressionLiteOpTest,
   
   //boxes
   Tensor expected_boxes(allocator(), DT_FLOAT, TensorShape({2, 2, 4}));
-  test::FillValues<float>(&expected_boxes, {0, 10, 1, 11 ,0, 0, 1, 1, 
-          0, 20, 2, 22, 0, 0, 2, 2});
+  test::FillValues<float>(&expected_boxes, {0, 0.11, 0.1, 0.2, 0, 0, 0.1, 0.1, 
+          0, 0.21, 0.2, 0.3, 0, 0, 0.2, 0.2});
   test::ExpectTensorEqual<float>(expected_boxes, *GetOutput(0));
   //scores
   Tensor expected_scores(allocator(), DT_FLOAT, TensorShape({2, 2}));
@@ -1190,10 +1191,10 @@ TEST_F(NonMaxSuppressionLiteOpTest,
   MakeOp(true);
   AddInputFromArray<float>(
       TensorShape({2, 6, 1, 4}),
-      {0, 0,  1, 1,  0, 0.1f,  1, 1.1f,  0, -0.1f, 1, 0.9f,
-       0, 10, 1, 11, 0, 10.1f, 1, 11.1f, 0, 100,   1, 101,
-       0, 0,  2, 2,  0, 0.2f,  2, 2.2f,  0, -0.2f, 2, 1.9f,
-       0, 20, 2, 22, 0, 20.2f, 2, 22.2f, 0, 200,   2, 202
+      {0, 0,    0.1, 0.1, 0, 0.01f, 0.1, 0.11f, 0, -0.01, 0.1, 0.09f,
+       0, 0.11, 0.1, 0.2, 0, 0.12f, 0.1, 0.21f, 0,  0.3,  1,   0.4,
+       0, 0,    0.2, 0.2, 0, 0.02f, 0.2, 0.22f, 0, -0.02, 0.2, 0.19f,
+       0, 0.21, 0.2, 0.3, 0, 0.22f, 0.2, 0.31f, 0,  0.4,  1,   0.5
        });
   AddInputFromArray<float>(TensorShape({2, 6, 2}), 
       {0.1f, 0.9f, 0.75f, 0.8f, 0.6f, 0.3f, 0.95f, 0.1f, 0.5f, 0.5f, 0.3f, 0.1f, 
@@ -1207,8 +1208,8 @@ TEST_F(NonMaxSuppressionLiteOpTest,
   
   //boxes
   Tensor expected_boxes(allocator(), DT_FLOAT, TensorShape({2, 3, 4}));
-  test::FillValues<float>(&expected_boxes, {0, 10, 1, 11 ,0, 0, 1, 1, 
-          0, 0, 0, 0, 0, 20, 2, 22, 0, 0, 2, 2, 0, 0, 0, 0});
+  test::FillValues<float>(&expected_boxes, {0, 0.11, 0.1, 0.2, 0, 0, 0.1, 0.1, 
+          0, 0, 0, 0, 0, 0.21, 0.2, 0.3, 0, 0, 0.2, 0.2, 0, 0, 0, 0});
   test::ExpectTensorEqual<float>(expected_boxes, *GetOutput(0));
   //scores
   Tensor expected_scores(allocator(), DT_FLOAT, TensorShape({2, 3}));
@@ -1233,10 +1234,10 @@ TEST_F(NonMaxSuppressionLiteOpTest,
   MakeOp();
   AddInputFromArray<float>(
       TensorShape({2, 6, 1, 4}),
-      {0, 0,  1, 1,  0, 0.1f,  1, 1.1f,  0, -0.1f, 1, 0.9f,
-       0, 10, 1, 11, 0, 10.1f, 1, 11.1f, 0, 100,   1, 101,
-       0, 0,  2, 2,  0, 0.2f,  2, 2.2f,  0, -0.2f, 2, 1.9f,
-       0, 20, 2, 22, 0, 20.2f, 2, 22.2f, 0, 200,   2, 202
+      {0, 0,    0.1, 0.1, 0, 0.01f, 0.1, 0.11f, 0, -0.01, 0.1, 0.09f,
+       0, 0.11, 0.1, 0.2, 0, 0.12f, 0.1, 0.21f, 0,  0.3,  1,   0.4,
+       0, 0,    0.2, 0.2, 0, 0.02f, 0.2, 0.22f, 0, -0.02, 0.2, 0.19f,
+       0, 0.21, 0.2, 0.3, 0, 0.22f, 0.2, 0.31f, 0,  0.4,  1,   0.5
        });
   AddInputFromArray<float>(TensorShape({2, 6, 2}), 
       {0.1f, 0.9f, 0.75f, 0.8f, 0.6f, 0.3f, 0.95f, 0.1f, 0.5f, 0.5f, 0.3f, 0.1f, 
@@ -1251,10 +1252,10 @@ TEST_F(NonMaxSuppressionLiteOpTest,
   
   //boxes
   Tensor expected_boxes(allocator(), DT_FLOAT, TensorShape({2, 5, 4}));
-  test::FillValues<float>(&expected_boxes, {0, 10, 1, 11, 0, 0, 1, 1, 
-          0, 0.1f, 1, 1.1f, 0, 10.1f, 1, 11.1f, 0, 100, 1, 101,
-          0, 20, 2, 22, 0, 0, 2, 2, 0, 0.2f, 2, 2.2f, 
-          0, 20.2f, 2, 22.2f, 0, 200, 2, 202});
+  test::FillValues<float>(&expected_boxes, {0, 0.11, 0.1, 0.2, 0, 0, 0.1, 0.1, 
+          0, 0.01f, 0.1, 0.11f, 0, 0.12f, 0.1, 0.21f, 0,  0.3, 1, 0.4,
+          0, 0.21, 0.2, 0.3, 0, 0, 0.2, 0.2, 0, 0.02f, 0.2, 0.22f,
+          0, 0.22f, 0.2, 0.31f, 0, 0.4, 1, 0.5});
   test::ExpectTensorEqual<float>(expected_boxes, *GetOutput(0));
   //scores
   Tensor expected_scores(allocator(), DT_FLOAT, TensorShape({2, 5}));
@@ -1281,13 +1282,19 @@ TEST_F(NonMaxSuppressionLiteOpTest,
   AddInputFromArray<float>(
       TensorShape({2, 6, 2, 4}),
       //batch 0, box1 of class 1 should get selected
-      {0, 0, 1, 1, 0, 0,  1, 1, 0, 0.1f, 1, 1.1f, 0, 0.1f, 4, 4.1f, 
-      0, -0.1f, 1, 0.9f, 0, -0.1f, 1, 0.9f, 0, 10, 1, 11, 0, 10, 1, 11, 
-      0, 10.1f, 1, 11.1f, 0, 10.1f, 1, 11.1f, 0, 100, 1, 101, 0, 100, 1, 101, 
+      {0, 0,     0.1, 0.1,   0, 0,     0.1, 0.1, 
+       0, 0.01f, 0.1, 0.11f, 0, 0.6f,  0.1, 0.7f,
+       0, -0.01, 0.1, 0.09f, 0, -0.01, 0.1, 0.09f, 
+       0, 0.11,  0.1, 0.2,   0, 0.11,  0.1, 0.2, 
+       0, 0.12f, 0.1, 0.21f, 0, 0.12f, 0.1, 0.21f, 
+       0, 0.3,   1,   0.4,   0, 0.3,   1,   0.4, 
       //batch 1, box1 of class 0 should get selected
-      0, 0, 2, 2, 0, 0, 2, 2, 0, 0.2f, 2, 2.2f, 0, 0.2f, 2, 2.2f, 
-      0, -0.2f, 2, 1.9f, 0, -0.2f, 2, 1.9f, 0, 20, 2, 22, 0, 20, 2, 22, 
-      0, 20.2f, 2, 22.2f, 0, 20.2f, 2, 22.2f, 0, 200, 2, 202, 0, 200, 2, 202});
+       0, 0,     0.2, 0.2,   0, 0,     0.2, 0.2, 
+       0, 0.02f, 0.2, 0.22f, 0, 0.02f, 0.2, 0.22f,
+       0, -0.02, 0.2, 0.19f, 0, -0.02, 0.2, 0.19f,
+       0, 0.21,  0.2, 0.3,   0, 0.21,  0.2, 0.3, 
+       0, 0.22f, 0.2, 0.31f, 0, 0.22f, 0.2, 0.31f,
+       0,  0.4,  1,   0.5,   0, 0.4,   1,   0.5});
 
   AddInputFromArray<float>(TensorShape({2, 6, 2}), 
       {0.1f, 0.9f, 0.75f, 0.8f, 0.6f, 0.3f, 0.95f, 0.1f, 0.5f, 0.5f, 0.3f, 0.1f, 
@@ -1301,8 +1308,8 @@ TEST_F(NonMaxSuppressionLiteOpTest,
   
   //boxes
   Tensor expected_boxes(allocator(), DT_FLOAT, TensorShape({2, 3, 4}));
-  test::FillValues<float>(&expected_boxes, {0, 10, 1, 11, 0, 0, 1, 1, 
-          0, 0.1f, 4, 4.1f, 0, 20, 2, 22 ,0, 0, 2, 2, 0, 0.2f, 2, 2.2f});
+  test::FillValues<float>(&expected_boxes, {0, 0.11, 0.1, 0.2, 0, 0, 0.1, 0.1, 
+           0, 0.6f, 0.1, 0.7f, 0, 0.21, 0.2, 0.3, 0, 0, 0.2, 0.2, 0, 0.02f, 0.2, 0.22f});
   test::ExpectTensorEqual<float>(expected_boxes, *GetOutput(0));
   //scores
   Tensor expected_scores(allocator(), DT_FLOAT, TensorShape({2, 3}));
@@ -1321,4 +1328,5 @@ TEST_F(NonMaxSuppressionLiteOpTest,
   test::FillValues<int>(&expected_indices, {3, 0, 1, 3, 0, 1});
   test::ExpectTensorEqual<int>(expected_indices, *GetOutput(4));
 }
+
 }  // namespace tensorflow

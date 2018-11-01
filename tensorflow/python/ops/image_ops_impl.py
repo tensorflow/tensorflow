@@ -3270,7 +3270,6 @@ def non_max_suppression_lite(boxes,
     iou_threshold = ops.convert_to_tensor(iou_threshold, name='iou_threshold')
     score_threshold = ops.convert_to_tensor(
         score_threshold, name='score_threshold')
-    return gen_image_ops.non_max_suppression_lite(boxes, scores,
+    return gen_image_ops.non_max_suppression_lite(boxes, scores, 
             max_output_size_per_class, max_total_size, iou_threshold, 
-            score_threshold, pad_to_max_total_size);
-
+            score_threshold, pad_to_max_total_size)
