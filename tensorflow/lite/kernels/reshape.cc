@@ -59,7 +59,7 @@ TfLiteStatus ResizeOutput(TfLiteContext* context, TfLiteNode* node,
   return context->ResizeTensor(context, output, output_shape);
 }
 
-TfLiteStatus ResizeOutputWithShapeTensor(TfLiteContext* context,
+TfLiteIntArray* GetOutputShapeFromTensor(TfLiteContext* context,
                                          TfLiteNode* node) {
   const TfLiteTensor* shape = GetInput(context, node, kShapeTensor);
 
@@ -67,30 +67,14 @@ TfLiteStatus ResizeOutputWithShapeTensor(TfLiteContext* context,
   for (int i = 0; i < output_shape->size; ++i) {
     output_shape->data[i] = shape->data.i32[i];
   }
-  return ResizeOutput(context, node, output_shape);
+
+  return output_shape;
 }
 
-TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
+TfLiteIntArray* GetOutputShapeFromParam(TfLiteContext* context,
+                                        TfLiteNode* node) {
   auto* params = reinterpret_cast<TfLiteReshapeParams*>(node->builtin_data);
 
-  TF_LITE_ENSURE(context, NumInputs(node) == 1 || NumInputs(node) == 2);
-  TF_LITE_ENSURE_EQ(context, NumOutputs(node), 1);
-
-  // Attempt to use shape tensor if it exists.
-  if (NumInputs(node) == 2) {
-    const TfLiteTensor* shape = GetInput(context, node, kShapeTensor);
-    // Check if the shape tensor is valid.
-    if (shape->dims->size == 1 && shape->type == kTfLiteInt32) {
-      // Set the output tensor as dynamic if the shape isn't constnat.
-      if (!IsConstantTensor(shape)) {
-        TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
-        SetTensorToDynamic(output);
-        return kTfLiteOk;
-      }
-      // Shape is constant. Resize now.
-      return ResizeOutputWithShapeTensor(context, node);
-    }
-  }
   // The function is returned above this line if the shape tensor is usable.
   // Now fallback to the shape parameter in `TfLiteReshapeParams`.
   int num_dimensions = params->num_dimensions;
@@ -104,15 +88,67 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   for (int i = 0; i < num_dimensions; ++i) {
     output_shape->data[i] = params->shape[i];
   }
-  return ResizeOutput(context, node, output_shape);
+
+  return output_shape;
+}
+
+// Check if the shape tensor is valid. Shapes should be int32 vectors.
+bool ShapeIsVector(TfLiteContext* context, TfLiteNode* node) {
+  const TfLiteTensor* shape = GetInput(context, node, kShapeTensor);
+  return (shape->dims->size == 1 && shape->type == kTfLiteInt32);
+}
+
+TfLiteIntArray* GetOutputShape(TfLiteContext* context, TfLiteNode* node) {
+  if (NumInputs(node) == 2 && ShapeIsVector(context, node)) {
+    return GetOutputShapeFromTensor(context, node);
+  } else {
+    return GetOutputShapeFromParam(context, node);
+  }
+}
+
+TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
+  TF_LITE_ENSURE(context, NumInputs(node) == 1 || NumInputs(node) == 2);
+  TF_LITE_ENSURE_EQ(context, NumOutputs(node), 1);
+
+  // Always postpone sizing string tensors, even if we could in principle
+  // calculate their shapes now. String tensors don't benefit from having their
+  // shapes precalculated because the actual memory can only be allocated after
+  // we know all the content.
+  TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
+  if (output->type != kTfLiteString) {
+    if (NumInputs(node) == 1 ||
+        IsConstantTensor(GetInput(context, node, kShapeTensor))) {
+      TF_LITE_ENSURE_OK(
+          context, ResizeOutput(context, node, GetOutputShape(context, node)));
+    } else {
+      SetTensorToDynamic(output);
+    }
+  }
+  return kTfLiteOk;
 }
 
 TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   const TfLiteTensor* input = GetInput(context, node, kInputTensor);
   TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
 
+  // There are two ways in which the 'output' can be made dynamic: it could be
+  // a string tensor, or its shape cannot be calculated during Prepare(). In
+  // either case, we now have all the information to calculate its shape.
   if (IsDynamicTensor(output)) {
-    TF_LITE_ENSURE_OK(context, ResizeOutputWithShapeTensor(context, node));
+    TF_LITE_ENSURE_OK(
+        context, ResizeOutput(context, node, GetOutputShape(context, node)));
+  }
+
+  // Note that string tensors are always "dynamic" in the sense that their size
+  // is not known until we have all the content. This applies even when their
+  // shape is known ahead of time. As a result, a string tensor is never given
+  // any memory by ResizeOutput(), and we need to do it manually here. Since
+  // reshape doesn't change the data, the output tensor needs exactly as many
+  // bytes as the input tensor.
+  if (output->type == kTfLiteString) {
+    auto bytes_required = input->bytes;
+    TfLiteTensorRealloc(bytes_required, output);
+    output->bytes = bytes_required;
   }
 
   memcpy(output->data.raw, input->data.raw, input->bytes);

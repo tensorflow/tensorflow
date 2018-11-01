@@ -58,19 +58,6 @@ class PadOpModel : public SingleOpModel {
   int constant_values_;
 };
 
-namespace {
-
-// Returns the corresponding TensorType given the type T.
-template <typename T>
-TensorType GetTensorType() {
-  if (std::is_same<T, float>::value) return TensorType_FLOAT32;
-  if (std::is_same<T, int32_t>::value) return TensorType_INT32;
-  if (std::is_same<T, uint8_t>::value) return TensorType_UINT8;
-  return TensorType_MIN;  // default value
-}
-
-}  // namespace
-
 // Tests case where paddings is a const tensor. Type T is the dtype.
 template <typename T>
 class PadV2OpConstModel : public PadOpModel<T> {

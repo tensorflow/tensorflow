@@ -398,6 +398,16 @@ class SingleOpTest : public ::testing::TestWithParam<string> {
   }
 };
 
+// Returns the corresponding TensorType given the type T.
+template <typename T>
+TensorType GetTensorType() {
+  if (std::is_same<T, float>::value) return TensorType_FLOAT32;
+  if (std::is_same<T, int32_t>::value) return TensorType_INT32;
+  if (std::is_same<T, uint8_t>::value) return TensorType_UINT8;
+  if (std::is_same<T, string>::value) return TensorType_STRING;
+  return TensorType_MIN;  // default value
+}
+
 // Strings have a special implementation that is in test_util.cc
 template <>
 std::vector<string> SingleOpModel::ExtractVector(int index);
