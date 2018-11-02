@@ -216,6 +216,10 @@ class MultiDeviceIterator(object):
           self._dataset.output_types, self._dataset.output_classes)
       if prefetch_buffer_size > 0:
         ds = ds.prefetch(prefetch_buffer_size)
+      # TODO(jsimsa): Enable auto-tuning when supported for non-CPU devices.
+      options = dataset_ops.Options()
+      options.experimental_autotune = False
+      ds = ds.with_options(options)
       with ops.device(device):
         self._device_iterators.append(ds.make_initializable_iterator())
 
