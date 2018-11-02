@@ -346,20 +346,20 @@ class IteratorContext {
 class SerializationContext {
  public:
   struct Params {
-    bool allow_stateful_functions = false;
     const FunctionLibraryDefinition* flib_def = nullptr;           // Not owned.
     std::vector<std::pair<string, Tensor>>* input_list = nullptr;  // Not owned.
+    bool optimization_only = false;
   };
 
   explicit SerializationContext(Params params) : params_(std::move(params)) {}
-
-  bool allow_stateful_functions() { return params_.allow_stateful_functions; }
 
   const FunctionLibraryDefinition& flib_def() { return *params_.flib_def; }
 
   std::vector<std::pair<string, Tensor>>* input_list() {
     return params_.input_list;
   }
+
+  bool optimization_only() { return params_.optimization_only; }
 
  private:
   Params params_;
@@ -558,9 +558,7 @@ class DatasetBase : public core::RefCounted {
    public:
     DatasetGraphDefBuilder(GraphDefBuilder* b) : GraphDefBuilderWrapper(b) {}
     Status AddInputDataset(SerializationContext* ctx,
-                           const DatasetBase* dataset, Node** output) {
-      return dataset->AsGraphDefInternal(ctx, this, output);
-    }
+                           const DatasetBase* dataset, Node** output);
   };
 
   // TODO(jsimsa): Consolidate overloading into a single method.
