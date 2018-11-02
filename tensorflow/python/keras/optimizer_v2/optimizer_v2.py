@@ -27,6 +27,7 @@ from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.keras import backend
 from tensorflow.python.keras import initializers
 from tensorflow.python.keras.engine import base_layer
 from tensorflow.python.ops import control_flow_ops
@@ -135,7 +136,9 @@ class OptimizerV2(optimizer_v1.Optimizer):
     self._use_locking = True
     super(OptimizerV2, self).__init__(self._use_locking, name)
     self._hyper = {}
+    # dict: {variable name : {slot name : variable}}
     self._slots = {}
+    self._weights = []
     self._prepared = False
 
   def minimize(self,
@@ -333,10 +336,7 @@ class OptimizerV2(optimizer_v1.Optimizer):
                                             (ops.Tensor, int, float)):
         self._hyper[name] = value
       else:
-        if ops.executing_eagerly_outside_functions():
-          self._hyper[name].assign(value)
-        else:
-          self._hyper[name].assign(value).eval()
+        backend.set_value(self._hyper[name], value)
 
   def _get_hyper(self, name):
     value = self._hyper[name]
@@ -350,14 +350,18 @@ class OptimizerV2(optimizer_v1.Optimizer):
       super(OptimizerV2, self).__setattr__(name, value)
 
   def add_slot(self, var, slot_name):
-    slot_key = _get_slot_key_from_var(var, slot_name)
-    if slot_key not in self._slots:
-      self._slots[slot_key] = self.add_weight(
-          name=slot_key, shape=var.shape, dtype=var.dtype)
+    var_key = _var_key(var)
+    slot_dict = self._slots.setdefault(var_key, {})
+    if slot_name not in slot_dict:
+      slot_key = _get_slot_key_from_var(var, slot_name)
+      weight = self.add_weight(name=slot_key, shape=var.shape, dtype=var.dtype)
+      slot_dict[slot_name] = weight
+      self._weights.append(weight)
 
   def get_slot(self, var, slot_name):
-    slot_key = _get_slot_key_from_var(var, slot_name)
-    return self._slots[slot_key]
+    var_key = _var_key(var)
+    slot_dict = self._slots[var_key]
+    return slot_dict[slot_name]
 
   def _prepare(self):
     if self._prepared:
@@ -425,13 +429,38 @@ class OptimizerV2(optimizer_v1.Optimizer):
     if callable(value):
       return value()
     if isinstance(value, (ops.Tensor, variables.Variable)):
-      if context.executing_eagerly():
-        return value.numpy()
-      elif ops.get_default_graph()._building_function:  # pylint: disable=protected-access
-        raise ValueError("Cannot serialize hyper parameters inside defun.")
-      else:
-        return value.eval()
+      return backend.get_value(value)
     return value
+
+  @property
+  def weights(self):
+    """Returns variables of this Optimizer based on the order created."""
+    return self._weights
+
+  def get_weights(self):
+    params = self.weights
+    return backend.batch_get_value(params)
+
+  # TODO(tanzheny): Maybe share this logic with base_layer.
+  def set_weights(self, weights):
+    params = self.weights
+    if len(params) != len(weights):
+      raise ValueError(
+          "You called `set_weights(weights)` on optimizer " + self._name +
+          " with a  weight list of length " + str(len(weights)) +
+          ", but the optimizer was expecting " + str(len(params)) +
+          " weights. Provided weights: " + str(weights)[:50] + "...")
+    if not params:
+      return
+    weight_value_tuples = []
+    param_values = backend.batch_get_value(params)
+    for pv, p, w in zip(param_values, params, weights):
+      if pv.shape != w.shape:
+        raise ValueError("Optimizer weight shape " + str(pv.shape) +
+                         " not compatible with "
+                         "provided weight shape " + str(w.shape))
+      weight_value_tuples.append((p, w))
+    backend.batch_set_value(weight_value_tuples)
 
   def add_weight(self,
                  name,
@@ -510,34 +539,31 @@ def merge_grads(grads_and_vars):
       merge_grad_fn, grads_and_vars)
 
 
-def _get_slot_key_from_var(var, slot_name):
-  """Get the slot key for the variable.
+def _var_key(var):
+  """Key for representing a primary variable, for looking up slots.
 
-  Scope the slot name in the namespace of the primary variable.
-  Set "primary.op.name + '/' + slot_name" as default name.
-
-  In graph mode the name is derived from the op.
-  In eager mode the name is derived from the var.
-  If distribution strategy exists, then the name is derived from the primary
-  variable instead of replica variable, i.e., /dense/kernel instead of
-  /dense/kernel/replica_1. If the slot name is 'm', then the slot variables
-  being created are /dense/kernel/m and /dense/kernel/m/replica_1, instead of
-  /dense/kernel/replica_1/m/replica_1.
+  In graph mode the name is derived from the var shared name.
+  In eager mode the name is derived from the var unique id.
+  If distribution strategy exists, get the primary variable first.
 
   Args:
     var: the variable.
-    slot_name: the name of the slot.
 
   Returns:
-    the name of the variable.
+    the unique name of the variable.
   """
 
   # pylint: disable=protected-access
   if distribution_strategy_context.has_distribution_strategy() and hasattr(
       var, "_primary_var"):
     var = var._primary_var
-  if context.executing_eagerly():
-    name = var._shared_name
-  else:
-    name = var.op.name
+  if hasattr(var, "op"):
+    return var._shared_name
+  return var._unique_id
+
+
+def _get_slot_key_from_var(var, slot_name):
+  """Get the slot key for the variable: var_name/slot_name."""
+
+  name = _var_key(var)
   return name + "/" + slot_name
