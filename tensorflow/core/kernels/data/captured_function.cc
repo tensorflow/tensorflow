@@ -77,15 +77,13 @@ class SimpleStepStatsCollector : public StepStatsCollectorInterface {
       end_time_ns_ = Env::Default()->NowNanos();
     }
 
+    bool TrackAllocations() const override { return false; }
+
     void SetMemory(OpKernelContext* ctx) override {
-      for (OpKernelContext::WrappedAllocator& wrapped_allocator :
-           ctx->wrapped_allocators()) {
-        // TODO(b/118821822): It is not ideal that we get the records and
-        // discard them, but `TrackingAllocator` has no convenient interface for
-        // unreffing without getting the values, and the right thing to do here
-        // is to avoid tracking allocations at all.
-        wrapped_allocator.second->GetRecordsAndUnRef();
-      }
+      // Returning `false` from `TrackAllocations()` should prevent
+      // `TrackingAllocator` objects from being constructed.
+      DCHECK_EQ(0, ctx->wrapped_allocators().size())
+          << "Allocations were tracked but should not have been requested.";
     }
 
     void SetOutput(int slot, const Tensor* tensor) override {}
