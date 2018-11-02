@@ -817,7 +817,7 @@ tf_xla_py_test(
     size = "small",
     srcs = ["stack_ops_test.py"],
     # Stack ops are not implemented in the on-demand compilation model yet.
-    disabled_backends = "cpu_ondemand",
+    disabled_backends = ["cpu_ondemand"],
     deps = [
         ":xla_test",
         "//tensorflow/python:array_ops",
@@ -845,7 +845,7 @@ tf_xla_py_test(
     size = "small",
     srcs = ["tensor_array_ops_test.py"],
     # TensorArray ops are not implemented in the on-demand compilation model yet.
-    disabled_backends = "cpu_ondemand",
+    disabled_backends = ["cpu_ondemand"],
     deps = [
         ":xla_test",
         "//tensorflow/python:array_ops",
@@ -866,7 +866,7 @@ tf_xla_py_test(
     size = "small",
     srcs = ["tensor_list_ops_test.py"],
     # TensorList ops are not implemented in the on-demand compilation model yet.
-    disabled_backends = "cpu_ondemand",
+    disabled_backends = ["cpu_ondemand"],
     deps = [
         ":xla_test",
         "//tensorflow/python:array_ops",
