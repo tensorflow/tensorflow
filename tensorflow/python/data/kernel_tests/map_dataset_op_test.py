@@ -353,7 +353,7 @@ class MapDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
     get_next = iterator.get_next()
 
     with self.cached_session() as sess:
-      sess.run(table.init)
+      sess.run(table.initializer)
       sess.run(init_op)
       sess.run(get_next)
       sess.run(get_next)
