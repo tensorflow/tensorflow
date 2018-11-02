@@ -14,8 +14,7 @@
 # ==============================================================================
 """Control Flow Operations.
 
-See the [Control
-Flow](https://tensorflow.org/api_guides/python/control_flow_ops) guide.
+See the [autograph](https://www.tensorflow.org/guide/autographs) guide.
 """
 # pylint: disable=g-bad-name
 from __future__ import absolute_import
