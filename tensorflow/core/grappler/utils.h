@@ -169,6 +169,7 @@ inline string NodeName(const string& name) {
 }
 
 // Returns the node name and position in a single call.
+// DEPRECATED(ezhulenev): Use TensorId and ParseTensorName.
 inline StringPiece ParseNodeNameAsStringPiece(const string& name,
                                               int* position) {
   static const string empty;
@@ -199,6 +200,7 @@ inline StringPiece ParseNodeNameAsStringPiece(const string& name,
 }
 
 // Returns the node name and position in a single call.
+// DEPRECATED(ezhulenev): Use SafeTensorId and ParseTensorName.
 inline string ParseNodeName(const string& name, int* position) {
   return string(ParseNodeNameAsStringPiece(name, position));
 }

@@ -145,14 +145,10 @@ void NodeMap::UpdateOutput(const string& node_name,
 }
 
 bool IsSameInput(const string& name1, const string& name2) {
-  if (name1 == name2) {
-    return true;
-  }
-  int position1;
-  StringPiece node1 = ParseNodeNameAsStringPiece(name1, &position1);
-  int position2;
-  StringPiece node2 = ParseNodeNameAsStringPiece(name2, &position2);
-  return (position1 == position2) && (node1 == node2);
+  if (name1 == name2) return true;
+  TensorId tensor1 = ParseTensorName(name1);
+  TensorId tensor2 = ParseTensorName(name2);
+  return tensor1.node() == tensor2.node() && tensor1.index() == tensor2.index();
 }
 
 bool IsControlInput(const string& name) {
@@ -247,7 +243,6 @@ int NumNonControlInputs(const NodeDef& node) {
 
 int NumNonControlOutputs(const NodeDef& node, const NodeMap& node_map) {
   int num_outputs = 0;
-  int pos;
   for (const NodeDef* output : node_map.GetOutputs(node.name())) {
     for (const string& node_as_input : output->input()) {
       if (IsControlInput(node_as_input)) {
@@ -256,9 +251,8 @@ int NumNonControlOutputs(const NodeDef& node, const NodeMap& node_map) {
       if (node_as_input == node.name()) {
         ++num_outputs;
       } else {
-        const StringPiece name =
-            ParseNodeNameAsStringPiece(node_as_input, &pos);
-        if (name == node.name()) {
+        const TensorId tensor = ParseTensorName(node_as_input);
+        if (tensor.node() == node.name()) {
           ++num_outputs;
         }
       }
