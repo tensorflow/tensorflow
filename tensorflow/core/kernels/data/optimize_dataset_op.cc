@@ -94,9 +94,9 @@ class OptimizeDatasetOp : public UnaryDatasetOpKernel {
       Node* input_node = nullptr;
       SerializationContext::Params params;
       std::vector<std::pair<string, Tensor>> input_list;
-      params.allow_stateful_functions = true;
       params.flib_def = ctx->function_library()->GetFunctionLibraryDefinition();
       params.input_list = &input_list;
+      params.optimization_only = true;
       SerializationContext serialization_ctx(params);
       TF_RETURN_IF_ERROR(
           db.AddInputDataset(&serialization_ctx, input_, &input_node));
