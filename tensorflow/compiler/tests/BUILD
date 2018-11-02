@@ -295,33 +295,6 @@ tf_xla_py_test(
 )
 
 tf_xla_py_test(
-    name = "oom_test",
-    size = "medium",
-    srcs = ["oom_test.py"],
-    # TODO(b/80081500): Re-enable on GPU. Disabled on 2018-05-21.
-    disabled_backends = [
-        "cpu",
-        "cpu_ondemand",
-        "gpu",
-    ],
-    tags = [
-        # Allocates very large amounts of memory and does not work under TSAN.
-        "notsan",
-        "optonly",  # Times out frequently in fastbuild.
-    ],
-    deps = [
-        ":xla_test",
-        "//tensorflow/python:array_ops",
-        "//tensorflow/python:array_ops_gen",
-        "//tensorflow/python:framework",
-        "//tensorflow/python:gradient_checker",
-        "//tensorflow/python:gradients",
-        "//tensorflow/python:math_ops",
-        "//tensorflow/python:platform_test",
-    ],
-)
-
-tf_xla_py_test(
     name = "conv2d_test",
     size = "medium",
     srcs = ["conv2d_test.py"],
@@ -516,8 +489,6 @@ tf_xla_py_test(
     name = "function_test",
     size = "small",
     srcs = ["function_test.py"],
-    # Functions are not implemented in the on-demand compilation model yet.
-    disabled_backends = "cpu_ondemand",
     deps = [
         ":xla_test",
         "//tensorflow/python:array_ops",
@@ -707,9 +678,6 @@ tf_xla_py_test(
     name = "random_ops_test",
     size = "small",
     srcs = ["random_ops_test.py"],
-    disabled_backends = [
-        "cpu_ondemand",
-    ],
     deps = [
         ":xla_test",
         "//tensorflow/python:array_ops",
@@ -740,7 +708,6 @@ tf_xla_py_test(
     name = "reduce_window_test",
     size = "small",
     srcs = ["reduce_window_test.py"],
-    disabled_backends = ["cpu_ondemand"],
     deps = [
         ":xla_test",
         "//tensorflow/compiler/tf2xla/python:xla",
@@ -979,7 +946,6 @@ tf_xla_py_test(
     name = "while_test",
     size = "small",
     srcs = ["while_test.py"],
-    disabled_backends = ["cpu_ondemand"],
     deps = [
         ":xla_test",
         "//tensorflow/compiler/tf2xla/python:xla",
@@ -1136,6 +1102,7 @@ cc_library(
         "//tensorflow/core:test",
         "//tensorflow/core:testlib",
         "//tensorflow/core/kernels:ops_util",
+        "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/strings",
     ],
@@ -1246,7 +1213,6 @@ tf_xla_py_test(
     name = "xla_ops_test",
     size = "medium",
     srcs = ["xla_ops_test.py"],
-    disabled_backends = ["cpu_ondemand"],
     deps = [
         ":xla_test",
         "//tensorflow/compiler/tf2xla/python:xla",

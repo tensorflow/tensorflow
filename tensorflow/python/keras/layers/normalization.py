@@ -145,6 +145,7 @@ class BatchNormalization(Layer):
                **kwargs):
     super(BatchNormalization, self).__init__(
         name=name, trainable=trainable, **kwargs)
+    self._can_use_graph_functions = True
     if isinstance(axis, list):
       self.axis = axis[:]
     else:

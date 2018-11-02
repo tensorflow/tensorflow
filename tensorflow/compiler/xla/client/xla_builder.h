@@ -216,7 +216,7 @@ class XlaBuilder {
   // compile-time constant (see `IsConstant`), returns an error.
   //
   // This will copy the needed ops/computations to the subgraph.
-  StatusOr<XlaComputation> BuildConstantSubGraph(const XlaOp& root_op) const;
+  StatusOr<XlaComputation> BuildConstantSubGraph(const XlaOp& root_op);
 
   // Returns the first error that was encountered while building the
   // computation. When an error is encountered, by default we return a vacuous
@@ -999,7 +999,13 @@ class XlaBuilder {
                               absl::Span<const int64> lhs_dilation,
                               absl::Span<const int64> rhs_dilation) const;
 
+  int64 GetNextId() { return ++next_id_; }
+
   string name_;  // Name to use for the built computation.
+
+  // The next sequential ID for every instruction/computation contained within
+  // this computation.
+  int64 next_id_ = 0;
 
   // The first error encountered while building the computation.
   // This is OK until the first error is encountered.

@@ -47,7 +47,7 @@ bool CanParallelize(const FunctionDef& function,
 
 NodeDef MakeParallelMap(const NodeDef& map_node, MutableGraphView* graph) {
   NodeDef parallel_map = map_node;
-  graph_utils::SetUniqueGraphNodeName("parallel_map", graph->GetGraph(),
+  graph_utils::SetUniqueGraphNodeName("parallel_map", graph->graph(),
                                       &parallel_map);
   parallel_map.set_op("ParallelMapDataset");
   // TODO(b/114475558): We want to set `num_parallel_calls` to a special value,

@@ -18,6 +18,7 @@ package(
         "//learning/deepmind:__subpackages__",
         "//medical/pathology:__subpackages__",
         "//tensorflow:__subpackages__",
+        "//vr/perception:__subpackages__",
     ],
 )
 

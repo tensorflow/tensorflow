@@ -21,6 +21,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "tensorflow/core/framework/stats_aggregator.h"
 #include "tensorflow/core/lib/gtl/cleanup.h"
 #include "tensorflow/core/platform/cpu_info.h"
 #include "tensorflow/core/util/ptr_util.h"
@@ -43,7 +44,11 @@ class ParallelMapIteratorBase : public DatasetBaseIterator {
         mu_(std::make_shared<mutex>()),
         cond_var_(std::make_shared<condition_variable>()),
         num_parallel_calls_(std::make_shared<model::SharedState>(
-            num_parallel_calls, mu_, cond_var_)) {}
+            num_parallel_calls, mu_, cond_var_)) {
+    std::vector<string> components =
+        str_util::Split(params.prefix, "::", str_util::SkipEmpty());
+    prefix_end_ = components.back();
+  }
 
   ~ParallelMapIteratorBase() override {
     mutex_lock l(*mu_);
@@ -59,13 +64,10 @@ class ParallelMapIteratorBase : public DatasetBaseIterator {
   Status Initialize(IteratorContext* ctx) override {
     mutex_lock l(*mu_);
     if (num_parallel_calls_->value == kAutoTune) {
-      num_parallel_calls_->value = 1;
       // TODO(jsimsa): Surface the number of threads used by `ctx->runner()` and
-      // use it here for the maximum.
-      AddTunableParameter(ctx, "parallelism", num_parallel_calls_, 1,
-                          port::NumSchedulableCPUs());
-    } else {
-      AddConstantParameter(ctx, "parallelism", num_parallel_calls_->value);
+      // use it here for the default.
+      num_parallel_calls_->value = port::NumSchedulableCPUs();
+      num_parallel_calls_->tunable = true;
     }
     TF_RETURN_IF_ERROR(
         input_dataset_->MakeIterator(ctx, prefix(), &input_impl_));
@@ -100,6 +102,15 @@ class ParallelMapIteratorBase : public DatasetBaseIterator {
     std::vector<Tensor> return_values;
     bool end_of_input;
   };
+
+  std::shared_ptr<model::Node> CreateNode(
+      IteratorContext* ctx, model::Node::Args args) const override {
+    return model::MakeAsyncKnownRatioNode(
+        std::move(args),
+        /*ratio=*/1,
+        {model::MakeParameter("parallelism", num_parallel_calls_, /*min=*/1,
+                              /*max=*/port::NumSchedulableCPUs())});
+  }
 
   // Used by the consumer to determine whether it needs to wait. Upon returning
   // false, `result` will point to a result to consume.
@@ -181,15 +192,22 @@ class ParallelMapIteratorBase : public DatasetBaseIterator {
     if (!runner_thread_) {
       auto ctx_copy = std::make_shared<IteratorContext>(*ctx);
       runner_thread_.reset(ctx->env()->StartThread(
-          {}, "runner_thread",
+          {}, "tf_data_parallel_map",
           std::bind(&ParallelMapIteratorBase::RunnerThread, this, ctx_copy)));
     }
   }
 
-  void CallCompleted(const std::shared_ptr<InvocationResult>& result)
+  void CallCompleted(const std::shared_ptr<IteratorContext>& ctx,
+                     const std::shared_ptr<InvocationResult>& result)
       LOCKS_EXCLUDED(*mu_) {
     mutex_lock l(*mu_);
     num_calls_--;
+    const auto& stats_aggregator = ctx->stats_aggregator();
+    if (stats_aggregator) {
+      stats_aggregator->AddScalar(
+          strings::StrCat(prefix_end_, "::active_parallel_calls"),
+          static_cast<float>(num_calls_));
+    }
     result->notification.Notify();
     cond_var_->notify_all();
   }
@@ -202,13 +220,13 @@ class ParallelMapIteratorBase : public DatasetBaseIterator {
     result->status =
         input_impl_->GetNext(ctx.get(), &input_element, &result->end_of_input);
     if (result->end_of_input || !result->status.ok()) {
-      CallCompleted(result);
+      CallCompleted(ctx, result);
       return;
     }
 
-    auto done = [this, result](Status status) {
+    auto done = [this, ctx, result](Status status) {
       result->status.Update(status);
-      CallCompleted(result);
+      CallCompleted(ctx, result);
     };
 
     // Apply the map function on `input_element`, storing the result in
@@ -260,6 +278,17 @@ class ParallelMapIteratorBase : public DatasetBaseIterator {
           invocation_results_.push_back(std::make_shared<InvocationResult>());
           new_calls.push_back(invocation_results_.back());
           num_calls_++;
+        }
+        const auto& stats_aggregator = ctx->stats_aggregator();
+        if (stats_aggregator) {
+          // TODO(shivaniagrawal): add `parallel_calls_utilization` in the
+          // monitoring code or as histogram at fixed time intervals.
+          stats_aggregator->AddScalar(
+              strings::StrCat(prefix_end_, "::active_parallel_calls"),
+              static_cast<float>(num_calls_));
+          stats_aggregator->AddScalar(
+              strings::StrCat(prefix_end_, "::num_parallel_calls"),
+              static_cast<float>(num_parallel_calls_->value));
         }
         cond_var_->notify_all();
       }
@@ -330,6 +359,7 @@ class ParallelMapIteratorBase : public DatasetBaseIterator {
       GUARDED_BY(*mu_);
   std::unique_ptr<Thread> runner_thread_ GUARDED_BY(*mu_);
   bool cancelled_ GUARDED_BY(*mu_) = false;
+  string prefix_end_;
 };
 
 class DeterministicParallelMapIterator : public ParallelMapIteratorBase {

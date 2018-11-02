@@ -22,7 +22,7 @@ namespace legacy_flags {
 // Flags for the build_xla_ops pass.
 struct BuildXlaOpsPassFlags {
   // Enables lazy compilation for TF/XLA (only when auto-clustering) if true.
-  // Defaults to false.
+  // Defaults to true.
   bool tf_xla_enable_lazy_compilation;
 };
 

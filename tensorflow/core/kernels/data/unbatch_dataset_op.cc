@@ -12,9 +12,9 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/tensor.h"
-#include "tensorflow/core/kernels/data/dataset.h"
 #include "tensorflow/core/util/batch_util.h"
 
 namespace tensorflow {
@@ -145,6 +145,20 @@ class UnbatchDatasetOp : public UnaryDatasetOpKernel {
       }
 
      protected:
+      std::shared_ptr<model::Node> CreateNode(
+          IteratorContext* ctx, model::Node::Args args) const override {
+        // Unbatch assumes that all input components have the same leading
+        // dimension. If it is statically known for any component, we model the
+        // transformation using `KnownRatio`. Otherwise, we use `UnknownRatio`.
+        for (auto& shape : dataset()->input_->output_shapes()) {
+          if (shape.dims() > 0 && shape.dim_size(0) != -1) {
+            return model::MakeKnownRatioNode(
+                std::move(args), 1.0 / static_cast<double>(shape.dim_size(0)));
+          }
+        }
+        return model::MakeUnknownRatioNode(std::move(args));
+      }
+
       Status SaveInternal(IteratorStateWriter* writer) override {
         mutex_lock l(mu_);
         if (input_impl_) {

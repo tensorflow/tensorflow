@@ -22,7 +22,6 @@ limitations under the License.
 
 #include "tensorflow/stream_executor/blas.h"
 #include "tensorflow/stream_executor/host_or_device_scalar.h"
-#include "tensorflow/stream_executor/lib/stringpiece.h"
 #include "tensorflow/stream_executor/platform/mutex.h"
 #include "tensorflow/stream_executor/platform/port.h"
 #include "tensorflow/stream_executor/platform/thread_annotations.h"

@@ -15,16 +15,23 @@ limitations under the License.
 
 #include "tensorflow/core/grappler/optimizers/memory_optimizer.h"
 
+#include <memory>
+#include <unordered_map>
+#include <utility>
 #include <vector>
 
 #include "tensorflow/cc/ops/standard_ops.h"
+#include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
+#include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
 #include "tensorflow/core/grappler/clusters/virtual_cluster.h"
 #include "tensorflow/core/grappler/grappler_item.h"
 #include "tensorflow/core/grappler/utils.h"
 #include "tensorflow/core/grappler/utils/grappler_test.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
+#include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/protobuf/device_properties.pb.h"
 
 namespace tensorflow {
 namespace grappler {
@@ -502,6 +509,31 @@ TEST_F(RelaxAllocatorConstraintsTest, DifferentDevice) {
   auto tensors = EvaluateFetchNodes(optimized);
   test::ExpectTensorEqual<float>(tensors_expected[0], tensors[0]);
 #endif
+}
+
+TEST_F(RelaxAllocatorConstraintsTest, SameDeviceType) {
+  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+  Output constant = ops::Const(s.WithOpName("constant").WithDevice("/cpu:0"),
+                               -3.14f, {128, 128});
+  Output variable = ops::Variable(s.WithOpName("variable").WithDevice("/cpu:0"),
+                                  {128, 128}, DT_FLOAT);
+  Output assign = ops::Assign(s.WithOpName("assign").WithDevice("/cpu:0"),
+                              variable, constant);
+  // Assign and Exp run on different devies, but do not straddle a CPU:GPU
+  // boundary, so we can we do not need to enforce allocation in pinned memory.
+  Output exp = ops::Exp(s.WithOpName("exp").WithDevice("/cpu:1"), assign);
+
+  GrapplerItem item;
+  TF_CHECK_OK(s.ToGraphDef(&item.graph));
+
+  MemoryOptimizer optimizer(RewriterConfig::MANUAL);
+  GraphDef output;
+  TF_EXPECT_OK(optimizer.Optimize(nullptr, item, &output));
+
+  auto node = output.node(2);
+  EXPECT_EQ("assign", node.name());
+  EXPECT_EQ(1, node.attr().count("_grappler_relax_allocator_constraints"));
+  EXPECT_TRUE(node.attr().at("_grappler_relax_allocator_constraints").b());
 }
 
 TEST_F(RelaxAllocatorConstraintsTest, SendNode) {

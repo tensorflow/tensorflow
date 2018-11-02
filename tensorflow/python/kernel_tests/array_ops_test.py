@@ -474,6 +474,8 @@ class StridedSliceChecker(object):
 
   def __init__(self, test, x, tensor_type=dtypes.int32, check_type_infer=True):
     self.x_np = np.array(x).astype(tensor_type.as_numpy_dtype)
+    if tensor_type.is_bool:
+      self.x_np = np.array(x % 3).astype(np.bool)
     # Give the value a non-zero imaginary component for complex types.
     if tensor_type.is_complex:
       self.x_np -= 1j * self.x_np
@@ -514,7 +516,7 @@ class StridedSliceChecker(object):
 
 STRIDED_SLICE_TYPES = [
     dtypes.int32, dtypes.int64, dtypes.int16, dtypes.int8, dtypes.float32,
-    dtypes.float64, dtypes.complex64, dtypes.complex128
+    dtypes.float64, dtypes.complex64, dtypes.complex128, dtypes.bool
 ]
 
 
@@ -523,7 +525,7 @@ class StridedSliceTest(test_util.TensorFlowTestCase):
 
   def test_basic_slice(self):
     for tensor_type in STRIDED_SLICE_TYPES:
-      with self.cached_session(use_gpu=not tensor_type.is_integer):
+      with self.cached_session(use_gpu=True):
         checker = StridedSliceChecker(
             self, StridedSliceChecker.REF_TENSOR, tensor_type=tensor_type)
         _ = checker[:, :, :]
@@ -942,8 +944,7 @@ class StridedSliceAssignChecker(object):
     if self.tensor_type.is_complex:
       value -= 1j * value
 
-    with self.test.test_session(
-        use_gpu=not self.tensor_type.is_integer) as sess:
+    with self.test.test_session(use_gpu=True) as sess:
       if self._use_resource:
         var = resource_variable_ops.ResourceVariable(self.x)
       else:

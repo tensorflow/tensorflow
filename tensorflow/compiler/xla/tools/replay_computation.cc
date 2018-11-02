@@ -196,11 +196,12 @@ StatusOr<Literal> ReplayComputation(const HloSnapshot& module,
   StreamExecutorMemoryAllocator allocator(
       client->platform(),
       {client->platform()->ExecutorForDevice(0).ValueOrDie()});
-  absl::optional<ScopedShapedBuffer> result;
+  absl::optional<ScopedShapedBuffer> final_result;
   for (int i = 0; i < opts.num_runs; ++i) {
     // If xla_hlo_profile is enabled, print a noisy message before the last run,
     // making it easier to separate this profile from the others in the logspam.
-    if (xla_hlo_profile && i == opts.num_runs - 1) {
+    bool is_final_result = i == opts.num_runs - 1;
+    if (xla_hlo_profile && is_final_result) {
       LOG(INFO) << "\n\n***** Final run below ******";
     }
     ExecutionProfile profile;
@@ -208,14 +209,22 @@ StatusOr<Literal> ReplayComputation(const HloSnapshot& module,
     run_options.set_execution_profile(&profile);
     run_options.set_allocator(&allocator);
 
-    TF_ASSIGN_OR_RETURN(result, executable->Run(argument_ptrs, run_options));
+    TF_ASSIGN_OR_RETURN(ScopedShapedBuffer result,
+                        executable->Run(argument_ptrs, run_options));
     LOG(INFO) << "Done executing in "
               << static_cast<double>(profile.compute_time_ns()) / 1e9
               << "s: " << module.hlo().hlo_module().name();
+
+    // Save the result if this is for the final iteration.  Otherwise discard
+    // the result before rerunning the computation, so as to free up the
+    // relevant memory.
+    if (is_final_result) {
+      final_result = std::move(result);
+    }
   }
 
   TF_ASSIGN_OR_RETURN(Literal result_literal,
-                      client->ShapedBufferToLiteral(*result));
+                      client->ShapedBufferToLiteral(*final_result));
   return result_literal;
 }
 

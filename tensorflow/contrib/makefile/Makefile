@@ -740,22 +740,22 @@ ifeq ($(WITH_TFLITE_FLEX), true)
 	TF_CC_SRCS += $(EAGER_CC_SRCS)
 
 	TF_LITE_CORE_CC_ALL_SRCS := \
-	$(wildcard tensorflow/contrib/lite/*.cc) \
-	$(wildcard tensorflow/contrib/lite/*.c) \
-	$(wildcard tensorflow/contrib/lite/c/*.c) \
-	$(wildcard tensorflow/contrib/lite/core/api/*.cc)
+	$(wildcard tensorflow/lite/*.cc) \
+	$(wildcard tensorflow/lite/*.c) \
+	$(wildcard tensorflow/lite/c/*.c) \
+	$(wildcard tensorflow/lite/core/api/*.cc)
 
 	TF_LITE_CORE_CC_ALL_SRCS += \
-	$(wildcard tensorflow/contrib/lite/kernels/*.cc) \
-	$(wildcard tensorflow/contrib/lite/kernels/internal/*.cc) \
-	$(wildcard tensorflow/contrib/lite/kernels/internal/optimized/*.cc) \
-	$(wildcard tensorflow/contrib/lite/kernels/internal/reference/*.cc) \
+	$(wildcard tensorflow/lite/kernels/*.cc) \
+	$(wildcard tensorflow/lite/kernels/internal/*.cc) \
+	$(wildcard tensorflow/lite/kernels/internal/optimized/*.cc) \
+	$(wildcard tensorflow/lite/kernels/internal/reference/*.cc) \
 	$(PROFILER_SRCS) \
-	$(wildcard tensorflow/contrib/lite/kernels/*.c) \
-	$(wildcard tensorflow/contrib/lite/kernels/internal/*.c) \
-	$(wildcard tensorflow/contrib/lite/kernels/internal/optimized/*.c) \
-	$(wildcard tensorflow/contrib/lite/kernels/internal/reference/*.c) \
-	$(wildcard tensorflow/contrib/lite/delegates/flex/*.cc)
+	$(wildcard tensorflow/lite/kernels/*.c) \
+	$(wildcard tensorflow/lite/kernels/internal/*.c) \
+	$(wildcard tensorflow/lite/kernels/internal/optimized/*.c) \
+	$(wildcard tensorflow/lite/kernels/internal/reference/*.c) \
+	$(wildcard tensorflow/lite/delegates/flex/*.cc)
 
 	# Hack. This shouldn't be here?
 	TF_LITE_CORE_CC_ALL_SRCS += \
@@ -764,14 +764,14 @@ ifeq ($(WITH_TFLITE_FLEX), true)
 	# Remove any duplicates.
 	TF_LITE_CORE_CC_ALL_SRCS := $(sort $(TF_LITE_CORE_CC_ALL_SRCS))
 	TF_LITE_CORE_CC_EXCLUDE_SRCS := \
-	$(wildcard tensorflow/contrib/lite/*test.cc) \
-	$(wildcard tensorflow/contrib/lite/*/*test.cc) \
-	$(wildcard tensorflow/contrib/lite/*/*/*test.cc) \
-	$(wildcard tensorflow/contrib/lite/*/*/*/*test.cc) \
-	$(wildcard tensorflow/contrib/lite/kernels/test_util.cc) \
-	$(wildcard tensorflow/contrib/lite/delegates/flex/test_util.cc) \
-	$(wildcard tensorflow/contrib/lite/nnapi_delegate.cc) \
-	$(wildcard tensorflow/contrib/lite/mmap_allocation_disabled.cc)
+	$(wildcard tensorflow/lite/*test.cc) \
+	$(wildcard tensorflow/lite/*/*test.cc) \
+	$(wildcard tensorflow/lite/*/*/*test.cc) \
+	$(wildcard tensorflow/lite/*/*/*/*test.cc) \
+	$(wildcard tensorflow/lite/kernels/test_util.cc) \
+	$(wildcard tensorflow/lite/delegates/flex/test_util.cc) \
+	$(wildcard tensorflow/lite/nnapi_delegate.cc) \
+	$(wildcard tensorflow/lite/mmap_allocation_disabled.cc)
 
 	# Filter out all the excluded files.
 	TF_LITE_CC_SRCS := $(filter-out $(TF_LITE_CORE_CC_EXCLUDE_SRCS), $(TF_LITE_CORE_CC_ALL_SRCS))

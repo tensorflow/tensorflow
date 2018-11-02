@@ -13,10 +13,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/graph/graph_def_builder.h"
-#include "tensorflow/core/kernels/data/dataset.h"
 
 namespace tensorflow {
 namespace data {

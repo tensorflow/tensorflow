@@ -31,6 +31,7 @@ from tensorflow.python.estimator import keras as keras_lib
 from tensorflow.python.estimator import run_config as run_config_lib
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import random_seed
 from tensorflow.python.framework import test_util
 from tensorflow.python.keras import testing_utils
 from tensorflow.python.keras.engine import distributed_training_utils
@@ -46,6 +47,7 @@ _RANDOM_SEED = 1337
 _TRAIN_SIZE = 200
 _INPUT_SIZE = (10,)
 _NUM_CLASS = 2
+_TOLERANCE = 1e-5
 
 
 # TODO(anjalisridhar): Add a decorator that will allow us to run these tests as
@@ -1028,6 +1030,8 @@ class TestDistributionStrategyCorrectness(test.TestCase,
     with self.cached_session():
       keras.backend.set_image_data_format('channels_last')
       num_samples = 10000
+      np.random.seed(_RANDOM_SEED)
+      random_seed.set_random_seed(_RANDOM_SEED)
 
       # Train and predict datasets are created with the same input numpy arrays.
       x_train = np.random.rand(num_samples, 1)
@@ -1037,9 +1041,13 @@ class TestDistributionStrategyCorrectness(test.TestCase,
 
       # The model is built once and the initial weights are saved.
       # This is used to initialize the model for both the distribution and
-      # non-distribution run.
+      # non-distribution run. In addition, we add few non-linear layers to make
+      # it non-trivial.
       model = keras.Sequential()
-      model.add(keras.layers.Dense(1, input_shape=(1,)))
+      model.add(keras.layers.Dense(10, activation='relu', input_shape=(1,)))
+      model.add(keras.layers.Dense(10, activation='relu'))
+      model.add(keras.layers.Dense(10, activation='relu'))
+      model.add(keras.layers.Dense(1))
       initial_weights = model.get_weights()
 
       def fit_and_predict(with_distribution=None):
@@ -1080,10 +1088,12 @@ class TestDistributionStrategyCorrectness(test.TestCase,
           with_distribution=None)
 
       # Verify that the weights are the same within some limits of tolerance.
-      np.testing.assert_allclose(wts_with_ds[0], wts_without_ds[0], rtol=1e-3)
+      self.assertAllClose(
+          wts_with_ds, wts_without_ds, atol=_TOLERANCE, rtol=_TOLERANCE)
       # Verify that the predicted outputs are the same within some limits of
       # tolerance.
-      np.testing.assert_allclose(predict_with_ds, predict_without_ds, rtol=1e-3)
+      self.assertAllClose(
+          predict_with_ds, predict_without_ds, atol=_TOLERANCE, rtol=_TOLERANCE)
 
 
 # TODO(priyag): Add a test for TPUStrategy with steps_per_run > 1.

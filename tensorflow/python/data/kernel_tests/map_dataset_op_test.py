@@ -485,6 +485,31 @@ class MapDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
         i += 1
       self.assertLess(i, 99)
 
+  def testStatefulOperationInShortCircuit(self):
+    counter_var = variable_scope.get_variable(
+        "counter", (), dtypes.int32, use_resource=True)
+
+    def increment_fn(x):
+      counter_var.assign_add(1)
+      return x
+
+    iterator = (dataset_ops.Dataset.range(10)
+                .map(increment_fn)
+                .make_initializable_iterator())
+    init_op = iterator.initializer
+    get_next = iterator.get_next()
+
+    with self.cached_session() as sess:
+      sess.run(counter_var.initializer)
+      sess.run(init_op)
+      for i in range(10):
+        self.assertEqual(i, sess.run(counter_var))
+        self.assertEqual(i, sess.run(get_next))
+      self.assertEqual(10, sess.run(counter_var))
+      with self.assertRaises(errors.OutOfRangeError):
+        sess.run(get_next)
+      self.assertEqual(10, sess.run(counter_var))
+
   def testMapDict(self):
     iterator = (dataset_ops.Dataset.range(10)
                 .map(lambda x: {"foo": x * 2, "bar": x ** 2})

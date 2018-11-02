@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/core/grappler/optimizers/meta_optimizer.h"
+#include "absl/strings/substitute.h"
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/framework/function.pb.h"
 #include "tensorflow/core/framework/versions.pb.h"
@@ -413,8 +414,31 @@ Status MetaOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
   VLOG(1) << "Starting optimization for grappler item: " << item.id;
   optimization_results_.clear();
 
+  // 0. Original graph might contain a huge function library, that is mostly
+  // unused. This library copied over by each individual Grappler optimizer,
+  // which adds a huge overhead. Before starting optimization passes we just
+  // remove all the unreachable functions.
+  // TODO(ezhulenev): Construct reachable function library definition directly
+  // from the proto without constructing temporary FunctionLibraryDefinition.
+  GraphDef trimmed_graph;  // do not copy graph with a potentially huge library
+  *trimmed_graph.mutable_node() = item.graph.node();
+  *trimmed_graph.mutable_versions() = item.graph.versions();
+  *trimmed_graph.mutable_library() =
+      grappler::ReachableFunctionLibraryDefinition(
+          FunctionLibraryDefinition(OpRegistry::Global(), item.graph.library()),
+          item.graph)
+          .ToProto();
+
+  GrapplerItem trimmed_item(item, std::move(trimmed_graph));
+
+  VLOG(1) << absl::Substitute(
+      "Deleted $0 unreachable functions from the graph (library size = $1)",
+      item.graph.library().function_size() -
+          trimmed_item.graph.library().function_size(),
+      trimmed_item.graph.library().function_size());
+
   // 1. Optimize main graph
-  TF_RETURN_IF_ERROR(OptimizeGraph(cluster, item, optimized_graph));
+  TF_RETURN_IF_ERROR(OptimizeGraph(cluster, trimmed_item, optimized_graph));
   VLOG(1) << "Optimized main graph.";
   GRAPPLER_RETURN_IF_DEADLINE_EXCEEDED();
 
@@ -480,7 +504,7 @@ Status MetaOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
       // Make a GrapplerItem from a FunctionDef.
       GrapplerFunctionItem func_item;
       TF_RETURN_IF_ERROR(MakeGrapplerFunctionItem(
-          func, flib, item.graph.versions().producer(), &func_item));
+          func, flib, trimmed_item.graph.versions().producer(), &func_item));
 
       // If we need to compute the gradient of optimized function at runtime, we
       // can't perform non-differentiable rewrites.

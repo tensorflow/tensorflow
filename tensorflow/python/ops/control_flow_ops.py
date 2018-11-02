@@ -1831,7 +1831,15 @@ class CondContext(ControlFlowContext):
       result.op._set_control_flow_context(self)
       # pylint: enable=protected-access
 
-      self._values.add(result.name)
+      # Mark Switch output as seen by this context and any outer contexts,
+      # just like what we do for normal op outputs in _AddOpInternal() below.
+      ctxt = self
+      while ctxt is not None:
+        # pylint: disable=protected-access
+        ctxt._values.add(result.name)
+        ctxt = ctxt._outer_context
+        # pylint: enable=protected-access
+
       self._external_values[val.name] = result
     return result
 
@@ -3231,7 +3239,12 @@ def while_loop(cond,
   """
   if ENABLE_WHILE_V2 and not context.executing_eagerly():
     return while_v2.while_loop(
-        cond, body, loop_vars, shape_invariants=shape_invariants, name=name)
+        cond,
+        body,
+        loop_vars,
+        shape_invariants=shape_invariants,
+        maximum_iterations=maximum_iterations,
+        name=name)
 
   with ops.name_scope(name, "while", loop_vars):
     if not loop_vars:

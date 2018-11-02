@@ -200,7 +200,7 @@ class MultiDeviceIterator : public ResourceBase {
         EXCLUSIVE_LOCKS_REQUIRED(mu_) {
       if (!background_thread_) {
         background_thread_.reset(ctx->env()->StartThread(
-            {}, "multi_device_iterator_background_thread",
+            {}, "tf_data_multi_device_iterator",
             std::bind(&MultiDeviceIterator::MultiDeviceBuffer::BackgroundThread,
                       this, new IteratorContext(*ctx))));
       }
@@ -478,11 +478,8 @@ class MultiDeviceIteratorGetNextFromShardOp : public AsyncOpKernel {
  public:
   explicit MultiDeviceIteratorGetNextFromShardOp(OpKernelConstruction* ctx)
       : AsyncOpKernel(ctx),
-        thread_pool_(new thread::ThreadPool(
-            ctx->env(), ThreadOptions(),
-            strings::StrCat("multi_device_iterator_get_next_thread_",
-                            SanitizeThreadSuffix(name())),
-            1 /* num_threads */, false /* low_latency_hint */)) {}
+        background_worker_(ctx->env(),
+                           "tf_data_multi_device_iterator_get_next") {}
 
   void ComputeAsync(OpKernelContext* ctx, DoneCallback done) override {
     const Tensor* tensor_shard_num;
@@ -497,7 +494,7 @@ class MultiDeviceIteratorGetNextFromShardOp : public AsyncOpKernel {
     MultiDeviceIterator* iterator;
     OP_REQUIRES_OK_ASYNC(
         ctx, LookupResource(ctx, HandleFromInput(ctx, 0), &iterator), done);
-    thread_pool_->Schedule(std::bind(
+    background_worker_.Schedule(std::bind(
         [ctx, iterator, shard_num, incarnation_id](DoneCallback done) {
           IteratorContext::Params params;
           params.env = ctx->env();
@@ -534,7 +531,7 @@ class MultiDeviceIteratorGetNextFromShardOp : public AsyncOpKernel {
   }
 
  private:
-  std::unique_ptr<thread::ThreadPool> thread_pool_;
+  BackgroundWorker background_worker_;
 };
 
 REGISTER_KERNEL_BUILDER(

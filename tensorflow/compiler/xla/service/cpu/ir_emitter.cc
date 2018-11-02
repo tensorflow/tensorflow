@@ -2206,16 +2206,16 @@ Status IrEmitter::HandleFusion(HloInstruction* fusion) {
     VLOG(3) << "HandleFusion FusedDynamicUpdateSliceInPlace";
     CpuElementalIrEmitter elemental_emitter(hlo_module_config_, this, module_);
     TF_RETURN_IF_ERROR(EmitTargetAddressForOp(fusion));
-
     // Delegate to common implementation of fused in-place dynamic-update-slice.
-    auto operands = GetIrArraysForOperandsOf(fusion);
     return llvm_ir::EmitFusedDynamicUpdateSliceInPlace(
-        fusion, operands, GetIrArrayFor(fusion), &elemental_emitter, &b_);
+        fusion, GetGeneratorForOperandIrArrays(fusion), GetIrArrayFor(fusion),
+        &elemental_emitter, &b_);
   } else if (fusion->fusion_kind() == HloInstruction::FusionKind::kLoop) {
     VLOG(3) << "HandleFusion kLoop";
     CpuElementalIrEmitter elemental_emitter(hlo_module_config_, this, module_);
     auto operands = GetIrArraysForOperandsOf(fusion);
-    FusedIrEmitter fused_emitter(operands, &elemental_emitter);
+    FusedIrEmitter fused_emitter(GetGeneratorForOperandIrArrays(fusion),
+                                 &elemental_emitter);
     TF_RETURN_IF_ERROR(fusion->fused_expression_root()->Accept(&fused_emitter));
 
     return EmitTargetElementLoop(fusion, fused_emitter.GetRootGenerator());

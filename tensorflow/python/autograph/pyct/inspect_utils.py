@@ -36,6 +36,7 @@ SPECIAL_BUILTINS = {
     'float': float,
     'int': int,
     'len': len,
+    'list': list,
     'print': print,
     'range': range,
     'tuple': tuple

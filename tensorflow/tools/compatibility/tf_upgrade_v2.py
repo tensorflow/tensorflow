@@ -19,7 +19,6 @@ from __future__ import division
 from __future__ import print_function
 
 import argparse
-import functools
 
 from tensorflow.tools.compatibility import ast_edits
 from tensorflow.tools.compatibility import renames_v2
@@ -35,6 +34,17 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
 
     # Mapping from function to the new name of the function
     self.function_renames = renames_v2.renames
+    # pylint: disable=line-too-long
+    self.function_renames.update({
+        "tf.saved_model.builder.SavedModelBuilder": "tf.compat.v1.saved_model.Builder",
+        "tf.saved_model.loader.load": "tf.compat.v1.saved_model.load",
+        "tf.saved_model.main_op.main_op": "tf.compat.v1.saved_model.main_op",
+        "tf.saved_model.main_op.main_op_with_restore": "tf.compat.v1.saved_model.main_op_with_restore",
+        "tf.saved_model.simple_save": "tf.compat.v1.saved_model.simple_save",
+        "tf.saved_model.utils.build_tensor_info": "tf.compat.v1.saved_model.build_tensor_info",
+        "tf.saved_model.utils.get_tensor_from_tensor_info": "tf.compat.v1.saved_model.get_tensor_from_tensor_info",
+    })
+    # pylint: enable=line-too-long
 
     # Variables that should be changed to functions.
     self.change_to_function = {}
@@ -46,29 +56,28 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
 
     # Specially handled functions.
     self.function_handle = {}
-    for decay in ["tf.train.exponential_decay", "tf.train.piecewise_constant",
-                  "tf.train.polynomial_decay", "tf.train.natural_exp_decay",
-                  "tf.train.inverse_time_decay", "tf.train.cosine_decay",
-                  "tf.train.cosine_decay_restarts",
-                  "tf.train.linear_cosine_decay",
-                  "tf.train.noisy_linear_cosine_decay"]:
-      self.function_handle[decay] = functools.partial(
-          self._learning_rate_decay_handler, decay_name=decay)
 
-  @staticmethod
-  def _learning_rate_decay_handler(file_edit_recorder, node, decay_name):
-    comment = ("ERROR: %s has been changed to return a callable instead of a "
-               "tensor when graph building, but its functionality remains "
-               "unchanged during eager execution (returns a callable like "
-               "before). The converter cannot detect and fix this reliably, so "
-               "you need to inspect this usage manually.\n") % decay_name
-    file_edit_recorder.add(
-        comment,
-        node.lineno,
-        node.col_offset,
-        decay_name,
-        decay_name,
-        error="%s requires manual check." % decay_name)
+    decay_function_comment = (
+        "ERROR: <function name> has been changed to return a callable instead "
+        "of a tensor when graph building, but its functionality remains "
+        "unchanged during eager execution (returns a callable like "
+        "before). The converter cannot detect and fix this reliably, so "
+        "you need to inspect this usage manually.\n"
+    )
+
+    # Function warnings. <function name> placeholder inside warnings will be
+    # replaced by function name.
+    self.function_warnings = {
+        "tf.train.exponential_decay": decay_function_comment,
+        "tf.train.piecewise_constant": decay_function_comment,
+        "tf.train.polynomial_decay": decay_function_comment,
+        "tf.train.natural_exp_decay": decay_function_comment,
+        "tf.train.inverse_time_decay": decay_function_comment,
+        "tf.train.cosine_decay": decay_function_comment,
+        "tf.train.cosine_decay_restarts": decay_function_comment,
+        "tf.train.linear_cosine_decay": decay_function_comment,
+        "tf.train.noisy_linear_cosine_decay": decay_function_comment,
+    }
 
 
 if __name__ == "__main__":

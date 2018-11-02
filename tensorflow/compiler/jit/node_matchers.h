@@ -84,7 +84,7 @@ class NodeMatcherProperties {
  public:
   using NodeSeqMatcher = std::vector<::testing::Matcher<const Node*>>;
   using InputSeqMatcher = std::vector<::testing::Matcher<OutEdge>>;
-  using AttrKeyValuePair = std::pair<string, AttrValue>;
+  using AttrKeyValuePair = std::pair<string, absl::optional<AttrValue>>;
 
   const absl::optional<string>& name() const { return name_; }
   const absl::optional<string>& op() const { return op_; }
@@ -163,9 +163,16 @@ impl::NodeMatcherProperties CtrlDeps(
     absl::Span<const ::testing::Matcher<const Node*>> control_deps);
 
 impl::NodeMatcherProperties Attr(std::pair<string, AttrValue> attrs);
+impl::NodeMatcherProperties Attr(string name);
 
 std::pair<string, AttrValue> AttrLiteralHelper(
     const std::pair<string, bool>& bool_attr);
+
+std::pair<string, AttrValue> AttrLiteralHelper(
+    const std::pair<string, absl::Span<const int>>& int_list_attr);
+
+std::pair<string, AttrValue> AttrLiteralHelper(
+    const std::pair<string, absl::Span<const string>>& string_list_attr);
 }  // namespace impl
 
 // -----------------------------------------------------------------------------
@@ -187,6 +194,10 @@ impl::NodeMatcherProperties Attr(const string& name, ValueTy value) {
   return impl::Attr({impl::AttrLiteralHelper({name, value})});
 }
 
+inline impl::NodeMatcherProperties Attr(const string& name) {
+  return impl::Attr(name);
+}
+
 // Matches a node with inputs `inputs`.
 //
 // `inputs` are ordered; `inputs`[i] must match input i.
@@ -200,7 +211,8 @@ impl::NodeMatcherProperties Inputs(Ts... inputs) {
                                       ::testing::Matcher<const Node*> node);
 
 // Matches the first output of a node that matches `node`.
-::testing::Matcher<impl::OutEdge> Out(::testing::Matcher<const Node*> node) {
+inline ::testing::Matcher<impl::OutEdge> Out(
+    ::testing::Matcher<const Node*> node) {
   return Out(0, node);
 }
 
@@ -224,7 +236,7 @@ template <typename... Ts>
   return impl::NodeWith(array);
 }
 
-::testing::Matcher<const Node*> Const(
+::testing::Matcher<impl::OutEdge> Const(
     const ::tensorflow::Input::Initializer& val);
 }  // namespace matchers
 

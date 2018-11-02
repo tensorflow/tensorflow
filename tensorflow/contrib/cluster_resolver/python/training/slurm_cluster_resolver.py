@@ -190,5 +190,7 @@ class SlurmClusterResolver(ClusterResolver):
     """
     return self._job_name, self._task_index
 
-  def master(self):
+  def master(self, task_type=None, task_index=None):
+    if task_type and task_index:
+      return self.cluster_spec().task_address(task_type, task_index)
     return self._cluster_allocation[str(self._job_name)][self._task_index]

@@ -18,6 +18,7 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.core.framework import tensor_shape_pb2
+from tensorflow.python import tf2
 from tensorflow.python.framework import dtypes
 from tensorflow.python.util import compat
 from tensorflow.python.util.tf_export import tf_export
@@ -1157,7 +1158,10 @@ class TensorShapeV2(TensorShapeV1):
     return _TENSORSHAPE_V2_OVERRIDE
 
 
-TensorShape = TensorShapeV1
+if tf2.enabled():
+  TensorShape = TensorShapeV2
+else:
+  TensorShape = TensorShapeV1
 
 
 def scalar():

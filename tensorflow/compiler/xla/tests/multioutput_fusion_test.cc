@@ -192,7 +192,7 @@ XLA_TEST_F(MultiOutputFusionTest, DiffentTypesFusion) { RunTest1D(true, 8); }
 
 XLA_TEST_F(MultiOutputFusionTest, FusionNodeIsRoot) {
   const char* testcase = R"(
-    HloModule m
+    HloModule m, is_scheduled=true
 
     fused_computation {
       x.param_0 = (((s32[]), f32[]), (f32[], s32[])) parameter(0)
@@ -224,7 +224,7 @@ XLA_TEST_F(MultiOutputFusionTest, FusionNodeIsRoot) {
 
 XLA_TEST_F(MultiOutputFusionTest, MultiOutputLoopFusion) {
   const char* testcase = R"(
-    HloModule m
+    HloModule m, is_scheduled=true
 
     fused_computation {
       p = f32[4] parameter(0)
@@ -251,7 +251,7 @@ XLA_TEST_F(MultiOutputFusionTest, MultiOutputLoopFusion) {
 
 XLA_TEST_F(MultiOutputFusionTest, MultiOutputLoopFeedingMap) {
   const char* testcase = R"(
-    HloModule m
+    HloModule m, is_scheduled=true
 
     fused_computation {
       p = f32[] parameter(0)
@@ -282,7 +282,7 @@ XLA_TEST_F(MultiOutputFusionTest, MultiOutputLoopFeedingMap) {
 }
 
 const char* const kScalarOps = R"(
-    HloModule m
+    HloModule m, is_scheduled=true
 
     Add {
       lhsadd = f32[] parameter(0)
