@@ -26,7 +26,8 @@ import time
 
 def create_ipu_config(profiling=False, use_poplar_text_report=False,
                       report_every_nth_execution=0,
-                      always_rearrange_copies_on_the_host=False):
+                      always_rearrange_copies_on_the_host=False,
+                      disable_graph_convolution_caching=False):
   """Create an empty IPU session configuration structure.
 
   Args:
@@ -46,6 +47,15 @@ def create_ipu_config(profiling=False, use_poplar_text_report=False,
                                                 this option the rearrangment
                                                 will be perfomed on the host at
                                                 the expense of latency.
+    :param disable_graph_convolution_caching: By default, the convolution  
+                                              opeartion searches for an 
+                                              equivalent cached operation, and
+                                              uses this  instead of creating a  
+                                              new convolution. Setting this flag 
+                                              forces the creation of a new 
+                                              convoltuion. This can improve 
+                                              runtime at the expense of graph
+                                              size.
 
   Returns:
 
@@ -64,6 +74,8 @@ def create_ipu_config(profiling=False, use_poplar_text_report=False,
 
   opts.always_rearrange_copies_on_the_host = always_rearrange_copies_on_the_host
 
+  opts.disable_graph_convolution_caching = disable_graph_convolution_caching
+  
   return opts
 
 def set_compilation_options(opts, compilation_options=None):

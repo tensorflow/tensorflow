@@ -258,6 +258,10 @@ class PoplarExecutor : public se::internal::StreamExecutorInterface {
     return current_config_.always_rearrange_copies_on_the_host();
   }
 
+  bool DisableGraphConvCaching() const {
+    return current_config_.disable_graph_convolution_caching();
+  }
+
   bool ShardingEnabled() const;
 
   poplar::OptionFlags GetConvolutionOptions() const { return conv_options_; }

@@ -229,6 +229,9 @@ message IPUOptions {
 
   // Options controlling the configuration of convolutions
   repeated PoplarOptionFlag convolution_options = 7;
+
+  // Option to disable caching of sub-graphs containing convolutions
+  bool disable_graph_convolution_caching = 8;
 };
 
 // Options passed to the graph optimizer

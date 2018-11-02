@@ -128,7 +128,8 @@ poplar::Tensor DoCachedConvolution(
 
   poplar::OptionFlags opts = res.default_conv_options;
   if (conv_type == ConvClassificationType::BACKPROP_INPUT &&
-      it != res.conv_graph_cache.end()) {
+      it != res.conv_graph_cache.end() &&
+      !res.disable_graph_convolution_caching) {
     // We found a matching convolution in the forward pass. Transform the
     // weights prior to the convolution so we can reuse the existing
     // graph.
@@ -148,7 +149,8 @@ poplar::Tensor DoCachedConvolution(
     auto key = GetConvolutionCacheKey(poplin::canonicalizeParams(params),
                                       conv_type, transpose_and_flip_weights);
     auto it = res.conv_graph_cache.find(key);
-    if (it != res.conv_graph_cache.end()) {
+    if (it != res.conv_graph_cache.end() &&
+        !res.disable_graph_convolution_caching) {
       auto& f = it->second;
       return f(args, prog);
     }
@@ -199,7 +201,8 @@ Status DoCachedConvolutionWithScaledAdd(
 
   auto key = GetWeightUpdateConvolutionCacheKey(params, conv_type, lr);
   auto it = res.wu_graph_cache.find(key);
-  if (it != res.wu_graph_cache.end()) {
+  if (it != res.wu_graph_cache.end() &&
+      !res.disable_graph_convolution_caching) {
     auto& f = it->second;
     f(args, prog);
     return Status::OK();

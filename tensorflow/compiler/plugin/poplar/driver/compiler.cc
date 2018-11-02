@@ -263,6 +263,7 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::RunBackend(
 
   CompilerResources resources(dev, seed + 1, poplarExecutor->GetRandomGenMode(),
                               poplarExecutor->GetConvolutionOptions(),
+                              poplarExecutor->DisableGraphConvCaching(),
                               module.get());
 
   resources.main_graph.addCodelets(GetPathToGraphProgFile("tf.gp"));
