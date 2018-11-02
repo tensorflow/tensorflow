@@ -50,13 +50,13 @@ class KernelAndDevice {
   //
   // The provided FunctionLibraryRuntime MUST outlive all calls to
   // Run() on the returned KernelAndDevice.
-  static Status Init(const NodeDef& ndef, FunctionLibraryRuntime* flib,
+  static Status Init(const NodeDef& ndef, FunctionLibraryRuntime* flr,
                      std::function<void(std::function<void()>)>* runner,
                      KernelAndDevice* out);
 
   KernelAndDevice(tensorflow::Rendezvous* rendez, bool log_memory)
       : device_(nullptr),
-        flib_(nullptr),
+        flr_(nullptr),
         rendez_(rendez),
         log_memory_(log_memory) {}
 
@@ -73,7 +73,6 @@ class KernelAndDevice {
 
   Device* device() const { return device_; }
 
-  DataTypeVector* mutable_output_dtypes() { return &output_dtypes_; }
   const DataTypeVector& output_dtypes() { return output_dtypes_; }
 
  private:
@@ -84,7 +83,7 @@ class KernelAndDevice {
   CancellationManager cm_;
   std::unique_ptr<OpKernel> kernel_;
   Device* device_;
-  FunctionLibraryRuntime* flib_;
+  FunctionLibraryRuntime* flr_;
   checkpoint::TensorSliceReaderCacheWrapper slice_reader_cache_;
   Rendezvous* rendez_;
   DataTypeVector output_dtypes_;
