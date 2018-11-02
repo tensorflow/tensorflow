@@ -3614,8 +3614,7 @@ def _case_verify_and_canonicalize_args(pred_fn_pairs, exclusive, name,
     if context.executing_eagerly():
       # No name to sort on in eager mode. Use dictionary traversal order, 
       # which is nondeterministic in versions of Python < 3.6
-      if not exclusive and not isinstance(pred_fn_pairs, 
-                                          collections.OrderedDict):
+      if not exclusive:
         raise ValueError("Unordered dictionaries are not supported for the "
                          "`pred_fn_pairs` argument when `exclusive=False` and "
                          "eager mode is enabled.")
