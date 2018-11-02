@@ -294,6 +294,7 @@ TF_CALL_complex128(DECLARE_FOR_N);
 TF_CALL_bfloat16(DECLARE_FOR_N);
 TF_CALL_bool(DECLARE_FOR_N);
 TF_CALL_int8(DECLARE_FOR_N);
+TF_CALL_int64(DECLARE_FOR_N);
 DECLARE_FOR_N(int32);
 
 #undef DECLARE_FOR_N
@@ -314,6 +315,7 @@ TF_CALL_complex128(REGISTER_GPU);
 TF_CALL_bfloat16(REGISTER_GPU);
 TF_CALL_bool(REGISTER_GPU);
 TF_CALL_int8(REGISTER_GPU);
+TF_CALL_int64(REGISTER_GPU);
 
 // A special GPU kernel for int32.
 // TODO(b/25387198): Also enable int32 in device memory. This kernel
