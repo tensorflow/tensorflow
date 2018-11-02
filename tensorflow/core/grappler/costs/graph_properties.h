@@ -123,8 +123,10 @@ class GraphProperties {
 
   // Data members
   const GrapplerItem& item_;
-  std::map<string, std::vector<OpInfo::TensorProperties>> input_properties_;
-  std::map<string, std::vector<OpInfo::TensorProperties>> output_properties_;
+  std::unordered_map<string, std::vector<OpInfo::TensorProperties>>
+      input_properties_;
+  std::unordered_map<string, std::vector<OpInfo::TensorProperties>>
+      output_properties_;
   const std::vector<OpInfo::TensorProperties> missing_properties_;
 };
 
