@@ -509,6 +509,7 @@ def MonitoredTrainingSession(master='',  # pylint: disable=invalid-name
 
 
 @tf_export('train.SessionCreator')
+@six.add_metaclass(abc.ABCMeta)
 class SessionCreator(object):
   """A factory for tf.Session."""
 

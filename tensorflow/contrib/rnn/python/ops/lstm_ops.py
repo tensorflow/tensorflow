@@ -19,6 +19,8 @@ from __future__ import print_function
 
 import abc
 
+import six
+
 from tensorflow.contrib.rnn.ops import gen_lstm_ops
 from tensorflow.contrib.util import loader
 from tensorflow.python.framework import dtypes
@@ -439,6 +441,7 @@ class LSTMBlockCell(LayerRNNCell):
     return h, new_state
 
 
+@six.add_metaclass(abc.ABCMeta)
 class LSTMBlockWrapper(base_layer.Layer):
   """This is a helper class that provides housekeeping for LSTM cells.
 

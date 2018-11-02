@@ -19,6 +19,8 @@ from __future__ import print_function
 
 import abc
 
+import six
+
 from tensorflow.python.data.util import structure
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -26,6 +28,7 @@ from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import gen_dataset_ops
 
 
+@six.add_metaclass(abc.ABCMeta)
 class Optional(object):
   """Wraps a nested structure of tensors that may/may not be present at runtime.
 
