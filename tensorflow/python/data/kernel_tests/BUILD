@@ -164,6 +164,7 @@ tf_py_test(
     srcs = ["list_files_dataset_op_test.py"],
     additional_deps = [
         ":test_base",
+        "//third_party/py/numpy",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:dtypes",
