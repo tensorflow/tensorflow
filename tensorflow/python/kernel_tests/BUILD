@@ -2579,6 +2579,8 @@ cuda_py_test(
         "//tensorflow/python:nn_grad",
         "//tensorflow/python:nn_ops",
     ],
+    # TODO(b/118842098): Re-enable this test in Kokoro.
+    tags = ["no_oss"],
 )
 
 tf_py_test(
