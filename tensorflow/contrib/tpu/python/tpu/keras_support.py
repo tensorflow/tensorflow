@@ -543,6 +543,7 @@ class TPUInfeedInstance(object):
     pass
 
 
+@six.add_metaclass(abc.ABCMeta)
 class TPUInfeedManager(object):
   """TPUInfeedManager manages the data infeeding of data to a TPU computation.
 

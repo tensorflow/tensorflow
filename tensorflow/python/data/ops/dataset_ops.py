@@ -52,6 +52,7 @@ from tensorflow.python.util.tf_export import tf_export
 
 
 @tf_export("data.Dataset")
+@six.add_metaclass(abc.ABCMeta)
 class Dataset(object):
   """Represents a potentially large set of elements.
 
@@ -59,8 +60,6 @@ class Dataset(object):
   collection of elements (nested structures of tensors) and a "logical
   plan" of transformations that act on those elements.
   """
-  __metaclass__ = abc.ABCMeta
-
   def __init__(self):
     pass
 

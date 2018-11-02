@@ -1485,6 +1485,7 @@ def ZerosLikeOutsideLoop(op, index):
       return array_ops.zeros_like(val, optimize=False)
 
 
+@six.add_metaclass(abc.ABCMeta)
 class ControlFlowContext(object):
   """The base class for control flow context.
 
@@ -3800,6 +3801,12 @@ class XLAControlFlowContext(ControlFlowContext):
   def __init__(self):
     super(XLAControlFlowContext, self).__init__()
     self._name = "XLAControlFlowContext"
+
+  def to_control_flow_context_def(self, context_def, export_scope=None):
+    # pylint: disable=useless-super-delegation
+    # NOTE(slebedev): the method is required by `ControlFlowContext`.
+    super(XLAControlFlowContext, self).to_control_flow_context_def(
+        context_def, export_scope)
 
   def IsXLAContext(self):
     return True
