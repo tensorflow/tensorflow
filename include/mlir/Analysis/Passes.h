@@ -32,6 +32,9 @@ class FunctionPass;
 /// Creates a pass to check memref accesses in an MLFunction.
 FunctionPass *createMemRefBoundCheckPass();
 
+/// Creates a pass to check memref access dependences in an MLFunction.
+FunctionPass *createMemRefDependenceCheckPass();
+
 } // end namespace mlir
 
 #endif // MLIR_ANALYSIS_PASSES_H

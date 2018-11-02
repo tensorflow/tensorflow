@@ -72,6 +72,7 @@ enum Passes {
   ConstantFold,
   ConvertToCFG,
   MemRefBoundCheck,
+  MemRefDependenceCheck,
   LoopFusion,
   LoopUnroll,
   LoopUnrollAndJam,
@@ -95,6 +96,8 @@ static cl::list<Passes> passList(
                    "Convert all ML functions in the module to CFG ones"),
         clEnumValN(MemRefBoundCheck, "memref-bound-check",
                    "Convert all ML functions in the module to CFG ones"),
+        clEnumValN(MemRefDependenceCheck, "memref-dependence-check",
+                   "Checks dependences between all pairs of memref accesses."),
         clEnumValN(LoopFusion, "loop-fusion", "Fuse loop nests"),
         clEnumValN(LoopUnroll, "loop-unroll", "Unroll loops"),
         clEnumValN(LoopUnrollAndJam, "loop-unroll-jam", "Unroll and jam loops"),
@@ -199,6 +202,9 @@ static OptResult performActions(SourceMgr &sourceMgr, MLIRContext *context) {
       break;
     case MemRefBoundCheck:
       pass = createMemRefBoundCheckPass();
+      break;
+    case MemRefDependenceCheck:
+      pass = createMemRefDependenceCheckPass();
       break;
     case LoopFusion:
       pass = createLoopFusionPass();

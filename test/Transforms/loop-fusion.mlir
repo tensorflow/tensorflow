@@ -5,7 +5,6 @@
 // CHECK: [[MAP2:#map[0-9]+]] = (d0) -> (d0 * 2)
 // CHECK: [[MAP3:#map[0-9]+]] = (d0) -> (d0 * 2 + 1)
 // CHECK: [[MAP4:#map[0-9]+]] = (d0, d1)[s0, s1] -> (d0 * 2 - d1 - s0 * 7 + 3, d0 * 9 + d1 * 3 + s1 * 13 - 10)
-// CHECK: [[MAP5:#map[0-9]+]] = (d0, d1)[s0, s1] -> (d0 * 2 - 1, d1 * 3 + s0 * 2 + s1 * 3)
 // CHECK: [[MAP6:#map[0-9]+]] = (d0, d1)[s0, s1] -> (d0 * 2 - 1, d1 * 3 + s0 + s1 * 3)
 
 // The dependence check for this test builds the following set of constraints,
@@ -88,56 +87,7 @@ mlfunc @loop_fusion_1d_should_fuse_loops() {
   return
 }
 
-// The dependence check for this test builds the following set of
-// equality constraints (one for each memref dimension). Note: inequality
-// constraints for loop bounds not shown.
-//
-//   i0  i1  i2  i3  s0  s1  s2  c
-//   2  -1  -2   0  -7   0   0   4  = 0
-//   9   3   0  -3   0   11 -3  -10 = 0
-//
-// CHECK-LABEL: mlfunc @loop_fusion_2d_should_not_fuse_loops() {
-mlfunc @loop_fusion_2d_should_not_fuse_loops() {
-  %m = alloc() : memref<10x10xf32>
-
-  %s0 = constant 7 : index
-  %s1 = constant 11 : index
-  %s2 = constant 13 : index
-  // Check that the first loop remains unfused.
-  // CHECK:      for %i0 = 0 to 100 { 
-  // CHECK-NEXT:   for %i1 = 0 to 50 {
-  // CHECK-NEXT:     [[I0:%[0-9]+]] = affine_apply [[MAP4]](%i0, %i1)[%c7, %c11]
-  // CHECK:          store {{.*}}, %{{[0-9]+}}{{\[}}[[I0]]#0, [[I0]]#1{{\]}}
-  // CHECK-NEXT:   }
-  // CHECK-NEXT: }
-  for %i0 = 0 to 100 {
-    for %i1 = 0 to 50 {
-      %a0 = affine_apply
-        (d0, d1)[s0, s1] ->
-	  (d0 * 2 -d1 + -7 * s0 + 3 , d0 * 9 + d1 * 3 + 13 * s1 - 10)
-	    (%i0, %i1)[%s0, %s1]
-      %c1 = constant 1.0 : f32
-      store %c1, %m[%a0#0, %a0#1] : memref<10x10xf32>
-    }
-  }
-  // Check that the second loop remains unfused.
-  // CHECK:      for %i2 = 0 to 100 {
-  // CHECK-NEXT:   for %i3 = 0 to 50 {  
-  // CHECK-NEXT:     [[I1:%[0-9]+]] = affine_apply [[MAP5]](%i2, %i3)[%c11, %c13]
-  // CHECK-NEXT:   load %{{[0-9]+}}{{\[}}[[I1]]#0, [[I1]]#1{{\]}}
-  // CHECK-NEXT:   }
-  // CHECK-NEXT: }
-  for %i2 = 0 to 100 {
-    for %i3 = 0 to 50 {
-      %a1 = affine_apply
-        (d0, d1)[s0, s1] ->
-	  (d0 * 2 - 1, d1 * 3 + s0 * 2 + s1 * 3) (%i2, %i3)[%s1, %s2]
-      %v0 = load %m[%a1#0, %a1#1] : memref<10x10xf32>
-    }
-  }
-
-  return
-}
+// TODO(andydavis) Add LoopFusion tests based on fusion policy and cost model.
 
 // The dependence check for this test builds the following set of
 // equality constraints (one for each memref dimension). Note: inequality
