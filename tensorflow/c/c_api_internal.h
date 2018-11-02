@@ -26,9 +26,9 @@ limitations under the License.
 
 #ifndef __ANDROID__
 #include "tensorflow/core/framework/op_gen_lib.h"
+#include "tensorflow/core/distributed_runtime/server_lib.h"
 #endif
 #include "tensorflow/core/common_runtime/shape_refiner.h"
-#include "tensorflow/core/distributed_runtime/server_lib.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/graph/graph.h"
@@ -180,11 +180,13 @@ struct TF_ApiDefMap {
   tensorflow::mutex lock;
 };
 
+#ifndef __ANDROID__
 struct TF_Server {
   TF_Server(std::unique_ptr<tensorflow::ServerInterface> server);
 
   std::unique_ptr<tensorflow::ServerInterface> server;
 };
+#endif
 
 namespace tensorflow {
 

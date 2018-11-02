@@ -23,7 +23,7 @@ package org.tensorflow;
  * training. A server belongs to a cluster (specified by a
  * {@code ClusterSpec}), and corresponds to a particular task in a named job.
  * The server can communicate with any other server in the same cluster.
- * The server will not serve any requests until {@link #start()} is invoked. 
+ * The server will not serve any requests until {@link #start()} is invoked.
  * The server will stop serving requests once {@link #stop()} or {@link #close()} is invoked.
  * Be aware that {@link #close()} method stops the server if it is running.
  *
@@ -60,12 +60,12 @@ package org.tensorflow;
  * }</pre>
  */
 public final class Server implements AutoCloseable {
-
-  /** 
-   * Constructs a new instance of server. 
+  /**
+   * Constructs a new instance of server.
    *
    * @param serverDef Server definition specified as a serialized
-   *        <a href="https://github.com/tensorflow/tensorflow/blob/master/tensorflow/core/protobuf/tensorflow_server.proto">ServerDef</a>
+   *        <a
+   * href="https://github.com/tensorflow/tensorflow/blob/master/tensorflow/core/protobuf/tensorflow_server.proto">ServerDef</a>
    *        protocol buffer.
    */
   public Server(byte[] serverDef) {
@@ -85,7 +85,7 @@ public final class Server implements AutoCloseable {
   /** Blocks until the server has been successfully stopped. */
   public void join() {
     long handle = 0;
-    synchronized(this) {
+    synchronized (this) {
       handle = nativeHandle;
       if (handle != 0) {
         numJoining++;
@@ -94,10 +94,10 @@ public final class Server implements AutoCloseable {
     try {
       join(handle);
     } finally {
-      synchronized(this) {
+      synchronized (this) {
         if (handle != 0) {
           numJoining--;
-        } 
+        }
         notifyAll();
       }
     }
