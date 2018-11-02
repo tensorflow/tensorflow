@@ -525,7 +525,6 @@ Predicate* PredicateFactory::MakeAndOrImpl(
                                    op->GetOperands().begin(),
                                    op->GetOperands().end());
     } else {
-      std::vector<Predicate*> sub_ops_intersection;
       common_inner_operands.clear();
       absl::c_copy_if(op->GetOperands(),
                       std::back_inserter(common_inner_operands),

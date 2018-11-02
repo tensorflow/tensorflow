@@ -505,7 +505,7 @@ TEST_F(MultiOutputFusionTest,
       p1.1 = f16[2,2,2]{2,1,0} parameter(1)
       c0 = f16[] constant(0)
       broadcast = f16[2,2,2]{2,1,0} broadcast(f16[] c0), dimensions={}
-      greater-than = pred[2,2,2]{2,1,0} greater-than(f32[2,2,2]{2,1,0} p1.1, f32[2,2,2]{2,1,0} broadcast)
+      greater-than = pred[2,2,2]{2,1,0} greater-than(f16[2,2,2]{2,1,0} p1.1, f16[2,2,2]{2,1,0} broadcast)
       p0.1 = f16[2,2,2]{2,1,0} parameter(0)
       ROOT select = f16[2,2,2]{2,1,0} select(pred[2,2,2]{2,1,0} greater-than, f16[2,2,2]{2,1,0} p0.1, f16[2,2,2]{2,1,0} broadcast)
     }

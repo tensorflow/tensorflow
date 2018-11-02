@@ -20,9 +20,12 @@ from __future__ import print_function
 
 import abc
 
+import six
+
 from tensorflow.python.training.server_lib import ClusterSpec
 
 
+@six.add_metaclass(abc.ABCMeta)
 class ClusterResolver(object):
   """Abstract class for all implementations of ClusterResolvers.
 

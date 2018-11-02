@@ -22,6 +22,8 @@ from __future__ import print_function
 
 import abc
 
+import six
+
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
@@ -84,6 +86,7 @@ def _var_key(var):
   return var._unique_id  # pylint: disable=protected-access
 
 
+@six.add_metaclass(abc.ABCMeta)
 class _OptimizableVariable(object):
   """Interface for abstracting over variables in the optimizers."""
 

@@ -19,9 +19,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from abc import ABCMeta
-from abc import abstractmethod
-
+import abc
 import functools
 import sys
 import types
@@ -269,6 +267,7 @@ def squeeze_or_expand_dimensions(y_pred, y_true, sample_weight):
   return y_pred, y_true, sample_weight
 
 
+@six.add_metaclass(abc.ABCMeta)
 class Metric(Layer):
   """Encapsulates metric logic and state.
 
@@ -351,7 +350,6 @@ class Metric(Layer):
       return array_ops.identity(self.true_positives)
   ```
   """
-  __metaclass__ = ABCMeta
 
   def __init__(self, name=None, dtype=None):
     super(Metric, self).__init__(name=name, dtype=dtype)
@@ -403,7 +401,7 @@ class Metric(Layer):
     for v in self.variables:
       K.set_value(v, 0)
 
-  @abstractmethod
+  @abc.abstractmethod
   def update_state(self, *args, **kwargs):
     """Accumulates statistics for the metric.
 
@@ -424,7 +422,7 @@ class Metric(Layer):
     """
     NotImplementedError('Must be implemented in subclasses.')
 
-  @abstractmethod
+  @abc.abstractmethod
   def result(self):
     """Computes and returns the metric value tensor.
 

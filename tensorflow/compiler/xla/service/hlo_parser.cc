@@ -418,6 +418,18 @@ std::pair<HloInstruction*, HloParser::LocTy>* HloParser::FindInstruction(
     }
     return create_missing_instruction_(name, *shape);
   }
+
+  if (instr != nullptr && shape.has_value() &&
+      !ShapeUtil::Compatible(instr->first->shape(), shape.value())) {
+    Error(
+        lexer_.GetLoc(),
+        StrCat("The declared operand shape ",
+               ShapeUtil::HumanStringWithLayout(shape.value()),
+               " is not compatible with the shape of the operand instruction ",
+               ShapeUtil::HumanStringWithLayout(instr->first->shape()), "."));
+    return nullptr;
+  }
+
   return instr;
 }
 
