@@ -27,6 +27,7 @@ limitations under the License.
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/graph/tensor_id.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/core/threadpool.h"
@@ -102,6 +103,9 @@ class SetVector {
 // True iff 'name' refers to a control inputs, i.e. a node name prefixed with
 // the ^ character.
 bool IsControlInput(const string& name);
+
+// True iff tensor index refers to a control input.
+bool IsControlInput(const TensorId& tensor_id);
 
 // True iff 'name1' and 'name2' refer to the same input.
 bool IsSameInput(const string& name1, const string& name2);

@@ -525,27 +525,26 @@ class SymbolicShapeRefiner {
             "supported.");
       }
       NodeDef* fun_node = gv.GetNode(fun_input.input_name);
-      const string& input = function_node->input(i);
-      const string& node_name = NodeName(input);
+      const TensorId input_tensor = ParseTensorName(function_node->input(i));
 
-      if (IsControlInput(input)) {
+      if (IsControlInput(input_tensor)) {
         return errors::FailedPrecondition(
             "Function inputs should not contain control nodes.");
       }
 
-      const NodeDef* input_node = graph_.GetNode(node_name);
+      const NodeDef* input_node = graph_.GetNode(input_tensor.node());
       if (input_node == nullptr) {
-        return errors::FailedPrecondition(node_name,
+        return errors::FailedPrecondition(input_tensor.node(),
                                           " was not found in the graph.");
       }
 
       InferenceContext* input_inference_context = GetContext(input_node);
       if (input_inference_context == nullptr) {
         return errors::FailedPrecondition(
-            "Inference context has not been created for ", node_name);
+            "Inference context has not been created for ", input_tensor.node());
       }
 
-      int output_port_num = NodePosition(input);
+      int output_port_num = input_tensor.index();
       AttrValue attr_output_shape;
       TensorShapeProto proto;
       const auto& handle = input_inference_context->output(output_port_num);
@@ -1921,12 +1920,12 @@ Status GraphProperties::InferFromCostGraph(const CostGraphDef& cost_graph) {
   return Status::OK();
 }
 
-bool GraphProperties::HasInputProperties(const string& name) const {
-  return input_properties_.find(name) != input_properties_.end();
+bool GraphProperties::HasInputProperties(const string& node_name) const {
+  return input_properties_.find(node_name) != input_properties_.end();
 }
 
-bool GraphProperties::HasOutputProperties(const string& name) const {
-  return output_properties_.find(name) != output_properties_.end();
+bool GraphProperties::HasOutputProperties(const string& node_name) const {
+  return output_properties_.find(node_name) != output_properties_.end();
 }
 
 const std::vector<OpInfo::TensorProperties>&

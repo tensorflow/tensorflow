@@ -82,13 +82,12 @@ void MutableGraphView::DeleteNodes(const std::set<string>& nodes_to_delete) {
 
 void MutableGraphView::RemoveFanouts(NodeDef* node) {
   for (int i = 0; i < node->input_size(); ++i) {
-    OutputPort fanin;
-    string fanin_name = ParseNodeName(node->input(i), &fanin.port_id);
-    fanin.node = (*mutable_nodes())[fanin_name];
+    TensorId tensor_id = ParseTensorName(node->input(i));
+    OutputPort fanin((*mutable_nodes())[tensor_id.node()], tensor_id.index());
 
     InputPort input;
     input.node = node;
-    if (fanin.port_id < 0)
+    if (tensor_id.index() < 0)
       input.port_id = -1;
     else
       input.port_id = i;
