@@ -37,8 +37,7 @@ NodeDef MakeLatencyNode(const NodeDef& node, MutableGraphView* graph) {
   NodeDef new_node;
   new_node.set_op(kInsertOpName);
   graph_utils::SetUniqueGraphNodeName(
-      strings::StrCat(kInsertOpName, "_generated"), graph->GetGraph(),
-      &new_node);
+      strings::StrCat(kInsertOpName, "_generated"), graph->graph(), &new_node);
   // Set the input of LatencyDataset node as `node`
   new_node.add_input(node.name());
 
@@ -81,7 +80,8 @@ Status LatencyAllEdges::Optimize(Cluster* cluster, const GrapplerItem& item,
       // node corresponds to a `Dataset` op.
       continue;
     }
-    GraphView::OutputPort output_port = graph.GetOutputPort(node.name(), 0);
+    MutableGraphView::OutputPort output_port =
+        graph.GetOutputPort(node.name(), 0);
     auto fanout = graph.GetFanout(output_port);
     if (fanout.size() > 1) {
       LOG(WARNING) << node.name() << " has fanout size " << fanout.size();

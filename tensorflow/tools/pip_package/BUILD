@@ -226,15 +226,15 @@ sh_binary(
     data = select({
         "//tensorflow:windows": [
             ":simple_console_for_windows",
-            "//tensorflow/contrib/lite/python:interpreter_test_data",
-            "//tensorflow/contrib/lite/python:tflite_convert",
-            "//tensorflow/contrib/lite/toco/python:toco_from_protos",
+            "//tensorflow/lite/python:interpreter_test_data",
+            "//tensorflow/lite/python:tflite_convert",
+            "//tensorflow/lite/toco/python:toco_from_protos",
         ],
         "//conditions:default": COMMON_PIP_DEPS + [
             ":simple_console",
-            "//tensorflow/contrib/lite/python:interpreter_test_data",
-            "//tensorflow/contrib/lite/python:tflite_convert",
-            "//tensorflow/contrib/lite/toco/python:toco_from_protos",
+            "//tensorflow/lite/python:interpreter_test_data",
+            "//tensorflow/lite/python:tflite_convert",
+            "//tensorflow/lite/toco/python:toco_from_protos",
         ],
     }) + if_mkl_ml(["//third_party/mkl:intel_binary_blob"]),
 )

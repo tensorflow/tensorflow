@@ -532,7 +532,7 @@ class ParameterServerStrategyWithChiefTest(ParameterServerStrategyTestBase,
         v, = tape.watched_variables()
         w = distribution.value_container(v)
         self.assertIs(values.AggregatingVariable, type(w))
-      distribution.call_for_each_tower(f)
+      distribution.call_for_each_replica(f)
 
 
 if __name__ == '__main__':

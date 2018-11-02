@@ -39,8 +39,7 @@ NodeDef MakeFusedNode(const NodeDef& parent_map_node, const NodeDef& map_node,
                       const FunctionDef& fused_function,
                       MutableGraphView* graph) {
   NodeDef fused_node;
-  graph_utils::SetUniqueGraphNodeName("fused_map", graph->GetGraph(),
-                                      &fused_node);
+  graph_utils::SetUniqueGraphNodeName("fused_map", graph->graph(), &fused_node);
   fused_node.set_op("MapDataset");
   fused_node.add_input(parent_map_node.input(0));
 

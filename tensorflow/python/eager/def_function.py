@@ -20,6 +20,7 @@ from __future__ import division
 from __future__ import print_function
 
 import collections
+import functools
 import weakref
 
 from tensorflow.python.eager import context
@@ -30,7 +31,6 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.training.checkpointable import base as checkpointable
-from tensorflow.python.util import nest
 from tensorflow.python.util import tf_decorator
 
 
@@ -186,10 +186,10 @@ class UnliftedInitializerVariable(resource_variable_ops.ResourceVariable):
       with ops.init_scope():
         shared_name = ops._name_from_scope_name(name)
         shared_name = "%s_%d" % (shared_name, ops.uid())
-      # Use attr_scope and device(None) to simulate the behavior of
-      # colocate_with when the variable we want to colocate with doesn't
-      # yet exist.
-      initial_value = ops.convert_to_tensor(initial_value)
+      with ops.name_scope("Initializer"), ops.device(None):
+        initial_value = ops.convert_to_tensor(
+            initial_value() if init_from_fn else initial_value,
+            name="initial_value", dtype=dtype)
       with ops.init_scope():
         self._handle = resource_variable_ops.eager_safe_variable_handle(
             shape=initial_value.get_shape(),
@@ -197,10 +197,6 @@ class UnliftedInitializerVariable(resource_variable_ops.ResourceVariable):
             shared_name=shared_name,
             name=name,
             graph_mode=self._in_graph_mode)
-      with ops.name_scope("Initializer"), ops.device(None):
-        initial_value = ops.convert_to_tensor(
-            initial_value() if init_from_fn else initial_value,
-            name="initial_value", dtype=dtype)
       self._shape = initial_value.shape
       self._unique_id = shared_name
       self._handle_name = shared_name + ":0"
@@ -253,19 +249,6 @@ class UnliftedInitializerVariable(resource_variable_ops.ResourceVariable):
       self._handle_deleter = resource_variable_ops.EagerResourceDeleter(
           handle=self._handle, handle_device=self._handle.device)
     self._cached_shape_as_list = None
-
-
-# TODO(apassos) there should be an easier way to call a concrete defun.
-def _call_concrete(fn, args, kwargs):
-  """Calls the given concrete function with only the tensor arguments."""
-
-  def inner():
-    # TODO(apassos) figure out what to do with kwargs and concrete functions.
-    return fn(*[t for t in nest.flatten((args, kwargs))
-                if isinstance(
-                    t, (ops.Tensor, resource_variable_ops.ResourceVariable))])
-
-  return inner
 
 
 class PolymorphicFunction(object):
@@ -342,8 +325,8 @@ class PolymorphicFunction(object):
     self._stateful_fn._name = self._name  # pylint: disable=protected-access
 
     # Force the definition of the function for these arguments
-    self._concrete_stateful_fn = self._stateful_fn.get_concrete_function(
-        *args, **kwds)
+    self._concrete_stateful_fn = (
+        self._stateful_fn._get_concrete_function_internal(*args, **kwds))  # pylint: disable=protected-access
 
     def invalid_creator_scope(*unused_args, **unused_kwds):
       """Disables variable creation."""
@@ -374,8 +357,7 @@ class PolymorphicFunction(object):
 
     if not self._created_variables:
       # If we did not create any variables the trace we have is good enough.
-      return _call_concrete(
-          self._concrete_stateful_fn, canon_args, canon_kwds)()
+      return self._concrete_stateful_fn._filtered_call(canon_args, canon_kwds)  # pylint: disable=protected-access
 
     def fn_with_cond(*inner_args, **inner_kwds):
       """Conditionally runs initialization if it's needed."""
@@ -395,7 +377,8 @@ class PolymorphicFunction(object):
       return control_flow_ops.cond(
           condition,
           lambda: self._stateless_fn(*inner_args, **inner_kwds),
-          _call_concrete(self._concrete_stateful_fn, inner_args, inner_kwds))
+          functools.partial(self._concrete_stateful_fn._filtered_call,  # pylint: disable=protected-access
+                            inner_args, inner_kwds))
 
     return function_lib.defun(fn_with_cond)(*canon_args, **canon_kwds)
 
@@ -407,12 +390,75 @@ class PolymorphicFunction(object):
   def get_concrete_function(self, *args, **kwargs):
     """Returns a `Function` object specialized to inputs and execution context.
 
-    `args` and `kwargs` are ignored if this `PolymorphicFunction` was created
-    with an `input_signature`.
+    If this `PolymorphicFunction` was created with an `input_signature`, `args`
+    and `kwargs` may be omitted. With an input signature there is only one
+    concrete function associated with this `PolymorphicFunction`.
+
+    If there is no fixed `input_signature` associated with this
+    `PolymorphicFunction`, positional and keyword arguments to
+    `get_concrete_function` follow the same rules as input signature
+    specification, with `tf.TensorSpec` objects describing `tf.Tensor`s which
+    will be passed to the concrete function.
+
+    Each `tf.Tensor` argument to the concrete function must have a unique name,
+    either because it is the only one associated with a named argument of the
+    Python function or because an explicit `name=` was passed to its
+    `tf.TensorSpec` object. These names become the argument names for the
+    concrete function.
+
+    Arguments to the concrete function may always be specified as keyword
+    arguments, naming the Tensor input. Positional arguments may be used instead
+    when each preceding argument to the Python function is a Tensor.
+
+    ```python
+    @tf.function
+    def f(x):
+      return x
+
+    f_concrete = f.get_concrete_function(tf.TensorSpec([], tf.float64))
+    f_concrete(tf.constant(1.))
+    f_concrete(x=tf.constant(1.))
+    ```
+
+    Nested structures containing Tensors may be specified when retrieving
+    concrete functions. Structures with multiple Tensors are expanded into
+    multiple arguments of the concrete function. Since multiple concrete
+    function arguments are associated with one argument to the original
+    function, these Tensors must be named explicitly. Tensors in nested
+    structures may not be passed using positional arguments when calling the
+    concrete function.
+
+    ```python
+    f_concrete2 = f.get_concrete_function(
+        (tf.TensorSpec(None, tf.float64, name="first"),
+         tf.TensorSpec([], tf.float32, name="second")))
+    # Keyword arguments are required when identifying Tensors in nested
+    # structures.
+    f_concrete2(first=tf.constant([1.]), second=tf.constant(0.))
+    ```
+
+    Functions with fixed input signatures have only one concrete function
+    associated with them, which can be retrieved without specifying any
+    arguments. As before Tensors must have unique names, either inferred from
+    the argument names in the original Python function or specified
+    explicitly.
+
+    ```python
+    @tf.function(input_signature=(tf.TensorSpec(None, tf.float32)))
+    def f_sig(y):
+      return y
+
+    f_sig_concrete = f.get_concrete_function()
+    f_sig_concrete(tf.constant(1.))
+    f_sig_concrete(y=tf.constant(1.))
+    ```
 
     Args:
       *args: inputs to specialize on.
       **kwargs: inputs to specialize on.
+
+    Returns:
+      A TensorFlow function which takes exactly one `tf.Tensor` per argument.
 
     Raises:
       ValueError: if this object has not yet been called on concrete values.

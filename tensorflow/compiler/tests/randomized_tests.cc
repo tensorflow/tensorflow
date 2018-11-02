@@ -45,6 +45,7 @@ limitations under the License.
 #include <random>
 #include <unordered_map>
 
+#include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
@@ -2684,6 +2685,37 @@ TEST_F(OpTest, Reverse) {
                                              .RandomInput(type, dims)
                                              .RandomInput(DT_BOOL, {rank})
                                              .Attr("T", type));
+  });
+}
+
+TEST_F(OpTest, ReverseSequence) {
+  Repeatedly([this]() {
+    std::vector<int64> dims = RandomDims(/*min_rank=*/2);
+    auto type = Choose<DataType>(kAllXlaTypes);
+    int64 rank = dims.size();
+
+    // Choose random batch and sequence dimensions.
+    std::vector<int> shuffled_dim_ids(rank);
+    absl::c_iota(shuffled_dim_ids, 0);
+    absl::c_shuffle(shuffled_dim_ids, generator());
+    shuffled_dim_ids.resize(2);
+    int batch_dim = shuffled_dim_ids[0];
+    int seq_dim = shuffled_dim_ids[1];
+
+    int batch_size = dims[batch_dim];
+    int max_seq_len = dims[seq_dim];
+    std::vector<int32> seq_lens(batch_size);
+    std::uniform_int_distribution<int32> d(0, max_seq_len);
+    absl::c_generate(seq_lens, [&]() { return d(generator()); });
+
+    return ExpectTfAndXlaOutputsAreClose(
+        OpTestBuilder("ReverseSequence")
+            .RandomInput(type, dims)
+            .Input(test::AsTensor<int32>(seq_lens))
+            .Attr("seq_dim", seq_dim)
+            .Attr("batch_dim", batch_dim)
+            .Attr("T", type)
+            .Attr("Tlen", DT_INT32));
   });
 }
 

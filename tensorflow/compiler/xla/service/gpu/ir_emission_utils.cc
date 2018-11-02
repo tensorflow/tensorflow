@@ -93,7 +93,8 @@ bool ImplementedAsGemm(const HloInstruction& hlo) {
 
   if (hlo.opcode() == HloOpcode::kFusion &&
       hlo.fusion_kind() == HloInstruction::FusionKind::kOutput &&
-      hlo.fused_expression_root()->opcode() == HloOpcode::kMultiply) {
+      (hlo.fused_expression_root()->opcode() == HloOpcode::kMultiply ||
+       hlo.fused_expression_root()->opcode() == HloOpcode::kAdd)) {
     // Try to find the dot inside the output fusion node.
     const HloInstruction* dot = hlo.fused_expression_root()->operand(0);
     if (dot->opcode() != HloOpcode::kDot) {

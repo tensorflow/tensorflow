@@ -99,8 +99,8 @@ Status ParseOneProfileOutputLine(
   //   %dot33 = f32[256,256]{1,0} dot(...)
   //                              ^^^
 
-  string match_opcode =
-      expect_hlo ? "%[^=]+= [^ ]+ ([^(]+)\\(.*" : "(\\[total\\])";
+  string match_opcode = expect_hlo ? "%[^=]+= [^ ]+ ([^(]+)\\(.*"
+                                   : "(\\[total\\])( \\[entry\\])?";
   string regexp_pattern = absl::StrCat(
       " +", match_cycles, separator, match_usecs, separator, match_flops,
       separator, match_trops, separator, match_bytes_per_sec, separator,
@@ -123,6 +123,10 @@ Status ParseOneProfileOutputLine(
   }
 
   return Status::OK();
+}
+
+bool IsExtraMetricProfileOutputLine(const string& line) {
+  return RE2::FullMatch(line, "Extra metric \\S+: \\d+");
 }
 
 // Returns void so that we can ASSERT.
@@ -210,14 +214,26 @@ XLA_TEST_F(HloProfileTest, ProfileSingleComputation) {
 
   absl::flat_hash_map<string, ParsedProfileOutputLine> parsed_profile_lines;
 
-  TF_ASSERT_OK(ParseOneProfileOutputLine(
-      profile_output_lines[1], /*expect_hlo=*/false, &parsed_profile_lines));
+  int line_no = 0;
 
-  TF_ASSERT_OK(ParseOneProfileOutputLine(
-      profile_output_lines[2], /*expect_hlo=*/true, &parsed_profile_lines));
+  // Skip extra metrics.
+  while (IsExtraMetricProfileOutputLine(profile_output_lines[line_no])) {
+    line_no++;
+  }
 
-  TF_ASSERT_OK(ParseOneProfileOutputLine(
-      profile_output_lines[3], /*expect_hlo=*/true, &parsed_profile_lines));
+  line_no++;  // Skip 'Execution profile for ....'
+
+  TF_ASSERT_OK(ParseOneProfileOutputLine(profile_output_lines[line_no++],
+                                         /*expect_hlo=*/false,
+                                         &parsed_profile_lines));
+
+  TF_ASSERT_OK(ParseOneProfileOutputLine(profile_output_lines[line_no++],
+                                         /*expect_hlo=*/true,
+                                         &parsed_profile_lines));
+
+  TF_ASSERT_OK(ParseOneProfileOutputLine(profile_output_lines[line_no++],
+                                         /*expect_hlo=*/true,
+                                         &parsed_profile_lines));
 
   TF_ASSERT_OK_AND_ASSIGN(ParsedProfileOutputLine total_profile,
                           MaybeFind(parsed_profile_lines, "[total]"));

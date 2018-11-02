@@ -77,6 +77,7 @@ class _CuDNNRNN(RNN):
     self.constants_spec = None
     self._states = None
     self._num_constants = None
+    self._num_inputs = None
     self._vector_shape = constant_op.constant([-1])
 
   def _canonical_to_params(self, weights, biases):

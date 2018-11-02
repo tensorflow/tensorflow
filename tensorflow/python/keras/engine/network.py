@@ -136,8 +136,10 @@ class Network(base_layer.Layer):
     # Private attributes to implement compatibility with Layer.
     self._updates = []  # Used in symbolic mode only.
     self._losses = []
+    self._eager_losses = []
     self._scope = None  # Never used.
     self._reuse = None  # Never used.
+    self._can_use_graph_functions = False
     if context.executing_eagerly():
       self._graph = None
     else:
@@ -169,23 +171,6 @@ class Network(base_layer.Layer):
     else:
       self.outputs = [outputs]
 
-    # User-provided argument validation.
-    if context.executing_eagerly():
-      # Check that all inputs/outputs are DeferredTensors.
-      for tensor in self.inputs:
-        if not isinstance(tensor, base_layer.DeferredTensor):  # pylint: disable=protected-access
-          raise TypeError('When eager execution is enabled, '
-                          'inputs must come from a call to '
-                          '`tf.keras.Input` (called after '
-                          'tf.enable_eager_execution()). '
-                          'Received invalid input: ' + str(tensor))
-      for tensor in self.outputs:
-        if not isinstance(tensor, base_layer.DeferredTensor):  # pylint: disable=protected-access
-          raise TypeError('When eager execution is enabled, '
-                          'outputs must come from a call to '
-                          'a layer (called after '
-                          'tf.enable_eager_execution()). '
-                          'Received invalid output: ' + str(tensor))
     # Check for redundancy in inputs.
     if len(set(self.inputs)) != len(self.inputs):
       raise ValueError('The list of inputs passed to the model '
@@ -273,6 +258,10 @@ class Network(base_layer.Layer):
 
     self._track_layers(layers)
 
+    # A Graph network supports defun-ed eager loops if all of its layers do.
+    self._can_use_graph_functions = all(
+        layer._can_use_graph_functions for layer in layers)
+
     # Create the node linking internal inputs to internal outputs.
     base_layer.Node(
         outbound_layer=self,
@@ -312,6 +301,13 @@ class Network(base_layer.Layer):
     self.outputs = []
     self.inputs = []
     self.built = False
+    self._static_graph_friendly = True
+
+  @property
+  def _is_static_graph_friendly(self):
+    if self._is_graph_network:
+      return all(layer._is_static_graph_friendly for layer in self.layers)
+    return self._static_graph_friendly
 
   def _determine_call_convention(self, call_argspec):
     """Decides how `self.call()` is invoked. See base_layer.CallConvention."""
@@ -579,7 +575,10 @@ class Network(base_layer.Layer):
   @property
   def _unfiltered_losses(self):
     losses = []
-    losses.extend(self._losses)
+    if context.executing_eagerly():
+      losses.extend(self._eager_losses)
+    else:
+      losses.extend(self._losses)
     for layer in self.layers:
       if isinstance(layer, Network):
         losses += layer._unfiltered_losses
@@ -590,12 +589,12 @@ class Network(base_layer.Layer):
   @checkpointable.no_automatic_dependency_tracking
   def _clear_losses(self):
     """Used every step in eager to reset losses."""
-    self._losses = []
+    self._eager_losses = []
     for layer in self.layers:
       if isinstance(layer, Network):
         layer._clear_losses()
       else:
-        layer._losses = []
+        layer._eager_losses = []
 
   @property
   def updates(self):
@@ -691,8 +690,26 @@ class Network(base_layer.Layer):
         A list of loss tensors.
     """
     losses = self._unfiltered_losses
+
     if context.executing_eagerly():
       return losses
+
+    # TODO(kaftan/fchollet): Clean this up / make it obsolete.
+    # This is a super ugly, confusing check necessary to
+    # handle the case where we are executing in a function graph in eager mode
+    # but the model was constructed symbolically in a separate graph scope.
+    # We need to capture the losses created in the current graph function,
+    # and filter out the incorrect loss tensors created when symbolically
+    # building the graph.
+    # We have to use this check because the code after it that checks
+    # for reachable inputs only captures the part of the model that was
+    # built symbolically, and captures the wrong tensors from a different
+    # func graph (causing a crash later on when trying to execute the
+    # graph function)
+    with ops.init_scope():
+      if context.executing_eagerly():
+        return [loss for loss in losses
+                if loss.graph == ops.get_default_graph()]
 
     relevant_inputs = []
     for i in range(0, len(self._inbound_nodes)):
@@ -1103,11 +1120,8 @@ class Network(base_layer.Layer):
                   pass
 
               # Apply activity regularizer if any.
-              if layer.activity_regularizer is not None:
-                regularization_losses = [
-                    layer.activity_regularizer(x) for x in output_tensors
-                ]
-                layer.add_loss(regularization_losses, computed_tensors)
+              layer._handle_activity_regularization(computed_tensors,
+                                                    output_tensors)
 
           # Update tensor_map.
           for x, y, mask in zip(reference_output_tensors, output_tensors,

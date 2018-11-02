@@ -416,5 +416,26 @@ TEST_F(XlaBuilderTest, BuildWithSpecificRootWithWrongBuilder) {
       ::testing::HasSubstr("root operation is not in this computation"));
 }
 
+TEST_F(XlaBuilderTest, ProtoMatches) {
+  std::vector<XlaComputation> computations;
+  for (int i = 0; i < 2; ++i) {
+    XlaBuilder b_call("the_only_to_apply");
+    auto p0 = Parameter(&b_call, 0, ShapeUtil::MakeShape(F32, {}), "p0");
+    auto p1 = Parameter(&b_call, 1, ShapeUtil::MakeShape(F32, {}), "p1");
+    Add(p0, Add(p1, p0));
+    TF_ASSERT_OK_AND_ASSIGN(auto call, b_call.Build());
+    XlaBuilder b(TestName());
+    auto x = Parameter(&b, 0, ShapeUtil::MakeShape(F32, {}), "x");
+    auto y = Parameter(&b, 1, ShapeUtil::MakeShape(F32, {}), "y");
+    auto one = ConstantR0<float>(&b, 1);
+    auto two = ConstantR0<float>(&b, 2);
+    Add(Call(&b, call, {x, y}), Call(&b, call, {one, two}));
+    computations.push_back(b.Build().ValueOrDie());
+  }
+  auto c0_string = computations[0].proto().SerializeAsString();
+  auto c1_string = computations[1].proto().SerializeAsString();
+  EXPECT_EQ(c0_string, c1_string);
+}
+
 }  // namespace
 }  // namespace xla

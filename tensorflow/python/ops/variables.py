@@ -58,6 +58,21 @@ def _make_getter(captured_getter, captured_previous):
   return getter
 
 
+def _has_cycle(op, path):
+  """Detect cycles in the dependencies of `initial_value`."""
+  if op.name in path:
+    return True
+  path.add(op.name)
+  for op_input in op.inputs:
+    if _has_cycle(op_input.op, path):
+      return True
+  for op_control_input in op.control_inputs:
+    if _has_cycle(op_control_input, path):
+      return True
+  path.remove(op.name)
+  return False
+
+
 @tf_export("VariableSynchronization")
 class VariableSynchronization(enum.Enum):
   """Indicates when a distributed variable will be synced.
@@ -2172,20 +2187,7 @@ class RefVariable(VariableV1):
       raise TypeError("initial_value needs to be a Tensor: %s" % initial_value)
 
     # Don't modify initial_value if it contains any cyclic dependencies.
-    def has_cycle(op, path):
-      """Detect cycles in the dependencies of `initial_value`."""
-      if op.name in path:
-        return True
-      path.add(op.name)
-      for op_input in op.inputs:
-        if has_cycle(op_input.op, path):
-          return True
-      for op_control_input in op.control_inputs:
-        if has_cycle(op_control_input, path):
-          return True
-      path.remove(op.name)
-      return False
-    if has_cycle(initial_value.op, path=set()):
+    if _has_cycle(initial_value.op, path=set()):
       return initial_value
 
     return self._safe_initial_value_from_tensor(initial_value, op_cache={})

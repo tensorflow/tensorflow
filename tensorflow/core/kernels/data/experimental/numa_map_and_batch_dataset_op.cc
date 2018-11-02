@@ -23,7 +23,6 @@ limitations under the License.
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/kernels/data/captured_function.h"
-#include "tensorflow/core/kernels/data/dataset.h"
 #include "tensorflow/core/kernels/inplace_ops_functor.h"
 #include "tensorflow/core/lib/core/blocking_counter.h"
 #include "tensorflow/core/lib/core/errors.h"
@@ -201,16 +200,9 @@ class NumaMapAndBatchDatasetOp : public UnaryDatasetOpKernel {
 
       Status Initialize(IteratorContext* ctx) override {
         mutex_lock l(*mu_);
-        AddConstantParameter(ctx, "batch_size", dataset()->batch_size_);
         if (num_parallel_calls_->value == kAutoTune) {
-          num_parallel_calls_->value = std::max(1, port::NUMANumNodes());
-          AddTunableParameter(ctx,
-                              /* name = */ "parallelism",
-                              /* state = */ num_parallel_calls_,
-                              /* min = */ num_parallel_calls_->value,
-                              /* max = */ port::NumSchedulableCPUs());
-        } else {
-          AddConstantParameter(ctx, "parallelism", num_parallel_calls_->value);
+          num_parallel_calls_->value = port::NumSchedulableCPUs();
+          num_parallel_calls_->tunable = true;
         }
         TF_RETURN_IF_ERROR(
             dataset()->input_->MakeIterator(ctx, prefix(), &input_impl_));
@@ -247,6 +239,14 @@ class NumaMapAndBatchDatasetOp : public UnaryDatasetOpKernel {
       }
 
      protected:
+      std::shared_ptr<model::Node> CreateNode(
+          IteratorContext* ctx, model::Node::Args args) const override {
+        return model::MakeAsyncKnownRatioNode(
+            std::move(args), dataset()->batch_size_,
+            {model::MakeParameter("parallelism", num_parallel_calls_, /*min=*/1,
+                                  /*max=*/port::NumSchedulableCPUs())});
+      }
+
       Status SaveInternal(IteratorStateWriter* writer) override {
         mutex_lock l(*mu_);
         for (size_t i = 0; i < workers_.size(); ++i) {
@@ -547,13 +547,12 @@ class NumaMapAndBatchDatasetOp : public UnaryDatasetOpKernel {
                 component_shape.set_dim(0, batches_[next_output_].error_index);
                 AllocatorAttributes attr;
                 attr.set_gpu_compatible(true);
-                Tensor component(ctx->allocator(attr),
-                                 batches_[next_output_].outputs[i].dtype(),
-                                 component_shape);
+                true_outputs.emplace_back(
+                    ctx->allocator(attr),
+                    batches_[next_output_].outputs[i].dtype(), component_shape);
                 TF_RETURN_IF_ERROR(CopyPartialBatch(
-                    &component, batches_[next_output_].outputs[i],
+                    &true_outputs.back(), batches_[next_output_].outputs[i],
                     batches_[next_output_].error_index));
-                true_outputs.emplace_back(std::move(component));
               }
               out_tensor->swap(true_outputs);
             }
@@ -908,8 +907,7 @@ class NumaMapAndBatchDatasetOp : public UnaryDatasetOpKernel {
               new_ctx = std::make_shared<IteratorContext>(*ctx);
             }
             workers_[i]->threads.emplace_back(ctx->env()->StartThread(
-                {},
-                strings::StrCat("numa_map_and_batch_block_", i, "_thread_", j),
+                {}, strings::StrCat("tf_data_numa_map_and_batch_", i, "_", j),
                 [this, new_ctx, i, j]() { WorkerThread(new_ctx, i, j); }));
             VLOG(3) << "Worker " << i << ", " << j << " successfully started.";
           }
@@ -919,7 +917,7 @@ class NumaMapAndBatchDatasetOp : public UnaryDatasetOpKernel {
             new_ctx = std::make_shared<IteratorContext>(*ctx);
           }
           runner_thread_.reset(ctx->env()->StartThread(
-              {}, "numa_map_runner_thread",
+              {}, "tf_data_numa_map_and_batch",
               [this, new_ctx] { RunnerThread(new_ctx); }));
         }
         VLOG(3) << "All workers & runner thread started.";
@@ -937,9 +935,9 @@ class NumaMapAndBatchDatasetOp : public UnaryDatasetOpKernel {
           component_shape.AppendShape(map_fn_outputs.at(i).shape());
           AllocatorAttributes attr;
           attr.set_gpu_compatible(true);
-          Tensor component(ctx->allocator(attr), map_fn_outputs.at(i).dtype(),
-                           component_shape);
-          batch_outputs->emplace_back(std::move(component));
+          batch_outputs->emplace_back(ctx->allocator(attr),
+                                      map_fn_outputs.at(i).dtype(),
+                                      component_shape);
         }
       }
 

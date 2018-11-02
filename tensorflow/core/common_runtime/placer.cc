@@ -21,6 +21,7 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/core/common_runtime/device.h"
+#include "tensorflow/core/framework/attr_value_util.h"
 #include "tensorflow/core/framework/device_attributes.pb.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/node_def_util.h"
@@ -30,6 +31,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/strings/str_util.h"
+#include "tensorflow/core/lib/strings/strcat.h"
 
 namespace tensorflow {
 
@@ -575,11 +577,21 @@ class ColocationGraph {
         for (Device* d : device_set_->devices()) {
           registered_device_types.insert(d->device_type());
         }
+        std::vector<string> attr_key_vals;
+        for (const auto& it : node.attrs()) {
+          const string& name = it.first;
+          const AttrValue& attr_value = it.second;
+          attr_key_vals.push_back(
+              strings::StrCat(name, "=", SummarizeAttrValue(attr_value)));
+        }
         return errors::InvalidArgument(
             "No OpKernel was registered to support Op '", node.type_string(),
-            "' with these attrs.  Registered devices: [",
-            str_util::Join(registered_device_types, ","),
-            "], Registered kernels:\n",
+            "' used by ", errors::FormatNodeNameForError(node.name()),
+            "with these attrs: [", str_util::Join(attr_key_vals, ", "),
+            "]\n"
+            "Registered devices: [",
+            str_util::Join(registered_device_types, ", "), "]\n",
+            "Registered kernels:\n",
             KernelsRegisteredForOp(node.type_string()));
       }
 

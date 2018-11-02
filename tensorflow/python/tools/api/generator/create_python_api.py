@@ -299,7 +299,8 @@ def get_api_init_text(packages,
         module.__name__ is None or not in_packages(module.__name__)):
       continue
     # Do not generate __init__.py files for contrib modules for now.
-    if '.contrib.' in module.__name__ or module.__name__.endswith('.contrib'):
+    if (('.contrib.' in module.__name__ or module.__name__.endswith('.contrib'))
+        and '.lite' not in module.__name__):
       continue
 
     for module_contents_name in dir(module):

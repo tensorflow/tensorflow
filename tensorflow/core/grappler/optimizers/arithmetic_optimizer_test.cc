@@ -1364,6 +1364,54 @@ TEST_F(ArithmeticOptimizerTest, ReorderTransposeCast_ProducerIsCast) {
   test::ExpectTensorEqual<float>(tensors_expected[0], tensors[0]);
 }
 
+TEST_F(ArithmeticOptimizerTest, ReorderS2DCast_ProducerIsCast) {
+  // TODO(jingyue): Evaluate S2D+Cast on GPU as well. We can't simply put nodes
+  // under a /GPU:0 scope, because this test would fail if the testing machine
+  // doesn't have a GPU. Maybe EvaluateNodes should allow soft placement?
+  tensorflow::Scope s = tensorflow::Scope::NewRootScope().WithDevice("/CPU:0");
+  Output outputs =
+      ops::Placeholder(s, DT_UINT8, ops::Placeholder::Shape({8, 28, 28, 3}));
+  outputs = ops::Cast(s, outputs, DT_FLOAT);
+  outputs = ops::SpaceToDepth(s, outputs, 2);
+  outputs = ops::Identity(s.WithOpName("outputs"), outputs);
+
+  GrapplerItem item;
+  item.fetch = {"outputs"};
+  TF_CHECK_OK(s.ToGraphDef(&item.graph));
+
+  auto input_t = GenerateRandomTensor<DT_UINT8>(TensorShape({8, 28, 28, 3}));
+  auto tensors_expected =
+      EvaluateNodes(item.graph, item.fetch, {{"Placeholder", input_t}});
+  EXPECT_EQ(1, tensors_expected.size());
+
+  GraphDef output;
+  ArithmeticOptimizer optimizer;
+  OptimizeAndPrune(&optimizer, &item, &output);
+
+  LOG(INFO) << output.DebugString();
+
+  const NodeDef* s2d_node = nullptr;
+  for (const NodeDef& node : output.node()) {
+    if (node.op() == "SpaceToDepth") {
+      EXPECT_EQ(s2d_node, nullptr);
+      EXPECT_EQ(DT_UINT8, node.attr().at("T").type());
+      s2d_node = &node;
+    }
+  }
+  EXPECT_NE(s2d_node, nullptr);
+
+  for (const NodeDef& node : output.node()) {
+    if (node.op() == "Cast") {
+      EXPECT_EQ(NodeName(node.input(0)), s2d_node->name());
+    }
+  }
+
+  auto tensors =
+      EvaluateNodes(item.graph, item.fetch, {{"Placeholder", input_t}});
+  EXPECT_EQ(1, tensors.size());
+  test::ExpectTensorEqual<float>(tensors_expected[0], tensors[0]);
+}
+
 TEST_F(ArithmeticOptimizerTest, ReorderTransposeCast_ProducerIsTranspose) {
   tensorflow::Scope s = tensorflow::Scope::NewRootScope().WithDevice("/CPU:0");
   Output nhwc_fp32 =
@@ -2597,6 +2645,48 @@ TEST_F(ArithmeticOptimizerTest, ConvertSqrtDivToRsqrtMul) {
       EXPECT_EQ("Rsqrt", node.op());
       EXPECT_EQ(1, node.input_size());
       EXPECT_EQ("y", node.input(0));
+    }
+  }
+}
+
+TEST_F(ArithmeticOptimizerTest, DoNotConvertSqrtDivToRsqrtMulDivisorFetchNode) {
+  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+  Output floats = ops::Const(s.WithOpName("floats"),
+                             {0.7423212f, 0.19757693f, 0.53124744f}, {1, 3});
+  Output output0 = ops::Sqrt(s.WithOpName("output0"), floats);
+  Output const1 = ops::Const(s.WithOpName("const1"), 1.0f, {3});
+  Output mul1 = ops::Multiply(s.WithOpName("mul1"), const1, 0.5f);
+  Output grad = ops::Div(s.WithOpName("grad"), mul1, output0);
+
+  GrapplerItem item;
+  item.fetch = {"grad", "output0"};
+  TF_CHECK_OK(s.ToGraphDef(&item.graph));
+  auto tensors_expected = EvaluateNodes(item.graph, item.fetch);
+  ASSERT_EQ(2, tensors_expected.size());
+
+  GraphDef output;
+  ArithmeticOptimizer optimizer;
+  EnableOnlySqrtDivToRsqrtMul(&optimizer);
+  OptimizeAndPrune(&optimizer, &item, &output);
+  auto tensors = EvaluateNodes(output, item.fetch);
+  ASSERT_EQ(2, tensors.size());
+
+  for (int i = 0; i < tensors.size(); i++) {
+    EXPECT_EQ(tensors[i].NumElements(), tensors_expected[i].NumElements());
+    test::ExpectTensorNear<float>(tensors_expected[i], tensors[i], 1e-6);
+  }
+  EXPECT_EQ(item.graph.node_size(), output.node_size());
+  for (int i = 0; i < output.node_size(); ++i) {
+    const NodeDef& node = output.node(i);
+    if (node.name() == "grad") {
+      EXPECT_EQ("Div", node.op());
+      EXPECT_EQ(2, node.input_size());
+      EXPECT_EQ("mul1", node.input(0));
+      EXPECT_EQ("output0", node.input(1));
+    } else if (node.name() == "output0") {
+      EXPECT_EQ("Sqrt", node.op());
+      EXPECT_EQ(1, node.input_size());
+      EXPECT_EQ("floats", node.input(0));
     }
   }
 }
