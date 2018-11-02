@@ -14397,6 +14397,7 @@ op {
     allowed_values {
       list {
         type: DT_HALF
+        type: DT_BFLOAT16
         type: DT_FLOAT
         type: DT_DOUBLE
       }
@@ -14433,6 +14434,7 @@ op {
     allowed_values {
       list {
         type: DT_HALF
+        type: DT_BFLOAT16
         type: DT_FLOAT
         type: DT_DOUBLE
       }
