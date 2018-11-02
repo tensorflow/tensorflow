@@ -34,6 +34,8 @@ from tensorflow.python.ops import control_flow_util
 from tensorflow.python.ops import control_flow_util_v2 as util
 from tensorflow.python.ops import gen_functional_ops
 from tensorflow.python.ops import gradients_impl
+from tensorflow.python.util import nest
+
 
 # NOTE(skyewm): TensorFlow uses protected class methods and fields to signify
 # that they aren't part of the official public API. These protected members
