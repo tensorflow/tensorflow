@@ -2161,6 +2161,22 @@ ENTRY entry {
                           ParseHloString(text));
 }
 
+TEST_F(HloParserTest, ShapeMismatchInOperand) {
+  const string text = R"(
+HloModule foobar
+
+ENTRY %entrycomp (p: f32[2,2]) -> f32[2,2] {
+  %p = f32[2,2] parameter(0)
+  %constant.1 = f32[2,2] constant(f32[2,2] {{1, 2}, {3, 4}})
+  ROOT %add.1 = f32[2,2] add(f32[2,2] %p, f32[2,5] %constant.1)
+}
+)";
+
+  ExpectHasSubstr(ParseHloString(text).status().error_message(),
+                  "The declared operand shape f32[2,5]{1,0} is not compatible"
+                  " with the shape of the operand instruction f32[2,2]{1,0}.");
+}
+
 // custom call incompatible shape.
 
 }  // namespace
