@@ -1072,7 +1072,7 @@ class TPUFunction(object):
     # `execute op` replicates `_model_fn` `num_replicas` times, with each shard
     # running on a different logical core.
     compile_op, execute_op = tpu.split_compile_and_replicate(
-        _model_fn, inputs=[[]] * self._tpu_assignment.num_towers)
+        _model_fn, inputs=[[] for _ in range(self._tpu_assignment.num_towers)])
 
     # Generate CPU side operations to enqueue features/labels and dequeue
     # outputs from the model call.
@@ -1217,7 +1217,7 @@ class TPUFunction(object):
     """
     # TODO(xiejw): Decide how to reduce outputs, or discard all but first.
     if self.execution_mode == model_fn_lib.ModeKeys.PREDICT:
-      outputs = [[]] * len(self._outfeed_spec)
+      outputs = [[] for _ in range(len(self._outfeed_spec))]
       outputs_per_replica = len(self._outfeed_spec)
 
       for i in range(self._tpu_assignment.num_towers):
