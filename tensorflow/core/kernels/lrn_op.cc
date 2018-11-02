@@ -312,7 +312,11 @@ struct LaunchLRNGrad;
 template <typename T>
 struct LaunchLRNGrad<CPUDevice, T> {
   LaunchLRNGrad(int depth_radius, T bias, T alpha, T beta)
-      : depth_radius_(depth_radius), bias_(bias), alpha_(alpha), beta_(beta) {}
+      : depth_radius_(depth_radius),
+        bias_(bias),
+        alpha_(alpha),
+        beta_(beta),
+        alpha_beta_2_(T(-2) * alpha * beta) {}
 
   void launch(OpKernelContext* context, OpKernel* kernel,
               const Tensor& in_grads, const Tensor& in_image,
@@ -358,13 +362,15 @@ struct LaunchLRNGrad<CPUDevice, T> {
           }
           norm = alpha_ * norm + bias_;
           DCHECK_GT(norm, T(1e-6));
+          T pre_computed_pow = Eigen::numext::pow(norm, -beta_);
+          T activations_ab2 = alpha_beta_2_ * activations(i, j);
+          T gs = grads_shaped(i, j);
           for (int64 k = depth_begin; k < depth_end; ++k) {
-            T dyi = T(-2) * alpha_ * beta_ * in_shaped(i, k) *
-                    activations(i, j) / norm;
+            T dyi = in_shaped(i, k) * activations_ab2 / norm;
             if (k == j) {
-              dyi += Eigen::numext::pow(norm, -beta_);
+              dyi += pre_computed_pow;
             }
-            dyi *= grads_shaped(i, j);
+            dyi *= gs;
             const_cast<typename TTypes<T, 2>::Tensor&>(out_shaped)(i, k) += dyi;
           }
         }
@@ -379,6 +385,7 @@ struct LaunchLRNGrad<CPUDevice, T> {
   T bias_;
   T alpha_;
   T beta_;
+  T alpha_beta_2_;
 };
 
 #if GOOGLE_CUDA
