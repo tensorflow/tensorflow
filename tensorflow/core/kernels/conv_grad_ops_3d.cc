@@ -1859,6 +1859,14 @@ class Conv3DBackpropFilterOp<GPUDevice, T> : public OpKernel {
                           Conv3DBackpropFilterOp<GPUDevice, T>);
 TF_CALL_half(REGISTER_GPU_KERNEL);
 TF_CALL_float(REGISTER_GPU_KERNEL);
+REGISTER_KERNEL_BUILDER(
+    Name("Conv3DBackpropInput").Device(DEVICE_GPU).TypeConstraint<double>("T"),
+    Conv3DBackpropInputOp<GPUDevice, double>);
+REGISTER_KERNEL_BUILDER(Name("Conv3DBackpropInputV2")
+                            .Device(DEVICE_GPU)
+                            .TypeConstraint<double>("T")
+                            .HostMemory("input_sizes"),
+                        Conv3DBackpropInputOp<GPUDevice, double>);
 #undef REGISTER_GPU_KERNEL
 
 #endif  // GOOGLE_CUDA

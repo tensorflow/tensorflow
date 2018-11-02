@@ -413,7 +413,7 @@ class Conv3DTest(test.TestCase):
       elif data_type == dtypes.float16:
         tolerance = 1e-3
 
-      with self.session(use_gpu=use_gpu):
+      with self.test_session(use_gpu=use_gpu):
         orig_input_tensor = constant_op.constant(
             input_data, shape=input_shape, dtype=data_type, name="input")
         filter_tensor = constant_op.constant(
