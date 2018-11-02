@@ -3,6 +3,11 @@
 This page provides examples on how to use the TensorFlow Lite Converter and the
 TensorFlow Lite interpreter using the Python API.
 
+Note: TFLite recently moved from `tf.contrib.lite` to `tf.lite`. If you are
+using tensorflow `r1.12` or earlier you will need to add `.contrib` to the
+commands below. `tf.lite` works with newer builds, like the nightly build,
+which can be installed with: `pip install tf-nightly`
+
 [TOC]
 
 

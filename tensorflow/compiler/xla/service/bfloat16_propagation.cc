@@ -236,7 +236,7 @@ bool BFloat16Propagation::AllUsersConsumeBF16(const HloInstruction& hlo,
         // the end of the BFloat16Propagation pass.
         continue;
       }
-      if (use.instruction->HasSideEffect()) {
+      if (use.instruction->HasSideEffectNoRecurse()) {
         // Keep side-effecting instruction's operands unchanged.
         return false;
       }
@@ -360,7 +360,7 @@ void BFloat16Propagation::DetermineInstructionPrecision(HloInstruction* hlo,
   if (hlo->opcode() == HloOpcode::kCustomCall ||   //
       hlo->opcode() == HloOpcode::kCall ||         //
       hlo->opcode() == HloOpcode::kConditional ||  //
-      hlo->HasSideEffect() ||                      //
+      hlo->HasSideEffectNoRecurse() ||             //
       (hlo->opcode() == HloOpcode::kParameter && skip_parameters)) {
     return;
   }

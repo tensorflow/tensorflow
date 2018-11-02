@@ -36,7 +36,6 @@ load(
     shard_count = 20,
     tags = tags + [
         "gen_zip_test",
-        "no_oss",
         "tflite_not_portable_intentional",
     ],
     test_name = test_name,
@@ -260,7 +259,6 @@ cc_test(
     srcs = ["tf_driver_test.cc"],
     data = ["//tensorflow/lite:testdata/multi_add.pb"],
     tags = [
-        "no_oss",
         "tflite_not_portable",
     ],
     deps = [
@@ -287,7 +285,6 @@ cc_test(
     size = "small",
     srcs = ["generate_testspec_test.cc"],
     tags = [
-        "no_oss",
         "tflite_not_portable",
     ],
     deps = [

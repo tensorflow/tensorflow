@@ -173,9 +173,7 @@ Status XlaCompileOnDemandOp::Compile(
   XlaCompiler::Options options;
   options.device_type = metadata.jit_device_type();
   options.client = metadata.client();
-  auto flib_def = absl::make_unique<FunctionLibraryDefinition>(
-      OpRegistry::Global(), FunctionDefLibrary{});
-  options.flib_def = flib_def.get();
+  options.flib_def = ctx->function_library()->GetFunctionLibraryDefinition();
   options.shape_representation_fn = metadata.shape_representation_fn();
 
   XlaCompiler::CompileOptions compile_options;

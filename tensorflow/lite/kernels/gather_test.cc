@@ -27,12 +27,12 @@ using ::testing::ElementsAreArray;
 class GatherOpModel : public SingleOpModel {
  public:
   GatherOpModel(std::initializer_list<int> input_shape, TensorType input_type,
-                std::initializer_list<int> positions_shape) {
+                std::initializer_list<int> positions_shape, int axis = 0) {
     input_ = AddInput(input_type);
     positions_ = AddInput(TensorType_INT32);
     output_ = AddOutput(input_type);
     SetBuiltinOp(BuiltinOperator_GATHER, BuiltinOptions_GatherOptions,
-                 CreateGatherOptions(builder_, 0).Union());
+                 CreateGatherOptions(builder_, axis).Union());
     BuildInterpreter({input_shape, positions_shape});
   }
 
@@ -121,6 +121,28 @@ TEST(FloatGatherOpTest, Slice) {
   m.SetPositions({1, 3});
   m.Invoke();
   EXPECT_THAT(m.GetOutputFloat(), ElementsAreArray(ArrayFloatNear({0.2, 0.8})));
+}
+
+TEST(FloatGatherOpTest, Axis1) {
+  const int axis = 1;
+  GatherOpModel m({1, 2, 3}, TensorType_FLOAT32, {2}, axis);
+  m.SetInputFloat({1, 2, 3, 4, 5, 6});
+  m.SetPositions({1, 0});
+  m.Invoke();
+  EXPECT_THAT(m.GetOutputFloat(),
+              ElementsAreArray(ArrayFloatNear({4, 5, 6, 1, 2, 3})));
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1, 2, 3}));
+}
+
+TEST(FloatGatherOpTest, LastAxis) {
+  const int axis = -1;
+  GatherOpModel m({1, 2, 3}, TensorType_FLOAT32, {2}, axis);
+  m.SetInputFloat({1, 2, 3, 4, 5, 6});
+  m.SetPositions({2, 0});
+  m.Invoke();
+  EXPECT_THAT(m.GetOutputFloat(),
+              ElementsAreArray(ArrayFloatNear({3, 1, 6, 4})));
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1, 2, 2}));
 }
 
 TEST(Uint8tGatherOpTest, Shuffle) {

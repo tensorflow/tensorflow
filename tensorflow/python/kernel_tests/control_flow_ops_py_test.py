@@ -1276,8 +1276,8 @@ class ControlFlowTest(test.TestCase):
       r = control_flow_ops.while_loop(
           c, b, [i, m],
           [i.get_shape(), tensor_shape.TensorShape([None, 2])])
-      self.assertIsNone(r[1].get_shape()[0].value)
-      self.assertEqual(r[1].get_shape()[1], tensor_shape.Dimension(2))
+      self.assertIsNone(r[1].shape.dims[0].value)
+      self.assertEqual(r[1].shape.dims[1], tensor_shape.Dimension(2))
 
       with self.assertRaisesRegexp(
           ValueError,

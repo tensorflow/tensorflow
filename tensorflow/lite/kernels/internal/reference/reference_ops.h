@@ -2938,39 +2938,37 @@ inline void Floor(const RuntimeShape& input_shape, const float* input_data,
 
 template <typename T>
 inline void Gather(const tflite::GatherParams& op_params,
-                   const RuntimeShape& unextended_input_shape,
-                   const T* input_data, const RuntimeShape& coords_shape,
-                   const int32* coords_data,
-                   const RuntimeShape& unextended_output_shape,
-                   T* output_data) {
-  TFLITE_DCHECK_LE(unextended_input_shape.DimensionsCount(), 4);
-  TFLITE_DCHECK_LE(unextended_output_shape.DimensionsCount(), 4);
-  const RuntimeShape input_shape =
-      RuntimeShape::ExtendedShape(4, unextended_input_shape);
-  const RuntimeShape output_shape =
-      RuntimeShape::ExtendedShape(4, unextended_output_shape);
-
-  const int input_rank = op_params.input_rank;
-  const int gather_dimensions = output_shape.DimensionsCount();
-  TFLITE_DCHECK_GE(input_shape.DimensionsCount(), gather_dimensions);
-  const int axis = gather_dimensions - input_rank;
-  TFLITE_DCHECK_LT(axis, gather_dimensions);
-  TFLITE_DCHECK_GE(axis, 0);
-  const int coords_count = coords_shape.FlatSize();
-  TFLITE_DCHECK_EQ(coords_count, output_shape.Dims(axis));
-
-  int64_t stride = 1;
-  for (int i = axis + 1; i < gather_dimensions; ++i) {
-    stride *= input_shape.Dims(i);
+                   const RuntimeShape& input_shape, const T* input_data,
+                   const RuntimeShape& coords_shape, const int32* coords_data,
+                   const RuntimeShape& output_shape, T* output_data) {
+  int axis = op_params.axis;
+  if (axis < 0) {
+    axis += input_shape.DimensionsCount();
   }
-  T* out = output_data;
+  TFLITE_DCHECK_GE(axis, 0);
+  TFLITE_DCHECK_LT(axis, input_shape.DimensionsCount());
+  const int axis_size = input_shape.Dims(axis);
+  const int coords_count = coords_shape.FlatSize();
 
-  for (int i = 0; i < coords_count; ++i) {
-    TFLITE_DCHECK_GE(coords_data[i], 0);
-    TFLITE_DCHECK_LT(coords_data[i], input_shape.Dims(axis));
-    const T* in = input_data + coords_data[i] * stride;
-    memcpy(out, in, sizeof(T) * stride);
-    out += stride;
+  int outer_size = 1;
+  for (int i = 0; i < axis; ++i) {
+    outer_size *= input_shape.Dims(i);
+  }
+
+  int inner_size = 1;
+  for (int i = axis + 1; i < input_shape.DimensionsCount(); ++i) {
+    inner_size *= input_shape.Dims(i);
+  }
+
+  for (int outer = 0; outer < outer_size; ++outer) {
+    for (int i = 0; i < coords_count; ++i) {
+      TFLITE_DCHECK_GE(coords_data[i], 0);
+      TFLITE_DCHECK_LT(coords_data[i], axis_size);
+      std::memcpy(
+          output_data + (outer * coords_count + i) * inner_size,
+          input_data + (outer * axis_size + coords_data[i]) * inner_size,
+          sizeof(T) * inner_size);
+    }
   }
 }
 

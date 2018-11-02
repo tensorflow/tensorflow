@@ -162,7 +162,7 @@ TEST_F(ExportTest, Export) {
 
   ExportParams params;
   params.allow_custom_ops = true;
-  params.allow_flex_ops = false;
+  params.enable_select_tf_ops = false;
   params.quantize_weights = false;
 
   EXPECT_THAT(ExportAndSummarizeOperators(params),
@@ -192,7 +192,7 @@ class OpSetsTest : public ExportTest {
   void SetAllowedOpSets(std::initializer_list<OpSet> sets) {
     import_all_ops_as_unsupported_ = true;
     params_.allow_custom_ops = false;
-    params_.allow_flex_ops = false;
+    params_.enable_select_tf_ops = false;
     params_.quantize_weights = false;
 
     for (OpSet i : sets) {
@@ -201,7 +201,7 @@ class OpSetsTest : public ExportTest {
           import_all_ops_as_unsupported_ = false;
           break;
         case kSelectTfOps:
-          params_.allow_flex_ops = true;
+          params_.enable_select_tf_ops = true;
           break;
         case kCustomOps:
           params_.allow_custom_ops = true;

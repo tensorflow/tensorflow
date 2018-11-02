@@ -250,25 +250,6 @@ class GradientDescentOptimizerTest(test.TestCase):
       # be an EagerTensor once again, not a graph Tensor.
       self.assertEqual(float(step()), -1.0)
 
-  def testConfig(self):
-    with self.cached_session():
-      opt = gradient_descent.SGD(learning_rate=1.0)
-      config = opt.get_config()
-      opt2 = gradient_descent.SGD.from_config(config)
-      # assert both are equal float values.
-      self.assertEqual(
-          opt._get_hyper("learning_rate"), opt2._get_hyper("learning_rate"))
-      var0 = variables.Variable([[1.0], [2.0]], dtype=dtypes.float32)
-      loss = lambda: 3 * var0
-      # learning rate variable created when calling minimize.
-      opt.minimize(loss, [var0])
-      variables.global_variables_initializer().run()
-      config = opt.get_config()
-      opt3 = gradient_descent.SGD.from_config(config)
-      self.assertEqual(
-          self.evaluate(opt._get_hyper("learning_rate")),
-          opt3._get_hyper("learning_rate"))
-
 
 if __name__ == "__main__":
   test.main()

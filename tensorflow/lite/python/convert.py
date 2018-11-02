@@ -293,10 +293,10 @@ def build_toco_convert_protos(input_tensors,
   toco.dump_graphviz_include_video = dump_graphviz_video
   if target_ops:
     if set(target_ops) == set([OpsSet.TFLITE_BUILTINS, OpsSet.SELECT_TF_OPS]):
-      toco.allow_flex_ops = True
+      toco.enable_select_tf_ops = True
     elif set(target_ops) == set([OpsSet.SELECT_TF_OPS]):
-      toco.allow_flex_ops = True
-      toco.force_flex_ops = True
+      toco.enable_select_tf_ops = True
+      toco.force_select_tf_ops = True
 
   model = _model_flags_pb2.ModelFlags()
   model.change_concat_input_ranges = change_concat_input_ranges

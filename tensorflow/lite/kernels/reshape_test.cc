@@ -43,6 +43,7 @@ class ReshapeOpTest
     : public ::testing::Test,
       public ::testing::WithParamInterface<ShapeSpecificationType> {};
 
+template <typename T>
 class ReshapeOpModel : public SingleOpModel {
  public:
   ReshapeOpModel(std::initializer_list<int> input_shape,
@@ -64,17 +65,22 @@ class ReshapeOpModel : public SingleOpModel {
     }
   }
 
-  void SetInput(std::initializer_list<float> data) {
-    PopulateTensor<float>(input_, data);
+  void SetInput(std::initializer_list<T> data) {
+    PopulateTensor<T>(input_, data);
   }
-  std::vector<float> GetOutput() { return ExtractVector<float>(output_); }
+
+  void SetStringInput(std::initializer_list<string> data) {
+    PopulateStringTensor(input_, data);
+  }
+
+  std::vector<T> GetOutput() { return ExtractVector<T>(output_); }
   std::vector<int> GetOutputShape() { return GetTensorShape(output_); }
 
  private:
   void BuildWithHardcodedShape(std::initializer_list<int> input_shape,
                                std::initializer_list<int> shape_data) {
-    input_ = AddInput({TensorType_FLOAT32, input_shape});
-    output_ = AddOutput(TensorType_FLOAT32);
+    input_ = AddInput({GetTensorType<T>(), input_shape});
+    output_ = AddOutput(GetTensorType<T>());
     SetBuiltinOp(
         BuiltinOperator_RESHAPE, BuiltinOptions_ReshapeOptions,
         CreateReshapeOptions(builder_, builder_.CreateVector<int>(shape_data))
@@ -85,8 +91,8 @@ class ReshapeOpModel : public SingleOpModel {
   void BuildWithTensorShape(std::initializer_list<int> input_shape,
                             std::initializer_list<int> shape_shape,
                             std::initializer_list<int> shape_data) {
-    input_ = AddInput({TensorType_FLOAT32, input_shape});
-    output_ = AddOutput(TensorType_FLOAT32);
+    input_ = AddInput({GetTensorType<T>(), input_shape});
+    output_ = AddOutput(GetTensorType<T>());
     int shape_input_tensor = AddInput({TensorType_INT32, shape_shape});
     // Note how shape also appears in ReshapeOptions
     SetBuiltinOp(
@@ -102,8 +108,8 @@ class ReshapeOpModel : public SingleOpModel {
   void BuildWithConstantTensorShape(std::initializer_list<int> input_shape,
                                     std::initializer_list<int> shape_shape,
                                     std::initializer_list<int> shape_data) {
-    input_ = AddInput({TensorType_FLOAT32, input_shape});
-    output_ = AddOutput(TensorType_FLOAT32);
+    input_ = AddInput({GetTensorType<T>(), input_shape});
+    output_ = AddOutput(GetTensorType<T>());
     AddConstInput(TensorType_INT32, shape_data, shape_shape);
     // Note how the shape also appears in the ReshapeOptions.
     SetBuiltinOp(
@@ -119,23 +125,23 @@ class ReshapeOpModel : public SingleOpModel {
 
 TEST_P(ReshapeOpTest, MismatchedDimensions) {
   if (GetParam() == kAsTensor) {
-    ReshapeOpModel m({1, 2, 4, 1}, {2}, {2, 1}, GetParam());
+    ReshapeOpModel<float> m({1, 2, 4, 1}, {2}, {2, 1}, GetParam());
     m.SetInput({3});
     EXPECT_DEATH(m.Invoke(), "num_input_elements != num_output_elements");
   } else {
-    EXPECT_DEATH(ReshapeOpModel({1, 2, 4, 1}, {2}, {2, 1}, GetParam()),
+    EXPECT_DEATH(ReshapeOpModel<float>({1, 2, 4, 1}, {2}, {2, 1}, GetParam()),
                  "num_input_elements != num_output_elements");
   }
 }
 
 TEST_P(ReshapeOpTest, TooManyDimensions) {
   if (GetParam() == kAsReshapeOption) {
-    EXPECT_DEATH(ReshapeOpModel({1, 1, 2, 1, 1, 1, 1, 1, 1}, {9},
-                                {1, 1, 1, 1, 1, 1, 1, 1, 2}, GetParam()),
+    EXPECT_DEATH(ReshapeOpModel<float>({1, 1, 2, 1, 1, 1, 1, 1, 1}, {9},
+                                       {1, 1, 1, 1, 1, 1, 1, 1, 2}, GetParam()),
                  "Found too many dimensions");
   } else {
-    ReshapeOpModel m({1, 1, 2, 1, 1, 1, 1, 1, 1}, {9},
-                     {1, 1, 1, 1, 1, 1, 1, 1, 2}, GetParam());
+    ReshapeOpModel<float> m({1, 1, 2, 1, 1, 1, 1, 1, 1}, {9},
+                            {1, 1, 1, 1, 1, 1, 1, 1, 2}, GetParam());
     m.SetInput({3, 4});
     m.Invoke();
     EXPECT_THAT(m.GetOutput(), ElementsAreArray({3, 4}));
@@ -146,10 +152,11 @@ TEST_P(ReshapeOpTest, TooManyDimensions) {
 
 TEST_P(ReshapeOpTest, TooManySpecialDimensions) {
   if (GetParam() != kAsTensor) {
-    EXPECT_DEATH(ReshapeOpModel({1, 2, 4, 1}, {4}, {-1, -1, 2, 4}, GetParam()),
-                 "stretch_dim != -1");
+    EXPECT_DEATH(
+        ReshapeOpModel<float>({1, 2, 4, 1}, {4}, {-1, -1, 2, 4}, GetParam()),
+        "stretch_dim != -1");
   } else {
-    ReshapeOpModel m({1, 2, 4, 1}, {4}, {-1, -1, 2, 4}, GetParam());
+    ReshapeOpModel<float> m({1, 2, 4, 1}, {4}, {-1, -1, 2, 4}, GetParam());
     EXPECT_DEATH(m.Invoke(), "stretch_dim != -1");
   }
 }
@@ -157,7 +164,7 @@ TEST_P(ReshapeOpTest, TooManySpecialDimensions) {
 // Create the model with a 2x2 shape. Processing still works because the new
 // shape ends up being hardcoded as a flat vector.
 TEST_P(ReshapeOpTest, InvalidShape) {
-  ReshapeOpModel m({1, 2, 2}, {2, 2}, {1, 2, 2, 1}, GetParam());
+  ReshapeOpModel<float> m({1, 2, 2}, {2, 2}, {1, 2, 2, 1}, GetParam());
   m.SetInput({5, 6, 7, 8});
   m.Invoke();
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1, 2, 2, 1}));
@@ -166,7 +173,7 @@ TEST_P(ReshapeOpTest, InvalidShape) {
 
 // This is the normal scenario, where shape is a vector.
 TEST_P(ReshapeOpTest, RegularShapes) {
-  ReshapeOpModel m({1, 2, 4, 1}, {3}, {2, 2, 2}, GetParam());
+  ReshapeOpModel<float> m({1, 2, 4, 1}, {3}, {2, 2, 2}, GetParam());
   m.SetInput({1, 2, 3, 4, 5, 6, 7, 8});
   m.Invoke();
   EXPECT_THAT(m.GetOutput(), ElementsAreArray({1, 2, 3, 4, 5, 6, 7, 8}));
@@ -174,7 +181,7 @@ TEST_P(ReshapeOpTest, RegularShapes) {
 }
 
 TEST_P(ReshapeOpTest, WithStretchDimension) {
-  ReshapeOpModel m({1, 2, 4, 1}, {3}, {2, 1, -1}, GetParam());
+  ReshapeOpModel<float> m({1, 2, 4, 1}, {3}, {2, 1, -1}, GetParam());
   m.SetInput({1, 2, 3, 4, 5, 6, 7, 8});
   m.Invoke();
   EXPECT_THAT(m.GetOutput(), ElementsAreArray({1, 2, 3, 4, 5, 6, 7, 8}));
@@ -184,7 +191,7 @@ TEST_P(ReshapeOpTest, WithStretchDimension) {
 // Shape is specified as '[]', which is the modern way to represent scalar
 // input and output.
 TEST_P(ReshapeOpTest, ScalarOutput) {
-  ReshapeOpModel m({1}, {0}, {}, GetParam());
+  ReshapeOpModel<float> m({1}, {0}, {}, GetParam());
   m.SetInput({3});
   m.Invoke();
   EXPECT_THAT(m.GetOutput(), ElementsAreArray({3}));
@@ -195,19 +202,28 @@ TEST_P(ReshapeOpTest, ScalarOutput) {
 // and output are scalars.
 TEST_P(ReshapeOpTest, LegacyScalarOutput) {
   if (GetParam() == kAsConstantTensor) {
-    EXPECT_DEATH(ReshapeOpModel({1}, {1}, {0}, GetParam()),
+    EXPECT_DEATH(ReshapeOpModel<float>({1}, {1}, {0}, GetParam()),
                  "num_input_elements != num_output_elements");
   } else if (GetParam() == kAsTensor) {
-    ReshapeOpModel m({1}, {1}, {0}, GetParam());
+    ReshapeOpModel<float> m({1}, {1}, {0}, GetParam());
     m.SetInput({3});
     EXPECT_DEATH(m.Invoke(), "num_input_elements != num_output_elements");
   } else {
-    ReshapeOpModel m({1}, {1}, {0}, GetParam());
+    ReshapeOpModel<float> m({1}, {1}, {0}, GetParam());
     m.SetInput({3});
     m.Invoke();
     EXPECT_THAT(m.GetOutput(), ElementsAreArray({3}));
     EXPECT_THAT(m.GetOutputShape(), IsEmpty());
   }
+}
+
+TEST_P(ReshapeOpTest, Strings) {
+  ReshapeOpModel<string> m({1, 2, 4, 1}, {3}, {2, 2, 2}, GetParam());
+  m.SetStringInput({"1", "2", "3", "4", "5", "6", "7", "8"});
+  m.Invoke();
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({2, 2, 2}));
+  EXPECT_THAT(m.GetOutput(),
+              ElementsAreArray({"1", "2", "3", "4", "5", "6", "7", "8"}));
 }
 
 INSTANTIATE_TEST_CASE_P(VariedShapeSpec, ReshapeOpTest,
