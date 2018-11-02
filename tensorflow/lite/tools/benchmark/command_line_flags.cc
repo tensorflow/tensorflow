@@ -59,11 +59,12 @@ bool ParseFlag(const std::string& flag_value,
 
 bool ParseBoolFlag(const std::string& flag_value,
                    const std::function<void(const bool&)>& hook) {
-  if (flag_value != "true" && flag_value != "false") {
+  if (flag_value != "true" && flag_value != "false" && flag_value != "0" &&
+      flag_value != "1") {
     return false;
   }
 
-  hook(flag_value == "true");
+  hook(flag_value == "true" || flag_value == "1");
   return true;
 }
 }  // namespace
