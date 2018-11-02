@@ -1546,10 +1546,8 @@ DotOpEmitter::MatMultDims DotOpEmitter::GetMatMultDims() const {
       LayoutUtil::Minor(target_array_.GetShape().layout(), 0) == 0};
 }
 
-// Return whether the given shape is a matrix with no padding.
-static bool IsRank2WithNoPadding(const Shape& shape) {
-  return ShapeUtil::Rank(shape) == 2 && !LayoutUtil::IsPadded(shape);
-}
+// Return whether the given shape is rank 2.
+static bool IsRank2(const Shape& shape) { return ShapeUtil::Rank(shape) == 2; }
 
 // In a gemm operation where output = lhs * rhs, check whether the given shapes
 // are valid for the operation.
@@ -1565,8 +1563,7 @@ static bool AreValidGemmShapes(
     return false;
   }
 
-  if (!(IsRank2WithNoPadding(lhs_shape) && IsRank2WithNoPadding(rhs_shape) &&
-        IsRank2WithNoPadding(output_shape))) {
+  if (!(IsRank2(lhs_shape) && IsRank2(rhs_shape) && IsRank2(output_shape))) {
     return false;
   }
 
