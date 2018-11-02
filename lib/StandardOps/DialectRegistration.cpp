@@ -1,4 +1,4 @@
-//===- OpRegistration.cpp - Register standard Op types --------------------===//
+//===- DialectRegistration.cpp - Register standard Op dialect -------------===//
 //
 // Copyright 2019 The MLIR Authors.
 //
@@ -18,5 +18,5 @@
 #include "mlir/StandardOps/StandardOps.h"
 using namespace mlir;
 
-// Static initialization for standard op registration.
+// Static initialization for standard op dialect registration.
 static DialectRegistration<StandardOpsDialect> StandardOps;
