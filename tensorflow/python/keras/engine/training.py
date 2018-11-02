@@ -770,7 +770,8 @@ class Model(Network):
                                           check_steps=False,
                                           steps_name='steps',
                                           steps=None,
-                                          validation_split=0):
+                                          validation_split=0,
+                                          shuffle=False):
     """Runs validation checks on input and target data passed by the user.
 
     This is called when using DistributionStrategy to train, evaluate or serve
@@ -793,6 +794,7 @@ class Model(Network):
         execute.
       validation_split: Float between 0 and 1.
         Fraction of the training data to be used as validation data.
+      shuffle: Boolean whether to shuffle the training data before each epoch.
 
     Returns:
       Iterator for reading the dataset `x`.
@@ -845,11 +847,12 @@ class Model(Network):
           x = dataset_ops.Dataset.from_tensor_slices((var_x, var_y))
 
         x = dataset_ops.Dataset.from_tensor_slices((var_x, var_y))
-        # 1024 is a good buffer size since it is much larger than the average
-        # batch size provided by the user and provides sufficient randomness.
-        # One thing to keep in mind is the memory usage based on the size of
-        # each sample.
-        x = x.shuffle(1024)
+        if shuffle:
+          # 1024 is a good buffer size since it is much larger than the average
+          # batch size provided by the user and provides sufficient randomness.
+          # One thing to keep in mind is the memory usage based on the size of
+          # each sample.
+          x = x.shuffle(1024)
         x = x.repeat()
         x = x.batch(batch_size, drop_remainder=drop_remainder)
         y = None
@@ -887,7 +890,8 @@ class Model(Network):
                              check_steps=False,
                              steps_name='steps',
                              steps=None,
-                             validation_split=0):
+                             validation_split=0,
+                             shuffle=False):
     """Runs validation checks on input and target data passed by the user.
 
     Also standardizes the data to lists of arrays, in order.
@@ -929,6 +933,7 @@ class Model(Network):
         execute.
       validation_split: Float between 0 and 1.
         Fraction of the training data to be used as validation data.
+      shuffle: Boolean whether to shuffle the training data before each epoch.
 
     Returns:
       A tuple of 3: inputs (arrays or dicts, depending on whether `x` was a dict
@@ -951,7 +956,8 @@ class Model(Network):
           check_steps=check_steps,
           steps_name=steps_name,
           steps=steps,
-          validation_split=validation_split)
+          validation_split=validation_split,
+          shuffle=shuffle)
       return iterator, None, None
 
     if isinstance(x, dataset_ops.Dataset):
@@ -1489,7 +1495,8 @@ class Model(Network):
         check_steps=True,
         steps_name='steps_per_epoch',
         steps=steps_per_epoch,
-        validation_split=validation_split)
+        validation_split=validation_split,
+        shuffle=shuffle)
 
     # Prepare validation data.
     if validation_data:
