@@ -63,7 +63,9 @@ TfLiteStatus ResizeOutput(TfLiteContext* context, TfLiteNode* node) {
           MultiplyShapeDims<int64_t>(*input->dims, multipliers,
                                      num_dimensions));
     default:
-      context->ReportError(context, "Tile not supported multiply tensor type.");
+      context->ReportError(
+          context, "Multipliers of type '%s' are not supported by tile.",
+          TfLiteTypeGetName(multipliers->type));
       return kTfLiteError;
   }
 }
@@ -143,10 +145,12 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
 
   const TfLiteTensor* multipliers = GetInput(context, node, kInputMultipliers);
   // Only int32 and int64 multipliers type is supported.
-  TF_LITE_ENSURE_MSG(context,
-                     (multipliers->type == kTfLiteInt32) ||
-                         (multipliers->type == kTfLiteInt64),
-                     "Tile only supports int32 and int64 mutlipliers.");
+  if (multipliers->type != kTfLiteInt32 && multipliers->type != kTfLiteInt64) {
+    context->ReportError(context,
+                         "Multipliers of type '%s' are not supported by tile.",
+                         TfLiteTypeGetName(multipliers->type));
+    return kTfLiteError;
+  }
 
   if (IsConstantTensor(multipliers)) {
     TF_LITE_ENSURE_OK(context, ResizeOutput(context, node));
@@ -179,7 +183,8 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
       Tile<int64_t>(*(input->dims), input, multipliers, output);
       break;
     default:
-      context->ReportError(context, "Type is currently not supported by Tile.");
+      context->ReportError(context, "Type '%s' is not supported by tile.",
+                           TfLiteTypeGetName(output->type));
       return kTfLiteError;
   }
   return kTfLiteOk;

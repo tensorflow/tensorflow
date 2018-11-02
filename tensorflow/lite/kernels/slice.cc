@@ -107,7 +107,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
 
   // Ensure validity of input tensor and its dimension.
-  TF_LITE_ENSURE_EQ(context, input->type, output->type);
+  TF_LITE_ENSURE_TYPES_EQ(context, input->type, output->type);
   TF_LITE_ENSURE(context,
                  begin->type == kTfLiteInt32 || begin->type == kTfLiteInt64);
   TF_LITE_ENSURE(context,

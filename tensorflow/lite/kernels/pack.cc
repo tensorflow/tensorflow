@@ -41,9 +41,8 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE(context, data->axis >= 0);
   if (input0->type != kTfLiteInt32 && input0->type != kTfLiteFloat32 &&
       input0->type != kTfLiteUInt8 && input0->type != kTfLiteInt16) {
-    context->ReportError(context,
-                         "Currently pack only supports "
-                         "float32/uint8/int16/int32.");
+    context->ReportError(context, "Type '%s' is not supported by pack.",
+                         TfLiteTypeGetName(input0->type));
     return kTfLiteError;
   }
   // Make sure all inputs have the same shape and type.
@@ -112,9 +111,8 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
       break;
     }
     default: {
-      context->ReportError(context,
-                           "Currently pack only supports "
-                           "float32/uint8/int32.");
+      context->ReportError(context, "Type '%s' is not supported by pack.",
+                           TfLiteTypeGetName(output->type));
       return kTfLiteError;
     }
   }
