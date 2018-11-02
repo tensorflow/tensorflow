@@ -3449,6 +3449,7 @@ tf_cc_test(
         ":hlo_casting_utils",
         ":hlo_matchers",
         ":hlo_parser",
+        "//tensorflow/compiler/xla:test_helpers",
         "//tensorflow/compiler/xla:window_util",
         "//tensorflow/core:lib",
         "//tensorflow/core:test",
