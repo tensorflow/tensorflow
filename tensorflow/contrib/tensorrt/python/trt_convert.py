@@ -100,8 +100,11 @@ def tensorrt_rewriter_config(rewriter_config=None,
       if set to True, a calibration graph will be created to calibrate the
       missing ranges. The calibration graph must be converted to an inference
       graph using calib_graph_to_infer_graph() after running calibration.
-      if set to False, quantization ranges will be expected for every tensor in
-      the graph. If a range is missing, an error will occur.
+      if set to False, quantization nodes will be expected for every tensor in
+      the graph (exlcuding those which will be fused). If a range is missing,
+      an error will occur. Please note that accuracy may be negatively affected
+      if there is a mismatch between which tensors TRT quantizes and which
+      tensors were trained with fake quantization.
 
   Returns:
     A RewriterConfig proto which sets a TensorRTOptimizer to run Grappler.
@@ -176,7 +179,7 @@ def create_inference_graph(input_graph_def,
     max_workspace_size_bytes: the maximum GPU temporary memory which the TRT
       engine can use at execution time. This corresponds to the 'workspaceSize'
       parameter of nvinfer1::IBuilder::setMaxWorkspaceSize().
-    precision_mode: one of TrtPrecisionMode.supported_precision_modes().
+    precision_mode: one of TrtPrecisionMode.supported_precision_modes(). 
     minimum_segment_size: the minimum number of nodes required for a subgraph to
       be replaced by TRTEngineOp.
     is_dynamic_op: whether to generate dynamic TRT ops which will build the TRT
@@ -197,8 +200,11 @@ def create_inference_graph(input_graph_def,
       if set to True, a calibration graph will be created to calibrate the
       missing ranges. The calibration graph must be converted to an inference
       graph using calib_graph_to_infer_graph() after running calibration.
-      if set to False, quantization ranges will be expected for every tensor in
-      the graph. If a range is missing, an error will occur.
+      if set to False, quantization nodes will be expected for every tensor in
+      the graph (exlcuding those which will be fused). If a range is missing,
+      an error will occur. Please note that accuracy may be negatively affected
+      if there is a mismatch between which tensors TRT quantizes and which
+      tensors were trained with fake quantization.
     input_saved_model_dir: the directory to load the SavedModel which contains
       the input graph to transforms. Used only when input_graph_def is None.
     input_saved_model_tags: list of tags to load the SavedModel.
