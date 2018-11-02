@@ -13,10 +13,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "tensorflow/cc/ops/array_ops.h"
 #include "tensorflow/cc/ops/const_op.h"
 #include "tensorflow/cc/ops/image_ops.h"
 #include "tensorflow/cc/ops/nn_ops.h"
-#include "tensorflow/cc/ops/array_ops.h"
 #include "tensorflow/cc/ops/sendrecv_ops.h"
 #include "tensorflow/cc/ops/standard_ops.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
@@ -32,12 +32,11 @@ namespace graph_transforms {
 
 // Declare here, so we don't need a public header.
 Status FoldSubDivMulBatchNorms(const GraphDef& input_graph_def,
-                            const TransformFuncContext& context,
-                            GraphDef* output_graph_def);
+                               const TransformFuncContext& context,
+                               GraphDef* output_graph_def);
 
 class FoldSubDivMulBatchNormsTest : public ::testing::Test {
  protected:
-  
   void TestFoldSubDivMulFusedBatchNorms() {
     auto root = tensorflow::Scope::NewRootScope();
     using namespace ::tensorflow::ops;  // NOLINT(build/namespaces)
@@ -48,7 +47,7 @@ class FoldSubDivMulBatchNormsTest : public ::testing::Test {
     //           ^       ^       ^       ^       ^
     //         Weights  Mean  Variance Gamma    Beta
     // ------------------------------------------------------------
-    
+
     // Create the Conv Op with inputs input_op and weights_op.
     Tensor input_data(DT_FLOAT, TensorShape({1, 1, 6, 2}));
     test::FillValues<float>(
@@ -65,13 +64,13 @@ class FoldSubDivMulBatchNormsTest : public ::testing::Test {
 
     Output conv_op = Conv2D(root.WithOpName("conv_op"), input_op, weights_op,
                             {1, 1, 1, 1}, "VALID");
-    
+
     // Create the Sub op with inputs conv_op and mean_op.
     Tensor mean_data(DT_FLOAT, TensorShape({2}));
     test::FillValues<float>(&mean_data, {10.0f, 20.0f});
     Output mean_op =
         Const(root.WithOpName("mean_op"), Input::Initializer(mean_data));
-    
+
     Output sub_op = Sub(root.WithOpName("sub_op"), conv_op, mean_op);
 
     // Create the realdiv op with inputs sub_op and variance_op.
@@ -80,14 +79,15 @@ class FoldSubDivMulBatchNormsTest : public ::testing::Test {
     Output variance_op = Const(root.WithOpName("variance_op"),
                                Input::Initializer(variance_data));
 
-    Output realdiv_op = RealDiv(root.WithOpName("realdiv_op"), sub_op, variance_op);
+    Output realdiv_op =
+        RealDiv(root.WithOpName("realdiv_op"), sub_op, variance_op);
 
     // Create the mul op with inputs realdiv_op and gamma_op.
     Tensor gamma_data(DT_FLOAT, TensorShape({2}));
     test::FillValues<float>(&gamma_data, {1.0f, 2.0f});
     Output gamma_op =
         Const(root.WithOpName("gamma_op"), Input::Initializer(gamma_data));
-    
+
     Output mul_op = Mul(root.WithOpName("mul_op"), realdiv_op, gamma_op);
 
     // Create the biasadd op with inputs mul_op and beta_op.
@@ -118,7 +118,7 @@ class FoldSubDivMulBatchNormsTest : public ::testing::Test {
     // -----------------------------------------------------
     GraphDef folded_graph_def;
     TF_ASSERT_OK(FoldSubDivMulBatchNorms(original_graph_def, {{}, {"output"}},
-                                   &folded_graph_def));
+                                         &folded_graph_def));
 
     // create and run a session on folded graph to get output tensor values.
     std::unique_ptr<Session> fused_session(NewSession(SessionOptions()));
