@@ -20,6 +20,8 @@ import os
 import tempfile
 import time
 
+import sqlite3
+
 import numpy as np
 import six
 
@@ -274,6 +276,22 @@ class EagerFileTest(test_util.TensorFlowTestCase):
 
 
 class EagerDbTest(summary_test_util.SummaryDbTest):
+
+  def testDbURIOpen(self):
+    tmpdb_path = os.path.join(self.get_temp_dir(), 'tmpDbURITest.sqlite')
+    tmpdb_uri = six.moves.urllib_parse.urljoin("file:", tmpdb_path)
+    tmpdb_writer = summary_ops.create_db_writer(
+        tmpdb_uri,
+        "experimentA",
+        "run1",
+        "user1")
+    with summary_ops.always_record_summaries():
+      with tmpdb_writer.as_default():
+        summary_ops.scalar('t1', 2.0)
+    tmpdb = sqlite3.connect(tmpdb_path)
+    num = get_one(tmpdb, 'SELECT count(*) FROM Tags WHERE tag_name = "t1"')
+    self.assertEqual(num, 1)
+    tmpdb.close()
 
   def testIntegerSummaries(self):
     step = training_util.create_global_step()

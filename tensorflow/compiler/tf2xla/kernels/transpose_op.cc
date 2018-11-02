@@ -23,7 +23,7 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
-#include "tensorflow/compiler/xla/client/xla_client/xla_builder.h"
+#include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/core/framework/kernel_def_builder.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/kernels/bounds_check.h"
@@ -61,7 +61,7 @@ class TransposeOp : public XlaOpKernel {
 
     std::vector<int64> transposed_order;
     // Check whether permutation is a permutation of integers of [0 .. dims).
-    gtl::InlinedVector<bool, 8> bits(dims);
+    absl::InlinedVector<bool, 8> bits(dims);
     bool is_identity = true;
     for (int i = 0; i < dims; ++i) {
       const int32 d = perm[i];
@@ -106,9 +106,10 @@ class ConjugateTransposeOp : public TransposeOp {
       : TransposeOp(ctx, /*conjugate=*/true) {}
 };
 
-REGISTER_XLA_OP(Name("Transpose").CompileTimeConstInput("perm"), TransposeOp);
+REGISTER_XLA_OP(Name("Transpose").CompileTimeConstantInput("perm"),
+                TransposeOp);
 
-REGISTER_XLA_OP(Name("ConjugateTranspose").CompileTimeConstInput("perm"),
+REGISTER_XLA_OP(Name("ConjugateTranspose").CompileTimeConstantInput("perm"),
                 ConjugateTransposeOp);
 
 // InvertPermutation frequently forms part of the gradient of Transpose.
@@ -153,7 +154,7 @@ class InvertPermutationOp : public XlaOpKernel {
 
 REGISTER_XLA_OP(Name("InvertPermutation")
                     .TypeConstraint("T", DT_INT32)
-                    .CompileTimeConstInput("x"),
+                    .CompileTimeConstantInput("x"),
                 InvertPermutationOp);
 
 }  // namespace

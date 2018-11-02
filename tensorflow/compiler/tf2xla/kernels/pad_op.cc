@@ -17,7 +17,7 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
-#include "tensorflow/compiler/xla/client/xla_client/xla_builder.h"
+#include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/core/framework/kernel_def_builder.h"
 #include "tensorflow/core/framework/register_types.h"
 
@@ -83,8 +83,8 @@ class PadOp : public XlaOpKernel {
   }
 };
 
-REGISTER_XLA_OP(Name("Pad").CompileTimeConstInput("paddings"), PadOp);
-REGISTER_XLA_OP(Name("PadV2").CompileTimeConstInput("paddings"), PadOp);
+REGISTER_XLA_OP(Name("Pad").CompileTimeConstantInput("paddings"), PadOp);
+REGISTER_XLA_OP(Name("PadV2").CompileTimeConstantInput("paddings"), PadOp);
 
 }  // namespace
 }  // namespace tensorflow

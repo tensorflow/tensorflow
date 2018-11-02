@@ -1,6 +1,16 @@
 # Minimum CMake required
 cmake_minimum_required(VERSION 3.5)
 
+if(WIN32)
+	if(${CMAKE_VERSION} VERSION_LESS "3.8")
+		message(WARNING "Your current cmake version is ${CMAKE_VERSION} which does not support setting the toolset architecture to x64. This may cause \"compiler out of heap space\" errors when building. Consider upgrading your cmake to > 3.8 and using the flag -Thost=x64 when running cmake.")
+	else()
+		if(NOT CMAKE_VS_PLATFORM_TOOLSET_HOST_ARCHITECTURE OR NOT "${CMAKE_VS_PLATFORM_TOOLSET_HOST_ARCHITECTURE}" STREQUAL "x64")
+			message(WARNING "Your current cmake generator is set to use 32 bit toolset architecture. This may cause \"compiler out of heap space\" errors when building. Consider using the flag -Thost=x64 when running cmake.")
+		endif()
+	endif()
+endif()
+
 # Project
 project(tensorflow C CXX)
 
@@ -30,7 +40,6 @@ endif()
 
 option(tensorflow_ENABLE_GRPC_SUPPORT "Enable gRPC support" ON)
 option(tensorflow_ENABLE_HDFS_SUPPORT "Enable HDFS support" OFF)
-option(tensorflow_ENABLE_JEMALLOC_SUPPORT "Enable jemalloc support" OFF)
 option(tensorflow_BUILD_CC_EXAMPLE "Build the C++ tutorial example" ON)
 option(tensorflow_BUILD_PYTHON_BINDINGS "Build the Python bindings" ON)
 option(tensorflow_BUILD_ALL_KERNELS "Build all OpKernels" ON)
@@ -90,10 +99,12 @@ if (NOT WIN32)
 
   # Options for linking other libraries
   option(systemlib_ZLIB "Use the system installed library as shared objects instead of downloading ZLIB and statically linking to it: ZLIB" OFF)
+  option(systemlib_ABSEIL_CPP "Use the system installed library as shared objects instead of downloading ABSEIL_CPP and statically linking to it: ABSEIL_CPP" OFF)
 
   option(systemlib_ALL "Turn on every possible systemlib_* options" OFF)
   if (systemlib_ALL)
     set (systemlib_ZLIB ON)
+    set (systemlib_ABSEIL_CPP ON)
   endif (systemlib_ALL)
 endif()
 
@@ -115,7 +126,7 @@ function(SHOW_VARIABLES)
 endfunction()
 
 # External dependencies
-set(CMAKE_MODULE_PATH ${PROJECT_SOURCE_DIR}/external)
+set(CMAKE_MODULE_PATH ${PROJECT_SOURCE_DIR}/external ${PROJECT_SOURCE_DIR}/modules)
 
 # Location where external projects will be downloaded
 set (DOWNLOAD_LOCATION "${CMAKE_CURRENT_BINARY_DIR}/downloads"
@@ -218,10 +229,6 @@ if (tensorflow_WIN_CPU_SIMD_OPTIONS)
   endif()
 endif()
 
-if (tensorflow_ENABLE_JEMALLOC_SUPPORT)
-  add_definitions(-DTENSORFLOW_USE_JEMALLOC -DJEMALLOC_EXPORT=)
-endif()
-
 # External dependencies
 include(zlib)
 include(gif)
@@ -240,6 +247,7 @@ include(re2)
 include(cub)
 include(sqlite)
 include(double_conversion)
+include(abseil_cpp)
 if (tensorflow_BUILD_CC_TESTS)
   include(googletest)
 endif()
@@ -248,6 +256,7 @@ add_definitions(${ADD_CFLAGS})
 link_directories(${ADD_LINK_DIRECTORY})
 
 set(tensorflow_EXTERNAL_LIBRARIES
+    ${tensorflow_EXTERNAL_LIBRARIES}
     ${gif_STATIC_LIBRARIES}
     ${png_STATIC_LIBRARIES}
     ${jpeg_STATIC_LIBRARIES}
@@ -329,12 +338,6 @@ if(tensorflow_ENABLE_GRPC_SUPPORT)
     list(APPEND tensorflow_EXTERNAL_DEPENDENCIES boringssl)
   endif()
 endif()
-if(tensorflow_ENABLE_JEMALLOC_SUPPORT)
-  include(jemalloc)
-  list(APPEND tensorflow_EXTERNAL_LIBRARIES ${jemalloc_STATIC_LIBRARIES})
-  list(APPEND tensorflow_EXTERNAL_DEPENDENCIES jemalloc)
-  include_directories(${jemalloc_INCLUDE_DIRS})
-endif()
 if(tensorflow_ENABLE_SNAPPY_SUPPORT)
   include(snappy)
   list(APPEND tensorflow_EXTERNAL_LIBRARIES ${snappy_STATIC_LIBRARIES})
@@ -353,7 +356,7 @@ endif()
 
 # MKL Support
 if (tensorflow_ENABLE_MKL_SUPPORT)
-  add_definitions(-DINTEL_MKL -DEIGEN_USE_VML)
+  add_definitions(-DINTEL_MKL -DEIGEN_USE_VML -DENABLE_MKL)
   include(mkl)
   list(APPEND tensorflow_EXTERNAL_LIBRARIES ${mkl_STATIC_LIBRARIES})
   list(APPEND tensorflow_EXTERNAL_DEPENDENCIES mkl_copy_shared_to_destination)
@@ -363,9 +366,7 @@ if (tensorflow_ENABLE_MKL_SUPPORT)
     list(APPEND tensorflow_EXTERNAL_LIBRARIES ${mkldnn_STATIC_LIBRARIES})
     list(APPEND tensorflow_EXTERNAL_DEPENDENCIES mkldnn_copy_shared_to_destination)
     include_directories(${mkldnn_INCLUDE_DIRS})
-  else (tensorflow_ENABLE_MKLDNN_SUPPORT)
-    add_definitions(-DINTEL_MKL_ML)
-  endif()
+  endif(tensorflow_ENABLE_MKLDNN_SUPPORT)
 endif (tensorflow_ENABLE_MKL_SUPPORT)
 
 if (tensorflow_ENABLE_GPU)
@@ -394,16 +395,20 @@ if (tensorflow_ENABLE_GPU)
 
   # by default we assume compute cabability 3.5 and 5.2. If you change this change it in
   # CUDA_NVCC_FLAGS and cuda_config.h below
-  set(CUDA_NVCC_FLAGS ${CUDA_NVCC_FLAGS};-gencode arch=compute_30,code=\"sm_30,compute_30\";-gencode arch=compute_35,code=\"sm_35,compute_35\";-gencode arch=compute_52,code=\"sm_52,compute_52\")
+  set(CUDA_NVCC_FLAGS ${CUDA_NVCC_FLAGS};-gencode arch=compute_37,code=\"sm_37,compute_37\")
+  set(CUDA_NVCC_FLAGS ${CUDA_NVCC_FLAGS};-gencode arch=compute_52,code=\"sm_52,compute_52\")
+  set(CUDA_NVCC_FLAGS ${CUDA_NVCC_FLAGS};-gencode arch=compute_60,code=\"sm_60,compute_60\")
+  set(CUDA_NVCC_FLAGS ${CUDA_NVCC_FLAGS};-gencode arch=compute_61,code=\"sm_61,compute_61\")
+  set(CUDA_NVCC_FLAGS ${CUDA_NVCC_FLAGS};-gencode arch=compute_70,code=\"sm_70,compute_70\")
   set(CUDA_NVCC_FLAGS ${CUDA_NVCC_FLAGS};--include-path ${PROJECT_BINARY_DIR}/$\{build_configuration\};--expt-relaxed-constexpr)
   set(CUDA_NVCC_FLAGS ${CUDA_NVCC_FLAGS};-ftz=true)  # Flush denormals to zero
   set(CUDA_INCLUDE ${CUDA_TOOLKIT_TARGET_DIR} ${CUDA_TOOLKIT_TARGET_DIR}/extras/CUPTI/include)
   include_directories(${CUDA_INCLUDE})
   if (WIN32)
-    add_definitions(-DGOOGLE_CUDA=1 -DTF_EXTRA_CUDA_CAPABILITIES=3.0,3.5,5.2)
+    add_definitions(-DGOOGLE_CUDA=1 -DTF_EXTRA_CUDA_CAPABILITIES=3.7,5.2,6.0,6.1,7.0)
   else (WIN32)
-    # Without these double quotes, cmake in Linux makes it "-DTF_EXTRA_CUDA_CAPABILITIES=3.0, -D3.5, -D5.2" for cc, which incurs build breaks
-    add_definitions(-DGOOGLE_CUDA=1 -D"TF_EXTRA_CUDA_CAPABILITIES=3.0,3.5,5.2")
+    # Without these double quotes, cmake in Linux makes it "-DTF_EXTRA_CUDA_CAPABILITIES=3.7, -D5.2, ..." for cc, which incurs build breaks
+    add_definitions(-DGOOGLE_CUDA=1 -D"TF_EXTRA_CUDA_CAPABILITIES=3.7,5.2,6.0,6.1,7.0")
   endif (WIN32)
 
   if (WIN32)
@@ -452,7 +457,7 @@ if (tensorflow_ENABLE_GPU)
   FILE(WRITE ${tensorflow_source_dir}/third_party/gpus/cuda/cuda_config.h
     "#ifndef CUDA_CUDA_CONFIG_H_\n"
     "#define CUDA_CUDA_CONFIG_H_\n"
-    "#define TF_CUDA_CAPABILITIES CudaVersion(\"3.0\"),CudaVersion(\"3.5\"),CudaVersion(\"5.2\")\n"
+    "#define TF_CUDA_CAPABILITIES CudaVersion(\"3.7\"),CudaVersion(\"5.2\"),CudaVersion(\"6.0\"),CudaVersion(\"6.1\"),CudaVersion(\"7.0\")\n"
     "#define TF_CUDA_VERSION \"64_${short_CUDA_VER}\"\n"
     "#define TF_CUDNN_VERSION \"64_${tensorflow_CUDNN_VERSION}\"\n"
     "#define TF_CUDA_TOOLKIT_PATH \"${CUDA_TOOLKIT_ROOT_DIR}\"\n"
@@ -467,7 +472,6 @@ if (tensorflow_ENABLE_GPU)
     ${CUDA_TOOLKIT_TARGET_DIR}/include/cuComplex.h
     ${CUDA_TOOLKIT_TARGET_DIR}/include/cublas_v2.h
     ${CUDA_TOOLKIT_TARGET_DIR}/include/cusolverDn.h
-    ${CUDA_TOOLKIT_TARGET_DIR}/include/cuda_fp16.h
     ${CUDA_TOOLKIT_TARGET_DIR}/include/device_functions.h
     ${CUDA_TOOLKIT_TARGET_DIR}/include/cufft.h
     ${CUDA_TOOLKIT_TARGET_DIR}/include/curand.h

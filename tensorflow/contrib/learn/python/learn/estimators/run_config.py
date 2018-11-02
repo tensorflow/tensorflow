@@ -221,7 +221,7 @@ class ClusterConfig(object):
 class RunConfig(ClusterConfig, core_run_config.RunConfig):
   """This class specifies the configurations for an `Estimator` run.
 
-  This class is a deprecated implementation of @{tf.estimator.RunConfig}
+  This class is a deprecated implementation of `tf.estimator.RunConfig`
   interface.
   """
   _USE_DEFAULT = 0
@@ -302,6 +302,7 @@ class RunConfig(ClusterConfig, core_run_config.RunConfig):
     # so instead of breaking compatibility with that assumption, we
     # just manually initialize this field:
     self._train_distribute = None
+    self._eval_distribute = None
     self._device_fn = None
 
     gpu_options = config_pb2.GPUOptions(

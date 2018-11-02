@@ -107,7 +107,18 @@ class GenerateTest(googletest.TestCase):
 
     output_dir = googletest.GetTempDir()
 
-    generate_lib.write_docs(output_dir, parser_config, yaml_toc=True)
+    generate_lib.write_docs(output_dir, parser_config, yaml_toc=True,
+                            site_api_path='api_docs/python')
+
+    # Check redirects
+    redirects_file = os.path.join(output_dir, '_redirects.yaml')
+    self.assertTrue(os.path.exists(redirects_file))
+    with open(redirects_file) as f:
+      redirects = f.read()
+    self.assertEqual(redirects.split(), [
+        'redirects:', '-', 'from:', '/api_docs/python/tf/test_function', 'to:',
+        '/api_docs/python/tf/TestModule/test_function'
+    ])
 
     # Make sure that the right files are written to disk.
     self.assertTrue(os.path.exists(os.path.join(output_dir, 'index.md')))

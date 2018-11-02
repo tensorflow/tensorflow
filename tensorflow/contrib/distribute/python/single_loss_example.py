@@ -18,7 +18,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.contrib.data.python.ops import batching
 from tensorflow.contrib.distribute.python import step_fn
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.framework import constant_op
@@ -29,7 +28,8 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 
 
-def single_loss_example(optimizer_fn, distribution, use_bias=False):
+def single_loss_example(optimizer_fn, distribution, use_bias=False,
+                        iterations_per_step=1):
   """Build a very simple network to use in tests and examples."""
 
   def dataset_fn():
@@ -38,12 +38,13 @@ def single_loss_example(optimizer_fn, distribution, use_bias=False):
   optimizer = optimizer_fn()
   layer = core.Dense(1, use_bias=use_bias)
 
-  def loss_fn(x):
+  def loss_fn(ctx, x):
+    del ctx
     y = array_ops.reshape(layer(x), []) - constant_op.constant(1.)
     return y * y
 
-  single_loss_step = step_fn.StandardSingleLossStep(dataset_fn, loss_fn,
-                                                    optimizer, distribution)
+  single_loss_step = step_fn.StandardSingleLossStep(
+      dataset_fn, loss_fn, optimizer, distribution, iterations_per_step)
 
   # Layer is returned for inspecting the kernels in tests.
   return single_loss_step, layer
@@ -57,10 +58,9 @@ def minimize_loss_example(optimizer_fn,
 
   def dataset_fn():
     dataset = dataset_ops.Dataset.from_tensors([[1.]]).repeat()
-    # TODO(isaprykin): map_and_batch with drop_remainder causes shapes to be
+    # TODO(isaprykin): batch with drop_remainder causes shapes to be
     # fully defined for TPU.  Remove this when XLA supports dynamic shapes.
-    return dataset.apply(
-        batching.map_and_batch(lambda x: x, batch_size=1, drop_remainder=True))
+    return dataset.batch(1, drop_remainder=True)
 
   # An Optimizer instance is created either outside or inside model_fn.
   outer_optimizer = None
@@ -90,7 +90,7 @@ def batchnorm_example(optimizer_fn,
                       batch_per_epoch=1,
                       momentum=0.9,
                       renorm=False,
-                      update_ops_in_tower_mode=False):
+                      update_ops_in_replica_mode=False):
   """Example of non-distribution-aware legacy code with batch normalization."""
 
   def dataset_fn():
@@ -113,7 +113,7 @@ def batchnorm_example(optimizer_fn,
       y = batchnorm(x, training=True)
       with ops.control_dependencies(
           ops.get_collection(ops.GraphKeys.UPDATE_OPS)
-          if update_ops_in_tower_mode else []):
+          if update_ops_in_replica_mode else []):
         loss = math_ops.reduce_mean(
             math_ops.reduce_sum(layer(y)) - constant_op.constant(1.))
       # `x` and `y` will be fetched by the gradient computation, but not `loss`.

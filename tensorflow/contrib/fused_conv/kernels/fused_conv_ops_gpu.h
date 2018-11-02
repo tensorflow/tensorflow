@@ -29,13 +29,13 @@ namespace tensorflow {
 class FusedConvParameters : public ConvParameters {
  public:
   FusedConvParameters(int64 batch, int64 in_depths, const SpatialArray& in,
-                      int64 out_depths, const SpatialArray& filter,
-                      const SpatialArray& dilation, const SpatialArray& stride,
-                      const SpatialArray& padding, DataType dtype,
-                      int device_id, bool has_side_input,
+                      TensorFormat data_format, int64 out_depths,
+                      const SpatialArray& filter, const SpatialArray& dilation,
+                      const SpatialArray& stride, const SpatialArray& padding,
+                      DataType dtype, int device_id, bool has_side_input,
                       ActivationMode activation_mode)
-      : ConvParameters(batch, in_depths, in, out_depths, filter, dilation,
-                       stride, padding, dtype, device_id),
+      : ConvParameters(batch, in_depths, in, data_format, out_depths, filter,
+                       dilation, stride, padding, dtype, device_id),
         activation_mode_(activation_mode),
         has_side_input_(has_side_input) {
     hash_code_ = Hash64Combine(hash_code_, has_side_input);

@@ -33,7 +33,7 @@ class AlexnetV2Test(test.TestCase):
     batch_size = 5
     height, width = 224, 224
     num_classes = 1000
-    with self.test_session():
+    with self.cached_session():
       inputs = random_ops.random_uniform((batch_size, height, width, 3))
       logits, _ = alexnet.alexnet_v2(inputs, num_classes)
       self.assertEquals(logits.op.name, 'alexnet_v2/fc8/squeezed')
@@ -44,7 +44,7 @@ class AlexnetV2Test(test.TestCase):
     batch_size = 1
     height, width = 300, 400
     num_classes = 1000
-    with self.test_session():
+    with self.cached_session():
       inputs = random_ops.random_uniform((batch_size, height, width, 3))
       logits, _ = alexnet.alexnet_v2(inputs, num_classes, spatial_squeeze=False)
       self.assertEquals(logits.op.name, 'alexnet_v2/fc8/BiasAdd')
@@ -55,7 +55,7 @@ class AlexnetV2Test(test.TestCase):
     batch_size = 5
     height, width = 224, 224
     num_classes = 1000
-    with self.test_session():
+    with self.cached_session():
       inputs = random_ops.random_uniform((batch_size, height, width, 3))
       _, end_points = alexnet.alexnet_v2(inputs, num_classes)
       expected_names = [
@@ -70,7 +70,7 @@ class AlexnetV2Test(test.TestCase):
     batch_size = 5
     height, width = 224, 224
     num_classes = 1000
-    with self.test_session():
+    with self.cached_session():
       inputs = random_ops.random_uniform((batch_size, height, width, 3))
       alexnet.alexnet_v2(inputs, num_classes)
       expected_names = [
@@ -98,7 +98,7 @@ class AlexnetV2Test(test.TestCase):
     batch_size = 2
     height, width = 224, 224
     num_classes = 1000
-    with self.test_session():
+    with self.cached_session():
       eval_inputs = random_ops.random_uniform((batch_size, height, width, 3))
       logits, _ = alexnet.alexnet_v2(eval_inputs, is_training=False)
       self.assertListEqual(logits.get_shape().as_list(),
@@ -112,7 +112,7 @@ class AlexnetV2Test(test.TestCase):
     train_height, train_width = 224, 224
     eval_height, eval_width = 300, 400
     num_classes = 1000
-    with self.test_session():
+    with self.cached_session():
       train_inputs = random_ops.random_uniform(
           (train_batch_size, train_height, train_width, 3))
       logits, _ = alexnet.alexnet_v2(train_inputs)
@@ -132,7 +132,7 @@ class AlexnetV2Test(test.TestCase):
   def testForward(self):
     batch_size = 1
     height, width = 224, 224
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       inputs = random_ops.random_uniform((batch_size, height, width, 3))
       logits, _ = alexnet.alexnet_v2(inputs)
       sess.run(variables.global_variables_initializer())

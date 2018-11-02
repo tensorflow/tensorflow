@@ -158,12 +158,12 @@ class _ModelFn(object):
     return either `features` or, equivalently, `(features, None)`.
 
     Args:
-      features: The input points. See @{tf.estimator.Estimator}.
-      mode: See @{tf.estimator.Estimator}.
-      config: See @{tf.estimator.Estimator}.
+      features: The input points. See `tf.estimator.Estimator`.
+      mode: See `tf.estimator.Estimator`.
+      config: See `tf.estimator.Estimator`.
 
     Returns:
-      A @{tf.estimator.EstimatorSpec} (see @{tf.estimator.Estimator}) specifying
+      A `tf.estimator.EstimatorSpec` (see `tf.estimator.Estimator`) specifying
       this behavior:
         * `train_op`: Execute one mini-batch or full-batch run of Lloyd's
              algorithm.
@@ -188,7 +188,6 @@ class _ModelFn(object):
     #   center.
     # is_initialized: scalar indicating whether the initial cluster centers
     #   have been chosen; see init_op.
-    # cluster_centers_var: a Variable containing the cluster centers.
     # init_op: an op to choose the initial cluster centers. A single worker
     #   repeatedly executes init_op until is_initialized becomes True.
     # training_op: an op that runs an iteration of training, either an entire
@@ -394,7 +393,7 @@ class KMeansClustering(estimator.Estimator):
       relative_tolerance: A relative tolerance of change in the loss between
         iterations. Stops learning if the loss changes less than this amount.
         This may not work correctly if `use_mini_batch=True`.
-      config: See @{tf.estimator.Estimator}.
+      config: See `tf.estimator.Estimator`.
       feature_columns: An optionable iterable containing all the feature columns
         used by the model. All items in the set should be feature column
         instances that can be passed to `tf.feature_column.input_layer`. If this
@@ -431,7 +430,7 @@ class KMeansClustering(estimator.Estimator):
     """Finds the index of the closest cluster center to each input point.
 
     Args:
-      input_fn: Input points. See @{tf.estimator.Estimator.predict}.
+      input_fn: Input points. See `tf.estimator.Estimator.predict`.
 
     Yields:
       The index of the closest cluster center for each input point.
@@ -447,7 +446,7 @@ class KMeansClustering(estimator.Estimator):
     which returns the negative sum.
 
     Args:
-      input_fn: Input points. See @{tf.estimator.Estimator.evaluate}. Only one
+      input_fn: Input points. See `tf.estimator.Estimator.evaluate`. Only one
           batch is retrieved.
 
     Returns:
@@ -465,7 +464,7 @@ class KMeansClustering(estimator.Estimator):
     sklearn function returns the Euclidean distance.
 
     Args:
-      input_fn: Input points. See @{tf.estimator.Estimator.predict}.
+      input_fn: Input points. See `tf.estimator.Estimator.predict`.
 
     Yields:
       The distances from each input point to each cluster center.

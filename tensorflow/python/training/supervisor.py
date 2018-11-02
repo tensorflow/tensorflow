@@ -45,7 +45,7 @@ class Supervisor(object):
   """A training helper that checkpoints models and computes summaries.
 
   This class is deprecated. Please use
-  @{tf.train.MonitoredTrainingSession} instead.
+  `tf.train.MonitoredTrainingSession` instead.
 
   The Supervisor is a small wrapper around a `Coordinator`, a `Saver`,
   and a `SessionManager` that takes care of common needs of TensorFlow
@@ -134,7 +134,7 @@ class Supervisor(object):
 
   * Specifying `'local'` requests a session that uses the RPC-based
     "Master interface" to run TensorFlow programs. See
-    @{tf.train.Server.create_local_server} for
+    `tf.train.Server.create_local_server` for
     details.
 
   * Specifying `'grpc://hostname:port'` requests a session that uses
@@ -242,10 +242,9 @@ class Supervisor(object):
       ready_for_local_init_op: 1-D string `Tensor`.  This tensor is evaluated by
         supervisors in `prepare_or_wait_for_session()` to check if the model is
         ready to run the local_init_op.
-        The model is considered ready if it returns an empty array.  Defaults to
-        the tensor returned from
-        `tf.report_uninitialized_variables(tf.global_variables())`. If `None`,
-        the model is not checked for readiness before running local_init_op.
+        The model is considered ready if it returns an empty array. Defaults to
+        `None`. If `None`, the model is not checked for readiness before running
+        local_init_op.
       is_chief: If True, create a chief supervisor in charge of initializing
         and restoring the model.  If False, create a supervisor that relies
         on a chief supervisor for inits and restore.

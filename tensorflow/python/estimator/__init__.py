@@ -12,14 +12,21 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Import Estimator APIs.
+"""estimator python module.
 
-Note: This file is imported by the create_estimator_api genrule. It must
-transitively import all Estimator modules/packages for their @estimator_export
-annotations to generate the public Estimator python API.
+Importing from tensorflow.python.estimator is unsupported
+and will soon break!
 """
+# pylint: disable=unused-import,g-bad-import-order,g-import-not-at-top,wildcard-import
+
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import tensorflow.python.estimator.estimator_lib
+from tensorflow_estimator.python import estimator
+
+# Include attrs that start with single underscore.
+_HAS_DYNAMIC_ATTRIBUTES = True
+estimator.__all__ = [s for s in dir(estimator) if not s.startswith('__')]
+
+from tensorflow_estimator.python.estimator import *

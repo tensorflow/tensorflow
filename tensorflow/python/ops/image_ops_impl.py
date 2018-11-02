@@ -20,6 +20,7 @@ from __future__ import print_function
 
 import numpy as np
 
+from tensorflow.python.compat import compat
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -28,7 +29,6 @@ from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import control_flow_ops
-from tensorflow.python.ops import functional_ops
 from tensorflow.python.ops import gen_image_ops
 from tensorflow.python.ops import gen_nn_ops
 from tensorflow.python.ops import math_ops
@@ -264,7 +264,7 @@ def random_flip_up_down(image, seed=None):
     image: 4-D Tensor of shape `[batch, height, width, channels]` or
            3-D Tensor of shape `[height, width, channels]`.
     seed: A Python integer. Used to create a random seed. See
-      @{tf.set_random_seed}
+      `tf.set_random_seed`
       for behavior.
 
   Returns:
@@ -286,7 +286,7 @@ def random_flip_left_right(image, seed=None):
     image: 4-D Tensor of shape `[batch, height, width, channels]` or
            3-D Tensor of shape `[height, width, channels]`.
     seed: A Python integer. Used to create a random seed. See
-      @{tf.set_random_seed}
+      `tf.set_random_seed`
       for behavior.
 
   Returns:
@@ -300,21 +300,21 @@ def random_flip_left_right(image, seed=None):
 
 def _random_flip(image, flip_index, seed, scope_name):
   """Randomly (50% chance) flip an image along axis `flip_index`.
-    Args:
-      image: 4-D Tensor of shape `[batch, height, width, channels]` or
-             3-D Tensor of shape `[height, width, channels]`.
-      flip_index: The dimension along which to flip the image.
-                  Vertical: 0, Horizontal: 1
-      seed: A Python integer. Used to create a random seed. See
-        @{tf.set_random_seed}
-        for behavior.
-      scope_name: Name of the scope in which the ops are added.
 
-    Returns:
-      A tensor of the same type and shape as `image`.
+  Args:
+    image: 4-D Tensor of shape `[batch, height, width, channels]` or
+           3-D Tensor of shape `[height, width, channels]`.
+    flip_index: Dimension along which to flip image. Vertical: 0, Horizontal: 1
+    seed: A Python integer. Used to create a random seed. See
+      `tf.set_random_seed`
+      for behavior.
+    scope_name: Name of the scope in which the ops are added.
 
-    Raises:
-      ValueError: if the shape of `image` not supported.
+  Returns:
+    A tensor of the same type and shape as `image`.
+
+  Raises:
+    ValueError: if the shape of `image` not supported.
   """
   with ops.name_scope(None, scope_name, [image]) as scope:
     image = ops.convert_to_tensor(image, name='image')
@@ -331,15 +331,16 @@ def _random_flip(image, flip_index, seed, scope_name):
       )
       return fix_image_flip_shape(image, result)
     elif shape.ndims == 4:
+      batch_size = array_ops.shape(image)[0]
       uniform_random = random_ops.random_uniform(
-          [array_ops.shape(image)[0]], 0, 1.0, seed=seed
+          [batch_size], 0, 1.0, seed=seed
       )
-      mirror_cond = math_ops.less(uniform_random, .5)
-      return array_ops.where(
-          mirror_cond,
-          image,
-          functional_ops.map_fn(lambda x: array_ops.reverse(x, [flip_index]), image, dtype=image.dtype)
+      flips = math_ops.round(
+          array_ops.reshape(uniform_random, [batch_size, 1, 1, 1])
       )
+      flips = math_ops.cast(flips, image.dtype)
+      flipped_input = array_ops.reverse(image, [flip_index + 1])
+      return flips * flipped_input + (1 - flips) * image
     else:
       raise ValueError('\'image\' must have either 3 or 4 dimensions.')
 
@@ -586,7 +587,7 @@ def central_crop(image, central_fraction):
     # Helper method to return the `idx`-th dimension of `tensor`, along with
     # a boolean signifying if the dimension is dynamic.
     def _get_dim(tensor, idx):
-      static_shape = tensor.get_shape()[idx].value
+      static_shape = tensor.get_shape().dims[idx].value
       if static_shape is not None:
         return static_shape, False
       return array_ops.shape(tensor)[idx], True
@@ -947,7 +948,7 @@ def resize_images(images,
 
   Resized images will be distorted if their original aspect ratio is not
   the same as `size`.  To avoid distortions see
-  @{tf.image.resize_image_with_pad}.
+  `tf.image.resize_image_with_pad`.
 
   `method` can be one of:
 
@@ -1013,8 +1014,8 @@ def resize_images(images,
       raise ValueError('\'size\' must be a 1-D Tensor of 2 elements: '
                        'new_height, new_width')
     size_const_as_shape = tensor_util.constant_value_as_shape(size)
-    new_height_const = size_const_as_shape[0].value
-    new_width_const = size_const_as_shape[1].value
+    new_height_const = size_const_as_shape.dims[0].value
+    new_width_const = size_const_as_shape.dims[1].value
 
     if preserve_aspect_ratio:
       # Get the current shapes of the image, even if dynamic.
@@ -1026,17 +1027,17 @@ def resize_images(images,
       scale_factor_width = (math_ops.to_float(new_width_const) /
                             math_ops.to_float(current_width))
       scale_factor = math_ops.minimum(scale_factor_height, scale_factor_width)
-      scaled_height_const = math_ops.to_int32(scale_factor *
-                                              math_ops.to_float(current_height))
-      scaled_width_const = math_ops.to_int32(scale_factor *
-                                             math_ops.to_float(current_width))
+      scaled_height_const = math_ops.to_int32(
+          math_ops.round(scale_factor * math_ops.to_float(current_height)))
+      scaled_width_const = math_ops.to_int32(
+          math_ops.round(scale_factor * math_ops.to_float(current_width)))
 
       # NOTE: Reset the size and other constants used later.
       size = ops.convert_to_tensor([scaled_height_const, scaled_width_const],
                                    dtypes.int32, name='size')
       size_const_as_shape = tensor_util.constant_value_as_shape(size)
-      new_height_const = size_const_as_shape[0].value
-      new_width_const = size_const_as_shape[1].value
+      new_height_const = size_const_as_shape.dims[0].value
+      new_width_const = size_const_as_shape.dims[1].value
 
     # If we can determine that the height and width will be unmodified by this
     # transformation, we avoid performing the resize.
@@ -1166,14 +1167,14 @@ def resize_image_with_pad(image,
     _ImageDimensions(padded, rank=4)
 
     if not is_batch:
-      padded = array_ops.squeeze(padded, squeeze_dims=[0])
+      padded = array_ops.squeeze(padded, axis=[0])
 
     return padded
 
 
 @tf_export('image.per_image_standardization')
 def per_image_standardization(image):
-  """Linearly scales `image` to have zero mean and unit norm.
+  """Linearly scales `image` to have zero mean and unit variance.
 
   This op computes `(x - mean) / adjusted_stddev`, where `mean` is the average
   of all values in image, and
@@ -1183,7 +1184,8 @@ def per_image_standardization(image):
   away from zero to protect against division by 0 when handling uniform images.
 
   Args:
-    image: 3-D tensor of shape `[height, width, channels]`.
+    image: An n-D Tensor where the last 3 dimensions are
+           `[height, width, channels]`.
 
   Returns:
     The standardized image with same shape as `image`.
@@ -1193,14 +1195,15 @@ def per_image_standardization(image):
   """
   with ops.name_scope(None, 'per_image_standardization', [image]) as scope:
     image = ops.convert_to_tensor(image, name='image')
-    image = _Assert3DImage(image)
-    num_pixels = math_ops.reduce_prod(array_ops.shape(image))
+    image = _AssertAtLeast3DImage(image)
+    num_pixels = math_ops.reduce_prod(array_ops.shape(image)[-3:])
 
     image = math_ops.cast(image, dtype=dtypes.float32)
-    image_mean = math_ops.reduce_mean(image)
+    image_mean = math_ops.reduce_mean(image, axis=[-1, -2, -3], keepdims=True)
 
     variance = (
-        math_ops.reduce_mean(math_ops.square(image)) -
+        math_ops.reduce_mean(
+            math_ops.square(image), axis=[-1, -2, -3], keepdims=True) -
         math_ops.square(image_mean))
     variance = gen_nn_ops.relu(variance)
     stddev = math_ops.sqrt(variance)
@@ -1226,7 +1229,7 @@ def random_brightness(image, max_delta, seed=None):
     image: An image.
     max_delta: float, must be non-negative.
     seed: A Python integer. Used to create a random seed. See
-      @{tf.set_random_seed}
+      `tf.set_random_seed`
       for behavior.
 
   Returns:
@@ -1254,7 +1257,7 @@ def random_contrast(image, lower, upper, seed=None):
     lower: float.  Lower bound for the random contrast factor.
     upper: float.  Upper bound for the random contrast factor.
     seed: A Python integer. Used to create a random seed. See
-      @{tf.set_random_seed}
+      `tf.set_random_seed`
       for behavior.
 
   Returns:
@@ -1376,7 +1379,7 @@ def adjust_gamma(image, gamma=1, gain=1):
     [1] http://en.wikipedia.org/wiki/Gamma_correction
   """
 
-  with ops.op_scope([image, gamma, gain], None, 'adjust_gamma'):
+  with ops.name_scope(None, 'adjust_gamma', [image, gamma, gain]) as name:
     # Convert pixel value to DT_FLOAT for computing adjusted image.
     img = ops.convert_to_tensor(image, name='img', dtype=dtypes.float32)
     # Keep image dtype for computing the scale of corresponding dtype.
@@ -2110,6 +2113,64 @@ def non_max_suppression(boxes,
                                                 iou_threshold, score_threshold)
 
 
+@tf_export('image.non_max_suppression_padded')
+def non_max_suppression_padded(boxes,
+                               scores,
+                               max_output_size,
+                               iou_threshold=0.5,
+                               score_threshold=float('-inf'),
+                               pad_to_max_output_size=False,
+                               name=None):
+  """Greedily selects a subset of bounding boxes in descending order of score.
+
+  Performs algorithmically equivalent operation to tf.image.non_max_suppression,
+  with the addition of an optional parameter which zero-pads the output to
+  be of size `max_output_size`.
+  The output of this operation is a tuple containing the set of integers
+  indexing into the input collection of bounding boxes representing the selected
+  boxes and the number of valid indices in the index set.  The bounding box
+  coordinates corresponding to the selected indices can then be obtained using
+  the `tf.slice` and `tf.gather` operations.  For example:
+    selected_indices_padded, num_valid = tf.image.non_max_suppression_padded(
+        boxes, scores, max_output_size, iou_threshold,
+        score_threshold, pad_to_max_output_size=True)
+    selected_indices = tf.slice(
+        selected_indices_padded, tf.constant([0]), num_valid)
+    selected_boxes = tf.gather(boxes, selected_indices)
+
+  Args:
+    boxes: A 2-D float `Tensor` of shape `[num_boxes, 4]`.
+    scores: A 1-D float `Tensor` of shape `[num_boxes]` representing a single
+      score corresponding to each box (each row of boxes).
+    max_output_size: A scalar integer `Tensor` representing the maximum number
+      of boxes to be selected by non max suppression.
+    iou_threshold: A float representing the threshold for deciding whether boxes
+      overlap too much with respect to IOU.
+    score_threshold: A float representing the threshold for deciding when to
+      remove boxes based on score.
+    pad_to_max_output_size: bool.  If True, size of `selected_indices` output
+      is padded to `max_output_size`.
+    name: A name for the operation (optional).
+
+  Returns:
+    selected_indices: A 1-D integer `Tensor` of shape `[M]` representing the
+      selected indices from the boxes tensor, where `M <= max_output_size`.
+    valid_outputs: A scalar integer `Tensor` denoting how many elements in
+    `selected_indices` are valid.  Valid elements occur first, then padding.
+  """
+  with ops.name_scope(name, 'non_max_suppression_padded'):
+    iou_threshold = ops.convert_to_tensor(iou_threshold, name='iou_threshold')
+    score_threshold = ops.convert_to_tensor(
+        score_threshold, name='score_threshold')
+    if compat.forward_compatible(2018, 8, 7) or pad_to_max_output_size:
+      return gen_image_ops.non_max_suppression_v4(
+          boxes, scores, max_output_size, iou_threshold, score_threshold,
+          pad_to_max_output_size)
+    else:
+      return gen_image_ops.non_max_suppression_v3(
+          boxes, scores, max_output_size, iou_threshold, score_threshold)
+
+
 @tf_export('image.non_max_suppression_overlaps')
 def non_max_suppression_with_overlaps(overlaps,
                                       scores,
@@ -2149,7 +2210,7 @@ def non_max_suppression_with_overlaps(overlaps,
     overlap_threshold = ops.convert_to_tensor(
         overlap_threshold, name='overlap_threshold')
     # pylint: disable=protected-access
-    return gen_image_ops._non_max_suppression_v3(
+    return gen_image_ops.non_max_suppression_with_overlaps(
         overlaps, scores, max_output_size, overlap_threshold, score_threshold)
     # pylint: enable=protected-access
 
@@ -2284,7 +2345,8 @@ def _verify_compatible_image_shapes(img1, img2):
   shape1[-3:].assert_is_compatible_with(shape2[-3:])
 
   if shape1.ndims is not None and shape2.ndims is not None:
-    for dim1, dim2 in zip(reversed(shape1[:-3]), reversed(shape2[:-3])):
+    for dim1, dim2 in zip(reversed(shape1.dims[:-3]),
+                          reversed(shape2.dims[:-3])):
       if not (dim1 == 1 or dim2 == 1 or dim1.is_compatible_with(dim2)):
         raise ValueError(
             'Two images are not compatible: %s and %s' % (shape1, shape2))

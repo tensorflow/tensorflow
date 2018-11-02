@@ -138,6 +138,11 @@ tensorflow::ImportNumpy();
   $result = PyLong_FromLongLong($1);
 }
 
+// Convert TF_DeviceListIncarnation uint64_t output to Python integer
+%typemap(out) uint64_t {
+  $result = PyLong_FromUnsignedLongLong($1);
+}
+
 // We use TF_OperationGetControlInputs_wrapper instead of
 // TF_OperationGetControlInputs
 %ignore TF_OperationGetControlInputs;
@@ -458,7 +463,7 @@ TF_ImportGraphDefResultsMissingUnusedInputMappings_wrapper{
 }
 
 // Override default py3 behavior of attempting to encode into Unicode.
-%typemap(out) std::string tensorflow::GetResourceHandleShapeAndType {
+%typemap(out) std::string tensorflow::GetHandleShapeAndType {
   $result = PyBytes_FromStringAndSize($1.data(), $1.size());
 }
 
@@ -772,11 +777,12 @@ def TF_Reset(target, containers=None, config=None):
   $1 = &types_local;
 }
 
+%unignore TF_NewSessionRef;
 %unignore SetRequireShapeInferenceFns;
 %unignore TF_TryEvaluateConstant_wrapper;
 %noexception TF_TryEvaluateConstant_wrapper;
 %unignore ExtendSession;
-%unignore ResourceHandleShapeAndType;
+%unignore HandleShapeAndType;
 
 %include "tensorflow/python/client/tf_session_helper.h"
 

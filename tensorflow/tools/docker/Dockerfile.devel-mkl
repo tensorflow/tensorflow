@@ -3,7 +3,7 @@ FROM ubuntu:16.04
 LABEL maintainer="Clayne Robison <clayne.b.robison@intel.com>"
 
 # These parameters can be overridden by parameterized_docker_build.sh
-ARG TF_BUILD_VERSION=r1.9
+ARG TF_BUILD_VERSION=r1.12
 ARG PYTHON="python"
 ARG PYTHON3_DEV=""
 ARG WHL_DIR="/tmp/pip"
@@ -18,18 +18,29 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         libhdf5-serial-dev \
         libpng12-dev \
         libzmq3-dev \
+        libssl-dev \
         pkg-config \
-        python-dev \
-        ${PYTHON3_DEV} \
         rsync \
         software-properties-common \
         unzip \
         zip \
         zlib1g-dev \
         openjdk-8-jdk \
-        openjdk-8-jre-headless \
-        && \
-    apt-get clean && \
+        openjdk-8-jre-headless
+
+#install Python 3
+RUN if [ ${PYTHON} = "python3.6" ]; then \
+      curl https://www.python.org/ftp/python/3.6.5/Python-3.6.5.tar.xz -o /opt/python.tar.xz && \
+      cd /opt && tar xvf python.tar.xz && \
+      cd /opt/*/ && ./configure && \
+      make && make install; \
+    else \
+      apt-get install -y --no-install-recommends \
+        python-dev \
+        ${PYTHON3_DEV}; \
+    fi
+
+RUN    apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 
 RUN curl -fSsL -O https://bootstrap.pypa.io/get-pip.py && \
@@ -41,6 +52,8 @@ RUN ${PIP} --no-cache-dir install \
         h5py \
         ipykernel \
         jupyter \
+        keras_applications \
+        keras_preprocessing \
         matplotlib \
         mock \
         numpy \
@@ -51,7 +64,9 @@ RUN ${PIP} --no-cache-dir install \
     ${PYTHON} -m ipykernel.kernelspec
 
 RUN if [ "${PYTHON}" = "python3" ]; then \
-  ln -s -f /usr/bin/python3 /usr/bin/python; \
+      ln -s -f /usr/bin/python3 /usr/bin/python; \
+  elif [ "${PYTHON}" = "python3.6" ]; then \
+      ln -s -f /usr/local/bin/python3.6 /usr/bin/python; \
   fi
 
 # Set up our notebook config.
@@ -73,7 +88,7 @@ RUN echo "startup --batch" >>/etc/bazel.bazelrc
 RUN echo "build --spawn_strategy=standalone --genrule_strategy=standalone" \
     >>/etc/bazel.bazelrc
 # Install the most recent bazel release.
-ENV BAZEL_VERSION 0.14.1
+ENV BAZEL_VERSION 0.15.0
 WORKDIR /
 RUN mkdir /bazel && \
     cd /bazel && \
@@ -100,6 +115,7 @@ RUN export TAG_PREFIX="v" && \
     fi
 
 RUN yes "" | ${PYTHON} configure.py
+RUN cp .bazelrc /root/.bazelrc
 
 ENV CI_BUILD_PYTHON ${PYTHON}
 
@@ -110,7 +126,8 @@ ENV CI_BUILD_PYTHON ${PYTHON}
 # --copt=-march="avx" \
 # For haswell, broadwell, or skylake
 # --copt=-march="avx2" \
-COPY .bazelrc /root/.bazelrc
+COPY .bazelrc /root/.mkl.bazelrc
+RUN echo "import /root/.mkl.bazelrc" >>/root/.bazelrc
 
 RUN tensorflow/tools/ci_build/builds/configured CPU \
     bazel --bazelrc=/root/.bazelrc build -c opt \

@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_LIB_CORE_THREADPOOL_H_
-#define TENSORFLOW_LIB_CORE_THREADPOOL_H_
+#ifndef TENSORFLOW_CORE_LIB_CORE_THREADPOOL_H_
+#define TENSORFLOW_CORE_LIB_CORE_THREADPOOL_H_
 
 #include <functional>
 #include <memory>
@@ -58,6 +58,20 @@ class ThreadPool {
 
   // Schedules fn() for execution in the pool of threads.
   void Schedule(std::function<void()> fn);
+
+  // Requires 0 < block_size <= total.
+  // Spawns k threads and calls fn(i*block_size, (i+1)*block_size) from the
+  // ith thread (i>=0). When (i+1)*block_size > total, fn(i*block_size, total)
+  // is called instead. k = NumShardsUsedByTransformRangeConcurrently(...).
+  // Note that when there aren't enough threads in the pool to achieve full
+  // parallelism, function calls will be automatically queued.
+  void TransformRangeConcurrently(const int64 block_size, const int64 total,
+                                  const std::function<void(int64, int64)>& fn);
+
+  // Returns the number of threads spawned by calling TransformRangeConcurrently
+  // with these parameters.
+  int NumShardsUsedByTransformRangeConcurrently(const int64 block_size,
+                                                const int64 total);
 
   // ParallelFor shards the "total" units of work assuming each unit of work
   // having roughly "cost_per_unit" cost, in cycles. Each unit of work is
@@ -108,4 +122,4 @@ class ThreadPool {
 }  // namespace thread
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_LIB_CORE_THREADPOOL_H_
+#endif  // TENSORFLOW_CORE_LIB_CORE_THREADPOOL_H_

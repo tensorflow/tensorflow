@@ -32,7 +32,7 @@ from tensorflow.python.platform import test
 class XlaSortOpTest(xla_test.XLATestCase):
 
   def _assertOpOutputMatchesExpected(self, op, args, expected):
-    with self.test_session() as session:
+    with self.cached_session() as session:
       with self.test_scope():
         placeholders = [
             array_ops.placeholder(dtypes.as_dtype(arg.dtype), arg.shape)
@@ -48,22 +48,33 @@ class XlaSortOpTest(xla_test.XLATestCase):
         self.assertAllClose(v, result, rtol=1e-3)
 
   def testSort(self):
-    # TODO(b/26783907): The Sort HLO is not implemented on CPU or GPU.
-    if self.device in ["XLA_CPU", "XLA_GPU"]:
-      return
-
-    supported_types = set([dtypes.bfloat16.as_numpy_dtype, np.float32])
+    supported_types = set(
+        [dtypes.bfloat16.as_numpy_dtype, np.float32, np.int32, np.uint32])
     for dtype in supported_types.intersection(self.numeric_types):
       x = np.arange(101, dtype=dtype)
       np.random.shuffle(x)
       self._assertOpOutputMatchesExpected(
           xla.sort, [x], expected=[np.arange(101, dtype=dtype)])
 
-  def testTopK(self):
-    # TODO(b/26783907): The Sort HLO is not implemented on CPU or GPU.
-    if self.device in ["XLA_CPU", "XLA_GPU"]:
-      return
+  def testKeyValueSort(self):
+    supported_key_types = set(
+        [dtypes.bfloat16.as_numpy_dtype, np.float32, np.int32, np.uint32])
+    supported_value_types = set(
+        [dtypes.bfloat16.as_numpy_dtype, np.float32, np.int32, np.uint32,
+         dtypes.int64.as_numpy_dtype, dtypes.uint64.as_numpy_dtype])
+    for key_type in supported_key_types.intersection(self.numeric_types):
+      for value_type in supported_value_types.intersection(self.numeric_types):
+        x = np.arange(101, dtype=key_type)
+        np.random.shuffle(x)
+        y = (-x).astype(value_type)
+        self._assertOpOutputMatchesExpected(
+            xla.key_value_sort, [x, y],
+            expected=[
+                np.arange(101, dtype=key_type),
+                -np.arange(101, dtype=value_type)
+            ])
 
+  def testTopK(self):
     supported_types = set(
         [dtypes.bfloat16.as_numpy_dtype, np.float32, np.int32, np.uint32])
     for dtype in supported_types.intersection(self.numeric_types):
@@ -88,18 +99,42 @@ class XlaSortOpTest(xla_test.XLATestCase):
               topk, [x.astype(dtype)],
               expected=[x[indices].astype(dtype), indices])
 
+  def testTopK2D(self):
+    supported_types = set(
+        [dtypes.bfloat16.as_numpy_dtype, np.float32, np.int32, np.uint32])
+    for dtype in supported_types.intersection(self.numeric_types):
+      # Use small input size for bfloat16. Otherwise, we'll get duplicate values
+      # after conversion to bfloat16, so the possible resulting index array is
+      # no longer unique.
+      if dtype == dtypes.bfloat16.as_numpy_dtype:
+        array_size = 10
+        k_options = [0, 1, 2, 10]
+      else:
+        array_size = 200 * 1000
+        k_options = [0, 1, 2, 10, 20, 100, 1000, 200 * 1000]
+      batch = 16
+      for x in [np.arange(batch * array_size)]:
+        np.random.shuffle(x)
+        x = np.reshape(x, [batch, array_size])
+        for k in k_options:
+          indices = x.argsort(axis=1)[::, -1:-k - 1:-1]
+          expected = np.sort(x, axis=1)[::, -1:-k - 1:-1]
+
+          def topk(v, k=k):
+            return nn_ops.top_k(v, k=k, sorted=True)
+
+          self._assertOpOutputMatchesExpected(
+              topk, [x.astype(dtype)],
+              expected=[expected.astype(dtype), indices])
+
   def testTopKZeros(self):
     """Tests that positive and negative zeros sort correctly."""
-    # TODO(b/26783907): The Sort HLO is not implemented on CPU or GPU.
-    if self.device in ["XLA_CPU", "XLA_GPU"]:
-      return
-
     # Only bfloat16 is implemented.
     bfloat16 = dtypes.bfloat16.as_numpy_dtype
     if bfloat16 not in self.numeric_types:
       return
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       p = array_ops.placeholder(dtypes.bfloat16)
       with self.test_scope():
         topk = nn_ops.top_k(p, k=4)
@@ -112,16 +147,12 @@ class XlaSortOpTest(xla_test.XLATestCase):
 
   def testTopKInfinities(self):
     """Tests that positive and negative infinity sort correctly."""
-    # TODO(b/26783907): The Sort HLO is not implemented on CPU or GPU.
-    if self.device in ["XLA_CPU", "XLA_GPU"]:
-      return
-
     # Only bfloat16 is implemented.
     bfloat16 = dtypes.bfloat16.as_numpy_dtype
     if bfloat16 not in self.numeric_types:
       return
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       p = array_ops.placeholder(dtypes.bfloat16)
       with self.test_scope():
         topk = nn_ops.top_k(p, k=6)

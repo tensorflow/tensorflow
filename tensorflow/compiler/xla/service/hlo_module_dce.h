@@ -28,10 +28,10 @@ namespace xla {
 // Sweeps through live instructions which cross computation boundaries (kWhile),
 // and removes code at dead shape indices.
 //
-class HloModuleDCE : public HloPassInterface {
+class HloModuleDCE : public HloModulePass {
  public:
   ~HloModuleDCE() override {}
-  tensorflow::StringPiece name() const override { return "hlo-module-dce"; }
+  absl::string_view name() const override { return "hlo-module-dce"; }
 
   // Run the pass on the given module. Returns whether the module was changed
   // (instructions were removed).

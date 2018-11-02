@@ -111,7 +111,7 @@ class StackOp : public XlaOpKernel {
     xla::XlaOp value;
     XlaContext& xc = XlaContext::Get(ctx);
     XlaResource* resource;
-    string name = strings::StrCat("Stack: ", stack_name_);
+    string name = absl::StrCat("Stack: ", stack_name_);
     OP_REQUIRES_OK(
         ctx, xc.CreateResource(XlaResource::kStack, -1, std::move(name), dtype_,
                                TensorShape(), value, /*tensor_array_size=*/size,
@@ -126,7 +126,7 @@ class StackOp : public XlaOpKernel {
   TF_DISALLOW_COPY_AND_ASSIGN(StackOp);
 };
 
-REGISTER_XLA_OP(Name("StackV2").CompileTimeConstInput("max_size"), StackOp);
+REGISTER_XLA_OP(Name("StackV2").CompileTimeConstantInput("max_size"), StackOp);
 
 class StackPushOp : public XlaOpKernel {
  public:

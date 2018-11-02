@@ -16,8 +16,8 @@ limitations under the License.
 // This is a collection of routines which converts various YUV image formats
 // to (A)RGB.
 
-#ifndef ORG_TENSORFLOW_JNI_IMAGEUTILS_YUV2RGB_H_
-#define ORG_TENSORFLOW_JNI_IMAGEUTILS_YUV2RGB_H_
+#ifndef TENSORFLOW_EXAMPLES_ANDROID_JNI_YUV2RGB_H_
+#define TENSORFLOW_EXAMPLES_ANDROID_JNI_YUV2RGB_H_
 
 #include <stdint.h>
 
@@ -54,4 +54,4 @@ void ConvertYUV420SPToRGB565(const uint8_t* const input, uint16_t* const output,
 }
 #endif
 
-#endif  // ORG_TENSORFLOW_JNI_IMAGEUTILS_YUV2RGB_H_
+#endif  // TENSORFLOW_EXAMPLES_ANDROID_JNI_YUV2RGB_H_

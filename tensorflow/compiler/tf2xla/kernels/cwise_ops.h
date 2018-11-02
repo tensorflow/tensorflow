@@ -20,7 +20,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/xla/client/client_library.h"
-#include "tensorflow/compiler/xla/client/xla_client/xla_builder.h"
+#include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/util/bcast.h"
 
@@ -57,8 +57,8 @@ class XlaBinaryOp : public XlaOpKernel {
   // in the XLA documentation.
   virtual xla::XlaOp Computation(
       XlaOpKernelContext* ctx, const xla::XlaOp& lhs,
-      const gtl::ArraySlice<int64>& lhs_shape, const xla::XlaOp& rhs,
-      const gtl::ArraySlice<int64>& rhs_shape, const BCast& broadcast_helper,
+      const absl::Span<const int64>& lhs_shape, const xla::XlaOp& rhs,
+      const absl::Span<const int64>& rhs_shape, const BCast& broadcast_helper,
       const std::vector<int64>& extend_dimensions) = 0;
 
   void Compile(XlaOpKernelContext* ctx) override;
@@ -67,8 +67,7 @@ class XlaBinaryOp : public XlaOpKernel {
   // 'broadcast_helper', yielding arguments 'lhs' and 'rhs' that have the same
   // shape.
   static std::pair<xla::XlaOp, xla::XlaOp> Broadcast(
-      xla::XlaBuilder* builder, const xla::XlaOp& lhs, const xla::XlaOp& rhs,
-      const BCast& broadcast_helper);
+      xla::XlaOp lhs, xla::XlaOp rhs, const BCast& broadcast_helper);
 };
 
 }  // namespace tensorflow

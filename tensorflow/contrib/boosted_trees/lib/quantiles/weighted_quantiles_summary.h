@@ -36,12 +36,6 @@ class WeightedQuantilesSummary {
   struct SummaryEntry {
     SummaryEntry(const ValueType& v, const WeightType& w, const WeightType& min,
                  const WeightType& max) {
-      // Explicitly initialize all of memory (including padding from memory
-      // alignment) to allow the struct to be msan-resistant "plain old data".
-      //
-      // POD = http://en.cppreference.com/w/cpp/concept/PODType
-      memset(this, 0, sizeof(*this));
-
       value = v;
       weight = w;
       min_rank = min;
@@ -49,8 +43,6 @@ class WeightedQuantilesSummary {
     }
 
     SummaryEntry() {
-      memset(this, 0, sizeof(*this));
-
       value = ValueType();
       weight = 0;
       min_rank = 0;

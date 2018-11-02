@@ -85,6 +85,7 @@ py_library(
 
 cuda_py_test(
     name = "control_flow_ops_test",
+    size = "large",
     srcs = ["control_flow_ops_test.py"],
     additional_deps = [
         ":control_flow_ops",
@@ -122,6 +123,8 @@ cuda_py_test(
         "//third_party/py/numpy",
         "//tensorflow/python:layers",
         "//tensorflow/python:client_testlib",
+        "//tensorflow/python:control_flow_ops",
+        "//tensorflow/python:functional_ops",
         "//tensorflow/python:random_ops",
         "//tensorflow/python/ops/losses",
     ],

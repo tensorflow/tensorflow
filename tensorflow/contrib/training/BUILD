@@ -61,7 +61,7 @@ py_library(
         "//tensorflow/python:variable_scope",
         "//tensorflow/python:variables",
         "//tensorflow/python/data",
-        "//tensorflow/python/estimator:inputs_queues",
+        "//tensorflow/python/estimator:estimator_py",
         "//third_party/py/numpy",
         "@six_archive//:six",
     ],
@@ -133,7 +133,7 @@ py_test(
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:session",
         "//tensorflow/python:training",
-        "//tensorflow/python/estimator:inputs_queues",
+        "//tensorflow/python/estimator:estimator_py",
         "//third_party/py/numpy",
     ],
 )
@@ -295,7 +295,6 @@ py_test(
     tags = ["notsan"],
     deps = [
         ":training_py",
-        "//tensorflow/contrib/data/python/kernel_tests/serialization:dataset_serialization_test_base",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:gradients",
@@ -305,6 +304,7 @@ py_test(
         "//tensorflow/python:training",
         "//tensorflow/python:variables",
         "//tensorflow/python/data",
+        "//tensorflow/python/data/experimental/kernel_tests/serialization:dataset_serialization_test_base",
         "//third_party/py/numpy",
     ],
 )
@@ -313,6 +313,5 @@ tf_proto_library(
     name = "protos_all",
     srcs = glob(["**/*.proto"]),
     cc_api_version = 2,
-    java_api_version = 2,
     visibility = ["//visibility:public"],
 )

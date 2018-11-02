@@ -8,6 +8,7 @@ import "tensorflow/core/framework/function.proto";
 import "tensorflow/core/framework/versions.proto";
 import "tensorflow/core/protobuf/tensorflow_server.proto";
 import "tensorflow/core/framework/tensor_shape.proto";
+import "tensorflow/core/framework/tensor.proto";
 
 message RemoteTensorHandle {
   // The ID of the operation that produced this tensor.
@@ -128,6 +129,24 @@ message RegisterFunctionRequest {
 message RegisterFunctionResponse {
 }
 
+message SendTensorRequest {
+  fixed64 context_id = 1;
+
+  // All remote tensors are identified by <Op ID, Output num>. To mimic this
+  // situation when directly sending tensors, we include an "artificial" op ID
+  // (which would have corresponded to the _Recv op when not using SendTensor).
+  int64 op_id = 2;
+  // The index within the repeated field is the output number that will help
+  // uniquely identify (along with the above op_id) the particular tensor.
+  repeated TensorProto tensors = 3;
+
+  // The device on which the tensors should be resident.
+  string device_name = 4;
+}
+
+message SendTensorResponse {
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 //
 // Eager Service defines a TensorFlow service that executes operations eagerly
@@ -174,4 +193,8 @@ service EagerService {
   // Takes a FunctionDef and makes it enqueable on the remote worker.
   rpc RegisterFunction(RegisterFunctionRequest)
       returns (RegisterFunctionResponse);
+
+  // An RPC to push tensors to the server. At times, certain environments don't
+  // allow the server to connect back to the client.
+  rpc SendTensor(SendTensorRequest) returns (SendTensorResponse);
 }

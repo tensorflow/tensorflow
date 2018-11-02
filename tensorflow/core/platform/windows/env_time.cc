@@ -19,6 +19,10 @@ limitations under the License.
 #include <windows.h>
 #include <chrono>
 
+using std::chrono::duration_cast;
+using std::chrono::nanoseconds;
+using std::chrono::system_clock;
+
 namespace tensorflow {
 
 namespace {
@@ -38,18 +42,17 @@ class WindowsEnvTime : public EnvTime {
     }
   }
 
-  uint64 NowMicros() override {
+  uint64 NowNanos() {
     if (GetSystemTimePreciseAsFileTime_ != NULL) {
       // GetSystemTimePreciseAsFileTime function is only available in latest
       // versions of Windows, so we need to check for its existence here.
-      // All std::chrono clocks on Windows proved to return
-      // values that may repeat, which is not good enough for some uses.
+      // All std::chrono clocks on Windows proved to return values that may
+      // repeat, which is not good enough for some uses.
       constexpr int64_t kUnixEpochStartTicks = 116444736000000000i64;
-      constexpr int64_t kFtToMicroSec = 10;
 
-      // This interface needs to return system time and not
-      // just any microseconds because it is often used as an argument
-      // to TimedWait() on condition variable
+      // This interface needs to return system time and not just any time
+      // because it is often used as an argument to TimedWait() on condition
+      // variable.
       FILETIME system_time;
       GetSystemTimePreciseAsFileTime_(&system_time);
 
@@ -58,12 +61,12 @@ class WindowsEnvTime : public EnvTime {
       li.HighPart = system_time.dwHighDateTime;
       // Subtract unix epoch start
       li.QuadPart -= kUnixEpochStartTicks;
-      // Convert to microsecs
-      li.QuadPart /= kFtToMicroSec;
+
+      constexpr int64_t kFtToNanoSec = 100;
+      li.QuadPart *= kFtToNanoSec;
       return li.QuadPart;
     }
-    using namespace std::chrono;
-    return duration_cast<microseconds>(system_clock::now().time_since_epoch())
+    return duration_cast<nanoseconds>(system_clock::now().time_since_epoch())
         .count();
   }
 

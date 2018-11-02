@@ -93,5 +93,7 @@ following to each value in the 'input' tensor.
 
 output = round(clamp(value, input_min, input_max) * scale_factor) / scale_factor.
 
+The above round function uses half to even rounding.
+
 END
 }

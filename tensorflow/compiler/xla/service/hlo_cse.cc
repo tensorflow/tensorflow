@@ -23,6 +23,8 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/container/flat_hash_set.h"
+#include "absl/container/inlined_vector.h"
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
@@ -33,8 +35,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/lib/gtl/flatset.h"
-#include "tensorflow/core/lib/gtl/inlined_vector.h"
+#include "tensorflow/core/lib/hash/hash.h"
 
 namespace xla {
 
@@ -103,6 +104,9 @@ int64 CseHash(const HloInstruction* instruction) {
   for (auto operand : instruction->operands()) {
     hash = tensorflow::Hash64Combine(hash, operand->unique_id());
   }
+  if (instruction->opcode() == HloOpcode::kConstant) {
+    hash = tensorflow::Hash64Combine(hash, instruction->literal().Hash());
+  }
   return hash;
 }
 
@@ -133,8 +137,8 @@ StatusOr<bool> HloCSE::Run(HloModule* module) {
     // HLO instructions are grouped into equivalency classes by using the
     // cse_equal predicate defined above. This set holds a representative
     // instruction for each class.
-    tensorflow::gtl::FlatSet<HloInstruction*, decltype(&CseHash),
-                             decltype(cse_equal)>
+    absl::flat_hash_set<HloInstruction*, decltype(&CseHash),
+                        decltype(cse_equal)>
         representatives(/*N=*/computation->instruction_count() + 1, &CseHash,
                         cse_equal);
     for (auto instruction : computation->MakeInstructionPostOrder()) {

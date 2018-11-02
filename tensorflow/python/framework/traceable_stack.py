@@ -27,9 +27,8 @@ class TraceableObject(object):
   # Return codes for the set_filename_and_line_from_caller() method.
   SUCCESS, HEURISTIC_USED, FAILURE = (0, 1, 2)
 
-  def __init__(self, obj, name=None, filename=None, lineno=None):
+  def __init__(self, obj, filename=None, lineno=None):
     self.obj = obj
-    self.name = name
     self.filename = filename
     self.lineno = lineno
 
@@ -72,8 +71,7 @@ class TraceableObject(object):
 
   def copy_metadata(self):
     """Return a TraceableObject like this one, but without the object."""
-    return self.__class__(None, name=self.name, filename=self.filename,
-                          lineno=self.lineno)
+    return self.__class__(None, filename=self.filename, lineno=self.lineno)
 
 
 class TraceableStack(object):
@@ -88,12 +86,11 @@ class TraceableStack(object):
     """
     self._stack = existing_stack[:] if existing_stack else []
 
-  def push_obj(self, obj, name=None, offset=0):
+  def push_obj(self, obj, offset=0):
     """Add object to the stack and record its filename and line information.
 
     Args:
       obj: An object to store on the stack.
-      name: A name for the object, used for dict keys in get_item_metadata_dict.
       offset: Integer.  If 0, the caller's stack frame is used.  If 1,
           the caller's caller's stack frame is used.
 
@@ -102,7 +99,7 @@ class TraceableStack(object):
       TraceableObject.HEURISTIC_USED if the stack was smaller than expected,
       and TraceableObject.FAILURE if the stack was empty.
     """
-    traceable_obj = TraceableObject(obj, name=name)
+    traceable_obj = TraceableObject(obj)
     self._stack.append(traceable_obj)
     # Offset is defined in "Args" as relative to the caller.  We are 1 frame
     # beyond the caller and need to compensate.

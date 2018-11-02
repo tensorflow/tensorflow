@@ -16,7 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
-#include "tensorflow/compiler/xla/client/xla_client/xla_builder.h"
+#include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/core/util/tensor_format.h"
 
 namespace tensorflow {
@@ -48,7 +48,7 @@ class SpaceToDepthOp : public XlaOpKernel {
     OP_REQUIRES(ctx, kRequiredDims == input_rank,
                 errors::InvalidArgument("Input rank should be ", kRequiredDims,
                                         "; got ", input_rank));
-    const gtl::InlinedVector<int64, 4> input_shape =
+    const absl::InlinedVector<int64, 4> input_shape =
         input_tensor_shape.dim_sizes();
 
     xla::XlaOp input = ctx->Input(0);

@@ -58,8 +58,8 @@ def _TensorListStackGrad(unused_op, dtensor):
 @ops.RegisterGradient("TensorListFromTensor")
 def _TensorListFromTensorGrad(op, dlist):
   """Gradient for TensorListFromTensor."""
-  if op.inputs[0].shape[0].value is not None:
-    num_elements = op.inputs[0].shape[0].value
+  if op.inputs[0].shape.dims[0].value is not None:
+    num_elements = op.inputs[0].shape.dims[0].value
   else:
     num_elements = None
   if dlist is None:
@@ -97,3 +97,18 @@ def _TensorListSetItemGrad(op, dlist):
   element_grad = gen_list_ops.tensor_list_get_item(
       dlist, index, element_dtype=item.dtype)
   return list_grad, index_grad, element_grad
+
+
+@ops.RegisterGradient("TensorListGather")
+def _TensorListGatherGrad(op, dtensor):
+  _, indices = op.inputs
+  return gen_list_ops.tensor_list_scatter(
+      tensor=dtensor, indices=indices,
+      element_shape=ops.convert_to_tensor(-1, dtype=dtypes.int32)), None
+
+
+@ops.RegisterGradient("TensorListScatter")
+def _TensorListScatterGrad(op, dlist):
+  t, indices, _ = op.inputs
+  return gen_list_ops.tensor_list_gather(
+      dlist, indices, element_dtype=t.dtype), None

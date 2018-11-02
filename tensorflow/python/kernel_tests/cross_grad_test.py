@@ -27,7 +27,7 @@ from tensorflow.python.platform import test
 class CrossOpTest(test.TestCase):
 
   def testGradientRandomValues(self):
-    with self.test_session():
+    with self.cached_session():
       us = [2, 3]
       u = array_ops.reshape(
           [0.854, -0.616, 0.767, 0.725, -0.927, 0.159], shape=us)

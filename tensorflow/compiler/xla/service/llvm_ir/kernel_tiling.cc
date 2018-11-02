@@ -28,7 +28,7 @@ namespace {
 // Returns the indices of the first elements of all consecutive subarrays of the
 // given array. For example:
 // ConsecutiveSegments({m, m+1, m+2, n, k, k+1}) = {0, 3, 4}
-std::vector<size_t> ConsecutiveSegments(tensorflow::gtl::ArraySlice<int64> xs) {
+std::vector<size_t> ConsecutiveSegments(absl::Span<const int64> xs) {
   std::vector<size_t> is = {0};
   for (size_t i = 1; i < xs.size(); ++i) {
     if (1 != xs[i] - xs[i - 1]) {
@@ -40,8 +40,7 @@ std::vector<size_t> ConsecutiveSegments(tensorflow::gtl::ArraySlice<int64> xs) {
 
 // Merges the sequences of dimensions of the given shape which start at the
 // given indices `segs`.
-Shape MergeDimensions(tensorflow::gtl::ArraySlice<size_t> segs,
-                      const Shape& shape) {
+Shape MergeDimensions(absl::Span<const size_t> segs, const Shape& shape) {
   std::vector<int64> dimensions;
   for (size_t i = 1; i <= segs.size(); ++i) {
     dimensions.push_back(std::accumulate(
@@ -55,10 +54,10 @@ Shape MergeDimensions(tensorflow::gtl::ArraySlice<size_t> segs,
 }
 }  // namespace
 
-tensorflow::gtl::optional<std::vector<int64> > FindTranspose021(
-    const Shape& a, const Shape& b) {
+absl::optional<std::vector<int64> > FindTranspose021(const Shape& a,
+                                                     const Shape& b) {
   if (!ShapeUtil::CompatibleIgnoringElementType(a, b)) {
-    return tensorflow::gtl::nullopt;
+    return absl::nullopt;
   }
 
   std::vector<int64> perm(a.dimensions().size());
@@ -88,30 +87,30 @@ tensorflow::gtl::optional<std::vector<int64> > FindTranspose021(
     return dims_021;
   }
 
-  return tensorflow::gtl::nullopt;
+  return absl::nullopt;
 }
 
 IrArray::Index GetUnreducedOutputIndex(
     const IrArray::Index& reduced_output_index,
     const Shape& reduced_output_shape, const Shape& unreduced_output_shape,
-    llvm::IRBuilder<>* ir_builder) {
+    llvm::IRBuilder<>* b) {
   auto bounds = reduced_output_shape.dimensions();
   auto minor_to_major = reduced_output_shape.layout().minor_to_major();
   llvm::Value* linear_index = reduced_output_index.GetConstantWithIndexType(0);
   int64 multiplier = 1;
   for (int i = 0; i < reduced_output_index.size(); ++i) {
     int64 dim = minor_to_major[i];
-    llvm::Value* addend = ir_builder->CreateMul(
-        reduced_output_index[dim],
-        reduced_output_index.GetConstantWithIndexType(multiplier),
-        "linearizing",
-        /*HasNUW=*/true, /*HasNSW=*/true);
-    linear_index = ir_builder->CreateAdd(linear_index, addend, "",
-                                         /*HasNUW=*/true, /*HasNSW=*/true);
+    llvm::Value* addend =
+        b->CreateMul(reduced_output_index[dim],
+                     reduced_output_index.GetConstantWithIndexType(multiplier),
+                     "linearizing",
+                     /*HasNUW=*/true, /*HasNSW=*/true);
+    linear_index = b->CreateAdd(linear_index, addend, "",
+                                /*HasNUW=*/true, /*HasNSW=*/true);
     multiplier *= bounds[dim];
   }
 
-  return IrArray::Index(linear_index, unreduced_output_shape, ir_builder);
+  return IrArray::Index(linear_index, unreduced_output_shape, b);
 }
 
 }  // namespace llvm_ir

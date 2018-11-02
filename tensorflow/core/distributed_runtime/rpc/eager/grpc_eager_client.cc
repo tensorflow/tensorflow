@@ -49,6 +49,7 @@ class GrpcEagerClient : public EagerClient {
   CLIENT_METHOD(KeepAlive);
   CLIENT_METHOD(CloseContext);
   CLIENT_METHOD(RegisterFunction);
+  CLIENT_METHOD(SendTensor);
 
 #undef CLIENT_METHOD
 

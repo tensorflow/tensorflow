@@ -96,7 +96,7 @@ class SubcomputationInsertionVisitor : public DfsHloVisitorWithDefault {
     if (it == subcomputation_hlo_to_new_hlo_.end()) {
       return NotFound(
           "Could not find mapping from subcomputation HLO %s to a cloned HLO.",
-          subcomputation_hlo->ToString().c_str());
+          subcomputation_hlo->ToString());
     }
     return it->second;
   }

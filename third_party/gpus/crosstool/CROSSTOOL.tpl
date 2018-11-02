@@ -208,7 +208,7 @@ toolchain {
       action: "c++-link-dynamic-library"
       action: "c++-link-nodeps-dynamic-library"
       flag_group {
-        flag: "-B/usr/bin/"
+        %{linker_bin_path_flag}
       }
     }
   }
@@ -446,7 +446,7 @@ toolchain {
       action: "c++-link-dynamic-library"
       action: "c++-link-nodeps-dynamic-library"
       flag_group {
-        flag: "-B/usr/bin/"
+        %{linker_bin_path_flag}
       }
     }
   }

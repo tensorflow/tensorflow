@@ -20,7 +20,8 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
-#include "tensorflow/compiler/xla/client/xla_client/xla_builder.h"
+#include "tensorflow/compiler/xla/client/xla_builder.h"
+#include "tensorflow/compiler/xla/client/xla_computation.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/partial_tensor_shape.h"
@@ -103,7 +104,8 @@ class ScanOp : public XlaOpKernel {
     }
     auto output = xla::ReduceWindowWithGeneralPadding(
         XlaHelpers::ConvertElementType(builder, ctx->Input(0), dtype), init,
-        *reducer, window_dims, window_strides, padding);
+        *reducer, window_dims, window_strides,
+        /*base_dilations=*/{}, /*window_dilations=*/{}, padding);
     output =
         XlaHelpers::ConvertElementType(builder, output, ctx->input_type(0));
 
@@ -134,7 +136,7 @@ class CumsumOp : public ScanOp {
 };
 REGISTER_XLA_OP(Name("Cumsum")
                     .TypeConstraint("T", kScanOpTypes)
-                    .CompileTimeConstInput("axis"),
+                    .CompileTimeConstantInput("axis"),
                 CumsumOp);
 
 class CumprodOp : public ScanOp {
@@ -143,7 +145,7 @@ class CumprodOp : public ScanOp {
 };
 REGISTER_XLA_OP(Name("Cumprod")
                     .TypeConstraint("T", kScanOpTypes)
-                    .CompileTimeConstInput("axis"),
+                    .CompileTimeConstantInput("axis"),
                 CumprodOp);
 
 }  // anonymous namespace

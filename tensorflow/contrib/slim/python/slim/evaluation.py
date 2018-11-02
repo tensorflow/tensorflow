@@ -22,7 +22,8 @@ modules using a variety of metrics and summarizing the results.
 **********************
 
 In the simplest use case, we use a model to create the predictions, then specify
-the metrics and finally call the `evaluation` method:
+the metrics and choose one model checkpoint, finally call the`evaluation_once`
+method:
 
   # Create model and obtain the predictions:
   images, labels = LoadData(...)
@@ -34,20 +35,24 @@ the metrics and finally call the `evaluation` method:
       "mse": slim.metrics.mean_squared_error(predictions, labels),
   })
 
+  checkpoint_path = '/tmp/my_model_dir/my_checkpoint'
+  log_dir = '/tmp/my_model_eval/'
+
   initial_op = tf.group(
       tf.global_variables_initializer(),
       tf.local_variables_initializer())
 
-  with tf.Session() as sess:
-    metric_values = slim.evaluation(
-        sess,
-        num_evals=1,
-        initial_op=initial_op,
-        eval_op=names_to_updates.values(),
-        final_op=name_to_values.values())
+  metric_values = slim.evaluate_once(
+      master='',
+      checkpoint_path=checkpoint_path,
+      log_dir=log_dir,
+      num_evals=1,
+      initial_op=initial_op,
+      eval_op=names_to_updates.values(),
+      final_op=name_to_values.values())
 
-    for metric, value in zip(names_to_values.keys(), metric_values):
-      logging.info('Metric %s has value: %f', metric, value)
+  for metric, value in zip(names_to_values.keys(), metric_values):
+    logging.info('Metric %s has value: %f', metric, value)
 
 ************************************************
 * Evaluating a Checkpointed Model with Metrics *

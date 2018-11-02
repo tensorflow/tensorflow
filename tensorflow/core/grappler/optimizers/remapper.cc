@@ -168,11 +168,12 @@ void AddBatchNormNodes(GraphDef* optimized_graph, const NodeDef& fused_node) {
 Status Remapper::Optimize(Cluster* /*cluster*/, const GrapplerItem& item,
                           GraphDef* optimized_graph) {
   GraphProperties properties(item);
-  TF_RETURN_IF_ERROR(properties.InferStatically(false));
+  bool inferred_properties = false;
   GraphView graph(const_cast<GraphDef*>(&item.graph));
 
   // During inference, most of the inputs to FusedBatchNorm are constant, and we
   // can therefore replace the op with a much cheaper set of primitives.
+  optimized_graph->mutable_node()->Reserve(item.graph.node_size());
   for (const NodeDef& node : item.graph.node()) {
     if (node.op() == "FusedBatchNorm" || node.op() == "FusedBatchNormV2") {
       bool optimizable = (node.attr().count("T") == 0 ||
@@ -181,6 +182,11 @@ Status Remapper::Optimize(Cluster* /*cluster*/, const GrapplerItem& item,
                       !node.attr().at("is_training").b());
       if (optimizable) {
         int const_inputs = 0;
+        if (!inferred_properties) {
+          // Infer properties lazily in case they are not needed.
+          TF_RETURN_IF_ERROR(properties.InferStatically(false));
+          inferred_properties = true;
+        }
         const auto& props = properties.GetInputProperties(node.name());
         for (const auto& prop : props) {
           if (prop.has_value()) {
@@ -218,7 +224,7 @@ Status Remapper::Optimize(Cluster* /*cluster*/, const GrapplerItem& item,
 void Remapper::Feedback(Cluster* /*cluster*/, const GrapplerItem& /*item*/,
                         const GraphDef& /*optimized_graph*/,
                         double /*result*/) {
-  // Nothing to do for ArithmeticOptimizer.
+  // Nothing to do for RemapperOptimizer.
 }
 
 }  // namespace grappler

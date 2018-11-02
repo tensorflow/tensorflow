@@ -27,9 +27,7 @@ namespace eager {
 
 GrpcEagerServiceImpl::GrpcEagerServiceImpl(
     const WorkerEnv* env, ::grpc::ServerBuilder* server_builder)
-    : local_impl_(env) {
-  request_handler_threadpool_ =
-      MakeUnique<thread::ThreadPool>(env->env, "EagerServiceRequestHandler", 4);
+    : env_(env), local_impl_(env) {
   server_builder->RegisterService(&service_);
   cq_ = server_builder->AddCompletionQueue();
 }
@@ -50,6 +48,7 @@ void GrpcEagerServiceImpl::HandleRPCsLoop() {
   ENQUEUE_REQUEST(KeepAlive);
   ENQUEUE_REQUEST(CloseContext);
   ENQUEUE_REQUEST(RegisterFunction);
+  ENQUEUE_REQUEST(SendTensor);
 #undef ENQUEUE_REQUEST
 
   void* tag;  // Matches the operation started against this cq_.

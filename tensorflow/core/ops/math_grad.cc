@@ -372,6 +372,22 @@ Status ConjGrad(const AttrSlice& attrs, FunctionDef* g) {
 }
 REGISTER_OP_GRADIENT("Conj", ConjGrad);
 
+Status CastGrad(const AttrSlice& attrs, FunctionDef* g) {
+  // clang-format off
+  *g = FDH::Define(
+      // Arg defs
+      {"x: SrcT", "dy: DstT"},
+      // Ret val defs
+      {"dx: SrcT"},
+      // Attr defs
+      {{"SrcT: type"}, {"DstT: type"}},
+      // Nodes
+      {{{"dx"}, "Cast", {"dy"}, {{"SrcT", "$DstT"}, {"DstT", "$SrcT"}}}});
+  return Status::OK();
+  // clang-format on
+}
+REGISTER_OP_GRADIENT("Cast", CastGrad);
+
 // Cwise binary ops
 //
 // TODO(zhifengc): This can be arrange as a function in the standard
@@ -479,6 +495,19 @@ Status RealDivGrad(const AttrSlice& attrs, FunctionDef* g) {
 }
 REGISTER_OP_GRADIENT("RealDiv", RealDivGrad);
 
+Status DivNoNanGrad(const AttrSlice& attrs, FunctionDef* g) {
+  // clang-format off
+  return GradForBinaryCwise(g, {
+      {{"gx"}, "DivNoNan", {"dz", "y"}},
+      {{"nx"}, "Neg", {"x"}, {}, {"dz"}},
+      {{"y2"}, "Square", {"y"}, {}, {"dz"}},
+      {{"nx_y2"}, "DivNoNan", {"nx", "y2"}},
+      {{"gy"}, "Mul", {"dz", "nx_y2"}},  // dz * (- x / y^2)
+  });
+  // clang-format on
+}
+REGISTER_OP_GRADIENT("DivNoNan", DivNoNanGrad);
+
 Status PowGrad(const AttrSlice& attrs, FunctionDef* g) {
   // clang-format off
   std::vector<FDH::Node> nodes = {
@@ -519,6 +548,40 @@ Status PowGrad(const AttrSlice& attrs, FunctionDef* g) {
   return GradForBinaryCwise(g, nodes);
 }
 REGISTER_OP_GRADIENT("Pow", PowGrad);
+
+Status XlogyGrad(const AttrSlice& attrs, FunctionDef* g) {
+  // clang-format off
+  return GradForBinaryCwise(g, {
+      {{"zeros"}, "ZerosLike", {"x"}},
+      {{"is_x_zero"}, "NotEqual", {"x", "zeros"}},
+      {{"is_zero_cast"}, "Cast", {"is_x_zero"},
+        {{"SrcT", DT_BOOL}, {"DstT", "$T"}}},
+      {{"safe_logy"}, "Xlogy", {"is_zero_cast", "y"}},
+      {{"xlogygrad"}, "Xdivy", {"x", "y"}},
+      {{"gx"}, "Mul", {"safe_logy", "dz"}},
+      {{"gy"}, "Mul", {"xlogygrad", "dz"}},
+  });
+  // clang-format on
+}
+REGISTER_OP_GRADIENT("Xlogy", XlogyGrad);
+
+Status XdivyGrad(const AttrSlice& attrs, FunctionDef* g) {
+  // clang-format off
+  return GradForBinaryCwise(g, {
+      {{"zeros"}, "ZerosLike", {"x"}},
+      {{"is_x_zero"}, "NotEqual", {"x", "zeros"}},
+      {{"is_zero_cast"}, "Cast", {"is_x_zero"},
+        {{"SrcT", DT_BOOL}, {"DstT", "$T"}}},
+      {{"safe_divy"}, "Xdivy", {"is_zero_cast", "y"}},
+      {{"y2"}, "Square", {"y"}},
+      {{"negy2"}, "Neg", {"y2"}},
+      {{"xdivygrad"}, "Xdivy", {"x", "negy2"}},
+      {{"gx"}, "Mul", {"safe_divy", "dz"}},
+      {{"gy"}, "Mul", {"xdivygrad", "dz"}},
+  });
+  // clang-format on
+}
+REGISTER_OP_GRADIENT("Xdivy", XdivyGrad);
 
 Status MaximumMinimumGradHelper(const string& comparator,
                                 const AttrSlice& attrs, FunctionDef* g) {

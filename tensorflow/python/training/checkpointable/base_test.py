@@ -16,8 +16,11 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.python.framework import ops
+from tensorflow.python.ops import variable_scope
 from tensorflow.python.platform import test
 from tensorflow.python.training.checkpointable import base
+from tensorflow.python.training.checkpointable import util
 
 
 class InterfaceTests(test.TestCase):
@@ -36,6 +39,23 @@ class InterfaceTests(test.TestCase):
     (current_name, current_dependency), = root._checkpoint_dependencies
     self.assertIs(duplicate_name_dep, current_dependency)
     self.assertEqual("leaf", current_name)
+
+  def testAddVariableOverwrite(self):
+    root = base.CheckpointableBase()
+    a = root._add_variable_with_custom_getter(
+        name="v", shape=[], getter=variable_scope.get_variable)
+    self.assertEqual([root, a], util.list_objects(root))
+    with ops.Graph().as_default():
+      b = root._add_variable_with_custom_getter(
+          name="v", shape=[], overwrite=True,
+          getter=variable_scope.get_variable)
+      self.assertEqual([root, b], util.list_objects(root))
+    with ops.Graph().as_default():
+      with self.assertRaisesRegexp(
+          ValueError, "already declared as a dependency"):
+        root._add_variable_with_custom_getter(
+            name="v", shape=[], overwrite=False,
+            getter=variable_scope.get_variable)
 
 if __name__ == "__main__":
   test.main()

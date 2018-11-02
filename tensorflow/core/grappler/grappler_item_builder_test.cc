@@ -313,6 +313,29 @@ TEST_F(GrapplerItemBuilderTest, FromGraphWithUnknownDimInSignatureInput) {
   EXPECT_EQ(item2->feed[0].second.NumElements(), 1);
 }
 
+TEST_F(GrapplerItemBuilderTest, ExplicitFeedAndFetch) {
+  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+  auto x = ops::Const(s.WithOpName("x"), 0);
+  auto y = ops::Const(s.WithOpName("y"), 1);
+  auto z = ops::Add(s.WithOpName("z"), x, y);
+
+  MetaGraphDef meta_graph;
+  TF_CHECK_OK(s.ToGraphDef(meta_graph.mutable_graph_def()));
+
+  ItemConfig config;
+  config.feed_nodes.insert("x");
+  config.fetch_nodes.insert("z");
+
+  std::unique_ptr<GrapplerItem> item =
+      GrapplerItemFromMetaGraphDef("0", meta_graph, config);
+  ASSERT_TRUE(item != nullptr);
+
+  EXPECT_EQ(item->feed.size(), 1);
+  EXPECT_EQ(item->fetch.size(), 1);
+  EXPECT_EQ(item->feed[0].first, "x");
+  EXPECT_EQ(item->fetch[0], "z");
+}
+
 }  // namespace
 }  // namespace grappler
 }  // namespace tensorflow

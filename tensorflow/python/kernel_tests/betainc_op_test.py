@@ -47,7 +47,7 @@ class BetaincTest(test.TestCase):
       tf_b_s = constant_op.constant(b_s, dtype=dtype)
       tf_x_s = constant_op.constant(x_s, dtype=dtype)
       tf_out_t = math_ops.betainc(tf_a_s, tf_b_s, tf_x_s)
-      with self.test_session():
+      with self.cached_session():
         tf_out = tf_out_t.eval()
       scipy_out = special.betainc(a_s, b_s, x_s).astype(np_dt)
 
@@ -60,13 +60,13 @@ class BetaincTest(test.TestCase):
       # Test out-of-range values (most should return nan output)
       combinations = list(itertools.product([-1, 0, 0.5, 1.0, 1.5], repeat=3))
       a_comb, b_comb, x_comb = np.asarray(list(zip(*combinations)), dtype=np_dt)
-      with self.test_session():
+      with self.cached_session():
         tf_comb = math_ops.betainc(a_comb, b_comb, x_comb).eval()
       scipy_comb = special.betainc(a_comb, b_comb, x_comb).astype(np_dt)
       self.assertAllCloseAccordingToType(scipy_comb, tf_comb)
 
       # Test broadcasting between scalars and other shapes
-      with self.test_session():
+      with self.cached_session():
         self.assertAllCloseAccordingToType(
             special.betainc(0.1, b_s, x_s).astype(np_dt),
             math_ops.betainc(0.1, b_s, x_s).eval(),
@@ -96,7 +96,7 @@ class BetaincTest(test.TestCase):
       with self.assertRaisesRegexp(ValueError, "must be equal"):
         math_ops.betainc(0.5, [0.5], [[0.5]])
 
-      with self.test_session():
+      with self.cached_session():
         with self.assertRaisesOpError("Shapes of .* are inconsistent"):
           a_p = array_ops.placeholder(dtype)
           b_p = array_ops.placeholder(dtype)
@@ -140,7 +140,7 @@ class BetaincTest(test.TestCase):
     self._testBetaInc(a_s, b_s, x_s, dtypes.float32)
 
   def testBetaIncFpropAndBpropAreNeverNAN(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       space = np.logspace(-8, 5).tolist()
       space_x = np.linspace(1e-16, 1 - 1e-16).tolist()
       ga_s, gb_s, gx_s = zip(*list(itertools.product(space, space, space_x)))
@@ -161,7 +161,7 @@ class BetaincTest(test.TestCase):
 
   def testBetaIncGrads(self):
     err_tolerance = 1e-3
-    with self.test_session():
+    with self.cached_session():
       # Test gradient
       ga_s = np.abs(np.random.randn(2, 2) * 30)  # in (0, infty)
       gb_s = np.abs(np.random.randn(2, 2) * 30)  # in (0, infty)

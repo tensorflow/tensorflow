@@ -17,15 +17,15 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.contrib.kafka.python.ops import kafka_op_loader  # pylint: disable=unused-import
 from tensorflow.contrib.kafka.python.ops import gen_dataset_ops
-from tensorflow.python.data.ops.dataset_ops import Dataset
+from tensorflow.contrib.kafka.python.ops import kafka_op_loader  # pylint: disable=unused-import
+from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 
 
-class KafkaDataset(Dataset):
+class KafkaDataset(dataset_ops.DatasetSource):
   """A Kafka Dataset that consumes the message.
   """
 

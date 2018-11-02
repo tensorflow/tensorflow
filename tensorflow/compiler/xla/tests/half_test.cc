@@ -16,7 +16,7 @@ limitations under the License.
 #include <cmath>
 #include <vector>
 
-#include "tensorflow/compiler/xla/client/xla_client/xla_builder.h"
+#include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/test.h"
@@ -48,7 +48,8 @@ class UnaryOpTest : public HalfTestBase,
                     public ::testing::WithParamInterface<UnaryOpTestParam> {};
 
 XLA_TEST_P(UnaryOpTest, Ops) {
-  std::vector<half> x({half(1.4), half(-2.3), half(3.2), half(-4.1)});
+  std::vector<half> x({half(1.4), half(-2.3), half(3.2), half(-4.1), half(9.0),
+                       half(42.0), half(-9.0), half(-100.0)});
   XlaBuilder builder(TestName());
   XlaOp x_opnd;
   auto x_data = CreateR1Parameter<half>(x, /*parameter_number=*/0, "x",
@@ -125,9 +126,8 @@ INSTANTIATE_TEST_CASE_P(half, UnaryPredTest,
                         ::testing::Values(UnaryPredTestParam{
                             [](half x) { return isfinite(x); }, &IsFinite}));
 
-using BinaryBuildFuncTy =
-    std::function<void(const xla::XlaOp& x, const xla::XlaOp& y,
-                       tensorflow::gtl::ArraySlice<int64>)>;
+using BinaryBuildFuncTy = std::function<void(
+    const xla::XlaOp& x, const xla::XlaOp& y, absl::Span<const int64>)>;
 
 struct BinaryOpTestParam {
   std::function<half(half, half)> compute_func;

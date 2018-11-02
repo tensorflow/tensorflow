@@ -23,10 +23,32 @@ limitations under the License.
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/kernels/ops_testutil.h"
 #include "tensorflow/core/kernels/ops_util.h"
+#include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 
 namespace tensorflow {
 namespace {
+
+class PrintingV2GraphTest : public OpsTestBase {
+ protected:
+  Status Init(const string& output_stream = "log(warning)") {
+    TF_CHECK_OK(NodeDefBuilder("op", "PrintV2")
+                    .Input(FakeInput(DT_STRING))
+                    .Attr("output_stream", output_stream)
+                    .Finalize(node_def()));
+    return InitOp();
+  }
+};
+
+TEST_F(PrintingV2GraphTest, StringSuccess) {
+  TF_ASSERT_OK(Init());
+  AddInputFromArray<string>(TensorShape({}), {"bar"});
+  TF_ASSERT_OK(RunOpKernel());
+}
+
+TEST_F(PrintingV2GraphTest, InvalidOutputStream) {
+  ASSERT_NE(::tensorflow::Status::OK(), (Init("invalid_output_stream")));
+}
 
 class PrintingGraphTest : public OpsTestBase {
  protected:

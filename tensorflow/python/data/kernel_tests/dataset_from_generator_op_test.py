@@ -22,6 +22,7 @@ import threading
 import numpy as np
 
 from tensorflow.python.client import session
+from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -30,7 +31,7 @@ from tensorflow.python.ops import script_ops
 from tensorflow.python.platform import test
 
 
-class DatasetConstructorTest(test.TestCase):
+class DatasetConstructorTest(test_base.DatasetTestBase):
 
   def _testFromGenerator(self, generator, elem_sequence, num_repeats,
                          output_types=None):
@@ -44,7 +45,7 @@ class DatasetConstructorTest(test.TestCase):
     init_op = iterator.initializer
     get_next = iterator.get_next()
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       for _ in range(2):  # Run twice to test reinitialization.
         sess.run(init_op)
         for _ in range(num_repeats):
@@ -61,7 +62,7 @@ class DatasetConstructorTest(test.TestCase):
         .make_one_shot_iterator())
     get_next = iterator.get_next()
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       for _ in range(num_repeats):
         for elem in elem_sequence:
           self.assertAllEqual(elem, sess.run(get_next))
@@ -131,7 +132,7 @@ class DatasetConstructorTest(test.TestCase):
     init_op = iterator.initializer
     get_next = iterator.get_next()
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       sess.run(init_op)
       for _ in range(num_inner_repeats * num_outer_repeats):
         for elem in input_list:
@@ -190,7 +191,7 @@ class DatasetConstructorTest(test.TestCase):
     init_op = iterator.initializer
     get_next = iterator.get_next()
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       sess.run(init_op)
       for elem in [0, 1]:
         for _ in range(num_parallel_iterators):
@@ -213,7 +214,7 @@ class DatasetConstructorTest(test.TestCase):
 
       self.assertEqual(dtype, get_next.dtype)
 
-      with self.test_session() as sess:
+      with self.cached_session() as sess:
         sess.run(init_op)
         for expected in [[1], [2], [3]]:
           next_val = sess.run(get_next)
@@ -234,7 +235,7 @@ class DatasetConstructorTest(test.TestCase):
     init_op = iterator.initializer
     get_next = iterator.get_next()
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       sess.run(init_op)
       for expected in [b"foo", b"bar", b"baz"]:
         next_val = sess.run(get_next)
@@ -255,7 +256,7 @@ class DatasetConstructorTest(test.TestCase):
     init_op = iterator.initializer
     get_next = iterator.get_next()
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       sess.run(init_op)
       self.assertAllEqual([1, 2, 3], sess.run(get_next))
       self.assertAllEqual([4, 5, 6], sess.run(get_next))
@@ -278,7 +279,7 @@ class DatasetConstructorTest(test.TestCase):
     init_op = iterator.initializer
     get_next = iterator.get_next()
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       sess.run(init_op)
       self.assertAllEqual([1, 2, 3], sess.run(get_next))
       self.assertAllEqual([4, 5, 6], sess.run(get_next))
@@ -302,7 +303,7 @@ class DatasetConstructorTest(test.TestCase):
     init_op = iterator.initializer
     get_next = iterator.get_next()
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       sess.run(init_op)
       self.assertEqual((1, 2), sess.run(get_next))
       self.assertEqual((3, 4), sess.run(get_next))
@@ -327,7 +328,7 @@ class DatasetConstructorTest(test.TestCase):
     init_op = iterator.initializer
     get_next = iterator.get_next()
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       sess.run(init_op)
       self.assertAllEqual(1, sess.run(get_next))
       self.assertAllEqual([2, 3], sess.run(get_next))
@@ -347,7 +348,7 @@ class DatasetConstructorTest(test.TestCase):
     init_op = iterator.initializer
     get_next = iterator.get_next()
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       sess.run(init_op)
       self.assertAllEqual(0, sess.run(get_next))
       self.assertAllEqual(1, sess.run(get_next))
@@ -405,7 +406,7 @@ class DatasetConstructorTest(test.TestCase):
     init_op = iterator.initializer
     get_next = iterator.get_next()
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       sess.run(init_op)
       expected = [1, 2, 2, 3, 3, 3, 4, 4, 4, 4]
       for x in expected:
@@ -434,7 +435,7 @@ class DatasetConstructorTest(test.TestCase):
     init_op = iterator.initializer
     get_next = iterator.get_next()
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       sess.run(init_op)
       expected = [(0, b"Hi!"),
                   (0, b"Hi!"), (1, b"Hi!"),
@@ -468,7 +469,7 @@ class DatasetConstructorTest(test.TestCase):
     init_op = iterator.initializer
     get_next = iterator.get_next()
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       sess.run(init_op)
       self.assertAllEqual(37, sess.run(get_next))
       self.assertAllEqual(37, sess.run(get_next))

@@ -21,6 +21,8 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include "tensorflow/core/framework/types.h"
+
 namespace tensorflow {
 namespace java {
 
@@ -94,6 +96,34 @@ class Type {
   }
   static Type IterableOf(const Type& type) {
     return Interface("Iterable").add_parameter(type);
+  }
+  static Type ForDataType(DataType data_type) {
+    switch (data_type) {
+      case DataType::DT_BOOL:
+        return Class("Boolean");
+      case DataType::DT_STRING:
+        return Class("String");
+      case DataType::DT_FLOAT:
+        return Class("Float");
+      case DataType::DT_DOUBLE:
+        return Class("Double");
+      case DataType::DT_UINT8:
+        return Class("UInt8", "org.tensorflow.types");
+      case DataType::DT_INT32:
+        return Class("Integer");
+      case DataType::DT_INT64:
+        return Class("Long");
+      case DataType::DT_RESOURCE:
+        // TODO(karllessard) create a Resource utility class that could be
+        // used to store a resource and its type (passed in a second argument).
+        // For now, we need to force a wildcard and we will unfortunately lose
+        // track of the resource type.
+        // Falling through...
+      default:
+        // Any other datatypes does not have a equivalent in Java and must
+        // remain a wildcard (e.g. DT_COMPLEX64, DT_QINT8, ...)
+        return Wildcard();
+    }
   }
   const Kind& kind() const { return kind_; }
   const string& name() const { return name_; }

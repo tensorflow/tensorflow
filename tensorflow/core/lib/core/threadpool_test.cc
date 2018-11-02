@@ -61,6 +61,67 @@ TEST(ThreadPool, DoWork) {
   }
 }
 
+void RunSharding(int64 block_size, int64 total, ThreadPool* threads) {
+  mutex mu;
+  int64 num_shards = 0;
+  int64 num_done_work = 0;
+  std::vector<bool> work(total, false);
+  threads->TransformRangeConcurrently(
+      block_size, total,
+      [=, &mu, &num_shards, &num_done_work, &work](int64 start, int64 end) {
+        VLOG(1) << "Shard [" << start << "," << end << ")";
+        EXPECT_GE(start, 0);
+        EXPECT_LE(end, total);
+        mutex_lock l(mu);
+        ++num_shards;
+        for (; start < end; ++start) {
+          EXPECT_FALSE(work[start]);  // No duplicate
+          ++num_done_work;
+          work[start] = true;
+        }
+      });
+  LOG(INFO) << block_size << " " << total;
+  const int64 num_workers = (total + block_size - 1) / block_size;
+  EXPECT_EQ(num_done_work, total);
+  if (num_workers < threads->NumThreads()) {
+    // If the intention is to limit the parallelism explicitly, we'd
+    // better honor it. Ideally, even if per_thread_max_parallelism >
+    // num_workers, we should expect that Shard() implementation do
+    // not over-shard. Unfortunately, ThreadPoolDevice::parallelFor
+    // tends to over-shard.
+    EXPECT_LE(num_shards, 1 + num_workers);
+  }
+}
+
+// Adapted from work_sharder_test.cc
+TEST(SparseUtilsTest, TransformRangeConcurrently) {
+  ThreadPool threads(Env::Default(), "test", 16);
+  for (auto block_size : {1, 7, 10, 64, 100, 256, 1000, 9999}) {
+    for (auto diff : {0, 1, 11, 102, 1003, 10005, 1000007}) {
+      const int64 total = block_size + diff;
+      RunSharding(block_size, total, &threads);
+    }
+  }
+}
+
+TEST(SparseUtilsTest, NumShardsUsedByTransformRangeConcurrently) {
+  ThreadPool threads(Env::Default(), "test", 16);
+  EXPECT_EQ(1, threads.NumShardsUsedByTransformRangeConcurrently(
+                   3 /* block_size */, 3 /* total */));
+  EXPECT_EQ(2, threads.NumShardsUsedByTransformRangeConcurrently(
+                   3 /* block_size */, 4 /* total */));
+  EXPECT_EQ(2, threads.NumShardsUsedByTransformRangeConcurrently(
+                   3 /* block_size */, 5 /* total */));
+  EXPECT_EQ(2, threads.NumShardsUsedByTransformRangeConcurrently(
+                   3 /* block_size */, 6 /* total */));
+  EXPECT_EQ(3, threads.NumShardsUsedByTransformRangeConcurrently(
+                   3 /* block_size */, 7 /* total */));
+  EXPECT_EQ(7, threads.NumShardsUsedByTransformRangeConcurrently(
+                   1 /* block_size */, 7 /* total */));
+  EXPECT_EQ(1, threads.NumShardsUsedByTransformRangeConcurrently(
+                   0 /* block_size */, 7 /* total */));
+}
+
 TEST(ThreadPool, ParallelFor) {
   Context outer_context(ContextKind::kThread);
   // Make ParallelFor use as many threads as possible.
