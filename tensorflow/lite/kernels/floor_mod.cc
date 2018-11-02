@@ -82,8 +82,8 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
 
   const TfLiteType type = input1->type;
   if (type != kTfLiteInt32 && type != kTfLiteFloat32) {
-    context->ReportError(context,
-                         "Currently floor_mod only supports int32 and float.");
+    context->ReportError(context, "Type '%s' is not supported by floor_mod.",
+                         TfLiteTypeGetName(type));
     return kTfLiteError;
   }
   output->type = type;
@@ -149,8 +149,8 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
                              output);
     }
     default: {
-      context->ReportError(
-          context, "Currently floor_mod only supports int32 and float.");
+      context->ReportError(context, "Type '%s' is not supported by floor_mod.",
+                           TfLiteTypeGetName(input1->type));
       return kTfLiteError;
     }
   }

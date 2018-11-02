@@ -55,9 +55,8 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
       TF_LITE_ENSURE_EQ(context, NumDimensions(input), 1);
     } break;
     default:
-      context->ReportError(
-          context, "Only float32 and string types are supported, got %d",
-          input->type);
+      context->ReportError(context, "Type '%s' is not supported by gather.",
+                           TfLiteTypeGetName(input->type));
       return kTfLiteError;
   }
 
