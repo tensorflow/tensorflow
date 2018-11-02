@@ -521,15 +521,10 @@ Type Parser::parseMemRefType() {
   if (!elementType)
     return nullptr;
 
-  if (!elementType.isa<IntegerType>() && !elementType.isa<FloatType>() &&
-      !elementType.isa<VectorType>())
-    return (emitError(typeLoc, "invalid memref element type"), nullptr);
-
   // Parse semi-affine-map-composition.
   SmallVector<AffineMap, 2> affineMapComposition;
   unsigned memorySpace = 0;
   bool parsedMemorySpace = false;
-  auto compositionLoc = getToken().getLoc();
 
   auto parseElt = [&]() -> ParseResult {
     if (getToken().is(Token::integer)) {
@@ -566,15 +561,8 @@ Type Parser::parseMemRefType() {
       return nullptr;
   }
 
-  if (!affineMapComposition.empty() &&
-      affineMapComposition.front().getNumDims() != dimensions.size()) {
-    emitError(compositionLoc,
-              "affine map dimension count must equal memref rank");
-    return nullptr;
-  }
-
-  return MemRefType::get(dimensions, elementType, affineMapComposition,
-                         memorySpace);
+  return MemRefType::getChecked(dimensions, elementType, affineMapComposition,
+                                memorySpace, getEncodedSourceLocation(typeLoc));
 }
 
 /// Parse a function type.

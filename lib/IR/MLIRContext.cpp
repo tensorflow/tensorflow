@@ -33,7 +33,6 @@
 #include "mlir/IR/Types.h"
 #include "mlir/Support/MathExtras.h"
 #include "mlir/Support/STLExtras.h"
-#include "third_party/llvm/llvm/include/llvm/ADT/STLExtras.h"
 #include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/StringMap.h"
 #include "llvm/Support/Allocator.h"
@@ -432,10 +431,9 @@ void MLIRContext::emitDiagnostic(Location *location, const llvm::Twine &message,
 
   os << "error: ";
 
-  // The default behavior for errors is to emit them to stderr and exit.
+  // The default behavior for errors is to emit them to stderr.
   os << message.str() << '\n';
   os.flush();
-  exit(1);
 }
 
 //===----------------------------------------------------------------------===//
@@ -725,11 +723,46 @@ UnrankedTensorType UnrankedTensorType::get(Type elementType) {
   return result;
 }
 
-MemRefType MemRefType::get(ArrayRef<int> shape, Type elementType,
-                           ArrayRef<AffineMap> affineMapComposition,
-                           unsigned memorySpace) {
+/// Get or create a new MemRefType defined by the arguments.  If the resulting
+/// type would be ill-formed, return nullptr.  If the location is provided,
+/// i.e. is not nullptr, emit detailed error messages.  To emit errors when
+/// the location is unknown, pass in an instance of UnknownLoc.
+static MemRefType getMemRefType(ArrayRef<int> shape, Type elementType,
+                                ArrayRef<AffineMap> affineMapComposition,
+                                unsigned memorySpace, Location *location) {
   auto *context = elementType.getContext();
   auto &impl = context->getImpl();
+
+  // Check that memref is formed from allowed types.
+  if (!elementType.isa<IntegerType>() && !elementType.isa<FloatType>() &&
+      !elementType.isa<VectorType>()) {
+    if (location)
+      context->emitDiagnostic(location, "invalid memref element type",
+                              MLIRContext::DiagnosticKind::Error);
+    return nullptr;
+  }
+
+  // Check that the structure of the composition is valid, i.e. that each
+  // subsequent affine map has as many inputs as the previous map has results.
+  // Take the dimensionality of the MemRef for the first map.
+  auto dim = shape.size();
+  unsigned i = 0;
+  for (const auto &affineMap : affineMapComposition) {
+    if (affineMap.getNumDims() != dim) {
+      if (location)
+        context->emitDiagnostic(
+            location,
+            "memref affine map dimension mismatch between " +
+                (i == 0 ? Twine("memref rank") : "affine map " + Twine(i)) +
+                " and affine map" + Twine(i + 1) + ": " + Twine(dim) +
+                " != " + Twine(affineMap.getNumDims()),
+            MLIRContext::DiagnosticKind::Error);
+      return nullptr;
+    }
+
+    dim = affineMap.getNumResults();
+    ++i;
+  }
 
   // Drop the unbounded identity maps from the composition.
   // This may lead to the composition becoming empty, which is interpreted as an
@@ -758,13 +791,12 @@ MemRefType MemRefType::get(ArrayRef<int> shape, Type elementType,
   shape = impl.copyInto(shape);
 
   // Copy the affine map composition into the bump pointer.
-  // TODO(andydavis) Assert that the structure of the composition is valid.
   affineMapComposition =
       impl.copyInto(ArrayRef<AffineMap>(affineMapComposition));
 
   // Initialize the memory using placement new.
   new (result) MemRefTypeStorage{
-      {Kind::MemRef, context, static_cast<unsigned int>(shape.size())},
+      {Type::Kind::MemRef, context, static_cast<unsigned int>(shape.size())},
       elementType,
       shape.data(),
       static_cast<unsigned int>(affineMapComposition.size()),
@@ -772,6 +804,26 @@ MemRefType MemRefType::get(ArrayRef<int> shape, Type elementType,
       memorySpace};
   // Cache and return it.
   return *existing.first = result;
+}
+
+// Try constructing a MemRefType, report errors and return a nullptr on failure.
+MemRefType MemRefType::getChecked(ArrayRef<int> shape, Type elementType,
+                                  ArrayRef<AffineMap> affineMapComposition,
+                                  unsigned memorySpace, Location *location) {
+  assert(location &&
+         "location cannot be null, use UnknownLoc if it is unknown");
+  return getMemRefType(shape, elementType, affineMapComposition, memorySpace,
+                       location);
+}
+
+// Try constructing a MemRefType, supressing error messages, abort on failure.
+MemRefType MemRefType::get(ArrayRef<int> shape, Type elementType,
+                           ArrayRef<AffineMap> affineMapComposition,
+                           unsigned memorySpace) {
+  auto type = getMemRefType(shape, elementType, affineMapComposition,
+                            memorySpace, nullptr);
+  assert(type && "failed to construct a MemRef type");
+  return type;
 }
 
 //===----------------------------------------------------------------------===//

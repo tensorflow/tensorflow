@@ -24,9 +24,10 @@
 
 namespace mlir {
 class AffineMap;
-class MLIRContext;
-class IntegerType;
 class FloatType;
+class IntegerType;
+class Location;
+class MLIRContext;
 class OtherType;
 
 namespace detail {
@@ -413,10 +414,22 @@ public:
   /* implicit */ MemRefType(Type::ImplType *ptr);
 
   /// Get or create a new MemRefType based on shape, element type, affine
-  /// map composition, and memory space.
+  /// map composition, and memory space.  Assumes the arguments define a
+  /// well-formed MemRef type.  Use getChecked to gracefully handle MemRefType
+  /// construction failures.
   static MemRefType get(ArrayRef<int> shape, Type elementType,
                         ArrayRef<AffineMap> affineMapComposition,
                         unsigned memorySpace);
+
+  /// Get or create a new MemRefType based on shape, element type, affine
+  /// map composition, and memory space declared at the given location.
+  /// If the location is unknown, the last argument should be an instance of
+  /// UnknownLoc.  If the MemRefType defined by the arguments would be
+  /// ill-formed, emits errors (to the handler registered with the context or to
+  /// the error stream) and returns nullptr.
+  static MemRefType getChecked(ArrayRef<int> shape, Type elementType,
+                               ArrayRef<AffineMap> affineMapComposition,
+                               unsigned memorySpace, Location *location);
 
   unsigned getRank() const { return getShape().size(); }
 
@@ -440,6 +453,11 @@ public:
   unsigned getNumDynamicDims() const;
 
   static bool kindof(Kind kind) { return kind == Kind::MemRef; }
+
+private:
+  static MemRefType getSafe(ArrayRef<int> shape, Type elementType,
+                            ArrayRef<AffineMap> affineMapComposition,
+                            unsigned memorySpace, Location *location);
 };
 
 // Make Type hashable.

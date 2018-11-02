@@ -110,7 +110,7 @@ mlfunc @test_store_zero_results2(%x: i32, %p: memref<i32>) {
 
 cfgfunc @test_alloc_memref_map_rank_mismatch() {
 bb0:
-  %0 = alloc() : memref<1024x64xf32, (d0) -> (d0), 1> // expected-error {{affine map dimension count must equal memref rank}}
+  %0 = alloc() : memref<1024x64xf32, (d0) -> (d0), 1> // expected-error {{memref affine map dimension mismatch}}
   return
 }
 
