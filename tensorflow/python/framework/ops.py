@@ -5371,6 +5371,10 @@ def executing_eagerly_outside_functions():
     return context.executing_eagerly()
 
 
+def inside_function():
+  return get_default_graph().building_function
+
+
 @tf_export("enable_eager_execution")
 def enable_eager_execution(config=None,
                            device_policy=None,

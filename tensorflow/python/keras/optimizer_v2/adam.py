@@ -94,10 +94,10 @@ class Adam(optimizer_v2.OptimizerV2):
     """
 
     super(Adam, self).__init__(name)
-    self._lr = learning_rate
-    self._beta_1 = beta_1
-    self._beta_2 = beta_2
-    self._epsilon = epsilon
+    self._set_hyper('learning_rate', learning_rate)
+    self._set_hyper('beta_1', beta_1)
+    self._set_hyper('beta_2', beta_2)
+    self._set_hyper('epsilon', epsilon)
 
   def _create_slots(self, var_list):
     # Create slots for the first and second moments.
@@ -114,11 +114,21 @@ class Adam(optimizer_v2.OptimizerV2):
         var.handle,
         m.handle,
         v.handle,
-        math_ops.cast(self._beta_1, grad.dtype.base_dtype),
-        math_ops.cast(self._beta_2, grad.dtype.base_dtype),
-        math_ops.cast(self._lr, grad.dtype.base_dtype),
-        math_ops.cast(self._beta_1, grad.dtype.base_dtype),
-        math_ops.cast(self._beta_2, grad.dtype.base_dtype),
-        math_ops.cast(self._epsilon, grad.dtype.base_dtype),
+        math_ops.cast(self._get_hyper('beta_1'), grad.dtype.base_dtype),
+        math_ops.cast(self._get_hyper('beta_2'), grad.dtype.base_dtype),
+        math_ops.cast(self._get_hyper('learning_rate'), grad.dtype.base_dtype),
+        math_ops.cast(self._get_hyper('beta_1'), grad.dtype.base_dtype),
+        math_ops.cast(self._get_hyper('beta_2'), grad.dtype.base_dtype),
+        math_ops.cast(self._get_hyper('epsilon'), grad.dtype.base_dtype),
         grad,
         use_locking=self._use_locking)
+
+  def get_config(self):
+    config = super(Adam, self).get_config()
+    config.update({
+        'learning_rate': self._serialize_hyperparameter('learning_rate'),
+        'beta_1': self._serialize_hyperparameter('beta_1'),
+        'beta_2': self._serialize_hyperparameter('beta_2'),
+        'epsilon': self._serialize_hyperparameter('epsilon'),
+    })
+    return config
