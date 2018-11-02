@@ -276,6 +276,10 @@ NodeDef* GetTailOfChain(const NodeDef& source, const NodeMap& node_map,
 void PermuteNodesInPlace(GraphDef* graph, std::vector<int>* permutation,
                          bool invert_permutation);
 
+// Returns Status::OK() if a kernel is registered for node.op() on the device
+// type corresponding to node.device().
+Status IsKernelRegisteredForNode(const NodeDef& node);
+
 Status SetTensorValue(DataType dtype, int value, Tensor* tensor);
 
 void EraseNodesFromGraph(const std::set<int>& nodes_to_delete, GraphDef* graph);
