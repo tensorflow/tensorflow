@@ -157,7 +157,6 @@ py_library(
         "//tensorflow:no_ignite_support": [],
         "//conditions:default": [
             "//tensorflow/contrib/ignite",
-            "//tensorflow/contrib/igfs",
         ],
     }),
 )
@@ -249,7 +248,6 @@ cc_library(
         "//tensorflow:no_ignite_support": [],
         "//conditions:default": [
             "//tensorflow/contrib/ignite:dataset_ops_op_lib",
-            "//tensorflow/contrib/igfs:igfs_ops_op_lib",
         ],
     }),
 )
