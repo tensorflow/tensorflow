@@ -39,11 +39,38 @@ from tensorflow.python.util import compat
 from tensorflow.python.util import nest
 
 
+def _find_function_to_export(root):
+  """Iterate over `root`'s attributes, finding traced functions."""
+  functions = []
+  function_attribute_names = []
+  for attribute_name in dir(root):
+    attribute_value = getattr(root, attribute_name, None)
+    if isinstance(attribute_value, def_function.PolymorphicFunction):
+      functions.append(attribute_value)
+      function_attribute_names.append(attribute_name)
+  # TODO(allenl): Automatically infer signatures for Keras functional models?
+  if not functions:
+    raise ValueError(
+        ("Exporting an object with no tf.saved_model_save(..., signatures=...) "
+         "argument specified, and with no @tf.function-decorated methods "
+         "attached to it. In the future this will be a supported use-case for "
+         "Python re-import, but at the moment saving a SavedModel without "
+         "signatures does not make sense, as the only consumers will expect "
+         "signatures. Either decorate a method or specify a signature function "
+         "explicitly."))
+  elif len(functions) > 1:
+    raise ValueError(
+        ("Exporting an object with no tf.saved_model_save(..., signatures=...) "
+         "argument specified, and with more than one @tf.function-decorated "
+         "method attached to it: {}. The signature keys for these functions "
+         "are ambiguous. Specify signature functions explicitly.").format(
+             function_attribute_names))
+  return functions[0]
+
+
 def _canonicalize_signatures(signatures):
   """Converts `signatures` into a dictionary of concrete functions."""
-  if signatures is None:
-    signatures = {}
-  elif not isinstance(signatures, collections.Mapping):
+  if not isinstance(signatures, collections.Mapping):
     signatures = {
         signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY: signatures}
   concrete_signatures = {}
@@ -377,6 +404,14 @@ def export(obj, export_dir, signatures=None):
   tf.saved_model.export(m, '/tmp/saved_model/', signatures=m.serve)
   ```
 
+  The `signatures` argument may be omitted if only one method of the exported
+  object is decorated with `tf.function` and that method has an input signature
+  specified.
+
+  ```python
+  tf.saved_model.export(m, '/tmp/saved_model/')
+  ```
+
   Exporting from a function without a fixed signature:
 
   ```python
@@ -425,6 +460,8 @@ def export(obj, export_dir, signatures=None):
   utils_impl.get_or_create_variables_dir(export_dir)
   object_saver.save(utils_impl.get_variables_path(export_dir))
 
+  if signatures is None:
+    signatures = _find_function_to_export(obj)
   signatures = _canonicalize_signatures(signatures)
   graph_def, signatures, saver_def = _make_graph_def(
       obj, signatures, object_saver)
