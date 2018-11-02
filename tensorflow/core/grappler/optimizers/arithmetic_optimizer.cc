@@ -1923,15 +1923,16 @@ class ReorderCastLikeAndValuePreserving : public ArithmeticOptimizerStage {
     NodeDef* new_consumer = AddCopyNode(optimized_producer_name, producer);
     new_consumer->set_input(0, new_producer->name());
 
+    NodeDef* new_value_preserving =
+        producer_is_cast ? new_producer : new_consumer;
+    const DataType new_input_type =
+        producer_is_cast ? cast_src_type : cast_dst_type;
     // Update the input type of the value-preserving node. The input and
     // output types of the cast-like nodes remain the same.
-    if (producer_is_cast) {
-      // Op(Cast()) -> Cast(Op())
-      TF_RETURN_IF_ERROR(SetInputType(cast_src_type, new_producer));
-    } else {
-      // Cast(Op()) -> Op(Cast())
-      TF_RETURN_IF_ERROR(SetInputType(cast_dst_type, new_consumer));
-    }
+    TF_RETURN_IF_ERROR(SetInputType(new_input_type, new_value_preserving));
+    // Make sure there is a kernel registered for the value preserving op
+    // with the new input type.
+    TF_RETURN_IF_ERROR(IsKernelRegisteredForNode(*new_value_preserving));
     ctx().node_map->AddOutput(new_producer->name(), new_consumer->name());
 
     AddToOptimizationQueue(new_producer);
