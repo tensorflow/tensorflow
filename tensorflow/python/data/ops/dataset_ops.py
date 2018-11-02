@@ -105,7 +105,7 @@ class Dataset(object):
     static_optimizations = options._static_optimizations()  # pylint: disable=protected-access
     if static_optimizations:
       dataset = _OptimizeDataset(dataset, static_optimizations)
-    if options.experimental_autotune:
+    if options.experimental_autotune is not False:
       dataset = _ModelDataset(dataset)
     return dataset
 
