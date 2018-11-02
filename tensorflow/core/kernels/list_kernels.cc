@@ -46,20 +46,26 @@ TensorList::TensorList(const TensorList& other)
 
 void TensorList::Encode(VariantTensorData* data) const {
   data->set_type_name(TypeName());
-  for (const Tensor& t : tensors) {
-    *data->add_tensors() = t;
-  }
-  string metadata;
-  core::PutVarint64(&metadata, static_cast<uint64>(element_dtype));
-  if (!element_shape.unknown_rank()) {
-    for (TensorShapeDim dim : element_shape) {
-      if (dim.size > 0) {
-        core::PutVarint64(&metadata, dim.size);
-      } else {
-        core::PutVarint64(&metadata, std::numeric_limits<uint64>::max());
-      }
+  std::vector<size_t> invalid_indices;
+  for (size_t i = 0; i < tensors.size(); i++) {
+    if (tensors.at(i).dtype() != DT_INVALID) {
+      *data->add_tensors() = tensors.at(i);
+    } else {
+      invalid_indices.push_back(i);
     }
   }
+  string metadata;
+  // TODO(b/118838800): Add a proto for storing the metadata.
+  // Metadata format:
+  // <num_invalid_tensors><invalid_indices><element_dtype><element_shape_proto>
+  core::PutVarint64(&metadata, static_cast<uint64>(invalid_indices.size()));
+  for (size_t i : invalid_indices) {
+    core::PutVarint64(&metadata, static_cast<uint64>(i));
+  }
+  core::PutVarint64(&metadata, static_cast<uint64>(element_dtype));
+  TensorShapeProto element_shape_proto;
+  element_shape.AsProto(&element_shape_proto);
+  element_shape_proto.AppendToString(&metadata);
   data->set_metadata(metadata);
 }
 
@@ -98,23 +104,45 @@ Status TensorListShape(const TensorList& t, TensorShape* s) {
 REGISTER_UNARY_VARIANT_SHAPE_FUNCTION(TensorList, TensorListShape);
 
 bool TensorList::Decode(const VariantTensorData& data) {
-  tensors = data.tensors();
+  // TODO(srbs): Change the signature to Decode(VariantTensorData data) so
+  // that we do not have to copy each tensor individually below. This would
+  // require changing VariantTensorData::tensors() as well.
   string metadata;
   data.get_metadata(&metadata);
   uint64 scratch;
   StringPiece iter(metadata);
+  std::vector<size_t> invalid_indices;
   core::GetVarint64(&iter, &scratch);
-  element_dtype = static_cast<DataType>(scratch);
-  std::vector<int64> dims;
-  while (!iter.empty()) {
+  size_t num_invalid_tensors = static_cast<size_t>(scratch);
+  invalid_indices.resize(num_invalid_tensors);
+  for (size_t i = 0; i < num_invalid_tensors; i++) {
     core::GetVarint64(&iter, &scratch);
-    if (scratch == std::numeric_limits<uint64>::max()) {
-      dims.push_back(-1);
+    invalid_indices[i] = static_cast<size_t>(scratch);
+  }
+
+  size_t total_num_tensors = data.tensors().size() + num_invalid_tensors;
+  tensors.reserve(total_num_tensors);
+  std::vector<size_t>::iterator invalid_indices_it = invalid_indices.begin();
+  std::vector<Tensor>::const_iterator tensors_it = data.tensors().begin();
+  for (size_t i = 0; i < total_num_tensors; i++) {
+    if (invalid_indices_it != invalid_indices.end() &&
+        *invalid_indices_it == i) {
+      tensors.emplace_back(Tensor(DT_INVALID));
+      invalid_indices_it++;
+    } else if (tensors_it != data.tensors().end()) {
+      tensors.emplace_back(*tensors_it);
+      tensors_it++;
     } else {
-      dims.push_back(scratch);
+      // VariantTensorData is corrupted.
+      return false;
     }
   }
-  element_shape = PartialTensorShape(dims);
+
+  core::GetVarint64(&iter, &scratch);
+  element_dtype = static_cast<DataType>(scratch);
+  TensorShapeProto element_shape_proto;
+  element_shape_proto.ParseFromString(string(iter.data(), iter.size()));
+  element_shape = PartialTensorShape(element_shape_proto);
   return true;
 }
 
