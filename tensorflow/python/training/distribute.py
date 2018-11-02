@@ -1255,6 +1255,10 @@ class _DefaultDistributionStrategy(DistributionStrategy):
     return 1
 
   @property
+  def num_replicas_in_sync(self):
+    return 1
+
+  @property
   def worker_devices(self):
     raise RuntimeError(
         "worker_devices() method unsupported by _DefaultDistributionStrategy.")
