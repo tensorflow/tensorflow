@@ -38,10 +38,18 @@ Status FoldSubDivMulBatchNorms(const GraphDef& input_graph_def,
 class FoldSubDivMulBatchNormsTest : public ::testing::Test {
  protected:
   
-  void TestFoldFusedBatchNorms() {
+  void TestFoldSubDivMulFusedBatchNorms() {
     auto root = tensorflow::Scope::NewRootScope();
     using namespace ::tensorflow::ops;  // NOLINT(build/namespaces)
 
+    // Create the original graph as shown below:
+    // ------------------------------------------------------------
+    // Input-->Conv2d-->Sub-->RealDiv-->Mul-->BiasAdd-->
+    //           ^       ^       ^       ^       ^
+    //         Weights  Mean  Variance Gamma    Beta
+    // ------------------------------------------------------------
+    
+    // Create the Conv Op with inputs input_op and weights_op.
     Tensor input_data(DT_FLOAT, TensorShape({1, 1, 6, 2}));
     test::FillValues<float>(
         &input_data, {1.0f, 4.0f, 2.0f, 5.0f, 3.0f, 6.0f, -1.0f, -4.0f, -2.0f,
@@ -57,68 +65,81 @@ class FoldSubDivMulBatchNormsTest : public ::testing::Test {
 
     Output conv_op = Conv2D(root.WithOpName("conv_op"), input_op, weights_op,
                             {1, 1, 1, 1}, "VALID");
-
+    
+    // Create the Sub op with inputs conv_op and mean_op.
     Tensor mean_data(DT_FLOAT, TensorShape({2}));
     test::FillValues<float>(&mean_data, {10.0f, 20.0f});
     Output mean_op =
         Const(root.WithOpName("mean_op"), Input::Initializer(mean_data));
     
+    Output sub_op = Sub(root.WithOpName("sub_op"), conv_op, mean_op);
+
+    // Create the realdiv op with inputs sub_op and variance_op.
     Tensor variance_data(DT_FLOAT, TensorShape({2}));
     test::FillValues<float>(&variance_data, {0.25f, 0.5f});
     Output variance_op = Const(root.WithOpName("variance_op"),
                                Input::Initializer(variance_data));
 
+    Output realdiv_op = RealDiv(root.WithOpName("realdiv_op"), sub_op, variance_op);
+
+    // Create the mul op with inputs realdiv_op and gamma_op.
+    Tensor gamma_data(DT_FLOAT, TensorShape({2}));
+    test::FillValues<float>(&gamma_data, {1.0f, 2.0f});
+    Output gamma_op =
+        Const(root.WithOpName("gamma_op"), Input::Initializer(gamma_data));
+    
+    Output mul_op = Mul(root.WithOpName("mul_op"), realdiv_op, gamma_op);
+
+    // Create the biasadd op with inputs mul_op and beta_op.
+    // Since the tensor at the output of biasadd_op needs to be verified
+    // we also make this is the output op and named it appropriately as output.
     Tensor beta_data(DT_FLOAT, TensorShape({2}));
     test::FillValues<float>(&beta_data, {0.1f, 0.6f});
     Output beta_op =
         Const(root.WithOpName("beta_op"), Input::Initializer(beta_data));
 
-    Tensor gamma_data(DT_FLOAT, TensorShape({2}));
-    test::FillValues<float>(&gamma_data, {1.0f, 2.0f});
-    Output gamma_op =
-        Const(root.WithOpName("gamma_op"), Input::Initializer(gamma_data));
+    Output biasadd_op = BiasAdd(root.WithOpName("output"), mul_op, beta_op);
 
+    // Create the original graph def from as above.
     GraphDef original_graph_def;
     TF_ASSERT_OK(root.ToGraphDef(&original_graph_def));
 
-    Output sub_op = Sub(root.WithOpName("sub_op"), conv_op, mean_op);
-    Output realdiv_op = RealDiv(root.WithOpName("realdiv_op"), sub_op, variance_op);
-    Output mul_op = Mul(root.WithOpName("mul_op"), realdiv_op, gamma_op);
-    Output biasadd_op = BiasAdd(root.WithOpName("mul_op"), mul_op, beta_op);
-
-    NodeDef batch_norm_node;
-    batch_norm_node.set_op("FusedBatchNorm");
-    batch_norm_node.set_name("output");
-    AddNodeInput("biasadd_op", &batch_norm_node);
-    SetNodeAttr("T", DT_FLOAT, &batch_norm_node);
-    SetNodeAttr("epsilon", 0.00001f, &batch_norm_node);
-    SetNodeAttr("is_training", false, &batch_norm_node);
-    *(original_graph_def.mutable_node()->Add()) = batch_norm_node;
-
+    // create and run a session on original graph to get output tensor values.
     std::unique_ptr<Session> original_session(NewSession(SessionOptions()));
     TF_ASSERT_OK(original_session->Create(original_graph_def));
     std::vector<Tensor> original_outputs;
     TF_ASSERT_OK(original_session->Run({}, {"output"}, {}, &original_outputs));
 
-    GraphDef fused_graph_def;
+    // Create folded graph from original graph using FoldSubDivMulBatchNorms.
+    // -----------------------------------------------------
+    // Input-->Conv2d------------------------->BiasAdd-->
+    //           ^                                ^
+    //       NewWeights                        NewBeta
+    // -----------------------------------------------------
+    GraphDef folded_graph_def;
     TF_ASSERT_OK(FoldSubDivMulBatchNorms(original_graph_def, {{}, {"output"}},
-                                   &fused_graph_def));
+                                   &folded_graph_def));
 
+    // create and run a session on folded graph to get output tensor values.
     std::unique_ptr<Session> fused_session(NewSession(SessionOptions()));
-    TF_ASSERT_OK(fused_session->Create(fused_graph_def));
+    TF_ASSERT_OK(fused_session->Create(folded_graph_def));
     std::vector<Tensor> fused_outputs;
     TF_ASSERT_OK(fused_session->Run({}, {"output"}, {}, &fused_outputs));
 
+    // Verify both output tensor values are same (within epsilon difference).
     test::ExpectTensorNear<float>(original_outputs[0], fused_outputs[0], 2e-5);
 
-    for (const NodeDef& node : fused_graph_def.node()) {
-      EXPECT_NE("FusedBatchNorm", node.op());
+    // Verify the folded graph has Sub, RealDiv and Mul nodes removed.
+    for (const NodeDef& node : folded_graph_def.node()) {
+      EXPECT_NE("Sub", node.op());
+      EXPECT_NE("RealDiv", node.op());
+      EXPECT_NE("Mul", node.op());
     }
   }
 };
 
 TEST_F(FoldSubDivMulBatchNormsTest, TestFoldSubDivMulFusedBatchNorms) {
-  TestFoldFusedBatchNorms();
+  TestFoldSubDivMulFusedBatchNorms();
 }
 
 }  // namespace graph_transforms
