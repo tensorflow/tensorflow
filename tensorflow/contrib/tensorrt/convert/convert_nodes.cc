@@ -1596,7 +1596,7 @@ tensorflow::Status ConvertConv2DHelper(OpConverterParams* params, int group) {
         nvinfer1::DimsHW(padding[0].first, padding[1].first),
         nvinfer1::DimsHW(padding[0].second, padding[1].second));
     TFTRT_RETURN_ERROR_IF_NULLPTR(pad_layer, node_def.name());
-    ctx.MarkQuantizationRangesAsInferrable(
+    params->converter->MarkQuantizationRangesAsInferrable(
         const_cast<nvinfer1::ITensor*>(tensor), pad_layer->getOutput(0));
     padding = {{0, 0}, {0, 0}};
     tensor = pad_layer->getOutput(0);
@@ -2025,7 +2025,10 @@ tensorflow::Status ConvertQuantize(OpConverterParams* params) {
         "Expected 1 or 3 inputs for quantize node, at ", node_def.name());
   }
   // Store ranges for tensor
-  params->converter->ProvideQuantizationRange(tensor, min_range, max_range);
+  params->converter->ProvideQuantizationRange(
+      const_cast<nvinfer1::ITensor*>(inputs.at(0).tensor()),
+      min_range,
+      max_range);
   // Sometimes, TRT may not quantize a tensor, either because it chooses to
   // execute a higher precision kernel or because of op fusion. In these cases,
   // accuracy will suffer if the model was trained to expect quantization at
