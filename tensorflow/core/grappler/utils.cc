@@ -159,6 +159,8 @@ bool IsControlInput(const string& name) {
   return !name.empty() && name[0] == '^';
 }
 
+bool IsControlInput(const TensorId& tensor_id) { return tensor_id.index() < 0; }
+
 string AddPrefixToNodeName(const string& name, const string& prefix,
                            const string& delimiter) {
   if (!name.empty()) {

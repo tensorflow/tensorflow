@@ -235,8 +235,9 @@ class ArithmeticOptimizerStage : public GraphOptimizerStage<string> {
 
   // TODO(ezhulenev): move to GraphOptimizerStage?
   bool IsDrivenByControlDependency(const NodeDef& node) const {
-    return std::any_of(node.input().begin(), node.input().end(),
-                       IsControlInput);
+    return std::any_of(
+        node.input().begin(), node.input().end(),
+        [](const string& input) { return IsControlInput(input); });
   }
 
   // TODO(ezhulenev): move to GraphOptimizerStage?
