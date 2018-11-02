@@ -449,7 +449,6 @@ Status LayoutAssignment::AddMandatoryConstraints(
       // instruction.
       // TODO(b/31425034): Change infeeds to be more like parameters, with
       // shapes in the ComputationLayout.
-      DCHECK(!LayoutUtil::IsPadded(instruction->shape()));
       TF_RETURN_IF_ERROR(
           constraints->SetInstructionLayout(instruction->shape(), instruction));
     } else if (instruction->opcode() == HloOpcode::kOutfeed) {
