@@ -79,7 +79,7 @@ Status NoOpElimination::Optimize(Cluster* cluster, const GrapplerItem& item,
     if (!IsNoOp(node, graph)) continue;
 
     NodeDef* const parent = graph_utils::GetInputNode(node, graph);
-    graph.ReplaceInput(node, *parent);
+    graph.UpdateFanouts(node.name(), parent->name());
 
     nodes_to_delete.insert(node.name());
   }

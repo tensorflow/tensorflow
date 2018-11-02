@@ -145,7 +145,7 @@ Status MapAndFilterFusion::Optimize(Cluster* cluster, const GrapplerItem& item,
     const auto* filter_by_component = graph.AddNode(
         MakeFilterByLastComponentNode(*fused_maps, *filter_node, &graph));
 
-    graph.ReplaceInput(*filter_node, *filter_by_component);
+    graph.UpdateFanouts(filter_node->name(), filter_by_component->name());
     TF_RETURN_IF_ERROR(function_library.AddFunctionDef(*fused_function));
 
     // TODO(prazek): we could also remove functions from library if they are not
