@@ -27,7 +27,6 @@ class ForwardAllocation : public HloModulePass {
  private:
   const CompilerAnnotations& annotations;
   TensorAllocationMap& tensor_allocation_map;
-  TensorAllocationMap& tensor_allocation_map_second_pass;
 };
 
 }  // namespace poplarplugin

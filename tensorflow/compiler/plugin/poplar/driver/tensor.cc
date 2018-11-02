@@ -418,14 +418,22 @@ static StatusOr<poplar::Tensor> PathTransform(
 StatusOr<poplar::Tensor> AddTensor(poplar::Graph& graph,
                                    const TensorSource& src,
                                    const xla::Shape& shape,
-                                   CompilerResources& resources) {
+                                   CompilerResources& resources,
+                                   const TensorMap& tensor_map) {
   const auto& name = GetDebugName(src.first);
   poplar::Tensor out;
 
-  auto target = resources.annotations.tensor_allocation_map[0].find(src);
-  if (target != resources.annotations.tensor_allocation_map[0].end()) {
+  auto target = resources.annotations.tensor_allocation_map.find(src);
+  if (target != resources.annotations.tensor_allocation_map.end()) {
     const auto* tgt = target->second.tgt;
     auto tshape = tgt->operand(target->second.input_index)->shape();
+
+    // Temporarily don't do biasadd
+    if (IsPopOpsCall(tgt, "biasadd")) {
+      TF_ASSIGN_OR_RETURN(out, AddPlainTensor(graph, name, shape));
+      return out;
+    }
+
     switch (tgt->opcode()) {
       case HloOpcode::kConvolution: {
         switch (target->second.input_index) {
@@ -535,27 +543,6 @@ StatusOr<poplar::Tensor> AddTensor(poplar::Graph& graph,
   return out;
 }
 
-StatusOr<poplar::Tensor> AddTensor(poplar::Graph& graph,
-                                   const TensorSource& src,
-                                   const xla::Shape& shape,
-                                   CompilerResources& resources,
-                                   const TensorMap& tensor_map) {
-  auto target = resources.annotations.tensor_allocation_map[1].find(
-      std::make_pair(src.first, 0));
-  if (target != resources.annotations.tensor_allocation_map[1].end()) {
-    const auto& name = GetDebugName(src.first);
-    const auto tensors = FindInstructionOutputs(tensor_map, target->second.tgt);
-
-    if (!tensors.empty()) {
-      return PathTransform(graph, graph.clone(tensors[0]),
-                           target->second.forward_path,
-                           target->second.backward_path);
-    }
-  }
-
-  return AddTensor(graph, src, shape, resources);
-}
-
 template <typename TYPE>
 static void AddConstantTensor(poplar::Graph& graph, const xla::Literal& literal,
                               const xla::Shape& shape, const poplar::Type& type,
@@ -653,14 +640,16 @@ StatusOr<poplar::Tensor> AddConstantTensor(poplar::Graph& graph,
                                            const TensorSource& src,
                                            const xla::Shape& shape,
                                            const xla::Literal& literal,
-                                           CompilerResources& resources) {
+                                           CompilerResources& resources,
+                                           const TensorMap& tensor_map) {
   poplar::Tensor tensor;
 
   poplar::Type type;
   TF_ASSIGN_OR_RETURN(type, PoplarDataType(literal.shape()));
 
   if (ShapeUtil::ElementsIn(literal.shape()) > 32) {
-    TF_ASSIGN_OR_RETURN(tensor, AddTensor(graph, src, shape, resources));
+    TF_ASSIGN_OR_RETURN(tensor,
+                        AddTensor(graph, src, shape, resources, tensor_map));
     switch (literal.shape().element_type()) {
       case PRED:
         SetInitialTensorValue<bool>(graph, tensor, literal);
@@ -724,7 +713,8 @@ StatusOr<poplar::Tensor> AddIotaTensor(poplar::Graph& graph,
                                        const TensorSource& src,
                                        const xla::Shape& shape,
                                        int64 iota_dimension,
-                                       CompilerResources& resources) {
+                                       CompilerResources& resources,
+                                       const TensorMap& tensor_map) {
   poplar::Type type;
   TF_ASSIGN_OR_RETURN(type, PoplarDataType(shape));
 
@@ -748,8 +738,8 @@ StatusOr<poplar::Tensor> AddIotaTensor(poplar::Graph& graph,
   poplar::Tensor t;
   auto iota_shape = ShapeUtil::MakeShape(shape.element_type(),
                                          {shape.dimensions(iota_dimension)});
-  TF_ASSIGN_OR_RETURN(
-      t, AddConstantTensor(graph, src, iota_shape, literal, resources));
+  TF_ASSIGN_OR_RETURN(t, AddConstantTensor(graph, src, iota_shape, literal,
+                                           resources, tensor_map));
   return BroadcastTensor(t, shape, {iota_dimension});
 }
 

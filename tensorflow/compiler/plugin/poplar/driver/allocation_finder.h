@@ -30,15 +30,34 @@ namespace poplarplugin {
 struct CompilerAnnotations;
 
 struct TensorTarget {
+  // The node in the graph which consumes the tensor
   const HloInstruction* tgt;
+
+  // The input on the target node which consumes the tensor
   int64 input_index;
+
+  // A node in the graph which produces a tensor that influences the
+  // construction of the tensor.  Example: bias tensors should match the layout
+  // of a convolution output.  'layout' points to the convolution parameter.
+  const HloInstruction* layout;
+
+  // A vector of operations between the source and target operations.  Sometimes
+  // it is possible to allocate a tensor for consumption by a target, and then
+  // transform it into the tensor as it should be allocated by the source.
   std::vector<const HloInstruction*> forward_path;
+
+  // A path from the layout influencing operation and the target operation.
+  // Sometimes it is possible to take the output of the target and transform
+  // it into something that can be used to make a layout-dependent allocation
+  // at the target site.
   std::vector<const HloInstruction*> backward_path;
   TensorTarget(const HloInstruction* tgt, int64 input_index,
+               const HloInstruction* layout,
                const std::vector<const HloInstruction*>& forward_path,
                const std::vector<const HloInstruction*>& backward_path)
       : tgt(tgt),
         input_index(input_index),
+        layout(layout),
         forward_path(forward_path),
         backward_path(backward_path) {}
   TensorTarget() = default;

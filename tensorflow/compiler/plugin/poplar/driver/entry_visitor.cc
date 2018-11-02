@@ -29,16 +29,6 @@ Status EntryVisitor::HandleParameter(HloInstruction* inst) {
 
   poplar::Graph& graph = GetGraph(resources_, inst);
 
-  const auto itr = resources_.annotations.tensor_allocation_map[1].find(
-      std::make_pair(inst, 0));
-
-  if (itr != resources_.annotations.tensor_allocation_map[1].end() &&
-      NotVisited(*(itr->second.tgt))) {
-    SetVisiting(*(itr->second.tgt));
-    const_cast<HloInstruction*>(itr->second.tgt)->Visit(this);  // const_cast :(
-    SetVisited(*(itr->second.tgt));
-  }
-
   const auto& in_info = resources_.annotations.input_output_aliasing_map
                             .GetEntryInputInfos()[inst->parameter_number()];
 

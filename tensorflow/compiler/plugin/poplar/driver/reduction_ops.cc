@@ -343,8 +343,8 @@ StatusOr<poplar::program::Program> CreateSimpleWindowReduction(
     }
 
     // Allocate the output tensor
-    TF_ASSIGN_OR_RETURN(
-        out, AddTensor(graph, std::make_pair(inst, 0), output_shape, res));
+    TF_ASSIGN_OR_RETURN(out, AddTensor(graph, std::make_pair(inst, 0),
+                                       output_shape, res, tensor_map));
     poplar::Tensor out_flat = out.flatten();
 
     auto cs = graph.addComputeSet(GetDebugName(inst));
@@ -575,9 +575,10 @@ StatusOr<poplar::program::Program> CreateSimpleSelectAndScatter(
   Literal identity_literal = GetIdentityConstantLiteral(scatter_root);
 
   poplar::Tensor identity_val;
-  TF_ASSIGN_OR_RETURN(identity_val,
-                      AddConstantTensor(graph, std::make_pair(inst, 0),
-                                        partial_shape, identity_literal, res));
+  TF_ASSIGN_OR_RETURN(
+      identity_val,
+      AddConstantTensor(graph, std::make_pair(inst, 0), partial_shape,
+                        identity_literal, res, tensor_map));
   program_seq.add(poplar::program::Copy(identity_val, partial));
 
   // Find the number of windows in each dimension

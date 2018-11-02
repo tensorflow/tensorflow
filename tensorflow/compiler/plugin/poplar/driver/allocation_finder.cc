@@ -80,7 +80,7 @@ class FindAllocatingInstructions : public DfsHloVisitorWithDefault {
 
   Status HandleParameter(HloInstruction* inst) override {
     auto shapes = FlattenedXlaShape(inst->shape());
-    for (int i = 0; i < shapes.size(); i++) {
+    for (unsigned int i = 0; i < shapes.size(); i++) {
       allocating_instructions.push_back(std::make_pair(inst, i));
     }
     return Status::OK();
@@ -117,7 +117,7 @@ void AllocationFinder::FindConsumers(const TensorSource& src,
       int64 op_index = user->operand_index(tgt);
       switch (user->opcode()) {
         case HloOpcode::kConvolution: {
-          auto t = TensorTarget(user, op_index, {}, path);
+          auto t = TensorTarget(user, op_index, nullptr, {}, path);
           auto i = tensor_allocation_map.find(src);
           if (i != tensor_allocation_map.end() &&
               CompareTargets(t, i->second)) {
@@ -127,7 +127,7 @@ void AllocationFinder::FindConsumers(const TensorSource& src,
           break;
         }
         case HloOpcode::kDot: {
-          auto t = TensorTarget(user, op_index, {}, path);
+          auto t = TensorTarget(user, op_index, nullptr, {}, path);
           auto i = tensor_allocation_map.find(src);
           if (i != tensor_allocation_map.end() &&
               CompareTargets(t, i->second)) {
@@ -138,7 +138,7 @@ void AllocationFinder::FindConsumers(const TensorSource& src,
         }
         case HloOpcode::kDynamicSlice: {
           if (op_index == 0) {
-            auto t = TensorTarget(user, op_index, {}, path);
+            auto t = TensorTarget(user, op_index, nullptr, {}, path);
             auto i = tensor_allocation_map.find(src);
             if (i != tensor_allocation_map.end()) {
               tensor_allocation_map.erase(src);
@@ -149,7 +149,7 @@ void AllocationFinder::FindConsumers(const TensorSource& src,
         }
         case HloOpcode::kDynamicUpdateSlice: {
           if (op_index == 0 || op_index == 1) {
-            auto t = TensorTarget(user, op_index, {}, path);
+            auto t = TensorTarget(user, op_index, nullptr, {}, path);
             auto i = tensor_allocation_map.find(src);
             if (i != tensor_allocation_map.end()) {
               tensor_allocation_map.erase(src);
@@ -167,7 +167,7 @@ void AllocationFinder::FindConsumers(const TensorSource& src,
             auto end = comp->name().find('.');
             std::string name = comp->name().substr(8, end - 8);
             if (name == "depthwise_conv") {
-              auto t = TensorTarget(user, op_index, {}, path);
+              auto t = TensorTarget(user, op_index, nullptr, {}, path);
               auto i = tensor_allocation_map.find(src);
               if (i != tensor_allocation_map.end()) {
                 tensor_allocation_map.erase(src);
@@ -234,8 +234,8 @@ StatusOr<bool> AllocationFinder::Run(HloModule* module) {
 }
 
 AllocationFinder::AllocationFinder(CompilerAnnotations& annotations)
-    : tensor_allocation_map(annotations.tensor_allocation_map[0]),
-      annotations(annotations) {}
+    : annotations(annotations),
+      tensor_allocation_map(annotations.tensor_allocation_map) {}
 
 }  // namespace poplarplugin
 }  // namespace xla

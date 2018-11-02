@@ -54,7 +54,7 @@ StatusOr<poplar::program::Program> CreateSliceUpdateOp(
         copy, AddTensor(graph, std::make_pair(inst, 0),
                         XlaShapeFromPoplarShape(output_shape.element_type(),
                                                 input.shape()),
-                        res));
+                        res, tensor_map));
     seq.add(poplar::program::Copy(input, copy));
     input = copy;
   } else {
@@ -242,7 +242,7 @@ StatusOr<poplar::program::Program> CreateWideConstant(
   poplar::Tensor out;
   TF_ASSIGN_OR_RETURN(
       out, AddConstantTensor(graph, std::make_pair(inst, 0), inst->shape(),
-                             root->operand(0)->literal(), res));
+                             root->operand(0)->literal(), res, tensor_map));
   TF_CHECK_OK(AddOutputTensor(tensor_map, inst, 0, out));
 
   return seq;

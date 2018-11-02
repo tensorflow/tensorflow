@@ -22,9 +22,8 @@ using HloInstPtr = const HloInstruction*;
 
 static void create_graph(HloInstPtr inst, Graph<HloInstPtr>& result) {
   for (const auto& operand : inst->operands()) {
-    result[operand].insert(inst);
-
     if (!result.contains(operand)) {
+      result[operand].insert(inst);
       create_graph(operand, result);
     }
   }
@@ -152,22 +151,28 @@ static std::vector<HloInstPtr> shortest_path(const Graph<HloInstPtr>& graph,
   return path;
 }
 
+// TODO - this should probably be in a more central location
+static bool IsLayoutProducer(HloInstPtr inst) {
+  if (inst->opcode() == HloOpcode::kConvolution ||
+      inst->opcode() == HloOpcode::kDot) {
+    return true;
+  }
+  if (IsPopOpsCall(inst, "depthwise_conv")) {
+    return true;
+  }
+  return false;
+}
+
+// TODO - this should probably be in a more central location
+static bool IsLayoutSensitiveTarget(HloInstPtr inst) {
+  return IsPopOpsCall(inst, "biasadd");
+}
+
 ForwardAllocation::ForwardAllocation(CompilerAnnotations& annotations)
     : annotations(annotations),
-      tensor_allocation_map(annotations.tensor_allocation_map[0]),
-      tensor_allocation_map_second_pass(annotations.tensor_allocation_map[1]) {}
+      tensor_allocation_map(annotations.tensor_allocation_map) {}
 
 StatusOr<bool> ForwardAllocation::Run(HloModule* module) {
-  const auto is_alloc_pred = [this](HloInstPtr inst) {
-    return inst->opcode() == HloOpcode::kConvolution ||
-           inst->opcode() == HloOpcode::kDot ||
-           inst->opcode() == HloOpcode::kDynamicSlice ||
-           inst->opcode() == HloOpcode::kDynamicUpdateSlice ||
-           inst->opcode() == HloOpcode::kCall ||
-           tensor_allocation_map.find(std::make_pair(inst, 0)) !=
-               tensor_allocation_map.end();
-  };
-
   const auto is_param_no_layout_pred = [this](HloInstPtr inst) {
     return inst->opcode() == HloOpcode::kParameter &&
            tensor_allocation_map.find(std::make_pair(inst, 0)) ==
@@ -176,32 +181,33 @@ StatusOr<bool> ForwardAllocation::Run(HloModule* module) {
 
   const auto g = create_graph(module);
   const auto g_tr = transpose(g);
-  const auto alloc_verts = find_vertices(g, is_alloc_pred);
+  const auto layout_producing_ops = find_vertices(g, IsLayoutProducer);
 
-  Graph<HloInstPtr> alloc_consumers;
-  for (const auto& v : alloc_verts) {
-    alloc_consumers[v] = find_consumers(
-        g, v, [is_alloc_pred](HloInstPtr v) { return !is_alloc_pred(v); });
-
-    alloc_consumers[v].insert(v);
+  // Get everything that depends upon an op with a special layout
+  Graph<HloInstPtr> layout_op_consumers;
+  for (const auto& inst : layout_producing_ops) {
+    layout_op_consumers[inst] = find_consumers(
+        g, inst, [](HloInstPtr inst) { return !IsLayoutProducer(inst); });
   }
 
-  const auto alloc_dependencies = transpose(alloc_consumers);
-  const auto param_verts = find_vertices(g, is_param_no_layout_pred);
+  const auto alloc_dependencies = transpose(layout_op_consumers);
+  const auto source_ops = find_vertices(g, is_param_no_layout_pred);
 
-  Graph<HloInstPtr> param_consumers;
-  for (const auto& v : param_verts) {
-    param_consumers[v] = find_consumers(
-        g, v,
-        [is_alloc_pred, alloc_verts, alloc_dependencies](HloInstPtr v) {
-          return !is_alloc_pred(v) && !alloc_dependencies.contains(v) &&
-                 !alloc_verts.contains(v);
+  // Get everything that depends on a source op
+  Graph<HloInstPtr> source_consumers;
+  for (const auto& inst : source_ops) {
+    source_consumers[inst] = find_consumers(
+        g, inst,
+        [layout_producing_ops, alloc_dependencies](HloInstPtr inst) {
+          return !IsLayoutProducer(inst) &&
+                 !alloc_dependencies.contains(inst) &&
+                 !layout_producing_ops.contains(inst);
         },
         true);
   }
 
-  for (const auto& edges : param_consumers) {
-    const auto& v1 = edges.first;
+  for (const auto& edges : source_consumers) {
+    const auto& source = edges.first;
     const auto inst_reduction = [&](HloInstPtr a, HloInstPtr b) {
       if (alloc_dependencies.contains(a)) {
         return a;
@@ -211,30 +217,34 @@ StatusOr<bool> ForwardAllocation::Run(HloModule* module) {
     };
 
     if (!edges.second.empty()) {
-      const auto mid =
+      // Target is the op consuming the allocated tensor
+      const auto target =
           std::accumulate(std::next(edges.second.begin()), edges.second.end(),
                           *(edges.second.begin()), inst_reduction);
 
-      const auto itr = alloc_dependencies.find(mid);
-      if (itr != alloc_dependencies.end() && !itr->second.empty()) {
-        const auto target =
-            std::accumulate(std::next(itr->second.begin()), itr->second.end(),
-                            *(itr->second.begin()), inst_reduction);
+      if (IsLayoutSensitiveTarget(target)) {
+        const auto& itr = alloc_dependencies.find(target);
+        if (itr != alloc_dependencies.end() && !itr->second.empty()) {
+          // layout_producer is the op which produces the tensor whose layout is
+          // important
+          const auto* layout_producer =
+              std::accumulate(std::next(itr->second.begin()), itr->second.end(),
+                              *(itr->second.begin()), inst_reduction);
 
-        if (target->opcode() == HloOpcode::kConvolution) {
-          auto prefix = shortest_path(g, v1, mid);
-          auto suffix = shortest_path(g, target, mid);
 
-          auto src = std::make_pair(prefix.front(), 0);
-          auto t = TensorTarget(suffix.front(), -1, suffix, prefix);
+          auto prefix = shortest_path(g, source, target);
+          auto suffix = shortest_path(g, layout_producer, target);
 
-          const auto is_tuple = [](HloInstPtr v) {
-            return v->shape().element_type() == TUPLE;
+          auto src = std::make_pair(source, 0);
+          auto t = TensorTarget(target, 1, layout_producer, suffix, prefix);
+
+          const auto is_tuple = [](HloInstPtr inst) {
+            return inst->shape().element_type() == TUPLE;
           };
 
           if (std::none_of(prefix.begin(), prefix.end(), is_tuple) &&
               std::none_of(suffix.begin(), suffix.end(), is_tuple)) {
-            tensor_allocation_map_second_pass[src] = t;
+            tensor_allocation_map[src] = t;
           }
         }
       }
