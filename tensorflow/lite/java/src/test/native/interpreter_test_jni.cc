@@ -42,6 +42,7 @@ Java_org_tensorflow_lite_InterpreterTest_getNativeHandleForDelegate(
   // A simple delegate which replaces all ops with a single op that outputs a
   // vector of length 1 with the value [7].
   static TfLiteDelegate delegate = {
+      .flags = kTfLiteDelegateFlagsAllowDynamicTensors,
       .Prepare = [](TfLiteContext* context,
                     TfLiteDelegate* delegate) -> TfLiteStatus {
         TfLiteIntArray* execution_plan;

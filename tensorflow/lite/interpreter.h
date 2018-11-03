@@ -360,8 +360,7 @@ class Interpreter {
   // parts of the graph themselves. After this is called, the graph may
   // contain new nodes that replace 1 more nodes.
   // WARNING: This is an experimental API and subject to change.
-  TfLiteStatus ModifyGraphWithDelegate(TfLiteDelegate* delegate,
-                                       bool allow_dynamic_tensors = false);
+  TfLiteStatus ModifyGraphWithDelegate(TfLiteDelegate* delegate);
 
   // Ensure the data in `tensor.data` is readable. In case delegate is used,
   // it might require to copy the data from delegate buffer to raw memory.
@@ -581,13 +580,11 @@ class Interpreter {
   // Variant of the public ModifyGraphWithDelegate method that additionally
   // Assumes ownership of the provided delegate.
   // WARNING: This is an experimental API and subject to change.
-  TfLiteStatus ModifyGraphWithDelegate(TfLiteDelegatePtr delegate,
-                                       bool allow_dynamic_tensors = false) {
+  TfLiteStatus ModifyGraphWithDelegate(TfLiteDelegatePtr delegate) {
     // Note that we retain ownership of the delegate even if graph modification
     // fails, as delegate use will be in an indeterminate state at that point.
     owned_delegates_.push_back(std::move(delegate));
-    return ModifyGraphWithDelegate(owned_delegates_.back().get(),
-                                   allow_dynamic_tensors);
+    return ModifyGraphWithDelegate(owned_delegates_.back().get());
   }
 
   // Ensures that `tensors_` has at least `kTensorsCapacityHeadroom` extra

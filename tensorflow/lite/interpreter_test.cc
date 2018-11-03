@@ -1109,6 +1109,7 @@ class TestDelegate : public ::testing::Test {
              TfLiteBufferHandle* handle) { *handle = kTfLiteNullBufferHandle; };
       // Store type-punned data SimpleDelegate structure.
       delegate_.data_ = reinterpret_cast<void*>(this);
+      delegate_.flags = kTfLiteDelegateFlagsNone;
     }
 
     static TfLiteRegistration FakeFusedRegistration() {
@@ -1210,7 +1211,7 @@ TEST_F(TestDelegate, SetInvalidHandleToTensor) {
   interpreter_->Invoke();
   delegate_ = std::unique_ptr<SimpleDelegate>(new SimpleDelegate({0, 1, 2}));
   TfLiteDelegate* delegate = delegate_->get_tf_lite_delegate();
-  interpreter_->ModifyGraphWithDelegate(delegate, true);
+  interpreter_->ModifyGraphWithDelegate(delegate);
 
   SimpleDelegate another_simple_delegate({0, 1, 2});
 
@@ -1268,6 +1269,7 @@ class TestDelegateWithDynamicTensors : public ::testing::Test {
           context, DelegateRegistration(), execution_plan, delegate);
       return kTfLiteOk;
     };
+    delegate_.flags = kTfLiteDelegateFlagsNone;
   }
 
   static TfLiteRegistration DynamicCopyOpRegistration() {
@@ -1296,7 +1298,7 @@ class TestDelegateWithDynamicTensors : public ::testing::Test {
 };
 
 TEST_F(TestDelegateWithDynamicTensors, DisallowDynamicTensors) {
-  interpreter_->ModifyGraphWithDelegate(&delegate_, false);
+  interpreter_->ModifyGraphWithDelegate(&delegate_);
 
   ASSERT_EQ(interpreter_->execution_plan().size(), 1);
   // The interpreter should not call delegate's `Prepare` when dynamic tensors
@@ -1305,7 +1307,8 @@ TEST_F(TestDelegateWithDynamicTensors, DisallowDynamicTensors) {
 }
 
 TEST_F(TestDelegateWithDynamicTensors, AllowDynamicTensors) {
-  interpreter_->ModifyGraphWithDelegate(&delegate_, true);
+  delegate_.flags = kTfLiteDelegateFlagsAllowDynamicTensors;
+  interpreter_->ModifyGraphWithDelegate(&delegate_);
 
   ASSERT_EQ(interpreter_->execution_plan().size(), 1);
   // The node should be replaced because dynamic tensors are allowed. Therefore

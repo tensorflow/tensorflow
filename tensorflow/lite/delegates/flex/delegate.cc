@@ -109,7 +109,8 @@ FlexDelegate::FlexDelegate(std::unique_ptr<flex::DelegateData> delegate_data)
           /*nullptr,*/ &flex::delegate::Prepare,
           /*CopyFromBufferHandle=*/&flex::delegate::CopyFromBufferHandle,
           /*CopyToBufferHandle=*/nullptr,
-          /*FreeBufferHandle=*/nullptr},
+          /*FreeBufferHandle=*/nullptr,
+          /*flags=*/kTfLiteDelegateFlagsAllowDynamicTensors},
       delegate_data_(std::move(delegate_data)) {}
 
 FlexDelegate::~FlexDelegate() {}

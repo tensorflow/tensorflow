@@ -933,9 +933,8 @@ void Interpreter::SwitchToKernelContext() {
   SetForbiddenContextFunction(&context_.GetExecutionPlan);
 }
 
-TfLiteStatus Interpreter::ModifyGraphWithDelegate(TfLiteDelegate* delegate,
-                                                  bool allow_dynamic_tensors) {
-  if (!allow_dynamic_tensors) {
+TfLiteStatus Interpreter::ModifyGraphWithDelegate(TfLiteDelegate* delegate) {
+  if (!(delegate->flags & kTfLiteDelegateFlagsAllowDynamicTensors)) {
     int last_execution_plan_index_prepared;
     TF_LITE_ENSURE_OK(&context_, PrepareOpsStartingAt(
                                      0, &last_execution_plan_index_prepared));
@@ -971,7 +970,7 @@ TfLiteStatus Interpreter::ModifyGraphWithDelegate(TfLiteDelegate* delegate,
 
   TF_LITE_ENSURE_OK(&context_, status);
 
-  if (!allow_dynamic_tensors) {
+  if (!(delegate->flags & kTfLiteDelegateFlagsAllowDynamicTensors)) {
     // Reset the state to force tensor/op reallocation.
     state_ = kStateUninvokable;
     TF_LITE_ENSURE_OK(&context_, AllocateTensors());
