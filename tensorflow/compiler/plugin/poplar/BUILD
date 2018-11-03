@@ -3,6 +3,7 @@ licenses(["restricted"])
 package(default_visibility = ["//visibility:public"])
 
 load("@local_config_poplar//poplar:build_defs.bzl", "poplar_lib_directory")
+load("@local_config_poplar//poplar:build_defs.bzl", "poplibs_lib_directory")
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 load("//tensorflow:tensorflow.bzl", "tf_gen_op_wrapper_py")
 load("//tensorflow/core:platform/default/build_config.bzl", "tf_proto_library")
@@ -265,6 +266,7 @@ cc_library(
     linkopts = [
         "$(locations @local_config_poplar//poplar:poplar_lib)",
         "-Wl,-rpath," + poplar_lib_directory(),
+        "-Wl,-rpath," + poplibs_lib_directory(),
     ],
     data = [
         ":tf_graph_program",

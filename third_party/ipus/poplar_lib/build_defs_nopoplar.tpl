@@ -10,3 +10,8 @@ def poplar_lib_directory():
     """
     return ""
 
+def poplibs_lib_directory():
+    """Returns the full path to the Poplibs libraries directory
+    """
+    return ""
+
