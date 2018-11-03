@@ -225,11 +225,11 @@ void DoNonMaxSuppressionOp(
 void BatchedNonMaxSuppressionOp(OpKernelContext* context, 
                            const Tensor& inp_boxes, const Tensor& inp_scores, 
                            int num_boxes, 
-                           const Tensor& max_size_per_class, 
+                           const int max_size_per_class, 
                            const int total_size_per_batch, 
                            const float score_threshold, 
                            const float iou_threshold,
-                           bool pad_to_max_total_size = false) {
+                           bool use_static_shapes = false) {
 
   int q = inp_boxes.dim_size(2);
   int num_classes = inp_scores.dim_size(2);
@@ -239,18 +239,19 @@ void BatchedNonMaxSuppressionOp(OpKernelContext* context,
   // Default clip window of [0, 0, 1, 1] if none specified
   std::vector <float> clip_window{0, 0, 1, 1};
   
-  // [num_batches, max_detections, 4]
+  // [num_batches, per_batch_size, 4]
   std::vector <std::vector<float>> nmsed_boxes(num_batches);
-  // [num_batches, max_detections]
+  // [num_batches, per_batch_size]
   std::vector <std::vector<float>> nmsed_scores(num_batches); 
-  // [num_batches, max_detections]
+  // [num_batches, per_batch_size]
   std::vector <std::vector<float>> nmsed_classes(num_batches); 
   // [num_batches]
   std::vector <int> final_valid_detections;
-  // [num_batches, max_detections]
+  // [num_batches, per_batch_size]
   std::vector <std::vector<int>> selected_indices(num_batches);
 
-  int max_detections = 0;
+  int per_batch_size = total_size_per_batch;
+
   //perform non_max_suppression operation for each batch independently
   for (int batch = 0; batch < num_batches; ++batch) {
     // dims of per_batch_boxes [num_boxes, q, 4]
@@ -300,8 +301,7 @@ void BatchedNonMaxSuppressionOp(OpKernelContext* context,
       std::copy_n(boxes_data_vec.begin(), boxes_data_vec.size(), 
           boxes.unaligned_flat<float>().data());
 
-      const int output_size = std::min(max_size_per_class.scalar<int>()(), 
-                                   num_boxes);
+      const int output_size = std::min(max_size_per_class, num_boxes);
       // Do NMS, get the candidate indices of form vector<int>
       // Data structure for selection candidate in NMS.
       struct Candidate {
@@ -355,10 +355,19 @@ void BatchedNonMaxSuppressionOp(OpKernelContext* context,
       }
 
     }
-    if (total_size_per_batch > 0)
+    int max_detections = 0;
+    // If use_static_shapes is false, we always pad to max_total_size
+    if (!use_static_shapes) {
       max_detections = std::min((int) result_candidate_pq.size(), 
         total_size_per_batch);
-    else max_detections = (int) result_candidate_pq.size();
+      per_batch_size = total_size_per_batch;
+    }
+    else {
+      // max_detections will be <= max_size_per_class * num_classes
+      max_detections = (int) result_candidate_pq.size();
+      per_batch_size = std::min(total_size_per_batch, 
+                            max_size_per_class * num_classes);
+    }
 
     final_valid_detections.push_back(max_detections);
 
@@ -383,26 +392,20 @@ void BatchedNonMaxSuppressionOp(OpKernelContext* context,
       curr_total_size--;
     }
 
-    if(pad_to_max_total_size && max_detections < total_size_per_batch) {
-      nmsed_boxes[batch].resize(total_size_per_batch * 4, 0);
-      nmsed_scores[batch].resize(total_size_per_batch, 0);
-      nmsed_classes[batch].resize(total_size_per_batch, 0);
-      selected_indices[batch].resize(total_size_per_batch, 0);
-    }
-  }
-
-  if (pad_to_max_total_size) { 
-    max_detections = total_size_per_batch;
+    nmsed_boxes[batch].resize(per_batch_size * 4, 0);
+    nmsed_scores[batch].resize(per_batch_size, 0);
+    nmsed_classes[batch].resize(per_batch_size, 0);
+    selected_indices[batch].resize(per_batch_size, 0);
   }
 
   Tensor* nmsed_boxes_t = nullptr;
-  TensorShape boxes_shape({num_batches, max_detections, 4});
+  TensorShape boxes_shape({num_batches, per_batch_size, 4});
   OP_REQUIRES_OK(context,
                  context->allocate_output(0, boxes_shape, &nmsed_boxes_t));
   auto nmsed_boxes_flat = nmsed_boxes_t->template flat<float>();
 
   Tensor* nmsed_scores_t = nullptr;
-  TensorShape scores_shape({num_batches, max_detections});
+  TensorShape scores_shape({num_batches, per_batch_size});
   OP_REQUIRES_OK(context,
                  context->allocate_output(1, scores_shape, &nmsed_scores_t));
   auto nmsed_scores_flat = nmsed_scores_t->template flat<float>();
@@ -424,12 +427,12 @@ void BatchedNonMaxSuppressionOp(OpKernelContext* context,
   auto selected_indices_flat = selected_indices_t->template flat<int>();
   for (int i = 0; i < num_batches; ++i) {
     valid_detections_flat(i) = final_valid_detections[i];
-    for (int j = 0; j < max_detections; ++j) {
-      nmsed_scores_flat(i * max_detections + j) = nmsed_scores[i][j];
-      nmsed_classes_flat(i * max_detections + j) = nmsed_classes[i][j];
-      selected_indices_flat(i * max_detections + j) = selected_indices[i][j];
+    for (int j = 0; j < per_batch_size; ++j) {
+      nmsed_scores_flat(i * per_batch_size + j) = nmsed_scores[i][j];
+      nmsed_classes_flat(i * per_batch_size + j) = nmsed_classes[i][j];
+      selected_indices_flat(i * per_batch_size + j) = selected_indices[i][j];
       for (int k = 0; k < 4; ++k) {
-        nmsed_boxes_flat(i * max_detections * 4 + j * 4 + k) = 
+        nmsed_boxes_flat(i * per_batch_size * 4 + j * 4 + k) = 
           nmsed_boxes[i][j * 4 + k]; 
       }
     }
@@ -681,8 +684,8 @@ class NonMaxSuppressionLiteOp : public OpKernel {
  public:
   explicit NonMaxSuppressionLiteOp(OpKernelConstruction* context)
       : OpKernel(context) {
-    OP_REQUIRES_OK(context, context->GetAttr("pad_to_max_total_size",
-                                             &pad_to_max_total_size_));
+    OP_REQUIRES_OK(context, context->GetAttr("use_static_shapes",
+                                             &use_static_shapes_));
   }
 
   void Compute(OpKernelContext* context) override {
@@ -700,6 +703,7 @@ class NonMaxSuppressionLiteOp : public OpKernel {
         context, TensorShapeUtils::IsScalar(max_output_size.shape()),
         errors::InvalidArgument("max_size_per_class must be 0-D, got shape ",
                                 max_output_size.shape().DebugString()));
+    const int max_size_per_class = max_output_size.scalar<int>()();
     // max_total_size: scalar
     const Tensor& max_total_size = context->input(3);
     OP_REQUIRES(
@@ -735,12 +739,12 @@ class NonMaxSuppressionLiteOp : public OpKernel {
       return;
     }
     BatchedNonMaxSuppressionOp(context, boxes, scores, num_boxes, 
-                               max_output_size, max_total_size_per_batch, 
+                               max_size_per_class, max_total_size_per_batch, 
                                score_threshold_val, iou_threshold_val, 
-                               pad_to_max_total_size_);
+                               use_static_shapes_);
   }
  private:
-  bool pad_to_max_total_size_;
+  bool use_static_shapes_;
 };
 
 
