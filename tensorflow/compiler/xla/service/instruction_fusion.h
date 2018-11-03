@@ -54,8 +54,7 @@ class InstructionFusion : public HloModulePass {
   // fused. The default implementation processes consumers in reverse post
   // order.
   virtual std::unique_ptr<FusionQueue> GetFusionQueue(
-      HloComputation* computation,
-      const std::function<bool(HloInstruction*)>& skip_producer);
+      HloComputation* computation);
 
   // Returns whether the given producer instruction should be fused into the
   // given consumer instruction. producer is necessarily an operand of consumer.
@@ -111,6 +110,10 @@ class InstructionFusion : public HloModulePass {
     return is_expensive_(instruction);
   }
 
+  // Whether multi-output fusion would introduce a cycle into the HLO graph.
+  bool MultiOutputFusionCreatesCycle(HloInstruction* producer,
+                                     HloInstruction* consumer);
+
   // Current HloComputation instance the loop fuser is traversing.
   HloComputation* computation_;
   HloModule* module_;
@@ -144,10 +147,6 @@ class InstructionFusion : public HloModulePass {
   // Used to determine if an HLO is expensive. Expensive operations will not be
   // duplicated.
   std::function<bool(const HloInstruction& instruction)> is_expensive_;
-
-  // Whether multi-output fusion would introduce a cycle into the HLO graph.
-  bool MultiOutputFusionCreatesCycle(HloInstruction* producer,
-                                     HloInstruction* consumer);
 
   // Returns whether we may duplicate an instruction if we want to fuse it.
   bool may_duplicate_;
