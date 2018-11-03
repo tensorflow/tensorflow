@@ -363,10 +363,10 @@ void BatchedNonMaxSuppressionOp(OpKernelContext* context,
       per_batch_size = total_size_per_batch;
     }
     else {
-      // max_detections will be <= max_size_per_class * num_classes
-      max_detections = (int) result_candidate_pq.size();
       per_batch_size = std::min(total_size_per_batch, 
                             max_size_per_class * num_classes);
+      max_detections = std::min(per_batch_size, 
+                            (int) result_candidate_pq.size());
     }
 
     final_valid_detections.push_back(max_detections);
