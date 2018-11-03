@@ -305,6 +305,10 @@ class Conv3DTransposeTest(test.TestCase):
     self._run_test(kwargs, 'output_padding', [(1, 1, 1)])
 
   def test_conv3dtranspose_regularizers(self):
+
+    if test.is_built_with_rocm():
+      self.skipTest("4D tensors are not yet supported in ROCm")
+
     kwargs = {
         'filters': 3,
         'kernel_size': 3,
@@ -529,6 +533,10 @@ class Conv3DTest(test.TestCase):
       self._run_test(kwargs, 'data_format', ['channels_first'])
 
   def test_conv3d_regularizers(self):
+
+    if test.is_built_with_rocm():
+      self.skipTest("5D tensors are not yet supported in ROCm")
+
     kwargs = {
         'filters': 3,
         'kernel_size': 3,
