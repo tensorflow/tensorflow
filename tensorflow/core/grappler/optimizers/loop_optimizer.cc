@@ -566,9 +566,9 @@ Status EvaluateBoolOpForConstantOperands(const NodeDef& op_node,
 }
 
 Status CheckForDeadFanout(const GraphView& view, const NodeDef& switch_node,
-                          const NodeMap& node_map,
-                          DeviceBase* cpu_device, ResourceMgr* resource_mgr,
-                          bool* has_dead_fanout, int* dead_fanout) {
+                          const NodeMap& node_map, DeviceBase* cpu_device,
+                          ResourceMgr* resource_mgr, bool* has_dead_fanout,
+                          int* dead_fanout) {
   *has_dead_fanout = false;
   GraphView::InputPort switch_loopcond_port(&switch_node, 1);
   NodeDef* switch_predicate = view.GetRegularFanin(switch_loopcond_port).node;
@@ -779,7 +779,6 @@ Status LoopOptimizer::RemoveDeadBranches(
         if (dead.port_id < 0) {
           // If the control dependency never gets triggered the merge will also
           // never get triggered.
-          local_dead_nodes.insert(dead.node);
           fully_dead = true;
         } else {
           local_dead_merge_inputs[dead.node].insert(dead.port_id);
@@ -787,12 +786,12 @@ Status LoopOptimizer::RemoveDeadBranches(
               dead.node->attr().at("N").i()) {
             fully_dead = true;
           }
-          if (fully_dead) {
-            local_dead_nodes.insert(dead.node);
-            for (const GraphView::InputPort& port :
-                 view.GetFanouts(*dead.node, true)) {
-              zombie_inputs.PushBack(port);
-            }
+        }
+        if (fully_dead) {
+          local_dead_nodes.insert(dead.node);
+          for (const GraphView::InputPort& port :
+               view.GetFanouts(*dead.node, true)) {
+            zombie_inputs.PushBack(port);
           }
         }
       } else if (dead.node->op() == "ControlTrigger") {

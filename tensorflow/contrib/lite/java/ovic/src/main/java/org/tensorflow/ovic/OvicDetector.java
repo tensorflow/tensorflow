@@ -40,11 +40,8 @@ public class OvicDetector implements AutoCloseable {
   /** Labels corresponding to the output of the vision model. */
   private final List<String> labelList;
 
-  /** Define the output format. */
-  private final Boolean inputIsFloat;
-
   /** Number of detections per image. 10 for demo, 100 for the actual competition. */
-  private static final int NUM_RESULTS = 10;
+  private static final int NUM_RESULTS = 100;
 
   /** The output arrays for the mobilenet SSD. */
   private float[][][] outputLocations;
@@ -66,7 +63,9 @@ public class OvicDetector implements AutoCloseable {
     // Create the TfLite interpreter.
     tflite = new Interpreter(model, new Interpreter.Options().setNumThreads(1));
     inputDims = TestHelper.getInputDims(tflite, 0);
-    inputIsFloat = TestHelper.getInputDataType(tflite, 0).equals("float");
+    if (TestHelper.getInputDataType(tflite, 0).equals("float")) {
+      throw new RuntimeException("The model's input must be QUANTIZED_UINT8.");
+    }
     if (inputDims.length != 4) {
       throw new RuntimeException("The model's input dimensions must be 4 (BWHC).");
     }
@@ -102,10 +101,6 @@ public class OvicDetector implements AutoCloseable {
     result = new OvicDetectionResult(NUM_RESULTS);
   }
 
-  public Boolean quantizedInput() {
-    return !inputIsFloat;
-  }
-
   /** Reads label list from Assets. */
   private static List<String> loadLabelList(InputStream labelInputStream) throws IOException {
     List<String> labelList = new ArrayList<>();
@@ -132,9 +127,6 @@ public class OvicDetector implements AutoCloseable {
     if (tflite == null) {
       throw new RuntimeException(TAG + ": Detector has not been initialized; Failed.");
     }
-    if (inputIsFloat == null) {
-      throw new RuntimeException(TAG + ": Detector input type has not been resolved.");
-    }
 
     Object[] inputArray = {imgData};
     tflite.runForMultipleInputsOutputs(inputArray, outputMap);
@@ -144,12 +136,17 @@ public class OvicDetector implements AutoCloseable {
     // Update the results.
     result.resetTo(latency, imageId);
     for (int i = 0; i < NUM_RESULTS; i++) {
-      result.addBox(outputLocations[0][i][1] * inputDims[1],
-              outputLocations[0][i][0] * inputDims[1],
-              outputLocations[0][i][3] * inputDims[2],
-              outputLocations[0][i][2] * inputDims[2],
-              Math.round(outputClasses[0][i] + 1 /* Label offset */),
-              outputScores[0][i]);
+      // The model returns normalized coordinates [start_y, start_x, end_y, end_x].
+      // The boxes expect pixel coordinates [x1, y1, x2, y2].
+      // The height and width of the input are in inputDims[1] and inputDims[2].
+      // The following command converts between model outputs to bounding boxes.
+      result.addBox(
+          outputLocations[0][i][1] * inputDims[2],
+          outputLocations[0][i][0] * inputDims[1],
+          outputLocations[0][i][3] * inputDims[2],
+          outputLocations[0][i][2] * inputDims[1],
+          Math.round(outputClasses[0][i] + 1 /* Label offset */),
+          outputScores[0][i]);
     }
     return true;  // Marks that the result is available.
   }

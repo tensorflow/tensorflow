@@ -23,6 +23,7 @@ limitations under the License.
 #include <assert.h>
 #include <complex>
 
+#include "absl/strings/str_cat.h"
 #include "tensorflow/stream_executor/rocm/rocm_activation.h"
 #include "tensorflow/stream_executor/rocm/rocm_gpu_executor.h"
 #include "tensorflow/stream_executor/rocm/rocm_helpers.h"
@@ -34,7 +35,6 @@ limitations under the License.
 #include "tensorflow/stream_executor/lib/initialize.h"
 #include "tensorflow/stream_executor/lib/status.h"
 #include "tensorflow/stream_executor/lib/status_macros.h"
-#include "tensorflow/stream_executor/lib/strcat.h"
 #include "tensorflow/stream_executor/lib/stringprintf.h"
 #include "tensorflow/stream_executor/platform/logging.h"
 #include "tensorflow/stream_executor/platform/port.h"
@@ -269,7 +269,7 @@ static string ToString(rocblas_status status) {
     case rocblas_status_internal_error:
       return "rocblas_status_internal_error";
     default:
-      return port::StrCat("<invalid rocBLAS status: ", status, ">");
+      return absl::StrCat("<invalid rocBLAS status: ", status, ">");
   }
 }
 

@@ -106,6 +106,7 @@ class XlaOpRegistry {
 
   // Registers `device_name` for XLA compilation, using information from
   // `registration`.
+  // Does nothing if a registration for `device_name` already exists.
   static void RegisterCompilationDevice(const string& device_name,
                                         const DeviceRegistration& registration);
 
@@ -132,10 +133,27 @@ class XlaOpRegistry {
   // Returns all operations for which there are XLA kernels on any device.
   static std::vector<string> GetAllRegisteredOps();
 
-  // Returns the set of compile-time constant inputs to 'op'. Returns nullptr
-  // if the op is not registered.
-  static const std::unordered_set<string>* CompileTimeConstantInputs(
-      const string& op);
+  // Returns (via `result`) the indices of inputs to `node_def` that must be
+  // compile-time constants. Returns an empty vector if the op is not
+  // registered.
+  //
+  // `result` is sorted.
+  static Status CompileTimeConstantInputs(const NodeDef& node_def,
+                                          const OpDef& op_def,
+                                          std::vector<int>* result) {
+    return CompileTimeConstantInputs(node_def, /*op_kernel=*/nullptr, &op_def,
+                                     result);
+  }
+
+  // Returns (via `result`) the indices of inputs to `op_kernel` that must be
+  // compile-time constants.
+  //
+  // `result` is sorted.
+  static Status CompileTimeConstantInputs(const OpKernel& op_kernel,
+                                          std::vector<int>* result) {
+    return CompileTimeConstantInputs(op_kernel.def(), /*op_kernel=*/&op_kernel,
+                                     /*op_def=*/nullptr, result);
+  }
 
   // Returns true if `op` is a "metadata" op, one that only looks at the shapes
   // of its operands and not their values.
@@ -212,6 +230,11 @@ class XlaOpRegistry {
   // whitelists must not intersect.
   static bool IsCompatible(const OpRegistration& x, const OpRegistration& y);
 
+  static Status CompileTimeConstantInputs(const NodeDef& node_def,
+                                          const OpKernel* op_kernel,
+                                          const OpDef* op_def,
+                                          std::vector<int>* result);
+
   // Map from operator name to OpRegistrations, populated by REGISTER_XLA_OP.
   // Registrations present under the same key must satisfy IsCompatible above,
   // and this is checked during registration.
@@ -263,7 +286,8 @@ class XlaOpRegistrationBuilder {
   XlaOpRegistrationBuilder& AllowResourceTypes();
 
   // Mark 'input_name' as an argument whose value must be known at compile-time.
-  XlaOpRegistrationBuilder& CompileTimeConstInput(absl::string_view input_name);
+  XlaOpRegistrationBuilder& CompileTimeConstantInput(
+      absl::string_view input_name);
 
   // Mark this op as a "metadata" op, one that only looks at the shapes of its
   // operands and not their values.

@@ -154,7 +154,7 @@ class PoolingTest(test.TestCase):
     self.assertAllClose(y1, y2.eval(), rtol=1e-2, atol=1e-2)
 
   def testPoolSimple(self):
-    with self.test_session(use_gpu=test.is_gpu_available()):
+    with self.session(use_gpu=test.is_gpu_available()):
       for padding in ["SAME", "VALID"]:
         for pooling_type in ["MAX", "AVG"]:
           self._test(
@@ -166,7 +166,7 @@ class PoolingTest(test.TestCase):
               strides=[1, 2])
 
   def testPool1D(self):
-    with self.test_session(use_gpu=test.is_gpu_available()):
+    with self.session(use_gpu=test.is_gpu_available()):
       for padding in ["SAME", "VALID"]:
         for pooling_type in ["MAX", "AVG"]:
           for input_shape in [[2, 9, 2], [2, 10, 2]]:
@@ -192,7 +192,7 @@ class PoolingTest(test.TestCase):
                     strides=strides)
 
   def testPool2D(self):
-    with self.test_session(use_gpu=test.is_gpu_available()):
+    with self.session(use_gpu=test.is_gpu_available()):
       for padding in ["SAME", "VALID"]:
         for pooling_type in ["MAX", "AVG"]:
           for input_shape in [[2, 9, 10, 2], [2, 10, 9, 2]]:
@@ -218,11 +218,9 @@ class PoolingTest(test.TestCase):
                     strides=strides)
 
   def testPool3D(self):
-
     if test.is_built_with_rocm():
       self.skipTest("5D tensors are not yet supported in ROCm")
-
-    with self.test_session(use_gpu=test.is_gpu_available()):
+    with self.session(use_gpu=test.is_gpu_available()):
       for padding in ["SAME", "VALID"]:
         for pooling_type in ["MAX", "AVG"]:
           for input_shape in [[2, 9, 10, 11, 2], [2, 10, 9, 11, 2]]:
@@ -251,7 +249,7 @@ class PoolingTest(test.TestCase):
   def testPoolNC(self):
     if test.is_gpu_available(cuda_only=True):
       # "NC*" format is currently only supported on CUDA.
-      with self.test_session(use_gpu=True):
+      with self.session(use_gpu=True):
         for padding in ["SAME", "VALID"]:
           self._test(
               input_shape=[2, 2, 9],
@@ -310,7 +308,7 @@ class PoolingTest(test.TestCase):
     self.assertLess(err, err_tolerance)
 
   def testGradient1D(self):
-    with self.test_session(use_gpu=test.is_gpu_available()):
+    with self.session(use_gpu=test.is_gpu_available()):
       for padding in ["SAME", "VALID"]:
         for pooling_type in ["AVG", "MAX"]:
           for input_shape in [[2, 5, 2], [1, 4, 1]]:
@@ -336,7 +334,7 @@ class PoolingTest(test.TestCase):
                     strides=strides)
 
   def testGradient2D(self):
-    with self.test_session(use_gpu=test.is_gpu_available()):
+    with self.session(use_gpu=test.is_gpu_available()):
       for padding in ["SAME", "VALID"]:
         for pooling_type in ["AVG", "MAX"]:
           for input_shape in [[2, 4, 5, 2], [1, 5, 4, 1]]:
@@ -362,11 +360,9 @@ class PoolingTest(test.TestCase):
                     strides=strides)
 
   def testGradient3D(self):
-
     if test.is_built_with_rocm():
       self.skipTest("5D tensors are not yet supported in ROCm")
-
-    with self.test_session(use_gpu=test.is_gpu_available()):
+    with self.session(use_gpu=test.is_gpu_available()):
       for padding in ["SAME", "VALID"]:
         for pooling_type in ["AVG", "MAX"]:
           for input_shape in [[1, 3, 5, 4, 1], [1, 5, 4, 3, 1]]:

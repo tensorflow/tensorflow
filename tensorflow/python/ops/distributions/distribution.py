@@ -1315,7 +1315,7 @@ class Distribution(_BaseDistribution):
       return static_shape.ndims == 0
     shape = dynamic_shape_fn()
     if (shape.get_shape().ndims is not None and
-        shape.get_shape()[0].value is not None):
+        shape.get_shape().dims[0].value is not None):
       # If the static_shape is correctly written then we should never execute
       # this branch. We keep it just in case there's some unimagined corner
       # case.

@@ -63,10 +63,13 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   // input configuration.
   const int batch_size = input->dims->data[0];
   const int num_units = input_weights->dims->data[0];
-  TF_LITE_ASSERT_EQ(input->dims->data[1], input_weights->dims->data[1]);
-  TF_LITE_ASSERT_EQ(input_weights->dims->data[0], bias->dims->data[0]);
-  TF_LITE_ASSERT_EQ(recurrent_weights->dims->data[0], bias->dims->data[0]);
-  TF_LITE_ASSERT_EQ(recurrent_weights->dims->data[1], bias->dims->data[0]);
+  TF_LITE_ENSURE_EQ(context, input->dims->data[1],
+                    input_weights->dims->data[1]);
+  TF_LITE_ENSURE_EQ(context, input_weights->dims->data[0], bias->dims->data[0]);
+  TF_LITE_ENSURE_EQ(context, recurrent_weights->dims->data[0],
+                    bias->dims->data[0]);
+  TF_LITE_ENSURE_EQ(context, recurrent_weights->dims->data[1],
+                    bias->dims->data[0]);
   TF_LITE_ENSURE_EQ(context, input->type, kTfLiteFloat32);
   TF_LITE_ENSURE_EQ(context, input_weights->type, recurrent_weights->type);
   TF_LITE_ENSURE_EQ(context, NumDimensions(hidden_state), 2);

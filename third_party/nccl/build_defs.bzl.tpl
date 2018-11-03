@@ -15,6 +15,7 @@ def _gen_nccl_h_impl(ctx):
             "${nccl:Version}": "2305",
         },
     )
+
 gen_nccl_h = rule(
     implementation = _gen_nccl_h_impl,
     attrs = {
@@ -24,15 +25,14 @@ gen_nccl_h = rule(
 )
 """Creates the NCCL header file."""
 
-
 def _process_srcs_impl(ctx):
     """Appends .cc to .cu files, patches include directives."""
     files = []
     for src in ctx.files.srcs:
         if not src.is_source:
-          # Process only once, specifically "src/nccl.h".
-          files.append(src)
-          continue
+            # Process only once, specifically "src/nccl.h".
+            files.append(src)
+            continue
         name = src.basename
         if src.extension == "cu":
             name = ctx.attr.prefix + name + ".cc"
@@ -52,6 +52,7 @@ def _process_srcs_impl(ctx):
         )
         files.append(file)
     return [DefaultInfo(files = depset(files))]
+
 _process_srcs = rule(
     implementation = _process_srcs_impl,
     attrs = {
@@ -61,8 +62,7 @@ _process_srcs = rule(
 )
 """Processes the NCCL srcs so they can be compiled with bazel and clang."""
 
-
-def nccl_library(name, srcs=None, hdrs=None, prefix=None, **kwargs):
+def nccl_library(name, srcs = None, hdrs = None, prefix = None, **kwargs):
     """Processes the srcs and hdrs and creates a cc_library."""
 
     _process_srcs(
@@ -82,7 +82,6 @@ def nccl_library(name, srcs=None, hdrs=None, prefix=None, **kwargs):
         **kwargs
     )
 
-
 def rdc_copts():
     """Returns copts for compiling relocatable device code."""
 
@@ -92,25 +91,25 @@ def rdc_copts():
     maxrregcount = "-maxrregcount=96"
 
     return cuda_default_copts() + select({
-          "@local_config_cuda//cuda:using_nvcc": [
-              "-nvcc_options",
-              "relocatable-device-code=true",
-              "-nvcc_options",
-              "ptxas-options=" + maxrregcount,
-          ],
-          "@local_config_cuda//cuda:using_clang": [
-              "-fcuda-rdc",
-              "-Xcuda-ptxas",
-              maxrregcount,
-          ],
-          "//conditions:default": [],
-      }) + ["-fvisibility=hidden"]
-
+        "@local_config_cuda//cuda:using_nvcc": [
+            "-nvcc_options",
+            "relocatable-device-code=true",
+            "-nvcc_options",
+            "ptxas-options=" + maxrregcount,
+        ],
+        "@local_config_cuda//cuda:using_clang": [
+            "-fcuda-rdc",
+            "-Xcuda-ptxas",
+            maxrregcount,
+        ],
+        "//conditions:default": [],
+    }) + ["-fvisibility=hidden"]
 
 def _filter_impl(ctx):
     suffix = ctx.attr.suffix
     files = [src for src in ctx.files.srcs if src.path.endswith(suffix)]
     return [DefaultInfo(files = depset(files))]
+
 _filter = rule(
     implementation = _filter_impl,
     attrs = {
@@ -119,7 +118,6 @@ _filter = rule(
     },
 )
 """Filters the srcs to the ones ending with suffix."""
-
 
 def _gen_link_src_impl(ctx):
     ctx.actions.expand_template(
@@ -130,6 +128,7 @@ def _gen_link_src_impl(ctx):
             "FATBINFILE": '"%s"' % ctx.file.fatbin_hdr.short_path,
         },
     )
+
 _gen_link_src = rule(
     implementation = _gen_link_src_impl,
     attrs = {
@@ -141,7 +140,6 @@ _gen_link_src = rule(
 )
 """Patches the include directives for the link.stub file."""
 
-
 def device_link(name, srcs):
     """Links seperately compiled relocatable device code into a cc_library."""
 
@@ -152,14 +150,6 @@ def device_link(name, srcs):
         suffix = ".pic.a",
     )
 
-    cpu_arch = "X86_64"
-    native.genrule(
-        name = "get_cpu_gen",
-        outs = [cpu_arch],
-        cmd = "uname -m",
-    )
-    cpu_arch = cpu_arch.upper()
-
     # Device-link to cubins for each architecture.
     images = []
     cubins = []
@@ -167,10 +157,18 @@ def device_link(name, srcs):
         cubin = "%s_%s.cubin" % (name, arch)
         register_hdr = "%s_%s.h" % (name, arch)
         nvlink = "@local_config_nccl//:nvlink"
-        cmd = ("$(location %s) --cpu-arch=%s " % (nvlink, cpu_arch) +
-            "--arch=%s $(SRCS) " % arch +
-            "--register-link-binaries=$(location %s) " % register_hdr +
-            "--output-file=$(location %s)" % cubin)
+        cmd = ("$(location %s) " % nvlink +
+               select({
+                   # NCCL is only supported on Linux.
+                   "@org_tensorflow//tensorflow:linux_x86_64":
+                       "--cpu-arch=X86_64 ",
+                   "@org_tensorflow//tensorflow:linux_ppc64le":
+                       "--cpu-arch=PPC64LE ",
+                   "//conditions:default": "",
+               }) +
+               "--arch=%s $(SRCS) " % arch +
+               "--register-link-binaries=$(location %s) " % register_hdr +
+               "--output-file=$(location %s)" % cubin)
         native.genrule(
             name = "%s_%s" % (name, arch),
             outs = [register_hdr, cubin],
@@ -184,10 +182,10 @@ def device_link(name, srcs):
     # Generate fatbin header from all cubins.
     fatbin_hdr = name + ".fatbin.h"
     fatbinary = "@local_config_nccl//:cuda/bin/fatbinary"
-    cmd = ("PATH=$$CUDA_TOOLKIT_PATH/bin:$$PATH " + # for bin2c
-          "$(location %s) -64 --cmdline=--compile-only --link " % fatbinary +
-          "--compress-all %s --create=%%{name}.fatbin " % " ".join(images) +
-          "--embedded-fatbin=$@")
+    cmd = ("PATH=$$CUDA_TOOLKIT_PATH/bin:$$PATH " +  # for bin2c
+           "$(location %s) -64 --cmdline=--compile-only --link " % fatbinary +
+           "--compress-all %s --create=%%{name}.fatbin " % " ".join(images) +
+           "--embedded-fatbin=$@")
     native.genrule(
         name = name + "_fatbin_h",
         outs = [fatbin_hdr],
@@ -215,5 +213,11 @@ def device_link(name, srcs):
             "@local_config_cuda//cuda:cuda_headers",
             "@local_config_cuda//cuda:cudart_static",
         ],
-        defines = ["__NV_EXTRA_INITIALIZATION=", "__NV_EXTRA_FINALIZATION="]
+        defines = [
+            # Silence warning about including internal header.
+            "__CUDA_INCLUDE_COMPILER_INTERNAL_HEADERS__",
+            # Macros that need to be defined starting with CUDA 10.
+            "__NV_EXTRA_INITIALIZATION=",
+            "__NV_EXTRA_FINALIZATION=",
+        ],
     )

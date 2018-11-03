@@ -731,7 +731,7 @@ def _process_raw_parameters(names, dense_defaults, sparse_keys, sparse_types,
     default_value = dense_defaults.get(key)
     dense_shape = dense_shapes[i]
     if (dense_shape.ndims is not None and dense_shape.ndims > 0 and
-        dense_shape[0].value is None):
+        dense_shape.dims[0].value is None):
       # Variable stride dense shape, the default value should be a
       # scalar padding value
       if default_value is None:
@@ -1770,7 +1770,7 @@ def _parse_single_example_v2_raw(serialized, sparse_keys, sparse_types,
       default_value = dense_defaults.get(key)
       dense_shape = dense_shapes[i]
       if (dense_shape.ndims is not None and dense_shape.ndims > 0 and
-          dense_shape[0].value is None):
+          dense_shape.dims[0].value is None):
         # Variable stride dense shape, the default value should be a
         # scalar padding value
         if default_value is None:

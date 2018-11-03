@@ -13,7 +13,6 @@ android_binary(
         "//tensorflow/contrib/lite/java/ovic/src/testdata:coco_labels.txt",
         "//tensorflow/contrib/lite/java/ovic/src/testdata:labels.txt",
         "//tensorflow/contrib/lite/java/ovic/src/testdata:ovic_testdata",
-        "@tflite_mobilenet_ssd_quant//:detect.tflite",
     ],
     assets_dir = "",
     custom_package = "ovic.demo.app",

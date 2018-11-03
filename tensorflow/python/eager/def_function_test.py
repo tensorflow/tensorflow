@@ -21,6 +21,7 @@ from __future__ import print_function
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import ops
+from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 
@@ -80,6 +81,54 @@ class DefFunctionTest(test.TestCase):
 
     self.assertAllEqual(fn(constant_op.constant(1.0)), 2.0)
     self.assertAllEqual(fn(constant_op.constant(3.0)), 6.0)
+
+  def testLegacyGraphModeVariables(self):
+    with ops.Graph().as_default(), self.test_session() as sess:
+      state = []
+
+      @def_function.function
+      def fn(x):
+        if not state:
+          state.append(variables.Variable(2.0))
+        return state[0] * x
+
+      result = fn(3.0)
+
+      sess.run(variables.global_variables_initializer())
+      self.assertAllEqual(sess.run(state[0]), 2.0)
+      self.assertAllEqual(sess.run(result), 6.0)
+
+  def testLegacyGraphModeVariablesNonTrivialInitializer(self):
+    with ops.Graph().as_default(), self.test_session() as sess:
+      state = []
+
+      @def_function.function
+      def fn(x):
+        if not state:
+          two = constant_op.constant(2.0)
+          four = two * two
+          two_again = math_ops.sqrt(four)
+          state.append(variables.Variable(two_again + four))
+        return state[0] * x
+
+      result = fn(3.0)
+
+      sess.run(variables.global_variables_initializer())
+      self.assertAllEqual(sess.run(state[0]), 6.0)
+      self.assertAllEqual(sess.run(result), 18.0)
+
+  def testLegacyGraphModeInputDependentInitializerFails(self):
+    with ops.Graph().as_default():
+      state = []
+
+      @def_function.function
+      def fn(x):
+        if not state:
+          state.append(variables.Variable(2.0 * x))
+        return state[0] * x
+
+      with self.assertRaises(ValueError):
+        fn(constant_op.constant(3.0))
 
   def testMethod(self):
 

@@ -235,7 +235,6 @@ Status HloSchedule::Update() {
 
 Status HloSchedule::Verify() const {
   VLOG(2) << "VerifySchedule()";
-  XLA_VLOG_LINES(3, module_->ToString());
   XLA_VLOG_LINES(2, ToString());
 
   // Verify schedule contains exactly the same set of non-fusion computations as

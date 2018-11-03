@@ -41,28 +41,41 @@ bazel test --test_sharding_strategy=disabled --config=rocm --test_tag_filters=-n
     --run_under=//tensorflow/tools/ci_build/gpu_build:parallel_gpu_execute -- \
     //tensorflow/... -//tensorflow/compiler/... -//tensorflow/contrib/... \
     -//tensorflow/python/distribute:distribute_coordinator_test \
-    -//tensorflow/python/estimator:dnn_linear_combined_test \
-    -//tensorflow/python/estimator:linear_test \
     -//tensorflow/python/feature_column:feature_column_v2_test \
     -//tensorflow/python/keras:cudnn_recurrent_test \
     -//tensorflow/python/kernel_tests:batch_matmul_op_test \
+    -//tensorflow/python/kernel_tests:batch_matmul_op_test_gpu \
     -//tensorflow/python/kernel_tests:conv1d_test \
+    -//tensorflow/python/kernel_tests:conv1d_test_gpu \
     -//tensorflow/python/kernel_tests:conv2d_backprop_filter_grad_test \
+    -//tensorflow/python/kernel_tests:conv2d_backprop_filter_grad_test_gpu \
     -//tensorflow/python/kernel_tests:conv_ops_3d_test \
+    -//tensorflow/python/kernel_tests:conv_ops_3d_test_gpu \
     -//tensorflow/python/kernel_tests:conv_ops_test \
+    -//tensorflow/python/kernel_tests:conv_ops_test_gpu \
     -//tensorflow/python/kernel_tests:dct_ops_test \
+    -//tensorflow/python/kernel_tests:dct_ops_test_gpu \
     -//tensorflow/python/kernel_tests:depthwise_conv_op_test \
+    -//tensorflow/python/kernel_tests:depthwise_conv_op_test_gpu \
     -//tensorflow/python/kernel_tests:fft_ops_test \
+    -//tensorflow/python/kernel_tests:fft_ops_test_gpu \
     -//tensorflow/python/kernel_tests:list_ops_test \
+    -//tensorflow/python/kernel_tests:list_ops_test_gpu \
     -//tensorflow/python/kernel_tests:matmul_op_test \
+    -//tensorflow/python/kernel_tests:matmul_op_test_gpu \
     -//tensorflow/python/kernel_tests:pool_test \
+    -//tensorflow/python/kernel_tests:pool_test_gpu \
     -//tensorflow/python/kernel_tests:pooling_ops_3d_test \
+    -//tensorflow/python/kernel_tests:pooling_ops_3d_test_gpu \
     -//tensorflow/python/kernel_tests:pooling_ops_test \
+    -//tensorflow/python/kernel_tests:pooling_ops_test_gpu \
     -//tensorflow/python/kernel_tests:softplus_op_test \
     -//tensorflow/python/kernel_tests:softsign_op_test \
     -//tensorflow/python/ops/parallel_for:control_flow_ops_test \
     -//tensorflow/python/ops/parallel_for:gradients_test \
     -//tensorflow/python:layers_normalization_test \
+    -//tensorflow/python:layers_normalization_test_gpu \
     -//tensorflow/python:layout_optimizer_test \
-    -//tensorflow/python:nn_fused_batchnorm_test
+    -//tensorflow/python:nn_fused_batchnorm_test \
+    -//tensorflow/python:nn_fused_batchnorm_test_gpu
 

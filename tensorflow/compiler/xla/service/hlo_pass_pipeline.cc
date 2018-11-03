@@ -116,6 +116,7 @@ void HloPassPipeline::MaybeDumpHlo(const HloModule& module,
       StrCat("after ", after_pass_name, ", before ", before_pass_name);
   hlo_graph_dumper::MaybeDumpHloModule(module, message);
   VLOG(3) << "HLO " << message << ":";
+  VLOG(3) << module.entry_computation_layout().ToString();
   XLA_VLOG_LINES(3, module.ToString());
 }
 

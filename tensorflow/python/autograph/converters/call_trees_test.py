@@ -133,7 +133,7 @@ class CallTreesTest(converter_testing.TestCase):
         result_tensor = result.test_fn(constant_op.constant(1))
         self.assertEquals(sess.run(result_tensor), 3)
 
-  def test_call_to_decotated_function(self):
+  def test_call_to_decorated_function(self):
 
     def decorator(f):
       return f

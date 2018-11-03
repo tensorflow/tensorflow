@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_SERVICE_GPU_IR_EMITTER_UNNESTED_H_
 
 #include "tensorflow/compiler/xla/service/gpu/ir_emitter.h"
+#include "tensorflow/compiler/xla/service/gpu/sequential_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/thunk.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/kernel_tiling.h"
 
@@ -97,10 +98,10 @@ class IrEmitterUnnested : public IrEmitter {
   Status EmitConstantGlobals();
 
  private:
-  // Builds the appropriate thunk for the instruction hlo and returns the owning
-  // pointer to it. The caller needs to make sure `inst` outlives the lifetime
-  // of the returned Thunk object.
-  std::unique_ptr<Thunk> BuildThunk(const HloInstruction* hlo);
+  // Add a owning Thunk object to the thunk sequence.
+  void AddThunkToThunkSequence(std::unique_ptr<Thunk> thunk) {
+    thunk_sequence_->emplace_back(std::move(thunk));
+  }
 
   // Builds the prototype of the IR kernel for `inst` and adds it to the module.
   // This kernel takes as arguments pointers to the given buffer allocations.
@@ -125,8 +126,8 @@ class IrEmitterUnnested : public IrEmitter {
   // [height x width], but can be bitcast to [height x width] with "height"
   // being the major dimension.
   Status EmitColumnReduction(
-      int64 height, int64 width, HloInstruction* reduce,
-      const Shape& input_shape,
+      KernelThunk* kernel_thunk, int64 height, int64 width,
+      HloInstruction* reduce, const Shape& input_shape,
       absl::Span<const llvm_ir::ElementGenerator> input_gens,
       absl::Span<const llvm_ir::ElementGenerator> init_value_gens,
       absl::Span<HloComputation* const> reducers,
@@ -140,8 +141,8 @@ class IrEmitterUnnested : public IrEmitter {
   // [depth x height x width], but can be bitcast to [depth x height x width]
   // with "depth" being the most major dimension.
   Status EmitRowReduction(
-      int64 depth, int64 height, int64 width, HloInstruction* reduce,
-      const Shape& input_shape,
+      KernelThunk* kernel_thunk, int64 depth, int64 height, int64 width,
+      HloInstruction* reduce, const Shape& input_shape,
       absl::Span<const llvm_ir::ElementGenerator> input_gens,
       absl::Span<const llvm_ir::ElementGenerator> init_value_gens,
       absl::Span<HloComputation* const> reducers,
@@ -151,7 +152,8 @@ class IrEmitterUnnested : public IrEmitter {
 
   // Emits code that reduces a tensor of arbitrary rank to a scalar.
   Status EmitReductionToScalar(
-      HloInstruction* reduce, const Shape& input_shape,
+      KernelThunk* kernel_thunk, HloInstruction* reduce,
+      const Shape& input_shape,
       absl::Span<const llvm_ir::ElementGenerator> input_gens,
       absl::Span<const llvm_ir::ElementGenerator> init_value_gens,
       absl::Span<HloComputation* const> reducers,
@@ -176,7 +178,8 @@ class IrEmitterUnnested : public IrEmitter {
   //
   // Prerequisite: `IsReductionToVector(*reduce)`
   Status EmitReductionToVector(
-      HloInstruction* reduce, const Shape& input_shape,
+      KernelThunk* kernel_thunk, HloInstruction* reduce,
+      const Shape& input_shape,
       absl::Span<const llvm_ir::ElementGenerator> input_gens,
       absl::Span<const llvm_ir::ElementGenerator> init_value_gens,
       absl::Span<const int64> dimensions_to_reduce,

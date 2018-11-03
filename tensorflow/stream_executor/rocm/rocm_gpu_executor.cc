@@ -16,6 +16,8 @@ limitations under the License.
 #include "tensorflow/stream_executor/rocm/rocm_gpu_executor.h"
 
 #include <unistd.h>
+#include "absl/base/casts.h"
+#include "absl/strings/str_cat.h"
 #include "tensorflow/stream_executor/rocm/rocm_diagnostics.h"
 #include "tensorflow/stream_executor/rocm/rocm_driver.h"
 #include "tensorflow/stream_executor/rocm/rocm_event.h"
@@ -24,7 +26,6 @@ limitations under the License.
 #include "tensorflow/stream_executor/rocm/rocm_timer.h"
 #include "tensorflow/stream_executor/dso_loader.h"
 #include "tensorflow/stream_executor/kernel_cache_config.h"
-#include "tensorflow/stream_executor/lib/casts.h"
 #include "tensorflow/stream_executor/lib/env.h"
 #include "tensorflow/stream_executor/lib/error.h"
 #include "tensorflow/stream_executor/lib/initialize.h"
@@ -34,7 +35,6 @@ limitations under the License.
 #include "tensorflow/stream_executor/lib/ptr_util.h"
 #include "tensorflow/stream_executor/lib/statusor.h"
 #include "tensorflow/stream_executor/lib/str_util.h"
-#include "tensorflow/stream_executor/lib/strcat.h"
 #include "tensorflow/stream_executor/lib/stringprintf.h"
 #include "tensorflow/stream_executor/platform.h"
 #include "tensorflow/stream_executor/platform/logging.h"
@@ -158,7 +158,7 @@ bool ROCMExecutor::FindOnDiskForISAVersion(
   }
 
   string cc_specific =
-      port::StrCat(filename, ".cc", version_, canonical_suffix);
+      absl::StrCat(filename, ".cc", version_, canonical_suffix);
   if (port::FileExists(cc_specific).ok()) {
     VLOG(2) << "found AMDGPU ISA version-specific file, using that: "
             << cc_specific;
@@ -881,7 +881,7 @@ DeviceDescription *ROCMExecutor::PopulateDeviceDescription() const {
   }
 
   builder.set_platform_version(
-      port::StrCat("AMDGPU ISA version: gfx", version_));
+      absl::StrCat("AMDGPU ISA version: gfx", version_));
 
   // TODO(leary) should be a way to query this from the driver, but this is
   // unlikely to change for us any time soon.

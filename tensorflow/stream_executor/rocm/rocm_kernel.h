@@ -22,10 +22,10 @@ limitations under the License.
 #ifndef TENSORFLOW_STREAM_EXECUTOR_ROCM_ROCM_KERNEL_H_
 #define TENSORFLOW_STREAM_EXECUTOR_ROCM_ROCM_KERNEL_H_
 
+#include "absl/base/casts.h"
 #include "tensorflow/stream_executor/kernel_cache_config.h"
 #include "tensorflow/stream_executor/stream_executor_internal.h"
 #include "tensorflow/stream_executor/rocm/rocm_driver.h"
-#include "tensorflow/stream_executor/lib/casts.h"
 #include "tensorflow/stream_executor/platform/port.h"
 #include "tensorflow/stream_executor/platform/logging.h"
 

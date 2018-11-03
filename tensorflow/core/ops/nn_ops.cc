@@ -1863,6 +1863,37 @@ NOTE Do not invoke this operator directly in Python. Graph rewrite pass is
 expected to invoke these operators.
 )doc");
 
+REGISTER_OP("_MklRelu6")
+    .Input("features: T")
+    .Input("mkl_features: uint8")
+    .Output("activations: T")
+    .Output("mkl_activations: uint8")
+    .Attr("T: realnumbertype")
+    .SetShapeFn(shape_inference::UnchangedShape)
+    .Doc(R"doc(
+MKL version of Relu6 operator. Uses MKL DNN APIs to implement Relu6 operator.
+
+NOTE Do not invoke this operator directly in Python. Graph rewrite pass is
+expected to invoke these operators.
+)doc");
+
+REGISTER_OP("_MklRelu6Grad")
+    .Input("gradients: T")
+    .Input("features: T")
+    .Input("mkl_gradients: uint8")
+    .Input("mkl_features: uint8")
+    .Output("backprops: T")
+    .Output("mkl_backprops: uint8")
+    .Attr("T: realnumbertype")
+    .SetShapeFn(shape_inference::MergeBothInputsShapeFn)
+    .Doc(R"doc(
+MKL version of Relu6Grad operator. Uses MKL DNN APIs to compute rectified
+linear gradients for Relu6 operation.
+
+NOTE Do not invoke this operator directly in Python. Graph rewrite pass is
+expected to invoke these operators.
+)doc");
+
 REGISTER_OP("_MklElu")
     .Input("features: T")
     .Input("mkl_features: uint8")

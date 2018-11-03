@@ -268,23 +268,25 @@ Status GdrMemoryManager::Init() {
   LOG(INFO) << "Instrumenting CPU allocator(s)";
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+  for (int numa_idx = 0; numa_idx < port::NUMANumNodes(); ++numa_idx) {
+    GPUProcessState::singleton()->AddGPUHostAllocVisitor(numa_idx,
+                                                         alloc_visitor);
+    GPUProcessState::singleton()->AddGPUHostFreeVisitor(numa_idx,
+                                                        free_visitor);
+  }
   if (IsGDRAvailable()) {
-    int bus_id = numa_node_ + 1;
-
     SubAllocator::Visitor cuda_alloc_visitor = [this](void* ptr, int gpu_id,
                                                       size_t num_bytes) {
       VLOG(2) << "Registering RDMA capable memory region on GPU " << gpu_id;
       InsertMemoryRegion(ptr, num_bytes, strings::StrCat("GPU:", gpu_id));
     };
-    GPUProcessState::singleton()->AddGPUAllocVisitor(bus_id,
-                                                     cuda_alloc_visitor);
-    GPUProcessState::singleton()->AddGPUHostAllocVisitor(bus_id,
-                                                          alloc_visitor);
-    GPUProcessState::singleton()->AddGPUHostFreeVisitor(bus_id, free_visitor);
-    LOG(INFO) << "Instrumenting GPU allocator(s) with bus_id " << bus_id;
+    for (int numa_idx = 0; numa_idx < port::NUMANumNodes(); ++numa_idx) {
+      GPUProcessState::singleton()->AddGPUAllocVisitor(numa_idx,
+                                                       cuda_alloc_visitor);
+    }
+    VLOG(1) << "Instrumenting GPU allocator(s) for all Numas";
   }
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-
   return Status::OK();
 }
 

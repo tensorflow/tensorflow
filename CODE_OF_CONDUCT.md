@@ -7,19 +7,22 @@ In the interest of fostering an open and welcoming environment, we as contributo
 
 Examples of behavior that contributes to creating a positive environment include:
 
-* Using welcoming and inclusive language
-* Being respectful of differing viewpoints and experiences
-* Gracefully accepting constructive criticism
-* Focusing on what is best for the community
-* Showing empathy towards other community members
+*   Using welcoming and inclusive language.
+*   Being respectful of differing viewpoints and experiences.
+*   Gracefully accepting constructive criticism.
+*   Focusing on what is best for the community.
+*   Showing empathy towards other community members.
 
 Examples of unacceptable behavior by participants include:
 
-* The use of sexualized language or imagery and unwelcome sexual attention or advances
-* Trolling, insulting/derogatory comments, and personal or political attacks
-* Public or private harassment
-* Publishing others' private information, such as a physical or electronic address, without explicit permission
-* Conduct which could reasonably be considered inappropriate for the forum in which it occurs. 
+*   The use of sexualized language or imagery and unwelcome sexual attention or
+    advances.
+*   Trolling, insulting/derogatory comments, and personal or political attacks.
+*   Public or private harassment.
+*   Publishing others' private information, such as a physical or electronic
+    address, without explicit permission.
+*   Conduct which could reasonably be considered inappropriate for the forum in
+    which it occurs.
 
 All TensorFlow forums and spaces are meant for professional interactions, and any behavior which could reasonably be considered inappropriate in a professional setting is unacceptable.
 
@@ -48,10 +51,12 @@ However, for the vast majority of issues, we aim to empower individuals to first
 
 If you are experiencing or witnessing conflict, we ask you to use the following escalation strategy to address the conflict:
 
-1. Address the perceived conflict directly with those involved, preferably in a real-time medium. 
-2. If this fails, get a third party (e.g. a mutual friend, and/or someone with background on the issue, but not involved in conflict) to intercede.
-3. If you are still unable to resolve the conflict, and you believe it rises to harassment or another code of conduct violation, report it.
-
+1.  Address the perceived conflict directly with those involved, preferably in a
+    real-time medium.
+2.  If this fails, get a third party (e.g. a mutual friend, and/or someone with
+    background on the issue, but not involved in the conflict) to intercede.
+3.  If you are still unable to resolve the conflict, and you believe it rises to
+    harassment or another code of conduct violation, report it.
 
 ## Reporting Violations
 

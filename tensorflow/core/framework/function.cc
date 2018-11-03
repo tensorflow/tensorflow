@@ -238,7 +238,8 @@ class FunctionInstantiationHelper {
         const auto* item = GetItemOrNull(input_name);
         if (item == nullptr) {
           return errors::InvalidArgument(
-              "input ", input_name, " is not found: ", SummarizeNodeDef(fnode));
+              "input ", input_name,
+              " is not found: ", FormatNodeDefForError(fnode));
         }
         if (item->dtypes.size() > dtypes.size() - j) {
           return errors::InvalidArgument("Input ", input_name, " too long for ",
@@ -677,7 +678,8 @@ Status InstantiateFunction(const FunctionDef& fdef, AttrSlice attr_values,
     s = helper.BuildNodeOutputIndex(fdef.node_def(i), AttrSlice(&node_attrs[i]),
                                     result->nodes.size() + i);
     if (!s.ok()) {
-      errors::AppendToMessage(&s, "In ", SummarizeNodeDef(fdef.node_def(i)));
+      errors::AppendToMessage(&s, "In ",
+                              FormatNodeDefForError(fdef.node_def(i)));
       return s;
     }
   }
@@ -685,7 +687,8 @@ Status InstantiateFunction(const FunctionDef& fdef, AttrSlice attr_values,
   for (int i = 0; i < fdef.node_def_size(); ++i) {
     s = helper.InstantiateNode(fdef.node_def(i), AttrSlice(&node_attrs[i]));
     if (!s.ok()) {
-      errors::AppendToMessage(&s, "In ", SummarizeNodeDef(fdef.node_def(i)));
+      errors::AppendToMessage(&s, "In ",
+                              FormatNodeDefForError(fdef.node_def(i)));
       return s;
     }
   }

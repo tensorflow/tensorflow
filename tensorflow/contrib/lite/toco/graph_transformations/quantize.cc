@@ -57,7 +57,7 @@ bool SupportsQuantization(const Operator& op) {
          type == OperatorType::kDepthToSpace ||
          type == OperatorType::kLstmCell || type == OperatorType::kGather ||
          type == OperatorType::kTranspose || type == OperatorType::kMean ||
-         type == OperatorType::kGreater ||
+         type == OperatorType::kEqual || type == OperatorType::kGreater ||
          type == OperatorType::kGreaterEqual || type == OperatorType::kLess ||
          type == OperatorType::kLessEqual || type == OperatorType::kSelect ||
          type == OperatorType::kArgMax || type == OperatorType::kRelu ||

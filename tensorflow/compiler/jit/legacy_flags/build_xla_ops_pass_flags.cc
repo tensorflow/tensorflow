@@ -29,7 +29,7 @@ std::once_flag flags_init;
 
 void AllocateAndParseFlags() {
   flags = new BuildXlaOpsPassFlags;
-  flags->tf_xla_enable_lazy_compilation = false;
+  flags->tf_xla_enable_lazy_compilation = true;
   flag_list = new std::vector<Flag>({
       Flag("tf_xla_enable_lazy_compilation",
            &flags->tf_xla_enable_lazy_compilation, ""),

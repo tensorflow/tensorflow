@@ -1,0 +1,9 @@
+op {
+  graph_op_name: "MatrixSquareRoot"
+  endpoint {
+    name: "linalg.sqrtm"
+  }
+  endpoint {
+    name: "matrix_square_root"
+  }
+}

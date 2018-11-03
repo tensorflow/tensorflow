@@ -34,6 +34,7 @@ from tensorflow.python.client import session as session_module
 from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes as dtypes_module
+from tensorflow.python.framework import func_graph
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_util
@@ -66,6 +67,10 @@ py_all = all
 py_sum = sum
 
 # INTERNAL UTILS
+
+# The internal graph maintained by Keras and used by the symbolic Keras APIs
+# while executing eagerly (such as the functional API for model-building).
+_GRAPH = None
 
 # This is the default internal TF session used by Keras.
 # It can be set manually via `set_session(sess)`.
@@ -301,7 +306,7 @@ def get_uid(prefix=''):
     2
   ```
   """
-  graph = ops.get_default_graph()
+  graph = get_graph()
   if graph not in PER_GRAPH_LAYER_NAME_UIDS:
     PER_GRAPH_LAYER_NAME_UIDS[graph] = collections.defaultdict(int)
   layer_name_uids = PER_GRAPH_LAYER_NAME_UIDS[graph]
@@ -332,12 +337,14 @@ def clear_session():
   ops.reset_default_graph()
   reset_uids()
   _SESSION = None
-  phase = array_ops.placeholder_with_default(
-      False, shape=(), name='keras_learning_phase')
-  _GRAPH_LEARNING_PHASES = {}
-  _GRAPH_LEARNING_PHASES[ops.get_default_graph()] = phase
-  _GRAPH_VARIABLES.pop(ops.get_default_graph(), None)
-  _GRAPH_TF_OPTIMIZERS.pop(ops.get_default_graph(), None)
+  graph = get_graph()
+  with graph.as_default():
+    phase = array_ops.placeholder_with_default(
+        False, shape=(), name='keras_learning_phase')
+    _GRAPH_LEARNING_PHASES = {}
+    _GRAPH_LEARNING_PHASES[graph] = phase
+    _GRAPH_VARIABLES.pop(graph, None)
+    _GRAPH_TF_OPTIMIZERS.pop(graph, None)
 
 
 @tf_export('keras.backend.manual_variable_initialization')
@@ -382,12 +389,13 @@ def learning_phase():
         return 0
       return _GRAPH_LEARNING_PHASES[_DUMMY_EAGER_GRAPH]
 
-    graph = ops.get_default_graph()
-    if graph not in _GRAPH_LEARNING_PHASES:
-      phase = array_ops.placeholder_with_default(
-          False, shape=(), name='keras_learning_phase')
-      _GRAPH_LEARNING_PHASES[graph] = phase
-    return _GRAPH_LEARNING_PHASES[graph]
+    graph = get_graph()
+    with graph.as_default():
+      if graph not in _GRAPH_LEARNING_PHASES:
+        phase = array_ops.placeholder_with_default(
+            False, shape=(), name='keras_learning_phase')
+        _GRAPH_LEARNING_PHASES[graph] = phase
+      return _GRAPH_LEARNING_PHASES[graph]
 
 
 @tf_export('keras.backend.set_learning_phase')
@@ -407,7 +415,7 @@ def set_learning_phase(value):
     if context.executing_eagerly():
       _GRAPH_LEARNING_PHASES[_DUMMY_EAGER_GRAPH] = value
     else:
-      _GRAPH_LEARNING_PHASES[ops.get_default_graph()] = value
+      _GRAPH_LEARNING_PHASES[get_graph()] = value
 
 
 @tf_contextlib.contextmanager
@@ -437,10 +445,10 @@ def learning_phase_scope(value):
       if context.executing_eagerly():
         _GRAPH_LEARNING_PHASES[_DUMMY_EAGER_GRAPH] = previous_value
       else:
-        _GRAPH_LEARNING_PHASES[ops.get_default_graph()] = previous_value
+        _GRAPH_LEARNING_PHASES[get_graph()] = previous_value
 
 
-@tf_export('keras.backend.get_session')
+@tf_export(v1=['keras.backend.get_session'])
 def get_session():
   """Returns the TF session to be used by the backend.
 
@@ -469,6 +477,16 @@ def get_session():
     with session.graph.as_default():
       _initialize_variables(session)
   return session
+
+
+def get_graph():
+  if context.executing_eagerly():
+    global _GRAPH
+    if _GRAPH is None:
+      _GRAPH = func_graph.FuncGraph('keras_graph')
+    return _GRAPH
+  else:
+    return ops.get_default_graph()
 
 
 @tf_export('keras.backend.set_session')
@@ -514,9 +532,9 @@ def _get_current_tf_device():
       the device (`CPU` or `GPU`). If the scope is not explicitly set, it will
       return `None`.
   """
-  g = ops.get_default_graph()
+  graph = get_graph()
   op = _TfDeviceCaptureOp()
-  g._apply_device_functions(op)
+  graph._apply_device_functions(op)
   return op.device
 
 
@@ -696,15 +714,16 @@ def track_tf_optimizer(tf_optimizer):
   """Tracks the given TF optimizer for initialization of its variables."""
   if context.executing_eagerly():
     return
-  graph = ops.get_default_graph()
+  graph = get_graph()
   optimizers = _GRAPH_TF_OPTIMIZERS.setdefault(graph, weakref.WeakSet())
   optimizers.add(tf_optimizer)
+
 
 def track_variable(v):
   """Tracks the given variable for initialization."""
   if context.executing_eagerly():
     return
-  graph = v.graph if hasattr(v, 'graph') else ops.get_default_graph()
+  graph = v.graph if hasattr(v, 'graph') else get_graph()
   if graph not in _GRAPH_VARIABLES:
     _GRAPH_VARIABLES[graph] = weakref.WeakSet()
   _GRAPH_VARIABLES[graph].add(v)
@@ -721,7 +740,7 @@ def _get_variables(graph=None):
 
 def _initialize_variables(session):
   """Utility to initialize uninitialized variables on the fly."""
-  variables = _get_variables(ops.get_default_graph())
+  variables = _get_variables(get_graph())
   candidate_vars = []
   for v in variables:
     if not getattr(v, '_keras_initialized', False):
@@ -803,10 +822,9 @@ def is_keras_tensor(x):
       True
   ```
   """
-  if (not isinstance(x, (ops.Tensor,
-                         variables_module.Variable,
-                         sparse_tensor.SparseTensor)) and
-      x.__class__.__name__ != 'DeferredTensor'):
+  if not isinstance(x, (ops.Tensor,
+                        variables_module.Variable,
+                        sparse_tensor.SparseTensor)):
     raise ValueError('Unexpectedly found an instance of type `' + str(type(x)) +
                      '`. Expected a symbolic tensor instance.')
   return hasattr(x, '_keras_history')
@@ -826,6 +844,9 @@ def placeholder(shape=None, ndim=None, dtype=None, sparse=False, name=None):
       sparse: Boolean, whether the placeholder should have a sparse type.
       name: Optional name string for the placeholder.
 
+  Raises:
+      ValueError: If called with eager execution.
+
   Returns:
       Tensor instance (with Keras metadata included).
 
@@ -842,10 +863,11 @@ def placeholder(shape=None, ndim=None, dtype=None, sparse=False, name=None):
   if not shape:
     if ndim:
       shape = tuple([None for _ in range(ndim)])
-  if sparse:
-    x = array_ops.sparse_placeholder(dtype, shape=shape, name=name)
-  else:
-    x = array_ops.placeholder(dtype, shape=shape, name=name)
+  with get_graph().as_default():
+    if sparse:
+      x = array_ops.sparse_placeholder(dtype, shape=shape, name=name)
+    else:
+      x = array_ops.placeholder(dtype, shape=shape, name=name)
   x._uses_learning_phase = False
   return x
 
@@ -1007,7 +1029,7 @@ def eval(x):
              [ 3.,  4.]], dtype=float32)
   ```
   """
-  return to_dense(x).eval(session=get_session())
+  return get_value(to_dense(x))
 
 
 @tf_export('keras.backend.zeros')
@@ -2798,16 +2820,17 @@ def set_value(x, value):
   if context.executing_eagerly():
     x.assign(value)
   else:
-    tf_dtype = dtypes_module.as_dtype(x.dtype.name.split('_')[0])
-    if hasattr(x, '_assign_placeholder'):
-      assign_placeholder = x._assign_placeholder
-      assign_op = x._assign_op
-    else:
-      assign_placeholder = array_ops.placeholder(tf_dtype, shape=value.shape)
-      assign_op = x.assign(assign_placeholder)
-      x._assign_placeholder = assign_placeholder
-      x._assign_op = assign_op
-    get_session().run(assign_op, feed_dict={assign_placeholder: value})
+    with get_graph().as_default():
+      tf_dtype = dtypes_module.as_dtype(x.dtype.name.split('_')[0])
+      if hasattr(x, '_assign_placeholder'):
+        assign_placeholder = x._assign_placeholder
+        assign_op = x._assign_op
+      else:
+        assign_placeholder = array_ops.placeholder(tf_dtype, shape=value.shape)
+        assign_op = x.assign(assign_placeholder)
+        x._assign_placeholder = assign_placeholder
+        x._assign_op = assign_op
+      get_session().run(assign_op, feed_dict={assign_placeholder: value})
 
 
 @tf_export('keras.backend.batch_set_value')
@@ -2822,24 +2845,25 @@ def batch_set_value(tuples):
     for x, value in tuples:
       x.assign(np.asarray(value, dtype=dtype(x)))
   else:
-    if tuples:
-      assign_ops = []
-      feed_dict = {}
-      for x, value in tuples:
-        value = np.asarray(value, dtype=dtype(x))
-        tf_dtype = dtypes_module.as_dtype(x.dtype.name.split('_')[0])
-        if hasattr(x, '_assign_placeholder'):
-          assign_placeholder = x._assign_placeholder
-          assign_op = x._assign_op
-        else:
-          assign_placeholder = array_ops.placeholder(tf_dtype,
-                                                     shape=value.shape)
-          assign_op = x.assign(assign_placeholder)
-          x._assign_placeholder = assign_placeholder
-          x._assign_op = assign_op
-        assign_ops.append(assign_op)
-        feed_dict[assign_placeholder] = value
-      get_session().run(assign_ops, feed_dict=feed_dict)
+    with get_graph().as_default():
+      if tuples:
+        assign_ops = []
+        feed_dict = {}
+        for x, value in tuples:
+          value = np.asarray(value, dtype=dtype(x))
+          tf_dtype = dtypes_module.as_dtype(x.dtype.name.split('_')[0])
+          if hasattr(x, '_assign_placeholder'):
+            assign_placeholder = x._assign_placeholder
+            assign_op = x._assign_op
+          else:
+            assign_placeholder = array_ops.placeholder(tf_dtype,
+                                                       shape=value.shape)
+            assign_op = x.assign(assign_placeholder)
+            x._assign_placeholder = assign_placeholder
+            x._assign_op = assign_op
+          assign_ops.append(assign_op)
+          feed_dict[assign_placeholder] = value
+        get_session().run(assign_ops, feed_dict=feed_dict)
 
 
 @tf_export('keras.backend.print_tensor')
@@ -2935,7 +2959,7 @@ class Function(object):
 
     if session_kwargs:
       raise ValueError('Some keys in session_kwargs are not supported at this '
-                       'time: %s', (session_kwargs.keys(),))
+                       'time: %s' % (session_kwargs.keys(),))
 
     self._callable_fn = None
     self._feed_arrays = None
@@ -3060,8 +3084,11 @@ def function(inputs, outputs, updates=None, **kwargs):
       Output values as Numpy arrays.
 
   Raises:
-      ValueError: if invalid kwargs are passed in.
+      ValueError: if invalid kwargs are passed in or if in eager execution.
   """
+  if context.executing_eagerly():
+    raise ValueError(
+        '`keras.backend.function` is not supported with eager execution.')
   if kwargs:
     for key in kwargs:
       if (key not in tf_inspect.getfullargspec(session_module.Session.run)[0]
@@ -4256,6 +4283,8 @@ def separable_conv2d(x,
     data_format = image_data_format()
   if data_format not in {'channels_first', 'channels_last'}:
     raise ValueError('Unknown data_format: ' + str(data_format))
+  if len(strides) != 2:
+    raise ValueError('`strides` must be a tuple of 2 integers.')
 
   x, tf_data_format = _preprocess_conv2d_input(x, data_format)
   padding = _preprocess_padding(padding)
@@ -4462,6 +4491,10 @@ def pool2d(x,
     data_format = image_data_format()
   if data_format not in {'channels_first', 'channels_last'}:
     raise ValueError('Unknown data_format: ' + str(data_format))
+  if len(pool_size) != 2:
+    raise ValueError('`pool_size` must be a tuple of 2 integers.')
+  if len(strides) != 2:
+    raise ValueError('`strides` must be a tuple of 2 integers.')
 
   x, tf_data_format = _preprocess_conv2d_input(x, data_format)
   padding = _preprocess_padding(padding)
@@ -5042,7 +5075,6 @@ def foldr(fn, elems, initializer=None, name=None):
       Same type and shape as initializer
   """
   return functional_ops.foldr(fn, elems, initializer=initializer, name=name)
-
 
 # Load Keras default configuration from config file if present.
 # Set Keras base dir path given KERAS_HOME env variable, if applicable.

@@ -5428,6 +5428,9 @@ void TypedMemset(void* ptr, T value, size_t num) {
   }
 }
 
+// This makes heavy use of Offset, along with conditional branches. There may be
+// opportunities for improvement.
+//
 // There are two versions of pad: Pad and PadV2.  In PadV2 there is a second
 // scalar input that provides the padding value.  Therefore pad_value_ptr can be
 // equivalent to a simple input1_data.  For Pad, it should point to a zero
@@ -5440,7 +5443,7 @@ inline void PadImpl(const tflite::PadParams& op_params,
                     const RuntimeShape& input_shape, const T* input_data,
                     const P* pad_value_ptr, const RuntimeShape& output_shape,
                     T* output_data) {
-  gemmlowp::ScopedProfilingLabel label("Pad");
+  gemmlowp::ScopedProfilingLabel label("Pad4DSlowImpl");
   const RuntimeShape ext_input_shape =
       RuntimeShape::ExtendedShape(4, input_shape);
   const RuntimeShape ext_output_shape =
@@ -5448,8 +5451,8 @@ inline void PadImpl(const tflite::PadParams& op_params,
   TFLITE_DCHECK_LE(op_params.left_padding_count, 4);
   TFLITE_DCHECK_LE(op_params.right_padding_count, 4);
 
-  // Runtime calls are currently fixed at 4 dimensions. Copy inputs so
-  // we can pad them to 4 dims (yes, we are "padding the padding").
+  // Pad kernels are limited to max 4 dimensions. Copy inputs so we can pad them
+  // to 4 dims (yes, we are "padding the padding").
   std::vector<int> left_padding_copy(4, 0);
   const int left_padding_extend = 4 - op_params.left_padding_count;
   for (int i = 0; i < op_params.left_padding_count; ++i) {
@@ -5569,6 +5572,162 @@ inline void Pad(const tflite::PadParams& op_params,
                 int32* output_data) {
   PadImpl(op_params, input_shape, input_data, pad_value_ptr, output_shape,
           output_data);
+}
+
+// TODO(b/117643175): Optimize. (This is an introductory copy of standard Pad.)
+//
+// This pad requires that (a) left and right paddings are in the 4D patterns
+// {0, h_pad, w_pad, 0}, and (b) memset can be used: *pad_value_ptr == 0 and/or
+// T is uint8.
+//
+// There are two versions of pad: Pad and PadV2.  In PadV2 there is a second
+// scalar input that provides the padding value.  Therefore pad_value_ptr can be
+// equivalent to a simple input1_data.  For Pad, it should point to a zero
+// value.
+//
+// Note that two typenames are required, so that T=P=int32 is considered a
+// specialization distinct from P=int32.
+template <typename T, typename P>
+inline void PadImageStyleMemset(const tflite::PadParams& op_params,
+                                const RuntimeShape& input_shape,
+                                const T* input_data, const P* pad_value_ptr,
+                                const RuntimeShape& output_shape,
+                                T* output_data) {
+  gemmlowp::ScopedProfilingLabel label("PadImageStyle");
+  const RuntimeShape ext_input_shape =
+      RuntimeShape::ExtendedShape(4, input_shape);
+  const RuntimeShape ext_output_shape =
+      RuntimeShape::ExtendedShape(4, output_shape);
+  TFLITE_DCHECK_LE(op_params.left_padding_count, 4);
+  TFLITE_DCHECK_LE(op_params.right_padding_count, 4);
+
+  // Pad kernels are limited to max 4 dimensions. Copy inputs so we can pad them
+  // to 4 dims (yes, we are "padding the padding").
+  std::vector<int> left_padding_copy(4, 0);
+  const int left_padding_extend = 4 - op_params.left_padding_count;
+  for (int i = 0; i < op_params.left_padding_count; ++i) {
+    left_padding_copy[left_padding_extend + i] = op_params.left_padding[i];
+  }
+  std::vector<int> right_padding_copy(4, 0);
+  const int right_padding_extend = 4 - op_params.right_padding_count;
+  for (int i = 0; i < op_params.right_padding_count; ++i) {
+    right_padding_copy[right_padding_extend + i] = op_params.right_padding[i];
+  }
+  // The following padding restrictions are contractual requirements, and
+  // embody what it means for a padding op to be "image-style".
+  TFLITE_DCHECK_EQ(left_padding_copy[0], 0);
+  TFLITE_DCHECK_EQ(left_padding_copy[3], 0);
+  TFLITE_DCHECK_EQ(right_padding_copy[0], 0);
+  TFLITE_DCHECK_EQ(right_padding_copy[3], 0);
+
+  const int batch = MatchingDim(ext_input_shape, 0, ext_output_shape, 0);
+  const int output_height = ext_output_shape.Dims(1);
+  const int output_width = ext_output_shape.Dims(2);
+  const int input_height = ext_input_shape.Dims(1);
+  const int input_width = ext_input_shape.Dims(2);
+  const int depth = MatchingDim(ext_input_shape, 3, ext_output_shape, 3);
+
+  const int left_h_padding = left_padding_copy[1];
+  const int left_w_padding = left_padding_copy[2];
+  const int right_h_padding = right_padding_copy[1];
+  const int right_w_padding = right_padding_copy[2];
+
+  TFLITE_DCHECK_EQ(output_height,
+                   input_height + left_h_padding + right_h_padding);
+  TFLITE_DCHECK_EQ(output_width,
+                   input_width + left_w_padding + right_w_padding);
+
+  const T pad_value = *pad_value_ptr;
+  const int top_block_size = left_h_padding * output_width * depth;
+  const size_t num_top_block_bytes = top_block_size * sizeof(T);
+  const int bottom_block_size = right_h_padding * output_width * depth;
+  const size_t num_bottom_block_bytes = bottom_block_size * sizeof(T);
+  const int left_blocks_size = left_w_padding * depth;
+  const size_t num_left_block_bytes = left_blocks_size * sizeof(T);
+  const int right_blocks_size = right_w_padding * depth;
+  const size_t num_right_block_bytes = right_blocks_size * sizeof(T);
+  const int inner_line_size = input_width * depth;
+  const size_t num_inner_line_bytes = inner_line_size * sizeof(T);
+
+  if (input_height == 0) {
+    memset(output_data, pad_value,
+           num_top_block_bytes + num_bottom_block_bytes);
+  } else {
+    for (int i = 0; i < batch; ++i) {
+      // For each image in the batch, apply the top padding, then iterate
+      // through rows, then apply the bottom padding.
+      //
+      // By unwinding one iteration, we can combine the first left-margin
+      // padding with the top padding, and the last right-margin padding with
+      // the bottom padding.
+      memset(output_data, pad_value,
+             num_top_block_bytes + num_left_block_bytes);
+      output_data += top_block_size + left_blocks_size;
+      memcpy(output_data, input_data, num_inner_line_bytes);
+      input_data += inner_line_size;
+      output_data += inner_line_size;
+      // One iteration unwound.
+      // Unwinding this loop affords the opportunity to reorder the loop work
+      // and hence combine memset() calls.
+      //
+      // Before unwinding:
+      // for (int j = 0; j < input_height; ++j) {
+      //   // Pad on left, copy central data, pad on right.
+      //   memset(output_data, pad_value, num_left_block_bytes);
+      //   output_data += left_blocks_size;
+      //   memcpy(output_data, input_data, num_inner_line_bytes);
+      //   input_data += inner_line_size;
+      //   output_data += inner_line_size;
+      //   memset(output_data, pad_value, num_right_block_bytes);
+      //   output_data += right_blocks_size;
+      // }
+      for (int j = 1; j < input_height; ++j) {
+        memset(output_data, pad_value,
+               num_right_block_bytes + num_left_block_bytes);
+        output_data += right_blocks_size + left_blocks_size;
+        memcpy(output_data, input_data, num_inner_line_bytes);
+        input_data += inner_line_size;
+        output_data += inner_line_size;
+      }
+      memset(output_data, pad_value,
+             num_right_block_bytes + num_bottom_block_bytes);
+      output_data += right_blocks_size + bottom_block_size;
+    }
+  }
+}
+
+template <typename T, typename P>
+inline void PadImageStyle(const tflite::PadParams& op_params,
+                          const RuntimeShape& input_shape, const T* input_data,
+                          const P* pad_value_ptr,
+                          const RuntimeShape& output_shape, T* output_data) {
+  TFLITE_ASSERT_FALSE;
+}
+
+template <typename P>
+inline void PadImageStyle(const tflite::PadParams& op_params,
+                          const RuntimeShape& input_shape,
+                          const uint8* input_data, const P* pad_value_ptr,
+                          const RuntimeShape& output_shape,
+                          uint8* output_data) {
+  PadImageStyleMemset(op_params, input_shape, input_data, pad_value_ptr,
+                      output_shape, output_data);
+}
+
+template <typename P>
+inline void PadImageStyle(const tflite::PadParams& op_params,
+                          const RuntimeShape& input_shape,
+                          const float* input_data, const P* pad_value_ptr,
+                          const RuntimeShape& output_shape,
+                          float* output_data) {
+  const float converted_pad_value = static_cast<float>(*pad_value_ptr);
+  if (converted_pad_value == 0.0f) {
+    PadImageStyleMemset(op_params, input_shape, input_data, pad_value_ptr,
+                        output_shape, output_data);
+  } else {
+    PadImpl(op_params, input_shape, input_data, pad_value_ptr, output_shape,
+            output_data);
+  }
 }
 
 template <typename T>
@@ -5751,6 +5910,76 @@ inline void TransposeConv(
       MapAsMatrixWithLastDimAsRows(output_data, output_shape);
 
   Gemm(filter_matrix_map.transpose(), im2col_matrix_map, &output_matrix_map);
+}
+
+// Integer-only version of ResizeNearestNeighbor. Since scales are represented
+// in fixed-point and thus approximated, |in_x| or |in_y| may differ from the
+// reference version. Debug checks are in place to test if this occurs.
+inline void ResizeNearestNeighbor(
+    const tflite::ResizeNearestNeighborParams& op_params,
+    const RuntimeShape& unextended_input_shape, const uint8* input_data,
+    const RuntimeShape& output_size_shape, const int32* output_size_data,
+    const RuntimeShape& unextended_output_shape, uint8* output_data) {
+  // Align corners = true is not supported.
+  TFLITE_DCHECK(!op_params.align_corners);
+  TFLITE_DCHECK_LE(unextended_input_shape.DimensionsCount(), 4);
+  TFLITE_DCHECK_LE(unextended_output_shape.DimensionsCount(), 4);
+
+  const RuntimeShape input_shape =
+      RuntimeShape::ExtendedShape(4, unextended_input_shape);
+  const RuntimeShape output_shape =
+      RuntimeShape::ExtendedShape(4, unextended_output_shape);
+
+  int32 batches = MatchingDim(input_shape, 0, output_shape, 0);
+  int32 input_height = input_shape.Dims(1);
+  int32 input_width = input_shape.Dims(2);
+  int32 depth = MatchingDim(input_shape, 3, output_shape, 3);
+
+  // The Tensorflow version of this op allows resize on the width and height
+  // axis only.
+  TFLITE_DCHECK_EQ(output_size_shape.FlatSize(), 2);
+  int32 output_height = output_size_data[0];
+  int32 output_width = output_size_data[1];
+
+  // Convert scales to fixed-point with 16 fractional bits. We add 1 as an
+  // error factor and to avoid zero scales. For example, with input_height = 1,
+  // output_height = 3, the float scaling factor would be non-zero at 1/3.
+  // With fixed-point, this is zero.
+  int32 height_scale = (input_height << 16) / output_height + 1;
+  int32 width_scale = (input_width << 16) / output_width + 1;
+
+  const int col_offset = input_shape.Dims(3);
+  const int row_offset = input_shape.Dims(2) * col_offset;
+  const int batch_offset = input_shape.Dims(1) * row_offset;
+
+  const uint8* input_ptr = input_data;
+  uint8* output_ptr = output_data;
+  for (int b = 0; b < batches; ++b) {
+    for (int y = 0; y < output_height; ++y) {
+      int32 in_y = std::min((y * height_scale) >> 16, input_height - 1);
+      // Check offset calculation is the same as the reference version. See
+      // function comment for details. We check using a non-float version of:
+      // TFLITE_DCHECK_EQ(in_y, std::floor(y * (static_cast<float>(input_height)
+      //                                            / output_height)));
+      TFLITE_DCHECK_LT(y * input_height, output_height + in_y * output_height);
+      TFLITE_DCHECK_GE(y * input_height, in_y * output_height);
+      const uint8* y_input_ptr = input_ptr + in_y * row_offset;
+      for (int x = 0; x < output_width; ++x) {
+        int32 in_x = std::min((x * width_scale) >> 16, input_width - 1);
+        // Check offset calculation is the same as the reference version. See
+        // function comment for details. We check using a non-float version of:
+        // TFLITE_DCHECK_EQ(in_y,
+        //                  std::floor(y * (static_cast<float>(input_width)
+        //                                      / output_width)));
+        TFLITE_DCHECK_LT(x * input_width, output_width + in_x * output_width);
+        TFLITE_DCHECK_GE(x * input_width, in_x * output_width);
+        const uint8* x_input_ptr = y_input_ptr + in_x * col_offset;
+        memcpy(output_ptr, x_input_ptr, depth);
+        output_ptr += depth;
+      }
+    }
+    input_ptr += batch_offset;
+  }
 }
 
 }  // namespace optimized_ops

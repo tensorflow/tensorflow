@@ -1357,6 +1357,10 @@ class CudnnRNNForwardOpV2<GPUDevice, T>
         modeltypes.rnn_mode, modeltypes.rnn_input_mode, input->dtype());
 
     if (AutoTuneRnnConfigMap::GetInstance()->Find(rnn_params, algo_config)) {
+      VLOG(1) << "Using existing best Cudnn RNN algorithm "
+              << "(algo, tensor_op_enabled) = ("
+              << algo_config->algorithm().algo_id() << ", "
+              << algo_config->algorithm().tensor_ops_enabled() << ").";
       return Status::OK();
     }
 
@@ -1390,6 +1394,8 @@ class CudnnRNNForwardOpV2<GPUDevice, T>
     }
     ProfileResult best_result;
     for (auto& algo : algorithms) {
+      VLOG(1) << "Profile Cudnn RNN algorithm (algo, tensor_op_enabled) =  ("
+              << algo.algo_id() << ", " << algo.tensor_ops_enabled() << ").";
       Status status;
       ProfileResult final_profile_result;
 
@@ -1438,8 +1444,9 @@ class CudnnRNNForwardOpV2<GPUDevice, T>
       }
 
       auto total_time = final_profile_result.elapsed_time_in_ms();
-      VLOG(1) << "Profile Cudnn RNN algo " << algo.algo_id()
-              << " run time: " << total_time << " ms";
+      VLOG(1) << "Cudnn RNN algorithm (algo, tensor_op_enabled) =  ("
+              << algo.algo_id() << ", " << algo.tensor_ops_enabled() << ")"
+              << " run time: " << total_time << " ms.";
       if (total_time < best_result.elapsed_time_in_ms()) {
         best_result.set_elapsed_time_in_ms(total_time);
         best_result.set_algorithm(algo);
@@ -1450,6 +1457,9 @@ class CudnnRNNForwardOpV2<GPUDevice, T>
       return Status(error::Code::INTERNAL, "No algorithm worked!");
     }
     algo_config->set_algorithm(best_result.algorithm());
+    VLOG(1) << "Best Cudnn RNN algorithm (algo, tensor_op_enabled) =  ("
+            << best_result.algorithm().algo_id() << ", "
+            << best_result.algorithm().tensor_ops_enabled() << ").";
     AutoTuneRnnConfigMap::GetInstance()->Insert(rnn_params, *algo_config);
     return Status::OK();
   }

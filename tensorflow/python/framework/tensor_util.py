@@ -930,7 +930,7 @@ def constant_value_as_shape(tensor):  # pylint: disable=invalid-name
     except TypeError:  # Could come from slicing prev.
       pass
 
-  ret = tensor_shape.unknown_shape(shape[0].value)
+  ret = tensor_shape.unknown_shape(shape.dims[0].value)
   value = constant_value(tensor)
   if value is not None:
     ret = ret.merge_with(
@@ -943,7 +943,7 @@ def is_tensor(x):  # pylint: disable=invalid-name
 
   Check whether an object is a tensor. This check is equivalent to calling
   `isinstance(x, (tf.Tensor, tf.SparseTensor, tf.Variable))` and also checks
-  if all the component variables of a MirroredVariable or a TowerLocalVariable
+  if all the component variables of a MirroredVariable or a ReplicaLocalVariable
   are tensors.
 
   Args:

@@ -20,6 +20,7 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.python.eager import function
+from tensorflow.python.framework import func_graph
 from tensorflow.python.ops import variable_scope
 
 
@@ -83,7 +84,7 @@ def wrap_function(fn, signature, name=None):
   """
   holder = VariableHolder(fn)
   fn = function.Function(
-      function.func_graph_from_py_func(
+      func_graph.func_graph_from_py_func(
           name,
           holder,
           args=None, kwargs=None, signature=signature,

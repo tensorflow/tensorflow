@@ -40,4 +40,7 @@ enum IODataType {
 
   // Boolean
   BOOL = 7;
+
+  // Complex64, not quantized
+  COMPLEX64 = 8;
 }

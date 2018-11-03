@@ -197,10 +197,10 @@ Status SelectDevice(const NodeDef& ndef, EagerContext* ctx, Device** device) {
   TF_RETURN_IF_ERROR(SupportedDeviceTypesForNode(
       ctx->prioritized_device_type_list(), ndef, &final_devices));
   if (final_devices.empty()) {
-    return errors::Internal(
-        "Could not find valid device for node.\nNode: ", SummarizeNodeDef(ndef),
-        "\nAll kernels registered for op ", ndef.op(), " :\n",
-        KernelsRegisteredForOp(ndef.op()));
+    return errors::Internal("Could not find valid device for node.\nNode: ",
+                            FormatNodeDefForError(ndef),
+                            "\nAll kernels registered for op ", ndef.op(),
+                            " :\n", KernelsRegisteredForOp(ndef.op()));
   }
   for (Device* d : *ctx->devices()) {
     if (d->device_type() == final_devices[0].type_string()) {
@@ -209,7 +209,7 @@ Status SelectDevice(const NodeDef& ndef, EagerContext* ctx, Device** device) {
     }
   }
   return errors::Unknown("Could not find a device for node ",
-                         SummarizeNodeDef(ndef));
+                         FormatNodeDefForError(ndef));
 }
 
 Status GetOutputDTypes(EagerOperation* op, DataTypeVector* output_dtypes) {
@@ -324,7 +324,11 @@ Status EagerLocalExecute(EagerOperation* op,
       ctx->ShouldStoreMetadata() ? ctx->RunMetadataProto() : nullptr);
   if (!status.ok()) return status;
   std::unique_ptr<NodeExecStats> maybe_stats;
+  StepStats* maybe_step_stats = nullptr;
+  GraphCollector* graph_collector = nullptr;
   if (ctx->ShouldStoreMetadata()) {
+    graph_collector = ctx->GetGraphCollector();
+    maybe_step_stats = ctx->RunMetadataProto()->mutable_step_stats();
     int64 now_nanos = Env::Default()->NowNanos();
     maybe_stats.reset(new NodeExecStats);
     maybe_stats->set_node_name(op->Name());
@@ -345,15 +349,16 @@ Status EagerLocalExecute(EagerOperation* op,
     for (int i = 0; i < *num_retvals; ++i) {
       (*retvals)[i] = new TensorHandle(id, output_dtypes[i], ctx);
     }
-    EagerNode* node =
-        new ExecuteNode(id, ctx, op->Device(), op->Inputs(), kernel,
-                        maybe_stats.release(), output_dtypes, *retvals);
+    EagerNode* node = new ExecuteNode(
+        id, ctx, op->Device(), op->Inputs(), kernel, maybe_stats.release(),
+        maybe_step_stats, graph_collector, output_dtypes, *retvals);
     ctx->ExecutorAdd(node);
   } else {
     // Execute checks if retvals[i] is nullptr or not to figure if it needs to
     // allocate it.
     status = EagerExecute(ctx, op->Device(), op->Inputs(), kernel,
-                          maybe_stats.get(), retvals->data(), *num_retvals);
+                          maybe_stats.get(), maybe_step_stats, graph_collector,
+                          retvals->data(), *num_retvals);
   }
 
   return status;
@@ -707,7 +712,9 @@ Status EagerExecute(EagerOperation* op,
 Status EagerExecute(EagerContext* ctx, Device* device,
                     const gtl::InlinedVector<TensorHandle*, 4>& op_inputs,
                     KernelAndDevice* kernel, NodeExecStats* maybe_stats,
-                    TensorHandle** retvals, int num_retvals) {
+                    StepStats* maybe_step_stats,
+                    GraphCollector* graph_collector, TensorHandle** retvals,
+                    int num_retvals) {
   if (device == nullptr) {
     // TODO(apassos) debug how the assignment below might return a different
     // device from the one requested above.
@@ -728,9 +735,11 @@ Status EagerExecute(EagerContext* ctx, Device* device,
   // TODO(agarwal): change Run to take vector of handles ?
   ScopedStepContainer* container = ctx->StepContainer();
   if (container == nullptr) {
-    TF_RETURN_IF_ERROR(kernel->Run(&inputs, &outputs, maybe_stats));
+    TF_RETURN_IF_ERROR(kernel->Run(&inputs, &outputs, maybe_stats,
+                                   maybe_step_stats, graph_collector));
   } else {
-    TF_RETURN_IF_ERROR(kernel->Run(container, &inputs, &outputs, maybe_stats));
+    TF_RETURN_IF_ERROR(kernel->Run(container, &inputs, &outputs, maybe_stats,
+                                   maybe_step_stats, graph_collector));
   }
   if (maybe_stats != nullptr) {
     int64 nanos = Env::Default()->NowNanos();
@@ -742,6 +751,14 @@ Status EagerExecute(EagerContext* ctx, Device* device,
     maybe_stats->set_all_end_rel_nanos(nanos - maybe_stats->all_start_nanos());
     mutex_lock ml(*ctx->MetadataMu());
     if (ctx->ShouldStoreMetadata()) {
+      {
+        GraphCollector* collector = ctx->GetGraphCollector();
+        mutex_lock mll(collector->mu);
+        for (const auto& graph : collector->graphs) {
+          *ctx->RunMetadataProto()->add_partition_graphs() = graph;
+        }
+        collector->graphs.clear();
+      }
       auto* step_stats = ctx->RunMetadataProto()->mutable_step_stats();
       // Lazily initialize the RunMetadata with information about all devices if
       // this is the first call.

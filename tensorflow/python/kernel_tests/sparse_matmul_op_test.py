@@ -48,7 +48,7 @@ class SparseMatMulTest(test.TestCase):
                      sp_b=False,
                      x_dtype=dtypes.float32,
                      y_dtype=dtypes.float32):
-    with self.test_session(use_gpu=False):
+    with self.cached_session(use_gpu=False):
       tf_x = math_ops.cast(x, x_dtype)
       tf_y = math_ops.cast(y, y_dtype)
       tf_ans = math_ops.matmul(

@@ -49,10 +49,10 @@ class XlaDeviceDummyOp : public OpKernel {
   void Compute(OpKernelContext* ctx) override;
 };
 
-class XlaAssignVariableOp : public AsyncOpKernel {
+class XlaAssignVariableOp : public OpKernel {
  public:
   explicit XlaAssignVariableOp(OpKernelConstruction* c);
-  void ComputeAsync(OpKernelContext* context, DoneCallback done) override;
+  void Compute(OpKernelContext* context) override;
 
  private:
   DataType dtype_;
@@ -210,6 +210,8 @@ class XlaAssignVariableOp : public AsyncOpKernel {
                               .TypeConstraint<ResourceHandle>("T")             \
                               .HostMemory("input"),                            \
                           RetvalOp);                                           \
+  REGISTER_KERNEL_BUILDER(                                                     \
+      Name(kDeviceRetOp).Device(DEVICE).TypeConstraint<int32>("T"), RetvalOp); \
                                                                                \
   REGISTER_KERNEL_BUILDER(                                                     \
       Name("RemoteCall").Device(DEVICE).HostMemory("target"), RemoteCallOp);   \

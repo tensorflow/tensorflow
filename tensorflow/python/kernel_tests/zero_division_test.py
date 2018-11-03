@@ -27,7 +27,7 @@ from tensorflow.python.platform import test
 class ZeroDivisionTest(test.TestCase):
 
   def testZeros(self):
-    with self.test_session(use_gpu=True):
+    with self.session(use_gpu=True):
       for dtype in dtypes.uint8, dtypes.int16, dtypes.int32, dtypes.int64:
         zero = constant_op.constant(0, dtype=dtype)
         one = constant_op.constant(1, dtype=dtype)

@@ -261,6 +261,21 @@ int64 Model::Node::OutputTimeLocked(std::vector<int64>* input_times) {
   }
 }
 
+std::shared_ptr<Model::Node> Model::Node::Snapshot(
+    std::shared_ptr<Model::Node> output) {
+  tf_shared_lock l(mu_);
+  std::shared_ptr<Node> result =
+      std::make_shared<Node>(id_, name_, std::move(output));
+  result->processing_time_ = processing_time_;
+  result->num_elements_ = num_elements_;
+  result->constant_params_ = constant_params_;
+  result->tunable_params_ = tunable_params_;
+  for (auto& input : inputs_) {
+    result->add_input(input->Snapshot(result));
+  }
+  return result;
+}
+
 void Model::AddConstantParameter(const string& node_name,
                                  const string& parameter_name, int64 value) {
   tf_shared_lock l(mu_);
@@ -323,48 +338,51 @@ void Model::AddTunableParameter(const string& node_name,
 // is less than or equal to the processing time needed to produce an element
 // divided by CPU budget.
 void Model::Optimize(int64 cpu_budget) {
-  std::vector<std::shared_ptr<Model::Node::Tunable>> tunables;
+  std::shared_ptr<Model::Node> snapshot;
   {
     tf_shared_lock lock(mu_);
-    const int64 processing_time = ProcessingTime();
-    tunables = CollectTunables();
-    for (auto tunable : tunables) {
-      tunable->value = 1;
-    }
-    while (true) {
-      const int64 output_time = OutputTime();
-      bool all_tunables = true;
-      for (auto& tunable : tunables) {
-        if (tunable->value < tunable->max) {
-          all_tunables = false;
-          break;
-        }
-      }
-      if (output_time < processing_time / cpu_budget || all_tunables) {
+    snapshot = output_->Snapshot(nullptr);
+  }
+  const int64 processing_time = ProcessingTime(snapshot);
+  auto tunables = CollectTunables(snapshot);
+  for (auto tunable : tunables) {
+    tunable->value = 1;
+  }
+  while (true) {
+    const int64 output_time = OutputTime(snapshot);
+    bool all_tunables = true;
+    for (auto& tunable : tunables) {
+      if (tunable->value < tunable->max) {
+        all_tunables = false;
         break;
       }
-      int64 best_delta = -1;
-      Model::Node::Tunable* best_tunable = nullptr;
-      for (auto& tunable : tunables) {
-        if (tunable->value == tunable->max) {
-          continue;
-        }
-        tunable->value++;
-        int64 delta = output_time - OutputTime();
-        if (delta > best_delta) {
-          best_delta = delta;
-          best_tunable = tunable.get();
-        }
-        tunable->value--;
-      }
-      if (!best_tunable) {
-        // NOTE: This can happen because we are performing the optimization
-        // while the model data is changing. If this becomes an issue, we should
-        // look into performing the optimization using a model snapshot.
-        break;
-      }
-      best_tunable->value++;
     }
+    if (output_time < processing_time / cpu_budget || all_tunables) {
+      break;
+    }
+    int64 best_delta = -1;
+    Model::Node::Tunable* best_tunable = nullptr;
+    for (auto& tunable : tunables) {
+      if (tunable->value == tunable->max) {
+        continue;
+      }
+      tunable->value++;
+      int64 delta = output_time - OutputTime(snapshot);
+      if (delta > best_delta) {
+        best_delta = delta;
+        best_tunable = tunable.get();
+      }
+      tunable->value--;
+    }
+    if (!best_tunable) {
+      // This should never happen because we are using a model snapshot and
+      // the output time is monotonically decreasing w.r.t. parallelism.
+      LOG(WARNING) << "Failed to find a tunable parameter that would "
+                      "decrease the output time, aborting the current "
+                      "optimization attempt.";
+      return;
+    }
+    best_tunable->value++;
   }
   VLOG(2) << "Number of knobs: " << tunables.size();
   for (auto& tunable : tunables) {
@@ -414,18 +432,21 @@ void Model::RemoveNode(const string& name) {
   lookup_table_.erase(name);
 }
 
-std::vector<std::shared_ptr<Model::Node::Tunable>> Model::CollectTunables() {
+std::vector<std::shared_ptr<Model::Node::Tunable>> Model::CollectTunables(
+    std::shared_ptr<Model::Node> node) {
   std::vector<std::shared_ptr<Model::Node::Tunable>> tunables;
-  output_->CollectTunables(&tunables);
+  node->CollectTunables(&tunables);
   return tunables;
 }
 
-int64 Model::OutputTime() {
+int64 Model::OutputTime(std::shared_ptr<Model::Node> node) {
   std::vector<int64> input_times(1, 0);
-  return output_->OutputTime(&input_times);
+  return node->OutputTime(&input_times);
 }
 
-int64 Model::ProcessingTime() { return output_->ProcessingTime(); }
+int64 Model::ProcessingTime(std::shared_ptr<Model::Node> node) {
+  return node->ProcessingTime();
+}
 
 }  // namespace model
 }  // namespace data

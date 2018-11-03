@@ -18,7 +18,9 @@ package org.tensorflow.lite;
 import java.io.File;
 import java.nio.ByteBuffer;
 import java.nio.MappedByteBuffer;
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import org.checkerframework.checker.nullness.qual.NonNull;
 
@@ -85,9 +87,20 @@ public final class Interpreter implements AutoCloseable {
       return this;
     }
 
+    /**
+     * Adds a {@link Delegate} to be applied during interpreter creation.
+     *
+     * <p>WARNING: This is an experimental interface that is subject to change.
+     */
+    public Options addDelegate(Delegate delegate) {
+      delegates.add(delegate);
+      return this;
+    }
+
     int numThreads = -1;
     boolean useNNAPI = false;
     boolean allowFp16PrecisionForFp32 = false;
+    final List<Delegate> delegates = new ArrayList<>();
   }
 
   /**

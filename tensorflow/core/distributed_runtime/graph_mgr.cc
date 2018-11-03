@@ -90,7 +90,7 @@ static Status ValidateGraphDefForDevices(const GraphDef& gdef) {
   for (const auto& ndef : gdef.node()) {
     if (!DeviceNameUtils::ParseFullName(ndef.device(), &parsed)) {
       return errors::InvalidArgument("Missing device name in: ",
-                                     SummarizeNodeDef(ndef));
+                                     FormatNodeDefForError(ndef));
     }
   }
   return Status::OK();

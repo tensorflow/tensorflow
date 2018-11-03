@@ -39,7 +39,9 @@ limitations under the License.
 #include "tensorflow/core/grappler/utils/topological_sort.h"
 #include "tensorflow/core/grappler/utils/traversal.h"
 #include "tensorflow/core/lib/math/math_util.h"
+#include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/protobuf/rewriter_config.pb.h"
+#include "tensorflow/core/util/device_name_utils.h"
 
 namespace tensorflow {
 namespace grappler {
@@ -1209,6 +1211,20 @@ bool SwappingPass(RewriterConfig::MemOptType optimization_level,
   return updated_graph;
 }
 
+bool CrossesTaskOrCpuGpuBoundary(const NodeDef& node1, const NodeDef& node2) {
+  string task1;
+  string device1;
+  DeviceNameUtils::SplitDeviceName(node1.device(), &task1, &device1);
+  string task2;
+  string device2;
+  DeviceNameUtils::SplitDeviceName(node2.device(), &task2, &device2);
+  return task1 != task2 ||
+         (str_util::StrContains(device1, DEVICE_CPU) &&
+          str_util::StrContains(device2, DEVICE_GPU)) ||
+         (str_util::StrContains(device1, DEVICE_GPU) &&
+          str_util::StrContains(device2, DEVICE_CPU));
+}
+
 // TODO(rmlarsen): Add distributed TF test.
 Status RelaxAllocatorConstraints(GraphDef* optimized_graph) {
   std::unordered_set<string> devices;
@@ -1240,22 +1256,23 @@ Status RelaxAllocatorConstraints(GraphDef* optimized_graph) {
   TF_RETURN_IF_ERROR(graph_view.Initialize(*optimized_graph));
   for (int i : assign_nodes) {
     if (optimized_nodes.find(i) == optimized_nodes.end()) {
-      const NodeDef& node = optimized_graph->node(i);
+      const NodeDef& assign_node = optimized_graph->node(i);
       optimized_nodes.insert(i);
       std::vector<int> assign_nodes_in_fanout;
       assign_nodes_in_fanout.push_back(i);
       std::set<int> transitive_fanout;
       graph_view.DepthFirstSearch(std::unordered_set<string>{}, i,
                                   &transitive_fanout);
-      const string& assign_device = node.device();
       bool relax_constraint = true;
       // If all nodes in the transitive fanout are on the same device as the
       // assign node, there is no need to allocate the output in pinned memory.
       for (int fanout : transitive_fanout) {
         const NodeDef& fanout_node = optimized_graph->node(fanout);
         if (relax_constraint &&
-            (fanout_node.device() != assign_device || IsSend(fanout_node))) {
+            (IsSend(fanout_node) ||
+             CrossesTaskOrCpuGpuBoundary(fanout_node, assign_node))) {
           relax_constraint = false;
+          break;
         }
         if (optimized_nodes.find(fanout) == optimized_nodes.end() &&
             IsAssign(fanout_node)) {
@@ -1263,17 +1280,18 @@ Status RelaxAllocatorConstraints(GraphDef* optimized_graph) {
         }
       }
 
-      for (int assign_idx : assign_nodes_in_fanout) {
-        if (relax_constraint) {
+      if (relax_constraint) {
+        for (int assign_idx : assign_nodes_in_fanout) {
           // If all devices match in fanout of node(i) then, by transitivity,
           // they must also match in the fanout of other assign nodes
-          // node(assign_idx) in the fanout, so we can process them here,
+          // in the fanout of node(i), so we can process them here,
           // and save computing their transitive fanout later.
           optimized_nodes.insert(assign_idx);
 
           // Set an attribute telling AssignOp to ignore allocator constraints.
-          NodeDef* assign_node = optimized_graph->mutable_node(assign_idx);
-          (*assign_node
+          NodeDef* assign_node_to_relax =
+              optimized_graph->mutable_node(assign_idx);
+          (*assign_node_to_relax
                 ->mutable_attr())["_grappler_relax_allocator_constraints"]
               .set_b(true);
         }

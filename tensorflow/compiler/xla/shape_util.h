@@ -365,6 +365,12 @@ class ShapeUtil {
   static Shape MakeShape(PrimitiveType element_type,
                          absl::Span<const int64> dimensions);
 
+  // Constructs a new shape with the given element type and sequence of
+  // dimensions. Method checks if the element type is valid and the shape's
+  // size fits in std::numeric_limits<int64>::max().
+  static StatusOr<Shape> MakeValidatedShape(PrimitiveType element_type,
+                                            absl::Span<const int64> dimensions);
+
   // Creates a Shape with element type corresponding to T and the given
   // dimensions
   template <typename T>
@@ -396,8 +402,8 @@ class ShapeUtil {
       const Shape& shape);
 
   // As MakeShape, but the object to write to is passed in.
-  static void PopulateShape(PrimitiveType element_type,
-                            absl::Span<const int64> dimensions, Shape* shape);
+  static Status PopulateShape(PrimitiveType element_type,
+                              absl::Span<const int64> dimensions, Shape* shape);
 
   // Validates that the provided shape satisfies invariants.
   static Status ValidateShape(const Shape& shape);

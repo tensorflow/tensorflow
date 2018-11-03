@@ -952,7 +952,10 @@ TfLiteStatus Interpreter::ModifyGraphWithDelegate(TfLiteDelegate* delegate,
       }
     }
     if (has_dynamic_tensors) {
-      ReportError(&context_, "Attempting to resize a fixed-size tensor.");
+      ReportError(
+          &context_,
+          "Attempting to use a delegate that only supports static-sized "
+          "tensors with a graph that has dynamic-sized tensors.");
       return kTfLiteError;
     }
   }

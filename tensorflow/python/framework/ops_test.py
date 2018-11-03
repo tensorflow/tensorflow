@@ -1640,8 +1640,8 @@ class CollectionTest(test_util.TensorFlowTestCase):
 
         self.assertEqual(ops.get_collection("int"), [1])
         three = inner_defun()
-        self.assertEqual(ops.get_collection("int"), [1, 2])
-        self.assertEqual(ops.get_collection("foo"), ["bar"])
+        self.assertEqual(ops.get_collection("int"), [1])
+        self.assertEqual(ops.get_collection("foo"), [])
         return three
 
       three = defun()

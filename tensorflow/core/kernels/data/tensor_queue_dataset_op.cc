@@ -15,12 +15,12 @@ limitations under the License.
 
 #include <deque>
 
+#include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/variant.h"
 #include "tensorflow/core/framework/variant_encode_decode.h"
-#include "tensorflow/core/kernels/data/dataset.h"
 #include "tensorflow/core/util/batch_util.h"
 
 namespace tensorflow {
@@ -441,7 +441,7 @@ class PrependFromQueueAndPaddedBatchDataset : public DatasetBase {
       TensorQueueInserter(const TensorQueueInserter& rhs) {
         queue_ = rhs.queue_;
         queue_->Ref();
-      };
+      }
 
       TensorQueueInserter(TensorQueueInserter&& rhs) {
         queue_ = rhs.queue_;

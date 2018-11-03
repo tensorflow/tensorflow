@@ -153,6 +153,12 @@ Status RunCudnnConvImpl(CudnnConvParams params,
   CHECK_EQ(num_dimensions, dnums.output_spatial_dimensions_size());
   for (const WindowDimension& dim : window.dimensions()) {
     CHECK_EQ(dim.padding_low(), dim.padding_high());
+    CHECK_EQ(dim.base_dilation(), 1)
+        << "cudnn does not support base dilation; it "
+           "must be made explicit with a kPad";
+    CHECK_EQ(dim.window_dilation(), 1)
+        << "XLA does not support window dilation (although cudnn does); it "
+           "must be made explicit with a kPad";
   }
 
   // cuDNN's convolution APIs support the BDYX layout for activations/output and

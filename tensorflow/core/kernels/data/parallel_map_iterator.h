@@ -42,11 +42,8 @@ std::unique_ptr<IteratorBase> NewParallelMapIterator(
     const DatasetBaseIterator::BaseParams& params,
     const DatasetBase* input_dataset,
     std::function<Status(IteratorContext*)> init_func,
-    ParallelMapIteratorFunction map_func, int32 num_parallel_calls);
-std::unique_ptr<IteratorBase> NewParallelMapIterator(
-    const DatasetBaseIterator::BaseParams& params,
-    const DatasetBase* input_dataset, ParallelMapIteratorFunction map_func,
-    int32 num_parallel_calls);
+    ParallelMapIteratorFunction map_func, int32 num_parallel_calls,
+    bool sloppy);
 
 }  // namespace data
 }  // namespace tensorflow

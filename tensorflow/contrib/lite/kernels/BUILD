@@ -138,7 +138,10 @@ tf_cc_test(
     name = "test_util_test",
     size = "small",
     srcs = ["test_util_test.cc"],
-    tags = ["no_oss"],
+    tags = [
+        "no_oss",
+        "tflite_not_portable_ios",  # TODO(b/117786830)
+    ],
     deps = [
         ":test_util",
         "//tensorflow/contrib/lite/testing:util",
@@ -182,6 +185,7 @@ cc_library(
         "fake_quant.cc",
         "floor.cc",
         "floor_div.cc",
+        "floor_mod.cc",
         "fully_connected.cc",
         "gather.cc",
         "hashtable_lookup.cc",
@@ -200,6 +204,7 @@ cc_library(
         "pad.cc",
         "pooling.cc",
         "pow.cc",
+        "range.cc",
         "reduce.cc",
         "relu1.cc",
         "reshape.cc",
@@ -1176,6 +1181,7 @@ tf_cc_test(
         ":builtin_ops",
         "//tensorflow/contrib/lite:framework",
         "//tensorflow/contrib/lite/kernels:test_util",
+        "@com_google_absl//absl/memory",
         "@com_google_googletest//:gtest",
     ],
 )
@@ -1321,6 +1327,34 @@ tf_cc_test(
     name = "zeros_like_test",
     size = "small",
     srcs = ["zeros_like_test.cc"],
+    tags = ["tflite_not_portable_ios"],
+    deps = [
+        ":builtin_ops",
+        "//tensorflow/contrib/lite:builtin_op_data",
+        "//tensorflow/contrib/lite:framework",
+        "//tensorflow/contrib/lite/kernels:test_util",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+tf_cc_test(
+    name = "floor_mod_test",
+    size = "small",
+    srcs = ["floor_mod_test.cc"],
+    tags = ["tflite_not_portable_ios"],
+    deps = [
+        ":builtin_ops",
+        "//tensorflow/contrib/lite:builtin_op_data",
+        "//tensorflow/contrib/lite:framework",
+        "//tensorflow/contrib/lite/kernels:test_util",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+tf_cc_test(
+    name = "range_test",
+    size = "small",
+    srcs = ["range_test.cc"],
     tags = ["tflite_not_portable_ios"],
     deps = [
         ":builtin_ops",

@@ -676,11 +676,10 @@ class Model(Network):
       return
 
     if len(self.trainable_weights) != len(self._collected_trainable_weights):
-      logging.warning(
-          UserWarning(
-              'Discrepancy between trainable weights and collected trainable'
-              ' weights, did you set `model.trainable` without calling'
-              ' `model.compile` after ?'))
+      logging.log_first_n(
+          logging.WARN, 'Discrepancy between trainable weights and collected'
+          ' trainable weights, did you set `model.trainable`'
+          ' without calling `model.compile` after ?', 1)
 
   def _make_train_function(self):
     if not hasattr(self, 'train_function'):
@@ -793,12 +792,14 @@ class Model(Network):
       ValueError: In case of invalid user-provided data.
       RuntimeError: If the model was never compiled.
     """
-    if sample_weight is not None and sample_weight.all():
-      raise NotImplementedError('`sample_weight` is currently not supported '
-                                'when using DistributionStrategy.')
     if class_weight:
       raise NotImplementedError('`class_weight` is currently not supported '
                                 'when using DistributionStrategy.')
+
+    if (sample_weight is not None and sample_weight.all() and
+        self._distribution_strategy.__class__.__name__ == 'TPUStrategy'):
+      raise NotImplementedError('`sample_weight` is currently not supported '
+                                'when using TPUStrategy.')
 
     # Validates `steps` argument right at the beginning since we use it to
     # construct the dataset object.
@@ -816,7 +817,7 @@ class Model(Network):
       x_shape = first_x_value.shape
       if batch_size is None:
         batch_size = distributed_training_utils.get_batch_size(
-            self._distribution_strategy.num_towers, x_shape[0], steps)
+            self._distribution_strategy.num_replicas, x_shape[0], steps)
       # We need to use the drop_remainder argument to allow for a static
       # input shape which is required for TPUs.
       drop_remainder = self._distribution_strategy.require_static_shapes
@@ -825,6 +826,14 @@ class Model(Network):
             self._distribution_strategy, x)
         var_y = distributed_training_utils.get_var_for_numpy(
             self._distribution_strategy, y)
+        if sample_weight is not None:
+          var_sample_weights = distributed_training_utils.get_var_for_numpy(
+              self._distribution_strategy, sample_weight)
+
+          x = dataset_ops.Dataset.from_tensor_slices((var_x, var_y,
+                                                      var_sample_weights))
+        else:
+          x = dataset_ops.Dataset.from_tensor_slices((var_x, var_y))
 
         x = dataset_ops.Dataset.from_tensor_slices((var_x, var_y))
         # 1024 is a good buffer size since it is much larger than the average
@@ -835,6 +844,7 @@ class Model(Network):
         x = x.repeat()
         x = x.batch(batch_size, drop_remainder=drop_remainder)
         y = None
+        sample_weight = None
       else:
         # This case is for the predict call where the dataset only contains
         # inputs and no targets, i.e. it does not return a tuple
@@ -1194,7 +1204,7 @@ class Model(Network):
     return x, y, sample_weights
 
   @checkpointable.no_automatic_dependency_tracking
-  def _set_inputs(self, inputs, training=None):
+  def _set_inputs(self, inputs, outputs=None, training=None):
     """Set model's input and output specs based on the input data received.
 
     This is to be used for Model subclasses, which do not know at instantiation
@@ -1210,6 +1220,9 @@ class Model(Network):
           when calling `fit`/etc.
         - if data tensors: the model is built on top of these tensors.
           We do not expect any Numpy data to be provided when calling `fit`/etc.
+      outputs: None, a data tensor, or a list of tensors. If None, the
+        outputs will be determined by invoking `self.call()`, otherwise the
+        provided value will be used.
       training: Boolean or None. Only relevant in symbolic mode. Specifies
         whether to build the model's graph in inference mode (False), training
         mode (True), or using the Keras learning phase (None).
@@ -1217,18 +1230,10 @@ class Model(Network):
       ValueError: If dict inputs are passed to a Sequential Model where the
         first layer isn't FeatureLayer.
     """
-    call_convention = getattr(
-        self,
-        '_call_convention',
-        base_layer.CallConvention.EXPLICIT_INPUTS_ARGUMENT)
-    if call_convention not in (
-        base_layer.CallConvention.EXPLICIT_INPUTS_ARGUMENT,
-        base_layer.CallConvention.SINGLE_POSITIONAL_ARGUMENT):
-      raise NotImplementedError(
-          'Subclassed Models without "inputs" (or single positional arguments) '
-          'in their call() signatures do not yet support shape inference. File '
-          'a feature request if this limitation bothers you.')
-    if self.__class__.__name__ == 'Sequential':
+    if self.inputs:
+      raise ValueError('Model inputs are already set.')
+
+    if self.__class__.__name__ == 'Sequential' and not self.built:
       if tensor_util.is_tensor(inputs):
         input_shape = (None,) + tuple(inputs.get_shape().as_list()[1:])
         self.build(input_shape=input_shape)
@@ -1243,77 +1248,11 @@ class Model(Network):
       else:
         input_shape = (None,) + inputs.shape[1:]
         self.build(input_shape=input_shape)
-    if context.executing_eagerly():
-      self._eager_set_inputs(inputs)
-    else:
-      self._symbolic_set_inputs(inputs, training=training)
-
-  @checkpointable.no_automatic_dependency_tracking
-  def _eager_set_inputs(self, inputs):
-    """Set model's input and output specs based on the input data received.
-
-    This is to be used for Model subclasses, which do not know at instantiation
-    time what their inputs look like.
-
-    We assume the number and ndim of outputs
-    does not change over different calls.
-
-    Args:
-      inputs: Argument `x` (input data) passed by the user upon first model use.
-
-    Raises:
-      ValueError: If the model's inputs are already set.
-    """
-    assert context.executing_eagerly()
-    if self.inputs:
-      raise ValueError('Model inputs are already set.')
-
-    # On-the-fly setting of model inputs/outputs as DeferredTensors,
-    # to keep track of number of inputs and outputs and their ndim.
-    model_inputs = training_utils.ModelInputs(inputs)
-    dummy_input_values = model_inputs.get_input_values()
-    dummy_output_values = self.call(dummy_input_values)
-
-    self.inputs = model_inputs.get_symbolic_inputs(return_single_as_list=True)
-    self.input_names = model_inputs.get_input_names()
-
-    dummy_output_values = nest.flatten(dummy_output_values)
-    self.outputs = [
-        base_layer.DeferredTensor(shape=(None
-                                         for _ in v.shape), dtype=v.dtype)
-        for v in dummy_output_values
-    ]
-    self.output_names = [
-        'output_%d' % (i + 1) for i in range(len(dummy_output_values))]
-    self.built = True
-
-  @checkpointable.no_automatic_dependency_tracking
-  def _symbolic_set_inputs(self, inputs, outputs=None, training=None):
-    """Set model's inputs and output specs based.
-
-    This is to be used for Model subclasses, which do not know at instantiation
-    time what their inputs look like.
-
-    Args:
-      inputs: Argument `x` (input data) passed by the user upon first model use.
-      outputs: None, a data tensor, or a list of data tensors. If None, the
-        outputs will be determined by invoking self.call(), otherwise the
-        provided value will be used.
-      training: Boolean or None. Only relevant in symbolic mode. Specifies
-        whether to build the model's graph in inference mode (False), training
-        mode (True), or using the Keras learning phase (None).
-
-    Raises:
-      ValueError: If the model's inputs are already set.
-    """
-    assert not context.executing_eagerly()
-    if self.inputs:
-      raise ValueError('Model inputs are already set.')
 
     # On-the-fly setting of symbolic model inputs (either by using the tensor
     # provided, or by creating a placeholder if Numpy data was provided).
     model_inputs = training_utils.ModelInputs(inputs)
-    dummy_input_values = model_inputs.get_symbolic_inputs()
+    inputs = model_inputs.get_symbolic_inputs()
     self.inputs = model_inputs.get_symbolic_inputs(return_single_as_list=True)
     self.input_names = model_inputs.get_input_names()
 
@@ -1329,10 +1268,12 @@ class Model(Network):
 
     if outputs is None:
       # Obtain symbolic outputs by calling the model.
-      if self._expects_training_arg:
-        outputs = self.call(dummy_input_values, training=training)
-      else:
-        outputs = self.call(dummy_input_values)
+      graph = K.get_graph()
+      with graph.as_default():
+        if self._expects_training_arg:
+          outputs = self.call(inputs, training=training)
+        else:
+          outputs = self.call(inputs)
 
     outputs = nest.flatten(outputs)
     self.outputs = outputs
@@ -2318,9 +2259,9 @@ class Model(Network):
       return self.callback_model
     return self
 
-  def _make_callback_model(self):
+  def _make_callback_model(self, grouped_model):
     first_replicated_model = self._distribution_strategy.unwrap(
-        self._grouped_model)[0]
+        grouped_model)[0]
     # We initialize the callback model with the first replicated model.
     self._replicated_model = DistributedCallbackModel(first_replicated_model)
     self._replicated_model.set_original_model(self)

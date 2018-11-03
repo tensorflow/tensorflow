@@ -150,6 +150,10 @@ inline void Tile(const Array& input_array, const Array& multiples_array,
     case ArrayDataType::kInt64:
       Tile<ArrayDataType::kInt64>(input_array, multiples_array, &output_array);
       break;
+    case ArrayDataType::kComplex64:
+      Tile<ArrayDataType::kComplex64>(input_array, multiples_array,
+                                      &output_array);
+      break;
     default:
       LOG(FATAL) << "Unsupported data type given to Tile op with output \""
                  << op->outputs[0] << "\"";

@@ -15815,6 +15815,18 @@ op {
   }
 }
 op {
+  name: "MatchingFilesDataset"
+  input_arg {
+    name: "patterns"
+    type: DT_STRING
+  }
+  output_arg {
+    name: "handle"
+    type: DT_VARIANT
+  }
+  is_stateful: true
+}
+op {
   name: "MatrixBandPart"
   input_arg {
     name: "input"
@@ -16069,6 +16081,29 @@ op {
     type: "bool"
     default_value {
       b: true
+    }
+  }
+}
+op {
+  name: "MatrixSquareRoot"
+  input_arg {
+    name: "input"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "output"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_DOUBLE
+        type: DT_FLOAT
+        type: DT_COMPLEX64
+        type: DT_COMPLEX128
+      }
     }
   }
 }
@@ -19319,6 +19354,13 @@ op {
     has_minimum: true
     minimum: 1
   }
+  attr {
+    name: "sloppy"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
 }
 op {
   name: "ParallelMapDataset"
@@ -19364,6 +19406,13 @@ op {
     type: "bool"
     default_value {
       b: true
+    }
+  }
+  attr {
+    name: "sloppy"
+    type: "bool"
+    default_value {
+      b: false
     }
   }
 }
@@ -19581,6 +19630,13 @@ op {
     type: "list(shape)"
     has_minimum: true
     minimum: 1
+  }
+  attr {
+    name: "sloppy"
+    type: "bool"
+    default_value {
+      b: false
+    }
   }
 }
 op {
@@ -20081,6 +20137,13 @@ op {
   }
   attr {
     name: "config"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
+  attr {
+    name: "executor_type"
     type: "string"
     default_value {
       s: ""
@@ -22470,6 +22533,40 @@ op {
         type: DT_INT64
       }
     }
+  }
+}
+op {
+  name: "RaggedTensorToSparse"
+  input_arg {
+    name: "rt_nested_splits"
+    type: DT_INT64
+    number_attr: "RAGGED_RANK"
+  }
+  input_arg {
+    name: "rt_dense_values"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "sparse_indices"
+    type: DT_INT64
+  }
+  output_arg {
+    name: "sparse_values"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "sparse_dense_shape"
+    type: DT_INT64
+  }
+  attr {
+    name: "RAGGED_RANK"
+    type: "int"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "T"
+    type: "type"
   }
 }
 op {
@@ -33229,6 +33326,13 @@ op {
       s: ""
     }
   }
+  attr {
+    name: "executor_type"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
   is_stateful: true
 }
 op {
@@ -36604,6 +36708,60 @@ op {
   output_arg {
     name: "output"
     type: DT_INT32
+  }
+}
+op {
+  name: "UnicodeTranscode"
+  input_arg {
+    name: "input"
+    type: DT_STRING
+  }
+  output_arg {
+    name: "output"
+    type: DT_STRING
+  }
+  attr {
+    name: "input_encoding"
+    type: "string"
+  }
+  attr {
+    name: "output_encoding"
+    type: "string"
+    allowed_values {
+      list {
+        s: "UTF-8"
+        s: "UTF-16-BE"
+        s: "UTF-32-BE"
+      }
+    }
+  }
+  attr {
+    name: "errors"
+    type: "string"
+    default_value {
+      s: "replace"
+    }
+    allowed_values {
+      list {
+        s: "strict"
+        s: "replace"
+        s: "ignore"
+      }
+    }
+  }
+  attr {
+    name: "replacement_char"
+    type: "int"
+    default_value {
+      i: 65533
+    }
+  }
+  attr {
+    name: "replace_control_characters"
+    type: "bool"
+    default_value {
+      b: false
+    }
   }
 }
 op {

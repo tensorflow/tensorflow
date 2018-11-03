@@ -2170,15 +2170,26 @@ class MklReorderPrimitiveFactory : public MklPrimitiveFactory<T> {
       FactoryKeyCreator key_creator;
       auto const &from_desc =  from->get_primitive_desc().desc().data;
       auto const &to_desc =  to->get_primitive_desc().desc().data;
+      const int KIdxFirstStride = 0;
       memory::dims from_dims(from_desc.dims, &from_desc.dims[from_desc.ndims]);
       memory::dims to_dims(to_desc.dims, &to_desc.dims[to_desc.ndims]);
+      memory::dims from_strides(
+          from_desc.layout_desc.blocking.strides[KIdxFirstStride],
+          &from_desc.layout_desc.blocking
+               .strides[KIdxFirstStride][from_desc.ndims]);
+      memory::dims to_strides(
+          to_desc.layout_desc.blocking.strides[KIdxFirstStride],
+          &to_desc.layout_desc.blocking
+               .strides[KIdxFirstStride][to_desc.ndims]);
       key_creator.AddAsKey(prefix);
       key_creator.AddAsKey(static_cast<int>(from_desc.format));
       key_creator.AddAsKey(static_cast<int>(from_desc.data_type));
       key_creator.AddAsKey(from_dims);
+      key_creator.AddAsKey(from_strides);
       key_creator.AddAsKey(static_cast<int>(to_desc.format));
       key_creator.AddAsKey(static_cast<int>(to_desc.data_type));
       key_creator.AddAsKey(to_dims);
+      key_creator.AddAsKey(to_strides);
       return key_creator.GetKey();
     }
 

@@ -878,7 +878,7 @@ class Conv2DTest(test.TestCase):
     x2 = [f * 1.0 for f in range(1, total_filter_size + 1)]
     default_dilations = (dilations[0] == 1 and dilations[1] == 1)
     if default_dilations or use_gpu:
-      with self.test_session(use_gpu=use_gpu) as sess:
+      with self.cached_session(use_gpu=use_gpu) as sess:
         if data_format == "NCHW":
           input_sizes = test_util.NHWCToNCHW(input_sizes)
         t1 = constant_op.constant(x1, shape=input_sizes)
@@ -932,7 +932,7 @@ class Conv2DTest(test.TestCase):
     x2 = [f * 1.0 for f in range(1, total_filter_size + 1)]
     default_dilations = (dilations[0] == 1 and dilations[1] == 1)
     if default_dilations or use_gpu:
-      with self.test_session(use_gpu=use_gpu) as sess:
+      with self.cached_session(use_gpu=use_gpu) as sess:
         if data_format == "NCHW":
           input_sizes = test_util.NHWCToNCHW(input_sizes)
         t1 = constant_op.constant(x1, shape=input_sizes)
@@ -1139,7 +1139,7 @@ class Conv2DTest(test.TestCase):
     # So we disable the DOUBLE path.  We should re-enable this
     # when double support returns for CPU and/or GPU.
     for dtype in self._DtypesToTest(use_gpu=use_gpu):
-      with self.test_session(use_gpu=use_gpu):
+      with self.cached_session(use_gpu=use_gpu):
         input_tensor = constant_op.constant(
             input_data, shape=input_shape, dtype=dtype, name="input")
         filter_tensor = constant_op.constant(
@@ -1644,7 +1644,7 @@ class SeparableConv2DTest(test.TestCase):
       expected: An array containing the expected operation outputs.
       data_format: string data format for input tensor.
     """
-    with self.test_session(use_gpu=True) as sess:
+    with self.cached_session(use_gpu=True) as sess:
       t1 = self._InitValues(tensor_in_sizes)
       f1 = self._InitValues(depthwise_filter_in_sizes)
       f1.set_shape(depthwise_filter_in_sizes)
@@ -1766,7 +1766,7 @@ class DeepConv2DTest(test.TestCase):
     x1 = np.random.rand(*tensor_in_sizes).astype(np.float32)
     x2 = np.random.rand(*filter_in_sizes).astype(np.float32)
 
-    with self.test_session(use_gpu=False) as sess:
+    with self.cached_session(use_gpu=False) as sess:
       t1 = constant_op.constant(x1, shape=tensor_in_sizes)
       t2 = constant_op.constant(x2, shape=filter_in_sizes)
       strides = [1] + conv_strides + [1]

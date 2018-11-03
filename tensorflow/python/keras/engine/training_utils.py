@@ -34,7 +34,6 @@ from tensorflow.python.framework import tensor_util
 from tensorflow.python.keras import backend as K
 from tensorflow.python.keras import losses
 from tensorflow.python.keras import metrics as metrics_module
-from tensorflow.python.keras.engine import base_layer
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import weights_broadcast_ops
@@ -1081,8 +1080,7 @@ class ModelInputs(object):
       k = self._input_names[i]
       v = self._flattened_inputs[i]
       if context.executing_eagerly():
-        v = base_layer.DeferredTensor(
-            shape=(None for _ in v.shape), dtype=v.dtype)
+        v = K.placeholder((None,) + tuple(v.shape[1:]), name=k)
       else:
         if isinstance(v, list):
           v = np.asarray(v)

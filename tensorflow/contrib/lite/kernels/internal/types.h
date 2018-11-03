@@ -709,6 +709,14 @@ struct ActivationParams {
   int32 quantized_activation_max;
 };
 
+// Styles of resizing op usages. For example, kImageStyle can be used with a Pad
+// op for pattern-specific optimization.
+enum class ResizingCategory : uint8 {
+  kNone,
+  kImageStyle,  // 4D, operating on inner dimensions, say {0, a, b, 0}.
+  kGenericResize,
+};
+
 // For Add, Sub, Mul ops.
 struct ArithmeticParams {
   // Shape dependent / common to data / op types.
@@ -894,6 +902,7 @@ struct PadParams {
   int32 left_padding[4];
   int8 right_padding_count;
   int32 right_padding[4];
+  ResizingCategory resizing_category;
 };
 
 struct PoolParams {
@@ -918,6 +927,10 @@ struct ReshapeParams {
 };
 
 struct ResizeBilinearParams {
+  bool align_corners;
+};
+
+struct ResizeNearestNeighborParams {
   bool align_corners;
 };
 

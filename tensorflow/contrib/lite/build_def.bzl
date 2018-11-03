@@ -108,6 +108,7 @@ def tflite_jni_binary(
         linkscript = LINKER_SCRIPT,
         linkshared = 1,
         linkstatic = 1,
+        testonly = 0,
         deps = []):
     """Builds a jni binary for TFLite."""
     linkopts = linkopts + [
@@ -121,6 +122,7 @@ def tflite_jni_binary(
         linkstatic = linkstatic,
         deps = deps + [linkscript],
         linkopts = linkopts,
+        testonly = testonly,
     )
 
 def tflite_cc_shared_object(
@@ -233,6 +235,7 @@ def generated_test_models():
         "expand_dims",
         "floor",
         "floor_div",
+        "floor_mod",
         "fully_connected",
         "fused_batch_norm",
         "gather",
@@ -264,6 +267,7 @@ def generated_test_models():
         "padv2",
         "prelu",
         "pow",
+        "range",
         "reduce_any",
         "reduce_max",
         "reduce_min",
@@ -302,11 +306,6 @@ def generated_test_models():
 # If you have to disable a test, please add here with a link to the appropriate
 # bug or issue.
 def generated_test_models_failing(conversion_mode):
-    if not conversion_mode:
-        return [
-            "transpose_conv",  # disabled due to b/111213074
-        ]
-
     if conversion_mode == "toco-flex":
         # TODO(b/117328698): Fix and enable the known flex failures.
         return [
@@ -421,39 +420,38 @@ def gen_selected_ops(name, model):
         tools = [tool],
     )
 
-def gen_full_model_test(conversion_modes, models, data, tags):
+def gen_model_coverage_test(model_name, data, failure_type):
     """Generates Python test targets for testing TFLite models.
 
     Args:
-      conversion_modes: List of conversion modes to test the models on.
-      models: List of models to test.
+      model_name: Name of the model to test (must be also listed in the 'data'
+        dependencies)
       data: List of BUILD targets linking the data.
-      tags: Any additional tags including the test_suite tag.
+      failure_type: List of failure types (none, toco, crash, inference)
+        expected for the corresponding combinations of op sets
+        ("TFLITE_BUILTINS", "TFLITE_BUILTINS,SELECT_TF_OPS", "SELECT_TF_OPS").
     """
-    options = [
-        (conversion_mode, model)
-        for model in models
-        for conversion_mode in conversion_modes
-    ]
-
-    for conversion_mode, model_name in options:
+    i = 0
+    for target_op_sets in ["TFLITE_BUILTINS", "TFLITE_BUILTINS,SELECT_TF_OPS", "SELECT_TF_OPS"]:
+        args = []
+        if failure_type[i] != "none":
+            args.append("--failure_type=%s" % failure_type[i])
+        i = i + 1
         native.py_test(
-            name = "model_coverage_test_%s_%s" % (model_name, conversion_mode.lower()),
+            name = "model_coverage_test_%s_%s" % (model_name, target_op_sets.lower().replace(",", "_")),
             srcs = ["model_coverage_test.py"],
             main = "model_coverage_test.py",
             args = [
                 "--model_name=%s" % model_name,
-                "--converter_mode=%s" % conversion_mode,
-            ],
+                "--target_ops=%s" % target_op_sets,
+            ] + args,
             data = data,
             srcs_version = "PY2AND3",
             tags = [
                 "no_oss",
                 "no_windows",
                 "notap",
-                # TODO(nupurgarg): Remove manual tag when this test is running without the BUILD flag.
-                "manual",
-            ] + tags,
+            ],
             deps = [
                 "//tensorflow/contrib/lite/testing/model_coverage:model_coverage_lib",
                 "//tensorflow/contrib/lite/python:lite",
