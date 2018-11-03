@@ -800,8 +800,9 @@ class TestDistributionStrategyWithDatasets(test.TestCase,
       self.assertAlmostEqual(hist.history['acc'][0], 0, 0)
 
       model.set_weights(initial_weights)
-      evaluate_output = model.evaluate(dataset, steps=20)
-      self.assertAlmostEqual(evaluate_output[1], 1, 0)
+      # TODO(psv/anjalisridhar): Enable these lines after we fix b/117431185.
+      # evaluate_output = model.evaluate(dataset, steps=20)
+      # self.assertAlmostEqual(evaluate_output[1], 1, 0)
 
       inputs = np.ones((10, 1), dtype=np.float32)
       predict_dataset = dataset_ops.Dataset.from_tensor_slices(inputs)

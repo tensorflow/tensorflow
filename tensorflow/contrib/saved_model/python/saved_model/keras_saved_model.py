@@ -19,6 +19,7 @@ from __future__ import division
 from __future__ import print_function
 
 import os
+import six
 
 from tensorflow.python.client import session
 from tensorflow.python.estimator import keras as estimator_keras_util
@@ -30,6 +31,7 @@ from tensorflow.python.keras import backend as K
 from tensorflow.python.keras import models as models_lib
 from tensorflow.python.keras import optimizers
 from tensorflow.python.keras.engine import sequential
+from tensorflow.python.keras.metrics import Metric
 from tensorflow.python.keras.models import model_from_json
 from tensorflow.python.lib.io import file_io
 from tensorflow.python.ops import variables
@@ -276,11 +278,29 @@ def _create_signature_def_map(model, mode):
     inputs_dict.update(targets_dict)
   outputs_dict = {name: x
                   for name, x in zip(model.output_names, model.outputs)}
+  metrics = estimator_keras_util._convert_keras_metrics_to_estimator(model)
+
+  # Add metric variables to the `LOCAL_VARIABLES` collection. Metric variables
+  # are by default not added to any collections. We are doing this here, so
+  # that metric variables get initialized.
+  local_vars = set(ops.get_collection(ops.GraphKeys.LOCAL_VARIABLES))
+  vars_to_add = set()
+  if metrics is not None:
+    for key, value in six.iteritems(metrics):
+      if isinstance(value, Metric):
+        vars_to_add.update(value.variables)
+        # Convert Metric instances to (value_tensor, update_op) tuple.
+        metrics[key] = (value.result(), value.updates[0])
+  # Remove variables that are in the local variables collection already.
+  vars_to_add = vars_to_add.difference(local_vars)
+  for v in vars_to_add:
+    ops.add_to_collection(ops.GraphKeys.LOCAL_VARIABLES, v)
+
   export_outputs = model_fn_lib.export_outputs_for_mode(
       mode,
       predictions=outputs_dict,
       loss=model.total_loss if model.optimizer else None,
-      metrics=estimator_keras_util._convert_keras_metrics_to_estimator(model))
+      metrics=metrics)
   return export_helpers.build_all_signature_defs(
       inputs_dict,
       export_outputs=export_outputs,
