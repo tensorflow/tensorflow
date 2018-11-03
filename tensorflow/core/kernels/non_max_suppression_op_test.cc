@@ -863,7 +863,7 @@ TEST_F(NonMaxSuppressionWithOverlapsOpTest, TestEmptyInput) {
 
 class NonMaxSuppressionLiteOpTest : public OpsTestBase {
  protected:
-  void MakeOp(bool pad_to_max_total_size = false) {
+  void MakeOp(bool use_static_shapes = false) {
     TF_EXPECT_OK(NodeDefBuilder("non_max_suppression_lite_op", 
                                 "NonMaxSuppressionLite")
                      .Input(FakeInput(DT_FLOAT))
@@ -872,7 +872,7 @@ class NonMaxSuppressionLiteOpTest : public OpsTestBase {
                      .Input(FakeInput(DT_INT32))
                      .Input(FakeInput(DT_FLOAT))
                      .Input(FakeInput(DT_FLOAT))
-                     .Attr("pad_to_max_total_size", pad_to_max_total_size)
+                     .Attr("use_static_shapes", use_static_shapes)
                      .Finalize(node_def()));
     TF_EXPECT_OK(InitOp());
   }
@@ -889,17 +889,17 @@ TEST_F(NonMaxSuppressionLiteOpTest, TestEmptyInput) {
   TF_ASSERT_OK(RunOpKernel());
 
   //boxes
-  Tensor expected_boxes(allocator(), DT_FLOAT, TensorShape({0, 0, 4}));
+  Tensor expected_boxes(allocator(), DT_FLOAT, TensorShape({0, 10, 4}));
   test::FillValues<float>(&expected_boxes, {});
   test::ExpectTensorEqual<float>(expected_boxes, *GetOutput(0));
   
   //scores
-  Tensor expected_scores(allocator(), DT_FLOAT, TensorShape({0, 0}));
+  Tensor expected_scores(allocator(), DT_FLOAT, TensorShape({0, 10}));
   test::FillValues<float>(&expected_scores, {});
   test::ExpectTensorEqual<float>(expected_scores, *GetOutput(1));
   
   //classes
-  Tensor expected_classes(allocator(), DT_FLOAT, TensorShape({0, 0}));
+  Tensor expected_classes(allocator(), DT_FLOAT, TensorShape({0, 10}));
   test::FillValues<float>(&expected_classes, {});
   test::ExpectTensorEqual<float>(expected_classes, *GetOutput(2));
   
@@ -909,7 +909,7 @@ TEST_F(NonMaxSuppressionLiteOpTest, TestEmptyInput) {
   test::ExpectTensorEqual<int>(expected_valid_d, *GetOutput(3));
   
   // indices
-  Tensor expected_indices(allocator(), DT_INT32, TensorShape({0, 0}));
+  Tensor expected_indices(allocator(), DT_INT32, TensorShape({0, 10}));
   test::FillValues<int>(&expected_indices, {});
   test::ExpectTensorEqual<int>(expected_indices, *GetOutput(4));
 }
@@ -967,24 +967,25 @@ TEST_F(NonMaxSuppressionLiteOpTest,
   TF_ASSERT_OK(RunOpKernel());
   
   //boxes
-  Tensor expected_boxes(allocator(), DT_FLOAT, TensorShape({1, 2, 4}));
-  test::FillValues<float>(&expected_boxes, {0, 0.11, 0.1, 0.2, 0, 0, 0.1, 0.1});
+  Tensor expected_boxes(allocator(), DT_FLOAT, TensorShape({1, 3, 4}));
+  test::FillValues<float>(&expected_boxes, {0, 0.11, 0.1, 0.2, 0, 0, 0.1, 0.1,
+      0, 0, 0, 0});
   test::ExpectTensorEqual<float>(expected_boxes, *GetOutput(0));
   //scores
-  Tensor expected_scores(allocator(), DT_FLOAT, TensorShape({1, 2}));
-  test::FillValues<float>(&expected_scores, {0.95, 0.9});
+  Tensor expected_scores(allocator(), DT_FLOAT, TensorShape({1, 3}));
+  test::FillValues<float>(&expected_scores, {0.95, 0.9, 0});
   test::ExpectTensorEqual<float>(expected_scores, *GetOutput(1));
   //classes
-  Tensor expected_classes(allocator(), DT_FLOAT, TensorShape({1, 2}));
-  test::FillValues<float>(&expected_classes, {0, 0});
+  Tensor expected_classes(allocator(), DT_FLOAT, TensorShape({1, 3}));
+  test::FillValues<float>(&expected_classes, {0, 0, 0});
   test::ExpectTensorEqual<float>(expected_classes, *GetOutput(2));
   // valid
   Tensor expected_valid_d(allocator(), DT_INT32, TensorShape({1}));
   test::FillValues<int>(&expected_valid_d, {2});
   test::ExpectTensorEqual<int>(expected_valid_d, *GetOutput(3));
   // indices
-  Tensor expected_indices(allocator(), DT_INT32, TensorShape({1, 2}));
-  test::FillValues<int>(&expected_indices, {3, 0});
+  Tensor expected_indices(allocator(), DT_INT32, TensorShape({1, 3}));
+  test::FillValues<int>(&expected_indices, {3, 0, 0});
   test::ExpectTensorEqual<int>(expected_indices, *GetOutput(4));
 }
 
@@ -999,31 +1000,32 @@ TEST_F(NonMaxSuppressionLiteOpTest,
        {.1f, 0, 0, .3f, .2f, -5.0f});
   // If we ask for more boxes than we actually expect to get back;
   // should still only get 2 boxes back.
-  AddInputFromArray<int>(TensorShape({}), {6});
-  AddInputFromArray<int>(TensorShape({}), {7});
+  AddInputFromArray<int>(TensorShape({}), {4});
+  AddInputFromArray<int>(TensorShape({}), {5});
   AddInputFromArray<float>(TensorShape({}), {.5f});
   AddInputFromArray<float>(TensorShape({}), {-3.0f});
   TF_ASSERT_OK(RunOpKernel());
   
   //boxes
-  Tensor expected_boxes(allocator(), DT_FLOAT, TensorShape({1, 2, 4}));
-  test::FillValues<float>(&expected_boxes, {0, 0.11, 0.1, 0.2, 0, 0, 0.1, 0.1});
+  Tensor expected_boxes(allocator(), DT_FLOAT, TensorShape({1, 5, 4}));
+  test::FillValues<float>(&expected_boxes, {0, 0.11, 0.1, 0.2, 0, 0, 0.1, 0.1, 
+      0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,});
   test::ExpectTensorEqual<float>(expected_boxes, *GetOutput(0));
   //scores
-  Tensor expected_scores(allocator(), DT_FLOAT, TensorShape({1, 2}));
-  test::FillValues<float>(&expected_scores, {0.3, 0.1});
+  Tensor expected_scores(allocator(), DT_FLOAT, TensorShape({1, 5}));
+  test::FillValues<float>(&expected_scores, {0.3, 0.1, 0, 0, 0});
   test::ExpectTensorEqual<float>(expected_scores, *GetOutput(1));
   //classes
-  Tensor expected_classes(allocator(), DT_FLOAT, TensorShape({1, 2}));
-  test::FillValues<float>(&expected_classes, {0, 0});
+  Tensor expected_classes(allocator(), DT_FLOAT, TensorShape({1, 5}));
+  test::FillValues<float>(&expected_classes, {0, 0, 0, 0, 0});
   test::ExpectTensorEqual<float>(expected_classes, *GetOutput(2));
   // valid
   Tensor expected_valid_d(allocator(), DT_INT32, TensorShape({1}));
   test::FillValues<int>(&expected_valid_d, {2});
   test::ExpectTensorEqual<int>(expected_valid_d, *GetOutput(3));
   // indices
-  Tensor expected_indices(allocator(), DT_INT32, TensorShape({1, 2}));
-  test::FillValues<int>(&expected_indices, {3, 0});
+  Tensor expected_indices(allocator(), DT_INT32, TensorShape({1, 5}));
+  test::FillValues<int>(&expected_indices, {3, 0, 0, 0, 0});
   test::ExpectTensorEqual<int>(expected_indices, *GetOutput(4));
 }
 
@@ -1032,7 +1034,7 @@ TEST_F(NonMaxSuppressionLiteOpTest, TestSelectSingleBox) {
   AddInputFromArray<float>(TensorShape({1, 1, 1, 4}), {0, 0, 1, 1});  
   AddInputFromArray<float>(TensorShape({1, 1, 1}), {.9f});
   AddInputFromArray<int>(TensorShape({}), {3});
-  AddInputFromArray<int>(TensorShape({}), {3});
+  AddInputFromArray<int>(TensorShape({}), {1});
   AddInputFromArray<float>(TensorShape({}), {.5f});
   AddInputFromArray<float>(TensorShape({}), {0.0f});
   TF_ASSERT_OK(RunOpKernel());
@@ -1072,31 +1074,31 @@ TEST_F(NonMaxSuppressionLiteOpTest,
   AddInputFromArray<float>(TensorShape({2, 6, 1}), 
        {.9f, .75f, .6f, .95f, .5f, .3f, .9f, .75f, .6f, .95f, .5f, .3f});
   AddInputFromArray<int>(TensorShape({}), {3});
-  AddInputFromArray<int>(TensorShape({}), {9});
+  AddInputFromArray<int>(TensorShape({}), {3});
   AddInputFromArray<float>(TensorShape({}), {.5f});
   AddInputFromArray<float>(TensorShape({}), {0.4f});
   TF_ASSERT_OK(RunOpKernel());
   
   //boxes
-  Tensor expected_boxes(allocator(), DT_FLOAT, TensorShape({2, 2, 4}));
+  Tensor expected_boxes(allocator(), DT_FLOAT, TensorShape({2, 3, 4}));
   test::FillValues<float>(&expected_boxes, {0, 0.11, 0.1, 0.2, 0, 0, 0.1, 0.1, 
-          0, 0.21, 0.2, 0.3, 0, 0, 0.2, 0.2});
+          0, 0, 0, 0, 0, 0.21, 0.2, 0.3, 0, 0, 0.2, 0.2, 0, 0, 0, 0});
   test::ExpectTensorEqual<float>(expected_boxes, *GetOutput(0));
   //scores
-  Tensor expected_scores(allocator(), DT_FLOAT, TensorShape({2, 2}));
-  test::FillValues<float>(&expected_scores, {0.95, 0.9, 0.95, 0.9});
+  Tensor expected_scores(allocator(), DT_FLOAT, TensorShape({2, 3}));
+  test::FillValues<float>(&expected_scores, {0.95, 0.9, 0, 0.95, 0.9, 0});
   test::ExpectTensorEqual<float>(expected_scores, *GetOutput(1));
   //classes
-  Tensor expected_classes(allocator(), DT_FLOAT, TensorShape({2, 2}));
-  test::FillValues<float>(&expected_classes, {0, 0, 0, 0});
+  Tensor expected_classes(allocator(), DT_FLOAT, TensorShape({2, 3}));
+  test::FillValues<float>(&expected_classes, {0, 0, 0, 0, 0, 0});
   test::ExpectTensorEqual<float>(expected_classes, *GetOutput(2));
   // valid
   Tensor expected_valid_d(allocator(), DT_INT32, TensorShape({2}));
   test::FillValues<int>(&expected_valid_d, {2, 2});
   test::ExpectTensorEqual<int>(expected_valid_d, *GetOutput(3));
   // indices
-  Tensor expected_indices(allocator(), DT_INT32, TensorShape({2, 2}));
-  test::FillValues<int>(&expected_indices, {3, 0, 3, 0});
+  Tensor expected_indices(allocator(), DT_INT32, TensorShape({2, 3}));
+  test::FillValues<int>(&expected_indices, {3, 0, 0, 3, 0, 0});
   test::ExpectTensorEqual<int>(expected_indices, *GetOutput(4));
 }
 
@@ -1164,25 +1166,25 @@ TEST_F(NonMaxSuppressionLiteOpTest,
   TF_ASSERT_OK(RunOpKernel());
   
   //boxes
-  Tensor expected_boxes(allocator(), DT_FLOAT, TensorShape({2, 2, 4}));
+  Tensor expected_boxes(allocator(), DT_FLOAT, TensorShape({2, 3, 4}));
   test::FillValues<float>(&expected_boxes, {0, 0.11, 0.1, 0.2, 0, 0, 0.1, 0.1, 
-          0, 0.21, 0.2, 0.3, 0, 0, 0.2, 0.2});
+          0, 0, 0, 0, 0, 0.21, 0.2, 0.3, 0, 0, 0.2, 0.2, 0, 0, 0, 0});
   test::ExpectTensorEqual<float>(expected_boxes, *GetOutput(0));
   //scores
-  Tensor expected_scores(allocator(), DT_FLOAT, TensorShape({2, 2}));
-  test::FillValues<float>(&expected_scores, {0.95, 0.9, 0.95, 0.9});
+  Tensor expected_scores(allocator(), DT_FLOAT, TensorShape({2, 3}));
+  test::FillValues<float>(&expected_scores, {0.95, 0.9, 0, 0.95, 0.9, 0});
   test::ExpectTensorEqual<float>(expected_scores, *GetOutput(1));
   //classes
-  Tensor expected_classes(allocator(), DT_FLOAT, TensorShape({2, 2}));
-  test::FillValues<float>(&expected_classes, {0, 1, 0, 1});
+  Tensor expected_classes(allocator(), DT_FLOAT, TensorShape({2, 3}));
+  test::FillValues<float>(&expected_classes, {0, 1, 0, 0, 1, 0});
   test::ExpectTensorEqual<float>(expected_classes, *GetOutput(2));
   // valid
   Tensor expected_valid_d(allocator(), DT_INT32, TensorShape({2}));
   test::FillValues<int>(&expected_valid_d, {2, 2});
   test::ExpectTensorEqual<int>(expected_valid_d, *GetOutput(3));
   // indices
-  Tensor expected_indices(allocator(), DT_INT32, TensorShape({2, 2}));
-  test::FillValues<int>(&expected_indices, {3, 0, 3, 0});
+  Tensor expected_indices(allocator(), DT_INT32, TensorShape({2, 3}));
+  test::FillValues<int>(&expected_indices, {3, 0, 0, 3, 0, 0});
   test::ExpectTensorEqual<int>(expected_indices, *GetOutput(4));
 }
 
