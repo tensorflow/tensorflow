@@ -357,6 +357,12 @@ class Sequential(Model):
       model.built = False
     return model
 
+  @property
+  def input_spec(self):
+    if self.layers and hasattr(self.layers[0], 'input_spec'):
+      return self.layers[0].input_spec
+    return None
+
 
 def get_input_shape_and_dtype(layer):
   """Retrieve input shape and input dtype of layer if applicable.
