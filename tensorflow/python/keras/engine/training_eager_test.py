@@ -196,8 +196,7 @@ class CorrectnessTest(test.TestCase):
     np.random.seed(123)
     y = np.random.randint(0, 1, size=(100, 1))
     history = model.fit(x, y, epochs=1, batch_size=10)
-    self.assertEqual(
-        np.around(history.history['loss'][-1], decimals=4), 0.6173)
+    self.assertAlmostEqual(history.history['loss'][-1], 0.6173, 4)
 
   @tf_test_util.run_in_graph_and_eager_modes
   def test_loss_correctness_with_iterator(self):
@@ -220,7 +219,7 @@ class CorrectnessTest(test.TestCase):
     dataset = dataset.batch(10)
     iterator = dataset.make_one_shot_iterator()
     history = model.fit(iterator, epochs=1, steps_per_epoch=10)
-    self.assertEqual(np.around(history.history['loss'][-1], decimals=4), 0.6173)
+    self.assertAlmostEqual(history.history['loss'][-1], 0.6173, 4)
 
   def test_loss_in_call(self):
 
