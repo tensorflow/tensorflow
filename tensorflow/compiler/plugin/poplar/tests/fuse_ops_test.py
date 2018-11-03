@@ -35,6 +35,8 @@ class IpuFuseOpsTest(test_util.TensorFlowTestCase):
       report = gen_ipu_ops.ipu_event_trace()
 
     with tu.ipu_session() as sess:
+      sess.run(report)
+
       fd = {
         pa: [-6.0, 0.0, 6.0]
       }
@@ -60,6 +62,8 @@ class IpuFuseOpsTest(test_util.TensorFlowTestCase):
       report = gen_ipu_ops.ipu_event_trace()
 
     with tu.ipu_session() as sess:
+      sess.run(report)
+
       fd = {
         pa: [-6.0, 0.0, 6.0]
       }
@@ -88,6 +92,8 @@ class IpuFuseOpsTest(test_util.TensorFlowTestCase):
       report = gen_ipu_ops.ipu_event_trace()
 
     with tu.ipu_session() as sess:
+      sess.run(report)
+
       fd = {
         pa: [2.0, 0.5, 1.0],
         pb: [-1.0, 1.0, 6.0]
@@ -167,6 +173,8 @@ class IpuFuseOpsTest(test_util.TensorFlowTestCase):
       report = gen_ipu_ops.ipu_event_trace()
 
     with tu.ipu_session() as sess:
+      sess.run(report)
+
       fd = {
         pa: [2.0, 0.5, 1.0],
         pb: [-1.0, 1.0, 6.0]
@@ -194,6 +202,8 @@ class IpuFuseOpsTest(test_util.TensorFlowTestCase):
       report = gen_ipu_ops.ipu_event_trace()
 
     with tu.ipu_session() as sess:
+      sess.run(report)
+
       fd = {
         pa: np.ones([1,1,10,10]),
       }
@@ -223,7 +233,6 @@ class IpuFuseOpsTest(test_util.TensorFlowTestCase):
       report = gen_ipu_ops.ipu_event_trace()
 
     with tu.ipu_session() as sess:
-      # Clear old reports
       sess.run(report)
 
       fe = {
@@ -255,7 +264,6 @@ class IpuFuseOpsTest(test_util.TensorFlowTestCase):
       report = gen_ipu_ops.ipu_event_trace()
 
     with tu.ipu_session() as sess:
-      # Clear old reports
       sess.run(report)
 
       fd = {
@@ -289,7 +297,6 @@ class IpuFuseOpsTest(test_util.TensorFlowTestCase):
       report = gen_ipu_ops.ipu_event_trace()
 
     with tu.ipu_session() as sess:
-      # Clear old reports
       sess.run(report)
 
       fd = {
