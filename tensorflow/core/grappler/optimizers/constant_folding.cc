@@ -988,9 +988,8 @@ Status ConstantFolding::EvaluateOneFoldable(const NodeDef& node,
   });
 
   for (const auto& input : node.input()) {
-    int port = 0;
-    ParseNodeNameAsStringPiece(input, &port);
-    if (port < 0) {
+    const TensorId input_tensor = ParseTensorName(input);
+    if (input_tensor.index() < 0) {
       // Control dependency
       break;
     }

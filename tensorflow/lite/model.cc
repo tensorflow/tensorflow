@@ -404,8 +404,7 @@ TfLiteStatus InterpreterBuilder::ApplyDelegates(Interpreter* interpreter) {
   }
 
   if (auto flex_delegate = AcquireFlexDelegate()) {
-    return interpreter->ModifyGraphWithDelegate(std::move(flex_delegate),
-                                                /*allow_dynamic_tensors=*/true);
+    return interpreter->ModifyGraphWithDelegate(std::move(flex_delegate));
   }
 
   return kTfLiteOk;

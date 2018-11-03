@@ -978,7 +978,7 @@ class TPUFunction(object):
 
             # When running on more than one core, concatenate outputs at the end
             # of processing. In backprop stage, the gradients will be
-            # calculdated according to the local inputs as gradient of
+            # calculated according to the local inputs as gradient of
             # cross-replica-concat being zero for any outputs other than those
             # from mlocal core so the loss calculation is identical.
             num_towers = self.model._tpu_assignment.num_towers
@@ -1005,7 +1005,9 @@ class TPUFunction(object):
                   for tensor in tpu_targets
               ]
 
-            if is_training or is_test:
+          if is_training or is_test:
+            with variable_scope.variable_scope(
+                'metrics', reuse=variable_scope.AUTO_REUSE):
               self._cloned_model.compile(
                   optimizer=_replicated_optimizer(self._cloned_optimizer),
                   loss=self.model.loss,
@@ -1024,29 +1026,29 @@ class TPUFunction(object):
           # the Momentum optimizer) when _make_train_function is invoked.
           with keras_tpu_variables.replicated_variable_for_optimizer(
               self._tpu_assignment.num_towers):
-            self._cloned_model._make_train_function()
+            self._cloned_model._make_fit_function()
         else:
-          self._cloned_model._make_train_function()
+          self._cloned_model._make_fit_function()
 
         self._outfeed_spec = [
             tensor_spec.TensorSpec(tensor.shape, tensor.dtype, tensor.name)
-            for tensor in self._cloned_model.train_function.outputs
+            for tensor in self._cloned_model._fit_function.outputs
         ]
         return [
-            self._cloned_model.train_function.updates_op,
+            self._cloned_model._fit_function.updates_op,
             tpu_ops.outfeed_enqueue_tuple(
-                self._cloned_model.train_function.outputs,
+                self._cloned_model._fit_function.outputs,
                 name='outfeed-enqueue-train')
         ]
       elif is_test:
-        self._cloned_model._make_test_function()
+        self._cloned_model._make_eval_function()
         self._outfeed_spec = [
             tensor_spec.TensorSpec(tensor.shape, tensor.dtype, tensor.name)
-            for tensor in self._cloned_model.test_function.outputs
+            for tensor in self._cloned_model._eval_function.outputs
         ]
         return [
             tpu_ops.outfeed_enqueue_tuple(
-                self._cloned_model.test_function.outputs,
+                self._cloned_model._eval_function.outputs,
                 name='outfeed-enqueue-test')
         ]
       elif is_predict:
@@ -1376,6 +1378,8 @@ class KerasTPUModel(models.Model):
     self.predict_function = None
     self.test_function = None
     self.train_function = None
+    self._fit_function = None
+    self._eval_function = None
 
     cluster_resolver = strategy._tpu_cluster_resolver
     self._tpu_name_or_address = cluster_resolver.get_master()
@@ -1994,10 +1998,21 @@ class KerasTPUModel(models.Model):
   def optimizer(self, optimizer):
     self._optimizer = optimizer
 
+  @property
+  def stateful_metric_functions(self):
+    if self._tpu_model:
+      return self._tpu_model.stateful_metric_functions
+    return self._stateful_metric_functions
+
+  @stateful_metric_functions.setter
+  def stateful_metric_functions(self, stateful_metric_functions):
+    self._stateful_metric_functions = stateful_metric_functions
+
   def _make_train_function(self):
     if not self.train_function:
       self.train_function = TPUFunction(
-          self, model_fn_lib.ModeKeys.TRAIN,
+          self,
+          model_fn_lib.ModeKeys.TRAIN,
           tpu_assignment=self._tpu_assignment)
 
     return self.train_function
@@ -2007,6 +2022,21 @@ class KerasTPUModel(models.Model):
       self.test_function = TPUFunction(
           self, model_fn_lib.ModeKeys.EVAL, tpu_assignment=self._tpu_assignment)
     return self.test_function
+
+  def _make_fit_function(self):
+    if not self._fit_function:
+      self._fit_function = TPUFunction(
+          self,
+          model_fn_lib.ModeKeys.TRAIN,
+          tpu_assignment=self._tpu_assignment)
+
+    return self._fit_function
+
+  def _make_eval_function(self):
+    if not self._eval_function:
+      self._eval_function = TPUFunction(
+          self, model_fn_lib.ModeKeys.EVAL, tpu_assignment=self._tpu_assignment)
+    return self._eval_function
 
   def _make_predict_function(self):
     if not self.predict_function:

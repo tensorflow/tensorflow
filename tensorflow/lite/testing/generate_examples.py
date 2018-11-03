@@ -806,6 +806,11 @@ def make_binary_op_tests(zip_path, binary_operator):
       "input_shape_1": [[]],
       "input_shape_2": [[]],
       "activation": [False]
+  }, {
+      "dtype": [tf.float32],
+      "input_shape_1": [[0]],
+      "input_shape_2": [[1]],
+      "activation": [False]
   }]
 
   def build_graph(parameters):

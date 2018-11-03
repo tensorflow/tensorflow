@@ -116,12 +116,12 @@ def toco_convert_protos(model_flags_str, toco_flags_str, input_data_str):
   # TODO(aselle): When toco does not use fatal errors for failure, we can
   # switch this on.
   if not _toco_from_proto_bin:
-    model_str = _toco_python.TocoConvert(model_flags_str, toco_flags_str,
-                                         input_data_str)
-    if not model_str:
-      raise ConverterError(
-          "TOCO returned an empty string. See console for more info.")
-    return model_str
+    try:
+      model_str = _toco_python.TocoConvert(model_flags_str, toco_flags_str,
+                                           input_data_str)
+      return model_str
+    except Exception as e:
+      raise ConverterError("TOCO failed: %s" % e)
 
   # Windows and TemporaryFile are not that useful together,
   # since you cannot have two readers/writers. So we have to

@@ -105,10 +105,6 @@ tf_module {
     mtype: "<class \'google.protobuf.pyext.cpp_message.GeneratedProtocolMessageType\'>"
   }
   member {
-    name: "QUANTIZED_DTYPES"
-    mtype: "<type \'frozenset\'>"
-  }
-  member {
     name: "RegisterGradient"
     mtype: "<type \'type\'>"
   }

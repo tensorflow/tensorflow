@@ -68,6 +68,9 @@ class NodeExecStatsInterface {
   // Called immediately after this executor finishes processing this node.
   virtual void RecordExecutorEnded() = 0;
 
+  // Returns `true` if this object should track memory allocations.
+  virtual bool TrackAllocations() const = 0;
+
   // Records information about the memory allocated during the execution of this
   // node.
   //
@@ -107,6 +110,7 @@ class NodeExecStatsWrapper : public NodeExecStatsInterface {
   void RecordComputeStarted() override;
   void RecordComputeEnded() override;
   void RecordExecutorEnded() override;
+  bool TrackAllocations() const override { return true; }
   void SetMemory(OpKernelContext* ctx) override;
   void SetOutput(int slot, const Tensor* tensor) override;
   void SetReferencedTensors(const TensorReferenceVector& tensors) override;

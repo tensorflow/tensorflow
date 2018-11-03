@@ -177,6 +177,41 @@ class ExportTest(test.TestCase):
         second_loss,
         self._import_and_infer(export_dir, {"x": [[3., 4.]], "y": [2.]}))
 
+  def test_trivial_export_exception(self):
+    export_dir = os.path.join(self.get_temp_dir(), "saved_model")
+    with self.assertRaisesRegexp(ValueError, "signature"):
+      export.export(tracking.Checkpointable(), export_dir)
+
+  def test_single_method_default_signature(self):
+    model = _ModelWithOptimizer()
+    x = constant_op.constant([[3., 4.]])
+    y = constant_op.constant([2.])
+    model(x, y)
+    export_dir = os.path.join(self.get_temp_dir(), "saved_model")
+    export.export(model, export_dir)
+    self.assertIn("loss",
+                  self._import_and_infer(export_dir,
+                                         {"x": [[3., 4.]], "y": [2.]}))
+
+  def test_single_function_default_signature(self):
+    model = tracking.Checkpointable()
+    model.f = def_function.function(lambda: 3., input_signature=())
+    model.f()
+    export_dir = os.path.join(self.get_temp_dir(), "saved_model")
+    export.export(model, export_dir)
+    self.assertAllClose({"output_0": 3.},
+                        self._import_and_infer(export_dir, {}))
+
+  def test_ambiguous_signatures(self):
+    model = _ModelWithOptimizer()
+    x = constant_op.constant([[3., 4.]])
+    y = constant_op.constant([2.])
+    model(x, y)
+    model.second_function = def_function.function(lambda: 1.)
+    export_dir = os.path.join(self.get_temp_dir(), "saved_model")
+    with self.assertRaisesRegexp(ValueError, "call.*second_function"):
+      export.export(model, export_dir)
+
 
 class MemoryTests(test.TestCase):
 

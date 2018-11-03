@@ -170,8 +170,10 @@ cc_library(
         ":graph_view",
         ":grappler_item",
         ":utils",
+        "//tensorflow/core:graph",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
+        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -184,6 +186,7 @@ tf_cc_test(
         "//tensorflow/cc:cc_ops",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
         "//tensorflow/core/grappler/inputs:trivial_test_graph_input_yielder",
     ],
 )

@@ -1806,6 +1806,10 @@ bool HloParser::SetValueInLiteral(tensorflow::int64 value,
     case U64:
       return SetValueInLiteralHelper<tensorflow::uint64>(value, linear_index,
                                                          literal);
+    case PRED:
+      // Bool type literals with rank >= 1 are printed in 0s and 1s.
+      return SetValueInLiteralHelper<bool>(static_cast<bool>(value),
+                                           linear_index, literal);
     default:
       LOG(FATAL) << "unknown integral primitive type "
                  << PrimitiveType_Name(shape.element_type());
@@ -2060,14 +2064,13 @@ bool HloParser::ParseDenseLiteral(Literal* literal, const Shape& shape) {
         }
         if (lexer_.GetKind() == TokKind::kw_true ||
             lexer_.GetKind() == TokKind::kw_false) {
-          // TODO(congliu): bool type literals with rank >= 1 are actually
-          // printed in a compact form instead of "true" or "false". Fix that.
           if (!SetValueInLiteral(lexer_.GetKind() == TokKind::kw_true,
                                  linear_index++, literal)) {
             return false;
           }
           lexer_.Lex();
-        } else if (primitive_util::IsIntegralType(shape.element_type())) {
+        } else if (primitive_util::IsIntegralType(shape.element_type()) ||
+                   shape.element_type() == PRED) {
           LocTy loc = lexer_.GetLoc();
           tensorflow::int64 value;
           if (!ParseInt64(&value)) {

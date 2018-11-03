@@ -75,6 +75,18 @@ ENTRY %constant_pred () -> pred[] {
 
 )"
 },
+// pred array constant
+{
+"ConstantPredArray",
+R"(HloModule module
+
+ENTRY %constant_pred_array () -> pred[2,3] {
+  ROOT %constant = pred[2,3]{1,0} constant(pred[2,3] { { 0, 1, 0 }, { 1, 0, 1 } })
+}
+
+)"
+},
+
 // s32 constant
 {
 "ConstantS32",
