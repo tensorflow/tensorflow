@@ -518,7 +518,7 @@ StatusOr<poplar::program::Program> CreateReluOp(CompilerResources& res,
       inputs, GetInplaceOutputTensors(graph, res, seq, inst, tensor_map));
   CHECK_EQ(inputs.size(), 1);
   poplar::Tensor t = inputs[0];
-  popnn::relu(graph, t, seq, GetDebugName(inst));
+  popnn::reluInPlace(graph, t, seq, GetDebugName(inst));
 
   TF_ASSIGN_OR_RETURN(t, BroadcastTensor(t, output_shape));
 
@@ -562,7 +562,7 @@ StatusOr<poplar::program::Program> CreateSigmoidOp(
   CHECK_EQ(inputs.size(), 1);
   poplar::Tensor t = inputs[0];
 
-  popnn::sigmoid(graph, t, seq, GetDebugName(inst));
+  popnn::sigmoidInPlace(graph, t, seq, GetDebugName(inst));
 
   TF_ASSIGN_OR_RETURN(t, BroadcastTensor(t, output_shape));
 
