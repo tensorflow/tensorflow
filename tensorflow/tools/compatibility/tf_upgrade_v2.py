@@ -72,6 +72,10 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
     })
     # pylint: enable=line-too-long
 
+    # TODO(amitpatankar): Fix the function rename script
+    # to handle constants without hardcoding.
+    self.function_renames["QUANTIZED_DTYPES"] = "dtypes.QUANTIZED_DTYPES"
+
     # Variables that should be changed to functions.
     self.change_to_function = {}
 
