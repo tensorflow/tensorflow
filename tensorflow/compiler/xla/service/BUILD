@@ -3366,6 +3366,7 @@ cc_library(
         ":bfloat16_normalization",
         ":defuser",
         ":hlo",
+        ":hlo_memory_scheduler",
         ":hlo_pass",
         ":hlo_pass_pipeline",
         ":implicit_broadcast_remover",
