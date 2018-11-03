@@ -53,6 +53,7 @@ class KernelTest : public testing::FlexModelTest {
   template <typename T>
   void ConfigureDelegate(T prepare_function) {
     delegate_.data_ = delegate_data_.get();
+    delegate_.flags = kTfLiteDelegateFlagsAllowDynamicTensors;
     delegate_.FreeBufferHandle = nullptr;
     delegate_.Prepare = prepare_function;
     delegate_.CopyFromBufferHandle = [](TfLiteContext* context,
@@ -66,8 +67,7 @@ class KernelTest : public testing::FlexModelTest {
       memcpy(data, values.data(), values.size());
       return kTfLiteOk;
     };
-    CHECK(interpreter_->ModifyGraphWithDelegate(
-              &delegate_, /*allow_dynamic_tensors=*/true) == kTfLiteOk);
+    CHECK(interpreter_->ModifyGraphWithDelegate(&delegate_) == kTfLiteOk);
   }
 
  private:
