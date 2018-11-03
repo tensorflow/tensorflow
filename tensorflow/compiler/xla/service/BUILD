@@ -1362,6 +1362,7 @@ cc_library(
         ":fusion_queue",
         ":hlo",
         ":hlo_pass",
+        ":hlo_reachability",
         "//tensorflow/compiler/xla:util",
         "//tensorflow/core:lib",
         "@com_google_absl//absl/algorithm:container",
