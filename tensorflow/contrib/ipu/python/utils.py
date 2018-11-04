@@ -141,9 +141,44 @@ def set_convolution_options(opts, convolution_options=None):
 
   if (convolution_options is not None):
     for (option_name, value) in convolution_options.items():
-      compilation_option = opts.convolution_options.add()
-      compilation_option.option = option_name
-      compilation_option.value = value
+      opt = opts.convolution_options.add()
+      opt.option = option_name
+      opt.value = value
+
+  return opts
+
+def set_report_options(opts, report_options=None):
+  """Set the options used to influence Poplar report generation.
+
+     The options are added to both the compile and execution report generations.
+
+    ```python
+    opts = create_ipu_config()
+    opts = set_report_options(opts,
+        report_options={"doLayerWiseBreakdown": "false"})
+
+    with tf.Session(config=tf.ConfigProto(ipu_options=opts)) as s:
+      ...
+    ```
+
+  Args:
+    :param opts: An IPUOptions session control protobuf.
+    :param report_options: A dictionary of poplar option flags for the
+                           report generation.
+  Returns:
+
+    :return: The IPUOptions configuration protobuf, with convolution options
+             set.
+  """
+  if not(isinstance(report_options, dict)):
+    raise Exception(
+      "`report_options` must be a dictionary")
+
+  if (report_options is not None):
+    for (option_name, value) in report_options.items():
+      opt = opts.profiling().options().add()
+      opt.option = option_name
+      opt.value = value
 
   return opts
 

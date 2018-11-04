@@ -471,6 +471,17 @@ Status PoplarExecutor::ConfigurePoplarDevice(
     for (const auto& opt : current_config_.convolution_options()) {
       conv_options_.set(opt.option(), opt.value());
     }
+
+    report_options_.set("includeVarStorageReport", "true");
+    report_options_.set("doLayerWiseBreakdown", "true");
+    if (!CompilerReportingTextFormat()) {
+      report_options_.set("doLayerWisePerIPUBreakdown", "true");
+      report_options_.set("doLayerWisePerTileBreakdown", "true");
+    }
+    for (const auto& opt : current_config_.profiling().options()) {
+      report_options_.set(opt.option(), opt.value());
+    }
+
     auto max_compilation_threads = GetMaxCompilationThreads();
     if (max_compilation_threads) {
       option_flags_.set("opt.maxCompilationThreads",
@@ -483,6 +494,10 @@ Status PoplarExecutor::ConfigurePoplarDevice(
 
     conv_options_.list([](const std::string& opt, const std::string& val) {
       VLOG(1) << "Convolution option: " << opt << " = " << val;
+    });
+
+    report_options_.list([](const std::string& opt, const std::string& val) {
+      VLOG(1) << "Report option: " << opt << " = " << val;
     });
 
     // Cache Target hash
@@ -1181,12 +1196,7 @@ StatusOr<se::DeviceMemoryBase> PoplarExecutor::ExecuteEngine(
 
       try {
         if (current_config_.profiling().enable_execution_trace() > 0) {
-          poplar::OptionFlags opts;
-          opts.set("doLayerWiseBreakdown", "true");
-          if (!CompilerReportingTextFormat()) {
-            opts.set("doLayerWisePerIPUBreakdown", "true");
-            opts.set("doLayerWisePerTileBreakdown", "true");
-          }
+          auto& opts = GetReportFlags();
 
           std::stringstream report_stream;
           std::stringstream trace_stream;

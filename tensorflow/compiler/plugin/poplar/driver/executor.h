@@ -242,6 +242,8 @@ class PoplarExecutor : public se::internal::StreamExecutorInterface {
 
   const poplar::OptionFlags& GetOptionsFlags() const { return option_flags_; }
 
+  const poplar::OptionFlags& GetReportFlags() const { return report_options_; }
+
   bool CompilerReportingEnabled() const {
     return current_config_.profiling().enable_compilation_trace();
   }
@@ -459,6 +461,8 @@ class PoplarExecutor : public se::internal::StreamExecutorInterface {
   poplar::OptionFlags option_flags_;
 
   poplar::OptionFlags conv_options_;
+
+  poplar::OptionFlags report_options_;
 
   std::list<TensorControl*> allocations_;
 

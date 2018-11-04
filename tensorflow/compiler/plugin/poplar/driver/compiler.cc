@@ -403,7 +403,7 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::RunBackend(
         map_json =
             GetTensorMappingJson(resources.main_graph, resources.tensor_maps);
 
-        auto opts = poplarExecutor->GetOptionsFlags();
+        auto& opts = poplarExecutor->GetOptionsFlags();
         auto progress_logging = [](int progress, int total) {
           float progress_percent =
               std::floor(100.0f * static_cast<float>(progress) /
@@ -424,8 +424,7 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::RunBackend(
 
     if (engine != nullptr) {
       try {
-        poplar::OptionFlags opts;
-        opts.set("includeVarStorageReport", "true");
+        auto& opts = poplarExecutor->GetReportFlags();
 
         auto rep = engine->getGraphReport(opts);
         if (poplarExecutor->CompilerReportingTextFormat()) {

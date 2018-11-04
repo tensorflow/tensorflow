@@ -158,6 +158,12 @@ message GPUOptions {
 
 message IPUOptions {
 
+  // Structure for setting an idividual Poplar OptionFlag for OptionFlags
+  message PoplarOptionFlag {
+    string option = 1;
+    string value = 2;
+  };
+
   // Options controlling the software IPU model (see IPUModel in poplar)
   message IpuModelConfig {
     bool enable_ipu_model = 1;
@@ -183,6 +189,9 @@ message IPUOptions {
 
     // Report every N'th execution (0=once only)
     int64 report_every_nth_execution = 5;
+
+    // Options for controlling profile report generation
+    repeated PoplarOptionFlag options = 6;
   };
   Profiling profiling = 2;
 
@@ -193,12 +202,6 @@ message IPUOptions {
     ALWAYS_REPEATABLE = 2;
   };
   RandomType random_type = 3;
-
-  // Structure for setting an idividual Poplar OptionFlag for OptionFlags
-  message PoplarOptionFlag {
-    string option = 1;
-    string value = 2;
-  };
 
   // Options to control Poplar compilation
   repeated PoplarOptionFlag compilation_options = 4;
