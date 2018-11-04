@@ -163,6 +163,29 @@ static bool IsLayoutProducer(HloInstPtr inst) {
   return false;
 }
 
+// TODO - fix this.  it needs to take into account the indices of the path
+// from one op to the next. and probably do something to do with in-place ops
+static bool IsPathOk(const std::vector<HloInstPtr>& path) {
+  for (auto* inst : path) {
+    switch (inst->opcode()) {
+      case HloOpcode::kReshape:
+      case HloOpcode::kTranspose:
+        break;
+      case HloOpcode::kCall:
+        if (!IsPopOpsCall(inst, "biasadd")) {
+          return false;
+        }
+        break;
+      default:
+        if (!inst->IsElementwise()) {
+          return false;
+        }
+        break;
+    }
+  }
+  return true;
+};
+
 // TODO - this should probably be in a more central location
 static bool IsLayoutSensitiveTarget(HloInstPtr inst) {
   return IsPopOpsCall(inst, "biasadd");
@@ -231,19 +254,19 @@ StatusOr<bool> ForwardAllocation::Run(HloModule* module) {
               std::accumulate(std::next(itr->second.begin()), itr->second.end(),
                               *(itr->second.begin()), inst_reduction);
 
-
           auto prefix = shortest_path(g, source, target);
           auto suffix = shortest_path(g, layout_producer, target);
+
+          // The paths don't contain the source or target instructions
+          prefix.erase(prefix.begin());
+          prefix.pop_back();
+          suffix.erase(suffix.begin());
+          suffix.pop_back();
 
           auto src = std::make_pair(source, 0);
           auto t = TensorTarget(target, 1, layout_producer, suffix, prefix);
 
-          const auto is_tuple = [](HloInstPtr inst) {
-            return inst->shape().element_type() == TUPLE;
-          };
-
-          if (std::none_of(prefix.begin(), prefix.end(), is_tuple) &&
-              std::none_of(suffix.begin(), suffix.end(), is_tuple)) {
+          if (IsPathOk(prefix) && IsPathOk(suffix)) {
             tensor_allocation_map[src] = t;
           }
         }
