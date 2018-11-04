@@ -15,7 +15,7 @@ limitations under the License.
 
 // See the header for documentation on the meaning of this data.
 
-#include "tensorflow/contrib/lite/experimental/micro/examples/micro_speech/CMSIS/no_30ms_sample_data.h"
+#include "tensorflow/lite/experimental/micro/examples/micro_speech/CMSIS/no_30ms_sample_data.h"
 
 const int g_no_30ms_sample_data_size = 480;
 const int16_t g_no_30ms_sample_data[480] = {

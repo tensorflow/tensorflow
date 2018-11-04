@@ -181,6 +181,9 @@ $(BINDIR)%.test_target: $(BINDIR)%_test
 	$(TEST_SCRIPT) $< '~~~ALL TESTS PASSED~~~'
 
 # snease: Add %.bin rule here since BINDIR is now defined
+# These are microcontroller-specific rules for converting the ELF output
+# of the linker into a binary image that can be loaded directly.
+OBJCOPY := $(TARGET_TOOLCHAIN_PREFIX)objcopy
 $(BINDIR)%.bin: $(BINDIR)%
 	@mkdir -p $(dir $@)
 	$(OBJCOPY) $< $@ -O binary

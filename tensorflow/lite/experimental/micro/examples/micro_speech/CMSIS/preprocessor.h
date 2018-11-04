@@ -16,8 +16,8 @@ limitations under the License.
 #ifndef TENSORFLOW_CONTRIB_LITE_EXPERIMENTAL_MICRO_EXAMPLES_MICRO_SPEECH_PREPROCESSOR_H_
 #define TENSORFLOW_CONTRIB_LITE_EXPERIMENTAL_MICRO_EXAMPLES_MICRO_SPEECH_PREPROCESSOR_H_
 
-#include "tensorflow/contrib/lite/c/c_api_internal.h"
-#include "tensorflow/contrib/lite/experimental/micro/micro_error_reporter.h"
+#include "tensorflow/lite/c/c_api_internal.h"
+#include "tensorflow/lite/experimental/micro/micro_error_reporter.h"
 
 TfLiteStatus Preprocess(tflite::ErrorReporter* error_reporter,
                         const int16_t* input, int input_size, int output_size,
