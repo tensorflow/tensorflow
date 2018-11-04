@@ -111,7 +111,9 @@ py_library(
         "//tensorflow/contrib/util:util_py",
         "//tensorflow/python:util",
         "//tensorflow/python/estimator:estimator_py",
-    ] + if_mpi(["//tensorflow/contrib/mpi_collectives:mpi_collectives_py"]) + select({
+    ] + if_not_windows_cuda([
+        "//tensorflow/contrib/image_pipe:setup_py"
+    ]) + if_mpi(["//tensorflow/contrib/mpi_collectives:mpi_collectives_py"]) + select({
         "//tensorflow:android": [],
         "//tensorflow:ios": [],
         "//tensorflow:linux_s390x": [],
