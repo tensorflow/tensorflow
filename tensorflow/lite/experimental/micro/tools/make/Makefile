@@ -180,6 +180,11 @@ $(BINDIR)%_test : $(OBJDIR)%_test.o $(MICROLITE_LIB_PATH)
 $(BINDIR)%.test_target: $(BINDIR)%_test
 	$(TEST_SCRIPT) $< '~~~ALL TESTS PASSED~~~'
 
+# snease: Add %.bin rule here since BINDIR is now defined
+$(BINDIR)%.bin: $(BINDIR)%
+	@mkdir -p $(dir $@)
+	$(OBJCOPY) $< $@ -O binary
+
 $(info $(MICROLITE_TEST_TARGETS))
 
 test: test_micro_speech $(MICROLITE_TEST_TARGETS)

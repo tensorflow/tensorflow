@@ -4,10 +4,10 @@ ifeq ($(TARGET), apollo3evb)
   TARGET_TOOLCHAIN_PREFIX := arm-none-eabi-
   # Download the Ambiq Apollo3 SDK and set this variable to find the header
   # files:
-  APOLLO3_SDK := /ssd/ambiq/AmbiqSuite\ SDK\ for\ Apollo3/Apollo3-SDK-2018.08.13/
+  APOLLO3_SDK := /home/snease/work/Apollo3-SDK-2018.08.13
   # Need a pointer to the GNU ARM toolchain for crtbegin.o for the fp functions
   # with the softfp interfaces.
-  GCC_ARM := /ssd/gnu_arm_toolchain/gcc-arm-none-eabi-7-2018-q2-update/
+  GCC_ARM := /home/snease/work/gcc-arm-none-eabi-7-2018-q2-update/
 
   PLATFORM_FLAGS = \
     -DPART_apollo3 \
@@ -16,6 +16,7 @@ ifeq ($(TARGET), apollo3evb)
     -DGEMMLOWP_ALLOW_SLOW_SCALAR_FALLBACK \
     -DTF_LITE_STATIC_MEMORY \
     -DTF_LITE_MCU_DEBUG_LOG \
+    -D __FPU_PRESENT=1 \
     -fno-rtti \
     -fmessage-length=0 \
     -fno-exceptions \
@@ -28,7 +29,7 @@ ifeq ($(TARGET), apollo3evb)
     -mcpu=cortex-m4 \
     -mthumb \
     -mfpu=fpv4-sp-d16 \
-    -mfloat-abi=softfp \
+    -mfloat-abi=softfp\
     -std=gnu++11 \
     -Wvla \
     -Wall \
@@ -46,7 +47,7 @@ ifeq ($(TARGET), apollo3evb)
   CXXFLAGS += $(PLATFORM_FLAGS)
   CCFLAGS += $(PLATFORM_FLAGS)
   LDFLAGS += \
-    -mthumb -mcpu=cortex-m4 -mfpu=fpv4-sp-d16 -mfloat-abi=softfp \
+    -mthumb -mcpu=cortex-m4 -mfpu=fpv4-sp-d16 -mfloat-abi=softfp\
     -nostartfiles -static \
     -Wl,--gc-sections -Wl,--entry,Reset_Handler \
     -Wl,--start-group -lm -lc -lgcc -Wl,--end-group \
@@ -59,10 +60,12 @@ ifeq ($(TARGET), apollo3evb)
   MICROLITE_LIBS := \
     $(MAKEFILE_DIR)/targets/apollo3evb/libam_bsp.a \
     $(MAKEFILE_DIR)/targets/apollo3evb/libam_hal.a \
+    $(MAKEFILE_DIR)/downloads/cmsis/CMSIS/Lib/GCC/libarm_cortexM4lf_math_softfp.a \
     $(GCC_ARM)/lib/gcc/arm-none-eabi/7.3.1/thumb/v7e-m/fpv4-sp/softfp/crtbegin.o \
     -lm
   INCLUDES += \
     -isystem$(MAKEFILE_DIR)/downloads/cmsis/CMSIS/Core/Include/ \
+    -isystem$(MAKEFILE_DIR)/downloads/cmsis/CMSIS/DSP/Include/ \
     -I$(GCC_ARM)/arm-none-eabi/ \
     -I$(APOLLO3_SDK)/mcu/apollo3/ \
     -I$(APOLLO3_SDK)/CMSIS/AmbiqMicro/Include/ \
@@ -86,19 +89,21 @@ ifeq ($(TARGET), apollo3evb)
     $(MAKEFILE_DIR)/targets/apollo3evb/am_util_id.c \
     $(MAKEFILE_DIR)/targets/apollo3evb/am_util_stdio.c
 
-  TEST_SCRIPT := tensorflow/lite/experimental/log_test/test_apollo3evb_binary.sh
+  TEST_SCRIPT := tensorflow/contrib/lite/experimental/log_test/test_apollo3evb_binary.sh
   # These are tests that don't currently work on the blue pill.
   EXCLUDED_TESTS := \
-    tensorflow/lite/experimental/micro/micro_interpreter_test.cc \
-    tensorflow/lite/experimental/micro/simple_tensor_allocator_test.cc
+    tensorflow/contrib/lite/experimental/micro/micro_interpreter_test.cc \
+    tensorflow/contrib/lite/experimental/micro/simple_tensor_allocator_test.cc
   MICROLITE_TEST_SRCS := $(filter-out $(EXCLUDED_TESTS), $(MICROLITE_TEST_SRCS))
 
 # These are microcontroller-specific rules for converting the ELF output
 # of the linker into a binary image that can be loaded directly.
 OBJCOPY := $(TARGET_TOOLCHAIN_PREFIX)objcopy
 
-$(BINDIR)/%.bin: $(BINDIR)/%
-	@mkdir -p $(dir $@)
-	$(OBJCOPY) $< $@ -O binary
+# BINDIR isn't defined yet
+# Put this at the end of the main makefile
+# $(BINDIR)/%.bin: $(BINDIR)/%
+# @mkdir -p $(dir $@)
+# $(OBJCOPY) $< $@ -O binary
 
 endif
