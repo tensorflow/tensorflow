@@ -420,12 +420,13 @@ int EagerTensor_init(EagerTensor* self, PyObject* args, PyObject* kwds) {
       if (TF_GetCode(self->status) != TF_OK) {
         PyErr_SetString(
             PyExc_TypeError,
-            tensorflow::strings::StrCat("Error while casting from DataType ",
-                                        tensorflow::DataTypeString(static_cast<tensorflow::DataType>(handle_dtype)),
-                                        " to ",
-                                        tensorflow::DataTypeString(static_cast<tensorflow::DataType>(desired_dtype)),
-                                        ". ",
-                                        TF_Message(self->status))
+            tensorflow::strings::StrCat(
+                "Error while casting from DataType ",
+                tensorflow::DataTypeString(
+                    static_cast<tensorflow::DataType>(handle_dtype)),
+                " to ", tensorflow::DataTypeString(
+                            static_cast<tensorflow::DataType>(desired_dtype)),
+                ". ", TF_Message(self->status))
                 .c_str());
         // Cleanup self->status before returning.
         TF_SetStatus(self->status, TF_OK, "");
