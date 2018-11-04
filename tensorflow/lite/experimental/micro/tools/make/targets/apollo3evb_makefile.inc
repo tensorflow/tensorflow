@@ -4,10 +4,10 @@ ifeq ($(TARGET), apollo3evb)
   TARGET_TOOLCHAIN_PREFIX := arm-none-eabi-
   # Download the Ambiq Apollo3 SDK and set this variable to find the header
   # files:
-  APOLLO3_SDK := /home/snease/work/Apollo3-SDK-2018.08.13
+  APOLLO3_SDK := ../Apollo3-SDK-2018.08.13
   # Need a pointer to the GNU ARM toolchain for crtbegin.o for the fp functions
   # with the softfp interfaces.
-  GCC_ARM := /home/snease/work/gcc-arm-none-eabi-7-2018-q2-update/
+  GCC_ARM := ../gcc-arm-none-eabi-7-2018-q2-update/
 
   PLATFORM_FLAGS = \
     -DPART_apollo3 \
@@ -73,6 +73,8 @@ ifeq ($(TARGET), apollo3evb)
     -I$(APOLLO3_SDK)/devices/ \
     -I$(APOLLO3_SDK)/utils/
 
+$(warning INCLUDES IS $(INCLUDES))
+
   # The startup_gcc.c file is an altered version of the examples/hello_world/gcc/startup_gcc.c
   # file from Ambiq:
   #   - Increase the stack size from 1k to 20k
@@ -95,15 +97,5 @@ ifeq ($(TARGET), apollo3evb)
     tensorflow/contrib/lite/experimental/micro/micro_interpreter_test.cc \
     tensorflow/contrib/lite/experimental/micro/simple_tensor_allocator_test.cc
   MICROLITE_TEST_SRCS := $(filter-out $(EXCLUDED_TESTS), $(MICROLITE_TEST_SRCS))
-
-# These are microcontroller-specific rules for converting the ELF output
-# of the linker into a binary image that can be loaded directly.
-OBJCOPY := $(TARGET_TOOLCHAIN_PREFIX)objcopy
-
-# BINDIR isn't defined yet
-# Put this at the end of the main makefile
-# $(BINDIR)/%.bin: $(BINDIR)/%
-# @mkdir -p $(dir $@)
-# $(OBJCOPY) $< $@ -O binary
 
 endif

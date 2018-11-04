@@ -19,10 +19,10 @@ extern "C" {
   #define BIT_REVERSE_FLAG 1
   #define FFT_SIZE 512
   #include <arm_math.h>
-  #include "tensorflow/contrib/lite/experimental/micro/examples/micro_speech/CMSIS/hann.h"
+  #include "tensorflow/lite/experimental/micro/examples/micro_speech/CMSIS/hann.h"
 }
 
-  #include "tensorflow/contrib/lite/experimental/micro/examples/micro_speech/CMSIS/preprocessor.h"
+  #include "tensorflow/lite/experimental/micro/examples/micro_speech/CMSIS/preprocessor.h"
 
 q15_t bufA[FFT_SIZE];
 q15_t bufB[FFT_SIZE];
