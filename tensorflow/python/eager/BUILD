@@ -18,7 +18,7 @@ cc_library(
         "pywrap_tfe.h",
     ],
     visibility = [
-        "//learning/deepmind/courier:__pkg__",
+        "//learning/deepmind/courier:__subpackages__",
         "//tensorflow:internal",
     ],
     deps = [
