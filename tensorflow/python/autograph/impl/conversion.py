@@ -192,8 +192,7 @@ def class_to_graph(c, program_ctx):
         program_ctx=program_ctx,
         arg_values={},
         arg_types={'self': (c.__name__, c)},
-        owner_type=c,
-        rewrite_errors=False)
+        owner_type=c)
     if class_namespace is None:
       class_namespace = namespace
     else:
@@ -282,8 +281,7 @@ def function_to_graph(f,
                       program_ctx,
                       arg_values,
                       arg_types,
-                      owner_type=None,
-                      rewrite_errors=True):
+                      owner_type=None):
   """Specialization of `entity_to_graph` for callable functions."""
 
   node, source = parser.parse_entity(f)
@@ -302,7 +300,7 @@ def function_to_graph(f,
       arg_types=arg_types,
       owner_type=owner_type)
   context = converter.EntityContext(namer, entity_info, program_ctx)
-  node = node_to_graph(node, context, rewrite_errors=rewrite_errors)
+  node = node_to_graph(node, context)
 
   # TODO(mdan): This somewhat duplicates the call rename logic in call_trees.py
   new_name, did_rename = namer.compiled_function_name(f.__name__, f, owner_type)
@@ -318,13 +316,12 @@ def function_to_graph(f,
   return [node], new_name, namespace
 
 
-def node_to_graph(node, context, rewrite_errors=True):
+def node_to_graph(node, context):
   """Convert Python code to equivalent TF graph mode code.
 
   Args:
     node: AST, the code to convert.
     context: converter.EntityContext
-    rewrite_errors: Boolean, whether or not to rewrite the error traceback.
 
   Returns:
     A tuple (node, deps):
@@ -362,6 +359,5 @@ def node_to_graph(node, context, rewrite_errors=True):
   if context.program.options.uses(converter.Feature.AUTO_CONTROL_DEPS):
     node = converter.apply_(node, context, side_effect_guards)
   node = converter.apply_(node, context, function_scopes)
-  if rewrite_errors:
-    node = converter.apply_(node, context, error_handlers)
+  node = converter.apply_(node, context, error_handlers)
   return node
