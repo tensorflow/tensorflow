@@ -15,7 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/framework/op_kernel.h"
 
-#include <mutex>
+#include <mutex>  // NOLINT
 #include <unordered_map>
 #include <utility>
 #include <vector>
@@ -286,6 +286,13 @@ OpKernelContext::~OpKernelContext() {
     }
   }
   if (params_->record_tensor_accesses) referenced_tensors_.Destroy();
+  if (params_->track_allocations && !wrapped_allocators_.empty()) {
+    LOG(WARNING) << "OpKernelContext is tracking allocations but they are not "
+                 << "being consumed by the StepStatsCollector.";
+    for (auto& wrapped_alloator : wrapped_allocators_) {
+      wrapped_alloator.second->GetRecordsAndUnRef();
+    }
+  }
 }
 
 Allocator* OpKernelContext::get_allocator(AllocatorAttributes attr) {
