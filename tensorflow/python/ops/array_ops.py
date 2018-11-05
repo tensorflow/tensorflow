@@ -1160,7 +1160,7 @@ def boolean_mask(tensor, mask, name="boolean_mask", axis=None):
   """Apply boolean mask to tensor.  Numpy equivalent is `tensor[mask]`.
 
   ```python
-  # 1-D example
+  # 1-D example (Run this code in eager mode)
   tensor = [0, 1, 2, 3]
   mask = np.array([True, False, True, False])
   tf.boolean_mask(tensor, mask).numpy()  
@@ -1174,7 +1174,7 @@ def boolean_mask(tensor, mask, name="boolean_mask", axis=None):
   For example:
 
   ```python
-  # 3-D tensor and 2-D mask
+  # 3-D tensor and 2-D mask (Run this code in eager mode)
   tensor = [[[1, 2],
              [3, 4]],
             [[5, 6],
