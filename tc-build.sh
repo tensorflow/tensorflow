@@ -32,7 +32,7 @@ pushd ${DS_ROOT_TASK}/DeepSpeech/tf/
 
     # Pure amd64 CPU-only build
     if [ "${build_cuda}" = "no" -a "${build_arm}" = "no" -a "${build_arm64}" = "no" ]; then
-        echo "" | ./configure && ${BAZEL_BUILD} -c opt ${BAZEL_OPT_FLAGS} ${BAZEL_EXTRA_FLAGS} ${BUILD_TARGET_LIB_CPP_API} ${BUILD_TARGET_GRAPH_TRANSFORMS} ${BUILD_TARGET_GRAPH_SUMMARIZE} ${BUILD_TARGET_GRAPH_BENCHMARK} ${BUILD_TARGET_CONVERT_MMAP} ${BUILD_TARGET_TOCO}
+        echo "" | ./configure && ${BAZEL_BUILD} -c opt ${BAZEL_OPT_FLAGS} ${BAZEL_EXTRA_FLAGS} ${BUILD_TARGET_LIB_CPP_API} ${BUILD_TARGET_GRAPH_TRANSFORMS} ${BUILD_TARGET_GRAPH_SUMMARIZE} ${BUILD_TARGET_GRAPH_BENCHMARK} ${BUILD_TARGET_CONVERT_MMAP} ${BUILD_TARGET_TOCO} ${BUILD_TARGET_LITE_BENCHMARK}
     fi
 
     # Cross RPi3 CPU-only build
