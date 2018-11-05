@@ -172,6 +172,11 @@ class InitializableLookupTableBase(LookupInterface):
     return self._init_op
 
   @property
+  @deprecated("2018-12-15", "Use `initializer` instead.")
+  def init(self):
+    return self.initializer
+
+  @property
   def default_value(self):
     """The default value of the table."""
     return self._default_value
@@ -829,6 +834,11 @@ class IdTableWithHashBuckets(LookupInterface):
       return self._table._init_op  # pylint: disable=protected-access
     with ops.name_scope(None, "init"):
       return control_flow_ops.no_op()
+
+  @property
+  @deprecated("2018-12-15", "Use `initializer` instead.")
+  def init(self):
+    return self.initializer
 
   @property
   def resource_handle(self):
