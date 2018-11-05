@@ -184,16 +184,16 @@ class InspectUtilsTest(test.TestCase):
     test_obj = TestClass()
     self.assertEqual(
         inspect_utils.getmethodclass(test_obj.member_function),
-        TestClass)
+        test_obj)
     self.assertEqual(
         inspect_utils.getmethodclass(test_obj.decorated_member),
-        TestClass)
+        test_obj)
     self.assertEqual(
         inspect_utils.getmethodclass(test_obj.fn_decorated_member),
-        TestClass)
+        test_obj)
     self.assertEqual(
         inspect_utils.getmethodclass(test_obj.wrap_decorated_member),
-        TestClass)
+        test_obj)
     self.assertEqual(
         inspect_utils.getmethodclass(test_obj.static_method),
         TestClass)
@@ -242,16 +242,16 @@ class InspectUtilsTest(test.TestCase):
     test_obj = LocalClass()
     self.assertEqual(
         inspect_utils.getmethodclass(test_obj.member_function),
-        LocalClass)
+        test_obj)
     self.assertEqual(
         inspect_utils.getmethodclass(test_obj.decorated_member),
-        LocalClass)
+        test_obj)
     self.assertEqual(
         inspect_utils.getmethodclass(test_obj.fn_decorated_member),
-        LocalClass)
+        test_obj)
     self.assertEqual(
         inspect_utils.getmethodclass(test_obj.wrap_decorated_member),
-        LocalClass)
+        test_obj)
 
   def test_getmethodclass_callables(self):
     class TestCallable(object):
