@@ -441,8 +441,8 @@ class Bidirectional(Wrapper):
 
   @tf_utils.shape_type_conversion
   def compute_output_shape(self, input_shape):
-    forward_layer_output_shape \
-      = self.forward_layer.compute_output_shape(input_shape)
+    forward_layer_output_shape = self.forward_layer.compute_output_shape(
+        input_shape)
     if getattr(forward_layer_output_shape, 'as_list', None) is None:
       output_shape = tuple(forward_layer_output_shape)
     else:
