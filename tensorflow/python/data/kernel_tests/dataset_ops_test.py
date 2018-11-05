@@ -226,7 +226,8 @@ class DatasetOpsTest(test_base.DatasetTestBase, parameterized.TestCase):
     ds = dataset_ops.Dataset.range(0).with_options(options1).with_options(
         options2)
     self.assertTrue(ds.options().experimental_autotune)
-    self.assertFalse(ds.options().experimental_filter_fusion)
+    # Explicitly check that flag is False since assertFalse allows None
+    self.assertIs(ds.options().experimental_filter_fusion, False)
 
   def testOptionsTwiceDifferentError(self):
     options1 = dataset_ops.Options()
@@ -236,6 +237,17 @@ class DatasetOpsTest(test_base.DatasetTestBase, parameterized.TestCase):
     with self.assertRaisesRegexp(ValueError,
                                  "Cannot merge incompatible values of option"):
       dataset_ops.Dataset.range(0).with_options(options1).with_options(options2)
+
+  def testOptionsMergeOptionsFromMultipleInputs(self):
+    options1 = dataset_ops.Options()
+    options1.experimental_autotune = True
+    options2 = dataset_ops.Options()
+    options2.experimental_filter_fusion = True
+    ds = dataset_ops.Dataset.zip(
+        (dataset_ops.Dataset.range(0).with_options(options1),
+         dataset_ops.Dataset.range(0).with_options(options2)))
+    self.assertTrue(ds.options().experimental_autotune)
+    self.assertTrue(ds.options().experimental_filter_fusion)
 
 
 if __name__ == "__main__":
