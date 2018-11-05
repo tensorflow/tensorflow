@@ -15,9 +15,9 @@ limitations under the License.
 
 #include "tensorflow/lite/experimental/micro/examples/micro_speech/CMSIS/preprocessor.h"
 #include "tensorflow/lite/c/c_api_internal.h"
-#include "tensorflow/lite/experimental/micro/examples/micro_speech/CMSIS/no_30ms_sample_data.h"
+#include "tensorflow/lite/experimental/micro/examples/micro_speech/no_30ms_sample_data.h"
 #include "tensorflow/lite/experimental/micro/examples/micro_speech/CMSIS/no_power_spectrum_data.h"
-#include "tensorflow/lite/experimental/micro/examples/micro_speech/CMSIS/yes_30ms_sample_data.h"
+#include "tensorflow/lite/experimental/micro/examples/micro_speech/yes_30ms_sample_data.h"
 #include "tensorflow/lite/experimental/micro/examples/micro_speech/CMSIS/yes_power_spectrum_data.h"
 #include "tensorflow/lite/experimental/micro/micro_error_reporter.h"
 #include "tensorflow/lite/experimental/micro/testing/micro_test.h"
