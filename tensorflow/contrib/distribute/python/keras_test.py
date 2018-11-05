@@ -602,7 +602,7 @@ class TestDistributionStrategyWithDatasets(test.TestCase,
       user_controlled_model.compile(
           gradient_descent.GradientDescentOptimizer(0.001),
           loss='mse',
-          metrics=['mae'],
+          metrics=['mae', keras.metrics.CategoricalAccuracy()],
           distribute=distribution)
 
       interleaved_model = get_model()
@@ -610,7 +610,7 @@ class TestDistributionStrategyWithDatasets(test.TestCase,
       interleaved_model.compile(
           gradient_descent.GradientDescentOptimizer(0.001),
           loss='mse',
-          metrics=['mae'],
+          metrics=['mae', keras.metrics.CategoricalAccuracy()],
           distribute=distribution)
 
       dataset = get_dataset(distribution)
@@ -632,7 +632,8 @@ class TestDistributionStrategyWithDatasets(test.TestCase,
                        [x[0] for x in user_controlled_output])
       self.assertEqual(interleaved_output.history['val_mean_absolute_error'],
                        [x[1] for x in user_controlled_output])
-      # TODO(sourabhbajaj): Add an stateful metric here and verify support.
+      self.assertEqual(interleaved_output.history['val_categorical_accuracy'],
+                       [x[2] for x in user_controlled_output])
 
   # TODO(priyag): Enable this test for TPU. Currently tuples/dict don't work
   # as clone_model's input_tensors argument only seems to accept list and not
