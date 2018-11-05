@@ -29,7 +29,7 @@ ifeq ($(TARGET), apollo3evb)
     -mcpu=cortex-m4 \
     -mthumb \
     -mfpu=fpv4-sp-d16 \
-    -mfloat-abi=softfp\
+    -mfloat-abi=softfp \
     -std=gnu++11 \
     -Wvla \
     -Wall \
@@ -47,7 +47,7 @@ ifeq ($(TARGET), apollo3evb)
   CXXFLAGS += $(PLATFORM_FLAGS)
   CCFLAGS += $(PLATFORM_FLAGS)
   LDFLAGS += \
-    -mthumb -mcpu=cortex-m4 -mfpu=fpv4-sp-d16 -mfloat-abi=softfp\
+    -mthumb -mcpu=cortex-m4 -mfpu=fpv4-sp-d16 -mfloat-abi=softfp \
     -nostartfiles -static \
     -Wl,--gc-sections -Wl,--entry,Reset_Handler \
     -Wl,--start-group -lm -lc -lgcc -Wl,--end-group \
@@ -89,11 +89,11 @@ ifeq ($(TARGET), apollo3evb)
     $(MAKEFILE_DIR)/targets/apollo3evb/am_util_id.c \
     $(MAKEFILE_DIR)/targets/apollo3evb/am_util_stdio.c
 
-  TEST_SCRIPT := tensorflow/contrib/lite/experimental/log_test/test_apollo3evb_binary.sh
+  TEST_SCRIPT := tensorflow/lite/experimental/log_test/test_apollo3evb_binary.sh
   # These are tests that don't currently work on the blue pill.
   EXCLUDED_TESTS := \
-    tensorflow/contrib/lite/experimental/micro/micro_interpreter_test.cc \
-    tensorflow/contrib/lite/experimental/micro/simple_tensor_allocator_test.cc
+    tensorflow/lite/experimental/micro/micro_interpreter_test.cc \
+    tensorflow/lite/experimental/micro/simple_tensor_allocator_test.cc
   MICROLITE_TEST_SRCS := $(filter-out $(EXCLUDED_TESTS), $(MICROLITE_TEST_SRCS))
 
 endif
