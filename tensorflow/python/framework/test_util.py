@@ -1670,9 +1670,16 @@ class TensorFlowTestCase(googletest.TestCase):
     msg = msg if msg else ""
     a = self._GetNdArray(a)
     b = self._GetNdArray(b)
-    self.assertEqual(
-        a.shape, b.shape, "Shape mismatch: expected %s, got %s."
-        " %s" % (a.shape, b.shape, msg))
+    # Arbitrary bounds so that we don't print giant tensors.
+    if (b.ndim <= 3 or b.size < 500):
+      self.assertEqual(
+          a.shape, b.shape, "Shape mismatch: expected %s, got %s."
+          " Contents: %s. \n%s." % (a.shape, b.shape, b, msg))
+    else:
+      self.assertEqual(
+          a.shape, b.shape, "Shape mismatch: expected %s, got %s."
+          " %s" % (a.shape, b.shape, msg))
+
     same = (a == b)
 
     if (a.dtype in [
