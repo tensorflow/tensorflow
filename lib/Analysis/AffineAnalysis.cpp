@@ -216,11 +216,13 @@ public:
   void visitDimExpr(AffineDimExpr expr) {
     operandExprStack.emplace_back(SmallVector<int64_t, 32>(getNumCols(), 0));
     auto &eq = operandExprStack.back();
+    assert(expr.getPosition() < numDims && "Inconsistent number of dims");
     eq[getDimStartIndex() + expr.getPosition()] = 1;
   }
   void visitSymbolExpr(AffineSymbolExpr expr) {
     operandExprStack.emplace_back(SmallVector<int64_t, 32>(getNumCols(), 0));
     auto &eq = operandExprStack.back();
+    assert(expr.getPosition() < numSymbols && "inconsistent number of symbols");
     eq[getSymbolStartIndex() + expr.getPosition()] = 1;
   }
   void visitConstantExpr(AffineConstantExpr expr) {
@@ -283,6 +285,8 @@ private:
       bound[bound.size() - 1] = -(rhsConst - 1);
       cst.addLowerBound(lhs, bound);
     }
+    // Set the expression on stack to the local var introduced to capture the
+    // result of the division (floor or ceil).
     std::fill(lhs.begin(), lhs.end(), 0);
     lhs[getLocalVarStartIndex() + numLocals - 1] = 1;
   }
@@ -420,29 +424,17 @@ void mlir::forwardSubstituteReachableOps(AffineValueMap *valueMap) {
 // TODO(andydavis) Handle non-unit Step by adding local variable
 // (iv - lb % step = 0 introducing a method in FlatAffineConstraints
 // setExprStride(ArrayRef<int64_t> expr, int64_t stride)
-static bool addForStmtBounds(unsigned numDims,
-                             ArrayRef<const MLValue *> forStmts,
-                             FlatAffineConstraints *domain) {
-  assert(forStmts.size() >= numDims);
-  unsigned numIds = forStmts.size();
-  // Add InEqualties for loop bounds.
-  SmallVector<int64_t, 4> ineq;
-  ineq.resize(numIds + 1);
-  for (unsigned i = 0; i < numDims; ++i) {
-    const ForStmt *forStmt = dyn_cast<ForStmt>(forStmts[i]);
+bool mlir::addIndexSet(ArrayRef<const MLValue *> indices,
+                       FlatAffineConstraints *domain) {
+  unsigned numIds = indices.size();
+  for (unsigned i = 0; i < numIds; ++i) {
+    const ForStmt *forStmt = dyn_cast<ForStmt>(indices[i]);
     if (!forStmt || !forStmt->hasConstantBounds())
       return false;
-    // Zero fill
-    std::fill(ineq.begin(), ineq.end(), 0);
-    // TODO(andydavis, bondhugula) Add methods for addUpper/LowerBound.
     // Add inequality for lower bound.
-    ineq[i] = 1;
-    ineq[numIds] = -forStmt->getConstantLowerBound();
-    domain->addInequality(ineq);
+    domain->addConstantLowerBound(i, forStmt->getConstantLowerBound());
     // Add inequality for upper bound.
-    ineq[i] = -1;
-    ineq[numIds] = forStmt->getConstantUpperBound();
-    domain->addInequality(ineq);
+    domain->addConstantUpperBound(i, forStmt->getConstantUpperBound());
   }
   return true;
 }
@@ -476,13 +468,13 @@ struct IterationDomainContext {
 // TODO(andydavis) Capture the context of the symbols. For example, check
 // if a symbol is the result of a constant operation, and set the symbol to
 // that value in FlatAffineConstraints (using setIdToConstant).
-static bool getIterationDomainContext(const OperationStmt *opStmt,
-                                      IterationDomainContext *ctx) {
+bool getIterationDomainContext(const Statement *stmt,
+                               IterationDomainContext *ctx) {
   // Walk up tree storing parent statements in 'loops'.
   // TODO(andydavis) Extend this to gather enclosing IfStmts and consider
   // factoring it out into a utility function.
   SmallVector<const ForStmt *, 4> loops;
-  const auto *currStmt = opStmt->getParentStmt();
+  const auto *currStmt = stmt->getParentStmt();
   while (currStmt != nullptr) {
     if (isa<IfStmt>(currStmt))
       return false;
@@ -510,7 +502,7 @@ static bool getIterationDomainContext(const OperationStmt *opStmt,
                     /*newNumReservedEqualities=*/0,
                     /*newNumReservedCols=*/numDims + numSymbols + 1, numDims,
                     numSymbols);
-  return addForStmtBounds(numDims, ctx->values, &ctx->domain);
+  return addIndexSet(ctx->values, &ctx->domain);
 }
 
 // Builds a map from MLValue to identifier position in a new merged identifier

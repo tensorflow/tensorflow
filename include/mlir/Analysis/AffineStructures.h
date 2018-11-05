@@ -456,6 +456,23 @@ public:
   /// Clears this list of constraints and copies other into it.
   void clearAndCopyFrom(const FlatAffineConstraints &other);
 
+  /// Returns the constant lower bound of the specified identifier (through a
+  /// scan through the constraints); returns None if the bound isn't trivially a
+  /// constant.
+  Optional<int64_t> getConstantLowerBound(unsigned pos);
+
+  /// Returns the constant upper bound of the specified identifier (through a
+  /// scan through the constraints); returns None if the bound isn't trivially a
+  /// constant.
+  Optional<int64_t> getConstantUpperBound(unsigned pos);
+
+  // Returns the lower and upper bounds of the specified dimensions as
+  // AffineMap's. Returns false for the unimplemented cases for the moment.
+  bool getDimensionBounds(unsigned pos, unsigned num,
+                          SmallVectorImpl<AffineMap> *lbs,
+                          SmallVectorImpl<AffineMap> *ubs,
+                          MLIRContext *context);
+
   // More expensive ones.
   void removeDuplicates();
 

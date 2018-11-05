@@ -37,6 +37,7 @@ class MLIRContext;
 class FlatAffineConstraints;
 class MLValue;
 class OperationStmt;
+class Statement;
 
 /// Simplify an affine expression through flattening and some amount of
 /// simple analysis. This has complexity linear in the number of nodes in
@@ -65,6 +66,11 @@ bool getFlattenedAffineExpr(AffineExpr expr, unsigned numDims,
                             unsigned numSymbols,
                             llvm::SmallVectorImpl<int64_t> *flattenedExpr,
                             FlatAffineConstraints *cst = nullptr);
+
+/// Adds constraints capturing the index set of the ML values in indices to
+/// 'domain'.
+bool addIndexSet(llvm::ArrayRef<const MLValue *> indices,
+                 FlatAffineConstraints *domain);
 
 /// Checks whether two accesses to the same memref access the same element.
 /// Each access is specified using the MemRefAccess structure, which contains

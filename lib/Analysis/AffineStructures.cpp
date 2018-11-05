@@ -578,7 +578,6 @@ void FlatAffineConstraints::addSymbolId(unsigned pos) {
 /// Adds a dimensional identifier. The added column is initialized to
 /// zero.
 void FlatAffineConstraints::addId(IdKind kind, unsigned pos) {
-  assert(pos >= 0);
   if (kind == IdKind::Dimension) {
     assert(pos <= getNumDimIds());
   } else if (kind == IdKind::Symbol) {
@@ -645,7 +644,7 @@ void FlatAffineConstraints::addId(IdKind kind, unsigned pos) {
 void FlatAffineConstraints::composeMap(AffineValueMap *vMap, unsigned pos) {
   assert(vMap->getNumOperands() == getNumIds() && "inconsistent map");
   assert(vMap->getNumDims() == getNumDimIds() && "inconsistent map");
-  assert(pos >= 0 && pos <= getNumIds() && "invalid position");
+  assert(pos <= getNumIds() && "invalid position");
 
   AffineMap map = vMap->getAffineMap();
 
@@ -1003,7 +1002,7 @@ void FlatAffineConstraints::addInequality(ArrayRef<int64_t> inEq) {
 }
 
 void FlatAffineConstraints::addConstantLowerBound(unsigned pos, int64_t lb) {
-  assert(pos >= 0 && pos < getNumCols());
+  assert(pos < getNumCols());
   unsigned offset = inequalities.size();
   inequalities.resize(inequalities.size() + numReservedCols);
   std::fill(inequalities.begin() + offset,
@@ -1013,7 +1012,7 @@ void FlatAffineConstraints::addConstantLowerBound(unsigned pos, int64_t lb) {
 }
 
 void FlatAffineConstraints::addConstantUpperBound(unsigned pos, int64_t ub) {
-  assert(pos >= 0 && pos < getNumCols());
+  assert(pos < getNumCols());
   unsigned offset = inequalities.size();
   inequalities.resize(inequalities.size() + numReservedCols);
   std::fill(inequalities.begin() + offset,
@@ -1095,6 +1094,80 @@ void FlatAffineConstraints::removeEquality(unsigned pos) {
   equalities.resize(equalities.size() - numReservedCols);
 }
 
+bool FlatAffineConstraints::getDimensionBounds(unsigned pos, unsigned num,
+                                               SmallVectorImpl<AffineMap> *lbs,
+                                               SmallVectorImpl<AffineMap> *ubs,
+                                               MLIRContext *context) {
+  assert(pos + num < getNumCols());
+
+  // Only constant dim bounds for now.
+  projectOut(0, pos);
+  projectOut(pos + num, getNumIds() - num);
+
+  lbs->resize(num, AffineMap::Null());
+  ubs->resize(num, AffineMap::Null());
+
+  for (int i = static_cast<int>(num) - 1; i >= 0; i--) {
+    auto lb = getConstantLowerBound(i);
+    auto ub = getConstantUpperBound(i);
+    // TODO(mlir-team): handle arbitrary bounds.
+    if (!lb.hasValue() || !ub.hasValue())
+      return false;
+    (*lbs)[i] = AffineMap::getConstantMap(lb.getValue(), context);
+    (*ubs)[i] = AffineMap::getConstantMap(ub.getValue(), context);
+    projectOut(i, 1);
+  }
+  return true;
+}
+
+Optional<int64_t> FlatAffineConstraints::getConstantLowerBound(unsigned pos) {
+  assert(pos < getNumCols() - 1);
+  Optional<int64_t> lb = None;
+  for (unsigned r = 0; r < getNumInequalities(); r++) {
+    if (atIneq(r, pos) <= 0)
+      // Not a lower bound.
+      continue;
+    unsigned c;
+    for (c = 0; c < getNumCols() - 1; c++) {
+      if (c != pos && atIneq(r, c) != 0)
+        break;
+    }
+    // Not a constant lower bound.
+    if (c < getNumCols() - 1)
+      return None;
+    auto mayLb = mlir::ceilDiv(-atIneq(r, getNumCols() - 1), atIneq(r, pos));
+    if (!lb.hasValue() || mayLb < lb.getValue())
+      lb = mayLb;
+  }
+  // TODO(andydavis,bondhugula): consider equalities (and an equality
+  // contradicting an inequality, i.e, an empty set).
+  return lb;
+}
+
+Optional<int64_t> FlatAffineConstraints::getConstantUpperBound(unsigned pos) {
+  assert(pos < getNumCols() - 1);
+  Optional<int64_t> ub = None;
+  for (unsigned r = 0; r < getNumInequalities(); r++) {
+    // Not a upper bound.
+    if (atIneq(r, pos) >= 0)
+      continue;
+    unsigned c;
+    for (c = 0; c < getNumCols() - 1; c++) {
+      if (c != pos && atIneq(r, c) != 0)
+        break;
+    }
+    // Not a constant upper bound.
+    if (c < getNumCols() - 1)
+      return None;
+    auto mayUb = mlir::floorDiv(atIneq(r, getNumCols() - 1), -atIneq(r, pos));
+    if (!ub.hasValue() || mayUb > ub.getValue())
+      ub = mayUb;
+  }
+  // TODO(andydavis,bondhugula): consider equalities (and an equality
+  // contradicting an inequality, i.e, an empty set).
+  return ub;
+}
+
 void FlatAffineConstraints::print(raw_ostream &os) const {
   assert(inequalities.size() == getNumInequalities() * numReservedCols);
   assert(equalities.size() == getNumEqualities() * numReservedCols);
@@ -1127,7 +1200,7 @@ void FlatAffineConstraints::clearAndCopyFrom(
 }
 
 void FlatAffineConstraints::removeId(unsigned pos) {
-  assert(pos >= 0 && pos < getNumIds());
+  assert(pos < getNumIds());
 
   if (pos < numDims)
     numDims--;
@@ -1363,7 +1436,7 @@ void FlatAffineConstraints::FourierMotzkinEliminate(
 
 void FlatAffineConstraints::projectOut(unsigned pos, unsigned num) {
   // 'pos' can be at most getNumCols() - 2.
-  assert(pos >= 0 && pos <= getNumCols() - 2 && "invalid range");
+  assert(pos <= getNumCols() - 2 && "invalid position");
   assert(pos + num < getNumCols() && "invalid range");
   for (unsigned i = 0; i < num; i++) {
     FourierMotzkinEliminate(pos);
