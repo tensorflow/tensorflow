@@ -248,6 +248,7 @@ tensorflow/core/kernels/spectrogram_op.cc
 tensorflow/core/kernels/split_lib_cpu.cc
 tensorflow/core/kernels/split_op.cc
 tensorflow/core/kernels/split_v_op.cc
+tensorflow/core/kernels/stack.cc
 tensorflow/core/kernels/stack_ops.cc
 tensorflow/core/kernels/strided_slice_op.cc
 tensorflow/core/kernels/strided_slice_op_inst_0.cc
