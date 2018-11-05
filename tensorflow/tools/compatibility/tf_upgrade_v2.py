@@ -71,6 +71,7 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
         "tf.train.start_queue_runners": "tf.compat.v1.start_queue_runners",
     })
     # pylint: enable=line-too-long
+    self.function_renames["tf.colocate_with"] = "tf.compat.v1.colocate_with"
 
     # TODO(amitpatankar): Fix the function rename script
     # to handle constants without hardcoding.
