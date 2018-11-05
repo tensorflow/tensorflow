@@ -179,7 +179,7 @@ class HandleStridedSliceAssignCase<Device, T, 0> {
   }
 };
 
-// NODE(aselle): according to bsteiner, we need this because otherwise
+// NOTE(aselle): according to bsteiner, we need this because otherwise
 // nvcc instantiates templates that are invalid. strided_slice_op_gpu.cu
 // handles instantiates externally. It is important that this is done
 // before the HandleXXCase's are instantiated to avoid duplicate

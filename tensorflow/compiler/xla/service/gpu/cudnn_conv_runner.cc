@@ -126,9 +126,9 @@ Status RunCudnnConvImpl(CudnnConvParams params,
   int64 feature_group_count = params.feature_group_count;
   AlgorithmConfig algorithm = params.algorithm;
 
-  VLOG(3) << "Convolution Algorithm: " << algorithm.algorithm().algo_id();
+  VLOG(3) << "Convolution Algorithm: " << algorithm.algorithm()->algo_id();
   VLOG(3) << "tensor_ops_enabled: "
-          << algorithm.algorithm().tensor_ops_enabled();
+          << algorithm.algorithm()->tensor_ops_enabled();
   VLOG(3) << "Convolution kind: " << CudnnConvKindToString(kind);
   VLOG(3) << "input shape: " << ShapeUtil::HumanStringWithLayout(input_shape);
   VLOG(3) << "filter shape: " << ShapeUtil::HumanStringWithLayout(filter_shape);
@@ -302,8 +302,8 @@ Status RunCudnnConvImpl(CudnnConvParams params,
   if (!stream->ok()) {
     return InternalError(
         "Unable to launch convolution with type %s and algorithm (%d, %d)",
-        CudnnConvKindToString(kind), algorithm.algorithm().algo_id(),
-        algorithm.algorithm_no_scratch().algo_id());
+        CudnnConvKindToString(kind), algorithm.algorithm()->algo_id(),
+        algorithm.algorithm_no_scratch()->algo_id());
   }
   return Status::OK();
 }

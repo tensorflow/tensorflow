@@ -1033,8 +1033,7 @@ void LaunchConv2DBackpropInputOp<GPUDevice, T>::operator()(
               conv_desc, input_desc, &in_backprop_ptr, &scratch_allocator,
               AlgorithmConfig(), &profile_result)
           .ok();
-    OP_REQUIRES(ctx, miopen_find_status && profile_result.is_valid() &&
-                           !profile_result.algorithm().is_default(),
+    OP_REQUIRES(ctx, miopen_find_status && profile_result.is_valid(),
                 errors::NotFound("Failed to find backwards-data algorithm!"));
 
 

@@ -2783,9 +2783,14 @@ def get_value(x):
 
   Returns:
       A Numpy array.
+
+  Raises:
+      RuntimeError: If this method is called inside defun.
   """
   if context.executing_eagerly():
     return x.numpy()
+  elif ops.inside_function():
+    raise RuntimeError('Cannot get value inside Tensorflow graph function.')
   return x.eval(session=get_session())
 
 
@@ -2798,9 +2803,14 @@ def batch_get_value(tensors):
 
   Returns:
       A list of Numpy arrays.
+
+  Raises:
+      RuntimeError: If this method is called inside defun.
   """
   if context.executing_eagerly():
     return [x.numpy() for x in tensors]
+  elif ops.inside_function():  # pylint: disable=protected-access
+    raise RuntimeError('Cannot get value inside Tensorflow graph function.')
   if tensors:
     return get_session().run(tensors)
   else:
@@ -2817,7 +2827,7 @@ def set_value(x, value):
           (of the same shape).
   """
   value = np.asarray(value, dtype=dtype(x))
-  if context.executing_eagerly():
+  if ops.executing_eagerly_outside_functions():
     x.assign(value)
   else:
     with get_graph().as_default():
@@ -2841,7 +2851,7 @@ def batch_set_value(tuples):
       tuples: a list of tuples `(tensor, value)`.
           `value` should be a Numpy array.
   """
-  if context.executing_eagerly():
+  if ops.executing_eagerly_outside_functions():
     for x, value in tuples:
       x.assign(np.asarray(value, dtype=dtype(x)))
   else:

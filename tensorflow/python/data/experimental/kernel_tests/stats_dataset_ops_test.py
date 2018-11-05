@@ -21,6 +21,8 @@ import numpy as np
 
 from tensorflow.python.data.experimental.kernel_tests import reader_dataset_ops_test_base
 from tensorflow.python.data.experimental.kernel_tests import stats_dataset_test_base
+from tensorflow.python.data.experimental.ops import batching
+from tensorflow.python.data.experimental.ops import optimization
 from tensorflow.python.data.experimental.ops import stats_ops
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.framework import errors
@@ -150,6 +152,64 @@ class StatsDatasetTest(stats_dataset_test_base.StatsDatasetTestBase):
           sess.run(summary_t), "Filter::dropped_elements", 67.0)
       self._assertSummaryHasScalarValue(
           sess.run(summary_t), "Filter::filtered_elements", 34.0)
+
+  def testMapBufferUtilization(self):
+
+    def dataset_fn():
+      return dataset_ops.Dataset.range(10).map(
+          lambda x: array_ops.tile([x], ops.convert_to_tensor([x])),
+          num_parallel_calls=4)
+
+    self._testParallelCallsStats(
+        dataset_fn, "ParallelMap", 10, function_processing_time=True)
+
+  def testMapAutoTuneBufferUtilization(self):
+
+    def dataset_fn():
+      dataset = dataset_ops.Dataset.range(10).map(
+          lambda x: array_ops.tile([x], ops.convert_to_tensor([x])),
+          num_parallel_calls=optimization.AUTOTUNE)
+      options = dataset_ops.Options()
+      options.experimental_autotune = True
+      return dataset.with_options(options)
+
+    self._testParallelCallsStats(
+        dataset_fn, "ParallelMap", 10, function_processing_time=True)
+
+  def testInterleaveAutoTuneBufferUtilization(self):
+
+    def dataset_fn():
+      dataset = dataset_ops.Dataset.range(10).map(
+          lambda x: array_ops.tile([x], ops.convert_to_tensor([x])))
+      dataset = dataset_ops.Dataset.range(1).interleave(
+          lambda _: dataset,
+          cycle_length=1,
+          num_parallel_calls=optimization.AUTOTUNE)
+      options = dataset_ops.Options()
+      options.experimental_autotune = True
+      return dataset.with_options(options)
+
+    self._testParallelCallsStats(dataset_fn, "ParallelInterleaveV2", 10)
+
+  def testMapAndBatchAutoTuneBufferUtilization(self):
+
+    def dataset_fn():
+      dataset = dataset_ops.Dataset.range(100).apply(
+          batching.map_and_batch(
+              lambda x: array_ops.tile([x], ops.convert_to_tensor([2])),
+              num_parallel_calls=optimization.AUTOTUNE,
+              batch_size=16))
+      options = dataset_ops.Options()
+      options.experimental_autotune = True
+      return dataset.with_options(options)
+
+    num_output = 100 // 16 + 1
+    self._testParallelCallsStats(
+        dataset_fn,
+        "MapAndBatch",
+        num_output,
+        check_elements=False,
+        function_processing_time=True)
 
   def testReinitialize(self):
     stats_aggregator = stats_ops.StatsAggregator()
@@ -287,22 +347,32 @@ class FeatureStatsDatasetTest(
     total_records = num_epochs * self._num_records
     batch_size = 2
     stats_aggregator = stats_ops.StatsAggregator()
-    dataset = self.make_batch_feature(
-        filenames=self.test_filenames[0],
-        num_epochs=num_epochs,
-        batch_size=batch_size,
-        shuffle=True,
-        shuffle_seed=5,
-        drop_final_batch=False).apply(
-            stats_ops.set_stats_aggregator(stats_aggregator, "record_stats"))
-    iterator = dataset.make_initializable_iterator()
+
+    def dataset_fn():
+      return self.make_batch_feature(
+          filenames=self.test_filenames[0],
+          num_epochs=num_epochs,
+          batch_size=batch_size,
+          shuffle=True,
+          shuffle_seed=5,
+          drop_final_batch=False)
+
+    num_output = total_records // batch_size
+    if total_records % batch_size:
+      num_output = total_records // batch_size + 1
+
+    self._testParallelCallsStats(
+        dataset_fn, "ParseExample", num_output, check_elements=False)
+
+    iterator = dataset_fn().apply(
+        stats_ops.set_stats_aggregator(
+            stats_aggregator, "record_stats")).make_initializable_iterator()
     next_element = iterator.get_next()
     summary_t = stats_aggregator.get_summary()
 
     with self.test_session() as sess:
       sess.run(iterator.initializer)
-      for _ in range(total_records // batch_size + 1 if total_records %
-                     batch_size else total_records // batch_size):
+      for _ in range(num_output):
         sess.run(next_element)
 
       with self.assertRaises(errors.OutOfRangeError):

@@ -6,7 +6,7 @@ tensorflow/contrib/boosted_trees/proto
 tensorflow/contrib/cloud/kernels
 tensorflow/contrib/decision_trees/proto
 tensorflow/contrib/gdr
-tensorflow/contrib/lite/toco
+tensorflow/lite/toco
 tensorflow/contrib/mpi
 tensorflow/contrib/mpi_collectives
 tensorflow/contrib/session_bundle

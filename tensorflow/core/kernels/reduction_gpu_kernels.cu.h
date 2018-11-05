@@ -911,11 +911,11 @@ struct ReduceFunctor<GPUDevice, Eigen::internal::SumReducer<T>> {
 };
 
 template <typename T>
-struct ReduceFunctor<GPUDevice, Eigen::internal::MeanReducer<T>> {
+struct ReduceFunctor<GPUDevice, functor::MeanReducer<T>> {
   template <typename OUT_T, typename IN_T, typename ReductionAxes>
   static void Reduce(OpKernelContext* ctx, OUT_T out, IN_T in,
                      const ReductionAxes& reduction_axes,
-                     const Eigen::internal::MeanReducer<T>& reducer) {
+                     const functor::MeanReducer<T>& reducer) {
     int divisor = 1;
     if (out.rank() == 0)
       divisor = in.size();
@@ -941,17 +941,17 @@ struct ReduceFunctor<GPUDevice, Eigen::internal::MeanReducer<T>> {
 
   template <typename OUT_T>
   static void FillIdentity(const GPUDevice& d, OUT_T out,
-                           const Eigen::internal::MeanReducer<T>& reducer) {
+                           const functor::MeanReducer<T>& reducer) {
     FillIdentityEigenImpl(d, To32Bit(out), reducer);
   }
 };
 
 template <>
-struct ReduceFunctor<GPUDevice, Eigen::internal::MeanReducer<Eigen::half>> {
+struct ReduceFunctor<GPUDevice, functor::MeanReducer<Eigen::half>> {
   template <typename OUT_T, typename IN_T, typename ReductionAxes>
   static void Reduce(OpKernelContext* ctx, OUT_T out, IN_T in,
                      const ReductionAxes& reduction_axes,
-                     const Eigen::internal::MeanReducer<Eigen::half>& reducer) {
+                     const functor::MeanReducer<Eigen::half>& reducer) {
     float divisor = 1.f;
     if (out.rank() == 0)
       divisor = in.size();
@@ -983,9 +983,8 @@ struct ReduceFunctor<GPUDevice, Eigen::internal::MeanReducer<Eigen::half>> {
   }
 
   template <typename OUT_T>
-  static void FillIdentity(
-      const GPUDevice& d, OUT_T out,
-      const Eigen::internal::MeanReducer<Eigen::half>& reducer) {
+  static void FillIdentity(const GPUDevice& d, OUT_T out,
+                           const functor::MeanReducer<Eigen::half>& reducer) {
     FillIdentityEigenImpl(d, To32Bit(out), reducer);
   }
 };

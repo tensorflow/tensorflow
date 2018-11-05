@@ -54,6 +54,7 @@ class LeakyReLU(Layer):
     super(LeakyReLU, self).__init__(**kwargs)
     self.supports_masking = True
     self.alpha = K.cast_to_floatx(alpha)
+    self._can_use_graph_functions = True
 
   def call(self, inputs):
     return K.relu(inputs, alpha=self.alpha)
@@ -117,6 +118,7 @@ class PReLU(Layer):
       self.shared_axes = [shared_axes]
     else:
       self.shared_axes = list(shared_axes)
+    self._can_use_graph_functions = True
 
   @tf_utils.shape_type_conversion
   def build(self, input_shape):
@@ -191,6 +193,7 @@ class ELU(Layer):
     super(ELU, self).__init__(**kwargs)
     self.supports_masking = True
     self.alpha = K.cast_to_floatx(alpha)
+    self._can_use_graph_functions = True
 
   def call(self, inputs):
     return K.elu(inputs, self.alpha)
@@ -230,6 +233,7 @@ class ThresholdedReLU(Layer):
     super(ThresholdedReLU, self).__init__(**kwargs)
     self.supports_masking = True
     self.theta = K.cast_to_floatx(theta)
+    self._can_use_graph_functions = True
 
   def call(self, inputs, mask=None):
     return inputs * math_ops.cast(
@@ -265,6 +269,7 @@ class Softmax(Layer):
     super(Softmax, self).__init__(**kwargs)
     self.supports_masking = True
     self.axis = axis
+    self._can_use_graph_functions = True
 
   def call(self, inputs):
     return K.softmax(inputs, axis=self.axis)
@@ -319,6 +324,7 @@ class ReLU(Layer):
     self.max_value = max_value
     self.negative_slope = K.cast_to_floatx(negative_slope)
     self.threshold = K.cast_to_floatx(threshold)
+    self._can_use_graph_functions = True
 
   def call(self, inputs):
     # alpha is used for leaky relu slope in activations instead of

@@ -799,5 +799,44 @@ BENCHMARK(BM_GraphCreation)->ArgPair(1 << 9, 16);
 BENCHMARK(BM_GraphCreation)->ArgPair(1 << 12, 16);
 BENCHMARK(BM_GraphCreation)->ArgPair(1 << 15, 16);
 
+static void BM_ToGraphDef(int iters, int num_nodes, int num_edges_per_node) {
+  testing::StopTiming();
+  const GraphDef graph_def = CreateGraphDef(num_nodes, num_edges_per_node);
+  const auto registry = OpRegistry::Global();
+  GraphConstructorOptions opts;
+  // Warmup step.
+  Graph graph(registry);
+  TF_CHECK_OK(ConvertGraphDefToGraph(opts, graph_def, &graph));
+  int64 sum = 0;
+  testing::StartTiming();
+  for (int i = 0; i < iters; ++i) {
+    GraphDef graph_def;
+    graph.ToGraphDef(&graph_def);
+    sum += graph_def.node_size();
+  }
+  VLOG(1) << sum;
+  testing::StopTiming();
+}
+BENCHMARK(BM_ToGraphDef)->ArgPair(10, 2);
+BENCHMARK(BM_ToGraphDef)->ArgPair(1 << 6, 2);
+BENCHMARK(BM_ToGraphDef)->ArgPair(1 << 9, 2);
+BENCHMARK(BM_ToGraphDef)->ArgPair(1 << 12, 2);
+BENCHMARK(BM_ToGraphDef)->ArgPair(1 << 15, 2);
+BENCHMARK(BM_ToGraphDef)->ArgPair(10, 4);
+BENCHMARK(BM_ToGraphDef)->ArgPair(1 << 6, 4);
+BENCHMARK(BM_ToGraphDef)->ArgPair(1 << 9, 4);
+BENCHMARK(BM_ToGraphDef)->ArgPair(1 << 12, 4);
+BENCHMARK(BM_ToGraphDef)->ArgPair(1 << 15, 4);
+BENCHMARK(BM_ToGraphDef)->ArgPair(10, 8);
+BENCHMARK(BM_ToGraphDef)->ArgPair(1 << 6, 8);
+BENCHMARK(BM_ToGraphDef)->ArgPair(1 << 9, 8);
+BENCHMARK(BM_ToGraphDef)->ArgPair(1 << 12, 8);
+BENCHMARK(BM_ToGraphDef)->ArgPair(1 << 15, 8);
+BENCHMARK(BM_ToGraphDef)->ArgPair(10, 16);
+BENCHMARK(BM_ToGraphDef)->ArgPair(1 << 6, 16);
+BENCHMARK(BM_ToGraphDef)->ArgPair(1 << 9, 16);
+BENCHMARK(BM_ToGraphDef)->ArgPair(1 << 12, 16);
+BENCHMARK(BM_ToGraphDef)->ArgPair(1 << 15, 16);
+
 }  // namespace
 }  // namespace tensorflow

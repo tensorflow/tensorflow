@@ -271,6 +271,20 @@ cc_library(
     ],
 )
 
+tf_kernel_library(
+    name = "nccl_kernels",
+    srcs = if_cuda([
+        "nccl_ops.cc",
+    ]),
+    deps = if_cuda([
+        "@local_config_nccl//:nccl",
+        "//tensorflow/core/nccl:nccl_lib",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:gpu_headers_lib",
+        "//tensorflow/core:nccl_ops_op_lib",
+    ]),
+)
+
 tf_gpu_library(
     name = "ops_testutil",
     testonly = 1,
@@ -2383,12 +2397,8 @@ tf_cc_tests(
     ],
     deps = [
         ":eigen_helpers",
-        "//tensorflow/core:core_cpu",
-        "//tensorflow/core:framework",
-        "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
-        "//tensorflow/core:testlib",
     ],
 )
 
@@ -5356,6 +5366,8 @@ filegroup(
         "cwise_op_bitwise_and.cc",
         "cwise_op_bitwise_or.cc",
         "cwise_op_bitwise_xor.cc",
+        "cwise_op_cos.cc",
+        "cwise_op_cosh.cc",
         "cwise_op_div.cc",
         "cwise_op_equal_to_1.cc",
         "cwise_op_equal_to_2.cc",
@@ -5390,10 +5402,13 @@ filegroup(
         "cwise_op_select.cc",
         "cwise_op_sigmoid.cc",
         "cwise_op_sign.cc",
+        "cwise_op_sin.cc",
+        "cwise_op_sinh.cc",
         "cwise_op_sqrt.cc",
         "cwise_op_square.cc",
         "cwise_op_squared_difference.cc",
         "cwise_op_sub.cc",
+        "cwise_op_tan.cc",
         "cwise_op_tanh.cc",
         "cwise_op_xlogy.cc",
         "cwise_op_xdivy.cc",

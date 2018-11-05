@@ -22,9 +22,9 @@ limitations under the License.
 #include "tensorflow/stream_executor/platform/port.h"
 #include <vector>
 
+#include "absl/strings/string_view.h"
 #include "tensorflow/stream_executor/lib/status.h"
 #include "tensorflow/stream_executor/lib/statusor.h"
-#include "tensorflow/stream_executor/lib/stringpiece.h"
 #include "tensorflow/stream_executor/platform.h"
 #include "tensorflow/stream_executor/platform/mutex.h"
 
@@ -48,7 +48,7 @@ class DsoLoader {
   static port::Status GetLibcuptiDsoHandle(void** dso_handle);
 
   // Registers a new binary-relative path to use as a dlopen search path.
-  static void RegisterRpath(port::StringPiece path);
+  static void RegisterRpath(absl::string_view path);
 
  private:
   // Registered rpaths (singleton vector) and a mutex that guards it.
@@ -61,9 +61,8 @@ class DsoLoader {
   // Loads a DSO from the given "path" (which can technically be any dlopen-able
   // name). If the load kind is global, the symbols in the loaded DSO are
   // visible to subsequent DSO loading operations.
-  static port::Status GetDsoHandle(port::StringPiece path, void** dso_handle,
+  static port::Status GetDsoHandle(absl::string_view path, void** dso_handle,
                                    LoadKind load_kind = LoadKind::kLocal);
-
 
   // Returns the binary directory (or binary path) associated with the currently
   // executing program. If strip_executable_name is true, the executable file is
@@ -80,8 +79,8 @@ class DsoLoader {
   //   library_name: the filename in tree; e.g. libOpenCL.so.1.0.0
   //   runfiles_relpath: where to look for the library relative to the runfiles
   //      root; e.g. third_party/gpus/cuda/lib64
-  static string FindDsoPath(port::StringPiece library_name,
-                            port::StringPiece runfiles_relpath);
+  static string FindDsoPath(absl::string_view library_name,
+                            absl::string_view runfiles_relpath);
 
   // Return platform dependent paths for DSOs
   static string GetCudaLibraryDirPath();

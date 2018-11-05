@@ -311,7 +311,10 @@ py_test(
     size = "medium",
     srcs = ["numa_map_and_batch_dataset_serialization_test.py"],
     srcs_version = "PY2AND3",
-    tags = ["no_pip"],
+    tags = [
+        "no_pip",
+        "notap",
+    ],
     deps = [
         ":dataset_serialization_test_base",
         "//tensorflow/python:client_testlib",

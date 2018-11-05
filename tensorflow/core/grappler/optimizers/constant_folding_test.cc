@@ -3257,6 +3257,36 @@ TEST_F(ConstantFoldingTest, FoldingPreservesDenormalFlushing) {
   test::ExpectTensorEqual<float>(tensors_expected[0], tensors[0]);
 }
 
+TEST_F(ConstantFoldingTest, EvaluatingLargeConstantNoFoldingMergingLoop) {
+  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+
+  int size = 10 * 1024 * 1024 / 4 / 2;
+  Output nonconst =
+      ops::RandomUniform(s.WithOpName("nonconst"), {size, 1}, DT_FLOAT);
+  Output const1 = ops::Const(s.WithOpName("const1"), 0.0f, {size, 1});
+  Output const2 = ops::Const(s.WithOpName("const2"), 1.0f, {size, 1});
+  Output axis = ops::Const(s.WithOpName("axis"), -1, {});
+  Output concat1 =
+      ops::Concat(s.WithOpName("concat1"), {nonconst, const1}, axis);
+  Output result = ops::Concat(s.WithOpName("result"), {concat1, const2}, axis);
+
+  GrapplerItem item;
+  item.fetch.push_back("result");
+  TF_CHECK_OK(s.ToGraphDef(&item.graph));
+
+  ConstantFolding optimizer(nullptr /* cpu_device */);
+  GraphDef output;
+  Status status = optimizer.Optimize(nullptr, item, &output);
+  TF_EXPECT_OK(status);
+
+  std::vector<string> fetch = {"result"};
+  auto tensors_expected = EvaluateNodes(item.graph, fetch);
+  auto tensors = EvaluateNodes(output, fetch);
+  EXPECT_EQ(1, tensors_expected.size());
+  EXPECT_EQ(1, tensors.size());
+  EXPECT_EQ(tensors_expected[0].shape(), tensors[0].shape());
+}
+
 }  // namespace
 }  // namespace grappler
 }  // namespace tensorflow

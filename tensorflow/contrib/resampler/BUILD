@@ -50,6 +50,7 @@ tf_kernel_library(
     prefix = "resampler_ops",
     deps = [
         ":resampler_ops_op_lib",
+        "//tensorflow/compiler/tf2xla/kernels:resampler_ops",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
     ],

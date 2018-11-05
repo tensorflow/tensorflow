@@ -185,9 +185,8 @@ class StateSpaceEquivalenceTests(test.TestCase):
             "exogenous": [-1., -2., -3., -4.]
         }))
     estimator.train(combined_input_fn, steps=1)
-    export_location = estimator.export_savedmodel(
-        self.get_temp_dir(),
-        estimator.build_raw_serving_input_receiver_fn())
+    export_location = estimator.export_saved_model(
+        self.get_temp_dir(), estimator.build_raw_serving_input_receiver_fn())
     with ops.Graph().as_default() as graph:
       random_model.initialize_graph()
       with self.session(graph=graph) as session:

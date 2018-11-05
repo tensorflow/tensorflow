@@ -13,10 +13,7 @@
 # limitations under the License.
 # ==============================================================================
 # Tests for this file live in python/kernel_tests/array_ops_test.py
-"""Support for manipulating tensors.
-
-See the [Array Ops](https://tensorflow.org/api_guides/python/array_ops) guide.
-"""
+"""Support for manipulating tensors."""
 
 from __future__ import absolute_import
 from __future__ import division

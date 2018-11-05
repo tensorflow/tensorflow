@@ -19,6 +19,7 @@ limitations under the License.
 #include <memory>
 #include <vector>
 
+#include "absl/base/casts.h"
 #include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
 #include "llvm/IR/DerivedTypes.h"
@@ -33,7 +34,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
-#include "tensorflow/core/lib/core/casts.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/platform/byte_order.h"
@@ -362,11 +362,10 @@ static void LogS64(const char* tag, int64 value) {
 void EmitLogging(const char* tag, llvm::Value* value, llvm::IRBuilder<>* b) {
   llvm::FunctionType* log_function_type = llvm::FunctionType::get(
       b->getVoidTy(), {b->getInt64Ty(), b->getInt64Ty()}, /*isVarArg=*/false);
-  b->CreateCall(
-      log_function_type,
-      b->CreateIntToPtr(b->getInt64(tensorflow::bit_cast<int64>(&LogS64)),
-                        log_function_type->getPointerTo()),
-      {b->getInt64(tensorflow::bit_cast<int64>(tag)), value});
+  b->CreateCall(log_function_type,
+                b->CreateIntToPtr(b->getInt64(absl::bit_cast<int64>(&LogS64)),
+                                  log_function_type->getPointerTo()),
+                {b->getInt64(absl::bit_cast<int64>(tag)), value});
 }
 
 void SetAlignmentMetadataForLoad(llvm::LoadInst* load, uint64_t alignment) {

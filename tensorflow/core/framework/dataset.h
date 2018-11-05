@@ -346,20 +346,20 @@ class IteratorContext {
 class SerializationContext {
  public:
   struct Params {
-    bool allow_stateful_functions = false;
     const FunctionLibraryDefinition* flib_def = nullptr;           // Not owned.
     std::vector<std::pair<string, Tensor>>* input_list = nullptr;  // Not owned.
+    bool optimization_only = false;
   };
 
   explicit SerializationContext(Params params) : params_(std::move(params)) {}
-
-  bool allow_stateful_functions() { return params_.allow_stateful_functions; }
 
   const FunctionLibraryDefinition& flib_def() { return *params_.flib_def; }
 
   std::vector<std::pair<string, Tensor>>* input_list() {
     return params_.input_list;
   }
+
+  bool optimization_only() { return params_.optimization_only; }
 
  private:
   Params params_;
@@ -429,6 +429,10 @@ class IteratorBase {
   }
 
  protected:
+  // Returns a node that models this iterator.
+  virtual std::shared_ptr<model::Node> CreateNode(
+      IteratorContext* ctx, model::Node::Args args) const = 0;
+
   // This is needed so that sub-classes of IteratorBase can call
   // `SaveInternal` on their input iterators.
   Status SaveInput(IteratorStateWriter* writer,
@@ -511,22 +515,23 @@ class DatasetBase : public core::RefCounted {
   //
   // The prefix identifies the sequence of iterators leading up to the newly
   // created iterator.
-  Status MakeIterator(IteratorContext* ctx, const string& prefix,
+  Status MakeIterator(IteratorContext* ctx, const string& output_prefix,
                       std::unique_ptr<IteratorBase>* iterator) const {
-    *iterator = MakeIteratorInternal(prefix);
-    if (ctx->model()) {
-      ctx->model()->AddNode((*iterator)->prefix(), prefix);
-      std::shared_ptr<model::Model> model = ctx->model();
+    *iterator = MakeIteratorInternal(output_prefix);
+    std::shared_ptr<model::Model> model = ctx->model();
+    if (model) {
       const string& prefix = (*iterator)->prefix();
+      model->AddNode(MakeNodeFactory(ctx, iterator->get()), prefix,
+                     output_prefix);
       (*iterator)->AddCleanupFunction(
           [model, prefix]() { model->RemoveNode(prefix); });
     }
     return (*iterator)->Initialize(ctx);
   }
 
-  Status MakeIterator(IteratorContext&& ctx, const string& prefix,
+  Status MakeIterator(IteratorContext&& ctx, const string& output_prefix,
                       std::unique_ptr<IteratorBase>* iterator) const {
-    return MakeIterator(&ctx, prefix, iterator);
+    return MakeIterator(&ctx, output_prefix, iterator);
   }
 
   // Returns a vector of DataType values, representing the respective
@@ -553,9 +558,7 @@ class DatasetBase : public core::RefCounted {
    public:
     DatasetGraphDefBuilder(GraphDefBuilder* b) : GraphDefBuilderWrapper(b) {}
     Status AddInputDataset(SerializationContext* ctx,
-                           const DatasetBase* dataset, Node** output) {
-      return dataset->AsGraphDefInternal(ctx, this, output);
-    }
+                           const DatasetBase* dataset, Node** output);
   };
 
   // TODO(jsimsa): Consolidate overloading into a single method.
@@ -567,6 +570,14 @@ class DatasetBase : public core::RefCounted {
       const string& prefix) const = 0;
 
  private:
+  // Returns a factory for nodes that represent the given iterator.
+  static model::Node::Factory MakeNodeFactory(IteratorContext* ctx,
+                                              IteratorBase* iterator) {
+    return [ctx, iterator](model::Node::Args args) {
+      return iterator->CreateNode(ctx, std::move(args));
+    };
+  }
+
   const string name_;
 };
 
@@ -631,28 +642,11 @@ class DatasetBaseIterator : public IteratorBase {
     return strings::StrCat(params_.prefix, ":", name);
   }
 
-  // When performance modeling is enabled, this method adds a constant parameter
-  // to the model node corresponding to this iterator.
-  void AddConstantParameter(IteratorContext* ctx, const string& name,
-                            int64 value) {
-    if (ctx->model()) {
-      ctx->model()->AddConstantParameter(prefix(), name, value);
-    }
-  }
-
-  // When performance modeling is enabled, this method adds a tunable parameter
-  // to the model node corresponding to this iterator.
-  //
-  // The performance modeling logic may use `state` to set the value of the
-  // tunable parameter at any point during the lifetime of this iterator. When
-  // it does, it acquires `state->mu` and notifies `state->cond_var`.
-  void AddTunableParameter(IteratorContext* ctx, const string& name,
-                           std::shared_ptr<model::SharedState> state, int64 min,
-                           int64 max) {
-    if (ctx->model()) {
-      ctx->model()->AddTunableParameter(prefix(), name, std::move(state), min,
-                                        max);
-    }
+  // By default we model iterators using an unknown node, which acts as
+  // pass-through with respect to performance modeling.
+  std::shared_ptr<model::Node> CreateNode(
+      IteratorContext* ctx, model::Node::Args args) const override {
+    return model::MakeUnknownNode(std::move(args));
   }
 
   // When performance modeling is enabled, this method records the fact that

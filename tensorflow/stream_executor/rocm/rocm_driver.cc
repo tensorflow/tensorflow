@@ -22,6 +22,7 @@ limitations under the License.
 #include <utility>
 
 #include "absl/base/casts.h"
+#include "absl/container/inlined_vector.h"
 #include "absl/strings/str_cat.h"
 #include "tensorflow/stream_executor/rocm/rocm_diagnostics.h"
 #include "tensorflow/stream_executor/lib/env.h"
@@ -35,7 +36,6 @@ limitations under the License.
 #include "tensorflow/stream_executor/platform/logging.h"
 #include "tensorflow/stream_executor/platform/mutex.h"
 #include "tensorflow/stream_executor/platform/port.h"
-#include "tensorflow/stream_executor/lib/inlined_vector.h"
 
 bool FLAGS_gpuexec_rocm_driver_inject_init_error = false;
 bool FLAGS_gpuexec_rocm_sync_around_driver_calls = false;
@@ -308,7 +308,7 @@ static port::Status InternalInit() {
 /* static */ bool ROCMDriver::GetDeviceName(hipDevice_t device,
                                             string *device_name) {
   static const size_t kCharLimit = 64;
-  port::InlinedVector<char, 4> chars(kCharLimit);
+  absl::InlinedVector<char, 4> chars(kCharLimit);
   hipError_t res = hipDeviceGetName(chars.begin(), kCharLimit - 1, device);
   if (res != hipSuccess) {
     LOG(ERROR) << "failed to get device name for " << device << ": "
@@ -1206,7 +1206,7 @@ static port::StatusOr<T> GetSimpleAttribute(hipDevice_t device,
 /* static */ string ROCMDriver::GetPCIBusID(hipDevice_t device) {
   string pci_bus_id;
   static const int kBufferSize = 64;
-  port::InlinedVector<char, 4> chars(kBufferSize);
+  absl::InlinedVector<char, 4> chars(kBufferSize);
   chars[kBufferSize - 1] = '\0';
   hipError_t res = hipDeviceGetPCIBusId(chars.begin(), kBufferSize - 1, device);
   if (res != hipSuccess) {

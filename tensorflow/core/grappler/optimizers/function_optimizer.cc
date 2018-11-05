@@ -31,8 +31,8 @@ limitations under the License.
 #include "tensorflow/core/framework/op_def.pb.h"
 #include "tensorflow/core/framework/versions.pb.h"
 #include "tensorflow/core/graph/graph_constructor.h"
-#include "tensorflow/core/grappler/graph_view.h"
 #include "tensorflow/core/grappler/grappler_item.h"
+#include "tensorflow/core/grappler/mutable_graph_view.h"
 #include "tensorflow/core/grappler/op_types.h"
 #include "tensorflow/core/grappler/utils.h"
 #include "tensorflow/core/grappler/utils/functions.h"
@@ -219,8 +219,7 @@ class FunctionOptimizerContext {
       : grappler_item_id_(item.id),
         graph_version_(item.graph.versions().producer()),
         function_library_(OpRegistry::Global(), item.graph.library()),
-        // GraphView doesn't not modify the graph or the nodes.
-        graph_view_(const_cast<GraphDef*>(&item.graph)) {
+        graph_view_(&item.graph) {
     InitializeTrulyConstNodes(item);
     InitializeInlinedFunctions(opt_level, item);
     InitializeFetchNodes(item);
@@ -1133,7 +1132,7 @@ Status FunctionOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
   // Function specialization might change the number of function outputs, so we
   // have to process the final optimized graph and update all the node mapping.
   if (ctx.RequiresOutputMapping()) {
-    GraphView optimized_graph_view(optimized_graph);
+    MutableGraphView optimized_graph_view(optimized_graph);
     for (const auto& output_mapping : ctx.output_mappings()) {
       const auto& node_name = output_mapping.first;
       const auto& mappings = output_mapping.second;
@@ -1143,11 +1142,11 @@ Status FunctionOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
         int to = mapping.second;
 
         // Get the output port corresponding to the old output position.
-        GraphView::OutputPort from_port =
+        MutableGraphView::OutputPort from_port =
             optimized_graph_view.GetOutputPort(node_name, from);
 
         // Update all input ports that read from old output port.
-        for (GraphView::InputPort to_port :
+        for (MutableGraphView::InputPort to_port :
              optimized_graph_view.GetFanout(from_port)) {
           *to_port.node->mutable_input(to_port.port_id) =
               strings::StrCat(node_name, ":", to);
