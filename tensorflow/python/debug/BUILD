@@ -1130,6 +1130,4 @@ sh_test(
         ":debug_tflearn_iris",
         ":offline_analyzer",
     ],
-    # TODO(b/119032933): Re-enable this test in ASAN.
-    tags = ["noasan"],
 )
