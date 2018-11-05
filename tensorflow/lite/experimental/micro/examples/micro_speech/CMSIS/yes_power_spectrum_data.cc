@@ -17,7 +17,4 @@ limitations under the License.
 
 #include "tensorflow/lite/experimental/micro/examples/micro_speech/CMSIS/yes_power_spectrum_data.h"
 
-const uint8_t g_yes_power_spectrum_data[g_yes_power_spectrum_data_size] = {
-    8, 89, 8, 0, 0, 0, 0, 0, 0, 0, 0, 4, 13, 1, 6, 23, 20, 6, 4, 0, 0, 0,
-    0, 0,  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,  0, 0, 0,  0,  0, 0, 0, 0,
-};
+const uint8_t g_yes_power_spectrum_data[g_yes_power_spectrum_data_size] = {8,88,8,0,0,0,0,0,0,0,0,3,12,0,5,22,19,5,4,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,9,1};
