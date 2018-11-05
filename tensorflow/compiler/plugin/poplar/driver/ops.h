@@ -215,6 +215,10 @@ StatusOr<poplar::program::Program> CreateCallOp(CompilerResources& res,
                                                 const xla::Shape& output,
                                                 TensorMap& tensor_map);
 
+StatusOr<poplar::program::Program> CreateCustomCallOp(
+    CompilerResources& res, const HloInstruction* inst,
+    const xla::Shape& output, TensorMap& tensor_map);
+
 StatusOr<poplar::program::Program> CreateFusionOp(CompilerResources& res,
                                                   const HloInstruction* inst,
                                                   const xla::Shape& output,

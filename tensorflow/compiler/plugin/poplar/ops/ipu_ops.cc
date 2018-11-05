@@ -21,5 +21,4 @@ REGISTER_OP("IpuEventTrace")
     .Output("out: string")
     .SetIsStateful()
     .Doc("Fetch IPU trace events.");
-
 }  // namespace tensorflow

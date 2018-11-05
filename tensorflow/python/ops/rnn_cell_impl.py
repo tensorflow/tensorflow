@@ -713,7 +713,8 @@ class BasicLSTMCell(LayerRNNCell):
     h_depth = self._num_units
     self._kernel = self.add_variable(
         _WEIGHTS_VARIABLE_NAME,
-        shape=[input_depth + h_depth, 4 * self._num_units])
+        shape=[input_depth + h_depth, 4 * self._num_units],
+        initializer=init_ops.zeros_initializer(dtype=self.dtype))
     self._bias = self.add_variable(
         _BIAS_VARIABLE_NAME,
         shape=[4 * self._num_units],

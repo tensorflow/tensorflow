@@ -1,3 +1,6 @@
+/* Copyright 2017 Graphcore Ltd
+ */
+
 /* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
@@ -13,26 +16,12 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_PLUGIN_POPLAR_DRIVER_IPU_KERNELS_H_
-#define TENSORFLOW_COMPILER_PLUGIN_POPLAR_DRIVER_IPU_KERNELS_H_
+#ifndef TENSORFLOW_COMPILER_PLUGIN_POPLAR_KERNELS_IPU_KERNELS_COMMON_H_
+#define TENSORFLOW_COMPILER_PLUGIN_POPLAR_KERNELS_IPU_KERNELS_COMMON_H_
 
-//#include "tensorflow/core/framework/op.h"
-#include "tensorflow/core/framework/op_kernel.h"
-//#include "tensorflow/core/platform/macros.h"
+#define REGISTER_IPU_OP(OP_NAME, IMPL)                                     \
+  REGISTER_KERNEL_BUILDER(Name(OP_NAME).Device(DEVICE_IPU_XLA_JIT), IMPL); \
+  REGISTER_KERNEL_BUILDER(Name(OP_NAME).Device(DEVICE_XLA_IPU), IMPL);     \
+  REGISTER_KERNEL_BUILDER(Name(OP_NAME).Device(DEVICE_XLA_IPU_REP), IMPL);
 
-namespace tensorflow {
-
-class IpuSummaryOp : public OpKernel {
- public:
-  explicit IpuSummaryOp(OpKernelConstruction* ctx);
-  ~IpuSummaryOp() override;
-
-  void Compute(OpKernelContext* ctx) override;
-
- private:
-  TF_DISALLOW_COPY_AND_ASSIGN(IpuSummaryOp);
-};
-
-}  // namespace tensorflow
-
-#endif
+#endif  // TENSORFLOW_COMPILER_PLUGIN_POPLAR_KERNELS_IPU_KERNELS_COMMON_H_

@@ -6,6 +6,7 @@ load("@local_config_poplar//poplar:build_defs.bzl", "poplar_lib_directory")
 load("@local_config_poplar//poplar:build_defs.bzl", "poplibs_lib_directory")
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 load("//tensorflow:tensorflow.bzl", "tf_gen_op_wrapper_py")
+load("//tensorflow:tensorflow.bzl", "tf_custom_op_py_library")
 load("//tensorflow/core:platform/default/build_config.bzl", "tf_proto_library")
 
 # Rule for creating the vertex program pre-compiled object
@@ -114,6 +115,24 @@ cc_library(
     ],
 )
 
+
+cc_library(
+    name = "custom_kernels_util",
+    srcs = [
+        "kernels/custom_kernels_util.cc",
+    ],
+    hdrs = [
+        "kernels/custom_kernels_util.h",
+    ],
+    deps = [
+        "//tensorflow/compiler/xla:xla_headers_lib",
+        "//tensorflow/compiler/xla/service:hlo",
+        "@local_config_poplar//poplar:poplar_headers",
+        "@jsoncpp_git//:jsoncpp",
+    ],
+    alwayslink = True,
+)
+
 cc_library(
     name = "common",
     srcs = [],
@@ -125,6 +144,7 @@ cc_library(
 cc_library(
     name = "driver",
     srcs = [
+        "driver/batch_norm_ops.cc",
         "driver/compiler.cc",
         "driver/conversions.cc",
         "driver/conv_op.cc",
@@ -139,6 +159,7 @@ cc_library(
         "driver/platform_id.cc",
         "driver/random_op.cc",
         "driver/reduction_ops.cc",
+        "driver/sort_ops.cc",
         "driver/tensor.cc",
         "driver/tensor_ops.cc",
         "driver/transfer_manager.cc",
@@ -148,8 +169,10 @@ cc_library(
         "driver/visitor_arithmetic_expr.cc",
         "driver/visitor_map.cc",
         "driver/visitor_subcomputation.cc",
-        "driver/sort_ops.cc",
-        "driver/batch_norm_ops.cc",
+        "driver/custom_ops/custom_ops.cc",
+        "driver/custom_ops/poplin_ops.cc",
+        "driver/custom_ops/popnn_ops.cc",
+        "driver/custom_ops/poprand_ops.cc",
     ],
     hdrs = [
         "driver/compiler.h",
@@ -171,11 +194,15 @@ cc_library(
         "driver/visitor_arithmetic_expr.h",
         "driver/visitor_map.h",
         "driver/visitor_subcomputation.h",
+        "driver/custom_ops/custom_ops.h",
+        "driver/custom_ops/poplibs_ops.h",
     ],
     deps = [
         ":common",
+        ":custom_kernels_util",
         ":optimizers",
         ":protos_cc_impl",
+        "//tensorflow/compiler/tf2xla:common",
         "//tensorflow/compiler/xla:xla_headers_lib",
         "//tensorflow/compiler/xla/service:algebraic_simplifier",
         "//tensorflow/compiler/xla/service:batchnorm_expander",
@@ -212,37 +239,62 @@ cc_library(
     name = "kernels",
     srcs = [
         "kernels/ipu_kernels.cc",
+        "kernels/popnn_kernels.cc",
     ],
     hdrs = [
-        "kernels/ipu_kernels.h",
+        "kernels/ipu_kernels_common.h",
     ],
     deps = [
+        ":common",
+        ":custom_kernels_util",
         ":driver",
         "//tensorflow/core:framework_headers_lib",
+        "//tensorflow/compiler/tf2xla:xla_compiler",
         "//third_party/eigen3",
+        "@jsoncpp_git//:jsoncpp",
         "@protobuf_archive//:protobuf_headers",
     ],
     alwayslink = True,
 )
 
 cc_library(
-    name = "ops",
-    srcs = [
-        "ops/ipu_ops.cc",
-    ],
-    hdrs = [],
-    deps = [
-        "//tensorflow/core:framework_headers_lib",
-        "@protobuf_archive//:protobuf_headers",
-    ],
+    name = "ipu_ops",
+    srcs = ["ops/ipu_ops.cc"],
+    deps = ["//tensorflow/core:framework"],
     alwayslink = True,
 )
 
 tf_gen_op_wrapper_py(
-    name = "ipu_ops",
-    deps = [
-        ":ops",
-    ],
+    name = "ipu_ops_wrapper_py",
+    out = "ops/gen_ipu_ops.py",
+    deps = [":ipu_ops"],
+)
+
+tf_custom_op_py_library(
+    name = "ipu_ops_py",
+    kernels = [":ipu_ops"],
+    deps = [":ipu_ops_wrapper_py"],
+)
+
+cc_library(
+    name = "popnn_ops",
+    srcs = ["ops/popnn_ops.cc"],
+    deps = ["//tensorflow/core:framework"],
+    alwayslink = True,
+)
+
+tf_gen_op_wrapper_py(
+    name = "popnn_ops_wrapper_py",
+    out = "ops/gen_popnn_ops.py",
+    deps = [":popnn_ops"],
+    visibility = ["//tensorflow:internal"],
+)
+
+tf_custom_op_py_library(
+    name = "popnn_ops_py",
+    kernels = [":popnn_ops"],
+    deps = [":popnn_ops_wrapper_py"],
+    srcs_version = "PY2AND3",
 )
 
 cc_library(
@@ -253,9 +305,10 @@ cc_library(
     hdrs = [],
     deps = [
         ":driver",
-        ":ops",
         ":kernels",
         ":poplar_backend",
+        ":ipu_ops",
+        ":popnn_ops",
         "//tensorflow/compiler/jit/kernels:xla_ops",
         "//tensorflow/compiler/jit:xla_jit_headers_lib",
         "//tensorflow/compiler/jit:xla_device",
@@ -488,7 +541,7 @@ py_test(
     size = "small",
     srcs = ["tests/device_test.py"],
     deps = [
-        ":ipu_ops",
+        ":ipu_ops_py",
         "//tensorflow/compiler/tests:xla_test",
     ],
     srcs_version = "PY2AND3",
@@ -499,7 +552,7 @@ py_test(
     size = "medium",
     srcs = ["tests/ipu_model_device_test.py"],
     deps = [
-        ":ipu_ops",
+        ":ipu_ops_py",
         "//tensorflow/compiler/tests:xla_test",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:framework",
@@ -547,7 +600,7 @@ py_test(
     size = "large",
     srcs = ["tests/conv_test.py"],
     deps = [
-        ":ipu_ops",
+        ":ipu_ops_py",
         "//tensorflow/compiler/tests:xla_test",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:constant_op",
@@ -561,7 +614,7 @@ py_test(
     size = "large",
     srcs = ["tests/conv3d_test.py"],
     deps = [
-        ":ipu_ops",
+        ":ipu_ops_py",
         "//tensorflow/compiler/tests:xla_test",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:constant_op",
@@ -575,7 +628,7 @@ py_test(
     size = "large",
     srcs = ["tests/constant_test.py"],
     deps = [
-        ":ipu_ops",
+        ":ipu_ops_py",
         "//tensorflow/compiler/tests:xla_test",
         "//tensorflow/python:constant_op",
     ],
@@ -587,7 +640,7 @@ py_test(
     size = "small",
     srcs = ["tests/variable_test.py"],
     deps = [
-        ":ipu_ops",
+        ":ipu_ops_py",
         "//tensorflow/compiler/tests:xla_test",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:init_ops",
@@ -621,7 +674,7 @@ py_test(
     size = "small",
     srcs = ["tests/reduce_test.py"],
     deps = [
-        ":ipu_ops",
+        ":ipu_ops_py",
         "//tensorflow/compiler/tests:xla_test",
     ],
     srcs_version = "PY2AND3",
@@ -658,7 +711,7 @@ py_test(
     size = "small",
     srcs = ["tests/batch_norm_test.py"],
     deps = [
-        ":ipu_ops",
+        ":ipu_ops_py",
         "//tensorflow/compiler/tests:xla_test",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:framework",
@@ -676,7 +729,7 @@ py_test(
     size = "medium",
     srcs = ["tests/fuse_ops_test.py"],
     deps = [
-        ":ipu_ops",
+        ":ipu_ops_py",
         "//tensorflow/compiler/tests:xla_test",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:framework",
@@ -724,7 +777,7 @@ py_test(
     size = "medium",
     srcs = ["tests/estimator_test.py"],
     deps = [
-        ":ipu_ops",
+        ":ipu_ops_py",
         "//tensorflow/compiler/tests:xla_test",
         "//tensorflow/python:array_ops",
         "//tensorflow/python/data/ops:dataset_ops",
@@ -746,7 +799,7 @@ py_test(
     size = "medium",
     srcs = ["tests/ipu_engine_cache_test.py"],
     deps = [
-        ":ipu_ops",
+        ":ipu_ops_py",
         "//tensorflow/compiler/tests:xla_test",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:framework",
@@ -761,7 +814,7 @@ py_test(
     size = "medium",
     srcs = ["tests/casts_elimination_test.py"],
     deps = [
-        ":ipu_ops",
+        ":ipu_ops_py",
         "//tensorflow/compiler/tests:xla_test",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:framework",
@@ -776,7 +829,7 @@ py_test(
     size = "medium",
     srcs = ["tests/update_op_dependencies_test.py"],
     deps = [
-        ":ipu_ops",
+        ":ipu_ops_py",
         "//tensorflow/compiler/tests:xla_test",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:framework",
@@ -791,13 +844,30 @@ py_test(
     size = "medium",
     srcs = ["tests/cache_graph_test.py"],
     deps = [
-        ":ipu_ops",
+        ":ipu_ops_py",
         "//tensorflow/compiler/tests:xla_test",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:framework",
         "//tensorflow/python:layers",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:platform",
+    ],
+    srcs_version = "PY2AND3",
+)
+
+py_test(
+    name = "lstm_test",
+    size = "medium",
+    srcs = ["tests/lstm_test.py"],
+    deps = [
+        ":ipu_ops_py",
+        "//tensorflow/compiler/tests:xla_test",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:layers",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:platform",
+        "//tensorflow/python/ops/poplar:poplar"
     ],
     srcs_version = "PY2AND3",
 )
@@ -842,6 +912,7 @@ test_suite(
         "dynamic_slice_layout_test",
         "sort_op_test",
         "while_loop_to_repeat_simplify_test",
+        "lstm_test",
     ],
 )
 

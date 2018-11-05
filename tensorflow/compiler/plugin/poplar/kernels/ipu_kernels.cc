@@ -13,8 +13,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/compiler/plugin/poplar/kernels/ipu_kernels.h"
-
 #include "tensorflow/compiler/plugin/poplar/driver/platform.h"
 #include "tensorflow/compiler/plugin/poplar/driver/trace.pb.h"
 
@@ -30,35 +28,40 @@ namespace xp = ::xla::poplarplugin;
 
 namespace tensorflow {
 
-IpuSummaryOp::IpuSummaryOp(OpKernelConstruction* ctx) : OpKernel(ctx) {}
+class IpuSummaryOp : public OpKernel {
+ public:
+  explicit IpuSummaryOp(OpKernelConstruction* ctx) : OpKernel(ctx) {}
+  ~IpuSummaryOp() override{};
 
-void IpuSummaryOp::Compute(OpKernelContext* ctx) {
-  auto platform = se::MultiPlatformManager::PlatformWithName("Poplar");
-  OP_REQUIRES(ctx, platform.ok(), platform.status());
+  void Compute(OpKernelContext* ctx) override {
+    auto platform = se::MultiPlatformManager::PlatformWithName("Poplar");
+    OP_REQUIRES(ctx, platform.ok(), platform.status());
 
-  auto* p = static_cast<xp::PoplarPlatform*>(platform.ValueOrDie());
+    auto* p = static_cast<xp::PoplarPlatform*>(platform.ValueOrDie());
 
-  std::list<tensorflow::IpuTraceEvent> out;
-  OP_REQUIRES_OK(ctx, p->GetCompilerEvents(out));
+    std::list<tensorflow::IpuTraceEvent> out;
+    OP_REQUIRES_OK(ctx, p->GetCompilerEvents(out));
 
-  int num = out.size();
+    int num = out.size();
 
-  Tensor* output_tensor = nullptr;
-  OP_REQUIRES_OK(
-      ctx, ctx->allocate_output("out", TensorShape({num}), &output_tensor));
-  auto output_flat = output_tensor->flat<string>();
+    Tensor* output_tensor = nullptr;
+    OP_REQUIRES_OK(
+        ctx, ctx->allocate_output("out", TensorShape({num}), &output_tensor));
+    auto output_flat = output_tensor->flat<string>();
 
-  unsigned i = 0;
-  for (auto& e : out) {
-    std::string str;
-    e.SerializeToString(&str);
+    unsigned i = 0;
+    for (auto& e : out) {
+      std::string str;
+      e.SerializeToString(&str);
 
-    output_flat(i) = str;
-    i++;
+      output_flat(i) = str;
+      i++;
+    }
   }
-}
 
-IpuSummaryOp::~IpuSummaryOp() {}
+ private:
+  TF_DISALLOW_COPY_AND_ASSIGN(IpuSummaryOp);
+};
 
 REGISTER_KERNEL_BUILDER(Name("IpuEventTrace").Device(DEVICE_CPU), IpuSummaryOp);
 

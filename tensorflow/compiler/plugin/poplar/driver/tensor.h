@@ -20,6 +20,8 @@ namespace poplarplugin {
 
 struct CompilerResources;
 
+StatusOr<poplar::Type> PoplarDataType(const xla::PrimitiveType& element_type);
+
 StatusOr<poplar::Type> PoplarDataType(const xla::Shape& shape);
 
 std::vector<size_t> PoplarShapeFromXlaShape(const xla::Shape& xla_shape);

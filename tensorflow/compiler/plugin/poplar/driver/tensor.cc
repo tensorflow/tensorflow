@@ -44,8 +44,8 @@ using ::tensorflow::str_util::Join;
 namespace xla {
 namespace poplarplugin {
 
-StatusOr<poplar::Type> PoplarDataType(const xla::Shape& shape) {
-  switch (shape.element_type()) {
+StatusOr<poplar::Type> PoplarDataType(const xla::PrimitiveType& element_type) {
+  switch (element_type) {
     case PRED:
       return poplar::BOOL;
     case S8:
@@ -66,8 +66,12 @@ StatusOr<poplar::Type> PoplarDataType(const xla::Shape& shape) {
       return poplar::FLOAT;
     default:
       return xla::FailedPrecondition("unsupported primitive type in poplar %s",
-                                     PrimitiveType_Name(shape.element_type()));
+                                     PrimitiveType_Name(element_type));
   }
+}
+
+StatusOr<poplar::Type> PoplarDataType(const xla::Shape& shape) {
+  return PoplarDataType(shape.element_type());
 }
 
 std::vector<size_t> PoplarShapeFromXlaShape(const xla::Shape& xla_shape) {

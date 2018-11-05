@@ -3,10 +3,13 @@
 #include "absl/strings/str_cat.h"
 
 #include "tensorflow/compiler/plugin/poplar/driver/compiler_resources.h"
+#include "tensorflow/compiler/plugin/poplar/driver/custom_ops/custom_ops.h"
 #include "tensorflow/compiler/plugin/poplar/driver/ops.h"
 #include "tensorflow/compiler/plugin/poplar/driver/visitor_arithmetic_expr.h"
 #include "tensorflow/compiler/plugin/poplar/driver/visitor_inline_call.h"
 #include "tensorflow/compiler/plugin/poplar/driver/visitor_map.h"
+#include "tensorflow/compiler/plugin/poplar/kernels/custom_kernels_util.h"
+
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/core/lib/core/errors.h"
@@ -227,6 +230,18 @@ StatusOr<poplar::program::Program> CreateCallOp(CompilerResources& res,
   }
 
   return seq;
+}
+
+StatusOr<poplar::program::Program> CreateCustomCallOp(
+    CompilerResources& res, const HloInstruction* inst,
+    const xla::Shape& output, TensorMap& tensor_map) {
+  poplar::Graph& graph = GetGraph(res, inst);
+  if (IPUCustomKernelsUtil::IsPoplibsOp(inst)) {
+    VLOG(1) << "Processing " << inst->name() << " as Poplibs call";
+    return CreatePoplibsOp(graph, res, inst, output, tensor_map);
+  } else {
+    LOG(FATAL) << "Unrecognised kCustomCall " << inst->ToString();
+  }
 }
 
 StatusOr<poplar::program::Program> CreateFusionOp(CompilerResources& res,

@@ -306,7 +306,13 @@ Status BaseVisitor::HandleCall(HloInstruction* inst) {
 }
 
 Status BaseVisitor::HandleCustomCall(HloInstruction* inst) {
-  return Unimplemented(inst);
+  poplar::program::Program prog;
+  TF_ASSIGN_OR_RETURN(
+      prog,
+      CreateCustomCallOp(resources_, inst, GetOutputShape(inst), tensor_map));
+  sequence.add(prog);
+
+  return Status::OK();
 }
 
 Status BaseVisitor::HandleSlice(HloInstruction* inst) {

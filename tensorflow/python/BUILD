@@ -2946,6 +2946,7 @@ py_library(
         ":variables",
         "//tensorflow/python/ops/distributions",
         "//tensorflow/python/ops/linalg",
+        "//tensorflow/python/ops/poplar:poplar",
     ],
 )
 

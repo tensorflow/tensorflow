@@ -398,8 +398,7 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::RunBackend(
         VLOG(1) << "Compile engine " << module->name();
 
         // Generate this JSON early so that the VLOG trace can contain the
-        // output
-        // whether the engine compilation completes or not
+        // output whether the engine compilation completes or not.
         map_json =
             GetTensorMappingJson(resources.main_graph, resources.tensor_maps);
 

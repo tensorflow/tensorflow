@@ -1,0 +1,163 @@
+/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+==============================================================================*/
+
+#include "tensorflow/compiler/plugin/poplar/kernels/custom_kernels_util.h"
+
+#include "include/json/json.h"
+#include "tensorflow/compiler/xla/service/hlo_instruction.h"
+#include "tensorflow/compiler/xla/service/hlo_instructions.h"
+#include "tensorflow/compiler/xla/util.h"
+#include "tensorflow/core/framework/types.pb.h"
+
+#include "absl/container/flat_hash_set.h"
+
+#include <sstream>
+#include <string>
+
+namespace xla {
+namespace poplarplugin {
+namespace IPUCustomKernelsUtil {
+namespace {
+absl::flat_hash_set<std::string> poplibs_lib_names = {
+    "poplin", "popnn", "popops", "poprand", "popsolver"};
+}
+
+const bool IsPoplibsOp(const HloInstruction* inst) {
+  if (inst->opcode() == HloOpcode::kCustomCall) {
+    // For a poplibs call, the name of the poplibs library is stored in the
+    // op_type of metadata.
+    auto metadata = inst->metadata();
+    std::string op_type = metadata.op_type();
+    return poplibs_lib_names.count(op_type);
+  }
+  return false;
+}
+
+AttributeMap::AttributeMap() {}
+AttributeMap::AttributeMap(const HloInstruction* custom_call) {
+  CHECK_EQ(custom_call->opcode(), HloOpcode::kCustomCall);
+
+  std::string call_target =
+      static_cast<const HloCustomCallInstruction*>(custom_call)
+          ->custom_call_target();
+
+  Json::Reader reader;
+  bool parsed = reader.parse(call_target.c_str(), attributes_);
+  if (!parsed) {
+    LOG(FATAL) << "Could not parse the call target for custom op as JSON "
+               << call_target;
+  }
+}
+
+template <typename T>
+void AttributeMap::AddAttribute(const std::string& field_name, const T& attr) {
+  attributes_[field_name] = attr;
+}
+
+template <>
+void AttributeMap::AddAttribute(const std::string& field_name,
+                                const tensorflow::DataType& attr) {
+  attributes_[field_name] = DataType_Name(attr);
+}
+
+template void AttributeMap::AddAttribute<float>(const std::string&,
+                                                const float&);
+template void AttributeMap::AddAttribute<int>(const std::string&, const int&);
+template void AttributeMap::AddAttribute<bool>(const std::string&, const bool&);
+template void AttributeMap::AddAttribute<std::string>(const std::string&,
+                                                      const std::string&);
+template void AttributeMap::AddAttribute<tensorflow::DataType>(
+    const std::string&, const tensorflow::DataType&);
+
+StatusOr<std::string> AttributeMap::GetAttributeAsString(
+    const std::string& field_name) const {
+  if (!attributes_.isMember(field_name)) {
+    return xla::FailedPrecondition(
+        "Could not obtain the field %s for the custom op.", field_name.c_str());
+  }
+  return attributes_[field_name].asString();
+}
+
+StatusOr<float> AttributeMap::GetAttributeAsFloat(
+    const std::string& field_name) const {
+  if (!attributes_.isMember(field_name)) {
+    return xla::FailedPrecondition(
+        "Could not obtain the field %s for the custom op.", field_name.c_str());
+  }
+  return attributes_[field_name].asFloat();
+}
+
+StatusOr<int> AttributeMap::GetAttributeAsInt(
+    const std::string& field_name) const {
+  if (!attributes_.isMember(field_name)) {
+    return xla::FailedPrecondition(
+        "Could not obtain the field %s for the custom op.", field_name.c_str());
+  }
+  return attributes_[field_name].asInt();
+}
+
+StatusOr<bool> AttributeMap::GetAttributeAsBool(
+    const std::string& field_name) const {
+  if (!attributes_.isMember(field_name)) {
+    return xla::FailedPrecondition(
+        "Could not obtain the field %s for the custom op.", field_name.c_str());
+  }
+  return attributes_[field_name].asBool();
+}
+
+StatusOr<poprand::RandomGenMode> AttributeMap::GetAttributeAsRandomGenMode(
+    const std::string& field_name) const {
+  if (!attributes_.isMember(field_name)) {
+    return xla::FailedPrecondition(
+        "Could not obtain the field %s for the custom op.", field_name.c_str());
+  }
+  std::string name = attributes_[field_name].asString();
+  if (name.compare("ALWAYS_REPEATABLE") == 0) {
+    return poprand::RandomGenMode::ALWAYS_REPEATABLE;
+  } else if (name.compare("SYSTEM_REPEATABLE") == 0) {
+    return poprand::RandomGenMode::SYSTEM_REPEATABLE;
+  } else if (name.compare("NOT_REPEATABLE") == 0) {
+    return poprand::RandomGenMode::NOT_REPEATABLE;
+  } else {
+    return xla::FailedPrecondition(
+        "Unrecognised RandomGenMode: %s. Should be: \"ALWAYS_REPEATABLE\", "
+        "\"SYSTEM_REPEATABLE\" or \"NOT_REPEATABLE\".",
+        name.c_str());
+  }
+}
+
+StatusOr<tensorflow::DataType> AttributeMap::GetAttributeAsTFDataType(
+    const std::string& field_name) const {
+  if (!attributes_.isMember(field_name)) {
+    return xla::FailedPrecondition(
+        "Could not obtain the field %s for the custom op.", field_name.c_str());
+  }
+  const std::string dtype_string = attributes_[field_name].asString();
+  tensorflow::DataType data_type;
+  if (!DataType_Parse(dtype_string, &data_type)) {
+    return xla::FailedPrecondition("Could not parse the DataType %s.",
+                                   dtype_string.c_str());
+  }
+  return data_type;
+}
+
+const std::string AttributeMap::Serialise() {
+  Json::FastWriter fastWriter;
+  return fastWriter.write(attributes_);
+}
+
+}  // namespace IPUCustomKernelsUtil
+}  // namespace poplarplugin
+}  // namespace xla
