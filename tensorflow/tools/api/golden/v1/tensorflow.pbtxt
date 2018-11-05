@@ -341,6 +341,10 @@ tf_module {
     mtype: "<type \'module\'>"
   }
   member {
+    name: "experimental"
+    mtype: "<type \'module\'>"
+  }
+  member {
     name: "feature_column"
     mtype: "<type \'module\'>"
   }
