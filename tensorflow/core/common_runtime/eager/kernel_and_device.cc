@@ -131,7 +131,7 @@ Status KernelAndDevice::Run(ScopedStepContainer* step_container,
     outputs->push_back(Tensor(*context.mutable_output(i)));
   }
   if (stats != nullptr) {
-    for (const auto& allocator_pair : context.wrapped_allocators()) {
+    for (const auto& allocator_pair : context.ConsumeWrappedAllocators()) {
       AllocatorMemoryUsed* memory = stats->add_memory();
       memory->set_allocator_name(allocator_pair.first->Name());
       auto sizes = allocator_pair.second->GetSizes();
