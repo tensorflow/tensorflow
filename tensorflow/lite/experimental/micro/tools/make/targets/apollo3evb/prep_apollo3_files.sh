@@ -27,4 +27,6 @@ else
     cp "$AP3_DIR/utils/am_util_stdio.c" "$DEST_DIR"
     cp "$AP3_DIR/boards/apollo3_evb/bsp/gcc/bin/libam_bsp.a" "$DEST_DIR"
     cp "$AP3_DIR/mcu/apollo3/hal/gcc/bin/libam_hal.a" "$DEST_DIR"
+    sed -i -e '131s/1024/1024\*20/g' "$DEST_DIR/startup_gcc.c"
+    sed -i -e 's/main/_main/g' "$DEST_DIR/startup_gcc.c"
 fi
