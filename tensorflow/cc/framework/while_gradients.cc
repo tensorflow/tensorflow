@@ -37,7 +37,7 @@ std::vector<Output> ToOutputVector(
   size_t n = output_tensors.size();
   std::vector<Output> result;
   result.reserve(n);
-  for (int i = 0; i < n; ++i) result.push_back(ToOutput(output_tensors[i]));
+  for (uint i = 0; i < n; ++i) result.push_back(ToOutput(output_tensors[i]));
   return result;
 }
 
