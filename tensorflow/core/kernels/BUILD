@@ -29,6 +29,7 @@ package_group(
 load(
     "//tensorflow:tensorflow.bzl",
     "if_android",
+    "if_linux_x86_64",
     "tf_cc_test",
     "tf_cc_test_mkl",
     "tf_cc_tests",
@@ -576,6 +577,12 @@ cc_library(
 cc_header_only_library(
     name = "image_resizer_state_lib",
     deps = [":image_resizer_state"],
+)
+
+cc_library(
+    name = "crop_resize_bilinear_core",
+    hdrs = ["crop_resize_bilinear_core.h"],
+    visibility = ["//visibility:private"],
 )
 
 # OpKernel libraries ----------------------------------------------------------
@@ -2285,8 +2292,9 @@ tf_kernel_library(
 
 tf_kernel_library(
     name = "crop_and_resize_op",
+    copts = tf_copts() + if_linux_x86_64(["-finline-functions"]),
     prefix = "crop_and_resize_op",
-    deps = IMAGE_DEPS,
+    deps = IMAGE_DEPS + [":crop_resize_bilinear_core"],
 )
 
 tf_kernel_library(
@@ -2351,8 +2359,9 @@ tf_kernel_library(
 
 tf_kernel_library(
     name = "resize_bilinear_op",
+    copts = tf_copts() + if_linux_x86_64(["-finline-functions"]),
     prefix = "resize_bilinear_op",
-    deps = IMAGE_DEPS,
+    deps = IMAGE_DEPS + [":crop_resize_bilinear_core"],
 )
 
 tf_kernel_library(
@@ -5289,6 +5298,7 @@ filegroup(
         "control_flow_ops.h",
         "conv_2d.h",
         "conv_ops.h",
+        "crop_resize_bilinear_core.h",
         "data_format_ops.h",
         "depthtospace_op.h",
         "depthwise_conv_op.h",
