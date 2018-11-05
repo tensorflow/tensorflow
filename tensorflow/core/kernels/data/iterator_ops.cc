@@ -980,20 +980,8 @@ void IteratorGetNextOp::ComputeAsync(OpKernelContext* ctx, DoneCallback done) {
 
         IteratorContext::Params params(ctx);
         params.function_library = iterator->function_library();
-<<<<<<< HEAD
         Status s = iterator->GetNext(IteratorContext(std::move(params)),
                                      &components, &end_of_sequence);
-=======
-        DeviceBase* device = ctx->function_library()->device();
-        params.allocator_getter = [device](AllocatorAttributes attrs) {
-          return device->GetAllocator(attrs);
-        };
-        params.runner_threadpool_size =
-            ctx->device()->tensorflow_cpu_worker_threads()->num_threads;
-        IteratorContext iter_ctx(std::move(params));
-
-        Status s = iterator->GetNext(&iter_ctx, &components, &end_of_sequence);
->>>>>>> Add runner_threadpool_size into IteratorContext
         // NOTE(mrry): We must unref the iterator before calling `done()`, to
         // avoid destruction races.
         iterator->Unref();
@@ -1021,21 +1009,9 @@ void IteratorGetNextSyncOp::Compute(OpKernelContext* ctx) {
   bool end_of_sequence = false;
   IteratorContext::Params params(ctx);
   params.function_library = iterator->function_library();
-<<<<<<< HEAD
+
   OP_REQUIRES_OK(ctx, iterator->GetNext(IteratorContext(std::move(params)),
                                         &components, &end_of_sequence));
-=======
-  DeviceBase* device = ctx->function_library()->device();
-  params.allocator_getter = [device](AllocatorAttributes attrs) {
-    return device->GetAllocator(attrs);
-  };
-  params.runner_threadpool_size =
-      ctx->device()->tensorflow_cpu_worker_threads()->num_threads;
-  IteratorContext iter_ctx(std::move(params));
-
-  OP_REQUIRES_OK(ctx,
-                 iterator->GetNext(&iter_ctx, &components, &end_of_sequence));
->>>>>>> Add runner_threadpool_size into IteratorContext
   OP_REQUIRES(ctx, !end_of_sequence, errors::OutOfRange("End of sequence"));
 
   for (int i = 0; i < components.size(); ++i) {
@@ -1235,7 +1211,6 @@ class DeserializeIteratorOp : public OpKernel {
     OP_REQUIRES_OK(ctx, iterator_resource->Restore(ctx, wrapper->get()));
   }
 };
-
 
 REGISTER_KERNEL_BUILDER(Name("Iterator").Device(DEVICE_CPU), IteratorHandleOp);
 REGISTER_KERNEL_BUILDER(Name("IteratorV2").Device(DEVICE_CPU),
