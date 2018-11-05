@@ -194,6 +194,7 @@ cc_library(
         ":side_effect_util",
         ":tf2xla_util",
         "//tensorflow/compiler/jit:xla_cluster_util",
+        "//tensorflow/compiler/jit/legacy_flags:mark_for_compilation_pass_flags",
         "//tensorflow/compiler/tf2xla/lib:util",
         "//tensorflow/compiler/xla:literal",
         "//tensorflow/compiler/xla:shape_util",

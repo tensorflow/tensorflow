@@ -37,8 +37,8 @@ Status XlaGpuDeviceFactory::CreateDevices(const SessionOptions& session_options,
                                           std::vector<Device*>* devices) {
   XlaOpRegistry::DeviceRegistration registration;
   registration.compilation_device_name = DEVICE_GPU_XLA_JIT;
-  registration.requires_compilation = true;
-  registration.enable_jit_by_default = false;
+  registration.autoclustering_policy =
+      XlaOpRegistry::AutoclusteringPolicy::kAlways;
   registration.compile_resource_ops = true;
   XlaOpRegistry::RegisterCompilationDevice(DEVICE_XLA_GPU, registration);
 

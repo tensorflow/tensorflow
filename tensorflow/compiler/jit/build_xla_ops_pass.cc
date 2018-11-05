@@ -214,7 +214,8 @@ Status NodeRequiresCompilation(Node* n, bool* result) {
     return errors::Internal("Could not find compilation device ",
                             device_type.type());
   }
-  *result = registration->requires_compilation;
+  *result = registration->autoclustering_policy ==
+            XlaOpRegistry::AutoclusteringPolicy::kAlways;
   return Status::OK();
 }
 
