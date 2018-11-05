@@ -47,7 +47,9 @@ from tensorflow.python.util import tf_inspect
 
 
 # TODO(mdan): This should behave like to_graph (e.g. convert statically).
-def convert(recursive=False, verbose=False):
+# TODO(znado): Make an alias so can write Verbosity directly without needing
+# to write converter.
+def convert(recursive=False, verbose=converter.Verbosity.VERBOSE):
   """Decorator that compiles a function to use TensorFlow ops.
 
   The decorator is dynamic - it recompiles the target whenever the decorated
@@ -58,7 +60,7 @@ def convert(recursive=False, verbose=False):
   Args:
     recursive: bool, whether to recursively convert any functions or classes
       that the converted function may use.
-    verbose: bool, whether to output the compiled code in the logs.
+    verbose: converter.Verbosity, the level of verbosity.
 
   Returns:
     Callable, a decorator that converts the given function into an equivalent
@@ -92,8 +94,7 @@ def convert(recursive=False, verbose=False):
 class RunMode(Enum):
   """Specifies the way a converted function or method should be executed in TF.
 
-  The enum values have the following semantics:
-
+  Attributes:
    * GRAPH: Call this function directly, as-is. This is suitable for functions
        that were already designed for TF graphs and contain ops.
    * PY_FUNC: Wrap this function into a py_func op. This is suitable for code
@@ -153,7 +154,7 @@ def do_not_convert(run_as=RunMode.GRAPH, return_dtypes=None):
 # TODO(mdan): Move to a private, undocumented module.
 def converted_call(f, owner, options, *args, **kwargs):
   """Compiles a function call inline. For internal use only."""
-  if options.verbose:
+  if options.verbose >= converter.Verbosity.VERBOSE:
     logging.info('Converted call: {}; owner: {}'.format(f, owner))
 
   if owner is not None:
@@ -283,7 +284,7 @@ def _is_not_callable(obj):
 # TODO(mdan): Remove partial_types.
 def to_graph(e,
              recursive=True,
-             verbose=False,
+             verbose=converter.Verbosity.VERBOSE,
              arg_values=None,
              arg_types=None,
              partial_types=None,
@@ -301,7 +302,7 @@ def to_graph(e,
     e: Union[Callable, Type], the Python entity to convert.
     recursive: bool, whether to recursively convert any functions that the
       converted function may call.
-    verbose: bool, whether to output the compiled code in the logs.
+    verbose: converter.Verbosity, the level of printing verbosity to use.
     arg_values: Optional[Dict[Text, Any]], value hints for symbols including
       function arguments.
     arg_types: Optional[Dict[Text, Type]], type hints for symbols including

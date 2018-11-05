@@ -108,7 +108,7 @@ def entity_to_graph(o, program_ctx, arg_values, arg_types):
   Raises:
     ValueError: if the entity type is not supported.
   """
-  if program_ctx.options.verbose:
+  if program_ctx.options.verbose == converter.Verbosity.VERBOSE:
     logging.info('Converting {}'.format(o))
 
   if tf_inspect.isclass(o):
@@ -151,7 +151,7 @@ def entity_to_graph(o, program_ctx, arg_values, arg_types):
 
   program_ctx.add_to_cache(o, node)
 
-  if program_ctx.options.verbose:
+  if program_ctx.options.verbose == converter.Verbosity.VERBOSE:
     logging.info('Compiled output of {}:\n\n{}\n'.format(
         o, compiler.ast_to_source(node)))
 
