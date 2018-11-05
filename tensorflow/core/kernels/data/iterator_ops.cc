@@ -145,8 +145,6 @@ class IteratorResource : public ResourceBase {
       params.allocator_getter = [device](AllocatorAttributes attrs) {
         return device->GetAllocator(attrs);
       };
-      params.runner_threadpool_size =
-          ctx->device()->tensorflow_cpu_worker_threads()->num_threads;
       IteratorContext iter_ctx(std::move(params));
       TF_RETURN_IF_ERROR(captured_iterator->Restore(&iter_ctx, reader));
       mutex_lock l(mu_);
@@ -1009,7 +1007,6 @@ void IteratorGetNextSyncOp::Compute(OpKernelContext* ctx) {
   bool end_of_sequence = false;
   IteratorContext::Params params(ctx);
   params.function_library = iterator->function_library();
-
   OP_REQUIRES_OK(ctx, iterator->GetNext(IteratorContext(std::move(params)),
                                         &components, &end_of_sequence));
   OP_REQUIRES(ctx, !end_of_sequence, errors::OutOfRange("End of sequence"));
@@ -1211,6 +1208,7 @@ class DeserializeIteratorOp : public OpKernel {
     OP_REQUIRES_OK(ctx, iterator_resource->Restore(ctx, wrapper->get()));
   }
 };
+
 
 REGISTER_KERNEL_BUILDER(Name("Iterator").Device(DEVICE_CPU), IteratorHandleOp);
 REGISTER_KERNEL_BUILDER(Name("IteratorV2").Device(DEVICE_CPU),
