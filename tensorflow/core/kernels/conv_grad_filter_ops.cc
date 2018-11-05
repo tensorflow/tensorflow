@@ -984,8 +984,7 @@ void LaunchConv2DBackpropFilterOp<Eigen::GpuDevice, T>::operator()(
                 &scratch_allocator, AlgorithmConfig(),
                 &profile_result)
             .ok();
-    OP_REQUIRES(ctx, miopen_find_status && profile_result.is_valid() &&
-                             !profile_result.algorithm().is_default(),
+    OP_REQUIRES(ctx, miopen_find_status && profile_result.is_valid(),
                 errors::NotFound("Failed to find backward filter algorithm!"));
     algorithm_config.set_algorithm(profile_result.algorithm());
     algorithm_config.set_algorithm_no_scratch(profile_result.algorithm());

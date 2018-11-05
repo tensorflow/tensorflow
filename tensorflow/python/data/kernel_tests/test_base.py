@@ -66,6 +66,7 @@ class DatasetTestBase(test.TestCase):
     """Checks that datasets are equal. Supports both graph and eager mode."""
     self.assertEqual(dataset1.output_types, dataset2.output_types)
     self.assertEqual(dataset1.output_classes, dataset2.output_classes)
+    flattened_types = nest.flatten(dataset1.output_types)
 
     next1 = self.getNext(dataset1)
     next2 = self.getNext(dataset2)
@@ -86,8 +87,10 @@ class DatasetTestBase(test.TestCase):
             op1[i],
             (sparse_tensor.SparseTensor, sparse_tensor.SparseTensorValue)):
           self.assertSparseValuesEqual(op1[i], op2[i])
-        else:
+        elif flattened_types[i] == dtypes.string:
           self.assertAllEqual(op1[i], op2[i])
+        else:
+          self.assertAllClose(op1[i], op2[i])
 
   def assertDatasetsRaiseSameError(self,
                                    dataset1,

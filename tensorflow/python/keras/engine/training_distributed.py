@@ -93,20 +93,18 @@ def fit_loop(
   if not model._grouped_model:
     clone_model_on_replicas(model, current_strategy, make_callback_model=True)
 
-  def _per_device_train_function(model):
-    model._make_train_function()
-    return (model.train_function.inputs,
-            model.train_function.outputs,
-            model.train_function.updates_op,
-            model.train_function.session_kwargs)
+  def _per_device_fit_function(model):
+    model._make_fit_function()
+    return (model._fit_function.inputs, model._fit_function.outputs,
+            model._fit_function.updates_op, model._fit_function.session_kwargs)
 
   inputs, targets, sample_weights = _get_input_from_iterator(iterator, model)
   with current_strategy.scope():
     # Create train ops on each of the devices when we call
-    # `_per_device_train_function`.
+    # `_per_device_fit_function`.
     (grouped_inputs, grouped_outputs, grouped_updates,
      grouped_session_args) = current_strategy.call_for_each_replica(
-         _per_device_train_function, model._grouped_model)
+         _per_device_fit_function, model._grouped_model)
     # Unwrap all the per device values returned from `call_for_each_replica`.
     # Unwrapping per device values gives you a list of values that can be
     # used to construct a new train function that is composed of update ops on
@@ -124,10 +122,11 @@ def fit_loop(
         current_strategy, targets)
 
     # Create a train function that is composed of all the parameters above.
-    distributed_train_function = K.Function(
-        all_inputs, all_outputs,
+    distributed_fit_function = K.Function(
+        all_inputs,
+        all_outputs,
         updates=all_updates,
-        name='distributed_train_function',
+        name='distributed_fit_function',
         **all_session_args)
 
     # We need to set sample_weights to None since there are sample weight
@@ -173,7 +172,7 @@ def fit_loop(
         batch_logs = {'batch': step_index, 'size': 1}
         callbacks.on_batch_begin(step_index, batch_logs)
         try:
-          outs = distributed_train_function(ins)
+          outs = distributed_fit_function(ins)
         except errors.OutOfRangeError:
           logging.warning('Your dataset iterator ran out of data; '
                           'interrupting training. Make sure that your dataset '
@@ -184,11 +183,6 @@ def fit_loop(
 
         if not isinstance(outs, list):
           outs = [outs]
-
-        outs = _aggregate_metrics_across_replicas(current_strategy.num_replicas,
-                                                  out_labels,
-                                                  model.stateful_metric_names,
-                                                  outs)
         for l, o in zip(out_labels, outs):
           batch_logs[l] = o
         callbacks.on_batch_end(step_index, batch_logs)
@@ -256,19 +250,17 @@ def _experimental_fit_loop(
 
   K.get_session().run(current_strategy.initialize())
 
-  def _per_device_train_function(model):
-    model._make_train_function()
-    return (model.train_function.inputs,
-            model.train_function.outputs,
-            model.train_function.updates_op,
-            model.train_function.session_kwargs)
+  def _per_device_fit_function(model):
+    model._make_fit_function()
+    return (model._fit_function.inputs, model._fit_function.outputs,
+            model._fit_function.updates_op, model._fit_function.session_kwargs)
 
   # TODO(priyag, sourabhbajaj): This should likely not be hardcoded here.
   K.set_learning_phase(1)
   out_labels = model.metrics_names or []
 
   def step_fn(ctx, inputs, targets):
-    """Clones the model and calls make_train_function."""
+    """Clones the model and calls make_fit_function."""
     # TODO(priyag, sourabhbajaj): The model gets cloned every time
     # fit/test/predict is called. We should look into caching this keyed on
     # input shapes.
@@ -282,15 +274,16 @@ def _experimental_fit_loop(
 
     (grouped_inputs, grouped_outputs, grouped_updates,
      grouped_session_args) = current_strategy.call_for_each_replica(
-         _per_device_train_function, model._grouped_model_train)
+         _per_device_fit_function, model._grouped_model_train)
     (all_inputs, all_outputs, all_updates,
      all_session_args) = distributed_training_utils.unwrap_values(
          current_strategy, grouped_inputs, grouped_outputs,
          grouped_updates, grouped_session_args)
     combined_fn = K.Function(
-        all_inputs, all_outputs,
+        all_inputs,
+        all_outputs,
         updates=all_updates,
-        name='distributed_train_function',
+        name='distributed_fit_function',
         **all_session_args)
 
     for label, output in zip(out_labels, combined_fn.outputs):
@@ -444,18 +437,17 @@ def test_loop(model, iterator, verbose=0, steps=None):
   if not model._grouped_model:
     clone_model_on_replicas(model, current_strategy)
 
-  def _per_device_test_function(model):
-    model._make_test_function()
-    return (model.test_function.inputs,
-            model.test_function.outputs,
-            model.test_function.updates_op,
-            model.test_function.session_kwargs)
+  def _per_device_eval_function(model):
+    model._make_eval_function()
+    return (model._eval_function.inputs, model._eval_function.outputs,
+            model._eval_function.updates_op,
+            model._eval_function.session_kwargs)
 
   inputs, targets, sample_weights = _get_input_from_iterator(iterator, model)
   with current_strategy.scope():
     (grouped_inputs, grouped_outputs, grouped_updates,
      grouped_session_args) = current_strategy.call_for_each_replica(
-         _per_device_test_function, model._grouped_model)
+         _per_device_eval_function, model._grouped_model)
 
     (all_inputs, all_outputs, all_updates,
      all_session_args) = distributed_training_utils.unwrap_values(
@@ -484,10 +476,6 @@ def test_loop(model, iterator, verbose=0, steps=None):
 
     for m in model.stateful_metric_functions:
       m.reset_states()
-    stateful_metric_indices = [
-        i for i, name in enumerate(model.metrics_names)
-        if str(name) in model.stateful_metric_names
-    ]
 
     outs = []
     if verbose == 1:
@@ -502,26 +490,18 @@ def test_loop(model, iterator, verbose=0, steps=None):
     assert steps is not None
     for step in range(steps):
       batch_outs = distributed_test_function(ins)
-      batch_outs = _aggregate_metrics_across_replicas(
-          current_strategy.num_replicas, model.metrics_names,
-          model.stateful_metric_names, batch_outs)
       if isinstance(batch_outs, list):
         if step == 0:
           outs = [0.] * len(batch_outs)
-        for i, batch_out in enumerate(batch_outs):
-          if i in stateful_metric_indices:
-            outs[i] = batch_out
-          else:
-            outs[i] += batch_out
+        outs[0] += batch_outs[0]  # index 0 = 'loss'
+        outs[1:] = batch_outs[1:]
       else:
         if step == 0:
           outs.append(0.)
-        outs[0] += batch_outs
+        outs[0] += batch_outs  # index 0 = 'loss'
       if verbose >= 1:
         progbar.update(step + 1)
-    for i in range(len(outs)):
-      if i not in stateful_metric_indices:
-        outs[i] /= steps
+    outs[0] /= steps  # index 0 = 'loss'
 
     if len(outs) == 1:
       return outs[0]
@@ -552,18 +532,17 @@ def _experimental_test_loop(model, iterator, verbose=0, steps=None,
   if initialize_finalize_strategy:
     K.get_session().run(current_strategy.initialize())
 
-  def _per_device_test_function(model):
-    model._make_test_function()
-    return (model.test_function.inputs,
-            model.test_function.outputs,
-            model.test_function.updates_op,
-            model.test_function.session_kwargs)
+  def _per_device_eval_function(model):
+    model._make_eval_function()
+    return (model._eval_function.inputs, model._eval_function.outputs,
+            model._eval_function.updates_op,
+            model._eval_function.session_kwargs)
 
   # TODO(priyag, sourabhbajaj): This should likely not be hardcoded here.
   K.set_learning_phase(0)
 
   def step_fn(ctx, inputs, targets):
-    """Clones the model and calls make_test_function."""
+    """Clones the model and calls make_eval_function."""
     # TODO(priyag, sourabhbajaj): The model gets cloned every time
     # fit/test/predict is called. We should look into caching this keyed on
     # input shapes.
@@ -577,7 +556,7 @@ def _experimental_test_loop(model, iterator, verbose=0, steps=None,
 
     (grouped_inputs, grouped_outputs, grouped_updates,
      grouped_session_args) = current_strategy.call_for_each_replica(
-         _per_device_test_function, model._grouped_model_test)
+         _per_device_eval_function, model._grouped_model_test)
 
     (all_inputs, all_outputs, all_updates,
      all_session_args) = distributed_training_utils.unwrap_values(
@@ -909,45 +888,6 @@ def clone_model_on_replicas(model, strategy, make_callback_model=False,
       model._grouped_model = grouped_model
   if make_callback_model:
     model._make_callback_model(grouped_model)
-
-
-def _aggregate_metrics_across_replicas(num_devices, out_labels,
-                                       stateful_metric_names, outs):
-  """Aggregates stateless metrics values across replicas.
-
-  When using `MirroredStrategy`, the number of replicas is equal to the
-  number of devices over which training is distributed. This may not always be
-  the case.
-
-  Args:
-    num_devices: Number of devices over which the model is being distributed.
-    out_labels: The list of metric names passed to `compile`.
-    stateful_metric_names: List of stateful metric names on the model.
-    outs: The output from all the replicas.
-
-  Returns:
-    The average value of each metric across the replicas.
-  """
-  # TODO(anjalisridhar): Temporary workaround for aggregating metrics
-  # across replicas. Replace with the new metrics module eventually.
-  merged_output = []
-  # The first output is the total loss.
-  merged_output.append(outs[0])
-  current_index = 1
-  # Each label in `out_labels` corresponds to one set of metrics. The
-  # number of metric values corresponds to the number of devices. We
-  # currently take the mean of the values.
-  for metric_name in out_labels[1:]:
-    if metric_name in stateful_metric_names:
-      # For stateful metrics, we get one aggregated result value.
-      merged_output.append(outs[current_index])
-      current_index += 1
-    else:
-      m = np.mean(outs[current_index:current_index + num_devices])
-      merged_output.append(m)
-      current_index += num_devices
-
-  return merged_output
 
 
 def _get_input_from_iterator(iterator, model):

@@ -1028,9 +1028,10 @@ TEST_F(PlacerTest, TestNoKernelsRegistered) {
 
   Status s = Place(&g);
   EXPECT_EQ(error::INVALID_ARGUMENT, s.code());
-  EXPECT_TRUE(str_util::StrContains(
-      s.error_message(),
-      "No OpKernel was registered to support Op 'VariableNoKernels'"));
+  EXPECT_TRUE(
+      str_util::StrContains(s.error_message(),
+                            "No OpKernel was registered to support Op "
+                            "'VariableNoKernels' used by {{node var}}"));
   EXPECT_TRUE(
       str_util::StrContains(s.error_message(), "<no registered kernels>"));
 }
@@ -1052,9 +1053,9 @@ TEST_F(PlacerTest, TestNoDevicesRegistered) {
 
   Status s = Place(&g, &cpu_only);
   EXPECT_EQ(error::INVALID_ARGUMENT, s.code());
-  EXPECT_TRUE(str_util::StrContains(
-      s.error_message(),
-      "No OpKernel was registered to support Op 'VariableGPU'"));
+  EXPECT_TRUE(str_util::StrContains(s.error_message(),
+                                    "No OpKernel was registered to support Op "
+                                    "'VariableGPU' used by {{node var}}"));
   EXPECT_TRUE(str_util::StrContains(s.error_message(), "device='FakeGPU'"));
 }
 

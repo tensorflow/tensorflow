@@ -151,7 +151,7 @@ port::Status ROCMExecutor::Init(int device_ordinal,
 }
 
 bool ROCMExecutor::FindOnDiskForISAVersion(
-    port::StringPiece filename, port::StringPiece canonical_suffix,
+    absl::string_view filename, absl::string_view canonical_suffix,
     string *found_filename) const {
   if (version_ == 0) {
     return false;

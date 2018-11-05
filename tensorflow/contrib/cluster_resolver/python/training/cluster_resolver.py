@@ -20,9 +20,12 @@ from __future__ import print_function
 
 import abc
 
+import six
+
 from tensorflow.python.training.server_lib import ClusterSpec
 
 
+@six.add_metaclass(abc.ABCMeta)
 class ClusterResolver(object):
   """Abstract class for all implementations of ClusterResolvers.
 
@@ -54,8 +57,20 @@ class ClusterResolver(object):
         'cluster_spec is not implemented for {}.'.format(self))
 
   @abc.abstractmethod
-  def master(self):
-    """..."""
+  def master(self, task_type=None, task_index=None):
+    """Retrieves the name or URL of the session master.
+
+    Args:
+      task_type: (Optional) The type of the TensorFlow task of the master.
+      task_index: (Optional) The index of the TensorFlow task of the master.
+
+    Returns:
+      The name or URL of the session master.
+
+    Implementors of this function must take care in ensuring that the master
+    returned is up-to-date at the time to calling this function. This usually
+    means retrieving the master every time this function is invoked.
+    """
     raise NotImplementedError('master is not implemented for {}.'.format(self))
 
 
@@ -78,8 +93,22 @@ class SimpleClusterResolver(ClusterResolver):
     """Returns the ClusterSpec passed into the constructor."""
     return self._cluster_spec
 
-  def master(self):
-    """Returns the master address to use when creating a session."""
+  def master(self, task_type=None, task_index=None):
+    """Returns the master address to use when creating a session.
+
+    Args:
+      task_type: (Optional) The type of the TensorFlow task of the master.
+      task_index: (Optional) The index of the TensorFlow task of the master.
+
+    Returns:
+      The name or URL of the session master.
+
+    If a task_type and task_index is given, this will override the `master`
+    string passed into the initialization function.
+    """
+    if task_type and task_index:
+      return self.cluster_spec().task_address(task_type, task_index)
+
     return self._master
 
 
@@ -187,6 +216,20 @@ class UnionClusterResolver(ClusterResolver):
 
     return ClusterSpec(merged_cluster)
 
-  def master(self):
-    """master returns the master address from the first cluster resolver."""
+  def master(self, task_type=None, task_index=None):
+    """Returns the master address to use when creating a session.
+
+    This usually returns the master from the first ClusterResolver passed in,
+    but you can override this by specifying the task_type and task_index.
+
+    Args:
+      task_type: (Optional) The type of the TensorFlow task of the master.
+      task_index: (Optional) The index of the TensorFlow task of the master.
+
+    Returns:
+      The name or URL of the session master.
+    """
+    if task_type and task_index:
+      return self.cluster_spec().task_address(task_type, task_index)
+
     return self._cluster_resolvers[0].master()

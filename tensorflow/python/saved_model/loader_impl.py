@@ -173,9 +173,13 @@ def maybe_saved_model_directory(export_dir):
   return file_io.file_exists(txt_path) or file_io.file_exists(pb_path)
 
 
-@tf_export("saved_model.load",
-           v1=["saved_model.load", "saved_model.loader.load"])
-@deprecation.deprecated_endpoints("saved_model.loader.load")
+@tf_export(v1=["saved_model.load", "saved_model.loader.load"])
+@deprecation.deprecated(
+    None,
+    "This function will only be available through the v1 compatibility "
+    "library as tf.compat.v1.saved_model.loader.load or "
+    "tf.compat.v1.saved_model.load. There will be a new function for importing "
+    "SavedModels in Tensorflow 2.0.")
 def load(sess, tags, export_dir, import_scope=None, **saver_kwargs):
   """Loads the model from a SavedModel as specified by tags.
 

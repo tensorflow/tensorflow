@@ -183,6 +183,16 @@ class Layer(checkpointable.CheckpointableBase):
 
     self.supports_masking = False
 
+    # Mark if a layer supports using graph functions in the eager
+    # fit/predict/evaluate loop
+    # TODO(kaftan): merge this with the _static_graph_friendly flag once
+    # enough eager function bugs involving control flow / tensorarrays have
+    # been fixed,  and static-graph-friendly layers will almost always work in
+    # eager graph functions.
+    # We conservatively make this flag opt-in for now to avoid causing existing
+    # custom layers to crash.
+    self._can_use_graph_functions = False
+
     call_argspec = tf_inspect.getfullargspec(self.call)
     if 'training' in call_argspec.args:
       self._expects_training_arg = True

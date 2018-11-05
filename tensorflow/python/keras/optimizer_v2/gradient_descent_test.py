@@ -64,13 +64,9 @@ class GradientDescentOptimizerTest(test.TestCase):
         var1 = resource_variable_ops.ResourceVariable([3.0, 4.0], dtype=dtype)
         grads0 = constant_op.constant([0.1, 0.1], dtype=dtype)
         grads1 = constant_op.constant([0.01, 0.01], dtype=dtype)
-        sgd_op = gradient_descent.SGD(3.0).apply_gradients(
-            zip([grads0, grads1], [var0, var1]))
-        # TODO(apassos) calling initialize_resources on all resources here
-        # doesn't work because the sessions and graph are reused across unit
-        # tests and this would mean trying to reinitialize variables. Figure out
-        # a long-term solution for this.
-        resources.initialize_resources([var0, var1]).run()
+        sgd = gradient_descent.SGD(3.0)
+        sgd_op = sgd.apply_gradients(zip([grads0, grads1], [var0, var1]))
+        variables.global_variables_initializer().run()
         # Fetch params to validate initial values
         self.assertAllCloseAccordingToType([1.0, 2.0], var0.eval())
         self.assertAllCloseAccordingToType([3.0, 4.0], var1.eval())
@@ -90,13 +86,13 @@ class GradientDescentOptimizerTest(test.TestCase):
         grads0 = constant_op.constant([0.1, 0.1], dtype=dtype)
         grads1 = constant_op.constant([0.01, 0.01], dtype=dtype)
         lr = lambda: 3.0
-        sgd_op = gradient_descent.SGD(lr).apply_gradients(
-            zip([grads0, grads1], [var0, var1]))
+        sgd = gradient_descent.SGD(lr)
+        sgd_op = sgd.apply_gradients(zip([grads0, grads1], [var0, var1]))
         # TODO(apassos) calling initialize_resources on all resources here
         # doesn't work because the sessions and graph are reused across unit
         # tests and this would mean trying to reinitialize variables. Figure out
         # a long-term solution for this.
-        resources.initialize_resources([var0, var1]).run()
+        resources.initialize_resources([var0, var1, sgd.iteration]).run()
         # Fetch params to validate initial values
         self.assertAllCloseAccordingToType([1.0, 2.0], var0.eval())
         self.assertAllCloseAccordingToType([3.0, 4.0], var1.eval())
@@ -116,12 +112,9 @@ class GradientDescentOptimizerTest(test.TestCase):
         x = constant_op.constant([[4.0], [5.0]], dtype=dtype)
         pred = math_ops.matmul(var0, x) + var1
         loss = pred * pred
-        sgd_op = gradient_descent.SGD(1.0).minimize(loss)
-        # TODO(apassos) calling initialize_resources on all resources here
-        # doesn't work because the sessions and graph are reused across unit
-        # tests and this would mean trying to reinitialize variables. Figure out
-        # a long-term solution for this.
-        resources.initialize_resources([var0, var1]).run()
+        sgd = gradient_descent.SGD(1.0)
+        sgd_op = sgd.minimize(loss, [var0, var1])
+        variables.global_variables_initializer().run()
         # Fetch params to validate initial values
         self.assertAllCloseAccordingToType([[1.0, 2.0]], var0.eval())
         self.assertAllCloseAccordingToType([3.0], var1.eval())
@@ -143,7 +136,7 @@ class GradientDescentOptimizerTest(test.TestCase):
         pred = math_ops.matmul(embedding_ops.embedding_lookup([var0], [0]), x)
         pred += var1
         loss = pred * pred
-        sgd_op = gradient_descent.SGD(1.0).minimize(loss)
+        sgd_op = gradient_descent.SGD(1.0).minimize(loss, [var0, var1])
         variables.global_variables_initializer().run()
         # Fetch params to validate initial values
         self.assertAllCloseAccordingToType([[1.0, 2.0]], var0.eval())
@@ -193,25 +186,24 @@ class GradientDescentOptimizerTest(test.TestCase):
   def testWithGlobalStep(self):
     for dtype in [dtypes.half, dtypes.float32, dtypes.float64]:
       with self.cached_session():
-        global_step = variables.Variable(0, trainable=False)
         var0 = variables.Variable([1.0, 2.0], dtype=dtype)
         var1 = variables.Variable([3.0, 4.0], dtype=dtype)
         grads0 = constant_op.constant([0.1, 0.1], dtype=dtype)
         grads1 = constant_op.constant([0.01, 0.01], dtype=dtype)
-        sgd_op = gradient_descent.SGD(3.0).apply_gradients(
-            zip([grads0, grads1], [var0, var1]), global_step=global_step)
+        sgd = gradient_descent.SGD(3.0)
+        sgd_op = sgd.apply_gradients(zip([grads0, grads1], [var0, var1]))
         variables.global_variables_initializer().run()
         # Fetch params to validate initial values
         self.assertAllCloseAccordingToType([1.0, 2.0], var0.eval())
         self.assertAllCloseAccordingToType([3.0, 4.0], var1.eval())
         # Run 1 step of sgd
         sgd_op.run()
-        # Validate updated params and global_step
+        # Validate updated params and optimizer iterations.
         self.assertAllCloseAccordingToType([1.0 - 3.0 * 0.1, 2.0 - 3.0 * 0.1],
                                            var0.eval())
         self.assertAllCloseAccordingToType([3.0 - 3.0 * 0.01, 4.0 - 3.0 * 0.01],
                                            var1.eval())
-        self.assertAllCloseAccordingToType(1, global_step.eval())
+        self.assertAllCloseAccordingToType(1, sgd.iteration.eval())
 
   def testSparseBasic(self):
     for dtype in [dtypes.half, dtypes.float32, dtypes.float64]:
@@ -257,12 +249,6 @@ class GradientDescentOptimizerTest(test.TestCase):
       # This shouldn't fail; in particular, the learning rate tensor should
       # be an EagerTensor once again, not a graph Tensor.
       self.assertEqual(float(step()), -1.0)
-
-  def testConfig(self):
-    opt = gradient_descent.SGD(learning_rate=1.0)
-    config = opt.get_config()
-    opt2 = gradient_descent.SGD.from_config(config)
-    self.assertEqual(opt._hyper["learning_rate"], opt2._hyper["learning_rate"])
 
 
 if __name__ == "__main__":

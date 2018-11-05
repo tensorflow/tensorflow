@@ -293,6 +293,8 @@ class ParameterServerStrategy(distribute_lib.DistributionStrategy):
     return mirrored_strategy._call_for_each_replica(self, fn, *args, **kwargs)
 
   def _verify_destinations_not_different_worker(self, destinations):
+    if not self._cluster_spec:
+      return
     if destinations is None:
       return
     for d in cross_tower_ops_lib.get_devices_from(destinations):

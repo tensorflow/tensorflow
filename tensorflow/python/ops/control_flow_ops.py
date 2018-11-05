@@ -14,8 +14,7 @@
 # ==============================================================================
 """Control Flow Operations.
 
-See the [Control
-Flow](https://tensorflow.org/api_guides/python/control_flow_ops) guide.
+See the [autograph](https://www.tensorflow.org/guide/autographs) guide.
 """
 # pylint: disable=g-bad-name
 from __future__ import absolute_import
@@ -1485,6 +1484,7 @@ def ZerosLikeOutsideLoop(op, index):
       return array_ops.zeros_like(val, optimize=False)
 
 
+@six.add_metaclass(abc.ABCMeta)
 class ControlFlowContext(object):
   """The base class for control flow context.
 
@@ -3239,7 +3239,12 @@ def while_loop(cond,
   """
   if ENABLE_WHILE_V2 and not context.executing_eagerly():
     return while_v2.while_loop(
-        cond, body, loop_vars, shape_invariants=shape_invariants, name=name)
+        cond,
+        body,
+        loop_vars,
+        shape_invariants=shape_invariants,
+        maximum_iterations=maximum_iterations,
+        name=name)
 
   with ops.name_scope(name, "while", loop_vars):
     if not loop_vars:
@@ -3795,6 +3800,12 @@ class XLAControlFlowContext(ControlFlowContext):
   def __init__(self):
     super(XLAControlFlowContext, self).__init__()
     self._name = "XLAControlFlowContext"
+
+  def to_control_flow_context_def(self, context_def, export_scope=None):
+    # pylint: disable=useless-super-delegation
+    # NOTE(slebedev): the method is required by `ControlFlowContext`.
+    super(XLAControlFlowContext, self).to_control_flow_context_def(
+        context_def, export_scope)
 
   def IsXLAContext(self):
     return True

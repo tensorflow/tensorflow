@@ -595,9 +595,7 @@ class ToSingleElementOp : public AsyncOpKernel {
  public:
   explicit ToSingleElementOp(OpKernelConstruction* ctx)
       : AsyncOpKernel(ctx),
-        background_worker_(ctx->env(),
-                           strings::StrCat("to_single_element_op_thread_",
-                                           SanitizeThreadSuffix(name()))) {}
+        background_worker_(ctx->env(), "tf_data_to_single_element") {}
 
   void ComputeAsync(OpKernelContext* ctx, DoneCallback done) override {
     // The call to `iterator->GetNext()` may block and depend on an
@@ -663,9 +661,7 @@ class ReduceDatasetOp : public AsyncOpKernel {
  public:
   explicit ReduceDatasetOp(OpKernelConstruction* ctx)
       : AsyncOpKernel(ctx),
-        background_worker_(
-            ctx->env(),
-            strings::StrCat("reduce_thread_", SanitizeThreadSuffix(name()))) {
+        background_worker_(ctx->env(), "tf_data_reduce_dataset") {
     OP_REQUIRES_OK(ctx, ctx->GetAttr("f", &reduce_func_));
     OP_REQUIRES_OK(ctx, ctx->GetAttr("output_types", &output_types_));
     OP_REQUIRES_OK(ctx, ctx->GetAttr("output_shapes", &output_shapes_));
@@ -772,10 +768,7 @@ class OneShotIteratorOp : public AsyncOpKernel {
  public:
   explicit OneShotIteratorOp(OpKernelConstruction* ctx)
       : AsyncOpKernel(ctx),
-        background_worker_(
-            ctx->env(),
-            strings::StrCat("one_shot_iterator_initialization_thread_",
-                            SanitizeThreadSuffix(name()))),
+        background_worker_(ctx->env(), "tf_data_one_shot_iterator"),
         graph_def_version_(ctx->graph_def_version())
 
   {
@@ -1043,9 +1036,8 @@ class IteratorGetNextAsOptionalOp : public AsyncOpKernel {
  public:
   explicit IteratorGetNextAsOptionalOp(OpKernelConstruction* ctx)
       : AsyncOpKernel(ctx),
-        background_worker_(
-            ctx->env(), strings::StrCat("iterator_get_next_as_optional_thread_",
-                                        SanitizeThreadSuffix(name()))) {
+        background_worker_(ctx->env(),
+                           "tf_data_iterator_get_next_as_optional") {
     OP_REQUIRES_OK(ctx, ctx->GetAttr("output_types", &output_types_));
     OP_REQUIRES_OK(ctx, ctx->GetAttr("output_shapes", &output_shapes_));
   }

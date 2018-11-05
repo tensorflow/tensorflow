@@ -49,6 +49,9 @@ def register_extension_info(**kwargs):
 
 # if_cuda_is_configured def placeholder
 
+def if_cuda_is_configured_compat(x):
+    return if_cuda_is_configured(x)
+
 # Given a source file, generate a test name.
 # i.e. "common_runtime/direct_session_test.cc" becomes
 #      "common_runtime_direct_session_test"
@@ -170,10 +173,10 @@ def if_not_windows(a):
         "//conditions:default": a,
     })
 
-def if_windows(a):
+def if_windows(a, otherwise = []):
     return select({
         clean_dep("//tensorflow:windows"): a,
-        "//conditions:default": [],
+        "//conditions:default": otherwise,
     })
 
 def if_not_windows_cuda(a):
@@ -199,6 +202,9 @@ def if_override_eigen_strong_inline(a):
         clean_dep("//tensorflow:override_eigen_strong_inline"): a,
         "//conditions:default": [],
     })
+
+def if_not_tx2_llvm_or_windows_cuda(a):
+    return if_not_windows_cuda(a)
 
 def get_win_copts(is_external = False):
     WINDOWS_COPTS = [
@@ -1041,7 +1047,7 @@ def _cuda_copts(opts = []):
         "@local_config_cuda//cuda:using_clang": ([
             "-fcuda-flush-denormals-to-zero",
         ]),
-    }) + if_cuda_is_configured(opts)
+    }) + if_cuda_is_configured_compat(opts)
 
 # Build defs for TensorFlow kernels
 
@@ -1066,7 +1072,7 @@ def tf_gpu_kernel_library(
         srcs = srcs,
         hdrs = hdrs,
         copts = copts,
-        deps = deps + if_cuda_is_configured([
+        deps = deps + if_cuda_is_configured_compat([
             clean_dep("//tensorflow/core:cuda"),
             clean_dep("//tensorflow/core:gpu_lib"),
         ]) + if_rocm_is_configured([
@@ -1107,7 +1113,7 @@ def tf_gpu_library(deps = None, gpu_deps = None, copts = tf_copts(), **kwargs):
 
     kwargs["features"] = kwargs.get("features", []) + ["-use_header_modules"]
     native.cc_library(
-        deps = deps + if_cuda_is_configured(gpu_deps + [
+        deps = deps + if_cuda_is_configured_compat(gpu_deps + [
             clean_dep("//tensorflow/core:cuda"),
             "@local_config_cuda//cuda:cuda_headers",
         ]) + if_rocm_is_configured(gpu_deps + [
@@ -1505,7 +1511,7 @@ def tf_custom_op_library(name, srcs = [], gpu_srcs = [], deps = [], linkopts = [
             srcs = gpu_srcs,
             copts = _cuda_copts() + rocm_copts() + if_tensorrt(["-DGOOGLE_TENSORRT=1"]),
             features = if_cuda(["-use_header_modules"]),
-            deps = deps + if_cuda_is_configured(cuda_deps) + if_rocm_is_configured(rocm_deps),
+            deps = deps + if_cuda_is_configured_compat(cuda_deps) + if_rocm_is_configured(rocm_deps),
             **kwargs
         )
         cuda_deps.extend([":" + basename + "_gpu"])
@@ -1517,12 +1523,12 @@ def tf_custom_op_library(name, srcs = [], gpu_srcs = [], deps = [], linkopts = [
             clean_dep("//tensorflow/core:framework"),
             clean_dep("//tensorflow/core:lib"),
         ],
-        deps = deps + if_cuda_is_configured(cuda_deps) + if_rocm_is_configured(rocm_deps),
+        deps = deps + if_cuda_is_configured_compat(cuda_deps) + if_rocm_is_configured(rocm_deps),
     )
     tf_cc_shared_object(
         name = name,
         srcs = srcs,
-        deps = deps + if_cuda_is_configured(cuda_deps) + if_rocm_is_configured(rocm_deps),
+        deps = deps + if_cuda_is_configured_compat(cuda_deps) + if_rocm_is_configured(rocm_deps),
         data = if_static([name + "_check_deps"]),
         copts = tf_copts(is_external = True),
         features = ["windows_export_all_symbols"],
@@ -1999,7 +2005,8 @@ def tf_py_build_info_genrule():
         cmd =
             "$(location //tensorflow/tools/build_info:gen_build_info) --raw_generate \"$@\" "
             + " --is_config_cuda " + if_cuda("True", "False")
-            + " --is_config_rocm " + if_rocm("True", "False"),
+            + " --is_config_rocm " + if_rocm("True", "False")
+            + if_windows(" --key_value msvcp_dll_name=msvcp140.dll", ""),
         local = 1,
         tools = [clean_dep("//tensorflow/tools/build_info:gen_build_info")],
     )

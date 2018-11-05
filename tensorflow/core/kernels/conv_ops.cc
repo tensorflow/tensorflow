@@ -852,8 +852,7 @@ void LaunchConv2DOp<GPUDevice, T>::operator()(
               AlgorithmConfig(), &profile_result)
           .ok();
 
-    OP_REQUIRES(ctx, miopen_find_status && profile_result.is_valid() &&
-                         !profile_result.algorithm().is_default(),
+    OP_REQUIRES(ctx, miopen_find_status && profile_result.is_valid(),
                 errors::NotFound("Failed to find conv algorithm!"));
 
     algorithm_config.set_algorithm(profile_result.algorithm());

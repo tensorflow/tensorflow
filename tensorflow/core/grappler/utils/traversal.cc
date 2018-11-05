@@ -14,30 +14,36 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/core/grappler/utils/traversal.h"
+
+#include "absl/container/flat_hash_map.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 
 namespace tensorflow {
 namespace grappler {
 
-void ReverseDfs(const GraphView& graph_view, const std::vector<NodeDef*>& from,
-                const std::function<void(NodeDef*)>& pre_order,
-                const std::function<void(NodeDef*)>& post_order,
-                const std::function<void(NodeDef*, NodeDef*)>& on_back_edge) {
+namespace {
+
+template <typename GraphViewType>
+void ReverseDfsInternal(
+    const GraphViewType& graph_view, const std::vector<const NodeDef*>& from,
+    const std::function<void(const NodeDef*)>& pre_order,
+    const std::function<void(const NodeDef*)>& post_order,
+    const std::function<void(const NodeDef*, const NodeDef*)>& on_back_edge) {
   // Stack of work to do.
   struct StackElem {
-    NodeDef* node;
+    const NodeDef* node;
     bool children_visited;
-    NodeDef* src;
+    const NodeDef* src;
   };
   std::vector<StackElem> stack;
 
   stack.reserve(from.size());
-  for (NodeDef* node : from) {
+  for (const NodeDef* node : from) {
     stack.push_back(StackElem{node, false});
   }
 
   enum NodeState { NOT_VISITED = 0, VISITING = 1, DONE = 2 };
-  std::unordered_map<NodeDef*, NodeState> node_state;
+  absl::flat_hash_map<const NodeDef*, NodeState> node_state;
   while (!stack.empty()) {
     StackElem w = stack.back();
     stack.pop_back();
@@ -69,11 +75,31 @@ void ReverseDfs(const GraphView& graph_view, const std::vector<NodeDef*>& from,
     // Enqueue the node again with the children_visited flag set to true.
     stack.push_back(StackElem{w.node, true, w.src});
 
-    // Now enqueu the node children.
+    // Now enqueue the node children.
     for (const auto fanin : graph_view.GetFanins(*w.node, true)) {
       stack.push_back(StackElem{fanin.node, false, w.node});
     }
   }
+}
+
+}  // namespace
+
+void ReverseDfs(
+    const GraphView& graph_view, const std::vector<const NodeDef*>& from,
+    const std::function<void(const NodeDef*)>& pre_order,
+    const std::function<void(const NodeDef*)>& post_order,
+    const std::function<void(const NodeDef*, const NodeDef*)>& on_back_edge) {
+  ReverseDfsInternal<GraphView>(graph_view, from, pre_order, post_order,
+                                on_back_edge);
+}
+
+void ReverseDfs(
+    const MutableGraphView& graph_view, const std::vector<const NodeDef*>& from,
+    const std::function<void(const NodeDef*)>& pre_order,
+    const std::function<void(const NodeDef*)>& post_order,
+    const std::function<void(const NodeDef*, const NodeDef*)>& on_back_edge) {
+  ReverseDfsInternal<MutableGraphView>(graph_view, from, pre_order, post_order,
+                                       on_back_edge);
 }
 
 }  // namespace grappler

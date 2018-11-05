@@ -22,6 +22,8 @@ from __future__ import print_function
 
 import abc
 
+import six
+
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
@@ -40,6 +42,7 @@ from tensorflow.python.training.checkpointable import base as checkpointable
 from tensorflow.python.util import nest
 
 
+@six.add_metaclass(abc.ABCMeta)
 class _OptimizableVariable(object):
   """Interface for abstracting over variables in the optimizers."""
 

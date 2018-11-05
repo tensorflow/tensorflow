@@ -213,8 +213,8 @@ class ROCMExecutor : public internal::StreamExecutorInterface {
  private:
   // Attempts to find a more specific version of the file indicated by
   // filename by looking for AMDGPU ISA-specific suffixed versions.
-  bool FindOnDiskForISAVersion(port::StringPiece filename,
-                               port::StringPiece canonical_suffix,
+  bool FindOnDiskForISAVersion(absl::string_view filename,
+                               absl::string_view canonical_suffix,
                                string *found_filename) const;
 
   // Host callback landing routine invoked by ROCM.

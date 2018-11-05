@@ -82,6 +82,9 @@ class HloReachabilityMap {
   // if the set of edges that have been provided to this class are transitive.
   bool IsConnected(const HloInstruction* a, const HloInstruction* b) const;
 
+  // Checks if an instruction is in the Reachability map.
+  bool IsPresent(const HloInstruction* a) const { return indices_.contains(a); }
+
  private:
   // A bit-vector implementation specialized for this use case which provides a
   // fast bitwise OR operation not available in tensorflow::gtl::BitMap.

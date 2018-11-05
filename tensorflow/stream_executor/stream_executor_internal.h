@@ -36,7 +36,6 @@ limitations under the License.
 #include "tensorflow/stream_executor/kernel_cache_config.h"
 #include "tensorflow/stream_executor/kernel_spec.h"
 #include "tensorflow/stream_executor/launch_dim.h"
-#include "tensorflow/stream_executor/lib/inlined_vector.h"
 #include "tensorflow/stream_executor/lib/status.h"
 #include "tensorflow/stream_executor/lib/statusor.h"
 #include "tensorflow/stream_executor/module_spec.h"

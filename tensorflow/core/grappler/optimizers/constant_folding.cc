@@ -972,7 +972,8 @@ Status ConstantFolding::EvaluateNode(const NodeDef& node,
 }
 
 Status ConstantFolding::EvaluateOneFoldable(const NodeDef& node,
-                                            std::vector<NodeDef>* outputs) {
+                                            std::vector<NodeDef>* outputs,
+                                            bool* result_too_large) {
   TensorVector inputs;
   TensorVector output_tensors;
   auto inputs_cleanup = gtl::MakeCleanup([&inputs, &output_tensors] {
@@ -987,9 +988,8 @@ Status ConstantFolding::EvaluateOneFoldable(const NodeDef& node,
   });
 
   for (const auto& input : node.input()) {
-    int port = 0;
-    ParseNodeNameAsStringPiece(input, &port);
-    if (port < 0) {
+    const TensorId input_tensor = ParseTensorName(input);
+    if (input_tensor.index() < 0) {
       // Control dependency
       break;
     }
@@ -1018,8 +1018,11 @@ Status ConstantFolding::EvaluateOneFoldable(const NodeDef& node,
       node_name = strings::StrCat(node_name, "-", i);
     }
     if (output_tensors[i].tensor) {
-      TF_RETURN_IF_ERROR(
-          CreateNodeDef(node_name, output_tensors[i], &outputs->at(i)));
+      Status s = CreateNodeDef(node_name, output_tensors[i], &outputs->at(i));
+      if (!s.ok()) {
+        *result_too_large = true;
+        return s;
+      }
     } else {
       // Create an empty NodeDef to identify dead outputs (e.g. the output of a
       // switch that's not selected by the switch predicate).
@@ -1029,7 +1032,8 @@ Status ConstantFolding::EvaluateOneFoldable(const NodeDef& node,
   return Status::OK();
 }
 
-Status ConstantFolding::FoldNode(NodeDef* node, GraphDef* output_graph) {
+Status ConstantFolding::FoldNode(NodeDef* node, GraphDef* output_graph,
+                                 bool* result_too_large) {
   if (IsMerge(*node)) {
     // Merge nodes are special, in the sense that they execute as soon as one of
     // their input is ready. We can therefore fold a merge node iff it has at
@@ -1122,7 +1126,8 @@ Status ConstantFolding::FoldNode(NodeDef* node, GraphDef* output_graph) {
   }
 
   std::vector<NodeDef> const_nodes;
-  TF_RETURN_IF_ERROR(EvaluateOneFoldable(*node, &const_nodes));
+  TF_RETURN_IF_ERROR(
+      EvaluateOneFoldable(*node, &const_nodes, result_too_large));
   NodeDef* constant_output = nullptr;
   for (int i = 0; i < const_nodes.size(); i++) {
     NodeDef* const_node = &const_nodes[i];
@@ -1227,7 +1232,8 @@ Status ConstantFolding::FoldNode(NodeDef* node, GraphDef* output_graph) {
   return Status::OK();
 }
 
-Status ConstantFolding::FoldGraph(GraphDef* output) {
+Status ConstantFolding::FoldGraph(
+    GraphDef* output, absl::flat_hash_set<string>* nodes_to_not_simplify) {
   std::unordered_set<string> processed_nodes;
   std::deque<NodeDef*> queue;
   for (int i = 0; i < graph_->node_size(); i++) {
@@ -1250,11 +1256,15 @@ Status ConstantFolding::FoldGraph(GraphDef* output) {
                 return n1->name() < n2->name();
               });
 
-    Status s = FoldNode(node, output);
+    bool result_too_large = false;
+    Status s = FoldNode(node, output, &result_too_large);
     processed_nodes.insert(node->name());
     if (!s.ok()) {
       VLOG(1) << "Failed to fold node " << node->DebugString()
               << "\nError message: " << s;
+      if (result_too_large) {
+        nodes_to_not_simplify->emplace(node->name());
+      }
     } else {
       for (auto& output : fanout) {
         if (IsFoldable(*output)) {
@@ -1583,13 +1593,18 @@ Status ConstantFolding::ReplaceOperationWithConstant(
   return Status::OK();
 }
 
-Status ConstantFolding::SimplifyGraph(bool use_shape_info,
-                                      GraphDef* optimized_graph,
-                                      GraphProperties* properties) {
+Status ConstantFolding::SimplifyGraph(
+    bool use_shape_info, GraphDef* optimized_graph, GraphProperties* properties,
+    const absl::flat_hash_set<string>& nodes_to_not_simplify) {
   for (int i = 0; i < optimized_graph->node_size(); ++i) {
-    TF_RETURN_IF_ERROR(SimplifyNode(use_shape_info,
-                                    optimized_graph->mutable_node(i),
-                                    optimized_graph, properties));
+    // TODO(lyandy): Move nodes to not simplify check into SimplifyNode and
+    // generalize to only restrict certain simplifications.
+    if (nodes_to_not_simplify.find(optimized_graph->node(i).name()) ==
+        nodes_to_not_simplify.end()) {
+      TF_RETURN_IF_ERROR(SimplifyNode(use_shape_info,
+                                      optimized_graph->mutable_node(i),
+                                      optimized_graph, properties));
+    }
   }
   return Status::OK();
 }
@@ -3023,10 +3038,11 @@ Status ConstantFolding::RunOptimizationPass(Cluster* cluster,
     TF_RETURN_IF_ERROR(MaterializeShapes(properties));
     TF_RETURN_IF_ERROR(MaterializeConstants(properties));
   }
-  TF_RETURN_IF_ERROR(FoldGraph(optimized_graph));
+  absl::flat_hash_set<string> nodes_to_not_simplify;
+  TF_RETURN_IF_ERROR(FoldGraph(optimized_graph, &nodes_to_not_simplify));
   node_map_.reset(new NodeMap(optimized_graph));
-  TF_RETURN_IF_ERROR(
-      SimplifyGraph(can_use_shape_info, optimized_graph, &properties));
+  TF_RETURN_IF_ERROR(SimplifyGraph(can_use_shape_info, optimized_graph,
+                                   &properties, nodes_to_not_simplify));
 
   return Status::OK();
 }

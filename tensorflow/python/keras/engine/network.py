@@ -139,6 +139,7 @@ class Network(base_layer.Layer):
     self._eager_losses = []
     self._scope = None  # Never used.
     self._reuse = None  # Never used.
+    self._can_use_graph_functions = False
     if context.executing_eagerly():
       self._graph = None
     else:
@@ -256,6 +257,10 @@ class Network(base_layer.Layer):
     self._layers_by_depth = layers_by_depth
 
     self._track_layers(layers)
+
+    # A Graph network supports defun-ed eager loops if all of its layers do.
+    self._can_use_graph_functions = all(
+        layer._can_use_graph_functions for layer in layers)
 
     # Create the node linking internal inputs to internal outputs.
     base_layer.Node(
@@ -685,8 +690,26 @@ class Network(base_layer.Layer):
         A list of loss tensors.
     """
     losses = self._unfiltered_losses
+
     if context.executing_eagerly():
       return losses
+
+    # TODO(kaftan/fchollet): Clean this up / make it obsolete.
+    # This is a super ugly, confusing check necessary to
+    # handle the case where we are executing in a function graph in eager mode
+    # but the model was constructed symbolically in a separate graph scope.
+    # We need to capture the losses created in the current graph function,
+    # and filter out the incorrect loss tensors created when symbolically
+    # building the graph.
+    # We have to use this check because the code after it that checks
+    # for reachable inputs only captures the part of the model that was
+    # built symbolically, and captures the wrong tensors from a different
+    # func graph (causing a crash later on when trying to execute the
+    # graph function)
+    with ops.init_scope():
+      if context.executing_eagerly():
+        return [loss for loss in losses
+                if loss.graph == ops.get_default_graph()]
 
     relevant_inputs = []
     for i in range(0, len(self._inbound_nodes)):
@@ -1097,11 +1120,8 @@ class Network(base_layer.Layer):
                   pass
 
               # Apply activity regularizer if any.
-              if layer.activity_regularizer is not None:
-                regularization_losses = [
-                    layer.activity_regularizer(x) for x in output_tensors
-                ]
-                layer.add_loss(regularization_losses, computed_tensors)
+              layer._handle_activity_regularization(computed_tensors,
+                                                    output_tensors)
 
           # Update tensor_map.
           for x, y, mask in zip(reference_output_tensors, output_tensors,

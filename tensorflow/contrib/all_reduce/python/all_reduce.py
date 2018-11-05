@@ -30,6 +30,7 @@ from tensorflow.python.framework import device as device_lib
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import nccl_ops
 
 
 def _flatten_tensors(tensors):
@@ -697,7 +698,7 @@ def build_nccl_all_reduce(input_tensors, red_op, un_op=None):
     ValueError: red_op not supported.
   """
   if red_op == math_ops.add:
-    output_tensors = nccl.all_sum(input_tensors)
+    output_tensors = nccl_ops.all_sum(input_tensors)
   else:
     raise ValueError("red_op not supported by NCCL all-reduce: ", red_op)
   if un_op:
@@ -749,7 +750,7 @@ def _build_nccl_hybrid(input_tensors, red_op, upper_level_f):
   for w in range(0, num_workers):
     dst_tensors = []
     with ops.device(per_worker_devices[w][0]):
-      broadcast_src = nccl.broadcast(array_ops.identity(level_2_output[w]))
+      broadcast_src = nccl_ops.broadcast(array_ops.identity(level_2_output[w]))
     for d in per_worker_devices[w]:
       with ops.device(d):
         dst_tensors.append(array_ops.identity(broadcast_src))

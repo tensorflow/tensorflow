@@ -2998,6 +2998,12 @@ class _CapturingContext(control_flow_ops.ControlFlowContext):
     control_flow_ops.ControlFlowContext.__init__(self)
     self._message = message
 
+  def to_control_flow_context_def(self, context_def, export_scope=None):
+    # pylint: disable=useless-super-delegation
+    # NOTE(slebedev): the method is required by `ControlFlowContext`.
+    super(_CapturingContext, self).to_control_flow_context_def(
+        context_def, export_scope)
+
   def AddOp(self, op):  # pylint: disable=invalid-name
     for c in op.inputs:
       if tpu._TPU_REPLICATE_ATTR in c.op.node_def.attr:  # pylint: disable=protected-access

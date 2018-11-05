@@ -156,7 +156,8 @@ bool IsCompatible(int desired_dtype, TF_DataType returned_dtype) {
       tensorflow::DataTypeIsInteger(returned)) {
     return true;
   } else if (tensorflow::DataTypeIsFloating(desired) &&
-             tensorflow::DataTypeIsFloating(returned)) {
+             (tensorflow::DataTypeIsFloating(returned) ||
+              tensorflow::DataTypeIsInteger(returned))) {
     return true;
   } else if (tensorflow::DataTypeIsComplex(desired) &&
              (tensorflow::DataTypeIsComplex(returned) ||

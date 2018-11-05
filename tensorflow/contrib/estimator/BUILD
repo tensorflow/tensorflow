@@ -17,7 +17,6 @@ py_library(
     deps = [
         ":boosted_trees",
         ":dnn",
-        ":dnn_linear_combined",
         ":dnn_with_layer_annotations",
         ":early_stopping",
         ":expect_tensorflow_estimator_installed",
@@ -71,18 +70,6 @@ py_library(
         "//tensorflow/python/estimator:head",
         "//tensorflow/python/estimator:model_fn",
         "//tensorflow/python/estimator:optimizers",
-    ],
-)
-
-py_library(
-    name = "dnn_linear_combined",
-    srcs = ["python/estimator/dnn_linear_combined.py"],
-    srcs_version = "PY2AND3",
-    deps = [
-        ":expect_tensorflow_estimator_installed",
-        "//tensorflow:tensorflow_py_no_contrib",
-        "//tensorflow/python/estimator",
-        "//tensorflow/python/estimator:dnn_linear_combined",
     ],
 )
 

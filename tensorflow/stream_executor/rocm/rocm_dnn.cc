@@ -32,7 +32,6 @@ limitations under the License.
 #include "tensorflow/stream_executor/lib/env.h"
 #include "tensorflow/stream_executor/lib/error.h"
 #include "tensorflow/stream_executor/lib/initialize.h"
-#include "tensorflow/stream_executor/lib/stringpiece.h"
 #include "tensorflow/stream_executor/lib/threadpool.h"
 #include "tensorflow/stream_executor/platform/logging.h"
 #include "tensorflow/stream_executor/plugin_registry.h"
@@ -644,9 +643,9 @@ class ScopedPoolingDescriptor {
                  << ToString(status);
     }
 
-    const std::vector<int64> strides64 = pooling_descriptor.strides();
-    const std::vector<int64> padding64 = pooling_descriptor.padding();
-    const std::vector<int64> shape64 = pooling_descriptor.window();
+    absl::Span<const int64> strides64 = pooling_descriptor.strides();
+    absl::Span<const int64> padding64 = pooling_descriptor.padding();
+    absl::Span<const int64> shape64 = pooling_descriptor.window();
 
     const int nd = pooling_descriptor.ndims();
     std::vector<int> shape(nd);
@@ -2297,8 +2296,9 @@ bool MIOpenSupport::DoConvolveImpl(
   const bool is_profiling = output_profile_result != nullptr;
   std::pair<miopenConvFwdAlgorithm_t, size_t> algo_sz;
   DeviceMemory<uint8> scratch;
+  absl::optional<dnn::AlgorithmDesc> algo_desc = algorithm_config.algorithm();
 
-  if (algorithm_config.algorithm().is_default()) {
+  if (!algo_desc.has_value()) {
     // With the default algorithm, use MIOpen's heuristics.
     auto get_algorithm = [&]()
         SHARED_LOCKS_REQUIRED(dnn_handle_mutex_) ->
@@ -2349,9 +2349,8 @@ bool MIOpenSupport::DoConvolveImpl(
 
   } else {
     // An algorithm has been specified.
-    dnn::AlgorithmDesc algo = algorithm_config.algorithm();
-    algo_sz.first = ToConvForwardAlgo(algo);
-    algo_sz.second = algo.scratch_size();
+    algo_sz.first = ToConvForwardAlgo(*algo_desc);
+    algo_sz.second = algo_desc->scratch_size();
 
     size_t size_in_bytes = algo_sz.second;
     if (size_in_bytes != 0) {
@@ -2368,10 +2367,10 @@ bool MIOpenSupport::DoConvolveImpl(
         scratch = allocated.ValueOrDie();
       }
       if (scratch == nullptr) {
-        CHECK(!algorithm_config.algorithm_no_scratch().is_default())
+        CHECK(!algo_desc.has_value())
             << "The primary convolution algorithm failed memory allocation, "
                "while a secondary algorithm is not provided.";
-        algo_sz.first = ToConvForwardAlgo(algorithm_config.algorithm_no_scratch());
+        algo_sz.first = ToConvForwardAlgo(*(algorithm_config.algorithm_no_scratch()));
         algo_sz.second = 0;
       }
     }
@@ -2858,8 +2857,9 @@ bool MIOpenSupport::DoConvolveBackwardDataImpl(
   const bool is_profiling = output_profile_result != nullptr;
   std::pair<miopenConvBwdDataAlgorithm_t, size_t> algo_sz;
   DeviceMemory<uint8> scratch;
+  absl::optional<dnn::AlgorithmDesc> algo_desc = algorithm_config.algorithm();
 
-  if (algorithm_config.algorithm().is_default()) {
+  if (!algo_desc.has_value()) {
     // With the default algorithm, use MIOpen's heuristics.
     auto get_algorithm = [&]() SHARED_LOCKS_REQUIRED(
         dnn_handle_mutex_) -> std::pair<miopenConvBwdDataAlgorithm_t, size_t> {
@@ -2913,9 +2913,8 @@ bool MIOpenSupport::DoConvolveBackwardDataImpl(
 
   } else {
     // An algorithm has been specified.
-    dnn::AlgorithmDesc algo = algorithm_config.algorithm();
-    algo_sz.first = ToConvBackwardDataAlgo(algo);
-    algo_sz.second = algo.scratch_size();
+    algo_sz.first = ToConvBackwardDataAlgo(*algo_desc);
+    algo_sz.second = algo_desc->scratch_size();
 
     size_t size_in_bytes = algo_sz.second;
     if (size_in_bytes != 0) {
@@ -2932,10 +2931,10 @@ bool MIOpenSupport::DoConvolveBackwardDataImpl(
         scratch = allocated.ValueOrDie();
       }
       if (scratch == nullptr) {
-        CHECK(!algorithm_config.algorithm_no_scratch().is_default())
+        CHECK(!algo_desc.has_value())
             << "The primary convolution algorithm failed memory allocation, "
                "while a secondary algorithm is not provided.";
-        algo_sz.first = ToConvBackwardDataAlgo(algorithm_config.algorithm_no_scratch());
+        algo_sz.first = ToConvBackwardDataAlgo(*(algorithm_config.algorithm_no_scratch()));
         algo_sz.second = 0;
       }
     }
@@ -3083,8 +3082,9 @@ bool MIOpenSupport::DoConvolveBackwardFilterImpl(
   const bool is_profiling = output_profile_result != nullptr;
   std::pair<miopenConvBwdWeightsAlgorithm_t, size_t> algo_sz;
   DeviceMemory<uint8> scratch;
+  absl::optional<dnn::AlgorithmDesc> algo_desc = algorithm_config.algorithm();
 
-  if (algorithm_config.algorithm().is_default()) {
+  if (!algo_desc.has_value()) {
     // With the default algorithm, use MIOpen's heuristics.
     auto get_algorithm = [&]() SHARED_LOCKS_REQUIRED(
         dnn_handle_mutex_) -> std::pair<miopenConvBwdWeightsAlgorithm_t, size_t> {
@@ -3136,9 +3136,9 @@ bool MIOpenSupport::DoConvolveBackwardFilterImpl(
 
   } else {
     // An algorithm has been specified.
-    dnn::AlgorithmDesc algo = algorithm_config.algorithm();
-    algo_sz.first = ToConvBackwardFilterAlgo(algorithm_config.algorithm());
-    algo_sz.second = algo.scratch_size();
+    absl::optional<dnn::AlgorithmDesc> algo_desc = algorithm_config.algorithm();
+    algo_sz.first = ToConvBackwardFilterAlgo(*algo_desc);
+    algo_sz.second = algo_desc->scratch_size();
 
     size_t size_in_bytes = algo_sz.second;
 
@@ -3156,11 +3156,11 @@ bool MIOpenSupport::DoConvolveBackwardFilterImpl(
         scratch = allocated.ValueOrDie();
       }
       if (scratch == nullptr) {
-        CHECK(!algorithm_config.algorithm_no_scratch().is_default())
+        CHECK(!algo_desc.has_value())
             << "The primary convolution algorithm failed memory allocation, "
                "while a secondary algorithm is not provided.";
         algo_sz.first =
-            ToConvBackwardFilterAlgo(algorithm_config.algorithm_no_scratch());
+            ToConvBackwardFilterAlgo(*(algorithm_config.algorithm_no_scratch()));
         algo_sz.second = 0;
       }
     }

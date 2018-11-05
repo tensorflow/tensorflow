@@ -37,8 +37,7 @@ NodeDef MakeFusedNode(const NodeDef& map_node,
                       const FunctionDef& fused_function,
                       MutableGraphView* graph) {
   NodeDef fused_node;
-  graph_utils::SetUniqueGraphNodeName("fused_map", graph->GetGraph(),
-                                      &fused_node);
+  graph_utils::SetUniqueGraphNodeName("fused_map", graph->graph(), &fused_node);
   fused_node.set_op("MapDataset");
   fused_node.add_input(map_node.input(0));
 
@@ -72,8 +71,8 @@ NodeDef MakeFilterByLastComponentNode(const NodeDef& fused_map_node,
                                       const NodeDef& filter_node,
                                       MutableGraphView* graph) {
   NodeDef filter_by_component;
-  graph_utils::SetUniqueGraphNodeName("FilterByLastComponent",
-                                      graph->GetGraph(), &filter_by_component);
+  graph_utils::SetUniqueGraphNodeName("FilterByLastComponent", graph->graph(),
+                                      &filter_by_component);
   filter_by_component.set_op("FilterByLastComponentDataset");
   filter_by_component.add_input(fused_map_node.name());
 
@@ -146,7 +145,7 @@ Status MapAndFilterFusion::Optimize(Cluster* cluster, const GrapplerItem& item,
     const auto* filter_by_component = graph.AddNode(
         MakeFilterByLastComponentNode(*fused_maps, *filter_node, &graph));
 
-    graph.ReplaceInput(*filter_node, *filter_by_component);
+    graph.UpdateFanouts(filter_node->name(), filter_by_component->name());
     TF_RETURN_IF_ERROR(function_library.AddFunctionDef(*fused_function));
 
     // TODO(prazek): we could also remove functions from library if they are not

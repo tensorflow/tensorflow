@@ -21,6 +21,7 @@ limitations under the License.
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/platform/test.h"
 
 namespace tensorflow {
@@ -234,6 +235,133 @@ TEST(PreprocessForEncapsulationTest, DataEdges) {
   TF_CHECK_OK(GetNodeAttr(identity0_host_to_oc_placeholder->attrs(),
                           kHostToOutsideCompilationSrcOutputAttrName, &i));
   EXPECT_EQ(i, 0);
+}
+
+TEST(PostprocessForEncapsulationTest, ControlEdges) {
+  // Build the graph:
+  // "const0"
+  // "identity0" = "const0" (XLA computation 0)
+  // "identity1" = "identity0"
+  // "identity2" = "identity1" (XLA computation 1)
+  // "identity3" = "identity2"
+  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+  Output const0 = ops::Const(s.WithOpName("const0"), 1, {});
+  Output identity0 = ops::Identity(s.WithOpName("identity0"), const0);
+  Output identity1 = ops::Identity(s.WithOpName("identity1"), identity0);
+  Output identity2 = ops::Identity(s.WithOpName("identity2"), identity1);
+  Output identity3 = ops::Identity(s.WithOpName("identity3"), identity2);
+  Graph g(OpRegistry::Global());
+  TF_CHECK_OK(s.ToGraph(&g));
+  auto node_index = g.BuildNodeNameIndex();
+
+  // Set XLA computation/outside compilation attr, and add control edges.
+  Node *const0_node = node_index["const0"],
+       *identity0_node = node_index["identity0"],
+       *identity1_node = node_index["identity1"],
+       *identity2_node = node_index["identity2"],
+       *identity3_node = node_index["identity3"];
+  identity1_node->AddAttr(kXlaConnectedFromOtherXlaComputationAttrName,
+                          std::vector<string>{"0"});
+  identity1_node->AddAttr(kXlaConnectedToOtherXlaComputationAttrName,
+                          std::vector<string>{"1"});
+  identity3_node->AddAttr(kXlaControlDependenciesAttrName,
+                          std::vector<string>{"const0", "identity1"});
+
+  std::unordered_map<string, XlaClusterInfo> clusters;
+  clusters["0"].node = identity0_node;
+  clusters["1"].node = identity2_node;
+  TF_CHECK_OK(PostprocessForEncapsulation(&g, "_xla", "_oc", clusters));
+
+  // Case 3a: we have control edge identity0 -> identity1, and identity1 ->
+  // identity2.
+  bool edge_identity0_identity1 = false, edge_identity1_identity2 = false;
+  for (const Edge *e : g.edges()) {
+    if (!e->IsControlEdge()) {
+      continue;
+    }
+    if (e->src() == identity0_node && e->dst() == identity1_node) {
+      edge_identity0_identity1 = true;
+    } else if (e->src() == identity1_node && e->dst() == identity2_node) {
+      edge_identity1_identity2 = true;
+    }
+  }
+  EXPECT_TRUE(edge_identity0_identity1);
+  EXPECT_TRUE(edge_identity1_identity2);
+  // Case 3b: we have control edge const0 -> identity3, and identity1 ->
+  // identity3.
+  bool edge_const0_identity3 = false, edge_identity1_identity3 = false;
+  for (const Edge *e : g.edges()) {
+    if (!e->IsControlEdge()) {
+      continue;
+    }
+    if (e->src() == const0_node && e->dst() == identity3_node) {
+      edge_const0_identity3 = true;
+    } else if (e->src() == identity1_node && e->dst() == identity3_node) {
+      edge_identity1_identity3 = true;
+    }
+  }
+  EXPECT_TRUE(edge_const0_identity3);
+  EXPECT_TRUE(edge_identity1_identity3);
+}
+
+TEST(PostprocessForEncapsulationTest, DataEdges) {
+  // Build the graph:
+  // "const0" in outside compilation "0"
+  // "placeholder0" (for "const0") in host computation
+  // "add0" = "placeholder0" + "placeholder0" in host computation
+  // "placeholder1" (for "add0") in outside compilation 1
+  // "add1" = "placeholder1" + "placeholder1" in outside compilation 1
+  //
+  // "bridge" = "placeholder0" in host computation
+  // "placeholder2" (for "bridge") in outside compilation 1
+  // "add2" = "placeholder2" + "placeholder2" in outside compilation 1
+  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+  Output const0 = ops::Const(s.WithOpName("const0"), 1, {});
+  Output placeholder0 =
+      ops::Placeholder(s.WithOpName("placeholder0"), DT_INT32);
+  Output add0 = ops::Add(s.WithOpName("add0"), placeholder0, placeholder0);
+  Output placeholder1 =
+      ops::Placeholder(s.WithOpName("placeholder1"), DT_INT32);
+  Output add1 = ops::Add(s.WithOpName("add1"), placeholder1, placeholder1);
+  Output bridge = ops::Identity(s.WithOpName("bridge"), placeholder0);
+  Output placeholder2 =
+      ops::Placeholder(s.WithOpName("placeholder2"), DT_INT32);
+  Output add2 = ops::Add(s.WithOpName("add2"), placeholder2, placeholder2);
+  Graph g(OpRegistry::Global());
+  TF_CHECK_OK(s.ToGraph(&g));
+  auto node_index = g.BuildNodeNameIndex();
+
+  // Set related attributes.
+  Node *placeholder0_node = node_index["placeholder0"];
+  placeholder0_node->AddAttr(kOutsideCompilationToHostOriginalNodeAttrName,
+                             "const0");
+  placeholder0_node->AddAttr(kOutsideCompilationToHostSrcOutputAttrName, 0);
+  Node *placeholder1_node = node_index["placeholder1"];
+  placeholder1_node->AddAttr(kHostToOutsideCompilationOriginalNodeAttrName,
+                             "add0");
+  placeholder1_node->AddAttr(kHostToOutsideCompilationSrcOutputAttrName, 0);
+  Node *bridge_node = node_index["bridge"];
+  bridge_node->AddAttr(kBridgeSourceNodeAttrName, "const0");
+  Node *placeholder2_node = node_index["placeholder2"];
+  placeholder2_node->AddAttr(kHostToOutsideCompilationOriginalNodeAttrName,
+                             "bridge");
+  placeholder2_node->AddAttr(kHostToOutsideCompilationSrcOutputAttrName, 0);
+
+  std::unordered_map<string, XlaClusterInfo> clusters;
+  TF_CHECK_OK(PostprocessForEncapsulation(&g, "_xla", "_oc", clusters));
+
+  // Result graph should be:
+  // "add0" = "const0" + "const0"
+  // "add1" = "add0" + "add0"
+  // "add2" = "const0" + "const0"
+  node_index = g.BuildNodeNameIndex();
+  EXPECT_EQ(node_index.size(), 6);
+  EXPECT_EQ(node_index["add0"]->def().input(0), "const0:0");
+  EXPECT_EQ(node_index["add0"]->def().input(1), "const0:0");
+  EXPECT_EQ(node_index["add1"]->def().input(0), "add0:0");
+  EXPECT_EQ(node_index["add1"]->def().input(1), "add0:0");
+  EXPECT_EQ(node_index["add2"]->def().input(0), "const0:0");
+  EXPECT_EQ(node_index["add2"]->def().input(1), "const0:0");
 }
 
 }  // namespace tensorflow

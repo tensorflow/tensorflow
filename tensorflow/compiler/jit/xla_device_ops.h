@@ -93,6 +93,9 @@ class XlaAssignVariableOp : public OpKernel {
       ConstantOp);                                                             \
   REGISTER_KERNEL_BUILDER(                                                     \
       Name("Identity").Device(DEVICE).TypeConstraint("T", TYPES), IdentityOp); \
+  REGISTER_KERNEL_BUILDER(                                                     \
+      Name("Identity").Device(DEVICE).TypeConstraint("T", DT_STRING),          \
+      IdentityOp);                                                             \
   REGISTER_KERNEL_BUILDER(Name("IdentityN").Device(DEVICE), IdentityNOp);      \
   REGISTER_KERNEL_BUILDER(Name("Placeholder").Device(DEVICE), PlaceholderOp);  \
   REGISTER_KERNEL_BUILDER(Name("PlaceholderV2").Device(DEVICE),                \
