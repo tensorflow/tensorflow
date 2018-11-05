@@ -53,7 +53,9 @@ cc_library(
     ],
     visibility = ["//visibility:public"],
     deps = [
+        ":delegate_data",
         ":delegate_only_runtime",
+        "//tensorflow/lite/c:c_api_internal",
     ] + select({
         "//tensorflow:android": [
             "//tensorflow/core:android_tensorflow_lib",

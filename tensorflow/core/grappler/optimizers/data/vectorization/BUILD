@@ -120,5 +120,6 @@ cc_library(
         ":unpack_vectorizer",
         ":vectorizer",
         ":vectorizer_registry",
+        "@com_google_absl//absl/container:flat_hash_map",
     ],
 )
