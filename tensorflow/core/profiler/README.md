@@ -27,7 +27,7 @@
 # The ProfileContext will sample some steps and dump the profiles
 # to files. Users can then use command line tool or Web UI for
 # interactive profiling.
-with tf.contrib.tfprof.ProfileContext('/tmp/train_dir') as pctx:
+with tf.profiler.ProfileContext('/tmp/train_dir') as pctx:
   # High level API, such as slim, Estimator, etc.
   train_loop()
 
@@ -50,7 +50,7 @@ builder = tf.profiler.ProfileOptionBuilder
 opts = builder(builder.time_and_memory()).order_by('micros').build()
 # Create a profiling context, set constructor argument `trace_steps`,
 # `dump_steps` to empty for explicit control.
-with tf.contrib.tfprof.ProfileContext('/tmp/train_dir',
+with tf.profiler.ProfileContext('/tmp/train_dir',
                                       trace_steps=[],
                                       dump_steps=[]) as pctx:
   with tf.Session() as sess:
@@ -74,7 +74,7 @@ opts2 = tf.profiler.ProfileOptionBuilder.trainable_variables_parameter()
 # Collect traces of steps 10~20, dump the whole profile (with traces of
 # step 10~20) at step 20. The dumped profile can be used for further profiling
 # with command line interface or Web UI.
-with tf.contrib.tfprof.ProfileContext('/tmp/train_dir',
+with tf.profiler.ProfileContext('/tmp/train_dir',
                                       trace_steps=range(10, 20),
                                       dump_steps=[20]) as pctx:
   # Run online profiling with 'op' view and 'opts' options at step 15, 18, 20.
