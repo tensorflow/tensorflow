@@ -83,6 +83,9 @@ poplar::Tensor ShuffleConvolutionWeightsToPoplar(const HloInstruction* inst,
 poplar::Tensor ShuffleConvolutionOutputToTensorflow(
     const HloInstruction* inst, const poplar::Tensor& tensor);
 
+poplar::Tensor ShuffleConvolutionOutputToPoplar(const HloInstruction* inst,
+                                                const poplar::Tensor& tensor);
+
 poplar::Tensor RemoveGroupsDimensionFromWeights(const poplin::ConvParams& p,
                                                 const poplar::Tensor& t,
                                                 bool flipped);

@@ -326,8 +326,8 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::RunBackend(
     pipeline.AddPass<HloSubcomputationUnification>();
     pipeline.AddPass<ConvolutionClassifier>(resources.annotations);
     pipeline.AddPass<AllocationFinder>(resources.annotations);
-    pipeline.AddPass<Scheduler>();
     pipeline.AddPass<ForwardAllocation>(resources.annotations);
+    pipeline.AddPass<Scheduler>();
 
     bool ok;
     TF_ASSIGN_OR_RETURN(ok, pipeline.Run(module.get()));

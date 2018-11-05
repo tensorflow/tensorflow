@@ -267,7 +267,18 @@ StatusOr<bool> ForwardAllocation::Run(HloModule* module) {
           auto t = TensorTarget(target, 1, layout_producer, suffix, prefix);
 
           if (IsPathOk(prefix) && IsPathOk(suffix)) {
-            tensor_allocation_map[src] = t;
+            if (!source_consumers[source].contains(layout_producer)) {
+              tensor_allocation_map[src] = t;
+
+              HloInstruction* s;
+              TF_ASSIGN_OR_RETURN(
+                  s, module->LaunderConstInstructionFromModule(source));
+              HloInstruction* p;
+              TF_ASSIGN_OR_RETURN(p, module->LaunderConstInstructionFromModule(
+                                         layout_producer));
+
+              p->AddControlDependencyTo(s);
+            }
           }
         }
       }
