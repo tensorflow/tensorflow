@@ -1320,6 +1320,7 @@ TEST(TestDelegateOwnership, ProperlyDisposed) {
   struct TfLiteInterpreterOwnedDelegate : public TfLiteDelegate {
     TfLiteInterpreterOwnedDelegate(bool* destroyed, bool* prepared)
         : destroyed(destroyed), prepared(prepared) {
+      flags = kTfLiteDelegateFlagsNone;
       Prepare = [](TfLiteContext*, TfLiteDelegate* delegate) -> TfLiteStatus {
         *static_cast<TfLiteInterpreterOwnedDelegate*>(delegate)->prepared =
             true;
