@@ -424,7 +424,7 @@ Status SymbolicGradientBuilder::ProcessWhileLoop(Node* exit_node,
   // Backprop along the in edges to the while loop (i.e. the inputs to the enter
   // nodes)
   DCHECK_EQ(dx.size(), while_ctx->enter_nodes().size());
-  for (int i = 0; i < dx.size(); ++i) {
+  for (uint i = 0; i < dx.size(); ++i) {
     Node* enter_node = while_ctx->enter_nodes()[i];
     for (const Edge* e : enter_node->in_edges()) {
       if (e->IsControlEdge()) continue;
@@ -450,7 +450,7 @@ Status SymbolicGradientBuilder::AddGradients() {
     dy.clear();
     dy.resize(num_y, {nullptr, 0});
     std::vector<int> no_grad_dy_indices;
-    for (int i = 0; i < num_y; ++i) {
+    for (uint i = 0; i < num_y; ++i) {
       TF_RETURN_IF_ERROR(SumGradients({n, i}, &dy[i]));
       if (dy[i] == NoGradient()) {
         no_grad_dy_indices.push_back(i);
