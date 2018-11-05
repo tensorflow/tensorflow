@@ -141,22 +141,6 @@ test_suite(
     ],
 )
 
-tf_py_test(
-    name = "my_test",
-    size = "medium",
-    srcs = ["python/my_test.py"],
-    additional_deps = [
-        ":ipu",
-        "//tensorflow:tensorflow_py",
-        "//tensorflow/contrib/compiler:xla",
-        "//tensorflow/python:array_ops",
-        "//tensorflow/python:framework",
-        "//tensorflow/python:platform",
-        "//tensorflow/python:state_ops",
-        "//tensorflow/python:variables",
-    ],
-)
-
 test_suite(
     name = "size_speed_tests",
     tests = [
