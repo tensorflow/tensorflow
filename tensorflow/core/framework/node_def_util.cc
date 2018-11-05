@@ -411,7 +411,7 @@ Status InOutTypesForNode(const NodeDef& node_def, const OpDef& op_def,
 }
 
 Status NumOutputsForNode(const NodeDef& node_def, const OpDef& op_def,
-                         int* num_outputs) {
+                         size_t* num_outputs) {
   DataTypeVector outputs;
   TF_RETURN_IF_ERROR(OutputTypesForNode(node_def, op_def, &outputs));
   *num_outputs = outputs.size();
