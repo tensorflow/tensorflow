@@ -413,7 +413,7 @@ inline int32 GetTensorDimIndex(TensorFormat format, char dimension) {
 template <typename T>
 T GetTensorDim(gtl::ArraySlice<T> dimension_attributes,
                TensorFormat tensor_format, char dimension) {
-  int index =
+  uint index =
       (GetTensorSpatialDims(dimension_attributes.size(), tensor_format) == 3)
           ? GetTensorDimIndex<3>(tensor_format, dimension)
           : GetTensorDimIndex<2>(tensor_format, dimension);
@@ -428,7 +428,7 @@ T GetTensorDim(gtl::ArraySlice<T> dimension_attributes,
 template <typename T>
 T GetFilterDim(gtl::ArraySlice<T> dimension_attribute,
                FilterTensorFormat filter_tensor_format, char dimension) {
-  int index = (GetFilterTensorSpatialDims(dimension_attribute.size(),
+  uint index = (GetFilterTensorSpatialDims(dimension_attribute.size(),
                                           filter_tensor_format) == 3)
                   ? GetFilterDimIndex<3>(filter_tensor_format, dimension)
                   : GetFilterDimIndex<2>(filter_tensor_format, dimension);
@@ -496,7 +496,7 @@ inline TensorShape ShapeFromFormat(TensorFormat format, int64 N,
   const int dims = GetTensorDimsFromSpatialDims(spatial.size(), format);
   gtl::InlinedVector<int64, 6> dim_sizes(dims);
   dim_sizes[GetTensorBatchDimIndex(dims, format)] = N;
-  for (int dim = 0; static_cast<size_t>(dim) < spatial.size(); dim++) {
+  for (uint dim = 0; static_cast<size_t>(dim) < spatial.size(); dim++) {
     auto dim_size = spatial[dim];
     if (format == FORMAT_NHWC_VECT_W && dim == spatial.size() - 1) {
       CHECK_EQ(0, dim_size % 4)
