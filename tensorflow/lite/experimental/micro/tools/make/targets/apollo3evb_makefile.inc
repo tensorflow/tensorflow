@@ -73,8 +73,6 @@ ifeq ($(TARGET), apollo3evb)
     -I$(APOLLO3_SDK)/devices/ \
     -I$(APOLLO3_SDK)/utils/
 
-$(warning INCLUDES IS $(INCLUDES))
-
   # The startup_gcc.c file is an altered version of the examples/hello_world/gcc/startup_gcc.c
   # file from Ambiq:
   #   - Increase the stack size from 1k to 20k
