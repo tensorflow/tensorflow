@@ -43,7 +43,7 @@ ifeq ($(TARGET), apollo3evb)
     -fpermissive \
     -nostdlib \
     -g \
-    -Os
+    -O3
   CXXFLAGS += $(PLATFORM_FLAGS)
   CCFLAGS += $(PLATFORM_FLAGS)
   LDFLAGS += \
