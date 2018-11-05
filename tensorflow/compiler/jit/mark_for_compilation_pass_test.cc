@@ -923,9 +923,8 @@ TEST(XlaCompilationTest, RandomShapeOnXlaDevice) {
   TF_ASSERT_OK(MarkForCompilationPassTestHelper::MarkForCompilation(&graph));
 
   std::unordered_map<string, string> clusters = GetClusters(*graph);
-  EXPECT_NE(clusters["test/shape_rng"], "");
-  EXPECT_NE(clusters["test/reshape"], "");
-  EXPECT_NE(clusters["test/shape_rng"], clusters["test/reshape"]);
+  EXPECT_EQ(clusters["test/shape_rng"], "");
+  EXPECT_EQ(clusters["test/reshape"], "");
 }
 
 TEST(XlaCompilationTest, TensorArrayShapeOnXlaDevice) {
