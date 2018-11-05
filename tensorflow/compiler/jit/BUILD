@@ -190,6 +190,7 @@ cc_library(
         "//tensorflow/core/kernels:resource_variable_ops",
         "//tensorflow/core/kernels:sendrecv_ops",
         "//tensorflow/core/kernels:shape_ops",
+        "//tensorflow/core/kernels:stack",
         "//tensorflow/core/kernels:variable_ops",
         "//tensorflow/core/kernels/data:generator_dataset_op",
         "//tensorflow/core/kernels/data:iterator_ops",

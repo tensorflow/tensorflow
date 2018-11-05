@@ -1887,10 +1887,22 @@ tf_kernel_library(
     deps = DATA_FLOW_DEPS,
 )
 
+cc_library(
+    name = "stack",
+    srcs = ["stack.cc"],
+    hdrs = ["stack.h"],
+    deps = [
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+    ],
+)
+
 tf_kernel_library(
     name = "stack_ops",
     prefix = "stack_ops",
-    deps = DATA_FLOW_DEPS,
+    deps = DATA_FLOW_DEPS + [":stack"],
 )
 
 tf_kernel_library(
@@ -5485,6 +5497,8 @@ filegroup(
         "sparse_to_dense_op.cc",
         "spectrogram.cc",
         "spectrogram_op.cc",
+        "stack.cc",
+        "stack.h",
         "stack_ops.cc",
         "string_join_op.cc",
         "string_util.cc",
