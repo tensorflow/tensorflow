@@ -192,18 +192,12 @@ class ThreadPoolDatasetOp : public UnaryDatasetOpKernel {
                              std::vector<Tensor>* out_tensors,
                              bool* end_of_sequence) override {
         ThreadPoolResource* pool = dataset()->threadpool_;
-        IteratorContext::Params params;
-        params.env = ctx->env();
+        IteratorContext::Params params(ctx);
         params.runner = [pool](std::function<void()> c) {
           pool->Schedule(std::move(c));
         };
-        params.stats_aggregator = ctx->stats_aggregator();
-        params.lib = ctx->lib();
-        params.function_library = ctx->function_library();
-        params.allocator_getter = ctx->allocator_getter();
-        IteratorContext threadpool_ctx(params);
-        return input_impl_->GetNext(&threadpool_ctx, out_tensors,
-                                    end_of_sequence);
+        IteratorContext iter_ctx(params);
+        return input_impl_->GetNext(&iter_ctx, out_tensors, end_of_sequence);
       }
 
      protected:

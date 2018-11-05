@@ -272,55 +272,54 @@ class StatsAggregator;
 class IteratorContext {
  public:
   struct Params {
+    explicit Params(IteratorContext* ctx)
+        : allocator_getter(ctx->allocator_getter()),
+          env(ctx->env()),
+          function_library(ctx->function_library()),
+          lib(ctx->lib()),
+          model(ctx->model()),
+          runner(*(ctx->runner())),
+          stats_aggregator(ctx->stats_aggregator()) {}
+
+    explicit Params(OpKernelContext* ctx)
+        : env(ctx->env()),
+          lib(ctx->function_library()),
+          runner(*(ctx->runner())) {
+      // NOTE: need reinterpret_cast because function.h forward-declares Device.
+      DeviceBase* device =
+          reinterpret_cast<DeviceBase*>(ctx->function_library()->device());
+      allocator_getter = [device](AllocatorAttributes attrs) {
+        return device->GetAllocator(attrs);
+      };
+    }
+
+    // The Allocator to be used to allocate the output of an iterator.
+    std::function<Allocator*(AllocatorAttributes)> allocator_getter = nullptr;
+
     // Interface to operating system functionality.
-    Env* env;
+    Env* env = nullptr;
+
+    // The FunctionLibraryDefinition used to look up user-defined functions.
+    std::shared_ptr<const FunctionLibraryDefinition> function_library = nullptr;
+
+    // The FunctionLibraryRuntime object to be used to make function calls.
+    FunctionLibraryRuntime* lib = nullptr;
+
+    // If non-null, identifies the object used for performance modeling.
+    std::shared_ptr<model::Model> model = nullptr;
 
     // Function call support.
     std::function<void(std::function<void()>)> runner = nullptr;
 
     // The `StatsAggregator` object to record statistics about the iterator.
     std::shared_ptr<StatsAggregator> stats_aggregator = nullptr;
-
-    // The FunctionLibraryRuntime object to be used to make function calls.
-    FunctionLibraryRuntime* lib = nullptr;
-    std::shared_ptr<const FunctionLibraryDefinition> function_library = nullptr;
-
-    // The Allocator to be used to allocate the output of an iterator.
-    std::function<Allocator*(AllocatorAttributes)> allocator_getter = nullptr;
-
-    // If non-null, identifies the object used for performance modeling.
-    std::shared_ptr<model::Model> model = nullptr;
   };
 
+  explicit IteratorContext(IteratorContext* ctx) : params_(Params{ctx}) {}
+
+  explicit IteratorContext(OpKernelContext* ctx) : params_(Params{ctx}) {}
+
   explicit IteratorContext(Params params) : params_(std::move(params)) {}
-
-  explicit IteratorContext(OpKernelContext* ctx) {
-    params_.env = ctx->env();
-    params_.runner = *(ctx->runner());
-    params_.lib = ctx->function_library();
-    // NOTE: must use reinterpret_cast because function.h forward-declares
-    // Device.
-    DeviceBase* device =
-        reinterpret_cast<DeviceBase*>(ctx->function_library()->device());
-    params_.allocator_getter = [device](AllocatorAttributes attrs) {
-      return device->GetAllocator(attrs);
-    };
-  }
-
-  Env* env() const { return params_.env; }
-
-  std::function<void(std::function<void()>)>* runner() {
-    return &params_.runner;
-  }
-
-
-  std::shared_ptr<const FunctionLibraryDefinition> function_library() {
-    return params_.function_library;
-  }
-
-  FunctionLibraryRuntime* lib() { return params_.lib; }
-
-  void set_lib(FunctionLibraryRuntime* lib) { params_.lib = lib; }
 
   Allocator* allocator(AllocatorAttributes attrs) {
     return params_.allocator_getter(attrs);
@@ -330,11 +329,23 @@ class IteratorContext {
     return params_.allocator_getter;
   }
 
+  Env* env() const { return params_.env; }
+
+  std::shared_ptr<const FunctionLibraryDefinition> function_library() {
+    return params_.function_library;
+  }
+
+  FunctionLibraryRuntime* lib() { return params_.lib; }
+
+  std::shared_ptr<model::Model> model() { return params_.model; }
+
+  std::function<void(std::function<void()>)>* runner() {
+    return &params_.runner;
+  }
+
   std::shared_ptr<StatsAggregator> stats_aggregator() {
     return params_.stats_aggregator;
   }
-
-  std::shared_ptr<model::Model> model() { return params_.model; }
 
   Params params() { return params_; }
 
