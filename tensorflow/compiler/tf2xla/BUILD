@@ -365,6 +365,7 @@ tf_cc_test(
     name = "xla_compiler_test",
     srcs = ["xla_compiler_test.cc"],
     deps = [
+        ":common",
         ":side_effect_util",
         ":xla_compiler",
         "//tensorflow/cc:cc_ops",

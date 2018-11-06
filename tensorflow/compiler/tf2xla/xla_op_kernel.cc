@@ -413,9 +413,12 @@ Status ReadVariableInputTensor(const Tensor& tensor, DataType type,
 
   XlaContext& xla_context = XlaContext::Get(ctx);
   TF_ASSIGN_OR_RETURN(
-      TensorShape representation_shape,
+      xla::Shape representation_shape,
       xla_context.RepresentationShape(variable->shape(), variable->type()));
-  if (representation_shape == variable->shape()) {
+  xla::Shape xla_shape;
+  TF_RETURN_IF_ERROR(
+      TensorShapeToXLAShape(variable->type(), variable->shape(), &xla_shape));
+  if (xla::ShapeUtil::Compatible(xla_shape, representation_shape)) {
     *value = variable->value();
   } else {
     *value = xla::Reshape(variable->value(), variable->shape().dim_sizes());
@@ -570,10 +573,13 @@ Status AssignVariableTensor(const Tensor& tensor, DataType type,
   TF_RETURN_IF_ERROR(variable->SetTypeAndShape(type, shape));
 
   XlaContext& xla_context = XlaContext::Get(ctx);
-  TF_ASSIGN_OR_RETURN(TensorShape representation_shape,
+  TF_ASSIGN_OR_RETURN(xla::Shape representation_shape,
                       xla_context.RepresentationShape(shape, type));
-  if (shape != representation_shape) {
-    handle = xla::Reshape(handle, representation_shape.dim_sizes());
+  xla::Shape xla_shape;
+  TF_RETURN_IF_ERROR(TensorShapeToXLAShape(type, shape, &xla_shape));
+  if (!xla::ShapeUtil::Compatible(xla_shape, representation_shape)) {
+    handle = xla::Reshape(handle,
+                          xla::AsInt64Slice(representation_shape.dimensions()));
   }
   return variable->SetValue(handle);
 }
