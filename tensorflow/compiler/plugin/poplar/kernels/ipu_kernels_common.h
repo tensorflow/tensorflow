@@ -19,9 +19,30 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_PLUGIN_POPLAR_KERNELS_IPU_KERNELS_COMMON_H_
 #define TENSORFLOW_COMPILER_PLUGIN_POPLAR_KERNELS_IPU_KERNELS_COMMON_H_
 
+#include "absl/container/flat_hash_set.h"
+#include "tensorflow/compiler/plugin/poplar/kernels/custom_kernels_util.h"
+#include "tensorflow/core/platform/types.h"
+
 #define REGISTER_IPU_OP(OP_NAME, IMPL)                                     \
   REGISTER_KERNEL_BUILDER(Name(OP_NAME).Device(DEVICE_IPU_XLA_JIT), IMPL); \
   REGISTER_KERNEL_BUILDER(Name(OP_NAME).Device(DEVICE_XLA_IPU), IMPL);     \
   REGISTER_KERNEL_BUILDER(Name(OP_NAME).Device(DEVICE_XLA_IPU_REP), IMPL);
+
+namespace tensorflow {
+// A class used to make sure that kernels set the properties expected by all
+// custom ops.
+class IpuOpKernel {
+ protected:
+  IpuOpKernel();
+
+  // Allocating indexes used by the Allocation Finder - op specific.
+  virtual const absl::flat_hash_set<int64> AllocatingIndexes() = 0;
+
+  // Adds all the required attributes to the map.
+  void AddRequiredAttributesToMap();
+
+  xla::poplarplugin::IPUCustomKernelsUtil::AttributeMap attribute_map_;
+};
+}
 
 #endif  // TENSORFLOW_COMPILER_PLUGIN_POPLAR_KERNELS_IPU_KERNELS_COMMON_H_

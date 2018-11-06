@@ -18,9 +18,10 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/status_macros.h"
 
-#include <poprand/RandomGen.hpp>
 #include "include/json/json.h"
 #include "tensorflow/core/framework/types.pb.h"
+
+#include "absl/container/flat_hash_set.h"
 
 #include <sstream>
 #include <string>
@@ -45,9 +46,9 @@ class AttributeMap {
   StatusOr<float> GetAttributeAsFloat(const std::string& field_name) const;
   StatusOr<int> GetAttributeAsInt(const std::string& field_name) const;
   StatusOr<bool> GetAttributeAsBool(const std::string& field_name) const;
-  StatusOr<poprand::RandomGenMode> GetAttributeAsRandomGenMode(
-      const std::string& field_name) const;
   StatusOr<tensorflow::DataType> GetAttributeAsTFDataType(
+      const std::string& field_name) const;
+  StatusOr<absl::flat_hash_set<int64>> GetAttributeAsInt64FlatHashSet(
       const std::string& field_name) const;
 
   const std::string Serialise();

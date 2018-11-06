@@ -10,6 +10,7 @@
 #include "tensorflow/compiler/plugin/poplar/driver/classification_predicates.h"
 #include "tensorflow/compiler/plugin/poplar/driver/compiler_annotations.h"
 #include "tensorflow/compiler/plugin/poplar/driver/util.h"
+#include "tensorflow/compiler/plugin/poplar/kernels/custom_kernels_util.h"
 #include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_instructions.h"
 
@@ -159,6 +160,18 @@ static bool IsLayoutProducer(HloInstPtr inst) {
   }
   if (IsPopOpsCall(inst, "depthwise_conv")) {
     return true;
+  }
+  if (IPUCustomKernelsUtil::IsPoplibsOp(inst)) {
+    // For custom ops, they are layout producers if they have allocating
+    // operands.
+    auto attribute_map = IPUCustomKernelsUtil::AttributeMap(inst);
+    auto statusor =
+        attribute_map.GetAttributeAsInt64FlatHashSet("allocating_indexes");
+    if (!statusor.ok()) {
+      LOG(FATAL) << "Custom Poplibs op " << inst->ToString()
+                 << " is missing \'allocating_indexes\' field.";
+    }
+    return statusor.ValueOrDie().size() > 0;
   }
   return false;
 }

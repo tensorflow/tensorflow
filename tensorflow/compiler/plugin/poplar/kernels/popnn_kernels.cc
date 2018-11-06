@@ -35,13 +35,14 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 
-namespace xp = ::xla::poplarplugin;
+#include "absl/container/flat_hash_set.h"
 
 namespace tensorflow {
 
-class PopnnLstmLayerOp : public XlaOpKernel {
+class PopnnLstmLayerOp : public XlaOpKernel, IpuOpKernel {
  public:
   explicit PopnnLstmLayerOp(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {
+    AddRequiredAttributesToMap();
     OP_REQUIRES_OK(ctx, ctx->GetAttr("num_channels", &num_channels_));
     attribute_map_.AddAttribute("num_channels", num_channels_);
     bool is_training;
@@ -140,18 +141,23 @@ class PopnnLstmLayerOp : public XlaOpKernel {
     b.ClearOpMetadata();
   }
 
+ protected:
+  const absl::flat_hash_set<int64> AllocatingIndexes() override {
+    return {0, 1, 2, 3, 4};
+  }
+
  private:
   int32 num_channels_;
-  xp::IPUCustomKernelsUtil::AttributeMap attribute_map_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(PopnnLstmLayerOp);
 };
 REGISTER_IPU_OP("PopnnLstmLayer", PopnnLstmLayerOp);
 
-class PopnnLstmLayerBackpropOp : public XlaOpKernel {
+class PopnnLstmLayerBackpropOp : public XlaOpKernel, IpuOpKernel {
  public:
   explicit PopnnLstmLayerBackpropOp(OpKernelConstruction* ctx)
       : XlaOpKernel(ctx) {
+    AddRequiredAttributesToMap();
     int32 num_channels;
     OP_REQUIRES_OK(ctx, ctx->GetAttr("num_channels", &num_channels));
     attribute_map_.AddAttribute("num_channels", num_channels);
@@ -215,9 +221,10 @@ class PopnnLstmLayerBackpropOp : public XlaOpKernel {
     b.ClearOpMetadata();
   }
 
- private:
-  xp::IPUCustomKernelsUtil::AttributeMap attribute_map_;
+ protected:
+  const absl::flat_hash_set<int64> AllocatingIndexes() { return {}; }
 
+ private:
   TF_DISALLOW_COPY_AND_ASSIGN(PopnnLstmLayerBackpropOp);
 };
 REGISTER_IPU_OP("PopnnLstmLayerBackprop", PopnnLstmLayerBackpropOp);

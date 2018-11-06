@@ -26,15 +26,14 @@ namespace poplarplugin {
 namespace {
 static const size_t basic_lstm_cell_num_units = 4;
 
-absl::flat_hash_map<std::string, CustomPoplibsCallFn> call_map = {
-    {"lstm_layer_fwd", CreateLstmLayerFwdOp},
-    {"lstm_layer_bwd", CreateLstmLayerBwdOp},
+absl::flat_hash_map<std::string, CustomPoplibOpInfo> info_map = {
+    {"lstm_layer_fwd", {AllocateLstmLayerFwdOp, CreateLstmLayerFwdOp}},
+    {"lstm_layer_bwd", {AllocateLstmLayerBwdOp, CreateLstmLayerBwdOp}},
 };
 
 StatusOr<popnn::lstm::LstmParams> GetLstmParameters(
     const HloInstruction* inst,
-    const IPUCustomKernelsUtil::AttributeMap& attribute_map,
-    poplar::OptionFlags& lstm_opts, const bool is_bwd_pass) {
+    const IPUCustomKernelsUtil::AttributeMap& attribute_map) {
   const auto input_shape = inst->operand(0)->shape();
   const auto time_steps = input_shape.dimensions(0);
   const auto batch_size = input_shape.dimensions(1);
@@ -43,16 +42,23 @@ StatusOr<popnn::lstm::LstmParams> GetLstmParameters(
   TF_ASSIGN_OR_RETURN(int32 num_channels,
                       attribute_map.GetAttributeAsInt("num_channels"));
   TF_ASSIGN_OR_RETURN(poplar::Type type, PoplarDataType(input_shape));
-  popnn::lstm::LstmParams params(type, batch_size, time_steps,
-                                 {input_size, num_channels});
+  popnn::lstm::LstmParams lstm_params(type, batch_size, time_steps,
+                                      {input_size, num_channels});
 
   TF_ASSIGN_OR_RETURN(bool is_training,
                       attribute_map.GetAttributeAsBool("is_training"));
-  params.calcInputGradients = is_bwd_pass && is_training;
+  lstm_params.calcInputGradients = is_training;
+  return lstm_params;
+}
+
+StatusOr<poplar::OptionFlags> GetLstmOpts(
+    const IPUCustomKernelsUtil::AttributeMap& attribute_map) {
+  poplar::OptionFlags lstm_opts;
+  TF_ASSIGN_OR_RETURN(bool is_training,
+                      attribute_map.GetAttributeAsBool("is_training"));
   if (!is_training) {
     lstm_opts.set({{"inferenceOnly", "true"}});
   }
-
   // Get the partial type
   TF_ASSIGN_OR_RETURN(tensorflow::DataType partials_tf_type,
                       attribute_map.GetAttributeAsTFDataType("partials_dtype"));
@@ -61,7 +67,7 @@ StatusOr<popnn::lstm::LstmParams> GetLstmParameters(
   TF_ASSIGN_OR_RETURN(poplar::Type partials_poplar_type,
                       PoplarDataType(partials_xla_type));
   lstm_opts.set({{"partialsType", partials_poplar_type.toString()}});
-  return params;
+  return lstm_opts;
 }
 
 poplar::Tensor UnflattenWeight(const poplar::Tensor& t) {
@@ -95,8 +101,63 @@ poplar::Tensor PackLstmKernel(poplar::Tensor input_weights,
 
 }  // namespace
 
-const absl::flat_hash_map<std::string, CustomPoplibsCallFn>& GetPopnnCallMap() {
-  return call_map;
+const absl::flat_hash_map<std::string, CustomPoplibOpInfo>&
+GetPopnnOpInfoMap() {
+  return info_map;
+}
+
+StatusOr<poplar::Tensor> AllocateLstmLayerFwdOp(
+    poplar::Graph& graph, CompilerResources& res, const std::string& name,
+    const HloInstruction* inst, const int64 target_idx,
+    const IPUCustomKernelsUtil::AttributeMap& attribute_map) {
+  TF_ASSIGN_OR_RETURN(popnn::lstm::LstmParams lstm_params,
+                      GetLstmParameters(inst, attribute_map));
+  TF_ASSIGN_OR_RETURN(poplar::OptionFlags lstm_opts,
+                      GetLstmOpts(attribute_map));
+  switch (target_idx) {
+    case 0: {
+      // Allocate LSTM input tensor
+      return popnn::lstm::createInput(graph, lstm_params, name, lstm_opts,
+                                      &res.dot_cache);
+    }
+    case 1: {
+      // Allocate initial output (h) tensor
+      return popnn::lstm::createInitialOutput(graph, lstm_params, name,
+                                              lstm_opts, &res.dot_cache);
+    }
+    case 2: {
+      // Allocate initial cell state (c) tensor
+      return popnn::lstm::createInitialCellState(graph, lstm_params, name,
+                                                 lstm_opts, &res.dot_cache);
+    }
+    case 3: {
+      // Allocate LSTM weights kernel
+      poplar::Tensor input_weights;
+      poplar::Tensor output_weights;
+      std::tie(input_weights, output_weights) =
+          popnn::lstm::createWeightsKernel(graph, lstm_params, name, lstm_opts,
+                                           &res.dot_cache);
+      return PackLstmKernel(input_weights, output_weights);
+    }
+    case 4: {
+      // Allocate LSTM weights biases
+      return popnn::lstm::createWeightsBiases(graph, lstm_params, name,
+                                              lstm_opts, &res.dot_cache);
+    }
+    default: {
+      return xla::FailedPrecondition(
+          "Trying to allocate LstmLayerFwdOp tensor for an index out of range "
+          "%d.",
+          target_idx);
+    }
+  }
+}
+
+StatusOr<poplar::Tensor> AllocateLstmLayerBwdOp(
+    poplar::Graph& graph, CompilerResources& res, const std::string& name,
+    const HloInstruction* inst, const int64 target_idx,
+    const IPUCustomKernelsUtil::AttributeMap& attribute_map) {
+  return xla::FailedPrecondition("LstmLayerBwdOp should not be allocating.");
 }
 
 StatusOr<poplar::program::Program> CreateLstmLayerFwdOp(
@@ -118,9 +179,10 @@ StatusOr<poplar::program::Program> CreateLstmLayerFwdOp(
   TF_ASSIGN_OR_RETURN(weights.biases,
                       FindInstructionInput(tensor_map, inst, 4));
 
-  poplar::OptionFlags lstm_opts;
   TF_ASSIGN_OR_RETURN(popnn::lstm::LstmParams lstm_params,
-                      GetLstmParameters(inst, attribute_map, lstm_opts, false));
+                      GetLstmParameters(inst, attribute_map));
+  TF_ASSIGN_OR_RETURN(poplar::OptionFlags lstm_opts,
+                      GetLstmOpts(attribute_map));
 
   auto input_size = ShapeUtil::GetDimension(inst->operand(0)->shape(), 2);
   auto output_size = ShapeUtil::GetDimension(inst->operand(1)->shape(), 1);
@@ -183,9 +245,10 @@ StatusOr<poplar::program::Program> CreateLstmLayerBwdOp(
   TF_ASSIGN_OR_RETURN(poplar::Tensor output_c_state_backprop,
                       FindInstructionInput(tensor_map, inst, 11));
 
-  poplar::OptionFlags lstm_opts;
   TF_ASSIGN_OR_RETURN(popnn::lstm::LstmParams lstm_params,
-                      GetLstmParameters(inst, attribute_map, lstm_opts, true));
+                      GetLstmParameters(inst, attribute_map));
+  TF_ASSIGN_OR_RETURN(poplar::OptionFlags lstm_opts,
+                      GetLstmOpts(attribute_map));
 
   auto input_size = ShapeUtil::GetDimension(inst->operand(0)->shape(), 2);
   auto output_size = ShapeUtil::GetDimension(inst->operand(1)->shape(), 1);

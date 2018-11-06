@@ -47,6 +47,22 @@ tf_proto_library(
 )
 
 cc_library(
+    name = "custom_kernels_util",
+    srcs = [
+        "kernels/custom_kernels_util.cc",
+    ],
+    hdrs = [
+        "kernels/custom_kernels_util.h",
+    ],
+    deps = [
+        "//tensorflow/compiler/xla:xla_headers_lib",
+        "//tensorflow/compiler/xla/service:hlo",
+        "@jsoncpp_git//:jsoncpp",
+    ],
+    alwayslink = True,
+)
+
+cc_library(
     name = "optimizers",
     srcs = [
         "driver/allocation_finder.cc",
@@ -104,6 +120,7 @@ cc_library(
         "driver/wide_const_finder.h",
     ],
     deps = [
+        ":custom_kernels_util",
         "//tensorflow/compiler/xla:xla_headers_lib",
         "//tensorflow/compiler/xla/service:call_inliner",
         "//tensorflow/compiler/xla/service:hlo_pass",
@@ -113,24 +130,6 @@ cc_library(
         "//third_party/eigen3",
         "@protobuf_archive//:protobuf_headers",
     ],
-)
-
-
-cc_library(
-    name = "custom_kernels_util",
-    srcs = [
-        "kernels/custom_kernels_util.cc",
-    ],
-    hdrs = [
-        "kernels/custom_kernels_util.h",
-    ],
-    deps = [
-        "//tensorflow/compiler/xla:xla_headers_lib",
-        "//tensorflow/compiler/xla/service:hlo",
-        "@local_config_poplar//poplar:poplar_headers",
-        "@jsoncpp_git//:jsoncpp",
-    ],
-    alwayslink = True,
 )
 
 cc_library(
@@ -239,6 +238,7 @@ cc_library(
     name = "kernels",
     srcs = [
         "kernels/ipu_kernels.cc",
+        "kernels/ipu_kernels_common.cc",
         "kernels/popnn_kernels.cc",
     ],
     hdrs = [

@@ -40,20 +40,33 @@ class HloInstruction;
 
 namespace poplarplugin {
 
-// Mapping of getting the right Create function given the metadata:
-// * op_type - poplibs library name
-// * op_name - function inside given library
-typedef StatusOr<poplar::program::Program> (*CustomPoplibsCallFn)(
+typedef StatusOr<poplar::Tensor> (*CustomPoplibOpAllocator)(
+    poplar::Graph&, CompilerResources&, const std::string&,
+    const HloInstruction*, const int64,
+    const IPUCustomKernelsUtil::AttributeMap&);
+
+typedef StatusOr<poplar::program::Program> (*CustomPoplibOpCreator)(
     poplar::Graph&, CompilerResources&, const HloInstruction*,
     const xla::Shape&, TensorMap&, const IPUCustomKernelsUtil::AttributeMap&);
 
+using CustomPoplibOpInfo =
+    std::pair<CustomPoplibOpAllocator, CustomPoplibOpCreator>;
 // Call map functions
-const absl::flat_hash_map<std::string, CustomPoplibsCallFn>& GetPopnnCallMap();
-const absl::flat_hash_map<std::string, CustomPoplibsCallFn>& GetPoplinCallMap();
-const absl::flat_hash_map<std::string, CustomPoplibsCallFn>&
-GetPoprandCallMap();
+const absl::flat_hash_map<std::string, CustomPoplibOpInfo>& GetPopnnOpInfoMap();
+const absl::flat_hash_map<std::string, CustomPoplibOpInfo>&
+GetPoplinOpInfoMap();
+const absl::flat_hash_map<std::string, CustomPoplibOpInfo>&
+GetPoprandOpInfoMap();
 
 // Popnn Ops
+StatusOr<poplar::Tensor> AllocateLstmLayerFwdOp(
+    poplar::Graph&, CompilerResources&, const std::string&,
+    const HloInstruction*, const int64,
+    const IPUCustomKernelsUtil::AttributeMap&);
+StatusOr<poplar::Tensor> AllocateLstmLayerBwdOp(
+    poplar::Graph&, CompilerResources&, const std::string&,
+    const HloInstruction*, const int64,
+    const IPUCustomKernelsUtil::AttributeMap&);
 StatusOr<poplar::program::Program> CreateLstmLayerFwdOp(
     poplar::Graph&, CompilerResources&, const HloInstruction*,
     const xla::Shape&, TensorMap&, const IPUCustomKernelsUtil::AttributeMap&);

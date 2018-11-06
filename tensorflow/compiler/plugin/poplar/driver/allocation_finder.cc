@@ -17,11 +17,14 @@ limitations under the License.
 #include "tensorflow/compiler/plugin/poplar/driver/classification_predicates.h"
 #include "tensorflow/compiler/plugin/poplar/driver/compiler_annotations.h"
 #include "tensorflow/compiler/plugin/poplar/driver/util.h"
+#include "tensorflow/compiler/plugin/poplar/kernels/custom_kernels_util.h"
 
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
+
+#include "absl/container/flat_hash_set.h"
 
 namespace xla {
 namespace poplarplugin {
@@ -174,6 +177,34 @@ void AllocationFinder::FindConsumers(const TensorSource& src,
               }
               tensor_allocation_map.insert(std::make_pair(src, t));
             }
+          }
+          break;
+        }
+        case HloOpcode::kCustomCall: {
+          if (IPUCustomKernelsUtil::IsPoplibsOp(user)) {
+            // Each custom Poplibs ops is required to have an
+            // `allocating_indexes` attribute which tells us which operands are
+            // allocating.
+            auto attribute_map = IPUCustomKernelsUtil::AttributeMap(user);
+            auto statusor = attribute_map.GetAttributeAsInt64FlatHashSet(
+                "allocating_indexes");
+            if (!statusor.ok()) {
+              LOG(FATAL) << "Custom Poplibs op " << user->ToString()
+                         << " is missing \'allocating_indexes\' field.";
+            }
+            absl::flat_hash_set<int64> allocating_indexes =
+                statusor.ValueOrDie();
+            if (allocating_indexes.count(op_index)) {
+              auto t = TensorTarget(user, op_index, nullptr, {}, path);
+              auto i = tensor_allocation_map.find(src);
+              if (i != tensor_allocation_map.end() &&
+                  CompareTargets(t, i->second)) {
+                tensor_allocation_map.erase(src);
+              }
+              tensor_allocation_map.insert(std::make_pair(src, t));
+            }
+          } else {
+            LOG(FATAL) << "Unsupported custom call " << user->name();
           }
           break;
         }

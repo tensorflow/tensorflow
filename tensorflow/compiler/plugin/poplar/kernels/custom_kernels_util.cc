@@ -22,7 +22,10 @@ limitations under the License.
 #include "tensorflow/core/framework/types.pb.h"
 
 #include "absl/container/flat_hash_set.h"
+#include "absl/strings/str_join.h"
+#include "absl/strings/str_split.h"
 
+#include <stdlib.h>
 #include <sstream>
 #include <string>
 
@@ -72,6 +75,12 @@ void AttributeMap::AddAttribute(const std::string& field_name,
   attributes_[field_name] = DataType_Name(attr);
 }
 
+template <>
+void AttributeMap::AddAttribute(const std::string& field_name,
+                                const absl::flat_hash_set<int64>& attr) {
+  attributes_[field_name] = absl::StrJoin(attr, ",");
+}
+
 template void AttributeMap::AddAttribute<float>(const std::string&,
                                                 const float&);
 template void AttributeMap::AddAttribute<int>(const std::string&, const int&);
@@ -80,6 +89,8 @@ template void AttributeMap::AddAttribute<std::string>(const std::string&,
                                                       const std::string&);
 template void AttributeMap::AddAttribute<tensorflow::DataType>(
     const std::string&, const tensorflow::DataType&);
+template void AttributeMap::AddAttribute<absl::flat_hash_set<int64>>(
+    const std::string&, const absl::flat_hash_set<int64>&);
 
 StatusOr<std::string> AttributeMap::GetAttributeAsString(
     const std::string& field_name) const {
@@ -117,27 +128,6 @@ StatusOr<bool> AttributeMap::GetAttributeAsBool(
   return attributes_[field_name].asBool();
 }
 
-StatusOr<poprand::RandomGenMode> AttributeMap::GetAttributeAsRandomGenMode(
-    const std::string& field_name) const {
-  if (!attributes_.isMember(field_name)) {
-    return xla::FailedPrecondition(
-        "Could not obtain the field %s for the custom op.", field_name.c_str());
-  }
-  std::string name = attributes_[field_name].asString();
-  if (name.compare("ALWAYS_REPEATABLE") == 0) {
-    return poprand::RandomGenMode::ALWAYS_REPEATABLE;
-  } else if (name.compare("SYSTEM_REPEATABLE") == 0) {
-    return poprand::RandomGenMode::SYSTEM_REPEATABLE;
-  } else if (name.compare("NOT_REPEATABLE") == 0) {
-    return poprand::RandomGenMode::NOT_REPEATABLE;
-  } else {
-    return xla::FailedPrecondition(
-        "Unrecognised RandomGenMode: %s. Should be: \"ALWAYS_REPEATABLE\", "
-        "\"SYSTEM_REPEATABLE\" or \"NOT_REPEATABLE\".",
-        name.c_str());
-  }
-}
-
 StatusOr<tensorflow::DataType> AttributeMap::GetAttributeAsTFDataType(
     const std::string& field_name) const {
   if (!attributes_.isMember(field_name)) {
@@ -151,6 +141,23 @@ StatusOr<tensorflow::DataType> AttributeMap::GetAttributeAsTFDataType(
                                    dtype_string.c_str());
   }
   return data_type;
+}
+
+StatusOr<absl::flat_hash_set<int64>>
+AttributeMap::GetAttributeAsInt64FlatHashSet(
+    const std::string& field_name) const {
+  if (!attributes_.isMember(field_name)) {
+    return xla::FailedPrecondition(
+        "Could not obtain the field %s for the custom op.", field_name.c_str());
+  }
+  const std::string result_string = attributes_[field_name].asString();
+  absl::flat_hash_set<int64> result;
+  std::vector<std::string> split =
+      absl::StrSplit(result_string, ",", absl::SkipEmpty());
+  for (auto num_string : split) {
+    result.insert(std::stoll(num_string));
+  }
+  return result;
 }
 
 const std::string AttributeMap::Serialise() {

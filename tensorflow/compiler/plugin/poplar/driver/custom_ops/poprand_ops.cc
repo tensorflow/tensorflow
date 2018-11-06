@@ -6,12 +6,12 @@
 namespace xla {
 namespace poplarplugin {
 namespace {
-absl::flat_hash_map<std::string, CustomPoplibsCallFn> call_map = {};
+absl::flat_hash_map<std::string, CustomPoplibOpInfo> info_map = {};
 }
 
-const absl::flat_hash_map<std::string, CustomPoplibsCallFn>&
-GetPoprandCallMap() {
-  return call_map;
+const absl::flat_hash_map<std::string, CustomPoplibOpInfo>&
+GetPoprandOpInfoMap() {
+  return info_map;
 }
 
 }  // namespace poplarplugin
