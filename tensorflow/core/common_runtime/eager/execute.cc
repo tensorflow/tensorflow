@@ -333,17 +333,10 @@ Status EagerLocalExecute(EagerOperation* op,
     // input handles are ready before executing them.
     // TODO(agarwal): Consider executing "cheap" kernels inline for performance.
     tensorflow::uint64 id = ctx->NextId();
-    const MemoryTypeVector* output_memory_types = nullptr;
-    output_memory_types = &kernel->kernel()->output_memory_types();
-
-    Device* op_device = kernel->device();
     for (int i = 0; i < *num_retvals; ++i) {
-      Device* d = op_device;
-      if (d != nullptr && output_memory_types != nullptr &&
-          (*output_memory_types)[i] == HOST_MEMORY) {
-        d = nullptr;
-      }
-      (*retvals)[i] = new TensorHandle(id, d, op_device, output_dtypes[i], ctx);
+      (*retvals)[i] = new TensorHandle(id, /* d= */ kernel->OutputDevice(i),
+                                       /* op_device= */ kernel->device(),
+                                       output_dtypes[i], ctx);
     }
     EagerNode* node = new ExecuteNode(
         id, ctx, op->Device(), op->Inputs(), kernel, maybe_stats.release(),
@@ -776,17 +769,16 @@ Status EagerExecute(EagerContext* ctx, Device* device,
     }
   }
   DCHECK_EQ(num_retvals, outputs.size());
-  Device* op_device = device;
   for (int i = 0; i < num_retvals; ++i) {
-    Device* d = op_device;
-    if (d != nullptr && output_memory_types != nullptr &&
-        (*output_memory_types)[i] == HOST_MEMORY) {
-      d = nullptr;
-    }
     if (retvals[i] == nullptr) {
-      retvals[i] = new TensorHandle(outputs[i], d, op_device, ctx);
+      retvals[i] =
+          new TensorHandle(outputs[i], /* d= */ kernel->OutputDevice(i),
+                           /* op_device= */ device, ctx);
     } else {
-      retvals[i]->SetTensorAndDevice(outputs[i], d, op_device);
+      // In the async case, the retval is not a nullptr, and its device is
+      // already set since all TensorHandles always have their device set during
+      // construction.
+      retvals[i]->SetTensor(outputs[i]);
     }
   }
   return Status::OK();
