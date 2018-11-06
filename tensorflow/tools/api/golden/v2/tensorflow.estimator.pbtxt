@@ -73,6 +73,10 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
+    name: "LinearEstimator"
+    mtype: "<type \'type\'>"
+  }
+  member {
     name: "LinearRegressor"
     mtype: "<type \'type\'>"
   }
