@@ -121,9 +121,7 @@ class TensorHandle : public core::RefCounted {
 
   // Note that this can be called at most once, and only on non-ready handles,
   // and makes them ready.
-  void SetTensorAndDevice(const tensorflow::Tensor& tensor,
-                          tensorflow::Device* device,
-                          tensorflow::Device* op_device);
+  void SetTensor(const tensorflow::Tensor& tensor);
 
   Status CopyToDevice(EagerContext* ctx, tensorflow::Device* dstd,
                       TensorHandle** output);

@@ -156,4 +156,12 @@ Status KernelAndDevice::Run(ScopedStepContainer* step_container,
   return Status::OK();
 }
 
+tensorflow::Device* KernelAndDevice::OutputDevice(int idx) const {
+  if (device_ != nullptr &&
+      kernel_->output_memory_types()[idx] == HOST_MEMORY) {
+    return nullptr;
+  }
+  return device_;
+}
+
 }  // namespace tensorflow
