@@ -947,7 +947,10 @@ class DistributionStrategy(object):
 
   @property
   def num_replicas(self):
-    """Returns number of replicas, for purposes of averaging across replicas."""
+    """Returns number of replicas, for purposes of averaging across replicas.
+
+    DEPRECATED: use `num_replicas_in_sync` instead.
+    """
     raise NotImplementedError("must be implemented in descendants")
 
   @property
@@ -1147,6 +1150,11 @@ class ReplicaContext(object):
   def num_replicas(self):
     """Returns number of replicas, for purposes of averaging across replicas."""
     return self._distribution_strategy.num_replicas
+
+  @property
+  def num_replicas_in_sync(self):
+    """Returns number of replicas over which gradients are aggregated."""
+    return self._distribution_strategy.num_replicas_in_sync
 
   @property
   def replica_id(self):

@@ -131,8 +131,8 @@ def fit_loop(
 
     # We need to set sample_weights to None since there are sample weight
     # placeholders that are created with default values.
-    sample_weights = [None for _ in range(len(model.outputs) *
-                                          current_strategy.num_replicas)]
+    sample_weights = [None for _ in range(
+        len(model.outputs) * current_strategy.num_replicas_in_sync)]
     if model.uses_learning_phase and not isinstance(K.learning_phase(), int):
       ins = dataset_inputs + dataset_targets + sample_weights + [1]
     else:
@@ -467,8 +467,8 @@ def test_loop(model, iterator, verbose=0, steps=None):
 
     # We need to set sample_weights to None since there are sample weight
     # placeholders that are created with default values.
-    sample_weights = [None for _ in range(len(model.outputs) *
-                                          current_strategy.num_replicas)]
+    sample_weights = [None for _ in range(
+        len(model.outputs) * current_strategy.num_replicas_in_sync)]
     if model.uses_learning_phase and not isinstance(K.learning_phase(), int):
       ins = dataset_inputs + dataset_targets + sample_weights + [0]
     else:
@@ -691,7 +691,7 @@ def predict_loop(model, iterator, verbose=0, steps=None):
     distributed_training_utils.set_weights(
         current_strategy, distributed_model, orig_model_weights)
 
-    num_towers = current_strategy.num_towers
+    num_replicas = current_strategy.num_replicas_in_sync
     # Since we do not know how many samples we will see, we cannot
     # pre-allocate the returned Numpy arrays. Instead, we store one array per
     # batch seen and concatenate them upon returning.
@@ -703,11 +703,12 @@ def predict_loop(model, iterator, verbose=0, steps=None):
         batch_outs = [batch_outs]
       if step == 0:
         # batch_outs gives you the number of model outputs. In the distributed
-        # case this will be number of model_outputs * num_towers.
+        # case this will be number of model_outputs * num_replicas.
         for _ in range(len(model.outputs)):
           unconcatenated_outs.append([])
       for i in range(len(model.outputs)):
-        nested_outs = batch_outs[i * num_towers:i * num_towers + num_towers]
+        nested_outs = batch_outs[i * num_replicas:
+                                 i * num_replicas + num_replicas]
         outs = nest.flatten(nested_outs)
         unconcatenated_outs[i].extend(outs)
       if verbose >= 1:
