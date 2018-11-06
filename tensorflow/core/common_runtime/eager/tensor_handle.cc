@@ -80,15 +80,11 @@ Status TensorHandle::Tensor(const tensorflow::Tensor** t) {
 }
 
 Status TensorHandle::Device(tensorflow::Device** d) {
-  TF_RETURN_IF_ERROR(WaitReady());
-  DCHECK(IsReady());
   *d = device_;
   return Status::OK();
 }
 
 Status TensorHandle::OpDevice(tensorflow::Device** d) {
-  TF_RETURN_IF_ERROR(WaitReady());
-  DCHECK(IsReady());
   *d = op_device_;
   return Status::OK();
 }
