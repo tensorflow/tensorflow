@@ -2309,7 +2309,9 @@ class SimplifyAggregation : public ArithmeticOptimizerStage {
   ~SimplifyAggregation() override = default;
 
   bool IsSupported(const NodeDef* node) const override {
-    return IsAggregate(*node) && NumNonControlInputs(*node) > 0;
+    return IsAggregate(*node) && NumNonControlInputs(*node) > 0 &&
+           GetDataTypeFromAttr(*node, "T") !=
+               DT_VARIANT;  // TODO(b/119787146): Enable for variants.
   }
 
   Status TrySimplify(NodeDef* node, string* simplified_node_name) override {
@@ -2405,11 +2407,10 @@ class ConvertPowStage : public ArithmeticOptimizerStage {
   Status TrySimplify(NodeDef* node, string* simplified_node_name) override {
     const auto& pow_props =
         ctx().graph_properties->GetInputProperties(node->name())[1];
-    for (int i = 0; i < pow_props.shape().dim_size(); ++i) {
-      if (pow_props.shape().dim(i).size() < 0) {
-        // skip if p is is not fully defined.
-        return Status::OK();
-      }
+    PartialTensorShape shape(pow_props.shape());
+    if (!shape.IsFullyDefined()) {
+      // skip if p is not fully defined.
+      return Status::OK();
     }
     if (TensorShape::IsValid(pow_props.shape()) && pow_props.has_value()) {
       Tensor pow(pow_props.dtype(), pow_props.shape());
@@ -2457,11 +2458,10 @@ class ConvertPowStage : public ArithmeticOptimizerStage {
         AddToOptimizationQueue(y);
       } else if (curr == complex128(0, 0) &&
                  ShapesSymbolicallyEqual(value_props.shape(), output_shape)) {
-        for (int i = 0; i < value_props.shape().dim_size(); ++i) {
-          if (value_props.shape().dim(i).size() < 0) {
-            // skip if b is is not fully defined.
-            return Status::OK();
-          }
+        PartialTensorShape shape(value_props.shape());
+        if (!shape.IsFullyDefined()) {
+          // skip if b is not fully defined.
+          return Status::OK();
         }
         if (TensorShape::IsValid(value_props.shape()) &&
             value_props.has_value()) {
@@ -3572,7 +3572,7 @@ Status ArithmeticOptimizer::Optimize(Cluster* /*cluster*/,
 
   // Disable restricted graph rewrites.
   options_.unary_ops_composition &=
-      item.allowed_optimizations.non_differentiable_rewrites;
+      item.allowed_optimizations().non_differentiable_rewrites;
 
   if (options_.dedup_computations) {
     DedupComputations();

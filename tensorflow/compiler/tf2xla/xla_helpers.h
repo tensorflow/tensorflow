@@ -80,8 +80,7 @@ class XlaHelpers {
 
   // A helper for creating a ConvertElementType xla op given a DataType rather
   // than the xla::PrimitiveType.
-  static xla::XlaOp ConvertElementType(xla::XlaBuilder* const builder,
-                                       const xla::XlaOp& operand,
+  static xla::XlaOp ConvertElementType(const xla::XlaOp& operand,
                                        const DataType new_element_type);
 };
 

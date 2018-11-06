@@ -104,9 +104,9 @@ class OpHint(object):
   that make up the pseudo op. A similar process is done to any output that
   is to be exported from the current op.
 
-  TODO(aselle): When TensorFlow functions functionality works for arbitrary
-  constructs, this mechanism can be retired and changed to use python defun's.
   """
+  # TODO(aselle): When TensorFlow functions functionality works for arbitrary
+  # constructs, this mechanism can be retired and changed to use python defun's.
 
   # Attr constants that are used for representation in the GraphDef. These
   # will be used on every Identity op that is involved in a total OpHint.
@@ -403,7 +403,7 @@ class _LiteOperand(object):
       out_graphdef: A graphdef that is ready to have this input added.
 
     Returns:
-      The the output that the stub should use as an input for this operand.
+      The output that the stub should use as an input for this operand.
 
     Raises:
       RuntimeError: if the method is not implemented.

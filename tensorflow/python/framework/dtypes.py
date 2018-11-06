@@ -18,6 +18,7 @@ from __future__ import division
 from __future__ import print_function
 
 import numpy as np
+from six.moves import builtins
 
 from tensorflow.core.framework import types_pb2
 from tensorflow.python import pywrap_tensorflow
@@ -548,8 +549,8 @@ _NP_TO_TF = frozenset([
     (np.int8, int8),
     (np.complex64, complex64),
     (np.complex128, complex128),
-    (np.object, string),
-    (np.bool, bool),
+    (np.object_, string),
+    (np.bool_, bool),
     (_np_qint8, qint8),
     (_np_quint8, quint8),
     (_np_qint16, qint16),
@@ -658,8 +659,9 @@ tf_export(
         __name__, "QUANTIZED_DTYPES")
 
 _PYTHON_TO_TF = {
-    float: float32,
-    bool: bool,
+    builtins.float: float32,
+    builtins.bool: bool,
+    builtins.object: string
 }
 
 

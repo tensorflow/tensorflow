@@ -15,9 +15,9 @@ limitations under the License.
 
 #include "tensorflow/core/distributed_runtime/graph_mgr.h"
 
+#include <chrono>  // NOLINT(build/c++11)
 #include <vector>
 
-#include "absl/time/clock.h"
 #include "tensorflow/core/common_runtime/build_graph_options.h"
 #include "tensorflow/core/common_runtime/constant_folding.h"
 #include "tensorflow/core/common_runtime/debugger_state_interface.h"
@@ -388,7 +388,7 @@ void GraphMgr::ExecuteAsync(const string& handle, const int64 step_id,
                             MutableRunGraphResponseWrapper* response,
                             CancellationManager* cancellation_manager,
                             const NamedTensors& in, StatusCallback done) {
-  const absl::Time start_time = absl::Now();
+  const uint64 start_time_usecs = Env::Default()->NowMicros();
   // Lookup an item. Holds one ref while executing.
   Item* item = nullptr;
   {
@@ -449,9 +449,9 @@ void GraphMgr::ExecuteAsync(const string& handle, const int64 step_id,
   StartParallelExecutors(
       handle, step_id, item, rendezvous, ce_handle, collector, cost_graph,
       cancellation_manager,
-      [item, rendezvous, ce_handle, done, start_time](const Status& s) {
+      [item, rendezvous, ce_handle, done, start_time_usecs](const Status& s) {
         done(s);
-        UpdateGraphExecutionTime(absl::Now() - start_time);
+        UpdateGraphExecTime(Env::Default()->NowMicros() - start_time_usecs);
         rendezvous->Unref();
         item->Unref();
         delete ce_handle;

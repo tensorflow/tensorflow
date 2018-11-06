@@ -29,14 +29,12 @@ from tensorflow.python import keras
 from tensorflow.python.client import session
 from tensorflow.python.eager import context
 from tensorflow.python.estimator import model_fn as model_fn_lib
-from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.keras.engine import training
 from tensorflow.python.keras.utils import tf_utils
 from tensorflow.python.ops import array_ops
 from tensorflow.python.platform import test
-from tensorflow.python.saved_model import constants
 from tensorflow.python.saved_model import loader_impl
 from tensorflow.python.saved_model import signature_constants
 from tensorflow.python.training import training as training_module
@@ -255,7 +253,7 @@ def load_model(sess, path, mode):
   outputs = {
       k: sess.graph.get_tensor_by_name(v.name)
       for k, v in meta_graph_def.signature_def[sig_def_key].outputs.items()}
-  return inputs, outputs
+  return inputs, outputs, meta_graph_def
 
 
 @test_util.run_all_in_graph_and_eager_modes
@@ -332,8 +330,8 @@ class TestModelSavedModelExport(test.TestCase, parameterized.TestCase):
 
     # Load predict graph, and test predictions
     with session.Session(graph=ops.Graph()) as sess:
-      inputs, outputs = load_model(sess, output_path,
-                                   model_fn_lib.ModeKeys.PREDICT)
+      inputs, outputs, _ = load_model(sess, output_path,
+                                      model_fn_lib.ModeKeys.PREDICT)
 
       predictions = sess.run(outputs[output_name],
                              {inputs[input_name]: input_arr})
@@ -342,19 +340,21 @@ class TestModelSavedModelExport(test.TestCase, parameterized.TestCase):
     if optimizer:
       # Load eval graph, and test predictions, loss and metric values
       with session.Session(graph=ops.Graph()) as sess:
-        inputs, outputs = load_model(sess, output_path,
-                                     model_fn_lib.ModeKeys.EVAL)
+        inputs, outputs, _ = load_model(sess, output_path,
+                                        model_fn_lib.ModeKeys.EVAL)
 
         # First obtain the loss and predictions, and run the metric update op by
         # feeding in the inputs and targets.
         loss, predictions, _ = sess.run(
             (outputs['loss'], outputs['predictions/' + output_name],
-             outputs['metrics/mae/update_op']),
-            {inputs[input_name]: input_arr, inputs[target_name]: target_arr})
+             outputs['metrics/mean_absolute_error/update_op']), {
+                 inputs[input_name]: input_arr,
+                 inputs[target_name]: target_arr
+             })
 
         # The metric value should be run after the update op, to ensure that it
         # reflects the correct value.
-        metric_value = sess.run(outputs['metrics/mae/value'])
+        metric_value = sess.run(outputs['metrics/mean_absolute_error/value'])
 
         self.assertEqual(int(train_before_export),
                          sess.run(training_module.get_global_step()))
@@ -364,17 +364,17 @@ class TestModelSavedModelExport(test.TestCase, parameterized.TestCase):
 
       # Load train graph, and check for the train op, and prediction values
       with session.Session(graph=ops.Graph()) as sess:
-        inputs, outputs = load_model(sess, output_path,
-                                     model_fn_lib.ModeKeys.TRAIN)
+        inputs, outputs, meta_graph_def = load_model(
+            sess, output_path, model_fn_lib.ModeKeys.TRAIN)
         self.assertEqual(int(train_before_export),
                          sess.run(training_module.get_global_step()))
         self.assertIn('loss', outputs)
-        self.assertIn('metrics/mae/update_op', outputs)
-        self.assertIn('metrics/mae/value', outputs)
+        self.assertIn('metrics/mean_absolute_error/update_op', outputs)
+        self.assertIn('metrics/mean_absolute_error/value', outputs)
         self.assertIn('predictions/' + output_name, outputs)
 
         # Train for a step
-        train_op = ops.get_collection(constants.TRAIN_OP_KEY)
+        train_op = loader_impl.get_train_op(meta_graph_def)
         train_outputs, _ = sess.run(
             [outputs, train_op], {inputs[input_name]: input_arr,
                                   inputs[target_name]: target_arr})
@@ -401,8 +401,8 @@ class TestModelSavedModelExport(test.TestCase, parameterized.TestCase):
       output_path = keras_saved_model.save_keras_model(
           model, saved_model_path, custom_objects={'relu6': relu6})
     with session.Session(graph=ops.Graph()) as sess:
-      inputs, outputs = load_model(sess, output_path,
-                                   model_fn_lib.ModeKeys.PREDICT)
+      inputs, outputs, _ = load_model(sess, output_path,
+                                      model_fn_lib.ModeKeys.PREDICT)
       input_name = model.input_names[0]
       output_name = model.output_names[0]
       predictions = sess.run(
@@ -462,11 +462,6 @@ class TestModelSavedModelExport(test.TestCase, parameterized.TestCase):
       clone = keras.models.Model(inputs, x)
       clone.compile(loss='mse', optimizer=keras.optimizers.RMSprop(lr=0.0001))
       clone.train_on_batch(input_arr, target_arr)
-
-    with self.assertRaisesRegexp(
-        errors.InternalError, 'Model and clone must use the same variables.'):
-      keras_saved_model._assert_same_non_optimizer_objects(
-          model, model_graph, clone, clone_graph)
 
   def testSaveSeqModelWithoutInputShapesRaisesError(self):
     """A Sequential model that hasn't been built should raise an error."""

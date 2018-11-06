@@ -35,6 +35,11 @@ bool ResolveAttributes(Model* model, T* op) {
 
   const Array& indices_array = model->GetArray(op->inputs[1]);
   if (!indices_array.has_shape()) return false;
+
+  // It is ok for indices_array to have a shape for an empty tensor. In that
+  // case, we don't bother setting 'axis'.
+  if (indices_array.buffer->Length() == 0) return false;
+
   op->axis = indices_array.GetBuffer<ArrayDataType::kInt32>().data;
   return true;
 }

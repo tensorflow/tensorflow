@@ -183,19 +183,17 @@ class OptionalStructure(structure.Structure):
     return OptionalStructure(value.value_structure)
 
   def _to_legacy_output_types(self):
-    raise NotImplementedError("The `output_types` property is not supported on "
-                              "structured objects containing an `Optional`. "
-                              "Use the corresponding `structure` property.")
+    return self
 
   def _to_legacy_output_shapes(self):
-    raise NotImplementedError("The `output_shapes` property is not supported on"
-                              " structured objects containing an `Optional`. "
-                              "Use the corresponding `structure` property.")
+    return self
 
   def _to_legacy_output_classes(self):
-    raise NotImplementedError("The `output_classes` property is not supported "
-                              "on structured objects containing an `Optional`. "
-                              "Use the corresponding `structure` property.")
+    return self
+
+  def _batch(self, batch_size):
+    raise NotImplementedError(
+        "Batching for `tf.data.experimental.Optional` objects.")
 
 
 # pylint: disable=protected-access

@@ -144,6 +144,19 @@ class Structure(object):
     """
     return self._from_tensor_list(flat_value)
 
+  @abc.abstractmethod
+  def _batch(self, batch_size):
+    """Returns a structure representing a batch of objects with this structure.
+
+    Args:
+      batch_size: An `int` representing the number of elements in a batch,
+        or `None` if the batch size may vary.
+
+    Returns:
+      A `Structure` representing a batch of objects with this structure.
+    """
+    raise NotImplementedError("Structure._batch()")
+
   @staticmethod
   def from_value(value):
     """Returns a `Structure` that represents the given `value`.
@@ -208,14 +221,16 @@ class Structure(object):
     flat_ret = []
     for flat_type, flat_shape, flat_class in zip(flat_types, flat_shapes,
                                                  flat_classes):
-      if issubclass(flat_class, sparse_tensor_lib.SparseTensor):
+      if isinstance(flat_class, Structure):
+        flat_ret.append(flat_class)
+      elif issubclass(flat_class, sparse_tensor_lib.SparseTensor):
         flat_ret.append(SparseTensorStructure(flat_type, flat_shape))
       elif issubclass(flat_class, ops.Tensor):
         flat_ret.append(TensorStructure(flat_type, flat_shape))
       else:
         # NOTE(mrry): Since legacy structures produced by iterators only
-        # comprise Tensors, SparseTensors, and nests, we do not need to support
-        # all structure types here.
+        # comprise Tensors, SparseTensors, and nests, we do not need to
+        # support all structure types here.
         raise TypeError(
             "Could not build a structure for output class %r" % flat_type)
 
@@ -314,15 +329,23 @@ class NestedStructure(Structure):
                        % (len(self._flat_types), len(flat_value)))
 
     flat_ret = []
-    for sub_value, structure in zip(flat_value, self._flat_nested_structure):
-      flat_ret.append(structure._from_tensor_list([sub_value]))
+    i = 0
+    for structure in self._flat_nested_structure:
+      num_flat_values = len(structure._flat_types)
+      sub_value = flat_value[i:i + num_flat_values]
+      flat_ret.append(structure._from_tensor_list(sub_value))
+      i += num_flat_values
 
     return nest.pack_sequence_as(self._nested_structure, flat_ret)
 
   def _from_compatible_tensor_list(self, flat_value):
     flat_ret = []
-    for sub_value, structure in zip(flat_value, self._flat_nested_structure):
-      flat_ret.append(structure._from_compatible_tensor_list([sub_value]))
+    i = 0
+    for structure in self._flat_nested_structure:
+      num_flat_values = len(structure._flat_types)
+      sub_value = flat_value[i:i + num_flat_values]
+      flat_ret.append(structure._from_compatible_tensor_list(sub_value))
+      i += num_flat_values
 
     return nest.pack_sequence_as(self._nested_structure, flat_ret)
 
@@ -344,6 +367,10 @@ class NestedStructure(Structure):
   def _to_legacy_output_classes(self):
     return nest.map_structure(
         lambda s: s._to_legacy_output_classes(), self._nested_structure)
+
+  def _batch(self, batch_size):
+    return NestedStructure(nest.map_structure(
+        lambda s: s._batch(batch_size), self._nested_structure))
 
 
 class TensorStructure(Structure):
@@ -381,6 +408,13 @@ class TensorStructure(Structure):
     return self._from_compatible_tensor_list(flat_value)
 
   def _from_compatible_tensor_list(self, flat_value):
+    # TODO(b/112266545): It would be cleaner to create a new `ensure_shape()`
+    # op here and return that, instead of mutating the input's shape using
+    # `Tensor.set_shape()`. However, that would add extra ops on the arguments
+    # of each `tf.data` function, which could impact performance. When this
+    # bug is resolved, we should be able to add the `ensure_shape()` ops and
+    # optimize them away using contextual shape information.
+    flat_value[0].set_shape(self._shape)
     return flat_value[0]
 
   @staticmethod
@@ -396,6 +430,11 @@ class TensorStructure(Structure):
   def _to_legacy_output_classes(self):
     return ops.Tensor
 
+  def _batch(self, batch_size):
+    return TensorStructure(
+        self._dtype,
+        tensor_shape.TensorShape([batch_size]).concatenate(self._shape))
+
 
 class SparseTensorStructure(Structure):
   """Represents structural information about a `tf.SparseTensor`."""
@@ -406,7 +445,11 @@ class SparseTensorStructure(Structure):
 
   @property
   def _flat_shapes(self):
-    return [tensor_shape.vector(3)]
+    # NOTE(mrry): The default flat shape of a boxed `SparseTensor` is `(3,)`,
+    # but a `SparseTensorStructure` can also represent a batch of boxed
+    # `SparseTensor` objects with shape `(?, 3)` (and batches of batches, etc.),
+    # so the flat shape must be unknown.
+    return [tensor_shape.unknown_shape(None)]
 
   @property
   def _flat_types(self):
@@ -428,8 +471,11 @@ class SparseTensorStructure(Structure):
     return self._from_compatible_tensor_list(flat_value)
 
   def _from_compatible_tensor_list(self, flat_value):
-    return sparse_ops.deserialize_sparse(
+    ret = sparse_ops.deserialize_sparse(
         flat_value[0], dtype=self._dtype, rank=self._dense_shape.ndims)
+    ret.indices.set_shape([None, self._dense_shape.ndims])
+    ret.dense_shape.set_shape([self._dense_shape.ndims])
+    return ret
 
   @staticmethod
   def from_value(value):
@@ -446,3 +492,8 @@ class SparseTensorStructure(Structure):
 
   def _to_legacy_output_classes(self):
     return sparse_tensor_lib.SparseTensor
+
+  def _batch(self, batch_size):
+    return SparseTensorStructure(
+        self._dtype,
+        tensor_shape.TensorShape([batch_size]).concatenate(self._dense_shape))

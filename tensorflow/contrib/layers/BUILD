@@ -78,6 +78,11 @@ tf_custom_op_py_library(
         ":sparse_feature_cross_op_op_lib",
     ],
     srcs_version = "PY2AND3",
+    visibility = [
+        "//learning/brain:__subpackages__",
+        "//tensorflow:__subpackages__",
+        "//video/youtube/personalization:__subpackages__",
+    ],
     deps = [
         ":sparse_feature_cross_op",
         "//tensorflow/contrib/framework:framework_py",
@@ -253,7 +258,7 @@ py_test(
         "//tensorflow/python:training",
         "//tensorflow/python:variable_scope",
         "//tensorflow/python:variables",
-        "//tensorflow/python/feature_column",
+        "//tensorflow/python/feature_column:feature_column_py",
         "//third_party/py/numpy",
     ],
 )
@@ -277,7 +282,7 @@ py_test(
         "//tensorflow/python:sparse_tensor",
         "//tensorflow/python:variable_scope",
         "//tensorflow/python:variables",
-        "//tensorflow/python/feature_column",
+        "//tensorflow/python/feature_column:feature_column_py",
         "//third_party/py/numpy",
     ],
 )

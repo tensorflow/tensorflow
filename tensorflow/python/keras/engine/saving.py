@@ -79,6 +79,10 @@ def save_model(model, filepath, overwrite=True, include_optimizer=True):
 
   from tensorflow.python.keras import __version__ as keras_version  # pylint: disable=g-import-not-at-top
 
+  # TODO(psv) Add warning when we save models that contain non-serializable
+  # entities like metrics added using `add_metric` and losses added using
+  # `add_loss.`
+
   if not isinstance(filepath, h5py.File):
     # If file exists and should not be overwritten.
     if not overwrite and os.path.isfile(filepath):
@@ -126,8 +130,8 @@ def save_model(model, filepath, overwrite=True, include_optimizer=True):
                     'config': model.optimizer.get_config()
                 },
                 'loss': model.loss,
-                'metrics': model.metrics,
-                'weighted_metrics': model.weighted_metrics,
+                'metrics': model._compile_metrics,
+                'weighted_metrics': model._compile_weighted_metrics,
                 'sample_weight_mode': model.sample_weight_mode,
                 'loss_weights': model.loss_weights,
             },
@@ -913,7 +917,7 @@ def save_attributes_to_hdf5_group(group, name, data):
   chunked_data = np.array_split(data_npy, num_chunks)
 
   # This will never loop forever thanks to the test above.
-  while any([x.nbytes > HDF5_OBJECT_HEADER_LIMIT for x in chunked_data]):
+  while any(x.nbytes > HDF5_OBJECT_HEADER_LIMIT for x in chunked_data):
     num_chunks += 1
     chunked_data = np.array_split(data_npy, num_chunks)
 

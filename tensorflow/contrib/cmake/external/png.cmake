@@ -59,6 +59,7 @@ ExternalProject_Add(png
         -DCMAKE_VERBOSE_MAKEFILE:BOOL=OFF
         -DCMAKE_INSTALL_PREFIX:STRING=${png_INSTALL}
 	-DZLIB_ROOT:STRING=${ZLIB_INSTALL}
+  -DPNG_TESTS:BOOL=OFF
 )
 
 ## put png includes in the directory where they are expected

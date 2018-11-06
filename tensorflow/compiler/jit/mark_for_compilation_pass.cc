@@ -24,8 +24,8 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "tensorflow/compiler/jit/deadness_analysis.h"
 #include "tensorflow/compiler/jit/defs.h"
+#include "tensorflow/compiler/jit/flags.h"
 #include "tensorflow/compiler/jit/graphcycles/graphcycles.h"
-#include "tensorflow/compiler/jit/legacy_flags/mark_for_compilation_pass_flags.h"
 #include "tensorflow/compiler/jit/union_find.h"
 #include "tensorflow/compiler/jit/xla_cluster_util.h"
 #include "tensorflow/compiler/tf2xla/const_analysis.h"
@@ -72,6 +72,11 @@ struct OperationFilter {
   // to resort to a dummy implementation. Currently Assert and CheckNumerics ops
   // have dummy XLA implementations.
   bool allow_dummy_ops;
+
+  // Whether ops that produce or consume DT_VARIANT values are allowed.  We
+  // don't auto-cluster these ops because we don't yet support live-in or
+  // live-out DT_VARIANT values.
+  bool allow_ops_producing_or_consuming_variant;
 };
 
 bool IsDummyImplOp(absl::string_view op_name) {
@@ -81,7 +86,13 @@ bool IsDummyImplOp(absl::string_view op_name) {
 bool IsStatefulRandomOp(absl::string_view op_name) {
   return op_name == "RandomUniform" || op_name == "RandomShuffle" ||
          op_name == "RandomUniformInt" || op_name == "RandomStandardNormal" ||
-         op_name == "TruncatedNormal";
+         op_name == "TruncatedNormal" || op_name == "Multinomial";
+}
+
+bool OpProducesOrConsumesVariant(const Node& node) {
+  auto is_variant = [](DataType dtype) { return dtype == DT_VARIANT; };
+  return absl::c_any_of(node.input_types(), is_variant) ||
+         absl::c_any_of(node.output_types(), is_variant);
 }
 
 bool HasXLAKernel(const Node& node, const DeviceType& jit_device_type) {
@@ -244,6 +255,10 @@ bool IsCompilableCall(const NodeDef& call_def,
       return false;
     }
     if (!op_filter.allow_dummy_ops && IsDummyImplOp(node->type_string())) {
+      return false;
+    }
+    if (!op_filter.allow_ops_producing_or_consuming_variant &&
+        OpProducesOrConsumesVariant(*node)) {
       return false;
     }
     if (!HasXLAKernel(*node, jit_device_type) &&
@@ -427,8 +442,7 @@ Status FindCompilationCandidates(
       BackwardsConstAnalysis(graph, /*compile_time_const_arg_indices=*/nullptr,
                              &compile_time_const_nodes));
 
-  int64& fuel =
-      legacy_flags::GetMarkForCompilationPassFlags()->tf_xla_clustering_fuel;
+  int64& fuel = GetMarkForCompilationPassFlags()->tf_xla_clustering_fuel;
 
   // Iterate over nodes in sorted order so that compiler fuel is deterministic.
   // We can't simply pass op_nodes().begin() and op_nodes().end to the
@@ -471,16 +485,15 @@ Status FindCompilationCandidates(
         XlaOpRegistry::GetCompilationDevice(device_type.type(), &registration));
     DeviceType jit_device_type(registration->compilation_device_name);
 
+    bool always_auto_cluster = registration->autoclustering_policy ==
+                               XlaOpRegistry::AutoclusteringPolicy::kAlways;
+
     OperationFilter op_filter;
     op_filter.allow_resource_ops = registration->compile_resource_ops;
-    op_filter.allow_stateful_rng_ops =
-        (registration->autoclustering_policy ==
-         XlaOpRegistry::AutoclusteringPolicy::kAlways);
-    op_filter.allow_control_trigger =
-        (registration->autoclustering_policy ==
-         XlaOpRegistry::AutoclusteringPolicy::kAlways);
-    op_filter.allow_dummy_ops = (registration->autoclustering_policy ==
-                                 XlaOpRegistry::AutoclusteringPolicy::kAlways);
+    op_filter.allow_stateful_rng_ops = always_auto_cluster;
+    op_filter.allow_control_trigger = always_auto_cluster;
+    op_filter.allow_dummy_ops = always_auto_cluster;
+    op_filter.allow_ops_producing_or_consuming_variant = always_auto_cluster;
 
     if (!HasXLAKernel(*node, jit_device_type) &&
         !IsCompilableCall(node->def(), jit_device_type, op_filter, 0,
@@ -502,6 +515,12 @@ Status FindCompilationCandidates(
     if (!op_filter.allow_dummy_ops && IsDummyImplOp(node->type_string())) {
       VLOG(2) << "Rejecting " << node->name() << ": dummy op ("
               << node->type_string() << ")";
+      continue;
+    }
+    if (!op_filter.allow_ops_producing_or_consuming_variant &&
+        OpProducesOrConsumesVariant(*node)) {
+      VLOG(2) << "Rejecting " << node->name()
+              << ": produces or consumes DT_VARIANT";
       continue;
     }
 
@@ -607,8 +626,7 @@ OptimizerOptions::GlobalJitLevel GetGlobalJitLevel(
     // To set compilation to be on by default, change the following line.
     global_jit_level = OptimizerOptions::OFF;
   }
-  legacy_flags::MarkForCompilationPassFlags* flags =
-      legacy_flags::GetMarkForCompilationPassFlags();
+  MarkForCompilationPassFlags* flags = GetMarkForCompilationPassFlags();
   if (flags->tf_xla_auto_jit == -1 ||
       (1 <= flags->tf_xla_auto_jit && flags->tf_xla_auto_jit <= 2)) {
     // If the flag tf_xla_auto_jit is a valid, non-zero setting, it overrides
@@ -641,6 +659,7 @@ bool IsCompilable(FunctionLibraryRuntime* flr, const NodeDef& ndef) {
   op_filter.allow_stateful_rng_ops = true;
   op_filter.allow_control_trigger = true;
   op_filter.allow_dummy_ops = true;
+  op_filter.allow_ops_producing_or_consuming_variant = true;
 
   return IsCompilableCall(ndef, jit_device_type, op_filter, 0, flr);
 }
@@ -651,8 +670,7 @@ Status MarkForCompilationPass::Run(
   // device ahead of time.
   OptimizerOptions::GlobalJitLevel global_jit_level =
       GetGlobalJitLevel(options);
-  legacy_flags::MarkForCompilationPassFlags* flags =
-      legacy_flags::GetMarkForCompilationPassFlags();
+  MarkForCompilationPassFlags* flags = GetMarkForCompilationPassFlags();
   bool fusion_only = flags->tf_xla_fusion_only;
 
   VLOG(1) << "flags->tf_xla_fusion_only = " << flags->tf_xla_fusion_only;
@@ -953,8 +971,7 @@ Status MarkForCompilationPass::RunImpl(
 
   OptimizerOptions::GlobalJitLevel global_jit_level =
       GetGlobalJitLevel(options);
-  legacy_flags::MarkForCompilationPassFlags* flags =
-      legacy_flags::GetMarkForCompilationPassFlags();
+  MarkForCompilationPassFlags* flags = GetMarkForCompilationPassFlags();
 
   // Repeatedly contract edges between clusters that are on the same device,
   // provided the contraction would not create a cycle.

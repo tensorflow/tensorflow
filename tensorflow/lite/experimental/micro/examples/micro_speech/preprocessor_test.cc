@@ -22,6 +22,7 @@ limitations under the License.
 #include "tensorflow/lite/experimental/micro/micro_error_reporter.h"
 #include "tensorflow/lite/experimental/micro/testing/micro_test.h"
 
+
 TF_LITE_MICRO_TESTS_BEGIN
 
 TF_LITE_MICRO_TEST(TestPreprocessor) {

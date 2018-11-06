@@ -39,9 +39,11 @@ limitations under the License.
 #include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
+#include "tensorflow/core/platform/cpu_info.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/mutex.h"
+#include "tensorflow/core/platform/platform_strings.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/util/ptr_util.h"
 
@@ -254,6 +256,9 @@ Status OpKernelConstruction::allocate_persistent(
 }
 
 // OpKernelContext -----------------------------------------------------------
+
+const int OpKernelContext::Params::kNeverForward;
+const int OpKernelContext::Params::kNoReservation;
 
 OpKernelContext::OpKernelContext(Params* params)
     : OpKernelContext(
@@ -942,6 +947,44 @@ static const char kKernelLibPattern[] = "libtfkernel*.dylib";
 static const char kKernelLibPattern[] = "libtfkernel*.so";
 #endif
 
+#define FEATURE(x) \
+  { x, #x }
+
+// Returns Status::OK if the dynamic library at the given path is safe to
+// load with some level of confidence.
+static Status IsProbablySafeToLoad(const string& path) {
+  // A map of platform string to required CPU feature.
+  using port::CPUFeature;
+  static const auto* feature_map =
+      new std::map<string, std::pair<CPUFeature, string>>{
+          {"__AVX512VL__=1", FEATURE(CPUFeature::AVX512VL)},
+      };
+
+  std::vector<std::string> platform_strings;
+  int result = GetPlatformStrings(path, &platform_strings);
+  if (result) {
+    return Status(error::Code::UNKNOWN, strerror(result));
+  }
+  if (platform_strings.empty()) {
+    return Status(error::Code::FAILED_PRECONDITION,
+                  "Didn't find any platform strings");
+  }
+  std::vector<std::string> missing_features;
+  for (const auto& platform_string : platform_strings) {
+    const auto& entry = feature_map->find(platform_string);
+    if (entry != feature_map->end() &&
+        !port::TestCPUFeature(entry->second.first)) {
+      missing_features.emplace_back(entry->second.second);
+    }
+  }
+  if (!missing_features.empty()) {
+    string errmsg = "Missing CPU features: ";
+    errmsg.append(str_util::Join(missing_features, ", "));
+    return Status(errors::Code::FAILED_PRECONDITION, errmsg);
+  }
+  return Status::OK();
+}
+
 void LoadDynamicKernelsInternal() {
   Env* env = Env::Default();
   string bazel_kernel_dir = io::JoinPath(env->GetRunfilesDir(),
@@ -952,12 +995,18 @@ void LoadDynamicKernelsInternal() {
   Status s_kernel_dir = env->GetChildren(bazel_kernel_dir, &files);
   if (s_kernel_dir.ok()) {
     string dll_spec = io::JoinPath(bazel_kernel_dir, kKernelLibPattern);
-    for (const auto&  file : files) {
-      string fullpath =  io::JoinPath(bazel_kernel_dir, file);
+    for (const auto& file : files) {
+      string fullpath = io::JoinPath(bazel_kernel_dir, file);
       if (env->MatchPath(fullpath, dll_spec)) {
-        // TODO(gunan): Store the handles to the opened files.
-        void* unused_filehandle;
-        TF_CHECK_OK(env->LoadLibrary(fullpath.c_str(), &unused_filehandle));
+        Status s = IsProbablySafeToLoad(fullpath);
+        if (s.ok()) {
+          // TODO(gunan): Store the handles to the opened files.
+          void* unused_filehandle;
+          TF_CHECK_OK(env->LoadLibrary(fullpath.c_str(), &unused_filehandle));
+        } else {
+          LOG(WARNING) << "Not loading plugin library " << fullpath << ": "
+                       << s.error_message();
+        }
       }
     }
   }
@@ -1078,7 +1127,8 @@ Status FindKernelDef(const DeviceType& device_type, const NodeDef& node_def,
         FormatNodeDefForError(node_def));
     if (was_attr_mismatch) {
       errors::AppendToMessage(
-          &s, " (OpKernel was found, but attributes didn't match)");
+          &s, " (OpKernel was found, but attributes didn't match) ",
+          "Requested Attributes: ", SummarizeAttrs(node_def));
     }
     errors::AppendToMessage(
         &s, ".  Registered:", KernelsRegisteredForOp(node_def.op()));
@@ -1213,7 +1263,8 @@ Status CreateOpKernel(DeviceType device_type, DeviceBase* device,
                               FormatNodeDefForError(node_def)));
     if (was_attr_mismatch) {
       errors::AppendToMessage(
-          &s, " (OpKernel was found, but attributes didn't match)");
+          &s, " (OpKernel was found, but attributes didn't match) ",
+          "Requested Attributes: ", SummarizeAttrs(node_def));
     }
     errors::AppendToMessage(
         &s, ".  Registered:", KernelsRegisteredForOp(node_def.op()));

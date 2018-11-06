@@ -68,11 +68,11 @@ class RankTwoTest(trt_test.TfTrtIntegrationTestBase):
   def ExpectedEnginesToBuild(self, run_params):
     """Return the expected engines to build."""
     return {
-        "my_trt_op_0": [
+        "TRTEngineOp_0": [
             "add0_1", "add0_2", "add0_3", "c0_1", "c0_2", "c0_3", "abs0_1",
             "abs0_2"
         ],
-        "my_trt_op_1": [
+        "TRTEngineOp_1": [
             "add", "add1_1", "add1_2", "add1_3", "c1_1", "c1_2", "c1_3",
             "abs1_1", "abs1_2", "reciprocal0", "reciprocal1"
         ],

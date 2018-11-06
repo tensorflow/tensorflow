@@ -140,6 +140,7 @@ class RaggedMapOpTest(test_util.TensorFlowTestCase, parameterized.TestCase):
       ),
   ])
 
+  @test_util.run_deprecated_v1
   def testRaggedMap(
       self,
       fn,
@@ -161,9 +162,10 @@ class RaggedMapOpTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     with self.test_session():
       if ragged.is_ragged(expected_output):
         self.assertEqual(output.ragged_rank, expected_rt.ragged_rank)
-      output_values = output.eval()
+      output_values = self.evaluate(output)
       self.assertAllEqual(expected_output, output_values.tolist())
 
+  @test_util.run_deprecated_v1
   def testRaggedMapOnStructure(self):
     batman = ragged.constant([[1, 2, 3], [4], [5, 6, 7]])
     # [[10, 20, 30], [40], [50, 60, 70]]
@@ -184,6 +186,7 @@ class RaggedMapOpTest(test_util.TensorFlowTestCase, parameterized.TestCase):
       self.assertAllEqual(output.eval().tolist(), [66, 44, 198])
 
   # Test mapping over a dict of RTs can produce a dict of RTs.
+  @test_util.run_deprecated_v1
   def testRaggedMapOnStructure_RaggedOutputs(self):
     batman = ragged.constant([[1, 2, 3], [4], [5, 6, 7]])
     # [[10, 20, 30], [40], [50, 60, 70]]
@@ -215,6 +218,7 @@ class RaggedMapOpTest(test_util.TensorFlowTestCase, parameterized.TestCase):
       self.assertAllEqual(output['robin'].eval().tolist(),
                           [[11, 21, 31], [41], [51, 61, 71]])
 
+  @test_util.run_deprecated_v1
   def testZip(self):
     x = ragged.constant([[10, 20], [30, 40], [50, 60], [70], [80, 90, 100]],
                         dtypes.int64)
@@ -232,11 +236,12 @@ class RaggedMapOpTest(test_util.TensorFlowTestCase, parameterized.TestCase):
         infer_shape=False)
 
     with self.test_session():
-      result = output.eval().tolist()
+      result = self.evaluate(output).tolist()
       self.assertAllEqual(
           result, [[[0, 10], [0, 20]], [[1, 30], [1, 40]], [[2, 50], [2, 60]],
                    [[3, 70]], [[4, 80], [4, 90], [4, 100]]])
 
+  @test_util.run_deprecated_v1
   def testBatchGather(self):
     tokens = ragged.constant([['hello', '.', 'there'], ['merhaba'],
                               ['bonjour', '.', 'ca va', '?']])
@@ -255,7 +260,7 @@ class RaggedMapOpTest(test_util.TensorFlowTestCase, parameterized.TestCase):
 
     with self.test_session():
       self.assertAllEqual(
-          out.eval().tolist(),
+          self.evaluate(out).tolist(),
           [[b'hello', b'there'], [b'merhaba'], [b'bonjour', b'ca va']])
 
   def testMismatchRaggedRank(self):

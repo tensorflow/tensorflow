@@ -183,6 +183,7 @@ cc_library(
         "exp.cc",
         "expand_dims.cc",
         "fake_quant.cc",
+        "fill.cc",
         "floor.cc",
         "floor_div.cc",
         "floor_mod.cc",
@@ -197,6 +198,7 @@ cc_library(
         "lstm.cc",
         "maximum_minimum.cc",
         "mfcc.cc",
+        "mirror_pad.cc",
         "mul.cc",
         "neg.cc",
         "one_hot.cc",
@@ -219,6 +221,8 @@ cc_library(
         "sparse_output_fully_connected.cc",
         "sparse_to_dense.cc",
         "split.cc",
+        "split_v.cc",
+        "squared_difference.cc",
         "squeeze.cc",
         "strided_slice.cc",
         "sub.cc",
@@ -1065,6 +1069,22 @@ tf_cc_test(
 )
 
 tf_cc_test(
+    name = "split_v_test",
+    size = "small",
+    srcs = ["split_v_test.cc"],
+    tags = [
+        "no_oss",
+        "tflite_not_portable_ios",
+    ],
+    deps = [
+        ":builtin_ops",
+        "//tensorflow/lite:framework",
+        "//tensorflow/lite/kernels:test_util",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+tf_cc_test(
     name = "squeeze_test",
     size = "small",
     srcs = ["squeeze_test.cc"],
@@ -1379,6 +1399,32 @@ tf_cc_test(
     ],
 )
 
+tf_cc_test(
+    name = "squared_difference_test",
+    size = "small",
+    srcs = ["squared_difference_test.cc"],
+    tags = ["tflite_not_portable_ios"],
+    deps = [
+        ":builtin_ops",
+        "//tensorflow/lite:framework",
+        "//tensorflow/lite/kernels:test_util",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+tf_cc_test(
+    name = "fill_test",
+    size = "small",
+    srcs = ["fill_test.cc"],
+    tags = ["tflite_not_portable_ios"],
+    deps = [
+        ":builtin_ops",
+        "//tensorflow/lite:framework",
+        "//tensorflow/lite/kernels:test_util",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
 filegroup(
     name = "all_files",
     srcs = glob(
@@ -1392,3 +1438,14 @@ filegroup(
 )
 
 tflite_portable_test_suite()
+
+tf_cc_test(
+    name = "mirror_pad_test",
+    srcs = ["mirror_pad_test.cc"],
+    deps = [
+        ":builtin_ops",
+        ":test_util",
+        "//tensorflow/lite:framework",
+        "@com_google_googletest//:gtest_main",
+    ],
+)

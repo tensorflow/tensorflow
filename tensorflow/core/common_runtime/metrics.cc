@@ -14,7 +14,6 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/core/common_runtime/metrics.h"
-
 #include "tensorflow/core/lib/monitoring/counter.h"
 
 namespace tensorflow {
@@ -24,18 +23,17 @@ namespace {
 auto* graph_runs = monitoring::Counter<0>::New(
     "/tensorflow/core/graph_runs",
     "The number of graph executions used to collect "
-    "/tensorflow/core/graph_run_time_msecs");
+    "/tensorflow/core/graph_run_time_usecs");
 
-auto* graph_run_time_msecs = monitoring::Counter<0>::New(
-    "/tensorflow/core/graph_run_time_msecs",
-    "The total time spent on executing graphs in milliseconds.");
+auto* graph_run_time_usecs = monitoring::Counter<0>::New(
+    "/tensorflow/core/graph_run_time_usecs",
+    "The total time spent on executing graphs in microseconds.");
 }  // namespace
 
-void UpdateGraphExecutionTime(const absl::Duration running_time) {
-  if (running_time > absl::ZeroDuration()) {
+void UpdateGraphExecTime(const uint64 running_time_usecs) {
+  if (running_time_usecs > 0) {
     graph_runs->GetCell()->IncrementBy(1);
-    graph_run_time_msecs->GetCell()->IncrementBy(running_time /
-                                                 absl::Milliseconds(1));
+    graph_run_time_usecs->GetCell()->IncrementBy(running_time_usecs);
   }
 }
 

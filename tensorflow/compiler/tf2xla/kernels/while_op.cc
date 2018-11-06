@@ -64,7 +64,7 @@ Status MakeXlaCompilerArgumentsFromInputs(
       if (!arg.initialized) {
         *has_uninitialized_vars = true;
       }
-      arg.tensor_array_size = resource->tensor_array_size();
+      arg.max_array_size = resource->max_array_size();
       for (const auto& gradient : resource->tensor_array_gradients()) {
         arg.tensor_array_gradients.insert(gradient.first);
       }

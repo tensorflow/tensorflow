@@ -17,6 +17,7 @@ limitations under the License.
 #include <algorithm>
 #include <cmath>
 #include <cstring>
+#include <limits>
 #include <memory>
 #include <string>
 #include <utility>
@@ -41,61 +42,60 @@ void KeyValueSort(std::pair<KeyType, int64>* row_to_sort, int64 num_elements) {
   std::sort(row_to_sort, row_to_sort + num_elements);
 }
 
-// For floating point numbers, we want a total order comparator. -NaN and NaN
-// should appear at the beginning and end of the ordering, and -0.0 should
-// appear before 0.0. Also we want to have a stable sort, so if the keys are the
-// same, we compare the index values.
-template <typename KeyType>
-bool LessThan(KeyType lhs, int64 lhs_index, KeyType rhs, int64 rhs_index) {
-  bool lhs_is_negative = std::signbit(lhs);
-  bool rhs_is_negative = std::signbit(rhs);
-  // If the signs are different, we can just compare the signs.
-  if (lhs_is_negative != rhs_is_negative) {
-    return lhs_is_negative && !rhs_is_negative;
+// We would like a total order of floating point numbers so that the
+// sort has a predictable behavior in the presence of NaNs. Rather
+// than using floating point comparison, we use the following trick:
+// If f is a float, and
+// x = bit_cast<int32>(f);
+// y = x < 0 ? 0x7FFFFFFF - x : x;
+// then y is ordered as an int32 such that finite values have the
+// obvious order, -0 is ordered before 0, and -NaN and NaN appear at
+// the beginning and end of the ordering.
+template <typename CastType, typename UnsignedCastType, typename KeyType>
+CastType Convert(KeyType value) {
+  CastType casted_value;
+  memcpy(&casted_value, &value, sizeof(CastType));
+  if (casted_value < 0) {
+    return static_cast<UnsignedCastType>(std::numeric_limits<CastType>::max()) -
+           casted_value;
   }
-  bool lhs_nan = std::isnan(lhs);
-  bool rhs_nan = std::isnan(rhs);
-  // Exactly one number is nan?
-  if (lhs_nan != rhs_nan) {
-    if (lhs_nan) {
-      return lhs_is_negative;
-    }
-    return !rhs_is_negative;
-  }
-  if (lhs != rhs) {
-    return lhs < rhs;
-  }
-  return lhs_index < rhs_index;
+  return casted_value;
+}
+
+template <typename CastType, typename UnsignedCastType, typename KeyType>
+bool LessThan(KeyType lhs, KeyType rhs) {
+  return Convert<CastType, UnsignedCastType>(lhs) <
+         Convert<CastType, UnsignedCastType>(rhs);
 }
 
 template <>
 void KeyValueSort(std::pair<double, int64>* row_to_sort, int64 num_elements) {
-  std::sort(row_to_sort, row_to_sort + num_elements,
-            [](const std::pair<double, int64>& lhs,
-               const std::pair<double, int64>& rhs) -> bool {
-              return LessThan(lhs.first, lhs.second, rhs.first, rhs.second);
-            });
+  std::stable_sort(row_to_sort, row_to_sort + num_elements,
+                   [](const std::pair<double, int64>& lhs,
+                      const std::pair<double, int64>& rhs) -> bool {
+                     return LessThan<int64, uint64>(lhs.first, rhs.first);
+                   });
 }
 
 template <>
 void KeyValueSort(std::pair<float, int64>* row_to_sort, int64 num_elements) {
-  std::sort(row_to_sort, row_to_sort + num_elements,
-            [](const std::pair<float, int64>& lhs,
-               const std::pair<float, int64>& rhs) -> bool {
-              return LessThan(lhs.first, lhs.second, rhs.first, rhs.second);
-            });
+  std::stable_sort(row_to_sort, row_to_sort + num_elements,
+                   [](const std::pair<float, int64>& lhs,
+                      const std::pair<float, int64>& rhs) -> bool {
+                     return LessThan<int32, uint32>(lhs.first, rhs.first);
+                   });
 }
 
 template <>
 void KeyValueSort(std::pair<Eigen::half, int64>* row_to_sort,
                   int64 num_elements) {
-  std::sort(row_to_sort, row_to_sort + num_elements,
-            [](const std::pair<Eigen::half, int64>& lhs,
-               const std::pair<Eigen::half, int64>& rhs) -> bool {
-              return LessThan(
-                  Eigen::half_impl::half_to_float(lhs.first), lhs.second,
-                  Eigen::half_impl::half_to_float(rhs.first), rhs.second);
-            });
+  std::stable_sort(row_to_sort, row_to_sort + num_elements,
+                   [](const std::pair<Eigen::half, int64>& lhs,
+                      const std::pair<Eigen::half, int64>& rhs) -> bool {
+                     return LessThan<int32, uint32>(
+                         Eigen::half_impl::half_to_float(lhs.first),
+                         Eigen::half_impl::half_to_float(rhs.first));
+                   });
 }
 
 template <typename KeyType>

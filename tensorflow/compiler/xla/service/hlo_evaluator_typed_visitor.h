@@ -161,9 +161,6 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
                          HloOpcodeString(hlo_instruction->opcode()));
   }
 
-  // TODO(b/35950897): many of the stl functions used in the handlers are not
-  // overloaded for every XLA primitive type.
-
   template <typename NativeT,
             typename std::enable_if<std::is_unsigned<NativeT>::value>::type* =
                 nullptr>
@@ -596,7 +593,7 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
     return Status::OK();
   }
 
-  Status HandleDivide(HloInstruction* divide) {
+  Status HandleDivide(HloInstruction* divide) override {
     return HandleDivide<ElementwiseT>(divide);
   }
 
@@ -1556,10 +1553,10 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
           const auto& row_data = row_to_sort.data<NativeT>();
 
           std::vector<NativeT> result_data(row_data.begin(), row_data.end());
-          std::sort(result_data.begin(), result_data.end(),
-                    [](const NativeT& a, const NativeT& b) {
-                      return SafeLess<NativeT>(a, b);
-                    });
+          std::stable_sort(result_data.begin(), result_data.end(),
+                           [](const NativeT& a, const NativeT& b) {
+                             return SafeLess<NativeT>(a, b);
+                           });
           Literal sorted_row(ShapeUtil::MakeShape(keys->shape().element_type(),
                                                   {sort_dim_elements}));
           sorted_row.PopulateR1(absl::Span<const NativeT>(result_data));
@@ -2546,12 +2543,14 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
 
   template <typename NativeT,
             typename std::enable_if<
-                std::is_same<NativeT, float>::value ||
-                std::is_same<NativeT, int32>::value ||
-                std::is_same<NativeT, uint32>::value>::type* = nullptr>
+                std::is_integral<NativeT>::value ||
+                std::is_floating_point<NativeT>::value>::type* = nullptr>
   Status HandleIota(HloInstruction* instruction) {
     auto* iota = Cast<HloIotaInstruction>(instruction);
-    std::vector<NativeT> data(iota->shape().dimensions(iota->iota_dimension()));
+    // Avoid using std::vector since std::vector<bool> does not convert to
+    // absl::Span<bool>.
+    absl::InlinedVector<NativeT, 1> data(
+        iota->shape().dimensions(iota->iota_dimension()));
     std::iota(data.begin(), data.end(), 0);
     auto result = LiteralUtil::CreateR1<NativeT>(data);
 
@@ -2568,9 +2567,8 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
   }
   template <typename NativeT,
             typename std::enable_if<
-                !(std::is_same<NativeT, float>::value ||
-                  std::is_same<NativeT, int32>::value ||
-                  std::is_same<NativeT, uint32>::value)>::type* = nullptr>
+                !(std::is_integral<NativeT>::value ||
+                  std::is_floating_point<NativeT>::value)>::type* = nullptr>
   Status HandleIota(HloInstruction* iota) {
     return InvalidArgument("Unsupported type for iota");
   }
@@ -2722,17 +2720,8 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
     const auto shape = instruction->shape();
     const auto* lhs = instruction->operand(0);
     const auto* rhs = instruction->operand(1);
-
-    // TODO(b/35950897, b/27796129): add DCHECK back once implicit broadcast
-    // is removed.
-    if (!(ShapeUtil::SameDimensions(shape, rhs->shape()) &&
-          ShapeUtil::SameDimensions(lhs->shape(), rhs->shape()))) {
-      return Unimplemented(
-          "Implicit broadcasting is currently unsupported in HLO evaluator "
-          "Shape Mismatch: %s vs %s vs %s: ",
-          ShapeUtil::HumanString(shape), ShapeUtil::HumanString(lhs->shape()),
-          ShapeUtil::HumanString(rhs->shape()));
-    }
+    TF_RET_CHECK(ShapeUtil::SameDimensions(shape, rhs->shape()));
+    TF_RET_CHECK(ShapeUtil::SameDimensions(lhs->shape(), rhs->shape()));
 
     const Literal& lhs_literal = parent_->GetEvaluatedLiteralFor(lhs);
     const Literal& rhs_literal = parent_->GetEvaluatedLiteralFor(rhs);
@@ -2756,19 +2745,9 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
     const auto* lhs = instruction->operand(0);
     const auto* rhs = instruction->operand(1);
     const auto* ehs = instruction->operand(2);
-
-    // TODO(b/35950897, b/27796129): add DCHECK back once implicit
-    // broadcast is removed.
-    if (!(ShapeUtil::SameDimensions(shape, lhs->shape()) &&
-          ShapeUtil::SameDimensions(lhs->shape(), rhs->shape()) &&
-          ShapeUtil::SameDimensions(rhs->shape(), ehs->shape()))) {
-      return Unimplemented(
-          "Implicit broadcasting is currently unsupported in HLO evaluator "
-          "Shape Mismatch: %s vs %s vs %s vs %s: ",
-          ShapeUtil::HumanString(shape), ShapeUtil::HumanString(lhs->shape()),
-          ShapeUtil::HumanString(rhs->shape()),
-          ShapeUtil::HumanString(ehs->shape()));
-    }
+    TF_RET_CHECK(ShapeUtil::SameDimensions(shape, lhs->shape()));
+    TF_RET_CHECK(ShapeUtil::SameDimensions(lhs->shape(), rhs->shape()));
+    TF_RET_CHECK(ShapeUtil::SameDimensions(rhs->shape(), ehs->shape()));
 
     const Literal& lhs_literal = parent_->GetEvaluatedLiteralFor(lhs);
     const Literal& rhs_literal = parent_->GetEvaluatedLiteralFor(rhs);

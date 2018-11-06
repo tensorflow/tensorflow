@@ -84,11 +84,11 @@ def _default_tolerance(dtype):
 class ComparisonOpTest(test.TestCase):
 
   def _compareScalar(self, func, x, y, dtype):
-    with self.test_session(force_gpu=test_util.is_gpu_available()):
+    with test_util.use_gpu():
       out = func(
           ops.convert_to_tensor(np.array([x]).astype(dtype)),
           ops.convert_to_tensor(np.array([y]).astype(dtype)))
-      ret = out.eval()
+      ret = self.evaluate(out)
     return ret[0]
 
   def testScalarCompareScalar(self):
@@ -117,9 +117,9 @@ class ComparisonOpTest(test.TestCase):
 
   def _compare(self, x, y, np_func, tf_func):
     np_ans = np_func(x, y)
-    with self.test_session(force_gpu=test_util.is_gpu_available()):
+    with test_util.use_gpu():
       out = tf_func(ops.convert_to_tensor(x), ops.convert_to_tensor(y))
-      tf_ans = out.eval()
+      tf_ans = self.evaluate(out)
     self.assertAllEqual(np_ans, tf_ans)
 
   def testTensorCompareTensor(self):
@@ -199,6 +199,7 @@ class ComparisonOpTest(test.TestCase):
     self._testBCastByFunc(
         np.not_equal, math_ops.not_equal, include_complex=True)
 
+  @test_util.run_deprecated_v1
   def testShapeMismatch(self):
     dtypes = [np.float16, np.float32, np.float64, np.int32, np.int64]
     funcs = [
@@ -218,22 +219,20 @@ class LogicalOpTest(test.TestCase):
 
   def _compareBinary(self, x, y, np_func, tf_func, use_gpu=False):
     np_ans = np_func(x, y)
-    with self.test_session(use_gpu=use_gpu,
-                           force_gpu=use_gpu and test_util.is_gpu_available()):
+    with test_util.device(use_gpu=use_gpu):
       inx = ops.convert_to_tensor(x)
       iny = ops.convert_to_tensor(y)
       out = tf_func(inx, iny)
-      tf_val = out.eval()
+      tf_val = self.evaluate(out)
     self.assertEqual(out.dtype, dtypes_lib.bool)
     self.assertAllEqual(np_ans, tf_val)
     self.assertShapeEqual(np_ans, out)
 
   def _not(self, x, use_gpu=False):
     np_ans = np.logical_not(x)
-    with self.test_session(use_gpu=use_gpu,
-                           force_gpu=use_gpu and test_util.is_gpu_available()):
+    with test_util.device(use_gpu=use_gpu):
       out = math_ops.logical_not(ops.convert_to_tensor(x))
-      tf_val = out.eval()
+      tf_val = self.evaluate(out)
     self.assertEqual(out.dtype, dtypes_lib.bool)
     self.assertAllEqual(np_ans, tf_val)
     self.assertShapeEqual(np_ans, out)
@@ -282,6 +281,7 @@ class LogicalOpTest(test.TestCase):
         self._compareBinary(x, y, np.logical_or, math_ops.logical_or, use_gpu)
         self._compareBinary(x, y, np.logical_xor, math_ops.logical_xor, use_gpu)
 
+  @test_util.run_deprecated_v1
   def testShapeMismatch(self):
     x = np.random.randint(0, 2, 6).astype(np.bool).reshape(1, 3, 2)
     y = np.random.randint(0, 2, 6).astype(np.bool).reshape(3, 2, 1)
@@ -290,6 +290,7 @@ class LogicalOpTest(test.TestCase):
           ValueError, lambda e: "Dimensions must" in str(e)):
         f(x, y)
 
+  @test_util.run_deprecated_v1
   def testUsingAsPythonValueFails(self):
     # Ensure that we raise an error when the user attempts to treat a
     # `Tensor` as a Python `bool`.
@@ -316,10 +317,9 @@ class SelectOpTest(test.TestCase):
 
   def _compare(self, c, x, y, use_gpu):
     np_ans = np.where(c, x, y)
-    with self.test_session(use_gpu=use_gpu,
-                           force_gpu=use_gpu and test_util.is_gpu_available()):
+    with test_util.device(use_gpu=use_gpu):
       out = array_ops.where(c, x, y)
-      tf_ans = out.eval()
+      tf_ans = self.evaluate(out)
     self.assertAllEqual(np_ans, tf_ans)
     self.assertShapeEqual(np_ans, out)
 
@@ -399,6 +399,7 @@ class SelectOpTest(test.TestCase):
       if t in [np.float16, np.float32, np.float64]:
         self._compare(c, xt, yt, use_gpu=True)
 
+  @test_util.run_deprecated_v1
   def testGradients(self):
     c = np.random.randint(0, 2, 6).astype(np.bool).reshape(1, 3, 2)
     x = np.random.rand(1, 3, 2) * 100
@@ -418,6 +419,7 @@ class SelectOpTest(test.TestCase):
         self._compareGradientX(c, xt, yt)
         self._compareGradientY(c, xt, yt)
 
+  @test_util.run_deprecated_v1
   def testShapeMismatch(self):
     c = np.random.randint(0, 2, 6).astype(np.bool).reshape(1, 3, 2)
     x = np.random.rand(1, 3, 2) * 100
@@ -431,6 +433,7 @@ class SelectOpTest(test.TestCase):
       with self.assertRaises(ValueError):
         array_ops.where(c, xt, yt)
 
+  @test_util.run_deprecated_v1
   def testEmptyTensor(self):
     c = np.random.randint(0, 3, 0).astype(np.bool).reshape(1, 3, 0)
     x = np.random.rand(1, 3, 0) * 100
@@ -442,6 +445,7 @@ class SelectOpTest(test.TestCase):
       z = array_ops.where(c, xt, yt).eval()
       self.assertAllEqual(z_expected, z)
 
+  @test_util.run_deprecated_v1
   def testNan(self):
     """Verify that nans don't propagate where they shouldn't."""
     with self.cached_session():
@@ -460,10 +464,9 @@ class BatchSelectOpTest(test.TestCase):
     np_ans = np.dstack(
         [x_i if c_i else y_i for c_i, x_i, y_i in zip(c, x, y)]).transpose(
             [2, 0, 1])
-    with self.test_session(use_gpu=use_gpu,
-                           force_gpu=use_gpu and test_util.is_gpu_available()):
+    with test_util.device(use_gpu=use_gpu):
       out = array_ops.where(c, x, y)
-      tf_ans = out.eval()
+      tf_ans = self.evaluate(out)
     self.assertAllEqual(np_ans, tf_ans)
     self.assertShapeEqual(np_ans, out)
 
@@ -529,6 +532,7 @@ class BatchSelectOpTest(test.TestCase):
       if t in [np.float16, np.float32, np.float64]:
         self._compare(c, xt, yt, use_gpu=True)
 
+  @test_util.run_deprecated_v1
   def testGradients(self):
     c = np.random.randint(0, 2, 16).astype(np.bool)
     x = np.random.rand(16, 2, 8) * 100
@@ -548,6 +552,7 @@ class BatchSelectOpTest(test.TestCase):
         self._compareGradientX(c, xt, yt)
         self._compareGradientY(c, xt, yt)
 
+  @test_util.run_deprecated_v1
   def testShapeMismatch(self):
     c = np.random.randint(0, 2, 8).astype(np.bool)
     x = np.random.rand(16, 3, 2) * 100
@@ -566,13 +571,11 @@ class MinMaxOpTest(test.TestCase):
 
   def _compare(self, x, y, use_gpu):
     np_min, np_max = np.minimum(x, y), np.maximum(x, y)
-    with self.test_session(
-        use_gpu=use_gpu,
-        force_gpu=use_gpu and test_util.is_gpu_available()) as sess:
+    with test_util.device(use_gpu=use_gpu):
       inx = ops.convert_to_tensor(x)
       iny = ops.convert_to_tensor(y)
       omin, omax = math_ops.minimum(inx, iny), math_ops.maximum(inx, iny)
-      tf_min, tf_max = sess.run([omin, omax])
+      tf_min, tf_max = self.evaluate([omin, omax])
     self.assertAllEqual(np_min, tf_min)
     self.assertAllEqual(np_max, tf_max)
 
@@ -628,6 +631,7 @@ class MinMaxOpTest(test.TestCase):
     elif x.dtype == np.float64:
       self.assertAllClose(jacob_t, jacob_n, rtol=1e-5, atol=1e-5)
 
+  @test_util.run_deprecated_v1
   def testGradients(self):
     x = np.random.rand(1, 3, 2) * 100.
     # ensure x != y
@@ -641,16 +645,16 @@ class MinMaxOpTest(test.TestCase):
 class MathOpsOverloadTest(test.TestCase):
 
   def _computeTensorAndLiteral(self, x, y, dtype, func):
-    with self.test_session(use_gpu=False):
+    with test_util.force_cpu():
       inx = ops.convert_to_tensor(x, dtype=dtype)
       z = func(inx, y)  # Should use __add__, __sub__, etc.
-      return z.eval()
+      return self.evaluate(z)
 
   def _computeLiteralAndTensor(self, x, y, dtype, func):
-    with self.test_session(use_gpu=False):
+    with test_util.force_cpu():
       iny = ops.convert_to_tensor(y, dtype=dtype)
       z = func(x, iny)  # Should use __radd__, __rsub__, etc.
-      return z.eval()
+      return self.evaluate(z)
 
   def _compareBinary(self, x, y, dtype, np_func, tf_func):
     np_ans = np_func(x, y).astype(dtype.as_numpy_dtype)
@@ -661,9 +665,9 @@ class MathOpsOverloadTest(test.TestCase):
 
   def _compareUnary(self, x, dtype, np_func, tf_func):
     np_ans = np_func(x).astype(dtype.as_numpy_dtype)
-    with self.test_session(use_gpu=False):
-      self.assertAllClose(np_ans,
-                          tf_func(ops.convert_to_tensor(x, dtype=dtype)).eval())
+    with test_util.force_cpu():
+      self.assertAllClose(
+          np_ans, self.evaluate(tf_func(ops.convert_to_tensor(x, dtype=dtype))))
 
   def testOverload(self):
     dtypes = [
@@ -730,13 +734,11 @@ class IsFiniteInfNanTest(test.TestCase):
 
   def _compare(self, x, use_gpu):
     np_finite, np_inf, np_nan = np.isfinite(x), np.isinf(x), np.isnan(x)
-    with self.test_session(
-        use_gpu=use_gpu,
-        force_gpu=use_gpu and test_util.is_gpu_available()) as sess:
+    with test_util.device(use_gpu=use_gpu):
       inx = ops.convert_to_tensor(x)
       ofinite, oinf, onan = math_ops.is_finite(inx), math_ops.is_inf(
           inx), math_ops.is_nan(inx)
-      tf_finite, tf_inf, tf_nan = sess.run([ofinite, oinf, onan])
+      tf_finite, tf_inf, tf_nan = self.evaluate([ofinite, oinf, onan])
     self.assertAllEqual(np_inf, tf_inf)
     self.assertAllEqual(np_nan, tf_nan)
     self.assertAllEqual(np_finite, tf_finite)
@@ -773,31 +775,33 @@ class IsFiniteInfNanTest(test.TestCase):
           x = np.full((size,), value, dtype=dtype)
           np_y = np.sqrt(x)
           np_nan = np.isnan(np_y)
-          with self.test_session(force_gpu=test_util.is_gpu_available()):
+          with test_util.use_gpu():
             tf_y = math_ops.sqrt(x)
             tf_nan = math_ops.is_nan(tf_y)
             if value < 0:
-              self.assertAllEqual(np_nan, tf_nan.eval())
+              self.assertAllEqual(np_nan, self.evaluate(tf_nan))
             else:
-              self.assertAllCloseAccordingToType(np_y, tf_y.eval())
+              self.assertAllCloseAccordingToType(np_y, self.evaluate(tf_y))
 
 
 class RoundingTest(test.TestCase):
 
   def _compare_values(self, x, y=None):
     y = np.rint(x) if y is None else np.asarray(y)
-    with self.cached_session() as sess:
-      tf_rint = math_ops.rint(x)
-      np_rint = sess.run(tf_rint)
+
+    tf_rint = math_ops.rint(x)
+    np_rint = self.evaluate(tf_rint)
+
     self.assertAllEqual(y, np_rint)
     self.assertShapeEqual(y, tf_rint)
 
   def _compare(self, x):
     np_floor, np_ceil = np.floor(x), np.ceil(x)
-    with self.cached_session() as sess:
-      inx = ops.convert_to_tensor(x)
-      ofloor, oceil = math_ops.floor(inx), math_ops.ceil(inx)
-      tf_floor, tf_ceil = sess.run([ofloor, oceil])
+
+    inx = ops.convert_to_tensor(x)
+    ofloor, oceil = math_ops.floor(inx), math_ops.ceil(inx)
+    tf_floor, tf_ceil = self.evaluate([ofloor, oceil])
+
     self.assertAllEqual(np_floor, tf_floor)
     self.assertAllEqual(np_ceil, tf_ceil)
     self.assertShapeEqual(np_floor, ofloor)
@@ -828,12 +832,13 @@ class ComplexMakeRealImagTest(test.TestCase):
 
   def _compareMake(self, real, imag, use_gpu):
     np_ans = real + (1j) * imag
-    with self.test_session(use_gpu=use_gpu,
-                           force_gpu=use_gpu and test_util.is_gpu_available()):
+
+    with test_util.device(use_gpu=use_gpu):
       real = ops.convert_to_tensor(real)
       imag = ops.convert_to_tensor(imag)
       tf_ans = math_ops.complex(real, imag)
-      out = tf_ans.eval()
+      out = self.evaluate(tf_ans)
+
     self.assertAllEqual(np_ans, out)
     self.assertShapeEqual(np_ans, tf_ans)
 
@@ -848,17 +853,17 @@ class ComplexMakeRealImagTest(test.TestCase):
   def _compareRealImag(self, cplx, use_gpu):
     np_real, np_imag = np.real(cplx), np.imag(cplx)
     np_zeros = np_real * 0
-    with self.test_session(use_gpu=use_gpu,
-                           force_gpu=use_gpu and test_util.is_gpu_available()):
+
+    with test_util.device(use_gpu=use_gpu):
       inx = ops.convert_to_tensor(cplx)
       tf_real = math_ops.real(inx)
       tf_imag = math_ops.imag(inx)
       tf_real_real = math_ops.real(tf_real)
       tf_imag_real = math_ops.imag(tf_real)
-      self.assertAllEqual(np_real, tf_real.eval())
-      self.assertAllEqual(np_imag, tf_imag.eval())
-      self.assertAllEqual(np_real, tf_real_real.eval())
-      self.assertAllEqual(np_zeros, tf_imag_real.eval())
+      self.assertAllEqual(np_real, self.evaluate(tf_real))
+      self.assertAllEqual(np_imag, self.evaluate(tf_imag))
+      self.assertAllEqual(np_real, self.evaluate(tf_real_real))
+      self.assertAllEqual(np_zeros, self.evaluate(tf_imag_real))
 
   def testRealImag64(self):
     real = (np.arange(-3, 3) / 4.).reshape([1, 3, 2]).astype(np.float32)
@@ -876,12 +881,12 @@ class ComplexMakeRealImagTest(test.TestCase):
 
   def _compareAngle(self, cplx, use_gpu):
     np_angle = np.angle(cplx)
-    with self.test_session(
-        use_gpu=use_gpu,
-        force_gpu=use_gpu and test_util.is_gpu_available()) as sess:
+
+    with test_util.device(use_gpu=use_gpu):
       inx = ops.convert_to_tensor(cplx)
       tf_angle = math_ops.angle(inx)
-      tf_angle_val = sess.run(tf_angle)
+      tf_angle_val = self.evaluate(tf_angle)
+
     self.assertAllEqual(np_angle, tf_angle_val)
     self.assertShapeEqual(np_angle, tf_angle)
 
@@ -903,6 +908,7 @@ class ComplexMakeRealImagTest(test.TestCase):
     # build failures on GPU (See #10643 for context).
     # self._compareAngle(cplx, use_gpu=True)
 
+  @test_util.run_deprecated_v1
   def testRealReal(self):
     for dtype in (dtypes_lib.int32, dtypes_lib.int64, dtypes_lib.float32,
                   dtypes_lib.float64):
@@ -912,11 +918,10 @@ class ComplexMakeRealImagTest(test.TestCase):
 
   def _compareConj(self, cplx, use_gpu):
     np_ans = np.conj(cplx)
-    with self.test_session(use_gpu=use_gpu,
-                           force_gpu=use_gpu and test_util.is_gpu_available()):
+    with test_util.device(use_gpu=use_gpu):
       inx = ops.convert_to_tensor(cplx)
       tf_conj = math_ops.conj(inx)
-      tf_ans = tf_conj.eval()
+      tf_ans = self.evaluate(tf_conj)
     self.assertAllEqual(np_ans, tf_ans)
     self.assertShapeEqual(np_ans, tf_conj)
 
@@ -934,6 +939,7 @@ class ComplexMakeRealImagTest(test.TestCase):
     self._compareConj(cplx, use_gpu=False)
     self._compareConj(cplx, use_gpu=True)
 
+  @test_util.run_deprecated_v1
   def testConjReal(self):
     for dtype in (dtypes_lib.int32, dtypes_lib.int64, dtypes_lib.float16,
                   dtypes_lib.float32, dtypes_lib.float64):
@@ -941,6 +947,7 @@ class ComplexMakeRealImagTest(test.TestCase):
       y = math_ops.conj(x)
       self.assertEqual(x, y)
 
+  @test_util.run_deprecated_v1
   def testConjString(self):
     x = array_ops.placeholder(dtypes_lib.string)
     with self.assertRaisesRegexp(TypeError,
@@ -977,6 +984,7 @@ class ComplexMakeRealImagTest(test.TestCase):
             x_, list(x.shape), z, [1], x_init_value=x, delta=epsilon)
         self.assertAllClose(jacob_t, jacob_n, rtol=epsilon, atol=epsilon)
 
+  @test_util.run_deprecated_v1
   def testGradient(self):
     # complex64
     data = np.arange(1, 2, 0.10).reshape([5, 2]).astype(np.float32)
@@ -1012,6 +1020,7 @@ class ComplexMakeRealImagTest(test.TestCase):
           inp, list(data.shape), loss, [1], x_init_value=data, delta=epsilon)
     self.assertAllClose(jacob_t, jacob_n, rtol=epsilon, atol=epsilon)
 
+  @test_util.run_deprecated_v1
   def testMulGradient(self):
     data = np.arange(1, 2, 0.125).reshape([2, 4]).astype(np.float32)
     self._compareMulGradient(data)
@@ -1032,13 +1041,13 @@ class AccumulateTest(test.TestCase):
       np_val = random_arrays[0]
       for random_array in random_arrays[1:]:
         np_val += random_array
-      self.assertAllClose(np_val, tf_val.eval())
+      self.assertAllClose(np_val, self.evaluate(tf_val))
 
   def testZeroArgs(self):
     with self.cached_session():
       with self.assertRaises(ValueError):
         tf_val = math_ops.accumulate_n([])
-        tf_val.eval()
+        self.evaluate(tf_val)
 
   def testWrongShape(self):
     with self.cached_session():
@@ -1070,7 +1079,7 @@ class PolyvalTest(test.TestCase):
     np_val = np.polyval(coeffs, x)
     with self.cached_session():
       tf_val = math_ops.polyval(coeffs, x)
-      self.assertAllClose(np_val, tf_val.eval())
+      self.assertAllClose(np_val, self.evaluate(tf_val))
 
   def testSimple(self):
     for dtype in [
@@ -1093,7 +1102,7 @@ class PolyvalTest(test.TestCase):
         np_val = np.polyval(coeffs, x)
         with self.cached_session():
           tf_val = math_ops.polyval(coeffs, x)
-          self.assertAllClose(np_val, tf_val.eval())
+          self.assertAllClose(np_val, self.evaluate(tf_val))
 
   def testEmpty(self):
     x = np.random.rand(2, 2).astype(np.float32)
@@ -1101,7 +1110,7 @@ class PolyvalTest(test.TestCase):
     np_val = np.polyval(coeffs, x)
     with self.cached_session():
       tf_val = math_ops.polyval(coeffs, x)
-      self.assertAllClose(np_val, tf_val.eval())
+      self.assertAllClose(np_val, self.evaluate(tf_val))
 
 
 if __name__ == "__main__":

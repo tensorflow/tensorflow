@@ -153,4 +153,22 @@ extern tflite::ErrorReporter* reporter;
     }                                                                        \
   } while (false)
 
+#define TF_LITE_MICRO_EXPECT_GE(x, y)                                         \
+  do {                                                                        \
+    if ((x) < (y)) {                                                          \
+      micro_test::reporter->Report(#x " >= " #y " failed at %s:%d", __FILE__, \
+                                   __LINE__);                                 \
+      micro_test::did_test_fail = true;                                       \
+    }                                                                         \
+  } while (false)
+
+#define TF_LITE_MICRO_EXPECT_LE(x, y)                                         \
+  do {                                                                        \
+    if ((x) > (y)) {                                                          \
+      micro_test::reporter->Report(#x " <= " #y " failed at %s:%d", __FILE__, \
+                                   __LINE__);                                 \
+      micro_test::did_test_fail = true;                                       \
+    }                                                                         \
+  } while (false)
+
 #endif  // TENSORFLOW_LITE_EXPERIMENTAL_MICRO_TESTING_MICRO_TEST_H_

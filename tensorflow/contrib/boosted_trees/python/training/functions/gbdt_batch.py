@@ -897,9 +897,9 @@ class GradientBoostedDecisionTreeModel(object):
     empty_hess_shape = [1] + self._hessian_shape.as_list()
     empty_grad_shape = [1] + self._gradient_shape.as_list()
 
-    empty_gradients = constant_op.constant(
+    empty_gradients = constant_op.constant_v1(
         [], dtype=dtypes.float32, shape=empty_grad_shape)
-    empty_hessians = constant_op.constant(
+    empty_hessians = constant_op.constant_v1(
         [], dtype=dtypes.float32, shape=empty_hess_shape)
 
     active_handlers = array_ops.unstack(active_handlers, axis=0)
@@ -1257,13 +1257,12 @@ class GradientBoostedDecisionTreeModel(object):
   def _get_replica_device_setter(self, worker_device):
     """Creates a replica device setter."""
     ps_tasks = self._num_ps_replicas
-    ps_ops = [
-        "Variable",
-        "VariableV2",
+    ps_ops = list(device_setter.STANDARD_PS_OPS)
+    ps_ops.extend([
         "DecisionTreeEnsembleResourceHandleOp",
         "StatsAccumulatorScalarResourceHandleOp",
         "StatsAccumulatorTensorResourceHandleOp",
-    ]
+    ])
     ps_strategy = _OpRoundRobinStrategy(ps_ops, ps_tasks)
     return device_setter.replica_device_setter(
         worker_device=worker_device,

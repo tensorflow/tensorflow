@@ -65,21 +65,28 @@ class SingleThreadedExecutorImpl : public Executor {
         if (IsRefType(dt)) {
           return errors::Unimplemented(
               "Single-threaded executor does not support reference-typed "
-              "edges.");
+              "edges.  But saw type ",
+              DataTypeString(dt), " in outputs of node ", n->name());
         }
       }
 
       if (n->IsControlFlow()) {
         return errors::Unimplemented(
-            "Single-threaded executor does not support control flow.");
+            "Single-threaded executor does not support control flow.  But saw "
+            "control flow node ",
+            n->name());
       }
       if (n->IsSend() || n->IsHostSend() || n->IsRecv() || n->IsHostRecv()) {
         return errors::Unimplemented(
-            "Single-threaded executor does not support partitioned graphs.");
+            "Single-threaded executor does not support partitioned graphs.  "
+            "But saw send/recv node ",
+            n->name());
       }
       if (n->IsCollective()) {
         return errors::Unimplemented(
-            "Single-threaded executor does not support collective ops.");
+            "Single-threaded executor does not support collective ops.  But "
+            "saw collective node ",
+            n->name());
       }
 
       KernelState& kernel_state = kernels_[i];

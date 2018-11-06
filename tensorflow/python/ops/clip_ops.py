@@ -300,7 +300,12 @@ def clip_by_global_norm(t_list, clip_norm, use_norm=None, name=None):
   return list_clipped, use_norm
 
 
-@tf_export("clip_by_average_norm")
+@deprecation.deprecated(
+    date=None,
+    instructions=
+    "clip_by_average_norm is deprecated in TensorFlow 2.0. Please use "
+    "clip_by_norm(t, clip_norm * tf.to_float(tf.size(t), name)) instead.")
+@tf_export(v1=["clip_by_average_norm"])
 def clip_by_average_norm(t, clip_norm, name=None):
   """Clips tensor values to a maximum average L2-norm.
 

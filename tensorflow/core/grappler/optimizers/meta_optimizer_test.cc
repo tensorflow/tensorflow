@@ -108,7 +108,7 @@ class GrapplerItemPropertiesAccumulator : public CustomGraphOptimizer {
                   GraphDef* optimized_graph) override {
     *optimized_graph = item.graph;
     if (allowed_optimizations_) {
-      allowed_optimizations_->insert({item.id, item.allowed_optimizations});
+      allowed_optimizations_->insert({item.id, item.allowed_optimizations()});
     }
     return Status::OK();
   }
@@ -134,11 +134,13 @@ TEST_F(MetaOptimizerTest, RunsCustomOptimizer) {
   CHECK(fake_input.NextItem(&item));
 
   TestOptimizer::SetOptimized(false);
-  RewriterConfig rewriter_config;
+  ConfigProto config_proto;
+  auto& rewriter_config =
+      *config_proto.mutable_graph_options()->mutable_rewrite_options();
   rewriter_config.add_optimizers("TestOptimizer");
   rewriter_config.set_min_graph_nodes(-1);
 
-  MetaOptimizer optimizer(nullptr, rewriter_config);
+  MetaOptimizer optimizer(nullptr, config_proto);
   GraphDef output;
   const Status status = optimizer.Optimize(nullptr, item, &output);
   TF_EXPECT_OK(status);
@@ -151,13 +153,15 @@ TEST_F(MetaOptimizerTest, RunsCustomOptimizerWithParams) {
   CHECK(fake_input.NextItem(&item));
 
   TestOptimizer::SetOptimized(false);
-  RewriterConfig rewriter_config;
+  ConfigProto config_proto;
+  auto& rewriter_config =
+      *config_proto.mutable_graph_options()->mutable_rewrite_options();
   rewriter_config.add_optimizers("TestOptimizerWithParams");
   auto* custom_config = rewriter_config.add_custom_optimizers();
   custom_config->set_name("TestOptimizerWithParams");
   (*custom_config->mutable_parameter_map())["foo"] = AttrValue();
 
-  MetaOptimizer optimizer(nullptr, rewriter_config);
+  MetaOptimizer optimizer(nullptr, config_proto);
   GraphDef output;
   const Status status = optimizer.Optimize(nullptr, item, &output);
   TF_EXPECT_OK(status);
@@ -171,13 +175,15 @@ TEST_F(MetaOptimizerTest, RunsCustomOptimizerAndCustomGraphOptimizer) {
 
   TestOptimizer::SetOptimized(false);
   TestGraphOptimizer::SetOptimized(false);
-  RewriterConfig rewriter_config;
+  ConfigProto config_proto;
+  auto& rewriter_config =
+      *config_proto.mutable_graph_options()->mutable_rewrite_options();
   rewriter_config.add_optimizers("TestOptimizer");
   auto customGraphOptimizer = rewriter_config.add_custom_optimizers();
   customGraphOptimizer->set_name("TestGraphOptimizer");
   rewriter_config.set_min_graph_nodes(-1);
 
-  MetaOptimizer optimizer(nullptr, rewriter_config);
+  MetaOptimizer optimizer(nullptr, config_proto);
   GraphDef output;
   const Status status = optimizer.Optimize(nullptr, item, &output);
   TF_EXPECT_OK(status);
@@ -190,11 +196,13 @@ TEST_F(MetaOptimizerTest, RunOptimizersTwice) {
   GrapplerItem item;
   CHECK(fake_input.NextItem(&item));
 
-  RewriterConfig rewriter_config;
+  ConfigProto config_proto;
+  auto& rewriter_config =
+      *config_proto.mutable_graph_options()->mutable_rewrite_options();
   rewriter_config.set_meta_optimizer_iterations(RewriterConfig::TWO);
   rewriter_config.set_min_graph_nodes(-1);
 
-  MetaOptimizer optimizer(nullptr, rewriter_config);
+  MetaOptimizer optimizer(nullptr, config_proto);
   GraphDef output;
   const Status status = optimizer.Optimize(nullptr, item, &output);
   TF_EXPECT_OK(status);
@@ -205,13 +213,15 @@ TEST_F(MetaOptimizerTest, RunToggleOptimizersAndCustomGraphOptimizerTwice) {
   GrapplerItem item;
   CHECK(fake_input.NextItem(&item));
 
-  RewriterConfig rewriter_config;
+  ConfigProto config_proto;
+  auto& rewriter_config =
+      *config_proto.mutable_graph_options()->mutable_rewrite_options();
   auto customGraphOptimizer = rewriter_config.add_custom_optimizers();
   customGraphOptimizer->set_name("TestGraphOptimizer");
   rewriter_config.set_meta_optimizer_iterations(RewriterConfig::TWO);
   rewriter_config.set_min_graph_nodes(-1);
 
-  MetaOptimizer optimizer(nullptr, rewriter_config);
+  MetaOptimizer optimizer(nullptr, config_proto);
   GraphDef output;
   const Status status = optimizer.Optimize(nullptr, item, &output);
   TF_EXPECT_OK(status);
@@ -222,13 +232,16 @@ TEST_F(MetaOptimizerTest, OptimizeFunctionLibrary) {
   using test::function::NDef;
 
   // Enable ony function optimization.
-  RewriterConfig rewriter_config;
+  ConfigProto config_proto;
+  auto& rewriter_config =
+      *config_proto.mutable_graph_options()->mutable_rewrite_options();
+
   rewriter_config.set_meta_optimizer_iterations(RewriterConfig::TWO);
   rewriter_config.set_function_optimization(RewriterConfig::ON);
   rewriter_config.add_optimizers("function");
   rewriter_config.set_min_graph_nodes(-1);
 
-  MetaOptimizer optimizer(nullptr, rewriter_config);
+  MetaOptimizer optimizer(nullptr, config_proto);
 
   // Define function library:
   //
@@ -394,14 +407,17 @@ TEST_F(MetaOptimizerTest, OptimizeFunctionLibraryPruneFunctionBody) {
   using test::function::NDef;
 
   // Enable function optimization and pruning.
-  RewriterConfig rewriter_config;
+  ConfigProto config_proto;
+  auto& rewriter_config =
+      *config_proto.mutable_graph_options()->mutable_rewrite_options();
+
   rewriter_config.set_meta_optimizer_iterations(RewriterConfig::TWO);
   rewriter_config.set_function_optimization(RewriterConfig::ON);
   rewriter_config.add_optimizers("function");
   rewriter_config.add_optimizers("pruning");
   rewriter_config.set_min_graph_nodes(-1);
 
-  MetaOptimizer optimizer(nullptr, rewriter_config);
+  MetaOptimizer optimizer(nullptr, config_proto);
 
   // MyFunc defines two Mul nodes inside function body and two corresponding
   // function outputs.
@@ -505,12 +521,15 @@ TEST_F(MetaOptimizerTest, OptimizeFunctionLibraryWithRestrictions) {
       &allowed_optimizations);
 
   // Just record properties of optimized Grappler items.
-  RewriterConfig rewriter_config;
+  ConfigProto config_proto;
+  auto& rewriter_config =
+      *config_proto.mutable_graph_options()->mutable_rewrite_options();
+
   rewriter_config.set_meta_optimizer_iterations(RewriterConfig::TWO);
   rewriter_config.add_optimizers("GrapplerItemPropertiesAccumulator");
   rewriter_config.set_min_graph_nodes(-1);
 
-  MetaOptimizer optimizer(nullptr, rewriter_config);
+  MetaOptimizer optimizer(nullptr, config_proto);
 
   // Define simple function library with two identical mul functions.
   FunctionDef mul_func_1 = FunctionDefHelper::Create(
@@ -605,7 +624,9 @@ TEST_F(MetaOptimizerTest, OptimizerTimesOut) {
   GrapplerItem item;
   CHECK(fake_input.NextItem(&item));
 
-  RewriterConfig rewriter_config;
+  ConfigProto config;
+  RewriterConfig& rewriter_config =
+      *config.mutable_graph_options()->mutable_rewrite_options();
   rewriter_config.add_optimizers("SleepingOptimizer");
   rewriter_config.set_min_graph_nodes(-1);
   rewriter_config.set_meta_optimizer_timeout_ms(1500);
@@ -613,7 +634,7 @@ TEST_F(MetaOptimizerTest, OptimizerTimesOut) {
 
   GraphDef output;
   const Status status =
-      RunMetaOptimizer(item, rewriter_config, nullptr, nullptr, &output);
+      RunMetaOptimizer(item, config, nullptr, nullptr, &output);
   EXPECT_EQ(status.error_message(), "meta_optimizer exceeded deadline.");
   // Make sure the graph was reverted to the original regardless of when the
   // optimizer timed out.
@@ -625,14 +646,16 @@ TEST_F(MetaOptimizerTest, OptimizerDoesNotTimeOut) {
   GrapplerItem item;
   CHECK(fake_input.NextItem(&item));
 
-  RewriterConfig rewriter_config;
+  ConfigProto config;
+  RewriterConfig& rewriter_config =
+      *config.mutable_graph_options()->mutable_rewrite_options();
   rewriter_config.add_optimizers("SleepingOptimizer");
   rewriter_config.set_min_graph_nodes(-1);
   rewriter_config.set_meta_optimizer_timeout_ms(1500);
   rewriter_config.set_meta_optimizer_iterations(RewriterConfig::ONE);
   GraphDef output;
   const Status status =
-      RunMetaOptimizer(item, rewriter_config, nullptr, nullptr, &output);
+      RunMetaOptimizer(item, config, nullptr, nullptr, &output);
   TF_EXPECT_OK(status);
   EXPECT_EQ(item.graph.node_size() + 1, output.node_size());
 }

@@ -438,7 +438,9 @@ Status Worker::PrepareRecvTensor(const Rendezvous::ParsedKey& parsed,
     return errors::Aborted(
         "RecvTensor expects a different device incarnation: ",
         parsed.src_incarnation, " vs. ", (*src_dev)->attributes().incarnation(),
-        ". Your worker job was probably restarted. Check your "
+        ". Your worker job (\"",
+        env_->session_mgr->LegacySession()->worker_name,
+        "\") was probably restarted. Check your "
         "worker job for the reason why it was restarted.");
   }
 

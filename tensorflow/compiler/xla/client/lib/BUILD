@@ -104,13 +104,17 @@ xla_test(
 )
 
 cc_library(
-    name = "numeric",
-    srcs = ["numeric.cc"],
-    hdrs = ["numeric.h"],
+    name = "matrix",
+    srcs = ["matrix.cc"],
+    hdrs = ["matrix.h"],
     deps = [
         ":arithmetic",
         ":constants",
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:status_macros",
+        "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:types",
+        "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla:xla_data_proto",
         "//tensorflow/compiler/xla/client:xla_builder",
         "@com_google_absl//absl/types:span",
@@ -118,11 +122,12 @@ cc_library(
 )
 
 xla_test(
-    name = "numeric_test",
-    srcs = ["numeric_test.cc"],
+    name = "matrix_test",
+    srcs = ["matrix_test.cc"],
     tags = ["enable_for_xla_interpreter"],
     deps = [
-        ":numeric",
+        ":matrix",
+        ":slicing",
         "//tensorflow/compiler/xla:test",
         "//tensorflow/compiler/xla:types",
         "//tensorflow/compiler/xla:xla_data_proto",
@@ -164,7 +169,6 @@ cc_library(
     deps = [
         ":constants",
         ":math",
-        ":numeric",
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla:xla_data_proto",
         "//tensorflow/compiler/xla/client:xla_builder",
@@ -174,12 +178,45 @@ cc_library(
 )
 
 cc_library(
+    name = "slicing",
+    srcs = ["slicing.cc"],
+    hdrs = ["slicing.h"],
+    deps = [
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:status_macros",
+        "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/compiler/xla:types",
+        "//tensorflow/compiler/xla:util",
+        "//tensorflow/compiler/xla:xla_data_proto",
+        "//tensorflow/compiler/xla/client:xla_builder",
+        "@com_google_absl//absl/types:span",
+    ],
+)
+
+xla_test(
+    name = "slicing_test",
+    srcs = ["slicing_test.cc"],
+    tags = ["enable_for_xla_interpreter"],
+    deps = [
+        ":slicing",
+        "//tensorflow/compiler/xla:literal_util",
+        "//tensorflow/compiler/xla:test",
+        "//tensorflow/compiler/xla:types",
+        "//tensorflow/compiler/xla:xla_data_proto",
+        "//tensorflow/compiler/xla/client:xla_builder",
+        "//tensorflow/compiler/xla/tests:client_library_test_base",
+        "//tensorflow/compiler/xla/tests:xla_internal_test_main",
+    ],
+)
+
+cc_library(
     name = "sorting",
     srcs = ["sorting.cc"],
     hdrs = ["sorting.h"],
     deps = [
-        ":numeric",
+        "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:types",
+        "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla:xla_data_proto",
         "//tensorflow/compiler/xla/client:xla_builder",
     ],
@@ -188,10 +225,6 @@ cc_library(
 xla_test(
     name = "sorting_test",
     srcs = ["sorting_test.cc"],
-    blacklisted_backends = [
-        "cpu",
-        "gpu",
-    ],
     tags = ["enable_for_xla_interpreter"],
     deps = [
         ":sorting",

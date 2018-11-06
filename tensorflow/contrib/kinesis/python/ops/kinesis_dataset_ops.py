@@ -34,15 +34,12 @@ class KinesisDataset(dataset_ops.DatasetSource):
 
   For example, we can construct and use the KinesisDataset as follows:
   ```python
+  tf.enable_eager_execution()
+
   dataset = tf.contrib.kinesis.KinesisDataset(
       "kinesis_stream_name", read_indefinitely=False)
-  next = dataset.make_one_shot_iterator().get_next()
-  with tf.Session() as sess:
-    while True:
-      try:
-        print(sess.run(nxt))
-      except tf.errors.OutOfRangeError:
-        break
+  for element in dataset:
+    print(element)
   ```
 
   Since Kinesis is a data streaming service, data may not be available

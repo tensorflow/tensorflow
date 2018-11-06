@@ -24,7 +24,7 @@ import weakref
 
 from tensorflow.python.eager import context
 from tensorflow.python.framework import ops
-from tensorflow.python.keras.engine import base_layer as keras_base_layer
+from tensorflow.python.keras.engine import base_layer_utils
 from tensorflow.python.layers import base
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.platform import tf_logging as logging
@@ -220,7 +220,7 @@ class Network(base.Layer):
         avoid_names = parent_network._owned_layers
         name_uid_map = parent_network._sub_layer_name_uids
       else:
-        name_uid_map = keras_base_layer.get_default_graph_uid_map()
+        name_uid_map = base_layer_utils.get_default_graph_uid_map()
         # Figure out which names we have to avoid based on which variable scope
         # we're nested in.
         strip_name = self._default_parent_variable_scope.name

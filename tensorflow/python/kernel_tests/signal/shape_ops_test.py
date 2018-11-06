@@ -23,6 +23,7 @@ import numpy as np
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import test_util as tf_test_util
 from tensorflow.python.kernel_tests.signal import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
@@ -32,6 +33,7 @@ from tensorflow.python.platform import test
 
 class FrameTest(test.TestCase):
 
+  @tf_test_util.run_deprecated_v1
   def test_mapping_of_indices_without_padding(self):
     with self.session(use_gpu=True):
       tensor = constant_op.constant(np.arange(9152), dtypes.int32)
@@ -47,6 +49,7 @@ class FrameTest(test.TestCase):
 
       self.assertAllEqual(expected, result)
 
+  @tf_test_util.run_deprecated_v1
   def test_mapping_of_indices_with_padding(self):
     with self.session(use_gpu=True):
       tensor = constant_op.constant(np.arange(10000), dtypes.int32)
@@ -64,6 +67,7 @@ class FrameTest(test.TestCase):
 
       self.assertAllEqual(expected, result)
 
+  @tf_test_util.run_deprecated_v1
   def test_invalid_inputs(self):
     # Rank 0 input signal.
     with self.assertRaises(ValueError):
@@ -84,6 +88,7 @@ class FrameTest(test.TestCase):
     with self.assertRaises(ValueError):
       shape_ops.frame([1], 1, 1, pad_end=True, pad_value=[1])
 
+  @tf_test_util.run_deprecated_v1
   def test_length_zero(self):
     signal = constant_op.constant([], dtype=dtypes.float32)
     frame_length = 2
@@ -98,6 +103,7 @@ class FrameTest(test.TestCase):
                                pad_end=False).eval()
       self.assertEqual((0, 2), result.shape)
 
+  @tf_test_util.run_deprecated_v1
   def test_shape_inference(self):
     signal = array_ops.placeholder(dtypes.int32, shape=[1, 1])
     frame_length = 2
@@ -150,9 +156,10 @@ class FrameTest(test.TestCase):
           op = shape_ops.frame(signal, frame_length, frame_step,
                                pad_end=pad_end, pad_value=99)
           with self.cached_session(use_gpu=True):
-            result = op.eval()
+            result = self.evaluate(op)
           self.assertEqual(op.shape.as_list(), list(result.shape))
 
+  @tf_test_util.run_deprecated_v1
   def test_basic_mono(self):
     signal = np.arange(6)
     frame_length = 3
@@ -178,6 +185,7 @@ class FrameTest(test.TestCase):
                                  pad_end=False).eval()
         self.assertAllEqual(expected, result)
 
+  @tf_test_util.run_deprecated_v1
   def test_basic_stereo(self):
     signal = np.vstack([np.arange(6),
                         np.arange(6) + 10])
@@ -207,6 +215,7 @@ class FrameTest(test.TestCase):
                                  pad_end=False).eval()
         self.assertAllEqual(expected, result)
 
+  @tf_test_util.run_deprecated_v1
   def test_complex_shape(self):
     signal = np.vstack([np.arange(6),
                         np.arange(6) + 10,
@@ -248,7 +257,7 @@ class FrameTest(test.TestCase):
       result = shape_ops.frame(signal, frame_length=2, frame_step=2,
                                pad_end=True, axis=1)
       expected = np.reshape(np.arange(16), (2, 2, 2, 2))
-      self.assertAllEqual(expected, result.eval())
+      self.assertAllEqual(expected, self.evaluate(result))
 
       result = shape_ops.frame(signal, frame_length=2, frame_step=1,
                                pad_end=True, axis=1)
@@ -260,7 +269,7 @@ class FrameTest(test.TestCase):
                    [[10, 11], [12, 13]],
                    [[12, 13], [14, 15]],
                    [[14, 15], [0, 0]]]]
-      self.assertAllEqual(expected, result.eval())
+      self.assertAllEqual(expected, self.evaluate(result))
 
       result = shape_ops.frame(signal, frame_length=3, frame_step=1,
                                pad_end=True, axis=1)
@@ -272,8 +281,9 @@ class FrameTest(test.TestCase):
                    [[10, 11], [12, 13], [14, 15]],
                    [[12, 13], [14, 15], [0, 0]],
                    [[14, 15], [0, 0], [0, 0]]]]
-      self.assertAllEqual(expected, result.eval())
+      self.assertAllEqual(expected, self.evaluate(result))
 
+  @tf_test_util.run_deprecated_v1
   def test_window_larger_than_signal(self):
     signal = constant_op.constant([[1, 2], [11, 12]], dtype=dtypes.float32)
     frame_length = 4
@@ -307,6 +317,7 @@ class FrameTest(test.TestCase):
       result = shape_ops.frame(signal, frame_length, frame_step)
       self.assertEqual(result.dtype, signal.dtype)
 
+  @tf_test_util.run_deprecated_v1
   def test_dynamic_tensor(self):
     # Show that frame works even when the dimensions of its input are
     # not known at graph creation time.
@@ -325,6 +336,7 @@ class FrameTest(test.TestCase):
                            [[10, 11], [12, 13]],
                            [[20, 21], [22, 23]]], result)
 
+  @tf_test_util.run_deprecated_v1
   def test_gradient_numerical(self):
     with self.session(use_gpu=True):
       signal_shape = (2, 128)

@@ -124,7 +124,7 @@ class TestSequential(test.TestCase, parameterized.TestCase):
     dataset = dataset_ops.Dataset.from_tensor_slices((x, y))
     dataset = dataset.repeat(100)
     dataset = dataset.batch(10)
-    iterator = dataset.make_one_shot_iterator()
+    iterator = dataset_ops.make_one_shot_iterator(dataset)
 
     model.fit(iterator, epochs=1, steps_per_epoch=steps_per_epoch)
     self.assertTrue(model.built)
@@ -132,6 +132,7 @@ class TestSequential(test.TestCase, parameterized.TestCase):
     self.assertFalse(model._is_graph_network)
 
   @parameterized.parameters((True,), (False,))
+  @tf_test_util.run_deprecated_v1
   def test_training_and_eval_methods_on_symbolic_tensors(self, deferred):
     with self.cached_session():
 
@@ -219,6 +220,7 @@ class TestSequential(test.TestCase, parameterized.TestCase):
     inner_model.trainable = True
     self.assertEqual(len(model.trainable_weights), 4)
 
+  @tf_test_util.run_deprecated_v1
   def test_sequential_update_disabling(self):
     val_a = np.random.random((10, 4))
     val_out = np.random.random((10, 4))
@@ -294,7 +296,6 @@ class TestSequential(test.TestCase, parameterized.TestCase):
 
     model.build((None, 10))
     self.assertTrue(model.built)
-    self.assertTrue(model.layers[-1].built)
     self.assertEqual(len(model.weights), 8)
 
   @tf_test_util.run_in_graph_and_eager_modes
@@ -361,29 +362,6 @@ class TestSequentialEagerIntegration(test.TestCase):
     x = np.random.random((2, 6))
     y = np.random.random((2, 5))
     model.fit(x, y, epochs=1)
-
-  @tf_test_util.run_in_graph_and_eager_modes
-  def test_sequential_can_use_graph_functions(self):
-    model = testing_utils.get_small_sequential_mlp(4, 3)
-    self.assertTrue(model._can_use_graph_functions)
-    inner_model = testing_utils.get_small_sequential_mlp(4, 5)
-    model.add(inner_model)
-
-    self.assertTrue(model._can_use_graph_functions)
-
-    inner_model_two = testing_utils.get_small_sequential_mlp(5, 7)
-    self.assertTrue(inner_model_two._can_use_graph_functions)
-
-    layer = keras.layers.Lambda(lambda x: x)
-    layer._can_use_graph_functions = False
-    inner_model_two.add(layer)
-    self.assertFalse(inner_model_two._can_use_graph_functions)
-
-    model.add(inner_model_two)
-    self.assertFalse(model._can_use_graph_functions)
-
-    model.pop()
-    self.assertTrue(model._can_use_graph_functions)
 
   @tf_test_util.run_in_graph_and_eager_modes
   def test_sequential_model_fails_with_dict_inputs(self):

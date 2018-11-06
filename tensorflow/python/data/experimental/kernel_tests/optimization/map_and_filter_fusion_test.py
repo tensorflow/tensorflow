@@ -20,11 +20,12 @@ from __future__ import print_function
 from absl.testing import parameterized
 
 from tensorflow.python.data.experimental.ops import optimization
+from tensorflow.python.data.experimental.ops.optimization_options import OptimizationOptions
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
-from tensorflow.python.framework import errors
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import test
 
@@ -62,23 +63,20 @@ def _map_and_filter_fusion_test_cases():
   return tuple(tests)
 
 
+@test_util.run_all_in_graph_and_eager_modes
 class MapAndFilterFusionTest(test_base.DatasetTestBase, parameterized.TestCase):
 
   def _testMapAndFilter(self, dataset, function, predicate):
-    iterator = dataset.make_one_shot_iterator()
-    get_next = iterator.get_next()
-    with self.cached_session() as sess:
-      for x in range(10):
-        r = function(x)
-        if isinstance(r, tuple):
-          b = predicate(*r)  # Pass tuple as multiple arguments.
-        else:
-          b = predicate(r)
-        if sess.run(b):
-          result = sess.run(get_next)
-          self.assertAllEqual(r, result)
-      with self.assertRaises(errors.OutOfRangeError):
-        sess.run(get_next)
+    expected_output = []
+    for x in range(10):
+      r = function(x)
+      if isinstance(r, tuple):
+        b = predicate(*r)  # Pass tuple as multiple arguments.
+      else:
+        b = predicate(r)
+      if self.evaluate(b):
+        expected_output.append(r)
+    self.assertDatasetProduces(dataset, expected_output=expected_output)
 
   @parameterized.named_parameters(*_map_and_filter_fusion_test_cases())
   def testMapFilterFusion(self, function, predicate):
@@ -86,7 +84,8 @@ class MapAndFilterFusionTest(test_base.DatasetTestBase, parameterized.TestCase):
         optimization.assert_next(
             ["Map", "FilterByLastComponent"])).map(function).filter(predicate)
     options = dataset_ops.Options()
-    options.experimental_map_and_filter_fusion = True
+    options.experimental_optimization = OptimizationOptions()
+    options.experimental_optimization.map_and_filter_fusion = True
     dataset = dataset.with_options(options)
     self._testMapAndFilter(dataset, function, predicate)
 
@@ -104,7 +103,8 @@ class MapAndFilterFusionTest(test_base.DatasetTestBase, parameterized.TestCase):
         optimization.assert_next(["Map",
                                   "Filter"])).map(function).filter(predicate)
     options = dataset_ops.Options()
-    options.experimental_map_and_filter_fusion = True
+    options.experimental_optimization = OptimizationOptions()
+    options.experimental_optimization.map_and_filter_fusion = True
     dataset = dataset.with_options(options)
     self._testMapAndFilter(dataset, function, predicate)
 

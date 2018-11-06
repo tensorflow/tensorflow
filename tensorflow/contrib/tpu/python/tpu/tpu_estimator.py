@@ -298,9 +298,9 @@ class TPUEstimatorSpec(model_fn_lib._TPUEstimatorSpec):  # pylint: disable=prote
       host_calls['host_call'] = host_call
     _OutfeedHostCall.validate(host_calls)
 
-    training_hooks = list(training_hooks or [])
-    evaluation_hooks = list(evaluation_hooks or [])
-    prediction_hooks = list(prediction_hooks or [])
+    training_hooks = tuple(training_hooks or [])
+    evaluation_hooks = tuple(evaluation_hooks or [])
+    prediction_hooks = tuple(prediction_hooks or [])
 
     for hook in training_hooks + evaluation_hooks + prediction_hooks:
       if not isinstance(hook, session_run_hook.SessionRunHook):
@@ -335,7 +335,7 @@ class TPUEstimatorSpec(model_fn_lib._TPUEstimatorSpec):  # pylint: disable=prote
     hooks = None
     if self.host_call is not None:
       hooks = [_OutfeedHostCallHook(host_call_ret['host_call'])]
-    hooks = list(hooks or [])
+    hooks = tuple(hooks or [])
     scaffold = self.scaffold_fn() if self.scaffold_fn else None
     return model_fn_lib.EstimatorSpec(
         mode=self.mode,
@@ -2169,7 +2169,6 @@ class TPUEstimator(estimator_lib.Estimator):
                                builder,
                                input_receiver_fn_map,
                                checkpoint_path,
-                               strip_default_attrs,
                                save_variables=True,
                                mode=model_fn_lib.ModeKeys.PREDICT,
                                export_tags=None,
@@ -2184,7 +2183,6 @@ class TPUEstimator(estimator_lib.Estimator):
         builder,
         input_receiver_fn_map,
         checkpoint_path,
-        strip_default_attrs,
         save_variables,
         mode=mode,
         export_tags=export_tags,
@@ -2201,7 +2199,6 @@ class TPUEstimator(estimator_lib.Estimator):
           builder,
           input_receiver_fn_map,
           checkpoint_path,
-          strip_default_attrs,
           save_variables=False,
           mode=mode,
           export_tags=export_tags,
@@ -2783,7 +2780,7 @@ def _export_output_to_tensors(export_output):
   elif isinstance(export_output, export_output_lib.RegressionOutput):
     return [export_output.value]
   elif isinstance(export_output, export_output_lib.PredictOutput):
-    return export_output.outputs.values()
+    return list(export_output.outputs.values())
   else:
     raise ValueError(
         '`export_output` must be have type `ClassificationOutput`, '
@@ -3059,7 +3056,7 @@ class _Inputs(object):
   @staticmethod
   def from_input_fn(return_values):
     """Returns an `_Inputs` instance according to `input_fn` return value."""
-    if isinstance(return_values, dataset_ops.Dataset):
+    if isinstance(return_values, dataset_ops.DatasetV2):
       dataset = return_values
       return _Inputs(dataset=dataset)
 
@@ -3084,7 +3081,7 @@ class _Inputs(object):
 
     The initializer must be run before calling `features_and_labels`.
     """
-    self._iterator = self._dataset.make_initializable_iterator()
+    self._iterator = dataset_ops.make_initializable_iterator(self._dataset)
     return self._iterator.initializer
 
   def features_and_labels(self):

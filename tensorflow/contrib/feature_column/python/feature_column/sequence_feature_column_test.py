@@ -24,6 +24,7 @@ import numpy as np
 
 from tensorflow.contrib.feature_column.python.feature_column import sequence_feature_column as sfc
 from tensorflow.python.feature_column import feature_column as fc
+from tensorflow.python.feature_column import feature_column_lib as fc_lib
 from tensorflow.python.feature_column.feature_column import _LazyBuilder
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
@@ -109,13 +110,15 @@ class SequenceInputLayerTest(test.TestCase, parameterized.TestCase):
 
     categorical_column_a = sfc.sequence_categorical_column_with_identity(
         key='aaa', num_buckets=vocabulary_size)
-    embedding_column_a = fc.embedding_column(
-        categorical_column_a, dimension=embedding_dimension_a,
+    embedding_column_a = fc._embedding_column(
+        categorical_column_a,
+        dimension=embedding_dimension_a,
         initializer=_get_initializer(embedding_dimension_a, embedding_values_a))
     categorical_column_b = sfc.sequence_categorical_column_with_identity(
         key='bbb', num_buckets=vocabulary_size)
-    embedding_column_b = fc.embedding_column(
-        categorical_column_b, dimension=embedding_dimension_b,
+    embedding_column_b = fc._embedding_column(
+        categorical_column_b,
+        dimension=embedding_dimension_b,
         initializer=_get_initializer(embedding_dimension_b, embedding_values_b))
 
     input_layer, sequence_length = sfc.sequence_input_layer(
@@ -148,10 +151,9 @@ class SequenceInputLayerTest(test.TestCase, parameterized.TestCase):
         values=(2, 0, 1),
         dense_shape=(2, 2))
 
-    categorical_column_a = fc.categorical_column_with_identity(
+    categorical_column_a = fc._categorical_column_with_identity(
         key='aaa', num_buckets=vocabulary_size)
-    embedding_column_a = fc.embedding_column(
-        categorical_column_a, dimension=2)
+    embedding_column_a = fc._embedding_column(categorical_column_a, dimension=2)
 
     with self.assertRaisesRegexp(
         ValueError,
@@ -206,7 +208,7 @@ class SequenceInputLayerTest(test.TestCase, parameterized.TestCase):
     categorical_column_b = sfc.sequence_categorical_column_with_identity(
         key='bbb', num_buckets=vocabulary_size)
     # Test that columns are reordered alphabetically.
-    shared_embedding_columns = fc.shared_embedding_columns(
+    shared_embedding_columns = fc_lib.shared_embedding_columns(
         [categorical_column_b, categorical_column_a],
         dimension=embedding_dimension,
         initializer=_get_initializer(embedding_dimension, embedding_values))
@@ -244,11 +246,11 @@ class SequenceInputLayerTest(test.TestCase, parameterized.TestCase):
         values=(2, 0, 1),
         dense_shape=(2, 2))
 
-    categorical_column_a = fc.categorical_column_with_identity(
+    categorical_column_a = fc._categorical_column_with_identity(
         key='aaa', num_buckets=vocabulary_size)
-    categorical_column_b = fc.categorical_column_with_identity(
+    categorical_column_b = fc._categorical_column_with_identity(
         key='bbb', num_buckets=vocabulary_size)
-    shared_embedding_columns = fc.shared_embedding_columns(
+    shared_embedding_columns = fc_lib.shared_embedding_columns(
         [categorical_column_a, categorical_column_b], dimension=2)
 
     with self.assertRaisesRegexp(
@@ -315,10 +317,10 @@ class SequenceInputLayerTest(test.TestCase, parameterized.TestCase):
 
     categorical_column_a = sfc.sequence_categorical_column_with_identity(
         key='aaa', num_buckets=vocabulary_size_a)
-    indicator_column_a = fc.indicator_column(categorical_column_a)
+    indicator_column_a = fc._indicator_column(categorical_column_a)
     categorical_column_b = sfc.sequence_categorical_column_with_identity(
         key='bbb', num_buckets=vocabulary_size_b)
-    indicator_column_b = fc.indicator_column(categorical_column_b)
+    indicator_column_b = fc._indicator_column(categorical_column_b)
     input_layer, sequence_length = sfc.sequence_input_layer(
         features={
             'aaa': sparse_input_a,
@@ -342,9 +344,9 @@ class SequenceInputLayerTest(test.TestCase, parameterized.TestCase):
         values=(2, 0, 1),
         dense_shape=(2, 2))
 
-    categorical_column_a = fc.categorical_column_with_identity(
+    categorical_column_a = fc._categorical_column_with_identity(
         key='aaa', num_buckets=vocabulary_size)
-    indicator_column_a = fc.indicator_column(categorical_column_a)
+    indicator_column_a = fc._indicator_column(categorical_column_a)
 
     with self.assertRaisesRegexp(
         ValueError,
@@ -530,7 +532,7 @@ class SequenceInputLayerTest(test.TestCase, parameterized.TestCase):
     sparse_input = sparse_tensor.SparseTensorValue(**sparse_input_args)
     categorical_column = sfc.sequence_categorical_column_with_identity(
         key='aaa', num_buckets=3)
-    indicator_column = fc.indicator_column(categorical_column)
+    indicator_column = fc._indicator_column(categorical_column)
 
     input_layer, _ = sfc.sequence_input_layer(
         features={'aaa': sparse_input}, feature_columns=[indicator_column])
@@ -616,8 +618,7 @@ class InputLayerTest(test.TestCase):
 
     categorical_column_a = sfc.sequence_categorical_column_with_identity(
         key='aaa', num_buckets=vocabulary_size)
-    embedding_column_a = fc.embedding_column(
-        categorical_column_a, dimension=2)
+    embedding_column_a = fc._embedding_column(categorical_column_a, dimension=2)
 
     with self.assertRaisesRegexp(
         ValueError,
@@ -639,7 +640,7 @@ class InputLayerTest(test.TestCase):
 
     categorical_column_a = sfc.sequence_categorical_column_with_identity(
         key='aaa', num_buckets=vocabulary_size)
-    indicator_column_a = fc.indicator_column(categorical_column_a)
+    indicator_column_a = fc._indicator_column(categorical_column_a)
 
     with self.assertRaisesRegexp(
         ValueError,
@@ -918,8 +919,9 @@ class SequenceEmbeddingColumnTest(
 
     categorical_column = sfc.sequence_categorical_column_with_identity(
         key='aaa', num_buckets=vocabulary_size)
-    embedding_column = fc.embedding_column(
-        categorical_column, dimension=embedding_dimension,
+    embedding_column = fc._embedding_column(
+        categorical_column,
+        dimension=embedding_dimension,
         initializer=_initializer)
 
     embedding_lookup, _ = embedding_column._get_sequence_dense_tensor(
@@ -956,8 +958,7 @@ class SequenceEmbeddingColumnTest(
 
     categorical_column = sfc.sequence_categorical_column_with_identity(
         key='aaa', num_buckets=vocabulary_size)
-    embedding_column = fc.embedding_column(
-        categorical_column, dimension=2)
+    embedding_column = fc._embedding_column(categorical_column, dimension=2)
 
     _, sequence_length = embedding_column._get_sequence_dense_tensor(
         _LazyBuilder({'aaa': inputs}))
@@ -984,8 +985,7 @@ class SequenceEmbeddingColumnTest(
 
     categorical_column = sfc.sequence_categorical_column_with_identity(
         key='aaa', num_buckets=vocabulary_size)
-    embedding_column = fc.embedding_column(
-        categorical_column, dimension=2)
+    embedding_column = fc._embedding_column(categorical_column, dimension=2)
 
     _, sequence_length = embedding_column._get_sequence_dense_tensor(
         _LazyBuilder({'aaa': sparse_input}))
@@ -1055,7 +1055,7 @@ class SequenceSharedEmbeddingColumnTest(test.TestCase):
         key='aaa', num_buckets=vocabulary_size)
     categorical_column_b = sfc.sequence_categorical_column_with_identity(
         key='bbb', num_buckets=vocabulary_size)
-    shared_embedding_columns = fc.shared_embedding_columns(
+    shared_embedding_columns = fc_lib.shared_embedding_columns(
         [categorical_column_a, categorical_column_b],
         dimension=embedding_dimension,
         initializer=_initializer)
@@ -1101,7 +1101,7 @@ class SequenceSharedEmbeddingColumnTest(test.TestCase):
     expected_sequence_length_b = [2, 1]
     categorical_column_b = sfc.sequence_categorical_column_with_identity(
         key='bbb', num_buckets=vocabulary_size)
-    shared_embedding_columns = fc.shared_embedding_columns(
+    shared_embedding_columns = fc_lib.shared_embedding_columns(
         [categorical_column_a, categorical_column_b], dimension=2)
 
     sequence_length_a = shared_embedding_columns[0]._get_sequence_dense_tensor(
@@ -1152,7 +1152,7 @@ class SequenceSharedEmbeddingColumnTest(test.TestCase):
     categorical_column_b = sfc.sequence_categorical_column_with_identity(
         key='bbb', num_buckets=vocabulary_size)
 
-    shared_embedding_columns = fc.shared_embedding_columns(
+    shared_embedding_columns = fc_lib.shared_embedding_columns(
         [categorical_column_a, categorical_column_b], dimension=2)
 
     sequence_length_a = shared_embedding_columns[0]._get_sequence_dense_tensor(
@@ -1218,7 +1218,7 @@ class SequenceIndicatorColumnTest(test.TestCase, parameterized.TestCase):
 
     categorical_column = sfc.sequence_categorical_column_with_identity(
         key='aaa', num_buckets=vocabulary_size)
-    indicator_column = fc.indicator_column(categorical_column)
+    indicator_column = fc._indicator_column(categorical_column)
 
     indicator_tensor, _ = indicator_column._get_sequence_dense_tensor(
         _LazyBuilder({'aaa': inputs}))
@@ -1250,7 +1250,7 @@ class SequenceIndicatorColumnTest(test.TestCase, parameterized.TestCase):
 
     categorical_column = sfc.sequence_categorical_column_with_identity(
         key='aaa', num_buckets=vocabulary_size)
-    indicator_column = fc.indicator_column(categorical_column)
+    indicator_column = fc._indicator_column(categorical_column)
 
     _, sequence_length = indicator_column._get_sequence_dense_tensor(
         _LazyBuilder({'aaa': inputs}))
@@ -1277,7 +1277,7 @@ class SequenceIndicatorColumnTest(test.TestCase, parameterized.TestCase):
 
     categorical_column = sfc.sequence_categorical_column_with_identity(
         key='aaa', num_buckets=vocabulary_size)
-    indicator_column = fc.indicator_column(categorical_column)
+    indicator_column = fc._indicator_column(categorical_column)
 
     _, sequence_length = indicator_column._get_sequence_dense_tensor(
         _LazyBuilder({'aaa': sparse_input}))

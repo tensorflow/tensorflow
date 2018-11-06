@@ -38,7 +38,7 @@ from tensorflow.core.example import example_pb2
 
 from tensorflow.python.client import session as session_lib
 from tensorflow.python.estimator import estimator_lib
-from tensorflow.python.feature_column import feature_column
+from tensorflow.python.feature_column import feature_column_lib as feature_column
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops

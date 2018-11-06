@@ -71,7 +71,7 @@ class TPUEstimatorStoppingSignalsTest(test.TestCase):
 
     with ops.Graph().as_default():
       dataset = input_fn(params)
-      features = dataset.make_one_shot_iterator().get_next()
+      features = dataset_lib.make_one_shot_iterator(dataset).get_next()
 
       # With tf.data.Dataset.batch, the batch is None, i.e., dynamic shape.
       self.assertIsNone(features['a'].shape.as_list()[0])

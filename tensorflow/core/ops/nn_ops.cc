@@ -327,6 +327,9 @@ REGISTER_OP("_FusedConv2D")
     .Attr(GetConvnetDataFormatAttrString())
     .Attr("dilations: list(int) = [1, 1, 1, 1]")
     .Attr("fused_ops: list(string) = []")
+    // Attributes for the FusedBatchNorm ------------------------------------ //
+    .Attr("epsilon: float = 0.0001")
+    // ---------------------------------------------------------------------- //
     .SetShapeFn(shape_inference::Conv2DShape)
     .Doc(R"doc(
 *NOTE*: Do not invoke this operator directly in Python. Grappler is
@@ -2190,11 +2193,7 @@ REGISTER_OP("_MklLRN")
     .Input("input: T")
     .Input("mkl_input: uint8")
     .Output("output: T")
-#ifdef INTEL_MKL_ML_ONLY
-    .Output("workspace: T")
-#else
     .Output("workspace: uint8")
-#endif
     .Output("mkl_output: uint8")
     .Output("mkl_workspace: uint8")
     .Attr("depth_radius: int = 5")
@@ -2218,11 +2217,7 @@ REGISTER_OP("_MklLRNGrad")
     .Input("input_grads: T")
     .Input("input_image: T")
     .Input("output_image: T")
-#ifdef INTEL_MKL_ML_ONLY
-    .Input("workspace: T")
-#else
     .Input("workspace: uint8")
-#endif
     .Input("mkl_input_grads: uint8")
     .Input("mkl_input_image: uint8")
     .Input("mkl_output_image: uint8")

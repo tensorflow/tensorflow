@@ -95,6 +95,18 @@ class TFETensorTest(test_util.TensorFlowTestCase):
     t = _create_tensor(values)
     self.assertAllEqual(values, t)
 
+  @test_util.assert_no_new_pyobjects_executing_eagerly
+  def testNumpyDtypeSurvivesThroughTensorConversion(self):
+    scalar_creators = [np.int32, np.int64, np.float32, np.float64]
+    conversion_functions = [ops.convert_to_tensor, constant_op.constant]
+
+    for scalar_creator in scalar_creators:
+      for conversion_function in conversion_functions:
+        np_val = scalar_creator(3)
+        tensor_val = conversion_function(np_val)
+        self.assertEqual(tensor_val.numpy().dtype, np_val.dtype)
+        self.assertEqual(tensor_val.numpy(), np_val)
+
   def testNumpyValueWithCast(self):
     values = np.array([3.0], dtype=np.float32)
     t = _create_tensor(values, dtype=dtypes.float64)
@@ -128,6 +140,23 @@ class TFETensorTest(test_util.TensorFlowTestCase):
     tensor = constant_op.constant(numpy_tensor)
     self.assertAllEqual(numpy_tensor.ndim, tensor.ndim)
 
+  def testLenAgreesWithNumpy(self):
+    numpy_tensor = np.asarray(1.0)
+    tensor = constant_op.constant(numpy_tensor)
+    with self.assertRaises(TypeError):
+      len(numpy_tensor)
+    with self.assertRaisesRegexp(
+        TypeError, r"Scalar tensor has no `len[(][)]`"):
+      len(tensor)
+
+    numpy_tensor = np.asarray([1.0, 2.0, 3.0])
+    tensor = constant_op.constant(numpy_tensor)
+    self.assertAllEqual(len(numpy_tensor), len(tensor))
+
+    numpy_tensor = np.asarray([[1.0, 2.0, 3.0], [1.0, 2.0, 3.0]])
+    tensor = constant_op.constant(numpy_tensor)
+    self.assertAllEqual(len(numpy_tensor), len(tensor))
+
   def testCopy(self):
     t = constant_op.constant(1.0)
     tt = copy.copy(t)
@@ -158,9 +187,13 @@ class TFETensorTest(test_util.TensorFlowTestCase):
     self.assertEqual(dtypes.float64, t.dtype)
 
   def testBool(self):
-    t = _create_tensor(False)
-    if t:
-      self.assertFalse(True)
+    self.assertFalse(bool(_create_tensor(False)))
+    self.assertFalse(bool(_create_tensor([False])))
+    self.assertFalse(bool(_create_tensor([[False]])))
+    self.assertFalse(bool(_create_tensor([0])))
+    self.assertFalse(bool(_create_tensor([0.])))
+    self.assertTrue(bool(_create_tensor([1])))
+    self.assertTrue(bool(_create_tensor([1.])))
 
   def testIntDowncast(self):
     t = _create_tensor(3)
@@ -305,6 +338,14 @@ class TFETensorTest(test_util.TensorFlowTestCase):
   @test_util.run_in_graph_and_eager_modes
   def testConvertToTensorAllowsOverflow(self):
     _ = ops.convert_to_tensor(123456789, dtype=dtypes.uint8)
+
+  def testEagerTensorError(self):
+    with self.assertRaisesRegexp(
+        TypeError,
+        "Cannot convert provided value to EagerTensor. "
+        "Provided value.*Requested dtype.*"):
+      _ = ops.convert_to_tensor(1., dtype=dtypes.int32)
+
 
 
 class TFETensorUtilTest(test_util.TensorFlowTestCase):

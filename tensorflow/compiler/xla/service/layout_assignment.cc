@@ -2000,6 +2000,7 @@ bool LayoutAssignment::InstructionCanChangeLayout(
   switch (instruction->opcode()) {
     case HloOpcode::kAbs:
     case HloOpcode::kAdd:
+    case HloOpcode::kAddDependency:
     case HloOpcode::kAnd:
     case HloOpcode::kAtan2:
     case HloOpcode::kBitcastConvert:

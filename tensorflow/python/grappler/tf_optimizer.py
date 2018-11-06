@@ -19,22 +19,26 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.core.framework import graph_pb2
+from tensorflow.core.protobuf import config_pb2
 from tensorflow.python import pywrap_tensorflow as tf_opt
 from tensorflow.python.framework import errors
 from tensorflow.python.grappler import cluster as gcluster
 
 
-def OptimizeGraph(rewriter_config,
+def OptimizeGraph(config_proto,
                   metagraph,
                   verbose=True,
                   graph_id=b'graph_to_optimize',
                   cluster=None):
   """Optimize the provided metagraph."""
+  if not isinstance(config_proto, config_pb2.ConfigProto):
+    raise TypeError('Expected config_proto to be a ConfigProto, saw type %s' %
+                    type(config_proto))
   with errors.raise_exception_on_not_ok_status() as status:
     if cluster is None:
       cluster = gcluster.Cluster()
     ret_from_swig = tf_opt.TF_OptimizeGraph(cluster.tf_cluster,
-                                            rewriter_config.SerializeToString(),
+                                            config_proto.SerializeToString(),
                                             metagraph.SerializeToString(),
                                             verbose, graph_id, status)
   if ret_from_swig is None:

@@ -26,6 +26,7 @@ from tensorflow.core.protobuf import config_pb2
 from tensorflow.core.protobuf import rewriter_config_pb2
 from tensorflow.python.client import session
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import variables
@@ -154,6 +155,7 @@ class RunMetadataTest(test.TestCase):
     # deallocates the memory after matmul started.
     self.assertGreater(random_allocs[1].alloc_micros, mm.all_start_micros)
 
+  @test_util.run_deprecated_v1
   def testCPU(self):
     ops.reset_default_graph()
     with ops.device('/cpu:0'):
@@ -167,6 +169,7 @@ class RunMetadataTest(test.TestCase):
     ret = _extract_node(run_meta, 'MatMul:MatMul')
     self.assertEqual(len(ret), 0)
 
+  @test_util.run_deprecated_v1
   def testLoopCPU(self):
     ops.reset_default_graph()
     with ops.device('/cpu:0'):

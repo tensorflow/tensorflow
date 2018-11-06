@@ -42,6 +42,11 @@ class RaggedConcatOpTest(test_util.TensorFlowTestCase, parameterized.TestCase):
 
   @parameterized.parameters(
       dict(
+          descr='Two rank-2 inputs with empty value axis=1',
+          rt_inputs=([[]], [[]]),
+          axis=1,
+          expected=[[]]),
+      dict(
           descr='Two rank-2 inputs (ragged_rank=1), axis=0',
           rt_inputs=(
               [['a00', 'a01'], [], ['a20', 'a21']],   # shape=(3, None)
@@ -216,6 +221,7 @@ class RaggedConcatOpTest(test_util.TensorFlowTestCase, parameterized.TestCase):
           axis=0,
           expected=[[b'a00', b'a01'], [], [b'a20', b'a21']]),
   )   # pyformat: disable
+  @test_util.run_deprecated_v1
   def testRaggedConcat(self,
                        descr,
                        rt_inputs,
@@ -261,6 +267,7 @@ class RaggedConcatOpTest(test_util.TensorFlowTestCase, parameterized.TestCase):
           error=ValueError,
           message='Dimension 0 in both shapes must be equal'),
   )
+  @test_util.run_deprecated_v1
   def testStaticError(self, rt_inputs, axis, error, message, ragged_ranks=None):
     rt_inputs = self._rt_inputs_to_tensors(rt_inputs, ragged_ranks)
     self.assertRaisesRegexp(error, message, ragged.concat, rt_inputs, axis)
@@ -273,6 +280,7 @@ class RaggedConcatOpTest(test_util.TensorFlowTestCase, parameterized.TestCase):
           error=errors.InvalidArgumentError,
           message='Input tensors have incompatible shapes'),
   ])
+  @test_util.run_deprecated_v1
   def testRuntimeError(self, rt_inputs, axis, error, message,
                        ragged_ranks=None):
     rt_inputs = [
@@ -282,6 +290,7 @@ class RaggedConcatOpTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     with self.test_session():
       self.assertRaisesRegexp(error, message, concatenated.eval)
 
+  @test_util.run_deprecated_v1
   def testNegativeAxisWithUnknownRankError(self):
     rt_inputs = [
         array_ops.placeholder(dtypes.int64),
@@ -291,6 +300,7 @@ class RaggedConcatOpTest(test_util.TensorFlowTestCase, parameterized.TestCase):
         ValueError, r'axis may only be negative if ndims is statically known.',
         ragged.concat, rt_inputs, -1)
 
+  @test_util.run_deprecated_v1
   def testSingleTensorInput(self):
     """Tests ragged_concat with a single tensor input.
 

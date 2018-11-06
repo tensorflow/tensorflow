@@ -22,7 +22,7 @@ from tensorflow.python.data.util import nest
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
-from tensorflow.python.ops import gen_dataset_ops
+from tensorflow.python.ops import gen_experimental_dataset_ops
 from tensorflow.python.ops import parsing_ops
 from tensorflow.python.util.tf_export import tf_export
 
@@ -80,7 +80,7 @@ class _ParseExampleDataset(dataset_ops.UnaryDataset):
             ]))
 
   def _as_variant_tensor(self):
-    return gen_dataset_ops.parse_example_dataset(
+    return gen_experimental_dataset_ops.experimental_parse_example_dataset(
         self._input_dataset._as_variant_tensor(),  # pylint: disable=protected-access
         self._num_parallel_calls,
         self._dense_defaults,
@@ -138,10 +138,10 @@ def parse_example_dataset(features, num_parallel_calls=1):
   def _apply_fn(dataset):
     """Function from `Dataset` to `Dataset` that applies the transformation."""
     out_dataset = _ParseExampleDataset(dataset, features, num_parallel_calls)
-    if any([
+    if any(
         isinstance(feature, parsing_ops.SparseFeature)
         for _, feature in features.items()
-    ]):
+    ):
       # pylint: disable=protected-access
       # pylint: disable=g-long-lambda
       out_dataset = out_dataset.map(

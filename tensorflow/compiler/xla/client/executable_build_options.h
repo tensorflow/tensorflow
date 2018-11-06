@@ -19,7 +19,9 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/types/optional.h"
 #include "tensorflow/compiler/xla/service/device_memory_allocator.h"
+#include "tensorflow/compiler/xla/shape.h"
 #include "tensorflow/compiler/xla/util.h"
+#include "tensorflow/compiler/xla/xla.pb.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 
 namespace xla {
@@ -44,6 +46,12 @@ class ExecutableBuildOptions {
   ExecutableBuildOptions& set_result_layout(const Shape& shape_with_layout);
   const Shape* result_layout() const;
 
+  // Expose access to the XLA debug options which will be passed to the
+  // compilation process.
+  bool has_debug_options() const { return debug_options_.has_value(); }
+  const DebugOptions& debug_options() const { return *debug_options_; }
+  DebugOptions* mutable_debug_options();
+
   // If set, this specifies an allocator that can be used to allocate temporary
   // space on the device during compilation.  For example, the compiler might
   // want to run various algorithms on the device and pick the fastest one -- it
@@ -55,56 +63,16 @@ class ExecutableBuildOptions {
       DeviceMemoryAllocator* allocator);
   DeviceMemoryAllocator* device_allocator() const;
 
-  // If set, specifies a regexp of HLO graphs to dump (as in DebugOptions).
-  ExecutableBuildOptions& set_generate_hlo_graph(string regex);
-  const absl::optional<string>& generate_hlo_graph() const;
-
-  // If set, specifies a dirpath to dump the end-of-optimization-pipeline HLO
-  // protobuf to (as in DebugOptions).
-  ExecutableBuildOptions& set_dump_optimized_hlo_proto_to(
-      absl::string_view dirpath);
-  const absl::optional<string>& dump_optimized_hlo_proto_to() const;
-
-  // If set, specifies a dirpath to dump the start-of-optimization-pipeline HLO
-  // protobuf to (as in DebugOptions).
-  ExecutableBuildOptions& set_dump_unoptimized_hlo_proto_to(
-      absl::string_view dirpath);
-  const absl::optional<string>& dump_unoptimized_hlo_proto_to() const;
-
-  // If set, specifies a dirpath to dump the per-pass-in-pipeline HLO protobufs
-  // to (as in DebugOptions).
-  ExecutableBuildOptions& set_dump_per_pass_hlo_proto_to(
-      absl::string_view dirpath);
-  const absl::optional<string>& dump_per_pass_hlo_proto_to() const;
-
-  // If true, specifies that we should record an HLO profile during execution
-  // and log it after execution (as in DebugOptions). If nullopt the default is
-  // used.
-  ExecutableBuildOptions& set_hlo_profile(bool enabled);
-  absl::optional<bool> hlo_profile() const;
-
-  void add_disabled_hlo_pass(absl::string_view pass_name) {
-    disabled_hlo_passes_.push_back(std::string(pass_name));
-  }
-  const absl::Span<const std::string> disabled_hlo_passes() const {
-    return disabled_hlo_passes_;
-  }
-
   // Returns a string representation of the build options, suitable for
   // debugging.
   string ToString() const;
 
  private:
-  absl::optional<bool> hlo_profile_;
   int device_ordinal_ = -1;
   Shape result_layout_;
   bool result_layout_set_ = false;
-  absl::optional<string> generate_hlo_graph_;
-  absl::optional<string> dump_optimized_hlo_proto_to_;
-  absl::optional<string> dump_unoptimized_hlo_proto_to_;
-  absl::optional<string> dump_per_pass_hlo_proto_to_;
+  absl::optional<DebugOptions> debug_options_;
   DeviceMemoryAllocator* device_allocator_ = nullptr;
-  std::vector<std::string> disabled_hlo_passes_;
 };
 
 }  // namespace xla
