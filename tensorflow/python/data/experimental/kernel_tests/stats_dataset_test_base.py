@@ -20,7 +20,7 @@ from __future__ import print_function
 import numpy as np
 
 from tensorflow.core.framework import summary_pb2
-from tensorflow.python.data.experimental.ops import stats_ops
+from tensorflow.python.data.experimental.ops import stats_aggregator
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.framework import errors
 
@@ -87,14 +87,15 @@ class StatsDatasetTestBase(test_base.DatasetTestBase):
                               dataset_fn,
                               dataset_name,
                               num_output,
+                              dataset_transformation,
                               function_processing_time=False,
                               check_elements=True):
-    stats_aggregator = stats_ops.StatsAggregator()
-    dataset = dataset_fn().apply(
-        stats_ops.set_stats_aggregator(stats_aggregator))
+    aggregator = stats_aggregator.StatsAggregator()
+    dataset = dataset_fn()
+    dataset = dataset_transformation(dataset, aggregator)
     iterator = dataset.make_initializable_iterator()
     next_element = iterator.get_next()
-    summary_t = stats_aggregator.get_summary()
+    summary_t = aggregator.get_summary()
 
     with self.cached_session() as sess:
       sess.run(iterator.initializer)

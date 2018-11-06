@@ -25,6 +25,7 @@ import numpy as np
 import six
 
 from tensorflow.python.compat import compat
+from tensorflow.python.data.experimental.ops import stats_options
 from tensorflow.python.data.ops import iterator_ops
 from tensorflow.python.data.util import nest
 from tensorflow.python.data.util import random_seed
@@ -101,6 +102,8 @@ class Dataset(object):
     return options
 
   def _apply_options(self):
+    """Apply options, such as optimization configuration, to the dataset."""
+
     dataset = self
     options = self.options()
     static_optimizations = options._static_optimizations()  # pylint: disable=protected-access
@@ -108,6 +111,11 @@ class Dataset(object):
       dataset = _OptimizeDataset(dataset, static_optimizations)
     if options.experimental_autotune is not False:
       dataset = _ModelDataset(dataset)
+    if options.experimental_stats and options.experimental_stats.aggregator:  # pylint: disable=line-too-long
+      dataset = _SetStatsAggregatorDataset(  # pylint: disable=protected-access
+          dataset, options.experimental_stats.aggregator,
+          options.experimental_stats.prefix,
+          options.experimental_stats.counter_prefix)
     return dataset
 
   def make_initializable_iterator(self, shared_name=None):
@@ -1411,8 +1419,8 @@ class Options(object):
       ("experimental_hoist_random_uniform", bool,
        "Whether to hoist `tf.random_uniform()` ops out of map transformations."
       ),
-      ("experimental_latency_all_edges", bool,
-       "Whether to add latency measurements on all edges."),
+      ("experimental_stats", stats_options.StatsOptions,
+       "Associate the given statistics options with the dataset pipeline."),
       ("experimental_map_and_batch_fusion", bool,
        "Whether to fuse map and batch transformations."),
       ("experimental_map_and_filter_fusion", bool,
@@ -1442,8 +1450,8 @@ class Options(object):
       def setter(self, value):
         if not isinstance(value, ty):
           raise TypeError(
-              "Attempting to set the option %s to incompatible value: %r" %
-              (name, value))
+              "Attempting to set the option %s to incompatible value: %r when "
+              "it expects  %r" % (name, value, ty))
         setattr(self, "_" + name, value)
 
       return setter
@@ -1467,10 +1475,15 @@ class Options(object):
   def _static_optimizations(self):
     """Produces the list of enabled static optimizations."""
     experimental_optimizations = [
-        "filter_fusion", "hoist_random_uniform", "latency_all_edges",
-        "map_and_batch_fusion", "map_and_filter_fusion", "map_fusion",
-        "map_parallelization", "map_vectorization", "noop_elimination",
-        "shuffle_and_repeat_fusion"
+        "filter_fusion",
+        "hoist_random_uniform",
+        "map_and_batch_fusion",
+        "map_and_filter_fusion",
+        "map_fusion",
+        "map_parallelization",
+        "map_vectorization",
+        "noop_elimination",
+        "shuffle_and_repeat_fusion",
     ]
     result = []
     for exp_opt in experimental_optimizations:
@@ -1481,6 +1494,10 @@ class Options(object):
       result.append("make_numa_aware")
     if getattr(self, "experimental_deterministic") is False:
       result.append("make_sloppy")
+    experimental_stats_options = getattr(self, "experimental_stats")
+    if experimental_stats_options and getattr(experimental_stats_options,
+                                              "latency_all_edges"):
+      result.append("latency_all_edges")
     return result
 
   def merge(self, options):
@@ -1506,7 +1523,6 @@ class Options(object):
           "experimental_deterministic",
           "experimental_filter_fusion",
           "experimental_hoist_random_uniform",
-          "experimental_latency_all_edges",
           "experimental_map_and_batch_fusion",
           "experimental_map_and_filter_fusion",
           "experimental_map_fusion",
@@ -1515,6 +1531,7 @@ class Options(object):
           "experimental_noop_elimination",
           "experimental_numa_aware",
           "experimental_shuffle_and_repeat_fusion",
+          "experimental_stats",
       ]:
         this = getattr(result, name)
         that = getattr(other, name)
@@ -3068,3 +3085,34 @@ class _OptimizeDataset(UnaryDataset):
   @property
   def output_types(self):
     return self._input_dataset.output_types
+
+
+class _SetStatsAggregatorDataset(UnaryDataset):
+  """A `Dataset` that acts as an identity, and sets stats aggregator."""
+
+  def __init__(self, input_dataset, aggregator, prefix, counter_prefix):
+    super(_SetStatsAggregatorDataset, self).__init__(input_dataset)
+    self._input_dataset = input_dataset
+    self._stats_aggregator = aggregator
+    self._prefix = prefix
+    self._counter_prefix = counter_prefix
+
+  def _as_variant_tensor(self):
+    return gen_dataset_ops.set_stats_aggregator_dataset(
+        self._input_dataset._as_variant_tensor(),  # pylint: disable=protected-access
+        self._stats_aggregator._resource,  # pylint: disable=protected-access
+        self._prefix,
+        self._counter_prefix,
+        **flat_structure(self))
+
+  @property
+  def output_shapes(self):
+    return self._input_dataset.output_shapes
+
+  @property
+  def output_types(self):
+    return self._input_dataset.output_types
+
+  @property
+  def output_classes(self):
+    return self._input_dataset.output_classes
