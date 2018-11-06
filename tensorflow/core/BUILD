@@ -3049,7 +3049,9 @@ tf_cuda_library(
     ],
     copts = tf_copts(),
     cuda_deps = if_cuda_is_configured(tf_additional_cupti_wrapper_deps() + tf_additional_device_tracer_cuda_deps()),
-    visibility = ["//visibility:private"],
+    visibility = [
+        "//tensorflow:internal",
+    ],
     deps = [
         ":core_cpu_internal",
         ":lib",
