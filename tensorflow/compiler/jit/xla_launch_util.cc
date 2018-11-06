@@ -191,40 +191,6 @@ Status XlaAllocator::Deallocate(int device_ordinal, se::DeviceMemoryBase mem) {
   return Status::OK();
 }
 
-namespace internal {
-// Return the 'index''th subtree of the given ShapedBuffer as a
-// ScopedShapedBuffer. The returned ScopedShapedBuffer takes ownership of the
-// subtree, and sets the input's buffer pointers to nullptr for the subtree.
-ScopedShapedBuffer ExtractSubShapedBuffer(
-    ShapedBuffer* shaped_buffer, int index,
-    xla::DeviceMemoryAllocator* allocator) {
-  const xla::Shape& on_host_shape = xla::ShapeUtil::GetTupleElementShape(
-      shaped_buffer->on_host_shape(), index);
-  const xla::Shape& on_device_shape = xla::ShapeUtil::GetTupleElementShape(
-      shaped_buffer->on_device_shape(), index);
-
-  ShapedBuffer sub_shaped_buffer(on_host_shape, on_device_shape,
-                                 shaped_buffer->platform(),
-                                 shaped_buffer->device_ordinal());
-
-  auto& shape_tree = shaped_buffer->buffers();
-  auto& sub_shape_tree = sub_shaped_buffer.buffers();
-  sub_shape_tree.CopySubtreeFrom(shape_tree,
-                                 /*source_base_index=*/{index},
-                                 /*target_base_index=*/{});
-  shape_tree.ForEachMutableElement(
-      [index](const xla::ShapeIndex& shape_index,
-              tensorflow::se::DeviceMemoryBase* data) {
-        // shape_index is empty for the root node. Ignore that.
-        if (!shape_index.empty() && shape_index[0] == index) {
-          *data = tensorflow::se::DeviceMemoryBase(nullptr, 0);
-        }
-      });
-  return ScopedShapedBuffer(std::move(sub_shaped_buffer), allocator);
-}
-}  // namespace internal
-using internal::ExtractSubShapedBuffer;
-
 XlaComputationLaunchContext::XlaComputationLaunchContext(
     xla::LocalClient* client, xla::DeviceMemoryAllocator* xla_allocator,
     bool allocate_xla_tensors, bool use_multiple_streams)
@@ -391,8 +357,7 @@ Status XlaComputationLaunchContext::PopulateOutputs(
           TF_RETURN_IF_ERROR(ctx->allocate_output(i, shape, &output_tensor));
           XlaTensor* xla_tensor = XlaTensor::FromTensor(output_tensor);
           if (xla_tensor) {
-            xla_tensor->set_shaped_buffer(ScopedShapedBuffer(
-                ExtractSubShapedBuffer(&output, output_num, xla_allocator_)));
+            xla_tensor->set_shaped_buffer(output.TakeSubTree({output_num}));
             if (use_multiple_streams_) {
               xla_tensor->ResetDefinitionEvent(definition_event, stream);
             }
@@ -457,8 +422,7 @@ Status XlaComputationLaunchContext::PopulateOutputs(
           ctx->allocate_temp(write.type, write.shape, &output_tensor));
       XlaTensor* xla_tensor = XlaTensor::FromTensor(&output_tensor);
       CHECK(xla_tensor);
-      xla_tensor->set_shaped_buffer(
-          ExtractSubShapedBuffer(&output, output_num, xla_allocator_));
+      xla_tensor->set_shaped_buffer(output.TakeSubTree({output_num}));
       if (use_multiple_streams_) {
         xla_tensor->ResetDefinitionEvent(definition_event, stream);
       }

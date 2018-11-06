@@ -651,31 +651,6 @@ tf_cc_test(
     ],
 )
 
-tf_cc_test(
-    name = "xla_launch_util_test",
-    size = "small",
-    srcs = ["xla_launch_util_test.cc"],
-    deps = [
-        ":common",
-        ":xla_compilation_cache",
-        ":xla_launch_util",
-        ":xla_tensor",
-        "//tensorflow/compiler/tf2xla:common",
-        "//tensorflow/compiler/tf2xla:xla_compiler",
-        "//tensorflow/compiler/xla:statusor",
-        "//tensorflow/compiler/xla/client:client_library",
-        "//tensorflow/compiler/xla/client:local_client",
-        "//tensorflow/core:core_cpu_internal",
-        "//tensorflow/core:framework",
-        "//tensorflow/core:gpu_runtime",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:lib_internal",
-        "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core:test",
-        "//tensorflow/core/kernels:variable_ops",
-    ],
-)
-
 cc_library(
     name = "xla_fusion_optimizer",
     srcs = ["xla_fusion_optimizer.cc"],
