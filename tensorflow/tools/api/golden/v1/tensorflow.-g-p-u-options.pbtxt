@@ -78,6 +78,12 @@ tf_proto {
         label: LABEL_OPTIONAL
         type: TYPE_INT32
       }
+      field {
+        name: "collective_ring_order"
+        number: 4
+        label: LABEL_OPTIONAL
+        type: TYPE_STRING
+      }
       nested_type {
         name: "VirtualDevices"
         field {

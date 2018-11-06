@@ -928,7 +928,6 @@ class ControlFlowTest(test.TestCase):
       r = isum(s)
       self.assertAllEqual(45, r.eval())
 
-  @test_util.disable_control_flow_v2("b/115776323 (max_iters)")
   def testWhileWithMaximumIterations(self):
     with self.cached_session():
       s = constant_op.constant([1, 2, 3, 4, 5])
@@ -1045,7 +1044,7 @@ class ControlFlowTest(test.TestCase):
         r"while loop context '' \(currently defined in 'cond/.+'\)"):
       _ = gradients_impl.gradients(loop, v)
 
-  @test_util.disable_control_flow_v2("b/115776323 (max_iters)")
+  @test_util.disable_control_flow_v2("b/118457764")
   def testNestedWhileLoopWithMaxItersFromOuterContextInXLAContext(self):
     v = constant_op.constant(1.0)
 
@@ -1277,8 +1276,8 @@ class ControlFlowTest(test.TestCase):
       r = control_flow_ops.while_loop(
           c, b, [i, m],
           [i.get_shape(), tensor_shape.TensorShape([None, 2])])
-      self.assertIsNone(r[1].get_shape()[0].value)
-      self.assertEqual(r[1].get_shape()[1], tensor_shape.Dimension(2))
+      self.assertIsNone(r[1].shape.dims[0].value)
+      self.assertEqual(r[1].shape.dims[1], tensor_shape.Dimension(2))
 
       with self.assertRaisesRegexp(
           ValueError,
@@ -1991,7 +1990,6 @@ class ControlFlowTest(test.TestCase):
   def testNestedWhileCondWhileGradGpu(self):
     self._testNestedWhileCondWhileGrad(use_gpu=True)
 
-  @test_util.disable_control_flow_v2("b/116823782")
   def testWhileGrad_Variable(self):
     with self.cached_session():
       a = variables.Variable(3.0)
@@ -2003,6 +2001,18 @@ class ControlFlowTest(test.TestCase):
       r = gradients_impl.gradients(r, a)
       variables.global_variables_initializer().run()
       self.assertAllClose(216.0, r[0].eval())
+
+  def testWhileGrad_ResourceVariable(self):
+    with self.cached_session():
+      a = resource_variable_ops.ResourceVariable(3.0)
+      v = constant_op.constant(2.0, name="v")
+      c = lambda v: math_ops.less(v, 100.0)
+      b = lambda v: math_ops.multiply(v, a)
+      r = control_flow_ops.while_loop(c, b, [v], parallel_iterations=1)
+
+      g = gradients_impl.gradients(r, a)
+      variables.global_variables_initializer().run()
+      self.assertAllClose(216.0, g[0].eval())
 
   def testWhileGradInCond(self):
 
@@ -2709,7 +2719,6 @@ class ControlFlowTest(test.TestCase):
     grad, = gradients_impl.gradients(w, c)
     self.assertIsNotNone(grad)
 
-  @test_util.disable_control_flow_v2("b/116270461 (resource)")
   def testStopGradMultiFlows(self):
     with self.cached_session():
 

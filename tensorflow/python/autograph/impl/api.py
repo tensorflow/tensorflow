@@ -19,7 +19,14 @@ from __future__ import division
 from __future__ import print_function
 
 import functools
+import sys
+
 from enum import Enum
+
+# pylint:disable=g-bad-import-order
+import numpy as np
+# pylint:enable=g-bad-import-order
+
 
 from tensorflow.python.autograph.core import config
 from tensorflow.python.autograph.core import converter
@@ -28,6 +35,8 @@ from tensorflow.python.autograph.operators import py_builtins
 from tensorflow.python.autograph.pyct import compiler
 from tensorflow.python.autograph.pyct import inspect_utils
 from tensorflow.python.autograph.utils import py_func
+from tensorflow.python.data.util import nest
+from tensorflow.python.framework import tensor_util
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import tf_decorator
 from tensorflow.python.util import tf_inspect
@@ -38,7 +47,9 @@ from tensorflow.python.util import tf_inspect
 
 
 # TODO(mdan): This should behave like to_graph (e.g. convert statically).
-def convert(recursive=False, verbose=False):
+# TODO(znado): Make an alias so can write Verbosity directly without needing
+# to write converter.
+def convert(recursive=False, verbose=converter.Verbosity.VERBOSE):
   """Decorator that compiles a function to use TensorFlow ops.
 
   The decorator is dynamic - it recompiles the target whenever the decorated
@@ -49,7 +60,7 @@ def convert(recursive=False, verbose=False):
   Args:
     recursive: bool, whether to recursively convert any functions or classes
       that the converted function may use.
-    verbose: bool, whether to output the compiled code in the logs.
+    verbose: converter.Verbosity, the level of verbosity.
 
   Returns:
     Callable, a decorator that converts the given function into an equivalent
@@ -83,8 +94,7 @@ def convert(recursive=False, verbose=False):
 class RunMode(Enum):
   """Specifies the way a converted function or method should be executed in TF.
 
-  The enum values have the following semantics:
-
+  Attributes:
    * GRAPH: Call this function directly, as-is. This is suitable for functions
        that were already designed for TF graphs and contain ops.
    * PY_FUNC: Wrap this function into a py_func op. This is suitable for code
@@ -144,7 +154,7 @@ def do_not_convert(run_as=RunMode.GRAPH, return_dtypes=None):
 # TODO(mdan): Move to a private, undocumented module.
 def converted_call(f, owner, options, *args, **kwargs):
   """Compiles a function call inline. For internal use only."""
-  if options.verbose:
+  if options.verbose >= converter.Verbosity.VERBOSE:
     logging.info('Converted call: {}; owner: {}'.format(f, owner))
 
   if owner is not None:
@@ -243,7 +253,30 @@ def converted_call(f, owner, options, *args, **kwargs):
       partial_types=partial_types,
       strip_decorators=options.strip_decorators,
       optional_features=options.optional_features)
-  return converted_f(*effective_args, **kwargs)
+
+  result = converted_f(*effective_args, **kwargs)
+  # When converting a function, we write a tmp file and import it as a module.
+  # This leaks the module's closure. Once we've executed the converted_f module
+  # and there is no more code left to be executed, we can clean up the module.
+
+  # TODO(mdan): Look into workarounds that don't suffer from refcount leaks.
+  # Possibly attach the closure as a regular closure cell, instead of relying on
+  # module globals.
+
+  # If there are callables in the result, they will fail to find their closure
+  # when called, so only delete module if all returned types are not callable.
+  flat_results = nest.flatten(result)
+  if all(map(_is_not_callable, flat_results)):
+    del sys.modules[converted_f.__module__]
+
+  return result
+
+
+def _is_not_callable(obj):
+  # TODO(brianklee): What happens if obj is a tensor wrapping a py_func?
+  return (isinstance(obj,
+                     (int, float, complex, str, bool, np.ndarray, np.generic))
+          or tensor_util.is_tensor(obj))
 
 
 # TODO(mdan): Rename: to_ops?
@@ -251,7 +284,7 @@ def converted_call(f, owner, options, *args, **kwargs):
 # TODO(mdan): Remove partial_types.
 def to_graph(e,
              recursive=True,
-             verbose=False,
+             verbose=converter.Verbosity.VERBOSE,
              arg_values=None,
              arg_types=None,
              partial_types=None,
@@ -269,7 +302,7 @@ def to_graph(e,
     e: Union[Callable, Type], the Python entity to convert.
     recursive: bool, whether to recursively convert any functions that the
       converted function may call.
-    verbose: bool, whether to output the compiled code in the logs.
+    verbose: converter.Verbosity, the level of printing verbosity to use.
     arg_values: Optional[Dict[Text, Any]], value hints for symbols including
       function arguments.
     arg_types: Optional[Dict[Text, Type]], type hints for symbols including

@@ -82,6 +82,7 @@ py_library(
         "//tensorflow/python:dtypes",
         "//tensorflow/python:experimental_dataset_ops_gen",
         "//tensorflow/python:framework_ops",
+        "//tensorflow/python:io_ops",
         "//tensorflow/python:lib",
         "//tensorflow/python:platform",
         "//tensorflow/python:tensor_shape",

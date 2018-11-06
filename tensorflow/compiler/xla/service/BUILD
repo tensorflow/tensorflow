@@ -323,7 +323,6 @@ cc_library(
         ":hlo_casting_utils",
         ":hlo_module_config",
         ":hlo_proto",
-        ":hlo_reachability",
         ":name_uniquer",
         "//tensorflow/compiler/xla:array",
         "//tensorflow/compiler/xla:literal",
@@ -402,6 +401,7 @@ cc_library(
     srcs = ["hlo_reachability.cc"],
     hdrs = ["hlo_reachability.h"],
     deps = [
+        ":hlo",
         "//tensorflow/compiler/xla:types",
         "//tensorflow/compiler/xla:util",
         "//tensorflow/core:lib",
@@ -1103,6 +1103,7 @@ cc_library(
         ":hlo",
         ":hlo_dataflow_analysis",
         ":hlo_proto",
+        ":hlo_reachability",
         ":hlo_value",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:status_macros",
@@ -1362,6 +1363,7 @@ cc_library(
         ":fusion_queue",
         ":hlo",
         ":hlo_pass",
+        ":hlo_reachability",
         "//tensorflow/compiler/xla:util",
         "//tensorflow/core:lib",
         "@com_google_absl//absl/algorithm:container",
@@ -1387,6 +1389,7 @@ cc_library(
     srcs = ["multi_output_fusion.cc"],
     hdrs = ["multi_output_fusion.h"],
     deps = [
+        ":hlo_reachability",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla/service:hlo",
@@ -3241,6 +3244,7 @@ cc_library(
         ":hlo_profile_printer_data",
         ":human_readable_profile_builder",
         "//tensorflow/compiler/xla:types",
+        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -3365,6 +3369,7 @@ cc_library(
         ":bfloat16_normalization",
         ":defuser",
         ":hlo",
+        ":hlo_memory_scheduler",
         ":hlo_pass",
         ":hlo_pass_pipeline",
         ":implicit_broadcast_remover",
@@ -3448,6 +3453,7 @@ tf_cc_test(
         ":hlo_casting_utils",
         ":hlo_matchers",
         ":hlo_parser",
+        "//tensorflow/compiler/xla:test_helpers",
         "//tensorflow/compiler/xla:window_util",
         "//tensorflow/core:lib",
         "//tensorflow/core:test",

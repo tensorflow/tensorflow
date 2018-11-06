@@ -199,6 +199,7 @@ tf_cuda_cc_test(
     size = "small",
     srcs = ["c_api_test.cc"],
     data = [
+        ":test_op1.so",
         "//tensorflow/cc/saved_model:saved_model_half_plus_two",
     ],
     kernels = [":test_op_kernel"],
@@ -283,8 +284,8 @@ tf_cc_test(
 )
 
 tf_custom_op_library(
-    name = "test_op.so",
-    srcs = ["test_op.cc"],
+    name = "test_op1.so",
+    srcs = ["test_op1.cc"],
 )
 
 tf_kernel_library(

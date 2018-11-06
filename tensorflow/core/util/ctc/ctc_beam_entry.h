@@ -146,4 +146,4 @@ class BeamComparer {
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_CORE_UTIL_CTC_CTC_BEAM_ENTRY_H_
-// LINT.ThenChange(//tensorflow/contrib/lite/experimental/kernels/ctc_beam_entry.h)
+// LINT.ThenChange(//tensorflow/lite/experimental/kernels/ctc_beam_entry.h)

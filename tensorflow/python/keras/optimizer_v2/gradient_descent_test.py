@@ -66,11 +66,7 @@ class GradientDescentOptimizerTest(test.TestCase):
         grads1 = constant_op.constant([0.01, 0.01], dtype=dtype)
         sgd = gradient_descent.SGD(3.0)
         sgd_op = sgd.apply_gradients(zip([grads0, grads1], [var0, var1]))
-        # TODO(apassos) calling initialize_resources on all resources here
-        # doesn't work because the sessions and graph are reused across unit
-        # tests and this would mean trying to reinitialize variables. Figure out
-        # a long-term solution for this.
-        resources.initialize_resources([var0, var1, sgd.iteration]).run()
+        variables.global_variables_initializer().run()
         # Fetch params to validate initial values
         self.assertAllCloseAccordingToType([1.0, 2.0], var0.eval())
         self.assertAllCloseAccordingToType([3.0, 4.0], var1.eval())
@@ -118,11 +114,7 @@ class GradientDescentOptimizerTest(test.TestCase):
         loss = pred * pred
         sgd = gradient_descent.SGD(1.0)
         sgd_op = sgd.minimize(loss, [var0, var1])
-        # TODO(apassos) calling initialize_resources on all resources here
-        # doesn't work because the sessions and graph are reused across unit
-        # tests and this would mean trying to reinitialize variables. Figure out
-        # a long-term solution for this.
-        resources.initialize_resources([var0, var1, sgd.iteration]).run()
+        variables.global_variables_initializer().run()
         # Fetch params to validate initial values
         self.assertAllCloseAccordingToType([[1.0, 2.0]], var0.eval())
         self.assertAllCloseAccordingToType([3.0], var1.eval())
@@ -257,12 +249,6 @@ class GradientDescentOptimizerTest(test.TestCase):
       # This shouldn't fail; in particular, the learning rate tensor should
       # be an EagerTensor once again, not a graph Tensor.
       self.assertEqual(float(step()), -1.0)
-
-  def testConfig(self):
-    opt = gradient_descent.SGD(learning_rate=1.0)
-    config = opt.get_config()
-    opt2 = gradient_descent.SGD.from_config(config)
-    self.assertEqual(opt._hyper["learning_rate"], opt2._hyper["learning_rate"])
 
 
 if __name__ == "__main__":

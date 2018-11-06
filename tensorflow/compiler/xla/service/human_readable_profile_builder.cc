@@ -112,8 +112,9 @@ string HumanReadableProfileBuilder::ToString() const {
 
   VLOG(1) << "Total floating point ops: " << total_flops;
 
-  print_op({"[total]", "[total]", /*category=*/"", total_cycles_, total_flops,
-            total_transcendentals, total_bytes, optimal_seconds_sum},
+  print_op({is_entry_computation_ ? "[total] [entry]" : "[total]", "[total]",
+            /*category=*/"", total_cycles_, total_flops, total_transcendentals,
+            total_bytes, optimal_seconds_sum},
            /*is_total=*/true);
 
   // Sort ops in decreasing order of cycles, and print them.

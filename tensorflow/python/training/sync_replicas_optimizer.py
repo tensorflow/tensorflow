@@ -31,6 +31,7 @@ from tensorflow.python.training import optimizer
 from tensorflow.python.training import queue_runner
 from tensorflow.python.training import session_manager
 from tensorflow.python.training import session_run_hook
+from tensorflow.python.util import deprecation
 from tensorflow.python.util.tf_export import tf_export
 
 
@@ -39,7 +40,7 @@ from tensorflow.python.util.tf_export import tf_export
 # rate according to the number of replicas. This change is introduced to be
 # consistent with how gradients are aggregated (averaged) within a batch in a
 # replica.
-@tf_export("train.SyncReplicasOptimizer")
+@tf_export(v1=["train.SyncReplicasOptimizer"])
 class SyncReplicasOptimizer(optimizer.Optimizer):
   """Class to synchronize, aggregate gradients and pass them to the optimizer.
 
@@ -139,6 +140,12 @@ class SyncReplicasOptimizer(optimizer.Optimizer):
   ```
   """
 
+  @deprecation.deprecated(
+      None,
+      "The `SyncReplicaOptimizer` is deprecated. For synchrononous training, "
+      "please use [Distribution Strategies](https://github.com/tensorflow/"
+      "tensorflow/tree/master/tensorflow/contrib/distribute).",
+      warn_once=True)
   def __init__(self,
                opt,
                replicas_to_aggregate,

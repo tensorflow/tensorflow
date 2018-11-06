@@ -296,7 +296,6 @@ class DistributeCoordinatorIntegrationTest(test.TestCase,
           eval_distribute_cls=[
               None, mirrored_strategy.MirroredStrategy,
               parameter_server_strategy.ParameterServerStrategy,
-              collective_all_reduce_strategy.CollectiveAllReduceStrategy
           ],
           required_gpus=[0, 1]))
   def test_complete_flow_standalone_client(self, train_distribute_cls,
@@ -307,7 +306,8 @@ class DistributeCoordinatorIntegrationTest(test.TestCase,
       train_distribute = train_distribute_cls(num_gpus_per_worker=2)
 
     if eval_distribute_cls:
-      eval_distribute = eval_distribute_cls()
+      eval_distribute = eval_distribute_cls(
+          num_gpus_per_worker=context.num_gpus())
     else:
       eval_distribute = None
 
@@ -336,7 +336,8 @@ class DistributeCoordinatorIntegrationTest(test.TestCase,
         num_gpus_per_worker=context.num_gpus())
 
     if eval_distribute_cls:
-      eval_distribute = eval_distribute_cls()
+      eval_distribute = eval_distribute_cls(
+          num_gpus_per_worker=context.num_gpus())
     else:
       eval_distribute = None
 
@@ -407,7 +408,6 @@ class DistributeCoordinatorIntegrationTest(test.TestCase,
           eval_distribute_cls=[
               None, mirrored_strategy.MirroredStrategy,
               parameter_server_strategy.ParameterServerStrategy,
-              collective_all_reduce_strategy.CollectiveAllReduceStrategy
           ],
           required_gpus=[0, 1]))
   def test_complete_flow_indepedent_worker_between_graph(
@@ -420,7 +420,8 @@ class DistributeCoordinatorIntegrationTest(test.TestCase,
       self.skipTest("`CollectiveAllReduceStrategy` needs at least two towers.")
 
     if eval_distribute_cls:
-      eval_distribute = eval_distribute_cls()
+      eval_distribute = eval_distribute_cls(
+          num_gpus_per_worker=context.num_gpus())
     else:
       eval_distribute = None
 
@@ -459,7 +460,8 @@ class DistributeCoordinatorIntegrationTest(test.TestCase,
         num_gpus_per_worker=context.num_gpus())
 
     if eval_distribute_cls:
-      eval_distribute = eval_distribute_cls()
+      eval_distribute = eval_distribute_cls(
+          num_gpus_per_worker=context.num_gpus())
     else:
       eval_distribute = None
 

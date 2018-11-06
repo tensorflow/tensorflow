@@ -1418,11 +1418,16 @@ def set_mpi_home(environ_cp):
   def valid_mpi_path(mpi_home):
     exists = (
         os.path.exists(os.path.join(mpi_home, 'include')) and
-        os.path.exists(os.path.join(mpi_home, 'lib')))
+        (os.path.exists(os.path.join(mpi_home, 'lib')) or
+         os.path.exists(os.path.join(mpi_home, 'lib64')) or
+         os.path.exists(os.path.join(mpi_home, 'lib32'))))
     if not exists:
-      print('Invalid path to the MPI Toolkit. %s or %s cannot be found' %
-            (os.path.join(mpi_home, 'include'),
-             os.path.exists(os.path.join(mpi_home, 'lib'))))
+      print(
+          'Invalid path to the MPI Toolkit. %s or %s or %s or %s cannot be found'
+          % (os.path.join(mpi_home, 'include'),
+             os.path.exists(os.path.join(mpi_home, 'lib')),
+             os.path.exists(os.path.join(mpi_home, 'lib64')),
+             os.path.exists(os.path.join(mpi_home, 'lib32'))))
     return exists
 
   _ = prompt_loop_or_load_from_env(
@@ -1463,8 +1468,17 @@ def set_other_mpi_vars(environ_cp):
   if os.path.exists(os.path.join(mpi_home, 'lib/libmpi.so')):
     symlink_force(
         os.path.join(mpi_home, 'lib/libmpi.so'), 'third_party/mpi/libmpi.so')
+  elif os.path.exists(os.path.join(mpi_home, 'lib64/libmpi.so')):
+    symlink_force(
+        os.path.join(mpi_home, 'lib64/libmpi.so'), 'third_party/mpi/libmpi.so')
+  elif os.path.exists(os.path.join(mpi_home, 'lib32/libmpi.so')):
+    symlink_force(
+        os.path.join(mpi_home, 'lib32/libmpi.so'), 'third_party/mpi/libmpi.so')
+
   else:
-    raise ValueError('Cannot find the MPI library file in %s/lib' % mpi_home)
+    raise ValueError(
+        'Cannot find the MPI library file in %s/lib or %s/lib64 or %s/lib32' %
+        mpi_home, mpi_home, mpi_home)
 
 
 def set_system_libs_flag(environ_cp):
@@ -1681,4 +1695,3 @@ def main():
 
 if __name__ == '__main__':
   main()
-

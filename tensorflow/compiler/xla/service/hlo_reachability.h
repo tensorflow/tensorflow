@@ -22,6 +22,7 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/map_util.h"
+#include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/types.h"
@@ -32,17 +33,26 @@ class HloInstruction;
 
 // A class for representing reachability between HloInstructions.
 //
-// !!! THIS CLASS DOES NOT COMPUTE REACHABILITY !!! It has an adjacency matrix
-// and it is up to the user of the class to set the adjacency matrix such that
-// it represents reachability, i.e. such that it is transitive. That the graph
-// be transitive is thus not an invariant of this class, but it is required for
-// the name of the class and its methods to make sense.
+// It has an adjacency matrix and it is up to the user of the class to set the
+// adjacency matrix such that it represents reachability, i.e. such that it is
+// transitive. That the graph be transitive is thus not an invariant of this
+// class, but it is required for the name of the class and its methods to make
+// sense.
 class HloReachabilityMap {
  public:
   // Sets up a graph with no edges and where the nodes correspond to the given
   // instructions.
   explicit HloReachabilityMap(
       absl::Span<const HloInstruction* const> instructions);
+
+  // Computes and returns the reachability between HLO instructions in the
+  // computation. The returned HloReachabilityMap is constructed such that
+  // HloReachabilityMap::IsReachable(a, b) returns true iff there exists a
+  // directed path (from producer to consumer) from 'a' to 'b'. Both data
+  // dependencies (operands) and control dependencies are considered for
+  // reachability. Trivially an instruction is reachable from itself.
+  static std::unique_ptr<HloReachabilityMap> Build(
+      const HloComputation* computation);
 
   // Set the reachability set of 'instruction' to the union of the reachability
   // sets of 'inputs'. Upon return, IsReachable(x, instruction) where
@@ -70,6 +80,10 @@ class HloReachabilityMap {
   // adjacency matrix.
   void SetReachable(const HloInstruction* a, const HloInstruction* b);
 
+  // Updates the given reachability map after the immediate predecessor set
+  // (operands and control predecessors) of 'instruction' has changed.
+  void UpdateReachabilityThroughInstruction(const HloInstruction* instruction);
+
   // Returns true if "b" is reachable from "a"
   //
   // Note that this function only correctly answers queries about reachability
@@ -81,6 +95,9 @@ class HloReachabilityMap {
   // Note that this function only correctly answers queries about reachability
   // if the set of edges that have been provided to this class are transitive.
   bool IsConnected(const HloInstruction* a, const HloInstruction* b) const;
+
+  // Checks if an instruction is in the Reachability map.
+  bool IsPresent(const HloInstruction* a) const { return indices_.contains(a); }
 
  private:
   // A bit-vector implementation specialized for this use case which provides a

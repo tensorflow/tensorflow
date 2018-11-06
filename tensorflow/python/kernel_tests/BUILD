@@ -2562,6 +2562,8 @@ cuda_py_test(
     ],
     shard_count = 4,
     tags = [
+        # TODO(b/118887316): Re-enable this test in Kokoro.
+        "no_oss",
         "optonly",  # times out
     ],
 )
@@ -2579,6 +2581,8 @@ cuda_py_test(
         "//tensorflow/python:nn_grad",
         "//tensorflow/python:nn_ops",
     ],
+    # TODO(b/118842098): Re-enable this test in Kokoro.
+    tags = ["no_oss"],
 )
 
 tf_py_test(
@@ -2723,6 +2727,22 @@ cuda_py_test(
         "//tensorflow/python:errors",
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:gradients",
+    ],
+)
+
+cuda_py_test(
+    name = "huge_slice_op_test",
+    size = "medium",
+    srcs = ["huge_slice_op_test.py"],
+    additional_deps = [
+        "//third_party/py/numpy",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:errors",
+        "//tensorflow/python:framework_for_generated_wrappers",
+    ],
+    tags = [
+        "no_oss",  # Requires 4GB+ RAM
     ],
 )
 

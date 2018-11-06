@@ -226,7 +226,7 @@ class WhileV2Test(test.TestCase, parameterized.TestCase):
       ("PartiallyDefinedShape", [None, 2]),
       ("FullyDefinedShape", [1, 2]),
   )
-  def testTensorListOutputElementShape(self, shape):
+  def testAccumulatorElementShape(self, shape):
 
     def MatchShape(actual_tensor_shape):
       # Compare the shapes, treating None dimensions as equal. We do not
@@ -267,7 +267,7 @@ class WhileV2Test(test.TestCase, parameterized.TestCase):
     # values of grad_y.
     # grad_while_op.inputs:
     # [counter_arg, total_iters_arg, grad_x_arg, grad_y_arg, *other_args]
-    grad_output = GetAccumulatorForInputAtIndex(grad_while_op, 4)
+    grad_output = GetAccumulatorForInputAtIndex(grad_while_op, 3)
     _, val = list_ops.tensor_list_pop_back(grad_output,
                                            element_dtype=dtypes.float32)
     MatchShape(val.shape)

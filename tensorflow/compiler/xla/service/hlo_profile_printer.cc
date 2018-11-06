@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/hlo_profile_printer.h"
 
+#include "absl/strings/str_cat.h"
 #include "tensorflow/compiler/xla/service/human_readable_profile_builder.h"
 
 namespace xla {
@@ -24,6 +25,11 @@ string PrintHloProfile(const HloProfilePrinterData& hlo_profile_printer_data,
   using HloInstructionInfo = HloProfilePrinterData::HloInstructionInfo;
 
   string result;
+
+  for (const auto& item : hlo_profile_printer_data.extra_metrics()) {
+    absl::StrAppend(&result, "Extra metric ", item.first, ": ",
+                    counters[item.second], "\n");
+  }
 
   for (const HloComputationInfo& computation_info :
        hlo_profile_printer_data.computation_infos()) {
@@ -41,8 +47,9 @@ string PrintHloProfile(const HloProfilePrinterData& hlo_profile_printer_data,
     // Once we start using this in AOT for real, we will probably need a more
     // minimal version of HumanReadableProfileBuilder.
     HumanReadableProfileBuilder builder(
-        computation_info.name(), counters[computation_info.profile_index()],
-        clock_rate_ghz);
+        computation_info.name(),
+        hlo_profile_printer_data.entry_computation() == computation_info.name(),
+        counters[computation_info.profile_index()], clock_rate_ghz);
 
     for (const auto& instruction_info : instruction_infos) {
       builder.AddOp(

@@ -86,9 +86,10 @@ class ModelDatasetOp : public UnaryDatasetOpKernel {
       }
 
       Status Initialize(IteratorContext* ctx) override {
-        IteratorContext ctx_with_model(CreateParams(ctx));
-        return dataset()->input_->MakeIterator(&ctx_with_model, prefix(),
-                                               &input_impl_);
+        IteratorContext::Params params(ctx);
+        params.model = model_;
+        return dataset()->input_->MakeIterator(
+            IteratorContext(std::move(params)), prefix(), &input_impl_);
       }
 
       Status GetNextInternal(IteratorContext* ctx,
@@ -96,12 +97,19 @@ class ModelDatasetOp : public UnaryDatasetOpKernel {
                              bool* end_of_sequence) override {
         mutex_lock l(mu_);
         TF_RETURN_IF_ERROR(EnsureOptimizeThreadStarted(ctx));
-        IteratorContext ctx_with_model(CreateParams(ctx));
-        return input_impl_->GetNext(&ctx_with_model, out_tensors,
-                                    end_of_sequence);
+        IteratorContext::Params params(ctx);
+        params.model = model_;
+        return input_impl_->GetNext(IteratorContext(std::move(params)),
+                                    out_tensors, end_of_sequence);
       }
 
      protected:
+      std::shared_ptr<model::Node> CreateNode(
+          IteratorContext* ctx, model::Node::Args args) const override {
+        return model::MakeKnownRatioNode(std::move(args),
+                                         /*ratio=*/1);
+      }
+
       Status SaveInternal(IteratorStateWriter* writer) override {
         mutex_lock l(mu_);
         TF_RETURN_IF_ERROR(SaveInput(writer, input_impl_));
@@ -115,19 +123,13 @@ class ModelDatasetOp : public UnaryDatasetOpKernel {
         return Status::OK();
       }
 
-      IteratorContext::Params CreateParams(IteratorContext* ctx) {
-        IteratorContext::Params params = ctx->params();
-        params.model = model_;
-        return params;
-      }
-
      private:
       Status EnsureOptimizeThreadStarted(IteratorContext* ctx)
           EXCLUSIVE_LOCKS_REQUIRED(mu_) {
         if (!optimize_thread_) {
           std::shared_ptr<IteratorContext> new_ctx(new IteratorContext(*ctx));
           optimize_thread_.reset(ctx->env()->StartThread(
-              {}, "optimize_thread",
+              {}, "tf_data_model",
               [this, new_ctx]() { OptimizeThread(new_ctx); }));
         }
         return Status::OK();

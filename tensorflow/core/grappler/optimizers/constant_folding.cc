@@ -157,6 +157,16 @@ bool GetConcatAxis(const GraphProperties& properties, NodeDef* node,
   return true;
 }
 
+bool HasTPUAttributes(const NodeDef& node) {
+  AttrSlice attrs(node);
+  for (auto attr : attrs) {
+    if (attr.first.find("_tpu_") != attr.first.npos) {
+      return true;
+    }
+  }
+  return false;
+}
+
 }  // namespace
 
 ConstantFolding::ConstantFolding(RewriterConfig::Toggle opt_level,
@@ -764,6 +774,13 @@ bool ConstantFolding::IsFoldable(const NodeDef& node) const {
     return false;
   }
 
+  // Don't fold nodes that contain TPU attributes.
+  // TODO(rmlarsen): We should be able to fold many of these nodes as long as we
+  // properly forward custom attributes, b/119051778.
+  if (HasTPUAttributes(node)) {
+    return false;
+  }
+
   const OpDef* op_def = nullptr;
   Status status = OpRegistry::Global()->LookUpOpDef(node.op(), &op_def);
   if (!status.ok()) {
@@ -988,9 +1005,8 @@ Status ConstantFolding::EvaluateOneFoldable(const NodeDef& node,
   });
 
   for (const auto& input : node.input()) {
-    int port = 0;
-    ParseNodeNameAsStringPiece(input, &port);
-    if (port < 0) {
+    const TensorId input_tensor = ParseTensorName(input);
+    if (input_tensor.index() < 0) {
       // Control dependency
       break;
     }
@@ -1129,9 +1145,12 @@ Status ConstantFolding::FoldNode(NodeDef* node, GraphDef* output_graph,
   std::vector<NodeDef> const_nodes;
   TF_RETURN_IF_ERROR(
       EvaluateOneFoldable(*node, &const_nodes, result_too_large));
+  VLOG(1) << "Folded node:\n" << node->DebugString();
+
   NodeDef* constant_output = nullptr;
   for (int i = 0; i < const_nodes.size(); i++) {
     NodeDef* const_node = &const_nodes[i];
+    VLOG(1) << "Generated constant node:\n" << const_node->DebugString();
     if (const_node->name().empty()) {
       // Dead output: we can't create a constant to encode its value, so we'll
       // just skip it. We'll preserve the edges that originate from that
@@ -1596,15 +1615,19 @@ Status ConstantFolding::ReplaceOperationWithConstant(
 
 Status ConstantFolding::SimplifyGraph(
     bool use_shape_info, GraphDef* optimized_graph, GraphProperties* properties,
-    const absl::flat_hash_set<string>& nodes_to_not_simplify) {
+    absl::flat_hash_set<string>* nodes_to_not_simplify) {
   for (int i = 0; i < optimized_graph->node_size(); ++i) {
+    NodeDef* node = optimized_graph->mutable_node(i);
     // TODO(lyandy): Move nodes to not simplify check into SimplifyNode and
     // generalize to only restrict certain simplifications.
-    if (nodes_to_not_simplify.find(optimized_graph->node(i).name()) ==
-        nodes_to_not_simplify.end()) {
-      TF_RETURN_IF_ERROR(SimplifyNode(use_shape_info,
-                                      optimized_graph->mutable_node(i),
-                                      optimized_graph, properties));
+    if (nodes_to_not_simplify->find(node->name()) ==
+        nodes_to_not_simplify->end()) {
+      if (HasTPUAttributes(optimized_graph->node(i))) {
+        nodes_to_not_simplify->insert(node->name());
+        continue;
+      }
+      TF_RETURN_IF_ERROR(
+          SimplifyNode(use_shape_info, node, optimized_graph, properties));
     }
   }
   return Status::OK();
@@ -3043,7 +3066,7 @@ Status ConstantFolding::RunOptimizationPass(Cluster* cluster,
   TF_RETURN_IF_ERROR(FoldGraph(optimized_graph, &nodes_to_not_simplify));
   node_map_.reset(new NodeMap(optimized_graph));
   TF_RETURN_IF_ERROR(SimplifyGraph(can_use_shape_info, optimized_graph,
-                                   &properties, nodes_to_not_simplify));
+                                   &properties, &nodes_to_not_simplify));
 
   return Status::OK();
 }

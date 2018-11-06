@@ -179,6 +179,13 @@ class BinaryOpsTest(xla_test.XLATestCase):
           expected=np.array([0, 0, 0, 0, 0, 6, 7, 8, 9, 10, 0, 0], dtype=dtype))
 
       self._testBinary(
+          gen_nn_ops.leaky_relu_grad,
+          np.array([1, 2, 3, 4, 5, 6, 7, 8, 9, 10], dtype=dtype),
+          np.array([0, 0, 0, 0, 0, 0.1, 0.3, 0.5, 0.7, 0.9], dtype=dtype),
+          expected=np.array([0.2, 0.4, 0.6, 0.8, 1, 6, 7, 8, 9, 10],
+                            dtype=dtype))
+
+      self._testBinary(
           gen_nn_ops.softmax_cross_entropy_with_logits,
           np.array([[1, 2, 3, 4], [5, 6, 7, 8]], dtype=dtype),
           np.array([[0.1, 0.2, 0.3, 0.4], [0.4, 0.3, 0.2, 0.1]], dtype=dtype),

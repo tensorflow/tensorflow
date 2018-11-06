@@ -384,6 +384,27 @@ TEST_F(UtilsTest, DeleteNodes) {
   // TODO(rmlarsen): write forgotten test.
 }
 
+TEST(IsKernelRegisteredForNode, All) {
+  NodeDef node;
+  node.set_name("foo");
+  node.set_op("NoOp");
+  node.set_device("/cpu:0");
+  TF_EXPECT_OK(IsKernelRegisteredForNode(node));
+  node.set_device("/gpu:0");
+  TF_EXPECT_OK(IsKernelRegisteredForNode(node));
+
+  // Bad device name.
+  node.set_device("");
+  EXPECT_FALSE(IsKernelRegisteredForNode(node).ok());
+
+  // Check an op that is only defined on CPU.
+  node.set_op("MatchingFiles");
+  node.set_device("/cpu:0");
+  TF_EXPECT_OK(IsKernelRegisteredForNode(node));
+  node.set_device("/gpu:0");
+  EXPECT_FALSE(IsKernelRegisteredForNode(node).ok());
+}
+
 #define BM_NodePositionIfSameNode(I, N, NAME)               \
   static void BM_NodePositionIfSameNode_##NAME(int iters) { \
     string input = I;                                       \

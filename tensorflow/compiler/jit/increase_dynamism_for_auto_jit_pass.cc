@@ -221,8 +221,8 @@ Status ConvertTensorFlowSliceToStaticShapedSlice(
                      .WithOpName("static_shaped_slice"),
                  slice_inputs_int64.input, slice_inputs_int64.begin, slice_size)
           .node();
-  std::vector<int> compile_time_const_inputs;
-  compile_time_const_inputs.push_back(2);
+  std::vector<string> compile_time_const_inputs;
+  compile_time_const_inputs.push_back("size");
   (*result)->AddAttr(kXlaCompileTimeConstantInputsAttr,
                      compile_time_const_inputs);
   return status;
@@ -314,15 +314,18 @@ Status FindAndRewriteSlices(Graph* g, bool* changed) {
 
 Status IncreaseDynamismForAutoJitPass::Run(
     const GraphOptimizationPassOptions& options) {
+  legacy_flags::MarkForCompilationPassFlags* flags =
+      legacy_flags::GetMarkForCompilationPassFlags();
+  if (flags->tf_xla_clustering_debug) {
+    dump_graph::DumpGraphToFile("before_increase_dynamism_for_auto_jit_pass",
+                                **options.graph, options.flib_def);
+  }
+
   bool changed;
   TF_RETURN_IF_ERROR(FindAndRewriteSlices(options.graph->get(), &changed));
-  if (changed) {
-    legacy_flags::MarkForCompilationPassFlags* flags =
-        legacy_flags::GetMarkForCompilationPassFlags();
-    if (flags->tf_xla_clustering_debug) {
-      dump_graph::DumpGraphToFile("increase_dynamism_for_auto_jit_pass",
-                                  **options.graph, options.flib_def);
-    }
+  if (changed && flags->tf_xla_clustering_debug) {
+    dump_graph::DumpGraphToFile("increase_dynamism_for_auto_jit_pass",
+                                **options.graph, options.flib_def);
   }
 
   return Status::OK();

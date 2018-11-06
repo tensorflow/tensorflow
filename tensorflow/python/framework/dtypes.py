@@ -652,8 +652,10 @@ _QUANTIZED_DTYPES_NO_REF = frozenset([qint8, quint8, qint16, quint16, qint32])
 _QUANTIZED_DTYPES_REF = frozenset(
     [qint8_ref, quint8_ref, qint16_ref, quint16_ref, qint32_ref])
 QUANTIZED_DTYPES = _QUANTIZED_DTYPES_REF.union(_QUANTIZED_DTYPES_NO_REF)
-tf_export("dtypes.QUANTIZED_DTYPES", "QUANTIZED_DTYPES").export_constant(
-    __name__, "QUANTIZED_DTYPES")
+tf_export(
+    "dtypes.QUANTIZED_DTYPES",
+    v1=["dtypes.QUANTIZED_DTYPES", "QUANTIZED_DTYPES"]).export_constant(
+        __name__, "QUANTIZED_DTYPES")
 
 _PYTHON_TO_TF = {
     float: float32,

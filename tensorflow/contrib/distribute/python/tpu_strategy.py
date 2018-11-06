@@ -24,7 +24,6 @@ from __future__ import print_function
 import functools
 
 from tensorflow.contrib.distribute.python import cross_tower_ops as cross_tower_ops_lib
-from tensorflow.contrib.distribute.python import one_device_strategy
 from tensorflow.contrib.distribute.python import values
 from tensorflow.contrib.tpu.python.ops import tpu_ops
 from tensorflow.contrib.tpu.python.tpu import tpu
@@ -114,9 +113,8 @@ def _create_tpu_mirrored_variable(devices, real_mirrored_creator, *args,
   return result
 
 
-# TODO(jhseu): Stop inheriting from OneDeviceStrategy.
-class TPUStrategy(one_device_strategy.OneDeviceStrategy):
-  """Experimental TPU distribution strategy implementation."""
+class TPUStrategy(distribute_lib.DistributionStrategy):
+  """TPU distribution strategy implementation."""
 
   def __init__(self, tpu_cluster_resolver, steps_per_run, num_cores=None):
     """Initializes the TPUStrategy object.
@@ -132,9 +130,7 @@ class TPUStrategy(one_device_strategy.OneDeviceStrategy):
       num_cores: Number of cores to use on the TPU. If None specified, then
           auto-detect the cores and topology of the TPU system.
     """
-    # TODO(sourabhbajaj): OneDeviceStrategy should be initialized with the
-    # master node fetched from the cluster resolver.
-    super(TPUStrategy, self).__init__("/device:CPU:0")
+    super(TPUStrategy, self).__init__()
 
     self._tpu_cluster_resolver = tpu_cluster_resolver
     self._tpu_metadata = get_tpu_system_metadata(self._tpu_cluster_resolver)
@@ -146,6 +142,7 @@ class TPUStrategy(one_device_strategy.OneDeviceStrategy):
     device_map = {d.name: i for i, d in enumerate(self._tpu_metadata.devices)
                   if "device:TPU:" in d.name}
     self._device_index = values.PerDevice(device_map)
+    self._host_device = self.get_host_cpu_device(0)
     self._tpu_devices = sorted(device_map.keys())
     # Only create variables for the number of replicas we're running.
     self._tpu_devices = self._tpu_devices[:self.num_replicas]
@@ -323,7 +320,7 @@ class TPUStrategy(one_device_strategy.OneDeviceStrategy):
     # TODO(jhseu): Consider making it so call_for_each_replica implies that
     # we're in a tpu.rewrite(), and update TPUMirroredVariable accordingly.
     kwargs.pop("run_concurrently", None)
-    with one_device_strategy._OneDeviceReplicaContext(self):  # pylint: disable=protected-access
+    with _TPUReplicaContext(self):
       return fn(*args, **kwargs)
 
   def initialize(self):
@@ -402,7 +399,7 @@ class TPUStrategy(one_device_strategy.OneDeviceStrategy):
     devices = cross_tower_ops_lib.get_devices_from(destinations)
     if len(devices) == 1:
       assert device_util.canonicalize(devices[0]) == device_util.canonicalize(
-          self.get_host_cpu_device(0))
+          self._host_device)
     else:
       raise ValueError("Multiple devices are not supported for TPUStrategy")
 
@@ -453,6 +450,13 @@ class TPUStrategy(one_device_strategy.OneDeviceStrategy):
       return val
     return [val]
 
+  def value_container(self, value):
+    return value
+
+  def _broadcast(self, tensor, destinations):
+    del destinations
+    return tensor
+
   @property
   def num_replicas(self):
     return self._num_cores_override or self._tpu_metadata.num_cores
@@ -493,6 +497,21 @@ class TPUStrategy(one_device_strategy.OneDeviceStrategy):
   def parameter_devices(self):
     return self._tpu_devices
 
+  def non_slot_devices(self, var_list):
+    return self._host_device
+
+  def _update_non_slot(self, colocate_with, options, fn, *args, **kwargs):
+    del colocate_with
+    should_group = options.pop("grouped")
+    assert not options  # Validate that we are processing all of the options.
+    with ops.device(self._host_device), distribute_lib.UpdateContext(
+        self._host_device):
+      result = fn(*args, **kwargs)
+      if should_group:
+        return result
+      else:
+        return nest.map_structure(self._unwrap, result)
+
   def get_host(self, host_id):
     if self._tpu_cluster_resolver.get_master() in ("", "local"):
       return "/replica:0/task:0"
@@ -513,3 +532,17 @@ class TPUStrategy(one_device_strategy.OneDeviceStrategy):
       cluster_spec = self._tpu_cluster_resolver.cluster_spec()
       if cluster_spec:
         session_config.cluster_def.CopyFrom(cluster_spec.as_cluster_def())
+
+
+class _TPUReplicaContext(distribute_lib.ReplicaContext):
+  """Replication Context class for TPU Strategy."""
+
+  # TODO(sourabhbajaj): Call for each tower should be updating this.
+  def __init__(self, distribution_strategy):
+    distribute_lib.ReplicaContext.__init__(
+        self, distribution_strategy, replica_id=0)
+
+  @property
+  def device(self):
+    distribute_lib.require_replica_context(self)
+    return self._distribution_strategy.worker_devices[self._replica_id]

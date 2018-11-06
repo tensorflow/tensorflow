@@ -96,8 +96,8 @@ def configure_callbacks(callbacks,
   # Add additional callbacks
   model.history = History()
   stateful_metric_names = None
-  if hasattr(model, 'stateful_metric_names'):
-    stateful_metric_names = model.stateful_metric_names
+  if hasattr(model, 'metrics_names'):
+    stateful_metric_names = model.metrics_names[1:]  # Exclude `loss`
   callbacks = [BaseLogger(stateful_metrics=stateful_metric_names)
               ] + (callbacks or []) + [model.history]
   if verbose:
@@ -108,10 +108,10 @@ def configure_callbacks(callbacks,
   # Set callback model
   callback_model = model._get_callback_model()  # pylint: disable=protected-access
   if do_validation and val_inputs and not context.executing_eagerly():
-    # Need to create the test_function before start of the first epoch
+    # Need to create the eval_function before start of the first epoch
     # because TensorBoard callback on_epoch_begin adds summary to the
-    # list of fetches of the test_function
-    callback_model._make_test_function()  # pylint: disable=protected-access
+    # list of fetches of the eval_function
+    callback_model._make_eval_function()  # pylint: disable=protected-access
   callback_list.set_model(callback_model)
 
   # Set callback parameters
@@ -1124,17 +1124,19 @@ class TensorBoard(Callback):
     self._total_batches_seen += 1
 
   def on_epoch_begin(self, epoch, logs=None):
-    """Add histogram op to Model test_function callbacks, reset batch count."""
+    """Add histogram op to Model eval_function callbacks, reset batch count."""
 
     # check if histogram summary should be run for this epoch
     if self.histogram_freq and epoch % self.histogram_freq == 0:
       self._epoch = epoch
       self._current_val_batch = 0
+      # pylint: disable=protected-access
       # add the histogram summary op if it should run this epoch
-      if self.merged not in self.model.test_function.fetches:
-        self.model.test_function.fetches.append(self.merged)
-        self.model.test_function.fetch_callbacks[
+      if self.merged not in self.model._eval_function.fetches:
+        self.model._eval_function.fetches.append(self.merged)
+        self.model._eval_function.fetch_callbacks[
             self.merged] = self._fetch_callback
+      # pylint: enable=protected-access
 
   def on_epoch_end(self, epoch, logs=None):
     """Checks if summary ops should run next epoch, logs scalar summaries."""
@@ -1152,10 +1154,12 @@ class TensorBoard(Callback):
 
     # pop the histogram summary op after each epoch
     if self.histogram_freq:
-      if self.merged in self.model.test_function.fetches:
-        self.model.test_function.fetches.remove(self.merged)
-      if self.merged in self.model.test_function.fetch_callbacks:
-        self.model.test_function.fetch_callbacks.pop(self.merged)
+      # pylint: disable=protected-access
+      if self.merged in self.model._eval_function.fetches:
+        self.model._eval_function.fetches.remove(self.merged)
+      if self.merged in self.model._eval_function.fetch_callbacks:
+        self.model._eval_function.fetch_callbacks.pop(self.merged)
+      # pylint: enable=protected-access
 
     if self.embeddings_data is None and self.embeddings_freq:
       raise ValueError('To visualize embeddings, embeddings_data must '

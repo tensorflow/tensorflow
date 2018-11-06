@@ -131,7 +131,6 @@ load(
     "tf_kernel_tests_linkstatic",
     "tf_lib_proto_compiler_deps",
     "tf_lib_proto_parsing_deps",
-    "tf_nano_proto_library",
     "tf_platform_hdrs",
     "tf_platform_srcs",
     "tf_proto_library",
@@ -248,15 +247,6 @@ tf_proto_library(
 
 tf_jspb_proto_library(
     name = "protos_all_jspb_proto",
-    visibility = ["//visibility:public"],
-    deps = [":protos_all_cc"],
-)
-
-tf_nano_proto_library(
-    name = "protos_all_nano_proto",
-    field_style = "accessors",
-    generate_equals = 1,
-    generate_intdefs = 1,
     visibility = ["//visibility:public"],
     deps = [":protos_all_cc"],
 )
@@ -2405,7 +2395,6 @@ cc_library(
     ]),
     hdrs = [
         "lib/bfloat16/bfloat16.h",
-        "lib/core/casts.h",
         "lib/core/stringpiece.h",
         "lib/png/png_io.h",
         "platform/byte_order.h",
@@ -2525,6 +2514,7 @@ FRAMEWORK_INTERNAL_PRIVATE_HEADERS = [
 })
 
 FRAMEWORK_INTERNAL_PUBLIC_HEADERS = [
+    "framework/model.h",  # only needed for tests
     "framework/op_segment.h",
     "framework/rendezvous.h",  # only needed for tests
     "framework/resource_var.h",
@@ -3621,6 +3611,7 @@ tf_cc_tests(
         "framework/kernel_def_builder_test.cc",
         "framework/kernel_def_util_test.cc",
         "framework/memory_types_test.cc",
+        "framework/model_test.cc",
         "framework/node_def_builder_test.cc",
         "framework/node_def_util_test.cc",
         "framework/op_compatibility_test.cc",
@@ -4378,6 +4369,7 @@ tf_cc_test(
         "//tensorflow/core/kernels:cwise_op",
         "//tensorflow/core/kernels:function_ops",
         "//tensorflow/core/kernels:matmul_op",
+        "//tensorflow/core/kernels:partitioned_function_ops",
         "//tensorflow/core/kernels:random_ops",
         "//tensorflow/core/kernels:shape_ops",
         "//third_party/eigen3",

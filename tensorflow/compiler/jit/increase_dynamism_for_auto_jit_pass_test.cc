@@ -129,8 +129,8 @@ TEST(SliceToDynamicSliceRewriteTest, Basic) {
       Op("ConcatV2"), AssignedDevice(kHostName),
       Inputs(m_slice_size_0, Const(static_cast<int64>(500)), Const(zero_32))));
 
-  std::vector<int> compile_time_constant_inputs;
-  compile_time_constant_inputs.push_back(2);
+  std::vector<string> compile_time_constant_inputs;
+  compile_time_constant_inputs.push_back("size");
   auto m_dynamic_slice = NodeWith(
       Op("Slice"), AssignedDevice(kDeviceName),
       Attr(kXlaCompileTimeConstantInputsAttr, compile_time_constant_inputs),

@@ -108,7 +108,7 @@ def entity_to_graph(o, program_ctx, arg_values, arg_types):
   Raises:
     ValueError: if the entity type is not supported.
   """
-  if program_ctx.options.verbose:
+  if program_ctx.options.verbose == converter.Verbosity.VERBOSE:
     logging.info('Converting {}'.format(o))
 
   if tf_inspect.isclass(o):
@@ -151,7 +151,7 @@ def entity_to_graph(o, program_ctx, arg_values, arg_types):
 
   program_ctx.add_to_cache(o, node)
 
-  if program_ctx.options.verbose:
+  if program_ctx.options.verbose == converter.Verbosity.VERBOSE:
     logging.info('Compiled output of {}:\n\n{}\n'.format(
         o, compiler.ast_to_source(node)))
 
@@ -192,8 +192,7 @@ def class_to_graph(c, program_ctx):
         program_ctx=program_ctx,
         arg_values={},
         arg_types={'self': (c.__name__, c)},
-        owner_type=c,
-        rewrite_errors=False)
+        owner_type=c)
     if class_namespace is None:
       class_namespace = namespace
     else:
@@ -265,8 +264,7 @@ def _add_self_references(namespace, autograph_module):
     # Craft a module that exposes parts of the external API as well as certain
     # internal modules.
     ag_internal = imp.new_module('autograph')
-    ag_internal.converted_call = autograph_module.converted_call
-    ag_internal.ConversionOptions = converter.ConversionOptions
+    ag_internal.__dict__.update(autograph_module.__dict__)
     ag_internal.utils = utils
     ag_internal.function_scope = function_wrapping.function_scope
     ag_internal.rewrite_graph_construction_error = (
@@ -283,8 +281,7 @@ def function_to_graph(f,
                       program_ctx,
                       arg_values,
                       arg_types,
-                      owner_type=None,
-                      rewrite_errors=True):
+                      owner_type=None):
   """Specialization of `entity_to_graph` for callable functions."""
 
   node, source = parser.parse_entity(f)
@@ -303,7 +300,7 @@ def function_to_graph(f,
       arg_types=arg_types,
       owner_type=owner_type)
   context = converter.EntityContext(namer, entity_info, program_ctx)
-  node = node_to_graph(node, context, rewrite_errors=rewrite_errors)
+  node = node_to_graph(node, context)
 
   # TODO(mdan): This somewhat duplicates the call rename logic in call_trees.py
   new_name, did_rename = namer.compiled_function_name(f.__name__, f, owner_type)
@@ -319,13 +316,12 @@ def function_to_graph(f,
   return [node], new_name, namespace
 
 
-def node_to_graph(node, context, rewrite_errors=True):
+def node_to_graph(node, context):
   """Convert Python code to equivalent TF graph mode code.
 
   Args:
     node: AST, the code to convert.
     context: converter.EntityContext
-    rewrite_errors: Boolean, whether or not to rewrite the error traceback.
 
   Returns:
     A tuple (node, deps):
@@ -363,6 +359,5 @@ def node_to_graph(node, context, rewrite_errors=True):
   if context.program.options.uses(converter.Feature.AUTO_CONTROL_DEPS):
     node = converter.apply_(node, context, side_effect_guards)
   node = converter.apply_(node, context, function_scopes)
-  if rewrite_errors:
-    node = converter.apply_(node, context, error_handlers)
+  node = converter.apply_(node, context, error_handlers)
   return node

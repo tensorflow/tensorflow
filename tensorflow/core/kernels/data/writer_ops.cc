@@ -29,10 +29,7 @@ class ToTFRecordOp : public AsyncOpKernel {
  public:
   explicit ToTFRecordOp(OpKernelConstruction* ctx)
       : AsyncOpKernel(ctx),
-        thread_pool_(new thread::ThreadPool(
-            ctx->env(), ThreadOptions(),
-            strings::StrCat("to_tf_record__op_", SanitizeThreadSuffix(name())),
-            1 /* num_threads */, false /* low_latency_hint */)) {}
+        background_worker_(ctx->env(), "tf_data_to_tf_record") {}
 
   template <typename T>
   Status ParseScalarArgument(OpKernelContext* ctx,
@@ -47,10 +44,9 @@ class ToTFRecordOp : public AsyncOpKernel {
   }
 
   void ComputeAsync(OpKernelContext* ctx, DoneCallback done) override {
-    // The call to `iterator->GetNext()` may block and depend on an
-    // inter-op thread pool thread, so we issue the call from the
-    // owned thread pool.
-    thread_pool_->Schedule([this, ctx, done]() {
+    // The call to `iterator->GetNext()` may block and depend on an inter-op
+    // thread pool thread, so we issue the call using a background thread.
+    background_worker_.Schedule([this, ctx, done]() {
       string filename;
       OP_REQUIRES_OK_ASYNC(
           ctx, ParseScalarArgument<string>(ctx, "filename", &filename), done);
@@ -97,7 +93,7 @@ class ToTFRecordOp : public AsyncOpKernel {
   }
 
  private:
-  std::unique_ptr<thread::ThreadPool> thread_pool_;
+  BackgroundWorker background_worker_;
 };
 
 REGISTER_KERNEL_BUILDER(Name("DatasetToTFRecord").Device(DEVICE_CPU),

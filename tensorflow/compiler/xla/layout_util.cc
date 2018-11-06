@@ -201,8 +201,7 @@ Layout CreateDefaultLayoutForRank(int64 rank) {
   }
 
   if (!ShapeUtil::IsArray(shape)) {
-    if (layout.minor_to_major_size() != 0 ||
-        layout.padded_dimensions_size() != 0) {
+    if (layout.minor_to_major_size() != 0) {
       return InvalidArgument(
           "shape of primitive type %s should not have a non-trivial layout",
           PrimitiveType_Name(shape.element_type()));
@@ -240,28 +239,6 @@ Layout CreateDefaultLayoutForRank(int64 rank) {
             HumanString(layout));
       }
       dimensions_in_layout[dim] = true;
-    }
-
-    if (layout.padded_dimensions_size() > 0) {
-      if (layout.padded_dimensions_size() != ShapeUtil::Rank(shape)) {
-        return InvalidArgument(
-            "layout has %d padded dimensions, but shape is rank %d",
-            layout.padded_dimensions_size(), ShapeUtil::Rank(shape));
-      }
-      for (int i = 0; i < layout.padded_dimensions_size(); ++i) {
-        if (layout.padded_dimensions(i) < shape.dimensions(i)) {
-          return InvalidArgument(
-              "for dimension %d, dimension padding (%d) is smaller than "
-              "the dimension size (%d) of the shape",
-              i, layout.padded_dimensions(i), shape.dimensions(i));
-        }
-      }
-    }
-  }
-
-  if (layout.format() == SPARSE) {
-    if (!layout.padded_dimensions().empty()) {
-      return InvalidArgument("Sparse layout has padded dimensions");
     }
   }
 
@@ -301,38 +278,6 @@ Layout CreateDefaultLayoutForRank(int64 rank) {
   CHECK(layout.format() == DENSE);
   return std::is_sorted(layout.minor_to_major().begin(),
                         layout.minor_to_major().end(), std::greater<int64>());
-}
-
-/* static */ bool LayoutUtil::IsPadded(const Shape& shape) {
-  if (!ShapeUtil::IsArray(shape) || !HasLayout(shape) ||
-      shape.layout().padded_dimensions_size() == 0) {
-    return false;
-  }
-  CHECK(IsDenseArray(shape)) << shape.ShortDebugString();
-  CHECK_EQ(shape.dimensions_size(), shape.layout().padded_dimensions_size());
-  for (int64 i = 0; i < shape.dimensions_size(); ++i) {
-    if (shape.layout().padded_dimensions(i) > shape.dimensions(i)) {
-      return true;
-    }
-  }
-  return false;
-}
-
-/* static */ absl::Span<const int64> LayoutUtil::PaddedDimensions(
-    const Shape& shape) {
-  CHECK(IsDenseArray(shape));
-  return AsInt64Slice(shape.layout().padded_dimensions());
-}
-
-/* static */ int64 LayoutUtil::PaddedDimension(const Shape& shape,
-                                               int64 index) {
-  CHECK(IsDenseArray(shape));
-  return shape.layout().padded_dimensions(index);
-}
-
-/* static */ PaddingValue LayoutUtil::GetPaddingValue(const Shape& shape) {
-  CHECK(IsDenseArray(shape));
-  return shape.layout().padding_value();
 }
 
 /* static */ bool LayoutUtil::IsSparseArray(const Shape& shape) {
@@ -513,13 +458,6 @@ std::ostream& operator<<(std::ostream& out, const Layout& layout) {
   for (int64 minor_to_major : layout.minor_to_major()) {
     hash_value = Hash64Combine(hash_value, hash<int64>()(minor_to_major));
   }
-
-  for (int64 padded_dim : layout.padded_dimensions()) {
-    hash_value = Hash64Combine(hash_value, hash<int64>()(padded_dim));
-  }
-
-  hash_value =
-      Hash64Combine(hash_value, hash<PaddingValue>()(layout.padding_value()));
   hash_value = Hash64Combine(hash_value, layout.max_sparse_elements());
 
   return hash_value;

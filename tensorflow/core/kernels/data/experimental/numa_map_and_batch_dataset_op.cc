@@ -200,16 +200,9 @@ class NumaMapAndBatchDatasetOp : public UnaryDatasetOpKernel {
 
       Status Initialize(IteratorContext* ctx) override {
         mutex_lock l(*mu_);
-        AddConstantParameter(ctx, "batch_size", dataset()->batch_size_);
         if (num_parallel_calls_->value == kAutoTune) {
-          num_parallel_calls_->value = std::max(1, port::NUMANumNodes());
-          AddTunableParameter(ctx,
-                              /* name = */ "parallelism",
-                              /* state = */ num_parallel_calls_,
-                              /* min = */ num_parallel_calls_->value,
-                              /* max = */ port::NumSchedulableCPUs());
-        } else {
-          AddConstantParameter(ctx, "parallelism", num_parallel_calls_->value);
+          num_parallel_calls_->value = ctx->runner_threadpool_size();
+          num_parallel_calls_->tunable = true;
         }
         TF_RETURN_IF_ERROR(
             dataset()->input_->MakeIterator(ctx, prefix(), &input_impl_));
@@ -246,6 +239,14 @@ class NumaMapAndBatchDatasetOp : public UnaryDatasetOpKernel {
       }
 
      protected:
+      std::shared_ptr<model::Node> CreateNode(
+          IteratorContext* ctx, model::Node::Args args) const override {
+        return model::MakeAsyncKnownRatioNode(
+            std::move(args), dataset()->batch_size_,
+            {model::MakeParameter("parallelism", num_parallel_calls_, /*min=*/1,
+                                  /*max=*/ctx->runner_threadpool_size())});
+      }
+
       Status SaveInternal(IteratorStateWriter* writer) override {
         mutex_lock l(*mu_);
         for (size_t i = 0; i < workers_.size(); ++i) {
@@ -906,8 +907,7 @@ class NumaMapAndBatchDatasetOp : public UnaryDatasetOpKernel {
               new_ctx = std::make_shared<IteratorContext>(*ctx);
             }
             workers_[i]->threads.emplace_back(ctx->env()->StartThread(
-                {},
-                strings::StrCat("numa_map_and_batch_block_", i, "_thread_", j),
+                {}, strings::StrCat("tf_data_numa_map_and_batch_", i, "_", j),
                 [this, new_ctx, i, j]() { WorkerThread(new_ctx, i, j); }));
             VLOG(3) << "Worker " << i << ", " << j << " successfully started.";
           }
@@ -917,7 +917,7 @@ class NumaMapAndBatchDatasetOp : public UnaryDatasetOpKernel {
             new_ctx = std::make_shared<IteratorContext>(*ctx);
           }
           runner_thread_.reset(ctx->env()->StartThread(
-              {}, "numa_map_runner_thread",
+              {}, "tf_data_numa_map_and_batch",
               [this, new_ctx] { RunnerThread(new_ctx); }));
         }
         VLOG(3) << "All workers & runner thread started.";
