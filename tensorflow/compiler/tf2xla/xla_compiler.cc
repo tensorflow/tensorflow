@@ -37,6 +37,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/graph_optimizer.h"
 #include "tensorflow/core/framework/attr_value_util.h"
 #include "tensorflow/core/framework/node_def_util.h"
+#include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/graph/algorithm.h"
 #include "tensorflow/core/graph/graph_constructor.h"
 #include "tensorflow/core/graph/node_builder.h"
@@ -110,8 +111,13 @@ XlaCompiler::XlaCompiler(XlaCompiler::Options options)
 
   // The default shape representation function is the identity.
   if (!options_.shape_representation_fn) {
-    options_.shape_representation_fn = [](const TensorShape& shape,
-                                          DataType type) { return shape; };
+    options_.shape_representation_fn =
+        [](const TensorShape& shape,
+           DataType dtype) -> xla::StatusOr<xla::Shape> {
+      xla::Shape xla_shape;
+      TF_RETURN_IF_ERROR(TensorShapeToXLAShape(dtype, shape, &xla_shape));
+      return xla_shape;
+    };
   }
 }
 
@@ -247,25 +253,24 @@ Status XlaCompiler::XLAShapeForArgument(const XlaCompiler::Argument& arg,
     case XlaCompiler::Argument::kConstant:
       LOG(FATAL) << "Unreachable case";
     case XlaCompiler::Argument::kParameter: {
-      TensorShape shape;
       if (is_entry_computation) {
         TF_ASSIGN_OR_RETURN(
-            shape, options_.shape_representation_fn(arg.shape, arg.type));
+            *xla_shape, options_.shape_representation_fn(arg.shape, arg.type));
       } else {
-        shape = arg.shape;
+        TF_RETURN_IF_ERROR(
+            TensorShapeToXLAShape(arg.type, arg.shape, xla_shape));
       }
-      return TensorShapeToXLAShape(arg.type, shape, xla_shape);
+      return Status::OK();
     }
     case XlaCompiler::Argument::kResource: {
       TF_RET_CHECK(arg.initialized);
 
       switch (arg.resource_kind) {
         case XlaResource::kVariable: {
-          TF_ASSIGN_OR_RETURN(
-              TensorShape representation_shape,
-              options_.shape_representation_fn(arg.shape, arg.type));
-          return TensorShapeToXLAShape(arg.type, representation_shape,
-                                       xla_shape);
+          TF_ASSIGN_OR_RETURN(*xla_shape, options_.shape_representation_fn(
+                                              arg.shape, arg.type));
+
+          return Status::OK();
         }
         case XlaResource::kTensorArray: {
           if (arg.tensor_array_size < 0) {
