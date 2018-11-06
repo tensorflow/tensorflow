@@ -333,8 +333,17 @@ Status EagerLocalExecute(EagerOperation* op,
     // input handles are ready before executing them.
     // TODO(agarwal): Consider executing "cheap" kernels inline for performance.
     tensorflow::uint64 id = ctx->NextId();
+    const MemoryTypeVector* output_memory_types = nullptr;
+    output_memory_types = &kernel->kernel()->output_memory_types();
+
+    Device* op_device = kernel->device();
     for (int i = 0; i < *num_retvals; ++i) {
-      (*retvals)[i] = new TensorHandle(id, output_dtypes[i], ctx);
+      Device* d = op_device;
+      if (d != nullptr && output_memory_types != nullptr &&
+          (*output_memory_types)[i] == HOST_MEMORY) {
+        d = nullptr;
+      }
+      (*retvals)[i] = new TensorHandle(id, d, op_device, output_dtypes[i], ctx);
     }
     EagerNode* node = new ExecuteNode(
         id, ctx, op->Device(), op->Inputs(), kernel, maybe_stats.release(),
