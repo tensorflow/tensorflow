@@ -81,6 +81,57 @@ class _EagerTensorCache(object):
     self._data = {}
 
 
+class FunctionCallOptions(object):
+  """Options applied at call sites of eager functions.
+  Eager functions are functions decorated with tf.contrib.eager.defun.
+  """
+
+  def __init__(self, executor_type=None, rewriter_config=None):
+    """Constructor.
+
+    Args:
+      executor_type: (optional) name of the executor to be used to execute the
+        eager function. If None or an empty string, the default Tensorflow
+        executor will be used.
+      rewriter_config: (optional) a rewriter_config_pb2.RewriterConfig proto or
+        a serialized string of that proto.
+        The config used by Grappler when optimizing the function graph.
+        Each concrete function is optimized the first time is called. Changing
+        rewriter_config after the first call has no effect.
+        If rewriter_config is None, an empty RewriterConfig will be used.
+    """
+    self.rewriter_config_serialized = rewriter_config
+    self.executor_type = executor_type
+
+  @property
+  def executor_type(self):
+    return self._executor_type
+
+  @executor_type.setter
+  def executor_type(self, executor_type):
+    self._executor_type = executor_type
+
+  @property
+  def rewriter_config_serialized(self):
+    return self._rewriter_config_serialized
+
+  @rewriter_config_serialized.setter
+  def rewriter_config_serialized(self, config):
+    if isinstance(config, rewriter_config_pb2.RewriterConfig):
+      self._rewriter_config_serialized = config.SerializeToString()
+    elif isinstance(config, str):
+      self._rewriter_config_serialized = config
+    elif config is None:
+      self._rewriter_config_serialized = rewriter_config_pb2.RewriterConfig(
+      ).SerializeToString()
+    else:
+      raise ValueError(
+          "the rewriter config must be either a "
+          "rewriter_config_pb2.RewriterConfig, or a serialized string of that "
+          "proto or None. got: {}"
+          .format(type(config)))
+
+
 # TODO(agarwal): better name ?
 class _EagerContext(threading.local):
   """Thread local eager context."""
@@ -99,18 +150,16 @@ class _EagerContext(threading.local):
     self.zeros_cache = _EagerTensorCache()
     self.execution_mode = None
 
-    # An empty string corresponds to turning all default grappler optimizations
-    # on.
+    # Default rewriter config corresponds to turning all default grappler
+    # optimizations on.
     base_config = rewriter_config_pb2.RewriterConfig()
-
-    # TODO(b/117959922): Turn this back on once the bug is fixed.
-    base_config.function_optimization = rewriter_config_pb2.RewriterConfig.OFF
 
     if config is not None and config.HasField(
         "graph_options") and config.graph_options.HasField("rewrite_options"):
       base_config.Merge(config.graph_options.rewrite_options)
 
-    self.rewriter_config = base_config.SerializeToString()
+    self.function_call_options = FunctionCallOptions(
+        rewriter_config=base_config)
 
 
 ContextSwitch = collections.namedtuple(
@@ -375,36 +424,6 @@ class Context(object):
       if mode == EAGER_MODE:
         self.context_switches.pop()
 
-  @tf_contextlib.contextmanager
-  def rewriter_config(self, rewriter_config_=None):
-    """A context manager to allow setting the grappler rewrite options.
-
-    Args:
-      rewriter_config_: A tensorflow.RewriterConfig proto object.
-
-    Yields:
-      Nothing.
-
-    Raises:
-      ValueError: if rewriter_config is not a tensorflow.RewriterConfig proto.
-    """
-    if rewriter_config_ is None or not isinstance(
-        rewriter_config_, rewriter_config_pb2.RewriterConfig):
-      raise ValueError("Must pass a rewriter_config proto")
-
-    ctx = self._eager_context
-    old_rewriter_config = ctx.rewriter_config
-    ctx.rewriter_config = rewriter_config_.SerializeToString()
-    try:
-      yield
-    finally:
-      ctx.rewriter_config = old_rewriter_config
-
-  @property
-  def rewriter_config_string(self):
-    """Returns the serialized rewriter_config for the current thread."""
-    return self._eager_context.rewriter_config
-
   def executing_eagerly(self):
     """Returns True if current thread has eager executing enabled."""
     return self._eager_context.is_eager
@@ -532,6 +551,35 @@ class Context(object):
       yield
     finally:
       self.set_execution_mode(old_mode)
+
+  def get_function_call_options(self):
+    """Returns function call options for current thread.
+
+    Note that the returned object is still referenced by the eager context.
+
+    Returns: the FunctionCallOptions for current thread.
+    """
+    return self._eager_context.function_call_options
+
+  @tf_contextlib.contextmanager
+  def function_call_options(self, set_options_func):
+    """Context manager for setting function call options of current thread.
+
+    Args:
+      set_options_func: A callable that takes one argument of type
+        FunctionCallOptions. It should set the properties of that
+        FunctionCallOptions.
+
+    Yields:
+      Nothing.
+    """
+    current_options = self.get_function_call_options()
+    old_options = copy.copy(current_options)
+    try:
+      set_options_func(current_options)
+      yield
+    finally:
+      self._eager_context.function_call_options = old_options
 
   def async_wait(self):
     """Waits for ops dispatched in ASYNC mode to finish."""
@@ -785,6 +833,25 @@ def execution_mode(mode):
   return context().execution_mode(mode)
 
 
+@tf_export("experimental.function_executor_type")
+def function_executor_type(executor_type):
+  """Context manager for setting the executor of eagar defined functions.
+
+  Eager defined functions are functions decorated by tf.contrib.eager.defun.
+
+  Args:
+    executor_type: a string for the name of the executor to be used
+    to execute functions defined by tf.contrib.eager.defun.
+
+  Returns:
+    Context manager for setting the executor of eager defined functions.
+  """
+  def _set_options_func(options):
+    options.executor_type = executor_type
+
+  return context().function_call_options(_set_options_func)
+
+
 def async_wait():
   """Waits for ops dispatched in ASYNC mode to finish."""
   return context().async_wait()
@@ -830,9 +897,23 @@ def export_run_metadata():
   return context().export_run_metadata()
 
 
-def rewriter_config(rewriter_config_):
-  """Context manager for setting the grappler rewrite config."""
-  return context().rewriter_config(rewriter_config_)
+def function_rewriter_config(rewriter_config):
+  """Context manager for setting the grappler rewrite config.
+
+  This config is used by Grappler when optimizing the function graph.
+
+  Args:
+    rewriter_config: a rewriter_config_pb2.RewriterConfig proto or
+      a serialized string of that proto or None. If None, the default instance
+      of rewriter_config_pb2.RewriterConfig will be used.
+
+  Returns:
+    A context manager.
+  """
+  def _set_options_func(options):
+    options.rewriter_config_serialized = rewriter_config
+
+  return context().function_call_options(_set_options_func)
 
 
 def set_server_def(server_def):

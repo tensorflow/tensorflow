@@ -116,16 +116,6 @@ bool CompareShapes(const Shape& lhs, const Shape& rhs, bool compare_layouts,
         VLOG(3) << "CompareShapes: lhs layout != rhs layout";
         return false;
       }
-      if (!absl::c_equal(lhs.layout().padded_dimensions(),
-                         rhs.layout().padded_dimensions())) {
-        VLOG(3)
-            << "CompareShapes: lhs padded_dimensions != rhs padded_dimensions";
-        return false;
-      }
-      if (lhs.layout().padding_value() != rhs.layout().padding_value()) {
-        VLOG(3) << "CompareShapes: lhs padding value != rhs padding_value";
-        return false;
-      }
     }
   }
 
@@ -818,17 +808,7 @@ StatusOr<Shape> ParseShapeStringInternal(absl::string_view* s) {
     allocated_element_count = LayoutUtil::MaxSparseElements(shape.layout());
   } else {
     CHECK(LayoutUtil::IsDenseArray(shape)) << shape.ShortDebugString();
-    absl::Span<const int64> padded_dimensions =
-        LayoutUtil::PaddedDimensions(shape);
-    if (!padded_dimensions.empty()) {
-      CHECK_EQ(Rank(shape), padded_dimensions.size());
-      allocated_element_count = 1;
-      for (int64 dimension_size : padded_dimensions) {
-        allocated_element_count *= dimension_size;
-      }
-    } else {
-      allocated_element_count = ElementsIn(shape);
-    }
+    allocated_element_count = ElementsIn(shape);
   }
   return allocated_element_count *
          ByteSizeOfPrimitiveType(shape.element_type());
@@ -946,12 +926,8 @@ StatusOr<Shape> ParseShapeStringInternal(absl::string_view* s) {
       return dense_shape_size;
     }
 
-    bool is_padded = shape_has_valid_layout &&
-                     LayoutUtil::IsDenseArray(shape) &&
-                     LayoutUtil::IsPadded(shape);
     absl::Span<const int64> shape_max_dimensions =
-        is_padded ? LayoutUtil::PaddedDimensions(shape)
-                  : AsInt64Slice(shape.dimensions());
+        AsInt64Slice(shape.dimensions());
     for (int64 dim : shape_max_dimensions) {
       dense_shape_size = MultiplyWithoutOverflow(dense_shape_size, dim);
       if (dense_shape_size < 0) {
@@ -1193,13 +1169,6 @@ Status ForEachMutableSubshapeHelper(
              permutation, AsInt64Slice(shape.layout().minor_to_major()))) {
       new_layout->add_minor_to_major(index);
     }
-    if (shape.layout().padded_dimensions_size() > 0) {
-      new_layout->clear_padded_dimensions();
-      for (auto dim :
-           Permute(permutation, shape.layout().padded_dimensions())) {
-        new_layout->add_padded_dimensions(dim);
-      }
-    }
     // The permutation accepted by TransposeIsBitcast is the inverse of the
     // permutation here.
     CHECK(TransposeIsBitcast(shape, new_shape, InversePermutation(permutation)))
@@ -1302,11 +1271,6 @@ ShapeUtil::DimensionsUnmodifiedByReshape(const Shape& input_shape,
     return false;
   }
 
-  // Padding is not handled.
-  if (LayoutUtil::IsPadded(input_shape) && LayoutUtil::IsPadded(output_shape)) {
-    return false;
-  }
-
   // Check the reshape permutes the positions of each dimension in the
   // minor-to-major order. positions[i]=k means dimension `i` is k-th minor.
   //   input_positions = apply(dimension_mapping, output_positions)
@@ -1335,11 +1299,6 @@ ShapeUtil::DimensionsUnmodifiedByReshape(const Shape& input_shape,
   CHECK(LayoutUtil::HasLayout(output_shape));
 
   if (!SameElementType(input_shape, output_shape)) {
-    return false;
-  }
-
-  // Padding is not handled.
-  if (LayoutUtil::IsPadded(input_shape) || LayoutUtil::IsPadded(output_shape)) {
     return false;
   }
 

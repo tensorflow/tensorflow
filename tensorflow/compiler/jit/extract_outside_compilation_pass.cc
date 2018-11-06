@@ -51,6 +51,12 @@ xla::StatusOr<Node*> AddHostComputeKeyPlaceholder(
   return n;
 }
 
+// Returns if the node is a XLA computation key placeholder.
+bool IsKeyPlaceholderNode(const Node& n) {
+  return n.type_string() == "Placeholder" &&
+         absl::EndsWith(n.name(), "_key_placeholder");
+}
+
 // Returns nodes with given type.
 std::vector<Node*> GatherNodesWithType(const Graph& g, const string& type) {
   std::vector<Node*> result;
@@ -107,6 +113,8 @@ xla::StatusOr<Node*> BuildRecvAtHostNode(
 xla::StatusOr<Node*> ReplaceArgNodesWithRecvAtHostNode(
     Graph* g, const string& oc_cluster_name,
     std::vector<DataType>* recv_at_host_dtypes, Node* key_placeholder) {
+  // TODO(b/77601805): use out nodes for source node, instead of traversing all
+  // nodes.
   std::vector<Node*> arg_nodes = GatherNodesWithType(*g, "_Arg");
   TF_RETURN_IF_ERROR(GetArgDataTypes(arg_nodes, recv_at_host_dtypes));
   TF_ASSIGN_OR_RETURN(
@@ -218,6 +226,8 @@ xla::StatusOr<Node*> BuildSendFromHostNode(
 xla::StatusOr<Node*> ReplaceRetNodesWithSendFromHostNode(
     Graph* g, const string& oc_cluster_name,
     std::vector<DataType>* send_from_host_dtypes, Node* key_placeholder) {
+  // TODO(b/77601805): use in nodes for sink node, instead of traversing all
+  // nodes.
   std::vector<Node*> ret_nodes = GatherNodesWithType(*g, "_Retval");
   TF_RETURN_IF_ERROR(GetRetDataTypes(ret_nodes, send_from_host_dtypes));
   TF_ASSIGN_OR_RETURN(
@@ -258,7 +268,7 @@ absl::optional<std::vector<PartialTensorShape>> GetInferredInputShapes(
       return absl::nullopt;
     }
 
-    const PartialTensorShape shape = shapes[e->dst_input()];
+    const PartialTensorShape shape = shapes[e->src_output()];
     if (!shape.IsFullyDefined()) {
       return absl::nullopt;
     }
@@ -411,8 +421,7 @@ Status ConstructHostGraph(
                  if (node_map.find(n) != node_map.end()) {
                    // Already copied this node.
                    copy = node_map.at(n);
-                 } else if (n->type_string() == "Placeholder" &&
-                            absl::EndsWith(n->name(), "_key_placeholder")) {
+                 } else if (IsKeyPlaceholderNode(*n)) {
                    // Change a).
                    copy = key_placeholder;
                    node_map[n] = copy;
@@ -691,8 +700,7 @@ Status RewriteOutsideCompilationSubgraphFn::operator()(
 
   // Step 4: add XLA cluster and outside compilation attr.
   for (Node* n : (*graph)->nodes()) {
-    if (n->type_string() == "Placeholder" &&
-        absl::EndsWith(n->name(), "_key_placeholder")) {
+    if (IsKeyPlaceholderNode(*n)) {
       continue;
     }
 

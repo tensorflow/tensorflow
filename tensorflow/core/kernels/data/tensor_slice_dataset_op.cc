@@ -92,10 +92,10 @@ class TensorSliceDatasetOp : public DatasetOpKernel {
       components.reserve(tensors_.size());
       for (const Tensor& t : tensors_) {
         Node* node;
-        std::vector<std::pair<string, Tensor>>* input_list = ctx->input_list();
-        if (input_list) {
+        if (ctx->optimization_only()) {
           TF_RETURN_IF_ERROR(b->AddPlaceholder(t, &node));
-          input_list->emplace_back(node->name(), t);
+          DCHECK_NE(ctx->input_list(), nullptr);
+          ctx->input_list()->emplace_back(node->name(), t);
         } else {
           TF_RETURN_IF_ERROR(b->AddTensor(t, &node));
         }
@@ -140,6 +140,11 @@ class TensorSliceDatasetOp : public DatasetOpKernel {
       }
 
      protected:
+      std::shared_ptr<model::Node> CreateNode(
+          IteratorContext* ctx, model::Node::Args args) const override {
+        return model::MakeSourceNode(std::move(args));
+      }
+
       Status SaveInternal(IteratorStateWriter* writer) override {
         mutex_lock l(mu_);
         TF_RETURN_IF_ERROR(writer->WriteScalar(full_name("i"), i_));

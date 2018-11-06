@@ -18,7 +18,7 @@ cc_library(
         "pywrap_tfe.h",
     ],
     visibility = [
-        "//learning/deepmind/courier:__pkg__",
+        "//learning/deepmind/courier:__subpackages__",
         "//tensorflow:internal",
     ],
     deps = [
@@ -408,10 +408,12 @@ py_library(
     deps = [
         ":context",
         ":function",
+        "//tensorflow/python:cond_v2",  # TODO(b/118513001): Imported via control_flow_ops; remove.
         "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:resource_variable_ops",
         "//tensorflow/python:variable_scope",
+        "//tensorflow/python:while_v2",  # TODO(b/118513001): Imported via control_flow_ops; remove.
         "//tensorflow/python/training/checkpointable:base",
     ],
 )

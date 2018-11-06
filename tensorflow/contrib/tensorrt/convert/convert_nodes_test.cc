@@ -21,6 +21,9 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "tensorflow/cc/framework/ops.h"
+#include "tensorflow/cc/framework/scope.h"
+#include "tensorflow/cc/ops/standard_ops.h"
 #include "tensorflow/contrib/tensorrt/log/trt_logger.h"
 #include "tensorflow/contrib/tensorrt/plugin/trt_plugin_factory.h"
 #include "tensorflow/core/framework/node_def.pb.h"  // NOLINT
@@ -29,6 +32,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
 #include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/grappler/costs/graph_properties.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/test.h"
@@ -45,6 +49,7 @@ namespace convert {
 
 using ::testing::ElementsAre;
 
+// TODO(laigd): put this into some test utils file.
 void ExpectStatus(Status status, error::Code code = error::OK,
                   const char* substr = nullptr) {
   EXPECT_EQ(code, status.code())
@@ -75,6 +80,23 @@ NodeDef MakeNodeDef(const string& name, const string& op,
   return node_def;
 }
 
+template <typename T>
+NodeDef MakeConstNodeDef(const string& name, const std::vector<T>& vals,
+                         const TensorShape& shape) {
+  Scope s = Scope::NewRootScope();
+  Tensor t = ::tensorflow::test::AsTensor<T>(vals, shape);
+  auto const_op = ops::Const(s.WithOpName(name), t);
+  return const_op.node()->def();
+}
+
+template <typename T>
+NodeDef MakeConstNodeDef(const string& name, const std::vector<T>& vals) {
+  TensorShape shape;
+  const std::vector<int32> shape_dims = {static_cast<int32>(vals.size())};
+  TF_EXPECT_OK(TensorShapeUtils::MakeShape(shape_dims, &shape));
+  return MakeConstNodeDef(name, vals, shape);
+}
+
 bool TrtDimsEquals(const nvinfer1::Dims& lhs, const nvinfer1::Dims& rhs) {
   if (lhs.nbDims != rhs.nbDims) return false;
   for (int i = 0; i < lhs.nbDims; ++i) {
@@ -93,6 +115,19 @@ bool TrtShapedWeightsEquals(const TRT_ShapedWeights& lhs,
                             const TRT_ShapedWeights& rhs) {
   return TrtDimsEquals(lhs.shape_, rhs.shape_) && lhs.type_ == rhs.type_ &&
          lhs.GetValues() == rhs.GetValues();
+}
+
+template <typename T>
+void ValidateWeights(const TRT_ShapedWeights& weights,
+                     const std::vector<int>& expected_dims,
+                     const std::vector<T>& expected_value) {
+  EXPECT_TRUE(TrtDimsEqualsArray(expected_dims, weights.shape_))
+      << weights.DebugString();
+  ASSERT_EQ(expected_value.size(), weights.count()) << weights.DebugString();
+  const T* actual_values = static_cast<const T*>(weights.GetValues());
+  for (int i = 0; i < expected_value.size(); ++i) {
+    EXPECT_EQ(expected_value[i], actual_values[i]);
+  }
 }
 
 // Fake ITensor implementation for testing purposes.
@@ -194,32 +229,86 @@ TEST(TRT_ShapedWeights_Test, Basic) {
 }
 
 TEST(TRT_TensorOrWeights_Test, Basic) {
+  // Test constructor with no arguments.
+  {
+    TRT_TensorOrWeights tw;
+    TRT_TensorOrWeights copy(tw);
+    TRT_TensorOrWeights assigned;
+    assigned = tw;
+    for (auto ptr : {&tw, &copy, &assigned}) {
+      EXPECT_EQ(false, ptr->is_tensor());
+      EXPECT_EQ(false, ptr->is_weights());
+      EXPECT_EQ(-1, ptr->batch_size());
+    }
+  }
+
+  // Test constructor with ITensor and batch size argument.
   {
     nvinfer1::Dims dims;
     dims.nbDims = 1;
     dims.d[0] = 1;
     FakeITensor itensor(dims);
-
     TRT_TensorOrWeights tw(&itensor);
-    EXPECT_EQ(true, tw.is_tensor());
-    EXPECT_EQ(false, tw.is_weights());
-    EXPECT_EQ(&itensor, tw.tensor());
-    EXPECT_TRUE(TrtDimsEqualsArray({1}, tw.GetTrtDims()))
-        << "- expected: " << DebugString(dims)
-        << "\n        vs\n-   actual: " << DebugString(tw.GetTrtDims());
-  }
-  {
-    TRT_ShapedWeights weights(DT_FLOAT);
-    TRT_TensorOrWeights tw(weights);
-    EXPECT_EQ(false, tw.is_tensor());
-    EXPECT_EQ(true, tw.is_weights());
-    EXPECT_TRUE(TrtShapedWeightsEquals(weights, tw.weights()));
+    TRT_TensorOrWeights tw1(&itensor, /*batch_size=*/1);
 
+    for (auto original_ptr : {&tw, &tw1}) {
+      TRT_TensorOrWeights copy(*original_ptr);
+      TRT_TensorOrWeights assigned;
+      assigned = *original_ptr;
+
+      for (auto ptr : {original_ptr, &copy, &assigned}) {
+        EXPECT_EQ(true, ptr->is_tensor());
+        EXPECT_EQ(false, ptr->is_weights());
+        if (original_ptr == &tw) {
+          EXPECT_EQ(-1, ptr->batch_size());
+        } else {
+          EXPECT_EQ(1, ptr->batch_size());
+        }
+        EXPECT_EQ(&itensor, ptr->tensor());
+        EXPECT_TRUE(TrtDimsEqualsArray({1}, ptr->GetTrtDims()))
+            << "- expected: " << DebugString(dims)
+            << "\n        vs\n-   actual: " << DebugString(ptr->GetTrtDims());
+      }
+    }
+  }
+  // Test constructor which creates and owns an ITensor.
+  {
     nvinfer1::Dims dims;
-    dims.nbDims = 0;
-    EXPECT_TRUE(TrtDimsEqualsArray({}, tw.GetTrtDims()))
-        << "- expected: " << DebugString(dims)
-        << "\n        vs\n-   actual: " << DebugString(tw.GetTrtDims());
+    dims.nbDims = 1;
+    dims.d[0] = 1;
+    TRT_TensorOrWeights tw(nvinfer1::DataType::kFLOAT, dims, /*batch_size=*/1);
+    TRT_TensorOrWeights copy(tw);
+    TRT_TensorOrWeights assigned;
+    assigned = tw;
+
+    for (auto ptr : {&tw, &copy, &assigned}) {
+      EXPECT_EQ(true, ptr->is_tensor());
+      EXPECT_EQ(false, ptr->is_weights());
+      EXPECT_EQ(1, ptr->batch_size());
+      EXPECT_NE(nullptr, ptr->tensor());
+      EXPECT_TRUE(TrtDimsEqualsArray({1}, ptr->GetTrtDims()))
+          << "- expected: " << DebugString(dims)
+          << "\n        vs\n-   actual: " << DebugString(ptr->GetTrtDims());
+    }
+  }
+  // Test constructor with TRT_ShapedWeights argument.
+  {
+    TRT_ShapedWeights weights;
+    TRT_TensorOrWeights tw(weights);
+    TRT_TensorOrWeights copy(tw);
+    TRT_TensorOrWeights assigned;
+    assigned = tw;
+    for (auto ptr : {&tw, &copy, &assigned}) {
+      EXPECT_EQ(false, ptr->is_tensor());
+      EXPECT_EQ(true, ptr->is_weights());
+      EXPECT_TRUE(TrtShapedWeightsEquals(weights, ptr->weights()));
+
+      nvinfer1::Dims dims;
+      dims.nbDims = 0;
+      EXPECT_TRUE(TrtDimsEqualsArray({}, ptr->GetTrtDims()))
+          << "- expected: " << DebugString(dims)
+          << "\n        vs\n-   actual: " << DebugString(ptr->GetTrtDims());
+    }
   }
 }
 
@@ -229,11 +318,64 @@ class ValidatorTest : public ::testing::Test {
     validator_.op_validators_[op_name] = op_validator;
   }
 
+  Status ConvertToTensorOrWeights(
+      const NodeDef& node_def, int output_port,
+      const grappler::GraphProperties& graph_properties,
+      TRT_TensorOrWeights* tensor_or_weights) {
+    return validator_.ConvertToTensorOrWeights(
+        node_def, output_port, graph_properties, tensor_or_weights);
+  }
+
  protected:
   TrtNodeValidator validator_;
 };
 
+TEST_F(ValidatorTest, ConvertToTensorOrWeights) {
+  // Convert Const.
+  {
+    NodeDef node_def = MakeConstNodeDef<float>("my_const", {1.0f, 2.0f});
+    TRT_TensorOrWeights output;
+    grappler::GrapplerItem item;
+    grappler::GraphProperties graph_properties(item);
+    ExpectStatus(ConvertToTensorOrWeights(node_def, /*output_port=*/0,
+                                          graph_properties, &output));
+    ValidateWeights<float>(output.weights(), {2}, {1.0, 2.0});
+  }
+  // Convert non-Const. We test the case where the non-batch dimemsion is
+  // unknown as well, to make sure the validator allows that.
+  for (const int32 non_batch_dim : {-1, 2}) {
+    const int32 batch_size = 12;
+
+    Scope s = Scope::NewRootScope();
+    ops::Placeholder::Attrs attrs;
+    TF_EXPECT_OK(TensorShapeUtils::MakeShape(
+        std::vector<int32>{batch_size, non_batch_dim}, &attrs.shape_));
+    auto feed = ops::Placeholder(s.WithOpName("feed"), DT_FLOAT, attrs);
+    auto add = ops::Add(s.WithOpName("add"), feed, feed);
+
+    grappler::GrapplerItem item;
+    TF_EXPECT_OK(s.ToGraphDef(&item.graph));
+
+    grappler::GraphProperties graph_properties(item);
+    TF_EXPECT_OK(graph_properties.InferStatically(true));
+
+    auto& node_def = add.operation.node()->def();
+    TRT_TensorOrWeights output;
+    ExpectStatus(ConvertToTensorOrWeights(node_def, /*output_port=*/0,
+                                          graph_properties, &output));
+    EXPECT_EQ(true, output.is_tensor());
+    EXPECT_EQ(batch_size, output.batch_size());
+    EXPECT_NE(nullptr, output.tensor());
+    EXPECT_TRUE(TrtDimsEqualsArray({non_batch_dim}, output.GetTrtDims()))
+        << "- expected: {" << non_batch_dim << "} \n        vs\n"
+        << "-   actual: " << DebugString(output.GetTrtDims());
+  }
+}
+
 TEST_F(ValidatorTest, ValidateNode) {
+  grappler::GrapplerItem item;
+  grappler::GraphProperties graph_properties(item);
+
   bool start_conversion = false;
   bool should_fail = false;
   auto op_converter = [&start_conversion,
@@ -245,16 +387,17 @@ TEST_F(ValidatorTest, ValidateNode) {
   NodeDef node_def = MakeNodeDef("my_op", "MyOp", {});
 
   // Validator not registered, validation should pass.
-  TF_EXPECT_OK(validator_.ValidateNode(node_def, {}));
+  TF_EXPECT_OK(validator_.ValidateNode(node_def, {}, graph_properties));
 
   // Register validator.
   AddOpValidator("MyOp", op_converter);
-  TF_EXPECT_OK(validator_.ValidateNode(node_def, {}));
+  TF_EXPECT_OK(validator_.ValidateNode(node_def, {}, graph_properties));
   EXPECT_EQ(false, start_conversion);
 
   // Let the converter return error.
   should_fail = true;
-  ExpectStatus(validator_.ValidateNode(node_def, {}), error::INVALID_ARGUMENT);
+  ExpectStatus(validator_.ValidateNode(node_def, {}, graph_properties),
+               error::INVALID_ARGUMENT);
 }
 
 class ConverterTest : public ::testing::Test {
@@ -288,6 +431,8 @@ class ConverterTest : public ::testing::Test {
                    std::vector<TRT_TensorOrWeights>* inputs) const {
     return converter_->GetInputs(node_def, inputs);
   }
+
+  int batch_size() const { return converter_->batch_size_; }
 
  private:
   Logger logger_;
@@ -474,11 +619,48 @@ TEST_F(ConverterTest, PrepareTensorForShape_Weights) {
       << DebugString(*output_tensor);
 }
 
+TEST_F(ConverterTest, MaybeUpdateBatchSize) {
+  EXPECT_EQ(-1, batch_size());
+
+  TF_EXPECT_OK(MaybeUpdateBatchSize(-1));
+  EXPECT_EQ(-1, batch_size());
+
+  TF_EXPECT_OK(MaybeUpdateBatchSize(123));
+  EXPECT_EQ(123, batch_size());
+
+  TF_EXPECT_OK(MaybeUpdateBatchSize(123));
+  EXPECT_EQ(123, batch_size());
+
+  TF_EXPECT_OK(MaybeUpdateBatchSize(-1));
+  EXPECT_EQ(123, batch_size());
+
+  ExpectStatus(MaybeUpdateBatchSize(124), error::INVALID_ARGUMENT,
+               "Provided batch size does not match converter batch size");
+}
+
+TEST_F(ConverterTest, AddAndGetTensorOrWeights) {
+  // Add a tensor.
+  FakeITensor fake_tensor;
+  TRT_TensorOrWeights tensor(&fake_tensor);
+  EXPECT_EQ(-1, tensor.batch_size());
+  TF_EXPECT_OK(MaybeUpdateBatchSize(123));
+  TF_EXPECT_OK(AddTensorOrWeights("my_tensor", tensor));
+
+  // Get the added tensor.
+  TRT_TensorOrWeights added_tensor;
+  TF_EXPECT_OK(GetTensorOrWeights("my_tensor", &added_tensor));
+  EXPECT_EQ(123, added_tensor.batch_size());
+
+  // Add the same tensor again.
+  ExpectStatus(AddTensorOrWeights("my_tensor", tensor), error::ALREADY_EXISTS,
+               "tensor/weights my_tensor already exist");
+}
+
 // Class to test various op converters, using both a TrtNodeValidator and
 // Converter.
 class OpConverterTest : public ::testing::Test {
  public:
-  OpConverterTest() {
+  OpConverterTest() : scope_(Scope::NewRootScope()) {
     QCHECK_EQ(0, cudaStreamCreate(&stream_));
     Reset();
   }
@@ -505,8 +687,8 @@ class OpConverterTest : public ::testing::Test {
     converter_.reset(new Converter(network_.get(), /*fp16=*/false));
 
     // Reset other related artifacts.
-    fake_itensors_.clear();
-    fake_tensor_or_weights_.clear();
+    scope_ = Scope::NewRootScope();
+    validator_inputs_.clear();
   }
 
   void BuildAndRun(const char* input_name, const std::vector<float>& input_data,
@@ -551,33 +733,41 @@ class OpConverterTest : public ::testing::Test {
   }
 
   // Add ITensor for both validation and conversion.
-  void AddTestTensor(const char* name, const std::vector<int>& dims,
-                     int batch_size = 1) {
-    nvinfer1::Dims trt_dims = GetTestDims(dims);
-    // Add FakeITensor for validation.
-    //
-    // TRT cannot add a tensor that has undetermined dims, so we manage the
-    // tensor using a vector. These tensors are used to test validation-only
-    // mode and thus should not be used to build the engine.
-    FakeITensor* fake_itensor = new FakeITensor(trt_dims);
-    fake_itensors_.emplace_back(fake_itensor);
-    fake_tensor_or_weights_[string(name)] =
-        TRT_TensorOrWeights{fake_itensor, batch_size};
+  void AddTestTensor(
+      const char* name, const std::vector<int32>& dims, int batch_size = 1,
+      nvinfer1::DataType trt_dtype = nvinfer1::DataType::kFLOAT) {
+    DataType tf_dtype = DT_FLOAT;
+    switch (trt_dtype) {
+      case nvinfer1::DataType::kFLOAT:
+        tf_dtype = DT_FLOAT;
+        break;
+      case nvinfer1::DataType::kINT32:
+        tf_dtype = DT_INT32;
+        break;
+      default:
+        ASSERT_TRUE(false) << "Unexpected data type "
+                           << static_cast<int>(trt_dtype);
+    }
+    ops::Placeholder::Attrs attrs;
+    TF_EXPECT_OK(TensorShapeUtils::MakeShape(dims, &attrs.shape_));
+    attrs.shape_.InsertDim(0, batch_size);
+    auto input = ops::Placeholder(scope_.WithOpName(name), tf_dtype, attrs);
+    validator_inputs_[name] = input.operation.node()->def();
 
     // Add a real ITensor for conversion conditionally.
+    const nvinfer1::Dims trt_dims = GetTestDims(dims);
     if (HasStaticShape(trt_dims)) {
-      TF_EXPECT_OK(converter_->AddInputTensor(name, nvinfer1::DataType::kFLOAT,
-                                              trt_dims, batch_size));
+      TF_EXPECT_OK(
+          converter_->AddInputTensor(name, trt_dtype, trt_dims, batch_size));
       ASSERT_EQ(batch_size, converter_->batch_size_);
     }
   }
 
   // Add weights for both validation and conversion.
-  template <typename CType>
-  void AddTestWeights(const char* name, const DataType dtype,
-                      const std::vector<int>& dims,
-                      const std::vector<CType>& values) {
-    QCHECK_EQ(DataTypeToEnum<CType>::v(), dtype);
+  template <typename T>
+  void AddTestWeights(const char* name, const std::vector<int>& dims,
+                      const std::vector<T>& values) {
+    const DataType dtype = DataTypeToEnum<T>::v();
     const nvinfer1::Dims trt_dims = GetTestDims(dims);
     const int64_t num_elements = TrtDimsNumElements(trt_dims);
     QCHECK_EQ(num_elements, values.size())
@@ -585,13 +775,15 @@ class OpConverterTest : public ::testing::Test {
     TRT_ShapedWeights weights(dtype);
     if (num_elements) {
       weights = converter_->weight_store_.GetTempWeights(dtype, trt_dims);
-      QCHECK_EQ(weights.size_bytes(), sizeof(CType) * values.size())
-          << weights.size_bytes() << " vs " << sizeof(CType) * values.size();
+      QCHECK_EQ(weights.size_bytes(), sizeof(T) * values.size())
+          << weights.size_bytes() << " vs " << sizeof(T) * values.size();
       memcpy(const_cast<void*>(weights.GetValues()), values.data(),
              weights.size_bytes());
     }
     // Add weights for validation.
-    fake_tensor_or_weights_[string(name)] = TRT_TensorOrWeights{weights};
+    TensorShape shape;
+    TF_EXPECT_OK(TensorShapeUtils::MakeShape(dims, &shape));
+    validator_inputs_[name] = MakeConstNodeDef<T>(name, values, shape);
     // Add weights for conversion.
     TF_EXPECT_OK(
         converter_->AddTensorOrWeights(name, TRT_TensorOrWeights{weights}));
@@ -601,12 +793,18 @@ class OpConverterTest : public ::testing::Test {
   void RunValidation(const NodeDef& node_def,
                      error::Code expected_code = error::OK,
                      const char* expected_msg_substr = nullptr) {
-    std::vector<TRT_TensorOrWeights> inputs;
+    std::vector<std::pair<const NodeDef*, int>> input_node_and_ports;
     for (const string& input : node_def.input()) {
-      inputs.emplace_back(fake_tensor_or_weights_[input]);
+      input_node_and_ports.emplace_back(&validator_inputs_[input], 0);
     }
-    ExpectStatus(validator_->ValidateNode(node_def, inputs), expected_code,
-                 expected_msg_substr);
+    grappler::GrapplerItem item;
+    TF_EXPECT_OK(scope_.ToGraphDef(&item.graph));
+    grappler::GraphProperties graph_properties(item);
+    TF_EXPECT_OK(graph_properties.InferStatically(true));
+
+    ExpectStatus(validator_->ValidateNode(node_def, input_node_and_ports,
+                                          graph_properties),
+                 expected_code, expected_msg_substr);
   }
 
   void RunConversion(const NodeDef& node_def,
@@ -637,8 +835,8 @@ class OpConverterTest : public ::testing::Test {
   TrtUniquePtrType<nvinfer1::INetworkDefinition> network_;
   TrtUniquePtrType<nvinfer1::ICudaEngine> engine_;
   cudaStream_t stream_;
-  std::vector<std::unique_ptr<FakeITensor>> fake_itensors_;
-  std::unordered_map<string, TRT_TensorOrWeights> fake_tensor_or_weights_;
+  Scope scope_;
+  std::unordered_map<string, NodeDef> validator_inputs_;
 };
 
 template <DataType dtype, typename InputCType, typename OutputCType>
@@ -662,15 +860,7 @@ void TestConvertConst(OpConverterTest* test) {
     test->RunValidationAndConversion(node_def);
     TRT_TensorOrWeights output;
     TF_EXPECT_OK(test->GetTensorOrWeights("my_const", &output));
-    EXPECT_TRUE(TrtDimsEqualsArray(expected_dims, output.weights().shape_))
-        << output.DebugString();
-    ASSERT_EQ(expected_value.size(), output.weights().count())
-        << output.DebugString();
-    const OutputCType* actual_values =
-        static_cast<const OutputCType*>(output.weights().GetValues());
-    for (int i = 0; i < expected_value.size(); ++i) {
-      EXPECT_EQ(expected_value[i], actual_values[i]);
-    }
+    ValidateWeights(output.weights(), expected_dims, expected_value);
   };
 
   auto& attr = *node_def.mutable_attr();
@@ -700,8 +890,6 @@ void TestConvertConst(OpConverterTest* test) {
   }
 }
 
-// TODO(laigd): we should use c++ API to create the nodedef, so any change in
-// the API will be captured.
 TEST_F(OpConverterTest, ConvertConst) {
   {
     Reset();
@@ -713,10 +901,9 @@ TEST_F(OpConverterTest, ConvertConst) {
   }
   {
     Reset();
-    NodeDef node_def = MakeNodeDef("my_const", "Const", {});
-    (*node_def.mutable_attr())["dtype"].set_type(DT_DOUBLE);
+    NodeDef node_def = MakeConstNodeDef<double>("my_const", {});
     RunValidationAndConversion(node_def, error::INVALID_ARGUMENT,
-                               "Unsupported data type");
+                               "Unsupported data type double");
   }
 
   TestConvertConst<DT_FLOAT, float, float>(this);
@@ -732,8 +919,14 @@ TEST_F(OpConverterTest, ConvertTranspose) {
         node_def, error::INVALID_ARGUMENT,
         "Input expects tensor and weights, at my_transpose");
   }
-  NodeDef node_def =
-      MakeNodeDef("my_transpose", "Transpose", {"input", "weights"});
+
+  // Get the NodeDef for Transpose.
+  Scope s = Scope::NewRootScope();
+  auto input = ops::Placeholder(s.WithOpName("input"), DT_FLOAT);
+  auto weights = ops::Placeholder(s.WithOpName("weights"), DT_INT32);
+  auto transpose = ops::Transpose(s.WithOpName("my_transpose"), input, weights);
+  const NodeDef& node_def = transpose.operation.node()->def();
+
   {
     // Permutation is a tensor, should fail.
     Reset();
@@ -747,7 +940,7 @@ TEST_F(OpConverterTest, ConvertTranspose) {
     // Transpose at batch dimension, should fail.
     Reset();
     AddTestTensor("input", {1, 2, 3});
-    AddTestWeights<int32>("weights", DT_INT32, {4}, {1, 0, 2, 3});
+    AddTestWeights<int32>("weights", {4}, {1, 0, 2, 3});
     RunValidationAndConversion(node_def, error::UNIMPLEMENTED,
                                "Transpose at batch dimension is not supported");
   }
@@ -755,7 +948,7 @@ TEST_F(OpConverterTest, ConvertTranspose) {
     // Permutation rank doesn't match, should fail.
     Reset();
     AddTestTensor("input", {1, 2, 3});
-    AddTestWeights<int32>("weights", DT_INT32, {3}, {0, 1, 2});
+    AddTestWeights<int32>("weights", {3}, {0, 1, 2});
     RunValidationAndConversion(
         node_def, error::INVALID_ARGUMENT,
         "Rank of perm for transpose does not match with that of the input.");
@@ -764,7 +957,7 @@ TEST_F(OpConverterTest, ConvertTranspose) {
     // Ok.
     Reset();
     AddTestTensor("input", {1, 2, 3});
-    AddTestWeights<int32>("weights", DT_INT32, {4}, {0, 3, 1, 2});
+    AddTestWeights<int32>("weights", {4}, {0, 3, 1, 2});
     RunConversion(node_def);
     TRT_TensorOrWeights output;
     TF_EXPECT_OK(GetTensorOrWeights("my_transpose", &output));
@@ -786,7 +979,14 @@ TEST_F(OpConverterTest, ConvertReshape) {
         node_def, error::INVALID_ARGUMENT,
         "Input expects weights for shape, at my_reshape");
   }
-  NodeDef node_def = MakeNodeDef("my_reshape", "Reshape", {"input", "weights"});
+
+  // Get the NodeDef for Reshape.
+  Scope s = Scope::NewRootScope();
+  auto input = ops::Placeholder(s.WithOpName("input"), DT_FLOAT);
+  auto weights = ops::Placeholder(s.WithOpName("weights"), DT_INT32);
+  auto reshape = ops::Reshape(s.WithOpName("my_reshape"), input, weights);
+  const NodeDef& node_def = reshape.operation.node()->def();
+
   {
     // Shape is a tensor, should fail.
     Reset();
@@ -800,7 +1000,7 @@ TEST_F(OpConverterTest, ConvertReshape) {
     // Reshape to scalar, should fail.
     Reset();
     AddTestTensor("input", {1, 2, 3});
-    AddTestWeights<int32>("weights", DT_INT32, {}, {});
+    AddTestWeights<int32>("weights", {0}, {});
     RunValidationAndConversion(
         node_def, error::UNIMPLEMENTED,
         "Reshape to shape=[] is not supported, at my_reshape");
@@ -830,7 +1030,7 @@ TEST_F(OpConverterTest, ConvertReshape) {
     Reset();
     const std::vector<int>& dims = params[i].tensor_dims;
     AddTestTensor("input", dims, params[i].batch_size);
-    AddTestWeights<int32>("weights", DT_INT32, {4}, params[i].shape);
+    AddTestWeights<int32>("weights", {4}, params[i].shape);
     RunValidationAndConversion(
         node_def, error::UNIMPLEMENTED,
         "Reshape on batch dimension is not supported, at my_reshape",
@@ -847,7 +1047,7 @@ TEST_F(OpConverterTest, ConvertReshape) {
   for (int i = 0; i < kReshapeOKCases; ++i) {
     Reset();
     AddTestTensor("input", ok_params[i].tensor_dims, ok_params[i].batch_size);
-    AddTestWeights<int32>("weights", DT_INT32, {4}, ok_params[i].shape);
+    AddTestWeights<int32>("weights", {4}, ok_params[i].shape);
     RunConversion(node_def);
     TRT_TensorOrWeights output;
     TF_EXPECT_OK(GetTensorOrWeights("my_reshape", &output));
@@ -869,24 +1069,67 @@ TEST_F(OpConverterTest, ConvertMatMul) {
         node_def, error::INVALID_ARGUMENT,
         "Input expects tensor and weights, at my_matmul");
   }
-  NodeDef node_def = MakeNodeDef("my_matmul", "MatMul", {"input", "weights"});
-  auto& attr = *node_def.mutable_attr();
-  attr["T"].set_type(DT_FLOAT);
-  attr["transpose_a"].set_b(false);
-  attr["transpose_b"].set_b(false);
-  {
-    AddTestTensor("input", {2}, 1);
-    AddTestWeights<float>("weights", DT_FLOAT, {2, 1}, {3, 5});
-    RunConversion(node_def);
-    TRT_TensorOrWeights output;
-    TF_EXPECT_OK(GetTensorOrWeights("my_matmul", &output));
-    EXPECT_TRUE(output.is_tensor());
-    EXPECT_TRUE(TrtDimsEqualsArray({1}, output.tensor()->getDimensions()))
-        << output.DebugString();
 
-    std::vector<float> output_data(1);
-    BuildAndRun("input", {2, 7}, "my_matmul", &output_data);
-    EXPECT_THAT(output_data, ElementsAre(41));
+  // Get the NodeDef for Reshape.
+  auto get_matmul_nodedef = [](DataType dtype, bool transpose_a,
+                               bool transpose_b) -> NodeDef {
+    Scope s = Scope::NewRootScope();
+    auto input = ops::Placeholder(s.WithOpName("input"), dtype);
+    auto weights = ops::Placeholder(s.WithOpName("weights"), dtype);
+    ops::MatMul::Attrs matmul_attrs;
+    matmul_attrs.transpose_a_ = transpose_a;
+    matmul_attrs.transpose_b_ = transpose_b;
+    auto matmul =
+        ops::MatMul(s.WithOpName("my_matmul"), input, weights, matmul_attrs);
+    return matmul.operation.node()->def();
+  };
+
+  {
+    // Unsupported data type.
+    Reset();
+    NodeDef node_def = get_matmul_nodedef(DT_INT32, false, false);
+    AddTestTensor("input", {2}, /*batch_size=*/1, nvinfer1::DataType::kINT32);
+    AddTestWeights<int32>("weights", {2, 1}, {3, 5});
+    RunValidationAndConversion(
+        node_def, error::UNIMPLEMENTED,
+        "Data type is not supported, for node my_matmul got int32");
+  }
+  {
+    // transpose_a is set.
+    for (bool transpose_b : {false, true}) {
+      Reset();
+      NodeDef node_def =
+          get_matmul_nodedef(DT_FLOAT, /*transpose_a=*/true, transpose_b);
+      AddTestTensor("input", {2}, /*batch_size=*/1);
+      AddTestWeights<float>("weights", {2, 2}, {0, 1, 2, 3});
+      RunValidationAndConversion(
+          node_def, error::INVALID_ARGUMENT,
+          "transpose_a is not supported for TensorRT FullyConnected");
+    }
+  }
+  {
+    // OK.
+    for (bool transpose_b : {false, true}) {
+      Reset();
+      NodeDef node_def =
+          get_matmul_nodedef(DT_FLOAT, /*transpose_a=*/false, transpose_b);
+      AddTestTensor("input", {2}, /*batch_size=*/1);
+      AddTestWeights<float>("weights", {2, 2}, {0, 1, 2, 3});
+      RunConversion(node_def);
+      TRT_TensorOrWeights output;
+      TF_EXPECT_OK(GetTensorOrWeights("my_matmul", &output));
+      EXPECT_TRUE(output.is_tensor());
+      EXPECT_TRUE(TrtDimsEqualsArray({2}, output.tensor()->getDimensions()))
+          << output.DebugString();
+
+      std::vector<float> output_data(2);
+      BuildAndRun("input", {0, 1}, "my_matmul", &output_data);
+      if (transpose_b) {
+        EXPECT_THAT(output_data, ElementsAre(1, 3));
+      } else {
+        EXPECT_THAT(output_data, ElementsAre(2, 3));
+      }
+    }
   }
 }
 

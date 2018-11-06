@@ -145,6 +145,20 @@ class UnbatchDatasetOp : public UnaryDatasetOpKernel {
       }
 
      protected:
+      std::shared_ptr<model::Node> CreateNode(
+          IteratorContext* ctx, model::Node::Args args) const override {
+        // Unbatch assumes that all input components have the same leading
+        // dimension. If it is statically known for any component, we model the
+        // transformation using `KnownRatio`. Otherwise, we use `UnknownRatio`.
+        for (auto& shape : dataset()->input_->output_shapes()) {
+          if (shape.dims() > 0 && shape.dim_size(0) > 0) {
+            return model::MakeKnownRatioNode(
+                std::move(args), 1.0 / static_cast<double>(shape.dim_size(0)));
+          }
+        }
+        return model::MakeUnknownRatioNode(std::move(args));
+      }
+
       Status SaveInternal(IteratorStateWriter* writer) override {
         mutex_lock l(mu_);
         if (input_impl_) {

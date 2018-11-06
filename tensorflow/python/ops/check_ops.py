@@ -13,11 +13,7 @@
 # limitations under the License.
 # ==============================================================================
 # pylint: disable=g-short-docstring-punctuation
-"""Asserts and Boolean Checks.
-
-See the [Asserts and
-checks](https://tensorflow.org/api_guides/python/check_ops) guide.
-"""
+"""Asserts and Boolean Checks."""
 
 from __future__ import absolute_import
 from __future__ import division

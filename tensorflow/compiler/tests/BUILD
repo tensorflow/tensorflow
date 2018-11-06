@@ -376,6 +376,27 @@ tf_xla_py_test(
 )
 
 tf_xla_py_test(
+    name = "resampler_ops_test",
+    size = "small",
+    srcs = ["resampler_ops_test.py"],
+    disabled_backends = [
+        # TODO(b/74459949) Support BatchDot in CPU backend.
+        "cpu",
+        "cpu_ondemand",
+    ],
+    # TODO(b/112295522): figure out how to make OSS build pass.
+    tags = ["no_oss"],
+    deps = [
+        ":xla_test",
+        "//tensorflow/contrib/resampler:resampler_ops",
+        "//tensorflow/contrib/resampler:resampler_py",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:platform_test",
+    ],
+)
+
+tf_xla_py_test(
     name = "dynamic_stitch_test",
     size = "small",
     srcs = ["dynamic_stitch_test.py"],
@@ -489,8 +510,6 @@ tf_xla_py_test(
     name = "function_test",
     size = "small",
     srcs = ["function_test.py"],
-    # Functions are not implemented in the on-demand compilation model yet.
-    disabled_backends = "cpu_ondemand",
     deps = [
         ":xla_test",
         "//tensorflow/python:array_ops",
@@ -680,9 +699,6 @@ tf_xla_py_test(
     name = "random_ops_test",
     size = "small",
     srcs = ["random_ops_test.py"],
-    disabled_backends = [
-        "cpu_ondemand",
-    ],
     deps = [
         ":xla_test",
         "//tensorflow/python:array_ops",
@@ -698,6 +714,10 @@ tf_xla_py_test(
     size = "medium",
     srcs = ["reduce_ops_test.py"],
     shard_count = 5,
+    tags = [
+        # TODO(b/119059212): Re-enable this test in OSS.
+        "no_oss",
+    ],
     deps = [
         ":xla_test",
         "//tensorflow/python:array_ops",
@@ -713,7 +733,6 @@ tf_xla_py_test(
     name = "reduce_window_test",
     size = "small",
     srcs = ["reduce_window_test.py"],
-    disabled_backends = ["cpu_ondemand"],
     deps = [
         ":xla_test",
         "//tensorflow/compiler/tf2xla/python:xla",
@@ -822,8 +841,6 @@ tf_xla_py_test(
     name = "stack_ops_test",
     size = "small",
     srcs = ["stack_ops_test.py"],
-    # Stack ops are not implemented in the on-demand compilation model yet.
-    disabled_backends = "cpu_ondemand",
     deps = [
         ":xla_test",
         "//tensorflow/python:array_ops",
@@ -851,7 +868,7 @@ tf_xla_py_test(
     size = "small",
     srcs = ["tensor_array_ops_test.py"],
     # TensorArray ops are not implemented in the on-demand compilation model yet.
-    disabled_backends = "cpu_ondemand",
+    disabled_backends = ["cpu_ondemand"],
     deps = [
         ":xla_test",
         "//tensorflow/python:array_ops",
@@ -872,7 +889,7 @@ tf_xla_py_test(
     size = "small",
     srcs = ["tensor_list_ops_test.py"],
     # TensorList ops are not implemented in the on-demand compilation model yet.
-    disabled_backends = "cpu_ondemand",
+    disabled_backends = ["cpu_ondemand"],
     deps = [
         ":xla_test",
         "//tensorflow/python:array_ops",
@@ -952,7 +969,6 @@ tf_xla_py_test(
     name = "while_test",
     size = "small",
     srcs = ["while_test.py"],
-    disabled_backends = ["cpu_ondemand"],
     deps = [
         ":xla_test",
         "//tensorflow/compiler/tf2xla/python:xla",
@@ -1109,6 +1125,7 @@ cc_library(
         "//tensorflow/core:test",
         "//tensorflow/core:testlib",
         "//tensorflow/core/kernels:ops_util",
+        "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/strings",
     ],
@@ -1219,7 +1236,6 @@ tf_xla_py_test(
     name = "xla_ops_test",
     size = "medium",
     srcs = ["xla_ops_test.py"],
-    disabled_backends = ["cpu_ondemand"],
     deps = [
         ":xla_test",
         "//tensorflow/compiler/tf2xla/python:xla",

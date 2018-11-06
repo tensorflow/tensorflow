@@ -93,6 +93,17 @@ config_setting(
     },
 )
 
+config_setting(
+    # Add "--define tensorflow_eigen_mkldnn=1" to your build command to use mkldnn
+    # sgemm in Eigen tensor contractions (matrix multiplications and convolutions).
+    # The mkldnn kernels are generated at runtime and use avx/avx2/fma/avx512
+    # based on cpu status registers (https://en.wikipedia.org/wiki/CPUID).
+    name = "eigen_mkldnn",
+    values = {
+        "define": "tensorflow_eigen_mkldnn=1",
+    },
+)
+
 # Public support libraries ----------------------------------------------------
 
 cc_library(
@@ -555,10 +566,20 @@ cc_library(
         "eigen_softmax.h",
         "eigen_spatial_convolutions.h",
         "eigen_volume_patch.h",
-    ],
+    ] + select({
+        ":eigen_mkldnn": ["eigen_mkldnn.h"],
+        "//conditions:default": [],
+    }),
+    defines = select({
+        ":eigen_mkldnn": ["EIGEN_USE_MKLDNN"],
+        "//conditions:default": [],
+    }),
     deps = [
         "//third_party/eigen3",
-    ],
+    ] + select({
+        ":eigen_mkldnn": ["//third_party/intel_mkl_dnn:mkldnn_single_threaded"],
+        "//conditions:default": [],
+    }),
 )
 
 cc_library(
@@ -1887,10 +1908,22 @@ tf_kernel_library(
     deps = DATA_FLOW_DEPS,
 )
 
+cc_library(
+    name = "stack",
+    srcs = ["stack.cc"],
+    hdrs = ["stack.h"],
+    deps = [
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+    ],
+)
+
 tf_kernel_library(
     name = "stack_ops",
     prefix = "stack_ops",
-    deps = DATA_FLOW_DEPS,
+    deps = DATA_FLOW_DEPS + [":stack"],
 )
 
 tf_kernel_library(
@@ -2393,12 +2426,25 @@ tf_cc_tests(
     ],
     deps = [
         ":eigen_helpers",
-        "//tensorflow/core:core_cpu",
-        "//tensorflow/core:framework",
-        "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
-        "//tensorflow/core:testlib",
+    ],
+)
+
+# Conditional test target generation is not supported by the "tf_cc_tests" macro
+# (can't add 'select' to the srcs field, type 'select' is not iterable).
+tf_cc_test(
+    name = "eigen_mkldnn_test",
+    size = "small",
+    srcs = select({
+        ":eigen_mkldnn": ["eigen_mkldnn_test.cc"],
+        "//conditions:default": [],
+    }),
+    tags = ["eigen_mkldnn"],
+    deps = [
+        ":eigen_helpers",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
     ],
 )
 
@@ -5489,6 +5535,8 @@ filegroup(
         "sparse_to_dense_op.cc",
         "spectrogram.cc",
         "spectrogram_op.cc",
+        "stack.cc",
+        "stack.h",
         "stack_ops.cc",
         "string_join_op.cc",
         "string_util.cc",

@@ -954,16 +954,6 @@ class HloInstruction {
   Status Accept(
       const std::function<Status(const HloInstruction*)>& visitor_func) const;
 
-  // Visits all instructions rooted at this instruction using the given visitor
-  // in the given order. 'order' must contain at least the set of instructions
-  // rooted at this node (ie, those accessible from a DFS traversal from this
-  // instruction). Instructions contained in 'order' which are not in the set of
-  // instructions rooted at this node are ignored. 'order' must also be a valid
-  // topological sort of these instructions (defs appear before uses) though
-  // need not be a DFS post-order.
-  Status AcceptOrdered(DfsHloVisitor* visitor,
-                       const std::vector<const HloInstruction*>& order);
-
   // Visit this instruction and only this instruction with the given visitor.
   template <typename HloInstructionPtr>
   Status Visit(DfsHloVisitorBase<HloInstructionPtr>* visitor);

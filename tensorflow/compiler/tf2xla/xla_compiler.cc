@@ -756,6 +756,8 @@ Status XlaCompiler::CompileGraph(const XlaCompiler::CompileOptions& options,
                                  CompilationResult* result) {
   VLOG(1) << "Executing graph symbolically to populate XlaBuilder.";
 
+  TF_RETURN_IF_ERROR(PropagateConstIntoFunctionalNodes(
+      graph.get(), options_.flib_def, local_flib_def_.get()));
   if (VLOG_IS_ON(2)) {
     VLOG(2) << "XlaCompiler::CompileGraph: "
             << dump_graph::DumpGraphToFile(

@@ -8775,3 +8775,28 @@ void TF_AttrBuilderCheckCanRunOnDevice(TF_AttrBuilder* builder,
       tensorflow::DeviceType(device_type), builder->BuildNodeDef(),
       /* def = */ nullptr, /* kernel_class_name = */ nullptr);
 }
+
+const char* TF_GetNumberAttrForOpListInput(const char* op_name, int input_index,
+                                           TF_Status* status) {
+  const tensorflow::OpDef* op_def = nullptr;
+  status->status =
+      tensorflow::OpRegistry::Global()->LookUpOpDef(op_name, &op_def);
+  if (!status->status.ok()) return nullptr;
+
+  if (input_index >= op_def->input_arg_size() || input_index < 0) {
+    status->status = tensorflow::errors::InvalidArgument(
+        input_index, " out of range for ", op_name);
+    return nullptr;
+  }
+
+  const tensorflow::OpDef_ArgDef& input_arg = op_def->input_arg()[input_index];
+
+  if (input_arg.number_attr().empty()) {
+    status->status = tensorflow::errors::NotFound(
+        op_name, " does not have number_attr() defined.");
+    return nullptr;
+  }
+
+  // The returned string is owned by OpRegistry, so liveness is not a concern.
+  return input_arg.number_attr().c_str();
+}

@@ -27,6 +27,7 @@ limitations under the License.
 #include <memory>
 #include <tuple>
 
+#include "absl/types/optional.h"
 #include "absl/types/span.h"
 #include "tensorflow/stream_executor/device_memory.h"
 #include "tensorflow/stream_executor/lib/array_slice.h"
@@ -547,10 +548,6 @@ class ConvolutionDescriptor {
     SetDim(&dilation_rates_, dim, value);
     return *this;
   }
-  ConvolutionDescriptor& set_pad_alignment(PadAlignment pad_alignment) {
-    pad_alignment_ = pad_alignment;
-    return *this;
-  }
   ConvolutionDescriptor& set_group_count(int group_count) {
     group_count_ = group_count;
     return *this;
@@ -577,7 +574,9 @@ class ConvolutionDescriptor {
   int zero_padding(DimIndex dim) const { return GetDim(zero_padding_, dim); }
   int filter_stride(DimIndex dim) const { return GetDim(filter_strides_, dim); }
   int dilation_rate(DimIndex dim) const { return GetDim(dilation_rates_, dim); }
-  PadAlignment pad_alignment() const { return pad_alignment_; }
+  // TODO(timshen): remove this function. No users of this class is setting a
+  // non-default pad alignment.
+  PadAlignment pad_alignment() const { return PadAlignment::kDefault; }
   int group_count() const { return group_count_; }
   int ndims() const { return ndims_; }
 
@@ -590,7 +589,6 @@ class ConvolutionDescriptor {
   std::vector<int64> zero_padding_;
   std::vector<int64> filter_strides_;
   std::vector<int64> dilation_rates_;
-  PadAlignment pad_alignment_;
   int group_count_;
   int ndims_;
   // TODO(leary) cudnn provides these fields, but need to characterize what
@@ -716,31 +714,21 @@ class PoolingDescriptor {
 class AlgorithmDesc {
  public:
   typedef int64 Index;
-  AlgorithmDesc()
-      : algo_(kDefaultAlgorithm), tensor_ops_enabled_(true), scratch_size_(0) {}
   AlgorithmDesc(Index a, bool use_tensor_ops)
-      : algo_(a), tensor_ops_enabled_(use_tensor_ops), scratch_size_(0) {}
-  AlgorithmDesc(Index a, bool use_tensor_ops, size_t scratch_size)
-      : algo_(a),
-        tensor_ops_enabled_(use_tensor_ops),
-        scratch_size_(scratch_size) {}
-  bool is_default() const { return algo_ == kDefaultAlgorithm; }
+      : algo_(a), tensor_ops_enabled_(use_tensor_ops) {
+    DCHECK_NE(a, -1);
+  }
   bool tensor_ops_enabled() const { return tensor_ops_enabled_; }
   Index algo_id() const { return algo_; }
-  size_t scratch_size() const { return scratch_size_; }
-  void set_scratch_size(size_t val) { scratch_size_ = val; }
   bool operator==(const AlgorithmDesc& other) const {
     return this->algo_ == other.algo_ &&
-           this->tensor_ops_enabled_ == other.tensor_ops_enabled_ &&
-           this->scratch_size_ == other.scratch_size_;
+           this->tensor_ops_enabled_ == other.tensor_ops_enabled_;
   }
   uint64 hash() const;
 
  private:
-  enum { kDefaultAlgorithm = -1 };
   Index algo_;
   bool tensor_ops_enabled_;
-  size_t scratch_size_;
 };
 
 // Describes the result from a perf experiment.
@@ -751,17 +739,25 @@ class AlgorithmDesc {
 class ProfileResult {
  public:
   bool is_valid() const {
-    return (!algorithm_.is_default() &&
-            elapsed_time_in_ms_ != std::numeric_limits<float>::max());
+    return algorithm_.has_value() &&
+           elapsed_time_in_ms() != std::numeric_limits<float>::max();
   }
-  AlgorithmDesc algorithm() const { return algorithm_; }
+
+  AlgorithmDesc algorithm() const { return *algorithm_; }
   void set_algorithm(AlgorithmDesc val) { algorithm_ = val; }
+
   float elapsed_time_in_ms() const { return elapsed_time_in_ms_; }
   void set_elapsed_time_in_ms(float val) { elapsed_time_in_ms_ = val; }
 
+  size_t scratch_size() const { return scratch_size_; }
+  void set_scratch_size(size_t val) { scratch_size_ = val; }
+
  private:
-  AlgorithmDesc algorithm_;
+  absl::optional<AlgorithmDesc> algorithm_;
   float elapsed_time_in_ms_ = std::numeric_limits<float>::max();
+  // The scratch size algorithm_ requires. Currently it's only populated by
+  // convolutions.
+  size_t scratch_size_ = 0;
 };
 
 // Describes the configuration for the algorithms that will used.
@@ -776,9 +772,11 @@ class AlgorithmConfig {
   explicit AlgorithmConfig(AlgorithmDesc algorithm) : algorithm_(algorithm) {}
   AlgorithmConfig(AlgorithmDesc algorithm, AlgorithmDesc algorithm_no_scratch)
       : algorithm_(algorithm), algorithm_no_scratch_(algorithm_no_scratch) {}
-  AlgorithmDesc algorithm() const { return algorithm_; }
+  absl::optional<AlgorithmDesc> algorithm() const { return algorithm_; }
   void set_algorithm(AlgorithmDesc val) { algorithm_ = val; }
-  AlgorithmDesc algorithm_no_scratch() const { return algorithm_no_scratch_; }
+  absl::optional<AlgorithmDesc> algorithm_no_scratch() const {
+    return algorithm_no_scratch_;
+  }
   void set_algorithm_no_scratch(AlgorithmDesc val) {
     algorithm_no_scratch_ = val;
   }
@@ -792,8 +790,8 @@ class AlgorithmConfig {
   string ToString() const;
 
  private:
-  AlgorithmDesc algorithm_;
-  AlgorithmDesc algorithm_no_scratch_;
+  absl::optional<AlgorithmDesc> algorithm_;
+  absl::optional<AlgorithmDesc> algorithm_no_scratch_;
 };
 
 // Describes a local response normalization (LRN). LRN is used e.g. in
@@ -920,6 +918,23 @@ class VersionInfo {
 // Suite of operations typically used for implementing Deep/Convolutional Neural
 // Nets. Note: A false return value of an operation indicates the
 // implementation is not available.
+//
+// TODO(b/118763918): this class (or rather dispatch table) has several
+// problems:
+// * Some overloads are missing. Ideally we want to have template virtual
+//   functions while the template arguments is a closed set. However, we don't
+//   get that from the language.
+// * The API is a union of cuDNN and another private backend. Only 10% of the
+//   functions are actually implemented by both backends, the rest are
+//   actually backend-specific. The massive interface creates extra mental
+//   burden.
+// * Poor error handling: the API should return Status objects.
+//
+// Things worth trying:
+// * Move functions that are not actually common back to the backends. Then,
+//   callers may use dynamic_cast to access specific backends. This may not be
+//   that hard, as many of the callers are Stream::ThenXxx functions.
+// * Change all the returned bools to Status.
 class DnnSupport {
  public:
   DnnSupport() {}

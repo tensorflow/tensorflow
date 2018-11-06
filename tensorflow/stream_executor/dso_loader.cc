@@ -34,6 +34,7 @@ limitations under the License.
 #include "tensorflow/stream_executor/platform/port.h"
 
 #if !defined(PLATFORM_GOOGLE)
+#include "absl/strings/string_view.h"
 #include "cuda/cuda_config.h"
 #endif
 
@@ -119,12 +120,12 @@ static mutex& GetRpathMutex() {
   return *mu;
 }
 
-/* static */ void DsoLoader::RegisterRpath(port::StringPiece path) {
+/* static */ void DsoLoader::RegisterRpath(absl::string_view path) {
   mutex_lock lock{GetRpathMutex()};
   GetRpaths()->emplace_back(path);
 }
 
-/* static */ port::Status DsoLoader::GetDsoHandle(port::StringPiece path,
+/* static */ port::Status DsoLoader::GetDsoHandle(absl::string_view path,
                                                   void** dso_handle,
                                                   LoadKind load_kind) {
   if (load_kind != LoadKind::kLocal) {
@@ -190,13 +191,13 @@ static std::vector<string>* CreatePrimordialRpaths() {
 #endif
 }
 
-/* static */ string DsoLoader::FindDsoPath(port::StringPiece library_name,
-                                           port::StringPiece runfiles_relpath) {
+/* static */ string DsoLoader::FindDsoPath(absl::string_view library_name,
+                                           absl::string_view runfiles_relpath) {
   // Keep a record of the paths we attempted so we can dump out meaningful
   // diagnostics if no path is found.
   std::vector<string> attempted;
 
-  using StringPieces = std::vector<port::StringPiece>;
+  using StringPieces = std::vector<absl::string_view>;
   string candidate;
 
   // Otherwise, try binary-plus-rpath locations.

@@ -19,6 +19,7 @@ limitations under the License.
 #include <map>
 #include <unordered_map>
 
+#include "absl/types/optional.h"
 #include "absl/types/span.h"
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/Value.h"
@@ -54,10 +55,13 @@ class FusedIrEmitter : public DfsHloVisitorWithDefault {
  public:
   using IndexedGenerator = llvm_ir::ElementGenerator;
   using NonIndexedGenerator = std::function<StatusOr<llvm::Value*>()>;
+  using GeneratorForOperandIrArrays =
+      std::function<std::vector<llvm_ir::IrArray>()>;
 
-  FusedIrEmitter(absl::Span<const llvm_ir::IrArray> parameter_arrays,
+  FusedIrEmitter(GeneratorForOperandIrArrays operand_arrays_generator,
                  ElementalIrEmitter* elemental_emitter)
-      : parameter_arrays_(parameter_arrays),
+      : operand_arrays_(),
+        operand_arrays_generator_(std::move(operand_arrays_generator)),
         tiled_parameter_info_(nullptr),
         elemental_emitter_(elemental_emitter),
         b_(elemental_emitter->b()),
@@ -86,9 +90,25 @@ class FusedIrEmitter : public DfsHloVisitorWithDefault {
     tiled_parameter_info_ = info;
   }
 
+ protected:
+  // Returns the IrArrays for the fusion instruction operands.
+  llvm_ir::IrArray& GetIrArrayForFusedParameter(int64 parameter_number) {
+    if (!operand_arrays_.has_value()) {
+      operand_arrays_ = operand_arrays_generator_();
+    }
+    return operand_arrays_.value()[parameter_number];
+  }
+
+  llvm::Value* GetBasePointerForFusedParameter(int64 parameter_number) {
+    return GetIrArrayForFusedParameter(parameter_number).GetBasePointer();
+  }
+
  private:
-  // Arrays of parameters of fusion instruction
-  absl::Span<const llvm_ir::IrArray> parameter_arrays_;
+  // IrArrays for the fusion instruction operands, whose base addresses are the
+  // base address of the corresponding parameters in the fused computation.
+  absl::optional<std::vector<llvm_ir::IrArray>> operand_arrays_;
+  GeneratorForOperandIrArrays operand_arrays_generator_;
+
   const llvm_ir::TiledParameterInfo* tiled_parameter_info_;
 
   ElementalIrEmitter* elemental_emitter_;

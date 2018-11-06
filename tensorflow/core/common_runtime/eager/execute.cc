@@ -277,33 +277,20 @@ Status EagerLocalExecute(EagerOperation* op,
       LOG(INFO) << "Executing op " << ndef.op() << " in device "
                 << device->name();
     }
-    kernel = new KernelAndDevice(ctx->GetRendezvous(), ctx->LogMemory());
-    auto* flr = ctx->func_lib(device);
 
+    auto* flr = ctx->func_lib(device);
     if (flr == nullptr) {
       return errors::Unavailable(
           "Unable to find a FunctionLibraryRuntime corresponding to device ",
           device->name());
     }
+    kernel = new KernelAndDevice(ctx->GetRendezvous(), ctx->LogMemory());
     status = KernelAndDevice::Init(ndef, flr, ctx->runner(), kernel);
     if (!status.ok()) {
       delete kernel;
       return status;
     }
-    // Update output_dtypes inside `kernel`.
-    const OpDef* op_def = nullptr;
-    const FunctionDef* function_def = ctx->FuncLibDef()->Find(ndef.op());
-    if (function_def != nullptr) {
-      op_def = &(function_def->signature());
-    }
-    if (op_def == nullptr) {
-      status = OpDefForOp(ndef.op().c_str(), &op_def);
-      if (!status.ok()) return status;
-    }
-    DataTypeVector input_dtypes;
-    status = InOutTypesForNode(ndef, *op_def, &input_dtypes,
-                               kernel->mutable_output_dtypes());
-    if (!status.ok()) return status;
+
     ctx->AddKernelToCache(cache_key, kernel);
   }
   const DataTypeVector& output_dtypes = kernel->output_dtypes();
@@ -346,8 +333,17 @@ Status EagerLocalExecute(EagerOperation* op,
     // input handles are ready before executing them.
     // TODO(agarwal): Consider executing "cheap" kernels inline for performance.
     tensorflow::uint64 id = ctx->NextId();
+    const MemoryTypeVector* output_memory_types = nullptr;
+    output_memory_types = &kernel->kernel()->output_memory_types();
+
+    Device* op_device = kernel->device();
     for (int i = 0; i < *num_retvals; ++i) {
-      (*retvals)[i] = new TensorHandle(id, output_dtypes[i], ctx);
+      Device* d = op_device;
+      if (d != nullptr && output_memory_types != nullptr &&
+          (*output_memory_types)[i] == HOST_MEMORY) {
+        d = nullptr;
+      }
+      (*retvals)[i] = new TensorHandle(id, d, op_device, output_dtypes[i], ctx);
     }
     EagerNode* node = new ExecuteNode(
         id, ctx, op->Device(), op->Inputs(), kernel, maybe_stats.release(),

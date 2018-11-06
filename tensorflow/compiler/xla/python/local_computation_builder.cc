@@ -184,8 +184,9 @@ StatusOr<LocalShapedBuffer*> LocalShapedBufferTuple::Release(int i) {
 
 int64 LocalShapedBufferTuple::size() const { return elements_.size(); }
 
-XrtAllocation::XrtAllocation(int64 handle, Shape shape)
-    : handle_(handle), shape_(shape) {}
+XrtAllocation::XrtAllocation(int64 handle, Shape shape,
+                             const string& session_target)
+    : handle_(handle), shape_(shape), session_target_(session_target) {}
 
 XrtAllocation::~XrtAllocation() {
   tensorflow::Scope root = tensorflow::Scope::NewRootScope();
@@ -198,7 +199,7 @@ XrtAllocation::~XrtAllocation() {
     return;
   }
 
-  tensorflow::ClientSession session(root, "local");
+  tensorflow::ClientSession session(root, session_target_);
   tensorflow::ClientSession::FeedType inputs;
   inputs.insert({allocation_handle, handle()});
   std::vector<tensorflow::Tensor> outputs;
@@ -210,7 +211,8 @@ XrtAllocation::~XrtAllocation() {
 }
 
 /* static */
-StatusOr<XrtAllocation*> XrtAllocation::FromLiteral(const Literal& argument) {
+StatusOr<XrtAllocation*> XrtAllocation::FromLiteral(
+    const Literal& argument, const string& session_target) {
   xrt::XLAAllocation alloc;
   alloc.set_device_ordinal(0);
   *alloc.mutable_value() = argument.ToProto();
@@ -221,14 +223,14 @@ StatusOr<XrtAllocation*> XrtAllocation::FromLiteral(const Literal& argument) {
   auto literal_handle = tensorflow::ops::XRTAllocate(root, literal_string);
   TF_RETURN_IF_ERROR(root.status());
 
-  tensorflow::ClientSession session(root, "local");
+  tensorflow::ClientSession session(root, session_target);
   tensorflow::ClientSession::FeedType inputs;
   inputs.insert({literal_string, alloc.SerializeAsString()});
   std::vector<tensorflow::Tensor> outputs;
   TF_RETURN_IF_ERROR(session.Run(inputs, {literal_handle}, &outputs));
 
   int64 handle = outputs[0].scalar<int64>()();
-  return new XrtAllocation(handle, argument.shape());
+  return new XrtAllocation(handle, argument.shape(), session_target);
 }
 
 const int64 XrtAllocation::handle() const { return handle_; }
@@ -242,7 +244,7 @@ StatusOr<Literal> XrtAllocation::ToLiteral() const {
   auto read_literal = tensorflow::ops::XRTReadLiteral(root, allocation_handle);
   TF_RETURN_IF_ERROR(root.status());
 
-  tensorflow::ClientSession session(root, "local");
+  tensorflow::ClientSession session(root, session_target_);
   tensorflow::ClientSession::FeedType inputs;
   inputs.insert({allocation_handle, handle()});
   std::vector<tensorflow::Tensor> outputs;
@@ -357,8 +359,11 @@ static StatusOr<Shape> GetReturnValueShape(const XlaComputation& computation) {
 }
 
 CompiledXrtComputation::CompiledXrtComputation(
-    const ProgramShape& program_shape, int64 handle)
-    : program_shape_(program_shape), handle_(handle) {}
+    const ProgramShape& program_shape, int64 handle,
+    const string& session_target)
+    : program_shape_(program_shape),
+      handle_(handle),
+      session_target_(session_target) {}
 
 CompiledXrtComputation::~CompiledXrtComputation() {
   tensorflow::Scope root = tensorflow::Scope::NewRootScope();
@@ -371,7 +376,7 @@ CompiledXrtComputation::~CompiledXrtComputation() {
     return;
   }
 
-  tensorflow::ClientSession session(root, "local");
+  tensorflow::ClientSession session(root, session_target_);
   tensorflow::ClientSession::FeedType inputs;
   inputs.insert({computation_handle, handle()});
   std::vector<tensorflow::Tensor> outputs;
@@ -407,7 +412,7 @@ StatusOr<XrtAllocation*> CompiledXrtComputation::Execute(
   e.set_release_input_handles(false);
   e.set_release_compilation_handle(false);
 
-  tensorflow::ClientSession session(root, "local");
+  tensorflow::ClientSession session(root, session_target_);
   tensorflow::ClientSession::FeedType inputs;
   for (int i = 0; i < arguments.size(); ++i) {
     inputs.insert({arguments[i], argument_handles[i]->handle()});
@@ -418,7 +423,7 @@ StatusOr<XrtAllocation*> CompiledXrtComputation::Execute(
   TF_RETURN_IF_ERROR(session.Run(inputs, {execute}, &outputs));
 
   int64 output = outputs[0].scalar<int64>()();
-  return new XrtAllocation(output, program_shape().result());
+  return new XrtAllocation(output, program_shape().result(), session_target_);
 }
 
 const ProgramShape& CompiledXrtComputation::program_shape() const {
@@ -451,7 +456,7 @@ StatusOr<CompiledLocalComputation*> LocalComputation::Compile(
 }
 
 StatusOr<CompiledXrtComputation*> LocalComputation::CompileForXrt(
-    const std::vector<Shape>& argument_shapes) {
+    const std::vector<Shape>& argument_shapes, const string& session_target) {
   tensorflow::Scope root = tensorflow::Scope::NewRootScope();
   auto program = tensorflow::ops::Placeholder(root, tensorflow::DT_STRING);
   auto compile = tensorflow::ops::XRTCompile(root, program);
@@ -468,7 +473,7 @@ StatusOr<CompiledXrtComputation*> LocalComputation::CompileForXrt(
   auto snapshot = computation().Snapshot().ValueOrDie();
   *c.mutable_hlo_snapshot() = *snapshot;
 
-  tensorflow::ClientSession session(root, "local");
+  tensorflow::ClientSession session(root, session_target);
   tensorflow::ClientSession::FeedType inputs;
   inputs.insert({program, c.SerializeAsString()});
   std::vector<tensorflow::Tensor> outputs;
@@ -477,7 +482,7 @@ StatusOr<CompiledXrtComputation*> LocalComputation::CompileForXrt(
   TF_ASSIGN_OR_RETURN(ProgramShape program_shape,
                       computation().GetProgramShape());
   int64 handle = outputs[0].scalar<int64>()();
-  return new CompiledXrtComputation(program_shape, handle);
+  return new CompiledXrtComputation(program_shape, handle, session_target);
 }
 
 const XlaComputation& LocalComputation::computation() const {
@@ -929,7 +934,7 @@ StatusOr<LocalShapedBufferTuple*> DestructureLocalShapedBufferTuple(
 }
 
 StatusOr<XrtAllocationTuple*> DestructureXrtAllocationTuple(
-    XrtAllocation* allocation) {
+    XrtAllocation* allocation, const string& session_target) {
   const Shape& tuple_shape = allocation->shape();
 
   if (!ShapeUtil::IsTuple(tuple_shape)) {
@@ -945,7 +950,7 @@ StatusOr<XrtAllocationTuple*> DestructureXrtAllocationTuple(
   auto subtuple = tensorflow::ops::XRTSubTuple(root, base_handle, shape_index);
   TF_RETURN_IF_ERROR(root.status());
 
-  tensorflow::ClientSession session(root, "local");
+  tensorflow::ClientSession session(root, session_target);
   tensorflow::ClientSession::FeedType inputs;
   std::vector<XrtAllocation*> results;
   for (int32 i = 0; i < ShapeUtil::TupleElementCount(tuple_shape); ++i) {
@@ -964,7 +969,8 @@ StatusOr<XrtAllocationTuple*> DestructureXrtAllocationTuple(
     const int64 subtuple_handle = outputs[0].scalar<int64>()();
     const Shape& subtuple_shape =
         ShapeUtil::GetTupleElementShape(tuple_shape, i);
-    results.push_back(new XrtAllocation(subtuple_handle, subtuple_shape));
+    results.push_back(
+        new XrtAllocation(subtuple_handle, subtuple_shape, session_target));
   }
   return new XrtAllocationTuple(std::move(results));
 }

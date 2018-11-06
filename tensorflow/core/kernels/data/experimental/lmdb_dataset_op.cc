@@ -127,6 +127,11 @@ class LMDBDatasetOp : public DatasetOpKernel {
       }
 
      protected:
+      std::shared_ptr<model::Node> CreateNode(
+          IteratorContext* ctx, model::Node::Args args) const override {
+        return model::MakeSourceNode(std::move(args));
+      }
+
       Status SaveInternal(IteratorStateWriter* writer) override {
         return errors::Unimplemented(
             "Checkpointing is currently not supported for LMDBDataset.");

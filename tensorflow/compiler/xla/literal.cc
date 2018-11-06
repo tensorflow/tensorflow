@@ -1075,12 +1075,11 @@ void ToStringHelper(const LiteralBase& literal, const ShapeIndex& shape_index,
 
   auto element_to_string = [&](absl::Span<const int64> indices) -> string {
     PrimitiveType element_type = subshape.element_type();
-    if (element_type == PRED) {
-      // We display predicates in a densely packed form.
-      return literal.Get<bool>(indices, shape_index) ? "1" : "0";
-    }
-    return ((!indices.empty() && indices.back() > 0) ? ", " : "") +
-           literal.GetAsString(indices, shape_index);
+    // We display predicates as 0s and 1s so that the string is more dense.
+    string elem = element_type == PRED
+                      ? literal.Get<bool>(indices, shape_index) ? "1" : "0"
+                      : literal.GetAsString(indices, shape_index);
+    return ((!indices.empty() && indices.back() > 0) ? ", " : "") + elem;
   };
 
   if (ShapeUtil::Rank(subshape) == 0) {

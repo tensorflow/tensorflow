@@ -18,6 +18,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import gc
+
 import numpy as np
 
 from tensorflow.python.autograph import utils
@@ -30,6 +32,10 @@ from tensorflow.python.platform import test
 from tensorflow.python.util import tf_inspect
 
 tf = utils.fake_tf()
+
+
+class TestResource(str):
+  pass
 
 
 class ApiTest(test.TestCase):
@@ -359,6 +365,39 @@ class ApiTest(test.TestCase):
       return y**2
 
     self.assertTrue(hasattr(api.to_graph(test_fn), 'ag_source_map'))
+
+  def assertNoMemoryLeaks(self, target_f):
+    refs_before = set(id(obj) for obj in gc.get_objects())
+    target_f()
+    gc.collect()
+    objs_after = [obj for obj in gc.get_objects() if id(obj) not in refs_before]
+    leaked = [obj for obj in objs_after if isinstance(obj, TestResource)]
+    self.assertFalse(leaked,
+                     'Resources {} were leaked by AutoGraph.'.format(leaked))
+
+  def test_no_module_memory_leak(self):
+    def f():
+      resource = TestResource('some-resource')
+      @api.convert()
+      def target(x):
+        return x + resource, 42
+      self.assertEqual(target('foo'), ('foosome-resource', 42))
+
+    self.assertNoMemoryLeaks(f)
+
+  def test_no_module_memory_leak_deferred_call(self):
+    def f():
+      resource = TestResource('some-resource')
+      @api.convert()
+      def target(x):
+        def inner_fn():
+          return x + resource
+        return inner_fn, 42
+      self.assertEqual(target('foo')[0](), 'foosome-resource')
+
+    f()
+    # TODO(brianklee): Reenable when we've revised module loading approach.
+    # self.assertNoMemoryLeaks(f)
 
 
 if __name__ == '__main__':

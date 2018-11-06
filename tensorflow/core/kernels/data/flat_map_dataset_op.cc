@@ -165,6 +165,11 @@ class FlatMapDatasetOp : public UnaryDatasetOpKernel {
       }
 
      protected:
+      std::shared_ptr<model::Node> CreateNode(
+          IteratorContext* ctx, model::Node::Args args) const override {
+        return model::MakeInterleaveManyNode(std::move(args));
+      }
+
       Status SaveInternal(IteratorStateWriter* writer) override {
         mutex_lock l(mu_);
         if (input_impl_) {
@@ -240,16 +245,6 @@ class FlatMapDatasetOp : public UnaryDatasetOpKernel {
             ctx, captured_func_inputs_, element_index_++,
             dataset()->captured_func_.get(), prefix(),
             &current_element_iterator_);
-      }
-
-      Status BuildCurrentElementIteratorLocked(OpKernelContext* ctx)
-          EXCLUSIVE_LOCKS_REQUIRED(mu_) {
-        IteratorContext::Params params;
-        params.env = ctx->env();
-        params.runner = *(ctx->runner());
-        params.lib = ctx->function_library();
-        IteratorContext iter_ctx(std::move(params));
-        return BuildCurrentElementIteratorLocked(&iter_ctx);
       }
 
       mutex mu_;

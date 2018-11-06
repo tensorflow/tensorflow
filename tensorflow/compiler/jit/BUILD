@@ -190,11 +190,13 @@ cc_library(
         "//tensorflow/core/kernels:resource_variable_ops",
         "//tensorflow/core/kernels:sendrecv_ops",
         "//tensorflow/core/kernels:shape_ops",
+        "//tensorflow/core/kernels:stack",
         "//tensorflow/core/kernels:variable_ops",
         "//tensorflow/core/kernels/data:generator_dataset_op",
         "//tensorflow/core/kernels/data:iterator_ops",
         "//tensorflow/core/kernels/data:prefetch_dataset_op",
         "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/synchronization",
     ],
 )
 
@@ -240,6 +242,7 @@ cc_library(
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/kernels:variable_ops",
         "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/memory",
     ],
 )
@@ -499,6 +502,7 @@ cc_library(
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:optional",
     ],
 )
 

@@ -571,7 +571,7 @@ class EagerIterator(checkpointable.CheckpointableBase):
             output_types=self._flat_output_types,
             output_shapes=self._flat_output_shapes)
 
-      return self._structure._from_tensor_list(ret)  # pylint: disable=protected-access
+      return self._structure._from_compatible_tensor_list(ret)  # pylint: disable=protected-access
 
   def next(self):
     """Returns a nested structure of `tf.Tensor`s containing the next element.

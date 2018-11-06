@@ -54,6 +54,7 @@ cuda_py_test(
     srcs = ["optimizer_v2_test.py"],
     additional_deps = [
         ":optimizer_v2",
+        "//tensorflow/python/eager:def_function",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework",
         "//tensorflow/python:framework_test_lib",

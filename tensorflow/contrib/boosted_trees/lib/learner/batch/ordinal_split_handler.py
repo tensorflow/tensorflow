@@ -142,7 +142,7 @@ class InequalitySplitHandler(base_split_handler.BaseSplitHandler):
         name="StatsAccumulator/{}".format(self._name))
     # Allocate both stats accumulator and quantile accumulator on the same
     # device so that we can build splits with fewer RPCs.
-    with ops.colocate_with(self._stats_accumulator.resource()):
+    with ops.colocate_with(self._stats_accumulator.resource_handle):
       self._quantile_accumulator = quantile_ops.QuantileAccumulator(
           init_stamp_token,
           epsilon=epsilon,
@@ -268,8 +268,8 @@ class DenseSplitHandler(InequalitySplitHandler):
       handler = make_dense_split_tensor
 
     are_splits_ready, partition_ids, gains, split_infos = (
-        handler(self._quantile_accumulator.resource(),
-                self._stats_accumulator.resource(), stamp_token,
+        handler(self._quantile_accumulator.resource_handle,
+                self._stats_accumulator.resource_handle, stamp_token,
                 next_stamp_token, self._multiclass_strategy, class_id,
                 self._feature_column_group_id, self._l1_regularization,
                 self._l2_regularization, self._tree_complexity_regularization,
@@ -447,8 +447,8 @@ class SparseSplitHandler(InequalitySplitHandler):
       handler = make_sparse_split_tensor
 
     are_splits_ready, partition_ids, gains, split_infos = (
-        handler(self._quantile_accumulator.resource(),
-                self._stats_accumulator.resource(), stamp_token,
+        handler(self._quantile_accumulator.resource_handle,
+                self._stats_accumulator.resource_handle, stamp_token,
                 next_stamp_token, self._multiclass_strategy, class_id,
                 self._feature_column_group_id, self._l1_regularization,
                 self._l2_regularization, self._tree_complexity_regularization,

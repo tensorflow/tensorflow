@@ -108,6 +108,18 @@ inline tensorflow::Status ConvertDType(tensorflow::DataType tf_dtype,
   return tensorflow::Status::OK();
 }
 
+template <typename TensorShapeType>
+inline nvinfer1::Dims TensorShapeToTrtDims(const TensorShapeType& shape,
+                                           bool ignore_first_dim) {
+  nvinfer1::Dims trt_dims;
+  const int offset = (ignore_first_dim ? 1 : 0);
+  for (int i = offset; i < shape.dims(); i++) {
+    trt_dims.d[i - offset] = shape.dim_size(i);
+  }
+  trt_dims.nbDims = shape.dims() - offset;
+  return trt_dims;
+}
+
 void GetOutputProperties(const grappler::GraphProperties& graph_properties,
                          const Node* node, const int out_port,
                          PartialTensorShape* shape,
@@ -137,22 +149,37 @@ void GetInputProperties(const grappler::GraphProperties& graph_properties,
   }
 }
 
-tensorflow::Status ValidateInputProperties(const PartialTensorShape& shape,
-                                           const tensorflow::DataType dtype,
-                                           nvinfer1::DataType* trt_dtype) {
-  // TODO(aaroey): some of these checks also apply to IsTensorRTCandidate(), so
-  // put them there instead.
+Status ValidateTensorProperties(const string& producer_node_type,
+                                const tensorflow::DataType dtype,
+                                const PartialTensorShape& shape,
+                                bool validation_only,
+                                nvinfer1::DataType* trt_dtype,
+                                nvinfer1::Dims* trt_dims, int* batch_size) {
+  // Convert data type.
   TF_RETURN_IF_ERROR(ConvertDType(dtype, trt_dtype));
+
+  // Convert shape.
   if (shape.dims() < 0) {
-    return tensorflow::errors::InvalidArgument("Input tensor rank is unknown.");
+    return errors::InvalidArgument("Input tensor rank is unknown.");
   }
-  if (shape.dims() > 9) {
-    return tensorflow::errors::OutOfRange(
-        "Input tensor rank is greater than 8.");
+  if (shape.dims() > nvinfer1::Dims::MAX_DIMS + 1) {  // +1 for batch dim
+    return errors::OutOfRange("Input tensor rank is greater than ",
+                              nvinfer1::Dims::MAX_DIMS + 1);
   }
+  if (producer_node_type != "Const" && shape.dims() < 2) {
+    return errors::InvalidArgument(
+        "Input tensor with rank<2 is not supported since the first dimension "
+        "is treated as batch dimension by TRT");
+  }
+  *trt_dims = TensorShapeToTrtDims(shape, /*ignore_first_dim=*/true);
+  *batch_size = shape.dim_size(0);
+
+  if (validation_only) return Status::OK();
+  // Following are validations at runtime.
+
   for (int d = 1; d < shape.dims(); ++d) {
     if (shape.dim_size(d) < 0) {
-      return tensorflow::errors::InvalidArgument(
+      return errors::InvalidArgument(
           "Input tensor with shape ", shape.DebugString(),
           " has an unknown non-batch dimemension at dim ", d);
     }
@@ -358,22 +385,75 @@ string TRT_ShapedWeights::DebugString() const {
                 ", values=", reinterpret_cast<uintptr_t>(GetValues()), ")");
 }
 
+// A fake ITensor implementation used to check whether the TF-TRT converter can
+// handle specific node. We only need shape and type information, and the
+// converter won't (and shouldn't) use this to build the TRT network.
+class TRT_TensorOrWeights::SimpleITensor : public nvinfer1::ITensor {
+ public:
+  SimpleITensor(nvinfer1::DataType trt_dtype, const nvinfer1::Dims& trt_dims)
+      : trt_dtype_(trt_dtype), trt_dims_(trt_dims) {}
+
+  void setName(const char* name) override {}
+
+  const char* getName() const override { return ""; }
+
+  void setDimensions(nvinfer1::Dims dimensions) override {
+    trt_dims_ = dimensions;
+  }
+
+  nvinfer1::Dims getDimensions() const override { return trt_dims_; }
+
+  void setType(nvinfer1::DataType trt_dtype) override {
+    trt_dtype_ = trt_dtype;
+  }
+
+  nvinfer1::DataType getType() const override { return trt_dtype_; }
+
+  bool isNetworkInput() const override { return false; }
+
+  bool isNetworkOutput() const override { return false; }
+
+  void setBroadcastAcrossBatch(bool broadcastAcrossBatch) override {}
+
+  bool getBroadcastAcrossBatch() const override { return false; }
+
+  nvinfer1::TensorLocation getLocation() const override {
+    // This is arbitrary, since we don't use it.
+    return nvinfer1::TensorLocation::kDEVICE;
+  }
+
+  void setLocation(nvinfer1::TensorLocation location) override {}
+
+#if NV_TENSORRT_MAJOR >= 5
+  bool setDynamicRange(float min, float max) override {}
+#endif
+
+ private:
+  nvinfer1::DataType trt_dtype_;
+  nvinfer1::Dims trt_dims_;
+};
+
 TRT_TensorOrWeights::TRT_TensorOrWeights(nvinfer1::ITensor* tensor,
                                          int batch_size)
     : tensor_(tensor),
       batch_size_(batch_size),
-      weights_(DT_FLOAT),
+      initialized_(true),
+      is_tensor_(true) {}
+
+TRT_TensorOrWeights::TRT_TensorOrWeights(nvinfer1::DataType trt_dtype,
+                                         const nvinfer1::Dims& trt_dims,
+                                         int batch_size)
+    : simple_itensor_(new SimpleITensor(trt_dtype, trt_dims)),
+      batch_size_(batch_size),
       initialized_(true),
       is_tensor_(true) {}
 
 TRT_TensorOrWeights::TRT_TensorOrWeights(const TRT_ShapedWeights& weights)
-    : tensor_(nullptr),
-      weights_(weights),
-      initialized_(true),
-      is_tensor_(false) {}
+    : weights_(weights), initialized_(true), is_tensor_(false) {}
 
 TRT_TensorOrWeights::TRT_TensorOrWeights(const TRT_TensorOrWeights& rhs)
     : tensor_(rhs.tensor_),
+      simple_itensor_(rhs.simple_itensor_),
       batch_size_(rhs.batch_size_),
       weights_(rhs.weights_),
       initialized_(rhs.initialized_),
@@ -381,10 +461,21 @@ TRT_TensorOrWeights::TRT_TensorOrWeights(const TRT_TensorOrWeights& rhs)
 
 void TRT_TensorOrWeights::operator=(const TRT_TensorOrWeights& rhs) {
   tensor_ = rhs.tensor_;
+  simple_itensor_ = rhs.simple_itensor_;
   batch_size_ = rhs.batch_size_;
   weights_ = rhs.weights_;
   initialized_ = rhs.initialized_;
   is_tensor_ = rhs.is_tensor_;
+}
+
+nvinfer1::ITensor* TRT_TensorOrWeights::tensor() {
+  CHECK(is_tensor());
+  return tensor_ == nullptr ? simple_itensor_.get() : tensor_;
+}
+
+const nvinfer1::ITensor* TRT_TensorOrWeights::tensor() const {
+  CHECK(is_tensor());
+  return tensor_ == nullptr ? simple_itensor_.get() : tensor_;
 }
 
 nvinfer1::Dims TRT_TensorOrWeights::GetTrtDims() const {
@@ -398,8 +489,8 @@ nvinfer1::Dims TRT_TensorOrWeights::GetTrtDims() const {
 string TRT_TensorOrWeights::DebugString() const {
   string output = "TRT_TensorOrWeights(type=";
   if (is_tensor()) {
-    StrAppend(&output, "tensor @", reinterpret_cast<uintptr_t>(tensor_),
-              ", shape=", convert::DebugString(tensor_->getDimensions()),
+    StrAppend(&output, "tensor @", reinterpret_cast<uintptr_t>(tensor()),
+              ", shape=", convert::DebugString(tensor()->getDimensions()),
               ", batch_size=", batch_size_);
   } else {
     StrAppend(&output, "weights=", weights_.DebugString());
@@ -560,11 +651,10 @@ void ReorderRSCKToKCRS(const TRT_ShapedWeights& iweights,
   // TRT requires GKcRS, while TF depthwise has RSCK where c=1, C=G
   const int c = iweights.shape_.d[2] / num_groups;
   const int k = iweights.shape_.d[3] * num_groups;
-  VLOG(2) << "num_groups: " << num_groups
-          << "c" << iweights.shape_.d[2] << " then " << c
-          << "k" << iweights.shape_.d[3] << " then " << k
-          << "r" << iweights.shape_.d[0] << " then " << r
-          << "s" << iweights.shape_.d[1] << " then " << s;
+  VLOG(2) << "num_groups: " << num_groups << "c" << iweights.shape_.d[2]
+          << " then " << c << "k" << iweights.shape_.d[3] << " then " << k
+          << "r" << iweights.shape_.d[0] << " then " << r << "s"
+          << iweights.shape_.d[1] << " then " << s;
   oweights->shape_.d[0] = k / num_groups;
   oweights->shape_.d[1] = c * num_groups;
   oweights->shape_.d[2] = r;
@@ -608,9 +698,68 @@ TRT_ShapedWeights TrtWeightStore::GetTempWeights(tensorflow::DataType type,
 
 TrtNodeValidator::TrtNodeValidator() { RegisterOpValidators(); }
 
+Status TrtNodeValidator::ConvertToTensorOrWeights(
+    const NodeDef& node_def, int output_port,
+    const grappler::GraphProperties& graph_properties,
+    TRT_TensorOrWeights* tensor_or_weights) {
+  if (node_def.op() == "Const") {
+    if (output_port != 0) {
+      return errors::InvalidArgument("Const node should only have one output.");
+    }
+    // The output of the conversion will be used as input to other nodes to
+    // determine whether TRT supports those nodes. If it cannot convert the
+    // Const, it's very likely we cannot treat it as a tensor and make it an
+    // input to the TRT network, since TRT removes the first dimension and
+    // treats it as batch size. Also, it's not likely that the converter can
+    // support the op, and performance may suffer even if it can, so we just
+    // simply return error if the conversion fails.
+    std::vector<TRT_TensorOrWeights> inputs;
+    return ConvertConstToWeights(node_def, inputs, tensor_or_weights);
+  }
+  if (!graph_properties.HasOutputProperties(node_def.name())) {
+    return errors::InvalidArgument("Shape and data type are unknown");
+  }
+
+  // Validate and convert shape and dtype.
+  const auto& output_params =
+      graph_properties.GetOutputProperties(node_def.name());
+  const auto& tensor_properties = output_params.at(output_port);
+  const DataType dtype = tensor_properties.dtype();
+  const PartialTensorShape shape = tensor_properties.shape();
+  nvinfer1::DataType trt_dtype;
+  nvinfer1::Dims trt_dims;
+  int batch_size = -1;
+  TF_RETURN_IF_ERROR(ValidateTensorProperties(
+      node_def.op(), dtype, shape, /*validation_only_=*/true, &trt_dtype,
+      &trt_dims, &batch_size));
+
+  // Adds a fake ITensor. This is fine since op converter operates in
+  // validation-only mode and it won't (and shouldn't) use the tensor to do
+  // any TRT network operations.
+  *tensor_or_weights = TRT_TensorOrWeights(trt_dtype, trt_dims, batch_size);
+  return Status::OK();
+}
+
 Status TrtNodeValidator::ValidateNode(
     const tensorflow::NodeDef& node_def,
-    const std::vector<TRT_TensorOrWeights>& inputs) {
+    const std::vector<std::pair<const NodeDef*, int>>& input_node_and_ports,
+    const grappler::GraphProperties& graph_properties) {
+  // Convert input NodeDef and corresponding output ports to
+  // TRT_TensorOrWeights.
+  std::vector<TRT_TensorOrWeights> inputs;
+  for (int i = 0; i < input_node_and_ports.size(); ++i) {
+    const auto& pair = input_node_and_ports[i];
+    TRT_TensorOrWeights tensor_or_weights;
+    Status status = ConvertToTensorOrWeights(
+        *pair.first, pair.second, graph_properties, &tensor_or_weights);
+    if (!status.ok()) {
+      return errors::Internal("Failed to convert input with index ", i,
+                              " to a TRT_TensorOrWeights");
+    }
+    inputs.push_back(tensor_or_weights);
+  }
+
+  // Validate the node.
   const auto iter = op_validators_.find(node_def.op());
   if (iter == op_validators_.end()) {
     // If validator is not registered, it means no validation is needed.
@@ -621,7 +770,19 @@ Status TrtNodeValidator::ValidateNode(
   OpConverterParams params(
       /*arg_converter=*/nullptr, node_def, inputs, /*arg_outputs=*/nullptr,
       /*arg_validation_only=*/true, &weight_store_);
-  Status status = validator(&params);
+  return validator(&params);
+}
+
+Status TrtNodeValidator::ConvertConstToWeights(
+    const NodeDef& const_node_def,
+    const std::vector<TRT_TensorOrWeights>& inputs,
+    TRT_TensorOrWeights* output) {
+  std::vector<TRT_TensorOrWeights> outputs;
+  OpConverterParams params(
+      /*arg_converter=*/nullptr, const_node_def, inputs, &outputs,
+      /*arg_validation_only=*/true, &weight_store_);
+  Status status = op_validators_["Const"](&params);
+  if (status.ok() && output) *output = outputs[0];
   return status;
 }
 
@@ -1663,7 +1824,7 @@ tensorflow::Status ConvertActivation(OpConverterParams* params) {
 }
 
 tensorflow::Status ConvertScale(OpConverterParams* params) {
-  const auto inputs = params->inputs;
+  const auto& inputs = params->inputs;
   const auto& node_def = params->node_def;
   if (inputs.size() != 2 || !inputs.at(0).is_tensor() ||
       !inputs.at(1).is_weights()) {
@@ -1798,8 +1959,13 @@ Status TfTensorToTrtWeights(const DataType dtype, const Tensor& tensor,
   return Status::OK();
 }
 
+// Convert a Const NodeDef to TRT_ShapedWeights. This is a special converter, it
+// always ignores the params->validation_only parameter but adds the converted
+// weights to params->outputs. We did this since TrtNodeValidator needs the
+// weights as input to other nodes, and use it to determine whether those nodes
+// are supported by TRT.
 tensorflow::Status ConvertConst(OpConverterParams* params) {
-  const auto inputs = params->inputs;
+  const auto& inputs = params->inputs;
   const auto& node_def = params->node_def;
   if (!inputs.empty()) {
     return errors::InvalidArgument(
@@ -1896,11 +2062,10 @@ tensorflow::Status ConvertConst(OpConverterParams* params) {
     return errors::Unimplemented("Not supported constant type, at ",
                                  node_def.name());
   }
-  // Pass the output.
-  if (!params->validation_only) {
+  if (params->outputs != nullptr) {
     params->outputs->push_back(TRT_TensorOrWeights(weights));
   }
-  return tensorflow::Status::OK();
+  return Status::OK();
 }
 
 tensorflow::Status ConvertIdentity(OpConverterParams* params) {
@@ -1909,7 +2074,7 @@ tensorflow::Status ConvertIdentity(OpConverterParams* params) {
 }
 
 tensorflow::Status ConvertBinary(OpConverterParams* params) {
-  const auto inputs = params->inputs;
+  const auto& inputs = params->inputs;
   const auto& node_def = params->node_def;
   if (inputs.size() != 2) {
     return tensorflow::errors::FailedPrecondition(
@@ -2418,19 +2583,20 @@ tensorflow::Status ConvertMatMul(OpConverterParams* params) {
   // TODO(jie): INT32 should be converted?
   tensorflow::DataType tf_dtype = attrs.get<tensorflow::DataType>("T");
   if (tf_dtype != DataType::DT_FLOAT && tf_dtype != DataType::DT_HALF) {
-    return tensorflow::errors::Unimplemented(
-        "data type is not supported, for node " + node_def.name() + " got " +
-        tensorflow::DataTypeString(tf_dtype));
+    return errors::Unimplemented("Data type is not supported, for node ",
+                                 node_def.name(), " got ",
+                                 DataTypeString(tf_dtype));
   }
   bool transpose_a = attrs.get<bool>("transpose_a");
   bool transpose_b = attrs.get<bool>("transpose_b");
 
   // FullyConnected:
   if (transpose_a) {
-    return tensorflow::errors::Internal(
-        "Transpose_a is not supported for TensorRT FullyConnected (op: " +
-        node_def.op() + "), at: " + node_def.name());
+    return errors::InvalidArgument(
+        "transpose_a is not supported for TensorRT FullyConnected (op: ",
+        node_def.op(), "), at: ", node_def.name());
   }
+  if (params->validation_only) return Status::OK();
   return ConvertMatMulHelper(params, inputs.at(0), inputs.at(1).weights(),
                              transpose_b, node_def.name());
 }
@@ -2673,10 +2839,13 @@ tensorflow::Status ConvertGraphDefToEngine(
         return tensorflow::errors::InvalidArgument(
             "Failed to parse slot number from ", node_name);
       }
-      nvinfer1::DataType dtype;
+      nvinfer1::DataType trt_dtype;
+      nvinfer1::Dims trt_dims;
+      int batch_size = -1;
       auto shape = input_shapes.at(slot_number);
-      auto status = ValidateInputProperties(
-          shape, node_def.attr().at("dtype").type(), &dtype);
+      auto status = ValidateTensorProperties(
+          node_def.op(), node_def.attr().at("dtype").type(), shape,
+          /*validation_only=*/false, &trt_dtype, &trt_dims, &batch_size);
       if (!status.ok()) {
         const string error_message =
             StrCat("Validation failed for ", node_name, " and input slot ",
@@ -2684,19 +2853,13 @@ tensorflow::Status ConvertGraphDefToEngine(
         LOG(WARNING) << error_message;
         return Status(status.code(), error_message);
       }
-
-      nvinfer1::Dims input_dim;
-      for (int i = 1; i < shape.dims(); i++) {
-        input_dim.d[i - 1] = shape.dim_size(i);
-      }
-      input_dim.nbDims = shape.dims() - 1;
       VLOG(2) << "Adding engine input tensor " << node_name << " with shape "
-              << DebugString(input_dim);
+              << DebugString(trt_dims);
       // TODO(laigd): the conversion should always happen at runtime where all
       // the shapes are known, and we can provide a mode to generate the
       // engines offline, by calling sess.run() and cache/serialize the engines.
-      TF_RETURN_IF_ERROR(converter.AddInputTensor(node_name, dtype, input_dim,
-                                                  shape.dim_size(0)));
+      TF_RETURN_IF_ERROR(
+          converter.AddInputTensor(node_name, trt_dtype, trt_dims, batch_size));
     } else if (tensorflow::str_util::StartsWith(node_name, kOutputPHName) &&
                (node_def.op() == "Identity")) {
       int32 slot_number = -1;
@@ -2864,34 +3027,6 @@ tensorflow::Status ConvertSegmentToGraphDef(
   *common_scope = local_scope;
   VLOG(0) << "Segment @scope '" << local_scope << "', converted to graph";
   return tensorflow::Status::OK();
-}
-
-bool InputEdgeValidator::operator()(const tensorflow::Edge* in_edge) const {
-  if (in_edge->IsControlEdge()) return true;
-  PartialTensorShape shape;
-  tensorflow::DataType dtype;
-  GetOutputProperties(graph_properties_, in_edge->src(), in_edge->src_output(),
-                      &shape, &dtype);
-  nvinfer1::DataType trt_dtype;
-  Status status = ValidateInputProperties(shape, dtype, &trt_dtype);
-  if (!status.ok()) {
-    VLOG(1) << "--> Need to remove input node " << in_edge->dst()->name()
-            << ": " << status;
-    return false;
-  }
-
-
-  if (in_edge->src()->type_string() != "Const" &&
-      // Single dimensional input tensor is not supported since the first
-      // dimension is treated as batch dimension.
-      shape.dims() < 2) {
-    VLOG(1) << "--> Need to remove input node " << in_edge->dst()->name()
-            << " which has an input at port " << in_edge->dst_input() << " with"
-            << " #dim<2"
-            << " and is not a const: " << shape;
-    return false;
-  }
-  return true;
 }
 
 bool OutputEdgeValidator::operator()(const tensorflow::Edge* out_edge) const {

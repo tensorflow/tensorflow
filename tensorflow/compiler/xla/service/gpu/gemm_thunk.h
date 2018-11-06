@@ -41,8 +41,9 @@ class GemmThunk : public Thunk {
             const BufferAllocation::Slice& rhs_buffer,
             const BufferAllocation::Slice& output_buffer,
             const Shape& lhs_shape, const Shape& rhs_shape,
-            const Shape& output_shape, double alpha,
-            const HloInstruction* hlo_instruction);
+            const Shape& output_shape, double alpha, double beta,
+            const HloInstruction* hlo_instruction,
+            bool implements_whole_instruction);
 
   GemmThunk(const GemmThunk&) = delete;
   GemmThunk& operator=(const GemmThunk&) = delete;
@@ -70,6 +71,9 @@ class GemmThunk : public Thunk {
   const Shape output_shape_;
 
   const double alpha_;
+  const double beta_;
+
+  const bool implements_whole_instruction_;
 
   // Maps device names (StreamExecutor::DeviceDescription::name()) to autotune
   // results.  The map's value is the best algorithm we've found for this thunk

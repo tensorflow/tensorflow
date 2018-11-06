@@ -19,10 +19,13 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.python.eager import context
+from tensorflow.python.eager import def_function
+from tensorflow.python.eager import function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
+from tensorflow.python.keras.optimizer_v2 import adam
 from tensorflow.python.keras.optimizer_v2 import gradient_descent
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import clip_ops
@@ -52,11 +55,47 @@ class OptimizerTest(test.TestCase):
         self.assertAllClose([3.0, 4.0], self.evaluate(var1))
         # Run 1 step of sgd through optimizer
         opt_op = sgd.minimize(loss, var_list=[var0, var1])
-        self.evaluate(sgd.iteration.initializer)
+        self.evaluate(variables.global_variables_initializer())
         self.evaluate(opt_op)
         # Validate updated params
         self.assertAllClose([-14., -13.], self.evaluate(var0))
         self.assertAllClose([-6., -5.], self.evaluate(var1))
+
+  @test_util.run_in_graph_and_eager_modes
+  def testAdaptiveLearningRate(self):
+    for dtype in [dtypes.half, dtypes.float32, dtypes.float64]:
+      var0 = resource_variable_ops.ResourceVariable([1.0, 2.0], dtype=dtype)
+      var1 = resource_variable_ops.ResourceVariable([3.0, 4.0], dtype=dtype)
+
+      def loss():
+        return 5 * var0 + 3 * var1  # pylint: disable=cell-var-from-loop
+
+      sgd = gradient_descent.SGD(1.0)
+
+      self.evaluate(variables.global_variables_initializer())
+      # Fetch params to validate initial values
+      self.assertAllClose([1.0, 2.0], self.evaluate(var0))
+      self.assertAllClose([3.0, 4.0], self.evaluate(var1))
+      # Run 1 step of sgd through optimizer
+      opt_op = sgd.minimize(loss, [var0, var1])
+      self.evaluate(variables.global_variables_initializer())
+      self.evaluate(opt_op)
+      # Validate updated params
+      # var0 = [1., 2.] - 1.0 * [5, 5]
+      self.assertAllClose([-4., -3.], self.evaluate(var0))
+      # var1 = [3., 4.] - 1.0 * [3, 3]
+      self.assertAllClose([0., 1.], self.evaluate(var1))
+
+      sgd.learning_rate = 0.5
+      if context.executing_eagerly():
+        sgd.minimize(loss, [var0, var1])
+      else:
+        self.evaluate(opt_op)
+      # Validate updated params
+      # var0 = [-4., -3.] - 0.5 * [5, 5]
+      self.assertAllClose([-6.5, -5.5], self.evaluate(var0))
+      # var1 = [0., 1.] - 0.5 * [3, 3]
+      self.assertAllClose([-1.5, -0.5], self.evaluate(var1))
 
   @test_util.run_in_graph_and_eager_modes
   def testAggregationMethod(self):
@@ -79,7 +118,7 @@ class OptimizerTest(test.TestCase):
             var_list=[var0, var1],
             aggregation_method=gradients_impl.AggregationMethod
             .EXPERIMENTAL_ACCUMULATE_N)
-        self.evaluate(sgd.iteration.initializer)
+        self.evaluate(variables.global_variables_initializer())
         self.evaluate(opt_op)
         # Validate updated params
         self.assertAllClose([-14., -13.], self.evaluate(var0))
@@ -103,7 +142,7 @@ class OptimizerTest(test.TestCase):
         self.assertAllClose([3.0, 4.0], self.evaluate(var1))
         # Run 1 step of sgd through optimizer
         opt_op = sgd.minimize(loss, var_list=[var0, var1], grad_loss=grad_loss)
-        self.evaluate(sgd.iteration.initializer)
+        self.evaluate(variables.global_variables_initializer())
         self.evaluate(opt_op)
         # Validate updated params
         self.assertAllClose([1.0 - 3 * 5 * 42.0, 2.0 - 3 * 5 * (-42.0)],
@@ -184,7 +223,8 @@ class OptimizerTest(test.TestCase):
         # Run 1 step of sgd through optimizer
         converted_grads_and_vars = list(zip(converted_grads, [var0, var1]))
         opt_op = sgd.apply_gradients(converted_grads_and_vars)
-        self.evaluate(sgd.iteration.initializer)
+        self.evaluate(variables.global_variables_initializer())
+        self.evaluate(convert_ops)
         self.evaluate(opt_op)
 
         # Validate updated params
@@ -229,7 +269,7 @@ class OptimizerTest(test.TestCase):
       self.assertAllClose([3.0, 4.0], self.evaluate(var1))
       # Run 1 step of sgd through optimizer
       opt_op = sgd.minimize(loss, var_list=[var0, var1])
-      self.evaluate(sgd.iteration.initializer)
+      self.evaluate(variables.global_variables_initializer())
       self.evaluate(opt_op)
       # Validate updated params
       self.assertAllClose([-0.1, -0.1], self.evaluate(var0))
@@ -241,6 +281,111 @@ class OptimizerTest(test.TestCase):
       sgd = gradient_descent.SGD(3.0)
       self.evaluate(sgd.iteration.initializer)
       self.assertEqual(0, self.evaluate(sgd.iteration))
+
+  @test_util.run_in_graph_and_eager_modes
+  def testSerializationWithinDefun(self):
+    with self.cached_session():
+      sgd = gradient_descent.SGD(3.0)
+      var0 = resource_variable_ops.ResourceVariable([1.0, 2.0],
+                                                    dtype=dtypes.float32)
+      loss = lambda: 3 * var0
+      sgd.minimize(loss, [var0])
+
+      def serialize():
+        config = sgd.get_config()
+        gradient_descent.SGD.from_config(config)
+
+      compiled_serialize = function.defun(serialize)
+      with self.assertRaisesRegexp(RuntimeError, 'inside Tensorflow graph'):
+        compiled_serialize()
+
+  @test_util.run_in_graph_and_eager_modes
+  def testConfig(self):
+    with self.cached_session():
+      opt = gradient_descent.SGD(learning_rate=1.0)
+      config = opt.get_config()
+      opt2 = gradient_descent.SGD.from_config(config)
+      # assert both are equal float values.
+      self.assertEqual(
+          opt._get_hyper('learning_rate'), opt2._get_hyper('learning_rate'))
+      var0 = variables.Variable([[1.0], [2.0]], dtype=dtypes.float32)
+      loss = lambda: 3 * var0
+      # learning rate variable created when calling minimize.
+      opt.minimize(loss, [var0])
+      self.evaluate(variables.global_variables_initializer())
+      config = opt.get_config()
+      opt3 = gradient_descent.SGD.from_config(config)
+      self.assertEqual(
+          self.evaluate(opt._get_hyper('learning_rate')),
+          opt3._get_hyper('learning_rate'))
+
+  @test_util.run_in_graph_and_eager_modes
+  def testWeights(self):
+    with self.cached_session():
+      opt1 = adam.Adam(learning_rate=1.0)
+      var1 = resource_variable_ops.ResourceVariable([1.0, 2.0],
+                                                    dtype=dtypes.float32)
+      loss1 = lambda: 3 * var1
+      opt_op_1 = opt1.minimize(loss1, [var1])
+      self.evaluate(variables.global_variables_initializer())
+      config = opt1.get_config()
+      opt2 = adam.Adam.from_config(config)
+      var2 = resource_variable_ops.ResourceVariable([1.0, 2.0],
+                                                    dtype=dtypes.float32)
+      loss2 = lambda: 3 * var2
+      opt_op_2 = opt2.minimize(loss2, [var2])
+      weights = opt1.get_weights()
+
+      # Assert set_weights and both variables get updated to same value.
+      self.evaluate(variables.global_variables_initializer())
+      opt2.set_weights(weights)
+      self.evaluate([opt_op_1, opt_op_2])
+      self.assertAllClose(self.evaluate(var1), self.evaluate(var2))
+      self.assertEqual(1, self.evaluate(opt1.iteration))
+      self.assertEqual(1, self.evaluate(opt2.iteration))
+
+      var3 = resource_variable_ops.ResourceVariable([1.0, 2.0, 3.0],
+                                                    dtype=dtypes.float32)
+      var4 = resource_variable_ops.ResourceVariable([4.0, 5.0, 6.0],
+                                                    dtype=dtypes.float32)
+      loss3 = lambda: 3 * var3 + 5 * var4
+      opt_op_3 = opt1.minimize(loss3, [var3, var4])
+
+      # Assert set_weights with ValueError since weight list does not match.
+      self.evaluate(variables.global_variables_initializer())
+      weights = opt1.get_weights()
+      with self.assertRaisesRegexp(ValueError, 'but the optimizer was'):
+        opt2.set_weights(weights)
+
+      # Assert set_weights and variables get updated to same value.
+      var5 = resource_variable_ops.ResourceVariable([1.0, 2.0, 3.0],
+                                                    dtype=dtypes.float32)
+      var6 = resource_variable_ops.ResourceVariable([4.0, 5.0, 6.0],
+                                                    dtype=dtypes.float32)
+      loss4 = lambda: 3 * var5 + 5 * var6
+      opt_op_4 = opt2.minimize(loss4, [var5, var6])
+      self.evaluate(variables.global_variables_initializer())
+      opt2.set_weights(weights)
+      self.evaluate([opt_op_3, opt_op_4])
+      self.assertAllClose(
+          self.evaluate([var3, var4]), self.evaluate([var5, var6]))
+
+  def testOptimizerWithFunction(self):
+    with context.eager_mode():
+      var = resource_variable_ops.ResourceVariable([1.0, 2.0],
+                                                   dtype=dtypes.float32)
+      loss = lambda: 3 * var
+      opt = adam.Adam(learning_rate=1.0)
+
+      @def_function.function
+      def fn():
+        opt.minimize(loss, [var])
+        return var
+
+      self.assertAllClose([0., 1.], fn())
+      # This is just to test tf.function. The values needs to be updated
+      # when adam updates beta_1_power.
+      self.assertAllClose([-1.343838, -0.343838], fn())
 
 
 if __name__ == '__main__':

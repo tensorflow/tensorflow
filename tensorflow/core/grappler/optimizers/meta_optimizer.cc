@@ -279,6 +279,18 @@ MetaOptimizer::GetCustomGraphOptimizerConfig(const string& name) const {
   return nullptr;
 }
 
+#define RUN_OPTIMIZER_OR_RETURN_IF_ERROR(optimizer)                            \
+  {                                                                            \
+    const Status status = RunOptimizer(optimizer, cluster, &optimized_item,    \
+                                       optimized_graph, &optimization_result); \
+    if (status.ok()) {                                                         \
+      is_optimized = true;                                                     \
+    } else if (cfg_.fail_on_optimizer_errors()) {                              \
+      VLOG(2) << "Optimizer '" << optimizer->name() << "' failed: " << status; \
+      TF_RETURN_IF_ERROR(status);                                              \
+    }                                                                          \
+  }
+
 Status MetaOptimizer::OptimizeGraph(Cluster* cluster, const GrapplerItem& item,
                                     GraphDef* optimized_graph) {
   int min_graph_nodes = cfg_.min_graph_nodes() == 0 ? kDefaultMinGraphNodes
@@ -340,9 +352,7 @@ Status MetaOptimizer::OptimizeGraph(Cluster* cluster, const GrapplerItem& item,
         if (fusion_optimizer == nullptr) fusion_optimizer = optimizer.get();
         continue;
       }
-      Status status = RunOptimizer(optimizer.get(), cluster, &optimized_item,
-                                   optimized_graph, &optimization_result);
-      if (status.ok()) is_optimized = true;
+      RUN_OPTIMIZER_OR_RETURN_IF_ERROR(optimizer.get());
     }
   }
 
@@ -353,16 +363,12 @@ Status MetaOptimizer::OptimizeGraph(Cluster* cluster, const GrapplerItem& item,
   // optimizations from taking place since we don't have shape inference for
   // functions, and we can't optimize across function boundaries.
   if (fusion_optimizer != nullptr) {
-    Status status = RunOptimizer(fusion_optimizer, cluster, &optimized_item,
-                                 optimized_graph, &optimization_result);
-    if (status.ok()) is_optimized = true;
+    RUN_OPTIMIZER_OR_RETURN_IF_ERROR(fusion_optimizer);
   }
 
   // ScopedAllocatorOptimizer must run last.
   if (sa_optimizer != nullptr) {
-    Status status = RunOptimizer(sa_optimizer, cluster, &optimized_item,
-                                 optimized_graph, &optimization_result);
-    if (status.ok()) is_optimized = true;
+    RUN_OPTIMIZER_OR_RETURN_IF_ERROR(sa_optimizer);
   }
 
   // Record graph optimization result.
@@ -378,6 +384,8 @@ Status MetaOptimizer::OptimizeGraph(Cluster* cluster, const GrapplerItem& item,
 
   return Status::OK();
 }
+
+#undef RUN_OPTIMIZER_OR_RETURN_IF_ERROR
 
 Status MetaOptimizer::RunOptimizer(
     GraphOptimizer* optimizer, Cluster* cluster, GrapplerItem* optimized_item,

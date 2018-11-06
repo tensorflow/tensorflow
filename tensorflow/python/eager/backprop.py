@@ -574,14 +574,10 @@ def _num_elements(grad):
   raise ValueError("`grad` not a Tensor or IndexedSlices.")
 
 
-def _cast_constant(value, dtype):
-  return math_ops.cast(constant_op.constant(value), dtype)
-
-
 def _fast_fill(value, shape, dtype):
   return array_ops.fill(
-      _cast_constant(shape, dtype=dtypes.int32),
-      _cast_constant(value, dtype=dtype))
+      constant_op.constant(shape, dtype=dtypes.int32),
+      constant_op.constant(value, dtype=dtype))
 
 
 def _zeros(shape, dtype):
@@ -599,7 +595,11 @@ def _zeros(shape, dtype):
   cache_key = shape, dtype, device
   cached = ctx.zeros_cache().get(cache_key)
   if cached is None:
-    cached = _fast_fill(0, shape, dtype)
+    if dtypes.as_dtype(dtype).is_bool:
+      value = False
+    else:
+      value = 0
+    cached = _fast_fill(value, shape, dtype)
     ctx.zeros_cache().put(cache_key, cached)
   return cached
 
@@ -608,9 +608,14 @@ def _ones(shape, dtype):
   if not context.context().executing_eagerly():
     return array_ops.ones(shape, dtype)
 
+  if dtypes.as_dtype(dtype).is_bool:
+    value = True
+  else:
+    value = 1
+
   if shape == ():  # pylint: disable=g-explicit-bool-comparison
-    return _cast_constant(1, dtype=dtype)
-  return _fast_fill(1, shape, dtype)
+    return constant_op.constant(value, dtype=dtype)
+  return _fast_fill(value, shape, dtype)
 
 
 _default_vspace = imperative_grad.VSpace(
@@ -767,7 +772,10 @@ class GradientTape(object):
 
   def __del__(self):
     if self._created_eagerly:
-      context.context().end_step()
+      try:
+        context.context().end_step()
+      except AttributeError:
+        pass
 
   def watch(self, tensor):
     """Ensures that `tensor` is being traced by this tape.

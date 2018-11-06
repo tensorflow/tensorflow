@@ -4960,6 +4960,8 @@ def container(container_name):
 def _colocate_with_for_gradient(op, gradient_uid, ignore_existing=False):
   if context.executing_eagerly():
     if op is not None:
+      if not hasattr(op, "device"):
+        op = internal_convert_to_tensor_or_indexed_slices(op)
       return device(op.device)
     else:
       return NullContextmanager()
@@ -4975,7 +4977,10 @@ def _colocate_with_for_gradient(op, gradient_uid, ignore_existing=False):
         op, gradient_uid=gradient_uid, ignore_existing=ignore_existing)
 
 
-@tf_export("colocate_with")
+@deprecation.deprecated(
+    date=None,
+    instructions="Colocations handled automatically by placer.")
+@tf_export(v1=["colocate_with"])
 def colocate_with(op, ignore_existing=False):
   return _colocate_with_for_gradient(op, None, ignore_existing=ignore_existing)
 
@@ -5358,6 +5363,16 @@ def init_scope():
       # try-block (just above).
       if outer_graph is not None:
         outer_graph._device_function_stack = outer_device_stack  # pylint: disable=protected-access
+
+
+def executing_eagerly_outside_functions():
+  """Returns True if executing eagerly, even if inside a graph function."""
+  with init_scope():
+    return context.executing_eagerly()
+
+
+def inside_function():
+  return get_default_graph().building_function
 
 
 @tf_export("enable_eager_execution")

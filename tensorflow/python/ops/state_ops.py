@@ -15,7 +15,7 @@
 
 """Variables.
 
-See the [Variables](https://tensorflow.org/api_guides/python/state_ops) guide.
+See the [Variables](https://www.tensorflow.org/guide/variables) guide.
 """
 
 from __future__ import absolute_import
