@@ -82,12 +82,6 @@ py_library(
     name = "keras_saved_model",
     srcs = ["python/saved_model/keras_saved_model.py"],
     srcs_version = "PY2AND3",
-    tags = [
-        "no_windows",
-        # TODO(b/119022845): Re-enable this test in TAP.
-        "manual",
-        "notap",
-    ],
     visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/python:array_ops",
@@ -108,7 +102,14 @@ py_test(
     size = "medium",
     srcs = ["python/saved_model/keras_saved_model_test.py"],
     srcs_version = "PY2AND3",
-    tags = ["notsan"],
+    tags = [
+        "no_windows",
+        # TODO(b/119022845): Re-enable this test in TAP.
+        "manual",
+        "notap",
+        "notsan",
+        "no_oss",
+    ],
     deps = [
         ":keras_saved_model",
         "//tensorflow/python:client_testlib",
