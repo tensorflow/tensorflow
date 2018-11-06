@@ -88,11 +88,9 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   const TfLiteTensor* input = GetInput(context, node, kInputTensor);
   const TfLiteTensor* positions = GetInput(context, node, kInputPositions);
   TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
-  const int input_rank = NumDimensions(input);
 #define TF_LITE_GATHER(data_type, index_type)                              \
   {                                                                        \
     tflite::GatherParams op_params;                                        \
-    op_params.input_rank = input_rank;                                     \
     op_params.axis = params->axis;                                         \
     optimized_ops::Gather(                                                 \
         op_params, GetTensorShape(input), GetTensorData<data_type>(input), \
