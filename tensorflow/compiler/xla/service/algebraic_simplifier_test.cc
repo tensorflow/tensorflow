@@ -3249,6 +3249,54 @@ TEST_F(AlgebraicSimplifierTest, SliceOfPadMidScalar) {
   EXPECT_THAT(root, op::Parameter());
 }
 
+TEST_F(AlgebraicSimplifierTest, SliceOfConcatScalarInput) {
+  const char* hlo_string = R"(
+    HloModule module
+
+    ENTRY test {
+      param.0 = f32[2] parameter(0)
+      param.1 = f32[1] parameter(1)
+      param.2 = f32[3] parameter(2)
+      concat = f32[6] concatenate(param.0, param.1, param.2), dimensions={0}
+      ROOT slice = f32[1] slice(concat), slice={[2:3]}
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto module,
+      HloRunner::CreateModuleFromString(hlo_string, GetDebugOptionsForTest()));
+
+  AlgebraicSimplifier simplifier(/*is_layout_sensitive=*/false,
+                                 bitcasting_callback());
+  EXPECT_TRUE(simplifier.Run(module.get()).ValueOrDie());
+  auto root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(root, op::Parameter(1));
+}
+
+TEST_F(AlgebraicSimplifierTest, SliceOfConcatNonScalarInput) {
+  const char* hlo_string = R"(
+    HloModule module
+
+    ENTRY test {
+      param.0 = f32[2] parameter(0)
+      param.1 = f32[1] parameter(1)
+      param.2 = f32[3] parameter(2)
+      concat = f32[6] concatenate(param.0, param.1, param.2), dimensions={0}
+      ROOT slice = f32[1] slice(concat), slice={[4:5]}
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto module,
+      HloRunner::CreateModuleFromString(hlo_string, GetDebugOptionsForTest()));
+
+  AlgebraicSimplifier simplifier(/*is_layout_sensitive=*/false,
+                                 bitcasting_callback());
+  EXPECT_TRUE(simplifier.Run(module.get()).ValueOrDie());
+  auto root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(root, op::Slice(op::Parameter(2)));
+  EXPECT_EQ(root->slice_starts(0), 1);
+  EXPECT_EQ(root->slice_limits(0), 2);
+}
+
 struct PadReduceWindowEffectiveBroadcastCase {
   std::vector<int64> input_spatials;
   std::vector<int64> symmetric_pad_spatials;

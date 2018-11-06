@@ -306,9 +306,8 @@ class AlgebraicSimplifierVisitor : public DfsHloVisitorWithDefault {
   // Tries to use a kDot in place of the given convolution.
   StatusOr<bool> SimplifyConvToDot(HloInstruction* convolution);
 
-  // Tries to simplify a slice(pad(...)) where the result of the slice is a
-  // scalar.
-  StatusOr<bool> TrySimplifySliceOfPad(HloInstruction* slice);
+  // Tries to simplify a slice where the result of the slice is a scalar.
+  StatusOr<bool> TrySimplifyScalarSlice(HloInstruction* slice);
 
   // Current HloComputation instance the AlgebraicSimplifierVisitor is
   // traversing.
@@ -1826,60 +1825,102 @@ Status AlgebraicSimplifierVisitor::HandleReverse(HloInstruction* reverse) {
   return Status::OK();
 }
 
-StatusOr<bool> AlgebraicSimplifierVisitor::TrySimplifySliceOfPad(
+StatusOr<bool> AlgebraicSimplifierVisitor::TrySimplifyScalarSlice(
     HloInstruction* slice) {
   // Only try to do this for effective scalars. We could do the same for slicing
   // out larger pieces of padding (replacing with a broadcast of the padding
   // value), but this is probably not worth it.
-  if (!ShapeUtil::IsEffectiveScalar(slice->shape()) ||
-      slice->operand(0)->opcode() != HloOpcode::kPad) {
+  if (!ShapeUtil::IsEffectiveScalar(slice->shape())) {
     return false;
   }
 
-  VLOG(10) << "Trying to simplify scalar slice of pad";
-  // Check there's no internal padding. Again, we could handle that too, since
-  // everything is statically known, but it's not worth it.
-  auto pad = Cast<HloPadInstruction>(slice->mutable_operand(0));
-  auto padding_config = pad->padding_config();
-  int64 rank = padding_config.dimensions_size();
-  if (HasInteriorPadding(padding_config)) {
-    VLOG(10) << "Not folding scalar slice of pad, pad has interior padding";
-    return false;
-  }
+  if (slice->operand(0)->opcode() == HloOpcode::kPad) {
+    VLOG(10) << "Trying to simplify scalar slice of pad";
+    // Check there's no internal padding. Again, we could handle that too, since
+    // everything is statically known, but it's not worth it.
+    auto pad = Cast<HloPadInstruction>(slice->mutable_operand(0));
+    auto padding_config = pad->padding_config();
+    int64 rank = padding_config.dimensions_size();
+    if (HasInteriorPadding(padding_config)) {
+      VLOG(10) << "Not folding scalar slice of pad, pad has interior padding";
+      return false;
+    }
 
-  // Check whether the scalar we're slicing out falls into the padding.
-  bool in_padding = [&]() {
-    for (int64 i = 0; i < rank; ++i) {
-      int64 start = slice->slice_starts(i);
-      int64 low = padding_config.dimensions(i).edge_padding_low();
-      int64 data = pad->operand(0)->shape().dimensions(i);
-      if (start >= low && start < low + data) {
-        return false;
+    // Check whether the scalar we're slicing out falls into the padding.
+    bool in_padding = [&]() {
+      for (int64 i = 0; i < rank; ++i) {
+        int64 start = slice->slice_starts(i);
+        int64 low = padding_config.dimensions(i).edge_padding_low();
+        int64 data = pad->operand(0)->shape().dimensions(i);
+        if (start >= low && start < low + data) {
+          return false;
+        }
       }
-    }
-    return true;
-  }();
+      return true;
+    }();
 
-  if (in_padding) {
-    VLOG(10) << "Folding scalar slice of pad into padding value";
-    TF_RETURN_IF_ERROR(ReplaceWithNewInstruction(
-        slice, HloInstruction::CreateReshape(slice->shape(),
-                                             pad->mutable_padding_value())));
-    return true;
-  } else {
-    // We already know the output of the slice is scalar. If the padded
-    // value is scalar, and it's not in the padding, then it's exactly the
-    // output value.
-    bool replaced =
-        ReplaceInstructionIfSameShape(slice, pad->mutable_operand(0));
-    if (replaced) {
-      VLOG(10) << "Folding scalar slice of pad into padded value";
+    if (in_padding) {
+      VLOG(10) << "Folding scalar slice of pad into padding value";
+      TF_RETURN_IF_ERROR(ReplaceWithNewInstruction(
+          slice, HloInstruction::CreateReshape(slice->shape(),
+                                               pad->mutable_padding_value())));
+      return true;
     } else {
-      VLOG(10) << "Not folding scalar slice of pad into padded value as they "
-                  "have different shapes.";
+      // We already know the output of the slice is scalar. If the padded
+      // value is scalar, and it's not in the padding, then it's exactly the
+      // output value.
+      bool replaced =
+          ReplaceInstructionIfSameShape(slice, pad->mutable_operand(0));
+      if (replaced) {
+        VLOG(10) << "Folding scalar slice of pad into padded value";
+      } else {
+        VLOG(10) << "Not folding scalar slice of pad into padded value as they "
+                    "have different shapes.";
+      }
+      return replaced;
     }
-    return replaced;
   }
+
+  if (slice->operand(0)->opcode() == HloOpcode::kConcatenate) {
+    VLOG(10) << "Trying to simplify scalar slice of concat";
+    // Only do this for R1, there's no chance of this being useful otherwise.
+    if (ShapeUtil::Rank(slice->shape()) != 1) {
+      VLOG(10) << "Not folding, slice is not rank 1";
+      return false;
+    }
+    HloConcatenateInstruction* concat =
+        Cast<HloConcatenateInstruction>(slice->mutable_operand(0));
+    int64 operand_start = 0;
+    int64 operand_num = 0;
+    // Weird loop structure to avoid annoying off-by-one errors.
+    while (true) {
+      TF_RET_CHECK(operand_num < concat->operand_count());
+      const HloInstruction* operand = concat->operand(operand_num);
+      int64 next_operand_start = operand_start + operand->shape().dimensions(0);
+      if (next_operand_start > slice->slice_starts(0)) {
+        break;
+      }
+      operand_start = next_operand_start;
+      operand_num++;
+    }
+
+    bool replaced = ReplaceInstructionIfSameShape(
+        slice, concat->mutable_operand(operand_num));
+    if (replaced) {
+      VLOG(10) << "Folding scalar slice of concat into concat operand";
+    } else {
+      VLOG(10) << "Folding scalar slice of concat into slice of concat operand";
+      TF_RETURN_IF_ERROR(ReplaceWithNewInstruction(
+          slice, HloInstruction::CreateSlice(
+                     slice->shape(), concat->mutable_operand(operand_num),
+                     {slice->slice_starts(0) - operand_start},
+                     {slice->slice_starts(0) - operand_start + 1},
+                     slice->slice_strides())));
+    }
+    return true;
+  }
+
+  return false;
 }
 
 Status AlgebraicSimplifierVisitor::HandleSlice(HloInstruction* slice) {
@@ -1907,7 +1948,7 @@ Status AlgebraicSimplifierVisitor::HandleSlice(HloInstruction* slice) {
                    new_slice_starts, new_slice_limits, slice->slice_strides()));
   }
 
-  TF_ASSIGN_OR_RETURN(bool replaced, TrySimplifySliceOfPad(slice));
+  TF_ASSIGN_OR_RETURN(bool replaced, TrySimplifyScalarSlice(slice));
   if (replaced) {
     return Status::OK();
   }
