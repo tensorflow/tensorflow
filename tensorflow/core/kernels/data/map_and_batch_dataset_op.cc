@@ -296,7 +296,7 @@ class MapAndBatchDatasetOp : public UnaryDatasetOpKernel {
         return model::MakeAsyncKnownRatioNode(
             std::move(args), dataset()->batch_size_,
             {model::MakeParameter("parallelism", num_parallel_calls_, /*min=*/1,
-                                  /*max=*/port::NumSchedulableCPUs())});
+                                  /*max=*/ctx->runner_threadpool_size())});
       }
 
       Status SaveInternal(IteratorStateWriter* writer) override {

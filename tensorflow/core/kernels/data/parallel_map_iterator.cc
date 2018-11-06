@@ -101,7 +101,7 @@ class ParallelMapIterator : public DatasetBaseIterator {
         std::move(args),
         /*ratio=*/1,
         {model::MakeParameter("parallelism", num_parallel_calls_, /*min=*/1,
-                              /*max=*/port::NumSchedulableCPUs())});
+                              /*max=*/ctx->runner_threadpool_size())});
   }
 
   Status SaveInternal(IteratorStateWriter* writer) override {
