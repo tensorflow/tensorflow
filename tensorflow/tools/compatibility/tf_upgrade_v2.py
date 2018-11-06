@@ -96,6 +96,12 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
         "you need to inspect this usage manually.\n"
     )
 
+    # TODO(b/118888586): add default value change to update script.
+    default_loss_reduction_changed = (
+        "WARNING: default value of loss_reduction has been changed to "
+        "SUM_OVER_BATCH_SIZE.\n"
+    )
+
     # Function warnings. <function name> placeholder inside warnings will be
     # replaced by function name.
     self.function_warnings = {
@@ -108,6 +114,7 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
         "tf.train.cosine_decay_restarts": decay_function_comment,
         "tf.train.linear_cosine_decay": decay_function_comment,
         "tf.train.noisy_linear_cosine_decay": decay_function_comment,
+        "tf.estimator.LinearClassifier": default_loss_reduction_changed,
     }
 
 
