@@ -484,107 +484,6 @@ TEST_F(HloComputationTest, CloneWithControlDependency) {
   EXPECT_THAT(successors, ::testing::ElementsAre(cloned_add));
 }
 
-TEST_F(HloComputationTest, Reachability) {
-  // Test reachability of a non-trivial computation:
-  //
-  // const1    const2
-  //    |         |
-  //    | +-------+
-  //    | |       |
-  //    add ..   negate
-  //     |   .     |
-  //     |   .... exp
-  //     |         |
-  //     +---+   +-+---+
-  //         |   |     |
-  //       multiply   copy
-  //
-  // There is a control dependency from 'add' to 'exp'.
-  auto builder = HloComputation::Builder(TestName());
-  auto constant1 = builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(1.0f)));
-  auto constant2 = builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(2.0f)));
-  auto add = builder.AddInstruction(HloInstruction::CreateBinary(
-      r0f32_, HloOpcode::kAdd, constant1, constant2));
-  auto negate = builder.AddInstruction(
-      HloInstruction::CreateUnary(r0f32_, HloOpcode::kNegate, constant2));
-  auto exp = builder.AddInstruction(
-      HloInstruction::CreateUnary(r0f32_, HloOpcode::kExp, negate));
-  auto mul = builder.AddInstruction(
-      HloInstruction::CreateBinary(r0f32_, HloOpcode::kMultiply, add, exp));
-  auto copy = builder.AddInstruction(
-      HloInstruction::CreateUnary(r0f32_, HloOpcode::kCopy, exp));
-
-  auto module = CreateNewModule();
-  auto computation =
-      module->AddEntryComputation(builder.Build(/*root_instruction=*/mul));
-
-  TF_CHECK_OK(add->AddControlDependencyTo(exp));
-  auto reachability = computation->ComputeReachability();
-
-  EXPECT_TRUE(reachability->IsReachable(constant1, constant1));
-  EXPECT_FALSE(reachability->IsReachable(constant1, constant2));
-  EXPECT_TRUE(reachability->IsReachable(constant1, add));
-  EXPECT_FALSE(reachability->IsReachable(constant1, negate));
-  EXPECT_TRUE(reachability->IsReachable(constant1, exp));
-  EXPECT_TRUE(reachability->IsReachable(constant1, mul));
-  EXPECT_TRUE(reachability->IsReachable(constant1, copy));
-
-  EXPECT_FALSE(reachability->IsReachable(constant2, constant1));
-  EXPECT_TRUE(reachability->IsReachable(constant2, constant2));
-  EXPECT_TRUE(reachability->IsReachable(constant2, add));
-  EXPECT_TRUE(reachability->IsReachable(constant2, negate));
-  EXPECT_TRUE(reachability->IsReachable(constant2, exp));
-  EXPECT_TRUE(reachability->IsReachable(constant2, mul));
-  EXPECT_TRUE(reachability->IsReachable(constant2, copy));
-
-  EXPECT_FALSE(reachability->IsReachable(exp, constant1));
-  EXPECT_FALSE(reachability->IsReachable(exp, constant2));
-  EXPECT_FALSE(reachability->IsReachable(exp, add));
-  EXPECT_FALSE(reachability->IsReachable(exp, negate));
-  EXPECT_TRUE(reachability->IsReachable(exp, exp));
-  EXPECT_TRUE(reachability->IsReachable(exp, mul));
-  EXPECT_TRUE(reachability->IsReachable(exp, copy));
-
-  EXPECT_FALSE(reachability->IsReachable(mul, constant1));
-  EXPECT_FALSE(reachability->IsReachable(mul, constant2));
-  EXPECT_FALSE(reachability->IsReachable(mul, add));
-  EXPECT_FALSE(reachability->IsReachable(mul, negate));
-  EXPECT_FALSE(reachability->IsReachable(mul, exp));
-  EXPECT_TRUE(reachability->IsReachable(mul, mul));
-  EXPECT_FALSE(reachability->IsReachable(mul, copy));
-
-  EXPECT_TRUE(reachability->IsConnected(constant1, copy));
-  EXPECT_TRUE(reachability->IsConnected(copy, constant1));
-  EXPECT_FALSE(reachability->IsConnected(negate, add));
-  EXPECT_FALSE(reachability->IsConnected(add, negate));
-
-  // Remove the control dependency then update and verify the reachability map
-  ASSERT_IS_OK(add->RemoveControlDependencyTo(exp));
-  computation->UpdateReachabilityThroughInstruction(exp, reachability.get());
-
-  EXPECT_TRUE(reachability->IsReachable(constant1, constant1));
-  EXPECT_FALSE(reachability->IsReachable(constant1, constant2));
-  EXPECT_TRUE(reachability->IsReachable(constant1, add));
-  EXPECT_FALSE(reachability->IsReachable(constant1, negate));
-  EXPECT_FALSE(reachability->IsReachable(constant1, exp));
-  EXPECT_TRUE(reachability->IsReachable(constant1, mul));
-  EXPECT_FALSE(reachability->IsReachable(constant1, copy));
-
-  // Change a use within the graph then update and verify the reachability map
-  ASSERT_IS_OK(constant2->ReplaceUseWith(negate, constant1));
-  computation->UpdateReachabilityThroughInstruction(negate, reachability.get());
-
-  EXPECT_FALSE(reachability->IsReachable(constant2, constant1));
-  EXPECT_TRUE(reachability->IsReachable(constant2, constant2));
-  EXPECT_TRUE(reachability->IsReachable(constant2, add));
-  EXPECT_FALSE(reachability->IsReachable(constant2, negate));
-  EXPECT_FALSE(reachability->IsReachable(constant2, exp));
-  EXPECT_TRUE(reachability->IsReachable(constant2, mul));
-  EXPECT_FALSE(reachability->IsReachable(constant2, copy));
-}
-
 TEST_F(HloComputationTest, Stringification) {
   const Shape s1 = ShapeUtil::MakeShape(F32, {5, 10});
   const Shape s2 = ShapeUtil::MakeShape(F32, {20, 10});
@@ -698,28 +597,6 @@ TEST_F(HloComputationTest, StringificationCanonical) {
   ROOT tmp_3 = f32[5,20]{1,0} dot(f32[5,10]{1,0} tmp_0, f32[10,20]{1,0} tmp_2), lhs_contracting_dims={1}, rhs_contracting_dims={0}
 })";
   EXPECT_EQ(computation->ToString(options), expected_computation2);
-}
-
-TEST_F(HloComputationTest, ChannelReachability) {
-  const Shape shape = ShapeUtil::MakeShape(F32, {5, 7});
-  HloComputation::Builder builder("ChannelReachability");
-  auto param = builder.AddInstruction(
-      HloInstruction::CreateParameter(0, shape, "param"));
-  auto token0 = builder.AddInstruction(HloInstruction::CreateToken());
-  auto send =
-      builder.AddInstruction(HloInstruction::CreateSend(param, token0, 1));
-  auto send_done = builder.AddInstruction(HloInstruction::CreateSendDone(send));
-  auto token1 = builder.AddInstruction(HloInstruction::CreateToken());
-  auto recv =
-      builder.AddInstruction(HloInstruction::CreateRecv(shape, token1, 1));
-  auto recv_done = builder.AddInstruction(HloInstruction::CreateRecvDone(recv));
-
-  auto module = CreateNewModule();
-  auto computation = module->AddEntryComputation(builder.Build(recv_done));
-  auto reachability = computation->ComputeReachability();
-  EXPECT_TRUE(reachability->IsReachable(param, recv_done));
-  EXPECT_FALSE(reachability->IsReachable(send, recv));
-  EXPECT_FALSE(reachability->IsReachable(send_done, recv));
 }
 
 }  // namespace
