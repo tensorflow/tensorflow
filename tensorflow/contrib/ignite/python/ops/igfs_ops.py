@@ -36,5 +36,5 @@ from tensorflow.python.platform import resource_loader
 from tensorflow.python.framework import load_library
 
 file_system_library = os.path.join(resource_loader.get_data_files_path(),
-                                   "../../_igfs_ops.so")
+                                   "../../_ignite_ops.so")
 load_library.load_file_system_library(file_system_library)
