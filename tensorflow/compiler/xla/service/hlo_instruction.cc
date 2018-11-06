@@ -1109,7 +1109,11 @@ void HloInstruction::set_single_sharding(const HloSharding& sharding) {
 
 void HloInstruction::SetupDerivedInstruction(
     HloInstruction* derived_instruction) const {
-  if (sharding_ != nullptr) {
+  if (sharding_ != nullptr && ShapeUtil::CompatibleIgnoringElementType(
+                                  shape_, derived_instruction->shape())) {
+    // Only copy sharding if the shape of the two instruction is compatible
+    // because copying it between differently shaped instructions can produce
+    // invalid shardings.
     derived_instruction->set_sharding(*sharding_);
   } else {
     derived_instruction->clear_sharding();
@@ -2639,9 +2643,7 @@ Status HloInstruction::Accept(
   return this->Accept(&visitor);
 }
 
-const Shape& HloInstruction::shape() const {
-  return shape_;
-}
+const Shape& HloInstruction::shape() const { return shape_; }
 
 std::vector<int64> HloInstruction::OperandIndices(
     const HloInstruction* operand) const {
