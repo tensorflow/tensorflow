@@ -491,6 +491,7 @@ cuda_py_tests(
         "test/memory_alignment_test.py",
         "test/multi_connection_neighbor_engine_test.py",
         "test/neighboring_engine_test.py",
+        "test/quantization_mnist_test.py",
         "test/quantization_test.py",
         "test/rank_two_test.py",
         "test/reshape_transpose_test.py",
