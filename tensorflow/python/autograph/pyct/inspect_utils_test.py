@@ -20,6 +20,8 @@ from __future__ import print_function
 
 from functools import wraps
 import imp
+import types
+import weakref
 
 import six
 
@@ -261,6 +263,20 @@ class InspectUtilsTest(test.TestCase):
 
     c = TestCallable()
     self.assertEqual(inspect_utils.getmethodclass(c), TestCallable)
+
+  def test_getmethodclass_weakref_mechanism(self):
+    test_obj = TestClass()
+
+    class WeakrefWrapper(object):
+
+      def __init__(self):
+        self.ag_self_weakref__ = weakref.ref(test_obj)
+
+    def test_fn(self):
+      return self
+
+    bound_method = types.MethodType(test_fn, WeakrefWrapper())
+    self.assertEqual(inspect_utils.getmethodclass(bound_method), test_obj)
 
   def test_getdefiningclass(self):
     class Superclass(object):
