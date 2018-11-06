@@ -187,6 +187,12 @@ def getmethodclass(m):
   # Instance method and class methods: should be bound to a non-null "self".
   if hasattr(m, '__self__'):
     if m.__self__:
+      # A fallback allowing methods to be actually bound to a type different
+      # than __self__. This is useful when a strong reference from the method
+      # to the object is not desired, for example when caching is involved.
+      if hasattr(m.__self__, 'ag_self_weakref__'):
+        return m.__self__.ag_self_weakref__()
+
       return m.__self__
 
   # Class, static and unbound methods: search all defined classes in any

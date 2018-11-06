@@ -1528,11 +1528,26 @@ def defun_with_attributes(func=None,
   return decorated
 
 
+# When a method is bound to objects of this type, it allows AutoGraph to
+# recover a weak reference the original method's self pointer. This uses the
+# mechanism from pyct.inspect_utils.getmethodclass.
+# TODO(mdan): This is not pretty. Use a callable wrapper with __get__ instead.
+class _WeakrefSelf(object):
+
+  def __init__(self, target):
+    self.ag_self_weakref__ = target
+
+
 def class_method_to_instance_method(original_function, instance):
   """Constructs a new PolymorphicFunction with `self` bound."""
   def make_partial_py_func(py_func, weak_instance):
     return lambda *args, **kwargs: py_func(weak_instance(), *args, **kwargs)
   weak_instance = weakref.ref(instance)
+
+  # Note: while we could bind to a weakref proxy instead, that causes the
+  # bound method to be unhashable.
+  bound_method = types_lib.MethodType(original_function.python_function,
+                                      _WeakrefSelf(weak_instance))
 
   # pylint: disable=protected-access
   # We make a dummy MethodType object to generate the correct bound method
@@ -1540,7 +1555,7 @@ def class_method_to_instance_method(original_function, instance):
   # `instance`.
   instance_func = type(original_function)(
       tf_decorator.make_decorator(
-          types_lib.MethodType(original_function.python_function, False),
+          bound_method,
           make_partial_py_func(original_function.python_function,
                                weak_instance)),
       name=original_function._name,
