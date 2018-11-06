@@ -714,10 +714,6 @@ tf_xla_py_test(
     size = "medium",
     srcs = ["reduce_ops_test.py"],
     shard_count = 5,
-    tags = [
-        # TODO(b/119059212): Re-enable this test in OSS.
-        "no_oss",
-    ],
     deps = [
         ":xla_test",
         "//tensorflow/python:array_ops",
