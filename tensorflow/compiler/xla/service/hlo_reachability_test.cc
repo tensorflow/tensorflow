@@ -48,7 +48,8 @@ TEST_F(HloReachabilityTest, Reachability) {
       HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(0.0f)));
   auto e = builder.AddInstruction(
       HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(0.0f)));
-  builder.Build();
+  auto module = CreateNewVerifiedModule();
+  module->AddEntryComputation(builder.Build());
 
   HloReachabilityMap reachability({a, b, c, d, e});
   reachability.SetReachable(a, a);
