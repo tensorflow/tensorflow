@@ -81,6 +81,7 @@ TENSORFLOW_API_INIT_FILES_V1 = [
     "saved_model/__init__.py",
     "saved_model/builder/__init__.py",
     "saved_model/constants/__init__.py",
+    "saved_model/experimental/__init__.py",
     "saved_model/loader/__init__.py",
     "saved_model/main_op/__init__.py",
     "saved_model/signature_constants/__init__.py",

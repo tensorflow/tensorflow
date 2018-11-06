@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Tests for checkpointable object SavedModel export."""
+"""Tests for checkpointable object SavedModel save."""
 
 from __future__ import absolute_import
 from __future__ import division
@@ -33,11 +33,12 @@ from tensorflow.python.keras.engine import training
 from tensorflow.python.keras.layers import core
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variables
-from tensorflow.python.saved_model import export
 from tensorflow.python.saved_model import loader
+from tensorflow.python.saved_model import save
 from tensorflow.python.saved_model import signature_constants
 from tensorflow.python.training import adam
 from tensorflow.python.training.checkpointable import tracking
+from tensorflow.python.training.checkpointable import util
 
 
 class _ModelWithOptimizer(training.Model):
@@ -59,15 +60,15 @@ class _ModelWithOptimizer(training.Model):
     return {"loss": loss}
 
 
-class ExportTest(test.TestCase):
+class SaveTest(test.TestCase):
 
   def _import_and_infer(
-      self, export_dir, inputs,
+      self, save_dir, inputs,
       signature_key=signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY):
     """Import a SavedModel into a TF 1.x-style graph and run `signature_key`."""
     graph = ops.Graph()
     with graph.as_default(), self.session(graph) as session:
-      model = loader.load(session, [], export_dir)
+      model = loader.load(session, [], save_dir)
       signature = model.signature_def[signature_key]
       self.assertEqual(set(inputs.keys()), set(signature.inputs.keys()))
       feed_dict = {}
@@ -80,42 +81,42 @@ class ExportTest(test.TestCase):
             output_tensor_info.name)
       return session.run(output_dict, feed_dict=feed_dict)
 
-  def test_method_export_signature(self):
+  def test_method_save_signature(self):
     root = tracking.Checkpointable()
     root.f = def_function.function(
         lambda x: 2. * x,
         input_signature=[tensor_spec.TensorSpec(None, dtypes.float32)])
     root.f(constant_op.constant(1.))
-    export_dir = os.path.join(self.get_temp_dir(), "saved_model")
-    export.export(root, export_dir, root.f)
+    save_dir = os.path.join(self.get_temp_dir(), "saved_model")
+    save.save(root, save_dir, root.f)
     self.assertEqual(
         {"output_0": 2.},
-        self._import_and_infer(export_dir, {"x": 1.}))
+        self._import_and_infer(save_dir, {"x": 1.}))
 
-  def test_method_export_concrete(self):
+  def test_method_save_concrete(self):
     root = tracking.Checkpointable()
     root.f = def_function.function(
         lambda z: {"out": 2. * z})
     root.f(constant_op.constant(1.))
-    export_dir = os.path.join(self.get_temp_dir(), "saved_model")
-    export.export(
+    save_dir = os.path.join(self.get_temp_dir(), "saved_model")
+    save.save(
         root,
-        export_dir,
+        save_dir,
         {"non_default_key": root.f.get_concrete_function(
             tensor_spec.TensorSpec(None, dtypes.float32))})
     self.assertEqual(
         {"out": 2.},
         self._import_and_infer(
-            export_dir, {"z": 1.}, signature_key="non_default_key"))
+            save_dir, {"z": 1.}, signature_key="non_default_key"))
 
   def test_non_concrete_error(self):
     root = tracking.Checkpointable()
     root.f = def_function.function(lambda x: 2. * x)
     root.f(constant_op.constant(1.))
-    export_dir = os.path.join(self.get_temp_dir(), "saved_model")
+    save_dir = os.path.join(self.get_temp_dir(), "saved_model")
     with self.assertRaisesRegexp(
         ValueError, "must be converted to concrete functions"):
-      export.export(root, export_dir, root.f)
+      save.save(root, save_dir, root.f)
 
   def test_nested_inputs(self):
     root = tracking.Checkpointable()
@@ -124,7 +125,7 @@ class ExportTest(test.TestCase):
         input_signature=([tensor_spec.TensorSpec(None, dtypes.float32),
                           tensor_spec.TensorSpec(None, dtypes.float32)],))
     root.f([constant_op.constant(1.), constant_op.constant(1.)])
-    # Concrete functions must always have uniquely named Tensor inputs. Export
+    # Concrete functions must always have uniquely named Tensor inputs. Save
     # relies on this.
     with self.assertRaisesRegexp(
         ValueError, "two arguments named 'x'"):
@@ -134,22 +135,22 @@ class ExportTest(test.TestCase):
     root = tracking.Checkpointable()
     root.f = def_function.function(lambda x: (2. * x, (3. * x, 4. * x)))
     root.f(constant_op.constant(1.))
-    to_export = root.f.get_concrete_function(constant_op.constant(1.))
-    export_dir = os.path.join(self.get_temp_dir(), "saved_model")
+    to_save = root.f.get_concrete_function(constant_op.constant(1.))
+    save_dir = os.path.join(self.get_temp_dir(), "saved_model")
     with self.assertRaisesRegexp(
         ValueError, "non-flat outputs"):
-      export.export(root, export_dir, to_export)
+      save.save(root, save_dir, to_save)
 
   def test_nested_dict_outputs(self):
     root = tracking.Checkpointable()
     root.f = def_function.function(
         lambda x: {"a": 2. * x, "b": (3. * x, 4. * x)})
     root.f(constant_op.constant(1.))
-    to_export = root.f.get_concrete_function(constant_op.constant(1.))
-    export_dir = os.path.join(self.get_temp_dir(), "saved_model")
+    to_save = root.f.get_concrete_function(constant_op.constant(1.))
+    save_dir = os.path.join(self.get_temp_dir(), "saved_model")
     with self.assertRaisesRegexp(
         ValueError, "dictionary containing non-Tensor value"):
-      export.export(root, export_dir, to_export)
+      save.save(root, save_dir, to_save)
 
   def test_variable(self):
     root = tracking.Checkpointable()
@@ -158,49 +159,49 @@ class ExportTest(test.TestCase):
     root.f = def_function.function(
         lambda x: root.v1 * root.v2 * x)
     root.f(constant_op.constant(1.))
-    to_export = root.f.get_concrete_function(constant_op.constant(1.))
-    export_dir = os.path.join(self.get_temp_dir(), "saved_model")
-    export.export(root, export_dir, to_export)
+    to_save = root.f.get_concrete_function(constant_op.constant(1.))
+    save_dir = os.path.join(self.get_temp_dir(), "saved_model")
+    save.save(root, save_dir, to_save)
     self.assertAllEqual({"output_0": 12.},
-                        self._import_and_infer(export_dir, {"x": 2.}))
+                        self._import_and_infer(save_dir, {"x": 2.}))
 
   def test_optimizer(self):
     x = constant_op.constant([[3., 4.]])
     y = constant_op.constant([2.])
     model = _ModelWithOptimizer()
     first_loss = model(x, y)
-    export_dir = os.path.join(self.get_temp_dir(), "saved_model")
-    export.export(model, export_dir, model.call)
+    save_dir = os.path.join(self.get_temp_dir(), "saved_model")
+    save.save(model, save_dir, model.call)
     second_loss = model(x, y)
     self.assertNotEqual(first_loss, second_loss)
     self.assertAllClose(
         second_loss,
-        self._import_and_infer(export_dir, {"x": [[3., 4.]], "y": [2.]}))
+        self._import_and_infer(save_dir, {"x": [[3., 4.]], "y": [2.]}))
 
-  def test_trivial_export_exception(self):
-    export_dir = os.path.join(self.get_temp_dir(), "saved_model")
+  def test_trivial_save_exception(self):
+    save_dir = os.path.join(self.get_temp_dir(), "saved_model")
     with self.assertRaisesRegexp(ValueError, "signature"):
-      export.export(tracking.Checkpointable(), export_dir)
+      save.save(tracking.Checkpointable(), save_dir)
 
   def test_single_method_default_signature(self):
     model = _ModelWithOptimizer()
     x = constant_op.constant([[3., 4.]])
     y = constant_op.constant([2.])
     model(x, y)
-    export_dir = os.path.join(self.get_temp_dir(), "saved_model")
-    export.export(model, export_dir)
+    save_dir = os.path.join(self.get_temp_dir(), "saved_model")
+    save.save(model, save_dir)
     self.assertIn("loss",
-                  self._import_and_infer(export_dir,
+                  self._import_and_infer(save_dir,
                                          {"x": [[3., 4.]], "y": [2.]}))
 
   def test_single_function_default_signature(self):
     model = tracking.Checkpointable()
     model.f = def_function.function(lambda: 3., input_signature=())
     model.f()
-    export_dir = os.path.join(self.get_temp_dir(), "saved_model")
-    export.export(model, export_dir)
+    save_dir = os.path.join(self.get_temp_dir(), "saved_model")
+    save.save(model, save_dir)
     self.assertAllClose({"output_0": 3.},
-                        self._import_and_infer(export_dir, {}))
+                        self._import_and_infer(save_dir, {}))
 
   def test_ambiguous_signatures(self):
     model = _ModelWithOptimizer()
@@ -208,9 +209,49 @@ class ExportTest(test.TestCase):
     y = constant_op.constant([2.])
     model(x, y)
     model.second_function = def_function.function(lambda: 1.)
-    export_dir = os.path.join(self.get_temp_dir(), "saved_model")
+    save_dir = os.path.join(self.get_temp_dir(), "saved_model")
     with self.assertRaisesRegexp(ValueError, "call.*second_function"):
-      export.export(model, export_dir)
+      save.save(model, save_dir)
+
+  def test_docstring(self):
+
+    class Adder(util.Checkpoint):
+
+      @def_function.function(input_signature=[tensor_spec.TensorSpec(
+          shape=None, dtype=dtypes.float32)])
+      def add(self, x):
+        return x + x + 1.
+
+    to_save = Adder()
+    to_save.add(constant_op.constant(1.))
+    save_dir = os.path.join(self.get_temp_dir(), "saved_model")
+    save.save(to_save, save_dir)
+    self.assertAllClose({"output_0": 7.},
+                        self._import_and_infer(save_dir, {"x": 3.}))
+
+  def test_default_attr_stripping(self):
+
+    class Complex(util.Checkpoint):
+
+      @def_function.function(input_signature=[])
+      def __call__(self):
+        return math_ops.complex(
+            constant_op.constant(1.),
+            constant_op.constant(2.),
+            name="complex")
+
+    to_save = Complex()
+    to_save()
+    save_dir = os.path.join(self.get_temp_dir(), "saved_model")
+    save.save(to_save, save_dir)
+    graph = ops.Graph()
+    with graph.as_default(), self.session(graph) as session:
+      loader.load(session, [], save_dir)
+      func, = graph._functions.values()
+      complex_node, = [
+          node for node in func.definition.node_def if node.op == "Complex"]
+      self.assertNotIn("T", complex_node.attr)
+      self.assertNotIn("Tout", complex_node.attr)
 
 
 class MemoryTests(test.TestCase):
@@ -227,8 +268,8 @@ class MemoryTests(test.TestCase):
       # TODO(allenl): debug reference cycles in Python 2.x
       self.skipTest("This test only works in Python 3+. Reference cycles are "
                     "created in older Python versions.")
-    export_dir = os.path.join(self.get_temp_dir(), "saved_model")
-    export.export(self._model, export_dir, self._model.call)
+    save_dir = os.path.join(self.get_temp_dir(), "saved_model")
+    save.save(self._model, save_dir, self._model.call)
 
 
 if __name__ == "__main__":
