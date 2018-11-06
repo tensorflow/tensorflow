@@ -2199,7 +2199,6 @@ Status IrEmitterUnnested::HandleSort(HloInstruction* sort) {
   int64 dimension_to_sort = sort->dimensions(0);
   int64 dimension_to_sort_bound = keys_shape.dimensions(dimension_to_sort);
   int64 num_stages = tensorflow::Log2Ceiling(dimension_to_sort_bound);
-  auto index_type = b_.getInt64Ty();
 
   // Naive C++ code for the outer loops:
   //
@@ -2213,41 +2212,84 @@ Status IrEmitterUnnested::HandleSort(HloInstruction* sort) {
   //   }
   // }
   //
-  // This follows the algorithm described on Wikipedia:
-  // https://en.wikipedia.org/wiki/Bitonic_sorter
+  // This follows the alternative representation of the algorithm described on
+  // Wikipedia: https://en.wikipedia.org/wiki/Bitonic_sorter
+  //
+  // Each mask specifies how to derive from one position in the array the
+  // position with which it should be compared (we calculate the xor of the
+  // position with the mask).
+  // As an optimization, we can move the 'mask' loop to inside the
+  // sorting/comparison loop if the comparisons happen within a small block of
+  // the array. To make this work, we collect all consecutive masks that are
+  // smaller than our chosen power of 2 tile size, and pass them to SortInPlace.
+  // Each thread then processes one tile of data.
 
+  const int64 kTileSize = 64LL;
+
+  // If we cannot combine several xor masks together, we don't use tiling, so we
+  // calculate the standard launch dimensions for the shape.
+  LaunchDimensions standard_launch_dimensions = CalculateLaunchDimensions(
+      keys_shape, ir_emitter_context_->device_description());
+
+  // Calculate the launch dimensions for the case where we use tiling.
+  Shape tile_shape = keys_shape;
+  tile_shape.set_dimensions(dimension_to_sort,
+                            CeilOfRatio(dimension_to_sort_bound, kTileSize));
+  uint64 num_tiles = ShapeUtil::ElementsIn(tile_shape);
+  const uint64 kThreadsPerBlock = std::min(
+      {std::max(
+           1ULL,
+           ir_emitter_context_->device_description().threads_per_block_limit()),
+       32ULL, num_tiles});
+  uint64 num_blocks = CeilOfRatio(num_tiles, kThreadsPerBlock);
+  LaunchDimensions tiled_launch_dimensions(num_blocks, kThreadsPerBlock);
+
+  auto emit_kernel = [&](absl::Span<const int64> xor_masks) {
+    thunks.push_back(
+        BuildKernelThunk(sort, /*implements_whole_instruction=*/false));
+    LaunchDimensions launch_dimensions = xor_masks.size() > 1
+                                             ? tiled_launch_dimensions
+                                             : standard_launch_dimensions;
+    UpdateLaunchDimensions(launch_dimensions, thunks.back().get(),
+                           ir_emitter_context_->llvm_module());
+    IrArray keys_array;
+    std::vector<IrArray> values_arrays;
+    values_arrays.reserve(sort->operand_count() - 1);
+    for (int64 i = 0; i < sort->operand_count(); ++i) {
+      ShapeIndex shape_index =
+          sort->operand_count() > 1 ? ShapeIndex({i}) : ShapeIndex({});
+      if (i == 0) {
+        keys_array = GetIrArray(*sort, *sort, shape_index);
+      } else {
+        values_arrays.push_back(GetIrArray(*sort, *sort, shape_index));
+      }
+    }
+    return llvm_ir::EmitSortInPlace(dimension_to_sort, keys_array,
+                                    values_arrays, IrName(sort), xor_masks, &b_,
+                                    launch_dimensions, kTileSize);
+  };
+  std::vector<int64> xor_masks;
   for (int64 stage = 0; stage < num_stages; ++stage) {
     for (int64 mask = stage; mask >= 0; --mask) {
-      thunks.push_back(
-          BuildKernelThunk(sort, /*implements_whole_instruction=*/false));
-      LaunchDimensions launch_dimensions = CalculateLaunchDimensions(
-          keys_shape, ir_emitter_context_->device_description());
-      UpdateLaunchDimensions(launch_dimensions, thunks.back().get(),
-                             ir_emitter_context_->llvm_module());
-
-      llvm::Value* xor_mask;
+      int64 xor_mask;
       if (mask == stage) {
-        xor_mask = llvm::ConstantInt::get(index_type, (1LL << (stage + 1)) - 1);
+        xor_mask = (1LL << (stage + 1)) - 1;
       } else {
-        xor_mask = llvm::ConstantInt::get(index_type, 1LL << mask);
+        xor_mask = 1LL << mask;
       }
-
-      IrArray keys_array;
-      std::vector<IrArray> values_arrays;
-      values_arrays.reserve(sort->operand_count() - 1);
-      for (int64 i = 0; i < sort->operand_count(); ++i) {
-        ShapeIndex shape_index =
-            sort->operand_count() > 1 ? ShapeIndex({i}) : ShapeIndex({});
-        if (i == 0) {
-          keys_array = GetIrArray(*sort, *sort, shape_index);
-        } else {
-          values_arrays.push_back(GetIrArray(*sort, *sort, shape_index));
+      if (xor_mask >= kTileSize) {
+        if (!xor_masks.empty()) {
+          TF_RETURN_IF_ERROR(emit_kernel(xor_masks));
+          xor_masks.clear();
         }
+        TF_RETURN_IF_ERROR(emit_kernel({xor_mask}));
+      } else {
+        xor_masks.push_back(xor_mask);
       }
-      TF_RETURN_IF_ERROR(llvm_ir::EmitSortInPlace(
-          dimension_to_sort, keys_array, values_arrays, IrName(sort), xor_mask,
-          &b_, &launch_dimensions));
     }
+  }
+  if (!xor_masks.empty()) {
+    TF_RETURN_IF_ERROR(emit_kernel(xor_masks));
   }
 
   AddThunkToThunkSequence(
