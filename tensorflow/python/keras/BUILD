@@ -368,7 +368,7 @@ cuda_py_test(
 
 py_test(
     name = "pooling_test",
-    size = "small",
+    size = "medium",
     srcs = ["layers/pooling_test.py"],
     srcs_version = "PY2AND3",
     deps = [
