@@ -776,6 +776,18 @@ class TPUMirroredVariable(checkpointable.CheckpointableBase):
   def op(self):
     return self._primary_var.op
 
+  # pylint: disable=protected-access
+  @property
+  def _save_slice_info(self):
+    return self._primary_var._save_slice_info
+
+  def _get_save_slice_info(self):
+    return self._primary_var._get_save_slice_info()
+
+  def _set_save_slice_info(self, save_slice_info):
+    return self._primary_var._set_save_slice_info(save_slice_info)
+  # pylint: enable=protected-access
+
   @property
   def _in_graph_mode(self):
     return self._primary_var._in_graph_mode   # pylint: disable=protected-access
