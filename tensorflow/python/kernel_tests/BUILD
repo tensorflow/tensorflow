@@ -1053,9 +1053,9 @@ tf_py_test(
 )
 
 tf_py_test(
-    name = "summary_ops_test",
+    name = "summary_v1_ops_test",
     size = "small",
-    srcs = ["summary_ops_test.py"],
+    srcs = ["summary_v1_ops_test.py"],
     additional_deps = [
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:client_testlib",
@@ -1066,9 +1066,9 @@ tf_py_test(
 )
 
 tf_py_test(
-    name = "summary_tensor_op_test",
+    name = "summary_v1_tensor_op_test",
     size = "small",
-    srcs = ["summary_tensor_op_test.py"],
+    srcs = ["summary_v1_tensor_op_test.py"],
     additional_deps = [
         "//third_party/py/numpy",
         "@six_archive//:six",
@@ -1077,7 +1077,7 @@ tf_py_test(
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework",
         "//tensorflow/python:framework_for_generated_wrappers",
-        "//tensorflow/python:summary_ops",
+        "//tensorflow/python:summary",
     ],
 )
 
@@ -2321,9 +2321,9 @@ cuda_py_test(
 )
 
 cuda_py_test(
-    name = "summary_audio_op_test",
+    name = "summary_v1_audio_op_test",
     size = "small",
-    srcs = ["summary_audio_op_test.py"],
+    srcs = ["summary_v1_audio_op_test.py"],
     additional_deps = [
         "//third_party/py/numpy",
         "//tensorflow/core:protos_all_py",
@@ -2334,9 +2334,9 @@ cuda_py_test(
 )
 
 cuda_py_test(
-    name = "summary_image_op_test",
+    name = "summary_v1_image_op_test",
     size = "small",
-    srcs = ["summary_image_op_test.py"],
+    srcs = ["summary_v1_image_op_test.py"],
     additional_deps = [
         "//third_party/py/numpy",
         "//tensorflow/core:protos_all_py",

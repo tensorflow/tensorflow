@@ -12,21 +12,26 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Tests for summary ops."""
+"""Tests for the actual serialized proto output of the V1 tf.summary ops.
+
+The tensor, audio, and image ops have dedicated tests in adjacent files. The
+overall tf.summary API surface also has its own tests in summary_test.py that
+check calling the API methods but not the exact serialized proto output.
+"""
+
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
 from tensorflow.core.framework import summary_pb2
 from tensorflow.python.framework import constant_op
-from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import logging_ops
 from tensorflow.python.platform import test
 from tensorflow.python.summary import summary
 
 
-class SummaryOpsTest(test.TestCase):
+class SummaryV1OpsTest(test.TestCase):
 
   def _AsSummary(self, s):
     summ = summary_pb2.Summary()
@@ -99,13 +104,6 @@ class SummaryOpsTest(test.TestCase):
       self.assertEqual(1, len(merge.op.inputs))
       self.assertEqual(summ2, merge.op.inputs[0])
       self.assertTrue(summary.merge_all("bar_key") is None)
-
-  def testHistogramSummaryTypes(self):
-    with ops.Graph().as_default():
-      for dtype in (dtypes.int8, dtypes.uint8, dtypes.int16, dtypes.int32,
-                    dtypes.float32, dtypes.float64):
-        const = constant_op.constant(10, dtype=dtype)
-        summary.histogram("h", const)
 
 
 if __name__ == "__main__":

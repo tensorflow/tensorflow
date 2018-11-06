@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Tests for summary image op."""
+"""Tests for summary V1 image op."""
 
 from __future__ import absolute_import
 from __future__ import division
@@ -30,7 +30,7 @@ from tensorflow.python.platform import test
 from tensorflow.python.summary import summary
 
 
-class SummaryImageOpTest(test.TestCase):
+class SummaryV1ImageOpTest(test.TestCase):
 
   def _AsSummary(self, s):
     summ = summary_pb2.Summary()

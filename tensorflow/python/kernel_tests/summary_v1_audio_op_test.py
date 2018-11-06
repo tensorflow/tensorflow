@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Tests for summary sound op."""
+"""Tests for summary V1 audio op."""
 
 from __future__ import absolute_import
 from __future__ import division
@@ -27,7 +27,7 @@ from tensorflow.python.platform import test
 from tensorflow.python.summary import summary
 
 
-class SummaryAudioOpTest(test.TestCase):
+class SummaryV1AudioOpTest(test.TestCase):
 
   def _AsSummary(self, s):
     summ = summary_pb2.Summary()
