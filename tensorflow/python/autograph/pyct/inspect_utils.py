@@ -186,7 +186,7 @@ def getmethodclass(m):
 
   # Instance method and class methods: should be bound to a non-null "self".
   if hasattr(m, '__self__'):
-    if m.__self__:
+    if m.__self__ is not None:
       # A fallback allowing methods to be actually bound to a type different
       # than __self__. This is useful when a strong reference from the method
       # to the object is not desired, for example when caching is involved.

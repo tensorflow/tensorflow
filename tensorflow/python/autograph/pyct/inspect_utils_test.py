@@ -27,6 +27,7 @@ import six
 
 from tensorflow.python import lib
 from tensorflow.python.autograph.pyct import inspect_utils
+from tensorflow.python.framework import constant_op
 from tensorflow.python.platform import test
 
 
@@ -277,6 +278,11 @@ class InspectUtilsTest(test.TestCase):
 
     bound_method = types.MethodType(test_fn, WeakrefWrapper())
     self.assertEqual(inspect_utils.getmethodclass(bound_method), test_obj)
+
+  def test_getmethodclass_no_bool_conversion(self):
+
+    tensor = constant_op.constant([1])
+    self.assertEqual(inspect_utils.getmethodclass(tensor.get_shape), tensor)
 
   def test_getdefiningclass(self):
     class Superclass(object):
