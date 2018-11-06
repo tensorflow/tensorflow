@@ -213,31 +213,31 @@ config_setting(
 #
 config_setting(
     name = "no_aws_support",
-    define_values = {"no_aws_support": "false"},
+    define_values = {"no_aws_support": "true"},
     visibility = ["//visibility:public"],
 )
 
 config_setting(
     name = "no_gcp_support",
-    define_values = {"no_gcp_support": "false"},
+    define_values = {"no_gcp_support": "true"},
     visibility = ["//visibility:public"],
 )
 
 config_setting(
     name = "no_hdfs_support",
-    define_values = {"no_hdfs_support": "false"},
+    define_values = {"no_hdfs_support": "true"},
     visibility = ["//visibility:public"],
 )
 
 config_setting(
     name = "no_ignite_support",
-    define_values = {"no_ignite_support": "false"},
+    define_values = {"no_ignite_support": "true"},
     visibility = ["//visibility:public"],
 )
 
 config_setting(
     name = "no_kafka_support",
-    define_values = {"no_kafka_support": "false"},
+    define_values = {"no_kafka_support": "true"},
     visibility = ["//visibility:public"],
 )
 
