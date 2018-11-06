@@ -4668,7 +4668,7 @@ bool MIOpenSupport::DoFusedBatchNormActivationForwardImpl(
     if (status == miopenStatusSuccess) {
       fusion_plan.SetBatchNormForwardArgs(
           scale_data.opaque(), offset_data.opaque(), batch_mean_data->opaque(),
-          batch_mean_data->opaque(), saved_mean_data->opaque(),
+          batch_var_data->opaque(), saved_mean_data->opaque(),
           saved_var_data->opaque(), epsilon);
     }
 
