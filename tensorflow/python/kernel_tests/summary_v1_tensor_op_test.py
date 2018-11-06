@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Tests for summary ops."""
+"""Tests for summary V1 tensor op."""
 
 from __future__ import absolute_import
 from __future__ import division
@@ -26,11 +26,11 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import summary_ops
 from tensorflow.python.platform import test
+from tensorflow.python.summary import summary as summary_lib
 
 
-class SummaryOpsTest(test.TestCase):
+class SummaryV1TensorOpTest(test.TestCase):
 
   def _SummarySingleValue(self, s):
     summ = summary_pb2.Summary()
@@ -44,12 +44,12 @@ class SummaryOpsTest(test.TestCase):
   def testTags(self):
     with self.cached_session() as sess:
       c = constant_op.constant(1)
-      s1 = summary_ops.tensor_summary("s1", c)
+      s1 = summary_lib.tensor_summary("s1", c)
       with ops.name_scope("foo"):
-        s2 = summary_ops.tensor_summary("s2", c)
+        s2 = summary_lib.tensor_summary("s2", c)
         with ops.name_scope("zod"):
-          s3 = summary_ops.tensor_summary("s3", c)
-          s4 = summary_ops.tensor_summary("TensorSummary", c)
+          s3 = summary_lib.tensor_summary("s3", c)
+          s4 = summary_lib.tensor_summary("TensorSummary", c)
       summ1, summ2, summ3, summ4 = sess.run([s1, s2, s3, s4])
 
     v1 = self._SummarySingleValue(summ1)
@@ -67,7 +67,7 @@ class SummaryOpsTest(test.TestCase):
   def testScalarSummary(self):
     with self.cached_session() as sess:
       const = constant_op.constant(10.0)
-      summ = summary_ops.tensor_summary("foo", const)
+      summ = summary_lib.tensor_summary("foo", const)
       result = sess.run(summ)
 
     value = self._SummarySingleValue(result)
@@ -78,7 +78,7 @@ class SummaryOpsTest(test.TestCase):
     s = six.b("foobar")
     with self.cached_session() as sess:
       const = constant_op.constant(s)
-      summ = summary_ops.tensor_summary("foo", const)
+      summ = summary_lib.tensor_summary("foo", const)
       result = sess.run(summ)
 
     value = self._SummarySingleValue(result)
@@ -88,7 +88,7 @@ class SummaryOpsTest(test.TestCase):
   def testManyScalarSummary(self):
     with self.cached_session() as sess:
       const = array_ops.ones([5, 5, 5])
-      summ = summary_ops.tensor_summary("foo", const)
+      summ = summary_lib.tensor_summary("foo", const)
       result = sess.run(summ)
     value = self._SummarySingleValue(result)
     n = tensor_util.MakeNdarray(value.tensor)
@@ -98,7 +98,7 @@ class SummaryOpsTest(test.TestCase):
     strings = [[six.b("foo bar"), six.b("baz")], [six.b("zoink"), six.b("zod")]]
     with self.cached_session() as sess:
       const = constant_op.constant(strings)
-      summ = summary_ops.tensor_summary("foo", const)
+      summ = summary_lib.tensor_summary("foo", const)
       result = sess.run(summ)
     value = self._SummarySingleValue(result)
     n = tensor_util.MakeNdarray(value.tensor)
@@ -108,7 +108,7 @@ class SummaryOpsTest(test.TestCase):
     bools = [True, True, True, False, False, False]
     with self.cached_session() as sess:
       const = constant_op.constant(bools)
-      summ = summary_ops.tensor_summary("foo", const)
+      summ = summary_lib.tensor_summary("foo", const)
       result = sess.run(summ)
 
     value = self._SummarySingleValue(result)
@@ -126,14 +126,14 @@ class SummaryOpsTest(test.TestCase):
 
       const = constant_op.constant(1)
       # Default case; no description or display name
-      simple_summary = summary_ops.tensor_summary("simple", const)
+      simple_summary = summary_lib.tensor_summary("simple", const)
 
       descr = get_description(simple_summary)
       self.assertEqual(descr.display_name, "")
       self.assertEqual(descr.summary_description, "")
 
       # Values are provided via function args
-      with_values = summary_ops.tensor_summary(
+      with_values = summary_lib.tensor_summary(
           "simple",
           const,
           display_name="my name",
@@ -148,14 +148,14 @@ class SummaryOpsTest(test.TestCase):
       metadata.display_name = "my name"
       metadata.summary_description = "my description"
 
-      with_metadata = summary_ops.tensor_summary(
+      with_metadata = summary_lib.tensor_summary(
           "simple", const, summary_metadata=metadata)
       descr = get_description(with_metadata)
       self.assertEqual(descr.display_name, "my name")
       self.assertEqual(descr.summary_description, "my description")
 
       # If both SummaryMetadata and explicit args are provided, the args win
-      overwrite = summary_ops.tensor_summary(
+      overwrite = summary_lib.tensor_summary(
           "simple",
           const,
           summary_metadata=metadata,
