@@ -175,6 +175,23 @@ cuda_py_test(
 )
 
 cuda_py_test(
+    name = "function_gradients_test",
+    size = "medium",
+    srcs = ["function_gradients_test.py"],
+    additional_deps = [
+        ":backprop",
+        ":context",
+        ":def_function",
+        ":function",
+        ":test",
+        "@absl_py//absl/testing:parameterized",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:resource_variable_ops",
+    ],
+    shard_count = 5,
+)
+
+cuda_py_test(
     name = "function_test",
     size = "medium",
     srcs = ["function_test.py"],
@@ -193,7 +210,7 @@ cuda_py_test(
         "//tensorflow/python:math_ops",
         "//tensorflow/python:resource_variable_ops",
     ],
-    shard_count = 20,
+    shard_count = 15,
 )
 
 py_library(
@@ -235,6 +252,18 @@ py_library(
         ":context",
         "//tensorflow/python:pywrap_tensorflow",
         "//third_party/py/numpy",
+    ],
+)
+
+py_test(
+    name = "execution_callbacks_test",
+    srcs = ["execution_callbacks_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":execution_callbacks",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:math_ops",
     ],
 )
 
@@ -318,6 +347,7 @@ py_library(
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:execute",
         "//tensorflow/python/eager:tape",
+        "//tensorflow/python/ops/parallel_for:control_flow_ops",
         "@six_archive//:six",
     ],
 )

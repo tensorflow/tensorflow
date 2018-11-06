@@ -117,7 +117,8 @@ namespace toco {
     auto* slice_b_op = new SliceOperator;
     slice_b_op->inputs = {
         batch_op->inputs[1],
-        CreateInt32Array(model, batch_name + "/slice_b/slice/begin", {0, 0, 0}),
+        CreateInt32Array(model, batch_name + "/slice_b/slice/begin",
+                         {batch, 0, 0}),
         CreateInt32Array(
             model, batch_name + "/slice_b/slice/size",
             {1, input_array_b.shape().dims(1), input_array_b.shape().dims(2)}),

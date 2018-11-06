@@ -19,6 +19,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/process_function_library_runtime.h"
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/device_base.h"
+#include "tensorflow/core/framework/function_handle_cache.h"
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/graph/graph_constructor.h"
@@ -27,8 +28,10 @@ limitations under the License.
 #include "tensorflow/core/grappler/graph_view.h"
 #include "tensorflow/core/grappler/grappler_item.h"
 #include "tensorflow/core/grappler/grappler_item_builder.h"
+#include "tensorflow/core/grappler/optimizers/data/function_utils.h"
 #include "tensorflow/core/grappler/optimizers/data/graph_utils.h"
 #include "tensorflow/core/grappler/optimizers/meta_optimizer.h"
+#include "tensorflow/core/lib/core/refcount.h"
 #include "tensorflow/core/lib/random/random.h"
 #include "tensorflow/core/protobuf/meta_graph.pb.h"
 #include "tensorflow/core/protobuf/rewriter_config.pb.h"
@@ -56,8 +59,13 @@ class OptimizeDatasetOp : public UnaryDatasetOpKernel {
         ctx, ParseVectorArgument<string>(ctx, "optimizations", &optimizations));
     Dataset* dataset =
         new Dataset(ctx, input, optimizations, output_types_, output_shapes_);
-    OP_REQUIRES_OK(ctx, dataset->Optimize(ctx));
-    *output = dataset;
+    Status s = dataset->Optimize(ctx);
+    if (s.ok()) {
+      *output = dataset;
+    } else {
+      dataset->Unref();
+      OP_REQUIRES_OK(ctx, s);
+    }
   }
 
  private:
@@ -68,6 +76,7 @@ class OptimizeDatasetOp : public UnaryDatasetOpKernel {
             const DataTypeVector& output_types,
             const std::vector<PartialTensorShape>& output_shapes)
         : DatasetBase(DatasetContext(ctx)),
+          optimized_input_(nullptr),
           input_(input),
           optimizations_(optimizations),
           output_types_(output_types),
@@ -77,7 +86,9 @@ class OptimizeDatasetOp : public UnaryDatasetOpKernel {
 
     ~Dataset() override {
       input_->Unref();
-      optimized_input_->Unref();
+      if (optimized_input_) {
+        optimized_input_->Unref();
+      }
     }
 
     std::unique_ptr<IteratorBase> MakeIteratorInternal(
@@ -115,6 +126,9 @@ class OptimizeDatasetOp : public UnaryDatasetOpKernel {
       TF_RETURN_IF_ERROR(
           ctx->function_library()->Clone(&flib_def_, &pflr_, &lib_));
 
+      // Create a FunctionHandleCache.
+      function_handle_cache_.reset(new FunctionHandleCache(lib_));
+
       // Some functions may have been modified without having their names
       // changed (for example, nested dataset graphs from FlatMap or
       // Interleave). To avoid name conflicts, we remove these functions from
@@ -148,6 +162,8 @@ class OptimizeDatasetOp : public UnaryDatasetOpKernel {
 
     string DebugString() const override { return "OptimizeDatasetOp::Dataset"; }
 
+    int64 Cardinality() const override { return input_->Cardinality(); }
+
    protected:
     Status AsGraphDefInternal(SerializationContext* ctx,
                               DatasetGraphDefBuilder* b,
@@ -167,6 +183,7 @@ class OptimizeDatasetOp : public UnaryDatasetOpKernel {
       Status Initialize(IteratorContext* ctx) override {
         IteratorContext::Params params(ctx);
         params.lib = dataset()->lib_;
+        params.function_handle_cache = dataset()->function_handle_cache_.get();
         return dataset()->optimized_input_->MakeIterator(
             IteratorContext(std::move(params)), prefix(), &input_impl_);
       }
@@ -176,6 +193,7 @@ class OptimizeDatasetOp : public UnaryDatasetOpKernel {
                              bool* end_of_sequence) override {
         IteratorContext::Params params(ctx);
         params.lib = dataset()->lib_;
+        params.function_handle_cache = dataset()->function_handle_cache_.get();
         return input_impl_->GetNext(IteratorContext(std::move(params)),
                                     out_tensors, end_of_sequence);
       }
@@ -202,6 +220,39 @@ class OptimizeDatasetOp : public UnaryDatasetOpKernel {
       std::unique_ptr<IteratorBase> input_impl_;
     };
 
+    void AddFakeSinks(FunctionDef* function_def) {
+      int counter = 0;
+      for (const auto& output : function_def->signature().output_arg()) {
+        NodeDef* node = function_def->add_node_def();
+        tensorflow::grappler::function_utils::SetUniqueFunctionNodeName(
+            strings::StrCat("FakeSink", counter++), function_def, node);
+        node->set_op("Identity");
+        node->add_input(function_def->ret().at(output.name()));
+        (*node->mutable_attr())["T"].set_type(output.type());
+
+        (*function_def->mutable_ret())[output.name()] =
+            strings::StrCat(node->name(), ":output:0");
+      }
+    }
+
+    void RemoveFakeSinks(FunctionDef* function_def) {
+      // Map from identity node names to their input tensor strings
+      std::map<string, string> identity_map;
+      for (const auto& node : function_def->node_def()) {
+        if (node.op() == "Identity" && node.input_size() == 1) {
+          identity_map[node.name()] = node.input(0);
+        }
+      }
+      for (const auto& output_arg : function_def->signature().output_arg()) {
+        const string& tensor = function_def->ret().at(output_arg.name());
+        const string& output_node = tensor.substr(0, tensor.find(':'));
+        if (identity_map.find(output_node) != identity_map.end()) {
+          (*function_def->mutable_ret())[output_arg.name()] =
+              identity_map.at(output_node);
+        }
+      }
+    }
+
     Status ApplyOptimizations(OpKernelContext* ctx, GraphDef* graph_def,
                               string* output_node) {
       // Add an identity node as the fetch node, otherwise we might get
@@ -215,6 +266,15 @@ class OptimizeDatasetOp : public UnaryDatasetOpKernel {
       (*node->mutable_attr())["T"].set_type(DT_VARIANT);
       *output_node = node->name();
 
+      // Add fake sink node to graph and functions to allow rewriting the actual
+      // sink nodes.
+      // TODO(b/118820916): When MetaOptimizer adds provisions for function
+      // retvals to be optimizable, we will no longer need this.
+      for (auto& function_def :
+           *graph_def->mutable_library()->mutable_function()) {
+        AddFakeSinks(&function_def);
+      }
+
       // Create metagraph.
       MetaGraphDef meta_graph_def;
       (*meta_graph_def.mutable_graph_def()) = *graph_def;
@@ -226,7 +286,9 @@ class OptimizeDatasetOp : public UnaryDatasetOpKernel {
       (*meta_graph_def.mutable_collection_def())["train_op"] = collection_def;
 
       // Create Grappler item.
-      tensorflow::RewriterConfig rewriter_config;
+      tensorflow::ConfigProto config;
+      RewriterConfig& rewriter_config =
+          *config.mutable_graph_options()->mutable_rewrite_options();
       for (const string& optimization : optimizations_) {
         rewriter_config.add_optimizers(optimization);
       }
@@ -264,7 +326,15 @@ class OptimizeDatasetOp : public UnaryDatasetOpKernel {
         }
       }
       TF_RETURN_IF_ERROR(tensorflow::grappler::RunMetaOptimizer(
-          *grappler_item, rewriter_config, ctx->device(), &cluster, graph_def));
+          *grappler_item, config, ctx->device(), &cluster, graph_def));
+
+      // Remove fake sinks after optimizations are done.
+      // TODO(b/118820916): When MetaOptimizer adds provisions for function
+      // retvals to be optimizable, we will no longer need this.
+      for (auto& function_def :
+           *graph_def->mutable_library()->mutable_function()) {
+        RemoveFakeSinks(&function_def);
+      }
 
       return Status::OK();
     }
@@ -273,6 +343,7 @@ class OptimizeDatasetOp : public UnaryDatasetOpKernel {
     FunctionLibraryRuntime* lib_ = nullptr;
     std::unique_ptr<ProcessFunctionLibraryRuntime> pflr_ = nullptr;
     std::unique_ptr<FunctionLibraryDefinition> flib_def_ = nullptr;
+    std::unique_ptr<FunctionHandleCache> function_handle_cache_ = nullptr;
     const DatasetBase* input_;
     const std::vector<string> optimizations_;
     const DataTypeVector output_types_;

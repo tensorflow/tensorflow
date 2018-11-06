@@ -149,6 +149,10 @@ def layer_test(layer_cls, kwargs=None, input_shape=None, input_dtype=None,
     np.testing.assert_allclose(output, actual_output, rtol=1e-3)
 
   # test training mode (e.g. useful for dropout tests)
+  # Rebuild the model to avoid the graph being reused between predict() and
+  # train(). This was causing some error for layer with Defun as it body.
+  # See b/120160788 for more details. This should be mitigated after 2.0.
+  model = keras.models.Model(x, layer(x))
   model.compile(RMSPropOptimizer(0.01), 'mse', weighted_metrics=['acc'])
   model.train_on_batch(input_data, actual_output)
 

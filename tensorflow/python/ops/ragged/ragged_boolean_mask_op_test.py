@@ -298,6 +298,7 @@ class RaggedBooleanMaskOpTest(test_util.TensorFlowTestCase,
           keepdims=True,
           expected=ragged.constant_value([[[1], [4, 6]], [[7, 9], []]])),
   ])  # pyformat: disable
+  @test_util.run_deprecated_v1
   def testBooleanMask(self, descr, data, mask, keepdims, expected):
     actual = ragged.boolean_mask(data, mask, keepdims=keepdims)
     self.assertEqual(
@@ -307,6 +308,7 @@ class RaggedBooleanMaskOpTest(test_util.TensorFlowTestCase,
         expected = expected.tolist()
       self.assertEqual(actual.eval().tolist(), expected)
 
+  @test_util.run_deprecated_v1
   def testErrors(self):
     self.assertRaisesRegexp(ValueError,
                             r'mask\.shape\.ndims must be kown statically',

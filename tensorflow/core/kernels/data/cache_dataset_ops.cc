@@ -84,6 +84,8 @@ class CacheDatasetOp : public UnaryDatasetOpKernel {
       return "CacheDatasetOp::FileDataset";
     }
 
+    int64 Cardinality() const override { return input_->Cardinality(); }
+
    protected:
     Status AsGraphDefInternal(SerializationContext* ctx,
                               DatasetGraphDefBuilder* b,
@@ -587,6 +589,8 @@ class CacheDatasetOp : public UnaryDatasetOpKernel {
     string DebugString() const override {
       return "CacheDatasetOp::MemoryDataset";
     }
+
+    int64 Cardinality() const override { return input_->Cardinality(); }
 
    protected:
     Status AsGraphDefInternal(SerializationContext* ctx,

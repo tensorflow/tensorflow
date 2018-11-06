@@ -158,7 +158,8 @@ Status BuildComputation(
     xla::XlaBuilder* builder, xla::XlaComputation* computation,
     int* num_computation_outputs, int* num_nonconst_outputs,
     std::vector<XlaCompiler::OutputDescription>* outputs,
-    std::vector<XlaCompiler::ResourceUpdate>* resource_updates) {
+    std::vector<XlaCompiler::ResourceUpdate>* resource_updates,
+    xla::Shape* output_shape) {
   // Attach a common operator name as metadata. This has no semantic effect — it
   // merely makes the HLO graph more readable when visualized via TensorBoard,
   // since TensorBoard forms groups out of operators with similar names.
@@ -176,6 +177,10 @@ Status BuildComputation(
 
   std::vector<xla::XlaOp> elems;
   elems.reserve(retvals.size());
+
+  // Keeps track of which retvals have layout to update. The first element is
+  // the output index, second element is the new layout.
+  std::vector<std::pair<int64, xla::Layout>> retval_to_update_layout;
   for (int i = 0; i < retvals.size(); ++i) {
     XlaCompiler::OutputDescription& output = (*outputs)[i];
     const XlaExpression& retval = retvals[i];
@@ -202,10 +207,12 @@ Status BuildComputation(
           TF_ASSIGN_OR_RETURN(xla::Shape shape, shape_representation_fn(
                                                     output.shape, output.type));
           value = xla::Reshape(value, xla::AsInt64Slice(shape.dimensions()));
+          retval_to_update_layout.emplace_back(elems.size(), shape.layout());
         } else if (it != retval_cores.end()) {
           // Apply the sharding to the output, if there is a core assignment.
           value = identity_op(value);
         }
+
         elems.push_back(value);
         break;
       }
@@ -297,6 +304,21 @@ Status BuildComputation(
     return computation_status.status();
   }
   *computation = computation_status.ConsumeValueOrDie();
+
+  TF_ASSIGN_OR_RETURN(const auto& program_shape,
+                      computation->GetProgramShape());
+  *output_shape = program_shape.result();
+  // Update the output layout to the layout of retval.
+  for (auto& update : retval_to_update_layout) {
+    if (!always_return_tuple && elems.size() == 1) {
+      *output_shape->mutable_layout() = update.second;
+      continue;
+    }
+
+    xla::Shape* output_sub_shape =
+        xla::ShapeUtil::GetMutableSubshape(output_shape, {update.first});
+    *output_sub_shape->mutable_layout() = update.second;
+  }
   return Status::OK();
 }
 
@@ -304,10 +326,10 @@ Status BuildComputation(
 
 bool XlaCompiler::Argument::operator==(
     const XlaCompiler::Argument& other) const {
-  if (std::tie(kind, resource_kind, type, name, initialized, tensor_array_size,
+  if (std::tie(kind, resource_kind, type, name, initialized, max_array_size,
                tensor_array_gradients) !=
       std::tie(other.kind, other.resource_kind, other.type, other.name,
-               other.initialized, other.tensor_array_size,
+               other.initialized, other.max_array_size,
                other.tensor_array_gradients)) {
     return false;
   }
@@ -337,8 +359,8 @@ string XlaCompiler::Argument::HumanString() const {
       string output = absl::StrCat("kind=resource", common, " resource_kind=",
                                    XlaResource::KindToString(resource_kind),
                                    " initialized=", initialized);
-      if (tensor_array_size >= 0) {
-        absl::StrAppend(&output, " tensor_array_size=", tensor_array_size);
+      if (max_array_size >= 0) {
+        absl::StrAppend(&output, " max_array_size=", max_array_size);
       }
       if (!tensor_array_gradients.empty()) {
         absl::StrAppend(&output, " tensor_array_gradients=",
@@ -358,7 +380,7 @@ XlaCompiler::XlaCompiler(XlaCompiler::Options options)
       initialization_status_(Status::OK()),
       next_step_id_(1),
       device_(new XlaCompilationDevice(SessionOptions(), options_.device_type)),
-      device_mgr_({device_}) {
+      device_mgr_(absl::WrapUnique(device_)) {
   CHECK(!options_.device_type.type_string().empty());
   if (options_.populate_resource_manager) {
     initialization_status_ =
@@ -545,12 +567,12 @@ Status XlaCompiler::XLAShapeForArgument(const XlaCompiler::Argument& arg,
           return Status::OK();
         }
         case XlaResource::kTensorArray: {
-          if (arg.tensor_array_size < 0) {
+          if (arg.max_array_size < 0) {
             return errors::InvalidArgument(
-                "Negative tensor_array_size in XLAShapeForArgument");
+                "Negative max_array_size in XLAShapeForArgument");
           }
           TensorShape shape;
-          shape.AddDim(arg.tensor_array_size);
+          shape.AddDim(arg.max_array_size);
           shape.AppendShape(arg.shape);
           TF_RETURN_IF_ERROR(TensorShapeToXLAShape(arg.type, shape, xla_shape));
 
@@ -562,12 +584,12 @@ Status XlaCompiler::XLAShapeForArgument(const XlaCompiler::Argument& arg,
           return Status::OK();
         }
         case XlaResource::kStack: {
-          if (arg.tensor_array_size < 0) {
+          if (arg.max_array_size < 0) {
             return errors::InvalidArgument(
-                "Negative tensor_array_size in XLAShapeForArgument");
+                "Negative max_array_size in XLAShapeForArgument");
           }
           TensorShape shape;
-          shape.AddDim(arg.tensor_array_size);
+          shape.AddDim(arg.max_array_size);
           shape.AppendShape(arg.shape);
           xla::Shape buffer_shape;
           TF_RETURN_IF_ERROR(
@@ -613,21 +635,23 @@ Status XlaCompiler::BuildArguments(
     const XlaCompiler::Argument& arg = args[i];
     XlaExpression& arg_expression = (*arg_expressions)[i];
     switch (arg.kind) {
-      case XlaCompiler::Argument::kResource:
+      case XlaCompiler::Argument::kResource: {
         TF_RET_CHECK(arg.resource_kind != XlaResource::kInvalid);
         // TODO(phawkins): this code assumes that resource arguments do not
         // alias.
-        XlaResource* resource;
-        TF_RETURN_IF_ERROR(context->CreateResource(
-            arg.resource_kind, i, arg.name, arg.type, arg.shape, xla::XlaOp(),
-            /*tensor_array_size=*/arg.tensor_array_size,
-            /*tensor_array_gradients=*/arg.tensor_array_gradients, &resource));
+        XlaResource* resource =
+            context->AddResource(absl::make_unique<XlaResource>(
+                arg.resource_kind, i, arg.name, arg.type, arg.shape,
+                xla::XlaOp(),
+                /*max_array_size=*/arg.max_array_size,
+                /*tensor_array_gradients=*/arg.tensor_array_gradients,
+                /*tensor_array_multiple_writes_aggregate=*/true));
         arg_expression = XlaExpression::Resource(resource);
         if (arg.initialized) {
           input_mapping->push_back(i);
         }
-
         break;
+      }
       case XlaCompiler::Argument::kParameter:
       case XlaCompiler::Argument::kToken: {
         input_mapping->push_back(i);
@@ -901,9 +925,7 @@ Status XlaCompiler::CompileGraph(const XlaCompiler::CompileOptions& options,
                                    options_.device_type, name));
 
   xla::XlaBuilder builder(name);
-  XlaContext* context =
-      new XlaContext(this, &builder, options_.allow_cpu_custom_calls,
-                     &options_.shape_representation_fn);
+  XlaContext* context = new XlaContext(this, &builder);
   core::ScopedUnref context_unref(context);
 
   std::vector<XlaCompiler::Argument> real_args(args.begin(), args.end());
@@ -988,23 +1010,12 @@ Status XlaCompiler::CompileGraph(const XlaCompiler::CompileOptions& options,
       options.return_updated_values_for_all_resources,
       options.always_return_tuple, &builder, result->computation.get(),
       &num_computation_outputs, &num_nonconst_outputs, &result->outputs,
-      &result->resource_updates));
+      &result->resource_updates, &result->xla_output_shape));
 
   VLOG(2) << "Outputs: total: " << context->retvals().size()
           << " nonconstant: " << num_nonconst_outputs;
-
-  // Compute the XLA output shape, if there is a computation with non-constant
-  // outputs.
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<xla::ProgramShape> computation_shape,
-                      client()->GetComputationShape(*result->computation));
-
-  result->xla_output_shape.Swap(computation_shape->mutable_result());
   VLOG(2) << "XLA output shape: "
-          << xla::ShapeUtil::HumanString(result->xla_output_shape);
-
-  // Tensorflow expects a major-to-minor order of results.
-  xla::LayoutUtil::SetToDefaultLayout(&result->xla_output_shape);
-
+          << xla::ShapeUtil::HumanStringWithLayout(result->xla_output_shape);
   return Status::OK();
 }
 

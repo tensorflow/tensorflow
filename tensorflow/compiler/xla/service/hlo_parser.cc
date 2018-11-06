@@ -47,11 +47,11 @@ const double kF16max = 65504;
 
 // Creates and returns a schedule created using the order of the instructions in
 // the HloComputation::instructions() vectors in the module.
-HloSchedule ScheduleFromInstructionOrder(const HloModule* module) {
+HloSchedule ScheduleFromInstructionOrder(HloModule* module) {
   HloSchedule schedule(module);
-  for (const HloComputation* computation : module->computations()) {
+  for (HloComputation* computation : module->computations()) {
     if (!computation->IsFusionComputation()) {
-      for (const HloInstruction* instruction : computation->instructions()) {
+      for (HloInstruction* instruction : computation->instructions()) {
         schedule.GetOrCreateSequence(computation).push_back(instruction);
       }
     }
@@ -848,6 +848,15 @@ bool HloParser::ParseInstructionRhs(HloComputation::Builder* builder,
         instruction =
             builder->AddInstruction(HloInstruction::CreateAfterAll(operands));
       }
+      break;
+    }
+    case HloOpcode::kAddDependency: {
+      if (!ParseOperands(&operands, /*expected_size=*/2) ||
+          !ParseAttributes(attrs)) {
+        return false;
+      }
+      instruction = builder->AddInstruction(
+          HloInstruction::CreateAddDependency(operands[0], operands[1]));
       break;
     }
     case HloOpcode::kSort: {

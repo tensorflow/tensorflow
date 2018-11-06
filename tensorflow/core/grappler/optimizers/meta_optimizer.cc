@@ -39,6 +39,7 @@ limitations under the License.
 #include "tensorflow/core/grappler/utils/topological_sort.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
+#include "tensorflow/core/util/dump_graph.h"
 #include "tensorflow/core/util/ptr_util.h"
 
 namespace tensorflow {
@@ -127,8 +128,10 @@ std::unique_ptr<GraphOptimizer> MetaOptimizer::MakeNewOptimizer(
 
 #undef MK_OPT
 
-MetaOptimizer::MetaOptimizer(DeviceBase* cpu_device, const RewriterConfig& cfg)
-    : cpu_device_(cpu_device), cfg_(cfg) {
+MetaOptimizer::MetaOptimizer(DeviceBase* cpu_device, const ConfigProto& cfg)
+    : cpu_device_(cpu_device),
+      config_proto_(cfg),
+      cfg_(*config_proto_.mutable_graph_options()->mutable_rewrite_options()) {
   DCHECK(cpu_device_ == nullptr ||
          cpu_device_->attributes().device_type() == "CPU");
 }
@@ -460,6 +463,9 @@ Status MetaOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
   // optimize TPU functions with Grappler, this check preserves that.
   if (IsTPUGraphDef(*optimized_graph)) {
     VLOG(2) << "Skipping optimizing funcs for TPU graphs";
+    if (VLOG_IS_ON(1)) {
+      DumpGraphDefToFile("after_MetaOptimizer", *optimized_graph);
+    }
     return Status::OK();
   }
 
@@ -518,8 +524,18 @@ Status MetaOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
       // can't perform non-differentiable rewrites.
       if (differentiable_functions.find(func_name) !=
           differentiable_functions.end()) {
-        func_item.allowed_optimizations.non_differentiable_rewrites = false;
+        func_item.allowed_optimizations().non_differentiable_rewrites = false;
       }
+
+      // Function item is allowed to use all devices from the main graph.
+      Status added_devices = func_item.AddDevices(item);
+      if (!added_devices.ok()) {
+        VLOG(3) << added_devices.error_message();
+      }
+
+      // We can safely inline nested function calls with side-effectful ops into
+      // the function body (see function_optimizer.cc for details).
+      func_item.allowed_optimizations().inline_ops_with_side_effects = true;
 
       // Optimize function body graph.
       GraphDef optimized_func_graph;
@@ -553,6 +569,9 @@ Status MetaOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
   VLOG(1) << "Optimized " << optimized_funcs.size()
           << " functions: " << str_util::Join(optimized_funcs, ", ");
 
+  if (VLOG_IS_ON(1)) {
+    DumpGraphDefToFile("after_MetaOptimizer", *optimized_graph);
+  }
   return Status::OK();
 }
 
@@ -570,32 +589,35 @@ void MetaOptimizer::Feedback(Cluster* cluster, const GrapplerItem& item,
   // Nothing to do for MetaOptimizer.
 }
 
-bool MetaOptimizerEnabled(const RewriterConfig& cfg) {
-  if (cfg.disable_meta_optimizer()) {
+bool MetaOptimizerEnabled(const ConfigProto& cfg) {
+  const auto& rewrite_cfg = cfg.graph_options().rewrite_options();
+  if (rewrite_cfg.disable_meta_optimizer()) {
     return false;
   }
-  return !cfg.disable_model_pruning() ||
-         cfg.layout_optimizer() != RewriterConfig::OFF ||
-         cfg.function_optimization() != RewriterConfig::OFF ||
-         cfg.constant_folding() != RewriterConfig::OFF ||
-         cfg.shape_optimization() != RewriterConfig::OFF ||
-         cfg.remapping() != RewriterConfig::OFF ||
-         cfg.arithmetic_optimization() != RewriterConfig::OFF ||
-         cfg.loop_optimization() != RewriterConfig::OFF ||
-         cfg.dependency_optimization() != RewriterConfig::OFF ||
-         cfg.auto_parallel().enable() ||
-         cfg.memory_optimization() != RewriterConfig::NO_MEM_OPT ||
-         cfg.debug_stripper() == RewriterConfig::ON ||
-         cfg.scoped_allocator_optimization() == RewriterConfig::ON ||
-         cfg.pin_to_host_optimization() == RewriterConfig::ON ||
-         !cfg.optimizers().empty() || !cfg.custom_optimizers().empty();
+  return !rewrite_cfg.disable_model_pruning() ||
+         rewrite_cfg.layout_optimizer() != RewriterConfig::OFF ||
+         rewrite_cfg.function_optimization() != RewriterConfig::OFF ||
+         rewrite_cfg.constant_folding() != RewriterConfig::OFF ||
+         rewrite_cfg.shape_optimization() != RewriterConfig::OFF ||
+         rewrite_cfg.remapping() != RewriterConfig::OFF ||
+         rewrite_cfg.arithmetic_optimization() != RewriterConfig::OFF ||
+         rewrite_cfg.loop_optimization() != RewriterConfig::OFF ||
+         rewrite_cfg.dependency_optimization() != RewriterConfig::OFF ||
+         rewrite_cfg.auto_parallel().enable() ||
+         rewrite_cfg.memory_optimization() != RewriterConfig::NO_MEM_OPT ||
+         rewrite_cfg.debug_stripper() == RewriterConfig::ON ||
+         rewrite_cfg.scoped_allocator_optimization() == RewriterConfig::ON ||
+         rewrite_cfg.pin_to_host_optimization() == RewriterConfig::ON ||
+         !rewrite_cfg.optimizers().empty() ||
+         !rewrite_cfg.custom_optimizers().empty();
 }
 
-Status RunMetaOptimizer(const GrapplerItem& item, const RewriterConfig& cfg,
+Status RunMetaOptimizer(const GrapplerItem& item, const ConfigProto& cfg,
                         DeviceBase* cpu_device, Cluster* cluster,
                         GraphDef* optimized_graph) {
   MetaOptimizer optimizer(cpu_device, cfg);
-  optimizer.set_deadline_usec(DeadlineMicroSeconds(cfg));
+  optimizer.set_deadline_usec(
+      DeadlineMicroSeconds(cfg.graph_options().rewrite_options()));
   Status status = optimizer.Optimize(cluster, item, optimized_graph);
   if (!status.ok()) {
     *optimized_graph = item.graph;

@@ -1644,6 +1644,9 @@ class MklDnnData {
         cpu_engine_(e) {}
 
   ~MklDnnData() {
+    if (allocated_buffer_ != nullptr) {
+      cpu_allocator()->DeallocateRaw(allocated_buffer_);
+    }
     cpu_engine_ = nullptr;  // We don't own this.
     delete (user_memory_);
     delete (reorder_memory_);

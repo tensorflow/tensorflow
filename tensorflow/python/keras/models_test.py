@@ -26,10 +26,12 @@ import numpy as np
 from tensorflow.python import keras
 from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.keras import backend as K
 from tensorflow.python.keras import metrics
 from tensorflow.python.keras import models
+from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.platform import test
@@ -67,6 +69,7 @@ def sequential_model(add_input_layer, include_input_shape=True):
 
 class TestModelCloning(test.TestCase):
 
+  @test_util.run_deprecated_v1
   def test_clone_sequential_model(self):
     with self.cached_session():
       val_a = np.random.random((10, 4))
@@ -81,25 +84,28 @@ class TestModelCloning(test.TestCase):
       # With placeholder creation
       new_model = keras.models.clone_model(model)
       # update ops from batch norm needs to be included
-      self.assertEquals(len(new_model.get_updates_for(new_model.inputs)), 2)
+      self.assertEqual(len(new_model.get_updates_for(new_model.inputs)), 2)
       new_model.compile('rmsprop', 'mse')
       new_model.train_on_batch(val_a, val_out)
 
       # On top of new tensor
       input_a = keras.Input(shape=(4,))
       new_model = keras.models.clone_model(model, input_tensors=input_a)
-      self.assertEquals(len(new_model.get_updates_for(new_model.inputs)), 2)
+      self.assertEqual(len(new_model.get_updates_for(new_model.inputs)), 2)
       new_model.compile('rmsprop', 'mse')
       new_model.train_on_batch(val_a, val_out)
 
       # On top of new, non-Keras tensor
       input_a = keras.backend.variable(val_a)
       new_model = keras.models.clone_model(model, input_tensors=input_a)
-      self.assertEquals(len(new_model.get_updates_for(new_model.inputs)), 2)
+      self.assertEqual(len(new_model.get_updates_for(new_model.inputs)), 2)
       new_model.compile('rmsprop', 'mse')
       new_model.train_on_batch(None, val_out)
 
+  @test_util.run_deprecated_v1
   def test_clone_sequential_model_input_layer(self):
+
+    @test_util.run_deprecated_v1
     def test_input_layer(include_inputs):
       with self.cached_session():
         val_a = np.random.random((10, 4))
@@ -136,6 +142,7 @@ class TestModelCloning(test.TestCase):
     test_input_layer(True)
     test_input_layer(False)
 
+  @test_util.run_deprecated_v1
   def test_clone_functional_model(self):
     with self.cached_session():
       val_a = np.random.random((10, 4))
@@ -161,7 +168,7 @@ class TestModelCloning(test.TestCase):
     with self.cached_session():
       # With placeholder creation
       new_model = keras.models.clone_model(model)
-      self.assertEquals(len(new_model.get_updates_for(new_model.inputs)), 2)
+      self.assertEqual(len(new_model.get_updates_for(new_model.inputs)), 2)
       new_model.compile('rmsprop', 'mse')
       new_model.train_on_batch([val_a, val_b], val_out)
 
@@ -170,7 +177,7 @@ class TestModelCloning(test.TestCase):
       input_b = keras.Input(shape=(4,), name='b')
       new_model = keras.models.clone_model(
           model, input_tensors=[input_a, input_b])
-      self.assertEquals(len(new_model.get_updates_for(new_model.inputs)), 2)
+      self.assertEqual(len(new_model.get_updates_for(new_model.inputs)), 2)
       new_model.compile('rmsprop', 'mse')
       new_model.train_on_batch([val_a, val_b], val_out)
 
@@ -179,7 +186,7 @@ class TestModelCloning(test.TestCase):
       input_b = keras.backend.variable(val_b)
       new_model = keras.models.clone_model(
           model, input_tensors=[input_a, input_b])
-      self.assertEquals(len(new_model.get_updates_for(new_model.inputs)), 2)
+      self.assertEqual(len(new_model.get_updates_for(new_model.inputs)), 2)
       new_model.compile('rmsprop', 'mse')
       new_model.train_on_batch(None, val_out)
 
@@ -218,6 +225,34 @@ class TestModelCloning(test.TestCase):
       keras.models._clone_sequential_model(seq_model, input_tensors=[x, x])
     with self.assertRaises(ValueError):
       keras.models._clone_sequential_model(seq_model, input_tensors=y)
+
+  def test_functional_cloning_does_not_create_unnecessary_placeholders(self):
+    with ops.Graph().as_default():
+      x = keras.Input((4,))
+      y = keras.layers.Dense(4)(x)
+      model = keras.models.Model(x, y)
+    graph = ops.Graph()
+    with graph.as_default():
+      x = array_ops.ones((10, 4))
+      _ = keras.models.clone_model(model, input_tensors=[x])
+      has_placeholder = _has_placeholder(graph)
+      self.assertFalse(has_placeholder)
+
+  def test_sequential_cloning_does_not_create_unnecessary_placeholders(self):
+    with ops.Graph().as_default():
+      model = keras.models.Sequential()
+      model.add(keras.layers.Dense(4, input_shape=(4,)))
+    graph = ops.Graph()
+    with graph.as_default():
+      x = array_ops.ones((10, 4))
+      _ = keras.models.clone_model(model, input_tensors=[x])
+      has_placeholder = _has_placeholder(graph)
+      self.assertFalse(has_placeholder)
+
+
+def _has_placeholder(graph):
+  ops_types = [op.type for op in graph.get_operations()]
+  return any('Placeholder' in s for s in ops_types)
 
 
 class CheckpointingTests(test.TestCase):
@@ -331,7 +366,8 @@ class TestCloneAndBuildModel(test.TestCase):
     self.assertEqual('mse', model.loss)
     self.assertTrue(
         isinstance(model.optimizer, keras.optimizers.RMSprop))
-    self.assertEqual(['acc', metrics.categorical_accuracy], model.metrics)
+    self.assertEqual(['acc', metrics.categorical_accuracy],
+                     model._compile_metrics)
 
   def _clone_and_build_test_helper(self, model, is_subclassed=False):
     inp = np.random.random((10, 4))
@@ -366,6 +402,7 @@ class TestCloneAndBuildModel(test.TestCase):
       new_model.train_on_batch(inp, out)
       new_model.evaluate(inp, out)
 
+  @test_util.run_deprecated_v1
   def test_clone_and_build_compiled_sequential_model(self):
     with self.cached_session():
       model = keras.models.Sequential()
@@ -378,6 +415,7 @@ class TestCloneAndBuildModel(test.TestCase):
 
     self._clone_and_build_test_helper(model)
 
+  @test_util.run_deprecated_v1
   def test_clone_and_build_functional_model(self):
     with self.cached_session():
       input_a = keras.Input(shape=(4,))
@@ -394,6 +432,7 @@ class TestCloneAndBuildModel(test.TestCase):
 
     self._clone_and_build_test_helper(model)
 
+  @test_util.run_deprecated_v1
   def test_clone_and_build_subclassed_model(self):
     class SubclassedModel(keras.Model):
 
@@ -442,9 +481,11 @@ class TestCloneAndBuildModel(test.TestCase):
   def test_replace_tf_optimizer_iterations_variable(self):
     self.assert_optimizer_iterations_increases(adam.AdamOptimizer(0.01))
 
+  @test_util.run_deprecated_v1
   def test_replace_keras_optimizer_iterations_variable(self):
     self.assert_optimizer_iterations_increases('adam')
 
+  @test_util.run_deprecated_v1
   def test_clone_and_build_sequential_model_without_inputs_defined(self):
     with self.cached_session():
       model = sequential_model(False, False)

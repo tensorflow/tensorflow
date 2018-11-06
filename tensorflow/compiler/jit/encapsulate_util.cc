@@ -86,7 +86,7 @@ Status ProcessControlEdges(Graph* g, const string& xla_computation_attr_name,
       continue;
     } else if (src_xla_computation && !dst_xla_computation) {
       if (src_outside_compilation) {
-        // Case 1d: outside compilation to host computation control edge.
+        // Case 1c: outside compilation to host computation control edge.
         edges_to_remove.push_back(e);
 
         TF_RETURN_IF_ERROR(AppendToListAttr<string>(
@@ -94,7 +94,7 @@ Status ProcessControlEdges(Graph* g, const string& xla_computation_attr_name,
       }
     } else if (!src_xla_computation && dst_xla_computation) {
       if (dst_outside_compilation) {
-        // Case 1d: host computation control to outside compilation edge.
+        // Case 1c: host computation control to outside compilation edge.
         edges_to_remove.push_back(e);
 
         TF_RETURN_IF_ERROR(AppendToListAttr<string>(
@@ -103,39 +103,23 @@ Status ProcessControlEdges(Graph* g, const string& xla_computation_attr_name,
     } else {  // src_xla_computation && dst_xla_computation
       if (*src_xla_computation != *dst_xla_computation) {
         if (src_outside_compilation && dst_outside_compilation) {
-          // Case 1c: outside compilation to outside compilation control edge.
+          // Case 1b: outside compilation to outside compilation control edge.
           edges_to_remove.push_back(e);
 
           TF_RETURN_IF_ERROR(AppendToListAttr<string>(
               e->dst(), kXlaControlDependenciesAttrName, e->src()->name()));
         } else if (src_outside_compilation && !dst_outside_compilation) {
-          // Case 1b: outside compilation to another XLA computaition control
+          // Case 1a: outside compilation to another XLA computaition control
           // edge.
           TF_RETURN_IF_ERROR(AppendToListAttr<string>(
               e->src(), kXlaConnectedToOtherXlaComputationAttrName,
               *dst_xla_computation));
         } else if (!src_outside_compilation && dst_outside_compilation) {
-          // Case 1b: another XLA computaition to outside compilation control
+          // Case 1a: another XLA computaition to outside compilation control
           // edge.
           TF_RETURN_IF_ERROR(AppendToListAttr<string>(
               e->dst(), kXlaConnectedFromOtherXlaComputationAttrName,
               *src_xla_computation));
-        }
-      } else {  // *src_xla_computation == *dst_xla_computation
-        if (src_outside_compilation && dst_outside_compilation) {
-          if (*src_outside_compilation != *dst_outside_compilation) {
-            // Case 1c: outside compilation to outside compilation control edge.
-            edges_to_remove.push_back(e);
-
-            TF_RETURN_IF_ERROR(AppendToListAttr<string>(
-                e->dst(), kXlaControlDependenciesAttrName, e->src()->name()));
-          }
-        } else if (src_outside_compilation && !dst_outside_compilation) {
-          // Case 1a: outside compilation to its XLA computation control edge.
-          ReplaceAttr(e->src(), kXlaConnectedToXlaComputationAttrName, true);
-        } else if (!src_outside_compilation && dst_outside_compilation) {
-          // Case 1a: XLA computation to outside compilation in it control edge.
-          ReplaceAttr(e->dst(), kXlaConnectedFromXlaComputationAttrName, true);
         }
       }
     }
@@ -178,12 +162,6 @@ Status ProcessXlaToXlaDataEdges(Graph* g,
 
     if (*src_xla_computation != *dst_xla_computation) {
       if (src_outside_compilation || dst_outside_compilation) {
-        edges.push_back(EdgeInfo{e->dst_input(), e->dst()->id()});
-        VLOG(4) << "XLA -> XLA edge: " << e->DebugString();
-      }
-    } else {  // *src_xla_computation == *dst_xla_computation
-      if (src_outside_compilation && dst_outside_compilation &&
-          *src_outside_compilation != *dst_outside_compilation) {
         edges.push_back(EdgeInfo{e->dst_input(), e->dst()->id()});
         VLOG(4) << "XLA -> XLA edge: " << e->DebugString();
       }
@@ -263,7 +241,7 @@ Status ProcessDataEdgeBetweenOutsideCompilationAndHostComputation(
 
   // Remove the edge from host to outside compilation. Add a placeholder as
   // outside compilation node input.
-  std::map<string, Node*> placeholders;
+  std::map<std::pair<string, int>, Node*> placeholders;
   for (int i = 0; i < edges.size(); i++) {
     Node* dst = g->FindNodeId(edges[i].dst_node_id);
     const Edge* e;
@@ -275,9 +253,10 @@ Status ProcessDataEdgeBetweenOutsideCompilationAndHostComputation(
     // Find or create placeholder node.
     string new_name =
         edges[i].is_host_to_outside_compilation
-            ? absl::StrCat(src->name(), "_host_to_oc_placeholder")
-            : absl::StrCat(src->name(), "_oc_to_host_placeholder");
-    auto iter = placeholders.find(new_name);
+            ? absl::StrCat(src->name(), "_host_to_oc_placeholder_", src_output)
+            : absl::StrCat(src->name(), "_oc_to_host_placeholder_", src_output);
+    auto placeholder_index = std::make_pair(src->name(), src_output);
+    auto iter = placeholders.find(placeholder_index);
     Node* placeholder_node;
     if (iter == placeholders.end()) {
       NodeDefBuilder placeholder_builder(new_name, "Placeholder");
@@ -310,7 +289,7 @@ Status ProcessDataEdgeBetweenOutsideCompilationAndHostComputation(
       Status s;
       placeholder_node = g->AddNode(placeholder_def, &s);
       TF_RETURN_IF_ERROR(s);
-      placeholders[new_name] = placeholder_node;
+      placeholders[placeholder_index] = placeholder_node;
     } else {
       placeholder_node = iter->second;
     }
@@ -594,14 +573,244 @@ Status AddControlDependencies(
   return Status::OK();
 }
 
+// Step 1 for `PreprocessEdgesBetweenOutsideCompilations`. See comments of
+// `PreprocessEdgesBetweenOutsideCompilations` for details.
+Status PreprocessControlEdgesBetweenOutsideCompilations(
+    Graph* g, const string& outside_compilation_attr_name) {
+  // Gather edges to remove. We should not remove the edge while iterating.
+  std::vector<const Edge*> edges_to_remove;
+  for (const Edge* e : g->edges()) {
+    if (!e->IsControlEdge()) {
+      continue;
+    }
+
+    auto src_outside_compilation =
+        GetStringAttr(*e->src(), outside_compilation_attr_name);
+    auto dst_outside_compilation =
+        GetStringAttr(*e->dst(), outside_compilation_attr_name);
+
+    if (src_outside_compilation && dst_outside_compilation) {
+      if (*src_outside_compilation != *dst_outside_compilation) {
+        // Case 1a: outside compilation to outside compilation control edge.
+        edges_to_remove.push_back(e);
+
+        TF_RETURN_IF_ERROR(AppendToListAttr<string>(
+            e->dst(), kXlaControlDependenciesWithinXlaClusterAttrName,
+            e->src()->name()));
+      }
+    } else if (src_outside_compilation && !dst_outside_compilation) {
+      // Case 1b: outside compilation to its XLA computation control edge.
+      ReplaceAttr(e->src(), kXlaConnectedToXlaComputationAttrName, true);
+    } else if (!src_outside_compilation && dst_outside_compilation) {
+      // Case 1b: XLA computation to outside compilation in it control edge.
+      ReplaceAttr(e->dst(), kXlaConnectedFromXlaComputationAttrName, true);
+    }
+  }
+
+  for (auto e : edges_to_remove) {
+    g->RemoveEdge(e);
+  }
+  return Status::OK();
+}
+
+// Step 2 for `PreprocessEdgesBetweenOutsideCompilations`. See comments of
+// `PreprocessEdgesBetweenOutsideCompilations` for details.
+Status PreprocessDataEdgesBetweenOutsideCompilations(
+    Graph* g, const string& outside_compilation_attr_name) {
+  // Gather edges between outside compilation and host computation. Notice that
+  // we do not store `Edge*` directly because we remove some nodes while adding
+  // Identity nodes, and those Edge pointers might be invalidated.
+  struct EdgeInfo {
+    int dst_input, dst_node_id;
+  };
+  std::vector<EdgeInfo> edges;
+  for (const Edge* e : g->edges()) {
+    if (e->IsControlEdge()) {
+      continue;
+    }
+
+    auto src_outside_compilation =
+        GetStringAttr(*e->src(), outside_compilation_attr_name);
+    auto dst_outside_compilation =
+        GetStringAttr(*e->dst(), outside_compilation_attr_name);
+
+    if (src_outside_compilation && dst_outside_compilation &&
+        *src_outside_compilation != *dst_outside_compilation) {
+      edges.push_back(EdgeInfo{e->dst_input(), e->dst()->id()});
+      VLOG(4) << "Oc -> oc edge: " << e->DebugString();
+    }
+  }
+
+  // Remove the edge from host to outside compilation. Add a placeholder as
+  // outside compilation node input.
+  std::map<std::pair<string, int>, Node*> placeholders;
+  for (int i = 0; i < edges.size(); i++) {
+    Node* dst = g->FindNodeId(edges[i].dst_node_id);
+    const Edge* e;
+    TF_RETURN_IF_ERROR(dst->input_edge(edges[i].dst_input, &e));
+    Node* src = e->src();
+    int src_output = e->src_output(), dst_input = e->dst_input();
+    g->RemoveEdge(e);
+
+    // Find or create placeholder node.
+    string new_name =
+        absl::StrCat(src->name(), "_oc_to_oc_placeholder_", src_output);
+    auto placeholder_index = std::make_pair(src->name(), src_output);
+    auto iter = placeholders.find(placeholder_index);
+    Node* placeholder_node;
+    if (iter == placeholders.end()) {
+      NodeDefBuilder placeholder_builder(new_name, "Placeholder");
+      placeholder_builder.Attr("dtype", src->output_type(src_output));
+      string outside_compilation_attr;
+      TF_RETURN_IF_ERROR(GetNodeAttr(dst->attrs(),
+                                     outside_compilation_attr_name,
+                                     &outside_compilation_attr));
+      placeholder_builder.Attr(outside_compilation_attr_name,
+                               outside_compilation_attr);
+      placeholder_builder.Attr(kOutsideCompilationOriginalNodeAttrName,
+                               src->name());
+      placeholder_builder.Attr(kOutsideCompilationSrcOutputAttrName,
+                               src_output);
+      NodeDef placeholder_def;
+      TF_RETURN_IF_ERROR(placeholder_builder.Finalize(&placeholder_def));
+      Status s;
+      placeholder_node = g->AddNode(placeholder_def, &s);
+      TF_RETURN_IF_ERROR(s);
+      placeholders[placeholder_index] = placeholder_node;
+    } else {
+      placeholder_node = iter->second;
+    }
+    g->AddEdge(placeholder_node, 0, dst, dst_input);
+
+    // Replace `e->dst()` because its input node changed.
+    NodeDef new_def = dst->def();
+    *new_def.mutable_input(dst_input) = placeholder_node->name();
+    TF_ASSIGN_OR_RETURN(Node * dst_replace_node, ReplaceNode(g, dst, new_def));
+
+    // Other edge in `edges` might have `e->dst()` as src or dst
+    // node. Before removing `e->dst()`, replace those edges with
+    // corresponding edges for `dst_replace_node`.
+    for (int j = i + 1; j < edges.size(); j++) {
+      if (edges[j].dst_node_id == edges[i].dst_node_id) {
+        edges[j].dst_node_id = dst_replace_node->id();
+      }
+    }
+  }
+  return Status::OK();
+}
+
+// Step 1 for `PostprocessEdgesBetweenOutsideCompilations`. See comments of
+// `PostprocessEdgesBetweenOutsideCompilations` for details.
+Status PostprocessDataEdgesBetweenOutsideCompilations(
+    Graph* g, const string& outside_compilation_attr_name) {
+  // Gather all outside compilation to outside compilation nodes.
+  std::vector<Node*> placeholder_nodes;
+  for (Node* n : g->nodes()) {
+    if (n->type_string() == "Placeholder" &&
+        HasNodeAttr(n->def(), kOutsideCompilationOriginalNodeAttrName)) {
+      placeholder_nodes.push_back(n);
+    }
+  }
+
+  // Remove the placeholder nodes, and reconnect original edge.
+  auto node_name_index = g->BuildNodeNameIndex();
+  for (auto n : placeholder_nodes) {
+    string node_name;
+    int node_src_output;
+    TF_RETURN_IF_ERROR(GetNodeAttr(
+        n->attrs(), kOutsideCompilationOriginalNodeAttrName, &node_name));
+    TF_RETURN_IF_ERROR(GetNodeAttr(
+        n->attrs(), kOutsideCompilationSrcOutputAttrName, &node_src_output));
+    auto iter = node_name_index.find(node_name);
+    if (iter == node_name_index.end()) {
+      return errors::Internal(
+          "Cannot find original node for oc -> host placeholder node ",
+          node_name);
+    }
+
+    // Change all usage node to use the original node instead.
+    Node* original_node = iter->second;
+    std::vector<const Edge*> control_edges;
+    std::vector<OutEdgeInfo> data_edges;
+    for (auto e : n->out_edges()) {
+      if (e->IsControlEdge()) {
+        control_edges.push_back(e);
+      } else {
+        data_edges.push_back({e->dst(), e->src_output(), e->dst_input()});
+      }
+    }
+    for (const Edge* e : control_edges) {
+      g->AddControlEdge(original_node, e->dst());
+      g->RemoveEdge(e);
+    }
+    for (int i = 0; i < data_edges.size(); i++) {
+      Node* dst = data_edges[i].dst;
+      NodeDef new_def = dst->def();
+      int dst_input = data_edges[i].dst_input;
+      *new_def.mutable_input(dst_input) =
+          absl::StrCat(original_node->name(), ":", node_src_output);
+      TF_ASSIGN_OR_RETURN(Node * replace_node, ReplaceNode(g, dst, new_def));
+
+      const Edge* edge_to_replace = nullptr;
+      TF_RETURN_IF_ERROR(replace_node->input_edge(dst_input, &edge_to_replace));
+      g->RemoveEdge(edge_to_replace);
+      g->AddEdge(original_node, node_src_output, replace_node, dst_input);
+
+      // Other edges might have `dst` as dst node. Update those edges with
+      // `replace_node`.
+      for (int j = i + 1; j < data_edges.size(); j++) {
+        if (data_edges[j].dst == dst) {
+          data_edges[j].dst = replace_node;
+        }
+      }
+
+      // Other placeholder node might have `dst` as original node. Update
+      // `node_name_index` with `replace_node`.
+      node_name_index[replace_node->name()] = replace_node;
+    }
+
+    // Remove placeholder node.
+    g->RemoveNode(n);
+  }
+  return Status::OK();
+}
+
+// Step 2 for `PostprocessEdgesBetweenOutsideCompilations`. See comments of
+// `PostprocessEdgesBetweenOutsideCompilations` for details.
+Status PostprocessControlEdgesBetweenOutsideCompilations(
+    Graph* g, const string& outside_compilation_attr_name) {
+  auto node_name_index = g->BuildNodeNameIndex();
+
+  // Reconnect outside compilation to outside compilation control edge.
+  for (Node* n : g->nodes()) {
+    std::vector<string> control_deps;
+    Status s =
+        GetNodeAttr(n->attrs(), kXlaControlDependenciesWithinXlaClusterAttrName,
+                    &control_deps);
+    if (!s.ok()) {
+      if (s.code() != error::NOT_FOUND) {
+        return s;
+      } else {
+        continue;
+      }
+    } else {
+      n->ClearAttr(kXlaControlDependenciesWithinXlaClusterAttrName);
+      for (const string& control_input : control_deps) {
+        auto iter = node_name_index.find(control_input);
+        if (iter == node_name_index.end()) {
+          return errors::Internal("Cannot find original node for ",
+                                  control_input);
+        }
+        g->AddControlEdge(iter->second, n);
+      }
+    }
+  }
+  return Status::OK();
+}
 }  // namespace
 
 const char kXlaInferredShapesAttrName[] = "_xla_inferred_shapes";
 
-const char kXlaConnectedToXlaComputationAttrName[] =
-    "_xla_connected_to_xla_computation";
-const char kXlaConnectedFromXlaComputationAttrName[] =
-    "_xla_connected_from_xla_computation";
 const char kXlaConnectedToOtherXlaComputationAttrName[] =
     "_xla_connected_to_other_xla_computation";
 const char kXlaConnectedFromOtherXlaComputationAttrName[] =
@@ -616,6 +825,15 @@ const char kHostToOutsideCompilationOriginalNodeAttrName[] =
     "_xla_host_to_oc_node_name";
 const char kHostToOutsideCompilationSrcOutputAttrName[] =
     "_xla_host_to_oc_src_output";
+const char kXlaConnectedToXlaComputationAttrName[] =
+    "_xla_connected_to_xla_computation";
+const char kXlaConnectedFromXlaComputationAttrName[] =
+    "_xla_connected_from_xla_computation";
+const char kOutsideCompilationOriginalNodeAttrName[] =
+    "_xla_oc_to_oc_node_name";
+const char kOutsideCompilationSrcOutputAttrName[] = "_xla_oc_to_oc_src_output";
+const char kXlaControlDependenciesWithinXlaClusterAttrName[] =
+    "_xla_control_dependencies_within_xla_cluster";
 
 Status PerformStaticShapeInferenceBeforeEncapsulation(
     Graph* g, const string& xla_computation_attr_name,
@@ -696,6 +914,41 @@ Status PostprocessForEncapsulation(
       RemovePlaceholderBetweenOutsideCompilationAndHostComputation(g));
   TF_RETURN_IF_ERROR(RemoveIdentityBetweenDifferentXlaComputation(g));
   TF_RETURN_IF_ERROR(AddControlDependencies(g, cluster_node_names));
+  return Status::OK();
+}
+
+Status PreprocessEdgesBetweenOutsideCompilations(
+    Graph* g, const string& outside_compilation_attr_name) {
+  // Remove edges from source node to outside compilation nodes, and edges
+  // from outside compilation nodes to sink node.
+  std::vector<const Edge*> edges_to_remove;
+  for (const Edge* e : g->source_node()->out_edges()) {
+    if (HasNodeAttr(e->dst()->def(), outside_compilation_attr_name)) {
+      edges_to_remove.push_back(e);
+    }
+  }
+  for (const Edge* e : g->sink_node()->in_edges()) {
+    if (HasNodeAttr(e->src()->def(), outside_compilation_attr_name)) {
+      edges_to_remove.push_back(e);
+    }
+  }
+  for (auto e : edges_to_remove) {
+    g->RemoveEdge(e);
+  }
+
+  TF_RETURN_IF_ERROR(PreprocessControlEdgesBetweenOutsideCompilations(
+      g, outside_compilation_attr_name));
+  TF_RETURN_IF_ERROR(PreprocessDataEdgesBetweenOutsideCompilations(
+      g, outside_compilation_attr_name));
+  return Status::OK();
+}
+
+Status PostprocessEdgesBetweenOutsideCompilations(
+    Graph* g, const string& outside_compilation_attr_name) {
+  TF_RETURN_IF_ERROR(PostprocessDataEdgesBetweenOutsideCompilations(
+      g, outside_compilation_attr_name));
+  TF_RETURN_IF_ERROR(PostprocessControlEdgesBetweenOutsideCompilations(
+      g, outside_compilation_attr_name));
   return Status::OK();
 }
 

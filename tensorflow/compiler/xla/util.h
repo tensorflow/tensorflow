@@ -152,6 +152,13 @@ static inline absl::Span<const int64> AsInt64Slice(
                                  slice.size());
 }
 
+// TODO(b/29771030): This nop overload was added to simplify the migration of
+// Shape from a proto to a C++ class. Remove after class has been migrated.
+static inline absl::Span<const int64> AsInt64Slice(
+    absl::Span<const int64> slice) {
+  return slice;
+}
+
 // As above, but for uint64 types.
 static inline absl::Span<const uint64> AsUInt64Slice(
     const tensorflow::protobuf::RepeatedField<tensorflow::protobuf_uint64>& v) {
@@ -385,6 +392,19 @@ T FloorOfRatio(T dividend, T divisor) {
 template <typename T>
 T CeilOfRatio(T dividend, T divisor) {
   return tensorflow::MathUtil::CeilOfRatio<T>(dividend, divisor);
+}
+
+template <typename T>
+std::vector<T> ElementWiseCeilOfRatio(absl::Span<const T> dividends,
+                                      absl::Span<const T> divisors) {
+  std::vector<T> ceil_of_ratios;
+  CHECK_EQ(dividends.size(), divisors.size());
+  ceil_of_ratios.reserve(dividends.size());
+  absl::c_transform(dividends, divisors, std::back_inserter(ceil_of_ratios),
+                    [](const T dividend, const T divisor) {
+                      return CeilOfRatio<T>(dividend, divisor);
+                    });
+  return ceil_of_ratios;
 }
 
 // Rounds the value up to a multiple of the divisor by first calling CeilOfRatio

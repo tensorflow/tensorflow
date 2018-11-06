@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <deque>
 #include <memory>
+#include <unordered_map>
 
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/attr_value_util.h"
@@ -30,8 +31,10 @@ limitations under the License.
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/framework/variant_encode_decode.h"
 #include "tensorflow/core/framework/variant_tensor_data.h"
+#include "tensorflow/core/lib/core/threadpool.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
+#include "tensorflow/core/platform/cpu_info.h"
 #include "tensorflow/core/platform/tracing.h"
 
 // Polymorphic datasets should support all primitive TensorFlow
@@ -49,6 +52,9 @@ class Node;
 namespace data {
 // A constant that can be used to enable auto-tuning.
 constexpr int kAutoTune = -1;
+
+constexpr int kInfiniteCardinality = -1;
+constexpr int kUnknownCardinality = -2;
 
 class DatasetBase;
 class SerializationContext;
@@ -160,7 +166,7 @@ class GraphDefBuilderWrapper {
                     const std::vector<std::pair<StringPiece, AttrValue>>& attrs,
                     Node** output) {
     std::vector<std::pair<size_t, Node*>> enumerated_inputs(inputs.size());
-    for (int i = 0; i < inputs.size(); i++) {
+    for (size_t i = 0; i < inputs.size(); i++) {
       enumerated_inputs[i] = std::make_pair(i, inputs[i]);
     }
     return AddDataset(dataset, enumerated_inputs, {}, attrs, output);
@@ -257,6 +263,7 @@ class GraphDefBuilderWrapper {
 };
 
 class StatsAggregator;
+class FunctionHandleCache;
 
 // A cut-down version of `OpKernelContext` for running computations in
 // iterators. Note that we cannot simply use `OpKernelContext` here because we
@@ -277,6 +284,7 @@ class IteratorContext {
           env(ctx->env()),
           function_library(ctx->function_library()),
           lib(ctx->lib()),
+          function_handle_cache(ctx->function_handle_cache()),
           model(ctx->model()),
           runner(*(ctx->runner())),
           runner_threadpool_size(ctx->runner_threadpool_size()),
@@ -285,15 +293,20 @@ class IteratorContext {
     explicit Params(OpKernelContext* ctx)
         : env(ctx->env()),
           lib(ctx->function_library()),
-          runner(*(ctx->runner())),
-          runner_threadpool_size(
-              ctx->device()->tensorflow_cpu_worker_threads()->num_threads) {
+          runner(*(ctx->runner())) {
       // NOTE: need reinterpret_cast because function.h forward-declares Device.
       DeviceBase* device =
           reinterpret_cast<DeviceBase*>(ctx->function_library()->device());
       allocator_getter = [device](AllocatorAttributes attrs) {
         return device->GetAllocator(attrs);
       };
+      thread::ThreadPool* thread_pool =
+          ctx->device()->tensorflow_device_thread_pool();
+      if (thread_pool) {
+        runner_threadpool_size = thread_pool->NumThreads();
+      } else {
+        runner_threadpool_size = port::NumSchedulableCPUs();
+      }
     }
 
     // The Allocator to be used to allocate the output of an iterator.
@@ -307,6 +320,9 @@ class IteratorContext {
 
     // The FunctionLibraryRuntime object to be used to make function calls.
     FunctionLibraryRuntime* lib = nullptr;
+
+    // A FunctionHandleCache that owns all the function handles. Not owned.
+    FunctionHandleCache* function_handle_cache = nullptr;
 
     // If non-null, identifies the object used for performance modeling.
     std::shared_ptr<model::Model> model = nullptr;
@@ -342,6 +358,10 @@ class IteratorContext {
   }
 
   FunctionLibraryRuntime* lib() { return params_.lib; }
+
+  FunctionHandleCache* function_handle_cache() {
+    return params_.function_handle_cache;
+  }
 
   const std::shared_ptr<model::Model>& model() { return params_.model; }
 
@@ -570,6 +590,9 @@ class DatasetBase : public core::RefCounted {
   // A human-readable debug string for this dataset.
   virtual string DebugString() const = 0;
 
+  // Returns the cardinality of this dataset.
+  virtual int64 Cardinality() const { return kUnknownCardinality; }
+
   // Serializes the dataset and writes it to the `writer`.
   virtual Status Save(SerializationContext* ctx,
                       IteratorStateWriter* writer) const;
@@ -584,7 +607,6 @@ class DatasetBase : public core::RefCounted {
                            const DatasetBase* dataset, Node** output);
   };
 
-  // TODO(jsimsa): Consolidate overloading into a single method.
   virtual Status AsGraphDefInternal(SerializationContext* ctx,
                                     DatasetGraphDefBuilder* b,
                                     Node** node) const = 0;

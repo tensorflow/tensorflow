@@ -133,8 +133,8 @@ class _DirectedInterleaveDataset(dataset_ops.Dataset):
     return self._data_inputs[0].output_types
 
 
-@tf_export("data.experimental.sample_from_datasets")
-def sample_from_datasets(datasets, weights=None, seed=None):
+@tf_export("data.experimental.sample_from_datasets", v1=[])
+def sample_from_datasets_v2(datasets, weights=None, seed=None):
   """Samples elements at random from the datasets in `datasets`.
 
   Args:
@@ -158,7 +158,7 @@ def sample_from_datasets(datasets, weights=None, seed=None):
       length of the `datasets` element.
   """
   num_datasets = len(datasets)
-  if not isinstance(weights, dataset_ops.Dataset):
+  if not isinstance(weights, dataset_ops.DatasetV2):
     if weights is None:
       # Select inputs with uniform probability.
       logits = [[1.0] * num_datasets]
@@ -217,8 +217,15 @@ def sample_from_datasets(datasets, weights=None, seed=None):
   return _DirectedInterleaveDataset(selector_input, datasets)
 
 
-@tf_export("data.experimental.choose_from_datasets")
-def choose_from_datasets(datasets, choice_dataset):
+@tf_export(v1=["data.experimental.sample_from_datasets"])
+def sample_from_datasets_v1(datasets, weights=None, seed=None):
+  return dataset_ops.DatasetV1Adapter(
+      sample_from_datasets_v2(datasets, weights, seed))
+sample_from_datasets_v1.__doc__ = sample_from_datasets_v2.__doc__
+
+
+@tf_export("data.experimental.choose_from_datasets", v1=[])
+def choose_from_datasets_v2(datasets, choice_dataset):
   """Creates a dataset that deterministically chooses elements from `datasets`.
 
   For example, given the following datasets:
@@ -260,3 +267,16 @@ def choose_from_datasets(datasets, choice_dataset):
     raise TypeError("`choice_dataset` must be a dataset of scalar "
                     "`tf.int64` tensors.")
   return _DirectedInterleaveDataset(choice_dataset, datasets)
+
+
+@tf_export(v1=["data.experimental.choose_from_datasets"])
+def choose_from_datasets_v1(datasets, choice_dataset):
+  return dataset_ops.DatasetV1Adapter(
+      choose_from_datasets_v2(datasets, choice_dataset))
+choose_from_datasets_v1.__doc__ = choose_from_datasets_v2.__doc__
+
+
+# TODO(b/119044825): Until all `tf.data` unit tests are converted to V2, keep
+# these aliases in place.
+choose_from_datasets = choose_from_datasets_v1
+sample_from_datasets = sample_from_datasets_v1

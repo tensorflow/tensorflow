@@ -391,7 +391,7 @@ class LinearOperatorLowRankUpdate(linear_operator.LinearOperator):
     if self._use_cholesky:
       chol_cap_diag = array_ops.matrix_diag_part(self._chol_capacitance)
       log_abs_det_c = 2 * math_ops.reduce_sum(
-          math_ops.log(chol_cap_diag), reduction_indices=[-1])
+          math_ops.log(chol_cap_diag), axis=[-1])
     else:
       det_c = linalg_ops.matrix_determinant(self._capacitance)
       log_abs_det_c = math_ops.log(math_ops.abs(det_c))

@@ -407,9 +407,17 @@ class FunctionLibraryDefinition : public OpRegistryInterface {
     return function_defs_.size();
   }
 
+  // Returns all the function names in the FunctionLibraryDefinition.
+  std::vector<string> ListFunctionNames() const LOCKS_EXCLUDED(mu_);
+
   const OpRegistryInterface* default_registry() const {
     return default_registry_;
   }
+
+  // Returns a copy of `*this` with only the subset of functions that are
+  // reachable from the nodes of `graph` or `func`.
+  FunctionLibraryDefinition ReachableDefinitions(const GraphDef& graph) const;
+  FunctionLibraryDefinition ReachableDefinitions(const FunctionDef& func) const;
 
  private:
   // Shape inference for functions is handled separately by ShapeRefiner.

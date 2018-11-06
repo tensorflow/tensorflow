@@ -1,6 +1,9 @@
-package(default_visibility = [
-    "//visibility:public",
-])
+package(
+    default_visibility = [
+        "//visibility:public",
+    ],
+    features = ["-parse_headers"],
+)
 
 licenses(["notice"])  # Apache 2.0
 

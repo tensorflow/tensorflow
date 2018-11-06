@@ -20,11 +20,12 @@ from __future__ import print_function
 from absl.testing import parameterized
 
 from tensorflow.python.data.experimental.ops import optimization
+from tensorflow.python.data.experimental.ops.optimization_options import OptimizationOptions
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.framework import dtypes
-from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
@@ -58,6 +59,7 @@ def _map_parallelization_test_cases():
           ("AssertWithRandom", assert_with_random, False))
 
 
+@test_util.run_all_in_graph_and_eager_modes
 class MapParallelizationTest(test_base.DatasetTestBase, parameterized.TestCase):
 
   @parameterized.named_parameters(*_map_parallelization_test_cases())
@@ -66,23 +68,12 @@ class MapParallelizationTest(test_base.DatasetTestBase, parameterized.TestCase):
     dataset = dataset_ops.Dataset.range(5).apply(
         optimization.assert_next(next_nodes)).map(function)
     options = dataset_ops.Options()
-    options.experimental_map_parallelization = True
+    options.experimental_optimization = OptimizationOptions()
+    options.experimental_optimization.map_parallelization = True
     dataset = dataset.with_options(options)
-    iterator = dataset.make_one_shot_iterator()
-    get_next = iterator.get_next()
-
-    with self.test_session() as sess:
-      for x in range(5):
-        result = sess.run(get_next)
-        # No need to run the pipeline if it was not optimized.  Also the results
-        # might be hard to check because of random.
-        if not should_optimize:
-          return
-        r = function(x)
-        self.assertAllEqual(r, result)
-
-      with self.assertRaises(errors.OutOfRangeError):
-        sess.run(get_next)
+    if should_optimize:
+      self.assertDatasetProduces(
+          dataset, expected_output=[function(x) for x in range(5)])
 
 
 if __name__ == "__main__":

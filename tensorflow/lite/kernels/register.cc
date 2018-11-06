@@ -31,6 +31,7 @@ TfLiteRegistration* Register_RELU_1();
 
 namespace builtin {
 
+TfLiteRegistration* Register_ABS();
 TfLiteRegistration* Register_RELU();
 TfLiteRegistration* Register_RELU_N1_TO_1();
 TfLiteRegistration* Register_RELU6();
@@ -74,6 +75,7 @@ TfLiteRegistration* Register_GATHER();
 TfLiteRegistration* Register_TRANSPOSE();
 TfLiteRegistration* Register_MEAN();
 TfLiteRegistration* Register_SPLIT();
+TfLiteRegistration* Register_SPLIT_V();
 TfLiteRegistration* Register_SQUEEZE();
 TfLiteRegistration* Register_STRIDED_SLICE();
 TfLiteRegistration* Register_EXP();
@@ -123,6 +125,10 @@ TfLiteRegistration* Register_SQUARE();
 TfLiteRegistration* Register_ZEROS_LIKE();
 TfLiteRegistration* Register_FLOOR_MOD();
 TfLiteRegistration* Register_RANGE();
+TfLiteRegistration* Register_LEAKY_RELU();
+TfLiteRegistration* Register_SQUARED_DIFFERENCE();
+TfLiteRegistration* Register_FILL();
+TfLiteRegistration* Register_MIRROR_PAD();
 
 TfLiteStatus UnsupportedTensorFlowOp(TfLiteContext* context, TfLiteNode* node) {
   context->ReportError(
@@ -152,6 +158,7 @@ const TfLiteRegistration* BuiltinOpResolver::FindOp(const char* op,
 }
 
 BuiltinOpResolver::BuiltinOpResolver() {
+  AddBuiltin(BuiltinOperator_ABS, Register_ABS());
   AddBuiltin(BuiltinOperator_RELU, Register_RELU());
   AddBuiltin(BuiltinOperator_RELU_N1_TO_1, Register_RELU_N1_TO_1());
   AddBuiltin(BuiltinOperator_RELU6, Register_RELU6());
@@ -207,6 +214,7 @@ BuiltinOpResolver::BuiltinOpResolver() {
   AddBuiltin(BuiltinOperator_DIV, Register_DIV());
   AddBuiltin(BuiltinOperator_SUB, Register_SUB());
   AddBuiltin(BuiltinOperator_SPLIT, Register_SPLIT());
+  AddBuiltin(BuiltinOperator_SPLIT_V, Register_SPLIT_V());
   AddBuiltin(BuiltinOperator_SQUEEZE, Register_SQUEEZE());
   AddBuiltin(BuiltinOperator_STRIDED_SLICE, Register_STRIDED_SLICE());
   AddBuiltin(BuiltinOperator_EXP, Register_EXP());
@@ -256,6 +264,10 @@ BuiltinOpResolver::BuiltinOpResolver() {
   AddBuiltin(BuiltinOperator_ZEROS_LIKE, Register_ZEROS_LIKE());
   AddBuiltin(BuiltinOperator_FLOOR_MOD, Register_FLOOR_MOD());
   AddBuiltin(BuiltinOperator_RANGE, Register_RANGE());
+  AddBuiltin(BuiltinOperator_LEAKY_RELU, Register_LEAKY_RELU());
+  AddBuiltin(BuiltinOperator_SQUARED_DIFFERENCE, Register_SQUARED_DIFFERENCE());
+  AddBuiltin(BuiltinOperator_FILL, Register_FILL());
+  AddBuiltin(BuiltinOperator_MIRROR_PAD, Register_MIRROR_PAD());
 
   // TODO(andrewharp, ahentz): Move these somewhere more appropriate so that
   // custom ops aren't always included by default.

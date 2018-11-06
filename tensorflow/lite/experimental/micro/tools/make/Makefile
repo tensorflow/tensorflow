@@ -59,13 +59,27 @@ tensorflow/lite/experimental/micro/examples/micro_speech/tiny_conv_model_data.cc
 tensorflow/lite/experimental/micro/examples/micro_speech/no_features_data.cc \
 tensorflow/lite/experimental/micro/examples/micro_speech/yes_features_data.cc
 
+# Test binary for the streaming microcontroller speech model.
+PUSHBUTTON_MICRO_SPEECH_TEST_SRCS := \
+tensorflow/lite/experimental/micro/examples/micro_speech/micro_speech_test.cc \
+tensorflow/lite/experimental/micro/examples/micro_speech/tiny_conv_model_data.cc \
+tensorflow/lite/experimental/micro/examples/micro_speech/no_features_data.cc \
+tensorflow/lite/experimental/micro/examples/micro_speech/yes_features_data.cc
+
+# Test binary for the streaming microcontroller speech model.
+PUSHBUTTON_CMSIS_SPEECH_TEST_SRCS := \
+tensorflow/lite/experimental/micro/examples/micro_speech/micro_speech_test.cc \
+tensorflow/lite/experimental/micro/examples/micro_speech/tiny_conv_model_data.cc
+
 # Test binary for the microcontroller speech model.
 PREPROCESSOR_TEST_SRCS := \
 tensorflow/lite/experimental/micro/examples/micro_speech/preprocessor_test.cc \
 tensorflow/lite/experimental/micro/examples/micro_speech/no_30ms_sample_data.cc \
 tensorflow/lite/experimental/micro/examples/micro_speech/yes_30ms_sample_data.cc \
 tensorflow/lite/experimental/micro/examples/micro_speech/no_power_spectrum_data.cc \
-tensorflow/lite/experimental/micro/examples/micro_speech/yes_power_spectrum_data.cc
+tensorflow/lite/experimental/micro/examples/micro_speech/yes_power_spectrum_data.cc \
+tensorflow/lite/experimental/micro/examples/micro_speech/yes_waveform.cc \
+tensorflow/lite/experimental/micro/examples/micro_speech/yes_features_data.cc
 
 PREPROCESSOR_REFERENCE_TEST_SRCS = \
 $(PREPROCESSOR_TEST_SRCS) \
@@ -74,6 +88,11 @@ tensorflow/lite/experimental/micro/examples/micro_speech/preprocessor.cc
 PREPROCESSOR_FIXED_TEST_SRCS += \
 $(PREPROCESSOR_TEST_SRCS) \
 tensorflow/lite/experimental/micro/examples/micro_speech/fixed_point/preprocessor.cc
+
+PREPROCESSOR_1K_SRCS := \
+tensorflow/lite/experimental/micro/examples/micro_speech/apollo3/preprocessor_1k.cc \
+tensorflow/lite/experimental/micro/examples/micro_speech/CMSIS/sin_1k.cc
+
 
 MICROLITE_TEST_SRCS := \
 $(wildcard tensorflow/lite/experimental/micro/*test.cc) \
@@ -101,6 +120,8 @@ ALL_SRCS := \
 	$(PREPROCESSOR_REFERENCE_TEST_SRCS) \
 	$(PREPROCESSOR_FIXED_TEST_SRCS) \
 	$(MICROLITE_CC_SRCS) \
+	$(PREPROCESSOR_1K_MICRO_TEST_SRCS) \
+	$(PREPROCESSOR_1K_CMSIS_TEST_SRCS) \
 	$(MICROLITE_TEST_SRCS)
 
 # Where compiled objects are stored.
@@ -112,8 +133,12 @@ LIBDIR := $(GENDIR)lib/
 MICROLITE_LIB_PATH := $(LIBDIR)$(MICROLITE_LIB_NAME)
 
 MICRO_SPEECH_TEST_BINARY := $(BINDIR)micro_speech_test
+PUSHBUTTON_MICRO_SPEECH_TEST_BINARY := $(BINDIR)pushbutton_micro_speech_test
+PUSHBUTTON_CMSIS_SPEECH_TEST_BINARY := $(BINDIR)pushbutton_cmsis_speech_test
 PREPROCESSOR_REFERENCE_TEST_BINARY := $(BINDIR)preprocessor_reference_test
 PREPROCESSOR_FIXED_TEST_BINARY := $(BINDIR)preprocessor_fixed_test
+PREPROCESSOR_1K_MICRO_TEST_BINARY := $(BINDIR)preprocessor_1k_micro_test
+PREPROCESSOR_1K_CMSIS_TEST_BINARY := $(BINDIR)preprocessor_1k_cmsis_test
 
 CXX := $(CC_PREFIX)${TARGET_TOOLCHAIN_PREFIX}g++
 CC := $(CC_PREFIX)${TARGET_TOOLCHAIN_PREFIX}gcc
@@ -127,6 +152,13 @@ $(patsubst %.cc,%.o,$(patsubst %.c,%.o,$(PREPROCESSOR_REFERENCE_TEST_SRCS))))
 
 PREPROCESSOR_FIXED_TEST_OBJS := $(addprefix $(OBJDIR), \
 $(patsubst %.cc,%.o,$(patsubst %.c,%.o,$(PREPROCESSOR_FIXED_TEST_SRCS))))
+
+PREPROCESSOR_1K_MICRO_TEST_OBJS := $(addprefix $(OBJDIR), \
+$(patsubst %.cc,%.o,$(patsubst %.c,%.o,$(PREPROCESSOR_1K_MICRO_TEST_SRCS))))
+
+PREPROCESSOR_1K_CMSIS_TEST_OBJS := $(addprefix $(OBJDIR), \
+$(patsubst %.cc,%.o,$(patsubst %.c,%.o,$(PREPROCESSOR_1K_CMSIS_TEST_SRCS))) \
+arm_bitreversal2.o)
 
 MICROLITE_LIB_OBJS := $(addprefix $(OBJDIR), \
 $(patsubst %.cc,%.o,$(patsubst %.c,%.o,$(MICROLITE_CC_SRCS))))
@@ -193,6 +225,35 @@ preprocessor_fixed_test_bin: $(PREPROCESSOR_FIXED_TEST_BINARY).bin
 
 test_preprocessor_fixed: $(PREPROCESSOR_FIXED_TEST_BINARY)
 	$(TEST_SCRIPT) $(PREPROCESSOR_FIXED_TEST_BINARY) '~~~ALL TESTS PASSED~~~'
+
+$(PREPROCESSOR_1K_MICRO_TEST_BINARY): $(PREPROCESSOR_1K_MICRO_TEST_OBJS) $(MICROLITE_LIB_PATH)
+	@mkdir -p $(dir $@)
+	$(CXX) $(CXXFLAGS) $(INCLUDES) \
+  	-o $(PREPROCESSOR_1K_MICRO_TEST_BINARY) $(PREPROCESSOR_1K_MICRO_TEST_OBJS) \
+  	$(LIBFLAGS) $(MICROLITE_LIB_PATH) $(LDFLAGS) $(MICROLITE_LIBS)
+
+preprocessor_1k_micro_test: $(PREPROCESSOR_1K_MICRO_TEST_BINARY)
+preprocessor_1k_micro_test_bin: $(PREPROCESSOR_1K_MICRO_TEST_BINARY).bin
+
+test_preprocessor_1k_micro: $(PREPROCESSOR_1K_MICRO_TEST_BINARY)
+	$(TEST_SCRIPT) $(PREPROCESSOR_1K_MICRO_TEST_BINARY) '~~~ALL TESTS PASSED~~~'
+
+
+$(PREPROCESSOR_1K_CMSIS_TEST_BINARY): $(PREPROCESSOR_1K_CMSIS_TEST_OBJS) $(MICROLITE_LIB_PATH)
+	@mkdir -p $(dir $@)
+	$(CXX) $(CXXFLAGS) $(INCLUDES) \
+  	-o $(PREPROCESSOR_1K_CMSIS_TEST_BINARY) $(PREPROCESSOR_1K_CMSIS_TEST_OBJS) \
+  	$(LIBFLAGS) $(MICROLITE_LIB_PATH) $(LDFLAGS) $(MICROLITE_LIBS)
+
+preprocessor_1k_cmsis_test: $(PREPROCESSOR_1K_CMSIS_TEST_BINARY)
+preprocessor_1k_cmsis_test_bin: $(PREPROCESSOR_1K_CMSIS_TEST_BINARY).bin
+
+test_preprocessor_1k_cmsis: $(PREPROCESSOR_1K_CMSIS_TEST_BINARY)
+	$(TEST_SCRIPT) $(PREPROCESSOR_1K_CMSIS_TEST_BINARY) '~~~ALL TESTS PASSED~~~'
+
+
+$(OBJDIR)arm_bitreversal2.o:
+	$(CXX) $(CXXFLAGS) $(INCLUDES) -c $(CMSIS_SRC_DIR)/TransformFunctions/arm_bitreversal2.S -o $(OBJDIR)arm_bitreversal2.o
 
 $(BINDIR)%_test : $(OBJDIR)%_test.o $(MICROLITE_LIB_PATH)
 	@mkdir -p $(dir $@)

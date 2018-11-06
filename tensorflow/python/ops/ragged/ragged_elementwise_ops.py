@@ -28,7 +28,7 @@ from tensorflow.python.ops import parsing_ops
 from tensorflow.python.ops import string_ops
 from tensorflow.python.ops.ragged import ragged_factory_ops
 from tensorflow.python.ops.ragged import ragged_tensor
-from tensorflow.python.ops.ragged import ragged_util
+from tensorflow.python.ops.ragged import ragged_tensor_shape
 from tensorflow.python.util import tf_decorator
 from tensorflow.python.util import tf_export
 from tensorflow.python.util import tf_inspect
@@ -209,28 +209,45 @@ def _broadcast_elementwise_args(elementwise_args):
     if not any(is_ragged):
       return elementwise_args, (), ()
 
-    # Support limited broadcasting (namely, scalar + ragged).  Full
-    # broadcasting support will be added later.
-    if all((ragged_tensor.is_ragged(t) or t.shape.ndims == 0)
-           for t in elementwise_args.values()):
+    # If we have a single ragged tensor plus a set of scalars, then we can
+    # rely on the underlying elementwise op to do broadcasting.
+    if (sum(is_ragged) == 1 and
+        all((ragged_tensor.is_ragged(t) or t.shape.ndims == 0)
+            for t in elementwise_args.values())):
       nested_splits_lists = [
           t.nested_row_splits
           for t in elementwise_args.values()
-          if ragged_tensor.is_ragged(t)
-      ]
-      if len(nested_splits_lists) == 1:
-        checks = ()
-      else:
-        if any(t.shape.ndims is None for t in elementwise_args.values()):
-          raise ValueError('Ragged elementwise ops require that rank (number '
-                           'of dimensions) be statically known.')
-        if len(set(t.shape.ndims for t in elementwise_args.values())) != 1:
-          raise ValueError('Ragged elementwise ops do not support '
-                           'broadcasting yet')
-        checks = ragged_util.assert_splits_match(nested_splits_lists)
-      return (elementwise_args, nested_splits_lists[0], checks)
+          if ragged_tensor.is_ragged(t)][0]
+      return elementwise_args, nested_splits_lists, ()
+
     else:
-      raise ValueError('Ragged elementwise ops do not support broadcasting yet')
+      # Get the shapes of all the elementwise arguments.
+      shapes = [ragged_tensor_shape.RaggedTensorDynamicShape.from_tensor(t)
+                for t in elementwise_args.values()]
+
+      # Broadcast the shapes to all have the same rank (the max rank).
+      ranks = [t.shape.ndims for t in elementwise_args.values()]
+      if any(rank is None for rank in ranks):
+        raise ValueError('Unable to broadcast: unknown rank')
+      broadcast_rank = max(ranks)
+      shapes = [shape.broadcast_to_rank(broadcast_rank) for shape in shapes]
+
+      # For each dimension, broadcast the shapes to be compatible.
+      for axis in range(broadcast_rank):
+        # For each i, broadcast shape[i+1] to be compatible with shape[i]; and
+        # then finally broadcast shape[0] to be compatible with shape[-1].
+        for i in range(len(shapes)):
+          j = (i + 1) % len(shapes)
+          dim_size = shapes[i].dimension_size(axis)
+          shapes[j] = shapes[j].broadcast_dimension(axis, dim_size)
+      broadcast_shape = shapes[0]
+
+      # Broadcast every elementwise arg to the shape that we calculated.
+      elementwise_args = dict([
+          (key, ragged_tensor_shape.broadcast_to(t, broadcast_shape, False))
+          for (key, t) in elementwise_args.items()])
+      nested_splits_lists = list(elementwise_args.values())[0].nested_row_splits
+      return elementwise_args, nested_splits_lists, ()
 
 
 # A list of symbols that should be exported in the "ragged" package.
@@ -252,6 +269,10 @@ def _add_elementwise_ops_to_this_module(specs, verbose=False):
       op_name = canonical_name
     else:
       op_name = original_op.__name__
+
+    # Temporary hack (will be removed once dispatch is added for RaggedTensors):
+    if op_name == 'neg': op_name = 'negative'
+
     if verbose:
       print('Adding ragged_elementwise_op: tf.ragged.%s (based on tf.%s)' %
             (op_name, canonical_name))
@@ -348,7 +369,7 @@ _TF_ELEMENTWISE_OPS = [
     (string_ops.regex_replace, 'input'),
     (string_ops.string_join, '[inputs]'),
     (string_ops.string_strip, 'input'),
-    (string_ops.string_to_hash_bucket, 'string_tensor'),
+    (string_ops.string_to_hash_bucket, 'input'),
     (string_ops.string_to_hash_bucket_fast, 'input'),
     (string_ops.string_to_hash_bucket_strong, 'input'),
     (string_ops.substr, 'input'),
@@ -365,3 +386,4 @@ _TF_ELEMENTWISE_OPS = [
     (parsing_ops.string_to_number, 'string_tensor'),
 ]
 _add_elementwise_ops_to_this_module(_TF_ELEMENTWISE_OPS)
+

@@ -225,6 +225,28 @@ def row_lengths(rt_input, axis=1, name=None):
       return array_ops.ones(shape[:axis], dtypes.int64) * shape[axis]
 
 
+def nested_row_lengths(rt_input, name=None):
+  """Returns a tuple containing the row_lengths for all ragged dimensions.
+
+  `nested_row_lengths(rt)` is a tuple containing the `row_lengths` tensors for
+  all ragged dimensions in `rt`, ordered from outermost to innermost.
+
+  Args:
+    rt_input: A potentially ragged tensor.
+    name: A name prefix for the returned tensors (optional).
+
+  Returns:
+    A `tuple` of 1-D `int64` `Tensors`.  The length of the tuple is equal to
+    `rt_input.ragged_rank`.
+  """
+  with ops.name_scope(name, 'RaggedNestedRowLengths', [rt_input]):
+    rt_nested_row_lengths = []
+    while isinstance(rt_input, ragged_tensor.RaggedTensor):
+      rt_nested_row_lengths.append(row_lengths(rt_input))
+      rt_input = rt_input.values
+    return tuple(rt_nested_row_lengths)
+
+
 #===============================================================================
 # Bounding Shape
 #===============================================================================
@@ -451,8 +473,7 @@ def batch_gather(params, indices, name=None):
         adjusted_indices = math_ops.to_int64(indices) + adjustments
         return gather(params.values, adjusted_indices)
       else:
-        raise ValueError(
-            'batch shape from indices does not match params shape')
+        raise ValueError('batch shape from indices does not match params shape')
 
 
 #===============================================================================
@@ -719,7 +740,7 @@ def boolean_mask(data, mask, keepdims=False, name=None):
             int_mask = ragged_functional_ops.map_inner_values(
                 math_ops.cast, mask, dtype=dtypes.int64)
             masked_row_lengths = ragged_math_ops.reduce_sum(int_mask, axis=1)
-            splits.append(_lengths_to_splits(masked_row_lengths))
+            splits.append(ragged_util.lengths_to_splits(masked_row_lengths))
           mask = mask.values
           data = data.values
 
@@ -741,7 +762,7 @@ def boolean_mask(data, mask, keepdims=False, name=None):
       # masks back to a splits tensor.
       lengths = row_lengths(data)
       masked_lengths = array_ops.boolean_mask(lengths, mask)
-      masked_splits = _lengths_to_splits(masked_lengths)
+      masked_splits = ragged_util.lengths_to_splits(masked_lengths)
 
       # Get the masked values: first get row ids corresponding to each
       # value, then use tf.gather to build a boolean mask that's false for
@@ -977,7 +998,7 @@ def _ragged_stack_concat_axis_0(rt_inputs, stack_values):
   # If we are performing a stack operation, then add another splits.
   if stack_values:
     stack_lengths = array_ops.stack([nrows(rt) for rt in rt_inputs])
-    stack_splits = _lengths_to_splits(stack_lengths)
+    stack_splits = ragged_util.lengths_to_splits(stack_lengths)
     concatenated_nested_splits.insert(0, stack_splits)
 
   return ragged_factory_ops.from_nested_row_splits(concatenated_inner_values,
@@ -1131,7 +1152,8 @@ def _tile_ragged_values(rt_input, multiples, const_multiples=None):
 
     # Repeat each element in this ragged dimension `multiples[axis]` times.
     if const_multiples is None or const_multiples[axis] != 1:
-      inner_value_ids = _repeat_ranges(inner_value_ids, splits, multiples[axis])
+      inner_value_ids = ragged_util.repeat_ranges(inner_value_ids, splits,
+                                                  multiples[axis])
 
     prev_splits = splits
 
@@ -1172,6 +1194,17 @@ def _tile_ragged_splits(rt_input, multiples, const_multiples=None):
   ragged_rank = rt_input.ragged_rank
   nested_splits = rt_input.nested_row_splits
 
+  # projected_splits[src_axis, dst_axis] contains the split points that divide
+  # the rows from src_axis in the list of dst_axis values.  E.g.,
+  # projected_splits[i, i] = nested_splits[i], and
+  # projected_splits[i, i+1] = gather(nested_splits[i+1], nested_splits[i]).
+  projected_splits = [{i: nested_splits[i]} for i in range(ragged_rank)]
+  for src_axis in range(ragged_rank):
+    for dst_axis in range(src_axis + 1, ragged_rank - 1):
+      projected_splits[src_axis][dst_axis] = array_ops.gather(
+          nested_splits[dst_axis],
+          projected_splits[src_axis][dst_axis - 1])
+
   # For each ragged dimension: nested_splits[axis] -> result_splits[axis].
   result_splits = []
   for axis in range(ragged_rank):
@@ -1188,16 +1221,16 @@ def _tile_ragged_splits(rt_input, multiples, const_multiples=None):
     repeats = 1
     for d in range(axis - 1, -1, -1):
       if const_multiples is None or const_multiples[d + 1] != 1:
-        splits = nested_splits[d] * repeats
-        output_lengths = _repeat_ranges(output_lengths, splits,
-                                        multiples[d + 1])
+        splits = projected_splits[d][axis - 1] * repeats
+        output_lengths = ragged_util.repeat_ranges(output_lengths, splits,
+                                                   multiples[d + 1])
       repeats *= multiples[d + 1]
 
     # Tile splits for the outermost (uniform) dimension.
     output_lengths = array_ops.tile(output_lengths, multiples[:1])
 
     # Convert to splits.
-    result_splits.append(_lengths_to_splits(output_lengths))
+    result_splits.append(ragged_util.lengths_to_splits(output_lengths))
 
   return result_splits
 
@@ -1425,11 +1458,6 @@ def _coordinate_where(condition):
 #===============================================================================
 
 
-def _lengths_to_splits(lengths):
-  """Returns splits corresponding to the given lengths."""
-  return array_ops.concat([[0], math_ops.cumsum(lengths)], axis=0)
-
-
 def _increase_ragged_rank_to(rt_input, ragged_rank):
   """Adds ragged dimensions to `rt_input` so it has the desired ragged rank."""
   if ragged_rank > 0:
@@ -1449,45 +1477,3 @@ def _concat_ragged_splits(splits_list):
     pieces.append(splits[1:] + splits_offset)
     splits_offset += splits[-1]
   return array_ops.concat(pieces, axis=0)
-
-
-def _repeat_ranges(params, splits, multiple):
-  """Repeats each range of `params` (as specified by `splits`) `multiple` times.
-
-  Let the `i`th range of `params` be defined as
-  `params[splits[i]:splits[i + 1]]`.  Then this function returns a tensor
-  containing range 0 repeated `multiple` times, followed by range 1 repeated
-  `multiple`, ..., followed by the last range repeated `multiple` times.
-
-  Args:
-    params: The `Tensor` whose values should be repeated.
-    splits: A splits tensor indicating the ranges of `params` that should be
-      repeated.
-    multiple: The number of times each range should be repeated.
-
-  Returns:
-    A `Tensor` with the same rank and type as `params`.
-
-  #### Example:
-    ```python
-    >>> _repeat_ranges(['a', 'b', 'c'], [0, 2, 3], 3)
-    ['a', 'b', 'a', 'b', 'a', 'b', 'c', 'c', 'c']
-    ```
-  """
-  # Repeat each split value `multiple` times.  E.g., if `splits=[0 3 4]` and
-  # `multiples=3`, then `repeated_splits=[0 0 0 3 3 3 4 4 4]`.
-  repeated_splits = array_ops.tile(
-      array_ops.expand_dims(splits, axis=1), array_ops.stack([1, multiple]))
-  repeated_splits = array_ops.reshape(repeated_splits, [-1])
-
-  # Divide the splits into repeated starts & repeated limits.  E.g., if
-  # `repeated_splits=[0 0 0 3 3 3 4 4 4]` then `repeated_starts=[0 0 0 3 3 3]`
-  # and `repeated_limits=[3 3 3 4 4 4]`.
-  n_splits = array_ops.shape(repeated_splits, out_type=dtypes.int64)[0]
-  repeated_starts = repeated_splits[:n_splits - multiple]
-  repeated_limits = repeated_splits[multiple:]
-
-  # Get indices for each range from starts to limits, and use those to gather
-  # the values in the desired repetition pattern.
-  offsets = ragged_math_ops.range(repeated_starts, repeated_limits).values
-  return array_ops.gather(params, offsets)

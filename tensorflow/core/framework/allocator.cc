@@ -96,9 +96,11 @@ static int64_t TotalAllocationWarningBytes() {
 void EnableCPUAllocatorStats(bool enable) {
   cpu_allocator_collect_stats = enable;
 }
+bool CPUAllocatorStatsEnabled() { return cpu_allocator_collect_stats; }
 void EnableCPUAllocatorFullStats(bool enable) {
   cpu_allocator_collect_full_stats = enable;
 }
+bool CPUAllocatorFullStatsEnabled() { return cpu_allocator_collect_full_stats; }
 
 namespace {
 // A default Allocator for CPU devices.  ProcessState::GetCPUAllocator() will

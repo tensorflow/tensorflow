@@ -19,10 +19,13 @@ limitations under the License.
 #include <unordered_set>
 #include <vector>
 
+#include "absl/container/flat_hash_set.h"
+#include "absl/strings/str_join.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/grappler/op_types.h"
 #include "tensorflow/core/grappler/utils.h"
+#include "tensorflow/core/util/device_name_utils.h"
 
 namespace tensorflow {
 namespace grappler {
@@ -38,7 +41,8 @@ GrapplerItem::GrapplerItem(const GrapplerItem& other, GraphDef* graph_def) {
   restore_op = other.restore_op;
   save_restore_loc_tensor = other.save_restore_loc_tensor;
   queue_runners = other.queue_runners;
-  allowed_optimizations = other.allowed_optimizations;
+  devices_ = other.devices_;
+  allowed_optimizations_ = other.allowed_optimizations_;
   graph.Swap(graph_def);
 }
 
@@ -109,6 +113,64 @@ std::unordered_set<string> GrapplerItem::NodesToPreserve() const {
     }
   }
   return result;
+}
+
+const std::unordered_set<string>& GrapplerItem::devices() const {
+  return devices_;
+}
+
+Status GrapplerItem::AddDevice(const string& device) {
+  DeviceNameUtils::ParsedName name;
+
+  if (!DeviceNameUtils::ParseFullName(device, &name)) {
+    return errors::InvalidArgument("Invalid device name: device=", device);
+
+  } else if (!name.has_job || !name.has_replica || !name.has_task ||
+             !name.has_type || !name.has_id) {
+    return errors::InvalidArgument("Not a fully defined device name: device=",
+                                   device);
+  }
+
+  devices_.insert(DeviceNameUtils::ParsedNameToString(name));
+  return Status::OK();
+}
+
+Status GrapplerItem::AddDevices(const GrapplerItem& other) {
+  std::vector<absl::string_view> invalid_devices;
+  for (const string& device : other.devices()) {
+    Status added = AddDevice(device);
+    if (!added.ok()) invalid_devices.emplace_back(device);
+  }
+  return invalid_devices.empty()
+             ? Status::OK()
+             : errors::InvalidArgument("Skipped invalid devices: [",
+                                       absl::StrJoin(invalid_devices, ", "),
+                                       "]");
+}
+
+Status GrapplerItem::InferDevicesFromGraph() {
+  absl::flat_hash_set<absl::string_view> invalid_devices;
+  for (const NodeDef& node : graph.node()) {
+    Status added = AddDevice(node.device());
+    if (!added.ok()) invalid_devices.insert(node.device());
+  }
+  VLOG(2) << "Inferred device set: [" << absl::StrJoin(devices_, ", ") << "]";
+  return invalid_devices.empty()
+             ? Status::OK()
+             : errors::InvalidArgument("Skipped invalid devices: [",
+                                       absl::StrJoin(invalid_devices, ", "),
+                                       "]");
+}
+
+void GrapplerItem::ClearDevices() { devices_.clear(); }
+
+const GrapplerItem::AllowedOptimizations& GrapplerItem::allowed_optimizations()
+    const {
+  return allowed_optimizations_;
+}
+
+GrapplerItem::AllowedOptimizations& GrapplerItem::allowed_optimizations() {
+  return allowed_optimizations_;
 }
 
 std::vector<const NodeDef*> ComputeTransitiveFanin(

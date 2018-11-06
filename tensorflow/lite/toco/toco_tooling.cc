@@ -210,7 +210,8 @@ std::unique_ptr<Model> Import(const TocoFlags& toco_flags,
       CheckInvariants(*model);
       break;
     default:
-      LOG(FATAL) << "Unhandled input_format";
+      LOG(FATAL) << "Unhandled input_format='"
+                 << FileFormat_Name(toco_flags.input_format()) << "'";
   }
 
   LogDump(kLogLevelModelChanged, "AT IMPORT", *model);
@@ -308,6 +309,7 @@ void Transform(const TocoFlags& toco_flags, Model* model) {
   // Fix any issues with IO edges. This must happen after any transform that
   // may modify the structure of the edges.
   FixEdgeArrays(model);
+  FixOperatorOrdering(model);
 
   if (quantize_output) {
     // If the user specified default min/max ranges we need to set all arrays
@@ -424,7 +426,8 @@ tensorflow::Status Export(const TocoFlags& toco_flags, const Model& model,
       DumpGraphviz(model, output_file_contents);
       break;
     default:
-      LOG(FATAL) << "Unhandled output_format";
+      LOG(FATAL) << "Unhandled output_format='"
+                 << FileFormat_Name(toco_flags.output_format()) << "'";
   }
   return tensorflow::Status();
 }

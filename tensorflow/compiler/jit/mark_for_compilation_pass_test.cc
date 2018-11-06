@@ -22,6 +22,7 @@ limitations under the License.
 #include "tensorflow/cc/ops/array_ops.h"
 #include "tensorflow/cc/ops/control_flow_ops_internal.h"
 #include "tensorflow/cc/ops/function_ops.h"
+#include "tensorflow/cc/ops/list_ops.h"
 #include "tensorflow/cc/ops/resource_variable_ops.h"
 #include "tensorflow/cc/ops/sendrecv_ops.h"
 #include "tensorflow/cc/ops/standard_ops.h"
@@ -1145,6 +1146,81 @@ TEST(XlaCompilationTest, DontAutoClusterDummyOps) {
   std::unordered_map<string, string> clusters = GetClusters(*graph);
   EXPECT_EQ(clusters["test/assert"], "");
   EXPECT_EQ(clusters["test/check"], "");
+}
+
+TEST(XlaCompilationTest, DontAutoClusterOpsProducingVariant) {
+  Scope root = Scope::NewRootScope().ExitOnError();
+  Output a = ops::Placeholder(root.WithOpName("test/a"), DT_INT64);
+  Output b = ops::Placeholder(root.WithOpName("test/b"), DT_INT64);
+
+  Output cast_a = ops::Cast(root.WithOpName("test/cast_a"), a, DT_INT32);
+  Output cast_b = ops::Cast(root.WithOpName("test/cast_b"), b, DT_INT32);
+
+  Output tensor_list_reserve = ops::TensorListReserve(
+      root.WithOpName("test/tensor_list_reserve"), cast_a, cast_b, DT_FLOAT);
+
+  std::unique_ptr<Graph> graph(new Graph(OpRegistry::Global()));
+  TF_ASSERT_OK(root.ToGraph(graph.get()));
+
+  TF_ASSERT_OK(MarkForCompilationPassTestHelper::MarkForCompilation(&graph));
+
+  std::unordered_map<string, string> clusters = GetClusters(*graph);
+  EXPECT_EQ(clusters["test/tensor_list_reserve"], "");
+}
+
+TEST(XlaCompilationTest, DontAutoClusterOpsConsumingVariant) {
+  Scope root = Scope::NewRootScope().ExitOnError();
+  Output dummy_input =
+      ops::Placeholder(root.WithOpName("test/dummy_input"), DT_INT64);
+  Output variant_input =
+      ops::Placeholder(root.WithOpName("test/variant_input"), DT_VARIANT);
+
+  // Create one more node so that we don't avoid creating a cluster solely
+  // because it would be trivial.
+  Output dummy_cast =
+      ops::Cast(root.WithOpName("test/dummy_cast"), dummy_input, DT_INT32);
+
+  Output tensor_list_element_shape = ops::TensorListElementShape(
+      root.WithOpName("test/tensor_list_element_shape"), variant_input,
+      DT_INT32);
+
+  root.graph()->AddControlEdge(dummy_cast.node(),
+                               tensor_list_element_shape.node());
+
+  std::unique_ptr<Graph> graph(new Graph(OpRegistry::Global()));
+  TF_ASSERT_OK(root.ToGraph(graph.get()));
+
+  TF_ASSERT_OK(MarkForCompilationPassTestHelper::MarkForCompilation(&graph));
+
+  std::unordered_map<string, string> clusters = GetClusters(*graph);
+  EXPECT_EQ(clusters["test/tensor_list_element_shape"], "");
+}
+
+TEST(XlaCompilationTest, ClusterOpsProducingVariantIfOnXlaDevice) {
+  Scope root = Scope::NewRootScope().ExitOnError();
+  Output a = ops::Placeholder(root.WithOpName("test/a"), DT_INT64);
+  Output b = ops::Placeholder(root.WithOpName("test/b"), DT_INT64);
+
+  Output cast_a = ops::Cast(root.WithOpName("test/cast_a"), a, DT_INT32);
+  Output cast_b = ops::Cast(root.WithOpName("test/cast_b"), b, DT_INT32);
+
+  Output tensor_list_reserve = ops::TensorListReserve(
+      root.WithOpName("test/tensor_list_reserve"), cast_a, cast_b, DT_FLOAT);
+
+  std::unique_ptr<Graph> graph(new Graph(OpRegistry::Global()));
+  TF_ASSERT_OK(root.ToGraph(graph.get()));
+
+  string xla_cpu_device = "/job:worker/replica:0/task:0/device:XLA_CPU:0";
+  for (Node* n : graph->nodes()) {
+    if (absl::StartsWith(n->name(), /*prefix=*/"test/")) {
+      n->set_assigned_device_name(xla_cpu_device);
+    }
+  }
+
+  TF_ASSERT_OK(MarkForCompilationPassTestHelper::MarkForCompilation(&graph));
+
+  std::unordered_map<string, string> clusters = GetClusters(*graph);
+  EXPECT_NE(clusters["test/tensor_list_reserve"], "");
 }
 
 }  // namespace

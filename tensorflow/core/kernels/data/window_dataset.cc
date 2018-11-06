@@ -43,6 +43,8 @@ class WindowDataset : public DatasetBase {
 
   string DebugString() const override { return "WindowDataset"; }
 
+  int64 Cardinality() const override { return elements_.size(); }
+
  protected:
   // TODO(b/110981596): Support checkpointing.
   Status AsGraphDefInternal(SerializationContext* ctx,

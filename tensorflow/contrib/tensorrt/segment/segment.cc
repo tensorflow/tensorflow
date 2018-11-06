@@ -33,6 +33,7 @@ namespace tensorflow {
 namespace tensorrt {
 namespace segment {
 using ::tensorflow::strings::StrAppend;
+using ::tensorflow::strings::StrCat;
 
 // A simple graph representation to mirror tensorflow::Graph. This structure
 // helps saving memory since segmenter modifies the graph in place, preventing
@@ -406,22 +407,42 @@ tensorflow::Status SegmentGraph(
   // Use a union-find to collect the nodes that belong to the same
   // segment. A node value of nullptr indicates that the node is not a candidate
   // for TRT.
+  std::unordered_set<string> unsupported_ops;
+  int num_unsupported_ops = 0;
   std::vector<UnionFind<SimpleNode*>> node_segments;
   for (int i = 0; i < graph->num_node_ids(); ++i) {
     SimpleNode* node = graph->FindNodeId(i);
     if (options.exclude_node_list.count(node->name()) != 0) {
-      VLOG(1) << "Not a TF-TRT candidate: " << node->name()
-              << " (excluded by segmenter option).";
+      VLOG(1) << "Not a TF-TRT candidate, "
+              << "(Op type: " << node->tf_node()->type_string() << "), "
+              << "(Op name: " << node->name() << "), "
+              << "(Reason: excluded by segmenter option)";
+      unsupported_ops.emplace(node->tf_node()->type_string());
+      num_unsupported_ops++;
       node = nullptr;
     } else {
       const Status status = candidate_fn(node->tf_node());
       if (!status.ok()) {
-        VLOG(1) << "Not a TF-TRT candidate: " << node->name() << ": " << status;
+        VLOG(1) << "Not a TF-TRT candidate, "
+                << "(Op type: " << node->tf_node()->type_string() << "), "
+                << "(Op name: " << node->name() << "), "
+                << "(Reason: " << status << ")";
+        unsupported_ops.emplace(node->tf_node()->type_string());
+        num_unsupported_ops++;
         node = nullptr;
       }
     }
     node_segments.emplace_back(node);
   }
+  string msg = StrCat(
+      "There are ", num_unsupported_ops, " ops of ", unsupported_ops.size(),
+      " different types in the graph that", " are not converted to TensorRT: ");
+  for (const auto& elem : unsupported_ops) {
+    StrAppend(&msg, elem, ", ");
+  }
+  LOG(INFO) << msg << "(For more information see "
+            << "https://docs.nvidia.com/deeplearning"
+            << "/dgx/integrate-tf-trt/index.html#support-ops).";
 
   // The segmentation algorithm below visits nodes in reverse topological order
   // and attempts to merge nodes along output edges. That means that subgraphs
@@ -439,7 +460,8 @@ tensorflow::Status SegmentGraph(
   std::vector<const SimpleNode*> order;
   order.reserve(graph->num_node_ids());
   StableDFS(*graph, /*reverse=*/false, {graph->source_node()},
-            /*enter=*/nullptr, [&order](const SimpleNode* n) {
+            /*enter=*/nullptr,
+            [&order](const SimpleNode* n) {
               order.push_back(n);
               return true;
             });
@@ -548,7 +570,7 @@ tensorflow::Status SegmentGraph(
     std::set<const tensorflow::Node*>& segment_nodes = itr.second;
     VLOG(1) << "Segment original size: " << segment_nodes.size();
     while (true) {
-      std::deque<const tensorflow::Node*> in_nodes_que, out_nodes_que;
+      std::deque<const tensorflow::Node *> in_nodes_que, out_nodes_que;
       // Find an input node that is not eligible and add it to the queue.
       // Nodes that has no incoming edges should not be treated as "input",
       // as there are really no inputs to them. Similar for output nodes.
@@ -594,8 +616,7 @@ tensorflow::Status SegmentGraph(
       // their outputs. In this way, for common cases the number of removed
       // nodes should be minimum.
       auto remove_nodes = [&segment_nodes](
-                              bool is_input_nodes,
-                              std::deque<const tensorflow::Node*>* que) {
+          bool is_input_nodes, std::deque<const tensorflow::Node*>* que) {
         // Run a BFS on the queue to find all the input/output nodes.
         std::set<const tensorflow::Node*> visited;
         std::set<const tensorflow::Node*> logged(que->begin(), que->end());

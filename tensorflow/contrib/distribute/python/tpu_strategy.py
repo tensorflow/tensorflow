@@ -21,25 +21,28 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import copy
 import functools
 
-from tensorflow.contrib.distribute.python import cross_tower_ops as cross_tower_ops_lib
-from tensorflow.contrib.distribute.python import values
 from tensorflow.contrib.tpu.python.ops import tpu_ops
 from tensorflow.contrib.tpu.python.tpu import tpu
 from tensorflow.contrib.tpu.python.tpu import tpu_system_metadata as tpu_system_metadata_lib
 from tensorflow.contrib.tpu.python.tpu import training_loop
+from tensorflow.python.distribute import cross_device_ops as cross_device_ops_lib
+from tensorflow.python.distribute import device_util
+from tensorflow.python.distribute import distribute_lib
+from tensorflow.python.distribute import reduce_util
+from tensorflow.python.distribute import values
 from tensorflow.python.eager import context
 from tensorflow.python.eager import tape
 from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variable_scope as vs
-from tensorflow.python.ops import variables as variables_lib
-from tensorflow.python.training import device_util
-from tensorflow.python.training import distribute as distribute_lib
 from tensorflow.python.util import nest
 
 
@@ -130,8 +133,21 @@ class TPUStrategy(distribute_lib.DistributionStrategy):
       num_cores: Number of cores to use on the TPU. If None specified, then
           auto-detect the cores and topology of the TPU system.
     """
-    super(TPUStrategy, self).__init__()
+    super(TPUStrategy, self).__init__(TPUExtended(
+        self, tpu_cluster_resolver, steps_per_run, num_cores))
 
+  @property
+  def steps_per_run(self):
+    """DEPRECATED: use .extended.steps_per_run instead."""
+    return self._extended.steps_per_run
+
+
+class TPUExtended(distribute_lib.DistributionStrategyExtended):
+  """Implementation of TPUStrategy."""
+
+  def __init__(self, container_strategy, tpu_cluster_resolver, steps_per_run,
+               num_cores=None):
+    super(TPUExtended, self).__init__(container_strategy)
     self._tpu_cluster_resolver = tpu_cluster_resolver
     self._tpu_metadata = get_tpu_system_metadata(self._tpu_cluster_resolver)
     # TODO(sourabhbajaj): Change this from num_cores to metadata_override
@@ -145,7 +161,7 @@ class TPUStrategy(distribute_lib.DistributionStrategy):
     self._host_device = self.get_host_cpu_device(0)
     self._tpu_devices = sorted(device_map.keys())
     # Only create variables for the number of replicas we're running.
-    self._tpu_devices = self._tpu_devices[:self.num_replicas]
+    self._tpu_devices = self._tpu_devices[:self._num_replicas_in_sync]
 
     # TODO(sourabhbajaj): Remove this once performance of running one step
     # at a time is comparable to multiple steps.
@@ -214,7 +230,17 @@ class TPUStrategy(distribute_lib.DistributionStrategy):
 
     return enqueue_op_per_host
 
-  def distribute_dataset(self, dataset_fn):
+  def _make_dataset_iterator(self, dataset):
+    """Make iterators for each of the TPU hosts."""
+
+    worker_devices = [
+        (self.get_host(hid), [self.get_host_cpu_device(hid)])
+        for hid in range(self.num_hosts)
+    ]
+    return values.DatasetIterator(dataset, worker_devices,
+                                  self._num_replicas_in_sync)
+
+  def _distribute_dataset(self, dataset_fn):
     worker_devices = [
         (self.get_host(hid), [self.get_host_cpu_device(hid)])
         for hid in range(self.num_hosts)
@@ -225,12 +251,11 @@ class TPUStrategy(distribute_lib.DistributionStrategy):
   # TODO(priyag): Deal with OutOfRange errors once b/111349762 is fixed.
   # TODO(sourabhbajaj): Remove the initial_loop_values parameter when we have
   # a mechanism to infer the outputs of `fn`. Pending b/110550782.
-  def _run_steps_on_dataset(self, fn, multi_worker_iterator, iterations,
-                            initial_loop_values=None):
-
+  def _experimental_run_steps_on_iterator(
+      self, fn, multi_worker_iterator, iterations, initial_loop_values=None):
     output_shapes = multi_worker_iterator.output_shapes
     shapes = nest.flatten(output_shapes)
-    if any([not s.is_fully_defined() for s in shapes]):
+    if any(not s.is_fully_defined() for s in shapes):
       raise ValueError(
           "TPU currently requires fully defined shapes. Either use "
           "set_shape() on the input tensors or use "
@@ -251,24 +276,19 @@ class TPUStrategy(distribute_lib.DistributionStrategy):
       initial_loop_values = {}
     initial_loop_values = nest.flatten(initial_loop_values)
     ctx = values.MultiStepContext()
-    def run_fn(*args, **kwargs):
+
+    def run_fn():
       """Single step on the TPU device."""
-      del args, kwargs
       fn_inputs = dequeue_fn()
       if not isinstance(fn_inputs, tuple):
         fn_inputs = (fn_inputs,)
-      fn_result = fn(ctx, *fn_inputs)
+      fn_result = fn(ctx, fn_inputs)
       flat_last_step_outputs = nest.flatten(ctx.last_step_outputs)
       if flat_last_step_outputs:
         with ops.control_dependencies([fn_result]):
           return [array_ops.identity(f) for f in flat_last_step_outputs]
       else:
         return fn_result
-
-    # TODO(sourabhbajaj): The input to while loop should be based on the output
-    # type of the step_fn
-    def iterate_on_tpu():
-      return training_loop.repeat(iterations, run_fn, initial_loop_values)
 
     # We capture the control_flow_context at this point, before we run `fn`
     # inside a while_loop and TPU replicate context. This is useful in cases
@@ -279,38 +299,70 @@ class TPUStrategy(distribute_lib.DistributionStrategy):
     self._outer_control_flow_context = (
         ops.get_default_graph()._get_control_flow_context())  # pylint: disable=protected-access
 
-    replicate_inputs = [[]] * self.num_replicas
-    replicate_outputs = tpu.replicate(iterate_on_tpu, replicate_inputs)
+    def rewrite_fn(*args):
+      """The rewritten step fn running on TPU."""
+      del args
+      replicate_inputs = [[]] * self._num_replicas_in_sync
+      replicate_outputs = tpu.replicate(run_fn, replicate_inputs)
+
+      # If run_fn has tensor outputs, tpu.replicate returns a list of list. We
+      # will flatten it in this case. If run_fn has no tensor outputs,
+      # tpu.replicate returns a list of no_ops, we will keep the output as it
+      # is.
+      if isinstance(replicate_outputs[0], list):
+        replicate_outputs = nest.flatten(replicate_outputs)
+
+      return replicate_outputs
+
+    # TODO(sourabhbajaj): The input to while loop should be based on the output
+    # type of the step_fn
+    assert isinstance(initial_loop_values, list)
+    initial_loop_values = initial_loop_values * self._num_replicas_in_sync
+
+    # Put the while loop op on host 0.
+    with ops.device(self.get_host_cpu_device(0)):
+      replicate_outputs = training_loop.repeat(iterations, rewrite_fn,
+                                               initial_loop_values)
+
     del self._outer_control_flow_context
     ctx.run_op = control_flow_ops.group(replicate_outputs, enqueue_ops)
 
-    # Filter out any ops from the outputs, typically this would be the case
-    # when there were no tensor outputs.
-    last_step_tensor_outputs = [x for x in replicate_outputs
-                                if not isinstance(x, ops.Operation)]
+    if isinstance(replicate_outputs, list):
+      # Filter out any ops from the outputs, typically this would be the case
+      # when there were no tensor outputs.
+      last_step_tensor_outputs = [
+          x for x in replicate_outputs if not isinstance(x, ops.Operation)
+      ]
 
-    # Outputs are currently of the structure (grouped by device)
-    # [[output0_device0, output1_device0, output2_device0],
-    #  [output0_device1, output1_device1, output2_device1]]
-    # Convert this to the following structure instead: (grouped by output)
-    # [[output0_device0, output0_device1],
-    #  [output1_device0, output1_device1],
-    #  [output2_device0, output2_device1]]
-    last_step_tensor_outputs = [list(x) for x in zip(*last_step_tensor_outputs)]
+      # Outputs are currently of the structure (flattened)
+      # [output0_device0, output1_device0, output2_device0,
+      #  output0_device1, output1_device1, output2_device1,
+      #  ...]
+      # Convert this to the following structure instead: (grouped by output)
+      # [[output0_device0, output0_device1],
+      #  [output1_device0, output1_device1],
+      #  [output2_device0, output2_device1]]
+      output_num = len(last_step_tensor_outputs) // self._num_replicas_in_sync
+      last_step_tensor_outputs = [
+          last_step_tensor_outputs[i::output_num] for i in range(output_num)
+      ]
+    else:
+      # no tensors returned.
+      last_step_tensor_outputs = []
 
     # Convert replicate_outputs to the original dict structure of
     # last_step_outputs.
     last_step_tensor_outputs_dict = nest.pack_sequence_as(
         ctx.last_step_outputs, last_step_tensor_outputs)
 
-    for (name, aggregation) in ctx._last_step_outputs_aggregations.items():  # pylint: disable=protected-access
+    for name, reduce_op in ctx._last_step_outputs_reduce_ops.items():  # pylint: disable=protected-access
       output = last_step_tensor_outputs_dict[name]
-      # For outputs that have already been aggregated, take the first value
+      # For outputs that have already been reduced, take the first value
       # from the list as each value should be the same. Else return the full
       # list of values.
-      # TODO(josh11b): If aggregation is NONE, we should return a PerReplica
+      # TODO(josh11b): If reduce_op is NONE, we should return a PerReplica
       # value.
-      if aggregation is not variables_lib.VariableAggregation.NONE:
+      if reduce_op is not None:
         # TODO(priyag): Should this return the element or a list with 1 element
         last_step_tensor_outputs_dict[name] = output[0]
     ctx._set_last_step_outputs(last_step_tensor_outputs_dict)  # pylint: disable=protected-access
@@ -320,10 +372,10 @@ class TPUStrategy(distribute_lib.DistributionStrategy):
   def _call_for_each_replica(self, fn, args, kwargs):
     # TODO(jhseu): Consider making it so call_for_each_replica implies that
     # we're in a tpu.rewrite(), and update TPUMirroredVariable accordingly.
-    with _TPUReplicaContext(self):
+    with _TPUReplicaContext(self._container_strategy()):
       return fn(*args, **kwargs)
 
-  def initialize(self):
+  def _initialize(self):
     if context.executing_eagerly():
       # TODO(priyag): Add appopriate call here when eager is supported for TPUs.
       raise NotImplementedError("Eager mode not supported in TPUStrategy.")
@@ -338,7 +390,7 @@ class TPUStrategy(distribute_lib.DistributionStrategy):
                               tpu.initialize_system())
       return graph.get_collection(_TPU_INITIALIZE_SYSTEM_COLLECTION)
 
-  def finalize(self):
+  def _finalize(self):
     if context.executing_eagerly():
       # TODO(priyag): Add appopriate call here when eager is supported for TPUs.
       raise NotImplementedError("Eager mode not supported in TPUStrategy.")
@@ -346,7 +398,7 @@ class TPUStrategy(distribute_lib.DistributionStrategy):
       return [tpu.shutdown_system()]
 
   def _get_devices_from(self, colocate_with=None):
-     # TODO(jhseu): Change this when we support model parallelism.
+    # TODO(jhseu): Change this when we support model parallelism.
     return self._tpu_devices
 
   def _create_variable(self, next_creator, *args, **kwargs):
@@ -383,12 +435,12 @@ class TPUStrategy(distribute_lib.DistributionStrategy):
     return _create_tpu_mirrored_variable(devices, _real_mirrored_creator, *args,
                                          **kwargs)
 
-  def _reduce(self, aggregation, value, destinations):
+  def _reduce_to(self, reduce_op, value, destinations):
     if values._enclosing_tpu_context() is not None:  # pylint: disable=protected-access
-      if aggregation == vs.VariableAggregation.MEAN:
+      if reduce_op == reduce_util.ReduceOp.MEAN:
         # TODO(jhseu):  Revisit once we support model-parallelism.
-        value *= (1. / self.num_replicas)
-      elif aggregation != vs.VariableAggregation.SUM:
+        value *= (1. / self._num_replicas_in_sync)
+      elif reduce_op != reduce_util.ReduceOp.SUM:
         raise NotImplementedError(
             "Currently only support sum & mean in TPUStrategy.")
       return tpu_ops.cross_replica_sum(value)
@@ -396,27 +448,22 @@ class TPUStrategy(distribute_lib.DistributionStrategy):
     # Validate that the destination is same as the host device
     # Note we don't do this when in replicate context as the reduction is
     # performed on the TPU device itself.
-    devices = cross_tower_ops_lib.get_devices_from(destinations)
+    devices = cross_device_ops_lib.get_devices_from(destinations)
     if len(devices) == 1:
       assert device_util.canonicalize(devices[0]) == device_util.canonicalize(
           self._host_device)
     else:
       raise ValueError("Multiple devices are not supported for TPUStrategy")
 
-    if aggregation == vs.VariableAggregation.ONLY_FIRST_REPLICA:
-      return value[0]
     output = math_ops.add_n(value)
-    if aggregation == vs.VariableAggregation.MEAN:
+    if reduce_op == reduce_util.ReduceOp.MEAN:
       return output * (1. / len(value))
     return output
 
-  def _update(self, var, options, fn, *args, **kwargs):
+  def _update(self, var, fn, args, kwargs, group):
     assert isinstance(var, values.TPUMirroredVariable)
-    should_group = options.pop("grouped")
-    assert not options  # Validate that we are processing all of the options.
-
     if values._enclosing_tpu_context() is not None:  # pylint: disable=protected-access
-      if should_group:
+      if group:
         return fn(var, *args, **kwargs)
       else:
         return [fn(var, *args, **kwargs)]
@@ -431,9 +478,7 @@ class TPUStrategy(distribute_lib.DistributionStrategy):
         updates[d] = fn(v,
                         *values.select_device_mirrored(d, args),
                         **values.select_device_mirrored(d, kwargs))
-    return values.update_regroup(self, updates, should_group)
-
-  # TODO(josh11b): Need to implement _update_non_slot()!
+    return values.update_regroup(self, updates, group)
 
   def read_var(self, var):
     assert isinstance(var, values.TPUMirroredVariable)
@@ -453,13 +498,9 @@ class TPUStrategy(distribute_lib.DistributionStrategy):
   def value_container(self, value):
     return value
 
-  def _broadcast(self, tensor, destinations):
+  def _broadcast_to(self, tensor, destinations):
     del destinations
     return tensor
-
-  @property
-  def num_replicas(self):
-    return self._num_cores_override or self._tpu_metadata.num_cores
 
   @property
   def num_hosts(self):
@@ -470,15 +511,15 @@ class TPUStrategy(distribute_lib.DistributionStrategy):
     return self._tpu_metadata.num_of_cores_per_host
 
   @property
-  def num_replicas_in_sync(self):
-    return self.num_replicas
+  def _num_replicas_in_sync(self):
+    return self._num_cores_override or self._tpu_metadata.num_cores
 
   @property
-  def between_graph(self):
+  def experimental_between_graph(self):
     return False
 
   @property
-  def should_init(self):
+  def experimental_should_init(self):
     return True
 
   @property
@@ -500,14 +541,12 @@ class TPUStrategy(distribute_lib.DistributionStrategy):
   def non_slot_devices(self, var_list):
     return self._host_device
 
-  def _update_non_slot(self, colocate_with, options, fn, *args, **kwargs):
+  def _update_non_slot(self, colocate_with, fn, args, kwargs, group):
     del colocate_with
-    should_group = options.pop("grouped")
-    assert not options  # Validate that we are processing all of the options.
     with ops.device(self._host_device), distribute_lib.UpdateContext(
         self._host_device):
       result = fn(*args, **kwargs)
-      if should_group:
+      if group:
         return result
       else:
         return nest.map_structure(self._unwrap, result)
@@ -521,17 +560,27 @@ class TPUStrategy(distribute_lib.DistributionStrategy):
   def get_host_cpu_device(self, host_id):
     return self.get_host(host_id) + "/device:CPU:0"
 
-  def configure(self,
-                session_config=None,
-                cluster_spec=None,
-                task_type=None,
-                task_id=None):
+  def _configure(self,
+                 session_config=None,
+                 cluster_spec=None,
+                 task_type=None,
+                 task_id=None):
     del cluster_spec, task_type, task_id
     if session_config:
-      session_config.isolate_session_state = True
-      cluster_spec = self._tpu_cluster_resolver.cluster_spec()
-      if cluster_spec:
-        session_config.cluster_def.CopyFrom(cluster_spec.as_cluster_def())
+      session_config.CopyFrom(self._update_config_proto(session_config))
+
+  def _update_config_proto(self, config_proto):
+    updated_config = copy.deepcopy(config_proto)
+    updated_config.isolate_session_state = True
+    cluster_spec = self._tpu_cluster_resolver.cluster_spec()
+    if cluster_spec:
+      updated_config.cluster_def.CopyFrom(cluster_spec.as_cluster_def())
+    return updated_config
+
+  # TODO(priyag): Delete this once all strategies use global batch size.
+  @property
+  def _global_batch_size(self):
+    return True
 
 
 class _TPUReplicaContext(distribute_lib.ReplicaContext):
@@ -540,13 +589,14 @@ class _TPUReplicaContext(distribute_lib.ReplicaContext):
   # TODO(sourabhbajaj): Call for each tower should be updating this.
   def __init__(self, distribution_strategy):
     distribute_lib.ReplicaContext.__init__(
-        self, distribution_strategy, replica_id=0)
-
-  @property
-  def device(self):
-    raise RuntimeError("Use .devices instead")
+        self,
+        distribution_strategy,
+        # TODO(b/118385803): properly initialize replica_id, instead of always 0
+        replica_id_in_sync_group=constant_op.constant(0, dtypes.int32))
 
   @property
   def devices(self):
     distribute_lib.require_replica_context(self)
-    return [self._distribution_strategy.worker_devices[self._replica_id]]
+    ds = self._distribution_strategy
+    replica_id = tensor_util.constant_value(self._replica_id_in_sync_group)
+    return [ds.extended.worker_devices[replica_id]]

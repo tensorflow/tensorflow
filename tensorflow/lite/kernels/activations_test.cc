@@ -170,6 +170,29 @@ TEST(FloatActivationsOpTest, Tanh) {
                              })));
 }
 
+TEST(QuantizedActivationsOpTest, Relu6) {
+  const float kMin = -1;
+  const float kMax = 127.f / 128.f;
+  QuantizedActivationsOpModel m(
+      BuiltinOperator_RELU6,
+      /*input=*/{TensorType_UINT8, {1, 2, 4, 1}, 8 * kMin, 8 * kMax},
+      /*output=*/{TensorType_UINT8, {1, 2, 4, 1}, 8 * kMin, 8 * kMax});
+  m.SetInput<uint8_t>({
+      0, -6, 2, 4,   //
+      3, -2, 10, 1,  //
+  });
+  m.Invoke();
+  EXPECT_THAT(m.GetDequantizedOutput<uint8_t>(),
+              ElementsAreArray(ArrayFloatNear(
+                  {
+                      0, 0, 2, 4,  //
+                      3, 0, 6, 1,  //
+                  },
+                  kQuantizedTolerance)));
+  EXPECT_THAT(m.GetOutput<uint8_t>(),
+              ElementsAreArray({128, 128, 160, 192, 176, 128, 224, 144}));
+}
+
 TEST(QuantizedActivationsOpTest, Tanh) {
   const float kMin = -1;
   const float kMax = 127.f / 128.f;
@@ -563,22 +586,17 @@ TEST(QuantizedActivationsOpTest, LogSoftmax) {
               ElementsAreArray({189, 93, 221, 253, 142, 63, 255, 111}));
 }
 
-class PReluOpModel : public SingleOpModel {
+// A base class of PRelu op model. It provides the constructor for
+// FloatPReluOpModel and QuantizedPReluOpModel.
+class BasePReluOpModel : public SingleOpModel {
  public:
-  PReluOpModel(const TensorData& input, const TensorData& alpha) {
+  BasePReluOpModel(const TensorData& input, const TensorData& alpha) {
     input_ = AddInput(input);
     alpha_ = AddInput(alpha);
-    output_ = AddOutput(input);
+    output_ = AddOutput({input.type, input.shape, input.min, input.max});
     SetBuiltinOp(BuiltinOperator_PRELU, BuiltinOptions_NONE, 0);
     BuildInterpreter({GetShape(input_), GetShape(alpha_)});
   }
-  void SetInput(std::initializer_list<float> data) {
-    PopulateTensor(input_, data);
-  }
-  void SetAlpha(std::initializer_list<float> data) {
-    PopulateTensor(alpha_, data);
-  }
-  std::vector<float> GetOutput() { return ExtractVector<float>(output_); }
 
  protected:
   int input_;
@@ -586,9 +604,47 @@ class PReluOpModel : public SingleOpModel {
   int output_;
 };
 
+// The FloatPReluOpModel class handles float input and output.
+class FloatPReluOpModel : public BasePReluOpModel {
+ public:
+  using BasePReluOpModel::BasePReluOpModel;
+
+  void SetInput(std::initializer_list<float> data) {
+    PopulateTensor(input_, data);
+  }
+  void SetAlpha(std::initializer_list<float> data) {
+    PopulateTensor(alpha_, data);
+  }
+  std::vector<float> GetOutput() { return ExtractVector<float>(output_); }
+};
+
+// The QuantizedPReluOpModel class handles quantized input and output.
+class QuantizedPReluOpModel : public BasePReluOpModel {
+ public:
+  using BasePReluOpModel::BasePReluOpModel;
+
+  template <typename T>
+  void SetInput(std::initializer_list<float> data) {
+    QuantizeAndPopulate<T>(input_, data);
+  }
+  template <typename T>
+  void SetAlpha(std::initializer_list<float> data) {
+    QuantizeAndPopulate<T>(alpha_, data);
+  }
+  template <typename T>
+  std::vector<T> GetOutput() {
+    return ExtractVector<T>(output_);
+  }
+  template <typename T>
+  std::vector<float> GetDequantizedOutput() {
+    return Dequantize<T>(ExtractVector<T>(output_), GetScale(output_),
+                         GetZeroPoint(output_));
+  }
+};
+
 TEST(FloatActivationsOpTest, PRelu) {
-  PReluOpModel m({TensorType_FLOAT32, {1, 2, 2, 3}},
-                 {TensorType_FLOAT32, {1, 1, 3}});
+  FloatPReluOpModel m({TensorType_FLOAT32, {1, 2, 2, 3}},
+                      {TensorType_FLOAT32, {1, 1, 3}});
 
   m.SetInput({
       0.0f, 0.0f, 0.0f,     // Row 1, Column 1
@@ -603,6 +659,69 @@ TEST(FloatActivationsOpTest, PRelu) {
                                  1.0f, 1.0f, 1.0f,    // Row 1, Column 2
                                  0.0f, -1.0f, -2.0f,  // Row 2, Column 1
                                  0.0f, -2.0f, -4.0f,  // Row 1, Column 2
+                             }));
+}
+
+TEST(QuantizedActivationsOpTest, PRelu) {
+  const float kMin = -1;
+  const float kMax = 127.f / 128.f;
+  QuantizedPReluOpModel m({TensorType_UINT8, {1, 2, 2, 3}, kMin, kMax},
+                          {TensorType_UINT8, {1, 1, 3}, kMin, kMax});
+  m.SetInput<uint8_t>({
+      0.0f, 0.0f, 0.0f,        // Row 1, Column 1
+      0.5f, 0.5f, 0.5f,        // Row 1, Column 2
+      -1.0f, -1.0f, -1.0f,     // Row 2, Column 1
+      -0.25f, -0.25f, -0.25f,  // Row 1, Column 2
+  });
+  m.SetAlpha<uint8_t>({0.0f, 0.5f, -0.5f});
+  m.Invoke();
+  EXPECT_THAT(m.GetDequantizedOutput<uint8_t>(),
+              ElementsAreArray(ArrayFloatNear(
+                  {
+                      0.0f, 0.0f, 0.0f,       // Row 1, Column 1
+                      0.5f, 0.5f, 0.5f,       // Row 1, Column 2
+                      0.0f, -0.5f, 0.5f,      // Row 2, Column 1
+                      0.0f, -0.125f, 0.125f,  // Row 1, Column 2
+                  },
+                  kQuantizedTolerance)));
+  EXPECT_THAT(m.GetOutput<uint8_t>(), ElementsAreArray({
+                                          128, 128, 128,  // Row 1, Column 1
+                                          192, 192, 192,  // Row 1, Column 2
+                                          128, 64, 192,   // Row 2, Column 1
+                                          128, 112, 144,  // Row 1, Column 2
+                                      }));
+}
+
+class LeakyReluOpModel : public SingleOpModel {
+ public:
+  LeakyReluOpModel(const TensorData& input, float alpha) {
+    input_ = AddInput(input);
+    output_ = AddOutput(input);
+    SetBuiltinOp(BuiltinOperator_LEAKY_RELU, BuiltinOptions_LeakyReluOptions,
+                 CreateLeakyReluOptions(builder_, alpha).Union());
+    BuildInterpreter({GetShape(input_)});
+  }
+  void SetInput(std::initializer_list<float> data) {
+    PopulateTensor(input_, data);
+  }
+  std::vector<float> GetOutput() { return ExtractVector<float>(output_); }
+
+ protected:
+  int input_;
+  int output_;
+};
+
+TEST(FloatActivationsOpTest, LeakyRelu) {
+  LeakyReluOpModel m({TensorType_FLOAT32, {2, 3}}, 0.5f);
+
+  m.SetInput({
+      0.0f, 1.0f, 3.0f,    // Row 1
+      1.0f, -1.0f, -2.0f,  // Row 2
+  });
+  m.Invoke();
+  EXPECT_THAT(m.GetOutput(), ElementsAreArray({
+                                 0.0f, 1.0f, 3.0f,    // Row 1
+                                 1.0f, -0.5f, -1.0f,  // Row 2
                              }));
 }
 

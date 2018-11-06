@@ -265,6 +265,7 @@ class RaggedStackOpTest(test_util.TensorFlowTestCase, parameterized.TestCase):
           axis=0,
           expected=[[[b'a00', b'a01'], [], [b'a20', b'a21']]]),
   )   # pyformat: disable
+  @test_util.run_deprecated_v1
   def testRaggedStack(self,
                       descr,
                       rt_inputs,
@@ -313,6 +314,7 @@ class RaggedStackOpTest(test_util.TensorFlowTestCase, parameterized.TestCase):
   def testError(self, rt_inputs, axis, error, message):
     self.assertRaisesRegexp(error, message, ragged.stack, rt_inputs, axis)
 
+  @test_util.run_deprecated_v1
   def testSingleTensorInput(self):
     """Tests ragged_stack with a single tensor input.
 

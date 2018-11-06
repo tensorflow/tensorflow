@@ -12,10 +12,10 @@ cc_library(
     hdrs = ["xla_ops.h"],
     deps = [
         "//tensorflow/compiler/jit:common",
+        "//tensorflow/compiler/jit:flags",
         "//tensorflow/compiler/jit:xla_compilation_cache",
         "//tensorflow/compiler/jit:xla_device",
         "//tensorflow/compiler/jit:xla_launch_util",
-        "//tensorflow/compiler/jit/legacy_flags:xla_ops_common_flags",
         "//tensorflow/compiler/tf2xla:common",
         "//tensorflow/compiler/tf2xla:tf2xla_util",
         "//tensorflow/compiler/tf2xla:xla_compiler",

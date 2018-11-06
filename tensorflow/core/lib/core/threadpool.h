@@ -22,6 +22,9 @@ limitations under the License.
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/types.h"
 
+namespace Eigen {
+class Allocator;
+}  // namespace Eigen
 namespace tensorflow {
 namespace thread {
 
@@ -37,7 +40,8 @@ class ThreadPool {
   //
   // REQUIRES: num_threads > 0
   ThreadPool(Env* env, const ThreadOptions& thread_options, const string& name,
-             int num_threads, bool low_latency_hint);
+             int num_threads, bool low_latency_hint,
+             Eigen::Allocator* allocator = nullptr);
 
   // Constructs a pool for low-latency ops that contains "num_threads" threads
   // with specified "name". env->StartThread() is used to create individual

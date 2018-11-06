@@ -12,7 +12,7 @@ if(WIN32)
 endif()
 
 # Project
-project(tensorflow C CXX)
+project(tensorflow VERSION 1.12.0 LANGUAGES C CXX)
 
 # Set C++14 as standard for the whole project
 set(CMAKE_CXX_STANDARD 14)
@@ -193,6 +193,7 @@ if(WIN32)
   set(CMAKE_SUPPRESS_REGENERATION ON)
 endif()
 
+
 if ("${CMAKE_CXX_COMPILER_ID}" STREQUAL "GNU")
   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fno-exceptions -std=c++11")
 endif()
@@ -280,6 +281,14 @@ else (systemlib_ZLIB)
   set(tensorflow_EXTERNAL_LIBRARIES ${tensorflow_EXTERNAL_LIBRARIES}
     ${zlib_STATIC_LIBRARIES})
 endif (systemlib_ZLIB)
+
+if (systemlib_ABSEIL_CPP)
+  set(tensorflow_EXTERNAL_LIBRARIES ${tensorflow_EXTERNAL_LIBRARIES}
+      ${abseil_cpp_LIBRARIES})
+else (systemlib_ABSEIL_CPP)
+  set(tensorflow_EXTERNAL_LIBRARIES ${tensorflow_EXTERNAL_LIBRARIES}
+    ${abseil_cpp_STATIC_LIBRARIES})
+endif (systemlib_ABSEIL_CPP)
 
 set(tensorflow_EXTERNAL_DEPENDENCIES
     zlib_copy_headers_to_destination
@@ -394,6 +403,7 @@ if (tensorflow_ENABLE_GPU)
   set(CUDA_NVCC_FLAGS ${CUDA_NVCC_FLAGS};--include-path ${PROJECT_BINARY_DIR}/$\{build_configuration\};--expt-relaxed-constexpr)
   set(CUDA_NVCC_FLAGS ${CUDA_NVCC_FLAGS};-ftz=true)  # Flush denormals to zero
   set(CUDA_INCLUDE ${CUDA_TOOLKIT_TARGET_DIR} ${CUDA_TOOLKIT_TARGET_DIR}/extras/CUPTI/include)
+
   include_directories(${CUDA_INCLUDE})
   if (WIN32)
     add_definitions(-DGOOGLE_CUDA=1 -DTF_EXTRA_CUDA_CAPABILITIES=3.7,5.2,6.0,6.1,7.0)
@@ -546,14 +556,20 @@ if (tensorflow_ENABLE_GPU)
       cudnn_version_number=${tensorflow_CUDNN_VERSION})
   endif(WIN32)
 else(tensorflow_ENABLE_GPU)
-  set(tensorflow_BUILD_INFO_FLAGS --build_config cpu --key_value
-    msvcp_dll_name=msvcp140.dll)
+  if(WIN32)
+    set(tensorflow_BUILD_INFO_FLAGS --build_config cpu --key_value
+      msvcp_dll_name=msvcp140.dll)
+  else()
+    set(tensorflow_BUILD_INFO_FLAGS --build_config cpu)
+  endif()
 endif(tensorflow_ENABLE_GPU)
 
-# Find python executable
-include(FindPythonInterp)
-if(NOT ${PYTHONINTERP_FOUND})
-    message(FATAL_ERROR "CMake was unable to find a python interpreter.")
+if(tensorflow_BUILD_PYTHON_BINDINGS)
+  # Find python executable
+  include(FindPythonInterp)
+  if(NOT ${PYTHONINTERP_FOUND})
+      message(FATAL_ERROR "CMake was unable to find a python interpreter.")
+  endif()
 endif()
 
 # Let's get to work!
@@ -574,6 +590,7 @@ include(tf_cc_ops.cmake)
 include(tf_c.cmake)
 include(tf_grappler.cmake)
 include(tf_core_profiler.cmake)
+include(tf_core_eager_runtime.cmake)
 if(tensorflow_BUILD_CC_EXAMPLE)
   include(tf_tutorials.cmake)
   include(tf_label_image_example.cmake)

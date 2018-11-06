@@ -23,7 +23,7 @@ limitations under the License.
 #include "tensorflow/cc/ops/control_flow_ops.h"
 #include "tensorflow/compiler/jit/defs.h"
 #include "tensorflow/compiler/jit/encapsulate_subgraphs_pass.h"
-#include "tensorflow/compiler/jit/legacy_flags/build_xla_ops_pass_flags.h"
+#include "tensorflow/compiler/jit/flags.h"
 #include "tensorflow/compiler/jit/xla_cluster_util.h"
 #include "tensorflow/compiler/tf2xla/cc/ops/xla_jit_ops.h"
 #include "tensorflow/compiler/tf2xla/dump_graph.h"
@@ -320,10 +320,10 @@ Status BuildXlaOpsPass::Run(const GraphOptimizationPassOptions& options) {
                     return IsXlaCompiledKernel(*n);
                   });
 
-  bool lazy_compilation_enabled = enable_lazy_compilation_
-                                      ? *enable_lazy_compilation_
-                                      : legacy_flags::GetBuildXlaOpsPassFlags()
-                                            .tf_xla_enable_lazy_compilation;
+  bool lazy_compilation_enabled =
+      enable_lazy_compilation_
+          ? *enable_lazy_compilation_
+          : GetBuildXlaOpsPassFlags().tf_xla_enable_lazy_compilation;
 
   for (Node* n : xla_compiled_kernels) {
     TF_RETURN_IF_ERROR(ReplaceNodeWithXlaCompileAndXlaRun(

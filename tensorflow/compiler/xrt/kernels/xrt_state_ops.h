@@ -393,6 +393,56 @@ class XRTReadLiteralOp : public OpKernel {
   }
 };
 
+// Op that writes a new literal value into device-resident memory.
+template <class DeviceAccessor>
+class XRTWriteLiteralOp : public OpKernel {
+ public:
+  explicit XRTWriteLiteralOp(OpKernelConstruction* ctx) : OpKernel(ctx) {}
+  ~XRTWriteLiteralOp() override = default;
+  XRTWriteLiteralOp(const XRTWriteLiteralOp&) = delete;
+  XRTWriteLiteralOp& operator=(const XRTWriteLiteralOp&) = delete;
+
+  void Compute(OpKernelContext* ctx) override {
+    VLOG(1) << "XRTWriteLiteralOp::Compute";
+
+    const Tensor& handle_tensor = ctx->input(0);
+    OP_REQUIRES(
+        ctx, TensorShapeUtils::IsScalar(handle_tensor.shape()),
+        errors::Internal("computation input should be an int64 scalar"));
+    int64 allocation_handle = handle_tensor.scalar<int64>()();
+
+    const Tensor& literal_info = ctx->input(1);
+    OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(literal_info.shape()),
+                errors::Internal("literal input should be a string scalar"));
+    xla::LiteralProto literal_proto;
+    OP_REQUIRES(ctx,
+                literal_proto.ParseFromString(literal_info.scalar<string>()()),
+                errors::InvalidArgument(
+                    "Unable to parse allocation input to LiteralProto"));
+    xla::Literal literal;
+    OP_REQUIRES_OK(ctx, XRTStateHelpers::MakeLiteral(literal_proto, &literal));
+
+    ResourceMgr* rm;
+    OP_REQUIRES_OK(ctx, DeviceAccessor::GetResourceManager(ctx, &rm));
+
+    XRTTupleAllocation* allocation;
+    OP_REQUIRES_OK(
+        ctx, XRTTupleAllocation::Lookup(rm, allocation_handle, &allocation));
+    core::ScopedUnref allocation_unref(allocation);
+    // We are guaranteed that the underlying device object won't be deleted out
+    // from under us, while the ScopedRef is live.
+    typename DeviceAccessor::ScopedRef device_ref;
+    OP_REQUIRES_OK(ctx, DeviceAccessor::InitScopedRef(
+                            ctx, allocation->device_ordinal(), &device_ref));
+    OP_REQUIRES_OK(ctx,
+                   allocation->WriteLiteral(device_ref.backend(), literal));
+
+    Tensor output(DT_INT64, TensorShape({}));
+    output.scalar<int64>()() = allocation_handle;
+    ctx->set_output(0, output);
+  }
+};
+
 // Op that discards a handle to device memory.
 template <class DeviceAccessor>
 class XRTReleaseAllocationOp : public OpKernel {

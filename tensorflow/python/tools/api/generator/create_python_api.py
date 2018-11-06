@@ -45,10 +45,10 @@ _GENERATED_FILE_HEADER = """# This file is MACHINE GENERATED! Do not edit.
 \"\"\"%s
 \"\"\"
 
-from __future__ import print_function
+from __future__ import print_function as _print_function
 
 """
-_GENERATED_FILE_FOOTER = '\n\ndel print_function\n'
+_GENERATED_FILE_FOOTER = '\n\ndel _print_function\n'
 
 
 class SymbolExposedTwiceError(Exception):
@@ -463,8 +463,9 @@ def create_api_files(output_files, packages, root_init_template, output_dir,
     raise ValueError(
         """Missing outputs for genrule:\n%s. Be sure to add these targets to
 tensorflow/python/tools/api/generator/api_init_files_v1.bzl and
-tensorflow/python/tools/api/generator/api_init_files.bzl""" % ',\n'.join(
-    sorted(missing_output_files)))
+tensorflow/python/tools/api/generator/api_init_files.bzl (tensorflow repo), or
+tensorflow_estimator/python/estimator/api/api_gen.bzl (estimator repo)"""
+        % ',\n'.join(sorted(missing_output_files)))
 
 
 def main():

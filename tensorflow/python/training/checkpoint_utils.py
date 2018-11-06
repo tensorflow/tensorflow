@@ -101,7 +101,7 @@ def list_variables(ckpt_dir_or_file):
   return result
 
 
-@tf_export("train.init_from_checkpoint")
+@tf_export(v1=["train.init_from_checkpoint"])
 def init_from_checkpoint(ckpt_dir_or_file, assignment_map):
   """Replaces `tf.Variable` initializers so they load from a checkpoint file.
 
@@ -187,7 +187,7 @@ def init_from_checkpoint(ckpt_dir_or_file, assignment_map):
     _init_from_checkpoint(None, ckpt_dir_or_file, assignment_map)
   else:
     distribution_strategy_context.get_replica_context().merge_call(
-        _init_from_checkpoint, ckpt_dir_or_file, assignment_map)
+        _init_from_checkpoint, args=(ckpt_dir_or_file, assignment_map))
 
 
 def _init_from_checkpoint(_, ckpt_dir_or_file, assignment_map):

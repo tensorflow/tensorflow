@@ -23,6 +23,7 @@ from six.moves import xrange  # pylint: disable=redefined-builtin
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.platform import test
@@ -43,7 +44,7 @@ class RandomPoissonTest(test.TestCase):
         rng = random_ops.random_poisson(lam, [num], dtype=dtype, seed=seed)
         ret = np.empty([10, num])
         for i in xrange(10):
-          ret[i, :] = sess.run(rng)
+          ret[i, :] = self.evaluate(rng)
       return ret
 
     return func
@@ -104,6 +105,7 @@ class RandomPoissonTest(test.TestCase):
 
   # Checks that the CPU and GPU implementation returns the same results,
   # given the same random seed
+  @test_util.run_deprecated_v1
   def testCPUGPUMatch(self):
     for dt in _SUPPORTED_DTYPES:
       results = {}
@@ -115,12 +117,14 @@ class RandomPoissonTest(test.TestCase):
       else:
         self.assertAllClose(results[False], results[True], rtol=1e-6, atol=1e-6)
 
+  @test_util.run_deprecated_v1
   def testSeed(self):
     for dt in dtypes.float16, dtypes.float32, dtypes.float64:
       sx = self._Sampler(1000, 1.0, dt, use_gpu=True, seed=345)
       sy = self._Sampler(1000, 1.0, dt, use_gpu=True, seed=345)
       self.assertAllEqual(sx(), sy())
 
+  @test_util.run_deprecated_v1
   def testNoCSE(self):
     """CSE = constant subexpression eliminator.
 
@@ -140,8 +144,9 @@ class RandomPoissonTest(test.TestCase):
     with self.cached_session():
       rnd = random_ops.random_poisson([], [], seed=12345)
       self.assertEqual([0], rnd.get_shape().as_list())
-      self.assertAllClose(np.array([], dtype=np.float32), rnd.eval())
+      self.assertAllClose(np.array([], dtype=np.float32), self.evaluate(rnd))
 
+  @test_util.run_deprecated_v1
   def testShape(self):
     # Fully known shape
     rnd = random_ops.random_poisson(2.0, [150], seed=12345)
@@ -184,6 +189,7 @@ class RandomPoissonTest(test.TestCase):
         seed=12345)
     self.assertIs(None, rnd.get_shape().ndims)
 
+  @test_util.run_deprecated_v1
   def testDTypeCombinationsV2(self):
     """Tests random_poisson_v2() for all supported dtype combinations."""
     with self.cached_session():

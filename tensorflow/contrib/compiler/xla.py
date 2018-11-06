@@ -23,6 +23,7 @@ import contextlib
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
 from tensorflow.compiler.jit.ops import xla_ops
+from tensorflow.compiler.jit.ops import xla_ops_grad  # pylint: disable=unused-import
 from tensorflow.core.framework import attr_value_pb2
 from tensorflow.python.estimator import model_fn as model_fn_lib
 from tensorflow.python.framework import ops

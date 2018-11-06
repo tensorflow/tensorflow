@@ -280,6 +280,13 @@ Status TuplePointsToAnalysis::HandleDomain(HloInstruction* domain) {
   return Status::OK();
 }
 
+Status TuplePointsToAnalysis::HandleAddDependency(
+    HloInstruction* add_dependency) {
+  // AddDependency just forwards the value of its zero-th operand.
+  CreateCopiedPointsToSet(add_dependency, add_dependency->operand(0));
+  return Status::OK();
+}
+
 Status TuplePointsToAnalysis::HandleRecvDone(HloInstruction* recv_done) {
   // RecvDone aliases its input (Recv) tuple element {0} to element {0} of its
   // output. The other indices ({} and {1}) define their own buffers.

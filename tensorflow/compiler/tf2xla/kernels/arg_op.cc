@@ -50,7 +50,7 @@ class XlaArgOp : public XlaOpKernel {
       return;
     }
 
-    const XlaExpression& arg = XlaContext::Get(ctx).args()[index_];
+    const XlaExpression& arg = ctx->xla_context()->args()[index_];
     OP_REQUIRES(ctx, arg.kind() != XlaExpression::Kind::kInvalid,
                 errors::InvalidArgument("Invalid/missing argument expression"));
     ctx->SetOutputExpression(0, arg);

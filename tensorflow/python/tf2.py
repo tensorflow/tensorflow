@@ -25,6 +25,21 @@ from __future__ import print_function
 import os
 
 
+_force_enable = False
+
+
+def enable():
+  """Enables v2 behaviors."""
+  global _force_enable
+  _force_enable = True
+
+
+def disable():
+  """Disables v2 behaviors (TF2_BEHAVIOR env variable is still respected)."""
+  global _force_enable
+  _force_enable = False
+
+
 def enabled():
   """Returns True iff TensorFlow 2.0 behavior should be enabled."""
-  return os.getenv("TF2_BEHAVIOR") is not None
+  return _force_enable or os.getenv("TF2_BEHAVIOR", "0") != "0"

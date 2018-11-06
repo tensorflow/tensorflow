@@ -98,6 +98,23 @@ py_test(
 )
 
 py_library(
+    name = "options",
+    srcs = ["options.py"],
+    srcs_version = "PY2AND3",
+)
+
+py_test(
+    name = "options_test",
+    size = "small",
+    srcs = ["options_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":options",
+        "//tensorflow/python:client_testlib",
+    ],
+)
+
+py_library(
     name = "convert",
     srcs = ["convert.py"],
     srcs_version = "PY2AND3",
