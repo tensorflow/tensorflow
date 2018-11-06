@@ -1570,7 +1570,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     if not context.executing_eagerly():
       self.evaluate(variables.global_variables_initializer())
 
-    self.assertAllEqual([[[[4.0]]]], self.evaluate(y))
+    self.assertAllClose([[[[4.0]]]], self.evaluate(y))
 
     # Remove reference cycles in model
     test_util.dismantle_polymorphic_function(model)
