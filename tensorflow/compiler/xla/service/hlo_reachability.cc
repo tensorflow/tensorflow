@@ -24,7 +24,7 @@ HloReachabilityMap::HloReachabilityMap(
     : size_(instructions.size()) {
   bit_vectors_.reserve(size_);
   for (const HloInstruction* hlo : instructions) {
-    indices_[hlo] = bit_vectors_.size();
+    indices_[GetKey(hlo)] = bit_vectors_.size();
     bit_vectors_.emplace_back(size_);
   }
   CHECK_EQ(size_, indices_.size());  // instructions should be unique
