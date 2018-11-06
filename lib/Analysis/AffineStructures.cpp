@@ -1100,7 +1100,6 @@ bool FlatAffineConstraints::getDimensionBounds(unsigned pos, unsigned num,
                                                MLIRContext *context) {
   assert(pos + num < getNumCols());
 
-  // Only constant dim bounds for now.
   projectOut(0, pos);
   projectOut(pos + num, getNumIds() - num);
 
@@ -1108,6 +1107,7 @@ bool FlatAffineConstraints::getDimensionBounds(unsigned pos, unsigned num,
   ubs->resize(num, AffineMap::Null());
 
   for (int i = static_cast<int>(num) - 1; i >= 0; i--) {
+    // Only constant dim bounds for now.
     auto lb = getConstantLowerBound(i);
     auto ub = getConstantUpperBound(i);
     // TODO(mlir-team): handle arbitrary bounds.
@@ -1168,10 +1168,37 @@ Optional<int64_t> FlatAffineConstraints::getConstantUpperBound(unsigned pos) {
   return ub;
 }
 
+// A simple (naive and conservative) check for hyper-rectangularlity.
+bool FlatAffineConstraints::isHyperRectangular(unsigned pos,
+                                               unsigned num) const {
+  assert(pos < getNumCols() - 1);
+  // Check for two non-zero coefficients in the range [pos, pos + sum).
+  for (unsigned r = 0; r < getNumInequalities(); r++) {
+    unsigned sum = 0;
+    for (unsigned c = pos; c < pos + num; c++) {
+      if (atIneq(r, c) != 0)
+        sum++;
+    }
+    if (sum > 1)
+      return false;
+  }
+  for (unsigned r = 0; r < getNumEqualities(); r++) {
+    unsigned sum = 0;
+    for (unsigned c = pos; c < pos + num; c++) {
+      if (atEq(r, c) != 0)
+        sum++;
+    }
+    if (sum > 1)
+      return false;
+  }
+  return true;
+}
+
 void FlatAffineConstraints::print(raw_ostream &os) const {
   assert(inequalities.size() == getNumInequalities() * numReservedCols);
   assert(equalities.size() == getNumEqualities() * numReservedCols);
-  os << "\nConstraints:\n";
+  os << "\nConstraints (" << getNumDimIds() << " dims, " << getNumSymbolIds()
+     << " symbols, " << getNumLocalIds() << " locals): \n";
   for (unsigned i = 0, e = getNumEqualities(); i < e; ++i) {
     for (unsigned j = 0; j < getNumCols(); ++j) {
       os << atEq(i, j) << " ";

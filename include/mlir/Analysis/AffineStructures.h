@@ -473,6 +473,10 @@ public:
                           SmallVectorImpl<AffineMap> *ubs,
                           MLIRContext *context);
 
+  /// Returns true if the set is hyper-rectangular on the specified contiguous
+  /// set of identifiers.
+  bool isHyperRectangular(unsigned pos, unsigned num) const;
+
   // More expensive ones.
   void removeDuplicates();
 

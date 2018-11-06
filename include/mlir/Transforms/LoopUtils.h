@@ -86,6 +86,9 @@ AffineMap getUnrolledLoopUpperBound(const ForStmt &forStmt,
 UtilResult stmtBodySkew(ForStmt *forStmt, ArrayRef<uint64_t> delays,
                         bool unrollPrologueEpilogue = false);
 
+/// Tiles the specified band of perfectly nested loops creating tile-space loops
+/// and intra-tile loops. A band is a contiguous set of loops.
+UtilResult tileCodeGen(ArrayRef<ForStmt *> band, ArrayRef<unsigned> tileSizes);
 
 } // end namespace mlir
 

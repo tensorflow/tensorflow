@@ -67,6 +67,9 @@ FunctionPass *createComposeAffineMapsPass();
 /// generated CFG functions.
 ModulePass *createConvertToCFGPass();
 
+/// Creates a pass to perform tiling on loop nests.
+FunctionPass *createLoopTilingPass();
+
 } // end namespace mlir
 
 #endif // MLIR_TRANSFORMS_PASSES_H

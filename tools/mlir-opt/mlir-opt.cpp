@@ -74,6 +74,7 @@ enum Passes {
   ConvertToCFG,
   TFLiteLegaize,
   LoopFusion,
+  LoopTiling,
   LoopUnroll,
   LoopUnrollAndJam,
   MemRefBoundCheck,
@@ -97,6 +98,7 @@ static cl::list<Passes> passList(
         clEnumValN(ConvertToCFG, "convert-to-cfg",
                    "Convert all ML functions in the module to CFG ones"),
         clEnumValN(LoopFusion, "loop-fusion", "Fuse loop nests"),
+        clEnumValN(LoopTiling, "loop-tile", "Tile loop nests"),
         clEnumValN(LoopUnroll, "loop-unroll", "Unroll loops"),
         clEnumValN(LoopUnrollAndJam, "loop-unroll-jam", "Unroll and jam loops"),
         clEnumValN(MemRefBoundCheck, "memref-bound-check",
@@ -206,6 +208,9 @@ static OptResult performActions(SourceMgr &sourceMgr, MLIRContext *context) {
       break;
     case LoopFusion:
       pass = createLoopFusionPass();
+      break;
+    case LoopTiling:
+      pass = createLoopTilingPass();
       break;
     case LoopUnroll:
       pass = createLoopUnrollPass();

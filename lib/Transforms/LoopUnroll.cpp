@@ -1,4 +1,4 @@
-//===- Unroll.cpp - Code to perform loop unrolling ------------------------===//
+//===- LoopUnroll.cpp - Code to perform loop unrolling --------------------===//
 //
 // Copyright 2019 The MLIR Authors.
 //
