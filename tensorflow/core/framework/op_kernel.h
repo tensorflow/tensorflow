@@ -1348,7 +1348,7 @@ namespace kernel_factory {
 
 class OpKernelRegistrar {
  public:
-  typedef OpKernel* (*Factory)(OpKernelConstruction*);
+  typedef std::function<OpKernel*(OpKernelConstruction*)> Factory;
 
   OpKernelRegistrar(const KernelDef* kernel_def, StringPiece kernel_class_name,
                     Factory factory) {

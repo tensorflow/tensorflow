@@ -1232,7 +1232,7 @@ Status CreateOpKernel(DeviceType device_type, DeviceBase* device,
   OpKernelConstruction context(
       device_type, device, allocator, &node_def, op_def, flib, inputs,
       input_memory_types, outputs, output_memory_types, graph_def_version, &s);
-  *kernel = (*registration->factory)(&context);
+  *kernel = (registration->factory)(&context);
   if (!s.ok()) {
     delete *kernel;
     *kernel = nullptr;
