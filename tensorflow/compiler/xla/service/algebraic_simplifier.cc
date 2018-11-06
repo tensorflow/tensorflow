@@ -455,8 +455,6 @@ Status AlgebraicSimplifierVisitor::HandleAnd(HloInstruction* logical_and) {
     if (IsAll(lhs, 0) && ReplaceInstructionIfSameShape(logical_and, lhs)) {
       return Status::OK();
     }
-
-    return Status::OK();
   }
 
   return Status::OK();
@@ -1301,8 +1299,6 @@ Status AlgebraicSimplifierVisitor::HandleOr(HloInstruction* logical_or) {
     if (IsAll(lhs, 0) && ReplaceInstructionIfSameShape(logical_or, rhs)) {
       return Status::OK();
     }
-
-    return Status::OK();
   }
 
   return Status::OK();
