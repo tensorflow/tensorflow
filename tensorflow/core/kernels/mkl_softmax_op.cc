@@ -50,8 +50,6 @@ class MklSoftmaxOp : public OpKernel {
       // src_tensor now points to the 0-th input of global data struct "context"
       size_t src_idx = 0;
       const Tensor& src_tensor = MklGetInput(context, src_idx);
-      //const int input_dims = src_tensor.dims();
-      //  printf("input_dims = %d\n", input_dims);
       // Add: get MklShape
       MklDnnShape src_mkl_shape;
       GetMklShape(context, src_idx, &src_mkl_shape);
@@ -122,6 +120,8 @@ class MklSoftmaxOp : public OpKernel {
 
       // creating a memory descriptor
       // passing outermost dim as default axis, where the softmax is applied
+      // If axis is not the last dimension, python op will do a transpose so that we can
+      // still perform softmax on its last dimension.
       int axis = input_dims - 1;
       auto softmax_fwd_desc = softmax_forward::desc(prop_kind::forward_scoring,
                                                     src.GetOpMemDesc(), axis);
