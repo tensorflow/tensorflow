@@ -233,13 +233,26 @@ Status XlaCompilationCache::Compile(
     CompileMode compile_mode,
     const XlaCompiler::CompilationResult** out_compilation_result,
     xla::LocalExecutable** out_executable) {
-  // Set the compile threshold to 1 to implement CompileMode::kStrict.
-  int64 compile_threshold =
-      compile_mode == CompileMode::kLazy ? kDefaultCompilationThreshold : 1;
+  absl::optional<int64> compile_threshold;
+  if (compile_mode == CompileMode::kLazy) {
+    compile_threshold = kDefaultCompilationThreshold;
+  }
+
   return CompileImpl(options, function, constant_args, variable_args, ctx,
                      compile_options, /*compile_single_op=*/false,
                      /*compile_threshold=*/compile_threshold,
                      out_compilation_result, out_executable);
+}
+
+static bool IsMegamorphic(int64 compile_count, int64 execution_count) {
+  const int64 kCompileThreshold = 10;
+  const int64 kMinExecutionsPerCompile = 50;
+
+  // This heuristic is trying to capture the following property: have we sunk a
+  // certain minimum amount of compile time into the cluster that didn't quite
+  // "pay off"?
+  return compile_count > kCompileThreshold &&
+         execution_count < kMinExecutionsPerCompile * compile_count;
 }
 
 Status XlaCompilationCache::CompileSingleOp(
@@ -253,10 +266,10 @@ Status XlaCompilationCache::CompileSingleOp(
   NameAttrList name;
   name.set_name(def.op());
   *name.mutable_attr() = def.attr();
-  return CompileImpl(options, name, constant_args, variable_args, ctx,
-                     compile_options,
-                     /*compile_single_op=*/true, /*compile_threshold=*/1,
-                     out_compilation_result, out_executable);
+  return CompileImpl(
+      options, name, constant_args, variable_args, ctx, compile_options,
+      /*compile_single_op=*/true, /*compile_threshold=*/absl::nullopt,
+      out_compilation_result, out_executable);
 }
 
 Status XlaCompilationCache::CompileImpl(
@@ -264,7 +277,7 @@ Status XlaCompilationCache::CompileImpl(
     const std::map<int, Tensor>& constant_args,
     const std::map<int, OptionalTensor>& variable_args, OpKernelContext* ctx,
     const XlaCompiler::CompileOptions& compile_options, bool compile_single_op,
-    int64 compile_threshold,
+    absl::optional<int64> compile_threshold,
     const XlaCompiler::CompilationResult** out_compilation_result,
     xla::LocalExecutable** out_executable) {
   DCHECK_NE(out_executable, nullptr);
@@ -319,13 +332,26 @@ Status XlaCompilationCache::CompileImpl(
   // (since they get the benefit of XLA right away without waiting for warmup)
   // and doesn't hurt much for dynamically shaped TensorFlow graphs (we "pay" at
   // most one cluster-compilation's worth of compile time).
-  bool is_first_execution = [&] {
+  bool is_first_execution;
+
+  // We avoid compiling clusters that have "gone megamorphic" i.e. have an
+  // excessive amount of shape dynamism.
+  bool is_megamorphic;
+
+  {
     mutex_lock lock(cluster_compile_stats_mu_);
     auto it =
         cluster_compile_stats_.emplace(function.name(), ClusterCompileStats{})
             .first;
-    return it->second.execution_count++ == 0;
-  }();
+    is_first_execution = it->second.execution_count++ == 0;
+
+    // The is_megamorphic bit is "sticky".  We assume clusters that have been
+    // observed to be megamorphic once stay megamorphic forever.
+    it->second.is_megamorphic |=
+        IsMegamorphic(/*compile_count=*/it->second.compile_count,
+                      /*execution_count=*/it->second.execution_count);
+    is_megamorphic = it->second.is_megamorphic;
+  }
 
   // Acquire the cache entry lock and compile, if necessary.
   // TODO(phawkins): this locking will need to be restructured when we implement
@@ -336,8 +362,38 @@ Status XlaCompilationCache::CompileImpl(
     VLOG(2) << "Compilation cache miss for signature: "
             << SignatureDebugString(signature) << " with request count "
             << current_request_count << " and compile threshold "
-            << compile_threshold;
-    if (!is_first_execution && current_request_count < compile_threshold) {
+            << compile_threshold.value_or(0);
+    const bool should_compile = [&] {
+      if (!compile_threshold.has_value()) {
+        // Lazy compilation is disabled.
+        return true;
+      }
+
+      if (is_megamorphic) {
+        VLOG(3) << "Not compiling cluster " << function.name()
+                << " because it is megamorphic.";
+        return false;
+      }
+
+      if (is_first_execution) {
+        return true;
+      }
+
+      bool reached_compile_threshold =
+          current_request_count >= *compile_threshold;
+      if (!reached_compile_threshold) {
+        VLOG(3)
+            << "Not compiling cluster " << function.name()
+            << " because it has not reached compile threshold; threshold is "
+            << *compile_threshold << " execution count "
+            << current_request_count << ".";
+      }
+      return reached_compile_threshold;
+    }();
+
+    if (!should_compile) {
+      VLOG(2) << "Not compiling for signature: "
+              << SignatureDebugString(signature);
       *out_compilation_result = nullptr;
       *out_executable = nullptr;
       return Status::OK();
