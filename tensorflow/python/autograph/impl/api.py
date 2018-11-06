@@ -174,6 +174,15 @@ def converted_call(f, owner, options, *args, **kwargs):
   # TODO(mdan): This needs cleanup.
   # In particular, we may want to avoid renaming functions altogether.
   if not options.force_conversion and conversion.is_whitelisted_for_graph(f):
+
+    # Args typically include `self`, as required by the conversion process.
+    # When conversion is skipped, `self` is not necessary, because the
+    # original bound method is being executed. This code removes it.
+    if tf_inspect.ismethod(f) and args:
+      f_class = inspect_utils.getmethodclass(f)
+      if args[0] is f_class:
+        args = args[1:]
+
     return f(*args, **kwargs)
 
   if inspect_utils.isbuiltin(f):
