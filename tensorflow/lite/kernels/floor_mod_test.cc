@@ -80,6 +80,17 @@ TEST(FloorModModel, BroadcastFloorMod) {
   EXPECT_THAT(model.GetOutput(), ElementsAre(-2, 0, -2, -2));
 }
 
+TEST(FloorModModel, Int64WithBroadcast) {
+  FloorModModel<int64_t> model({TensorType_INT64, {1, 2, 2, 1}},
+                               {TensorType_INT64, {1}}, {TensorType_INT64, {}});
+  model.PopulateTensor<int64_t>(model.input1(), {10, -9, -11, (1LL << 34) + 9});
+  model.PopulateTensor<int64_t>(model.input2(), {-(1LL << 33)});
+  model.Invoke();
+  EXPECT_THAT(model.GetOutputShape(), ElementsAre(1, 2, 2, 1));
+  EXPECT_THAT(model.GetOutput(),
+              ElementsAre(-8589934582, -9, -11, -8589934583));
+}
+
 TEST(FloorModModel, FloatSimple) {
   FloorModModel<float> model({TensorType_FLOAT32, {1, 2, 2, 1}},
                              {TensorType_FLOAT32, {1, 2, 2, 1}},
