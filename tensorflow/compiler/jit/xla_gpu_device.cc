@@ -59,7 +59,7 @@ Status XlaGpuDeviceFactory::CreateDevices(const SessionOptions& session_options,
   options.device_name = DEVICE_XLA_GPU;
   options.device_ordinal = 0;
   options.compilation_device_name = DEVICE_GPU_XLA_JIT;
-  options.use_multiple_streams = false;
+  options.use_multiple_streams = true;
   auto device = absl::make_unique<XlaDevice>(session_options, options);
 
   // TODO(b/78468222): Uncomment after fixing this bug
