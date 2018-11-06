@@ -805,11 +805,11 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
     tf_http_archive(
         name = "ngraph",
         build_file = clean_dep("//third_party/ngraph:ngraph.BUILD"),
-        sha256 = "bf9dcc88e5c66021e3aac80491a231711211540d613bf9b6bd28db3f5bb86b62",
-        strip_prefix = "ngraph-0.8.1",
+        sha256 = "2b28f9c9f063b96825a96d56d7f7978c9a1c55c9b25175c20dd49a8a77cb0305",
+        strip_prefix = "ngraph-0.9.1",
         urls = [
-            "https://mirror.bazel.build/github.com/NervanaSystems/ngraph/archive/v0.8.1.tar.gz",
-            "https://github.com/NervanaSystems/ngraph/archive/v0.8.1.tar.gz",
+            "https://mirror.bazel.build/github.com/NervanaSystems/ngraph/archive/v0.9.1.tar.gz",
+            "https://github.com/NervanaSystems/ngraph/archive/v0.9.1.tar.gz",
         ],
     )
 
@@ -827,11 +827,11 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
     tf_http_archive(
         name = "ngraph_tf",
         build_file = clean_dep("//third_party/ngraph:ngraph_tf.BUILD"),
-        sha256 = "402f84c748c113780a60f35f39aab118435285543aee4900d712b76fbf8a21ee",
-        strip_prefix = "ngraph-tf-0.6.1",
+        sha256 = "89accbc702e68a09775f1011a99dd16561038fd1ce59d566d64450176abaae5c",
+        strip_prefix = "ngraph-tf-0.7.0",
         urls = [
-            "https://mirror.bazel.build/github.com/NervanaSystems/ngraph-tf/archive/v0.6.1.tar.gz",
-            "https://github.com/NervanaSystems/ngraph-tf/archive/v0.6.1.tar.gz",
+            "https://mirror.bazel.build/github.com/NervanaSystems/ngraph-tf/archive/v0.7.0.tar.gz",
+            "https://github.com/NervanaSystems/ngraph-tf/archive/v0.7.0.tar.gz",
         ],
     )
 
