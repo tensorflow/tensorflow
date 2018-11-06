@@ -15,12 +15,12 @@ limitations under the License.
 
 #include <deque>
 
+#include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/variant.h"
 #include "tensorflow/core/framework/variant_encode_decode.h"
-#include "tensorflow/core/kernels/data/dataset.h"
 #include "tensorflow/core/util/batch_util.h"
 
 namespace tensorflow {
@@ -200,9 +200,10 @@ class PrependFromQueueAndPaddedBatchDataset : public DatasetBase {
         max_shapes.push_back(std::move(out_shape));
       }
 
-      Tensor queues_t(cpu_allocator(), DT_VARIANT, TensorShape({batch_size}));
+      out_tensors->emplace_back(ctx->allocator({}), DT_VARIANT,
+                                TensorShape({batch_size}));
       if (!batch.empty()) {
-        auto queues = queues_t.flat<Variant>();
+        auto queues = out_tensors->back().flat<Variant>();
         Variant& queue_inserter = queues(0);
         queue_inserter = TensorQueueInserter();
         queue_inserter.get<TensorQueueInserter>()->set_queue(queue_);
@@ -212,10 +213,10 @@ class PrependFromQueueAndPaddedBatchDataset : public DatasetBase {
           queues(b) = queues(0);
         }
       }
-      out_tensors->push_back(std::move(queues_t));
 
       for (int i = 0; i < max_shapes.size(); ++i) {
-        Tensor component(cpu_allocator(), dtypes[i], max_shapes[i]);
+        out_tensors->emplace_back(ctx->allocator({}), dtypes[i], max_shapes[i]);
+        Tensor& component = out_tensors->back();
         // Try hard to take the fast path.
         if (shapes[i].IsFullyDefined() &&
             shapes[i].IsIdenticalTo(input_shapes[i])) {
@@ -237,7 +238,6 @@ class PrependFromQueueAndPaddedBatchDataset : public DatasetBase {
             }
           }
         }
-        out_tensors->push_back(std::move(component));
       }
 
       // end_of_sequence was set before we populated out_tensors, so
@@ -419,6 +419,11 @@ class PrependFromQueueAndPaddedBatchDataset : public DatasetBase {
 
     const DatasetBase* dataset_input() const { return dataset()->input_; }
 
+    std::shared_ptr<model::Node> CreateNode(
+        IteratorContext* ctx, model::Node::Args args) const override {
+      return model::MakeKnownRatioNode(std::move(args), dataset()->batch_size_);
+    }
+
     Status SaveInternal(IteratorStateWriter* writer) override {
       return queue_->Save(this, writer);
     }
@@ -441,7 +446,7 @@ class PrependFromQueueAndPaddedBatchDataset : public DatasetBase {
       TensorQueueInserter(const TensorQueueInserter& rhs) {
         queue_ = rhs.queue_;
         queue_->Ref();
-      };
+      }
 
       TensorQueueInserter(TensorQueueInserter&& rhs) {
         queue_ = rhs.queue_;

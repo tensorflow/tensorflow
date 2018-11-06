@@ -27,6 +27,8 @@ limitations under the License.
 #include <memory>
 #include <tuple>
 
+#include "absl/types/optional.h"
+#include "absl/types/span.h"
 #include "tensorflow/stream_executor/device_memory.h"
 #include "tensorflow/stream_executor/lib/array_slice.h"
 #include "tensorflow/stream_executor/lib/status.h"
@@ -67,7 +69,7 @@ enum class DimIndex : int {
 };
 
 // Helper functions to make methods more readable.
-inline int64 GetDim(const std::vector<int64>& data, DimIndex dim) {
+inline int64 GetDim(absl::Span<const int64> data, DimIndex dim) {
   return data.rbegin()[static_cast<int64>(dim)];
 }
 
@@ -447,7 +449,9 @@ class FilterDescriptor {
   }
 
   FilterLayout layout() const { return layout_; }
-  std::vector<int64> input_filter_dims() const { return input_filter_dims_; }
+  absl::Span<const int64> input_filter_dims() const {
+    return input_filter_dims_;
+  }
 
  private:
   int64 output_feature_map_count_;
@@ -578,9 +582,9 @@ class ConvolutionDescriptor {
   int group_count() const { return group_count_; }
   int ndims() const { return ndims_; }
 
-  std::vector<int64> strides() const { return filter_strides_; }
-  std::vector<int64> dilations() const { return dilation_rates_; }
-  std::vector<int64> padding() const { return zero_padding_; }
+  absl::Span<const int64> strides() const { return filter_strides_; }
+  absl::Span<const int64> dilations() const { return dilation_rates_; }
+  absl::Span<const int64> padding() const { return zero_padding_; }
 
  private:
   // Stored as: .. y, x.
@@ -693,9 +697,9 @@ class PoolingDescriptor {
   int64 vertical_stride() const { return GetDim(strides_, DimIndex::Y); }
   int64 horizontal_stride() const { return GetDim(strides_, DimIndex::X); }
   int64 stride(DimIndex dim) const { return GetDim(strides_, dim); }
-  std::vector<int64> window() const { return window_; }
-  std::vector<int64> padding() const { return padding_; }
-  std::vector<int64> strides() const { return strides_; }
+  absl::Span<const int64> window() const { return window_; }
+  absl::Span<const int64> padding() const { return padding_; }
+  absl::Span<const int64> strides() const { return strides_; }
   bool propagate_nans() const { return propagate_nans_; }
 
  private:
@@ -713,31 +717,21 @@ class PoolingDescriptor {
 class AlgorithmDesc {
  public:
   typedef int64 Index;
-  AlgorithmDesc()
-      : algo_(kDefaultAlgorithm), tensor_ops_enabled_(true), scratch_size_(0) {}
   AlgorithmDesc(Index a, bool use_tensor_ops)
-      : algo_(a), tensor_ops_enabled_(use_tensor_ops), scratch_size_(0) {}
-  AlgorithmDesc(Index a, bool use_tensor_ops, size_t scratch_size)
-      : algo_(a),
-        tensor_ops_enabled_(use_tensor_ops),
-        scratch_size_(scratch_size) {}
-  bool is_default() const { return algo_ == kDefaultAlgorithm; }
+      : algo_(a), tensor_ops_enabled_(use_tensor_ops) {
+    DCHECK_NE(a, -1);
+  }
   bool tensor_ops_enabled() const { return tensor_ops_enabled_; }
   Index algo_id() const { return algo_; }
-  size_t scratch_size() const { return scratch_size_; }
-  void set_scratch_size(size_t val) { scratch_size_ = val; }
   bool operator==(const AlgorithmDesc& other) const {
     return this->algo_ == other.algo_ &&
-           this->tensor_ops_enabled_ == other.tensor_ops_enabled_ &&
-           this->scratch_size_ == other.scratch_size_;
+           this->tensor_ops_enabled_ == other.tensor_ops_enabled_;
   }
   uint64 hash() const;
 
  private:
-  enum { kDefaultAlgorithm = -1 };
   Index algo_;
   bool tensor_ops_enabled_;
-  size_t scratch_size_;
 };
 
 // Describes the result from a perf experiment.
@@ -748,17 +742,25 @@ class AlgorithmDesc {
 class ProfileResult {
  public:
   bool is_valid() const {
-    return (!algorithm_.is_default() &&
-            elapsed_time_in_ms_ != std::numeric_limits<float>::max());
+    return algorithm_.has_value() &&
+           elapsed_time_in_ms() != std::numeric_limits<float>::max();
   }
-  AlgorithmDesc algorithm() const { return algorithm_; }
+
+  AlgorithmDesc algorithm() const { return *algorithm_; }
   void set_algorithm(AlgorithmDesc val) { algorithm_ = val; }
+
   float elapsed_time_in_ms() const { return elapsed_time_in_ms_; }
   void set_elapsed_time_in_ms(float val) { elapsed_time_in_ms_ = val; }
 
+  size_t scratch_size() const { return scratch_size_; }
+  void set_scratch_size(size_t val) { scratch_size_ = val; }
+
  private:
-  AlgorithmDesc algorithm_;
+  absl::optional<AlgorithmDesc> algorithm_;
   float elapsed_time_in_ms_ = std::numeric_limits<float>::max();
+  // The scratch size algorithm_ requires. Currently it's only populated by
+  // convolutions.
+  size_t scratch_size_ = 0;
 };
 
 // Describes the configuration for the algorithms that will used.
@@ -773,9 +775,11 @@ class AlgorithmConfig {
   explicit AlgorithmConfig(AlgorithmDesc algorithm) : algorithm_(algorithm) {}
   AlgorithmConfig(AlgorithmDesc algorithm, AlgorithmDesc algorithm_no_scratch)
       : algorithm_(algorithm), algorithm_no_scratch_(algorithm_no_scratch) {}
-  AlgorithmDesc algorithm() const { return algorithm_; }
+  absl::optional<AlgorithmDesc> algorithm() const { return algorithm_; }
   void set_algorithm(AlgorithmDesc val) { algorithm_ = val; }
-  AlgorithmDesc algorithm_no_scratch() const { return algorithm_no_scratch_; }
+  absl::optional<AlgorithmDesc> algorithm_no_scratch() const {
+    return algorithm_no_scratch_;
+  }
   void set_algorithm_no_scratch(AlgorithmDesc val) {
     algorithm_no_scratch_ = val;
   }
@@ -789,8 +793,8 @@ class AlgorithmConfig {
   string ToString() const;
 
  private:
-  AlgorithmDesc algorithm_;
-  AlgorithmDesc algorithm_no_scratch_;
+  absl::optional<AlgorithmDesc> algorithm_;
+  absl::optional<AlgorithmDesc> algorithm_no_scratch_;
 };
 
 // Describes a local response normalization (LRN). LRN is used e.g. in

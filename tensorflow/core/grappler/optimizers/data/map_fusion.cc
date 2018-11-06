@@ -39,8 +39,7 @@ NodeDef MakeFusedNode(const NodeDef& parent_map_node, const NodeDef& map_node,
                       const FunctionDef& fused_function,
                       MutableGraphView* graph) {
   NodeDef fused_node;
-  graph_utils::SetUniqueGraphNodeName("fused_map", graph->GetGraph(),
-                                      &fused_node);
+  graph_utils::SetUniqueGraphNodeName("fused_map", graph->graph(), &fused_node);
   fused_node.set_op("MapDataset");
   fused_node.add_input(parent_map_node.input(0));
 
@@ -124,7 +123,7 @@ Status MapFusion::Optimize(Cluster* cluster, const GrapplerItem& item,
     const auto* fused_maps_node = graph.AddNode(
         MakeFusedNode(*parent_map_node, *map_node, *fused_function, &graph));
 
-    graph.ReplaceInput(*map_node, *fused_maps_node);
+    graph.UpdateFanouts(map_node->name(), fused_maps_node->name());
 
     // TODO(prazek): we should run some optimizations on the fused map
     // functions, or make sure that optimization passes run after map

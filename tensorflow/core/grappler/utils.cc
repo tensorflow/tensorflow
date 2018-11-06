@@ -25,12 +25,14 @@ limitations under the License.
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_def.pb.h"
+#include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/strings/numbers.h"
 #include "tensorflow/core/lib/strings/scanner.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/notification.h"
+#include "tensorflow/core/util/device_name_utils.h"
 
 namespace tensorflow {
 namespace grappler {
@@ -143,19 +145,17 @@ void NodeMap::UpdateOutput(const string& node_name,
 }
 
 bool IsSameInput(const string& name1, const string& name2) {
-  if (name1 == name2) {
-    return true;
-  }
-  int position1;
-  StringPiece node1 = ParseNodeNameAsStringPiece(name1, &position1);
-  int position2;
-  StringPiece node2 = ParseNodeNameAsStringPiece(name2, &position2);
-  return (position1 == position2) && (node1 == node2);
+  if (name1 == name2) return true;
+  TensorId tensor1 = ParseTensorName(name1);
+  TensorId tensor2 = ParseTensorName(name2);
+  return tensor1.node() == tensor2.node() && tensor1.index() == tensor2.index();
 }
 
 bool IsControlInput(const string& name) {
   return !name.empty() && name[0] == '^';
 }
+
+bool IsControlInput(const TensorId& tensor_id) { return tensor_id.index() < 0; }
 
 string AddPrefixToNodeName(const string& name, const string& prefix,
                            const string& delimiter) {
@@ -243,7 +243,6 @@ int NumNonControlInputs(const NodeDef& node) {
 
 int NumNonControlOutputs(const NodeDef& node, const NodeMap& node_map) {
   int num_outputs = 0;
-  int pos;
   for (const NodeDef* output : node_map.GetOutputs(node.name())) {
     for (const string& node_as_input : output->input()) {
       if (IsControlInput(node_as_input)) {
@@ -252,9 +251,8 @@ int NumNonControlOutputs(const NodeDef& node, const NodeMap& node_map) {
       if (node_as_input == node.name()) {
         ++num_outputs;
       } else {
-        const StringPiece name =
-            ParseNodeNameAsStringPiece(node_as_input, &pos);
-        if (name == node.name()) {
+        const TensorId tensor = ParseTensorName(node_as_input);
+        if (tensor.node() == node.name()) {
           ++num_outputs;
         }
       }
@@ -561,6 +559,15 @@ Status CheckAttrsExist(const NodeDef& node, absl::Span<const string> keys) {
     TF_RETURN_IF_ERROR(CheckAttrExists(node, key));
   }
   return Status::OK();
+}
+
+Status IsKernelRegisteredForNode(const NodeDef& node) {
+  DeviceNameUtils::ParsedName parsed_name;
+  if (!DeviceNameUtils::ParseFullName(node.device(), &parsed_name)) {
+    return errors::InvalidArgument("Could not parse device name: ",
+                                   node.device());
+  }
+  return FindKernelDef(DeviceType(parsed_name.type), node, nullptr, nullptr);
 }
 
 }  // end namespace grappler

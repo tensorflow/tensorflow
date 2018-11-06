@@ -1,0 +1,13 @@
+path: "tensorflow.lite.OpHint.OpHintArgumentTracker"
+tf_class {
+  is_instance: "<class \'tensorflow.lite.python.op_hint.OpHintArgumentTracker\'>"
+  is_instance: "<type \'object\'>"
+  member_method {
+    name: "__init__"
+    argspec: "args=[\'self\', \'function_name\', \'unique_function_id\', \'node_name_prefix\', \'attr_name\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "add"
+    argspec: "args=[\'self\', \'arg\', \'tag\', \'name\', \'aggregate\', \'index_override\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'None\'], "
+  }
+}

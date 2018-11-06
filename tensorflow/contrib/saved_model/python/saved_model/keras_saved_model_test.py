@@ -150,8 +150,6 @@ class TestModelSavingandLoading(test.TestCase):
       x = np.random.random((1, 3))
       y = np.random.random((1, 3))
       model.train_on_batch(x, y)
-      model.train_on_batch(x, y)
-
       ref_y = model.predict(x)
 
       temp_saved_model = self._save_model_dir()
@@ -308,6 +306,7 @@ class TestModelSavedModelExport(test.TestCase, parameterized.TestCase):
       self, model_builder, uses_learning_phase, optimizer, train_before_export):
     saved_model_path = self._save_model_dir()
     with self.session(graph=ops.Graph()):
+      np.random.seed(130)
       input_arr = np.random.random((1, 3))
       target_arr = np.random.random((1, 3))
 
@@ -346,6 +345,11 @@ class TestModelSavedModelExport(test.TestCase, parameterized.TestCase):
         inputs, outputs = load_model(sess, output_path,
                                      model_fn_lib.ModeKeys.EVAL)
 
+        sess.run(outputs['metrics/mae/update_op'], {
+            inputs[input_name]: input_arr,
+            inputs[target_name]: target_arr
+        })
+
         eval_results = sess.run(outputs, {inputs[input_name]: input_arr,
                                           inputs[target_name]: target_arr})
 
@@ -353,7 +357,7 @@ class TestModelSavedModelExport(test.TestCase, parameterized.TestCase):
                          sess.run(training_module.get_global_step()))
         self.assertAllClose(ref_loss, eval_results['loss'], atol=1e-05)
         self.assertAllClose(
-            ref_mae, eval_results['metrics/mae/update_op'], atol=1e-05)
+            ref_mae, eval_results['metrics/mae/value'], atol=1e-05)
         self.assertAllClose(
             ref_predict, eval_results['predictions/' + output_name], atol=1e-05)
 

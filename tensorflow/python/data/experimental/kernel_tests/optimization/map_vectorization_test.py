@@ -35,10 +35,177 @@ from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import bitwise_ops
 from tensorflow.python.ops import check_ops
+from tensorflow.python.ops import clip_ops
+from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import nn
 from tensorflow.python.ops import parsing_ops
 from tensorflow.python.platform import test
+
+
+def _generate_unary_cwise_math_cases():
+  # TODO(rachelim): Consolidate tests with pfor when APIs are somewhat shared.
+  bitwise_cases = [("Invert", bitwise_ops.invert)]
+  logical_cases = [("LogicalNot", math_ops.logical_not)]
+  complex_cases = [
+      ("Angle", math_ops.angle),
+      ("ComplexAbs", math_ops.abs),
+      ("Conj", math_ops.conj),
+      ("Imag", math_ops.imag),
+      ("Real", math_ops.real),
+  ]
+  real_cases = [
+      ("Abs", math_ops.abs),
+      ("Acos", math_ops.acos),
+      ("Acosh", lambda x: math_ops.acosh(1 + math_ops.square(x))),
+      ("Asin", math_ops.asin),
+      ("Asinh", math_ops.asinh),
+      ("Atan", math_ops.atan),
+      ("Atanh", math_ops.atanh),
+      ("BesselI0e", math_ops.bessel_i0e),
+      ("BesselI1e", math_ops.bessel_i1e),
+      ("Ceil", math_ops.ceil),
+      ("Cos", math_ops.cos),
+      ("Cosh", math_ops.cosh),
+      ("Digamma", math_ops.digamma),
+      ("Elu", nn.elu),
+      ("Erf", math_ops.erf),
+      ("Erfc", math_ops.erfc),
+      ("Exp", math_ops.exp),
+      ("Expm1", math_ops.expm1),
+      ("Floor", math_ops.floor),
+      ("Inv", math_ops.inv),
+      ("IsFinite", math_ops.is_finite),
+      ("IsInf", math_ops.is_inf),
+      ("Lgamma", math_ops.lgamma),
+      ("Log", math_ops.log),
+      ("Log1p", math_ops.log1p),
+      ("Neg", math_ops.negative),
+      ("Reciprocal", math_ops.reciprocal),
+      ("Relu", nn.relu),
+      ("Relu6", nn.relu6),
+      ("Rint", math_ops.rint),
+      ("Round", math_ops.round),
+      ("Rsqrt", math_ops.rsqrt),
+      ("Selu", nn.selu),
+      ("Sigmoid", math_ops.sigmoid),
+      ("Sign", math_ops.sign),
+      ("Sin", math_ops.sin),
+      ("Sinh", math_ops.sinh),
+      ("Softplus", nn.softplus),
+      ("Softsign", nn.softsign),
+      ("Sqrt", math_ops.sqrt),
+      ("Square", math_ops.square),
+      ("Tan", math_ops.tan),
+      ("Tanh", math_ops.tanh),
+  ]
+  random_input = np.random.rand(3, 5)
+  complex_component = np.random.rand(3, 5)
+  random_int = np.random.randint(0, 10, (7, 3, 5))
+
+  def bitwise_dataset_factory():
+    return dataset_ops.Dataset.from_tensor_slices(random_int)
+
+  def logical_dataset_factory():
+    return dataset_ops.Dataset.from_tensor_slices(random_input > 0)
+
+  def random_dataset_factory():
+    return dataset_ops.Dataset.from_tensor_slices(random_input)
+
+  def complex_dataset_factory():
+    return dataset_ops.Dataset.from_tensor_slices(
+        math_ops.complex(random_input, complex_component))
+
+  case_factory_pairs = [
+      (bitwise_cases, bitwise_dataset_factory),
+      (logical_cases, logical_dataset_factory),
+      (complex_cases, complex_dataset_factory),
+      (real_cases, random_dataset_factory),
+  ]
+  return [(case[0], case[1], factory)
+          for cases, factory in case_factory_pairs
+          for case in cases]
+
+
+def _generate_binary_cwise_math_cases():
+  bitwise_cases = [("BitwiseAnd", bitwise_ops.bitwise_and),
+                   ("BitwiseOr", bitwise_ops.bitwise_or),
+                   ("BitwiseXor", bitwise_ops.bitwise_xor),
+                   ("LeftShift", bitwise_ops.left_shift),
+                   ("RightShift", bitwise_ops.right_shift)]
+
+  logical_cases = [("LogicalAnd", math_ops.logical_and),
+                   ("LogicalOr", math_ops.logical_or)]
+
+  # Wrapper functions restricting the range of inputs of zeta and polygamma.
+  def safe_polygamma(x, y):
+    return math_ops.polygamma(
+        math_ops.round(clip_ops.clip_by_value(y, 1, 10)), x * x + 1)
+
+  def safe_zeta(x, y):
+    return math_ops.zeta(x * x + 1, y * y)
+
+  real_cases = [
+      ("Add", math_ops.add),
+      ("AddV2", math_ops.add_v2),
+      ("Atan2", math_ops.atan2),
+      ("Complex", math_ops.complex),
+      ("DivNoNan", math_ops.div_no_nan),
+      ("Equal", math_ops.equal),
+      ("FloorDiv", math_ops.floor_div),
+      ("FloorMod", math_ops.floor_mod),
+      ("Greater", math_ops.greater),
+      ("GreaterEqual", math_ops.greater_equal),
+      ("Igamma", math_ops.igamma),
+      ("Igammac", math_ops.igammac),
+      ("IgammaGradA", math_ops.igamma_grad_a),
+      ("Less", math_ops.less),
+      ("LessEqual", math_ops.less_equal),
+      ("Maximum", math_ops.maximum),
+      ("Minimum", math_ops.minimum),
+      ("Mod", math_ops.mod),
+      ("Mul", math_ops.multiply),
+      ("NotEqual", math_ops.not_equal),
+      ("Polygamma", safe_polygamma),
+      ("Pow", math_ops.pow),
+      ("RealDiv", math_ops.divide),
+      ("SquareDifference", math_ops.squared_difference),
+      ("Sub", math_ops.subtract),
+      ("TruncateMod", math_ops.truncate_mod),
+      ("Zeta", safe_zeta),
+  ]
+
+  # Exercises broadcasting capabilities
+  x = np.random.rand(7, 3, 5)
+  y = np.random.rand(3, 5)
+
+  x_int = np.random.randint(0, 10, (7, 3, 5))
+  y_int = np.random.randint(0, 10, (3, 5))
+
+  def bitwise_dataset_factory():
+    return dataset_ops.Dataset.from_tensors((x_int, y_int))
+
+  def logical_dataset_factory():
+    return dataset_ops.Dataset.from_tensors((x > 0, y > 0))
+
+  def random_dataset_factory():
+    return dataset_ops.Dataset.from_tensors((x, y))
+
+  case_factory_pairs = [
+      (bitwise_cases, bitwise_dataset_factory),
+      (logical_cases, logical_dataset_factory),
+      (real_cases, random_dataset_factory),
+  ]
+  return [(case[0], case[1], factory)
+          for cases, factory in case_factory_pairs
+          for case in cases]
+
+
+def _generate_cwise_test_cases():
+  return _generate_unary_cwise_math_cases() + _generate_binary_cwise_math_cases(
+  )
 
 
 def _generate_csv_test_case():
@@ -114,16 +281,22 @@ def _generate_optimization_test_cases():
         y for y in parse_result if not isinstance(y, sparse_tensor.SparseTensor)
     ]
 
+  def map_fn_with_cycle(x):
+    c = lambda i: math_ops.less(i, 10)
+    b = lambda i: math_ops.add(i, 1)
+    return control_flow_ops.while_loop(c, b, [x])
+
   # Misc test cases
   test_cases = [
       ("Basic", lambda x: (x, x + 1), base_dataset_factory),
+      ("Broadcast", lambda x: x + rand_val, base_dataset_factory),
+      ("Cycle", map_fn_with_cycle, lambda: dataset_ops.Dataset.from_tensors(1)),
       ("Const", lambda x: 2, base_dataset_factory),
-      # Math ops exercise broadcasting capabilities
-      ("Add", lambda x: x + rand_val, base_dataset_factory),
       ("Cast", lambda x: math_ops.cast(x, dtypes.float64),
        base_dataset_factory),
       ("Reshape", lambda x: array_ops.reshape(x, (-1, 30)),
        base_dataset_factory),
+      ("Transpose", array_ops.transpose, base_dataset_factory),
       ("Unpack", array_ops.unstack, base_dataset_factory),
       ("UnpackNegativeAxis", lambda x: array_ops.unstack(x, axis=-1),
        base_dataset_factory),
@@ -132,7 +305,7 @@ def _generate_optimization_test_cases():
       ("ParseSingleExample", parse_fn, parse_base),
       ("ParseSingleExampleDenseOutputOnly", dense_output_only_parse_fn,
        parse_base),
-  ]
+  ] + _generate_cwise_test_cases()
 
   return [{
       "testcase_name":

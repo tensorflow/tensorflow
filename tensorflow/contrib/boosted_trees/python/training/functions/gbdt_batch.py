@@ -386,9 +386,20 @@ class GradientBoostedDecisionTreeModel(object):
         learner_pb2.LearnerConfig.GROWING_MODE_UNSPECIFIED):
       learner_config.growing_mode = learner_pb2.LearnerConfig.LAYER_BY_LAYER
 
+    if (learner_config.weak_learner_type == learner_pb2.LearnerConfig
+        .OBLIVIOUS_DECISION_TREE and learner_config.pruning_mode == learner_pb2
+        .LearnerConfig.PRUNING_MODE_UNSPECIFIED):
+      learner_config.pruning_mode = learner_pb2.LearnerConfig.PRE_PRUNE
+
     if (learner_config.pruning_mode ==
         learner_pb2.LearnerConfig.PRUNING_MODE_UNSPECIFIED):
       learner_config.pruning_mode = learner_pb2.LearnerConfig.POST_PRUNE
+
+    if (learner_config.weak_learner_type == learner_pb2.LearnerConfig
+        .OBLIVIOUS_DECISION_TREE and
+        learner_config.pruning_mode == learner_pb2.LearnerConfig.POST_PRUNE):
+      raise ValueError(
+          "Post pruning is not implmented for oblivious decision trees.")
 
     if learner_config.constraints.max_tree_depth == 0:
       # Use 6 as the default maximum depth.
@@ -418,6 +429,11 @@ class GradientBoostedDecisionTreeModel(object):
      sparse_float_shapes, sparse_int_indices,
      sparse_int_values, sparse_int_shapes) = extract_features(
          features, self._feature_columns, use_core_columns)
+    if (learner_config.weak_learner_type == learner_pb2.LearnerConfig
+        .OBLIVIOUS_DECISION_TREE and sparse_float_indices):
+      raise ValueError("Oblivious trees don't handle sparse float features yet."
+                      )
+
     logging.info("Active Feature Columns: " + str(fc_names))
     logging.info("Learner config: " + str(learner_config))
     self._fc_names = fc_names

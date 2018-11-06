@@ -8,6 +8,24 @@ load("//tensorflow:tensorflow.bzl", "cuda_py_test")
 load("//tensorflow:tensorflow.bzl", "py_test")
 
 py_test(
+    name = "map_and_batch_benchmark",
+    size = "medium",
+    srcs = ["map_and_batch_benchmark.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:random_ops",
+        "//tensorflow/python:session",
+        "//tensorflow/python/data/experimental/ops:batching",
+        "//tensorflow/python/data/experimental/ops:optimization",
+        "//tensorflow/python/data/ops:dataset_ops",
+        "//third_party/py/numpy",
+    ],
+)
+
+py_test(
     name = "map_benchmark",
     size = "medium",
     srcs = ["map_benchmark.py"],

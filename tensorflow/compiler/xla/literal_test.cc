@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <vector>
 
+#include "absl/base/casts.h"
 #include "absl/memory/memory.h"
 #include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
@@ -28,7 +29,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/types.h"
-#include "tensorflow/core/lib/core/casts.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/types.h"
@@ -133,7 +133,7 @@ TEST_F(LiteralUtilTest, LiteralScalarToString) {
 
 TEST_F(LiteralUtilTest, LiteralVectorToString) {
   auto pred_vec = LiteralUtil::CreateR1<bool>({true, false, true});
-  EXPECT_EQ("{101}", pred_vec.ToString());
+  EXPECT_EQ("{1, 0, 1}", pred_vec.ToString());
 }
 
 TEST_F(LiteralUtilTest, R2ToString) {
@@ -1312,11 +1312,10 @@ TEST_F(LiteralUtilTest, ConvertIfTypesMatch) {
 
 TEST_F(LiteralUtilTest, BitcastConvert) {
   auto original = LiteralUtil::CreateR1<uint32>(
-      {tensorflow::bit_cast<uint32>(2.5f),
-       tensorflow::bit_cast<uint32>(-42.25f),
-       tensorflow::bit_cast<uint32>(100.f), 0xbeef});
+      {absl::bit_cast<uint32>(2.5f), absl::bit_cast<uint32>(-42.25f),
+       absl::bit_cast<uint32>(100.f), 0xbeef});
   auto expected = LiteralUtil::CreateR1<float>(
-      {2.5f, -42.25f, 100.0f, tensorflow::bit_cast<float>(0xbeef)});
+      {2.5f, -42.25f, 100.0f, absl::bit_cast<float>(0xbeef)});
   TF_ASSERT_OK_AND_ASSIGN(Literal converted, original.BitcastConvert(F32));
 }
 

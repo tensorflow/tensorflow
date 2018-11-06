@@ -46,6 +46,15 @@ _OP_METADATA_FIELDS = [
 OpMetadata = collections.namedtuple('OpMetadata', _OP_METADATA_FIELDS)
 
 
+class BackendType(enum.Enum):
+  XLA_LOCAL = 1
+  XRT = 2
+
+
+BackendSpec = collections.namedtuple('Backend', ('backend_type', 'target'))
+XLA_LOCAL_BACKEND = BackendSpec(BackendType.XLA_LOCAL, 'local')
+
+
 def OpMetadataToProto(pyobj):
   proto = xla_data_pb2.OpMetadata()
   for field in _OP_METADATA_FIELDS:
@@ -203,38 +212,52 @@ class LocalBuffer(object):
   means the referent is in device memory.
   """
 
-  def __init__(self, c_local_shaped_buffer):
-    self.c_local_shaped_buffer = c_local_shaped_buffer
-    self._delete = c_api.DeleteLocalShapedBuffer
+  def __init__(self, c_buffer, backend):
+    self.c_buffer = c_buffer
+    self._backend = backend
+    if backend.backend_type == BackendType.XRT:
+      self._delete = c_api.DeleteXrtAllocation
+    else:
+      self._delete = c_api.DeleteLocalShapedBuffer
 
   @staticmethod
-  def from_pyval(pyval, layout_fn=None):
+  def from_pyval(pyval, backend=XLA_LOCAL_BACKEND):
+    """Allocate and copy to XLA the given python value."""
     pyval = require_numpy_array_layout(pyval)
-    if layout_fn:
-      shape = Shape.from_pyval(pyval)
-      shape = shape.map_leaves(layout_fn)
+    if backend.backend_type == BackendType.XRT:
+      cbuf = c_api.XrtAllocation.FromLiteral(pyval, backend.target)
     else:
-      shape = None
-    return LocalBuffer(c_api.LocalShapedBuffer.FromLiteral(pyval, shape))
+      cbuf = c_api.LocalShapedBuffer.FromLiteral(pyval, None)
+    return LocalBuffer(cbuf, backend)
 
   def to_py(self):
-    return self.c_local_shaped_buffer.ToLiteral()
+    return self.c_buffer.ToLiteral()
+
+  def shape(self):
+    return _wrap_shape(self.c_buffer.shape())
 
   def delete(self):
-    if self.c_local_shaped_buffer is not None:
-      self._delete(self.c_local_shaped_buffer)
-      self.c_local_shaped_buffer = None
+    if self.c_buffer is not None:
+      self._delete(self.c_buffer)
+      self.c_buffer = None
 
   def destructure(self):
-    assert self.c_local_shaped_buffer is not None
-    result = c_api.DestructureLocalShapedBufferTuple(self.c_local_shaped_buffer)
-    self.c_local_shaped_buffer = None
+    """Assuming a tuple buffer, unpack it into constituent tuple elements."""
+    assert self.c_buffer is not None
+    if self._backend.backend_type == BackendType.XRT:
+      result = c_api.DestructureXrtAllocationTuple(self.c_buffer,
+                                                   self._backend.target)
+    else:
+      result = c_api.DestructureLocalShapedBufferTuple(self.c_buffer)
+    self.delete()
     size = result.size()
-    destructured = tuple(LocalBuffer(result.Release(i)) for i in xrange(size))
+    destructured = tuple(
+        LocalBuffer(result.Release(i), backend=self._backend)
+        for i in xrange(size))
     return destructured
 
   def is_deleted(self):
-    return self.c_local_shaped_buffer is None
+    return self.c_buffer is None
 
   def __del__(self):
     self.delete()
@@ -452,17 +475,29 @@ class LocalComputation(object):
   ComputationBuilder methods.
   """
 
-  def __init__(self, c_local_computation, is_compiled):
-    self.c_local_computation = c_local_computation
-    self.is_compiled = is_compiled
+  def __init__(self, c_computation, is_compiled, backend=XLA_LOCAL_BACKEND):
+    self._c_computation = c_computation
+    self._backend = backend
+    self._is_compiled = is_compiled
 
     # Ensure a reference to C-based destructor for use in __del__.
     if is_compiled:
-      assert isinstance(c_local_computation, c_api.CompiledLocalComputation)
-      self._delete = c_api.DeleteCompiledLocalComputation
+      if backend.backend_type == BackendType.XRT:
+        assert isinstance(c_computation, c_api.CompiledXrtComputation)
+        self._delete = c_api.DeleteCompiledXrtComputation
+      else:
+        assert isinstance(c_computation, c_api.CompiledLocalComputation)
+        self._delete = c_api.DeleteCompiledLocalComputation
     else:
-      assert isinstance(c_local_computation, c_api.LocalComputation)
+      assert isinstance(c_computation, c_api.LocalComputation)
       self._delete = c_api.DeleteLocalComputation
+
+  @property
+  def computation(self):
+    if self._is_compiled:
+      raise ValueError(
+          'Attempt to read the XLA computation of a compiled LocalComputation.')
+    return self._c_computation
 
   def GetProto(self):
     """Get the HloModuleProto proto object in this local computation.
@@ -470,8 +505,7 @@ class LocalComputation(object):
     Returns:
        An HloModuleProto proto object that has the whole-graph information.
     """
-
-    serialized = self.c_local_computation.GetSerializedProto()
+    serialized = self.computation.GetSerializedProto()
     proto = hlo_pb2.HloModuleProto.FromString(serialized)
     return proto
 
@@ -496,10 +530,10 @@ class LocalComputation(object):
     Returns:
       A newly *compiled* local computation instance.
     """
-    if self.is_compiled:
+    if self._is_compiled:
       raise ValueError('Attempt to compile a compiled local XLA computation.')
 
-    result_shape = _wrap_shape(self.c_local_computation.GetReturnValueShape())
+    result_shape = _wrap_shape(self.computation.GetReturnValueShape())
 
     if layout_fn:
       argument_shapes = [
@@ -509,9 +543,11 @@ class LocalComputation(object):
 
     compile_options = compile_options or CompileOptions()
     compile_options.result_shape = result_shape
-    return LocalComputation(
-        self.c_local_computation.Compile(argument_shapes, compile_options),
-        is_compiled=True)
+    if self._backend.backend_type == BackendType.XRT:
+      c = self.computation.CompileForXrt(argument_shapes, self._backend.target)
+    else:
+      c = self.computation.Compile(argument_shapes, compile_options)
+    return LocalComputation(c, is_compiled=True, backend=self._backend)
 
   def CompileWithExampleArguments(self,
                                   arguments=(),
@@ -522,33 +558,25 @@ class LocalComputation(object):
         compile_options=compile_options,
         layout_fn=layout_fn)
 
-  def Execute(self, arguments=(), layout_fn=None):
-    """Execute with Python values as arguments and return value."""
-    if not self.is_compiled:
-      raise ValueError('Cannot execute an uncompiled local XLA computation.')
-    argument_shapes = [Shape.from_pyval(arg) for arg in arguments]
-    if layout_fn:
-      argument_shapes = [
-          shape.map_leaves(layout_fn) for shape in argument_shapes
-      ]
-    else:
-      argument_shapes = [None for shape in argument_shapes]
-    arguments = tuple(map(require_numpy_array_layout, arguments))
-    return self.c_local_computation.Execute(arguments, argument_shapes)
-
-  def ExecuteWithLocalBuffers(self, arguments=()):
+  def Execute(self, arguments=()):
     """Execute with LocalBuffer arguments and return value."""
-    if not self.is_compiled:
+    if not self._is_compiled:
       raise ValueError('Cannot execute an uncompiled local XLA computation.')
     arguments = tuple(arguments)
     if any(arg.is_deleted() for arg in arguments):
       raise ValueError('Executing with deleted local buffer argument')
     return LocalBuffer(
-        self.c_local_computation.ExecuteWithShapedBuffers(
-            [arg.c_local_shaped_buffer for arg in arguments]))
+        self._c_computation.Execute([arg.c_buffer for arg in arguments]),
+        backend=self._backend)
+
+  def ExecuteWithPythonValues(self, arguments=()):
+    """Execute with Python values as arguments and return value."""
+    arguments = tuple(
+        LocalBuffer.from_pyval(arg, backend=self._backend) for arg in arguments)
+    return self.Execute(arguments).to_py()
 
   def __del__(self):
-    self._delete(self.c_local_computation)
+    self._delete(self._c_computation)
 
 
 class ComputationBuilder(object):
@@ -570,12 +598,13 @@ class ComputationBuilder(object):
     self._client = c_api.LocalComputationBuilder(name.encode('utf8'))
     self._parameter_numbering = itertools.count()
 
-  def Build(self, root=None):
+  def Build(self, root=None, backend=XLA_LOCAL_BACKEND):
     if root is not None:
-      return LocalComputation(self._client.BuildWithRoot(root),
-                              is_compiled=False)
+      return LocalComputation(
+          self._client.BuildWithRoot(root), is_compiled=False, backend=backend)
     else:
-      return LocalComputation(self._client.Build(), is_compiled=False)
+      return LocalComputation(
+          self._client.Build(), is_compiled=False, backend=backend)
 
   def SetOpMetadata(self, op_metadata):
     """Set metadata for operations that are about to be enqueued."""
@@ -869,8 +898,8 @@ class ComputationBuilder(object):
         padding, self.GetShape(operand).dimensions(),
         window_dimensions, window_strides)
     return self._client.SelectAndScatterWithGeneralPadding(
-        operand, select.c_local_computation, window_dimensions, window_strides,
-        pads, source, init_value, scatter.c_local_computation)
+        operand, select.computation, window_dimensions, window_strides, pads,
+        source, init_value, scatter.computation)
 
   def Select(self, pred, on_true, on_false):
     """Element-wise selection op.
@@ -978,7 +1007,7 @@ class ComputationBuilder(object):
     Returns:
       A LocalOp representing the added call op.
     """
-    return self._client.Call(computation_to_apply.c_local_computation, operands)
+    return self._client.Call(computation_to_apply.computation, operands)
 
   def Map(self, operands, computation_to_apply, dimensions):
     """Enqueues a map operation onto the computation.
@@ -991,7 +1020,7 @@ class ComputationBuilder(object):
     Returns:
       A LocalOp representing the added Map op.
     """
-    return self._client.Map(operands, computation_to_apply.c_local_computation,
+    return self._client.Map(operands, computation_to_apply.computation,
                             dimensions)
 
   def Reduce(self, operand, init_value, computation_to_apply, dimensions):
@@ -1007,8 +1036,7 @@ class ComputationBuilder(object):
       A LocalOp representing the added Reduce op.
     """
     return self._client.Reduce(operand, init_value,
-                               computation_to_apply.c_local_computation,
-                               dimensions)
+                               computation_to_apply.computation, dimensions)
 
   def ReduceWindow(self, operand, init_value, computation_to_apply,
                    window_dimensions, window_strides, padding):
@@ -1029,7 +1057,7 @@ class ComputationBuilder(object):
         padding, self.GetShape(operand).dimensions(), window_dimensions,
         window_strides)
     return self._client.ReduceWindowWithGeneralPadding(
-        operand, init_value, computation_to_apply.c_local_computation,
+        operand, init_value, computation_to_apply.computation,
         window_dimensions, window_strides, (), (), pads)
 
   def ReduceWindowWithGeneralPadding(
@@ -1051,7 +1079,7 @@ class ComputationBuilder(object):
       A LocalOp representing the added ReduceWindow op.
     """
     return self._client.ReduceWindowWithGeneralPadding(
-        operand, init_value, computation_to_apply.c_local_computation,
+        operand, init_value, computation_to_apply.computation,
         window_dimensions, window_strides, base_dilations, window_dilations,
         padding)
 
@@ -1097,8 +1125,7 @@ class ComputationBuilder(object):
 
     Returns: a LocalOp representing the While operation.
     """
-    return self._client.While(cond.c_local_computation,
-                              body.c_local_computation, init)
+    return self._client.While(cond.computation, body.computation, init)
 
   def Conditional(self, pred, true_operand, true_computation, false_operand,
                   false_computation):
@@ -1114,8 +1141,8 @@ class ComputationBuilder(object):
     Returns: a LocalOp representing the Conditional operation.
     """
     return self._client.Conditional(
-        pred, true_operand, true_computation.c_local_computation, false_operand,
-        false_computation.c_local_computation)
+        pred, true_operand, true_computation.computation, false_operand,
+        false_computation.computation)
 
   def IsConstant(self, operand):
     """Checks whether the given operand is a compile-time constant.

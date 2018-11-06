@@ -193,5 +193,62 @@ class InterfaceTests(test.TestCase):
     self.assertAllClose({"k": [numpy.ones([2, 2]), numpy.zeros([3, 3])]},
                         self.evaluate(a.tensors))
 
+
+class _DummyResource(tracking.TrackableResource):
+
+  def __init__(self, handle_name):
+    self._handle_name = handle_name
+    super(_DummyResource, self).__init__()
+
+  def create_resource(self):
+    return self._handle_name
+
+
+class ResourceTrackerTest(test.TestCase):
+
+  def testBasic(self):
+    resource_tracker = tracking.ResourceTracker()
+    with tracking.resource_tracker_scope(resource_tracker):
+      dummy_resource1 = _DummyResource("test1")
+      dummy_resource2 = _DummyResource("test2")
+
+    self.assertEqual(2, len(resource_tracker.resources))
+    self.assertEqual("test1", resource_tracker.resources[0].resource_handle)
+    self.assertEqual("test2", resource_tracker.resources[1].resource_handle)
+
+  def testTwoScopes(self):
+    resource_tracker1 = tracking.ResourceTracker()
+    with tracking.resource_tracker_scope(resource_tracker1):
+      dummy_resource1 = _DummyResource("test1")
+
+    resource_tracker2 = tracking.ResourceTracker()
+    with tracking.resource_tracker_scope(resource_tracker2):
+      dummy_resource2 = _DummyResource("test2")
+
+    self.assertEqual(1, len(resource_tracker1.resources))
+    self.assertEqual("test1", resource_tracker1.resources[0].resource_handle)
+    self.assertEqual(1, len(resource_tracker1.resources))
+    self.assertEqual("test2", resource_tracker2.resources[0].resource_handle)
+
+  def testNestedScopesScopes(self):
+    resource_tracker = tracking.ResourceTracker()
+    with tracking.resource_tracker_scope(resource_tracker):
+      resource_tracker1 = tracking.ResourceTracker()
+      with tracking.resource_tracker_scope(resource_tracker1):
+        dummy_resource1 = _DummyResource("test1")
+
+      resource_tracker2 = tracking.ResourceTracker()
+      with tracking.resource_tracker_scope(resource_tracker2):
+        dummy_resource2 = _DummyResource("test2")
+
+    self.assertEqual(1, len(resource_tracker1.resources))
+    self.assertEqual("test1", resource_tracker1.resources[0].resource_handle)
+    self.assertEqual(1, len(resource_tracker1.resources))
+    self.assertEqual("test2", resource_tracker2.resources[0].resource_handle)
+    self.assertEqual(2, len(resource_tracker.resources))
+    self.assertEqual("test1", resource_tracker.resources[0].resource_handle)
+    self.assertEqual("test2", resource_tracker.resources[1].resource_handle)
+
+
 if __name__ == "__main__":
   test.main()

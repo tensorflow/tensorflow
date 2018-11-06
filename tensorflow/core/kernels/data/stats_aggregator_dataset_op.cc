@@ -13,11 +13,11 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 #include <memory>
+#include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/stats_aggregator.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/graph/graph_def_builder.h"
-#include "tensorflow/core/kernels/data/dataset.h"
 #include "tensorflow/core/lib/random/random.h"
 
 namespace tensorflow {
@@ -179,6 +179,12 @@ class SetStatsAggregatorDatasetOp : public UnaryDatasetOpKernel {
       }
 
      protected:
+      std::shared_ptr<model::Node> CreateNode(
+          IteratorContext* ctx, model::Node::Args args) const override {
+        return model::MakeKnownRatioNode(std::move(args),
+                                         /*ratio=*/1);
+      }
+
       Status SaveInternal(IteratorStateWriter* writer) override {
         return errors::Unimplemented(dataset()->DebugString(),
                                      " does not support checkpointing");

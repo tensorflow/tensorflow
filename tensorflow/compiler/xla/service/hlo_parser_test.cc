@@ -75,6 +75,18 @@ ENTRY %constant_pred () -> pred[] {
 
 )"
 },
+// pred array constant
+{
+"ConstantPredArray",
+R"(HloModule module
+
+ENTRY %constant_pred_array () -> pred[2,3] {
+  ROOT %constant = pred[2,3]{1,0} constant(pred[2,3] { { 0, 1, 0 }, { 1, 0, 1 } })
+}
+
+)"
+},
+
 // s32 constant
 {
 "ConstantS32",
@@ -2159,6 +2171,22 @@ ENTRY entry {
 )";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseHloString(text));
+}
+
+TEST_F(HloParserTest, ShapeMismatchInOperand) {
+  const string text = R"(
+HloModule foobar
+
+ENTRY %entrycomp (p: f32[2,2]) -> f32[2,2] {
+  %p = f32[2,2] parameter(0)
+  %constant.1 = f32[2,2] constant(f32[2,2] {{1, 2}, {3, 4}})
+  ROOT %add.1 = f32[2,2] add(f32[2,2] %p, f32[2,5] %constant.1)
+}
+)";
+
+  ExpectHasSubstr(ParseHloString(text).status().error_message(),
+                  "The declared operand shape f32[2,5]{1,0} is not compatible"
+                  " with the shape of the operand instruction f32[2,2]{1,0}.");
 }
 
 // custom call incompatible shape.

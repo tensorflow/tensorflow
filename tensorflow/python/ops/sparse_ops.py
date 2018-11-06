@@ -16,7 +16,7 @@
 # pylint: disable=g-short-docstring-punctuation
 """Sparse Tensor Representation.
 
-See the [Sparse Ops](https://tensorflow.org/api_guides/python/sparse_ops) guide.
+See also `tf.SparseTensor`.
 """
 
 from __future__ import absolute_import

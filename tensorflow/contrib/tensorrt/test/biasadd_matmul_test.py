@@ -118,30 +118,11 @@ class BiasaddMatMulTest(trt_test.TfTrtIntegrationTestBase):
     """Return a ConversionParams for test."""
     return super(BiasaddMatMulTest,
                  self).GetConversionParams(run_params)._replace(
-                     max_batch_size=4, maximum_cached_engines=2)
-
-  def _ValidEngines(self):
-    """Engines expected to build and run."""
-    return ["my_trt_op_0"]
-
-  def _InvalidEngines(self):
-    """Engines that will cause conversion error at building time."""
-    return ["my_trt_op_1", "my_trt_op_2"]
+                     max_batch_size=4, maximum_cached_engines=1)
 
   def ExpectedEnginesToBuild(self, run_params):
     """Return the expected engines to build."""
-    # In dynamic engine mode the engines are built in execution time, not in
-    # conversion time, so build errors occurs later. Here three of the engines
-    # will be failed to built but the corresponding engine op are still created.
-    # TODO(aaroey, jjsjann123): fix this.
-    if (run_params.dynamic_engine and
-        not trt_test.IsQuantizationMode(run_params.precision_mode)):
-      return self._ValidEngines() + self._InvalidEngines()
-    return self._ValidEngines()
-
-  def ExpectedEnginesToRun(self, run_params):
-    """Return the expected engines to run."""
-    return self._ValidEngines()
+    return ["my_trt_op_0"]
 
   def ShouldRunTest(self, run_params):
     """Whether to run the test."""

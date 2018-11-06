@@ -163,7 +163,6 @@ void TRTOptimizationPass::PrintDebugInfo(
   } else {
     LOG(INFO) << offset << "No keep ops";
   }
-  LOG(INFO) << item.graph.DebugString();
   for (const auto dev : cluster->GetDeviceSet()->devices()) {
     const auto& pname = dev->parsed_name();
     LOG(INFO) << "Device name= " << dev->name()

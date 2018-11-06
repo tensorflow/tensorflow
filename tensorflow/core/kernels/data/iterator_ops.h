@@ -107,9 +107,7 @@ class IteratorGetNextOp : public AsyncOpKernel {
  public:
   explicit IteratorGetNextOp(OpKernelConstruction* ctx)
       : AsyncOpKernel(ctx),
-        background_worker_(ctx->env(),
-                           strings::StrCat("iterator_get_next_thread_",
-                                           SanitizeThreadSuffix(name()))) {}
+        background_worker_(ctx->env(), "tf_data_iterator_get_next") {}
 
   void ComputeAsync(OpKernelContext* ctx, DoneCallback done) override;
 

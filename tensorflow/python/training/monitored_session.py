@@ -509,6 +509,7 @@ def MonitoredTrainingSession(master='',  # pylint: disable=invalid-name
 
 
 @tf_export('train.SessionCreator')
+@six.add_metaclass(abc.ABCMeta)
 class SessionCreator(object):
   """A factory for tf.Session."""
 
@@ -1071,8 +1072,10 @@ class _WrappedSession(object):
     if self._sess:
       try:
         self._sess.close()
-      except _PREEMPTION_ERRORS:
-        pass
+      except _PREEMPTION_ERRORS as e:
+        logging.warning('An error occurred when attempting to close the '
+                        'session. This may be due to a preemption in a '
+                        'connected worker or parameter server. Error: %s', e)
       finally:
         self._sess = None
 

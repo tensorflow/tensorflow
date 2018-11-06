@@ -169,6 +169,11 @@ class DeviceNameUtils {
   // mapping.
   static std::vector<string> GetLocalNamesForDeviceMappings(
       const ParsedName& pn);
+
+  // Returns name of the CPU:0 device on the same host as the device
+  // `device_name`.
+  static Status DeviceNameToCpuDeviceName(const string& device_name,
+                                          string* host_device_name);
 };
 
 }  // namespace tensorflow

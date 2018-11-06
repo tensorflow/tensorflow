@@ -580,13 +580,16 @@ struct MatMulFunctor<SYCLDevice, T> {
 
 #if defined(INTEL_MKL) && defined(ENABLE_MKL)
 
-// MKL does not support half, bfloat16 and int32 types for
+// MKL supports float, double, complex64 and complex128 types for
+// matrix-multiplication, and these kernels are registered in mkl_matmul_op.cc.
+// MKL does not support half, bfloat16, int32 and int64 types for
 // matrix-multiplication, so register the kernel to use default Eigen based
 // implementations for these types. REGISTER_CPU defines two versions - Eigen
 // label and NO-LABEL
 TF_CALL_half(REGISTER_CPU);
 TF_CALL_bfloat16(REGISTER_CPU);
 TF_CALL_int32(REGISTER_CPU);
+TF_CALL_int64(REGISTER_CPU);
 
 // Float is supported in both MKL DNN as well as in MKL ML
 // Registration for NO-LABEL version is in mkl_matmul_op.cc for types supported

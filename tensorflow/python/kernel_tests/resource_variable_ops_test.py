@@ -915,6 +915,17 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase):
     with self.assertRaisesRegexp(Exception, r"hapes must be equal"):
       self.assertAllEqual(self.evaluate(v.assign_add(1)), [1, 2, 3, 4])
 
+  @test_util.run_in_graph_and_eager_modes
+  def testCopyToGraphUninitialized(self):
+    v = resource_variable_ops.ResourceVariable([0, 1, 2, 3])
+    copy_to_graph = ops.Graph()
+    with copy_to_graph.as_default():  # Intentionally testing v1 behavior
+      copied = resource_variable_ops.copy_to_graph_uninitialized(v)
+      self.assertEqual(v.name, copied.name)
+      with self.session(copy_to_graph) as session:
+        with self.assertRaises(errors.InvalidArgumentError):
+          session.run(copied.initializer)
+
 
 class _MixedPrecisionVariableTest(test_util.TensorFlowTestCase):
 

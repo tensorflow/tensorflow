@@ -98,8 +98,8 @@ class TimeSeriesRegressorTest(test.TestCase):
     ) = list(second_estimator.predict(input_fn=predict_input_fn))
     self.assertAllEqual([10, 1], estimator_predictions["mean"].shape)
     input_receiver_fn = first_estimator.build_raw_serving_input_receiver_fn()
-    export_location = first_estimator.export_savedmodel(self.get_temp_dir(),
-                                                        input_receiver_fn)
+    export_location = first_estimator.export_saved_model(
+        self.get_temp_dir(), input_receiver_fn)
     with ops.Graph().as_default():
       with session.Session() as sess:
         signatures = loader.load(sess, [tag_constants.SERVING], export_location)
