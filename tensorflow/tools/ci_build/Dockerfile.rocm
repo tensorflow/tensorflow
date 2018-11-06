@@ -64,9 +64,12 @@ RUN apt-get update --allow-insecure-repositories && \
     rm -rf /var/lib/apt/lists/*
 
 
-# Override the MIOpen install with a newer version that has fusion API fixes/updates
+# Override the default rocBLAS and MIOpen installs with a newer version with support for BnA fusion
+RUN mkdir -p $HOME/pkgs/rocblas
+RUN cd $HOME/pkgs/rocblas && wget https://github.com/ROCmSoftwarePlatform/rocBLAS/releases/download/v14.3.0/rocblas-0.14.3.158-Linux.deb && dpkg -i *.deb
+
 RUN mkdir -p $HOME/pkgs/MIOpen
-RUN cd $HOME/pkgs/MIOpen && wget https://www.dropbox.com/s/5mf2u41tfgjq0qr/MIOpen-HIP-1.5.0-f29af54-Linux.deb && dpkg -i *.deb
+RUN cd $HOME/pkgs/MIOpen && wget https://www.dropbox.com/s/r78w0nr6e84b45u/MIOpen-HIP-1.6.0-efd7aae-Linux.deb && dpkg -i *.deb
 
 
 ENV HCC_HOME=$ROCM_PATH/hcc
