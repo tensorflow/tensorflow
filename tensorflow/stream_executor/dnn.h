@@ -548,10 +548,6 @@ class ConvolutionDescriptor {
     SetDim(&dilation_rates_, dim, value);
     return *this;
   }
-  ConvolutionDescriptor& set_pad_alignment(PadAlignment pad_alignment) {
-    pad_alignment_ = pad_alignment;
-    return *this;
-  }
   ConvolutionDescriptor& set_group_count(int group_count) {
     group_count_ = group_count;
     return *this;
@@ -578,7 +574,9 @@ class ConvolutionDescriptor {
   int zero_padding(DimIndex dim) const { return GetDim(zero_padding_, dim); }
   int filter_stride(DimIndex dim) const { return GetDim(filter_strides_, dim); }
   int dilation_rate(DimIndex dim) const { return GetDim(dilation_rates_, dim); }
-  PadAlignment pad_alignment() const { return pad_alignment_; }
+  // TODO(timshen): remove this function. No users of this class is setting a
+  // non-default pad alignment.
+  PadAlignment pad_alignment() const { return PadAlignment::kDefault; }
   int group_count() const { return group_count_; }
   int ndims() const { return ndims_; }
 
@@ -591,7 +589,6 @@ class ConvolutionDescriptor {
   std::vector<int64> zero_padding_;
   std::vector<int64> filter_strides_;
   std::vector<int64> dilation_rates_;
-  PadAlignment pad_alignment_;
   int group_count_;
   int ndims_;
   // TODO(leary) cudnn provides these fields, but need to characterize what
