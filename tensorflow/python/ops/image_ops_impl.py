@@ -3250,7 +3250,8 @@ def non_max_suppression_lite(boxes,
       remove boxes based on score.
     use_static_shapes: If true, the output nmsed boxes, scores, classes and 
       selected_indices are padded to be of length `max_size_per_class` and 
-      it doesn't clip boxes to max_total_size. Defaults to false.
+      it doesn't clip boxes to max_total_size. If false, the outputs are
+      padded/clipped to max_total_size. Defaults to false.
     name: A name for the operation (optional).
 
   Returns:
@@ -3271,6 +3272,6 @@ def non_max_suppression_lite(boxes,
     iou_threshold = ops.convert_to_tensor(iou_threshold, name='iou_threshold')
     score_threshold = ops.convert_to_tensor(
         score_threshold, name='score_threshold')
-    return gen_image_ops.non_max_suppression_lite(boxes, scores, 
-            max_output_size_per_class, max_total_size, iou_threshold, 
+    return gen_image_ops.non_max_suppression_lite(boxes, scores,
+            max_output_size_per_class, max_total_size, iou_threshold,
             score_threshold, use_static_shapes)
