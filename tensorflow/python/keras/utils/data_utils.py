@@ -598,7 +598,7 @@ class OrderedEnqueuer(SequenceEnqueuer):
     def pool_fn(seqs):
       return multiprocessing.Pool(workers,
                                   initializer=init_pool_generator,
-                                  initargs=(seqs, self.random_seed))
+                                  initargs=(seqs, None))
     return pool_fn
 
   def _wait_queue(self):
