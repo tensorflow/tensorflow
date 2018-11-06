@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_JIT_XLA_COMPILATION_CACHE_H_
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/types/optional.h"
 #include "tensorflow/compiler/tf2xla/xla_compiler.h"
 #include "tensorflow/compiler/tf2xla/xla_context.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
@@ -108,7 +109,7 @@ class XlaCompilationCache : public ResourceBase {
       const std::map<int, Tensor>& constant_args,
       const std::map<int, OptionalTensor>& variable_args, OpKernelContext* ctx,
       const XlaCompiler::CompileOptions& compile_options,
-      bool compile_single_op, int64 compile_threshold,
+      bool compile_single_op, absl::optional<int64> compile_threshold,
       const XlaCompiler::CompilationResult** out_compilation_result,
       xla::LocalExecutable** out_executable);
 
@@ -180,7 +181,13 @@ class XlaCompilationCache : public ResourceBase {
 
     // Cumulative time spent compiling the cluster.
     int64 cumulative_compile_time_us = 0;
+
+    // True if we have decided that this cluster is too dynamic (i.e. its shapes
+    // change too frequently) to profitably JIT compile.  Once a cluster is
+    // tagged megamorphic, it stays megamorphic forever.
+    bool is_megamorphic = false;
   };
+
   mutex cluster_compile_stats_mu_;
 
   // Maps cluster names to compilation statistics for said cluster.
