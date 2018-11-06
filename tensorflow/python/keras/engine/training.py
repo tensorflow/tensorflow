@@ -882,7 +882,7 @@ class Model(Network):
       x_shape = first_x_value.shape
       if batch_size is None:
         batch_size = distributed_training_utils.get_batch_size(
-            self._distribution_strategy.num_replicas, x_shape[0], steps)
+            self._distribution_strategy.num_replicas_in_sync, x_shape[0], steps)
       # We need to use the drop_remainder argument to allow for a static
       # input shape which is required for TPUs.
       drop_remainder = self._distribution_strategy.require_static_shapes

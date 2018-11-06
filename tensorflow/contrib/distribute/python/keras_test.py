@@ -413,8 +413,8 @@ class TestDistributionStrategyWithNumpyArrays(test.TestCase,
 
       with self.assertRaisesRegexp(ValueError, 'is smaller than the number '
                                                'of replicas'):
-        # The batch size(32) * num_replicas(3) is 96 which is greater than the
-        # number of input samples(64).
+        # The batch size(32) * num_replicas_in_sync(3) is 96 which is greater
+        # than the number of input samples(64).
         distributed_training_utils.get_input_batch_params(inputs,
                                                           32,
                                                           strategy)
@@ -1016,7 +1016,7 @@ class TestDistributionStrategyCorrectness(test.TestCase,
           distribute=distribution)
 
       batch_size = 64
-      batch_size //= distribution.num_replicas
+      batch_size //= distribution.num_replicas_in_sync
       train_dataset = dataset_ops.Dataset.from_tensor_slices((x_train, y_train))
       train_dataset = batch_wrapper(train_dataset, batch_size, distribution)
 
@@ -1057,7 +1057,7 @@ class TestDistributionStrategyCorrectness(test.TestCase,
 
         batch_size = 64
         if with_distribution:
-          batch_size //= with_distribution.num_replicas
+          batch_size //= with_distribution.num_replicas_in_sync
         train_dataset = dataset_ops.Dataset.from_tensor_slices((x_train,
                                                                 y_train))
         train_dataset = batch_wrapper(train_dataset, batch_size, distribution)
@@ -1072,7 +1072,7 @@ class TestDistributionStrategyCorrectness(test.TestCase,
         x_predict = [[1.], [2.], [3.], [4.]]
         predict_batch_size = 4
         if with_distribution:
-          predict_batch_size //= with_distribution.num_replicas
+          predict_batch_size //= with_distribution.num_replicas_in_sync
         predict_dataset = dataset_ops.Dataset.from_tensor_slices(x_predict)
         predict_dataset = batch_wrapper(predict_dataset,
                                         predict_batch_size, distribution)
