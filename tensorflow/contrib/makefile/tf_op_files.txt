@@ -52,6 +52,8 @@ tensorflow/core/kernels/cwise_op_add_2.cc
 tensorflow/core/kernels/cwise_op_bitwise_and.cc
 tensorflow/core/kernels/cwise_op_bitwise_or.cc
 tensorflow/core/kernels/cwise_op_bitwise_xor.cc
+tensorflow/core/kernels/cwise_op_cos.cc
+tensorflow/core/kernels/cwise_op_cosh.cc
 tensorflow/core/kernels/cwise_op_div.cc
 tensorflow/core/kernels/cwise_op_equal_to_1.cc
 tensorflow/core/kernels/cwise_op_equal_to_2.cc
@@ -86,10 +88,13 @@ tensorflow/core/kernels/cwise_op_rsqrt.cc
 tensorflow/core/kernels/cwise_op_select.cc
 tensorflow/core/kernels/cwise_op_sigmoid.cc
 tensorflow/core/kernels/cwise_op_sign.cc
+tensorflow/core/kernels/cwise_op_sin.cc
+tensorflow/core/kernels/cwise_op_sinh.cc
 tensorflow/core/kernels/cwise_op_sqrt.cc
 tensorflow/core/kernels/cwise_op_square.cc
 tensorflow/core/kernels/cwise_op_squared_difference.cc
 tensorflow/core/kernels/cwise_op_sub.cc
+tensorflow/core/kernels/cwise_op_tan.cc
 tensorflow/core/kernels/cwise_op_tanh.cc
 tensorflow/core/kernels/cwise_op_xdivy.cc
 tensorflow/core/kernels/cwise_op_xlogy.cc

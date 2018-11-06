@@ -235,18 +235,17 @@ class ArithmeticOptimizerStage : public GraphOptimizerStage<string> {
 
   // TODO(ezhulenev): move to GraphOptimizerStage?
   bool IsDrivenByControlDependency(const NodeDef& node) const {
-    return std::any_of(node.input().begin(), node.input().end(),
-                       IsControlInput);
+    return std::any_of(
+        node.input().begin(), node.input().end(),
+        [](const string& input) { return IsControlInput(input); });
   }
 
   // TODO(ezhulenev): move to GraphOptimizerStage?
   bool DrivesControlDependency(const NodeDef& node) const {
-    int position;
     for (const NodeDef* output : ctx().node_map->GetOutputs(node.name())) {
       for (int i = 0; i < output->input_size(); ++i) {
-        auto input = output->input(i);
-        StringPiece name = ParseNodeNameAsStringPiece(input, &position);
-        if (name == node.name() && /*control input*/ position < 0) {
+        const TensorId tensor = ParseTensorName(output->input(i));
+        if (tensor.node() == node.name() && tensor.index() < 0) {
           return true;
         }
       }
@@ -1551,11 +1550,9 @@ class HoistCWiseUnaryChainsStage : public ArithmeticOptimizerStage {
       const auto& outputs = ctx().node_map->GetOutputs(node.name());
       for (NodeDef* output : outputs) {
         if (IsControlInput(output->input(0))) continue;
-        int port;
-        const StringPiece node_name =
-            ParseNodeNameAsStringPiece(output->input(0), &port);
-        if (node_name == node.name()) {
-          tails->insert(ChainLink(output, port));
+        TensorId tensor_id = ParseTensorName(output->input(0));
+        if (tensor_id.node() == node.name()) {
+          tails->insert(ChainLink(output, tensor_id.index()));
         } else {
           // This output node has a non-control input other than the split node,
           // abort.
@@ -1602,14 +1599,12 @@ class HoistCWiseUnaryChainsStage : public ArithmeticOptimizerStage {
         new_tails->insert(ChainLink(new_tail, link.port_origin));
       } else {
         for (NodeDef* new_tail : ctx().node_map->GetOutputs(tail->name())) {
-          int port;
-          const StringPiece node_name =
-              ParseNodeNameAsStringPiece(new_tail->input(0), &port);
-          if (node_name != tail->name()) {
+          const TensorId tensor = ParseTensorName(new_tail->input(0));
+          if (tensor.node() != tail->name()) {
             return Status::OK();
           }
           // Skip control outputs.
-          if (port >= 0) {
+          if (tensor.index() >= 0) {
             // Remember original port.
             new_tails->insert(ChainLink(new_tail, link.port_origin));
           }
@@ -1763,7 +1758,8 @@ class SqrtDivToRsqrtMulStage : public ArithmeticOptimizerStage {
     TF_RETURN_IF_ERROR(GetInputNode(node->input(1), &y));
     // Optimize only if divisor is a Sqrt whose output is not being consumed
     // elsewhere.
-    if (IsSqrt(*y) && (NumNonControlOutputs(*y, *ctx().node_map) == 1)) {
+    if (IsSqrt(*y) && !IsInPreserveSet(*y) &&
+        (NumNonControlOutputs(*y, *ctx().node_map) == 1)) {
       // a / sqrt(b) = a * rsqrt(b)
       node->set_op("Mul");
       y->set_op("Rsqrt");
@@ -1922,15 +1918,16 @@ class ReorderCastLikeAndValuePreserving : public ArithmeticOptimizerStage {
     NodeDef* new_consumer = AddCopyNode(optimized_producer_name, producer);
     new_consumer->set_input(0, new_producer->name());
 
+    NodeDef* new_value_preserving =
+        producer_is_cast ? new_producer : new_consumer;
+    const DataType new_input_type =
+        producer_is_cast ? cast_src_type : cast_dst_type;
     // Update the input type of the value-preserving node. The input and
     // output types of the cast-like nodes remain the same.
-    if (producer_is_cast) {
-      // Op(Cast()) -> Cast(Op())
-      TF_RETURN_IF_ERROR(SetInputType(cast_src_type, new_producer));
-    } else {
-      // Cast(Op()) -> Op(Cast())
-      TF_RETURN_IF_ERROR(SetInputType(cast_dst_type, new_consumer));
-    }
+    TF_RETURN_IF_ERROR(SetInputType(new_input_type, new_value_preserving));
+    // Make sure there is a kernel registered for the value preserving op
+    // with the new input type.
+    TF_RETURN_IF_ERROR(IsKernelRegisteredForNode(*new_value_preserving));
     ctx().node_map->AddOutput(new_producer->name(), new_consumer->name());
 
     AddToOptimizationQueue(new_producer);
@@ -3246,10 +3243,10 @@ uint64 UniqueNodes::ComputeSignature(const NodeDef& node) const {
   h = Hash64Combine(Hash64(node.device()), h);
 
   for (const auto& input : node.input()) {
-    int pos;
-    const StringPiece node_name = ParseNodeNameAsStringPiece(input, &pos);
-    h = Hash64CombineUnordered(Hash64(node_name.data(), node_name.size()), h);
-    h = Hash64CombineUnordered(std::hash<int>()(pos), h);
+    const TensorId input_tensor = ParseTensorName(input);
+    h = Hash64CombineUnordered(
+        Hash64(input_tensor.node().data(), input_tensor.node().size()), h);
+    h = Hash64CombineUnordered(std::hash<int>()(input_tensor.index()), h);
   }
   for (const auto& attr : node.attr()) {
     h = Hash64CombineUnordered(Hash64(attr.first), h);

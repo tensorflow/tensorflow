@@ -36,7 +36,6 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variable_scope as vs
 from tensorflow.python.platform import test
-from tensorflow.python.training import server_lib
 
 
 def scalar_shape():
@@ -395,35 +394,51 @@ class ListOpsTest(test_util.TensorFlowTestCase):
 
   @test_util.run_in_graph_and_eager_modes
   def testSerialize(self):
-    # pylint: disable=g-import-not-at-top
-    try:
-      import portpicker
-    except ImportError:
-      return
-    with context.graph_mode():
-      worker_port = portpicker.pick_unused_port()
-      ps_port = portpicker.pick_unused_port()
-      cluster_dict = {
-          "worker": ["localhost:%s" % worker_port],
-          "ps": ["localhost:%s" % ps_port]
-      }
-      cs = server_lib.ClusterSpec(cluster_dict)
+    worker = test_util.create_local_cluster(num_workers=1, num_ps=1)[0][0]
+    with ops.Graph().as_default(), session.Session(target=worker.target):
+      with ops.device("/job:worker"):
+        t = constant_op.constant([[1.0], [2.0]])
+        l = list_ops.tensor_list_from_tensor(t, element_shape=[1])
+      with ops.device("/job:ps"):
+        l_ps = array_ops.identity(l)
+        l_ps, e = list_ops.tensor_list_pop_back(
+            l_ps, element_dtype=dtypes.float32)
+      with ops.device("/job:worker"):
+        worker_e = array_ops.identity(e)
+      self.assertAllEqual(self.evaluate(worker_e), [2.0])
 
-      worker = server_lib.Server(
-          cs, job_name="worker", protocol="grpc", task_index=0, start=True)
-      unused_ps = server_lib.Server(
-          cs, job_name="ps", protocol="grpc", task_index=0, start=True)
-      with ops.Graph().as_default(), session.Session(target=worker.target):
-        with ops.device("/job:worker"):
-          t = constant_op.constant([[1.0], [2.0]])
-          l = list_ops.tensor_list_from_tensor(t, element_shape=[1])
-        with ops.device("/job:ps"):
-          l_ps = array_ops.identity(l)
-          l_ps, e = list_ops.tensor_list_pop_back(
-              l_ps, element_dtype=dtypes.float32)
-        with ops.device("/job:worker"):
-          worker_e = array_ops.identity(e)
-        self.assertAllEqual(self.evaluate(worker_e), [2.0])
+  @test_util.run_in_graph_and_eager_modes
+  def testSerializeListWithInvalidTensors(self):
+    worker = test_util.create_local_cluster(num_workers=1, num_ps=1)[0][0]
+    with ops.Graph().as_default(), session.Session(target=worker.target):
+      with ops.device("/job:worker"):
+        l = list_ops.tensor_list_reserve(
+            element_dtype=dtypes.float32,
+            element_shape=scalar_shape(),
+            num_elements=2)
+        l = list_ops.tensor_list_set_item(l, 0, 1.)
+      with ops.device("/job:ps"):
+        l_ps = array_ops.identity(l)
+        l_ps = list_ops.tensor_list_set_item(l_ps, 1, 2.)
+        t = list_ops.tensor_list_stack(l_ps, element_dtype=dtypes.float32)
+      with ops.device("/job:worker"):
+        worker_t = array_ops.identity(t)
+      self.assertAllEqual(self.evaluate(worker_t), [1.0, 2.0])
+
+  @test_util.run_in_graph_and_eager_modes
+  def testSerializeListWithUnknownRank(self):
+    worker = test_util.create_local_cluster(num_workers=1, num_ps=1)[0][0]
+    with ops.Graph().as_default(), session.Session(target=worker.target):
+      with ops.device("/job:worker"):
+        t = constant_op.constant([[1.0], [2.0]])
+        l = list_ops.tensor_list_from_tensor(t, element_shape=-1)
+      with ops.device("/job:ps"):
+        l_ps = array_ops.identity(l)
+        element_shape = list_ops.tensor_list_element_shape(
+            l_ps, shape_type=dtypes.int32)
+      with ops.device("/job:worker"):
+        element_shape = array_ops.identity(element_shape)
+      self.assertEqual(self.evaluate(element_shape), -1)
 
   @test_util.run_in_graph_and_eager_modes
   def testPushPopGradients(self):

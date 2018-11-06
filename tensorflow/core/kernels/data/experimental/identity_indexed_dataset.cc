@@ -81,14 +81,21 @@ class IdentityIndexedDatasetOp : public IndexedDatasetOpKernel {
                              bool* end_of_sequence) override {
         mutex_lock l(mu_);
         if (cur_ < dataset()->size_) {
-          Tensor result_tensor(ctx->allocator({}), DT_UINT64, {});
-          result_tensor.scalar<uint64>()() = cur_++;
-          out_tensors->emplace_back(std::move(result_tensor));
+          out_tensors->emplace_back(ctx->allocator({}), DT_UINT64,
+                                    TensorShape({}));
+          out_tensors->back().scalar<uint64>()() = cur_++;
           *end_of_sequence = false;
           return Status::OK();
         }
         *end_of_sequence = true;
         return Status::OK();
+      }
+
+     protected:
+      std::shared_ptr<model::Node> CreateNode(
+          IteratorContext* ctx, model::Node::Args args) const override {
+        return model::MakeKnownRatioNode(std::move(args),
+                                         /*ratio=*/1);
       }
 
      private:
@@ -127,9 +134,9 @@ class IdentityIndexedDatasetOp : public IndexedDatasetOpKernel {
               " is out of range for this dataset. (Size is: ", dataset_->size_,
               ".)");
         }
-        Tensor result_tensor(ctx.allocator({}), DT_UINT64, {});
-        result_tensor.scalar<uint64>()() = index;
-        out_tensors->emplace_back(std::move(result_tensor));
+        out_tensors->emplace_back(ctx.allocator({}), DT_UINT64,
+                                  TensorShape({}));
+        out_tensors->back().scalar<uint64>()() = index;
         return Status::OK();
       }
 

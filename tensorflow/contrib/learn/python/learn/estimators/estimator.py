@@ -404,7 +404,6 @@ class BaseEstimator(sklearn.BaseEstimator, evaluable.Evaluable,
   Users should not instantiate or subclass this class. Instead, use an
   `Estimator`.
   """
-  __metaclass__ = abc.ABCMeta
 
   # Note that for Google users, this is overridden with
   # learn_runner.EstimatorConfig.

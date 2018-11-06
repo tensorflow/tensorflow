@@ -119,17 +119,6 @@ Status XlaContext::AddResourceRetval(int retval_index, XlaResource* resource) {
   return Status::OK();
 }
 
-Status XlaContext::AppendTokenRetval(const xla::XlaOp& token) {
-  VLOG(1) << "Adding retval index " << retvals_.size()
-          << " with token to XLA computation";
-  XlaExpression e;
-  e.set_handle(token);
-  // We use DT_INVALID because there is no TF DataType which corresponds to XLA
-  // token. XlaCompiler handles this case separately, so putting it here is OK.
-  retvals_.push_back(Retval{DT_INVALID, TensorShape(), e});
-  return Status::OK();
-}
-
 xla::XlaBuilder* XlaContext::builder() { return builder_; }
 
 Status XlaContext::CreateResource(

@@ -57,6 +57,16 @@ class UnionClusterResolverTest(test.TestCase):
     actual_cluster_spec = union_resolver.cluster_spec()
     self._verifyClusterSpecEquality(actual_cluster_spec, expected_proto)
 
+  def testSimpleOverrideMaster(self):
+    base_cluster_spec = server_lib.ClusterSpec({
+        "ps": ["ps0:2222", "ps1:2222"],
+        "worker": ["worker0:2222", "worker1:2222", "worker2:2222"]
+    })
+
+    simple_resolver = SimpleClusterResolver(base_cluster_spec)
+    actual_master = simple_resolver.master("worker", 2)
+    self.assertEquals(actual_master, "worker2:2222")
+
   def testTwoNonOverlappingJobMergedClusterResolver(self):
     cluster_spec_1 = server_lib.ClusterSpec({
         "ps": [
@@ -85,6 +95,31 @@ class UnionClusterResolverTest(test.TestCase):
                          tasks { key: 2 value: 'worker2:2222' } }
     """
     self._verifyClusterSpecEquality(cluster_spec, expected_proto)
+
+  def testMergedClusterResolverMaster(self):
+    cluster_spec_1 = server_lib.ClusterSpec({
+        "ps": [
+            "ps0:2222",
+            "ps1:2222"
+        ]
+    })
+    cluster_spec_2 = server_lib.ClusterSpec({
+        "worker": [
+            "worker0:2222",
+            "worker1:2222",
+            "worker2:2222"
+        ]
+    })
+    cluster_resolver_1 = SimpleClusterResolver(cluster_spec_1)
+    cluster_resolver_2 = SimpleClusterResolver(cluster_spec_2)
+
+    union_cluster = UnionClusterResolver(cluster_resolver_1, cluster_resolver_2)
+
+    unspecified_master = union_cluster.master()
+    self.assertEquals(unspecified_master, "")
+
+    specified_master = union_cluster.master("worker", 1)
+    self.assertEquals(specified_master, "worker1:2222")
 
   def testOverlappingJobMergedClusterResolver(self):
     cluster_spec_1 = server_lib.ClusterSpec({

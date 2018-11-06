@@ -59,7 +59,6 @@ _allowed_symbols = [
     'poisson_regression_head',
     'regression_head',
     'DNNEstimator',
-    'DNNLinearCombinedEstimator',
     'LinearEstimator',
     'boosted_trees_classifier_train_in_memory',
     'boosted_trees_regressor_train_in_memory',

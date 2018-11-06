@@ -19,6 +19,8 @@ from __future__ import print_function
 
 import abc
 
+import six
+
 from tensorflow.python.data.util import nest
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -31,6 +33,7 @@ from tensorflow.python.ops import sparse_ops
 _STRUCTURE_CONVERSION_FUNCTION_REGISTRY = {}
 
 
+@six.add_metaclass(abc.ABCMeta)
 class Structure(object):
   """Represents structural information, such as type and shape, about a value.
 
@@ -46,7 +49,6 @@ class Structure(object):
   and `tf.data.Dataset.output_classes`, and similar properties and arguments in
   the `tf.data.Iterator` and `Optional` classes.
   """
-  __metaclass__ = abc.ABCMeta
 
   @abc.abstractproperty
   def _flat_shapes(self):
@@ -113,8 +115,26 @@ class Structure(object):
   def _from_tensor_list(self, flat_value):
     """Builds a flat list of `tf.Tensor` into a value matching this structure.
 
-    Requires: The shapes and types of the tensors in `flat_value` must be
-    compatible with `self._flat_shapes` and `self._flat_types` respectively.
+    Args:
+      flat_value: A list of `tf.Tensor` with compatible flat structure.
+
+    Returns:
+      A structured object matching this structure.
+
+    Raises:
+      ValueError: If the shapes and types of the tensors in `flat_value` are not
+        compatible with `self._flat_shapes` and `self._flat_types` respectively.
+    """
+    raise NotImplementedError("Structure._from_tensor_list()")
+
+  def _from_compatible_tensor_list(self, flat_value):
+    """A version of `_from_tensor_list()` that may avoid performing checks.
+
+    NOTE: This method should be used to avoid checks for performance reasons,
+    when the validity of `flat_value` has been validated by other means.
+    The shapes and types of the tensors in `flat_value` must be compatible with
+    `self._flat_shapes` and `self._flat_types` respectively. The behavior is
+    undefined if this requirement is not met.
 
     Args:
       flat_value: A list of `tf.Tensor` with compatible flat structure.
@@ -122,7 +142,7 @@ class Structure(object):
     Returns:
       A structured object matching this structure.
     """
-    raise NotImplementedError("Structure._from_tensor_list()")
+    return self._from_tensor_list(flat_value)
 
   @staticmethod
   def from_value(value):
@@ -217,6 +237,18 @@ class Structure(object):
     """
     _STRUCTURE_CONVERSION_FUNCTION_REGISTRY[type_object] = converter_fn
 
+  @abc.abstractmethod
+  def _to_legacy_output_types(self):
+    raise NotImplementedError("Structure._to_legacy_output_types()")
+
+  @abc.abstractmethod
+  def _to_legacy_output_shapes(self):
+    raise NotImplementedError("Structure._to_legacy_output_shapes()")
+
+  @abc.abstractmethod
+  def _to_legacy_output_classes(self):
+    raise NotImplementedError("Structure._to_legacy_output_classes()")
+
 
 # NOTE(mrry): The following classes make extensive use of non-public methods of
 # their base class, so we disable the protected-access lint warning once here.
@@ -226,6 +258,7 @@ class NestedStructure(Structure):
 
   def __init__(self, nested_structure):
     self._nested_structure = nested_structure
+    self._flat_nested_structure = nest.flatten(nested_structure)
     self._flat_shapes_list = []
     self._flat_types_list = []
     for s in nest.flatten(nested_structure):
@@ -268,8 +301,7 @@ class NestedStructure(Structure):
       raise ValueError("The value %r is not compatible with the nested "
                        "structure %r." % (value, self._nested_structure))
 
-    for sub_value, structure in zip(flat_value,
-                                    nest.flatten(self._nested_structure)):
+    for sub_value, structure in zip(flat_value, self._flat_nested_structure):
       if not structure.is_compatible_with(Structure.from_value(sub_value)):
         raise ValueError("Component value %r is not compatible with the nested "
                          "structure %r." % (sub_value, structure))
@@ -282,9 +314,15 @@ class NestedStructure(Structure):
                        % (len(self._flat_types), len(flat_value)))
 
     flat_ret = []
-    for sub_value, structure in zip(flat_value,
-                                    nest.flatten(self._nested_structure)):
+    for sub_value, structure in zip(flat_value, self._flat_nested_structure):
       flat_ret.append(structure._from_tensor_list([sub_value]))
+
+    return nest.pack_sequence_as(self._nested_structure, flat_ret)
+
+  def _from_compatible_tensor_list(self, flat_value):
+    flat_ret = []
+    for sub_value, structure in zip(flat_value, self._flat_nested_structure):
+      flat_ret.append(structure._from_compatible_tensor_list([sub_value]))
 
     return nest.pack_sequence_as(self._nested_structure, flat_ret)
 
@@ -294,6 +332,18 @@ class NestedStructure(Structure):
         Structure.from_value(sub_value) for sub_value in nest.flatten(value)
     ]
     return NestedStructure(nest.pack_sequence_as(value, flat_nested_structure))
+
+  def _to_legacy_output_types(self):
+    return nest.map_structure(
+        lambda s: s._to_legacy_output_types(), self._nested_structure)
+
+  def _to_legacy_output_shapes(self):
+    return nest.map_structure(
+        lambda s: s._to_legacy_output_shapes(), self._nested_structure)
+
+  def _to_legacy_output_classes(self):
+    return nest.map_structure(
+        lambda s: s._to_legacy_output_classes(), self._nested_structure)
 
 
 class TensorStructure(Structure):
@@ -328,11 +378,23 @@ class TensorStructure(Structure):
     if not self.is_compatible_with(Structure.from_value(flat_value[0])):
       raise ValueError("Cannot convert %r to a tensor with dtype %s and shape "
                        "%s." % (flat_value[0], self._dtype, self._shape))
+    return self._from_compatible_tensor_list(flat_value)
+
+  def _from_compatible_tensor_list(self, flat_value):
     return flat_value[0]
 
   @staticmethod
   def from_value(value):
     return TensorStructure(value.dtype, value.shape)
+
+  def _to_legacy_output_types(self):
+    return self._dtype
+
+  def _to_legacy_output_shapes(self):
+    return self._shape
+
+  def _to_legacy_output_classes(self):
+    return ops.Tensor
 
 
 class SparseTensorStructure(Structure):
@@ -363,6 +425,9 @@ class SparseTensorStructure(Structure):
         not flat_value[0].shape.is_compatible_with(tensor_shape.vector(3))):
       raise ValueError("SparseTensorStructure corresponds to a single "
                        "tf.variant vector of length 3.")
+    return self._from_compatible_tensor_list(flat_value)
+
+  def _from_compatible_tensor_list(self, flat_value):
     return sparse_ops.deserialize_sparse(
         flat_value[0], dtype=self._dtype, rank=self._dense_shape.ndims)
 
@@ -372,3 +437,12 @@ class SparseTensorStructure(Structure):
     return SparseTensorStructure(
         sparse_tensor.dtype,
         tensor_util.constant_value_as_shape(sparse_tensor.dense_shape))
+
+  def _to_legacy_output_types(self):
+    return self._dtype
+
+  def _to_legacy_output_shapes(self):
+    return self._dense_shape
+
+  def _to_legacy_output_classes(self):
+    return sparse_tensor_lib.SparseTensor

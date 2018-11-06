@@ -135,7 +135,7 @@ class FtrlOptimizerTest(xla_test.XLATestCase):
         self.assertAllCloseAccordingToType(
             np.array([-2.60260963, -4.29698515]),
             var0.eval(),
-            float_rtol=1e-5,
+            float_rtol=1e-4,
             half_rtol=1e-2)
         self.assertAllCloseAccordingToType(
             np.array([-0.28432083, -0.56694895]),
@@ -167,7 +167,8 @@ class FtrlOptimizerTest(xla_test.XLATestCase):
 
         # Validate updated params
         self.assertAllCloseAccordingToType(
-            np.array([-2.55607247, -3.98729396]), var0.eval(), 1e-5, 1e-5)
+            np.array([-2.55607247, -3.98729396]), var0.eval(), 1e-5, 1e-5,
+            float_rtol=1e-4)
         self.assertAllCloseAccordingToType(
             np.array([-0.28232238, -0.56096673]), var1.eval(), 1e-5, 1e-5)
 

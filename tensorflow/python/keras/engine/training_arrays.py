@@ -83,8 +83,8 @@ def fit_loop(model,
   Raises:
       ValueError: in case of invalid arguments.
   """
-  model._make_train_function()
-  f = model.train_function
+  model._make_fit_function()
+  f = model._fit_function
 
   sample_weights = sample_weights or []
   val_sample_weights = val_sample_weights or []
@@ -366,8 +366,8 @@ def test_loop(model,
       and/or metrics). The attribute `model.metrics_names` will give you
       the display labels for the scalar outputs.
   """
-  model._make_test_function()
-  f = model.test_function
+  model._make_eval_function()
+  f = model._eval_function
 
   sample_weights = sample_weights or []
   inputs = training_utils.ModelInputs(inputs).as_list()
@@ -379,12 +379,6 @@ def test_loop(model,
   if hasattr(model, 'metrics'):
     for m in model.stateful_metric_functions:
       m.reset_states()
-    stateful_metric_indices = [
-        i for i, name in enumerate(model.metrics_names)
-        if str(name) in model.stateful_metric_names
-    ]
-  else:
-    stateful_metric_indices = []
 
   num_samples = training_utils.check_num_samples(
       ins, batch_size, steps, 'steps')
@@ -409,20 +403,15 @@ def test_loop(model,
         if step == 0:
           for _ in enumerate(batch_outs):
             outs.append(0.)
-        for i, batch_out in enumerate(batch_outs):
-          if i in stateful_metric_indices:
-            outs[i] = batch_out
-          else:
-            outs[i] += batch_out
+        outs[0] += batch_outs[0]  # index 0 = 'loss'
+        outs[1:] = batch_outs[1:]
       else:
         if step == 0:
           outs.append(0.)
         outs[0] += batch_outs
       if verbose == 1:
         progbar.update(step + 1)
-    for i in range(len(outs)):
-      if i not in stateful_metric_indices:
-        outs[i] /= steps
+    outs[0] /= steps
   else:
     batches = make_batches(num_samples, batch_size)
     index_array = np.arange(num_samples)
@@ -441,20 +430,15 @@ def test_loop(model,
       if isinstance(batch_outs, list):
         if batch_index == 0:
           outs.extend([0.] * len(batch_outs))
-        for i, batch_out in enumerate(batch_outs):
-          if i in stateful_metric_indices:
-            outs[i] = batch_out
-          else:
-            outs[i] += batch_out * len(batch_ids)
+        outs[0] += batch_outs[0] * len(batch_ids)  # index 0 = 'loss'
+        outs[1:] = batch_outs[1:]
       else:
         if batch_index == 0:
           outs.append(0.)
         outs[0] += batch_outs * len(batch_ids)
       if verbose == 1:
         progbar.update(batch_end)
-    for i in range(len(outs)):
-      if i not in stateful_metric_indices:
-        outs[i] /= num_samples
+    outs[0] /= num_samples
   if len(outs) == 1:
     return outs[0]
   return outs

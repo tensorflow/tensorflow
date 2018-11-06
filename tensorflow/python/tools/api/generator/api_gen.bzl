@@ -2,16 +2,6 @@
 
 load("//tensorflow/python/tools/api/generator:api_init_files.bzl", "TENSORFLOW_API_INIT_FILES")
 
-# keep sorted
-ESTIMATOR_API_INIT_FILES = [
-    # BEGIN GENERATED ESTIMATOR FILES
-    "__init__.py",
-    "estimator/__init__.py",
-    "estimator/export/__init__.py",
-    "estimator/inputs/__init__.py",
-    # END GENERATED ESTIMATOR FILES
-]
-
 def get_compat_files(
         file_paths,
         compat_api_version):
@@ -27,7 +17,7 @@ def gen_api_init_files(
         api_version = 2,
         compat_api_versions = [],
         compat_init_templates = [],
-        packages = ["tensorflow.python"],
+        packages = ["tensorflow.python", "tensorflow.lite.python.lite"],
         package_deps = ["//tensorflow/python:no_contrib"],
         output_package = "tensorflow",
         output_dir = ""):

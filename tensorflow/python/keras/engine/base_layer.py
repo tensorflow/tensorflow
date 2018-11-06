@@ -160,9 +160,16 @@ class Layer(checkpointable.CheckpointableBase):
     # A list of zero-argument lambdas which return Tensors, used for variable
     # regularizers.
     self._callable_losses = []
-    # A list of Tensors containing activity regularizers and losses manually
-    # added through `add_loss`.
+    # A list of symbolic Tensors containing activity regularizers and losses
+    # manually added through `add_loss` in graph-building mode.
     self._losses = []
+    # A list of loss values containing activity regularizers and losses
+    # manually added through `add_loss` during eager execution. It is cleared
+    # after every batch.
+    # Because we plan on eventually allowing a same model instance to be trained
+    # in eager mode or graph mode alternatively, we need to keep track of
+    # eager losses and symbolic losses via separate attributes.
+    self._eager_losses = []
     self._dtype = None if dtype is None else dtypes.as_dtype(dtype).name
     self._call_fn_args = function_utils.fn_args(self.call)
     self._compute_previous_mask = ('mask' in self._call_fn_args or
@@ -176,11 +183,24 @@ class Layer(checkpointable.CheckpointableBase):
 
     self.supports_masking = False
 
+    # Mark if a layer supports using graph functions in the eager
+    # fit/predict/evaluate loop
+    # TODO(kaftan): merge this with the _static_graph_friendly flag once
+    # enough eager function bugs involving control flow / tensorarrays have
+    # been fixed,  and static-graph-friendly layers will almost always work in
+    # eager graph functions.
+    # We conservatively make this flag opt-in for now to avoid causing existing
+    # custom layers to crash.
+    self._can_use_graph_functions = False
+
     call_argspec = tf_inspect.getfullargspec(self.call)
     if 'training' in call_argspec.args:
       self._expects_training_arg = True
     else:
       self._expects_training_arg = False
+
+    # Whether the `call` method can be used to build a TF graph without issues.
+    self._static_graph_friendly = True
 
     # Manage input shape information if passed.
     if 'input_shape' in kwargs or 'batch_input_shape' in kwargs:
@@ -201,6 +221,17 @@ class Layer(checkpointable.CheckpointableBase):
       self._initial_weights = kwargs['weights']
     else:
       self._initial_weights = None
+
+  @property
+  def _is_static_graph_friendly(self):
+    return self._static_graph_friendly
+
+  @_is_static_graph_friendly.setter
+  def _is_static_graph_friendly(self, value):
+    if value not in {True, False}:
+      raise ValueError('`static_graph_friendly` requires a boolean value. '
+                       'Received: {}'.format(value))
+    self._static_graph_friendly = value
 
   def _init_set_name(self, name, zero_based=True):
     if not name:
@@ -367,7 +398,10 @@ class Layer(checkpointable.CheckpointableBase):
       A list of tensors.
     """
     collected_losses = []
-    collected_losses.extend(self._losses)
+    if context.executing_eagerly():
+      collected_losses.extend(self._eager_losses)
+    else:
+      collected_losses.extend(self._losses)
     for regularizer in self._callable_losses:
       loss_tensor = regularizer()
       if loss_tensor is not None:
@@ -394,8 +428,7 @@ class Layer(checkpointable.CheckpointableBase):
 
     Arguments:
       losses: Loss tensor, or list/tuple of tensors. Rather than tensors, losses
-        may also be zero-argument callables which create a loss tensor. Only
-        callable losses are supported when executing eagerly.
+        may also be zero-argument callables which create a loss tensor.
       inputs: Ignored when executing eagerly. If anything other than None is
         passed, it signals the losses are conditional on some of the layer's
         inputs, and thus they should only be run where these inputs are
@@ -403,10 +436,6 @@ class Layer(checkpointable.CheckpointableBase):
         instance. If `None` is passed, the losses are assumed
         to be unconditional, and will apply across all dataflows of the layer
         (e.g. weight regularization losses).
-
-    Raises:
-      RuntimeError: If called in Eager mode with a `Tensor` rather than a
-        callable, or if `inputs` is not None.
     """
     losses = generic_utils.to_list(losses)
 
@@ -425,7 +454,10 @@ class Layer(checkpointable.CheckpointableBase):
         self._callable_losses.append(
             functools.partial(_tag_unconditional, loss))
       else:
-        self._losses.append(_tag_unconditional(loss))
+        if context.executing_eagerly():
+          self._eager_losses.append(_tag_unconditional(loss))
+        else:
+          self._losses.append(_tag_unconditional(loss))
 
   def get_losses_for(self, inputs):
     """Retrieves losses relevant to a specific set of inputs.
@@ -671,14 +703,16 @@ class Layer(checkpointable.CheckpointableBase):
 
     if context.executing_eagerly():
       # Accept NumPy inputs by converting to Tensors when executing eagerly.
-      if all([isinstance(x, np.ndarray) for x in input_list]):
+      if all([isinstance(x, (np.ndarray, float, int)) for x in input_list]):
         inputs = nest.map_structure(ops.convert_to_tensor, inputs)
         input_list = nest.flatten(inputs)
 
-    build_graph = not context.executing_eagerly()
-    # TODO(fchollet, allenl): Make deferred mode work with subclassed Models
-    # which don't use an "inputs" argument.
-    in_deferred_mode = isinstance(input_list[0], DeferredTensor)
+    # We will attempt to build a TF graph if & only if all inputs are symbolic.
+    # This is always the case in graph mode. It can also be the case in eager
+    # mode when all inputs can be traced back to `keras.Input()` (when building
+    # models using the functional API).
+    build_graph = tf_utils.are_all_symbolic_tensors(input_list)
+    executing_eagerly = context.executing_eagerly()
 
     # Handle Keras mask propagation from previous layer to current layer.
     previous_mask = None
@@ -698,14 +732,6 @@ class Layer(checkpointable.CheckpointableBase):
 
     with ops.name_scope(self._name_scope()):
       if not self.built:
-        if not build_graph and not in_deferred_mode:
-          for x in input_list:
-            if hasattr(x, '_keras_history'):
-              raise ValueError('_keras_history currently unsupported in '
-                               'Eager mode. Found _keras_history in %s while '
-                               'executing __call__ for %s(%s)' %
-                               (x, self.__class_.__name__, self))
-
         # Check input assumptions set before layer building, e.g. input rank.
         self._assert_input_compatibility(inputs)
         if input_list and self._dtype is None:
@@ -729,57 +755,65 @@ class Layer(checkpointable.CheckpointableBase):
         self.built = True
 
       # Check input assumptions set after layer building, e.g. input shape.
-      if build_graph or in_deferred_mode:
-        self._assert_input_compatibility(inputs)
-
-      if not in_deferred_mode:
-        outputs = self.call(inputs, *args, **kwargs)
-        if outputs is None:
-          raise ValueError('A layer\'s `call` method should return a Tensor '
-                           'or a list of Tensors, not None (layer: ' +
-                           self.name + ').')
-      else:
-        # Deferred mode behavior: use `compute_output_shape` to
-        # infer the number of outputs of the layer and their shapes.
-        if input_shapes is None:
-          input_shapes = nest.map_structure(lambda x: x.shape, inputs)
-
-        output_shapes = self.compute_output_shape(input_shapes)
-        output_shapes = nest.flatten(output_shapes)
-        outputs = [
-            # TODO(fchollet): name the deferred tensors?
-            DeferredTensor(shape=shape, dtype=self._dtype)
-            for shape in output_shapes
-        ]
-        if len(outputs) == 1:
-          outputs = outputs[0]
-
       if build_graph:
-        self._set_mask_metadata(inputs, outputs, previous_mask)
+        # Symbolic execution on symbolic tensors. We will attempt to build
+        # the corresponding TF subgraph inside `backend.get_graph()`
+        self._assert_input_compatibility(inputs)
+        graph = backend.get_graph()
+        with graph.as_default():
+          if not executing_eagerly:
+            # In graph mode, failure to build the layer's graph
+            # implies a user-side bug. We don't catch exceptions.
+            outputs = self.call(inputs, *args, **kwargs)
+          else:
+            try:
+              outputs = self.call(inputs, *args, **kwargs)
+            except Exception:  # pylint: disable=broad-except
+              # Any issue during graph-building means we will later run the
+              # model in eager mode, whether the issue was related to
+              # graph mode or not. This provides a nice debugging experience.
+              self._is_static_graph_friendly = False
+              # We will use static shape inference to return symbolic tensors
+              # matching the specifications of the layer outputs.
+              # Since we have set `self._is_static_graph_friendly = False`,
+              # we will never attempt to run the underlying TF graph (which is
+              # disconnected).
+              # TODO(fchollet): consider py_func as an alternative, which
+              # would enable us to run the underlying graph if needed.
+              input_shapes = nest.map_structure(lambda x: x.shape, inputs)
+              output_shapes = self.compute_output_shape(input_shapes)
+              outputs = nest.map_structure(
+                  lambda shape: backend.placeholder(shape, dtype=self.dtype),
+                  output_shapes)
 
-      if not in_deferred_mode:
+          if outputs is None:
+            raise ValueError('A layer\'s `call` method should return a '
+                             'Tensor or a list of Tensors, not None '
+                             '(layer: ' + self.name + ').')
+          self._handle_activity_regularization(inputs, outputs)
+          self._set_mask_metadata(inputs, outputs, previous_mask)
+          self._set_learning_phase_metadata(inputs, outputs)
+          if have_all_keras_metadata(inputs):
+            inputs, outputs = self._set_connectivity_metadata_(
+                inputs, outputs, args, kwargs)
+          if hasattr(self, '_set_inputs') and not self.inputs:
+            # Subclassed network: explicitly set metadata normally set by
+            # a call to self._set_inputs().
+            # This is not relevant in eager execution.
+            self._set_inputs(inputs, outputs)
+      else:
+        # Eager execution on data tensors.
+        outputs = self.call(inputs, *args, **kwargs)
         self._handle_activity_regularization(inputs, outputs)
-
-      if in_deferred_mode or build_graph and have_all_keras_metadata(inputs):
-        inputs, outputs = self._set_connectivity_metadata_(
-            inputs, outputs, args, kwargs)
-
-      if context.executing_eagerly():
         return outputs
 
-      if hasattr(self, '_symbolic_set_inputs') and not self.inputs:
-        # Subclassed network: explicitly set metadata normally set by a call to
-        # self._set_inputs(). This is not relevant in eager execution.
-        self._symbolic_set_inputs(inputs, outputs)
-
-      if in_deferred_mode or build_graph:
-        self._set_learning_phase_metadata(inputs, outputs)
-
-    # Optionally load weight values that were specified at layer instantiation.
-    # TODO(fchollet): consider enabling this with eager execution too.
-    if hasattr(self, '_initial_weights') and self._initial_weights is not None:
-      self.set_weights(self._initial_weights)
-      del self._initial_weights
+    if not context.executing_eagerly():
+      # Optionally load weight values specified at layer instantiation.
+      # TODO(fchollet): consider enabling this with eager execution too.
+      if (hasattr(self, '_initial_weights') and
+          self._initial_weights is not None):
+        self.set_weights(self._initial_weights)
+        del self._initial_weights
     return outputs
 
   def apply(self, inputs, *args, **kwargs):
@@ -843,17 +877,19 @@ class Layer(checkpointable.CheckpointableBase):
     if args:
       if call_convention == CallConvention.EXPLICIT_INPUTS_ARGUMENT:
         raise TypeError(
-            'This Layer takes an `inputs` argument to call(), and only the '
-            '`inputs` argument may be specified as a positional argument. '
-            'Pass everything else as a keyword argument (those arguments will'
-            ' not be tracked as inputs to the Layer).')
+            'This layer ("{}") takes an `inputs` argument in `call()`, '
+            'and only the `inputs` argument may be specified as a positional '
+            'argument. Pass everything else as a keyword argument '
+            '(those arguments will not be tracked '
+            'as inputs to the layer).'.format(self.name))
       elif call_convention == CallConvention.SINGLE_POSITIONAL_ARGUMENT:
         raise TypeError(
-            'This Layer takes a single positional argument to call(), which is '
-            'by convention the inputs argument, and only this argument may be '
-            'specified as a positional argument. Pass everything else as a '
-            'keyword argument (those arguments will not be tracked as inputs '
-            'to the Layer).')
+            'This layer ("{}") takes a single positional argument in `call()`,'
+            ' which is by convention the `inputs` argument, '
+            'and only this argument may be specified as a positional argument. '
+            'Pass everything else as a keyword argument '
+            '(those arguments will not be tracked '
+            'as inputs to the layer).'.format(self.name))
 
     # If the layer returns tensors from its inputs, unmodified,
     # we copy them to avoid loss of tensor metadata.
@@ -904,9 +940,10 @@ class Layer(checkpointable.CheckpointableBase):
       if call_arg_spec.defaults:
         if call_arg_spec.varargs is not None:
           raise TypeError(
-              'Layer.call() may not accept both *args and arguments with '
-              'default values (unable to determine which are inputs to the '
-              'Layer).')
+              'Layers may not accept both positional arguments and '
+              'arguments with default values (unable to determine which '
+              'are inputs to the layer). '
+              'Issue occurred with layer "%s"' % (self.name))
         keyword_arg_names = set(
             call_arg_spec.args[-len(call_arg_spec.defaults):])
       else:
@@ -935,9 +972,10 @@ class Layer(checkpointable.CheckpointableBase):
         else:
           if remaining_args_are_keyword:
             raise TypeError(
-                'Found a positional argument to call() after a non-input '
+                'Found a positional argument in a layer call after a non-input '
                 'argument. All arguments after "training" must be keyword '
-                'arguments, and are not tracked as inputs to the Layer.')
+                'arguments, and are not tracked as inputs to the layer. '
+                'Issue occurred with layer "%s"' % (self.name))
         if remaining_args_are_keyword:
           non_input_arg_values[argument_name] = bound_args[argument_name]
         else:
@@ -1746,37 +1784,6 @@ class Node(object):
         'node_indices': self.node_indices,
         'tensor_indices': self.tensor_indices
     }
-
-
-class DeferredTensor(object):
-  """Tensor-like object used to build graphs of layers in Eager mode.
-
-  When calling a layer on a DeferredTensor, the layer will not perform any
-  computation and will simply perform shape inference to return new
-  DeferredTensors with appropriate shape information. Thus DeferredTensor
-  behaves like a graph-mode Tensor when manipulated by layers.
-  """
-
-  def __init__(self, shape, dtype, name=None):
-    self.shape = tensor_shape.TensorShape(shape)
-    if dtype is None:
-      self.dtype = dtypes.as_dtype(np.float32)
-    else:
-      self.dtype = dtypes.as_dtype(dtype)
-    self.name = name
-
-  def get_shape(self):
-    return self.shape
-
-  def __str__(self):
-    return "DeferredTensor('%s', shape=%s, dtype=%s)" % (self.name,
-                                                         self.shape,
-                                                         self.dtype.name)
-
-  def __repr__(self):
-    return "<DeferredTensor '%s' shape=%s dtype=%s>" % (self.name,
-                                                        self.shape,
-                                                        self.dtype.name)
 
 
 def unique_layer_name(name, name_uid_map=None, avoid_names=None, namespace='',

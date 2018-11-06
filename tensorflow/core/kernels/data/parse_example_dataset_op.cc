@@ -142,11 +142,11 @@ class ParseExampleDatasetOp : public UnaryDatasetOpKernel {
       it->second = i++;
     }
 
-    *output = new Dataset(
-        ctx, input, std::move(dense_defaults), std::move(sparse_keys_),
-        std::move(dense_keys_), std::move(key_to_output_index),
-        std::move(config), num_parallel_calls, sparse_types_, dense_types_,
-        dense_shapes_, output_types_, output_shapes_, sloppy_);
+    *output =
+        new Dataset(ctx, input, dense_defaults, sparse_keys_, dense_keys_,
+                    std::move(key_to_output_index), std::move(config),
+                    num_parallel_calls, sparse_types_, dense_types_,
+                    dense_shapes_, output_types_, output_shapes_, sloppy_);
   }
 
  private:
@@ -190,7 +190,7 @@ class ParseExampleDatasetOp : public UnaryDatasetOpKernel {
           thread::ThreadPool* device_threadpool =
               ctx->lib()->device()->tensorflow_cpu_worker_threads()->workers;
           std::vector<string> slice_vec;
-          for (Tensor t : input_element) {
+          for (const Tensor& t : input_element) {
             auto serialized_t = t.flat<string>();
             gtl::ArraySlice<string> slice(serialized_t.data(),
                                           serialized_t.size());
@@ -227,12 +227,14 @@ class ParseExampleDatasetOp : public UnaryDatasetOpKernel {
               (*result)[output_index] = example_result.dense_values[d];
             }
             for (int d = 0; d < sparse_keys_.size(); ++d) {
-              Tensor serialized_sparse = Tensor(DT_VARIANT, TensorShape({3}));
+              int output_index = key_to_output_index_.at(sparse_keys_[d]);
+              (*result)[output_index] =
+                  Tensor(ctx->allocator({}), DT_VARIANT, {3});
+              Tensor& serialized_sparse = (*result)[output_index];
               auto serialized_sparse_t = serialized_sparse.vec<Variant>();
               serialized_sparse_t(0) = example_result.sparse_indices[d];
               serialized_sparse_t(1) = example_result.sparse_values[d];
               serialized_sparse_t(2) = example_result.sparse_shapes[d];
-              int output_index = key_to_output_index_.at(sparse_keys_[d]);
               CHECK(serialized_sparse.dtype() == output_dtypes()[output_index])
                   << "Got wrong type for FastParseExample return value " << d
                   << " (expected "
@@ -244,7 +246,6 @@ class ParseExampleDatasetOp : public UnaryDatasetOpKernel {
                   << " (expected "
                   << output_shapes()[output_index].DebugString() << ", got "
                   << serialized_sparse.shape().DebugString() << ").";
-              (*result)[output_index] = serialized_sparse;
             }
             // TODO(b/111553342): User provided tags instead of fixed tag.
             if (stats_aggregator) {

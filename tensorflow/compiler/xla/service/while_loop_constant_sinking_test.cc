@@ -114,7 +114,7 @@ HloModule ModuleWithWhile
 
 body {
   p_b = (f32[2],(f32[2],f32[2])) parameter(0)
-  p_b.0 = f32[2] get-tuple-element((f32[2],f32[2],f32[2]) p_b), index=0
+  p_b.0 = f32[2] get-tuple-element((f32[2],(f32[2],f32[2])) p_b), index=0
   p_b.1 = (f32[2],f32[2]) get-tuple-element((f32[2],(f32[2],f32[2])) p_b), index=1
 
   p_b.1.1 = f32[2] get-tuple-element(p_b.1), index=0

@@ -169,7 +169,7 @@ __global__ void lstm_gates(const T* icfo, const T* b, const T* cs_prev,
   f[cid] = f_local;
 
   T cs_local = i_local * ci_local + f_local * cs_prev[cid];
-  if (cell_clip_t > strict_cast<T>(0.0f)) {
+  if (cell_clip > 0.0f) {
     cs_local = clip_op(cs_local, cell_clip_t);
   }
   cs[cid] = cs_local;
@@ -248,7 +248,8 @@ void LSTMBlockCellFpropWithCUDA(
   // states1 = xh * w
   typename TTypes<T>::ConstMatrix const_xh(xh.data(), xh.dimensions());
   TensorBlasGemm<GPUDevice, T, true /* USE_CUBLAS */>::compute(
-      ctx, d, false, false, 1.f, const_xh, w, 0.f, icfo);
+      ctx, d, false, false, typename gemm_compute_type<T>::type(1.f), const_xh,
+      w, typename gemm_compute_type<T>::type(0.f), icfo);
 
   // Add bias, apply non-linearities and gating.
   //

@@ -697,15 +697,11 @@ Status IrEmitter::HandleReduce(HloInstruction* reduce) {
 Status IrEmitter::HandleFusion(HloInstruction* fusion) {
   // kFusion for library calls should be handled by
   // IrEmitterUnnested::HandleFusion.
-  CHECK(HloInstruction::FusionKind::kLoop == fusion->fusion_kind());
-
-  std::vector<llvm_ir::IrArray> parameter_arrays;
-  for (HloInstruction* operand : fusion->operands()) {
-    parameter_arrays.push_back(GetIrArray(*operand, *fusion));
-  }
+  CHECK_EQ(HloInstruction::FusionKind::kLoop, fusion->fusion_kind());
   GpuElementalIrEmitter elemental_emitter(hlo_module_config_, module_, &b_,
                                           GetNestedComputer());
-  FusedIrEmitter fused_emitter(parameter_arrays, &elemental_emitter);
+  FusedIrEmitter fused_emitter(GetGeneratorForOperandIrArrays(fusion),
+                               &elemental_emitter);
   TF_RETURN_IF_ERROR(fusion->fused_expression_root()->Accept(&fused_emitter));
 
   return EmitTargetElementLoop(*fusion, fused_emitter.GetRootGenerator());

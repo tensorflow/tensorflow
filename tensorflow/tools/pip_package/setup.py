@@ -97,9 +97,9 @@ if sys.version_info < (3, 4):
 # pylint: disable=line-too-long
 CONSOLE_SCRIPTS = [
     'freeze_graph = tensorflow.python.tools.freeze_graph:run_main',
-    'toco_from_protos = tensorflow.contrib.lite.toco.python.toco_from_protos:main',
-    'tflite_convert = tensorflow.contrib.lite.python.tflite_convert:main',
-    'toco = tensorflow.contrib.lite.python.tflite_convert:main',
+    'toco_from_protos = tensorflow.lite.toco.python.toco_from_protos:main',
+    'tflite_convert = tensorflow.lite.python.tflite_convert:main',
+    'toco = tensorflow.lite.python.tflite_convert:main',
     'saved_model_cli = tensorflow.python.tools.saved_model_cli:main',
     # We need to keep the TensorBoard command, even though the console script
     # is now declared by the tensorboard pip package. If we remove the

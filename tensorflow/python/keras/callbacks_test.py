@@ -422,8 +422,7 @@ class KerasCallbacksTest(test.TestCase):
             num_hidden=NUM_HIDDEN, num_classes=NUM_CLASSES, input_dim=INPUT_DIM)
         model.compile(
             loss='categorical_crossentropy',
-            optimizer=keras.optimizers.SGD(lr=0.1),
-            metrics=['accuracy'])
+            optimizer=keras.optimizers.SGD(lr=0.1))
         return model
 
       model = make_model()

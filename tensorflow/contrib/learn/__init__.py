@@ -19,9 +19,6 @@ This module and all its submodules are deprecated. See
 [contrib/learn/README.md](https://www.tensorflow.org/code/tensorflow/contrib/learn/README.md)
 for migration instructions.
 
-See the [Contrib Learn](https://tensorflow.org/api_guides/python/contrib.learn)
-guide.
-
 @@BaseEstimator
 @@Estimator
 @@Trainable
