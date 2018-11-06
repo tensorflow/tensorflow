@@ -24,6 +24,7 @@
 namespace xla {
 namespace poplarplugin {
 namespace {
+static const size_t basic_lstm_cell_num_units = 4;
 
 absl::flat_hash_map<std::string, CustomPoplibsCallFn> call_map = {
     {"lstm_layer_fwd", CreateLstmLayerFwdOp},
@@ -62,7 +63,37 @@ StatusOr<popnn::lstm::LstmParams> GetLstmParameters(
   lstm_opts.set({{"partialsType", partials_poplar_type.toString()}});
   return params;
 }
+
+poplar::Tensor UnflattenWeight(const poplar::Tensor& t) {
+  return t
+      .reshape({t.dim(0), basic_lstm_cell_num_units,
+                t.dim(1) / basic_lstm_cell_num_units})
+      .dimShuffle({1, 0, 2});
 }
+
+// The kernel is stored as:
+// [input_size + output_size, basic_lstm_cell_num_units * output_size] tensor.
+// This extracts the input and output weights.
+std::pair<poplar::Tensor, poplar::Tensor> UnpackLstmKernel(
+    poplar::Tensor kernel, const size_t input_size, const size_t output_size) {
+  poplar::Tensor inputWeights = UnflattenWeight(kernel.slice(0, input_size));
+  poplar::Tensor outputWeights =
+      UnflattenWeight(kernel.slice(input_size, input_size + output_size));
+  return {inputWeights, outputWeights};
+}
+
+poplar::Tensor FlattenWeight(const poplar::Tensor& t) {
+  return t.dimShuffle({1, 0, 2}).reshape({t.dim(1), t.dim(0) * t.dim(2)});
+}
+
+// Reverse of UnpackLstmKernel
+poplar::Tensor PackLstmKernel(poplar::Tensor input_weights,
+                              poplar::Tensor output_weights) {
+  return poplar::concat(FlattenWeight(input_weights),
+                        FlattenWeight(output_weights));
+}
+
+}  // namespace
 
 const absl::flat_hash_map<std::string, CustomPoplibsCallFn>& GetPopnnCallMap() {
   return call_map;
@@ -74,6 +105,7 @@ StatusOr<poplar::program::Program> CreateLstmLayerFwdOp(
     const IPUCustomKernelsUtil::AttributeMap& attribute_map) {
   VLOG(1) << "Processing " << inst->name() << " as CreateLstmLayerFwdOp.";
   poplar::program::Sequence seq;
+  popnn::lstm::LstmWeights weights;
 
   TF_ASSIGN_OR_RETURN(poplar::Tensor input,
                       FindInstructionInput(tensor_map, inst, 0));
@@ -81,18 +113,20 @@ StatusOr<poplar::program::Program> CreateLstmLayerFwdOp(
                       FindInstructionInput(tensor_map, inst, 1));
   TF_ASSIGN_OR_RETURN(poplar::Tensor input_c_state,
                       FindInstructionInput(tensor_map, inst, 2));
-  TF_ASSIGN_OR_RETURN(poplar::Tensor input_weights,
+  TF_ASSIGN_OR_RETURN(poplar::Tensor kernel,
                       FindInstructionInput(tensor_map, inst, 3));
-  TF_ASSIGN_OR_RETURN(poplar::Tensor output_weights,
+  TF_ASSIGN_OR_RETURN(weights.biases,
                       FindInstructionInput(tensor_map, inst, 4));
-  TF_ASSIGN_OR_RETURN(poplar::Tensor biases,
-                      FindInstructionInput(tensor_map, inst, 5));
-
-  popnn::lstm::LstmWeights weights = {input_weights, output_weights, biases};
 
   poplar::OptionFlags lstm_opts;
   TF_ASSIGN_OR_RETURN(popnn::lstm::LstmParams lstm_params,
                       GetLstmParameters(inst, attribute_map, lstm_opts, false));
+
+  auto input_size = ShapeUtil::GetDimension(inst->operand(0)->shape(), 2);
+  auto output_size = ShapeUtil::GetDimension(inst->operand(1)->shape(), 1);
+  std::tie(weights.inputWeights, weights.outputWeights) =
+      UnpackLstmKernel(kernel, input_size, output_size);
+
   popnn::lstm::LstmState init_state = {input_h_state, input_c_state};
 
   poplar::Tensor output, output_c_state, intermediates;
@@ -122,6 +156,7 @@ StatusOr<poplar::program::Program> CreateLstmLayerBwdOp(
     const IPUCustomKernelsUtil::AttributeMap& attribute_map) {
   VLOG(1) << "Processing " << inst->name() << " as CreateLstmLayerBwdOp.";
   poplar::program::Sequence seq;
+  popnn::lstm::LstmWeights weights;
 
   TF_ASSIGN_OR_RETURN(poplar::Tensor input,
                       FindInstructionInput(tensor_map, inst, 0));
@@ -129,32 +164,33 @@ StatusOr<poplar::program::Program> CreateLstmLayerBwdOp(
                       FindInstructionInput(tensor_map, inst, 1));
   TF_ASSIGN_OR_RETURN(poplar::Tensor input_c_state,
                       FindInstructionInput(tensor_map, inst, 2));
-  TF_ASSIGN_OR_RETURN(poplar::Tensor input_weights,
+  TF_ASSIGN_OR_RETURN(poplar::Tensor kernel,
                       FindInstructionInput(tensor_map, inst, 3));
-  TF_ASSIGN_OR_RETURN(poplar::Tensor output_weights,
+  TF_ASSIGN_OR_RETURN(weights.biases,
                       FindInstructionInput(tensor_map, inst, 4));
-  TF_ASSIGN_OR_RETURN(poplar::Tensor biases,
-                      FindInstructionInput(tensor_map, inst, 5));
   TF_ASSIGN_OR_RETURN(poplar::Tensor output,
-                      FindInstructionInput(tensor_map, inst, 6));
+                      FindInstructionInput(tensor_map, inst, 5));
   TF_ASSIGN_OR_RETURN(poplar::Tensor output_h_state,
-                      FindInstructionInput(tensor_map, inst, 7));
+                      FindInstructionInput(tensor_map, inst, 6));
   TF_ASSIGN_OR_RETURN(poplar::Tensor output_c_state,
-                      FindInstructionInput(tensor_map, inst, 8));
+                      FindInstructionInput(tensor_map, inst, 7));
   TF_ASSIGN_OR_RETURN(poplar::Tensor intermediates,
-                      FindInstructionInput(tensor_map, inst, 9));
+                      FindInstructionInput(tensor_map, inst, 8));
   TF_ASSIGN_OR_RETURN(poplar::Tensor output_backprop,
-                      FindInstructionInput(tensor_map, inst, 10));
+                      FindInstructionInput(tensor_map, inst, 9));
   TF_ASSIGN_OR_RETURN(poplar::Tensor output_h_state_backprop,
-                      FindInstructionInput(tensor_map, inst, 11));
+                      FindInstructionInput(tensor_map, inst, 10));
   TF_ASSIGN_OR_RETURN(poplar::Tensor output_c_state_backprop,
-                      FindInstructionInput(tensor_map, inst, 12));
-
-  popnn::lstm::LstmWeights weights = {input_weights, output_weights, biases};
+                      FindInstructionInput(tensor_map, inst, 11));
 
   poplar::OptionFlags lstm_opts;
   TF_ASSIGN_OR_RETURN(popnn::lstm::LstmParams lstm_params,
                       GetLstmParameters(inst, attribute_map, lstm_opts, true));
+
+  auto input_size = ShapeUtil::GetDimension(inst->operand(0)->shape(), 2);
+  auto output_size = ShapeUtil::GetDimension(inst->operand(1)->shape(), 1);
+  std::tie(weights.inputWeights, weights.outputWeights) =
+      UnpackLstmKernel(kernel, input_size, output_size);
 
   popnn::lstm::LstmState init_state = {input_h_state, input_c_state};
 
@@ -174,15 +210,15 @@ StatusOr<poplar::program::Program> CreateLstmLayerBwdOp(
       output, output_backprop_copy, &output_c_state_backprop, &input_backprop,
       weights_backprop, GetDebugName(inst), lstm_opts, &res.dot_cache);
 
+  auto kernel_backprop = PackLstmKernel(weights_backprop.inputWeights,
+                                        weights_backprop.outputWeights);
+
   TF_CHECK_OK(AddOutputTensor(tensor_map, inst, 0, input_backprop));
   TF_CHECK_OK(AddOutputTensor(tensor_map, inst, 1, init_state_backprop.output));
   TF_CHECK_OK(
       AddOutputTensor(tensor_map, inst, 2, init_state_backprop.cellState));
-  TF_CHECK_OK(
-      AddOutputTensor(tensor_map, inst, 3, weights_backprop.inputWeights));
-  TF_CHECK_OK(
-      AddOutputTensor(tensor_map, inst, 4, weights_backprop.outputWeights));
-  TF_CHECK_OK(AddOutputTensor(tensor_map, inst, 5, weights_backprop.biases));
+  TF_CHECK_OK(AddOutputTensor(tensor_map, inst, 3, kernel_backprop));
+  TF_CHECK_OK(AddOutputTensor(tensor_map, inst, 4, weights_backprop.biases));
   return seq;
 }
 

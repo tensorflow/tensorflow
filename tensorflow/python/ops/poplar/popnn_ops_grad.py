@@ -33,12 +33,11 @@ def _popnn_lstm_layer_backward(op, *grads):
         "To use PopnnLstmLayer in gradients, is_training must be set to True."
     )
   return gen_popnn_ops.popnn_lstm_layer_backprop(
-      input=op.inputs[0],
+      inputs=op.inputs[0],
       input_h_state=op.inputs[1],
       input_c_state=op.inputs[2],
-      input_weights=op.inputs[3],
-      output_weights=op.inputs[4],
-      biases=op.inputs[5],
+      kernel=op.inputs[3],
+      biases=op.inputs[4],
       output=op.outputs[0],
       output_h_state=op.outputs[1],
       output_c_state=op.outputs[2],

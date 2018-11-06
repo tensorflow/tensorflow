@@ -60,7 +60,6 @@ class PopnnLstmLayerOp : public XlaOpKernel {
     OP_REQUIRES_OK(ctx,
                    DataTypeToPrimitiveType(ctx->input_type(0), &input_type));
 
-    // TODO validate the weight shapes here.
     const TensorShape input_shape = ctx->InputShape(0);
     const auto time_steps = input_shape.dim_size(0);
     const auto batch_size = input_shape.dim_size(1);
@@ -85,31 +84,20 @@ class PopnnLstmLayerOp : public XlaOpKernel {
             "The initial cell state tensor needs to be of shape [%u, %u].",
             batch_size, num_channels_)));
 
-    TensorShape expected_input_weights_state_shape;
+    TensorShape expected_kernel_shape;
     TensorShapeUtils::MakeShape(
-        std::vector<int64>({4, input_size, num_channels_}),
-        &expected_input_weights_state_shape);
-    OP_REQUIRES(
-        ctx, ctx->InputShape(3) == expected_input_weights_state_shape,
-        errors::InvalidArgument(absl::StrFormat(
-            "The input weights tensor needs to be of shape [4, %u, %u].",
-            input_size, num_channels_)));
-
-    TensorShape expected_output_weights_state_shape;
-    TensorShapeUtils::MakeShape(
-        std::vector<int64>({4, num_channels_, num_channels_}),
-        &expected_output_weights_state_shape);
-    OP_REQUIRES(
-        ctx, ctx->InputShape(4) == expected_output_weights_state_shape,
-        errors::InvalidArgument(absl::StrFormat(
-            "The output weights tensor needs to be of shape [4, %u, %u].",
-            num_channels_, num_channels_)));
+        std::vector<int64>({input_size + num_channels_, 4 * num_channels_}),
+        &expected_kernel_shape);
+    OP_REQUIRES(ctx, ctx->InputShape(3) == expected_kernel_shape,
+                errors::InvalidArgument(absl::StrFormat(
+                    "The input kernel tensor needs to be of shape [%u, %u].",
+                    input_size + num_channels_, 4 * num_channels_)));
 
     TensorShape expected_biases_shape;
     TensorShapeUtils::MakeShape(std::vector<int64>({4, num_channels_}),
                                 &expected_biases_shape);
     OP_REQUIRES(
-        ctx, ctx->InputShape(5) == expected_biases_shape,
+        ctx, ctx->InputShape(4) == expected_biases_shape,
         errors::InvalidArgument(absl::StrFormat(
             "The biases tensor needs to be of shape [4, %u].", num_channels_)));
 
@@ -190,17 +178,15 @@ class PopnnLstmLayerBackpropOp : public XlaOpKernel {
         TensorShapeToXLAShape(input_type, ctx->InputShape(1));
     xla::Shape input_c_state_backprop_shape =
         TensorShapeToXLAShape(input_type, ctx->InputShape(2));
-    xla::Shape input_weights_backprop_shape =
+    xla::Shape kernel_backprop_shape =
         TensorShapeToXLAShape(input_type, ctx->InputShape(3));
-    xla::Shape output_weights_backprop_shape =
-        TensorShapeToXLAShape(input_type, ctx->InputShape(4));
     xla::Shape biases_backprop_shape =
-        TensorShapeToXLAShape(input_type, ctx->InputShape(5));
+        TensorShapeToXLAShape(input_type, ctx->InputShape(4));
 
     xla::Shape output_tuple_shape = xla::ShapeUtil::MakeTupleShape(
         {input_backprop_shape, input_h_state_backprop_shape,
-         input_c_state_backprop_shape, input_weights_backprop_shape,
-         output_weights_backprop_shape, biases_backprop_shape});
+         input_c_state_backprop_shape, kernel_backprop_shape,
+         biases_backprop_shape});
 
     xla::XlaBuilder& b = *ctx->builder();
     xla::OpMetadata metadata;
@@ -218,16 +204,14 @@ class PopnnLstmLayerBackpropOp : public XlaOpKernel {
     xla::XlaOp input_backprop = xla::GetTupleElement(output_tuple, 0);
     xla::XlaOp input_h_state_backprop = xla::GetTupleElement(output_tuple, 1);
     xla::XlaOp input_c_state_backprop = xla::GetTupleElement(output_tuple, 2);
-    xla::XlaOp input_weights_backprop = xla::GetTupleElement(output_tuple, 3);
-    xla::XlaOp output_weights_backprop = xla::GetTupleElement(output_tuple, 4);
-    xla::XlaOp biases_backprop = xla::GetTupleElement(output_tuple, 5);
+    xla::XlaOp kernel_backprop = xla::GetTupleElement(output_tuple, 3);
+    xla::XlaOp biases_backprop = xla::GetTupleElement(output_tuple, 4);
 
     ctx->SetOutput(0, input_backprop);
     ctx->SetOutput(1, input_h_state_backprop);
     ctx->SetOutput(2, input_c_state_backprop);
-    ctx->SetOutput(3, input_weights_backprop);
-    ctx->SetOutput(4, output_weights_backprop);
-    ctx->SetOutput(5, biases_backprop);
+    ctx->SetOutput(3, kernel_backprop);
+    ctx->SetOutput(4, biases_backprop);
     b.ClearOpMetadata();
   }
 

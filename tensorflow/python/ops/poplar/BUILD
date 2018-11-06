@@ -13,18 +13,7 @@ py_library(
     srcs = ["__init__.py"],
     visibility = ["//visibility:public",],
     deps = [
-        ":popnn_ops",
         ":popnn_ops_grad",
-    ],
-)
-
-py_library(
-    name = "popnn_ops",
-    srcs = ["popnn_ops.py"],
-    srcs_version = "PY2AND3",
-    visibility = ["//visibility:public",],
-    deps = [
-        "//tensorflow/compiler/plugin/poplar:popnn_ops_wrapper_py",
     ],
 )
 
