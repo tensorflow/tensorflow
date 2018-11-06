@@ -279,12 +279,15 @@ class IteratorContext {
           lib(ctx->lib()),
           model(ctx->model()),
           runner(*(ctx->runner())),
+          runner_threadpool_size(ctx->runner_threadpool_size()),
           stats_aggregator(ctx->stats_aggregator()) {}
 
     explicit Params(OpKernelContext* ctx)
         : env(ctx->env()),
           lib(ctx->function_library()),
-          runner(*(ctx->runner())) {
+          runner(*(ctx->runner())),
+          runner_threadpool_size(
+              ctx->device()->tensorflow_cpu_worker_threads()->num_threads) {
       // NOTE: need reinterpret_cast because function.h forward-declares Device.
       DeviceBase* device =
           reinterpret_cast<DeviceBase*>(ctx->function_library()->device());
@@ -310,6 +313,9 @@ class IteratorContext {
 
     // Function call support.
     std::function<void(std::function<void()>)> runner = nullptr;
+
+    // Number of threads used for executing user-defined functions.
+    int32 runner_threadpool_size = 0;
 
     // The `StatsAggregator` object to record statistics about the iterator.
     std::shared_ptr<StatsAggregator> stats_aggregator = nullptr;
@@ -342,6 +348,8 @@ class IteratorContext {
   std::function<void(std::function<void()>)>* runner() {
     return &params_.runner;
   }
+
+  int32 runner_threadpool_size() { return params_.runner_threadpool_size; }
 
   std::shared_ptr<StatsAggregator> stats_aggregator() {
     return params_.stats_aggregator;
