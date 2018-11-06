@@ -171,6 +171,9 @@ def converted_call(f, owner, options, *args, **kwargs):
 
     f = getattr(owner, f)
 
+  if inspect_utils.isbuiltin(f):
+    return py_builtins.overload_of(f)(*args, **kwargs)
+
   # TODO(mdan): This needs cleanup.
   # In particular, we may want to avoid renaming functions altogether.
   if not options.force_conversion and conversion.is_whitelisted_for_graph(f):
@@ -184,9 +187,6 @@ def converted_call(f, owner, options, *args, **kwargs):
         args = args[1:]
 
     return f(*args, **kwargs)
-
-  if inspect_utils.isbuiltin(f):
-    return py_builtins.overload_of(f)(*args, **kwargs)
 
   # internal_convert_user_code is for example turned off when issuing a dynamic
   # call conversion from generated code while in nonrecursive mode. In that
