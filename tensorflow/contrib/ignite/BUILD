@@ -27,18 +27,16 @@ py_library(
 )
 
 tf_custom_op_library(
-    name = "_dataset_ops.so",
-    srcs = ["ops/dataset_ops.cc"],
-    deps = [":dataset_kernels"],
-)
-
-tf_custom_op_library(
-    name = "_igfs_ops.so",
+    name = "_ignite_ops.so",
     srcs = [
         "kernels/igfs/igfs.h",
+        "ops/dataset_ops.cc",
         "ops/igfs_ops.cc",
     ],
-    deps = [":igfs_kernels"],
+    deps = [
+        ":dataset_kernels",
+        ":igfs_kernels",
+    ],
 )
 
 tf_gen_op_libs(
@@ -110,7 +108,7 @@ cc_library(
         "kernels/igfs/igfs_writable_file.h",
     ],
     deps = [
-        "//tensorflow/contrib/ignite:ignite_client",
+        ":ignite_client",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
     ],
@@ -148,7 +146,7 @@ py_library(
 tf_gen_op_wrapper_py(
     name = "gen_dataset_ops",
     out = "python/ops/gen_dataset_ops.py",
-    deps = ["//tensorflow/contrib/ignite:dataset_ops_op_lib"],
+    deps = [":dataset_ops_op_lib"],
 )
 
 tf_gen_op_wrapper_py(
@@ -178,10 +176,10 @@ tf_kernel_library(
 tf_custom_op_py_library(
     name = "ignite_op_loader",
     srcs = ["python/ops/ignite_op_loader.py"],
-    dso = ["//tensorflow/contrib/ignite:_dataset_ops.so"],
+    dso = [":_ignite_ops.so"],
     kernels = [
         ":dataset_ops_kernels",
-        "//tensorflow/contrib/ignite:dataset_ops_op_lib",
+        ":dataset_ops_op_lib",
     ],
     srcs_version = "PY2AND3",
     deps = [
@@ -194,7 +192,7 @@ tf_custom_op_py_library(
 tf_custom_op_py_library(
     name = "igfs_op_loader",
     srcs = ["python/ops/igfs_op_loader.py"],
-    dso = [":_igfs_ops.so"],
+    dso = [":_ignite_ops.so"],
     kernels = [
         ":igfs_ops_kernels",
         ":igfs_ops_op_lib",
