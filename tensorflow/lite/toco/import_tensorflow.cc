@@ -1122,28 +1122,53 @@ tensorflow::Status ConvertConcatOperator(
   return tensorflow::Status::OK();
 }
 
+static constexpr int kAnyNumInputs = -1;
+
+enum FlexSupport { kFlexOk, kFlexNotOk };
+
 // This method supports simple operators without additional attributes.
-template <typename Op>
-tensorflow::Status ConvertSimpleOperator(
+// Converts a simple operator that takes no attributes. The list of inputs is
+// taken from the given NodeDef, and its number must match NumInputs, unless
+// kAnyNumInputs is passed in. If kFlexOk is passed in the resulting operator
+// will be eligible for being exported as a flex op.
+template <typename Op, int NumInputs, FlexSupport flex>
+tensorflow::Status ConvertSimpleOperatorGeneric(
     const NodeDef& node, const TensorFlowImportFlags& tf_import_flags,
     Model* model) {
+  if (NumInputs != kAnyNumInputs) {
+    TF_QCHECK_OK(CheckInputsCount(node, tf_import_flags, NumInputs));
+  }
   auto* op = new Op;
   const int num_inputs = GetInputsCount(node, tf_import_flags);
   for (int i = 0; i < num_inputs; ++i) {
     op->inputs.push_back(node.input(i));
   }
   op->outputs.push_back(node.name());
+
+  if (flex == kFlexOk) {
+    RetainTensorFlowNodeDef(node, op);
+  }
+
   model->operators.emplace_back(op);
   return tensorflow::Status::OK();
 }
 
-// This method supports simple operators without additional attributes.
-template <typename Op, unsigned int NumInputs>
+// Convert a simple operator which is not valid as a flex op.
+template <typename Op, int NumInputs = kAnyNumInputs>
 tensorflow::Status ConvertSimpleOperator(
     const NodeDef& node, const TensorFlowImportFlags& tf_import_flags,
     Model* model) {
-  TF_QCHECK_OK(CheckInputsCount(node, tf_import_flags, NumInputs));
-  return ConvertSimpleOperator<Op>(node, tf_import_flags, model);
+  return ConvertSimpleOperatorGeneric<Op, NumInputs, kFlexNotOk>(
+      node, tf_import_flags, model);
+}
+
+// Convert a simple operator which is valid as a flex op.
+template <typename Op, int NumInputs = kAnyNumInputs>
+tensorflow::Status ConvertSimpleOperatorFlexOk(
+    const NodeDef& node, const TensorFlowImportFlags& tf_import_flags,
+    Model* model) {
+  return ConvertSimpleOperatorGeneric<Op, NumInputs, kFlexOk>(
+      node, tf_import_flags, model);
 }
 
 void GetOutputNamesFromNodeDef(const NodeDef& node,
@@ -2203,7 +2228,7 @@ ConverterMapType GetTensorFlowNodeConverterMapForFlex() {
 ConverterMapType GetTensorFlowNodeConverterMap() {
   return std::unordered_map<std::string, ConverterType>({
       {"Add", ConvertSimpleOperator<AddOperator, 2>},
-      {"AddN", ConvertSimpleOperator<AddNOperator>},
+      {"AddN", ConvertSimpleOperatorFlexOk<AddNOperator>},
       {"All", ConvertSimpleOperator<TensorFlowAllOperator>},
       {"Any", ConvertReduceOperator<TensorFlowAnyOperator>},
       {"ArgMax", ConvertArgMaxOperator},

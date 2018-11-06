@@ -61,6 +61,7 @@ from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import importer
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import random_seed
+from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import versions
 from tensorflow.python.ops import array_ops
@@ -1135,6 +1136,9 @@ class TensorFlowTestCase(googletest.TestCase):
       return self._eval_helper(tensor())
     else:
       try:
+        if sparse_tensor.is_sparse(tensor):
+          return sparse_tensor.SparseTensorValue(tensor.indices, tensor.values,
+                                                 tensor.dense_shape)
         return tensor.numpy()
       except AttributeError as e:
         six.raise_from(ValueError("Unsupported type %s." % type(tensor)), e)
@@ -1670,9 +1674,16 @@ class TensorFlowTestCase(googletest.TestCase):
     msg = msg if msg else ""
     a = self._GetNdArray(a)
     b = self._GetNdArray(b)
-    self.assertEqual(
-        a.shape, b.shape, "Shape mismatch: expected %s, got %s."
-        " %s" % (a.shape, b.shape, msg))
+    # Arbitrary bounds so that we don't print giant tensors.
+    if (b.ndim <= 3 or b.size < 500):
+      self.assertEqual(
+          a.shape, b.shape, "Shape mismatch: expected %s, got %s."
+          " Contents: %s. \n%s." % (a.shape, b.shape, b, msg))
+    else:
+      self.assertEqual(
+          a.shape, b.shape, "Shape mismatch: expected %s, got %s."
+          " %s" % (a.shape, b.shape, msg))
+
     same = (a == b)
 
     if (a.dtype in [

@@ -18,6 +18,7 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
+#include "tensorflow/compiler/xla/service/hlo_reachability.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/core/platform/types.h"
 
@@ -257,7 +258,7 @@ bool MultiOutputFusion::LegalToFuse(HloInstruction* instr1,
 }
 
 void MultiOutputFusion::RecomputeReachability() {
-  reachability_ = computation_->ComputeReachability();
+  reachability_ = HloReachabilityMap::Build(computation_);
 }
 
 void MultiOutputFusion::UpdateReachability(

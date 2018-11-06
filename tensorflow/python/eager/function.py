@@ -254,12 +254,14 @@ class _EagerDefinedFunction(object):
         raise ValueError(
             "Arguments and signature arguments do not match: %s %s " %
             (len(args), len(list(self.signature.input_arg))))
+      function_call_options = ctx.get_function_call_options()
       outputs = functional_ops.partitioned_call(
           args=args,
           f=self,
           tout=self._output_types,
           executing_eagerly=executing_eagerly,
-          config=ctx.rewriter_config_string)  # pylint: disable=protected-access
+          config=function_call_options.rewriter_config_serialized,
+          executor_type=function_call_options.executor_type)
 
     if executing_eagerly:
       return outputs

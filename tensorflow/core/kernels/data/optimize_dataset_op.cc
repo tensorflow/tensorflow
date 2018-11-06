@@ -164,19 +164,19 @@ class OptimizeDatasetOp : public UnaryDatasetOpKernel {
           : DatasetIterator<Dataset>(params) {}
 
       Status Initialize(IteratorContext* ctx) override {
-        IteratorContext::Params params = ctx->params();
+        IteratorContext::Params params(ctx);
         params.lib = dataset()->lib_;
         return dataset()->optimized_input_->MakeIterator(
-            IteratorContext(params), prefix(), &input_impl_);
+            IteratorContext(std::move(params)), prefix(), &input_impl_);
       }
 
       Status GetNextInternal(IteratorContext* ctx,
                              std::vector<Tensor>* out_tensors,
                              bool* end_of_sequence) override {
-        IteratorContext::Params params = ctx->params();
+        IteratorContext::Params params(ctx);
         params.lib = dataset()->lib_;
-        return input_impl_->GetNext(IteratorContext(params), out_tensors,
-                                    end_of_sequence);
+        return input_impl_->GetNext(IteratorContext(std::move(params)),
+                                    out_tensors, end_of_sequence);
       }
 
      protected:

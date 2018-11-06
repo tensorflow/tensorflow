@@ -124,7 +124,8 @@ GpuHloOrdering::GpuHloOrdering(
   for (auto* computation : module->computations()) {
     if (computation != module->entry_computation() &&
         !computation->IsFusionComputation()) {
-      predecessors_.emplace(computation, computation->ComputeReachability());
+      predecessors_.emplace(computation,
+                            HloReachabilityMap::Build(computation));
     }
   }
 }

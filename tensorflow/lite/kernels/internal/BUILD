@@ -593,6 +593,8 @@ cc_test(
     srcs = ["depthwiseconv_quantized_test.cc"],
     tags = [
         "no_oss",
+        # TODO(b/119052685): Re-enable this test in TSAN.
+        "notsan",
         "tflite_not_portable_ios",
     ],
     deps = [

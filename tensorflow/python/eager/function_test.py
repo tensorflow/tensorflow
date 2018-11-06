@@ -105,7 +105,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     # The default config allows everything.
     rewrites = rewriter_config_pb2.RewriterConfig()
 
-    with context.rewriter_config(rewrites):
+    with context.function_rewriter_config(rewrites):
       t = constant_op.constant(1.0)
       self.assertAllEqual(add(t, t).numpy(), 2.0)
 
@@ -2702,6 +2702,26 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     self.assertEqual(2, len(weak_variables))
     del m
     self.assertEqual([], list(weak_variables))
+
+  def testExecutorType(self):
+    @function.defun
+    def add_five(x):
+      return x + 5
+
+    self.assertEqual(
+        5,
+        add_five(constant_op.constant(0, dtype=dtypes.int32)).numpy())
+
+    with self.assertRaisesRegexp(errors.NotFoundError, 'NON_EXISTENT_EXECUTOR'):
+      with context.function_executor_type('NON_EXISTENT_EXECUTOR'):
+        add_five(constant_op.constant(0, dtype=dtypes.int32))
+
+    for executor_type in ('', 'DEFAULT', None):
+      with context.function_executor_type(executor_type):
+        self.assertAllEqual(
+            5,
+            add_five(constant_op.constant(0, dtype=dtypes.int32)).numpy())
+
 
 
 @parameterized.named_parameters(

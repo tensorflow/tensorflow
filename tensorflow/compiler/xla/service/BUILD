@@ -323,7 +323,6 @@ cc_library(
         ":hlo_casting_utils",
         ":hlo_module_config",
         ":hlo_proto",
-        ":hlo_reachability",
         ":name_uniquer",
         "//tensorflow/compiler/xla:array",
         "//tensorflow/compiler/xla:literal",
@@ -402,6 +401,7 @@ cc_library(
     srcs = ["hlo_reachability.cc"],
     hdrs = ["hlo_reachability.h"],
     deps = [
+        ":hlo",
         "//tensorflow/compiler/xla:types",
         "//tensorflow/compiler/xla:util",
         "//tensorflow/core:lib",
@@ -1103,6 +1103,7 @@ cc_library(
         ":hlo",
         ":hlo_dataflow_analysis",
         ":hlo_proto",
+        ":hlo_reachability",
         ":hlo_value",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:status_macros",
@@ -1388,6 +1389,7 @@ cc_library(
     srcs = ["multi_output_fusion.cc"],
     hdrs = ["multi_output_fusion.h"],
     deps = [
+        ":hlo_reachability",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla/service:hlo",

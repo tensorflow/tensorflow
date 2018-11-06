@@ -100,6 +100,17 @@ TEST_F(KernelTest, FullGraph) {
 
   ASSERT_THAT(GetShape(8), ElementsAre(2, 1));
   ASSERT_THAT(GetValues(8), ElementsAre(14.52f, 38.72f));
+
+  // Try again with different inputs
+  SetShape(0, {2, 3, 1});
+  SetValues(0, {2.0f, 2.0f, 3.0f, 3.0f, 4.0f, 4.0f});
+  SetShape(3, {2, 3, 1});
+  SetValues(3, {2.0f, 2.0f, 3.0f, 3.0f, 4.0f, 4.0f});
+
+  ASSERT_TRUE(Invoke());
+
+  ASSERT_THAT(GetShape(8), ElementsAre(3, 1));
+  ASSERT_THAT(GetValues(8), ElementsAre(24.0f, 32.0f, 48.0f));
 }
 
 TEST_F(KernelTest, BadTensorFlowOp) {
@@ -240,11 +251,23 @@ TEST_F(KernelTest, SplitGraph) {
   ASSERT_TRUE(Invoke());
 
   ASSERT_THAT(GetShape(17), ElementsAre(1));
+  ASSERT_THAT(GetValues(17), ElementsAre(16.0f));
 
-  // It should really be 16, but we are messing up tensor #16 with
-  // data from the TF Lite buffer, even though that particular tensor
-  // should use the data produced by TF.
-  ASSERT_THAT(GetValues(17), ElementsAre(::testing::Not(16.0f)));
+  // Same as above but with slightly different output.
+  // We still expect the result to be l + r where
+  //     l = (a0 + b0) * (a2 + b2) + (a1 + b1) * (a3 + b3)
+  //     r = (a4 + a6) + (a5 + a7)
+  SetShape(0, {2, 2, 2, 1});
+  SetValues(0, {4.0f, 1.0f, 1.5f, -2.0f, 2.0f, 0.0f, -2.0f, 3.0f});
+  SetShape(1, {2, 2, 1});
+  SetValues(1, {0.0f, 2.0f, 1.5f, 3.0f});
+  // So l = (4 + 0) * (1.5 + 1.5) + (1 + 2) * (-2 + 3) =  12 + 3 = 15
+  //    r = (2 - 2) + (0 + 3) = 3
+
+  ASSERT_TRUE(Invoke());
+
+  ASSERT_THAT(GetShape(17), ElementsAre(1));
+  ASSERT_THAT(GetValues(17), ElementsAre(18.0f));
 }
 
 }  // namespace

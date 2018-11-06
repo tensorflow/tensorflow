@@ -185,12 +185,9 @@ def getmethodclass(m):
       return m.__class__
 
   # Instance method and class methods: should be bound to a non-null "self".
-  # If self is a class, then it's a class method.
   if hasattr(m, '__self__'):
     if m.__self__:
-      if tf_inspect.isclass(m.__self__):
-        return m.__self__
-      return type(m.__self__)
+      return m.__self__
 
   # Class, static and unbound methods: search all defined classes in any
   # namespace. This is inefficient but more robust method.

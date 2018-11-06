@@ -452,7 +452,7 @@ StatusOr<bool> InstructionFusion::Run(HloModule* module) {
   for (auto* computation : module->MakeNonfusionComputations()) {
     CHECK(!computation->IsFusionComputation());
     computation_ = computation;
-    reachability_ = computation_->ComputeReachability();
+    reachability_ = HloReachabilityMap::Build(computation_);
 
     HloInstructionSet do_not_duplicate =
         ComputeGloballyUnfusible(computation_->MakeInstructionPostOrder());
@@ -566,7 +566,7 @@ bool InstructionFusion::MultiOutputFusionCreatesCycle(
     // A consumer operand may have been multii-output fused into a parallel
     // consumer and thus be missing  from the oridinal reachability map.
     if (!reachability_->IsPresent(a) || !reachability_->IsPresent(b)) {
-      reachability_ = consumer->parent()->ComputeReachability();
+      reachability_ = HloReachabilityMap::Build(consumer->parent());
     }
     return reachability_->IsReachable(a, b);
   };
