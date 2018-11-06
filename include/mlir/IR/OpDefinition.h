@@ -274,6 +274,8 @@ bool verifyZeroOperands(const Operation *op);
 bool verifyOneOperand(const Operation *op);
 bool verifyNOperands(const Operation *op, unsigned numOperands);
 bool verifyAtLeastNOperands(const Operation *op, unsigned numOperands);
+bool verifyOperandsAreIntegerLike(const Operation *op);
+bool verifySameTypeOperands(const Operation *op);
 bool verifyZeroResult(const Operation *op);
 bool verifyOneResult(const Operation *op);
 bool verifyNResults(const Operation *op, unsigned numOperands);
@@ -643,6 +645,27 @@ public:
   static AbstractOperation::OperationProperties getTraitProperties() {
     return static_cast<AbstractOperation::OperationProperties>(
         OperationProperty::NoSideEffect);
+  }
+};
+
+/// This class verifies that all operands of the specified op have an integer
+/// type, a vector thereof, or a tensor thereof.
+template <typename ConcreteType>
+class OperandsAreIntegerLike
+    : public TraitBase<ConcreteType, OperandsAreIntegerLike> {
+public:
+  static bool verifyTrait(const Operation *op) {
+    return impl::verifyOperandsAreIntegerLike(op);
+  }
+};
+
+/// This class verifies that all operands of the specified op have the same
+/// type.
+template <typename ConcreteType>
+class SameTypeOperands : public TraitBase<ConcreteType, SameTypeOperands> {
+public:
+  static bool verifyTrait(const Operation *op) {
+    return impl::verifySameTypeOperands(op);
   }
 };
 

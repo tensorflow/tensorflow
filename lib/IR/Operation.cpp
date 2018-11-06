@@ -350,6 +350,40 @@ bool OpTrait::impl::verifyAtLeastNOperands(const Operation *op,
   return false;
 }
 
+/// If this is a vector type, or a tensor type, return the scalar element type
+/// that it is built around, otherwise return the type unmodified.
+static Type getTensorOrVectorElementType(Type type) {
+  if (auto vec = type.dyn_cast<VectorType>())
+    return vec.getElementType();
+
+  // Look through tensor<vector<...>> to find the underlying element type.
+  if (auto tensor = type.dyn_cast<TensorType>())
+    return getTensorOrVectorElementType(tensor.getElementType());
+  return type;
+}
+
+bool OpTrait::impl::verifyOperandsAreIntegerLike(const Operation *op) {
+  for (auto *operand : op->getOperands()) {
+    if (!getTensorOrVectorElementType(operand->getType()).isa<IntegerType>())
+      return op->emitOpError("requires an integer type");
+  }
+  return false;
+}
+
+bool OpTrait::impl::verifySameTypeOperands(const Operation *op) {
+  // Zero or one operand always have the "same" type.
+  unsigned nOperands = op->getNumOperands();
+  if (nOperands < 2)
+    return false;
+
+  auto type = op->getOperand(0)->getType();
+  for (unsigned i = 1; i < nOperands; ++i) {
+    if (op->getOperand(i)->getType() != type)
+      return op->emitOpError("requires all operands to have the same type");
+  }
+  return false;
+}
+
 bool OpTrait::impl::verifyZeroResult(const Operation *op) {
   if (op->getNumResults() != 0)
     return op->emitOpError("requires zero results");
@@ -389,18 +423,6 @@ bool OpTrait::impl::verifySameOperandsAndResult(const Operation *op) {
           "requires the same type for all operands and results");
   }
   return false;
-}
-
-/// If this is a vector type, or a tensor type, return the scalar element type
-/// that it is built around, otherwise return the type unmodified.
-static Type getTensorOrVectorElementType(Type type) {
-  if (auto vec = type.dyn_cast<VectorType>())
-    return vec.getElementType();
-
-  // Look through tensor<vector<...>> to find the underlying element type.
-  if (auto tensor = type.dyn_cast<TensorType>())
-    return getTensorOrVectorElementType(tensor.getElementType());
-  return type;
 }
 
 bool OpTrait::impl::verifyResultsAreFloatLike(const Operation *op) {
