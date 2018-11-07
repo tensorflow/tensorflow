@@ -33,6 +33,20 @@ ops.NotDifferentiable("TensorListConcat")
 ops.NotDifferentiable("TensorListPushBackBatch")
 
 
+def empty_tensor_list(element_shape,
+                      element_dtype,
+                      max_num_elements=None,
+                      name=None):
+  if max_num_elements is None:
+    max_num_elements = -1
+
+  return gen_list_ops.empty_tensor_list(
+      element_shape=element_shape,
+      element_dtype=element_dtype,
+      max_num_elements=max_num_elements,
+      name=name)
+
+
 @ops.RegisterGradient("TensorListPushBack")
 def _PushBackGrad(op, dresult):
   return gen_list_ops.tensor_list_pop_back(
@@ -42,7 +56,7 @@ def _PushBackGrad(op, dresult):
 @ops.RegisterGradient("TensorListPopBack")
 def _PopBackGrad(op, dlist, delement):
   if dlist is None:
-    dlist = gen_list_ops.empty_tensor_list(
+    dlist = empty_tensor_list(
         element_dtype=delement.dtype,
         element_shape=gen_list_ops.tensor_list_element_shape(
             op.outputs[0], shape_type=dtypes.int32))
@@ -63,7 +77,7 @@ def _TensorListFromTensorGrad(op, dlist):
   else:
     num_elements = None
   if dlist is None:
-    dlist = gen_list_ops.empty_tensor_list(
+    dlist = empty_tensor_list(
         element_dtype=op.inputs[0].dtype,
         element_shape=gen_list_ops.tensor_list_element_shape(
             op.outputs[0], shape_type=dtypes.int32))

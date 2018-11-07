@@ -118,6 +118,7 @@ cuda_py_test(
     size = "small",
     srcs = ["list_ops_test.py"],
     additional_deps = [
+        "@absl_py//absl/testing:parameterized",
         "//third_party/py/numpy",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:math_ops",
