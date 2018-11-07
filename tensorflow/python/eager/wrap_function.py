@@ -20,8 +20,12 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.python.eager import function
+from tensorflow.python.eager import lift_to_graph
 from tensorflow.python.framework import func_graph
+from tensorflow.python.framework import ops
+from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import variable_scope
+from tensorflow.python.util import nest
 
 
 class VariableHolder(object):
@@ -39,6 +43,38 @@ class VariableHolder(object):
   def __call__(self, *args, **kwargs):
     with variable_scope.variable_creator_scope(self.variable_creator_scope):
       return self._fn(*args, **kwargs)
+
+
+class WrappedFunction(function.Function):
+  """Wraps a tf V1 piece of code in a function."""
+
+  def __init__(self, fn_graph, variable_holder, attrs=None, signature=None):
+    super(WrappedFunction, self).__init__(
+        fn_graph, attrs=attrs, signature=signature)
+    self._variable_holder = variable_holder
+
+  def prune(self, feeds, fetches):
+    flat_feeds, flat_fetches = nest.flatten(feeds), nest.flatten(fetches)
+    for f in flat_feeds + flat_fetches:
+      if not isinstance(f, ops.Tensor):
+        raise ValueError("Feeds and fetches must be tensors.")
+      if f.graph is not self._func_graph:
+        raise ValueError(
+            "Can only prune function whose feeds and fetches "
+            "are from this graph (%s). Tensor %s from graph %s" % (
+                self._func_graph, f, f.graph))
+    with self._func_graph.as_default():
+      pruned_graph = func_graph.FuncGraph("pruned")
+      sink_tensor = array_ops.identity_n(flat_fetches)[0]
+    lift_map = lift_to_graph.lift_to_graph(
+        sink_tensor, pruned_graph, sources=flat_feeds)
+    pruned_graph.outputs.extend(lift_map[x] for x in flat_fetches)
+    pruned_graph.inputs.extend(lift_map[x] for x in flat_feeds)
+    pruned_fn = WrappedFunction(
+        pruned_graph, variable_holder=self._variable_holder)
+    pruned_fn._num_positional_args = len(flat_feeds)  # pylint: disable=protected-access
+    pruned_fn._arg_keywords = []  # pylint: disable=protected-access
+    return pruned_fn
 
 
 def wrap_function(fn, signature, name=None):
@@ -83,12 +119,11 @@ def wrap_function(fn, signature, name=None):
     the wrapped graph function.
   """
   holder = VariableHolder(fn)
-  fn = function.Function(
+  return WrappedFunction(
       func_graph.func_graph_from_py_func(
           name,
           holder,
           args=None, kwargs=None, signature=signature,
           add_control_dependencies=False),
+      variable_holder=holder,
       signature=signature)
-  fn._variable_holder = holder
-  return fn

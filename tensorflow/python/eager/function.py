@@ -341,7 +341,7 @@ class Function(object):
               "wrap_function-decorated function.")
         return self._call_flat(args)
       raise AssertionError(
-          "Tried to call a concrete function obtained from an interal API "
+          "Tried to call a concrete function obtained from an internal API "
           "through the public interface. Use get_concrete_function instead.")
     if len(args) > self._num_positional_args:
       raise TypeError(
