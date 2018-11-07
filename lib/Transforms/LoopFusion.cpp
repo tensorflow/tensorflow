@@ -42,7 +42,7 @@ namespace {
 // TODO(andydavis) Extend this pass to check for fusion preventing dependences,
 // and add support for more general loop fusion algorithms.
 struct LoopFusion : public FunctionPass {
-  LoopFusion() {}
+  LoopFusion() : FunctionPass(&LoopFusion::passID) {}
 
   PassResult runOnMLFunction(MLFunction *f) override;
   static char passID;

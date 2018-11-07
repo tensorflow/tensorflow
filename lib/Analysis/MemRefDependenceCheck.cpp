@@ -40,7 +40,8 @@ namespace {
 struct MemRefDependenceCheck : public FunctionPass,
                                StmtWalker<MemRefDependenceCheck> {
   SmallVector<OperationStmt *, 4> loadsAndStores;
-  explicit MemRefDependenceCheck() {}
+  explicit MemRefDependenceCheck()
+      : FunctionPass(&MemRefDependenceCheck::passID) {}
 
   PassResult runOnMLFunction(MLFunction *f) override;
   // Not applicable to CFG functions.

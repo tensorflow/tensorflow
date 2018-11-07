@@ -41,6 +41,7 @@ namespace {
 
 struct PipelineDataTransfer : public FunctionPass,
                               StmtWalker<PipelineDataTransfer> {
+  PipelineDataTransfer() : FunctionPass(&PipelineDataTransfer::passID) {}
   PassResult runOnMLFunction(MLFunction *f) override;
   PassResult runOnForStmt(ForStmt *forStmt);
 

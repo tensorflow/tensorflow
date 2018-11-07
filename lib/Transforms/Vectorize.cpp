@@ -195,6 +195,8 @@ static std::vector<MLFunctionMatcher> makePatterns() {
 namespace {
 
 struct Vectorize : public FunctionPass {
+  Vectorize() : FunctionPass(&Vectorize::passID) {}
+
   PassResult runOnMLFunction(MLFunction *f) override;
 
   // Thread-safe RAII contexts local to pass, BumpPtrAllocator freed on exit.

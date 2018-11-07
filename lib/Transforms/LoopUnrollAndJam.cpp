@@ -71,7 +71,8 @@ struct LoopUnrollAndJam : public FunctionPass {
   static const unsigned kDefaultUnrollJamFactor = 4;
 
   explicit LoopUnrollAndJam(Optional<unsigned> unrollJamFactor = None)
-      : unrollJamFactor(unrollJamFactor) {}
+      : FunctionPass(&LoopUnrollAndJam::passID),
+        unrollJamFactor(unrollJamFactor) {}
 
   PassResult runOnMLFunction(MLFunction *f) override;
   bool runOnForStmt(ForStmt *forStmt);

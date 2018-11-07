@@ -40,6 +40,7 @@ struct LLVM_NODISCARD PassResult {
 
 class Pass {
 public:
+  explicit Pass(const void *passID) {}
   virtual ~Pass() = default;
   virtual PassResult runOnModule(Module *m) = 0;
 
@@ -54,6 +55,8 @@ private:
 
 class ModulePass : public Pass {
 public:
+  explicit ModulePass(const void *passID) : Pass(passID) {}
+
   virtual PassResult runOnModule(Module *m) override = 0;
 
 private:
@@ -69,6 +72,8 @@ private:
 /// module.
 class FunctionPass : public Pass {
 public:
+  explicit FunctionPass(const void *passID) : Pass(passID) {}
+
   /// Implement this function to be run on every function in the module.  If you
   /// do not implement this, the default implementation will dispatch to
   /// runOnCFGFunction or runOnMLFunction.

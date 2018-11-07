@@ -27,6 +27,8 @@ using namespace mlir;
 namespace {
 /// Simple constant folding pass.
 struct ConstantFold : public FunctionPass, StmtWalker<ConstantFold> {
+  ConstantFold() : FunctionPass(&ConstantFold::passID) {}
+
   // All constants in the function post folding.
   SmallVector<SSAValue *, 8> existingConstants;
   // Operation statements that were folded and that need to be erased.

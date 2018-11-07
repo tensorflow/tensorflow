@@ -58,7 +58,8 @@ struct LoopUnroll : public FunctionPass {
 
   explicit LoopUnroll(Optional<unsigned> unrollFactor = None,
                       Optional<bool> unrollFull = None)
-      : unrollFactor(unrollFactor), unrollFull(unrollFull) {}
+      : FunctionPass(&LoopUnroll::passID), unrollFactor(unrollFactor),
+        unrollFull(unrollFull) {}
 
   PassResult runOnMLFunction(MLFunction *f) override;
 

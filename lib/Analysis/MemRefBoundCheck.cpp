@@ -38,7 +38,7 @@ namespace {
 
 /// Checks for out of bound memef access subscripts..
 struct MemRefBoundCheck : public FunctionPass, StmtWalker<MemRefBoundCheck> {
-  explicit MemRefBoundCheck() {}
+  explicit MemRefBoundCheck() : FunctionPass(&MemRefBoundCheck::passID) {}
 
   PassResult runOnMLFunction(MLFunction *f) override;
   // Not applicable to CFG functions.

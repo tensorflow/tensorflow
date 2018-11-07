@@ -44,7 +44,7 @@ namespace {
 struct ComposeAffineMaps : public FunctionPass, StmtWalker<ComposeAffineMaps> {
   std::vector<OperationStmt *> affineApplyOpsToErase;
 
-  explicit ComposeAffineMaps() {}
+  explicit ComposeAffineMaps() : FunctionPass(&ComposeAffineMaps::passID) {}
   using StmtListType = llvm::iplist<Statement>;
   void walk(StmtListType::iterator Start, StmtListType::iterator End);
   void visitOperationStmt(OperationStmt *stmt);

@@ -40,6 +40,7 @@ namespace {
 
 /// A pass to perform loop tiling on all suitable loop nests of an MLFunction.
 struct LoopTiling : public FunctionPass {
+  LoopTiling() : FunctionPass(&LoopTiling::passID) {}
   PassResult runOnMLFunction(MLFunction *f) override;
   constexpr static unsigned kDefaultTileSize = 32;
 

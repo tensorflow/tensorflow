@@ -66,7 +66,7 @@ namespace {
 // ModuleConverter class does CFG conversion for the whole module.
 class ModuleConverter : public ModulePass {
 public:
-  explicit ModuleConverter() {}
+  explicit ModuleConverter() : ModulePass(&ModuleConverter::passID) {}
 
   PassResult runOnModule(Module *m) override;
 

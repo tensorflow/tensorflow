@@ -38,7 +38,8 @@ namespace {
 //  ML functions and CFG functions.
 struct SimplifyAffineStructures : public FunctionPass,
                                   StmtWalker<SimplifyAffineStructures> {
-  explicit SimplifyAffineStructures() {}
+  explicit SimplifyAffineStructures()
+      : FunctionPass(&SimplifyAffineStructures::passID) {}
 
   PassResult runOnMLFunction(MLFunction *f) override;
   // Does nothing on CFG functions for now. No reusable walkers/visitors exist

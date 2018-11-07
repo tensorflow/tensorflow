@@ -34,6 +34,7 @@ namespace {
 
 /// Canonicalize operations in functions.
 struct Canonicalizer : public FunctionPass {
+  Canonicalizer() : FunctionPass(&Canonicalizer::passID) {}
   PassResult runOnFunction(Function *fn) override;
 
   static char passID;
