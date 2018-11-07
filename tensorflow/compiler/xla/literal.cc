@@ -1434,10 +1434,14 @@ bool LiteralBase::Piece::EqualElements(const LiteralBase::Piece& other) const {
       return EqualElementsInternal<bool>(other, &multi_index);
     case U8:
       return EqualElementsInternal<uint8>(other, &multi_index);
+    case S16:
+      return EqualElementsInternal<int16>(other, &multi_index);
     case S32:
       return EqualElementsInternal<int32>(other, &multi_index);
     case S64:
       return EqualElementsInternal<int64>(other, &multi_index);
+    case U16:
+      return EqualElementsInternal<uint16>(other, &multi_index);
     case U32:
       return EqualElementsInternal<uint32>(other, &multi_index);
     case U64:
@@ -1506,6 +1510,11 @@ bool LiteralBase::IsAll(int8 value) const {
             return AllElementsEqualValue<uint8>(piece.data<uint8>(), value);
           }
           return false;
+        case U16:
+          if (value >= 0) {
+            return AllElementsEqualValue<uint16>(piece.data<uint16>(), value);
+          }
+          return false;
         case U32:
           if (value >= 0) {
             return AllElementsEqualValue<uint32>(piece.data<uint32>(), value);
@@ -1518,6 +1527,8 @@ bool LiteralBase::IsAll(int8 value) const {
           return false;
         case S8:
           return AllElementsEqualValue<int8>(piece.data<int8>(), value);
+        case S16:
+          return AllElementsEqualValue<int16>(piece.data<int16>(), value);
         case S32:
           return AllElementsEqualValue<int32>(piece.data<int32>(), value);
         case S64:
@@ -1739,12 +1750,16 @@ bool LiteralBase::IsZero(absl::Span<const int64> indices) const {
   switch (shape().element_type()) {
     case U8:
       return Get<uint8>(indices) == 0;
+    case U16:
+      return Get<uint16>(indices) == 0;
     case U32:
       return Get<uint32>(indices) == 0;
     case U64:
       return Get<uint64>(indices) == 0;
     case S8:
       return Get<int8>(indices) == 0;
+    case S16:
+      return Get<int16>(indices) == 0;
     case S32:
       return Get<int32>(indices) == 0;
     case S64:
@@ -1801,6 +1816,20 @@ void LiteralBase::Piece::WriteToProto(LiteralProto* proto) const {
       break;
     case S64:
       CopyToRepeatedField(proto->mutable_s64s(), data<int64>());
+      break;
+    case U16:
+      *proto->mutable_u16s() = string(
+          reinterpret_cast<const char*>(data<uint16_t>().data()), size_bytes());
+      if (!kLittleEndian) {
+        ConvertEndianShort(proto->mutable_u16s());
+      }
+      break;
+    case S16:
+      *proto->mutable_s16s() = string(
+          reinterpret_cast<const char*>(data<int16_t>().data()), size_bytes());
+      if (!kLittleEndian) {
+        ConvertEndianShort(proto->mutable_s16s());
+      }
       break;
     case F16:
       *proto->mutable_f16s() = string(
@@ -1916,6 +1945,22 @@ Status LiteralBase::Piece::CopyFromProto(const LiteralProto& proto) {
     case U64:
       TF_RETURN_IF_ERROR(CopyFromRepeatedField(data<uint64>(), proto.u64s()));
       break;
+    case S16: {
+      const string& s(proto.s16s());
+      TF_RET_CHECK(data<int16_t>().size() * sizeof(int16_t) == s.size());
+      memcpy(untyped_data(), s.data(), s.size());
+      if (!kLittleEndian) {
+        ConvertEndianShort(reinterpret_cast<char*>(untyped_data()), s.size());
+      }
+    } break;
+    case U16: {
+      const string& s(proto.u16s());
+      TF_RET_CHECK(data<uint16_t>().size() * sizeof(uint16_t) == s.size());
+      memcpy(untyped_data(), s.data(), s.size());
+      if (!kLittleEndian) {
+        ConvertEndianShort(reinterpret_cast<char*>(untyped_data()), s.size());
+      }
+    } break;
     case F16: {
       const string& s(proto.f16s());
       TF_RET_CHECK(data<half>().size() * sizeof(half) == s.size());

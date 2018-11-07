@@ -1394,6 +1394,28 @@ TEST_F(LiteralUtilTest, CopyFromProto_f16) {
   EXPECT_EQ(h1, r[3]);
 }
 
+TEST_F(LiteralUtilTest, CopyFromProto_u16) {
+  uint16 u1(0xabcd);
+  uint16 u2(0x1234);
+
+  const unsigned char uint16_vals[8] = {0xcd, 0xab, 0x34, 0x12,
+                                        0x34, 0x12, 0xcd, 0xab};
+  LiteralProto p;
+  p.mutable_shape()->set_element_type(U16);
+  p.mutable_shape()->clear_dimensions();
+  p.mutable_shape()->add_dimensions(4);
+  LayoutUtil::SetToDefaultLayout(p.mutable_shape());
+  p.clear_u16s();
+  p.set_u16s(uint16_vals, 8);
+  TF_ASSERT_OK_AND_ASSIGN(Literal literal, Literal::CreateFromProto(p));
+  auto r = literal.data<uint16>();
+  ASSERT_EQ(4, r.size());
+  EXPECT_EQ(u1, r[0]);
+  EXPECT_EQ(u2, r[1]);
+  EXPECT_EQ(u2, r[2]);
+  EXPECT_EQ(u1, r[3]);
+}
+
 TEST_F(LiteralUtilTest, LiteralSliceTest) {
   auto scalar = LiteralUtil::CreateR0<float>(1.0);
   auto matrix = LiteralUtil::CreateR2<float>({{1.0, 2.0}, {3.0, 4.0}});
