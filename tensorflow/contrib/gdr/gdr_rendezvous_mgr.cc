@@ -170,6 +170,15 @@ class GdrRemoteRendezvous : public BaseRemoteRendezvous {
     // Record "call" in active_ so that it can be aborted cleanly.
     RegisterCall(call);
 
+    // RendezvousMgr already aborted, shouldn't send RPC call any more
+    if (!call->status().ok()) {
+      session()->worker_cache->ReleaseWorker(call->src_worker_, call->wi_);
+      call->done()(call->status(), Args(), Args(), Tensor(), false);
+      call->wi_ = nullptr;
+      get_call_freelist()->Release(call, session()->worker_cache.get());
+      return;
+    }
+
     // Start "call".
     Ref();
     call->Start([this, call, src_worker, rwi, done]() {
