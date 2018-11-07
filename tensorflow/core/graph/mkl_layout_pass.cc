@@ -915,17 +915,17 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
     if (node->type_string() != "Transpose") return false;
 
     // If "Transpose" has multiple output data edges, also don't fuse it.
-    if (node->num_outputs() > 1 || node->out_edges().size() > 1) return false;
+    // if (node->num_outputs() > 1 || node->out_edges().size() > 1) return false;
 
     // Check if has out control edge. If true, this is a training graph.
     // Currently we focus on inference and do no fusion in training.
     // Note: this constraint will eventually be removed, if we enabled this fusion for training
     // in the future. 
-    for (const Edge* e : node->out_edges()) {
-      if (e->IsControlEdge()) {
-        return false;
-      }
-    }
+    // for (const Edge* e : node->out_edges()) {
+    //   if (e->IsControlEdge()) {
+    //     return false;
+    //   }
+    // }
 
     // If "Transpose" has input control edges, don't fuse on it.
     for (const Edge* e : node->in_edges()) {
@@ -2736,12 +2736,13 @@ MklLayoutRewritePass::CheckForNodeFusion(Node* a) const {
     //
 
     std::stack<Node *, std::vector<Node *>> work_stack;
-    std::unordered_set<Node *> visited_nodes;
+    std::stack<EdgeSet::const_iterator> current_neighbor_stack;
     auto node_checker = fi->node_checkers.begin();
 
     Node *current_node = nullptr;
     if (a != nullptr) {
       work_stack.push(a);
+      current_neighbor_stack.push(a->out_edges().begin());
     }
 
     while (!work_stack.empty()) {
@@ -2759,33 +2760,29 @@ MklLayoutRewritePass::CheckForNodeFusion(Node* a) const {
           return make_tuple(true, nodes, *fi_ptr);
         }
 
-        bool all_succ_has_been_visited = true;
-        for (const Edge *e : current_node->out_edges()) {
-          if (!e->IsControlEdge()) {
-            Node *candidate_node = e->dst();
+        auto &current_neighbor_iter = current_neighbor_stack.top();
+        if (current_neighbor_iter == current_node->out_edges().end()) {
+            // All output edges have been exhausted, pop the stack
+            // and roll back to the preceding node.
+            work_stack.pop();
+            current_neighbor_stack.pop();
+            -- node_checker;
+        } else {
+            // Found a edge not been visited, go through this edge
+            // and get the next neighbor.
+            Node *neighbor_node = (*current_neighbor_iter)->dst();
+            work_stack.push(neighbor_node);
+            current_neighbor_stack.push(neighbor_node->out_edges().begin());
+            ++ node_checker;
 
-            // If the candidate node has not been visited, push it to stack.
-            if (visited_nodes.find(candidate_node) == visited_nodes.end()) {
-              work_stack.push(candidate_node);
-              ++ node_checker;
-              all_succ_has_been_visited = false;
-              break;
-            }
-          }
+            // Increase current_neighbor_iter, which is at the top of stack.
+            ++ current_neighbor_iter;
         }
-
-        // All successor nodes of current node has been visited (no match found),
-        // pop the stack and mark current node as "visited".
-        if (all_succ_has_been_visited) {
-          visited_nodes.insert(current_node);
-          work_stack.pop();
-          -- node_checker;
-        }
-
       } else {
         // current node doesn't match, pop stack to roll back.
-        visited_nodes.insert(current_node);
+        // visited_nodes.insert(current_node);
         work_stack.pop();
+        current_neighbor_stack.pop();
         -- node_checker;
       }
     }
