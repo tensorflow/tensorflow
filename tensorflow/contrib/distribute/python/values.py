@@ -75,10 +75,6 @@ class DistributedValues(object):
           ValueError("Device %s not found in %s (current device %s)" %
                      (device, self._index.keys(), device_util.current())), e)
 
-  def on_device(self, device):
-    device = device_util.canonicalize(device)
-    return device in self._index
-
   @property
   def devices(self):
     return list(self._index.keys())
