@@ -184,6 +184,7 @@ class StateManager(object):
                       shape,
                       dtype=None,
                       trainable=True,
+                      use_resource=True,
                       initializer=None):
     """Creates a new variable.
 
@@ -193,12 +194,14 @@ class StateManager(object):
       shape: variable shape.
       dtype: The type of the variable. Defaults to `self.dtype` or `float32`.
       trainable: Whether this variable is trainable or not.
+      use_resource: If true, we use resource variables. Otherwise we use
+        RefVariable.
       initializer: initializer instance (callable).
 
     Returns:
       The created variable.
     """
-    del feature_column, name, shape, dtype, trainable, initializer
+    del feature_column, name, shape, dtype, trainable, use_resource, initializer
     raise NotImplementedError('StateManager.create_variable')
 
   def add_variable(self, feature_column, var):
@@ -270,6 +273,7 @@ class _StateManagerImpl(StateManager):
                       shape,
                       dtype=None,
                       trainable=True,
+                      use_resource=True,
                       initializer=None):
     if name in self._cols_to_vars_map[feature_column]:
       raise ValueError('Variable already exists.')
@@ -280,7 +284,7 @@ class _StateManagerImpl(StateManager):
         dtype=dtype,
         initializer=initializer,
         trainable=self._trainable and trainable,
-        use_resource=True,
+        use_resource=use_resource,
         # TODO(rohanj): Get rid of this hack once we have a mechanism for
         # specifying a default partitioner for an entire layer. In that case,
         # the default getter for Layers should work.
@@ -2539,6 +2543,8 @@ class EmbeddingColumn(
         shape=embedding_shape,
         dtype=dtypes.float32,
         trainable=self.trainable,
+        # TODO(rohanj): Make this True when b/118500434 is fixed.
+        use_resource=False,
         initializer=self.initializer)
 
   def _get_dense_tensor_internal_helper(self, sparse_tensors,
