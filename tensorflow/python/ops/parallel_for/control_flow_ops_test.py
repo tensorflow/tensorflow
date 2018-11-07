@@ -792,9 +792,12 @@ class NNTest(PForTest):
       output = nn.max_pool(
           x1, ksize, strides=[1, 2, 2, 1], padding="VALID", data_format="NHWC")
       loss = nn.l2_loss(output)
-      return output, gradient_ops.gradients(loss, x1)
+      ones = array_ops.ones_like(output)
+      grad = gradient_ops.gradients(loss, x1, grad_ys=ones)
+      grad_grad = gradient_ops.gradients(grad, ones)
+      return output, grad, grad_grad
 
-    self._test_loop_fn(loop_fn, 3, loop_fn_dtypes=[dtypes.float32] * 2)
+    self._test_loop_fn(loop_fn, 3, loop_fn_dtypes=[dtypes.float32] * 3)
 
   def test_fused_batch_norm(self):
     data_formats = ["NHWC"]
