@@ -90,10 +90,12 @@ string HumanReadableProfileBuilder::ToString() const {
         op.optimal_seconds < 0
             ? ""
             : StrFormat("(%12.1f optimal)", op.optimal_seconds * 1e6),
-        op.flop_count <= 0 ? "" : HumanReadableNumFlops(op.flop_count, nsecs),
-        op.transcendental_count <= 0
-            ? ""
-            : HumanReadableNumTranscendentalOps(op.transcendental_count, nsecs),
+        op.flop_count > 0 && nsecs > 0
+            ? HumanReadableNumFlops(op.flop_count, nsecs)
+            : "",
+        op.transcendental_count > 0 && nsecs > 0
+            ? HumanReadableNumTranscendentalOps(op.transcendental_count, nsecs)
+            : "",
         bytes_per_sec, bytes_per_cycle, op.name);
   };
 
