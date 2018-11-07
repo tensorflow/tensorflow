@@ -53,24 +53,25 @@ Status XlaGpuDeviceFactory::CreateDevices(const SessionOptions& session_options,
     return Status::OK();
   }
 
-  XlaDevice::Options options;
-  options.platform = platform.ValueOrDie();
-  options.device_name_prefix = name_prefix;
-  options.device_name = DEVICE_XLA_GPU;
-  options.device_ordinal = 0;
-  options.compilation_device_name = DEVICE_GPU_XLA_JIT;
-  options.use_multiple_streams = true;
-  auto device = absl::make_unique<XlaDevice>(session_options, options);
+  for (int i = 0; i < platform.ValueOrDie()->VisibleDeviceCount(); ++i) {
+    XlaDevice::Options options;
+    options.platform = platform.ValueOrDie();
+    options.device_name_prefix = name_prefix;
+    options.device_name = DEVICE_XLA_GPU;
+    options.device_ordinal = i;
+    options.compilation_device_name = DEVICE_GPU_XLA_JIT;
+    options.use_multiple_streams = true;
+    auto device = absl::make_unique<XlaDevice>(session_options, options);
 
-  // TODO(b/78468222): Uncomment after fixing this bug
-  // status = device->UseGpuDeviceInfo();
-  // if (!status.ok()) {
-  //  errors::AppendToMessage(&status, "while setting up ", DEVICE_GPU_XLA_JIT,
-  //                          " device");
-  //  return status;
-  // }
+    Status status = device->UseGpuDeviceInfo();
+    if (!status.ok()) {
+      errors::AppendToMessage(&status, "while setting up ", DEVICE_GPU_XLA_JIT,
+                              " device number ", i);
+      return status;
+    }
 
-  devices->push_back(device.release());
+    devices->push_back(device.release());
+  }
   return Status::OK();
 }
 
