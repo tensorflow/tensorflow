@@ -77,9 +77,9 @@ public class ImageClassifierFloatInception extends ImageClassifier {
 
   @Override
   protected void addPixelValue(int pixelValue) {
-    imgData.putFloat(((pixelValue >> 16) - IMAGE_MEAN) / IMAGE_STD);
-    imgData.putFloat(((pixelValue >> 8) - IMAGE_MEAN) / IMAGE_STD);
-    imgData.putFloat((pixelValue - IMAGE_MEAN) / IMAGE_STD);
+    imgData.putFloat(((byte)(pixelValue >> 16) - IMAGE_MEAN) / IMAGE_STD);
+    imgData.putFloat(((byte)(pixelValue >> 8) - IMAGE_MEAN) / IMAGE_STD);
+    imgData.putFloat(((byte)pixelValue - IMAGE_MEAN) / IMAGE_STD);
   }
 
   @Override
