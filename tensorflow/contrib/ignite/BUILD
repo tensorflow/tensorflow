@@ -107,11 +107,7 @@ cc_library(
         "kernels/igfs/igfs_writable_file.cc",
         "kernels/igfs/igfs_writable_file.h",
     ],
-    deps = [
-        ":ignite_client",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:lib_internal",
-    ],
+    deps = [":ignite_client"],
     alwayslink = 1,
 )
 
