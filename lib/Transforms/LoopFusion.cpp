@@ -45,6 +45,7 @@ struct LoopFusion : public FunctionPass {
   LoopFusion() {}
 
   PassResult runOnMLFunction(MLFunction *f) override;
+  static char passID;
 };
 
 // LoopCollector walks the statements in an MLFunction and builds a map from
@@ -74,6 +75,8 @@ public:
 };
 
 } // end anonymous namespace
+
+char LoopFusion::passID = 0;
 
 FunctionPass *mlir::createLoopFusionPass() { return new LoopFusion; }
 
@@ -242,3 +245,5 @@ PassResult LoopFusion::runOnMLFunction(MLFunction *f) {
 
   return success();
 }
+
+static PassRegistration<LoopFusion> pass("loop-fusion", "Fuse loop nests");

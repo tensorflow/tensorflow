@@ -35,8 +35,12 @@ namespace {
 /// Canonicalize operations in functions.
 struct Canonicalizer : public FunctionPass {
   PassResult runOnFunction(Function *fn) override;
+
+  static char passID;
 };
 } // end anonymous namespace
+
+char Canonicalizer::passID = 0;
 
 PassResult Canonicalizer::runOnFunction(Function *fn) {
   auto *context = fn->getContext();
@@ -54,3 +58,6 @@ PassResult Canonicalizer::runOnFunction(Function *fn) {
 
 /// Create a Canonicalizer pass.
 FunctionPass *mlir::createCanonicalizerPass() { return new Canonicalizer(); }
+
+static PassRegistration<Canonicalizer> pass("canonicalize",
+                                            "Canonicalize operations");

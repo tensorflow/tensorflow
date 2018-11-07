@@ -30,6 +30,7 @@
 #include "mlir/IR/Module.h"
 #include "mlir/Parser.h"
 #include "mlir/Pass.h"
+#include "mlir/Support/PassNameParser.h"
 #include "mlir/TensorFlow/ControlFlowOps.h"
 #include "mlir/TensorFlow/Passes.h"
 #include "mlir/TensorFlowLite/Passes.h"
@@ -67,58 +68,7 @@ static cl::opt<bool>
                                "expected-* lines on the corresponding line"),
                       cl::init(false));
 
-enum Passes {
-  Canonicalize,
-  ComposeAffineMaps,
-  ConstantFold,
-  ConvertToCFG,
-  TFLiteLegaize,
-  LoopFusion,
-  LoopTiling,
-  LoopUnroll,
-  LoopUnrollAndJam,
-  MemRefBoundCheck,
-  MemRefDependenceCheck,
-  PipelineDataTransfer,
-  PrintCFGGraph,
-  SimplifyAffineStructures,
-  TFRaiseControlFlow,
-  Vectorize,
-  XLALower,
-};
-
-static cl::list<Passes> passList(
-    "", cl::desc("Compiler passes to run"),
-    cl::values(
-        clEnumValN(Canonicalize, "canonicalize", "Canonicalize operations"),
-        clEnumValN(ComposeAffineMaps, "compose-affine-maps",
-                   "Compose affine maps"),
-        clEnumValN(ConstantFold, "constant-fold",
-                   "Constant fold operations in functions"),
-        clEnumValN(ConvertToCFG, "convert-to-cfg",
-                   "Convert all ML functions in the module to CFG ones"),
-        clEnumValN(LoopFusion, "loop-fusion", "Fuse loop nests"),
-        clEnumValN(LoopTiling, "loop-tile", "Tile loop nests"),
-        clEnumValN(LoopUnroll, "loop-unroll", "Unroll loops"),
-        clEnumValN(LoopUnrollAndJam, "loop-unroll-jam", "Unroll and jam loops"),
-        clEnumValN(MemRefBoundCheck, "memref-bound-check",
-                   "Convert all ML functions in the module to CFG ones"),
-        clEnumValN(MemRefDependenceCheck, "memref-dependence-check",
-                   "Checks dependences between all pairs of memref accesses."),
-        clEnumValN(PipelineDataTransfer, "pipeline-data-transfer",
-                   "Pipeline non-blocking data transfers between"
-                   "explicitly managed levels of the memory hierarchy"),
-        clEnumValN(PrintCFGGraph, "print-cfg-graph",
-                   "Print CFG graph per function"),
-        clEnumValN(SimplifyAffineStructures, "simplify-affine-structures",
-                   "Simplify affine expressions"),
-        clEnumValN(TFLiteLegaize, "tfl-legalize",
-                   "Legalize operations to TensorFlow Lite dialect"),
-        clEnumValN(TFRaiseControlFlow, "tf-raise-control-flow",
-                   "Dynamic TensorFlow Switch/Match nodes to a CFG"),
-        clEnumValN(Vectorize, "vectorize",
-                   "Vectorize to a target independent n-D vector abstraction."),
-        clEnumValN(XLALower, "xla-lower", "Lower to XLA dialect")));
+static std::vector<const mlir::PassInfo *> *passList;
 
 enum OptResult { OptSuccess, OptFailure };
 
@@ -190,65 +140,9 @@ static OptResult performActions(SourceMgr &sourceMgr, MLIRContext *context) {
     return OptFailure;
 
   // Run each of the passes that were selected.
-  for (unsigned i = 0, e = passList.size(); i != e; ++i) {
-    auto passKind = passList[i];
-    Pass *pass = nullptr;
-    switch (passKind) {
-    case Canonicalize:
-      pass = createCanonicalizerPass();
-      break;
-    case ComposeAffineMaps:
-      pass = createComposeAffineMapsPass();
-      break;
-    case ConstantFold:
-      pass = createConstantFoldPass();
-      break;
-    case ConvertToCFG:
-      pass = createConvertToCFGPass();
-      break;
-    case LoopFusion:
-      pass = createLoopFusionPass();
-      break;
-    case LoopTiling:
-      pass = createLoopTilingPass();
-      break;
-    case LoopUnroll:
-      pass = createLoopUnrollPass();
-      break;
-    case LoopUnrollAndJam:
-      pass = createLoopUnrollAndJamPass();
-      break;
-    case MemRefBoundCheck:
-      pass = createMemRefBoundCheckPass();
-      break;
-    case MemRefDependenceCheck:
-      pass = createMemRefDependenceCheckPass();
-      break;
-    case PipelineDataTransfer:
-      pass = createPipelineDataTransferPass();
-      break;
-    case PrintCFGGraph:
-      pass = createPrintCFGGraphPass();
-      break;
-    case SimplifyAffineStructures:
-      pass = createSimplifyAffineStructuresPass();
-      break;
-    case TFLiteLegaize:
-      pass = tfl::createLegalizer();
-      break;
-    case TFRaiseControlFlow:
-      pass = createRaiseTFControlFlowPass();
-      break;
-    case Vectorize:
-      pass = createVectorizePass();
-      break;
-    case XLALower:
-      pass = createXLALowerPass();
-      break;
-    }
-
+  for (const auto *passInfo : *passList) {
+    std::unique_ptr<Pass> pass(passInfo->createPass());
     PassResult result = pass->runOnModule(module.get());
-    delete pass;
     if (result)
       return OptFailure;
 
@@ -468,6 +362,10 @@ int main(int argc, char **argv) {
   llvm::PrettyStackTraceProgram x(argc, argv);
   InitLLVM y(argc, argv);
 
+  // Parse pass names in main to ensure static initialization completed.
+  llvm::cl::list<const mlir::PassInfo *, bool, mlir::PassNameParser> passList(
+      "", llvm::cl::desc("Compiler passes to run"));
+  ::passList = &passList;
   cl::ParseCommandLineOptions(argc, argv, "MLIR modular optimizer driver\n");
 
   // Set up the input file.

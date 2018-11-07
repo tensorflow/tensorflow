@@ -18,7 +18,10 @@
 #ifndef MLIR_PASS_H
 #define MLIR_PASS_H
 
+#include "mlir/Support/LLVM.h"
+#include "llvm/ADT/StringRef.h"
 #include "llvm/Support/Compiler.h"
+#include <functional>
 
 namespace mlir {
 class Function;
@@ -81,6 +84,65 @@ public:
   virtual PassResult runOnModule(Module *m) override;
 };
 
+using PassAllocatorFunction = std::function<Pass *()>;
+
+/// Structure to group information about a pass (argument to invoke via
+/// mlir-opt, description, pass allocator and unique ID).
+class PassInfo {
+public:
+  /// PassInfo constructor should not be invoked directly, instead use
+  /// PassRegistration or registerPass.
+  PassInfo(StringRef arg, StringRef description, const void *passID,
+           PassAllocatorFunction allocator)
+      : arg(arg), description(description), allocator(allocator),
+        passID(passID){};
+
+  /// Returns an allocated instance of this pass.
+  Pass *createPass() const {
+    assert(allocator &&
+           "Cannot call createPass on PassInfo without default allocator");
+    return allocator();
+  }
+
+  /// Returns the command line option that may be passed to 'mlir-opt' that will
+  /// cause this pass to run or null if there is no such argument.
+  StringRef getPassArgument() const { return arg; }
+
+  /// Returns a description for the pass, this never returns null.
+  StringRef getPassDescription() const { return description; }
+
+private:
+  // The argument with which to invoke the pass via mlir-opt.
+  StringRef arg;
+
+  // Description of the pass.
+  StringRef description;
+
+  // Allocator to construct an instance of this pass.
+  PassAllocatorFunction allocator;
+
+  // Unique identifier for pass.
+  const void *passID;
+};
+
+/// Register a specific dialect creation function with the system, typically
+/// used through the PassRegistration template.
+void registerPass(StringRef arg, StringRef description, const void *passID,
+                  const PassAllocatorFunction &function);
+
+/// PassRegistration provides a global initializer that registers a Pass
+/// allocation routine.
+///
+/// Usage:
+///
+///   // At namespace scope.
+///   static PassRegistration<MyPass> Unused("unused", "Unused pass");
+template <typename ConcretePass> struct PassRegistration {
+  PassRegistration(StringRef arg, StringRef description) {
+    registerPass(arg, description, &ConcretePass::passID,
+                 [&]() { return new ConcretePass(); });
+  }
+};
 } // end namespace mlir
 
 #endif // MLIR_PASS_H

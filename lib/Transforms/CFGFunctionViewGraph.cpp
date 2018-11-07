@@ -74,12 +74,15 @@ void mlir::CFGFunction::viewGraph() const {
 
 namespace {
 struct PrintCFGPass : public FunctionPass {
-  PrintCFGPass(llvm::raw_ostream &os, bool shortNames, const llvm::Twine &title)
+  PrintCFGPass(llvm::raw_ostream &os = llvm::errs(), bool shortNames = false,
+               const llvm::Twine &title = "")
       : os(os), shortNames(shortNames), title(title) {}
   PassResult runOnCFGFunction(CFGFunction *function) override {
     mlir::writeGraph(os, function, shortNames, title);
     return success();
   }
+
+  static char passID;
 
 private:
   llvm::raw_ostream &os;
@@ -88,8 +91,13 @@ private:
 };
 } // namespace
 
+char PrintCFGPass::passID = 0;
+
 FunctionPass *mlir::createPrintCFGGraphPass(llvm::raw_ostream &os,
                                             bool shortNames,
                                             const llvm::Twine &title) {
   return new PrintCFGPass(os, shortNames, title);
 }
+
+static PassRegistration<PrintCFGPass> pass("print-cfg-graph",
+                                           "Print CFG graph per function");

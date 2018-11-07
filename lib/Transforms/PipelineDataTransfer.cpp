@@ -47,9 +47,13 @@ struct PipelineDataTransfer : public FunctionPass,
   // Collect all 'for' statements.
   void visitForStmt(ForStmt *forStmt) { forStmts.push_back(forStmt); }
   std::vector<ForStmt *> forStmts;
+
+  static char passID;
 };
 
 } // end anonymous namespace
+
+char PipelineDataTransfer::passID = 0;
 
 /// Creates a pass to pipeline explicit movement of data across levels of the
 /// memory hierarchy.
@@ -306,3 +310,8 @@ PassResult PipelineDataTransfer::runOnForStmt(ForStmt *forStmt) {
 
   return success();
 }
+
+static PassRegistration<PipelineDataTransfer> pass(
+    "pipeline-data-transfer",
+    "Pipeline non-blocking data transfers between explicitly managed levels of "
+    "the memory hierarchy");

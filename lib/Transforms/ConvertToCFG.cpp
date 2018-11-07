@@ -70,6 +70,8 @@ public:
 
   PassResult runOnModule(Module *m) override;
 
+  static char passID;
+
 private:
   // Generates CFG functions for all ML functions in the module.
   void convertMLFunctions();
@@ -89,6 +91,8 @@ private:
   Module *module = nullptr;
 };
 } // end anonymous namespace
+
+char ModuleConverter::passID = 0;
 
 // Iterates over all functions in the module generating CFG functions
 // equivalent to ML functions and replacing references to ML functions
@@ -163,3 +167,7 @@ void ModuleConverter::removeMLFunctions() {
 /// Function references are appropriately patched to refer to the newly
 /// generated CFG functions.
 ModulePass *mlir::createConvertToCFGPass() { return new ModuleConverter(); }
+
+static PassRegistration<ModuleConverter>
+    pass("convert-to-cfg",
+         "Convert all ML functions in the module to CFG ones");

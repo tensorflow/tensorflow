@@ -40,8 +40,12 @@ struct ConstantFold : public FunctionPass, StmtWalker<ConstantFold> {
   void visitForStmt(ForStmt *stmt);
   PassResult runOnCFGFunction(CFGFunction *f) override;
   PassResult runOnMLFunction(MLFunction *f) override;
+
+  static char passID;
 };
 } // end anonymous namespace
+
+char ConstantFold::passID = 0;
 
 /// Attempt to fold the specified operation, updating the IR to match.  If
 /// constants are found, we keep track of them in the existingConstants list.
@@ -174,3 +178,6 @@ PassResult ConstantFold::runOnMLFunction(MLFunction *f) {
 
 /// Creates a constant folding pass.
 FunctionPass *mlir::createConstantFoldPass() { return new ConstantFold(); }
+
+static PassRegistration<ConstantFold>
+    pass("constant-fold", "Constant fold operations in functions");

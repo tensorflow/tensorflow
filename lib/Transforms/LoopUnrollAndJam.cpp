@@ -70,13 +70,17 @@ struct LoopUnrollAndJam : public FunctionPass {
   Optional<unsigned> unrollJamFactor;
   static const unsigned kDefaultUnrollJamFactor = 4;
 
-  explicit LoopUnrollAndJam(Optional<unsigned> unrollJamFactor)
+  explicit LoopUnrollAndJam(Optional<unsigned> unrollJamFactor = None)
       : unrollJamFactor(unrollJamFactor) {}
 
   PassResult runOnMLFunction(MLFunction *f) override;
   bool runOnForStmt(ForStmt *forStmt);
+
+  static char passID;
 };
 } // end anonymous namespace
+
+char LoopUnrollAndJam::passID = 0;
 
 FunctionPass *mlir::createLoopUnrollAndJamPass(int unrollJamFactor) {
   return new LoopUnrollAndJam(
@@ -239,3 +243,6 @@ bool mlir::loopUnrollJamByFactor(ForStmt *forStmt, uint64_t unrollJamFactor) {
 
   return true;
 }
+
+static PassRegistration<LoopUnrollAndJam> pass("loop-unroll-jam",
+                                               "Unroll and jam loops");

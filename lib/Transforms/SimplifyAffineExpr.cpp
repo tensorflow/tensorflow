@@ -47,9 +47,13 @@ struct SimplifyAffineStructures : public FunctionPass,
 
   void visitIfStmt(IfStmt *ifStmt);
   void visitOperationStmt(OperationStmt *opStmt);
+
+  static char passID;
 };
 
 } // end anonymous namespace
+
+char SimplifyAffineStructures::passID = 0;
 
 FunctionPass *mlir::createSimplifyAffineStructuresPass() {
   return new SimplifyAffineStructures();
@@ -83,3 +87,6 @@ PassResult SimplifyAffineStructures::runOnMLFunction(MLFunction *f) {
   walk(f);
   return success();
 }
+
+static PassRegistration<SimplifyAffineStructures>
+    pass("simplify-affine-structures", "Simplify affine expressions");

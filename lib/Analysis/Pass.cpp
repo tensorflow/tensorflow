@@ -23,6 +23,9 @@
 #include "mlir/IR/CFGFunction.h"
 #include "mlir/IR/MLFunction.h"
 #include "mlir/IR/Module.h"
+#include "mlir/Support/PassNameParser.h"
+#include "llvm/ADT/DenseMap.h"
+#include "llvm/Support/ManagedStatic.h"
 using namespace mlir;
 
 /// Out of line virtual method to ensure vtables and metadata are emitted to a
@@ -50,4 +53,38 @@ PassResult FunctionPass::runOnFunction(Function *fn) {
     return runOnCFGFunction(cfgFunc);
 
   return success();
+}
+
+// TODO: The pass registry and pass name parsing should be moved out.
+static llvm::ManagedStatic<llvm::DenseMap<const void *, PassInfo>> passRegistry;
+
+void mlir::registerPass(StringRef arg, StringRef description,
+                        const void *passID,
+                        const PassAllocatorFunction &function) {
+  bool inserted = passRegistry
+                      ->insert(std::make_pair(
+                          passID, PassInfo(arg, description, passID, function)))
+                      .second;
+  assert(inserted && "Pass registered multiple times");
+  (void)inserted;
+}
+
+PassNameParser::PassNameParser(llvm::cl::Option &opt)
+    : llvm::cl::parser<const PassInfo *>(opt) {
+  for (const auto &kv : *passRegistry) {
+    addLiteralOption(kv.second.getPassArgument(), &kv.second,
+                     kv.second.getPassDescription());
+  }
+}
+
+void PassNameParser::printOptionInfo(const llvm::cl::Option &O,
+                                     size_t GlobalWidth) const {
+  PassNameParser *TP = const_cast<PassNameParser *>(this);
+  llvm::array_pod_sort(TP->Values.begin(), TP->Values.end(),
+                       [](const PassNameParser::OptionInfo *VT1,
+                          const PassNameParser::OptionInfo *VT2) {
+                         return VT1->Name.compare(VT2->Name);
+                       });
+  using llvm::cl::parser;
+  parser<const PassInfo *>::printOptionInfo(O, GlobalWidth);
 }

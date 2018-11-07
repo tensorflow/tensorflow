@@ -50,9 +50,13 @@ struct ComposeAffineMaps : public FunctionPass, StmtWalker<ComposeAffineMaps> {
   void visitOperationStmt(OperationStmt *stmt);
   PassResult runOnMLFunction(MLFunction *f) override;
   using StmtWalker<ComposeAffineMaps>::walk;
+
+  static char passID;
 };
 
 } // end anonymous namespace
+
+char ComposeAffineMaps::passID = 0;
 
 FunctionPass *mlir::createComposeAffineMapsPass() {
   return new ComposeAffineMaps();
@@ -92,3 +96,6 @@ PassResult ComposeAffineMaps::runOnMLFunction(MLFunction *f) {
   }
   return success();
 }
+
+static PassRegistration<ComposeAffineMaps> pass("compose-affine-maps",
+                                                "Compose affine maps");

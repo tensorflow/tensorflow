@@ -199,9 +199,13 @@ struct Vectorize : public FunctionPass {
 
   // Thread-safe RAII contexts local to pass, BumpPtrAllocator freed on exit.
   MLFunctionMatcherContext MLContext;
+
+  static char passID;
 };
 
 } // end anonymous namespace
+
+char Vectorize::passID = 0;
 
 /////// TODO(ntv): Hoist to a VectorizationStrategy.cpp when appropriate. //////
 namespace {
@@ -669,3 +673,7 @@ PassResult Vectorize::runOnMLFunction(MLFunction *f) {
 }
 
 FunctionPass *mlir::createVectorizePass() { return new Vectorize(); }
+
+static PassRegistration<Vectorize>
+    pass("vectorize",
+         "Vectorize to a target independent n-D vector abstraction");

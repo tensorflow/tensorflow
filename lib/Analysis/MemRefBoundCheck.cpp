@@ -45,9 +45,13 @@ struct MemRefBoundCheck : public FunctionPass, StmtWalker<MemRefBoundCheck> {
   PassResult runOnCFGFunction(CFGFunction *f) override { return success(); }
 
   void visitOperationStmt(OperationStmt *opStmt);
+
+  static char passID;
 };
 
 } // end anonymous namespace
+
+char MemRefBoundCheck::passID = 0;
 
 FunctionPass *mlir::createMemRefBoundCheckPass() {
   return new MemRefBoundCheck();
@@ -164,3 +168,7 @@ void MemRefBoundCheck::visitOperationStmt(OperationStmt *opStmt) {
 PassResult MemRefBoundCheck::runOnMLFunction(MLFunction *f) {
   return walk(f), success();
 }
+
+static PassRegistration<MemRefBoundCheck>
+    memRefBoundCheck("memref-bound-check",
+                     "Check memref accesses in an MLFunction");

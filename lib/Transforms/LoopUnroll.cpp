@@ -56,22 +56,20 @@ struct LoopUnroll : public FunctionPass {
   Optional<unsigned> unrollFactor;
   Optional<bool> unrollFull;
 
-  explicit LoopUnroll(Optional<unsigned> unrollFactor,
-                      Optional<bool> unrollFull)
+  explicit LoopUnroll(Optional<unsigned> unrollFactor = None,
+                      Optional<bool> unrollFull = None)
       : unrollFactor(unrollFactor), unrollFull(unrollFull) {}
 
   PassResult runOnMLFunction(MLFunction *f) override;
 
   /// Unroll this for stmt. Returns false if nothing was done.
   bool runOnForStmt(ForStmt *forStmt);
+
+  static char passID;
 };
 } // end anonymous namespace
 
-FunctionPass *mlir::createLoopUnrollPass(int unrollFactor, int unrollFull) {
-  return new LoopUnroll(unrollFactor == -1 ? None
-                                           : Optional<unsigned>(unrollFactor),
-                        unrollFull == -1 ? None : Optional<bool>(unrollFull));
-}
+char LoopUnroll::passID = 0;
 
 PassResult LoopUnroll::runOnMLFunction(MLFunction *f) {
   // Gathers all innermost loops through a post order pruned walk.
@@ -286,3 +284,11 @@ bool mlir::loopUnrollByFactor(ForStmt *forStmt, uint64_t unrollFactor) {
 
   return true;
 }
+
+FunctionPass *mlir::createLoopUnrollPass(int unrollFactor, int unrollFull) {
+  return new LoopUnroll(unrollFactor == -1 ? None
+                                           : Optional<unsigned>(unrollFactor),
+                        unrollFull == -1 ? None : Optional<bool>(unrollFull));
+}
+
+static PassRegistration<LoopUnroll> pass("loop-unroll", "Unroll loops");

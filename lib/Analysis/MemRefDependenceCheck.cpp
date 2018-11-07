@@ -51,9 +51,12 @@ struct MemRefDependenceCheck : public FunctionPass,
       loadsAndStores.push_back(opStmt);
     }
   }
+  static char passID;
 };
 
 } // end anonymous namespace
+
+char MemRefDependenceCheck::passID = 0;
 
 FunctionPass *mlir::createMemRefDependenceCheckPass() {
   return new MemRefDependenceCheck();
@@ -132,3 +135,7 @@ PassResult MemRefDependenceCheck::runOnMLFunction(MLFunction *f) {
   checkDependences(loadsAndStores);
   return success();
 }
+
+static PassRegistration<MemRefDependenceCheck>
+    pass("memref-dependence-check",
+         "Checks dependences between all pairs of memref accesses.");
