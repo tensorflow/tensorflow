@@ -2672,6 +2672,7 @@ Status MklLayoutRewritePass::FuseTransposeMklOpTranspose(
   // type.
   NodeBuilder nb(mklop->name(), mklop->type_string());
 
+  // Storing the output slots of the input nodes.
   for (int i = 0; i < mklop_num_inputs; i++) {
     if (mklop_in[i].first == transpose_to_nhwc) {
       // Fill "x":
