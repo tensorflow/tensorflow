@@ -2669,7 +2669,7 @@ Status MklLayoutRewritePass::FuseTransposeMklOpTranspose(
              &transpose_nchw_in);
 
   // We use same name as original node, but change the op
-  // name.
+  // type.
   NodeBuilder nb(mklop->name(), mklop->type_string());
 
   for (int i = 0; i < mklop_num_inputs; i++) {
