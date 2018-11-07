@@ -18,7 +18,8 @@ limitations under the License.
 #include <list>
 #include <memory>
 #include <string>
-#include <thread>  // (b/114492873): move this include into core/platform
+// TODO(b/114492873): Move this include into core/platform.
+#include <thread>  // NOLINT
 #include <utility>
 #include <vector>
 
@@ -169,10 +170,10 @@ class Node {
   void record_stop() LOCKS_EXCLUDED(mu_) {
     mutex_lock l(mu_);
     std::thread::id tid = std::this_thread::get_id();
-    auto start_time = gtl::FindOrNull(work_start_, tid);
-    if (start_time) {
-      processing_time_ += Env::Default()->NowNanos() - *start_time;
-      work_start_.erase(tid);
+    auto iter = work_start_.find(tid);
+    if (iter != work_start_.end()) {
+      processing_time_ += Env::Default()->NowNanos() - iter->second;
+      work_start_.erase(iter);
     } else {
       LOG(WARNING)
           << "Encountered a stop event that was not preceded by a start event.";

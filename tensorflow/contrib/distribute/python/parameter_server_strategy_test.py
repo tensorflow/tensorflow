@@ -345,11 +345,11 @@ class ParameterServerStrategyTestBase(
       self._finish_condition.release()
 
       x_val, y_val, z_val = sess.run([x, y, z])
-      self.assertEqual(x_val, 10.0 + 1.0 * num_workers * d.num_replicas)
-      self.assertEqual(y_val, 20.0 + 1.0 * num_workers * d.num_replicas)
+      self.assertEqual(x_val, 10.0 + 1.0 * num_workers * d.num_replicas_in_sync)
+      self.assertEqual(y_val, 20.0 + 1.0 * num_workers * d.num_replicas_in_sync)
       self.assertEqual(z_val, 30.0 + 1.0 * num_workers)
-      return (x_val == 10.0 + 1.0 * num_workers * d.num_replicas and
-              y_val == 20.0 + 1.0 * num_workers * d.num_replicas and
+      return (x_val == 10.0 + 1.0 * num_workers * d.num_replicas_in_sync and
+              y_val == 20.0 + 1.0 * num_workers * d.num_replicas_in_sync and
               z_val == 30.0 + 1.0 * num_workers)
 
   def _test_minimize_loss_graph(self, task_type, task_id, num_gpus):

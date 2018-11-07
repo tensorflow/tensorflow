@@ -75,10 +75,6 @@ class DistributedValues(object):
           ValueError("Device %s not found in %s (current device %s)" %
                      (device, self._index.keys(), device_util.current())), e)
 
-  def on_device(self, device):
-    device = device_util.canonicalize(device)
-    return device in self._index
-
   @property
   def devices(self):
     return list(self._index.keys())
@@ -775,6 +771,18 @@ class TPUMirroredVariable(checkpointable.CheckpointableBase):
   @property
   def op(self):
     return self._primary_var.op
+
+  # pylint: disable=protected-access
+  @property
+  def _save_slice_info(self):
+    return self._primary_var._save_slice_info
+
+  def _get_save_slice_info(self):
+    return self._primary_var._get_save_slice_info()
+
+  def _set_save_slice_info(self, save_slice_info):
+    return self._primary_var._set_save_slice_info(save_slice_info)
+  # pylint: enable=protected-access
 
   @property
   def _in_graph_mode(self):

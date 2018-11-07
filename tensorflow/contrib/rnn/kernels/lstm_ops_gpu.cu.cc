@@ -141,7 +141,7 @@ __global__ void lstm_gates(const T* icfo, const T* b, const T* cs_prev,
   //
   const int gid = batch_id * cell_size * 4 + act_id;
   const int cid = batch_id * cell_size + act_id;
-  Eigen::internal::scalar_sigmoid_op<T> sigmoid_op;
+  Eigen::internal::scalar_logistic_op<T> sigmoid_op;
   Eigen::internal::scalar_tanh_op<T> tanh_op;
   Eigen::scalar_clip_op<T> clip_op;
 

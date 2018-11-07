@@ -25,6 +25,7 @@ py_library(
         "//tensorflow/python:tensor_shape",
         "//tensorflow/python:tensor_util",
         "//tensorflow/python:util",
+        "//tensorflow/python/data/experimental/ops:stats_options",
         "//tensorflow/python/data/util:nest",
         "//tensorflow/python/data/util:random_seed",
         "//tensorflow/python/data/util:sparse",

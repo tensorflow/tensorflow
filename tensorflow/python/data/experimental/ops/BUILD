@@ -273,6 +273,16 @@ py_library(
 )
 
 py_library(
+    name = "stats_aggregator",
+    srcs = ["stats_aggregator.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow/python:dataset_ops_gen",
+        "//tensorflow/python:util",
+    ],
+)
+
+py_library(
     name = "stats_ops",
     srcs = ["stats_ops.py"],
     srcs_version = "PY2AND3",
@@ -284,6 +294,15 @@ py_library(
         "//tensorflow/python/data/ops:iterator_ops",
         "//tensorflow/python/data/util:nest",
         "//tensorflow/python/data/util:sparse",
+    ],
+)
+
+py_library(
+    name = "stats_options",
+    srcs = ["stats_options.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":stats_aggregator",
     ],
 )
 

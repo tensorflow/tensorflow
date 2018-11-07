@@ -171,13 +171,22 @@ def converted_call(f, owner, options, *args, **kwargs):
 
     f = getattr(owner, f)
 
+  if inspect_utils.isbuiltin(f):
+    return py_builtins.overload_of(f)(*args, **kwargs)
+
   # TODO(mdan): This needs cleanup.
   # In particular, we may want to avoid renaming functions altogether.
   if not options.force_conversion and conversion.is_whitelisted_for_graph(f):
-    return f(*args, **kwargs)
 
-  if inspect_utils.isbuiltin(f):
-    return py_builtins.overload_of(f)(*args, **kwargs)
+    # Args typically include `self`, as required by the conversion process.
+    # When conversion is skipped, `self` is not necessary, because the
+    # original bound method is being executed. This code removes it.
+    if tf_inspect.ismethod(f) and args:
+      f_class = inspect_utils.getmethodclass(f)
+      if args[0] is f_class:
+        args = args[1:]
+
+    return f(*args, **kwargs)
 
   # internal_convert_user_code is for example turned off when issuing a dynamic
   # call conversion from generated code while in nonrecursive mode. In that
@@ -192,6 +201,7 @@ def converted_call(f, owner, options, *args, **kwargs):
     arg_map_target = f
     f_class = inspect_utils.getmethodclass(f)
 
+    # TODO(mdan): This may be more elegantly handled using __get__?
     if f_class is not None:
       # If this is a method call, it may or may not include self.
       #
@@ -204,7 +214,10 @@ def converted_call(f, owner, options, *args, **kwargs):
       if owner is not None and (not args or args[0] is not owner):
         effective_args = (owner,) + args
       else:
-        effective_args = args
+        # Always override the self arg, because it might be different from
+        # what the method was bound to - see inspect_utils.getmethodclass.
+        assert args, 'Bound function call without self argument?'
+        effective_args = (f_class,) + args[1:]
       partial_types = (f_class,)
     else:
       effective_args = args
@@ -255,28 +268,30 @@ def converted_call(f, owner, options, *args, **kwargs):
       optional_features=options.optional_features)
 
   result = converted_f(*effective_args, **kwargs)
-  # When converting a function, we write a tmp file and import it as a module.
-  # This leaks the module's closure. Once we've executed the converted_f module
-  # and there is no more code left to be executed, we can clean up the module.
 
-  # TODO(mdan): Look into workarounds that don't suffer from refcount leaks.
-  # Possibly attach the closure as a regular closure cell, instead of relying on
-  # module globals.
-
-  # If there are callables in the result, they will fail to find their closure
-  # when called, so only delete module if all returned types are not callable.
-  flat_results = nest.flatten(result)
-  if all(map(_is_not_callable, flat_results)):
+  # The converted function's closure is simply inserted into the function's
+  # module __dict__. Since modules are permanently cached, that results in
+  # leaking the entire closure.
+  # Normally, it's not safe to delete the module because that may release said
+  # closure as well. However, in the case of converted_call we are certain the
+  # function will not be executed again, so the closure should no longer be
+  # needed so long as the function doesn't return any executable code.
+  # TODO(mdan): Attach the closure properly, using cells.
+  if all(map(_is_not_callable, nest.flatten(result))):
     del sys.modules[converted_f.__module__]
 
   return result
 
 
 def _is_not_callable(obj):
-  # TODO(brianklee): What happens if obj is a tensor wrapping a py_func?
-  return (isinstance(obj,
-                     (int, float, complex, str, bool, np.ndarray, np.generic))
-          or tensor_util.is_tensor(obj))
+  # TODO(brianklee): Handle case when obj is a tensor dependent on a py_func.
+  if isinstance(obj, (int, float, complex, str, bool)):
+    return True
+  if isinstance(obj, (np.ndarray, np.generic)):
+    return True
+  if tensor_util.is_tensor(obj):
+    return True
+  return False
 
 
 # TODO(mdan): Rename: to_ops?
@@ -356,6 +371,11 @@ def to_graph(e,
 
   if tf_inspect.isfunction(e):
     compiled.__defaults__ = e.__defaults__
+
+  if hasattr(compiled, '__globals__'):
+    # Remove self to avoid circular references. This will probably only work
+    # so long as the function is not reentrant.
+    del compiled.__globals__[name]
 
   # Need this so the source_mapping attribute is available for the context
   # manager to access for runtime errors.

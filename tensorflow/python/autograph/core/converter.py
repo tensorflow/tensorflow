@@ -109,9 +109,15 @@ class Feature(Enum):
   AUTO_CONTROL_DEPS = (
       'Insert of control dependencies in the generated code.')
   DECORATORS = (
-      'Allow decorators in local functions. Note that special decorators, '
+      'Allow decorators in local functions. Note that special decorators,'
       ' like ag.convert or tf.function are allowed regardless of this toggle.')
+  ERROR_REWRITING = (
+      'Rewrite errors that occur in the generated code to indicate the source'
+      ' code to which the failing code corresponds.')
   LISTS = 'Convert list idioms, like initializers, slices, append, etc.'
+  NAME_SCOPES = (
+      'Insert name scopes that name ops according to context, like the'
+      ' function they were defined in.')
 
   def __repr__(self):
     return self.name

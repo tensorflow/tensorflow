@@ -234,7 +234,7 @@ class ParameterServerStrategy(distribute_lib.DistributionStrategy):
   # TODO(yuefengz): not all ops in device_setter.STANDARD_PS_OPS will go through
   # this creator, such as "MutableHashTable".
   def _create_variable(self, next_creator, *args, **kwargs):
-    if self.num_replicas > 1:
+    if self.num_replicas_in_sync > 1:
       aggregation = kwargs.pop("aggregation", vs.VariableAggregation.NONE)
       if aggregation not in (
           vs.VariableAggregation.NONE,

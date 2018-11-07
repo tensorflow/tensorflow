@@ -1028,9 +1028,9 @@ void FunctionLibraryRuntimeImpl::Run(const Options& opts, Handle handle,
   }
 
   Executor::Args exec_args;
-  ExecutorArgsFromOptions(opts, frame, &exec_args);
+  ExecutorArgsFromOptions(run_opts, frame, &exec_args);
 
-  bool allow_dead_tensors = opts.allow_dead_tensors;
+  bool allow_dead_tensors = run_opts.allow_dead_tensors;
   item->exec->RunAsync(
       // Executor args
       exec_args,
@@ -1085,7 +1085,7 @@ void FunctionLibraryRuntimeImpl::Run(const Options& opts, Handle handle,
   DCHECK(run_opts.runner != nullptr);
 
   Executor::Args exec_args;
-  ExecutorArgsFromOptions(opts, frame, &exec_args);
+  ExecutorArgsFromOptions(run_opts, frame, &exec_args);
   item->exec->RunAsync(exec_args, std::move(done));
 }
 

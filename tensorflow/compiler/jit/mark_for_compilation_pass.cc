@@ -61,6 +61,10 @@ struct OperationFilter {
   // seeding behavior as TensorFlow's RNG (b/34749654).  So we avoid
   // auto-clustering stateful RNG ops.
   bool allow_stateful_rng_ops;
+
+  // TODO(b/118970344): Whether ControlTrigger ops are allowed.  It is unsound
+  // to cluster ControlTrigger because of how we use deadness analysis.
+  bool allow_control_trigger;
 };
 
 bool IsStatefulRandomOp(absl::string_view op_name) {
@@ -223,6 +227,9 @@ bool IsCompilableCall(const NodeDef& call_def,
     }
     if (!op_filter.allow_stateful_rng_ops &&
         IsStatefulRandomOp(node->type_string())) {
+      return false;
+    }
+    if (!op_filter.allow_control_trigger && node->IsControlTrigger()) {
       return false;
     }
     if (!HasXLAKernel(*node, jit_device_type) &&
@@ -455,6 +462,9 @@ Status FindCompilationCandidates(
     op_filter.allow_stateful_rng_ops =
         (registration->autoclustering_policy ==
          XlaOpRegistry::AutoclusteringPolicy::kAlways);
+    op_filter.allow_control_trigger =
+        (registration->autoclustering_policy ==
+         XlaOpRegistry::AutoclusteringPolicy::kAlways);
 
     if (!HasXLAKernel(*node, jit_device_type) &&
         !IsCompilableCall(node->def(), jit_device_type, op_filter, 0,
@@ -467,6 +477,10 @@ Status FindCompilationCandidates(
     if (!op_filter.allow_stateful_rng_ops &&
         IsStatefulRandomOp(node->type_string())) {
       VLOG(2) << "Rejecting " << node->name() << ": stateful random operation";
+      continue;
+    }
+    if (!op_filter.allow_control_trigger && node->IsControlTrigger()) {
+      VLOG(2) << "Rejecting " << node->name() << ": is a control trigger op";
       continue;
     }
 
@@ -604,6 +618,7 @@ bool IsCompilable(FunctionLibraryRuntime* flr, const NodeDef& ndef) {
   OperationFilter op_filter;
   op_filter.allow_resource_ops = true;
   op_filter.allow_stateful_rng_ops = true;
+  op_filter.allow_control_trigger = true;
   return IsCompilableCall(ndef, jit_device_type, op_filter, 0, flr);
 }
 

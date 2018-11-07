@@ -221,7 +221,7 @@ class MinimizeLossStepTest(test.TestCase, parameterized.TestCase):
                                     renorm, update_ops_in_cross_replica_mode):
     """Verifies that moving mean updates are reduced across replicas."""
     with distribution.scope():
-      num_replicas = len(distribution.worker_devices)
+      num_replicas = distribution.num_replicas_in_sync
       model_fn, dataset_fn, batchnorm = batchnorm_example(
           optimizer_fn,
           batch_per_epoch=num_replicas,
@@ -369,10 +369,11 @@ class MinimizeLossStepTest(test.TestCase, parameterized.TestCase):
       # So unreplicated the update to w with lr=0.2 is -0.2 * -106 = 21.2
       # with sum loss reduction, or 10.6 with mean.
       if loss_reduction == losses_impl.Reduction.SUM:
-        # Note that the "distribution.num_replicas" factor will go away once
-        # we split the input across replicas, instead of pulling a complete
+        # Note that the "distribution.num_replicas_in_sync" factor will go away
+        # once we split the input across replicas, instead of pulling a complete
         # batch of input per replica.
-        self.assertNear(weight, 2 + 21.2 * distribution.num_replicas, 0.0001)
+        self.assertNear(weight, 2 + 21.2 * distribution.num_replicas_in_sync,
+                        0.0001)
       else:
         # One of the mean loss reductions.
         self.assertNear(weight, 2 + 10.6, 0.0001)
@@ -491,7 +492,7 @@ class MinimizeLossStepTest(test.TestCase, parameterized.TestCase):
   def _verify_loss_output(self, initial_loss, loss_output, aggregated,
                           distribution):
     if not aggregated:
-      self.assertEqual(distribution.num_replicas,
+      self.assertEqual(distribution.num_replicas_in_sync,
                        len(distribution.unwrap(loss_output)))
       loss_output = distribution.reduce(
           aggregation=variables_lib.VariableAggregation.MEAN,

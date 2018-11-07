@@ -253,7 +253,7 @@ static StatusOr<bool> TryRemoveDeadWhileParams(HloInstruction* while_op) {
   // Create the new while condition, body, and init value.
   std::unique_ptr<HloComputation> new_while_cond =
       while_cond->CloneWithReplacements(
-          make_while_computation_replacements(while_cond), /*extras=*/{});
+          make_while_computation_replacements(while_cond));
 
   std::unordered_map<const HloInstruction*, std::unique_ptr<HloInstruction>>
       while_body_replacements = make_while_computation_replacements(while_body);
@@ -266,8 +266,7 @@ static StatusOr<bool> TryRemoveDeadWhileParams(HloInstruction* while_op) {
   while_body_replacements.emplace(
       while_body_root, HloInstruction::CreateTuple(new_while_body_root_elems));
   std::unique_ptr<HloComputation> new_while_body =
-      while_body->CloneWithReplacements(std::move(while_body_replacements),
-                                        /*extras=*/{});
+      while_body->CloneWithReplacements(std::move(while_body_replacements));
 
   // Add a new while_init instruction that repackages the old while_init
   // instruction's elements.  We rely on the AlgebraicSimplifier and DCE to

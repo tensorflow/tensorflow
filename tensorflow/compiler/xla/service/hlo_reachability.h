@@ -16,20 +16,22 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_HLO_REACHABILITY_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_HLO_REACHABILITY_H_
 
+#include <cstdio>
 #include <list>
 #include <vector>
 
+#include "absl/base/casts.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/map_util.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
+#include "tensorflow/compiler/xla/service/hlo_instruction.h"
+#include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/types.h"
 
 namespace xla {
-
-class HloInstruction;
 
 // A class for representing reachability between HloInstructions.
 //
@@ -97,7 +99,9 @@ class HloReachabilityMap {
   bool IsConnected(const HloInstruction* a, const HloInstruction* b) const;
 
   // Checks if an instruction is in the Reachability map.
-  bool IsPresent(const HloInstruction* a) const { return indices_.contains(a); }
+  bool IsPresent(const HloInstruction* a) const {
+    return indices_.contains(GetKey(a));
+  }
 
  private:
   // A bit-vector implementation specialized for this use case which provides a
@@ -160,18 +164,24 @@ class HloReachabilityMap {
       absl::Span<const HloInstruction* const> inputs,
       const HloInstruction* instruction, BitVector* bit_vector);
 
+  uint64 GetKey(const HloInstruction* instruction) const {
+    uint64 unique_id = absl::bit_cast<uint32>(instruction->unique_id());
+    uint64 module_id =
+        absl::bit_cast<uint32>(instruction->parent()->parent()->unique_id());
+    return (module_id << 32) | unique_id;
+  }
   // Return the index of the given instruction. The value is used to index into
   // the vector of BitVectors and the BitVectors themselves.
   int GetIndex(const HloInstruction* instruction) const {
-    return FindOrDie(indices_, instruction);
+    return FindOrDie(indices_, GetKey(instruction));
   }
 
   // The number of instructions in the reachability map.
   const size_t size_;
 
-  // Dense assignment from HloInstruction* to number. These numbers index
-  // into the bit_vectors_ vector and into the bits within a BitVector.
-  absl::flat_hash_map<const HloInstruction*, int> indices_;
+  // Dense assignment from HloInstruction::unique_id to number. These numbers
+  // index into the bit_vectors_ vector and into the bits within a BitVector.
+  absl::flat_hash_map<uint64, int> indices_;
 
   // Bitvectors holding the reachability to each instruction. The bit vector for
   // instruction X includes ones for each instruction which X is reachable from.

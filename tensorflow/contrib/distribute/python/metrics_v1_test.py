@@ -111,14 +111,14 @@ class MetricsV1Test(test.TestCase, parameterized.TestCase):
         # In each run, we run multiple steps, and each steps consumes as many
         # batches as number of replicas.
         batches_per_update = (
-            distribution.num_replicas * distribution.steps_per_run)
+            distribution.num_replicas_in_sync * distribution.steps_per_run)
       else:
         value, update = distribution.call_for_each_replica(
             metric_fn, iterator.get_next())
         update = distribution.group(update)
         # TODO(josh11b): Once we switch to using a global batch size for input,
-        # replace "distribution.num_replicas" with "1".
-        batches_per_update = distribution.num_replicas
+        # replace "distribution.num_replicas_in_sync" with "1".
+        batches_per_update = distribution.num_replicas_in_sync
 
       self.evaluate(iterator.initializer)
       self.evaluate(distribution.initialize())
