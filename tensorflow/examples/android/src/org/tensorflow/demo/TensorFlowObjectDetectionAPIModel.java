@@ -142,9 +142,9 @@ public class TensorFlowObjectDetectionAPIModel implements Classifier {
     bitmap.getPixels(intValues, 0, bitmap.getWidth(), 0, 0, bitmap.getWidth(), bitmap.getHeight());
 
     for (int i = 0; i < intValues.length; ++i) {
-      byteValues[i * 3 + 2] = (byte) (intValues[i] & 0xFF);
-      byteValues[i * 3 + 1] = (byte) ((intValues[i] >> 8) & 0xFF);
-      byteValues[i * 3 + 0] = (byte) ((intValues[i] >> 16) & 0xFF);
+      byteValues[i * 3 + 2] = (byte) (intValues[i]);
+      byteValues[i * 3 + 1] = (byte) (intValues[i] >> 8);
+      byteValues[i * 3 + 0] = (byte) (intValues[i] >> 16);
     }
     Trace.endSection(); // preprocessBitmap
 

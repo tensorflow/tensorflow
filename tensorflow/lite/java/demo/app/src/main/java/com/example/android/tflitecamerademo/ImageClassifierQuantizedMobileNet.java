@@ -69,9 +69,9 @@ public class ImageClassifierQuantizedMobileNet extends ImageClassifier {
 
   @Override
   protected void addPixelValue(int pixelValue) {
-    imgData.put((byte) ((pixelValue >> 16) & 0xFF));
-    imgData.put((byte) ((pixelValue >> 8) & 0xFF));
-    imgData.put((byte) (pixelValue & 0xFF));
+    imgData.put((byte) (pixelValue >> 16));
+    imgData.put((byte) (pixelValue >> 8));
+    imgData.put((byte) pixelValue);
   }
 
   @Override
