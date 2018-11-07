@@ -438,4 +438,60 @@ Status XlaComputationLaunchContext::PopulateOutputs(
   return Status::OK();
 }
 
+Status XlaComputationLaunchContext::BuildXlaCompilerArguments(
+    const std::map<int, Tensor>& constant_args,
+    const std::map<int, OptionalTensor>& variable_args, OpKernelContext* ctx,
+    std::vector<XlaCompiler::Argument>* args) {
+  args->resize(ctx->num_inputs());
+
+  for (int64 input_num = 0; input_num < ctx->num_inputs(); ++input_num) {
+    XlaCompiler::Argument& arg = (*args)[input_num];
+    if (constant_args.count(input_num) > 0) {
+      // Handles compile-time constants.
+      const Tensor& input = constant_args.at(input_num);
+      TF_RET_CHECK(input.dtype() != DT_RESOURCE);
+      arg.kind = XlaCompiler::Argument::kConstant;
+      arg.type = input.dtype();
+      arg.shape = input.shape();
+      arg.constant_value = input;
+    } else if (variable_args.count(input_num) == 0) {
+      // Handles the non-constant arguments.
+      const Tensor& input = ctx->input(input_num);
+      TF_RET_CHECK(input.dtype() != DT_RESOURCE);
+      if (input.NumElements() > 0) {
+        arg.kind = XlaCompiler::Argument::kParameter;
+      } else {
+        arg.kind = XlaCompiler::Argument::kConstant;
+        arg.constant_value = input;
+      }
+      arg.type = input.dtype();
+      arg.shape = input.shape();
+    } else {
+      // Handles resource variables.
+      const Tensor& input = ctx->input(input_num);
+      TF_RET_CHECK(input.dtype() == DT_RESOURCE);
+      const OptionalTensor& variable = variable_args.at(input_num);
+      arg.name = variable.name;
+      arg.kind = XlaCompiler::Argument::kResource;
+      arg.resource_kind = XlaResource::kVariable;
+      if (variable.present) {
+        const Tensor& value = variable.value;
+        arg.type = value.dtype();
+        arg.shape = value.shape();
+        arg.initialized = true;
+      } else {
+        // The values of uninitialized variables are not passed as inputs, since
+        // they are meaningless. However, it is legal to assign to a resource
+        // variable for the first time inside the XLA computation, so we do
+        // permit uninitialized variables.
+        arg.initialized = false;
+        arg.type = DT_INVALID;
+        arg.shape = TensorShape();
+      }
+    }
+  }
+
+  return Status::OK();
+}
+
 }  // namespace tensorflow
