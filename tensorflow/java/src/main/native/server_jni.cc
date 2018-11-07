@@ -63,9 +63,8 @@ JNIEXPORT void JNICALL Java_org_tensorflow_Server_start(JNIEnv* env,
                                                         jclass clazz,
                                                         jlong handle) {
 #ifdef __ANDROID__
-    throwException(env, kUnsupportedOperationException,
-                   "Server is not supported on Android");
-  return 0;
+  throwException(env, kUnsupportedOperationException,
+                 "Server is not supported on Android");
 #else
   TF_Server* server = requireHandle(env, handle);
   if (server == nullptr) return;
@@ -85,7 +84,6 @@ JNIEXPORT void JNICALL Java_org_tensorflow_Server_stop(JNIEnv* env,
 #ifdef __ANDROID__
   throwException(env, kUnsupportedOperationException,
                  "Server is not supported on Android");
-  return 0;
 #else
   TF_Server* server = requireHandle(env, handle);
   if (server == nullptr) return;
@@ -105,7 +103,6 @@ JNIEXPORT void JNICALL Java_org_tensorflow_Server_join(JNIEnv* env,
 #ifdef __ANDROID__
   throwException(env, kUnsupportedOperationException,
                  "Server is not supported on Android");
-  return 0;
 #else
   TF_Server* server = requireHandle(env, handle);
   if (server == nullptr) return;
@@ -122,8 +119,13 @@ JNIEXPORT void JNICALL Java_org_tensorflow_Server_join(JNIEnv* env,
 JNIEXPORT void JNICALL Java_org_tensorflow_Server_delete(JNIEnv* env,
                                                          jclass clazz,
                                                          jlong handle) {
+#ifdef __ANDROID__
+  throwException(env, kUnsupportedOperationException,
+                 "Server is not supported on Android");
+#else
   TF_Server* server = requireHandle(env, handle);
   if (server == nullptr) return;
 
   TF_DeleteServer(server);
+#endif  // __ANDROID__
 }
