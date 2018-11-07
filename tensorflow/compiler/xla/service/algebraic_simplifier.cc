@@ -107,6 +107,8 @@ class AlgebraicSimplifierVisitor : public DfsHloVisitorWithDefault {
 
   Status HandleAdd(HloInstruction* add) override;
 
+  Status HandleAnd(HloInstruction* logical_and) override;
+
   Status HandleBitcast(HloInstruction* bitcast) override;
 
   Status HandleBitcastConvert(HloInstruction* bitcast) override;
@@ -140,6 +142,8 @@ class AlgebraicSimplifierVisitor : public DfsHloVisitorWithDefault {
   Status HandleLog(HloInstruction* log) override;
 
   Status HandleMultiply(HloInstruction* multiply) override;
+
+  Status HandleOr(HloInstruction* logical_or) override;
 
   Status HandlePad(HloInstruction* pad) override;
 
@@ -417,6 +421,43 @@ Status AlgebraicSimplifierVisitor::HandleAdd(HloInstruction* add) {
     return ReplaceWithNewInstruction(
         add, HloInstruction::CreateBinary(add->shape(), HloOpcode::kAdd, a,
                                           sum_of_constants));
+  }
+
+  return Status::OK();
+}
+
+Status AlgebraicSimplifierVisitor::HandleAnd(HloInstruction* logical_and) {
+  HloInstruction *lhs, *rhs;
+  CHECK(Match(logical_and, m::And(m::Op(&lhs), m::Op(&rhs))));
+  // Simplify logical and
+  if (ShapeUtil::HasPrimitiveType(lhs->shape(), xla::PRED) &&
+      ShapeUtil::HasPrimitiveType(rhs->shape(), xla::PRED)) {
+    // A && True => A
+    VLOG(10) << "trying transform [A && True => A]: "
+             << logical_and->ToString();
+    if (IsAll(rhs, 1) && ReplaceInstructionIfSameShape(logical_and, lhs)) {
+      return Status::OK();
+    }
+    // True && A => A
+    VLOG(10) << "trying transform [True && A => A]: "
+             << logical_and->ToString();
+    if (IsAll(lhs, 1) && ReplaceInstructionIfSameShape(logical_and, rhs)) {
+      return Status::OK();
+    }
+
+    // A && False => False
+    VLOG(10) << "trying transform [A && False => False]: "
+             << logical_and->ToString();
+    if (IsAll(rhs, 0) && ReplaceInstructionIfSameShape(logical_and, rhs)) {
+      return Status::OK();
+    }
+
+    // False && A => False
+    VLOG(10) << "trying transform [False && A => False]: "
+             << logical_and->ToString();
+    if (IsAll(lhs, 0) && ReplaceInstructionIfSameShape(logical_and, lhs)) {
+      return Status::OK();
+    }
   }
 
   return Status::OK();
@@ -1225,6 +1266,44 @@ Status AlgebraicSimplifierVisitor::HandleMultiply(HloInstruction* multiply) {
         multiply,
         HloInstruction::CreateUnary(multiply->shape(), HloOpcode::kExp, add));
   }
+  return Status::OK();
+}
+
+Status AlgebraicSimplifierVisitor::HandleOr(HloInstruction* logical_or) {
+  HloInstruction *lhs, *rhs;
+  CHECK(Match(logical_or, m::Or(m::Op(&lhs), m::Op(&rhs))));
+
+  // Simplify logical or
+  if (ShapeUtil::HasPrimitiveType(lhs->shape(), xla::PRED) &&
+      ShapeUtil::HasPrimitiveType(rhs->shape(), xla::PRED)) {
+    // A || True => True
+    VLOG(10) << "trying transform [A || True => True]: "
+             << logical_or->ToString();
+    if (IsAll(rhs, 1) && ReplaceInstructionIfSameShape(logical_or, rhs)) {
+      return Status::OK();
+    }
+    // True || A => True
+    VLOG(10) << "trying transform [True || A => True]: "
+             << logical_or->ToString();
+    if (IsAll(lhs, 1) && ReplaceInstructionIfSameShape(logical_or, lhs)) {
+      return Status::OK();
+    }
+
+    // A || False => A
+    VLOG(10) << "trying transform [A || False => A]: "
+             << logical_or->ToString();
+    if (IsAll(rhs, 0) && ReplaceInstructionIfSameShape(logical_or, lhs)) {
+      return Status::OK();
+    }
+
+    // False || A => A
+    VLOG(10) << "trying transform [False || A => A]: "
+             << logical_or->ToString();
+    if (IsAll(lhs, 0) && ReplaceInstructionIfSameShape(logical_or, rhs)) {
+      return Status::OK();
+    }
+  }
+
   return Status::OK();
 }
 
