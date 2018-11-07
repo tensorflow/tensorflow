@@ -41,7 +41,6 @@ load(
     "tf_mkl_kernel_library",
     "cc_header_only_library",
     "if_not_windows",
-    "if_override_eigen_strong_inline",
 )
 load("@local_config_sycl//sycl:build_defs.bzl", "if_sycl")
 load("//tensorflow:tensorflow.bzl", "tf_cuda_cc_test")
@@ -3058,9 +3057,6 @@ tf_kernel_library(
     ]),
     # <prefix>*impl.h are excluded by default from the CPU build, add explicitly.
     hdrs = ["batch_matmul_op_impl.h"],
-    # Override EIGEN_STRONG_INLINE to inline when --define=override_eigen_strong_inline=true,
-    # to avoid long compiling time. See https://github.com/tensorflow/tensorflow/issues/10521
-    copts = if_override_eigen_strong_inline(["/DEIGEN_STRONG_INLINE=inline"]),
     prefix = "batch_matmul_op",
     deps = MATH_DEPS + if_mkl_ml([
         "//third_party/mkl:intel_binary_blob",
@@ -3128,9 +3124,6 @@ tf_kernel_library(
         "mkl_matmul_op.cc",
     ]),
     hdrs = ["matmul_op.h"],
-    # Override EIGEN_STRONG_INLINE to inline when --define=override_eigen_strong_inline=true,
-    # to avoid long compiling time. See https://github.com/tensorflow/tensorflow/issues/10521
-    copts = if_override_eigen_strong_inline(["/DEIGEN_STRONG_INLINE=inline"]),
     defines = select({
         ":xsmm": [
             "TENSORFLOW_USE_LIBXSMM",
@@ -3529,9 +3522,6 @@ tf_kernel_library(
         ":xsmm_convolutions": ["xsmm_conv2d.h"],
         "//conditions:default": [],
     }),
-    # Override EIGEN_STRONG_INLINE to inline when --define=override_eigen_strong_inline=true,
-    # to avoid long compiling time. See https://github.com/tensorflow/tensorflow/issues/10521
-    copts = if_override_eigen_strong_inline(["/DEIGEN_STRONG_INLINE=inline"]),
     defines = select({
         ":xsmm_convolutions": [
             "TENSORFLOW_USE_LIBXSMM_CONVOLUTIONS",
@@ -3687,9 +3677,6 @@ tf_kernel_library(
 
 tf_kernel_library(
     name = "lrn_op",
-    # Override EIGEN_STRONG_INLINE to inline when --define=override_eigen_strong_inline=true,
-    # to avoid long compiling time. See https://github.com/tensorflow/tensorflow/issues/10521
-    copts = if_override_eigen_strong_inline(["/DEIGEN_STRONG_INLINE=inline"]),
     prefix = "lrn_op",
     deps = NN_DEPS,
 )
