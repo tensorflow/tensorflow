@@ -30,26 +30,35 @@ from tensorflow.python.platform import test
 
 class SpecialFunctionsTest(test.TestCase):
 
+  def test_match_staging_level(self):
+    some_tensor = constant_op.constant(0)
+    tensor_one = special_functions.match_staging_level(1, some_tensor)
+    python_one = special_functions.match_staging_level(1, 1)
+    with self.cached_session() as sess:
+      self.assertTrue(tensor_util.is_tensor(tensor_one))
+      self.assertAllEqual(sess.run(tensor_one), 1)
+      self.assertEqual(python_one, 1)
+
   def test_tensor_list_empty_list(self):
     l = special_functions.tensor_list([],
                                       element_dtype=dtypes.int32,
                                       element_shape=())
     sl = list_ops.tensor_list_stack(l, element_dtype=dtypes.int32)
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       self.assertAllEqual(sess.run(sl), [])
 
     l = special_functions.tensor_list((),
                                       element_dtype=dtypes.int32,
                                       element_shape=())
     sl = list_ops.tensor_list_stack(l, element_dtype=dtypes.int32)
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       self.assertAllEqual(sess.run(sl), [])
 
   def test_tensor_list_tensor(self):
     l = special_functions.tensor_list(
         constant_op.constant([], dtype=dtypes.int32))
     sl = list_ops.tensor_list_stack(l, element_dtype=dtypes.int32)
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       self.assertAllEqual(sess.run(sl), [])
 
   def test_tensor_list_unsupported_initializer(self):
@@ -66,7 +75,7 @@ class SpecialFunctionsTest(test.TestCase):
 
     l = special_functions.tensor_list(elements)
     sl = list_ops.tensor_list_stack(l, element_dtype=dtypes.int32)
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       self.assertAllEqual(sess.run(sl), [[1, 2], [3, 4]])
 
   def test_tensor_list_array_from_elements(self):
@@ -74,7 +83,7 @@ class SpecialFunctionsTest(test.TestCase):
 
     l = special_functions.tensor_list(elements, use_tensor_array=True)
     sl = l.stack()
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       self.assertAllEqual(sess.run(sl), [[1, 2], [3, 4]])
 
   def test_stack(self):
