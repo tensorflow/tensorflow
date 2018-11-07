@@ -18,6 +18,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_JIT_XLA_CLUSTER_UTIL_H_
 #define TENSORFLOW_COMPILER_JIT_XLA_CLUSTER_UTIL_H_
 
+#include "absl/types/optional.h"
 #include "tensorflow/compiler/jit/graphcycles/graphcycles.h"
 #include "tensorflow/core/graph/algorithm.h"
 
@@ -31,6 +32,15 @@ extern const char* const kXlaClusterAttr;
 // compilation by the encapsulate subgraphs pass.
 extern const char* const kXlaOutsideCompilationAttr;
 
+// The attribute that marks certain inputs to a Node as required to be a
+// constant at compile time.  If this attribute is present then the
+// CompileTimeConstantInput information in the corresponding XlaOpKernel is
+// ignored.
+//
+// The value for this attribute, if present, has to be a list of strings naming
+// the inputs to the node that must be constant.
+extern const char* const kXlaCompileTimeConstantInputsAttr;
+
 using OrderedNodeSet = std::set<Node*, NodeComparatorID>;
 
 // Returns the DeviceType corresponding to 'device'.
@@ -43,6 +53,26 @@ bool HasForwardedRefInput(const Node& node);
 // This representation handles loops in graph by disconnecting each loop from
 // the enclosing graph.
 Status CreateCycleDetectionGraph(const Graph* graph, GraphCycles* cycles);
+
+// Returns the XLA cluster in which `node` is placed if it is in an XLA cluster,
+// otherwise returns nullopt.
+absl::optional<absl::string_view> GetXlaClusterForNode(const Node& node);
+
+// Removes `node_def` its XLA cluster (by clearing its _XlaCluster attribute).
+void RemoveFromXlaCluster(NodeDef* node_def);
+
+// Removes `node` its XLA cluster (by clearing its _XlaCluster attribute).
+void RemoveFromXlaCluster(Node* node);
+
+// Returns true if `node` has a DT_RESOURCE typed input or output.
+bool HasResourceInputOrOutput(const Node& node);
+
+// Adds edges to `cycles` to prevent clustering resource operations that cannot
+// be legally clustered.
+Status AdjustCycleDetectionGraphForResourceOps(
+    const Graph* graph, const FunctionLibraryDefinition* flib_def,
+    const std::function<Status(const Node&, bool*)>& resource_ops_to_ignore,
+    GraphCycles* cycles);
 
 }  // namespace tensorflow
 

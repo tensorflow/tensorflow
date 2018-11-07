@@ -25,9 +25,9 @@ limitations under the License.
 #include <algorithm>
 #include <memory>
 
+#include "absl/types/span.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/python/lib/core/numpy.h"
 
 namespace xla {
@@ -82,7 +82,7 @@ PyObject* PyObjectFromXlaLiteral(const LiteralSlice& literal);
 // To avoid transferring ownership of the data buffers that underlie
 // PyArrays and XLA literals, this function makes deep copies of all
 // array data.
-StatusOr<std::unique_ptr<Literal> > XlaLiteralFromPyObject(PyObject* o);
+StatusOr<Literal> XlaLiteralFromPyObject(PyObject* o);
 
 // The following functions copy array data from the buffers underlying Numpy
 // ndarrays into those underlying XLA literals, and vice versa.

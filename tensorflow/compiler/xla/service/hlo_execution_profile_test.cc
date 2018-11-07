@@ -14,15 +14,15 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/compiler/xla/service/hlo_execution_profile.h"
+#include "absl/strings/str_cat.h"
 #include "tensorflow/compiler/xla/service/hlo_cost_analysis.h"
 #include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
-#include "tensorflow/core/lib/strings/strcat.h"
 
 namespace xla {
 namespace {
 
-using tensorflow::strings::StrCat;
+using absl::StrCat;
 using ::testing::AllOf;
 using ::testing::ContainsRegex;
 
@@ -54,7 +54,8 @@ TEST_F(HloExecutionProfileTest, Basic) {
   HloCostAnalysis cost_analysis(shape_size_function);
   HloProfileIndexMap profile_index_map(*hlo_module);
   std::unique_ptr<HloProfilePrinterData> profile_printer =
-      CreateHloProfilePrinterData(profile_index_map, cost_analysis);
+      CreateHloProfilePrinterData(profile_index_map, cost_analysis,
+                                  hlo_module->entry_computation()->name());
   HloExecutionProfile execution_profile(profile_printer.get(),
                                         &profile_index_map);
 

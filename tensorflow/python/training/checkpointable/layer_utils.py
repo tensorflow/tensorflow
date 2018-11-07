@@ -30,12 +30,24 @@ def is_layer(obj):
           and hasattr(obj, "variables"))
 
 
+def has_weights(obj):
+  """Implicit check for Layer-like objects."""
+  # TODO(b/110718070): Replace with isinstance(obj, base_layer.Layer).
+  return (hasattr(obj, "trainable_weights")
+          and hasattr(obj, "non_trainable_weights"))
+
+
 def filter_empty_layer_containers(layer_list):
   """Filter out empty Layer-like containers."""
-  return [layer for layer in layer_list
-          # Filter out only empty Checkpointable data structures. Empty Networks
-          # will still show up in Model.layers.
-          if is_layer(layer) or getattr(layer, "layers", True)]
+  filtered = []
+  for obj in layer_list:
+    if is_layer(obj):
+      filtered.append(obj)
+    elif hasattr(obj, "layers"):
+      # Checkpointable data structures will not show up in ".layers" lists, but
+      # the layers they contain will.
+      filtered.extend(obj.layers)
+  return filtered
 
 
 def gather_trainable_weights(trainable, sub_layers, extra_variables):

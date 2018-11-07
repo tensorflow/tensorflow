@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_KERNELS_CONV_2D_H_
-#define TENSORFLOW_KERNELS_CONV_2D_H_
+#ifndef TENSORFLOW_CORE_KERNELS_CONV_2D_H_
+#define TENSORFLOW_CORE_KERNELS_CONV_2D_H_
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/tensor_types.h"
@@ -137,17 +137,16 @@ struct MatMulConvFunctor {
   }
 };
 
-// Shuffles a filter tensor from:
-//   [<spatial_dims>, in, out]
-// to:
-//   [out, in, <spatial_dims>]
+// Shuffles a filter tensor from TensorFlow format HWIO to dst_filter_format.
+//
+// Note: Currently OIHW is the only supported destination format. Support for
+// OHWI format will be added in a follow-up change.
 template <typename Device, typename T, typename IndexType, int NDIMS>
 struct TransformFilter {
-  void operator()(const Device& d,
+  void operator()(const Device& d, FilterTensorFormat dst_filter_format,
                   typename TTypes<T, NDIMS, IndexType>::ConstTensor in,
                   typename TTypes<T, NDIMS, IndexType>::Tensor out) {
-    // We want a 3, 2, 0, 1 shuffle. Merge the spatial dimensions together
-    // to speed up the shuffle operation.
+    // Merge the spatial dimensions together to speed up the shuffle operation.
     Eigen::DSizes<IndexType, 3> merged_dims;
     merged_dims[0] = in.dimension(0);  // spatial dimensions
     for (int i = 1; i < NDIMS - 2; ++i) {
@@ -156,16 +155,30 @@ struct TransformFilter {
     merged_dims[1] = in.dimension(NDIMS - 2);  // input filters
     merged_dims[2] = in.dimension(NDIMS - 1);  // output filters
 
+    CHECK(dst_filter_format == FORMAT_OIHW)
+        << "Unsupported destination filter format: "
+        << ToString(dst_filter_format);
+    // Source filter format is FORMAT_HWIO and spatial dimensions HW are merged
+    // in the beginning.
+    Eigen::DSizes<IndexType, 3> shuffling_perm =
+        Eigen::DSizes<IndexType, 3>(2, 1, 0);
+
     Eigen::DSizes<IndexType, NDIMS> expanded_dims;
-    expanded_dims[0] = in.dimension(NDIMS - 1);  // output filters
-    expanded_dims[1] = in.dimension(NDIMS - 2);  // input filters
-    for (int i = 0; i < NDIMS - 2; ++i) {        // spatial dimensions
-      expanded_dims[i + 2] = in.dimension(i);
+    int out_index = 0;
+    for (int merged_dim = 0; merged_dim < merged_dims.rank(); ++merged_dim) {
+      if (shuffling_perm[merged_dim] == 0) {
+        for (int spatial_dim = 0; spatial_dim < NDIMS - 2; ++spatial_dim) {
+          expanded_dims[out_index++] = in.dimension(spatial_dim);
+        }
+      } else {
+        constexpr int kLastSpatialDim = NDIMS - 3;
+        expanded_dims[out_index++] =
+            in.dimension(kLastSpatialDim + shuffling_perm[merged_dim]);
+      }
     }
 
-    out.device(d) = in.reshape(merged_dims)
-                        .shuffle(Eigen::DSizes<IndexType, 3>(2, 1, 0))
-                        .reshape(expanded_dims);
+    out.device(d) =
+        in.reshape(merged_dims).shuffle(shuffling_perm).reshape(expanded_dims);
   }
 };
 
@@ -282,7 +295,9 @@ struct SwapDimension0And2InTensor3 {
                   const gtl::ArraySlice<int64>& input_dims, T* out);
 };
 
-// Reverses the effect of TransformFilter above.
+// Transforms back filter from OIHW to HWOI format to reverse effect of
+// TransformFilter above.
+// TODO(hinsu): Support reverse transformation from filter format OHWI as well.
 template <typename Device, typename T, int NDIMS>
 struct ReverseTransformFilter {
   void operator()(const Device& d, typename TTypes<T, NDIMS>::ConstTensor in,
@@ -298,4 +313,4 @@ template <>
 class ConvAlgorithmMap<Eigen::ThreadPoolDevice> {};
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_KERNELS_CONV_2D_H_
+#endif  // TENSORFLOW_CORE_KERNELS_CONV_2D_H_

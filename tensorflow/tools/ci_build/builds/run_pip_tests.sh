@@ -64,7 +64,7 @@ while true; do
   fi
 done
 
-TF_GPU_COUNT=${TF_GPU_COUNT:-8}
+TF_GPU_COUNT=${TF_GPU_COUNT:-4}
 
 # PIP tests should have a "different" path. Different than the one we place
 # virtualenv, because we are deleting and recreating it here.
@@ -76,7 +76,7 @@ ln -s $(pwd)/tensorflow ${PIP_TEST_ROOT}/tensorflow
 
 # Do not run tests with "no_pip" tag. If running GPU tests, also do not run
 # tests with no_pip_gpu tag.
-PIP_TEST_FILTER_TAG="-no_pip,-no_oss"
+PIP_TEST_FILTER_TAG="-no_pip,-no_oss,-benchmark-test"
 if [[ ${IS_OSS_SERIAL} == "1" ]]; then
   PIP_TEST_FILTER_TAG="$(echo "${PIP_TEST_FILTER_TAG}" | sed s/-no_oss//)"
   PIP_TEST_FILTER_TAG="${PIP_TEST_FILTER_TAG},oss_serial"
@@ -85,7 +85,7 @@ else
 fi
 
 if [[ ${IS_GPU} == "1" ]]; then
-  PIP_TEST_FILTER_TAG="-no_pip_gpu,${PIP_TEST_FILTER_TAG}"
+  PIP_TEST_FILTER_TAG="-no_gpu,-no_pip_gpu,${PIP_TEST_FILTER_TAG}"
 fi
 if [[ ${IS_MAC} == "1" ]]; then
   PIP_TEST_FILTER_TAG="-nomac,${PIP_TEST_FILTER_TAG}"
@@ -97,7 +97,8 @@ fi
 #     TF_BUILD_APPEND_ARGUMENTS any user supplied args.
 BAZEL_FLAGS="--define=no_tensorflow_py_deps=true --test_lang_filters=py \
   --build_tests_only -k --test_tag_filters=${PIP_TEST_FILTER_TAG} \
-  --test_timeout 300,450,1200,3600 ${TF_BUILD_APPEND_ARGUMENTS}"
+  --test_timeout 300,450,1200,3600 ${TF_BUILD_APPEND_ARGUMENTS} \
+  --test_output=errors"
 
 BAZEL_TEST_TARGETS="//${PIP_TEST_PREFIX}/tensorflow/contrib/... \
   //${PIP_TEST_PREFIX}/tensorflow/python/... \
@@ -110,7 +111,6 @@ bazel clean
 # virtualenv.
 export TF_NEED_GCP=0
 export TF_NEED_HDFS=0
-export TF_ENABLE_XLA=0
 
 # Obtain the path to Python binary
 if [[ ${IS_VIRTUALENV} == "1" ]]; then

@@ -21,6 +21,7 @@ import gzip
 import os
 import zlib
 
+from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import iterator_ops
 from tensorflow.python.data.ops import readers
@@ -46,7 +47,7 @@ except ImportError:
   psutil_import_succeeded = False
 
 
-class TextLineDatasetTest(test.TestCase):
+class TextLineDatasetTest(test_base.DatasetTestBase):
 
   def _lineText(self, f, l):
     return compat.as_bytes("%d: %d" % (f, l))
@@ -100,7 +101,7 @@ class TextLineDatasetTest(test.TestCase):
     init_batch_op = iterator.make_initializer(batch_dataset)
     get_next = iterator.get_next()
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       # Basic test: read from file 0.
       sess.run(
           init_op, feed_dict={filenames: [test_filenames[0]],
@@ -163,7 +164,7 @@ class TextLineDatasetTest(test.TestCase):
     repeat_dataset = readers.TextLineDataset(test_filenames, buffer_size=10)
     iterator = repeat_dataset.make_one_shot_iterator()
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       for j in range(2):
         for i in range(5):
           self.assertEqual(self._lineText(j, i), sess.run(iterator.get_next()))
@@ -199,7 +200,7 @@ class TextLineDatasetTest(test.TestCase):
       self.assertNotIn(filename, [open_file.path for open_file in open_files])
 
 
-class FixedLengthRecordReaderTest(test.TestCase):
+class FixedLengthRecordReaderTest(test_base.DatasetTestBase):
 
   def setUp(self):
     super(FixedLengthRecordReaderTest, self).setUp()
@@ -240,7 +241,7 @@ class FixedLengthRecordReaderTest(test.TestCase):
     init_batch_op = iterator.make_initializer(batch_dataset)
     get_next = iterator.get_next()
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       # Basic test: read from file 0.
       sess.run(
           init_op, feed_dict={filenames: [test_filenames[0]],
@@ -302,7 +303,7 @@ class FixedLengthRecordReaderTest(test.TestCase):
         buffer_size=10)
     iterator = dataset.make_one_shot_iterator()
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       for j in range(self._num_files):
         for i in range(self._num_records):
           self.assertEqual(self._record(j, i), sess.run(iterator.get_next()))
@@ -319,7 +320,7 @@ class FixedLengthRecordReaderTest(test.TestCase):
         buffer_size=10)
     iterator = dataset.make_one_shot_iterator()
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       with self.assertRaisesRegexp(
           errors.InvalidArgumentError,
           r"Excluding the header \(5 bytes\) and footer \(2 bytes\), input "
@@ -374,7 +375,7 @@ class FixedLengthRecordReaderTest(test.TestCase):
     with ops.Graph().as_default() as g:
       init_op, get_next_op, save_op, restore_op = self._build_iterator_graph(
           num_epochs=num_epochs)
-      with self.test_session(graph=g) as sess:
+      with self.session(graph=g) as sess:
         sess.run(init_op)
         # Note: There is no checkpoint saved currently so a NotFoundError is
         # raised.
@@ -401,7 +402,7 @@ class FixedLengthRecordReaderTest(test.TestCase):
     with ops.Graph().as_default() as g:
       init_op, get_next_op, save_op, restore_op = self._build_iterator_graph(
           num_epochs=num_epochs)
-      with self.test_session(graph=g) as sess:
+      with self.session(graph=g) as sess:
         sess.run(restore_op)
         for epoch in range(num_epochs):
           for f in range(self._num_files):
@@ -427,7 +428,7 @@ class FixedLengthRecordReaderTest(test.TestCase):
     with ops.Graph().as_default() as g:
       init_op, get_next_op, save_op, restore_op = self._build_iterator_graph(
           num_epochs=num_epochs)
-      with self.test_session(graph=g) as sess:
+      with self.session(graph=g) as sess:
         sess.run(init_op)
         # Note: There is no checkpoint saved currently so a NotFoundError is
         # raised.
@@ -454,7 +455,7 @@ class FixedLengthRecordReaderTest(test.TestCase):
     with ops.Graph().as_default() as g:
       init_op, get_next_op, save_op, restore_op = self._build_iterator_graph(
           num_epochs=num_epochs)
-      with self.test_session(graph=g) as sess:
+      with self.session(graph=g) as sess:
         sess.run(init_op)
         sess.run(restore_op)
         for epoch in range(num_epochs):
@@ -479,7 +480,7 @@ class FixedLengthRecordReaderTest(test.TestCase):
     with ops.Graph().as_default() as g:
       init_op, get_next_op, save_op, restore_op = self._build_iterator_graph(
           num_epochs=num_epochs)
-      with self.test_session(graph=g) as sess:
+      with self.session(graph=g) as sess:
         sess.run(init_op)
         # Note: There is no checkpoint saved currently so a NotFoundError is
         # raised.
@@ -506,7 +507,7 @@ class FixedLengthRecordReaderTest(test.TestCase):
     with ops.Graph().as_default() as g:
       init_op, get_next_op, save_op, restore_op = self._build_iterator_graph(
           num_epochs=num_epochs_1)
-      with self.test_session(graph=g) as sess:
+      with self.session(graph=g) as sess:
         sess.run(restore_op)
         for epoch in range(num_epochs):
           for f in range(self._num_files):
@@ -529,7 +530,7 @@ class FixedLengthRecordReaderTest(test.TestCase):
     with ops.Graph().as_default() as g:
       init_op, get_next_op, save_op, restore_op = self._build_iterator_graph(
           num_epochs=num_epochs)
-      with self.test_session(graph=g) as sess:
+      with self.session(graph=g) as sess:
         sess.run(init_op)
         # Note: There is no checkpoint saved currently so a NotFoundError is
         # raised.
@@ -555,7 +556,7 @@ class FixedLengthRecordReaderTest(test.TestCase):
 
     with ops.Graph().as_default() as g:
       restore_op, get_next_op = self._restore_iterator()
-      with self.test_session(graph=g) as sess:
+      with self.session(graph=g) as sess:
         sess.run(restore_op)
         for epoch in range(num_epochs):
           for f in range(self._num_files):
@@ -574,7 +575,7 @@ class FixedLengthRecordReaderTest(test.TestCase):
     with ops.Graph().as_default() as g:
       init_op, get_next_op, save_op, restore_op = self._build_iterator_graph(
           num_epochs=num_epochs)
-      with self.test_session(graph=g) as sess:
+      with self.session(graph=g) as sess:
         sess.run(init_op)
         # Note: There is no checkpoint saved currently so a NotFoundError is
         # raised.
@@ -585,7 +586,7 @@ class FixedLengthRecordReaderTest(test.TestCase):
     with ops.Graph().as_default() as g:
       init_op, get_next_op, save_op, restore_op = self._build_iterator_graph(
           num_epochs=num_epochs)
-      with self.test_session(graph=g) as sess:
+      with self.session(graph=g) as sess:
         sess.run(restore_op)
         for _ in range(num_epochs * self._num_files * self._num_records):
           sess.run(get_next_op)
@@ -598,7 +599,7 @@ class FixedLengthRecordReaderTest(test.TestCase):
     with ops.Graph().as_default() as g:
       init_op, get_next_op, save_op, restore_op = self._build_iterator_graph(
           num_epochs=num_epochs)
-      with self.test_session(graph=g) as sess:
+      with self.session(graph=g) as sess:
         sess.run(init_op)
         # Note: There is no checkpoint saved currently so a NotFoundError is
         # raised.
@@ -615,13 +616,13 @@ class FixedLengthRecordReaderTest(test.TestCase):
     with ops.Graph().as_default() as g:
       init_op, get_next_op, save_op, restore_op = self._build_iterator_graph(
           num_epochs=num_epochs)
-      with self.test_session(graph=g) as sess:
+      with self.session(graph=g) as sess:
         sess.run(restore_op)
         with self.assertRaises(errors.OutOfRangeError):
           sess.run(get_next_op)
 
 
-class TFRecordDatasetTest(test.TestCase):
+class TFRecordDatasetTest(test_base.DatasetTestBase):
 
   def setUp(self):
     super(TFRecordDatasetTest, self).setUp()
@@ -661,7 +662,7 @@ class TFRecordDatasetTest(test.TestCase):
     return filenames
 
   def testReadOneEpoch(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       # Basic test: read from file 0.
       sess.run(
           self.init_op,
@@ -698,7 +699,7 @@ class TFRecordDatasetTest(test.TestCase):
         sess.run(self.get_next)
 
   def testReadTenEpochs(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       sess.run(
           self.init_op,
           feed_dict={self.filenames: self.test_filenames,
@@ -711,7 +712,7 @@ class TFRecordDatasetTest(test.TestCase):
         sess.run(self.get_next)
 
   def testReadTenEpochsOfBatches(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       sess.run(
           self.init_batch_op,
           feed_dict={
@@ -738,7 +739,7 @@ class TFRecordDatasetTest(test.TestCase):
           f.write(cdata)
         zlib_files.append(zfn)
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       sess.run(
           self.init_op,
           feed_dict={self.filenames: zlib_files,
@@ -758,7 +759,7 @@ class TFRecordDatasetTest(test.TestCase):
           gzf.write(f.read())
         gzip_files.append(gzfn)
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       sess.run(
           self.init_op,
           feed_dict={self.filenames: gzip_files,
@@ -774,7 +775,7 @@ class TFRecordDatasetTest(test.TestCase):
     d = readers.TFRecordDataset(self.test_filenames, buffer_size=one_mebibyte)
     iterator = d.make_one_shot_iterator()
     next_element = iterator.get_next()
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       for j in range(self._num_files):
         for i in range(self._num_records):
           self.assertAllEqual(self._record(j, i), sess.run(next_element))
@@ -786,7 +787,7 @@ class TFRecordDatasetTest(test.TestCase):
     d = readers.TFRecordDataset(files)
     iterator = d.make_one_shot_iterator()
     next_element = iterator.get_next()
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       for j in range(self._num_files):
         for i in range(self._num_records):
           self.assertAllEqual(self._record(j, i), sess.run(next_element))
@@ -801,7 +802,7 @@ class TFRecordDatasetTest(test.TestCase):
     next_element = iterator.get_next()
     expected = []
     actual = []
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       for _ in range(10):
         for j in range(self._num_files):
           for i in range(self._num_records):

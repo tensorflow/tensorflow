@@ -19,6 +19,11 @@ from __future__ import print_function
 
 from tensorflow.python.training.checkpointable import base
 from tensorflow.python.training.checkpointable import data_structures
+from tensorflow.python.util import tf_contextlib
+
+
+# global _RESOURCE_TRACKER_STACK
+_RESOURCE_TRACKER_STACK = []
 
 
 class NotCheckpointable(object):
@@ -70,3 +75,73 @@ class Checkpointable(base.CheckpointableBase):
   def _no_dependency(self, value):
     """Override to allow CheckpointableBase to disable dependency tracking."""
     return data_structures.NoDependency(value)
+
+
+class ResourceTracker(object):
+  """An object that tracks a list of resources."""
+
+  def __init__(self):
+    self._resources = []
+
+  @property
+  def resources(self):
+    return self._resources
+
+  def add_resource(self, resource):
+    self._resources.append(resource)
+
+
+@tf_contextlib.contextmanager
+def resource_tracker_scope(resource_tracker):
+  """A context to manage resource trackers.
+
+  Use this in order to collect up all resources created within a block of code.
+  Example usage:
+
+  ```python
+  resource_tracker = ResourceTracker()
+  with resource_tracker_scope(resource_tracker):
+    resource = TrackableResource()
+
+  assert resource_tracker.resources == [resource]
+
+  Args:
+    resource_tracker: The passed in ResourceTracker object
+
+  Yields:
+    A scope in which the resource_tracker is active.
+  """
+  global _RESOURCE_TRACKER_STACK
+  old = list(_RESOURCE_TRACKER_STACK)
+  _RESOURCE_TRACKER_STACK.append(resource_tracker)
+  try:
+    yield
+  finally:
+    _RESOURCE_TRACKER_STACK = old
+
+
+class TrackableResource(base.CheckpointableBase):
+  """Base class for all resources that need to be tracked."""
+
+  def __init__(self):
+    global _RESOURCE_TRACKER_STACK
+    for resource_tracker in _RESOURCE_TRACKER_STACK:
+      resource_tracker.add_resource(self)
+
+    self._resource_handle = None
+
+  def create_resource(self):
+    """A function that creates a resource handle."""
+    raise NotImplementedError("TrackableResource.create_resource not "
+                              "implemented.")
+
+  def initialize(self):
+    """A function that initializes the resource. Optional."""
+    pass
+
+  @property
+  def resource_handle(self):
+    """Returns the resource handle associated with this Resource."""
+    if self._resource_handle is None:
+      self._resource_handle = self.create_resource()
+    return self._resource_handle

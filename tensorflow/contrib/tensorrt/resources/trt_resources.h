@@ -64,32 +64,10 @@ class TRTCalibrationResource : public tensorflow::ResourceBase {
   std::unique_ptr<TRTInt8Calibrator> calibrator_;
   TrtUniquePtrType<nvinfer1::IBuilder> builder_;
   TrtUniquePtrType<nvinfer1::ICudaEngine> engine_;
-  std::unique_ptr<nvinfer1::IGpuAllocator> allocator_;
+  std::unique_ptr<TRTBaseAllocator> allocator_;
   tensorflow::tensorrt::Logger logger_;
   // TODO(sami): Use threadpool threads!
   std::unique_ptr<std::thread> thr_;
-};
-
-class TRTWeightStore {
- public:
-  TRTWeightStore() {}
-
-  virtual ~TRTWeightStore() { VLOG(1) << "Destroying store" << DebugString(); }
-
-  string DebugString() {
-    std::stringstream oss;
-    size_t len_bytes = 0;
-    for (const auto& v : store_) {
-      len_bytes += v.size() * sizeof(uint8_t);
-    }
-    oss << " Number of entries     = " << store_.size() << std::endl
-        << " Total number of bytes = "
-        << store_.size() * sizeof(std::vector<uint8_t>) + len_bytes
-        << std::endl;
-    return oss.str();
-  }
-
-  std::list<std::vector<uint8_t>> store_;
 };
 
 }  // namespace tensorrt

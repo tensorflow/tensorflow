@@ -68,7 +68,10 @@ tf_cuda_library(
 tf_cuda_library(
     name = "c_api_internal",
     hdrs = ["c_api_internal.h"],
-    visibility = ["//tensorflow:internal"],
+    visibility = [
+        "//learning/deepmind/courier:__subpackages__",
+        "//tensorflow:internal",
+    ],
     deps = [
         ":c_api",
         "//tensorflow/c:c_api",

@@ -15,9 +15,9 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/reshape_mover.h"
 
+#include "absl/memory/memory.h"
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/literal.h"
-#include "tensorflow/compiler/xla/ptr_util.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_matchers.h"
@@ -28,13 +28,13 @@ limitations under the License.
 #include "tensorflow/compiler/xla/tests/hlo_verified_test_base.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/lib/strings/str_util.h"
-
-namespace op = xla::testing::opcode_matchers;
 
 namespace xla {
 namespace {
-using ReshapeMoverTest = HloVerifiedTestBase;
+
+namespace op = xla::testing::opcode_matchers;
+
+class ReshapeMoverTest : public HloVerifiedTestBase {};
 
 TEST_F(ReshapeMoverTest, ReshapesWithDifferentInputShapesNotMoved) {
   HloComputation::Builder builder(TestName());
@@ -76,9 +76,13 @@ TEST_F(ReshapeMoverTest, ReshapesWithDifferentInputShapesNotMoved) {
 TEST_F(ReshapeMoverTest, 1ConstantAnd1ReshapesOnRngNotMoved) {
   HloComputation::Builder builder(TestName());
   auto root_shape = ShapeUtil::MakeShape(F32, {8, 7});
-  auto rng0 = builder.AddInstruction(
-      HloInstruction::CreateRng(ShapeUtil::MakeShape(F32, {1, 8, 1, 7, 1}),
-                                RandomDistribution::RNG_UNIFORM, {}));
+  auto rng0 = builder.AddInstruction(HloInstruction::CreateRng(
+      ShapeUtil::MakeShape(F32, {1, 8, 1, 7, 1}),
+      RandomDistribution::RNG_UNIFORM,
+      {builder.AddInstruction(
+           HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(0.0f))),
+       builder.AddInstruction(HloInstruction::CreateConstant(
+           LiteralUtil::CreateR0<float>(1.0f)))}));
   auto reshape0 =
       builder.AddInstruction(HloInstruction::CreateReshape(root_shape, rng0));
 

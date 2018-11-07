@@ -33,6 +33,20 @@ ops.NotDifferentiable("TensorListConcat")
 ops.NotDifferentiable("TensorListPushBackBatch")
 
 
+def empty_tensor_list(element_shape,
+                      element_dtype,
+                      max_num_elements=None,
+                      name=None):
+  if max_num_elements is None:
+    max_num_elements = -1
+
+  return gen_list_ops.empty_tensor_list(
+      element_shape=element_shape,
+      element_dtype=element_dtype,
+      max_num_elements=max_num_elements,
+      name=name)
+
+
 @ops.RegisterGradient("TensorListPushBack")
 def _PushBackGrad(op, dresult):
   return gen_list_ops.tensor_list_pop_back(
@@ -42,7 +56,7 @@ def _PushBackGrad(op, dresult):
 @ops.RegisterGradient("TensorListPopBack")
 def _PopBackGrad(op, dlist, delement):
   if dlist is None:
-    dlist = gen_list_ops.empty_tensor_list(
+    dlist = empty_tensor_list(
         element_dtype=delement.dtype,
         element_shape=gen_list_ops.tensor_list_element_shape(
             op.outputs[0], shape_type=dtypes.int32))
@@ -58,12 +72,12 @@ def _TensorListStackGrad(unused_op, dtensor):
 @ops.RegisterGradient("TensorListFromTensor")
 def _TensorListFromTensorGrad(op, dlist):
   """Gradient for TensorListFromTensor."""
-  if op.inputs[0].shape[0].value is not None:
-    num_elements = op.inputs[0].shape[0].value
+  if op.inputs[0].shape.dims[0].value is not None:
+    num_elements = op.inputs[0].shape.dims[0].value
   else:
     num_elements = None
   if dlist is None:
-    dlist = gen_list_ops.empty_tensor_list(
+    dlist = empty_tensor_list(
         element_dtype=op.inputs[0].dtype,
         element_shape=gen_list_ops.tensor_list_element_shape(
             op.outputs[0], shape_type=dtypes.int32))
@@ -97,3 +111,18 @@ def _TensorListSetItemGrad(op, dlist):
   element_grad = gen_list_ops.tensor_list_get_item(
       dlist, index, element_dtype=item.dtype)
   return list_grad, index_grad, element_grad
+
+
+@ops.RegisterGradient("TensorListGather")
+def _TensorListGatherGrad(op, dtensor):
+  _, indices = op.inputs
+  return gen_list_ops.tensor_list_scatter(
+      tensor=dtensor, indices=indices,
+      element_shape=ops.convert_to_tensor(-1, dtype=dtypes.int32)), None
+
+
+@ops.RegisterGradient("TensorListScatter")
+def _TensorListScatterGrad(op, dlist):
+  t, indices, _ = op.inputs
+  return gen_list_ops.tensor_list_gather(
+      dlist, indices, element_dtype=t.dtype), None

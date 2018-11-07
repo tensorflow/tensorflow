@@ -21,10 +21,12 @@ limitations under the License.
 #include "tensorflow/python/lib/core/numpy.h"
 
 bool EagerTensor_CheckExact(const PyObject* o);
-tensorflow::int64 EagerTensor_id(const PyObject* tensor);
-tensorflow::DataType EagerTensor_dtype(const PyObject* tensor);
+tensorflow::int64 PyEagerTensor_ID(const PyObject* tensor);
+tensorflow::DataType PyEagerTensor_Dtype(const PyObject* tensor);
+tensorflow::int64 PyEagerTensor_NumElements(const PyObject* tensor);
 
 namespace tensorflow {
+bool IsCompatible(int desired_dtype, TF_DataType returned_dtype);
 TFE_TensorHandle* ConvertToEagerTensor(PyObject* value, PyObject* dtype);
 
 // TODO(nareshmodi): Move EagerCast and ReadVariableOp (which use the C API to

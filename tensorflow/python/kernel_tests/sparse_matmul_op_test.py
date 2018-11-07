@@ -48,7 +48,7 @@ class SparseMatMulTest(test.TestCase):
                      sp_b=False,
                      x_dtype=dtypes.float32,
                      y_dtype=dtypes.float32):
-    with self.test_session(use_gpu=False):
+    with self.cached_session(use_gpu=False):
       tf_x = math_ops.cast(x, x_dtype)
       tf_y = math_ops.cast(y, y_dtype)
       tf_ans = math_ops.matmul(
@@ -130,7 +130,7 @@ class MatMulGradientTest(test.TestCase):
 
   def _testGradients(self, tr_a, tr_b, sp_a, sp_b, a_dtype, b_dtype, delta,
                      name):
-    with self.test_session():
+    with self.cached_session():
       a = constant_op.constant(
           RandMatrix(
               3, 2, tr_a, round_bfloat=True), dtype=dtypes.float32)
@@ -157,7 +157,7 @@ class MatMulGradientTest(test.TestCase):
               m, [3, 4],
               x_init_value=b.eval(),
               delta=delta))
-    self.assertLess(err, delta / 2.)
+    self.assertLessEqual(err, delta / 2.)
 
   def testGradientInput(self):
     for tr_a in [True, False]:

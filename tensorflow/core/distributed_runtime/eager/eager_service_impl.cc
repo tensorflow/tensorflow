@@ -81,10 +81,11 @@ Status GetNumRetvals(tensorflow::EagerContext* context, const string& op_name,
 
 Status EagerServiceImpl::CreateContext(const CreateContextRequest* request,
                                        CreateContextResponse* response) {
-  //make sure env_ , env_->rendezvous_mgr available
+  // make sure env_ , env_->rendezvous_mgr available
   if (env_ == nullptr || env_->rendezvous_mgr == nullptr) {
-    return tensorflow::errors::Internal("invalid eager env_ or env_->rendezvous_mgr.");
-  } 
+    return tensorflow::errors::Internal(
+        "invalid eager env_ or env_->rendezvous_mgr.");
+  }
   std::vector<tensorflow::Device*> devices;
 
   TF_RETURN_IF_ERROR(tensorflow::DeviceFactory::AddDevices(
@@ -125,7 +126,9 @@ Status EagerServiceImpl::CreateContext(const CreateContextRequest* request,
     do {
       context_id = random::New64();
     } while (contexts_.find(context_id) != contexts_.end());
-    contexts_.emplace(context_id, new ServerContext(std::move(ctx)));
+    contexts_.emplace(
+        context_id,
+        new ServerContext(std::move(ctx), request->keep_alive_secs(), env_));
   }
   response->set_context_id(context_id);
 
@@ -230,9 +233,11 @@ Status EagerServiceImpl::WaitQueueDone(const WaitQueueDoneRequest* request,
 
 Status EagerServiceImpl::KeepAlive(const KeepAliveRequest* request,
                                    KeepAliveResponse* response) {
-  // TODO(nareshmodi): Automated context_id cleaning is not implemented
-  return errors::Unimplemented(
-      "EagerServiceImpl::KeepAlive is not implemented.");
+  ServerContext* context = nullptr;
+  TF_RETURN_IF_ERROR(GetServerContext(request->context_id(), &context));
+  core::ScopedUnref context_unref(context);
+
+  return Status::OK();
 }
 
 Status EagerServiceImpl::CloseContext(const CloseContextRequest* request,
@@ -266,6 +271,35 @@ Status EagerServiceImpl::RegisterFunction(
   return context->Context()->AddFunctionDef(request->function_def());
 }
 
+Status EagerServiceImpl::SendTensor(const SendTensorRequest* request,
+                                    SendTensorResponse* response) {
+  ServerContext* context = nullptr;
+  TF_RETURN_IF_ERROR(GetServerContext(request->context_id(), &context));
+  core::ScopedUnref context_unref(context);
+
+  tensorflow::gtl::InlinedVector<tensorflow::TensorHandle*, 2> tensors;
+  for (const auto& tensor_proto : request->tensors()) {
+    Tensor tensor;
+    if (!tensor.FromProto(tensor_proto)) {
+      return errors::InvalidArgument("Unable to parse tensor proto");
+    }
+
+    TensorHandle* tensor_handle =
+        new TensorHandle(tensor, nullptr, nullptr, nullptr);
+
+    TensorHandle* copied_handle = nullptr;
+    TF_RETURN_IF_ERROR(EagerCopyToDevice(tensor_handle, context->Context(),
+                                         request->device_name().c_str(),
+                                         &copied_handle));
+    tensors.push_back(copied_handle);
+    tensor_handle->Unref();
+  }
+
+  context->AddOperationOutputs(tensors, request->op_id());
+
+  return Status::OK();
+}
+
 tensorflow::Status EagerServiceImpl::GetServerContext(
     uint64 context_id, ServerContext** server_context) {
   mutex_lock l(contexts_mu_);
@@ -274,12 +308,15 @@ tensorflow::Status EagerServiceImpl::GetServerContext(
     *server_context = nullptr;
     return errors::InvalidArgument(strings::Printf(
         "Unable to find a context_id matching the specified one "
-        "(%lld). Perhaps the worker was restarted?",
+        "(%lld). Perhaps the worker was restarted, or the context was GC'd?",
         context_id));
   }
 
   *server_context = iter->second;
   (*server_context)->Ref();
+
+  (*server_context)->RecordAccess();
+
   return Status::OK();
 }
 

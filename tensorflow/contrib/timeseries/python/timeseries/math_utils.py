@@ -262,8 +262,8 @@ def batch_times_matrix(batch, matrix, adj_x=False, adj_y=False):
   assert matrix.get_shape().ndims == 2
   if adj_x:
     batch = array_ops.transpose(batch, [0, 2, 1])
-  batch_dimension = batch.get_shape()[0].value
-  first_dimension = batch.get_shape()[1].value
+  batch_dimension = batch.get_shape().dims[0].value
+  first_dimension = batch.get_shape().dims[1].value
   tensor_batch_shape = array_ops.shape(batch)
   if batch_dimension is None:
     batch_dimension = tensor_batch_shape[0]
@@ -543,20 +543,25 @@ class TupleOfTensorsLookup(lookup.LookupInterface):
   overhead.
   """
 
-  def __init__(
-      self, key_dtype, default_values, empty_key, name, checkpoint=True):
+  def __init__(self,
+               key_dtype,
+               default_values,
+               empty_key,
+               deleted_key,
+               name,
+               checkpoint=True):
     default_values_flat = nest.flatten(default_values)
-    self._hash_tables = nest.pack_sequence_as(
-        default_values,
-        [TensorValuedMutableDenseHashTable(
+    self._hash_tables = nest.pack_sequence_as(default_values, [
+        TensorValuedMutableDenseHashTable(
             key_dtype=key_dtype,
             value_dtype=default_value.dtype.base_dtype,
             default_value=default_value,
             empty_key=empty_key,
+            deleted_key=deleted_key,
             name=name + "_{}".format(table_number),
             checkpoint=checkpoint)
-         for table_number, default_value
-         in enumerate(default_values_flat)])
+        for table_number, default_value in enumerate(default_values_flat)
+    ])
     self._name = name
 
   def lookup(self, keys):
@@ -896,8 +901,8 @@ class InputStatisticsFromMiniBatch(object):
           statistics.total_observation_count,
           math_ops.cast(
               gen_math_ops.round(
-                  math_ops.cast(auxiliary_variables.max_time_seen -
-                                statistics.start_time + 1, self._dtype) /
+                  math_ops.cast(max_time_seen_assign -
+                                start_time_update + 1, self._dtype) /
                   inter_observation_duration_estimate), dtypes.int64))
       per_chunk_stat_updates = control_flow_ops.group(
           overall_feature_mean_update, overall_feature_var_update,

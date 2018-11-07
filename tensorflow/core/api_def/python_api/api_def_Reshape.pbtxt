@@ -1,10 +1,10 @@
 op {
   graph_op_name: "Reshape"
   endpoint {
-    name: "manip.reshape"
+    name: "reshape"
   }
   endpoint {
-    name: "reshape"
-    deprecated: true
+    name: "manip.reshape"
+    deprecation_version: 2
   }
 }

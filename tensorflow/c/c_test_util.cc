@@ -26,6 +26,10 @@ limitations under the License.
 using tensorflow::GraphDef;
 using tensorflow::NodeDef;
 
+static void BoolDeallocator(void* data, size_t, void* arg) {
+  delete[] static_cast<bool*>(data);
+}
+
 static void Int32Deallocator(void* data, size_t, void* arg) {
   delete[] static_cast<int32_t*>(data);
 }
@@ -36,6 +40,14 @@ static void DoubleDeallocator(void* data, size_t, void* arg) {
 
 static void FloatDeallocator(void* data, size_t, void* arg) {
   delete[] static_cast<float*>(data);
+}
+
+TF_Tensor* BoolTensor(bool v) {
+  const int num_bytes = sizeof(bool);
+  bool* values = new bool[1];
+  values[0] = v;
+  return TF_NewTensor(TF_BOOL, nullptr, 0, values, num_bytes, &BoolDeallocator,
+                      nullptr);
 }
 
 TF_Tensor* Int8Tensor(const int64_t* dims, int num_dims, const char* values) {
@@ -129,6 +141,12 @@ TF_Operation* Const(TF_Tensor* t, TF_Graph* graph, TF_Status* s,
   TF_Operation* op;
   ConstHelper(t, graph, s, name, &op);
   return op;
+}
+
+TF_Operation* ScalarConst(bool v, TF_Graph* graph, TF_Status* s,
+                          const char* name) {
+  unique_tensor_ptr tensor(BoolTensor(v), TF_DeleteTensor);
+  return Const(tensor.get(), graph, s, name);
 }
 
 TF_Operation* ScalarConst(int32_t v, TF_Graph* graph, TF_Status* s,

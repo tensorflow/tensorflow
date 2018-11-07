@@ -46,7 +46,7 @@ class RandomShuffleQueueTest(test.TestCase):
     tf_logging.error("Finished: %s", self._testMethodName)
 
   def testEnqueue(self):
-    with self.test_session():
+    with self.cached_session():
       q = data_flow_ops.RandomShuffleQueue(10, 5, dtypes_lib.float32)
       enqueue_op = q.enqueue((10.0,))
       self.assertAllEqual(0, q.size().eval())
@@ -54,7 +54,7 @@ class RandomShuffleQueueTest(test.TestCase):
       self.assertAllEqual(1, q.size().eval())
 
   def testEnqueueWithShape(self):
-    with self.test_session():
+    with self.cached_session():
       q = data_flow_ops.RandomShuffleQueue(
           10, 5, dtypes_lib.float32, shapes=tensor_shape.TensorShape([3, 2]))
       enqueue_correct_op = q.enqueue(([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]],))
@@ -64,7 +64,7 @@ class RandomShuffleQueueTest(test.TestCase):
         q.enqueue(([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]],))
 
   def testEnqueueManyWithShape(self):
-    with self.test_session():
+    with self.cached_session():
       q = data_flow_ops.RandomShuffleQueue(
           10, 5, [dtypes_lib.int32, dtypes_lib.int32], shapes=[(), (2,)])
       q.enqueue_many([[1, 2, 3, 4], [[1, 1], [2, 2], [3, 3], [4, 4]]]).run()
@@ -76,7 +76,7 @@ class RandomShuffleQueueTest(test.TestCase):
       q2.enqueue_many(([[1, 2, 3]],))
 
   def testScalarShapes(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       q = data_flow_ops.RandomShuffleQueue(
           10, 0, [dtypes_lib.int32, dtypes_lib.int32], shapes=[(), (1,)])
       q.enqueue_many([[1, 2, 3, 4], [[5], [6], [7], [8]]]).run()
@@ -93,7 +93,7 @@ class RandomShuffleQueueTest(test.TestCase):
                             results)
 
   def testParallelEnqueue(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       q = data_flow_ops.RandomShuffleQueue(10, 0, dtypes_lib.float32)
       elems = [10.0, 20.0, 30.0, 40.0, 50.0, 60.0, 70.0, 80.0, 90.0, 100.0]
       enqueue_ops = [q.enqueue((x,)) for x in elems]
@@ -119,7 +119,7 @@ class RandomShuffleQueueTest(test.TestCase):
       self.assertItemsEqual(elems, results)
 
   def testParallelDequeue(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       q = data_flow_ops.RandomShuffleQueue(10, 0, dtypes_lib.float32)
       elems = [10.0, 20.0, 30.0, 40.0, 50.0, 60.0, 70.0, 80.0, 90.0, 100.0]
       enqueue_ops = [q.enqueue((x,)) for x in elems]
@@ -143,7 +143,7 @@ class RandomShuffleQueueTest(test.TestCase):
       self.assertItemsEqual(elems, results)
 
   def testDequeue(self):
-    with self.test_session():
+    with self.cached_session():
       q = data_flow_ops.RandomShuffleQueue(10, 0, dtypes_lib.float32)
       elems = [10.0, 20.0, 30.0]
       enqueue_ops = [q.enqueue((x,)) for x in elems]
@@ -156,7 +156,7 @@ class RandomShuffleQueueTest(test.TestCase):
       self.assertItemsEqual(elems, vals)
 
   def testEnqueueAndBlockingDequeue(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       q = data_flow_ops.RandomShuffleQueue(3, 0, dtypes_lib.float32)
       elems = [10.0, 20.0, 30.0]
       enqueue_ops = [q.enqueue((x,)) for x in elems]
@@ -185,7 +185,7 @@ class RandomShuffleQueueTest(test.TestCase):
       self.assertItemsEqual(elems, results)
 
   def testMultiEnqueueAndDequeue(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       q = data_flow_ops.RandomShuffleQueue(
           10, 0, (dtypes_lib.int32, dtypes_lib.float32))
       elems = [(5, 10.0), (10, 20.0), (15, 30.0)]
@@ -202,12 +202,12 @@ class RandomShuffleQueueTest(test.TestCase):
       self.assertItemsEqual(elems, results)
 
   def testQueueSizeEmpty(self):
-    with self.test_session():
+    with self.cached_session():
       q = data_flow_ops.RandomShuffleQueue(10, 5, dtypes_lib.float32)
       self.assertEqual(0, q.size().eval())
 
   def testQueueSizeAfterEnqueueAndDequeue(self):
-    with self.test_session():
+    with self.cached_session():
       q = data_flow_ops.RandomShuffleQueue(10, 0, dtypes_lib.float32)
       enqueue_op = q.enqueue((10.0,))
       dequeued_t = q.dequeue()
@@ -220,7 +220,7 @@ class RandomShuffleQueueTest(test.TestCase):
       self.assertEqual([0], size.eval())
 
   def testEnqueueMany(self):
-    with self.test_session():
+    with self.cached_session():
       q = data_flow_ops.RandomShuffleQueue(10, 0, dtypes_lib.float32)
       elems = [10.0, 20.0, 30.0, 40.0]
       enqueue_op = q.enqueue_many((elems,))
@@ -234,7 +234,7 @@ class RandomShuffleQueueTest(test.TestCase):
       self.assertItemsEqual(elems + elems, results)
 
   def testEmptyEnqueueMany(self):
-    with self.test_session():
+    with self.cached_session():
       q = data_flow_ops.RandomShuffleQueue(10, 5, dtypes_lib.float32)
       empty_t = constant_op.constant(
           [], dtype=dtypes_lib.float32, shape=[0, 2, 3])
@@ -246,7 +246,7 @@ class RandomShuffleQueueTest(test.TestCase):
       self.assertEqual(0, size_t.eval())
 
   def testEmptyDequeueMany(self):
-    with self.test_session():
+    with self.cached_session():
       q = data_flow_ops.RandomShuffleQueue(10, 0, dtypes_lib.float32, shapes=())
       enqueue_op = q.enqueue((10.0,))
       dequeued_t = q.dequeue_many(0)
@@ -256,7 +256,7 @@ class RandomShuffleQueueTest(test.TestCase):
       self.assertEqual([], dequeued_t.eval().tolist())
 
   def testEmptyDequeueUpTo(self):
-    with self.test_session():
+    with self.cached_session():
       q = data_flow_ops.RandomShuffleQueue(10, 0, dtypes_lib.float32, shapes=())
       enqueue_op = q.enqueue((10.0,))
       dequeued_t = q.dequeue_up_to(0)
@@ -266,7 +266,7 @@ class RandomShuffleQueueTest(test.TestCase):
       self.assertEqual([], dequeued_t.eval().tolist())
 
   def testEmptyDequeueManyWithNoShape(self):
-    with self.test_session():
+    with self.cached_session():
       q = data_flow_ops.RandomShuffleQueue(10, 0, dtypes_lib.float32)
       enqueue_op = q.enqueue((constant_op.constant(
           [10.0, 20.0], shape=(1, 2)),))
@@ -287,7 +287,7 @@ class RandomShuffleQueueTest(test.TestCase):
         dequeued_t.eval()
 
   def testEmptyDequeueUpToWithNoShape(self):
-    with self.test_session():
+    with self.cached_session():
       q = data_flow_ops.RandomShuffleQueue(10, 0, dtypes_lib.float32)
       enqueue_op = q.enqueue((constant_op.constant(
           [10.0, 20.0], shape=(1, 2)),))
@@ -308,7 +308,7 @@ class RandomShuffleQueueTest(test.TestCase):
         dequeued_t.eval()
 
   def testMultiEnqueueMany(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       q = data_flow_ops.RandomShuffleQueue(
           10, 0, (dtypes_lib.float32, dtypes_lib.int32))
       float_elems = [10.0, 20.0, 30.0, 40.0]
@@ -327,7 +327,7 @@ class RandomShuffleQueueTest(test.TestCase):
       self.assertItemsEqual(expected, results)
 
   def testDequeueMany(self):
-    with self.test_session():
+    with self.cached_session():
       q = data_flow_ops.RandomShuffleQueue(10, 0, dtypes_lib.float32, ((),))
       elems = [10.0, 20.0, 30.0, 40.0, 50.0, 60.0, 70.0, 80.0, 90.0, 100.0]
       enqueue_op = q.enqueue_many((elems,))
@@ -340,7 +340,7 @@ class RandomShuffleQueueTest(test.TestCase):
       self.assertItemsEqual(elems, results)
 
   def testDequeueUpToNoBlocking(self):
-    with self.test_session():
+    with self.cached_session():
       q = data_flow_ops.RandomShuffleQueue(10, 0, dtypes_lib.float32, ((),))
       elems = [10.0, 20.0, 30.0, 40.0, 50.0, 60.0, 70.0, 80.0, 90.0, 100.0]
       enqueue_op = q.enqueue_many((elems,))
@@ -353,7 +353,7 @@ class RandomShuffleQueueTest(test.TestCase):
       self.assertItemsEqual(elems, results)
 
   def testMultiDequeueMany(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       q = data_flow_ops.RandomShuffleQueue(
           10, 0, (dtypes_lib.float32, dtypes_lib.int32), shapes=((), (2,)))
       float_elems = [
@@ -387,7 +387,7 @@ class RandomShuffleQueueTest(test.TestCase):
       self.assertItemsEqual(zip(float_elems, int_elems), results)
 
   def testMultiDequeueUpToNoBlocking(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       q = data_flow_ops.RandomShuffleQueue(
           10, 0, (dtypes_lib.float32, dtypes_lib.int32), shapes=((), (2,)))
       float_elems = [
@@ -422,7 +422,7 @@ class RandomShuffleQueueTest(test.TestCase):
       self.assertItemsEqual(zip(float_elems, int_elems), results)
 
   def testHighDimension(self):
-    with self.test_session():
+    with self.cached_session():
       q = data_flow_ops.RandomShuffleQueue(10, 0, dtypes_lib.int32, (
           (4, 4, 4, 4)))
       elems = np.array([[[[[x] * 4] * 4] * 4] * 4 for x in range(10)], np.int32)
@@ -433,7 +433,7 @@ class RandomShuffleQueueTest(test.TestCase):
       self.assertItemsEqual(dequeued_t.eval().tolist(), elems.tolist())
 
   def testParallelEnqueueMany(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       q = data_flow_ops.RandomShuffleQueue(
           1000, 0, dtypes_lib.float32, shapes=())
       elems = [10.0 * x for x in range(100)]
@@ -453,7 +453,7 @@ class RandomShuffleQueueTest(test.TestCase):
       self.assertItemsEqual(dequeued_t.eval(), elems * 10)
 
   def testParallelDequeueMany(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       q = data_flow_ops.RandomShuffleQueue(
           1000, 0, dtypes_lib.float32, shapes=())
       elems = [10.0 * x for x in range(1000)]
@@ -476,7 +476,7 @@ class RandomShuffleQueueTest(test.TestCase):
       self.assertItemsEqual(elems, dequeued_elems)
 
   def testParallelDequeueUpTo(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       q = data_flow_ops.RandomShuffleQueue(
           1000, 0, dtypes_lib.float32, shapes=())
       elems = [10.0 * x for x in range(1000)]
@@ -499,7 +499,7 @@ class RandomShuffleQueueTest(test.TestCase):
       self.assertItemsEqual(elems, dequeued_elems)
 
   def testParallelDequeueUpToRandomPartition(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       dequeue_sizes = [random.randint(50, 150) for _ in xrange(10)]
       total_elements = sum(dequeue_sizes)
       q = data_flow_ops.RandomShuffleQueue(
@@ -527,7 +527,7 @@ class RandomShuffleQueueTest(test.TestCase):
       self.assertItemsEqual(elems, dequeued_elems)
 
   def testBlockingDequeueMany(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       q = data_flow_ops.RandomShuffleQueue(10, 0, dtypes_lib.float32, ((),))
       elems = [10.0, 20.0, 30.0, 40.0]
       enqueue_op = q.enqueue_many((elems,))
@@ -554,7 +554,7 @@ class RandomShuffleQueueTest(test.TestCase):
       self.assertItemsEqual(elems, dequeued_elems)
 
   def testBlockingDequeueUpTo(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       q = data_flow_ops.RandomShuffleQueue(10, 0, dtypes_lib.float32, ((),))
       elems = [10.0, 20.0, 30.0, 40.0]
       enqueue_op = q.enqueue_many((elems,))
@@ -581,7 +581,7 @@ class RandomShuffleQueueTest(test.TestCase):
       self.assertItemsEqual(elems, dequeued_elems)
 
   def testDequeueManyWithTensorParameter(self):
-    with self.test_session():
+    with self.cached_session():
       # Define a first queue that contains integer counts.
       dequeue_counts = [random.randint(1, 10) for _ in range(100)]
       count_q = data_flow_ops.RandomShuffleQueue(100, 0, dtypes_lib.int32)
@@ -607,7 +607,7 @@ class RandomShuffleQueueTest(test.TestCase):
       self.assertItemsEqual(elems, dequeued_elems)
 
   def testDequeueUpToWithTensorParameter(self):
-    with self.test_session():
+    with self.cached_session():
       # Define a first queue that contains integer counts.
       dequeue_counts = [random.randint(1, 10) for _ in range(100)]
       count_q = data_flow_ops.RandomShuffleQueue(100, 0, dtypes_lib.int32)
@@ -633,7 +633,7 @@ class RandomShuffleQueueTest(test.TestCase):
       self.assertItemsEqual(elems, dequeued_elems)
 
   def testDequeueFromClosedQueue(self):
-    with self.test_session():
+    with self.cached_session():
       q = data_flow_ops.RandomShuffleQueue(10, 2, dtypes_lib.float32)
       elems = [10.0, 20.0, 30.0, 40.0]
       enqueue_op = q.enqueue_many((elems,))
@@ -652,7 +652,7 @@ class RandomShuffleQueueTest(test.TestCase):
         dequeued_t.eval()
 
   def testBlockingDequeueFromClosedQueue(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       min_size = 2
       q = data_flow_ops.RandomShuffleQueue(10, min_size, dtypes_lib.float32)
       elems = [10.0, 20.0, 30.0, 40.0]
@@ -690,7 +690,7 @@ class RandomShuffleQueueTest(test.TestCase):
       self.assertEqual(len(results), 4)
 
   def testBlockingDequeueFromClosedEmptyQueue(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       q = data_flow_ops.RandomShuffleQueue(10, 0, dtypes_lib.float32)
       close_op = q.close()
       dequeued_t = q.dequeue()
@@ -715,7 +715,7 @@ class RandomShuffleQueueTest(test.TestCase):
       self.assertEqual(len(finished), 1)
 
   def testBlockingDequeueManyFromClosedQueue(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       q = data_flow_ops.RandomShuffleQueue(10, 0, dtypes_lib.float32, ((),))
       elems = [10.0, 20.0, 30.0, 40.0]
       enqueue_op = q.enqueue_many((elems,))
@@ -751,7 +751,7 @@ class RandomShuffleQueueTest(test.TestCase):
       self.assertEqual(len(progress), 2)
 
   def testBlockingDequeueUpToFromClosedQueueReturnsRemainder(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       q = data_flow_ops.RandomShuffleQueue(10, 0, dtypes_lib.float32, ((),))
       elems = [10.0, 20.0, 30.0, 40.0]
       enqueue_op = q.enqueue_many((elems,))
@@ -778,7 +778,7 @@ class RandomShuffleQueueTest(test.TestCase):
       self.assertItemsEqual(results, elems)
 
   def testBlockingDequeueUpToSmallerThanMinAfterDequeue(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       q = data_flow_ops.RandomShuffleQueue(
           capacity=10,
           min_after_dequeue=2,
@@ -811,7 +811,7 @@ class RandomShuffleQueueTest(test.TestCase):
       self.assertItemsEqual(results, elems)
 
   def testBlockingDequeueManyFromClosedQueueWithElementsRemaining(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       q = data_flow_ops.RandomShuffleQueue(10, 0, dtypes_lib.float32, ((),))
       elems = [10.0, 20.0, 30.0, 40.0]
       enqueue_op = q.enqueue_many((elems,))
@@ -845,7 +845,7 @@ class RandomShuffleQueueTest(test.TestCase):
       self.assertEqual(len(results), 4)
 
   def testBlockingDequeueManyFromClosedEmptyQueue(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       q = data_flow_ops.RandomShuffleQueue(10, 5, dtypes_lib.float32, ((),))
       close_op = q.close()
       dequeued_t = q.dequeue_many(4)
@@ -865,7 +865,7 @@ class RandomShuffleQueueTest(test.TestCase):
       dequeue_thread.join()
 
   def testBlockingDequeueUpToFromClosedEmptyQueue(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       q = data_flow_ops.RandomShuffleQueue(10, 5, dtypes_lib.float32, ((),))
       close_op = q.close()
       dequeued_t = q.dequeue_up_to(4)
@@ -885,7 +885,7 @@ class RandomShuffleQueueTest(test.TestCase):
       dequeue_thread.join()
 
   def testEnqueueToClosedQueue(self):
-    with self.test_session():
+    with self.cached_session():
       q = data_flow_ops.RandomShuffleQueue(10, 4, dtypes_lib.float32)
       enqueue_op = q.enqueue((10.0,))
       close_op = q.close()
@@ -898,7 +898,7 @@ class RandomShuffleQueueTest(test.TestCase):
         enqueue_op.run()
 
   def testEnqueueManyToClosedQueue(self):
-    with self.test_session():
+    with self.cached_session():
       q = data_flow_ops.RandomShuffleQueue(10, 5, dtypes_lib.float32, ((),))
       elems = [10.0, 20.0, 30.0, 40.0]
       enqueue_op = q.enqueue_many((elems,))
@@ -912,7 +912,7 @@ class RandomShuffleQueueTest(test.TestCase):
         enqueue_op.run()
 
   def testBlockingEnqueueToFullQueue(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       q = data_flow_ops.RandomShuffleQueue(4, 0, dtypes_lib.float32, ((),))
       elems = [10.0, 20.0, 30.0, 40.0]
       enqueue_op = q.enqueue_many((elems,))
@@ -940,7 +940,7 @@ class RandomShuffleQueueTest(test.TestCase):
       thread.join()
 
   def testBlockingEnqueueManyToFullQueue(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       q = data_flow_ops.RandomShuffleQueue(4, 0, dtypes_lib.float32, ((),))
       elems = [10.0, 20.0, 30.0, 40.0]
       enqueue_op = q.enqueue_many((elems,))
@@ -974,7 +974,7 @@ class RandomShuffleQueueTest(test.TestCase):
       thread.join()
 
   def testBlockingEnqueueToClosedQueue(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       q = data_flow_ops.RandomShuffleQueue(4, 0, dtypes_lib.float32, ((),))
       elems = [10.0, 20.0, 30.0, 40.0]
       enqueue_op = q.enqueue_many((elems,))
@@ -1019,7 +1019,7 @@ class RandomShuffleQueueTest(test.TestCase):
       thread1.join()
 
   def testBlockingEnqueueManyToClosedQueue(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       q = data_flow_ops.RandomShuffleQueue(4, 0, dtypes_lib.float32, ((),))
       elems = [10.0, 20.0, 30.0]
       enqueue_op = q.enqueue_many((elems,))
@@ -1067,7 +1067,7 @@ class RandomShuffleQueueTest(test.TestCase):
         sess.run(blocking_enqueue_op)
 
   def testSharedQueueSameSession(self):
-    with self.test_session():
+    with self.cached_session():
       q1 = data_flow_ops.RandomShuffleQueue(
           1, 0, dtypes_lib.float32, ((),), shared_name="shared_queue")
       q1.enqueue((10.0,)).run()
@@ -1104,7 +1104,7 @@ class RandomShuffleQueueTest(test.TestCase):
       self.assertEqual(q2_size_t.eval(), 0)
 
   def testSharedQueueSameSessionGraphSeedNone(self):
-    with self.test_session():
+    with self.cached_session():
       q1 = data_flow_ops.RandomShuffleQueue(
           1,
           0,
@@ -1127,7 +1127,7 @@ class RandomShuffleQueueTest(test.TestCase):
       self.assertEqual(q2_size_t.eval(), 1)
 
   def testIncompatibleSharedQueueErrors(self):
-    with self.test_session():
+    with self.cached_session():
       q_a_1 = data_flow_ops.RandomShuffleQueue(
           10, 5, dtypes_lib.float32, shared_name="q_a")
       q_a_2 = data_flow_ops.RandomShuffleQueue(
@@ -1193,7 +1193,7 @@ class RandomShuffleQueueTest(test.TestCase):
         q_h_2.queue_ref.op.run()
 
   def testSelectQueue(self):
-    with self.test_session():
+    with self.cached_session():
       num_queues = 10
       qlist = list()
       for _ in xrange(num_queues):
@@ -1207,7 +1207,7 @@ class RandomShuffleQueueTest(test.TestCase):
         self.assertEqual(q.dequeue().eval(), 10.0)
 
   def testSelectQueueOutOfRange(self):
-    with self.test_session():
+    with self.cached_session():
       q1 = data_flow_ops.RandomShuffleQueue(10, 0, dtypes_lib.float32)
       q2 = data_flow_ops.RandomShuffleQueue(15, 0, dtypes_lib.float32)
       enq_q = data_flow_ops.RandomShuffleQueue.from_list(3, [q1, q2])
@@ -1235,7 +1235,7 @@ class RandomShuffleQueueTest(test.TestCase):
       sess.run(enqueue_many_op)
 
   def testResetOfBlockingOperation(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       q_empty = data_flow_ops.RandomShuffleQueue(5, 0, dtypes_lib.float32, (
           (),))
       dequeue_op = q_empty.dequeue()
@@ -1267,7 +1267,7 @@ class RandomShuffleQueueTest(test.TestCase):
         t.join()
 
   def testDequeueManyInDifferentOrders(self):
-    with self.test_session():
+    with self.cached_session():
       # Specify seeds to make the test deterministic
       # (https://en.wikipedia.org/wiki/Taxicab_number).
       q1 = data_flow_ops.RandomShuffleQueue(
@@ -1301,7 +1301,7 @@ class RandomShuffleQueueTest(test.TestCase):
           self.assertNotEqual(results[i], results[j])
 
   def testDequeueUpToInDifferentOrders(self):
-    with self.test_session():
+    with self.cached_session():
       # Specify seeds to make the test deterministic
       # (https://en.wikipedia.org/wiki/Taxicab_number).
       q1 = data_flow_ops.RandomShuffleQueue(
@@ -1335,7 +1335,7 @@ class RandomShuffleQueueTest(test.TestCase):
           self.assertNotEqual(results[i], results[j])
 
   def testDequeueInDifferentOrders(self):
-    with self.test_session():
+    with self.cached_session():
       # Specify seeds to make the test deterministic
       # (https://en.wikipedia.org/wiki/Taxicab_number).
       q1 = data_flow_ops.RandomShuffleQueue(
@@ -1371,7 +1371,7 @@ class RandomShuffleQueueTest(test.TestCase):
           self.assertNotEqual(results[i], results[j])
 
   def testBigEnqueueMany(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       q = data_flow_ops.RandomShuffleQueue(5, 0, dtypes_lib.int32, ((),))
       elem = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
       enq = q.enqueue_many((elem,))
@@ -1416,7 +1416,7 @@ class RandomShuffleQueueTest(test.TestCase):
       self.assertItemsEqual(elem, results)
 
   def testBigDequeueMany(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       q = data_flow_ops.RandomShuffleQueue(2, 0, dtypes_lib.int32, ((),))
       elem = np.arange(4, dtype=np.int32)
       enq_list = [q.enqueue((e,)) for e in elem]

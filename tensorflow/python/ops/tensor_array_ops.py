@@ -554,7 +554,7 @@ class _EagerTensorArray(object):
       self._tensor_array.extend([None for _ in range(index - size + 1)])
 
     if not isinstance(value, ops.EagerTensor):
-      value = constant_op.constant(value)
+      value = ops.convert_to_tensor(value)
 
     if self._infer_shape:
       if self._element_shape is None:
@@ -633,8 +633,8 @@ class _EagerTensorArray(object):
   def split(self, value, lengths, name=None):
     """See TensorArray."""
     # error checking to match graph-mode errors
-    value = constant_op.constant(value)
-    lengths = constant_op.constant(lengths)
+    value = ops.convert_to_tensor(value)
+    lengths = ops.convert_to_tensor(lengths)
     sum_lengths = math_ops.reduce_sum(lengths)
     if lengths.shape.ndims != 1:
       raise errors_impl.InvalidArgumentError(

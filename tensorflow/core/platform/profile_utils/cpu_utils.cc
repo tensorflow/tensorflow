@@ -19,6 +19,10 @@ limitations under the License.
 #include <limits>
 #include <mutex>
 
+#if defined(_WIN32)
+#include <windows.h>
+#endif
+
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/profile_utils/android_armv7a_cpu_utils_helper.h"
 
@@ -110,6 +114,10 @@ static ICpuUtilsHelper* cpu_utils_helper_instance_ = nullptr;
     return INVALID_FREQUENCY;
   }
   return freq_hz;
+#elif defined(_WIN32)
+  LARGE_INTEGER freq;
+  QueryPerformanceFrequency(&freq);
+  return freq.QuadPart;
 #else
   // TODO(satok): Support other OS if needed
   // Return INVALID_FREQUENCY on unsupported OS

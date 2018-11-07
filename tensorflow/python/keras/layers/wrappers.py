@@ -29,6 +29,7 @@ from tensorflow.python.keras.layers.recurrent import _standardize_args
 from tensorflow.python.keras.utils import generic_utils
 from tensorflow.python.keras.utils import tf_utils
 from tensorflow.python.ops import array_ops
+from tensorflow.python.util import nest
 from tensorflow.python.util.tf_export import tf_export
 
 
@@ -47,7 +48,6 @@ class Wrapper(Layer):
   def __init__(self, layer, **kwargs):
     assert isinstance(layer, Layer)
     self.layer = layer
-    self._track_checkpointable(layer, name='layer')
     # Tracks mapping of Wrapper inputs to inner layer inputs. Useful when
     # the inner layer has update ops that depend on its inputs (as opposed
     # to the inputs to the Wrapper layer).
@@ -168,6 +168,7 @@ class TimeDistributed(Wrapper):
           '`Layer` instance. You passed: {input}'.format(input=layer))
     super(TimeDistributed, self).__init__(layer, **kwargs)
     self.supports_masking = True
+    self._track_checkpointable(layer, name='layer')
 
   def _get_shape_tuple(self, init_tuple, tensor, start_idx, int_shape=None):
     """Finds non-specific dimensions in the static shapes.
@@ -331,7 +332,7 @@ class TimeDistributed(Wrapper):
       inner_mask_shape = self._get_shape_tuple((-1,), mask, 2)
       inner_mask = K.reshape(inner_mask, inner_mask_shape)
     input_uid = generic_utils.object_list_uid(inputs)
-    inner_inputs = self._input_map[input_uid]
+    inner_inputs = self._input_map.get(input_uid, inputs)
     output_mask = self.layer.compute_mask(inner_inputs, inner_mask)
     if output_mask is None:
       if mask is None:
@@ -417,6 +418,8 @@ class Bidirectional(Wrapper):
     self._num_constants = None
     super(Bidirectional, self).__init__(layer, **kwargs)
     self.input_spec = layer.input_spec
+    self._track_checkpointable(self.forward_layer, name='forward_layer')
+    self._track_checkpointable(self.backward_layer, name='backward_layer')
 
   @property
   def trainable(self):
@@ -515,7 +518,10 @@ class Bidirectional(Wrapper):
     if is_keras_tensor:
       # Compute the full input spec, including state
       full_input = [inputs] + additional_inputs
-      full_input_spec = self.input_spec + additional_specs
+      # The original input_spec is None since there could be a nested tensor
+      # input. Update the input_spec to match the inputs.
+      full_input_spec = [None for _ in range(len(nest.flatten(inputs)))
+                        ] + additional_specs
 
       # Perform the call with temporarily replaced input_spec
       original_input_spec = self.input_spec
@@ -526,7 +532,8 @@ class Bidirectional(Wrapper):
     else:
       return super(Bidirectional, self).__call__(inputs, **kwargs)
 
-  def call(self, inputs,
+  def call(self,
+           inputs,
            training=None,
            mask=None,
            initial_state=None,
@@ -542,11 +549,27 @@ class Bidirectional(Wrapper):
 
     if initial_state is not None and generic_utils.has_arg(
         self.layer.call, 'initial_state'):
-      forward_state = initial_state[:len(initial_state) // 2]
-      backward_state = initial_state[len(initial_state) // 2:]
-      y = self.forward_layer.call(inputs, initial_state=forward_state, **kwargs)
-      y_rev = self.backward_layer.call(
-          inputs, initial_state=backward_state, **kwargs)
+      forward_inputs = [inputs[0]]
+      backward_inputs = [inputs[0]]
+      pivot = len(initial_state) // 2 + 1
+      # add forward initial state
+      forward_state = inputs[1:pivot]
+      forward_inputs += forward_state
+      if self._num_constants is None:
+        # add backward initial state
+        backward_state = inputs[pivot:]
+        backward_inputs += backward_state
+      else:
+        # add backward initial state
+        backward_state = inputs[pivot:-self._num_constants]
+        backward_inputs += backward_state
+        # add constants for forward and backward layers
+        forward_inputs += inputs[-self._num_constants:]
+        backward_inputs += inputs[-self._num_constants:]
+      y = self.forward_layer.call(forward_inputs,
+                                  initial_state=forward_state, **kwargs)
+      y_rev = self.backward_layer.call(backward_inputs,
+                                       initial_state=backward_state, **kwargs)
     else:
       y = self.forward_layer.call(inputs, **kwargs)
       y_rev = self.backward_layer.call(inputs, **kwargs)
@@ -568,6 +591,9 @@ class Bidirectional(Wrapper):
       output = y * y_rev
     elif self.merge_mode is None:
       output = [y, y_rev]
+    else:
+      raise ValueError(
+          'Unrecognized value for `merge_mode`: %s' % (self.merge_mode))
 
     # Properly set learning phase
     if (getattr(y, '_uses_learning_phase', False) or

@@ -190,8 +190,10 @@ class SerializeManySparseOp : public SerializeManySparseOpBase<U> {
     TensorShape tensor_input_shape(input_shape->vec<int64>());
     gtl::InlinedVector<int64, 8> std_order(rank);
     std::iota(std_order.begin(), std_order.end(), 0);
-    SparseTensor input_st(*input_indices, *input_values, tensor_input_shape,
-                          std_order);
+    SparseTensor input_st;
+    OP_REQUIRES_OK(context, SparseTensor::Create(*input_indices, *input_values,
+                                                 tensor_input_shape, std_order,
+                                                 &input_st));
 
     auto input_shape_t = input_shape->vec<int64>();
     const int64 N = input_shape_t(0);

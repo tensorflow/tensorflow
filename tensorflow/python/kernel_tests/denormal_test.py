@@ -39,7 +39,7 @@ class DenormalTest(test.TestCase):
       # Disabled denormal_test on power/s390x platform
       # Check relevant discussion - https://github.com/tensorflow/tensorflow/issues/11902
       return
-    with self.test_session(use_gpu=use_gpu):
+    with self.cached_session(use_gpu=use_gpu):
       array_ops.identity(7).eval()
       for dtype in dtypes:
         tiny = np.finfo(dtype).tiny

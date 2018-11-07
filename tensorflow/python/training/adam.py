@@ -43,15 +43,15 @@ class AdamOptimizer(optimizer.Optimizer):
 
     Initialization:
 
-    $$m_0 := 0 (Initialize initial 1st moment vector)$$
-    $$v_0 := 0 (Initialize initial 2nd moment vector)$$
-    $$t := 0 (Initialize timestep)$$
+    $$m_0 := 0 \text{(Initialize initial 1st moment vector)}$$
+    $$v_0 := 0 \text{(Initialize initial 2nd moment vector)}$$
+    $$t := 0 \text{(Initialize timestep)}$$
 
     The update rule for `variable` with gradient `g` uses an optimization
     described at the end of section2 of the paper:
 
     $$t := t + 1$$
-    $$lr_t := \text{learning_rate} * \sqrt{(1 - beta_2^t) / (1 - beta_1^t)}$$
+    $$lr_t := \text{learning\_rate} * \sqrt{1 - beta_2^t} / (1 - beta_1^t)$$
 
     $$m_t := beta_1 * m_{t-1} + (1 - beta_1) * g$$
     $$v_t := beta_2 * v_{t-1} + (1 - beta_2) * g * g$$
@@ -109,12 +109,13 @@ class AdamOptimizer(optimizer.Optimizer):
     self._updated_lr = None
 
   def _get_beta_accumulators(self):
-    if context.executing_eagerly():
-      graph = None
-    else:
-      graph = ops.get_default_graph()
-    return (self._get_non_slot_variable("beta1_power", graph=graph),
-            self._get_non_slot_variable("beta2_power", graph=graph))
+    with ops.init_scope():
+      if context.executing_eagerly():
+        graph = None
+      else:
+        graph = ops.get_default_graph()
+      return (self._get_non_slot_variable("beta1_power", graph=graph),
+              self._get_non_slot_variable("beta2_power", graph=graph))
 
   def _create_slots(self, var_list):
     # Create the beta1 and beta2 accumulators on the same device as the first

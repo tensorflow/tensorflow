@@ -57,7 +57,7 @@ class QrOpTest(xla_test.XLATestCase, parameterized.TestCase):
   def CheckApproximation(self, a, q, r):
     # Tests that a ~= q*r.
     precision = self.AdjustedNorm(a - np.matmul(q, r))
-    self.assertTrue(np.all(precision < 5.0))
+    self.assertTrue(np.all(precision < 10.0))
 
   def CheckUnitary(self, x):
     # Tests that x[...,:,:]^H * x[...,:,:] is close to the identity.
@@ -71,7 +71,7 @@ class QrOpTest(xla_test.XLATestCase, parameterized.TestCase):
     x_np = np.random.uniform(
         low=-1.0, high=1.0, size=np.prod(shape)).reshape(shape).astype(dtype)
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       x_tf = array_ops.placeholder(dtype)
       with self.test_scope():
         q_tf, r_tf = linalg_ops.qr(x_tf, full_matrices=full_matrices)
@@ -101,11 +101,14 @@ class QrOpTest(xla_test.XLATestCase, parameterized.TestCase):
 
   @parameterized.parameters(*PARAMS)
   def testQR(self, rows, cols, dtype):
-    # TODO(b/111317468): implement full_matrices=False, test other types.
-    for full_matrices in [True]:
+    # TODO(b/111317468): Test other types.
+    for full_matrices in [True, False]:
       # Only tests the (3, 2) case for small numbers of rows/columns.
       for batch_dims in [(), (3,)] + [(3, 2)] * (max(rows, cols) < 10):
         self._test(dtype, batch_dims + (rows, cols), full_matrices)
+
+  def testLarge2000x2000(self):
+    self._test(np.float32, (2000, 2000), full_matrices=True)
 
 
 if __name__ == "__main__":

@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_LIB_CORE_STATUS_TEST_UTIL_H_
-#define TENSORFLOW_LIB_CORE_STATUS_TEST_UTIL_H_
+#ifndef TENSORFLOW_CORE_LIB_CORE_STATUS_TEST_UTIL_H_
+#define TENSORFLOW_CORE_LIB_CORE_STATUS_TEST_UTIL_H_
 
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/test.h"
@@ -31,4 +31,4 @@ limitations under the License.
 // If you want to check for particular errors, a better alternative is:
 // EXPECT_EQ(..expected tensorflow::error::Code..., status.code());
 
-#endif  // TENSORFLOW_LIB_CORE_STATUS_TEST_UTIL_H_
+#endif  // TENSORFLOW_CORE_LIB_CORE_STATUS_TEST_UTIL_H_

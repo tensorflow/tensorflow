@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef GDR_WORKER_H_
-#define GDR_WORKER_H_
+#ifndef TENSORFLOW_CONTRIB_GDR_GDR_WORKER_H_
+#define TENSORFLOW_CONTRIB_GDR_GDR_WORKER_H_
 
 #include "tensorflow/contrib/gdr/gdr_memory_manager.h"
 
@@ -44,4 +44,4 @@ class GdrWorker : public GrpcWorker {
 
 }  // namespace tensorflow
 
-#endif  // GDR_WORKER_H_
+#endif  // TENSORFLOW_CONTRIB_GDR_GDR_WORKER_H_

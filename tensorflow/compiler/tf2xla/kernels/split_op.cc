@@ -19,7 +19,7 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
-#include "tensorflow/compiler/xla/client/xla_client/xla_builder.h"
+#include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
@@ -104,7 +104,7 @@ class SplitOp : public XlaOpKernel {
   }
 };
 
-REGISTER_XLA_OP(Name("Split").CompileTimeConstInput("split_dim"), SplitOp);
+REGISTER_XLA_OP(Name("Split").CompileTimeConstantInput("split_dim"), SplitOp);
 
 class SplitVOp : public XlaOpKernel {
  public:
@@ -207,8 +207,8 @@ class SplitVOp : public XlaOpKernel {
 };
 
 REGISTER_XLA_OP(Name("SplitV")
-                    .CompileTimeConstInput("split_dim")
-                    .CompileTimeConstInput("size_splits"),
+                    .CompileTimeConstantInput("split_dim")
+                    .CompileTimeConstantInput("size_splits"),
                 SplitVOp);
 
 }  // namespace

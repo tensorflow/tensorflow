@@ -22,14 +22,28 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/sharding_util.h"
 #include "tensorflow/compiler/tf2xla/xla_context.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
-#include "tensorflow/compiler/xla/client/xla_client/xla_builder.h"
+#include "tensorflow/compiler/xla/client/xla_builder.h"
 
 namespace tensorflow {
+
+/*static*/ absl::string_view XlaResource::KindToString(XlaResource::Kind kind) {
+  switch (kind) {
+    case XlaResource::kInvalid:
+      return "invalid";
+    case XlaResource::kVariable:
+      return "variable";
+    case XlaResource::kStack:
+      return "stack";
+    case XlaResource::kTensorArray:
+      return "tensorarray";
+  }
+}
 
 XlaResource::XlaResource(Kind kind, int arg_num, string name, DataType type,
                          TensorShape shape, const xla::XlaOp& initial_value,
                          int64 tensor_array_size,
-                         const std::set<string>& tensor_array_gradients)
+                         const std::set<string>& tensor_array_gradients,
+                         bool tensor_array_multiple_writes_aggregate)
     : kind_(kind),
       arg_num_(arg_num),
       name_(std::move(name)),
@@ -37,14 +51,17 @@ XlaResource::XlaResource(Kind kind, int arg_num, string name, DataType type,
       shape_(std::move(shape)),
       value_(initial_value),
       initial_value_(initial_value),
-      tensor_array_size_(tensor_array_size) {
+      tensor_array_size_(tensor_array_size),
+      tensor_array_multiple_writes_aggregate_(
+          tensor_array_multiple_writes_aggregate) {
   CHECK(kind_ != kInvalid);
 
   for (const string& gradient : tensor_array_gradients) {
     tensor_array_gradients_[gradient].reset(new XlaResource(
         /*kind=*/kTensorArray, /*arg_num=*/-1,
-        /*name=*/strings::StrCat("TensorArrayGrad: ", name_), type_, shape_,
-        xla::XlaOp(), tensor_array_size_, /*tensor_array_gradients=*/{}));
+        /*name=*/absl::StrCat("TensorArrayGrad: ", name_), type_, shape_,
+        xla::XlaOp(), tensor_array_size_, /*tensor_array_gradients=*/{},
+        /*tensor_array_multiple_writes_aggregate=*/true));
   }
 }
 
@@ -135,9 +152,10 @@ Status XlaResource::GetOrCreateTensorArrayGradient(const string& source,
         xla::Broadcast(XlaHelpers::Zero(builder, type_), ta_shape.dim_sizes());
     gradient.reset(
         new XlaResource(/*kind=*/kTensorArray, /*arg_num=*/-1,
-                        /*name=*/strings::StrCat("TensorArrayGrad: ", name_),
+                        /*name=*/absl::StrCat("TensorArrayGrad: ", name_),
                         type_, shape_, gradient_value, tensor_array_size_,
-                        /*tensor_array_gradients=*/{}));
+                        /*tensor_array_gradients=*/{},
+                        /*tensor_array_multiple_writes_aggregate=*/true));
   }
   *gradient_out = gradient.get();
   return Status::OK();

@@ -44,12 +44,12 @@ GraphDefBuilder::Options GraphDefBuilder::Options::WithControlInputs(
 }
 GraphDefBuilder::Options GraphDefBuilder::Options::WithNameImpl(
     StringPiece name) {
-  name_ = std::string(name);
+  name_ = string(name);
   return *this;
 }
 GraphDefBuilder::Options GraphDefBuilder::Options::WithDeviceImpl(
     StringPiece device) {
-  device_ = std::string(device);
+  device_ = string(device);
   return *this;
 }
 GraphDefBuilder::Options GraphDefBuilder::Options::WithControlInputImpl(

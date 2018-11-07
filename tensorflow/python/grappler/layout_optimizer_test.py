@@ -1340,7 +1340,7 @@ class LayoutOptimizerTest(test.TestCase):
       expected_num_transposes = 2
       self.assertEqual(expected_num_transposes, num_transposes)
       self._assert_trans_nhwc_to_nchw('Conv2D-0', nodes)
-      self.assertAllEqual(output_val_ref, output_val)
+      self.assertAllClose(output_val_ref, output_val, atol=1e-3)
 
   def testLoop(self):
     if test.is_gpu_available(cuda_only=True):

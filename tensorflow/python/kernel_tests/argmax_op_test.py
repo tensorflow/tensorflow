@@ -20,6 +20,7 @@ from __future__ import print_function
 import numpy as np
 
 from tensorflow.python.framework import dtypes
+from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import test
 
@@ -33,7 +34,7 @@ class ArgMaxTest(test.TestCase):
                expected_values,
                use_gpu=False,
                expected_err_re=None):
-    with self.test_session(use_gpu=use_gpu):
+    with self.session(use_gpu=use_gpu):
       ans = method(x, axis=axis)
       if expected_err_re is None:
         tf_ans = ans.eval()
@@ -76,7 +77,7 @@ class ArgMaxTest(test.TestCase):
   def testFloatInt32Output(self):
     x = np.asarray(100 * np.random.randn(200), dtype=np.float32)
     expected_values = x.argmax()
-    with self.test_session(use_gpu=True):
+    with self.session(use_gpu=True):
       ans = math_ops.argmax(x, axis=0, output_type=dtypes.int32)
       tf_ans = ans.eval()
       self.assertEqual(np.int32, tf_ans.dtype)
@@ -84,7 +85,7 @@ class ArgMaxTest(test.TestCase):
       # the values don't have a range that exceeds 32-bit integers.
       self.assertAllEqual(tf_ans, expected_values)
     expected_values = x.argmin()
-    with self.test_session(use_gpu=True):
+    with self.session(use_gpu=True):
       ans = math_ops.argmin(x, axis=0, output_type=dtypes.int32)
       tf_ans = ans.eval()
       self.assertEqual(np.int32, tf_ans.dtype)
@@ -103,17 +104,23 @@ class ArgMaxTest(test.TestCase):
     self._testDim(np.int64)
 
   def testEmpty(self):
-    with self.test_session():
+    with self.cached_session():
       for op in math_ops.argmin, math_ops.argmax:
         with self.assertRaisesOpError(
             r"Reduction axis 0 is empty in shape \[0\]"):
           op([], 0).eval()
 
   def testDefaultAxis(self):
-    with self.test_session():
+    with self.cached_session():
       for op in math_ops.argmin, math_ops.argmax:
         ans = op([1]).eval()
         self.assertAllEqual(ans, 0)
+
+  def testOutputEmpty(self):
+    with self.cached_session():
+      for op in math_ops.argmin, math_ops.argmax:
+        ret = op(array_ops.zeros(shape=[1, 0, 2]), axis=-1).eval()
+        self.assertEqual(ret.shape, (1, 0))
 
 
 if __name__ == "__main__":

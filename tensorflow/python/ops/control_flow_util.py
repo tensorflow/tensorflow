@@ -214,6 +214,14 @@ def IsContainingContext(ctxt, maybe_containing_ctxt):
   return True
 
 
+def OpInContext(op, ctxt):
+  return IsContainingContext(op._get_control_flow_context(), ctxt)  # pylint: disable=protected-access
+
+
+def TensorInContext(tensor, ctxt):
+  return OpInContext(tensor.op, ctxt)
+
+
 def CheckInputFromValidContext(op, input_op):
   """Returns whether `input_op` can be used from `op`s context.
 

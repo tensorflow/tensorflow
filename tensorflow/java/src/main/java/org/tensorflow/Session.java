@@ -185,10 +185,19 @@ public final class Session implements AutoCloseable {
       return this;
     }
 
-    /** Makes {@link #run()} return the Tensor referred to by {@code output}. */
+    /** 
+     * Makes {@link #run()} return the Tensor referred to by {@code output}. 
+     */
     public Runner fetch(Output<?> output) {
       outputs.add(output);
       return this;
+    }
+    
+    /**
+     * Makes {@link #run()} return the Tensor referred to by the output of {@code operand}. 
+     */
+    public Runner fetch(Operand<?> operand) {
+      return fetch(operand.asOutput());
     }
 
     /**
@@ -208,6 +217,13 @@ public final class Session implements AutoCloseable {
     public Runner addTarget(Operation operation) {
       targets.add(operation);
       return this;
+    }
+    
+    /**
+     * Make {@link #run()} execute {@code operand}, but not return any evaluated {@link Tensor}s.
+     */
+    public Runner addTarget(Operand<?> operand) {
+      return addTarget(operand.asOutput().op());
     }
 
     /**

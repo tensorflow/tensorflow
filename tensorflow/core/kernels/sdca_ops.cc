@@ -38,6 +38,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/hinge-loss.h"
 #include "tensorflow/core/kernels/logistic-loss.h"
 #include "tensorflow/core/kernels/loss.h"
+#include "tensorflow/core/kernels/poisson-loss.h"
 #include "tensorflow/core/kernels/sdca_internal.h"
 #include "tensorflow/core/kernels/smooth-hinge-loss.h"
 #include "tensorflow/core/kernels/squared-loss.h"
@@ -75,12 +76,18 @@ struct ComputeOptions {
       loss_updater.reset(new HingeLossUpdater);
     } else if (loss_type == "smooth_hinge_loss") {
       loss_updater.reset(new SmoothHingeLossUpdater);
+    } else if (loss_type == "poisson_loss") {
+      loss_updater.reset(new PoissonLossUpdater);
     } else {
       OP_REQUIRES(
           context, false,
           errors::InvalidArgument("Unsupported loss type: ", loss_type));
     }
-    OP_REQUIRES_OK(context, context->GetAttr("adaptative", &adaptive));
+    auto s = context->GetAttr("adaptative", &adaptive);
+    if (!s.ok()) {
+      s = context->GetAttr("adaptive", &adaptive);
+    }
+    OP_REQUIRES_OK(context, s);
     OP_REQUIRES_OK(
         context, context->GetAttr("num_sparse_features", &num_sparse_features));
     OP_REQUIRES_OK(context, context->GetAttr("num_sparse_features_with_values",
@@ -241,6 +248,8 @@ class SdcaOptimizer : public OpKernel {
   ComputeOptions options_;
 };
 REGISTER_KERNEL_BUILDER(Name("SdcaOptimizer").Device(DEVICE_CPU),
+                        SdcaOptimizer);
+REGISTER_KERNEL_BUILDER(Name("SdcaOptimizerV2").Device(DEVICE_CPU),
                         SdcaOptimizer);
 
 class SdcaShrinkL1 : public OpKernel {

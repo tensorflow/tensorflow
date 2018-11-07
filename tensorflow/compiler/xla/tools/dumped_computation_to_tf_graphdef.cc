@@ -26,15 +26,16 @@ limitations under the License.
 #include <memory>
 #include <string>
 
+#include "absl/types/span.h"
 #include "tensorflow/compiler/xla/client/client.h"
 #include "tensorflow/compiler/xla/client/client_library.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
+#include "tensorflow/compiler/xla/client/xla_computation.h"
 #include "tensorflow/compiler/xla/legacy_flags/debug_options_flags.h"
 #include "tensorflow/compiler/xla/service/hlo.pb.h"
 #include "tensorflow/compiler/xla/service/service.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/types.h"
-#include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/init_main.h"
 #include "tensorflow/core/platform/logging.h"
@@ -44,7 +45,7 @@ using tensorflow::Env;
 namespace xla {
 namespace tools {
 
-void RealMain(tensorflow::gtl::ArraySlice<char*> args) {
+void RealMain(absl::Span<char* const> args) {
   Client* client = ClientLibrary::LocalClientOrDie();
   for (char* arg : args) {
     HloSnapshot module;
@@ -77,8 +78,8 @@ int main(int argc, char** argv) {
 
   tensorflow::port::InitMain(argv[0], &argc, &argv);
 
-  tensorflow::gtl::ArraySlice<char*> args(argv, argc);
-  args.pop_front();  // Pop off the binary name, argv[0]
+  absl::Span<char* const> args(argv, argc);
+  args.remove_prefix(1);  // Pop off the binary name, argv[0]
   xla::tools::RealMain(args);
   return 0;
 }

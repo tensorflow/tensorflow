@@ -5,6 +5,5 @@ op {
   }
   endpoint {
     name: "log1p"
-    deprecated: true
   }
 }

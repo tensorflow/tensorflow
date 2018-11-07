@@ -18,6 +18,7 @@ limitations under the License.
 #include "third_party/eigen3/Eigen/Core"
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/attr_value_util.h"
+#include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/grappler/clusters/utils.h"
@@ -65,6 +66,7 @@ constexpr char kAvgPool[] = "AvgPool";
 constexpr char kAvgPoolGrad[] = "AvgPoolGrad";
 constexpr char kFusedBatchNorm[] = "FusedBatchNorm";
 constexpr char kFusedBatchNormGrad[] = "FusedBatchNormGrad";
+constexpr char kQuantizedMatMulV2[] = "QuantizedMatMulV2";
 
 static const Costs::Duration kMinComputeTime(1);
 
@@ -174,14 +176,24 @@ int64 CwiseOutputElementCount(const TensorShapeProto& input_shape_1,
 TensorShapeProto MaybeGetMinimumShape(const TensorShapeProto& original_shape,
                                       int rank, bool* found_unknown_shapes) {
   auto shape = original_shape;
-  if (shape.unknown_rank() || shape.dim_size() < rank) {
+  bool is_scalar = !shape.unknown_rank() && shape.dim_size() == 0;
+
+  if (shape.unknown_rank() || (!is_scalar && shape.dim_size() < rank)) {
     *found_unknown_shapes = true;
-    TensorShapeProto::Dim dim;
     VLOG(2) << "Use minimum shape because the rank is unknown.";
     // The size of each dimension is at least 1, if unknown.
-    dim.set_size(1);
+    for (int i = shape.dim_size(); i < rank; i++) {
+      shape.add_dim()->set_size(1);
+    }
+  } else if (is_scalar) {
     for (int i = 0; i < rank; i++) {
-      *shape.add_dim() = dim;
+      shape.add_dim()->set_size(1);
+    }
+  } else if (shape.dim_size() > rank) {
+    *found_unknown_shapes = true;
+    shape.clear_dim();
+    for (int i = 0; i < rank; i++) {
+      shape.add_dim()->set_size(original_shape.dim(i).size());
     }
   } else {
     for (int i = 0; i < shape.dim_size(); i++) {
@@ -226,6 +238,7 @@ OpLevelCostEstimator::OpLevelCostEstimator() {
       {kMatMul, wrap(&OpLevelCostEstimator::PredictMatMul)},
       {kSparseMatMul, wrap(&OpLevelCostEstimator::PredictMatMul)},
       {kBatchMatMul, wrap(&OpLevelCostEstimator::PredictBatchMatMul)},
+      {kQuantizedMatMulV2, wrap(&OpLevelCostEstimator::PredictMatMul)},
 
       {kNoOp, wrap(&OpLevelCostEstimator::PredictNoOp)},
       {kGuaranteeConst, wrap(&OpLevelCostEstimator::PredictNoOp)},
@@ -268,67 +281,70 @@ OpLevelCostEstimator::OpLevelCostEstimator() {
       EIGEN_COST(scalar_product_op<float>) + EIGEN_COST(scalar_max_op<float>) +
       EIGEN_COST(scalar_min_op<float>) + EIGEN_COST(scalar_round_op<float>);
 
-  elementwise_ops_ = {// Unary ops alphabetically sorted
-                      {"Acos", EIGEN_COST(scalar_acos_op<float>)},
-                      {"Asin", EIGEN_COST(scalar_asin_op<float>)},
-                      {"Atan", EIGEN_COST(scalar_atan_op<float>)},
-                      {"Atan2", EIGEN_COST(scalar_quotient_op<float>) +
-                                    EIGEN_COST(scalar_atan_op<float>)},
-                      {"Ceil", EIGEN_COST(scalar_ceil_op<float>)},
-                      {"Cos", EIGEN_COST(scalar_cos_op<float>)},
-                      {"Dequantize", EIGEN_COST(scalar_product_op<float>)},
-                      {"Erf", 1},
-                      {"Erfc", 1},
-                      {"Exp", EIGEN_COST(scalar_exp_op<float>)},
-                      {"Expm1", EIGEN_COST(scalar_expm1_op<float>)},
-                      {"Floor", EIGEN_COST(scalar_floor_op<float>)},
-                      {"Inv", EIGEN_COST(scalar_inverse_op<float>)},
-                      {"InvGrad", 1},
-                      {"Lgamma", 1},
-                      {"Log", EIGEN_COST(scalar_log_op<float>)},
-                      {"Log1p", EIGEN_COST(scalar_log1p_op<float>)},
-                      {"Neg", EIGEN_COST(scalar_opposite_op<float>)},
-                      {"QuantizeV2", quantize_v2_cost},
-                      {"Reciprocal", EIGEN_COST(scalar_inverse_op<float>)},
-                      {"Rint", 1},
-                      {"Round", EIGEN_COST(scalar_round_op<float>)},
-                      {"Rsqrt", EIGEN_COST(scalar_rsqrt_op<float>)},
-                      {"Sqrt", EIGEN_COST(scalar_sqrt_op<float>)},
-                      {"Square", EIGEN_COST(scalar_square_op<float>)},
-                      {"Tanh", EIGEN_COST(scalar_tanh_op<float>)},
-                      {"Relu", EIGEN_COST(scalar_max_op<float>)},
-                      {"Sigmoid", EIGEN_COST(scalar_sigmoid_op<float>)},
-                      {"Sign", EIGEN_COST(scalar_sign_op<float>)},
-                      {"Sin", EIGEN_COST(scalar_sin_op<float>)},
-                      {"Tan", EIGEN_COST(scalar_tan_op<float>)},
-                      // Binary ops alphabetically sorted
-                      {"Add", EIGEN_COST(scalar_sum_op<float>)},
-                      {"ApproximateEqual", 1},
-                      {"BiasAdd", EIGEN_COST(scalar_sum_op<float>)},
-                      {"Div", EIGEN_COST(scalar_quotient_op<float>)},
-                      {"Equal", 1},
-                      {"FloorDiv", EIGEN_COST(scalar_quotient_op<float>)},
-                      {"FloorMod", EIGEN_COST(scalar_mod_op<float>)},
-                      {"Greater", 1},
-                      {"GreaterEqual", 1},
-                      {"Less", 1},
-                      {"LessEqual", 1},
-                      {"LogicalAnd", EIGEN_COST(scalar_boolean_and_op)},
-                      {"LogicalNot", 1},
-                      {"LogicalOr", EIGEN_COST(scalar_boolean_or_op)},
-                      {"Maximum", EIGEN_COST(scalar_max_op<float>)},
-                      {"Minimum", EIGEN_COST(scalar_min_op<float>)},
-                      {"Mod", EIGEN_COST(scalar_mod_op<float>)},
-                      {"Mul", EIGEN_COST(scalar_product_op<float>)},
-                      {"NotEqual", 1},
-                      {"QuantizedAdd", EIGEN_COST(scalar_sum_op<float>)},
-                      {"QuantizedMul", EIGEN_COST(scalar_product_op<float>)},
-                      {"RealDiv", EIGEN_COST(scalar_quotient_op<float>)},
-                      {"ReluGrad", EIGEN_COST(scalar_max_op<float>)},
-                      {"SquareDifference", 1},
-                      {"Sub", EIGEN_COST(scalar_difference_op<float>)},
-                      {"TruncateDiv", EIGEN_COST(scalar_quotient_op<float>)},
-                      {"TruncateMod", EIGEN_COST(scalar_mod_op<float>)}};
+  elementwise_ops_ = {
+      // Unary ops alphabetically sorted
+      {"Acos", EIGEN_COST(scalar_acos_op<float>)},
+      {"Asin", EIGEN_COST(scalar_asin_op<float>)},
+      {"Atan", EIGEN_COST(scalar_atan_op<float>)},
+      {"Atan2", EIGEN_COST(scalar_quotient_op<float>) +
+                    EIGEN_COST(scalar_atan_op<float>)},
+      {"Ceil", EIGEN_COST(scalar_ceil_op<float>)},
+      {"Cos", EIGEN_COST(scalar_cos_op<float>)},
+      {"Dequantize", EIGEN_COST(scalar_product_op<float>)},
+      {"Erf", 1},
+      {"Erfc", 1},
+      {"Exp", EIGEN_COST(scalar_exp_op<float>)},
+      {"Expm1", EIGEN_COST(scalar_expm1_op<float>)},
+      {"Floor", EIGEN_COST(scalar_floor_op<float>)},
+      {"Inv", EIGEN_COST(scalar_inverse_op<float>)},
+      {"InvGrad", 1},
+      {"Lgamma", 1},
+      {"Log", EIGEN_COST(scalar_log_op<float>)},
+      {"Log1p", EIGEN_COST(scalar_log1p_op<float>)},
+      {"Neg", EIGEN_COST(scalar_opposite_op<float>)},
+      {"QuantizeV2", quantize_v2_cost},
+      {"Reciprocal", EIGEN_COST(scalar_inverse_op<float>)},
+      {"Rint", 1},
+      {"Round", EIGEN_COST(scalar_round_op<float>)},
+      {"Rsqrt", EIGEN_COST(scalar_rsqrt_op<float>)},
+      {"Sqrt", EIGEN_COST(scalar_sqrt_op<float>)},
+      {"Square", EIGEN_COST(scalar_square_op<float>)},
+      {"Tanh", EIGEN_COST(scalar_tanh_op<float>)},
+      {"Relu", EIGEN_COST(scalar_max_op<float>)},
+      {"Sigmoid", EIGEN_COST(scalar_logistic_op<float>)},
+      {"QuantizedSigmoid", EIGEN_COST(scalar_logistic_op<float>)},
+      {"Sign", EIGEN_COST(scalar_sign_op<float>)},
+      {"Sin", EIGEN_COST(scalar_sin_op<float>)},
+      {"Tan", EIGEN_COST(scalar_tan_op<float>)},
+      // Binary ops alphabetically sorted
+      {"Add", EIGEN_COST(scalar_sum_op<float>)},
+      {"ApproximateEqual", 1},
+      {"BiasAdd", EIGEN_COST(scalar_sum_op<float>)},
+      {"QuantizedBiasAdd", EIGEN_COST(scalar_sum_op<float>)},
+      {"Div", EIGEN_COST(scalar_quotient_op<float>)},
+      {"Equal", 1},
+      {"FloorDiv", EIGEN_COST(scalar_quotient_op<float>)},
+      {"FloorMod", EIGEN_COST(scalar_mod_op<float>)},
+      {"Greater", 1},
+      {"GreaterEqual", 1},
+      {"Less", 1},
+      {"LessEqual", 1},
+      {"LogicalAnd", EIGEN_COST(scalar_boolean_and_op)},
+      {"LogicalNot", 1},
+      {"LogicalOr", EIGEN_COST(scalar_boolean_or_op)},
+      {"Maximum", EIGEN_COST(scalar_max_op<float>)},
+      {"Minimum", EIGEN_COST(scalar_min_op<float>)},
+      {"Mod", EIGEN_COST(scalar_mod_op<float>)},
+      {"Mul", EIGEN_COST(scalar_product_op<float>)},
+      {"NotEqual", 1},
+      {"QuantizedAdd", EIGEN_COST(scalar_sum_op<float>)},
+      {"QuantizedMul", EIGEN_COST(scalar_product_op<float>)},
+      {"RealDiv", EIGEN_COST(scalar_quotient_op<float>)},
+      {"ReluGrad", EIGEN_COST(scalar_max_op<float>)},
+      {"SquareDifference", 1},
+      {"Sub", EIGEN_COST(scalar_difference_op<float>)},
+      {"TruncateDiv", EIGEN_COST(scalar_quotient_op<float>)},
+      {"TruncateMod", EIGEN_COST(scalar_mod_op<float>)}};
 
 #undef EIGEN_COST
 
@@ -356,7 +372,7 @@ Costs OpLevelCostEstimator::PredictCosts(const OpContext& op_context) const {
   return costs;
 }
 
-OpLevelCostEstimator::DeviceInfo OpLevelCostEstimator::GetDeviceInfo(
+DeviceInfo OpLevelCostEstimator::GetDeviceInfo(
     const DeviceProperties& device) const {
   double gflops = -1;
   double gb_per_sec = -1;
@@ -404,7 +420,7 @@ OpLevelCostEstimator::DeviceInfo OpLevelCostEstimator::GetDeviceInfo(
   DCHECK_LT(0, gflops) << device.DebugString();
   DCHECK_LT(0, gb_per_sec) << device.DebugString();
 
-  return {gflops, gb_per_sec};
+  return DeviceInfo(gflops, gb_per_sec);
 }
 
 Costs OpLevelCostEstimator::PredictCwiseOp(const OpContext& op_context) const {
@@ -444,6 +460,7 @@ Costs OpLevelCostEstimator::PredictCwiseOp(const OpContext& op_context) const {
   if (found_unknown_shapes || !is_known_elementwise_op) {
     costs.inaccurate = true;
   }
+  costs.num_ops_with_unknown_shapes = found_unknown_shapes;
   return costs;
 }
 
@@ -461,17 +478,22 @@ Costs OpLevelCostEstimator::PredictOpCountBasedCost(
   bool unknown_shapes = false;
   const double input_size = CalculateInputSize(op_info, &unknown_shapes);
   const double output_size = CalculateOutputSize(op_info, &unknown_shapes);
-  const double total_io_bytes = input_size + output_size;
-  Costs costs = PredictOpCountBasedCost(operations, total_io_bytes, op_info);
+  Costs costs =
+      PredictOpCountBasedCost(operations, input_size, output_size, op_info);
   costs.inaccurate = unknown_shapes;
+  costs.num_ops_with_unknown_shapes = unknown_shapes;
   costs.max_memory = output_size;
   return costs;
 }
 
 Costs OpLevelCostEstimator::PredictOpCountBasedCost(
-    double operations, double total_io_bytes, const OpInfo& op_info) const {
+    double operations, double input_io_bytes, double output_io_bytes,
+    const OpInfo& op_info) const {
+  double total_io_bytes = input_io_bytes + output_io_bytes;
   const DeviceInfo device_info = GetDeviceInfo(op_info.device());
-  if (device_info.gigaops <= 0 || device_info.gb_per_sec <= 0) {
+  if (device_info.gigaops <= 0 || device_info.gb_per_sec <= 0 ||
+      device_info.intermediate_read_gb_per_sec <= 0 ||
+      device_info.intermediate_write_gb_per_sec <= 0) {
     VLOG(1) << "BAD DEVICE. Op:" << op_info.op()
             << " device type:" << op_info.device().type()
             << " device model:" << op_info.device().model();
@@ -486,9 +508,29 @@ Costs OpLevelCostEstimator::PredictOpCountBasedCost(
   VLOG(1) << "Op:" << op_info.op() << " Size (KB):" << (total_io_bytes) / 1e3
           << " Memory Time (ns):" << memory_cost.count();
 
+  // Check if bytes > 0.  If it's not and the bandwidth is set to infinity
+  // then the result would be undefined.
+  double intermediate_read_time =
+      (input_io_bytes > 0)
+          ? std::ceil(input_io_bytes / device_info.intermediate_read_gb_per_sec)
+          : 0;
+
+  double intermediate_write_time =
+      (output_io_bytes > 0)
+          ? std::ceil(output_io_bytes /
+                      device_info.intermediate_write_gb_per_sec)
+          : 0;
+
+  Costs::NanoSeconds intermediate_memory_cost(intermediate_read_time +
+                                              intermediate_write_time);
+  VLOG(1) << "Op:" << op_info.op() << " Size (KB):" << (total_io_bytes) / 1e3
+          << " Intermediate Memory Time (ns):"
+          << intermediate_memory_cost.count();
+
   Costs costs;
   costs.compute_time = compute_cost;
   costs.memory_time = memory_cost;
+  costs.intermediate_memory_time = intermediate_memory_cost;
   CombineCostsAndUpdateExecutionTime(&costs);
   return costs;
 }
@@ -622,6 +664,7 @@ int64 OpLevelCostEstimator::CountMatMulOperations(
 
   if (op_features.inputs_size() < 2) {
     LOG(ERROR) << "Need 2 inputs but got " << op_features.inputs_size();
+    // TODO(pcma): Try to separate invalid inputs from unknown shapes
     *found_unknown_shapes = true;
     return 0;
   }
@@ -675,7 +718,7 @@ int64 OpLevelCostEstimator::CountMatMulOperations(
   }
 
   ops = m_dim * n_dim * k_dim * 2;
-  VLOG(1) << "Operations for Matmul" << ops;
+  VLOG(1) << "Operations for Matmul: " << ops;
 
   if (mat_mul != nullptr) {
     mat_mul->m = m_dim;
@@ -689,11 +732,13 @@ int64 OpLevelCostEstimator::CountBatchMatMulOperations(
     const OpInfo& op_features, bool* found_unknown_shapes) const {
   if (op_features.op() != kBatchMatMul) {
     LOG(ERROR) << "Invalid Operation: " << op_features.op();
+    // TODO(pcma): Try to separate invalid inputs from unknown shapes
     *found_unknown_shapes = true;
     return 0;
   }
   if (op_features.inputs_size() != 2) {
     LOG(ERROR) << "Expected 2 inputs but got " << op_features.inputs_size();
+    // TODO(pcma): Try to separate invalid inputs from unknown shapes
     *found_unknown_shapes = true;
     return 0;
   }
@@ -853,6 +898,7 @@ int64 OpLevelCostEstimator::CountConv2DBackpropInputOperations(
          "kDepthwiseConv2dNativeBackpropInput";
 
   if (op_features.inputs_size() < 2) {
+    // TODO(pcma): Try to separate invalid inputs from unknown shapes
     *found_unknown_shapes = true;
     return ops;
   }
@@ -930,6 +976,7 @@ int64 OpLevelCostEstimator::CountConv2DBackpropFilterOperations(
   }
 
   if (op_features.inputs_size() < 1) {
+    // TODO(pcma): Try to separate invalid inputs from unknown shapes
     *found_unknown_shapes = true;
     return ops;
   }
@@ -972,8 +1019,10 @@ int64 OpLevelCostEstimator::CalculateTensorElementCount(
 
 int64 OpLevelCostEstimator::CalculateTensorSize(
     const OpInfo::TensorProperties& tensor, bool* found_unknown_shapes) const {
-  return CalculateTensorElementCount(tensor, found_unknown_shapes) *
-         DataTypeSize(BaseType(tensor.dtype()));
+  int64 count = CalculateTensorElementCount(tensor, found_unknown_shapes);
+  int size = DataTypeSize(BaseType(tensor.dtype()));
+  VLOG(2) << "Count: " << count << " DataTypeSize: " << size;
+  return count * size;
 }
 
 int64 OpLevelCostEstimator::CalculateInputSize(
@@ -1030,6 +1079,7 @@ Costs OpLevelCostEstimator::PredictConv2D(const OpContext& op_context) const {
   auto costs = PredictOpCountBasedCost(
       CountConv2DOperations(op_features, &found_unknown_shapes), op_features);
   costs.inaccurate = found_unknown_shapes;
+  costs.num_ops_with_unknown_shapes = found_unknown_shapes;
   return costs;
 }
 
@@ -1042,6 +1092,7 @@ Costs OpLevelCostEstimator::PredictConv2DBackpropInput(
                                   op_features, nullptr, &found_unknown_shapes),
                               op_features);
   costs.inaccurate = found_unknown_shapes;
+  costs.num_ops_with_unknown_shapes = found_unknown_shapes;
   return costs;
 }
 
@@ -1054,6 +1105,7 @@ Costs OpLevelCostEstimator::PredictConv2DBackpropFilter(
                                   op_features, nullptr, &found_unknown_shapes),
                               op_features);
   costs.inaccurate = found_unknown_shapes;
+  costs.num_ops_with_unknown_shapes = found_unknown_shapes;
   return costs;
 }
 
@@ -1141,6 +1193,7 @@ Costs OpLevelCostEstimator::PredictFusedConv2DBiasActivation(
   // Construct component operations and run the cost computation.
   auto costs = PredictFusedOp(op_context_with_output, component_ops);
   costs.inaccurate |= found_unknown_shapes;
+  costs.num_ops_with_unknown_shapes = costs.inaccurate;
   return costs;
 }
 
@@ -1150,6 +1203,7 @@ Costs OpLevelCostEstimator::PredictMatMul(const OpContext& op_context) const {
   auto costs = PredictOpCountBasedCost(
       CountMatMulOperations(op_features, &found_unknown_shapes), op_features);
   costs.inaccurate = found_unknown_shapes;
+  costs.num_ops_with_unknown_shapes = found_unknown_shapes;
   return costs;
 }
 
@@ -1164,6 +1218,7 @@ Costs OpLevelCostEstimator::PredictIdentity(const OpContext& op_context) const {
   VLOG(1) << "Op:" << op_features.op() << " Execution Time 0 (ns)";
   Costs result = Costs::ZeroCosts();
   result.max_memory = CalculateOutputSize(op_features, &result.inaccurate);
+  result.num_ops_with_unknown_shapes = result.inaccurate;
   // Assign the minimum amount of time we can represent to the identity op since
   // it tends to be really cheap.
   result.compute_time = kMinComputeTime;
@@ -1177,6 +1232,7 @@ Costs OpLevelCostEstimator::PredictVariable(const OpContext& op_context) const {
   Costs result = Costs::ZeroCosts();
   result.persistent_memory =
       CalculateOutputSize(op_features, &result.inaccurate);
+  result.num_ops_with_unknown_shapes = result.inaccurate;
 
   result.compute_time = kMinComputeTime;
   result.execution_time = result.execution_time;
@@ -1191,6 +1247,7 @@ Costs OpLevelCostEstimator::PredictBatchMatMul(
       CountBatchMatMulOperations(op_features, &found_unknown_shapes),
       op_features);
   costs.inaccurate = found_unknown_shapes;
+  costs.num_ops_with_unknown_shapes = found_unknown_shapes;
   return costs;
 }
 
@@ -1198,6 +1255,7 @@ Costs OpLevelCostEstimator::PredictMetadata(const OpContext& op_context) const {
   const auto& op_features = op_context.op_info;
   Costs costs = Costs::ZeroCosts();
   costs.max_memory = CalculateOutputSize(op_features, &costs.inaccurate);
+  costs.num_ops_with_unknown_shapes = costs.inaccurate;
   // Metadata operations are so cheap we assume they take the minimum amount of
   // time we can represent (1 ns).
   costs.compute_time = kMinComputeTime;
@@ -1239,9 +1297,10 @@ Costs OpLevelCostEstimator::PredictGatherOrSlice(
         CalculateTensorElementCount(op_info.inputs(1), &unknown_shapes);
   }
 
-  const double total_io = input_size + output_size;
-  Costs costs = PredictOpCountBasedCost(op_count, total_io, op_info);
+  Costs costs =
+      PredictOpCountBasedCost(op_count, input_size, output_size, op_info);
   costs.inaccurate = unknown_shapes;
+  costs.num_ops_with_unknown_shapes = unknown_shapes;
   costs.max_memory = output_size;
 
   return costs;
@@ -1256,12 +1315,15 @@ Costs OpLevelCostEstimator::PredictFusedOp(
   // operations here; so we simply add the compute times of each component
   // operation, then update the execution time.
   Costs fused_cost = PredictOpCountBasedCost(0, op_context.op_info);
+
   fused_cost.compute_time = 0;
   fused_cost.inaccurate = false;
   for (auto& fused_op : fused_op_contexts) {
     auto op_cost = PredictCosts(fused_op);
+
     fused_cost.compute_time += op_cost.compute_time;
     fused_cost.inaccurate |= op_cost.inaccurate;
+    fused_cost.intermediate_memory_time += op_cost.intermediate_memory_time;
   }
 
   CombineCostsAndUpdateExecutionTime(&fused_cost);
@@ -1380,9 +1442,10 @@ Costs OpLevelCostEstimator::PredictMaxPool(const OpContext& op_context) const {
   const double total_output_size =
       CalculateOutputSize(op_info, &found_unknown_shapes);
 
-  Costs costs = PredictOpCountBasedCost(
-      ops, total_input_size + total_output_size, op_info);
+  Costs costs = PredictOpCountBasedCost(ops, total_input_size,
+                                        total_output_size, op_info);
   costs.inaccurate = found_unknown_shapes;
+  costs.num_ops_with_unknown_shapes = found_unknown_shapes;
   costs.max_memory = total_output_size;
   return costs;
 }
@@ -1422,9 +1485,10 @@ Costs OpLevelCostEstimator::PredictMaxPoolGrad(
   const double total_output_size =
       CalculateTensorSize(op_info.inputs(0), &found_unknown_shapes);
 
-  Costs costs = PredictOpCountBasedCost(
-      ops, total_input_size + total_output_size, op_info);
+  Costs costs = PredictOpCountBasedCost(ops, total_input_size,
+                                        total_output_size, op_info);
   costs.inaccurate = found_unknown_shapes;
+  costs.num_ops_with_unknown_shapes = found_unknown_shapes;
   costs.max_memory = total_output_size;
   return costs;
 }
@@ -1454,9 +1518,10 @@ Costs OpLevelCostEstimator::PredictAvgPool(const OpContext& op_context) const {
   const double total_output_size =
       CalculateOutputSize(op_info, &found_unknown_shapes);
 
-  Costs costs = PredictOpCountBasedCost(
-      ops, total_input_size + total_output_size, op_info);
+  Costs costs = PredictOpCountBasedCost(ops, total_input_size,
+                                        total_output_size, op_info);
   costs.inaccurate = found_unknown_shapes;
+  costs.num_ops_with_unknown_shapes = found_unknown_shapes;
   costs.max_memory = total_output_size;
   return costs;
 }
@@ -1506,9 +1571,10 @@ Costs OpLevelCostEstimator::PredictAvgPoolGrad(
   const double total_output_size =
       CalculateOutputSize(op_info, &found_unknown_shapes);
 
-  Costs costs = PredictOpCountBasedCost(
-      ops, total_input_size + total_output_size, op_info);
+  Costs costs = PredictOpCountBasedCost(ops, total_input_size,
+                                        total_output_size, op_info);
   costs.inaccurate = found_unknown_shapes;
+  costs.num_ops_with_unknown_shapes = found_unknown_shapes;
   costs.max_memory = total_output_size;
   return costs;
 }
@@ -1551,10 +1617,11 @@ Costs OpLevelCostEstimator::PredictFusedBatchNorm(
     total_output_size = size_nhwc;
   }
 
-  Costs costs = PredictOpCountBasedCost(
-      ops, total_input_size + total_output_size + total_internal_read_size,
-      op_info);
+  Costs costs =
+      PredictOpCountBasedCost(ops, total_input_size + total_internal_read_size,
+                              total_output_size, op_info);
   costs.inaccurate = found_unknown_shapes;
+  costs.num_ops_with_unknown_shapes = found_unknown_shapes;
   costs.max_memory = total_output_size;
   return costs;
 }
@@ -1584,10 +1651,11 @@ Costs OpLevelCostEstimator::PredictFusedBatchNormGrad(
   double total_internal_read_size = size_nhwc;
   double total_output_size = size_nhwc * 1 + size_c * 2;
 
-  Costs costs = PredictOpCountBasedCost(
-      ops, total_input_size + total_output_size + total_internal_read_size,
-      op_info);
+  Costs costs =
+      PredictOpCountBasedCost(ops, total_input_size + total_internal_read_size,
+                              total_output_size, op_info);
   costs.inaccurate = found_unknown_shapes;
+  costs.num_ops_with_unknown_shapes = found_unknown_shapes;
   costs.max_memory = total_output_size;
   return costs;
 }
@@ -1596,9 +1664,12 @@ Costs OpLevelCostEstimator::PredictFusedBatchNormGrad(
 void OpLevelCostEstimator::CombineCostsAndUpdateExecutionTime(
     Costs* costs) const {
   if (compute_memory_overlap_) {
-    costs->execution_time = std::max(costs->compute_time, costs->memory_time);
+    costs->execution_time =
+        std::max(costs->intermediate_memory_time,
+                 std::max(costs->compute_time, costs->memory_time));
   } else {
-    costs->execution_time = costs->compute_time + costs->memory_time;
+    costs->execution_time = costs->compute_time + costs->memory_time +
+                            costs->intermediate_memory_time;
   }
 }
 }  // end namespace grappler

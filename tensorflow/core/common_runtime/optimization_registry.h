@@ -132,11 +132,12 @@ class OptimizationPassRegistration {
 #define REGISTER_OPTIMIZATION_UNIQ_HELPER(ctr, grouping, phase, optimization) \
   REGISTER_OPTIMIZATION_UNIQ(ctr, grouping, phase, optimization)
 
-#define REGISTER_OPTIMIZATION_UNIQ(ctr, grouping, phase, optimization) \
-  static optimization_registration::OptimizationPassRegistration       \
-      register_optimization_##ctr(                                     \
-          grouping, phase,                                             \
-          std::unique_ptr<GraphOptimizationPass>(new optimization()),  \
+#define REGISTER_OPTIMIZATION_UNIQ(ctr, grouping, phase, optimization)         \
+  static ::tensorflow::optimization_registration::OptimizationPassRegistration \
+      register_optimization_##ctr(                                             \
+          grouping, phase,                                                     \
+          ::std::unique_ptr<::tensorflow::GraphOptimizationPass>(              \
+              new optimization()),                                             \
           #optimization)
 
 }  // namespace tensorflow

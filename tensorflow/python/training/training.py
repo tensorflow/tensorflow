@@ -15,7 +15,7 @@
 
 """Support for training models.
 
-See the @{$python/train} guide.
+See the [Training](https://tensorflow.org/api_guides/python/train) guide.
 """
 
 # Optimizers.
@@ -53,6 +53,7 @@ from tensorflow.python.training import input as _input
 from tensorflow.python.training.input import *  # pylint: disable=redefined-builtin
 # pylint: enable=wildcard-import
 
+from tensorflow.python.training.basic_session_run_hooks import get_or_create_steps_per_run_variable
 from tensorflow.python.training.basic_session_run_hooks import SecondOrStepTimer
 from tensorflow.python.training.basic_session_run_hooks import LoggingTensorHook
 from tensorflow.python.training.basic_session_run_hooks import StopAtStepHook
@@ -82,12 +83,12 @@ from tensorflow.python.training.monitored_session import WorkerSessionCreator
 from tensorflow.python.training.monitored_session import MonitoredSession
 from tensorflow.python.training.monitored_session import SingularMonitoredSession
 from tensorflow.python.training.saver import Saver
-from tensorflow.python.training.saver import checkpoint_exists
-from tensorflow.python.training.saver import generate_checkpoint_state_proto
-from tensorflow.python.training.saver import get_checkpoint_mtimes
-from tensorflow.python.training.saver import get_checkpoint_state
-from tensorflow.python.training.saver import latest_checkpoint
-from tensorflow.python.training.saver import update_checkpoint_state
+from tensorflow.python.training.checkpoint_management import checkpoint_exists
+from tensorflow.python.training.checkpoint_management import generate_checkpoint_state_proto
+from tensorflow.python.training.checkpoint_management import get_checkpoint_mtimes
+from tensorflow.python.training.checkpoint_management import get_checkpoint_state
+from tensorflow.python.training.checkpoint_management import latest_checkpoint
+from tensorflow.python.training.checkpoint_management import update_checkpoint_state
 from tensorflow.python.training.saver import export_meta_graph
 from tensorflow.python.training.saver import import_meta_graph
 from tensorflow.python.training.session_run_hook import SessionRunHook
@@ -137,7 +138,7 @@ tf_export("train.FeatureLists")(FeatureLists)
 tf_export("train.FloatList")(FloatList)
 tf_export("train.Int64List")(Int64List)
 tf_export("train.JobDef")(JobDef)
-tf_export("train.SaverDef")(SaverDef)
+tf_export(v1=["train.SaverDef"])(SaverDef)
 tf_export("train.SequenceExample")(SequenceExample)
 tf_export("train.ServerDef")(ServerDef)
 # pylint: enable=undefined-variable

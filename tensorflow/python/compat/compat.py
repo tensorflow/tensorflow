@@ -14,8 +14,8 @@
 # ==============================================================================
 """Utilities for API compatibility between TensorFlow release versions.
 
-See
-@{$guide/version_compat#backward_and_partial_forward_compatibility}
+See [Version
+Compatibility](https://tensorflow.org/guide/version_compat#backward_forward)
 """
 
 from __future__ import absolute_import
@@ -24,12 +24,17 @@ from __future__ import print_function
 
 import datetime
 from tensorflow.python.util import tf_contextlib
+from tensorflow.python.util.tf_export import tf_export
 
-_FORWARD_COMPATIBILITY_HORIZON = datetime.date(2018, 8, 1)
+_FORWARD_COMPATIBILITY_HORIZON = datetime.date(2018, 11, 7)
 
 
+@tf_export("compat.forward_compatible")
 def forward_compatible(year, month, day):
   """Return true if the forward compatibility window has expired.
+
+  See [Version
+  compatibility](https://tensorflow.org/guide/version_compat#backward_forward).
 
   Forward-compatibility refers to scenarios where the producer of a TensorFlow
   model (a GraphDef or SavedModel) is compiled against a version of the
@@ -82,9 +87,13 @@ def forward_compatible(year, month, day):
   return _FORWARD_COMPATIBILITY_HORIZON > datetime.date(year, month, day)
 
 
+@tf_export("compat.forward_compatibility_horizon")
 @tf_contextlib.contextmanager
 def forward_compatibility_horizon(year, month, day):
   """Context manager for testing forward compatibility of generated graphs.
+
+  See [Version
+  compatibility](https://tensorflow.org/guide/version_compat#backward_forward).
 
   To ensure forward compatibility of generated graphs (see `forward_compatible`)
   with older binaries, new features can be gated with:

@@ -29,12 +29,12 @@ class StatsAccumulatorScalarTest(test_util.TensorFlowTestCase):
   """Tests for scalar gradients and hessians accumulator."""
 
   def testSimpleAcculumator(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       accumulator = stats_accumulator_ops.StatsAccumulator(
           stamp_token=0,
           gradient_shape=tensor_shape.scalar(),
           hessian_shape=tensor_shape.scalar())
-      with ops.control_dependencies([accumulator._create_op]):
+      with ops.control_dependencies([accumulator.initializer]):
         op1 = accumulator.add(
             stamp_token=0,
             partition_ids=[1, 2],
@@ -57,12 +57,12 @@ class StatsAccumulatorScalarTest(test_util.TensorFlowTestCase):
       self.assertAllClose(result[(2, 3, 0)], [0.3, 0.4])
 
   def testMultidimensionalAcculumator(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       accumulator = stats_accumulator_ops.StatsAccumulator(
           stamp_token=0,
           gradient_shape=tensor_shape.scalar(),
           hessian_shape=tensor_shape.scalar())
-      with ops.control_dependencies([accumulator._create_op]):
+      with ops.control_dependencies([accumulator.initializer]):
         op1 = accumulator.add(
             stamp_token=0,
             partition_ids=[1, 2, 1],
@@ -86,12 +86,12 @@ class StatsAccumulatorScalarTest(test_util.TensorFlowTestCase):
       self.assertAllClose(result[(2, 3, 1)], [0.1, 0.2])
 
   def testDropStaleUpdate(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       accumulator = stats_accumulator_ops.StatsAccumulator(
           stamp_token=0,
           gradient_shape=tensor_shape.scalar(),
           hessian_shape=tensor_shape.scalar())
-      with ops.control_dependencies([accumulator._create_op]):
+      with ops.control_dependencies([accumulator.initializer]):
         op1 = accumulator.add(
             stamp_token=0,
             partition_ids=[1, 2],
@@ -118,12 +118,12 @@ class StatsAccumulatorScalarTest(test_util.TensorFlowTestCase):
       self.assertAllClose(result[(2, 3, 0)], [0.3, 0.4])
 
   def testSerialize(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       accumulator = stats_accumulator_ops.StatsAccumulator(
           stamp_token=0,
           gradient_shape=tensor_shape.scalar(),
           hessian_shape=tensor_shape.scalar())
-      with ops.control_dependencies([accumulator._create_op]):
+      with ops.control_dependencies([accumulator.initializer]):
         op1 = accumulator.add(
             stamp_token=0,
             partition_ids=[1, 2],
@@ -133,7 +133,7 @@ class StatsAccumulatorScalarTest(test_util.TensorFlowTestCase):
 
       with ops.control_dependencies([op1]):
         (stamp_token, num_updates, partition_1, feature_1, grads_1,
-         hessians_1) = accumulator.serialize()
+         hessians_1) = accumulator.saveable.serialize()
       # Make sure that the accumulator hasn't changed during serialization.
       with ops.control_dependencies([stamp_token]):
         num_updates_2, partition_2, feature_2, grads_2, hessians_2 = (
@@ -159,12 +159,12 @@ class StatsAccumulatorScalarTest(test_util.TensorFlowTestCase):
       self.assertEqual(0, stamp_token)
 
   def testDeserialize(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       accumulator = stats_accumulator_ops.StatsAccumulator(
           stamp_token=0,
           gradient_shape=tensor_shape.scalar(),
           hessian_shape=tensor_shape.scalar())
-      with ops.control_dependencies([accumulator._create_op]):
+      with ops.control_dependencies([accumulator.initializer]):
         # These will be deleted due to deserialize call.
         op1 = accumulator.add(
             stamp_token=0,
@@ -175,7 +175,7 @@ class StatsAccumulatorScalarTest(test_util.TensorFlowTestCase):
 
       with ops.control_dependencies([op1]):
         deserialize = (
-            accumulator.deserialize(
+            accumulator.saveable.deserialize(
                 stamp_token=2,
                 num_updates=3,
                 partition_ids=[3, 4],
@@ -196,7 +196,7 @@ class StatsAccumulatorScalarTest(test_util.TensorFlowTestCase):
       self.assertAllClose(result[(4, 6, 2)], [0.5, 0.7])
 
   def testMakeSummary(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       accumulator = stats_accumulator_ops.StatsAccumulator(
           stamp_token=0,
           gradient_shape=tensor_shape.scalar(),
@@ -218,12 +218,12 @@ class StatsAccumulatorTensorTest(test_util.TensorFlowTestCase):
   """Tests for tensor gradients and hessians accumulator."""
 
   def testSimpleAcculumator(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       accumulator = stats_accumulator_ops.StatsAccumulator(
           stamp_token=0,
           gradient_shape=tensor_shape.TensorShape([2]),
           hessian_shape=tensor_shape.TensorShape([2, 2]))
-      with ops.control_dependencies([accumulator._create_op]):
+      with ops.control_dependencies([accumulator.initializer]):
         op1 = accumulator.add(
             stamp_token=0,
             partition_ids=[1, 2],
@@ -256,12 +256,12 @@ class StatsAccumulatorTensorTest(test_util.TensorFlowTestCase):
       self.assertAllClose(result[(2, 3, 0)][1], [[0.05, 0.06], [0.07, 0.08]])
 
   def testMultidimensionalAcculumator(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       accumulator = stats_accumulator_ops.StatsAccumulator(
           stamp_token=0,
           gradient_shape=tensor_shape.TensorShape([2]),
           hessian_shape=tensor_shape.TensorShape([2, 2]))
-      with ops.control_dependencies([accumulator._create_op]):
+      with ops.control_dependencies([accumulator.initializer]):
         op1 = accumulator.add(
             stamp_token=0,
             partition_ids=[1, 2],
@@ -294,12 +294,12 @@ class StatsAccumulatorTensorTest(test_util.TensorFlowTestCase):
       self.assertAllClose(result[(2, 3, 1)][1], [[0.05, 0.06], [0.07, 0.08]])
 
   def testDropStaleUpdate(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       accumulator = stats_accumulator_ops.StatsAccumulator(
           stamp_token=0,
           gradient_shape=tensor_shape.TensorShape([2]),
           hessian_shape=tensor_shape.TensorShape([2, 2]))
-      with ops.control_dependencies([accumulator._create_op]):
+      with ops.control_dependencies([accumulator.initializer]):
         op1 = accumulator.add(
             stamp_token=0,
             partition_ids=[1, 2],
@@ -331,12 +331,12 @@ class StatsAccumulatorTensorTest(test_util.TensorFlowTestCase):
       self.assertAllClose(result[(2, 3, 0)][1], [[0.05, 0.06], [0.07, 0.08]])
 
   def testSerialize(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       accumulator = stats_accumulator_ops.StatsAccumulator(
           stamp_token=0,
           gradient_shape=tensor_shape.TensorShape([2]),
           hessian_shape=tensor_shape.TensorShape([2, 2]))
-      with ops.control_dependencies([accumulator._create_op]):
+      with ops.control_dependencies([accumulator.initializer]):
         op1 = accumulator.add(
             stamp_token=0,
             partition_ids=[1, 2],
@@ -349,7 +349,7 @@ class StatsAccumulatorTensorTest(test_util.TensorFlowTestCase):
 
       with ops.control_dependencies([op1]):
         (stamp_token, num_updates_1, partition_1, feature_1, grads_1,
-         hessians_1) = accumulator.serialize()
+         hessians_1) = accumulator.saveable.serialize()
       # Make sure that the accumulator hasn't changed during serialization.
       with ops.control_dependencies([stamp_token]):
         num_updates_2, partition_2, feature_2, grads_2, hessians_2 = (
@@ -381,12 +381,12 @@ class StatsAccumulatorTensorTest(test_util.TensorFlowTestCase):
       self.assertAllEqual(result_1[2, 3, 0][1], result_2[2, 3, 0][1])
 
   def testDeserialize(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       accumulator = stats_accumulator_ops.StatsAccumulator(
           stamp_token=0,
           gradient_shape=tensor_shape.TensorShape([2]),
           hessian_shape=tensor_shape.TensorShape([2, 2]))
-      with ops.control_dependencies([accumulator._create_op]):
+      with ops.control_dependencies([accumulator.initializer]):
         # These will be deleted due to deserialize call.
         op1 = accumulator.add(
             stamp_token=0,
@@ -399,7 +399,7 @@ class StatsAccumulatorTensorTest(test_util.TensorFlowTestCase):
                                                                     0.08]]])
 
       with ops.control_dependencies([op1]):
-        deserialize = accumulator.deserialize(
+        deserialize = accumulator.saveable.deserialize(
             stamp_token=2,
             num_updates=3,
             partition_ids=[3, 4],
@@ -425,7 +425,7 @@ class StatsAccumulatorTensorTest(test_util.TensorFlowTestCase):
       self.assertAllClose(result[(4, 5, 0)][1], [[0.07, 0.08], [0.09, 0.10]])
 
   def testMakeSummary(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       accumulator = stats_accumulator_ops.StatsAccumulator(
           stamp_token=0,
           gradient_shape=tensor_shape.TensorShape([2]),

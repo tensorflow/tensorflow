@@ -55,6 +55,8 @@ class DeviceAssignment : public Array2D<int> {
   // due to a StatusOr of an incomplete type (DeviceAssignment).
   static StatusOr<std::unique_ptr<DeviceAssignment>> Deserialize(
       const DeviceAssignmentProto& proto);
+
+  string ToString() const;
 };
 
 // A generic implementation of the XLA computation placer, which assigns device

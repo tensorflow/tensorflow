@@ -26,7 +26,7 @@ namespace xla {
 // Removes all the kDomain instructions of a given kind from the input module,
 // and calls the normalizer to propagate the properties on the possibly new born
 // instructions.
-class HloDomainRemover : public HloPassInterface {
+class HloDomainRemover : public HloModulePass {
  public:
   // Creates a new HloDomainRemover object tasked at removing all the kDomain
   // instructions of a given kind.
@@ -35,12 +35,13 @@ class HloDomainRemover : public HloPassInterface {
   // instructions in it with the same attributes (ie, sharding), a normalizer
   // function is tasked at applying attribute normalization on the instructions
   // within such domain.
-  HloDomainRemover(
-      tensorflow::StringPiece kind,
-      std::function<Status(const DomainMetadata::Domain&)> normalizer)
-      : kind_(kind.ToString()), normalizer_(std::move(normalizer)) {}
+  HloDomainRemover(absl::string_view kind,
+                   std::function<Status(const DomainMetadata::Domain&,
+                                        const DomainMetadata* metadata)>
+                       normalizer)
+      : kind_(kind), normalizer_(std::move(normalizer)) {}
 
-  tensorflow::StringPiece name() const override { return "domain_remover"; }
+  absl::string_view name() const override { return "domain_remover"; }
 
   StatusOr<bool> Run(HloModule* module) override;
 
@@ -48,7 +49,9 @@ class HloDomainRemover : public HloPassInterface {
   class RunContext;
 
   string kind_;
-  std::function<Status(const DomainMetadata::Domain&)> normalizer_;
+  std::function<Status(const DomainMetadata::Domain&,
+                       const DomainMetadata* metadata)>
+      normalizer_;
 };
 
 }  // namespace xla

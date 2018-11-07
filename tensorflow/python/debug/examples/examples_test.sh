@@ -99,7 +99,7 @@ if [[ -d "${CUSTOM_DUMP_ROOT}" ]]; then
 fi
 
 # Test debugging of tf.keras.
-cat << EOF | "${DEBUG_KERAS_BIN}" --debug --ui_type=readline
+cat << EOF | ${DEBUG_KERAS_BIN} --debug --ui_type=readline
 run -f has_inf_or_nan
 EOF
 
@@ -115,7 +115,7 @@ OUTPUT=$(${OFFLINE_ANALYZER_BIN} 2>&1)
 set -e
 
 EXPECTED_OUTPUT="ERROR: dump_dir flag is empty."
-if [[ "${OUTPUT}" != "${EXPECTED_OUTPUT}" ]]; then
+if ! echo "${OUTPUT}" | grep -q "${EXPECTED_OUTPUT}"; then
   echo "ERROR: offline_analyzer output didn't match expectation: ${OUTPUT}" 1>&2
   echo "Expected output: ${EXPECTED_OUTPUT}"
   exit 1

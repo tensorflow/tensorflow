@@ -38,7 +38,7 @@ class PermuteBijectorTest(test.TestCase):
     expected_x = np.random.randn(4, 2, 3)
     expected_y = expected_x[..., expected_permutation]
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       permutation_ph = array_ops.placeholder(dtype=dtypes.int32)
       bijector = Permute(
           permutation=permutation_ph,
@@ -64,7 +64,7 @@ class PermuteBijectorTest(test.TestCase):
       self.assertAllClose(0., ildj, rtol=1e-6, atol=0)
 
   def testRaisesOpError(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       with self.assertRaisesOpError("Permutation over `d` must contain"):
         permutation_ph = array_ops.placeholder(dtype=dtypes.int32)
         bijector = Permute(
@@ -77,7 +77,7 @@ class PermuteBijectorTest(test.TestCase):
     permutation = np.int32([2, 0, 1])
     x = np.random.randn(4, 2, 3)
     y = x[..., permutation]
-    with self.test_session():
+    with self.cached_session():
       bijector = Permute(permutation=permutation, validate_args=True)
       assert_bijective_and_finite(
           bijector, x, y, event_ndims=1, rtol=1e-6, atol=0)

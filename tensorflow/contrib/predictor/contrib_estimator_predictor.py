@@ -22,8 +22,8 @@ from __future__ import print_function
 from tensorflow.contrib.learn.python.learn.utils import saved_model_export_utils
 from tensorflow.contrib.predictor import predictor
 from tensorflow.python.framework import ops
+from tensorflow.python.training import checkpoint_management
 from tensorflow.python.training import monitored_session
-from tensorflow.python.training import saver
 
 
 class ContribEstimatorPredictor(predictor.Predictor):
@@ -57,7 +57,8 @@ class ContribEstimatorPredictor(predictor.Predictor):
       # pylint: disable=protected-access
       model_fn_ops = estimator._get_predict_ops(input_fn_ops.features)
       # pylint: enable=protected-access
-      checkpoint_path = saver.latest_checkpoint(estimator.model_dir)
+      checkpoint_path = checkpoint_management.latest_checkpoint(
+          estimator.model_dir)
       self._session = monitored_session.MonitoredSession(
           session_creator=monitored_session.ChiefSessionCreator(
               config=config,
