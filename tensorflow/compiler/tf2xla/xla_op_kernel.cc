@@ -136,25 +136,6 @@ Status XlaOpKernelContext::ConstantInputReshaped(
   }
   const XlaExpression* expression = CastExpressionFromTensor(tensor);
 
-  auto copy_tensor_to_literal = [](const Tensor& tensor,
-                                   xla::Literal* literal) {
-    xla::Shape literal_shape;
-    TF_RETURN_IF_ERROR(
-        TensorShapeToXLAShape(tensor.dtype(), tensor.shape(), &literal_shape));
-
-    *literal = xla::Literal(literal_shape);
-
-    // memcpy over the payload ...
-    // TODO(phawkins): handle string types.
-    size_t total_bytes = tensor.TotalBytes();
-    if (total_bytes > 0) {
-      void* dst_ptr = literal->untyped_data();
-      const void* src_ptr = DMAHelper::base(&tensor);
-      memcpy(dst_ptr, src_ptr, total_bytes);
-    }
-    return Status::OK();
-  };
-
   // If the tensor has a known constant value, there is no need to invoke XLA.
   if (expression->has_constant_value()) {
     Tensor temp(tensor.dtype());
@@ -164,14 +145,15 @@ Status XlaOpKernelContext::ConstantInputReshaped(
       return errors::Internal("Incompatible shapes in ConstantInputReshaped.");
     }
 
-    return copy_tensor_to_literal(temp, constant_literal);
+    TF_ASSIGN_OR_RETURN(*constant_literal, HostTensorToLiteral(temp));
+    return Status::OK();
   }
 
   // Make sure we treat zero-element tensors as constant.
   if (new_shape.num_elements() == 0) {
     Tensor temp(tensor.dtype(), new_shape);
-
-    return copy_tensor_to_literal(temp, constant_literal);
+    TF_ASSIGN_OR_RETURN(*constant_literal, HostTensorToLiteral(temp));
+    return Status::OK();
   }
 
   xla::XlaOp handle = expression->handle();
@@ -316,6 +298,15 @@ Status XlaOpKernelContext::ConstantInputAsIntVector(absl::string_view name,
 
 Status XlaOpKernelContext::ConstantInputReshapedToIntVector(
     int index, std::vector<int64>* out) {
+  xla::Literal literal;
+  TF_RETURN_IF_ERROR(ConstantInputReshaped(
+      index, {InputShape(index).num_elements()}, &literal));
+  return LiteralToInt64Vector(literal, out);
+}
+
+Status XlaOpKernelContext::ConstantInputReshapedToIntVector(
+    absl::string_view name, std::vector<int64>* out) {
+  TF_ASSIGN_OR_RETURN(int index, InputIndex(this, name));
   xla::Literal literal;
   TF_RETURN_IF_ERROR(ConstantInputReshaped(
       index, {InputShape(index).num_elements()}, &literal));

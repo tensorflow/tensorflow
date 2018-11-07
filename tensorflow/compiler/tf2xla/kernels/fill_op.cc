@@ -33,8 +33,8 @@ class FillOp : public XlaOpKernel {
   void Compile(XlaOpKernelContext* ctx) override {
     // The output of this Op is a tensor of shape 'dims_shape' with each
     // element set to the scalar 'dims_literal'.
-    const TensorShape dims_shape = ctx->InputShape(0);
-    const TensorShape value_shape = ctx->InputShape(1);
+    const TensorShape dims_shape = ctx->InputShape("dims");
+    const TensorShape value_shape = ctx->InputShape("value");
     OP_REQUIRES(
         ctx, IsLegacyVector(dims_shape),
         errors::InvalidArgument("dims must be a vector of int32, got shape ",
@@ -42,29 +42,22 @@ class FillOp : public XlaOpKernel {
     OP_REQUIRES(ctx, IsLegacyScalar(value_shape),
                 errors::InvalidArgument("value must be a scalar, got shape ",
                                         value_shape.DebugString()));
+
     // Evaluate the 'dims' constant input, reshaping to a vector if it
     // was a 'legacy' vector (secretly a scalar).
-    xla::Literal dims_literal;
-    OP_REQUIRES_OK(ctx, ctx->ConstantInputReshaped(
-                            0, {dims_shape.num_elements()}, &dims_literal));
+    std::vector<int64> dims;
+    OP_REQUIRES_OK(ctx, ctx->ConstantInputReshapedToIntVector("dims", &dims));
 
-    // Convert the dims literal into a vector that we can pass to
-    // XlaBuilder.
-    std::vector<int64> broadcast;
-    broadcast.reserve(dims_literal.shape().dimensions(0));
-    for (int i = 0; i < dims_literal.shape().dimensions(0); ++i) {
-      broadcast.push_back(dims_literal.Get<int>({i}));
-    }
     // Look up the value input, reshaping to a scalar if it was a
     // 'legacy' scalar (secretly a vector).
-    xla::XlaOp data = ctx->Input(1);
+    xla::XlaOp data = ctx->Input("value");
     if (value_shape.dims() > 0) {
       CHECK_EQ(value_shape.dims(), 1);
       data = xla::Reshape(data, {});
     }
     // Emit the actual computation, which broadcasts the scalar to the
     // desired shape.
-    auto result = xla::Broadcast(data, broadcast);
+    auto result = xla::Broadcast(data, dims);
 
     ctx->SetOutput(0, result);
   }
