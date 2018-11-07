@@ -117,11 +117,14 @@ Status PreprocessForEncapsulation(Graph* g,
 
 // Information for XLA computation.
 struct XlaClusterInfo {
-  // The implicit default constructor is deleted because host_compute_core is a
-  // const member whose type (std::map) doesn't necessarily have a user provided
-  // constructor - while libc++ and libstdc++ 4.8 provide a user defined
-  // default constructor, libstdc++ at least >= 7.3 does not.
-  // See also c++11 [class.ctor] p5.
+  // Add an explicitly-defined default constructor for this class.
+  //
+  // The compiler may delete the default constructor here because
+  // host_compute_core is a const member whose type (std::map) doesn't
+  // necessarily have a user provided constructor -- while libc++ and
+  // libstdc++ 4.8 provide a user defined default constructor, libstdc++ at
+  // least >= 7.3 does not. See also c++11 [class.ctor] p5.
+  //
   // TODO(klimek): In c++17 we'll be able to initialize host_compute_core
   // without losing aggregate initialization, which allows us to get rid of
   // the constructor definitions again.
