@@ -104,11 +104,7 @@ py_test(
     srcs_version = "PY2AND3",
     tags = [
         "no_windows",
-        # TODO(b/119022845): Re-enable this test in TAP.
-        "manual",
-        "notap",
         "notsan",
-        "no_oss",
     ],
     deps = [
         ":keras_saved_model",
