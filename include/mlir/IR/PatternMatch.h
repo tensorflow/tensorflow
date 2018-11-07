@@ -213,6 +213,25 @@ public:
   void replaceSingleResultOp(Operation *op, SSAValue *newValue,
                              ArrayRef<SSAValue *> opsToRemoveIfDead = {});
 
+  /// Replaces the single result op with a new op that is created without
+  /// verification.
+  template <typename OpTy, typename... Args>
+  void replaceSingleResultOpWithNewOp(Operation *op, Args... args) {
+    auto newOp = create<OpTy>(op->getLoc(), args...);
+    replaceSingleResultOp(op, newOp);
+  }
+
+  /// Replaces the single result op with a new op that is created without
+  /// verification and allows specifying a list of ops that may be removed if
+  /// dead.
+  template <typename OpTy, typename... Args>
+  void replaceSingleResultOpWithNewOp(Operation *op,
+                                      ArrayRef<SSAValue *> opsToRemoveIfDead,
+                                      Args... args) {
+    auto newOp = create<OpTy>(op->getLoc(), args...);
+    replaceSingleResultOp(op, newOp, opsToRemoveIfDead);
+  }
+
   /// This method is used as the final notification hook for patterns that end
   /// up modifying the pattern root in place, by changing its operands.  This is
   /// a minor efficiency win (it avoids creating a new instruction and removing
