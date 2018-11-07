@@ -286,8 +286,10 @@ static Status CompileToLocalExecutable(
   // rather than a one-element tuple.
   compile_options.always_return_tuple = false;
 
-  return cache->Compile(options, function, constant_args, *variables, ctx,
-                        compile_options,
+  std::vector<XlaCompiler::Argument> args;
+  TF_RETURN_IF_ERROR(XlaComputationLaunchContext::BuildXlaCompilerArguments(
+      constant_args, *variables, ctx, &args));
+  return cache->Compile(options, function, args, compile_options,
                         lazy ? XlaCompilationCache::CompileMode::kLazy
                              : XlaCompilationCache::CompileMode::kStrict,
                         kernel, executable);
