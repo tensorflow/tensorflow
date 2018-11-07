@@ -355,15 +355,12 @@ string GenEagerPythonOp::Code() {
 }
 
 void GenEagerPythonOp::HandleGraphMode(const string& function_setup) {
-  // Handle graph-mode case
-  strings::StrAppend(&result_,
-                     "  _ctx = _context._context\n"
-                     "  if _ctx is None or not _ctx._eager_context.is_eager:\n",
-                     function_setup,
-                     "    _, _, _op = _op_def_lib._apply_op_helper(\n");
+  strings::StrAppend(&result_, "  # Add nodes to the TensorFlow graph.\n");
+  strings::StrAppend(&result_, function_setup,
+                     "  _, _, _op = _op_def_lib._apply_op_helper(\n");
   AddBodyNoReturn("        ");
   if (num_outs_ > 0) {
-    strings::StrAppend(&result_, "    _result = _op.outputs[:]\n");
+    strings::StrAppend(&result_, "  _result = _op.outputs[:]\n");
     // Special case handling for stateful op with single list output
     // that might be empty.
     if (num_outs_ == 1 && op_def_.is_stateful() &&
@@ -372,10 +369,10 @@ void GenEagerPythonOp::HandleGraphMode(const string& function_setup) {
       // TODO(josh11b): Can skip this if the number_attr/type_list_attr has
       // a constraint indicating that this can never be empty.
       strings::StrAppend(&result_,
-                         "    if not _result:\n"
-                         "      return _op\n");
+                         "  if not _result:\n"
+                         "    return _op\n");
     }
-    strings::StrAppend(&result_, "    _inputs_flat = _op.inputs\n");
+    strings::StrAppend(&result_, "  _inputs_flat = _op.inputs\n");
 
     // Compute graph-mode attrs.
     if (op_def_.attr_size() > 0) {
@@ -387,14 +384,13 @@ void GenEagerPythonOp::HandleGraphMode(const string& function_setup) {
                            attr_name, "\")");
       }
       strings::StrAppend(&attr_values, ")");
-      strings::StrAppend(&result_,
-                         WordWrap("    _attrs = (", attr_values, kRightMargin),
-                         "\n");
+      strings::StrAppend(
+          &result_, WordWrap("  _attrs = (", attr_values, kRightMargin), "\n");
     } else {
-      strings::StrAppend(&result_, "    _attrs = None\n");
+      strings::StrAppend(&result_, "  _attrs = None\n");
     }
   } else {
-    strings::StrAppend(&result_, "    return _op\n");
+    strings::StrAppend(&result_, "  return _op\n");
   }
 }
 
@@ -643,24 +639,25 @@ bool GenEagerPythonOp::AddEagerFastPathAndGraphCode(
   AddDocStringOutputs();
   strings::StrAppend(&result_, "  \"\"\"\n");
 
-  // Handle graph-mode case
-  string function_setup;
-  if (!GetEagerFunctionSetup("    ", &function_setup)) {
-    result_ = function_setup;
-    return false;
-  }
-  HandleGraphMode(function_setup);
-  AddEagerFunctionTeardown("    ", output_sizes,
-                           true /* execute_record_gradient */);
-
-  // Handle eager-mode case
-  strings::StrAppend(&result_, "  else:\n");
-
+  strings::StrAppend(&result_,
+                     "  _ctx = _context._context\n"
+                     "  if _ctx is not None and _ctx._eager_context.is_eager:",
+                     "\n");
   if (eager_not_allowed_error.empty()) {
     AddEagerFastPathExecute();
   } else {
     strings::StrAppend(&result_, "    ", eager_not_allowed_error);
   }
+
+  // Handle graph-mode case
+  string function_setup;
+  if (!GetEagerFunctionSetup("  ", &function_setup)) {
+    result_ = function_setup;
+    return false;
+  }
+  HandleGraphMode(function_setup);
+  AddEagerFunctionTeardown("  ", output_sizes,
+                           true /* execute_record_gradient */);
 
   strings::StrAppend(&result_, "\n\n");
   return true;
@@ -750,12 +747,16 @@ void GenEagerPythonOp::AddEagerFastPathExecute() {
   if (!fallback_params.empty()) strings::StrAppend(&fallback_params, ", ");
   strings::StrAppend(&fallback_params, "ctx=_ctx");
   strings::StrAppend(&result_, "    ", "except _core._FallbackException:\n");
+  strings::StrAppend(&result_, "      try:\n");
   strings::StrAppend(
-      &result_, "      ", "return ", function_name_, kEagerFallbackSuffix,
+      &result_, "        ", "return ", function_name_, kEagerFallbackSuffix,
       "(\n",
-      WordWrap(strings::StrCat("          "),
+      WordWrap(strings::StrCat("            "),
                strings::StrCat(fallback_params, ")"), kRightMargin),
       "\n");
+  strings::StrAppend(&result_, "      except _core._SymbolicException:\n");
+  strings::StrAppend(&result_,
+                     "        pass  # Add nodes to the TensorFlow graph.\n");
 
   // Any errors thrown from execute need to be unwrapped from
   // _NotOkStatusException.
