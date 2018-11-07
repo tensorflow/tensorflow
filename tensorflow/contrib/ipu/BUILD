@@ -25,7 +25,7 @@ py_library(
 tf_py_test(
     name = "ops_test",
     size = "small",
-    srcs = ["python/ops_test.py"],
+    srcs = ["python/tests/ops_test.py"],
     additional_deps = [
         ":ipu",
         "//tensorflow/contrib/compiler:xla",
@@ -37,7 +37,7 @@ tf_py_test(
 tf_py_test(
     name = "while_loop_perf_test",
     size = "small",
-    srcs = ["python/while_loop_perf_test.py"],
+    srcs = ["python/tests/while_loop_perf_test.py"],
     additional_deps = [
         ":ipu",
         "//tensorflow/compiler/plugin/poplar:ipu_ops_py",
@@ -54,7 +54,7 @@ tf_py_test(
 tf_py_test(
     name = "mapping_test",
     size = "small",
-    srcs = ["python/mapping_test.py"],
+    srcs = ["python/tests/mapping_test.py"],
     additional_deps = [
         ":ipu",
         "//tensorflow/compiler/plugin/poplar:ipu_ops_py",
@@ -71,7 +71,7 @@ tf_py_test(
 tf_py_test(
     name = "conditional_test",
     size = "small",
-    srcs = ["python/conditional_test.py"],
+    srcs = ["python/tests/conditional_test.py"],
     additional_deps = [
         ":ipu",
         "//tensorflow/contrib/compiler:xla",
@@ -100,7 +100,7 @@ tf_py_test(
 tf_py_test(
     name = "while_loop_test",
     size = "medium",
-    srcs = ["python/while_loop_test.py"],
+    srcs = ["python/tests/while_loop_test.py"],
     additional_deps = [
         ":ipu",
         "//tensorflow:tensorflow_py",
@@ -116,7 +116,7 @@ tf_py_test(
 tf_py_test(
     name = "sort_op_test",
     size = "medium",
-    srcs = ["python/sort_op_test.py"],
+    srcs = ["python/tests/sort_op_test.py"],
     additional_deps = [
         ":ipu",
         "//tensorflow:tensorflow_py",
