@@ -107,6 +107,16 @@ TEST(DirectSessionWithTrackingAllocTest, CostModelTest) {
         EXPECT_EQ(2, shape.dim_size());
         EXPECT_EQ(2, shape.dim(0).size());
         EXPECT_EQ(1, shape.dim(1).size());
+        // if MKL is used, it goes through additional
+        // graph rewrite pass on top of Tensorflow.
+        // In TF, every time a graph pass
+        // happens, "constant" nodes are allocated
+        // and deallocated. Each allocation calls the
+        // (FindChunkPtr of BFCAllocator),
+        // which increments the value of AllocationId.
+        // Thus AllocationId of MKL can differ with TF if
+        // someone changes the relevant codes in BFCAllocator.
+        // Currently they are the same.
         if (node->name() == y->name()) {
           EXPECT_EQ(13, cm->AllocationId(node, 0));
         } else {
