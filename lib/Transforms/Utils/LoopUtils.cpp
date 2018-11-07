@@ -264,21 +264,21 @@ UtilResult mlir::stmtBodySkew(ForStmt *forStmt, ArrayRef<uint64_t> delays,
       assert(d >= 1 &&
              "Queue expected to be empty when the first block is found");
       // The interval for which the loop needs to be generated here is:
-      // ( lbDelay, min(lbDelay + tripCount - 1, d - 1) ] and the body of the
+      // ( lbDelay, min(lbDelay + tripCount, d)) and the body of the
       // loop needs to have all statements in stmtQueue in that order.
       ForStmt *res;
-      if (lbDelay + tripCount - 1 < d - 1) {
-        res = generateLoop(
-            b.getShiftedAffineMap(origLbMap, lbDelay),
-            b.getShiftedAffineMap(origLbMap, lbDelay + tripCount - 1),
-            stmtGroupQueue, 0, forStmt, &b);
+      if (lbDelay + tripCount < d) {
+        res =
+            generateLoop(b.getShiftedAffineMap(origLbMap, lbDelay),
+                         b.getShiftedAffineMap(origLbMap, lbDelay + tripCount),
+                         stmtGroupQueue, 0, forStmt, &b);
         // Entire loop for the queued stmt groups generated, empty it.
         stmtGroupQueue.clear();
         lbDelay += tripCount;
       } else {
         res = generateLoop(b.getShiftedAffineMap(origLbMap, lbDelay),
-                           b.getShiftedAffineMap(origLbMap, d - 1),
-                           stmtGroupQueue, 0, forStmt, &b);
+                           b.getShiftedAffineMap(origLbMap, d), stmtGroupQueue,
+                           0, forStmt, &b);
         lbDelay = d;
       }
       if (!prologue && res)
@@ -295,11 +295,11 @@ UtilResult mlir::stmtBodySkew(ForStmt *forStmt, ArrayRef<uint64_t> delays,
   // Those statements groups left in the queue now need to be processed (FIFO)
   // and their loops completed.
   for (unsigned i = 0, e = stmtGroupQueue.size(); i < e; ++i) {
-    uint64_t ubDelay = stmtGroupQueue[i].first + tripCount - 1;
+    uint64_t ubDelay = stmtGroupQueue[i].first + tripCount;
     epilogue = generateLoop(b.getShiftedAffineMap(origLbMap, lbDelay),
                             b.getShiftedAffineMap(origLbMap, ubDelay),
                             stmtGroupQueue, i, forStmt, &b);
-    lbDelay = ubDelay + 1;
+    lbDelay = ubDelay;
     if (!prologue)
       prologue = epilogue;
   }

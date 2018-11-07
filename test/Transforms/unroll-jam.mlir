@@ -8,7 +8,7 @@
 mlfunc @unroll_jam_imperfect_nest() {
   // CHECK: %c100 = constant 100 : index
   // CHECK-NEXT: for %i0 = 0 to 99 step 2 {
-  for %i = 0 to 100 {
+  for %i = 0 to 101 {
     // CHECK: %0 = "addi32"(%i0, %i0) : (index, index) -> i32
     // CHECK-NEXT: %1 = affine_apply #map0(%i0)
     // CHECK-NEXT: %2 = "addi32"(%1, %1) : (index, index) -> i32

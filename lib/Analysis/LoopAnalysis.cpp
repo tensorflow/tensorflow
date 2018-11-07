@@ -37,7 +37,7 @@ using namespace mlir;
 /// expressible as an affine expression, and nullptr otherwise. The trip count
 /// expression is simplified before returning.
 AffineExpr mlir::getTripCountExpr(const ForStmt &forStmt) {
-  // upper_bound - lower_bound + 1
+  // upper_bound - lower_bound
   int64_t loopSpan;
 
   int64_t step = forStmt.getStep();
@@ -46,7 +46,7 @@ AffineExpr mlir::getTripCountExpr(const ForStmt &forStmt) {
   if (forStmt.hasConstantBounds()) {
     int64_t lb = forStmt.getConstantLowerBound();
     int64_t ub = forStmt.getConstantUpperBound();
-    loopSpan = ub - lb + 1;
+    loopSpan = ub - lb;
   } else {
     auto lbMap = forStmt.getLowerBoundMap();
     auto ubMap = forStmt.getUpperBoundMap();
@@ -59,11 +59,11 @@ AffineExpr mlir::getTripCountExpr(const ForStmt &forStmt) {
     if (!forStmt.matchingBoundOperandList())
       return nullptr;
 
-    // ub_expr - lb_expr + 1
+    // ub_expr - lb_expr
     AffineExpr lbExpr(lbMap.getResult(0));
     AffineExpr ubExpr(ubMap.getResult(0));
     auto loopSpanExpr = simplifyAffineExpr(
-        ubExpr - lbExpr + 1, std::max(lbMap.getNumDims(), ubMap.getNumDims()),
+        ubExpr - lbExpr, std::max(lbMap.getNumDims(), ubMap.getNumDims()),
         std::max(lbMap.getNumSymbols(), ubMap.getNumSymbols()));
     auto cExpr = loopSpanExpr.dyn_cast<AffineConstantExpr>();
     if (!cExpr)
