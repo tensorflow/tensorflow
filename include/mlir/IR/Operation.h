@@ -429,6 +429,18 @@ struct cast_convert_val<mlir::Operation, mlir::IROperandOwner *,
                         mlir::IROperandOwner *> {
   static mlir::Operation *doit(const mlir::IROperandOwner *value);
 };
+template <typename From>
+struct cast_convert_val<mlir::Operation, From *, From *> {
+  template <typename FromImpl,
+            typename std::enable_if<std::is_base_of<
+                mlir::IROperandOwner, FromImpl>::value>::type * = nullptr>
+  static mlir::Operation *doit_impl(const FromImpl *value) {
+    return cast_convert_val<mlir::Operation, mlir::IROperandOwner *,
+                            mlir::IROperandOwner *>::doit(value);
+  }
+
+  static mlir::Operation *doit(const From *value) { return doit_impl(value); }
+};
 } // namespace llvm
 
 #endif
