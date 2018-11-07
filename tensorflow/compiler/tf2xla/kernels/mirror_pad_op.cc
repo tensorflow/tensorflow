@@ -65,8 +65,8 @@ class MirrorPadOp : public XlaOpKernel {
   }
 
   void Compile(XlaOpKernelContext* ctx) override {
-    const TensorShape input_shape = ctx->InputShape(0);
-    const TensorShape pad_shape = ctx->InputShape(1);
+    const TensorShape input_shape = ctx->InputShape("input");
+    const TensorShape pad_shape = ctx->InputShape("paddings");
 
     MirrorPadMode mode;
     OP_REQUIRES_OK(ctx, GetNodeAttr(def(), "mode", &mode));
@@ -93,11 +93,10 @@ class MirrorPadOp : public XlaOpKernel {
 
     // Evaluate the 'padding' constant input, reshaping to a matrix.
     xla::Literal pad_literal;
-    OP_REQUIRES_OK(
-        ctx, ctx->ConstantInputReshaped(1, {fixed_dims, 2}, &pad_literal));
+    OP_REQUIRES_OK(ctx, ctx->ConstantInput("paddings", &pad_literal));
 
     xla::XlaBuilder* b = ctx->builder();
-    auto in0 = ctx->Input(0);
+    auto in0 = ctx->Input("input");
     xla::StatusOr<xla::Shape> in0_shape = b->GetShape(in0);
     OP_REQUIRES(ctx, in0_shape.ok(), in0_shape.status());
     xla::StatusOr<xla::XlaOp> accum_status =
