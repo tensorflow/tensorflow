@@ -2169,6 +2169,7 @@ cc_library(
             "lib/**/*.cc",
             "platform/*.cc",
             "platform/profile_utils/**/*.cc",
+        ] + [
             "framework/resource_handle.cc",
             "util/env_var.cc",
         ],
