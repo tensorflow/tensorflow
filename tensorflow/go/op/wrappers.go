@@ -16738,7 +16738,7 @@ func StringJoin(scope *Scope, inputs []tf.Output, optional ...StringJoinAttr) (o
 // handle: an empty tensor list.
 // element_dtype: the type of elements in the list.
 // element_shape: a shape compatible with that of elements in the list.
-func EmptyTensorList(scope *Scope, element_shape tf.Output, element_dtype tf.DataType) (handle tf.Output) {
+func EmptyTensorList(scope *Scope, element_shape tf.Output, max_num_elements tf.Output, element_dtype tf.DataType) (handle tf.Output) {
 	if scope.Err() != nil {
 		return
 	}
@@ -16746,7 +16746,7 @@ func EmptyTensorList(scope *Scope, element_shape tf.Output, element_dtype tf.Dat
 	opspec := tf.OpSpec{
 		Type: "EmptyTensorList",
 		Input: []tf.Input{
-			element_shape,
+			element_shape, max_num_elements,
 		},
 		Attrs: attrs,
 	}
