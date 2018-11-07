@@ -493,7 +493,7 @@ def _get_var_for_numpy(distribution_strategy, input_array):
                                 input_var.dtype.size
 
   # Calculate number of elements we want to copy per slice.
-  batch_size_per_slice = np.ceil((64 << 20) / byte_size_per_batch_element)
+  batch_size_per_slice = int(np.ceil((64 << 20) / byte_size_per_batch_element))
 
   # Copy slices of the above size starting at 0, except the last slice will be
   # smaller.
