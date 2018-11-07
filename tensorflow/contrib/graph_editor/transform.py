@@ -154,9 +154,6 @@ def copy_op_handler(info, op, new_inputs, copy_shape=False, nodedef_fn=None):
 
   # Clone the node def:
   node_def_ = deepcopy(op.node_def)
-  # Clear colocation attribute
-  if '_class' in node_def_.attr.keys():
-    del node_def_.attr['_class']
 
   # Transform name:
   name_ = info.new_name(op.name)
