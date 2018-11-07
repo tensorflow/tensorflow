@@ -2216,6 +2216,174 @@ TEST_F(AlgebraicSimplifierTest, ReplaceEffectiveScalarKeyValueSortWithTuple) {
               op::Tuple(keys, values0, values1));
 }
 
+// Test that A && True is simplified to A
+TEST_F(AlgebraicSimplifierTest, AndTrue) {
+  Shape r0pred = ShapeUtil::MakeShape(PRED, {});
+  HloComputation::Builder builder(TestName());
+  HloInstruction* param0 = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, r0pred, "param0"));
+  HloInstruction* const_true = builder.AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<bool>(true)));
+  builder.AddInstruction(HloInstruction::CreateBinary(r0pred, HloOpcode::kAnd,
+                                                      param0, const_true));
+
+  auto computation = module().AddEntryComputation(builder.Build());
+  HloInstruction* root = computation->root_instruction();
+  EXPECT_EQ(root->opcode(), HloOpcode::kAnd);
+  AlgebraicSimplifier simplifier(/*is_layout_sensitive=*/false,
+                                 non_bitcasting_callback());
+  ASSERT_TRUE(simplifier.Run(&module()).ValueOrDie());
+  root = computation->root_instruction();
+  EXPECT_EQ(root, param0);
+}
+
+// Test that True && A is simplified to A
+TEST_F(AlgebraicSimplifierTest, AndTrue2) {
+  Shape r0pred = ShapeUtil::MakeShape(PRED, {});
+  HloComputation::Builder builder(TestName());
+  HloInstruction* param0 = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, r0pred, "param0"));
+  HloInstruction* const_true = builder.AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<bool>(true)));
+  builder.AddInstruction(HloInstruction::CreateBinary(r0pred, HloOpcode::kAnd,
+                                                      const_true, param0));
+
+  auto computation = module().AddEntryComputation(builder.Build());
+  HloInstruction* root = computation->root_instruction();
+  EXPECT_EQ(root->opcode(), HloOpcode::kAnd);
+  AlgebraicSimplifier simplifier(/*is_layout_sensitive=*/false,
+                                 non_bitcasting_callback());
+  ASSERT_TRUE(simplifier.Run(&module()).ValueOrDie());
+  root = computation->root_instruction();
+  EXPECT_EQ(root, param0);
+}
+
+// Test that A && False is simplified to False
+TEST_F(AlgebraicSimplifierTest, AndFalse) {
+  Shape r0pred = ShapeUtil::MakeShape(PRED, {});
+  HloComputation::Builder builder(TestName());
+  HloInstruction* param0 = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, r0pred, "param0"));
+  HloInstruction* const_false = builder.AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<bool>(false)));
+  builder.AddInstruction(HloInstruction::CreateBinary(r0pred, HloOpcode::kAnd,
+                                                      param0, const_false));
+
+  auto computation = module().AddEntryComputation(builder.Build());
+  HloInstruction* root = computation->root_instruction();
+  EXPECT_EQ(root->opcode(), HloOpcode::kAnd);
+  AlgebraicSimplifier simplifier(/*is_layout_sensitive=*/false,
+                                 non_bitcasting_callback());
+  ASSERT_TRUE(simplifier.Run(&module()).ValueOrDie());
+  root = computation->root_instruction();
+  EXPECT_EQ(root, const_false);
+}
+
+// Test that False && A is simplified to False
+TEST_F(AlgebraicSimplifierTest, AndFalse2) {
+  Shape r0pred = ShapeUtil::MakeShape(PRED, {});
+  HloComputation::Builder builder(TestName());
+  HloInstruction* param0 = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, r0pred, "param0"));
+  HloInstruction* const_false = builder.AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<bool>(false)));
+  builder.AddInstruction(HloInstruction::CreateBinary(r0pred, HloOpcode::kAnd,
+                                                      const_false, param0));
+
+  auto computation = module().AddEntryComputation(builder.Build());
+  HloInstruction* root = computation->root_instruction();
+  EXPECT_EQ(root->opcode(), HloOpcode::kAnd);
+  AlgebraicSimplifier simplifier(/*is_layout_sensitive=*/false,
+                                 non_bitcasting_callback());
+  ASSERT_TRUE(simplifier.Run(&module()).ValueOrDie());
+  root = computation->root_instruction();
+  EXPECT_EQ(root, const_false);
+}
+
+// Test that A || True is simplified to True
+TEST_F(AlgebraicSimplifierTest, OrTrue) {
+  Shape r0pred = ShapeUtil::MakeShape(PRED, {});
+  HloComputation::Builder builder(TestName());
+  HloInstruction* param0 = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, r0pred, "param0"));
+  HloInstruction* const_true = builder.AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<bool>(true)));
+  builder.AddInstruction(
+      HloInstruction::CreateBinary(r0pred, HloOpcode::kOr, param0, const_true));
+
+  auto computation = module().AddEntryComputation(builder.Build());
+  HloInstruction* root = computation->root_instruction();
+  EXPECT_EQ(root->opcode(), HloOpcode::kOr);
+  AlgebraicSimplifier simplifier(/*is_layout_sensitive=*/false,
+                                 non_bitcasting_callback());
+  ASSERT_TRUE(simplifier.Run(&module()).ValueOrDie());
+  root = computation->root_instruction();
+  EXPECT_EQ(root, const_true);
+}
+
+// Test that True || A is simplified to True
+TEST_F(AlgebraicSimplifierTest, OrTrue2) {
+  Shape r0pred = ShapeUtil::MakeShape(PRED, {});
+  HloComputation::Builder builder(TestName());
+  HloInstruction* param0 = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, r0pred, "param0"));
+  HloInstruction* const_true = builder.AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<bool>(true)));
+  builder.AddInstruction(
+      HloInstruction::CreateBinary(r0pred, HloOpcode::kOr, const_true, param0));
+
+  auto computation = module().AddEntryComputation(builder.Build());
+  HloInstruction* root = computation->root_instruction();
+  EXPECT_EQ(root->opcode(), HloOpcode::kOr);
+  AlgebraicSimplifier simplifier(/*is_layout_sensitive=*/false,
+                                 non_bitcasting_callback());
+  ASSERT_TRUE(simplifier.Run(&module()).ValueOrDie());
+  root = computation->root_instruction();
+  EXPECT_EQ(root, const_true);
+}
+
+// Test that A || False is simplified to A
+TEST_F(AlgebraicSimplifierTest, OrFalse) {
+  Shape r0pred = ShapeUtil::MakeShape(PRED, {});
+  HloComputation::Builder builder(TestName());
+  HloInstruction* param0 = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, r0pred, "param0"));
+  HloInstruction* const_false = builder.AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<bool>(false)));
+  builder.AddInstruction(HloInstruction::CreateBinary(r0pred, HloOpcode::kOr,
+                                                      param0, const_false));
+
+  auto computation = module().AddEntryComputation(builder.Build());
+  HloInstruction* root = computation->root_instruction();
+  EXPECT_EQ(root->opcode(), HloOpcode::kOr);
+  AlgebraicSimplifier simplifier(/*is_layout_sensitive=*/false,
+                                 non_bitcasting_callback());
+  ASSERT_TRUE(simplifier.Run(&module()).ValueOrDie());
+  root = computation->root_instruction();
+  EXPECT_EQ(root, param0);
+}
+
+// Test that False || A is simplified to A
+TEST_F(AlgebraicSimplifierTest, OrFalse2) {
+  Shape r0pred = ShapeUtil::MakeShape(PRED, {});
+  HloComputation::Builder builder(TestName());
+  HloInstruction* param0 = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, r0pred, "param0"));
+  HloInstruction* const_false = builder.AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<bool>(false)));
+  builder.AddInstruction(HloInstruction::CreateBinary(r0pred, HloOpcode::kOr,
+                                                      const_false, param0));
+
+  auto computation = module().AddEntryComputation(builder.Build());
+  HloInstruction* root = computation->root_instruction();
+  EXPECT_EQ(root->opcode(), HloOpcode::kOr);
+  AlgebraicSimplifier simplifier(/*is_layout_sensitive=*/false,
+                                 non_bitcasting_callback());
+  ASSERT_TRUE(simplifier.Run(&module()).ValueOrDie());
+  root = computation->root_instruction();
+  EXPECT_EQ(root, param0);
+}
+
 // Used for TEST_Ps that test merging (or not) of a kPad instruction into a
 // convolution's Window.
 struct ConvPaddingTestcase {
