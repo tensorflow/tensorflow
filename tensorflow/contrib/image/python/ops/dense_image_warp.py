@@ -60,7 +60,10 @@ def _interpolate_bilinear(grid,
       msg = 'Grid must be 4 dimensional. Received size: '
       raise ValueError(msg + str(grid.get_shape()))
 
-    batch_size, height, width, channels = \
+    batch_size, height, width, channels = (array_ops.shape(grid)[0],
+                                           array_ops.shape(grid)[1],
+                                           array_ops.shape(grid)[2],
+                                           array_ops.shape(grid)[3])
       array_ops.shape(grid)[0], \
       array_ops.shape(grid)[1], \
       array_ops.shape(grid)[2], \
