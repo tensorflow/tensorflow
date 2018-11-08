@@ -70,17 +70,21 @@ def _interpolate_bilinear(grid,
     grid_type = grid.dtype
 
     with ops.control_dependencies([
-        check_ops.assert_equal(len(query_points.get_shape()), 3, message=
-                               'Query points must be 3 dimensional'),
-        check_ops.assert_equal(array_ops.shape(query_points)[2], 2, message=
-                               'Query points must be size 2 in dim 2.')]):
+        check_ops.assert_equal(
+            len(query_points.get_shape()),
+            3,
+            message='Query points must be 3 dimensional.'),
+        check_ops.assert_equal(
+            array_ops.shape(query_points)[2],
+            2,
+            message='Query points must be size 2 in dim 2.')]):
       num_queries = array_ops.shape(query_points)[1]
 
     with ops.control_dependencies([
         check_ops.assert_greater_equal(height, 2, message=
-                                       'Grid height must be at least 2'),
+                                       'Grid height must be at least 2.'),
         check_ops.assert_greater_equal(width, 2, message=
-                                       'Grid width must be at least 2')]):
+                                       'Grid width must be at least 2.')]):
       alphas = []
       floors = []
       ceils = []
@@ -187,11 +191,10 @@ def dense_image_warp(image, flow, name='dense_image_warp'):
                 of dimensions.
   """
   with ops.name_scope(name):
-    batch_size, height, width, channels = \
-      array_ops.shape(image)[0], \
-      array_ops.shape(image)[1], \
-      array_ops.shape(image)[2], \
-      array_ops.shape(image)[3]
+    batch_size, height, width, channels = (array_ops.shape(image)[0],
+                                           array_ops.shape(image)[1],
+                                           array_ops.shape(image)[2],
+                                           array_ops.shape(image)[3])
 
     # The flow is defined on the image grid. Turn the flow into a list of query
     # points in the grid space.
