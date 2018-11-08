@@ -1699,6 +1699,19 @@ cc_library(
     ],
 )
 
+tf_cc_test(
+    name = "while_loop_analysis_test",
+    srcs = ["while_loop_analysis_test.cc"],
+    deps = [
+        ":while_loop_analysis",
+        "//tensorflow/compiler/xla:test",
+        "//tensorflow/compiler/xla/service:hlo_parser",
+        "//tensorflow/compiler/xla/tests:hlo_verified_test_base",
+        "//tensorflow/compiler/xla/tests:xla_internal_test_main",
+        "//tensorflow/core:test",
+    ],
+)
+
 cc_library(
     name = "while_loop_simplifier",
     srcs = ["while_loop_simplifier.cc"],
@@ -3325,6 +3338,7 @@ cc_library(
         ":hlo",
         ":hlo_pass",
         ":tuple_util",
+        ":while_loop_analysis",
         ":while_util",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:util",
