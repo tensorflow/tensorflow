@@ -37,10 +37,8 @@ def lift_to_graph(init_tensor, graph, sources=None):
   visited_ops = set([x.op for x in sources])
   ops_to_visit = [init_tensor.op]
   op_outputs = collections.defaultdict(set)
-  print("ops_to_visit", ops_to_visit)
   while ops_to_visit:
     op = ops_to_visit.pop()
-    print("visiting", op)
     if op in visited_ops:
       continue
     visited_ops.add(op)
