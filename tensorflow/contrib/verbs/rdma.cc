@@ -1206,7 +1206,7 @@ void RdmaTensorResponse::SendContent(const Tensor& in, const TensorProto& proto,
                                                           tensor_bytes);
         if (mr_ == nullptr && tensor_bytes) {
           RdmaMemoryMgr::Singleton().InsertMemoryRegion(
-              src_addr_, tensor_bytes, "what should go here?");
+              src_addr_, tensor_bytes, "CPU::RT");
           mr_ = RdmaMemoryMgr::Singleton().FindMemoryRegion(src_addr_,
                                                             tensor_bytes);
         }
