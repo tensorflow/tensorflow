@@ -51,6 +51,7 @@ class UnliftedInitializerVariable(resource_variable_ops.ResourceVariable):
                name=None,
                dtype=None,
                constraint=None,
+               add_initializers_to=None,
                **unused_kwargs):
     """Creates a variable.
 
@@ -81,6 +82,9 @@ class UnliftedInitializerVariable(resource_variable_ops.ResourceVariable):
         variable and return the Tensor for the projected value
         (which must have the same shape). Constraints are not safe to
         use when doing asynchronous distributed training.
+      add_initializers_to: if not None and not in legacy graph mode, the
+        initializer tensor will be added to this map instead of adding the
+        assignment to the function.
 
     Raises:
       ValueError: If the initial value is not specified, or does not have a
@@ -166,21 +170,24 @@ class UnliftedInitializerVariable(resource_variable_ops.ResourceVariable):
             self._graph_element = value
           ops.add_to_collection(ops.GraphKeys.GLOBAL_VARIABLES, self)
       else:
-        def assign_fn():
-          with ops.name_scope("Assign") as n, ops.colocate_with(self._handle):
-            resource_variable_ops.assign_variable_op(
-                self._handle,
-                initial_value,
-                name=n)
-            # Returning values to keep tf.cond happy.
-          return ops.convert_to_tensor(1)
-        def not_assign_fn():
-          return ops.convert_to_tensor(0)
-        # Note: this cond is always guaranteed to run because we're inside a
-        # defun which will insert automatic control dependencies.
-        control_flow_ops.cond(
-            resource_variable_ops.var_is_initialized_op(self._handle),
-            not_assign_fn, assign_fn)
+        if add_initializers_to is not None:
+          add_initializers_to[self] = initial_value
+        else:
+          def assign_fn():
+            with ops.name_scope("Assign") as n, ops.colocate_with(self._handle):
+              resource_variable_ops.assign_variable_op(
+                  self._handle,
+                  initial_value,
+                  name=n)
+              # Returning values to keep tf.cond happy.
+            return ops.convert_to_tensor(1)
+          def not_assign_fn():
+            return ops.convert_to_tensor(0)
+          # Note: this cond is always guaranteed to run because we're inside a
+          # defun which will insert automatic control dependencies.
+          control_flow_ops.cond(
+              resource_variable_ops.var_is_initialized_op(self._handle),
+              not_assign_fn, assign_fn)
 
     # After the handle has been created, set up a way to clean it up when
     # executing eagerly. We'll hold the only reference to the deleter, so that
@@ -252,14 +259,15 @@ class PolymorphicFunction(object):
         input_signature=self._input_signature,
         experimental_autograph=self._autograph)
 
-  def _initialize(self, args, kwds):
+  def _initialize(self, args, kwds, add_initializers_to=None):
     """Initializes, on the first call."""
 
     self._created_variables = []
 
     def variable_capturing_scope(unused_next_creator, **kwds):
       """Creates UnliftedInitializerVariables and saves references to them."""
-      v = UnliftedInitializerVariable(**kwds)
+      v = UnliftedInitializerVariable(
+          add_initializers_to=add_initializers_to, **kwds)
       self._created_variables.append(weakref.ref(v))
       return v
 
@@ -405,14 +413,22 @@ class PolymorphicFunction(object):
     Raises:
       ValueError: if this object has not yet been called on concrete values.
     """
-    # TODO(apassos) figure out how to handle this case (what should we return
-    # here?)
+    assert context.executing_eagerly()
     if self._stateful_fn is None:
-      raise ValueError(
-          "Call this function with concrete values before asking for a"
-          " concrete function. Calling the function will ensure that, in"
-          " case this function creates variables, that those are properly"
-          " initialized.")
+      # Here we trace the function, collect the initializers, and attempt to
+      # extract them and run them eagerly. Fail only if we cannot do so.
+      initializer_map = {}
+      self._initialize(args, kwargs, add_initializers_to=initializer_map)
+      if not self._created_variables:
+
+        @function
+        def initialize_variables():
+          for v, init in initializer_map.items():
+            v.assign(lift_to_graph.lift_to_graph(
+                init, ops.get_default_graph())[init])
+
+        initialize_variables()
+
     if self._created_variables:
       # In this case we have created variables on the first call, so we run the
       # defunned version which is guaranteed to never create variables.
