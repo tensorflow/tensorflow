@@ -60,7 +60,7 @@ FloatType Builder::getF32Type() { return Type::getF32(context); }
 
 FloatType Builder::getF64Type() { return Type::getF64(context); }
 
-OtherType Builder::getIndexType() { return Type::getIndex(context); }
+IndexType Builder::getIndexType() { return Type::getIndex(context); }
 
 OtherType Builder::getTFControlType() { return Type::getTFControl(context); }
 

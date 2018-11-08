@@ -73,7 +73,8 @@ public:
   FloatType getF32Type();
   FloatType getF64Type();
 
-  OtherType getIndexType();
+  IndexType getIndexType();
+
   OtherType getTFControlType();
   OtherType getTFStringType();
   OtherType getTFResourceType();

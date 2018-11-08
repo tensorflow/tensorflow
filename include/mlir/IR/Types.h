@@ -25,6 +25,7 @@
 namespace mlir {
 class AffineMap;
 class FloatType;
+class IndexType;
 class IntegerType;
 class Location;
 class MLIRContext;
@@ -33,6 +34,7 @@ class OtherType;
 namespace detail {
 
 class TypeStorage;
+class IndexTypeStorage;
 class IntegerTypeStorage;
 class FloatTypeStorage;
 struct OtherTypeStorage;
@@ -66,7 +68,7 @@ public:
     TFString,
 
     /// These are marker for the first and last 'other' type.
-    FIRST_OTHER_TYPE = Index,
+    FIRST_OTHER_TYPE = TFControl,
     LAST_OTHER_TYPE = TFString,
 
     // Floating point.
@@ -138,12 +140,12 @@ public:
   unsigned getBitWidth() const;
 
   // Convenience factories.
+  static IndexType getIndex(MLIRContext *ctx);
   static IntegerType getInteger(unsigned width, MLIRContext *ctx);
   static FloatType getBF16(MLIRContext *ctx);
   static FloatType getF16(MLIRContext *ctx);
   static FloatType getF32(MLIRContext *ctx);
   static FloatType getF64(MLIRContext *ctx);
-  static OtherType getIndex(MLIRContext *ctx);
   static OtherType getTFControl(MLIRContext *ctx);
   static OtherType getTFString(MLIRContext *ctx);
   static OtherType getTFResource(MLIRContext *ctx);
@@ -236,6 +238,21 @@ inline FloatType Type::getF64(MLIRContext *ctx) {
   return FloatType::get(Kind::F64, ctx);
 }
 
+/// Index is special integer-like type with unknown platform-dependent bit width
+/// used in subscripts and loop induction variables.
+class IndexType : public Type {
+public:
+  using ImplType = detail::IndexTypeStorage;
+  IndexType() = default;
+  /* implicit */ IndexType(Type::ImplType *ptr);
+
+  /// Crete an IndexType instance, unique in the given context.
+  static IndexType get(MLIRContext *context);
+
+  /// Support method to enable LLVM-style type casting.
+  static bool kindof(Kind kind) { return kind == Kind::Index; }
+};
+
 /// This is a type for the random collection of special base types.
 class OtherType : public Type {
 public:
@@ -251,8 +268,8 @@ public:
   }
 };
 
-inline OtherType Type::getIndex(MLIRContext *ctx) {
-  return OtherType::get(Kind::Index, ctx);
+inline IndexType Type::getIndex(MLIRContext *ctx) {
+  return IndexType::get(ctx);
 }
 inline OtherType Type::getTFControl(MLIRContext *ctx) {
   return OtherType::get(Kind::TFControl, ctx);

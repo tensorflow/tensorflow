@@ -56,6 +56,8 @@ struct alignas(8) TypeStorage {
   unsigned subclassData : 24;
 };
 
+struct IndexTypeStorage : public TypeStorage {};
+
 struct IntegerTypeStorage : public TypeStorage {
   unsigned width;
 };

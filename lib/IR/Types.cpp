@@ -53,6 +53,8 @@ unsigned Type::getBitWidth() const {
 unsigned Type::getSubclassData() const { return type->getSubclassData(); }
 void Type::setSubclassData(unsigned val) { type->setSubclassData(val); }
 
+IndexType::IndexType(Type::ImplType *ptr) : Type(ptr) {}
+
 IntegerType::IntegerType(Type::ImplType *ptr) : Type(ptr) {}
 
 unsigned IntegerType::getWidth() const {

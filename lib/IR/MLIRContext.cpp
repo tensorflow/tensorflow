@@ -323,6 +323,9 @@ public:
   // Uniqui'ing of AffineConstantExprStorage using constant value as key.
   DenseMap<int64_t, AffineConstantExprStorage *> constExprs;
 
+  /// Unique index type (lazily constructed).
+  IndexTypeStorage *indexType = nullptr;
+
   /// Integer type uniquing.
   DenseMap<unsigned, IntegerTypeStorage *> integers;
 
@@ -553,6 +556,17 @@ FileLineColLoc *FileLineColLoc::get(UniquedFilename filename, unsigned line,
 //===----------------------------------------------------------------------===//
 // Type uniquing
 //===----------------------------------------------------------------------===//
+
+IndexType IndexType::get(MLIRContext *context) {
+  auto &impl = context->getImpl();
+
+  if (impl.indexType)
+    return impl.indexType;
+
+  impl.indexType = impl.allocator.Allocate<IndexTypeStorage>();
+  new (impl.indexType) IndexTypeStorage{{Kind::Index, context}};
+  return impl.indexType;
+}
 
 IntegerType IntegerType::get(unsigned width, MLIRContext *context) {
   assert(width <= kMaxWidth && "admissible integer bitwidth exceeded");
