@@ -64,10 +64,7 @@ def _interpolate_bilinear(grid,
                                            array_ops.shape(grid)[1],
                                            array_ops.shape(grid)[2],
                                            array_ops.shape(grid)[3])
-      array_ops.shape(grid)[0], \
-      array_ops.shape(grid)[1], \
-      array_ops.shape(grid)[2], \
-      array_ops.shape(grid)[3]
+
     shape = [batch_size, height, width, channels]
     query_type = query_points.dtype
     grid_type = grid.dtype
