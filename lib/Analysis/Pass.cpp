@@ -69,6 +69,14 @@ void mlir::registerPass(StringRef arg, StringRef description,
   (void)inserted;
 }
 
+/// Returns the pass info for the specified pass class or null if unknown.
+const PassInfo *mlir::Pass::lookupPassInfo(const void *passID) {
+  auto it = passRegistry->find(passID);
+  if (it == passRegistry->end())
+    return nullptr;
+  return &it->getSecond();
+}
+
 PassNameParser::PassNameParser(llvm::cl::Option &opt)
     : llvm::cl::parser<const PassInfo *>(opt) {
   for (const auto &kv : *passRegistry) {

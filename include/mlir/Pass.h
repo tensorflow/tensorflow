@@ -38,6 +38,8 @@ struct LLVM_NODISCARD PassResult {
   operator bool() const { return value == Failure; }
 };
 
+class PassInfo;
+
 class Pass {
 public:
   explicit Pass(const void *passID) {}
@@ -46,6 +48,9 @@ public:
 
   static PassResult success() { return PassResult::Success; }
   static PassResult failure() { return PassResult::Failure; }
+
+  /// Returns the pass info for the specified pass class or null if unknown.
+  static const PassInfo *lookupPassInfo(const void *passID);
 
 private:
   /// Out of line virtual method to ensure vtables and metadata are emitted to a
